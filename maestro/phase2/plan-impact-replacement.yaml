@@ -243,8 +243,8 @@ tags:
       notVisible: "Review current values"
     commands:
       - swipe:
-          start: 95%, 75%
-          end: 95%, 25%
+          start: 50%, 75%
+          end: 50%, 25%
           duration: 300
 - assertVisible: "Review current values"
 - scrollUntilVisible:
