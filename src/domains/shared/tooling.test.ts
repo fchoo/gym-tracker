@@ -380,27 +380,35 @@ describe("Plan 01-03 test and boundary tooling", () => {
     );
 
     expect(fullLoop).toMatch(
-      /assertVisible: "RESTING · NEXT: SET 3 AT 60 kg × 8"\n- assertNotVisible: "Undo completed set"\n- assertVisible: "Expand rest controls"\n- tapOn: "Expand rest controls"\n- tapOn: "Skip rest"\n- scrollUntilVisible:\n    element:\n      text: "Working set 3 repetitions"\n    direction: DOWN\n- longPressOn: "Working set 3 repetitions"\n- tapOn:\n    text: "Select all"\n    optional: true\n- eraseText: 1\n- inputText: "7"\n- hideKeyboard\n- scrollUntilVisible:\n    element:\n      text: "Complete Set 3"\n    direction: DOWN\n    centerElement: true\n- tapOn: "Complete Set 3"/u,
+      /assertVisible: "RESTING · NEXT: SET 3 AT 60 kg × 8"\n- assertNotVisible: "Undo completed set"\n- assertVisible: "Expand rest controls"\n- tapOn: "Expand rest controls"\n- tapOn: "Skip rest"\n- extendedWaitUntil:\n    notVisible: "Skip rest"\n    timeout: 60000\n- scrollUntilVisible:\n    element:\n      text: "Working set 3 repetitions"\n    direction: DOWN\n    timeout: 60000\n- longPressOn: "Working set 3 repetitions"\n- tapOn:\n    text: "Select all"\n    optional: true\n- eraseText: 1\n- inputText: "7"\n- hideKeyboard\n- scrollUntilVisible:\n    element:\n      text: "Complete Set 3"\n    direction: DOWN\n    centerElement: true\n- tapOn: "Complete Set 3"/u,
     );
     expect(fullLoop).not.toContain("Change values");
     expect(fullLoop).not.toContain("Use these values");
   });
 
-  it("scrolls to row-local set actions after rest", () => {
+  it("waits for every skipped rest to commit before continuing the flow", () => {
     for (const relativePath of [
       "maestro/lifecycle/rest-recovery.yaml",
+      "maestro/phase2/library-exercises.yaml",
+      "maestro/phase2/remediation-rest-alerts.yaml",
+      "maestro/phase2/remediation-workout.yaml",
       "maestro/smoke/phase1-denied-late-notifications.yaml",
       "maestro/smoke/phase1-full-loop.yaml",
+      "maestro/subflows/phase1-airplane-session.yaml",
     ]) {
       const flow = readFileSync(
         join(repositoryRoot, relativePath),
         "utf8",
       );
 
-      expect(flow).toMatch(
-        /tapOn: "Skip rest"\n(?:- assertNotVisible: "Rest skipped"\n)?- scrollUntilVisible:\n    element:\n      text: "Complete Set 2"\n    direction: DOWN\n    centerElement: true\n/u,
-      );
+      const skipRestCount = flow.match(/- tapOn: "Skip rest"/gu)?.length ?? 0;
+      const synchronizedSkipCount = flow.match(
+        /- tapOn: "Skip rest"\n- extendedWaitUntil:\n    notVisible: "Skip rest"\n    timeout: 60000/gu,
+      )?.length ?? 0;
+      expect(skipRestCount).toBeGreaterThan(0);
+      expect(synchronizedSkipCount).toBe(skipRestCount);
       expect(flow).not.toContain('- assertVisible: "Rest skipped"');
+      expect(flow).not.toContain('- assertNotVisible: "Rest skipped"');
     }
   });
 
@@ -427,7 +435,7 @@ describe("Plan 01-03 test and boundary tooling", () => {
     );
 
     expect(fullLoop).toMatch(
-      /tapOn: "Complete Set 3"\n- assertVisible: "RESTING · NEXT: SET 1 AT 42\.5 kg × 10"\n- assertNotVisible: "Undo completed set"\n- assertVisible: "Expand rest controls"\n- tapOn: "Expand rest controls"\n- tapOn: "Skip rest"\n- scrollUntilVisible:\n    element:\n      text: "Bench Press"\n    direction: UP\n    centerElement: true\n- assertVisible: "Bench Press"/u,
+      /tapOn: "Complete Set 3"\n- assertVisible: "RESTING · NEXT: SET 1 AT 42\.5 kg × 10"\n- assertNotVisible: "Undo completed set"\n- assertVisible: "Expand rest controls"\n- tapOn: "Expand rest controls"\n- tapOn: "Skip rest"\n- extendedWaitUntil:\n    notVisible: "Skip rest"\n    timeout: 60000\n- scrollUntilVisible:\n    element:\n      text: "Bench Press"\n    direction: UP\n    centerElement: true\n    timeout: 60000\n- assertVisible: "Bench Press"/u,
     );
   });
 
@@ -480,7 +488,7 @@ describe("Plan 01-03 test and boundary tooling", () => {
     );
 
     expect(airplaneSession).toMatch(
-      /tapOn: "Skip rest"\n- scrollUntilVisible:\n    element:\n      text: "More workout actions"\n    direction: UP\n    centerElement: true\n- tapOn: "More workout actions"/u,
+      /tapOn: "Skip rest"\n- extendedWaitUntil:\n    notVisible: "Skip rest"\n    timeout: 60000\n- scrollUntilVisible:\n    element:\n      text: "More workout actions"\n    direction: UP\n    centerElement: true\n    timeout: 60000\n- tapOn: "More workout actions"/u,
     );
   });
 

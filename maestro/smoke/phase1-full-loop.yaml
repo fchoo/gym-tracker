@@ -37,21 +37,29 @@ tags:
 - assertVisible: "Expand rest controls"
 - tapOn: "Expand rest controls"
 - tapOn: "Skip rest"
+- extendedWaitUntil:
+    notVisible: "Skip rest"
+    timeout: 60000
 - scrollUntilVisible:
     element:
       text: "Complete Set 2"
     direction: DOWN
     centerElement: true
+    timeout: 60000
 - tapOn: "Complete Set 2"
 - assertVisible: "RESTING · NEXT: SET 3 AT 60 kg × 8"
 - assertNotVisible: "Undo completed set"
 - assertVisible: "Expand rest controls"
 - tapOn: "Expand rest controls"
 - tapOn: "Skip rest"
+- extendedWaitUntil:
+    notVisible: "Skip rest"
+    timeout: 60000
 - scrollUntilVisible:
     element:
       text: "Working set 3 repetitions"
     direction: DOWN
+    timeout: 60000
 - longPressOn: "Working set 3 repetitions"
 - tapOn:
     text: "Select all"
@@ -70,11 +78,15 @@ tags:
 - assertVisible: "Expand rest controls"
 - tapOn: "Expand rest controls"
 - tapOn: "Skip rest"
+- extendedWaitUntil:
+    notVisible: "Skip rest"
+    timeout: 60000
 - scrollUntilVisible:
     element:
       text: "Bench Press"
     direction: UP
     centerElement: true
+    timeout: 60000
 - assertVisible: "Bench Press"
 - tapOn: "More workout actions"
 - tapOn: "Skip Bench Press"

@@ -657,7 +657,10 @@ test("Phase 2 remediation flows use public labels and deterministic seams", asyn
     rest,
     /notifications: allow[\s\S]*action=inspect_permission[\s\S]*permission · granted[\s\S]*action=background_expiry[\s\S]*background_expiry_scheduled_once[\s\S]*action=cancel_all/u,
   );
-  assert.match(rest, /- tapOn: "Skip rest"\n- assertNotVisible: "Rest skipped"/u);
+  assert.match(
+    rest,
+    /- tapOn: "Skip rest"\n- extendedWaitUntil:\n    notVisible: "Skip rest"\n    timeout: 60000/u,
+  );
   assert.doesNotMatch(rest, /- assertVisible: "Rest skipped"/u);
 
   assert.match(
@@ -701,7 +704,7 @@ test("Phase 2 remediation flows use public labels and deterministic seams", asyn
   );
   assert.match(
     workout,
-    /- tapOn: "Skip rest"\n- repeat:\n    times: 12\n    while:\n      notVisible: "Edit completed set 1"\n    commands:\n      - swipe:\n          start: 95%, 25%\n          end: 95%, 75%\n          duration: 300\n- assertVisible: "Edit completed set 1"/u,
+    /- tapOn: "Skip rest"\n- extendedWaitUntil:\n    notVisible: "Skip rest"\n    timeout: 60000\n- repeat:\n    times: 12\n    while:\n      notVisible: "Edit completed set 1"\n    commands:\n      - swipe:\n          start: 95%, 25%\n          end: 95%, 75%\n          duration: 300\n- assertVisible: "Edit completed set 1"/u,
   );
   assert.match(
     workout,
@@ -2938,7 +2941,7 @@ test("rest recovery re-centers the set action after each orientation change", as
   );
 });
 
-test("rest recovery checks the ready state without removed skip copy", async () => {
+test("rest recovery waits for the skipped rest to commit before finding set 2", async () => {
   const flow = await readFile(
     path.join(projectRoot, "maestro/lifecycle/rest-recovery.yaml"),
     "utf8",
@@ -2946,8 +2949,9 @@ test("rest recovery checks the ready state without removed skip copy", async () 
 
   assert.match(
     flow,
-    /- tapOn: "Skip rest"\n- assertNotVisible: "Rest skipped"\n- scrollUntilVisible:\n    element:\n      text: "Complete Set 2"\n    direction: DOWN\n    centerElement: true\n- assertVisible: "Complete Set 2"/u,
+    /- tapOn: "Skip rest"\n- extendedWaitUntil:\n    notVisible: "Skip rest"\n    timeout: 60000\n- scrollUntilVisible:\n    element:\n      text: "Complete Set 2"\n    direction: DOWN\n    centerElement: true\n    timeout: 60000\n- assertVisible: "Complete Set 2"/u,
   );
+  assert.doesNotMatch(flow, /assertNotVisible: "Rest skipped"/u);
 });
 
 test("rest recovery waits for persisted workout state after process death", async () => {

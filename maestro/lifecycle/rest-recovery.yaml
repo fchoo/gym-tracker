@@ -80,10 +80,13 @@ tags:
 - tapOn: "Resume rest"
 - assertVisible: "RESTING · NEXT: SET 2 AT 60 kg × 8"
 - tapOn: "Skip rest"
-- assertNotVisible: "Rest skipped"
+- extendedWaitUntil:
+    notVisible: "Skip rest"
+    timeout: 60000
 - scrollUntilVisible:
     element:
       text: "Complete Set 2"
     direction: DOWN
     centerElement: true
+    timeout: 60000
 - assertVisible: "Complete Set 2"

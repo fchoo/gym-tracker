@@ -177,6 +177,9 @@ tags:
 - assertVisible: "Expand rest controls"
 - tapOn: "Expand rest controls"
 - tapOn: "Skip rest"
+- extendedWaitUntil:
+    notVisible: "Skip rest"
+    timeout: 60000
 - repeat:
     times: 12
     while:
