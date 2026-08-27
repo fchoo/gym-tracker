@@ -38,11 +38,16 @@ const requireExclusions = (value, section, output) => {
 };
 
 export function validateGeneratedProductionAndroidSources({
-  gradle, manifest, strings, backup, extraction,
+  gradle, gradleProperties, manifest, strings, backup, extraction,
 }) {
   const output = [];
   const match = (value, pattern, message) => { if (!pattern.test(value)) output.push(message); };
   match(gradle, /applicationId\s+["']com\.fchoo\.gymtracker["']/u, "production applicationId is missing");
+  match(
+    gradleProperties,
+    /^reactNativeArchitectures=armeabi-v7a,arm64-v8a,x86,x86_64$/mu,
+    "production React Native architectures must retain the full ABI set",
+  );
   match(manifest, /<data[^>]*android:scheme="gymtracker"/u, "production URL scheme is missing");
   match(strings, /<string name="app_name">Gym Tracker<\/string>/u, "production app label is missing");
   match(manifest, /android:fullBackupContent="@xml\/backup_rules"/u, "production full backup rules are not linked");
@@ -61,6 +66,7 @@ const isMain = process.argv[1] !== undefined
 if (isMain) {
   const sourceFailures = validateGeneratedProductionAndroidSources({
     gradle: read("app/build.gradle"),
+    gradleProperties: read("gradle.properties"),
     manifest: read("app/src/main/AndroidManifest.xml"),
     strings: read("app/src/main/res/values/strings.xml"),
     backup: read("app/src/main/res/xml/backup_rules.xml"),

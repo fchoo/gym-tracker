@@ -141,6 +141,7 @@ EXPO_PUBLIC_NATIVE_CONTRACT_SUITE="$suite" \
   --project-dir "$project_root/android" \
   --no-daemon \
   --stacktrace \
+  '-Dorg.gradle.jvmargs=-Xmx3072m -XX:MaxMetaspaceSize=768m -Dfile.encoding=UTF-8' \
   :app:assembleRelease
 generated_apk="$project_root/android/app/build/outputs/apk/release/app-release.apk"
 [ -f "$generated_apk" ] ||

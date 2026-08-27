@@ -382,6 +382,51 @@ test("release workflows enforce one build, immediate manifest, exact command gra
   }), /after|build|manifest/iu);
 });
 
+test("native build scripts bound Gradle memory without narrowing the production candidate ABI set", () => {
+  const nativeTestBuildScript = readFileSync(
+    path.join(projectRoot, "scripts/build-current-native-test-apk.sh"),
+    "utf8",
+  );
+  const releaseCandidateBuildScript = readFileSync(
+    path.join(projectRoot, "scripts/build-release-candidate-once.sh"),
+    "utf8",
+  );
+  const pullRequest = readFileSync(
+    path.join(projectRoot, ".github/workflows/pr.yml"),
+    "utf8",
+  );
+  const candidateWorkflow = readFileSync(
+    path.join(projectRoot, ".github/workflows/release-candidate.yml"),
+    "utf8",
+  );
+
+  assert.match(
+    nativeTestBuildScript,
+    /'-Dorg\.gradle\.jvmargs=-Xmx3072m -XX:MaxMetaspaceSize=768m -Dfile\.encoding=UTF-8'/u,
+  );
+  assert.doesNotMatch(
+    nativeTestBuildScript,
+    /-PreactNativeArchitectures=/u,
+  );
+  assert.match(
+    pullRequest,
+    /Build once, run complete Phase 2 automated producers[\s\S]*?env:\s*\n\s*ORG_GRADLE_PROJECT_reactNativeArchitectures: x86_64[\s\S]*?npm run android:devtest:fresh -- --suite phase2/u,
+  );
+
+  assert.match(
+    releaseCandidateBuildScript,
+    /'-Dorg\.gradle\.jvmargs=-Xmx4096m -XX:MaxMetaspaceSize=1024m -Dfile\.encoding=UTF-8'/u,
+  );
+  assert.doesNotMatch(
+    releaseCandidateBuildScript,
+    /-PreactNativeArchitectures=/u,
+  );
+  assert.doesNotMatch(
+    candidateWorkflow,
+    /ORG_GRADLE_PROJECT_reactNativeArchitectures/u,
+  );
+});
+
 test("pinned Android SDK installer resolves the hosted SDK root and verifies every build component", () => {
   const temporaryDirectory = mkdtempSync(path.join(os.tmpdir(), "phase5-android-sdk-"));
   try {
@@ -934,6 +979,7 @@ test("production Android contract validates multiline backup and D2D sections", 
   ].join("\n");
   const values = {
     gradle: 'applicationId "com.fchoo.gymtracker"',
+    gradleProperties: "reactNativeArchitectures=armeabi-v7a,arm64-v8a,x86,x86_64",
     manifest: '<application android:fullBackupContent="@xml/backup_rules" android:dataExtractionRules="@xml/data_extraction_rules"><data android:scheme="gymtracker" /></application>',
     strings: '<string name="app_name">Gym Tracker</string>',
     backup: `<full-backup-content>\n${exclusions}\n</full-backup-content>`,
@@ -943,6 +989,9 @@ test("production Android contract validates multiline backup and D2D sections", 
   assert.match(validateGeneratedProductionAndroidSources({
     ...values, extraction: values.extraction.replace(exclusions, ""),
   }).join(" "), /cloud-backup.*omit/iu);
+  assert.match(validateGeneratedProductionAndroidSources({
+    ...values, gradleProperties: "reactNativeArchitectures=x86_64",
+  }).join(" "), /architectures.*full|full.*architectures/iu);
 });
 
 test("Phase 5 benchmark parses real Android TotalTime whitespace", async () => {
