@@ -21,6 +21,7 @@ tags:
       text: "Working set 1 repetitions"
     direction: DOWN
     centerElement: true
+    timeout: 60000
 - longPressOn: "Working set 1 repetitions"
 - tapOn:
     text: "Select all"
