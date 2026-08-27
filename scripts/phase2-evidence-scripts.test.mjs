@@ -2898,7 +2898,11 @@ test("rest recovery starts Full Body A without depending on the calendar day", a
   );
   assert.match(
     flow,
-    /- assertVisible: "Back Squat"\n- scrollUntilVisible:\n    element:\n      text: "Working set 1 repetitions"\n    direction: DOWN\n    timeout: 60000\n- longPressOn: "Working set 1 repetitions"/u,
+    /- assertVisible: "Back Squat"\n- repeat:\n    times: 12\n    while:\n      notVisible: "Working set 1 repetitions"\n    commands:\n      - swipe:\n          start: 95%, 75%\n          end: 95%, 25%\n          duration: 300\n- assertVisible: "Working set 1 repetitions"\n- longPressOn: "Working set 1 repetitions"/u,
+  );
+  assert.doesNotMatch(
+    flow,
+    /scrollUntilVisible:\n    element:\n      text: "Working set 1 repetitions"/u,
   );
   assert.doesNotMatch(
     flow,
