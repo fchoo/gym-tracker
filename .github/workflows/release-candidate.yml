@@ -62,6 +62,7 @@ jobs:
 
       - name: Run source and generated-native gates
         run: |
+          set -o pipefail
           {
             npm run typecheck
             npm run lint
@@ -101,6 +102,7 @@ jobs:
           RELEASE_KEY_ALIAS: ${{ secrets.RELEASE_KEY_ALIAS }}
           RELEASE_KEY_PASSWORD: ${{ secrets.RELEASE_KEY_PASSWORD }}
         run: |
+          set -o pipefail
           ./scripts/build-release-candidate-once.sh --output-dir artifacts/release-candidate \
             2>&1 | tee -a "${RUNNER_TEMP}/phase5-generated.txt"
 

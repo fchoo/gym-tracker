@@ -5,6 +5,7 @@ import {
   mkdtempSync,
   readFileSync,
   rmSync,
+  statSync,
   symlinkSync,
   truncateSync,
   writeFileSync,
@@ -331,6 +332,12 @@ test("release workflows enforce one build, immediate manifest, exact command gra
     "utf8",
   );
   assert.match(buildScript, /assert-generated-production-android\.mjs/gu);
+  assert.equal(
+    (statSync(path.join(projectRoot, "scripts/build-release-candidate-once.sh")).mode & 0o111) !== 0,
+    true,
+  );
+  assert.match(candidate, /Run source and generated-native gates[\s\S]*set -o pipefail/iu);
+  assert.match(candidate, /Build signed APK and AAB once[\s\S]*set -o pipefail/iu);
   assert.doesNotThrow(() => validatePhase5WorkflowContracts({ candidate, nightly }));
   assert.throws(() => validatePhase5WorkflowContracts({
     candidate: candidate.replace(
@@ -879,6 +886,11 @@ test("promotion and terminal contracts require selected successful cross-run inp
   assert.match(promotion, /group:\s*release-promotion\s*$/mu);
   assert.match(promotion, /cancel-in-progress:\s*false/u);
   assert.doesNotMatch(promotion, /group:\s*release-promotion-\$\{\{ github\.run_id \}\}/u);
+  assert.match(promotion, /release_bodies=\$\(gh api --paginate/iu);
+  assert.doesNotMatch(
+    promotion,
+    /gh api --paginate[^\n]*releases[\s\S]{0,160}\|\s*grep -F/iu,
+  );
   assert.doesNotThrow(() => validateReleasePromotionInputValues({
     candidateRunId: "123", attendedRunId: "456",
     candidateId: "candidate-001", candidateCommit: "a".repeat(40),
@@ -913,6 +925,13 @@ test("promotion and terminal contracts require selected successful cross-run inp
   assert.throws(() => validatePromotionWorkflowContract(
     promotion.replace(/gh release view[^\n]+/u, "true"),
   ), /existing|overwrite|release/iu);
+  assert.throws(() => validatePromotionWorkflowContract(
+    promotion.replace(
+      /release_bodies=\$\(gh api --paginate[^\n]*\n\s*--jq[^\n]*\)/u,
+      'gh api --paginate "repos/${GITHUB_REPOSITORY}/releases" \
+            --jq \'.[].body // ""\' | grep -F "Candidate run: ${candidate_run_id}"',
+    ),
+  ), /candidate|reuse|API|release/iu);
   assert.throws(() => validatePromotionWorkflowContract(
     promotion.replace("--draft", ""),
   ), /draft|hash|publish/iu);

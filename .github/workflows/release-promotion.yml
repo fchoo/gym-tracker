@@ -152,8 +152,9 @@ jobs:
           if git ls-remote --exit-code --tags origin "refs/tags/${RELEASE_TAG}"; then exit 1; fi
           if gh release view "${RELEASE_TAG}" >/dev/null 2>&1; then exit 1; fi
           candidate_run_id="${CANDIDATE_RUN_ID}"
-          if gh api --paginate "repos/${GITHUB_REPOSITORY}/releases" \
-            --jq '.[].body // ""' | grep -F "Candidate run: ${candidate_run_id}"; then
+          release_bodies=$(gh api --paginate "repos/${GITHUB_REPOSITORY}/releases" \
+            --jq '.[].body // ""')
+          if grep -F "Candidate run: ${candidate_run_id}" <<<"${release_bodies}"; then
             echo "candidate run was already reused by a public release" >&2
             exit 1
           fi
