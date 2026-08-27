@@ -92,9 +92,13 @@ tags:
 - assertVisible: "Expand rest controls"
 - tapOn: "Expand rest controls"
 - tapOn: "Skip rest"
+- extendedWaitUntil:
+    notVisible: "Skip rest"
+    timeout: 60000
 - scrollUntilVisible:
     element:
       text: "Complete Set 2"
     direction: DOWN
     centerElement: true
+    timeout: 60000
 - assertVisible: "Complete Set 2"

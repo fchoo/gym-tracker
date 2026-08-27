@@ -16,11 +16,15 @@ name: Phase 1 airplane workout session
 - assertVisible: "Expand rest controls"
 - tapOn: "Expand rest controls"
 - tapOn: "Skip rest"
+- extendedWaitUntil:
+    notVisible: "Skip rest"
+    timeout: 60000
 - scrollUntilVisible:
     element:
       text: "More workout actions"
     direction: UP
     centerElement: true
+    timeout: 60000
 - tapOn: "More workout actions"
 - tapOn: "Skip Back Squat"
 - tapOn: "Skip exercise"
