@@ -2892,6 +2892,10 @@ test("rest recovery starts Full Body A without depending on the calendar day", a
     flow,
     /- runFlow: "\.\.\/subflows\/phase1-start-full-body-a\.yaml"/u,
   );
+  assert.match(
+    flow,
+    /- assertVisible: "Back Squat"\n- scrollUntilVisible:\n    element:\n      text: "Working set 1 repetitions"\n    direction: DOWN\n    centerElement: true\n    timeout: 60000/u,
+  );
   assert.doesNotMatch(
     flow,
     /- assertVisible: "Rest day"\n- tapOn: "Train anyway"\n- tapOn: "Start Full Body A"/u,
