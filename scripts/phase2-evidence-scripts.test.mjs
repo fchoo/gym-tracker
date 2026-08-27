@@ -2928,17 +2928,22 @@ test("rest recovery starts Full Body A without depending on the calendar day", a
   );
 });
 
-test("rest recovery re-centers the set action after each orientation change", async () => {
+test("rest recovery finds the set action after each orientation change with bounded swipes", async () => {
   const flow = await readFile(
     path.join(projectRoot, "maestro/lifecycle/rest-recovery.yaml"),
     "utf8",
   );
-  const scrollToCompleteSet = [
-    "- scrollUntilVisible:",
-    "    element:",
-    "      text: \"Complete Set 1\"",
-    "    direction: DOWN",
-    "    centerElement: true",
+  const findCompleteSet = [
+    "- repeat:",
+    "    times: 12",
+    "    while:",
+    "      notVisible: \"Complete Set 1\"",
+    "    commands:",
+    "      - swipe:",
+    "          start: 95%, 75%",
+    "          end: 95%, 25%",
+    "          duration: 300",
+    "- assertVisible: \"Complete Set 1\"",
   ].join("\n");
 
   assert.match(
@@ -2946,10 +2951,9 @@ test("rest recovery re-centers the set action after each orientation change", as
     new RegExp(
       [
         '- setOrientation: LANDSCAPE_LEFT',
-        scrollToCompleteSet,
-        '- assertVisible: "Complete Set 1"',
+        findCompleteSet,
         '- setOrientation: PORTRAIT',
-        scrollToCompleteSet,
+        findCompleteSet,
         '- tapOn: "Complete Set 1"',
       ].join("\\n"),
       "u",
