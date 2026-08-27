@@ -696,7 +696,7 @@ test("Phase 2 remediation flows use public labels and deterministic seams", asyn
   );
   assert.match(
     workout,
-    /- longPressOn: "Working set 1 load in kilograms"\n- tapOn:\n    text: "Select all"\n    optional: true\n- eraseText: 32\n- inputText: "62\.5"/u,
+    /- longPressOn: "Working set 1 load in kilograms"\n- tapOn:\n    text: "Select all"\n    optional: true\n- eraseText: 32\n- inputText: "62\.5"\n- hideKeyboard\n- repeat:\n    times: 4\n    while:\n      notVisible: "Save correction for completed set 1"\n    commands:\n      - swipe:\n          start: 95%, 75%\n          end: 95%, 45%\n          duration: 300\n- assertVisible: "Save correction for completed set 1"\n- tapOn: "Save correction for completed set 1"/u,
   );
   assert.match(
     workout,
