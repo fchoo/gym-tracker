@@ -2321,7 +2321,7 @@ test("schedule flow reopens the active plan from authoritative state", async () 
   );
   assert.match(
     flow,
-    /- tapOn: "Repeat"\n- assertVisible: "Repeat Pull\?"\n- tapOn: "Repeat"\n- waitForAnimationToEnd\n- assertVisible: "Pull"\n- tapOn: "Advance"\n- assertVisible: "Advance Pull\?"\n- tapOn: "Advance"\n- assertVisible: "Rest day"\n- assertVisible: "Next scheduled workout · Push · \.\*"/u,
+    /- tapOn: "Repeat"\n- assertVisible: "Repeat Pull\?"\n- tapOn: "Repeat"\n- waitForAnimationToEnd\n- assertVisible: "Pull"\n- tapOn: "Advance"\n- assertVisible: "Advance Pull\?"\n- tapOn: "Advance"\n- extendedWaitUntil:\n    visible: "Rest day"\n    timeout: 30000\n- assertVisible: "Next scheduled workout · Push · \.\*"/u,
   );
   assert.match(
     flow,
@@ -2476,6 +2476,10 @@ test("starter restart opens alternate day on scheduled and rest days", async () 
   assert.match(
     flow,
     /- extendedWaitUntil:\n    visible: "\^\(Choose another day\|Train anyway\)\$"\n    timeout: 90000\n- tapOn: "Today"\n- runFlow:\n    when:\n      visible: "Choose another day"\n    commands:\n      - tapOn: "Choose another day"\n- runFlow:\n    when:\n      visible: "Train anyway"\n    commands:\n      - tapOn: "Train anyway"\n- extendedWaitUntil:\n    visible: "Start Back"\n    timeout: 30000\n- tapOn: "Start Back"/u,
+  );
+  assert.match(
+    flow,
+    /- assertVisible: "Activate Gym Body-Part Split\?"\n- tapOn: "Activate plan"\n- scrollUntilVisible:\n    element:\n      text: "Previous plans and schedules remain available as inactive copies\."\n    direction: DOWN\n    centerElement: true\n    timeout: 60000\n- assertVisible: "Previous plans and schedules remain available as inactive copies\."\n- assertVisible: "Gym Body-Part Split is active"/u,
   );
 });
 
@@ -2688,7 +2692,7 @@ test("custom exercise flow scrolls through the long editor contract", async () =
   }
   assert.match(
     migrationFlow,
-    /- scrollUntilVisible:\n    element:\n      text: "View exercise history"\n    direction: DOWN\n- tapOn: "View exercise history"\n- assertVisible: "Exercise history"\n- assertVisible: "Maestro Plank Edited"\n- assertVisible: "No comparable working sets yet"/u,
+    /- tapOn: "Save profile change"\n- extendedWaitUntil:\n    visible: "Edit exercise"\n    timeout: 60000\n- scrollUntilVisible:\n    element:\n      text: "View exercise history"\n    direction: DOWN\n    timeout: 60000\n- tapOn: "View exercise history"\n- assertVisible: "Exercise history"\n- assertVisible: "Maestro Plank Edited"\n- assertVisible: "No comparable working sets yet"/u,
   );
   assert.doesNotMatch(migrationFlow, /No history yet/u);
   assert.match(
@@ -2741,6 +2745,10 @@ test("custom exercise flow scrolls through the long editor contract", async () =
     /- scrollUntilVisible:\n    element:\n      text: "Archived"\n    direction: UP\n- assertVisible: "Archived"/u,
   );
   assert.match(
+    segments[2],
+    /- tapOn: "Restore exercise"\n- extendedWaitUntil:\n    visible: "Archive exercise"\n    timeout: 60000\n- scrollUntilVisible:\n    element:\n      text: "Go back"/u,
+  );
+  assert.match(
     segments[3],
     /- tapOn:\n    id: "owned-plan-add-exercise"\n- scrollUntilVisible:\n    element:\n      id: "owned-plan-exercise-search"\n    direction: DOWN\n    centerElement: true\n- tapOn:\n    id: "owned-plan-exercise-search"/u,
   );
@@ -2779,7 +2787,7 @@ test("custom exercise flow scrolls through the long editor contract", async () =
   );
   assert.match(
     segments[6],
-    /- assertVisible: "Future targets only"\n- assertVisible: "Future plan targets will use the new metric profile\. Completed workouts, in-progress snapshots, and historical observations will not change: history never changes\. History remains separated by metric-profile version\. Pending suggestions that no longer apply will be removed, and the next comparable exposure starts a fresh baseline\."/u,
+    /- scrollUntilVisible:\n    element:\n      text: "Future plan targets will use the new metric profile\. Completed workouts, in-progress snapshots, and historical observations will not change: history never changes\. History remains separated by metric-profile version\. Pending suggestions that no longer apply will be removed, and the next comparable exposure starts a fresh baseline\."\n    direction: DOWN\n    centerElement: true\n    timeout: 60000\n- assertVisible: "Future plan targets will use the new metric profile\. Completed workouts, in-progress snapshots, and historical observations will not change: history never changes\. History remains separated by metric-profile version\. Pending suggestions that no longer apply will be removed, and the next comparable exposure starts a fresh baseline\."\n- assertVisible: "Future targets only"/u,
   );
   for (const ordinal of [1, 2]) {
     assert.match(

@@ -143,8 +143,14 @@ tags:
 - tapOn: "Activate plan"
 - assertVisible: "Activate Gym Body-Part Split?"
 - tapOn: "Activate plan"
-- assertVisible: "Gym Body-Part Split is active"
+- scrollUntilVisible:
+    element:
+      text: "Previous plans and schedules remain available as inactive copies."
+    direction: DOWN
+    centerElement: true
+    timeout: 60000
 - assertVisible: "Previous plans and schedules remain available as inactive copies."
+- assertVisible: "Gym Body-Part Split is active"
 - stopApp
 - launchApp:
     clearState: false

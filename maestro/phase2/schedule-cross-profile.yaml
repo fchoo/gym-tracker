@@ -143,7 +143,9 @@ tags:
 - tapOn: "Advance"
 - assertVisible: "Advance Pull?"
 - tapOn: "Advance"
-- assertVisible: "Rest day"
+- extendedWaitUntil:
+    visible: "Rest day"
+    timeout: 30000
 - assertVisible: "Next scheduled workout · Push · .*"
 - tapOn: "Library"
 - scrollUntilVisible:

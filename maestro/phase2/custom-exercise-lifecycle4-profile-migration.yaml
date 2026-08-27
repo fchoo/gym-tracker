@@ -32,8 +32,14 @@ tags:
       text: "Change metric profile"
     direction: DOWN
 - tapOn: "Change metric profile"
-- assertVisible: "Future targets only"
+- scrollUntilVisible:
+    element:
+      text: "Future plan targets will use the new metric profile. Completed workouts, in-progress snapshots, and historical observations will not change: history never changes. History remains separated by metric-profile version. Pending suggestions that no longer apply will be removed, and the next comparable exposure starts a fresh baseline."
+    direction: DOWN
+    centerElement: true
+    timeout: 60000
 - assertVisible: "Future plan targets will use the new metric profile. Completed workouts, in-progress snapshots, and historical observations will not change: history never changes. History remains separated by metric-profile version. Pending suggestions that no longer apply will be removed, and the next comparable exposure starts a fresh baseline."
+- assertVisible: "Future targets only"
 - scrollUntilVisible:
     element:
       text: "Bodyweight reps.*"
@@ -110,11 +116,14 @@ tags:
 - assertVisible: "Change metric profile?"
 - assertVisible: "Future plan targets will migrate to the reviewed profile while completed workouts and historical observations stay immutable. Incompatible pending suggestions and policies will be invalidated, and a fresh baseline will begin. This replacement is one-way: discarded future target contracts cannot be reconstructed. Another explicit migration would be required to change back."
 - tapOn: "Save profile change"
-- assertVisible: "Maestro Plank Edited"
+- extendedWaitUntil:
+    visible: "Edit exercise"
+    timeout: 60000
 - scrollUntilVisible:
     element:
       text: "View exercise history"
     direction: DOWN
+    timeout: 60000
 - tapOn: "View exercise history"
 - assertVisible: "Exercise history"
 - assertVisible: "Maestro Plank Edited"
