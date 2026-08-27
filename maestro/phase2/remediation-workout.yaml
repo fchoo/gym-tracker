@@ -217,6 +217,16 @@ tags:
 - eraseText: 32
 - inputText: "62.5"
 - hideKeyboard
+- repeat:
+    times: 4
+    while:
+      notVisible: "Save correction for completed set 1"
+    commands:
+      - swipe:
+          start: 95%, 75%
+          end: 95%, 45%
+          duration: 300
+- assertVisible: "Save correction for completed set 1"
 - tapOn: "Save correction for completed set 1"
 - assertVisible: "Correction was not saved. Retry the correction."
 - repeat:
