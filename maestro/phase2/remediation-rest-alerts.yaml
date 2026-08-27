@@ -64,6 +64,7 @@ tags:
       text: "Complete Set 1"
     direction: DOWN
     centerElement: true
+    timeout: 60000
 - tapOn: "Complete Set 1"
 - assertVisible: "RESTING · NEXT: SET 2 AT 60 kg × 8"
 - assertVisible: "Background rest alerts are off"
