@@ -67,6 +67,7 @@ node scripts/configure-release-signing.mjs --build-gradle android/app/build.grad
 ./android/gradlew \
   --project-dir "$project_root/android" \
   --no-daemon \
+  '-Dorg.gradle.jvmargs=-Xmx4096m -XX:MaxMetaspaceSize=1024m -Dfile.encoding=UTF-8' \
   :app:assembleRelease \
   :app:bundleRelease
 
