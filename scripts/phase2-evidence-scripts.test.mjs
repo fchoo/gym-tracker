@@ -2692,7 +2692,7 @@ test("custom exercise flow scrolls through the long editor contract", async () =
   }
   assert.match(
     migrationFlow,
-    /- tapOn: "Save profile change"\n- extendedWaitUntil:\n    visible: "Edit exercise"\n    timeout: 60000\n- scrollUntilVisible:\n    element:\n      text: "View exercise history"\n    direction: DOWN\n    timeout: 60000\n- tapOn: "View exercise history"\n- assertVisible: "Exercise history"\n- assertVisible: "Maestro Plank Edited"\n- assertVisible: "No comparable working sets yet"/u,
+    /- tapOn: "Save profile change"\n- extendedWaitUntil:\n    visible: "Exercise facts"\n    timeout: 60000\n- scrollUntilVisible:\n    element:\n      text: "View exercise history"\n    direction: DOWN\n    timeout: 60000\n- tapOn: "View exercise history"\n- assertVisible: "Exercise history"\n- assertVisible: "Maestro Plank Edited"\n- assertVisible: "No comparable working sets yet"/u,
   );
   assert.doesNotMatch(migrationFlow, /No history yet/u);
   assert.match(
