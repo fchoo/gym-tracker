@@ -338,6 +338,15 @@ test("release workflows enforce one build, immediate manifest, exact command gra
   );
   assert.match(candidate, /Run source and generated-native gates[\s\S]*set -o pipefail/iu);
   assert.match(candidate, /Build signed APK and AAB once[\s\S]*set -o pipefail/iu);
+  const pullRequest = readFileSync(
+    path.join(projectRoot, ".github/workflows/pr.yml"),
+    "utf8",
+  );
+  assert.match(
+    pullRequest,
+    /sdkmanager="\$\{ANDROID_SDK_ROOT\}\/cmdline-tools\/latest\/bin\/sdkmanager"[\s\S]*test -x "\$\{sdkmanager\}"/u,
+  );
+  assert.doesNotMatch(pullRequest, /^\s*(?:yes\s*\|\s*)?sdkmanager\s/mu);
   assert.doesNotThrow(() => validatePhase5WorkflowContracts({ candidate, nightly }));
   assert.throws(() => validatePhase5WorkflowContracts({
     candidate: candidate.replace(
