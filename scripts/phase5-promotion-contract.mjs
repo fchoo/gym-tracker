@@ -57,8 +57,11 @@ export function validatePromotionWorkflowContract(source) {
     "promotion must run the complete attended preflight.");
   requirePattern(source, /gh release view[^\n]+(?:&&|then)\s*exit 1/iu,
     "promotion must reject an existing tag instead of overwriting it.");
-  requirePattern(source, /candidate_run_id=[^\n]+[\s\S]*reused/iu,
+  requirePattern(source, /candidate_run_id=[^\n]+[\s\S]*release_bodies=\$\(gh api --paginate[\s\S]*reused/iu,
     "promotion must reject a candidate run already used by a release.");
+  if (/gh api --paginate[^\n]*releases[\s\S]{0,160}\|\s*grep -F/iu.test(source)) {
+    throw new Error("promotion must not mask a release API failure in a grep pipeline.");
+  }
   requirePattern(source, /gh release create/iu,
     "promotion must create a new release only after the no-overwrite check.");
   requirePattern(source, /gh release create[\s\S]*?^\s*--draft\s*$/imu,

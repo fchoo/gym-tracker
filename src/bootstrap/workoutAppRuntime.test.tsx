@@ -2236,7 +2236,7 @@ describe("WorkoutAppRuntimeProvider", () => {
     expect(screen.getByTestId("runtime-days")).toHaveTextContent("2");
     expect(activateInitialStarter).toHaveBeenCalledWith(expect.objectContaining({
       startLocalDate: "2026-08-17",
-      timeZone: "Asia/Singapore",
+      timeZone: Intl.DateTimeFormat().resolvedOptions().timeZone,
       activatedAtMs: 1_786_853_600_000,
     }));
     expect(repository.activateStarterPlan).not.toHaveBeenCalled();
