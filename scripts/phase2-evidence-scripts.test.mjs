@@ -2965,7 +2965,7 @@ test("rest recovery waits for the skipped rest to commit before finding set 2", 
 
   assert.match(
     flow,
-    /- tapOn: "Skip rest"\n- extendedWaitUntil:\n    notVisible: "Skip rest"\n    timeout: 60000\n- scrollUntilVisible:\n    element:\n      text: "Complete Set 2"\n    direction: DOWN\n    centerElement: true\n    timeout: 60000\n- assertVisible: "Complete Set 2"/u,
+    /- tapOn: "Skip rest"\n- extendedWaitUntil:\n    notVisible: "Skip rest"\n    timeout: 60000\n- scrollUntilVisible:\n    element:\n      text: "Complete Set 2"\n    direction: DOWN\n    timeout: 60000\n- assertVisible: "Complete Set 2"/u,
   );
   assert.doesNotMatch(flow, /assertNotVisible: "Rest skipped"/u);
 });
