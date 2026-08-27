@@ -172,8 +172,10 @@ jobs:
 
       - name: Install pinned Android SDK components
         run: |
-          yes | sdkmanager --licenses >/dev/null || true
-          sdkmanager \
+          sdkmanager="${ANDROID_SDK_ROOT}/cmdline-tools/latest/bin/sdkmanager"
+          test -x "${sdkmanager}"
+          yes | "${sdkmanager}" --licenses >/dev/null || true
+          "${sdkmanager}" \
             "platform-tools" \
             "platforms;android-${ANDROID_API_LEVEL}" \
             "build-tools;${ANDROID_BUILD_TOOLS}" \
