@@ -88,6 +88,5 @@ tags:
     element:
       text: "Complete Set 2"
     direction: DOWN
-    centerElement: true
     timeout: 60000
 - assertVisible: "Complete Set 2"
