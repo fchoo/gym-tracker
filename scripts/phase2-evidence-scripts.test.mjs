@@ -2491,6 +2491,10 @@ test("rest alert remediation follows authoritative expiry and active-set labels"
 
   assert.match(
     flow,
+    /- runFlow: "\.\.\/subflows\/phase1-start-full-body-a\.yaml"\n- scrollUntilVisible:\n    element:\n      text: "Complete Set 1"\n    direction: DOWN\n    centerElement: true\n    timeout: 60000\n- tapOn: "Complete Set 1"/u,
+  );
+  assert.match(
+    flow,
     /- tapOn: "Resume workout"\n- assertVisible: "Rest ended"\n- tapOn: "Dismiss rest notice"\n- scrollUntilVisible:\n    element:\n      text: "Complete Set 2"\n    direction: DOWN\n    centerElement: true\n    timeout: 60000/u,
   );
   assert.match(
