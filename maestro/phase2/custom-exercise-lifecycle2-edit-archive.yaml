@@ -66,6 +66,9 @@ tags:
       text: "Restore exercise"
     direction: DOWN
 - tapOn: "Restore exercise"
+- extendedWaitUntil:
+    visible: "Archive exercise"
+    timeout: 60000
 - scrollUntilVisible:
     element:
       text: "Go back"
