@@ -2684,6 +2684,11 @@ test("custom exercise flow scrolls through the long editor contract", async () =
     );
   }
   assert.match(
+    migrationFlow,
+    /- scrollUntilVisible:\n    element:\n      text: "View exercise history"\n    direction: DOWN\n- tapOn: "View exercise history"\n- assertVisible: "Exercise history"\n- assertVisible: "Maestro Plank Edited"\n- assertVisible: "No comparable working sets yet"/u,
+  );
+  assert.doesNotMatch(migrationFlow, /No history yet/u);
+  assert.match(
     segments[0],
     /- scrollUntilVisible:\n    element:\n      text: "Hold \/ manual decision"\n    direction: DOWN\n- assertVisible: "Hold \/ manual decision"\n- assertVisible: "No automatic progression policy is configured\. Future target changes require your decision\."\n- tapOn:\n    id: "exercise-editor-save"/u,
   );

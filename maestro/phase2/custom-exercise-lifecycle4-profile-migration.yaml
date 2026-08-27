@@ -113,6 +113,9 @@ tags:
 - assertVisible: "Maestro Plank Edited"
 - scrollUntilVisible:
     element:
-      text: "No history yet"
+      text: "View exercise history"
     direction: DOWN
-- assertVisible: "No history yet"
+- tapOn: "View exercise history"
+- assertVisible: "Exercise history"
+- assertVisible: "Maestro Plank Edited"
+- assertVisible: "No comparable working sets yet"
