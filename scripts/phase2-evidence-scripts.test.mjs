@@ -2969,9 +2969,13 @@ test("rest recovery waits for the skipped rest to commit before finding set 2", 
 
   assert.match(
     flow,
-    /- tapOn: "Skip rest"\n- extendedWaitUntil:\n    notVisible: "Skip rest"\n    timeout: 60000\n- scrollUntilVisible:\n    element:\n      text: "Complete Set 2"\n    direction: DOWN\n    timeout: 60000\n- assertVisible: "Complete Set 2"/u,
+    /- tapOn: "Skip rest"\n- extendedWaitUntil:\n    notVisible: "Skip rest"\n    timeout: 60000\n- repeat:\n    times: 12\n    while:\n      notVisible: "Complete Set 2"\n    commands:\n      - swipe:\n          start: 95%, 75%\n          end: 95%, 25%\n          duration: 300\n- assertVisible: "Complete Set 2"/u,
   );
   assert.doesNotMatch(flow, /assertNotVisible: "Rest skipped"/u);
+  assert.doesNotMatch(
+    flow,
+    /scrollUntilVisible:\n    element:\n      text: "Complete Set 2"/u,
+  );
 });
 
 test("rest recovery waits for persisted workout state after process death", async () => {
