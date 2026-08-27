@@ -2693,7 +2693,7 @@ test("custom exercise flow scrolls through the long editor contract", async () =
   assert.doesNotMatch(migrationFlow, /No history yet/u);
   assert.match(
     segments[0],
-    /- scrollUntilVisible:\n    element:\n      text: "Hold \/ manual decision"\n    direction: DOWN\n- assertVisible: "Hold \/ manual decision"\n- assertVisible: "No automatic progression policy is configured\. Future target changes require your decision\."\n- tapOn:\n    id: "exercise-editor-save"/u,
+    /- scrollUntilVisible:\n    element:\n      text: "No automatic progression policy is configured\. Future target changes require your decision\."\n    direction: DOWN\n    centerElement: true\n    timeout: 60000\n- assertVisible: "No automatic progression policy is configured\. Future target changes require your decision\."\n- assertVisible: "Hold \/ manual decision"\n- tapOn:\n    id: "exercise-editor-save"/u,
   );
   for (const id of [
     "exercise-editor-name",

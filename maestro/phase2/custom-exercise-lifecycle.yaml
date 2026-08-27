@@ -58,10 +58,12 @@ tags:
     text: "Timed hold.*"
 - scrollUntilVisible:
     element:
-      text: "Hold / manual decision"
+      text: "No automatic progression policy is configured. Future target changes require your decision."
     direction: DOWN
-- assertVisible: "Hold / manual decision"
+    centerElement: true
+    timeout: 60000
 - assertVisible: "No automatic progression policy is configured. Future target changes require your decision."
+- assertVisible: "Hold / manual decision"
 - tapOn:
     id: "exercise-editor-save"
 - assertVisible: "Similar exercises already exist"
