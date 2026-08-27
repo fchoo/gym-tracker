@@ -1,6 +1,8 @@
 import assert from "node:assert/strict";
+import { spawnSync } from "node:child_process";
 import { createHash } from "node:crypto";
 import {
+  chmodSync,
   mkdirSync,
   mkdtempSync,
   readFileSync,
@@ -342,10 +344,11 @@ test("release workflows enforce one build, immediate manifest, exact command gra
     path.join(projectRoot, ".github/workflows/pr.yml"),
     "utf8",
   );
-  assert.match(
-    pullRequest,
-    /sdkmanager="\$\{ANDROID_SDK_ROOT\}\/cmdline-tools\/latest\/bin\/sdkmanager"[\s\S]*test -x "\$\{sdkmanager\}"/u,
+  assert.equal(
+    (pullRequest.match(/run: sh scripts\/install-pinned-android-sdk\.sh/gu) ?? []).length,
+    2,
   );
+  assert.match(candidate, /run: sh scripts\/install-pinned-android-sdk\.sh/u);
   assert.doesNotMatch(pullRequest, /^\s*(?:yes\s*\|\s*)?sdkmanager\s/mu);
   assert.doesNotThrow(() => validatePhase5WorkflowContracts({ candidate, nightly }));
   assert.throws(() => validatePhase5WorkflowContracts({
@@ -362,6 +365,72 @@ test("release workflows enforce one build, immediate manifest, exact command gra
     ),
     nightly,
   }), /after|build|manifest/iu);
+});
+
+test("pinned Android SDK installer resolves the hosted SDK root and verifies every build component", () => {
+  const temporaryDirectory = mkdtempSync(path.join(os.tmpdir(), "phase5-android-sdk-"));
+  try {
+    const androidRoot = path.join(temporaryDirectory, "android-sdk");
+    const sdkmanager = path.join(androidRoot, "cmdline-tools/latest/bin/sdkmanager");
+    const invocationLog = path.join(temporaryDirectory, "sdkmanager.log");
+    mkdirSync(path.dirname(sdkmanager), { recursive: true });
+    writeFileSync(sdkmanager, `#!/bin/sh
+printf '%s\n' "$*" >> "$SDKMANAGER_LOG"
+case " $* " in *" --licenses "*) exit 0 ;; esac
+mkdir -p \
+  "$ANDROID_SDK_ROOT/platform-tools" \
+  "$ANDROID_SDK_ROOT/platforms/android-$ANDROID_API_LEVEL" \
+  "$ANDROID_SDK_ROOT/build-tools/$ANDROID_BUILD_TOOLS" \
+  "$ANDROID_SDK_ROOT/ndk/$ANDROID_NDK" \
+  "$ANDROID_SDK_ROOT/cmake/3.22.1/bin"
+touch \
+  "$ANDROID_SDK_ROOT/platform-tools/adb" \
+  "$ANDROID_SDK_ROOT/platforms/android-$ANDROID_API_LEVEL/android.jar" \
+  "$ANDROID_SDK_ROOT/build-tools/$ANDROID_BUILD_TOOLS/zipalign" \
+  "$ANDROID_SDK_ROOT/ndk/$ANDROID_NDK/source.properties" \
+  "$ANDROID_SDK_ROOT/cmake/3.22.1/bin/cmake"
+`);
+    chmodSync(sdkmanager, 0o755);
+    const result = spawnSync("sh", ["scripts/install-pinned-android-sdk.sh"], {
+      cwd: projectRoot,
+      encoding: "utf8",
+      env: {
+        ...process.env,
+        ANDROID_API_LEVEL: "36",
+        ANDROID_BUILD_TOOLS: "36.0.0",
+        ANDROID_HOME: androidRoot,
+        ANDROID_NDK: "27.1.12297006",
+        ANDROID_SDK_ROOT: androidRoot,
+        SDKMANAGER_LOG: invocationLog,
+      },
+    });
+    assert.equal(result.status, 0, result.stderr);
+    assert.deepEqual(readFileSync(invocationLog, "utf8").trim().split("\n"), [
+      `--sdk_root=${androidRoot} --licenses`,
+      `--sdk_root=${androidRoot} platform-tools platforms;android-36 build-tools;36.0.0 ndk;27.1.12297006 cmake;3.22.1`,
+    ]);
+    rmSync(path.join(androidRoot, "ndk/27.1.12297006/source.properties"));
+    writeFileSync(sdkmanager, "#!/bin/sh\nexit 0\n");
+    const incompleteResult = spawnSync("sh", ["scripts/install-pinned-android-sdk.sh"], {
+      cwd: projectRoot,
+      encoding: "utf8",
+      env: {
+        ...process.env,
+        ANDROID_API_LEVEL: "36",
+        ANDROID_BUILD_TOOLS: "36.0.0",
+        ANDROID_HOME: androidRoot,
+        ANDROID_NDK: "27.1.12297006",
+        ANDROID_SDK_ROOT: androidRoot,
+      },
+    });
+    assert.notEqual(incompleteResult.status, 0);
+    assert.match(
+      incompleteResult.stderr,
+      /Android SDK component is missing after install: ndk\/27\.1\.12297006\/source\.properties/u,
+    );
+  } finally {
+    rmSync(temporaryDirectory, { recursive: true, force: true });
+  }
 });
 
 test("attended ledger is the exact ordered union of Phase 2 gaps, Phase 3/4 requirements, and Phase 5 rows", async () => {

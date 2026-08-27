@@ -49,6 +49,9 @@ jobs:
           distribution: temurin
           java-version: ${{ env.JAVA_VERSION }}
 
+      - name: Install pinned Android SDK components
+        run: sh scripts/install-pinned-android-sdk.sh
+
       - name: Install locked dependencies
         run: |
           npm install --global "npm@${NPM_VERSION}"
