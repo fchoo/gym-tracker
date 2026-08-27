@@ -117,7 +117,7 @@ tags:
 - assertVisible: "Future plan targets will migrate to the reviewed profile while completed workouts and historical observations stay immutable. Incompatible pending suggestions and policies will be invalidated, and a fresh baseline will begin. This replacement is one-way: discarded future target contracts cannot be reconstructed. Another explicit migration would be required to change back."
 - tapOn: "Save profile change"
 - extendedWaitUntil:
-    visible: "Edit exercise"
+    visible: "Exercise facts"
     timeout: 60000
 - scrollUntilVisible:
     element:
