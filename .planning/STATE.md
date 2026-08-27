@@ -7,7 +7,7 @@ status: executing
 stopped_at: Phase 5 source closure is clean; candidate dispatch blocked on release provisioning
 last_updated: "2026-08-26T16:29:00.000Z"
 last_activity: 2026-08-26
-last_activity_desc: Closed and reconciled source review, then confirmed the remote release/signing prerequisites are not configured
+last_activity_desc: Published a sanitized public source snapshot and prepared GitHub release provisioning
 progress:
   total_phases: 5
   completed_phases: 4

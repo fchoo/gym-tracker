@@ -4,7 +4,7 @@ status: partial
 source: [05-01-SUMMARY.md, 05-02-SUMMARY.md, 05-03-SUMMARY.md, 05-04-SUMMARY.md, 05-05-SUMMARY.md, 05-06-SUMMARY.md, 05-07-SUMMARY.md, 05-VERIFICATION.md]
 started: 2026-08-26T16:12:50Z
 updated: 2026-08-26T16:29:00Z
-source_code_head: null
+source_code_head: 52c4fb57a0f360c09168d1ea934b8785425e6337
 candidate_commit: null
 candidate_run: null
 candidate_manifest_sha256: null
