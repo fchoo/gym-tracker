@@ -1,0 +1,100 @@
+appId: com.fchoo.gymtracker.devtest
+name: Phase 1 denied granted missing late and stale notifications
+tags:
+  - phase-1
+  - notifications
+---
+- launchApp:
+    clearState: true
+    permissions:
+      notifications: deny
+- extendedWaitUntil:
+    visible: "Use Full Body Foundation"
+    timeout: 90000
+- tapOn: "Use Full Body Foundation"
+- tapOn: "Activate Full Body Foundation"
+- runFlow: "../subflows/phase1-start-full-body-a.yaml"
+- scrollUntilVisible:
+    element:
+      text: "Complete Set 1"
+    direction: DOWN
+    centerElement: true
+- tapOn: "Complete Set 1"
+- tapOn:
+    text: "Don’t allow"
+    optional: true
+- assertVisible: "Background rest alerts are off"
+- killApp
+- launchApp:
+    clearState: false
+    permissions:
+      notifications: allow
+- extendedWaitUntil:
+    visible: "Workout in progress"
+    timeout: 90000
+- openLink: "gymtracker-devtest://__notification-test-controls?action=inspect"
+- assertVisible: "Scheduled rest alerts · 1"
+- scrollUntilVisible:
+    element:
+      text: "Return to Today"
+    direction: DOWN
+    centerElement: true
+- tapOn: "Return to Today"
+- openLink: "gymtracker-devtest://__notification-test-controls?action=cancel_all"
+- assertVisible: "Scheduled rest alerts removed"
+- scrollUntilVisible:
+    element:
+      text: "Return to Today"
+    direction: DOWN
+    centerElement: true
+- tapOn: "Return to Today"
+- killApp
+- launchApp:
+    clearState: false
+    permissions:
+      notifications: allow
+- extendedWaitUntil:
+    visible: "Workout in progress"
+    timeout: 90000
+- openLink: "gymtracker-devtest://__notification-test-controls?action=inspect"
+- assertVisible: "Scheduled rest alerts · 1"
+- scrollUntilVisible:
+    element:
+      text: "Return to Today"
+    direction: DOWN
+    centerElement: true
+- tapOn: "Return to Today"
+- openLink: "gymtracker-devtest://__notification-test-controls?action=schedule_late_stale"
+- assertVisible: "Late stale rest alert scheduled"
+- scrollUntilVisible:
+    element:
+      text: "Return to Today"
+    direction: DOWN
+    centerElement: true
+- tapOn: "Return to Today"
+- killApp
+- launchApp:
+    clearState: false
+    permissions:
+      notifications: allow
+- extendedWaitUntil:
+    visible: "Workout in progress"
+    timeout: 90000
+- openLink: "gymtracker-devtest://__notification-test-controls?action=inspect"
+- assertVisible: "Scheduled rest alerts · 1"
+- scrollUntilVisible:
+    element:
+      text: "Return to Today"
+    direction: DOWN
+    centerElement: true
+- tapOn: "Return to Today"
+- tapOn: "Resume workout"
+- assertVisible: "Expand rest controls"
+- tapOn: "Expand rest controls"
+- tapOn: "Skip rest"
+- scrollUntilVisible:
+    element:
+      text: "Complete Set 2"
+    direction: DOWN
+    centerElement: true
+- assertVisible: "Complete Set 2"

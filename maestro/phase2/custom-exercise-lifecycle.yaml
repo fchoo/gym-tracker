@@ -1,0 +1,75 @@
+appId: com.fchoo.gymtracker.devtest
+name: Phase 2 installed custom exercise create and duplicate confirmation
+tags:
+  - phase-2
+  - library
+  - custom-exercises
+---
+- launchApp:
+    clearState: true
+    permissions:
+      notifications: deny
+- assertVisible: "Today"
+- extendedWaitUntil:
+    visible: "Use Full Body Foundation"
+    timeout: 90000
+- tapOn: "Library"
+- tapOn: "Exercises"
+- assertVisible: "Search exercises"
+- tapOn:
+    text: "Dismiss exercise library update"
+    optional: true
+- tapOn: "Create custom exercise"
+- assertVisible: "Create custom exercise"
+- tapOn:
+    id: "exercise-editor-name"
+- inputText: "Plank"
+- hideKeyboard
+- scrollUntilVisible:
+    element:
+      id: "exercise-editor-primary-muscles"
+    direction: DOWN
+    centerElement: true
+- tapOn:
+    id: "exercise-editor-primary-muscles"
+- inputText: "core"
+- hideKeyboard
+- scrollUntilVisible:
+    element:
+      id: "exercise-editor-equipment"
+    direction: DOWN
+    centerElement: true
+- tapOn:
+    id: "exercise-editor-equipment"
+- inputText: "bodyweight"
+- hideKeyboard
+- scrollUntilVisible:
+    element:
+      text: "Choose explicitly. No profile is preselected or inferred."
+    direction: DOWN
+    centerElement: true
+- assertVisible: "Choose explicitly. No profile is preselected or inferred."
+- scrollUntilVisible:
+    element:
+      text: "Timed hold.*"
+    direction: DOWN
+    centerElement: true
+- tapOn:
+    text: "Timed hold.*"
+- scrollUntilVisible:
+    element:
+      text: "Hold / manual decision"
+    direction: DOWN
+- assertVisible: "Hold / manual decision"
+- assertVisible: "No automatic progression policy is configured. Future target changes require your decision."
+- tapOn:
+    id: "exercise-editor-save"
+- assertVisible: "Similar exercises already exist"
+- assertVisible: "Review existing exercise"
+- assertVisible: "Create anyway"
+- tapOn: "Create anyway"
+- assertVisible: "Plank"
+- assertVisible: "Custom"
+- assertNotVisible: "Built-in"
+- assertNotVisible: "Delete exercise"
+- stopApp

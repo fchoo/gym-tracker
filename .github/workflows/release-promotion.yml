@@ -1,0 +1,213 @@
+name: Release promotion (no rebuild)
+
+on:
+  workflow_dispatch:
+    inputs:
+      candidate_run_id:
+        description: Successful private candidate workflow run ID
+        required: true
+        type: string
+      candidate_id:
+        description: Immutable private candidate identifier
+        required: true
+        type: string
+      candidate_commit:
+        description: Exact 40-character source commit built by the candidate run
+        required: true
+        type: string
+      attended_run_id:
+        description: Successful immutable attended-evidence workflow run ID
+        required: true
+        type: string
+      attended_artifact_name:
+        description: Immutable attended evidence artifact name
+        required: true
+        type: string
+      attended_record_sha256:
+        description: SHA-256 of canonical attended-record.json
+        required: true
+        type: string
+      release_tag:
+        description: New immutable release tag, for example v1.0.0
+        required: true
+        type: string
+
+permissions:
+  actions: read
+  contents: write
+  id-token: none
+
+concurrency:
+  group: release-promotion
+  cancel-in-progress: false
+
+env:
+  CANDIDATE_RUN_ID: ${{ inputs.candidate_run_id }}
+  CANDIDATE_ID: ${{ inputs.candidate_id }}
+  CANDIDATE_COMMIT: ${{ inputs.candidate_commit }}
+  ATTENDED_RUN_ID: ${{ inputs.attended_run_id }}
+  ATTENDED_ARTIFACT_NAME: ${{ inputs.attended_artifact_name }}
+  ATTENDED_RECORD_SHA256: ${{ inputs.attended_record_sha256 }}
+  RELEASE_TAG: ${{ inputs.release_tag }}
+
+jobs:
+  promote:
+    name: Verify selected successful runs and publish unchanged bytes
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    environment: public-release-promotion
+    steps:
+      - name: Check out workflow source for input validation
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          path: workflow-source
+
+      - name: Validate selected immutable workflow runs
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          case "${CANDIDATE_RUN_ID}:${ATTENDED_RUN_ID}" in *[!0-9:]*|:*|*:) exit 1 ;; esac
+          case "${CANDIDATE_ID}" in ''|*[!a-z0-9-]*|-*|*-) exit 1 ;; esac
+          case "${ATTENDED_ARTIFACT_NAME}" in ''|*[!A-Za-z0-9._-]*|.*|*.) exit 1 ;; esac
+          test "${CANDIDATE_RUN_ID}" != "${ATTENDED_RUN_ID}"
+          test "${#CANDIDATE_COMMIT}" -eq 40
+          test "${#CANDIDATE_ID}" -ge 3
+          test "${#CANDIDATE_ID}" -le 80
+          test "${#ATTENDED_ARTIFACT_NAME}" -le 128
+          test "${#ATTENDED_RECORD_SHA256}" -eq 64
+          node workflow-source/scripts/validate-phase5-promotion-inputs.mjs \
+            --candidate-run-id "${CANDIDATE_RUN_ID}" \
+            --attended-run-id "${ATTENDED_RUN_ID}" \
+            --candidate-id "${CANDIDATE_ID}" \
+            --candidate-commit "${CANDIDATE_COMMIT}" \
+            --attended-artifact-name "${ATTENDED_ARTIFACT_NAME}" \
+            --attended-record-sha256 "${ATTENDED_RECORD_SHA256}" \
+            --release-tag "${RELEASE_TAG}"
+          candidate_run=$(gh api "repos/${GITHUB_REPOSITORY}/actions/runs/${CANDIDATE_RUN_ID}")
+          attended_run=$(gh api "repos/${GITHUB_REPOSITORY}/actions/runs/${ATTENDED_RUN_ID}")
+          jq -e --arg commit "${CANDIDATE_COMMIT}" --arg repo "${GITHUB_REPOSITORY}" \
+            '.conclusion == "success" and .head_sha == $commit and .repository.full_name == $repo and .event == "workflow_dispatch" and .path == ".github/workflows/release-candidate.yml"' \
+            <<<"${candidate_run}" >/dev/null
+          jq -e --arg commit "${CANDIDATE_COMMIT}" --arg repo "${GITHUB_REPOSITORY}" \
+            '.conclusion == "success" and .head_sha == $commit and .repository.full_name == $repo and .event == "workflow_dispatch" and .path == ".github/workflows/release-attended-evidence.yml"' \
+            <<<"${attended_run}" >/dev/null
+          candidate_jobs=$(gh api "repos/${GITHUB_REPOSITORY}/actions/runs/${CANDIDATE_RUN_ID}/jobs")
+          attended_jobs=$(gh api "repos/${GITHUB_REPOSITORY}/actions/runs/${ATTENDED_RUN_ID}/jobs")
+          jq -e '.jobs | any(.environment.name == "private-release-candidate")' <<<"${candidate_jobs}" >/dev/null
+          jq -e '.jobs | any(.environment.name == "private-release-attended")' <<<"${attended_jobs}" >/dev/null
+          candidate_artifacts=$(gh api "repos/${GITHUB_REPOSITORY}/actions/runs/${CANDIDATE_RUN_ID}/artifacts")
+          attended_artifacts=$(gh api "repos/${GITHUB_REPOSITORY}/actions/runs/${ATTENDED_RUN_ID}/artifacts")
+          jq -e --arg name "private-release-candidate-${CANDIDATE_ID}" \
+            '[.artifacts[] | select(.name == $name and .expired == false)] | length == 1' \
+            <<<"${candidate_artifacts}" >/dev/null
+          jq -e --arg name "${ATTENDED_ARTIFACT_NAME}" \
+            '[.artifacts[] | select(.name == $name and .expired == false)] | length == 1' \
+            <<<"${attended_artifacts}" >/dev/null
+
+      - name: Check out exact candidate source
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ env.CANDIDATE_COMMIT }}
+
+      - name: Set up Node
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: 24.19.0
+          cache: npm
+
+      - name: Install verifier dependencies
+        run: npm ci --ignore-scripts
+
+      - name: Download selected successful candidate and attended artifacts
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh run download "${CANDIDATE_RUN_ID}" \
+            --repo "${GITHUB_REPOSITORY}" \
+            --name "private-release-candidate-${CANDIDATE_ID}" \
+            --dir retained-candidate
+          gh run download "${ATTENDED_RUN_ID}" \
+            --repo "${GITHUB_REPOSITORY}" \
+            --name "${ATTENDED_ARTIFACT_NAME}" \
+            --dir attended-evidence
+          printf '%s  %s\n' "${ATTENDED_RECORD_SHA256}" \
+            attended-evidence/attended-record.json | sha256sum --check
+
+      - name: Verify full release gate without rebuilding
+        run: |
+          manifest_sha256=$(sha256sum retained-candidate/release-candidate.json | cut -d' ' -f1)
+          npm run verify:attended:phase5 -- \
+            --bundle-dir retained-candidate \
+            --manifest-sha256 "${manifest_sha256}" \
+            --automated-evidence retained-candidate/evidence/automated.json \
+            --checklist attended-evidence/checklist.pending.json \
+            --observations attended-evidence/observations.json \
+            --evidence-dir attended-evidence \
+            --record attended-evidence/attended-record.json
+
+      - name: Refuse an existing tag or release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          if git ls-remote --exit-code --tags origin "refs/tags/${RELEASE_TAG}"; then exit 1; fi
+          if gh release view "${RELEASE_TAG}" >/dev/null 2>&1; then exit 1; fi
+          candidate_run_id="${CANDIDATE_RUN_ID}"
+          if gh api --paginate "repos/${GITHUB_REPOSITORY}/releases" \
+            --jq '.[].body // ""' | grep -F "Candidate run: ${candidate_run_id}"; then
+            echo "candidate run was already reused by a public release" >&2
+            exit 1
+          fi
+
+      - name: Create draft with verified retained bytes only
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create "${RELEASE_TAG}" \
+            retained-candidate/gym-tracker-release.apk \
+            retained-candidate/gym-tracker-release.aab \
+            --title "Gym Tracker ${RELEASE_TAG}" \
+            --target "${CANDIDATE_COMMIT}" \
+            --notes "Candidate run: ${CANDIDATE_RUN_ID}" \
+            --draft
+
+      - name: Verify public release asset hashes
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          mkdir -p "${RUNNER_TEMP}/public-assets"
+          gh release download "${RELEASE_TAG}" \
+            --dir "${RUNNER_TEMP}/public-assets" \
+            --pattern 'gym-tracker-release.*'
+          (cd retained-candidate && sha256sum gym-tracker-release.apk gym-tracker-release.aab) \
+            > "${RUNNER_TEMP}/public-assets.sha256"
+          (cd "${RUNNER_TEMP}/public-assets" && sha256sum --check "${RUNNER_TEMP}/public-assets.sha256")
+
+      - name: Publish hash-verified draft
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh release edit "${RELEASE_TAG}" --draft=false
+
+      - name: Record immutable post-promotion proof
+        run: |
+          manifest_sha256=$(sha256sum retained-candidate/release-candidate.json | cut -d' ' -f1)
+          node scripts/record-phase5-promotion-proof.mjs \
+            --bundle-dir retained-candidate \
+            --manifest-sha256 "${manifest_sha256}" \
+            --candidate-run-id "${CANDIDATE_RUN_ID}" \
+            --attended-run-id "${ATTENDED_RUN_ID}" \
+            --attended-artifact-name "${ATTENDED_ARTIFACT_NAME}" \
+            --attended-record attended-evidence/attended-record.json \
+            --attended-record-sha256 "${ATTENDED_RECORD_SHA256}" \
+            --promotion-run-id "${GITHUB_RUN_ID}" \
+            --repository "${GITHUB_REPOSITORY}" \
+            --release-tag "${RELEASE_TAG}" \
+            --public-assets-dir "${RUNNER_TEMP}/public-assets" \
+            --output promotion-proof.json
+
+      - name: Upload immutable promotion proof
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: promotion-proof-${{ github.run_id }}
+          path: promotion-proof.json
+          if-no-files-found: error
+          retention-days: 30

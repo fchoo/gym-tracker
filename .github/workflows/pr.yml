@@ -1,0 +1,308 @@
+name: Pull Request
+
+on:
+  pull_request:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: pr-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+env:
+  NODE_VERSION: 24.19.0
+  NPM_VERSION: 11.17.0
+  JAVA_VERSION: 17.0.20+8
+  ANDROID_API_LEVEL: 36
+  ANDROID_BUILD_TOOLS: 36.0.0
+  ANDROID_NDK: 27.1.12297006
+  MAESTRO_VERSION: 2.8.0
+
+jobs:
+  bootstrap:
+    name: Bootstrap and static prerequisite
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - name: Check out source
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Set up Node
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+
+      - name: Set up Java
+        uses: actions/setup-java@b6effb05e454b25005698d916606bdc6ffcbf961 # v5.7.0
+        with:
+          distribution: temurin
+          java-version: ${{ env.JAVA_VERSION }}
+
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@9c971963bec38e04b3d30dcc455b5382be2fdbfb # v6.3.0
+
+      - name: Pin npm
+        run: |
+          npm install --global "npm@${NPM_VERSION}"
+          test "$(node --version)" = "v${NODE_VERSION}"
+          test "$(npm --version)" = "${NPM_VERSION}"
+          java -version 2>&1 | grep -F "\"17.0.20\""
+
+      - name: Install locked dependencies
+        run: npm ci
+
+      - name: Verify Expo compatibility
+        run: |
+          npx expo install --check
+          npx expo-doctor
+
+      - name: Verify source checks
+        run: |
+          npm run typecheck
+          for script in scripts/*.sh; do sh -n "$script"; done
+          for script in scripts/*.mjs; do node --check "$script"; done
+
+  required-suite-contract:
+    name: Required suite contract
+    needs: bootstrap
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - name: Check out source
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Reject absent future suites
+        run: |
+          node <<'NODE'
+          const { readFileSync } = require('node:fs');
+          const packageJson = JSON.parse(readFileSync('package.json', 'utf8'));
+          const requiredScripts = [
+            'check:boundaries',
+            'test:unit',
+            'test:components',
+            'test:sqlite:host',
+            'test:integration',
+            'test:coverage',
+            'test:sqlite:device',
+            'test:maestro:phase1',
+            'test:maestro:phase2',
+            'benchmark:phase1',
+            'benchmark:phase2',
+            'verify:artifact-roundtrip',
+            'verify:native:phase2',
+            'test:all',
+            'ci:pr',
+            'ci:phase2',
+          ];
+          const missing = requiredScripts.filter((name) => !packageJson.scripts?.[name]);
+          if (missing.length > 0) {
+            console.error(`Required PR suites are not implemented yet: ${missing.join(', ')}`);
+            process.exit(1);
+          }
+          NODE
+
+  host-gates:
+    name: Typecheck through host SQLite
+    needs: required-suite-contract
+    runs-on: ubuntu-24.04
+    timeout-minutes: 25
+    steps:
+      - name: Check out source
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Set up Node
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+
+      - name: Pin npm and install
+        run: |
+          npm install --global "npm@${NPM_VERSION}"
+          npm ci
+
+      - name: Typecheck
+        run: npm run typecheck
+
+      - name: Lint and boundaries
+        run: |
+          npm run lint
+          npm run check:boundaries
+
+      - name: Unit tests
+        run: npm run test:unit -- --runInBand
+
+      - name: Component tests
+        run: npm run test:components -- --runInBand
+
+      - name: Host SQLite tests
+        run: npm run test:sqlite:host -- --runInBand
+
+      - name: Integration tests
+        run: npm run test:integration -- --runInBand
+
+      - name: Coverage
+        run: npm run test:coverage -- --runInBand
+
+  generated-native:
+    name: Clean generated Android contract
+    needs: host-gates
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - name: Check out source
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Set up Node
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+
+      - name: Set up Java
+        uses: actions/setup-java@b6effb05e454b25005698d916606bdc6ffcbf961 # v5.7.0
+        with:
+          distribution: temurin
+          java-version: ${{ env.JAVA_VERSION }}
+
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@9c971963bec38e04b3d30dcc455b5382be2fdbfb # v6.3.0
+
+      - name: Install pinned Android SDK components
+        run: |
+          yes | sdkmanager --licenses >/dev/null || true
+          sdkmanager \
+            "platform-tools" \
+            "platforms;android-${ANDROID_API_LEVEL}" \
+            "build-tools;${ANDROID_BUILD_TOOLS}" \
+            "ndk;${ANDROID_NDK}" \
+            "cmake;3.22.1"
+
+      - name: Install and verify clean generation
+        run: |
+          npm install --global "npm@${NPM_VERSION}"
+          npm ci
+          npm run verify:cng
+          test -z "$(git ls-files android ios)"
+
+  native-and-smoke:
+    name: Build Phase 2 once, native SQLite, Maestro, benchmark
+    needs: generated-native
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    steps:
+      - name: Check out source
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Set up Node
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+
+      - name: Set up Java
+        uses: actions/setup-java@b6effb05e454b25005698d916606bdc6ffcbf961 # v5.7.0
+        with:
+          distribution: temurin
+          java-version: ${{ env.JAVA_VERSION }}
+
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@9c971963bec38e04b3d30dcc455b5382be2fdbfb # v6.3.0
+
+      - name: Install dependencies and Maestro
+        run: |
+          npm install --global "npm@${NPM_VERSION}"
+          npm ci
+          sh scripts/install-maestro.sh
+          echo "$HOME/.maestro/bin" >> "$GITHUB_PATH"
+
+      - name: Build once, run complete Phase 2 automated producers
+        uses: ReactiveCircus/android-emulator-runner@a421e43855164a8197daf9d8d40fe71c6996bb0d # v2.38.0
+        with:
+          api-level: 36
+          target: google_apis
+          arch: x86_64
+          profile: pixel_7
+          avd-name: gym-tracker-api36
+          disable-animations: true
+          script: |
+            export GYM_TRACKER_ANDROID_SERIAL=emulator-5554
+            npm run android:devtest:fresh -- --suite phase2
+            npm run test:sqlite:device -- --suite phase2 --manifest artifacts/native/phase2/build.json
+            npm run test:maestro:phase2 -- --manifest artifacts/native/phase2/build.json
+            npm run benchmark:phase2 -- --manifest artifacts/native/phase2/build.json --samples 100 --max-p95-ms 150 --max-js-task-ms 50
+            npm run verify:native:phase2 -- --manifest artifacts/native/phase2/build.json --roundtrip-temp --output artifacts/native/phase2/artifact-roundtrip.json
+
+      - name: Retain complete Phase 2 evidence
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: phase2-evidence
+          path: artifacts/native/phase2
+          if-no-files-found: error
+          retention-days: 7
+
+  artifact-roundtrip:
+    name: Download and verify exact Phase 2 bytes
+    needs: native-and-smoke
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - name: Check out source
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Set up Node
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+
+      - name: Set up Java
+        uses: actions/setup-java@b6effb05e454b25005698d916606bdc6ffcbf961 # v5.7.0
+        with:
+          distribution: temurin
+          java-version: ${{ env.JAVA_VERSION }}
+
+      - name: Install locked dependencies and recreate coverage summary
+        run: |
+          npm install --global "npm@${NPM_VERSION}"
+          npm ci
+          npm run test:coverage -- --runInBand
+
+      - name: Download retained Phase 2 evidence
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: phase2-evidence
+          path: artifacts/native/phase2
+
+      - name: Download a second exact Phase 2 copy
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: phase2-evidence
+          path: artifacts/native/phase2-downloaded
+
+      - name: Verify downloaded bytes and run the automated-only seal
+        uses: ReactiveCircus/android-emulator-runner@a421e43855164a8197daf9d8d40fe71c6996bb0d # v2.38.0
+        with:
+          api-level: 36
+          target: google_apis
+          arch: x86_64
+          profile: pixel_7
+          avd-name: gym-tracker-api36-roundtrip
+          disable-animations: true
+          script: |
+            export GYM_TRACKER_ANDROID_SERIAL=emulator-5554
+            adb -s emulator-5554 install -r artifacts/native/phase2/gym-tracker-phase2-devtest.apk
+            npm run verify:native:phase2 -- --manifest artifacts/native/phase2/build.json --roundtrip-downloaded-dir artifacts/native/phase2-downloaded --output artifacts/native/phase2/artifact-roundtrip.json
+            npm run verify:native:phase2 -- --manifest artifacts/native/phase2/build.json --automated-only --require-roundtrip
+
+      - name: Retain downloaded Phase 2 verification
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: phase2-evidence-downloaded
+          path: artifacts/native/phase2
+          if-no-files-found: error
+          retention-days: 7

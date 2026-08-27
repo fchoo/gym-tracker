@@ -1,0 +1,9 @@
+{
+  "name": "argon2-kdf",
+  "version": "0.1.0",
+  "private": true,
+  "main": "src/index.ts",
+  "peerDependencies": {
+    "expo": "*"
+  }
+}

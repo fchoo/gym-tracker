@@ -1,0 +1,52 @@
+appId: com.fchoo.gymtracker.devtest
+name: Phase 1 airplane workout session
+---
+- assertVisible: "Today"
+- runFlow: "phase1-start-full-body-a.yaml"
+- assertVisible: "Back Squat"
+- scrollUntilVisible:
+    element:
+      text: "Complete Set 1"
+    direction: DOWN
+    centerElement: true
+- tapOn: "Complete Set 1"
+- tapOn:
+    text: "Don’t allow"
+    optional: true
+- assertVisible: "Expand rest controls"
+- tapOn: "Expand rest controls"
+- tapOn: "Skip rest"
+- scrollUntilVisible:
+    element:
+      text: "More workout actions"
+    direction: UP
+    centerElement: true
+- tapOn: "More workout actions"
+- tapOn: "Skip Back Squat"
+- tapOn: "Skip exercise"
+- assertVisible: "Bench Press"
+- tapOn: "More workout actions"
+- tapOn: "Skip Bench Press"
+- tapOn: "Skip exercise"
+- assertVisible: "Lat Pulldown"
+- tapOn: "More workout actions"
+- tapOn: "Skip Lat Pulldown"
+- tapOn: "Skip exercise"
+- assertVisible: "Romanian Deadlift"
+- tapOn: "More workout actions"
+- tapOn: "Skip Romanian Deadlift"
+- tapOn: "Skip exercise"
+- assertVisible: "Plank"
+- tapOn: "More workout actions"
+- tapOn: "Skip Plank"
+- tapOn: "Skip exercise"
+- scrollUntilVisible:
+    element:
+      text: "Finish workout"
+    direction: UP
+    centerElement: true
+- assertVisible: "Finish workout"
+- tapOn: "Finish workout"
+- assertVisible: "Workout complete"
+- tapOn: "Return to Today"
+- assertVisible: "Today"

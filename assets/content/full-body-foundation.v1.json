@@ -1,0 +1,293 @@
+{
+  "version": 1,
+  "metadata": {
+    "namespace": "gym-tracker.original",
+    "templateId": "full-body-foundation",
+    "sourceRevision": 1,
+    "displayName": "Full Body Foundation",
+    "audience": "Beginner or returning",
+    "schedule": {
+      "mode": "weekday",
+      "cycle": [
+        [
+          {
+            "weekday": "Monday",
+            "day": "Full Body A"
+          },
+          {
+            "weekday": "Wednesday",
+            "day": "Full Body B"
+          },
+          {
+            "weekday": "Friday",
+            "day": "Full Body A"
+          }
+        ],
+        [
+          {
+            "weekday": "Monday",
+            "day": "Full Body B"
+          },
+          {
+            "weekday": "Wednesday",
+            "day": "Full Body A"
+          },
+          {
+            "weekday": "Friday",
+            "day": "Full Body B"
+          }
+        ]
+      ]
+    },
+    "goal": "General strength, basic hypertrophy, and consistency",
+    "estimateMinutes": 48,
+    "attribution": "Original Gym Tracker program",
+    "progressionPolicy": "load_reps.double_progression.v1"
+  },
+  "days": [
+    {
+      "name": "Full Body A",
+      "exercises": [
+        {
+          "exerciseId": "5f140001-7e35-4a6d-9100-000000000001",
+          "name": "Back Squat",
+          "equipment": "Barbell and squat rack",
+          "metricProfile": "load_reps",
+          "restSeconds": 180,
+          "incrementGrams": 2500,
+          "warmups": [
+            {
+              "loadGrams": 20000,
+              "reps": 8
+            },
+            {
+              "loadGrams": 40000,
+              "reps": 5
+            }
+          ],
+          "target": {
+            "kind": "load_reps",
+            "sets": 3,
+            "loadGrams": 60000,
+            "minReps": 6,
+            "maxReps": 8,
+            "perSide": false
+          },
+          "policy": {
+            "kind": "load_reps",
+            "id": "load_reps.double_progression.v1",
+            "version": 1
+          }
+        },
+        {
+          "exerciseId": "5f140001-7e35-4a6d-9100-000000000002",
+          "name": "Bench Press",
+          "equipment": "Barbell and bench",
+          "metricProfile": "load_reps",
+          "restSeconds": 120,
+          "incrementGrams": 2500,
+          "warmups": [],
+          "target": {
+            "kind": "load_reps",
+            "sets": 3,
+            "loadGrams": 42500,
+            "minReps": 8,
+            "maxReps": 10,
+            "perSide": false
+          },
+          "policy": {
+            "kind": "load_reps",
+            "id": "load_reps.double_progression.v1",
+            "version": 1
+          }
+        },
+        {
+          "exerciseId": "5f140001-7e35-4a6d-9100-000000000003",
+          "name": "Lat Pulldown",
+          "equipment": "Cable machine",
+          "metricProfile": "load_reps",
+          "restSeconds": 90,
+          "incrementGrams": 5000,
+          "warmups": [],
+          "target": {
+            "kind": "load_reps",
+            "sets": 3,
+            "loadGrams": 45000,
+            "minReps": 10,
+            "maxReps": 12,
+            "perSide": false
+          },
+          "policy": {
+            "kind": "load_reps",
+            "id": "load_reps.double_progression.v1",
+            "version": 1
+          }
+        },
+        {
+          "exerciseId": "5f140001-7e35-4a6d-9100-000000000004",
+          "name": "Romanian Deadlift",
+          "equipment": "Barbell",
+          "metricProfile": "load_reps",
+          "restSeconds": 120,
+          "incrementGrams": 5000,
+          "warmups": [],
+          "target": {
+            "kind": "load_reps",
+            "sets": 3,
+            "loadGrams": 50000,
+            "minReps": 8,
+            "maxReps": 10,
+            "perSide": false
+          },
+          "policy": {
+            "kind": "load_reps",
+            "id": "load_reps.double_progression.v1",
+            "version": 1
+          }
+        },
+        {
+          "exerciseId": "5f140001-7e35-4a6d-9100-000000000005",
+          "name": "Plank",
+          "equipment": "Bodyweight",
+          "metricProfile": "timed_hold",
+          "restSeconds": 60,
+          "incrementGrams": 0,
+          "warmups": [],
+          "target": {
+            "kind": "timed_hold",
+            "sets": 3,
+            "durationSeconds": 45,
+            "perSide": false
+          },
+          "policy": {
+            "kind": "manual_hold",
+            "id": "timed_hold.v1",
+            "version": 1
+          }
+        }
+      ]
+    },
+    {
+      "name": "Full Body B",
+      "exercises": [
+        {
+          "exerciseId": "5f140001-7e35-4a6d-9100-000000000006",
+          "name": "Deadlift",
+          "equipment": "Barbell and plates",
+          "metricProfile": "load_reps",
+          "restSeconds": 180,
+          "incrementGrams": 5000,
+          "warmups": [
+            {
+              "loadGrams": 30000,
+              "reps": 5
+            },
+            {
+              "loadGrams": 50000,
+              "reps": 3
+            }
+          ],
+          "target": {
+            "kind": "load_reps",
+            "sets": 3,
+            "loadGrams": 70000,
+            "minReps": 5,
+            "maxReps": 6,
+            "perSide": false
+          },
+          "policy": {
+            "kind": "load_reps",
+            "id": "load_reps.double_progression.v1",
+            "version": 1
+          }
+        },
+        {
+          "exerciseId": "5f140001-7e35-4a6d-9100-000000000007",
+          "name": "Overhead Press",
+          "equipment": "Barbell",
+          "metricProfile": "load_reps",
+          "restSeconds": 120,
+          "incrementGrams": 2500,
+          "warmups": [],
+          "target": {
+            "kind": "load_reps",
+            "sets": 3,
+            "loadGrams": 25000,
+            "minReps": 6,
+            "maxReps": 8,
+            "perSide": false
+          },
+          "policy": {
+            "kind": "load_reps",
+            "id": "load_reps.double_progression.v1",
+            "version": 1
+          }
+        },
+        {
+          "exerciseId": "5f140001-7e35-4a6d-9100-000000000008",
+          "name": "Seated Cable Row",
+          "equipment": "Cable machine",
+          "metricProfile": "load_reps",
+          "restSeconds": 90,
+          "incrementGrams": 5000,
+          "warmups": [],
+          "target": {
+            "kind": "load_reps",
+            "sets": 3,
+            "loadGrams": 40000,
+            "minReps": 8,
+            "maxReps": 10,
+            "perSide": false
+          },
+          "policy": {
+            "kind": "load_reps",
+            "id": "load_reps.double_progression.v1",
+            "version": 1
+          }
+        },
+        {
+          "exerciseId": "5f140001-7e35-4a6d-9100-000000000009",
+          "name": "Reverse Lunge",
+          "equipment": "Dumbbells",
+          "metricProfile": "load_reps",
+          "restSeconds": 90,
+          "incrementGrams": 2500,
+          "warmups": [],
+          "target": {
+            "kind": "load_reps",
+            "sets": 3,
+            "loadGrams": 20000,
+            "minReps": 8,
+            "maxReps": 10,
+            "perSide": true
+          },
+          "policy": {
+            "kind": "load_reps",
+            "id": "load_reps.double_progression.v1",
+            "version": 1
+          }
+        },
+        {
+          "exerciseId": "5f140001-7e35-4a6d-9100-00000000000a",
+          "name": "Side Plank",
+          "equipment": "Bodyweight",
+          "metricProfile": "timed_hold",
+          "restSeconds": 60,
+          "incrementGrams": 0,
+          "warmups": [],
+          "target": {
+            "kind": "timed_hold",
+            "sets": 3,
+            "durationSeconds": 30,
+            "perSide": true
+          },
+          "policy": {
+            "kind": "manual_hold",
+            "id": "timed_hold.v1",
+            "version": 1
+          }
+        }
+      ]
+    }
+  ]
+}

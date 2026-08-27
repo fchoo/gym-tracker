@@ -1,0 +1,56 @@
+appId: com.fchoo.gymtracker.devtest
+name: Phase 2 installed built-in exercise custom copy
+tags:
+  - phase-2
+  - library
+  - custom-exercises
+---
+- launchApp:
+    clearState: false
+    stopApp: true
+    permissions:
+      notifications: deny
+- assertVisible: "Today"
+- extendedWaitUntil:
+    visible: "Use Full Body Foundation"
+    timeout: 90000
+- tapOn: "Library"
+- tapOn: "Exercises"
+- assertVisible: "Search exercises"
+- tapOn: "Search exercises"
+- inputText: "bench press"
+- hideKeyboard
+- scrollUntilVisible:
+    element:
+      text: "Bench Press. Built-in.*"
+    direction: DOWN
+    centerElement: true
+- tapOn:
+    text: "Bench Press. Built-in.*"
+- assertVisible: "Built-in"
+- scrollUntilVisible:
+    element:
+      text: "Create custom copy"
+    direction: DOWN
+- tapOn: "Create custom copy"
+- assertVisible: "Create custom exercise"
+- assertVisible: "Copied from Bench Press"
+- assertVisible: "Bench Press Copy"
+- assertVisible: "This will save as a fresh user-owned exercise. The built-in source and its history will not change."
+- tapOn:
+    id: "exercise-editor-save"
+- assertVisible: "Bench Press Copy"
+- assertVisible: "Custom"
+- assertNotVisible: "Built-in"
+- assertNotVisible: "Maestro Plank Edited"
+- tapOn: "Go back"
+- scrollUntilVisible:
+    element:
+      text: "Go back"
+    direction: UP
+- tapOn: "Go back"
+- assertVisible: "Search exercises"
+- tapOn: "Clear search exercises"
+- tapOn: "Today"
+- assertVisible: "Today"
+- stopApp

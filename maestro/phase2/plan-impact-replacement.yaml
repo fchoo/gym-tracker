@@ -1,0 +1,408 @@
+appId: com.fchoo.gymtracker.devtest
+name: Phase 2 installed plan day impact and exercise replacement
+tags:
+  - phase-2
+  - library
+  - plan-impact
+  - exercise-replacement
+---
+- launchApp:
+    clearState: true
+    permissions:
+      notifications: deny
+- assertVisible: "Today"
+- extendedWaitUntil:
+    visible: "Use Full Body Foundation"
+    timeout: 90000
+- tapOn: "Library"
+- scrollUntilVisible:
+    element:
+      text: "Starter Plans"
+    direction: DOWN
+    centerElement: true
+- assertVisible: "Starter Plans"
+- scrollUntilVisible:
+    element:
+      text: "Upper / Lower"
+    direction: DOWN
+    centerElement: true
+- tapOn:
+    text: "Upper / Lower. 4 days per week.*"
+- assertVisible: "Upper / Lower"
+- assertVisible: "Upper A"
+- scrollUntilVisible:
+    element:
+      text: "Lower A"
+    direction: DOWN
+    centerElement: true
+- assertVisible: "Lower A"
+- scrollUntilVisible:
+    element:
+      text: "Upper B"
+    direction: DOWN
+    centerElement: true
+- assertVisible: "Upper B"
+- scrollUntilVisible:
+    element:
+      text: "Lower B"
+    direction: DOWN
+    centerElement: true
+- assertVisible: "Lower B"
+- scrollUntilVisible:
+    element:
+      text: "Activate plan"
+    direction: DOWN
+- tapOn: "Activate plan"
+- assertVisible: "Activate Upper / Lower"
+- scrollUntilVisible:
+    element:
+      text: "Activate plan"
+    direction: DOWN
+- tapOn: "Activate plan"
+- assertVisible: "Activate Upper / Lower?"
+- tapOn: "Activate plan"
+- assertVisible: "Upper / Lower is active"
+- stopApp
+- launchApp:
+    clearState: false
+    permissions:
+      notifications: deny
+- assertVisible: "Today"
+- extendedWaitUntil:
+    visible: "^(Choose another day|Train anyway)$"
+    timeout: 90000
+- tapOn: "Library"
+- scrollUntilVisible:
+    element:
+      text: "Active Plan"
+    direction: DOWN
+    centerElement: true
+- assertVisible: "Active Plan"
+- scrollUntilVisible:
+    element:
+      text: "Upper / Lower"
+    direction: DOWN
+    centerElement: true
+- tapOn:
+    text: "Upper / Lower. Active.*"
+- assertVisible: "Upper / Lower"
+- scrollUntilVisible:
+    element:
+      text: "Lower A. .* exercises"
+    direction: DOWN
+    centerElement: true
+- tapOn:
+    text: "Lower A. .* exercises"
+- scrollUntilVisible:
+    element:
+      text: "Remove Lower A"
+    direction: DOWN
+    centerElement: true
+- tapOn: "Remove Lower A"
+- assertVisible: "Remove Lower A?"
+- scrollUntilVisible:
+    element:
+      text: "Schedule impact"
+    direction: DOWN
+    centerElement: true
+- assertVisible: "Current preview"
+- scrollUntilVisible:
+    element:
+      text: "Week 1 · Tuesday"
+    direction: DOWN
+    centerElement: true
+- scrollUntilVisible:
+    element:
+      text: "Replace with Lower B"
+    direction: DOWN
+    centerElement: true
+- tapOn: "Replace with Lower B"
+- scrollUntilVisible:
+    element:
+      text: "After: Lower B"
+    direction: UP
+    centerElement: true
+- scrollUntilVisible:
+    element:
+      text: "Remove binding"
+    direction: DOWN
+    centerElement: true
+- tapOn: "Remove binding"
+- scrollUntilVisible:
+    element:
+      text: "After: No workout"
+    direction: UP
+    centerElement: true
+- scrollUntilVisible:
+    element:
+      text: "Choose effective date"
+    direction: DOWN
+    centerElement: true
+- tapOn: "Choose effective date"
+- scrollUntilVisible:
+    element:
+      text: "Effective date"
+      below:
+        text: "Earliest available date:.*"
+    direction: DOWN
+    centerElement: true
+- tapOn:
+    text: "Effective date"
+    below:
+      text: "Earliest available date:.*"
+- assertVisible: "Calendar dialog"
+- tapOn: "Use default date"
+- tapOn: "Confirm date"
+- scrollUntilVisible:
+    element:
+      text: "Existing opportunities, sessions, and history are unchanged."
+    direction: DOWN
+    centerElement: true
+- scrollUntilVisible:
+    element:
+      text: "Replace with Lower B"
+    direction: UP
+    centerElement: true
+- tapOn: "Replace with Lower B"
+- scrollUntilVisible:
+    element:
+      text: "Remove day"
+    direction: DOWN
+    centerElement: true
+- tapOn: "Remove day"
+- runFlow:
+    when:
+      visible: "Preview refreshed"
+    commands:
+      - assertVisible: "Impact changed. Review the current preview before trying again."
+      - scrollUntilVisible:
+          element:
+            text: "Current preview"
+          direction: UP
+          centerElement: true
+      - scrollUntilVisible:
+          element:
+            text: "Remove day"
+          direction: DOWN
+          centerElement: true
+      - tapOn: "Remove day"
+- scrollUntilVisible:
+    element:
+      text: "Upper / Lower"
+    direction: UP
+    centerElement: true
+- assertVisible: "Upper / Lower"
+- scrollUntilVisible:
+    element:
+      text: "Upper A. .* exercises"
+    direction: DOWN
+    centerElement: true
+- tapOn:
+    text: "Upper A. .* exercises"
+- scrollUntilVisible:
+    element:
+      text: "Replace Bench Press"
+    direction: DOWN
+    centerElement: true
+- tapOn: "Replace Bench Press"
+- assertVisible: "Review replacement"
+- assertVisible: "Compatible metric identity"
+- scrollUntilVisible:
+    element:
+      text: "Barbell Incline Bench Press.*Compatible metric identity"
+    direction: DOWN
+    timeout: 60000
+- tapOn:
+    text: "Barbell Incline Bench Press.*Compatible metric identity"
+- scrollUntilVisible:
+    element:
+      text: "This occurrence"
+    direction: UP
+    timeout: 60000
+- assertVisible: "This occurrence"
+- tapOn: "This occurrence"
+- scrollUntilVisible:
+    element:
+      text: "1 affected occurrence"
+    direction: DOWN
+    centerElement: true
+- scrollUntilVisible:
+    element:
+      text: "All occurrences in this plan"
+    direction: UP
+    centerElement: true
+- tapOn: "All occurrences in this plan"
+- scrollUntilVisible:
+    element:
+      text: "Exercise impact"
+    direction: DOWN
+    centerElement: true
+- repeat:
+    times: 48
+    while:
+      notVisible: "Review current values"
+    commands:
+      - swipe:
+          start: 95%, 75%
+          end: 95%, 25%
+          duration: 300
+- assertVisible: "Review current values"
+- scrollUntilVisible:
+    element:
+      text: "Compatibility does not mean historical comparability. Existing sessions and snapshots are unchanged."
+    direction: DOWN
+- assertVisible: "Compatibility does not mean historical comparability. Existing sessions and snapshots are unchanged."
+- scrollUntilVisible:
+    element:
+      text: "Targets reviewed"
+    direction: DOWN
+    centerElement: true
+- tapOn: "Targets reviewed"
+- scrollUntilVisible:
+    element:
+      text: "Warm-ups reviewed"
+    direction: DOWN
+- tapOn: "Warm-ups reviewed"
+- scrollUntilVisible:
+    element:
+      text: "Rest reviewed"
+    direction: DOWN
+- tapOn: "Rest reviewed"
+- scrollUntilVisible:
+    element:
+      text: "Progression reviewed"
+    direction: DOWN
+- tapOn: "Progression reviewed"
+- scrollUntilVisible:
+    element:
+      text: "History remains unchanged"
+    direction: DOWN
+- tapOn: "History remains unchanged"
+- scrollUntilVisible:
+    element:
+      text: "Save replacement"
+    direction: DOWN
+- tapOn: "Save replacement"
+- runFlow:
+    when:
+      visible: "Preview refreshed"
+    commands:
+      - assertVisible: "Impact changed. Review the current preview before trying again."
+      - scrollUntilVisible:
+          element:
+            text: "Current preview"
+          direction: UP
+          centerElement: true
+      - scrollUntilVisible:
+          element:
+            text: "Save replacement"
+          direction: DOWN
+      - tapOn: "Save replacement"
+- extendedWaitUntil:
+    visible: "Save plan"
+    timeout: 90000
+- scrollUntilVisible:
+    element:
+      text: "Upper / Lower"
+    direction: UP
+- assertVisible: "Upper / Lower"
+- scrollUntilVisible:
+    element:
+      text: "Barbell Incline Bench Press"
+    direction: DOWN
+    centerElement: true
+- assertVisible: "Barbell Incline Bench Press"
+- scrollUntilVisible:
+    element:
+      text: "Go back"
+    direction: UP
+- tapOn: "Go back"
+- scrollUntilVisible:
+    element:
+      text: "Search plans"
+    direction: UP
+    centerElement: true
+- assertVisible: "Library"
+- tapOn: "Today"
+- extendedWaitUntil:
+    visible: "^(Start Upper A|Choose another day|Train anyway)$"
+    timeout: 90000
+- runFlow:
+    when:
+      visible: "Choose another day"
+    commands:
+      - tapOn: "Choose another day"
+- runFlow:
+    when:
+      visible: "Train anyway"
+    commands:
+      - tapOn: "Train anyway"
+- extendedWaitUntil:
+    visible: "Start Upper A"
+    timeout: 30000
+- tapOn: "Start Upper A"
+- extendedWaitUntil:
+    visible: "FOCUSED WORKOUT"
+    timeout: 30000
+- assertVisible: "Barbell Incline Bench Press"
+- tapOn: "Go back"
+- assertVisible: "Workout in progress"
+- tapOn: "Library"
+- scrollUntilVisible:
+    element:
+      text: "Active Plan"
+    direction: DOWN
+    centerElement: true
+- scrollUntilVisible:
+    element:
+      text: "Upper / Lower"
+    direction: DOWN
+    centerElement: true
+- tapOn:
+    text: "Upper / Lower. Active.*"
+- extendedWaitUntil:
+    visible: "Save plan"
+    timeout: 90000
+- assertVisible: "Upper / Lower"
+- scrollUntilVisible:
+    element:
+      text: "Lower B. .* exercises"
+    direction: DOWN
+    centerElement: true
+- tapOn:
+    text: "Lower B. .* exercises"
+- scrollUntilVisible:
+    element:
+      text: "Remove Lower B"
+    direction: DOWN
+    centerElement: true
+- tapOn: "Remove Lower B"
+- scrollUntilVisible:
+    element:
+      text: "Current workout is unaffected"
+    direction: DOWN
+    centerElement: true
+- scrollUntilVisible:
+    element:
+      text: "Finish the current workout first"
+    direction: DOWN
+    centerElement: true
+- scrollUntilVisible:
+    element:
+      text: "Current preview"
+    direction: DOWN
+    centerElement: true
+- scrollUntilVisible:
+    element:
+      text: "Replace with Upper A"
+    direction: DOWN
+    centerElement: true
+- scrollUntilVisible:
+    element:
+      text: "Remove day"
+    direction: DOWN
+- scrollUntilVisible:
+    element:
+      text: "Go back"
+    direction: UP
+- tapOn: "Go back"

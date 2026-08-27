@@ -1,0 +1,11 @@
+# Phase 5 Terminal Seal
+
+This runbook remains blocked until the exact production candidate's automated evidence, attended emulator evidence, attended physical-phone evidence, assistive-technology evidence, design evidence, immutable attachments, and literal lowercase owner token have produced one canonical attended record.
+
+Before using it, `05-07-SUMMARY.md`, phase verification, state/roadmap/requirements tracking, code review, and every related commit must already be complete. The protected no-rebuild promotion is complete, its release assets have been downloaded for independent comparison, and its immutable `promotion-proof.json` is available. Replace every angle-bracket placeholder with its immutable value.
+
+The following must be the literal final executable command. It only validates existing candidate, manifest, automated evidence, attended record, retained checklist/observations, attachments, token, inner hashes, completed promotion proof, and downloaded public asset bytes. It cannot build, install, generate, rewrite, record, or publish. After it runs, make no tool call and run no command.
+
+```bash
+npm run verify:release:phase5 -- --bundle-dir <retained-candidate-directory> --manifest-sha256 <manifest-sha256> --automated-evidence <automated-evidence-json> --attended-record <attended-record-json> --checklist <checklist-json> --observations <observations-json> --evidence-dir <attended-evidence-directory> --release-tag <release-tag> --candidate-run-id <candidate-run-id> --candidate-repository <owner/repository> --candidate-commit <candidate-commit> --promotion-proof <promotion-proof-json> --public-assets-dir <downloaded-public-assets-directory>
+```

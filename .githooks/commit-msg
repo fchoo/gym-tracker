@@ -1,0 +1,22 @@
+#!/bin/sh
+
+set -eu
+
+message_file=$1
+trailer='Co-authored-by: TRAE CLI <noreply@users.noreply.github.com>'
+temporary_file="${message_file}.trae-tmp"
+
+awk -v trailer="$trailer" '$0 != trailer' "$message_file" > "$temporary_file"
+
+while [ -s "$temporary_file" ] && [ -z "$(tail -n 1 "$temporary_file")" ]; do
+  sed '$d' "$temporary_file" > "${temporary_file}.trim"
+  mv "${temporary_file}.trim" "$temporary_file"
+done
+
+if [ -s "$temporary_file" ]; then
+  printf '\n\n%s\n' "$trailer" >> "$temporary_file"
+else
+  printf '%s\n' "$trailer" >> "$temporary_file"
+fi
+
+mv "$temporary_file" "$message_file"

@@ -1,0 +1,89 @@
+appId: com.fchoo.gymtracker.devtest
+name: Rest recovery through rotation and process death
+tags:
+  - phase-1
+  - rest-lifecycle
+---
+- launchApp:
+    clearState: true
+    permissions:
+      notifications: deny
+- assertVisible: "Today"
+- extendedWaitUntil:
+    visible: "Use Full Body Foundation"
+    timeout: 90000
+- tapOn: "Use Full Body Foundation"
+- tapOn: "Activate Full Body Foundation"
+- runFlow: "../subflows/phase1-start-full-body-a.yaml"
+- assertVisible: "Back Squat"
+- scrollUntilVisible:
+    element:
+      text: "Working set 1 repetitions"
+    direction: DOWN
+    centerElement: true
+- longPressOn: "Working set 1 repetitions"
+- tapOn:
+    text: "Select all"
+    optional: true
+- eraseText: 1
+- inputText: "9"
+- hideKeyboard
+- setOrientation: LANDSCAPE_LEFT
+- scrollUntilVisible:
+    element:
+      text: "Complete Set 1"
+    direction: DOWN
+    centerElement: true
+- assertVisible: "Complete Set 1"
+- setOrientation: PORTRAIT
+- scrollUntilVisible:
+    element:
+      text: "Complete Set 1"
+    direction: DOWN
+    centerElement: true
+- tapOn: "Complete Set 1"
+- tapOn:
+    text: "Don’t allow"
+    optional: true
+- assertVisible: "RESTING · NEXT: SET 2 AT 60 kg × 8"
+- assertVisible: "Background rest alerts are off"
+- stopApp
+- launchApp:
+    clearState: false
+    stopApp: true
+    permissions:
+      notifications: deny
+- assertVisible: "Today"
+- extendedWaitUntil:
+    visible: "Workout in progress"
+    timeout: 90000
+- tapOn: "Resume workout"
+- assertVisible: "RESTING · NEXT: SET 2 AT 60 kg × 8"
+- assertVisible: "Expand rest controls"
+- tapOn: "Expand rest controls"
+- tapOn: "Pause rest"
+- assertVisible: "REST PAUSED · NEXT: SET 2 AT 60 kg × 8"
+- stopApp
+- launchApp:
+    clearState: false
+    stopApp: true
+    permissions:
+      notifications: deny
+- assertVisible: "Today"
+- extendedWaitUntil:
+    visible: "Resume workout"
+    timeout: 90000
+- tapOn: "Resume workout"
+- assertVisible: "REST PAUSED · NEXT: SET 2 AT 60 kg × 8"
+- assertVisible: "Expand rest controls"
+- tapOn: "Expand rest controls"
+- tapOn: "Resume rest"
+- assertVisible: "RESTING · NEXT: SET 2 AT 60 kg × 8"
+- tapOn: "Skip rest"
+- assertNotVisible: "Rest skipped"
+- scrollUntilVisible:
+    element:
+      text: "Complete Set 2"
+    direction: DOWN
+    centerElement: true
+- assertVisible: "Complete Set 2"

@@ -1,0 +1,6 @@
+{
+  "platforms": ["android"],
+  "android": {
+    "modules": ["expo.modules.argon2kdf.Argon2KdfModule"]
+  }
+}

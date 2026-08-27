@@ -1,0 +1,26 @@
+{
+  "checkpoint": "01-01-package-legitimacy",
+  "status": "approved",
+  "approved_at": "2026-08-16",
+  "approved_packages": [
+    "create-expo-app",
+    "expo",
+    "expo-router",
+    "expo-notifications",
+    "expo-file-system",
+    "expo-sharing",
+    "@tanstack/react-query",
+    "jest-expo",
+    "lucide-react-native",
+    "react-native-svg",
+    "@expo-google-fonts/source-sans-3",
+    "@expo-google-fonts/ibm-plex-mono",
+    "zod",
+    "@testing-library/react-native",
+    "expo-sqlite",
+    "expo-haptics",
+    "expo-crypto",
+    "expo-document-picker"
+  ],
+  "evidence": "No SLOP verdicts; recent-release SUS packages resolve to official Expo, TanStack, or Lucide repositories; no unexplained install/postinstall scripts."
+}

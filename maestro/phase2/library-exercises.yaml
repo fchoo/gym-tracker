@@ -1,0 +1,160 @@
+appId: com.fchoo.gymtracker.devtest
+name: Phase 2 installed Library exercise browse and update notice
+tags:
+  - phase-2
+  - library
+  - exercises
+---
+- launchApp:
+    clearState: true
+    permissions:
+      notifications: deny
+- assertVisible: "Today"
+- extendedWaitUntil:
+    visible: "Use Full Body Foundation"
+    timeout: 90000
+- tapOn: "Library"
+- assertVisible: "Library"
+- assertVisible: "Plans"
+- assertVisible: "Active Plan"
+- assertVisible: "Exercise library updated"
+- assertVisible: "310 added · 0 updated · 0 unavailable"
+- tapOn: "Review changes"
+- assertVisible: "Exercise library changes"
+- assertVisible: "Custom exercises, copied plans, existing plan references, and historical snapshots are unchanged."
+- tapOn: "Close changes"
+- tapOn: "Dismiss exercise library update"
+- assertNotVisible: "Exercise library updated"
+- scrollUntilVisible:
+    element:
+      text: "My Plans"
+    direction: DOWN
+    centerElement: true
+- assertVisible: "My Plans"
+- scrollUntilVisible:
+    element:
+      text: "Starter Plans"
+    direction: DOWN
+    centerElement: true
+- assertVisible: "Starter Plans"
+- scrollUntilVisible:
+    element:
+      text: "Exercises"
+    direction: UP
+    centerElement: true
+- tapOn: "Exercises"
+- assertVisible: "Search exercises"
+- assertVisible: "Favorites"
+- assertVisible: "Recent"
+- assertVisible: "All Exercises"
+- stopApp
+- launchApp:
+    clearState: false
+    stopApp: true
+    permissions:
+      notifications: deny
+- assertVisible: "Today"
+- extendedWaitUntil:
+    visible: "Use Full Body Foundation"
+    timeout: 90000
+- tapOn: "Library"
+- assertVisible: "Search exercises"
+- assertNotVisible: "Search plans"
+- tapOn: "Today"
+- extendedWaitUntil:
+    visible: "Use Full Body Foundation"
+    timeout: 90000
+- tapOn: "Use Full Body Foundation"
+- tapOn: "Activate Full Body Foundation"
+- runFlow: "../subflows/phase1-start-full-body-a.yaml"
+- assertVisible: "Back Squat"
+- scrollUntilVisible:
+    element:
+      text: "Complete Set 1"
+    direction: DOWN
+    centerElement: true
+- tapOn: "Complete Set 1"
+- tapOn:
+    text: "Don’t allow"
+    optional: true
+- assertVisible: "Expand rest controls"
+- tapOn: "Expand rest controls"
+- tapOn: "Skip rest"
+- scrollUntilVisible:
+    element:
+      text: "More workout actions"
+    direction: UP
+    centerElement: true
+- tapOn: "More workout actions"
+- tapOn: "Finish as partial"
+- assertVisible: "Save partial workout?"
+- tapOn:
+    id: "save-partial-workout-confirm"
+- assertVisible: "Workout saved"
+- scrollUntilVisible:
+    element:
+      text: "Return to Today"
+    direction: DOWN
+    centerElement: true
+- tapOn: "Return to Today"
+- tapOn: "Library"
+- assertVisible: "Search exercises"
+- assertVisible: "Recent"
+- assertVisible: "Back Squat"
+- tapOn: "Search exercises"
+- inputText: "bench-press"
+- assertVisible: "Bench Press"
+- assertNotVisible: "Matched alias:"
+- tapOn: "Clear search exercises"
+- hideKeyboard
+- tapOn: "Filter"
+- scrollUntilVisible:
+    element:
+      text: "Equipment · Barbell"
+    direction: DOWN
+    centerElement: true
+- tapOn: "Equipment · Barbell"
+- scrollUntilVisible:
+    element:
+      text: "Show results"
+    direction: DOWN
+- tapOn: "Show results"
+- assertVisible: "Results"
+- scrollUntilVisible:
+    element:
+      text: "Back Squat"
+    direction: DOWN
+    centerElement: true
+- assertVisible: "Back Squat"
+- scrollUntilVisible:
+    element:
+      text: "Clear filters"
+    direction: UP
+    centerElement: true
+- tapOn: "Clear filters"
+- tapOn: "Search exercises"
+- inputText: "bench-press"
+- hideKeyboard
+- extendedWaitUntil:
+    visible: "Add Bench Press to favorites"
+    timeout: 90000
+- tapOn: "Add Bench Press to favorites"
+- scrollUntilVisible:
+    element:
+      text: "Clear search exercises"
+    direction: UP
+    centerElement: true
+- tapOn: "Clear search exercises"
+- scrollUntilVisible:
+    element:
+      text: "Favorites"
+    direction: DOWN
+    centerElement: true
+- assertVisible: "Favorites"
+- scrollUntilVisible:
+    element:
+      text: "Bench Press"
+    direction: DOWN
+    centerElement: true
+- tapOn: "Remove Bench Press from favorites"
+- assertVisible: "No favorites yet"

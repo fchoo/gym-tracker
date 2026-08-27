@@ -1,0 +1,34 @@
+{
+  "schemaVersion": 1,
+  "reviewStatus": "pending_owner_acceptance",
+  "source": {
+    "namespace": "kinetic-place.exercises-db",
+    "repository": "https://github.com/kinetic-place/exercises-db.git",
+    "commit": "1783421f145e546fa168c591a0e4d11cae6f23df",
+    "fileSha256": {
+      "en/exercises.json": "1a9f8edf72a6780ed2d0404a2792f0848b568a51634d2a03ab1408d4c27210d5",
+      "en/muscle_groups.json": "b4a7c50798714ef7ccef91f6190d828073e96ed8e61abffe1db9e3500f2fd54e",
+      "en/equipment.json": "0bb60c40e078ad73210793c11aaed80c2f8dd6a9316b0d67ba724519d84f6ef0",
+      "LICENSE": "497dedffb4292e2b74e250f159ad8d70136564d6ccf13be604642350d34538e0"
+    }
+  },
+  "artifacts": {
+    "overlayPath": "assets/content/exercise-library.v1.review.json",
+    "packPath": "assets/content/exercise-library.v1.json",
+    "licensePath": "assets/content/third-party/kinetic-place-exercises-db.MIT.txt"
+  },
+  "overlaySha256": "a1faea46857937ba5ef0c0ea4ffa5343ece6cec5acdaeab765e5980b4b614636",
+  "packSha256": "9ffa6209c4e07ddbd0f3988a2b3607b8f536595f70d4b74f41e0d5fa95779ae9",
+  "licenseSha256": "497dedffb4292e2b74e250f159ad8d70136564d6ccf13be604642350d34538e0",
+  "normalizationVersion": 1,
+  "metricSchemaVersion": 1,
+  "counts": {
+    "visible": 310,
+    "upstreamIncluded": 300,
+    "upstreamExcluded": 599,
+    "legacyPreserved": 10,
+    "unresolved": 0
+  },
+  "license": "MIT",
+  "attribution": "Copyright (c) 2026 Kinetic.place"
+}

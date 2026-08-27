@@ -1,0 +1,14 @@
+appId: com.fchoo.gymtracker
+name: Phase 5 production history and progress surfaces
+tags:
+  - phase-5
+  - production-candidate
+---
+- launchApp:
+    clearState: false
+- assertVisible: "Today"
+- tapOn: "History"
+- assertVisible: "History"
+- tapOn: "Progress"
+- assertVisible: "Progress"
+- assertNotVisible: "global score"

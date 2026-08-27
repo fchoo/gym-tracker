@@ -1,0 +1,29 @@
+{
+  "schemaVersion": 2,
+  "accepted": true,
+  "reviewer": "owner",
+  "reviewerResponse": "approved",
+  "reviewedAt": "2026-08-18T01:57:13Z",
+  "assetSha256": "8c1fbd0f6a114e5c5f9fa7ae2c4edf8f32d46890397b7488e65c768bea4126f4",
+  "manifestSha256": "babdb7dee0f11f874a1c1b02294724f74e07b8887e52ff6498b3749d9050fd05",
+  "reviewSha256": "f339971327ef613a476b2aa6b784043bbd82929894ef6edb4129151eaffa2f21",
+  "catalogAcceptanceSha256": "1648bc3c64752e827d488406d5f3805010ff3a521ad74b6a5e907c87174bb2df",
+  "definitionSha256": "3c8b6bc8c8ca65b841269d4bf3e4e2ed3a9750606b05fbe13cbdad05016edd9b",
+  "counts": {
+    "templates": 6,
+    "days": 20,
+    "exerciseDecisions": 69,
+    "profiles": 9,
+    "metricOverrides": 5,
+    "substitutions": 0,
+    "unresolved": 0,
+    "inferred": 0
+  },
+  "originalTemplateSha256": {
+    "full-body-foundation": "f2df21fc8d57b53e7f4bf7fe6934a50b0d70c7a78f82efef7e1642f289016f0f",
+    "upper-lower": "6b2b761f1cbca0aebdde07cf01e06b776bb0e200b8ab52c365ae5e21e96215e2",
+    "push-pull-legs": "8be21b6c6f7d8f44638dcffe4abb1a04d9d600d0a9a8c164bcd1be8cafb86adc",
+    "minimal-equipment-full-body": "6e2cd2754b63a00bffb1e7e35b9fb9253dfb42f49d2a862a5294436f19b485c8",
+    "strength-conditioning": "7ce210ebf1f9814d5ec921adfd2b0815248f6a40e4759c74bb9f90fc7b540ec1"
+  }
+}

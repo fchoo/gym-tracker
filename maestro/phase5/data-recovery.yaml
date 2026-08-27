@@ -1,0 +1,20 @@
+appId: com.fchoo.gymtracker
+name: Phase 5 production data and recovery black-box flow
+tags:
+  - phase-5
+  - production-candidate
+---
+- launchApp:
+    clearState: true
+- assertVisible: "Today"
+- tapOn: "More"
+- assertVisible: "Data and recovery"
+- tapOn: "Data and recovery"
+- assertVisible: "Create secure backup"
+- assertVisible: "Restore backup"
+- assertVisible: "Export CSV"
+- tapOn: "Restore password"
+- inputText: "automation-only-password"
+- tapOn: "Choose a Gym Tracker backup"
+- pressKey: BACK
+- assertVisible: "No backup was selected"

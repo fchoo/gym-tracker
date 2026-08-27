@@ -1,0 +1,133 @@
+appId: com.fchoo.gymtracker.devtest
+name: Phase 2 remediation rest dock and notification preference truth
+tags:
+  - phase-2
+  - remediation
+  - rest
+  - notifications
+---
+- launchApp:
+    clearState: true
+    permissions:
+      notifications: deny
+- assertVisible: "Today"
+- extendedWaitUntil:
+    visible: "Use Full Body Foundation"
+    timeout: 90000
+- tapOn: "Appearance and rest-alert settings"
+- assertVisible: "Rest alerts"
+- assertVisible: "Choose feedback for rest completion. The in-app timer remains the authoritative workout record."
+- assertVisible:
+    text: "Rest sound"
+    checked: true
+- assertVisible:
+    text: "Rest vibration"
+    checked: true
+- assertVisible: "Background rest alerts are off"
+- tapOn:
+    text: "Rest sound"
+    checked: true
+- assertVisible:
+    text: "Rest sound"
+    checked: false
+- assertVisible:
+    text: "Rest vibration"
+    checked: true
+- tapOn: "Close rest alerts"
+- stopApp
+- launchApp:
+    clearState: false
+    stopApp: true
+    permissions:
+      notifications: deny
+- assertVisible: "Today"
+- extendedWaitUntil:
+    visible: "Use Full Body Foundation"
+    timeout: 90000
+- tapOn: "Appearance and rest-alert settings"
+- assertVisible: "Rest alerts"
+- assertVisible:
+    text: "Rest sound"
+    checked: false
+- assertVisible:
+    text: "Rest vibration"
+    checked: true
+- tapOn: "Close rest alerts"
+- extendedWaitUntil:
+    visible: "Use Full Body Foundation"
+    timeout: 90000
+- tapOn: "Use Full Body Foundation"
+- tapOn: "Activate Full Body Foundation"
+- runFlow: "../subflows/phase1-start-full-body-a.yaml"
+- scrollUntilVisible:
+    element:
+      text: "Complete Set 1"
+    direction: DOWN
+    centerElement: true
+- tapOn: "Complete Set 1"
+- assertVisible: "RESTING · NEXT: SET 2 AT 60 kg × 8"
+- assertVisible: "Background rest alerts are off"
+- openLink: "gymtracker-devtest://__notification-test-controls?action=foreground_expiry"
+- assertVisible: "Foreground expiry attempt recorded once"
+- assertVisible: "Expiry result · foreground_expiry_attempted_once"
+- scrollUntilVisible:
+    element:
+      text: "Return to Today"
+    direction: DOWN
+    centerElement: true
+- tapOn: "Return to Today"
+- extendedWaitUntil:
+    visible: "Resume workout"
+    timeout: 90000
+- tapOn: "Resume workout"
+- assertVisible: "Rest ended"
+- tapOn: "Dismiss rest notice"
+- scrollUntilVisible:
+    element:
+      text: "Complete Set 2"
+    direction: DOWN
+    centerElement: true
+    timeout: 60000
+- tapOn: "Complete Set 2"
+- assertVisible: "RESTING · NEXT: SET 3 AT 60 kg × 8"
+- assertVisible: "Expand rest controls"
+- assertNotVisible: "Skip rest"
+- tapOn: "Expand rest controls"
+- assertVisible: "Collapse rest controls"
+- assertVisible: "Skip rest"
+- assertVisible: "Pause rest"
+- assertVisible: "Subtract 15 seconds"
+- assertVisible: "Add 15 seconds"
+- tapOn: "Add 15 seconds"
+- tapOn: "Subtract 15 seconds"
+- tapOn: "Pause rest"
+- assertVisible: "REST PAUSED · NEXT: SET 3 AT 60 kg × 8"
+- assertVisible: "Resume rest"
+- tapOn: "Resume rest"
+- assertVisible: "RESTING · NEXT: SET 3 AT 60 kg × 8"
+- tapOn: "Collapse rest controls"
+- assertVisible: "Expand rest controls"
+- assertNotVisible: "Skip rest"
+- tapOn: "Expand rest controls"
+- tapOn: "Skip rest"
+- assertNotVisible: "Rest skipped"
+- scrollUntilVisible:
+    element:
+      text: "Complete Set 3"
+    direction: DOWN
+    centerElement: true
+- assertVisible: "Complete Set 3"
+- stopApp
+- launchApp:
+    clearState: false
+    stopApp: true
+    permissions:
+      notifications: allow
+- assertVisible: "Today"
+- openLink: "gymtracker-devtest://__notification-test-controls?action=inspect_permission"
+- assertVisible: "Notification permission · granted"
+- openLink: "gymtracker-devtest://__notification-test-controls?action=background_expiry"
+- assertVisible: "Background expiry scheduled once"
+- assertVisible: "Expiry result · background_expiry_scheduled_once"
+- openLink: "gymtracker-devtest://__notification-test-controls?action=cancel_all"
+- assertVisible: "Scheduled rest alerts removed"

@@ -1,0 +1,52 @@
+appId: com.fchoo.gymtracker.devtest
+name: Phase 2 installed custom exercise schedule and workout start
+tags:
+  - phase-2
+  - library
+  - custom-exercises
+---
+- launchApp:
+    clearState: false
+    stopApp: true
+    permissions:
+      notifications: deny
+- assertVisible: "Today"
+- extendedWaitUntil:
+    visible: "Use Full Body Foundation"
+    timeout: 90000
+- tapOn: "Library"
+- tapOn: "Plans"
+- scrollUntilVisible:
+    element:
+      text: "Maestro Custom Plan"
+    direction: DOWN
+    centerElement: true
+- tapOn:
+    text: "Maestro Custom Plan. Inactive. Not scheduled. 1 days"
+- assertVisible: "Ready"
+- tapOn: "Activate"
+- scrollUntilVisible:
+    element:
+      text: "Rotation"
+    direction: DOWN
+    centerElement: true
+- tapOn: "Rotation"
+- assertVisible: "1. Custom Day"
+- scrollUntilVisible:
+    element:
+      text: "Save schedule"
+    direction: DOWN
+- tapOn: "Save schedule"
+- assertVisible: "Save this schedule?"
+- tapOn: "Save schedule"
+- tapOn: "Go back"
+- tapOn: "Today"
+- extendedWaitUntil:
+    visible: "Start Custom Day.*"
+    timeout: 30000
+- tapOn:
+    text: "Start Custom Day.*"
+- assertVisible: "Maestro Plank Edited"
+- tapOn: "Go back"
+- assertVisible: "Workout in progress"
+- stopApp

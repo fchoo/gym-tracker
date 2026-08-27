@@ -1,0 +1,63 @@
+name: Nightly release-contract matrix
+
+on:
+  schedule:
+    - cron: "17 2 * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: nightly-release-contract-${{ github.ref }}
+  cancel-in-progress: false
+
+env:
+  NODE_VERSION: 24.19.0
+  NPM_VERSION: 11.17.0
+
+jobs:
+  source-and-contracts:
+    name: Source, lifecycle, portability, adaptive, and performance contracts
+    runs-on: ubuntu-24.04
+    timeout-minutes: 35
+    steps:
+      - name: Check out source
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Set up Node
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+
+      - name: Install locked dependencies
+        run: |
+          npm install --global "npm@${NPM_VERSION}"
+          npm ci
+
+      - name: Run required source contracts
+        run: |
+          npm run typecheck
+          npm run lint
+          npm run check:boundaries
+          npm run test:unit -- --runInBand
+          npm run test:components -- --runInBand
+          npm run test:sqlite:host -- --runInBand
+          npm run test:integration -- --runInBand
+          npm run test:coverage -- --runInBand
+          npm run test:evidence:phase2
+          npm run test:evidence:phase3
+          npm run test:evidence:phase4
+          npm run test:evidence:phase5
+          npm run test:evidence:release
+          npm run test:release-matrix
+
+      - name: Retain source-contract evidence
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: nightly-source-contracts
+          path: coverage
+          if-no-files-found: warn
+          retention-days: 14

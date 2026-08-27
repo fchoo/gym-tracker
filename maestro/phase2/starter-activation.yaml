@@ -1,0 +1,259 @@
+appId: com.fchoo.gymtracker.devtest
+name: Phase 2 installed starter discovery activation and switch blocking
+tags:
+  - phase-2
+  - library
+  - starter-plans
+---
+- launchApp:
+    clearState: true
+    permissions:
+      notifications: deny
+- assertVisible: "Today"
+- extendedWaitUntil:
+    visible: "Use Full Body Foundation"
+    timeout: 90000
+- tapOn: "Library"
+- scrollUntilVisible:
+    element:
+      text: "Starter Plans"
+    direction: DOWN
+    centerElement: true
+- assertVisible: "Starter Plans"
+- scrollUntilVisible:
+    element:
+      text: "Gym Body-Part Split"
+    direction: DOWN
+    centerElement: true
+- assertVisible: "Gym Body-Part Split"
+- scrollUntilVisible:
+    element:
+      text: "Filter"
+    direction: UP
+    centerElement: true
+- tapOn: "Filter"
+- scrollUntilVisible:
+    element:
+      text: "Experience · Intermediate"
+    direction: DOWN
+    centerElement: true
+- tapOn: "Experience · Intermediate"
+- scrollUntilVisible:
+    element:
+      text: "Days per week · 5"
+    direction: DOWN
+    centerElement: true
+- tapOn: "Days per week · 5"
+- scrollUntilVisible:
+    element:
+      text: "Equipment · Barbell"
+    direction: DOWN
+    centerElement: true
+- tapOn: "Equipment · Barbell"
+- scrollUntilVisible:
+    element:
+      text: "Show results"
+    direction: DOWN
+- tapOn: "Show results"
+- scrollUntilVisible:
+    element:
+      text: "Gym Body-Part Split"
+    direction: DOWN
+    centerElement: true
+- assertVisible: "Gym Body-Part Split"
+- assertVisible: "Why this fits: Intermediate experience · 5 days per week · Barbell equipment"
+- tapOn:
+    text: "Gym Body-Part Split. 5 days per week.*"
+- assertVisible: "Gym Body-Part Split"
+- assertVisible: "Monday Chest · Tuesday Back · Wednesday Shoulders · Thursday Legs · Friday Arms"
+- assertVisible: "Source notes"
+- scrollUntilVisible:
+    element:
+      text: "Chest"
+    direction: DOWN
+    centerElement: true
+- assertVisible: "Chest"
+- scrollUntilVisible:
+    element:
+      text: "Bench Press"
+    direction: DOWN
+    centerElement: true
+- assertVisible: "Bench Press"
+- scrollUntilVisible:
+    element:
+      text: "Back"
+    direction: DOWN
+    centerElement: true
+- assertVisible: "Back"
+- scrollUntilVisible:
+    element:
+      text: "Lat Pulldown"
+    direction: DOWN
+    centerElement: true
+- assertVisible: "Lat Pulldown"
+- scrollUntilVisible:
+    element:
+      text: "Shoulders"
+    direction: DOWN
+    centerElement: true
+- assertVisible: "Shoulders"
+- scrollUntilVisible:
+    element:
+      text: "Barbell Shoulder Press"
+    direction: DOWN
+    centerElement: true
+- assertVisible: "Barbell Shoulder Press"
+- scrollUntilVisible:
+    element:
+      text: "Legs"
+    direction: DOWN
+    centerElement: true
+- assertVisible: "Legs"
+- scrollUntilVisible:
+    element:
+      text: "Back Squat"
+    direction: DOWN
+    centerElement: true
+- assertVisible: "Back Squat"
+- scrollUntilVisible:
+    element:
+      text: "Arms"
+    direction: DOWN
+    centerElement: true
+- assertVisible: "Arms"
+- scrollUntilVisible:
+    element:
+      text: "Cable Rope Overhead Triceps Extension"
+    direction: DOWN
+    centerElement: true
+- assertVisible: "Cable Rope Overhead Triceps Extension"
+- scrollUntilVisible:
+    element:
+      text: "Activate plan"
+    direction: DOWN
+- tapOn: "Activate plan"
+- assertVisible: "Activate Gym Body-Part Split"
+- assertVisible: "Start date"
+- assertVisible: "Weekday"
+- assertVisible: "Monday · Chest"
+- scrollUntilVisible:
+    element:
+      text: "Activate plan"
+    direction: DOWN
+- tapOn: "Activate plan"
+- assertVisible: "Activate Gym Body-Part Split?"
+- tapOn: "Activate plan"
+- assertVisible: "Gym Body-Part Split is active"
+- assertVisible: "Previous plans and schedules remain available as inactive copies."
+- stopApp
+- launchApp:
+    clearState: false
+    permissions:
+      notifications: deny
+- assertVisible: "Today"
+- extendedWaitUntil:
+    visible: "^(Choose another day|Train anyway)$"
+    timeout: 90000
+- tapOn: "Library"
+- scrollUntilVisible:
+    element:
+      text: "Gym Body-Part Split. 5 days per week.*"
+    direction: DOWN
+    centerElement: true
+- tapOn:
+    text: "Gym Body-Part Split. 5 days per week.*"
+- scrollUntilVisible:
+    element:
+      text: "Activate plan"
+    direction: DOWN
+    timeout: 60000
+- tapOn: "Activate plan"
+- scrollUntilVisible:
+    element:
+      text: "Existing copies"
+    direction: DOWN
+    centerElement: true
+- assertVisible: "Existing copies"
+- scrollUntilVisible:
+    element:
+      text: "Reactivate existing copy"
+    direction: DOWN
+    centerElement: true
+- assertVisible: "Reactivate existing copy"
+- assertVisible: "Create another copy"
+- tapOn: "Reactivate existing copy"
+- scrollUntilVisible:
+    element:
+      text: "Gym Body-Part Split. Active.*"
+    direction: DOWN
+    centerElement: true
+- tapOn:
+    text: "Gym Body-Part Split. Active.*"
+- scrollUntilVisible:
+    element:
+      text: "Activate plan"
+    direction: DOWN
+- tapOn: "Activate plan"
+- assertVisible: "Activate Gym Body-Part Split?"
+- tapOn:
+    text: "Keep editing"
+- stopApp
+- launchApp:
+    clearState: false
+    permissions:
+      notifications: deny
+- assertVisible: "Today"
+- extendedWaitUntil:
+    visible: "^(Choose another day|Train anyway)$"
+    timeout: 90000
+- tapOn: "Today"
+- runFlow:
+    when:
+      visible: "Choose another day"
+    commands:
+      - tapOn: "Choose another day"
+- runFlow:
+    when:
+      visible: "Train anyway"
+    commands:
+      - tapOn: "Train anyway"
+- extendedWaitUntil:
+    visible: "Start Back"
+    timeout: 30000
+- tapOn: "Start Back"
+- tapOn: "Go back"
+- assertVisible: "Workout in progress"
+- tapOn: "Library"
+- scrollUntilVisible:
+    element:
+      text: "Upper / Lower. 4 days per week.*"
+    direction: DOWN
+    centerElement: true
+- tapOn:
+    text: "Upper / Lower. 4 days per week.*"
+- scrollUntilVisible:
+    element:
+      text: "Activate plan"
+    direction: DOWN
+    timeout: 60000
+- tapOn: "Activate plan"
+- scrollUntilVisible:
+    element:
+      text: "Finish the current workout before switching plans."
+    direction: DOWN
+    centerElement: true
+- assertVisible: "Resume"
+- assertVisible: "Finish partial"
+- assertVisible: "Discard"
+- assertNotVisible: "Start date"
+- tapOn: "Discard"
+- scrollUntilVisible:
+    element:
+      text: "Start date"
+    direction: UP
+    centerElement: true
+- scrollUntilVisible:
+    element:
+      text: "Activate plan"
+    direction: DOWN
+    timeout: 60000

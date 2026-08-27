@@ -1,0 +1,127 @@
+appId: com.fchoo.gymtracker.devtest
+name: Phase 1 full workout recovery and recommendation loop
+tags:
+  - phase-1
+  - full-loop
+---
+- launchApp:
+    clearState: true
+    permissions:
+      notifications: deny
+- assertVisible: "Today"
+- extendedWaitUntil:
+    visible: "Use Full Body Foundation"
+    timeout: 90000
+- tapOn: "Use Full Body Foundation"
+- tapOn: "Activate Full Body Foundation"
+- runFlow: "../subflows/phase1-start-full-body-a.yaml"
+- assertVisible: "Back Squat"
+- scrollUntilVisible:
+    element:
+      text: "Complete Set 1"
+    direction: DOWN
+    centerElement: true
+- tapOn: "Complete Set 1"
+- tapOn:
+    text: "Don’t allow"
+    optional: true
+- assertVisible: "RESTING · NEXT: SET 2 AT 60 kg × 8"
+- killApp
+- launchApp:
+    clearState: false
+    permissions:
+      notifications: deny
+- assertVisible: "Workout in progress"
+- tapOn: "Resume workout"
+- assertVisible: "RESTING · NEXT: SET 2 AT 60 kg × 8"
+- assertVisible: "Expand rest controls"
+- tapOn: "Expand rest controls"
+- tapOn: "Skip rest"
+- scrollUntilVisible:
+    element:
+      text: "Complete Set 2"
+    direction: DOWN
+    centerElement: true
+- tapOn: "Complete Set 2"
+- assertVisible: "RESTING · NEXT: SET 3 AT 60 kg × 8"
+- assertNotVisible: "Undo completed set"
+- assertVisible: "Expand rest controls"
+- tapOn: "Expand rest controls"
+- tapOn: "Skip rest"
+- scrollUntilVisible:
+    element:
+      text: "Working set 3 repetitions"
+    direction: DOWN
+- longPressOn: "Working set 3 repetitions"
+- tapOn:
+    text: "Select all"
+    optional: true
+- eraseText: 1
+- inputText: "7"
+- hideKeyboard
+- scrollUntilVisible:
+    element:
+      text: "Complete Set 3"
+    direction: DOWN
+    centerElement: true
+- tapOn: "Complete Set 3"
+- assertVisible: "RESTING · NEXT: SET 1 AT 42.5 kg × 10"
+- assertNotVisible: "Undo completed set"
+- assertVisible: "Expand rest controls"
+- tapOn: "Expand rest controls"
+- tapOn: "Skip rest"
+- scrollUntilVisible:
+    element:
+      text: "Bench Press"
+    direction: UP
+    centerElement: true
+- assertVisible: "Bench Press"
+- tapOn: "More workout actions"
+- tapOn: "Skip Bench Press"
+- assertVisible: "Skip Bench Press?"
+- tapOn: "Skip exercise"
+- assertVisible: "Lat Pulldown"
+- tapOn: "More workout actions"
+- tapOn: "Skip Lat Pulldown"
+- tapOn: "Skip exercise"
+- assertVisible: "Romanian Deadlift"
+- tapOn: "More workout actions"
+- tapOn: "Skip Romanian Deadlift"
+- tapOn: "Skip exercise"
+- assertVisible: "Plank"
+- tapOn: "More workout actions"
+- tapOn: "Skip Plank"
+- tapOn: "Skip exercise"
+- scrollUntilVisible:
+    element:
+      text: "Finish workout"
+    direction: UP
+    centerElement: true
+- assertVisible: "Finish workout"
+- tapOn: "Finish workout"
+- assertVisible: "Workout complete"
+- assertVisible: "Back Squat"
+- scrollUntilVisible:
+    element:
+      text: "Repeat 60 kg next time"
+    direction: DOWN
+    centerElement: true
+- assertVisible: "Repeat 60 kg next time"
+- tapOn: "On target"
+- assertVisible: "Repeat 60 kg next time"
+- scrollUntilVisible:
+    element:
+      text: "Use this target next time"
+    direction: DOWN
+    centerElement: true
+- tapOn: "Use this target next time"
+- assertVisible: "Accepted"
+- scrollUntilVisible:
+    element:
+      text: "View workout details"
+    direction: DOWN
+    centerElement: true
+- tapOn: "View workout details"
+- assertVisible: "Workout details"
+- assertVisible: "Exercises · 1/5 (20%)"
+- assertVisible: "Working sets · 3/15 (20%)"

@@ -1,0 +1,47 @@
+appId: com.fchoo.gymtracker
+name: Phase 5 production core workout lifecycle and SQLite persistence
+tags:
+  - phase-5
+  - production-candidate
+---
+- launchApp:
+    clearState: true
+    permissions:
+      notifications: deny
+- assertVisible: "Today"
+- extendedWaitUntil:
+    visible: "Use Full Body Foundation"
+    timeout: 90000
+- tapOn: "Use Full Body Foundation"
+- tapOn: "Activate Full Body Foundation"
+- extendedWaitUntil:
+    visible: "^(Start Full Body A|Start Full Body B|Rest day)$"
+    timeout: 90000
+- runFlow:
+    when:
+      visible: "Start Full Body B"
+    commands:
+      - tapOn: "Choose another day"
+- runFlow:
+    when:
+      visible: "Rest day"
+    commands:
+      - tapOn: "Train anyway"
+- tapOn: "Start Full Body A"
+- extendedWaitUntil:
+    visible: "FOCUSED WORKOUT"
+    timeout: 30000
+- assertVisible: "Back Squat"
+- scrollUntilVisible:
+    element:
+      text: "Complete Set 1"
+    direction: DOWN
+- tapOn: "Complete Set 1"
+- stopApp
+- launchApp:
+    clearState: false
+    permissions:
+      notifications: deny
+- assertVisible: "Workout in progress"
+- tapOn: "Resume workout"
+- assertVisible: "RESTING · NEXT: SET 2 AT 60 kg × 8"

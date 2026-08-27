@@ -1,0 +1,124 @@
+{
+  "schemaVersion": 2,
+  "reviewStatus": "pending_owner_acceptance",
+  "authorityStatus": "candidate_not_accepted",
+  "sources": {
+    "catalogPath": "assets/content/exercise-library.v1.json",
+    "catalogSha256": "9ffa6209c4e07ddbd0f3988a2b3607b8f536595f70d4b74f41e0d5fa95779ae9",
+    "catalogManifestPath": "assets/content/exercise-library.v1.manifest.json",
+    "catalogManifestSha256": "a34feccfb00e03d7d15d9063ab99ced316457d432b0337c2c668cc24745390a9",
+    "catalogAcceptancePath": "artifacts/review/phase2/exercise-library-acceptance.json",
+    "catalogAcceptanceSha256": "1648bc3c64752e827d488406d5f3805010ff3a521ad74b6a5e907c87174bb2df",
+    "fullBodyFoundationPath": "assets/content/full-body-foundation.v1.json",
+    "fullBodyFoundationSha256": "fad409e6274df46af7d63177fbb013a8a742359e86b15f79d09b949c0ca71eb1",
+    "metricRegistryPath": "src/domains/metrics/registry.ts",
+    "metricRegistrySha256": "ea8cca49791400150c41f32511d88ce79e7191b70d81c437494b93726b1e3037",
+    "researchPath": ".planning/phases/02-owned-library-and-planning/02-RESEARCH.md",
+    "researchSha256": "d9b864f4e2943fbccc8a14c7d070132beaa710ed46ddd71f30269b6cd4e492b6",
+    "contextPath": ".planning/phases/02-owned-library-and-planning/02-CONTEXT.md",
+    "contextSha256": "4ddb50b32ce591d8fdcb1e11eedea37d76d1c3d00e2b67a57395f36afad7618d"
+  },
+  "artifacts": {
+    "packPath": "assets/content/starter-plans.v2.json",
+    "manifestPath": "assets/content/starter-plans.v2.manifest.json"
+  },
+  "definitionSha256": "3c8b6bc8c8ca65b841269d4bf3e4e2ed3a9750606b05fbe13cbdad05016edd9b",
+  "packSha256": "8c1fbd0f6a114e5c5f9fa7ae2c4edf8f32d46890397b7488e65c768bea4126f4",
+  "counts": {
+    "templates": 6,
+    "days": 20,
+    "exercises": 69,
+    "profiles": 9,
+    "metricOverrides": 5,
+    "substitutions": 0,
+    "unresolved": 0,
+    "inferred": 0
+  },
+  "profileCoverage": [
+    {
+      "profile": "load_reps",
+      "identities": [
+        {
+          "contractVersion": 1,
+          "exerciseMetricGeneration": 1
+        }
+      ]
+    },
+    {
+      "profile": "bodyweight_reps",
+      "identities": [
+        {
+          "contractVersion": 1,
+          "exerciseMetricGeneration": 1
+        }
+      ]
+    },
+    {
+      "profile": "added_load_reps",
+      "identities": [
+        {
+          "contractVersion": 1,
+          "exerciseMetricGeneration": 1
+        }
+      ]
+    },
+    {
+      "profile": "assisted_reps",
+      "identities": [
+        {
+          "contractVersion": 1,
+          "exerciseMetricGeneration": 1
+        }
+      ]
+    },
+    {
+      "profile": "timed_hold",
+      "identities": [
+        {
+          "contractVersion": 1,
+          "exerciseMetricGeneration": 1
+        },
+        {
+          "contractVersion": 2,
+          "exerciseMetricGeneration": 1
+        }
+      ]
+    },
+    {
+      "profile": "fixed_distance",
+      "identities": [
+        {
+          "contractVersion": 1,
+          "exerciseMetricGeneration": 1
+        }
+      ]
+    },
+    {
+      "profile": "fixed_time",
+      "identities": [
+        {
+          "contractVersion": 1,
+          "exerciseMetricGeneration": 1
+        }
+      ]
+    },
+    {
+      "profile": "intervals",
+      "identities": [
+        {
+          "contractVersion": 1,
+          "exerciseMetricGeneration": 1
+        }
+      ]
+    },
+    {
+      "profile": "unscored",
+      "identities": [
+        {
+          "contractVersion": 1,
+          "exerciseMetricGeneration": 1
+        }
+      ]
+    }
+  ]
+}

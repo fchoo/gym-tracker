@@ -1,0 +1,19 @@
+{
+  "schemaVersion": 1,
+  "suite": "phase1",
+  "minimumSamples": 100,
+  "maximumP95Ms": 150,
+  "maximumJsTaskMs": 50,
+  "measurement": "production completeSet command start through first post-commit dock invalidation callback",
+  "profile": {
+    "plan": "Full Body Foundation",
+    "day": "Full Body A",
+    "exercise": "Back Squat",
+    "workingSet": 1,
+    "observation": {
+      "profile": "load_reps",
+      "loadGrams": 60000,
+      "reps": 8
+    }
+  }
+}

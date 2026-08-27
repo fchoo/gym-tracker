@@ -1,0 +1,78 @@
+appId: com.fchoo.gymtracker.devtest
+name: Phase 2 installed custom exercise edit archive and restore
+tags:
+  - phase-2
+  - library
+  - custom-exercises
+---
+- launchApp:
+    clearState: false
+    stopApp: true
+    permissions:
+      notifications: deny
+- assertVisible: "Today"
+- extendedWaitUntil:
+    visible: "Use Full Body Foundation"
+    timeout: 90000
+- tapOn: "Library"
+- tapOn: "Exercises"
+- assertVisible: "Search exercises"
+- tapOn: "Search exercises"
+- inputText: "Plank"
+- hideKeyboard
+- scrollUntilVisible:
+    element:
+      text: "Plank. Custom.*"
+    direction: DOWN
+    centerElement: true
+- tapOn:
+    text: "Plank. Custom.*"
+- scrollUntilVisible:
+    element:
+      text: "Edit exercise"
+    direction: DOWN
+- tapOn: "Edit exercise"
+- assertVisible: "Edit exercise"
+- tapOn:
+    id: "exercise-editor-name"
+- eraseText: 5
+- inputText: "Maestro Plank Edited"
+- hideKeyboard
+- scrollUntilVisible:
+    element:
+      text: "Metric profile changes use the separate future-target migration review."
+    direction: DOWN
+    centerElement: true
+- assertVisible: "Metric profile changes use the separate future-target migration review."
+- tapOn:
+    id: "exercise-editor-save"
+- assertVisible: "Maestro Plank Edited"
+- scrollUntilVisible:
+    element:
+      text: "Archive exercise"
+    direction: DOWN
+- tapOn: "Archive exercise"
+- assertVisible: "Archive Maestro Plank Edited?"
+- assertVisible: "This removes the exercise from new selection.*Existing plans remain runnable and show Archived until you restore or replace it.*No current plan occurrences are affected.*Maestro Plank Edited and its history will not be deleted."
+- tapOn: "Archive exercise"
+- assertNotVisible: "Delete exercise"
+- scrollUntilVisible:
+    element:
+      text: "Archived"
+    direction: UP
+- assertVisible: "Archived"
+- scrollUntilVisible:
+    element:
+      text: "Restore exercise"
+    direction: DOWN
+- tapOn: "Restore exercise"
+- scrollUntilVisible:
+    element:
+      text: "Go back"
+    direction: UP
+- assertNotVisible: "Archived"
+- tapOn: "Go back"
+- assertVisible: "Search exercises"
+- tapOn: "Today"
+- assertVisible: "Today"
+- stopApp

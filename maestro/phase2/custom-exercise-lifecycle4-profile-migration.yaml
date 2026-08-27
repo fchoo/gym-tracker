@@ -1,0 +1,118 @@
+appId: com.fchoo.gymtracker.devtest
+name: Phase 2 installed custom exercise future-only profile migration
+tags:
+  - phase-2
+  - library
+  - custom-exercises
+---
+- launchApp:
+    clearState: false
+    stopApp: true
+    permissions:
+      notifications: deny
+- assertVisible: "Today"
+- extendedWaitUntil:
+    visible: "Start Custom Day.*"
+    timeout: 30000
+- tapOn: "Library"
+- tapOn: "Exercises"
+- assertVisible: "Search exercises"
+- tapOn: "Search exercises"
+- inputText: "Maestro Plank Edited"
+- hideKeyboard
+- scrollUntilVisible:
+    element:
+      text: "Maestro Plank Edited. Custom.*"
+    direction: DOWN
+    centerElement: true
+- tapOn:
+    text: "Maestro Plank Edited. Custom.*"
+- scrollUntilVisible:
+    element:
+      text: "Change metric profile"
+    direction: DOWN
+- tapOn: "Change metric profile"
+- assertVisible: "Future targets only"
+- assertVisible: "Future plan targets will use the new metric profile. Completed workouts, in-progress snapshots, and historical observations will not change: history never changes. History remains separated by metric-profile version. Pending suggestions that no longer apply will be removed, and the next comparable exposure starts a fresh baseline."
+- scrollUntilVisible:
+    element:
+      text: "Bodyweight reps.*"
+    direction: DOWN
+    centerElement: true
+- tapOn:
+    text: "Bodyweight reps.*"
+- scrollUntilVisible:
+    element:
+      text: "Target 1 minimum reps"
+    direction: DOWN
+    centerElement: true
+    timeout: 60000
+- tapOn: "Target 1 minimum reps"
+- inputText: "8"
+- hideKeyboard
+- scrollUntilVisible:
+    element:
+      text: "Target 1 maximum reps"
+    direction: DOWN
+    centerElement: true
+    timeout: 60000
+- tapOn: "Target 1 maximum reps"
+- inputText: "12"
+- hideKeyboard
+- scrollUntilVisible:
+    element:
+      text: "Target 1 variation"
+    direction: DOWN
+    centerElement: true
+    timeout: 60000
+- tapOn: "Target 1 variation"
+- inputText: "standard"
+- hideKeyboard
+- scrollUntilVisible:
+    element:
+      text: "Target 2 minimum reps"
+    direction: DOWN
+    centerElement: true
+    timeout: 60000
+- tapOn: "Target 2 minimum reps"
+- inputText: "8"
+- hideKeyboard
+- scrollUntilVisible:
+    element:
+      text: "Target 2 maximum reps"
+    direction: DOWN
+    centerElement: true
+    timeout: 60000
+- tapOn: "Target 2 maximum reps"
+- inputText: "12"
+- hideKeyboard
+- scrollUntilVisible:
+    element:
+      text: "Target 2 variation"
+    direction: DOWN
+    centerElement: true
+    timeout: 60000
+- tapOn: "Target 2 variation"
+- inputText: "standard"
+- hideKeyboard
+- scrollUntilVisible:
+    element:
+      text: "Maestro Custom Plan Custom Day Hold / manual decision.*"
+    direction: DOWN
+    centerElement: true
+- tapOn:
+    text: "Maestro Custom Plan Custom Day Hold / manual decision.*"
+- scrollUntilVisible:
+    element:
+      text: "Save profile change"
+    direction: DOWN
+- tapOn: "Save profile change"
+- assertVisible: "Change metric profile?"
+- assertVisible: "Future plan targets will migrate to the reviewed profile while completed workouts and historical observations stay immutable. Incompatible pending suggestions and policies will be invalidated, and a fresh baseline will begin. This replacement is one-way: discarded future target contracts cannot be reconstructed. Another explicit migration would be required to change back."
+- tapOn: "Save profile change"
+- assertVisible: "Maestro Plank Edited"
+- scrollUntilVisible:
+    element:
+      text: "No history yet"
+    direction: DOWN
+- assertVisible: "No history yet"

@@ -1,0 +1,9 @@
+[extend]
+useDefault = true
+
+[[allowlists]]
+description = "Phase 3 design prose uses the phrase tokens including; it is not a credential."
+targetRules = ["generic-api-key"]
+regexTarget = "match"
+regexes = ['''tokens, including''']
+paths = ['''^\.planning/phases/03-calendar-and-history-integrity/03-CONTEXT\.md$''']

@@ -1,0 +1,187 @@
+name: Private release candidate
+
+on:
+  workflow_dispatch:
+    inputs:
+      candidate_id:
+        description: Immutable lowercase candidate identifier
+        required: true
+        type: string
+
+permissions:
+  contents: read
+  id-token: none
+
+concurrency:
+  group: private-release-candidate-${{ github.run_id }}
+  cancel-in-progress: false
+
+env:
+  NODE_VERSION: 24.19.0
+  NPM_VERSION: 11.17.0
+  JAVA_VERSION: 17.0.20+8
+  ANDROID_API_LEVEL: 36
+  ANDROID_BUILD_TOOLS: 36.0.0
+  ANDROID_NDK: 27.1.12297006
+  MAESTRO_VERSION: 2.8.0
+  CANDIDATE_ID: ${{ inputs.candidate_id }}
+  CANDIDATE_ARTIFACT_NAME: private-release-candidate-${{ inputs.candidate_id }}
+
+jobs:
+  candidate:
+    name: Build private candidate once and retain exact bytes
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    environment: private-release-candidate
+    steps:
+      - name: Check out source
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Set up Node
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+
+      - name: Set up Java
+        uses: actions/setup-java@b6effb05e454b25005698d916606bdc6ffcbf961 # v5.7.0
+        with:
+          distribution: temurin
+          java-version: ${{ env.JAVA_VERSION }}
+
+      - name: Install locked dependencies
+        run: |
+          npm install --global "npm@${NPM_VERSION}"
+          npm ci
+
+      - name: Validate dispatch inputs
+        run: |
+          case "${CANDIDATE_ID}" in ''|*[!a-z0-9-]*|-*|*-) exit 1 ;; esac
+          test "${#CANDIDATE_ID}" -ge 3
+          test "${#CANDIDATE_ID}" -le 80
+
+      - name: Run source and generated-native gates
+        run: |
+          {
+            npm run typecheck
+            npm run lint
+            npm run check:boundaries
+            npm run test:all
+            npm run test:evidence:release
+            npm run test:evidence:phase5
+            npm run test:release-matrix
+            printf 'phase5-source-gate: passed\n'
+          } 2>&1 | tee "${RUNNER_TEMP}/phase5-static.txt"
+          {
+            npm run verify:cng
+            printf 'phase5-source-gate: passed\n'
+          } 2>&1 | tee "${RUNNER_TEMP}/phase5-generated.txt"
+
+      - name: Materialize signing inputs without logging their values
+        env:
+          RELEASE_KEYSTORE_BASE64: ${{ secrets.RELEASE_KEYSTORE_BASE64 }}
+          RELEASE_KEYSTORE_PASSWORD: ${{ secrets.RELEASE_KEYSTORE_PASSWORD }}
+          RELEASE_KEY_ALIAS: ${{ secrets.RELEASE_KEY_ALIAS }}
+          RELEASE_KEY_PASSWORD: ${{ secrets.RELEASE_KEY_PASSWORD }}
+        run: |
+          test -n "${RELEASE_KEYSTORE_BASE64}"
+          test -n "${RELEASE_KEYSTORE_PASSWORD}"
+          test -n "${RELEASE_KEY_ALIAS}"
+          test -n "${RELEASE_KEY_PASSWORD}"
+          umask 077
+          mkdir -p "${RUNNER_TEMP}/gym-tracker-release-signing"
+          printf '%s' "${RELEASE_KEYSTORE_BASE64}" | base64 --decode > "${RUNNER_TEMP}/gym-tracker-release-signing/release.keystore"
+          test -s "${RUNNER_TEMP}/gym-tracker-release-signing/release.keystore"
+
+      - name: Build signed APK and AAB once
+        env:
+          GYM_TRACKER_BUILD_PROFILE: production
+          RELEASE_KEYSTORE_PATH: ${{ runner.temp }}/gym-tracker-release-signing/release.keystore
+          RELEASE_KEYSTORE_PASSWORD: ${{ secrets.RELEASE_KEYSTORE_PASSWORD }}
+          RELEASE_KEY_ALIAS: ${{ secrets.RELEASE_KEY_ALIAS }}
+          RELEASE_KEY_PASSWORD: ${{ secrets.RELEASE_KEY_PASSWORD }}
+        run: |
+          ./scripts/build-release-candidate-once.sh --output-dir artifacts/release-candidate \
+            2>&1 | tee -a "${RUNNER_TEMP}/phase5-generated.txt"
+
+      - name: Write and verify immutable candidate manifest
+        id: candidate_manifest
+        run: |
+          manifest_result=$(node scripts/create-release-candidate-manifest.mjs \
+            --bundle-dir artifacts/release-candidate \
+            --candidate-id "${CANDIDATE_ID}" \
+            --retained-artifact-name "${CANDIDATE_ARTIFACT_NAME}" \
+            --repository "${GITHUB_REPOSITORY}" \
+            --run-id "${GITHUB_RUN_ID}")
+          node scripts/verify-release-candidate-manifest.mjs --bundle-dir artifacts/release-candidate
+          manifest_sha256=$(node -e 'const value=JSON.parse(process.argv[1]); if (!/^[a-f0-9]{64}$/.test(value.manifest_sha256 ?? "")) process.exit(1); process.stdout.write(value.manifest_sha256)' "${manifest_result}")
+          printf 'manifest_sha256=%s\n' "${manifest_sha256}" >> "${GITHUB_OUTPUT}"
+
+      - name: Install exact-candidate test tools
+        run: |
+          sh scripts/install-maestro.sh
+          echo "$HOME/.maestro/bin" >> "$GITHUB_PATH"
+
+      - name: Run exact production candidate automated matrix
+        uses: ReactiveCircus/android-emulator-runner@a421e43855164a8197daf9d8d40fe71c6996bb0d # v2.38.0
+        with:
+          api-level: 36
+          target: google_apis
+          arch: x86_64
+          profile: pixel_7
+          avd-name: gym-tracker-production-candidate
+          disable-animations: true
+          script: |
+            mkdir -p artifacts/release-candidate/evidence
+            npm run test:maestro:phase5 -- \
+              --bundle-dir artifacts/release-candidate \
+              --manifest-sha256 "${{ steps.candidate_manifest.outputs.manifest_sha256 }}" \
+              --serial emulator-5554 \
+              --output artifacts/release-candidate/evidence/maestro.json
+            npm run benchmark:phase5 -- \
+              --bundle-dir artifacts/release-candidate \
+              --manifest-sha256 "${{ steps.candidate_manifest.outputs.manifest_sha256 }}" \
+              --serial emulator-5554 \
+              --device-json artifacts/release-candidate/evidence/maestro.json \
+              --output artifacts/release-candidate/evidence/benchmark.json
+            node scripts/record-phase5-source-evidence.mjs \
+              --bundle-dir artifacts/release-candidate \
+              --manifest-sha256 "${{ steps.candidate_manifest.outputs.manifest_sha256 }}" \
+              --static-report "${RUNNER_TEMP}/phase5-static.txt" \
+              --generated-report "${RUNNER_TEMP}/phase5-generated.txt" \
+              --device-json artifacts/release-candidate/evidence/maestro.json \
+              --output artifacts/release-candidate/evidence/source.json
+            npm run verify:native:phase5 -- \
+              --bundle-dir artifacts/release-candidate \
+              --manifest-sha256 "${{ steps.candidate_manifest.outputs.manifest_sha256 }}" \
+              --source artifacts/release-candidate/evidence/source.json \
+              --maestro artifacts/release-candidate/evidence/maestro.json \
+              --benchmark artifacts/release-candidate/evidence/benchmark.json \
+              --output artifacts/release-candidate/evidence/automated.json
+            grep -F '"mode": "automated-only"' artifacts/release-candidate/evidence/automated.json
+            grep -F '"approval_status": "evidence_pending"' artifacts/release-candidate/evidence/automated.json
+
+      - name: Remove signing material
+        if: always()
+        run: rm -rf "${RUNNER_TEMP}/gym-tracker-release-signing"
+
+      - name: Retain promotable private candidate artifact
+        if: success()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: ${{ env.CANDIDATE_ARTIFACT_NAME }}
+          path: artifacts/release-candidate
+          if-no-files-found: error
+          retention-days: 30
+
+      - name: Retain failure diagnostics without promotable bytes
+        if: failure()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: private-release-candidate-failure-diagnostics-${{ env.CANDIDATE_ID }}
+          path: |
+            artifacts/release-candidate/evidence
+            ${{ runner.temp }}/phase5-static.txt
+            ${{ runner.temp }}/phase5-generated.txt
+          if-no-files-found: warn
+          retention-days: 7

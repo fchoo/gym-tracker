@@ -1,0 +1,128 @@
+appId: com.fchoo.gymtracker.devtest
+name: Phase 2 remediation adaptive navigation cards and semantic inputs
+tags:
+  - phase-2
+  - remediation
+  - adaptive
+  - inputs
+---
+- launchApp:
+    clearState: true
+    permissions:
+      notifications: deny
+- assertVisible: "Today"
+- assertVisible: ${EXPECTED_LAYOUT}
+- assertVisible: ${EXPECTED_NAVIGATION}
+- extendedWaitUntil:
+    visible: "Use Full Body Foundation"
+    timeout: 90000
+- tapOn: "Library"
+- assertVisible: ${EXPECTED_LAYOUT}
+- assertVisible: ${EXPECTED_NAVIGATION}
+- assertVisible: "Library"
+- assertVisible: "Plans"
+- assertVisible: "Active Plan"
+- scrollUntilVisible:
+    element:
+      text: "My Plans"
+    direction: DOWN
+    centerElement: true
+- assertVisible: "My Plans"
+- scrollUntilVisible:
+    element:
+      text: "Starter Plans"
+    direction: DOWN
+    centerElement: true
+- assertVisible: "Starter Plans"
+- scrollUntilVisible:
+    element:
+      text: "Exercises"
+    direction: UP
+    centerElement: true
+- tapOn: "Exercises"
+- extendedWaitUntil:
+    visible: "Search exercises"
+    timeout: 90000
+- tapOn:
+    text: "Dismiss exercise library update"
+    optional: true
+- tapOn: "Search exercises"
+- inputText: "bench press"
+- hideKeyboard
+- scrollUntilVisible:
+    element:
+      text: "Add Bench Press to favorites"
+    direction: DOWN
+    centerElement: true
+    timeout: 90000
+- tapOn: "Add Bench Press to favorites"
+- tapOn: "Clear search exercises"
+- scrollUntilVisible:
+    element:
+      text: "Favorites"
+    direction: UP
+    centerElement: true
+- assertVisible: "Favorites"
+- assertVisible: "Remove Bench Press from favorites"
+- scrollUntilVisible:
+    element:
+      text: "Create custom exercise"
+    direction: UP
+    centerElement: true
+- tapOn: "Create custom exercise"
+- assertVisible: "Create custom exercise"
+- scrollUntilVisible:
+    element:
+      text: "Default rest seconds"
+    direction: DOWN
+    centerElement: true
+- tapOn: "Default rest seconds"
+- assertVisible: "Default rest seconds duration dialog"
+- tapOn: "Default rest seconds minutes"
+- eraseText: 1
+- inputText: "1"
+- tapOn: "Default rest seconds seconds"
+- eraseText: 2
+- inputText: "30"
+- hideKeyboard
+- tapOn: "Confirm default rest seconds"
+- assertNotVisible: "Default rest seconds duration dialog"
+- scrollUntilVisible:
+    element:
+      text: "Go back"
+    direction: UP
+    centerElement: true
+- tapOn: "Go back"
+- assertVisible: "Library"
+- scrollUntilVisible:
+    element:
+      text: "Plans"
+    direction: UP
+    centerElement: true
+- tapOn: "Plans"
+- scrollUntilVisible:
+    element:
+      text: "Push / Pull / Legs"
+    direction: DOWN
+    centerElement: true
+- tapOn:
+    text: "Push / Pull / Legs. 3 days per week.*"
+- scrollUntilVisible:
+    element:
+      text: "Activate plan"
+    direction: DOWN
+    centerElement: true
+- tapOn: "Activate plan"
+- assertVisible: "Activate Push / Pull / Legs"
+- tapOn: "Start date"
+- assertVisible: "Calendar dialog"
+- tapOn: "Use default date"
+- tapOn: "Confirm date"
+- assertNotVisible: "Calendar dialog"
+- tapOn: "Go back"
+- scrollUntilVisible:
+    element:
+      text: "Push / Pull / Legs"
+    direction: UP
+    centerElement: true
+- assertVisible: "Push / Pull / Legs"

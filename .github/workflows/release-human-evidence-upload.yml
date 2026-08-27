@@ -1,0 +1,94 @@
+name: Protected human release evidence upload
+
+on:
+  workflow_dispatch:
+    inputs:
+      candidate_run_id:
+        description: Successful private release-candidate workflow run ID
+        required: true
+        type: string
+      candidate_id:
+        description: Immutable candidate identifier
+        required: true
+        type: string
+      candidate_commit:
+        description: Exact candidate source commit
+        required: true
+        type: string
+      observations_path:
+        description: Relative path beneath the protected EVIDENCE_ROOT to canonical observations.json
+        required: true
+        type: string
+      attachments_path:
+        description: Relative path beneath the protected EVIDENCE_ROOT to the attended attachments directory
+        required: true
+        type: string
+
+permissions:
+  actions: read
+  contents: read
+  id-token: none
+
+concurrency:
+  group: release-human-evidence-upload-${{ github.run_id }}
+  cancel-in-progress: false
+
+env:
+  CANDIDATE_RUN_ID: ${{ inputs.candidate_run_id }}
+  CANDIDATE_ID: ${{ inputs.candidate_id }}
+  CANDIDATE_COMMIT: ${{ inputs.candidate_commit }}
+  OBSERVATIONS_PATH: ${{ inputs.observations_path }}
+  ATTACHMENTS_PATH: ${{ inputs.attachments_path }}
+  OBSERVATIONS_ARTIFACT_NAME: human-release-observations-${{ inputs.candidate_id }}-${{ github.run_id }}
+
+jobs:
+  upload-human-evidence:
+    name: Upload existing human-authored observations and attachments
+    runs-on: [self-hosted, release-evidence]
+    timeout-minutes: 10
+    environment: private-release-observation-upload
+    steps:
+      - name: Validate candidate provenance with trusted inline shell
+        env:
+          GH_TOKEN: ${{ github.token }}
+          EVIDENCE_ROOT: ${{ vars.PHASE5_EVIDENCE_ROOT }}
+        run: |
+          case "${CANDIDATE_RUN_ID}" in ''|*[!0-9]*) exit 1 ;; esac
+          case "${CANDIDATE_ID}" in ''|*[!a-z0-9-]*|-*|*-) exit 1 ;; esac
+          case "${CANDIDATE_COMMIT}" in *[!a-f0-9]*) exit 1 ;; esac
+          test "${#CANDIDATE_COMMIT}" -eq 40
+          test -n "${EVIDENCE_ROOT}"
+          candidate_run=$(gh api "repos/${GITHUB_REPOSITORY}/actions/runs/${CANDIDATE_RUN_ID}")
+          jq -e --arg commit "${CANDIDATE_COMMIT}" --arg repo "${GITHUB_REPOSITORY}" \
+            '.conclusion == "success" and .head_sha == $commit and .repository.full_name == $repo and .event == "workflow_dispatch" and .path == ".github/workflows/release-candidate.yml"' \
+            <<<"${candidate_run}" >/dev/null
+          candidate_jobs=$(gh api "repos/${GITHUB_REPOSITORY}/actions/runs/${CANDIDATE_RUN_ID}/jobs")
+          jq -e '.jobs | any(.environment.name == "private-release-candidate")' <<<"${candidate_jobs}" >/dev/null
+          candidate_artifacts=$(gh api "repos/${GITHUB_REPOSITORY}/actions/runs/${CANDIDATE_RUN_ID}/artifacts")
+          jq -e --arg name "private-release-candidate-${CANDIDATE_ID}" \
+            '[.artifacts[] | select(.name == $name and .expired == false)] | length == 1' \
+            <<<"${candidate_artifacts}" >/dev/null
+
+      - name: Check out exact proven candidate source
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ env.CANDIDATE_COMMIT }}
+          path: workflow-source
+
+      - name: Stage bounded local evidence inputs
+        env:
+          EVIDENCE_ROOT: ${{ vars.PHASE5_EVIDENCE_ROOT }}
+        run: |
+          node workflow-source/scripts/stage-phase5-human-evidence.mjs \
+            --evidence-root "${EVIDENCE_ROOT}" \
+            --observations-relative "${OBSERVATIONS_PATH}" \
+            --attachments-relative "${ATTACHMENTS_PATH}" \
+            --staging-root "${RUNNER_TEMP}"
+
+      - name: Upload immutable human-authored evidence
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: ${{ env.OBSERVATIONS_ARTIFACT_NAME }}
+          path: ${{ runner.temp }}/gym-tracker-human-evidence
+          if-no-files-found: error
+          retention-days: 30

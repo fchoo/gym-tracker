@@ -1,0 +1,310 @@
+appId: com.fchoo.gymtracker.devtest
+name: Phase 2 remediation active workout mutations retry focus and correction
+tags:
+  - phase-2
+  - remediation
+  - active-workout
+---
+- launchApp:
+    clearState: true
+    permissions:
+      notifications: deny
+- assertVisible: "Today"
+- extendedWaitUntil:
+    visible: "Use Full Body Foundation"
+    timeout: 90000
+- tapOn: "Use Full Body Foundation"
+- tapOn: "Activate Full Body Foundation"
+- runFlow: "../subflows/phase1-start-full-body-a.yaml"
+- assertVisible: "FOCUSED WORKOUT"
+- assertVisible: "Back Squat"
+- assertVisible: "Today's plan"
+- assertVisible: "Add warm-up"
+- assertVisible: "Copy previous warm-up"
+- scrollUntilVisible:
+    element:
+      text: "Add working set"
+    direction: DOWN
+    centerElement: true
+- assertVisible: "Add working set"
+- assertNotVisible: "Excluded from records and progression"
+- openLink: "gymtracker-devtest://__notification-test-controls?action=arm_add_warmup_failure"
+- assertVisible: "Add warm-up failure armed"
+- scrollUntilVisible:
+    element:
+      text: "Return to Today"
+    direction: DOWN
+    centerElement: true
+- tapOn: "Return to Today"
+- tapOn: "Resume workout"
+- tapOn: "Add warm-up"
+- assertVisible: "Warm-up was not added"
+- assertNotVisible:
+    text: "Warm-up 3 of .*"
+- tapOn: "Retry add warm-up"
+- assertVisible: "Warm-up W3 added and focused"
+- stopApp
+- launchApp:
+    clearState: false
+    stopApp: true
+    permissions:
+      notifications: deny
+- assertVisible: "Today"
+- extendedWaitUntil:
+    visible: "Resume workout"
+    timeout: 90000
+- tapOn: "Resume workout"
+- scrollUntilVisible:
+    element:
+      text: "Warm-up 3 of 3.*"
+    direction: DOWN
+    centerElement: true
+- assertNotVisible:
+    text: "Warm-up 4 of .*"
+- openLink: "gymtracker-devtest://__notification-test-controls?action=arm_copy_warmup_failure"
+- assertVisible: "Copy warm-up failure armed"
+- scrollUntilVisible:
+    element:
+      text: "Return to Today"
+    direction: DOWN
+    centerElement: true
+- tapOn: "Return to Today"
+- tapOn: "Resume workout"
+- tapOn: "Copy previous warm-up"
+- assertVisible: "Warm-up was not added"
+- assertNotVisible:
+    text: "Warm-up 4 of .*"
+- tapOn: "Retry copy warm-up"
+- assertVisible: "Warm-up W4 added and focused"
+- stopApp
+- launchApp:
+    clearState: false
+    stopApp: true
+    permissions:
+      notifications: deny
+- assertVisible: "Today"
+- extendedWaitUntil:
+    visible: "Resume workout"
+    timeout: 90000
+- tapOn: "Resume workout"
+- scrollUntilVisible:
+    element:
+      text: "Warm-up 4 of 4.*"
+    direction: DOWN
+    centerElement: true
+- assertNotVisible:
+    text: "Warm-up 5 of .*"
+- openLink: "gymtracker-devtest://__notification-test-controls?action=arm_add_working_failure"
+- assertVisible: "Add working set failure armed"
+- scrollUntilVisible:
+    element:
+      text: "Return to Today"
+    direction: DOWN
+    centerElement: true
+- tapOn: "Return to Today"
+- tapOn: "Resume workout"
+- scrollUntilVisible:
+    element:
+      text: "Add working set"
+    direction: DOWN
+    centerElement: true
+- tapOn: "Add working set"
+- assertVisible: "Working set was not added"
+- assertNotVisible:
+    text: "Working set 4 of .*"
+- tapOn: "Retry add working set"
+- assertVisible: "Working set 4 added and focused"
+- stopApp
+- launchApp:
+    clearState: false
+    stopApp: true
+    permissions:
+      notifications: deny
+- assertVisible: "Today"
+- extendedWaitUntil:
+    visible: "Resume workout"
+    timeout: 90000
+- tapOn: "Resume workout"
+- repeat:
+    times: 16
+    while:
+      notVisible: "Working set 4 of 4.*"
+    commands:
+      - swipe:
+          start: 95%, 75%
+          end: 95%, 25%
+          duration: 300
+- assertVisible: "Working set 4 of 4.*"
+- assertNotVisible:
+    text: "Working set 5 of .*"
+- repeat:
+    times: 12
+    while:
+      notVisible: "Complete warm-up W1"
+    commands:
+      - swipe:
+          start: 95%, 25%
+          end: 95%, 75%
+          duration: 300
+- assertVisible: "Complete warm-up W1"
+- tapOn: "Complete warm-up W1"
+- repeat:
+    times: 12
+    while:
+      notVisible: "Warm-up 1 of 4.*Completed.*"
+    commands:
+      - swipe:
+          start: 95%, 25%
+          end: 95%, 75%
+          duration: 300
+- assertVisible: "Warm-up 1 of 4.*Completed.*"
+- repeat:
+    times: 12
+    while:
+      notVisible: "Complete Set 1"
+    commands:
+      - swipe:
+          start: 95%, 75%
+          end: 95%, 25%
+          duration: 300
+- assertVisible: "Complete Set 1"
+- assertVisible: "FOCUSED WORKOUT"
+- assertVisible: "Back Squat"
+- tapOn: "Complete Set 1"
+- tapOn:
+    text: "Don’t allow"
+    optional: true
+- assertVisible: "Expand rest controls"
+- tapOn: "Expand rest controls"
+- tapOn: "Skip rest"
+- repeat:
+    times: 12
+    while:
+      notVisible: "Edit completed set 1"
+    commands:
+      - swipe:
+          start: 95%, 25%
+          end: 95%, 75%
+          duration: 300
+- assertVisible: "Edit completed set 1"
+- openLink: "gymtracker-devtest://__notification-test-controls?action=arm_completed_set_correction_failure"
+- assertVisible: "Completed set correction failure armed"
+- scrollUntilVisible:
+    element:
+      text: "Return to Today"
+    direction: DOWN
+    centerElement: true
+- tapOn: "Return to Today"
+- tapOn: "Resume workout"
+- repeat:
+    times: 12
+    while:
+      notVisible: "Edit completed set 1"
+    commands:
+      - swipe:
+          start: 95%, 75%
+          end: 95%, 25%
+          duration: 300
+- assertVisible: "Edit completed set 1"
+- tapOn: "Edit completed set 1"
+- longPressOn: "Working set 1 load in kilograms"
+- tapOn:
+    text: "Select all"
+    optional: true
+- eraseText: 32
+- inputText: "62.5"
+- hideKeyboard
+- tapOn: "Save correction for completed set 1"
+- assertVisible: "Correction was not saved. Retry the correction."
+- repeat:
+    times: 16
+    while:
+      notVisible: "Working set 4 of 4.*"
+    commands:
+      - swipe:
+          start: 95%, 75%
+          end: 95%, 25%
+          duration: 300
+- assertVisible: "Working set 4 of 4.*"
+- repeat:
+    times: 4
+    while:
+      notVisible: "Retry completed set correction"
+    commands:
+      - swipe:
+          start: 95%, 75%
+          end: 95%, 45%
+          duration: 300
+- assertVisible: "Retry completed set correction"
+- tapOn: "Retry completed set correction"
+- scrollUntilVisible:
+    element:
+      text: "Working set 1 correction saved"
+    direction: UP
+    centerElement: true
+    timeout: 60000
+- repeat:
+    times: 12
+    while:
+      notVisible: "Edit completed set 1"
+    commands:
+      - swipe:
+          start: 95%, 75%
+          end: 95%, 25%
+          duration: 300
+- assertVisible: "Edit completed set 1"
+- assertVisible: "Working set 1 of 4.*Current values 62.5 kg × 8.*Completed.*"
+- assertNotVisible: "Undo completed set"
+- stopApp
+- launchApp:
+    clearState: false
+    stopApp: true
+    permissions:
+      notifications: deny
+- assertVisible: "Today"
+- extendedWaitUntil:
+    visible: "Resume workout"
+    timeout: 90000
+- tapOn: "Resume workout"
+- repeat:
+    times: 12
+    while:
+      notVisible: "Edit completed set 1"
+    commands:
+      - swipe:
+          start: 95%, 75%
+          end: 95%, 25%
+          duration: 300
+- assertVisible: "Edit completed set 1"
+- assertVisible: "Working set 1 of 4.*Current values 62.5 kg × 8.*Completed.*"
+- assertNotVisible: "Undo completed set"
+- tapOn: "Today's plan"
+- assertVisible: "Today's plan"
+- assertVisible: "Review any exercise without changing the current workout."
+- tapOn:
+    text: "2. Bench Press. Planned. Open for review"
+- assertVisible: "REVIEWING WORKOUT"
+- assertVisible: "Bench Press"
+- assertVisible: "Reviewing another exercise"
+- assertVisible: "Return to current exercise"
+- scrollUntilVisible:
+    element:
+      text: "Return to current exercise"
+    direction: UP
+    centerElement: true
+    timeout: 60000
+- tapOn: "Return to current exercise"
+- assertVisible: "FOCUSED WORKOUT"
+- assertVisible: "Back Squat"
+- repeat:
+    times: 12
+    while:
+      notVisible: "Edit completed set 1"
+    commands:
+      - swipe:
+          start: 95%, 75%
+          end: 95%, 25%
+          duration: 300
+- assertVisible: "Edit completed set 1"
+- assertVisible: "Working set 1 of 4.*Current values 62.5 kg × 8.*Completed.*"
+- assertNotVisible: "Excluded from records and progression"

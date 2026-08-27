@@ -1,0 +1,85 @@
+appId: com.fchoo.gymtracker.devtest
+name: Phase 2 installed custom exercise owned plan creation
+tags:
+  - phase-2
+  - library
+  - custom-exercises
+---
+- launchApp:
+    clearState: false
+    stopApp: true
+    permissions:
+      notifications: deny
+- assertVisible: "Today"
+- extendedWaitUntil:
+    visible: "Use Full Body Foundation"
+    timeout: 90000
+- tapOn: "Library"
+- tapOn: "Plans"
+- tapOn: "Create my own"
+- tapOn: "Plan name"
+- inputText: "Maestro Custom Plan"
+- tapOn: "First day name"
+- inputText: "Custom Day"
+- hideKeyboard
+- tapOn: "Create draft"
+- assertVisible: "Draft"
+- scrollUntilVisible:
+    element:
+      text: "Add exercise"
+    direction: DOWN
+- tapOn:
+    id: "owned-plan-add-exercise"
+- scrollUntilVisible:
+    element:
+      id: "owned-plan-exercise-search"
+    direction: DOWN
+    centerElement: true
+- tapOn:
+    id: "owned-plan-exercise-search"
+- inputText: "Maestro Plank Edited"
+- hideKeyboard
+- tapOn:
+    text: "Maestro Plank Edited.*Timed hold"
+- scrollUntilVisible:
+    element:
+      text: "Working sets"
+    direction: DOWN
+    centerElement: true
+- tapOn: "Working sets"
+- eraseText: 1
+- inputText: "2"
+- hideKeyboard
+- scrollUntilVisible:
+    element:
+      text: "Duration (seconds)"
+    direction: DOWN
+    centerElement: true
+- tapOn: "Duration (seconds)"
+- eraseText: 2
+- inputText: "45"
+- hideKeyboard
+- scrollUntilVisible:
+    element:
+      text: "Save target"
+    direction: DOWN
+- tapOn: "Save target"
+- scrollUntilVisible:
+    element:
+      text: "Save day"
+    direction: DOWN
+- tapOn: "Save day"
+- tapOn: "Save plan"
+- scrollUntilVisible:
+    element:
+      text: "Ready"
+    direction: UP
+    centerElement: true
+- assertVisible: "Ready"
+- scrollUntilVisible:
+    element:
+      text: "Go back"
+    direction: UP
+- tapOn: "Go back"
+- assertVisible: "Library"
+- stopApp

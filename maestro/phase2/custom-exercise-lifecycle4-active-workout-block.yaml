@@ -1,0 +1,51 @@
+appId: com.fchoo.gymtracker.devtest
+name: Phase 2 installed custom exercise active-workout migration block
+tags:
+  - phase-2
+  - library
+  - custom-exercises
+---
+- launchApp:
+    clearState: false
+    stopApp: true
+    permissions:
+      notifications: deny
+- assertVisible: "Today"
+- extendedWaitUntil:
+    visible: "Workout in progress"
+    timeout: 30000
+- tapOn: "Library"
+- tapOn: "Exercises"
+- assertVisible: "Search exercises"
+- tapOn: "Search exercises"
+- inputText: "Maestro Plank Edited"
+- hideKeyboard
+- scrollUntilVisible:
+    element:
+      text: "Maestro Plank Edited. Custom.*"
+    direction: DOWN
+    centerElement: true
+- tapOn:
+    text: "Maestro Plank Edited. Custom.*"
+- scrollUntilVisible:
+    element:
+      text: "Change metric profile"
+    direction: DOWN
+- tapOn: "Change metric profile"
+- assertVisible: "Finish the current workout first"
+- assertVisible: "Metric profile changes are blocked while this exercise is in an active workout. Resume, finish partial, or discard that workout before changing future targets."
+- assertNotVisible: "Save profile change"
+- tapOn: "Go back"
+- scrollUntilVisible:
+    element:
+      text: "Go back"
+    direction: UP
+- tapOn: "Go back"
+- tapOn: "Today"
+- tapOn: "Resume workout"
+- tapOn: "More workout actions"
+- tapOn: "Discard workout"
+- assertVisible: "Discard workout?"
+- tapOn: "Discard workout"
+- assertVisible: "Today"
+- stopApp

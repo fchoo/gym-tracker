@@ -1,0 +1,20 @@
+appId: com.fchoo.gymtracker.devtest
+name: Phase 1 three repeated airplane mode workouts
+tags:
+  - phase-1
+  - airplane
+---
+- launchApp:
+    clearState: true
+    permissions:
+      notifications: deny
+- assertVisible: "Today"
+- extendedWaitUntil:
+    visible: "Use Full Body Foundation"
+    timeout: 90000
+- tapOn: "Use Full Body Foundation"
+- tapOn: "Activate Full Body Foundation"
+- runFlow: "../subflows/phase1-airplane-session.yaml"
+- runFlow: "../subflows/phase1-airplane-session.yaml"
+- runFlow: "../subflows/phase1-airplane-session.yaml"
+- assertVisible: "Today"

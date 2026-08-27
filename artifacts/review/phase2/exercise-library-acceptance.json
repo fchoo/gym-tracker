@@ -1,0 +1,22 @@
+{
+  "schemaVersion": 1,
+  "accepted": true,
+  "reviewer": "owner",
+  "reviewerResponse": "approved",
+  "reviewedAt": "2026-08-17T15:05:05Z",
+  "sourceCommit": "1783421f145e546fa168c591a0e4d11cae6f23df",
+  "overlaySha256": "a1faea46857937ba5ef0c0ea4ffa5343ece6cec5acdaeab765e5980b4b614636",
+  "packSha256": "9ffa6209c4e07ddbd0f3988a2b3607b8f536595f70d4b74f41e0d5fa95779ae9",
+  "manifestSha256": "a34feccfb00e03d7d15d9063ab99ced316457d432b0337c2c668cc24745390a9",
+  "reviewSha256": "0095882a7e35345700d877e430383b5157703bcbd36eb9eaae002565e14b020e",
+  "licenseSha256": "497dedffb4292e2b74e250f159ad8d70136564d6ccf13be604642350d34538e0",
+  "counts": {
+    "visible": 310,
+    "upstreamIncluded": 300,
+    "legacyPreserved": 10,
+    "upstreamExcluded": 599,
+    "linkedLegacyCandidates": 6,
+    "preservedLegacyOriginals": 4,
+    "unresolved": 0
+  }
+}

@@ -1,0 +1,23 @@
+appId: com.fchoo.gymtracker.devtest
+name: Phase 1 start Full Body A
+---
+- extendedWaitUntil:
+    visible: "^(Start Full Body A|Start Full Body B|Rest day)$"
+    timeout: 90000
+- runFlow:
+    when:
+      visible: "Start Full Body B"
+    commands:
+      - tapOn: "Choose another day"
+- runFlow:
+    when:
+      visible: "Rest day"
+    commands:
+      - tapOn: "Train anyway"
+- extendedWaitUntil:
+    visible: "Start Full Body A"
+    timeout: 30000
+- tapOn: "Start Full Body A"
+- extendedWaitUntil:
+    visible: "FOCUSED WORKOUT"
+    timeout: 30000

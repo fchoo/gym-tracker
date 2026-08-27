@@ -1,0 +1,162 @@
+appId: com.fchoo.gymtracker.devtest
+name: Phase 2 installed owned plan create save reorder duplicate archive restore
+tags:
+  - phase-2
+  - library
+  - owned-plans
+---
+- launchApp:
+    clearState: true
+    permissions:
+      notifications: deny
+- assertVisible: "Today"
+- extendedWaitUntil:
+    visible: "Use Full Body Foundation"
+    timeout: 90000
+- tapOn: "Library"
+- scrollUntilVisible:
+    element:
+      text: "My Plans"
+    direction: DOWN
+    centerElement: true
+- assertVisible: "My Plans"
+- scrollUntilVisible:
+    element:
+      text: "Create my own"
+    direction: UP
+    centerElement: true
+- tapOn: "Create my own"
+- assertVisible: "Create my own"
+- tapOn: "Plan name"
+- inputText: "Maestro Strength"
+- tapOn: "First day name"
+- inputText: "Strength Day"
+- tapOn: "Create draft"
+- assertVisible: "Draft"
+- assertVisible: "Add at least one exercise with valid targets before scheduling or activating."
+- assertVisible: "Schedule and Activate are unavailable. Add at least one exercise with valid targets before scheduling or activating."
+- assertNotVisible: "Delete plan"
+- scrollUntilVisible:
+    element:
+      id: "owned-plan-add-exercise"
+    direction: DOWN
+    centerElement: true
+- tapOn:
+    id: "owned-plan-add-exercise"
+- scrollUntilVisible:
+    element:
+      id: "owned-plan-exercise-search"
+    direction: DOWN
+    centerElement: true
+- tapOn:
+    id: "owned-plan-exercise-search"
+- inputText: "Back Squat"
+- hideKeyboard
+- tapOn:
+    text: "Back Squat.*Load . reps"
+- tapOn: "Working sets"
+- eraseText: 1
+- inputText: "2"
+- hideKeyboard
+- scrollUntilVisible:
+    element:
+      text: "Load (kg)"
+    direction: DOWN
+    centerElement: true
+- tapOn: "Load (kg)"
+- eraseText: 1
+- inputText: "20"
+- hideKeyboard
+- scrollUntilVisible:
+    element:
+      text: "Minimum reps"
+    direction: DOWN
+    centerElement: true
+- tapOn: "Minimum reps"
+- eraseText: 1
+- inputText: "8"
+- hideKeyboard
+- scrollUntilVisible:
+    element:
+      text: "Maximum reps"
+    direction: DOWN
+    centerElement: true
+- tapOn: "Maximum reps"
+- eraseText: 2
+- inputText: "12"
+- hideKeyboard
+- scrollUntilVisible:
+    element:
+      text: "Rest (seconds)"
+    direction: DOWN
+    centerElement: true
+- tapOn: "Rest (seconds)"
+- eraseText: 2
+- inputText: "90"
+- hideKeyboard
+- scrollUntilVisible:
+    element:
+      text: "Save target"
+    direction: DOWN
+- tapOn: "Save target"
+- assertVisible: "2 working sets · 20 kg · 8–12 reps"
+- tapOn: "Save day"
+- assertVisible: "Strength Day saved to draft"
+- scrollUntilVisible:
+    element:
+      text: "Schedule and Activate are unavailable. Add at least one exercise with valid targets before scheduling or activating."
+    direction: UP
+    centerElement: true
+- assertVisible: "Schedule and Activate are unavailable. Add at least one exercise with valid targets before scheduling or activating."
+- scrollUntilVisible:
+    element:
+      id: "owned-plan-add-exercise"
+    direction: DOWN
+    centerElement: true
+- tapOn:
+    id: "owned-plan-add-exercise"
+- scrollUntilVisible:
+    element:
+      id: "owned-plan-exercise-search"
+    direction: DOWN
+    centerElement: true
+- tapOn:
+    id: "owned-plan-exercise-search"
+- inputText: "Bench Press"
+- hideKeyboard
+- tapOn:
+    text: "Bench Press.*Load . reps"
+- scrollUntilVisible:
+    element:
+      text: "Save target"
+    direction: DOWN
+- tapOn: "Save target"
+- assertVisible: "Bench Press"
+- tapOn: "Move Bench Press up"
+- assertVisible: "Bench Press moved to 1 of 2"
+- scrollUntilVisible:
+    element:
+      text: "Schedule and Activate are unavailable. Add at least one exercise with valid targets before scheduling or activating."
+    direction: UP
+    centerElement: true
+- assertVisible: "Schedule and Activate are unavailable. Add at least one exercise with valid targets before scheduling or activating."
+- tapOn: "Save plan"
+- assertVisible: "Ready"
+- tapOn: "Duplicate plan"
+- assertVisible: "Duplicate Maestro Strength?"
+- assertVisible: "Days, exercise order, targets, warm-ups, rest, policies, and schedule defaults are copied into fresh identities. The duplicate stays inactive."
+- tapOn: "Create duplicate"
+- assertVisible: "Maestro Strength Copy"
+- assertVisible: "Ready"
+- assertNotVisible: "Active"
+- tapOn: "Archive plan"
+- assertVisible: "Archive Maestro Strength Copy?"
+- assertVisible: "The plan will leave the default Library view. Its history is unchanged, and you can restore it later."
+- tapOn: "Archive plan"
+- assertVisible: "Archived"
+- assertNotVisible: "Delete plan"
+- tapOn: "Restore plan"
+- assertVisible: "Ready"
+- assertNotVisible: "Archived"
+- tapOn: "Go back"
+- assertVisible: "Library"

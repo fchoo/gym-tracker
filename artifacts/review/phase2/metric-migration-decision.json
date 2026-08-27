@@ -1,0 +1,31 @@
+{
+  "schemaVersion": 1,
+  "approved": true,
+  "decision": "D-34",
+  "decisions": [
+    "D-34",
+    "D-35",
+    "D-36",
+    "D-37",
+    "D-38",
+    "D-39"
+  ],
+  "reviewer": "owner",
+  "reviewerResponse": "approve-d34",
+  "reviewedAt": "2026-08-18T03:46:38Z",
+  "registrySha256": "ea8cca49791400150c41f32511d88ce79e7191b70d81c437494b93726b1e3037",
+  "contract": {
+    "exerciseIdentityPreserved": true,
+    "completedAndInProgressSnapshotsImmutable": true,
+    "completedAndInProgressObservationsImmutable": true,
+    "futureTargetsAndDefaultsReplacedOnly": true,
+    "completeOwnerEnteredReplacementRequired": true,
+    "blockedWhileExerciseIsInActiveWorkout": true,
+    "incompatibleRecommendationsInvalidated": true,
+    "incompatiblePoliciesInvalidated": true,
+    "newPolicyOrManualHoldRequired": true,
+    "freshBaselineRequired": true,
+    "crossProfileInferenceAllowed": false
+  },
+  "oneWayUndoCost": "Discarded old future target and default contracts cannot be reconstructed; changing back requires another explicit migration."
+}

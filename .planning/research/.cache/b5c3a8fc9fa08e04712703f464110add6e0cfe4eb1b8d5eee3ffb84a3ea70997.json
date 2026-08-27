@@ -1,0 +1,1 @@
+{"content":"Maestro CLI 2.8.0 is current and requires Java 17 or higher. Pin the tagged CLI/checksum in CI, run Android smoke on PRs and broader API/lifecycle matrices nightly/release, and avoid Maestro Cloud as the default dependency.","source":"web","provider":"websearch","confidence":"MEDIUM","fetched_at":"2026-08-15T16:22:43.955Z","ttl":86400000,"kind":"web"}

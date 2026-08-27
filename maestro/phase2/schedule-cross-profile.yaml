@@ -1,0 +1,378 @@
+appId: com.fchoo.gymtracker.devtest
+name: Phase 2 installed schedule actions overrides timezone and cross-profile workout
+tags:
+  - phase-2
+  - schedule
+  - today
+  - cross-profile
+---
+- launchApp:
+    clearState: true
+    permissions:
+      notifications: deny
+- assertVisible: "Today"
+- extendedWaitUntil:
+    visible: "Use Full Body Foundation"
+    timeout: 90000
+- tapOn: "Library"
+- scrollUntilVisible:
+    element:
+      text: "Push / Pull / Legs"
+    direction: DOWN
+    centerElement: true
+- tapOn:
+    text: "Push / Pull / Legs. 3 days per week.*"
+- assertVisible: "Push / Pull / Legs"
+- scrollUntilVisible:
+    element:
+      text: "Activate plan"
+    direction: DOWN
+- tapOn: "Activate plan"
+- assertVisible: "Activate Push / Pull / Legs"
+- tapOn: "Start date"
+- assertVisible: "Calendar dialog"
+- tapOn: "Previous month"
+- tapOn:
+    text: "^Select [0-9]{4}-[0-9]{2}-01$"
+- tapOn: "Confirm date"
+- assertNotVisible: "Calendar dialog"
+- assertVisible: "Rotation"
+- scrollUntilVisible:
+    element:
+      text: "Activate plan"
+    direction: DOWN
+- tapOn: "Activate plan"
+- assertVisible: "Activate Push / Pull / Legs?"
+- tapOn: "Activate plan"
+- assertVisible: "Push / Pull / Legs is active"
+- stopApp
+- launchApp:
+    clearState: false
+    permissions:
+      notifications: deny
+- assertVisible: "Today"
+- extendedWaitUntil:
+    visible: "^(Choose another day|Train anyway)$"
+    timeout: 90000
+- tapOn: "Library"
+- scrollUntilVisible:
+    element:
+      text: "Active Plan"
+    direction: DOWN
+    centerElement: true
+- scrollUntilVisible:
+    element:
+      text: "Push / Pull / Legs"
+    direction: DOWN
+    centerElement: true
+- tapOn:
+    text: "Push / Pull / Legs. Active.*"
+- scrollUntilVisible:
+    element:
+      text: "Schedule"
+    direction: DOWN
+    centerElement: true
+- tapOn: "Schedule"
+- assertVisible: "Edit schedule"
+- assertVisible: "Before"
+- assertVisible: "After"
+- assertVisible: "Effective date"
+- assertVisible: "Schedule timezone"
+- tapOn: "Effective date"
+- assertVisible: "Calendar dialog"
+- tapOn: "Use default date"
+- tapOn: "Confirm date"
+- assertNotVisible: "Calendar dialog"
+- tapOn: "Schedule timezone"
+- eraseText: 32
+- inputText: "Australia/Sydney"
+- hideKeyboard
+- repeat:
+    times: 4
+    while:
+      notVisible: "^Weekday$"
+    commands:
+      - swipe:
+          start: 95%, 75%
+          end: 95%, 45%
+          duration: 300
+- assertVisible: "^Weekday$"
+- tapOn: "^Rotation$"
+- assertVisible: "1. Push"
+- assertVisible: "2. Pull"
+- assertVisible: "3. Legs"
+- scrollUntilVisible:
+    element:
+      text: "Move Pull up"
+    direction: DOWN
+    centerElement: true
+- tapOn: "Move Pull up"
+- assertVisible: "1. Pull"
+- scrollUntilVisible:
+    element:
+      text: "Save schedule"
+    direction: DOWN
+- tapOn: "Save schedule"
+- assertVisible: "Save this schedule?"
+- tapOn: "Save schedule"
+- extendedWaitUntil:
+    visible: "Save plan"
+    timeout: 30000
+- stopApp
+- launchApp:
+    clearState: false
+    permissions:
+      notifications: deny
+- assertVisible: "Today"
+- assertVisible: "Device timezone changed"
+- assertVisible: "Stored timezone: Australia/Sydney. Device timezone: Asia/Singapore. Either choice applies prospectively. Prior local dates remain unchanged."
+- assertVisible: "Follow device timezone from today"
+- assertVisible: "Keep current timezone"
+- tapOn: "Keep current timezone"
+- extendedWaitUntil:
+    notVisible: "Device timezone changed"
+    timeout: 30000
+- assertVisible: "Repeat"
+- assertVisible: "Skip"
+- assertVisible: "Advance"
+- tapOn: "Repeat"
+- assertVisible: "Repeat Pull?"
+- tapOn: "Repeat"
+- waitForAnimationToEnd
+- assertVisible: "Pull"
+- tapOn: "Advance"
+- assertVisible: "Advance Pull?"
+- tapOn: "Advance"
+- assertVisible: "Rest day"
+- assertVisible: "Next scheduled workout · Push · .*"
+- tapOn: "Library"
+- scrollUntilVisible:
+    element:
+      text: "Active Plan"
+    direction: DOWN
+    centerElement: true
+- scrollUntilVisible:
+    element:
+      text: "Push / Pull / Legs"
+    direction: DOWN
+    centerElement: true
+- tapOn:
+    text: "Push / Pull / Legs. Active.*"
+- scrollUntilVisible:
+    element:
+      text: "Schedule"
+    direction: DOWN
+    centerElement: true
+- tapOn: "Schedule"
+- assertVisible: "Date override"
+- assertVisible: "No override"
+- scrollUntilVisible:
+    element:
+      text: "Override with Rest day"
+    direction: DOWN
+    centerElement: true
+- tapOn: "Override with Rest day"
+- assertVisible: "Set this date override?"
+- tapOn: "Save override"
+- extendedWaitUntil:
+    notVisible: "Set this date override?"
+    timeout: 30000
+- stopApp
+- launchApp:
+    clearState: false
+    permissions:
+      notifications: deny
+- assertVisible: "Today"
+- assertVisible: "Rest day"
+- tapOn: "Train anyway"
+- assertVisible: "Advance rotation after this workout"
+- assertVisible: "Not selected"
+- tapOn: "Advance rotation after this workout"
+- assertVisible: "Selected"
+- tapOn: "Start Pull"
+- assertVisible: "FOCUSED WORKOUT"
+- assertVisible: "Chin-Up"
+- repeat:
+    times: 4
+    while:
+      notVisible: "Working set 1 repetitions"
+    commands:
+      - swipe:
+          start: 95%, 75%
+          end: 95%, 45%
+          duration: 300
+- assertVisible: "Working set 1 repetitions"
+- tapOn: "More workout actions"
+- tapOn: "Skip Chin-Up"
+- assertVisible: "Skip Chin-Up?"
+- tapOn:
+    id: "skip-exercise-confirm"
+- assertVisible: "Bent Over Barbell Row"
+- repeat:
+    times: 4
+    while:
+      notVisible: "Working set 1 load in kilograms"
+    commands:
+      - swipe:
+          start: 95%, 75%
+          end: 95%, 45%
+          duration: 300
+- assertVisible: "Working set 1 load in kilograms"
+- repeat:
+    times: 4
+    while:
+      notVisible: "Working set 1 repetitions"
+    commands:
+      - swipe:
+          start: 95%, 75%
+          end: 95%, 45%
+          duration: 300
+- assertVisible: "Working set 1 repetitions"
+- tapOn: "More workout actions"
+- tapOn: "Skip Bent Over Barbell Row"
+- assertVisible: "Skip Bent Over Barbell Row?"
+- tapOn:
+    id: "skip-exercise-confirm"
+- assertVisible: "Barbell Curl"
+- tapOn: "More workout actions"
+- tapOn: "Discard workout"
+- assertVisible: "Discard workout?"
+- tapOn:
+    id: "discard-workout-confirm"
+- assertVisible: "Today"
+- tapOn: "Library"
+- scrollUntilVisible:
+    element:
+      text: "Active Plan"
+    direction: DOWN
+    centerElement: true
+- scrollUntilVisible:
+    element:
+      text: "Push / Pull / Legs"
+    direction: DOWN
+    centerElement: true
+- tapOn:
+    text: "Push / Pull / Legs. Active.*"
+- scrollUntilVisible:
+    element:
+      text: "Schedule"
+    direction: DOWN
+    centerElement: true
+- tapOn: "Schedule"
+- assertVisible: "Used"
+- assertNotVisible: "Override with Rest day"
+- stopApp
+- launchApp:
+    clearState: false
+    permissions:
+      notifications: deny
+- assertVisible: "Today"
+- assertVisible: "Rest day"
+- tapOn: "Train anyway"
+- assertVisible: "Advance rotation after this workout"
+- assertVisible: "Not selected"
+- tapOn: "Start Push"
+- assertVisible: "FOCUSED WORKOUT"
+- assertVisible: "Bench Press"
+- repeat:
+    times: 4
+    while:
+      notVisible: "Working set 1 load in kilograms"
+    commands:
+      - swipe:
+          start: 95%, 75%
+          end: 95%, 45%
+          duration: 300
+- assertVisible: "Working set 1 load in kilograms"
+- repeat:
+    times: 4
+    while:
+      notVisible: "Working set 1 repetitions"
+    commands:
+      - swipe:
+          start: 95%, 75%
+          end: 95%, 45%
+          duration: 300
+- assertVisible: "Working set 1 repetitions"
+- tapOn: "More workout actions"
+- tapOn: "Skip Bench Press"
+- assertVisible: "Skip Bench Press?"
+- tapOn:
+    id: "skip-exercise-confirm"
+- assertVisible: "Dumbbell Shoulder Press"
+- tapOn: "More workout actions"
+- tapOn: "Skip Dumbbell Shoulder Press"
+- assertVisible: "Skip Dumbbell Shoulder Press?"
+- tapOn:
+    id: "skip-exercise-confirm"
+- assertVisible: "Dip"
+- repeat:
+    times: 4
+    while:
+      notVisible: "Working set 1 added load in kilograms"
+    commands:
+      - swipe:
+          start: 95%, 75%
+          end: 95%, 45%
+          duration: 300
+- assertVisible: "Working set 1 added load in kilograms"
+- repeat:
+    times: 4
+    while:
+      notVisible: "Working set 1 repetitions"
+    commands:
+      - swipe:
+          start: 95%, 75%
+          end: 95%, 45%
+          duration: 300
+- assertVisible: "Working set 1 repetitions"
+- stopApp
+- launchApp:
+    clearState: true
+    permissions:
+      notifications: deny
+- assertVisible: "Today"
+- extendedWaitUntil:
+    visible: "Use Full Body Foundation"
+    timeout: 90000
+- tapOn: "Library"
+- scrollUntilVisible:
+    element:
+      text: "Push / Pull / Legs"
+    direction: DOWN
+    centerElement: true
+- tapOn:
+    text: "Push / Pull / Legs. 3 days per week.*"
+- assertVisible: "Push / Pull / Legs"
+- scrollUntilVisible:
+    element:
+      text: "Activate plan"
+    direction: DOWN
+- tapOn: "Activate plan"
+- assertVisible: "Activate Push / Pull / Legs"
+- tapOn: "Start date"
+- assertVisible: "Calendar dialog"
+- tapOn: "Use default date"
+- tapOn: "Confirm date"
+- scrollUntilVisible:
+    element:
+      text: "Activate plan"
+    direction: DOWN
+- tapOn: "Activate plan"
+- assertVisible: "Activate Push / Pull / Legs?"
+- tapOn: "Activate plan"
+- assertVisible: "Push / Pull / Legs is active"
+- stopApp
+- launchApp:
+    clearState: false
+    permissions:
+      notifications: deny
+- assertVisible: "Today"
+- assertVisible: "Push"
+- tapOn: "Skip"
+- assertVisible: "Skip Push?"
+- tapOn: "Skip"
+- extendedWaitUntil:
+    visible: "Rest day"
+    timeout: 30000
+- assertVisible: "Next scheduled workout · Pull · .*"
