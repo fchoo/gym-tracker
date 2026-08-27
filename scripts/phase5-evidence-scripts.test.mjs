@@ -358,11 +358,12 @@ test("release workflows enforce one build, immediate manifest, exact command gra
     1,
   );
   for (const workflowSource of [pullRequest, candidate]) {
-    assert.match(workflowSource, /MODE="0666"[\s\S]*udevadm trigger --name-match=kvm[\s\S]*test -r \/dev\/kvm[\s\S]*test -w \/dev\/kvm/u);
+    assert.match(workflowSource, /if \[ -e \/dev\/kvm \]; then[\s\S]*MODE="0666"[\s\S]*udevadm trigger --name-match=kvm[\s\S]*KVM unavailable; using the emulator runner's software fallback\./u);
+    assert.match(workflowSource, /disable-linux-hw-accel: auto/u);
   }
-  assert.match(pullRequest, /native-and-smoke:[\s\S]*timeout-minutes: 75/u);
-  assert.match(pullRequest, /artifact-roundtrip:[\s\S]*timeout-minutes: 30/u);
-  assert.match(candidate, /timeout-minutes: 90/u);
+  assert.match(pullRequest, /native-and-smoke:[\s\S]*timeout-minutes: 120/u);
+  assert.match(pullRequest, /artifact-roundtrip:[\s\S]*timeout-minutes: 45/u);
+  assert.match(candidate, /timeout-minutes: 120/u);
   assert.doesNotMatch(pullRequest, /^\s*(?:yes\s*\|\s*)?sdkmanager\s/mu);
   assert.doesNotThrow(() => validatePhase5WorkflowContracts({ candidate, nightly }));
   assert.throws(() => validatePhase5WorkflowContracts({
