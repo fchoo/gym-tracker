@@ -1,9 +1,9 @@
 ---
 phase: 05-recovery-distribution-and-release
-status: partial
+status: testing
 source: [05-01-SUMMARY.md, 05-02-SUMMARY.md, 05-03-SUMMARY.md, 05-04-SUMMARY.md, 05-05-SUMMARY.md, 05-06-SUMMARY.md, 05-07-SUMMARY.md, 05-VERIFICATION.md]
 started: 2026-08-26T16:12:50Z
-updated: 2026-08-26T16:29:00Z
+updated: 2026-08-27T03:30:00Z
 source_code_head: 52c4fb57a0f360c09168d1ea934b8785425e6337
 candidate_commit: null
 candidate_run: null
@@ -30,15 +30,13 @@ name: Produce and exercise the exact private candidate
 expected: |
   One signed APK/AAB build produces a canonical manifest and a complete
   candidate-bound automated evidence aggregate with no post-manifest rebuild.
-awaiting: release repository, environment, and signing prerequisites
+awaiting: candidate workflow dispatch and environment approval
 
 ## Tests
 
 ### 1. Produce and exercise the exact private candidate
 expected: One build produces retained signed APK/AAB bytes, a verified manifest, and the complete automated matrix bound to those exact bytes.
-result: blocked
-blocked_by: release-build
-reason: The configured GitHub repository is empty/public with no default branch, no Actions secrets, and no protected release environments; the four release-signing variables and a release keystore are also absent locally. No workflow was dispatched and no key was generated.
+result: [pending]
 
 ### 2. Complete the canonical attended ledger
 expected: Every Phase 2–5 row passes on the exact candidate with concrete immutable observations and attachments.
@@ -57,9 +55,9 @@ result: [pending]
 total: 4
 passed: 0
 issues: 0
-pending: 3
+pending: 4
 skipped: 0
-blocked: 1
+blocked: 0
 
 ## Gaps
 
@@ -88,17 +86,16 @@ blocked: 1
 - [x] Restore preview uses one supported Android list container and eight
   individually accessible, labelled native text facts. Exact native announcement
   order remains an attended observation, not a source claim.
-- [ ] Candidate commit is clean, pushed, and recorded above.
-- [ ] The protected candidate environment and all four release-signing secrets
+- [x] Candidate source snapshot is clean, pushed, and recorded above.
+- [x] The protected candidate environment and all four release-signing secrets
   are present.
 
-Readiness audit on 2026-08-26: `fchoo/gym-tracker` had no remote default
-branch, no Actions secrets, and no environments. Local
-`RELEASE_KEYSTORE_BASE64`, `RELEASE_KEYSTORE_PASSWORD`, `RELEASE_KEY_ALIAS`,
-and `RELEASE_KEY_PASSWORD` were unset and no release keystore was found. A
-release signing identity must be intentionally created or supplied and backed
-up; the repository's public initial push and environment protection rules also
-require owner authorization.
+Readiness audit on 2026-08-27: a sanitized public snapshot is on `main`; all four
+release environments exist with required owner review and `main` deployment
+policy; signing secrets are scoped to `private-release-candidate`; the release
+identity is stored under FileVault and in a separate AES-256 encrypted iCloud
+recovery image; and the dedicated `release-evidence` runner is registered but
+kept offline until attended evidence upload.
 
 ## 2. REL-03 and REL-04 — exact candidate and automated matrix
 

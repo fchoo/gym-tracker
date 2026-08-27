@@ -25,7 +25,7 @@ decision_coverage:
 human_verification:
   - test: "Build/sign and retain one private production APK/AAB candidate; immediately create/verify its manifest and run the exact-candidate automated matrix."
     expected: "The single retained candidate has matching raw/inner hashes and candidate-bound source, Maestro, benchmark, and native aggregate evidence."
-    why_human: "The release readiness audit found no configured signing secrets, protected environments, remote default branch, or local release keystore; no build, install, emulator, or device action was attempted."
+    why_human: "Release prerequisites are provisioned, but the protected candidate workflow has not yet been dispatched or approved; no build, install, emulator, or device result exists yet."
   - test: "Complete every canonical attended row on the exact candidate: airplane, process death, notifications, clean restore, adaptive/rotation, 200% text, keyboard/D-pad/focus, reduced motion/non-color, assistive tech, performance, design, and physical Argon2 calibration."
     expected: "Every row is passed with concrete immutable observations/attachments bound to the candidate identity."
     why_human: "Physical, assistive, visual, notification, and performance observations require attendance."
@@ -149,7 +149,7 @@ No trackable decisions were reported by the non-blocking CONTEXT decision-covera
 
 **Expected:** One retained candidate identity with matching raw/inner SHA-256 hashes and candidate-bound source, Maestro, benchmark, and aggregate native evidence.
 
-**Why human:** The release readiness audit found no configured signing secrets, protected environments, remote default branch, or local release keystore. No workflow was dispatched, and generating or supplying the long-lived release identity plus authorizing the first public push requires the owner.
+**Why human:** Release prerequisites are provisioned, but the protected workflow must still be dispatched and approved before GitHub can produce, install, and exercise the one retained candidate.
 
 ### 2. Complete the canonical attended ledger
 
@@ -184,7 +184,7 @@ No trackable decisions were reported by the non-blocking CONTEXT decision-covera
 **Verification approach:** Goal-backward re-verification of the prior report, UI lifecycle commits `ceb4339`/`d433c09`/`798aa70`/`d6f5cad`, semantics fix `8ac43a9`, release repair `c21ba79`, live code, workflows, and changed focused tests.
 **Automated checks:** Full source gate passed 134 suites and 2,348 tests; 93 changed-scope tests passed; all 83 integrity-critical files passed at 100%.
 **Human checks required:** 4 final-gate items.
-**Candidate/device actions:** Not executed; release repository/environment/signing prerequisites are absent.
+**Candidate/device actions:** Not executed yet; release repository/environment/signing prerequisites are provisioned.
 **Worktree note:** Pre-existing untracked .gsd and coverage directories were left untouched; only this report was added.
 
 ---

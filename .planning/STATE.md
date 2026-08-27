@@ -4,10 +4,10 @@ milestone: v1.0
 current_phase: 05
 current_phase_name: Recovery, Distribution, and Release
 status: executing
-stopped_at: Phase 5 source closure is clean; candidate dispatch blocked on release provisioning
-last_updated: "2026-08-26T16:29:00.000Z"
-last_activity: 2026-08-26
-last_activity_desc: Published a sanitized public source snapshot and prepared GitHub release provisioning
+stopped_at: GitHub release prerequisites provisioned; exact-candidate dispatch pending
+last_updated: "2026-08-27T03:30:00.000Z"
+last_activity: 2026-08-27
+last_activity_desc: Published a sanitized public source snapshot and provisioned release signing, environments, secrets, and an offline evidence runner
 progress:
   total_phases: 5
   completed_phases: 4
@@ -23,14 +23,14 @@ milestone_name: milestone
 See: `.planning/PROJECT.md` (updated 2026-08-17)
 
 **Core value:** Open today's workout, see trustworthy next targets, complete each working set with one primary action, recover safely from interruption, and understand exactly why the next target is recommended.
-**Current focus:** Provision the release signing identity and protected GitHub environments, authorize the first push to the empty public repository, then dispatch one exact candidate and continue through the single attended gate
+**Current focus:** Dispatch one exact candidate from the sanitized public `main`, approve its protected environment, monitor the automated matrix, then pause for the single attended gate
 
 ## Current Position
 
 Phase: 05 (Recovery, Distribution, and Release) — EXECUTING
 Plan: 05-07 source/automation preparation complete; exact-candidate attended execution pending
 Status: All 64 live plans are summarized and historical 02-35 is explicitly marked superseded by 05-07; Phase 5 remains in progress until REL-03 through REL-06 receive real candidate and attended evidence
-Last activity: 2026-08-26 — Closed the final source-level findings and verified release dispatch is blocked on missing remote/signing prerequisites
+Last activity: 2026-08-27 — Published sanitized public source and provisioned the protected GitHub release boundary
 
 Progress: 64/64 live plans summarized; Phase 5 is 7/7 source-preparation complete; final candidate/device/accessibility/design/owner verification remains pending
 
@@ -283,12 +283,12 @@ Full decisions live in `.planning/PROJECT.md`.
 ### Blockers/Concerns
 
 - Official Expo/React Native transitive audit advisories remain for security review; incompatible forced downgrades are not accepted.
-- Exact-candidate dispatch is blocked: `fchoo/gym-tracker` is an empty public
-  repository with no default branch, no Actions secrets, and no protected
-  release environments; no local release keystore or signing variables are
-  available. Do not generate a long-lived release key, publish the repository,
-  or dispatch the one candidate run without owner authorization and recoverable
-  key custody.
+- The original 600+ commit development history remains private because it
+  contains corporate author metadata and machine-specific paths. A verified
+  private bundle is retained locally; public `main` contains only the sanitized
+  source snapshot and release handoff.
+- The dedicated `release-evidence` runner is intentionally offline until the
+  attended evidence-upload step. It must never service pull-request jobs.
 
 ## Deferred Items
 
@@ -300,7 +300,7 @@ Full decisions live in `.planning/PROJECT.md`.
 
 ## Session Continuity
 
-Last session: 2026-08-26T16:29:00.000Z
-Stopped at: Phase 5 source closure is clean; candidate dispatch blocked on release provisioning
+Last session: 2026-08-27T03:30:00.000Z
+Stopped at: GitHub release prerequisites provisioned; exact-candidate dispatch pending
 Resume file: .planning/phases/05-recovery-distribution-and-release/05-UAT.md
-Next action: After the owner authorizes the first public push and supplies or creates a recoverably backed-up release signing identity plus protected environments, push the clean commit and dispatch the candidate workflow once. Complete the exact-candidate UAT, promote unchanged bytes, and execute `05-TERMINAL-SEAL.md` only as the literal final command.
+Next action: Dispatch the protected candidate workflow once from the recorded public commit, approve the environment, monitor the exact-candidate matrix, then complete the attended UAT before no-rebuild promotion and the literal final Terminal Seal command.
