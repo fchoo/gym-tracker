@@ -349,6 +349,20 @@ test("release workflows enforce one build, immediate manifest, exact command gra
     2,
   );
   assert.match(candidate, /run: sh scripts\/install-pinned-android-sdk\.sh/u);
+  assert.equal(
+    (pullRequest.match(/name: Enable KVM for Android emulator/gu) ?? []).length,
+    2,
+  );
+  assert.equal(
+    (candidate.match(/name: Enable KVM for Android emulator/gu) ?? []).length,
+    1,
+  );
+  for (const workflowSource of [pullRequest, candidate]) {
+    assert.match(workflowSource, /MODE="0666"[\s\S]*udevadm trigger --name-match=kvm[\s\S]*test -r \/dev\/kvm[\s\S]*test -w \/dev\/kvm/u);
+  }
+  assert.match(pullRequest, /native-and-smoke:[\s\S]*timeout-minutes: 75/u);
+  assert.match(pullRequest, /artifact-roundtrip:[\s\S]*timeout-minutes: 30/u);
+  assert.match(candidate, /timeout-minutes: 90/u);
   assert.doesNotMatch(pullRequest, /^\s*(?:yes\s*\|\s*)?sdkmanager\s/mu);
   assert.doesNotThrow(() => validatePhase5WorkflowContracts({ candidate, nightly }));
   assert.throws(() => validatePhase5WorkflowContracts({
