@@ -605,7 +605,7 @@ test("Phase 2 remediation flows use public labels and deterministic seams", asyn
   ]) {
     assert.match(workout, new RegExp(label.replace(/[.*+?^${}()|[\]\\]/gu, "\\$&"), "u"), label);
   }
-  const addWorkingSetVisibilityGuard = [
+  const initialAddWorkingSetVisibilityGuard = [
     "- scrollUntilVisible:",
     "    element:",
     '      text: "Add working set"',
@@ -613,18 +613,34 @@ test("Phase 2 remediation flows use public labels and deterministic seams", asyn
     "    centerElement: true",
   ].join("\n");
   assert.equal(
-    workout.split(addWorkingSetVisibilityGuard).length - 1,
-    2,
-    "Add working set must be scrolled into view before its initial assertion and retry-path tap",
+    workout.split(initialAddWorkingSetVisibilityGuard).length - 1,
+    1,
+    "the initial Add working set visibility proof remains unchanged",
   );
   assert.ok(
     workout.includes(
-      `${addWorkingSetVisibilityGuard}\n- assertVisible: "Add working set"`,
+      `${initialAddWorkingSetVisibilityGuard}\n- assertVisible: "Add working set"`,
     ),
   );
+  const retriedAddWorkingSetVisibilityGuard = [
+    "- repeat:",
+    "    times: 12",
+    "    while:",
+    '      notVisible: "Add working set"',
+    "    commands:",
+    "      - swipe:",
+    "          start: 95%, 75%",
+    "          end: 95%, 25%",
+    "          duration: 300",
+  ].join("\n");
+  assert.equal(
+    workout.split(retriedAddWorkingSetVisibilityGuard).length - 1,
+    1,
+    "the post-restart Add working set action must use bounded right-edge swipes",
+  );
   assert.ok(
     workout.includes(
-      `${addWorkingSetVisibilityGuard}\n- tapOn: "Add working set"`,
+      `${retriedAddWorkingSetVisibilityGuard}\n- assertVisible: "Add working set"\n- tapOn: "Add working set"`,
     ),
   );
   assert.match(workout, /assertNotVisible: "Excluded from records and progression"/u);
