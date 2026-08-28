@@ -671,7 +671,40 @@ test("Phase 2 remediation flows use public labels and deterministic seams", asyn
     workout,
     /clearState: false[\s\S]*text: "Warm-up 3 of 3\.\*"[\s\S]*- assertVisible: "Warm-up was not added"\n- assertNotVisible:\n    text: "Warm-up 4 of \.\*"\n- tapOn: "Retry copy warm-up"\n- assertVisible: "Warm-up W4 added and focused"/u,
   );
-  assert.match(workout, /clearState: false[\s\S]*text: "Warm-up 4 of 4\.\*"/u);
+  const boundedWarmupFourTraversal = [
+    "- repeat:",
+    "    times: 12",
+    "    while:",
+    '      notVisible: "Warm-up 4 of 4.*"',
+    "    commands:",
+    "      - swipe:",
+    "          start: 95%, 75%",
+    "          end: 95%, 25%",
+    "          duration: 300",
+    '- assertVisible: "Warm-up 4 of 4.*"',
+  ].join("\n");
+  const postCopyWarmupRestartContract = [
+    '- assertVisible: "Warm-up W4 added and focused"',
+    "- stopApp",
+    "- launchApp:",
+    "    clearState: false",
+    "    stopApp: true",
+    "    permissions:",
+    "      notifications: deny",
+    '- assertVisible: "Today"',
+    "- extendedWaitUntil:",
+    '    visible: "Resume workout"',
+    "    timeout: 90000",
+    '- tapOn: "Resume workout"',
+    boundedWarmupFourTraversal,
+    "- assertNotVisible:",
+    '    text: "Warm-up 5 of .*"',
+  ].join("\n");
+  assert.equal(
+    workout.split(postCopyWarmupRestartContract).length - 1,
+    1,
+    "post-copy restart must wait for Today, reopen the workout, and immediately reveal persisted warm-up W4 with bounded right-edge swipes",
+  );
   assert.match(workout, /text: "Warm-up 5 of \.\*"/u);
   const boundedWorkingSetFourTraversal = [
     "- repeat:",
