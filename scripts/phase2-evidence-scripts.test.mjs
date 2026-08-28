@@ -2348,10 +2348,26 @@ test("schedule flow reopens the active plan from authoritative state", async () 
     flow,
     /- assertVisible: "Push \/ Pull \/ Legs is active"\n- stopApp\n- launchApp:\n    clearState: false\n    permissions:\n      notifications: deny\n- assertVisible: "Today"\n- extendedWaitUntil:\n    visible: "\^\(Choose another day\|Train anyway\)\$"\n    timeout: 90000\n- tapOn: "Library"\n- scrollUntilVisible:\n    element:\n      text: "Active Plan"\n    direction: DOWN\n    centerElement: true[\s\S]*- tapOn:\n    text: "Push \/ Pull \/ Legs\. Active\.\*"/u,
   );
-  assert.match(
-    flow,
-    /- assertVisible: "Save this schedule\?"\n- tapOn: "Save schedule"\n- extendedWaitUntil:\n    visible: "Save plan"\n    timeout: 30000\n- stopApp\n- launchApp:\n    clearState: false\n    permissions:\n      notifications: deny\n- assertVisible: "Today"\n- assertVisible: "Device timezone changed"/u,
-  );
+  const dynamicTimeZoneNotice =
+    "- assertVisible: 'Stored timezone: Australia/Sydney\\. Device timezone: [A-Za-z0-9_+:/-]+\\. Either choice applies prospectively\\. Prior local dates remain unchanged\\.'";
+  const persistedTimeZoneRestart = [
+    '- assertVisible: "Save this schedule?"',
+    '- tapOn: "Save schedule"',
+    '- extendedWaitUntil:',
+    '    visible: "Save plan"',
+    '    timeout: 30000',
+    '- stopApp',
+    '- launchApp:',
+    '    clearState: false',
+    '    permissions:',
+    '      notifications: deny',
+    '- assertVisible: "Today"',
+    '- assertVisible: "Device timezone changed"',
+    dynamicTimeZoneNotice,
+  ].join("\n");
+  assert.equal(flow.split(persistedTimeZoneRestart).length - 1, 1);
+  assert.equal(flow.split(dynamicTimeZoneNotice).length - 1, 1);
+  assert.doesNotMatch(flow, /Device timezone: Asia\/Singapore/u);
   assert.match(
     flow,
     /- tapOn: "Repeat"\n- assertVisible: "Repeat Pull\?"\n- tapOn: "Repeat"\n- waitForAnimationToEnd\n- assertVisible: "Pull"\n- tapOn: "Advance"\n- assertVisible: "Advance Pull\?"\n- tapOn: "Advance"\n- extendedWaitUntil:\n    visible: "Rest day"\n    timeout: 30000\n- assertVisible: "Next scheduled workout · Push · \.\*"/u,

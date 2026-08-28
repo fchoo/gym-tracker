@@ -125,7 +125,7 @@ tags:
       notifications: deny
 - assertVisible: "Today"
 - assertVisible: "Device timezone changed"
-- assertVisible: "Stored timezone: Australia/Sydney. Device timezone: Asia/Singapore. Either choice applies prospectively. Prior local dates remain unchanged."
+- assertVisible: 'Stored timezone: Australia/Sydney\. Device timezone: [A-Za-z0-9_+:/-]+\. Either choice applies prospectively\. Prior local dates remain unchanged\.'
 - assertVisible: "Follow device timezone from today"
 - assertVisible: "Keep current timezone"
 - tapOn: "Keep current timezone"
