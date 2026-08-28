@@ -238,7 +238,7 @@ tags:
     direction: DOWN
     centerElement: true
 - repeat:
-    times: 48
+    times: 64
     while:
       notVisible: "Review current values"
     commands:
