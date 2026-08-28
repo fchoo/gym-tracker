@@ -2557,7 +2557,7 @@ test("plan impact flow reaches replacement scope and impact without assuming cat
   );
   assert.match(
     flow,
-    /text: "Exercise impact"\n    direction: DOWN\n    centerElement: true\n- repeat:\n    times: 48\n    while:\n      notVisible: "Review current values"\n    commands:\n      - swipe:\n          start: 50%, 75%\n          end: 50%, 25%\n          duration: 300\n- assertVisible: "Review current values"\n- scrollUntilVisible:\n    element:\n      text: "Compatibility does not mean historical comparability\. Existing sessions and snapshots are unchanged\."\n    direction: DOWN\n- assertVisible: "Compatibility does not mean historical comparability\. Existing sessions and snapshots are unchanged\."/u,
+    /text: "Exercise impact"\n    direction: DOWN\n    centerElement: true\n- repeat:\n    times: 64\n    while:\n      notVisible: "Review current values"\n    commands:\n      - swipe:\n          start: 50%, 75%\n          end: 50%, 25%\n          duration: 300\n- assertVisible: "Review current values"\n- scrollUntilVisible:\n    element:\n      text: "Compatibility does not mean historical comparability\. Existing sessions and snapshots are unchanged\."\n    direction: DOWN\n- assertVisible: "Compatibility does not mean historical comparability\. Existing sessions and snapshots are unchanged\."/u,
   );
   assert.match(
     flow,
