@@ -622,6 +622,12 @@ test("Phase 2 remediation flows use public labels and deterministic seams", asyn
       `${initialAddWorkingSetVisibilityGuard}\n- assertVisible: "Add working set"`,
     ),
   );
+  const safeActionNudge = [
+    "- swipe:",
+    "    start: 95%, 75%",
+    "    end: 95%, 45%",
+    "    duration: 300",
+  ].join("\n");
   const retriedAddWorkingSetVisibilityGuard = [
     "- repeat:",
     "    times: 12",
@@ -640,8 +646,53 @@ test("Phase 2 remediation flows use public labels and deterministic seams", asyn
   );
   assert.ok(
     workout.includes(
-      `${retriedAddWorkingSetVisibilityGuard}\n- assertVisible: "Add working set"\n- tapOn: "Add working set"`,
+      `${retriedAddWorkingSetVisibilityGuard}\n${safeActionNudge}\n- assertVisible: "Add working set"\n- tapOn: "Add working set"`,
     ),
+    "the post-restart add action must be nudged above the system-navigation boundary before tapping",
+  );
+  const boundedRetryAddWorkingSetTraversal = [
+    "- repeat:",
+    "    times: 4",
+    "    while:",
+    '      notVisible: "Retry add working set"',
+    "    commands:",
+    "      - swipe:",
+    "          start: 95%, 75%",
+    "          end: 95%, 45%",
+    "          duration: 300",
+  ].join("\n");
+  assert.ok(
+    workout.includes(
+      `- tapOn: "Add working set"\n- assertNotVisible:\n    text: "Working set 4 of .*"\n${boundedRetryAddWorkingSetTraversal}\n${safeActionNudge}\n- assertVisible: "Retry add working set"\n- tapOn: "Retry add working set"\n- assertVisible: "Working set 4 added and focused"`,
+    ),
+    "the absent new row and safely positioned retry action must prove failure and recovery without relying on clipped notice copy",
+  );
+  assert.doesNotMatch(
+    workout,
+    /- tapOn: "Add working set"\n- assertVisible: "Working set was not added"/u,
+  );
+  const safeReturnToTodayTraversal = [
+    "- repeat:",
+    "    times: 12",
+    "    while:",
+    '      notVisible: "Return to Today"',
+    "    commands:",
+    "      - swipe:",
+    "          start: 95%, 75%",
+    "          end: 95%, 25%",
+    "          duration: 300",
+    safeActionNudge,
+    '- assertVisible: "Return to Today"',
+    '- tapOn: "Return to Today"',
+  ].join("\n");
+  assert.equal(
+    workout.split(safeReturnToTodayTraversal).length - 1,
+    4,
+    "every test-control return must use bounded discovery and a final safe-viewport nudge",
+  );
+  assert.doesNotMatch(
+    workout,
+    /- scrollUntilVisible:\n    element:\n      text: "Return to Today"/u,
   );
   assert.match(workout, /assertNotVisible: "Excluded from records and progression"/u);
   assert.doesNotMatch(workout, /Undo completed set[^\n]*tapOn|tapOn: "Undo completed set"/u);
@@ -749,11 +800,37 @@ test("Phase 2 remediation flows use public labels and deterministic seams", asyn
   );
   assert.match(
     workout,
-    /- longPressOn: "Working set 1 load in kilograms"\n- tapOn:\n    text: "Select all"\n    optional: true\n- eraseText: 32\n- inputText: "62\.5"\n- hideKeyboard\n- repeat:\n    times: 4\n    while:\n      notVisible: "Save correction for completed set 1"\n    commands:\n      - swipe:\n          start: 95%, 75%\n          end: 95%, 45%\n          duration: 300\n- assertVisible: "Save correction for completed set 1"\n- tapOn: "Save correction for completed set 1"/u,
+    /- tapOn: "Edit completed set 1"\n- assertVisible: "Working set 1 load in kilograms"\n- longPressOn: "Working set 1 load in kilograms"\n- tapOn:\n    text: "Select all"\n    optional: true\n- eraseText: 32\n- inputText: "62\.5"\n- hideKeyboard\n- repeat:\n    times: 4\n    while:\n      notVisible: "Save correction for completed set 1"\n    commands:\n      - swipe:\n          start: 95%, 75%\n          end: 95%, 45%\n          duration: 300\n- assertVisible: "Save correction for completed set 1"\n- tapOn: "Save correction for completed set 1"/u,
+  );
+  assert.doesNotMatch(
+    workout,
+    /notVisible: "Save correction for completed set 1"[\s\S]*?duration: 300\n- swipe:\n    start: 95%, 75%\n    end: 95%, 45%\n    duration: 300\n- assertVisible: "Save correction for completed set 1"/u,
+  );
+  const boundedCorrectionFailureReveal = [
+    '- tapOn: "Save correction for completed set 1"',
+    "- repeat:",
+    "    times: 4",
+    "    while:",
+    '      notVisible: "Correction was not saved. Retry the correction."',
+    "    commands:",
+    "      - swipe:",
+    "          start: 95%, 25%",
+    "          end: 95%, 75%",
+    "          duration: 300",
+    '- assertVisible: "Correction was not saved. Retry the correction."',
+  ].join("\n");
+  assert.equal(
+    workout.split(boundedCorrectionFailureReveal).length - 1,
+    1,
+    "the failed correction must reveal its row-local error above the sticky header before asserting it",
+  );
+  assert.doesNotMatch(
+    workout,
+    /- tapOn: "Save correction for completed set 1"\n- assertVisible: "Correction was not saved\. Retry the correction\."/u,
   );
   assert.match(
     workout,
-    /- assertVisible: "Correction was not saved\. Retry the correction\."[\s\S]*- assertVisible: "Working set 4 of 4\.\*"\n- repeat:\n    times: 4\n    while:\n      notVisible: "Retry completed set correction"\n    commands:\n      - swipe:\n          start: 95%, 75%\n          end: 95%, 45%\n          duration: 300\n- assertVisible: "Retry completed set correction"\n- tapOn: "Retry completed set correction"[\s\S]*text: "Working set 1 correction saved"\n    direction: UP\n    centerElement: true\n    timeout: 60000/u,
+    /- assertVisible: "Correction was not saved\. Retry the correction\."[\s\S]*- assertVisible: "Working set 4 of 4\.\*"\n- repeat:\n    times: 4\n    while:\n      notVisible: "Retry completed set correction"\n    commands:\n      - swipe:\n          start: 95%, 75%\n          end: 95%, 45%\n          duration: 300\n- swipe:\n    start: 95%, 75%\n    end: 95%, 45%\n    duration: 300\n- assertVisible: "Retry completed set correction"\n- tapOn: "Retry completed set correction"[\s\S]*text: "Working set 1 correction saved"\n    direction: UP\n    centerElement: true\n    timeout: 60000/u,
   );
   assert.match(
     workout,
@@ -761,7 +838,7 @@ test("Phase 2 remediation flows use public labels and deterministic seams", asyn
   );
   assert.match(
     workout,
-    /- tapOn: "Resume workout"\n- repeat:\n    times: 12\n    while:\n      notVisible: "Edit completed set 1"\n    commands:\n      - swipe:\n          start: 95%, 75%\n          end: 95%, 25%\n          duration: 300\n- assertVisible: "Edit completed set 1"\n- tapOn: "Edit completed set 1"/u,
+    /- tapOn: "Resume workout"\n- repeat:\n    times: 12\n    while:\n      notVisible: "Edit completed set 1"\n    commands:\n      - swipe:\n          start: 95%, 75%\n          end: 95%, 25%\n          duration: 300\n- swipe:\n    start: 95%, 75%\n    end: 95%, 45%\n    duration: 300\n- assertVisible: "Edit completed set 1"\n- tapOn: "Edit completed set 1"\n- assertVisible: "Working set 1 load in kilograms"\n- longPressOn: "Working set 1 load in kilograms"/u,
   );
   const correctedWorkingSetVerification = [
     "- repeat:",
@@ -2573,6 +2650,22 @@ test("notification control flows reveal Return to Today before tapping it", asyn
     "    direction: DOWN",
     "    centerElement: true",
   ];
+  const boundedReturnPattern = [
+    "- repeat:",
+    "    times: 12",
+    "    while:",
+    '      notVisible: "Return to Today"',
+    "    commands:",
+    "      - swipe:",
+    "          start: 95%, 75%",
+    "          end: 95%, 25%",
+    "          duration: 300",
+    "- swipe:",
+    "    start: 95%, 75%",
+    "    end: 95%, 45%",
+    "    duration: 300",
+    '- assertVisible: "Return to Today"',
+  ];
 
   for (const relativePath of await maestroYamlPaths()) {
     const lines = (await readFile(path.join(projectRoot, relativePath), "utf8"))
@@ -2582,9 +2675,15 @@ test("notification control flows reveal Return to Today before tapping it", asyn
       if (line.startsWith(notificationRoutePrefix)) {
         notificationRouteOpen = true;
       } else if (notificationRouteOpen && returnTapPattern.test(line)) {
-        assert.deepEqual(
-          lines.slice(index - guardedReturnPattern.length, index),
-          guardedReturnPattern,
+        const hasCenteredGuard = lines
+          .slice(index - guardedReturnPattern.length, index)
+          .every((candidate, offset) => candidate === guardedReturnPattern[offset]);
+        const hasBoundedGuard = lines
+          .slice(index - boundedReturnPattern.length, index)
+          .every((candidate, offset) => candidate === boundedReturnPattern[offset]);
+        assert.equal(
+          hasCenteredGuard || hasBoundedGuard,
+          true,
           relativePath + ":" + (index + 1),
         );
         notificationRouteOpen = false;
