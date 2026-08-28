@@ -2425,6 +2425,25 @@ test("Library exercise flow reveals the first working-set action with bounded sw
   );
 });
 
+test("denied notification flow reveals the first set action with bounded swipes", async () => {
+  const flow = await readFile(
+    path.join(
+      projectRoot,
+      "maestro/smoke/phase1-denied-late-notifications.yaml",
+    ),
+    "utf8",
+  );
+
+  assert.match(
+    flow,
+    /- runFlow: "\.\.\/subflows\/phase1-start-full-body-a\.yaml"\n- repeat:\n    times: 12\n    while:\n      notVisible: "Complete Set 1"\n    commands:\n      - swipe:\n          start: 95%, 75%\n          end: 95%, 25%\n          duration: 300\n- assertVisible: "Complete Set 1"\n- tapOn: "Complete Set 1"/u,
+  );
+  assert.doesNotMatch(
+    flow,
+    /- scrollUntilVisible:\n    element:\n      text: "Complete Set 1"/u,
+  );
+});
+
 test("every Maestro rest control is expanded in its current mounted dock", async () => {
   const controlPattern = /- tapOn: "(Skip rest|Pause rest|Resume rest)"/gu;
   const resetPattern = /- (?:launchApp:|stopApp|killApp|tapOn: "Complete Set \d+")/u;
