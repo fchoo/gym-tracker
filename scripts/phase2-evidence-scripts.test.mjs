@@ -2644,19 +2644,61 @@ test("starter restart opens alternate day on scheduled and rest days", async () 
   );
 });
 
-test("rest alert remediation follows authoritative expiry and active-set labels", async () => {
+test("rest alert remediation waits for committed rest transitions and uses bounded active-set traversal", async () => {
   const flow = await readFile(
     path.join(projectRoot, "maestro/phase2/remediation-rest-alerts.yaml"),
     "utf8",
   );
+  const boundedSetTraversal = (setNumber) => [
+    "- repeat:",
+    "    times: 12",
+    "    while:",
+    `      notVisible: "Complete Set ${setNumber}"`,
+    "    commands:",
+    "      - swipe:",
+    "          start: 95%, 75%",
+    "          end: 95%, 25%",
+    "          duration: 300",
+    `- assertVisible: "Complete Set ${setNumber}"`,
+  ].join("\n");
 
-  assert.match(
-    flow,
-    /- runFlow: "\.\.\/subflows\/phase1-start-full-body-a\.yaml"\n- scrollUntilVisible:\n    element:\n      text: "Complete Set 1"\n    direction: DOWN\n    centerElement: true\n    timeout: 60000\n- tapOn: "Complete Set 1"/u,
+  assert.ok(
+    flow.includes(
+      [
+        '- runFlow: "../subflows/phase1-start-full-body-a.yaml"',
+        boundedSetTraversal(1),
+        '- tapOn: "Complete Set 1"',
+      ].join("\n"),
+    ),
   );
-  assert.match(
+  assert.ok(
+    flow.includes(
+      [
+        '- tapOn: "Resume workout"',
+        '- assertVisible: "Rest ended"',
+        '- tapOn: "Dismiss rest notice"',
+        "- extendedWaitUntil:",
+        '    notVisible: "Dismiss rest notice"',
+        "    timeout: 60000",
+        boundedSetTraversal(2),
+        '- tapOn: "Complete Set 2"',
+      ].join("\n"),
+    ),
+  );
+  assert.ok(
+    flow.includes(
+      [
+        '- tapOn: "Skip rest"',
+        "- extendedWaitUntil:",
+        '    notVisible: "Skip rest"',
+        "    timeout: 60000",
+        boundedSetTraversal(3),
+      ].join("\n"),
+    ),
+  );
+  assert.doesNotMatch(
     flow,
-    /- tapOn: "Resume workout"\n- assertVisible: "Rest ended"\n- tapOn: "Dismiss rest notice"\n- scrollUntilVisible:\n    element:\n      text: "Complete Set 2"\n    direction: DOWN\n    centerElement: true\n    timeout: 60000/u,
+    /- scrollUntilVisible:\n    element:\n      text: "Complete Set [123]"/u,
   );
   assert.match(
     flow,
