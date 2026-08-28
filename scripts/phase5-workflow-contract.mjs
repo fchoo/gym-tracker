@@ -19,8 +19,122 @@ export function validateWorkflowDispatchInputSafety(source) {
   }
 }
 
+function validateDeploymentProvenanceContract(source) {
+  const required = [
+    /permissions:[\s\S]*deployments:\s*read/iu,
+    /set -euo pipefail/u,
+    /verify_deployment_provenance\(\)/u,
+    /gh api --method GET --paginate --slurp[\s\S]*\/deployments/iu,
+    /\.sha == \$commit[\s\S]*\.ref == \$ref[\s\S]*\.environment == \$environment/iu,
+    /\.original_environment == \$environment/iu,
+    /\.performed_via_github_app\.slug == "github-actions"/iu,
+    /\.statuses_url ==/iu,
+    /sort_by\(\[\.created_at, \.id\]\) \| last/iu,
+    /\.state == "success"/iu,
+    /\.environment_url == \$run_url/iu,
+    /\.deployment_url == \$deployment_url/iu,
+    /actions\/jobs\/\$\{job_id\}/u,
+    /\.run_id == \$run_id[\s\S]*\.run_attempt == \$run_attempt/iu,
+    /\.head_sha == \$commit[\s\S]*\.status == "completed"[\s\S]*\.conclusion == "success"[\s\S]*\.html_url == \$html_url/iu,
+    /test "\$\{matched\}" -eq 1/u,
+    /actions\/runs\/\$\{[A-Z_]+\}\/artifacts[\s\S]*-F per_page=100/iu,
+    /\.workflow_run\.id == \$run_id[\s\S]*\.workflow_run\.head_sha == \$commit/iu,
+    /\.id == \$run_id and \.status == "completed" and \.conclusion == "success"[\s\S]*\.html_url == \$run_url[\s\S]*\.head_sha == \$commit[\s\S]*\.head_branch == "main"/iu,
+  ];
+  if (required.some((pattern) => !pattern.test(source))) {
+    throw new Error("workflow deployment provenance is incomplete.");
+  }
+  if (/actions\/runs\/\$\{[A-Z_]+\}\/jobs|\.jobs\s*\|\s*any\(\.environment\.name/iu.test(source)) {
+    throw new Error("workflow cannot infer environment provenance from the jobs list.");
+  }
+}
+
+function boundedSourceBlock(source, startMarker, endMarker, label) {
+  if (source.split(startMarker).length - 1 !== 1) {
+    throw new Error(`${label} must appear exactly once.`);
+  }
+  const start = source.indexOf(startMarker);
+  const end = source.indexOf(endMarker, start);
+  if (end < 0) {
+    throw new Error(`${label} is incomplete.`);
+  }
+  return source.slice(start, end + endMarker.length);
+}
+
+function validateSelectedRunContract(source, {
+  runIdVariable, runJsonVariable, runUrlVariable, workflowPath,
+  attemptVariable, refVariable, environment,
+}) {
+  const runUrlAssignment = `${runUrlVariable}="\${GITHUB_SERVER_URL}/\${GITHUB_REPOSITORY}/actions/runs/\${${runIdVariable}}"`;
+  if (!source.includes(runUrlAssignment)) {
+    throw new Error(`${runJsonVariable} must bind its exact Actions run URL.`);
+  }
+  const block = boundedSourceBlock(
+    source,
+    `jq -e --argjson run_id "\${${runIdVariable}}" --arg run_url "\${${runUrlVariable}}"`,
+    `<<<"\${${runJsonVariable}}" >/dev/null`,
+    `${runJsonVariable} validation`,
+  );
+  for (const predicate of [
+    '.id == $run_id',
+    '.status == "completed"',
+    '.conclusion == "success"',
+    '.html_url == $run_url',
+    '.head_sha == $commit',
+    '.head_branch == "main"',
+    '.repository.full_name == $repo',
+    '.event == "workflow_dispatch"',
+    `.path == "${workflowPath}"`,
+  ]) {
+    if (!block.includes(predicate)) {
+      throw new Error(`${runJsonVariable} provenance is missing ${predicate}.`);
+    }
+  }
+  for (const assignment of [
+    `${attemptVariable}=\$(jq -er '.run_attempt | select(type == "number" and . >= 1)' <<<"\${${runJsonVariable}}")`,
+    `${refVariable}=\$(jq -er '.head_branch | select(type == "string" and length > 0)' <<<"\${${runJsonVariable}}")`,
+  ]) {
+    if (!source.includes(assignment.replace('\\$', '$'))) {
+      throw new Error(`${runJsonVariable} attempt or ref binding is incomplete.`);
+    }
+  }
+  const call = `verify_deployment_provenance "\${${runIdVariable}}" "\${${attemptVariable}}" "\${CANDIDATE_COMMIT}" "\${${refVariable}}" "${environment}"`;
+  if (!source.includes(call)) {
+    throw new Error(`${runJsonVariable} protected-environment binding is incomplete.`);
+  }
+}
+
+function validateSelectedArtifactContract(source, {
+  runIdVariable, artifactPagesVariable, expectedName,
+}) {
+  const api = `repos/\${GITHUB_REPOSITORY}/actions/runs/\${${runIdVariable}}/artifacts`;
+  if (!source.includes(api)) {
+    throw new Error(`${artifactPagesVariable} must come from the selected run.`);
+  }
+  const block = boundedSourceBlock(
+    source,
+    `jq -e --argjson run_id "\${${runIdVariable}}" --arg commit`,
+    `<<<"\${${artifactPagesVariable}}" >/dev/null`,
+    `${artifactPagesVariable} validation`,
+  );
+  for (const predicate of [
+    `.name == ${expectedName}`,
+    '.expired == false',
+    '.workflow_run.id == $run_id',
+    '.workflow_run.head_sha == $commit',
+    '| length == 1',
+  ]) {
+    if (!block.includes(predicate)) {
+      throw new Error(`${artifactPagesVariable} provenance is missing ${predicate}.`);
+    }
+  }
+}
+
 export function validatePhase5WorkflowContracts({ candidate, nightly }) {
   validateWorkflowDispatchInputSafety(candidate);
+  if (!/environment:[\s\S]*name:\s*private-release-candidate[\s\S]*url:\s*\$\{\{ github\.server_url \}\}\/\$\{\{ github\.repository \}\}\/actions\/runs\/\$\{\{ github\.run_id \}\}/u.test(candidate)) {
+    throw new Error("Phase 5 candidate environment must publish its exact Actions run URL.");
+  }
   const executable = candidate.match(
     /^\s*(?:\.\/scripts\/build-release-candidate-once\.sh|(?:npx\s+)?expo\s+prebuild|.*gradlew.*|eas\s+build).*$/gmu,
   ) ?? [];
@@ -67,11 +181,32 @@ export function validatePhase5WorkflowContracts({ candidate, nightly }) {
 
 export function validateAttendedEvidenceWorkflowContract(source) {
   validateWorkflowDispatchInputSafety(source);
+  validateDeploymentProvenanceContract(source);
+  validateSelectedRunContract(source, {
+    runIdVariable: "CANDIDATE_RUN_ID", runJsonVariable: "candidate_run",
+    runUrlVariable: "candidate_run_url", workflowPath: ".github/workflows/release-candidate.yml",
+    attemptVariable: "candidate_run_attempt", refVariable: "candidate_ref",
+    environment: "private-release-candidate",
+  });
+  validateSelectedRunContract(source, {
+    runIdVariable: "OBSERVATIONS_RUN_ID", runJsonVariable: "observations_run",
+    runUrlVariable: "observations_run_url", workflowPath: ".github/workflows/release-human-evidence-upload.yml",
+    attemptVariable: "observations_run_attempt", refVariable: "observations_ref",
+    environment: "private-release-observation-upload",
+  });
+  validateSelectedArtifactContract(source, {
+    runIdVariable: "CANDIDATE_RUN_ID", artifactPagesVariable: "candidate_artifacts",
+    expectedName: '$name',
+  });
+  validateSelectedArtifactContract(source, {
+    runIdVariable: "OBSERVATIONS_RUN_ID", artifactPagesVariable: "observations_artifacts",
+    expectedName: '$name',
+  });
   for (const pattern of [
     /workflow_dispatch:/u,
     /candidate_run_id:/u,
-    /permissions:[\s\S]*actions:\s*read[\s\S]*contents:\s*read[\s\S]*id-token:\s*none/iu,
-    /environment:\s*private-release-attended/u,
+    /permissions:[\s\S]*actions:\s*read[\s\S]*contents:\s*read[\s\S]*deployments:\s*read[\s\S]*id-token:\s*none/iu,
+    /environment:[\s\S]*name:\s*private-release-attended[\s\S]*url:\s*\$\{\{ github\.server_url \}\}\/\$\{\{ github\.repository \}\}\/actions\/runs\/\$\{\{ github\.run_id \}\}/u,
     /permissions:[\s\S]*actions:\s*read[\s\S]*contents:\s*read/iu,
     /release-candidate\.yml/iu,
     /workflow_dispatch/iu,
@@ -104,10 +239,21 @@ export function validateAttendedEvidenceWorkflowContract(source) {
 
 export function validateHumanEvidenceUploadWorkflowContract(source) {
   validateWorkflowDispatchInputSafety(source);
+  validateDeploymentProvenanceContract(source);
+  validateSelectedRunContract(source, {
+    runIdVariable: "CANDIDATE_RUN_ID", runJsonVariable: "candidate_run",
+    runUrlVariable: "candidate_run_url", workflowPath: ".github/workflows/release-candidate.yml",
+    attemptVariable: "candidate_run_attempt", refVariable: "candidate_ref",
+    environment: "private-release-candidate",
+  });
+  validateSelectedArtifactContract(source, {
+    runIdVariable: "CANDIDATE_RUN_ID", artifactPagesVariable: "candidate_artifacts",
+    expectedName: '$name',
+  });
   for (const pattern of [
     /workflow_dispatch:/u,
     /runs-on:\s*\[self-hosted, release-evidence\]/u,
-    /environment:\s*private-release-observation-upload/u,
+    /environment:[\s\S]*name:\s*private-release-observation-upload[\s\S]*url:\s*\$\{\{ github\.server_url \}\}\/\$\{\{ github\.repository \}\}\/actions\/runs\/\$\{\{ github\.run_id \}\}/u,
     /OBSERVATIONS_PATH:\s*\$\{\{ inputs\.observations_path \}\}/u,
     /ATTACHMENTS_PATH:\s*\$\{\{ inputs\.attachments_path \}\}/u,
     /EVIDENCE_ROOT:\s*\$\{\{ vars\.PHASE5_EVIDENCE_ROOT \}\}/u,

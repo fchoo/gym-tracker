@@ -27,6 +27,7 @@ on:
 permissions:
   actions: read
   contents: read
+  deployments: read
   id-token: none
 
 concurrency:
@@ -46,27 +47,132 @@ jobs:
     name: Upload existing human-authored observations and attachments
     runs-on: [self-hosted, release-evidence]
     timeout-minutes: 10
-    environment: private-release-observation-upload
+    environment:
+      name: private-release-observation-upload
+      url: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
     steps:
       - name: Validate candidate provenance with trusted inline shell
         env:
           GH_TOKEN: ${{ github.token }}
           EVIDENCE_ROOT: ${{ vars.PHASE5_EVIDENCE_ROOT }}
         run: |
+          set -euo pipefail
           case "${CANDIDATE_RUN_ID}" in ''|*[!0-9]*) exit 1 ;; esac
           case "${CANDIDATE_ID}" in ''|*[!a-z0-9-]*|-*|*-) exit 1 ;; esac
           case "${CANDIDATE_COMMIT}" in *[!a-f0-9]*) exit 1 ;; esac
           test "${#CANDIDATE_COMMIT}" -eq 40
           test -n "${EVIDENCE_ROOT}"
+          verify_deployment_provenance() {
+            local run_id="$1"
+            local run_attempt="$2"
+            local commit="$3"
+            local ref="$4"
+            local environment="$5"
+            local run_url="${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${run_id}"
+            local run_job_prefix="${run_url}/job/"
+            local deployments
+            local deployment_ids
+            local deployment_id
+            local expected_deployment_url
+            local statuses
+            local latest_status
+            local log_url
+            local job_id
+            local job
+            local matched=0
+            deployments=$(gh api --method GET --paginate --slurp \
+              "repos/${GITHUB_REPOSITORY}/deployments" \
+              -f sha="${commit}" -f ref="${ref}" -f environment="${environment}" \
+              -F per_page=100)
+            deployment_ids=$(jq -er \
+              --arg api_url "${GITHUB_API_URL}" --arg repo "${GITHUB_REPOSITORY}" \
+              --arg commit "${commit}" --arg ref "${ref}" --arg environment "${environment}" '
+              if all(.[]; type == "array") then
+                [.[][] | select(
+                  .sha == $commit
+                  and .ref == $ref
+                  and .environment == $environment
+                  and .original_environment == $environment
+                  and .performed_via_github_app.slug == "github-actions"
+                  and (.id | type == "number")
+                  and .statuses_url == ($api_url + "/repos/" + $repo + "/deployments/" + (.id | tostring) + "/statuses")
+                ) | .id]
+                | if length > 0 then .[] else error("no matching deployment") end
+              else error("malformed deployment pages") end
+            ' <<<"${deployments}")
+            while IFS= read -r deployment_id; do
+              case "${deployment_id}" in ''|*[!0-9]*) return 1 ;; esac
+              expected_deployment_url="${GITHUB_API_URL}/repos/${GITHUB_REPOSITORY}/deployments/${deployment_id}"
+              statuses=$(gh api --method GET --paginate --slurp \
+                "repos/${GITHUB_REPOSITORY}/deployments/${deployment_id}/statuses" \
+                -F per_page=100)
+              jq -e '
+                if all(.[]; type == "array") then
+                  [.[][]] as $statuses
+                  | if ($statuses | length) > 0
+                      and all($statuses[]; (.created_at | type == "string") and (.id | type == "number"))
+                    then true
+                    else error("missing or malformed deployment statuses")
+                    end
+                else error("malformed deployment status pages") end
+              ' <<<"${statuses}" >/dev/null
+              latest_status=$(jq -cer '[.[][]] | sort_by([.created_at, .id]) | last' <<<"${statuses}")
+              if ! log_url=$(jq -er \
+                --arg environment "${environment}" --arg run_url "${run_url}" \
+                --arg run_job_prefix "${run_job_prefix}" \
+                --arg deployment_url "${expected_deployment_url}" '
+                select(
+                  .state == "success"
+                  and .environment == $environment
+                  and .environment_url == $run_url
+                  and .deployment_url == $deployment_url
+                  and (.log_url | type == "string" and startswith($run_job_prefix))
+                ) | .log_url
+              ' <<<"${latest_status}"); then
+                continue
+              fi
+              job_id="${log_url#"${run_job_prefix}"}"
+              case "${job_id}" in ''|*[!0-9]*) continue ;; esac
+              job=$(gh api --method GET \
+                "repos/${GITHUB_REPOSITORY}/actions/jobs/${job_id}")
+              if jq -e --argjson job_id "${job_id}" --argjson run_id "${run_id}" \
+                --argjson run_attempt "${run_attempt}" --arg commit "${commit}" \
+                --arg html_url "${log_url}" '
+                .id == $job_id
+                  and .run_id == $run_id
+                  and .run_attempt == $run_attempt
+                  and .head_sha == $commit
+                  and .status == "completed"
+                  and .conclusion == "success"
+                  and .html_url == $html_url
+              ' <<<"${job}" >/dev/null; then
+                matched=$((matched + 1))
+              fi
+            done <<<"${deployment_ids}"
+            test "${matched}" -eq 1
+          }
           candidate_run=$(gh api "repos/${GITHUB_REPOSITORY}/actions/runs/${CANDIDATE_RUN_ID}")
-          jq -e --arg commit "${CANDIDATE_COMMIT}" --arg repo "${GITHUB_REPOSITORY}" \
-            '.conclusion == "success" and .head_sha == $commit and .repository.full_name == $repo and .event == "workflow_dispatch" and .path == ".github/workflows/release-candidate.yml"' \
+          candidate_run_url="${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${CANDIDATE_RUN_ID}"
+          jq -e --argjson run_id "${CANDIDATE_RUN_ID}" --arg run_url "${candidate_run_url}" \
+            --arg commit "${CANDIDATE_COMMIT}" --arg repo "${GITHUB_REPOSITORY}" '
+            .id == $run_id and .status == "completed" and .conclusion == "success"
+              and .html_url == $run_url and .head_sha == $commit and .head_branch == "main"
+              and .repository.full_name == $repo and .event == "workflow_dispatch"
+              and .path == ".github/workflows/release-candidate.yml"
+            ' \
             <<<"${candidate_run}" >/dev/null
-          candidate_jobs=$(gh api "repos/${GITHUB_REPOSITORY}/actions/runs/${CANDIDATE_RUN_ID}/jobs")
-          jq -e '.jobs | any(.environment.name == "private-release-candidate")' <<<"${candidate_jobs}" >/dev/null
-          candidate_artifacts=$(gh api "repos/${GITHUB_REPOSITORY}/actions/runs/${CANDIDATE_RUN_ID}/artifacts")
-          jq -e --arg name "private-release-candidate-${CANDIDATE_ID}" \
-            '[.artifacts[] | select(.name == $name and .expired == false)] | length == 1' \
+          candidate_run_attempt=$(jq -er '.run_attempt | select(type == "number" and . >= 1)' <<<"${candidate_run}")
+          candidate_ref=$(jq -er '.head_branch | select(type == "string" and length > 0)' <<<"${candidate_run}")
+          verify_deployment_provenance "${CANDIDATE_RUN_ID}" "${candidate_run_attempt}" "${CANDIDATE_COMMIT}" "${candidate_ref}" "private-release-candidate"
+          candidate_artifacts=$(gh api --method GET --paginate --slurp \
+            "repos/${GITHUB_REPOSITORY}/actions/runs/${CANDIDATE_RUN_ID}/artifacts" -F per_page=100)
+          jq -e --argjson run_id "${CANDIDATE_RUN_ID}" --arg commit "${CANDIDATE_COMMIT}" \
+            --arg name "private-release-candidate-${CANDIDATE_ID}" '
+            if all(.[]; type == "object" and (.artifacts | type == "array")) then
+              [.[] | .artifacts[] | select(.name == $name and .expired == false
+                and .workflow_run.id == $run_id and .workflow_run.head_sha == $commit)] | length == 1
+            else error("malformed artifact pages") end
+            ' \
             <<<"${candidate_artifacts}" >/dev/null
 
       - name: Check out exact proven candidate source
