@@ -27,6 +27,60 @@ async function load(relativePath) {
   return import(pathToFileURL(path.join(projectRoot, relativePath)).href);
 }
 
+function replaceAfterMarker(source, marker, search, replacement) {
+  const markerIndex = source.indexOf(marker);
+  assert.notEqual(markerIndex, -1, `missing mutation marker: ${marker}`);
+  const searchIndex = source.indexOf(search, markerIndex);
+  assert.notEqual(searchIndex, -1, `missing mutation target after ${marker}: ${search}`);
+  return `${source.slice(0, searchIndex)}${replacement}${source.slice(searchIndex + search.length)}`;
+}
+
+function assertDeploymentStatusProvenance(source, expectedBindings) {
+  assert.match(source, /permissions:[\s\S]*deployments:\s*read/iu);
+  assert.match(source, /set -euo pipefail/u);
+  assert.doesNotMatch(
+    source,
+    /actions\/runs\/\$\{[A-Z_]+\}\/jobs|\.jobs\s*\|\s*any\(\.environment\.name/iu,
+  );
+  assert.match(source, /verify_deployment_provenance\(\)/u);
+  assert.match(
+    source,
+    /gh api --method GET --paginate --slurp[\s\S]*repos\/\$\{GITHUB_REPOSITORY\}\/deployments/iu,
+  );
+  assert.match(
+    source,
+    /repos\/\$\{GITHUB_REPOSITORY\}\/deployments\/\$\{deployment_id\}\/statuses/iu,
+  );
+  assert.match(source, /\.sha == \$commit/iu);
+  assert.match(source, /\.ref == \$ref/iu);
+  assert.match(source, /\.environment == \$environment/iu);
+  assert.match(source, /\.original_environment == \$environment/iu);
+  assert.match(source, /\.performed_via_github_app\.slug == "github-actions"/iu);
+  assert.match(source, /\.statuses_url ==/iu);
+  assert.match(source, /\.state == "success"/iu);
+  assert.match(source, /\.environment_url == \$run_url/iu);
+  assert.match(source, /\.deployment_url == \$deployment_url/iu);
+  assert.match(source, /\.log_url[\s\S]*startswith\(\$run_job_prefix\)/iu);
+  assert.match(source, /sort_by\(\[\.created_at, \.id\]\) \| last/iu);
+  assert.match(source, /actions\/jobs\/\$\{job_id\}/u);
+  assert.match(source, /\.run_id == \$run_id/iu);
+  assert.match(source, /\.run_attempt == \$run_attempt/iu);
+  assert.match(source, /\.conclusion == "success"/iu);
+  assert.match(source, /\.html_url == \$html_url/iu);
+  assert.match(source, /test "\$\{matched\}" -eq 1/u);
+  assert.match(source, /actions\/runs\/\$\{[A-Z_]+\}\/artifacts[\s\S]*-F per_page=100/iu);
+  assert.match(source, /\.workflow_run\.id == \$run_id/iu);
+  assert.match(source, /\.workflow_run\.head_sha == \$commit/iu);
+  assert.match(source, /\.id == \$run_id and \.status == "completed" and \.conclusion == "success"/iu);
+  assert.match(source, /\.html_url == \$run_url and \.head_sha == \$commit and \.head_branch == "main"/iu);
+  for (const [runIdVariable, environment] of expectedBindings) {
+    assert.match(source, new RegExp(
+      `verify_deployment_provenance "\\$\\{${runIdVariable}\\}" "\\$\\{[a-z_]+_run_attempt\\}" "\\$\\{CANDIDATE_COMMIT\\}" "\\$\\{[a-z_]+_ref\\}" "${environment}"`,
+      "u",
+    ));
+  }
+}
+
 function artifact(kind, file, innerPrefix, sha256 = SHA_B) {
   return {
     kind,
@@ -329,6 +383,7 @@ test("release workflows enforce one build, immediate manifest, exact command gra
     path.join(projectRoot, ".github/workflows/nightly.yml"),
     "utf8",
   );
+  assert.match(candidate, /environment:[\s\S]*name:\s*private-release-candidate[\s\S]*url:\s*\$\{\{ github\.server_url \}\}\/\$\{\{ github\.repository \}\}\/actions\/runs\/\$\{\{ github\.run_id \}\}/u);
   const buildScript = readFileSync(
     path.join(projectRoot, "scripts/build-release-candidate-once.sh"),
     "utf8",
@@ -825,6 +880,10 @@ test("protected attended workflow consumes supplied evidence and uploads a verif
     path.join(projectRoot, ".github/workflows/release-attended-evidence.yml"), "utf8",
   );
   assert.doesNotThrow(() => validateAttendedEvidenceWorkflowContract(source));
+  assertDeploymentStatusProvenance(source, [
+    ["CANDIDATE_RUN_ID", "private-release-candidate"],
+    ["OBSERVATIONS_RUN_ID", "private-release-observation-upload"],
+  ]);
   assert.match(source, /^\s*owner_token:\s*$/mu);
   assert.match(source, /^\s*OWNER_TOKEN:\s*\$\{\{ inputs\.owner_token \}\}\s*$/mu);
   assert.match(source, /test "\$\{OWNER_TOKEN\}" = "approved"/u);
@@ -841,6 +900,34 @@ test("protected attended workflow consumes supplied evidence and uploads a verif
   assert.throws(() => validateWorkflowDispatchInputSafety(
     source.replace("${CANDIDATE_ID}", "${{ inputs.candidate_id }}"),
   ), /dispatch|input|shell/iu);
+  assert.throws(() => validateAttendedEvidenceWorkflowContract(
+    replaceAfterMarker(
+      source,
+      '--argjson run_id "${OBSERVATIONS_RUN_ID}" --arg run_url',
+      '.head_sha == $commit',
+      '.head_sha != $commit',
+    ),
+  ), /provenance|run|commit/iu);
+  assert.throws(() => validateAttendedEvidenceWorkflowContract(
+    replaceAfterMarker(
+      source,
+      '--argjson run_id "${OBSERVATIONS_RUN_ID}" --arg commit',
+      '.workflow_run.id == $run_id and .workflow_run.head_sha == $commit',
+      'true',
+    ),
+  ), /provenance|artifact|run|commit/iu);
+  assert.throws(() => validateAttendedEvidenceWorkflowContract(
+    source.replace(
+      '--argjson run_id "${OBSERVATIONS_RUN_ID}" --arg run_url "${observations_run_url}"',
+      '--argjson run_id "${OBSERVATIONS_RUN_ID}" --arg run_url "${candidate_run_url}"',
+    ),
+  ), /provenance|run|URL/iu);
+  assert.throws(() => validateAttendedEvidenceWorkflowContract(
+    source.replace(
+      `observations_run_attempt=$(jq -er '.run_attempt | select(type == "number" and . >= 1)' <<<"${'${observations_run}'}")`,
+      `observations_run_attempt=$(jq -er '.run_attempt | select(type == "number" and . >= 1)' <<<"${'${candidate_run}'}")`,
+    ),
+  ), /provenance|attempt|ref|run/iu);
 });
 
 test("protected human observation producer uploads bounded local evidence with pinned provenance", async () => {
@@ -853,6 +940,9 @@ test("protected human observation producer uploads bounded local evidence with p
     "utf8",
   );
   assert.doesNotThrow(() => validateHumanEvidenceUploadWorkflowContract(source));
+  assertDeploymentStatusProvenance(source, [
+    ["CANDIDATE_RUN_ID", "private-release-candidate"],
+  ]);
   assert.doesNotThrow(() => validateWorkflowDispatchInputSafety(source));
   assert.match(source, /permissions:[\s\S]*actions:\s*read[\s\S]*contents:\s*read[\s\S]*id-token:\s*none/iu);
   assert.match(source, /^\s*candidate_run_id:\s*$/mu);
@@ -1017,6 +1107,10 @@ test("promotion and terminal contracts require selected successful cross-run inp
     path.join(projectRoot, ".planning/phases/05-recovery-distribution-and-release/05-TERMINAL-SEAL.md"), "utf8",
   );
   assert.doesNotThrow(() => validatePromotionWorkflowContract(promotion));
+  assertDeploymentStatusProvenance(promotion, [
+    ["CANDIDATE_RUN_ID", "private-release-candidate"],
+    ["ATTENDED_RUN_ID", "private-release-attended"],
+  ]);
   const workflowCheckout = promotion.indexOf("name: Check out workflow source for input validation");
   const validator = promotion.indexOf("node workflow-source/scripts/validate-phase5-promotion-inputs.mjs");
   const candidateCheckout = promotion.indexOf("name: Check out exact candidate source");
@@ -1062,8 +1156,39 @@ test("promotion and terminal contracts require selected successful cross-run inp
   const packageSource = readFileSync(path.join(projectRoot, "package.json"), "utf8");
   assert.equal((packageSource.match(/"record:promotion:phase5"/gu) ?? []).length, 1);
   assert.throws(() => validatePromotionWorkflowContract(
-    promotion.replace(/conclusion[^\n]+success/iu, "conclusion == 'failure'"),
+    promotion.replace(
+      '.id == $run_id and .status == "completed" and .conclusion == "success"',
+      '.id == $run_id and .status == "completed" and .conclusion == "failure"',
+    ),
   ), /successful|run|conclusion/iu);
+  assert.throws(() => validatePromotionWorkflowContract(
+    replaceAfterMarker(
+      promotion,
+      '--argjson run_id "${ATTENDED_RUN_ID}" --arg run_url',
+      '.head_sha == $commit',
+      '.head_sha != $commit',
+    ),
+  ), /provenance|run|commit/iu);
+  assert.throws(() => validatePromotionWorkflowContract(
+    replaceAfterMarker(
+      promotion,
+      '--argjson run_id "${ATTENDED_RUN_ID}" --arg commit',
+      '.workflow_run.id == $run_id and .workflow_run.head_sha == $commit',
+      'true',
+    ),
+  ), /provenance|artifact|run|commit/iu);
+  assert.throws(() => validatePromotionWorkflowContract(
+    promotion.replace(
+      '--argjson run_id "${ATTENDED_RUN_ID}" --arg run_url "${attended_run_url}"',
+      '--argjson run_id "${ATTENDED_RUN_ID}" --arg run_url "${candidate_run_url}"',
+    ),
+  ), /provenance|run|URL/iu);
+  assert.throws(() => validatePromotionWorkflowContract(
+    promotion.replace(
+      `attended_run_attempt=$(jq -er '.run_attempt | select(type == "number" and . >= 1)' <<<"${'${attended_run}'}")`,
+      `attended_run_attempt=$(jq -er '.run_attempt | select(type == "number" and . >= 1)' <<<"${'${candidate_run}'}")`,
+    ),
+  ), /provenance|attempt|ref|run/iu);
   assert.throws(() => validatePromotionWorkflowContract(
     promotion.replace(/gh release view[^\n]+/u, "true"),
   ), /existing|overwrite|release/iu);

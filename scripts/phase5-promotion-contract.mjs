@@ -2,6 +2,71 @@ function requirePattern(source, pattern, message) {
   if (!pattern.test(source)) throw new Error(message);
 }
 
+function boundedSourceBlock(source, startMarker, endMarker, label) {
+  if (source.split(startMarker).length - 1 !== 1) {
+    throw new Error(`${label} must appear exactly once.`);
+  }
+  const start = source.indexOf(startMarker);
+  const end = source.indexOf(endMarker, start);
+  if (end < 0) throw new Error(`${label} is incomplete.`);
+  return source.slice(start, end + endMarker.length);
+}
+
+function validateSelectedRunContract(source, {
+  runIdVariable, runJsonVariable, runUrlVariable, workflowPath,
+  attemptVariable, refVariable, environment,
+}) {
+  const runUrlAssignment = `${runUrlVariable}="\${GITHUB_SERVER_URL}/\${GITHUB_REPOSITORY}/actions/runs/\${${runIdVariable}}"`;
+  if (!source.includes(runUrlAssignment)) {
+    throw new Error(`${runJsonVariable} must bind its exact Actions run URL.`);
+  }
+  const block = boundedSourceBlock(
+    source,
+    `jq -e --argjson run_id "\${${runIdVariable}}" --arg run_url "\${${runUrlVariable}}"`,
+    `<<<"\${${runJsonVariable}}" >/dev/null`,
+    `${runJsonVariable} validation`,
+  );
+  for (const predicate of [
+    '.id == $run_id', '.status == "completed"', '.conclusion == "success"',
+    '.html_url == $run_url', '.head_sha == $commit', '.head_branch == "main"',
+    '.repository.full_name == $repo', '.event == "workflow_dispatch"',
+    `.path == "${workflowPath}"`,
+  ]) {
+    if (!block.includes(predicate)) {
+      throw new Error(`${runJsonVariable} provenance is missing ${predicate}.`);
+    }
+  }
+  for (const assignment of [
+    `${attemptVariable}=\$(jq -er '.run_attempt | select(type == "number" and . >= 1)' <<<"\${${runJsonVariable}}")`,
+    `${refVariable}=\$(jq -er '.head_branch | select(type == "string" and length > 0)' <<<"\${${runJsonVariable}}")`,
+  ]) {
+    if (!source.includes(assignment.replace('\\$', '$'))) {
+      throw new Error(`${runJsonVariable} attempt or ref binding is incomplete.`);
+    }
+  }
+  const call = `verify_deployment_provenance "\${${runIdVariable}}" "\${${attemptVariable}}" "\${CANDIDATE_COMMIT}" "\${${refVariable}}" "${environment}"`;
+  if (!source.includes(call)) {
+    throw new Error(`${runJsonVariable} protected-environment binding is incomplete.`);
+  }
+}
+
+function validateSelectedArtifactContract(source, runIdVariable, artifactPagesVariable) {
+  const block = boundedSourceBlock(
+    source,
+    `jq -e --argjson run_id "\${${runIdVariable}}" --arg commit`,
+    `<<<"\${${artifactPagesVariable}}" >/dev/null`,
+    `${artifactPagesVariable} validation`,
+  );
+  for (const predicate of [
+    '.expired == false', '.workflow_run.id == $run_id',
+    '.workflow_run.head_sha == $commit', '| length == 1',
+  ]) {
+    if (!block.includes(predicate)) {
+      throw new Error(`${artifactPagesVariable} provenance is missing ${predicate}.`);
+    }
+  }
+}
+
 const RUN_ID = /^[1-9][0-9]*$/u;
 const CANDIDATE_ID = /^[a-z0-9][a-z0-9-]{2,79}$/u;
 const COMMIT = /^[a-f0-9]{40}$/u;
@@ -23,10 +88,26 @@ export function validateReleasePromotionInputValues(input) {
 }
 
 export function validatePromotionWorkflowContract(source) {
+  validateSelectedRunContract(source, {
+    runIdVariable: "CANDIDATE_RUN_ID", runJsonVariable: "candidate_run",
+    runUrlVariable: "candidate_run_url", workflowPath: ".github/workflows/release-candidate.yml",
+    attemptVariable: "candidate_run_attempt", refVariable: "candidate_ref",
+    environment: "private-release-candidate",
+  });
+  validateSelectedRunContract(source, {
+    runIdVariable: "ATTENDED_RUN_ID", runJsonVariable: "attended_run",
+    runUrlVariable: "attended_run_url", workflowPath: ".github/workflows/release-attended-evidence.yml",
+    attemptVariable: "attended_run_attempt", refVariable: "attended_ref",
+    environment: "private-release-attended",
+  });
+  validateSelectedArtifactContract(source, "CANDIDATE_RUN_ID", "candidate_artifacts");
+  validateSelectedArtifactContract(source, "ATTENDED_RUN_ID", "attended_artifacts");
   requirePattern(source, /concurrency:[\s\S]*group:\s*release-promotion\s*$[\s\S]*cancel-in-progress:\s*false/mu,
     "promotion must use one non-canceling repository-wide lock.");
-  requirePattern(source, /permissions:[\s\S]*actions:\s*read[\s\S]*contents:\s*write/iu,
-    "promotion requires actions:read and contents:write.");
+  requirePattern(source, /permissions:[\s\S]*actions:\s*read[\s\S]*contents:\s*write[\s\S]*deployments:\s*read/iu,
+    "promotion requires actions:read, contents:write, and deployments:read.");
+  requirePattern(source, /environment:[\s\S]*name:\s*public-release-promotion[\s\S]*url:\s*\$\{\{ github\.server_url \}\}\/\$\{\{ github\.repository \}\}\/actions\/runs\/\$\{\{ github\.run_id \}\}/u,
+    "promotion environment must publish its exact Actions run URL.");
   for (const input of [
     "candidate_run_id", "candidate_id", "candidate_commit",
     "attended_run_id", "attended_artifact_name", "attended_record_sha256",
@@ -36,9 +117,14 @@ export function validatePromotionWorkflowContract(source) {
   }
   requirePattern(source, /CANDIDATE_RUN_ID:\s*\$\{\{ inputs\.candidate_run_id \}\}[\s\S]*actions\/runs\/\$\{CANDIDATE_RUN_ID\}/u,
     "promotion must inspect the explicitly selected candidate run.");
-  if ((source.match(/\.conclusion\s*==\s*\\?"success\\?"/gu) ?? []).length !== 2) {
+  if ((source.match(/\.conclusion\s*==\s*\\?"success\\?"/gu) ?? []).length < 2) {
     throw new Error("promotion must reject candidate or attended runs that were not successful.");
   }
+  if ((source.match(/\.id == \$run_id and \.status == "completed" and \.conclusion == "success"/gu) ?? []).length < 2) {
+    throw new Error("promotion must bind both selected successful runs to their exact run IDs and commit.");
+  }
+  requirePattern(source, /\.html_url == \$run_url[\s\S]*\.head_sha == \$commit[\s\S]*\.head_branch == "main"/iu,
+    "promotion must bind selected runs to their exact URL, commit, and main branch.");
   requirePattern(source, /CANDIDATE_COMMIT:\s*\$\{\{ inputs\.candidate_commit \}\}[\s\S]*head_sha[^\n]+\$commit/iu,
     "promotion must bind the candidate run to the selected commit.");
   requirePattern(source, /gh run download[\s\S]*candidate_run_id[\s\S]*private-release-candidate/iu,
@@ -51,6 +137,26 @@ export function validatePromotionWorkflowContract(source) {
     "promotion must pin the attended workflow identity.");
   requirePattern(source, /private-release-candidate[\s\S]*private-release-attended/iu,
     "promotion must pin the protected candidate and attended environments.");
+  for (const pattern of [
+    /set -euo pipefail/u,
+    /gh api --method GET --paginate --slurp[\s\S]*\/deployments/iu,
+    /\.sha == \$commit[\s\S]*\.ref == \$ref[\s\S]*\.environment == \$environment/iu,
+    /\.original_environment == \$environment/iu,
+    /\.performed_via_github_app\.slug == "github-actions"/iu,
+    /\.statuses_url ==/iu,
+    /sort_by\(\[\.created_at, \.id\]\) \| last/iu,
+    /\.state == "success"[\s\S]*\.environment_url == \$run_url[\s\S]*\.deployment_url == \$deployment_url/iu,
+    /actions\/jobs\/\$\{job_id\}/u,
+    /\.run_id == \$run_id[\s\S]*\.run_attempt == \$run_attempt/iu,
+    /\.head_sha == \$commit[\s\S]*\.status == "completed"[\s\S]*\.conclusion == "success"[\s\S]*\.html_url == \$html_url/iu,
+    /test "\$\{matched\}" -eq 1/u,
+    /\.workflow_run\.id == \$run_id[\s\S]*\.workflow_run\.head_sha == \$commit/iu,
+  ]) {
+    requirePattern(source, pattern, "promotion deployment provenance must bind a successful selected run.");
+  }
+  if (/actions\/runs\/\$\{[A-Z_]+\}\/jobs|\.jobs\s*\|\s*any\(\.environment\.name/iu.test(source)) {
+    throw new Error("promotion cannot infer environment provenance from the jobs list.");
+  }
   requirePattern(source, /checkout@[\s\S]*ref:\s*\$\{\{ env\.CANDIDATE_COMMIT \}\}/u,
     "promotion must checkout the exact candidate source.");
   requirePattern(source, /verify:attended:phase5/iu,
