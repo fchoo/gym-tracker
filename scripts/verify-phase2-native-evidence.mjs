@@ -13,8 +13,11 @@ import {
 } from "node:fs/promises";
 import {
   existsSync,
+  mkdtempSync,
   readFileSync,
+  rmSync,
 } from "node:fs";
+import { tmpdir } from "node:os";
 import path from "node:path";
 import process from "node:process";
 import { pathToFileURL } from "node:url";
@@ -474,19 +477,28 @@ export function liveInstalledIdentity(manifest, {
       timeout: PHASE2_ADB_COMMAND_TIMEOUT_MS,
     },
   ), "build device");
-  const bytes = execFile(
-    executable,
-    ["-s", manifest.device.serial, "exec-out", "cat", packagePath],
-    {
-      cwd: root,
-      maxBuffer: 256 * 1024 * 1024,
-      timeout: PHASE2_ADB_COMMAND_TIMEOUT_MS,
-    },
-  );
-  return {
-    path: packagePath,
-    sha256: createHash("sha256").update(bytes).digest("hex"),
-  };
+  const temporaryDirectory = mkdtempSync(path.join(
+    tmpdir(),
+    "gym-tracker-phase2-installed-apk-",
+  ));
+  const installedApkPath = path.join(temporaryDirectory, "installed.apk");
+  try {
+    execFile(
+      executable,
+      ["-s", manifest.device.serial, "pull", packagePath, installedApkPath],
+      {
+        cwd: root,
+        encoding: "utf8",
+        timeout: PHASE2_ADB_COMMAND_TIMEOUT_MS,
+      },
+    );
+    return {
+      path: packagePath,
+      sha256: sha256(installedApkPath),
+    };
+  } finally {
+    rmSync(temporaryDirectory, { force: true, recursive: true });
+  }
 }
 
 async function readJson(filePath, label) {

@@ -3,6 +3,10 @@ import {
   execFileSync,
 } from "node:child_process";
 import {
+  existsSync,
+  writeFileSync,
+} from "node:fs";
+import {
   chmod,
   mkdir,
   mkdtemp,
@@ -1910,9 +1914,11 @@ test("build-device verification bounds every synchronous ADB read", async () => 
     executable: "adb-fixture",
     execFile: (_file, args, options) => {
       calls.push({ args, options });
-      return args.includes("path")
-        ? "package:/data/app/base.apk\n"
-        : bytes;
+      if (args.includes("path")) {
+        return "package:/data/app/base.apk\n";
+      }
+      writeFileSync(args[4], bytes);
+      return "1 file pulled\n";
     },
     root: projectRoot,
   });
@@ -1922,6 +1928,61 @@ test("build-device verification bounds every synchronous ADB read", async () => 
     options.timeout === PHASE2_ADB_COMMAND_TIMEOUT_MS
   ));
   assert.equal(identity.path, "/data/app/base.apk");
+});
+
+test("build-device verification pulls the installed APK before hashing it", async () => {
+  const { liveInstalledIdentity } = await load(
+    "scripts/verify-phase2-native-evidence.mjs",
+  );
+  const manifest = identityFixture();
+  const calls = [];
+  const bytes = Buffer.from("apk-fixture");
+
+  const identity = liveInstalledIdentity(manifest, {
+    executable: "adb-fixture",
+    execFile: (_file, args, options) => {
+      calls.push({ args, options });
+      if (args.includes("path")) {
+        return "package:/data/app/base.apk\n";
+      }
+      assert.equal(args[2], "pull");
+      assert.equal(args[3], "/data/app/base.apk");
+      writeFileSync(args[4], bytes);
+      return "1 file pulled\n";
+    },
+    root: projectRoot,
+  });
+
+  assert.equal(calls.length, 2);
+  assert.equal(identity.path, "/data/app/base.apk");
+  assert.equal(
+    identity.sha256,
+    "3934be6f0ca5c6c3efc3576bb846f79a8512db715c6a8103b034cb29e676fd8e",
+  );
+});
+
+test("build-device verification removes its pulled APK after a pull failure", async () => {
+  const { liveInstalledIdentity } = await load(
+    "scripts/verify-phase2-native-evidence.mjs",
+  );
+  const manifest = identityFixture();
+  let pulledPath;
+
+  assert.throws(() => liveInstalledIdentity(manifest, {
+    executable: "adb-fixture",
+    execFile: (_file, args) => {
+      if (args.includes("path")) {
+        return "package:/data/app/base.apk\n";
+      }
+      pulledPath = args[4];
+      writeFileSync(pulledPath, "partial");
+      throw new Error("pull failed");
+    },
+    root: projectRoot,
+  }), /pull failed/u);
+
+  assert.equal(existsSync(pulledPath), false);
+  assert.equal(existsSync(path.dirname(pulledPath)), false);
 });
 
 test("Phase 2 evidence modules have a one-way source-ledger import graph", async () => {
