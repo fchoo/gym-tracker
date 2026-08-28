@@ -3239,6 +3239,12 @@ test("rest recovery finds the set action after each orientation change with boun
     path.join(projectRoot, "maestro/lifecycle/rest-recovery.yaml"),
     "utf8",
   );
+  const settleOrientationAndNudge = [
+    "- swipe:",
+    "    start: 95%, 75%",
+    "    end: 95%, 45%",
+    "    duration: 300",
+  ].join("\n");
   const findCompleteSet = [
     "- repeat:",
     "    times: 12",
@@ -3257,8 +3263,10 @@ test("rest recovery finds the set action after each orientation change with boun
     new RegExp(
       [
         '- setOrientation: LANDSCAPE_LEFT',
+        settleOrientationAndNudge,
         findCompleteSet,
         '- setOrientation: PORTRAIT',
+        settleOrientationAndNudge,
         findCompleteSet,
         '- tapOn: "Complete Set 1"',
       ].join("\\n"),
