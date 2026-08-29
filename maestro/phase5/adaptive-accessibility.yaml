@@ -8,7 +8,8 @@ tags:
     clearState: false
 - assertVisible: "Today"
 - tapOn: "More"
-- tapOn: "Data and recovery"
+- tapOn:
+    id: "more-data-and-recovery"
 - assertVisible: "Create secure backup"
 - assertVisible: "Restore backup"
 - assertVisible: "Export CSV"

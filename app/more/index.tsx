@@ -55,6 +55,7 @@ export default function MoreRoute() {
               <SecondaryAction
                 label="Data and recovery"
                 onPress={() => router.push("/more/data-and-recovery" as Href)}
+                testID="more-data-and-recovery"
               />
             </View>
           </ContentCard>
