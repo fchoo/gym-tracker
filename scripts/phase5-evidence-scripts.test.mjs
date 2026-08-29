@@ -207,6 +207,64 @@ test("Phase 5 accepts only the canonical production candidate identity", async (
   }), /manifest|digest/iu);
 });
 
+test("Phase 5 clean restore accepts an absent production package exactly", async () => {
+  const { cleanProductionState } = await load(
+    "scripts/run-phase5-maestro.mjs",
+  );
+  const commands = [];
+  const executeWithDevtestSibling = (_file, args) => {
+    commands.push(args.join(" "));
+    if (args[2] === "uninstall") {
+      throw new Error("package was already absent");
+    }
+    if (args.slice(2).join(" ") === "shell pm list packages --user 0 com.fchoo.gymtracker") {
+      return "package:com.fchoo.gymtracker.devtest\n";
+    }
+    return "";
+  };
+
+  assert.deepEqual(
+    cleanProductionState(
+      "emulator-5554",
+      "com.fchoo.gymtracker",
+      executeWithDevtestSibling,
+    ),
+    {
+      auto_backup_disabled: true,
+      d2d_disabled: true,
+      package_absent_before_install: true,
+      pre_restore_state: "empty",
+    },
+  );
+  assert.ok(commands.includes(
+    "-s emulator-5554 shell pm list packages --user 0 com.fchoo.gymtracker",
+  ));
+  assert.throws(() => cleanProductionState(
+    "emulator-5554",
+    "com.fchoo.gymtracker",
+    (_file, args) => args.slice(2).join(" ") === "shell pm list packages --user 0 com.fchoo.gymtracker"
+      ? "package:com.fchoo.gymtracker.devtest\npackage:com.fchoo.gymtracker\n"
+      : "",
+  ), /production package remains/iu);
+  assert.throws(() => cleanProductionState(
+    "emulator-5554",
+    "com.fchoo.gymtracker",
+    (_file, args) => {
+      if (args.slice(2).join(" ").startsWith("shell pm list packages")) {
+        throw new Error("adb unavailable");
+      }
+      return "";
+    },
+  ), /adb unavailable/iu);
+  assert.throws(() => cleanProductionState(
+    "emulator-5554",
+    "com.fchoo.gymtracker",
+    (_file, args) => args.slice(2).join(" ").startsWith("shell pm list packages")
+      ? "Error: package manager unavailable\n"
+      : "",
+  ), /malformed output/iu);
+});
+
 test("Phase 5 source and installed-flow ledgers are exact, ordered, and automated-only", async () => {
   const {
     PHASE5_AUTOMATED_CASE_IDS,
