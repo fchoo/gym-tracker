@@ -7,8 +7,8 @@ tags:
 - launchApp:
     clearState: false
 - assertVisible: "Today"
-- tapOn: "History"
-- assertVisible: "History"
+- tapOn: "Calendar"
+- assertVisible: "Calendar month grid"
 - tapOn: "Progress"
-- assertVisible: "Progress"
+- assertVisible: "4 weeks"
 - assertNotVisible: "global score"
