@@ -171,10 +171,6 @@ tags:
           start: 95%, 75%
           end: 95%, 45%
           duration: 300
-- swipe:
-    start: 95%, 75%
-    end: 95%, 45%
-    duration: 300
 - assertVisible: "Retry add working set"
 - tapOn: "Retry add working set"
 - assertVisible: "Working set 4 added and focused"
@@ -247,12 +243,26 @@ tags:
 - repeat:
     times: 12
     while:
-      notVisible: "Edit completed set 1"
+      notVisible: "Add warm-up"
     commands:
       - swipe:
           start: 95%, 25%
           end: 95%, 75%
           duration: 300
+- assertVisible: "Add warm-up"
+- repeat:
+    times: 12
+    while:
+      notVisible: "Edit completed set 1"
+    commands:
+      - swipe:
+          start: 95%, 75%
+          end: 95%, 25%
+          duration: 300
+- swipe:
+    start: 95%, 75%
+    end: 95%, 45%
+    duration: 300
 - assertVisible: "Edit completed set 1"
 - openLink: "gymtracker-devtest://__notification-test-controls?action=arm_completed_set_correction_failure"
 - assertVisible: "Completed set correction failure armed"
@@ -272,6 +282,16 @@ tags:
 - assertVisible: "Return to Today"
 - tapOn: "Return to Today"
 - tapOn: "Resume workout"
+- repeat:
+    times: 12
+    while:
+      notVisible: "Add warm-up"
+    commands:
+      - swipe:
+          start: 95%, 25%
+          end: 95%, 75%
+          duration: 300
+- assertVisible: "Add warm-up"
 - repeat:
     times: 12
     while:

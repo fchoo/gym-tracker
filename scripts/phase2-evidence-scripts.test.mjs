@@ -681,9 +681,13 @@ test("Phase 2 remediation flows use public labels and deterministic seams", asyn
   ].join("\n");
   assert.ok(
     workout.includes(
-      `- tapOn: "Add working set"\n- assertNotVisible:\n    text: "Working set 4 of .*"\n${boundedRetryAddWorkingSetTraversal}\n${safeActionNudge}\n- assertVisible: "Retry add working set"\n- tapOn: "Retry add working set"\n- assertVisible: "Working set 4 added and focused"`,
+      `- tapOn: "Add working set"\n- assertNotVisible:\n    text: "Working set 4 of .*"\n${boundedRetryAddWorkingSetTraversal}\n- assertVisible: "Retry add working set"\n- tapOn: "Retry add working set"\n- assertVisible: "Working set 4 added and focused"`,
     ),
-    "the absent new row and safely positioned retry action must prove failure and recovery without relying on clipped notice copy",
+    "the absent new row and discovered retry action must prove failure and recovery without a blind swipe that can hide an already-visible target",
+  );
+  assert.doesNotMatch(
+    workout,
+    /notVisible: "Retry add working set"[\s\S]*?duration: 300\n- swipe:\n    start: 95%, 75%\n    end: 95%, 45%\n    duration: 300\n- assertVisible: "Retry add working set"/u,
   );
   assert.doesNotMatch(
     workout,
@@ -850,13 +854,56 @@ test("Phase 2 remediation flows use public labels and deterministic seams", asyn
     workout,
     /- assertVisible: "Correction was not saved\. Retry the correction\."[\s\S]*- assertVisible: "Working set 4 of 4\.\*"\n- repeat:\n    times: 4\n    while:\n      notVisible: "Retry completed set correction"\n    commands:\n      - swipe:\n          start: 95%, 75%\n          end: 95%, 45%\n          duration: 300\n- swipe:\n    start: 95%, 75%\n    end: 95%, 45%\n    duration: 300\n- assertVisible: "Retry completed set correction"\n- tapOn: "Retry completed set correction"[\s\S]*text: "Working set 1 correction saved"\n    direction: UP\n    centerElement: true\n    timeout: 60000/u,
   );
-  assert.match(
-    workout,
-    /- tapOn: "Skip rest"\n- extendedWaitUntil:\n    notVisible: "Skip rest"\n    timeout: 60000\n- repeat:\n    times: 12\n    while:\n      notVisible: "Edit completed set 1"\n    commands:\n      - swipe:\n          start: 95%, 25%\n          end: 95%, 75%\n          duration: 300\n- assertVisible: "Edit completed set 1"/u,
+  const anchoredCompletedSetEditTraversal = [
+    "- repeat:",
+    "    times: 12",
+    "    while:",
+    '      notVisible: "Add warm-up"',
+    "    commands:",
+    "      - swipe:",
+    "          start: 95%, 25%",
+    "          end: 95%, 75%",
+    "          duration: 300",
+    '- assertVisible: "Add warm-up"',
+    "- repeat:",
+    "    times: 12",
+    "    while:",
+    '      notVisible: "Edit completed set 1"',
+    "    commands:",
+    "      - swipe:",
+    "          start: 95%, 75%",
+    "          end: 95%, 25%",
+    "          duration: 300",
+    safeActionNudge,
+    '- assertVisible: "Edit completed set 1"',
+  ].join("\n");
+  assert.equal(
+    workout.split(anchoredCompletedSetEditTraversal).length - 1,
+    2,
+    "both pre-correction edit paths must reset to a stable top anchor before finding and safely positioning the completed-set action",
   );
-  assert.match(
-    workout,
-    /- tapOn: "Resume workout"\n- repeat:\n    times: 12\n    while:\n      notVisible: "Edit completed set 1"\n    commands:\n      - swipe:\n          start: 95%, 75%\n          end: 95%, 25%\n          duration: 300\n- swipe:\n    start: 95%, 75%\n    end: 95%, 45%\n    duration: 300\n- assertVisible: "Edit completed set 1"\n- tapOn: "Edit completed set 1"\n- assertVisible: "Working set 1 load in kilograms"\n- longPressOn: "Working set 1 load in kilograms"/u,
+  assert.ok(
+    workout.includes([
+      '- tapOn: "Skip rest"',
+      "- extendedWaitUntil:",
+      '    notVisible: "Skip rest"',
+      "    timeout: 60000",
+      anchoredCompletedSetEditTraversal,
+    ].join("\n")),
+  );
+  const deterministicPostControlEditTraversal = [
+    '- assertVisible: "Completed set correction failure armed"',
+    safeReturnToTodayTraversal,
+    '- tapOn: "Resume workout"',
+    anchoredCompletedSetEditTraversal,
+    '- tapOn: "Edit completed set 1"',
+    '- assertVisible: "Working set 1 load in kilograms"',
+    '- longPressOn: "Working set 1 load in kilograms"',
+  ].join("\n");
+  assert.equal(
+    workout.split(deterministicPostControlEditTraversal).length - 1,
+    1,
+    "the post-control correction path must reset to a stable top anchor before finding and safely positioning the completed-set edit action",
   );
   const correctedWorkingSetVerification = [
     "- repeat:",
