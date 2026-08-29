@@ -49,48 +49,21 @@ export function configureReleaseSigning(source) {
     + replaced.slice(closingBrace);
 }
 
-const RELEASE_PROPERTY_NAMES = Object.freeze([
-  "RELEASE_STORE_FILE",
-  "RELEASE_STORE_PASSWORD",
-  "RELEASE_KEY_ALIAS",
-  "RELEASE_KEY_PASSWORD",
-]);
-
-export function appendReleaseSigningProperties(source, properties) {
-  const prefix = source.length === 0 || source.endsWith("\n") ? source : source + "\n";
-  const releaseProperties = RELEASE_PROPERTY_NAMES.map((name) => {
-    const value = properties[name];
-    if (typeof value !== "string" || value.length === 0 || /[\r\n]/u.test(value)) {
-      fail(name + " must be a non-empty single-line value.");
-    }
-    return name + "=" + value;
-  });
-  return prefix + releaseProperties.join("\n") + "\n";
-}
-
 function parseArguments(args) {
-  if (args.length !== 4 || args[0] !== "--build-gradle" || args[2] !== "--gradle-properties") {
-    fail("expected --build-gradle <path> --gradle-properties <path>.");
+  if (args.length !== 2 || args[0] !== "--build-gradle") {
+    fail("expected --build-gradle <path>.");
   }
-  const buildGradlePath = args[1];
-  const gradlePropertiesPath = args[3];
-  if (typeof buildGradlePath !== "string" || buildGradlePath.length < 1 || path.basename(buildGradlePath) !== "build.gradle") {
+  const filePath = args[1];
+  if (typeof filePath !== "string" || filePath.length < 1 || path.basename(filePath) !== "build.gradle") {
     fail("build Gradle path is malformed.");
   }
-  if (typeof gradlePropertiesPath !== "string" || gradlePropertiesPath.length < 1 || path.basename(gradlePropertiesPath) !== "gradle.properties") {
-    fail("Gradle properties path is malformed.");
-  }
-  return { buildGradlePath, gradlePropertiesPath };
+  return filePath;
 }
 
 if (process.argv[1] === new URL(import.meta.url).pathname) {
   try {
-    const { buildGradlePath, gradlePropertiesPath } = parseArguments(process.argv.slice(2));
-    writeFileSync(buildGradlePath, configureReleaseSigning(readFileSync(buildGradlePath, "utf8")));
-    writeFileSync(
-      gradlePropertiesPath,
-      appendReleaseSigningProperties(readFileSync(gradlePropertiesPath, "utf8"), process.env),
-    );
+    const filePath = parseArguments(process.argv.slice(2));
+    writeFileSync(filePath, configureReleaseSigning(readFileSync(filePath, "utf8")));
   } catch (error) {
     process.stderr.write((error instanceof Error ? error.message : "release_signing_configuration_failed") + "\n");
     process.exitCode = 1;
