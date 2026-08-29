@@ -324,3 +324,30 @@ test("release workflows contain a private build-once candidate path and no-rebui
   const packageJson = JSON.parse(readFileSync(path.join(projectRoot, "package.json"), "utf8"));
   assert.equal(validateReleaseMatrixScripts(packageJson).count > 0, true);
 });
+
+test("emulator-runner commands are self-contained on one line", () => {
+  const projectRoot = path.resolve(path.dirname(new URL(import.meta.url).pathname), "..");
+  const candidateWorkflow = readFileSync(
+    path.join(projectRoot, ".github/workflows/release-candidate.yml"),
+    "utf8",
+  );
+  const matrix = candidateWorkflow.match(
+    /- name: Run exact production candidate automated matrix[\s\S]*?(?=\n      - name:)/u,
+  )?.[0];
+
+  assert.ok(matrix);
+  assert.doesNotMatch(matrix, /\\\s*$/mu);
+  const scriptLines = matrix.match(/\n\s+script: \|\n([\s\S]*)/u)?.[1]
+    .split(/\r?\n/u)
+    .map((line) => line.trim())
+    .filter(Boolean);
+  assert.deepEqual(scriptLines, [
+    "mkdir -p artifacts/release-candidate/evidence",
+    'npm run test:maestro:phase5 -- --bundle-dir artifacts/release-candidate --manifest-sha256 "${{ steps.candidate_manifest.outputs.manifest_sha256 }}" --serial emulator-5554 --output artifacts/release-candidate/evidence/maestro.json',
+    'npm run benchmark:phase5 -- --bundle-dir artifacts/release-candidate --manifest-sha256 "${{ steps.candidate_manifest.outputs.manifest_sha256 }}" --serial emulator-5554 --device-json artifacts/release-candidate/evidence/maestro.json --output artifacts/release-candidate/evidence/benchmark.json',
+    'node scripts/record-phase5-source-evidence.mjs --bundle-dir artifacts/release-candidate --manifest-sha256 "${{ steps.candidate_manifest.outputs.manifest_sha256 }}" --static-report "${RUNNER_TEMP}/phase5-static.txt" --generated-report "${RUNNER_TEMP}/phase5-generated.txt" --device-json artifacts/release-candidate/evidence/maestro.json --output artifacts/release-candidate/evidence/source.json',
+    'npm run verify:native:phase5 -- --bundle-dir artifacts/release-candidate --manifest-sha256 "${{ steps.candidate_manifest.outputs.manifest_sha256 }}" --source artifacts/release-candidate/evidence/source.json --maestro artifacts/release-candidate/evidence/maestro.json --benchmark artifacts/release-candidate/evidence/benchmark.json --output artifacts/release-candidate/evidence/automated.json',
+    `grep -F '"mode": "automated-only"' artifacts/release-candidate/evidence/automated.json`,
+    `grep -F '"approval_status": "evidence_pending"' artifacts/release-candidate/evidence/automated.json`,
+  ]);
+});
