@@ -342,6 +342,25 @@ test("Phase 5 source and installed-flow ledgers are exact, ordered, and automate
   }, manifest, SHA_D, maestroRawReports), /automated|approval|pending/iu);
 });
 
+test("Phase 5 history flow uses the live Calendar and Progress root destinations", () => {
+  const rootTabs = readFileSync(
+    path.join(projectRoot, "src/ui/components/index.ts"),
+    "utf8",
+  );
+  const flow = readFileSync(
+    path.join(projectRoot, "maestro/phase5/history-progress.yaml"),
+    "utf8",
+  );
+
+  assert.match(rootTabs, /name: "calendar", label: "Calendar"/u);
+  assert.match(rootTabs, /name: "progress",[\s\S]*?label: "Progress"/u);
+  assert.match(
+    flow,
+    /- assertVisible: "Today"\n- tapOn: "Calendar"\n- assertVisible: "Calendar month grid"\n- tapOn: "Progress"\n- assertVisible: "4 weeks"/u,
+  );
+  assert.doesNotMatch(flow, /(?:tapOn|assertVisible): "History"/u);
+});
+
 test("Phase 5 bounded performance evidence binds raw samples and exact installed bytes", async () => {
   const {
     PHASE5_BENCHMARK_MEASUREMENTS,
