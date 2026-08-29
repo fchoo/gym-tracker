@@ -24,6 +24,7 @@ import {
   validateReleaseMatrixScripts,
 } from "./release-matrix-contract.mjs";
 import {
+  appendReleaseSigningProperties,
   configureReleaseSigning,
 } from "./configure-release-signing.mjs";
 
@@ -288,6 +289,31 @@ test("release signing patch replaces only the release build config", () => {
   assert.match(configured, /release \{\n            storeFile file\(RELEASE_STORE_FILE\)/u);
   assert.equal((configured.match(/signingConfig signingConfigs\.debug/g) ?? []).length, 1);
   assert.equal((configured.match(/signingConfig signingConfigs\.release/g) ?? []).length, 1);
+});
+
+test("release signing properties preserve a record boundary when Expo omits the final newline", () => {
+  const configured = appendReleaseSigningProperties(
+    "expo.useLegacyPackaging=false\nexpo.sqlite.enableFTS=true",
+    {
+      RELEASE_STORE_FILE: "/tmp/release.keystore",
+      RELEASE_STORE_PASSWORD: "store-password",
+      RELEASE_KEY_ALIAS: "release",
+      RELEASE_KEY_PASSWORD: "key-password",
+    },
+  );
+
+  assert.equal(
+    configured,
+    [
+      "expo.useLegacyPackaging=false",
+      "expo.sqlite.enableFTS=true",
+      "RELEASE_STORE_FILE=/tmp/release.keystore",
+      "RELEASE_STORE_PASSWORD=store-password",
+      "RELEASE_KEY_ALIAS=release",
+      "RELEASE_KEY_PASSWORD=key-password",
+      "",
+    ].join("\n"),
+  );
 });
 
 test("release workflows contain a private build-once candidate path and no-rebuild promotion path", () => {
