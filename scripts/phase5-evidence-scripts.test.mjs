@@ -383,6 +383,15 @@ test("Phase 5 recovery flows target the unique Data and recovery action", () => 
     assert.ok(flow.includes(expectedTap), relativePath);
     assert.doesNotMatch(flow, /- tapOn: "Data and recovery"/u, relativePath);
   }
+
+  const dataRecoveryFlow = readFileSync(
+    path.join(projectRoot, "maestro/phase5/data-recovery.yaml"),
+    "utf8",
+  );
+  assert.match(
+    dataRecoveryFlow,
+    /- inputText: "automation-only-password"\n- hideKeyboard\n- tapOn: "Choose a Gym Tracker backup"/u,
+  );
 });
 
 test("Phase 5 bounded performance evidence binds raw samples and exact installed bytes", async () => {

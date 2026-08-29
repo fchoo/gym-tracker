@@ -16,6 +16,7 @@ tags:
 - assertVisible: "Export CSV"
 - tapOn: "Restore password"
 - inputText: "automation-only-password"
+- hideKeyboard
 - tapOn: "Choose a Gym Tracker backup"
 - pressKey: BACK
 - assertVisible: "No backup was selected"
