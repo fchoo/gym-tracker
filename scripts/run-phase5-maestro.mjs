@@ -105,6 +105,12 @@ function adb(serial, ...args) {
   return execFileSync("adb", ["-s", serial, ...args], { encoding: "utf8" }).trim();
 }
 
+function adbWith(execute, serial, ...args) {
+  return execute("adb", ["-s", serial, ...args], { encoding: "utf8" })
+    .toString()
+    .trim();
+}
+
 function installedDevice(serial, manifest) {
   const packageName = manifest.source.package;
   const apkPath = adb(serial, "shell", "pm", "path", packageName)
@@ -130,12 +136,29 @@ function installedDevice(serial, manifest) {
   }
 }
 
-function cleanProductionState(serial, packageName) {
-  adb(serial, "shell", "bmgr", "enable", "false");
-  adb(serial, "shell", "settings", "put", "secure", "backup_enabled", "0");
-  try { adb(serial, "uninstall", packageName); } catch { /* first install */ }
-  const packageStillPresent = adb(serial, "shell", "pm", "path", packageName);
-  if (packageStillPresent.length > 0) {
+export function cleanProductionState(
+  serial,
+  packageName,
+  execute = execFileSync,
+) {
+  adbWith(execute, serial, "shell", "bmgr", "enable", "false");
+  adbWith(
+    execute, serial, "shell", "settings", "put", "secure",
+    "backup_enabled", "0",
+  );
+  try { adbWith(execute, serial, "uninstall", packageName); } catch { /* first install */ }
+  const packageOutput = adbWith(
+    execute, serial, "shell", "pm", "list", "packages", "--user",
+    "0", packageName,
+  );
+  const packageLines = packageOutput.length === 0
+    ? []
+    : packageOutput.split(/\r?\n/u);
+  if (packageLines.some((line) => !/^package:[A-Za-z0-9_.]+$/u.test(line))) {
+    throw new Error("production package probe returned malformed output.");
+  }
+  const installedPackages = packageLines.map((line) => line.slice(8));
+  if (installedPackages.includes(packageName)) {
     throw new Error("production package remains before clean restore install.");
   }
   return {
