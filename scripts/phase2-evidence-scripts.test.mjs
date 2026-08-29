@@ -644,6 +644,24 @@ test("Phase 2 remediation flows use public labels and deterministic seams", asyn
     1,
     "the post-restart Add working set action must use bounded right-edge swipes",
   );
+  const postRestartWorkingSetTopAnchor = [
+    '- tapOn: "Resume workout"',
+    "- repeat:",
+    "    times: 12",
+    "    while:",
+    '      notVisible: "Add warm-up"',
+    "    commands:",
+    "      - swipe:",
+    "          start: 95%, 25%",
+    "          end: 95%, 75%",
+    "          duration: 300",
+    '- assertVisible: "Add warm-up"',
+    retriedAddWorkingSetVisibilityGuard,
+  ].join("\n");
+  assert.ok(
+    workout.includes(postRestartWorkingSetTopAnchor),
+    "the post-restart working-set search must start from a known anchor above the action",
+  );
   assert.ok(
     workout.includes(
       `${retriedAddWorkingSetVisibilityGuard}\n${safeActionNudge}\n- assertVisible: "Add working set"\n- tapOn: "Add working set"`,
@@ -2596,6 +2614,15 @@ test("denied notification flow reveals the first set action with bounded swipes"
     flow,
     /- scrollUntilVisible:\n    element:\n      text: "Complete Set 1"/u,
   );
+});
+
+test("every public Maestro flow uses bounded traversal for working-set completion actions", async () => {
+  const genericSetActionSearch = /- scrollUntilVisible:\n    element:\n      text: "Complete Set \d+"/u;
+
+  for (const relativePath of await maestroYamlPaths()) {
+    const flow = await readFile(path.join(projectRoot, relativePath), "utf8");
+    assert.doesNotMatch(flow, genericSetActionSearch, relativePath);
+  }
 });
 
 test("every Maestro rest control is expanded in its current mounted dock", async () => {

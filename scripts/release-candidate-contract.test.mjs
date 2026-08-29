@@ -290,6 +290,17 @@ test("release signing patch replaces only the release build config", () => {
   assert.equal((configured.match(/signingConfig signingConfigs\.release/g) ?? []).length, 1);
 });
 
+test("release build passes signing secrets as Gradle project environment properties", () => {
+  const projectRoot = path.resolve(path.dirname(new URL(import.meta.url).pathname), "..");
+  const buildScript = readFileSync(path.join(projectRoot, "scripts/build-release-candidate-once.sh"), "utf8");
+
+  assert.doesNotMatch(buildScript, /cat >> android\/gradle\.properties/u);
+  assert.equal(buildScript.includes('ORG_GRADLE_PROJECT_RELEASE_STORE_FILE="$RELEASE_KEYSTORE_PATH"'), true);
+  assert.equal(buildScript.includes('ORG_GRADLE_PROJECT_RELEASE_STORE_PASSWORD="$RELEASE_KEYSTORE_PASSWORD"'), true);
+  assert.equal(buildScript.includes('ORG_GRADLE_PROJECT_RELEASE_KEY_ALIAS="$RELEASE_KEY_ALIAS"'), true);
+  assert.equal(buildScript.includes('ORG_GRADLE_PROJECT_RELEASE_KEY_PASSWORD="$RELEASE_KEY_PASSWORD"'), true);
+});
+
 test("release workflows contain a private build-once candidate path and no-rebuild promotion path", () => {
   const projectRoot = path.resolve(path.dirname(new URL(import.meta.url).pathname), "..");
   const candidateWorkflow = readFileSync(path.join(projectRoot, ".github/workflows/release-candidate.yml"), "utf8");

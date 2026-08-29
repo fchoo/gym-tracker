@@ -55,16 +55,13 @@ GYM_TRACKER_BUILD_PROFILE=production CI=1 \
   npx expo prebuild --clean --platform android --no-install
 node scripts/assert-generated-production-android.mjs android
 
-cat >> android/gradle.properties <<EOF
-RELEASE_STORE_FILE=$RELEASE_KEYSTORE_PATH
-RELEASE_STORE_PASSWORD=$RELEASE_KEYSTORE_PASSWORD
-RELEASE_KEY_ALIAS=$RELEASE_KEY_ALIAS
-RELEASE_KEY_PASSWORD=$RELEASE_KEY_PASSWORD
-EOF
-
 node scripts/configure-release-signing.mjs --build-gradle android/app/build.gradle
 
-./android/gradlew \
+ORG_GRADLE_PROJECT_RELEASE_STORE_FILE="$RELEASE_KEYSTORE_PATH" \
+ORG_GRADLE_PROJECT_RELEASE_STORE_PASSWORD="$RELEASE_KEYSTORE_PASSWORD" \
+ORG_GRADLE_PROJECT_RELEASE_KEY_ALIAS="$RELEASE_KEY_ALIAS" \
+ORG_GRADLE_PROJECT_RELEASE_KEY_PASSWORD="$RELEASE_KEY_PASSWORD" \
+  ./android/gradlew \
   --project-dir "$project_root/android" \
   --no-daemon \
   '-Dorg.gradle.jvmargs=-Xmx4096m -XX:MaxMetaspaceSize=1024m -Dfile.encoding=UTF-8' \
