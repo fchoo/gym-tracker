@@ -2616,6 +2616,15 @@ test("denied notification flow reveals the first set action with bounded swipes"
   );
 });
 
+test("every public Maestro flow uses bounded traversal for working-set completion actions", async () => {
+  const genericSetActionSearch = /- scrollUntilVisible:\n    element:\n      text: "Complete Set \d+"/u;
+
+  for (const relativePath of await maestroYamlPaths()) {
+    const flow = await readFile(path.join(projectRoot, relativePath), "utf8");
+    assert.doesNotMatch(flow, genericSetActionSearch, relativePath);
+  }
+});
+
 test("every Maestro rest control is expanded in its current mounted dock", async () => {
   const controlPattern = /- tapOn: "(Skip rest|Pause rest|Resume rest)"/gu;
   const resetPattern = /- (?:launchApp:|stopApp|killApp|tapOn: "Complete Set \d+")/u;

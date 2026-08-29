@@ -380,7 +380,7 @@ describe("Plan 01-03 test and boundary tooling", () => {
     );
 
     expect(fullLoop).toMatch(
-      /assertVisible: "RESTING · NEXT: SET 3 AT 60 kg × 8"\n- assertNotVisible: "Undo completed set"\n- assertVisible: "Expand rest controls"\n- tapOn: "Expand rest controls"\n- tapOn: "Skip rest"\n- extendedWaitUntil:\n    notVisible: "Skip rest"\n    timeout: 60000\n- scrollUntilVisible:\n    element:\n      text: "Working set 3 repetitions"\n    direction: DOWN\n    timeout: 60000\n- longPressOn: "Working set 3 repetitions"\n- tapOn:\n    text: "Select all"\n    optional: true\n- eraseText: 1\n- inputText: "7"\n- hideKeyboard\n- scrollUntilVisible:\n    element:\n      text: "Complete Set 3"\n    direction: DOWN\n    centerElement: true\n- tapOn: "Complete Set 3"/u,
+      /assertVisible: "RESTING · NEXT: SET 3 AT 60 kg × 8"\n- assertNotVisible: "Undo completed set"\n- assertVisible: "Expand rest controls"\n- tapOn: "Expand rest controls"\n- tapOn: "Skip rest"\n- extendedWaitUntil:\n    notVisible: "Skip rest"\n    timeout: 60000\n- scrollUntilVisible:\n    element:\n      text: "Working set 3 repetitions"\n    direction: DOWN\n    timeout: 60000\n- longPressOn: "Working set 3 repetitions"\n- tapOn:\n    text: "Select all"\n    optional: true\n- eraseText: 1\n- inputText: "7"\n- hideKeyboard\n- repeat:\n    times: 12\n    while:\n      notVisible: "Complete Set 3"\n    commands:\n      - swipe:\n          start: 95%, 75%\n          end: 95%, 25%\n          duration: 300\n- assertVisible: "Complete Set 3"\n- tapOn: "Complete Set 3"/u,
     );
     expect(fullLoop).not.toContain("Change values");
     expect(fullLoop).not.toContain("Use these values");
