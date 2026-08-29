@@ -12,5 +12,10 @@ tags:
     id: "more-data-and-recovery"
 - assertVisible: "Create secure backup"
 - assertVisible: "Restore backup"
+- scrollUntilVisible:
+    element:
+      text: "Export CSV"
+    direction: DOWN
+    centerElement: true
 - assertVisible: "Export CSV"
 - assertVisible: "CSV is a readable spreadsheet file. Share it only with people you trust."

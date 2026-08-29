@@ -392,6 +392,15 @@ test("Phase 5 recovery flows target the unique Data and recovery action", () => 
     dataRecoveryFlow,
     /- inputText: "automation-only-password"\n- hideKeyboard\n- tapOn: "Choose a Gym Tracker backup"/u,
   );
+
+  const adaptiveFlow = readFileSync(
+    path.join(projectRoot, "maestro/phase5/adaptive-accessibility.yaml"),
+    "utf8",
+  );
+  assert.match(
+    adaptiveFlow,
+    /- assertVisible: "Restore backup"\n- scrollUntilVisible:\n    element:\n      text: "Export CSV"\n    direction: DOWN\n    centerElement: true\n- assertVisible: "Export CSV"\n- assertVisible: "CSV is a readable spreadsheet file\. Share it only with people you trust\."/u,
+  );
 });
 
 test("Phase 5 bounded performance evidence binds raw samples and exact installed bytes", async () => {
