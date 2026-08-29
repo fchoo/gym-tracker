@@ -644,6 +644,24 @@ test("Phase 2 remediation flows use public labels and deterministic seams", asyn
     1,
     "the post-restart Add working set action must use bounded right-edge swipes",
   );
+  const postRestartWorkingSetTopAnchor = [
+    '- tapOn: "Resume workout"',
+    "- repeat:",
+    "    times: 12",
+    "    while:",
+    '      notVisible: "Add warm-up"',
+    "    commands:",
+    "      - swipe:",
+    "          start: 95%, 25%",
+    "          end: 95%, 75%",
+    "          duration: 300",
+    '- assertVisible: "Add warm-up"',
+    retriedAddWorkingSetVisibilityGuard,
+  ].join("\n");
+  assert.ok(
+    workout.includes(postRestartWorkingSetTopAnchor),
+    "the post-restart working-set search must start from a known anchor above the action",
+  );
   assert.ok(
     workout.includes(
       `${retriedAddWorkingSetVisibilityGuard}\n${safeActionNudge}\n- assertVisible: "Add working set"\n- tapOn: "Add working set"`,
