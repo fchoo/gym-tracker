@@ -940,6 +940,48 @@ test("Phase 2 date flows use CalendarField rather than text entry", async () => 
     schedule,
     /- assertNotVisible: "Calendar dialog"\n- tapOn: "Schedule timezone"\n- eraseText: 32\n- inputText: "Australia\/Sydney"\n- hideKeyboard\n- repeat:\n    times: 4\n    while:\n      notVisible: "\^Weekday\$"\n    commands:\n      - swipe:\n          start: 95%, 75%\n          end: 95%, 45%\n          duration: 300\n- assertVisible: "\^Weekday\$"\n- tapOn: "\^Rotation\$"/u,
   );
+  const boundedRotationEditorTraversal = [
+    '- tapOn: "^Rotation$"',
+    '- assertVisible: "1. Push"',
+    '- assertVisible: "2. Pull"',
+    "- repeat:",
+    "    times: 4",
+    "    while:",
+    '      notVisible: "Move Pull up"',
+    "    commands:",
+    "      - swipe:",
+    "          start: 95%, 75%",
+    "          end: 95%, 45%",
+    "          duration: 300",
+    '- assertVisible: "Move Pull up"',
+    '- tapOn: "Move Pull up"',
+    '- assertVisible: "1. Pull"',
+    "- repeat:",
+    "    times: 4",
+    "    while:",
+    '      notVisible: "3. Legs"',
+    "    commands:",
+    "      - swipe:",
+    "          start: 95%, 75%",
+    "          end: 95%, 45%",
+    "          duration: 300",
+    '- assertVisible: "3. Legs"',
+    "- repeat:",
+    "    times: 4",
+    "    while:",
+    '      notVisible: "Save schedule"',
+    "    commands:",
+    "      - swipe:",
+    "          start: 95%, 75%",
+    "          end: 95%, 45%",
+    "          duration: 300",
+    '- assertVisible: "Save schedule"',
+    '- tapOn: "Save schedule"',
+  ].join("\n");
+  assert.ok(
+    schedule.includes(boundedRotationEditorTraversal),
+    "the expanded Rotation editor must reveal every row and action with bounded right-edge swipes",
+  );
   const scheduleWorkoutFieldTraversal = /- repeat:\n    times: 4\n    while:\n      notVisible: "Working set 1 (?:added )?load in kilograms"\n    commands:\n      - swipe:\n          start: 95%, 75%\n          end: 95%, 45%\n          duration: 300\n- assertVisible: "Working set 1 (?:added )?load in kilograms"/gu;
   assert.equal([...schedule.matchAll(scheduleWorkoutFieldTraversal)].length, 3);
   assert.match(

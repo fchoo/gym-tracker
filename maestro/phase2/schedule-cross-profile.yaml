@@ -100,18 +100,38 @@ tags:
 - tapOn: "^Rotation$"
 - assertVisible: "1. Push"
 - assertVisible: "2. Pull"
-- assertVisible: "3. Legs"
-- scrollUntilVisible:
-    element:
-      text: "Move Pull up"
-    direction: DOWN
-    centerElement: true
+- repeat:
+    times: 4
+    while:
+      notVisible: "Move Pull up"
+    commands:
+      - swipe:
+          start: 95%, 75%
+          end: 95%, 45%
+          duration: 300
+- assertVisible: "Move Pull up"
 - tapOn: "Move Pull up"
 - assertVisible: "1. Pull"
-- scrollUntilVisible:
-    element:
-      text: "Save schedule"
-    direction: DOWN
+- repeat:
+    times: 4
+    while:
+      notVisible: "3. Legs"
+    commands:
+      - swipe:
+          start: 95%, 75%
+          end: 95%, 45%
+          duration: 300
+- assertVisible: "3. Legs"
+- repeat:
+    times: 4
+    while:
+      notVisible: "Save schedule"
+    commands:
+      - swipe:
+          start: 95%, 75%
+          end: 95%, 45%
+          duration: 300
+- assertVisible: "Save schedule"
 - tapOn: "Save schedule"
 - assertVisible: "Save this schedule?"
 - tapOn: "Save schedule"
