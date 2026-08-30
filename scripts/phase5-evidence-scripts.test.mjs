@@ -844,11 +844,15 @@ test("attended verifier hashes canonical record, every attachment, automation, a
       evidenceDirectory: temporaryDirectory, rows,
     });
     const canonicalRecordBytes = Buffer.from(serializeCanonicalJson(record));
-    assert.doesNotThrow(() => validatePhase5AttendedRecordBytes({
+    assert.deepEqual(validatePhase5AttendedRecordBytes({
       candidateManifest: manifest, manifestSha256: SHA_D, record,
       recordBytes: canonicalRecordBytes, evidenceDirectory: temporaryDirectory,
       automatedEvidencePath: automatedPath, checklistPath, observationsPath, rows,
-    }));
+    }), {
+      status: "approved",
+      rows: record.rows,
+      attended_record_sha256: createHash("sha256").update(canonicalRecordBytes).digest("hex"),
+    });
     writeFileSync(checklistPath, `${checklistBytes.toString("utf8")}\n`);
     assert.throws(() => validatePhase5AttendedRecordBytes({
       candidateManifest: manifest, manifestSha256: SHA_D, record,

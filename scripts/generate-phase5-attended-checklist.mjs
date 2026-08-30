@@ -381,7 +381,11 @@ export function validatePhase5AttendedRecordBytes({
       }
     }
   }
-  return { attended_record_sha256: sha256(recordBytes) };
+  return {
+    status: record.status,
+    rows: record.rows,
+    attended_record_sha256: sha256(recordBytes),
+  };
 }
 
 function parseCli(args) {
