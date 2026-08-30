@@ -1203,8 +1203,41 @@ test("production Android contract validates multiline backup and D2D sections", 
   }).join(" "), /architectures.*full|full.*architectures/iu);
 });
 
-test("Phase 5 benchmark parses real Android TotalTime whitespace", async () => {
-  const { parsePhase5TotalTime } = await load("scripts/benchmark-phase5.mjs");
+test("Phase 5 benchmark resolves an explicit launcher and parses Android timing", async () => {
+  const {
+    parsePhase5LauncherComponent,
+    parsePhase5TotalTime,
+    phase5LaunchArguments,
+  } = await load("scripts/benchmark-phase5.mjs");
+  assert.equal(
+    parsePhase5LauncherComponent(
+      "com.fchoo.gymtracker/.MainActivity\n",
+      "com.fchoo.gymtracker",
+    ),
+    "com.fchoo.gymtracker/.MainActivity",
+  );
+  assert.throws(
+    () => parsePhase5LauncherComponent(
+      "com.attacker/.MainActivity\n",
+      "com.fchoo.gymtracker",
+    ),
+    /launcher|component/iu,
+  );
+  assert.deepEqual(
+    phase5LaunchArguments("com.fchoo.gymtracker/.MainActivity"),
+    ["shell", "am", "start", "-W", "-n", "com.fchoo.gymtracker/.MainActivity"],
+  );
+  assert.deepEqual(
+    phase5LaunchArguments(
+      "com.fchoo.gymtracker/.MainActivity",
+      "gymtracker://more/data-and-recovery",
+    ),
+    [
+      "shell", "am", "start", "-W", "-n",
+      "com.fchoo.gymtracker/.MainActivity", "-a", "android.intent.action.VIEW",
+      "-d", "gymtracker://more/data-and-recovery",
+    ],
+  );
   assert.equal(parsePhase5TotalTime("Status: ok\nTotalTime:   123\nWaitTime: 125\n"), 123);
   assert.throws(() => parsePhase5TotalTime("TotalTime:s123\n"), /timing|malformed/iu);
 });
