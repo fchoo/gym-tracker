@@ -70,6 +70,24 @@ export function parsePhase5TotalTime(output) {
   return total;
 }
 
+export function parsePhase5LauncherComponent(output, packageName) {
+  const lines = output.trim().split(/\r?\n/u).filter(Boolean);
+  const component = lines.at(-1) ?? "";
+  if (!component.startsWith(`${packageName}/`)
+    || !/^[-A-Za-z0-9_.$]+\/[-A-Za-z0-9_.$]+$/u.test(component)) {
+    throw new Error("Android launcher component could not be resolved.");
+  }
+  return component;
+}
+
+export function phase5LaunchArguments(launcherComponent, deepLink = null) {
+  const args = ["shell", "am", "start", "-W", "-n", launcherComponent];
+  if (deepLink !== null) {
+    args.push("-a", "android.intent.action.VIEW", "-d", deepLink);
+  }
+  return args;
+}
+
 function runAdb(serial, ...args) {
   return execFileSync("adb", ["-s", serial, ...args], { encoding: "utf8" });
 }
@@ -89,15 +107,25 @@ export function executePhase5Benchmark(args = process.argv.slice(2)) {
   ).device;
   validatePhase5DeviceIdentity(device, candidate.manifest);
   const samples = PHASE5_BENCHMARK_THRESHOLDS.minimum_samples;
+  const launcherComponent = parsePhase5LauncherComponent(
+    runAdb(
+      options.serial, "shell", "cmd", "package", "resolve-activity",
+      "--brief", candidate.manifest.source.package,
+    ),
+    candidate.manifest.source.package,
+  );
   const definitions = [
     [PHASE5_BENCHMARK_MEASUREMENTS[0], () => {
       runAdb(options.serial, "shell", "am", "force-stop", candidate.manifest.source.package);
-      return runAdb(options.serial, "shell", "am", "start", "-W", candidate.manifest.source.package);
+      return runAdb(options.serial, ...phase5LaunchArguments(launcherComponent));
     }],
     [PHASE5_BENCHMARK_MEASUREMENTS[1], () =>
-      runAdb(options.serial, "shell", "am", "start", "-W", candidate.manifest.source.package)],
+      runAdb(options.serial, ...phase5LaunchArguments(launcherComponent))],
     [PHASE5_BENCHMARK_MEASUREMENTS[2], () =>
-      runAdb(options.serial, "shell", "am", "start", "-W", "-a", "android.intent.action.VIEW", "-d", "gymtracker://more/data-and-recovery", candidate.manifest.source.package)],
+      runAdb(options.serial, ...phase5LaunchArguments(
+        launcherComponent,
+        "gymtracker://more/data-and-recovery",
+      ))],
   ];
   const measurements = definitions.map(([id, run]) => {
     const raw = [];
