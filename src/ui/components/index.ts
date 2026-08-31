@@ -58,6 +58,11 @@ export {
 export {
   RestAlertSettingsSheet,
 } from "./RestAlertSettingsSheet";
+export {
+  M3SearchField,
+  type M3SearchFieldProps,
+  type M3SearchFieldState,
+} from "./M3SearchField";
 
 type ActionProps = Readonly<{
   label: string;
