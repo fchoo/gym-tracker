@@ -5,15 +5,12 @@ tags:
   - library
   - custom-exercises
 ---
-- launchApp:
-    clearState: false
-    stopApp: true
-    permissions:
-      notifications: deny
-- assertVisible: "Today"
+- stopApp
+- openLink: "gymtracker-devtest://"
 - extendedWaitUntil:
     visible: "Use Full Body Foundation"
     timeout: 90000
+- assertVisible: "Today"
 - tapOn: "Library"
 - tapOn: "Exercises"
 - assertVisible: "Search exercises"

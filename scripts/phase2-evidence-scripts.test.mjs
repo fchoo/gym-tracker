@@ -2658,6 +2658,27 @@ test("fresh Phase 2 Library flows wait until root navigation is trusted", async 
   }
 });
 
+test("built-in custom copy cold-starts at the root after the prior detail segment", async () => {
+  const flow = await readFile(
+    path.join(
+      projectRoot,
+      "maestro/phase2/custom-exercise-lifecycle2-copy.yaml",
+    ),
+    "utf8",
+  );
+  const rootReset = [
+    "- stopApp",
+    '- openLink: "gymtracker-devtest://"',
+    "- extendedWaitUntil:",
+    '    visible: "Use Full Body Foundation"',
+    "    timeout: 90000",
+    '- assertVisible: "Today"',
+  ].join("\n");
+
+  assert.ok(flow.includes(rootReset));
+  assert.doesNotMatch(flow, /clearState: false/u);
+});
+
 test("Library exercise flow waits for trusted Today after process restart", async () => {
   const flow = await readFile(
     path.join(projectRoot, "maestro/phase2/library-exercises.yaml"),
@@ -3183,12 +3204,15 @@ test("custom exercise flow scrolls through the long editor contract", async () =
     assert.ok(commandCount > 0 && commandCount <= 65, segmentPaths[index]);
     if (index === 0) {
       assert.match(segment, /clearState: true/u);
+    } else if (index === 1) {
+      assert.match(segment, /- stopApp\n- openLink: "gymtracker-devtest:\/\/"/u);
+      assert.doesNotMatch(segment, /clearState: false/u);
     } else {
       assert.match(segment, /clearState: false/u);
       assert.match(segment, /stopApp: true/u);
     }
   }
-  for (const index of [1, 2, 3, 4]) {
+  for (const index of [2, 3, 4]) {
     assert.match(
       segments[index],
       /- assertVisible: "Today"\n- extendedWaitUntil:\n    visible: "Use Full Body Foundation"\n    timeout: 90000\n- tapOn: "Library"/u,
