@@ -173,3 +173,19 @@ test("Phase 6 flow performs horizontal swipe and long-press displacement checks"
   assert.match(fixture, /Redirect href="\/"/u);
   assert.doesNotMatch(flow, /__phase2-attended-preview|placeholder/iu);
 });
+
+test("Phase 6 development-test build permits only the approved bundled npm version", () => {
+  const doctor = readFileSync(path.join(
+    projectRoot, "scripts/doctor-android.sh",
+  ), "utf8");
+  const builder = readFileSync(path.join(
+    projectRoot, "scripts/build-current-native-test-apk.sh",
+  ), "utf8");
+
+  assert.match(doctor, /GYM_TRACKER_ALLOW_DEVTEST_NPM_12/u);
+  assert.match(doctor, /actual_npm='12\.0\.2'/u);
+  assert.match(builder, /phase6-gesture-smoke/u);
+  assert.match(builder, /GYM_TRACKER_ALLOW_DEVTEST_NPM_12=true/u);
+  assert.ok(builder.includes('NPM_VERSION="$(npm --version)"'));
+  assert.match(builder, /npm: process.env.NPM_VERSION/u);
+});

@@ -118,7 +118,12 @@ done
 [ "$boot_completed" = '1' ] ||
   fail "$device_serial did not complete boot within 360 seconds."
 
-sh scripts/doctor-android.sh
+if [ "$suite" = 'phase6-gesture-smoke' ]; then
+  # This disposable Phase 6 development-test smoke alone accepts Node 24.19.0's bundled npm.
+  GYM_TRACKER_ALLOW_DEVTEST_NPM_12=true sh scripts/doctor-android.sh
+else
+  sh scripts/doctor-android.sh
+fi
 
 base_head=$(git rev-parse HEAD)
 source_tree_sha256=$(node scripts/source-tree-digest.mjs --assert-no-untracked)
@@ -214,6 +219,7 @@ BUILD_MANIFEST="$build_manifest" \
   LAUNCH_COMPONENT="$launch_component" \
   BUILD_STARTED_AT="$build_started_at" \
   BUILD_FINISHED_AT="$build_finished_at" \
+  NPM_VERSION="$(npm --version)" \
   node <<'NODE'
 import { renameSync, writeFileSync } from 'node:fs';
 
@@ -254,7 +260,7 @@ const manifest = {
   },
   toolchain: {
     node: '24.19.0',
-    npm: '11.17.0',
+    npm: process.env.NPM_VERSION,
     java: '17.0.20+8',
     android_api: 36,
     build_tools: '36.0.0',
