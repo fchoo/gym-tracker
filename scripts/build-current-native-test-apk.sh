@@ -275,6 +275,7 @@ writeFileSync(temporaryPath, `${JSON.stringify(manifest, null, 2)}\n`);
 renameSync(temporaryPath, process.env.BUILD_MANIFEST);
 NODE
 
+[ -s "$build_manifest" ] || fail 'build manifest was not published.'
 printf 'build-current-native-test-apk: manifest=%s\n' "$build_manifest"
 printf 'build-current-native-test-apk: apk=%s\n' "$apk_path"
 printf 'build-current-native-test-apk: sha256=%s\n' "$apk_sha256"

@@ -189,3 +189,25 @@ test("Phase 6 development-test build permits only the approved bundled npm versi
   assert.ok(builder.includes('NPM_VERSION="$(npm --version)"'));
   assert.match(builder, /npm: process.env.NPM_VERSION/u);
 });
+
+test("Phase 6 build publishes and externally hashes its manifest before the runner", () => {
+  const builder = readFileSync(path.join(
+    projectRoot, "scripts/build-current-native-test-apk.sh",
+  ), "utf8");
+  const plan = readFileSync(path.join(
+    projectRoot,
+    ".planning/phases/06-material-3-ux-remediation/06-02-PLAN.md",
+  ), "utf8");
+  const publicationGuard =
+    `[ -s "$build_manifest" ] || fail 'build manifest was not published.'`;
+
+  assert.ok(builder.includes(publicationGuard));
+  assert.ok(
+    builder.indexOf(publicationGuard)
+      < builder.indexOf("build-current-native-test-apk: manifest=%s"),
+  );
+  assert.ok(plan.includes(
+    `PHASE6_MANIFEST_SHA256=$(node --input-type=module -e "import { sha256File } from './scripts/run-phase6-maestro.mjs'; process.stdout.write(sha256File('./artifacts/native/phase6-gesture-smoke/build.json'))")`,
+  ));
+  assert.doesNotMatch(plan, /m\.manifest_sha256/u);
+});
