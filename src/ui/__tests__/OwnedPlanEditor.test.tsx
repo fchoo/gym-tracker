@@ -13,9 +13,6 @@ import {
 } from "@jest/globals";
 import React from "react";
 import {
-  State,
-} from "react-native-gesture-handler";
-import {
   getByGestureTestId,
 } from "react-native-gesture-handler/jest-utils";
 
@@ -212,6 +209,11 @@ function reorderGesture(label: string): TestGesture {
 
 function dayOrder(): string[] {
   return screen.getAllByTestId(/^reorder-row-day-/u)
+    .map(({ props: rowProps }) => rowProps.testID as string);
+}
+
+function exerciseOrder(): string[] {
+  return screen.getAllByTestId(/^reorder-row-exercise-/u)
     .map(({ props: rowProps }) => rowProps.testID as string);
 }
 
@@ -770,6 +772,72 @@ describe("OwnedPlanEditorScreen dirty leave and lifecycle", () => {
       "reorder-row-day-Conditioning",
     ]);
     expect(screen.queryByText(/Recovery moved to/u)).not.toBeOnTheScreen();
+    expect(savePlan).not.toHaveBeenCalled();
+  });
+
+  it("uses the same continuous draft move for exercise rows", async () => {
+    const squat = completeSnapshot().days[0]!.occurrences[0]!;
+    const deadlift = {
+      ...squat,
+      id: "occurrence-owner-deadlift",
+      exerciseId: "exercise-deadlift",
+      ordinal: 1,
+      targets: squat.targets.map((target) => ({
+        ...target,
+        id: `${target.id}-deadlift`,
+      })),
+    };
+    const source = completeSnapshot({
+      days: [{
+        ...completeSnapshot().days[0]!,
+        occurrences: [squat, deadlift],
+      }],
+    });
+    const savePlan = jest.fn(async () => committed(source, "save"));
+    await renderEditor({
+      listExercises: jest.fn(async () => [
+        ...exercises,
+        {
+          id: "exercise-deadlift",
+          name: "Barbell Deadlift",
+          metricIdentity: {
+            profile: "load_reps",
+            contractVersion: 1,
+            exerciseMetricGeneration: 1,
+          },
+        },
+      ]),
+      loadPlan: jest.fn(async () => source),
+      savePlan,
+    });
+
+    expect(await screen.findByTestId("reorder-row-exercise-Barbell Deadlift"))
+      .toBeOnTheScreen();
+    await fireEvent(
+      screen.getByTestId("reorder-row-exercise-Barbell Deadlift"),
+      "layout",
+      { nativeEvent: { layout: { height: 80, width: 320, x: 0, y: 80 } } },
+    );
+    const gesture = reorderGesture("exercise-Barbell Deadlift");
+
+    await act(() => {
+      gesture.handlers.onStart?.({ translationY: 0 });
+      gesture.handlers.onUpdate?.({ translationY: -88 });
+    });
+    expect(screen.getByTestId("reorder-row-exercise-Barbell Back Squat"))
+      .toHaveStyle({ transform: [{ translateY: 80 }] });
+
+    await act(() => {
+      gesture.handlers.onEnd?.({ translationY: -88 }, true);
+      gesture.handlers.onFinalize?.({ translationY: -88 }, true);
+    });
+
+    expect(exerciseOrder()).toEqual([
+      "reorder-row-exercise-Barbell Deadlift",
+      "reorder-row-exercise-Barbell Back Squat",
+    ]);
+    expect(screen.getByText("Barbell Deadlift moved to 1 of 2"))
+      .toBeOnTheScreen();
     expect(savePlan).not.toHaveBeenCalled();
   });
 
