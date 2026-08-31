@@ -9,16 +9,16 @@ requires:
 provides:
   - Root Calendar with a stable six-row LocalDate grid, selectable adjacent dates, and equivalent swipe/button/keyboard month transitions
   - Shared bounded CalendarField dialog with private LocalDate drafts and explicit Apply Date commits
-  - Civil-range-safe calendar grids and unavailable month controls at years 0001 and 9999
+  - Civil-range-safe calendar grids with weekday-preserving unavailable structural cells and unavailable month controls at years 0001 and 9999
 affects: [06-09-native-evidence, calendar-consumers, date-dialog-consumers]
 actuals:
-  tokens: 9589
+  tokens: 10954
   tasks: 2
-  commits: 5
+  commits: 6
 tech-stack:
   added: []
   patterns:
-    - Complete 42-cell LocalDate grids use bounded fallback generation at civil-date limits
+    - Complete 42-cell LocalDate grids retain weekday geometry with unavailable structural cells at civil-date limits
     - Gesture Handler Pan callbacks run on JS through runOnJS(true), preserving labelled button and keyboard alternatives
     - CalendarField keeps a bounded LocalDate draft private until explicit Apply Date
 key-files:
@@ -32,7 +32,7 @@ key-files:
     - src/ui/__tests__/SessionCorrectionScreen.test.tsx
     - src/ui/__tests__/StarterPlans.test.tsx
 key-decisions:
-  - "Calendar grids retain all 42 cells at the 0001–9999 LocalDate boundaries by generating only supported civil dates and disabling unavailable month controls."
+  - "Calendar grids retain all 42 cells and their weekday geometry at the 0001–9999 LocalDate boundaries by rendering unsupported positions as unavailable structural cells."
   - "CalendarField uses Select date, Use Default Date, Keep Original Date, and Apply Date while preserving the existing typed private-draft boundary."
   - "The existing Gesture Handler seam uses runOnJS(true) rather than importing Reanimated into Jest-initialized UI modules."
 patterns-established:
@@ -41,7 +41,7 @@ patterns-established:
 requirements-completed: [UX-03, UX-05]
 coverage:
   - id: D1
-    description: Root Calendar renders 42 selectable LocalDate cells with adjacent-month and control-parity behavior at normal and civil-range boundaries
+    description: Root Calendar renders 42 structural LocalDate cells with selectable adjacent dates, control parity, and weekday-preserving unavailable boundary positions
     requirement: UX-03
     verification:
       - kind: automated_ui
@@ -71,7 +71,7 @@ coverage:
         ref: src/ui/__tests__/StarterPlans.test.tsx
         status: pass
     human_judgment: false
-duration: 26 min
+duration: 43 min
 completed: 2026-08-31
 status: complete
 ---
@@ -82,9 +82,9 @@ status: complete
 
 ## Performance
 
-- **Duration:** 26 min
+- **Duration:** 43 min
 - **Started:** 2026-08-31T12:57:58Z
-- **Completed:** 2026-08-31T13:23:21Z
+- **Completed:** 2026-08-31T13:41:03Z
 - **Tasks:** 2/2
 - **Files modified:** 7
 
@@ -92,7 +92,7 @@ status: complete
 
 - Replaced the root Calendar's variable grid with a six-row 42-cell LocalDate grid, including subdued selectable adjacent dates and equal button, keyboard, and horizontal-swipe month transitions.
 - Unified the shared CalendarField on a complete bounded adjacent-month dialog with exact `Select date`, `Use Default Date`, `Keep Original Date`, and `Apply Date` hierarchy; drafts remain private until explicit application.
-- Protected both calendar implementations from `0001–9999` LocalDate underflow or overflow while keeping the 42-cell geometry and disabling unavailable month controls.
+- Protected both calendar implementations from `0001–9999` LocalDate underflow or overflow while preserving every boundary date's true weekday column with noninteractive unavailable structural cells.
 - Updated representative schedule, session-correction, and starter-plan contracts to assert the shared explicit-commit copy and no-write behavior.
 
 ## Task Commits
@@ -103,6 +103,7 @@ Each TDD slice was committed atomically:
    - `1ee6cc5` (`test`) — failing six-row, adjacency, and control-parity contract.
    - `e0cb29b` (`feat`) — 42-cell LocalDate grid and Gesture Handler month navigation.
    - `dabd778` (`fix`) — LocalDate civil-range boundary correction and lower/upper boundary regressions.
+   - `e3e1808` (`fix`) — weekday-preserving unavailable structural cells at the LocalDate boundaries.
 2. **Task 2: Unify all date fields on one explicit bounded dialog**
    - `c4b6b3a` (`test`) — failing shared dialog and consumer contracts.
    - `6053d18` (`feat`) — bounded adjacent-month dialog, explicit commits, and optional swipe input.
@@ -112,9 +113,9 @@ Each TDD slice was committed atomically:
 ## Files Created/Modified
 
 - `src/ui/screens/CalendarScreen.tsx` — renders and navigates a full LocalDate grid without JavaScript `Date` conversion.
-- `src/ui/__tests__/CalendarScreen.test.tsx` — covers 42 cells, adjacent selection, parity, and both LocalDate range boundaries.
+- `src/ui/__tests__/CalendarScreen.test.tsx` — covers 42 cells, adjacent selection, parity, true weekday placement, and both LocalDate range boundaries.
 - `src/ui/components/CalendarField.tsx` — provides the bounded private-draft dialog used by all in-app date fields.
-- `src/ui/components/CalendarField.test.tsx` — covers explicit commits, bounds, grid geometry, focus, keyboard, and action hierarchy.
+- `src/ui/components/CalendarField.test.tsx` — covers explicit commits, bounds, true weekday grid geometry, focus, keyboard, and action hierarchy.
 - `src/ui/__tests__/ScheduleEditor.test.tsx` — verifies the shared explicit date-application actions.
 - `src/ui/__tests__/SessionCorrectionScreen.test.tsx` — proves correction dates remain private until Apply Date.
 - `src/ui/__tests__/StarterPlans.test.tsx` — verifies starter-plan effective date application uses the shared dialog.
@@ -123,7 +124,7 @@ Each TDD slice was committed atomically:
 
 - Use `parseLocalDate`, `addLocalDays`, and `weekdayForLocalDate` for all calendar movement; no date-only string is converted through JavaScript `Date`.
 - Keep horizontal swipes non-essential: `.runOnJS(true)` enables the accepted Gesture Handler seam while labelled controls and arrow-key movement retain equivalent behavior.
-- Use a supported-range fallback grid rather than permitting the LocalDate helper to throw at `0001-01-01` or `9999-12-31`.
+- Preserve the normal first-grid weekday offset at the civil-date bounds; unsupported leading or trailing positions render as noninteractive structural cells rather than shifting real dates into other columns.
 - Preserve all consumer persistence contracts by passing a valid LocalDate to `onChange` only from `Apply Date`; dismissal, Back, and `Keep Original Date` write nothing.
 
 ## Deviations from Plan
@@ -139,19 +140,29 @@ Each TDD slice was committed atomically:
 - **Verification:** Focused root Calendar and CalendarField suites passed with `0001` and `9999` coverage; typecheck passed.
 - **Committed in:** `dabd778` for the root Calendar correction; CalendarField’s equivalent handling is part of `6053d18`.
 
+**2. [Rule 1 - Bug] Preserve boundary-date weekday geometry**
+
+- **Found during:** Final Plan 06-04 diff review
+- **Issue:** The first range-safe fallback kept 42 valid dates by starting at `0001-01-01` or ending at `9999-12-31`, which shifted real boundary dates away from their canonical weekday columns.
+- **Fix:** Kept the normal offset calculation, represented unsupported leading or trailing dates as `null`, and rendered them as `accessible={false}` structural cells. Regression tests assert all 42 cells, the actual boundary date placement, and noninteractive boundary slots.
+- **Files modified:** `src/ui/screens/CalendarScreen.tsx`, `src/ui/__tests__/CalendarScreen.test.tsx`, `src/ui/components/CalendarField.tsx`, `src/ui/components/CalendarField.test.tsx`
+- **Verification:** Focused root Calendar and CalendarField suites passed 27/27 after the repair; typecheck, lint, boundary checks, and diff checks passed.
+- **Committed in:** `e3e1808`
+
 ---
 
-**Total deviations:** 1 auto-fixed Rule 1 bug.
-**Impact on plan:** The correction is necessary for valid LocalDate behavior at the documented range boundaries and introduces no new persistence, routing, or release surface.
+**Total deviations:** 2 auto-fixed Rule 1 bugs.
+**Impact on plan:** Both corrections are necessary for valid LocalDate behavior at the documented range boundaries and introduce no new persistence, routing, or release surface.
 
 ## Issues Encountered
 
 - Importing `react-native-reanimated` directly into `CalendarScreen.tsx` caused Jest initialization to fail. The accepted Gesture Handler configuration supports `.runOnJS(true)`, which keeps gesture callbacks on JS without that additional import.
+- React Native Testing Library hides `importantForAccessibility="no-hide-descendants"` from ordinary queries. Boundary placeholders instead use `accessible={false}`, which remains noninteractive while letting tests verify the full structural grid.
 - `npm run coverage` is not a repository script; the configured equivalent is `npm run test:coverage`.
 - The whole-repository coverage gate ran to completion but failed three stale action-copy assertions outside this plan’s allowed files:
   - `src/ui/__tests__/PlanImpactReplacement.test.tsx` still expects `Confirm date` twice and `Cancel date` once.
   - `app/__tests__/phase2-attended-preview.test.tsx` still expects `Confirm date` once.
-  - Result: 134/136 suites and 2,372/2,375 tests passed; global coverage remained 90.92% statements, 85.84% branches, 90.29% functions, and 91.09% lines.
+  - Result: 134/136 suites and 2,373/2,376 tests passed; global coverage remained 90.94% statements, 85.87% branches, 90.31% functions, and 91.11% lines.
   - The Plan 06-04 file-ownership constraint prohibited changing those unowned tests. They must be aligned to `Apply Date` and `Keep Original Date` by their owning plan or integration pass.
 
 ## Known Stubs
@@ -167,14 +178,14 @@ None. The calendar grids and date dialog are backed by live typed LocalDate stat
 ## Verification
 
 - `npm run test:unit -- --runInBand src/domains/scheduling/localDate.test.ts` — passed, 42/42.
-- `npm run test:components -- --runInBand src/ui/__tests__/CalendarScreen.test.tsx src/ui/components/CalendarField.test.tsx src/ui/__tests__/ScheduleEditor.test.tsx src/ui/__tests__/SessionCorrectionScreen.test.tsx src/ui/__tests__/StarterPlans.test.tsx` — passed, 59/59.
+- `npm run test:components -- --runInBand src/ui/__tests__/CalendarScreen.test.tsx src/ui/components/CalendarField.test.tsx src/ui/__tests__/ScheduleEditor.test.tsx src/ui/__tests__/SessionCorrectionScreen.test.tsx src/ui/__tests__/StarterPlans.test.tsx` — passed, 60/60.
 - `npm run typecheck` — passed.
 - `npm run lint` — passed; the repository lint script runs the boundary guard for 226 files.
 - `npm run check:boundaries` — passed, 226 files.
-- `git diff --check dddf506..HEAD` — passed.
+- `git diff --check` — passed after the final boundary-geometry repair.
 - `npm run test:coverage -- --runInBand` — ran, but failed only on the three stale label assertions in the two unowned files documented above.
 - The passed Plan 06-02 manifest-bound native gesture smoke remains the required native seam precondition; Plan 06-09 owns integrated native/attended evidence.
-- All five task commits end with exactly one required TRAE CLI co-author trailer.
+- All six task commits end with exactly one required TRAE CLI co-author trailer.
 
 ## User Setup Required
 
@@ -189,7 +200,7 @@ None.
 ## Self-Check: PASSED
 
 - Confirmed all seven plan-owned source and test files plus this summary exist.
-- Confirmed task commits `1ee6cc5`, `e0cb29b`, `c4b6b3a`, `6053d18`, and `dabd778` exist.
+- Confirmed task commits `1ee6cc5`, `e0cb29b`, `c4b6b3a`, `6053d18`, `dabd778`, and `e3e1808` exist.
 - Confirmed no central `STATE.md`, `ROADMAP.md`, or `REQUIREMENTS.md` file changed.
 
 ---
