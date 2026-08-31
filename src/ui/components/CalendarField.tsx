@@ -15,6 +15,10 @@ import {
   useWindowDimensions,
   type TextStyle,
 } from "react-native";
+import {
+  Gesture,
+  GestureDetector,
+} from "react-native-gesture-handler";
 
 import {
   addLocalDays,
@@ -67,6 +71,9 @@ const WEEKDAY_SHORT_NAMES = [
 ] as const;
 
 const CALENDAR_COLUMNS = 7;
+const CALENDAR_CELL_COUNT = 42;
+const MONTH_SWIPE_COMPLETE_DISTANCE = 72;
+const LAST_LOCAL_DATE = parseLocalDate("9999-12-31");
 const COMPACT_DIALOG_INSET = space[1];
 const COMPACT_DIALOG_PADDING = space[2];
 const REGULAR_DIALOG_INSET = space[4];
@@ -184,6 +191,44 @@ function labelForMonth(month: Month): string {
   return `${MONTH_NAMES[month.month - 1]} ${month.year}`;
 }
 
+function longDateLabel(value: LocalDate): string {
+  const weekday = weekdayForLocalDate(value);
+  const { day, month, year } = partsOf(value);
+  return `${weekday}, ${day} ${MONTH_NAMES[month - 1]} ${year}`;
+}
+
+function completeGridDates(firstOfMonth: LocalDate): LocalDate[] {
+  let firstGridDate: LocalDate;
+  try {
+    firstGridDate = addLocalDays(firstOfMonth, -weekdayIndex(firstOfMonth));
+  } catch {
+    return Array.from({ length: CALENDAR_CELL_COUNT }, (_, offset) =>
+      addLocalDays(firstOfMonth, offset));
+  }
+  try {
+    return Array.from({ length: CALENDAR_CELL_COUNT }, (_, offset) =>
+      addLocalDays(firstGridDate, offset));
+  } catch {
+    const lastGridDate = addLocalDays(LAST_LOCAL_DATE, -(CALENDAR_CELL_COUNT - 1));
+    return Array.from({ length: CALENDAR_CELL_COUNT }, (_, offset) =>
+      addLocalDays(lastGridDate, offset));
+  }
+}
+
+export function calendarFieldMonthDirectionForHorizontalSwipe(
+  translationX: number,
+): -1 | 1 | null {
+  "worklet";
+
+  if (translationX <= -MONTH_SWIPE_COMPLETE_DISTANCE) {
+    return 1;
+  }
+  if (translationX >= MONTH_SWIPE_COMPLETE_DISTANCE) {
+    return -1;
+  }
+  return null;
+}
+
 export type CalendarFieldProps = Readonly<{
   label: string;
   value: string;
@@ -284,7 +329,12 @@ export function CalendarField({
     if (draft === null) {
       return;
     }
-    const next = addLocalDays(draft, dayDelta);
+    let next: LocalDate;
+    try {
+      next = addLocalDays(draft, dayDelta);
+    } catch {
+      return;
+    }
     if (!withinBounds(next, minimum, maximum)) {
       return;
     }
@@ -297,12 +347,7 @@ export function CalendarField({
       return [];
     }
     const first = toLocalDate(displayMonth.year, displayMonth.month, 1);
-    return Array.from({
-      length: daysInMonth(displayMonth.year, displayMonth.month),
-    }, (_, offset) => ({
-      date: toLocalDate(displayMonth.year, displayMonth.month, offset + 1),
-      offset: weekdayIndex(first) + offset,
-    }));
+    return completeGridDates(first);
   }, [displayMonth]);
 
   const error = valid
@@ -331,13 +376,32 @@ export function CalendarField({
     MAX_DIALOG_WIDTH,
     Math.max(0, windowWidth - (dialogInset * 2)),
   );
-  const availableGridWidth = Math.max(
-    0,
-    dialogWidth - (dialogPadding * 2),
-  );
   const gridWidth = sizes.minimumTarget * CALENDAR_COLUMNS;
-  const gridNeedsHorizontalScroll = availableGridWidth < gridWidth;
   const scrollFirst = windowHeight < 700 || fontScale >= 1.5;
+  const moveMonth = (direction: -1 | 1) => {
+    if (calendarMonth === null) {
+      return;
+    }
+    const next = nextMonth(calendarMonth, direction);
+    if (monthHasSelectableDate(next, minimum, maximum)) {
+      setDisplayMonth(next);
+    }
+  };
+  const horizontalMonthGesture = useMemo(
+    () => Gesture.Pan()
+      .activeOffsetX([-12, 12])
+      .failOffsetY([-24, 24])
+      .runOnJS(true)
+      .onEnd((event) => {
+        const direction = calendarFieldMonthDirectionForHorizontalSwipe(
+          event.translationX,
+        );
+        if (direction !== null) {
+          moveMonth(direction);
+        }
+      }),
+    [calendarMonth, maximum, minimum],
+  );
 
   return (
     <View style={styles.field}>
@@ -431,6 +495,24 @@ export function CalendarField({
             >
               {calendarMonth === null ? null : (
                 <>
+                <Text
+                  accessibilityRole="header"
+                  style={[
+                    typeScale.sectionTitle as TextStyle,
+                    { color: colors.textPrimary },
+                  ]}
+                >
+                  Select date
+                </Text>
+                <Text
+                  accessibilityLiveRegion="polite"
+                  style={[
+                    typeScale.bodyStrong as TextStyle,
+                    { color: colors.textPrimary },
+                  ]}
+                >
+                  {draft === null ? "No date selected" : longDateLabel(draft)}
+                </Text>
                 <View style={styles.monthActions} testID="calendar-month-actions">
                   <SecondaryAction
                     disabled={!monthHasSelectableDate(
@@ -439,12 +521,7 @@ export function CalendarField({
                       maximum,
                     )}
                     label="Previous month"
-                    onPress={() => {
-                      const previous = nextMonth(calendarMonth, -1);
-                      if (previous !== null) {
-                        setDisplayMonth(previous);
-                      }
-                    }}
+                    onPress={() => moveMonth(-1)}
                   />
                   <Text
                     accessibilityRole="header"
@@ -463,30 +540,10 @@ export function CalendarField({
                       maximum,
                     )}
                     label="Next month"
-                    onPress={() => {
-                      const next = nextMonth(calendarMonth, 1);
-                      if (next !== null) {
-                        setDisplayMonth(next);
-                      }
-                    }}
+                    onPress={() => moveMonth(1)}
                   />
                 </View>
-                <ScrollView
-                  accessibilityHint={gridNeedsHorizontalScroll
-                    ? "Swipe horizontally to reach every day."
-                    : undefined}
-                  accessibilityLabel="Scrollable calendar grid"
-                  contentContainerStyle={gridNeedsHorizontalScroll
-                    ? undefined
-                    : styles.gridScrollContentCentered}
-                  directionalLockEnabled
-                  horizontal
-                  keyboardShouldPersistTaps="handled"
-                  nestedScrollEnabled
-                  scrollEnabled={gridNeedsHorizontalScroll}
-                  showsHorizontalScrollIndicator={gridNeedsHorizontalScroll}
-                  testID="calendar-grid-scroll"
-                >
+                <GestureDetector gesture={horizontalMonthGesture}>
                   <View accessibilityLabel="Calendar grid" testID="calendar-grid"
                     accessibilityValue={{ text: draft ?? "" }}
                     style={[styles.grid, { width: gridWidth }]}>
@@ -506,18 +563,10 @@ export function CalendarField({
                         : weekday}
                     </Text>
                   ))}
-                  {grid.length === 0 ? null : Array.from({
-                    length: grid[0]!.offset,
-                  }, (_, index) => (
-                    <View
-                      accessible={false}
-                      key={`blank-${index}`}
-                      style={styles.blankDay}
-                    />
-                  ))}
-                  {grid.map(({ date }) => {
+                  {grid.map((date) => {
                     const isSelected = draft === date;
                     const selectable = withinBounds(date, minimum, maximum);
+                    const adjacent = !sameMonth(monthOf(date), calendarMonth);
                     return (
                       <FocusablePressable
                         accessibilityLabel={`Select ${date}`}
@@ -539,10 +588,16 @@ export function CalendarField({
                           }
                           if (event.nativeEvent.key === "Enter"
                             || event.nativeEvent.key === " ") {
-                            setDraft(date);
+                            if (selectable) {
+                              setDraft(date);
+                              setDisplayMonth(monthOf(date));
+                            }
                           }
                         }}
-                        onPress={() => setDraft(date)}
+                        onPress={() => {
+                          setDraft(date);
+                          setDisplayMonth(monthOf(date));
+                        }}
                         style={[
                           styles.day,
                           {
@@ -550,9 +605,10 @@ export function CalendarField({
                               ? colors.action
                               : colors.surfaceSubtle,
                             borderColor: isSelected ? colors.action : colors.divider,
-                            opacity: selectable ? 1 : 0.48,
+                            opacity: !selectable ? 0.48 : adjacent ? 0.72 : 1,
                           },
                         ]}
+                        testID={`calendar-day-${date}`}
                       >
                         <Text style={[
                           typeScale.bodyStrong as TextStyle,
@@ -564,11 +620,11 @@ export function CalendarField({
                     );
                   })}
                   </View>
-                </ScrollView>
+                </GestureDetector>
                 {defaultValue === null ? null : (
                   <SecondaryAction
                     disabled={!withinBounds(defaultValue, minimum, maximum)}
-                    label="Use default date"
+                    label="Use Default Date"
                     onPress={() => {
                       setDraft(defaultValue);
                       setDisplayMonth(monthOf(defaultValue));
@@ -576,10 +632,10 @@ export function CalendarField({
                   />
                 )}
                 <View style={styles.confirmActions} testID="calendar-confirm-actions">
-                  <SecondaryAction label="Cancel date" onPress={cancel} />
+                  <SecondaryAction label="Keep Original Date" onPress={cancel} />
                   <PrimaryAction
                     disabled={draft === null || !withinBounds(draft, minimum, maximum)}
-                    label="Confirm date"
+                    label="Apply Date"
                     onPress={confirm}
                   />
                 </View>
@@ -618,20 +674,10 @@ const styles = StyleSheet.create({
   field: {
     gap: space[1],
   },
-  blankDay: {
-    height: sizes.minimumTarget,
-    minHeight: sizes.minimumTarget,
-    minWidth: sizes.minimumTarget,
-    width: sizes.minimumTarget,
-  },
   grid: {
     alignSelf: "center",
     flexDirection: "row",
     flexWrap: "wrap",
-  },
-  gridScrollContentCentered: {
-    flexGrow: 1,
-    justifyContent: "center",
   },
   modalBackdrop: {
     backgroundColor: "rgba(0, 0, 0, 0.45)",

@@ -121,7 +121,7 @@ describe("CalendarField", () => {
     }));
 
     expect(screen.getByText("March 2028")).toBeOnTheScreen();
-    expect(screen.getByText("Tuesday, 1 March 2028")).toBeOnTheScreen();
+    expect(screen.getByText("Wednesday, 1 March 2028")).toBeOnTheScreen();
     expect(onChange).not.toHaveBeenCalled();
     await fireEvent.press(screen.getByRole("button", { name: "Apply Date" }));
 
@@ -421,8 +421,7 @@ describe("CalendarField", () => {
 
     expect(screen.getByTestId("calendar-grid"))
       .toHaveStyle({ width: 336 });
-    expect(screen.getByTestId("calendar-grid-scroll"))
-      .toHaveProp("showsHorizontalScrollIndicator", false);
+    expect(screen.queryByTestId("calendar-grid-scroll")).not.toBeOnTheScreen();
     expect(screen.getByRole("button", { name: "Select 2028-02-28" }))
       .toHaveStyle({ height: 48, minWidth: 48, width: 48 });
   });
