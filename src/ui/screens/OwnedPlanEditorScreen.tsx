@@ -31,6 +31,7 @@ import {
   EmptyState,
   FocusablePressable,
   InlineNotice,
+  M3SearchField,
   PrimaryAction,
   ScreenHeader,
   SecondaryAction,
@@ -117,6 +118,7 @@ type OwnedPlanEditorScreenProps = Readonly<{
 }>;
 
 type LoadState = "create" | "loading" | "ready" | "error";
+type ExerciseLoadState = "loading" | "ready" | "error";
 type TargetDraft = Readonly<{
   exercise: OwnedPlanEditorExerciseOption;
   workingSets: string;
@@ -511,6 +513,8 @@ export function OwnedPlanEditorScreen({
   const [exercises, setExercises] = useState<
     readonly OwnedPlanEditorExerciseOption[]
   >([]);
+  const [exerciseLoadState, setExerciseLoadState] =
+    useState<ExerciseLoadState>("loading");
   const [exercisePickerVisible, setExercisePickerVisible] = useState(false);
   const [exerciseQuery, setExerciseQuery] = useState("");
   const [targetDraft, setTargetDraft] = useState<TargetDraft | null>(null);
@@ -539,13 +543,16 @@ export function OwnedPlanEditorScreen({
 
   useEffect(() => {
     let active = true;
+    setExerciseLoadState("loading");
     void listExercises().then((items) => {
       if (active) {
         setExercises(items);
+        setExerciseLoadState("ready");
       }
     }).catch(() => {
       if (active) {
         setExercises([]);
+        setExerciseLoadState("error");
       }
     });
     return () => {
@@ -608,6 +615,16 @@ export function OwnedPlanEditorScreen({
         .includes(query)
     );
   }, [exerciseQuery, exercises]);
+  const exerciseSearchState = exerciseLoadState === "loading"
+    ? "busy"
+    : exerciseLoadState === "error"
+      ? "error"
+      : filteredExercises.length === 0
+        ? "empty"
+        : "results";
+  const exerciseResultCopy = `${filteredExercises.length} plan ${
+    filteredExercises.length === 1 ? "exercise" : "exercises"
+  }`;
   const dirty = useMemo(
     () => snapshot !== null
       && draft !== null
@@ -1262,20 +1279,29 @@ export function OwnedPlanEditorScreen({
                   {exercisePickerVisible ? (
                     <View style={styles.exercisePicker}>
                       <SectionHeader title="Choose exercise" tone="card" />
-                      <PlanEditorTextField
+                      <M3SearchField
                         label="Search plan exercises"
                         onChangeText={setExerciseQuery}
+                        onSearch={() =>
+                          setExerciseQuery((query) => query.trim())}
+                        resultCount={filteredExercises.length}
+                        state={exerciseSearchState}
+                        stateSlots={{
+                          busy: <>Loading plan exercises</>,
+                          error: <>Plan exercises could not be loaded</>,
+                          results: <>{exerciseResultCopy}</>,
+                        }}
                         testID="owned-plan-exercise-search"
-                        tone="card"
                         value={exerciseQuery}
                       />
-                      {filteredExercises.length === 0 ? (
+                      {exerciseSearchState === "empty" ? (
                         <InlineNotice
                           body="Try another exercise name or metric profile."
                           card
                           heading="No plan exercises match"
                         />
-                      ) : filteredExercises.map((exercise) => (
+                      ) : exerciseLoadState === "ready"
+                        ? filteredExercises.map((exercise) => (
                         <FocusablePressable
                           accessibilityLabel={`${exercise.name}. ${PROFILE_LABELS[exercise.metricIdentity.profile]}`}
                           accessibilityRole="button"
@@ -1303,7 +1329,8 @@ export function OwnedPlanEditorScreen({
                             {PROFILE_LABELS[exercise.metricIdentity.profile]}
                           </Text>
                         </FocusablePressable>
-                      ))}
+                        ))
+                        : null}
                     </View>
                   ) : null}
                 </>
@@ -1317,7 +1344,7 @@ export function OwnedPlanEditorScreen({
               )}
               {draftFeedback === null ? null : (
                 <InlineNotice
-                  body="This change remains in the plan draft until Save plan."
+                  body="This change remains in the plan draft until Save Plan Changes."
                   card
                   heading={draftFeedback}
                 />

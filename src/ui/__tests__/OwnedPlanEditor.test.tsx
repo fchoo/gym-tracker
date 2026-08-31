@@ -493,11 +493,17 @@ describe("OwnedPlanEditorScreen create and save plan", () => {
     expect(await screen.findByText("3 plan exercises")).toBeOnTheScreen();
     expect(screen.getByLabelText("3 Search plan exercises results"))
       .toBeOnTheScreen();
-    expect(screen.getByRole("button", { name: /Barbell Back Squat/u }))
+    expect(screen.getByRole("button", {
+      name: "Barbell Back Squat. Load + reps",
+    }))
       .toBeOnTheScreen();
-    expect(screen.getByRole("button", { name: /Barbell Deadlift/u }))
+    expect(screen.getByRole("button", {
+      name: "Barbell Deadlift. Load + reps",
+    }))
       .toBeOnTheScreen();
-    expect(screen.getByRole("button", { name: /Front Plank/u }))
+    expect(screen.getByRole("button", {
+      name: "Front Plank. Timed hold",
+    }))
       .toBeOnTheScreen();
   });
 
@@ -516,7 +522,9 @@ describe("OwnedPlanEditorScreen create and save plan", () => {
     expect(screen.getByText("1 plan exercise")).toBeOnTheScreen();
     expect(screen.getByLabelText("1 Search plan exercises result"))
       .toBeOnTheScreen();
-    expect(screen.queryByRole("button", { name: /Barbell Back Squat/u }))
+    expect(screen.queryByRole("button", {
+      name: "Barbell Back Squat. Load + reps",
+    }))
       .not.toBeOnTheScreen();
 
     await fireEvent.changeText(search, "missing");
@@ -1253,7 +1261,12 @@ for (const [layout, width] of [
 
 describe("OwnedPlanEditorScreen reorder hierarchy", () => {
   it("keeps handle, labels, position, and fallback actions in one row at normal text", async () => {
-    await renderEditor({
+    const previous = Dimensions.get("window");
+    Dimensions.set({
+      screen: { ...previous, fontScale: 1 },
+      window: { ...previous, fontScale: 1 },
+    });
+    const { rendered } = await renderEditor({
       loadPlan: jest.fn(async () => completeSnapshot({
         days: [
           completeSnapshot().days[0]!,
@@ -1276,13 +1289,19 @@ describe("OwnedPlanEditorScreen reorder hierarchy", () => {
       .toHaveStyle({ minHeight: 48, minWidth: 48 });
     expect(screen.getByRole("button", { name: "Move Recovery down" }))
       .toHaveStyle({ minHeight: 48, minWidth: 48 });
+    await rendered.unmount();
+    await act(() => {
+      Dimensions.set({ screen: previous, window: previous });
+    });
   });
 
   it("reflows at 200 percent text without removing any 48dp reorder control", async () => {
     const previous = Dimensions.get("window");
-    Dimensions.set({
-      screen: { ...previous, fontScale: 2 },
-      window: { ...previous, fontScale: 2 },
+    await act(() => {
+      Dimensions.set({
+        screen: { ...previous, fontScale: 2 },
+        window: { ...previous, fontScale: 2 },
+      });
     });
     const { rendered } = await renderEditor({
       loadPlan: jest.fn(async () => completeSnapshot({
@@ -1316,6 +1335,8 @@ describe("OwnedPlanEditorScreen reorder hierarchy", () => {
     })).toHaveStyle({ minHeight: 48, minWidth: 48 });
 
     await rendered.unmount();
-    Dimensions.set({ screen: previous, window: previous });
+    await act(() => {
+      Dimensions.set({ screen: previous, window: previous });
+    });
   });
 });

@@ -386,7 +386,7 @@ export function PlanEditorReorderableRow({
         <View style={[
           styles.reorderContent,
           largeText ? styles.reorderContentLargeText : null,
-        ]}>
+        ]} testID={`reorder-content-${reorderId}`}>
           <View style={styles.reorderLabels}>
             {children}
           </View>
