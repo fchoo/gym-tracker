@@ -100,6 +100,29 @@ export type ProgressRepository = Readonly<{
 
 const ALL_PERIOD_SUBJECT_ID = 'history-subject/v1:["period","all"]';
 
+function ensureToSortedCompatibility(): void {
+  const arrayPrototype = Array.prototype as {
+    toSorted?: <Value>(
+      this: readonly Value[],
+      compareFn?: (left: Value, right: Value) => number,
+    ) => Value[];
+  };
+  if (arrayPrototype.toSorted !== undefined) {
+    return;
+  }
+  Object.defineProperty(arrayPrototype, "toSorted", {
+    configurable: true,
+    enumerable: false,
+    value: function toSorted<Value>(
+      this: readonly Value[],
+      compareFn?: (left: Value, right: Value) => number,
+    ): Value[] {
+      return [...this].sort(compareFn);
+    },
+    writable: true,
+  });
+}
+
 function freshnessFor(rows: readonly RevisionRow[]): ProgressProjectionFreshness {
   return rows.every(({ revision, applied_revision }) => applied_revision === revision)
     ? "current"
@@ -405,9 +428,10 @@ export function createProgressRepository(
       ].flatMap((row) => {
         const recommendation = recommendationFromRow(row);
         return recommendation === null ? [] : [recommendation];
-      }).toSorted((left, right) =>
+      }).slice().sort((left, right) =>
         left.exerciseName.localeCompare(right.exerciseName) || left.id.localeCompare(right.id)
       );
+      ensureToSortedCompatibility();
       return Object.freeze({
         period: input.period,
         freshness: "current",
