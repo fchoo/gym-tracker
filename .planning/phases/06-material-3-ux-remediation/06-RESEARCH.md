@@ -421,25 +421,23 @@ The actual repository returns early on freshness mismatch before `Promise.all` p
 |---|-------|---------|---------------|
 | A1 | The exact Progress rejection is likely after the freshness early-return branch, in a downstream query/parser path. | Pattern 5 | A premature storage repair could mask a different runtime cause; diagnostic-first task prevents this. |
 | A2 | A globally missing projection schema is less likely because it would normally block trusted launch, but must be inspected against exact candidate state. | Pattern 5 | Failing to inspect schema/version could miss a migration-state defect. |
-| A3 | Native gesture implementation needs actual configuration verification because this pass did not locate a project Babel config and `app/_layout.tsx` has no observed `GestureHandlerRootView` wrapper. | Standard Stack / Pitfall 4 | Gesture behavior could fail or conflict on device even when component tests pass. |
+| A3 | Native gesture configuration has not yet been observed on a Phase 6 candidate; Wave 0 smoke must inspect generated configuration/root before changing existing-stack configuration. | Standard Stack / Pitfall 4 | Gesture behavior could fail or conflict on device even when component tests pass. |
 | A4 | Two-row compact navigation is the appropriate large-text layout strategy. | Pitfall 6 | If host tab layout restricts it, another adaptive arrangement with the same full-label/target guarantees is required. |
 
-## Open Questions
+## Open Questions (RESOLVED FOR PLANNING)
 
 1. **Which exact `progressRepository.load` branch rejects on the audited candidate?**
    - What we know: exact candidate evidence proves repeated generic failure; screen/runtime/repository seams are traced. [VERIFIED: .planning/ui-reviews/material3-runtime-20260831/EVIDENCE.md:20-33] [VERIFIED: src/ui/screens/ProgressScreen.tsx:612-626]
-   - What's unclear: the exception message/code and whether it is schema, query, parse, effect, or runtime initialization state.
-   - Recommendation: make the controlled logcat/branch-correlation task the first implementation task and gate repair on its result.
+   - Factually unknown: the exception message/code and whether it is schema, query, parse, effect, or runtime initialization state.
+   - **Planning disposition: BLOCKING Task 06-02-01.** Before any repair, capture the redacted repository branch plus error class/code and create the exact host-SQLite fixture for that observed failure. No production file is preselected; select the repair location only after the fixture proves the failing layer.
 
 2. **What native root/configuration is required by the installed gesture implementation in this application build?**
    - What we know: installed package versions match Expo SDK 57 guidance; Expo documents Reanimated auto-configuration by `babel-preset-expo` when installed. [VERIFIED: package.json:93-98] [CITED: https://docs.expo.dev/versions/v57.0.0/sdk/gesture-handler/] [CITED: https://docs.expo.dev/versions/unversioned/sdk/reanimated/]
-   - What's unclear: the actual generated/native configuration for the current replacement candidate.
-   - Recommendation: add a Wave 0 native smoke check before building calendar/reorder gesture tasks; do not introduce a dependency.
+   - **Planning disposition: RESOLVED.** Wave 0 must run a native smoke using the existing packages, inspect generated configuration and the gesture root, and alter only existing-stack configuration if that smoke proves it necessary. Do not install a dependency.
 
 3. **How should Android Platform Tools be invoked for replacement-candidate evidence?**
    - What we know: `maestro --version` returns `2.8.0`; `adb` is not on the default shell PATH, but Android Platform Tools 37.0.1 is available at `/opt/homebrew/share/android-commandlinetools/platform-tools/adb` and already produced the exact-candidate audit. [VERIFIED: environment probe, 2026-08-31]
-   - What's unclear: whether execution scripts should accept an explicit ADB path or extend PATH locally.
-   - Recommendation: resolve the pinned executable explicitly or prepend its directory inside the Phase 6 runner; do not add a package installation step.
+   - **Planning disposition: RESOLVED.** When PATH lookup fails, use `/opt/homebrew/share/android-commandlinetools/platform-tools/adb`; do not add an installation task. The emulator is available for deterministic evidence, and Samsung connectivity is deferred to the final attended ergonomics/OLED checkpoint.
 
 ## Environment Availability
 
@@ -546,7 +544,7 @@ The actual repository returns early on freshness mismatch before `Promise.all` p
 
 **Confidence breakdown:**
 
-- Standard stack: MEDIUM — package versions and current source seams are inspected; official documentation was available but classified MEDIUM by the research confidence seam, and native configuration still needs verification.
+- Standard stack: MEDIUM — package versions and current source seams are inspected; official documentation was available but classified MEDIUM by the research confidence seam. Wave 0 now has a resolved, existing-stack native-smoke disposition for configuration rather than an open planning choice.
 - Architecture: HIGH — constrained by inspected repository code, locked context, approved UI contract, and project rules.
 - Pitfalls: HIGH for current code/audit facts; MEDIUM for native behavior; LOW only where the exact Progress root cause is intentionally not claimed.
 

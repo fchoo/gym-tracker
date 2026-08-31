@@ -366,8 +366,24 @@ Gym Tracker v1 is delivered through six reviewed, dependency-ordered phases. Pha
   3. Plan day/exercise rows support continuous touch-and-hold reordering, explicit accessible up/down fallbacks, a compact one-row hierarchy at normal text scale, and legible adaptation at 200% text.
   4. Root navigation remains usable at 200% text, Today has one unambiguous path to secondary tools/settings, and Progress loads or recovers through Retry on the production runtime.
   5. Focused regression tests, full project gates, clean Android generation/build, emulator verification, and Samsung touch/accessibility review pass against one replacement APK; release approval and promotion remain separate explicit actions.
-**Plans:** 0 plans
+
+**Plans:** 9 plans
 
 Plans:
+**Wave 1**
 
-- [ ] TBD (run /gsd-plan-phase 6 to break down)
+- [ ] 06-01-PLAN.md — Establish shared M3 Search, filter-chip, and owning-scroll refresh contracts.
+- [ ] 06-02-PLAN.md — Add the Phase 6 native runner and pass the actual Wave 0 emulator gesture smoke.
+- [ ] 06-03-PLAN.md — Diagnose the candidate-bound Progress failure and encode only its exact fixture.
+- [ ] 06-04-PLAN.md — Deliver complete civil-date Calendar and CalendarField dialog grids with swipe/button parity and explicit draft commit.
+- [ ] 06-05-PLAN.md — Deliver continuous accessible plan-day/exercise reordering plus owned-plan picker Search.
+- [ ] 06-06-PLAN.md — Remediate Library discovery, Favorite, pull-to-refresh, and browse/detail provenance composition.
+- [ ] 06-08-PLAN.md — Keep root navigation fully labelled at 200% text and give Today one distinct History and data route.
+
+**Wave 2** *(blocked on Wave 1 completion)*
+
+- [ ] 06-07-PLAN.md — Repair only the diagnosed Progress cause and deliver Progress Search plus truthful Retry recovery.
+
+**Wave 3** *(blocked on Wave 2 completion)*
+
+- [ ] 06-09-PLAN.md — Build once, run the complete consideration/native evidence matrix, and pause for exact-byte Samsung observations without release authorization.
