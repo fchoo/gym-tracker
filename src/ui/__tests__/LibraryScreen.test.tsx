@@ -620,7 +620,7 @@ describe("Library section preference authority", () => {
 });
 
 describe("LibraryScreen exercise browse", () => {
-  it("renders Favorites, Recent, and All Exercises with public row semantics", async () => {
+  it("renders Favorites, Recent, and All Exercises without browse provenance", async () => {
     const favorite = exercise({
       favorite: true,
       canonicalName: "Favorite Bench Press",
@@ -701,8 +701,9 @@ describe("LibraryScreen exercise browse", () => {
     expect(screen.getByRole("button", {
       name: /Archived Hidden Custom Press.*Custom.*Archived.*Hidden/u,
     })).toBeOnTheScreen();
-    expect(screen.getAllByText(/Copyright \(c\) 2026 Kinetic\.place/u).length)
-      .toBeGreaterThan(0);
+    expect(screen.queryByText(/kinetic-place\.exercises-db/u)).not.toBeOnTheScreen();
+    expect(screen.queryByText(/Copyright \(c\) 2026 Kinetic\.place/u))
+      .not.toBeOnTheScreen();
   });
 
   it("uses semantic exercise-card colors for System, Light, and Dark appearances", async () => {
@@ -947,6 +948,41 @@ describe("LibraryScreen exercise browse", () => {
     })).toHaveLength(2);
   });
 
+  it("ignores a mismatched Favorite commit result instead of changing a different browse row", async () => {
+    const write = deferred<Readonly<{
+      exerciseId: string;
+      favorite: boolean;
+      preferenceRevision: number;
+    }>>();
+    await renderLibrary({
+      loadLibrary: jest.fn(async () => snapshot("exercises")),
+      searchExercises: jest.fn(async () => ({
+        state: "page" as const,
+        items: [exercise()],
+        nextCursor: null,
+      })),
+      setExerciseFavorite: jest.fn(() => write.promise),
+    });
+
+    await fireEvent.press(await screen.findByRole("button", {
+      name: "Add Barbell Bench Press to favorites",
+    }));
+    write.resolve({
+      exerciseId: "unexpected-exercise",
+      favorite: true,
+      preferenceRevision: 1,
+    });
+
+    await waitFor(() => expect(screen.getByRole("button", {
+      name: "Add Barbell Bench Press to favorites",
+    })).not.toBeDisabled());
+    expect(screen.getAllByTestId("library-exercise-card-exercise-1"))
+      .toHaveLength(1);
+    expect(screen.queryByRole("button", {
+      name: "Remove Barbell Bench Press from favorites",
+    })).not.toBeOnTheScreen();
+  });
+
   it("supports keyboard activation, shared clear search, chip overflow, and focus restoration", async () => {
     const setSection = jest.fn(async (
       section: LibrarySectionPreference["section"],
@@ -1123,50 +1159,46 @@ describe("LibraryScreen committed content update and UI truths", () => {
       .toBeOnTheScreen();
   });
 
-  it("preserves committed plan state while a bounded refresh is pending", async () => {
+  it("preserves Library state on the owning pull-to-refresh surface while pending", async () => {
     const refresh = deferred<LibraryBrowseSnapshot>();
-    const loadLibrary = jest.fn<() => Promise<LibraryBrowseSnapshot>>()
-      .mockResolvedValueOnce(snapshot("plans"))
-      .mockImplementationOnce(() => refresh.promise)
-      .mockResolvedValueOnce(snapshot("plans"));
-    await renderLibrary({ loadLibrary });
+    const refreshLibrary = jest.fn(() => refresh.promise);
+    await renderLibrary({ refreshLibrary });
 
     const search = await screen.findByLabelText("Search plans");
     await fireEvent.changeText(search, "upper");
-    await fireEvent.press(screen.getByRole("button", {
-      name: "Refresh Library",
-    }));
-    expect(screen.getByRole("button", { name: "Refresh Library" }))
-      .toHaveProp("accessibilityState", expect.objectContaining({
-        busy: true,
-        disabled: true,
-      }));
+    const libraryScroll = screen.getByTestId("library-screen-scroll");
+    expect(libraryScroll.props.refreshControl).toBeDefined();
+    expect(screen.queryByRole("button", { name: "Refresh Library" }))
+      .not.toBeOnTheScreen();
+    await act(async () => {
+      libraryScroll.props.refreshControl.props.onRefresh();
+    });
+    expect(refreshLibrary).toHaveBeenCalledTimes(1);
+    expect(screen.getByTestId("library-screen-scroll")
+      .props.refreshControl.props.refreshing).toBe(true);
     expect(screen.getByDisplayValue("upper")).toBeOnTheScreen();
     expect(screen.getByText("Upper / Lower")).toBeOnTheScreen();
 
     refresh.resolve(snapshot("plans"));
     await waitFor(() => {
-      expect(screen.getByRole("button", { name: "Refresh Library" }))
-        .toHaveProp("accessibilityState", expect.objectContaining({
-          busy: false,
-          disabled: false,
-        }));
+      expect(screen.getByTestId("library-screen-scroll")
+        .props.refreshControl.props.refreshing).toBe(false);
     });
   });
 
-  it("keeps selected plan and query after refresh failure, then retries in place", async () => {
-    const loadLibrary = jest.fn<() => Promise<LibraryBrowseSnapshot>>()
-      .mockResolvedValueOnce(snapshot("plans"))
+  it("keeps selected plan and query after pull refresh failure, then retries in place", async () => {
+    const refreshLibrary = jest.fn<() => Promise<LibraryBrowseSnapshot>>()
       .mockRejectedValueOnce(new Error("refresh_failed"))
       .mockResolvedValueOnce(snapshot("plans"));
-    await renderLibrary({ loadLibrary });
+    await renderLibrary({ refreshLibrary });
 
     const search = await screen.findByLabelText("Search plans");
     await fireEvent.changeText(search, "upper");
     await fireEvent.press(screen.getByRole("button", { name: "Upper / Lower. 4 days per week · 55 min. 4 days. Balanced strength and hypertrophy · Intermediate · Barbell, Cable, Machine" }));
-    await fireEvent.press(screen.getByRole("button", {
-      name: "Refresh Library",
-    }));
+    await act(async () => {
+      screen.getByTestId("library-screen-scroll")
+        .props.refreshControl.props.onRefresh();
+    });
 
     expect(await screen.findByText(
       "Library could not be refreshed. Your current content, selection, search, and filters are unchanged.",
@@ -1181,7 +1213,7 @@ describe("LibraryScreen committed content update and UI truths", () => {
       name: "Retry Library refresh",
     }));
     await waitFor(() => {
-      expect(loadLibrary).toHaveBeenCalledTimes(3);
+      expect(refreshLibrary).toHaveBeenCalledTimes(2);
       expect(screen.queryByText(/could not be refreshed/u)).not.toBeOnTheScreen();
     });
     expect(screen.getByDisplayValue("upper")).toBeOnTheScreen();
@@ -1204,9 +1236,10 @@ describe("LibraryScreen committed content update and UI truths", () => {
     });
 
     await screen.findByLabelText("Search plans");
-    await fireEvent.press(screen.getByRole("button", {
-      name: "Refresh Library",
-    }));
+    await act(async () => {
+      screen.getByTestId("library-screen-scroll")
+        .props.refreshControl.props.onRefresh();
+    });
     await fireEvent.press(screen.getByRole("tab", { name: "Exercises" }));
     expect(await screen.findByLabelText("Search exercises"))
       .toBeOnTheScreen();

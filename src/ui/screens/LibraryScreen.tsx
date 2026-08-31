@@ -703,17 +703,6 @@ function LibraryExerciseRow({
               {statusLabels.join(" · ")}
             </Text>
           )}
-          {item.source === null ? null : (
-            <Text
-              style={[
-                typeScale.secondary as TextStyle,
-                { color: colors.contentCardTextSecondary },
-              ]}
-            >
-              {item.source.namespace} · revision {item.source.revision} ·{" "}
-              {item.source.license} · {item.source.attribution}
-            </Text>
-          )}
         </FocusablePressable>
         <ActionCluster style={styles.exerciseActionCluster}>
           <FocusablePressable
@@ -1452,7 +1441,10 @@ export function LibraryScreen({
       new Set([...current, item.exerciseId])
     );
     void setExerciseFavorite(item.exerciseId, !item.favorite).then((result) => {
-      if (!mountedRef.current) {
+      if (
+        !mountedRef.current
+        || result.exerciseId !== item.exerciseId
+      ) {
         return;
       }
       const apply = (candidate: LibraryExerciseItem): LibraryExerciseItem =>
@@ -1715,13 +1707,6 @@ export function LibraryScreen({
                   testID="library-filters-chip"
                 />
               </View>
-              {snapshot === null ? null : (
-                <SecondaryAction
-                  busy={refreshing}
-                  label="Refresh Library"
-                  onPress={requestLibraryRefresh}
-                />
-              )}
               {section === "plans"
                 ? starterFilterChips(starterFilters).map((chip) => (
                   <M3FilterChip
@@ -1834,6 +1819,10 @@ export function LibraryScreen({
         onScroll={(event) => {
           scrollOffsetsRef.current[section] = libraryScrollOffset(event);
         }}
+        {...(snapshot === null ? {} : {
+          onRefresh: requestLibraryRefresh,
+          refreshing,
+        })}
         scrollOffset={scrollOffsetsRef.current[section]}
         scrollRestoreKey={section}
         testID="library-screen"
