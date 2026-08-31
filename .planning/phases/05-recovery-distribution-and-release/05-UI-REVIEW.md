@@ -1,139 +1,216 @@
-# Phase 05 — UI Review
+# Whole-app Material 3 UX Review — Phase 05 release candidate
 
-**Audited:** 2026-08-26
-**Baseline:** 05-UI-SPEC.md, 05-CONTEXT.md, and repository-owned DESIGN.md
-**Re-audit scope:** source follow-up through 8ac43a9, including ceb4339, d433c09, 798aa70, d6f5cad, and the restore-preview semantics adjustment
-**Screenshots:** not captured (deliberately source-only; no browser, emulator, device, Maestro, build, accessibility service, or visual comparison run)
+**Audited:** 2026-08-31
+**Baseline:** DESIGN.md; approved Phase 1–5 UI contracts/context; current implemented source; exact installed candidate APK; official Material 3 guidance in the matrix below
+**Scope:** Entire implemented Gym Tracker app, not only Phase 5
+**Runtime evidence:** Captured from `com.fchoo.gymtracker` 0.1.0 on `emulator-5554` (Android 16, 1080 x 2400, 420 dpi) under `.planning/ui-reviews/material3-runtime-20260831/`. Each referenced PNG has a matching UI Automator XML hierarchy. Samsung `R5CW12NVRPE` was not enumerated during this fresh pass, so no new Samsung screenshots are claimed.
+**Supersession:** Fresh whole-app Material 3 re-audit replacing the prior Phase 5 source-only review.
+**APK identity:** The installed emulator APK was pulled back and independently verified as SHA-256 `3383558069db759a0fe781c0a68f349423576a3953507dbae787df6aba99febd`, matching the supplied final candidate.
+**Release status:** Promotion is paused.
 
-> This re-audit confirms source-contract changes only. Rendered visual quality, native picker/share behavior, assistive-technology output, and physical interaction remain pending the one final exact-candidate attended gate.
+## Executive verdict
 
-## Pillar Scores
+The app has a coherent repository-owned foundation: approved Source Sans 3 and IBM Plex Mono weights are centralized, spacing/radius/target tokens exist, the four-root shell is explicit, and many loading/error/empty/transaction states are thoughtfully modelled. That foundation does not make the current UI Material 3-conformant. High-salience Library discovery and calendar controls are custom approximations that miss requested M3 behavior. These are normal-task defects, not edge-case polish.
 
-| Pillar | Score | Key Finding |
+Live evidence confirms the highest-impact problems. A filter value changes its accessibility `checked` state but remains visually indistinguishable, while the summary is black on the dark canvas. A horizontal swipe leaves the calendar on the same month, and adjacent-month cells remain blank. Selected Favorite changes to a green outline instead of a filled green star. Browse rows devote multiple lines to source/revision/license text. The reorder UI splits handle, label, position, and arrows across a tall multi-line row. The date-picker dialog is an oversized custom grid with stacked text navigation. At 200% font scale, bottom-navigation labels wrap and clip. Progress repeatedly opens in its error state and remains there after Retry on the exact candidate. Today also presents both an overflow icon and a large redundant `More` button.
+
+Source inspection explains the reported behavior: filter choices have no selected-state styling and the summary is an unthemed Text node; Search is implemented as plain TextInput; the calendar renders only the active month and has button-only navigation; reorder performs one move on release rather than continuous touch-and-hold drag; selected Favorite has no fill; and Library has a permanent refresh button without pull-to-refresh.
+
+## Pillar scores
+
+| Pillar | Score | Key finding |
 |---|---:|---|
-| 1. Copywriting | 3/4 | Required labels, safety copy, preview metadata, exact pending copy, retry copy, and share/cancel states are source-aligned; rendered announcements remain deferred. |
-| 2. Visuals | 3/4 | Source provides the intended three-card hierarchy and eight individually accessible, labelled preview facts within a supported list container; rendered hierarchy remains deferred. |
-| 3. Color | 3/4 | Approved theme tokens and non-color textual state cues are used; exact-candidate contrast and appearance checks remain deferred. |
-| 4. Typography | 3/4 | Approved type tokens and tabular preview values are used; 200% text fit and native label announcement remain unverified. |
-| 5. Spacing | 3/4 | Approved spacing rhythm and 48/56dp action minimums are preserved; adaptive and large-text fit remain unverified. |
-| 6. Experience Design | 3/4 | Prior source lifecycle and role-mapping gaps are closed; native/assistive reading order and interaction remain deferred. |
+| 1. Copywriting | 2/4 | Factual state copy is strong, but generic/filter copy, source/version browse metadata, and refresh/search wording conflict with the current product request. |
+| 2. Visuals | 2/4 | Shell/card hierarchy is coherent, but filters, Search, calendar, favorite state, and reorder rows visibly diverge from the requested M3 patterns. |
+| 3. Color | 2/4 | Theme tokens are centralized, yet the filter summary bypasses theme colors and selected filter/favorite states lack adequate visible differentiation. |
+| 4. Typography | 2/4 | Approved families and weights are centralized, but 200% text clips root-navigation labels and dense metadata dominates exercise rows. |
+| 5. Spacing | 2/4 | Most targets use the required rhythm, but crowded filter actions, fixed calendar cells, and reorder wrapping need redesign/device proof. |
+| 6. Experience Design | 1/4 | Core discovery interactions lack M3 filter/search/calendar/refresh/drag behavior, and Progress repeatedly fails on the exact candidate. |
 
-**Overall: 18/24 (source-only; not a release approval)**
+**Overall: 11/24**
 
-No source-level BLOCKER or WARNING remains from the prior review. All scored pillars retain WARNING status because the exact candidate has not passed the required attended gate. The preview now uses semantics supported by React Native 0.86.2 under Fabric: a list container with eight individually accessible, labelled native text facts. Source tests cannot replace the required native reading-order observation.
+This is intentionally adversarial. Release promotion must remain paused until P0/P1 findings are resolved and a rebuilt exact APK receives attended Samsung/emulator, accessibility, adaptive, and visual verification.
 
-The current source verdict is unchanged at 18/24: preview metadata, accessible naming, and supported role mapping are closed at source level, while actual announcement and reading order remain an attended/native verification item. `d6f5cad` additionally proves that opaque backup-discard failure maps to the bounded safe error contract.
+## Material 3 component-conformance matrix
 
-## Prior Findings Re-audit
+| Component / guidance | Current implementation | Gap / verdict | Recommendation | Source |
+|---|---|---|---|---|
+| Filter chips | Library FilterSheet uses checkbox-role pressable rows; active values use SecondaryAction rows (LibraryScreen.tsx:932-1090,1672-1726). | BLOCKER/P0: not M3 filter chips; selection has no visible visual state; Favorite is buried in sheet. | Use visible/removable M3 filter chips and a standalone Favorite chip; preserve overflow sheet for taxonomy. | https://m3.material.io/components/chips/guidelines |
+| Search | Bare TextInput in Library and Progress; generic PlanEditorTextField in owned-plan exercise picker (LibraryScreen.tsx:382-435; ProgressScreen.tsx:533-562; OwnedPlanEditorScreen.tsx:1227-1236). Live Library uses a labelled outline field plus a detached circular X control. | WARNING/P1: no shared M3 Search container, leading icon, or consistent clear/suggestion behavior. | Build one Search primitive and use it across Library, Progress, and picker. | https://m3.material.io/components/search/overview |
+| Date picker | Custom Modal with month buttons, fixed grid, Confirm/Cancel (CalendarField.tsx:394-591). | WARNING/P1: civil-date safety is good, but visual hierarchy and interaction do not match the requested M3/Google Calendar-inspired pattern. | Use M3 dialog hierarchy; add the user-contract adjacent days and swipe behavior with button alternatives. | https://m3.material.io/components/date-pickers/overview |
+| Calendar/list | Root calendar inserts leading blanks then current-month days only (CalendarScreen.tsx:160-209); sessions are cards below. | BLOCKER/P0 against the user contract: incomplete grid and no horizontal month swipe. These behaviors are product requirements, not claimed as universal M3 mandates. | Six-row adjacent-month grid and horizontal pager with labelled previous/next buttons. | https://m3.material.io/components/date-pickers/overview |
+| Lists | Plans, exercises, sessions and progress rows use pressable/card surfaces (LibraryScreen.tsx:650-750; PlanEditorFields.tsx:155-223). | WARNING/P1: browse rows carry excessive metadata and compound actions. | Keep primary item plus concise supporting context and stable trailing actions; remove source/version from browse. | https://m3.material.io/components/lists/guidelines |
+| Navigation bar/rail | Custom AppTabs changes from bottom to left rail at expanded width (components/index.ts:1027-1144; tabs/_layout.tsx:14-43). | BLOCKER/P0 accessibility: at 200% font scale, `Calendar`, `Library`, and `Progress` wrap and clip inside the fixed bottom bar. | Make the compact navigation bar large-text-safe; validate selected indicator, safe area, labels, and target sizes at supported scales. | https://m3.material.io/components/navigation-bar/overview |
+| Switch | Rest settings expose switch semantics (RestAlertSettingsSheet and tests). Live light-mode track/thumb state is legible. | WARNING/P2: disabled, focus, dark, TalkBack, and high-text states remain unverified. | Verify M3 state layers and 48dp targets on the rebuilt exact APK. | https://m3.material.io/components/switch/overview |
+| Icon buttons | IconAction supplies labels, 48dp minimum, 24dp Lucide icon, 2dp stroke (components/index.ts:378-460; theme/index.ts:49-59). | WARNING/P1: live selected Favorite is a green outline only, not the requested filled star. | Use an M3 selected state layer and fill selected Favorite green. | https://m3.material.io/components/icon-buttons/overview |
+| Menus | No shared M3 menu primitive; choices are custom sheets/radio/action rows. | WARNING/P2: no automatic defect, but interaction consistency is weak. | Use menus for short choices and dialogs/sheets for consequential/multi-select flows. | https://m3.material.io/components/menus/overview |
+| Dialogs/sheets | Custom React Native Modal surfaces provide focus flags and restoration (components/index.ts:819-1025; CalendarField.tsx:394-591). Live date picker uses stacked text month controls, a large empty header area, and a dense custom calendar. | WARNING/P1: hierarchy, action layout, and interaction do not match the requested M3 date-picker experience. | Normalize to M3 dialog/bottom-sheet patterns and validate Back/IME/focus/200% fit. | https://m3.material.io/components/dialogs/overview |
+| Progress indicators | SkeletonBlock and custom ProgressTrend/table (ProgressScreen.tsx:655-730; ProgressTrend.tsx). The exact production candidate repeatedly renders `Progress could not be loaded`, including after Retry. | BLOCKER/P0 functional UX: the normal Progress surface is unavailable in this runtime state; root cause is outside this visual audit. | Diagnose/fix the load failure before visual polish, then verify loading, empty, sparse, chart, and recommendation states. | https://m3.material.io/components/progress-indicators/overview |
+| Pull-to-refresh | Permanent Refresh Library button; AdaptiveScreen has no RefreshControl (LibraryScreen.tsx:1492-1522,1696-1701; AdaptiveScreen.tsx:163-177). | WARNING/P1: functional but not the most intuitive list-owned interaction. | Add pull-to-refresh; retain labelled retry only after failure. | https://m3.material.io/components/pull-to-refresh/overview |
+| Accessibility | Shared labels, Enter/Space, focus outlines, modal flags, and state announcements exist (components/index.ts:83-101,198-247; DESIGN.md). | BLOCKER/P0: live 200% text clips root-navigation labels; filter selected state has no visible cue. TalkBack, D-pad, contrast measurement, and physical-device evidence remain open. | Fix large-text navigation and visible state first; then run exact-candidate TalkBack/D-pad/contrast/target audit and retain button alternatives for gestures. | https://m3.material.io/foundations/accessible-design/overview |
 
-| Prior finding | Current source verdict | Evidence |
-|---|---|---|
-| Restore preview omitted version/time and flattened facts | CLOSED AT SOURCE | RestorePreview carries sourceFormatVersion and createdAtMs; the route renders both plus plans, exercises, sessions, settings, and catalog availability as eight individually accessible, labelled text facts in one supported `role="list"` container. The component test verifies the exact labels, list container, accessible state, and native text role; announcement order remains an attended check (src/domains/portability/restoreCommands.ts:73-87,241-250; app/more/data-and-recovery.tsx:130-159,645-656; app/more/__tests__/data-and-recovery.test.tsx:325-340). |
-| Rebuild-pending copy diverged | CLOSED | Exact “Backup restored. Recalculating search and progress.” is rendered (app/more/data-and-recovery.tsx:681-685) and asserted (app/more/__tests__/data-and-recovery.test.tsx:317-323). |
-| Restore failure had no fresh retry/token invalidation | CLOSED | Failure accepts a new password and exposes Try restore again; selection invalidates the previous token, clears confirmation/password state, and late/unmounted preflights invalidate returned tokens (app/more/data-and-recovery.tsx:310-347,607-630,434-460; src/bootstrap/workoutAppRuntime.tsx:864-870,3557-3560; src/domains/portability/restoreCommands.ts:103-107,361-363). Tests prove first/second tokens differ and late preview invalidation (app/more/__tests__/data-and-recovery.test.tsx:336-384,280-312). |
-| Backup sharing reused creation state and lacked duplicate guard | CLOSED | sharing renders Opening share options with a busy Share backup action; backupLatch permits one share call and prevents the password form returning (app/more/data-and-recovery.tsx:274-295,490-509; app/more/__tests__/data-and-recovery.test.tsx:154-183). |
-| Backup cancellation/late cleanup was not visible or proven | CLOSED | Cancel backup aborts the controller and advances generation; late archives are discarded, and unmount discards ready handles (app/more/data-and-recovery.tsx:227-272,434-446; src/bootstrap/workoutAppRuntime.tsx:617-622,3554-3556; app/more/__tests__/data-and-recovery.test.tsx:184-238,217-238). |
-| Backup discard failure lacked source coverage | CLOSED | The cleanup command maps delete failure to bounded backup_export_failed / GT-BACKUP04, with focused coverage in src/domains/portability/backupCommands.ts:167-173 and src/domains/portability/backupCommands.test.ts:147-173 (d6f5cad). |
+## User-reported issue mapping
 
-## Top 3 Remaining Priority Fixes / Checks
+| # | Requirement | Evidence / verdict | Severity / priority | Remediation | Screenshot |
+|---:|---|---|---|---|---|
+| 1 | Filters respond; no black-on-dark summary; M3 chips; standalone Favorite. | Live: choosing Powerlifting changes UI Automator `checked=false` to `checked=true`, but the row remains visually identical; dark Library renders `No filters selected` in black; Favorite remains buried in the sheet. This confirms perceived non-response, not a missing state mutation. | BLOCKER / P0 | Shared filter chips, visible selected state, themed summary or remove it, standalone Favorite chip. | `06-library-filters.png`, `07-library-filter-selected.png`, `13-library-dark.png` |
+| 2 | All search inputs use M3 Search. | Source confirms three divergent text-field paths. Live Library shows a plain outlined field plus detached circular clear button and no leading search icon. | WARNING / P1 | One shared M3 Search with leading icon, clear, focus/busy/suggestion states. | `03-library.png`, `05-library-exercises.png` |
+| 3 | Calendar adjacent days and horizontal left/right swipe. | Live root calendar leaves leading/trailing cells blank. A left swipe leaves `August 2026` unchanged; source has button-only navigation. | BLOCKER / P0 | Complete six-row grid, horizontal paging, button alternatives, selected-date preservation. | `02-calendar.png`, `calendar-before-swipe.xml`, `calendar-after-swipe.xml` |
+| 4 | Touch-and-hold drag reorder; one-row icons/label; up/down buttons instead of switches. | Live plan editor stacks a tall drag handle beside a multi-line label/position/arrows layout. Source PanResponder makes one move on release after a threshold, not continuous displacement. | WARNING / P1 | Real drag displacement with 48dp handle plus explicit up/down; responsive same-row trailing actions. | `17-plan-editor-dark.png` |
+| 5 | Cleaner Google Calendar/M3 date-picker dialog. | Live picker is a tall custom modal with stacked `Previous month`/`Next month` text buttons, blank leading cells, and oversized actions. | WARNING / P1 | M3 dialog structure, selected-date header, adjacent days, swipe/button parity. | `19-date-picker-dark.png` |
+| 6 | Explain Refresh Library; prefer pull-to-refresh. | Live permanent `Refresh Library` is crowded beside Filter/summary; source confirms no RefreshControl, while explicit retry states already exist. | WARNING / P1 | Pull-to-refresh; keep retry in error notice and remove permanent row button. | `03-library.png`, `05-library-exercises.png` |
+| 7 | Selected Favorite star filled green. | Live selected Favorite becomes a green outline and border but remains unfilled, matching source. | WARNING / P1 | Fill selected Star with approved completed green and retain label/state. | `15-library-favorite-selected-dark.png` |
+| 8 | Remove source/version metadata from exercise list. | Live browse rows devote two to three lines to namespace, full revision hash, license, and attribution. | WARNING / P1 | Keep provenance only in Exercise detail/disclosure. | `14-library-exercise-row-dark.png`, `15-library-favorite-selected-dark.png` |
 
-These are deferred release-gate checks, not unaddressed source fixes:
+## Confirmed source defects
 
-1. **Verify preview reading order**: run the exact candidate with TalkBack and confirm that `Review backup`, the eight individually reachable label/value facts, the destructive warning, and the confirmation control are announced in visual order. Positional `item N of 8` output is not required by the UI contract or promised by React Native 0.86.2.
-2. **Run the exact-candidate visual/adaptive pass**: verify light/dark card hierarchy, contrast, focus ring, compact/medium/expanded layouts, line wrapping, and no clipping at specified breakpoints and 200% text.
-3. **Run the exact-candidate interaction/lifecycle pass**: verify More → Data and recovery focus order, keyboard/D-pad activation, password visibility announcements, picker/share cancellation and rejection, focus restoration, backup cancellation/late cleanup, fresh restore preflight after failure, pending rebuild/retry wording, reduced-motion transitions, clean-install restore, and candidate identity binding without stale artifacts.
+### S-01 — Filter selection is semantically updated but visually inert (BLOCKER/P0)
 
-## Detailed Findings
+FilterSheet toggles draft state and exposes checked accessibility state, but its style only uses divider color and never reads option.selected (LibraryScreen.tsx:1061-1081). The main summary is a bare Text node (1679-1683), creating a black-on-dark risk. This is source evidence for the reported non-response.
 
-### Pillar 1: Copywriting (3/4)
+### S-02 — Filter architecture is not M3 chip architecture (WARNING/P1)
 
-- More entry and destination task labels remain contract-aligned (app/more/index.tsx:47-58; app/more/data-and-recovery.tsx:470-475,580-587,723-730).
-- Required backup, restore, CSV, destructive-confirmation, safe-error, cancellation, retry, share, and rebuild-pending copy is present. Source tests cover exact strings and safe non-leakage (app/more/__tests__/data-and-recovery.test.tsx:143-236,280-384).
-- Restore preview exposes Source format version, valid ISO Backup created, and each count/reference fact as a labelled row (app/more/data-and-recovery.tsx:130-164,642-656).
-- Remaining limitation is evidence, not an identified copy mismatch: real screen-reader announcement, truncation/wrapping, and native share/picker labels are pending the attended gate.
+Active values are SecondaryAction rows labelled Remove ..., while options are checkbox rows. M3 filter chips should expose selected/filter state compactly and removably; Favorite is not easy access (LibraryScreen.tsx:245-282,1018-1087,1717-1725).
 
-**Classification:** WARNING — source copy is substantially aligned; native/rendered announcement evidence is deferred.
+### S-03 — Search is not a shared M3 Search component (WARNING/P1)
 
-### Pillar 2: Visuals (3/4)
+Library, Progress, and owned-plan picker use divergent plain text-field paths without a leading Search affordance or unified state treatment (LibraryScreen.tsx:382-435; ProgressScreen.tsx:533-562; OwnedPlanEditorScreen.tsx:1227-1236).
 
-- More uses separate flat ContentCard surfaces, and Data and recovery keeps secure backup, restore, and CSV as ordered task cards (app/more/index.tsx:32-60; app/more/data-and-recovery.tsx:470-730).
-- Restore review is a dedicated supported `role="list"` container with eight individually accessible, labelled native text facts, improving scan hierarchy over the prior concatenated strings without claiming unsupported positional list-item semantics (app/more/data-and-recovery.tsx:130-159,645-656; app/more/__tests__/data-and-recovery.test.tsx:325-340).
-- Shared ScreenHeader, ContentCard, PrimaryAction, SecondaryAction, and IconAction remain in use; no parallel local component system was introduced (app/more/data-and-recovery.tsx:27-32; src/ui/components/index.ts:127-177,288-517).
-- No rendered candidate was inspected. Actual focal balance, card dimensions, wrapping, dark appearance, visible focus, list semantics as announced, and share-sheet presentation remain pending.
+### S-04 — Calendar grid is incomplete and button-only (BLOCKER/P0)
 
-**Classification:** WARNING — source hierarchy and supported semantics are coherent; rendered/native evidence is intentionally unavailable.
+Root calendar renders leading blanks and current-month dates only; it omits adjacent days and has no swipe (CalendarScreen.tsx:160-209,318-370). CalendarField also has only month buttons (CalendarField.tsx:434-489).
 
-### Pillar 3: Color (3/4)
+### S-05 — Reorder gesture is one-step release, not continuous drag (WARNING/P1)
 
-- The route continues to consume theme tokens rather than hardcoded route colors (app/more/data-and-recovery.tsx:85-123,466-730).
-- Light/dark canvas, card, action, completed, destructive, divider, and focus tokens match the established design system (src/ui/theme/index.ts:114-163; DESIGN.md:104-138).
-- Destructive impact is conveyed with visible warning text and an input border, while success, error, cancellation, pending, and share states retain textual labels (app/more/data-and-recovery.tsx:519-570,657-685).
-- Rendered contrast, disabled/pressed treatment, 60/30/10 distribution, and color-blind verification remain deferred.
+PanResponder invokes one move action at release when dy crosses 24px; it does not track a held item or direct displacement (PlanEditorFields.tsx:141-153). Named actions are a good fallback, but the visible action group is separate from label content (197-220).
 
-**Classification:** WARNING — source token usage is aligned; candidate rendering is unverified.
+### S-06 — Browse rows expose source/version metadata (WARNING/P1)
 
-### Pillar 4: Typography (3/4)
+Exercise browse rows show namespace, revision, license and attribution (LibraryScreen.tsx:701-710), contrary to the requested concise exercise list.
 
-- Route copy uses approved screenTitle, sectionTitle, body, bodyStrong, secondary, and label tokens (app/more/data-and-recovery.tsx:89-123,470-730; src/ui/theme/index.ts:61-112).
-- Preview values use tabular numerals and wrap-capable row styles (app/more/data-and-recovery.tsx:148-155,755-773).
-- The prior single-line preview defect is closed for content and naming: each fact has a visible label/value pair and an accessible name, and the parent is explicitly `role="list"` (app/more/data-and-recovery.tsx:130-159,645-656).
-- The current child role is `accessibilityRole="text"`, not the unsupported Android `role="listitem"`. This preserves explicit native text semantics and accessible labels inside the supported list container without overstating positional announcements.
-- No route-specific rendered proof establishes 200% text behavior, screen-reader value/label announcement order, or clipping under keyboard/IME constraints.
+### S-07 — Favorite is not filled when selected (WARNING/P1)
 
-**Classification:** WARNING — source typography and labelled rows are aligned; large-text behavior and native rendering remain deferred.
+Selected branch changes color/border only; Star has no fill prop (LibraryScreen.tsx:731-746).
 
-### Pillar 5: Spacing (3/4)
+### S-08 — Permanent refresh button replaces pull-to-refresh (WARNING/P1)
 
-- Data and recovery retains approved spacing/radius/target tokens in local styles (app/more/data-and-recovery.tsx:735-773).
-- Shared actions remain at least 56dp primary and 48dp secondary/icon targets; cards retain tokenized padding and radius (src/ui/components/index.ts:1300-1338,1457-1463).
-- AdaptiveScreen retains compact 16dp, medium 24dp, and expanded 32dp insets and approved gaps (src/ui/layout/AdaptiveScreen.tsx:21-40,108-140,218-256).
-- New preview rows use wrapping and tokenized gaps, but actual 200% layout, orientation, IME, and breakpoint fit remain unverified.
+Library places Refresh Library beside Filter/summary/Clear, while AdaptiveScreen has no RefreshControl (LibraryScreen.tsx:1492-1522,1672-1703; AdaptiveScreen.tsx:163-177).
 
-**Classification:** WARNING — source spacing is contract-aligned; candidate fit is deferred.
+### S-09 — Custom date picker needs M3 visual rework (WARNING/P1)
 
-### Pillar 6: Experience Design (3/4)
+CalendarField is civil-date-safe but its generic Modal/grid does not provide the requested M3/Google Calendar-like hierarchy (CalendarField.tsx:394-591).
 
-- Backup lifecycle has distinct preparing, cancelled, ready, sharing, creation-failed, and share-failed states. Cancellation aborts work; stale late archives and unshared ready archives are discarded (app/more/data-and-recovery.tsx:227-295,434-446,519-570; app/more/__tests__/data-and-recovery.test.tsx:184-238).
-- Restore lifecycle clears sensitive inputs, invalidates replaced/consumed tokens, invalidates late preflight results after unmount, supports fresh-preflight retry, gates REPLACE, and blocks duplicate commit presses (app/more/data-and-recovery.tsx:310-385,607-630; app/more/__tests__/data-and-recovery.test.tsx:280-384).
-- Shared action primitives expose labelled roles, disabled/busy state, focusability, and Enter/Space activation (src/ui/components/index.ts:198-376).
-- CSV state and cleanup coverage remains present (app/more/data-and-recovery.tsx:387-426; app/more/__tests__/data-and-recovery.test.tsx:238-340).
-- Backup discard failure is bounded rather than leaking native/file details (src/domains/portability/backupCommands.ts:167-173; src/domains/portability/backupCommands.test.ts:159-173, added by d6f5cad).
-- Real picker MIME filtering, OS share cancellation/rejection, focus restoration, D-pad behavior, assistive announcements, preview reading order, and reduced-motion behavior remain deferred to the exact candidate.
+## Confirmed runtime defects
 
-**Classification:** WARNING — source state coverage is now strong; native and assistive interaction is unverified.
+### R-01 — Filter selection has no visible selected treatment (BLOCKER/P0)
 
-## Deferred Exact-Candidate Attended Gate
+On the exact production APK, tapping `Exercise type · Powerlifting` changes its UI Automator state from `checked=false` to `checked=true`, while before/after screenshots remain visually indistinguishable. The interaction therefore works semantically but appears nonresponsive to a sighted user. Evidence: `06-library-filters.*`, `07-library-filter-selected.*`.
 
-This source-only review does not claim visual, native, device, assistive-technology, physical, or release evidence. Before release, one exact production candidate must verify:
+### R-02 — Filter summary is unreadable in dark mode (BLOCKER/P0)
 
-- rendered light/dark hierarchy, contrast, focus ring, target sizes, non-color state cues, and preview fact presentation;
-- native TalkBack evidence that the `role="list"` parent and eight accessible labelled text facts form a coherent definition/table-style sequence in visual order; positional `item N of 8` output is not required;
-- More → Data and recovery → secure backup/restore/CSV focus order, Back behavior, picker cancellation, share cancellation/rejection, and focus restoration;
-- MIME-filtered picker behavior and OS share-sheet success, rejection, and cancellation;
-- compact <600dp, medium 600–839dp, and expanded >=840dp layouts;
-- 200% text scaling with wrapped preview facts/descriptions and stacked actions without clipping;
-- keyboard/D-pad Enter/Space activation and assistive announcements, including password visibility, preview facts, and review-heading focus;
-- reduced-motion direct state transitions;
-- clean-install restore, derivative rebuild pending/retry, late cleanup, and exact candidate identity.
+`No filters selected` renders black directly on the dark canvas. The adjacent buttons are themed correctly, which makes the unthemed summary especially obvious. Evidence: `13-library-dark.*`.
 
-## Files Audited
+### R-03 — Calendar is incomplete and does not swipe (BLOCKER/P0)
 
-- .planning/phases/05-recovery-distribution-and-release/05-CONTEXT.md
-- .planning/phases/05-recovery-distribution-and-release/05-UI-SPEC.md
-- .planning/phases/05-recovery-distribution-and-release/05-01-PLAN.md through 05-07-PLAN.md
-- .planning/phases/05-recovery-distribution-and-release/05-01-SUMMARY.md through 05-07-SUMMARY.md
-- DESIGN.md
-- app/more/index.tsx
-- app/more/data-and-recovery.tsx
-- app/more/__tests__/data-and-recovery.test.tsx
-- src/bootstrap/workoutAppRuntime.tsx
+The August 2026 grid begins with six blank cells before day 1 and ends after day 31 instead of filling the grid with adjacent-month dates. A leftward horizontal swipe did not change `August 2026`; the before/after accessibility hierarchies retained the same month. Evidence: `02-calendar.*`, `calendar-before-swipe.xml`, `calendar-after-swipe.xml`.
+
+### R-04 — Exercise rows are dominated by provenance metadata (WARNING/P1)
+
+Each browse card renders the full source namespace, 40-character revision, MIT license, and copyright line. Four items already consume nearly a full screen, reducing scan speed for the primary task of choosing an exercise. Evidence: `14-library-exercise-row-dark.*`.
+
+### R-05 — Selected Favorite is outline-only (WARNING/P1)
+
+After selection, the star stroke and container border turn green and accessibility changes to `Favorite`, but the star remains hollow. Evidence: `15-library-favorite-selected-dark.*`.
+
+### R-06 — Reorder layout is tall and fragmented (WARNING/P1)
+
+The live plan editor places a tall six-dot handle in one column and stacks exercise name, count, ordinal, up, and down controls in another. It does not meet the requested single-line hierarchy; source confirms the gesture only commits a one-position move after release. Evidence: `17-plan-editor-dark.*`.
+
+### R-07 — Date picker hierarchy diverges from Material 3 (WARNING/P1)
+
+The live modal uses separate stacked text buttons for previous/next month, leaves adjacent-month cells blank, and gives large full-width rows to default/cancel/confirm actions. It is usable, but not the requested Google Calendar/Material 3 dialog. Evidence: `19-date-picker-dark.*`.
+
+### R-08 — Root navigation breaks at 200% text (BLOCKER/P0)
+
+At Android font scale 2.0, `Calendar`, `Library`, and `Progress` wrap into clipped fragments inside the fixed-height bottom bar. The scale was restored to 1.0 immediately after capture. Evidence: `20-today-font-200.*`.
+
+### R-09 — Progress remains unavailable after Retry (BLOCKER/P0)
+
+Progress opened in `Progress could not be loaded` on repeated visits and remained in the same state after pressing `Retry loading progress`, including after activating the starter plan. This is reproducible on the exact production candidate; this visual audit does not claim a root cause. Evidence: `04-progress.*`, `22-progress-recheck-dark.*`, `23-progress-after-retry-dark.*`.
+
+### R-10 — Today duplicates the More affordance (WARNING/P1)
+
+Today shows an overflow icon in the header for appearance/rest-alert settings and a full-width `More` button directly below it for the More route. The same generic label represents two different destinations and consumes prime vertical space. Evidence: `01-today.*`, `20-today-font-200.*`.
+
+### Runtime strengths observed
+
+- The four root destinations remain identifiable and selected state uses both color and icon context at normal scale.
+- More and Data and recovery use clear grouping, readable caution copy, explicit disabled states, and large targets (`09-more.*`, `10-data-and-recovery.*`).
+- Rest-alert settings use understandable switch states and a clear notification-permission recovery action (`11-settings-sheet.*`).
+- The Appearance sheet provides System/Light/Dark radio semantics and visibly selected state (`12-appearance-sheet.*`).
+- The installed package and candidate hash were independently verified before the live audit.
+
+## Human follow-up required
+
+- Repeat representative screenshots and touch ergonomics on Samsung `R5CW12NVRPE`; it was not connected during this fresh pass.
+- Verify TalkBack reading order, focus restoration, D-pad/keyboard focus, measured contrast, target sizes, IME, rotation, and reduced motion.
+- Re-test the rebuilt app at 200% text across every root screen, dialog, active workout/rest dock, history/correction, and recovery flow; only Today/root navigation received a fresh 200% capture here.
+- Verify true continuous touch-and-hold drag and pull-to-refresh after implementation.
+- Diagnose Progress load failure separately before treating its visual states as reviewed.
+
+## Surface-by-surface result
+
+| Surface | Result |
+|---|---|
+| Today/onboarding | Live Today is coherent at normal scale, but duplicate `More` affordances add ambiguity and the root navigation clips at 200% text. WARNING/P1 plus BLOCKER/P0. |
+| Active workout/rest | Profile-aware fields, commit/retry/correction and rest actions exist; sticky dock, timer contrast, notification, and large-text fit need attended validation. WARNING/P2. |
+| Calendar/month/history | Factual sessions and state labels exist, but incomplete grid/no swipe is BLOCKER/P0. |
+| Session correction/removed | Explicit correction, restore/remove confirmation and factual states exist; dialog/list density and focus require runtime validation. WARNING/P2. |
+| Library Plans/Exercises | Live light/dark evidence confirms invisible selected filters, black dark-mode summary, non-M3 Search, outline-only selected star, provenance clutter, and crowded refresh placement. BLOCKER/P0 plus WARNING/P1. |
+| Starter plans/activation | Schedule and source-note preview is present; custom choice surfaces require M3/device validation. WARNING/P2. |
+| Owned plan/editor/replacement | Explicit save and impact preview are strong; live reorder rows are fragmented and source confirms no continuous drag. WARNING/P1. |
+| Schedule/date fields | Local-date contract and accessible trigger are good; live picker visual hierarchy/navigation need M3 rework. WARNING/P1. |
+| Progress | Exact candidate repeatedly remains in the recoverable error state after Retry; normal content could not be visually audited. BLOCKER/P0. |
+| More/data recovery | Runtime strengths observed in grouping, copy, disabled states, and targets; native picker/share and TalkBack remain P2 follow-up items. |
+| Global Material system | Central tokens/shared labels are strengths; root navigation fails 200% text and custom controls need M3 convergence. BLOCKER/P0 plus WARNING/P1. |
+
+## Implementation sequence (do not implement during audit)
+
+1. **Library P0 repair:** shared M3 filter chips; visible selected states; themed summary; standalone Favorite; source/version removal; filled green Favorite; focused tests for light/dark/keyboard.
+2. **Shared Search P1:** one Search primitive with leading icon, clear, focus/busy/suggestion states; replace Library, Progress, and owned-plan picker.
+3. **Calendar P0/P1:** complete adjacent-month six-row grid; horizontal month pager plus labelled buttons; M3/Google Calendar-like CalendarField dialog; preserve LocalDate/bounds/focus.
+4. **Ordering P1:** real continuous touch-and-hold drag with 48dp handle; explicit up/down fallback; responsive same-row label/actions; save only draft until explicit save.
+5. **Global accessibility and defects:** make root navigation safe at 200% text; remove/rename duplicate Today `More`; diagnose/fix Progress loading; then validate NavigationBar/Rail, switches, dialogs/sheets, icon buttons, progress, scrim/elevation/shape/motion, and safe areas.
+6. **Refresh/global M3:** add pull-to-refresh with explicit failure retry and verify its semantics, loading indicator, and list scroll interaction.
+7. **Release gate:** close all P0/P1 findings, rebuild, pull-back/hash-verify the exact APK, and bind attended emulator plus Samsung visual/accessibility/adaptive evidence to that same candidate. This audit is not release approval.
+
+## Files audited
+
+- AGENTS.md, .trae/rules/rules.md, DESIGN.md
+- Phase 01–05 UI-SPEC.md and CONTEXT.md files
+- Phase 05 SUMMARY.md and PLAN.md files 05-01 through 05-07
+- src/ui/theme/index.ts; src/ui/components/index.ts; CalendarField.tsx; PlanEditorFields.tsx; ProgressTrend.tsx; RestAlertSettingsSheet.tsx; RestDock.tsx; ScheduleBindingEditor.tsx; WorkoutStartSheet.tsx
 - src/ui/layout/AdaptiveScreen.tsx
-- src/ui/theme/index.ts
-- src/ui/components/index.ts
-- src/ui/__tests__/foundation.test.tsx
-- src/domains/portability/restoreCommands.ts
-- src/domains/portability/backupCommands.ts
-- src/domains/portability/backupCommands.test.ts
-- src/platform/files/expoBackupFilePort.ts
-- src/platform/files/expoCsvFilePort.ts
-- tests/sqlite-host/cleanInstallRestore.test.ts
+- source screens Today, ActiveWorkout, Calendar, Library, Progress, OwnedPlanEditor, ExerciseEditor, ExerciseReplacement, ScheduleEditor, StarterPlanDetail, StarterActivation, SessionDetail, SessionCorrection, RemovedSessions, ExerciseDetail, ExerciseHistory, WorkoutCompletion
+- app/_layout.tsx; app/(tabs)/_layout.tsx and root routes; app/more/index.tsx; app/more/data-and-recovery.tsx
+- relevant src/ui tests, Maestro phase5 flows, and release/evidence scripts for intended runtime gate context
+- The two historical paths named by rules were absent: /Users/bytedance/.gstack/projects/gym_tracker/pre-git-design-20260815-132500.md and /Users/bytedance/.gstack/projects/gym_tracker/pre-git-eng-review-test-plan-20260815-224500.md. DESIGN.md and phase contracts were used instead.
+
+## Registry safety
+
+No components.json was found; shadcn/third-party registry audit does not apply.
+
+## Official Material 3 references
+
+- Chips: https://m3.material.io/components/chips/guidelines
+- Search: https://m3.material.io/components/search/overview
+- Date pickers: https://m3.material.io/components/date-pickers/overview
+- Lists: https://m3.material.io/components/lists/guidelines
+- Navigation bar: https://m3.material.io/components/navigation-bar/overview
+- Switch: https://m3.material.io/components/switch/overview
+- Icon buttons: https://m3.material.io/components/icon-buttons/overview
+- Menus: https://m3.material.io/components/menus/overview
+- Dialogs: https://m3.material.io/components/dialogs/overview
+- Progress indicators: https://m3.material.io/components/progress-indicators/overview
+- Pull to refresh: https://m3.material.io/components/pull-to-refresh/overview
+- Accessible design: https://m3.material.io/foundations/accessible-design/overview
