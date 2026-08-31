@@ -736,6 +736,7 @@ describe("progress repository", () => {
           exercises: [],
         }),
       }));
+      expect(arrayPrototype.toSorted).toBeUndefined();
     } finally {
       Object.defineProperty(arrayPrototype, "toSorted", {
         configurable: true,
