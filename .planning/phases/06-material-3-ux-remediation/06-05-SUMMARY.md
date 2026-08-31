@@ -34,7 +34,7 @@ key-decisions:
   - "Day and exercise drag, Move buttons, keyboard activation, and adjustable actions all delegate to the same target-index draft operation."
   - "Gesture cancellation clears transient displacement without changing order, while only Save Plan Changes calls savePlan."
   - "The owned-plan picker uses M3SearchField with explicit source-loading, source-error, empty, one-result, and many-result semantics."
-  - "Reanimated is required in production but loaded behind a component-local Jest-worker adapter so unrelated suites do not initialize native worklets."
+  - "Reanimated and Worklets remain direct production imports so Babel can workletize every UI-runtime callback; component tests isolate their native modules in Jest-only setup."
 patterns-established:
   - Held reorder rows expose a selected container, moving-position accessibility label, and bounded translation before drop.
   - Normal text keeps handle, content, position, and fallback actions inline; 200% text reflows vertically without removing 48dp controls.
@@ -123,7 +123,7 @@ status: complete
 - Drag preview never mutates the editor draft. Only successful drop invokes the same bounded target-index operation used by every fallback.
 - `Save Plan Changes` is the sole persistence action; drag, buttons, keyboard, adjustable actions, `Save target`, and `Save day` remain draft-only.
 - Search loading and source failure are distinct from a valid zero-result query, preventing a failed exercise source from appearing as an empty catalog.
-- Production loads the installed Reanimated module, while Jest workers use local view/shared-value adapters so all shared-component consumers remain testable without native worklet initialization.
+- Production uses direct Reanimated and Worklets imports so the Babel plugin can transform animated-style and gesture callbacks. Jest-only setup supplies the libraries' mocks and a root-view adapter without changing production compilation.
 
 ## Deviations from Plan
 
