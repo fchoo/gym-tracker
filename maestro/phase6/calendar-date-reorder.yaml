@@ -21,11 +21,29 @@ tags:
     timeout: 90000
 - tapOn: "Calendar"
 - assertVisible: "Calendar month grid"
+- assertVisible: "^${CURRENT_MONTH}$"
 - swipe:
     start: 80%, 42%
     end: 20%, 42%
     duration: 400
-- assertVisible: "Calendar month grid"
+- extendedWaitUntil:
+    visible: "^${NEXT_MONTH}$"
+    timeout: 30000
+- swipe:
+    start: 20%, 42%
+    end: 80%, 42%
+    duration: 400
+- extendedWaitUntil:
+    visible: "^${CURRENT_MONTH}$"
+    timeout: 30000
+- tapOn: "Show ${PREVIOUS_MONTH}"
+- extendedWaitUntil:
+    visible: "^${PREVIOUS_MONTH}$"
+    timeout: 30000
+- tapOn: "Show ${CURRENT_MONTH}"
+- extendedWaitUntil:
+    visible: "^${CURRENT_MONTH}$"
+    timeout: 30000
 - takeScreenshot: phase6-calendar-swipe
 - tapOn: "Library"
 - assertVisible: "Library"
@@ -45,12 +63,32 @@ tags:
 - assertVisible: "Activate Full Body Foundation"
 - tapOn: "Start date"
 - assertVisible: "Calendar dialog"
+- assertVisible: "^${CURRENT_MONTH}$"
 - tapOn: "Previous month"
+- extendedWaitUntil:
+    visible: "^${PREVIOUS_MONTH}$"
+    timeout: 30000
 - swipe:
     start: 80%, 50%
     end: 20%, 50%
     duration: 400
-- assertVisible: "Calendar grid"
+- extendedWaitUntil:
+    visible: "^${CURRENT_MONTH}$"
+    timeout: 30000
+- swipe:
+    start: 80%, 50%
+    end: 20%, 50%
+    duration: 400
+- extendedWaitUntil:
+    visible: "^${NEXT_MONTH}$"
+    timeout: 30000
+- swipe:
+    start: 20%, 50%
+    end: 80%, 50%
+    duration: 400
+- extendedWaitUntil:
+    visible: "^${CURRENT_MONTH}$"
+    timeout: 30000
 - takeScreenshot: phase6-calendar-dialog-200pct
 - tapOn: "Keep Original Date"
 - assertNotVisible: "Calendar dialog"
@@ -105,13 +143,11 @@ tags:
     direction: DOWN
     centerElement: true
 - tapOn: "Save target"
-- assertVisible: "Bench Press"
-- longPressOn:
-    id: "drag-exercise-Bench Press"
-- swipe:
-    start: 50%, 70%
-    end: 50%, 45%
-    duration: 450
-- tapOn: "Move Bench Press up"
-- assertVisible: "Bench Press moved to 1 of 2"
-- takeScreenshot: phase6-reorder-displacement
+- scrollUntilVisible:
+    element:
+      id: "drag-exercise-Bench Press"
+    direction: DOWN
+    centerElement: true
+- assertVisible: "Drag Back Squat. Position 1 of 2"
+- assertVisible: "Drag Bench Press. Position 2 of 2"
+- takeScreenshot: phase6-reorder-before-drag

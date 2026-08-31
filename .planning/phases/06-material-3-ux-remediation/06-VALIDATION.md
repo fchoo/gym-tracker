@@ -44,8 +44,8 @@ created: 2026-08-31
 | 06-01-03 | 01 | 0 | UX-06 | T-06-02 | Refresh stays controlled on one owning scroll host and never bypasses typed Library state | component | `npm run test:components -- --runInBand src/ui/__tests__/foundation.test.tsx` | ❌ Wave 0 refresh test | ⬜ pending |
 | 06-02-01 | 02 | 0 | UX-03, UX-04, UX-05, UX-09 | T-06-01, T-06-02 | Runner identity/privacy/cleanup checks fail closed before native consumer work | contract | `node --test scripts/phase6-evidence-scripts.test.mjs` | ❌ Wave 0 runner contract | ⬜ pending |
 | 06-02-02 | 02 | 0 | UX-03, UX-04 | T-06-01, T-06-03 | Actual generated-native horizontal swipe and long-press displacement smoke gates gesture consumers | native | `npm run test:maestro:phase6 -- --flow gesture-smoke` | ❌ Wave 0 native smoke | ⬜ pending |
-| 06-03-01 | 03 | 1 | UX-10 | T-06-01, T-06-02 | Candidate-bound diagnostic is redacted and cannot select a repair without an observed branch | diagnostic | `node --test scripts/phase6-progress-diagnostic.test.mjs` | ❌ diagnostic | ⬜ pending |
-| 06-03-02 | 03 | 1 | UX-10 | T-06-01, T-06-02 | Full-migration host fixture reproduces the observed branch before production repair | sqlite-host | `npm run test:sqlite:host -- --runInBand tests/sqlite-host/progressRepository.test.ts` | ✅ extend | ⬜ pending |
+| 06-03-01 | 03 | 1 | UX-10 | T-06-01, T-06-02 | Candidate observations require immutable manifest/install identity plus an independently captured redacted measurement; no repository command claims that observation | external evidence | No repository command; record only through an immutable evidence workflow | ⚠️ external evidence required | ⬜ pending |
+| 06-03-02 | 03 | 1 | UX-10 | T-06-01, T-06-02 | Full-migration host fixture proves the missing-runtime-capability compatibility behavior and preserves the factual current baseline | sqlite-host | `npm run test:sqlite:host -- --runInBand tests/sqlite-host/progressRepository.test.ts` | ✅ verified | ✅ green |
 | 06-04-01 | 04 | 1 | UX-03 | T-06-03 | Root Calendar retains exact civil-date semantics and equivalent month controls | unit + component | `npm run test:unit -- --runInBand && npm run test:components -- --runInBand` | ✅ extend | ⬜ pending |
 | 06-04-02 | 04 | 1 | UX-05 | T-06-03 | Date-field drafts commit only through explicit Apply and remain bounded | unit + component | `npm run test:unit -- --runInBand && npm run test:components -- --runInBand` | ✅ extend | ⬜ pending |
 | 06-05-01 | 05 | 1 | UX-04 | T-06-02 | Drag and fallback actions change draft order only; Save Plan Changes remains sole persistence | component + native | `npm run test:components -- --runInBand` | ✅ extend | ⬜ pending |
@@ -71,7 +71,8 @@ created: 2026-08-31
 - [ ] `AdaptiveScreen` refresh contract test for a single controlled `RefreshControl`.
 - [ ] `maestro/phase6/` flow contracts and `scripts/run-phase6-maestro.mjs` scaffold, including exact candidate identity, Progress reproduction/recovery, month/date/reorder gestures, 200% navigation, and font-scale restoration.
 - [ ] `scripts/phase6-evidence-scripts.test.mjs` to fail closed on missing/wrong package, APK hash, ADB path, device, screenshots, forbidden approval fields, and font-scale reset.
-- [ ] Exact Progress branch fixture in `tests/sqlite-host/progressRepository.test.ts`, created only after redacted runtime diagnosis identifies the rejecting branch.
+- [ ] Capture any future candidate Progress observation through immutable manifest/install identity and an independently captured redacted measurement; do not synthesize it from caller input.
+- [x] Full-migration Progress compatibility fixture proves the factual baseline remains available when `toSorted` is absent.
 
 ---
 

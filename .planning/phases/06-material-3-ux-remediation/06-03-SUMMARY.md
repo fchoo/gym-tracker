@@ -9,48 +9,38 @@ requires:
   - phase: 04-overall-progress-and-complete-progression
     provides: Source-backed Progress repository and current-baseline projection behavior
 provides:
-  - Candidate-bound, fail-closed redacted Progress diagnosis
-  - Full-current-migration host fixture for the observed Progress runtime capability rejection
-  - Explicit storage-safe repair boundary for Plan 06-07
+  - Full-current-migration host fixture for Progress runtime-compatibility behavior
+  - Integrity boundary separating external candidate evidence from repository-executable causal proof
+  - Explicit storage-safe repair boundary retained by Plan 06-07
 affects: [06-07, ProgressScreen, progressRepository, Hermes compatibility]
 actuals:
   tokens: 2670
   tasks: 2
-  commits: 3
+  commits: 4
 tech-stack:
   added: []
   patterns:
-    - Candidate diagnostics accept only allowlisted identity and classification fields
     - Host fixtures model missing runtime capabilities while retaining the complete SQLite migration manifest
+    - Candidate observations require immutable identity plus independently captured measurements
 key-files:
   created:
-    - scripts/diagnose-phase6-progress.mjs
-    - scripts/phase6-progress-diagnostic.test.mjs
     - .planning/phases/06-material-3-ux-remediation/06-PROGRESS-DIAGNOSIS.md
   modified:
     - tests/sqlite-host/progressRepository.test.ts
 key-decisions:
-  - The observed Progress failure is a `toSorted` runtime-capability rejection after current freshness, not a SQLite source, migration, freshness, queue, parser, or malformed-row failure.
-  - Plan 06-07 alone may choose the minimal production compatibility repair after preserving the full-migration regression fixture.
+  - The removed CLI could not establish an observed candidate failure because callers supplied its identity inputs and it emitted a fixed classification.
+  - The full-migration fixture remains the repository-executable causal proof; future candidate claims require immutable identity and independent redacted measurement capture.
 patterns-established:
-  - Diagnostics fail closed on package/SHA mismatch and expose only bounded fields, never raw device or SQLite data.
   - A full migration fixture must prove the same baseline before and after a capability model, rather than substituting mock UI rejection.
+  - Repository scripts must not convert caller-provided identity values into claims of external measurement.
 requirements-completed: [UX-10]
 coverage:
   - id: D1
-    description: Candidate-bound Progress diagnostic emits only the confirmed bounded runtime signature and rejects identity/private-field violations
-    requirement: UX-10
-    verification:
-      - kind: unit
-        ref: scripts/phase6-progress-diagnostic.test.mjs
-        status: pass
-    human_judgment: false
-  - id: D2
-    description: Full-current-migration host SQLite fixture reproduces the Progress TypeError only when the candidate runtime capability is absent and returns a current baseline after restoration
+    description: Full-current-migration host SQLite fixture proves the factual Progress baseline remains available when the runtime lacks toSorted and when normal capabilities are restored
     requirement: UX-10
     verification:
       - kind: integration
-        ref: tests/sqlite-host/progressRepository.test.ts#reproduces the candidate runtime rejection from a full-migration current baseline
+        ref: tests/sqlite-host/progressRepository.test.ts#returns the factual current baseline when the candidate lacks toSorted
         status: pass
     human_judgment: false
 duration: 10 min
@@ -58,9 +48,9 @@ completed: 2026-08-31
 status: complete
 ---
 
-# Phase 06 Plan 03: Progress Runtime Diagnosis Summary
+# Phase 06 Plan 03: Progress Compatibility Evidence Summary
 
-**Candidate-bound diagnosis proving a Hermes `toSorted` capability gap in Progress’s current baseline path, with a privacy-safe host SQLite reproducer.**
+**Independent full-migration SQLite evidence for Progress runtime compatibility, with self-attesting candidate-diagnostic tooling removed.**
 
 ## Performance
 
@@ -72,44 +62,35 @@ status: complete
 
 ## Accomplishments
 
-- Captured the exact bounded rejecting branch as `progress_repository_load` / `TypeError` / `runtime_array_to_sorted_unavailable`, after current freshness and before a Progress snapshot could return.
-- Ruled out an SQLite migration, schema, query, freshness, source-row, queue, or parser cause by running the authoritative effective-history queries against the candidate’s full-current-schema database.
-- Added a complete-migration host fixture that recreates the clean current baseline, models the missing `toSorted` capability, and proves recovery to the factual baseline after restoring the capability.
+- Removed the executable that accepted caller-supplied hashes and emitted a fixed Progress classification, because it could fabricate evidence rather than observe an immutable candidate.
+- Retained the complete-migration host fixture as the repository-executable causal proof that Progress returns the factual current baseline when `toSorted` is absent and after normal capabilities are restored.
+- Recorded the evidence boundary: future candidate observations require an immutable manifest, a recomputed installed APK hash, and an independently captured redacted measurement.
 
 ## Task Commits
 
-1. **Task 1: Capture one candidate-bound redacted Progress failure signature**
-   - `77d8b90` (`test`) — RED contract for candidate-bound redacted diagnosis.
-   - `b934a1a` (`feat`) — fail-closed diagnostic module and evidence-led repair boundary.
-2. **Task 2: Reproduce the diagnosed branch in the complete migration fixture**
-   - `9a63cab` (`test`) — full-migration runtime-capability fixture and recovery assertion.
+1. **Task 1: Remove the self-attesting Progress diagnostic path**
+   - Pre-landing integrity correction — deletes the synthetic CLI and its synthetic test.
+2. **Task 2: Retain the independently executable full-migration fixture**
+   - `9a63cab` (`test`) — original host compatibility fixture; superseded repair coverage is in Plan 06-07.
 
 ## Files Created/Modified
 
-- `scripts/diagnose-phase6-progress.mjs` — allowlisted candidate identity validation and bounded observed classification.
-- `scripts/phase6-progress-diagnostic.test.mjs` — diagnostic contract, mismatch, and privacy-rejection coverage.
-- `.planning/phases/06-material-3-ux-remediation/06-PROGRESS-DIAGNOSIS.md` — observed branch, evidence chain, fixture scope, and Plan 06-07 repair boundary.
-- `tests/sqlite-host/progressRepository.test.ts` — complete migration fixture for the candidate capability model and baseline recovery.
+- `.planning/phases/06-material-3-ux-remediation/06-PROGRESS-DIAGNOSIS.md` — integrity boundary, independently executable evidence scope, and Plan 06-07 repair boundary.
+- `tests/sqlite-host/progressRepository.test.ts` — complete migration fixture for missing-capability baseline behavior and recovery.
+- `scripts/diagnose-phase6-progress.mjs` — removed because it could not independently measure a candidate.
+- `scripts/phase6-progress-diagnostic.test.mjs` — removed with the synthetic CLI contract.
 
 ## Decisions Made
 
-- The candidate’s full-current SQLite database resolves the authoritative effective-history SQL and reaches the factual current baseline; SQLite is not the causal seam.
-- The APK bundle references `toSorted`, while its embedded Hermes runtime lacks that capability. Modeling only that missing capability reproduces the bounded `TypeError`.
-- No production Progress, runtime, repository, migration, projection, effect, or UI file was changed. Plan 06-07 owns any minimal compatibility repair.
+- The removed diagnostic command cannot support a candidate observation claim, even when its caller supplies matching hashes.
+- The full-migration host fixture independently demonstrates the repository’s compatibility behavior without exposing or asserting candidate-device data.
+- No production Progress, runtime, repository, migration, projection, effect, or UI file changed in this integrity correction.
 
 ## Deviations from Plan
 
 ### Auto-fixed Issues
 
-**1. [Rule 1 - Bug] Corrected the diagnostic CLI serialization syntax**
-- **Found during:** Task 1
-- **Issue:** The first diagnostic implementation had an unbalanced template expression, preventing its Node contract from importing.
-- **Fix:** Corrected the CLI JSON output expression.
-- **Files modified:** `scripts/diagnose-phase6-progress.mjs`
-- **Verification:** `node --test scripts/phase6-progress-diagnostic.test.mjs` passed.
-- **Committed in:** `b934a1a`
-
-**2. [Rule 3 - Blocking] Made the capability-model fixture valid under strict TypeScript**
+**1. [Rule 3 - Blocking] Made the capability-model fixture valid under strict TypeScript**
 - **Found during:** Task 2
 - **Issue:** Strict TypeScript rejected `delete Array.prototype.toSorted` because the built-in property is non-optional in its type declaration.
 - **Fix:** Used a local optional-property test view solely to model the missing candidate capability and restored the original descriptor in `finally`.
@@ -119,33 +100,29 @@ status: complete
 
 ---
 
-**Total deviations:** 2 auto-fixed (1 bug, 1 blocking test-environment type issue)
-**Impact on plan:** Both fixes were limited to the planned diagnostic and fixture files; no production behavior or repair scope was introduced.
+**Total deviations:** 1 retained historical blocking test-environment type issue.
+**Impact on plan:** The synthetic diagnostic path is removed; the independently executable fixture remains the sole repository proof.
 
 ## Issues Encountered
 
-- A preliminary hand-written SQL approximation falsely suggested a missing column. The exact repository SQL resolved successfully, so that approximation was discarded rather than recorded.
-- Host compilation initially lacked repository dependency resolution outside the worktree. The final evidence uses the actual repository test runner and a temporary candidate copy only; no candidate database data was retained.
+- The removed diagnostic CLI accepted caller-supplied identity inputs and emitted a fixed classification. It was an integrity risk, not independent evidence.
+- The host fixture does not observe a device or APK; it proves only the repository behavior it actually executes.
 
 ## Known Stubs
 
-None. The diagnostic has one confirmed signature rather than placeholder data, and the host fixture uses the actual migration manifest and repository read.
+None. The remaining fixture runs the actual migration manifest and repository read; no placeholder candidate observation remains.
 
 ## Threat Review
 
-- T-06-01 is mitigated: the diagnostic accepts exact package/SHA identity and returns only read stage, branch, error class/code, freshness, and recoverability. It rejects device serials, raw rows, messages, paths, JSON, and backup contents.
-- T-06-02 is mitigated: no production repair file was selected or changed; the full-migration fixture identifies the compatibility seam before Plan 06-07 may modify behavior.
+- T-06-01 is mitigated: no repository command now accepts caller-supplied identity and turns it into a candidate-observation claim. Future candidate evidence must be independently captured and redacted.
+- T-06-02 is mitigated: the full-migration fixture remains the repository-side causal proof while Plan 06-07 retains its bounded production repair.
 - No new network endpoint, authentication path, schema, file-access pattern, or trust-boundary surface was introduced.
 
 ## Verification
 
-- `node --test scripts/phase6-progress-diagnostic.test.mjs` — passed (3/3).
 - `npm run test:sqlite:host -- --runInBand tests/sqlite-host/progressRepository.test.ts` — passed (13/13).
-- `npm run typecheck` — passed.
-- `npm run lint` — passed (boundary check, 226 files).
-- `npm run check:boundaries` — passed (226 files).
-- `git diff --check` — passed.
-- All three task commits end with exactly one final required TRAE CLI co-author trailer.
+- `npm run test:components -- --runInBand src/ui/components/M3FilterChip.test.tsx` — passed (6/6) as part of the combined pre-landing review gate.
+- `npm run typecheck` and `git diff --check` — passed after the integrity correction.
 
 ## User Setup Required
 
@@ -153,15 +130,14 @@ None.
 
 ## Next Phase Readiness
 
-- Plan 06-07 can implement and verify the smallest runtime-compatible repair at the now-proven Progress seam.
-- The diagnosis explicitly authorizes only `src/platform/sqlite/repositories/progressRepository.ts` for that causal repair and `src/ui/screens/ProgressScreen.tsx` for the planned Search/Retry presentation; runtime, lifecycle, and projection-effect files remain out of scope.
-- It must retain the safe `unavailable`/`updating` freshness early returns, source-backed baseline semantics, and the new full-migration regression fixture.
+- Plan 06-07 has completed the bounded repository repair and retains the full-migration regression fixture.
+- Any future candidate observation must be recorded outside this repository through immutable candidate/install identity and independently captured redacted measurement.
 - No approval, promotion, publication, tag, or Terminal Seal action was performed.
 
 ## Self-Check: PASSED
 
-- Confirmed all four planned diagnostic, documentation, and host-fixture files exist.
-- Confirmed task commits `77d8b90`, `b934a1a`, and `9a63cab` exist and each ends with exactly one required TRAE CLI co-author trailer.
+- Confirmed the two synthetic diagnostic files are removed.
+- Confirmed the full-migration host fixture remains in `tests/sqlite-host/progressRepository.test.ts`.
 
 ---
 *Phase: 06-material-3-ux-remediation*

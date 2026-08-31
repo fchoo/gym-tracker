@@ -114,8 +114,14 @@ test("Phase 6 evidence rejects wrong identity, screenshots, cleanup, and release
     "phase6-calendar-date-reorder",
     "phase6-navigation-accessibility",
   ].map((id) => [id, passedReport()]));
+  const nativeDragReports = {
+    "phase6-calendar-date-reorder": passedReport(),
+  };
   const screenshots = Object.fromEntries(Object.keys(rawReports).map((id) => [id, [
     { file: `${id}/complete.png`, sha256: SHA_A },
+    ...(id === "phase6-calendar-date-reorder"
+      ? [{ file: "phase6-reorder-live-displacement.png", sha256: SHA_B }]
+      : []),
   ]]));
   const evidence = createPhase6Evidence({
     candidate,
@@ -130,32 +136,58 @@ test("Phase 6 evidence rejects wrong identity, screenshots, cleanup, and release
       installed_apk_sha256: SHA_B,
     },
     rawReports,
+    nativeDragReports,
     screenshots,
     fontScaleRestored: true,
   });
-  assert.doesNotThrow(() => validatePhase6Evidence(evidence, candidate, rawReports));
+  assert.doesNotThrow(() => validatePhase6Evidence(
+    evidence,
+    candidate,
+    rawReports,
+    nativeDragReports,
+  ));
   assert.throws(() => validatePhase6Evidence({
     ...evidence,
     device: { ...evidence.device, installed_apk_sha256: SHA_A },
-  }, candidate, rawReports), /installed|identity|candidate/u);
+  }, candidate, rawReports, nativeDragReports), /installed|identity|candidate/u);
   assert.throws(() => validatePhase6Evidence({
     ...evidence,
     flows: evidence.flows.map((flow, index) => index === 0
       ? { ...flow, screenshots: [] }
       : flow),
-  }, candidate, rawReports), /screenshot|artifact|evidence/u);
+  }, candidate, rawReports, nativeDragReports), /screenshot|artifact|evidence/u);
   assert.throws(() => validatePhase6Evidence({
     ...evidence,
     font_scale_restored: false,
-  }, candidate, rawReports), /font|cleanup|evidence/u);
+  }, candidate, rawReports, nativeDragReports), /font|cleanup|evidence/u);
+  assert.throws(() => createPhase6Evidence({
+    candidate,
+    device: evidence.device,
+    rawReports,
+    nativeDragReports: {},
+    screenshots,
+    fontScaleRestored: true,
+  }), /native-drag|native drag|report/u);
   assert.throws(() => validatePhase6Evidence({
     ...evidence,
     release_authorization: "approved",
-  }, candidate, rawReports), /authorization|approval|evidence/u);
+  }, candidate, rawReports, nativeDragReports), /authorization|approval|evidence/u);
   assert.throws(() => validatePhase6Evidence({
     ...evidence,
     raw_path: "/private/device/rows.json",
-  }, candidate, rawReports), /private|bounded|evidence/u);
+  }, candidate, rawReports, nativeDragReports), /private|bounded|evidence/u);
+  assert.throws(() => validatePhase6Evidence({
+    ...evidence,
+    flows: evidence.flows.map((flow) => flow.id === "phase6-calendar-date-reorder"
+      ? {
+          ...flow,
+          native_drag_live_screenshot: {
+            ...flow.native_drag_live_screenshot,
+            sha256: SHA_A,
+          },
+        }
+      : flow),
+  }, candidate, rawReports, nativeDragReports), /native drag|evidence/u);
 });
 
 test("Phase 6 production flows retain exact package, labelled coverage, and screenshot capture", () => {
@@ -172,6 +204,125 @@ test("Phase 6 production flows retain exact package, labelled coverage, and scre
       assert.ok(source.includes(text), `${file} is missing ${text}`);
     }
   }
+});
+
+test("Phase 6 N2 and N3 evidence proves reversible months and one native held drag", async () => {
+  const {
+    phase6CalendarMonthEnvironment,
+    phase6HeldDragIsDisplaced,
+    phase6NativeDragCommands,
+    phase6ReorderDragCoordinates,
+    throwPhase6Failures,
+  } = await load("scripts/run-phase6-maestro.mjs");
+  assert.deepEqual(phase6CalendarMonthEnvironment("2026-08-31"), {
+    current: "August 2026",
+    next: "September 2026",
+    previous: "July 2026",
+  });
+  assert.deepEqual(phase6CalendarMonthEnvironment("2026-12-01"), {
+    current: "December 2026",
+    next: "January 2027",
+    previous: "November 2026",
+  });
+  for (const invalidDate of ["2026-02-29", "0001-01-01", "9999-12-31"]) {
+    assert.throws(
+      () => phase6CalendarMonthEnvironment(invalidDate),
+      /civil date|adjacent month/u,
+    );
+  }
+
+  const hierarchy = [
+    "<hierarchy>",
+    '<node resource-id="drag-exercise-Back Squat" content-desc="Drag Back Squat. Position 1 of 2" bounds="[120,500][360,620]" />',
+    '<node resource-id="drag-exercise-Bench Press" content-desc="Drag Bench Press. Position 2 of 2" bounds="[120,700][360,820]" />',
+    "</hierarchy>",
+  ].join("");
+  assert.deepEqual(phase6ReorderDragCoordinates(hierarchy, {
+    sourceLabel: "Bench Press",
+    targetLabel: "Back Squat",
+  }), {
+    endX: 240,
+    endY: 560,
+    startX: 240,
+    startY: 760,
+  });
+  assert.deepEqual(phase6NativeDragCommands({
+    endX: 240,
+    endY: 560,
+    startX: 240,
+    startY: 760,
+  }), {
+    down: ["shell", "input", "touchscreen", "motionevent", "DOWN", "240", "760"],
+    move: ["shell", "input", "touchscreen", "motionevent", "MOVE", "240", "560"],
+    up: ["shell", "input", "touchscreen", "motionevent", "UP", "240", "560"],
+  });
+  assert.throws(() => phase6NativeDragCommands({
+    endX: 240,
+    endY: 560,
+    startX: -1,
+    startY: 760,
+  }), /drag.*coordinates/iu);
+  assert.equal(phase6HeldDragIsDisplaced([
+    "<hierarchy>",
+    '<node resource-id="drag-exercise-Bench Press" content-desc="Drag Bench Press. Moving to position 1 of 2" bounds="[120,500][360,620]" />',
+    "</hierarchy>",
+  ].join(""), { label: "Bench Press", targetPosition: 1, count: 2 }), true);
+  assert.equal(phase6HeldDragIsDisplaced(hierarchy, {
+    label: "Bench Press",
+    targetPosition: 1,
+    count: 2,
+  }), false);
+  const primary = new Error("primary");
+  const cleanup = new Error("cleanup");
+  assert.throws(
+    () => throwPhase6Failures(primary, [cleanup], "native drag"),
+    (error) => error instanceof AggregateError
+      && error.errors[0] === primary
+      && error.errors[1] === cleanup,
+  );
+  assert.throws(() => phase6ReorderDragCoordinates("<hierarchy />", {
+    sourceLabel: "Bench Press",
+    targetLabel: "Back Squat",
+  }), /drag.*hierarchy|hierarchy.*drag/iu);
+
+  const setup = readFileSync(
+    path.join(projectRoot, "maestro/phase6/calendar-date-reorder.yaml"),
+    "utf8",
+  );
+  const verify = readFileSync(
+    path.join(projectRoot, "maestro/phase6/calendar-date-reorder-verify.yaml"),
+    "utf8",
+  );
+  for (const month of [
+    "CURRENT_MONTH",
+    "NEXT_MONTH",
+    "PREVIOUS_MONTH",
+  ]) {
+    assert.ok(
+      setup.includes(`"^\${${month}}$"`),
+      `missing \${${month}}`,
+    );
+  }
+  assert.match(
+    setup,
+    /assertVisible: "\^\$\{CURRENT_MONTH\}\$"[\s\S]*swipe:[\s\S]*visible: "\^\$\{NEXT_MONTH\}\$"[\s\S]*swipe:[\s\S]*visible: "\^\$\{CURRENT_MONTH\}\$"/u,
+  );
+  assert.match(
+    setup,
+    /tapOn: "Previous month"[\s\S]*visible: "\^\$\{PREVIOUS_MONTH\}\$"[\s\S]*swipe:[\s\S]*visible: "\^\$\{CURRENT_MONTH\}\$"/u,
+  );
+  assert.doesNotMatch(setup, /longPressOn:|tapOn: "Move Bench Press up"/u);
+  assert.match(setup, /id: "drag-exercise-Bench Press"/u);
+  assert.match(verify, /Bench Press dragged to 1 of 2/u);
+  assert.match(verify, /Drag Bench Press\. Position 1 of 2/u);
+  assert.match(verify, /Drag Back Squat\. Position 2 of 2/u);
+  const runner = readFileSync(
+    path.join(projectRoot, "scripts/run-phase6-maestro.mjs"),
+    "utf8",
+  );
+  assert.match(runner, /"-e", `CURRENT_MONTH=\$\{monthEnvironment\.current\}`/u);
+  assert.match(runner, /calendar-date-reorder-verify\.yaml/u);
+  assert.match(runner, /phase6-reorder-live-displacement\.png/u);
 });
 
 test("Phase 6 Samsung checklist is canonical, exact-byte, and observation-only", async () => {

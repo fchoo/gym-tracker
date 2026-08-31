@@ -39,6 +39,7 @@ describe("M3FilterChip", () => {
     const chip = screen.getByRole("checkbox", { name: "Strength selected" });
     expect(chip).toHaveProp("accessibilityState", {
       busy: false,
+      checked: true,
       disabled: false,
       selected: true,
     });
@@ -62,7 +63,10 @@ describe("M3FilterChip", () => {
     expect(screen.getByRole("checkbox", { name: "Favorite" }).children[0])
       .toHaveProp("fill", "none");
     expect(screen.getByRole("checkbox", { name: "Favorite" }))
-      .toHaveProp("accessibilityState", expect.objectContaining({ selected: false }));
+      .toHaveProp("accessibilityState", expect.objectContaining({
+        checked: false,
+        selected: false,
+      }));
 
     await rendered.rerender(
       <AppearanceProvider>
@@ -73,7 +77,10 @@ describe("M3FilterChip", () => {
     expect(screen.getByRole("checkbox", { name: "Favorite selected" }).children[0])
       .toHaveProp("fill", "#1F7A4D");
     expect(screen.getByRole("checkbox", { name: "Favorite selected" }))
-      .toHaveProp("accessibilityState", expect.objectContaining({ selected: true }));
+      .toHaveProp("accessibilityState", expect.objectContaining({
+        checked: true,
+        selected: true,
+      }));
     expect(screen.getByText("Selected")).toBeOnTheScreen();
   });
 
@@ -85,6 +92,7 @@ describe("M3FilterChip", () => {
     const chip = screen.getByRole("checkbox", { name: "Equipment" });
     expect(chip).toHaveProp("accessibilityState", {
       busy: true,
+      checked: false,
       disabled: true,
       selected: false,
     });

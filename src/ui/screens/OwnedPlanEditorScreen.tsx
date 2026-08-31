@@ -43,6 +43,7 @@ import {
   PlanEditorTextField,
   SemanticNumberField,
   TimeDurationField,
+  type PlanEditorReorderMethod,
   type PlanEditorReorderPreview,
 } from "../components/PlanEditorFields";
 import {
@@ -861,7 +862,11 @@ export function OwnedPlanEditorScreen({
     }
   }, [restorePlan, snapshot]);
 
-  const moveDay = useCallback((index: number, targetIndex: number) => {
+  const moveDay = useCallback((
+    index: number,
+    targetIndex: number,
+    method: PlanEditorReorderMethod = "fallback",
+  ) => {
     if (draft === null) {
       return;
     }
@@ -881,7 +886,8 @@ export function OwnedPlanEditorScreen({
     setDraft({ ...draft, days: reordered });
     setImpactRequired(false);
     setDraftFeedback(
-      `${item.name} moved to ${targetIndex + 1} of ${reordered.length}`,
+      `${item.name} ${method === "drag" ? "dragged" : "moved"} to `
+        + `${targetIndex + 1} of ${reordered.length}`,
     );
   }, [draft]);
 
@@ -889,6 +895,7 @@ export function OwnedPlanEditorScreen({
     day: OwnedPlanDayInput,
     index: number,
     targetIndex: number,
+    method: PlanEditorReorderMethod = "fallback",
   ) => {
     const item = day.occurrences[index];
     if (
@@ -907,7 +914,8 @@ export function OwnedPlanEditorScreen({
       ) => ({ ...occurrence, ordinal })),
     }));
     setDraftFeedback(
-      `${names.get(item.exerciseId) ?? item.exerciseId} moved to `
+      `${names.get(item.exerciseId) ?? item.exerciseId} `
+        + `${method === "drag" ? "dragged" : "moved"} to `
         + `${targetIndex + 1} of ${day.occurrences.length}`,
     );
   }, [names, updateSelectedDay]);
@@ -1161,7 +1169,8 @@ export function OwnedPlanEditorScreen({
                 label={day.name}
                 onDragPreview={setDayReorderPreview}
                 onMoveDown={() => moveDay(index, index + 1)}
-                onMoveTo={(targetIndex) => moveDay(index, targetIndex)}
+                onMoveTo={(targetIndex, method) =>
+                  moveDay(index, targetIndex, method)}
                 onMoveUp={() => moveDay(index, index - 1)}
                 position={index}
                 preview={dayReorderPreview}
@@ -1227,8 +1236,8 @@ export function OwnedPlanEditorScreen({
                   onDragPreview={setExerciseReorderPreview}
                   onMoveDown={() =>
                     moveOccurrence(selectedDay, index, index + 1)}
-                  onMoveTo={(targetIndex) =>
-                    moveOccurrence(selectedDay, index, targetIndex)}
+                  onMoveTo={(targetIndex, method) =>
+                    moveOccurrence(selectedDay, index, targetIndex, method)}
                   onMoveUp={() =>
                     moveOccurrence(selectedDay, index, index - 1)}
                   position={index}

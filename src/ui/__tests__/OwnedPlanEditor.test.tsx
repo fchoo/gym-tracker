@@ -832,7 +832,7 @@ describe("OwnedPlanEditorScreen dirty leave and lifecycle", () => {
       "reorder-row-day-Strength Day",
       "reorder-row-day-Conditioning",
     ]);
-    expect(screen.getByText("Recovery moved to 1 of 3")).toBeOnTheScreen();
+    expect(screen.getByText("Recovery dragged to 1 of 3")).toBeOnTheScreen();
     expect(savePlan).not.toHaveBeenCalled();
 
     await fireEvent.press(
@@ -959,7 +959,7 @@ describe("OwnedPlanEditorScreen dirty leave and lifecycle", () => {
       "reorder-row-exercise-Barbell Deadlift",
       "reorder-row-exercise-Barbell Back Squat",
     ]);
-    expect(screen.getByText("Barbell Deadlift moved to 1 of 2"))
+    expect(screen.getByText("Barbell Deadlift dragged to 1 of 2"))
       .toBeOnTheScreen();
     expect(savePlan).not.toHaveBeenCalled();
   });

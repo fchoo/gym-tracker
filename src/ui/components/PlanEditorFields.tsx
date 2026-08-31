@@ -54,6 +54,8 @@ export type PlanEditorReorderPreview = Readonly<{
   rowHeight: number;
 }>;
 
+export type PlanEditorReorderMethod = "drag" | "fallback";
+
 type ReanimatedModule = typeof import("react-native-reanimated");
 
 const REORDER_HOLD_MS = 550;
@@ -218,7 +220,10 @@ export function PlanEditorReorderableRow({
   count: number;
   onMoveUp(): void;
   onMoveDown(): void;
-  onMoveTo?(targetPosition: number): void;
+  onMoveTo?(
+    targetPosition: number,
+    method: PlanEditorReorderMethod,
+  ): void;
   onDragPreview?(preview: PlanEditorReorderPreview | null): void;
   preview?: PlanEditorReorderPreview | null;
   reorderId?: string;
@@ -253,12 +258,15 @@ export function PlanEditorReorderableRow({
     setLocalPreview(nextPreview);
     onDragPreview?.(nextPreview);
   }, [onDragPreview]);
-  const requestMove = React.useCallback((nextPosition: number) => {
+  const requestMove = React.useCallback((
+    nextPosition: number,
+    method: PlanEditorReorderMethod = "fallback",
+  ) => {
     if (nextPosition === position) {
       return;
     }
     if (onMoveTo !== undefined) {
-      onMoveTo(nextPosition);
+      onMoveTo(nextPosition, method);
       return;
     }
     if (nextPosition < position && canMoveUp) {
@@ -294,7 +302,7 @@ export function PlanEditorReorderableRow({
       count,
       nextTranslationY,
       rowHeight,
-    ));
+    ), "drag");
   }, [count, position, requestMove, rowHeight]);
   const dragGesture = React.useMemo(() => Gesture.Pan()
     .activateAfterLongPress(REORDER_HOLD_MS)

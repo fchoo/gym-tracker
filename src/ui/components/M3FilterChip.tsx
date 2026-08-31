@@ -46,7 +46,7 @@ export function M3FilterChip({
     <FocusablePressable
       accessibilityLabel={accessibleLabel}
       accessibilityRole="checkbox"
-      accessibilityState={{ busy, disabled: isDisabled, selected }}
+      accessibilityState={{ busy, checked: selected, disabled: isDisabled, selected }}
       disabled={isDisabled}
       focusable={!isDisabled}
       onPress={onPress}

@@ -28,7 +28,13 @@ import {
 const ADB_FALLBACK = "/opt/homebrew/share/android-commandlinetools/platform-tools/adb";
 const PACKAGE = "com.fchoo.gymtracker";
 const SERIAL = /^[A-Za-z0-9._:-]+$/u;
+const LOCAL_DATE = /^(\d{4})-(\d{2})-(\d{2})$/u;
 const SAFE_RELATIVE_FILE = /^[A-Za-z0-9][A-Za-z0-9._/-]{0,239}$/u;
+const NATIVE_DRAG_SCREENSHOT = "phase6-reorder-live-displacement.png";
+const MONTH_NAMES = Object.freeze([
+  "January", "February", "March", "April", "May", "June",
+  "July", "August", "September", "October", "November", "December",
+]);
 const FORBIDDEN_EVIDENCE_KEYS = new Set([
   "approval",
   "owner_approval",
@@ -219,6 +225,164 @@ function fail(message) {
   throw new Error(`Phase 6 Maestro: ${message}`);
 }
 
+function daysInMonth(year, month) {
+  if (month === 2) {
+    return year % 4 === 0 && (year % 100 !== 0 || year % 400 === 0)
+      ? 29
+      : 28;
+  }
+  return [4, 6, 9, 11].includes(month) ? 30 : 31;
+}
+
+function shiftedMonth(year, month, direction) {
+  const zeroBased = year * 12 + month - 1 + direction;
+  const shifted = {
+    year: Math.floor(zeroBased / 12),
+    month: (zeroBased % 12) + 1,
+  };
+  if (shifted.year < 1 || shifted.year > 9_999) {
+    fail("device civil date cannot provide adjacent month evidence.");
+  }
+  return shifted;
+}
+
+function formattedMonth({ year, month }) {
+  return `${MONTH_NAMES[month - 1]} ${year}`;
+}
+
+export function phase6CalendarMonthEnvironment(localDate) {
+  const match = LOCAL_DATE.exec(localDate ?? "");
+  const year = Number(match?.[1]);
+  const month = Number(match?.[2]);
+  const day = Number(match?.[3]);
+  if (match === null
+    || year < 1
+    || year > 9_999
+    || month < 1
+    || month > 12
+    || day < 1
+    || day > daysInMonth(year, month)) {
+    fail("device civil date is malformed.");
+  }
+  return Object.freeze({
+    current: formattedMonth({ year, month }),
+    next: formattedMonth(shiftedMonth(year, month, 1)),
+    previous: formattedMonth(shiftedMonth(year, month, -1)),
+  });
+}
+
+function nodeAttribute(node, name) {
+  return new RegExp(`${name}=\"([^\"]*)\"`, "u").exec(node)?.[1] ?? null;
+}
+
+export function phase6ReorderDragCoordinates(hierarchy, {
+  sourceLabel,
+  targetLabel,
+}) {
+  const nodes = [...String(hierarchy).matchAll(/<node\b[^>]*>/gu)]
+    .map(([node]) => node);
+  const boundsFor = (label) => {
+    const prefix = `Drag ${label}. Position `;
+    const node = nodes.find((candidate) =>
+      nodeAttribute(candidate, "resource-id") === `drag-exercise-${label}`
+      && nodeAttribute(candidate, "content-desc")?.startsWith(prefix));
+    const bounds = node === undefined
+      ? null
+      : /^\[(\d+),(\d+)\]\[(\d+),(\d+)\]$/u.exec(
+          nodeAttribute(node, "bounds") ?? "",
+        );
+    if (bounds === null) {
+      fail(`drag hierarchy is missing ${label}.`);
+    }
+    const left = Number(bounds[1]);
+    const top = Number(bounds[2]);
+    const right = Number(bounds[3]);
+    const bottom = Number(bounds[4]);
+    if (right <= left || bottom <= top) {
+      fail(`drag hierarchy bounds are invalid for ${label}.`);
+    }
+    return { x: Math.round((left + right) / 2), y: Math.round((top + bottom) / 2) };
+  };
+  const source = boundsFor(sourceLabel);
+  const target = boundsFor(targetLabel);
+  return Object.freeze({
+    startX: source.x,
+    startY: source.y,
+    endX: target.x,
+    endY: target.y,
+  });
+}
+
+export function phase6NativeDragCommands({
+  startX,
+  startY,
+  endX,
+  endY,
+}) {
+  const coordinates = [startX, startY, endX, endY];
+  if (!coordinates.every((value) => Number.isSafeInteger(value) && value >= 0)) {
+    fail("native drag coordinates are invalid.");
+  }
+  return Object.freeze({
+    down: Object.freeze([
+      "shell", "input", "touchscreen", "motionevent", "DOWN",
+      String(startX), String(startY),
+    ]),
+    move: Object.freeze([
+      "shell", "input", "touchscreen", "motionevent", "MOVE",
+      String(endX), String(endY),
+    ]),
+    up: Object.freeze([
+      "shell", "input", "touchscreen", "motionevent", "UP",
+      String(endX), String(endY),
+    ]),
+  });
+}
+
+export function phase6HeldDragIsDisplaced(
+  hierarchy,
+  { label, targetPosition, count },
+) {
+  const expected = `Drag ${label}. Moving to position ${targetPosition} of ${count}`;
+  return [...String(hierarchy).matchAll(/<node\b[^>]*>/gu)]
+    .map(([node]) => node)
+    .some((node) =>
+      nodeAttribute(node, "resource-id") === `drag-exercise-${label}`
+      && nodeAttribute(node, "content-desc") === expected);
+}
+
+function waitSynchronously(milliseconds) {
+  Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, milliseconds);
+}
+
+function captureScreenshot(adbPath, serial, outputPath) {
+  const bytes = execFileSync(
+    adbPath,
+    ["-s", serial, "exec-out", "screencap", "-p"],
+  );
+  if (!Buffer.isBuffer(bytes) || bytes.length === 0) {
+    fail("native drag displacement screenshot is missing.");
+  }
+  writeFileSync(outputPath, bytes);
+}
+
+export function throwPhase6Failures(primaryError, cleanupErrors, context) {
+  const failures = [
+    ...(primaryError === undefined ? [] : [primaryError]),
+    ...cleanupErrors,
+  ];
+  if (failures.length === 0) {
+    return;
+  }
+  if (failures.length === 1) {
+    throw failures[0];
+  }
+  throw new AggregateError(
+    failures,
+    `Phase 6 Maestro ${context} failed and cleanup was incomplete.`,
+  );
+}
+
 function exactJson(left, right) {
   return JSON.stringify(left) === JSON.stringify(right);
 }
@@ -251,6 +415,9 @@ function safeRelativeFile(value, label) {
 }
 
 function parsePassedJunit(bytes, flowId) {
+  if (!Buffer.isBuffer(bytes) && !(bytes instanceof Uint8Array)) {
+    fail(`Maestro report is missing: ${flowId}`);
+  }
   const text = Buffer.from(bytes).toString("utf8");
   if (!/<testsuites?\b/u.test(text)
     || !/<testcase\b/u.test(text)
@@ -414,6 +581,7 @@ export function createPhase6Evidence({
   candidate,
   device,
   rawReports,
+  nativeDragReports = {},
   screenshots,
   fontScaleRestored,
 }) {
@@ -421,8 +589,20 @@ export function createPhase6Evidence({
     const rawReport = rawReports?.[contract.id];
     const flowScreenshots = screenshots?.[contract.id];
     const parsed = parsePassedJunit(rawReport, contract.id);
+    const nativeDragReport = nativeDragReports?.[contract.id];
+    const requiresNativeDrag = contract.native_backstops.includes("N3");
+    const nativeDrag = requiresNativeDrag
+      ? parsePassedJunit(nativeDragReport, `${contract.id}-native-drag`)
+      : null;
+    const nativeDragScreenshot = requiresNativeDrag
+      ? flowScreenshots?.find(({ file }) => file === NATIVE_DRAG_SCREENSHOT)
+      : null;
     if (!Array.isArray(flowScreenshots) || flowScreenshots.length === 0) {
       fail(`required screenshots are missing for ${contract.id}.`);
+    }
+    if (requiresNativeDrag
+      && !SHA256_PATTERN.test(nativeDragScreenshot?.sha256 ?? "")) {
+      fail(`native drag displacement screenshot is missing for ${contract.id}.`);
     }
     return Object.freeze({
       id: contract.id,
@@ -431,6 +611,17 @@ export function createPhase6Evidence({
       native_backstops: contract.native_backstops,
       raw_report_file: `${contract.id}/report.xml`,
       raw_report_sha256: createHash("sha256").update(rawReport).digest("hex"),
+      ...(nativeDrag === null ? {} : {
+        native_drag_report_file: `${contract.id}/native-drag/report.xml`,
+        native_drag_report_sha256: createHash("sha256")
+          .update(nativeDragReport)
+          .digest("hex"),
+        native_drag_tests: nativeDrag.tests,
+        native_drag_live_screenshot: Object.freeze({
+          file: nativeDragScreenshot.file,
+          sha256: nativeDragScreenshot.sha256,
+        }),
+      }),
       screenshots: flowScreenshots.map((screenshot) => Object.freeze({
         file: safeRelativeFile(screenshot.file, "screenshot file"),
         sha256: screenshot.sha256,
@@ -460,7 +651,12 @@ export function createPhase6Evidence({
   });
 }
 
-export function validatePhase6Evidence(evidence, candidate, rawReports) {
+export function validatePhase6Evidence(
+  evidence,
+  candidate,
+  rawReports,
+  nativeDragReports = {},
+) {
   const expectedCandidate = phase5CandidateIdentity(candidate.manifest, candidate.manifest_sha256);
   if (evidence?.schema_version !== 1
     || evidence?.suite !== "phase6"
@@ -483,6 +679,8 @@ export function validatePhase6Evidence(evidence, candidate, rawReports) {
   for (const [index, contract] of PHASE6_MAESTRO_FLOW_CONTRACTS.entries()) {
     const flow = evidence.flows[index];
     const rawReport = rawReports?.[contract.id];
+    const nativeDragReport = nativeDragReports?.[contract.id];
+    const requiresNativeDrag = contract.native_backstops.includes("N3");
     if (flow?.id !== contract.id
       || flow?.flow !== contract.flow
       || !exactJson(flow?.considerations, contract.considerations)
@@ -496,6 +694,31 @@ export function validatePhase6Evidence(evidence, candidate, rawReports) {
       || !Array.isArray(flow?.screenshots)
       || flow.screenshots.length < 1) {
       fail(`automated evidence flow is invalid: ${contract.id}`);
+    }
+    if (requiresNativeDrag) {
+      const parsedNativeDrag = parsePassedJunit(
+        nativeDragReport,
+        `${contract.id}-native-drag`,
+      );
+      if (flow.native_drag_report_file
+          !== `${contract.id}/native-drag/report.xml`
+        || flow.native_drag_report_sha256 !== createHash("sha256")
+          .update(nativeDragReport)
+          .digest("hex")
+        || flow.native_drag_tests !== parsedNativeDrag.tests
+        || flow.native_drag_live_screenshot?.file !== NATIVE_DRAG_SCREENSHOT
+        || !SHA256_PATTERN.test(
+          flow.native_drag_live_screenshot?.sha256 ?? "",
+        )
+        || !flow.screenshots.some((screenshot) =>
+          exactJson(screenshot, flow.native_drag_live_screenshot))) {
+        fail(`native drag evidence is invalid: ${contract.id}`);
+      }
+    } else if (flow.native_drag_report_file !== undefined
+      || flow.native_drag_report_sha256 !== undefined
+      || flow.native_drag_tests !== undefined
+      || flow.native_drag_live_screenshot !== undefined) {
+      fail(`unexpected native drag evidence: ${contract.id}`);
     }
     for (const screenshot of flow.screenshots) {
       if (!SHA256_PATTERN.test(screenshot?.sha256 ?? "")) {
@@ -533,6 +756,7 @@ export function executePhase6Maestro(args = process.argv.slice(2)) {
   mkdirSync(reportDirectory, { recursive: true });
   const priorFontScale = adb(adbPath, options.serial, "shell", "settings", "get", "system", "font_scale");
   let evidence;
+  let primaryError;
   try {
     execFileSync(adbPath, ["-s", options.serial, "install", "-r", candidate.apkPath], {
       stdio: "inherit",
@@ -540,6 +764,7 @@ export function executePhase6Maestro(args = process.argv.slice(2)) {
     const device = installedDevice(adbPath, options.serial, candidate);
     adb(adbPath, options.serial, "shell", "settings", "put", "system", "font_scale", "2.0");
     const rawReports = {};
+    const nativeDragReports = {};
     const screenshots = {};
     for (const contract of PHASE6_MAESTRO_FLOW_CONTRACTS) {
       const flowPath = path.resolve(contract.flow);
@@ -547,9 +772,19 @@ export function executePhase6Maestro(args = process.argv.slice(2)) {
       const flowReportDirectory = path.join(reportDirectory, contract.id);
       const reportPath = path.join(flowReportDirectory, "report.xml");
       mkdirSync(flowReportDirectory, { recursive: true });
+      const monthEnvironment = phase6CalendarMonthEnvironment(adb(
+        adbPath,
+        options.serial,
+        "shell",
+        "date",
+        "+%Y-%m-%d",
+      ));
       execFileSync("maestro", [
         "test",
         "--device", options.serial,
+        "-e", `CURRENT_MONTH=${monthEnvironment.current}`,
+        "-e", `NEXT_MONTH=${monthEnvironment.next}`,
+        "-e", `PREVIOUS_MONTH=${monthEnvironment.previous}`,
         "--format", "junit",
         "--output", reportPath,
         "--test-output-dir", flowReportDirectory,
@@ -557,29 +792,160 @@ export function executePhase6Maestro(args = process.argv.slice(2)) {
       ], { stdio: "inherit" });
       if (!existsSync(reportPath)) fail(`Maestro report is missing: ${contract.id}`);
       rawReports[contract.id] = readFileSync(reportPath);
+      if (contract.native_backstops.includes("N3")) {
+        const hierarchy = adb(
+          adbPath,
+          options.serial,
+          "exec-out",
+          "uiautomator",
+          "dump",
+          "/dev/tty",
+        );
+        const drag = phase6ReorderDragCoordinates(hierarchy, {
+          sourceLabel: "Bench Press",
+          targetLabel: "Back Squat",
+        });
+        const dragCommands = phase6NativeDragCommands(drag);
+        let pointerDown = false;
+        let dragFailure;
+        try {
+          adb(adbPath, options.serial, ...dragCommands.down);
+          pointerDown = true;
+          waitSynchronously(700);
+          adb(adbPath, options.serial, ...dragCommands.move);
+          waitSynchronously(200);
+          const displacedHierarchy = adb(
+            adbPath,
+            options.serial,
+            "exec-out",
+            "uiautomator",
+            "dump",
+            "/dev/tty",
+          );
+          if (!phase6HeldDragIsDisplaced(displacedHierarchy, {
+            label: "Bench Press",
+            targetPosition: 1,
+            count: 2,
+          })) {
+            fail("native held drag did not expose live neighbour displacement.");
+          }
+          captureScreenshot(
+            adbPath,
+            options.serial,
+            path.join(flowReportDirectory, NATIVE_DRAG_SCREENSHOT),
+          );
+        } catch (error) {
+          dragFailure = error;
+        }
+        const dragCleanupErrors = [];
+        if (pointerDown) {
+          try {
+            adb(adbPath, options.serial, ...dragCommands.up);
+          } catch (error) {
+            dragCleanupErrors.push(error);
+          }
+        }
+        throwPhase6Failures(dragFailure, dragCleanupErrors, "native drag");
+        const nativeDragFlow = path.resolve(
+          "maestro/phase6/calendar-date-reorder-verify.yaml",
+        );
+        const nativeDragReportDirectory = path.join(
+          flowReportDirectory,
+          "native-drag",
+        );
+        const nativeDragReportPath = path.join(
+          nativeDragReportDirectory,
+          "report.xml",
+        );
+        if (!existsSync(nativeDragFlow)) {
+          fail("native drag verification flow is missing.");
+        }
+        mkdirSync(nativeDragReportDirectory, { recursive: true });
+        execFileSync("maestro", [
+          "test",
+          "--device", options.serial,
+          "--format", "junit",
+          "--output", nativeDragReportPath,
+          "--test-output-dir", nativeDragReportDirectory,
+          nativeDragFlow,
+        ], { stdio: "inherit" });
+        if (!existsSync(nativeDragReportPath)) {
+          fail("native drag verification report is missing.");
+        }
+        nativeDragReports[contract.id] = readFileSync(nativeDragReportPath);
+      }
       screenshots[contract.id] = screenshotEvidence(flowReportDirectory);
     }
     evidence = createPhase6Evidence({
       candidate,
       device,
       rawReports,
+      nativeDragReports,
       screenshots,
       fontScaleRestored: false,
     });
-  } finally {
-    adb(adbPath, options.serial, "shell", "settings", "put", "system", "font_scale", priorFontScale);
-    const restored = adb(adbPath, options.serial, "shell", "settings", "get", "system", "font_scale") === priorFontScale;
-    if (evidence !== undefined) {
-      const finalized = { ...evidence, font_scale_restored: restored };
+  } catch (error) {
+    primaryError = error;
+  }
+  const cleanupErrors = [];
+  let restored = false;
+  try {
+    adb(
+      adbPath,
+      options.serial,
+      "shell",
+      "settings",
+      "put",
+      "system",
+      "font_scale",
+      priorFontScale,
+    );
+    restored = adb(
+      adbPath,
+      options.serial,
+      "shell",
+      "settings",
+      "get",
+      "system",
+      "font_scale",
+    ) === priorFontScale;
+    if (!restored) {
+      fail("font scale cleanup did not restore the original value.");
+    }
+  } catch (error) {
+    cleanupErrors.push(error);
+  }
+  if (evidence !== undefined) {
+    try {
+      const finalized = {
+        ...evidence,
+        font_scale_restored: restored,
+      };
       const rawReports = Object.fromEntries(PHASE6_MAESTRO_FLOW_CONTRACTS.map((contract) => [
         contract.id,
         readFileSync(path.join(reportDirectory, contract.id, "report.xml")),
       ]));
-      validatePhase6Evidence(finalized, candidate, rawReports);
+      const nativeDragReports = Object.fromEntries(
+        PHASE6_MAESTRO_FLOW_CONTRACTS
+          .filter((contract) => contract.native_backstops.includes("N3"))
+          .map((contract) => [
+          contract.id,
+          readFileSync(path.join(
+            reportDirectory,
+            contract.id,
+            "native-drag",
+            "report.xml",
+          )),
+        ]),
+      );
+      validatePhase6Evidence(finalized, candidate, rawReports, nativeDragReports);
       writeFileSync(output, `${JSON.stringify(finalized, null, 2)}\n`);
       evidence = finalized;
+    } catch (error) {
+      cleanupErrors.push(error);
     }
   }
+  throwPhase6Failures(primaryError, cleanupErrors, "outer cleanup");
   return evidence;
 }
 

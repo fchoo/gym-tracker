@@ -2658,7 +2658,7 @@ test("fresh Phase 2 Library flows wait until root navigation is trusted", async 
   }
 });
 
-test("built-in custom copy cold-starts at the root after the prior detail segment", async () => {
+test("built-in custom copy preserves data but resets system and root navigation state", async () => {
   const flow = await readFile(
     path.join(
       projectRoot,
@@ -2668,15 +2668,26 @@ test("built-in custom copy cold-starts at the root after the prior detail segmen
   );
   const rootReset = [
     "- stopApp",
-    '- openLink: "gymtracker-devtest://"',
+    "- pressKey: BACK",
+    '- openLink: "gymtracker-devtest:///"',
     "- extendedWaitUntil:",
     '    visible: "Use Full Body Foundation"',
     "    timeout: 90000",
-    '- assertVisible: "Today"',
+    '- tapOn: "Library"',
   ].join("\n");
 
   assert.ok(flow.includes(rootReset));
   assert.doesNotMatch(flow, /clearState: false/u);
+  assert.doesNotMatch(flow, /clearState: true/u);
+  assert.match(flow, /- pressKey: BACK\n- openLink: "gymtracker-devtest:\/\/\/"/u);
+  assert.doesNotMatch(
+    flow,
+    /visible: "Use Full Body Foundation"[\s\S]*assertVisible: "Today"[\s\S]*tapOn: "Library"/u,
+  );
+  assert.match(
+    flow,
+    /- tapOn: "Go back"\n- repeat:\n    times: 4\n    while:\n      notVisible: "Search exercises"\n    commands:\n      - swipe:\n          start: 50%, 25%\n          end: 50%, 75%\n          duration: 300\n- assertVisible: "Search exercises"/u,
+  );
 });
 
 test("Library exercise flow waits for trusted Today after process restart", async () => {
@@ -3205,8 +3216,12 @@ test("custom exercise flow scrolls through the long editor contract", async () =
     if (index === 0) {
       assert.match(segment, /clearState: true/u);
     } else if (index === 1) {
-      assert.match(segment, /- stopApp\n- openLink: "gymtracker-devtest:\/\/"/u);
+      assert.match(
+        segment,
+        /- stopApp\n- pressKey: BACK\n- openLink: "gymtracker-devtest:\/\/\/"/u,
+      );
       assert.doesNotMatch(segment, /clearState: false/u);
+      assert.doesNotMatch(segment, /clearState: true/u);
     } else {
       assert.match(segment, /clearState: false/u);
       assert.match(segment, /stopApp: true/u);

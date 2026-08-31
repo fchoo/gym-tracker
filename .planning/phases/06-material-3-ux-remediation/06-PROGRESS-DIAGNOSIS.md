@@ -1,49 +1,43 @@
-# Phase 6 Progress Diagnosis
+# Phase 6 Progress Compatibility Diagnosis
 
-## Candidate-Bound Observation
+## Evidence Boundary
 
-The audited production candidate reaches the Progress screen error branch after
-`ProgressScreen` delegates `loadProgress` through the trusted runtime to
-`progressRepository.load`.
+This repository does not contain an executable candidate-observation command
+for the original Progress failure. The prior command accepted caller-supplied
+candidate hashes and emitted a fixed classification, so it was removed: it
+could not independently establish that an installed APK produced the claimed
+branch or error.
 
-| Field | Observed classification |
-| --- | --- |
-| Read stage | `progress_repository_load` |
-| Branch | `current_baseline_runtime_capability` |
-| Error class | `TypeError` |
-| Error code | `runtime_array_to_sorted_unavailable` |
-| Freshness | `not_returned` |
-| Recoverability | `requires_candidate_compatible_runtime` |
+The historical audit remains context for why Phase 6 investigated Progress, but
+it is not reasserted here as command-produced candidate evidence. Any future
+candidate observation must bind an immutable manifest, a recomputed installed
+APK hash, and an independently captured redacted measurement before it can
+claim a candidate branch, error class, or error code.
 
-The candidate manifest and installed package were verified as the same
-`com.fchoo.gymtracker` APK SHA-256 before this observation. The diagnostic
-records no device serial, database path, SQLite row, identifier, JSON payload,
-backup content, or raw exception message.
+## Repository-Verifiable Causal Proof
 
-## Evidence Chain
+`tests/sqlite-host/progressRepository.test.ts` opens an isolated database,
+applies the complete migration manifest, and retains the legitimate
+empty-history baseline. It removes `Array.prototype.toSorted` only for the test
+operation and proves that `progressRepository.load`:
 
-1. The candidate database applies the complete current migration manifest and
-   has clean integrity and foreign-key checks.
-2. The authoritative four-query
-   `loadEffectiveHistoryProjectionSessions` source adapter resolves against the
-   private candidate database copy. No missing table, missing column, SQL
-   syntax, or constraint rejection is evidenced.
-3. The candidate's empty-history state reaches the repository's `current`
-   freshness branch and projects the factual baseline when
-   `Array.prototype.toSorted` is available.
-4. The production APK's Hermes bytecode references `toSorted`, but its embedded
-   runtime exposes the related non-mutating array methods without `toSorted`.
-   Modeling that candidate capability against the private full-current-schema
-   database reproduces `TypeError` at `progress_repository_load`.
+1. returns `freshness: "current"` with a factual baseline projection while the
+   capability is absent;
+2. leaves an originally absent `toSorted` capability absent after the operation;
+3. returns the same factual current baseline once normal host capabilities are
+   restored.
+
+This is independent causal proof for the repository compatibility repair. It
+does not copy, inspect, or emit candidate SQLite rows, device facts, installed
+APK hashes, paths, JSON payloads, backup contents, or raw exception messages.
 
 ## Repair Boundary
 
-The causal seam is runtime compatibility in the current-baseline Progress
-projection path, not a SQLite migration, projection freshness, source row,
-queue, parser, or UI copy defect.
+The repository-verifiable seam is runtime compatibility in the current-baseline
+Progress projection path. The host fixture proves neither the historical
+candidate's exact runtime error nor any external candidate identity.
 
-Only Plan 06-07 may select the minimal compatibility repair after retaining the
-full-migration host fixture. That plan must preserve:
+The completed Plan 06-07 compatibility repair must preserve:
 
 - SQLite source authority and parameterized repository reads.
 - Existing `unavailable` and `updating` freshness early returns.
@@ -63,18 +57,5 @@ The diagnosis does not authorize changes to
 `src/bootstrap/workoutAppRuntime.tsx`, `src/bootstrap/workoutLifecycle.ts`, or
 `src/platform/sqlite/effects/historyProjectionEffects.ts`.
 
-This diagnostic plan changes no production runtime, repository, migration,
-projection, effect, or UI behavior.
-
-## Regression Fixture
-
-`tests/sqlite-host/progressRepository.test.ts` opens an isolated database,
-applies the complete migration manifest, and leaves the legitimate empty-history
-baseline unseeded. With normal host capabilities the repository returns
-`freshness: "current"` and a baseline projection. When only
-`Array.prototype.toSorted` is unavailable, the same full-migration state rejects
-with `TypeError`; restoring the capability returns the factual baseline again.
-
-The fixture asserts only the bounded error class and public baseline state. It
-does not copy candidate data or expose source rows, identifiers, JSON, database
-paths, backup contents, or device facts.
+No repository command now claims a candidate observation. The full-migration
+host fixture is the durable, independently executable causal proof.
