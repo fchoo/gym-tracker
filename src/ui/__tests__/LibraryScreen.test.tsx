@@ -946,6 +946,13 @@ describe("LibraryScreen exercise browse", () => {
     expect(await screen.findAllByRole("button", {
       name: "Remove Barbell Bench Press from favorites",
     })).toHaveLength(2);
+    const favoriteAction = screen.getAllByRole("button", {
+      name: "Remove Barbell Bench Press from favorites",
+    })[0];
+    expect(favoriteAction?.children[0]).toHaveProp(
+      "fill",
+      themes.light.contentCardStatusCompleted,
+    );
   });
 
   it("ignores a mismatched Favorite commit result instead of changing a different browse row", async () => {

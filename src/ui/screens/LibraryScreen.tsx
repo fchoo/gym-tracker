@@ -734,6 +734,7 @@ function LibraryExerciseRow({
               color={item.favorite
                 ? colors.contentCardStatusCompleted
                 : colors.contentCardText}
+              fill={item.favorite ? colors.contentCardStatusCompleted : "none"}
               importantForAccessibility="no-hide-descendants"
               size={sizes.icon}
               strokeWidth={2}
