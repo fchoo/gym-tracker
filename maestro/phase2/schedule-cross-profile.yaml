@@ -136,7 +136,7 @@ tags:
 - assertVisible: "Save this schedule?"
 - tapOn: "Save schedule"
 - extendedWaitUntil:
-    visible: "Save plan"
+    visible: "Save Plan Changes"
     timeout: 30000
 - stopApp
 - launchApp:

@@ -2615,7 +2615,7 @@ test("schedule flow reopens the active plan from authoritative state", async () 
     '- assertVisible: "Save this schedule?"',
     '- tapOn: "Save schedule"',
     '- extendedWaitUntil:',
-    '    visible: "Save plan"',
+    '    visible: "Save Plan Changes"',
     '    timeout: 30000',
     '- stopApp',
     '- launchApp:',
@@ -2711,6 +2711,31 @@ test("plan creation flows settle and re-locate the draft action before tapping",
       /- hideKeyboard\n- tapOn: "Create draft"/u,
       relativePath,
     );
+  }
+});
+
+test("owned plan Maestro consumers use the canonical persistence label", async () => {
+  const expectedCounts = new Map([
+    ["maestro/phase2/custom-exercise-lifecycle3-active-workout.yaml", 1],
+    ["maestro/phase2/owned-plan-editor.yaml", 1],
+    ["maestro/phase2/plan-impact-replacement.yaml", 2],
+    ["maestro/phase2/schedule-cross-profile.yaml", 1],
+  ]);
+
+  for (const relativePath of await maestroYamlPaths()) {
+    const flow = await readFile(path.join(projectRoot, relativePath), "utf8");
+    assert.doesNotMatch(
+      flow,
+      /(?:tapOn|visible|text): "Save plan"/u,
+      relativePath,
+    );
+    if (expectedCounts.has(relativePath)) {
+      assert.equal(
+        flow.match(/(?:tapOn|visible|text): "Save Plan Changes"/gu)?.length,
+        expectedCounts.get(relativePath),
+        relativePath,
+      );
+    }
   }
 });
 
@@ -3027,7 +3052,7 @@ test("plan impact waits for editor identity before reviewing saved state", async
     "utf8",
   );
 
-  assert.equal(flow.match(/visible: "Save plan"/gu)?.length, 2);
+  assert.equal(flow.match(/visible: "Save Plan Changes"/gu)?.length, 2);
   assert.doesNotMatch(
     flow,
     /text: "Go back"\n    direction: UP\n    centerElement: true/u,

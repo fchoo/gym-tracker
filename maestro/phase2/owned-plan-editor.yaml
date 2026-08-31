@@ -150,7 +150,7 @@ tags:
     direction: UP
     centerElement: true
 - assertVisible: "Schedule and Activate are unavailable. Add at least one exercise with valid targets before scheduling or activating."
-- tapOn: "Save plan"
+- tapOn: "Save Plan Changes"
 - assertVisible: "Ready"
 - tapOn: "Duplicate plan"
 - assertVisible: "Duplicate Maestro Strength?"

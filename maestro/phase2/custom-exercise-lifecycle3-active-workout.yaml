@@ -78,7 +78,7 @@ tags:
       text: "Save day"
     direction: DOWN
 - tapOn: "Save day"
-- tapOn: "Save plan"
+- tapOn: "Save Plan Changes"
 - scrollUntilVisible:
     element:
       text: "Ready"

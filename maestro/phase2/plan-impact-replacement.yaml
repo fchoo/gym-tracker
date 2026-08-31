@@ -299,7 +299,7 @@ tags:
           direction: DOWN
       - tapOn: "Save replacement"
 - extendedWaitUntil:
-    visible: "Save plan"
+    visible: "Save Plan Changes"
     timeout: 90000
 - scrollUntilVisible:
     element:
@@ -361,7 +361,7 @@ tags:
 - tapOn:
     text: "Upper / Lower. Active.*"
 - extendedWaitUntil:
-    visible: "Save plan"
+    visible: "Save Plan Changes"
     timeout: 90000
 - assertVisible: "Upper / Lower"
 - scrollUntilVisible:
