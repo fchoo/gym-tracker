@@ -11,6 +11,9 @@ import {
   jest,
 } from "@jest/globals";
 import React from "react";
+import {
+  TextInput,
+} from "react-native";
 
 import type {
   ProgressPeriodProjection,
@@ -282,6 +285,83 @@ describe("ProgressScreen", () => {
       .toBeOnTheScreen();
     await fireEvent.press(screen.getByRole("button", { name: "Retry loading progress" }));
     await waitFor(() => expect(loadProgress).toHaveBeenCalledTimes(2));
+  });
+
+  it("retries the same typed request and renders the recovered factual progress", async () => {
+    const loadProgress = jest.fn<React.ComponentProps<typeof ProgressScreen>["loadProgress"]>()
+      .mockRejectedValueOnce(new Error("progress_read_failed"))
+      .mockResolvedValueOnce({
+        period: "4_weeks" as const,
+        freshness: "current" as const,
+        projection: projection(),
+      });
+    await renderProgress({ loadProgress });
+
+    expect(await screen.findByRole("header", { name: "Progress could not be loaded" }))
+      .toBeOnTheScreen();
+    await fireEvent.press(screen.getByRole("button", { name: "Retry loading progress" }));
+
+    expect(await screen.findByRole("header", { name: "Overall Progress" }))
+      .toBeOnTheScreen();
+    expect(loadProgress).toHaveBeenLastCalledWith({
+      period: "4_weeks",
+      nowLocalDate: "2026-08-24",
+    });
+  });
+
+  it("uses the shared exercise Search with factual zero, one, and many result states", async () => {
+    await renderProgress();
+
+    const input = await screen.findByLabelText("Search exercises");
+    expect(screen.getByTestId("progress-exercise-search-control").children[0])
+      .toHaveProp("accessible", false);
+    expect(screen.getByLabelText("3 Search exercises results")).toBeOnTheScreen();
+
+    await fireEvent.changeText(input, "bench");
+    expect(screen.getByLabelText("1 Search exercises result")).toBeOnTheScreen();
+    expect(screen.getByText("Bench Press")).toBeOnTheScreen();
+    expect(screen.queryByText("Row")).not.toBeOnTheScreen();
+
+    await fireEvent.changeText(input, "deadlift");
+    expect(screen.getByLabelText("No Search exercises results")).toBeOnTheScreen();
+    expect(screen.getByRole("header", { name: "No matching exercises" }))
+      .toBeOnTheScreen();
+
+    await fireEvent.changeText(input, "s");
+    expect(screen.getByLabelText("2 Search exercises results")).toBeOnTheScreen();
+  });
+
+  it("restores the shared Search focus after clearing a Progress query", async () => {
+    const focus = jest.spyOn(TextInput.prototype, "focus");
+    await renderProgress();
+    const input = await screen.findByLabelText("Search exercises");
+
+    await fireEvent.changeText(input, "row");
+    await fireEvent.press(screen.getByRole("button", { name: "Clear search exercises" }));
+
+    expect(screen.getByLabelText("Search exercises")).toHaveProp("value", "");
+    expect(focus).toHaveBeenCalled();
+    focus.mockRestore();
+  });
+
+  it("keeps source-backed Progress exercise rows usable without toSorted", async () => {
+    const arrayPrototype = Array.prototype as {
+      toSorted?: typeof Array.prototype.toSorted;
+    };
+    const originalToSorted = arrayPrototype.toSorted;
+    delete arrayPrototype.toSorted;
+
+    try {
+      await renderProgress();
+      expect(await screen.findByText("Bench Press")).toBeOnTheScreen();
+    } finally {
+      Object.defineProperty(arrayPrototype, "toSorted", {
+        configurable: true,
+        enumerable: false,
+        value: originalToSorted,
+        writable: true,
+      });
+    }
   });
 
   it("shows a no-history state when there are no factual progress rows", async () => {
