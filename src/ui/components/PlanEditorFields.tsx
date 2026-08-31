@@ -14,6 +14,14 @@ import {
   GestureDetector,
   GestureHandlerRootView,
 } from "react-native-gesture-handler";
+import Animated, {
+  useAnimatedStyle,
+  useSharedValue,
+  withTiming,
+} from "react-native-reanimated";
+import {
+  scheduleOnRN,
+} from "react-native-worklets";
 
 import {
   FocusablePressable,
@@ -56,45 +64,7 @@ export type PlanEditorReorderPreview = Readonly<{
 
 export type PlanEditorReorderMethod = "drag" | "fallback";
 
-type ReanimatedModule = typeof import("react-native-reanimated");
-
 const REORDER_HOLD_MS = 550;
-const reanimated: ReanimatedModule | null =
-  process.env.JEST_WORKER_ID === undefined
-    ? require("react-native-reanimated") as ReanimatedModule
-    : null;
-const ReorderAnimatedView = reanimated?.default.View ?? View;
-const ReorderGestureRoot = process.env.JEST_WORKER_ID === undefined
-  ? GestureHandlerRootView
-  : View;
-
-function useReorderSharedValue<Value>(initialValue: Value) {
-  const fallback = React.useRef({ value: initialValue });
-  return reanimated === null
-    ? fallback.current
-    : reanimated.useSharedValue(initialValue);
-}
-
-function useReorderAnimatedStyle(
-  factory: () => Readonly<Record<string, unknown>>,
-  dependencies: unknown[],
-) {
-  return reanimated === null
-    ? factory()
-    : reanimated.useAnimatedStyle(factory, dependencies);
-}
-
-function scheduleOnJavaScript<Arguments extends unknown[]>(
-  callback: (...args: Arguments) => void,
-) {
-  return reanimated === null ? callback : reanimated.runOnJS(callback);
-}
-
-function animateTo(value: number, duration: number): number {
-  return reanimated === null
-    ? value
-    : reanimated.withTiming(value, { duration });
-}
 
 function targetPositionForDrag(
   position: number,
@@ -237,7 +207,7 @@ export function PlanEditorReorderableRow({
   );
   const [localPreview, setLocalPreview] =
     React.useState<PlanEditorReorderPreview | null>(null);
-  const translationY = useReorderSharedValue(0);
+  const translationY = useSharedValue(0);
   const border = tone === "card" ? colors.contentCardBorder : colors.divider;
   const text = tone === "card" ? colors.contentCardText : colors.textPrimary;
   const secondary = tone === "card"
@@ -311,7 +281,7 @@ export function PlanEditorReorderableRow({
     .withTestId(`reorder-gesture-${reorderId}`)
     .onStart(() => {
       translationY.value = 0;
-      scheduleOnJavaScript(updatePreview)(0);
+      scheduleOnRN(updatePreview, 0);
     })
     .onUpdate((event) => {
       const minimumTranslation = -position * rowHeight;
@@ -321,16 +291,16 @@ export function PlanEditorReorderableRow({
         Math.min(maximumTranslation, event.translationY),
       );
       translationY.value = boundedTranslation;
-      scheduleOnJavaScript(updatePreview)(boundedTranslation);
+      scheduleOnRN(updatePreview, boundedTranslation);
     })
     .onEnd((event, success) => {
       if (success) {
-        scheduleOnJavaScript(finishDrag)(event.translationY);
+        scheduleOnRN(finishDrag, event.translationY);
       }
     })
     .onFinalize(() => {
-      translationY.value = animateTo(0, motion.setCommitMs);
-      scheduleOnJavaScript(publishPreview)(null);
+      translationY.value = withTiming(0, { duration: motion.setCommitMs });
+      scheduleOnRN(publishPreview, null);
     }), [
     count,
     finishDrag,
@@ -342,13 +312,13 @@ export function PlanEditorReorderableRow({
     translationY,
     updatePreview,
   ]);
-  const rowStyle = useReorderAnimatedStyle(() => ({
+  const rowStyle = useAnimatedStyle(() => ({
     opacity: isHeld ? 0.92 : 1,
     transform: [{
       translateY: isHeld
         ? translationY.value
         : motion.positionTransitions
-          ? animateTo(neighborDisplacement, motion.setCommitMs)
+          ? withTiming(neighborDisplacement, { duration: motion.setCommitMs })
           : neighborDisplacement,
     }],
     zIndex: isHeld ? 1 : 0,
@@ -371,8 +341,8 @@ export function PlanEditorReorderableRow({
   }, []);
 
   return (
-    <ReorderGestureRoot style={styles.dragGestureRoot}>
-      <ReorderAnimatedView
+    <GestureHandlerRootView style={styles.dragGestureRoot}>
+      <Animated.View
         onLayout={recordRowHeight}
         style={[
           styles.reorderRow,
@@ -454,8 +424,8 @@ export function PlanEditorReorderableRow({
             />
           </View>
         </View>
-      </ReorderAnimatedView>
-    </ReorderGestureRoot>
+      </Animated.View>
+    </GestureHandlerRootView>
   );
 }
 

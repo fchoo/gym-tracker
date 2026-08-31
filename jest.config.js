@@ -41,6 +41,7 @@ module.exports = {
       ...shared,
       displayName: "components",
       preset: "jest-expo",
+      setupFilesAfterEnv: ["<rootDir>/jest.components.setup.js"],
       testEnvironment: "node",
       testMatch: [
         "<rootDir>/app/**/*.test.ts",

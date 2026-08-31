@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { transformSync } from "@babel/core";
 import { createHash } from "node:crypto";
 import {
   mkdtempSync,
@@ -209,6 +210,49 @@ test("Phase 6 production flows retain exact package, labelled coverage, and scre
     for (const text of expected) {
       assert.ok(source.includes(text), `${file} is missing ${text}`);
     }
+  }
+});
+
+test("plan reorder callbacks compile as UI worklets without remote helpers", () => {
+  const fileName = path.join(
+    projectRoot,
+    "src/ui/components/PlanEditorFields.tsx",
+  );
+  const source = readFileSync(fileName, "utf8");
+  const transformed = transformSync(source, {
+    babelrc: false,
+    configFile: false,
+    filename: fileName,
+    presets: ["babel-preset-expo"],
+  })?.code;
+
+  assert.ok(transformed);
+  const rowStyleStart = transformed.indexOf("var rowStyle=");
+  const handleLabelStart = transformed.indexOf("var handleLabel=");
+  assert.notEqual(rowStyleStart, -1);
+  assert.ok(handleLabelStart > rowStyleStart);
+  const rowStyle = transformed.slice(rowStyleStart, handleLabelStart);
+  assert.match(rowStyle, /__workletHash=/u);
+  assert.match(rowStyle, /useAnimatedStyle/u);
+
+  for (const remoteHelper of [
+    "useReorderAnimatedStyle",
+    "scheduleOnJavaScript",
+    "animateTo",
+  ]) {
+    assert.doesNotMatch(rowStyle, new RegExp(remoteHelper, "u"));
+  }
+  for (const workletStart of [".onStart(", ".onUpdate(", ".onFinalize("]) {
+    const start = transformed.indexOf(workletStart);
+    assert.notEqual(start, -1, workletStart);
+    const end = transformed.indexOf(".__workletHash=", start);
+    assert.ok(end > start, workletStart);
+    const callback = transformed.slice(start, end);
+    assert.doesNotMatch(
+      callback,
+      /scheduleOnJavaScript|animateTo/u,
+      workletStart,
+    );
   }
 });
 
