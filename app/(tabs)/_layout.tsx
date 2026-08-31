@@ -1,7 +1,10 @@
 import { Tabs } from "expo-router";
 import { useWindowDimensions } from "react-native";
 
-import { AppTabs } from "../../src/ui/components";
+import {
+  AppTabs,
+  rootNavigationUsesTwoRows,
+} from "../../src/ui/components";
 import { classifyWidth } from "../../src/ui/layout/AdaptiveScreen";
 import {
   rootBackBehavior,
@@ -12,11 +15,14 @@ import {
 import { useAppTheme } from "../../src/ui/theme";
 
 export default function RootTabsLayout() {
-  const { width } = useWindowDimensions();
+  const { fontScale, width } = useWindowDimensions();
   const { launchState } = useWorkoutAppRuntime();
   const { colors } = useAppTheme();
   const expanded = classifyWidth(width) === "expanded";
   const tabBarPosition = expanded ? "left" : "bottom";
+  const compactLayout = rootNavigationUsesTwoRows(width, fontScale)
+    ? "two-row"
+    : "single-row";
 
   return (
     <Tabs
@@ -29,6 +35,7 @@ export default function RootTabsLayout() {
       }}
       tabBar={(props) => (
         <AppTabs
+          compactLayout={compactLayout}
           disabled={launchState !== "trusted"}
           navigation={props.navigation}
           position={expanded ? "rail" : "bottom"}

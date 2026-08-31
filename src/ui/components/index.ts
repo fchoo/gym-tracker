@@ -1044,6 +1044,20 @@ export const rootDestinations = [
   },
 ] as const;
 
+export function rootNavigationUsesTwoRows(
+  width: number,
+  fontScale: number,
+): boolean {
+  const effectiveFontScale = Number.isFinite(fontScale) && fontScale > 0
+    ? fontScale
+    : 1;
+  const minimumTabWidth = Math.max(
+    sizes.minimumTarget,
+    56 * effectiveFontScale + space[2],
+  );
+  return width < rootDestinations.length * minimumTabWidth;
+}
+
 type AppTabsProps = Readonly<{
   state: {
     index: number;
@@ -1058,6 +1072,7 @@ type AppTabsProps = Readonly<{
     navigate(name: string): void;
   };
   disabled?: boolean;
+  compactLayout?: "single-row" | "two-row";
   position?: "bottom" | "rail";
 }>;
 
@@ -1065,9 +1080,12 @@ export function AppTabs({
   state,
   navigation,
   disabled = false,
+  compactLayout = "single-row",
   position = "bottom",
 }: AppTabsProps) {
   const { colors } = useAppTheme();
+  const twoRowBottomLayout =
+    position === "bottom" && compactLayout === "two-row";
   const tabs = rootDestinations.map((destination) => {
     const route = state.routes.find(
       (candidate) => candidate.name === destination.name,
@@ -1105,8 +1123,11 @@ export function AppTabs({
         style: ({ pressed }: { pressed: boolean }) => [
           styles.appTab,
           position === "rail" && styles.appTabRail,
+            twoRowBottomLayout && styles.appTabTwoRows,
           {
             backgroundColor: pressed ? colors.surfaceSubtle : "transparent",
+              borderColor: selected ? colors.action : "transparent",
+              borderWidth: selected ? sizes.focusRing : 0,
             opacity: disabled ? 0.62 : 1,
           },
         ],
@@ -1137,11 +1158,17 @@ export function AppTabs({
     {
       accessibilityLabel: position === "rail"
         ? "Root navigation rail"
-        : "Root navigation bottom",
+        : twoRowBottomLayout
+          ? "Root navigation bottom two rows"
+          : "Root navigation bottom",
       accessibilityRole: "tablist",
       style: [
         styles.appTabs,
-        position === "rail" ? styles.appTabsRail : styles.appTabsBottom,
+        position === "rail"
+          ? styles.appTabsRail
+          : twoRowBottomLayout
+            ? styles.appTabsBottomTwoRows
+            : styles.appTabsBottom,
         { backgroundColor: colors.surface, borderColor: colors.divider },
       ],
       testID: position === "rail"
@@ -1413,6 +1440,10 @@ const styles = StyleSheet.create({
   appTabsBottom: {
     flexDirection: "row",
   },
+  appTabsBottomTwoRows: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+  },
   appTabsRail: {
     alignSelf: "stretch",
     width: 112,
@@ -1430,6 +1461,10 @@ const styles = StyleSheet.create({
   appTabRail: {
     flex: 0,
     minHeight: 72,
+  },
+  appTabTwoRows: {
+    flex: 0,
+    width: "50%",
   },
   appTabLabel: {
     lineHeight: 22,
