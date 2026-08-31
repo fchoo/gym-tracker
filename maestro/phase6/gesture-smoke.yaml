@@ -1,0 +1,24 @@
+appId: com.fchoo.gymtracker.devtest
+name: Phase 6 generated Android horizontal swipe and held-row displacement gate
+tags:
+  - phase-6
+  - generated-native
+  - gestures
+---
+- launchApp:
+    clearState: true
+    permissions:
+      notifications: deny
+- assertVisible: "Today"
+- tapOn: "Calendar"
+- assertVisible: "Calendar month grid"
+- swipe:
+    start: 80%, 50%
+    end: 20%, 50%
+    duration: 400
+- assertVisible: "Calendar month grid"
+- tapOn: "Library"
+- assertVisible: "Library"
+- longPressOn:
+    id: drag-Phase 6 gesture row
+- assertVisible: "Held row displaced"
