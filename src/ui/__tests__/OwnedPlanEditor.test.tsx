@@ -13,6 +13,10 @@ import {
 } from "@jest/globals";
 import React from "react";
 import {
+  Dimensions,
+  TextInput,
+} from "react-native";
+import {
   getByGestureTestId,
 } from "react-native-gesture-handler/jest-utils";
 
@@ -253,6 +257,28 @@ function exerciseOrder(): string[] {
     .map(({ props: rowProps }) => rowProps.testID as string);
 }
 
+const pickerExercises: readonly OwnedPlanEditorExerciseOption[] = [
+  ...exercises,
+  {
+    id: "exercise-deadlift",
+    name: "Barbell Deadlift",
+    metricIdentity: {
+      profile: "load_reps",
+      contractVersion: 1,
+      exerciseMetricGeneration: 1,
+    },
+  },
+  {
+    id: "exercise-plank",
+    name: "Front Plank",
+    metricIdentity: {
+      profile: "timed_hold",
+      contractVersion: 1,
+      exerciseMetricGeneration: 1,
+    },
+  },
+];
+
 describe("OwnedPlanEditorScreen create and save plan", () => {
   it("uses cards for plan structure while fields and save dock retain their semantic surfaces", async () => {
     await renderEditor({
@@ -441,6 +467,95 @@ describe("OwnedPlanEditorScreen create and save plan", () => {
       }),
     });
     expect(onSaved).toHaveBeenCalledWith("plan-owner");
+  });
+
+  it("uses shared Search busy and many-result states for the exercise picker", async () => {
+    const exerciseLoad = deferred<readonly OwnedPlanEditorExerciseOption[]>();
+    await renderEditor({
+      listExercises: jest.fn(() => exerciseLoad.promise),
+      loadPlan: jest.fn(async () => completeSnapshot()),
+    });
+
+    await fireEvent.press(
+      await screen.findByRole("button", { name: "Add exercise" }),
+    );
+
+    expect(screen.getByTestId("owned-plan-exercise-search-control"))
+      .toHaveStyle({ minHeight: 48 });
+    expect(screen.getByLabelText("Searching Search plan exercises"))
+      .toHaveProp("accessibilityState", expect.objectContaining({ busy: true }));
+    expect(screen.getByText("Loading plan exercises")).toBeOnTheScreen();
+
+    await act(() => {
+      exerciseLoad.resolve(pickerExercises);
+    });
+
+    expect(await screen.findByText("3 plan exercises")).toBeOnTheScreen();
+    expect(screen.getByLabelText("3 Search plan exercises results"))
+      .toBeOnTheScreen();
+    expect(screen.getByRole("button", { name: /Barbell Back Squat/u }))
+      .toBeOnTheScreen();
+    expect(screen.getByRole("button", { name: /Barbell Deadlift/u }))
+      .toBeOnTheScreen();
+    expect(screen.getByRole("button", { name: /Front Plank/u }))
+      .toBeOnTheScreen();
+  });
+
+  it("exposes one and zero picker results with IME trim and clear focus", async () => {
+    const focus = jest.spyOn(TextInput.prototype, "focus");
+    await renderEditor({
+      listExercises: jest.fn(async () => pickerExercises),
+      loadPlan: jest.fn(async () => completeSnapshot()),
+    });
+    await fireEvent.press(
+      await screen.findByRole("button", { name: "Add exercise" }),
+    );
+    const search = await screen.findByLabelText("Search plan exercises");
+
+    await fireEvent.changeText(search, "deadlift");
+    expect(screen.getByText("1 plan exercise")).toBeOnTheScreen();
+    expect(screen.getByLabelText("1 Search plan exercises result"))
+      .toBeOnTheScreen();
+    expect(screen.queryByRole("button", { name: /Barbell Back Squat/u }))
+      .not.toBeOnTheScreen();
+
+    await fireEvent.changeText(search, "missing");
+    expect(screen.getByText("No plan exercises match")).toBeOnTheScreen();
+    expect(screen.getByText("Try another exercise name or metric profile."))
+      .toBeOnTheScreen();
+
+    await fireEvent.changeText(search, " barbell ");
+    await fireEvent(search, "submitEditing");
+    expect(search).toHaveProp("value", "barbell");
+    expect(screen.getByText("2 plan exercises")).toBeOnTheScreen();
+
+    await fireEvent.press(
+      screen.getByRole("button", { name: "Clear search plan exercises" }),
+    );
+    expect(search).toHaveProp("value", "");
+    expect(screen.getByText("3 plan exercises")).toBeOnTheScreen();
+    expect(focus).toHaveBeenCalled();
+    focus.mockRestore();
+  });
+
+  it("exposes a bounded picker Search error without fabricating zero results", async () => {
+    await renderEditor({
+      listExercises: jest.fn(async () => {
+        throw new Error("private exercise source failure");
+      }),
+      loadPlan: jest.fn(async () => completeSnapshot()),
+    });
+    await fireEvent.press(
+      await screen.findByRole("button", { name: "Add exercise" }),
+    );
+
+    expect(await screen.findByLabelText(
+      "Search plan exercises search failed",
+    )).toBeOnTheScreen();
+    expect(screen.getByText("Plan exercises could not be loaded"))
+      .toBeOnTheScreen();
+    expect(screen.queryByText("No plan exercises match"))
+      .not.toBeOnTheScreen();
   });
 
   it("routes both ready schedule actions through the owned plan ID", async () => {
@@ -1135,3 +1250,72 @@ for (const [layout, width] of [
   });
   });
 }
+
+describe("OwnedPlanEditorScreen reorder hierarchy", () => {
+  it("keeps handle, labels, position, and fallback actions in one row at normal text", async () => {
+    await renderEditor({
+      loadPlan: jest.fn(async () => completeSnapshot({
+        days: [
+          completeSnapshot().days[0]!,
+          {
+            id: "day-recovery",
+            name: "Recovery",
+            ordinal: 1,
+            occurrences: [],
+          },
+        ],
+      })),
+      width: 360,
+    });
+
+    expect(await screen.findByTestId("reorder-content-day-Recovery"))
+      .toHaveStyle({ flexDirection: "row" });
+    expect(screen.getByTestId("drag-day-Recovery"))
+      .toHaveStyle({ minHeight: 48, minWidth: 48 });
+    expect(screen.getByRole("button", { name: "Move Recovery up" }))
+      .toHaveStyle({ minHeight: 48, minWidth: 48 });
+    expect(screen.getByRole("button", { name: "Move Recovery down" }))
+      .toHaveStyle({ minHeight: 48, minWidth: 48 });
+  });
+
+  it("reflows at 200 percent text without removing any 48dp reorder control", async () => {
+    const previous = Dimensions.get("window");
+    Dimensions.set({
+      screen: { ...previous, fontScale: 2 },
+      window: { ...previous, fontScale: 2 },
+    });
+    const { rendered } = await renderEditor({
+      loadPlan: jest.fn(async () => completeSnapshot({
+        days: [
+          completeSnapshot().days[0]!,
+          {
+            id: "day-long",
+            name: "A very long plan day name that must remain fully reachable",
+            ordinal: 1,
+            occurrences: [],
+          },
+        ],
+      })),
+      width: 360,
+    });
+
+    expect(await screen.findByTestId(
+      "reorder-content-day-A very long plan day name that must remain fully reachable",
+    )).toHaveStyle({ flexDirection: "column" });
+    expect(screen.getByText(
+      "A very long plan day name that must remain fully reachable",
+    )).toBeOnTheScreen();
+    expect(screen.getByTestId(
+      "drag-day-A very long plan day name that must remain fully reachable",
+    )).toHaveStyle({ minHeight: 48, minWidth: 48 });
+    expect(screen.getByRole("button", {
+      name: "Move A very long plan day name that must remain fully reachable up",
+    })).toHaveStyle({ minHeight: 48, minWidth: 48 });
+    expect(screen.getByRole("button", {
+      name: "Move A very long plan day name that must remain fully reachable down",
+    })).toHaveStyle({ minHeight: 48, minWidth: 48 });
+
+    await rendered.unmount();
+    Dimensions.set({ screen: previous, window: previous });
+  });
+});
