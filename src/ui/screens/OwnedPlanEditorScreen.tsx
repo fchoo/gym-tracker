@@ -42,6 +42,7 @@ import {
   PlanEditorTextField,
   SemanticNumberField,
   TimeDurationField,
+  type PlanEditorReorderPreview,
 } from "../components/PlanEditorFields";
 import {
   radius,
@@ -453,16 +454,21 @@ function resultPlan(
 
 function move<Value>(
   values: readonly Value[],
-  index: number,
-  direction: -1 | 1,
+  sourceIndex: number,
+  targetIndex: number,
 ): readonly Value[] {
-  const nextIndex = index + direction;
-  if (nextIndex < 0 || nextIndex >= values.length) {
+  if (
+    sourceIndex < 0
+    || sourceIndex >= values.length
+    || targetIndex < 0
+    || targetIndex >= values.length
+    || sourceIndex === targetIndex
+  ) {
     return values;
   }
   const result = [...values];
-  const [item] = result.splice(index, 1);
-  result.splice(nextIndex, 0, item!);
+  const [item] = result.splice(sourceIndex, 1);
+  result.splice(targetIndex, 0, item!);
   return result;
 }
 
@@ -518,6 +524,10 @@ export function OwnedPlanEditorScreen({
   const [lifecycleBusy, setLifecycleBusy] = useState(false);
   const [selectedDayId, setSelectedDayId] = useState<string | null>(null);
   const [draftFeedback, setDraftFeedback] = useState<string | null>(null);
+  const [dayReorderPreview, setDayReorderPreview] =
+    useState<PlanEditorReorderPreview | null>(null);
+  const [exerciseReorderPreview, setExerciseReorderPreview] =
+    useState<PlanEditorReorderPreview | null>(null);
 
   const nextId = useCallback((kind: string) => {
     if (createId !== undefined) {
@@ -834,48 +844,54 @@ export function OwnedPlanEditorScreen({
     }
   }, [restorePlan, snapshot]);
 
-  const moveDay = useCallback((index: number, direction: -1 | 1) => {
+  const moveDay = useCallback((index: number, targetIndex: number) => {
     if (draft === null) {
       return;
     }
     const item = draft.days[index];
-    const nextIndex = index + direction;
-    if (item === undefined || nextIndex < 0 || nextIndex >= draft.days.length) {
+    if (
+      item === undefined
+      || targetIndex < 0
+      || targetIndex >= draft.days.length
+      || targetIndex === index
+    ) {
       return;
     }
-    const reordered = move(draft.days, index, direction).map((
+    const reordered = move(draft.days, index, targetIndex).map((
       day,
       ordinal,
     ) => ({ ...day, ordinal }));
     setDraft({ ...draft, days: reordered });
     setImpactRequired(false);
-    setDraftFeedback(`${item.name} moved to ${nextIndex + 1} of ${reordered.length}`);
+    setDraftFeedback(
+      `${item.name} moved to ${targetIndex + 1} of ${reordered.length}`,
+    );
   }, [draft]);
 
   const moveOccurrence = useCallback((
     day: OwnedPlanDayInput,
     index: number,
-    direction: -1 | 1,
+    targetIndex: number,
   ) => {
     const item = day.occurrences[index];
-    const nextIndex = index + direction;
     if (
       item === undefined
-      || nextIndex < 0
-      || nextIndex >= day.occurrences.length
+      || targetIndex < 0
+      || targetIndex >= day.occurrences.length
+      || targetIndex === index
     ) {
       return;
     }
     updateSelectedDay((current) => ({
       ...current,
-      occurrences: move(current.occurrences, index, direction).map((
+      occurrences: move(current.occurrences, index, targetIndex).map((
         occurrence,
         ordinal,
       ) => ({ ...occurrence, ordinal })),
     }));
     setDraftFeedback(
       `${names.get(item.exerciseId) ?? item.exerciseId} moved to `
-        + `${nextIndex + 1} of ${day.occurrences.length}`,
+        + `${targetIndex + 1} of ${day.occurrences.length}`,
     );
   }, [names, updateSelectedDay]);
 
@@ -978,7 +994,7 @@ export function OwnedPlanEditorScreen({
         <PrimaryAction
           busy={saveBusy}
           disabled={impactRequired}
-          label="Save plan"
+          label="Save Plan Changes"
           onPress={() => {
             void commitPlan("saved");
           }}
@@ -1123,37 +1139,45 @@ export function OwnedPlanEditorScreen({
             />
             {draft.days.map((day, index) => (
               <PlanEditorReorderableRow
-              count={draft.days.length}
-              key={day.id}
-              label={day.name}
-              onMoveDown={() => moveDay(index, 1)}
-              onMoveUp={() => moveDay(index, -1)}
-              position={index}
-              tone="card"
-            >
-              <FocusablePressable
-                accessibilityLabel={`${day.name}. ${day.occurrences.length} exercises`}
-                accessibilityRole="button"
-                accessibilityState={{ selected: selectedDay?.id === day.id }}
-                focusable
-                onPress={() => setSelectedDayId(day.id)}
-                style={styles.daySelect}
+                count={draft.days.length}
+                key={day.id}
+                label={day.name}
+                onDragPreview={setDayReorderPreview}
+                onMoveDown={() => moveDay(index, index + 1)}
+                onMoveTo={(targetIndex) => moveDay(index, targetIndex)}
+                onMoveUp={() => moveDay(index, index - 1)}
+                position={index}
+                preview={dayReorderPreview}
+                reorderId={`day-${day.name}`}
+                tone="card"
               >
-                <Text style={[
-                  typeScale.bodyStrong as TextStyle,
-                  { color: colors.contentCardText },
-                ]}>
-                  {day.name}
-                </Text>
-                <Text style={[
-                  typeScale.secondary as TextStyle,
-                  { color: colors.contentCardTextSecondary },
-                ]}>
-                  {`${day.occurrences.length} ${
-                    day.occurrences.length === 1 ? "exercise" : "exercises"
-                  }`}
-                </Text>
-              </FocusablePressable>
+                <FocusablePressable
+                  accessibilityLabel={`${day.name}. ${day.occurrences.length} exercises`}
+                  accessibilityRole="button"
+                  accessibilityState={{ selected: selectedDay?.id === day.id }}
+                  focusable
+                  onPress={() => {
+                    setDayReorderPreview(null);
+                    setExerciseReorderPreview(null);
+                    setSelectedDayId(day.id);
+                  }}
+                  style={styles.daySelect}
+                >
+                  <Text style={[
+                    typeScale.bodyStrong as TextStyle,
+                    { color: colors.contentCardText },
+                  ]}>
+                    {day.name}
+                  </Text>
+                  <Text style={[
+                    typeScale.secondary as TextStyle,
+                    { color: colors.contentCardTextSecondary },
+                  ]}>
+                    {`${day.occurrences.length} ${
+                      day.occurrences.length === 1 ? "exercise" : "exercises"
+                    }`}
+                  </Text>
+                </FocusablePressable>
               </PlanEditorReorderableRow>
             ))}
           </ContentCard>
@@ -1183,33 +1207,44 @@ export function OwnedPlanEditorScreen({
                   key={occurrence.id}
                   label={names.get(occurrence.exerciseId)
                     ?? occurrence.exerciseId}
-                  onMoveDown={() => moveOccurrence(selectedDay, index, 1)}
-                  onMoveUp={() => moveOccurrence(selectedDay, index, -1)}
+                  onDragPreview={setExerciseReorderPreview}
+                  onMoveDown={() =>
+                    moveOccurrence(selectedDay, index, index + 1)}
+                  onMoveTo={(targetIndex) =>
+                    moveOccurrence(selectedDay, index, targetIndex)}
+                  onMoveUp={() =>
+                    moveOccurrence(selectedDay, index, index - 1)}
                   position={index}
+                  preview={exerciseReorderPreview}
+                  reorderId={`exercise-${
+                    names.get(occurrence.exerciseId) ?? occurrence.exerciseId
+                  }`}
                   tone="card"
                 >
-                  <Text style={[
-                    typeScale.bodyStrong as TextStyle,
-                    { color: colors.contentCardText },
-                  ]}>
-                    {names.get(occurrence.exerciseId)
-                      ?? occurrence.exerciseId}
-                  </Text>
-                  <Text style={[
-                    typeScale.secondary as TextStyle,
-                    { color: colors.contentCardTextSecondary },
-                  ]}>
-                    {targetSummary(occurrence)}
-                  </Text>
-                  {onReplaceOccurrence === undefined ? null : (
-                    <SecondaryAction
-                      label={`Replace ${
-                        names.get(occurrence.exerciseId)
-                          ?? occurrence.exerciseId
-                      }`}
-                      onPress={() => onReplaceOccurrence(occurrence.id)}
-                    />
-                  )}
+                  <View style={styles.reorderLabelGroup}>
+                    <Text style={[
+                      typeScale.bodyStrong as TextStyle,
+                      { color: colors.contentCardText },
+                    ]}>
+                      {names.get(occurrence.exerciseId)
+                        ?? occurrence.exerciseId}
+                    </Text>
+                    <Text style={[
+                      typeScale.secondary as TextStyle,
+                      { color: colors.contentCardTextSecondary },
+                    ]}>
+                      {targetSummary(occurrence)}
+                    </Text>
+                    {onReplaceOccurrence === undefined ? null : (
+                      <SecondaryAction
+                        label={`Replace ${
+                          names.get(occurrence.exerciseId)
+                            ?? occurrence.exerciseId
+                        }`}
+                        onPress={() => onReplaceOccurrence(occurrence.id)}
+                      />
+                    )}
+                  </View>
                 </PlanEditorReorderableRow>
               ))}
               {targetDraft === null ? (
@@ -1483,8 +1518,13 @@ const styles = StyleSheet.create({
     padding: space[4],
   },
   daySelect: {
+    alignItems: "center",
+    flex: 1,
+    flexDirection: "row",
+    flexWrap: "wrap",
     gap: space[1],
     minHeight: 48,
+    minWidth: 0,
   },
   dayEditor: {
     gap: space[4],
@@ -1497,6 +1537,14 @@ const styles = StyleSheet.create({
     gap: space[1],
     minHeight: 48,
     paddingVertical: space[2],
+  },
+  reorderLabelGroup: {
+    alignItems: "center",
+    flex: 1,
+    flexDirection: "row",
+    flexWrap: "wrap",
+    gap: space[2],
+    minWidth: 0,
   },
   targetEditor: {
     gap: space[4],

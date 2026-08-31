@@ -16,6 +16,42 @@ import {
   getByGestureTestId,
 } from "react-native-gesture-handler/jest-utils";
 
+jest.mock("react-native-gesture-handler", () => {
+  const actual = jest.requireActual<
+    typeof import("react-native-gesture-handler")
+  >("react-native-gesture-handler");
+  const { View } = require("react-native") as typeof import("react-native");
+
+  return {
+    ...actual,
+    __esModule: true,
+    GestureHandlerRootView: View,
+  };
+});
+
+jest.mock("react-native-reanimated", () => {
+  const ReactModule = require("react") as typeof React;
+  const { View } = require("react-native") as typeof import("react-native");
+
+  return {
+    __esModule: true,
+    default: {
+      View,
+      createAnimatedComponent: <Component,>(component: Component) => component,
+    },
+    runOnJS: <Arguments extends readonly unknown[]>(
+      callback: (...args: Arguments) => void,
+    ) => callback,
+    useAnimatedStyle: (factory: () => object) => factory(),
+    useEvent: () => jest.fn(),
+    useSharedValue: <Value,>(initialValue: Value) => {
+      const shared = ReactModule.useRef({ value: initialValue });
+      return shared.current;
+    },
+    withTiming: <Value,>(value: Value) => value,
+  };
+});
+
 import type {
   OwnedPlanCommittedResult,
   OwnedPlanSnapshot,
@@ -236,7 +272,7 @@ describe("OwnedPlanEditorScreen create and save plan", () => {
     }
     expect(screen.getByLabelText("Plan name"))
       .not.toHaveStyle({ backgroundColor: themes.light.contentCard });
-    expect(screen.getByRole("button", { name: "Save plan" }))
+    expect(screen.getByRole("button", { name: "Save Plan Changes" }))
       .not.toHaveStyle({ backgroundColor: themes.light.contentCard });
   });
 
@@ -374,7 +410,7 @@ describe("OwnedPlanEditorScreen create and save plan", () => {
       }));
 
     await fireEvent.press(
-      screen.getByRole("button", { name: "Save plan" }),
+      screen.getByRole("button", { name: "Save Plan Changes" }),
     );
 
     await waitFor(() => expect(savePlan).toHaveBeenCalledTimes(1));
@@ -448,7 +484,7 @@ describe("OwnedPlanEditorScreen create and save plan", () => {
       "Retry Plan Edited",
     );
     await fireEvent.press(
-      screen.getByRole("button", { name: "Save plan" }),
+      screen.getByRole("button", { name: "Save Plan Changes" }),
     );
 
     const summary = await screen.findByRole("alert");
@@ -582,7 +618,7 @@ describe("OwnedPlanEditorScreen dirty leave and lifecycle", () => {
     expect(onBack).toHaveBeenCalledTimes(1);
   });
 
-  it("reorders only the draft and persists ordinals with Save plan", async () => {
+  it("reorders only the draft and persists ordinals with Save Plan Changes", async () => {
     const source = completeSnapshot({
       days: [
         completeSnapshot().days[0]!,
@@ -608,7 +644,7 @@ describe("OwnedPlanEditorScreen dirty leave and lifecycle", () => {
       savePlan,
     });
 
-    expect(await screen.findByTestId("drag-Recovery")).toHaveProp(
+    expect(await screen.findByTestId("drag-day-Recovery")).toHaveProp(
       "accessibilityActions",
       expect.arrayContaining([
         expect.objectContaining({ label: "Move up" }),
@@ -621,7 +657,7 @@ describe("OwnedPlanEditorScreen dirty leave and lifecycle", () => {
     expect(savePlan).not.toHaveBeenCalled();
     expect(screen.getByText("Recovery moved to 1 of 2")).toBeOnTheScreen();
     await fireEvent.press(
-      screen.getByRole("button", { name: "Save plan" }),
+      screen.getByRole("button", { name: "Save Plan Changes" }),
     );
 
     await waitFor(() => expect(savePlan).toHaveBeenCalledTimes(1));
@@ -683,7 +719,7 @@ describe("OwnedPlanEditorScreen dirty leave and lifecycle", () => {
     });
 
     expect(screen.getByTestId("reorder-row-day-Recovery")).toHaveStyle({
-      transform: [{ translateY: -92 }],
+      transform: [{ translateY: -80 }],
     });
     expect(screen.getByTestId("reorder-row-day-Strength Day")).toHaveStyle({
       transform: [{ translateY: 80 }],
@@ -801,7 +837,7 @@ describe("OwnedPlanEditorScreen dirty leave and lifecycle", () => {
           id: "exercise-deadlift",
           name: "Barbell Deadlift",
           metricIdentity: {
-            profile: "load_reps",
+            profile: "load_reps" as const,
             contractVersion: 1,
             exerciseMetricGeneration: 1,
           },
@@ -1045,7 +1081,7 @@ describe("OwnedPlanEditorScreen dirty leave and lifecycle", () => {
       "Future Active Name",
     );
     await fireEvent.press(
-      screen.getByRole("button", { name: "Save plan" }),
+      screen.getByRole("button", { name: "Save Plan Changes" }),
     );
 
     expect(await screen.findByText("Schedule impact review required"))
@@ -1054,7 +1090,7 @@ describe("OwnedPlanEditorScreen dirty leave and lifecycle", () => {
       "The active schedule and current workout were not changed. Structural schedule impact is deferred to Plan 02-18.",
     )).toBeOnTheScreen();
     expect(screen.getByDisplayValue("Future Active Name")).toBeOnTheScreen();
-    expect(screen.getByRole("button", { name: "Save plan" }))
+    expect(screen.getByRole("button", { name: "Save Plan Changes" }))
       .toHaveProp("accessibilityState", expect.objectContaining({
         disabled: true,
       }));
@@ -1090,10 +1126,10 @@ for (const [layout, width] of [
     expect(screen.getByText(
       "A very long plan day name for large text and landscape overflow",
     )).toBeOnTheScreen();
-    expect(screen.getByRole("button", { name: "Save plan" }))
+    expect(screen.getByRole("button", { name: "Save Plan Changes" }))
       .toBeOnTheScreen();
     expect(screen.getByTestId(
-      "drag-A very long plan day name for large text and landscape overflow",
+      "drag-day-A very long plan day name for large text and landscape overflow",
     )).toHaveStyle({ minHeight: 48, minWidth: 48 });
     expect(screen.getByText("Ready")).toBeOnTheScreen();
   });
