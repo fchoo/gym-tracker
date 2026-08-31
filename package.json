@@ -54,6 +54,7 @@
     "test:evidence:phase3": "node --test scripts/phase3-evidence-scripts.test.mjs",
     "test:evidence:phase4": "node --test scripts/phase4-evidence-scripts.test.mjs",
     "test:evidence:phase5": "node --test scripts/phase5-evidence-scripts.test.mjs",
+    "test:evidence:phase6": "node --test scripts/phase6-evidence-scripts.test.mjs",
     "test:evidence:release": "node --test scripts/release-candidate-contract.test.mjs",
     "test:release-matrix": "node scripts/release-matrix-contract.mjs",
     "verify:release-candidate": "node scripts/verify-release-candidate-manifest.mjs",

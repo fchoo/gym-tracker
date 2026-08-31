@@ -15,7 +15,7 @@ async function load(relativePath) {
 
 function fixtureCandidate() {
   return {
-    manifestSha256: SHA_A,
+    manifest_sha256: SHA_A,
     manifest: {
       candidate_id: "phase6-candidate",
       source: {
@@ -205,4 +205,30 @@ test("Phase 6 Samsung checklist is canonical, exact-byte, and observation-only",
     ...checklist,
     release_authorization: "approved",
   }, { candidate, device }), /release|privacy|identity|checklist/u);
+});
+
+test("Phase 6 workflow gates the exact production candidate evidence matrix", () => {
+  const packageJson = JSON.parse(readFileSync(path.join(projectRoot, "package.json"), "utf8"));
+  const workflow = readFileSync(
+    path.join(projectRoot, ".github/workflows/release-candidate.yml"),
+    "utf8",
+  );
+  const manifestSha = "${{ steps.candidate_manifest.outputs.manifest_sha256 }}";
+  const exactRunner = [
+    "npm run test:maestro:phase6",
+    "--",
+    "--bundle-dir artifacts/release-candidate",
+    `--manifest-sha256 "${manifestSha}"`,
+    "--package com.fchoo.gymtracker",
+    "--serial emulator-5554",
+    "--output artifacts/release-candidate/evidence/phase6.json",
+    "--report-dir artifacts/release-candidate/evidence/phase6-maestro",
+  ].join(" ");
+
+  assert.equal(
+    packageJson.scripts["test:evidence:phase6"],
+    "node --test scripts/phase6-evidence-scripts.test.mjs",
+  );
+  assert.ok(workflow.includes("npm run test:evidence:phase6"));
+  assert.ok(workflow.includes(exactRunner));
 });

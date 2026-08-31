@@ -324,7 +324,7 @@ export function loadPhase6Candidate({
   });
   if (candidate.manifest.source.package !== PACKAGE
     || candidate.manifest.build.profile !== "production"
-    || candidate.manifestSha256 !== expectedManifestSha256) {
+    || candidate.manifest_sha256 !== expectedManifestSha256) {
     fail("candidate identity is not the exact production replacement.");
   }
   const apk = candidateApk(candidate.manifest);
@@ -451,7 +451,7 @@ export function createPhase6Evidence({
     approval_status: "evidence_pending",
     attended_scope: "N4_pending_human",
     producer: "phase6-maestro/v1",
-    candidate: phase5CandidateIdentity(candidate.manifest, candidate.manifestSha256),
+    candidate: phase5CandidateIdentity(candidate.manifest, candidate.manifest_sha256),
     device,
     considerations: PHASE6_CONSIDERATION_CONTRACTS,
     flows,
@@ -461,7 +461,7 @@ export function createPhase6Evidence({
 }
 
 export function validatePhase6Evidence(evidence, candidate, rawReports) {
-  const expectedCandidate = phase5CandidateIdentity(candidate.manifest, candidate.manifestSha256);
+  const expectedCandidate = phase5CandidateIdentity(candidate.manifest, candidate.manifest_sha256);
   if (evidence?.schema_version !== 1
     || evidence?.suite !== "phase6"
     || evidence?.status !== "passed"

@@ -164,7 +164,7 @@ export function buildPhase6AttendedChecklist({
     status: "pending_human",
     mode: "observation-only",
     approval_status: "evidence_pending",
-    candidate: phase5CandidateIdentity(candidate.manifest, candidate.manifestSha256),
+    candidate: phase5CandidateIdentity(candidate.manifest, candidate.manifest_sha256),
     device,
     generated_at: generatedAt,
     rows: N4_ROWS.map((row) => Object.freeze({
@@ -191,7 +191,7 @@ export function validatePhase6AttendedChecklist(checklist, {
     || checklist?.approval_status !== "evidence_pending"
     || !Number.isFinite(Date.parse(checklist?.generated_at ?? ""))
     || !exactJson(checklist?.candidate, phase5CandidateIdentity(
-      candidate.manifest, candidate.manifestSha256,
+      candidate.manifest, candidate.manifest_sha256,
     ))
     || !exactJson(checklist?.device, device)
     || !Array.isArray(checklist?.rows)
