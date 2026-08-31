@@ -50,6 +50,19 @@ full-migration host fixture. That plan must preserve:
 - Projection rebuildability and existing period semantics.
 - The bounded Progress error and retry contract.
 
+### Allowed production paths
+
+- `src/platform/sqlite/repositories/progressRepository.ts` — the only
+  diagnosis-authorized production path for the causal runtime-compatibility
+  repair.
+- `src/ui/screens/ProgressScreen.tsx` — authorized only for the separately
+  planned shared Search and truthful typed Retry presentation after the causal
+  repair is proven.
+
+The diagnosis does not authorize changes to
+`src/bootstrap/workoutAppRuntime.tsx`, `src/bootstrap/workoutLifecycle.ts`, or
+`src/platform/sqlite/effects/historyProjectionEffects.ts`.
+
 This diagnostic plan changes no production runtime, repository, migration,
 projection, effect, or UI behavior.
 

@@ -154,6 +154,7 @@ None.
 ## Next Phase Readiness
 
 - Plan 06-07 can implement and verify the smallest runtime-compatible repair at the now-proven Progress seam.
+- The diagnosis explicitly authorizes only `src/platform/sqlite/repositories/progressRepository.ts` for that causal repair and `src/ui/screens/ProgressScreen.tsx` for the planned Search/Retry presentation; runtime, lifecycle, and projection-effect files remain out of scope.
 - It must retain the safe `unavailable`/`updating` freshness early returns, source-backed baseline semantics, and the new full-migration regression fixture.
 - No approval, promotion, publication, tag, or Terminal Seal action was performed.
 
