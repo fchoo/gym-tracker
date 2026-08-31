@@ -230,6 +230,12 @@ describe("CalendarScreen", () => {
 
     await screen.findByText("January 0001");
     expect(screen.getAllByTestId(/^calendar-day-/u)).toHaveLength(42);
+    expect(screen.getByTestId("calendar-day-unavailable-0")).toBeOnTheScreen();
+    expect(screen.getByTestId("calendar-day-unavailable-0"))
+      .toHaveProp("accessible", false);
+    expect(screen.getByRole("button", {
+      name: "1 January 0001.",
+    })).toBeOnTheScreen();
     expect(screen.getByRole("button", {
       name: "Previous month unavailable",
     })).toHaveProp("accessibilityState", expect.objectContaining({
@@ -260,6 +266,12 @@ describe("CalendarScreen", () => {
 
     await screen.findByText("December 9999");
     expect(screen.getAllByTestId(/^calendar-day-/u)).toHaveLength(42);
+    expect(screen.getByRole("button", {
+      name: "31 December 9999.",
+    })).toBeOnTheScreen();
+    expect(screen.getByTestId("calendar-day-unavailable-41")).toBeOnTheScreen();
+    expect(screen.getByTestId("calendar-day-unavailable-41"))
+      .toHaveProp("accessible", false);
     expect(screen.getByRole("button", {
       name: "Show November 9999",
     })).toHaveProp("accessibilityState", expect.objectContaining({

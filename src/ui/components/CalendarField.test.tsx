@@ -297,7 +297,29 @@ describe("CalendarField", () => {
     await renderCalendar({ value: "0001-01-01" });
 
     await fireEvent.press(screen.getByRole("button", { name: "Effective date" }));
+    expect(screen.getByTestId("calendar-day-unavailable-0")).toBeOnTheScreen();
+    expect(screen.getByTestId("calendar-day-unavailable-0"))
+      .toHaveProp("accessible", false);
+    expect(screen.getByRole("button", { name: "Select 0001-01-01" }))
+      .toBeOnTheScreen();
     expect(screen.getByRole("button", { name: "Previous month" }))
+      .toHaveProp("accessibilityState", expect.objectContaining({
+        disabled: true,
+      }));
+  });
+
+  it("keeps unavailable trailing slots at the upper LocalDate boundary", async () => {
+    await renderCalendar({ value: "9999-12-31" });
+
+    await fireEvent.press(screen.getByRole("button", { name: "Effective date" }));
+
+    expect(screen.getAllByTestId(/^calendar-day-/u)).toHaveLength(42);
+    expect(screen.getByRole("button", { name: "Select 9999-12-31" }))
+      .toBeOnTheScreen();
+    expect(screen.getByTestId("calendar-day-unavailable-41")).toBeOnTheScreen();
+    expect(screen.getByTestId("calendar-day-unavailable-41"))
+      .toHaveProp("accessible", false);
+    expect(screen.getByRole("button", { name: "Next month" }))
       .toHaveProp("accessibilityState", expect.objectContaining({
         disabled: true,
       }));

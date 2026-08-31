@@ -54,7 +54,6 @@ const MONTH_NAMES = [
 const WEEKDAYS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"] as const;
 const CALENDAR_CELL_COUNT = 42;
 const MONTH_SWIPE_COMPLETE_DISTANCE = 72;
-const LAST_LOCAL_DATE = parseLocalDate("9999-12-31");
 const WEEKDAY_INDEX = {
   Sunday: 0,
   Monday: 1,
@@ -134,25 +133,15 @@ export function calendarMonthDirectionForHorizontalSwipe(
   return null;
 }
 
-function completeGridDates(firstOfMonth: LocalDate): LocalDate[] {
-  let firstGridDate: LocalDate;
-  try {
-    firstGridDate = addLocalDays(
-      firstOfMonth,
-      -WEEKDAY_INDEX[weekdayForLocalDate(firstOfMonth)],
-    );
-  } catch {
-    return Array.from({ length: CALENDAR_CELL_COUNT }, (_, offset) =>
-      addLocalDays(firstOfMonth, offset));
-  }
-  try {
-    return Array.from({ length: CALENDAR_CELL_COUNT }, (_, offset) =>
-      addLocalDays(firstGridDate, offset));
-  } catch {
-    const lastGridDate = addLocalDays(LAST_LOCAL_DATE, -(CALENDAR_CELL_COUNT - 1));
-    return Array.from({ length: CALENDAR_CELL_COUNT }, (_, offset) =>
-      addLocalDays(lastGridDate, offset));
-  }
+function completeGridDates(firstOfMonth: LocalDate): Array<LocalDate | null> {
+  const firstGridOffset = -WEEKDAY_INDEX[weekdayForLocalDate(firstOfMonth)];
+  return Array.from({ length: CALENDAR_CELL_COUNT }, (_, offset) => {
+    try {
+      return addLocalDays(firstOfMonth, firstGridOffset + offset);
+    } catch {
+      return null;
+    }
+  });
 }
 
 function stateLabel(state: CalendarDayState): string {
@@ -231,7 +220,17 @@ function CalendarGrid({
       }),
     [onChangeMonth],
   );
-  const cells = gridDates.map((date) => {
+  const cells = gridDates.map((date, index) => {
+    if (date === null) {
+      return (
+        <View
+          accessible={false}
+          key={`unavailable-${index}`}
+          style={styles.dayCell}
+          testID={`calendar-day-unavailable-${index}`}
+        />
+      );
+    }
     const states = statesByDate.get(date) ?? [];
     const selected = date === selectedDate;
     const adjacent = monthStart(date) !== month;

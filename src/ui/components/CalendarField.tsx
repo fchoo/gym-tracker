@@ -73,7 +73,6 @@ const WEEKDAY_SHORT_NAMES = [
 const CALENDAR_COLUMNS = 7;
 const CALENDAR_CELL_COUNT = 42;
 const MONTH_SWIPE_COMPLETE_DISTANCE = 72;
-const LAST_LOCAL_DATE = parseLocalDate("9999-12-31");
 const COMPACT_DIALOG_INSET = space[1];
 const COMPACT_DIALOG_PADDING = space[2];
 const REGULAR_DIALOG_INSET = space[4];
@@ -197,22 +196,15 @@ function longDateLabel(value: LocalDate): string {
   return `${weekday}, ${day} ${MONTH_NAMES[month - 1]} ${year}`;
 }
 
-function completeGridDates(firstOfMonth: LocalDate): LocalDate[] {
-  let firstGridDate: LocalDate;
-  try {
-    firstGridDate = addLocalDays(firstOfMonth, -weekdayIndex(firstOfMonth));
-  } catch {
-    return Array.from({ length: CALENDAR_CELL_COUNT }, (_, offset) =>
-      addLocalDays(firstOfMonth, offset));
-  }
-  try {
-    return Array.from({ length: CALENDAR_CELL_COUNT }, (_, offset) =>
-      addLocalDays(firstGridDate, offset));
-  } catch {
-    const lastGridDate = addLocalDays(LAST_LOCAL_DATE, -(CALENDAR_CELL_COUNT - 1));
-    return Array.from({ length: CALENDAR_CELL_COUNT }, (_, offset) =>
-      addLocalDays(lastGridDate, offset));
-  }
+function completeGridDates(firstOfMonth: LocalDate): Array<LocalDate | null> {
+  const firstGridOffset = -weekdayIndex(firstOfMonth);
+  return Array.from({ length: CALENDAR_CELL_COUNT }, (_, offset) => {
+    try {
+      return addLocalDays(firstOfMonth, firstGridOffset + offset);
+    } catch {
+      return null;
+    }
+  });
 }
 
 export function calendarFieldMonthDirectionForHorizontalSwipe(
@@ -563,7 +555,17 @@ export function CalendarField({
                         : weekday}
                     </Text>
                   ))}
-                  {grid.map((date) => {
+                  {grid.map((date, index) => {
+                    if (date === null) {
+                      return (
+                        <View
+                          accessible={false}
+                          key={`unavailable-${index}`}
+                          style={styles.day}
+                          testID={`calendar-day-unavailable-${index}`}
+                        />
+                      );
+                    }
                     const isSelected = draft === date;
                     const selectable = withinBounds(date, minimum, maximum);
                     const adjacent = !sameMonth(monthOf(date), calendarMonth);
