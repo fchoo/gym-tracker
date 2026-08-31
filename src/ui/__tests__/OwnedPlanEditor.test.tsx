@@ -1,4 +1,5 @@
 import {
+  act,
   fireEvent,
   render,
   screen,
@@ -11,6 +12,12 @@ import {
   jest,
 } from "@jest/globals";
 import React from "react";
+import {
+  State,
+} from "react-native-gesture-handler";
+import {
+  getByGestureTestId,
+} from "react-native-gesture-handler/jest-utils";
 
 import type {
   OwnedPlanCommittedResult,
@@ -173,14 +180,39 @@ function props(
 
 async function renderEditor(
   overrides: Partial<React.ComponentProps<typeof OwnedPlanEditorScreen>> = {},
+  reduceMotion = false,
 ) {
   const editorProps = props(overrides);
   const rendered = await render(
-    <AppearanceProvider>
+    <AppearanceProvider reduceMotion={reduceMotion}>
       <OwnedPlanEditorScreen {...editorProps} />
     </AppearanceProvider>,
   );
   return { editorProps, rendered };
+}
+
+type TestGesture = Readonly<{
+  handlers: Readonly<{
+    onStart?: (event: Readonly<{ translationY: number }>) => void;
+    onUpdate?: (event: Readonly<{ translationY: number }>) => void;
+    onEnd?: (
+      event: Readonly<{ translationY: number }>,
+      success: boolean,
+    ) => void;
+    onFinalize?: (
+      event: Readonly<{ translationY: number }>,
+      success: boolean,
+    ) => void;
+  }>;
+}>;
+
+function reorderGesture(label: string): TestGesture {
+  return getByGestureTestId(`reorder-gesture-${label}`) as unknown as TestGesture;
+}
+
+function dayOrder(): string[] {
+  return screen.getAllByTestId(/^reorder-row-day-/u)
+    .map(({ props: rowProps }) => rowProps.testID as string);
 }
 
 describe("OwnedPlanEditorScreen create and save plan", () => {
@@ -599,6 +631,226 @@ describe("OwnedPlanEditorScreen dirty leave and lifecycle", () => {
         ],
       }),
     }));
+  });
+
+  it("previews held-row and neighbour displacement before one draft-only drop", async () => {
+    const source = completeSnapshot({
+      days: [
+        completeSnapshot().days[0]!,
+        {
+          id: "day-recovery",
+          name: "Recovery",
+          ordinal: 1,
+          occurrences: [],
+        },
+        {
+          id: "day-conditioning",
+          name: "Conditioning",
+          ordinal: 2,
+          occurrences: [],
+        },
+      ],
+    });
+    const savePlan = jest.fn(async (
+      input: Parameters<
+        React.ComponentProps<typeof OwnedPlanEditorScreen>["savePlan"]
+      >[0],
+    ) => committed({
+      ...source,
+      revision: 2,
+      days: input.plan.days,
+    }, "save"));
+    await renderEditor({
+      loadPlan: jest.fn(async () => source),
+      savePlan,
+    });
+
+    expect(await screen.findByTestId("reorder-row-day-Recovery"))
+      .toBeOnTheScreen();
+    await fireEvent(
+      screen.getByTestId("reorder-row-day-Recovery"),
+      "layout",
+      { nativeEvent: { layout: { height: 80, width: 320, x: 0, y: 80 } } },
+    );
+    const gesture = reorderGesture("day-Recovery");
+
+    await act(() => {
+      gesture.handlers.onStart?.({ translationY: 0 });
+      gesture.handlers.onUpdate?.({ translationY: -52 });
+      gesture.handlers.onUpdate?.({ translationY: -92 });
+    });
+
+    expect(screen.getByTestId("reorder-row-day-Recovery")).toHaveStyle({
+      transform: [{ translateY: -92 }],
+    });
+    expect(screen.getByTestId("reorder-row-day-Strength Day")).toHaveStyle({
+      transform: [{ translateY: 80 }],
+    });
+    expect(screen.getByTestId("drag-day-Recovery")).toHaveProp(
+      "accessibilityLabel",
+      "Drag Recovery. Moving to position 1 of 3",
+    );
+    expect(dayOrder()).toEqual([
+      "reorder-row-day-Strength Day",
+      "reorder-row-day-Recovery",
+      "reorder-row-day-Conditioning",
+    ]);
+    expect(savePlan).not.toHaveBeenCalled();
+
+    await act(() => {
+      gesture.handlers.onEnd?.({ translationY: -92 }, true);
+      gesture.handlers.onFinalize?.({ translationY: -92 }, true);
+    });
+
+    expect(dayOrder()).toEqual([
+      "reorder-row-day-Recovery",
+      "reorder-row-day-Strength Day",
+      "reorder-row-day-Conditioning",
+    ]);
+    expect(screen.getByText("Recovery moved to 1 of 3")).toBeOnTheScreen();
+    expect(savePlan).not.toHaveBeenCalled();
+
+    await fireEvent.press(
+      screen.getByRole("button", { name: "Save Plan Changes" }),
+    );
+    await waitFor(() => expect(savePlan).toHaveBeenCalledTimes(1));
+    expect(savePlan).toHaveBeenCalledWith(expect.objectContaining({
+      plan: expect.objectContaining({
+        days: [
+          expect.objectContaining({ id: "day-recovery", ordinal: 0 }),
+          expect.objectContaining({ id: "day-owner", ordinal: 1 }),
+          expect.objectContaining({ id: "day-conditioning", ordinal: 2 }),
+        ],
+      }),
+    }));
+  });
+
+  it("cancels a held reorder without changing the draft or persisting", async () => {
+    const source = completeSnapshot({
+      days: [
+        completeSnapshot().days[0]!,
+        {
+          id: "day-recovery",
+          name: "Recovery",
+          ordinal: 1,
+          occurrences: [],
+        },
+        {
+          id: "day-conditioning",
+          name: "Conditioning",
+          ordinal: 2,
+          occurrences: [],
+        },
+      ],
+    });
+    const savePlan = jest.fn(async () => committed(source, "save"));
+    await renderEditor({
+      loadPlan: jest.fn(async () => source),
+      savePlan,
+    });
+
+    expect(await screen.findByTestId("reorder-row-day-Recovery"))
+      .toBeOnTheScreen();
+    await fireEvent(
+      screen.getByTestId("reorder-row-day-Recovery"),
+      "layout",
+      { nativeEvent: { layout: { height: 80, width: 320, x: 0, y: 80 } } },
+    );
+    const gesture = reorderGesture("day-Recovery");
+
+    await act(() => {
+      gesture.handlers.onStart?.({ translationY: 0 });
+      gesture.handlers.onUpdate?.({ translationY: 92 });
+      gesture.handlers.onFinalize?.({ translationY: 92 }, false);
+    });
+
+    expect(dayOrder()).toEqual([
+      "reorder-row-day-Strength Day",
+      "reorder-row-day-Recovery",
+      "reorder-row-day-Conditioning",
+    ]);
+    expect(screen.queryByText(/Recovery moved to/u)).not.toBeOnTheScreen();
+    expect(savePlan).not.toHaveBeenCalled();
+  });
+
+  it("keeps buttons, keyboard, and adjustable actions on the bounded draft move", async () => {
+    const source = completeSnapshot({
+      days: [
+        completeSnapshot().days[0]!,
+        {
+          id: "day-recovery",
+          name: "Recovery",
+          ordinal: 1,
+          occurrences: [],
+        },
+      ],
+    });
+    const savePlan = jest.fn(async () => committed(source, "save"));
+    await renderEditor({
+      loadPlan: jest.fn(async () => source),
+      savePlan,
+    });
+
+    const handle = await screen.findByTestId("drag-day-Recovery");
+    await fireEvent(handle, "accessibilityAction", {
+      nativeEvent: { actionName: "increment" },
+    });
+    expect(dayOrder()).toEqual([
+      "reorder-row-day-Recovery",
+      "reorder-row-day-Strength Day",
+    ]);
+    expect(screen.getByText("Recovery moved to 1 of 2")).toBeOnTheScreen();
+
+    await fireEvent(
+      screen.getByRole("button", { name: "Move Recovery down" }),
+      "keyDown",
+      { nativeEvent: { key: "Enter" } },
+    );
+    expect(dayOrder()).toEqual([
+      "reorder-row-day-Strength Day",
+      "reorder-row-day-Recovery",
+    ]);
+    expect(screen.getByText("Recovery moved to 2 of 2")).toBeOnTheScreen();
+    expect(savePlan).not.toHaveBeenCalled();
+  });
+
+  it("keeps reduced-motion drag acknowledgement and immediate neighbour displacement", async () => {
+    const source = completeSnapshot({
+      days: [
+        completeSnapshot().days[0]!,
+        {
+          id: "day-recovery",
+          name: "Recovery",
+          ordinal: 1,
+          occurrences: [],
+        },
+      ],
+    });
+    await renderEditor({
+      loadPlan: jest.fn(async () => source),
+    }, true);
+
+    expect(await screen.findByTestId("reorder-row-day-Recovery"))
+      .toBeOnTheScreen();
+    await fireEvent(
+      screen.getByTestId("reorder-row-day-Recovery"),
+      "layout",
+      { nativeEvent: { layout: { height: 80, width: 320, x: 0, y: 80 } } },
+    );
+    const gesture = reorderGesture("day-Recovery");
+
+    await act(() => {
+      gesture.handlers.onStart?.({ translationY: 0 });
+      gesture.handlers.onUpdate?.({ translationY: -92 });
+    });
+
+    expect(screen.getByTestId("reorder-row-day-Strength Day")).toHaveStyle({
+      transform: [{ translateY: 80 }],
+    });
+    expect(screen.getByTestId("drag-day-Recovery")).toHaveProp(
+      "accessibilityState",
+      expect.objectContaining({ busy: true }),
+    );
   });
 
   it("duplicates to a fresh inactive graph after explicit confirmation", async () => {
