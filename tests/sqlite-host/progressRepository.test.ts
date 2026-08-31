@@ -715,7 +715,7 @@ describe("progress repository", () => {
     }));
   });
 
-  it("reproduces the candidate runtime rejection from a full-migration current baseline", async () => {
+  it("returns the factual current baseline when the candidate lacks toSorted", async () => {
     const kernel = await open();
     const repository = createProgressRepository(kernel);
     const arrayPrototype = Array.prototype as {
@@ -728,7 +728,14 @@ describe("progress repository", () => {
       await expect(repository.load({
         period: "4_weeks",
         nowLocalDate: "2026-08-24",
-      })).rejects.toThrow(TypeError);
+      })).resolves.toEqual(expect.objectContaining({
+        freshness: "current",
+        projection: expect.objectContaining({
+          state: "baseline",
+          records: [],
+          exercises: [],
+        }),
+      }));
     } finally {
       Object.defineProperty(arrayPrototype, "toSorted", {
         configurable: true,
