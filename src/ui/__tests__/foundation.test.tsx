@@ -14,6 +14,7 @@ import React from "react";
 import {
   Appearance,
   BackHandler,
+  RefreshControl,
   ScrollView,
   Text,
   View,
@@ -451,6 +452,46 @@ describe("Plan 01-02 UI foundation", () => {
       y: 320,
     });
     scrollTo.mockRestore();
+  });
+
+  it.each(adaptiveCases)(
+    "attaches one controlled refresh seam to the owning ScrollView in the %s layout",
+    async (widthClass, width) => {
+      const onRefresh = jest.fn();
+      await render(
+        <AppearanceProvider>
+          <AdaptiveScreen
+            onRefresh={onRefresh}
+            primary={<Text>{widthClass} library</Text>}
+            refreshing
+            width={width}
+          />
+        </AppearanceProvider>,
+      );
+
+      const scroll = screen.getByTestId("adaptive-screen-scroll");
+      expect(screen.queryAllByTestId("adaptive-screen-scroll")).toHaveLength(1);
+      expect(scroll).toHaveProp("keyboardShouldPersistTaps", "handled");
+      expect(scroll).toHaveProp("scrollEventThrottle", 16);
+      expect(scroll.props.refreshControl).toBeDefined();
+      expect(scroll.props.refreshControl.type).toBe(RefreshControl);
+      expect(scroll.props.refreshControl.props.refreshing).toBe(true);
+
+      scroll.props.refreshControl.props.onRefresh();
+      expect(onRefresh).toHaveBeenCalledTimes(1);
+    },
+  );
+
+  it("leaves the owning ScrollView without refresh control when no controlled handler is supplied", async () => {
+    await render(
+      <AppearanceProvider>
+        <AdaptiveScreen primary={<Text>Static Library</Text>} />
+      </AppearanceProvider>,
+    );
+
+    expect(screen.queryAllByTestId("adaptive-screen-scroll")).toHaveLength(1);
+    expect(screen.getByTestId("adaptive-screen-scroll").props.refreshControl)
+      .toBeUndefined();
   });
 
   it("enforces minimum targets, wrapping labels, and vertical large-text metrics", async () => {

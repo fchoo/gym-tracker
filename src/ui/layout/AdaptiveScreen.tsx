@@ -1,6 +1,7 @@
 import React from "react";
 import {
   BackHandler,
+  RefreshControl,
   ScrollView,
   StyleSheet,
   useWindowDimensions,
@@ -53,6 +54,8 @@ type AdaptiveScreenProps = Readonly<{
   scrollOffset?: number;
   scrollRestoreKey?: string;
   onRequestBack?: () => void;
+  refreshing?: boolean;
+  onRefresh?: () => void;
 }>;
 
 export function AdaptiveScreen({
@@ -68,6 +71,8 @@ export function AdaptiveScreen({
   scrollOffset = 0,
   scrollRestoreKey,
   onRequestBack,
+  refreshing = false,
+  onRefresh,
 }: AdaptiveScreenProps) {
   const scrollViewRef = React.useRef<ScrollView>(null);
   const previousScrollRestoreKeyRef = React.useRef(scrollRestoreKey);
@@ -169,6 +174,13 @@ export function AdaptiveScreen({
             ]}
             keyboardShouldPersistTaps="handled"
             onScroll={onScroll}
+            refreshControl={onRefresh === undefined ? undefined : (
+              <RefreshControl
+                onRefresh={onRefresh}
+                refreshing={refreshing}
+                tintColor={colors.action}
+              />
+            )}
             ref={scrollViewRef}
             scrollEventThrottle={16}
             testID={`${testID}-scroll`}
