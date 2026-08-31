@@ -649,6 +649,50 @@ describe("Plan 01-02 route shell", () => {
     });
   });
 
+  it("reflows four complete root destinations into two accessible rows for 200% text", async () => {
+    const navigate = jest.fn();
+    await render(
+      <AppearanceProvider>
+        <AppTabs
+          compactLayout="two-row"
+          navigation={{
+            emit: () => ({ defaultPrevented: false }),
+            navigate,
+          }}
+          state={{ index: 2, routes }}
+        />
+      </AppearanceProvider>,
+    );
+
+    const rootNavigation = screen.getByLabelText(
+      "Root navigation bottom two rows",
+    );
+    expect(rootNavigation).toHaveStyle({
+      flexWrap: "wrap",
+    });
+    expect(screen.getAllByRole("tab").map((tab) => tab.props.accessibilityLabel))
+      .toEqual(["Today", "Calendar", "Library", "Progress"]);
+    expect(screen.getByRole("tab", { name: "Library" })).toBeSelected();
+
+    for (const label of ["Today", "Calendar", "Library", "Progress"]) {
+      const tab = screen.getByRole("tab", { name: label });
+      expect(tab).toHaveStyle({
+        minHeight: 64,
+        minWidth: 48,
+        width: "50%",
+      });
+      expect(screen.getByText(label).props.numberOfLines).toBeUndefined();
+    }
+
+    const progress = screen.getByRole("tab", { name: "Progress" });
+    await fireEvent(progress, "focus");
+    expect(progress).toHaveStyle({ outlineWidth: 2 });
+    await fireEvent(progress, "keyDown", {
+      nativeEvent: { key: "Enter" },
+    });
+    expect(navigate).toHaveBeenCalledWith("progress");
+  });
+
   it("checks notification readiness before entering the trusted app", async () => {
     const requestPermission = jest.fn(async () => "granted" as const);
     const continueWithoutAlerts = jest.fn();

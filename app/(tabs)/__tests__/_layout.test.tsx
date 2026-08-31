@@ -11,11 +11,13 @@ import {
   beforeEach,
 } from "@jest/globals";
 import React from "react";
+import { Dimensions } from "react-native";
 
 import { AppearanceProvider } from "../../../src/ui/theme";
 import RootTabsLayout from "../_layout";
 
 let mockRenderedWidth = 839;
+let mockFontScale = 1;
 const mockNavigate = jest.fn();
 let mockSelectedRouteIndex = 0;
 
@@ -102,14 +104,23 @@ describe("RootTabsLayout adaptive navigator placement", () => {
     "Progress",
   ] as const;
 
-  function setRenderedWidth(width: number) {
+  function setRenderedDimensions(width: number, fontScale = mockFontScale) {
     mockRenderedWidth = width;
+    mockFontScale = fontScale;
+    Dimensions.set({
+      screen: { fontScale, height: 900, scale: 1, width },
+      window: { fontScale, height: 900, scale: 1, width },
+    });
+  }
+
+  function setRenderedWidth(width: number) {
+    setRenderedDimensions(width);
   }
 
   beforeEach(() => {
     mockNavigate.mockReset();
     mockSelectedRouteIndex = 0;
-    setRenderedWidth(839);
+    setRenderedDimensions(839, 1);
   });
 
   it.each([
@@ -156,6 +167,45 @@ describe("RootTabsLayout adaptive navigator placement", () => {
     },
   );
 
+  it("uses a two-row bottom bar only when 200% text cannot fit full labels", async () => {
+    setRenderedDimensions(360, 2);
+    const rendered = await render(
+      <AppearanceProvider>
+        <RootTabsLayout />
+      </AppearanceProvider>,
+    );
+
+    const navigation = rendered.getByTestId("root-navigation-bottom");
+    expect(navigation).toHaveProp(
+      "accessibilityLabel",
+      "Root navigation bottom two rows",
+    );
+    expect(navigation).toHaveStyle({
+      flexDirection: "row",
+      flexWrap: "wrap",
+    });
+    expect(
+      rendered.getAllByRole("tab").map((tab) => tab.props.accessibilityLabel),
+    ).toEqual(destinationLabels);
+    for (const label of destinationLabels) {
+      expect(rendered.getByRole("tab", { name: label })).toHaveStyle({
+        minHeight: 64,
+        minWidth: 48,
+        width: "50%",
+      });
+    }
+
+    await act(async () => {
+      setRenderedDimensions(360, 1);
+    });
+
+    expect(navigation).toHaveProp("accessibilityLabel", "Root navigation bottom");
+    expect(navigation).toHaveStyle({
+      flexDirection: "row",
+      flexWrap: undefined,
+    });
+  });
+
   it("keeps one accessible route state through live resize and D-pad activation", async () => {
     const rendered = await render(
       <AppearanceProvider>
@@ -171,14 +221,9 @@ describe("RootTabsLayout adaptive navigator placement", () => {
     });
     expect(mockNavigate).toHaveBeenCalledWith("library");
 
-    mockSelectedRouteIndex = 2;
-    setRenderedWidth(840);
     await act(async () => {
-      await rendered.rerender(
-        <AppearanceProvider>
-          <RootTabsLayout />
-        </AppearanceProvider>,
-      );
+      mockSelectedRouteIndex = 2;
+      setRenderedWidth(840);
     });
 
     expect(rendered.getByTestId("root-tabs")).toHaveProp(
@@ -204,13 +249,8 @@ describe("RootTabsLayout adaptive navigator placement", () => {
       flexDirection: "row",
     });
 
-    setRenderedWidth(839);
     await act(async () => {
-      await rendered.rerender(
-        <AppearanceProvider>
-          <RootTabsLayout />
-        </AppearanceProvider>,
-      );
+      setRenderedWidth(839);
     });
 
     expect(rendered.getByTestId("root-tabs")).toHaveProp(
