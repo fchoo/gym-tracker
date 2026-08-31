@@ -2694,7 +2694,7 @@ test("built-in custom copy preserves data but resets system and root navigation 
   );
 });
 
-test("plan creation flows wait for the committed draft transition", async () => {
+test("plan creation flows settle and re-locate the draft action before tapping", async () => {
   for (const relativePath of [
     "maestro/phase2/custom-exercise-lifecycle3-active-workout.yaml",
     "maestro/phase2/owned-plan-editor.yaml",
@@ -2703,12 +2703,12 @@ test("plan creation flows wait for the committed draft transition", async () => 
     const flow = await readFile(path.join(projectRoot, relativePath), "utf8");
     assert.match(
       flow,
-      /- tapOn: "Create draft"\n- extendedWaitUntil:\n    visible: "Draft"\n    timeout: 60000/u,
+      /- hideKeyboard\n- scrollUntilVisible:\n    element:\n      text: "Create draft"\n    direction: DOWN\n    centerElement: true\n- waitForAnimationToEnd:\n    timeout: 10000\n- tapOn: "Create draft"\n- extendedWaitUntil:\n    visible: "Draft"\n    timeout: 60000/u,
       relativePath,
     );
     assert.doesNotMatch(
       flow,
-      /- tapOn: "Create draft"\n- assertVisible: "Draft"/u,
+      /- hideKeyboard\n- tapOn: "Create draft"/u,
       relativePath,
     );
   }

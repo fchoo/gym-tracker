@@ -102,6 +102,13 @@ tags:
 - tapOn: "First day name"
 - inputText: "First"
 - hideKeyboard
+- scrollUntilVisible:
+    element:
+      text: "Create draft"
+    direction: DOWN
+    centerElement: true
+- waitForAnimationToEnd:
+    timeout: 10000
 - tapOn: "Create draft"
 - extendedWaitUntil:
     visible: "Draft"
