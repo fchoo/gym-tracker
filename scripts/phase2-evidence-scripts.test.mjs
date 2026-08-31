@@ -2694,6 +2694,26 @@ test("built-in custom copy preserves data but resets system and root navigation 
   );
 });
 
+test("plan creation flows wait for the committed draft transition", async () => {
+  for (const relativePath of [
+    "maestro/phase2/custom-exercise-lifecycle3-active-workout.yaml",
+    "maestro/phase2/owned-plan-editor.yaml",
+    "maestro/phase6/calendar-date-reorder.yaml",
+  ]) {
+    const flow = await readFile(path.join(projectRoot, relativePath), "utf8");
+    assert.match(
+      flow,
+      /- tapOn: "Create draft"\n- extendedWaitUntil:\n    visible: "Draft"\n    timeout: 60000/u,
+      relativePath,
+    );
+    assert.doesNotMatch(
+      flow,
+      /- tapOn: "Create draft"\n- assertVisible: "Draft"/u,
+      relativePath,
+    );
+  }
+});
+
 test("Library exercise flow waits for trusted Today after process restart", async () => {
   const flow = await readFile(
     path.join(projectRoot, "maestro/phase2/library-exercises.yaml"),

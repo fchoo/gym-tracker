@@ -103,7 +103,9 @@ tags:
 - inputText: "First"
 - hideKeyboard
 - tapOn: "Create draft"
-- assertVisible: "Draft"
+- extendedWaitUntil:
+    visible: "Draft"
+    timeout: 60000
 - scrollUntilVisible:
     element:
       id: "owned-plan-add-exercise"

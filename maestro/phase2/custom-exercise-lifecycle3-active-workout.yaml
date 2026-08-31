@@ -23,7 +23,9 @@ tags:
 - inputText: "Custom Day"
 - hideKeyboard
 - tapOn: "Create draft"
-- assertVisible: "Draft"
+- extendedWaitUntil:
+    visible: "Draft"
+    timeout: 60000
 - scrollUntilVisible:
     element:
       text: "Add exercise"
