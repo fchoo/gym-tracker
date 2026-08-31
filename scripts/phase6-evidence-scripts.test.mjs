@@ -156,9 +156,20 @@ test("Phase 6 flow performs horizontal swipe and long-press displacement checks"
   const flow = readFileSync(path.join(
     projectRoot, "maestro/phase6/gesture-smoke.yaml",
   ), "utf8");
+  const fixture = readFileSync(path.join(
+    projectRoot, "app/__phase6-gesture-smoke.tsx",
+  ), "utf8");
   assert.match(flow, /^appId: com\.fchoo\.gymtracker\.devtest$/mu);
+  assert.ok(flow.includes("openLink: gymtracker-devtest://__phase6-gesture-smoke"));
   assert.match(flow, /swipe:[\s\S]*start: 80%, 50%[\s\S]*end: 20%, 50%/u);
+  assert.match(flow, /assertVisible: "Horizontal swipe complete"/u);
   assert.match(flow, /longPressOn:[\s\S]*id: drag-/u);
   assert.match(flow, /assertVisible: "Held row displaced"/u);
+  assert.match(fixture, /nativeContractsEnabled/u);
+  assert.match(fixture, /Gesture\.Pan()/u);
+  assert.match(fixture, /Gesture\.LongPress()/u);
+  assert.match(fixture, /useSharedValue/u);
+  assert.match(fixture, /useAnimatedStyle/u);
+  assert.match(fixture, /Redirect href="\/"/u);
   assert.doesNotMatch(flow, /__phase2-attended-preview|placeholder/iu);
 });

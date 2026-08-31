@@ -25,6 +25,7 @@ import {
 } from "../src/ui/theme";
 
 const attendedPreviewAppearanceStore = createMemoryAppearanceStore();
+const phase6GestureSmokeAppearanceStore = createMemoryAppearanceStore();
 
 function RootNavigator() {
   const runtime = useWorkoutAppRuntime();
@@ -79,6 +80,20 @@ function AttendedPreviewNavigator() {
   );
 }
 
+function Phase6GestureSmokeNavigator() {
+  return (
+    <Stack
+      initialRouteName="__phase6-gesture-smoke"
+      screenOptions={{
+        animation: "none",
+        headerShown: false,
+      }}
+    >
+      <Stack.Screen name="__phase6-gesture-smoke" />
+    </Stack>
+  );
+}
+
 export default function RootLayout() {
   const [fontsLoaded, fontError] = useFonts(appFonts);
   const pathname = usePathname();
@@ -86,12 +101,17 @@ export default function RootLayout() {
   const attendedPreviewEnabled =
     Constants.expoConfig?.extra?.nativeContractsEnabled === true
     && pathname === "/__phase2-attended-preview";
+  const phase6GestureSmokeEnabled =
+    Constants.expoConfig?.extra?.nativeContractsEnabled === true
+    && pathname === "/__phase6-gesture-smoke";
 
   if (!fontsLoaded && fontError === null) {
     return (
       <SafeAreaProvider>
         <AppearanceProvider store={attendedPreviewEnabled
           ? attendedPreviewAppearanceStore
+          : phase6GestureSmokeEnabled
+            ? phase6GestureSmokeAppearanceStore
           : productionAppearanceStore}
         >
           <AppLoadingShell width={width} />
@@ -105,6 +125,16 @@ export default function RootLayout() {
       <SafeAreaProvider>
         <AppearanceProvider store={attendedPreviewAppearanceStore}>
           <AttendedPreviewNavigator />
+        </AppearanceProvider>
+      </SafeAreaProvider>
+    );
+  }
+
+  if (phase6GestureSmokeEnabled) {
+    return (
+      <SafeAreaProvider>
+        <AppearanceProvider store={phase6GestureSmokeAppearanceStore}>
+          <Phase6GestureSmokeNavigator />
         </AppearanceProvider>
       </SafeAreaProvider>
     );
