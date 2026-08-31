@@ -100,7 +100,7 @@ export type ProgressRepository = Readonly<{
 
 const ALL_PERIOD_SUBJECT_ID = 'history-subject/v1:["period","all"]';
 
-function ensureToSortedCompatibility(): void {
+function withToSortedCompatibility<Result>(operation: () => Result): Result {
   const arrayPrototype = Array.prototype as {
     toSorted?: <Value>(
       this: readonly Value[],
@@ -108,7 +108,7 @@ function ensureToSortedCompatibility(): void {
     ) => Value[];
   };
   if (arrayPrototype.toSorted !== undefined) {
-    return;
+    return operation();
   }
   Object.defineProperty(arrayPrototype, "toSorted", {
     configurable: true,
@@ -121,6 +121,11 @@ function ensureToSortedCompatibility(): void {
     },
     writable: true,
   });
+  try {
+    return operation();
+  } finally {
+    delete arrayPrototype.toSorted;
+  }
 }
 
 function freshnessFor(rows: readonly RevisionRow[]): ProgressProjectionFreshness {
@@ -431,11 +436,10 @@ export function createProgressRepository(
       }).slice().sort((left, right) =>
         left.exerciseName.localeCompare(right.exerciseName) || left.id.localeCompare(right.id)
       );
-      ensureToSortedCompatibility();
       return Object.freeze({
         period: input.period,
         freshness: "current",
-        projection: projectProgressPeriod({
+        projection: withToSortedCompatibility(() => projectProgressPeriod({
           period: input.period,
           nowLocalDate: input.nowLocalDate,
           periodInputs: periodRows.map(periodInputFromRow),
@@ -455,7 +459,7 @@ export function createProgressRepository(
             exerciseIds: Object.freeze(session.metricSets.map(({ exerciseId }) => exerciseId)),
           })),
           recommendations,
-        }),
+        })),
       });
     },
   });
