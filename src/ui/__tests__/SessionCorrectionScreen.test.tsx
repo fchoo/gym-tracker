@@ -156,6 +156,37 @@ describe("SessionCorrectionScreen", () => {
     expect(screen.getByText("Working set 2")).toBeOnTheScreen();
   });
 
+  it("keeps a selected correction date private until Apply Date", async () => {
+    await renderScreen();
+    await screen.findByText("Bench press");
+
+    await fireEvent.press(screen.getByRole("button", {
+      name: "Workout date",
+    }));
+    await fireEvent.press(screen.getByRole("button", {
+      name: "Select 2026-08-25",
+    }));
+    await fireEvent.press(screen.getByRole("button", {
+      name: "Keep Original Date",
+    }));
+
+    expect(screen.getByRole("button", { name: "Workout date" }))
+      .toHaveTextContent("2026-08-24");
+
+    await fireEvent.press(screen.getByRole("button", {
+      name: "Workout date",
+    }));
+    await fireEvent.press(screen.getByRole("button", {
+      name: "Select 2026-08-25",
+    }));
+    await fireEvent.press(screen.getByRole("button", {
+      name: "Apply Date",
+    }));
+
+    expect(screen.getByRole("button", { name: "Workout date" }))
+      .toHaveTextContent("2026-08-25");
+  });
+
   it("validates a malformed numeric correction before attempting a save", async () => {
     const props = await renderScreen();
     await screen.findByText("Bench press");

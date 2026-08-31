@@ -546,7 +546,7 @@ describe("starter activation", () => {
     await fireEvent.press(screen.getByRole("button", {
       name: "Select 2026-08-19",
     }));
-    await fireEvent.press(screen.getByRole("button", { name: "Confirm date" }));
+    await fireEvent.press(screen.getByRole("button", { name: "Apply Date" }));
     await fireEvent.press(screen.getByRole("radio", { name: "Rotation" }));
     await fireEvent.press(screen.getByRole("button", {
       name: "Move Back up",
@@ -717,7 +717,7 @@ describe("starter activation", () => {
     await fireEvent.press(screen.getByRole("button", {
       name: "Select 2026-08-20",
     }));
-    await fireEvent.press(screen.getByRole("button", { name: "Confirm date" }));
+    await fireEvent.press(screen.getByRole("button", { name: "Apply Date" }));
     await fireEvent.press(screen.getByRole("button", { name: "Activate plan" }));
     await fireEvent.press(screen.getAllByRole("button", {
       name: "Activate plan",
