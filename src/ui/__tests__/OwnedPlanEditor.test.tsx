@@ -20,42 +20,6 @@ import {
   getByGestureTestId,
 } from "react-native-gesture-handler/jest-utils";
 
-jest.mock("react-native-gesture-handler", () => {
-  const actual = jest.requireActual<
-    typeof import("react-native-gesture-handler")
-  >("react-native-gesture-handler");
-  const { View } = require("react-native") as typeof import("react-native");
-
-  return {
-    ...actual,
-    __esModule: true,
-    GestureHandlerRootView: View,
-  };
-});
-
-jest.mock("react-native-reanimated", () => {
-  const ReactModule = require("react") as typeof React;
-  const { View } = require("react-native") as typeof import("react-native");
-
-  return {
-    __esModule: true,
-    default: {
-      View,
-      createAnimatedComponent: <Component,>(component: Component) => component,
-    },
-    runOnJS: <Arguments extends readonly unknown[]>(
-      callback: (...args: Arguments) => void,
-    ) => callback,
-    useAnimatedStyle: (factory: () => object) => factory(),
-    useEvent: () => jest.fn(),
-    useSharedValue: <Value,>(initialValue: Value) => {
-      const shared = ReactModule.useRef({ value: initialValue });
-      return shared.current;
-    },
-    withTiming: <Value,>(value: Value) => value,
-  };
-});
-
 import type {
   OwnedPlanCommittedResult,
   OwnedPlanSnapshot,

@@ -14,12 +14,6 @@ import {
   GestureDetector,
   GestureHandlerRootView,
 } from "react-native-gesture-handler";
-import Animated, {
-  runOnJS as scheduleOnJavaScript,
-  useAnimatedStyle,
-  useSharedValue,
-  withTiming,
-} from "react-native-reanimated";
 
 import {
   FocusablePressable,
@@ -60,7 +54,45 @@ export type PlanEditorReorderPreview = Readonly<{
   rowHeight: number;
 }>;
 
+type ReanimatedModule = typeof import("react-native-reanimated");
+
 const REORDER_HOLD_MS = 550;
+const reanimated: ReanimatedModule | null =
+  process.env.JEST_WORKER_ID === undefined
+    ? require("react-native-reanimated") as ReanimatedModule
+    : null;
+const ReorderAnimatedView = reanimated?.default.View ?? View;
+const ReorderGestureRoot = process.env.JEST_WORKER_ID === undefined
+  ? GestureHandlerRootView
+  : View;
+
+function useReorderSharedValue<Value>(initialValue: Value) {
+  const fallback = React.useRef({ value: initialValue });
+  return reanimated === null
+    ? fallback.current
+    : reanimated.useSharedValue(initialValue);
+}
+
+function useReorderAnimatedStyle(
+  factory: () => Readonly<Record<string, unknown>>,
+  dependencies: unknown[],
+) {
+  return reanimated === null
+    ? factory()
+    : reanimated.useAnimatedStyle(factory, dependencies);
+}
+
+function scheduleOnJavaScript<Arguments extends unknown[]>(
+  callback: (...args: Arguments) => void,
+) {
+  return reanimated === null ? callback : reanimated.runOnJS(callback);
+}
+
+function animateTo(value: number, duration: number): number {
+  return reanimated === null
+    ? value
+    : reanimated.withTiming(value, { duration });
+}
 
 function targetPositionForDrag(
   position: number,
@@ -200,7 +232,7 @@ export function PlanEditorReorderableRow({
   );
   const [localPreview, setLocalPreview] =
     React.useState<PlanEditorReorderPreview | null>(null);
-  const translationY = useSharedValue(0);
+  const translationY = useReorderSharedValue(0);
   const border = tone === "card" ? colors.contentCardBorder : colors.divider;
   const text = tone === "card" ? colors.contentCardText : colors.textPrimary;
   const secondary = tone === "card"
@@ -289,7 +321,7 @@ export function PlanEditorReorderableRow({
       }
     })
     .onFinalize(() => {
-      translationY.value = withTiming(0, { duration: motion.setCommitMs });
+      translationY.value = animateTo(0, motion.setCommitMs);
       scheduleOnJavaScript(publishPreview)(null);
     }), [
     count,
@@ -302,13 +334,13 @@ export function PlanEditorReorderableRow({
     translationY,
     updatePreview,
   ]);
-  const rowStyle = useAnimatedStyle(() => ({
+  const rowStyle = useReorderAnimatedStyle(() => ({
     opacity: isHeld ? 0.92 : 1,
     transform: [{
       translateY: isHeld
         ? translationY.value
         : motion.positionTransitions
-          ? withTiming(neighborDisplacement, { duration: motion.setCommitMs })
+          ? animateTo(neighborDisplacement, motion.setCommitMs)
           : neighborDisplacement,
     }],
     zIndex: isHeld ? 1 : 0,
@@ -331,8 +363,8 @@ export function PlanEditorReorderableRow({
   }, []);
 
   return (
-    <GestureHandlerRootView style={styles.dragGestureRoot}>
-      <Animated.View
+    <ReorderGestureRoot style={styles.dragGestureRoot}>
+      <ReorderAnimatedView
         onLayout={recordRowHeight}
         style={[
           styles.reorderRow,
@@ -414,8 +446,8 @@ export function PlanEditorReorderableRow({
             />
           </View>
         </View>
-      </Animated.View>
-    </GestureHandlerRootView>
+      </ReorderAnimatedView>
+    </ReorderGestureRoot>
   );
 }
 
