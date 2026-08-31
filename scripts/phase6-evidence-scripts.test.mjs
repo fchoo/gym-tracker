@@ -1,6 +1,12 @@
 import assert from "node:assert/strict";
 import { createHash } from "node:crypto";
-import { readFileSync } from "node:fs";
+import {
+  mkdtempSync,
+  readFileSync,
+  rmSync,
+  writeFileSync,
+} from "node:fs";
+import os from "node:os";
 import path from "node:path";
 import test from "node:test";
 import { pathToFileURL } from "node:url";
@@ -328,10 +334,25 @@ test("Phase 6 N2 and N3 evidence proves reversible months and one native held dr
 test("Phase 6 Samsung checklist is canonical, exact-byte, and observation-only", async () => {
   const {
     buildPhase6AttendedChecklist,
+    createPhase6AttendedRecord,
+    parsePhase6AttendedChecklistArguments,
     serializePhase6AttendedChecklist,
+    validatePhase6AttendedRecordBytes,
     validatePhase6AttendedChecklist,
   } = await load("scripts/generate-phase6-attended-checklist.mjs");
   const candidate = fixtureCandidate();
+  const evidenceDirectory = mkdtempSync(path.join(os.tmpdir(), "phase6-n4-test-"));
+  test.after(() => rmSync(evidenceDirectory, { force: true, recursive: true }));
+  const attachmentDigests = Object.fromEntries([
+    "N4-01", "N4-02", "N4-03", "N4-04",
+  ].map((id) => {
+    const bytes = Buffer.concat([
+      Buffer.from("89504e470d0a1a0a", "hex"),
+      Buffer.from(id),
+    ]);
+    writeFileSync(path.join(evidenceDirectory, `${id}.png`), bytes);
+    return [id, createHash("sha256").update(bytes).digest("hex")];
+  }));
   const device = {
     role: "samsung-physical",
     model: "SM-S916B",
@@ -356,6 +377,156 @@ test("Phase 6 Samsung checklist is canonical, exact-byte, and observation-only",
     ...checklist,
     release_authorization: "approved",
   }, { candidate, device }), /release|privacy|identity|checklist/u);
+  assert.throws(() => validatePhase6AttendedChecklist({
+    ...checklist,
+    device: { ...device, installed_apk_sha256: SHA_A },
+  }, {
+    candidate,
+    device: { ...device, installed_apk_sha256: SHA_A },
+  }), /installed|candidate|identity/u);
+  assert.throws(() => validatePhase6AttendedChecklist({
+    ...checklist,
+    private_note: "not allowed",
+  }, { candidate, device }), /missing|reordered|extra|privacy/u);
+  assert.throws(() => validatePhase6AttendedChecklist({
+    ...checklist,
+    device: { ...device, employee_id: "private" },
+  }, { candidate, device: { ...device, employee_id: "private" } }),
+  /missing|reordered|extra|privacy/u);
+  assert.throws(() => validatePhase6AttendedChecklist({
+    ...checklist,
+    rows: checklist.rows.map((row, index) =>
+      index === 0 ? { ...row, note: "private" } : row),
+  }, { candidate, device }), /missing|reordered|extra|privacy/u);
+
+  const checklistBytes = serializePhase6AttendedChecklist(checklist);
+  const observations = {
+    schema_version: 1,
+    suite: "phase6-attended-observations",
+    candidate_id: candidate.manifest.candidate_id,
+    manifest_sha256: candidate.manifest_sha256,
+    device,
+    rows: checklist.rows.map(({ id }, index) => ({
+      id,
+      status: index === 3 ? "failed" : "passed",
+      attachment_sha256: attachmentDigests[id],
+    })),
+  };
+  const observationsBytes = serializePhase6AttendedChecklist(observations);
+  const record = createPhase6AttendedRecord({
+    candidate,
+    checklist,
+    checklistBytes,
+    observations,
+    observationsBytes,
+    evidenceDirectory,
+    recordedAt: "2026-08-31T15:00:00.000Z",
+  });
+  const recordBytes = serializePhase6AttendedChecklist(record);
+
+  assert.equal(record.status, "failed");
+  assert.equal(record.approval_status, "evidence_pending");
+  assert.deepEqual(record.rows.map(({ id, status, attachment_sha256 }) => ({
+    id, status, attachment_sha256,
+  })), observations.rows);
+  assert.doesNotThrow(() => validatePhase6AttendedRecordBytes({
+    candidate,
+    checklistBytes,
+    observationsBytes,
+    recordBytes,
+    evidenceDirectory,
+  }));
+  const passedObservations = {
+    ...observations,
+    rows: observations.rows.map((row) => ({ ...row, status: "passed" })),
+  };
+  assert.equal(createPhase6AttendedRecord({
+    candidate,
+    checklist,
+    checklistBytes,
+    observations: passedObservations,
+    observationsBytes: serializePhase6AttendedChecklist(passedObservations),
+    evidenceDirectory,
+    recordedAt: "2026-08-31T15:00:00.000Z",
+  }).status, "passed");
+  for (const mutation of [
+    { ...observations, candidate_id: "substituted" },
+    { ...observations, manifest_sha256: SHA_B },
+    { ...observations, device: { ...device, model: "other" } },
+    { ...observations, device: { ...device, employee_id: "private" } },
+    { ...observations, rows: observations.rows.slice(1) },
+    {
+      ...observations,
+      rows: observations.rows.map((row, index) =>
+        index === 0 ? { ...row, attachment_sha256: SHA_A } : row),
+    },
+    {
+      ...observations,
+      rows: observations.rows.map((row, index) =>
+        index === 0 ? { ...row, note: "private" } : row),
+    },
+    {
+      ...observations,
+      rows: observations.rows.map((row, index) =>
+        index === 0 ? { ...row, status: "pending_human" } : row),
+    },
+    { ...observations, release_authorization: "approved" },
+  ]) {
+    assert.throws(() => createPhase6AttendedRecord({
+      candidate,
+      checklist,
+      checklistBytes,
+      observations: mutation,
+      observationsBytes: serializePhase6AttendedChecklist(mutation),
+      evidenceDirectory,
+      recordedAt: "2026-08-31T15:00:00.000Z",
+    }), /Phase 6 attended|identity|row|privacy|release/u);
+  }
+
+  assert.deepEqual(parsePhase6AttendedChecklistArguments([
+    "prepare",
+    "--bundle-dir", "artifacts/release-candidate",
+    "--manifest-sha256", SHA_A,
+    "--serial", "device-1",
+    "--output", "artifacts/release-candidate/evidence/n4-pending.json",
+  ]), {
+    mode: "prepare",
+    bundleDirectory: "artifacts/release-candidate",
+    expectedManifestSha256: SHA_A,
+    serial: "device-1",
+    output: "artifacts/release-candidate/evidence/n4-pending.json",
+  });
+  assert.deepEqual(parsePhase6AttendedChecklistArguments([
+    "record",
+    "--bundle-dir", "artifacts/release-candidate",
+    "--manifest-sha256", SHA_A,
+    "--checklist", "pending.json",
+    "--observations", "observations.json",
+    "--evidence-dir", "attachments",
+    "--output", "artifacts/release-candidate/evidence/n4-record.json",
+  ]).mode, "record");
+  assert.deepEqual(parsePhase6AttendedChecklistArguments([
+    "verify",
+    "--bundle-dir", "artifacts/release-candidate",
+    "--manifest-sha256", SHA_A,
+    "--checklist", "pending.json",
+    "--observations", "observations.json",
+    "--evidence-dir", "attachments",
+    "--record", "record.json",
+  ]).mode, "verify");
+  for (const invalid of [
+    [],
+    ["unknown"],
+    ["prepare", "--bundle-dir", "bundle"],
+    ["verify", "--bundle-dir", "bundle", "--manifest-sha256", "bad",
+      "--checklist", "pending.json", "--observations", "observations.json",
+      "--record", "record.json"],
+  ]) {
+    assert.throws(
+      () => parsePhase6AttendedChecklistArguments(invalid),
+      /Phase 6 attended|argument|manifest/u,
+    );
+  }
 });
 
 test("Phase 6 workflow gates the exact production candidate evidence matrix", () => {
@@ -379,6 +550,18 @@ test("Phase 6 workflow gates the exact production candidate evidence matrix", ()
   assert.equal(
     packageJson.scripts["test:evidence:phase6"],
     "node --test scripts/phase6-evidence-scripts.test.mjs",
+  );
+  assert.equal(
+    packageJson.scripts["prepare:attended:phase6"],
+    "node scripts/generate-phase6-attended-checklist.mjs prepare",
+  );
+  assert.equal(
+    packageJson.scripts["record:attended:phase6"],
+    "node scripts/generate-phase6-attended-checklist.mjs record",
+  );
+  assert.equal(
+    packageJson.scripts["verify:attended:phase6"],
+    "node scripts/generate-phase6-attended-checklist.mjs verify",
   );
   assert.ok(workflow.includes("npm run test:evidence:phase6"));
   assert.ok(workflow.includes(exactRunner));
