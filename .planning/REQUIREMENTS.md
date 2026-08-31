@@ -79,6 +79,19 @@
 - [x] **PROG-10**: Recommendations never change future targets without explicit acceptance, and stale recommendations become superseded rather than overwriting manual edits.
 - [x] **PROG-11**: Pending recommendations appear quietly on Today and in Progress until accepted, rejected, invalidated, or superseded.
 
+### Material 3 UX Remediation
+
+- [ ] **UX-01**: Library exercise filters use compact Material 3 filter-chip behavior with an immediately visible selected state in System, Light, and Dark modes; Favorite is a standalone one-tap chip and the full taxonomy remains available without obscuring the result list.
+- [ ] **UX-02**: Library plan search, Library exercise search, Progress exercise search, and owned-plan exercise picking use one shared Material 3 Search component with a leading search icon, integrated clear action, keyboard/IME behavior, and accessible busy, empty, and result states.
+- [ ] **UX-03**: The root Calendar always renders a complete six-row month grid with subdued adjacent-month dates, preserves civil-date and timezone semantics, and supports horizontal previous/next month swipes with labelled button alternatives.
+- [ ] **UX-04**: Plan days and exercises support touch-and-hold continuous drag reordering with a 48dp handle, visible movement feedback, and accessible up/down fallback actions; primary row content stays on one horizontal line at normal text scale and remains legible at 200% text.
+- [ ] **UX-05**: Every in-app date field uses a consistent Material 3/Google Calendar-inspired dialog with clear selected-date hierarchy, a complete bounded calendar grid, month swipe plus labelled buttons, explicit Cancel/Confirm behavior, and unchanged LocalDate correctness.
+- [ ] **UX-06**: Library refresh is performed through pull-to-refresh on the owning list; the permanent Refresh Library button is removed, failed refresh preserves current results and filters, and a labelled retry remains available only in the failure state.
+- [ ] **UX-07**: Favorite controls use a filled approved-green star plus accessible selected state when active and an outlined star when inactive, without relying on color alone.
+- [ ] **UX-08**: Exercise browse and Favorite/Recent rows omit source namespace, revision, license, and attribution while Exercise Detail retains complete provenance.
+- [ ] **UX-09**: Root navigation and shared dialogs remain readable and operable at Android 200% font scale without clipped labels; Today exposes one unambiguous route to secondary tools/settings instead of duplicate More affordances.
+- [ ] **UX-10**: Progress loads its normal empty or populated view on the production runtime, Retry recovers from a transient failure, and any fix preserves SQLite source authority and rebuildable projections.
+
 ### Data Portability and Release
 
 - [x] **DATA-01**: Owner can create a versioned logical backup containing user-owned plans, exercises, sessions, corrections, void state, settings, and content references without raw database replacement.
@@ -189,6 +202,16 @@
 | PROG-09 | Phase 4 | Complete |
 | PROG-10 | Phase 4 | Complete |
 | PROG-11 | Phase 4 | Complete |
+| UX-01 | Phase 6 | Pending |
+| UX-02 | Phase 6 | Pending |
+| UX-03 | Phase 6 | Pending |
+| UX-04 | Phase 6 | Pending |
+| UX-05 | Phase 6 | Pending |
+| UX-06 | Phase 6 | Pending |
+| UX-07 | Phase 6 | Pending |
+| UX-08 | Phase 6 | Pending |
+| UX-09 | Phase 6 | Pending |
+| UX-10 | Phase 6 | Pending |
 | DATA-01 | Phase 5 | Complete |
 | DATA-02 | Phase 5 | Complete |
 | DATA-03 | Phase 5 | Complete |
@@ -205,10 +228,10 @@
 
 **Coverage:**
 
-- v1 requirements: 72 total
-- Mapped to phases: 72
+- v1 requirements: 82 total
+- Mapped to phases: 82
 - Unmapped: 0 ✓
 
 ---
 *Requirements defined: 2026-08-16*
-*Last updated: 2026-08-26 after Phase 2–4 verification routing reconciliation*
+*Last updated: 2026-08-31 for Phase 6 Material 3 UX remediation*
