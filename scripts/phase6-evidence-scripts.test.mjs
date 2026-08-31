@@ -159,8 +159,14 @@ test("Phase 6 flow performs horizontal swipe and long-press displacement checks"
   const fixture = readFileSync(path.join(
     projectRoot, "app/__phase6-gesture-smoke.tsx",
   ), "utf8");
+  const commands = flow.slice(flow.indexOf("---\n") + 4);
+  const deepLink = "openLink: gymtracker-devtest://__phase6-gesture-smoke";
   assert.match(flow, /^appId: com\.fchoo\.gymtracker\.devtest$/mu);
-  assert.ok(flow.includes("openLink: gymtracker-devtest://__phase6-gesture-smoke"));
+  assert.match(commands, new RegExp(
+    `^- clearState\\n- ${deepLink.replace(/[.*+?^${}()|[\]\\]/gu, "\\$&")}\\n`,
+    "u",
+  ));
+  assert.doesNotMatch(commands.slice(0, commands.indexOf(deepLink)), /launchApp/u);
   assert.match(flow, /swipe:[\s\S]*start: 80%, 50%[\s\S]*end: 20%, 50%/u);
   assert.match(flow, /assertVisible: "Horizontal swipe complete"/u);
   assert.match(flow, /longPressOn:[\s\S]*id: drag-/u);
