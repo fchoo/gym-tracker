@@ -4,11 +4,11 @@ milestone: v1.0
 current_phase: 6
 current_phase_name: Material 3 UX Remediation
 status: planning
-stopped_at: Phase 6 context gathered; UI design contract next
-last_updated: "2026-08-31T06:07:29.352Z"
+stopped_at: Phase 6 UI-SPEC approved
+last_updated: "2026-08-31T06:47:35.579Z"
 last_activity: 2026-08-31
 last_activity_desc: Phase 6 execution resumed (wave continue)
-state_head: deb7a601a588019a2b55e3ecd915c2ea66116ef5
+state_head: 658be3020750444ec3547cac6d973fca5aed8418
 progress:
   total_phases: 6
   completed_phases: 4
@@ -306,7 +306,7 @@ Full decisions live in `.planning/PROJECT.md`.
 
 ## Session Continuity
 
-Last session: 2026-08-31T06:07:02.610Z
-Stopped at: Phase 6 context gathered; UI design contract next
-Resume file: .planning/phases/06-material-3-ux-remediation/06-CONTEXT.md
+Last session: 2026-08-31T06:47:35.443Z
+Stopped at: Phase 6 UI-SPEC approved
+Resume file: .planning/phases/06-material-3-ux-remediation/06-UI-SPEC.md
 Next action: Generate and verify Phase 6 UI-SPEC, then plan and execute the remediation
