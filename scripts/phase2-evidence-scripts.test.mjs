@@ -2688,6 +2688,10 @@ test("built-in custom copy preserves data but resets system and root navigation 
     flow,
     /- tapOn: "Go back"\n- repeat:\n    times: 4\n    while:\n      notVisible: "Search exercises"\n    commands:\n      - swipe:\n          start: 50%, 25%\n          end: 50%, 75%\n          duration: 300\n- assertVisible: "Search exercises"/u,
   );
+  assert.match(
+    flow,
+    /- tapOn: "Clear search exercises"\n- hideKeyboard\n- tapOn: "Today"\n- assertVisible: "Today"/u,
+  );
 });
 
 test("Library exercise flow waits for trusted Today after process restart", async () => {

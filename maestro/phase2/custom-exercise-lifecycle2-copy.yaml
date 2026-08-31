@@ -57,6 +57,7 @@ tags:
           duration: 300
 - assertVisible: "Search exercises"
 - tapOn: "Clear search exercises"
+- hideKeyboard
 - tapOn: "Today"
 - assertVisible: "Today"
 - stopApp
