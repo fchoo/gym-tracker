@@ -54,6 +54,7 @@ const MONTH_NAMES = [
 const WEEKDAYS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"] as const;
 const CALENDAR_CELL_COUNT = 42;
 const MONTH_SWIPE_COMPLETE_DISTANCE = 72;
+const LAST_LOCAL_DATE = parseLocalDate("9999-12-31");
 const WEEKDAY_INDEX = {
   Sunday: 0,
   Monday: 1,
@@ -80,12 +81,15 @@ function monthStart(value: LocalDate): LocalDate {
   return parseLocalDate(value.slice(0, 8) + "01");
 }
 
-function nextMonth(value: LocalDate, direction: -1 | 1): LocalDate {
+function nextMonth(value: LocalDate, direction: -1 | 1): LocalDate | null {
   const year = Number(value.slice(0, 4));
   const month = Number(value.slice(5, 7));
   const total = year * 12 + month - 1 + direction;
   const nextYear = Math.floor(total / 12);
   const nextMonthNumber = (total % 12) + 1;
+  if (nextYear < 1 || nextYear > 9_999) {
+    return null;
+  }
   return parseLocalDate(
     nextYear.toString().padStart(4, "0")
       + "-"
@@ -95,7 +99,14 @@ function nextMonth(value: LocalDate, direction: -1 | 1): LocalDate {
 }
 
 function daysInMonth(value: LocalDate): number {
-  return Number(addLocalDays(nextMonth(value, 1), -1).slice(8, 10));
+  const year = Number(value.slice(0, 4));
+  const month = Number(value.slice(5, 7));
+  if (month === 2) {
+    return year % 4 === 0 && (year % 100 !== 0 || year % 400 === 0)
+      ? 29
+      : 28;
+  }
+  return [4, 6, 9, 11].includes(month) ? 30 : 31;
 }
 
 function monthLabel(value: LocalDate): string {
@@ -121,6 +132,27 @@ export function calendarMonthDirectionForHorizontalSwipe(
     return -1;
   }
   return null;
+}
+
+function completeGridDates(firstOfMonth: LocalDate): LocalDate[] {
+  let firstGridDate: LocalDate;
+  try {
+    firstGridDate = addLocalDays(
+      firstOfMonth,
+      -WEEKDAY_INDEX[weekdayForLocalDate(firstOfMonth)],
+    );
+  } catch {
+    return Array.from({ length: CALENDAR_CELL_COUNT }, (_, offset) =>
+      addLocalDays(firstOfMonth, offset));
+  }
+  try {
+    return Array.from({ length: CALENDAR_CELL_COUNT }, (_, offset) =>
+      addLocalDays(firstGridDate, offset));
+  } catch {
+    const lastGridDate = addLocalDays(LAST_LOCAL_DATE, -(CALENDAR_CELL_COUNT - 1));
+    return Array.from({ length: CALENDAR_CELL_COUNT }, (_, offset) =>
+      addLocalDays(lastGridDate, offset));
+  }
 }
 
 function stateLabel(state: CalendarDayState): string {
@@ -183,8 +215,7 @@ function CalendarGrid({
     () => new Map(days.map((day) => [day.localDate, day.states])),
     [days],
   );
-  const firstWeekday = WEEKDAY_INDEX[weekdayForLocalDate(month)];
-  const firstCellDate = addLocalDays(month, -firstWeekday);
+  const gridDates = useMemo(() => completeGridDates(month), [month]);
   const horizontalMonthGesture = useMemo(
     () => Gesture.Pan()
       .activeOffsetX([-12, 12])
@@ -200,8 +231,7 @@ function CalendarGrid({
       }),
     [onChangeMonth],
   );
-  const cells = Array.from({ length: CALENDAR_CELL_COUNT }, (_, index) => {
-    const date = addLocalDays(firstCellDate, index);
+  const cells = gridDates.map((date) => {
     const states = statesByDate.get(date) ?? [];
     const selected = date === selectedDate;
     const adjacent = monthStart(date) !== month;
@@ -376,6 +406,9 @@ export function CalendarScreen({
 
   const changeMonth = (direction: -1 | 1) => {
     const next = nextMonth(month, direction);
+    if (next === null) {
+      return;
+    }
     const selectedDay = Math.min(Number(selectedDate.slice(8, 10)), daysInMonth(next));
     setMonth(next);
     setSelectedDate(parseLocalDate(next.slice(0, 8) + selectedDay.toString().padStart(2, "0")));
@@ -414,18 +447,34 @@ export function CalendarScreen({
     );
   }
 
+  const previousMonth = nextMonth(snapshot.month, -1);
+  const followingMonth = nextMonth(snapshot.month, 1);
   const primary = (
     <>
       <ScreenHeader title="Calendar" />
       <View style={styles.monthHeader}>
-        <IconAction accessibilityLabel={"Show " + monthLabel(nextMonth(snapshot.month, -1))} icon="back" onPress={() => changeMonth(-1)} />
+        <IconAction
+          accessibilityLabel={previousMonth === null
+            ? "Previous month unavailable"
+            : "Show " + monthLabel(previousMonth)}
+          disabled={previousMonth === null}
+          icon="back"
+          onPress={() => changeMonth(-1)}
+        />
         <Text
           accessibilityRole="header"
           style={[typeScale.sectionTitle as TextStyle, { color: colors.textPrimary }]}
         >
           {monthLabel(snapshot.month)}
         </Text>
-        <IconAction accessibilityLabel={"Show " + monthLabel(nextMonth(snapshot.month, 1))} icon="forward" onPress={() => changeMonth(1)} />
+        <IconAction
+          accessibilityLabel={followingMonth === null
+            ? "Next month unavailable"
+            : "Show " + monthLabel(followingMonth)}
+          disabled={followingMonth === null}
+          icon="forward"
+          onPress={() => changeMonth(1)}
+        />
       </View>
       <CalendarGrid
         days={snapshot.days}

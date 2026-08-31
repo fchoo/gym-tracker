@@ -212,6 +212,66 @@ describe("CalendarScreen", () => {
     expect(calendarMonthDirectionForHorizontalSwipe(24)).toBeNull();
   });
 
+  it("keeps a complete civil grid within the supported LocalDate range", async () => {
+    const loadCalendarMonth = jest.fn(async (input: Readonly<{
+      month: string;
+      selectedDate: string;
+    }>) => month({
+      month: input.month as CalendarMonth["month"],
+      selectedDate: input.selectedDate as CalendarMonth["selectedDate"],
+      days: [],
+      sessions: [],
+    }));
+    await renderCalendar({
+      initialDate: "0001-01-01",
+      loadCalendarMonth,
+      today: "0001-01-01",
+    });
+
+    await screen.findByText("January 0001");
+    expect(screen.getAllByTestId(/^calendar-day-/u)).toHaveLength(42);
+    expect(screen.getByRole("button", {
+      name: "Previous month unavailable",
+    })).toHaveProp("accessibilityState", expect.objectContaining({
+      disabled: true,
+    }));
+    expect(screen.getByRole("button", {
+      name: "Show February 0001",
+    })).toHaveProp("accessibilityState", expect.objectContaining({
+      disabled: false,
+    }));
+  });
+
+  it("keeps a complete civil grid at the upper LocalDate boundary", async () => {
+    const loadCalendarMonth = jest.fn(async (input: Readonly<{
+      month: string;
+      selectedDate: string;
+    }>) => month({
+      month: input.month as CalendarMonth["month"],
+      selectedDate: input.selectedDate as CalendarMonth["selectedDate"],
+      days: [],
+      sessions: [],
+    }));
+    await renderCalendar({
+      initialDate: "9999-12-31",
+      loadCalendarMonth,
+      today: "9999-12-31",
+    });
+
+    await screen.findByText("December 9999");
+    expect(screen.getAllByTestId(/^calendar-day-/u)).toHaveLength(42);
+    expect(screen.getByRole("button", {
+      name: "Show November 9999",
+    })).toHaveProp("accessibilityState", expect.objectContaining({
+      disabled: false,
+    }));
+    expect(screen.getByRole("button", {
+      name: "Next month unavailable",
+    })).toHaveProp("accessibilityState", expect.objectContaining({
+      disabled: true,
+    }));
+  });
+
   it("renders retryable loading and error states without erasing the current grid", async () => {
     let attempt = 0;
     const loadCalendarMonth = jest.fn(async (): Promise<CalendarMonth> => {
