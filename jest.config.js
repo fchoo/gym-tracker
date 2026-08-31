@@ -1,6 +1,7 @@
 const shared = {
   moduleFileExtensions: ["ts", "tsx", "js", "jsx", "json"],
   roots: ["<rootDir>/app", "<rootDir>/src", "<rootDir>/tests"],
+  setupFilesAfterEnv: ["<rootDir>/jest.setup.js"],
   testPathIgnorePatterns: ["/node_modules/", "/android/", "/ios/"],
 };
 
@@ -41,7 +42,6 @@ module.exports = {
       ...shared,
       displayName: "components",
       preset: "jest-expo",
-      setupFilesAfterEnv: ["<rootDir>/jest.components.setup.js"],
       testEnvironment: "node",
       testMatch: [
         "<rootDir>/app/**/*.test.ts",
