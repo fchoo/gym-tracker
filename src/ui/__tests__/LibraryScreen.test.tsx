@@ -506,6 +506,11 @@ describe("LibraryScreen Material 3 discovery controls", () => {
     expect(screen.queryByRole("checkbox", {
       name: "Equipment: Barbell selected",
     })).not.toBeOnTheScreen();
+    await waitFor(() => expect(searchExercises).toHaveBeenLastCalledWith({
+      query: "",
+      cursor: null,
+      filters: { favorite: [true] },
+    }));
   });
 });
 

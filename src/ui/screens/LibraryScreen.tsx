@@ -316,9 +316,14 @@ function removeFilterChip(
   if (current === undefined) {
     return filters;
   }
+  const next = current.filter((value) => value !== chip.value);
+  if (next.length === 0) {
+    const { [chip.key]: _removed, ...remaining } = filters;
+    return remaining;
+  }
   return {
     ...filters,
-    [chip.key]: current.filter((value) => value !== chip.value),
+    [chip.key]: next,
   };
 }
 
@@ -330,9 +335,14 @@ function removeStarterFilterChip(
   if (current === undefined) {
     return filters;
   }
+  const next = current.filter((value) => value !== chip.value);
+  if (next.length === 0) {
+    const { [chip.key]: _removed, ...remaining } = filters;
+    return remaining;
+  }
   return {
     ...filters,
-    [chip.key]: current.filter((value) => value !== chip.value),
+    [chip.key]: next,
   };
 }
 
