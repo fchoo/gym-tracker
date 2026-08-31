@@ -383,3 +383,32 @@ test("Phase 6 workflow gates the exact production candidate evidence matrix", ()
   assert.ok(workflow.includes("npm run test:evidence:phase6"));
   assert.ok(workflow.includes(exactRunner));
 });
+
+test("Phase 6 plan hashes the canonical release-candidate manifest bytes", () => {
+  const plan = readFileSync(
+    path.join(
+      projectRoot,
+      ".planning/phases/06-material-3-ux-remediation/06-09-PLAN.md",
+    ),
+    "utf8",
+  );
+  const validation = readFileSync(
+    path.join(
+      projectRoot,
+      ".planning/phases/06-material-3-ux-remediation/06-VALIDATION.md",
+    ),
+    "utf8",
+  );
+
+  for (const source of [plan, validation]) {
+    assert.match(
+      source,
+      /shasum -a 256 artifacts\/release-candidate\/release-candidate\.json/u,
+    );
+    assert.doesNotMatch(source, /artifacts\/release-candidate\/build\.json/u);
+    assert.doesNotMatch(
+      source,
+      /require\(['"]\.\/artifacts\/release-candidate/u,
+    );
+  }
+});
