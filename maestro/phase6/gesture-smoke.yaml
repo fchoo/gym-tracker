@@ -5,10 +5,7 @@ tags:
   - generated-native
   - gestures
 ---
-- launchApp:
-    clearState: true
-    permissions:
-      notifications: deny
+- clearState
 - openLink: gymtracker-devtest://__phase6-gesture-smoke
 - assertVisible: "Phase 6 gesture smoke"
 - swipe:
