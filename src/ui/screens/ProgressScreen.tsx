@@ -6,7 +6,6 @@ import React, {
 import {
   StyleSheet,
   Text,
-  TextInput,
   View,
   type TextStyle,
 } from "react-native";
@@ -28,8 +27,8 @@ import {
   ContentCard,
   EmptyState,
   FocusablePressable,
-  IconAction,
   InlineNotice,
+  M3SearchField,
   PrimaryAction,
   ScreenHeader,
   SectionHeader,
@@ -520,7 +519,7 @@ function ExerciseProgress({
   const { colors } = useAppTheme();
   const [query, setQuery] = useState("");
   const exercises = useMemo(() => projection.exercises
-    .toSorted((left, right) => right.localDate.localeCompare(left.localDate))
+    .slice().sort((left, right) => right.localDate.localeCompare(left.localDate))
     .filter((exercise) => exerciseLabel(exercise.exerciseId).toLocaleLowerCase()
       .includes(query.trim().toLocaleLowerCase())), [projection.exercises, query]);
 
@@ -530,31 +529,19 @@ function ExerciseProgress({
         supportingText="Comparable working-set evidence, ordered by recent training."
         title="Exercise progress"
       />
-      <View style={styles.searchGroup}>
-        <Text style={[typeScale.label as TextStyle, { color: colors.textPrimary }]}>Search exercises</Text>
-        <View style={styles.searchControls}>
-          <TextInput
-            accessibilityLabel="Search exercises"
-            autoCapitalize="none"
-            onChangeText={setQuery}
-            placeholder="Search exercises"
-            placeholderTextColor={colors.textSecondary}
-            returnKeyType="search"
-            style={[styles.searchInput, typeScale.body as TextStyle, {
-              backgroundColor: colors.surface,
-              borderColor: colors.divider,
-              color: colors.textPrimary,
-            }]}
-            value={query}
-          />
-          <IconAction
-            accessibilityLabel="Clear search exercises"
-            disabled={query.length === 0}
-            icon="clear"
-            onPress={() => setQuery("")}
-          />
-        </View>
-      </View>
+      <M3SearchField
+        label="Search exercises"
+        onChangeText={setQuery}
+        onSearch={() => setQuery((value) => value.trim())}
+        resultCount={exercises.length}
+        state={query.trim().length === 0 ? "results" : exercises.length === 0 ? "empty" : "results"}
+        stateSlots={{
+          empty: null,
+          results: null,
+        }}
+        testID="progress-exercise-search"
+        value={query}
+      />
       {exercises.length === 0 ? (
         <EmptyState
           body="Try a different exercise name."
@@ -781,9 +768,6 @@ const styles = StyleSheet.create({
   recordRow: { borderRadius: radius.standard, borderWidth: StyleSheet.hairlineWidth, gap: space[1], minHeight: 56, padding: space[2] },
   records: { gap: space[2] },
   screen: { gap: space[4], maxWidth: 960, width: "100%" },
-  searchControls: { alignItems: "center", flexDirection: "row", gap: space[2] },
-  searchGroup: { gap: space[2] },
-  searchInput: { borderRadius: radius.standard, borderWidth: StyleSheet.hairlineWidth, flex: 1, minHeight: 48, paddingHorizontal: space[4], paddingVertical: space[2] },
   section: { gap: space[2] },
   sourceActions: { flexDirection: "row", flexWrap: "wrap", gap: space[2] },
   summaryRow: { gap: space[2] },
