@@ -252,12 +252,13 @@ describe("LibraryScreen section state", () => {
     expect(screen.getByRole("button", { name: "Create my own" }))
       .toBeOnTheScreen();
 
-    const tree = rendered.toJSON();
-    const serialized = JSON.stringify(tree);
-    expect(serialized.indexOf("Active Plan"))
-      .toBeLessThan(serialized.indexOf("My Plans"));
-    expect(serialized.indexOf("My Plans"))
-      .toBeLessThan(serialized.indexOf("Starter Plans"));
+    const sectionHeaders = screen.getAllByRole("header").map(
+      ({ props }) => props.children,
+    );
+    expect(sectionHeaders.indexOf("Active Plan"))
+      .toBeLessThan(sectionHeaders.indexOf("My Plans"));
+    expect(sectionHeaders.indexOf("My Plans"))
+      .toBeLessThan(sectionHeaders.indexOf("Starter Plans"));
     expect(screen.getByText("Choose a starter plan")).toBeOnTheScreen();
     expect(screen.getByText("No personal plans yet")).toBeOnTheScreen();
     expect(screen.getByText("Full Body Foundation")).toBeOnTheScreen();
@@ -328,7 +329,7 @@ describe("LibraryScreen section state", () => {
     expect(screen.getByTestId("library-screen-scroll"))
       .not.toHaveProp("contentOffset");
     await fireEvent.changeText(exerciseSearch, "press");
-    await fireEvent.press(screen.getByRole("button", { name: "Filter" }));
+    await fireEvent.press(screen.getByRole("checkbox", { name: "Filters" }));
     await fireEvent.press(screen.getByRole("checkbox", {
       name: "Equipment: Barbell",
     }));
@@ -341,8 +342,8 @@ describe("LibraryScreen section state", () => {
     await fireEvent.press(screen.getByRole("tab", { name: "Exercises" }));
 
     expect(await screen.findByDisplayValue("press")).toBeOnTheScreen();
-    expect(screen.getByRole("button", {
-      name: "Remove Equipment: Barbell",
+    expect(screen.getByRole("checkbox", {
+      name: "Equipment: Barbell selected",
     })).toBeOnTheScreen();
     expect(
       (await screen.findByRole("button", {
@@ -366,14 +367,145 @@ describe("LibraryScreen section state", () => {
 
     expect(await screen.findByLabelText("Search exercises"))
       .toHaveProp("value", "");
-    expect(screen.queryByRole("button", {
-      name: "Remove Equipment: Barbell",
+    expect(screen.queryByRole("checkbox", {
+      name: "Equipment: Barbell selected",
     })).not.toBeOnTheScreen();
     expect(screen.getByRole("tab", { name: "Exercises" }))
       .toHaveProp("accessibilityState", expect.objectContaining({
         selected: true,
       }));
     expect(loadLibrary).toHaveBeenCalledTimes(2);
+  });
+});
+
+describe("LibraryScreen Material 3 discovery controls", () => {
+  it("uses shared Search state for zero, one, and many Plan and Exercise results", async () => {
+    const oneExercise = exercise({
+      canonicalName: "One Press",
+    });
+    const manyExercises = [
+      exercise({
+        canonicalName: "Many Bench Press",
+      }),
+      exercise({
+        exerciseId: "exercise-many-row",
+        canonicalName: "Many Cable Row",
+      }),
+    ];
+    const searchExercises = jest.fn(async (input: {
+      query: string;
+      filters?: Readonly<{ favorite?: readonly boolean[] }>;
+    }) => {
+      if (input.filters?.favorite?.includes(true)) {
+        return { state: "page" as const, items: [], nextCursor: null };
+      }
+      const items = input.query === "one"
+        ? [oneExercise]
+        : input.query === "many"
+          ? manyExercises
+          : [];
+      return { state: "page" as const, items, nextCursor: null };
+    });
+    await renderLibrary({
+      loadLibrary: jest.fn(async () => snapshot()),
+      searchExercises,
+      setSection: jest.fn(async (
+        section: LibrarySectionPreference["section"],
+        revision: number,
+      ) => ({ section, revision: revision + 1 })),
+    });
+
+    const plansSearch = await screen.findByLabelText("Search plans");
+    expect(screen.getByTestId("library-search-plans")).toBeOnTheScreen();
+    await fireEvent.changeText(plansSearch, "missing");
+    expect(await screen.findByLabelText("No Search plans results"))
+      .toBeOnTheScreen();
+    expect(screen.getByText("No plans match")).toBeOnTheScreen();
+    await fireEvent.changeText(plansSearch, "full");
+    expect(await screen.findByLabelText("1 Search plans result"))
+      .toBeOnTheScreen();
+    await fireEvent.changeText(plansSearch, "l");
+    expect(await screen.findByLabelText("2 Search plans results"))
+      .toBeOnTheScreen();
+    await fireEvent.press(screen.getByRole("button", {
+      name: "Clear search plans",
+    }));
+    expect(screen.getByLabelText("Search plans")).toHaveProp("value", "");
+
+    await fireEvent.press(screen.getByRole("tab", { name: "Exercises" }));
+    const exercisesSearch = await screen.findByLabelText("Search exercises");
+    expect(screen.getByTestId("library-search-exercises")).toBeOnTheScreen();
+    await fireEvent.changeText(exercisesSearch, "zero");
+    expect(await screen.findByLabelText("No Search exercises results"))
+      .toBeOnTheScreen();
+    expect(screen.getByText("No exercises match")).toBeOnTheScreen();
+    await fireEvent.changeText(exercisesSearch, "one");
+    expect(await screen.findByLabelText("1 Search exercises result"))
+      .toBeOnTheScreen();
+    await fireEvent.changeText(exercisesSearch, "many");
+    expect(await screen.findByLabelText("2 Search exercises results"))
+      .toBeOnTheScreen();
+  });
+
+  it("uses responsive selected chips without an inactive filter summary", async () => {
+    const searchExercises = jest.fn(async () => ({
+      state: "page" as const,
+      items: [],
+      nextCursor: null,
+    }));
+    await renderLibrary({
+      loadLibrary: jest.fn(async () => ({
+        ...snapshot("exercises"),
+        exerciseFilterOptions: {
+          exerciseTypes: ["strength"],
+          muscles: ["chest"],
+          equipment: ["barbell"],
+        },
+      })),
+      searchExercises,
+    });
+
+    await screen.findByLabelText("Search exercises");
+    expect(screen.queryByText("No filters selected")).not.toBeOnTheScreen();
+    expect(screen.queryByText(/filter selected/u)).not.toBeOnTheScreen();
+
+    const favorite = screen.getByRole("checkbox", { name: "Favorite" });
+    expect(favorite).toHaveStyle({ minHeight: 48, minWidth: 48 });
+    await fireEvent.press(favorite);
+    expect(screen.getByRole("checkbox", { name: "Favorite selected" }))
+      .toHaveProp("accessibilityState", expect.objectContaining({
+        selected: true,
+      }));
+    expect(screen.getByRole("checkbox", { name: "Favorite selected" }).children[0])
+      .toHaveProp("fill", themes.light.completed);
+    await waitFor(() => expect(searchExercises).toHaveBeenCalledWith({
+      query: "",
+      cursor: null,
+      filters: { favorite: [true] },
+    }));
+
+    await fireEvent.press(screen.getByRole("checkbox", { name: "Filters" }));
+    expect(screen.getByTestId("library-filter-sheet")).toHaveProp(
+      "accessibilityViewIsModal",
+      true,
+    );
+    await fireEvent.press(screen.getByRole("checkbox", {
+      name: "Equipment: Barbell",
+    }));
+    await fireEvent.press(screen.getByRole("button", { name: "Show results" }));
+
+    const equipment = await screen.findByRole("checkbox", {
+      name: "Equipment: Barbell selected",
+    });
+    expect(equipment).toHaveStyle({ minHeight: 48, minWidth: 48 });
+    expect(equipment).toHaveProp(
+      "accessibilityState",
+      expect.objectContaining({ selected: true }),
+    );
+    await fireEvent.press(equipment);
+    expect(screen.queryByRole("checkbox", {
+      name: "Equipment: Barbell selected",
+    })).not.toBeOnTheScreen();
   });
 });
 
@@ -762,7 +894,7 @@ describe("LibraryScreen exercise browse", () => {
     await fireEvent.press(screen.getByRole("button", {
       name: "Load more exercises",
     }));
-    await fireEvent.press(screen.getByRole("button", { name: "Filter" }));
+    await fireEvent.press(screen.getByRole("checkbox", { name: "Filters" }));
     await fireEvent.press(screen.getByRole("checkbox", {
       name: "Visibility: Unavailable",
     }));
@@ -815,7 +947,7 @@ describe("LibraryScreen exercise browse", () => {
     })).toHaveLength(2);
   });
 
-  it("supports keyboard activation, clear search, filter overflow, and focus restoration", async () => {
+  it("supports keyboard activation, shared clear search, chip overflow, and focus restoration", async () => {
     const setSection = jest.fn(async (
       section: LibrarySectionPreference["section"],
       revision: number,
@@ -844,7 +976,7 @@ describe("LibraryScreen exercise browse", () => {
     }));
     expect(screen.getByLabelText("Search exercises")).toHaveProp("value", "");
 
-    const filter = screen.getByRole("button", { name: "Filter" });
+    const filter = screen.getByRole("checkbox", { name: "Filters" });
     await fireEvent(filter, "focus");
     expect(filter).toHaveStyle({ outlineWidth: 2 });
     await fireEvent(filter, "keyDown", {
@@ -857,7 +989,9 @@ describe("LibraryScreen exercise browse", () => {
       "keyboardShouldPersistTaps",
       "handled",
     );
-    await fireEvent.press(screen.getByRole("button", { name: "Cancel" }));
+    await fireEvent.press(screen.getByRole("button", {
+      name: "Keep Current Filters",
+    }));
     expect(screen.queryByTestId("library-filter-sheet")).not.toBeOnTheScreen();
   });
 
@@ -880,7 +1014,7 @@ describe("LibraryScreen exercise browse", () => {
     });
 
     await screen.findByLabelText("Search exercises");
-    await fireEvent.press(screen.getByRole("button", { name: "Filter" }));
+    await fireEvent.press(screen.getByRole("checkbox", { name: "Filters" }));
     for (const label of [
       "Exercise type: Strength",
       "Muscle: Chest",
@@ -905,8 +1039,17 @@ describe("LibraryScreen exercise browse", () => {
         favorite: [true],
       },
     }));
-    expect(screen.getByRole("button", { name: "Clear filters" }))
+    expect(screen.getByRole("checkbox", { name: "Favorite selected" }))
       .toBeOnTheScreen();
+    expect(screen.getByRole("checkbox", {
+      name: "Exercise type: Strength selected",
+    })).toBeOnTheScreen();
+    expect(screen.getByRole("checkbox", {
+      name: "Muscle: Chest selected",
+    })).toBeOnTheScreen();
+    expect(screen.getByRole("checkbox", {
+      name: "Equipment: Barbell selected",
+    })).toBeOnTheScreen();
   });
 });
 
@@ -1172,7 +1315,7 @@ describe("LibraryScreen committed content update and UI truths", () => {
       expect(screen.getByRole("tab", { name: "Exercises" })).toHaveStyle({
         minHeight: 48,
       });
-      expect(screen.getByRole("button", { name: "Filter" })).toHaveStyle({
+      expect(screen.getByRole("checkbox", { name: "Filters" })).toHaveStyle({
         minHeight: 48,
       });
     },
