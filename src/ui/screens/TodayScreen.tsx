@@ -97,7 +97,7 @@ export type TodayScreenProps = Readonly<{
     preferences: RestAlertPreferences,
   ) => void | Promise<void | RestAlertPreferenceSaveResult>;
   onOpenRestNotificationSettings?: () => void | Promise<void>;
-  onOpenMore?: () => void;
+  onOpenHistoryAndData?: () => void;
   onRetry?: () => void;
 }>;
 
@@ -436,7 +436,7 @@ export function TodayScreen({
     preferences,
   }),
   onOpenRestNotificationSettings = noOp,
-  onOpenMore = noOp,
+  onOpenHistoryAndData = noOp,
   onRetry = noOp,
 }: TodayScreenProps) {
   const [appearanceVisible, setAppearanceVisible] = useState(false);
@@ -579,10 +579,13 @@ export function TodayScreen({
               title="Today"
             />
             {trusted ? (
-              <SecondaryAction
-                label="More"
-                onPress={onOpenMore}
-              />
+              <View style={styles.secondaryTools}>
+                <SecondaryAction
+                  accessibilityHint="Opens workout history and data recovery"
+                  label="History and data"
+                  onPress={onOpenHistoryAndData}
+                />
+              </View>
             ) : null}
             {actionFailure === undefined ? null : (
               <InlineNotice
@@ -695,6 +698,9 @@ export function TodayScreen({
 const styles = StyleSheet.create({
   section: {
     gap: space[4],
+  },
+  secondaryTools: {
+    alignSelf: "flex-start",
   },
   skeletonLayout: {
     gap: space[4],
