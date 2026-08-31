@@ -9,6 +9,10 @@ import {
   View,
   type TextStyle,
 } from "react-native";
+import {
+  Gesture,
+  GestureDetector,
+} from "react-native-gesture-handler";
 
 import type {
   CalendarDayState,
@@ -48,6 +52,8 @@ const MONTH_NAMES = [
 ] as const;
 
 const WEEKDAYS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"] as const;
+const CALENDAR_CELL_COUNT = 42;
+const MONTH_SWIPE_COMPLETE_DISTANCE = 72;
 const WEEKDAY_INDEX = {
   Sunday: 0,
   Monday: 1,
@@ -103,6 +109,20 @@ function dateLabel(value: LocalDate): string {
     + " " + value.slice(0, 4);
 }
 
+export function calendarMonthDirectionForHorizontalSwipe(
+  translationX: number,
+): -1 | 1 | null {
+  "worklet";
+
+  if (translationX <= -MONTH_SWIPE_COMPLETE_DISTANCE) {
+    return 1;
+  }
+  if (translationX >= MONTH_SWIPE_COMPLETE_DISTANCE) {
+    return -1;
+  }
+  return null;
+}
+
 function stateLabel(state: CalendarDayState): string {
   switch (state) {
     case "completed": return "Completed";
@@ -149,11 +169,13 @@ function CalendarGrid({
   month,
   days,
   selectedDate,
+  onChangeMonth,
   onSelectDate,
 }: Readonly<{
   month: LocalDate;
   days: CalendarMonth["days"];
   selectedDate: LocalDate;
+  onChangeMonth(direction: -1 | 1): void;
   onSelectDate(value: LocalDate): void;
 }>) {
   const { colors } = useAppTheme();
@@ -162,23 +184,54 @@ function CalendarGrid({
     [days],
   );
   const firstWeekday = WEEKDAY_INDEX[weekdayForLocalDate(month)];
-  const cells: React.ReactNode[] = [];
-
-  for (let index = 0; index < firstWeekday; index += 1) {
-    cells.push(<View key={"blank-" + index} style={styles.dayBlank} />);
-  }
-  for (let day = 1; day <= daysInMonth(month); day += 1) {
-    const date = parseLocalDate(month.slice(0, 8) + day.toString().padStart(2, "0"));
+  const firstCellDate = addLocalDays(month, -firstWeekday);
+  const horizontalMonthGesture = useMemo(
+    () => Gesture.Pan()
+      .activeOffsetX([-12, 12])
+      .failOffsetY([-24, 24])
+      .runOnJS(true)
+      .onEnd((event) => {
+        const direction = calendarMonthDirectionForHorizontalSwipe(
+          event.translationX,
+        );
+        if (direction !== null) {
+          onChangeMonth(direction);
+        }
+      }),
+    [onChangeMonth],
+  );
+  const cells = Array.from({ length: CALENDAR_CELL_COUNT }, (_, index) => {
+    const date = addLocalDays(firstCellDate, index);
     const states = statesByDate.get(date) ?? [];
     const selected = date === selectedDate;
-    const accessibilityLabel = [dateLabel(date), ...states.map(stateLabel)].join(". ") + ".";
-    cells.push(
+    const adjacent = monthStart(date) !== month;
+    const accessibilityLabel = [
+      dateLabel(date),
+      adjacent ? "Adjacent month" : null,
+      ...states.map(stateLabel),
+    ].filter((value): value is string => value !== null).join(". ") + ".";
+    return (
       <FocusablePressable
         accessibilityLabel={accessibilityLabel}
         accessibilityRole="button"
         accessibilityState={{ selected }}
         focusable
         key={date}
+        onKeyDown={(event: { nativeEvent: { key: string } }) => {
+          const deltas: Record<string, number> = {
+            ArrowDown: 7,
+            ArrowLeft: -1,
+            ArrowRight: 1,
+            ArrowUp: -7,
+          };
+          const delta = deltas[event.nativeEvent.key];
+          if (delta === undefined) {
+            return;
+          }
+          try {
+            onSelectDate(addLocalDays(date, delta));
+          } catch {}
+        }}
         onPress={() => onSelectDate(date)}
         style={({ pressed }: { pressed: boolean }) => [
           styles.dayCell,
@@ -187,11 +240,16 @@ function CalendarGrid({
               ? colors.contentCardSelected
               : pressed ? colors.contentCardPressed : colors.contentCard,
             borderColor: selected ? colors.action : colors.contentCardBorder,
+            opacity: adjacent ? 0.72 : 1,
           },
         ]}
+        testID={"calendar-day-" + date}
       >
-        <Text style={[typeScale.label as TextStyle, { color: colors.contentCardText }]}>
-          {day}
+        <Text style={[
+          typeScale.label as TextStyle,
+          { color: adjacent ? colors.contentCardTextSecondary : colors.contentCardText },
+        ]}>
+          {Number(date.slice(8, 10))}
         </Text>
         {states.length === 0 ? null : (
           <Text
@@ -201,18 +259,20 @@ function CalendarGrid({
             {states.map(stateGlyph).join(" ")}
           </Text>
         )}
-      </FocusablePressable>,
+      </FocusablePressable>
     );
-  }
+  });
   return (
-    <View accessibilityLabel="Calendar month grid" style={styles.grid} testID="calendar-month-grid">
-      {WEEKDAYS.map((day) => (
-        <Text key={day} style={[typeScale.label as TextStyle, styles.weekday, { color: colors.textSecondary }]}>
-          {day}
-        </Text>
-      ))}
-      {cells}
-    </View>
+    <GestureDetector gesture={horizontalMonthGesture}>
+      <View accessibilityLabel="Calendar month grid" style={styles.grid} testID="calendar-month-grid">
+        {WEEKDAYS.map((day) => (
+          <Text key={day} style={[typeScale.label as TextStyle, styles.weekday, { color: colors.textSecondary }]}>
+            {day}
+          </Text>
+        ))}
+        {cells}
+      </View>
+    </GestureDetector>
   );
 }
 
@@ -370,6 +430,7 @@ export function CalendarScreen({
       <CalendarGrid
         days={snapshot.days}
         month={snapshot.month}
+        onChangeMonth={changeMonth}
         onSelectDate={selectDate}
         selectedDate={snapshot.selectedDate}
       />
@@ -387,7 +448,6 @@ export function CalendarScreen({
 }
 
 const styles = StyleSheet.create({
-  dayBlank: { minHeight: 64, width: "14.285%" },
   dayCell: {
     borderRadius: radius.standard,
     borderWidth: StyleSheet.hairlineWidth,

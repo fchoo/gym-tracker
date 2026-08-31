@@ -157,22 +157,22 @@ describe("CalendarScreen", () => {
       selected: false,
     }));
     expect(screen.getByRole("button", {
-      name: "6 September 2026. Adjacent month.",
+      name: "5 September 2026. Adjacent month.",
     })).toHaveProp("accessibilityState", expect.objectContaining({
       selected: false,
     }));
 
     await fireEvent.press(screen.getByRole("button", {
-      name: "6 September 2026. Adjacent month.",
+      name: "5 September 2026. Adjacent month.",
     }));
 
     await waitFor(() => expect(loadCalendarMonth).toHaveBeenLastCalledWith({
       month: "2026-09-01",
-      selectedDate: "2026-09-06",
+      selectedDate: "2026-09-05",
       today: "2026-08-24",
     }));
     expect(screen.getByText("September 2026")).toBeOnTheScreen();
-    expect(screen.getByText("No sessions on 6 September 2026"))
+    expect(screen.getByText("No sessions on 5 September 2026"))
       .toBeOnTheScreen();
   });
 
