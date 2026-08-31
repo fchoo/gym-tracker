@@ -63,6 +63,10 @@ export {
   type M3SearchFieldProps,
   type M3SearchFieldState,
 } from "./M3SearchField";
+export {
+  M3FilterChip,
+  type M3FilterChipProps,
+} from "./M3FilterChip";
 
 type ActionProps = Readonly<{
   label: string;
