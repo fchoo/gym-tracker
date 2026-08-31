@@ -16,6 +16,7 @@ import type {
   CalendarMonth,
 } from "../../domains/history";
 import {
+  calendarMonthDirectionForHorizontalSwipe,
   CalendarScreen,
 } from "../screens/CalendarScreen";
 import {
@@ -134,6 +135,81 @@ describe("CalendarScreen", () => {
     expect(screen.getByText("September 2026")).toBeOnTheScreen();
     expect(screen.getByText("No sessions on 24 September 2026"))
       .toBeOnTheScreen();
+  });
+
+  it("renders six full weeks with selectable adjacent civil dates", async () => {
+    const loadCalendarMonth = jest.fn(async (input: Readonly<{
+      month: string;
+      selectedDate: string;
+    }>) => month({
+      month: input.month as CalendarMonth["month"],
+      selectedDate: input.selectedDate as CalendarMonth["selectedDate"],
+      days: [],
+      sessions: [],
+    }));
+    await renderCalendar({ loadCalendarMonth });
+    await screen.findByText("August 2026");
+
+    expect(screen.getAllByTestId(/^calendar-day-/u)).toHaveLength(42);
+    expect(screen.getByRole("button", {
+      name: "26 July 2026. Adjacent month.",
+    })).toHaveProp("accessibilityState", expect.objectContaining({
+      selected: false,
+    }));
+    expect(screen.getByRole("button", {
+      name: "6 September 2026. Adjacent month.",
+    })).toHaveProp("accessibilityState", expect.objectContaining({
+      selected: false,
+    }));
+
+    await fireEvent.press(screen.getByRole("button", {
+      name: "6 September 2026. Adjacent month.",
+    }));
+
+    await waitFor(() => expect(loadCalendarMonth).toHaveBeenLastCalledWith({
+      month: "2026-09-01",
+      selectedDate: "2026-09-06",
+      today: "2026-08-24",
+    }));
+    expect(screen.getByText("September 2026")).toBeOnTheScreen();
+    expect(screen.getByText("No sessions on 6 September 2026"))
+      .toBeOnTheScreen();
+  });
+
+  it("gives buttons, keyboard, and horizontal swipe directions identical month transitions", async () => {
+    const loadCalendarMonth = jest.fn(async (input: Readonly<{
+      month: string;
+      selectedDate: string;
+    }>) => month({
+      month: input.month as CalendarMonth["month"],
+      selectedDate: input.selectedDate as CalendarMonth["selectedDate"],
+      days: [],
+      sessions: [],
+    }));
+    await renderCalendar({ loadCalendarMonth });
+    await screen.findByText("August 2026");
+
+    await fireEvent.press(screen.getByRole("button", {
+      name: "Show September 2026",
+    }));
+    await waitFor(() => expect(loadCalendarMonth).toHaveBeenLastCalledWith({
+      month: "2026-09-01",
+      selectedDate: "2026-09-24",
+      today: "2026-08-24",
+    }));
+
+    await fireEvent(screen.getByRole("button", {
+      name: "Show August 2026",
+    }), "keyDown", { nativeEvent: { key: "Enter" } });
+    await waitFor(() => expect(loadCalendarMonth).toHaveBeenLastCalledWith({
+      month: "2026-08-01",
+      selectedDate: "2026-08-24",
+      today: "2026-08-24",
+    }));
+
+    expect(calendarMonthDirectionForHorizontalSwipe(-96)).toBe(1);
+    expect(calendarMonthDirectionForHorizontalSwipe(96)).toBe(-1);
+    expect(calendarMonthDirectionForHorizontalSwipe(24)).toBeNull();
   });
 
   it("renders retryable loading and error states without erasing the current grid", async () => {
