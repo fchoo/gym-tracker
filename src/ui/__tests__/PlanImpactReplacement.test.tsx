@@ -183,7 +183,7 @@ describe("Plan impact day removal", () => {
           name: "Select 2026-09-01",
         }));
         await fireEvent.press(screen.getByRole("button", {
-          name: "Confirm date",
+          name: "Apply Date",
         }));
       }
       await fireEvent.press(
@@ -233,7 +233,7 @@ describe("Plan impact day removal", () => {
       name: "Select 2026-09-01",
     }));
     await fireEvent.press(screen.getByRole("button", {
-      name: "Cancel date",
+      name: "Keep Original Date",
     }));
 
     expect(screen.getByRole("button", { name: "Effective date" }))

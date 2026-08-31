@@ -151,8 +151,8 @@ tags:
     below:
       text: "Earliest available date:.*"
 - assertVisible: "Calendar dialog"
-- tapOn: "Use default date"
-- tapOn: "Confirm date"
+- tapOn: "Use Default Date"
+- tapOn: "Apply Date"
 - scrollUntilVisible:
     element:
       text: "Existing opportunities, sessions, and history are unchanged."

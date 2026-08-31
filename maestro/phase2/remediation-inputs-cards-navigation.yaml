@@ -116,8 +116,8 @@ tags:
 - assertVisible: "Activate Push / Pull / Legs"
 - tapOn: "Start date"
 - assertVisible: "Calendar dialog"
-- tapOn: "Use default date"
-- tapOn: "Confirm date"
+- tapOn: "Use Default Date"
+- tapOn: "Apply Date"
 - assertNotVisible: "Calendar dialog"
 - tapOn: "Go back"
 - scrollUntilVisible:

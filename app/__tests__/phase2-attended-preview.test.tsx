@@ -259,7 +259,7 @@ describe("Phase2AttendedPreviewRoute", () => {
         .not.toBeOnTheScreen();
       await fireEvent.press(screen.getByRole("button", { name: label }));
       if (variant === "zero") {
-        expect(screen.getByRole("button", { name: "Confirm date" }))
+        expect(screen.getByRole("button", { name: "Apply Date" }))
           .toHaveProp("accessibilityState", expect.objectContaining({
             disabled: true,
           }));

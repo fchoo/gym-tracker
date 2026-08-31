@@ -551,8 +551,8 @@ test("Phase 2 remediation flows use public labels and deterministic seams", asyn
     "Default rest seconds minutes",
     "Default rest seconds seconds",
     "Calendar dialog",
-    "Use default date",
-    "Confirm date",
+    "Use Default Date",
+    "Apply Date",
   ]) {
     assert.match(inputs, new RegExp(label.replace(/[.*+?^${}()|[\]\\]/gu, "\\$&"), "u"), label);
   }
@@ -953,8 +953,8 @@ test("Phase 2 date flows use CalendarField rather than text entry", async () => 
   const startDateCalendarSequence = [
     '- tapOn: "Start date"',
     '- assertVisible: "Calendar dialog"',
-    '- tapOn: "Use default date"',
-    '- tapOn: "Confirm date"',
+    '- tapOn: "Use Default Date"',
+    '- tapOn: "Apply Date"',
   ].join("\n");
   assert.equal(schedule.split(startDateCalendarSequence).length - 1, 1);
   assert.doesNotMatch(schedule, /toISOString|schedule\.yesterday/u);
@@ -965,7 +965,7 @@ test("Phase 2 date flows use CalendarField rather than text entry", async () => 
     '- tapOn: "Previous month"',
     '- tapOn:',
     '    text: "^Select [0-9]{4}-[0-9]{2}-01$"',
-    '- tapOn: "Confirm date"',
+    '- tapOn: "Apply Date"',
     '- assertNotVisible: "Calendar dialog"',
   ].join("\n");
   assert.equal(
@@ -975,8 +975,8 @@ test("Phase 2 date flows use CalendarField rather than text entry", async () => 
   const effectiveDateCalendarSequence = [
     '- tapOn: "Effective date"',
     '- assertVisible: "Calendar dialog"',
-    '- tapOn: "Use default date"',
-    '- tapOn: "Confirm date"',
+    '- tapOn: "Use Default Date"',
+    '- tapOn: "Apply Date"',
     '- assertNotVisible: "Calendar dialog"',
   ].join("\n");
   assert.equal(
@@ -1042,7 +1042,7 @@ test("Phase 2 date flows use CalendarField rather than text entry", async () => 
   );
   assert.match(
     impact,
-    /- tapOn:\n    text: "Effective date"[\s\S]{0,160}- assertVisible: "Calendar dialog"\n- tapOn: "Use default date"\n- tapOn: "Confirm date"/u,
+    /- tapOn:\n    text: "Effective date"[\s\S]{0,160}- assertVisible: "Calendar dialog"\n- tapOn: "Use Default Date"\n- tapOn: "Apply Date"/u,
   );
   assert.doesNotMatch(impact, /- tapOn:[\s\S]{0,100}text: "Effective date"[\s\S]{0,100}- eraseText:/u);
 });
