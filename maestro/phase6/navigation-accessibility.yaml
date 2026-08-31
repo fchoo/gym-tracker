@@ -1,0 +1,38 @@
+appId: com.fchoo.gymtracker
+name: Phase 6 production navigation keyboard and large-text evidence
+tags:
+  - phase-6
+  - production-candidate
+  - n1
+  - n2
+---
+- launchApp:
+    clearState: true
+    permissions:
+      notifications: deny
+- assertVisible: "Today"
+- extendedWaitUntil:
+    visible: "Use Full Body Foundation"
+    timeout: 90000
+- takeScreenshot: phase6-navigation-today-200pct
+- pressKey: TAB
+- pressKey: TAB
+- pressKey: ENTER
+- assertVisible: "Calendar"
+- assertVisible: "Calendar month grid"
+- takeScreenshot: phase6-navigation-calendar-200pct
+- pressKey: TAB
+- pressKey: TAB
+- pressKey: ENTER
+- assertVisible: "Library"
+- takeScreenshot: phase6-navigation-library-200pct
+- pressKey: TAB
+- pressKey: TAB
+- pressKey: ENTER
+- assertVisible: "Progress"
+- takeScreenshot: phase6-navigation-progress-200pct
+- tapOn: "Today"
+- assertVisible: "History and data"
+- tapOn: "History and data"
+- assertVisible: "Data and recovery"
+- takeScreenshot: phase6-history-data-route-200pct

@@ -1,219 +1,208 @@
 import assert from "node:assert/strict";
-import {
-  createHash,
-} from "node:crypto";
-import {
-  mkdirSync,
-  mkdtempSync,
-  readFileSync,
-  rmSync,
-  writeFileSync,
-} from "node:fs";
-import os from "node:os";
+import { createHash } from "node:crypto";
+import { readFileSync } from "node:fs";
 import path from "node:path";
 import test from "node:test";
-import {
-  pathToFileURL,
-} from "node:url";
+import { pathToFileURL } from "node:url";
 
 const projectRoot = process.cwd();
 const SHA_A = "a".repeat(64);
+const SHA_B = "b".repeat(64);
 
 async function load(relativePath) {
   return import(pathToFileURL(path.join(projectRoot, relativePath)).href);
 }
 
-function writeFixtureBundle(directory) {
-  const apk = path.join(directory, "gym-tracker-phase6-gesture-smoke-devtest.apk");
-  const apkBytes = Buffer.from("phase-6-gesture-apk");
-  writeFileSync(apk, apkBytes);
-  const manifest = {
-    schema_version: 1,
-    suite: "phase6-gesture-smoke",
-    profile: "development-test",
-    package: "com.fchoo.gymtracker.devtest",
-    apk: {
-      path: apk,
-      sha256: createHash("sha256").update(apkBytes).digest("hex"),
-    },
-    installed_apk: {
-      sha256: createHash("sha256").update(apkBytes).digest("hex"),
-      matches_retained_apk: true,
-    },
-    package_launch: { succeeded: true },
-  };
-  const manifestPath = path.join(directory, "build.json");
-  writeFileSync(manifestPath, `${JSON.stringify(manifest, null, 2)}\n`);
+function fixtureCandidate() {
   return {
-    manifest,
-    manifestSha256: createHash("sha256").update(readFileSync(manifestPath)).digest("hex"),
+    manifestSha256: SHA_A,
+    manifest: {
+      candidate_id: "phase6-candidate",
+      source: {
+        commit: "c".repeat(40),
+        tree_sha256: SHA_B,
+        config_sha256: SHA_A,
+        package: "com.fchoo.gymtracker",
+        version_code: 1,
+        version_name: "1.0.0",
+      },
+      build: { profile: "production" },
+      workflow: { repository: "fchoo/gym-tracker", run_id: "1" },
+      artifacts: [
+        { kind: "apk", file: "gym-tracker-release.apk", sha256: SHA_B, size_bytes: 1 },
+        { kind: "aab", file: "gym-tracker-release.aab", sha256: SHA_A, size_bytes: 1 },
+      ],
+      retained_bundle: { artifact_name: "private-release-candidate-phase6-candidate", retention_days: 30 },
+    },
   };
 }
 
-test("Phase 6 runner requires exact generated-native identity arguments", async () => {
-  const { parsePhase6MaestroArguments } = await load(
-    "scripts/run-phase6-maestro.mjs",
-  );
+function passedReport() {
+  return Buffer.from("<testsuites><testsuite><testcase/></testsuite></testsuites>");
+}
+
+test("Phase 6 runner requires production candidate identity arguments", async () => {
+  const { parsePhase6MaestroArguments } = await load("scripts/run-phase6-maestro.mjs");
   const exact = [
-    "--bundle-dir", "artifacts/native/phase6-gesture-smoke",
+    "--bundle-dir", "artifacts/release-candidate",
     "--manifest-sha256", SHA_A,
-    "--package", "com.fchoo.gymtracker.devtest",
+    "--package", "com.fchoo.gymtracker",
     "--serial", "emulator-5554",
-    "--output", "artifacts/native/phase6-gesture-smoke/evidence/gesture-smoke.json",
-    "--report-dir", "artifacts/native/phase6-gesture-smoke/evidence/maestro",
-    "--flow", "gesture-smoke",
+    "--output", "artifacts/release-candidate/evidence/phase6.json",
+    "--report-dir", "artifacts/release-candidate/evidence/maestro",
   ];
   assert.deepEqual(parsePhase6MaestroArguments(exact), {
-    bundleDirectory: "artifacts/native/phase6-gesture-smoke",
+    bundleDirectory: "artifacts/release-candidate",
     expectedManifestSha256: SHA_A,
-    packageName: "com.fchoo.gymtracker.devtest",
+    packageName: "com.fchoo.gymtracker",
     serial: "emulator-5554",
-    output: "artifacts/native/phase6-gesture-smoke/evidence/gesture-smoke.json",
-    reportDirectory: "artifacts/native/phase6-gesture-smoke/evidence/maestro",
-    flow: "gesture-smoke",
+    output: "artifacts/release-candidate/evidence/phase6.json",
+    reportDirectory: "artifacts/release-candidate/evidence/maestro",
   });
   for (const invalid of [
     exact.slice(2),
     [...exact, "--unknown", "value"],
     exact.map((value) => value === SHA_A ? "not-a-digest" : value),
-    exact.map((value) => value === "com.fchoo.gymtracker.devtest" ? "not a package" : value),
+    exact.map((value) => value === "com.fchoo.gymtracker" ? "com.fchoo.gymtracker.devtest" : value),
     exact.map((value) => value === "emulator-5554" ? "bad serial value" : value),
-    exact.map((value) => value === "gesture-smoke" ? "placeholder" : value),
   ]) {
-    assert.throws(() => parsePhase6MaestroArguments(invalid), /Phase 6|argument|identity|manifest|flow/u);
+    assert.throws(() => parsePhase6MaestroArguments(invalid), /Phase 6|argument|identity|manifest|production/u);
   }
 });
 
-test("Phase 6 runner validates candidate/install identity and records only bounded evidence", async () => {
-  const temporaryDirectory = mkdtempSync(path.join(os.tmpdir(), "phase6-runner-"));
-  try {
-    const {
-      loadPhase6GestureCandidate,
-      validatePhase6GestureEvidence,
-    } = await load("scripts/run-phase6-maestro.mjs");
-    const bundleDirectory = path.join(temporaryDirectory, "bundle");
-    mkdirSync(bundleDirectory);
-    const fixture = writeFixtureBundle(bundleDirectory);
-    const candidate = loadPhase6GestureCandidate({
-      bundleDirectory,
-      expectedManifestSha256: fixture.manifestSha256,
-      packageName: fixture.manifest.package,
-    });
-    assert.equal(candidate.manifest.package, fixture.manifest.package);
-    assert.throws(() => loadPhase6GestureCandidate({
-      bundleDirectory,
-      expectedManifestSha256: SHA_A,
-      packageName: fixture.manifest.package,
-    }), /manifest|digest|identity/u);
+test("Phase 6 maps every UI consideration and native backstop explicitly", async () => {
+  const {
+    PHASE6_CONSIDERATION_CONTRACTS,
+    PHASE6_MAESTRO_FLOW_CONTRACTS,
+    PHASE6_NATIVE_BACKSTOPS,
+  } = await load("scripts/run-phase6-maestro.mjs");
 
-    const rawReport = Buffer.from("<testsuites><testsuite><testcase/></testsuite></testsuites>");
-    const evidence = {
-      schema_version: 1,
-      suite: "phase6-gesture-smoke",
-      status: "passed",
-      mode: "automated-only",
-      approval_status: "evidence_pending",
-      attended_scope: "excluded",
-      producer: "phase6-maestro/v1",
-      candidate: {
-        manifest_sha256: fixture.manifestSha256,
-        package: fixture.manifest.package,
-        apk_sha256: fixture.manifest.apk.sha256,
-      },
-      device: {
-        serial_sha256: SHA_A,
-        installed_package: fixture.manifest.package,
-        installed_apk_sha256: fixture.manifest.apk.sha256,
-      },
-      flow: {
-        id: "gesture-smoke",
-        raw_report_file: "gesture-smoke.xml",
-        raw_report_sha256: createHash("sha256").update(rawReport).digest("hex"),
-        tests: 1,
-        failures: 0,
-        errors: 0,
-        skipped: 0,
-      },
-      font_scale_restored: true,
-    };
-    assert.doesNotThrow(() => validatePhase6GestureEvidence(
-      evidence, candidate, rawReport,
-    ));
-    assert.throws(() => validatePhase6GestureEvidence({
-      ...evidence,
-      device: { ...evidence.device, installed_apk_sha256: SHA_A },
-    }, candidate, rawReport), /installed|identity|candidate/u);
-    assert.throws(() => validatePhase6GestureEvidence({
-      ...evidence,
-      raw_path: "/private/runtime/row.json",
-    }, candidate, rawReport), /bounded|evidence|private/u);
-  } finally {
-    rmSync(temporaryDirectory, { recursive: true, force: true });
-  }
-});
-
-test("Phase 6 flow performs horizontal swipe and long-press displacement checks", () => {
-  const flow = readFileSync(path.join(
-    projectRoot, "maestro/phase6/gesture-smoke.yaml",
-  ), "utf8");
-  const fixture = readFileSync(path.join(
-    projectRoot, "app/__phase6-gesture-smoke.tsx",
-  ), "utf8");
-  const commands = flow.slice(flow.indexOf("---\n") + 4);
-  const deepLink = "openLink: gymtracker-devtest://__phase6-gesture-smoke";
-  assert.match(flow, /^appId: com\.fchoo\.gymtracker\.devtest$/mu);
-  assert.match(commands, new RegExp(
-    `^- clearState\\n- ${deepLink.replace(/[.*+?^${}()|[\]\\]/gu, "\\$&")}\\n`,
-    "u",
-  ));
-  assert.doesNotMatch(commands.slice(0, commands.indexOf(deepLink)), /launchApp/u);
-  assert.match(flow, /swipe:[\s\S]*start: 80%, 50%[\s\S]*end: 20%, 50%/u);
-  assert.match(flow, /assertVisible: "Horizontal swipe complete"/u);
-  assert.match(flow, /longPressOn:[\s\S]*id: drag-/u);
-  assert.match(flow, /assertVisible: "Held row displaced"/u);
-  assert.match(fixture, /nativeContractsEnabled/u);
-  assert.match(fixture, /Gesture\.Pan()/u);
-  assert.match(fixture, /Gesture\.LongPress()/u);
-  assert.match(fixture, /useSharedValue/u);
-  assert.match(fixture, /useAnimatedStyle/u);
-  assert.match(fixture, /Redirect href="\/"/u);
-  assert.doesNotMatch(flow, /__phase2-attended-preview|placeholder/iu);
-});
-
-test("Phase 6 development-test build permits only the approved bundled npm version", () => {
-  const doctor = readFileSync(path.join(
-    projectRoot, "scripts/doctor-android.sh",
-  ), "utf8");
-  const builder = readFileSync(path.join(
-    projectRoot, "scripts/build-current-native-test-apk.sh",
-  ), "utf8");
-
-  assert.match(doctor, /GYM_TRACKER_ALLOW_DEVTEST_NPM_12/u);
-  assert.match(doctor, /actual_npm='12\.0\.2'/u);
-  assert.match(builder, /phase6-gesture-smoke/u);
-  assert.match(builder, /GYM_TRACKER_ALLOW_DEVTEST_NPM_12=true/u);
-  assert.ok(builder.includes('NPM_VERSION="$(npm --version)"'));
-  assert.match(builder, /npm: process.env.NPM_VERSION/u);
-});
-
-test("Phase 6 build publishes and externally hashes its manifest before the runner", () => {
-  const builder = readFileSync(path.join(
-    projectRoot, "scripts/build-current-native-test-apk.sh",
-  ), "utf8");
-  const plan = readFileSync(path.join(
-    projectRoot,
-    ".planning/phases/06-material-3-ux-remediation/06-02-PLAN.md",
-  ), "utf8");
-  const publicationGuard =
-    `[ -s "$build_manifest" ] || fail 'build manifest was not published.'`;
-
-  assert.ok(builder.includes(publicationGuard));
-  assert.ok(
-    builder.indexOf(publicationGuard)
-      < builder.indexOf("build-current-native-test-apk: manifest=%s"),
+  assert.deepEqual(
+    PHASE6_CONSIDERATION_CONTRACTS.map(({ id }) => id),
+    ["C1", "C2", "C3", "C4", "C5", "C6", "C7", "C8", "C9", "C10", "C11"],
   );
-  assert.ok(plan.includes(
-    `PHASE6_MANIFEST_SHA256=$(node --input-type=module -e "import { sha256File } from './scripts/run-phase6-maestro.mjs'; process.stdout.write(sha256File('./artifacts/native/phase6-gesture-smoke/build.json'))")`,
-  ));
-  assert.doesNotMatch(plan, /m\.manifest_sha256/u);
+  assert.deepEqual(
+    PHASE6_NATIVE_BACKSTOPS.map(({ id }) => id),
+    ["N1", "N2", "N3", "N4"],
+  );
+  assert.equal(PHASE6_MAESTRO_FLOW_CONTRACTS.length, 3);
+  for (const consideration of PHASE6_CONSIDERATION_CONTRACTS) {
+    assert.ok(consideration.owner.length > 0);
+    assert.ok(consideration.automated_checks.length > 0);
+    assert.ok(consideration.flows.length > 0);
+    assert.ok(consideration.native_backstops.length > 0);
+  }
+  assert.equal(
+    PHASE6_CONSIDERATION_CONTRACTS.some(({ id, automated_checks }) =>
+      id === "C11" && automated_checks.includes("src/ui/__tests__/LibraryScreen.test.tsx")),
+    true,
+  );
+  assert.equal(
+    PHASE6_NATIVE_BACKSTOPS.find(({ id }) => id === "N4")?.status,
+    "pending_human",
+  );
+});
+
+test("Phase 6 evidence rejects wrong identity, screenshots, cleanup, and release fields", async () => {
+  const {
+    createPhase6Evidence,
+    validatePhase6Evidence,
+  } = await load("scripts/run-phase6-maestro.mjs");
+  const candidate = fixtureCandidate();
+  const rawReports = Object.fromEntries([
+    "phase6-progress-library",
+    "phase6-calendar-date-reorder",
+    "phase6-navigation-accessibility",
+  ].map((id) => [id, passedReport()]));
+  const screenshots = Object.fromEntries(Object.keys(rawReports).map((id) => [id, [
+    { file: `${id}/complete.png`, sha256: SHA_A },
+  ]]));
+  const evidence = createPhase6Evidence({
+    candidate,
+    device: {
+      role: "automated-emulator",
+      model: "Pixel 7",
+      api: 36,
+      abi: "x86_64",
+      serial_sha256: SHA_A,
+      installed_package: "com.fchoo.gymtracker",
+      installed_version_code: 1,
+      installed_apk_sha256: SHA_B,
+    },
+    rawReports,
+    screenshots,
+    fontScaleRestored: true,
+  });
+  assert.doesNotThrow(() => validatePhase6Evidence(evidence, candidate, rawReports));
+  assert.throws(() => validatePhase6Evidence({
+    ...evidence,
+    device: { ...evidence.device, installed_apk_sha256: SHA_A },
+  }, candidate, rawReports), /installed|identity|candidate/u);
+  assert.throws(() => validatePhase6Evidence({
+    ...evidence,
+    flows: evidence.flows.map((flow, index) => index === 0
+      ? { ...flow, screenshots: [] }
+      : flow),
+  }, candidate, rawReports), /screenshot|artifact|evidence/u);
+  assert.throws(() => validatePhase6Evidence({
+    ...evidence,
+    font_scale_restored: false,
+  }, candidate, rawReports), /font|cleanup|evidence/u);
+  assert.throws(() => validatePhase6Evidence({
+    ...evidence,
+    release_authorization: "approved",
+  }, candidate, rawReports), /authorization|approval|evidence/u);
+  assert.throws(() => validatePhase6Evidence({
+    ...evidence,
+    raw_path: "/private/device/rows.json",
+  }, candidate, rawReports), /private|bounded|evidence/u);
+});
+
+test("Phase 6 production flows retain exact package, labelled coverage, and screenshot capture", () => {
+  const flowExpectations = [
+    ["progress-library.yaml", ["Library", "Progress", "Favorite", "takeScreenshot"]],
+    ["calendar-date-reorder.yaml", ["Calendar", "takeScreenshot", "swipe"]],
+    ["navigation-accessibility.yaml", ["Today", "History and data", "takeScreenshot"]],
+  ];
+  for (const [file, expected] of flowExpectations) {
+    const source = readFileSync(path.join(projectRoot, "maestro/phase6", file), "utf8");
+    assert.match(source, /^appId: com\.fchoo\.gymtracker$/mu);
+    assert.doesNotMatch(source, /devtest|placeholder|approval|promotion|terminal seal/iu);
+    for (const text of expected) {
+      assert.ok(source.includes(text), `${file} is missing ${text}`);
+    }
+  }
+});
+
+test("Phase 6 Samsung checklist is canonical, exact-byte, and observation-only", async () => {
+  const {
+    buildPhase6AttendedChecklist,
+    serializePhase6AttendedChecklist,
+    validatePhase6AttendedChecklist,
+  } = await load("scripts/generate-phase6-attended-checklist.mjs");
+  const candidate = fixtureCandidate();
+  const device = {
+    role: "samsung-physical",
+    model: "SM-S916B",
+    serial_sha256: SHA_A,
+    installed_package: "com.fchoo.gymtracker",
+    installed_apk_sha256: SHA_B,
+  };
+  const checklist = buildPhase6AttendedChecklist({
+    candidate,
+    device,
+    generatedAt: "2026-08-31T14:00:00.000Z",
+  });
+  assert.doesNotThrow(() => validatePhase6AttendedChecklist(checklist, {
+    candidate,
+    device,
+  }));
+  assert.equal(
+    serializePhase6AttendedChecklist(checklist).toString("utf8"),
+    `${JSON.stringify(checklist, null, 2)}\n`,
+  );
+  assert.throws(() => validatePhase6AttendedChecklist({
+    ...checklist,
+    release_authorization: "approved",
+  }, { candidate, device }), /release|privacy|identity|checklist/u);
 });

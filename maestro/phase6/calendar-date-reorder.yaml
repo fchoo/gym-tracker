@@ -1,0 +1,117 @@
+appId: com.fchoo.gymtracker
+name: Phase 6 production Calendar date dialog and reorder evidence
+tags:
+  - phase-6
+  - production-candidate
+  - n2
+  - n3
+---
+- launchApp:
+    clearState: true
+    permissions:
+      notifications: deny
+- assertVisible: "Today"
+- extendedWaitUntil:
+    visible: "Use Full Body Foundation"
+    timeout: 90000
+- tapOn: "Use Full Body Foundation"
+- tapOn: "Activate Full Body Foundation"
+- extendedWaitUntil:
+    visible: "^(Start Full Body A|Start Full Body B|Rest day)$"
+    timeout: 90000
+- tapOn: "Calendar"
+- assertVisible: "Calendar month grid"
+- swipe:
+    start: 80%, 42%
+    end: 20%, 42%
+    duration: 400
+- assertVisible: "Calendar month grid"
+- takeScreenshot: phase6-calendar-swipe
+- tapOn: "Library"
+- assertVisible: "Library"
+- scrollUntilVisible:
+    element:
+      text: "Full Body Foundation. 3 days per week.*"
+    direction: DOWN
+    centerElement: true
+- tapOn:
+    text: "Full Body Foundation. 3 days per week.*"
+- scrollUntilVisible:
+    element:
+      text: "Activate plan"
+    direction: DOWN
+    centerElement: true
+- tapOn: "Activate plan"
+- assertVisible: "Activate Full Body Foundation"
+- tapOn: "Start date"
+- assertVisible: "Calendar dialog"
+- tapOn: "Previous month"
+- swipe:
+    start: 80%, 50%
+    end: 20%, 50%
+    duration: 400
+- assertVisible: "Calendar grid"
+- takeScreenshot: phase6-calendar-dialog-200pct
+- tapOn: "Keep Original Date"
+- assertNotVisible: "Calendar dialog"
+- tapOn: "Go back"
+- assertVisible: "Library"
+- tapOn: "Plans"
+- tapOn: "Create my own"
+- assertVisible: "Create my own"
+- tapOn: "Plan name"
+- inputText: "Phase Six Reorder"
+- tapOn: "First day name"
+- inputText: "First"
+- hideKeyboard
+- tapOn: "Create draft"
+- assertVisible: "Draft"
+- scrollUntilVisible:
+    element:
+      id: "owned-plan-add-exercise"
+    direction: DOWN
+    centerElement: true
+- tapOn:
+    id: "owned-plan-add-exercise"
+- tapOn:
+    id: "owned-plan-exercise-search"
+- inputText: "Back Squat"
+- hideKeyboard
+- tapOn:
+    text: "Back Squat.*Load . reps"
+- scrollUntilVisible:
+    element:
+      text: "Save target"
+    direction: DOWN
+    centerElement: true
+- tapOn: "Save target"
+- tapOn: "Save day"
+- scrollUntilVisible:
+    element:
+      id: "owned-plan-add-exercise"
+    direction: DOWN
+    centerElement: true
+- tapOn:
+    id: "owned-plan-add-exercise"
+- tapOn:
+    id: "owned-plan-exercise-search"
+- inputText: "Bench Press"
+- hideKeyboard
+- tapOn:
+    text: "Bench Press.*Load . reps"
+- scrollUntilVisible:
+    element:
+      text: "Save target"
+    direction: DOWN
+    centerElement: true
+- tapOn: "Save target"
+- assertVisible: "Bench Press"
+- longPressOn:
+    id: "drag-exercise-Bench Press"
+- swipe:
+    start: 50%, 70%
+    end: 50%, 45%
+    duration: 450
+- tapOn: "Move Bench Press up"
+- assertVisible: "Bench Press moved to 1 of 2"
+- takeScreenshot: phase6-reorder-displacement
