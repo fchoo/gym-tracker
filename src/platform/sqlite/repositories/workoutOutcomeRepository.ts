@@ -12,6 +12,8 @@ import {
 } from "../../../domains/metrics";
 import {
   assertValidHistoryCorrectionSnapshot,
+  collectHistorySubjects,
+  type EffectiveHistorySubjectSnapshot,
   type HistoryCorrectionSnapshot,
 } from "../../../domains/history";
 import {
@@ -52,6 +54,9 @@ import {
 import {
   enqueuePendingEffect,
 } from "../effects/effectStore";
+import {
+  invalidateAndAdvanceHistoryProjectionSubjects,
+} from "./historyProjectionRepository";
 import type {
   SqliteKernel,
   SqliteTransactionExecutor,
@@ -220,6 +225,45 @@ function uniqueTargetReferences(sets: readonly SetRow[]): readonly TargetReferen
     }
   }
   return [...references.values()];
+}
+
+function historySubjectSnapshot(
+  session: SessionRow,
+  exercises: readonly ExerciseRow[],
+  sets: readonly SetRow[],
+  lifecycle: EffectiveHistorySubjectSnapshot["lifecycle"],
+): EffectiveHistorySubjectSnapshot {
+  return Object.freeze({
+    sessionId: session.id,
+    localDate: session.local_date,
+    lifecycle,
+    exercises: Object.freeze(exercises.flatMap((exercise) => sets
+      .filter(({ session_exercise_id, set_kind }) =>
+        session_exercise_id === exercise.id && set_kind === "working"
+      )
+      .map((set) => {
+        const identity = setIdentity(set, exercise);
+        const reference = targetReference(set);
+        return Object.freeze({
+          exerciseId: exercise.exercise_id,
+          identity,
+          target: parseSetTarget(set, identity),
+          recommendationTargetIds: Object.freeze(reference === null
+            ? []
+            : [`${reference.graph}:${reference.id}`]),
+        });
+      }))),
+  });
+}
+
+function recommendationScopesForHistory(
+  sets: readonly SetRow[],
+): readonly string[] {
+  return Object.freeze(uniqueTargetReferences(
+    sets.filter(({ set_kind }) => set_kind === "working"),
+  ).map(({ graph, id }) => `${graph}:${id}`).sort((left, right) =>
+    left.localeCompare(right)
+  ));
 }
 
 function targetTable(graph: TargetReference["graph"]): string {
@@ -1200,7 +1244,9 @@ function detailFromEffectiveOverlay(
     nonLoadOutcomes,
     recommendations,
     recommendationStatus: recommendationStatus(recommendations),
-    resumable: sessionIsResumable(snapshot.session.status),
+    // A corrected partial is a finalized effective-history snapshot. Resuming
+    // the immutable raw rows would silently discard those corrections.
+    resumable: false,
     readOnly: true,
   };
 }
@@ -1588,6 +1634,22 @@ async function finish(
   }
   const sessionRevision = input.expectedSessionRevision + 1;
   const restRevision = await idleRest(transaction, input.sessionId);
+  if (nextStatus === "completed" || nextStatus === "partial") {
+    const activeHistory = historySubjectSnapshot(
+      session,
+      exercises,
+      sets,
+      "active",
+    );
+    await invalidateAndAdvanceHistoryProjectionSubjects(transaction, {
+      subjects: collectHistorySubjects({
+        oldSnapshot: { ...activeHistory, lifecycle: "voided" },
+        newSnapshot: activeHistory,
+      }),
+      recommendationScopes: recommendationScopesForHistory(sets),
+      nowMs: input.endedAtMs,
+    });
+  }
   await enqueueFinishEffects(transaction, {
     sessionId: input.sessionId,
     sessionRevision,
@@ -1756,6 +1818,17 @@ export function createWorkoutOutcomeRepository(
 
     async resumePartialWorkout(input: ResumePartialWorkoutInput) {
       return kernel.write(async (transaction) => {
+        const { session, exercises, sets } = await sessionRows(
+          transaction,
+          input.sessionId,
+        );
+        if (
+          session.status !== "partial"
+          || session.revision !== input.expectedSessionRevision
+          || session.snapshot_json !== null
+        ) {
+          throw new WorkoutOutcomeConflictError("resume_partial_conflict");
+        }
         const result = await transaction.execute(
           `UPDATE workout_sessions
            SET status = 'in_progress',
@@ -1767,6 +1840,20 @@ export function createWorkoutOutcomeRepository(
         if (result.changes !== 1) {
           throw new WorkoutOutcomeConflictError("resume_partial_conflict");
         }
+        const activeHistory = historySubjectSnapshot(
+          session,
+          exercises,
+          sets,
+          "active",
+        );
+        await invalidateAndAdvanceHistoryProjectionSubjects(transaction, {
+          subjects: collectHistorySubjects({
+            oldSnapshot: activeHistory,
+            newSnapshot: { ...activeHistory, lifecycle: "voided" },
+          }),
+          recommendationScopes: recommendationScopesForHistory(sets),
+          nowMs: input.resumedAtMs,
+        });
         return {
           sessionId: input.sessionId,
           status: "in_progress" as const,

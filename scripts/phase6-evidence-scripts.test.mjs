@@ -165,6 +165,12 @@ test("Phase 6 evidence rejects wrong identity, screenshots, cleanup, and release
   }, candidate, rawReports, nativeDragReports), /screenshot|artifact|evidence/u);
   assert.throws(() => validatePhase6Evidence({
     ...evidence,
+    flows: evidence.flows.map((flow, index) => index === 0
+      ? { ...flow, flow_sha256: "0".repeat(64) }
+      : flow),
+  }, candidate, rawReports, nativeDragReports), /flow|command|evidence/u);
+  assert.throws(() => validatePhase6Evidence({
+    ...evidence,
     font_scale_restored: false,
   }, candidate, rawReports, nativeDragReports), /font|cleanup|evidence/u);
   assert.throws(() => createPhase6Evidence({
@@ -213,7 +219,7 @@ test("Phase 6 production flows retain exact package, labelled coverage, and scre
   }
 });
 
-test("Phase 6 Progress flow exits the full-screen workout before root navigation", () => {
+test("Phase 6 Progress flow saves history-eligible workout facts before root navigation", () => {
   const source = readFileSync(
     path.join(projectRoot, "maestro/phase6/progress-library.yaml"),
     "utf8",
@@ -221,11 +227,11 @@ test("Phase 6 Progress flow exits the full-screen workout before root navigation
 
   assert.match(
     source,
-    /- tapOn: "Complete Set 1"\n- tapOn: "Go back"\n- assertVisible: "Workout in progress"\n- tapOn: "Progress"\n- assertVisible: "4 weeks"/u,
+    /- tapOn: "Complete Set 1"[\s\S]*visible: "RESTING · NEXT: SET 2 AT 60 kg × 8"[\s\S]*- tapOn: "Complete Set 2"[\s\S]*visible: "RESTING · NEXT: SET 3 AT 60 kg × 8"[\s\S]*- tapOn: "Complete Set 3"[\s\S]*visible: "RESTING · NEXT: SET 1 AT 42\.5 kg × 10"\n    timeout: 60000\n- tapOn: "More workout actions"\n- tapOn: "Finish as partial"\n- assertVisible: "Save partial workout\?"\n- tapOn:\n    id: "save-partial-workout-confirm"\n- extendedWaitUntil:\n    visible: "PARTIAL SAVED"\n    timeout: 60000\n- assertVisible: "Workout saved"[\s\S]*- tapOn: "Return to Today"\n- assertVisible: "Today"\n- tapOn: "Progress"\n- assertVisible: "4 weeks"\n- scrollUntilVisible:\n    element:\n      text: "Working sets · 3 of 15 completed"\n    direction: DOWN\n    centerElement: true\n    timeout: 60000\n- assertNotVisible: "No progress history yet"\n- takeScreenshot: phase6-progress-summary\n- scrollUntilVisible:\n    element:\n      text: "Exercise progress"\n    direction: DOWN\n    centerElement: true\n    timeout: 60000\n- assertVisible: "Back Squat"\n- tapOn: "Search exercises"/u,
   );
   assert.doesNotMatch(
     source,
-    /- tapOn: "Complete Set 1"\n- tapOn: "Progress"/u,
+    /- tapOn: "Complete Set 1"[\s\S]*?- tapOn: "Go back"\n- assertVisible: "Workout in progress"\n- tapOn: "Progress"/u,
   );
 });
 

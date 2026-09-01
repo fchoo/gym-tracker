@@ -607,6 +607,7 @@ export function createPhase6Evidence({
     return Object.freeze({
       id: contract.id,
       flow: contract.flow,
+      flow_sha256: sha256File(path.resolve(contract.flow)),
       considerations: contract.considerations,
       native_backstops: contract.native_backstops,
       raw_report_file: `${contract.id}/report.xml`,
@@ -683,6 +684,7 @@ export function validatePhase6Evidence(
     const requiresNativeDrag = contract.native_backstops.includes("N3");
     if (flow?.id !== contract.id
       || flow?.flow !== contract.flow
+      || flow?.flow_sha256 !== sha256File(path.resolve(contract.flow))
       || !exactJson(flow?.considerations, contract.considerations)
       || !exactJson(flow?.native_backstops, contract.native_backstops)
       || flow?.tests < 1

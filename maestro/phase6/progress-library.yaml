@@ -42,13 +42,81 @@ tags:
           end: 95%, 25%
           duration: 300
 - tapOn: "Complete Set 1"
-- tapOn: "Go back"
-- assertVisible: "Workout in progress"
+- extendedWaitUntil:
+    visible: "RESTING · NEXT: SET 2 AT 60 kg × 8"
+    timeout: 60000
+- tapOn: "Expand rest controls"
+- tapOn: "Skip rest"
+- extendedWaitUntil:
+    notVisible: "Skip rest"
+    timeout: 60000
+- repeat:
+    times: 12
+    while:
+      notVisible: "Complete Set 2"
+    commands:
+      - swipe:
+          start: 95%, 75%
+          end: 95%, 25%
+          duration: 300
+- assertVisible: "Complete Set 2"
+- tapOn: "Complete Set 2"
+- extendedWaitUntil:
+    visible: "RESTING · NEXT: SET 3 AT 60 kg × 8"
+    timeout: 60000
+- tapOn: "Expand rest controls"
+- tapOn: "Skip rest"
+- extendedWaitUntil:
+    notVisible: "Skip rest"
+    timeout: 60000
+- repeat:
+    times: 12
+    while:
+      notVisible: "Complete Set 3"
+    commands:
+      - swipe:
+          start: 95%, 75%
+          end: 95%, 25%
+          duration: 300
+- assertVisible: "Complete Set 3"
+- tapOn: "Complete Set 3"
+- extendedWaitUntil:
+    visible: "RESTING · NEXT: SET 1 AT 42.5 kg × 10"
+    timeout: 60000
+- tapOn: "More workout actions"
+- tapOn: "Finish as partial"
+- assertVisible: "Save partial workout?"
+- tapOn:
+    id: "save-partial-workout-confirm"
+- extendedWaitUntil:
+    visible: "PARTIAL SAVED"
+    timeout: 60000
+- assertVisible: "Workout saved"
+- scrollUntilVisible:
+    element:
+      text: "Return to Today"
+    direction: DOWN
+    centerElement: true
+    timeout: 60000
+- tapOn: "Return to Today"
+- assertVisible: "Today"
 - tapOn: "Progress"
 - assertVisible: "4 weeks"
-- extendedWaitUntil:
-    visible: "Exercise progress"
-    timeout: 30000
+- scrollUntilVisible:
+    element:
+      text: "Working sets · 3 of 15 completed"
+    direction: DOWN
+    centerElement: true
+    timeout: 60000
+- assertNotVisible: "No progress history yet"
+- takeScreenshot: phase6-progress-summary
+- scrollUntilVisible:
+    element:
+      text: "Exercise progress"
+    direction: DOWN
+    centerElement: true
+    timeout: 60000
+- assertVisible: "Back Squat"
 - tapOn: "Search exercises"
 - inputText: "Back"
 - pressKey: ENTER

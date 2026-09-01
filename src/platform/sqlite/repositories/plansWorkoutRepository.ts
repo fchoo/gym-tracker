@@ -1169,6 +1169,11 @@ export function createPlansWorkoutRepository(
          LEFT JOIN session_sets all_sets
            ON all_sets.session_exercise_id = all_exercises.id
          WHERE ws.status = 'partial'
+           AND NOT EXISTS (
+             SELECT 1
+             FROM history_session_overlays overlay
+             WHERE overlay.session_id = ws.id
+           )
          GROUP BY ws.id
          ORDER BY ws.completed_at_ms DESC, ws.id DESC
          LIMIT 1`,

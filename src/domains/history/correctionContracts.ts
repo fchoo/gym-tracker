@@ -219,7 +219,7 @@ function validateSnapshot(snapshot: HistoryCorrectionSnapshot): void {
       throw new HistoryCorrectionInputError("history_correction_exercise_invalid");
     }
     exerciseIds.add(exercise.id);
-    let previousOrdinal = -1;
+    const previousOrdinal = new Map<CorrectionSetKind, number>();
     for (const set of exercise.sets) {
       nonEmpty(set.id, "history_correction_set_id_invalid");
       if (setIds.has(set.id)
@@ -227,11 +227,11 @@ function validateSnapshot(snapshot: HistoryCorrectionSnapshot): void {
         || !isSetStatus(set.status)
         || !Number.isSafeInteger(set.ordinal)
         || set.ordinal < 0
-        || set.ordinal <= previousOrdinal
+        || set.ordinal <= (previousOrdinal.get(set.kind) ?? -1)
         || !isSafeNonnegativeInteger(set.completedAtMs) && set.completedAtMs !== null) {
         throw new HistoryCorrectionInputError("history_correction_set_invalid");
       }
-      previousOrdinal = set.ordinal;
+      previousOrdinal.set(set.kind, set.ordinal);
       setIds.add(set.id);
       try {
         const identity = parseMetricIdentity(exercise.metricIdentity);
