@@ -64,6 +64,9 @@ import {
   createHistoryCommandRepository,
 } from "../../src/platform/sqlite/repositories/historyCommandRepository";
 import {
+  loadEffectiveHistoryProjectionSessions,
+} from "../../src/platform/sqlite/repositories/historyRepository";
+import {
   createHistoryProjectionEffectRunner,
   createHistoryProjectionEffectStore,
 } from "../../src/platform/sqlite/effects/historyProjectionEffects";
@@ -209,9 +212,79 @@ async function setupPlannedWorkout(
   };
 }
 
+async function seedPendingRecommendation(
+  kernel: SqliteKernel,
+  sessionId: string,
+  recommendationId: string,
+  effectId: string,
+): Promise<void> {
+  const [target] = await kernel.queryAll<{
+    id: string;
+    revision: number;
+    exercise_id: string;
+    metric_profile: string;
+    metric_contract_version: number;
+    exercise_metric_generation: number;
+    target_json: string;
+  }>(
+    `SELECT target.id, target.revision, occurrence.exercise_id,
+            target.metric_profile, target.metric_contract_version,
+            target.exercise_metric_generation, target.target_json
+     FROM session_sets set_row
+     JOIN plan_working_set_targets target
+       ON target.id = set_row.source_plan_working_set_target_id
+     JOIN plan_day_exercises occurrence
+       ON occurrence.id = target.plan_day_exercise_id
+     JOIN session_exercises session_exercise
+       ON session_exercise.id = set_row.session_exercise_id
+     WHERE session_exercise.session_id = ?
+       AND set_row.set_kind = 'working'
+     ORDER BY session_exercise.ordinal, set_row.ordinal
+     LIMIT 1`,
+    [sessionId],
+  );
+  if (target === undefined) throw new Error("test_target_missing");
+  const [session] = await kernel.queryAll<{ revision: number }>(
+    "SELECT revision FROM workout_sessions WHERE id = ?",
+    [sessionId],
+  );
+  await kernel.write(async (transaction) => {
+    await transaction.execute(
+      `INSERT INTO progression_recommendations
+        (id, exercise_id, plan_working_set_target_id, rule_type, rule_version,
+         evidence_version, evidence_json, current_target_json, proposed_target_json,
+         metric_profile, metric_contract_version, exercise_metric_generation,
+         status, source_revision, target_revision, created_at_ms, decided_at_ms)
+       VALUES (?, ?, ?, 'load_reps', 1, 1, '{}', ?, ?, ?, ?, ?, 'pending', ?, ?, ?, NULL)`,
+      [
+        recommendationId, target.exercise_id, target.id, target.target_json,
+        target.target_json, target.metric_profile, target.metric_contract_version,
+        target.exercise_metric_generation, session!.revision, target.revision,
+        1_786_853_640_000,
+      ],
+    );
+    await enqueuePendingEffect(transaction, {
+      id: effectId,
+      type: "regenerate_load_reps_recommendation",
+      payloadVersion: 1,
+      payload: { version: 1, sessionId, sessionRevision: session!.revision },
+      idempotencyKey: `recommend:${effectId}`,
+      subjectId: sessionId,
+      expectedRevision: session!.revision,
+      nowMs: 1_786_853_640_000,
+    });
+  });
+}
+
 describe("Plan 01-10 explicit workout outcomes", () => {
   it("finishes completed only when every intended working set is resolved", async () => {
     const { kernel, repository, session } = await setupPlannedWorkout();
+    await seedPendingRecommendation(
+      kernel,
+      session.id,
+      "preexisting-completed-recommendation",
+      "preexisting-completed-effect",
+    );
     await kernel.write(async (transaction) => {
       await transaction.execute(
         `UPDATE session_sets
@@ -266,6 +339,21 @@ describe("Plan 01-10 explicit workout outcomes", () => {
       "SELECT status FROM workout_sessions WHERE id = ?",
       [session.id],
     )).toEqual([{ status: "completed" }]);
+    await expect(kernel.queryAll<{ status: string; decided_at_ms: number | null }>(
+      `SELECT status, decided_at_ms FROM progression_recommendations
+       WHERE id = 'preexisting-completed-recommendation'`,
+    )).resolves.toEqual([{
+      status: "invalidated",
+      decided_at_ms: 1_786_854_000_000,
+    }]);
+    await expect(kernel.queryAll<{ idempotency_key: string; status: string }>(
+      `SELECT idempotency_key, status FROM pending_effects
+       WHERE effect_type = 'regenerate_load_reps_recommendation'
+       ORDER BY idempotency_key`,
+    )).resolves.toEqual([
+      { idempotency_key: "recommend:preexisting-completed-effect", status: "superseded" },
+      { idempotency_key: `recommend:${session.id}:${result.detail.revision}`, status: "pending" },
+    ]);
     const projection = createHistoryProjectionRepository(kernel);
     const runner = createHistoryProjectionEffectRunner({
       repository: projection,
@@ -324,7 +412,7 @@ describe("Plan 01-10 explicit workout outcomes", () => {
   });
 
   it("saves an explicit partial and resumes it through a revision check", async () => {
-    const { repository, session } = await setupPlannedWorkout();
+    const { kernel, repository, session } = await setupPlannedWorkout();
     const partial = await finishPartial({
       repository,
       input: {
@@ -337,6 +425,14 @@ describe("Plan 01-10 explicit workout outcomes", () => {
     expect(partial.detail).toMatchObject({
       status: "partial",
       resumable: true,
+    });
+    await expect(createPlansWorkoutRepository(kernel).getTodayView({
+      localDate: "2026-08-17",
+      weekday: 1,
+    })).resolves.toMatchObject({
+      state: "saved_partial",
+      sessionId: session.id,
+      revision: partial.detail.revision,
     });
 
     const resumed = await resumePartialWorkout({
@@ -584,6 +680,71 @@ describe("Plan 01-10 explicit workout outcomes", () => {
     )).resolves.toEqual([{ count: 0 }]);
   });
 
+  it("rejects malformed history targets without committing a partial resume", async () => {
+    const { kernel, repository, session } = await setupPlannedWorkout();
+    const partial = await finishPartial({
+      repository,
+      input: {
+        sessionId: session.id,
+        expectedSessionRevision: session.revision,
+        confirmation: "save_partial_workout",
+        endedAtMs: 1_786_853_700_000,
+      },
+    });
+    await kernel.write((transaction) => transaction.execute(
+      `UPDATE session_sets
+       SET target_json = '{"version":1,"profile":"load_reps"}'
+       WHERE id = (
+         SELECT ss.id
+         FROM session_sets ss
+         JOIN session_exercises se ON se.id = ss.session_exercise_id
+         WHERE se.session_id = ? AND ss.set_kind = 'working'
+         ORDER BY se.ordinal, ss.ordinal
+         LIMIT 1
+       )`,
+      [session.id],
+    ));
+    const beforeSubjects = await kernel.queryAll(
+      "SELECT * FROM history_subject_revisions ORDER BY subject_id",
+    );
+    const beforeRebuilds = await kernel.queryAll(
+      "SELECT * FROM history_rebuild_effects ORDER BY id",
+    );
+    const beforeEffects = await kernel.queryAll(
+      "SELECT * FROM pending_effects ORDER BY id",
+    );
+
+    await expect(resumePartialWorkout({
+      repository,
+      input: {
+        sessionId: session.id,
+        expectedSessionRevision: partial.detail.revision,
+        resumedAtMs: 1_786_853_800_000,
+      },
+    })).rejects.toMatchObject({
+      code: "sqlite_transaction_failed",
+      cause: expect.objectContaining({ code: "session_detail_target_invalid" }),
+    });
+    await expect(kernel.queryAll(
+      `SELECT status, completed_at_ms, revision
+       FROM workout_sessions WHERE id = ?`,
+      [session.id],
+    )).resolves.toEqual([{
+      status: "partial",
+      completed_at_ms: 1_786_853_700_000,
+      revision: partial.detail.revision,
+    }]);
+    await expect(kernel.queryAll(
+      "SELECT * FROM history_subject_revisions ORDER BY subject_id",
+    )).resolves.toEqual(beforeSubjects);
+    await expect(kernel.queryAll(
+      "SELECT * FROM history_rebuild_effects ORDER BY id",
+    )).resolves.toEqual(beforeRebuilds);
+    await expect(kernel.queryAll(
+      "SELECT * FROM pending_effects ORDER BY id",
+    )).resolves.toEqual(beforeEffects);
+  });
+
   it("saves partial after one completed generated set identity", async () => {
     const { kernel, repository, session } = await setupPlannedWorkout();
     const [set] = await kernel.queryAll<{
@@ -661,20 +822,14 @@ describe("Plan 01-10 explicit workout outcomes", () => {
     );
   });
 
-  it("stores zero working sets only after its exact confirmation", async () => {
-    const kernel = await createKernel();
-    const plans = createPlansWorkoutRepository(kernel);
-    const session = await startWorkout({
-      repository: plans,
-      request: {
-        mode: "empty",
-        localDate: "2026-08-17",
-        timezone: "Asia/Singapore",
-        startedAtMs: 1_786_853_600_000,
-      },
-    });
-    const repository = createWorkoutOutcomeRepository(kernel);
-
+  it("stores zero working sets outside history fan-out and preserves recommendation work", async () => {
+    const { kernel, repository, session } = await setupPlannedWorkout();
+    await seedPendingRecommendation(
+      kernel,
+      session.id,
+      "zero-set-preserved-recommendation",
+      "zero-set-preserved-effect",
+    );
     expect(() => saveZeroSetWorkout({
       repository,
       input: {
@@ -694,14 +849,38 @@ describe("Plan 01-10 explicit workout outcomes", () => {
         endedAtMs: 1_786_853_700_000,
       },
     });
+
     expect(saved.detail).toMatchObject({
       status: "zero_sets",
-      workingSetProgress: { completed: 0, planned: 0, percent: null },
+      workingSetProgress: { completed: 0, planned: 15, percent: 0 },
     });
+    await expect(kernel.queryAll<{ count: number }>(
+      "SELECT COUNT(*) AS count FROM history_subject_revisions",
+    )).resolves.toEqual([{ count: 0 }]);
+    await expect(kernel.queryAll<{ count: number }>(
+      "SELECT COUNT(*) AS count FROM history_rebuild_effects",
+    )).resolves.toEqual([{ count: 0 }]);
+    await expect(kernel.queryAll<{ status: string }>(
+      `SELECT status FROM progression_recommendations
+       WHERE id = 'zero-set-preserved-recommendation'`,
+    )).resolves.toEqual([{ status: "pending" }]);
+    await expect(kernel.queryAll<{ idempotency_key: string; status: string }>(
+      `SELECT idempotency_key, status FROM pending_effects
+       WHERE effect_type = 'regenerate_load_reps_recommendation'`,
+    )).resolves.toEqual([{
+      idempotency_key: "recommend:zero-set-preserved-effect",
+      status: "pending",
+    }]);
   });
 
   it("discards an in-progress workout without scheduling a progression replay", async () => {
     const { kernel, repository, session } = await setupPlannedWorkout();
+    await seedPendingRecommendation(
+      kernel,
+      session.id,
+      "discard-preserved-recommendation",
+      "discard-preserved-effect",
+    );
 
     const discarded = await discardWorkout({
       repository,
@@ -723,7 +902,20 @@ describe("Plan 01-10 explicit workout outcomes", () => {
        WHERE subject_id = ?
        ORDER BY effect_type`,
       [session.id],
-    )).resolves.toEqual([{ effect_type: "reconcile_rest_notification" }]);
+    )).resolves.toEqual([
+      { effect_type: "reconcile_rest_notification" },
+      { effect_type: "regenerate_load_reps_recommendation" },
+    ]);
+    await expect(kernel.queryAll<{ count: number }>(
+      "SELECT COUNT(*) AS count FROM history_subject_revisions",
+    )).resolves.toEqual([{ count: 0 }]);
+    await expect(kernel.queryAll<{ count: number }>(
+      "SELECT COUNT(*) AS count FROM history_rebuild_effects",
+    )).resolves.toEqual([{ count: 0 }]);
+    await expect(kernel.queryAll<{ status: string }>(
+      `SELECT status FROM progression_recommendations
+       WHERE id = 'discard-preserved-recommendation'`,
+    )).resolves.toEqual([{ status: "pending" }]);
   });
 
   it("marks the current exercise skipped while preserving completed sets", async () => {
@@ -763,6 +955,41 @@ describe("Plan 01-10 explicit workout outcomes", () => {
         }
       },
     });
+    await seedPendingRecommendation(
+      kernel,
+      session.id,
+      "rollback-preserved-recommendation",
+      "rollback-preserved-recommendation-effect",
+    );
+    await kernel.write(async (transaction) => {
+      await transaction.execute(
+        `INSERT INTO session_rest_states
+          (session_id, state_version, status, started_at_ms, ends_at_ms,
+           remaining_ms, expired_at_ms, next_set_id, revision)
+         VALUES (?, 1, 'paused', NULL, NULL, 30000, NULL, NULL, 7)`,
+        [session.id],
+      );
+      await enqueuePendingEffect(transaction, {
+        id: "rollback-preserved-rest-effect",
+        type: "reconcile_rest_notification",
+        payloadVersion: 1,
+        payload: { version: 1, sessionId: session.id, restRevision: 7 },
+        idempotencyKey: "rest:rollback-preserved:7",
+        subjectId: session.id,
+        expectedRevision: 7,
+        nowMs: 1_786_853_650_000,
+      });
+    });
+    const beforeRest = await kernel.queryAll(
+      "SELECT * FROM session_rest_states WHERE session_id = ?",
+      [session.id],
+    );
+    const beforeRecommendations = await kernel.queryAll(
+      "SELECT * FROM progression_recommendations ORDER BY id",
+    );
+    const beforePendingEffects = await kernel.queryAll(
+      "SELECT * FROM pending_effects ORDER BY id",
+    );
     armed = true;
 
     await expect(finishPartial({
@@ -779,15 +1006,22 @@ describe("Plan 01-10 explicit workout outcomes", () => {
       `SELECT status, completed_at_ms FROM workout_sessions WHERE id = ?`,
       [session.id],
     )).toEqual([{ status: "in_progress", completed_at_ms: null }]);
+    expect(await kernel.queryAll(
+      "SELECT * FROM session_rest_states WHERE session_id = ?",
+      [session.id],
+    )).toEqual(beforeRest);
+    expect(await kernel.queryAll(
+      "SELECT * FROM progression_recommendations ORDER BY id",
+    )).toEqual(beforeRecommendations);
     expect(await kernel.queryAll<{ count: number }>(
       "SELECT COUNT(*) AS count FROM history_subject_revisions",
     )).toEqual([{ count: 0 }]);
     expect(await kernel.queryAll<{ count: number }>(
       "SELECT COUNT(*) AS count FROM history_rebuild_effects",
     )).toEqual([{ count: 0 }]);
-    expect(await kernel.queryAll<{ count: number }>(
-      "SELECT COUNT(*) AS count FROM pending_effects",
-    )).toEqual([{ count: 0 }]);
+    expect(await kernel.queryAll(
+      "SELECT * FROM pending_effects ORDER BY id",
+    )).toEqual(beforePendingEffects);
   });
 
   it("rolls back a partial resume and its history rebuild effects together", async () => {
@@ -810,6 +1044,37 @@ describe("Plan 01-10 explicit workout outcomes", () => {
         endedAtMs: 1_786_853_700_000,
       },
     });
+    await seedPendingRecommendation(
+      kernel,
+      session.id,
+      "resume-rollback-preserved-recommendation",
+      "resume-rollback-preserved-recommendation-effect",
+    );
+    await kernel.write(async (transaction) => {
+      await transaction.execute(
+        `UPDATE session_rest_states
+         SET status = 'paused', remaining_ms = 30000, revision = revision + 1
+         WHERE session_id = ?`,
+        [session.id],
+      );
+      await enqueuePendingEffect(transaction, {
+        id: "resume-rollback-preserved-rest-effect",
+        type: "reconcile_rest_notification",
+        payloadVersion: 1,
+        payload: { version: 1, sessionId: session.id, restRevision: 2 },
+        idempotencyKey: "rest:resume-rollback-preserved:2",
+        subjectId: session.id,
+        expectedRevision: 2,
+        nowMs: 1_786_853_750_000,
+      });
+    });
+    const beforeRest = await kernel.queryAll(
+      "SELECT * FROM session_rest_states WHERE session_id = ?",
+      [session.id],
+    );
+    const beforeRecommendations = await kernel.queryAll(
+      "SELECT * FROM progression_recommendations ORDER BY id",
+    );
     const beforeSubjects = await kernel.queryAll<{
       subject_id: string;
       revision: number;
@@ -846,6 +1111,13 @@ describe("Plan 01-10 explicit workout outcomes", () => {
       [session.id],
     )).toEqual([{ status: "partial", completed_at_ms: 1_786_853_700_000 }]);
     expect(await kernel.queryAll(
+      "SELECT * FROM session_rest_states WHERE session_id = ?",
+      [session.id],
+    )).toEqual(beforeRest);
+    expect(await kernel.queryAll(
+      "SELECT * FROM progression_recommendations ORDER BY id",
+    )).toEqual(beforeRecommendations);
+    expect(await kernel.queryAll(
       `SELECT subject_id, revision
        FROM history_subject_revisions
        ORDER BY subject_id`,
@@ -858,13 +1130,41 @@ describe("Plan 01-10 explicit workout outcomes", () => {
     )).toEqual(beforePendingEffects);
   });
 
-  it("keeps corrected partial history immutable instead of resuming raw rows", async () => {
+  it("voids corrected partial history when it resumes and replaces it on a later save", async () => {
     const { kernel, repository, session } = await setupPlannedWorkout();
+    const workout = createWorkoutRepository(kernel);
+    let current = await workout.getActiveWorkout(session.id);
+    const activeSet = current.currentExercise.workingSets.find(
+      ({ id }) => id === current.activeSetId,
+    )!;
+    const completed = await completeSet({
+      repository: workout,
+      haptics: { committed: async () => undefined },
+      invalidate: async () => undefined,
+      drainEffects: async () => undefined,
+      input: {
+        sessionId: session.id,
+        setId: activeSet.id,
+        expectedSessionRevision: current.revision,
+        expectedSetRevision: activeSet.revision,
+        completionIdempotencyKey: "corrected-partial-resume-set",
+        metricIdentity: activeSet.metricIdentity,
+        observation: {
+          version: 1,
+          profile: "load_reps",
+          loadGrams: 60_000,
+          reps: 8,
+          source: "plan_default",
+        },
+        completedAtMs: 1_786_853_650_000,
+      },
+    });
+    current = completed.view;
     const partial = await finishPartial({
       repository,
       input: {
         sessionId: session.id,
-        expectedSessionRevision: session.revision,
+        expectedSessionRevision: current.revision,
         confirmation: "save_partial_workout",
         endedAtMs: 1_786_853_700_000,
       },
@@ -883,40 +1183,183 @@ describe("Plan 01-10 explicit workout outcomes", () => {
       },
       nowMs: 1_786_853_750_000,
     });
-    const beforeOverlay = await kernel.queryAll(
-      `SELECT * FROM history_session_overlays WHERE session_id = ?`,
-      [session.id],
-    );
+    const projection = createHistoryProjectionRepository(kernel);
+    const runner = createHistoryProjectionEffectRunner({
+      repository: projection,
+      store: createHistoryProjectionEffectStore(kernel),
+    });
+    await runner.drain({ nowMs: 1_786_853_750_100, limit: 64 });
+    await expect(createProgressRepository(kernel).load({
+      period: "4_weeks",
+      nowLocalDate: "2026-08-17",
+    })).resolves.toMatchObject({
+      freshness: "current",
+      projection: {
+        summary: {
+          workingSets: { completed: 1, planned: 15 },
+        },
+      },
+    });
+    await expect(loadEffectiveHistoryProjectionSessions(kernel)).resolves
+      .toEqual([
+        expect.objectContaining({
+          sessionId: session.id,
+          completedWorkingSets: 1,
+          plannedWorkingSets: 15,
+        }),
+      ]);
 
-    await expect(repository.getSessionDetail(session.id)).resolves.toMatchObject({
+    const corrected = await repository.getSessionDetail(session.id);
+    expect(corrected).toMatchObject({
       corrected: true,
       ownerNote: "Keep corrected partial facts",
-      resumable: false,
+      resumable: true,
       status: "partial",
     });
-    await expect(createPlansWorkoutRepository(kernel).getTodayView({
-      localDate: "2026-08-17",
-      weekday: 1,
-    })).resolves.toMatchObject({ state: "scheduled" });
-    await expect(resumePartialWorkout({
+    const resumed = await resumePartialWorkout({
       repository,
       input: {
         sessionId: session.id,
-        expectedSessionRevision: partial.detail.revision,
+        expectedSessionRevision: corrected.revision,
         resumedAtMs: 1_786_853_800_000,
       },
-    })).rejects.toMatchObject({
-      code: "sqlite_transaction_failed",
-      cause: expect.objectContaining({ code: "resume_partial_conflict" }),
+    });
+    expect(resumed).toMatchObject({
+      status: "in_progress",
+      sessionRevision: partial.detail.revision + 1,
     });
     await expect(kernel.queryAll(
-      `SELECT * FROM history_session_overlays WHERE session_id = ?`,
+      `SELECT lifecycle, effective_revision
+       FROM history_session_overlays WHERE session_id = ?`,
       [session.id],
-    )).resolves.toEqual(beforeOverlay);
-    await expect(kernel.queryAll<{ status: string }>(
-      "SELECT status FROM workout_sessions WHERE id = ?",
+    )).resolves.toEqual([{
+      lifecycle: "voided",
+      effective_revision: corrected.revision + 1,
+    }]);
+    await expect(kernel.queryAll<{
+      event_type: string;
+      field_identity: string;
+      effective_revision: number;
+    }>(
+      `SELECT event_type, field_identity, effective_revision
+       FROM history_audit_events
+       WHERE session_id = ?
+       ORDER BY effective_revision, id`,
       [session.id],
-    )).resolves.toEqual([{ status: "partial" }]);
+    )).resolves.toEqual([
+      {
+        event_type: "correction",
+        field_identity: "session.ownerNote",
+        effective_revision: corrected.revision,
+      },
+      {
+        event_type: "void",
+        field_identity: "session.lifecycle",
+        effective_revision: corrected.revision + 1,
+      },
+    ]);
+    await expect(loadEffectiveHistoryProjectionSessions(kernel)).resolves.toEqual([]);
+    await expect(createProgressRepository(kernel).load({
+      period: "4_weeks",
+      nowLocalDate: "2026-08-17",
+    })).resolves.toMatchObject({ freshness: "updating", projection: null });
+    await runner.drain({ nowMs: 1_786_853_800_100, limit: 64 });
+    await expect(createProgressRepository(kernel).load({
+      period: "4_weeks",
+      nowLocalDate: "2026-08-17",
+    })).resolves.toMatchObject({
+      freshness: "current",
+      projection: {
+        exercises: [],
+        records: [],
+        summary: {
+          workingSets: { completed: 0, planned: 0 },
+        },
+        trend: [],
+      },
+    });
+
+    const resaved = await finishPartial({
+      repository,
+      input: {
+        sessionId: session.id,
+        expectedSessionRevision: resumed.sessionRevision,
+        confirmation: "save_partial_workout",
+        endedAtMs: 1_786_853_900_000,
+      },
+    });
+    expect(resaved.detail).toMatchObject({
+      corrected: true,
+      ownerNote: null,
+      status: "partial",
+    });
+    await expect(kernel.queryAll<{
+      lifecycle: string;
+      effective_revision: number;
+      snapshot_json: string;
+    }>(
+      `SELECT lifecycle, effective_revision, snapshot_json
+       FROM history_session_overlays WHERE session_id = ?`,
+      [session.id],
+    )).resolves.toEqual([
+      expect.objectContaining({
+        lifecycle: "active",
+        effective_revision: corrected.revision + 2,
+        snapshot_json: expect.stringContaining('"ownerNote":null'),
+      }),
+    ]);
+    await expect(kernel.queryAll<{
+      event_type: string;
+      field_identity: string;
+      effective_revision: number;
+    }>(
+      `SELECT event_type, field_identity, effective_revision
+       FROM history_audit_events
+       WHERE session_id = ?
+       ORDER BY effective_revision, id`,
+      [session.id],
+    )).resolves.toEqual([
+      {
+        event_type: "correction",
+        field_identity: "session.ownerNote",
+        effective_revision: corrected.revision,
+      },
+      {
+        event_type: "void",
+        field_identity: "session.lifecycle",
+        effective_revision: corrected.revision + 1,
+      },
+      {
+        event_type: "restore",
+        field_identity: "session.lifecycle",
+        effective_revision: corrected.revision + 2,
+      },
+      {
+        event_type: "correction",
+        field_identity: "session.source_snapshot",
+        effective_revision: corrected.revision + 2,
+      },
+    ]);
+    await runner.drain({ nowMs: 1_786_853_900_100, limit: 64 });
+    await expect(createProgressRepository(kernel).load({
+      period: "4_weeks",
+      nowLocalDate: "2026-08-17",
+    })).resolves.toMatchObject({
+      freshness: "current",
+      projection: {
+        summary: {
+          workingSets: { completed: 1, planned: 15 },
+        },
+      },
+    });
+    await expect(loadEffectiveHistoryProjectionSessions(kernel)).resolves
+      .toEqual([
+        expect.objectContaining({
+          sessionId: session.id,
+          completedWorkingSets: 1,
+          plannedWorkingSets: 15,
+        }),
+      ]);
   });
 
   it("renders manual and voided retained states read-only in session detail", async () => {
