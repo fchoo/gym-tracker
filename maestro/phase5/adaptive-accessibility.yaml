@@ -7,7 +7,12 @@ tags:
 - launchApp:
     clearState: false
 - assertVisible: "Today"
-- tapOn: "More"
+- extendedWaitUntil:
+    visible: "Use Full Body Foundation"
+    timeout: 90000
+- assertVisible: "History and data"
+- tapOn: "History and data"
+- assertVisible: "Data and recovery"
 - tapOn:
     id: "more-data-and-recovery"
 - assertVisible: "Create secure backup"

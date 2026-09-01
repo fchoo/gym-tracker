@@ -362,6 +362,14 @@ test("Phase 5 history flow uses the live Calendar and Progress root destinations
 });
 
 test("Phase 5 recovery flows target the unique Data and recovery action", () => {
+  const todayRoute = readFileSync(
+    path.join(projectRoot, "app/(tabs)/index.tsx"),
+    "utf8",
+  );
+  const todayScreen = readFileSync(
+    path.join(projectRoot, "src/ui/screens/TodayScreen.tsx"),
+    "utf8",
+  );
   const moreRoute = readFileSync(
     path.join(projectRoot, "app/more/index.tsx"),
     "utf8",
@@ -375,13 +383,21 @@ test("Phase 5 recovery flows target the unique Data and recovery action", () => 
     moreRoute,
     /label="Data and recovery"[\s\S]{0,160}testID="more-data-and-recovery"/u,
   );
+  assert.match(todayRoute, /onOpenHistoryAndData=\{\(\) => router\.push\("\/more" as Href\)\}/u);
+  assert.match(todayScreen, /label="History and data"[\s\S]{0,120}onPress=\{onOpenHistoryAndData\}/u);
   for (const relativePath of [
     "maestro/phase5/data-recovery.yaml",
     "maestro/phase5/adaptive-accessibility.yaml",
   ]) {
     const flow = readFileSync(path.join(projectRoot, relativePath), "utf8");
+    assert.match(
+      flow,
+      /- assertVisible: "Today"\n- extendedWaitUntil:\n    visible: "Use Full Body Foundation"\n    timeout: 90000\n- assertVisible: "History and data"\n- tapOn: "History and data"\n- assertVisible: "Data and recovery"\n- tapOn:\n    id: "more-data-and-recovery"/u,
+      relativePath,
+    );
     assert.ok(flow.includes(expectedTap), relativePath);
     assert.doesNotMatch(flow, /- tapOn: "Data and recovery"/u, relativePath);
+    assert.doesNotMatch(flow, /- tapOn: "More"/u, relativePath);
   }
 
   const dataRecoveryFlow = readFileSync(
