@@ -3084,11 +3084,28 @@ test("Library exercise flow reaches compact Plans sections before asserting them
   );
   assert.match(
     flow,
-    /- tapOn: "Clear search exercises"\n- hideKeyboard\n- tapOn: "Filter"[\s\S]*- tapOn: "Equipment · Barbell"\n- scrollUntilVisible:\n    element:\n      text: "Show results"\n    direction: DOWN\n- tapOn: "Show results"\n- assertVisible: "Results"\n- scrollUntilVisible:\n    element:\n      text: "Back Squat"\n    direction: DOWN\n    centerElement: true\n- assertVisible: "Back Squat"/u,
+    /- tapOn: "Clear search exercises"\n- hideKeyboard\n- tapOn:\n    id: "library-filters-chip"[\s\S]*- tapOn: "Equipment: Barbell"\n- scrollUntilVisible:\n    element:\n      text: "Show results"\n    direction: DOWN\n- tapOn: "Show results"\n- assertVisible: "Results"\n- scrollUntilVisible:\n    element:\n      text: "Back Squat"\n    direction: DOWN\n    centerElement: true\n- assertVisible: "Back Squat"/u,
   );
   assert.match(
     flow,
-    /- assertVisible: "Back Squat"\n- scrollUntilVisible:\n    element:\n      text: "Clear filters"\n    direction: UP\n    centerElement: true\n- tapOn: "Clear filters"\n- tapOn: "Search exercises"\n- inputText: "bench-press"\n- hideKeyboard\n- extendedWaitUntil:\n    visible: "Add Bench Press to favorites"\n    timeout: 90000[\s\S]*- scrollUntilVisible:\n    element:\n      text: "Favorites"\n    direction: DOWN\n    centerElement: true\n- assertVisible: "Favorites"/u,
+    /- assertVisible: "Back Squat"\n- scrollUntilVisible:\n    element:\n      text: "Equipment: Barbell selected"\n    direction: UP\n    centerElement: true\n- tapOn: "Equipment: Barbell selected"\n- tapOn: "Search exercises"\n- inputText: "bench-press"\n- hideKeyboard\n- extendedWaitUntil:\n    visible: "Add Bench Press to favorites"\n    timeout: 90000[\s\S]*- scrollUntilVisible:\n    element:\n      text: "Favorites"\n    direction: DOWN\n    centerElement: true\n- assertVisible: "Favorites"/u,
+  );
+  assert.doesNotMatch(flow, /(?:tapOn|text): "(?:Filter|Clear filters|Equipment · Barbell)"/u);
+});
+
+test("starter activation uses current Material 3 filter labels", async () => {
+  const flow = await readFile(
+    path.join(projectRoot, "maestro/phase2/starter-activation.yaml"),
+    "utf8",
+  );
+
+  assert.match(
+    flow,
+    /id: "library-filters-chip"\n    direction: UP\n    centerElement: true\n- tapOn:\n    id: "library-filters-chip"[\s\S]*text: "Experience: Intermediate"[\s\S]*- tapOn: "Experience: Intermediate"[\s\S]*text: "Days per week: 5"[\s\S]*- tapOn: "Days per week: 5"[\s\S]*text: "Equipment: Barbell"[\s\S]*- tapOn: "Equipment: Barbell"/u,
+  );
+  assert.doesNotMatch(
+    flow,
+    /(?:tapOn|text): "(?:Filter|Experience · Intermediate|Days per week · 5|Equipment · Barbell)"/u,
   );
 });
 
