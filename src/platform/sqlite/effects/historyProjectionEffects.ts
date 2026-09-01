@@ -211,6 +211,25 @@ function failure(error: unknown): Readonly<{
   return { kind: "permanent", code: "history_projection_effect_failed" };
 }
 
+function normalizeRebuildError(error: unknown): unknown {
+  if (error instanceof HistoryProjectionEffectError) {
+    return error;
+  }
+  if (error instanceof Error) {
+    const nested = typeof error === "object"
+      && error !== null
+      && "cause" in error
+      && error.cause instanceof Error
+      ? error.cause.message
+      : error.message;
+    return new HistoryProjectionEffectError(
+      "permanent",
+      nested.replace(/[^A-Za-z0-9_:-]/gu, "_").slice(0, 80),
+    );
+  }
+  return error;
+}
+
 export function createHistoryProjectionEffectRunner(input: Readonly<{
   repository: HistoryProjectionRepository;
   store: HistoryProjectionEffectStore;
@@ -234,6 +253,7 @@ export function createHistoryProjectionEffectRunner(input: Readonly<{
         retried: 0,
         superseded: 0,
       };
+      const effects: StoredHistoryProjectionEffect[] = [];
       for (let index = 0; index < drainInput.limit; index += 1) {
         const effect = await input.store.claimNext({
           nowMs: drainInput.nowMs,
@@ -244,6 +264,91 @@ export function createHistoryProjectionEffectRunner(input: Readonly<{
           break;
         }
         result.claimed += 1;
+        effects.push(effect);
+      }
+
+      const settleFailure = async (
+        effect: StoredHistoryProjectionEffect,
+        error: unknown,
+      ): Promise<void> => {
+        const reason = failure(normalizeRebuildError(error));
+        if (
+          reason.kind === "transient"
+          && effect.attemptCount < HISTORY_PROJECTION_EFFECT_MAX_ATTEMPTS
+        ) {
+          await input.store.retry({
+            id: effect.id,
+            errorCode: reason.code,
+            nextAttemptAtMs: drainInput.nowMs
+              + retryDelayMs * effect.attemptCount,
+            nowMs: drainInput.nowMs,
+          });
+          result.retried += 1;
+        } else {
+          await input.store.failPermanently(
+            effect.id,
+            reason.code,
+            drainInput.nowMs,
+          );
+          result.permanentFailures += 1;
+        }
+      };
+
+      if (input.repository.rebuildSubjects !== undefined && effects.length > 0) {
+        let outcomes;
+        try {
+          outcomes = await input.repository.rebuildSubjects({
+            subjects: effects.map((effect) => ({
+              subjectId: effect.subjectId,
+              expectedRevision: effect.expectedRevision,
+            })),
+            nowMs: drainInput.nowMs,
+          });
+          if (outcomes.length !== effects.length) {
+            throw new HistoryProjectionEffectError(
+              "permanent",
+              "history_projection_batch_outcome_invalid",
+            );
+          }
+        } catch (error) {
+          for (const effect of effects) {
+            await settleFailure(effect, error);
+          }
+          return Object.freeze(result);
+        }
+        for (let index = 0; index < effects.length; index += 1) {
+          const effect = effects[index]!;
+          const outcome = outcomes[index]!;
+          try {
+            if (
+              outcome.subjectId !== effect.subjectId
+              || outcome.expectedRevision !== effect.expectedRevision
+            ) {
+              throw new HistoryProjectionEffectError(
+                "permanent",
+                "history_projection_batch_outcome_invalid",
+              );
+            }
+            if (outcome.result === "stale") {
+              await input.store.supersede(
+                effect.id,
+                "stale_source_revision",
+                drainInput.nowMs,
+              );
+              result.superseded += 1;
+            } else {
+              await input.store.complete(effect.id, drainInput.nowMs);
+              result.completed += 1;
+            }
+          } catch {
+            // Projection rows already committed. Leave a failed terminal write
+            // processing so its lease can be recovered safely on a later trigger.
+          }
+        }
+        return Object.freeze(result);
+      }
+
+      for (const effect of effects) {
         const currentRevision = await input.repository.currentRevision(effect.subjectId);
         if (currentRevision !== effect.expectedRevision) {
           await input.store.supersede(
@@ -255,31 +360,11 @@ export function createHistoryProjectionEffectRunner(input: Readonly<{
           continue;
         }
         try {
-          let applied: "applied" | "stale";
-          try {
-            applied = await input.repository.rebuildSubject({
-              subjectId: effect.subjectId,
-              expectedRevision: effect.expectedRevision,
-              nowMs: drainInput.nowMs,
-            });
-          } catch (error) {
-            if (error instanceof HistoryProjectionEffectError) {
-              throw error;
-            }
-            if (error instanceof Error) {
-              const nested = typeof error === "object"
-                && error !== null
-                && "cause" in error
-                && error.cause instanceof Error
-                ? error.cause.message
-                : error.message;
-              throw new HistoryProjectionEffectError(
-                "permanent",
-                nested.replace(/[^A-Za-z0-9_:-]/gu, "_").slice(0, 80),
-              );
-            }
-            throw error;
-          }
+          const applied = await input.repository.rebuildSubject({
+            subjectId: effect.subjectId,
+            expectedRevision: effect.expectedRevision,
+            nowMs: drainInput.nowMs,
+          });
           if (applied === "stale") {
             await input.store.supersede(
               effect.id,
@@ -292,27 +377,7 @@ export function createHistoryProjectionEffectRunner(input: Readonly<{
           await input.store.complete(effect.id, drainInput.nowMs);
           result.completed += 1;
         } catch (error) {
-          const reason = failure(error);
-          if (
-            reason.kind === "transient"
-            && effect.attemptCount < HISTORY_PROJECTION_EFFECT_MAX_ATTEMPTS
-          ) {
-            await input.store.retry({
-              id: effect.id,
-              errorCode: reason.code,
-              nextAttemptAtMs: drainInput.nowMs
-                + retryDelayMs * effect.attemptCount,
-              nowMs: drainInput.nowMs,
-            });
-            result.retried += 1;
-          } else {
-            await input.store.failPermanently(
-              effect.id,
-              reason.code,
-              drainInput.nowMs,
-            );
-            result.permanentFailures += 1;
-          }
+          await settleFailure(effect, error);
         }
       }
       return Object.freeze(result);

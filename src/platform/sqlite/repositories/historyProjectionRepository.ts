@@ -22,6 +22,15 @@ export type HistoryProjectionRowDump = Readonly<{
   recommendationScopes: readonly Readonly<Record<string, string>>[];
 }>;
 
+export type HistoryProjectionRebuildInput = Readonly<{
+  subjectId: string;
+  expectedRevision: number;
+}>;
+
+export type HistoryProjectionRebuildOutcome = HistoryProjectionRebuildInput & Readonly<{
+  result: "applied" | "stale";
+}>;
+
 export type HistoryProjectionRepository = Readonly<{
   advanceAndEnqueue(input: Readonly<{
     subjects: readonly HistorySubject[];
@@ -37,6 +46,10 @@ export type HistoryProjectionRepository = Readonly<{
     expectedRevision: number;
     nowMs: number;
   }>): Promise<"applied" | "stale">;
+  rebuildSubjects?: ((input: Readonly<{
+    subjects: readonly HistoryProjectionRebuildInput[];
+    nowMs: number;
+  }>) => Promise<readonly HistoryProjectionRebuildOutcome[]>) | undefined;
   rebuildAll(input: Readonly<{ nowMs: number }>): Promise<void>;
   dumpProjectionRows(): Promise<HistoryProjectionRowDump>;
   loadFreshness(input: Readonly<{
@@ -257,7 +270,7 @@ async function deleteRowsForSubject(
 }
 
 function subjectMatchesRow(
-  subjectId: string,
+  subject: ReturnType<typeof parseHistorySubjectId>,
   row: Readonly<{
     exerciseId?: string;
     identityKey?: string;
@@ -265,7 +278,6 @@ function subjectMatchesRow(
     localDate?: string;
   }>,
 ): boolean {
-  const subject = parseHistorySubjectId(subjectId);
   switch (subject.kind) {
     case "session":
       return false;
@@ -283,24 +295,18 @@ function subjectMatchesRow(
   }
 }
 
-async function replaceSubjectProjection(
+async function applySubjectProjection(
   transaction: SqliteTransactionExecutor,
   subjectId: string,
   expectedRevision: number,
   nowMs: number,
-): Promise<"applied" | "stale"> {
-  const [revision] = await transaction.queryAll<RevisionRow>(
-    `SELECT revision FROM history_subject_revisions WHERE subject_id = ?`,
-    [subjectId],
-  );
-  if (revision?.revision !== expectedRevision) {
-    return "stale";
-  }
-  const projection = await sourceProjection(transaction);
+  projection: HistoryProjection,
+): Promise<void> {
+  const subject = parseHistorySubjectId(subjectId);
   await deleteRowsForSubject(transaction, subjectId);
   for (const row of projection.recordCandidates) {
-    if (parseHistorySubjectId(subjectId).kind !== "exercise_metric"
-      || !subjectMatchesRow(subjectId, row)) {
+    if (subject.kind !== "exercise_metric"
+      || !subjectMatchesRow(subject, row)) {
       continue;
     }
     await transaction.execute(
@@ -317,8 +323,8 @@ async function replaceSubjectProjection(
     );
   }
   for (const row of projection.comparableExposures) {
-    if (parseHistorySubjectId(subjectId).kind !== "exercise_metric"
-      || !subjectMatchesRow(subjectId, row)) {
+    if (subject.kind !== "exercise_metric"
+      || !subjectMatchesRow(subject, row)) {
       continue;
     }
     await transaction.execute(
@@ -335,8 +341,8 @@ async function replaceSubjectProjection(
     );
   }
   for (const row of projection.metricAggregates) {
-    if (parseHistorySubjectId(subjectId).kind !== "exercise_metric"
-      || !subjectMatchesRow(subjectId, {
+    if (subject.kind !== "exercise_metric"
+      || !subjectMatchesRow(subject, {
       exerciseId: row.exerciseId,
       identityKey: row.identityKey,
       comparatorKey: row.comparatorKey,
@@ -355,8 +361,8 @@ async function replaceSubjectProjection(
     );
   }
   for (const row of projection.periodInputs) {
-    if (parseHistorySubjectId(subjectId).kind !== "period"
-      || !subjectMatchesRow(subjectId, { localDate: row.localDate })) {
+    if (subject.kind !== "period"
+      || !subjectMatchesRow(subject, { localDate: row.localDate })) {
       continue;
     }
     await transaction.execute(
@@ -370,7 +376,6 @@ async function replaceSubjectProjection(
       ],
     );
   }
-  const subject = parseHistorySubjectId(subjectId);
   if (subject.kind === "recommendation_target") {
     await transaction.execute(
       `INSERT INTO history_projection_recommendation_scopes (subject_id, scope_id)
@@ -387,7 +392,56 @@ async function replaceSubjectProjection(
        updated_at_ms = excluded.updated_at_ms`,
     [subjectId, expectedRevision, nowMs],
   );
-  return "applied";
+}
+
+async function rebuildSubjectProjections(
+  transaction: SqliteTransactionExecutor,
+  input: Readonly<{
+    subjects: readonly HistoryProjectionRebuildInput[];
+    nowMs: number;
+  }>,
+): Promise<readonly HistoryProjectionRebuildOutcome[]> {
+  if (input.subjects.length === 0) {
+    return Object.freeze([]);
+  }
+  const subjectIds = [...new Set(input.subjects.map((item) => item.subjectId))];
+  const revisions = await transaction.queryAll<Readonly<{
+    subject_id: string;
+    revision: number;
+  }>>(
+    `SELECT subject_id, revision
+     FROM history_subject_revisions
+     WHERE subject_id IN (${subjectIds.map(() => "?").join(", ")})`,
+    subjectIds,
+  );
+  const revisionBySubjectId = new Map(
+    revisions.map((row) => [row.subject_id, row.revision]),
+  );
+  const currentSubjects = new Map<string, HistoryProjectionRebuildInput>();
+  const outcomes = input.subjects.map((item) => {
+    const result = revisionBySubjectId.get(item.subjectId) === item.expectedRevision
+      ? "applied" as const
+      : "stale" as const;
+    if (result === "applied") {
+      currentSubjects.set(item.subjectId, item);
+    }
+    return Object.freeze({ ...item, result });
+  });
+  if (currentSubjects.size === 0) {
+    return Object.freeze(outcomes);
+  }
+
+  const projection = await sourceProjection(transaction);
+  for (const item of currentSubjects.values()) {
+    await applySubjectProjection(
+      transaction,
+      item.subjectId,
+      item.expectedRevision,
+      input.nowMs,
+      projection,
+    );
+  }
+  return Object.freeze(outcomes);
 }
 
 async function dump(
@@ -438,6 +492,19 @@ async function dump(
 export function createHistoryProjectionRepository(
   kernel: SqliteKernel,
 ): HistoryProjectionRepository {
+  async function rebuildSubjects(input: Readonly<{
+    subjects: readonly HistoryProjectionRebuildInput[];
+    nowMs: number;
+  }>): Promise<readonly HistoryProjectionRebuildOutcome[]> {
+    if (input.subjects.length === 0) {
+      return Object.freeze([]);
+    }
+    return kernel.write((transaction) => rebuildSubjectProjections(
+      transaction,
+      input,
+    ));
+  }
+
   return Object.freeze({
     async advanceAndEnqueue(input) {
       return kernel.write((transaction) => advanceHistoryProjectionSubjects(
@@ -472,14 +539,18 @@ export function createHistoryProjectionRepository(
       return row.applied_revision === row.revision ? "current" : "updating";
     },
 
-    rebuildSubject(input) {
-      return kernel.write((transaction) => replaceSubjectProjection(
-        transaction,
-        input.subjectId,
-        input.expectedRevision,
-        input.nowMs,
-      ));
+    async rebuildSubject(input) {
+      const [outcome] = await rebuildSubjects({
+        subjects: [{
+          subjectId: input.subjectId,
+          expectedRevision: input.expectedRevision,
+        }],
+        nowMs: input.nowMs,
+      });
+      return outcome!.result;
     },
+
+    rebuildSubjects,
 
     async rebuildAll(input) {
       await kernel.write(async (transaction) => {
@@ -500,13 +571,17 @@ export function createHistoryProjectionRepository(
            FROM history_subject_revisions
            ORDER BY subject_id`,
         );
-        for (const row of revisions) {
-          await replaceSubjectProjection(
-            transaction,
-            row.subject_id,
-            row.revision,
-            input.nowMs,
-          );
+        if (revisions.length > 0) {
+          const projection = await sourceProjection(transaction);
+          for (const row of revisions) {
+            await applySubjectProjection(
+              transaction,
+              row.subject_id,
+              row.revision,
+              input.nowMs,
+              projection,
+            );
+          }
         }
       });
     },
