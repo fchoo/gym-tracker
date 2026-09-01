@@ -113,7 +113,7 @@ function adbWith(execute, serial, ...args) {
 
 const ADB_PULL_ATTEMPTS = 3;
 const ADB_PULL_TIMEOUT_MS = 60_000;
-const TRANSIENT_ADB_TRANSPORT = /(?:device (?:offline|not found)|no devices\/emulators found|cannot connect|connection (?:closed|reset)|protocol fault)/iu;
+const TRANSIENT_ADB_TRANSPORT = /(?:device (?:'[^'\r\n]+' )?(?:offline|not found)|no devices\/emulators found|cannot connect|connection (?:closed|reset)|protocol fault)/iu;
 
 function errorOutput(error) {
   const stderr = error !== null
@@ -124,6 +124,14 @@ function errorOutput(error) {
   return `${error instanceof Error ? error.message : String(error)}\n${
     Buffer.isBuffer(stderr) ? stderr.toString("utf8") : String(stderr ?? "")
   }`;
+}
+
+function isTransientAdbTransport(error) {
+  const timedOut = error !== null
+      && typeof error === "object"
+      && "code" in error
+      && error.code === "ETIMEDOUT";
+  return timedOut || TRANSIENT_ADB_TRANSPORT.test(errorOutput(error));
 }
 
 export function pullInstalledApkWithRetry({
@@ -145,7 +153,7 @@ export function pullInstalledApkWithRetry({
       rmSync(localPath, { force: true });
       if (
         attempt === ADB_PULL_ATTEMPTS
-        || !TRANSIENT_ADB_TRANSPORT.test(errorOutput(error))
+        || !isTransientAdbTransport(error)
       ) {
         throw error;
       }

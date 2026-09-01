@@ -299,6 +299,32 @@ test("Phase 5 installed-byte pull retries only transient ADB transport failures"
     ]);
     assert.equal(readFileSync(localPath, "utf8"), "complete");
 
+    for (const retryable of [
+      Object.assign(new Error("Command failed: adb pull"), {
+        stderr: "adb: device 'emulator-5554' not found\n",
+      }),
+      Object.assign(new Error("spawnSync adb ETIMEDOUT"), {
+        code: "ETIMEDOUT",
+        stderr: "",
+      }),
+    ]) {
+      const retryCalls = [];
+      let attempts = 0;
+      pullInstalledApkWithRetry({
+        execute: (_file, args) => {
+          retryCalls.push(args);
+          if (args.includes("pull") && attempts++ === 0) throw retryable;
+          if (args.includes("pull")) writeFileSync(localPath, "complete");
+          return "";
+        },
+        localPath,
+        remotePath: "/data/app/base.apk",
+        serial: "emulator-5554",
+      });
+      assert.equal(retryCalls.filter((args) => args.includes("pull")).length, 2);
+      assert.equal(retryCalls.filter((args) => args.includes("wait-for-device")).length, 1);
+    }
+
     const permanentCalls = [];
     const permanent = new Error("Command failed: adb pull");
     permanent.stderr = "adb: error: failed to copy: Permission denied\n";
