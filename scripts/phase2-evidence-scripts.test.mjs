@@ -612,6 +612,12 @@ test("Phase 2 remediation flows use public labels and deterministic seams", asyn
     "    direction: DOWN",
     "    centerElement: true",
   ].join("\n");
+  const safeActionNudge = [
+    "- swipe:",
+    "    start: 95%, 75%",
+    "    end: 95%, 45%",
+    "    duration: 300",
+  ].join("\n");
   assert.equal(
     workout.split(initialAddWorkingSetVisibilityGuard).length - 1,
     1,
@@ -619,15 +625,10 @@ test("Phase 2 remediation flows use public labels and deterministic seams", asyn
   );
   assert.ok(
     workout.includes(
-      `${initialAddWorkingSetVisibilityGuard}\n- assertVisible: "Add working set"`,
+      `${initialAddWorkingSetVisibilityGuard}\n${safeActionNudge}\n- assertVisible: "Add working set"`,
     ),
+    "the initial Add working set action must settle above the system-navigation boundary before its visibility proof",
   );
-  const safeActionNudge = [
-    "- swipe:",
-    "    start: 95%, 75%",
-    "    end: 95%, 45%",
-    "    duration: 300",
-  ].join("\n");
   const retriedAddWorkingSetVisibilityGuard = [
     "- repeat:",
     "    times: 12",
