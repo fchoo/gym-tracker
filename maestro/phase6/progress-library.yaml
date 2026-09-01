@@ -42,6 +42,8 @@ tags:
           end: 95%, 25%
           duration: 300
 - tapOn: "Complete Set 1"
+- tapOn: "Go back"
+- assertVisible: "Workout in progress"
 - tapOn: "Progress"
 - assertVisible: "4 weeks"
 - extendedWaitUntil:
