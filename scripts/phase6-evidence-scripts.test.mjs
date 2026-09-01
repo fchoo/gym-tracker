@@ -213,6 +213,22 @@ test("Phase 6 production flows retain exact package, labelled coverage, and scre
   }
 });
 
+test("Phase 6 Progress flow exits the full-screen workout before root navigation", () => {
+  const source = readFileSync(
+    path.join(projectRoot, "maestro/phase6/progress-library.yaml"),
+    "utf8",
+  );
+
+  assert.match(
+    source,
+    /- tapOn: "Complete Set 1"\n- tapOn: "Go back"\n- assertVisible: "Workout in progress"\n- tapOn: "Progress"\n- assertVisible: "4 weeks"/u,
+  );
+  assert.doesNotMatch(
+    source,
+    /- tapOn: "Complete Set 1"\n- tapOn: "Progress"/u,
+  );
+});
+
 test("plan reorder callbacks compile as UI worklets without remote helpers", () => {
   const fileName = path.join(
     projectRoot,
