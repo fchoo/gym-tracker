@@ -4,6 +4,7 @@ import { execFileSync } from "node:child_process";
 import { createHash } from "node:crypto";
 import {
   existsSync,
+  lstatSync,
   mkdirSync,
   mkdtempSync,
   readFileSync,
@@ -31,6 +32,7 @@ const SERIAL = /^[A-Za-z0-9._:-]+$/u;
 const LOCAL_DATE = /^(\d{4})-(\d{2})-(\d{2})$/u;
 const SAFE_RELATIVE_FILE = /^[A-Za-z0-9][A-Za-z0-9._/-]{0,239}$/u;
 const NATIVE_DRAG_SCREENSHOT = "phase6-reorder-live-displacement.png";
+const NATIVE_DRAG_FLOW = "maestro/phase6/calendar-date-reorder-verify.yaml";
 const MONTH_NAMES = Object.freeze([
   "January", "February", "March", "April", "May", "June",
   "July", "August", "September", "October", "November", "December",
@@ -577,15 +579,141 @@ function screenshotEvidence(reportRoot) {
   return Object.freeze(screenshots);
 }
 
+function sha256Bytes(bytes) {
+  return createHash("sha256").update(bytes).digest("hex");
+}
+
+function snapshotExecutableFlow(directory, sourceRoot, source, name) {
+  const sourcePath = path.resolve(sourceRoot, source);
+  if (!existsSync(sourcePath)) fail(`required Maestro flow is missing: ${name}`);
+  const bytes = readFileSync(sourcePath);
+  const flowPath = path.join(directory, `${name}.yaml`);
+  writeFileSync(flowPath, bytes, { flag: "wx", mode: 0o400 });
+  const flowSha256 = sha256Bytes(bytes);
+  if (sha256File(flowPath) !== flowSha256) {
+    fail(`Maestro flow snapshot failed: ${name}`);
+  }
+  return Object.freeze({
+    source,
+    flowPath,
+    flowSha256,
+  });
+}
+
+export function snapshotPhase6ExecutableFlows(
+  parentDirectory = os.tmpdir(),
+  sourceRoot = process.cwd(),
+) {
+  const directory = mkdtempSync(path.join(
+    path.resolve(parentDirectory),
+    "phase6-executable-flows-",
+  ));
+  try {
+    const flows = Object.fromEntries(PHASE6_MAESTRO_FLOW_CONTRACTS.map((contract) => {
+      const primary = snapshotExecutableFlow(
+        directory,
+        sourceRoot,
+        contract.flow,
+        contract.id,
+      );
+      if (!contract.native_backstops.includes("N3")) {
+        return [contract.id, primary];
+      }
+      const nativeDrag = snapshotExecutableFlow(
+        directory,
+        sourceRoot,
+        NATIVE_DRAG_FLOW,
+        `${contract.id}-native-drag`,
+      );
+      return [contract.id, Object.freeze({
+        ...primary,
+        nativeDragFlow: nativeDrag.source,
+        nativeDragFlowPath: nativeDrag.flowPath,
+        nativeDragFlowSha256: nativeDrag.flowSha256,
+      })];
+    }));
+    Object.freeze(flows);
+    return Object.freeze({
+      directory,
+      flows,
+      cleanup: () => rmSync(directory, { recursive: true, force: true }),
+    });
+  } catch (error) {
+    rmSync(directory, { recursive: true, force: true });
+    throw error;
+  }
+}
+
+function assertExecutableFlowSnapshot(
+  flowExecution,
+  contract,
+  sourceRoot = process.cwd(),
+) {
+  const requiresNativeDrag = contract.native_backstops.includes("N3");
+  if (flowExecution?.source !== contract.flow
+    || typeof flowExecution?.flowPath !== "string"
+    || !SHA256_PATTERN.test(flowExecution?.flowSha256 ?? "")
+    || sha256File(flowExecution.flowPath) !== flowExecution.flowSha256
+    || sha256File(path.resolve(sourceRoot, contract.flow)) !== flowExecution.flowSha256) {
+    fail(`executed Maestro flow bytes changed: ${contract.id}`);
+  }
+  if (requiresNativeDrag) {
+    if (flowExecution.nativeDragFlow !== NATIVE_DRAG_FLOW
+      || typeof flowExecution.nativeDragFlowPath !== "string"
+      || !SHA256_PATTERN.test(flowExecution.nativeDragFlowSha256 ?? "")
+      || sha256File(flowExecution.nativeDragFlowPath)
+        !== flowExecution.nativeDragFlowSha256
+      || sha256File(path.resolve(sourceRoot, NATIVE_DRAG_FLOW))
+        !== flowExecution.nativeDragFlowSha256) {
+      fail(`executed native drag flow bytes changed: ${contract.id}`);
+    }
+  } else if (flowExecution.nativeDragFlow !== undefined
+    || flowExecution.nativeDragFlowPath !== undefined
+    || flowExecution.nativeDragFlowSha256 !== undefined) {
+    fail(`unexpected native drag flow snapshot: ${contract.id}`);
+  }
+  return flowExecution;
+}
+
+export function validatePhase6ExecutableFlowSnapshots(
+  flowExecutions,
+  sourceRoot = process.cwd(),
+) {
+  for (const contract of PHASE6_MAESTRO_FLOW_CONTRACTS) {
+    assertExecutableFlowSnapshot(flowExecutions?.[contract.id], contract, sourceRoot);
+  }
+}
+
+export function preparePhase6EvidenceOutputs(output, reportDirectory) {
+  if (lstatSync(output, { throwIfNoEntry: false }) !== undefined) {
+    fail("Phase 6 evidence output must be fresh.");
+  }
+  if (lstatSync(reportDirectory, { throwIfNoEntry: false }) !== undefined) {
+    fail("Phase 6 Maestro report directory must be fresh.");
+  }
+  const outputParent = path.dirname(output);
+  const outputParentDetails = lstatSync(outputParent, { throwIfNoEntry: false });
+  if (outputParentDetails?.isSymbolicLink()) {
+    fail("Phase 6 evidence output parent is unsafe.");
+  }
+  mkdirSync(outputParent, { recursive: true });
+  mkdirSync(reportDirectory, { recursive: true });
+}
+
 export function createPhase6Evidence({
   candidate,
   device,
+  flowExecutions,
   rawReports,
   nativeDragReports = {},
   screenshots,
   fontScaleRestored,
 }) {
   const flows = PHASE6_MAESTRO_FLOW_CONTRACTS.map((contract) => {
+    const flowExecution = assertExecutableFlowSnapshot(
+      flowExecutions?.[contract.id],
+      contract,
+    );
     const rawReport = rawReports?.[contract.id];
     const flowScreenshots = screenshots?.[contract.id];
     const parsed = parsePassedJunit(rawReport, contract.id);
@@ -607,12 +735,14 @@ export function createPhase6Evidence({
     return Object.freeze({
       id: contract.id,
       flow: contract.flow,
-      flow_sha256: sha256File(path.resolve(contract.flow)),
+      flow_sha256: flowExecution.flowSha256,
       considerations: contract.considerations,
       native_backstops: contract.native_backstops,
       raw_report_file: `${contract.id}/report.xml`,
       raw_report_sha256: createHash("sha256").update(rawReport).digest("hex"),
       ...(nativeDrag === null ? {} : {
+        native_drag_flow: flowExecution.nativeDragFlow,
+        native_drag_flow_sha256: flowExecution.nativeDragFlowSha256,
         native_drag_report_file: `${contract.id}/native-drag/report.xml`,
         native_drag_report_sha256: createHash("sha256")
           .update(nativeDragReport)
@@ -657,6 +787,7 @@ export function validatePhase6Evidence(
   candidate,
   rawReports,
   nativeDragReports = {},
+  flowExecutions,
 ) {
   const expectedCandidate = phase5CandidateIdentity(candidate.manifest, candidate.manifest_sha256);
   if (evidence?.schema_version !== 1
@@ -679,12 +810,17 @@ export function validatePhase6Evidence(
   }
   for (const [index, contract] of PHASE6_MAESTRO_FLOW_CONTRACTS.entries()) {
     const flow = evidence.flows[index];
+    const flowExecution = flowExecutions === undefined
+      ? null
+      : assertExecutableFlowSnapshot(flowExecutions[contract.id], contract);
+    const expectedFlowSha256 = flowExecution?.flowSha256
+      ?? sha256File(path.resolve(contract.flow));
     const rawReport = rawReports?.[contract.id];
     const nativeDragReport = nativeDragReports?.[contract.id];
     const requiresNativeDrag = contract.native_backstops.includes("N3");
     if (flow?.id !== contract.id
       || flow?.flow !== contract.flow
-      || flow?.flow_sha256 !== sha256File(path.resolve(contract.flow))
+      || flow?.flow_sha256 !== expectedFlowSha256
       || !exactJson(flow?.considerations, contract.considerations)
       || !exactJson(flow?.native_backstops, contract.native_backstops)
       || flow?.tests < 1
@@ -698,12 +834,16 @@ export function validatePhase6Evidence(
       fail(`automated evidence flow is invalid: ${contract.id}`);
     }
     if (requiresNativeDrag) {
+      const expectedNativeDragFlowSha256 = flowExecution?.nativeDragFlowSha256
+        ?? sha256File(path.resolve(NATIVE_DRAG_FLOW));
       const parsedNativeDrag = parsePassedJunit(
         nativeDragReport,
         `${contract.id}-native-drag`,
       );
       if (flow.native_drag_report_file
           !== `${contract.id}/native-drag/report.xml`
+        || flow.native_drag_flow !== NATIVE_DRAG_FLOW
+        || flow.native_drag_flow_sha256 !== expectedNativeDragFlowSha256
         || flow.native_drag_report_sha256 !== createHash("sha256")
           .update(nativeDragReport)
           .digest("hex")
@@ -716,7 +856,9 @@ export function validatePhase6Evidence(
           exactJson(screenshot, flow.native_drag_live_screenshot))) {
         fail(`native drag evidence is invalid: ${contract.id}`);
       }
-    } else if (flow.native_drag_report_file !== undefined
+    } else if (flow.native_drag_flow !== undefined
+      || flow.native_drag_flow_sha256 !== undefined
+      || flow.native_drag_report_file !== undefined
       || flow.native_drag_report_sha256 !== undefined
       || flow.native_drag_tests !== undefined
       || flow.native_drag_live_screenshot !== undefined) {
@@ -754,12 +896,13 @@ export function executePhase6Maestro(args = process.argv.slice(2)) {
     "report directory",
   );
   const adbPath = resolveAdb();
-  mkdirSync(path.dirname(output), { recursive: true });
-  mkdirSync(reportDirectory, { recursive: true });
+  preparePhase6EvidenceOutputs(output, reportDirectory);
   const priorFontScale = adb(adbPath, options.serial, "shell", "settings", "get", "system", "font_scale");
+  let executableFlows;
   let evidence;
   let primaryError;
   try {
+    executableFlows = snapshotPhase6ExecutableFlows();
     execFileSync(adbPath, ["-s", options.serial, "install", "-r", candidate.apkPath], {
       stdio: "inherit",
     });
@@ -769,11 +912,13 @@ export function executePhase6Maestro(args = process.argv.slice(2)) {
     const nativeDragReports = {};
     const screenshots = {};
     for (const contract of PHASE6_MAESTRO_FLOW_CONTRACTS) {
-      const flowPath = path.resolve(contract.flow);
-      if (!existsSync(flowPath)) fail(`required Maestro flow is missing: ${contract.id}`);
+      const flowExecution = assertExecutableFlowSnapshot(
+        executableFlows.flows[contract.id],
+        contract,
+      );
       const flowReportDirectory = path.join(reportDirectory, contract.id);
       const reportPath = path.join(flowReportDirectory, "report.xml");
-      mkdirSync(flowReportDirectory, { recursive: true });
+      mkdirSync(flowReportDirectory);
       const monthEnvironment = phase6CalendarMonthEnvironment(adb(
         adbPath,
         options.serial,
@@ -790,7 +935,7 @@ export function executePhase6Maestro(args = process.argv.slice(2)) {
         "--format", "junit",
         "--output", reportPath,
         "--test-output-dir", flowReportDirectory,
-        flowPath,
+        flowExecution.flowPath,
       ], { stdio: "inherit" });
       if (!existsSync(reportPath)) fail(`Maestro report is missing: ${contract.id}`);
       rawReports[contract.id] = readFileSync(reportPath);
@@ -848,9 +993,6 @@ export function executePhase6Maestro(args = process.argv.slice(2)) {
           }
         }
         throwPhase6Failures(dragFailure, dragCleanupErrors, "native drag");
-        const nativeDragFlow = path.resolve(
-          "maestro/phase6/calendar-date-reorder-verify.yaml",
-        );
         const nativeDragReportDirectory = path.join(
           flowReportDirectory,
           "native-drag",
@@ -859,9 +1001,6 @@ export function executePhase6Maestro(args = process.argv.slice(2)) {
           nativeDragReportDirectory,
           "report.xml",
         );
-        if (!existsSync(nativeDragFlow)) {
-          fail("native drag verification flow is missing.");
-        }
         mkdirSync(nativeDragReportDirectory, { recursive: true });
         execFileSync("maestro", [
           "test",
@@ -869,7 +1008,7 @@ export function executePhase6Maestro(args = process.argv.slice(2)) {
           "--format", "junit",
           "--output", nativeDragReportPath,
           "--test-output-dir", nativeDragReportDirectory,
-          nativeDragFlow,
+          flowExecution.nativeDragFlowPath,
         ], { stdio: "inherit" });
         if (!existsSync(nativeDragReportPath)) {
           fail("native drag verification report is missing.");
@@ -881,6 +1020,7 @@ export function executePhase6Maestro(args = process.argv.slice(2)) {
     evidence = createPhase6Evidence({
       candidate,
       device,
+      flowExecutions: executableFlows.flows,
       rawReports,
       nativeDragReports,
       screenshots,
@@ -940,9 +1080,22 @@ export function executePhase6Maestro(args = process.argv.slice(2)) {
           )),
         ]),
       );
-      validatePhase6Evidence(finalized, candidate, rawReports, nativeDragReports);
+      validatePhase6Evidence(
+        finalized,
+        candidate,
+        rawReports,
+        nativeDragReports,
+        executableFlows.flows,
+      );
       writeFileSync(output, `${JSON.stringify(finalized, null, 2)}\n`);
       evidence = finalized;
+    } catch (error) {
+      cleanupErrors.push(error);
+    }
+  }
+  if (executableFlows !== undefined) {
+    try {
+      executableFlows.cleanup();
     } catch (error) {
       cleanupErrors.push(error);
     }

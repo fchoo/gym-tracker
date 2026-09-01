@@ -91,6 +91,7 @@ tags:
 - extendedWaitUntil:
     visible: "PARTIAL SAVED"
     timeout: 60000
+- assertVisible: "PARTIAL SAVED"
 - assertVisible: "Workout saved"
 - scrollUntilVisible:
     element:
@@ -102,6 +103,7 @@ tags:
 - assertVisible: "Today"
 - tapOn: "Progress"
 - assertVisible: "4 weeks"
+- assertVisible: "Overall Progress"
 - scrollUntilVisible:
     element:
       text: "Working sets · 3 of 15 completed"
@@ -116,6 +118,7 @@ tags:
     direction: DOWN
     centerElement: true
     timeout: 60000
+- assertVisible: "Exercise progress"
 - assertVisible: "Back Squat"
 - tapOn: "Search exercises"
 - inputText: "Back"
