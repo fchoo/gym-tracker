@@ -20,6 +20,9 @@ import {
   type PendingEffect,
 } from "../platform/sqlite/effects/effectStore";
 import {
+  HISTORY_PROJECTION_EFFECT_MAX_ATTEMPTS,
+  HISTORY_PROJECTION_EFFECT_LEASE_DURATION_MS,
+  HISTORY_PROJECTION_EFFECT_RETRY_DELAY_MS,
   createHistoryProjectionEffectRunner,
   createHistoryProjectionEffectStore,
   type HistoryProjectionEffectDrainResult,
@@ -48,6 +51,8 @@ export type WorkoutLifecycleTrigger =
   | "supported_boot";
 
 type AppStateStatus = import("react-native").AppStateStatus;
+
+const HISTORY_PROJECTION_DRAIN_BATCH_SIZE = 16;
 
 export type WorkoutLifecycleResult = Readonly<{
   trigger: WorkoutLifecycleTrigger;
@@ -108,6 +113,39 @@ function effectSessionId(effect: PendingEffect): string {
     : effect.subjectId;
 }
 
+function emptyHistoryProjectionDrain(): HistoryProjectionEffectDrainResult {
+  return {
+    claimed: 0,
+    completed: 0,
+    permanentFailures: 0,
+    retried: 0,
+    superseded: 0,
+  };
+}
+
+async function drainHistoryProjectionBatch(
+  runner: ReturnType<typeof createHistoryProjectionEffectRunner>,
+  nowMs: number,
+): Promise<Readonly<{
+  result: HistoryProjectionEffectDrainResult;
+  failed: boolean;
+}>> {
+  try {
+    return {
+      result: await runner.drain({
+        nowMs,
+        limit: HISTORY_PROJECTION_DRAIN_BATCH_SIZE,
+      }),
+      failed: false,
+    };
+  } catch {
+    return {
+      result: emptyHistoryProjectionDrain(),
+      failed: true,
+    };
+  }
+}
+
 async function cancelOrphanRestNotifications(input: Readonly<{
   activeSessionIds: readonly string[];
   notifications: RestNotificationPort;
@@ -158,6 +196,60 @@ export function createWorkoutLifecycle(input: Readonly<{
       repository: input.historyProjectionRepository,
       store: historyProjectionEffectStore,
     });
+  let projectionDrainInFlight: Promise<Readonly<{
+    result: HistoryProjectionEffectDrainResult;
+    failed: boolean;
+  }>> | null = null;
+  let projectionDrainRequested = false;
+  const scheduleHistoryProjectionDrain = (delayMs: number, earliestNowMs = 0) => {
+    setTimeout(() => {
+      void requestHistoryProjectionDrain(Math.max(input.nowMs(), earliestNowMs));
+    }, delayMs);
+  };
+  const requestHistoryProjectionDrain = async (
+    nowMs: number,
+  ): Promise<HistoryProjectionEffectDrainResult> => {
+    if (historyProjectionRunner === null) {
+      return emptyHistoryProjectionDrain();
+    }
+    if (projectionDrainInFlight !== null) {
+      projectionDrainRequested = true;
+      return (await projectionDrainInFlight).result;
+    }
+    projectionDrainRequested = false;
+    projectionDrainInFlight = (async () => {
+      await historyProjectionEffectStore?.resetExpiredClaims(nowMs)
+        .catch(() => undefined);
+      return drainHistoryProjectionBatch(historyProjectionRunner, nowMs);
+    })();
+    try {
+      const attempt = await projectionDrainInFlight;
+      const batch = attempt.result;
+      const settled = batch.completed + batch.permanentFailures
+        + batch.retried + batch.superseded;
+      if (batch.claimed === HISTORY_PROJECTION_DRAIN_BATCH_SIZE) {
+        scheduleHistoryProjectionDrain(0);
+      }
+      if (batch.retried > 0) {
+        const retryDelayMs = HISTORY_PROJECTION_EFFECT_RETRY_DELAY_MS
+          * (HISTORY_PROJECTION_EFFECT_MAX_ATTEMPTS - 1);
+        scheduleHistoryProjectionDrain(retryDelayMs, nowMs + retryDelayMs);
+      }
+      if (attempt.failed || settled < batch.claimed) {
+        scheduleHistoryProjectionDrain(
+          HISTORY_PROJECTION_EFFECT_LEASE_DURATION_MS,
+          nowMs + HISTORY_PROJECTION_EFFECT_LEASE_DURATION_MS,
+        );
+      }
+      return batch;
+    } finally {
+      projectionDrainInFlight = null;
+      if (projectionDrainRequested) {
+        projectionDrainRequested = false;
+        scheduleHistoryProjectionDrain(0);
+      }
+    }
+  };
   let foregroundFeedback = input.foregroundFeedback;
   const foregroundFeedbackStore = input.foregroundFeedbackStore
     ?? createForegroundRestFeedbackStore(input.kernel);
@@ -419,19 +511,8 @@ export function createWorkoutLifecycle(input: Readonly<{
           superseded: 0,
         }
         : await (async () => {
-          await historyProjectionEffectStore
-            ?.resetExpiredClaims(input.nowMs())
-            .catch(() => undefined);
-          return historyProjectionRunner.drain({
-            nowMs: input.nowMs(),
-            limit: 16,
-          }).catch(() => ({
-            claimed: 0,
-            completed: 0,
-            permanentFailures: 1,
-            retried: 0,
-            superseded: 0,
-          }));
+          const projectionNowMs = input.nowMs();
+          return requestHistoryProjectionDrain(projectionNowMs);
         })();
       return {
         trigger,
