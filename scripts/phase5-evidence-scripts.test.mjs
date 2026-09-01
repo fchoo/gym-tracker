@@ -3,6 +3,7 @@ import { spawnSync } from "node:child_process";
 import { createHash } from "node:crypto";
 import {
   chmodSync,
+  existsSync,
   mkdirSync,
   mkdtempSync,
   readFileSync,
@@ -263,6 +264,75 @@ test("Phase 5 clean restore accepts an absent production package exactly", async
       ? "Error: package manager unavailable\n"
       : "",
   ), /malformed output/iu);
+});
+
+test("Phase 5 installed-byte pull retries only transient ADB transport failures", async () => {
+  const { pullInstalledApkWithRetry } = await load(
+    "scripts/run-phase5-maestro.mjs",
+  );
+  const calls = [];
+  let pullAttempts = 0;
+  const transient = new Error("Command failed: adb pull");
+  transient.stderr = "adb: device offline\n";
+  const temporaryDirectory = mkdtempSync(path.join(os.tmpdir(), "phase5-pull-test-"));
+  const localPath = path.join(temporaryDirectory, "installed.apk");
+  try {
+    pullInstalledApkWithRetry({
+      execute: (_file, args) => {
+        calls.push(args);
+        if (args.includes("pull") && pullAttempts++ === 0) {
+          writeFileSync(localPath, "partial");
+          throw transient;
+        }
+        if (args.includes("pull")) writeFileSync(localPath, "complete");
+        return "";
+      },
+      localPath,
+      remotePath: "/data/app/base.apk",
+      serial: "emulator-5554",
+    });
+
+    assert.deepEqual(calls, [
+      ["-s", "emulator-5554", "pull", "/data/app/base.apk", localPath],
+      ["-s", "emulator-5554", "wait-for-device"],
+      ["-s", "emulator-5554", "pull", "/data/app/base.apk", localPath],
+    ]);
+    assert.equal(readFileSync(localPath, "utf8"), "complete");
+
+    const permanentCalls = [];
+    const permanent = new Error("Command failed: adb pull");
+    permanent.stderr = "adb: error: failed to copy: Permission denied\n";
+    assert.throws(() => pullInstalledApkWithRetry({
+      execute: (_file, args) => {
+        permanentCalls.push(args);
+        throw permanent;
+      },
+      localPath,
+      remotePath: "/data/app/base.apk",
+      serial: "emulator-5554",
+    }), /Command failed: adb pull/u);
+    assert.equal(permanentCalls.length, 1);
+
+    const exhaustedCalls = [];
+    assert.throws(() => pullInstalledApkWithRetry({
+      execute: (_file, args) => {
+        exhaustedCalls.push(args);
+        if (args.includes("pull")) {
+          writeFileSync(localPath, "partial");
+          throw transient;
+        }
+        return "";
+      },
+      localPath,
+      remotePath: "/data/app/base.apk",
+      serial: "emulator-5554",
+    }), /Command failed: adb pull/u);
+    assert.equal(exhaustedCalls.filter((args) => args.includes("pull")).length, 3);
+    assert.equal(exhaustedCalls.filter((args) => args.includes("wait-for-device")).length, 2);
+    assert.equal(existsSync(localPath), false);
+  } finally {
+    rmSync(temporaryDirectory, { force: true, recursive: true });
+  }
 });
 
 test("Phase 5 source and installed-flow ledgers are exact, ordered, and automated-only", async () => {

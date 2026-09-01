@@ -2,7 +2,7 @@
 
 import { execFileSync } from "node:child_process";
 import { createHash } from "node:crypto";
-import { existsSync, readFileSync, writeFileSync } from "node:fs";
+import { existsSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import process from "node:process";
 import { pathToFileURL } from "node:url";
@@ -111,6 +111,53 @@ function adbWith(execute, serial, ...args) {
     .trim();
 }
 
+const ADB_PULL_ATTEMPTS = 3;
+const ADB_PULL_TIMEOUT_MS = 60_000;
+const TRANSIENT_ADB_TRANSPORT = /(?:device (?:offline|not found)|no devices\/emulators found|cannot connect|connection (?:closed|reset)|protocol fault)/iu;
+
+function errorOutput(error) {
+  const stderr = error !== null
+      && typeof error === "object"
+      && "stderr" in error
+    ? error.stderr
+    : "";
+  return `${error instanceof Error ? error.message : String(error)}\n${
+    Buffer.isBuffer(stderr) ? stderr.toString("utf8") : String(stderr ?? "")
+  }`;
+}
+
+export function pullInstalledApkWithRetry({
+  execute = execFileSync,
+  localPath,
+  remotePath,
+  serial,
+}) {
+  for (let attempt = 1; attempt <= ADB_PULL_ATTEMPTS; attempt += 1) {
+    rmSync(localPath, { force: true });
+    try {
+      execute("adb", ["-s", serial, "pull", remotePath, localPath], {
+        encoding: "utf8",
+        stdio: ["ignore", "ignore", "pipe"],
+        timeout: ADB_PULL_TIMEOUT_MS,
+      });
+      return;
+    } catch (error) {
+      rmSync(localPath, { force: true });
+      if (
+        attempt === ADB_PULL_ATTEMPTS
+        || !TRANSIENT_ADB_TRANSPORT.test(errorOutput(error))
+      ) {
+        throw error;
+      }
+      execute("adb", ["-s", serial, "wait-for-device"], {
+        encoding: "utf8",
+        stdio: ["ignore", "ignore", "pipe"],
+        timeout: ADB_PULL_TIMEOUT_MS,
+      });
+    }
+  }
+}
+
 function installedDevice(serial, manifest) {
   const packageName = manifest.source.package;
   const apkPath = adb(serial, "shell", "pm", "path", packageName)
@@ -118,7 +165,11 @@ function installedDevice(serial, manifest) {
   if (!apkPath) throw new Error("installed production package is missing.");
   const temporary = path.join(process.cwd(), `.phase5-installed-${process.pid}.apk`);
   try {
-    execFileSync("adb", ["-s", serial, "pull", apkPath, temporary], { stdio: "ignore" });
+    pullInstalledApkWithRetry({
+      localPath: temporary,
+      remotePath: apkPath,
+      serial,
+    });
     const dumpsys = adb(serial, "shell", "dumpsys", "package", packageName);
     const versionCode = Number(dumpsys.match(/versionCode=(\d+)/u)?.[1]);
     return {
