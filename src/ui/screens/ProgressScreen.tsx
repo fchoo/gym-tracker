@@ -62,6 +62,7 @@ type ProgressSnapshot = Readonly<{
 
 export type ProgressScreenProps = Readonly<{
   nowLocalDate: string;
+  workoutRefreshGeneration?: number;
   loadProgress(input: Readonly<{
     period: ProgressPeriod;
     nowLocalDate: string;
@@ -580,6 +581,7 @@ function ExerciseProgress({
 
 export function ProgressScreen({
   nowLocalDate,
+  workoutRefreshGeneration = 0,
   loadProgress,
   onOpenExercise,
   onOpenSession,
@@ -610,7 +612,17 @@ export function ProgressScreen({
       }
     });
     return () => { active = false; };
-  }, [loadProgress, nowLocalDate, period, requestGeneration]);
+  }, [loadProgress, nowLocalDate, period, requestGeneration, workoutRefreshGeneration]);
+
+  useEffect(() => {
+    if (snapshot?.freshness !== "updating") {
+      return;
+    }
+    const timer = setTimeout(() => {
+      setRequestGeneration((value) => value + 1);
+    }, 250);
+    return () => clearTimeout(timer);
+  }, [snapshot]);
 
   const header = (
     <>

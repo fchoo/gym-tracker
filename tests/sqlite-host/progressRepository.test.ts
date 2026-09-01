@@ -497,6 +497,16 @@ describe("progress repository", () => {
        WHERE subject_id = ?`,
       [ALL_PERIOD_SUBJECT_ID],
     ));
+    await kernel.write((transaction) => transaction.execute(
+      `INSERT INTO history_rebuild_effects
+        (id, subject_id, expected_revision, payload_version, payload_json,
+         status, attempt_count, next_attempt_at_ms, claimed_at_ms,
+         lease_expires_at_ms, last_error_code, created_at_ms, updated_at_ms)
+       VALUES ('pending-all-period-rebuild', ?, 2, 1,
+               '{"type":"rebuild_history_subject","version":1}',
+               'pending', 0, 2, NULL, NULL, NULL, 2, 2)`,
+      [ALL_PERIOD_SUBJECT_ID],
+    ));
 
     await expect(repository.load({
       period: "4_weeks",
@@ -520,6 +530,16 @@ describe("progress repository", () => {
       `UPDATE history_subject_revisions
        SET revision = 2, updated_at_ms = 2
        WHERE subject_id = ?`,
+      [BENCH_METRIC_SUBJECT_ID],
+    ));
+    await kernel.write((transaction) => transaction.execute(
+      `INSERT INTO history_rebuild_effects
+        (id, subject_id, expected_revision, payload_version, payload_json,
+         status, attempt_count, next_attempt_at_ms, claimed_at_ms,
+         lease_expires_at_ms, last_error_code, created_at_ms, updated_at_ms)
+       VALUES ('pending-metric-rebuild', ?, 2, 1,
+               '{"type":"rebuild_history_subject","version":1}',
+               'pending', 0, 2, NULL, NULL, NULL, 2, 2)`,
       [BENCH_METRIC_SUBJECT_ID],
     ));
 
@@ -551,6 +571,23 @@ describe("progress repository", () => {
        WHERE subject_id IN (?, ?)`,
       [ALL_PERIOD_SUBJECT_ID, BENCH_METRIC_SUBJECT_ID],
     ));
+    await kernel.write(async (transaction) => {
+      for (const [id, subjectId] of [
+        ["pending-all-period-rebuild", ALL_PERIOD_SUBJECT_ID],
+        ["pending-metric-rebuild", BENCH_METRIC_SUBJECT_ID],
+      ] as const) {
+        await transaction.execute(
+          `INSERT INTO history_rebuild_effects
+            (id, subject_id, expected_revision, payload_version, payload_json,
+             status, attempt_count, next_attempt_at_ms, claimed_at_ms,
+             lease_expires_at_ms, last_error_code, created_at_ms, updated_at_ms)
+           VALUES (?, ?, 2, 1,
+                   '{"type":"rebuild_history_subject","version":1}',
+                   'pending', 0, 2, NULL, NULL, NULL, 2, 2)`,
+          [id, subjectId],
+        );
+      }
+    });
 
     const result = await repository.load({
       period: "all_time",
@@ -568,6 +605,44 @@ describe("progress repository", () => {
     });
     expect(JSON.stringify(result.diagnostic)).not.toContain("bench-press");
     expect(JSON.stringify(result.diagnostic)).not.toContain("session-2");
+  });
+
+  it("stops automatic updating when a stale projection has no live rebuild work", async () => {
+    const kernel = await open();
+    await seedCurrentProjection(kernel);
+    const repository = createProgressRepository(kernel);
+    await kernel.write(async (transaction) => {
+      await transaction.execute(
+        `UPDATE history_subject_revisions
+         SET revision = 2, updated_at_ms = 2
+         WHERE subject_id = ?`,
+        [ALL_PERIOD_SUBJECT_ID],
+      );
+      await transaction.execute(
+        `INSERT INTO history_rebuild_effects
+          (id, subject_id, expected_revision, payload_version, payload_json,
+           status, attempt_count, next_attempt_at_ms, claimed_at_ms,
+           lease_expires_at_ms, last_error_code, created_at_ms, updated_at_ms)
+         VALUES ('failed-progress-rebuild', ?, 2, 1,
+                 '{"type":"rebuild_history_subject","version":1}',
+                 'permanent_failure', 5, 2, NULL, NULL,
+                 'history_projection_effect_failed', 2, 2)`,
+        [ALL_PERIOD_SUBJECT_ID],
+      );
+    });
+
+    await expect(repository.load({
+      period: "4_weeks",
+      nowLocalDate: "2026-08-24",
+    })).resolves.toEqual({
+      period: "4_weeks",
+      freshness: "unavailable",
+      projection: null,
+      diagnostic: {
+        code: "history_projection_unavailable",
+        affectedSubjects: ["all_period"],
+      },
+    });
   });
 
   it("fails closed with a coarse unavailable diagnostic when the all-period revision disappears", async () => {
