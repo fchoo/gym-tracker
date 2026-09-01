@@ -1,5 +1,5 @@
 import {
-  collectHistorySubjects,
+  collectHistoryImpact,
   type EffectiveHistorySubjectSnapshot,
 } from "../../../domains/history";
 import {
@@ -236,19 +236,6 @@ function toHistorySubjectSnapshot(
   });
 }
 
-function recommendationScopes(snapshot: HistoryCorrectionSnapshot): readonly string[] {
-  return Object.freeze(snapshot.exercises.flatMap((exercise) => exercise.sets.flatMap((set) => [
-    set.sourcePlanWorkingSetTargetId === undefined
-      ? null
-      : `legacy:${set.sourcePlanWorkingSetTargetId}`,
-    set.sourceOwnedPlanWorkingSetTargetId === undefined
-      ? null
-      : `owned:${set.sourceOwnedPlanWorkingSetTargetId}`,
-  ])).filter((value): value is string => value !== null).sort((left, right) =>
-    left.localeCompare(right)
-  ));
-}
-
 function auditId(sessionId: string, revision: number, index: number): string {
   return `history-audit:${sessionId}:${revision}:${index}`;
 }
@@ -410,12 +397,12 @@ async function transitionLifecycle(
     ],
   );
   const activeSnapshot = toHistorySubjectSnapshot(snapshot);
+  const historyImpact = collectHistoryImpact({
+    oldSnapshot: { ...activeSnapshot, lifecycle: currentLifecycle },
+    newSnapshot: { ...activeSnapshot, lifecycle: targetLifecycle },
+  });
   await invalidateAndAdvanceHistoryProjectionSubjects(transaction, {
-    subjects: collectHistorySubjects({
-      oldSnapshot: { ...activeSnapshot, lifecycle: currentLifecycle },
-      newSnapshot: { ...activeSnapshot, lifecycle: targetLifecycle },
-    }),
-    recommendationScopes: recommendationScopes(snapshot),
+    ...historyImpact,
     nowMs: input.nowMs,
   });
   return Object.freeze({
@@ -525,10 +512,9 @@ export function createHistoryCommandRepository(
         }
         const oldSnapshot = toHistorySubjectSnapshot(base);
         const newSnapshot = toHistorySubjectSnapshot(prepared.next);
+        const historyImpact = collectHistoryImpact({ oldSnapshot, newSnapshot });
         await invalidateAndAdvanceHistoryProjectionSubjects(transaction, {
-          subjects: collectHistorySubjects({ oldSnapshot, newSnapshot }),
-          recommendationScopes: recommendationScopes(base)
-            .concat(recommendationScopes(prepared.next)),
+          ...historyImpact,
           nowMs: input.nowMs,
         });
         return Object.freeze({

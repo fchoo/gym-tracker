@@ -25,11 +25,13 @@ export {
   type MetricHistorySegment,
 } from "./metricHistory";
 export {
+  collectHistoryImpact,
   collectHistorySubjects,
   metricComparatorBoundaryKey,
   parseHistorySubjectId,
   type EffectiveHistorySubjectExercise,
   type EffectiveHistorySubjectSnapshot,
+  type HistoryImpact,
   type ParsedHistorySubject,
   type HistorySubject,
   type HistorySubjectKind,

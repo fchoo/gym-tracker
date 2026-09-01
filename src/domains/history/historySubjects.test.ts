@@ -9,6 +9,7 @@ import type {
   MetricTarget,
 } from "../metrics";
 import {
+  collectHistoryImpact,
   collectHistorySubjects,
   metricComparatorBoundaryKey,
   parseHistorySubjectId,
@@ -107,6 +108,42 @@ describe("history subject fan-out", () => {
     ]);
   });
 
+  it("derives recommendation invalidation from working-set history subjects", () => {
+    const impact = collectHistoryImpact({
+      oldSnapshot: snapshot(),
+      newSnapshot: snapshot({
+        exercises: [{
+          ...snapshot().exercises[0]!,
+          recommendationTargetIds: [
+            "owned:new-target",
+            "legacy:bench-target",
+          ],
+        }],
+      }),
+    });
+
+    expect(impact.recommendationScopes).toEqual([
+      "legacy:bench-target",
+      "owned:new-target",
+    ]);
+    expect(impact.subjects.filter(({ kind }) => kind === "recommendation_target"))
+      .toHaveLength(2);
+  });
+
+  it("does not invent recommendation scopes absent from working-set subjects", () => {
+    const active = snapshot({
+      exercises: [{
+        ...snapshot().exercises[0]!,
+        recommendationTargetIds: [],
+      }],
+    });
+
+    expect(collectHistoryImpact({
+      oldSnapshot: active,
+      newSnapshot: active,
+    }).recommendationScopes).toEqual([]);
+  });
+
   it("keeps the former scope when a session becomes voided so restore can rebuild it", () => {
     const active = snapshot({
       exercises: [
@@ -136,6 +173,13 @@ describe("history subject fan-out", () => {
       'history-subject/v1:["recommendation_target","owned:rower-target"]',
       'history-subject/v1:["session","session-1"]',
     ]);
+  });
+
+  it("emits no projection subjects when both snapshots are voided", () => {
+    expect(collectHistorySubjects({
+      oldSnapshot: snapshot({ lifecycle: "voided" }),
+      newSnapshot: snapshot({ lifecycle: "voided" }),
+    })).toEqual([]);
   });
 
   it("uses every metric contract's approved comparison boundary without inventing a universal load key", () => {

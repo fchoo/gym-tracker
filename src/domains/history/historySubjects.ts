@@ -22,6 +22,11 @@ export type HistorySubject = Readonly<{
   kind: HistorySubjectKind;
 }>;
 
+export type HistoryImpact = Readonly<{
+  subjects: readonly HistorySubject[];
+  recommendationScopes: readonly string[];
+}>;
+
 export type ParsedHistorySubject = Readonly<{
   kind: HistorySubjectKind;
   scope: readonly string[];
@@ -164,6 +169,12 @@ function subjectsForSnapshot(
     "history_subject_session_id_invalid",
   );
   const localDate = parseHistoryLocalDate(snapshot.localDate);
+  if (snapshot.lifecycle === "voided") {
+    return Object.freeze([]);
+  }
+  if (snapshot.lifecycle !== "active") {
+    throw new TypeError("history_subject_lifecycle_invalid");
+  }
   const subjects: HistorySubject[] = [
     subject("session", sessionId),
     subject("date", localDate),
@@ -223,4 +234,19 @@ export function collectHistorySubjects(input: Readonly<{
   return Object.freeze(
     [...unique.values()].sort((left, right) => left.id.localeCompare(right.id)),
   );
+}
+
+export function collectHistoryImpact(input: Readonly<{
+  oldSnapshot: EffectiveHistorySubjectSnapshot;
+  newSnapshot: EffectiveHistorySubjectSnapshot;
+}>): HistoryImpact {
+  const subjects = collectHistorySubjects(input);
+  const recommendationScopes = subjects
+    .filter(({ kind }) => kind === "recommendation_target")
+    .map(({ id }) => parseHistorySubjectId(id).scope[0]!)
+    .sort((left, right) => left.localeCompare(right));
+  return Object.freeze({
+    subjects,
+    recommendationScopes: Object.freeze(recommendationScopes),
+  });
 }
