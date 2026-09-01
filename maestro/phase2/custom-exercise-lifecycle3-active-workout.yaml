@@ -22,8 +22,17 @@ tags:
 - tapOn: "First day name"
 - inputText: "Custom Day"
 - hideKeyboard
+- scrollUntilVisible:
+    element:
+      text: "Create draft"
+    direction: DOWN
+    centerElement: true
+- waitForAnimationToEnd:
+    timeout: 10000
 - tapOn: "Create draft"
-- assertVisible: "Draft"
+- extendedWaitUntil:
+    visible: "Draft"
+    timeout: 60000
 - scrollUntilVisible:
     element:
       text: "Add exercise"
@@ -69,7 +78,7 @@ tags:
       text: "Save day"
     direction: DOWN
 - tapOn: "Save day"
-- tapOn: "Save plan"
+- tapOn: "Save Plan Changes"
 - scrollUntilVisible:
     element:
       text: "Ready"

@@ -31,8 +31,18 @@ tags:
 - inputText: "Maestro Strength"
 - tapOn: "First day name"
 - inputText: "Strength Day"
+- hideKeyboard
+- scrollUntilVisible:
+    element:
+      text: "Create draft"
+    direction: DOWN
+    centerElement: true
+- waitForAnimationToEnd:
+    timeout: 10000
 - tapOn: "Create draft"
-- assertVisible: "Draft"
+- extendedWaitUntil:
+    visible: "Draft"
+    timeout: 60000
 - assertVisible: "Add at least one exercise with valid targets before scheduling or activating."
 - assertVisible: "Schedule and Activate are unavailable. Add at least one exercise with valid targets before scheduling or activating."
 - assertNotVisible: "Delete plan"
@@ -140,7 +150,7 @@ tags:
     direction: UP
     centerElement: true
 - assertVisible: "Schedule and Activate are unavailable. Add at least one exercise with valid targets before scheduling or activating."
-- tapOn: "Save plan"
+- tapOn: "Save Plan Changes"
 - assertVisible: "Ready"
 - tapOn: "Duplicate plan"
 - assertVisible: "Duplicate Maestro Strength?"

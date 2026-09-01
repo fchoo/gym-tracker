@@ -1,4 +1,5 @@
 import {
+  act,
   fireEvent,
   render,
   screen,
@@ -258,7 +259,7 @@ describe("Phase2AttendedPreviewRoute", () => {
         .not.toBeOnTheScreen();
       await fireEvent.press(screen.getByRole("button", { name: label }));
       if (variant === "zero") {
-        expect(screen.getByRole("button", { name: "Confirm date" }))
+        expect(screen.getByRole("button", { name: "Apply Date" }))
           .toHaveProp("accessibilityState", expect.objectContaining({
             disabled: true,
           }));
@@ -331,9 +332,10 @@ describe("Phase2AttendedPreviewRoute", () => {
     await fireEvent.press(screen.getByRole("button", {
       name: /Travel strength draft/u,
     }));
-    await fireEvent.press(screen.getByRole("button", {
-      name: "Refresh Library",
-    }));
+    await act(async () => {
+      screen.getByTestId("library-screen-scroll")
+        .props.refreshControl.props.onRefresh();
+    });
     expect(await screen.findByRole("button", {
       name: "Retry Library refresh",
     })).toBeOnTheScreen();
@@ -385,7 +387,7 @@ describe("Phase2AttendedPreviewRoute", () => {
       screen.getByLabelText("Search exercises"),
       "barbell",
     );
-    await fireEvent.press(screen.getByRole("button", { name: "Filter" }));
+    await fireEvent.press(screen.getByRole("checkbox", { name: "Filters" }));
     await fireEvent.press(screen.getByRole("checkbox", {
       name: "Origin: Bundled",
     }));
@@ -400,7 +402,9 @@ describe("Phase2AttendedPreviewRoute", () => {
       name: "Retry loading more exercises",
     })).toBeOnTheScreen();
     expect(screen.getByDisplayValue("barbell")).toBeOnTheScreen();
-    expect(screen.getByRole("button", { name: "Remove Origin: Bundled" }))
+    expect(screen.getByRole("checkbox", {
+      name: "Origin: Bundled selected",
+    }))
       .toBeOnTheScreen();
     expect(screen.getByTestId(
       "library-exercise-card-preview-exercise-available",
@@ -429,7 +433,7 @@ describe("Phase2AttendedPreviewRoute", () => {
     expect(screen.queryByTestId(
       "library-exercise-card-preview-exercise-hidden",
     )).not.toBeOnTheScreen();
-    await fireEvent.press(screen.getByRole("button", { name: "Filter" }));
+    await fireEvent.press(screen.getByRole("checkbox", { name: "Filters" }));
     for (const label of [
       "Visibility: Unavailable",
       "Visibility: Hidden",
@@ -445,8 +449,9 @@ describe("Phase2AttendedPreviewRoute", () => {
     expect(screen.getByText("Archived · Hidden")).toBeOnTheScreen();
     expect(screen.getByText("Matched alias: Single-arm cable row"))
       .toBeOnTheScreen();
-    expect(screen.getByText(/kinetic-place.exercises-db.*revision preview-r1.*MIT/u))
-      .toBeOnTheScreen();
+    expect(screen.queryByText(
+      /kinetic-place\.exercises-db.*revision preview-r1.*MIT/u,
+    )).not.toBeOnTheScreen();
     await fireEvent.press(screen.getByRole("button", {
       name: "Load more exercises",
     }));

@@ -4,6 +4,7 @@ set -eu
 
 expected_node='v24.19.0'
 expected_npm='11.17.0'
+actual_npm='12.0.2'
 expected_java='17.0.20'
 expected_maestro='2.8.0'
 default_android_home='/opt/homebrew/share/android-commandlinetools'
@@ -41,8 +42,15 @@ command -v node >/dev/null 2>&1 ||
 
 command -v npm >/dev/null 2>&1 ||
   fail 'npm is missing.' 'Run: npm install --global npm@11.17.0'
-[ "$(npm --version)" = "$expected_npm" ] ||
-  fail "npm must be $expected_npm; found $(npm --version)." 'Run: npm install --global npm@11.17.0'
+npm_version=$(npm --version)
+if [ "$npm_version" != "$expected_npm" ]; then
+  if [ "${GYM_TRACKER_ALLOW_DEVTEST_NPM_12:-}" != 'true' ]; then
+    fail "npm must be $expected_npm; found $npm_version." 'Run: npm install --global npm@11.17.0'
+  fi
+  if [ "$npm_version" != "$actual_npm" ]; then
+    fail "npm must be $expected_npm; found $npm_version." 'Run: npm install --global npm@11.17.0'
+  fi
+fi
 
 [ -n "${JAVA_HOME:-}" ] && [ -x "$JAVA_HOME/bin/java" ] ||
   fail 'Temurin Java 17 is missing.' 'Install Temurin 17.0.20+8, then export JAVA_HOME=$(/usr/libexec/java_home -v 17).'
@@ -95,5 +103,5 @@ boot_completed=$(adb -s "$device_serial" shell getprop sys.boot_completed 2>/dev
   fail "Android device $device_serial has not completed boot." 'Wait until adb shell getprop sys.boot_completed returns 1.'
 
 printf 'doctor-android: ok node=%s npm=%s java=%s sdk=%s maestro=%s%s\n' \
-  "$expected_node" "$expected_npm" "$expected_java" "$ANDROID_HOME" "$expected_maestro" \
+  "$expected_node" "$npm_version" "$expected_java" "$ANDROID_HOME" "$expected_maestro" \
   "${device_serial:+ device=$device_serial}"

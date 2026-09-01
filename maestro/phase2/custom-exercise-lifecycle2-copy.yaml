@@ -5,12 +5,9 @@ tags:
   - library
   - custom-exercises
 ---
-- launchApp:
-    clearState: false
-    stopApp: true
-    permissions:
-      notifications: deny
-- assertVisible: "Today"
+- stopApp
+- pressKey: BACK
+- openLink: "gymtracker-devtest:///"
 - extendedWaitUntil:
     visible: "Use Full Body Foundation"
     timeout: 90000
@@ -49,8 +46,18 @@ tags:
       text: "Go back"
     direction: UP
 - tapOn: "Go back"
+- repeat:
+    times: 4
+    while:
+      notVisible: "Search exercises"
+    commands:
+      - swipe:
+          start: 50%, 25%
+          end: 50%, 75%
+          duration: 300
 - assertVisible: "Search exercises"
 - tapOn: "Clear search exercises"
+- hideKeyboard
 - tapOn: "Today"
 - assertVisible: "Today"
 - stopApp

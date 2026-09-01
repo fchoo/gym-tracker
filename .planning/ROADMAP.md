@@ -2,11 +2,11 @@
 
 ## Overview
 
-Gym Tracker v1 is delivered through five reviewed, dependency-ordered phases. Phase 1 proves the integrity kernel and one complete Full Body Foundation workout vertical slice on a real Android development-test APK. Later phases expand owned content and planning, make history safely correctable, add period-based progress and complete progression, then close encrypted recovery and digest-bound release. SQLite source facts remain authoritative throughout; notifications, FTS, projections, recommendations, and UI query caches remain replayable or rebuildable derivatives.
+Gym Tracker v1 is delivered through six reviewed, dependency-ordered phases. Phase 1 proves the integrity kernel and one complete Full Body Foundation workout vertical slice on a real Android development-test APK. Later phases expand owned content and planning, make history safely correctable, add period-based progress and complete progression, prepare encrypted recovery and digest-bound release, then remediate the exact-candidate Material 3 and accessibility findings before final promotion. SQLite source facts remain authoritative throughout; notifications, FTS, projections, recommendations, and UI query caches remain replayable or rebuildable derivatives.
 
 ## Delivery Contract
 
-- The phase order is fixed: trustworthy writes and lifecycle recovery → owned content and schedules → correctable history → progress and recommendation breadth → recovery and release.
+- The phase order is fixed: trustworthy writes and lifecycle recovery → owned content and schedules → correctable history → progress and recommendation breadth → recovery/release preparation → Material 3 remediation and final release re-verification.
 - Every phase leaves the repository buildable and its included user flow usable.
 - Accessibility, adaptive layout, CI, migrations, tests, diagnostics, native CNG proof, backup seams, and release-artifact identity begin in Phase 1 and are verified continuously. Phase 5 closes these foundations; it does not introduce them for the first time.
 - Screens never execute SQL. All source mutations use the repository-owned private SQLite writer, FIFO serialization, and explicit `BEGIN IMMEDIATE` / `COMMIT` / `ROLLBACK`; correctness does not rely directly on `withExclusiveTransactionAsync()`.
@@ -21,6 +21,7 @@ Gym Tracker v1 is delivered through five reviewed, dependency-ordered phases. Ph
 - [x] **Phase 3: Calendar and History Integrity** - Make workout history chronological, metric-aware, correctable, reversible, and deterministically rebuildable. (automated source evidence complete 2026-08-25; physical verification deferred to final release gate)
 - [x] **Phase 4: Overall Progress and Complete Progression** - Deliver period-based evidence and the complete explicit, versioned recommendation lifecycle. (automated source evidence complete 2026-08-26; physical verification deferred to final release gate)
 - [ ] **Phase 5: Recovery, Distribution, and Release** - Complete encrypted portability, CSV export, release-wide accessibility proof, and unchanged signed-artifact promotion.
+- [ ] **Phase 6: Material 3 UX Remediation** - Resolve the whole-app Material 3, accessibility, and Progress-runtime blockers found on the exact Phase 5 candidate, then produce a replacement installable APK for final verification.
 
 ## Phase Details
 
@@ -337,11 +338,12 @@ Gym Tracker v1 is delivered through five reviewed, dependency-ordered phases. Ph
 | 3. Calendar and History Integrity | 9 | HIST-01..09 |
 | 4. Overall Progress and Complete Progression | 11 | PROG-01..11 |
 | 5. Recovery, Distribution, and Release | 11 | DATA-01..07, REL-03..06 |
-| **Total** | **72** | **72/72 mapped exactly once** |
+| 6. Material 3 UX Remediation | 10 | UX-01..10 |
+| **Total** | **82** | **82/82 mapped exactly once** |
 
 ## Progress
 
-**Execution Order:** Phase 1 → Phase 2 → Phase 3 → Phase 4 → Phase 5
+**Execution Order:** Phase 1 → Phase 2 → Phase 3 → Phase 4 → Phase 5 source/release preparation → Phase 6 remediation → Phase 5 final promotion gate
 
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
@@ -350,3 +352,38 @@ Gym Tracker v1 is delivered through five reviewed, dependency-ordered phases. Ph
 | 3. Calendar and History Integrity | 5/5 | Implementation verified; release gate in 05-07 | 2026-08-25 |
 | 4. Overall Progress and Complete Progression | 8/8 | Implementation verified; release gate in 05-07 | 2026-08-26 |
 | 5. Recovery, Distribution, and Release | 7/7 | In Progress|  |
+| 6. Material 3 UX Remediation | 0/0 | Not planned |  |
+
+### Phase 6: Material 3 UX Remediation
+
+**Goal:** The owner can use a coherent Material 3 Android interface across Library, Calendar, plan editing, Progress, Today, and shared navigation, with every exact-candidate audit blocker fixed without changing authoritative workout or portability semantics.
+**Requirements**: UX-01, UX-02, UX-03, UX-04, UX-05, UX-06, UX-07, UX-08, UX-09, UX-10
+**Depends on:** Phase 5
+**Success Criteria** (what must be TRUE):
+
+  1. Library filtering is visibly responsive in light/dark, uses M3 filter chips with Favorite directly accessible, uses shared M3 Search, supports pull-to-refresh, shows filled-green selected stars, and keeps provenance out of browse rows.
+  2. Root Calendar and every date picker render complete six-row grids with adjacent-month dates, support horizontal month swipes plus accessible button alternatives, and retain exact LocalDate/bounds/timezone behavior.
+  3. Plan day/exercise rows support continuous touch-and-hold reordering, explicit accessible up/down fallbacks, a compact one-row hierarchy at normal text scale, and legible adaptation at 200% text.
+  4. Root navigation remains usable at 200% text, Today has one unambiguous path to secondary tools/settings, and Progress loads or recovers through Retry on the production runtime.
+  5. Focused regression tests, full project gates, clean Android generation/build, emulator verification, and Samsung touch/accessibility review pass against one replacement APK; release approval and promotion remain separate explicit actions.
+
+**Plans:** 9 plans
+
+Plans:
+**Wave 1**
+
+- [ ] 06-01-PLAN.md — Establish shared M3 Search, filter-chip, and owning-scroll refresh contracts.
+- [ ] 06-02-PLAN.md — Add the Phase 6 native runner and pass the actual Wave 0 emulator gesture smoke.
+- [ ] 06-03-PLAN.md — Diagnose the candidate-bound Progress failure and encode only its exact fixture.
+- [ ] 06-04-PLAN.md — Deliver complete civil-date Calendar and CalendarField dialog grids with swipe/button parity and explicit draft commit.
+- [ ] 06-05-PLAN.md — Deliver continuous accessible plan-day/exercise reordering plus owned-plan picker Search.
+- [ ] 06-06-PLAN.md — Remediate Library discovery, Favorite, pull-to-refresh, and browse/detail provenance composition.
+- [ ] 06-08-PLAN.md — Keep root navigation fully labelled at 200% text and give Today one distinct History and data route.
+
+**Wave 2** *(blocked on Wave 1 completion)*
+
+- [ ] 06-07-PLAN.md — Repair only the diagnosed Progress cause and deliver Progress Search plus truthful Retry recovery.
+
+**Wave 3** *(blocked on Wave 2 completion)*
+
+- [ ] 06-09-PLAN.md — Build once, run the complete consideration/native evidence matrix, and pause for exact-byte Samsung observations without release authorization.

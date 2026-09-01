@@ -9,6 +9,10 @@ import {
   View,
   type TextStyle,
 } from "react-native";
+import {
+  Gesture,
+  GestureDetector,
+} from "react-native-gesture-handler";
 
 import type {
   CalendarDayState,
@@ -48,6 +52,8 @@ const MONTH_NAMES = [
 ] as const;
 
 const WEEKDAYS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"] as const;
+const CALENDAR_CELL_COUNT = 42;
+const MONTH_SWIPE_COMPLETE_DISTANCE = 72;
 const WEEKDAY_INDEX = {
   Sunday: 0,
   Monday: 1,
@@ -74,12 +80,15 @@ function monthStart(value: LocalDate): LocalDate {
   return parseLocalDate(value.slice(0, 8) + "01");
 }
 
-function nextMonth(value: LocalDate, direction: -1 | 1): LocalDate {
+function nextMonth(value: LocalDate, direction: -1 | 1): LocalDate | null {
   const year = Number(value.slice(0, 4));
   const month = Number(value.slice(5, 7));
   const total = year * 12 + month - 1 + direction;
   const nextYear = Math.floor(total / 12);
   const nextMonthNumber = (total % 12) + 1;
+  if (nextYear < 1 || nextYear > 9_999) {
+    return null;
+  }
   return parseLocalDate(
     nextYear.toString().padStart(4, "0")
       + "-"
@@ -89,7 +98,14 @@ function nextMonth(value: LocalDate, direction: -1 | 1): LocalDate {
 }
 
 function daysInMonth(value: LocalDate): number {
-  return Number(addLocalDays(nextMonth(value, 1), -1).slice(8, 10));
+  const year = Number(value.slice(0, 4));
+  const month = Number(value.slice(5, 7));
+  if (month === 2) {
+    return year % 4 === 0 && (year % 100 !== 0 || year % 400 === 0)
+      ? 29
+      : 28;
+  }
+  return [4, 6, 9, 11].includes(month) ? 30 : 31;
 }
 
 function monthLabel(value: LocalDate): string {
@@ -101,6 +117,31 @@ function dateLabel(value: LocalDate): string {
   return Number(value.slice(8, 10))
     + " " + (MONTH_NAMES[Number(value.slice(5, 7)) - 1] ?? "")
     + " " + value.slice(0, 4);
+}
+
+export function calendarMonthDirectionForHorizontalSwipe(
+  translationX: number,
+): -1 | 1 | null {
+  "worklet";
+
+  if (translationX <= -MONTH_SWIPE_COMPLETE_DISTANCE) {
+    return 1;
+  }
+  if (translationX >= MONTH_SWIPE_COMPLETE_DISTANCE) {
+    return -1;
+  }
+  return null;
+}
+
+function completeGridDates(firstOfMonth: LocalDate): Array<LocalDate | null> {
+  const firstGridOffset = -WEEKDAY_INDEX[weekdayForLocalDate(firstOfMonth)];
+  return Array.from({ length: CALENDAR_CELL_COUNT }, (_, offset) => {
+    try {
+      return addLocalDays(firstOfMonth, firstGridOffset + offset);
+    } catch {
+      return null;
+    }
+  });
 }
 
 function stateLabel(state: CalendarDayState): string {
@@ -149,11 +190,13 @@ function CalendarGrid({
   month,
   days,
   selectedDate,
+  onChangeMonth,
   onSelectDate,
 }: Readonly<{
   month: LocalDate;
   days: CalendarMonth["days"];
   selectedDate: LocalDate;
+  onChangeMonth(direction: -1 | 1): void;
   onSelectDate(value: LocalDate): void;
 }>) {
   const { colors } = useAppTheme();
@@ -161,24 +204,63 @@ function CalendarGrid({
     () => new Map(days.map((day) => [day.localDate, day.states])),
     [days],
   );
-  const firstWeekday = WEEKDAY_INDEX[weekdayForLocalDate(month)];
-  const cells: React.ReactNode[] = [];
-
-  for (let index = 0; index < firstWeekday; index += 1) {
-    cells.push(<View key={"blank-" + index} style={styles.dayBlank} />);
-  }
-  for (let day = 1; day <= daysInMonth(month); day += 1) {
-    const date = parseLocalDate(month.slice(0, 8) + day.toString().padStart(2, "0"));
+  const gridDates = useMemo(() => completeGridDates(month), [month]);
+  const horizontalMonthGesture = useMemo(
+    () => Gesture.Pan()
+      .activeOffsetX([-12, 12])
+      .failOffsetY([-24, 24])
+      .runOnJS(true)
+      .onEnd((event) => {
+        const direction = calendarMonthDirectionForHorizontalSwipe(
+          event.translationX,
+        );
+        if (direction !== null) {
+          onChangeMonth(direction);
+        }
+      }),
+    [onChangeMonth],
+  );
+  const cells = gridDates.map((date, index) => {
+    if (date === null) {
+      return (
+        <View
+          accessible={false}
+          key={`unavailable-${index}`}
+          style={styles.dayCell}
+          testID={`calendar-day-unavailable-${index}`}
+        />
+      );
+    }
     const states = statesByDate.get(date) ?? [];
     const selected = date === selectedDate;
-    const accessibilityLabel = [dateLabel(date), ...states.map(stateLabel)].join(". ") + ".";
-    cells.push(
+    const adjacent = monthStart(date) !== month;
+    const accessibilityLabel = [
+      dateLabel(date),
+      adjacent ? "Adjacent month" : null,
+      ...states.map(stateLabel),
+    ].filter((value): value is string => value !== null).join(". ") + ".";
+    return (
       <FocusablePressable
         accessibilityLabel={accessibilityLabel}
         accessibilityRole="button"
         accessibilityState={{ selected }}
         focusable
         key={date}
+        onKeyDown={(event: { nativeEvent: { key: string } }) => {
+          const deltas: Record<string, number> = {
+            ArrowDown: 7,
+            ArrowLeft: -1,
+            ArrowRight: 1,
+            ArrowUp: -7,
+          };
+          const delta = deltas[event.nativeEvent.key];
+          if (delta === undefined) {
+            return;
+          }
+          try {
+            onSelectDate(addLocalDays(date, delta));
+          } catch {}
+        }}
         onPress={() => onSelectDate(date)}
         style={({ pressed }: { pressed: boolean }) => [
           styles.dayCell,
@@ -187,11 +269,16 @@ function CalendarGrid({
               ? colors.contentCardSelected
               : pressed ? colors.contentCardPressed : colors.contentCard,
             borderColor: selected ? colors.action : colors.contentCardBorder,
+            opacity: adjacent ? 0.72 : 1,
           },
         ]}
+        testID={"calendar-day-" + date}
       >
-        <Text style={[typeScale.label as TextStyle, { color: colors.contentCardText }]}>
-          {day}
+        <Text style={[
+          typeScale.label as TextStyle,
+          { color: adjacent ? colors.contentCardTextSecondary : colors.contentCardText },
+        ]}>
+          {Number(date.slice(8, 10))}
         </Text>
         {states.length === 0 ? null : (
           <Text
@@ -201,18 +288,20 @@ function CalendarGrid({
             {states.map(stateGlyph).join(" ")}
           </Text>
         )}
-      </FocusablePressable>,
+      </FocusablePressable>
     );
-  }
+  });
   return (
-    <View accessibilityLabel="Calendar month grid" style={styles.grid} testID="calendar-month-grid">
-      {WEEKDAYS.map((day) => (
-        <Text key={day} style={[typeScale.label as TextStyle, styles.weekday, { color: colors.textSecondary }]}>
-          {day}
-        </Text>
-      ))}
-      {cells}
-    </View>
+    <GestureDetector gesture={horizontalMonthGesture}>
+      <View accessibilityLabel="Calendar month grid" style={styles.grid} testID="calendar-month-grid">
+        {WEEKDAYS.map((day) => (
+          <Text key={day} style={[typeScale.label as TextStyle, styles.weekday, { color: colors.textSecondary }]}>
+            {day}
+          </Text>
+        ))}
+        {cells}
+      </View>
+    </GestureDetector>
   );
 }
 
@@ -316,6 +405,9 @@ export function CalendarScreen({
 
   const changeMonth = (direction: -1 | 1) => {
     const next = nextMonth(month, direction);
+    if (next === null) {
+      return;
+    }
     const selectedDay = Math.min(Number(selectedDate.slice(8, 10)), daysInMonth(next));
     setMonth(next);
     setSelectedDate(parseLocalDate(next.slice(0, 8) + selectedDay.toString().padStart(2, "0")));
@@ -354,22 +446,39 @@ export function CalendarScreen({
     );
   }
 
+  const previousMonth = nextMonth(snapshot.month, -1);
+  const followingMonth = nextMonth(snapshot.month, 1);
   const primary = (
     <>
       <ScreenHeader title="Calendar" />
       <View style={styles.monthHeader}>
-        <IconAction accessibilityLabel={"Show " + monthLabel(nextMonth(snapshot.month, -1))} icon="back" onPress={() => changeMonth(-1)} />
+        <IconAction
+          accessibilityLabel={previousMonth === null
+            ? "Previous month unavailable"
+            : "Show " + monthLabel(previousMonth)}
+          disabled={previousMonth === null}
+          icon="back"
+          onPress={() => changeMonth(-1)}
+        />
         <Text
           accessibilityRole="header"
           style={[typeScale.sectionTitle as TextStyle, { color: colors.textPrimary }]}
         >
           {monthLabel(snapshot.month)}
         </Text>
-        <IconAction accessibilityLabel={"Show " + monthLabel(nextMonth(snapshot.month, 1))} icon="forward" onPress={() => changeMonth(1)} />
+        <IconAction
+          accessibilityLabel={followingMonth === null
+            ? "Next month unavailable"
+            : "Show " + monthLabel(followingMonth)}
+          disabled={followingMonth === null}
+          icon="forward"
+          onPress={() => changeMonth(1)}
+        />
       </View>
       <CalendarGrid
         days={snapshot.days}
         month={snapshot.month}
+        onChangeMonth={changeMonth}
         onSelectDate={selectDate}
         selectedDate={snapshot.selectedDate}
       />
@@ -387,7 +496,6 @@ export function CalendarScreen({
 }
 
 const styles = StyleSheet.create({
-  dayBlank: { minHeight: 64, width: "14.285%" },
   dayCell: {
     borderRadius: radius.standard,
     borderWidth: StyleSheet.hairlineWidth,

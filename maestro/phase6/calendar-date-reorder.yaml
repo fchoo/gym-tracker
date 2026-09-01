@@ -1,0 +1,162 @@
+appId: com.fchoo.gymtracker
+name: Phase 6 production Calendar date dialog and reorder evidence
+tags:
+  - phase-6
+  - production-candidate
+  - n2
+  - n3
+---
+- launchApp:
+    clearState: true
+    permissions:
+      notifications: deny
+- assertVisible: "Today"
+- extendedWaitUntil:
+    visible: "Use Full Body Foundation"
+    timeout: 90000
+- tapOn: "Use Full Body Foundation"
+- tapOn: "Activate Full Body Foundation"
+- extendedWaitUntil:
+    visible: "^(Start Full Body A|Start Full Body B|Rest day)$"
+    timeout: 90000
+- tapOn: "Calendar"
+- assertVisible: "Calendar month grid"
+- assertVisible: "^${CURRENT_MONTH}$"
+- swipe:
+    start: 80%, 42%
+    end: 20%, 42%
+    duration: 400
+- extendedWaitUntil:
+    visible: "^${NEXT_MONTH}$"
+    timeout: 30000
+- swipe:
+    start: 20%, 42%
+    end: 80%, 42%
+    duration: 400
+- extendedWaitUntil:
+    visible: "^${CURRENT_MONTH}$"
+    timeout: 30000
+- tapOn: "Show ${PREVIOUS_MONTH}"
+- extendedWaitUntil:
+    visible: "^${PREVIOUS_MONTH}$"
+    timeout: 30000
+- tapOn: "Show ${CURRENT_MONTH}"
+- extendedWaitUntil:
+    visible: "^${CURRENT_MONTH}$"
+    timeout: 30000
+- takeScreenshot: phase6-calendar-swipe
+- tapOn: "Library"
+- assertVisible: "Library"
+- scrollUntilVisible:
+    element:
+      text: "Full Body Foundation. 3 days per week.*"
+    direction: DOWN
+    centerElement: true
+- tapOn:
+    text: "Full Body Foundation. 3 days per week.*"
+- scrollUntilVisible:
+    element:
+      text: "Activate plan"
+    direction: DOWN
+    centerElement: true
+- tapOn: "Activate plan"
+- assertVisible: "Activate Full Body Foundation"
+- tapOn: "Start date"
+- assertVisible: "Calendar dialog"
+- assertVisible: "^${CURRENT_MONTH}$"
+- tapOn: "Previous month"
+- extendedWaitUntil:
+    visible: "^${PREVIOUS_MONTH}$"
+    timeout: 30000
+- swipe:
+    start: 80%, 50%
+    end: 20%, 50%
+    duration: 400
+- extendedWaitUntil:
+    visible: "^${CURRENT_MONTH}$"
+    timeout: 30000
+- swipe:
+    start: 80%, 50%
+    end: 20%, 50%
+    duration: 400
+- extendedWaitUntil:
+    visible: "^${NEXT_MONTH}$"
+    timeout: 30000
+- swipe:
+    start: 20%, 50%
+    end: 80%, 50%
+    duration: 400
+- extendedWaitUntil:
+    visible: "^${CURRENT_MONTH}$"
+    timeout: 30000
+- takeScreenshot: phase6-calendar-dialog-200pct
+- tapOn: "Keep Original Date"
+- assertNotVisible: "Calendar dialog"
+- tapOn: "Go back"
+- assertVisible: "Library"
+- tapOn: "Plans"
+- tapOn: "Create my own"
+- assertVisible: "Create my own"
+- tapOn: "Plan name"
+- inputText: "Phase Six Reorder"
+- tapOn: "First day name"
+- inputText: "First"
+- hideKeyboard
+- scrollUntilVisible:
+    element:
+      text: "Create draft"
+    direction: DOWN
+    centerElement: true
+- waitForAnimationToEnd:
+    timeout: 10000
+- tapOn: "Create draft"
+- extendedWaitUntil:
+    visible: "Draft"
+    timeout: 60000
+- scrollUntilVisible:
+    element:
+      id: "owned-plan-add-exercise"
+    direction: DOWN
+    centerElement: true
+- tapOn:
+    id: "owned-plan-add-exercise"
+- tapOn:
+    id: "owned-plan-exercise-search"
+- inputText: "Back Squat"
+- hideKeyboard
+- tapOn:
+    text: "Back Squat.*Load . reps"
+- scrollUntilVisible:
+    element:
+      text: "Save target"
+    direction: DOWN
+    centerElement: true
+- tapOn: "Save target"
+- tapOn: "Save day"
+- scrollUntilVisible:
+    element:
+      id: "owned-plan-add-exercise"
+    direction: DOWN
+    centerElement: true
+- tapOn:
+    id: "owned-plan-add-exercise"
+- tapOn:
+    id: "owned-plan-exercise-search"
+- inputText: "Bench Press"
+- hideKeyboard
+- tapOn:
+    text: "Bench Press.*Load . reps"
+- scrollUntilVisible:
+    element:
+      text: "Save target"
+    direction: DOWN
+    centerElement: true
+- tapOn: "Save target"
+- scrollUntilVisible:
+    element:
+      id: "drag-exercise-Bench Press"
+    direction: DOWN
+    centerElement: true
+- assertVisible: "Drag Back Squat. Position 1 of 2"
+- assertVisible: "Drag Bench Press. Position 2 of 2"
+- takeScreenshot: phase6-reorder-before-drag

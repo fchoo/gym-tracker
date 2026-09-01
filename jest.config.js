@@ -1,6 +1,7 @@
 const shared = {
   moduleFileExtensions: ["ts", "tsx", "js", "jsx", "json"],
   roots: ["<rootDir>/app", "<rootDir>/src", "<rootDir>/tests"],
+  setupFilesAfterEnv: ["<rootDir>/jest.setup.js"],
   testPathIgnorePatterns: ["/node_modules/", "/android/", "/ios/"],
 };
 

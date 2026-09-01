@@ -1,13 +1,27 @@
 import React from "react";
 import {
-  PanResponder,
   StyleSheet,
   Text,
   TextInput,
   View,
+  useWindowDimensions,
+  type LayoutChangeEvent,
   type TextInputProps,
   type TextStyle,
 } from "react-native";
+import {
+  Gesture,
+  GestureDetector,
+  GestureHandlerRootView,
+} from "react-native-gesture-handler";
+import Animated, {
+  useAnimatedStyle,
+  useSharedValue,
+  withTiming,
+} from "react-native-reanimated";
+import {
+  scheduleOnRN,
+} from "react-native-worklets";
 
 import {
   FocusablePressable,
@@ -40,6 +54,51 @@ export type {
   SemanticNumberFieldProps,
   TimeDurationFieldProps,
 };
+
+export type PlanEditorReorderPreview = Readonly<{
+  sourcePosition: number;
+  targetPosition: number;
+  translationY: number;
+  rowHeight: number;
+}>;
+
+export type PlanEditorReorderMethod = "drag" | "fallback";
+
+const REORDER_HOLD_MS = 550;
+
+function targetPositionForDrag(
+  position: number,
+  count: number,
+  translationY: number,
+  rowHeight: number,
+): number {
+  const offset = Math.round(translationY / rowHeight);
+  return Math.max(0, Math.min(count - 1, position + offset));
+}
+
+function displacementForRow(
+  position: number,
+  preview: PlanEditorReorderPreview | null,
+): number {
+  if (preview === null || position === preview.sourcePosition) {
+    return 0;
+  }
+  if (
+    preview.sourcePosition < preview.targetPosition
+    && position > preview.sourcePosition
+    && position <= preview.targetPosition
+  ) {
+    return -preview.rowHeight;
+  }
+  if (
+    preview.sourcePosition > preview.targetPosition
+    && position >= preview.targetPosition
+    && position < preview.sourcePosition
+  ) {
+    return preview.rowHeight;
+  }
+  return 0;
+}
 
 export function PlanEditorTextField({
   label,
@@ -119,6 +178,10 @@ export function PlanEditorReorderableRow({
   count,
   onMoveUp,
   onMoveDown,
+  onMoveTo,
+  onDragPreview,
+  preview = null,
+  reorderId = label,
   children,
   tone = "default",
 }: Readonly<{
@@ -127,10 +190,24 @@ export function PlanEditorReorderableRow({
   count: number;
   onMoveUp(): void;
   onMoveDown(): void;
+  onMoveTo?(
+    targetPosition: number,
+    method: PlanEditorReorderMethod,
+  ): void;
+  onDragPreview?(preview: PlanEditorReorderPreview | null): void;
+  preview?: PlanEditorReorderPreview | null;
+  reorderId?: string;
   children: React.ReactNode;
   tone?: "default" | "card";
 }>) {
-  const { colors } = useAppTheme();
+  const { fontScale } = useWindowDimensions();
+  const { colors, motion } = useAppTheme();
+  const [rowHeight, setRowHeight] = React.useState(
+    sizes.minimumTarget + space[4],
+  );
+  const [localPreview, setLocalPreview] =
+    React.useState<PlanEditorReorderPreview | null>(null);
+  const translationY = useSharedValue(0);
   const border = tone === "card" ? colors.contentCardBorder : colors.divider;
   const text = tone === "card" ? colors.contentCardText : colors.textPrimary;
   const secondary = tone === "card"
@@ -138,88 +215,217 @@ export function PlanEditorReorderableRow({
     : colors.textSecondary;
   const canMoveUp = position > 0;
   const canMoveDown = position < count - 1;
-  const dragResponder = React.useMemo(() => PanResponder.create({
-    onStartShouldSetPanResponder: () => true,
-    onMoveShouldSetPanResponder: (_event, gesture) =>
-      Math.abs(gesture.dy) >= space[2],
-    onPanResponderRelease: (_event, gesture) => {
-      if (gesture.dy <= -space[6] && canMoveUp) {
-        onMoveUp();
+  const activePreview = preview ?? localPreview;
+  const isHeld = activePreview?.sourcePosition === position;
+  const targetPosition = isHeld
+    ? activePreview.targetPosition
+    : position;
+  const neighborDisplacement = displacementForRow(position, activePreview);
+  const largeText = fontScale >= 2;
+  const publishPreview = React.useCallback((
+    nextPreview: PlanEditorReorderPreview | null,
+  ) => {
+    setLocalPreview(nextPreview);
+    onDragPreview?.(nextPreview);
+  }, [onDragPreview]);
+  const requestMove = React.useCallback((
+    nextPosition: number,
+    method: PlanEditorReorderMethod = "fallback",
+  ) => {
+    if (nextPosition === position) {
+      return;
+    }
+    if (onMoveTo !== undefined) {
+      onMoveTo(nextPosition, method);
+      return;
+    }
+    if (nextPosition < position && canMoveUp) {
+      onMoveUp();
+    }
+    if (nextPosition > position && canMoveDown) {
+      onMoveDown();
+    }
+  }, [
+    canMoveDown,
+    canMoveUp,
+    onMoveDown,
+    onMoveTo,
+    onMoveUp,
+    position,
+  ]);
+  const updatePreview = React.useCallback((nextTranslationY: number) => {
+    publishPreview({
+      sourcePosition: position,
+      targetPosition: targetPositionForDrag(
+        position,
+        count,
+        nextTranslationY,
+        rowHeight,
+      ),
+      translationY: nextTranslationY,
+      rowHeight,
+    });
+  }, [count, position, publishPreview, rowHeight]);
+  const finishDrag = React.useCallback((nextTranslationY: number) => {
+    requestMove(targetPositionForDrag(
+      position,
+      count,
+      nextTranslationY,
+      rowHeight,
+    ), "drag");
+  }, [count, position, requestMove, rowHeight]);
+  const dragGesture = React.useMemo(() => Gesture.Pan()
+    .activateAfterLongPress(REORDER_HOLD_MS)
+    .maxPointers(1)
+    .shouldCancelWhenOutside(false)
+    .withTestId(`reorder-gesture-${reorderId}`)
+    .onStart(() => {
+      translationY.value = 0;
+      scheduleOnRN(updatePreview, 0);
+    })
+    .onUpdate((event) => {
+      const minimumTranslation = -position * rowHeight;
+      const maximumTranslation = (count - position - 1) * rowHeight;
+      const boundedTranslation = Math.max(
+        minimumTranslation,
+        Math.min(maximumTranslation, event.translationY),
+      );
+      translationY.value = boundedTranslation;
+      scheduleOnRN(updatePreview, boundedTranslation);
+    })
+    .onEnd((event, success) => {
+      if (success) {
+        scheduleOnRN(finishDrag, event.translationY);
       }
-      if (gesture.dy >= space[6] && canMoveDown) {
-        onMoveDown();
-      }
-    },
-  }), [canMoveDown, canMoveUp, onMoveDown, onMoveUp]);
+    })
+    .onFinalize(() => {
+      translationY.value = withTiming(0, { duration: motion.setCommitMs });
+      scheduleOnRN(publishPreview, null);
+    }), [
+    count,
+    finishDrag,
+    motion.setCommitMs,
+    position,
+    publishPreview,
+    reorderId,
+    rowHeight,
+    translationY,
+    updatePreview,
+  ]);
+  const rowStyle = useAnimatedStyle(() => ({
+    opacity: isHeld ? 0.92 : 1,
+    transform: [{
+      translateY: isHeld
+        ? translationY.value
+        : motion.positionTransitions
+          ? withTiming(neighborDisplacement, { duration: motion.setCommitMs })
+          : neighborDisplacement,
+    }],
+    zIndex: isHeld ? 1 : 0,
+  }), [
+    isHeld,
+    motion.positionTransitions,
+    motion.setCommitMs,
+    neighborDisplacement,
+  ]);
+  const handleLabel = isHeld
+    ? `Drag ${label}. Moving to position ${targetPosition + 1} of ${count}`
+    : `Drag ${label}. Position ${position + 1} of ${count}`;
+  const recordRowHeight = React.useCallback((event: LayoutChangeEvent) => {
+    const measuredHeight = Math.max(
+      sizes.minimumTarget,
+      event.nativeEvent.layout.height,
+    );
+    setRowHeight((current) =>
+      current === measuredHeight ? current : measuredHeight);
+  }, []);
 
   return (
-    <View
-      style={[
-        styles.reorderRow,
-        { borderColor: border },
-      ]}
-    >
-      <FocusablePressable
-        {...dragResponder.panHandlers}
-        accessibilityActions={[
-          ...(canMoveUp ? [{ name: "increment", label: "Move up" }] : []),
-          ...(canMoveDown
-            ? [{ name: "decrement", label: "Move down" }]
-            : []),
-        ]}
-        accessibilityHint="Drag to reorder, or use Move up and Move down."
-        accessibilityLabel={`Drag ${label}. Position ${position + 1} of ${count}`}
-        accessibilityRole="adjustable"
-        focusable
-        onAccessibilityAction={(event) => {
-          if (event.nativeEvent.actionName === "increment" && canMoveUp) {
-            onMoveUp();
-          }
-          if (event.nativeEvent.actionName === "decrement" && canMoveDown) {
-            onMoveDown();
-          }
-        }}
-        onPress={() => undefined}
+    <GestureHandlerRootView style={styles.dragGestureRoot}>
+      <Animated.View
+        onLayout={recordRowHeight}
         style={[
-          styles.dragHandle,
-          { borderColor: border },
+          styles.reorderRow,
+          rowStyle,
+          {
+            backgroundColor: isHeld
+              ? colors.contentCardSelected
+              : "transparent",
+            borderColor: isHeld ? colors.action : border,
+          },
         ]}
-        testID={`drag-${label}`}
+        testID={`reorder-row-${reorderId}`}
       >
-        <GripVertical
-          accessibilityElementsHidden
-          color={text}
-          importantForAccessibility="no-hide-descendants"
-          size={sizes.icon}
-          strokeWidth={2}
-        />
-      </FocusablePressable>
-      <View style={styles.reorderContent}>
-        {children}
-        <Text style={[
-          typeScale.secondary as TextStyle,
-          { color: secondary },
-        ]}>
-          {`Position ${position + 1} of ${count}`}
-        </Text>
-        <View style={styles.reorderActions}>
-          <IconAction
-            accessibilityLabel={`Move ${label} up`}
-            disabled={!canMoveUp}
-            icon="moveUp"
-            onPress={onMoveUp}
-            tone={tone}
-          />
-          <IconAction
-            accessibilityLabel={`Move ${label} down`}
-            disabled={!canMoveDown}
-            icon="moveDown"
-            onPress={onMoveDown}
-            tone={tone}
-          />
+        <GestureDetector gesture={dragGesture}>
+          <FocusablePressable
+            accessibilityActions={[
+              ...(canMoveUp ? [{ name: "increment", label: "Move up" }] : []),
+              ...(canMoveDown
+                ? [{ name: "decrement", label: "Move down" }]
+                : []),
+            ]}
+            accessibilityHint="Touch and hold to drag, or use Move up and Move down."
+            accessibilityLabel={handleLabel}
+            accessibilityRole="adjustable"
+            accessibilityState={{ busy: isHeld }}
+            focusable
+            onAccessibilityAction={(event) => {
+              if (event.nativeEvent.actionName === "increment" && canMoveUp) {
+                requestMove(position - 1);
+              }
+              if (event.nativeEvent.actionName === "decrement" && canMoveDown) {
+                requestMove(position + 1);
+              }
+            }}
+            onPress={() => undefined}
+            style={[
+              styles.dragTarget,
+              { borderColor: isHeld ? colors.action : border },
+            ]}
+            testID={`drag-${reorderId}`}
+          >
+            <GripVertical
+              accessibilityElementsHidden
+              color={text}
+              importantForAccessibility="no-hide-descendants"
+              size={sizes.icon}
+              strokeWidth={2}
+            />
+          </FocusablePressable>
+        </GestureDetector>
+        <View style={[
+          styles.reorderContent,
+          largeText ? styles.reorderContentLargeText : null,
+        ]} testID={`reorder-content-${reorderId}`}>
+          <View style={styles.reorderLabels}>
+            {children}
+          </View>
+          <Text style={[
+            typeScale.secondary as TextStyle,
+            styles.reorderPosition,
+            { color: secondary },
+          ]}>
+            {`Position ${position + 1} of ${count}`}
+          </Text>
+          <View style={styles.reorderActions}>
+            <IconAction
+              accessibilityLabel={`Move ${label} up`}
+              disabled={!canMoveUp}
+              icon="moveUp"
+              onPress={() => requestMove(position - 1)}
+              tone={tone}
+            />
+            <IconAction
+              accessibilityLabel={`Move ${label} down`}
+              disabled={!canMoveDown}
+              icon="moveDown"
+              onPress={() => requestMove(position + 1)}
+              tone={tone}
+            />
+          </View>
         </View>
-      </View>
-    </View>
+      </Animated.View>
+    </GestureHandlerRootView>
   );
 }
 
@@ -235,12 +441,16 @@ const styles = StyleSheet.create({
     paddingVertical: space[2],
   },
   reorderRow: {
+    alignItems: "center",
     borderBottomWidth: StyleSheet.hairlineWidth,
     flexDirection: "row",
     gap: space[2],
     paddingVertical: space[2],
   },
-  dragHandle: {
+  dragGestureRoot: {
+    width: "100%",
+  },
+  dragTarget: {
     alignItems: "center",
     borderRadius: radius.standard,
     borderWidth: StyleSheet.hairlineWidth,
@@ -250,13 +460,26 @@ const styles = StyleSheet.create({
     paddingHorizontal: space[2],
   },
   reorderContent: {
+    alignItems: "center",
     flex: 1,
+    flexDirection: "row",
     gap: space[2],
     minWidth: 0,
   },
+  reorderContentLargeText: {
+    alignItems: "stretch",
+    flexDirection: "column",
+  },
+  reorderLabels: {
+    flex: 1,
+    minWidth: 0,
+  },
+  reorderPosition: {
+    flexShrink: 0,
+  },
   reorderActions: {
     flexDirection: "row",
-    flexWrap: "wrap",
+    flexShrink: 0,
     gap: space[2],
   },
 });

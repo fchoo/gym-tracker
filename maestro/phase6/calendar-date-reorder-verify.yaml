@@ -1,0 +1,22 @@
+appId: com.fchoo.gymtracker
+name: Phase 6 production continuous held-drag verification
+tags:
+  - phase-6
+  - production-candidate
+  - n3
+---
+- scrollUntilVisible:
+    element:
+      text: "Bench Press dragged to 1 of 2"
+    direction: DOWN
+    centerElement: true
+    timeout: 30000
+- assertVisible: "Bench Press dragged to 1 of 2"
+- scrollUntilVisible:
+    element:
+      id: "drag-exercise-Bench Press"
+    direction: UP
+    centerElement: true
+- assertVisible: "Drag Bench Press. Position 1 of 2"
+- assertVisible: "Drag Back Squat. Position 2 of 2"
+- takeScreenshot: phase6-reorder-displacement

@@ -19,6 +19,7 @@ import {
 } from "react-native";
 
 import {
+  calendarFieldMonthDirectionForHorizontalSwipe,
   CalendarField,
 } from "./CalendarField";
 import {
@@ -69,10 +70,10 @@ describe("CalendarField", () => {
     }));
 
     expect(onChange).not.toHaveBeenCalled();
-    expect(screen.getByRole("button", { name: "Confirm date" }))
+    expect(screen.getByRole("button", { name: "Apply Date" }))
       .toBeOnTheScreen();
 
-    await fireEvent.press(screen.getByRole("button", { name: "Confirm date" }));
+    await fireEvent.press(screen.getByRole("button", { name: "Apply Date" }));
 
     expect(onChange).toHaveBeenCalledWith("2028-02-29");
   });
@@ -84,11 +85,47 @@ describe("CalendarField", () => {
     await fireEvent.press(screen.getByRole("button", {
       name: "Select 2028-02-29",
     }));
-    await fireEvent.press(screen.getByRole("button", { name: "Cancel date" }));
+    await fireEvent.press(screen.getByRole("button", { name: "Keep Original Date" }));
 
     expect(onChange).not.toHaveBeenCalled();
     expect(screen.queryByText("February 2028")).not.toBeOnTheScreen();
     expect(screen.getByText("2028-02-28")).toBeOnTheScreen();
+  });
+
+  it("uses a complete bounded adjacent-month grid and applies only its private draft", async () => {
+    const { onChange } = await renderCalendar({
+      maximumDate: "2028-03-01",
+      minimumDate: "2028-02-28",
+    });
+
+    await fireEvent.press(screen.getByRole("button", { name: "Effective date" }));
+
+    expect(screen.getByRole("header", { name: "Select date" }))
+      .toBeOnTheScreen();
+    expect(screen.getByText("Monday, 28 February 2028")).toBeOnTheScreen();
+    expect(screen.getAllByTestId(/^calendar-day-/u)).toHaveLength(42);
+    expect(screen.getByRole("button", {
+      name: "Select 2028-01-30",
+    })).toHaveProp("accessibilityState", expect.objectContaining({
+      disabled: true,
+    }));
+    expect(screen.getByRole("button", {
+      name: "Select 2028-03-01",
+    })).toHaveProp("accessibilityState", expect.objectContaining({
+      disabled: false,
+    }));
+    expect(screen.queryByTestId("calendar-grid-scroll")).not.toBeOnTheScreen();
+
+    await fireEvent.press(screen.getByRole("button", {
+      name: "Select 2028-03-01",
+    }));
+
+    expect(screen.getByText("March 2028")).toBeOnTheScreen();
+    expect(screen.getByText("Wednesday, 1 March 2028")).toBeOnTheScreen();
+    expect(onChange).not.toHaveBeenCalled();
+    await fireEvent.press(screen.getByRole("button", { name: "Apply Date" }));
+
+    expect(onChange).toHaveBeenCalledWith("2028-03-01");
   });
 
   it("opens an allowed empty value without selecting its default date", async () => {
@@ -123,7 +160,7 @@ describe("CalendarField", () => {
       .toHaveProp("accessibilityState", expect.objectContaining({
         disabled: true,
       }));
-    expect(screen.getByRole("button", { name: "Confirm date" }))
+    expect(screen.getByRole("button", { name: "Apply Date" }))
       .toHaveProp("accessibilityState", expect.objectContaining({
         disabled: true,
       }));
@@ -134,12 +171,12 @@ describe("CalendarField", () => {
     }));
 
     expect(onChange).not.toHaveBeenCalled();
-    expect(screen.getByRole("button", { name: "Confirm date" }))
+    expect(screen.getByRole("button", { name: "Apply Date" }))
       .toHaveProp("accessibilityState", expect.objectContaining({
         disabled: false,
       }));
 
-    await fireEvent.press(screen.getByRole("button", { name: "Confirm date" }));
+    await fireEvent.press(screen.getByRole("button", { name: "Apply Date" }));
 
     expect(onChange).toHaveBeenCalledTimes(1);
     expect(onChange).toHaveBeenCalledWith("2028-02-29");
@@ -199,15 +236,15 @@ describe("CalendarField", () => {
 
     await fireEvent.press(screen.getByRole("button", { name: "Effective date" }));
 
-    expect(screen.getByRole("button", { name: "Confirm date" }))
+    expect(screen.getByRole("button", { name: "Apply Date" }))
       .toHaveProp("accessibilityState", expect.objectContaining({
         disabled: true,
       }));
 
     await fireEvent.press(screen.getByRole("button", {
-      name: "Use default date",
+      name: "Use Default Date",
     }));
-    await fireEvent.press(screen.getByRole("button", { name: "Confirm date" }));
+    await fireEvent.press(screen.getByRole("button", { name: "Apply Date" }));
 
     expect(onChange).toHaveBeenCalledWith("2028-02-28");
   });
@@ -260,7 +297,29 @@ describe("CalendarField", () => {
     await renderCalendar({ value: "0001-01-01" });
 
     await fireEvent.press(screen.getByRole("button", { name: "Effective date" }));
+    expect(screen.getByTestId("calendar-day-unavailable-0")).toBeOnTheScreen();
+    expect(screen.getByTestId("calendar-day-unavailable-0"))
+      .toHaveProp("accessible", false);
+    expect(screen.getByRole("button", { name: "Select 0001-01-01" }))
+      .toBeOnTheScreen();
     expect(screen.getByRole("button", { name: "Previous month" }))
+      .toHaveProp("accessibilityState", expect.objectContaining({
+        disabled: true,
+      }));
+  });
+
+  it("keeps unavailable trailing slots at the upper LocalDate boundary", async () => {
+    await renderCalendar({ value: "9999-12-31" });
+
+    await fireEvent.press(screen.getByRole("button", { name: "Effective date" }));
+
+    expect(screen.getAllByTestId(/^calendar-day-/u)).toHaveLength(42);
+    expect(screen.getByRole("button", { name: "Select 9999-12-31" }))
+      .toBeOnTheScreen();
+    expect(screen.getByTestId("calendar-day-unavailable-41")).toBeOnTheScreen();
+    expect(screen.getByTestId("calendar-day-unavailable-41"))
+      .toHaveProp("accessible", false);
+    expect(screen.getByRole("button", { name: "Next month" }))
       .toHaveProp("accessibilityState", expect.objectContaining({
         disabled: true,
       }));
@@ -306,14 +365,17 @@ describe("CalendarField", () => {
     await fireEvent(selectedDay, "keyDown", { nativeEvent: { key: "ArrowRight" } });
     expect(screen.getByLabelText("Calendar grid"))
       .toHaveProp("accessibilityValue", { text: "2028-02-29" });
-    await fireEvent(screen.getByRole("button", { name: "Confirm date" }),
+    await fireEvent(screen.getByRole("button", { name: "Apply Date" }),
       "keyDown", { nativeEvent: { key: "Enter" } });
 
     expect(onChange).toHaveBeenCalledWith("2028-02-29");
     expect(setAccessibilityFocus).toHaveBeenCalled();
+    expect(calendarFieldMonthDirectionForHorizontalSwipe(-96)).toBe(1);
+    expect(calendarFieldMonthDirectionForHorizontalSwipe(96)).toBe(-1);
+    expect(calendarFieldMonthDirectionForHorizontalSwipe(24)).toBeNull();
   });
 
-  it("keeps seven 48dp columns horizontally reachable at 320dp", async () => {
+  it("keeps every fixed-grid date present without requiring horizontal scrolling at 320dp", async () => {
     await setWindowDimensions(320, 568);
     await renderCalendar();
 
@@ -330,14 +392,8 @@ describe("CalendarField", () => {
     });
     expect(screen.getByTestId("calendar-weekday-0"))
       .toHaveStyle({ minWidth: 48, width: 48 });
-    expect(screen.getByTestId("calendar-grid-scroll"))
-      .toHaveProp("horizontal", true);
-    expect(screen.getByTestId("calendar-grid-scroll"))
-      .toHaveProp("nestedScrollEnabled", true);
-    expect(screen.getByTestId("calendar-grid-scroll"))
-      .toHaveProp("showsHorizontalScrollIndicator", true);
-    expect(screen.getByLabelText("Scrollable calendar grid"))
-      .toHaveProp("accessibilityHint", "Swipe horizontally to reach every day.");
+    expect(screen.getAllByTestId(/^calendar-day-/u)).toHaveLength(42);
+    expect(screen.queryByTestId("calendar-grid-scroll")).not.toBeOnTheScreen();
     expect(screen.getByTestId("calendar-dialog"))
       .toHaveStyle({ padding: 8 });
     expect(screen.getByTestId("calendar-modal-scroll"))
@@ -358,7 +414,7 @@ describe("CalendarField", () => {
         flexGrow: 1,
         justifyContent: "flex-start",
       }));
-    expect(screen.getByRole("button", { name: "Confirm date" }))
+    expect(screen.getByRole("button", { name: "Apply Date" }))
       .toBeOnTheScreen();
   });
 
@@ -375,7 +431,7 @@ describe("CalendarField", () => {
       .toHaveTextContent("S");
     expect(screen.getByRole("button", { name: "Select 2028-02-28" }))
       .toHaveStyle({ height: 48, minWidth: 48, width: 48 });
-    expect(screen.getByRole("button", { name: "Confirm date" }))
+    expect(screen.getByRole("button", { name: "Apply Date" }))
       .toBeOnTheScreen();
   });
 
@@ -387,8 +443,7 @@ describe("CalendarField", () => {
 
     expect(screen.getByTestId("calendar-grid"))
       .toHaveStyle({ width: 336 });
-    expect(screen.getByTestId("calendar-grid-scroll"))
-      .toHaveProp("showsHorizontalScrollIndicator", false);
+    expect(screen.queryByTestId("calendar-grid-scroll")).not.toBeOnTheScreen();
     expect(screen.getByRole("button", { name: "Select 2028-02-28" }))
       .toHaveStyle({ height: 48, minWidth: 48, width: 48 });
   });

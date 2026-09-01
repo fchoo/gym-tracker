@@ -14,6 +14,7 @@ import React from "react";
 import {
   Appearance,
   BackHandler,
+  RefreshControl,
   ScrollView,
   Text,
   View,
@@ -453,6 +454,46 @@ describe("Plan 01-02 UI foundation", () => {
     scrollTo.mockRestore();
   });
 
+  it.each(adaptiveCases)(
+    "attaches one controlled refresh seam to the owning ScrollView in the %s layout",
+    async (widthClass, width) => {
+      const onRefresh = jest.fn();
+      await render(
+        <AppearanceProvider>
+          <AdaptiveScreen
+            onRefresh={onRefresh}
+            primary={<Text>{widthClass} library</Text>}
+            refreshing
+            width={width}
+          />
+        </AppearanceProvider>,
+      );
+
+      const scroll = screen.getByTestId("adaptive-screen-scroll");
+      expect(screen.queryAllByTestId("adaptive-screen-scroll")).toHaveLength(1);
+      expect(scroll).toHaveProp("keyboardShouldPersistTaps", "handled");
+      expect(scroll).toHaveProp("scrollEventThrottle", 16);
+      expect(scroll.props.refreshControl).toBeDefined();
+      expect(scroll.props.refreshControl.type).toBe(RefreshControl);
+      expect(scroll.props.refreshControl.props.refreshing).toBe(true);
+
+      scroll.props.refreshControl.props.onRefresh();
+      expect(onRefresh).toHaveBeenCalledTimes(1);
+    },
+  );
+
+  it("leaves the owning ScrollView without refresh control when no controlled handler is supplied", async () => {
+    await render(
+      <AppearanceProvider>
+        <AdaptiveScreen primary={<Text>Static Library</Text>} />
+      </AppearanceProvider>,
+    );
+
+    expect(screen.queryAllByTestId("adaptive-screen-scroll")).toHaveLength(1);
+    expect(screen.getByTestId("adaptive-screen-scroll").props.refreshControl)
+      .toBeUndefined();
+  });
+
   it("enforces minimum targets, wrapping labels, and vertical large-text metrics", async () => {
     await render(
       <AppearanceProvider>
@@ -606,6 +647,50 @@ describe("Plan 01-02 route shell", () => {
       paddingBottom: 2,
       paddingHorizontal: 4,
     });
+  });
+
+  it("reflows four complete root destinations into two accessible rows for 200% text", async () => {
+    const navigate = jest.fn();
+    await render(
+      <AppearanceProvider>
+        <AppTabs
+          compactLayout="two-row"
+          navigation={{
+            emit: () => ({ defaultPrevented: false }),
+            navigate,
+          }}
+          state={{ index: 2, routes }}
+        />
+      </AppearanceProvider>,
+    );
+
+    const rootNavigation = screen.getByLabelText(
+      "Root navigation bottom two rows",
+    );
+    expect(rootNavigation).toHaveStyle({
+      flexWrap: "wrap",
+    });
+    expect(screen.getAllByRole("tab").map((tab) => tab.props.accessibilityLabel))
+      .toEqual(["Today", "Calendar", "Library", "Progress"]);
+    expect(screen.getByRole("tab", { name: "Library" })).toBeSelected();
+
+    for (const label of ["Today", "Calendar", "Library", "Progress"]) {
+      const tab = screen.getByRole("tab", { name: label });
+      expect(tab).toHaveStyle({
+        minHeight: 64,
+        minWidth: 48,
+        width: "50%",
+      });
+      expect(screen.getByText(label).props.numberOfLines).toBeUndefined();
+    }
+
+    const progress = screen.getByRole("tab", { name: "Progress" });
+    await fireEvent(progress, "focus");
+    expect(progress).toHaveStyle({ outlineWidth: 2 });
+    await fireEvent(progress, "keyDown", {
+      nativeEvent: { key: "Enter" },
+    });
+    expect(navigate).toHaveBeenCalledWith("progress");
   });
 
   it("checks notification readiness before entering the trusted app", async () => {

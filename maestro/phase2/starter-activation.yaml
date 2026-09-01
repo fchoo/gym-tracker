@@ -28,28 +28,29 @@ tags:
 - assertVisible: "Gym Body-Part Split"
 - scrollUntilVisible:
     element:
-      text: "Filter"
+      id: "library-filters-chip"
     direction: UP
     centerElement: true
-- tapOn: "Filter"
+- tapOn:
+    id: "library-filters-chip"
 - scrollUntilVisible:
     element:
-      text: "Experience · Intermediate"
+      text: "Experience: Intermediate"
     direction: DOWN
     centerElement: true
-- tapOn: "Experience · Intermediate"
+- tapOn: "Experience: Intermediate"
 - scrollUntilVisible:
     element:
-      text: "Days per week · 5"
+      text: "Days per week: 5"
     direction: DOWN
     centerElement: true
-- tapOn: "Days per week · 5"
+- tapOn: "Days per week: 5"
 - scrollUntilVisible:
     element:
-      text: "Equipment · Barbell"
+      text: "Equipment: Barbell"
     direction: DOWN
     centerElement: true
-- tapOn: "Equipment · Barbell"
+- tapOn: "Equipment: Barbell"
 - scrollUntilVisible:
     element:
       text: "Show results"

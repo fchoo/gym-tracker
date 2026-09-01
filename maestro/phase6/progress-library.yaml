@@ -1,0 +1,68 @@
+appId: com.fchoo.gymtracker
+name: Phase 6 production Progress and Library Search/filter evidence
+tags:
+  - phase-6
+  - production-candidate
+  - n1
+---
+- launchApp:
+    clearState: true
+    permissions:
+      notifications: deny
+- assertVisible: "Today"
+- extendedWaitUntil:
+    visible: "Use Full Body Foundation"
+    timeout: 90000
+- tapOn: "Use Full Body Foundation"
+- tapOn: "Activate Full Body Foundation"
+- extendedWaitUntil:
+    visible: "^(Start Full Body A|Start Full Body B|Rest day)$"
+    timeout: 90000
+- runFlow:
+    when:
+      visible: "Start Full Body B"
+    commands:
+      - tapOn: "Choose another day"
+- runFlow:
+    when:
+      visible: "Rest day"
+    commands:
+      - tapOn: "Train anyway"
+- tapOn: "Start Full Body A"
+- extendedWaitUntil:
+    visible: "FOCUSED WORKOUT"
+    timeout: 30000
+- repeat:
+    times: 12
+    while:
+      notVisible: "Complete Set 1"
+    commands:
+      - swipe:
+          start: 95%, 75%
+          end: 95%, 25%
+          duration: 300
+- tapOn: "Complete Set 1"
+- tapOn: "Progress"
+- assertVisible: "4 weeks"
+- extendedWaitUntil:
+    visible: "Exercise progress"
+    timeout: 30000
+- tapOn: "Search exercises"
+- inputText: "Back"
+- pressKey: ENTER
+- assertVisible: "Search exercises"
+- takeScreenshot: phase6-progress-search
+- tapOn: "Clear search exercises"
+- pressKey: TAB
+- tapOn: "Library"
+- assertVisible: "Library"
+- tapOn: "Exercises"
+- assertVisible: "Search exercises"
+- tapOn: "Search exercises"
+- inputText: "Back"
+- pressKey: ENTER
+- assertVisible: "Search exercises"
+- takeScreenshot: phase6-library-search
+- tapOn: "Clear search exercises"
+- tapOn: "Favorite"
+- takeScreenshot: phase6-library-favorite-selected

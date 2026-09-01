@@ -1,0 +1,18 @@
+appId: com.fchoo.gymtracker.devtest
+name: Phase 6 generated Android horizontal swipe and held-row displacement gate
+tags:
+  - phase-6
+  - generated-native
+  - gestures
+---
+- clearState
+- openLink: gymtracker-devtest://__phase6-gesture-smoke
+- assertVisible: "Phase 6 gesture smoke"
+- swipe:
+    start: 80%, 50%
+    end: 20%, 50%
+    duration: 400
+- assertVisible: "Horizontal swipe complete"
+- longPressOn:
+    id: drag-Phase 6 gesture row
+- assertVisible: "Held row displaced"

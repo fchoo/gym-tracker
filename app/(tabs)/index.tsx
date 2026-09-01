@@ -140,7 +140,7 @@ export default function TodayRoute() {
       }}
       notificationPermission={runtime.notificationPermission}
       onOpenRestNotificationSettings={runtime.openRestNotificationSettings}
-      onOpenMore={() => router.push("/more" as Href)}
+      onOpenHistoryAndData={() => router.push("/more" as Href)}
       onReviewSuggestion={() => router.push("/progress" as Href)}
       onActivatePlan={() => {
         void runtime.activatePlan();

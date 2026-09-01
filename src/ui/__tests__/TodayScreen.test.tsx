@@ -98,6 +98,55 @@ describe("Plan 01-07 TodayScreen", () => {
     expect(screen.queryByText(/60 kg/u)).not.toBeOnTheScreen();
   });
 
+  it("keeps History and data distinct from appearance and rest-alert settings", async () => {
+    const openHistoryAndData = jest.fn();
+    await renderToday(scheduledView, {
+      onOpenHistoryAndData: openHistoryAndData,
+      width: 360,
+    });
+
+    const historyAndData = screen.getByRole("button", {
+      name: "History and data",
+    });
+    expect(historyAndData).toHaveProp(
+      "accessibilityHint",
+      "Opens workout history and data recovery",
+    );
+    expect(historyAndData).toHaveStyle({ minHeight: 48 });
+    expect(screen.getByTestId("adaptive-screen"))
+      .toHaveProp("accessibilityLabel", "compact layout");
+    expect(screen.getByText("History and data").props.numberOfLines)
+      .toBeUndefined();
+    expect(screen.queryByRole("button", { name: "More" })).not.toBeOnTheScreen();
+    expect(
+      screen.getByRole("button", {
+        name: "Appearance and rest-alert settings",
+      }),
+    ).toBeOnTheScreen();
+
+    await fireEvent(historyAndData, "focus");
+    expect(historyAndData).toHaveStyle({ outlineWidth: 2 });
+    await fireEvent(historyAndData, "keyDown", {
+      nativeEvent: { key: "Enter" },
+    });
+    expect(openHistoryAndData).toHaveBeenCalledTimes(1);
+
+    await fireEvent.press(
+      screen.getByRole("button", {
+        name: "Appearance and rest-alert settings",
+      }),
+    );
+    expect(screen.getByRole("header", { name: "Rest alerts" })).toBeOnTheScreen();
+    await fireEvent.press(
+      screen.getByRole("button", { name: "Close rest alerts" }),
+    );
+    expect(
+      screen.getByRole("button", {
+        name: "Appearance and rest-alert settings",
+      }),
+    ).toBeOnTheScreen();
+  });
+
   it("shows only Full Body Foundation on first use and activates after preview", async () => {
     const activate = jest.fn();
     await renderToday(
@@ -668,6 +717,12 @@ describe("Plan 01-07 TodayScreen", () => {
       expect(screen.getByText("Back Squat")).toHaveStyle({
         color: colors.contentCardText,
       });
+      expect(screen.getByRole("button", { name: "History and data" }))
+        .toHaveStyle({
+          backgroundColor: colors.surface,
+          borderColor: colors.divider,
+          minHeight: 48,
+        });
     },
   );
 });

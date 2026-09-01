@@ -145,20 +145,20 @@ async function renderDetail(
 
 describe("starter discovery", () => {
   it("uses the six accepted templates in stable order and opens a starter without losing Library state", async () => {
-    const { catalog, props, rendered } = await renderLibrary();
+    const { catalog, props } = await renderLibrary();
 
     expect(await screen.findByRole("header", { name: "Starter Plans" }))
       .toBeOnTheScreen();
     expect(catalog.summaries).toHaveLength(6);
-    const serialized = JSON.stringify(rendered.toJSON());
-    for (const [index, starter] of catalog.summaries.entries()) {
+    expect(screen.getAllByTestId(/library-plan-card-/u).map(
+      ({ props: cardProps }) => cardProps.testID,
+    )).toEqual(catalog.summaries.map(
+      ({ id }) => `library-plan-card-${id}`,
+    ));
+    for (const starter of catalog.summaries) {
       expect(screen.getByRole("button", {
         name: escapedPattern(starter.name),
       })).toBeOnTheScreen();
-      if (index > 0) {
-        expect(serialized.indexOf(catalog.summaries[index - 1]!.name))
-          .toBeLessThan(serialized.indexOf(starter.name));
-      }
     }
 
     await fireEvent.changeText(screen.getByLabelText("Search plans"), "gym");
@@ -179,7 +179,7 @@ describe("starter discovery", () => {
     await renderLibrary();
     await screen.findByText("Gym Body-Part Split");
 
-    await fireEvent.press(screen.getByRole("button", { name: "Filter" }));
+    await fireEvent.press(screen.getByRole("checkbox", { name: "Filters" }));
     await fireEvent.press(screen.getByRole("checkbox", {
       name: "Experience: Intermediate",
     }));
@@ -196,11 +196,25 @@ describe("starter discovery", () => {
       "Why this fits: Intermediate experience · 5 days per week · Barbell equipment",
     )).toBeOnTheScreen();
     expect(screen.queryByText("Full Body Foundation")).not.toBeOnTheScreen();
-    expect(screen.getByRole("button", { name: "Clear filters" }))
+    expect(screen.getByRole("checkbox", {
+      name: "Experience: Intermediate selected",
+    }))
       .toBeOnTheScreen();
+    expect(screen.getByRole("checkbox", {
+      name: "5 days per week selected",
+    })).toBeOnTheScreen();
+    expect(screen.getByRole("checkbox", {
+      name: "Equipment: Barbell selected",
+    })).toBeOnTheScreen();
 
-    await fireEvent.press(screen.getByRole("button", {
-      name: "Clear filters",
+    await fireEvent.press(screen.getByRole("checkbox", {
+      name: "Experience: Intermediate selected",
+    }));
+    await fireEvent.press(screen.getByRole("checkbox", {
+      name: "5 days per week selected",
+    }));
+    await fireEvent.press(screen.getByRole("checkbox", {
+      name: "Equipment: Barbell selected",
     }));
     expect(await screen.findByText("Full Body Foundation")).toBeOnTheScreen();
     expect(screen.getAllByText(/Body|Upper|Push|Strength|Equipment/u).length)
@@ -546,7 +560,7 @@ describe("starter activation", () => {
     await fireEvent.press(screen.getByRole("button", {
       name: "Select 2026-08-19",
     }));
-    await fireEvent.press(screen.getByRole("button", { name: "Confirm date" }));
+    await fireEvent.press(screen.getByRole("button", { name: "Apply Date" }));
     await fireEvent.press(screen.getByRole("radio", { name: "Rotation" }));
     await fireEvent.press(screen.getByRole("button", {
       name: "Move Back up",
@@ -717,7 +731,7 @@ describe("starter activation", () => {
     await fireEvent.press(screen.getByRole("button", {
       name: "Select 2026-08-20",
     }));
-    await fireEvent.press(screen.getByRole("button", { name: "Confirm date" }));
+    await fireEvent.press(screen.getByRole("button", { name: "Apply Date" }));
     await fireEvent.press(screen.getByRole("button", { name: "Activate plan" }));
     await fireEvent.press(screen.getAllByRole("button", {
       name: "Activate plan",

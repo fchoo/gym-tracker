@@ -714,4 +714,48 @@ describe("progress repository", () => {
       }),
     }));
   });
+
+  it("returns the factual current baseline when the candidate lacks toSorted", async () => {
+    const kernel = await open();
+    const repository = createProgressRepository(kernel);
+    const arrayPrototype = Array.prototype as {
+      toSorted?: typeof Array.prototype.toSorted;
+    };
+    const originalToSorted = arrayPrototype.toSorted;
+    delete arrayPrototype.toSorted;
+
+    try {
+      await expect(repository.load({
+        period: "4_weeks",
+        nowLocalDate: "2026-08-24",
+      })).resolves.toEqual(expect.objectContaining({
+        freshness: "current",
+        projection: expect.objectContaining({
+          state: "baseline",
+          records: [],
+          exercises: [],
+        }),
+      }));
+      expect(arrayPrototype.toSorted).toBeUndefined();
+    } finally {
+      Object.defineProperty(arrayPrototype, "toSorted", {
+        configurable: true,
+        enumerable: false,
+        value: originalToSorted,
+        writable: true,
+      });
+    }
+
+    await expect(repository.load({
+      period: "4_weeks",
+      nowLocalDate: "2026-08-24",
+    })).resolves.toEqual(expect.objectContaining({
+      freshness: "current",
+      projection: expect.objectContaining({
+        state: "baseline",
+        records: [],
+        exercises: [],
+      }),
+    }));
+  });
 });

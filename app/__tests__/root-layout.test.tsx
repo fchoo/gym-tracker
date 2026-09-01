@@ -207,6 +207,42 @@ describe("RootLayout attended preview isolation", () => {
     expect(mockSqliteStorageConstructed).not.toHaveBeenCalled();
   });
 
+  it("renders the Phase 6 gesture fixture without production runtime or SQLite", async () => {
+    mockPathname = "/__phase6-gesture-smoke";
+
+    await render(<RootLayout />);
+
+    expect(screen.getByTestId("safe-area-provider")).toBeOnTheScreen();
+    expect(screen.getByTestId("appearance-provider")).toBeOnTheScreen();
+    expect(screen.getByTestId("root-stack-screen-__phase6-gesture-smoke"))
+      .toBeOnTheScreen();
+    expect(screen.queryByTestId("workout-runtime-provider"))
+      .not.toBeOnTheScreen();
+    expect(screen.queryByTestId("startup-readiness-gate"))
+      .not.toBeOnTheScreen();
+    expect(mockRuntimeProviderMounted).not.toHaveBeenCalled();
+    expect(mockPreviewAppearanceRead).toHaveBeenCalledTimes(1);
+    expect(mockProductionAppearanceRead).not.toHaveBeenCalled();
+    expect(mockSqliteStorageConstructed).not.toHaveBeenCalled();
+  });
+
+  it("keeps the Phase 6 gesture fixture isolated while fonts are pending", async () => {
+    mockFontsLoaded = false;
+    mockPathname = "/__phase6-gesture-smoke";
+
+    await render(<RootLayout />);
+
+    expect(mockUseFonts).toHaveBeenCalledWith({ Interface: 1 });
+    expect(screen.getByTestId("app-loading-shell")).toBeOnTheScreen();
+    expect(screen.queryByTestId("root-stack")).not.toBeOnTheScreen();
+    expect(screen.queryByTestId("workout-runtime-provider"))
+      .not.toBeOnTheScreen();
+    expect(mockRuntimeProviderMounted).not.toHaveBeenCalled();
+    expect(mockPreviewAppearanceRead).toHaveBeenCalledTimes(1);
+    expect(mockProductionAppearanceRead).not.toHaveBeenCalled();
+    expect(mockSqliteStorageConstructed).not.toHaveBeenCalled();
+  });
+
   it("keeps production runtime initialization when the preview path lacks the exact flag", async () => {
     mockNativeContractsEnabled = false;
 

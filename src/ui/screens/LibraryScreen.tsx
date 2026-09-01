@@ -11,7 +11,6 @@ import {
   ScrollView,
   StyleSheet,
   Text,
-  TextInput,
   View,
   type NativeScrollEvent,
   type NativeSyntheticEvent,
@@ -31,8 +30,9 @@ import {
   ActionCluster,
   ContentCard,
   FocusablePressable,
-  IconAction,
   InlineNotice,
+  M3FilterChip,
+  M3SearchField,
   PlanRow,
   PrimaryAction,
   ScreenHeader,
@@ -229,17 +229,16 @@ function displayFilterValue(value: string): string {
   ).join(" ");
 }
 
-function starterFilterCount(filters: StarterFilters): number {
-  return Object.values(filters).reduce(
-    (count, values) => count + (values?.length ?? 0),
-    0,
-  );
-}
-
 type FilterChip = Readonly<{
   key: keyof SearchFilters;
   label: string;
   value: string | boolean;
+}>;
+
+type StarterFilterChip = Readonly<{
+  key: keyof StarterFilters;
+  label: string;
+  value: string | number;
 }>;
 
 function filterChips(filters: SearchFilters): readonly FilterChip[] {
@@ -282,6 +281,33 @@ function filterChips(filters: SearchFilters): readonly FilterChip[] {
   ];
 }
 
+function starterFilterChips(
+  filters: StarterFilters,
+): readonly StarterFilterChip[] {
+  return [
+    ...(filters.goals ?? []).map((value) => ({
+      key: "goals" as const,
+      label: `Goal: ${value}`,
+      value,
+    })),
+    ...(filters.experience ?? []).map((value) => ({
+      key: "experience" as const,
+      label: `Experience: ${value}`,
+      value,
+    })),
+    ...(filters.daysPerWeek ?? []).map((value) => ({
+      key: "daysPerWeek" as const,
+      label: `${value} days per week`,
+      value,
+    })),
+    ...(filters.equipment ?? []).map((value) => ({
+      key: "equipment" as const,
+      label: `Equipment: ${value}`,
+      value,
+    })),
+  ];
+}
+
 function removeFilterChip(
   filters: SearchFilters,
   chip: FilterChip,
@@ -290,9 +316,33 @@ function removeFilterChip(
   if (current === undefined) {
     return filters;
   }
+  const next = current.filter((value) => value !== chip.value);
+  if (next.length === 0) {
+    const { [chip.key]: _removed, ...remaining } = filters;
+    return remaining;
+  }
   return {
     ...filters,
-    [chip.key]: current.filter((value) => value !== chip.value),
+    [chip.key]: next,
+  };
+}
+
+function removeStarterFilterChip(
+  filters: StarterFilters,
+  chip: StarterFilterChip,
+): StarterFilters {
+  const current = filters[chip.key];
+  if (current === undefined) {
+    return filters;
+  }
+  const next = current.filter((value) => value !== chip.value);
+  if (next.length === 0) {
+    const { [chip.key]: _removed, ...remaining } = filters;
+    return remaining;
+  }
+  return {
+    ...filters,
+    [chip.key]: next,
   };
 }
 
@@ -375,61 +425,6 @@ function SegmentedControl({
           </FocusablePressable>
         );
       })}
-    </View>
-  );
-}
-
-function SearchField({
-  busy,
-  section,
-  value,
-  onChange,
-}: Readonly<{
-  busy: boolean;
-  section: LibrarySection;
-  value: string;
-  onChange(value: string): void;
-}>) {
-  const { colors } = useAppTheme();
-  const label = section === "plans" ? "Search plans" : "Search exercises";
-
-  return (
-    <View style={styles.searchGroup}>
-      <Text
-        style={[
-          typeScale.label as TextStyle,
-          { color: colors.textPrimary },
-        ]}
-      >
-        {label}
-      </Text>
-      <View style={styles.searchControls}>
-        <TextInput
-          accessibilityLabel={label}
-          accessibilityState={{ busy }}
-          autoCapitalize="none"
-          onChangeText={onChange}
-          placeholder={label}
-          placeholderTextColor={colors.textSecondary}
-          returnKeyType="search"
-          style={[
-            styles.searchInput,
-            typeScale.body as TextStyle,
-            {
-              backgroundColor: colors.surface,
-              borderColor: colors.divider,
-              color: colors.textPrimary,
-            },
-          ]}
-          value={value}
-        />
-        <IconAction
-          accessibilityLabel={`Clear ${label.toLocaleLowerCase()}`}
-          disabled={value.length === 0}
-          icon="clear"
-          onPress={() => onChange("")}
-        />
-      </View>
     </View>
   );
 }
@@ -598,6 +593,26 @@ function PlansContent({
   );
 }
 
+function planResultCount(
+  snapshot: LibraryBrowseSnapshot,
+  query: string,
+  starterFilters: StarterFilters,
+): number {
+  return [
+    snapshot.plans.active === null
+      || !sectionMatchesQuery(snapshot.plans.active, query)
+      ? null
+      : snapshot.plans.active,
+    ...snapshot.plans.owned.filter((item) =>
+      sectionMatchesQuery(item, query)
+    ),
+    ...snapshot.plans.starters.filter((item) =>
+      sectionMatchesQuery(item, query)
+      && matchesStarterFilters(item, starterFilters)
+    ),
+  ].filter((item) => item !== null).length;
+}
+
 function CompactSectionEmpty({ copy }: Readonly<{ copy: string }>) {
   const { colors } = useAppTheme();
   return (
@@ -698,17 +713,6 @@ function LibraryExerciseRow({
               {statusLabels.join(" · ")}
             </Text>
           )}
-          {item.source === null ? null : (
-            <Text
-              style={[
-                typeScale.secondary as TextStyle,
-                { color: colors.contentCardTextSecondary },
-              ]}
-            >
-              {item.source.namespace} · revision {item.source.revision} ·{" "}
-              {item.source.license} · {item.source.attribution}
-            </Text>
-          )}
         </FocusablePressable>
         <ActionCluster style={styles.exerciseActionCluster}>
           <FocusablePressable
@@ -740,6 +744,7 @@ function LibraryExerciseRow({
               color={item.favorite
                 ? colors.contentCardStatusCompleted
                 : colors.contentCardText}
+              fill={item.favorite ? colors.contentCardStatusCompleted : "none"}
               importantForAccessibility="no-hide-descendants"
               size={sizes.icon}
               strokeWidth={2}
@@ -1057,34 +1062,30 @@ function FilterSheet({
           <Text style={[typeScale.body as TextStyle, { color: colors.textSecondary }]}>
             Select any value within a category. Categories combine together.
           </Text>
-          {optionRows.map((option) => (
-            <FocusablePressable
-              accessibilityLabel={`${option.group}: ${
-                displayFilterValue(String(option.value))
-              }`}
-              accessibilityRole="checkbox"
-              accessibilityState={{ checked: option.selected }}
-              focusable
-              key={`${option.group}:${String(option.value)}`}
-              onPress={option.toggle}
-              style={[
-                styles.checkbox,
-                { borderColor: colors.divider },
-              ]}
-            >
-              <Text style={[
-                typeScale.body as TextStyle,
-                { color: colors.textPrimary },
-              ]}>
-                {option.group} · {displayFilterValue(String(option.value))}
-              </Text>
-            </FocusablePressable>
+          {optionRows.map((option, index) => (
+            <React.Fragment key={`${option.group}:${String(option.value)}`}>
+              {index === 0 || optionRows[index - 1]?.group !== option.group ? (
+                <Text style={[
+                  typeScale.bodyStrong as TextStyle,
+                  { color: colors.textPrimary },
+                ]}>
+                  {option.group}
+                </Text>
+              ) : null}
+              <M3FilterChip
+                label={`${option.group}: ${displayFilterValue(
+                  String(option.value),
+                )}`}
+                onPress={option.toggle}
+                selected={option.selected}
+              />
+            </React.Fragment>
           ))}
           <PrimaryAction
             label="Show results"
             onPress={() => onApply(draft)}
           />
-          <SecondaryAction label="Cancel" onPress={onClose} />
+          <SecondaryAction label="Keep Current Filters" onPress={onClose} />
         </ScrollView>
       </View>
     </Modal>
@@ -1194,32 +1195,28 @@ function StarterFilterSheet({
           ]}>
             Values within one category combine with OR. Categories combine with AND.
           </Text>
-          {optionRows.map((option) => (
-            <FocusablePressable
-              accessibilityLabel={`${option.group}: ${option.label}`}
-              accessibilityRole="checkbox"
-              accessibilityState={{ checked: option.selected }}
-              focusable
-              key={`${option.group}:${option.label}`}
-              onPress={option.toggle}
-              style={[
-                styles.checkbox,
-                { borderColor: colors.divider },
-              ]}
-            >
-              <Text style={[
-                typeScale.body as TextStyle,
-                { color: colors.textPrimary },
-              ]}>
-                {option.group} · {option.label}
-              </Text>
-            </FocusablePressable>
+          {optionRows.map((option, index) => (
+            <React.Fragment key={`${option.group}:${option.label}`}>
+              {index === 0 || optionRows[index - 1]?.group !== option.group ? (
+                <Text style={[
+                  typeScale.bodyStrong as TextStyle,
+                  { color: colors.textPrimary },
+                ]}>
+                  {option.group}
+                </Text>
+              ) : null}
+              <M3FilterChip
+                label={`${option.group}: ${option.label}`}
+                onPress={option.toggle}
+                selected={option.selected}
+              />
+            </React.Fragment>
           ))}
           <PrimaryAction
             label="Show results"
             onPress={() => onApply(draft)}
           />
-          <SecondaryAction label="Cancel" onPress={onClose} />
+          <SecondaryAction label="Keep Current Filters" onPress={onClose} />
         </ScrollView>
       </View>
     </Modal>
@@ -1279,6 +1276,10 @@ export function LibraryScreen({
   const { colors } = useAppTheme();
   const section = snapshot?.sectionPreference.section ?? "plans";
   const activeState = processState[section];
+  const plansResultCount = snapshot === null
+    ? 0
+    : planResultCount(snapshot, processState.plans.query, starterFilters);
+  const exercisesResultCount = exerciseBrowse.items.length;
 
   useEffect(() => {
     if (reviewedUpdate !== null) {
@@ -1451,7 +1452,10 @@ export function LibraryScreen({
       new Set([...current, item.exerciseId])
     );
     void setExerciseFavorite(item.exerciseId, !item.favorite).then((result) => {
-      if (!mountedRef.current) {
+      if (
+        !mountedRef.current
+        || result.exerciseId !== item.exerciseId
+      ) {
         return;
       }
       const apply = (candidate: LibraryExerciseItem): LibraryExerciseItem =>
@@ -1587,12 +1591,6 @@ export function LibraryScreen({
       });
   }
 
-  const selectedCount = section === "plans"
-    ? starterFilterCount(starterFilters)
-    : filterCount(activeState.filters);
-  const selectedChips = section === "exercises"
-    ? filterChips(activeState.filters)
-    : [];
   const updateKey = contentUpdateResult === undefined
     ? null
     : `${contentUpdateResult.revision}:${contentUpdateResult.packSha256}`;
@@ -1629,10 +1627,34 @@ export function LibraryScreen({
               onSelect={selectSection}
               section={section}
             />
-            <SearchField
-              busy={section === "exercises" && exerciseBrowse.loading}
-              onChange={(query) => updateSectionState(section, { query })}
-              section={section}
+            <M3SearchField
+              label={section === "plans" ? "Search plans" : "Search exercises"}
+              onChangeText={(query) => updateSectionState(section, { query })}
+              resultCount={section === "plans"
+                ? plansResultCount
+                : exercisesResultCount}
+              state={section === "plans"
+                ? processState.plans.query.trim().length === 0
+                  ? "idle"
+                  : plansResultCount === 0
+                    ? "empty"
+                    : "results"
+                : exerciseBrowse.loading
+                  ? "busy"
+                  : exerciseBrowse.initialError
+                    ? "error"
+                    : processState.exercises.query.trim().length === 0
+                      && filterCount(processState.exercises.filters) === 0
+                      ? "idle"
+                      : exercisesResultCount === 0
+                        ? "empty"
+                        : "results"}
+              stateSlots={{
+                empty: null,
+                error: null,
+                results: null,
+              }}
+              testID={`library-search-${section}`}
               value={activeState.query}
             />
             {showContentUpdate ? (
@@ -1670,36 +1692,60 @@ export function LibraryScreen({
               />
             ) : null}
             <View style={styles.filterBar}>
-              <SecondaryAction
-                accessibilityHint="Values within one category combine with OR; categories combine with AND."
-                label="Filter"
-                onPress={() => setFilterVisible(true)}
-                ref={filterActionRef}
-              />
-              <Text>
-                {selectedCount === 0
-                  ? "No filters selected"
-                  : `${selectedCount} filter selected`}
-              </Text>
-              {selectedCount === 0 ? null : (
-                <SecondaryAction
-                  label="Clear filters"
-                  onPress={() => {
-                    if (section === "plans") {
-                      setStarterFilters({});
-                    } else {
-                      updateSectionState(section, { filters: {} });
-                    }
-                  }}
+              {section === "exercises" ? (
+                <M3FilterChip
+                  favorite
+                  label="Favorite"
+                  onPress={() => updateSectionState("exercises", {
+                    filters: {
+                      ...processState.exercises.filters,
+                      favorite: toggledValue(
+                        processState.exercises.filters.favorite,
+                        true,
+                      ),
+                    },
+                  })}
+                  selected={
+                    processState.exercises.filters.favorite?.includes(true) ?? false
+                  }
+                  testID="library-favorite-filter-chip"
                 />
-              )}
-              {snapshot === null ? null : (
-                <SecondaryAction
-                  busy={refreshing}
-                  label="Refresh Library"
-                  onPress={requestLibraryRefresh}
+              ) : null}
+              <View ref={filterActionRef}>
+                <M3FilterChip
+                  label="Filters"
+                  onPress={() => setFilterVisible(true)}
+                  testID="library-filters-chip"
                 />
-              )}
+              </View>
+              {section === "plans"
+                ? starterFilterChips(starterFilters).map((chip) => (
+                  <M3FilterChip
+                    key={`${chip.key}:${String(chip.value)}`}
+                    label={chip.label}
+                    onPress={() => setStarterFilters((current) =>
+                      removeStarterFilterChip(current, chip)
+                    )}
+                    selected
+                  />
+                ))
+                : filterChips(processState.exercises.filters)
+                  .filter((chip) =>
+                    !(chip.key === "favorite" && chip.value === true)
+                  )
+                  .map((chip) => (
+                    <M3FilterChip
+                      key={`${chip.key}:${String(chip.value)}`}
+                      label={chip.label}
+                      onPress={() => updateSectionState("exercises", {
+                        filters: removeFilterChip(
+                          processState.exercises.filters,
+                          chip,
+                        ),
+                      })}
+                      selected
+                    />
+                  ))}
             </View>
             {!refreshFailed ? null : (
               <InlineNotice
@@ -1714,16 +1760,6 @@ export function LibraryScreen({
                 tone="error"
               />
             )}
-            {selectedChips.map((chip) => (
-              <SecondaryAction
-                accessibilityHint="Removes this selected filter."
-                key={`${chip.key}:${String(chip.value)}`}
-                label={`Remove ${chip.label}`}
-                onPress={() => updateSectionState(section, {
-                  filters: removeFilterChip(activeState.filters, chip),
-                })}
-              />
-            ))}
             {loadFailed ? (
               <InlineNotice
                 action={
@@ -1769,7 +1805,7 @@ export function LibraryScreen({
               <ExercisesContent
                 browse={exerciseBrowse}
                 favoriteBusyIds={favoriteBusyIds}
-                hasFilters={selectedCount > 0}
+                hasFilters={filterCount(processState.exercises.filters) > 0}
                 onFavorite={toggleFavorite}
                 onLoadMore={loadMoreExercises}
                 onOpen={(item) => {
@@ -1794,6 +1830,10 @@ export function LibraryScreen({
         onScroll={(event) => {
           scrollOffsetsRef.current[section] = libraryScrollOffset(event);
         }}
+        {...(snapshot === null ? {} : {
+          onRefresh: requestLibraryRefresh,
+          refreshing,
+        })}
         scrollOffset={scrollOffsetsRef.current[section]}
         scrollRestoreKey={section}
         testID="library-screen"
@@ -1904,23 +1944,6 @@ const styles = StyleSheet.create({
     paddingHorizontal: space[4],
     paddingVertical: space[2],
   },
-  searchGroup: {
-    gap: space[1],
-  },
-  searchControls: {
-    alignItems: "center",
-    flexDirection: "row",
-    gap: space[2],
-  },
-  searchInput: {
-    borderRadius: radius.standard,
-    borderWidth: StyleSheet.hairlineWidth,
-    flex: 1,
-    minHeight: sizes.minimumTarget,
-    minWidth: 0,
-    paddingHorizontal: space[4],
-    paddingVertical: space[2],
-  },
   filterBar: {
     alignItems: "center",
     flexDirection: "row",
@@ -1971,13 +1994,5 @@ const styles = StyleSheet.create({
   filterSheetContent: {
     gap: space[4],
     padding: space[6],
-  },
-  checkbox: {
-    borderRadius: radius.standard,
-    borderWidth: StyleSheet.hairlineWidth,
-    justifyContent: "center",
-    minHeight: sizes.minimumTarget,
-    paddingHorizontal: space[4],
-    paddingVertical: space[2],
   },
 });

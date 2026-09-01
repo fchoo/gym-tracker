@@ -1,17 +1,18 @@
 ---
 gsd_state_version: 1.0
 milestone: v1.0
-current_phase: 05
-current_phase_name: Recovery, Distribution, and Release
+current_phase: 6
+current_phase_name: Material 3 UX Remediation
 status: executing
-stopped_at: GitHub release prerequisites provisioned; exact-candidate dispatch pending
-last_updated: "2026-08-27T03:30:00.000Z"
-last_activity: 2026-08-27
-last_activity_desc: Published a sanitized public source snapshot and provisioned release signing, environments, secrets, and an offline evidence runner
+stopped_at: Phase 6 planned; ready to execute Wave 0
+last_updated: "2026-08-31T11:11:57.980Z"
+last_activity: 2026-08-31
+last_activity_desc: Phase 6 execution resumed (wave continue)
+state_head: b4996d921c283265a98ef3c1054610bf6dfd81c7
 progress:
-  total_phases: 5
+  total_phases: 6
   completed_phases: 4
-  total_plans: 64
+  total_plans: 73
   completed_plans: 64
 milestone_name: milestone
 ---
@@ -23,16 +24,16 @@ milestone_name: milestone
 See: `.planning/PROJECT.md` (updated 2026-08-17)
 
 **Core value:** Open today's workout, see trustworthy next targets, complete each working set with one primary action, recover safely from interruption, and understand exactly why the next target is recommended.
-**Current focus:** Dispatch one exact candidate from the sanitized public `main`, approve its protected environment, monitor the automated matrix, then pause for the single attended gate
+**Current focus:** Phase 6 — Material 3 UX Remediation
 
 ## Current Position
 
-Phase: 05 (Recovery, Distribution, and Release) — EXECUTING
-Plan: 05-07 source/automation preparation complete; exact-candidate attended execution pending
-Status: All 64 live plans are summarized and historical 02-35 is explicitly marked superseded by 05-07; Phase 5 remains in progress until REL-03 through REL-06 receive real candidate and attended evidence
-Last activity: 2026-08-27 — Published sanitized public source and provisioned the protected GitHub release boundary
+Phase: 6 (Material 3 UX Remediation) — READY TO EXECUTE
+Plan: 0 of 9
+Status: Ready to execute
+Last activity: 2026-08-31 — Phase 6 execution resumed (wave continue)
 
-Progress: 64/64 live plans summarized; Phase 5 is 7/7 source-preparation complete; final candidate/device/accessibility/design/owner verification remains pending
+Progress: 0/9 Phase 6 plans complete
 
 ## Shared Release Verification
 
@@ -287,8 +288,13 @@ Full decisions live in `.planning/PROJECT.md`.
   contains corporate author metadata and machine-specific paths. A verified
   private bundle is retained locally; public `main` contains only the sanitized
   source snapshot and release handoff.
+
 - The dedicated `release-evidence` runner is intentionally offline until the
   attended evidence-upload step. It must never service pull-request jobs.
+
+### Roadmap Evolution
+
+- Phase 6 added: Material 3 UX remediation added from the exact-candidate whole-app audit
 
 ## Deferred Items
 
@@ -300,7 +306,7 @@ Full decisions live in `.planning/PROJECT.md`.
 
 ## Session Continuity
 
-Last session: 2026-08-27T03:30:00.000Z
-Stopped at: GitHub release prerequisites provisioned; exact-candidate dispatch pending
-Resume file: .planning/phases/05-recovery-distribution-and-release/05-UAT.md
-Next action: Dispatch the protected candidate workflow once from the recorded public commit, approve the environment, monitor the exact-candidate matrix, then complete the attended UAT before no-rebuild promotion and the literal final Terminal Seal command.
+Last session: 2026-08-31T11:11:57.887Z
+Stopped at: Phase 6 planned; ready to execute Wave 0
+Resume file: .planning/phases/06-material-3-ux-remediation/06-01-PLAN.md
+Next action: Generate and verify Phase 6 UI-SPEC, then plan and execute the remediation

@@ -151,8 +151,8 @@ tags:
     below:
       text: "Earliest available date:.*"
 - assertVisible: "Calendar dialog"
-- tapOn: "Use default date"
-- tapOn: "Confirm date"
+- tapOn: "Use Default Date"
+- tapOn: "Apply Date"
 - scrollUntilVisible:
     element:
       text: "Existing opportunities, sessions, and history are unchanged."
@@ -299,7 +299,7 @@ tags:
           direction: DOWN
       - tapOn: "Save replacement"
 - extendedWaitUntil:
-    visible: "Save plan"
+    visible: "Save Plan Changes"
     timeout: 90000
 - scrollUntilVisible:
     element:
@@ -361,7 +361,7 @@ tags:
 - tapOn:
     text: "Upper / Lower. Active.*"
 - extendedWaitUntil:
-    visible: "Save plan"
+    visible: "Save Plan Changes"
     timeout: 90000
 - assertVisible: "Upper / Lower"
 - scrollUntilVisible:

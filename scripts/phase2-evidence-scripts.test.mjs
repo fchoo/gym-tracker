@@ -551,8 +551,8 @@ test("Phase 2 remediation flows use public labels and deterministic seams", asyn
     "Default rest seconds minutes",
     "Default rest seconds seconds",
     "Calendar dialog",
-    "Use default date",
-    "Confirm date",
+    "Use Default Date",
+    "Apply Date",
   ]) {
     assert.match(inputs, new RegExp(label.replace(/[.*+?^${}()|[\]\\]/gu, "\\$&"), "u"), label);
   }
@@ -953,8 +953,8 @@ test("Phase 2 date flows use CalendarField rather than text entry", async () => 
   const startDateCalendarSequence = [
     '- tapOn: "Start date"',
     '- assertVisible: "Calendar dialog"',
-    '- tapOn: "Use default date"',
-    '- tapOn: "Confirm date"',
+    '- tapOn: "Use Default Date"',
+    '- tapOn: "Apply Date"',
   ].join("\n");
   assert.equal(schedule.split(startDateCalendarSequence).length - 1, 1);
   assert.doesNotMatch(schedule, /toISOString|schedule\.yesterday/u);
@@ -965,7 +965,7 @@ test("Phase 2 date flows use CalendarField rather than text entry", async () => 
     '- tapOn: "Previous month"',
     '- tapOn:',
     '    text: "^Select [0-9]{4}-[0-9]{2}-01$"',
-    '- tapOn: "Confirm date"',
+    '- tapOn: "Apply Date"',
     '- assertNotVisible: "Calendar dialog"',
   ].join("\n");
   assert.equal(
@@ -975,8 +975,8 @@ test("Phase 2 date flows use CalendarField rather than text entry", async () => 
   const effectiveDateCalendarSequence = [
     '- tapOn: "Effective date"',
     '- assertVisible: "Calendar dialog"',
-    '- tapOn: "Use default date"',
-    '- tapOn: "Confirm date"',
+    '- tapOn: "Use Default Date"',
+    '- tapOn: "Apply Date"',
     '- assertNotVisible: "Calendar dialog"',
   ].join("\n");
   assert.equal(
@@ -1042,7 +1042,7 @@ test("Phase 2 date flows use CalendarField rather than text entry", async () => 
   );
   assert.match(
     impact,
-    /- tapOn:\n    text: "Effective date"[\s\S]{0,160}- assertVisible: "Calendar dialog"\n- tapOn: "Use default date"\n- tapOn: "Confirm date"/u,
+    /- tapOn:\n    text: "Effective date"[\s\S]{0,160}- assertVisible: "Calendar dialog"\n- tapOn: "Use Default Date"\n- tapOn: "Apply Date"/u,
   );
   assert.doesNotMatch(impact, /- tapOn:[\s\S]{0,100}text: "Effective date"[\s\S]{0,100}- eraseText:/u);
 });
@@ -2615,7 +2615,7 @@ test("schedule flow reopens the active plan from authoritative state", async () 
     '- assertVisible: "Save this schedule?"',
     '- tapOn: "Save schedule"',
     '- extendedWaitUntil:',
-    '    visible: "Save plan"',
+    '    visible: "Save Plan Changes"',
     '    timeout: 30000',
     '- stopApp',
     '- launchApp:',
@@ -2655,6 +2655,87 @@ test("fresh Phase 2 Library flows wait until root navigation is trusted", async 
       /- assertVisible: "Today"\n- extendedWaitUntil:\n    visible: "Use Full Body Foundation"\n    timeout: 90000\n- tapOn: "Library"/u,
       relativePath,
     );
+  }
+});
+
+test("built-in custom copy preserves data but resets system and root navigation state", async () => {
+  const flow = await readFile(
+    path.join(
+      projectRoot,
+      "maestro/phase2/custom-exercise-lifecycle2-copy.yaml",
+    ),
+    "utf8",
+  );
+  const rootReset = [
+    "- stopApp",
+    "- pressKey: BACK",
+    '- openLink: "gymtracker-devtest:///"',
+    "- extendedWaitUntil:",
+    '    visible: "Use Full Body Foundation"',
+    "    timeout: 90000",
+    '- tapOn: "Library"',
+  ].join("\n");
+
+  assert.ok(flow.includes(rootReset));
+  assert.doesNotMatch(flow, /clearState: false/u);
+  assert.doesNotMatch(flow, /clearState: true/u);
+  assert.match(flow, /- pressKey: BACK\n- openLink: "gymtracker-devtest:\/\/\/"/u);
+  assert.doesNotMatch(
+    flow,
+    /visible: "Use Full Body Foundation"[\s\S]*assertVisible: "Today"[\s\S]*tapOn: "Library"/u,
+  );
+  assert.match(
+    flow,
+    /- tapOn: "Go back"\n- repeat:\n    times: 4\n    while:\n      notVisible: "Search exercises"\n    commands:\n      - swipe:\n          start: 50%, 25%\n          end: 50%, 75%\n          duration: 300\n- assertVisible: "Search exercises"/u,
+  );
+  assert.match(
+    flow,
+    /- tapOn: "Clear search exercises"\n- hideKeyboard\n- tapOn: "Today"\n- assertVisible: "Today"/u,
+  );
+});
+
+test("plan creation flows settle and re-locate the draft action before tapping", async () => {
+  for (const relativePath of [
+    "maestro/phase2/custom-exercise-lifecycle3-active-workout.yaml",
+    "maestro/phase2/owned-plan-editor.yaml",
+    "maestro/phase6/calendar-date-reorder.yaml",
+  ]) {
+    const flow = await readFile(path.join(projectRoot, relativePath), "utf8");
+    assert.match(
+      flow,
+      /- hideKeyboard\n- scrollUntilVisible:\n    element:\n      text: "Create draft"\n    direction: DOWN\n    centerElement: true\n- waitForAnimationToEnd:\n    timeout: 10000\n- tapOn: "Create draft"\n- extendedWaitUntil:\n    visible: "Draft"\n    timeout: 60000/u,
+      relativePath,
+    );
+    assert.doesNotMatch(
+      flow,
+      /- hideKeyboard\n- tapOn: "Create draft"/u,
+      relativePath,
+    );
+  }
+});
+
+test("owned plan Maestro consumers use the canonical persistence label", async () => {
+  const expectedCounts = new Map([
+    ["maestro/phase2/custom-exercise-lifecycle3-active-workout.yaml", 1],
+    ["maestro/phase2/owned-plan-editor.yaml", 1],
+    ["maestro/phase2/plan-impact-replacement.yaml", 2],
+    ["maestro/phase2/schedule-cross-profile.yaml", 1],
+  ]);
+
+  for (const relativePath of await maestroYamlPaths()) {
+    const flow = await readFile(path.join(projectRoot, relativePath), "utf8");
+    assert.doesNotMatch(
+      flow,
+      /(?:tapOn|visible|text): "Save plan"/u,
+      relativePath,
+    );
+    if (expectedCounts.has(relativePath)) {
+      assert.equal(
+        flow.match(/(?:tapOn|visible|text): "Save Plan Changes"/gu)?.length,
+        expectedCounts.get(relativePath),
+        relativePath,
+      );
+    }
   }
 });
 
@@ -2971,7 +3052,7 @@ test("plan impact waits for editor identity before reviewing saved state", async
     "utf8",
   );
 
-  assert.equal(flow.match(/visible: "Save plan"/gu)?.length, 2);
+  assert.equal(flow.match(/visible: "Save Plan Changes"/gu)?.length, 2);
   assert.doesNotMatch(
     flow,
     /text: "Go back"\n    direction: UP\n    centerElement: true/u,
@@ -3003,11 +3084,28 @@ test("Library exercise flow reaches compact Plans sections before asserting them
   );
   assert.match(
     flow,
-    /- tapOn: "Clear search exercises"\n- hideKeyboard\n- tapOn: "Filter"[\s\S]*- tapOn: "Equipment · Barbell"\n- scrollUntilVisible:\n    element:\n      text: "Show results"\n    direction: DOWN\n- tapOn: "Show results"\n- assertVisible: "Results"\n- scrollUntilVisible:\n    element:\n      text: "Back Squat"\n    direction: DOWN\n    centerElement: true\n- assertVisible: "Back Squat"/u,
+    /- tapOn: "Clear search exercises"\n- hideKeyboard\n- tapOn:\n    id: "library-filters-chip"[\s\S]*- tapOn: "Equipment: Barbell"\n- scrollUntilVisible:\n    element:\n      text: "Show results"\n    direction: DOWN\n- tapOn: "Show results"\n- assertVisible: "Results"\n- scrollUntilVisible:\n    element:\n      text: "Back Squat"\n    direction: DOWN\n    centerElement: true\n- assertVisible: "Back Squat"/u,
   );
   assert.match(
     flow,
-    /- assertVisible: "Back Squat"\n- scrollUntilVisible:\n    element:\n      text: "Clear filters"\n    direction: UP\n    centerElement: true\n- tapOn: "Clear filters"\n- tapOn: "Search exercises"\n- inputText: "bench-press"\n- hideKeyboard\n- extendedWaitUntil:\n    visible: "Add Bench Press to favorites"\n    timeout: 90000[\s\S]*- scrollUntilVisible:\n    element:\n      text: "Favorites"\n    direction: DOWN\n    centerElement: true\n- assertVisible: "Favorites"/u,
+    /- assertVisible: "Back Squat"\n- scrollUntilVisible:\n    element:\n      text: "Equipment: Barbell selected"\n    direction: UP\n    centerElement: true\n- tapOn: "Equipment: Barbell selected"\n- tapOn: "Search exercises"\n- inputText: "bench-press"\n- hideKeyboard\n- extendedWaitUntil:\n    visible: "Add Bench Press to favorites"\n    timeout: 90000[\s\S]*- scrollUntilVisible:\n    element:\n      text: "Favorites"\n    direction: DOWN\n    centerElement: true\n- assertVisible: "Favorites"/u,
+  );
+  assert.doesNotMatch(flow, /(?:tapOn|text): "(?:Filter|Clear filters|Equipment · Barbell)"/u);
+});
+
+test("starter activation uses current Material 3 filter labels", async () => {
+  const flow = await readFile(
+    path.join(projectRoot, "maestro/phase2/starter-activation.yaml"),
+    "utf8",
+  );
+
+  assert.match(
+    flow,
+    /id: "library-filters-chip"\n    direction: UP\n    centerElement: true\n- tapOn:\n    id: "library-filters-chip"[\s\S]*text: "Experience: Intermediate"[\s\S]*- tapOn: "Experience: Intermediate"[\s\S]*text: "Days per week: 5"[\s\S]*- tapOn: "Days per week: 5"[\s\S]*text: "Equipment: Barbell"[\s\S]*- tapOn: "Equipment: Barbell"/u,
+  );
+  assert.doesNotMatch(
+    flow,
+    /(?:tapOn|text): "(?:Filter|Experience · Intermediate|Days per week · 5|Equipment · Barbell)"/u,
   );
 });
 
@@ -3183,12 +3281,19 @@ test("custom exercise flow scrolls through the long editor contract", async () =
     assert.ok(commandCount > 0 && commandCount <= 65, segmentPaths[index]);
     if (index === 0) {
       assert.match(segment, /clearState: true/u);
+    } else if (index === 1) {
+      assert.match(
+        segment,
+        /- stopApp\n- pressKey: BACK\n- openLink: "gymtracker-devtest:\/\/\/"/u,
+      );
+      assert.doesNotMatch(segment, /clearState: false/u);
+      assert.doesNotMatch(segment, /clearState: true/u);
     } else {
       assert.match(segment, /clearState: false/u);
       assert.match(segment, /stopApp: true/u);
     }
   }
-  for (const index of [1, 2, 3, 4]) {
+  for (const index of [2, 3, 4]) {
     assert.match(
       segments[index],
       /- assertVisible: "Today"\n- extendedWaitUntil:\n    visible: "Use Full Body Foundation"\n    timeout: 90000\n- tapOn: "Library"/u,

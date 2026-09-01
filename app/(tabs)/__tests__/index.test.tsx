@@ -72,6 +72,7 @@ jest.mock("../../../src/ui/screens/TodayScreen", () => {
     TodayScreen: ({
       launchState,
       onChangeRestAlertPreferences,
+      onOpenHistoryAndData,
       onReadRestAlertPreferences,
       onReviewSuggestion,
       pendingRecommendations,
@@ -83,6 +84,7 @@ jest.mock("../../../src/ui/screens/TodayScreen", () => {
         soundEnabled: boolean;
         vibrationEnabled: boolean;
       }>): Promise<unknown>;
+      onOpenHistoryAndData(): void;
       onReadRestAlertPreferences(): Promise<void>;
       onReviewSuggestion(exerciseId: string): void;
       restAlertPreferences: Readonly<{
@@ -113,6 +115,11 @@ jest.mock("../../../src/ui/screens/TodayScreen", () => {
               vibrationEnabled: true,
             });
           }}
+        />
+        <Pressable
+          accessibilityLabel="Open history and data"
+          accessibilityRole="button"
+          onPress={() => onOpenHistoryAndData()}
         />
         <Pressable
           accessibilityLabel="Review pending target"
@@ -264,6 +271,17 @@ describe("TodayRoute readiness", () => {
     }));
 
     expect(mockPush).toHaveBeenCalledWith("/progress");
+  });
+
+  it("opens the established History and data surface from Today", async () => {
+    mockLaunchState = "trusted";
+
+    await render(<TodayRoute />);
+    await fireEvent.press(screen.getByRole("button", {
+      name: "Open history and data",
+    }));
+
+    expect(mockPush).toHaveBeenCalledWith("/more");
   });
 
   it("clears a prior pending review indicator when the next progress read is stale", async () => {

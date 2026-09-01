@@ -483,14 +483,14 @@ describe("schedule editor and Today expansion", () => {
     await fireEvent.press(screen.getByRole("button", {
       name: "Select 2026-08-20",
     }));
-    await fireEvent.press(screen.getByRole("button", { name: "Cancel date" }));
+    await fireEvent.press(screen.getByRole("button", { name: "Keep Original Date" }));
     expect(screen.getByRole("button", { name: "Effective date" }))
       .toHaveTextContent("2026-08-19");
     await fireEvent.press(screen.getByRole("button", { name: "Effective date" }));
     await fireEvent.press(screen.getByRole("button", {
       name: "Select 2026-08-20",
     }));
-    await fireEvent.press(screen.getByRole("button", { name: "Confirm date" }));
+    await fireEvent.press(screen.getByRole("button", { name: "Apply Date" }));
     await fireEvent.press(screen.getByRole("button", {
       name: "Save schedule",
     }));
