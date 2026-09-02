@@ -121,8 +121,8 @@ export function validatePromotionWorkflowContract(source) {
   if (/actions\/checkout|npm(?:\s|$)|node\s+["']?(?:scripts|workflow-source)\/|owner_token|OWNER_TOKEN/iu.test(publishJob)) {
     throw new Error("publication job cannot execute repository code or receive owner token.");
   }
-  requirePattern(proofJob, /permissions:\s*[\s\S]*actions:\s*write[\s\S]*contents:\s*read[\s\S]*deployments:\s*read[\s\S]*id-token:\s*none/iu,
-    "promotion proof job must have only artifact-write and repository-read authority.");
+  requirePattern(proofJob, /permissions:\s*[\s\S]*actions:\s*read[\s\S]*contents:\s*read[\s\S]*deployments:\s*read[\s\S]*id-token:\s*none/iu,
+    "promotion proof job must be read-only.");
   if (/contents:\s*write|owner_token|OWNER_TOKEN|gh run download/iu.test(proofJob)) {
     throw new Error("promotion proof job cannot write repository content or re-resolve source evidence.");
   }

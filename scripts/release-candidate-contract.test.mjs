@@ -576,7 +576,7 @@ test("release promotion separates read-only validation from code-free publicatio
     assert.match(checkout[1], /persist-credentials:\s*false/u);
   }
 
-  assert.match(proof, /permissions:\n\s+actions: write\n\s+contents: read\n\s+deployments: read\n\s+id-token: none/u);
+  assert.match(proof, /permissions:\n\s+actions: read\n\s+contents: read\n\s+deployments: read\n\s+id-token: none/u);
   assert.match(proof, /persist-credentials:\s*false/u);
   assert.match(proof, /node workflow-source\/scripts\/record-phase5-promotion-proof\.mjs/u);
   assert.doesNotMatch(proof, /gh run download/iu);
