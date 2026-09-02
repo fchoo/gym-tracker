@@ -540,6 +540,7 @@ jobs:
         with:
           artifact-ids: ${{ needs.validate.outputs.validation_artifact_id }}
           path: sealed-release-validation
+          merge-multiple: true
 
       - name: Verify sealed validation handoff
         env:
@@ -705,6 +706,7 @@ jobs:
         with:
           artifact-ids: ${{ needs.validate.outputs.validation_artifact_id }}
           path: sealed-release-validation
+          merge-multiple: true
 
       - name: Revalidate sealed validation artifact identity
         env:

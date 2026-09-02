@@ -557,7 +557,7 @@ test("release promotion separates read-only validation from code-free publicatio
   assert.match(publish, /environment:[\s\S]*name:\s*public-release-promotion/u);
   assert.doesNotMatch(publish, /actions\/checkout|npm(?:\s|$)|node\s+["']?(?:scripts|workflow-source)\//u);
   assert.doesNotMatch(publish, /git ls-remote/iu);
-  assert.match(publish, /actions\/download-artifact@[^\n]+[\s\S]*artifact-ids:\s*\$\{\{ needs\.validate\.outputs\.validation_artifact_id \}\}/u);
+  assert.match(publish, /actions\/download-artifact@[^\n]+[\s\S]*artifact-ids:\s*\$\{\{ needs\.validate\.outputs\.validation_artifact_id \}\}[\s\S]*merge-multiple:\s*true/u);
   const publishStep = publish.slice(publish.indexOf("name: Publish hash-verified draft"));
   assert.match(publishStep, /release=\$\(gh api[\s\S]*releases\/tags[\s\S]*current_release_assets=\$\(jq -cer/iu);
   assert.match(publishStep, /jq -e --argjson assets "\$\{current_release_assets\}"[\s\S]*\.digest == \("sha256:" \+ \$expected\.sha256\)/u);
