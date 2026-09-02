@@ -251,8 +251,11 @@ export function validatePromotionWorkflowContract(source) {
     "promotion must verify the release tag is a lightweight ref to the candidate commit.");
   requirePattern(source, /gh release create[\s\S]*--target "\$\{CANDIDATE_COMMIT\}"[\s\S]*--verify-tag[\s\S]*--draft/iu,
     "promotion must create a draft only from the already-created candidate tag.");
-  requirePattern(source, /\.tag_name == \$tag[\s\S]*\.target_commitish == \$commit[\s\S]*\.draft == true/iu,
-    "promotion must verify the draft release tag and candidate target before publication.");
+  requirePattern(source, /\.tag_name == \$tag[\s\S]*\.draft == true/iu,
+    "promotion must verify the draft release identity before publication.");
+  if (/target_commitish == \$commit/iu.test(source)) {
+    throw new Error("release target_commitish is not authoritative for an existing tag.");
+  }
   if (/git ls-remote --exit-code --tags/iu.test(source)) {
     throw new Error("promotion cannot rely on a racy tag-existence preflight.");
   }
@@ -299,7 +302,7 @@ export function validatePromotionWorkflowContract(source) {
   const tagReadback = source.indexOf(
     'gh api "repos/${GITHUB_REPOSITORY}/git/ref/tags/${RELEASE_TAG}"',
   );
-  const releaseTargetCheck = source.indexOf(".target_commitish == $commit");
+  const releaseIdentityCheck = source.indexOf(".tag_name == $tag");
   const publicAssetCheck = source.indexOf("name: Verify public release asset hashes");
   const publishDraft = source.indexOf("gh release edit");
   if (!(validatorCheckout >= 0 && validatorCheckout < validator
@@ -310,8 +313,8 @@ export function validatePromotionWorkflowContract(source) {
     && tagCreate < publish
     && publish < publicAssetCheck
     && publicAssetCheck < tagReadback
-    && tagReadback < releaseTargetCheck
-    && releaseTargetCheck < publishDraft)) {
+    && tagReadback < releaseIdentityCheck
+    && releaseIdentityCheck < publishDraft)) {
     throw new Error("promotion checkout, validator, verifier, and publish order is unsafe.");
   }
 }

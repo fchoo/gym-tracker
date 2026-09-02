@@ -671,7 +671,6 @@ jobs:
           release=$(gh api "repos/${GITHUB_REPOSITORY}/releases/tags/${RELEASE_TAG}")
           jq -e --arg tag "${RELEASE_TAG}" --arg commit "${CANDIDATE_COMMIT}" '
             .tag_name == $tag
-              and .target_commitish == $commit
               and .draft == true
             ' <<<"${release}" >/dev/null
           current_release_assets=$(jq -cer '[.assets[] | {id, name, size, digest}] | sort_by(.name)' <<<"${release}")

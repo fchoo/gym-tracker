@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 
-import { readFileSync, writeFileSync } from "node:fs";
+import { lstatSync, readFileSync, readdirSync, realpathSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import process from "node:process";
 import { pathToFileURL } from "node:url";
@@ -15,6 +15,35 @@ const RUN_ID = /^[1-9][0-9]*$/u;
 const REPOSITORY = /^[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+$/u;
 const RELEASE_TAG = /^v[0-9]+\.[0-9]+\.[0-9]+(?:-[0-9A-Za-z.-]+)?$/u;
 const ARTIFACT_NAME = /^[A-Za-z0-9][A-Za-z0-9._-]{2,127}$/u;
+const PUBLIC_ASSET_FILES = Object.freeze([
+  "gym-tracker-release.aab",
+  "gym-tracker-release.apk",
+]);
+
+function validatePublicAssetsDirectory(publicAssetsDirectory) {
+  const directory = path.resolve(publicAssetsDirectory);
+  const details = lstatSync(directory, { throwIfNoEntry: false });
+  if (!details?.isDirectory()
+    || details.isSymbolicLink()) {
+    throw new Error("public release asset directory is missing or unsafe.");
+  }
+  const canonicalDirectory = realpathSync(directory);
+  const entries = readdirSync(directory, { withFileTypes: true })
+    .sort((left, right) => left.name.localeCompare(right.name));
+  if (JSON.stringify(entries.map(({ name }) => name)) !== JSON.stringify(PUBLIC_ASSET_FILES)
+    || entries.some((entry) => !entry.isFile() || entry.isSymbolicLink())) {
+    throw new Error("public release asset set must contain exactly the two regular release files.");
+  }
+  for (const file of PUBLIC_ASSET_FILES) {
+    const target = path.join(canonicalDirectory, file);
+    const fileDetails = lstatSync(target);
+    if (!fileDetails.isFile() || fileDetails.isSymbolicLink()
+      || realpathSync(target) !== target) {
+      throw new Error("public release asset set contains an unsafe file.");
+    }
+  }
+  return canonicalDirectory;
+}
 
 export function serializePhase5PromotionProof(value) {
   return `${JSON.stringify(value, null, 2)}\n`;
@@ -40,8 +69,13 @@ export function createPhase5PromotionProof({
     || candidate.manifest.workflow.repository !== repository) {
     throw new Error("promotion proof identity is malformed or substituted.");
   }
+  const publicAssetsRoot = validatePublicAssetsDirectory(publicAssetsDirectory);
+  if (JSON.stringify(candidate.manifest.artifacts.map(({ file }) => file).sort())
+    !== JSON.stringify(PUBLIC_ASSET_FILES)) {
+    throw new Error("candidate and public release asset sets do not match.");
+  }
   const assets = candidate.manifest.artifacts.map(({ file, sha256, size_bytes: sizeBytes }) => {
-    const publicPath = path.join(publicAssetsDirectory, file);
+    const publicPath = path.join(publicAssetsRoot, file);
     const publicSha256 = sha256File(publicPath);
     const publicSize = readFileSync(publicPath).byteLength;
     if (publicSha256 !== sha256 || publicSize !== sizeBytes) {

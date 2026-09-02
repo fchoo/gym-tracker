@@ -5,6 +5,7 @@ import {
   mkdtempSync,
   readFileSync,
   rmSync,
+  symlinkSync,
   writeFileSync,
 } from "node:fs";
 import os from "node:os";
@@ -426,7 +427,6 @@ test("release promotion requires the exact Phase 6 N4 upload run and canonical r
     '.object.sha == $commit',
     '--verify-tag',
     '.tag_name == $tag',
-    '.target_commitish == $commit',
     '.draft == true',
   ]) {
     assert.ok(promotionWorkflow.includes(expected), `atomic tag flow is missing ${expected}`);
@@ -466,7 +466,7 @@ test("release promotion requires the exact Phase 6 N4 upload run and canonical r
     'gh api --method POST "repos/${GITHUB_REPOSITORY}/git/refs"',
   );
   const releaseCreate = promotionWorkflow.indexOf('gh release create "${RELEASE_TAG}"');
-  const releaseTargetCheck = promotionWorkflow.indexOf(".target_commitish == $commit");
+  const releaseIdentityCheck = promotionWorkflow.indexOf(".tag_name == $tag");
   const publicAssetCheck = promotionWorkflow.indexOf(
     "name: Verify public release asset hashes",
   );
@@ -475,8 +475,8 @@ test("release promotion requires the exact Phase 6 N4 upload run and canonical r
     candidateVerifier < tagCreate
       && tagCreate < releaseCreate
       && releaseCreate < publicAssetCheck
-      && publicAssetCheck < releaseTargetCheck
-      && releaseTargetCheck < publishDraft,
+      && publicAssetCheck < releaseIdentityCheck
+      && releaseIdentityCheck < publishDraft,
     true,
   );
   for (const mutation of [
@@ -500,7 +500,7 @@ test("release promotion requires the exact Phase 6 N4 upload run and canonical r
       'true',
     ),
     promotionWorkflow.replace("--verify-tag", ""),
-    promotionWorkflow.replace(".target_commitish == $commit", "true"),
+    promotionWorkflow.replace(".tag_name == $tag", "true"),
   ]) {
     assert.throws(
       () => validatePromotionWorkflowContract(mutation),
@@ -599,6 +599,14 @@ test("release promotion separates read-only validation from code-free publicatio
 test("promotion proof cryptographically binds the exact Phase 6 N4 artifact", () => {
   withBundle((bundleDirectory) => {
     const candidate = writeCandidateManifest(bundleDirectory);
+    const publicAssetsDirectory = path.join(bundleDirectory, "public-assets");
+    mkdirSync(publicAssetsDirectory);
+    for (const { file } of candidate.manifest.artifacts) {
+      writeFileSync(
+        path.join(publicAssetsDirectory, file),
+        readFileSync(path.join(bundleDirectory, file)),
+      );
+    }
     const phase6N4RecordSha256 = "d".repeat(64);
     const phase6N4RunId = "789";
     const phase6N4ArtifactName = "phase6-n4-evidence-candidate-001-789";
@@ -614,7 +622,7 @@ test("promotion proof cryptographically binds the exact Phase 6 N4 artifact", ()
       promotionRunId: "999",
       repository: "owner/gym-tracker",
       releaseTag: "v1.0.0",
-      publicAssetsDirectory: bundleDirectory,
+      publicAssetsDirectory,
     });
     assert.deepEqual({
       phase6_n4_run_id: proof.phase6_n4_run_id,
@@ -634,7 +642,7 @@ test("promotion proof cryptographically binds the exact Phase 6 N4 artifact", ()
       phase6N4RunId,
       phase6N4ArtifactName,
       phase6N4RecordSha256,
-      publicAssetsDirectory: bundleDirectory,
+      publicAssetsDirectory,
     }));
     for (const substitution of [
       { phase6N4RunId: "790" },
@@ -649,7 +657,7 @@ test("promotion proof cryptographically binds the exact Phase 6 N4 artifact", ()
         phase6N4RunId,
         phase6N4ArtifactName,
         phase6N4RecordSha256,
-        publicAssetsDirectory: bundleDirectory,
+        publicAssetsDirectory,
         ...substitution,
       }), /promotion proof|Phase 6|noncanonical/iu);
     }
@@ -665,8 +673,27 @@ test("promotion proof cryptographically binds the exact Phase 6 N4 artifact", ()
       phase6N4RunId,
       phase6N4ArtifactName,
       phase6N4RecordSha256,
-      publicAssetsDirectory: bundleDirectory,
+      publicAssetsDirectory,
     }), /promotion proof|Phase 6|noncanonical/iu);
+
+    writeFileSync(path.join(publicAssetsDirectory, "unexpected-release.txt"), "extra");
+    assert.throws(() => validatePhase5PromotionProof({
+      proof, proofBytes, candidate, attendedRecordSha256: SOURCE_DIGEST,
+      phase6N4RunId, phase6N4ArtifactName, phase6N4RecordSha256,
+      publicAssetsDirectory,
+    }), /public release asset set|unexpected|regular/iu);
+    rmSync(path.join(publicAssetsDirectory, "unexpected-release.txt"));
+
+    rmSync(path.join(publicAssetsDirectory, "gym-tracker-release.apk"));
+    symlinkSync(
+      path.join(publicAssetsDirectory, "gym-tracker-release.aab"),
+      path.join(publicAssetsDirectory, "gym-tracker-release.apk"),
+    );
+    assert.throws(() => validatePhase5PromotionProof({
+      proof, proofBytes, candidate, attendedRecordSha256: SOURCE_DIGEST,
+      phase6N4RunId, phase6N4ArtifactName, phase6N4RecordSha256,
+      publicAssetsDirectory,
+    }), /public release asset set|symlink|regular/iu);
   });
 
   const cliArgs = [
@@ -704,7 +731,15 @@ test("promotion proof cryptographically binds the exact Phase 6 N4 artifact", ()
   );
 
   withBundle((bundleDirectory) => {
-    writeCandidateManifest(bundleDirectory);
+    const candidate = writeCandidateManifest(bundleDirectory);
+    const publicAssetsDirectory = path.join(bundleDirectory, "public-assets");
+    mkdirSync(publicAssetsDirectory);
+    for (const { file } of candidate.manifest.artifacts) {
+      writeFileSync(
+        path.join(publicAssetsDirectory, file),
+        readFileSync(path.join(bundleDirectory, file)),
+      );
+    }
     const attendedRecord = path.join(bundleDirectory, "attended-record.json");
     const phase6N4Record = path.join(bundleDirectory, "phase6-n4-record.json");
     const output = path.join(bundleDirectory, "promotion-proof.json");
@@ -725,7 +760,7 @@ test("promotion proof cryptographically binds the exact Phase 6 N4 artifact", ()
       "--promotion-run-id", "999",
       "--repository", "owner/gym-tracker",
       "--release-tag", "v1.0.0",
-      "--public-assets-dir", bundleDirectory,
+      "--public-assets-dir", publicAssetsDirectory,
       "--output", output,
     ];
     assert.equal(executePhase5PromotionProof(executionArgs).phase6_n4_run_id, "789");
