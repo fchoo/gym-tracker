@@ -445,14 +445,20 @@ jobs:
 
       - name: Seal validated release inputs
         run: |
-          mkdir -p sealed-release-validation/candidate sealed-release-validation/attended sealed-release-validation/phase6
+          mkdir -p sealed-release-validation/candidate/evidence/phase6 sealed-release-validation/attended
           cp -P retained-candidate/gym-tracker-release.apk sealed-release-validation/candidate/gym-tracker-release.apk
           cp -P retained-candidate/gym-tracker-release.aab sealed-release-validation/candidate/gym-tracker-release.aab
           cp -P retained-candidate/release-candidate.json sealed-release-validation/candidate/release-candidate.json
           cp -P retained-candidate/release-config.json sealed-release-validation/candidate/release-config.json
           cp -P retained-candidate/release-toolchain.json sealed-release-validation/candidate/release-toolchain.json
           cp -P attended-evidence/attended-record.json sealed-release-validation/attended/attended-record.json
-          cp -P retained-candidate/evidence/phase6-n4-upload/phase6/attended-record.json sealed-release-validation/phase6/attended-record.json
+          cp -P retained-candidate/evidence/phase6-n4-upload/phase6/checklist.json sealed-release-validation/candidate/evidence/phase6/checklist.json
+          cp -P retained-candidate/evidence/phase6-n4-upload/phase6/observations.json sealed-release-validation/candidate/evidence/phase6/observations.json
+          cp -P retained-candidate/evidence/phase6-n4-upload/phase6/N4-01.png sealed-release-validation/candidate/evidence/phase6/N4-01.png
+          cp -P retained-candidate/evidence/phase6-n4-upload/phase6/N4-02.png sealed-release-validation/candidate/evidence/phase6/N4-02.png
+          cp -P retained-candidate/evidence/phase6-n4-upload/phase6/N4-03.png sealed-release-validation/candidate/evidence/phase6/N4-03.png
+          cp -P retained-candidate/evidence/phase6-n4-upload/phase6/N4-04.png sealed-release-validation/candidate/evidence/phase6/N4-04.png
+          cp -P retained-candidate/evidence/phase6-n4-upload/phase6/attended-record.json sealed-release-validation/candidate/evidence/phase6/attended-record.json
           candidate_manifest_sha256=$(sha256sum sealed-release-validation/candidate/release-candidate.json | cut -d' ' -f1)
           apk_sha256=$(sha256sum sealed-release-validation/candidate/gym-tracker-release.apk | cut -d' ' -f1)
           apk_size=$(wc -c < sealed-release-validation/candidate/gym-tracker-release.apk | tr -d '[:space:]')
@@ -504,10 +510,10 @@ jobs:
              assets: [{file: "gym-tracker-release.aab", sha256: $aab_sha256, size_bytes: $aab_size},
                       {file: "gym-tracker-release.apk", sha256: $apk_sha256, size_bytes: $apk_size}]}
             ' > sealed-release-validation/release-validation.json
-          test "$(find sealed-release-validation -mindepth 1 -type f | wc -l | tr -d '[:space:]')" = "8"
+          test "$(find sealed-release-validation -mindepth 1 -type f | wc -l | tr -d '[:space:]')" = "14"
           test "$(find sealed-release-validation -mindepth 1 ! -type f ! -type d | wc -l | tr -d '[:space:]')" = "0"
           test "$(find sealed-release-validation -type l | wc -l | tr -d '[:space:]')" = "0"
-          test "$(find sealed-release-validation -mindepth 1 -type d | wc -l | tr -d '[:space:]')" = "3"
+          test "$(find sealed-release-validation -mindepth 1 -type d | wc -l | tr -d '[:space:]')" = "4"
 
       - name: Upload sealed validation artifact
         id: validation_artifact
@@ -551,18 +557,22 @@ jobs:
           VALIDATION_ARTIFACT_DIGEST: ${{ needs.validate.outputs.validation_artifact_digest }}
         run: |
           set -euo pipefail
-          test "$(find sealed-release-validation -mindepth 1 -type f | wc -l | tr -d '[:space:]')" = "8"
+          test "$(find sealed-release-validation -mindepth 1 -type f | wc -l | tr -d '[:space:]')" = "14"
           test "$(find sealed-release-validation -mindepth 1 ! -type f ! -type d | wc -l | tr -d '[:space:]')" = "0"
           test "$(find sealed-release-validation -type l | wc -l | tr -d '[:space:]')" = "0"
-          test "$(find sealed-release-validation -mindepth 1 -type d | wc -l | tr -d '[:space:]')" = "3"
+          test "$(find sealed-release-validation -mindepth 1 -type d | wc -l | tr -d '[:space:]')" = "4"
           test -d sealed-release-validation/candidate
           test -d sealed-release-validation/attended
-          test -d sealed-release-validation/phase6
+          test -d sealed-release-validation/candidate/evidence/phase6
           for sealed_file in release-validation.json \
             candidate/gym-tracker-release.apk candidate/gym-tracker-release.aab \
             candidate/release-candidate.json candidate/release-config.json \
             candidate/release-toolchain.json attended/attended-record.json \
-            phase6/attended-record.json
+            candidate/evidence/phase6/checklist.json \
+            candidate/evidence/phase6/observations.json \
+            candidate/evidence/phase6/N4-01.png candidate/evidence/phase6/N4-02.png \
+            candidate/evidence/phase6/N4-03.png candidate/evidence/phase6/N4-04.png \
+            candidate/evidence/phase6/attended-record.json
           do
             test -f "sealed-release-validation/${sealed_file}"
             test ! -L "sealed-release-validation/${sealed_file}"
@@ -754,6 +764,20 @@ jobs:
               > "${RUNNER_TEMP}/public-assets/${asset_name}"
           done
 
+      - name: Replay sealed Phase 6 N4 evidence with trusted workflow source
+        run: |
+          set -euo pipefail
+          manifest_sha256=$(sha256sum sealed-release-validation/candidate/release-candidate.json | cut -d' ' -f1)
+          printf '%s  %s\n' "${PHASE6_N4_RECORD_SHA256}" \
+            sealed-release-validation/candidate/evidence/phase6/attended-record.json | sha256sum --check
+          node workflow-source/scripts/generate-phase6-attended-checklist.mjs verify \
+            --bundle-dir sealed-release-validation/candidate \
+            --manifest-sha256 "${manifest_sha256}" \
+            --checklist sealed-release-validation/candidate/evidence/phase6/checklist.json \
+            --observations sealed-release-validation/candidate/evidence/phase6/observations.json \
+            --evidence-dir sealed-release-validation/candidate/evidence/phase6 \
+            --record sealed-release-validation/candidate/evidence/phase6/attended-record.json
+
       - name: Record immutable post-promotion proof
         run: |
           manifest_sha256=$(sha256sum sealed-release-validation/candidate/release-candidate.json | cut -d' ' -f1)
@@ -767,9 +791,9 @@ jobs:
             --attended-record-sha256 "${ATTENDED_RECORD_SHA256}" \
             --phase6-n4-run-id "${PHASE6_N4_RUN_ID}" \
             --phase6-n4-artifact-name "${PHASE6_N4_ARTIFACT_NAME}" \
-            --phase6-n4-record sealed-release-validation/phase6/attended-record.json \
+            --phase6-n4-record sealed-release-validation/candidate/evidence/phase6/attended-record.json \
             --phase6-n4-record-sha256 "${PHASE6_N4_RECORD_SHA256}" \
-            --release-id "${release_id}" \
+            --release-id "${{ needs.publish.outputs.release_id }}" \
             --public-asset-metadata release-assets.json \
             --promotion-run-id "${GITHUB_RUN_ID}" \
             --repository "${GITHUB_REPOSITORY}" \

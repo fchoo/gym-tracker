@@ -232,8 +232,36 @@ export function validatePromotionWorkflowContract(source) {
     "promotion must replay the patched Phase 5 verifier from trusted workflow source.");
   requirePattern(source, /test "\$\{GITHUB_SHA\}" = "\$\{CANDIDATE_COMMIT\}"[\s\S]*test "\$\{GITHUB_REF_NAME\}" = "main"/u,
     "promotion workflow source must be the exact candidate commit on main.");
-  requirePattern(source, /printf '%s  %s\\n' "\$\{PHASE6_N4_RECORD_SHA256\}"[\s\S]*?phase6\/attended-record\.json \| sha256sum --check/iu,
+  requirePattern(validationJob, /printf '%s  %s\\n' "\$\{PHASE6_N4_RECORD_SHA256\}"[\s\S]*?phase6\/attended-record\.json \| sha256sum --check/iu,
     "promotion must hash-check the selected Phase 6 N4 record bytes.");
+  for (const phase6File of [
+    "checklist.json", "observations.json", "N4-01.png", "N4-02.png",
+    "N4-03.png", "N4-04.png", "attended-record.json",
+  ]) {
+    const escapedPhase6File = phase6File.replace(".", "\\.");
+    requirePattern(validationJob, new RegExp(
+      "cp -P retained-candidate/evidence/phase6-n4-upload/phase6/"
+        + escapedPhase6File + " sealed-release-validation/candidate/evidence/phase6/"
+        + escapedPhase6File,
+      "u",
+    ), "promotion must seal the canonical Phase 6 N4 file: " + phase6File);
+  }
+  for (const [job, label] of [
+    [validationJob, "validation"], [publishJob, "publication"],
+  ]) {
+    requirePattern(job, /find sealed-release-validation -mindepth 1 -type f[\s\S]*= "14"/u,
+      label + " job must enforce the complete sealed file set.");
+    requirePattern(job, /find sealed-release-validation -mindepth 1 -type d[\s\S]*= "4"/u,
+      label + " job must enforce the complete sealed directory set.");
+  }
+  requirePattern(publishJob, /for sealed_file in release-validation\.json[\s\S]*candidate\/release-toolchain\.json[\s\S]*attended\/attended-record\.json[\s\S]*candidate\/evidence\/phase6\/checklist\.json[\s\S]*candidate\/evidence\/phase6\/observations\.json[\s\S]*candidate\/evidence\/phase6\/N4-01\.png[\s\S]*candidate\/evidence\/phase6\/N4-04\.png[\s\S]*candidate\/evidence\/phase6\/attended-record\.json/iu,
+    "publication job must verify every sealed Phase 6 N4 file.");
+  requirePattern(proofJob, /node workflow-source\/scripts\/generate-phase6-attended-checklist\.mjs verify[\s\S]*--bundle-dir sealed-release-validation\/candidate[\s\S]*--checklist sealed-release-validation\/candidate\/evidence\/phase6\/checklist\.json[\s\S]*--observations sealed-release-validation\/candidate\/evidence\/phase6\/observations\.json[\s\S]*--evidence-dir sealed-release-validation\/candidate\/evidence\/phase6[\s\S]*--record sealed-release-validation\/candidate\/evidence\/phase6\/attended-record\.json/iu,
+    "promotion proof job must replay the complete sealed Phase 6 N4 evidence.");
+  requirePattern(proofJob, /printf '%s  %s\\n' "\$\{PHASE6_N4_RECORD_SHA256\}"[\s\S]*candidate\/evidence\/phase6\/attended-record\.json \| sha256sum --check/iu,
+    "promotion proof job must hash-check the sealed Phase 6 N4 record.");
+  requirePattern(proofJob, /--release-id "\$\{\{ needs\.publish\.outputs\.release_id \}\}"/u,
+    "promotion proof job must consume the published release ID through a job output.");
   requirePattern(source, /gh release view[^\n]+(?:&&|then)\s*exit 1/iu,
     "promotion must reject an existing tag instead of overwriting it.");
   requirePattern(source, /candidate_run_id=[^\n]+[\s\S]*release_bodies=\$\(gh api --paginate[\s\S]*reused/iu,
@@ -305,6 +333,12 @@ export function validatePromotionWorkflowContract(source) {
   const releaseIdentityCheck = source.indexOf(".tag_name == $tag");
   const publicAssetCheck = source.indexOf("name: Verify public release asset hashes");
   const publishDraft = source.indexOf("gh release edit");
+  const proofPhase6Verifier = proofJob.indexOf(
+    "node workflow-source/scripts/generate-phase6-attended-checklist.mjs verify",
+  );
+  const proofRecorder = proofJob.indexOf(
+    "node workflow-source/scripts/record-phase5-promotion-proof.mjs",
+  );
   if (!(validatorCheckout >= 0 && validatorCheckout < validator
     && validator < trustedPhase6Verifier
     && trustedPhase6Verifier < trustedPhase5Verifier
@@ -314,7 +348,9 @@ export function validatePromotionWorkflowContract(source) {
     && publish < publicAssetCheck
     && publicAssetCheck < tagReadback
     && tagReadback < releaseIdentityCheck
-    && releaseIdentityCheck < publishDraft)) {
+    && releaseIdentityCheck < publishDraft
+    && proofPhase6Verifier >= 0
+    && proofPhase6Verifier < proofRecorder)) {
     throw new Error("promotion checkout, validator, verifier, and publish order is unsafe.");
   }
 }

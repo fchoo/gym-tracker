@@ -1373,6 +1373,13 @@ test("promotion proof binds public APK/AAB bytes and workflow provenance", async
       artifactValue.size_bytes = bytes.length;
     }
     const candidate = { manifest, manifest_sha256: SHA_D };
+    const releaseId = 42;
+    const publicAssetMetadata = manifest.artifacts.map((artifactValue, index) => ({
+      id: 50 + index,
+      name: artifactValue.file,
+      size: artifactValue.size_bytes,
+      digest: `sha256:${artifactValue.sha256}`,
+    }));
     const proof = createPhase5PromotionProof({
       candidate, candidateRunId: "12345", attendedRunId: "23456",
       attendedArtifactName: "attended-release-evidence-candidate-001",
@@ -1380,6 +1387,7 @@ test("promotion proof binds public APK/AAB bytes and workflow provenance", async
       phase6N4RunId: "45678",
       phase6N4ArtifactName: "phase6-n4-evidence-candidate-001-45678",
       phase6N4RecordSha256: SHA_B,
+      releaseId, publicAssetMetadata,
       repository: "owner/gym-tracker", releaseTag: "v1.0.0",
       publicAssetsDirectory: publicAssets,
     });
@@ -1389,6 +1397,7 @@ test("promotion proof binds public APK/AAB bytes and workflow provenance", async
       phase6N4RunId: "45678",
       phase6N4ArtifactName: "phase6-n4-evidence-candidate-001-45678",
       phase6N4RecordSha256: SHA_B,
+      releaseId, publicAssetMetadata,
       publicAssetsDirectory: publicAssets,
     }));
     writeFileSync(path.join(publicAssets, "gym-tracker-release.apk"), "changed");
@@ -1397,6 +1406,7 @@ test("promotion proof binds public APK/AAB bytes and workflow provenance", async
       phase6N4RunId: "45678",
       phase6N4ArtifactName: "phase6-n4-evidence-candidate-001-45678",
       phase6N4RecordSha256: SHA_B,
+      releaseId, publicAssetMetadata,
       publicAssetsDirectory: publicAssets,
     }), /public|asset|candidate/iu);
   } finally {

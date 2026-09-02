@@ -81,42 +81,139 @@ function exactAssetMetadata(assets) {
     .sort((left, right) => left.name.localeCompare(right.name));
 }
 
+function isPositiveSafeInteger(value) {
+  return Number.isSafeInteger(value) && value > 0;
+}
+
+function withoutTrailingSlash(value) {
+  return typeof value === "string" ? value.replace(/\/+$/u, "") : "";
+}
+
+function validatePromotionRunProvenance({
+  candidateRepository, candidateCommit, promotionProofRunId, promotionRun, githubServerUrl,
+}) {
+  const runId = Number(promotionProofRunId);
+  const runUrl = `${withoutTrailingSlash(githubServerUrl)}/${candidateRepository}/actions/runs/${promotionProofRunId}`;
+  if (!isPositiveSafeInteger(runId)
+    || !isPositiveSafeInteger(promotionRun?.id)
+    || !isPositiveSafeInteger(promotionRun?.run_attempt)
+    || promotionRun.id !== runId
+    || promotionRun.status !== "completed"
+    || promotionRun.conclusion !== "success"
+    || promotionRun.html_url !== runUrl
+    || promotionRun.head_sha !== candidateCommit
+    || promotionRun.head_branch !== "main"
+    || promotionRun.repository?.full_name !== candidateRepository
+    || promotionRun.event !== "workflow_dispatch"
+    || promotionRun.path !== ".github/workflows/release-promotion.yml") {
+    throw new Error("live promotion workflow run provenance is invalid.");
+  }
+  return { runId, runUrl };
+}
+
+function validateDeploymentIdentity({
+  candidateRepository, candidateCommit, deployment, githubApiUrl,
+}) {
+  const deploymentId = deployment?.id;
+  const deploymentUrl = `${withoutTrailingSlash(githubApiUrl)}/repos/${candidateRepository}/deployments/${deploymentId}`;
+  if (!isPositiveSafeInteger(deploymentId)
+    || deployment.sha !== candidateCommit
+    || deployment.ref !== "main"
+    || deployment.environment !== "public-release-promotion"
+    || deployment.original_environment !== "public-release-promotion"
+    || deployment.performed_via_github_app?.slug !== "github-actions"
+    || deployment.url !== deploymentUrl
+    || deployment.statuses_url !== `${deploymentUrl}/statuses`) {
+    throw new Error("live promotion deployment identity is invalid.");
+  }
+  return deploymentUrl;
+}
+
+function orderedDeploymentStatuses(deploymentStatuses) {
+  if (!Array.isArray(deploymentStatuses) || deploymentStatuses.length === 0) {
+    throw new Error("live promotion deployment statuses are missing or malformed.");
+  }
+  const statusIds = new Set();
+  const parsed = deploymentStatuses.map((status) => {
+    const createdAt = Date.parse(status?.created_at);
+    if (!isPositiveSafeInteger(status?.id)
+      || statusIds.has(status.id)
+      || !Number.isFinite(createdAt)) {
+      throw new Error("live promotion deployment statuses are missing or malformed.");
+    }
+    statusIds.add(status.id);
+    return { status, createdAt };
+  });
+  return parsed.sort((left, right) =>
+    left.createdAt - right.createdAt || left.status.id - right.status.id)
+    .map(({ status }) => status);
+}
+
+function jobIdFromDeploymentStatus(status, runUrl) {
+  const prefix = `${runUrl}/job/`;
+  const jobIdText = typeof status?.log_url === "string" && status.log_url.startsWith(prefix)
+    ? status.log_url.slice(prefix.length)
+    : "";
+  const jobId = RUN_ID.test(jobIdText) ? Number(jobIdText) : Number.NaN;
+  return isPositiveSafeInteger(jobId) && status.log_url === `${prefix}${jobId}` ? jobId : null;
+}
+
+export function validatePromotionDeploymentProvenance({
+  candidateRepository, candidateCommit, promotionProofRunId, promotionRun, deployment,
+  deploymentStatuses, job, githubServerUrl = "https://github.com",
+  githubApiUrl = "https://api.github.com",
+}) {
+  const { runId, runUrl } = validatePromotionRunProvenance({
+    candidateRepository, candidateCommit, promotionProofRunId, promotionRun, githubServerUrl,
+  });
+  const deploymentUrl = validateDeploymentIdentity({
+    candidateRepository, candidateCommit, deployment, githubApiUrl,
+  });
+  const orderedStatuses = orderedDeploymentStatuses(deploymentStatuses);
+  const latestStatus = orderedStatuses.at(-1);
+  const jobId = jobIdFromDeploymentStatus(latestStatus, runUrl);
+  if (jobId === null
+    || job?.id !== jobId
+    || !isPositiveSafeInteger(job?.run_id)
+    || job.run_id !== runId
+    || !isPositiveSafeInteger(job?.run_attempt)
+    || job.run_attempt !== promotionRun.run_attempt
+    || job.head_sha !== candidateCommit
+    || job.html_url !== latestStatus.log_url) {
+    return null;
+  }
+  if (latestStatus.state !== "success"
+    || latestStatus.environment !== "public-release-promotion"
+    || latestStatus.environment_url !== runUrl
+    || latestStatus.deployment_url !== deploymentUrl
+    || job.status !== "completed"
+    || job.conclusion !== "success") {
+    return null;
+  }
+  return { deployment, deploymentStatuses: orderedStatuses, job };
+}
+
 export function validateLivePhase5Promotion({
   candidateRepository, candidateCommit, releaseTag, promotionProofRunId,
   promotionProofArtifactId, promotionProofArtifactDigest, promotionRun,
   deployment, deploymentStatuses, job, proofArtifacts, proofArtifact,
   promotionProofArchiveSha256, proofBytes, localProofBytes, tagRef, release, proof,
+  githubServerUrl = "https://github.com", githubApiUrl = "https://api.github.com",
 }) {
-  const runId = Number(promotionProofRunId);
+  const { runId } = validatePromotionRunProvenance({
+    candidateRepository, candidateCommit, promotionProofRunId, promotionRun, githubServerUrl,
+  });
   const artifactId = Number(promotionProofArtifactId);
-  const runUrl = `https://github.com/${candidateRepository}/actions/runs/${promotionProofRunId}`;
-  const successfulStatus = [...(deploymentStatuses ?? [])]
-    .sort((left, right) => `${left.created_at}:${left.id}`.localeCompare(`${right.created_at}:${right.id}`))
-    .at(-1);
+  const deploymentProvenance = validatePromotionDeploymentProvenance({
+    candidateRepository, candidateCommit, promotionProofRunId, promotionRun, deployment,
+    deploymentStatuses, job, githubServerUrl, githubApiUrl,
+  });
   const expectedAssets = proof?.assets?.map(({ id, file, size_bytes: size, api_digest: digest }) => ({
     id, name: file, size, digest,
   }));
-  if (!Number.isSafeInteger(runId) || runId < 1
-    || !Number.isSafeInteger(artifactId) || artifactId < 1
+  if (deploymentProvenance === null
+    || !isPositiveSafeInteger(artifactId)
     || !ARTIFACT_DIGEST.test(promotionProofArtifactDigest ?? "")
-    || promotionRun?.id !== runId || promotionRun?.status !== "completed"
-    || promotionRun?.conclusion !== "success" || promotionRun?.html_url !== runUrl
-    || promotionRun?.head_sha !== candidateCommit || promotionRun?.head_branch !== "main"
-    || promotionRun?.repository?.full_name !== candidateRepository
-    || promotionRun?.event !== "workflow_dispatch"
-    || promotionRun?.path !== ".github/workflows/release-promotion.yml"
-    || deployment?.sha !== candidateCommit || deployment?.ref !== "main"
-    || deployment?.environment !== "public-release-promotion"
-    || deployment?.original_environment !== "public-release-promotion"
-    || deployment?.performed_via_github_app?.slug !== "github-actions"
-    || successfulStatus?.state !== "success"
-    || successfulStatus?.environment !== "public-release-promotion"
-    || successfulStatus?.environment_url !== runUrl
-    || successfulStatus?.deployment_url !== deployment?.url
-    || job?.id !== Number(successfulStatus?.log_url?.split("/").at(-1))
-    || job?.run_id !== runId || job?.run_attempt !== promotionRun?.run_attempt
-    || job?.head_sha !== candidateCommit || job?.status !== "completed"
-    || job?.conclusion !== "success" || job?.html_url !== successfulStatus?.log_url
     || !Array.isArray(proofArtifacts) || proofArtifacts.length !== 1
     || proofArtifacts[0]?.id !== artifactId
     || proofArtifact?.id !== artifactId || proofArtifact?.name !== `promotion-proof-${runId}`
@@ -151,10 +248,22 @@ function ghJson(args, execute) {
 }
 
 function flattenedPages(value, key) {
-  if (!Array.isArray(value)) return [];
-  const pages = value.every(Array.isArray) ? value.flat() : value;
-  if (key === undefined) return pages;
-  return pages.flatMap((page) => Array.isArray(page?.[key]) ? page[key] : []);
+  if (!Array.isArray(value)) {
+    throw new Error("live GitHub promotion pagination is malformed.");
+  }
+  if (key === undefined) {
+    if (!value.every(Array.isArray)) {
+      throw new Error("live GitHub promotion pagination is malformed.");
+    }
+    return value.flat();
+  }
+  if (!value.every((page) => page !== null
+    && typeof page === "object"
+    && !Array.isArray(page)
+    && Array.isArray(page[key]))) {
+    throw new Error("live GitHub promotion pagination is malformed.");
+  }
+  return value.flatMap((page) => page[key]);
 }
 
 export function loadAndValidateLivePhase5Promotion(options, {
@@ -162,13 +271,17 @@ export function loadAndValidateLivePhase5Promotion(options, {
   githubServerUrl = process.env.GITHUB_SERVER_URL ?? "https://github.com",
   githubApiUrl = process.env.GITHUB_API_URL ?? "https://api.github.com",
 } = {}) {
-  if (!process.env.GH_TOKEN && !process.env.GITHUB_TOKEN) {
-    throw new Error("Terminal Seal requires a read-only GH_TOKEN or GITHUB_TOKEN.");
-  }
   const repository = options.candidateRepository;
   const runId = options.promotionProofRunId;
   const artifactId = options.promotionProofArtifactId;
   const promotionRun = ghJson([`repos/${repository}/actions/runs/${runId}`], execute);
+  validatePromotionRunProvenance({
+    candidateRepository: repository,
+    candidateCommit: options.candidateCommit,
+    promotionProofRunId: runId,
+    promotionRun,
+    githubServerUrl,
+  });
   const deploymentPages = ghJson([
     "--method", "GET", "--paginate", "--slurp",
     `repos/${repository}/deployments`,
@@ -177,40 +290,36 @@ export function loadAndValidateLivePhase5Promotion(options, {
     "-f", "environment=public-release-promotion",
     "-F", "per_page=100",
   ], execute);
-  const runUrl = `${githubServerUrl}/${repository}/actions/runs/${runId}`;
+  const runUrl = `${withoutTrailingSlash(githubServerUrl)}/${repository}/actions/runs/${runId}`;
   const successfulDeployments = [];
-  for (const deployment of flattenedPages(deploymentPages)) {
-    if (deployment?.sha !== options.candidateCommit
-      || deployment?.ref !== "main"
-      || deployment?.environment !== "public-release-promotion"
-      || deployment?.original_environment !== "public-release-promotion"
-      || deployment?.performed_via_github_app?.slug !== "github-actions"
-      || deployment?.statuses_url !== `${githubApiUrl}/repos/${repository}/deployments/${deployment?.id}/statuses`) {
-      continue;
+  const deployments = flattenedPages(deploymentPages);
+  const deploymentIds = new Set();
+  for (const deployment of deployments) {
+    validateDeploymentIdentity({
+      candidateRepository: repository,
+      candidateCommit: options.candidateCommit,
+      deployment,
+      githubApiUrl,
+    });
+    if (deploymentIds.has(deployment.id)) {
+      throw new Error("live promotion deployments contain duplicate identities.");
     }
+    deploymentIds.add(deployment.id);
     const statusPages = ghJson([
       "--method", "GET", "--paginate", "--slurp",
       `repos/${repository}/deployments/${deployment.id}/statuses`,
       "-F", "per_page=100",
     ], execute);
-    const statuses = flattenedPages(statusPages);
-    const deploymentStatuses = statuses.sort((left, right) =>
-      `${left.created_at}:${left.id}`.localeCompare(`${right.created_at}:${right.id}`));
+    const deploymentStatuses = orderedDeploymentStatuses(flattenedPages(statusPages));
     const latest = deploymentStatuses.at(-1);
-    const jobId = Number(latest?.log_url?.slice(`${runUrl}/job/`.length));
-    if (!Number.isSafeInteger(jobId) || !latest?.log_url?.startsWith(`${runUrl}/job/`)) continue;
+    const jobId = jobIdFromDeploymentStatus(latest, runUrl);
+    if (jobId === null) continue;
     const job = ghJson([`repos/${repository}/actions/jobs/${jobId}`], execute);
-    try {
-      validateLivePhase5Promotion({
-        ...options, promotionRun, deployment, deploymentStatuses, job,
-        proofArtifacts: [], proofArtifact: {}, promotionProofArchiveSha256: "",
-        proofBytes: Buffer.alloc(0), localProofBytes: Buffer.alloc(1),
-        tagRef: {}, release: {}, proof: {},
-      });
-    } catch (error) {
-      if (!/proof artifact|tag, release, or assets/iu.test(error.message)) continue;
-      successfulDeployments.push({ deployment, deploymentStatuses, job });
-    }
+    const provenance = validatePromotionDeploymentProvenance({
+      ...options, promotionRun, deployment, deploymentStatuses, job,
+      githubServerUrl, githubApiUrl,
+    });
+    if (provenance !== null) successfulDeployments.push(provenance);
   }
   if (successfulDeployments.length !== 1) {
     throw new Error("live promotion deployment provenance is missing or ambiguous.");
@@ -260,7 +369,7 @@ export function loadAndValidateLivePhase5Promotion(options, {
       ...validateLivePhase5Promotion({
         ...options, promotionRun, ...successfulDeployments[0], proofArtifacts, proofArtifact,
         promotionProofArchiveSha256: sha256(archiveBytes), proofBytes, localProofBytes,
-        tagRef, release, proof,
+        tagRef, release, proof, githubServerUrl, githubApiUrl,
       }),
       proof, proofBytes,
     };

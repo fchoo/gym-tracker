@@ -35,8 +35,10 @@ import {
   validateTerminalSealDocument,
 } from "./phase5-terminal-seal-contract.mjs";
 import {
+  loadAndValidateLivePhase5Promotion,
   parsePhase5ReleaseGateArguments,
   validateLivePhase5Promotion,
+  validatePromotionDeploymentProvenance,
   validatePhase6N4ReleaseBinding,
 } from "./verify-phase5-release-gate.mjs";
 import {
@@ -536,6 +538,18 @@ test("release promotion separates read-only validation from code-free publicatio
   assert.match(validation, /id:\s*validation_artifact/u);
   assert.match(validation, /name:\s*Remove unsealed validation inputs[\s\S]*rm -rf retained-candidate attended-evidence/u);
   assert.match(validation, /name:\s*Seal validated release inputs[\s\S]*find sealed-release-validation -mindepth 1 ! -type f ! -type d[\s\S]*find sealed-release-validation -type l/iu);
+  for (const phase6File of [
+    "checklist.json", "observations.json", "N4-01.png", "N4-02.png",
+    "N4-03.png", "N4-04.png", "attended-record.json",
+  ]) {
+    const escapedPhase6File = phase6File.replace(".", "\\.");
+    assert.match(validation, new RegExp(
+      "cp -P retained-candidate/evidence/phase6-n4-upload/phase6/"
+        + escapedPhase6File + " sealed-release-validation/candidate/evidence/phase6/"
+        + escapedPhase6File,
+      "u",
+    ));
+  }
   assert.doesNotMatch(validation, /gh run download/iu);
   for (const output of [
     "candidate_artifact_id", "candidate_artifact_digest",
@@ -567,9 +581,10 @@ test("release promotion separates read-only validation from code-free publicatio
   assert.match(publish, /\.id == \$artifact_id[\s\S]*\.workflow_run\.id == \$run_id[\s\S]*\.workflow_run\.head_sha == \$commit[\s\S]*\.name == \$name[\s\S]*\.digest == \("sha256:" \+ \$digest\)/u);
   assert.match(publish, /find sealed-release-validation -type l[\s\S]*= "0"/u);
   assert.match(publish, /find sealed-release-validation -mindepth 1 ! -type f ! -type d[\s\S]*= "0"/u);
-  assert.match(publish, /find sealed-release-validation -mindepth 1 -type d[\s\S]*= "3"/u);
-  assert.match(publish, /test -d sealed-release-validation\/candidate[\s\S]*test -d sealed-release-validation\/attended[\s\S]*test -d sealed-release-validation\/phase6/u);
-  assert.match(publish, /for sealed_file in release-validation\.json[\s\S]*candidate\/release-toolchain\.json[\s\S]*attended\/attended-record\.json[\s\S]*phase6\/attended-record\.json[\s\S]*test -f "sealed-release-validation\/\$\{sealed_file\}"[\s\S]*test ! -L/iu);
+  assert.match(publish, /find sealed-release-validation -mindepth 1 -type f[\s\S]*= "14"/u);
+  assert.match(publish, /find sealed-release-validation -mindepth 1 -type d[\s\S]*= "4"/u);
+  assert.match(publish, /test -d sealed-release-validation\/candidate[\s\S]*test -d sealed-release-validation\/attended[\s\S]*test -d sealed-release-validation\/candidate\/evidence\/phase6/u);
+  assert.match(publish, /for sealed_file in release-validation\.json[\s\S]*candidate\/release-toolchain\.json[\s\S]*attended\/attended-record\.json[\s\S]*candidate\/evidence\/phase6\/checklist\.json[\s\S]*candidate\/evidence\/phase6\/observations\.json[\s\S]*candidate\/evidence\/phase6\/N4-01\.png[\s\S]*candidate\/evidence\/phase6\/N4-04\.png[\s\S]*candidate\/evidence\/phase6\/attended-record\.json[\s\S]*test -f "sealed-release-validation\/\$\{sealed_file\}"[\s\S]*test ! -L/iu);
   assert.match(publish, /validation_digest="\$\{VALIDATION_ARTIFACT_DIGEST#sha256:\}"[\s\S]*test "\$\{#validation_digest\}" -eq 64/u);
   assert.doesNotMatch(publish, /\$\{#VALIDATION_ARTIFACT_DIGEST#sha256:\}/u);
   assert.doesNotMatch(workflow, /owner_token|OWNER_TOKEN/iu);
@@ -581,15 +596,18 @@ test("release promotion separates read-only validation from code-free publicatio
   assert.match(proof, /permissions:\n\s+actions: read\n\s+contents: read\n\s+deployments: read\n\s+id-token: none/u);
   assert.match(proof, /persist-credentials:\s*false/u);
   assert.match(proof, /node workflow-source\/scripts\/record-phase5-promotion-proof\.mjs/u);
+  assert.match(proof, /node workflow-source\/scripts\/generate-phase6-attended-checklist\.mjs verify[\s\S]*--bundle-dir sealed-release-validation\/candidate[\s\S]*--checklist sealed-release-validation\/candidate\/evidence\/phase6\/checklist\.json[\s\S]*--observations sealed-release-validation\/candidate\/evidence\/phase6\/observations\.json[\s\S]*--evidence-dir sealed-release-validation\/candidate\/evidence\/phase6[\s\S]*--record sealed-release-validation\/candidate\/evidence\/phase6\/attended-record\.json/u);
   assert.doesNotMatch(proof, /gh run download/iu);
   assert.match(proof, /releases\/assets\/\$\{asset_id\}/u);
   assert.match(proof, /--attended-record sealed-release-validation\/attended\/attended-record\.json/u);
-  assert.match(proof, /--phase6-n4-record sealed-release-validation\/phase6\/attended-record\.json/u);
+  assert.match(proof, /--phase6-n4-record sealed-release-validation\/candidate\/evidence\/phase6\/attended-record\.json/u);
+  assert.match(proof, /--release-id "\$\{\{ needs\.publish\.outputs\.release_id \}\}"/u);
   for (const unsafe of [
     ["contents: read", "contents: write"],
     ["persist-credentials: false", "persist-credentials: true"],
     ["needs: validate", "needs: []"],
     ["node workflow-source/scripts/generate-phase5-attended-checklist.mjs verify", "npm run verify:attended:phase5"],
+    ["--bundle-dir sealed-release-validation/candidate", "--bundle-dir sealed-release-validation"],
   ]) {
     assert.throws(
       () => validatePromotionWorkflowContract(workflow.replace(...unsafe)),
@@ -913,6 +931,7 @@ test("Terminal Seal requires immutable promotion artifact identity and live GitH
       event: "workflow_dispatch", path: ".github/workflows/release-promotion.yml",
     },
     deployment: {
+      id: 7,
       sha: SOURCE_COMMIT, ref: "main", environment: "public-release-promotion",
       original_environment: "public-release-promotion",
       performed_via_github_app: { slug: "github-actions" },
@@ -960,6 +979,74 @@ test("Terminal Seal requires immutable promotion artifact identity and live GitH
     promotionProofArtifactId: "1001",
     promotionProofArtifactDigest: `sha256:${"e".repeat(64)}`,
   }).release.id, 42);
+  const failedSiblingDeployment = {
+    ...live.deployment,
+    id: 6,
+    url: "https://api.github.com/repos/owner/gym-tracker/deployments/6",
+    statuses_url: "https://api.github.com/repos/owner/gym-tracker/deployments/6/statuses",
+  };
+  const failedSiblingStatuses = [{
+    ...live.deploymentStatuses[0],
+    id: 10,
+    state: "failure",
+    deployment_url: failedSiblingDeployment.url,
+    log_url: "https://github.com/owner/gym-tracker/actions/runs/999/job/10",
+  }];
+  const failedSiblingJob = {
+    ...live.job, id: 10, conclusion: "failure",
+    html_url: "https://github.com/owner/gym-tracker/actions/runs/999/job/10",
+  };
+  assert.equal(validateLivePhase5Promotion({
+    ...live, candidateRepository: "owner/gym-tracker", candidateCommit: SOURCE_COMMIT,
+    releaseTag: "v1.0.0", promotionProofRunId: "999",
+    promotionProofArtifactId: "1001",
+    promotionProofArtifactDigest: `sha256:${"e".repeat(64)}`,
+  }).release.id, 42);
+  assert.throws(() => validateLivePhase5Promotion({
+    ...live, deployment: failedSiblingDeployment, deploymentStatuses: failedSiblingStatuses,
+    job: failedSiblingJob, candidateRepository: "owner/gym-tracker",
+    candidateCommit: SOURCE_COMMIT, releaseTag: "v1.0.0",
+    promotionProofRunId: "999", promotionProofArtifactId: "1001",
+    promotionProofArtifactDigest: `sha256:${"e".repeat(64)}`,
+  }), /promotion|deployment|job/iu);
+  const provenanceInput = {
+    candidateRepository: "owner/gym-tracker",
+    candidateCommit: SOURCE_COMMIT,
+    promotionProofRunId: "999",
+    promotionRun: live.promotionRun,
+    deployment: live.deployment,
+    deploymentStatuses: live.deploymentStatuses,
+    job: live.job,
+  };
+  assert.equal(validatePromotionDeploymentProvenance(provenanceInput)?.job.id, 11);
+  for (const mutation of [
+    { promotionRun: { ...live.promotionRun, id: 0 } },
+    { promotionRun: { ...live.promotionRun, run_attempt: 0 } },
+    { deployment: { ...live.deployment, id: 0 } },
+    { deployment: { ...live.deployment, url: "https://api.github.com/substituted" } },
+    { deploymentStatuses: [] },
+    { deploymentStatuses: [{ ...live.deploymentStatuses[0], id: 0 }] },
+    { deploymentStatuses: [{ ...live.deploymentStatuses[0], created_at: "not-a-date" }] },
+    { deploymentStatuses: [live.deploymentStatuses[0], live.deploymentStatuses[0]] },
+  ]) {
+    assert.throws(
+      () => validatePromotionDeploymentProvenance({ ...provenanceInput, ...mutation }),
+      /promotion|workflow|deployment|status|identity|malformed/iu,
+    );
+  }
+  for (const mutation of [
+    { deploymentStatuses: [{ ...live.deploymentStatuses[0], log_url: "https://example.invalid/job/11" }] },
+    { job: { ...live.job, id: 12 } },
+    { job: { ...live.job, run_id: 0 } },
+    { job: { ...live.job, run_attempt: 0 } },
+    { job: { ...live.job, html_url: "https://example.invalid/job/11" } },
+    { job: { ...live.job, status: "queued" } },
+  ]) {
+    assert.equal(
+      validatePromotionDeploymentProvenance({ ...provenanceInput, ...mutation }),
+      null,
+    );
+  }
   for (const mutation of [
     { promotionRun: { ...live.promotionRun, conclusion: "failure" } },
     { proofArtifact: { ...live.proofArtifact, id: 1002 } },
@@ -975,6 +1062,172 @@ test("Terminal Seal requires immutable promotion artifact identity and live GitH
       promotionProofRunId: "999", promotionProofArtifactId: "1001",
       promotionProofArtifactDigest: `sha256:${"e".repeat(64)}`,
     }), /promotion|artifact|proof|tag|release|asset|deployment/iu);
+  }
+
+  const temporaryDirectory = mkdtempSync(path.join(os.tmpdir(), "phase5-live-loader-"));
+  const archiveBytes = Buffer.from("sealed promotion proof archive\n");
+  const archiveDigest = sha256(archiveBytes);
+  const validDeployment = { ...live.deployment, id: 7 };
+  const tiedStatusTime = "2026-09-03T00:00:00Z";
+  const validStatuses = [
+    {
+      ...live.deploymentStatuses[0],
+      id: 10,
+      created_at: tiedStatusTime,
+    },
+    {
+      ...live.deploymentStatuses[0],
+      id: 9,
+      created_at: tiedStatusTime,
+      state: "failure",
+      log_url: "https://github.com/owner/gym-tracker/actions/runs/999/job/12",
+    },
+  ];
+  const previousJob = {
+    ...live.job,
+    id: 12,
+    conclusion: "failure",
+    html_url: "https://github.com/owner/gym-tracker/actions/runs/999/job/12",
+  };
+  const loaderProofArtifact = {
+    ...live.proofArtifact,
+    digest: `sha256:${archiveDigest}`,
+  };
+  const promotionProof = path.join(temporaryDirectory, "promotion-proof.json");
+  writeFileSync(promotionProof, proofBytes);
+  const secondValidDeployment = {
+    ...validDeployment,
+    id: 8,
+    url: "https://api.github.com/repos/owner/gym-tracker/deployments/8",
+    statuses_url: "https://api.github.com/repos/owner/gym-tracker/deployments/8/statuses",
+  };
+  const secondValidStatuses = [{
+    ...live.deploymentStatuses[0],
+    id: 11,
+    deployment_url: secondValidDeployment.url,
+    log_url: "https://github.com/owner/gym-tracker/actions/runs/999/job/13",
+  }];
+  const secondValidJob = {
+    ...live.job,
+    id: 13,
+    html_url: "https://github.com/owner/gym-tracker/actions/runs/999/job/13",
+  };
+  let selectedDeployments = [validDeployment, failedSiblingDeployment];
+  const jobEndpoints = [];
+  const execute = (command, args, settings) => {
+    assert.ok(command === "gh" || command === "unzip");
+    if (command === "unzip") {
+      return args[0] === "-Z1" ? "promotion-proof.json\n" : proofBytes;
+    }
+    const endpoint = args.find((value) => value.startsWith?.("repos/"));
+    if (endpoint === "repos/owner/gym-tracker/actions/runs/999") {
+      return JSON.stringify(live.promotionRun);
+    }
+    if (endpoint === "repos/owner/gym-tracker/deployments") {
+      return JSON.stringify([selectedDeployments]);
+    }
+    if (endpoint === "repos/owner/gym-tracker/deployments/7/statuses") {
+      return JSON.stringify([validStatuses]);
+    }
+    if (endpoint === "repos/owner/gym-tracker/deployments/6/statuses") {
+      return JSON.stringify([failedSiblingStatuses]);
+    }
+    if (endpoint === "repos/owner/gym-tracker/deployments/8/statuses") {
+      return JSON.stringify([secondValidStatuses]);
+    }
+    if (endpoint?.startsWith("repos/owner/gym-tracker/actions/jobs/")) {
+      jobEndpoints.push(endpoint);
+    }
+    if (endpoint === "repos/owner/gym-tracker/actions/jobs/11") {
+      return JSON.stringify(live.job);
+    }
+    if (endpoint === "repos/owner/gym-tracker/actions/jobs/12") {
+      return JSON.stringify(previousJob);
+    }
+    if (endpoint === "repos/owner/gym-tracker/actions/jobs/10") {
+      return JSON.stringify(failedSiblingJob);
+    }
+    if (endpoint === "repos/owner/gym-tracker/actions/jobs/13") {
+      return JSON.stringify(secondValidJob);
+    }
+    if (endpoint === "repos/owner/gym-tracker/actions/runs/999/artifacts") {
+      return JSON.stringify([{ artifacts: [loaderProofArtifact] }]);
+    }
+    if (endpoint === "repos/owner/gym-tracker/actions/artifacts/1001") {
+      return JSON.stringify(loaderProofArtifact);
+    }
+    if (endpoint === "repos/owner/gym-tracker/actions/artifacts/1001/zip") {
+      assert.equal(settings.encoding, null);
+      return archiveBytes;
+    }
+    if (endpoint === "repos/owner/gym-tracker/git/ref/tags/v1.0.0") {
+      return JSON.stringify(live.tagRef);
+    }
+    if (endpoint === "repos/owner/gym-tracker/releases/tags/v1.0.0") {
+      return JSON.stringify(live.release);
+    }
+    throw new Error(`Unexpected command: ${command} ${args.join(" ")}`);
+  };
+  const previousGhToken = process.env.GH_TOKEN;
+  const previousGithubToken = process.env.GITHUB_TOKEN;
+  try {
+    delete process.env.GH_TOKEN;
+    delete process.env.GITHUB_TOKEN;
+    const loaded = loadAndValidateLivePhase5Promotion({
+      ...options, promotionProof,
+      promotionProofArtifactDigest: `sha256:${archiveDigest}`,
+    }, { execute });
+    assert.equal(loaded.release.id, 42);
+    assert.deepEqual(jobEndpoints, [
+      "repos/owner/gym-tracker/actions/jobs/11",
+      "repos/owner/gym-tracker/actions/jobs/10",
+    ]);
+    assert.equal(jobEndpoints.includes("repos/owner/gym-tracker/actions/jobs/12"), false);
+
+    selectedDeployments = [failedSiblingDeployment];
+    assert.throws(() => loadAndValidateLivePhase5Promotion({
+      ...options, promotionProof,
+      promotionProofArtifactDigest: "sha256:" + archiveDigest,
+    }, { execute }), /deployment provenance is missing or ambiguous/iu);
+
+    selectedDeployments = [validDeployment, secondValidDeployment];
+    assert.throws(() => loadAndValidateLivePhase5Promotion({
+      ...options, promotionProof,
+      promotionProofArtifactDigest: "sha256:" + archiveDigest,
+    }, { execute }), /deployment provenance is missing or ambiguous/iu);
+
+    selectedDeployments = [validDeployment, { ...validDeployment }];
+    assert.throws(() => loadAndValidateLivePhase5Promotion({
+      ...options, promotionProof,
+      promotionProofArtifactDigest: "sha256:" + archiveDigest,
+    }, { execute }), /duplicate identities/iu);
+  } finally {
+    if (previousGhToken === undefined) delete process.env.GH_TOKEN;
+    else process.env.GH_TOKEN = previousGhToken;
+    if (previousGithubToken === undefined) delete process.env.GITHUB_TOKEN;
+    else process.env.GITHUB_TOKEN = previousGithubToken;
+    rmSync(temporaryDirectory, { recursive: true, force: true });
+  }
+});
+
+test("Terminal Seal delegates authentication to the gh credential store", () => {
+  const previousGhToken = process.env.GH_TOKEN;
+  const previousGithubToken = process.env.GITHUB_TOKEN;
+  try {
+    delete process.env.GH_TOKEN;
+    delete process.env.GITHUB_TOKEN;
+    assert.throws(() => loadAndValidateLivePhase5Promotion({
+      candidateRepository: "owner/gym-tracker",
+      promotionProofRunId: "999",
+      promotionProofArtifactId: "1001",
+    }, {
+      execute: () => { throw new Error("synthetic gh failure"); },
+    }), /live GitHub promotion provenance query failed/iu);
+  } finally {
+    if (previousGhToken === undefined) delete process.env.GH_TOKEN;
+    else process.env.GH_TOKEN = previousGhToken;
+    if (previousGithubToken === undefined) delete process.env.GITHUB_TOKEN;
+    else process.env.GITHUB_TOKEN = previousGithubToken;
   }
 });
 
