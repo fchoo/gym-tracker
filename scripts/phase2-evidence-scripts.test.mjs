@@ -2904,6 +2904,7 @@ test("post-restart root actions wait for trusted Today content", async () => {
   const trustedWaitTargets = new Set([
     '    visible: "Use Full Body Foundation"',
     '    visible: "Resume workout"',
+    '    visible: "Bench Press · Working set 1 · 3/15 working sets"',
     '    visible: "^(Choose another day|Train anyway)$"',
   ]);
   for (const relativePath of await maestroYamlPaths()) {
