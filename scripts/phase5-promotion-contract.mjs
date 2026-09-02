@@ -67,6 +67,10 @@ function validateSelectedArtifactContract(source, runIdVariable, artifactPagesVa
   }
 }
 
+function jobBlock(source, startMarker, endMarker, label) {
+  return boundedSourceBlock(source, startMarker, endMarker, label);
+}
+
 const RUN_ID = /^[1-9][0-9]*$/u;
 const CANDIDATE_ID = /^[a-z0-9][a-z0-9-]{2,79}$/u;
 const COMMIT = /^[a-f0-9]{40}$/u;
@@ -100,6 +104,32 @@ export function validatePhase6N4PromotionInputValues(input) {
 }
 
 export function validatePromotionWorkflowContract(source) {
+  const validationJob = jobBlock(source, "  validate:", "  publish:", "validation job");
+  const publishJob = jobBlock(source, "  publish:", "  record-proof:", "publication job");
+  const proofJob = source.slice(source.indexOf("  record-proof:"));
+  requirePattern(source, /^permissions:\s*\{\}s*$/mu,
+    "promotion workflow defaults must grant no permissions.");
+  requirePattern(validationJob, /permissions:\s*[\s\S]*actions:\s*read[\s\S]*contents:\s*read[\s\S]*deployments:\s*read[\s\S]*id-token:\s*none/iu,
+    "validation job must be read-only.");
+  if (/contents:\s*write|public-release-promotion|owner_token|OWNER_TOKEN|npm run|node scripts\//iu.test(validationJob)) {
+    throw new Error("validation job cannot hold write authority, owner token, or run candidate code.");
+  }
+  requirePattern(validationJob, /cache-dependency-path:\s*workflow-source\/package-lock\.json/u,
+    "validation dependency cache must use the trusted checkout lockfile.");
+  requirePattern(publishJob, /needs:\s*validate[\s\S]*permissions:\s*[\s\S]*actions:\s*read[\s\S]*contents:\s*write[\s\S]*deployments:\s*read[\s\S]*id-token:\s*none/iu,
+    "publication job requires the validated handoff and only publication permissions.");
+  if (/actions\/checkout|npm(?:\s|$)|node\s+["']?(?:scripts|workflow-source)\/|owner_token|OWNER_TOKEN/iu.test(publishJob)) {
+    throw new Error("publication job cannot execute repository code or receive owner token.");
+  }
+  requirePattern(proofJob, /permissions:\s*[\s\S]*actions:\s*write[\s\S]*contents:\s*read[\s\S]*deployments:\s*read[\s\S]*id-token:\s*none/iu,
+    "promotion proof job must have only artifact-write and repository-read authority.");
+  if (/contents:\s*write|owner_token|OWNER_TOKEN|gh run download/iu.test(proofJob)) {
+    throw new Error("promotion proof job cannot write repository content or re-resolve source evidence.");
+  }
+  for (const checkout of source.matchAll(/uses:\s*actions\/checkout@[^\n]+([\s\S]*?)(?=\n\s+- name:|\n\s+- uses:|$)/gu)) {
+    requirePattern(checkout[1], /persist-credentials:\s*false/u,
+      "promotion checkout cannot persist write credentials.");
+  }
   validateSelectedRunContract(source, {
     runIdVariable: "CANDIDATE_RUN_ID", runJsonVariable: "candidate_run",
     runUrlVariable: "candidate_run_url", workflowPath: ".github/workflows/release-candidate.yml",
@@ -148,12 +178,22 @@ export function validatePromotionWorkflowContract(source) {
     "promotion must bind selected runs to their exact URL, commit, and main branch.");
   requirePattern(source, /CANDIDATE_COMMIT:\s*\$\{\{ inputs\.candidate_commit \}\}[\s\S]*head_sha[^\n]+\$commit/iu,
     "promotion must bind the candidate run to the selected commit.");
-  requirePattern(source, /gh run download[\s\S]*CANDIDATE_RUN_ID[\s\S]*private-release-candidate/iu,
-    "promotion must download the exact successful candidate artifact.");
-  requirePattern(source, /gh run download[\s\S]*ATTENDED_RUN_ID[\s\S]*ATTENDED_ARTIFACT_NAME/iu,
-    "promotion must download immutable attended evidence.");
-  requirePattern(source, /gh run download[\s\S]*PHASE6_N4_RUN_ID[\s\S]*PHASE6_N4_ARTIFACT_NAME/iu,
-    "promotion must download immutable Phase 6 N4 evidence.");
+  if (/gh run download/iu.test(source)) {
+    throw new Error("promotion cannot re-resolve selected artifacts by mutable run/name.");
+  }
+  for (const output of [
+    "candidate_artifact_id", "candidate_artifact_digest",
+    "attended_artifact_id", "attended_artifact_digest",
+    "phase6_n4_artifact_id", "phase6_n4_artifact_digest",
+  ]) {
+    requirePattern(source, new RegExp(`${output}=`, "u"),
+      `promotion selected artifact output is missing: ${output}`);
+  }
+  if ((source.match(/artifact-ids:\s*\$\{\{ steps\.selected\.outputs\./gu) ?? []).length !== 3) {
+    throw new Error("promotion must download all selected inputs by immutable artifact ID.");
+  }
+  requirePattern(source, /verify_selected_artifact[\s\S]*\.id == \$artifact_id[\s\S]*\.digest == \$digest[\s\S]*\.workflow_run\.id == \$run_id[\s\S]*\.workflow_run\.head_sha == \$commit/iu,
+    "promotion must revalidate immutable artifact identity and digest after download.");
   requirePattern(source, /release-candidate\.yml/iu,
     "promotion must pin the candidate workflow identity.");
   requirePattern(source, /release-attended-evidence\.yml/iu,
@@ -182,18 +222,16 @@ export function validatePromotionWorkflowContract(source) {
   if (/actions\/runs\/\$\{[A-Z_]+\}\/jobs|\.jobs\s*\|\s*any\(\.environment\.name/iu.test(source)) {
     throw new Error("promotion cannot infer environment provenance from the jobs list.");
   }
-  requirePattern(source, /checkout@[\s\S]*ref:\s*\$\{\{ env\.CANDIDATE_COMMIT \}\}/u,
-    "promotion must checkout the exact candidate source.");
-  requirePattern(source, /verify:attended:phase5/iu,
-    "promotion must run the complete attended preflight.");
-  requirePattern(source, /node "\$\{RUNNER_TEMP\}\/trusted-workflow-source\/scripts\/generate-phase6-attended-checklist\.mjs" verify/iu,
+  requirePattern(source, /test "\$\{GITHUB_SHA\}" = "\$\{CANDIDATE_COMMIT\}"[\s\S]*checkout@[\s\S]*path:\s*workflow-source[\s\S]*persist-credentials:\s*false/u,
+    "promotion must use the exact candidate workflow source without persisting credentials.");
+  requirePattern(source, /node workflow-source\/scripts\/generate-phase5-attended-checklist\.mjs verify/iu,
+    "promotion must run the complete attended preflight from trusted source.");
+  requirePattern(source, /node workflow-source\/scripts\/generate-phase6-attended-checklist\.mjs verify/iu,
     "promotion must replay the Phase 6 N4 verifier from trusted workflow source.");
-  requirePattern(source, /node "\$\{RUNNER_TEMP\}\/trusted-workflow-source\/scripts\/generate-phase5-attended-checklist\.mjs" verify[\s\S]*--phase6-n4-record/iu,
+  requirePattern(source, /node workflow-source\/scripts\/generate-phase5-attended-checklist\.mjs verify[\s\S]*--phase6-n4-record/iu,
     "promotion must replay the patched Phase 5 verifier from trusted workflow source.");
   requirePattern(source, /test "\$\{GITHUB_SHA\}" = "\$\{CANDIDATE_COMMIT\}"[\s\S]*test "\$\{GITHUB_REF_NAME\}" = "main"/u,
     "promotion workflow source must be the exact candidate commit on main.");
-  requirePattern(source, /mv workflow-source "\$\{RUNNER_TEMP\}\/trusted-workflow-source"/u,
-    "promotion must preserve trusted release-gate source before candidate checkout.");
   requirePattern(source, /printf '%s  %s\\n' "\$\{PHASE6_N4_RECORD_SHA256\}"[\s\S]*?phase6\/attended-record\.json \| sha256sum --check/iu,
     "promotion must hash-check the selected Phase 6 N4 record bytes.");
   requirePattern(source, /gh release view[^\n]+(?:&&|then)\s*exit 1/iu,
@@ -218,8 +256,9 @@ export function validatePromotionWorkflowContract(source) {
   if (/git ls-remote --exit-code --tags/iu.test(source)) {
     throw new Error("promotion cannot rely on a racy tag-existence preflight.");
   }
-  requirePattern(source, /git_ref_commit=\$\(git ls-remote --refs origin "refs\/tags\/\$\{RELEASE_TAG\}" \| cut -f1\)[\s\S]*test "\$\{git_ref_commit\}" = "\$\{CANDIDATE_COMMIT\}"/iu,
-    "promotion must independently verify the remote tag commit before publication.");
+  if (/git ls-remote/iu.test(source)) {
+    throw new Error("publisher cannot depend on checkout-local git remotes.");
+  }
   requirePattern(source, /gh release create[\s\S]*?^\s*--draft\s*$/imu,
     "promotion must stage the release as a draft until public hashes pass.");
   requirePattern(source, /gh release edit[\s\S]*--draft=false/iu,
@@ -244,16 +283,15 @@ export function validatePromotionWorkflowContract(source) {
     || (source.match(/name:\s*promotion-proof-\$\{\{ github\.run_id \}\}/gu) ?? []).length !== 1) {
     throw new Error("promotion proof record/upload must be unique.");
   }
-  const validatorCheckout = source.indexOf("name: Check out workflow source for input validation");
+  const validatorCheckout = source.indexOf("name: Check out exact trusted workflow source");
   const validator = source.indexOf("node workflow-source/scripts/validate-phase5-promotion-inputs.mjs");
   const trustedPhase6Verifier = source.indexOf(
-    'node "${RUNNER_TEMP}/trusted-workflow-source/scripts/generate-phase6-attended-checklist.mjs" verify',
+    "node workflow-source/scripts/generate-phase6-attended-checklist.mjs verify",
   );
   const trustedPhase5Verifier = source.indexOf(
-    'node "${RUNNER_TEMP}/trusted-workflow-source/scripts/generate-phase5-attended-checklist.mjs" verify',
+    "node workflow-source/scripts/generate-phase5-attended-checklist.mjs verify",
   );
-  const exactCheckout = source.indexOf("name: Check out exact candidate source");
-  const attendedVerifier = source.indexOf("npm run verify:attended:phase5");
+  const attendedVerifier = trustedPhase5Verifier;
   const tagCreate = source.indexOf(
     'gh api --method POST "repos/${GITHUB_REPOSITORY}/git/refs"',
   );
@@ -265,10 +303,9 @@ export function validatePromotionWorkflowContract(source) {
   const publicAssetCheck = source.indexOf("name: Verify public release asset hashes");
   const publishDraft = source.indexOf("gh release edit");
   if (!(validatorCheckout >= 0 && validatorCheckout < validator
-    && validator < exactCheckout
-    && exactCheckout < trustedPhase6Verifier
+    && validator < trustedPhase6Verifier
     && trustedPhase6Verifier < trustedPhase5Verifier
-    && trustedPhase5Verifier < attendedVerifier
+    && trustedPhase5Verifier === attendedVerifier
     && attendedVerifier < tagCreate
     && tagCreate < publish
     && publish < publicAssetCheck

@@ -328,8 +328,8 @@ test("release workflows contain a private build-once candidate path and no-rebui
   assert.match(candidateWorkflow, /create-release-candidate-manifest/u);
   assert.match(candidateWorkflow, /retention-days: 30/u);
   assert.match(candidateWorkflow, /id-token: none/u);
-  assert.match(promotionWorkflow, /verify:attended:phase5/u);
-  assert.match(promotionWorkflow, /gh run download/u);
+  assert.match(promotionWorkflow, /generate-phase5-attended-checklist\.mjs verify/u);
+  assert.match(promotionWorkflow, /actions\/download-artifact/u);
   assert.equal(promotionWorkflow.includes('--target "${CANDIDATE_COMMIT}"'), true);
   assert.doesNotMatch(promotionWorkflow, /expo (?:prebuild|run)|gradlew|assembleRelease|eas build/u);
   for (const script of [
@@ -378,11 +378,10 @@ test("release promotion requires the exact Phase 6 N4 upload run and canonical r
     "phase6_n4_record_sha256:",
     '.path == ".github/workflows/release-human-evidence-upload.yml"',
     'verify_deployment_provenance "${PHASE6_N4_RUN_ID}" "${phase6_n4_run_attempt}" "${CANDIDATE_COMMIT}" "${phase6_n4_ref}" "private-release-observation-upload"',
-    'gh run download "${PHASE6_N4_RUN_ID}"',
+    'artifact-ids: ${{ steps.selected.outputs.phase6_n4_artifact_id }}',
     'test "${GITHUB_SHA}" = "${CANDIDATE_COMMIT}"',
     'test "${GITHUB_REF_NAME}" = "main"',
-    'mv workflow-source "${RUNNER_TEMP}/trusted-workflow-source"',
-    'node "${RUNNER_TEMP}/trusted-workflow-source/scripts/generate-phase6-attended-checklist.mjs" verify',
+    "node workflow-source/scripts/generate-phase6-attended-checklist.mjs verify",
     '--phase6-n4-record retained-candidate/evidence/phase6-n4-upload/phase6/attended-record.json',
     '--phase6-n4-run-id "${PHASE6_N4_RUN_ID}"',
     '--phase6-n4-artifact-name "${PHASE6_N4_ARTIFACT_NAME}"',
@@ -396,7 +395,7 @@ test("release promotion requires the exact Phase 6 N4 upload run and canonical r
   );
   assert.match(
     promotionWorkflow,
-    /node "\$\{RUNNER_TEMP\}\/trusted-workflow-source\/scripts\/generate-phase6-attended-checklist\.mjs" verify[\s\S]*--record retained-candidate\/evidence\/phase6-n4-upload\/phase6\/attended-record\.json/u,
+    /node workflow-source\/scripts\/generate-phase6-attended-checklist\.mjs verify[\s\S]*--record retained-candidate\/evidence\/phase6-n4-upload\/phase6\/attended-record\.json/u,
   );
   const phase6Replay = parsePhase6AttendedChecklistArguments([
     "verify",
@@ -429,8 +428,6 @@ test("release promotion requires the exact Phase 6 N4 upload run and canonical r
     '.tag_name == $tag',
     '.target_commitish == $commit',
     '.draft == true',
-    'git_ref_commit=$(git ls-remote --refs origin "refs/tags/${RELEASE_TAG}" | cut -f1)',
-    'test "${git_ref_commit}" = "${CANDIDATE_COMMIT}"',
   ]) {
     assert.ok(promotionWorkflow.includes(expected), `atomic tag flow is missing ${expected}`);
   }
@@ -451,20 +448,17 @@ test("release promotion requires the exact Phase 6 N4 upload run and canonical r
     assert.ok(phase6ArtifactValidation.includes(predicate));
   }
   const trustedReplay = promotionWorkflow.indexOf(
-    'node "${RUNNER_TEMP}/trusted-workflow-source/scripts/generate-phase6-attended-checklist.mjs" verify',
+    "node workflow-source/scripts/generate-phase6-attended-checklist.mjs verify",
   );
   const trustedPhase5Replay = promotionWorkflow.indexOf(
-    'node "${RUNNER_TEMP}/trusted-workflow-source/scripts/generate-phase5-attended-checklist.mjs" verify',
+    "node workflow-source/scripts/generate-phase5-attended-checklist.mjs verify",
   );
-  const candidateCheckout = promotionWorkflow.indexOf(
-    "name: Check out exact candidate source",
-  );
-  const candidateVerifier = promotionWorkflow.indexOf("npm run verify:attended:phase5");
+  const candidateVerifier = trustedPhase5Replay;
   const publication = promotionWorkflow.indexOf("gh release create");
-  assert.equal(candidateCheckout >= 0 && candidateCheckout < trustedReplay, true);
+  assert.equal(trustedReplay >= 0, true);
   assert.equal(
     trustedReplay < trustedPhase5Replay
-      && trustedPhase5Replay < candidateVerifier
+      && trustedPhase5Replay === candidateVerifier
       && candidateVerifier < publication,
     true,
   );
@@ -502,10 +496,6 @@ test("release promotion requires the exact Phase 6 N4 upload run and canonical r
       'retained-candidate/evidence/phase6-n4-upload/phase6/attended-record.json',
     ),
     promotionWorkflow.replace(
-      'mv workflow-source "${RUNNER_TEMP}/trusted-workflow-source"',
-      'true',
-    ),
-    promotionWorkflow.replace(
       'gh api --method POST "repos/${GITHUB_REPOSITORY}/git/refs"',
       'true',
     ),
@@ -515,6 +505,93 @@ test("release promotion requires the exact Phase 6 N4 upload run and canonical r
     assert.throws(
       () => validatePromotionWorkflowContract(mutation),
       /Phase 6|N4|trusted|provenance|artifact|hash|source|tag|draft|release/iu,
+    );
+  }
+});
+
+test("release promotion separates read-only validation from code-free publication", () => {
+  const projectRoot = path.resolve(path.dirname(new URL(import.meta.url).pathname), "..");
+  const workflow = readFileSync(
+    path.join(projectRoot, ".github/workflows/release-promotion.yml"),
+    "utf8",
+  );
+  const validationStart = workflow.indexOf("  validate:");
+  const publishStart = workflow.indexOf("  publish:");
+  const proofStart = workflow.indexOf("  record-proof:");
+  assert.equal(validationStart >= 0 && validationStart < publishStart, true);
+  assert.equal(publishStart < proofStart, true);
+  const validation = workflow.slice(validationStart, publishStart);
+  const publish = workflow.slice(publishStart, proofStart);
+  const proof = workflow.slice(proofStart);
+
+  assert.match(validation, /permissions:\n\s+actions: read\n\s+contents: read\n\s+deployments: read\n\s+id-token: none/u);
+  assert.doesNotMatch(validation, /contents:\s*write|public-release-promotion/u);
+  assert.doesNotMatch(validation, /npm run|node scripts\//u);
+  assert.match(validation, /node workflow-source\/scripts\/generate-phase6-attended-checklist\.mjs/u);
+  assert.match(validation, /node workflow-source\/scripts\/generate-phase5-attended-checklist\.mjs/u);
+  assert.match(validation, /release-validation\.json/u);
+  assert.match(validation, /jq -S -n/u);
+  assert.match(validation, /id:\s*validation_artifact/u);
+  assert.match(validation, /name:\s*Remove unsealed validation inputs[\s\S]*rm -rf retained-candidate attended-evidence/u);
+  assert.match(validation, /name:\s*Seal validated release inputs[\s\S]*find sealed-release-validation -mindepth 1 ! -type f ! -type d[\s\S]*find sealed-release-validation -type l/iu);
+  assert.doesNotMatch(validation, /gh run download/iu);
+  for (const output of [
+    "candidate_artifact_id", "candidate_artifact_digest",
+    "attended_artifact_id", "attended_artifact_digest",
+    "phase6_n4_artifact_id", "phase6_n4_artifact_digest",
+  ]) {
+    assert.match(validation, new RegExp(`${output}=`, "u"));
+  }
+  assert.equal((validation.match(/artifact-ids:\s*\$\{\{ steps\.selected\.outputs\./gu) ?? []).length, 3);
+  assert.match(validation, /verify_selected_artifact[\s\S]*\.id == \$artifact_id[\s\S]*\.digest == \$digest[\s\S]*\.workflow_run\.id == \$run_id[\s\S]*\.workflow_run\.head_sha == \$commit/u);
+  assert.throws(
+    () => validatePromotionWorkflowContract(workflow.replace(
+      /artifact-ids:\s*\$\{\{ steps\.selected\.outputs\.candidate_artifact_id \}\}/u,
+      'name: "private-release-candidate-${CANDIDATE_ID}"',
+    )),
+    /artifact ID|selected artifact|download/iu,
+  );
+
+  assert.match(publish, /needs:\s*validate/u);
+  assert.match(publish, /permissions:\n\s+actions: read\n\s+contents: write\n\s+deployments: read\n\s+id-token: none/u);
+  assert.match(publish, /environment:[\s\S]*name:\s*public-release-promotion/u);
+  assert.doesNotMatch(publish, /actions\/checkout|npm(?:\s|$)|node\s+["']?(?:scripts|workflow-source)\//u);
+  assert.doesNotMatch(publish, /git ls-remote/iu);
+  assert.match(publish, /actions\/download-artifact@[^\n]+[\s\S]*artifact-ids:\s*\$\{\{ needs\.validate\.outputs\.validation_artifact_id \}\}/u);
+  const publishStep = publish.slice(publish.indexOf("name: Publish hash-verified draft"));
+  assert.match(publishStep, /release=\$\(gh api[\s\S]*releases\/tags[\s\S]*current_release_assets=\$\(jq -cer/iu);
+  assert.match(publishStep, /jq -e --argjson assets "\$\{current_release_assets\}"[\s\S]*\.digest == \("sha256:" \+ \$expected\.sha256\)/u);
+  assert.doesNotMatch(publishStep, /\$\{release_assets\}/u);
+  assert.match(publish, /\.id == \$artifact_id[\s\S]*\.workflow_run\.id == \$run_id[\s\S]*\.workflow_run\.head_sha == \$commit[\s\S]*\.name == \$name[\s\S]*\.digest == \("sha256:" \+ \$digest\)/u);
+  assert.match(publish, /find sealed-release-validation -type l[\s\S]*= "0"/u);
+  assert.match(publish, /find sealed-release-validation -mindepth 1 ! -type f ! -type d[\s\S]*= "0"/u);
+  assert.match(publish, /find sealed-release-validation -mindepth 1 -type d[\s\S]*= "3"/u);
+  assert.match(publish, /test -d sealed-release-validation\/candidate[\s\S]*test -d sealed-release-validation\/attended[\s\S]*test -d sealed-release-validation\/phase6/u);
+  assert.match(publish, /for sealed_file in release-validation\.json[\s\S]*candidate\/release-toolchain\.json[\s\S]*attended\/attended-record\.json[\s\S]*phase6\/attended-record\.json[\s\S]*test -f "sealed-release-validation\/\$\{sealed_file\}"[\s\S]*test ! -L/iu);
+  assert.match(publish, /validation_digest="\$\{VALIDATION_ARTIFACT_DIGEST#sha256:\}"[\s\S]*test "\$\{#validation_digest\}" -eq 64/u);
+  assert.doesNotMatch(publish, /\$\{#VALIDATION_ARTIFACT_DIGEST#sha256:\}/u);
+  assert.doesNotMatch(workflow, /owner_token|OWNER_TOKEN/iu);
+  assert.match(validation, /cache-dependency-path:\s*workflow-source\/package-lock\.json/u);
+  for (const checkout of workflow.matchAll(/uses:\s*actions\/checkout@[^\n]+([\s\S]*?)(?=\n\s+- name:|\n\s+- uses:|$)/gu)) {
+    assert.match(checkout[1], /persist-credentials:\s*false/u);
+  }
+
+  assert.match(proof, /permissions:\n\s+actions: write\n\s+contents: read\n\s+deployments: read\n\s+id-token: none/u);
+  assert.match(proof, /persist-credentials:\s*false/u);
+  assert.match(proof, /node workflow-source\/scripts\/record-phase5-promotion-proof\.mjs/u);
+  assert.doesNotMatch(proof, /gh run download/iu);
+  assert.match(proof, /releases\/assets\/\$\{asset_id\}/u);
+  assert.match(proof, /--attended-record sealed-release-validation\/attended\/attended-record\.json/u);
+  assert.match(proof, /--phase6-n4-record sealed-release-validation\/phase6\/attended-record\.json/u);
+  for (const unsafe of [
+    ["contents: read", "contents: write"],
+    ["persist-credentials: false", "persist-credentials: true"],
+    ["needs: validate", "needs: []"],
+    ["node workflow-source/scripts/generate-phase5-attended-checklist.mjs verify", "npm run verify:attended:phase5"],
+  ]) {
+    assert.throws(
+      () => validatePromotionWorkflowContract(workflow.replace(...unsafe)),
+      /validation|publication|proof|credential|trusted|permission/iu,
     );
   }
 });
