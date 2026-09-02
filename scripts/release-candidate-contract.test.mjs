@@ -36,6 +36,14 @@ import {
 import {
   validatePhase6N4ReleaseBinding,
 } from "./verify-phase5-release-gate.mjs";
+import {
+  createPhase5PromotionProof,
+  executePhase5PromotionProof,
+  parsePhase5PromotionProofArguments,
+  serializePhase5PromotionProof,
+  validatePhase5PromotionProof,
+} from "./record-phase5-promotion-proof.mjs";
+import { parsePhase6AttendedChecklistArguments } from "./generate-phase6-attended-checklist.mjs";
 
 const SOURCE_COMMIT = "0123456789abcdef0123456789abcdef01234567";
 const SOURCE_DIGEST = "a".repeat(64);
@@ -375,20 +383,57 @@ test("release promotion requires the exact Phase 6 N4 upload run and canonical r
     'test "${GITHUB_REF_NAME}" = "main"',
     'mv workflow-source "${RUNNER_TEMP}/trusted-workflow-source"',
     'node "${RUNNER_TEMP}/trusted-workflow-source/scripts/generate-phase6-attended-checklist.mjs" verify',
-    '--phase6-n4-record phase6-n4-evidence/phase6/attended-record.json',
+    '--phase6-n4-record retained-candidate/evidence/phase6-n4-upload/phase6/attended-record.json',
     '--phase6-n4-run-id "${PHASE6_N4_RUN_ID}"',
     '--phase6-n4-artifact-name "${PHASE6_N4_ARTIFACT_NAME}"',
+    '--phase6-n4-record-sha256 "${PHASE6_N4_RECORD_SHA256}"',
   ]) {
     assert.ok(promotionWorkflow.includes(expected), `promotion is missing ${expected}`);
   }
   assert.match(
     promotionWorkflow,
-    /printf '%s  %s\\n' "\$\{PHASE6_N4_RECORD_SHA256\}"[\s\S]*?phase6\/attended-record\.json \| sha256sum --check/u,
+    /printf '%s  %s\\n' "\$\{PHASE6_N4_RECORD_SHA256\}"[\s\S]*?retained-candidate\/evidence\/phase6-n4-upload\/phase6\/attended-record\.json \| sha256sum --check/u,
   );
   assert.match(
     promotionWorkflow,
-    /node "\$\{RUNNER_TEMP\}\/trusted-workflow-source\/scripts\/generate-phase6-attended-checklist\.mjs" verify[\s\S]*--record phase6-n4-evidence\/phase6\/attended-record\.json/u,
+    /node "\$\{RUNNER_TEMP\}\/trusted-workflow-source\/scripts\/generate-phase6-attended-checklist\.mjs" verify[\s\S]*--record retained-candidate\/evidence\/phase6-n4-upload\/phase6\/attended-record\.json/u,
   );
+  const phase6Replay = parsePhase6AttendedChecklistArguments([
+    "verify",
+    "--bundle-dir", "retained-candidate",
+    "--manifest-sha256", SOURCE_DIGEST,
+    "--checklist", "retained-candidate/evidence/phase6-n4-upload/phase6/checklist.json",
+    "--observations", "retained-candidate/evidence/phase6-n4-upload/phase6/observations.json",
+    "--evidence-dir", "retained-candidate/evidence/phase6-n4-upload/phase6",
+    "--record", "retained-candidate/evidence/phase6-n4-upload/phase6/attended-record.json",
+  ]);
+  const bundleRoot = path.resolve(phase6Replay.bundleDirectory);
+  for (const value of [
+    phase6Replay.checklist,
+    phase6Replay.observations,
+    phase6Replay.evidenceDirectory,
+    phase6Replay.record,
+  ]) {
+    assert.equal(path.resolve(value).startsWith(`${bundleRoot}${path.sep}`), true);
+  }
+  for (const expected of [
+    'gh api --method POST "repos/${GITHUB_REPOSITORY}/git/refs"',
+    'name: Atomically reserve immutable release tag\n        env:\n          GH_TOKEN: ${{ github.token }}\n        run: |\n          set -euo pipefail',
+    '-f ref="refs/tags/${RELEASE_TAG}"',
+    '-f sha="${CANDIDATE_COMMIT}"',
+    'gh api "repos/${GITHUB_REPOSITORY}/git/ref/tags/${RELEASE_TAG}"',
+    '.ref == ("refs/tags/" + $tag)',
+    '.object.type == "commit"',
+    '.object.sha == $commit',
+    '--verify-tag',
+    '.tag_name == $tag',
+    '.target_commitish == $commit',
+    '.draft == true',
+    'git_ref_commit=$(git ls-remote --refs origin "refs/tags/${RELEASE_TAG}" | cut -f1)',
+    'test "${git_ref_commit}" = "${CANDIDATE_COMMIT}"',
+  ]) {
+    assert.ok(promotionWorkflow.includes(expected), `atomic tag flow is missing ${expected}`);
+  }
   const phase6ArtifactValidation = promotionWorkflow.slice(
     promotionWorkflow.indexOf(
       'jq -e --argjson run_id "${PHASE6_N4_RUN_ID}" --arg commit',
@@ -423,6 +468,23 @@ test("release promotion requires the exact Phase 6 N4 upload run and canonical r
       && candidateVerifier < publication,
     true,
   );
+  const tagCreate = promotionWorkflow.indexOf(
+    'gh api --method POST "repos/${GITHUB_REPOSITORY}/git/refs"',
+  );
+  const releaseCreate = promotionWorkflow.indexOf('gh release create "${RELEASE_TAG}"');
+  const releaseTargetCheck = promotionWorkflow.indexOf(".target_commitish == $commit");
+  const publicAssetCheck = promotionWorkflow.indexOf(
+    "name: Verify public release asset hashes",
+  );
+  const publishDraft = promotionWorkflow.indexOf("gh release edit");
+  assert.equal(
+    candidateVerifier < tagCreate
+      && tagCreate < releaseCreate
+      && releaseCreate < publicAssetCheck
+      && publicAssetCheck < releaseTargetCheck
+      && releaseTargetCheck < publishDraft,
+    true,
+  );
   for (const mutation of [
     promotionWorkflow.replace(
       '.path == ".github/workflows/release-human-evidence-upload.yml"',
@@ -436,19 +498,169 @@ test("release promotion requires the exact Phase 6 N4 upload run and canonical r
       ),
     ),
     promotionWorkflow.replace(
-      'phase6-n4-evidence/phase6/attended-record.json | sha256sum --check',
-      'phase6-n4-evidence/phase6/attended-record.json',
+      'retained-candidate/evidence/phase6-n4-upload/phase6/attended-record.json | sha256sum --check',
+      'retained-candidate/evidence/phase6-n4-upload/phase6/attended-record.json',
     ),
     promotionWorkflow.replace(
       'mv workflow-source "${RUNNER_TEMP}/trusted-workflow-source"',
       'true',
     ),
+    promotionWorkflow.replace(
+      'gh api --method POST "repos/${GITHUB_REPOSITORY}/git/refs"',
+      'true',
+    ),
+    promotionWorkflow.replace("--verify-tag", ""),
+    promotionWorkflow.replace(".target_commitish == $commit", "true"),
   ]) {
     assert.throws(
       () => validatePromotionWorkflowContract(mutation),
-      /Phase 6|N4|trusted|provenance|artifact|hash|source/iu,
+      /Phase 6|N4|trusted|provenance|artifact|hash|source|tag|draft|release/iu,
     );
   }
+});
+
+test("promotion proof cryptographically binds the exact Phase 6 N4 artifact", () => {
+  withBundle((bundleDirectory) => {
+    const candidate = writeCandidateManifest(bundleDirectory);
+    const phase6N4RecordSha256 = "d".repeat(64);
+    const phase6N4RunId = "789";
+    const phase6N4ArtifactName = "phase6-n4-evidence-candidate-001-789";
+    const proof = createPhase5PromotionProof({
+      candidate,
+      candidateRunId: "12345",
+      attendedRunId: "456",
+      attendedArtifactName: "attended-release-evidence-candidate-001",
+      attendedRecordSha256: SOURCE_DIGEST,
+      phase6N4RunId,
+      phase6N4ArtifactName,
+      phase6N4RecordSha256,
+      promotionRunId: "999",
+      repository: "owner/gym-tracker",
+      releaseTag: "v1.0.0",
+      publicAssetsDirectory: bundleDirectory,
+    });
+    assert.deepEqual({
+      phase6_n4_run_id: proof.phase6_n4_run_id,
+      phase6_n4_artifact_name: proof.phase6_n4_artifact_name,
+      phase6_n4_record_sha256: proof.phase6_n4_record_sha256,
+    }, {
+      phase6_n4_run_id: phase6N4RunId,
+      phase6_n4_artifact_name: phase6N4ArtifactName,
+      phase6_n4_record_sha256: phase6N4RecordSha256,
+    });
+    const proofBytes = Buffer.from(serializePhase5PromotionProof(proof));
+    assert.doesNotThrow(() => validatePhase5PromotionProof({
+      proof,
+      proofBytes,
+      candidate,
+      attendedRecordSha256: SOURCE_DIGEST,
+      phase6N4RunId,
+      phase6N4ArtifactName,
+      phase6N4RecordSha256,
+      publicAssetsDirectory: bundleDirectory,
+    }));
+    for (const substitution of [
+      { phase6N4RunId: "790" },
+      { phase6N4ArtifactName: "phase6-n4-evidence-other-790" },
+      { phase6N4RecordSha256: "e".repeat(64) },
+    ]) {
+      assert.throws(() => validatePhase5PromotionProof({
+        proof,
+        proofBytes,
+        candidate,
+        attendedRecordSha256: SOURCE_DIGEST,
+        phase6N4RunId,
+        phase6N4ArtifactName,
+        phase6N4RecordSha256,
+        publicAssetsDirectory: bundleDirectory,
+        ...substitution,
+      }), /promotion proof|Phase 6|noncanonical/iu);
+    }
+    const legacyProof = { ...proof };
+    delete legacyProof.phase6_n4_run_id;
+    delete legacyProof.phase6_n4_artifact_name;
+    delete legacyProof.phase6_n4_record_sha256;
+    assert.throws(() => validatePhase5PromotionProof({
+      proof: legacyProof,
+      proofBytes: Buffer.from(serializePhase5PromotionProof(legacyProof)),
+      candidate,
+      attendedRecordSha256: SOURCE_DIGEST,
+      phase6N4RunId,
+      phase6N4ArtifactName,
+      phase6N4RecordSha256,
+      publicAssetsDirectory: bundleDirectory,
+    }), /promotion proof|Phase 6|noncanonical/iu);
+  });
+
+  const cliArgs = [
+    "--bundle-dir", "retained-candidate",
+    "--manifest-sha256", SOURCE_DIGEST,
+    "--candidate-run-id", "12345",
+    "--attended-run-id", "456",
+    "--attended-artifact-name", "attended-release-evidence-candidate-001",
+    "--attended-record", "attended-record.json",
+    "--attended-record-sha256", SOURCE_DIGEST,
+    "--phase6-n4-run-id", "789",
+    "--phase6-n4-artifact-name", "phase6-n4-evidence-candidate-001-789",
+    "--phase6-n4-record", "phase6-record.json",
+    "--phase6-n4-record-sha256", "d".repeat(64),
+    "--promotion-run-id", "999",
+    "--repository", "owner/gym-tracker",
+    "--release-tag", "v1.0.0",
+    "--public-assets-dir", "public-assets",
+    "--output", "promotion-proof.json",
+  ];
+  const args = parsePhase5PromotionProofArguments(cliArgs);
+  assert.equal(args.phase6N4RunId, "789");
+  assert.equal(args.phase6N4ArtifactName, "phase6-n4-evidence-candidate-001-789");
+  assert.equal(args.phase6N4RecordSha256, "d".repeat(64));
+  assert.throws(() => parsePhase5PromotionProofArguments([
+    "--bundle-dir", "retained-candidate",
+  ]), /every immutable input|arguments/iu);
+  const phase6RecordFlag = cliArgs.indexOf("--phase6-n4-record");
+  const missingN4Record = cliArgs.filter(
+    (_, index) => index !== phase6RecordFlag && index !== phase6RecordFlag + 1,
+  );
+  assert.throws(
+    () => parsePhase5PromotionProofArguments(missingN4Record),
+    /every immutable input|arguments/iu,
+  );
+
+  withBundle((bundleDirectory) => {
+    writeCandidateManifest(bundleDirectory);
+    const attendedRecord = path.join(bundleDirectory, "attended-record.json");
+    const phase6N4Record = path.join(bundleDirectory, "phase6-n4-record.json");
+    const output = path.join(bundleDirectory, "promotion-proof.json");
+    writeFileSync(attendedRecord, "canonical attended bytes\n");
+    writeFileSync(phase6N4Record, "canonical Phase 6 N4 bytes\n");
+    const executionArgs = [
+      "--bundle-dir", bundleDirectory,
+      "--manifest-sha256", sha256(readFileSync(path.join(bundleDirectory, "release-candidate.json"))),
+      "--candidate-run-id", "12345",
+      "--attended-run-id", "456",
+      "--attended-artifact-name", "attended-release-evidence-candidate-001",
+      "--attended-record", attendedRecord,
+      "--attended-record-sha256", sha256(readFileSync(attendedRecord)),
+      "--phase6-n4-run-id", "789",
+      "--phase6-n4-artifact-name", "phase6-n4-evidence-candidate-001-789",
+      "--phase6-n4-record", phase6N4Record,
+      "--phase6-n4-record-sha256", sha256(readFileSync(phase6N4Record)),
+      "--promotion-run-id", "999",
+      "--repository", "owner/gym-tracker",
+      "--release-tag", "v1.0.0",
+      "--public-assets-dir", bundleDirectory,
+      "--output", output,
+    ];
+    assert.equal(executePhase5PromotionProof(executionArgs).phase6_n4_run_id, "789");
+    writeFileSync(phase6N4Record, "substituted Phase 6 N4 bytes\n");
+    assert.throws(
+      () => executePhase5PromotionProof([
+        ...executionArgs.slice(0, -2),
+        "--output", path.join(bundleDirectory, "rejected-proof.json"),
+      ]),
+      /Phase 6 N4 record hash/iu,
+    );
+  });
 });
 
 test("release gate requires the canonical approved record to bind passed Phase 6 N4 bytes", () => {

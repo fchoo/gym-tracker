@@ -22,7 +22,8 @@ export function serializePhase5PromotionProof(value) {
 
 export function createPhase5PromotionProof({
   candidate, candidateRunId, attendedRunId, attendedArtifactName,
-  attendedRecordSha256, promotionRunId, repository, releaseTag,
+  attendedRecordSha256, phase6N4RunId, phase6N4ArtifactName,
+  phase6N4RecordSha256, promotionRunId, repository, releaseTag,
   publicAssetsDirectory,
 }) {
   if (!RUN_ID.test(candidateRunId ?? "") || !RUN_ID.test(attendedRunId ?? "")
@@ -30,6 +31,11 @@ export function createPhase5PromotionProof({
     || !RELEASE_TAG.test(releaseTag ?? "")
     || !SHA256_PATTERN.test(attendedRecordSha256 ?? "")
     || !ARTIFACT_NAME.test(attendedArtifactName ?? "")
+    || !RUN_ID.test(phase6N4RunId ?? "")
+    || phase6N4RunId === candidateRunId
+    || phase6N4RunId === attendedRunId
+    || !ARTIFACT_NAME.test(phase6N4ArtifactName ?? "")
+    || !SHA256_PATTERN.test(phase6N4RecordSha256 ?? "")
     || candidate.manifest.workflow.run_id !== candidateRunId
     || candidate.manifest.workflow.repository !== repository) {
     throw new Error("promotion proof identity is malformed or substituted.");
@@ -66,20 +72,32 @@ export function createPhase5PromotionProof({
     attended_run_id: attendedRunId,
     attended_artifact_name: attendedArtifactName,
     attended_record_sha256: attendedRecordSha256,
+    phase6_n4_run_id: phase6N4RunId,
+    phase6_n4_artifact_name: phase6N4ArtifactName,
+    phase6_n4_record_sha256: phase6N4RecordSha256,
     release_tag: releaseTag,
     assets,
   };
 }
 
 export function validatePhase5PromotionProof({
-  proof, proofBytes, candidate, attendedRecordSha256, publicAssetsDirectory,
+  proof, proofBytes, candidate, attendedRecordSha256, phase6N4RunId,
+  phase6N4ArtifactName, phase6N4RecordSha256, publicAssetsDirectory,
 }) {
+  if (proof?.phase6_n4_run_id !== phase6N4RunId
+    || proof?.phase6_n4_artifact_name !== phase6N4ArtifactName
+    || proof?.phase6_n4_record_sha256 !== phase6N4RecordSha256) {
+    throw new Error("promotion proof does not match Phase 6 N4 evidence.");
+  }
   const expected = createPhase5PromotionProof({
     candidate,
     candidateRunId: proof?.candidate_run_id,
     attendedRunId: proof?.attended_run_id,
     attendedArtifactName: proof?.attended_artifact_name,
     attendedRecordSha256,
+    phase6N4RunId,
+    phase6N4ArtifactName,
+    phase6N4RecordSha256,
     promotionRunId: proof?.workflow?.run_id,
     repository: proof?.workflow?.repository,
     releaseTag: proof?.release_tag,
@@ -91,7 +109,7 @@ export function validatePhase5PromotionProof({
   return expected;
 }
 
-function parseArgs(args) {
+export function parsePhase5PromotionProofArguments(args) {
   const options = {};
   const mapping = new Map([
     ["--bundle-dir", "bundleDirectory"],
@@ -101,6 +119,10 @@ function parseArgs(args) {
     ["--attended-artifact-name", "attendedArtifactName"],
     ["--attended-record", "attendedRecord"],
     ["--attended-record-sha256", "attendedRecordSha256"],
+    ["--phase6-n4-run-id", "phase6N4RunId"],
+    ["--phase6-n4-artifact-name", "phase6N4ArtifactName"],
+    ["--phase6-n4-record", "phase6N4Record"],
+    ["--phase6-n4-record-sha256", "phase6N4RecordSha256"],
     ["--promotion-run-id", "promotionRunId"],
     ["--repository", "repository"],
     ["--release-tag", "releaseTag"],
@@ -122,13 +144,16 @@ function parseArgs(args) {
 }
 
 export function executePhase5PromotionProof(args = process.argv.slice(2)) {
-  const options = parseArgs(args);
+  const options = parsePhase5PromotionProofArguments(args);
   const candidate = loadPhase5Candidate({
     bundleDirectory: options.bundleDirectory,
     expectedManifestSha256: options.manifestSha256,
   });
   if (sha256File(options.attendedRecord) !== options.attendedRecordSha256) {
     throw new Error("promotion attended record hash does not match bytes.");
+  }
+  if (sha256File(options.phase6N4Record) !== options.phase6N4RecordSha256) {
+    throw new Error("promotion Phase 6 N4 record hash does not match bytes.");
   }
   const proof = createPhase5PromotionProof({ candidate, ...options });
   writeFileSync(options.output, serializePhase5PromotionProof(proof), { flag: "wx" });

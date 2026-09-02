@@ -205,6 +205,21 @@ export function validatePromotionWorkflowContract(source) {
   }
   requirePattern(source, /gh release create/iu,
     "promotion must create a new release only after the no-overwrite check.");
+  requirePattern(source, /gh api --method POST "repos\/\$\{GITHUB_REPOSITORY\}\/git\/refs"[\s\S]*-f ref="refs\/tags\/\$\{RELEASE_TAG\}"[\s\S]*-f sha="\$\{CANDIDATE_COMMIT\}"/u,
+    "promotion must atomically create the release tag at the candidate commit.");
+  requirePattern(source, /gh api "repos\/\$\{GITHUB_REPOSITORY\}\/git\/ref\/tags\/\$\{RELEASE_TAG\}"/u,
+    "promotion must read back the created release tag.");
+  requirePattern(source, /\.ref == \("refs\/tags\/" \+ \$tag\)[\s\S]*\.object\.type == "commit"[\s\S]*\.object\.sha == \$commit/iu,
+    "promotion must verify the release tag is a lightweight ref to the candidate commit.");
+  requirePattern(source, /gh release create[\s\S]*--target "\$\{CANDIDATE_COMMIT\}"[\s\S]*--verify-tag[\s\S]*--draft/iu,
+    "promotion must create a draft only from the already-created candidate tag.");
+  requirePattern(source, /\.tag_name == \$tag[\s\S]*\.target_commitish == \$commit[\s\S]*\.draft == true/iu,
+    "promotion must verify the draft release tag and candidate target before publication.");
+  if (/git ls-remote --exit-code --tags/iu.test(source)) {
+    throw new Error("promotion cannot rely on a racy tag-existence preflight.");
+  }
+  requirePattern(source, /git_ref_commit=\$\(git ls-remote --refs origin "refs\/tags\/\$\{RELEASE_TAG\}" \| cut -f1\)[\s\S]*test "\$\{git_ref_commit\}" = "\$\{CANDIDATE_COMMIT\}"/iu,
+    "promotion must independently verify the remote tag commit before publication.");
   requirePattern(source, /gh release create[\s\S]*?^\s*--draft\s*$/imu,
     "promotion must stage the release as a draft until public hashes pass.");
   requirePattern(source, /gh release edit[\s\S]*--draft=false/iu,
@@ -239,13 +254,27 @@ export function validatePromotionWorkflowContract(source) {
   );
   const exactCheckout = source.indexOf("name: Check out exact candidate source");
   const attendedVerifier = source.indexOf("npm run verify:attended:phase5");
+  const tagCreate = source.indexOf(
+    'gh api --method POST "repos/${GITHUB_REPOSITORY}/git/refs"',
+  );
   const publish = source.indexOf("gh release create");
+  const tagReadback = source.indexOf(
+    'gh api "repos/${GITHUB_REPOSITORY}/git/ref/tags/${RELEASE_TAG}"',
+  );
+  const releaseTargetCheck = source.indexOf(".target_commitish == $commit");
+  const publicAssetCheck = source.indexOf("name: Verify public release asset hashes");
+  const publishDraft = source.indexOf("gh release edit");
   if (!(validatorCheckout >= 0 && validatorCheckout < validator
     && validator < exactCheckout
     && exactCheckout < trustedPhase6Verifier
     && trustedPhase6Verifier < trustedPhase5Verifier
     && trustedPhase5Verifier < attendedVerifier
-    && attendedVerifier < publish)) {
+    && attendedVerifier < tagCreate
+    && tagCreate < publish
+    && publish < publicAssetCheck
+    && publicAssetCheck < tagReadback
+    && tagReadback < releaseTargetCheck
+    && releaseTargetCheck < publishDraft)) {
     throw new Error("promotion checkout, validator, verifier, and publish order is unsafe.");
   }
 }

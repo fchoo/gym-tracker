@@ -310,11 +310,11 @@ jobs:
           gh run download "${PHASE6_N4_RUN_ID}" \
             --repo "${GITHUB_REPOSITORY}" \
             --name "${PHASE6_N4_ARTIFACT_NAME}" \
-            --dir phase6-n4-evidence
+            --dir retained-candidate/evidence/phase6-n4-upload
           printf '%s  %s\n' "${ATTENDED_RECORD_SHA256}" \
             attended-evidence/attended-record.json | sha256sum --check
           printf '%s  %s\n' "${PHASE6_N4_RECORD_SHA256}" \
-            phase6-n4-evidence/phase6/attended-record.json | sha256sum --check
+            retained-candidate/evidence/phase6-n4-upload/phase6/attended-record.json | sha256sum --check
 
       - name: Replay Phase 6 and approval binding with trusted workflow source
         run: |
@@ -322,10 +322,10 @@ jobs:
           node "${RUNNER_TEMP}/trusted-workflow-source/scripts/generate-phase6-attended-checklist.mjs" verify \
             --bundle-dir retained-candidate \
             --manifest-sha256 "${manifest_sha256}" \
-            --checklist phase6-n4-evidence/phase6/checklist.json \
-            --observations phase6-n4-evidence/phase6/observations.json \
-            --evidence-dir phase6-n4-evidence/phase6 \
-            --record phase6-n4-evidence/phase6/attended-record.json
+            --checklist retained-candidate/evidence/phase6-n4-upload/phase6/checklist.json \
+            --observations retained-candidate/evidence/phase6-n4-upload/phase6/observations.json \
+            --evidence-dir retained-candidate/evidence/phase6-n4-upload/phase6 \
+            --record retained-candidate/evidence/phase6-n4-upload/phase6/attended-record.json
           node "${RUNNER_TEMP}/trusted-workflow-source/scripts/generate-phase5-attended-checklist.mjs" verify \
             --bundle-dir retained-candidate \
             --manifest-sha256 "${manifest_sha256}" \
@@ -334,10 +334,10 @@ jobs:
             --observations attended-evidence/observations.json \
             --evidence-dir attended-evidence \
             --record attended-evidence/attended-record.json \
-            --phase6-n4-record phase6-n4-evidence/phase6/attended-record.json \
-            --phase6-n4-checklist phase6-n4-evidence/phase6/checklist.json \
-            --phase6-n4-observations phase6-n4-evidence/phase6/observations.json \
-            --phase6-n4-evidence-dir phase6-n4-evidence/phase6 \
+            --phase6-n4-record retained-candidate/evidence/phase6-n4-upload/phase6/attended-record.json \
+            --phase6-n4-checklist retained-candidate/evidence/phase6-n4-upload/phase6/checklist.json \
+            --phase6-n4-observations retained-candidate/evidence/phase6-n4-upload/phase6/observations.json \
+            --phase6-n4-evidence-dir retained-candidate/evidence/phase6-n4-upload/phase6 \
             --phase6-n4-run-id "${PHASE6_N4_RUN_ID}" \
             --phase6-n4-artifact-name "${PHASE6_N4_ARTIFACT_NAME}"
 
@@ -352,18 +352,17 @@ jobs:
             --observations attended-evidence/observations.json \
             --evidence-dir attended-evidence \
             --record attended-evidence/attended-record.json \
-            --phase6-n4-record phase6-n4-evidence/phase6/attended-record.json \
-            --phase6-n4-checklist phase6-n4-evidence/phase6/checklist.json \
-            --phase6-n4-observations phase6-n4-evidence/phase6/observations.json \
-            --phase6-n4-evidence-dir phase6-n4-evidence/phase6 \
+            --phase6-n4-record retained-candidate/evidence/phase6-n4-upload/phase6/attended-record.json \
+            --phase6-n4-checklist retained-candidate/evidence/phase6-n4-upload/phase6/checklist.json \
+            --phase6-n4-observations retained-candidate/evidence/phase6-n4-upload/phase6/observations.json \
+            --phase6-n4-evidence-dir retained-candidate/evidence/phase6-n4-upload/phase6 \
             --phase6-n4-run-id "${PHASE6_N4_RUN_ID}" \
             --phase6-n4-artifact-name "${PHASE6_N4_ARTIFACT_NAME}"
 
-      - name: Refuse an existing tag or release
+      - name: Refuse an existing release or reused candidate
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          if git ls-remote --exit-code --tags origin "refs/tags/${RELEASE_TAG}"; then exit 1; fi
           if gh release view "${RELEASE_TAG}" >/dev/null 2>&1; then exit 1; fi
           candidate_run_id="${CANDIDATE_RUN_ID}"
           release_bodies=$(gh api --paginate "repos/${GITHUB_REPOSITORY}/releases" \
@@ -372,6 +371,20 @@ jobs:
             echo "candidate run was already reused by a public release" >&2
             exit 1
           fi
+
+      - name: Atomically reserve immutable release tag
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          tag_ref=$(gh api --method POST "repos/${GITHUB_REPOSITORY}/git/refs" \
+            -f ref="refs/tags/${RELEASE_TAG}" \
+            -f sha="${CANDIDATE_COMMIT}")
+          jq -e --arg tag "${RELEASE_TAG}" --arg commit "${CANDIDATE_COMMIT}" '
+            .ref == ("refs/tags/" + $tag)
+              and .object.type == "commit"
+              and .object.sha == $commit
+            ' <<<"${tag_ref}" >/dev/null
 
       - name: Create draft with verified retained bytes only
         env:
@@ -383,6 +396,7 @@ jobs:
             --title "Gym Tracker ${RELEASE_TAG}" \
             --target "${CANDIDATE_COMMIT}" \
             --notes "Candidate run: ${CANDIDATE_RUN_ID}" \
+            --verify-tag \
             --draft
 
       - name: Verify public release asset hashes
@@ -400,7 +414,23 @@ jobs:
       - name: Publish hash-verified draft
         env:
           GH_TOKEN: ${{ github.token }}
-        run: gh release edit "${RELEASE_TAG}" --draft=false
+        run: |
+          set -euo pipefail
+          verified_tag_ref=$(gh api "repos/${GITHUB_REPOSITORY}/git/ref/tags/${RELEASE_TAG}")
+          jq -e --arg tag "${RELEASE_TAG}" --arg commit "${CANDIDATE_COMMIT}" '
+            .ref == ("refs/tags/" + $tag)
+              and .object.type == "commit"
+              and .object.sha == $commit
+            ' <<<"${verified_tag_ref}" >/dev/null
+          release=$(gh api "repos/${GITHUB_REPOSITORY}/releases/tags/${RELEASE_TAG}")
+          jq -e --arg tag "${RELEASE_TAG}" --arg commit "${CANDIDATE_COMMIT}" '
+            .tag_name == $tag
+              and .target_commitish == $commit
+              and .draft == true
+            ' <<<"${release}" >/dev/null
+          git_ref_commit=$(git ls-remote --refs origin "refs/tags/${RELEASE_TAG}" | cut -f1)
+          test "${git_ref_commit}" = "${CANDIDATE_COMMIT}"
+          gh release edit "${RELEASE_TAG}" --draft=false
 
       - name: Record immutable post-promotion proof
         run: |
@@ -413,6 +443,10 @@ jobs:
             --attended-artifact-name "${ATTENDED_ARTIFACT_NAME}" \
             --attended-record attended-evidence/attended-record.json \
             --attended-record-sha256 "${ATTENDED_RECORD_SHA256}" \
+            --phase6-n4-run-id "${PHASE6_N4_RUN_ID}" \
+            --phase6-n4-artifact-name "${PHASE6_N4_ARTIFACT_NAME}" \
+            --phase6-n4-record retained-candidate/evidence/phase6-n4-upload/phase6/attended-record.json \
+            --phase6-n4-record-sha256 "${PHASE6_N4_RECORD_SHA256}" \
             --promotion-run-id "${GITHUB_RUN_ID}" \
             --repository "${GITHUB_REPOSITORY}" \
             --release-tag "${RELEASE_TAG}" \

@@ -182,11 +182,17 @@ export function executePhase5ReleaseGate(args = process.argv.slice(2)) {
     proof: JSON.parse(proofBytes.toString("utf8")),
     proofBytes, candidate,
     attendedRecordSha256: validated.attended_record_sha256,
+    phase6N4RunId: phase6Binding.evidence_run_id,
+    phase6N4ArtifactName: phase6Binding.artifact_name,
+    phase6N4RecordSha256: phase6Binding.record_sha256,
     publicAssetsDirectory: options.publicAssetsDirectory,
   });
   if (proof.candidate_run_id !== options.candidateRunId
     || proof.workflow.repository !== options.candidateRepository
     || proof.candidate_commit !== options.candidateCommit
+    || proof.phase6_n4_run_id !== options.phase6N4RunId
+    || proof.phase6_n4_artifact_name !== options.phase6N4ArtifactName
+    || proof.phase6_n4_record_sha256 !== phase6Binding.record_sha256
     || proof.release_tag !== options.releaseTag) {
     throw new Error("promotion proof does not match terminal inputs.");
   }
