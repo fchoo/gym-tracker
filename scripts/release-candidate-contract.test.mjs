@@ -26,6 +26,16 @@ import {
 import {
   configureReleaseSigning,
 } from "./configure-release-signing.mjs";
+import {
+  validatePromotionWorkflowContract,
+  validatePhase6N4PromotionInputValues,
+} from "./phase5-promotion-contract.mjs";
+import {
+  validateTerminalSealDocument,
+} from "./phase5-terminal-seal-contract.mjs";
+import {
+  validatePhase6N4ReleaseBinding,
+} from "./verify-phase5-release-gate.mjs";
 
 const SOURCE_COMMIT = "0123456789abcdef0123456789abcdef01234567";
 const SOURCE_DIGEST = "a".repeat(64);
@@ -323,6 +333,188 @@ test("release workflows contain a private build-once candidate path and no-rebui
   }
   const packageJson = JSON.parse(readFileSync(path.join(projectRoot, "package.json"), "utf8"));
   assert.equal(validateReleaseMatrixScripts(packageJson).count > 0, true);
+});
+
+test("release promotion requires the exact Phase 6 N4 upload run and canonical record digest", () => {
+  const projectRoot = path.resolve(path.dirname(new URL(import.meta.url).pathname), "..");
+  const promotionWorkflow = readFileSync(
+    path.join(projectRoot, ".github/workflows/release-promotion.yml"),
+    "utf8",
+  );
+
+  assert.doesNotThrow(() => validatePhase6N4PromotionInputValues({
+    phase6N4RunId: "789",
+    phase6N4ArtifactName: "phase6-n4-evidence-candidate-001-789",
+    phase6N4RecordSha256: "b".repeat(64),
+    distinctRunIds: ["123", "456"],
+  }));
+  for (const invalid of [
+    { phase6N4RunId: undefined },
+    { phase6N4RunId: "456" },
+    { phase6N4ArtifactName: "../phase6" },
+    { phase6N4RecordSha256: "not-a-digest" },
+  ]) {
+    assert.throws(() => validatePhase6N4PromotionInputValues({
+      phase6N4RunId: "789",
+      phase6N4ArtifactName: "phase6-n4-evidence-candidate-001-789",
+      phase6N4RecordSha256: "b".repeat(64),
+      distinctRunIds: ["123", "456"],
+      ...invalid,
+    }), /promotion input|release tag/iu);
+  }
+
+  assert.doesNotThrow(() => validatePromotionWorkflowContract(promotionWorkflow));
+  for (const expected of [
+    "phase6_evidence_run_id:",
+    "phase6_evidence_artifact_name:",
+    "phase6_n4_record_sha256:",
+    '.path == ".github/workflows/release-human-evidence-upload.yml"',
+    'verify_deployment_provenance "${PHASE6_N4_RUN_ID}" "${phase6_n4_run_attempt}" "${CANDIDATE_COMMIT}" "${phase6_n4_ref}" "private-release-observation-upload"',
+    'gh run download "${PHASE6_N4_RUN_ID}"',
+    'test "${GITHUB_SHA}" = "${CANDIDATE_COMMIT}"',
+    'test "${GITHUB_REF_NAME}" = "main"',
+    'mv workflow-source "${RUNNER_TEMP}/trusted-workflow-source"',
+    'node "${RUNNER_TEMP}/trusted-workflow-source/scripts/generate-phase6-attended-checklist.mjs" verify',
+    '--phase6-n4-record phase6-n4-evidence/phase6/attended-record.json',
+    '--phase6-n4-run-id "${PHASE6_N4_RUN_ID}"',
+    '--phase6-n4-artifact-name "${PHASE6_N4_ARTIFACT_NAME}"',
+  ]) {
+    assert.ok(promotionWorkflow.includes(expected), `promotion is missing ${expected}`);
+  }
+  assert.match(
+    promotionWorkflow,
+    /printf '%s  %s\\n' "\$\{PHASE6_N4_RECORD_SHA256\}"[\s\S]*?phase6\/attended-record\.json \| sha256sum --check/u,
+  );
+  assert.match(
+    promotionWorkflow,
+    /node "\$\{RUNNER_TEMP\}\/trusted-workflow-source\/scripts\/generate-phase6-attended-checklist\.mjs" verify[\s\S]*--record phase6-n4-evidence\/phase6\/attended-record\.json/u,
+  );
+  const phase6ArtifactValidation = promotionWorkflow.slice(
+    promotionWorkflow.indexOf(
+      'jq -e --argjson run_id "${PHASE6_N4_RUN_ID}" --arg commit',
+    ),
+    promotionWorkflow.indexOf('<<<"${phase6_n4_artifacts}" >/dev/null')
+      + '<<<"${phase6_n4_artifacts}" >/dev/null'.length,
+  );
+  for (const predicate of [
+    '.name == $name',
+    '.expired == false',
+    '.workflow_run.id == $run_id',
+    '.workflow_run.head_sha == $commit',
+    '| length == 1',
+  ]) {
+    assert.ok(phase6ArtifactValidation.includes(predicate));
+  }
+  const trustedReplay = promotionWorkflow.indexOf(
+    'node "${RUNNER_TEMP}/trusted-workflow-source/scripts/generate-phase6-attended-checklist.mjs" verify',
+  );
+  const trustedPhase5Replay = promotionWorkflow.indexOf(
+    'node "${RUNNER_TEMP}/trusted-workflow-source/scripts/generate-phase5-attended-checklist.mjs" verify',
+  );
+  const candidateCheckout = promotionWorkflow.indexOf(
+    "name: Check out exact candidate source",
+  );
+  const candidateVerifier = promotionWorkflow.indexOf("npm run verify:attended:phase5");
+  const publication = promotionWorkflow.indexOf("gh release create");
+  assert.equal(candidateCheckout >= 0 && candidateCheckout < trustedReplay, true);
+  assert.equal(
+    trustedReplay < trustedPhase5Replay
+      && trustedPhase5Replay < candidateVerifier
+      && candidateVerifier < publication,
+    true,
+  );
+  for (const mutation of [
+    promotionWorkflow.replace(
+      '.path == ".github/workflows/release-human-evidence-upload.yml"',
+      '.path == ".github/workflows/release-candidate.yml"',
+    ),
+    promotionWorkflow.replace(
+      phase6ArtifactValidation,
+      phase6ArtifactValidation.replace(
+        '.workflow_run.id == $run_id and .workflow_run.head_sha == $commit',
+        'true',
+      ),
+    ),
+    promotionWorkflow.replace(
+      'phase6-n4-evidence/phase6/attended-record.json | sha256sum --check',
+      'phase6-n4-evidence/phase6/attended-record.json',
+    ),
+    promotionWorkflow.replace(
+      'mv workflow-source "${RUNNER_TEMP}/trusted-workflow-source"',
+      'true',
+    ),
+  ]) {
+    assert.throws(
+      () => validatePromotionWorkflowContract(mutation),
+      /Phase 6|N4|trusted|provenance|artifact|hash|source/iu,
+    );
+  }
+});
+
+test("release gate requires the canonical approved record to bind passed Phase 6 N4 bytes", () => {
+  const candidateManifest = {
+    candidate_id: "candidate-001",
+    source: { commit: SOURCE_COMMIT },
+    artifacts: [
+      { kind: "apk", sha256: "b".repeat(64) },
+      { kind: "aab", sha256: "c".repeat(64) },
+    ],
+  };
+  const phase6RecordBytes = Buffer.from("canonical Phase 6 record bytes\n");
+  const binding = {
+    record_sha256: sha256(phase6RecordBytes),
+    evidence_run_id: "789",
+    artifact_name: "phase6-n4-evidence-candidate-001-789",
+    candidate_id: "candidate-001",
+    source_commit: SOURCE_COMMIT,
+    manifest_sha256: SOURCE_DIGEST,
+    apk_sha256: "b".repeat(64),
+    status: "passed",
+  };
+  const input = {
+    candidateManifest,
+    manifestSha256: SOURCE_DIGEST,
+    phase5Record: { phase6_attended_evidence: binding },
+    phase6Record: { status: "passed" },
+    phase6RecordBytes,
+    phase6N4RunId: "789",
+    phase6N4ArtifactName: "phase6-n4-evidence-candidate-001-789",
+  };
+
+  assert.deepEqual(validatePhase6N4ReleaseBinding(input), binding);
+  for (const mutation of [
+    { phase5Record: {} },
+    { phase5Record: { phase6_attended_evidence: { ...binding, extra: true } } },
+    { phase5Record: { phase6_attended_evidence: { ...binding, status: "failed" } } },
+    { phase5Record: { phase6_attended_evidence: { ...binding, source_commit: "d".repeat(40) } } },
+    { phase6Record: { status: "failed" } },
+    { phase6RecordBytes: Buffer.from("substituted bytes\n") },
+    { phase6N4RunId: "790" },
+  ]) {
+    assert.throws(
+      () => validatePhase6N4ReleaseBinding({ ...input, ...mutation }),
+      /Phase 6 N4|binding|record|candidate|passed/iu,
+    );
+  }
+});
+
+test("Terminal Seal replays Phase 6 N4 source evidence in its sole validation command", () => {
+  const terminal = [
+    "05-07-SUMMARY.md verification tracking review.",
+    "Promotion is complete. This is the literal final executable command; make no tool call afterward.",
+    "```bash",
+    "npm run verify:release:phase5 -- --bundle-dir <retained-candidate-directory> --manifest-sha256 <manifest-sha256> --automated-evidence <automated-evidence-json> --attended-record <attended-record-json> --checklist <checklist-json> --observations <observations-json> --evidence-dir <attended-evidence-directory> --phase6-n4-record <phase6-n4-record-json> --phase6-n4-checklist <phase6-n4-checklist-json> --phase6-n4-observations <phase6-n4-observations-json> --phase6-n4-evidence-dir <phase6-n4-evidence-directory> --phase6-n4-run-id <phase6-n4-run-id> --phase6-n4-artifact-name <phase6-n4-artifact-name> --release-tag <release-tag> --candidate-run-id <candidate-run-id> --candidate-repository <owner/repository> --candidate-commit <candidate-commit> --promotion-proof <promotion-proof-json> --public-assets-dir <downloaded-public-assets-directory>",
+    "```",
+  ].join("\n");
+
+  assert.doesNotThrow(() => validateTerminalSealDocument(terminal));
+  assert.throws(
+    () => validateTerminalSealDocument(terminal.replace(
+      / --phase6-n4-record <phase6-n4-record-json>/u,
+      "",
+    )),
+    /validate|executable|command/iu,
+  );
 });
 
 test("emulator-runner commands are self-contained on one line", () => {

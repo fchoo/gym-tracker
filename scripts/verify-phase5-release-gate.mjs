@@ -1,5 +1,6 @@
 #!/usr/bin/env node
 
+import { createHash } from "node:crypto";
 import { readFileSync } from "node:fs";
 import path from "node:path";
 import process from "node:process";
@@ -19,6 +20,57 @@ import {
 const RELEASE_TAG = /^v[0-9]+\.[0-9]+\.[0-9]+(?:-[0-9A-Za-z.-]+)?$/u;
 const REPOSITORY = /^[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+$/u;
 const COMMIT = /^[a-f0-9]{40}$/u;
+const RUN_ID = /^[1-9][0-9]*$/u;
+const ARTIFACT = /^[A-Za-z0-9][A-Za-z0-9._-]{2,127}$/u;
+
+function sha256(bytes) {
+  return createHash("sha256").update(bytes).digest("hex");
+}
+
+export function validatePhase6N4ReleaseBinding({
+  candidateManifest,
+  manifestSha256,
+  phase5Record,
+  phase6Record,
+  phase6RecordBytes,
+  phase6N4RunId,
+  phase6N4ArtifactName,
+}) {
+  const binding = phase5Record?.phase6_attended_evidence;
+  const apk = candidateManifest?.artifacts?.filter(({ kind }) => kind === "apk");
+  const expectedKeys = [
+    "record_sha256",
+    "evidence_run_id",
+    "artifact_name",
+    "candidate_id",
+    "source_commit",
+    "manifest_sha256",
+    "apk_sha256",
+    "status",
+  ];
+  if (binding === null
+    || binding === undefined
+    || typeof binding !== "object"
+    || Array.isArray(binding)
+    || JSON.stringify(Object.keys(binding)) !== JSON.stringify(expectedKeys)
+    || !SHA256_PATTERN.test(binding.record_sha256 ?? "")
+    || !RUN_ID.test(binding.evidence_run_id ?? "")
+    || !ARTIFACT.test(binding.artifact_name ?? "")
+    || binding.candidate_id !== candidateManifest?.candidate_id
+    || binding.source_commit !== candidateManifest?.source?.commit
+    || binding.manifest_sha256 !== manifestSha256
+    || apk?.length !== 1
+    || binding.apk_sha256 !== apk[0].sha256
+    || binding.status !== "passed"
+    || phase6Record?.status !== "passed"
+    || !Buffer.isBuffer(phase6RecordBytes)
+    || sha256(phase6RecordBytes) !== binding.record_sha256
+    || binding.evidence_run_id !== phase6N4RunId
+    || binding.artifact_name !== phase6N4ArtifactName) {
+    throw new Error("Phase 6 N4 binding does not match the passed canonical record and candidate.");
+  }
+  return binding;
+}
 
 export function validatePhase5ReleaseEvidenceSet(input) {
   return validatePhase5AutomatedEvidenceSet({
@@ -42,6 +94,12 @@ function parseArgs(args) {
     ["--automated-evidence", "automatedEvidence"],
     ["--attended-record", "attendedRecord"],
     ["--evidence-dir", "evidenceDirectory"],
+    ["--phase6-n4-record", "phase6N4Record"],
+    ["--phase6-n4-checklist", "phase6N4Checklist"],
+    ["--phase6-n4-observations", "phase6N4Observations"],
+    ["--phase6-n4-evidence-dir", "phase6N4EvidenceDirectory"],
+    ["--phase6-n4-run-id", "phase6N4RunId"],
+    ["--phase6-n4-artifact-name", "phase6N4ArtifactName"],
     ["--release-tag", "releaseTag"],
     ["--candidate-run-id", "candidateRunId"],
     ["--candidate-repository", "candidateRepository"],
@@ -62,7 +120,9 @@ function parseArgs(args) {
   if (Object.keys(options).length !== keys.size
     || !SHA256_PATTERN.test(options.manifestSha256 ?? "")
     || !RELEASE_TAG.test(options.releaseTag ?? "")
-    || !/^[1-9][0-9]*$/u.test(options.candidateRunId ?? "")
+    || !RUN_ID.test(options.candidateRunId ?? "")
+    || !RUN_ID.test(options.phase6N4RunId ?? "")
+    || !ARTIFACT.test(options.phase6N4ArtifactName ?? "")
     || !REPOSITORY.test(options.candidateRepository ?? "")
     || !COMMIT.test(options.candidateCommit ?? "")) {
     throw new Error("release gate requires exact candidate, evidence, and promotion inputs.");
@@ -90,6 +150,8 @@ export function executePhase5ReleaseGate(args = process.argv.slice(2)) {
   });
   const recordBytes = readFileSync(options.attendedRecord);
   const record = JSON.parse(recordBytes.toString("utf8"));
+  const phase6RecordBytes = readFileSync(options.phase6N4Record);
+  const phase6Record = JSON.parse(phase6RecordBytes.toString("utf8"));
   const validated = validatePhase5AttendedRecordBytes({
     candidateManifest: candidate.manifest,
     manifestSha256: candidate.manifest_sha256,
@@ -98,7 +160,22 @@ export function executePhase5ReleaseGate(args = process.argv.slice(2)) {
     automatedEvidencePath: options.automatedEvidence,
     checklistPath: options.checklist,
     observationsPath: options.observations,
+    phase6N4RecordPath: options.phase6N4Record,
+    phase6N4ChecklistPath: options.phase6N4Checklist,
+    phase6N4ObservationsPath: options.phase6N4Observations,
+    phase6N4EvidenceDirectory: options.phase6N4EvidenceDirectory,
+    phase6N4RunId: options.phase6N4RunId,
+    phase6N4ArtifactName: options.phase6N4ArtifactName,
     rows: derivePhase5AttendedRows(),
+  });
+  const phase6Binding = validatePhase6N4ReleaseBinding({
+    candidateManifest: candidate.manifest,
+    manifestSha256: candidate.manifest_sha256,
+    phase5Record: record,
+    phase6Record,
+    phase6RecordBytes,
+    phase6N4RunId: options.phase6N4RunId,
+    phase6N4ArtifactName: options.phase6N4ArtifactName,
   });
   const proofBytes = readFileSync(options.promotionProof);
   const proof = validatePhase5PromotionProof({
@@ -122,6 +199,9 @@ export function executePhase5ReleaseGate(args = process.argv.slice(2)) {
     candidate_id: candidate.manifest.candidate_id,
     manifest_sha256: candidate.manifest_sha256,
     attended_record_sha256: validated.attended_record_sha256,
+    phase6_n4_record_sha256: phase6Binding.record_sha256,
+    phase6_n4_run_id: phase6Binding.evidence_run_id,
+    phase6_n4_artifact_name: phase6Binding.artifact_name,
     promotion_run_id: proof.workflow.run_id,
     release_tag: options.releaseTag,
     upload_files: candidate.manifest.artifacts.map(({ file, sha256, size_bytes: sizeBytes }) => ({

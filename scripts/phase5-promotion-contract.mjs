@@ -87,6 +87,18 @@ export function validateReleasePromotionInputValues(input) {
   }
 }
 
+export function validatePhase6N4PromotionInputValues(input) {
+  const distinctRunIds = input?.distinctRunIds;
+  if (!RUN_ID.test(input?.phase6N4RunId ?? "")
+    || !ARTIFACT.test(input?.phase6N4ArtifactName ?? "")
+    || !SHA256.test(input?.phase6N4RecordSha256 ?? "")
+    || !Array.isArray(distinctRunIds)
+    || distinctRunIds.some((runId) => !RUN_ID.test(runId)
+      || runId === input.phase6N4RunId)) {
+    throw new Error("Phase 6 N4 promotion input is invalid.");
+  }
+}
+
 export function validatePromotionWorkflowContract(source) {
   validateSelectedRunContract(source, {
     runIdVariable: "CANDIDATE_RUN_ID", runJsonVariable: "candidate_run",
@@ -100,8 +112,15 @@ export function validatePromotionWorkflowContract(source) {
     attemptVariable: "attended_run_attempt", refVariable: "attended_ref",
     environment: "private-release-attended",
   });
+  validateSelectedRunContract(source, {
+    runIdVariable: "PHASE6_N4_RUN_ID", runJsonVariable: "phase6_n4_run",
+    runUrlVariable: "phase6_n4_run_url", workflowPath: ".github/workflows/release-human-evidence-upload.yml",
+    attemptVariable: "phase6_n4_run_attempt", refVariable: "phase6_n4_ref",
+    environment: "private-release-observation-upload",
+  });
   validateSelectedArtifactContract(source, "CANDIDATE_RUN_ID", "candidate_artifacts");
   validateSelectedArtifactContract(source, "ATTENDED_RUN_ID", "attended_artifacts");
+  validateSelectedArtifactContract(source, "PHASE6_N4_RUN_ID", "phase6_n4_artifacts");
   requirePattern(source, /concurrency:[\s\S]*group:\s*release-promotion\s*$[\s\S]*cancel-in-progress:\s*false/mu,
     "promotion must use one non-canceling repository-wide lock.");
   requirePattern(source, /permissions:[\s\S]*actions:\s*read[\s\S]*contents:\s*write[\s\S]*deployments:\s*read/iu,
@@ -111,32 +130,38 @@ export function validatePromotionWorkflowContract(source) {
   for (const input of [
     "candidate_run_id", "candidate_id", "candidate_commit",
     "attended_run_id", "attended_artifact_name", "attended_record_sha256",
+    "phase6_evidence_run_id", "phase6_evidence_artifact_name",
+    "phase6_n4_record_sha256",
     "release_tag",
   ]) {
     requirePattern(source, new RegExp(`${input}:`, "u"), `promotion input is missing: ${input}`);
   }
   requirePattern(source, /CANDIDATE_RUN_ID:\s*\$\{\{ inputs\.candidate_run_id \}\}[\s\S]*actions\/runs\/\$\{CANDIDATE_RUN_ID\}/u,
     "promotion must inspect the explicitly selected candidate run.");
-  if ((source.match(/\.conclusion\s*==\s*\\?"success\\?"/gu) ?? []).length < 2) {
-    throw new Error("promotion must reject candidate or attended runs that were not successful.");
+  if ((source.match(/\.conclusion\s*==\s*\\?"success\\?"/gu) ?? []).length < 3) {
+    throw new Error("promotion must reject candidate, attended, or Phase 6 N4 runs that were not successful.");
   }
-  if ((source.match(/\.id == \$run_id and \.status == "completed" and \.conclusion == "success"/gu) ?? []).length < 2) {
-    throw new Error("promotion must bind both selected successful runs to their exact run IDs and commit.");
+  if ((source.match(/\.id == \$run_id and \.status == "completed" and \.conclusion == "success"/gu) ?? []).length < 3) {
+    throw new Error("promotion must bind all selected successful runs to their exact run IDs and commit.");
   }
   requirePattern(source, /\.html_url == \$run_url[\s\S]*\.head_sha == \$commit[\s\S]*\.head_branch == "main"/iu,
     "promotion must bind selected runs to their exact URL, commit, and main branch.");
   requirePattern(source, /CANDIDATE_COMMIT:\s*\$\{\{ inputs\.candidate_commit \}\}[\s\S]*head_sha[^\n]+\$commit/iu,
     "promotion must bind the candidate run to the selected commit.");
-  requirePattern(source, /gh run download[\s\S]*candidate_run_id[\s\S]*private-release-candidate/iu,
+  requirePattern(source, /gh run download[\s\S]*CANDIDATE_RUN_ID[\s\S]*private-release-candidate/iu,
     "promotion must download the exact successful candidate artifact.");
-  requirePattern(source, /gh run download[\s\S]*attended_run_id[\s\S]*attended_artifact_name/iu,
+  requirePattern(source, /gh run download[\s\S]*ATTENDED_RUN_ID[\s\S]*ATTENDED_ARTIFACT_NAME/iu,
     "promotion must download immutable attended evidence.");
+  requirePattern(source, /gh run download[\s\S]*PHASE6_N4_RUN_ID[\s\S]*PHASE6_N4_ARTIFACT_NAME/iu,
+    "promotion must download immutable Phase 6 N4 evidence.");
   requirePattern(source, /release-candidate\.yml/iu,
     "promotion must pin the candidate workflow identity.");
   requirePattern(source, /release-attended-evidence\.yml/iu,
     "promotion must pin the attended workflow identity.");
-  requirePattern(source, /private-release-candidate[\s\S]*private-release-attended/iu,
-    "promotion must pin the protected candidate and attended environments.");
+  requirePattern(source, /release-human-evidence-upload\.yml/iu,
+    "promotion must pin the Phase 6 N4 upload workflow identity.");
+  requirePattern(source, /private-release-candidate[\s\S]*private-release-attended[\s\S]*private-release-observation-upload/iu,
+    "promotion must pin the protected candidate, attended, and Phase 6 N4 environments.");
   for (const pattern of [
     /set -euo pipefail/u,
     /gh api --method GET --paginate --slurp[\s\S]*\/deployments/iu,
@@ -161,6 +186,16 @@ export function validatePromotionWorkflowContract(source) {
     "promotion must checkout the exact candidate source.");
   requirePattern(source, /verify:attended:phase5/iu,
     "promotion must run the complete attended preflight.");
+  requirePattern(source, /node "\$\{RUNNER_TEMP\}\/trusted-workflow-source\/scripts\/generate-phase6-attended-checklist\.mjs" verify/iu,
+    "promotion must replay the Phase 6 N4 verifier from trusted workflow source.");
+  requirePattern(source, /node "\$\{RUNNER_TEMP\}\/trusted-workflow-source\/scripts\/generate-phase5-attended-checklist\.mjs" verify[\s\S]*--phase6-n4-record/iu,
+    "promotion must replay the patched Phase 5 verifier from trusted workflow source.");
+  requirePattern(source, /test "\$\{GITHUB_SHA\}" = "\$\{CANDIDATE_COMMIT\}"[\s\S]*test "\$\{GITHUB_REF_NAME\}" = "main"/u,
+    "promotion workflow source must be the exact candidate commit on main.");
+  requirePattern(source, /mv workflow-source "\$\{RUNNER_TEMP\}\/trusted-workflow-source"/u,
+    "promotion must preserve trusted release-gate source before candidate checkout.");
+  requirePattern(source, /printf '%s  %s\\n' "\$\{PHASE6_N4_RECORD_SHA256\}"[\s\S]*?phase6\/attended-record\.json \| sha256sum --check/iu,
+    "promotion must hash-check the selected Phase 6 N4 record bytes.");
   requirePattern(source, /gh release view[^\n]+(?:&&|then)\s*exit 1/iu,
     "promotion must reject an existing tag instead of overwriting it.");
   requirePattern(source, /candidate_run_id=[^\n]+[\s\S]*release_bodies=\$\(gh api --paginate[\s\S]*reused/iu,
@@ -196,11 +231,20 @@ export function validatePromotionWorkflowContract(source) {
   }
   const validatorCheckout = source.indexOf("name: Check out workflow source for input validation");
   const validator = source.indexOf("node workflow-source/scripts/validate-phase5-promotion-inputs.mjs");
+  const trustedPhase6Verifier = source.indexOf(
+    'node "${RUNNER_TEMP}/trusted-workflow-source/scripts/generate-phase6-attended-checklist.mjs" verify',
+  );
+  const trustedPhase5Verifier = source.indexOf(
+    'node "${RUNNER_TEMP}/trusted-workflow-source/scripts/generate-phase5-attended-checklist.mjs" verify',
+  );
   const exactCheckout = source.indexOf("name: Check out exact candidate source");
   const attendedVerifier = source.indexOf("npm run verify:attended:phase5");
   const publish = source.indexOf("gh release create");
   if (!(validatorCheckout >= 0 && validatorCheckout < validator
-    && validator < exactCheckout && exactCheckout < attendedVerifier
+    && validator < exactCheckout
+    && exactCheckout < trustedPhase6Verifier
+    && trustedPhase6Verifier < trustedPhase5Verifier
+    && trustedPhase5Verifier < attendedVerifier
     && attendedVerifier < publish)) {
     throw new Error("promotion checkout, validator, verifier, and publish order is unsafe.");
   }

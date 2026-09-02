@@ -27,6 +27,18 @@ on:
         description: SHA-256 of canonical attended-record.json
         required: true
         type: string
+      phase6_evidence_run_id:
+        description: Successful immutable Phase 6 N4 upload workflow run ID
+        required: true
+        type: string
+      phase6_evidence_artifact_name:
+        description: Immutable Phase 6 N4 evidence artifact name
+        required: true
+        type: string
+      phase6_n4_record_sha256:
+        description: SHA-256 of canonical Phase 6 N4 attended-record.json
+        required: true
+        type: string
       release_tag:
         description: New immutable release tag, for example v1.0.0
         required: true
@@ -49,6 +61,9 @@ env:
   ATTENDED_RUN_ID: ${{ inputs.attended_run_id }}
   ATTENDED_ARTIFACT_NAME: ${{ inputs.attended_artifact_name }}
   ATTENDED_RECORD_SHA256: ${{ inputs.attended_record_sha256 }}
+  PHASE6_N4_RUN_ID: ${{ inputs.phase6_evidence_run_id }}
+  PHASE6_N4_ARTIFACT_NAME: ${{ inputs.phase6_evidence_artifact_name }}
+  PHASE6_N4_RECORD_SHA256: ${{ inputs.phase6_n4_record_sha256 }}
   RELEASE_TAG: ${{ inputs.release_tag }}
 
 jobs:
@@ -70,15 +85,23 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
-          case "${CANDIDATE_RUN_ID}:${ATTENDED_RUN_ID}" in *[!0-9:]*|:*|*:) exit 1 ;; esac
+          case "${CANDIDATE_RUN_ID}:${ATTENDED_RUN_ID}:${PHASE6_N4_RUN_ID}" in *[!0-9:]*|:*|*:) exit 1 ;; esac
           case "${CANDIDATE_ID}" in ''|*[!a-z0-9-]*|-*|*-) exit 1 ;; esac
           case "${ATTENDED_ARTIFACT_NAME}" in ''|*[!A-Za-z0-9._-]*|.*|*.) exit 1 ;; esac
+          case "${PHASE6_N4_ARTIFACT_NAME}" in ''|*[!A-Za-z0-9._-]*|.*|*.) exit 1 ;; esac
           test "${CANDIDATE_RUN_ID}" != "${ATTENDED_RUN_ID}"
+          test "${CANDIDATE_RUN_ID}" != "${PHASE6_N4_RUN_ID}"
+          test "${ATTENDED_RUN_ID}" != "${PHASE6_N4_RUN_ID}"
+          test "${GITHUB_SHA}" = "${CANDIDATE_COMMIT}"
+          test "${GITHUB_REF_NAME}" = "main"
           test "${#CANDIDATE_COMMIT}" -eq 40
           test "${#CANDIDATE_ID}" -ge 3
           test "${#CANDIDATE_ID}" -le 80
           test "${#ATTENDED_ARTIFACT_NAME}" -le 128
           test "${#ATTENDED_RECORD_SHA256}" -eq 64
+          test "${#PHASE6_N4_ARTIFACT_NAME}" -le 128
+          test "${#PHASE6_N4_RECORD_SHA256}" -eq 64
+          case "${CANDIDATE_COMMIT}:${ATTENDED_RECORD_SHA256}:${PHASE6_N4_RECORD_SHA256}" in *[!a-f0-9:]*) exit 1 ;; esac
           node workflow-source/scripts/validate-phase5-promotion-inputs.mjs \
             --candidate-run-id "${CANDIDATE_RUN_ID}" \
             --attended-run-id "${ATTENDED_RUN_ID}" \
@@ -87,6 +110,15 @@ jobs:
             --attended-artifact-name "${ATTENDED_ARTIFACT_NAME}" \
             --attended-record-sha256 "${ATTENDED_RECORD_SHA256}" \
             --release-tag "${RELEASE_TAG}"
+          node --input-type=module <<'NODE'
+          import { validatePhase6N4PromotionInputValues } from "./workflow-source/scripts/phase5-promotion-contract.mjs";
+          validatePhase6N4PromotionInputValues({
+            phase6N4RunId: process.env.PHASE6_N4_RUN_ID,
+            phase6N4ArtifactName: process.env.PHASE6_N4_ARTIFACT_NAME,
+            phase6N4RecordSha256: process.env.PHASE6_N4_RECORD_SHA256,
+            distinctRunIds: [process.env.CANDIDATE_RUN_ID, process.env.ATTENDED_RUN_ID],
+          });
+          NODE
           verify_deployment_provenance() {
             local run_id="$1"
             local run_attempt="$2"
@@ -178,8 +210,10 @@ jobs:
           }
           candidate_run=$(gh api "repos/${GITHUB_REPOSITORY}/actions/runs/${CANDIDATE_RUN_ID}")
           attended_run=$(gh api "repos/${GITHUB_REPOSITORY}/actions/runs/${ATTENDED_RUN_ID}")
+          phase6_n4_run=$(gh api "repos/${GITHUB_REPOSITORY}/actions/runs/${PHASE6_N4_RUN_ID}")
           candidate_run_url="${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${CANDIDATE_RUN_ID}"
           attended_run_url="${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${ATTENDED_RUN_ID}"
+          phase6_n4_run_url="${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${PHASE6_N4_RUN_ID}"
           jq -e --argjson run_id "${CANDIDATE_RUN_ID}" --arg run_url "${candidate_run_url}" \
             --arg commit "${CANDIDATE_COMMIT}" --arg repo "${GITHUB_REPOSITORY}" '
             .id == $run_id and .status == "completed" and .conclusion == "success"
@@ -196,16 +230,29 @@ jobs:
               and .path == ".github/workflows/release-attended-evidence.yml"
             ' \
             <<<"${attended_run}" >/dev/null
+          jq -e --argjson run_id "${PHASE6_N4_RUN_ID}" --arg run_url "${phase6_n4_run_url}" \
+            --arg commit "${CANDIDATE_COMMIT}" --arg repo "${GITHUB_REPOSITORY}" '
+            .id == $run_id and .status == "completed" and .conclusion == "success"
+              and .html_url == $run_url and .head_sha == $commit and .head_branch == "main"
+              and .repository.full_name == $repo and .event == "workflow_dispatch"
+              and .path == ".github/workflows/release-human-evidence-upload.yml"
+            ' \
+            <<<"${phase6_n4_run}" >/dev/null
           candidate_run_attempt=$(jq -er '.run_attempt | select(type == "number" and . >= 1)' <<<"${candidate_run}")
           candidate_ref=$(jq -er '.head_branch | select(type == "string" and length > 0)' <<<"${candidate_run}")
           attended_run_attempt=$(jq -er '.run_attempt | select(type == "number" and . >= 1)' <<<"${attended_run}")
           attended_ref=$(jq -er '.head_branch | select(type == "string" and length > 0)' <<<"${attended_run}")
+          phase6_n4_run_attempt=$(jq -er '.run_attempt | select(type == "number" and . >= 1)' <<<"${phase6_n4_run}")
+          phase6_n4_ref=$(jq -er '.head_branch | select(type == "string" and length > 0)' <<<"${phase6_n4_run}")
           verify_deployment_provenance "${CANDIDATE_RUN_ID}" "${candidate_run_attempt}" "${CANDIDATE_COMMIT}" "${candidate_ref}" "private-release-candidate"
           verify_deployment_provenance "${ATTENDED_RUN_ID}" "${attended_run_attempt}" "${CANDIDATE_COMMIT}" "${attended_ref}" "private-release-attended"
+          verify_deployment_provenance "${PHASE6_N4_RUN_ID}" "${phase6_n4_run_attempt}" "${CANDIDATE_COMMIT}" "${phase6_n4_ref}" "private-release-observation-upload"
           candidate_artifacts=$(gh api --method GET --paginate --slurp \
             "repos/${GITHUB_REPOSITORY}/actions/runs/${CANDIDATE_RUN_ID}/artifacts" -F per_page=100)
           attended_artifacts=$(gh api --method GET --paginate --slurp \
             "repos/${GITHUB_REPOSITORY}/actions/runs/${ATTENDED_RUN_ID}/artifacts" -F per_page=100)
+          phase6_n4_artifacts=$(gh api --method GET --paginate --slurp \
+            "repos/${GITHUB_REPOSITORY}/actions/runs/${PHASE6_N4_RUN_ID}/artifacts" -F per_page=100)
           jq -e --argjson run_id "${CANDIDATE_RUN_ID}" --arg commit "${CANDIDATE_COMMIT}" \
             --arg name "private-release-candidate-${CANDIDATE_ID}" '
             if all(.[]; type == "object" and (.artifacts | type == "array")) then
@@ -222,6 +269,17 @@ jobs:
             else error("malformed artifact pages") end
             ' \
             <<<"${attended_artifacts}" >/dev/null
+          jq -e --argjson run_id "${PHASE6_N4_RUN_ID}" --arg commit "${CANDIDATE_COMMIT}" \
+            --arg name "${PHASE6_N4_ARTIFACT_NAME}" '
+            if all(.[]; type == "object" and (.artifacts | type == "array")) then
+              [.[] | .artifacts[] | select(.name == $name and .expired == false
+                and .workflow_run.id == $run_id and .workflow_run.head_sha == $commit)] | length == 1
+            else error("malformed artifact pages") end
+            ' \
+            <<<"${phase6_n4_artifacts}" >/dev/null
+
+      - name: Preserve trusted release-gate source
+        run: mv workflow-source "${RUNNER_TEMP}/trusted-workflow-source"
 
       - name: Check out exact candidate source
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -249,8 +307,39 @@ jobs:
             --repo "${GITHUB_REPOSITORY}" \
             --name "${ATTENDED_ARTIFACT_NAME}" \
             --dir attended-evidence
+          gh run download "${PHASE6_N4_RUN_ID}" \
+            --repo "${GITHUB_REPOSITORY}" \
+            --name "${PHASE6_N4_ARTIFACT_NAME}" \
+            --dir phase6-n4-evidence
           printf '%s  %s\n' "${ATTENDED_RECORD_SHA256}" \
             attended-evidence/attended-record.json | sha256sum --check
+          printf '%s  %s\n' "${PHASE6_N4_RECORD_SHA256}" \
+            phase6-n4-evidence/phase6/attended-record.json | sha256sum --check
+
+      - name: Replay Phase 6 and approval binding with trusted workflow source
+        run: |
+          manifest_sha256=$(sha256sum retained-candidate/release-candidate.json | cut -d' ' -f1)
+          node "${RUNNER_TEMP}/trusted-workflow-source/scripts/generate-phase6-attended-checklist.mjs" verify \
+            --bundle-dir retained-candidate \
+            --manifest-sha256 "${manifest_sha256}" \
+            --checklist phase6-n4-evidence/phase6/checklist.json \
+            --observations phase6-n4-evidence/phase6/observations.json \
+            --evidence-dir phase6-n4-evidence/phase6 \
+            --record phase6-n4-evidence/phase6/attended-record.json
+          node "${RUNNER_TEMP}/trusted-workflow-source/scripts/generate-phase5-attended-checklist.mjs" verify \
+            --bundle-dir retained-candidate \
+            --manifest-sha256 "${manifest_sha256}" \
+            --automated-evidence retained-candidate/evidence/automated.json \
+            --checklist attended-evidence/checklist.pending.json \
+            --observations attended-evidence/observations.json \
+            --evidence-dir attended-evidence \
+            --record attended-evidence/attended-record.json \
+            --phase6-n4-record phase6-n4-evidence/phase6/attended-record.json \
+            --phase6-n4-checklist phase6-n4-evidence/phase6/checklist.json \
+            --phase6-n4-observations phase6-n4-evidence/phase6/observations.json \
+            --phase6-n4-evidence-dir phase6-n4-evidence/phase6 \
+            --phase6-n4-run-id "${PHASE6_N4_RUN_ID}" \
+            --phase6-n4-artifact-name "${PHASE6_N4_ARTIFACT_NAME}"
 
       - name: Verify full release gate without rebuilding
         run: |
@@ -262,7 +351,13 @@ jobs:
             --checklist attended-evidence/checklist.pending.json \
             --observations attended-evidence/observations.json \
             --evidence-dir attended-evidence \
-            --record attended-evidence/attended-record.json
+            --record attended-evidence/attended-record.json \
+            --phase6-n4-record phase6-n4-evidence/phase6/attended-record.json \
+            --phase6-n4-checklist phase6-n4-evidence/phase6/checklist.json \
+            --phase6-n4-observations phase6-n4-evidence/phase6/observations.json \
+            --phase6-n4-evidence-dir phase6-n4-evidence/phase6 \
+            --phase6-n4-run-id "${PHASE6_N4_RUN_ID}" \
+            --phase6-n4-artifact-name "${PHASE6_N4_ARTIFACT_NAME}"
 
       - name: Refuse an existing tag or release
         env:
