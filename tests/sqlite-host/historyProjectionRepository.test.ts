@@ -41,6 +41,7 @@ import {
 import {
   createSqliteKernel,
   type SqliteKernel,
+  SqliteStorageError,
 } from "../../src/platform/sqlite/sqliteKernel";
 import {
   collectHistorySubjects,
@@ -89,9 +90,11 @@ class Connection implements SqliteConnection {
   constructor(
     private readonly database: DatabaseSync,
     private readonly onPrepare?: (sql: string) => void,
+    private readonly onExec?: (sql: string) => void,
   ) {}
 
   async execAsync(sql: string): Promise<void> {
+    this.onExec?.(sql);
     this.database.exec(sql);
   }
 
@@ -122,6 +125,7 @@ afterEach(async () => {
 
 async function open(input: Readonly<{
   onWriterPrepare?: (sql: string) => void;
+  onWriterExec?: (sql: string) => void;
 }> = {}): Promise<SqliteKernel> {
   const directory = mkdtempSync(join(tmpdir(), "gym-history-projection-"));
   directories.add(directory);
@@ -129,6 +133,7 @@ async function open(input: Readonly<{
   const writer = new Connection(
     new DatabaseSync(databasePath),
     input.onWriterPrepare,
+    input.onWriterExec,
   );
   const reader = new Connection(new DatabaseSync(databasePath));
   await configureSqliteConnection(writer, { enableWal: true });
@@ -672,10 +677,16 @@ describe("history projection repository", () => {
 
   it("drains revision-fenced targeted effects and exactly matches a full canonical rebuild", async () => {
     let sourceProjectionQueries = 0;
+    let writerTransactions = 0;
     const kernel = await open({
       onWriterPrepare(sql) {
         if (sql.includes("FROM workout_sessions ws")) {
           sourceProjectionQueries += 1;
+        }
+      },
+      onWriterExec(sql) {
+        if (sql === "BEGIN IMMEDIATE") {
+          writerTransactions += 1;
         }
       },
     });
@@ -689,10 +700,12 @@ describe("history projection repository", () => {
     const fanout = subjects();
 
     await repository.advanceAndEnqueue({ subjects: fanout, nowMs: 100 });
+    writerTransactions = 0;
     expect(await repository.freshness(fanout[0]!.id)).toBe("updating");
     const drained = await runner.drain({ nowMs: 200, limit: 32 });
     expect(drained.claimed).toBe(fanout.length);
     expect(sourceProjectionQueries).toBe(1);
+    expect(writerTransactions).toBe(3);
     expect(await kernel.queryAll<{ status: string; last_error_code: string | null }>(
       `SELECT status, last_error_code
        FROM history_rebuild_effects
@@ -823,6 +836,78 @@ describe("history projection repository", () => {
     await expect(repository.freshness(currentSubject!.id)).resolves.toBe("current");
   });
 
+  it("isolates a failed batch through revision-fenced single-subject rebuilds", async () => {
+    const kernel = await open();
+    await insertEffectiveSource(kernel);
+    const repository = createHistoryProjectionRepository(kernel);
+    const store = createHistoryProjectionEffectStore(kernel);
+    const [appliedSubject, staleSubject, transientSubject] = subjects();
+    const runner = createHistoryProjectionEffectRunner({
+      repository: {
+        ...repository,
+        rebuildSubjects: async () => {
+          throw new Error("batch_rebuild_failed");
+        },
+        rebuildSubject: async (input) => {
+          if (input.subjectId === transientSubject!.id) {
+            throw new SqliteStorageError(
+              "sqlite_begin_failed",
+              new Error("database_busy"),
+            );
+          }
+          return repository.rebuildSubject(input);
+        },
+      },
+      store,
+    });
+
+    await repository.advanceAndEnqueue({
+      subjects: [appliedSubject!, staleSubject!, transientSubject!],
+      nowMs: 100,
+    });
+    await kernel.write((transaction) => transaction.execute(
+      `UPDATE history_subject_revisions
+       SET revision = 2, updated_at_ms = 101
+       WHERE subject_id = ?`,
+      [staleSubject!.id],
+    ));
+
+    await expect(runner.drain({ nowMs: 200, limit: 3 })).resolves.toEqual({
+      claimed: 3,
+      completed: 1,
+      permanentFailures: 0,
+      retried: 1,
+      superseded: 1,
+    });
+    await expect(kernel.queryAll(
+      `SELECT subject_id, status, last_error_code, next_attempt_at_ms
+       FROM history_rebuild_effects
+       ORDER BY subject_id`,
+    )).resolves.toEqual([
+      {
+        subject_id: appliedSubject!.id,
+        status: "completed",
+        last_error_code: null,
+        next_attempt_at_ms: 100,
+      },
+      {
+        subject_id: staleSubject!.id,
+        status: "superseded",
+        last_error_code: "stale_source_revision",
+        next_attempt_at_ms: 100,
+      },
+      {
+        subject_id: transientSubject!.id,
+        status: "pending",
+        last_error_code: "sqlite_begin_failed",
+        next_attempt_at_ms: 1_200,
+      },
+    ].sort((left, right) => left.subject_id.localeCompare(right.subject_id)));
+    await expect(repository.freshness(appliedSubject!.id)).resolves.toBe("current");
+    await expect(repository.freshness(staleSubject!.id)).resolves.toBe("updating");
+    await expect(repository.freshness(transientSubject!.id)).resolves.toBe("updating");
+  });
+
   it("keeps rebuilt work lease-recoverable when a terminal queue write fails", async () => {
     const kernel = await open();
     await insertEffectiveSource(kernel);
@@ -834,7 +919,7 @@ describe("history projection repository", () => {
       repository,
       store: {
         ...store,
-        complete: async () => {
+        settleBatch: async () => {
           throw new Error("terminal_write_failed");
         },
       },
@@ -856,6 +941,38 @@ describe("history projection repository", () => {
     await expect(store.resetExpiredClaims(30_200)).resolves.toBe(1);
     await expect(store.findById(`history-rebuild:${subject!.id}:1`))
       .resolves.toMatchObject({ status: "pending" });
+  });
+
+  it("rolls back every terminal update when batch settlement cannot complete", async () => {
+    const kernel = await open();
+    await insertEffectiveSource(kernel);
+    const repository = createHistoryProjectionRepository(kernel);
+    const store = createHistoryProjectionEffectStore(kernel);
+    const [first, second] = subjects();
+
+    await repository.advanceAndEnqueue({ subjects: [first!, second!], nowMs: 100 });
+    const claimed = await store.claimBatch!({
+      nowMs: 200,
+      leaseDurationMs: 30_000,
+      maxAttempts: 5,
+      limit: 2,
+    });
+    await expect(store.settleBatch!({
+      settlements: [
+        { id: claimed[0]!.id, outcome: "completed" },
+        { id: "missing-effect", outcome: "completed" },
+      ],
+      nowMs: 201,
+    })).rejects.toMatchObject({ code: "sqlite_transaction_failed" });
+
+    await expect(kernel.queryAll(
+      `SELECT id, status FROM history_rebuild_effects
+       WHERE id IN (?, ?)
+       ORDER BY id`,
+      claimed.map(({ id }) => id),
+    )).resolves.toEqual(claimed
+      .map(({ id }) => ({ id, status: "processing" }))
+      .sort((left, right) => left.id.localeCompare(right.id)));
   });
 
   it("recovers an expired lease and converges its revision-fenced rebuild", async () => {

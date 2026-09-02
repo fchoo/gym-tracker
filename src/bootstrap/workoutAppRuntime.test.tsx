@@ -439,6 +439,7 @@ function runtimeLifecycle(
     foregroundFeedback: [],
   };
   return {
+    dispose: jest.fn(async () => undefined),
     trigger: jest.fn(async (trigger: WorkoutLifecycleResult["trigger"]) => ({
       ...result,
       trigger,
@@ -1853,12 +1854,16 @@ describe("WorkoutAppRuntimeProvider", () => {
   it("runs one launch lifecycle, subscribes foreground, and cleans up", async () => {
     const repository = runtimeRepository([noPlanView], [null]);
     const lifecycle = runtimeLifecycle();
+    const close = jest.fn(async () => undefined);
     const unsubscribe = jest.fn<() => undefined>(() => undefined);
     lifecycle.subscribeForeground.mockReturnValueOnce(unsubscribe);
     const createLifecycle = jest.fn(() => lifecycle);
     const result = await render(
       <RuntimeHarness
-        dependencies={dependencies(repository, { createLifecycle })}
+        dependencies={dependencies(repository, {
+          createLifecycle,
+          openKernel: jest.fn(async () => ({ close } as unknown as SqliteKernel)),
+        })}
       />,
     );
     await waitFor(() => {
@@ -1869,6 +1874,10 @@ describe("WorkoutAppRuntimeProvider", () => {
 
     await result.unmount();
     expect(unsubscribe).toHaveBeenCalledTimes(1);
+    expect(lifecycle.dispose).toHaveBeenCalledTimes(1);
+    expect(close).toHaveBeenCalledTimes(1);
+    expect(lifecycle.dispose.mock.invocationCallOrder[0])
+      .toBeLessThan(close.mock.invocationCallOrder[0]!);
   });
 
   it("requests notification permission explicitly and refreshes runtime readiness", async () => {
@@ -2069,11 +2078,16 @@ describe("WorkoutAppRuntimeProvider", () => {
       const secondClose = jest.fn(async () => undefined);
       const firstKernel = { close: firstClose } as unknown as SqliteKernel;
       const secondKernel = { close: secondClose } as unknown as SqliteKernel;
+      const firstLifecycle = runtimeLifecycle();
+      const secondLifecycle = runtimeLifecycle();
       let resolveOpen: ((kernel: SqliteKernel) => void) | undefined;
       let resolveMigration: (() => void) | undefined;
       let resolveQuery: ((view: TodayView) => void) | undefined;
       let opens = 0;
       const runtimeDependencies = dependencies(repository, {
+        createLifecycle: jest.fn<WorkoutAppRuntimeDependencies["createLifecycle"]>((input) =>
+          input.kernel === firstKernel ? firstLifecycle : secondLifecycle
+        ),
         openKernel: jest.fn(async () => {
           opens += 1;
           if (opens === 1 && stage === "open") {
@@ -2128,6 +2142,13 @@ describe("WorkoutAppRuntimeProvider", () => {
       await waitFor(() => {
         expect(firstClose).toHaveBeenCalled();
       });
+      if (stage === "open") {
+        expect(firstLifecycle.dispose).not.toHaveBeenCalled();
+      } else {
+        expect(firstLifecycle.dispose).toHaveBeenCalled();
+        expect(firstLifecycle.dispose.mock.invocationCallOrder[0])
+          .toBeLessThan(firstClose.mock.invocationCallOrder[0]!);
+      }
       expect(screen.getByTestId("runtime-view")).toHaveTextContent(
         "no_active_plan",
       );

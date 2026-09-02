@@ -461,6 +461,55 @@ describe("Plan 01-09 workout lifecycle", () => {
     }
   });
 
+  it("cancels queued projection continuation and never reschedules after disposal", async () => {
+    jest.useFakeTimers();
+    const queued = Array.from({ length: 17 }, (_, index) =>
+      historyProjectionEffect(index)
+    );
+    const projectionStore: HistoryProjectionEffectStore = {
+      ...historyProjectionEffectStore(),
+      claimNext: jest.fn(async () => queued.shift() ?? null),
+    };
+    const lifecycle = createWorkoutLifecycle({
+      kernel: {} as SqliteKernel,
+      restRepository: {
+        ...restRepository(),
+        listActiveSessionIds: jest.fn(async () => []),
+      },
+      notifications: notifications(),
+      nowMs: () => 40_000,
+      effectStore: {
+        ...effectStoreWithOneEffect(),
+        claimNext: jest.fn(async () => null),
+      },
+      foregroundFeedbackStore: foregroundFeedbackStore(),
+      historyProjectionRepository: {
+        ...historyProjectionRepository(),
+        currentRevision: jest.fn(async () => 1),
+        rebuildSubject: jest.fn(async () => "applied" as const),
+      },
+      historyProjectionEffectStore: projectionStore,
+    });
+
+    try {
+      await lifecycle.trigger("post_commit");
+      expect(projectionStore.claimNext).toHaveBeenCalledTimes(16);
+      expect(jest.getTimerCount()).toBeGreaterThan(0);
+
+      await lifecycle.dispose();
+      expect(jest.getTimerCount()).toBe(0);
+      await jest.runOnlyPendingTimersAsync();
+
+      expect(projectionStore.claimNext).toHaveBeenCalledTimes(16);
+      await expect(lifecycle.trigger("post_commit")).resolves.toMatchObject({
+        historyProjectionDrain: { claimed: 0 },
+      });
+      expect(jest.getTimerCount()).toBe(0);
+    } finally {
+      jest.useRealTimers();
+    }
+  });
+
   it("recovers already-claimed projection work after a later claim fails", async () => {
     jest.useFakeTimers();
     let nowMs = 40_000;

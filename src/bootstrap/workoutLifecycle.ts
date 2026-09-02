@@ -201,15 +201,25 @@ export function createWorkoutLifecycle(input: Readonly<{
     failed: boolean;
   }>> | null = null;
   let projectionDrainRequested = false;
+  let disposed = false;
+  const projectionDrainTimers = new Set<ReturnType<typeof setTimeout>>();
   const scheduleHistoryProjectionDrain = (delayMs: number, earliestNowMs = 0) => {
-    setTimeout(() => {
+    if (disposed) {
+      return;
+    }
+    const timer = setTimeout(() => {
+      projectionDrainTimers.delete(timer);
+      if (disposed) {
+        return;
+      }
       void requestHistoryProjectionDrain(Math.max(input.nowMs(), earliestNowMs));
     }, delayMs);
+    projectionDrainTimers.add(timer);
   };
   const requestHistoryProjectionDrain = async (
     nowMs: number,
   ): Promise<HistoryProjectionEffectDrainResult> => {
-    if (historyProjectionRunner === null) {
+    if (disposed || historyProjectionRunner === null) {
       return emptyHistoryProjectionDrain();
     }
     if (projectionDrainInFlight !== null) {
@@ -224,6 +234,9 @@ export function createWorkoutLifecycle(input: Readonly<{
     })();
     try {
       const attempt = await projectionDrainInFlight;
+      if (disposed) {
+        return attempt.result;
+      }
       const batch = attempt.result;
       const settled = batch.completed + batch.permanentFailures
         + batch.retried + batch.superseded;
@@ -244,7 +257,7 @@ export function createWorkoutLifecycle(input: Readonly<{
       return batch;
     } finally {
       projectionDrainInFlight = null;
-      if (projectionDrainRequested) {
+      if (!disposed && projectionDrainRequested) {
         projectionDrainRequested = false;
         scheduleHistoryProjectionDrain(0);
       }
@@ -426,6 +439,16 @@ export function createWorkoutLifecycle(input: Readonly<{
   });
 
   return Object.freeze({
+    async dispose(): Promise<void> {
+      disposed = true;
+      projectionDrainRequested = false;
+      for (const timer of projectionDrainTimers) {
+        clearTimeout(timer);
+      }
+      projectionDrainTimers.clear();
+      await projectionDrainInFlight?.then(() => undefined, () => undefined);
+    },
+
     async trigger(
       trigger: WorkoutLifecycleTrigger,
       options: Readonly<{ foregroundExpiry?: ForegroundRestExpiry }> = {},
@@ -529,14 +552,17 @@ export function createWorkoutLifecycle(input: Readonly<{
     subscribeForeground(
       onResult?: (result: WorkoutLifecycleResult) => void,
     ) {
+      if (disposed) {
+        return () => undefined;
+      }
       const appState = input.appState
         ?? (require("react-native") as typeof import("react-native")).AppState;
       let previous: AppStateStatus = appState.currentState;
       const subscription = appState.addEventListener("change", (next) => {
         const enteringForeground = previous !== "active" && next === "active";
         previous = next;
-        if (enteringForeground) {
-          void this.trigger("foreground").then(onResult);
+        if (enteringForeground && !disposed) {
+          void this.trigger("foreground").then(onResult, () => undefined);
         }
       });
       return () => subscription.remove();
