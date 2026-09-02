@@ -67,7 +67,7 @@ export type ProgressScreenProps = Readonly<{
     period: ProgressPeriod;
     nowLocalDate: string;
   }>): Promise<ProgressSnapshot>;
-  onOpenExercise(exerciseId: string): void;
+  onOpenExercise(exerciseId: string, exerciseName: string): void;
   onOpenSession(sessionId: string): void;
   onAcceptRecommendation?(recommendationId: string): Promise<unknown>;
   onKeepCurrentTarget?(recommendationId: string): Promise<unknown>;
@@ -94,12 +94,6 @@ function longDate(localDate: string): string {
     year: "numeric",
     timeZone: "UTC",
   }).format(new Date(Date.UTC(year, month - 1, day)));
-}
-
-function exerciseLabel(exerciseId: string): string {
-  return exerciseId.split(/[-_]/u).filter(Boolean).map((part) =>
-    part.slice(0, 1).toUpperCase() + part.slice(1)
-  ).join(" ") || exerciseId;
 }
 
 function observationText(record: ProgressRecord): string {
@@ -143,11 +137,11 @@ function SourceActions({
 }: Readonly<{
   label: string;
   source: ProgressSourceReference;
-  onOpenExercise(exerciseId: string): void;
+  onOpenExercise(exerciseId: string, exerciseName: string): void;
   onOpenSession(sessionId: string): void;
 }>) {
   const { colors } = useAppTheme();
-  if (source.sessionIds.length === 0 && source.exerciseIds.length === 0) {
+  if (source.sessionIds.length === 0 && source.exercises.length === 0) {
     return (
       <Text style={[typeScale.secondary as TextStyle, { color: colors.contentCardTextSecondary }]}>
         {"No source workout or exercise is available for " + label + "."}
@@ -173,20 +167,20 @@ function SourceActions({
           </Text>
         </FocusablePressable>
       ))}
-      {source.exerciseIds.map((exerciseId) => (
+      {source.exercises.map(({ exerciseId, exerciseName }) => (
         <FocusablePressable
-          accessibilityLabel={"Open source exercise history for " + label}
+          accessibilityLabel={"Open " + exerciseName + " exercise history for " + label}
           accessibilityRole="button"
           focusable
           key={exerciseId}
-          onPress={() => onOpenExercise(exerciseId)}
+          onPress={() => onOpenExercise(exerciseId, exerciseName)}
           style={({ pressed }: { pressed: boolean }) => [
             styles.textAction,
             { borderColor: colors.contentCardBorder, opacity: pressed ? 0.76 : 1 },
           ]}
         >
           <Text style={[typeScale.secondary as TextStyle, { color: colors.contentCardText }]}>
-            {"Exercise source " + exerciseLabel(exerciseId)}
+            {"Exercise source " + exerciseName}
           </Text>
         </FocusablePressable>
       ))}
@@ -261,7 +255,7 @@ function OverallProgress({
   onOpenSession,
 }: Readonly<{
   projection: ProgressPeriodProjection;
-  onOpenExercise(exerciseId: string): void;
+  onOpenExercise(exerciseId: string, exerciseName: string): void;
   onOpenSession(sessionId: string): void;
 }>) {
   const { colors } = useAppTheme();
@@ -361,7 +355,7 @@ function OverallProgress({
                 ]}
               >
                 <Text style={[typeScale.bodyStrong as TextStyle, { color: colors.contentCardText }]}>
-                  {exerciseLabel(record.exerciseId) + " · " + observationText(record)}
+                  {record.exerciseName + " · " + observationText(record)}
                 </Text>
                 <Text style={[typeScale.secondary as TextStyle, { color: colors.contentCardTextSecondary }]}>
                   {"Record · " + longDate(record.localDate) + " · " + record.identityKey}
@@ -385,7 +379,7 @@ function NeedsAttention({
   onRecommendationDecisionNotice,
 }: Readonly<{
   projection: ProgressPeriodProjection;
-  onOpenExercise(exerciseId: string): void;
+  onOpenExercise(exerciseId: string, exerciseName: string): void;
   onOpenSession(sessionId: string): void;
   onAcceptRecommendation?(recommendationId: string): Promise<unknown>;
   onKeepCurrentTarget?(recommendationId: string): Promise<unknown>;
@@ -450,10 +444,13 @@ function NeedsAttention({
                   : { onOpenSource: onOpenSession })}
               />
               <FocusablePressable
-                accessibilityLabel={"Open exercise history for " + recommendation.exerciseId}
+                accessibilityLabel={"Open exercise history for " + recommendation.exerciseName}
                 accessibilityRole="button"
                 focusable
-                onPress={() => onOpenExercise(recommendation.exerciseId)}
+                onPress={() => onOpenExercise(
+                  recommendation.exerciseId,
+                  recommendation.exerciseName,
+                )}
                 style={({ pressed }: { pressed: boolean }) => [
                   styles.textAction,
                   { borderColor: colors.contentCardBorder, opacity: pressed ? 0.76 : 1 },
@@ -515,13 +512,13 @@ function ExerciseProgress({
   onOpenExercise,
 }: Readonly<{
   projection: ProgressPeriodProjection;
-  onOpenExercise(exerciseId: string): void;
+  onOpenExercise(exerciseId: string, exerciseName: string): void;
 }>) {
   const { colors } = useAppTheme();
   const [query, setQuery] = useState("");
   const exercises = useMemo(() => projection.exercises
     .slice().sort((left, right) => right.localDate.localeCompare(left.localDate))
-    .filter((exercise) => exerciseLabel(exercise.exerciseId).toLocaleLowerCase()
+    .filter((exercise) => exercise.exerciseName.toLocaleLowerCase()
       .includes(query.trim().toLocaleLowerCase())), [projection.exercises, query]);
 
   return (
@@ -553,11 +550,11 @@ function ExerciseProgress({
         <View style={styles.exerciseRows}>
           {exercises.map((exercise) => (
             <FocusablePressable
-              accessibilityLabel={"Open exercise history for " + exercise.exerciseId}
+              accessibilityLabel={"Open exercise history for " + exercise.exerciseName}
               accessibilityRole="button"
               focusable
               key={exercise.exerciseId + ":" + exercise.identityKey + ":" + exercise.comparatorKey}
-              onPress={() => onOpenExercise(exercise.exerciseId)}
+              onPress={() => onOpenExercise(exercise.exerciseId, exercise.exerciseName)}
               style={({ pressed }: { pressed: boolean }) => [
                 styles.exerciseRow,
                 {
@@ -567,7 +564,7 @@ function ExerciseProgress({
                 },
               ]}
             >
-              <Text style={[typeScale.bodyStrong as TextStyle, { color: colors.contentCardText }]}>{exerciseLabel(exercise.exerciseId)}</Text>
+              <Text style={[typeScale.bodyStrong as TextStyle, { color: colors.contentCardText }]}>{exercise.exerciseName}</Text>
               <Text style={[typeScale.secondary as TextStyle, { color: colors.contentCardTextSecondary }]}>
                 {(exercise.status === "improving" ? "Improving" : exercise.status === "holding" ? "Hold" : "Baseline") + " · " + longDate(exercise.localDate) + " · " + exercise.identityKey}
               </Text>

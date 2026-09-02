@@ -23,7 +23,7 @@ import {
 
 type ProgressTrendProps = Readonly<{
   rows: readonly ProgressTrendRow[];
-  onOpenExercise(exerciseId: string): void;
+  onOpenExercise(exerciseId: string, exerciseName: string): void;
   onOpenSession(sessionId: string): void;
 }>;
 
@@ -62,7 +62,7 @@ function SourceLinks({
   onOpenSession,
 }: Readonly<{
   row: ProgressTrendRow;
-  onOpenExercise(exerciseId: string): void;
+  onOpenExercise(exerciseId: string, exerciseName: string): void;
   onOpenSession(sessionId: string): void;
 }>) {
   const { colors } = useAppTheme();
@@ -83,13 +83,13 @@ function SourceLinks({
           <Text style={[typeScale.secondary as TextStyle, { color: colors.contentCardText }]}>Workout details</Text>
         </FocusablePressable>
       ))}
-      {row.exerciseIds.map((exerciseId) => (
+      {row.exercises.map(({ exerciseId, exerciseName }) => (
         <FocusablePressable
-          accessibilityLabel={"Open exercise history for " + exerciseId}
+          accessibilityLabel={"Open exercise history for " + exerciseName}
           accessibilityRole="button"
           focusable
           key={exerciseId}
-          onPress={() => onOpenExercise(exerciseId)}
+          onPress={() => onOpenExercise(exerciseId, exerciseName)}
           style={({ pressed }: { pressed: boolean }) => [
             styles.sourceLink,
             { borderColor: colors.contentCardBorder, opacity: pressed ? 0.76 : 1 },

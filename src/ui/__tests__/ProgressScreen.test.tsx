@@ -27,6 +27,8 @@ import {
   createMemoryAppearanceStore,
 } from "../theme";
 
+const BACK_SQUAT_ID = "5f140001-7e35-4a6d-9100-000000000001";
+
 function projection(
   overrides: Partial<ProgressPeriodProjection> = {},
 ): ProgressPeriodProjection {
@@ -41,14 +43,23 @@ function projection(
       baselineCount: 1,
       attentionCount: 0,
       sourceReferences: {
-        scheduledOpportunities: { sessionIds: ["session-record"], exerciseIds: [] },
-        workingSets: { sessionIds: ["session-record"], exerciseIds: ["bench-press"] },
-        exerciseStatuses: { sessionIds: ["session-record"], exerciseIds: ["bench-press"] },
-        attention: { sessionIds: [], exerciseIds: [] },
+        scheduledOpportunities: { sessionIds: ["session-record"], exerciseIds: [], exercises: [] },
+        workingSets: {
+          sessionIds: ["session-record"],
+          exerciseIds: [BACK_SQUAT_ID],
+          exercises: [{ exerciseId: BACK_SQUAT_ID, exerciseName: "Back Squat" }],
+        },
+        exerciseStatuses: {
+          sessionIds: ["session-record"],
+          exerciseIds: [BACK_SQUAT_ID],
+          exercises: [{ exerciseId: BACK_SQUAT_ID, exerciseName: "Back Squat" }],
+        },
+        attention: { sessionIds: [], exerciseIds: [], exercises: [] },
       },
     },
     records: [{
-      exerciseId: "bench-press",
+      exerciseId: BACK_SQUAT_ID,
+      exerciseName: "Back Squat",
       identityKey: "load_reps:1:1",
       comparatorKey: "load_reps",
       sessionId: "session-record",
@@ -72,7 +83,8 @@ function projection(
       }),
     }],
     exercises: [{
-      exerciseId: "bench-press",
+      exerciseId: BACK_SQUAT_ID,
+      exerciseName: "Back Squat",
       identityKey: "load_reps:1:1",
       comparatorKey: "load_reps",
       status: "improving",
@@ -81,6 +93,7 @@ function projection(
       localDate: "2026-08-24",
     }, {
       exerciseId: "row",
+      exerciseName: "Barbell Row",
       identityKey: "load_reps:1:1",
       comparatorKey: "load_reps",
       status: "holding",
@@ -89,6 +102,7 @@ function projection(
       localDate: "2026-08-20",
     }, {
       exerciseId: "squat",
+      exerciseName: "Front Squat",
       identityKey: "load_reps:1:1",
       comparatorKey: "load_reps",
       status: "baseline",
@@ -102,18 +116,21 @@ function projection(
       workingSets: { completed: 3, planned: 3 },
       sessionIds: ["session-row"],
       exerciseIds: ["row"],
+      exercises: [{ exerciseId: "row", exerciseName: "Barbell Row" }],
     }, {
       localDate: "2026-08-24",
       scheduledOpportunities: { completed: 1, planned: 2 },
       workingSets: { completed: 2, planned: 3 },
       sessionIds: ["session-record"],
-      exerciseIds: ["bench-press"],
+      exerciseIds: [BACK_SQUAT_ID],
+      exercises: [{ exerciseId: BACK_SQUAT_ID, exerciseName: "Back Squat" }],
     }],
     attention: [],
     recommendations: [],
     stateSourceReferences: {
       sessionIds: ["session-record"],
-      exerciseIds: ["bench-press"],
+      exerciseIds: [BACK_SQUAT_ID],
+      exercises: [{ exerciseId: BACK_SQUAT_ID, exerciseName: "Back Squat" }],
     },
     ...overrides,
   };
@@ -166,7 +183,7 @@ describe("ProgressScreen", () => {
       .toBeOnTheScreen();
     expect(screen.getByText("1 improving · 1 holding · 1 baseline"))
       .toBeOnTheScreen();
-    expect(screen.getByText("Bench Press · 45 kg × 9")).toBeOnTheScreen();
+    expect(screen.getByText("Back Squat · 45 kg × 9")).toBeOnTheScreen();
     expect(screen.getByRole("button", {
       name: "Open source workout for Scheduled opportunities",
     })).toBeOnTheScreen();
@@ -174,7 +191,7 @@ describe("ProgressScreen", () => {
       name: "Open source workout for Working sets",
     })).toBeOnTheScreen();
     expect(screen.getByRole("button", {
-      name: "Open source exercise history for Working sets",
+      name: "Open Back Squat exercise history for Working sets",
     })).toBeOnTheScreen();
     expect(screen.getByRole("button", {
       name: "Open source workout for Progress status",
@@ -186,9 +203,9 @@ describe("ProgressScreen", () => {
     expect(onOpenSession).toHaveBeenCalledWith("session-record");
 
     await fireEvent.press(screen.getByRole("button", {
-      name: "Open source exercise history for Working sets",
+      name: "Open Back Squat exercise history for Working sets",
     }));
-    expect(onOpenExercise).toHaveBeenCalledWith("bench-press");
+    expect(onOpenExercise).toHaveBeenCalledWith(BACK_SQUAT_ID, "Back Squat");
 
     await fireEvent.press(screen.getByRole("button", {
       name: "Open workout details for record on 24 August 2026",
@@ -196,9 +213,12 @@ describe("ProgressScreen", () => {
     expect(onOpenSession).toHaveBeenCalledWith("session-record");
 
     await fireEvent.press(screen.getAllByRole("button", {
-      name: "Open exercise history for bench-press",
+      name: "Open exercise history for Back Squat",
     }).at(-1)!);
-    expect(onOpenExercise).toHaveBeenCalledWith("bench-press");
+    expect(onOpenExercise).toHaveBeenCalledWith(BACK_SQUAT_ID, "Back Squat");
+    expect(screen.queryByText(BACK_SQUAT_ID)).not.toBeOnTheScreen();
+    expect(screen.queryByLabelText(new RegExp(BACK_SQUAT_ID, "u")))
+      .not.toBeOnTheScreen();
 
     expect(screen.getByRole("header", { name: "Consistency" }))
       .toBeOnTheScreen();
@@ -360,10 +380,10 @@ describe("ProgressScreen", () => {
       .toHaveProp("accessible", false);
     expect(screen.getByLabelText("3 Search exercises results")).toBeOnTheScreen();
 
-    await fireEvent.changeText(input, "bench");
+    await fireEvent.changeText(input, "back");
     expect(screen.getByLabelText("1 Search exercises result")).toBeOnTheScreen();
-    expect(screen.getByText("Bench Press")).toBeOnTheScreen();
-    expect(screen.queryByText("Row")).not.toBeOnTheScreen();
+    expect(screen.getByText("Back Squat")).toBeOnTheScreen();
+    expect(screen.queryByText("Barbell Row")).not.toBeOnTheScreen();
 
     await fireEvent.changeText(input, "deadlift");
     expect(screen.getByLabelText("No Search exercises results")).toBeOnTheScreen();
@@ -396,7 +416,7 @@ describe("ProgressScreen", () => {
 
     try {
       await renderProgress();
-      expect(await screen.findByText("Bench Press")).toBeOnTheScreen();
+      expect(await screen.findByText("Back Squat")).toBeOnTheScreen();
     } finally {
       Object.defineProperty(arrayPrototype, "toSorted", {
         configurable: true,
@@ -424,10 +444,10 @@ describe("ProgressScreen", () => {
             baselineCount: 0,
             attentionCount: 0,
             sourceReferences: {
-              scheduledOpportunities: { sessionIds: [], exerciseIds: [] },
-              workingSets: { sessionIds: [], exerciseIds: [] },
-              exerciseStatuses: { sessionIds: [], exerciseIds: [] },
-              attention: { sessionIds: [], exerciseIds: [] },
+              scheduledOpportunities: { sessionIds: [], exerciseIds: [], exercises: [] },
+              workingSets: { sessionIds: [], exerciseIds: [], exercises: [] },
+              exerciseStatuses: { sessionIds: [], exerciseIds: [], exercises: [] },
+              attention: { sessionIds: [], exerciseIds: [], exercises: [] },
             },
           },
         }),
@@ -468,7 +488,7 @@ describe("ProgressScreen", () => {
             attentionCount: 1,
             sourceReferences: {
               ...projection().summary.sourceReferences,
-              attention: { sessionIds: [], exerciseIds: [] },
+              attention: { sessionIds: [], exerciseIds: [], exercises: [] },
             },
           },
         }),
@@ -526,6 +546,7 @@ describe("ProgressScreen", () => {
         attention: [{
           id: pendingReview.id,
           exerciseId: pendingReview.exerciseId,
+          exerciseName: pendingReview.exerciseName,
           sessionId: pendingReview.sourceSessionId,
         }],
         recommendations: [pendingReview],
@@ -718,10 +739,10 @@ describe("ProgressScreen", () => {
             baselineCount: 0,
             attentionCount: 0,
             sourceReferences: {
-              scheduledOpportunities: { sessionIds: [], exerciseIds: [] },
-              workingSets: { sessionIds: [], exerciseIds: [] },
-              exerciseStatuses: { sessionIds: [], exerciseIds: [] },
-              attention: { sessionIds: [], exerciseIds: [] },
+              scheduledOpportunities: { sessionIds: [], exerciseIds: [], exercises: [] },
+              workingSets: { sessionIds: [], exerciseIds: [], exercises: [] },
+              exerciseStatuses: { sessionIds: [], exerciseIds: [], exercises: [] },
+              attention: { sessionIds: [], exerciseIds: [], exercises: [] },
             },
           },
         }),
