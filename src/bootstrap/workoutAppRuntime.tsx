@@ -2090,6 +2090,7 @@ export function WorkoutAppRuntimeProvider({
     foregroundUnsubscribeRef.current = null;
     const services = servicesRef.current;
     servicesRef.current = null;
+    await services?.lifecycle.dispose?.().catch(() => undefined);
     await services?.kernel.close().catch(() => undefined);
   }, []);
 
@@ -2311,6 +2312,7 @@ export function WorkoutAppRuntimeProvider({
       starterPlansRef.current = undefined;
     }
     if (generation !== generationRef.current) {
+      await lifecycle.dispose().catch(() => undefined);
       await kernel.close().catch(() => undefined);
       return;
     }
@@ -2332,6 +2334,7 @@ export function WorkoutAppRuntimeProvider({
       );
       const next = await trustedRead(services);
       if (generation !== generationRef.current) {
+        await lifecycle.dispose().catch(() => undefined);
         await kernel.close().catch(() => undefined);
         return;
       }

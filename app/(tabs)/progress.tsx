@@ -23,6 +23,7 @@ export default function ProgressRoute() {
     <ProgressScreen
       loadProgress={runtime.loadProgress}
       nowLocalDate={nowLocalDate}
+      workoutRefreshGeneration={runtime.workoutRefreshGeneration}
       onAcceptRecommendation={async (recommendationId) => {
         const result = await runtime.acceptRecommendation(recommendationId);
         await runtime.refresh();

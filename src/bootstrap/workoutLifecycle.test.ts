@@ -29,9 +29,11 @@ import type {
 } from "../domains/progression";
 import type {
   HistoryProjectionRepository,
+  StoredHistoryProjectionEffect,
 } from "../platform/sqlite/repositories/historyProjectionRepository";
-import type {
-  HistoryProjectionEffectStore,
+import {
+  HistoryProjectionEffectError,
+  type HistoryProjectionEffectStore,
 } from "../platform/sqlite/effects/historyProjectionEffects";
 import {
   createWorkoutLifecycle,
@@ -204,6 +206,24 @@ function historyProjectionEffectStore(): HistoryProjectionEffectStore {
   };
 }
 
+function historyProjectionEffect(index: number): StoredHistoryProjectionEffect {
+  return {
+    id: `history-effect-${index}`,
+    subjectId: `history-subject-${index}`,
+    expectedRevision: 1,
+    payloadVersion: 1,
+    payload: { type: "rebuild_history_subject", version: 1 },
+    status: "processing",
+    attemptCount: 1,
+    nextAttemptAtMs: 0,
+    claimedAtMs: 40_000,
+    leaseExpiresAtMs: 70_000,
+    lastErrorCode: null,
+    createdAtMs: 0,
+    updatedAtMs: 40_000,
+  };
+}
+
 function effectStoreWithOneEffect(
   status: "pending" | "processing" = "pending",
 ): EffectStore {
@@ -357,6 +377,197 @@ describe("Plan 01-09 workout lifecycle", () => {
       },
     });
     expect(projectionStore.resetExpiredClaims).toHaveBeenCalledWith(40_000);
+  });
+
+  it("continues history projection work after returning the first bounded batch", async () => {
+    jest.useFakeTimers();
+    const queued = Array.from({ length: 18 }, (_, index) =>
+      historyProjectionEffect(index)
+    );
+    const projectionStore: HistoryProjectionEffectStore = {
+      ...historyProjectionEffectStore(),
+      claimNext: jest.fn(async () => queued.shift() ?? null),
+    };
+    const projectionRepository: HistoryProjectionRepository = {
+      ...historyProjectionRepository(),
+      currentRevision: jest.fn(async (subjectId) =>
+        subjectId === "history-subject-0" ? 2 : 1
+      ),
+      rebuildSubject: jest.fn<HistoryProjectionRepository["rebuildSubject"]>(
+        async ({ subjectId }) => {
+          if (subjectId === "history-subject-1") {
+            throw new HistoryProjectionEffectError(
+              "transient",
+              "projection_temporarily_unavailable",
+            );
+          }
+          if (subjectId === "history-subject-2") {
+            throw new HistoryProjectionEffectError(
+              "permanent",
+              "projection_subject_invalid",
+            );
+          }
+          return "applied" as const;
+        },
+      ),
+    };
+    const lifecycle = createWorkoutLifecycle({
+      kernel: {} as SqliteKernel,
+      restRepository: {
+        ...restRepository(),
+        listActiveSessionIds: jest.fn(async () => []),
+      },
+      notifications: notifications(),
+      nowMs: () => 40_000,
+      effectStore: {
+        ...effectStoreWithOneEffect(),
+        claimNext: jest.fn(async () => null),
+      },
+      foregroundFeedbackStore: foregroundFeedbackStore(),
+      historyProjectionRepository: projectionRepository,
+      historyProjectionEffectStore: projectionStore,
+    });
+
+    try {
+      await expect(lifecycle.trigger("post_commit")).resolves.toMatchObject({
+        historyProjectionDrain: {
+          claimed: 16,
+          completed: 13,
+          permanentFailures: 1,
+          retried: 1,
+          superseded: 1,
+        },
+      });
+      expect(projectionStore.claimNext).toHaveBeenCalledTimes(16);
+
+      await jest.runOnlyPendingTimersAsync();
+
+      expect(projectionStore.claimNext).toHaveBeenCalledTimes(20);
+      expect(queued).toHaveLength(0);
+      expect(projectionStore.retry).toHaveBeenCalledWith({
+        id: "history-effect-1",
+        errorCode: "projection_temporarily_unavailable",
+        nextAttemptAtMs: 41_000,
+        nowMs: 40_000,
+      });
+      expect(projectionStore.failPermanently).toHaveBeenCalledWith(
+        "history-effect-2",
+        "projection_subject_invalid",
+        40_000,
+      );
+      expect(projectionRepository.rebuildSubject).toHaveBeenCalledTimes(17);
+    } finally {
+      jest.useRealTimers();
+    }
+  });
+
+  it("cancels queued projection continuation and never reschedules after disposal", async () => {
+    jest.useFakeTimers();
+    const queued = Array.from({ length: 17 }, (_, index) =>
+      historyProjectionEffect(index)
+    );
+    const projectionStore: HistoryProjectionEffectStore = {
+      ...historyProjectionEffectStore(),
+      claimNext: jest.fn(async () => queued.shift() ?? null),
+    };
+    const lifecycle = createWorkoutLifecycle({
+      kernel: {} as SqliteKernel,
+      restRepository: {
+        ...restRepository(),
+        listActiveSessionIds: jest.fn(async () => []),
+      },
+      notifications: notifications(),
+      nowMs: () => 40_000,
+      effectStore: {
+        ...effectStoreWithOneEffect(),
+        claimNext: jest.fn(async () => null),
+      },
+      foregroundFeedbackStore: foregroundFeedbackStore(),
+      historyProjectionRepository: {
+        ...historyProjectionRepository(),
+        currentRevision: jest.fn(async () => 1),
+        rebuildSubject: jest.fn(async () => "applied" as const),
+      },
+      historyProjectionEffectStore: projectionStore,
+    });
+
+    try {
+      await lifecycle.trigger("post_commit");
+      expect(projectionStore.claimNext).toHaveBeenCalledTimes(16);
+      expect(jest.getTimerCount()).toBeGreaterThan(0);
+
+      await lifecycle.dispose();
+      expect(jest.getTimerCount()).toBe(0);
+      await jest.runOnlyPendingTimersAsync();
+
+      expect(projectionStore.claimNext).toHaveBeenCalledTimes(16);
+      await expect(lifecycle.trigger("post_commit")).resolves.toMatchObject({
+        historyProjectionDrain: { claimed: 0 },
+      });
+      expect(jest.getTimerCount()).toBe(0);
+    } finally {
+      jest.useRealTimers();
+    }
+  });
+
+  it("recovers already-claimed projection work after a later claim fails", async () => {
+    jest.useFakeTimers();
+    let nowMs = 40_000;
+    let claim = 0;
+    const effect = historyProjectionEffect(0);
+    const projectionStore: HistoryProjectionEffectStore = {
+      ...historyProjectionEffectStore(),
+      claimNext: jest.fn(async () => {
+        claim += 1;
+        if (claim === 1 || claim === 3) return effect;
+        if (claim === 2) throw new Error("claim_failed");
+        return null;
+      }),
+    };
+    const projectionRepository: HistoryProjectionRepository = {
+      ...historyProjectionRepository(),
+      currentRevision: jest.fn(async () => 1),
+      rebuildSubject: jest.fn(async () => "applied" as const),
+    };
+    const lifecycle = createWorkoutLifecycle({
+      kernel: {} as SqliteKernel,
+      restRepository: {
+        ...restRepository(),
+        listActiveSessionIds: jest.fn(async () => []),
+      },
+      notifications: notifications(),
+      nowMs: () => nowMs,
+      effectStore: {
+        ...effectStoreWithOneEffect(),
+        claimNext: jest.fn(async () => null),
+      },
+      foregroundFeedbackStore: foregroundFeedbackStore(),
+      historyProjectionRepository: projectionRepository,
+      historyProjectionEffectStore: projectionStore,
+    });
+
+    try {
+      await expect(lifecycle.trigger("post_commit")).resolves.toMatchObject({
+        historyProjectionDrain: {
+          claimed: 0,
+          permanentFailures: 0,
+        },
+      });
+      expect(projectionRepository.rebuildSubject).not.toHaveBeenCalled();
+
+      nowMs = 70_000;
+      await jest.advanceTimersByTimeAsync(30_000);
+
+      expect(projectionStore.resetExpiredClaims).toHaveBeenLastCalledWith(70_000);
+      expect(projectionRepository.rebuildSubject).toHaveBeenCalledWith({
+        subjectId: effect.subjectId,
+        expectedRevision: effect.expectedRevision,
+        nowMs: 70_000,
+      });
+      expect(projectionStore.complete).toHaveBeenCalledWith(effect.id, 70_000);
+    } finally {
+      jest.useRealTimers();
+    }
   });
 
   it("recovers dedicated projection leases through its default queue store", async () => {

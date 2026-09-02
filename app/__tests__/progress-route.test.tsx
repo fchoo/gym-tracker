@@ -17,6 +17,7 @@ import {
 } from "../../src/ui/theme";
 
 const mockPush = jest.fn();
+let mockWorkoutRefreshGeneration = 0;
 const mockLoadProgress = jest.fn(async () => ({
   period: "4_weeks" as const,
   freshness: "current" as const,
@@ -44,7 +45,10 @@ jest.mock("expo-router", () => ({
 }));
 
 jest.mock("../../src/bootstrap/workoutAppRuntime", () => ({
-  useWorkoutAppRuntime: () => ({ loadProgress: mockLoadProgress }),
+  useWorkoutAppRuntime: () => ({
+    loadProgress: mockLoadProgress,
+    workoutRefreshGeneration: mockWorkoutRefreshGeneration,
+  }),
 }));
 
 import ProgressRoute from "../(tabs)/progress";
@@ -53,6 +57,7 @@ describe("ProgressRoute", () => {
   beforeEach(() => {
     mockPush.mockReset();
     mockLoadProgress.mockClear();
+    mockWorkoutRefreshGeneration = 0;
   });
 
   it("binds Progress only through the typed runtime load capability", async () => {
@@ -70,5 +75,23 @@ describe("ProgressRoute", () => {
     }));
     expect(screen.getByRole("header", { name: "No progress history yet" }))
       .toBeOnTheScreen();
+  });
+
+  it("reloads Progress when the runtime workout generation changes", async () => {
+    const rendered = await render(
+      <AppearanceProvider>
+        <ProgressRoute />
+      </AppearanceProvider>,
+    );
+    await waitFor(() => expect(mockLoadProgress).toHaveBeenCalledTimes(1));
+
+    mockWorkoutRefreshGeneration = 1;
+    await rendered.rerender(
+      <AppearanceProvider>
+        <ProgressRoute />
+      </AppearanceProvider>,
+    );
+
+    await waitFor(() => expect(mockLoadProgress).toHaveBeenCalledTimes(2));
   });
 });

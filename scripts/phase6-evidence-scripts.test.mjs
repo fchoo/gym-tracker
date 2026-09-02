@@ -2,9 +2,15 @@ import assert from "node:assert/strict";
 import { transformSync } from "@babel/core";
 import { createHash } from "node:crypto";
 import {
+  chmodSync,
+  existsSync,
+  mkdirSync,
   mkdtempSync,
   readFileSync,
+  realpathSync,
+  symlinkSync,
   rmSync,
+  statSync,
   writeFileSync,
 } from "node:fs";
 import os from "node:os";
@@ -46,6 +52,30 @@ function fixtureCandidate() {
 
 function passedReport() {
   return Buffer.from("<testsuites><testsuite><testcase/></testsuite></testsuites>");
+}
+
+function screenshotFixtures() {
+  return {
+    "phase6-progress-library": [
+      { file: "phase6-library-favorite-selected.png", sha256: SHA_A },
+      { file: "phase6-library-search.png", sha256: SHA_B },
+      { file: "phase6-progress-search.png", sha256: SHA_A },
+      { file: "phase6-progress-summary.png", sha256: SHA_B },
+    ],
+    "phase6-calendar-date-reorder": [
+      { file: "phase6-calendar-dialog-200pct.png", sha256: SHA_A },
+      { file: "phase6-calendar-swipe.png", sha256: SHA_B },
+      { file: "phase6-reorder-before-drag.png", sha256: SHA_A },
+      { file: "phase6-reorder-live-displacement.png", sha256: SHA_B },
+    ],
+    "phase6-navigation-accessibility": [
+      { file: "phase6-history-data-route-200pct.png", sha256: SHA_A },
+      { file: "phase6-navigation-calendar-200pct.png", sha256: SHA_B },
+      { file: "phase6-navigation-library-200pct.png", sha256: SHA_A },
+      { file: "phase6-navigation-progress-200pct.png", sha256: SHA_B },
+      { file: "phase6-navigation-today-200pct.png", sha256: SHA_A },
+    ],
+  };
 }
 
 test("Phase 6 runner requires production candidate identity arguments", async () => {
@@ -113,6 +143,7 @@ test("Phase 6 maps every UI consideration and native backstop explicitly", async
 test("Phase 6 evidence rejects wrong identity, screenshots, cleanup, and release fields", async () => {
   const {
     createPhase6Evidence,
+    snapshotPhase6ExecutableFlows,
     validatePhase6Evidence,
   } = await load("scripts/run-phase6-maestro.mjs");
   const candidate = fixtureCandidate();
@@ -124,13 +155,14 @@ test("Phase 6 evidence rejects wrong identity, screenshots, cleanup, and release
   const nativeDragReports = {
     "phase6-calendar-date-reorder": passedReport(),
   };
-  const screenshots = Object.fromEntries(Object.keys(rawReports).map((id) => [id, [
-    { file: `${id}/complete.png`, sha256: SHA_A },
-    ...(id === "phase6-calendar-date-reorder"
-      ? [{ file: "phase6-reorder-live-displacement.png", sha256: SHA_B }]
-      : []),
-  ]]));
-  const evidence = createPhase6Evidence({
+  const screenshots = screenshotFixtures();
+  const executableFlows = snapshotPhase6ExecutableFlows();
+  test.after(() => {
+    if (existsSync(executableFlows.directory)) {
+      executableFlows.cleanup();
+    }
+  });
+  const evidenceInput = {
     candidate,
     device: {
       role: "automated-emulator",
@@ -142,48 +174,89 @@ test("Phase 6 evidence rejects wrong identity, screenshots, cleanup, and release
       installed_version_code: 1,
       installed_apk_sha256: SHA_B,
     },
+    flowExecutions: executableFlows.flows,
     rawReports,
     nativeDragReports,
     screenshots,
     fontScaleRestored: true,
-  });
-  assert.doesNotThrow(() => validatePhase6Evidence(
-    evidence,
+  };
+  const evidence = createPhase6Evidence(evidenceInput);
+  const validate = (candidateEvidence) => validatePhase6Evidence(
+    candidateEvidence,
     candidate,
     rawReports,
     nativeDragReports,
-  ));
-  assert.throws(() => validatePhase6Evidence({
+    executableFlows.flows,
+  );
+  assert.doesNotThrow(() => validate(evidence));
+  assert.throws(() => validate({
     ...evidence,
     device: { ...evidence.device, installed_apk_sha256: SHA_A },
-  }, candidate, rawReports, nativeDragReports), /installed|identity|candidate/u);
-  assert.throws(() => validatePhase6Evidence({
+  }), /installed|identity|candidate/u);
+  assert.throws(() => validate({
     ...evidence,
     flows: evidence.flows.map((flow, index) => index === 0
       ? { ...flow, screenshots: [] }
       : flow),
-  }, candidate, rawReports, nativeDragReports), /screenshot|artifact|evidence/u);
-  assert.throws(() => validatePhase6Evidence({
+  }), /screenshot|artifact|evidence/u);
+  assert.throws(() => validate({
+    ...evidence,
+    flows: evidence.flows.map((flow) => flow.id === "phase6-progress-library"
+      ? {
+          ...flow,
+          screenshots: flow.screenshots.map((screenshot, index) => index === 0
+            ? { ...screenshot, file: "phase6-renamed.png" }
+            : screenshot),
+        }
+      : flow),
+  }), /screenshot|artifact|evidence/u);
+  assert.throws(() => createPhase6Evidence({
+    ...evidenceInput,
+    screenshots: {
+      ...screenshots,
+      "phase6-progress-library": screenshots["phase6-progress-library"].slice(1),
+    },
+  }), /screenshots.*phase6-progress-library|phase6-progress-library.*screenshots/u);
+  assert.throws(() => createPhase6Evidence({
+    ...evidenceInput,
+    screenshots: {
+      ...screenshots,
+      "phase6-progress-library": [
+        ...screenshots["phase6-progress-library"],
+        { file: "unexpected-extra.png", sha256: SHA_A },
+      ],
+    },
+  }), /screenshots.*phase6-progress-library|phase6-progress-library.*screenshots/u);
+  assert.throws(() => validate({
+    ...evidence,
+    flows: evidence.flows.map((flow, index) => index === 0
+      ? { ...flow, flow_sha256: "0".repeat(64) }
+      : flow),
+  }), /flow|command|evidence/u);
+  assert.throws(() => validate({
+    ...evidence,
+    flows: evidence.flows.map((flow) => flow.id === "phase6-calendar-date-reorder"
+      ? { ...flow, native_drag_flow_sha256: "0".repeat(64) }
+      : flow),
+  }), /native drag|evidence/u);
+  assert.throws(() => validate({
     ...evidence,
     font_scale_restored: false,
-  }, candidate, rawReports, nativeDragReports), /font|cleanup|evidence/u);
+  }), /font|cleanup|evidence/u);
   assert.throws(() => createPhase6Evidence({
-    candidate,
-    device: evidence.device,
+    ...evidenceInput,
     rawReports,
     nativeDragReports: {},
-    screenshots,
-    fontScaleRestored: true,
   }), /native-drag|native drag|report/u);
-  assert.throws(() => validatePhase6Evidence({
+  assert.throws(() => validate({
     ...evidence,
     release_authorization: "approved",
-  }, candidate, rawReports, nativeDragReports), /authorization|approval|evidence/u);
-  assert.throws(() => validatePhase6Evidence({
+  }), /authorization|approval|evidence/u);
+  assert.throws(() => validate({
     ...evidence,
     raw_path: "/private/device/rows.json",
-  }, candidate, rawReports, nativeDragReports), /private|bounded|evidence/u);
-  assert.throws(() => validatePhase6Evidence({
+  }), /private|bounded|evidence/u);
+  assert.throws(() => validate({
     ...evidence,
     flows: evidence.flows.map((flow) => flow.id === "phase6-calendar-date-reorder"
       ? {
@@ -194,7 +267,122 @@ test("Phase 6 evidence rejects wrong identity, screenshots, cleanup, and release
           },
         }
       : flow),
-  }, candidate, rawReports, nativeDragReports), /native drag|evidence/u);
+  }), /native drag|evidence/u);
+});
+
+test("Phase 6 executes immutable flow snapshots and rejects changed snapshot bytes", async () => {
+  const {
+    snapshotPhase6ExecutableFlows,
+    validatePhase6ExecutableFlowSnapshots,
+  } = await load(
+    "scripts/run-phase6-maestro.mjs",
+  );
+  const parent = mkdtempSync(path.join(os.tmpdir(), "phase6-flow-snapshot-test-"));
+  test.after(() => rmSync(parent, { force: true, recursive: true }));
+  const snapshot = snapshotPhase6ExecutableFlows(parent);
+  assert.equal(Object.keys(snapshot.flows).length, 3);
+  for (const execution of Object.values(snapshot.flows)) {
+    assert.equal(
+      createHash("sha256").update(readFileSync(execution.flowPath)).digest("hex"),
+      execution.flowSha256,
+    );
+  }
+  const n3 = snapshot.flows["phase6-calendar-date-reorder"];
+  assert.equal(n3.nativeDragFlow, "maestro/phase6/calendar-date-reorder-verify.yaml");
+  assert.equal(
+    createHash("sha256").update(readFileSync(n3.nativeDragFlowPath)).digest("hex"),
+    n3.nativeDragFlowSha256,
+  );
+  const originalMode = statSync(n3.flowPath).mode;
+  chmodSync(n3.flowPath, 0o600);
+  writeFileSync(n3.flowPath, "changed after snapshot");
+  assert.throws(
+    () => validatePhase6ExecutableFlowSnapshots(snapshot.flows),
+    /executed Maestro flow bytes changed/u,
+  );
+  chmodSync(n3.flowPath, originalMode);
+  snapshot.cleanup();
+});
+
+test("Phase 6 evidence rejects source drift after immutable flow capture", async () => {
+  const {
+    snapshotPhase6ExecutableFlows,
+    validatePhase6ExecutableFlowSnapshots,
+  } = await load("scripts/run-phase6-maestro.mjs");
+  const parent = mkdtempSync(path.join(os.tmpdir(), "phase6-source-drift-test-"));
+  const sourceRoot = path.join(parent, "source");
+  const sourceDirectory = path.join(sourceRoot, "maestro/phase6");
+  mkdirSync(sourceDirectory, { recursive: true });
+  for (const file of [
+    "progress-library.yaml",
+    "calendar-date-reorder.yaml",
+    "calendar-date-reorder-verify.yaml",
+    "navigation-accessibility.yaml",
+  ]) {
+    writeFileSync(
+      path.join(sourceDirectory, file),
+      readFileSync(path.join(projectRoot, "maestro/phase6", file)),
+    );
+  }
+  const snapshot = snapshotPhase6ExecutableFlows(parent, sourceRoot);
+  const source = path.join(sourceDirectory, "progress-library.yaml");
+  try {
+    writeFileSync(source, Buffer.concat([readFileSync(source), Buffer.from("\n# drift\n")]));
+    assert.throws(
+      () => validatePhase6ExecutableFlowSnapshots(snapshot.flows, sourceRoot),
+      /executed Maestro flow bytes changed/u,
+    );
+  } finally {
+    snapshot.cleanup();
+    rmSync(parent, { force: true, recursive: true });
+  }
+});
+
+test("Phase 6 evidence outputs reject stale reports before execution", async () => {
+  const { preparePhase6EvidenceOutputs } = await load(
+    "scripts/run-phase6-maestro.mjs",
+  );
+  const root = realpathSync(mkdtempSync(path.join(os.tmpdir(), "phase6-output-test-")));
+  test.after(() => rmSync(root, { force: true, recursive: true }));
+  const output = path.join(root, "evidence", "phase6.json");
+  const reports = path.join(root, "evidence", "phase6-maestro");
+
+  preparePhase6EvidenceOutputs(output, reports);
+  writeFileSync(path.join(reports, "stale.png"), "stale");
+  assert.throws(
+    () => preparePhase6EvidenceOutputs(output, reports),
+    /report directory must be fresh/u,
+  );
+});
+
+test("Phase 6 evidence outputs reject symlink escape through output or report descendants", async () => {
+  const { preparePhase6EvidenceOutputs } = await load(
+    "scripts/run-phase6-maestro.mjs",
+  );
+  const root = realpathSync(mkdtempSync(path.join(os.tmpdir(), "phase6-output-symlink-test-")));
+  const outside = realpathSync(mkdtempSync(path.join(os.tmpdir(), "phase6-output-symlink-outside-")));
+  test.after(() => {
+    rmSync(root, { force: true, recursive: true });
+    rmSync(outside, { force: true, recursive: true });
+  });
+  const evidenceRoot = path.join(root, "evidence");
+  mkdirSync(evidenceRoot, { recursive: true });
+  symlinkSync(outside, path.join(evidenceRoot, "escape"), "dir");
+
+  assert.throws(
+    () => preparePhase6EvidenceOutputs(
+      path.join(evidenceRoot, "escape", "phase6.json"),
+      path.join(evidenceRoot, "phase6-maestro"),
+    ),
+    /symlink|canonical|unsafe/u,
+  );
+  assert.throws(
+    () => preparePhase6EvidenceOutputs(
+      path.join(evidenceRoot, "phase6.json"),
+      path.join(evidenceRoot, "escape", "phase6-maestro"),
+    ),
+    /symlink|canonical|unsafe/u,
+  );
 });
 
 test("Phase 6 production flows retain exact package, labelled coverage, and screenshot capture", () => {
@@ -213,7 +401,7 @@ test("Phase 6 production flows retain exact package, labelled coverage, and scre
   }
 });
 
-test("Phase 6 Progress flow exits the full-screen workout before root navigation", () => {
+test("Phase 6 Progress flow saves history-eligible workout facts before root navigation", () => {
   const source = readFileSync(
     path.join(projectRoot, "maestro/phase6/progress-library.yaml"),
     "utf8",
@@ -221,11 +409,19 @@ test("Phase 6 Progress flow exits the full-screen workout before root navigation
 
   assert.match(
     source,
-    /- tapOn: "Complete Set 1"\n- tapOn: "Go back"\n- assertVisible: "Workout in progress"\n- tapOn: "Progress"\n- assertVisible: "4 weeks"/u,
+    /- tapOn: "Complete Set 1"[\s\S]*visible: "RESTING · NEXT: SET 2 AT 60 kg × 8"[\s\S]*- tapOn: "Complete Set 2"[\s\S]*visible: "RESTING · NEXT: SET 3 AT 60 kg × 8"[\s\S]*- tapOn: "Complete Set 3"[\s\S]*visible: "RESTING · NEXT: SET 1 AT 42\.5 kg × 10"\n    timeout: 60000\n- tapOn: "More workout actions"\n- tapOn: "Finish as partial"\n- assertVisible: "Save partial workout\?"\n- tapOn:\n    id: "save-partial-workout-confirm"\n- extendedWaitUntil:\n    visible: "PARTIAL SAVED"\n    timeout: 60000\n- assertVisible: "PARTIAL SAVED"\n- assertVisible: "Workout saved"\n- stopApp\n- launchApp:\n    clearState: false\n    stopApp: true\n    permissions:\n      notifications: deny\n- assertVisible: "Today"\n- assertVisible: "Workout saved as partial"\n- assertVisible: "Back Squat · Working set 1 · 3\/15 working sets"\n- tapOn: "Progress"\n- assertVisible: "4 weeks"\n- assertVisible: "Overall Progress"\n- scrollUntilVisible:\n    element:\n      text: "Working sets · 3 of 15 completed"\n    direction: DOWN\n    centerElement: true\n    timeout: 60000\n- assertNotVisible: "No progress history yet"\n- takeScreenshot: phase6-progress-summary\n- scrollUntilVisible:\n    element:\n      text: "Exercise progress"\n    direction: DOWN\n    centerElement: true\n    timeout: 60000\n- assertVisible: "Exercise progress"\n- assertVisible: "Back Squat"\n- tapOn: "Search exercises"/u,
   );
   assert.doesNotMatch(
     source,
-    /- tapOn: "Complete Set 1"\n- tapOn: "Progress"/u,
+    /- extendedWaitUntil:\n    visible: "PARTIAL SAVED"\n    timeout: 60000\n- assertVisible: "Workout saved"\n- tapOn: "Progress"/u,
+  );
+  assert.doesNotMatch(
+    source,
+    /- tapOn: "Progress"\n- assertVisible: "4 weeks"\n- tapOn: "Search exercises"/u,
+  );
+  assert.doesNotMatch(
+    source,
+    /- tapOn: "Return to Today"/u,
   );
 });
 

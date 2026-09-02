@@ -1,4 +1,5 @@
 import {
+  act,
   fireEvent,
   render,
   screen,
@@ -123,6 +124,7 @@ async function renderProgress(
 ) {
   const props: React.ComponentProps<typeof ProgressScreen> = {
     nowLocalDate: "2026-08-24",
+    workoutRefreshGeneration: 0,
     loadProgress: jest.fn(async () => ({
       period: "4_weeks" as const,
       freshness: "current" as const,
@@ -226,20 +228,61 @@ describe("ProgressScreen", () => {
       .toHaveProp("accessibilityState", expect.objectContaining({ selected: true }));
   });
 
+  it("reloads the selected period when the workout generation changes", async () => {
+    const loadProgress = jest.fn(async () => ({
+      period: "4_weeks" as const,
+      freshness: "current" as const,
+      projection: projection(),
+    }));
+    const props: React.ComponentProps<typeof ProgressScreen> = {
+      nowLocalDate: "2026-08-24",
+      workoutRefreshGeneration: 0,
+      loadProgress,
+      onOpenExercise: jest.fn(),
+      onOpenSession: jest.fn(),
+    };
+    const rendered = await render(
+      <AppearanceProvider store={createMemoryAppearanceStore("Light")}>
+        <ProgressScreen {...props} />
+      </AppearanceProvider>,
+    );
+    await waitFor(() => expect(loadProgress).toHaveBeenCalledTimes(1));
+
+    await rendered.rerender(
+      <AppearanceProvider store={createMemoryAppearanceStore("Light")}>
+        <ProgressScreen {...props} workoutRefreshGeneration={1} />
+      </AppearanceProvider>,
+    );
+
+    await waitFor(() => expect(loadProgress).toHaveBeenCalledTimes(2));
+    expect(loadProgress).toHaveBeenLastCalledWith({
+      period: "4_weeks",
+      nowLocalDate: "2026-08-24",
+    });
+  });
+
   it("suppresses stale totals while progress is updating", async () => {
-    await renderProgress({
-      loadProgress: jest.fn(async () => ({
+    jest.useFakeTimers();
+    const loadProgress = jest.fn(async () => ({
         period: "4_weeks" as const,
         freshness: "updating" as const,
         projection: null,
-      })),
-    });
+      }));
+    try {
+      await renderProgress({ loadProgress });
 
-    expect(await screen.findByText("Updating progress")).toBeOnTheScreen();
-    expect(screen.getByText("Saved history is being recalculated. Results refresh automatically."))
-      .toBeOnTheScreen();
-    expect(screen.queryByText(/Scheduled opportunities ·/u)).not.toBeOnTheScreen();
-    expect(screen.queryByText(/Working sets ·/u)).not.toBeOnTheScreen();
+      expect(await screen.findByText("Updating progress")).toBeOnTheScreen();
+      expect(screen.getByText("Saved history is being recalculated. Results refresh automatically."))
+        .toBeOnTheScreen();
+      expect(screen.queryByText(/Scheduled opportunities ·/u)).not.toBeOnTheScreen();
+      expect(screen.queryByText(/Working sets ·/u)).not.toBeOnTheScreen();
+      await act(async () => {
+        await jest.advanceTimersByTimeAsync(250);
+      });
+      await waitFor(() => expect(loadProgress).toHaveBeenCalledTimes(2));
+    } finally {
+      jest.useRealTimers();
+    }
   });
 
   it("shows the same safe rebuild state for an unavailable projection and retries the factual read", async () => {

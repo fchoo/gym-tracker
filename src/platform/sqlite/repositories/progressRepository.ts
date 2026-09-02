@@ -31,6 +31,10 @@ type RevisionRow = Readonly<{
   applied_revision: number | null;
 }>;
 
+type RebuildAvailabilityRow = Readonly<{
+  subject_id: string;
+}>;
+
 type PeriodInputRow = Readonly<{
   local_date: string;
   completed_exercises: number;
@@ -349,15 +353,33 @@ export function createProgressRepository(
         });
       }
       if (hasHistorySubjects && freshnessFor(revisions) !== "current") {
+        const staleSubjectIds = revisions
+          .filter(({ revision, applied_revision }) => applied_revision !== revision)
+          .map(({ subject_id }) => subject_id);
+        const stalePlaceholders = staleSubjectIds.map(() => "?").join(", " );
+        const rebuildable = await kernel.queryAll<RebuildAvailabilityRow>(
+          `SELECT DISTINCT subject_id
+           FROM history_rebuild_effects
+           WHERE subject_id IN (${stalePlaceholders})
+             AND status IN ('pending', 'processing')
+           ORDER BY subject_id`,
+          staleSubjectIds,
+        );
+        const rebuildableSubjectIds = new Set(
+          rebuildable.map(({ subject_id }) => subject_id),
+        );
+        const unavailable = staleSubjectIds.some((subjectId) =>
+          !rebuildableSubjectIds.has(subjectId)
+        );
         return Object.freeze({
           period: input.period,
-          freshness: "updating",
+          freshness: unavailable ? "unavailable" : "updating",
           projection: null,
           diagnostic: diagnosticForSubjects({
-            code: "history_projection_updating",
-            subjectIds: revisions
-              .filter(({ revision, applied_revision }) => applied_revision !== revision)
-              .map(({ subject_id }) => subject_id),
+            code: unavailable
+              ? "history_projection_unavailable"
+              : "history_projection_updating",
+            subjectIds: staleSubjectIds,
             metricSubjectIds,
           }),
         });

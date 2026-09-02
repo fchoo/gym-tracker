@@ -9,6 +9,7 @@ import type {
   MetricTarget,
 } from "../metrics";
 import {
+  assertValidHistoryCorrectionSnapshot,
   HistoryCorrectionInputError,
   prepareHistoryCorrection,
   type HistoryCorrectionSnapshot,
@@ -91,6 +92,54 @@ function correction(
 }
 
 describe("history correction contracts", () => {
+  it("accepts independent warm-up and working-set ordinal sequences", () => {
+    const base = snapshot();
+    const mixedSets: HistoryCorrectionSnapshot = {
+      ...base,
+      exercises: [{
+        ...base.exercises[0]!,
+        sets: [{
+          id: "warmup-set-1",
+          kind: "warmup",
+          ordinal: 0,
+          status: "completed",
+          target,
+          observation: {
+            version: 1,
+            profile: "load_reps",
+            loadGrams: 20_000,
+            reps: 8,
+            source: "manual",
+          },
+          completedAtMs: 1_724_429_150_000,
+        }, ...base.exercises[0]!.sets],
+      }],
+    };
+
+    expect(() => assertValidHistoryCorrectionSnapshot(mixedSets))
+      .not.toThrow();
+  });
+
+  it("keeps set ordinals unique within each set kind", () => {
+    const base = snapshot();
+    const duplicateWorkingOrdinal: HistoryCorrectionSnapshot = {
+      ...base,
+      exercises: [{
+        ...base.exercises[0]!,
+        sets: [
+          ...base.exercises[0]!.sets,
+          {
+            ...base.exercises[0]!.sets[0]!,
+            id: "history-added:set-duplicate-ordinal",
+          },
+        ],
+      }],
+    };
+
+    expect(() => assertValidHistoryCorrectionSnapshot(duplicateWorkingOrdinal))
+      .toThrow("history_correction_set_invalid");
+  });
+
   it("accepts a complete effective snapshot, produces canonical discrete audit deltas, and keeps immutable entity IDs", () => {
     const base = snapshot();
     const next = snapshot({
