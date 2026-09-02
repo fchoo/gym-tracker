@@ -12,6 +12,10 @@ import type {
 import type {
   MetricProfile,
 } from "../../../domains/metrics";
+import {
+  assertValidHistoryCorrectionSnapshot,
+  type HistoryCorrectionSnapshot,
+} from "../../../domains/history";
 import type {
   StartedWorkout,
   StartWorkoutRequest,
@@ -1145,14 +1149,18 @@ export function createPlansWorkoutRepository(
       const [partial] = await kernel.queryAll<{
         session_id: string;
         revision: number;
+        active_session_exercise_id: string | null;
+        active_set_id: string | null;
         exercise_name: string | null;
         set_kind: string | null;
         set_ordinal: number | null;
         completed_working_sets: number;
         total_working_sets: number;
+        snapshot_json: string | null;
       }>(
         `SELECT ws.id AS session_id,
                 COALESCE(overlay.effective_revision, ws.revision) AS revision,
+                ws.active_session_exercise_id, ws.active_set_id,
                 se.exercise_name, ss.set_kind,
                 ss.ordinal AS set_ordinal,
                 SUM(CASE
@@ -1161,7 +1169,8 @@ export function createPlansWorkoutRepository(
                 ) AS completed_working_sets,
                 SUM(CASE
                   WHEN all_sets.set_kind = 'working' THEN 1 ELSE 0 END
-                ) AS total_working_sets
+                ) AS total_working_sets,
+                overlay.snapshot_json
          FROM workout_sessions ws
          LEFT JOIN session_exercises se
            ON se.id = ws.active_session_exercise_id
@@ -1179,18 +1188,57 @@ export function createPlansWorkoutRepository(
          LIMIT 1`,
       );
       if (partial !== undefined) {
+        let exerciseName = partial.exercise_name;
+        let setKind = partial.set_kind;
+        let setOrdinal = partial.set_ordinal;
+        let completedWorkingSets = partial.completed_working_sets;
+        let totalWorkingSets = partial.total_working_sets;
+        if (partial.snapshot_json !== null) {
+          try {
+            const snapshot = JSON.parse(
+              partial.snapshot_json,
+            ) as HistoryCorrectionSnapshot;
+            assertValidHistoryCorrectionSnapshot(snapshot);
+            if (
+              snapshot.session.id !== partial.session_id
+              || snapshot.session.status !== "partial"
+            ) {
+              throw new Error("today_partial_overlay_mismatch");
+            }
+            const activeExercise = partial.active_session_exercise_id === null
+              ? undefined
+              : snapshot.exercises.find(({ id }) =>
+                id === partial.active_session_exercise_id
+              );
+            const activeSet = partial.active_set_id === null
+              ? undefined
+              : activeExercise?.sets.find(({ id }) => id === partial.active_set_id);
+            exerciseName = activeExercise?.name ?? null;
+            setKind = activeSet?.kind ?? null;
+            setOrdinal = activeSet?.ordinal ?? null;
+            const workingSets = snapshot.exercises.flatMap(({ sets }) =>
+              sets.filter(({ kind }) => kind === "working")
+            );
+            completedWorkingSets = workingSets.filter(({ status }) =>
+              status === "completed"
+            ).length;
+            totalWorkingSets = workingSets.length;
+          } catch {
+            throw new Error("today_partial_overlay_invalid");
+          }
+        }
         return {
           state: "saved_partial",
           sessionId: partial.session_id,
           revision: partial.revision,
-          exerciseName: partial.exercise_name,
-          setLabel: partial.set_kind === null || partial.set_ordinal === null
+          exerciseName,
+          setLabel: setKind === null || setOrdinal === null
             ? null
-            : `${partial.set_kind === "warmup" ? "Warm-up" : "Working set"} ${
-                partial.set_ordinal + 1
+            : `${setKind === "warmup" ? "Warm-up" : "Working set"} ${
+                setOrdinal + 1
               }`,
-          completedWorkingSets: partial.completed_working_sets,
-          totalWorkingSets: partial.total_working_sets,
+          completedWorkingSets,
+          totalWorkingSets,
         };
       }
 

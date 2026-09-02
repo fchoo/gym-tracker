@@ -701,6 +701,7 @@ export function createHistoryRepository(kernel: SqliteKernel): HistoryRepository
           AND audit.effective_revision = overlay.effective_revision
           AND audit.event_type = 'void'
          WHERE overlay.lifecycle = 'voided'
+           AND ws.status IN ('completed', 'partial', 'manual_visit', 'zero_sets')
          ORDER BY audit.occurred_at_ms DESC, overlay.session_id ASC`,
       );
       const removed = await Promise.all(rows.map(async (row) => {

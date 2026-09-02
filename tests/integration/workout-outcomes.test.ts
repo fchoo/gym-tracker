@@ -1237,6 +1237,8 @@ describe("Plan 01-10 explicit workout outcomes", () => {
       lifecycle: "voided",
       effective_revision: corrected.revision + 1,
     }]);
+    await expect(createHistoryRepository(kernel).listRemovedSessions())
+      .resolves.toEqual([]);
     await expect(kernel.queryAll<{
       event_type: string;
       field_identity: string;
