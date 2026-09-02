@@ -3,7 +3,9 @@ export {
 } from "./periodProjection";
 export type {
   ProgressAttentionItem,
+  ProgressComparableExposure,
   ProgressExercise,
+  ProgressExerciseReference,
   ProgressExerciseStatus,
   ProgressPeriod,
   ProgressPeriodProjection,

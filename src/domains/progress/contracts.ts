@@ -39,7 +39,13 @@ export type ProgressScheduledOpportunity = Readonly<{
 export type ProgressAttentionItem = Readonly<{
   id: string;
   exerciseId: string;
+  exerciseName: string;
   sessionId: string | null;
+}>;
+
+export type ProgressExerciseReference = Readonly<{
+  exerciseId: string;
+  exerciseName: string;
 }>;
 
 /**
@@ -50,7 +56,9 @@ export type ProgressAttentionItem = Readonly<{
  */
 export type ProgressSourceReference = Readonly<{
   sessionIds: readonly string[];
+  /** Stable identities retained for compatibility with non-visual consumers. */
   exerciseIds: readonly string[];
+  exercises: readonly ProgressExerciseReference[];
 }>;
 
 export type ProgressSummarySourceReferences = Readonly<{
@@ -64,7 +72,11 @@ export type ProgressEffectiveSourceSession = Readonly<{
   sessionId: string;
   localDate: string;
   lifecycle: "active" | "voided";
-  exerciseIds: readonly string[];
+  exercises: readonly ProgressExerciseReference[];
+}>;
+
+export type ProgressComparableExposure = HistoryProjectionComparableExposure & Readonly<{
+  exerciseName: string;
 }>;
 
 /**
@@ -91,7 +103,7 @@ export type ProgressPeriodProjectionInput = Readonly<{
   period: ProgressPeriod;
   nowLocalDate: string;
   periodInputs: readonly HistoryProjectionPeriodInput[];
-  comparableExposures: readonly HistoryProjectionComparableExposure[];
+  comparableExposures: readonly ProgressComparableExposure[];
   scheduledOpportunities: readonly ProgressScheduledOpportunity[];
   attention: readonly ProgressAttentionItem[];
   sourceSessions?: readonly ProgressEffectiveSourceSession[];
@@ -117,6 +129,7 @@ export type ProgressExerciseStatus = "baseline" | "improving" | "holding";
 
 export type ProgressExercise = Readonly<{
   exerciseId: string;
+  exerciseName: string;
   identityKey: string;
   comparatorKey: string;
   status: ProgressExerciseStatus;
@@ -127,6 +140,7 @@ export type ProgressExercise = Readonly<{
 
 export type ProgressRecord = Readonly<{
   exerciseId: string;
+  exerciseName: string;
   identityKey: string;
   comparatorKey: string;
   sessionId: string;
@@ -141,7 +155,9 @@ export type ProgressTrendRow = Readonly<{
   scheduledOpportunities: Readonly<{ completed: number; planned: number }>;
   workingSets: Readonly<{ completed: number; planned: number }>;
   sessionIds: readonly string[];
+  /** Stable identities retained for compatibility with non-visual consumers. */
   exerciseIds: readonly string[];
+  exercises: readonly ProgressExerciseReference[];
 }>;
 
 export type ProgressPeriodProjection = Readonly<{

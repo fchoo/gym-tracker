@@ -28,6 +28,7 @@ function metricSet(
     sessionId: "session-1",
     localDate: "2026-08-20",
     exerciseId: "bench-press",
+    exerciseName: "Bench Press",
     identity: loadIdentity,
     target: {
       version: 1,

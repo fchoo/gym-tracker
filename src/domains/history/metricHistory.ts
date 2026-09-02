@@ -20,6 +20,7 @@ export type EffectiveMetricHistorySet = Readonly<{
   sessionId: string;
   localDate: string;
   exerciseId: string;
+  exerciseName: string;
   identity: MetricIdentity;
   target: MetricTarget;
   observation: MetricObservation | null;

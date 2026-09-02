@@ -25,10 +25,12 @@ function exposure(input: Readonly<{
   completedAtMs: number;
   reps: number;
   exerciseId?: string;
+  exerciseName?: string;
   loadGrams?: number;
 }>) {
   return {
     exerciseId: input.exerciseId ?? "bench-press",
+    exerciseName: input.exerciseName ?? "Bench Press",
     identityKey: "load_reps:1:1",
     comparatorKey: "identity",
     sessionId: input.sessionId,
@@ -169,6 +171,7 @@ describe("projectProgressPeriod", () => {
       attention: [{
         id: "recommendation-1",
         exerciseId: "bench-press",
+        exerciseName: "Bench Press",
         sessionId: "session-2",
       }],
     });
@@ -184,12 +187,14 @@ describe("projectProgressPeriod", () => {
     });
     expect(view.records).toEqual([expect.objectContaining({
       exerciseId: "bench-press",
+      exerciseName: "Bench Press",
       sessionId: "session-2",
       setId: "set-2",
       observationJson: expect.stringContaining('\"reps\":10'),
     })]);
     expect(view.exercises).toEqual([expect.objectContaining({
       exerciseId: "bench-press",
+      exerciseName: "Bench Press",
       status: "improving",
       sessionId: "session-2",
       setId: "set-2",
@@ -209,6 +214,7 @@ describe("projectProgressPeriod", () => {
     expect(view.attention).toEqual([{
       id: "recommendation-1",
       exerciseId: "bench-press",
+      exerciseName: "Bench Press",
       sessionId: "session-2",
     }]);
   });
@@ -281,6 +287,7 @@ describe("projectProgressPeriod", () => {
       attention: [{
         id: "attention-b",
         exerciseId: "bench-press",
+        exerciseName: "Bench Press",
         sessionId: "session-b",
       }],
       sourceSessions: [
@@ -288,25 +295,35 @@ describe("projectProgressPeriod", () => {
           sessionId: "session-b",
           localDate: "2026-08-20",
           lifecycle: "active",
-          exerciseIds: ["squat", "bench-press", "bench-press"],
+          exercises: [
+            { exerciseId: "squat", exerciseName: "Back Squat" },
+            { exerciseId: "bench-press", exerciseName: "Bench Press" },
+            { exerciseId: "bench-press", exerciseName: "Bench Press" },
+          ],
         },
         {
           sessionId: "session-a",
           localDate: "2026-08-20",
           lifecycle: "active",
-          exerciseIds: ["deadlift"],
+          exercises: [{ exerciseId: "deadlift", exerciseName: "Deadlift" }],
         },
         {
           sessionId: "session-voided",
           localDate: "2026-08-20",
           lifecycle: "voided",
-          exerciseIds: ["voided-exercise"],
+          exercises: [{
+            exerciseId: "voided-exercise",
+            exerciseName: "Voided exercise",
+          }],
         },
         {
           sessionId: "session-outside",
           localDate: "2026-07-27",
           lifecycle: "active",
-          exerciseIds: ["outside-exercise"],
+          exercises: [{
+            exerciseId: "outside-exercise",
+            exerciseName: "Outside exercise",
+          }],
         },
       ],
     } as never);
@@ -317,25 +334,29 @@ describe("projectProgressPeriod", () => {
         sourceReferences: {
           scheduledOpportunities: {
             sessionIds: ["session-b"],
-            exerciseIds: [],
+            exercises: [],
           },
           workingSets: {
             sessionIds: ["session-a", "session-b"],
-            exerciseIds: ["bench-press", "deadlift", "squat"],
+            exercises: [
+              { exerciseId: "squat", exerciseName: "Back Squat" },
+              { exerciseId: "bench-press", exerciseName: "Bench Press" },
+              { exerciseId: "deadlift", exerciseName: "Deadlift" },
+            ],
           },
           exerciseStatuses: {
             sessionIds: ["session-b"],
-            exerciseIds: ["bench-press"],
+            exercises: [{ exerciseId: "bench-press", exerciseName: "Bench Press" }],
           },
           attention: {
             sessionIds: ["session-b"],
-            exerciseIds: ["bench-press"],
+            exercises: [{ exerciseId: "bench-press", exerciseName: "Bench Press" }],
           },
         },
       },
       stateSourceReferences: {
         sessionIds: ["session-b"],
-        exerciseIds: ["bench-press"],
+        exercises: [{ exerciseId: "bench-press", exerciseName: "Bench Press" }],
       },
     });
   });

@@ -1,6 +1,5 @@
-import {
-  type HistoryProjectionComparableExposure,
-  type HistoryProjectionPeriodInput,
+import type {
+  HistoryProjectionPeriodInput,
 } from "../history";
 import {
   compareMetricObservations,
@@ -15,7 +14,9 @@ import {
 } from "../scheduling";
 import type {
   ProgressAttentionItem,
+  ProgressComparableExposure,
   ProgressExercise,
+  ProgressExerciseReference,
   ProgressExerciseStatus,
   ProgressEffectiveSourceSession,
   ProgressPeriodProjection,
@@ -31,7 +32,7 @@ type ExposureGroup = Readonly<{
   exerciseId: string;
   identityKey: string;
   comparatorKey: string;
-  exposures: readonly HistoryProjectionComparableExposure[];
+  exposures: readonly ProgressComparableExposure[];
 }>;
 
 type MutableTrend = {
@@ -40,12 +41,12 @@ type MutableTrend = {
   workingCompleted: number;
   workingPlanned: number;
   sessionIds: Set<string>;
-  exerciseIds: Set<string>;
+  exercises: Map<string, ProgressExerciseReference>;
 };
 
 function compareExposures(
-  left: HistoryProjectionComparableExposure,
-  right: HistoryProjectionComparableExposure,
+  left: ProgressComparableExposure,
+  right: ProgressComparableExposure,
 ): number {
   return left.completedAtMs - right.completedAtMs
     || left.sessionId.localeCompare(right.sessionId)
@@ -114,13 +115,32 @@ function sortedUnique(values: readonly string[]): readonly string[] {
   return Object.freeze([...new Set(values)].toSorted());
 }
 
+function sortedExerciseReferences(
+  values: readonly ProgressExerciseReference[],
+): readonly ProgressExerciseReference[] {
+  const references = new Map<string, ProgressExerciseReference>();
+  for (const value of values) {
+    const exerciseId = requireNonEmpty(value.exerciseId, "progress_source_exercise_id_invalid");
+    const exerciseName = requireNonEmpty(value.exerciseName, "progress_source_exercise_name_invalid");
+    references.set(exerciseId, Object.freeze({
+      exerciseId,
+      exerciseName,
+    }));
+  }
+  return Object.freeze([...references.values()].toSorted((left, right) =>
+    left.exerciseName.localeCompare(right.exerciseName)
+      || left.exerciseId.localeCompare(right.exerciseId)
+  ));
+}
+
 function sourceReference(input: Readonly<{
   sessionIds: readonly string[];
-  exerciseIds: readonly string[];
+  exercises: readonly ProgressExerciseReference[];
 }>): ProgressSourceReference {
   return Object.freeze({
     sessionIds: sortedUnique(input.sessionIds),
-    exerciseIds: sortedUnique(input.exerciseIds),
+    exerciseIds: sortedUnique(input.exercises.map(({ exerciseId }) => exerciseId)),
+    exercises: sortedExerciseReferences(input.exercises),
   });
 }
 
@@ -139,18 +159,17 @@ function filteredSourceSessions(
       throw new TypeError("progress_source_session_duplicate");
     }
     ids.add(value.sessionId);
-    for (const exerciseId of value.exerciseIds) {
-      requireNonEmpty(exerciseId, "progress_source_exercise_id_invalid");
-    }
+    const exercises = sortedExerciseReferences(value.exercises);
     included.push(Object.freeze({
       sessionId: value.sessionId,
       localDate: parseLocalDate(value.localDate),
       lifecycle: "active",
-      exerciseIds: sortedUnique(value.exerciseIds),
+      exercises,
     }));
   }
   return Object.freeze(included.toSorted((left, right) =>
-    left.sessionId.localeCompare(right.sessionId)
+    left.localDate.localeCompare(right.localDate)
+      || left.sessionId.localeCompare(right.sessionId)
   ));
 }
 
@@ -159,7 +178,7 @@ function sourceReferenceForSessions(
 ): ProgressSourceReference {
   return sourceReference({
     sessionIds: sessions.map(({ sessionId }) => sessionId),
-    exerciseIds: sessions.flatMap(({ exerciseIds }) => exerciseIds),
+    exercises: sessions.flatMap(({ exercises }) => exercises),
   });
 }
 
@@ -177,15 +196,18 @@ function sourceReferenceForSessionIds(input: Readonly<{
 function sessionOnlySourceReference(
   sessionIds: readonly string[],
 ): ProgressSourceReference {
-  return sourceReference({ sessionIds, exerciseIds: [] });
+  return sourceReference({ sessionIds, exercises: [] });
 }
 
 function sourceReferenceForExposures(
-  exposures: readonly HistoryProjectionComparableExposure[],
+  exposures: readonly ProgressComparableExposure[],
 ): ProgressSourceReference {
   return sourceReference({
     sessionIds: exposures.map(({ sessionId }) => sessionId),
-    exerciseIds: exposures.map(({ exerciseId }) => exerciseId),
+    exercises: exposures.map(({ exerciseId, exerciseName }) => ({
+      exerciseId,
+      exerciseName,
+    })),
   });
 }
 
@@ -194,7 +216,10 @@ function sourceReferenceForAttention(
 ): ProgressSourceReference {
   return sourceReference({
     sessionIds: attention.flatMap(({ sessionId }) => sessionId === null ? [] : [sessionId]),
-    exerciseIds: attention.map(({ exerciseId }) => exerciseId),
+    exercises: attention.map(({ exerciseId, exerciseName }) => ({
+      exerciseId,
+      exerciseName,
+    })),
   });
 }
 
@@ -225,15 +250,16 @@ function filteredPeriodInputs(
 }
 
 function filteredExposures(
-  values: readonly HistoryProjectionComparableExposure[],
+  values: readonly ProgressComparableExposure[],
   window: ProgressWindow,
-): readonly HistoryProjectionComparableExposure[] {
+): readonly ProgressComparableExposure[] {
   const seen = new Set<string>();
   const included = values.filter((row) => {
     if (!within(window, row.localDate)) {
       return false;
     }
     requireNonEmpty(row.exerciseId, "progress_exercise_id_invalid");
+    requireNonEmpty(row.exerciseName, "progress_exercise_name_invalid");
     requireNonEmpty(row.comparatorKey, "progress_comparator_key_invalid");
     requireNonEmpty(row.sessionId, "progress_session_id_invalid");
     requireNonEmpty(row.setId, "progress_set_id_invalid");
@@ -276,9 +302,9 @@ function filteredOpportunities(
 }
 
 function groupedExposures(
-  exposures: readonly HistoryProjectionComparableExposure[],
+  exposures: readonly ProgressComparableExposure[],
 ): readonly ExposureGroup[] {
-  const groups = new Map<string, HistoryProjectionComparableExposure[]>();
+  const groups = new Map<string, ProgressComparableExposure[]>();
   for (const row of exposures) {
     const key = [row.exerciseId, row.identityKey, row.comparatorKey].join("\u0000");
     const current = groups.get(key) ?? [];
@@ -332,6 +358,7 @@ function bestRecord(group: ExposureGroup): ProgressRecord {
   }
   return Object.freeze({
     exerciseId: best.exerciseId,
+    exerciseName: best.exerciseName,
     identityKey: best.identityKey,
     comparatorKey: best.comparatorKey,
     sessionId: best.sessionId,
@@ -344,7 +371,7 @@ function bestRecord(group: ExposureGroup): ProgressRecord {
 
 function trendRows(input: Readonly<{
   periodInputs: readonly HistoryProjectionPeriodInput[];
-  exposures: readonly HistoryProjectionComparableExposure[];
+  exposures: readonly ProgressComparableExposure[];
   opportunities: readonly ProgressScheduledOpportunity[];
 }>): readonly ProgressTrendRow[] {
   const rows = new Map<string, MutableTrend>();
@@ -359,7 +386,7 @@ function trendRows(input: Readonly<{
       workingCompleted: 0,
       workingPlanned: 0,
       sessionIds: new Set(),
-      exerciseIds: new Set(),
+      exercises: new Map(),
     };
     rows.set(localDate, next);
     return next;
@@ -372,7 +399,10 @@ function trendRows(input: Readonly<{
   for (const item of input.exposures) {
     const row = rowFor(item.localDate);
     row.sessionIds.add(item.sessionId);
-    row.exerciseIds.add(item.exerciseId);
+    row.exercises.set(item.exerciseId, Object.freeze({
+      exerciseId: item.exerciseId,
+      exerciseName: item.exerciseName,
+    }));
   }
   for (const item of input.opportunities) {
     const row = rowFor(item.localDate);
@@ -397,7 +427,11 @@ function trendRows(input: Readonly<{
       planned: row.workingPlanned,
     }),
     sessionIds: Object.freeze([...row.sessionIds].toSorted()),
-    exerciseIds: Object.freeze([...row.exerciseIds].toSorted()),
+    exerciseIds: Object.freeze(
+      [...new Set([...row.exercises.values()].map(({ exerciseId }) => exerciseId))]
+        .toSorted(),
+    ),
+    exercises: sortedExerciseReferences([...row.exercises.values()]),
   })));
 }
 
@@ -445,6 +479,7 @@ export function projectProgressPeriod(
     const latest = group.exposures.at(-1)!;
     return Object.freeze({
       exerciseId: group.exerciseId,
+      exerciseName: latest.exerciseName,
       identityKey: group.identityKey,
       comparatorKey: group.comparatorKey,
       status: statusFor(group),
@@ -505,6 +540,7 @@ export function projectProgressPeriod(
           sourcesBySessionId,
           }),
           exerciseIds: Object.freeze([]),
+          exercises: Object.freeze([]),
         }),
         workingSets: sourceReferenceForSessions(sourceSessions),
         exerciseStatuses: statusSources,
