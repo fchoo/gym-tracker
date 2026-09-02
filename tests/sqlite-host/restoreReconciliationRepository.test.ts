@@ -615,6 +615,7 @@ describe("restore reconciliation repository", () => {
         applied_revision: 1,
       },
     ];
+    let projectionWasCompared = false;
     const kernel = fakeKernel(
       async (sql) => {
         if (sql.includes("FROM portability_restore_state")) {
@@ -719,6 +720,7 @@ describe("restore reconciliation repository", () => {
               local_date: "2026-08-24",
               session_status: "completed",
               exercise_id: exerciseA,
+              exercise_name: "Bench A",
               metric_profile: "load_reps",
               metric_contract_version: 1,
               exercise_metric_generation: 1,
@@ -737,6 +739,7 @@ describe("restore reconciliation repository", () => {
               local_date: "2026-08-25",
               session_status: "completed",
               exercise_id: exerciseB,
+              exercise_name: "Bench B",
               metric_profile: "load_reps",
               metric_contract_version: 1,
               exercise_metric_generation: 1,
@@ -759,6 +762,7 @@ describe("restore reconciliation repository", () => {
           ];
         }
         if (sql.includes("FROM history_subject_revisions subject")) {
+          projectionWasCompared = true;
           return revisionRows;
         }
         return [];
@@ -801,5 +805,6 @@ describe("restore reconciliation repository", () => {
       state: "rebuild_pending",
       unavailableCatalogReferences: 0,
     });
+    expect(projectionWasCompared).toBe(true);
   });
 });
