@@ -1359,17 +1359,26 @@ test("promotion proof binds public APK/AAB bytes and workflow provenance", async
       candidate, candidateRunId: "12345", attendedRunId: "23456",
       attendedArtifactName: "attended-release-evidence-candidate-001",
       attendedRecordSha256: SHA_A, promotionRunId: "34567",
+      phase6N4RunId: "45678",
+      phase6N4ArtifactName: "phase6-n4-evidence-candidate-001-45678",
+      phase6N4RecordSha256: SHA_B,
       repository: "owner/gym-tracker", releaseTag: "v1.0.0",
       publicAssetsDirectory: publicAssets,
     });
     const bytes = Buffer.from(serializePhase5PromotionProof(proof));
     assert.doesNotThrow(() => validatePhase5PromotionProof({
       proof, proofBytes: bytes, candidate, attendedRecordSha256: SHA_A,
+      phase6N4RunId: "45678",
+      phase6N4ArtifactName: "phase6-n4-evidence-candidate-001-45678",
+      phase6N4RecordSha256: SHA_B,
       publicAssetsDirectory: publicAssets,
     }));
     writeFileSync(path.join(publicAssets, "gym-tracker-release.apk"), "changed");
     assert.throws(() => validatePhase5PromotionProof({
       proof, proofBytes: bytes, candidate, attendedRecordSha256: SHA_A,
+      phase6N4RunId: "45678",
+      phase6N4ArtifactName: "phase6-n4-evidence-candidate-001-45678",
+      phase6N4RecordSha256: SHA_B,
       publicAssetsDirectory: publicAssets,
     }), /public|asset|candidate/iu);
   } finally {
