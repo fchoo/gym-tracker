@@ -28,6 +28,9 @@ export function validateTerminalSealDocument(source) {
     "--candidate-repository", "<owner/repository>",
     "--candidate-commit", "<candidate-commit>",
     "--promotion-proof", "<promotion-proof-json>",
+    "--promotion-proof-run-id", "<promotion-proof-run-id>",
+    "--promotion-proof-artifact-id", "<promotion-proof-artifact-id>",
+    "--promotion-proof-artifact-digest", "<promotion-proof-artifact-digest>",
     "--public-assets-dir", "<downloaded-public-assets-directory>",
   ];
   if (JSON.stringify(tokens) !== JSON.stringify(expected)) {

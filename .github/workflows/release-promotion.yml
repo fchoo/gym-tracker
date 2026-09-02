@@ -531,6 +531,9 @@ jobs:
       contents: write
       deployments: read
       id-token: none
+    outputs:
+      release_id: ${{ steps.published.outputs.release_id }}
+      release_assets_sha256: ${{ steps.published.outputs.release_assets_sha256 }}
     environment:
       name: public-release-promotion
       url: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
@@ -658,6 +661,7 @@ jobs:
           done < <(jq -r '.assets[] | [.file, .sha256, .size_bytes] | @tsv' sealed-release-validation/release-validation.json)
 
       - name: Publish hash-verified draft
+        id: published
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
@@ -681,8 +685,11 @@ jobs:
               and all(.assets[] as $expected; $assets[] | select(.name == $expected.file)
                 | .size == $expected.size_bytes and .digest == ("sha256:" + $expected.sha256))
           ' sealed-release-validation/release-validation.json >/dev/null
+          release_id=$(jq -er '.id | select(type == "number" and . >= 1)' <<<"${release}")
+          release_assets_sha256=$(printf '%s\n' "${current_release_assets}" | sha256sum | cut -d' ' -f1)
           gh release edit "${RELEASE_TAG}" --draft=false
-
+          printf '%s\n' "release_id=${release_id}" \
+            "release_assets_sha256=${release_assets_sha256}" >> "${GITHUB_OUTPUT}"
   record-proof:
     name: Record immutable post-promotion proof
     needs: [validate, publish]
@@ -731,6 +738,11 @@ jobs:
           set -euo pipefail
           mkdir -p "${RUNNER_TEMP}/public-assets"
           release=$(gh api "repos/${GITHUB_REPOSITORY}/releases/tags/${RELEASE_TAG}")
+          release_id=$(jq -er '.id | select(type == "number" and . >= 1)' <<<"${release}")
+          jq -c '[.assets[] | {id, name, size, digest}] | sort_by(.name)' \
+            <<<"${release}" > release-assets.json
+          test "${release_id}" = "${{ needs.publish.outputs.release_id }}"
+          test "$(sha256sum release-assets.json | cut -d' ' -f1)" = "${{ needs.publish.outputs.release_assets_sha256 }}"
           for asset_name in gym-tracker-release.aab gym-tracker-release.apk
           do
             asset_id=$(jq -er --arg name "${asset_name}" '
@@ -757,6 +769,8 @@ jobs:
             --phase6-n4-artifact-name "${PHASE6_N4_ARTIFACT_NAME}" \
             --phase6-n4-record sealed-release-validation/phase6/attended-record.json \
             --phase6-n4-record-sha256 "${PHASE6_N4_RECORD_SHA256}" \
+            --release-id "${release_id}" \
+            --public-asset-metadata release-assets.json \
             --promotion-run-id "${GITHUB_RUN_ID}" \
             --repository "${GITHUB_REPOSITORY}" \
             --release-tag "${RELEASE_TAG}" \

@@ -35,6 +35,8 @@ import {
   validateTerminalSealDocument,
 } from "./phase5-terminal-seal-contract.mjs";
 import {
+  parsePhase5ReleaseGateArguments,
+  validateLivePhase5Promotion,
   validatePhase6N4ReleaseBinding,
 } from "./verify-phase5-release-gate.mjs";
 import {
@@ -610,6 +612,11 @@ test("promotion proof cryptographically binds the exact Phase 6 N4 artifact", ()
     const phase6N4RecordSha256 = "d".repeat(64);
     const phase6N4RunId = "789";
     const phase6N4ArtifactName = "phase6-n4-evidence-candidate-001-789";
+    const releaseId = 42;
+    const publicAssetMetadata = candidate.manifest.artifacts.map((artifact, index) => ({
+      id: 50 + index, name: artifact.file, size: artifact.size_bytes,
+      digest: `sha256:${artifact.sha256}`,
+    }));
     const proof = createPhase5PromotionProof({
       candidate,
       candidateRunId: "12345",
@@ -622,6 +629,8 @@ test("promotion proof cryptographically binds the exact Phase 6 N4 artifact", ()
       promotionRunId: "999",
       repository: "owner/gym-tracker",
       releaseTag: "v1.0.0",
+      releaseId,
+      publicAssetMetadata,
       publicAssetsDirectory,
     });
     assert.deepEqual({
@@ -642,6 +651,8 @@ test("promotion proof cryptographically binds the exact Phase 6 N4 artifact", ()
       phase6N4RunId,
       phase6N4ArtifactName,
       phase6N4RecordSha256,
+      releaseId,
+      publicAssetMetadata,
       publicAssetsDirectory,
     }));
     for (const substitution of [
@@ -657,6 +668,8 @@ test("promotion proof cryptographically binds the exact Phase 6 N4 artifact", ()
         phase6N4RunId,
         phase6N4ArtifactName,
         phase6N4RecordSha256,
+        releaseId,
+        publicAssetMetadata,
         publicAssetsDirectory,
         ...substitution,
       }), /promotion proof|Phase 6|noncanonical/iu);
@@ -673,6 +686,8 @@ test("promotion proof cryptographically binds the exact Phase 6 N4 artifact", ()
       phase6N4RunId,
       phase6N4ArtifactName,
       phase6N4RecordSha256,
+      releaseId,
+      publicAssetMetadata,
       publicAssetsDirectory,
     }), /promotion proof|Phase 6|noncanonical/iu);
 
@@ -680,7 +695,7 @@ test("promotion proof cryptographically binds the exact Phase 6 N4 artifact", ()
     assert.throws(() => validatePhase5PromotionProof({
       proof, proofBytes, candidate, attendedRecordSha256: SOURCE_DIGEST,
       phase6N4RunId, phase6N4ArtifactName, phase6N4RecordSha256,
-      publicAssetsDirectory,
+      releaseId, publicAssetMetadata, publicAssetsDirectory,
     }), /public release asset set|unexpected|regular/iu);
     rmSync(path.join(publicAssetsDirectory, "unexpected-release.txt"));
 
@@ -692,7 +707,7 @@ test("promotion proof cryptographically binds the exact Phase 6 N4 artifact", ()
     assert.throws(() => validatePhase5PromotionProof({
       proof, proofBytes, candidate, attendedRecordSha256: SOURCE_DIGEST,
       phase6N4RunId, phase6N4ArtifactName, phase6N4RecordSha256,
-      publicAssetsDirectory,
+      releaseId, publicAssetMetadata, publicAssetsDirectory,
     }), /public release asset set|symlink|regular/iu);
   });
 
@@ -708,6 +723,8 @@ test("promotion proof cryptographically binds the exact Phase 6 N4 artifact", ()
     "--phase6-n4-artifact-name", "phase6-n4-evidence-candidate-001-789",
     "--phase6-n4-record", "phase6-record.json",
     "--phase6-n4-record-sha256", "d".repeat(64),
+    "--release-id", "42",
+    "--public-asset-metadata", "public-assets.json",
     "--promotion-run-id", "999",
     "--repository", "owner/gym-tracker",
     "--release-tag", "v1.0.0",
@@ -742,9 +759,14 @@ test("promotion proof cryptographically binds the exact Phase 6 N4 artifact", ()
     }
     const attendedRecord = path.join(bundleDirectory, "attended-record.json");
     const phase6N4Record = path.join(bundleDirectory, "phase6-n4-record.json");
+    const publicAssetMetadata = path.join(bundleDirectory, "public-assets.json");
     const output = path.join(bundleDirectory, "promotion-proof.json");
     writeFileSync(attendedRecord, "canonical attended bytes\n");
     writeFileSync(phase6N4Record, "canonical Phase 6 N4 bytes\n");
+    writeJson(publicAssetMetadata, candidate.manifest.artifacts.map((artifact, index) => ({
+      id: 50 + index, name: artifact.file, size: artifact.size_bytes,
+      digest: `sha256:${artifact.sha256}`,
+    })));
     const executionArgs = [
       "--bundle-dir", bundleDirectory,
       "--manifest-sha256", sha256(readFileSync(path.join(bundleDirectory, "release-candidate.json"))),
@@ -757,6 +779,8 @@ test("promotion proof cryptographically binds the exact Phase 6 N4 artifact", ()
       "--phase6-n4-artifact-name", "phase6-n4-evidence-candidate-001-789",
       "--phase6-n4-record", phase6N4Record,
       "--phase6-n4-record-sha256", sha256(readFileSync(phase6N4Record)),
+      "--release-id", "42",
+      "--public-asset-metadata", publicAssetMetadata,
       "--promotion-run-id", "999",
       "--repository", "owner/gym-tracker",
       "--release-tag", "v1.0.0",
@@ -827,7 +851,7 @@ test("Terminal Seal replays Phase 6 N4 source evidence in its sole validation co
     "05-07-SUMMARY.md verification tracking review.",
     "Promotion is complete. This is the literal final executable command; make no tool call afterward.",
     "```bash",
-    "npm run verify:release:phase5 -- --bundle-dir <retained-candidate-directory> --manifest-sha256 <manifest-sha256> --automated-evidence <automated-evidence-json> --attended-record <attended-record-json> --checklist <checklist-json> --observations <observations-json> --evidence-dir <attended-evidence-directory> --phase6-n4-record <phase6-n4-record-json> --phase6-n4-checklist <phase6-n4-checklist-json> --phase6-n4-observations <phase6-n4-observations-json> --phase6-n4-evidence-dir <phase6-n4-evidence-directory> --phase6-n4-run-id <phase6-n4-run-id> --phase6-n4-artifact-name <phase6-n4-artifact-name> --release-tag <release-tag> --candidate-run-id <candidate-run-id> --candidate-repository <owner/repository> --candidate-commit <candidate-commit> --promotion-proof <promotion-proof-json> --public-assets-dir <downloaded-public-assets-directory>",
+    "npm run verify:release:phase5 -- --bundle-dir <retained-candidate-directory> --manifest-sha256 <manifest-sha256> --automated-evidence <automated-evidence-json> --attended-record <attended-record-json> --checklist <checklist-json> --observations <observations-json> --evidence-dir <attended-evidence-directory> --phase6-n4-record <phase6-n4-record-json> --phase6-n4-checklist <phase6-n4-checklist-json> --phase6-n4-observations <phase6-n4-observations-json> --phase6-n4-evidence-dir <phase6-n4-evidence-directory> --phase6-n4-run-id <phase6-n4-run-id> --phase6-n4-artifact-name <phase6-n4-artifact-name> --release-tag <release-tag> --candidate-run-id <candidate-run-id> --candidate-repository <owner/repository> --candidate-commit <candidate-commit> --promotion-proof <promotion-proof-json> --promotion-proof-run-id <promotion-proof-run-id> --promotion-proof-artifact-id <promotion-proof-artifact-id> --promotion-proof-artifact-digest <promotion-proof-artifact-digest> --public-assets-dir <downloaded-public-assets-directory>",
     "```",
   ].join("\n");
 
@@ -839,6 +863,119 @@ test("Terminal Seal replays Phase 6 N4 source evidence in its sole validation co
     )),
     /validate|executable|command/iu,
   );
+});
+
+test("Terminal Seal requires immutable promotion artifact identity and live GitHub state", async () => {
+  const terminalArgs = [
+    "--bundle-dir", "retained-candidate",
+    "--manifest-sha256", SOURCE_DIGEST,
+    "--automated-evidence", "automated.json",
+    "--attended-record", "attended-record.json",
+    "--checklist", "checklist.json",
+    "--observations", "observations.json",
+    "--evidence-dir", "attended-evidence",
+    "--phase6-n4-record", "phase6-record.json",
+    "--phase6-n4-checklist", "phase6-checklist.json",
+    "--phase6-n4-observations", "phase6-observations.json",
+    "--phase6-n4-evidence-dir", "phase6-evidence",
+    "--phase6-n4-run-id", "789",
+    "--phase6-n4-artifact-name", "phase6-n4-evidence-candidate-001-789",
+    "--release-tag", "v1.0.0",
+    "--candidate-run-id", "12345",
+    "--candidate-repository", "owner/gym-tracker",
+    "--candidate-commit", SOURCE_COMMIT,
+    "--promotion-proof", "promotion-proof.json",
+    "--promotion-proof-run-id", "999",
+    "--promotion-proof-artifact-id", "1001",
+    "--promotion-proof-artifact-digest", `sha256:${"e".repeat(64)}`,
+    "--public-assets-dir", "public-assets",
+  ];
+  const options = parsePhase5ReleaseGateArguments(terminalArgs);
+  assert.equal(options.promotionProofRunId, "999");
+  assert.equal(options.promotionProofArtifactId, "1001");
+  assert.equal(options.promotionProofArtifactDigest, `sha256:${"e".repeat(64)}`);
+
+  const proof = {
+    workflow: { run_id: "999" },
+    release_id: 42,
+    assets: [
+      { id: 50, file: "gym-tracker-release.aab", retained_sha256: "a".repeat(64), public_sha256: "a".repeat(64), api_digest: `sha256:${"a".repeat(64)}`, size_bytes: 2 },
+      { id: 51, file: "gym-tracker-release.apk", retained_sha256: "b".repeat(64), public_sha256: "b".repeat(64), api_digest: `sha256:${"b".repeat(64)}`, size_bytes: 1 },
+    ],
+  };
+  const proofBytes = Buffer.from(serializePhase5PromotionProof(proof));
+  const live = {
+    promotionRun: {
+      id: 999, run_attempt: 2, status: "completed", conclusion: "success",
+      html_url: "https://github.com/owner/gym-tracker/actions/runs/999",
+      head_sha: SOURCE_COMMIT, head_branch: "main",
+      repository: { full_name: "owner/gym-tracker" },
+      event: "workflow_dispatch", path: ".github/workflows/release-promotion.yml",
+    },
+    deployment: {
+      sha: SOURCE_COMMIT, ref: "main", environment: "public-release-promotion",
+      original_environment: "public-release-promotion",
+      performed_via_github_app: { slug: "github-actions" },
+      url: "https://api.github.com/repos/owner/gym-tracker/deployments/7",
+      statuses_url: "https://api.github.com/repos/owner/gym-tracker/deployments/7/statuses",
+    },
+    deploymentStatuses: [{
+      id: 8, created_at: "2026-09-03T00:00:00Z", state: "success",
+      environment: "public-release-promotion",
+      environment_url: "https://github.com/owner/gym-tracker/actions/runs/999",
+      deployment_url: "https://api.github.com/repos/owner/gym-tracker/deployments/7",
+      log_url: "https://github.com/owner/gym-tracker/actions/runs/999/job/11",
+    }],
+    job: {
+      id: 11, run_id: 999, run_attempt: 2, head_sha: SOURCE_COMMIT,
+      status: "completed", conclusion: "success",
+      html_url: "https://github.com/owner/gym-tracker/actions/runs/999/job/11",
+    },
+    proofArtifact: {
+      id: 1001, name: "promotion-proof-999", expired: false,
+      digest: `sha256:${"e".repeat(64)}`,
+      workflow_run: { id: 999, head_sha: SOURCE_COMMIT },
+    },
+    proofArtifacts: [{
+      id: 1001, name: "promotion-proof-999", expired: false,
+      digest: `sha256:${"e".repeat(64)}`,
+      workflow_run: { id: 999, head_sha: SOURCE_COMMIT },
+    }],
+    promotionProofArchiveSha256: "e".repeat(64),
+    proofBytes,
+    localProofBytes: proofBytes,
+    tagRef: { ref: "refs/tags/v1.0.0", object: { type: "commit", sha: SOURCE_COMMIT } },
+    release: {
+      id: 42, tag_name: "v1.0.0", draft: false, prerelease: false,
+      assets: [
+        { id: 50, name: "gym-tracker-release.aab", size: 2, digest: `sha256:${"a".repeat(64)}` },
+        { id: 51, name: "gym-tracker-release.apk", size: 1, digest: `sha256:${"b".repeat(64)}` },
+      ],
+    },
+    proof,
+  };
+  assert.equal(validateLivePhase5Promotion({
+    ...live, candidateRepository: "owner/gym-tracker", candidateCommit: SOURCE_COMMIT,
+    releaseTag: "v1.0.0", promotionProofRunId: "999",
+    promotionProofArtifactId: "1001",
+    promotionProofArtifactDigest: `sha256:${"e".repeat(64)}`,
+  }).release.id, 42);
+  for (const mutation of [
+    { promotionRun: { ...live.promotionRun, conclusion: "failure" } },
+    { proofArtifact: { ...live.proofArtifact, id: 1002 } },
+    { proofBytes: Buffer.from("substituted proof\n") },
+    { localProofBytes: Buffer.from("substituted local proof\n") },
+    { tagRef: { ...live.tagRef, object: { type: "commit", sha: "f".repeat(40) } } },
+    { release: { ...live.release, draft: true } },
+    { release: { ...live.release, assets: [...live.release.assets, { id: 52, name: "extra.txt", size: 1, digest: `sha256:${"c".repeat(64)}` }] } },
+  ]) {
+    assert.throws(() => validateLivePhase5Promotion({
+      ...live, ...mutation, candidateRepository: "owner/gym-tracker",
+      candidateCommit: SOURCE_COMMIT, releaseTag: "v1.0.0",
+      promotionProofRunId: "999", promotionProofArtifactId: "1001",
+      promotionProofArtifactDigest: `sha256:${"e".repeat(64)}`,
+    }), /promotion|artifact|proof|tag|release|asset|deployment/iu);
+  }
 });
 
 test("emulator-runner commands are self-contained on one line", () => {

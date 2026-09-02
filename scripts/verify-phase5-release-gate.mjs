@@ -1,7 +1,9 @@
 #!/usr/bin/env node
 
 import { createHash } from "node:crypto";
-import { readFileSync } from "node:fs";
+import { execFileSync } from "node:child_process";
+import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import os from "node:os";
 import path from "node:path";
 import process from "node:process";
 import { pathToFileURL } from "node:url";
@@ -22,6 +24,7 @@ const REPOSITORY = /^[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+$/u;
 const COMMIT = /^[a-f0-9]{40}$/u;
 const RUN_ID = /^[1-9][0-9]*$/u;
 const ARTIFACT = /^[A-Za-z0-9][A-Za-z0-9._-]{2,127}$/u;
+const ARTIFACT_DIGEST = /^sha256:[a-f0-9]{64}$/u;
 
 function sha256(bytes) {
   return createHash("sha256").update(bytes).digest("hex");
@@ -72,6 +75,200 @@ export function validatePhase6N4ReleaseBinding({
   return binding;
 }
 
+function exactAssetMetadata(assets) {
+  if (!Array.isArray(assets)) return [];
+  return assets.map(({ id, name, size, digest }) => ({ id, name, size, digest }))
+    .sort((left, right) => left.name.localeCompare(right.name));
+}
+
+export function validateLivePhase5Promotion({
+  candidateRepository, candidateCommit, releaseTag, promotionProofRunId,
+  promotionProofArtifactId, promotionProofArtifactDigest, promotionRun,
+  deployment, deploymentStatuses, job, proofArtifacts, proofArtifact,
+  promotionProofArchiveSha256, proofBytes, localProofBytes, tagRef, release, proof,
+}) {
+  const runId = Number(promotionProofRunId);
+  const artifactId = Number(promotionProofArtifactId);
+  const runUrl = `https://github.com/${candidateRepository}/actions/runs/${promotionProofRunId}`;
+  const successfulStatus = [...(deploymentStatuses ?? [])]
+    .sort((left, right) => `${left.created_at}:${left.id}`.localeCompare(`${right.created_at}:${right.id}`))
+    .at(-1);
+  const expectedAssets = proof?.assets?.map(({ id, file, size_bytes: size, api_digest: digest }) => ({
+    id, name: file, size, digest,
+  }));
+  if (!Number.isSafeInteger(runId) || runId < 1
+    || !Number.isSafeInteger(artifactId) || artifactId < 1
+    || !ARTIFACT_DIGEST.test(promotionProofArtifactDigest ?? "")
+    || promotionRun?.id !== runId || promotionRun?.status !== "completed"
+    || promotionRun?.conclusion !== "success" || promotionRun?.html_url !== runUrl
+    || promotionRun?.head_sha !== candidateCommit || promotionRun?.head_branch !== "main"
+    || promotionRun?.repository?.full_name !== candidateRepository
+    || promotionRun?.event !== "workflow_dispatch"
+    || promotionRun?.path !== ".github/workflows/release-promotion.yml"
+    || deployment?.sha !== candidateCommit || deployment?.ref !== "main"
+    || deployment?.environment !== "public-release-promotion"
+    || deployment?.original_environment !== "public-release-promotion"
+    || deployment?.performed_via_github_app?.slug !== "github-actions"
+    || successfulStatus?.state !== "success"
+    || successfulStatus?.environment !== "public-release-promotion"
+    || successfulStatus?.environment_url !== runUrl
+    || successfulStatus?.deployment_url !== deployment?.url
+    || job?.id !== Number(successfulStatus?.log_url?.split("/").at(-1))
+    || job?.run_id !== runId || job?.run_attempt !== promotionRun?.run_attempt
+    || job?.head_sha !== candidateCommit || job?.status !== "completed"
+    || job?.conclusion !== "success" || job?.html_url !== successfulStatus?.log_url
+    || !Array.isArray(proofArtifacts) || proofArtifacts.length !== 1
+    || proofArtifacts[0]?.id !== artifactId
+    || proofArtifact?.id !== artifactId || proofArtifact?.name !== `promotion-proof-${runId}`
+    || proofArtifact?.expired !== false || proofArtifact?.digest !== promotionProofArtifactDigest
+    || proofArtifact?.workflow_run?.id !== runId
+    || proofArtifact?.workflow_run?.head_sha !== candidateCommit
+    || promotionProofArchiveSha256 !== promotionProofArtifactDigest.slice(7)
+    || !Buffer.isBuffer(proofBytes) || !Buffer.isBuffer(localProofBytes)
+    || !proofBytes.equals(localProofBytes)
+    || proof?.workflow?.run_id !== promotionProofRunId
+    || proof?.release_id !== release?.id
+    || tagRef?.ref !== `refs/tags/${releaseTag}`
+    || tagRef?.object?.type !== "commit" || tagRef?.object?.sha !== candidateCommit
+    || release?.tag_name !== releaseTag || release?.draft !== false
+    || release?.prerelease !== false
+    || JSON.stringify(exactAssetMetadata(release?.assets))
+      !== JSON.stringify(exactAssetMetadata(expectedAssets))) {
+    throw new Error("live promotion provenance, proof artifact, tag, release, or assets are invalid.");
+  }
+  return { promotionRun, proofArtifact, tagRef, release };
+}
+
+function ghJson(args, execute) {
+  try {
+    return JSON.parse(execute("gh", ["api", ...args], {
+      encoding: "utf8",
+      maxBuffer: 16 * 1024 * 1024,
+    }));
+  } catch {
+    throw new Error("live GitHub promotion provenance query failed.");
+  }
+}
+
+function flattenedPages(value, key) {
+  if (!Array.isArray(value)) return [];
+  const pages = value.every(Array.isArray) ? value.flat() : value;
+  if (key === undefined) return pages;
+  return pages.flatMap((page) => Array.isArray(page?.[key]) ? page[key] : []);
+}
+
+export function loadAndValidateLivePhase5Promotion(options, {
+  execute = execFileSync,
+  githubServerUrl = process.env.GITHUB_SERVER_URL ?? "https://github.com",
+  githubApiUrl = process.env.GITHUB_API_URL ?? "https://api.github.com",
+} = {}) {
+  if (!process.env.GH_TOKEN && !process.env.GITHUB_TOKEN) {
+    throw new Error("Terminal Seal requires a read-only GH_TOKEN or GITHUB_TOKEN.");
+  }
+  const repository = options.candidateRepository;
+  const runId = options.promotionProofRunId;
+  const artifactId = options.promotionProofArtifactId;
+  const promotionRun = ghJson([`repos/${repository}/actions/runs/${runId}`], execute);
+  const deploymentPages = ghJson([
+    "--method", "GET", "--paginate", "--slurp",
+    `repos/${repository}/deployments`,
+    "-f", `sha=${options.candidateCommit}`,
+    "-f", "ref=main",
+    "-f", "environment=public-release-promotion",
+    "-F", "per_page=100",
+  ], execute);
+  const runUrl = `${githubServerUrl}/${repository}/actions/runs/${runId}`;
+  const successfulDeployments = [];
+  for (const deployment of flattenedPages(deploymentPages)) {
+    if (deployment?.sha !== options.candidateCommit
+      || deployment?.ref !== "main"
+      || deployment?.environment !== "public-release-promotion"
+      || deployment?.original_environment !== "public-release-promotion"
+      || deployment?.performed_via_github_app?.slug !== "github-actions"
+      || deployment?.statuses_url !== `${githubApiUrl}/repos/${repository}/deployments/${deployment?.id}/statuses`) {
+      continue;
+    }
+    const statusPages = ghJson([
+      "--method", "GET", "--paginate", "--slurp",
+      `repos/${repository}/deployments/${deployment.id}/statuses`,
+      "-F", "per_page=100",
+    ], execute);
+    const statuses = flattenedPages(statusPages);
+    const deploymentStatuses = statuses.sort((left, right) =>
+      `${left.created_at}:${left.id}`.localeCompare(`${right.created_at}:${right.id}`));
+    const latest = deploymentStatuses.at(-1);
+    const jobId = Number(latest?.log_url?.slice(`${runUrl}/job/`.length));
+    if (!Number.isSafeInteger(jobId) || !latest?.log_url?.startsWith(`${runUrl}/job/`)) continue;
+    const job = ghJson([`repos/${repository}/actions/jobs/${jobId}`], execute);
+    try {
+      validateLivePhase5Promotion({
+        ...options, promotionRun, deployment, deploymentStatuses, job,
+        proofArtifacts: [], proofArtifact: {}, promotionProofArchiveSha256: "",
+        proofBytes: Buffer.alloc(0), localProofBytes: Buffer.alloc(1),
+        tagRef: {}, release: {}, proof: {},
+      });
+    } catch (error) {
+      if (!/proof artifact|tag, release, or assets/iu.test(error.message)) continue;
+      successfulDeployments.push({ deployment, deploymentStatuses, job });
+    }
+  }
+  if (successfulDeployments.length !== 1) {
+    throw new Error("live promotion deployment provenance is missing or ambiguous.");
+  }
+  const artifactPages = ghJson([
+    "--method", "GET", "--paginate", "--slurp",
+    `repos/${repository}/actions/runs/${runId}/artifacts`, "-F", "per_page=100",
+  ], execute);
+  const proofArtifacts = flattenedPages(artifactPages, "artifacts")
+    .filter(({ name }) => name === `promotion-proof-${runId}`);
+  if (proofArtifacts.length !== 1 || String(proofArtifacts[0].id) !== artifactId) {
+    throw new Error("live promotion proof artifact is missing, ambiguous, or substituted.");
+  }
+  const proofArtifact = ghJson([`repos/${repository}/actions/artifacts/${artifactId}`], execute);
+  let archiveBytes;
+  try {
+    archiveBytes = execute("gh", [
+      "api", "-H", "Accept: application/octet-stream",
+      `repos/${repository}/actions/artifacts/${artifactId}/zip`,
+    ], { encoding: null, maxBuffer: 64 * 1024 * 1024 });
+  } catch {
+    throw new Error("live promotion proof artifact download failed.");
+  }
+  if (!Buffer.isBuffer(archiveBytes)) archiveBytes = Buffer.from(archiveBytes);
+  const temporaryDirectory = mkdtempSync(path.join(os.tmpdir(), "phase5-terminal-proof-"));
+  try {
+    const archivePath = path.join(temporaryDirectory, "promotion-proof.zip");
+    writeFileSync(archivePath, archiveBytes);
+    const entries = execute("unzip", ["-Z1", archivePath], { encoding: "utf8" })
+      .split(/\r?\n/u).filter(Boolean);
+    if (JSON.stringify(entries) !== JSON.stringify(["promotion-proof.json"])) {
+      throw new Error("live promotion proof artifact has an unexpected file set.");
+    }
+    const proofBytes = execute("unzip", ["-p", archivePath, "promotion-proof.json"], {
+      encoding: null, maxBuffer: 16 * 1024 * 1024,
+    });
+    const localProofBytes = readFileSync(options.promotionProof);
+    let proof;
+    try {
+      proof = JSON.parse(proofBytes.toString("utf8"));
+    } catch {
+      throw new Error("live promotion proof is not valid JSON.");
+    }
+    const tagRef = ghJson([`repos/${repository}/git/ref/tags/${options.releaseTag}`], execute);
+    const release = ghJson([`repos/${repository}/releases/tags/${options.releaseTag}`], execute);
+    return {
+      ...validateLivePhase5Promotion({
+        ...options, promotionRun, ...successfulDeployments[0], proofArtifacts, proofArtifact,
+        promotionProofArchiveSha256: sha256(archiveBytes), proofBytes, localProofBytes,
+        tagRef, release, proof,
+      }),
+      proof, proofBytes,
+    };
+  } finally {
+    rmSync(temporaryDirectory, { force: true, recursive: true });
+  }
+}
+
 export function validatePhase5ReleaseEvidenceSet(input) {
   return validatePhase5AutomatedEvidenceSet({
     manifest: input.candidateManifest,
@@ -86,7 +283,7 @@ export function validatePhase5ReleaseEvidenceSet(input) {
   });
 }
 
-function parseArgs(args) {
+export function parsePhase5ReleaseGateArguments(args) {
   const options = {};
   const keys = new Map([
     ["--bundle-dir", "bundleDirectory"],
@@ -107,6 +304,9 @@ function parseArgs(args) {
     ["--checklist", "checklist"],
     ["--observations", "observations"],
     ["--promotion-proof", "promotionProof"],
+    ["--promotion-proof-run-id", "promotionProofRunId"],
+    ["--promotion-proof-artifact-id", "promotionProofArtifactId"],
+    ["--promotion-proof-artifact-digest", "promotionProofArtifactDigest"],
     ["--public-assets-dir", "publicAssetsDirectory"],
   ]);
   for (let index = 0; index < args.length; index += 2) {
@@ -122,6 +322,9 @@ function parseArgs(args) {
     || !RELEASE_TAG.test(options.releaseTag ?? "")
     || !RUN_ID.test(options.candidateRunId ?? "")
     || !RUN_ID.test(options.phase6N4RunId ?? "")
+    || !RUN_ID.test(options.promotionProofRunId ?? "")
+    || !RUN_ID.test(options.promotionProofArtifactId ?? "")
+    || !ARTIFACT_DIGEST.test(options.promotionProofArtifactDigest ?? "")
     || !ARTIFACT.test(options.phase6N4ArtifactName ?? "")
     || !REPOSITORY.test(options.candidateRepository ?? "")
     || !COMMIT.test(options.candidateCommit ?? "")) {
@@ -131,7 +334,7 @@ function parseArgs(args) {
 }
 
 export function executePhase5ReleaseGate(args = process.argv.slice(2)) {
-  const options = parseArgs(args);
+  const options = parsePhase5ReleaseGateArguments(args);
   const candidate = loadPhase5Candidate({
     bundleDirectory: options.bundleDirectory,
     expectedManifestSha256: options.manifestSha256,
@@ -177,23 +380,30 @@ export function executePhase5ReleaseGate(args = process.argv.slice(2)) {
     phase6N4RunId: options.phase6N4RunId,
     phase6N4ArtifactName: options.phase6N4ArtifactName,
   });
-  const proofBytes = readFileSync(options.promotionProof);
-  const proof = validatePhase5PromotionProof({
-    proof: JSON.parse(proofBytes.toString("utf8")),
+  const livePromotion = loadAndValidateLivePhase5Promotion(options);
+  const proofBytes = livePromotion.proofBytes;
+  const proof = livePromotion.proof;
+  const publicAssetMetadata = livePromotion.release.assets.map(
+    ({ id, name, size, digest }) => ({ id, name, size, digest }),
+  );
+  const validatedProof = validatePhase5PromotionProof({
+    proof,
     proofBytes, candidate,
     attendedRecordSha256: validated.attended_record_sha256,
     phase6N4RunId: phase6Binding.evidence_run_id,
     phase6N4ArtifactName: phase6Binding.artifact_name,
     phase6N4RecordSha256: phase6Binding.record_sha256,
+    releaseId: livePromotion.release.id,
+    publicAssetMetadata,
     publicAssetsDirectory: options.publicAssetsDirectory,
   });
-  if (proof.candidate_run_id !== options.candidateRunId
-    || proof.workflow.repository !== options.candidateRepository
-    || proof.candidate_commit !== options.candidateCommit
-    || proof.phase6_n4_run_id !== options.phase6N4RunId
-    || proof.phase6_n4_artifact_name !== options.phase6N4ArtifactName
-    || proof.phase6_n4_record_sha256 !== phase6Binding.record_sha256
-    || proof.release_tag !== options.releaseTag) {
+  if (validatedProof.candidate_run_id !== options.candidateRunId
+    || validatedProof.workflow.repository !== options.candidateRepository
+    || validatedProof.candidate_commit !== options.candidateCommit
+    || validatedProof.phase6_n4_run_id !== options.phase6N4RunId
+    || validatedProof.phase6_n4_artifact_name !== options.phase6N4ArtifactName
+    || validatedProof.phase6_n4_record_sha256 !== phase6Binding.record_sha256
+    || validatedProof.release_tag !== options.releaseTag) {
     throw new Error("promotion proof does not match terminal inputs.");
   }
   return {
@@ -208,7 +418,7 @@ export function executePhase5ReleaseGate(args = process.argv.slice(2)) {
     phase6_n4_record_sha256: phase6Binding.record_sha256,
     phase6_n4_run_id: phase6Binding.evidence_run_id,
     phase6_n4_artifact_name: phase6Binding.artifact_name,
-    promotion_run_id: proof.workflow.run_id,
+    promotion_run_id: validatedProof.workflow.run_id,
     release_tag: options.releaseTag,
     upload_files: candidate.manifest.artifacts.map(({ file, sha256, size_bytes: sizeBytes }) => ({
       file, sha256, size_bytes: sizeBytes,

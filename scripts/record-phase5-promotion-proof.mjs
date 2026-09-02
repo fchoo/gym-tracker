@@ -53,7 +53,7 @@ export function createPhase5PromotionProof({
   candidate, candidateRunId, attendedRunId, attendedArtifactName,
   attendedRecordSha256, phase6N4RunId, phase6N4ArtifactName,
   phase6N4RecordSha256, promotionRunId, repository, releaseTag,
-  publicAssetsDirectory,
+  releaseId, publicAssetMetadata, publicAssetsDirectory,
 }) {
   if (!RUN_ID.test(candidateRunId ?? "") || !RUN_ID.test(attendedRunId ?? "")
     || !RUN_ID.test(promotionRunId ?? "") || !REPOSITORY.test(repository ?? "")
@@ -65,6 +65,8 @@ export function createPhase5PromotionProof({
     || phase6N4RunId === attendedRunId
     || !ARTIFACT_NAME.test(phase6N4ArtifactName ?? "")
     || !SHA256_PATTERN.test(phase6N4RecordSha256 ?? "")
+    || !Number.isSafeInteger(releaseId)
+    || releaseId < 1
     || candidate.manifest.workflow.run_id !== candidateRunId
     || candidate.manifest.workflow.repository !== repository) {
     throw new Error("promotion proof identity is malformed or substituted.");
@@ -74,17 +76,31 @@ export function createPhase5PromotionProof({
     !== JSON.stringify(PUBLIC_ASSET_FILES)) {
     throw new Error("candidate and public release asset sets do not match.");
   }
+  if (!Array.isArray(publicAssetMetadata) || publicAssetMetadata.length !== PUBLIC_ASSET_FILES.length) {
+    throw new Error("promotion proof release asset metadata is malformed.");
+  }
+  const sortedMetadata = [...publicAssetMetadata].sort((left, right) =>
+    left.name.localeCompare(right.name));
+  if (JSON.stringify(sortedMetadata.map(({ name }) => name)) !== JSON.stringify(PUBLIC_ASSET_FILES)
+    || sortedMetadata.some(({ id, digest }) => !Number.isSafeInteger(id) || id < 1
+      || typeof digest !== "string" || !/^sha256:[a-f0-9]{64}$/u.test(digest))) {
+    throw new Error("promotion proof release asset metadata is malformed.");
+  }
   const assets = candidate.manifest.artifacts.map(({ file, sha256, size_bytes: sizeBytes }) => {
     const publicPath = path.join(publicAssetsRoot, file);
     const publicSha256 = sha256File(publicPath);
     const publicSize = readFileSync(publicPath).byteLength;
-    if (publicSha256 !== sha256 || publicSize !== sizeBytes) {
+    const metadata = sortedMetadata.find(({ name }) => name === file);
+    if (publicSha256 !== sha256 || publicSize !== sizeBytes
+      || metadata?.size !== sizeBytes || metadata.digest !== `sha256:${sha256}`) {
       throw new Error(`public release asset differs from retained candidate: ${file}`);
     }
     return {
+      id: metadata.id,
       file,
       retained_sha256: sha256,
       public_sha256: publicSha256,
+      api_digest: metadata.digest,
       size_bytes: sizeBytes,
     };
   });
@@ -109,6 +125,7 @@ export function createPhase5PromotionProof({
     phase6_n4_run_id: phase6N4RunId,
     phase6_n4_artifact_name: phase6N4ArtifactName,
     phase6_n4_record_sha256: phase6N4RecordSha256,
+    release_id: releaseId,
     release_tag: releaseTag,
     assets,
   };
@@ -116,7 +133,8 @@ export function createPhase5PromotionProof({
 
 export function validatePhase5PromotionProof({
   proof, proofBytes, candidate, attendedRecordSha256, phase6N4RunId,
-  phase6N4ArtifactName, phase6N4RecordSha256, publicAssetsDirectory,
+  phase6N4ArtifactName, phase6N4RecordSha256, releaseId, publicAssetMetadata,
+  publicAssetsDirectory,
 }) {
   if (proof?.phase6_n4_run_id !== phase6N4RunId
     || proof?.phase6_n4_artifact_name !== phase6N4ArtifactName
@@ -132,6 +150,8 @@ export function validatePhase5PromotionProof({
     phase6N4RunId,
     phase6N4ArtifactName,
     phase6N4RecordSha256,
+    releaseId,
+    publicAssetMetadata,
     promotionRunId: proof?.workflow?.run_id,
     repository: proof?.workflow?.repository,
     releaseTag: proof?.release_tag,
@@ -157,6 +177,8 @@ export function parsePhase5PromotionProofArguments(args) {
     ["--phase6-n4-artifact-name", "phase6N4ArtifactName"],
     ["--phase6-n4-record", "phase6N4Record"],
     ["--phase6-n4-record-sha256", "phase6N4RecordSha256"],
+    ["--release-id", "releaseId"],
+    ["--public-asset-metadata", "publicAssetMetadata"],
     ["--promotion-run-id", "promotionRunId"],
     ["--repository", "repository"],
     ["--release-tag", "releaseTag"],
@@ -189,7 +211,18 @@ export function executePhase5PromotionProof(args = process.argv.slice(2)) {
   if (sha256File(options.phase6N4Record) !== options.phase6N4RecordSha256) {
     throw new Error("promotion Phase 6 N4 record hash does not match bytes.");
   }
-  const proof = createPhase5PromotionProof({ candidate, ...options });
+  let publicAssetMetadata;
+  try {
+    publicAssetMetadata = JSON.parse(readFileSync(options.publicAssetMetadata, "utf8"));
+  } catch {
+    throw new Error("promotion release asset metadata is invalid JSON.");
+  }
+  if (!/^[1-9][0-9]*$/u.test(options.releaseId ?? "")) {
+    throw new Error("promotion release ID is malformed.");
+  }
+  const proof = createPhase5PromotionProof({
+    candidate, ...options, releaseId: Number(options.releaseId), publicAssetMetadata,
+  });
   writeFileSync(options.output, serializePhase5PromotionProof(proof), { flag: "wx" });
   return proof;
 }
