@@ -72,7 +72,7 @@ No Phase 5 implementation work is parallelized. Backup/export, restore/replaceme
 
 Plans 05-01 through 05-06, and source-only work in 05-07, deliberately exclude Android builds/native generation, emulator/device/Maestro execution, physical KDF timing, notification/process-death observation, airplane-mode proof, assistive technology, attended visual/design review, owner approval evidence, Terminal Seal, signing, and public publication.
 
-After the source work is complete, the final 05-07 checklist must run once against one privately retained candidate. It is not valid until every required attended result is truthful, every digest matches, and the owner supplies literal lowercase `approved`. The promotion workflow publishes the retained bytes first; the subsequent Terminal Seal command only validates the completed promotion and existing public bytes, and never rebuilds them.
+After the source work is complete, the Phase 6 N4 Samsung record and final 05-07 checklist must run once against one privately retained candidate. It is not valid until every required attended result is truthful, every digest matches, the canonical Phase 5 record binds and replays the passed observation-only N4 bytes from a successful protected upload, and the owner supplies literal lowercase `approved`. The promotion workflow revalidates that N4 binding before publishing the retained bytes; the subsequent Terminal Seal command replays it again while validating the completed promotion and existing public bytes, and never rebuilds them.
 
 ## Canonical Phase 5 attended rows
 
