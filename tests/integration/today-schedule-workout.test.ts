@@ -30,6 +30,8 @@ import {
 import {
   completeSet,
   finishCompleted,
+  finishPartial,
+  resumePartialWorkout,
   startWorkout,
 } from "../../src/domains/workout";
 import {
@@ -57,6 +59,9 @@ import {
 import {
   createWorkoutOutcomeRepository,
 } from "../../src/platform/sqlite/repositories/workoutOutcomeRepository";
+import {
+  createHistoryCommandRepository,
+} from "../../src/platform/sqlite/repositories/historyCommandRepository";
 import {
   createWorkoutRepository,
 } from "../../src/platform/sqlite/repositories/workoutRepository";
@@ -276,6 +281,7 @@ async function setupRuntime() {
     sha256,
   }) as any;
   return {
+    databasePath,
     kernel,
     ownedPlans,
     schedule,
@@ -355,6 +361,82 @@ async function insertValidCustomOwnedPlan(
 }
 
 describe("Today schedule workout integration", () => {
+  it("surfaces a corrected partial after a cold reopen and resumes it with its effective revision", async () => {
+    const runtime = await setupRuntime();
+    const plans = createPlansWorkoutRepository(runtime.kernel);
+    const session = await startWorkout({
+      repository: plans,
+      request: {
+        mode: "scheduled",
+        planId: "plan-copy",
+        planDayId: "plan-day-copy",
+        localDate: "2026-08-17",
+        timezone: "Asia/Singapore",
+        startedAtMs: 1_786_853_600_000,
+      },
+    });
+    const outcomes = createWorkoutOutcomeRepository(runtime.kernel);
+    const partial = await finishPartial({
+      repository: outcomes,
+      input: {
+        sessionId: session.id,
+        expectedSessionRevision: session.revision,
+        confirmation: "save_partial_workout",
+        endedAtMs: 1_786_853_700_000,
+      },
+    });
+    const corrections = createHistoryCommandRepository(runtime.kernel);
+    const editor = await corrections.loadCorrectionSession(session.id);
+    const corrected = await corrections.correctSession({
+      base: editor.snapshot,
+      expectedEffectiveRevision: editor.effectiveRevision,
+      next: {
+        ...editor.snapshot,
+        session: {
+          ...editor.snapshot.session,
+          ownerNote: "Resume using the corrected revision",
+        },
+      },
+      nowMs: 1_786_853_750_000,
+    });
+
+    await runtime.kernel.close();
+    kernels.delete(runtime.kernel);
+
+    const writer = new NodeSqliteConnection(new DatabaseSync(runtime.databasePath));
+    const reader = new NodeSqliteConnection(new DatabaseSync(runtime.databasePath));
+    await configureSqliteConnection(writer, { enableWal: true });
+    await configureSqliteConnection(reader, { enableWal: false });
+    const reopened = createSqliteKernel({ reader, writer });
+    kernels.add(reopened);
+
+    const today = await createPlansWorkoutRepository(reopened).getTodayView({
+      localDate: "2026-08-17",
+      weekday: 1,
+    });
+    expect(today).toMatchObject({
+      state: "saved_partial",
+      sessionId: session.id,
+      revision: corrected.effectiveRevision,
+    });
+    if (today.state !== "saved_partial") {
+      throw new Error("corrected_partial_missing_from_today");
+    }
+
+    await expect(resumePartialWorkout({
+      repository: createWorkoutOutcomeRepository(reopened),
+      input: {
+        sessionId: session.id,
+        expectedSessionRevision: today.revision,
+        resumedAtMs: 1_786_853_800_000,
+      },
+    })).resolves.toMatchObject({
+      sessionId: session.id,
+      sessionRevision: partial.detail.revision + 1,
+      status: "in_progress",
+    });
+  });
+
   it("projects pending owned recommendations on Today", async () => {
     const runtime = await setupRuntime();
     await runtime.kernel.write(async (transaction) => {

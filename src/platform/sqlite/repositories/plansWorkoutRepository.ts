@@ -1151,7 +1151,9 @@ export function createPlansWorkoutRepository(
         completed_working_sets: number;
         total_working_sets: number;
       }>(
-        `SELECT ws.id AS session_id, ws.revision, se.exercise_name, ss.set_kind,
+        `SELECT ws.id AS session_id,
+                COALESCE(overlay.effective_revision, ws.revision) AS revision,
+                se.exercise_name, ss.set_kind,
                 ss.ordinal AS set_ordinal,
                 SUM(CASE
                   WHEN all_sets.set_kind = 'working'
@@ -1168,12 +1170,10 @@ export function createPlansWorkoutRepository(
            ON all_exercises.session_id = ws.id
          LEFT JOIN session_sets all_sets
            ON all_sets.session_exercise_id = all_exercises.id
+         LEFT JOIN history_session_overlays overlay
+           ON overlay.session_id = ws.id
          WHERE ws.status = 'partial'
-           AND NOT EXISTS (
-             SELECT 1
-             FROM history_session_overlays overlay
-             WHERE overlay.session_id = ws.id
-           )
+           AND (overlay.session_id IS NULL OR overlay.lifecycle = 'active')
          GROUP BY ws.id
          ORDER BY ws.completed_at_ms DESC, ws.id DESC
          LIMIT 1`,

@@ -818,6 +818,13 @@ function sourceSnapshotAuditId(
   return `history-audit:${sessionId}:${effectiveRevision}:source-snapshot`;
 }
 
+function terminalizationAuditId(
+  sessionId: string,
+  effectiveRevision: number,
+): string {
+  return `history-audit:${sessionId}:${effectiveRevision}:terminalized`;
+}
+
 async function voidActiveHistoryOverlayForResume(
   transaction: SqliteTransactionExecutor,
   session: SessionRow,
@@ -934,6 +941,53 @@ async function reactivateHistoryOverlayAfterResume(
       nowMs,
     ],
   );
+}
+
+async function terminalizeVoidedHistoryOverlay(
+  transaction: SqliteTransactionExecutor,
+  session: SessionRow,
+  snapshot: HistoryCorrectionSnapshot,
+  terminalStatus: Extract<WorkoutSessionStatus, "discarded" | "zero_sets">,
+  nowMs: number,
+): Promise<ReturnType<typeof collectHistoryImpact>> {
+  if (
+    session.lifecycle !== "voided"
+    || session.effective_revision === null
+  ) {
+    throw new WorkoutOutcomeConflictError("finish_workout_conflict");
+  }
+  const deleted = await transaction.execute(
+    `DELETE FROM history_session_overlays
+     WHERE session_id = ?
+       AND effective_revision = ?
+       AND lifecycle = 'voided'`,
+    [session.id, session.effective_revision],
+  );
+  if (deleted.changes !== 1) {
+    throw new WorkoutOutcomeConflictError("finish_workout_conflict");
+  }
+  await transaction.execute(
+    `INSERT INTO history_audit_events
+      (id, session_id, effective_revision, event_type, field_identity,
+       before_json, after_json, occurred_at_ms)
+     VALUES (?, ?, ?, 'correction', 'session.terminal_status', ?, ?, ?)`,
+    [
+      terminalizationAuditId(session.id, session.effective_revision),
+      session.id,
+      session.effective_revision,
+      JSON.stringify("in_progress"),
+      JSON.stringify(terminalStatus),
+      nowMs,
+    ],
+  );
+  const activeHistory = historySubjectSnapshotFromCorrectionSnapshot(
+    snapshot,
+    "active",
+  );
+  return collectHistoryImpact({
+    oldSnapshot: activeHistory,
+    newSnapshot: { ...activeHistory, lifecycle: "voided" },
+  });
 }
 
 function nonLoadOutcome(
@@ -1833,6 +1887,7 @@ async function finish(
   }
 
   const nextStatus = nextWorkoutStatus(session.status, action);
+  const overlay = effectiveOverlaySnapshot(session);
   const preservePointer = nextStatus === "partial";
   const result = await transaction.execute(
     `UPDATE workout_sessions
@@ -1858,7 +1913,6 @@ async function finish(
   const sessionRevision = input.expectedSessionRevision + 1;
   const restRevision = await idleRest(transaction, input.sessionId);
   if (nextStatus === "completed" || nextStatus === "partial") {
-    const overlay = effectiveOverlaySnapshot(session);
     let historyImpact: ReturnType<typeof collectHistoryImpact>;
     if (overlay === null) {
       const activeHistory = historySubjectSnapshot(
@@ -1897,6 +1951,21 @@ async function finish(
         ),
       });
     }
+    await invalidateAndAdvanceHistoryProjectionSubjects(transaction, {
+      ...historyImpact,
+      nowMs: input.endedAtMs,
+    });
+  } else if (
+    (nextStatus === "discarded" || nextStatus === "zero_sets")
+    && overlay !== null
+  ) {
+    const historyImpact = await terminalizeVoidedHistoryOverlay(
+      transaction,
+      session,
+      overlay,
+      nextStatus,
+      input.endedAtMs,
+    );
     await invalidateAndAdvanceHistoryProjectionSubjects(transaction, {
       ...historyImpact,
       nowMs: input.endedAtMs,

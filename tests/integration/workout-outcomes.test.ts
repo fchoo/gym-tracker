@@ -64,6 +64,7 @@ import {
   createHistoryCommandRepository,
 } from "../../src/platform/sqlite/repositories/historyCommandRepository";
 import {
+  createHistoryRepository,
   loadEffectiveHistoryProjectionSessions,
 } from "../../src/platform/sqlite/repositories/historyRepository";
 import {
@@ -1361,6 +1362,209 @@ describe("Plan 01-10 explicit workout outcomes", () => {
         }),
       ]);
   });
+
+  it.each<readonly [
+    "discarded" | "zero_sets",
+    "discard" | "zero sets",
+  ]>([
+    ["discarded", "discard"] as const,
+    ["zero_sets", "zero sets"] as const,
+  ])(
+    "terminalizes a voided corrected partial as %s without retaining a removed session",
+    async (terminalStatus, terminalLabel) => {
+      const { kernel, repository, session } = await setupPlannedWorkout();
+      const partial = await finishPartial({
+        repository,
+        input: {
+          sessionId: session.id,
+          expectedSessionRevision: session.revision,
+          confirmation: "save_partial_workout",
+          endedAtMs: 1_786_853_700_000,
+        },
+      });
+      const corrections = createHistoryCommandRepository(kernel);
+      const editor = await corrections.loadCorrectionSession(session.id);
+      const firstExercise = editor.snapshot.exercises[0]!;
+      const firstWorkingSet = firstExercise.sets.find(
+        ({ kind }) => kind === "working",
+      )!;
+      const corrected = await corrections.correctSession({
+        base: editor.snapshot,
+        expectedEffectiveRevision: editor.effectiveRevision,
+        next: {
+          ...editor.snapshot,
+          session: {
+            ...editor.snapshot.session,
+            ownerNote: `Corrected before ${terminalLabel}`,
+          },
+          exercises: editor.snapshot.exercises.map((exercise) =>
+            exercise.id !== firstExercise.id
+              ? exercise
+              : {
+                  ...exercise,
+                  sets: exercise.sets.map((set) =>
+                    set.id !== firstWorkingSet.id
+                      ? set
+                      : {
+                          ...set,
+                          status: "completed",
+                          observation: {
+                            version: 1,
+                            profile: "load_reps",
+                            loadGrams: 60_000,
+                            reps: 8,
+                            source: "manual",
+                          },
+                          completedAtMs: 1_786_853_750_000,
+                        }
+                  ),
+                }
+          ),
+        },
+        nowMs: 1_786_853_750_000,
+      });
+      const projection = createHistoryProjectionRepository(kernel);
+      const runner = createHistoryProjectionEffectRunner({
+        repository: projection,
+        store: createHistoryProjectionEffectStore(kernel),
+      });
+      await runner.drain({ nowMs: 1_786_853_750_100, limit: 64 });
+      await expect(createProgressRepository(kernel).load({
+        period: "4_weeks",
+        nowLocalDate: "2026-08-17",
+      })).resolves.toMatchObject({
+        freshness: "current",
+        projection: {
+          summary: {
+            workingSets: { completed: 1, planned: 15 },
+          },
+        },
+      });
+
+      const resumed = await resumePartialWorkout({
+        repository,
+        input: {
+          sessionId: session.id,
+          expectedSessionRevision: corrected.effectiveRevision,
+          resumedAtMs: 1_786_853_800_000,
+        },
+      });
+      const auditsBeforeTerminal = await kernel.queryAll<{
+        id: string;
+        event_type: string;
+        field_identity: string;
+        effective_revision: number;
+      }>(
+        `SELECT id, event_type, field_identity, effective_revision
+         FROM history_audit_events
+         WHERE session_id = ?
+         ORDER BY id`,
+        [session.id],
+      );
+
+      const terminal = terminalStatus === "discarded"
+        ? await discardWorkout({
+            repository,
+            input: {
+              sessionId: session.id,
+              expectedSessionRevision: resumed.sessionRevision,
+              confirmation: "discard_workout",
+              endedAtMs: 1_786_853_900_000,
+            },
+          })
+        : await saveZeroSetWorkout({
+            repository,
+            input: {
+              sessionId: session.id,
+              expectedSessionRevision: resumed.sessionRevision,
+              confirmation: "save_zero_set_workout",
+              endedAtMs: 1_786_853_900_000,
+            },
+          });
+
+      expect(terminal.detail).toMatchObject({
+        id: session.id,
+        status: terminalStatus,
+        revision: resumed.sessionRevision + 1,
+        resumable: false,
+      });
+      expect(terminal.detail.corrected).toBeUndefined();
+      expect(terminal.detail.ownerNote).toBeUndefined();
+      await expect(kernel.queryAll<{ count: number }>(
+        `SELECT COUNT(*) AS count
+         FROM history_session_overlays
+         WHERE session_id = ?`,
+        [session.id],
+      )).resolves.toEqual([{ count: 0 }]);
+      const auditsAfterTerminal = await kernel.queryAll<{
+        id: string;
+        event_type: string;
+        field_identity: string;
+        effective_revision: number;
+      }>(
+        `SELECT id, event_type, field_identity, effective_revision
+         FROM history_audit_events
+         WHERE session_id = ?
+         ORDER BY id`,
+        [session.id],
+      );
+      expect(auditsAfterTerminal).toEqual(
+        expect.arrayContaining([...auditsBeforeTerminal]),
+      );
+      expect(auditsAfterTerminal).toHaveLength(auditsBeforeTerminal.length + 1);
+      expect(auditsAfterTerminal).toContainEqual({
+        id: `history-audit:${session.id}:${resumed.sessionRevision + 1}:terminalized`,
+        event_type: "correction",
+        field_identity: "session.terminal_status",
+        effective_revision: resumed.sessionRevision + 1,
+      });
+
+      const history = createHistoryRepository(kernel);
+      await expect(history.listRemovedSessions()).resolves.toEqual([]);
+      const calendar = await history.loadCalendarMonth({
+        month: "2026-08-01",
+        selectedDate: "2026-08-17",
+        today: "2026-08-17",
+      });
+      expect(calendar.sessions).toEqual(
+        terminalStatus === "zero_sets"
+          ? [expect.objectContaining({
+              id: session.id,
+              status: "zero_sets",
+              effective: expect.objectContaining({
+                lifecycle: "active",
+                revision: resumed.sessionRevision + 1,
+              }),
+            })]
+          : [],
+      );
+      await expect(loadEffectiveHistoryProjectionSessions(kernel)).resolves
+        .toEqual([]);
+      await expect(createProgressRepository(kernel).load({
+        period: "4_weeks",
+        nowLocalDate: "2026-08-17",
+      })).resolves.toMatchObject({ freshness: "updating", projection: null });
+      const terminalDrain = await runner.drain({
+        nowMs: 1_786_853_900_100,
+        limit: 64,
+      });
+      expect(terminalDrain.claimed).toBeGreaterThan(0);
+      await expect(createProgressRepository(kernel).load({
+        period: "4_weeks",
+        nowLocalDate: "2026-08-17",
+      })).resolves.toMatchObject({
+        freshness: "current",
+        projection: {
+          exercises: [],
+          records: [],
+          summary: {
+            workingSets: { completed: 0, planned: 0 },
+          },
+          trend: [],
+        },
+      });
+    },
+  );
 
   it("renders manual and voided retained states read-only in session detail", async () => {
     const kernel = await createKernel();
