@@ -29,8 +29,8 @@ export default function ProgressRoute() {
         await runtime.refresh();
         return result;
       }}
-      onOpenExercise={(exerciseId) =>
-        router.push(("/exercise-history/" + exerciseId + "?exerciseName=" + encodeURIComponent(exerciseId)) as Href)}
+      onOpenExercise={(exerciseId, exerciseName) =>
+        router.push(("/exercise-history/" + exerciseId + "?exerciseName=" + encodeURIComponent(exerciseName)) as Href)}
       onOpenSession={(sessionId) => router.push(("/session/" + sessionId) as Href)}
       onKeepCurrentTarget={async (recommendationId) => {
         const result = await runtime.keepCurrentTarget(recommendationId);
