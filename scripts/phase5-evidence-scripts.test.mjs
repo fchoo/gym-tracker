@@ -170,6 +170,81 @@ function automatedMetadata(producer, manifest = manifestFixture()) {
   };
 }
 
+function phase6AttendedEvidenceFixture(manifest = manifestFixture()) {
+  return {
+    record_sha256: SHA_C,
+    evidence_run_id: "987654321",
+    artifact_name: "phase6-n4-evidence-candidate-001-987654321",
+    candidate_id: manifest.candidate_id,
+    source_commit: manifest.source.commit,
+    manifest_sha256: SHA_D,
+    apk_sha256: manifest.artifacts.find(({ kind }) => kind === "apk").sha256,
+    status: "passed",
+  };
+}
+
+async function materializePhase6N4Evidence(
+  directory, manifest = manifestFixture(), { failed = false } = {},
+) {
+  const {
+    buildPhase6AttendedChecklist,
+    createPhase6AttendedRecord,
+    serializePhase6AttendedChecklist,
+  } = await load("scripts/generate-phase6-attended-checklist.mjs");
+  const candidate = { manifest, manifest_sha256: SHA_D };
+  const device = {
+    role: "samsung-physical",
+    model: "SM-S916B",
+    serial_sha256: SHA_A,
+    installed_package: manifest.source.package,
+    installed_apk_sha256: manifest.artifacts.find(({ kind }) => kind === "apk").sha256,
+  };
+  mkdirSync(directory, { recursive: true });
+  const attachmentDigests = Object.fromEntries(
+    ["N4-01", "N4-02", "N4-03", "N4-04"].map((id) => {
+      const bytes = Buffer.concat([Buffer.from("89504e470d0a1a0a", "hex"), Buffer.from(id)]);
+      writeFileSync(path.join(directory, `${id}.png`), bytes);
+      return [id, createHash("sha256").update(bytes).digest("hex")];
+    }),
+  );
+  const checklist = buildPhase6AttendedChecklist({
+    candidate, device, generatedAt: "2026-09-03T00:00:00.000Z",
+  });
+  const checklistBytes = serializePhase6AttendedChecklist(checklist);
+  const observations = {
+    schema_version: 1,
+    suite: "phase6-attended-observations",
+    candidate_id: manifest.candidate_id,
+    manifest_sha256: SHA_D,
+    device,
+    rows: Object.entries(attachmentDigests).map(([id, attachment_sha256], index) => ({
+      id, status: failed && index === 0 ? "failed" : "passed", attachment_sha256,
+    })),
+  };
+  const observationsBytes = serializePhase6AttendedChecklist(observations);
+  const record = createPhase6AttendedRecord({
+    candidate, checklist, checklistBytes, observations, observationsBytes,
+    evidenceDirectory: directory, recordedAt: "2026-09-03T00:30:00.000Z",
+  });
+  const recordBytes = serializePhase6AttendedChecklist(record);
+  const paths = {
+    checklistPath: path.join(directory, "checklist.json"),
+    observationsPath: path.join(directory, "observations.json"),
+    recordPath: path.join(directory, "attended-record.json"),
+  };
+  writeFileSync(paths.checklistPath, checklistBytes);
+  writeFileSync(paths.observationsPath, observationsBytes);
+  writeFileSync(paths.recordPath, recordBytes);
+  return {
+    ...paths,
+    evidenceDirectory: directory,
+    evidenceRunId: "987654321",
+    artifactName: "phase6-n4-evidence-candidate-001-987654321",
+    record,
+    recordBytes,
+  };
+}
+
 test("Phase 5 accepts only the canonical production candidate identity", async () => {
   const { validatePhase5CandidateIdentity } = await load(
     "scripts/verify-phase5-native-evidence.mjs",
@@ -815,21 +890,172 @@ test("checklist generator emits pending rows with blank evidence and no approval
   } = await load("scripts/generate-phase5-attended-checklist.mjs");
   const manifest = manifestFixture();
   const rows = derivePhase5AttendedRows(projectRoot);
+  const phase6AttendedEvidence = phase6AttendedEvidenceFixture(manifest);
   const checklist = buildPhase5PendingChecklist({
     candidate: candidateIdentity(manifest),
     automatedEvidence: { file: "automated.json", sha256: SHA_A },
-    rows,
+    phase6AttendedEvidence, rows,
     generatedAt: "2026-08-26T00:00:00.000Z",
   });
   assert.doesNotThrow(() => validatePhase5PendingChecklist(checklist, {
     candidate: candidateIdentity(manifest),
     automatedEvidence: { file: "automated.json", sha256: SHA_A },
-    rows,
+    phase6AttendedEvidence, rows,
   }));
   assert.equal(checklist.status, "pending");
   assert.equal(checklist.rows.every((row) => row.status === "pending"
     && row.observation === "" && row.attachments.length === 0), true);
   assert.doesNotMatch(JSON.stringify(checklist), /owner_token|approval_status|"status":"approved"/iu);
+});
+
+test("Phase 5 pending checklist requires exact passed Phase 6 N4 provenance", async () => {
+  const {
+    buildPhase5PendingChecklist,
+    derivePhase5AttendedRows,
+    validatePhase5PendingChecklist,
+  } = await load("scripts/generate-phase5-attended-checklist.mjs");
+  const manifest = manifestFixture();
+  const rows = derivePhase5AttendedRows(projectRoot);
+  const automatedEvidence = { file: "automated.json", sha256: SHA_A };
+  const phase6AttendedEvidence = phase6AttendedEvidenceFixture(manifest);
+  const checklist = buildPhase5PendingChecklist({
+    candidate: candidateIdentity(manifest), automatedEvidence,
+    phase6AttendedEvidence, rows, generatedAt: "2026-09-03T00:00:00.000Z",
+  });
+  assert.deepEqual(checklist.phase6_attended_evidence, phase6AttendedEvidence);
+  assert.doesNotThrow(() => validatePhase5PendingChecklist(checklist, {
+    candidate: candidateIdentity(manifest), automatedEvidence, phase6AttendedEvidence, rows,
+  }));
+  for (const mutation of [
+    undefined,
+    { ...phase6AttendedEvidence, status: "failed" },
+    { ...phase6AttendedEvidence, candidate_id: "wrong-candidate" },
+    { ...phase6AttendedEvidence, source_commit: "f".repeat(40) },
+    { ...phase6AttendedEvidence, manifest_sha256: SHA_A },
+    { ...phase6AttendedEvidence, apk_sha256: SHA_A },
+    { ...phase6AttendedEvidence, record_sha256: "not-a-digest" },
+    { ...phase6AttendedEvidence, evidence_run_id: "0" },
+    { ...phase6AttendedEvidence, artifact_name: "not canonical/artifact" },
+  ]) {
+    assert.throws(() => buildPhase5PendingChecklist({
+      candidate: candidateIdentity(manifest), automatedEvidence,
+      phase6AttendedEvidence: mutation, rows, generatedAt: "2026-09-03T00:00:00.000Z",
+    }), /Phase 6|N4|passed|candidate|commit|manifest|APK|digest|run|artifact|provenance/iu);
+  }
+});
+
+test("Phase 5 derives N4 provenance only by replaying the canonical Phase 6 record", async () => {
+  const temporaryDirectory = mkdtempSync(path.join(os.tmpdir(), "phase5-phase6-n4-"));
+  try {
+    const { loadPhase6N4AttendedEvidence } = await load(
+      "scripts/generate-phase5-attended-checklist.mjs",
+    );
+    const manifest = manifestFixture();
+    const n4 = await materializePhase6N4Evidence(temporaryDirectory, manifest);
+    const options = {
+      candidateManifest: manifest,
+      manifestSha256: SHA_D,
+      phase6N4RecordPath: n4.recordPath,
+      phase6N4ChecklistPath: n4.checklistPath,
+      phase6N4ObservationsPath: n4.observationsPath,
+      phase6N4EvidenceDirectory: n4.evidenceDirectory,
+      phase6N4RunId: n4.evidenceRunId,
+      phase6N4ArtifactName: n4.artifactName,
+    };
+    assert.deepEqual(loadPhase6N4AttendedEvidence(options), {
+      ...phase6AttendedEvidenceFixture(manifest),
+      record_sha256: createHash("sha256").update(n4.recordBytes).digest("hex"),
+    });
+
+    const failedDirectory = path.join(temporaryDirectory, "failed");
+    const failed = await materializePhase6N4Evidence(failedDirectory, manifest, { failed: true });
+    assert.throws(() => loadPhase6N4AttendedEvidence({
+      ...options,
+      phase6N4RecordPath: failed.recordPath,
+      phase6N4ChecklistPath: failed.checklistPath,
+      phase6N4ObservationsPath: failed.observationsPath,
+      phase6N4EvidenceDirectory: failed.evidenceDirectory,
+    }), /Phase 6|N4|passed|failed/iu);
+
+    const wrongCandidate = manifestFixture({ candidate_id: "wrong-candidate" });
+    assert.throws(() => loadPhase6N4AttendedEvidence({
+      ...options, candidateManifest: wrongCandidate,
+    }), /Phase 6|N4|candidate|identity/iu);
+    assert.throws(() => loadPhase6N4AttendedEvidence({
+      ...options, manifestSha256: SHA_A,
+    }), /Phase 6|N4|manifest|identity/iu);
+    const wrongApk = manifestFixture({
+      artifacts: manifest.artifacts.map((artifactValue) => artifactValue.kind === "apk"
+        ? { ...artifactValue, sha256: SHA_A }
+        : artifactValue),
+    });
+    assert.throws(() => loadPhase6N4AttendedEvidence({
+      ...options, candidateManifest: wrongApk,
+    }), /Phase 6|N4|APK|candidate|identity/iu);
+
+    writeFileSync(n4.recordPath, `${n4.recordBytes.toString("utf8")}\n`);
+    assert.throws(() => loadPhase6N4AttendedEvidence(options), /Phase 6|N4|canonical|record/iu);
+    writeFileSync(n4.recordPath, n4.recordBytes);
+    writeFileSync(path.join(temporaryDirectory, "N4-01.png"), Buffer.concat([
+      Buffer.from("89504e470d0a1a0a", "hex"), Buffer.from("altered"),
+    ]));
+    assert.throws(() => loadPhase6N4AttendedEvidence(options), /Phase 6|N4|attachment|hash|changed/iu);
+  } finally {
+    rmSync(temporaryDirectory, { recursive: true, force: true });
+  }
+});
+
+test("Phase 5 attended CLI requires every Phase 6 N4 binding argument", async () => {
+  const { parsePhase5AttendedCliArguments } = await load(
+    "scripts/generate-phase5-attended-checklist.mjs",
+  );
+  const exact = [
+    "prepare",
+    "--bundle-dir", "retained-candidate",
+    "--manifest-sha256", SHA_D,
+    "--automated-evidence", "automated.json",
+    "--phase6-n4-record", "phase6/attended-record.json",
+    "--phase6-n4-checklist", "phase6/checklist.json",
+    "--phase6-n4-observations", "phase6/observations.json",
+    "--phase6-n4-evidence-dir", "phase6",
+    "--phase6-n4-run-id", "987654321",
+    "--phase6-n4-artifact-name", "phase6-n4-evidence-candidate-001-987654321",
+    "--output", "checklist.pending.json",
+  ];
+  assert.deepEqual(parsePhase5AttendedCliArguments(exact), {
+    mode: "prepare", bundleDir: "retained-candidate", manifestSha256: SHA_D,
+    automatedEvidence: "automated.json",
+    phase6N4Record: "phase6/attended-record.json",
+    phase6N4Checklist: "phase6/checklist.json",
+    phase6N4Observations: "phase6/observations.json",
+    phase6N4EvidenceDir: "phase6", phase6N4RunId: "987654321",
+    phase6N4ArtifactName: "phase6-n4-evidence-candidate-001-987654321",
+    output: "checklist.pending.json",
+  });
+  for (const missingOption of [
+    "--phase6-n4-record", "--phase6-n4-checklist",
+    "--phase6-n4-observations", "--phase6-n4-evidence-dir",
+    "--phase6-n4-run-id", "--phase6-n4-artifact-name",
+  ]) {
+    const index = exact.indexOf(missingOption);
+    assert.throws(
+      () => parsePhase5AttendedCliArguments([
+        ...exact.slice(0, index), ...exact.slice(index + 2),
+      ]),
+      /missing|Phase 6|N4|argument/iu,
+    );
+  }
+  for (const [option, invalid] of [
+    ["--phase6-n4-run-id", "0"],
+    ["--phase6-n4-run-id", "12.5"],
+    ["--phase6-n4-artifact-name", "bad/artifact"],
+    ["--phase6-n4-artifact-name", ""],
+  ]) {
+    const index = exact.indexOf(option);
+    const changed = [...exact];
+    changed[index + 1] = invalid;
+    assert.throws(() => parsePhase5AttendedCliArguments(changed), /Phase 6|N4|run|artifact|argument/iu);
+  }
 });
 
 function attendedFixture(rows, manifest = manifestFixture()) {
@@ -871,9 +1097,18 @@ test("recorder requires explicit closed observations, real attachments, and exac
     const manifest = manifestFixture();
     const rows = derivePhase5AttendedRows(projectRoot);
     const candidate = candidateIdentity(manifest);
+    const n4 = await materializePhase6N4Evidence(path.join(temporaryDirectory, "phase6"), manifest);
+    const phase6Options = {
+      phase6N4RecordPath: n4.recordPath, phase6N4ChecklistPath: n4.checklistPath,
+      phase6N4ObservationsPath: n4.observationsPath,
+      phase6N4EvidenceDirectory: n4.evidenceDirectory,
+      phase6N4RunId: n4.evidenceRunId, phase6N4ArtifactName: n4.artifactName,
+    };
+    const phase6AttendedEvidence = phase6AttendedEvidenceFixture(manifest);
+    phase6AttendedEvidence.record_sha256 = createHash("sha256").update(n4.recordBytes).digest("hex");
     const checklist = buildPhase5PendingChecklist({
       candidate, automatedEvidence: { file: "automated.json", sha256: SHA_A },
-      rows, generatedAt: "2026-08-26T00:00:00.000Z",
+      phase6AttendedEvidence, rows, generatedAt: "2026-08-26T00:00:00.000Z",
     });
     const checklistBytes = Buffer.from(serializeCanonicalJson(checklist));
     const observations = attendedFixture(rows, manifest);
@@ -888,12 +1123,13 @@ test("recorder requires explicit closed observations, real attachments, and exac
     assert.doesNotThrow(() => createPhase5AttendedRecord({
       candidateManifest: manifest, manifestSha256: SHA_D, checklist, checklistBytes,
       observations, observationsBytes, ownerToken: "approved",
-      evidenceDirectory: temporaryDirectory, rows,
+      evidenceDirectory: temporaryDirectory, ...phase6Options, rows,
     }));
     for (const ownerToken of [undefined, "Approved", "APPROVED", " approved", "approved ", "approvеd"]) {
       assert.throws(() => createPhase5AttendedRecord({
         candidateManifest: manifest, manifestSha256: SHA_D, checklist, checklistBytes,
         observations, observationsBytes, ownerToken, evidenceDirectory: temporaryDirectory, rows,
+        ...phase6Options,
       }), /owner token|approved/iu);
     }
     for (const status of ["pending", "skipped", "failed", "unknown", ""]) {
@@ -903,6 +1139,7 @@ test("recorder requires explicit closed observations, real attachments, and exac
         candidateManifest: manifest, manifestSha256: SHA_D, checklist, checklistBytes,
         observations: changed, observationsBytes: Buffer.from(serializeCanonicalJson(changed)),
         ownerToken: "approved", evidenceDirectory: temporaryDirectory, rows,
+        ...phase6Options,
       }), /status|passed|closed/iu);
     }
     const blank = structuredClone(observations);
@@ -911,6 +1148,7 @@ test("recorder requires explicit closed observations, real attachments, and exac
       candidateManifest: manifest, manifestSha256: SHA_D, checklist, checklistBytes,
       observations: blank, observationsBytes: Buffer.from(serializeCanonicalJson(blank)),
       ownerToken: "approved", evidenceDirectory: temporaryDirectory, rows,
+      ...phase6Options,
     }), /observation|blank/iu);
   } finally {
     rmSync(temporaryDirectory, { recursive: true, force: true });
@@ -928,6 +1166,15 @@ test("attended verifier hashes canonical record, every attachment, automation, a
     const manifest = manifestFixture();
     const candidate = candidateIdentity(manifest);
     const rows = derivePhase5AttendedRows(projectRoot);
+    const n4 = await materializePhase6N4Evidence(path.join(temporaryDirectory, "phase6"), manifest);
+    const phase6AttendedEvidence = phase6AttendedEvidenceFixture(manifest);
+    phase6AttendedEvidence.record_sha256 = createHash("sha256").update(n4.recordBytes).digest("hex");
+    const phase6Options = {
+      phase6N4RecordPath: n4.recordPath, phase6N4ChecklistPath: n4.checklistPath,
+      phase6N4ObservationsPath: n4.observationsPath,
+      phase6N4EvidenceDirectory: n4.evidenceDirectory,
+      phase6N4RunId: n4.evidenceRunId, phase6N4ArtifactName: n4.artifactName,
+    };
     const automatedPath = path.join(temporaryDirectory, "automated.json");
     writeFileSync(automatedPath, "automated exact candidate evidence\n");
     const automated = {
@@ -936,7 +1183,7 @@ test("attended verifier hashes canonical record, every attachment, automation, a
     };
     const checklist = buildPhase5PendingChecklist({
       candidate, automatedEvidence: automated, rows,
-      generatedAt: "2026-08-26T00:00:00.000Z",
+      phase6AttendedEvidence, generatedAt: "2026-08-26T00:00:00.000Z",
     });
     const checklistBytes = Buffer.from(serializeCanonicalJson(checklist));
     const observations = attendedFixture(rows, manifest);
@@ -953,23 +1200,36 @@ test("attended verifier hashes canonical record, every attachment, automation, a
     const record = createPhase5AttendedRecord({
       candidateManifest: manifest, manifestSha256: SHA_D, checklist, checklistBytes,
       observations, observationsBytes, ownerToken: "approved",
-      evidenceDirectory: temporaryDirectory, rows,
+      evidenceDirectory: temporaryDirectory, ...phase6Options, rows,
     });
+    assert.deepEqual(record.phase6_attended_evidence, phase6AttendedEvidence);
     const canonicalRecordBytes = Buffer.from(serializeCanonicalJson(record));
     assert.deepEqual(validatePhase5AttendedRecordBytes({
       candidateManifest: manifest, manifestSha256: SHA_D, record,
       recordBytes: canonicalRecordBytes, evidenceDirectory: temporaryDirectory,
       automatedEvidencePath: automatedPath, checklistPath, observationsPath, rows,
+      ...phase6Options,
     }), {
       status: "approved",
       rows: record.rows,
       attended_record_sha256: createHash("sha256").update(canonicalRecordBytes).digest("hex"),
     });
+    const substitutedN4 = {
+      ...record,
+      phase6_attended_evidence: { ...record.phase6_attended_evidence, record_sha256: SHA_A },
+    };
+    assert.throws(() => validatePhase5AttendedRecordBytes({
+      candidateManifest: manifest, manifestSha256: SHA_D, record: substitutedN4,
+      recordBytes: Buffer.from(serializeCanonicalJson(substitutedN4)),
+      evidenceDirectory: temporaryDirectory, automatedEvidencePath: automatedPath,
+      checklistPath, observationsPath, rows, ...phase6Options,
+    }), /Phase 6|N4|provenance|record|retained/iu);
     writeFileSync(checklistPath, `${checklistBytes.toString("utf8")}\n`);
     assert.throws(() => validatePhase5AttendedRecordBytes({
       candidateManifest: manifest, manifestSha256: SHA_D, record,
       recordBytes: canonicalRecordBytes, evidenceDirectory: temporaryDirectory,
       automatedEvidencePath: automatedPath, checklistPath, observationsPath, rows,
+      ...phase6Options,
     }), /checklist|hash|canonical|bytes/iu);
     writeFileSync(checklistPath, checklistBytes);
     writeFileSync(observationsPath, `${observationsBytes.toString("utf8")}\n`);
@@ -977,6 +1237,7 @@ test("attended verifier hashes canonical record, every attachment, automation, a
       candidateManifest: manifest, manifestSha256: SHA_D, record,
       recordBytes: canonicalRecordBytes, evidenceDirectory: temporaryDirectory,
       automatedEvidencePath: automatedPath, checklistPath, observationsPath, rows,
+      ...phase6Options,
     }), /observation|hash|canonical|bytes/iu);
     writeFileSync(observationsPath, observationsBytes);
     const attachment = path.join(temporaryDirectory, observations.rows[0].attachments[0]);
@@ -985,12 +1246,14 @@ test("attended verifier hashes canonical record, every attachment, automation, a
       candidateManifest: manifest, manifestSha256: SHA_D, record,
       recordBytes: canonicalRecordBytes, evidenceDirectory: temporaryDirectory,
       automatedEvidencePath: automatedPath, checklistPath, observationsPath, rows,
+      ...phase6Options,
     }), /attachment|hash|bytes/iu);
     rmSync(attachment);
     assert.throws(() => validatePhase5AttendedRecordBytes({
       candidateManifest: manifest, manifestSha256: SHA_D, record,
       recordBytes: canonicalRecordBytes, evidenceDirectory: temporaryDirectory,
       automatedEvidencePath: automatedPath, checklistPath, observationsPath, rows,
+      ...phase6Options,
     }), /attachment|missing|evidence/iu);
   } finally {
     rmSync(temporaryDirectory, { recursive: true, force: true });
@@ -1007,10 +1270,19 @@ test("attended attachments reject zero bytes, symlinks, escapes, and reuse acros
     } = await load("scripts/generate-phase5-attended-checklist.mjs");
     const manifest = manifestFixture();
     const rows = derivePhase5AttendedRows(projectRoot);
+    const n4 = await materializePhase6N4Evidence(path.join(temporaryDirectory, "phase6"), manifest);
+    const phase6Options = {
+      phase6N4RecordPath: n4.recordPath, phase6N4ChecklistPath: n4.checklistPath,
+      phase6N4ObservationsPath: n4.observationsPath,
+      phase6N4EvidenceDirectory: n4.evidenceDirectory,
+      phase6N4RunId: n4.evidenceRunId, phase6N4ArtifactName: n4.artifactName,
+    };
+    const phase6AttendedEvidence = phase6AttendedEvidenceFixture(manifest);
+    phase6AttendedEvidence.record_sha256 = createHash("sha256").update(n4.recordBytes).digest("hex");
     const checklist = buildPhase5PendingChecklist({
       candidate: candidateIdentity(manifest),
       automatedEvidence: { file: "automated.json", sha256: SHA_A },
-      rows, generatedAt: "2026-08-26T00:00:00.000Z",
+      phase6AttendedEvidence, rows, generatedAt: "2026-08-26T00:00:00.000Z",
     });
     const checklistBytes = Buffer.from(serializeCanonicalJson(checklist));
     const original = attendedFixture(rows, manifest);
@@ -1025,6 +1297,7 @@ test("attended attachments reject zero bytes, symlinks, escapes, and reuse acros
       candidateManifest: manifest, manifestSha256: SHA_D, checklist, checklistBytes,
       observations, observationsBytes: Buffer.from(serializeCanonicalJson(observations)),
       ownerToken: "approved", evidenceDirectory: temporaryDirectory, rows,
+      ...phase6Options,
     });
     materialize(original);
     const zero = structuredClone(original);
