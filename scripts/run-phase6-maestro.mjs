@@ -9,6 +9,7 @@ import {
   mkdtempSync,
   readFileSync,
   readdirSync,
+  realpathSync,
   rmSync,
   statSync,
   writeFileSync,
@@ -66,18 +67,37 @@ export const PHASE6_MAESTRO_FLOW_CONTRACTS = Object.freeze([
     flow: "maestro/phase6/progress-library.yaml",
     considerations: Object.freeze(["C1", "C2", "C3", "C4", "C7", "C11"]),
     native_backstops: Object.freeze(["N1"]),
+    screenshots: Object.freeze([
+      "phase6-progress-summary.png",
+      "phase6-progress-search.png",
+      "phase6-library-search.png",
+      "phase6-library-favorite-selected.png",
+    ]),
   }),
   Object.freeze({
     id: "phase6-calendar-date-reorder",
     flow: "maestro/phase6/calendar-date-reorder.yaml",
     considerations: Object.freeze(["C1", "C2", "C3", "C4", "C5", "C6", "C9", "C10"]),
     native_backstops: Object.freeze(["N2", "N3"]),
+    screenshots: Object.freeze([
+      "phase6-calendar-dialog-200pct.png",
+      "phase6-calendar-swipe.png",
+      "phase6-reorder-before-drag.png",
+      NATIVE_DRAG_SCREENSHOT,
+    ]),
   }),
   Object.freeze({
     id: "phase6-navigation-accessibility",
     flow: "maestro/phase6/navigation-accessibility.yaml",
     considerations: Object.freeze(["C6", "C8"]),
     native_backstops: Object.freeze(["N1", "N2"]),
+    screenshots: Object.freeze([
+      "phase6-history-data-route-200pct.png",
+      "phase6-navigation-calendar-200pct.png",
+      "phase6-navigation-library-200pct.png",
+      "phase6-navigation-progress-200pct.png",
+      "phase6-navigation-today-200pct.png",
+    ]),
   }),
 ]);
 
@@ -398,6 +418,51 @@ function isInside(root, candidate) {
   );
 }
 
+function canonicalizeExistingDirectory(directory, label) {
+  const details = lstatSync(directory, { throwIfNoEntry: false });
+  if (details === undefined || !details.isDirectory() || details.isSymbolicLink()) {
+    fail(`${label} is unsafe.`);
+  }
+  const canonical = realpathSync(directory);
+  if (canonical !== directory) {
+    fail(`${label} must use the canonical path.`);
+  }
+  return canonical;
+}
+
+function canonicalizeFreshPath(target, label) {
+  const requestedTarget = path.resolve(target);
+  const root = path.parse(requestedTarget).root;
+  const segments = path.relative(root, requestedTarget).split(path.sep).filter(Boolean);
+  let current = root;
+  for (const [index, segment] of segments.entries()) {
+    const next = path.join(current, segment);
+    const details = lstatSync(next, { throwIfNoEntry: false });
+    if (details === undefined) {
+      const canonicalAncestor = canonicalizeExistingDirectory(current, `${label} parent`);
+      return Object.freeze({
+        canonicalParent: canonicalAncestor,
+        target: path.join(canonicalAncestor, ...segments.slice(index)),
+      });
+    }
+    if (details.isSymbolicLink()) {
+      fail(`${label} must not escape through a symlink.`);
+    }
+    if (!details.isDirectory()) {
+      fail(`${label} parent is unsafe.`);
+    }
+    const canonicalNext = realpathSync(next);
+    if (canonicalNext !== next) {
+      fail(`${label} must use the canonical path.`);
+    }
+    current = canonicalNext;
+  }
+  return Object.freeze({
+    canonicalParent: canonicalizeExistingDirectory(path.dirname(requestedTarget), `${label} parent`),
+    target: requestedTarget,
+  });
+}
+
 function safePath(value, label) {
   if (typeof value !== "string" || value.length === 0 || value.includes("\0")) {
     fail(`${label} is required.`);
@@ -414,6 +479,21 @@ function safeRelativeFile(value, label) {
     fail(`${label} is malformed.`);
   }
   return value;
+}
+
+function exactScreenshotEvidence(reportRoot, expectedFiles, flowId) {
+  const screenshots = screenshotFiles(reportRoot)
+    .map((file) => ({
+      file: safeRelativeFile(path.relative(reportRoot, file), "screenshot file"),
+      sha256: sha256File(file),
+    }))
+    .sort((left, right) => left.file.localeCompare(right.file));
+  const expected = [...expectedFiles].sort((left, right) => left.localeCompare(right));
+  const actual = screenshots.map(({ file }) => file);
+  if (!exactJson(actual, expected)) {
+    fail(`required screenshots are missing or renamed for ${flowId}.`);
+  }
+  return Object.freeze(screenshots);
 }
 
 function parsePassedJunit(bytes, flowId) {
@@ -568,17 +648,6 @@ function screenshotFiles(root) {
   return files;
 }
 
-function screenshotEvidence(reportRoot) {
-  const screenshots = screenshotFiles(reportRoot)
-    .map((file) => ({
-      file: safeRelativeFile(path.relative(reportRoot, file), "screenshot file"),
-      sha256: sha256File(file),
-    }))
-    .sort((left, right) => left.file.localeCompare(right.file));
-  if (screenshots.length === 0) fail("required screenshots are missing.");
-  return Object.freeze(screenshots);
-}
-
 function sha256Bytes(bytes) {
   return createHash("sha256").update(bytes).digest("hex");
 }
@@ -691,13 +760,10 @@ export function preparePhase6EvidenceOutputs(output, reportDirectory) {
   if (lstatSync(reportDirectory, { throwIfNoEntry: false }) !== undefined) {
     fail("Phase 6 Maestro report directory must be fresh.");
   }
-  const outputParent = path.dirname(output);
-  const outputParentDetails = lstatSync(outputParent, { throwIfNoEntry: false });
-  if (outputParentDetails?.isSymbolicLink()) {
-    fail("Phase 6 evidence output parent is unsafe.");
-  }
-  mkdirSync(outputParent, { recursive: true });
-  mkdirSync(reportDirectory, { recursive: true });
+  const outputFresh = canonicalizeFreshPath(output, "Phase 6 evidence output");
+  const reportFresh = canonicalizeFreshPath(reportDirectory, "Phase 6 Maestro report directory");
+  mkdirSync(path.dirname(outputFresh.target), { recursive: true });
+  mkdirSync(reportFresh.target, { recursive: true });
 }
 
 export function createPhase6Evidence({
@@ -725,8 +791,12 @@ export function createPhase6Evidence({
     const nativeDragScreenshot = requiresNativeDrag
       ? flowScreenshots?.find(({ file }) => file === NATIVE_DRAG_SCREENSHOT)
       : null;
-    if (!Array.isArray(flowScreenshots) || flowScreenshots.length === 0) {
-      fail(`required screenshots are missing for ${contract.id}.`);
+    if (!Array.isArray(flowScreenshots)
+      || !exactJson(
+        flowScreenshots.map(({ file }) => file).slice().sort((left, right) => left.localeCompare(right)),
+        [...contract.screenshots].sort((left, right) => left.localeCompare(right)),
+      )) {
+      fail(`required screenshots are missing or renamed for ${contract.id}.`);
     }
     if (requiresNativeDrag
       && !SHA256_PATTERN.test(nativeDragScreenshot?.sha256 ?? "")) {
@@ -830,7 +900,10 @@ export function validatePhase6Evidence(
       || flow?.raw_report_file !== `${contract.id}/report.xml`
       || flow?.raw_report_sha256 !== createHash("sha256").update(rawReport).digest("hex")
       || !Array.isArray(flow?.screenshots)
-      || flow.screenshots.length < 1) {
+      || !exactJson(
+        flow.screenshots.map((screenshot) => screenshot?.file).slice().sort((left, right) => left.localeCompare(right)),
+        [...contract.screenshots].sort((left, right) => left.localeCompare(right)),
+      )) {
       fail(`automated evidence flow is invalid: ${contract.id}`);
     }
     if (requiresNativeDrag) {
@@ -1015,7 +1088,11 @@ export function executePhase6Maestro(args = process.argv.slice(2)) {
         }
         nativeDragReports[contract.id] = readFileSync(nativeDragReportPath);
       }
-      screenshots[contract.id] = screenshotEvidence(flowReportDirectory);
+      screenshots[contract.id] = exactScreenshotEvidence(
+        flowReportDirectory,
+        contract.screenshots,
+        contract.id,
+      );
     }
     evidence = createPhase6Evidence({
       candidate,

@@ -7,6 +7,8 @@ import {
   mkdirSync,
   mkdtempSync,
   readFileSync,
+  realpathSync,
+  symlinkSync,
   rmSync,
   statSync,
   writeFileSync,
@@ -50,6 +52,30 @@ function fixtureCandidate() {
 
 function passedReport() {
   return Buffer.from("<testsuites><testsuite><testcase/></testsuite></testsuites>");
+}
+
+function screenshotFixtures() {
+  return {
+    "phase6-progress-library": [
+      { file: "phase6-library-favorite-selected.png", sha256: SHA_A },
+      { file: "phase6-library-search.png", sha256: SHA_B },
+      { file: "phase6-progress-search.png", sha256: SHA_A },
+      { file: "phase6-progress-summary.png", sha256: SHA_B },
+    ],
+    "phase6-calendar-date-reorder": [
+      { file: "phase6-calendar-dialog-200pct.png", sha256: SHA_A },
+      { file: "phase6-calendar-swipe.png", sha256: SHA_B },
+      { file: "phase6-reorder-before-drag.png", sha256: SHA_A },
+      { file: "phase6-reorder-live-displacement.png", sha256: SHA_B },
+    ],
+    "phase6-navigation-accessibility": [
+      { file: "phase6-history-data-route-200pct.png", sha256: SHA_A },
+      { file: "phase6-navigation-calendar-200pct.png", sha256: SHA_B },
+      { file: "phase6-navigation-library-200pct.png", sha256: SHA_A },
+      { file: "phase6-navigation-progress-200pct.png", sha256: SHA_B },
+      { file: "phase6-navigation-today-200pct.png", sha256: SHA_A },
+    ],
+  };
 }
 
 test("Phase 6 runner requires production candidate identity arguments", async () => {
@@ -129,12 +155,7 @@ test("Phase 6 evidence rejects wrong identity, screenshots, cleanup, and release
   const nativeDragReports = {
     "phase6-calendar-date-reorder": passedReport(),
   };
-  const screenshots = Object.fromEntries(Object.keys(rawReports).map((id) => [id, [
-    { file: `${id}/complete.png`, sha256: SHA_A },
-    ...(id === "phase6-calendar-date-reorder"
-      ? [{ file: "phase6-reorder-live-displacement.png", sha256: SHA_B }]
-      : []),
-  ]]));
+  const screenshots = screenshotFixtures();
   const executableFlows = snapshotPhase6ExecutableFlows();
   test.after(() => {
     if (existsSync(executableFlows.directory)) {
@@ -178,6 +199,34 @@ test("Phase 6 evidence rejects wrong identity, screenshots, cleanup, and release
       ? { ...flow, screenshots: [] }
       : flow),
   }), /screenshot|artifact|evidence/u);
+  assert.throws(() => validate({
+    ...evidence,
+    flows: evidence.flows.map((flow) => flow.id === "phase6-progress-library"
+      ? {
+          ...flow,
+          screenshots: flow.screenshots.map((screenshot, index) => index === 0
+            ? { ...screenshot, file: "phase6-renamed.png" }
+            : screenshot),
+        }
+      : flow),
+  }), /screenshot|artifact|evidence/u);
+  assert.throws(() => createPhase6Evidence({
+    ...evidenceInput,
+    screenshots: {
+      ...screenshots,
+      "phase6-progress-library": screenshots["phase6-progress-library"].slice(1),
+    },
+  }), /screenshots.*phase6-progress-library|phase6-progress-library.*screenshots/u);
+  assert.throws(() => createPhase6Evidence({
+    ...evidenceInput,
+    screenshots: {
+      ...screenshots,
+      "phase6-progress-library": [
+        ...screenshots["phase6-progress-library"],
+        { file: "unexpected-extra.png", sha256: SHA_A },
+      ],
+    },
+  }), /screenshots.*phase6-progress-library|phase6-progress-library.*screenshots/u);
   assert.throws(() => validate({
     ...evidence,
     flows: evidence.flows.map((flow, index) => index === 0
@@ -293,7 +342,7 @@ test("Phase 6 evidence outputs reject stale reports before execution", async () 
   const { preparePhase6EvidenceOutputs } = await load(
     "scripts/run-phase6-maestro.mjs",
   );
-  const root = mkdtempSync(path.join(os.tmpdir(), "phase6-output-test-"));
+  const root = realpathSync(mkdtempSync(path.join(os.tmpdir(), "phase6-output-test-")));
   test.after(() => rmSync(root, { force: true, recursive: true }));
   const output = path.join(root, "evidence", "phase6.json");
   const reports = path.join(root, "evidence", "phase6-maestro");
@@ -303,6 +352,36 @@ test("Phase 6 evidence outputs reject stale reports before execution", async () 
   assert.throws(
     () => preparePhase6EvidenceOutputs(output, reports),
     /report directory must be fresh/u,
+  );
+});
+
+test("Phase 6 evidence outputs reject symlink escape through output or report descendants", async () => {
+  const { preparePhase6EvidenceOutputs } = await load(
+    "scripts/run-phase6-maestro.mjs",
+  );
+  const root = realpathSync(mkdtempSync(path.join(os.tmpdir(), "phase6-output-symlink-test-")));
+  const outside = realpathSync(mkdtempSync(path.join(os.tmpdir(), "phase6-output-symlink-outside-")));
+  test.after(() => {
+    rmSync(root, { force: true, recursive: true });
+    rmSync(outside, { force: true, recursive: true });
+  });
+  const evidenceRoot = path.join(root, "evidence");
+  mkdirSync(evidenceRoot, { recursive: true });
+  symlinkSync(outside, path.join(evidenceRoot, "escape"), "dir");
+
+  assert.throws(
+    () => preparePhase6EvidenceOutputs(
+      path.join(evidenceRoot, "escape", "phase6.json"),
+      path.join(evidenceRoot, "phase6-maestro"),
+    ),
+    /symlink|canonical|unsafe/u,
+  );
+  assert.throws(
+    () => preparePhase6EvidenceOutputs(
+      path.join(evidenceRoot, "phase6.json"),
+      path.join(evidenceRoot, "escape", "phase6-maestro"),
+    ),
+    /symlink|canonical|unsafe/u,
   );
 });
 
@@ -330,11 +409,11 @@ test("Phase 6 Progress flow saves history-eligible workout facts before root nav
 
   assert.match(
     source,
-    /- tapOn: "Complete Set 1"[\s\S]*visible: "RESTING · NEXT: SET 2 AT 60 kg × 8"[\s\S]*- tapOn: "Complete Set 2"[\s\S]*visible: "RESTING · NEXT: SET 3 AT 60 kg × 8"[\s\S]*- tapOn: "Complete Set 3"[\s\S]*visible: "RESTING · NEXT: SET 1 AT 42\.5 kg × 10"\n    timeout: 60000\n- tapOn: "More workout actions"\n- tapOn: "Finish as partial"\n- assertVisible: "Save partial workout\?"\n- tapOn:\n    id: "save-partial-workout-confirm"\n- extendedWaitUntil:\n    visible: "PARTIAL SAVED"\n    timeout: 60000\n- assertVisible: "PARTIAL SAVED"\n- assertVisible: "Workout saved"[\s\S]*- tapOn: "Return to Today"\n- assertVisible: "Today"\n- tapOn: "Progress"\n- assertVisible: "4 weeks"\n- assertVisible: "Overall Progress"\n- scrollUntilVisible:\n    element:\n      text: "Working sets · 3 of 15 completed"\n    direction: DOWN\n    centerElement: true\n    timeout: 60000\n- assertNotVisible: "No progress history yet"\n- takeScreenshot: phase6-progress-summary\n- scrollUntilVisible:\n    element:\n      text: "Exercise progress"\n    direction: DOWN\n    centerElement: true\n    timeout: 60000\n- assertVisible: "Exercise progress"\n- assertVisible: "Back Squat"\n- tapOn: "Search exercises"/u,
+    /- tapOn: "Complete Set 1"[\s\S]*visible: "RESTING · NEXT: SET 2 AT 60 kg × 8"[\s\S]*- tapOn: "Complete Set 2"[\s\S]*visible: "RESTING · NEXT: SET 3 AT 60 kg × 8"[\s\S]*- tapOn: "Complete Set 3"[\s\S]*visible: "RESTING · NEXT: SET 1 AT 42\.5 kg × 10"\n    timeout: 60000\n- tapOn: "More workout actions"\n- tapOn: "Finish as partial"\n- assertVisible: "Save partial workout\?"\n- tapOn:\n    id: "save-partial-workout-confirm"\n- extendedWaitUntil:\n    visible: "PARTIAL SAVED"\n    timeout: 60000\n- assertVisible: "PARTIAL SAVED"\n- assertVisible: "Workout saved"\n- stopApp\n- launchApp:\n    clearState: false\n    stopApp: true\n    permissions:\n      notifications: deny\n- assertVisible: "Today"\n- assertVisible: "Workout saved as partial"\n- assertVisible: "Back Squat · Working set 1 · 3\/15 working sets"\n- tapOn: "Progress"\n- assertVisible: "4 weeks"\n- assertVisible: "Overall Progress"\n- scrollUntilVisible:\n    element:\n      text: "Working sets · 3 of 15 completed"\n    direction: DOWN\n    centerElement: true\n    timeout: 60000\n- assertNotVisible: "No progress history yet"\n- takeScreenshot: phase6-progress-summary\n- scrollUntilVisible:\n    element:\n      text: "Exercise progress"\n    direction: DOWN\n    centerElement: true\n    timeout: 60000\n- assertVisible: "Exercise progress"\n- assertVisible: "Back Squat"\n- tapOn: "Search exercises"/u,
   );
   assert.doesNotMatch(
     source,
-    /- extendedWaitUntil:\n    visible: "PARTIAL SAVED"\n    timeout: 60000\n- assertVisible: "Workout saved"/u,
+    /- extendedWaitUntil:\n    visible: "PARTIAL SAVED"\n    timeout: 60000\n- assertVisible: "Workout saved"\n- tapOn: "Progress"/u,
   );
   assert.doesNotMatch(
     source,
@@ -342,7 +421,7 @@ test("Phase 6 Progress flow saves history-eligible workout facts before root nav
   );
   assert.doesNotMatch(
     source,
-    /- tapOn: "Complete Set 1"[\s\S]*?- tapOn: "Go back"\n- assertVisible: "Workout in progress"\n- tapOn: "Progress"/u,
+    /- tapOn: "Return to Today"/u,
   );
 });
 
