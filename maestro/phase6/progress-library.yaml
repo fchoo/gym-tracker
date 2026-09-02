@@ -122,6 +122,12 @@ tags:
     centerElement: true
     timeout: 60000
 - assertVisible: "Exercise progress"
+- scrollUntilVisible:
+    element:
+      text: "Open exercise history for Back Squat"
+    direction: DOWN
+    centerElement: true
+    timeout: 60000
 - assertVisible: "Back Squat"
 - tapOn: "Search exercises"
 - inputText: "Back"
