@@ -1157,6 +1157,10 @@ export function createPlansWorkoutRepository(
         completed_working_sets: number;
         total_working_sets: number;
         snapshot_json: string | null;
+        effective_local_date: string | null;
+        effective_timezone: string | null;
+        effective_started_at_ms: number | null;
+        effective_completed_at_ms: number | null;
       }>(
         `SELECT ws.id AS session_id,
                 COALESCE(overlay.effective_revision, ws.revision) AS revision,
@@ -1170,7 +1174,9 @@ export function createPlansWorkoutRepository(
                 SUM(CASE
                   WHEN all_sets.set_kind = 'working' THEN 1 ELSE 0 END
                 ) AS total_working_sets,
-                overlay.snapshot_json
+                overlay.snapshot_json, overlay.effective_local_date,
+                overlay.effective_timezone, overlay.effective_started_at_ms,
+                overlay.effective_completed_at_ms
          FROM workout_sessions ws
          LEFT JOIN session_exercises se
            ON se.id = ws.active_session_exercise_id
@@ -1202,6 +1208,12 @@ export function createPlansWorkoutRepository(
             if (
               snapshot.session.id !== partial.session_id
               || snapshot.session.status !== "partial"
+              || snapshot.session.localDate !== partial.effective_local_date
+              || snapshot.session.timezone !== partial.effective_timezone
+              || snapshot.session.startedAtMs
+                !== partial.effective_started_at_ms
+              || snapshot.session.completedAtMs
+                !== partial.effective_completed_at_ms
             ) {
               throw new Error("today_partial_overlay_mismatch");
             }

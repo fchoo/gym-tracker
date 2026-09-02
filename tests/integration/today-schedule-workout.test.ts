@@ -562,6 +562,56 @@ describe("Today schedule workout integration", () => {
     })).rejects.toThrow("today_partial_overlay_invalid");
   });
 
+  it("fails closed when active partial overlay metadata disagrees with its snapshot", async () => {
+    const runtime = await setupRuntime();
+    const plans = createPlansWorkoutRepository(runtime.kernel);
+    const session = await startWorkout({
+      repository: plans,
+      request: {
+        mode: "scheduled",
+        planId: "plan-copy",
+        planDayId: "plan-day-copy",
+        localDate: "2026-08-17",
+        timezone: "Asia/Singapore",
+        startedAtMs: 1_786_853_600_000,
+      },
+    });
+    await finishPartial({
+      repository: createWorkoutOutcomeRepository(runtime.kernel),
+      input: {
+        sessionId: session.id,
+        expectedSessionRevision: session.revision,
+        confirmation: "save_partial_workout",
+        endedAtMs: 1_786_853_700_000,
+      },
+    });
+    const corrections = createHistoryCommandRepository(runtime.kernel);
+    const editor = await corrections.loadCorrectionSession(session.id);
+    await corrections.correctSession({
+      base: editor.snapshot,
+      expectedEffectiveRevision: editor.effectiveRevision,
+      next: {
+        ...editor.snapshot,
+        session: {
+          ...editor.snapshot.session,
+          ownerNote: "Valid corrected partial",
+        },
+      },
+      nowMs: 1_786_853_750_000,
+    });
+    await runtime.kernel.write((transaction) => transaction.execute(
+      `UPDATE history_session_overlays
+       SET effective_local_date = '2026-08-18'
+       WHERE session_id = ?`,
+      [session.id],
+    ));
+
+    await expect(createPlansWorkoutRepository(runtime.kernel).getTodayView({
+      localDate: "2026-08-17",
+      weekday: 1,
+    })).rejects.toThrow("today_partial_overlay_invalid");
+  });
+
   it("projects pending owned recommendations on Today", async () => {
     const runtime = await setupRuntime();
     await runtime.kernel.write(async (transaction) => {
