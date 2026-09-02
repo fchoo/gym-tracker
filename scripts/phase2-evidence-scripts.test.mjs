@@ -625,9 +625,15 @@ test("Phase 2 remediation flows use public labels and deterministic seams", asyn
   );
   assert.ok(
     workout.includes(
-      `${initialAddWorkingSetVisibilityGuard}\n${safeActionNudge}\n- assertVisible: "Add working set"`,
+      `${initialAddWorkingSetVisibilityGuard}\n- assertVisible: "Add working set"`,
     ),
-    "the initial Add working set action must settle above the system-navigation boundary before its visibility proof",
+    "the initial Add working set discovery must prove the action immediately without a blind swipe that can hide it",
+  );
+  assert.ok(
+    !workout.includes(
+      `${initialAddWorkingSetVisibilityGuard}\n${safeActionNudge}`,
+    ),
+    "the initial Add working set discovery must not be followed by an unconditional swipe",
   );
   const retriedAddWorkingSetVisibilityGuard = [
     "- repeat:",

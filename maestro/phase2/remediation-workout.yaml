@@ -26,10 +26,6 @@ tags:
       text: "Add working set"
     direction: DOWN
     centerElement: true
-- swipe:
-    start: 95%, 75%
-    end: 95%, 45%
-    duration: 300
 - assertVisible: "Add working set"
 - assertNotVisible: "Excluded from records and progression"
 - openLink: "gymtracker-devtest://__notification-test-controls?action=arm_add_warmup_failure"
