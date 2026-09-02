@@ -344,12 +344,14 @@ describe("history repository Calendar reads", () => {
     expect(metricSetsFromEffectiveSnapshot(snapshot)).toEqual([
       expect.objectContaining({
         setId: "warmup",
+        exerciseName: "Bench press",
         setKind: "warmup",
         plannedWorkingSets: 3,
         completedWorkingSets: 2,
       }),
       expect.objectContaining({
         setId: "completed-working",
+        exerciseName: "Bench press",
         setKind: "working",
         plannedWorkingSets: 3,
         completedWorkingSets: 2,
@@ -791,7 +793,7 @@ describe("history repository Calendar reads", () => {
       exercises: [{
         id: "corrected-effective-exercise",
         exerciseId: "bench-press",
-        name: "Bench press",
+        name: "Corrected bench",
         ordinal: 0,
         status: "completed",
         metricIdentity: {
@@ -915,10 +917,12 @@ describe("history repository Calendar reads", () => {
         metricSets: expect.arrayContaining([
           expect.objectContaining({
             setId: "active-source-warmup",
+            exerciseName: "Exercise active-source-exercise",
             setKind: "warmup",
           }),
           expect.objectContaining({
             setId: "active-source-working",
+            exerciseName: "Exercise active-source-exercise",
             setKind: "working",
           }),
         ]),
@@ -937,6 +941,7 @@ describe("history repository Calendar reads", () => {
         metricSets: expect.arrayContaining([
           expect.objectContaining({
             setId: "corrected-effective-working",
+            exerciseName: "Corrected bench",
             sessionStatus: "partial",
             observation: expect.objectContaining({ loadGrams: 55_000, reps: 10 }),
           }),

@@ -71,6 +71,7 @@ type SourceMetricSetRow = Readonly<{
   local_date: string;
   session_status: "completed" | "partial";
   exercise_id: string;
+  exercise_name: string;
   metric_profile: MetricIdentity["profile"];
   metric_contract_version: number;
   exercise_metric_generation: number;
@@ -262,11 +263,19 @@ function effectiveMetricIdentity(
   }
 }
 
+function effectiveExerciseName(value: unknown): string {
+  if (typeof value !== "string" || value.trim() === "") {
+    throw new Error("history_effective_snapshot_invalid");
+  }
+  return value;
+}
+
 function completedMetricSet(input: Readonly<{
   sessionId: string;
   localDate: string;
   sessionStatus: "completed" | "partial";
   exerciseId: string;
+  exerciseName: string;
   identity: MetricIdentity;
   set: EffectiveSnapshot["exercises"][number]["sets"][number];
   plannedWorkingSets: number;
@@ -286,6 +295,7 @@ function completedMetricSet(input: Readonly<{
       sessionId: input.sessionId,
       localDate: input.localDate,
       exerciseId: input.exerciseId,
+      exerciseName: effectiveExerciseName(input.exerciseName),
       identity: input.identity,
       target: parseMetricTargetJson(input.identity, JSON.stringify(set.target)),
       observation: parseMetricObservationJson(
@@ -330,6 +340,7 @@ export function metricSetsFromEffectiveSnapshot(
         localDate: snapshot.session.localDate,
         sessionStatus: snapshot.session.status,
         exerciseId: exercise.exerciseId,
+        exerciseName: exercise.name,
         identity,
         set,
         plannedWorkingSets,
@@ -383,6 +394,7 @@ function metricSetFromSourceRow(row: SourceMetricSetRow): EffectiveMetricHistory
     sessionId: row.session_id,
     localDate: row.local_date,
     exerciseId: row.exercise_id,
+    exerciseName: effectiveExerciseName(row.exercise_name),
     identity,
     target: parseMetricTargetJson(identity, row.target_json),
     observation: parseMetricObservationJson(identity, row.observed_json),
@@ -441,6 +453,7 @@ export async function loadEffectiveHistoryProjectionSessions(
     executor.queryAll<SourceMetricSetRow>(
       `SELECT session.id AS session_id, session.local_date,
               session.status AS session_status, exercise.exercise_id,
+              exercise.exercise_name,
               exercise.metric_profile, exercise.metric_contract_version,
               exercise.exercise_metric_generation, set_row.id AS set_id,
               set_row.set_kind, set_row.ordinal AS set_ordinal,
@@ -889,6 +902,7 @@ export function createHistoryRepository(kernel: SqliteKernel): HistoryRepository
                 session.local_date,
                 session.status AS session_status,
                 exercise.exercise_id,
+                exercise.exercise_name,
                 exercise.metric_profile,
                 exercise.metric_contract_version,
                 exercise.exercise_metric_generation,

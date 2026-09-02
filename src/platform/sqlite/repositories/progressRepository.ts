@@ -1,6 +1,7 @@
 import {
   projectProgressPeriod,
   type ProgressPeriod,
+  type ProgressComparableExposure,
   type ProgressPeriodProjection,
   type ProgressProjectionDiagnostic,
   type ProgressProjectionFreshness,
@@ -8,7 +9,7 @@ import {
   type ProgressScheduledOpportunity,
 } from "../../../domains/progress";
 import type {
-  HistoryProjectionComparableExposure,
+  EffectiveHistoryProjectionSession,
   HistoryProjectionPeriodInput,
 } from "../../../domains/history";
 import {
@@ -177,9 +178,19 @@ function periodInputFromRow(row: PeriodInputRow): HistoryProjectionPeriodInput {
 
 function exposureFromRow(
   row: ComparableExposureRow,
-): HistoryProjectionComparableExposure {
+  effectiveSetsById: ReadonlyMap<string, EffectiveHistoryProjectionSession["metricSets"][number]>,
+): ProgressComparableExposure {
+  const effectiveSet = effectiveSetsById.get(`${row.session_id}\u0000${row.set_id}`);
+  if (
+    effectiveSet === undefined
+    || effectiveSet.exerciseId !== row.exercise_id
+    || effectiveSet.sessionId !== row.session_id
+  ) {
+    throw new Error("progress_effective_exercise_name_unavailable");
+  }
   return Object.freeze({
     exerciseId: row.exercise_id,
+    exerciseName: effectiveSet.exerciseName,
     identityKey: row.identity_key,
     comparatorKey: row.comparator_key,
     sessionId: row.session_id,
@@ -458,6 +469,9 @@ export function createProgressRepository(
       }).slice().sort((left, right) =>
         left.exerciseName.localeCompare(right.exerciseName) || left.id.localeCompare(right.id)
       );
+      const effectiveSetsById = new Map(sourceSessions.flatMap(({ metricSets }) =>
+        metricSets.map((set) => [`${set.sessionId}\u0000${set.setId}`, set] as const)
+      ));
       return Object.freeze({
         period: input.period,
         freshness: "current",
@@ -465,20 +479,26 @@ export function createProgressRepository(
           period: input.period,
           nowLocalDate: input.nowLocalDate,
           periodInputs: periodRows.map(periodInputFromRow),
-          comparableExposures: exposureRows.map(exposureFromRow),
+          comparableExposures: exposureRows.map((row) =>
+            exposureFromRow(row, effectiveSetsById)
+          ),
           scheduledOpportunities: opportunityRows.map(opportunityFromRow),
           attention: recommendations
             .filter(({ lifecycle }) => lifecycle === "pending")
-            .map(({ id, exerciseId, sourceSessionId }) => Object.freeze({
+            .map(({ id, exerciseId, exerciseName, sourceSessionId }) => Object.freeze({
               id,
               exerciseId,
+              exerciseName,
               sessionId: sourceSessionId,
             })),
           sourceSessions: sourceSessions.map((session) => Object.freeze({
             sessionId: session.sessionId,
             localDate: session.localDate,
             lifecycle: session.lifecycle,
-            exerciseIds: Object.freeze(session.metricSets.map(({ exerciseId }) => exerciseId)),
+            exercises: Object.freeze(session.metricSets.map(({
+              exerciseId,
+              exerciseName,
+            }) => Object.freeze({ exerciseId, exerciseName }))),
           })),
           recommendations,
         })),

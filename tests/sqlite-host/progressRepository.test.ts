@@ -282,8 +282,8 @@ async function seedCurrentProjection(kernel: SqliteKernel): Promise<void> {
       );
     }
     for (const [setId, sessionId, localDate, completedAtMs, reps] of [
-      ['set-1', 'session-1', '2026-08-20', 2, 8],
-      ['set-2', 'session-2', '2026-08-22', 3, 10],
+      ['progress-source-set-1', 'session-1', '2026-08-20', 2, 8],
+      ['progress-source-set-2', 'session-2', '2026-08-22', 3, 10],
     ] as const) {
       await transaction.execute(
         `INSERT INTO history_projection_comparable_exposures
@@ -464,27 +464,63 @@ describe("progress repository", () => {
             scheduledOpportunities: {
               sessionIds: ["session-1"],
               exerciseIds: [],
+              exercises: [],
             },
             workingSets: {
               sessionIds: ["session-1", "session-2"],
               exerciseIds: ["bench-press"],
+              exercises: [{
+                exerciseId: "bench-press",
+                exerciseName: "Bench Press",
+              }],
             },
             exerciseStatuses: {
               sessionIds: ["session-1", "session-2"],
               exerciseIds: ["bench-press"],
+              exercises: [{
+                exerciseId: "bench-press",
+                exerciseName: "Bench Press",
+              }],
             },
           }),
         }),
         stateSourceReferences: {
           sessionIds: ["session-1", "session-2"],
           exerciseIds: ["bench-press"],
+          exercises: [{
+            exerciseId: "bench-press",
+            exerciseName: "Bench Press",
+          }],
         },
         records: [expect.objectContaining({
+          exerciseName: "Bench Press",
           sessionId: "session-2",
-          setId: "set-2",
+          setId: "progress-source-set-2",
+        })],
+        exercises: [expect.objectContaining({
+          exerciseName: "Bench Press",
+          sessionId: "session-2",
+          setId: "progress-source-set-2",
         })],
       }),
     }));
+  });
+
+  it("uses the immutable workout name instead of a renamed exercise catalog row", async () => {
+    const kernel = await open();
+    await seedCurrentProjection(kernel);
+    await kernel.write((transaction) => transaction.execute(
+      `UPDATE exercises SET name = 'Current catalog rename' WHERE id = 'bench-press'`,
+    ));
+    const repository = createProgressRepository(kernel);
+
+    const result = await repository.load({
+      period: "4_weeks",
+      nowLocalDate: "2026-08-24",
+    });
+
+    expect(result.projection?.records[0]?.exerciseName).toBe("Bench Press");
+    expect(result.projection?.exercises[0]?.exerciseName).toBe("Bench Press");
   });
 
   it("fails closed to Updating when the all-period projection is behind source revision", async () => {
@@ -692,6 +728,7 @@ describe("progress repository", () => {
     expect(result.projection?.attention).toEqual([{
       id: "review-valid",
       exerciseId: "review-exercise",
+      exerciseName: "Review exercise",
       sessionId: "source-session-1",
     }]);
   });

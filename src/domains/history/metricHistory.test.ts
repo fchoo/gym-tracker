@@ -25,6 +25,7 @@ function loadSet(
     sessionId: "session-1",
     localDate: "2026-08-24",
     exerciseId: "bench-press",
+    exerciseName: "Bench Press",
     identity: loadIdentity,
     target: {
       version: 1,
@@ -138,6 +139,7 @@ describe("effective metric history", () => {
       sessionId: setId,
       localDate: "2026-08-24",
       exerciseId: "rower",
+      exerciseName: "Rower",
       identity,
       target: {
         version: 1,

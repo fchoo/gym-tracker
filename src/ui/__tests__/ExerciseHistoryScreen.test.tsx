@@ -51,6 +51,7 @@ function history(
     sessionId: "session-" + input.setId,
     localDate: "2026-08-24",
     exerciseId: "bench-press",
+    exerciseName: "Bench press",
     identity,
     target,
     observation: {
