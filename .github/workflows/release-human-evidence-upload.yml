@@ -57,7 +57,13 @@ jobs:
       name: private-release-observation-upload
       url: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
     steps:
+      - name: Require trusted main workflow source
+        run: |
+          test "${GITHUB_SHA}" = "${CANDIDATE_COMMIT}"
+          test "${GITHUB_REF_NAME}" = "main"
+
       - name: Validate candidate provenance with trusted inline shell
+        id: selected_candidate
         env:
           GH_TOKEN: ${{ github.token }}
           EVIDENCE_ROOT: ${{ vars.PHASE5_EVIDENCE_ROOT }}
@@ -172,28 +178,33 @@ jobs:
           verify_deployment_provenance "${CANDIDATE_RUN_ID}" "${candidate_run_attempt}" "${CANDIDATE_COMMIT}" "${candidate_ref}" "private-release-candidate"
           candidate_artifacts=$(gh api --method GET --paginate --slurp \
             "repos/${GITHUB_REPOSITORY}/actions/runs/${CANDIDATE_RUN_ID}/artifacts" -F per_page=100)
-          jq -e --argjson run_id "${CANDIDATE_RUN_ID}" --arg commit "${CANDIDATE_COMMIT}" \
+          selected_candidate_artifact=$(jq -cer --argjson run_id "${CANDIDATE_RUN_ID}" --arg commit "${CANDIDATE_COMMIT}" \
             --arg name "private-release-candidate-${CANDIDATE_ID}" '
             if all(.[]; type == "object" and (.artifacts | type == "array")) then
               [.[] | .artifacts[] | select(.name == $name and .expired == false
-                and .workflow_run.id == $run_id and .workflow_run.head_sha == $commit)] | length == 1
+                and .workflow_run.id == $run_id and .workflow_run.head_sha == $commit)]
+              | if length == 1 then .[0] else error("candidate artifact is not unique") end
             else error("malformed artifact pages") end
             ' \
-            <<<"${candidate_artifacts}" >/dev/null
+            <<<"${candidate_artifacts}")
+          candidate_artifact_id=$(jq -er '.id | select(type == "number" and . >= 1)' <<<"${selected_candidate_artifact}")
+          printf 'candidate_artifact_id=%s\n' "${candidate_artifact_id}" >> "${GITHUB_OUTPUT}"
 
-      - name: Check out exact proven candidate source
+      - name: Check out trusted workflow source
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
-          ref: ${{ env.CANDIDATE_COMMIT }}
+          ref: ${{ github.sha }}
           path: workflow-source
+          persist-credentials: false
 
-      - name: Download exact candidate for Phase 6 N4 validation
-        env:
-          GH_TOKEN: ${{ github.token }}
-        run: |
-          gh run download "${CANDIDATE_RUN_ID}" --repo "${GITHUB_REPOSITORY}" \
-            --name "private-release-candidate-${CANDIDATE_ID}" \
-            --dir "${RUNNER_TEMP}/gym-tracker-phase6-candidate"
+      - name: Download exact candidate by immutable artifact ID
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          artifact-ids: ${{ steps.selected_candidate.outputs.candidate_artifact_id }}
+          github-token: ${{ github.token }}
+          repository: ${{ github.repository }}
+          run-id: ${{ env.CANDIDATE_RUN_ID }}
+          path: ${{ runner.temp }}/gym-tracker-phase6-candidate
 
       - name: Stage bounded local evidence inputs
         env:
@@ -237,7 +248,7 @@ jobs:
             attended-record.json
           do
             source_file="${phase6_source}/${evidence_file}"
-            cp --no-dereference "${source_file}" "${phase6_staging_root}/phase6/${evidence_file}"
+            cp -P "${source_file}" "${phase6_staging_root}/phase6/${evidence_file}"
           done
           phase6_entry_count=0
           for phase6_entry in "${phase6_staging_root}/phase6"/* \

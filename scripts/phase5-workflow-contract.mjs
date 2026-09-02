@@ -111,10 +111,15 @@ function validateSelectedArtifactContract(source, {
   if (!source.includes(api)) {
     throw new Error(`${artifactPagesVariable} must come from the selected run.`);
   }
+  const selectedStart = `jq -cer --argjson run_id "\${${runIdVariable}}" --arg commit`;
+  const classicStart = `jq -e --argjson run_id "\${${runIdVariable}}" --arg commit`;
+  const selected = source.includes(selectedStart);
   const block = boundedSourceBlock(
     source,
-    `jq -e --argjson run_id "\${${runIdVariable}}" --arg commit`,
-    `<<<"\${${artifactPagesVariable}}" >/dev/null`,
+    selected ? selectedStart : classicStart,
+    selected
+      ? `<<<"\${${artifactPagesVariable}}")`
+      : `<<<"\${${artifactPagesVariable}}" >/dev/null`,
     `${artifactPagesVariable} validation`,
   );
   for (const predicate of [
@@ -122,11 +127,14 @@ function validateSelectedArtifactContract(source, {
     '.expired == false',
     '.workflow_run.id == $run_id',
     '.workflow_run.head_sha == $commit',
-    '| length == 1',
   ]) {
     if (!block.includes(predicate)) {
       throw new Error(`${artifactPagesVariable} provenance is missing ${predicate}.`);
     }
+  }
+  if (!block.includes("| length == 1")
+    && !block.includes('if length == 1 then .[0]')) {
+    throw new Error(`${artifactPagesVariable} provenance is missing unique selection.`);
   }
 }
 
@@ -210,30 +218,47 @@ export function validateAttendedEvidenceWorkflowContract(source) {
     /permissions:[\s\S]*actions:\s*read[\s\S]*contents:\s*read/iu,
     /release-candidate\.yml/iu,
     /workflow_dispatch/iu,
-    /gh run download[\s\S]*CANDIDATE_RUN_ID/iu,
-    /gh run download[\s\S]*OBSERVATIONS_RUN_ID/iu,
     /owner_token:/u,
     /OWNER_TOKEN:\s*\$\{\{ inputs\.owner_token \}\}/u,
     /test "\$\{OWNER_TOKEN\}" = "approved"/u,
-    /record:attended:phase5[\s\S]*--owner-token "\$\{OWNER_TOKEN\}"/iu,
+    /generate-phase5-attended-checklist\.mjs record[\s\S]*--owner-token "\$\{OWNER_TOKEN\}"/iu,
     /release-human-evidence-upload\.yml/iu,
     /private-release-observation-upload/iu,
-    /verify:attended:phase5/iu,
     /upload-artifact/iu,
     /attended-record\.json/iu,
     /checklist\.pending\.json/iu,
     /observations\.json/iu,
     /attachments/iu,
+    /test "\$\{GITHUB_SHA\}" = "\$\{CANDIDATE_COMMIT\}"/u,
+    /test "\$\{GITHUB_REF_NAME\}" = "main"/u,
+    /name:\s*Check out trusted workflow source[\s\S]*ref:\s*\$\{\{ github\.sha \}\}[\s\S]*path:\s*trusted-workflow-source[\s\S]*persist-credentials:\s*false/iu,
+    /node trusted-workflow-source\/scripts\/generate-phase6-attended-checklist\.mjs verify/iu,
+    /node trusted-workflow-source\/scripts\/generate-phase5-attended-checklist\.mjs prepare/iu,
+    /node trusted-workflow-source\/scripts\/generate-phase5-attended-checklist\.mjs record/iu,
+    /node trusted-workflow-source\/scripts\/generate-phase5-attended-checklist\.mjs verify/iu,
+    /id:\s*selected_artifacts/iu,
+    /candidate_artifact_id=.*GITHUB_OUTPUT/iu,
+    /observations_artifact_id=.*GITHUB_OUTPUT/iu,
+    /phase6_n4_artifact_id=.*GITHUB_OUTPUT/iu,
+    /artifact-ids:\s*\$\{\{ steps\.selected_artifacts\.outputs\.candidate_artifact_id \}\}/u,
+    /artifact-ids:\s*\$\{\{ steps\.selected_artifacts\.outputs\.observations_artifact_id \}\}/u,
+    /artifact-ids:\s*\$\{\{ steps\.selected_artifacts\.outputs\.phase6_n4_artifact_id \}\}/u,
   ]) {
     if (!pattern.test(source)) {
-      throw new Error("protected attended evidence workflow contract is incomplete.");
+      throw new Error(`protected attended evidence workflow contract is incomplete: ${pattern}`);
     }
   }
-  if (/record:attended:phase5[^\n]*\$\{\{/iu.test(source)) {
+  if (/generate-phase5-attended-checklist\.mjs record[^\n]*\$\{\{/iu.test(source)) {
     throw new Error("attended recorder cannot receive expression-injected arguments.");
   }
   if (/--owner-token approved/iu.test(source)) {
     throw new Error("attended workflow cannot fabricate the owner token.");
+  }
+  if (/Check out exact candidate source|npm ci|npm run (?:prepare|record|verify):attended/iu.test(source)) {
+    throw new Error("attended workflow cannot execute candidate-controlled verifier code.");
+  }
+  if (/gh run download/iu.test(source)) {
+    throw new Error("attended workflow must download selected evidence by immutable artifact ID.");
   }
 }
 
@@ -261,24 +286,35 @@ export function validateHumanEvidenceUploadWorkflowContract(source) {
     /release-candidate\.yml/iu,
     /private-release-candidate/iu,
     /private-release-candidate-\$\{CANDIDATE_ID\}/u,
-    /Check out exact proven candidate source/iu,
+    /Require trusted main workflow source/iu,
+    /test "\$\{GITHUB_SHA\}" = "\$\{CANDIDATE_COMMIT\}"/u,
+    /test "\$\{GITHUB_REF_NAME\}" = "main"/u,
+    /Check out trusted workflow source/iu,
+    /ref:\s*\$\{\{ github\.sha \}\}/u,
+    /persist-credentials:\s*false/u,
     /stage-phase5-human-evidence\.mjs/iu,
     /--evidence-root "\$\{EVIDENCE_ROOT\}"/u,
     /--observations-relative "\$\{OBSERVATIONS_PATH\}"/u,
     /--attachments-relative "\$\{ATTACHMENTS_PATH\}"/u,
     /--staging-root "\$\{RUNNER_TEMP\}"/u,
     /runner\.temp \}\}\/gym-tracker-human-evidence/u,
+    /id:\s*selected_candidate/iu,
+    /candidate_artifact_id=.*GITHUB_OUTPUT/iu,
+    /artifact-ids:\s*\$\{\{ steps\.selected_candidate\.outputs\.candidate_artifact_id \}\}/u,
     /upload-artifact/iu,
   ]) {
     if (!pattern.test(source)) {
-      throw new Error("protected human evidence upload workflow is incomplete.");
+      throw new Error(`protected human evidence upload workflow is incomplete: ${pattern}`);
     }
+  }
+  if (/gh run download/iu.test(source)) {
+    throw new Error("human evidence upload must download the candidate by immutable artifact ID.");
   }
   if (/(?:printf|echo|python).*(?:observations\.json|attachments)/iu.test(source)) {
     throw new Error("human evidence upload workflow cannot synthesize observation content.");
   }
   const provenance = source.indexOf("name: Validate candidate provenance with trusted inline shell");
-  const checkout = source.indexOf("name: Check out exact proven candidate source");
+  const checkout = source.indexOf("name: Check out trusted workflow source");
   const helper = source.indexOf("node workflow-source/scripts/stage-phase5-human-evidence.mjs");
   if (!(provenance >= 0 && provenance < checkout && checkout < helper)) {
     throw new Error("candidate provenance must be proven before candidate helper execution.");

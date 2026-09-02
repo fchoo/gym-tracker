@@ -882,6 +882,24 @@ test("attended ledger is the exact ordered union of Phase 2 gaps, Phase 3/4 requ
     /order|union/iu);
 });
 
+test("attended ledger resolves trusted source independently of caller cwd", async () => {
+  const { derivePhase5AttendedRows } = await load(
+    "scripts/generate-phase5-attended-checklist.mjs",
+  );
+  const callerDirectory = mkdtempSync(path.join(os.tmpdir(), "phase5-caller-cwd-"));
+  const originalDirectory = process.cwd();
+  try {
+    process.chdir(callerDirectory);
+    const rows = derivePhase5AttendedRows();
+    assert.equal(rows.length, 41);
+    assert.equal(rows[0].row_id, "phase2:G-02-01");
+    assert.equal(rows.at(-1).row_id, "phase5:P5-PHYSICAL-ARGON2-CALIBRATION");
+  } finally {
+    process.chdir(originalDirectory);
+    rmSync(callerDirectory, { recursive: true, force: true });
+  }
+});
+
 test("checklist generator emits pending rows with blank evidence and no approval capability", async () => {
   const {
     buildPhase5PendingChecklist,
@@ -1406,6 +1424,21 @@ test("protected attended workflow consumes supplied evidence and uploads a verif
   assert.match(source, /test "\$\{OWNER_TOKEN\}" = "approved"/u);
   assert.match(source, /--owner-token "\$\{OWNER_TOKEN\}"/u);
   assert.doesNotMatch(source, /--owner-token approved/u);
+  assert.match(source, /test "\$\{GITHUB_SHA\}" = "\$\{CANDIDATE_COMMIT\}"/u);
+  assert.match(source, /test "\$\{GITHUB_REF_NAME\}" = "main"/u);
+  assert.match(source, /persist-credentials:\s*false/u);
+  assert.doesNotMatch(source, /Check out exact candidate source|npm ci|npm run (?:prepare|record|verify):attended/iu);
+  assert.doesNotMatch(source, /gh run download/iu);
+  for (const output of [
+    "candidate_artifact_id",
+    "observations_artifact_id",
+    "phase6_n4_artifact_id",
+  ]) {
+    assert.match(
+      source,
+      new RegExp(`artifact-ids:\\s*\\$\\{\\{ steps\\.selected_artifacts\\.outputs\\.${output} \\}\\}`, "u"),
+    );
+  }
   for (const workflow of [
     ".github/workflows/release-candidate.yml",
     ".github/workflows/release-attended-evidence.yml",
@@ -1464,12 +1497,17 @@ test("protected human observation producer uploads bounded local evidence with p
   assert.match(source, /permissions:[\s\S]*actions:\s*read[\s\S]*contents:\s*read[\s\S]*id-token:\s*none/iu);
   assert.match(source, /^\s*candidate_run_id:\s*$/mu);
   const provenance = source.indexOf("name: Validate candidate provenance with trusted inline shell");
-  const checkout = source.indexOf("name: Check out exact proven candidate source");
+  const checkout = source.indexOf("name: Check out trusted workflow source");
   const helper = source.indexOf("node workflow-source/scripts/stage-phase5-human-evidence.mjs");
   assert.equal(provenance >= 0 && provenance < checkout && checkout < helper, true);
+  assert.match(source, /test "\$\{GITHUB_SHA\}" = "\$\{CANDIDATE_COMMIT\}"/u);
+  assert.match(source, /test "\$\{GITHUB_REF_NAME\}" = "main"/u);
+  assert.match(source, /persist-credentials:\s*false/u);
   assert.match(source, /release-candidate\.yml/iu);
   assert.match(source, /private-release-candidate/iu);
   assert.match(source, /private-release-candidate-\$\{CANDIDATE_ID\}/u);
+  assert.doesNotMatch(source, /gh run download/iu);
+  assert.match(source, /artifact-ids:\s*\$\{\{ steps\.selected_candidate\.outputs\.candidate_artifact_id \}\}/u);
   const attended = readFileSync(
     path.join(projectRoot, ".github/workflows/release-attended-evidence.yml"),
     "utf8",
@@ -1661,14 +1699,18 @@ test("promotion and terminal contracts require selected successful cross-run inp
     ["CANDIDATE_RUN_ID", "private-release-candidate"],
     ["ATTENDED_RUN_ID", "private-release-attended"],
   ]);
-  const workflowCheckout = promotion.indexOf("name: Check out workflow source for input validation");
+  const workflowCheckout = promotion.indexOf("name: Check out exact trusted workflow source");
   const validator = promotion.indexOf("node workflow-source/scripts/validate-phase5-promotion-inputs.mjs");
-  const candidateCheckout = promotion.indexOf("name: Check out exact candidate source");
-  const attendedVerifier = promotion.indexOf("npm run verify:attended:phase5");
+  const attendedVerifier = promotion.indexOf(
+    "node workflow-source/scripts/generate-phase5-attended-checklist.mjs verify",
+  );
+  const sealedHandoff = promotion.indexOf("name: Upload sealed validation artifact");
+  const publishJob = promotion.indexOf("  publish:");
   const publisher = promotion.indexOf("gh release create");
   assert.equal(workflowCheckout >= 0 && workflowCheckout < validator, true);
-  assert.equal(validator < candidateCheckout && candidateCheckout < attendedVerifier, true);
-  assert.equal(attendedVerifier < publisher, true);
+  assert.equal(validator < attendedVerifier && attendedVerifier < sealedHandoff, true);
+  assert.equal(sealedHandoff < publishJob && publishJob < publisher, true);
+  assert.doesNotMatch(promotion, /name: Check out exact candidate source|npm run verify:attended:phase5/iu);
   assert.match(promotion, /group:\s*release-promotion\s*$/mu);
   assert.match(promotion, /cancel-in-progress:\s*false/u);
   assert.doesNotMatch(promotion, /group:\s*release-promotion-\$\{\{ github\.run_id \}\}/u);
@@ -1784,9 +1826,10 @@ test("Phase 6 N4 evidence crosses the protected release gate as one exact observ
     assert.match(upload, new RegExp(file.replace(".", "\\."), "u"));
   }
   assert.match(upload, /for phase6_entry in[\s\S]*test -f "\$\{phase6_entry\}"[\s\S]*test ! -L "\$\{phase6_entry\}"[\s\S]*phase6_entry_count=\$\(\(phase6_entry_count \+ 1\)\)[\s\S]*test "\$\{phase6_entry_count\}" -eq 7/u);
-  assert.match(upload, /source_file="\$\{phase6_source\}\/\$\{evidence_file\}"[\s\S]*cp --no-dereference "\$\{source_file\}" "\$\{phase6_staging_root\}\/phase6\/\$\{evidence_file\}"/u);
+  assert.match(upload, /source_file="\$\{phase6_source\}\/\$\{evidence_file\}"[\s\S]*cp -P "\$\{source_file\}" "\$\{phase6_staging_root\}\/phase6\/\$\{evidence_file\}"/u);
+  assert.doesNotMatch(upload, /cp --no-dereference/u);
   const phase6Copy = upload.indexOf(
-    'cp --no-dereference "${source_file}" "${phase6_staging_root}/phase6/${evidence_file}"',
+    'cp -P "${source_file}" "${phase6_staging_root}/phase6/${evidence_file}"',
   );
   const stagedPhase6Validation = upload.indexOf(
     'node workflow-source/scripts/generate-phase6-attended-checklist.mjs verify',
@@ -1854,8 +1897,8 @@ test("Phase 6 N4 evidence crosses the protected release gate as one exact observ
 
   const phase6ArtifactValidation = attended.slice(
     attended.indexOf('repos/${GITHUB_REPOSITORY}/actions/runs/${PHASE6_EVIDENCE_RUN_ID}/artifacts'),
-    attended.indexOf('<<<"${phase6_evidence_artifacts}" >/dev/null')
-      + '<<<"${phase6_evidence_artifacts}" >/dev/null'.length,
+    attended.indexOf('<<<"${phase6_evidence_artifacts}")')
+      + '<<<"${phase6_evidence_artifacts}")'.length,
   );
   assert.notEqual(phase6ArtifactValidation.length, 0);
   for (const predicate of [
@@ -1863,15 +1906,13 @@ test("Phase 6 N4 evidence crosses the protected release gate as one exact observ
     '.expired == false',
     '.workflow_run.id == $run_id',
     '.workflow_run.head_sha == $commit',
-    '| length == 1',
+    'if length == 1 then .[0]',
   ]) {
     assert.ok(phase6ArtifactValidation.includes(predicate), `missing Phase 6 artifact predicate: ${predicate}`);
   }
 
-  assert.equal(
-    (attended.match(/gh run download "\$\{PHASE6_EVIDENCE_RUN_ID\}"/gu) ?? []).length,
-    1,
-  );
+  assert.doesNotMatch(attended, /gh run download/iu);
+  assert.match(attended, /artifact-ids:\s*\$\{\{ steps\.selected_artifacts\.outputs\.phase6_n4_artifact_id \}\}/u);
   assert.match(
     attended,
     /printf '%s  %s\\n' "\$\{PHASE6_N4_RECORD_SHA256\}" [^\n]*phase6\/attended-record\.json \| sha256sum --check/u,
@@ -1881,17 +1922,21 @@ test("Phase 6 N4 evidence crosses the protected release gate as one exact observ
     assert.match(attended, new RegExp(`phase6/${file.replace(".", "\\.")}`, "u"));
   }
   assert.doesNotMatch(attended, /(?:prepare|record):attended:phase6/iu);
-  const phase6Verifier = attended.indexOf("npm run verify:attended:phase6");
+  const phase6Verifier = attended.indexOf(
+    "node trusted-workflow-source/scripts/generate-phase6-attended-checklist.mjs verify",
+  );
   const ownerApproval = attended.indexOf('test "${OWNER_TOKEN}" = "approved"');
-  const phase5Recorder = attended.indexOf("npm run record:attended:phase5");
+  const phase5Recorder = attended.indexOf(
+    "node trusted-workflow-source/scripts/generate-phase5-attended-checklist.mjs record",
+  );
   assert.equal(
     phase6Verifier >= 0 && phase6Verifier < ownerApproval && ownerApproval < phase5Recorder,
     true,
   );
   for (const command of [
-    "npm run prepare:attended:phase5",
-    "npm run record:attended:phase5",
-    "npm run verify:attended:phase5",
+    "node trusted-workflow-source/scripts/generate-phase5-attended-checklist.mjs prepare",
+    "node trusted-workflow-source/scripts/generate-phase5-attended-checklist.mjs record",
+    "node trusted-workflow-source/scripts/generate-phase5-attended-checklist.mjs verify",
   ]) {
     const start = attended.indexOf(command);
     const end = attended.indexOf("\n\n", start);

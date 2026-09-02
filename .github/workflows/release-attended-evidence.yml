@@ -76,7 +76,25 @@ jobs:
       name: private-release-attended
       url: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
     steps:
+      - name: Require trusted main workflow source
+        run: |
+          test "${GITHUB_SHA}" = "${CANDIDATE_COMMIT}"
+          test "${GITHUB_REF_NAME}" = "main"
+
+      - name: Check out trusted workflow source
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.sha }}
+          path: trusted-workflow-source
+          persist-credentials: false
+
+      - name: Set up Node
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: 24.19.0
+
       - name: Validate dispatch inputs and selected runs
+        id: selected_artifacts
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
@@ -232,52 +250,66 @@ jobs:
             "repos/${GITHUB_REPOSITORY}/actions/runs/${OBSERVATIONS_RUN_ID}/artifacts" -F per_page=100)
           phase6_evidence_artifacts=$(gh api --method GET --paginate --slurp \
             "repos/${GITHUB_REPOSITORY}/actions/runs/${PHASE6_EVIDENCE_RUN_ID}/artifacts" -F per_page=100)
-          jq -e --argjson run_id "${CANDIDATE_RUN_ID}" --arg commit "${CANDIDATE_COMMIT}" \
+          selected_candidate_artifact=$(jq -cer --argjson run_id "${CANDIDATE_RUN_ID}" --arg commit "${CANDIDATE_COMMIT}" \
             --arg name "private-release-candidate-${CANDIDATE_ID}" '
             if all(.[]; type == "object" and (.artifacts | type == "array")) then
               [.[] | .artifacts[] | select(.name == $name and .expired == false
-                and .workflow_run.id == $run_id and .workflow_run.head_sha == $commit)] | length == 1
+                and .workflow_run.id == $run_id and .workflow_run.head_sha == $commit)]
+              | if length == 1 then .[0] else error("candidate artifact is not unique") end
             else error("malformed artifact pages") end
-            ' <<<"${candidate_artifacts}" >/dev/null
-          jq -e --argjson run_id "${OBSERVATIONS_RUN_ID}" --arg commit "${CANDIDATE_COMMIT}" \
+            ' <<<"${candidate_artifacts}")
+          selected_observations_artifact=$(jq -cer --argjson run_id "${OBSERVATIONS_RUN_ID}" --arg commit "${CANDIDATE_COMMIT}" \
             --arg name "${OBSERVATIONS_ARTIFACT_NAME}" '
             if all(.[]; type == "object" and (.artifacts | type == "array")) then
               [.[] | .artifacts[] | select(.name == $name and .expired == false
-                and .workflow_run.id == $run_id and .workflow_run.head_sha == $commit)] | length == 1
+                and .workflow_run.id == $run_id and .workflow_run.head_sha == $commit)]
+              | if length == 1 then .[0] else error("observations artifact is not unique") end
             else error("malformed artifact pages") end
-            ' <<<"${observations_artifacts}" >/dev/null
-          jq -e --argjson run_id "${PHASE6_EVIDENCE_RUN_ID}" --arg commit "${CANDIDATE_COMMIT}" \
+            ' <<<"${observations_artifacts}")
+          selected_phase6_n4_artifact=$(jq -cer --argjson run_id "${PHASE6_EVIDENCE_RUN_ID}" --arg commit "${CANDIDATE_COMMIT}" \
             --arg name "${PHASE6_EVIDENCE_ARTIFACT_NAME}" '
             if all(.[]; type == "object" and (.artifacts | type == "array")) then
               [.[] | .artifacts[] | select(.name == $name and .expired == false
-                and .workflow_run.id == $run_id and .workflow_run.head_sha == $commit)] | length == 1
+                and .workflow_run.id == $run_id and .workflow_run.head_sha == $commit)]
+              | if length == 1 then .[0] else error("Phase 6 artifact is not unique") end
             else error("malformed artifact pages") end
-            ' <<<"${phase6_evidence_artifacts}" >/dev/null
+            ' <<<"${phase6_evidence_artifacts}")
+          candidate_artifact_id=$(jq -er '.id | select(type == "number" and . >= 1)' <<<"${selected_candidate_artifact}")
+          observations_artifact_id=$(jq -er '.id | select(type == "number" and . >= 1)' <<<"${selected_observations_artifact}")
+          phase6_n4_artifact_id=$(jq -er '.id | select(type == "number" and . >= 1)' <<<"${selected_phase6_n4_artifact}")
+          printf 'candidate_artifact_id=%s\n' "${candidate_artifact_id}" >> "${GITHUB_OUTPUT}"
+          printf 'observations_artifact_id=%s\n' "${observations_artifact_id}" >> "${GITHUB_OUTPUT}"
+          printf 'phase6_n4_artifact_id=%s\n' "${phase6_n4_artifact_id}" >> "${GITHUB_OUTPUT}"
 
-      - name: Check out exact candidate source
-        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Download exact candidate by immutable artifact ID
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
         with:
-          ref: ${{ env.CANDIDATE_COMMIT }}
+          artifact-ids: ${{ steps.selected_artifacts.outputs.candidate_artifact_id }}
+          github-token: ${{ github.token }}
+          repository: ${{ github.repository }}
+          run-id: ${{ env.CANDIDATE_RUN_ID }}
+          path: retained-candidate
 
-      - name: Set up Node
-        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+      - name: Download observations by immutable artifact ID
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
         with:
-          node-version: 24.19.0
-          cache: npm
+          artifact-ids: ${{ steps.selected_artifacts.outputs.observations_artifact_id }}
+          github-token: ${{ github.token }}
+          repository: ${{ github.repository }}
+          run-id: ${{ env.OBSERVATIONS_RUN_ID }}
+          path: supplied-evidence
 
-      - name: Install verifier dependencies
-        run: npm ci --ignore-scripts
+      - name: Download Phase 6 N4 evidence by immutable artifact ID
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          artifact-ids: ${{ steps.selected_artifacts.outputs.phase6_n4_artifact_id }}
+          github-token: ${{ github.token }}
+          repository: ${{ github.repository }}
+          run-id: ${{ env.PHASE6_EVIDENCE_RUN_ID }}
+          path: retained-candidate/evidence/phase6-n4-upload
 
-      - name: Download exact candidate and supplied evidence
-        env:
-          GH_TOKEN: ${{ github.token }}
+      - name: Verify supplied observations digest
         run: |
-          gh run download "${CANDIDATE_RUN_ID}" --repo "${GITHUB_REPOSITORY}" \
-            --name "private-release-candidate-${CANDIDATE_ID}" --dir retained-candidate
-          gh run download "${OBSERVATIONS_RUN_ID}" --repo "${GITHUB_REPOSITORY}" \
-            --name "${OBSERVATIONS_ARTIFACT_NAME}" --dir supplied-evidence
-          gh run download "${PHASE6_EVIDENCE_RUN_ID}" --repo "${GITHUB_REPOSITORY}" \
-            --name "${PHASE6_EVIDENCE_ARTIFACT_NAME}" --dir retained-candidate/evidence/phase6-n4-upload
           printf '%s  %s\n' "${OBSERVATIONS_SHA256}" supplied-evidence/observations.json | sha256sum --check
 
       - name: Verify exact Phase 6 N4 observation-only evidence
@@ -290,7 +322,7 @@ jobs:
             test ! -L "retained-candidate/evidence/phase6-n4-upload/phase6/${evidence_file}"
           done
           printf '%s  %s\n' "${PHASE6_N4_RECORD_SHA256}" retained-candidate/evidence/phase6-n4-upload/phase6/attended-record.json | sha256sum --check
-          npm run verify:attended:phase6 -- \
+          node trusted-workflow-source/scripts/generate-phase6-attended-checklist.mjs verify \
             --bundle-dir retained-candidate \
             --manifest-sha256 "${MANIFEST_SHA256}" \
             --checklist retained-candidate/evidence/phase6-n4-upload/phase6/checklist.json \
@@ -301,7 +333,7 @@ jobs:
       - name: Generate only the canonical pending checklist
         run: |
           mkdir -p attended-evidence
-          npm run prepare:attended:phase5 -- \
+          node trusted-workflow-source/scripts/generate-phase5-attended-checklist.mjs prepare \
             --bundle-dir retained-candidate \
             --manifest-sha256 "${MANIFEST_SHA256}" \
             --automated-evidence retained-candidate/evidence/automated.json \
@@ -320,7 +352,7 @@ jobs:
           test "${OWNER_TOKEN}" = "approved"
           cp supplied-evidence/observations.json attended-evidence/observations.json
           cp -R supplied-evidence/attachments attended-evidence/attachments
-          npm run record:attended:phase5 -- \
+          node trusted-workflow-source/scripts/generate-phase5-attended-checklist.mjs record \
             --bundle-dir retained-candidate \
             --manifest-sha256 "${MANIFEST_SHA256}" \
             --automated-evidence retained-candidate/evidence/automated.json \
@@ -335,7 +367,7 @@ jobs:
             --phase6-n4-artifact-name "${PHASE6_EVIDENCE_ARTIFACT_NAME}" \
             --owner-token "${OWNER_TOKEN}" \
             --output attended-evidence/attended-record.json
-          npm run verify:attended:phase5 -- \
+          node trusted-workflow-source/scripts/generate-phase5-attended-checklist.mjs verify \
             --bundle-dir retained-candidate \
             --manifest-sha256 "${MANIFEST_SHA256}" \
             --automated-evidence retained-candidate/evidence/automated.json \

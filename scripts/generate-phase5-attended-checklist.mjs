@@ -9,7 +9,7 @@ import {
 } from "node:fs";
 import path from "node:path";
 import process from "node:process";
-import { pathToFileURL } from "node:url";
+import { fileURLToPath, pathToFileURL } from "node:url";
 
 import {
   loadPhase5Candidate,
@@ -24,6 +24,7 @@ const PHASE2_VERIFICATION = ".planning/phases/02-owned-library-and-planning/02-V
 const PHASE3_VERIFICATION = ".planning/phases/03-calendar-and-history-integrity/03-VERIFICATION.md";
 const PHASE4_VERIFICATION = ".planning/phases/04-overall-progress-and-complete-progression/04-VERIFICATION.md";
 const PHASE5_VALIDATION = ".planning/phases/05-recovery-distribution-and-release/05-VALIDATION.md";
+const PROJECT_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const RUN_ID_PATTERN = /^[1-9][0-9]*$/u;
 const ARTIFACT_NAME_PATTERN = /^[A-Za-z0-9][A-Za-z0-9._-]{2,127}$/u;
 
@@ -80,7 +81,7 @@ function phase2EvidenceClass(id) {
   return "attended-emulator-and-physical-phone";
 }
 
-export function derivePhase5AttendedRows(root = process.cwd()) {
+export function derivePhase5AttendedRows(root = PROJECT_ROOT) {
   const phase2 = markdownRows(readFileSync(path.join(root, PHASE2_VERIFICATION), "utf8"), /^G-02-\d{2}$/u)
     .map(([id, , , observation]) => ({
       row_id: `phase2:${id}`, phase: 2, source_id: id,
@@ -196,13 +197,36 @@ export function loadPhase6N4AttendedEvidence({
     || !ARTIFACT_NAME_PATTERN.test(phase6N4ArtifactName ?? "")) {
     throw new Error("Phase 6 N4 source paths, positive run ID, and canonical artifact name are required.");
   }
+  const requestedEvidenceRoot = path.resolve(phase6N4EvidenceDirectory);
+  const evidenceRootDetails = lstatSync(requestedEvidenceRoot, { throwIfNoEntry: false });
+  if (!evidenceRootDetails?.isDirectory()
+    || evidenceRootDetails.isSymbolicLink()) {
+    throw new Error("Phase 6 N4 evidence directory is missing or unsafe.");
+  }
+  const evidenceRoot = realpathSync(requestedEvidenceRoot);
+  const safeEvidenceFile = (filePath, label) => {
+    const requested = path.resolve(filePath);
+    const details = lstatSync(requested, { throwIfNoEntry: false });
+    const resolved = details?.isFile() && !details.isSymbolicLink()
+      ? realpathSync(requested)
+      : requested;
+    if (path.dirname(resolved) !== evidenceRoot
+      || !details?.isFile()
+      || details.isSymbolicLink()) {
+      throw new Error(`Phase 6 N4 ${label} path is missing, outside the evidence directory, or unsafe.`);
+    }
+    return resolved;
+  };
+  const safeRecordPath = safeEvidenceFile(phase6N4RecordPath, "record");
+  const safeChecklistPath = safeEvidenceFile(phase6N4ChecklistPath, "checklist");
+  const safeObservationsPath = safeEvidenceFile(phase6N4ObservationsPath, "observations");
   const candidate = { manifest: candidateManifest, manifest_sha256: manifestSha256 };
-  const checklistBytes = readFileSync(phase6N4ChecklistPath);
-  const observationsBytes = readFileSync(phase6N4ObservationsPath);
-  const recordBytes = readFileSync(phase6N4RecordPath);
+  const checklistBytes = readFileSync(safeChecklistPath);
+  const observationsBytes = readFileSync(safeObservationsPath);
+  const recordBytes = readFileSync(safeRecordPath);
   const record = validatePhase6AttendedRecordBytes({
     candidate, checklistBytes, observationsBytes, recordBytes,
-    evidenceDirectory: phase6N4EvidenceDirectory,
+    evidenceDirectory: evidenceRoot,
   });
   const apk = candidateManifest.artifacts.filter(({ kind }) => kind === "apk");
   const provenance = {
