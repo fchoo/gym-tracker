@@ -1756,8 +1756,10 @@ test("Phase 6 N4 evidence crosses the protected release gate as one exact observ
     /^\s*phase6_n4_evidence_path:\s*$/mu,
     /^\s*PHASE6_N4_EVIDENCE_PATH:\s*\$\{\{ inputs\.phase6_n4_evidence_path \}\}\s*$/mu,
     /^\s*PHASE6_N4_ARTIFACT_NAME:\s*phase6-n4-evidence-\$\{\{ inputs\.candidate_id \}\}-\$\{\{ github\.run_id \}\}\s*$/mu,
-    /gym-tracker-phase6-n4-evidence[\s\S]*mkdir -p "\$\{phase6_staging_root\}\/phase6"/u,
+    /gym-tracker-phase6-candidate[\s\S]*phase6-n4-upload[\s\S]*mkdir -p "\$\{phase6_staging_root\}\/phase6"/u,
     /name:\s*\$\{\{ env\.PHASE6_N4_ARTIFACT_NAME \}\}/u,
+    /^\s*group:\s*release-human-evidence-upload\s*$/mu,
+    /^\s*cancel-in-progress:\s*false\s*$/mu,
   ]) {
     assert.match(upload, pattern);
   }
@@ -1773,7 +1775,20 @@ test("Phase 6 N4 evidence crosses the protected release gate as one exact observ
     assert.match(upload, new RegExp(file.replace(".", "\\."), "u"));
   }
   assert.match(upload, /for phase6_entry in[\s\S]*test -f "\$\{phase6_entry\}"[\s\S]*test ! -L "\$\{phase6_entry\}"[\s\S]*phase6_entry_count=\$\(\(phase6_entry_count \+ 1\)\)[\s\S]*test "\$\{phase6_entry_count\}" -eq 7/u);
-  assert.match(upload, /source_file="\$\{phase6_source\}\/\$\{evidence_file\}"[\s\S]*test -f "\$\{source_file\}"[\s\S]*test ! -L "\$\{source_file\}"/u);
+  assert.match(upload, /source_file="\$\{phase6_source\}\/\$\{evidence_file\}"[\s\S]*cp --no-dereference "\$\{source_file\}" "\$\{phase6_staging_root\}\/phase6\/\$\{evidence_file\}"/u);
+  const phase6Copy = upload.indexOf(
+    'cp --no-dereference "${source_file}" "${phase6_staging_root}/phase6/${evidence_file}"',
+  );
+  const stagedPhase6Validation = upload.indexOf(
+    'node workflow-source/scripts/generate-phase6-attended-checklist.mjs verify',
+  );
+  const phase6Upload = upload.indexOf(
+    "name: Upload immutable Phase 6 N4 observation-only evidence",
+  );
+  assert.equal(phase6Copy >= 0 && phase6Copy < stagedPhase6Validation, true);
+  assert.equal(stagedPhase6Validation < phase6Upload, true);
+  assert.match(upload, /path:\s*\$\{\{ runner\.temp \}\}\/gym-tracker-phase6-candidate\/evidence\/phase6-n4-upload/u);
+  assert.match(upload, /--checklist "\$\{phase6_staging_root\}\/phase6\/checklist\.json"[\s\S]*--observations "\$\{phase6_staging_root\}\/phase6\/observations\.json"[\s\S]*--evidence-dir "\$\{phase6_staging_root\}\/phase6"[\s\S]*--record "\$\{phase6_staging_root\}\/phase6\/attended-record\.json"/u);
   assert.doesNotMatch(upload, /phase6[^\n]*owner[_-]token|owner[_-]token[^\n]*phase6/iu);
 
   const attended = readFileSync(
