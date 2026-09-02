@@ -13,6 +13,7 @@ import {
 import type {
   ProgressPeriod,
   ProgressPeriodProjection,
+  ProgressExerciseReference,
   ProgressProjectionDiagnostic,
   ProgressProjectionFreshness,
   ProgressRecommendationReview,
@@ -60,6 +61,9 @@ type ProgressSnapshot = Readonly<{
   diagnostic?: ProgressProjectionDiagnostic;
 }>;
 
+type OpenExercise = (exerciseId: string, exerciseName: string) => void;
+type ExerciseDisplayLabel = (exercise: ProgressExerciseReference) => string;
+
 export type ProgressScreenProps = Readonly<{
   nowLocalDate: string;
   workoutRefreshGeneration?: number;
@@ -67,7 +71,7 @@ export type ProgressScreenProps = Readonly<{
     period: ProgressPeriod;
     nowLocalDate: string;
   }>): Promise<ProgressSnapshot>;
-  onOpenExercise(exerciseId: string, exerciseName: string): void;
+  onOpenExercise: OpenExercise;
   onOpenSession(sessionId: string): void;
   onAcceptRecommendation?(recommendationId: string): Promise<unknown>;
   onKeepCurrentTarget?(recommendationId: string): Promise<unknown>;
@@ -110,6 +114,35 @@ function observationText(record: ProgressRecord): string {
   }
 }
 
+function createExerciseDisplayLabel(
+  projection: ProgressPeriodProjection,
+): ExerciseDisplayLabel {
+  const references: ProgressExerciseReference[] = [
+    ...projection.records,
+    ...projection.exercises,
+    ...projection.trend.flatMap(({ exercises }) => exercises),
+    ...Object.values(projection.summary.sourceReferences)
+      .flatMap(({ exercises }) => exercises),
+    ...projection.stateSourceReferences.exercises,
+    ...projection.attention,
+    ...projection.recommendations,
+  ];
+  const idsByName = new Map<string, Set<string>>();
+  for (const { exerciseId, exerciseName } of references) {
+    const key = exerciseName.trim().toLocaleLowerCase();
+    const ids = idsByName.get(key) ?? new Set<string>();
+    ids.add(exerciseId);
+    idsByName.set(key, ids);
+  }
+  return ({ exerciseId, exerciseName }) => {
+    const ids = [...(idsByName.get(exerciseName.trim().toLocaleLowerCase()) ?? [])]
+      .sort((left, right) => left.localeCompare(right));
+    return ids.length < 2
+      ? exerciseName
+      : `${exerciseName} (${ids.indexOf(exerciseId) + 1} of ${ids.length})`;
+  };
+}
+
 function hasFactualEvidence(projection: ProgressPeriodProjection): boolean {
   return projection.trend.length > 0
     || projection.exercises.length > 0
@@ -132,12 +165,14 @@ function stateText(state: ProgressPeriodProjection["state"]): string | null {
 function SourceActions({
   label,
   source,
+  exerciseDisplayLabel,
   onOpenExercise,
   onOpenSession,
 }: Readonly<{
   label: string;
   source: ProgressSourceReference;
-  onOpenExercise(exerciseId: string, exerciseName: string): void;
+  exerciseDisplayLabel: ExerciseDisplayLabel;
+  onOpenExercise: OpenExercise;
   onOpenSession(sessionId: string): void;
 }>) {
   const { colors } = useAppTheme();
@@ -167,9 +202,11 @@ function SourceActions({
           </Text>
         </FocusablePressable>
       ))}
-      {source.exercises.map(({ exerciseId, exerciseName }) => (
+      {source.exercises.map(({ exerciseId, exerciseName }) => {
+        const displayLabel = exerciseDisplayLabel({ exerciseId, exerciseName });
+        return (
         <FocusablePressable
-          accessibilityLabel={"Open " + exerciseName + " exercise history for " + label}
+          accessibilityLabel={"Open " + displayLabel + " exercise history for " + label}
           accessibilityRole="button"
           focusable
           key={exerciseId}
@@ -180,10 +217,11 @@ function SourceActions({
           ]}
         >
           <Text style={[typeScale.secondary as TextStyle, { color: colors.contentCardText }]}>
-            {"Exercise source " + exerciseName}
+            {"Exercise source " + displayLabel}
           </Text>
         </FocusablePressable>
-      ))}
+        );
+      })}
     </View>
   );
 }
@@ -251,11 +289,13 @@ function PeriodControls({
 
 function OverallProgress({
   projection,
+  exerciseDisplayLabel,
   onOpenExercise,
   onOpenSession,
 }: Readonly<{
   projection: ProgressPeriodProjection;
-  onOpenExercise(exerciseId: string, exerciseName: string): void;
+  exerciseDisplayLabel: ExerciseDisplayLabel;
+  onOpenExercise: OpenExercise;
   onOpenSession(sessionId: string): void;
 }>) {
   const { colors } = useAppTheme();
@@ -279,6 +319,7 @@ function OverallProgress({
               {"Scheduled opportunities · " + projection.summary.scheduledOpportunities.completed + " of " + projection.summary.scheduledOpportunities.planned + " completed"}
             </Text>
             <SourceActions
+              exerciseDisplayLabel={exerciseDisplayLabel}
               label="Scheduled opportunities"
               onOpenExercise={onOpenExercise}
               onOpenSession={onOpenSession}
@@ -290,6 +331,7 @@ function OverallProgress({
               {"Working sets · " + projection.summary.workingSets.completed + " of " + projection.summary.workingSets.planned + " completed"}
             </Text>
             <SourceActions
+              exerciseDisplayLabel={exerciseDisplayLabel}
               label="Working sets"
               onOpenExercise={onOpenExercise}
               onOpenSession={onOpenSession}
@@ -301,6 +343,7 @@ function OverallProgress({
               {projection.summary.improvingCount + " improving · " + projection.summary.holdingCount + " holding · " + projection.summary.baselineCount + " baseline"}
             </Text>
             <SourceActions
+              exerciseDisplayLabel={exerciseDisplayLabel}
               label="Progress status"
               onOpenExercise={onOpenExercise}
               onOpenSession={onOpenSession}
@@ -313,6 +356,7 @@ function OverallProgress({
                 {projection.summary.attentionCount + " review " + (projection.summary.attentionCount === 1 ? "available" : "items available")}
               </Text>
               <SourceActions
+                exerciseDisplayLabel={exerciseDisplayLabel}
                 label="Review available"
                 onOpenExercise={onOpenExercise}
                 onOpenSession={onOpenSession}
@@ -332,6 +376,7 @@ function OverallProgress({
               tone="neutral"
             />
             <SourceActions
+              exerciseDisplayLabel={exerciseDisplayLabel}
               label={state}
               onOpenExercise={onOpenExercise}
               onOpenSession={onOpenSession}
@@ -371,6 +416,7 @@ function OverallProgress({
 
 function NeedsAttention({
   projection,
+  exerciseDisplayLabel,
   onOpenExercise,
   onOpenSession,
   onAcceptRecommendation,
@@ -379,7 +425,8 @@ function NeedsAttention({
   onRecommendationDecisionNotice,
 }: Readonly<{
   projection: ProgressPeriodProjection;
-  onOpenExercise(exerciseId: string, exerciseName: string): void;
+  exerciseDisplayLabel: ExerciseDisplayLabel;
+  onOpenExercise: OpenExercise;
   onOpenSession(sessionId: string): void;
   onAcceptRecommendation?(recommendationId: string): Promise<unknown>;
   onKeepCurrentTarget?(recommendationId: string): Promise<unknown>;
@@ -444,7 +491,7 @@ function NeedsAttention({
                   : { onOpenSource: onOpenSession })}
               />
               <FocusablePressable
-                accessibilityLabel={"Open exercise history for " + recommendation.exerciseName}
+                accessibilityLabel={"Open exercise history for " + exerciseDisplayLabel(recommendation)}
                 accessibilityRole="button"
                 focusable
                 onPress={() => onOpenExercise(
@@ -509,10 +556,12 @@ function ReviewHistory({
 
 function ExerciseProgress({
   projection,
+  exerciseDisplayLabel,
   onOpenExercise,
 }: Readonly<{
   projection: ProgressPeriodProjection;
-  onOpenExercise(exerciseId: string, exerciseName: string): void;
+  exerciseDisplayLabel: ExerciseDisplayLabel;
+  onOpenExercise: OpenExercise;
 }>) {
   const { colors } = useAppTheme();
   const [query, setQuery] = useState("");
@@ -550,7 +599,7 @@ function ExerciseProgress({
         <View style={styles.exerciseRows}>
           {exercises.map((exercise) => (
             <FocusablePressable
-              accessibilityLabel={"Open exercise history for " + exercise.exerciseName}
+              accessibilityLabel={"Open exercise history for " + exerciseDisplayLabel(exercise)}
               accessibilityRole="button"
               focusable
               key={exercise.exerciseId + ":" + exercise.identityKey + ":" + exercise.comparatorKey}
@@ -564,7 +613,7 @@ function ExerciseProgress({
                 },
               ]}
             >
-              <Text style={[typeScale.bodyStrong as TextStyle, { color: colors.contentCardText }]}>{exercise.exerciseName}</Text>
+              <Text style={[typeScale.bodyStrong as TextStyle, { color: colors.contentCardText }]}>{exerciseDisplayLabel(exercise)}</Text>
               <Text style={[typeScale.secondary as TextStyle, { color: colors.contentCardTextSecondary }]}>
                 {(exercise.status === "improving" ? "Improving" : exercise.status === "holding" ? "Hold" : "Baseline") + " · " + longDate(exercise.localDate) + " · " + exercise.identityKey}
               </Text>
@@ -721,6 +770,7 @@ export function ProgressScreen({
       />
     );
   }
+  const exerciseDisplayLabel = createExerciseDisplayLabel(projection);
 
   return (
     <AdaptiveScreen
@@ -729,11 +779,13 @@ export function ProgressScreen({
         <View style={styles.screen}>
           {header}
           <OverallProgress
+            exerciseDisplayLabel={exerciseDisplayLabel}
             onOpenExercise={onOpenExercise}
             onOpenSession={onOpenSession}
             projection={projection}
           />
           <ProgressTrend
+            exerciseDisplayLabel={exerciseDisplayLabel}
             onOpenExercise={onOpenExercise}
             onOpenSession={onOpenSession}
             rows={projection.trend}
@@ -746,6 +798,7 @@ export function ProgressScreen({
                 ? {}
                 : { onKeepCurrentTarget })}
             onOpenExercise={onOpenExercise}
+            exerciseDisplayLabel={exerciseDisplayLabel}
             onOpenSession={onOpenSession}
             onRecommendationDecisionComplete={() => {
               setRequestGeneration((value) => value + 1);
@@ -757,7 +810,11 @@ export function ProgressScreen({
             onOpenSession={onOpenSession}
             projection={projection}
           />
-          <ExerciseProgress onOpenExercise={onOpenExercise} projection={projection} />
+          <ExerciseProgress
+            exerciseDisplayLabel={exerciseDisplayLabel}
+            onOpenExercise={onOpenExercise}
+            projection={projection}
+          />
         </View>
       )}
       testID="progress-screen"

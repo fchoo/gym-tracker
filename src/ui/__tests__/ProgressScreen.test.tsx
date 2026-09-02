@@ -394,6 +394,46 @@ describe("ProgressScreen", () => {
     expect(screen.getByLabelText("2 Search exercises results")).toBeOnTheScreen();
   });
 
+  it("disambiguates duplicate exercise names without exposing their identities", async () => {
+    const firstId = "custom-plank-0001";
+    const secondId = "custom-plank-0002";
+    const base = projection();
+    const duplicateRows = [
+      { ...base.exercises[0]!, exerciseId: firstId, exerciseName: "Plank" },
+      { ...base.exercises[1]!, exerciseId: secondId, exerciseName: "Plank" },
+    ];
+    const onOpenExercise = jest.fn();
+    await renderProgress({
+      onOpenExercise,
+      loadProgress: jest.fn(async () => ({
+        period: "4_weeks" as const,
+        freshness: "current" as const,
+        projection: projection({
+          exercises: duplicateRows,
+          trend: [{
+            ...base.trend[0]!,
+            exerciseIds: [firstId, secondId],
+            exercises: duplicateRows.map(({ exerciseId, exerciseName }) => ({
+              exerciseId,
+              exerciseName,
+            })),
+          }],
+        }),
+      })),
+    });
+
+    expect(await screen.findByText("Plank (1 of 2)")).toBeOnTheScreen();
+    expect(screen.getByText("Plank (2 of 2)")).toBeOnTheScreen();
+    const firstButtons = screen.getAllByRole("button", {
+      name: "Open exercise history for Plank (1 of 2)",
+    });
+    expect(firstButtons.length).toBeGreaterThan(1);
+    await fireEvent.press(firstButtons.at(-1)!);
+    expect(onOpenExercise).toHaveBeenCalledWith(firstId, "Plank");
+    expect(screen.queryByText(firstId)).not.toBeOnTheScreen();
+    expect(screen.queryByText(secondId)).not.toBeOnTheScreen();
+  });
+
   it("restores the shared Search focus after clearing a Progress query", async () => {
     const focus = jest.spyOn(TextInput.prototype, "focus");
     await renderProgress();
