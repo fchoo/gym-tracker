@@ -210,7 +210,7 @@ function SourceActions({
           accessibilityRole="button"
           focusable
           key={exerciseId}
-          onPress={() => onOpenExercise(exerciseId, exerciseName)}
+          onPress={() => onOpenExercise(exerciseId, displayLabel)}
           style={({ pressed }: { pressed: boolean }) => [
             styles.textAction,
             { borderColor: colors.contentCardBorder, opacity: pressed ? 0.76 : 1 },
@@ -496,7 +496,7 @@ function NeedsAttention({
                 focusable
                 onPress={() => onOpenExercise(
                   recommendation.exerciseId,
-                  recommendation.exerciseName,
+                  exerciseDisplayLabel(recommendation),
                 )}
                 style={({ pressed }: { pressed: boolean }) => [
                   styles.textAction,
@@ -603,7 +603,10 @@ function ExerciseProgress({
               accessibilityRole="button"
               focusable
               key={exercise.exerciseId + ":" + exercise.identityKey + ":" + exercise.comparatorKey}
-              onPress={() => onOpenExercise(exercise.exerciseId, exercise.exerciseName)}
+              onPress={() => onOpenExercise(
+                exercise.exerciseId,
+                exerciseDisplayLabel(exercise),
+              )}
               style={({ pressed }: { pressed: boolean }) => [
                 styles.exerciseRow,
                 {

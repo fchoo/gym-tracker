@@ -429,7 +429,7 @@ describe("ProgressScreen", () => {
     });
     expect(firstButtons.length).toBeGreaterThan(1);
     await fireEvent.press(firstButtons.at(-1)!);
-    expect(onOpenExercise).toHaveBeenCalledWith(firstId, "Plank");
+    expect(onOpenExercise).toHaveBeenCalledWith(firstId, "Plank (1 of 2)");
     expect(screen.queryByText(firstId)).not.toBeOnTheScreen();
     expect(screen.queryByText(secondId)).not.toBeOnTheScreen();
   });

@@ -98,7 +98,10 @@ function SourceLinks({
           accessibilityRole="button"
           focusable
           key={exerciseId}
-          onPress={() => onOpenExercise(exerciseId, exerciseName)}
+          onPress={() => onOpenExercise(exerciseId, exerciseDisplayLabel({
+            exerciseId,
+            exerciseName,
+          }))}
           style={({ pressed }: { pressed: boolean }) => [
             styles.sourceLink,
             { borderColor: colors.contentCardBorder, opacity: pressed ? 0.76 : 1 },
