@@ -1225,6 +1225,13 @@ export function createPlansWorkoutRepository(
             const activeSet = partial.active_set_id === null
               ? undefined
               : activeExercise?.sets.find(({ id }) => id === partial.active_set_id);
+            if (
+              (partial.active_session_exercise_id !== null
+                && activeExercise === undefined)
+              || (partial.active_set_id !== null && activeSet === undefined)
+            ) {
+              throw new Error("today_partial_overlay_cursor_mismatch");
+            }
             exerciseName = activeExercise?.name ?? null;
             setKind = activeSet?.kind ?? null;
             setOrdinal = activeSet?.ordinal ?? null;

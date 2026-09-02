@@ -28,6 +28,10 @@ import {
   parseAcceptedStarterPlanPack,
 } from "../../src/domains/plans";
 import {
+  assertValidHistoryCorrectionSnapshot,
+  type HistoryCorrectionSnapshot,
+} from "../../src/domains/history";
+import {
   completeSet,
   finishCompleted,
   finishPartial,
@@ -604,6 +608,129 @@ describe("Today schedule workout integration", () => {
        SET effective_local_date = '2026-08-18'
        WHERE session_id = ?`,
       [session.id],
+    ));
+
+    await expect(createPlansWorkoutRepository(runtime.kernel).getTodayView({
+      localDate: "2026-08-17",
+      weekday: 1,
+    })).rejects.toThrow("today_partial_overlay_invalid");
+  });
+
+  it.each([
+    "missing active exercise",
+    "missing active set",
+    "active set under the wrong exercise",
+  ] as const)("fails closed when a corrected partial has %s", async (scenario) => {
+    const runtime = await setupRuntime();
+    const plans = createPlansWorkoutRepository(runtime.kernel);
+    const session = await startWorkout({
+      repository: plans,
+      request: {
+        mode: "scheduled",
+        planId: "plan-copy",
+        planDayId: "plan-day-copy",
+        localDate: "2026-08-17",
+        timezone: "Asia/Singapore",
+        startedAtMs: 1_786_853_600_000,
+      },
+    });
+    await finishPartial({
+      repository: createWorkoutOutcomeRepository(runtime.kernel),
+      input: {
+        sessionId: session.id,
+        expectedSessionRevision: session.revision,
+        confirmation: "save_partial_workout",
+        endedAtMs: 1_786_853_700_000,
+      },
+    });
+    const [cursor] = await runtime.kernel.queryAll<{
+      active_session_exercise_id: string | null;
+      active_set_id: string | null;
+    }>(
+      `SELECT active_session_exercise_id, active_set_id
+       FROM workout_sessions WHERE id = ?`,
+      [session.id],
+    );
+    if (
+      cursor?.active_session_exercise_id === null
+      || cursor?.active_session_exercise_id === undefined
+      || cursor.active_set_id === null
+    ) {
+      throw new Error("corrected_today_cursor_missing");
+    }
+    const corrections = createHistoryCommandRepository(runtime.kernel);
+    const editor = await corrections.loadCorrectionSession(session.id);
+    const correctedSnapshot = {
+      ...editor.snapshot,
+      session: {
+        ...editor.snapshot.session,
+        ownerNote: "Valid corrected partial",
+      },
+    } satisfies HistoryCorrectionSnapshot;
+    await corrections.correctSession({
+      base: editor.snapshot,
+      expectedEffectiveRevision: editor.effectiveRevision,
+      next: correctedSnapshot,
+      nowMs: 1_786_853_750_000,
+    });
+    const activeExercise = correctedSnapshot.exercises.find(
+      ({ id }) => id === cursor.active_session_exercise_id,
+    );
+    const activeSet = activeExercise?.sets.find(
+      ({ id }) => id === cursor.active_set_id,
+    );
+    if (activeExercise === undefined || activeSet === undefined) {
+      throw new Error("corrected_today_snapshot_cursor_missing");
+    }
+    let mismatchedSnapshot: HistoryCorrectionSnapshot;
+    if (scenario === "missing active exercise") {
+      mismatchedSnapshot = {
+        ...correctedSnapshot,
+        exercises: correctedSnapshot.exercises.filter(
+          ({ id }) => id !== activeExercise.id,
+        ),
+      };
+    } else if (scenario === "missing active set") {
+      mismatchedSnapshot = {
+        ...correctedSnapshot,
+        exercises: correctedSnapshot.exercises.map((exercise) =>
+          exercise.id === activeExercise.id
+            ? {
+              ...exercise,
+              sets: exercise.sets.filter(({ id }) => id !== activeSet.id),
+            }
+            : exercise
+        ),
+      };
+    } else {
+      mismatchedSnapshot = {
+        ...correctedSnapshot,
+        exercises: [
+          ...correctedSnapshot.exercises.map((exercise) =>
+            exercise.id === activeExercise.id
+              ? {
+                ...exercise,
+                sets: exercise.sets.filter(({ id }) => id !== activeSet.id),
+              }
+              : exercise
+          ),
+          {
+            ...activeExercise,
+            id: "history-added:cursor-mismatch-exercise",
+            ordinal: Math.max(
+              ...correctedSnapshot.exercises.map(({ ordinal }) => ordinal),
+            ) + 1,
+            sets: [activeSet],
+          },
+        ],
+      };
+    }
+    assertValidHistoryCorrectionSnapshot(mismatchedSnapshot);
+    await runtime.kernel.write((transaction) => transaction.execute(
+      `UPDATE history_session_overlays
+       SET snapshot_json = ?
+       WHERE session_id = ?`,
+      [JSON.stringify(mismatchedSnapshot), session.id],
     ));
 
     await expect(createPlansWorkoutRepository(runtime.kernel).getTodayView({
