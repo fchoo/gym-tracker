@@ -23,6 +23,10 @@ on:
         description: Relative path beneath the protected EVIDENCE_ROOT to the attended attachments directory
         required: true
         type: string
+      phase6_n4_evidence_path:
+        description: Relative path beneath the protected EVIDENCE_ROOT to the canonical Phase 6 N4 evidence directory
+        required: true
+        type: string
 
 permissions:
   actions: read
@@ -40,7 +44,9 @@ env:
   CANDIDATE_COMMIT: ${{ inputs.candidate_commit }}
   OBSERVATIONS_PATH: ${{ inputs.observations_path }}
   ATTACHMENTS_PATH: ${{ inputs.attachments_path }}
+  PHASE6_N4_EVIDENCE_PATH: ${{ inputs.phase6_n4_evidence_path }}
   OBSERVATIONS_ARTIFACT_NAME: human-release-observations-${{ inputs.candidate_id }}-${{ github.run_id }}
+  PHASE6_N4_ARTIFACT_NAME: phase6-n4-evidence-${{ inputs.candidate_id }}-${{ github.run_id }}
 
 jobs:
   upload-human-evidence:
@@ -191,10 +197,70 @@ jobs:
             --attachments-relative "${ATTACHMENTS_PATH}" \
             --staging-root "${RUNNER_TEMP}"
 
+      - name: Stage exact canonical Phase 6 N4 evidence files
+        env:
+          EVIDENCE_ROOT: ${{ vars.PHASE5_EVIDENCE_ROOT }}
+        run: |
+          set -euo pipefail
+          case "${PHASE6_N4_EVIDENCE_PATH}" in
+            ''|/*|.|..|./*|../*|*/./*|*/../*|*/.|*/..) exit 1 ;;
+          esac
+          evidence_root=$(realpath "${EVIDENCE_ROOT}")
+          test -d "${evidence_root}"
+          test ! -L "${EVIDENCE_ROOT}"
+          phase6_requested="${evidence_root}/${PHASE6_N4_EVIDENCE_PATH}"
+          test ! -L "${phase6_requested}"
+          phase6_source=$(realpath "${phase6_requested}")
+          test "${phase6_source}" = "${phase6_requested}"
+          case "${phase6_source}" in "${evidence_root}"/*) ;; *) exit 1 ;; esac
+          test -d "${phase6_source}"
+          phase6_entry_count=0
+          for phase6_entry in "${phase6_source}"/* "${phase6_source}"/.[!.]* "${phase6_source}"/..?*
+          do
+            if [ ! -e "${phase6_entry}" ] && [ ! -L "${phase6_entry}" ]; then
+              continue
+            fi
+            test -f "${phase6_entry}"
+            test ! -L "${phase6_entry}"
+            phase6_entry_count=$((phase6_entry_count + 1))
+          done
+          test "${phase6_entry_count}" -eq 7
+          phase6_staging_root="${RUNNER_TEMP}/gym-tracker-phase6-n4-evidence"
+          test "${phase6_staging_root}" != "${RUNNER_TEMP}"
+          rm -rf "${phase6_staging_root}"
+          mkdir -p "${phase6_staging_root}/phase6"
+          for evidence_file in \
+            checklist.json \
+            observations.json \
+            N4-01.png \
+            N4-02.png \
+            N4-03.png \
+            N4-04.png \
+            attended-record.json
+          do
+            source_file="${phase6_source}/${evidence_file}"
+            test -f "${source_file}"
+            test ! -L "${source_file}"
+            test "$(realpath "${source_file}")" = "${source_file}"
+            size_bytes=$(wc -c < "${source_file}" | tr -d '[:space:]')
+            case "${size_bytes}" in ''|*[!0-9]*) exit 1 ;; esac
+            test "${size_bytes}" -gt 0
+            test "${size_bytes}" -le 67108864
+            cp "${source_file}" "${phase6_staging_root}/phase6/${evidence_file}"
+          done
+
       - name: Upload immutable human-authored evidence
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: ${{ env.OBSERVATIONS_ARTIFACT_NAME }}
           path: ${{ runner.temp }}/gym-tracker-human-evidence
+          if-no-files-found: error
+          retention-days: 30
+
+      - name: Upload immutable Phase 6 N4 observation-only evidence
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: ${{ env.PHASE6_N4_ARTIFACT_NAME }}
+          path: ${{ runner.temp }}/gym-tracker-phase6-n4-evidence
           if-no-files-found: error
           retention-days: 30

@@ -23,12 +23,20 @@ on:
         description: Successful run containing human-authored observations and attachments
         required: true
         type: string
-      observations_artifact_name:
-        description: Immutable supplied observation/evidence artifact name
-        required: true
-        type: string
       observations_sha256:
         description: Canonical observations.json SHA-256
+        required: true
+        type: string
+      phase6_evidence_run_id:
+        description: Successful protected upload run containing canonical Phase 6 N4 evidence
+        required: true
+        type: string
+      phase6_evidence_artifact_name:
+        description: Immutable Phase 6 N4 evidence artifact name
+        required: true
+        type: string
+      phase6_n4_record_sha256:
+        description: Canonical Phase 6 N4 attended-record.json SHA-256
         required: true
         type: string
       owner_token:
@@ -52,9 +60,11 @@ env:
   CANDIDATE_COMMIT: ${{ inputs.candidate_commit }}
   MANIFEST_SHA256: ${{ inputs.manifest_sha256 }}
   OBSERVATIONS_RUN_ID: ${{ inputs.observations_run_id }}
-  OBSERVATIONS_ARTIFACT_NAME: ${{ inputs.observations_artifact_name }}
+  OBSERVATIONS_ARTIFACT_NAME: human-release-observations-${{ inputs.candidate_id }}-${{ inputs.observations_run_id }}
   OBSERVATIONS_SHA256: ${{ inputs.observations_sha256 }}
-  OWNER_TOKEN: ${{ inputs.owner_token }}
+  PHASE6_EVIDENCE_RUN_ID: ${{ inputs.phase6_evidence_run_id }}
+  PHASE6_EVIDENCE_ARTIFACT_NAME: ${{ inputs.phase6_evidence_artifact_name }}
+  PHASE6_N4_RECORD_SHA256: ${{ inputs.phase6_n4_record_sha256 }}
   ATTENDED_ARTIFACT_NAME: attended-release-evidence-${{ inputs.candidate_id }}
 
 jobs:
@@ -71,17 +81,23 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
-          case "${CANDIDATE_RUN_ID}:${OBSERVATIONS_RUN_ID}" in *[!0-9:]*|:*|*:) exit 1 ;; esac
+          for run_id in "${CANDIDATE_RUN_ID}" "${OBSERVATIONS_RUN_ID}" "${PHASE6_EVIDENCE_RUN_ID}"
+          do
+            case "${run_id}" in ''|0|0*|*[!0-9]*) exit 1 ;; esac
+          done
           case "${CANDIDATE_ID}" in ''|*[!a-z0-9-]*|-*|*-) exit 1 ;; esac
           case "${OBSERVATIONS_ARTIFACT_NAME}" in ''|*[!A-Za-z0-9._-]*|.*|*.) exit 1 ;; esac
+          case "${PHASE6_EVIDENCE_ARTIFACT_NAME}" in ''|*[!A-Za-z0-9._-]*|.*|*.) exit 1 ;; esac
           test "${#CANDIDATE_ID}" -ge 3
           test "${#CANDIDATE_ID}" -le 80
           test "${#OBSERVATIONS_ARTIFACT_NAME}" -le 128
-          case "${CANDIDATE_COMMIT}:${MANIFEST_SHA256}:${OBSERVATIONS_SHA256}" in *[!a-f0-9:]*) exit 1 ;; esac
+          test "${#PHASE6_EVIDENCE_ARTIFACT_NAME}" -le 128
+          test "${PHASE6_EVIDENCE_ARTIFACT_NAME}" = "phase6-n4-evidence-${CANDIDATE_ID}-${PHASE6_EVIDENCE_RUN_ID}"
+          case "${CANDIDATE_COMMIT}:${MANIFEST_SHA256}:${OBSERVATIONS_SHA256}:${PHASE6_N4_RECORD_SHA256}" in *[!a-f0-9:]*) exit 1 ;; esac
           test "${#CANDIDATE_COMMIT}" -eq 40
           test "${#MANIFEST_SHA256}" -eq 64
           test "${#OBSERVATIONS_SHA256}" -eq 64
-          test "${OWNER_TOKEN}" = "approved"
+          test "${#PHASE6_N4_RECORD_SHA256}" -eq 64
           verify_deployment_provenance() {
             local run_id="$1"
             local run_attempt="$2"
@@ -173,8 +189,10 @@ jobs:
           }
           candidate_run=$(gh api "repos/${GITHUB_REPOSITORY}/actions/runs/${CANDIDATE_RUN_ID}")
           observations_run=$(gh api "repos/${GITHUB_REPOSITORY}/actions/runs/${OBSERVATIONS_RUN_ID}")
+          phase6_evidence_run=$(gh api "repos/${GITHUB_REPOSITORY}/actions/runs/${PHASE6_EVIDENCE_RUN_ID}")
           candidate_run_url="${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${CANDIDATE_RUN_ID}"
           observations_run_url="${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${OBSERVATIONS_RUN_ID}"
+          phase6_evidence_run_url="${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${PHASE6_EVIDENCE_RUN_ID}"
           jq -e --argjson run_id "${CANDIDATE_RUN_ID}" --arg run_url "${candidate_run_url}" \
             --arg commit "${CANDIDATE_COMMIT}" --arg repo "${GITHUB_REPOSITORY}" '
             .id == $run_id and .status == "completed" and .conclusion == "success"
@@ -191,16 +209,29 @@ jobs:
               and .path == ".github/workflows/release-human-evidence-upload.yml"
             ' \
             <<<"${observations_run}" >/dev/null
+          jq -e --argjson run_id "${PHASE6_EVIDENCE_RUN_ID}" --arg run_url "${phase6_evidence_run_url}" \
+            --arg commit "${CANDIDATE_COMMIT}" --arg repo "${GITHUB_REPOSITORY}" '
+            .id == $run_id and .status == "completed" and .conclusion == "success"
+              and .html_url == $run_url and .head_sha == $commit and .head_branch == "main"
+              and .repository.full_name == $repo and .event == "workflow_dispatch"
+              and .path == ".github/workflows/release-human-evidence-upload.yml"
+            ' \
+            <<<"${phase6_evidence_run}" >/dev/null
           candidate_run_attempt=$(jq -er '.run_attempt | select(type == "number" and . >= 1)' <<<"${candidate_run}")
           candidate_ref=$(jq -er '.head_branch | select(type == "string" and length > 0)' <<<"${candidate_run}")
           observations_run_attempt=$(jq -er '.run_attempt | select(type == "number" and . >= 1)' <<<"${observations_run}")
           observations_ref=$(jq -er '.head_branch | select(type == "string" and length > 0)' <<<"${observations_run}")
+          phase6_evidence_run_attempt=$(jq -er '.run_attempt | select(type == "number" and . >= 1)' <<<"${phase6_evidence_run}")
+          phase6_evidence_ref=$(jq -er '.head_branch | select(type == "string" and length > 0)' <<<"${phase6_evidence_run}")
           verify_deployment_provenance "${CANDIDATE_RUN_ID}" "${candidate_run_attempt}" "${CANDIDATE_COMMIT}" "${candidate_ref}" "private-release-candidate"
           verify_deployment_provenance "${OBSERVATIONS_RUN_ID}" "${observations_run_attempt}" "${CANDIDATE_COMMIT}" "${observations_ref}" "private-release-observation-upload"
+          verify_deployment_provenance "${PHASE6_EVIDENCE_RUN_ID}" "${phase6_evidence_run_attempt}" "${CANDIDATE_COMMIT}" "${phase6_evidence_ref}" "private-release-observation-upload"
           candidate_artifacts=$(gh api --method GET --paginate --slurp \
             "repos/${GITHUB_REPOSITORY}/actions/runs/${CANDIDATE_RUN_ID}/artifacts" -F per_page=100)
           observations_artifacts=$(gh api --method GET --paginate --slurp \
             "repos/${GITHUB_REPOSITORY}/actions/runs/${OBSERVATIONS_RUN_ID}/artifacts" -F per_page=100)
+          phase6_evidence_artifacts=$(gh api --method GET --paginate --slurp \
+            "repos/${GITHUB_REPOSITORY}/actions/runs/${PHASE6_EVIDENCE_RUN_ID}/artifacts" -F per_page=100)
           jq -e --argjson run_id "${CANDIDATE_RUN_ID}" --arg commit "${CANDIDATE_COMMIT}" \
             --arg name "private-release-candidate-${CANDIDATE_ID}" '
             if all(.[]; type == "object" and (.artifacts | type == "array")) then
@@ -215,6 +246,13 @@ jobs:
                 and .workflow_run.id == $run_id and .workflow_run.head_sha == $commit)] | length == 1
             else error("malformed artifact pages") end
             ' <<<"${observations_artifacts}" >/dev/null
+          jq -e --argjson run_id "${PHASE6_EVIDENCE_RUN_ID}" --arg commit "${CANDIDATE_COMMIT}" \
+            --arg name "${PHASE6_EVIDENCE_ARTIFACT_NAME}" '
+            if all(.[]; type == "object" and (.artifacts | type == "array")) then
+              [.[] | .artifacts[] | select(.name == $name and .expired == false
+                and .workflow_run.id == $run_id and .workflow_run.head_sha == $commit)] | length == 1
+            else error("malformed artifact pages") end
+            ' <<<"${phase6_evidence_artifacts}" >/dev/null
 
       - name: Check out exact candidate source
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -230,7 +268,7 @@ jobs:
       - name: Install verifier dependencies
         run: npm ci --ignore-scripts
 
-      - name: Download exact candidate and supplied observations
+      - name: Download exact candidate and supplied evidence
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
@@ -238,7 +276,27 @@ jobs:
             --name "private-release-candidate-${CANDIDATE_ID}" --dir retained-candidate
           gh run download "${OBSERVATIONS_RUN_ID}" --repo "${GITHUB_REPOSITORY}" \
             --name "${OBSERVATIONS_ARTIFACT_NAME}" --dir supplied-evidence
+          gh run download "${PHASE6_EVIDENCE_RUN_ID}" --repo "${GITHUB_REPOSITORY}" \
+            --name "${PHASE6_EVIDENCE_ARTIFACT_NAME}" --dir retained-candidate/evidence/phase6-n4-upload
           printf '%s  %s\n' "${OBSERVATIONS_SHA256}" supplied-evidence/observations.json | sha256sum --check
+
+      - name: Verify exact Phase 6 N4 observation-only evidence
+        run: |
+          test "$(find retained-candidate/evidence/phase6-n4-upload/phase6 -mindepth 1 -maxdepth 1 -type f | wc -l | tr -d '[:space:]')" = "7"
+          test "$(find retained-candidate/evidence/phase6-n4-upload/phase6 -mindepth 1 -maxdepth 1 ! -type f | wc -l | tr -d '[:space:]')" = "0"
+          for evidence_file in checklist.json observations.json N4-01.png N4-02.png N4-03.png N4-04.png attended-record.json
+          do
+            test -f "retained-candidate/evidence/phase6-n4-upload/phase6/${evidence_file}"
+            test ! -L "retained-candidate/evidence/phase6-n4-upload/phase6/${evidence_file}"
+          done
+          printf '%s  %s\n' "${PHASE6_N4_RECORD_SHA256}" retained-candidate/evidence/phase6-n4-upload/phase6/attended-record.json | sha256sum --check
+          npm run verify:attended:phase6 -- \
+            --bundle-dir retained-candidate \
+            --manifest-sha256 "${MANIFEST_SHA256}" \
+            --checklist retained-candidate/evidence/phase6-n4-upload/phase6/checklist.json \
+            --observations retained-candidate/evidence/phase6-n4-upload/phase6/observations.json \
+            --evidence-dir retained-candidate/evidence/phase6-n4-upload/phase6 \
+            --record retained-candidate/evidence/phase6-n4-upload/phase6/attended-record.json
 
       - name: Generate only the canonical pending checklist
         run: |
@@ -247,10 +305,19 @@ jobs:
             --bundle-dir retained-candidate \
             --manifest-sha256 "${MANIFEST_SHA256}" \
             --automated-evidence retained-candidate/evidence/automated.json \
+            --phase6-n4-record retained-candidate/evidence/phase6-n4-upload/phase6/attended-record.json \
+            --phase6-n4-checklist retained-candidate/evidence/phase6-n4-upload/phase6/checklist.json \
+            --phase6-n4-observations retained-candidate/evidence/phase6-n4-upload/phase6/observations.json \
+            --phase6-n4-evidence-dir retained-candidate/evidence/phase6-n4-upload/phase6 \
+            --phase6-n4-run-id "${PHASE6_EVIDENCE_RUN_ID}" \
+            --phase6-n4-artifact-name "${PHASE6_EVIDENCE_ARTIFACT_NAME}" \
             --output attended-evidence/checklist.pending.json
 
       - name: Record supplied observations under protected approval
+        env:
+          OWNER_TOKEN: ${{ inputs.owner_token }}
         run: |
+          test "${OWNER_TOKEN}" = "approved"
           cp supplied-evidence/observations.json attended-evidence/observations.json
           cp -R supplied-evidence/attachments attended-evidence/attachments
           npm run record:attended:phase5 -- \
@@ -260,6 +327,12 @@ jobs:
             --checklist attended-evidence/checklist.pending.json \
             --observations attended-evidence/observations.json \
             --evidence-dir attended-evidence \
+            --phase6-n4-record retained-candidate/evidence/phase6-n4-upload/phase6/attended-record.json \
+            --phase6-n4-checklist retained-candidate/evidence/phase6-n4-upload/phase6/checklist.json \
+            --phase6-n4-observations retained-candidate/evidence/phase6-n4-upload/phase6/observations.json \
+            --phase6-n4-evidence-dir retained-candidate/evidence/phase6-n4-upload/phase6 \
+            --phase6-n4-run-id "${PHASE6_EVIDENCE_RUN_ID}" \
+            --phase6-n4-artifact-name "${PHASE6_EVIDENCE_ARTIFACT_NAME}" \
             --owner-token "${OWNER_TOKEN}" \
             --output attended-evidence/attended-record.json
           npm run verify:attended:phase5 -- \
@@ -269,6 +342,12 @@ jobs:
             --checklist attended-evidence/checklist.pending.json \
             --observations attended-evidence/observations.json \
             --evidence-dir attended-evidence \
+            --phase6-n4-record retained-candidate/evidence/phase6-n4-upload/phase6/attended-record.json \
+            --phase6-n4-checklist retained-candidate/evidence/phase6-n4-upload/phase6/checklist.json \
+            --phase6-n4-observations retained-candidate/evidence/phase6-n4-upload/phase6/observations.json \
+            --phase6-n4-evidence-dir retained-candidate/evidence/phase6-n4-upload/phase6 \
+            --phase6-n4-run-id "${PHASE6_EVIDENCE_RUN_ID}" \
+            --phase6-n4-artifact-name "${PHASE6_EVIDENCE_ARTIFACT_NAME}" \
             --record attended-evidence/attended-record.json
 
       - name: Upload immutable attended evidence bundle

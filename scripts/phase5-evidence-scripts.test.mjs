@@ -1746,3 +1746,141 @@ test("promotion and terminal contracts require selected successful cross-run inp
   assert.throws(() => validateTerminalSealDocument(`${terminal}\n\`\`\`bash\nnpm run build\n\`\`\`\n`),
     /exactly one|executable|build/iu);
 });
+
+test("Phase 6 N4 evidence crosses the protected release gate as one exact observation-only artifact", () => {
+  const upload = readFileSync(
+    path.join(projectRoot, ".github/workflows/release-human-evidence-upload.yml"),
+    "utf8",
+  );
+  for (const pattern of [
+    /^\s*phase6_n4_evidence_path:\s*$/mu,
+    /^\s*PHASE6_N4_EVIDENCE_PATH:\s*\$\{\{ inputs\.phase6_n4_evidence_path \}\}\s*$/mu,
+    /^\s*PHASE6_N4_ARTIFACT_NAME:\s*phase6-n4-evidence-\$\{\{ inputs\.candidate_id \}\}-\$\{\{ github\.run_id \}\}\s*$/mu,
+    /gym-tracker-phase6-n4-evidence[\s\S]*mkdir -p "\$\{phase6_staging_root\}\/phase6"/u,
+    /name:\s*\$\{\{ env\.PHASE6_N4_ARTIFACT_NAME \}\}/u,
+  ]) {
+    assert.match(upload, pattern);
+  }
+  for (const file of [
+    "checklist.json",
+    "observations.json",
+    "N4-01.png",
+    "N4-02.png",
+    "N4-03.png",
+    "N4-04.png",
+    "attended-record.json",
+  ]) {
+    assert.match(upload, new RegExp(file.replace(".", "\\."), "u"));
+  }
+  assert.match(upload, /for phase6_entry in[\s\S]*test -f "\$\{phase6_entry\}"[\s\S]*test ! -L "\$\{phase6_entry\}"[\s\S]*phase6_entry_count=\$\(\(phase6_entry_count \+ 1\)\)[\s\S]*test "\$\{phase6_entry_count\}" -eq 7/u);
+  assert.match(upload, /source_file="\$\{phase6_source\}\/\$\{evidence_file\}"[\s\S]*test -f "\$\{source_file\}"[\s\S]*test ! -L "\$\{source_file\}"/u);
+  assert.doesNotMatch(upload, /phase6[^\n]*owner[_-]token|owner[_-]token[^\n]*phase6/iu);
+
+  const attended = readFileSync(
+    path.join(projectRoot, ".github/workflows/release-attended-evidence.yml"),
+    "utf8",
+  );
+  for (const pattern of [
+    /^\s*phase6_evidence_run_id:\s*$/mu,
+    /^\s*phase6_evidence_artifact_name:\s*$/mu,
+    /^\s*phase6_n4_record_sha256:\s*$/mu,
+    /^\s*PHASE6_EVIDENCE_RUN_ID:\s*\$\{\{ inputs\.phase6_evidence_run_id \}\}\s*$/mu,
+    /^\s*PHASE6_EVIDENCE_ARTIFACT_NAME:\s*\$\{\{ inputs\.phase6_evidence_artifact_name \}\}\s*$/mu,
+    /^\s*PHASE6_N4_RECORD_SHA256:\s*\$\{\{ inputs\.phase6_n4_record_sha256 \}\}\s*$/mu,
+  ]) {
+    assert.match(attended, pattern);
+  }
+  assert.equal((attended.match(/^      [a-z0-9_]+:\s*$/gmu) ?? []).length, 10);
+  assert.match(
+    attended,
+    /^  OBSERVATIONS_ARTIFACT_NAME: human-release-observations-\$\{\{ inputs\.candidate_id \}\}-\$\{\{ inputs\.observations_run_id \}\}$/mu,
+  );
+  assert.match(
+    attended,
+    /test "\$\{PHASE6_EVIDENCE_ARTIFACT_NAME\}" = "phase6-n4-evidence-\$\{CANDIDATE_ID\}-\$\{PHASE6_EVIDENCE_RUN_ID\}"/u,
+  );
+  assertDeploymentStatusProvenance(attended, [
+    ["CANDIDATE_RUN_ID", "private-release-candidate"],
+    ["OBSERVATIONS_RUN_ID", "private-release-observation-upload"],
+  ]);
+  assert.match(
+    attended,
+    /verify_deployment_provenance "\$\{PHASE6_EVIDENCE_RUN_ID\}" "\$\{phase6_evidence_run_attempt\}" "\$\{CANDIDATE_COMMIT\}" "\$\{phase6_evidence_ref\}" "private-release-observation-upload"/u,
+  );
+
+  const phase6RunValidation = attended.slice(
+    attended.indexOf('jq -e --argjson run_id "${PHASE6_EVIDENCE_RUN_ID}"'),
+    attended.indexOf('<<<"${phase6_evidence_run}" >/dev/null')
+      + '<<<"${phase6_evidence_run}" >/dev/null'.length,
+  );
+  assert.notEqual(phase6RunValidation.length, 0);
+  for (const predicate of [
+    '.id == $run_id',
+    '.status == "completed"',
+    '.conclusion == "success"',
+    '.html_url == $run_url',
+    '.head_sha == $commit',
+    '.head_branch == "main"',
+    '.repository.full_name == $repo',
+    '.event == "workflow_dispatch"',
+    '.path == ".github/workflows/release-human-evidence-upload.yml"',
+  ]) {
+    assert.match(phase6RunValidation, new RegExp(predicate.replace(/[.*+?^${}()|[\]\\]/gu, "\\$&"), "u"));
+  }
+
+  const phase6ArtifactValidation = attended.slice(
+    attended.indexOf('repos/${GITHUB_REPOSITORY}/actions/runs/${PHASE6_EVIDENCE_RUN_ID}/artifacts'),
+    attended.indexOf('<<<"${phase6_evidence_artifacts}" >/dev/null')
+      + '<<<"${phase6_evidence_artifacts}" >/dev/null'.length,
+  );
+  assert.notEqual(phase6ArtifactValidation.length, 0);
+  for (const predicate of [
+    '.name == $name',
+    '.expired == false',
+    '.workflow_run.id == $run_id',
+    '.workflow_run.head_sha == $commit',
+    '| length == 1',
+  ]) {
+    assert.ok(phase6ArtifactValidation.includes(predicate), `missing Phase 6 artifact predicate: ${predicate}`);
+  }
+
+  assert.equal(
+    (attended.match(/gh run download "\$\{PHASE6_EVIDENCE_RUN_ID\}"/gu) ?? []).length,
+    1,
+  );
+  assert.match(
+    attended,
+    /printf '%s  %s\\n' "\$\{PHASE6_N4_RECORD_SHA256\}" [^\n]*phase6\/attended-record\.json \| sha256sum --check/u,
+  );
+  assert.match(attended, /for evidence_file in checklist\.json observations\.json N4-01\.png N4-02\.png N4-03\.png N4-04\.png attended-record\.json/u);
+  for (const file of ["checklist.json", "observations.json", "attended-record.json"]) {
+    assert.match(attended, new RegExp(`phase6/${file.replace(".", "\\.")}`, "u"));
+  }
+  assert.doesNotMatch(attended, /(?:prepare|record):attended:phase6/iu);
+  const phase6Verifier = attended.indexOf("npm run verify:attended:phase6");
+  const ownerApproval = attended.indexOf('test "${OWNER_TOKEN}" = "approved"');
+  const phase5Recorder = attended.indexOf("npm run record:attended:phase5");
+  assert.equal(
+    phase6Verifier >= 0 && phase6Verifier < ownerApproval && ownerApproval < phase5Recorder,
+    true,
+  );
+  for (const command of [
+    "npm run prepare:attended:phase5",
+    "npm run record:attended:phase5",
+    "npm run verify:attended:phase5",
+  ]) {
+    const start = attended.indexOf(command);
+    const end = attended.indexOf("\n\n", start);
+    const block = attended.slice(start, end < 0 ? undefined : end);
+    for (const argument of [
+      '--phase6-n4-record retained-candidate/evidence/phase6-n4-upload/phase6/attended-record.json',
+      '--phase6-n4-checklist retained-candidate/evidence/phase6-n4-upload/phase6/checklist.json',
+      '--phase6-n4-observations retained-candidate/evidence/phase6-n4-upload/phase6/observations.json',
+      '--phase6-n4-evidence-dir retained-candidate/evidence/phase6-n4-upload/phase6',
+      '--phase6-n4-run-id "${PHASE6_EVIDENCE_RUN_ID}"',
+      '--phase6-n4-artifact-name "${PHASE6_EVIDENCE_ARTIFACT_NAME}"',
+    ]) {
+      assert.ok(block.includes(argument), `${command} is missing ${argument}`);
+    }
+  }
+});
