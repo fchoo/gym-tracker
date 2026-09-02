@@ -881,13 +881,12 @@ test("Phase 2 remediation flows use public labels and deterministic seams", asyn
     "          start: 95%, 75%",
     "          end: 95%, 25%",
     "          duration: 300",
-    safeActionNudge,
     '- assertVisible: "Edit completed set 1"',
   ].join("\n");
   assert.equal(
     workout.split(anchoredCompletedSetEditTraversal).length - 1,
-    2,
-    "both pre-correction edit paths must reset to a stable top anchor before finding and safely positioning the completed-set action",
+    1,
+    "the pre-control edit proof must stop moving once the completed-set action is visible",
   );
   assert.ok(
     workout.includes([
@@ -902,7 +901,10 @@ test("Phase 2 remediation flows use public labels and deterministic seams", asyn
     '- assertVisible: "Completed set correction failure armed"',
     safeReturnToTodayTraversal,
     '- tapOn: "Resume workout"',
-    anchoredCompletedSetEditTraversal,
+    anchoredCompletedSetEditTraversal.replace(
+      '- assertVisible: "Edit completed set 1"',
+      `${safeActionNudge}\n- assertVisible: "Edit completed set 1"`,
+    ),
     '- tapOn: "Edit completed set 1"',
     '- assertVisible: "Working set 1 load in kilograms"',
     '- longPressOn: "Working set 1 load in kilograms"',
@@ -910,7 +912,7 @@ test("Phase 2 remediation flows use public labels and deterministic seams", asyn
   assert.equal(
     workout.split(deterministicPostControlEditTraversal).length - 1,
     1,
-    "the post-control correction path must reset to a stable top anchor before finding and safely positioning the completed-set edit action",
+    "the post-control correction path must safely position the completed-set action before tapping it",
   );
   const correctedWorkingSetVerification = [
     "- repeat:",

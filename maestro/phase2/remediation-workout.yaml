@@ -259,10 +259,6 @@ tags:
           start: 95%, 75%
           end: 95%, 25%
           duration: 300
-- swipe:
-    start: 95%, 75%
-    end: 95%, 45%
-    duration: 300
 - assertVisible: "Edit completed set 1"
 - openLink: "gymtracker-devtest://__notification-test-controls?action=arm_completed_set_correction_failure"
 - assertVisible: "Completed set correction failure armed"
