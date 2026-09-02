@@ -527,6 +527,18 @@ describe("Plan 01-10 explicit workout outcomes", () => {
         endedAtMs: 1_786_853_700_000,
       },
     });
+    await expect(createPlansWorkoutRepository(kernel).getTodayView({
+      localDate: "2026-08-17",
+      weekday: 1,
+    })).resolves.toMatchObject({
+      state: "saved_partial",
+      sessionId: session.id,
+      revision: partial.detail.revision,
+      exerciseName: "Bench Press",
+      setLabel: "Working set 1",
+      completedWorkingSets: 3,
+      totalWorkingSets: 15,
+    });
     const projection = createHistoryProjectionRepository(kernel);
     const runner = createHistoryProjectionEffectRunner({
       repository: projection,
