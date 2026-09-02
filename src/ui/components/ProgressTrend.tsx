@@ -24,6 +24,10 @@ import {
 type ProgressTrendProps = Readonly<{
   rows: readonly ProgressTrendRow[];
   onOpenExercise(exerciseId: string, exerciseName: string): void;
+  exerciseDisplayLabel(exercise: Readonly<{
+    exerciseId: string;
+    exerciseName: string;
+  }>): string;
   onOpenSession(sessionId: string): void;
 }>;
 
@@ -58,10 +62,12 @@ function completionWidth(row: ProgressTrendRow): `${number}%` {
 
 function SourceLinks({
   row,
+  exerciseDisplayLabel,
   onOpenExercise,
   onOpenSession,
 }: Readonly<{
   row: ProgressTrendRow;
+  exerciseDisplayLabel: ProgressTrendProps["exerciseDisplayLabel"];
   onOpenExercise(exerciseId: string, exerciseName: string): void;
   onOpenSession(sessionId: string): void;
 }>) {
@@ -85,7 +91,10 @@ function SourceLinks({
       ))}
       {row.exercises.map(({ exerciseId, exerciseName }) => (
         <FocusablePressable
-          accessibilityLabel={"Open exercise history for " + exerciseName}
+          accessibilityLabel={"Open exercise history for " + exerciseDisplayLabel({
+            exerciseId,
+            exerciseName,
+          })}
           accessibilityRole="button"
           focusable
           key={exerciseId}
@@ -104,6 +113,7 @@ function SourceLinks({
 
 export function ProgressTrend({
   rows,
+  exerciseDisplayLabel,
   onOpenExercise,
   onOpenSession,
 }: ProgressTrendProps) {
@@ -133,7 +143,7 @@ export function ProgressTrend({
                 >
                   <View style={[styles.fill, { backgroundColor: colors.action, width: completionWidth(row) }]} />
                 </View>
-                <SourceLinks onOpenExercise={onOpenExercise} onOpenSession={onOpenSession} row={row} />
+                <SourceLinks exerciseDisplayLabel={exerciseDisplayLabel} onOpenExercise={onOpenExercise} onOpenSession={onOpenSession} row={row} />
               </View>
             );
           })}
@@ -146,7 +156,7 @@ export function ProgressTrend({
         ) : rows.map((row) => (
           <View key={row.localDate} style={styles.tableRow}>
             <Text style={[typeScale.secondary as TextStyle, { color: colors.contentCardTextSecondary }]}>{rowText(row)}</Text>
-            <SourceLinks onOpenExercise={onOpenExercise} onOpenSession={onOpenSession} row={row} />
+            <SourceLinks exerciseDisplayLabel={exerciseDisplayLabel} onOpenExercise={onOpenExercise} onOpenSession={onOpenSession} row={row} />
           </View>
         ))}
       </View>
