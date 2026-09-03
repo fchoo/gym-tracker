@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import {
   execFileSync,
 } from "node:child_process";
+import { createHash } from "node:crypto";
 import {
   existsSync,
   writeFileSync,
@@ -2194,6 +2195,110 @@ test("build-device verification pulls the installed APK before hashing it", asyn
     identity.sha256,
     "3934be6f0ca5c6c3efc3576bb846f79a8512db715c6a8103b034cb29e676fd8e",
   );
+});
+
+test("build-device verification retries only interrupted ADB pulls", async () => {
+  const {
+    liveInstalledIdentity,
+    PHASE2_ADB_COMMAND_TIMEOUT_MS,
+  } = await load("scripts/verify-phase2-native-evidence.mjs");
+  const manifest = identityFixture();
+  const completeBytes = Buffer.from("complete-apk-fixture");
+
+  for (const interrupted of [
+    Object.assign(new Error(
+      "Command failed: adb pull\n[  0%] /data/app/base.apk\n",
+    ), { stderr: "" }),
+    Object.assign(new Error("Command failed: adb pull"), {
+      stderr: "[ 64%] /data/app/base.apk\n",
+    }),
+  ]) {
+    const calls = [];
+    let pullAttempts = 0;
+    let pulledPath;
+    const identity = liveInstalledIdentity(manifest, {
+      executable: "adb-fixture",
+      execFile: (_file, args, options) => {
+        calls.push({ args, options });
+        if (args.includes("path")) return "package:/data/app/base.apk\n";
+        if (args.includes("wait-for-device")) return "";
+        pulledPath = args[4];
+        if (pullAttempts++ === 0) {
+          writeFileSync(pulledPath, "partial");
+          throw interrupted;
+        }
+        assert.equal(existsSync(pulledPath), false);
+        writeFileSync(pulledPath, completeBytes);
+        return "1 file pulled\n";
+      },
+      root: projectRoot,
+    });
+
+    assert.equal(calls.filter(({ args }) => args.includes("pull")).length, 2);
+    assert.equal(
+      calls.filter(({ args }) => args.includes("wait-for-device")).length,
+      1,
+    );
+    assert.ok(calls.every(({ options }) =>
+      options.timeout === PHASE2_ADB_COMMAND_TIMEOUT_MS
+    ));
+    assert.equal(identity.sha256, createHash("sha256")
+      .update(completeBytes).digest("hex"));
+    assert.equal(existsSync(path.dirname(pulledPath)), false);
+  }
+});
+
+test("build-device verification fails closed on diagnosed and exhausted pulls", async () => {
+  const { liveInstalledIdentity } = await load(
+    "scripts/verify-phase2-native-evidence.mjs",
+  );
+  const manifest = identityFixture();
+
+  for (const failure of [
+    "adb: error: failed to copy: Permission denied",
+    "adb: error: cannot write: I/O error",
+  ]) {
+    const calls = [];
+    let pulledPath;
+    assert.throws(() => liveInstalledIdentity(manifest, {
+      executable: "adb-fixture",
+      execFile: (_file, args, options) => {
+        calls.push({ args, options });
+        if (args.includes("path")) return "package:/data/app/base.apk\n";
+        pulledPath = args[4];
+        writeFileSync(pulledPath, "partial");
+        const error = new Error("Command failed: adb pull");
+        error.stderr = `[ 64%] /data/app/base.apk\n${failure}\n`;
+        throw error;
+      },
+      root: projectRoot,
+    }), /Command failed: adb pull/u);
+    assert.equal(calls.filter(({ args }) => args.includes("pull")).length, 1);
+    assert.equal(existsSync(path.dirname(pulledPath)), false);
+  }
+
+  const calls = [];
+  let pulledPath;
+  assert.throws(() => liveInstalledIdentity(manifest, {
+    executable: "adb-fixture",
+    execFile: (_file, args, options) => {
+      calls.push({ args, options });
+      if (args.includes("path")) return "package:/data/app/base.apk\n";
+      if (args.includes("wait-for-device")) return "";
+      pulledPath = args[4];
+      writeFileSync(pulledPath, "partial");
+      const error = new Error("Command failed: adb pull");
+      error.stderr = "[ 64%] /data/app/base.apk\n";
+      throw error;
+    },
+    root: projectRoot,
+  }), /Command failed: adb pull/u);
+  assert.equal(calls.filter(({ args }) => args.includes("pull")).length, 3);
+  assert.equal(
+    calls.filter(({ args }) => args.includes("wait-for-device")).length,
+    2,
+  );
+  assert.equal(existsSync(path.dirname(pulledPath)), false);
 });
 
 test("build-device verification removes its pulled APK after a pull failure", async () => {
