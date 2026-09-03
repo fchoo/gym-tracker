@@ -35,6 +35,7 @@ import {
   collectPhase2SourceLedger,
   validateUiSurfaceRemediationCases,
 } from "./phase2-source-ledger.mjs";
+import { pullAdbFileWithRetry } from "./adb-pull-retry.mjs";
 import {
   resolvePhase2AttendedPaths,
   resolvePhase2ManifestPath,
@@ -483,15 +484,16 @@ export function liveInstalledIdentity(manifest, {
   ));
   const installedApkPath = path.join(temporaryDirectory, "installed.apk");
   try {
-    execFile(
+    pullAdbFileWithRetry({
+      cwd: root,
       executable,
-      ["-s", manifest.device.serial, "pull", packagePath, installedApkPath],
-      {
-        cwd: root,
-        encoding: "utf8",
-        timeout: PHASE2_ADB_COMMAND_TIMEOUT_MS,
-      },
-    );
+      execute: execFile,
+      localPath: installedApkPath,
+      remotePath: packagePath,
+      serial: manifest.device.serial,
+      stdio: undefined,
+      timeout: PHASE2_ADB_COMMAND_TIMEOUT_MS,
+    });
     return {
       path: packagePath,
       sha256: sha256(installedApkPath),

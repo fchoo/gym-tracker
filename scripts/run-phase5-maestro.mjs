@@ -16,6 +16,7 @@ import {
   validatePhase5DeviceIdentity,
   validatePhase5EvidenceIdentity,
 } from "./phase5-candidate-evidence.mjs";
+import { pullAdbFileWithRetry } from "./adb-pull-retry.mjs";
 
 export const PHASE5_MAESTRO_FLOW_CONTRACTS = Object.freeze([
   Object.freeze({
@@ -113,26 +114,6 @@ function adbWith(execute, serial, ...args) {
 
 const ADB_PULL_ATTEMPTS = 3;
 const ADB_PULL_TIMEOUT_MS = 60_000;
-const TRANSIENT_ADB_TRANSPORT = /(?:device (?:'[^'\r\n]+' )?(?:offline|not found)|no devices\/emulators found|cannot connect|connection (?:closed|reset)|protocol fault)/iu;
-
-function errorOutput(error) {
-  const stderr = error !== null
-      && typeof error === "object"
-      && "stderr" in error
-    ? error.stderr
-    : "";
-  return `${error instanceof Error ? error.message : String(error)}\n${
-    Buffer.isBuffer(stderr) ? stderr.toString("utf8") : String(stderr ?? "")
-  }`;
-}
-
-function isTransientAdbTransport(error) {
-  const timedOut = error !== null
-      && typeof error === "object"
-      && "code" in error
-      && error.code === "ETIMEDOUT";
-  return timedOut || TRANSIENT_ADB_TRANSPORT.test(errorOutput(error));
-}
 
 export function pullInstalledApkWithRetry({
   execute = execFileSync,
@@ -140,30 +121,14 @@ export function pullInstalledApkWithRetry({
   remotePath,
   serial,
 }) {
-  for (let attempt = 1; attempt <= ADB_PULL_ATTEMPTS; attempt += 1) {
-    rmSync(localPath, { force: true });
-    try {
-      execute("adb", ["-s", serial, "pull", remotePath, localPath], {
-        encoding: "utf8",
-        stdio: ["ignore", "ignore", "pipe"],
-        timeout: ADB_PULL_TIMEOUT_MS,
-      });
-      return;
-    } catch (error) {
-      rmSync(localPath, { force: true });
-      if (
-        attempt === ADB_PULL_ATTEMPTS
-        || !isTransientAdbTransport(error)
-      ) {
-        throw error;
-      }
-      execute("adb", ["-s", serial, "wait-for-device"], {
-        encoding: "utf8",
-        stdio: ["ignore", "ignore", "pipe"],
-        timeout: ADB_PULL_TIMEOUT_MS,
-      });
-    }
-  }
+  return pullAdbFileWithRetry({
+    attempts: ADB_PULL_ATTEMPTS,
+    execute,
+    localPath,
+    remotePath,
+    serial,
+    timeout: ADB_PULL_TIMEOUT_MS,
+  });
 }
 
 function installedDevice(serial, manifest) {
