@@ -615,6 +615,12 @@ function ExerciseProgress({
                   opacity: pressed ? 0.76 : 1,
                 },
               ]}
+              testID={[
+                "progress-exercise-row",
+                exercise.exerciseId,
+                exercise.identityKey,
+                exercise.comparatorKey,
+              ].join("-")}
             >
               <Text style={[typeScale.bodyStrong as TextStyle, { color: colors.contentCardText }]}>{exerciseDisplayLabel(exercise)}</Text>
               <Text style={[typeScale.secondary as TextStyle, { color: colors.contentCardTextSecondary }]}>
