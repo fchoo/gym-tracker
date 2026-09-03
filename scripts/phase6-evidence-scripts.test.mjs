@@ -355,6 +355,58 @@ test("Phase 6 evidence outputs reject stale reports before execution", async () 
   );
 });
 
+test("Phase 6 screenshot evidence accepts Maestro nested output without weakening exact names", async () => {
+  const { exactScreenshotEvidence } = await load(
+    "scripts/run-phase6-maestro.mjs",
+  );
+  const root = realpathSync(mkdtempSync(path.join(os.tmpdir(), "phase6-screenshot-test-")));
+  test.after(() => rmSync(root, { force: true, recursive: true }));
+  const screenshotDirectory = path.join(
+    root,
+    "2026-09-03_160814",
+    "Phase 6 production Progress and Library Search_filter evidence",
+    "takeScreenshot",
+  );
+  mkdirSync(screenshotDirectory, { recursive: true });
+  const expected = [
+    "phase6-progress-search.png",
+    "phase6-progress-summary.png",
+  ];
+  for (const [index, file] of expected.entries()) {
+    writeFileSync(
+      path.join(screenshotDirectory, file),
+      Buffer.concat([Buffer.from("89504e470d0a1a0a", "hex"), Buffer.from([index])]),
+    );
+  }
+
+  assert.deepEqual(
+    exactScreenshotEvidence(root, expected, "phase6-progress-library")
+      .map(({ file }) => file),
+    expected,
+  );
+
+  writeFileSync(
+    path.join(screenshotDirectory, "unexpected-extra.png"),
+    Buffer.from("89504e470d0a1a0a01", "hex"),
+  );
+  assert.throws(
+    () => exactScreenshotEvidence(root, expected, "phase6-progress-library"),
+    /required screenshots are missing or renamed/u,
+  );
+  rmSync(path.join(screenshotDirectory, "unexpected-extra.png"));
+
+  const duplicateDirectory = path.join(root, "duplicate", "takeScreenshot");
+  mkdirSync(duplicateDirectory, { recursive: true });
+  writeFileSync(
+    path.join(duplicateDirectory, expected[0]),
+    Buffer.from("89504e470d0a1a0a02", "hex"),
+  );
+  assert.throws(
+    () => exactScreenshotEvidence(root, expected, "phase6-progress-library"),
+    /required screenshots are missing or renamed/u,
+  );
+});
+
 test("Phase 6 evidence outputs reject symlink escape through output or report descendants", async () => {
   const { preparePhase6EvidenceOutputs } = await load(
     "scripts/run-phase6-maestro.mjs",

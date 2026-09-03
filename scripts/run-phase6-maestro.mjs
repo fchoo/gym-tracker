@@ -481,10 +481,10 @@ function safeRelativeFile(value, label) {
   return value;
 }
 
-function exactScreenshotEvidence(reportRoot, expectedFiles, flowId) {
+export function exactScreenshotEvidence(reportRoot, expectedFiles, flowId) {
   const screenshots = screenshotFiles(reportRoot)
     .map((file) => ({
-      file: safeRelativeFile(path.relative(reportRoot, file), "screenshot file"),
+      file: safeRelativeFile(path.basename(file), "screenshot file"),
       sha256: sha256File(file),
     }))
     .sort((left, right) => left.file.localeCompare(right.file));
