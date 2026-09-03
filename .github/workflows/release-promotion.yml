@@ -27,16 +27,24 @@ on:
         description: SHA-256 of canonical attended-record.json
         required: true
         type: string
+      phase6_evidence_run_id:
+        description: Successful immutable Phase 6 N4 upload workflow run ID
+        required: true
+        type: string
+      phase6_evidence_artifact_name:
+        description: Immutable Phase 6 N4 evidence artifact name
+        required: true
+        type: string
+      phase6_n4_record_sha256:
+        description: SHA-256 of canonical Phase 6 N4 attended-record.json
+        required: true
+        type: string
       release_tag:
         description: New immutable release tag, for example v1.0.0
         required: true
         type: string
 
-permissions:
-  actions: read
-  contents: write
-  deployments: read
-  id-token: none
+permissions: {}
 
 concurrency:
   group: release-promotion
@@ -49,36 +57,54 @@ env:
   ATTENDED_RUN_ID: ${{ inputs.attended_run_id }}
   ATTENDED_ARTIFACT_NAME: ${{ inputs.attended_artifact_name }}
   ATTENDED_RECORD_SHA256: ${{ inputs.attended_record_sha256 }}
+  PHASE6_N4_RUN_ID: ${{ inputs.phase6_evidence_run_id }}
+  PHASE6_N4_ARTIFACT_NAME: ${{ inputs.phase6_evidence_artifact_name }}
+  PHASE6_N4_RECORD_SHA256: ${{ inputs.phase6_n4_record_sha256 }}
   RELEASE_TAG: ${{ inputs.release_tag }}
 
 jobs:
-  promote:
-    name: Verify selected successful runs and publish unchanged bytes
+  validate:
+    name: Validate selected evidence and seal unchanged bytes
     runs-on: ubuntu-24.04
     timeout-minutes: 20
-    environment:
-      name: public-release-promotion
-      url: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+    permissions:
+      actions: read
+      contents: read
+      deployments: read
+      id-token: none
+    outputs:
+      validation_artifact_id: ${{ steps.validation_artifact.outputs.artifact-id }}
+      validation_artifact_digest: ${{ steps.validation_artifact.outputs.artifact-digest }}
     steps:
-      - name: Check out workflow source for input validation
+      - name: Check out exact trusted workflow source
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           path: workflow-source
+          persist-credentials: false
 
       - name: Validate selected immutable workflow runs
+        id: selected
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
-          case "${CANDIDATE_RUN_ID}:${ATTENDED_RUN_ID}" in *[!0-9:]*|:*|*:) exit 1 ;; esac
+          case "${CANDIDATE_RUN_ID}:${ATTENDED_RUN_ID}:${PHASE6_N4_RUN_ID}" in *[!0-9:]*|:*|*:) exit 1 ;; esac
           case "${CANDIDATE_ID}" in ''|*[!a-z0-9-]*|-*|*-) exit 1 ;; esac
           case "${ATTENDED_ARTIFACT_NAME}" in ''|*[!A-Za-z0-9._-]*|.*|*.) exit 1 ;; esac
+          case "${PHASE6_N4_ARTIFACT_NAME}" in ''|*[!A-Za-z0-9._-]*|.*|*.) exit 1 ;; esac
           test "${CANDIDATE_RUN_ID}" != "${ATTENDED_RUN_ID}"
+          test "${CANDIDATE_RUN_ID}" != "${PHASE6_N4_RUN_ID}"
+          test "${ATTENDED_RUN_ID}" != "${PHASE6_N4_RUN_ID}"
+          test "${GITHUB_SHA}" = "${CANDIDATE_COMMIT}"
+          test "${GITHUB_REF_NAME}" = "main"
           test "${#CANDIDATE_COMMIT}" -eq 40
           test "${#CANDIDATE_ID}" -ge 3
           test "${#CANDIDATE_ID}" -le 80
           test "${#ATTENDED_ARTIFACT_NAME}" -le 128
           test "${#ATTENDED_RECORD_SHA256}" -eq 64
+          test "${#PHASE6_N4_ARTIFACT_NAME}" -le 128
+          test "${#PHASE6_N4_RECORD_SHA256}" -eq 64
+          case "${CANDIDATE_COMMIT}:${ATTENDED_RECORD_SHA256}:${PHASE6_N4_RECORD_SHA256}" in *[!a-f0-9:]*) exit 1 ;; esac
           node workflow-source/scripts/validate-phase5-promotion-inputs.mjs \
             --candidate-run-id "${CANDIDATE_RUN_ID}" \
             --attended-run-id "${ATTENDED_RUN_ID}" \
@@ -87,6 +113,15 @@ jobs:
             --attended-artifact-name "${ATTENDED_ARTIFACT_NAME}" \
             --attended-record-sha256 "${ATTENDED_RECORD_SHA256}" \
             --release-tag "${RELEASE_TAG}"
+          node --input-type=module <<'NODE'
+          import { validatePhase6N4PromotionInputValues } from "./workflow-source/scripts/phase5-promotion-contract.mjs";
+          validatePhase6N4PromotionInputValues({
+            phase6N4RunId: process.env.PHASE6_N4_RUN_ID,
+            phase6N4ArtifactName: process.env.PHASE6_N4_ARTIFACT_NAME,
+            phase6N4RecordSha256: process.env.PHASE6_N4_RECORD_SHA256,
+            distinctRunIds: [process.env.CANDIDATE_RUN_ID, process.env.ATTENDED_RUN_ID],
+          });
+          NODE
           verify_deployment_provenance() {
             local run_id="$1"
             local run_attempt="$2"
@@ -135,13 +170,26 @@ jobs:
                 if all(.[]; type == "array") then
                   [.[][]] as $statuses
                   | if ($statuses | length) > 0
-                      and all($statuses[]; (.created_at | type == "string") and (.id | type == "number"))
+                      and all($statuses[];
+                        (.id | type == "number")
+                        and (.created_at as $created_at
+                          | ($created_at | type == "string")
+                          and ($created_at | test("^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}([.][0-9]{1,9})?Z$"))
+                          and ($created_at | sub("[.][0-9]{1,9}Z$"; "Z") as $canonical
+                            | try (($canonical | fromdateiso8601 | todateiso8601) == $canonical) catch false)))
                     then true
                     else error("missing or malformed deployment statuses")
                     end
                 else error("malformed deployment status pages") end
               ' <<<"${statuses}" >/dev/null
-              latest_status=$(jq -cer '[.[][]] | sort_by([.created_at, .id]) | last' <<<"${statuses}")
+              latest_status=$(jq -cer '
+                [.[][]
+                  | . as $status
+                  | (.created_at | capture("^(?<base>[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2})(?:[.](?<fraction>[0-9]{1,9}))?Z$")) as $timestamp
+                  | {status: $status,
+                     sort_time: ($timestamp.base + "." + ((($timestamp.fraction // "") + "000000000")[0:9]) + "Z")}
+                ] | sort_by([.sort_time, .status.id]) | last.status
+              ' <<<"${statuses}")
               if ! log_url=$(jq -er \
                 --arg environment "${environment}" --arg run_url "${run_url}" \
                 --arg run_job_prefix "${run_job_prefix}" \
@@ -178,8 +226,10 @@ jobs:
           }
           candidate_run=$(gh api "repos/${GITHUB_REPOSITORY}/actions/runs/${CANDIDATE_RUN_ID}")
           attended_run=$(gh api "repos/${GITHUB_REPOSITORY}/actions/runs/${ATTENDED_RUN_ID}")
+          phase6_n4_run=$(gh api "repos/${GITHUB_REPOSITORY}/actions/runs/${PHASE6_N4_RUN_ID}")
           candidate_run_url="${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${CANDIDATE_RUN_ID}"
           attended_run_url="${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${ATTENDED_RUN_ID}"
+          phase6_n4_run_url="${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${PHASE6_N4_RUN_ID}"
           jq -e --argjson run_id "${CANDIDATE_RUN_ID}" --arg run_url "${candidate_run_url}" \
             --arg commit "${CANDIDATE_COMMIT}" --arg repo "${GITHUB_REPOSITORY}" '
             .id == $run_id and .status == "completed" and .conclusion == "success"
@@ -196,16 +246,29 @@ jobs:
               and .path == ".github/workflows/release-attended-evidence.yml"
             ' \
             <<<"${attended_run}" >/dev/null
+          jq -e --argjson run_id "${PHASE6_N4_RUN_ID}" --arg run_url "${phase6_n4_run_url}" \
+            --arg commit "${CANDIDATE_COMMIT}" --arg repo "${GITHUB_REPOSITORY}" '
+            .id == $run_id and .status == "completed" and .conclusion == "success"
+              and .html_url == $run_url and .head_sha == $commit and .head_branch == "main"
+              and .repository.full_name == $repo and .event == "workflow_dispatch"
+              and .path == ".github/workflows/release-human-evidence-upload.yml"
+            ' \
+            <<<"${phase6_n4_run}" >/dev/null
           candidate_run_attempt=$(jq -er '.run_attempt | select(type == "number" and . >= 1)' <<<"${candidate_run}")
           candidate_ref=$(jq -er '.head_branch | select(type == "string" and length > 0)' <<<"${candidate_run}")
           attended_run_attempt=$(jq -er '.run_attempt | select(type == "number" and . >= 1)' <<<"${attended_run}")
           attended_ref=$(jq -er '.head_branch | select(type == "string" and length > 0)' <<<"${attended_run}")
+          phase6_n4_run_attempt=$(jq -er '.run_attempt | select(type == "number" and . >= 1)' <<<"${phase6_n4_run}")
+          phase6_n4_ref=$(jq -er '.head_branch | select(type == "string" and length > 0)' <<<"${phase6_n4_run}")
           verify_deployment_provenance "${CANDIDATE_RUN_ID}" "${candidate_run_attempt}" "${CANDIDATE_COMMIT}" "${candidate_ref}" "private-release-candidate"
           verify_deployment_provenance "${ATTENDED_RUN_ID}" "${attended_run_attempt}" "${CANDIDATE_COMMIT}" "${attended_ref}" "private-release-attended"
+          verify_deployment_provenance "${PHASE6_N4_RUN_ID}" "${phase6_n4_run_attempt}" "${CANDIDATE_COMMIT}" "${phase6_n4_ref}" "private-release-observation-upload"
           candidate_artifacts=$(gh api --method GET --paginate --slurp \
             "repos/${GITHUB_REPOSITORY}/actions/runs/${CANDIDATE_RUN_ID}/artifacts" -F per_page=100)
           attended_artifacts=$(gh api --method GET --paginate --slurp \
             "repos/${GITHUB_REPOSITORY}/actions/runs/${ATTENDED_RUN_ID}/artifacts" -F per_page=100)
+          phase6_n4_artifacts=$(gh api --method GET --paginate --slurp \
+            "repos/${GITHUB_REPOSITORY}/actions/runs/${PHASE6_N4_RUN_ID}/artifacts" -F per_page=100)
           jq -e --argjson run_id "${CANDIDATE_RUN_ID}" --arg commit "${CANDIDATE_COMMIT}" \
             --arg name "private-release-candidate-${CANDIDATE_ID}" '
             if all(.[]; type == "object" and (.artifacts | type == "array")) then
@@ -222,73 +285,497 @@ jobs:
             else error("malformed artifact pages") end
             ' \
             <<<"${attended_artifacts}" >/dev/null
-
-      - name: Check out exact candidate source
-        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-        with:
-          ref: ${{ env.CANDIDATE_COMMIT }}
+          jq -e --argjson run_id "${PHASE6_N4_RUN_ID}" --arg commit "${CANDIDATE_COMMIT}" \
+            --arg name "${PHASE6_N4_ARTIFACT_NAME}" '
+            if all(.[]; type == "object" and (.artifacts | type == "array")) then
+              [.[] | .artifacts[] | select(.name == $name and .expired == false
+                and .workflow_run.id == $run_id and .workflow_run.head_sha == $commit)] | length == 1
+            else error("malformed artifact pages") end
+            ' \
+            <<<"${phase6_n4_artifacts}" >/dev/null
+          candidate_artifact=$(jq -cer --argjson run_id "${CANDIDATE_RUN_ID}" \
+            --arg commit "${CANDIDATE_COMMIT}" --arg name "private-release-candidate-${CANDIDATE_ID}" '
+            [.[] | .artifacts[] | select(.name == $name and .expired == false
+              and .workflow_run.id == $run_id and .workflow_run.head_sha == $commit)]
+              | if length == 1 then .[0] else error("candidate artifact selection changed") end
+          ' <<<"${candidate_artifacts}")
+          attended_artifact=$(jq -cer --argjson run_id "${ATTENDED_RUN_ID}" \
+            --arg commit "${CANDIDATE_COMMIT}" --arg name "${ATTENDED_ARTIFACT_NAME}" '
+            [.[] | .artifacts[] | select(.name == $name and .expired == false
+              and .workflow_run.id == $run_id and .workflow_run.head_sha == $commit)]
+              | if length == 1 then .[0] else error("attended artifact selection changed") end
+          ' <<<"${attended_artifacts}")
+          phase6_n4_artifact=$(jq -cer --argjson run_id "${PHASE6_N4_RUN_ID}" \
+            --arg commit "${CANDIDATE_COMMIT}" --arg name "${PHASE6_N4_ARTIFACT_NAME}" '
+            [.[] | .artifacts[] | select(.name == $name and .expired == false
+              and .workflow_run.id == $run_id and .workflow_run.head_sha == $commit)]
+              | if length == 1 then .[0] else error("Phase 6 N4 artifact selection changed") end
+          ' <<<"${phase6_n4_artifacts}")
+          candidate_artifact_id=$(jq -er '.id | select(type == "number" and . >= 1)' <<<"${candidate_artifact}")
+          candidate_artifact_digest=$(jq -er '.digest | select(type == "string" and test("^sha256:[a-f0-9]{64}$"))' <<<"${candidate_artifact}")
+          attended_artifact_id=$(jq -er '.id | select(type == "number" and . >= 1)' <<<"${attended_artifact}")
+          attended_artifact_digest=$(jq -er '.digest | select(type == "string" and test("^sha256:[a-f0-9]{64}$"))' <<<"${attended_artifact}")
+          phase6_n4_artifact_id=$(jq -er '.id | select(type == "number" and . >= 1)' <<<"${phase6_n4_artifact}")
+          phase6_n4_artifact_digest=$(jq -er '.digest | select(type == "string" and test("^sha256:[a-f0-9]{64}$"))' <<<"${phase6_n4_artifact}")
+          printf '%s\n' \
+            "candidate_run_attempt=${candidate_run_attempt}" \
+            "candidate_artifact_id=${candidate_artifact_id}" \
+            "candidate_artifact_digest=${candidate_artifact_digest}" \
+            "attended_run_attempt=${attended_run_attempt}" \
+            "attended_artifact_id=${attended_artifact_id}" \
+            "attended_artifact_digest=${attended_artifact_digest}" \
+            "phase6_n4_run_attempt=${phase6_n4_run_attempt}" \
+            "phase6_n4_artifact_id=${phase6_n4_artifact_id}" \
+            "phase6_n4_artifact_digest=${phase6_n4_artifact_digest}" >> "${GITHUB_OUTPUT}"
 
       - name: Set up Node
         uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
           node-version: 24.19.0
           cache: npm
+          cache-dependency-path: workflow-source/package-lock.json
 
       - name: Install verifier dependencies
-        run: npm ci --ignore-scripts
+        run: npm ci --ignore-scripts --prefix workflow-source
 
-      - name: Download selected successful candidate and attended artifacts
+      - name: Download selected candidate artifact by immutable ID
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          artifact-ids: ${{ steps.selected.outputs.candidate_artifact_id }}
+          github-token: ${{ github.token }}
+          repository: ${{ github.repository }}
+          run-id: ${{ env.CANDIDATE_RUN_ID }}
+          path: retained-candidate
+          merge-multiple: true
+
+      - name: Download selected attended artifact by immutable ID
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          artifact-ids: ${{ steps.selected.outputs.attended_artifact_id }}
+          github-token: ${{ github.token }}
+          repository: ${{ github.repository }}
+          run-id: ${{ env.ATTENDED_RUN_ID }}
+          path: attended-evidence
+          merge-multiple: true
+
+      - name: Download selected Phase 6 N4 artifact by immutable ID
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          artifact-ids: ${{ steps.selected.outputs.phase6_n4_artifact_id }}
+          github-token: ${{ github.token }}
+          repository: ${{ github.repository }}
+          run-id: ${{ env.PHASE6_N4_RUN_ID }}
+          path: retained-candidate/evidence/phase6-n4-upload
+          merge-multiple: true
+
+      - name: Revalidate downloaded artifact identities and record hashes
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          gh run download "${CANDIDATE_RUN_ID}" \
-            --repo "${GITHUB_REPOSITORY}" \
-            --name "private-release-candidate-${CANDIDATE_ID}" \
-            --dir retained-candidate
-          gh run download "${ATTENDED_RUN_ID}" \
-            --repo "${GITHUB_REPOSITORY}" \
-            --name "${ATTENDED_ARTIFACT_NAME}" \
-            --dir attended-evidence
+          set -euo pipefail
+          verify_selected_artifact() {
+            local artifact_id="$1"
+            local run_id="$2"
+            local name="$3"
+            local digest="$4"
+            local run_attempt="$5"
+            local artifact
+            local run
+            artifact=$(gh api "repos/${GITHUB_REPOSITORY}/actions/artifacts/${artifact_id}")
+            jq -e --argjson artifact_id "${artifact_id}" --argjson run_id "${run_id}" \
+              --arg name "${name}" --arg digest "${digest}" --arg commit "${CANDIDATE_COMMIT}" '
+              .id == $artifact_id and .name == $name and .expired == false
+                and .digest == $digest and .workflow_run.id == $run_id
+                and .workflow_run.head_sha == $commit
+            ' <<<"${artifact}" >/dev/null
+            run=$(gh api "repos/${GITHUB_REPOSITORY}/actions/runs/${run_id}")
+            jq -e --argjson run_id "${run_id}" --argjson run_attempt "${run_attempt}" \
+              --arg commit "${CANDIDATE_COMMIT}" '
+              .id == $run_id and .run_attempt == $run_attempt
+                and .head_sha == $commit and .status == "completed"
+                and .conclusion == "success"
+            ' <<<"${run}" >/dev/null
+          }
+          verify_selected_artifact "${{ steps.selected.outputs.candidate_artifact_id }}" \
+            "${CANDIDATE_RUN_ID}" "private-release-candidate-${CANDIDATE_ID}" \
+            "${{ steps.selected.outputs.candidate_artifact_digest }}" \
+            "${{ steps.selected.outputs.candidate_run_attempt }}"
+          verify_selected_artifact "${{ steps.selected.outputs.attended_artifact_id }}" \
+            "${ATTENDED_RUN_ID}" "${ATTENDED_ARTIFACT_NAME}" \
+            "${{ steps.selected.outputs.attended_artifact_digest }}" \
+            "${{ steps.selected.outputs.attended_run_attempt }}"
+          verify_selected_artifact "${{ steps.selected.outputs.phase6_n4_artifact_id }}" \
+            "${PHASE6_N4_RUN_ID}" "${PHASE6_N4_ARTIFACT_NAME}" \
+            "${{ steps.selected.outputs.phase6_n4_artifact_digest }}" \
+            "${{ steps.selected.outputs.phase6_n4_run_attempt }}"
           printf '%s  %s\n' "${ATTENDED_RECORD_SHA256}" \
             attended-evidence/attended-record.json | sha256sum --check
+          printf '%s  %s\n' "${PHASE6_N4_RECORD_SHA256}" \
+            retained-candidate/evidence/phase6-n4-upload/phase6/attended-record.json | sha256sum --check
 
-      - name: Verify full release gate without rebuilding
+      - name: Replay Phase 6 and approval binding with trusted workflow source
         run: |
           manifest_sha256=$(sha256sum retained-candidate/release-candidate.json | cut -d' ' -f1)
-          npm run verify:attended:phase5 -- \
+          node workflow-source/scripts/generate-phase6-attended-checklist.mjs verify \
+            --bundle-dir retained-candidate \
+            --manifest-sha256 "${manifest_sha256}" \
+            --checklist retained-candidate/evidence/phase6-n4-upload/phase6/checklist.json \
+            --observations retained-candidate/evidence/phase6-n4-upload/phase6/observations.json \
+            --evidence-dir retained-candidate/evidence/phase6-n4-upload/phase6 \
+            --record retained-candidate/evidence/phase6-n4-upload/phase6/attended-record.json
+          node workflow-source/scripts/generate-phase5-attended-checklist.mjs verify \
             --bundle-dir retained-candidate \
             --manifest-sha256 "${manifest_sha256}" \
             --automated-evidence retained-candidate/evidence/automated.json \
             --checklist attended-evidence/checklist.pending.json \
             --observations attended-evidence/observations.json \
             --evidence-dir attended-evidence \
-            --record attended-evidence/attended-record.json
+            --record attended-evidence/attended-record.json \
+            --phase6-n4-record retained-candidate/evidence/phase6-n4-upload/phase6/attended-record.json \
+            --phase6-n4-checklist retained-candidate/evidence/phase6-n4-upload/phase6/checklist.json \
+            --phase6-n4-observations retained-candidate/evidence/phase6-n4-upload/phase6/observations.json \
+            --phase6-n4-evidence-dir retained-candidate/evidence/phase6-n4-upload/phase6 \
+            --phase6-n4-run-id "${PHASE6_N4_RUN_ID}" \
+            --phase6-n4-artifact-name "${PHASE6_N4_ARTIFACT_NAME}"
 
-      - name: Refuse an existing tag or release
+      - name: Verify full release gate without rebuilding
+        run: |
+          manifest_sha256=$(sha256sum retained-candidate/release-candidate.json | cut -d' ' -f1)
+          node workflow-source/scripts/generate-phase5-attended-checklist.mjs verify \
+            --bundle-dir retained-candidate \
+            --manifest-sha256 "${manifest_sha256}" \
+            --automated-evidence retained-candidate/evidence/automated.json \
+            --checklist attended-evidence/checklist.pending.json \
+            --observations attended-evidence/observations.json \
+            --evidence-dir attended-evidence \
+            --record attended-evidence/attended-record.json \
+            --phase6-n4-record retained-candidate/evidence/phase6-n4-upload/phase6/attended-record.json \
+            --phase6-n4-checklist retained-candidate/evidence/phase6-n4-upload/phase6/checklist.json \
+            --phase6-n4-observations retained-candidate/evidence/phase6-n4-upload/phase6/observations.json \
+            --phase6-n4-evidence-dir retained-candidate/evidence/phase6-n4-upload/phase6 \
+            --phase6-n4-run-id "${PHASE6_N4_RUN_ID}" \
+            --phase6-n4-artifact-name "${PHASE6_N4_ARTIFACT_NAME}"
+
+      - name: Seal validated release inputs
+        run: |
+          mkdir -p sealed-release-validation/candidate/evidence/phase6 sealed-release-validation/attended
+          cp -P retained-candidate/gym-tracker-release.apk sealed-release-validation/candidate/gym-tracker-release.apk
+          cp -P retained-candidate/gym-tracker-release.aab sealed-release-validation/candidate/gym-tracker-release.aab
+          cp -P retained-candidate/release-candidate.json sealed-release-validation/candidate/release-candidate.json
+          cp -P retained-candidate/release-config.json sealed-release-validation/candidate/release-config.json
+          cp -P retained-candidate/release-toolchain.json sealed-release-validation/candidate/release-toolchain.json
+          cp -P attended-evidence/attended-record.json sealed-release-validation/attended/attended-record.json
+          cp -P retained-candidate/evidence/phase6-n4-upload/phase6/checklist.json sealed-release-validation/candidate/evidence/phase6/checklist.json
+          cp -P retained-candidate/evidence/phase6-n4-upload/phase6/observations.json sealed-release-validation/candidate/evidence/phase6/observations.json
+          cp -P retained-candidate/evidence/phase6-n4-upload/phase6/N4-01.png sealed-release-validation/candidate/evidence/phase6/N4-01.png
+          cp -P retained-candidate/evidence/phase6-n4-upload/phase6/N4-02.png sealed-release-validation/candidate/evidence/phase6/N4-02.png
+          cp -P retained-candidate/evidence/phase6-n4-upload/phase6/N4-03.png sealed-release-validation/candidate/evidence/phase6/N4-03.png
+          cp -P retained-candidate/evidence/phase6-n4-upload/phase6/N4-04.png sealed-release-validation/candidate/evidence/phase6/N4-04.png
+          cp -P retained-candidate/evidence/phase6-n4-upload/phase6/attended-record.json sealed-release-validation/candidate/evidence/phase6/attended-record.json
+          candidate_manifest_sha256=$(sha256sum sealed-release-validation/candidate/release-candidate.json | cut -d' ' -f1)
+          apk_sha256=$(sha256sum sealed-release-validation/candidate/gym-tracker-release.apk | cut -d' ' -f1)
+          apk_size=$(wc -c < sealed-release-validation/candidate/gym-tracker-release.apk | tr -d '[:space:]')
+          aab_sha256=$(sha256sum sealed-release-validation/candidate/gym-tracker-release.aab | cut -d' ' -f1)
+          aab_size=$(wc -c < sealed-release-validation/candidate/gym-tracker-release.aab | tr -d '[:space:]')
+          jq -S -n \
+            --arg candidate_id "${CANDIDATE_ID}" \
+            --arg candidate_commit "${CANDIDATE_COMMIT}" \
+            --arg candidate_run_id "${CANDIDATE_RUN_ID}" \
+            --arg candidate_run_attempt "${{ steps.selected.outputs.candidate_run_attempt }}" \
+            --arg candidate_artifact_id "${{ steps.selected.outputs.candidate_artifact_id }}" \
+            --arg candidate_artifact_digest "${{ steps.selected.outputs.candidate_artifact_digest }}" \
+            --arg repository "${GITHUB_REPOSITORY}" \
+            --arg validation_run_id "${GITHUB_RUN_ID}" \
+            --arg manifest_sha256 "${candidate_manifest_sha256}" \
+            --arg attended_run_id "${ATTENDED_RUN_ID}" \
+            --arg attended_run_attempt "${{ steps.selected.outputs.attended_run_attempt }}" \
+            --arg attended_artifact_id "${{ steps.selected.outputs.attended_artifact_id }}" \
+            --arg attended_artifact_digest "${{ steps.selected.outputs.attended_artifact_digest }}" \
+            --arg attended_artifact_name "${ATTENDED_ARTIFACT_NAME}" \
+            --arg attended_record_sha256 "${ATTENDED_RECORD_SHA256}" \
+            --arg phase6_n4_run_id "${PHASE6_N4_RUN_ID}" \
+            --arg phase6_n4_run_attempt "${{ steps.selected.outputs.phase6_n4_run_attempt }}" \
+            --arg phase6_n4_artifact_id "${{ steps.selected.outputs.phase6_n4_artifact_id }}" \
+            --arg phase6_n4_artifact_digest "${{ steps.selected.outputs.phase6_n4_artifact_digest }}" \
+            --arg phase6_n4_artifact_name "${PHASE6_N4_ARTIFACT_NAME}" \
+            --arg phase6_n4_record_sha256 "${PHASE6_N4_RECORD_SHA256}" \
+            --arg release_tag "${RELEASE_TAG}" \
+            --arg apk_sha256 "${apk_sha256}" --argjson apk_size "${apk_size}" \
+            --arg aab_sha256 "${aab_sha256}" --argjson aab_size "${aab_size}" '
+            {schema_version: 1, status: "validated", candidate_id: $candidate_id,
+             candidate_commit: $candidate_commit, candidate_run_id: $candidate_run_id,
+             candidate_run_attempt: $candidate_run_attempt,
+             candidate_artifact_id: $candidate_artifact_id,
+             candidate_artifact_digest: $candidate_artifact_digest,
+             repository: $repository, validation_run_id: $validation_run_id,
+             manifest_sha256: $manifest_sha256, attended_run_id: $attended_run_id,
+             attended_run_attempt: $attended_run_attempt,
+             attended_artifact_id: $attended_artifact_id,
+             attended_artifact_digest: $attended_artifact_digest,
+             attended_artifact_name: $attended_artifact_name,
+             attended_record_sha256: $attended_record_sha256,
+             phase6_n4_run_id: $phase6_n4_run_id,
+             phase6_n4_run_attempt: $phase6_n4_run_attempt,
+             phase6_n4_artifact_id: $phase6_n4_artifact_id,
+             phase6_n4_artifact_digest: $phase6_n4_artifact_digest,
+             phase6_n4_artifact_name: $phase6_n4_artifact_name,
+             phase6_n4_record_sha256: $phase6_n4_record_sha256, release_tag: $release_tag,
+             assets: [{file: "gym-tracker-release.aab", sha256: $aab_sha256, size_bytes: $aab_size},
+                      {file: "gym-tracker-release.apk", sha256: $apk_sha256, size_bytes: $apk_size}]}
+            ' > sealed-release-validation/release-validation.json
+          test "$(find sealed-release-validation -mindepth 1 -type f | wc -l | tr -d '[:space:]')" = "14"
+          test "$(find sealed-release-validation -mindepth 1 ! -type f ! -type d | wc -l | tr -d '[:space:]')" = "0"
+          test "$(find sealed-release-validation -type l | wc -l | tr -d '[:space:]')" = "0"
+          test "$(find sealed-release-validation -mindepth 1 -type d | wc -l | tr -d '[:space:]')" = "4"
+
+      - name: Upload sealed validation artifact
+        id: validation_artifact
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: sealed-release-validation-${{ github.run_id }}
+          path: sealed-release-validation
+          if-no-files-found: error
+          retention-days: 1
+
+      - name: Remove unsealed validation inputs
+        run: rm -rf retained-candidate attended-evidence
+
+  publish:
+    name: Publish sealed unchanged bytes
+    needs: validate
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    permissions:
+      actions: read
+      contents: write
+      deployments: read
+      id-token: none
+    outputs:
+      release_id: ${{ steps.published.outputs.release_id }}
+      release_assets_sha256: ${{ steps.published.outputs.release_assets_sha256 }}
+      publication_job_attempt: ${{ steps.published.outputs.publication_job_attempt }}
+    environment:
+      name: public-release-promotion
+      url: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+    steps:
+      - name: Download sealed validation artifact by immutable ID
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          artifact-ids: ${{ needs.validate.outputs.validation_artifact_id }}
+          path: sealed-release-validation
+          merge-multiple: true
+
+      - name: Verify sealed validation handoff
+        env:
+          GH_TOKEN: ${{ github.token }}
+          VALIDATION_ARTIFACT_DIGEST: ${{ needs.validate.outputs.validation_artifact_digest }}
+        run: |
+          set -euo pipefail
+          test "$(find sealed-release-validation -mindepth 1 -type f | wc -l | tr -d '[:space:]')" = "14"
+          test "$(find sealed-release-validation -mindepth 1 ! -type f ! -type d | wc -l | tr -d '[:space:]')" = "0"
+          test "$(find sealed-release-validation -type l | wc -l | tr -d '[:space:]')" = "0"
+          test "$(find sealed-release-validation -mindepth 1 -type d | wc -l | tr -d '[:space:]')" = "4"
+          test -d sealed-release-validation/candidate
+          test -d sealed-release-validation/attended
+          test -d sealed-release-validation/candidate/evidence/phase6
+          for sealed_file in release-validation.json \
+            candidate/gym-tracker-release.apk candidate/gym-tracker-release.aab \
+            candidate/release-candidate.json candidate/release-config.json \
+            candidate/release-toolchain.json attended/attended-record.json \
+            candidate/evidence/phase6/checklist.json \
+            candidate/evidence/phase6/observations.json \
+            candidate/evidence/phase6/N4-01.png candidate/evidence/phase6/N4-02.png \
+            candidate/evidence/phase6/N4-03.png candidate/evidence/phase6/N4-04.png \
+            candidate/evidence/phase6/attended-record.json
+          do
+            test -f "sealed-release-validation/${sealed_file}"
+            test ! -L "sealed-release-validation/${sealed_file}"
+          done
+          jq -S . sealed-release-validation/release-validation.json | cmp - sealed-release-validation/release-validation.json
+          validation_artifact=$(gh api "repos/${GITHUB_REPOSITORY}/actions/artifacts/${{ needs.validate.outputs.validation_artifact_id }}")
+          validation_digest="${VALIDATION_ARTIFACT_DIGEST#sha256:}"
+          case "${validation_digest}" in ''|*[!a-f0-9]*) exit 1 ;; esac
+          test "${#validation_digest}" -eq 64
+          jq -e --argjson artifact_id "${{ needs.validate.outputs.validation_artifact_id }}" \
+            --argjson run_id "${GITHUB_RUN_ID}" --arg commit "${CANDIDATE_COMMIT}" \
+            --arg name "sealed-release-validation-${GITHUB_RUN_ID}" \
+            --arg digest "${validation_digest}" '
+            .id == $artifact_id and .expired == false and .workflow_run.id == $run_id
+              and .workflow_run.head_sha == $commit and .name == $name
+              and .digest == ("sha256:" + $digest)
+          ' <<<"${validation_artifact}" >/dev/null
+          jq -e --arg candidate_id "${CANDIDATE_ID}" --arg commit "${CANDIDATE_COMMIT}" \
+            --arg candidate_run_id "${CANDIDATE_RUN_ID}" --arg release_tag "${RELEASE_TAG}" \
+            --arg repository "${GITHUB_REPOSITORY}" --arg validation_run_id "${GITHUB_RUN_ID}" \
+            --arg attended_record_sha256 "${ATTENDED_RECORD_SHA256}" \
+            --arg phase6_n4_run_id "${PHASE6_N4_RUN_ID}" \
+            --arg phase6_n4_artifact_name "${PHASE6_N4_ARTIFACT_NAME}" \
+            --arg phase6_n4_record_sha256 "${PHASE6_N4_RECORD_SHA256}" '
+            .schema_version == 1 and .status == "validated"
+              and .candidate_id == $candidate_id and .candidate_commit == $commit
+              and .candidate_run_id == $candidate_run_id and .release_tag == $release_tag
+              and .repository == $repository and .validation_run_id == $validation_run_id
+              and .attended_record_sha256 == $attended_record_sha256
+              and .phase6_n4_run_id == $phase6_n4_run_id
+              and .phase6_n4_artifact_name == $phase6_n4_artifact_name
+              and .phase6_n4_record_sha256 == $phase6_n4_record_sha256
+          ' sealed-release-validation/release-validation.json >/dev/null
+          while IFS=$'\t' read -r file sha256 size_bytes; do
+            test "$(sha256sum "sealed-release-validation/candidate/${file}" | cut -d' ' -f1)" = "${sha256}"
+            test "$(wc -c < "sealed-release-validation/candidate/${file}" | tr -d '[:space:]')" = "${size_bytes}"
+          done < <(jq -r '.assets[] | [.file, .sha256, .size_bytes] | @tsv' sealed-release-validation/release-validation.json)
+      - name: Classify exact publication state
+        id: publication_state
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          if git ls-remote --exit-code --tags origin "refs/tags/${RELEASE_TAG}"; then exit 1; fi
-          if gh release view "${RELEASE_TAG}" >/dev/null 2>&1; then exit 1; fi
-          candidate_run_id="${CANDIDATE_RUN_ID}"
-          release_bodies=$(gh api --paginate "repos/${GITHUB_REPOSITORY}/releases" \
-            --jq '.[].body // ""')
-          if grep -F "Candidate run: ${candidate_run_id}" <<<"${release_bodies}"; then
-            echo "candidate run was already reused by a public release" >&2
+          set -euo pipefail
+          expected_ref="refs/tags/${RELEASE_TAG}"
+          expected_title="Gym Tracker ${RELEASE_TAG}"
+          expected_body="Candidate run: ${CANDIDATE_RUN_ID}"
+          tag_pages=$(gh api --method GET --paginate --slurp \
+            "repos/${GITHUB_REPOSITORY}/git/matching-refs/tags/${RELEASE_TAG}" \
+            -F per_page=100)
+          tag_ref=$(jq -cr --arg ref "${expected_ref}" '
+            if all(.[]; type == "array") then
+              [.[][] | select(.ref == $ref)]
+              | if length == 0 then null
+                elif length == 1 then .[0]
+                else error("release tag is ambiguous")
+                end
+            else error("malformed tag pages") end
+          ' <<<"${tag_pages}")
+          release_pages=$(gh api --method GET --paginate --slurp \
+            "repos/${GITHUB_REPOSITORY}/releases" -F per_page=100)
+          release=$(jq -cr --arg tag "${RELEASE_TAG}" '
+            if all(.[]; type == "array") then
+              [.[][] | select(.tag_name == $tag)]
+              | if length == 0 then null
+                elif length == 1 then .[0]
+                else error("release is ambiguous")
+                end
+            else error("malformed release pages") end
+          ' <<<"${release_pages}")
+          jq -e --arg marker "${expected_body}" --arg tag "${RELEASE_TAG}" '
+            if all(.[]; type == "array") then
+              [.[][]
+                | select(((.body // "") | split("\n") | index($marker)) != null)
+                | select(.tag_name != $tag)]
+                | length == 0
+            else error("malformed release pages") end
+          ' <<<"${release_pages}" >/dev/null || {
+            echo "candidate run was already reused by another release" >&2
+            exit 1
+          }
+
+          if [ "${tag_ref}" = "null" ] && [ "${release}" = "null" ]; then
+            publication_state=fresh
+          elif [ "${tag_ref}" != "null" ] && [ "${release}" = "null" ]; then
+            publication_state=tag_reserved
+          elif [ "${tag_ref}" != "null" ] && [ "${release}" != "null" ]; then
+            jq -e --arg ref "${expected_ref}" --arg commit "${CANDIDATE_COMMIT}" '
+              .ref == $ref and .object.type == "commit" and .object.sha == $commit
+            ' <<<"${tag_ref}" >/dev/null
+            jq -e --arg tag "${RELEASE_TAG}" --arg title "${expected_title}" \
+              --arg body "${expected_body}" '
+              .tag_name == $tag and .name == $title and .body == $body
+                and .prerelease == false and (.draft | type == "boolean")
+            ' <<<"${release}" >/dev/null || {
+              echo "existing release identity is mismatched" >&2
+              exit 1
+            }
+            publication_state=$(jq -er 'if .draft then "draft" else "published" end' \
+              <<<"${release}")
+          else
+            echo "existing release identity is mismatched" >&2
             exit 1
           fi
 
-      - name: Create draft with verified retained bytes only
+          if [ "${tag_ref}" != "null" ]; then
+            jq -e --arg ref "${expected_ref}" --arg commit "${CANDIDATE_COMMIT}" '
+              .ref == $ref and .object.type == "commit" and .object.sha == $commit
+            ' <<<"${tag_ref}" >/dev/null || {
+              echo "release tag exists with mismatched target" >&2
+              exit 1
+            }
+          fi
+
+          expected_assets=$(jq -cer '
+            [.assets[] | {name: .file, size: .size_bytes, digest: ("sha256:" + .sha256)}]
+              | sort_by(.name)
+          ' sealed-release-validation/release-validation.json)
+          actual_assets=$(jq -cer '
+            if . == null then []
+            else [.assets[] | {id, name, size, digest}] | sort_by(.name)
+            end
+          ' <<<"${release}")
+          jq -e --argjson expected "${expected_assets}" '
+            (map(.name) | unique | length) == length
+              and all(.[]; (.id | type) == "number" and .id >= 1)
+              and all(.[] as $actual; any($expected[];
+                .name == $actual.name
+                  and .size == $actual.size
+                  and .digest == $actual.digest))
+          ' <<<"${actual_assets}" >/dev/null || {
+            echo "existing release asset set is mismatched" >&2
+            exit 1
+          }
+          jq -r --argjson actual "${actual_assets}" '
+            .[] | select(.name as $name | ($actual | map(.name) | index($name)) == null)
+              | .name
+          ' <<<"${expected_assets}" > "${RUNNER_TEMP}/missing-release-assets.txt"
+          if [ "${publication_state}" = "published" ] \
+            && [ -s "${RUNNER_TEMP}/missing-release-assets.txt" ]; then
+            echo "published release asset set is incomplete" >&2
+            exit 1
+          fi
+          printf 'publication_state=%s\n' "${publication_state}" >> "${GITHUB_OUTPUT}"
+
+      - name: Atomically reserve immutable release tag
+        if: steps.publication_state.outputs.publication_state == 'fresh'
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          gh release create "${RELEASE_TAG}" \
-            retained-candidate/gym-tracker-release.apk \
-            retained-candidate/gym-tracker-release.aab \
-            --title "Gym Tracker ${RELEASE_TAG}" \
-            --target "${CANDIDATE_COMMIT}" \
-            --notes "Candidate run: ${CANDIDATE_RUN_ID}" \
-            --draft
+          set -euo pipefail
+          tag_ref=$(gh api --method POST "repos/${GITHUB_REPOSITORY}/git/refs" \
+            -f ref="refs/tags/${RELEASE_TAG}" \
+            -f sha="${CANDIDATE_COMMIT}")
+          jq -e --arg tag "${RELEASE_TAG}" --arg commit "${CANDIDATE_COMMIT}" '
+            .ref == ("refs/tags/" + $tag)
+              and .object.type == "commit"
+              and .object.sha == $commit
+            ' <<<"${tag_ref}" >/dev/null
+
+      - name: Create or resume exact draft with verified retained bytes only
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          publication_state="${{ steps.publication_state.outputs.publication_state }}"
+          case "${publication_state}" in
+            fresh|tag_reserved)
+              gh release create "${RELEASE_TAG}" \
+                sealed-release-validation/candidate/gym-tracker-release.apk \
+                sealed-release-validation/candidate/gym-tracker-release.aab \
+                --title "Gym Tracker ${RELEASE_TAG}" \
+                --target "${CANDIDATE_COMMIT}" \
+                --notes "Candidate run: ${CANDIDATE_RUN_ID}" \
+                --verify-tag \
+                --draft
+              ;;
+            draft)
+              while IFS= read -r missing_asset; do
+                test -n "${missing_asset}"
+                gh release upload "${RELEASE_TAG}" \
+                  "sealed-release-validation/candidate/${missing_asset}"
+              done < "${RUNNER_TEMP}/missing-release-assets.txt"
+              ;;
+            published)
+              ;;
+            *)
+              exit 1
+              ;;
+          esac
 
       - name: Verify public release asset hashes
         env:
@@ -298,26 +785,193 @@ jobs:
           gh release download "${RELEASE_TAG}" \
             --dir "${RUNNER_TEMP}/public-assets" \
             --pattern 'gym-tracker-release.*'
-          (cd retained-candidate && sha256sum gym-tracker-release.apk gym-tracker-release.aab) \
-            > "${RUNNER_TEMP}/public-assets.sha256"
-          (cd "${RUNNER_TEMP}/public-assets" && sha256sum --check "${RUNNER_TEMP}/public-assets.sha256")
+          release_assets=$(jq -cer '[.assets[] | {id, name, size, digest}] | sort_by(.name)' \
+            <<<"$(gh api "repos/${GITHUB_REPOSITORY}/releases/tags/${RELEASE_TAG}")")
+          jq -e --argjson assets "${release_assets}" '
+            ($assets | map(.name)) == (.assets | map(.file) | sort)
+              and ($assets | all((.id | type) == "number"))
+              and (($assets | map(.id) | unique | length) == ($assets | length))
+              and all(.assets[] as $expected; $assets[] | select(.name == $expected.file)
+                | .size == $expected.size_bytes and .digest == ("sha256:" + $expected.sha256))
+          ' sealed-release-validation/release-validation.json >/dev/null
+          test "$(find "${RUNNER_TEMP}/public-assets" -mindepth 1 -maxdepth 1 -type f | wc -l | tr -d '[:space:]')" = "2"
+          test "$(find "${RUNNER_TEMP}/public-assets" -mindepth 1 -maxdepth 1 ! -type f | wc -l | tr -d '[:space:]')" = "0"
+          while IFS=$'\t' read -r file sha256 size_bytes; do
+            test "$(sha256sum "${RUNNER_TEMP}/public-assets/${file}" | cut -d' ' -f1)" = "${sha256}"
+            test "$(wc -c < "${RUNNER_TEMP}/public-assets/${file}" | tr -d '[:space:]')" = "${size_bytes}"
+          done < <(jq -r '.assets[] | [.file, .sha256, .size_bytes] | @tsv' sealed-release-validation/release-validation.json)
 
       - name: Publish hash-verified draft
+        id: published
         env:
           GH_TOKEN: ${{ github.token }}
-        run: gh release edit "${RELEASE_TAG}" --draft=false
+        run: |
+          set -euo pipefail
+          verified_tag_ref=$(gh api "repos/${GITHUB_REPOSITORY}/git/ref/tags/${RELEASE_TAG}")
+          jq -e --arg tag "${RELEASE_TAG}" --arg commit "${CANDIDATE_COMMIT}" '
+            .ref == ("refs/tags/" + $tag)
+              and .object.type == "commit"
+              and .object.sha == $commit
+            ' <<<"${verified_tag_ref}" >/dev/null
+          release=$(gh api "repos/${GITHUB_REPOSITORY}/releases/tags/${RELEASE_TAG}")
+          jq -e --arg tag "${RELEASE_TAG}" --arg title "Gym Tracker ${RELEASE_TAG}" \
+            --arg body "Candidate run: ${CANDIDATE_RUN_ID}" '
+            .tag_name == $tag
+              and .name == $title
+              and .body == $body
+              and .prerelease == false
+              and (.draft | type == "boolean")
+            ' <<<"${release}" >/dev/null
+          current_release_assets=$(jq -cer '[.assets[] | {id, name, size, digest}] | sort_by(.name)' <<<"${release}")
+          jq -e --argjson assets "${current_release_assets}" '
+            ($assets | map(.name)) == (.assets | map(.file) | sort)
+              and ($assets | all((.id | type) == "number"))
+              and (($assets | map(.id) | unique | length) == ($assets | length))
+              and all(.assets[] as $expected; $assets[] | select(.name == $expected.file)
+                | .size == $expected.size_bytes and .digest == ("sha256:" + $expected.sha256))
+          ' sealed-release-validation/release-validation.json >/dev/null
+          release_id=$(jq -er '.id | select(type == "number" and . >= 1)' <<<"${release}")
+          release_assets_sha256=$(printf '%s\n' "${current_release_assets}" | sha256sum | cut -d' ' -f1)
+          if jq -e '.draft == true' <<<"${release}" >/dev/null; then
+            gh release edit "${RELEASE_TAG}" --draft=false
+          fi
+          printf '%s\n' "release_id=${release_id}" \
+            "release_assets_sha256=${release_assets_sha256}" \
+            "publication_job_attempt=${GITHUB_RUN_ATTEMPT}" >> "${GITHUB_OUTPUT}"
+  record-proof:
+    name: Record immutable post-promotion proof
+    needs: [validate, publish]
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    permissions:
+      actions: read
+      contents: read
+      deployments: read
+      id-token: none
+    steps:
+      - name: Check out trusted workflow source
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          path: workflow-source
+          persist-credentials: false
+
+      - name: Download sealed validation artifact by immutable ID
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          artifact-ids: ${{ needs.validate.outputs.validation_artifact_id }}
+          path: sealed-release-validation
+          merge-multiple: true
+
+      - name: Revalidate sealed validation artifact identity
+        env:
+          GH_TOKEN: ${{ github.token }}
+          VALIDATION_ARTIFACT_DIGEST: ${{ needs.validate.outputs.validation_artifact_digest }}
+        run: |
+          set -euo pipefail
+          validation_digest="${VALIDATION_ARTIFACT_DIGEST#sha256:}"
+          artifact=$(gh api "repos/${GITHUB_REPOSITORY}/actions/artifacts/${{ needs.validate.outputs.validation_artifact_id }}")
+          jq -e --argjson artifact_id "${{ needs.validate.outputs.validation_artifact_id }}" \
+            --argjson run_id "${GITHUB_RUN_ID}" --arg commit "${CANDIDATE_COMMIT}" \
+            --arg name "sealed-release-validation-${GITHUB_RUN_ID}" \
+            --arg digest "${validation_digest}" '
+            .id == $artifact_id and .expired == false and .workflow_run.id == $run_id
+              and .workflow_run.head_sha == $commit and .name == $name
+              and .digest == ("sha256:" + $digest)
+          ' <<<"${artifact}" >/dev/null
+
+      - name: Download published assets by immutable release asset ID
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          mkdir -p "${RUNNER_TEMP}/public-assets"
+          tag_ref=$(gh api "repos/${GITHUB_REPOSITORY}/git/ref/tags/${RELEASE_TAG}")
+          jq -e --arg tag "${RELEASE_TAG}" --arg commit "${CANDIDATE_COMMIT}" '
+            .ref == ("refs/tags/" + $tag)
+              and .object.type == "commit"
+              and .object.sha == $commit
+          ' <<<"${tag_ref}" >/dev/null
+          release=$(gh api "repos/${GITHUB_REPOSITORY}/releases/tags/${RELEASE_TAG}")
+          jq -e --arg tag "${RELEASE_TAG}" --arg title "Gym Tracker ${RELEASE_TAG}" \
+            --arg body "Candidate run: ${CANDIDATE_RUN_ID}" '
+            .tag_name == $tag
+              and .name == $title
+              and .body == $body
+              and .draft == false
+              and .prerelease == false
+          ' <<<"${release}" >/dev/null
+          release_id=$(jq -er '.id | select(type == "number" and . >= 1)' <<<"${release}")
+          jq -c '[.assets[] | {id, name, size, digest}] | sort_by(.name)' \
+            <<<"${release}" > release-assets.json
+          test "${release_id}" = "${{ needs.publish.outputs.release_id }}"
+          test "$(sha256sum release-assets.json | cut -d' ' -f1)" = "${{ needs.publish.outputs.release_assets_sha256 }}"
+          for asset_name in gym-tracker-release.aab gym-tracker-release.apk
+          do
+            asset_id=$(jq -er --arg name "${asset_name}" '
+              [.assets[] | select(.name == $name and (.id | type == "number"))]
+                | if length == 1 then .[0].id else error("release asset set changed") end
+            ' <<<"${release}")
+            gh api -H "Accept: application/octet-stream" \
+              "repos/${GITHUB_REPOSITORY}/releases/assets/${asset_id}" \
+              > "${RUNNER_TEMP}/public-assets/${asset_name}"
+          done
+
+      - name: Replay sealed Phase 6 N4 evidence with trusted workflow source
+        run: |
+          set -euo pipefail
+          manifest_sha256=$(sha256sum sealed-release-validation/candidate/release-candidate.json | cut -d' ' -f1)
+          printf '%s  %s\n' "${PHASE6_N4_RECORD_SHA256}" \
+            sealed-release-validation/candidate/evidence/phase6/attended-record.json | sha256sum --check
+          node workflow-source/scripts/generate-phase6-attended-checklist.mjs verify \
+            --bundle-dir sealed-release-validation/candidate \
+            --manifest-sha256 "${manifest_sha256}" \
+            --checklist sealed-release-validation/candidate/evidence/phase6/checklist.json \
+            --observations sealed-release-validation/candidate/evidence/phase6/observations.json \
+            --evidence-dir sealed-release-validation/candidate/evidence/phase6 \
+            --record sealed-release-validation/candidate/evidence/phase6/attended-record.json
 
       - name: Record immutable post-promotion proof
+        env:
+          GH_TOKEN: ${{ github.token }}
         run: |
-          manifest_sha256=$(sha256sum retained-candidate/release-candidate.json | cut -d' ' -f1)
-          node scripts/record-phase5-promotion-proof.mjs \
-            --bundle-dir retained-candidate \
+          set -euo pipefail
+          tag_ref=$(gh api "repos/${GITHUB_REPOSITORY}/git/ref/tags/${RELEASE_TAG}")
+          jq -e --arg tag "${RELEASE_TAG}" --arg commit "${CANDIDATE_COMMIT}" '
+            .ref == ("refs/tags/" + $tag)
+              and .object.type == "commit"
+              and .object.sha == $commit
+          ' <<<"${tag_ref}" >/dev/null
+          release=$(gh api "repos/${GITHUB_REPOSITORY}/releases/tags/${RELEASE_TAG}")
+          jq -e --arg tag "${RELEASE_TAG}" --arg title "Gym Tracker ${RELEASE_TAG}" \
+            --arg body "Candidate run: ${CANDIDATE_RUN_ID}" \
+            --argjson release_id "${{ needs.publish.outputs.release_id }}" '
+            .id == $release_id
+              and .tag_name == $tag
+              and .name == $title
+              and .body == $body
+              and .draft == false
+              and .prerelease == false
+          ' <<<"${release}" >/dev/null
+          current_release_assets=$(jq -cer '[.assets[] | {id, name, size, digest}] | sort_by(.name)' \
+            <<<"${release}")
+          test "$(printf '%s\n' "${current_release_assets}" | sha256sum | cut -d' ' -f1)" \
+            = "${{ needs.publish.outputs.release_assets_sha256 }}"
+          manifest_sha256=$(sha256sum sealed-release-validation/candidate/release-candidate.json | cut -d' ' -f1)
+          node workflow-source/scripts/record-phase5-promotion-proof.mjs \
+            --bundle-dir sealed-release-validation/candidate \
             --manifest-sha256 "${manifest_sha256}" \
             --candidate-run-id "${CANDIDATE_RUN_ID}" \
             --attended-run-id "${ATTENDED_RUN_ID}" \
             --attended-artifact-name "${ATTENDED_ARTIFACT_NAME}" \
-            --attended-record attended-evidence/attended-record.json \
+            --attended-record sealed-release-validation/attended/attended-record.json \
             --attended-record-sha256 "${ATTENDED_RECORD_SHA256}" \
+            --phase6-n4-run-id "${PHASE6_N4_RUN_ID}" \
+            --phase6-n4-artifact-name "${PHASE6_N4_ARTIFACT_NAME}" \
+            --phase6-n4-record sealed-release-validation/candidate/evidence/phase6/attended-record.json \
+            --phase6-n4-record-sha256 "${PHASE6_N4_RECORD_SHA256}" \
+            --release-id "${{ needs.publish.outputs.release_id }}" \
+            --publication-job-attempt "${{ needs.publish.outputs.publication_job_attempt }}" \
+            --public-asset-metadata release-assets.json \
             --promotion-run-id "${GITHUB_RUN_ID}" \
             --repository "${GITHUB_REPOSITORY}" \
             --release-tag "${RELEASE_TAG}" \

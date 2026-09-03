@@ -39,7 +39,7 @@ expected: One build produces retained signed APK/AAB bytes, a verified manifest,
 result: [pending]
 
 ### 2. Complete the canonical attended ledger
-expected: Every Phase 2–5 row passes on the exact candidate with concrete immutable observations and attachments.
+expected: The observation-only Phase 6 N4 Samsung record and every Phase 2–5 row pass on the exact candidate with concrete immutable observations and attachments; the protected attended workflow replays and binds the N4 source bytes before accepting owner approval.
 result: [pending]
 
 ### 3. Record approval and promote unchanged bytes
@@ -71,6 +71,9 @@ blocked: 0
 - Bind every automated and attended artifact to the same candidate commit,
   manifest SHA-256, package/version, raw APK/AAB hashes, and embedded
   bundle/config hashes.
+- Require a successful protected Phase 6 N4 upload with the canonical checklist,
+  observations, four fixed PNG attachments, and observation-only record; replay
+  those bytes before owner approval, promotion, and Terminal Seal.
 - Do not pre-populate observations or owner approval. The literal lowercase
   approval token is `approved` and is supplied only after every row passes.
 - Promotion must finish and public asset hashes must match before Terminal Seal.

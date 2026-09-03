@@ -23,6 +23,10 @@ on:
         description: Relative path beneath the protected EVIDENCE_ROOT to the attended attachments directory
         required: true
         type: string
+      phase6_n4_evidence_path:
+        description: Relative path beneath the protected EVIDENCE_ROOT to the canonical Phase 6 N4 evidence directory
+        required: true
+        type: string
 
 permissions:
   actions: read
@@ -31,7 +35,7 @@ permissions:
   id-token: none
 
 concurrency:
-  group: release-human-evidence-upload-${{ github.run_id }}
+  group: release-human-evidence-upload
   cancel-in-progress: false
 
 env:
@@ -40,7 +44,9 @@ env:
   CANDIDATE_COMMIT: ${{ inputs.candidate_commit }}
   OBSERVATIONS_PATH: ${{ inputs.observations_path }}
   ATTACHMENTS_PATH: ${{ inputs.attachments_path }}
+  PHASE6_N4_EVIDENCE_PATH: ${{ inputs.phase6_n4_evidence_path }}
   OBSERVATIONS_ARTIFACT_NAME: human-release-observations-${{ inputs.candidate_id }}-${{ github.run_id }}
+  PHASE6_N4_ARTIFACT_NAME: phase6-n4-evidence-${{ inputs.candidate_id }}-${{ github.run_id }}
 
 jobs:
   upload-human-evidence:
@@ -51,7 +57,13 @@ jobs:
       name: private-release-observation-upload
       url: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
     steps:
+      - name: Require trusted main workflow source
+        run: |
+          test "${GITHUB_SHA}" = "${CANDIDATE_COMMIT}"
+          test "${GITHUB_REF_NAME}" = "main"
+
       - name: Validate candidate provenance with trusted inline shell
+        id: selected_candidate
         env:
           GH_TOKEN: ${{ github.token }}
           EVIDENCE_ROOT: ${{ vars.PHASE5_EVIDENCE_ROOT }}
@@ -166,20 +178,33 @@ jobs:
           verify_deployment_provenance "${CANDIDATE_RUN_ID}" "${candidate_run_attempt}" "${CANDIDATE_COMMIT}" "${candidate_ref}" "private-release-candidate"
           candidate_artifacts=$(gh api --method GET --paginate --slurp \
             "repos/${GITHUB_REPOSITORY}/actions/runs/${CANDIDATE_RUN_ID}/artifacts" -F per_page=100)
-          jq -e --argjson run_id "${CANDIDATE_RUN_ID}" --arg commit "${CANDIDATE_COMMIT}" \
+          selected_candidate_artifact=$(jq -cer --argjson run_id "${CANDIDATE_RUN_ID}" --arg commit "${CANDIDATE_COMMIT}" \
             --arg name "private-release-candidate-${CANDIDATE_ID}" '
             if all(.[]; type == "object" and (.artifacts | type == "array")) then
               [.[] | .artifacts[] | select(.name == $name and .expired == false
-                and .workflow_run.id == $run_id and .workflow_run.head_sha == $commit)] | length == 1
+                and .workflow_run.id == $run_id and .workflow_run.head_sha == $commit)]
+              | if length == 1 then .[0] else error("candidate artifact is not unique") end
             else error("malformed artifact pages") end
             ' \
-            <<<"${candidate_artifacts}" >/dev/null
+            <<<"${candidate_artifacts}")
+          candidate_artifact_id=$(jq -er '.id | select(type == "number" and . >= 1)' <<<"${selected_candidate_artifact}")
+          printf 'candidate_artifact_id=%s\n' "${candidate_artifact_id}" >> "${GITHUB_OUTPUT}"
 
-      - name: Check out exact proven candidate source
+      - name: Check out trusted workflow source
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
-          ref: ${{ env.CANDIDATE_COMMIT }}
+          ref: ${{ github.sha }}
           path: workflow-source
+          persist-credentials: false
+
+      - name: Download exact candidate by immutable artifact ID
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          artifact-ids: ${{ steps.selected_candidate.outputs.candidate_artifact_id }}
+          github-token: ${{ github.token }}
+          repository: ${{ github.repository }}
+          run-id: ${{ env.CANDIDATE_RUN_ID }}
+          path: ${{ runner.temp }}/gym-tracker-phase6-candidate
 
       - name: Stage bounded local evidence inputs
         env:
@@ -191,10 +216,79 @@ jobs:
             --attachments-relative "${ATTACHMENTS_PATH}" \
             --staging-root "${RUNNER_TEMP}"
 
+      - name: Stage exact canonical Phase 6 N4 evidence files
+        env:
+          EVIDENCE_ROOT: ${{ vars.PHASE5_EVIDENCE_ROOT }}
+        run: |
+          set -euo pipefail
+          case "${PHASE6_N4_EVIDENCE_PATH}" in
+            ''|/*|.|..|./*|../*|*/./*|*/../*|*/.|*/..) exit 1 ;;
+          esac
+          evidence_root=$(realpath "${EVIDENCE_ROOT}")
+          test -d "${evidence_root}"
+          test ! -L "${EVIDENCE_ROOT}"
+          phase6_requested="${evidence_root}/${PHASE6_N4_EVIDENCE_PATH}"
+          test ! -L "${phase6_requested}"
+          phase6_source=$(realpath "${phase6_requested}")
+          test "${phase6_source}" = "${phase6_requested}"
+          case "${phase6_source}" in "${evidence_root}"/*) ;; *) exit 1 ;; esac
+          test -d "${phase6_source}"
+          phase6_candidate_root="${RUNNER_TEMP}/gym-tracker-phase6-candidate"
+          phase6_staging_root="${phase6_candidate_root}/evidence/phase6-n4-upload"
+          test "${phase6_staging_root}" != "${phase6_candidate_root}"
+          rm -rf "${phase6_staging_root}"
+          mkdir -p "${phase6_staging_root}/phase6"
+          for evidence_file in \
+            checklist.json \
+            observations.json \
+            N4-01.png \
+            N4-02.png \
+            N4-03.png \
+            N4-04.png \
+            attended-record.json
+          do
+            source_file="${phase6_source}/${evidence_file}"
+            cp -P "${source_file}" "${phase6_staging_root}/phase6/${evidence_file}"
+          done
+          phase6_entry_count=0
+          for phase6_entry in "${phase6_staging_root}/phase6"/* \
+            "${phase6_staging_root}/phase6"/.[!.]* \
+            "${phase6_staging_root}/phase6"/..?*
+          do
+            if [ ! -e "${phase6_entry}" ] && [ ! -L "${phase6_entry}" ]; then
+              continue
+            fi
+            test -f "${phase6_entry}"
+            test ! -L "${phase6_entry}"
+            test "$(realpath "${phase6_entry}")" = "${phase6_entry}"
+            size_bytes=$(wc -c < "${phase6_entry}" | tr -d '[:space:]')
+            case "${size_bytes}" in ''|*[!0-9]*) exit 1 ;; esac
+            test "${size_bytes}" -gt 0
+            test "${size_bytes}" -le 67108864
+            phase6_entry_count=$((phase6_entry_count + 1))
+          done
+          test "${phase6_entry_count}" -eq 7
+          phase6_manifest_sha256=$(sha256sum "${phase6_candidate_root}/release-candidate.json" | awk '{print $1}')
+          node workflow-source/scripts/generate-phase6-attended-checklist.mjs verify \
+            --bundle-dir "${phase6_candidate_root}" \
+            --manifest-sha256 "${phase6_manifest_sha256}" \
+            --checklist "${phase6_staging_root}/phase6/checklist.json" \
+            --observations "${phase6_staging_root}/phase6/observations.json" \
+            --evidence-dir "${phase6_staging_root}/phase6" \
+            --record "${phase6_staging_root}/phase6/attended-record.json"
+
       - name: Upload immutable human-authored evidence
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: ${{ env.OBSERVATIONS_ARTIFACT_NAME }}
           path: ${{ runner.temp }}/gym-tracker-human-evidence
+          if-no-files-found: error
+          retention-days: 30
+
+      - name: Upload immutable Phase 6 N4 observation-only evidence
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: ${{ env.PHASE6_N4_ARTIFACT_NAME }}
+          path: ${{ runner.temp }}/gym-tracker-phase6-candidate/evidence/phase6-n4-upload
           if-no-files-found: error
           retention-days: 30

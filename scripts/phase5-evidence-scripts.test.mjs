@@ -62,7 +62,7 @@ function assertDeploymentStatusProvenance(source, expectedBindings) {
   assert.match(source, /\.environment_url == \$run_url/iu);
   assert.match(source, /\.deployment_url == \$deployment_url/iu);
   assert.match(source, /\.log_url[\s\S]*startswith\(\$run_job_prefix\)/iu);
-  assert.match(source, /sort_by\(\[\.created_at, \.id\]\) \| last/iu);
+  assert.match(source, /sort_by\(\[\.sort_time, \.status\.id\]\) \| last\.status|sort_by\(\[\.created_at, \.id\]\) \| last/iu);
   assert.match(source, /actions\/jobs\/\$\{job_id\}/u);
   assert.match(source, /\.run_id == \$run_id/iu);
   assert.match(source, /\.run_attempt == \$run_attempt/iu);
@@ -167,6 +167,81 @@ function automatedMetadata(producer, manifest = manifestFixture()) {
     producer,
     candidate: candidateIdentity(manifest),
     device: deviceIdentity(),
+  };
+}
+
+function phase6AttendedEvidenceFixture(manifest = manifestFixture()) {
+  return {
+    record_sha256: SHA_C,
+    evidence_run_id: "987654321",
+    artifact_name: "phase6-n4-evidence-candidate-001-987654321",
+    candidate_id: manifest.candidate_id,
+    source_commit: manifest.source.commit,
+    manifest_sha256: SHA_D,
+    apk_sha256: manifest.artifacts.find(({ kind }) => kind === "apk").sha256,
+    status: "passed",
+  };
+}
+
+async function materializePhase6N4Evidence(
+  directory, manifest = manifestFixture(), { failed = false } = {},
+) {
+  const {
+    buildPhase6AttendedChecklist,
+    createPhase6AttendedRecord,
+    serializePhase6AttendedChecklist,
+  } = await load("scripts/generate-phase6-attended-checklist.mjs");
+  const candidate = { manifest, manifest_sha256: SHA_D };
+  const device = {
+    role: "samsung-physical",
+    model: "SM-S916B",
+    serial_sha256: SHA_A,
+    installed_package: manifest.source.package,
+    installed_apk_sha256: manifest.artifacts.find(({ kind }) => kind === "apk").sha256,
+  };
+  mkdirSync(directory, { recursive: true });
+  const attachmentDigests = Object.fromEntries(
+    ["N4-01", "N4-02", "N4-03", "N4-04"].map((id) => {
+      const bytes = Buffer.concat([Buffer.from("89504e470d0a1a0a", "hex"), Buffer.from(id)]);
+      writeFileSync(path.join(directory, `${id}.png`), bytes);
+      return [id, createHash("sha256").update(bytes).digest("hex")];
+    }),
+  );
+  const checklist = buildPhase6AttendedChecklist({
+    candidate, device, generatedAt: "2026-09-03T00:00:00.000Z",
+  });
+  const checklistBytes = serializePhase6AttendedChecklist(checklist);
+  const observations = {
+    schema_version: 1,
+    suite: "phase6-attended-observations",
+    candidate_id: manifest.candidate_id,
+    manifest_sha256: SHA_D,
+    device,
+    rows: Object.entries(attachmentDigests).map(([id, attachment_sha256], index) => ({
+      id, status: failed && index === 0 ? "failed" : "passed", attachment_sha256,
+    })),
+  };
+  const observationsBytes = serializePhase6AttendedChecklist(observations);
+  const record = createPhase6AttendedRecord({
+    candidate, checklist, checklistBytes, observations, observationsBytes,
+    evidenceDirectory: directory, recordedAt: "2026-09-03T00:30:00.000Z",
+  });
+  const recordBytes = serializePhase6AttendedChecklist(record);
+  const paths = {
+    checklistPath: path.join(directory, "checklist.json"),
+    observationsPath: path.join(directory, "observations.json"),
+    recordPath: path.join(directory, "attended-record.json"),
+  };
+  writeFileSync(paths.checklistPath, checklistBytes);
+  writeFileSync(paths.observationsPath, observationsBytes);
+  writeFileSync(paths.recordPath, recordBytes);
+  return {
+    ...paths,
+    evidenceDirectory: directory,
+    evidenceRunId: "987654321",
+    artifactName: "phase6-n4-evidence-candidate-001-987654321",
+    record,
+    recordBytes,
   };
 }
 
@@ -807,6 +882,24 @@ test("attended ledger is the exact ordered union of Phase 2 gaps, Phase 3/4 requ
     /order|union/iu);
 });
 
+test("attended ledger resolves trusted source independently of caller cwd", async () => {
+  const { derivePhase5AttendedRows } = await load(
+    "scripts/generate-phase5-attended-checklist.mjs",
+  );
+  const callerDirectory = mkdtempSync(path.join(os.tmpdir(), "phase5-caller-cwd-"));
+  const originalDirectory = process.cwd();
+  try {
+    process.chdir(callerDirectory);
+    const rows = derivePhase5AttendedRows();
+    assert.equal(rows.length, 41);
+    assert.equal(rows[0].row_id, "phase2:G-02-01");
+    assert.equal(rows.at(-1).row_id, "phase5:P5-PHYSICAL-ARGON2-CALIBRATION");
+  } finally {
+    process.chdir(originalDirectory);
+    rmSync(callerDirectory, { recursive: true, force: true });
+  }
+});
+
 test("checklist generator emits pending rows with blank evidence and no approval capability", async () => {
   const {
     buildPhase5PendingChecklist,
@@ -815,21 +908,172 @@ test("checklist generator emits pending rows with blank evidence and no approval
   } = await load("scripts/generate-phase5-attended-checklist.mjs");
   const manifest = manifestFixture();
   const rows = derivePhase5AttendedRows(projectRoot);
+  const phase6AttendedEvidence = phase6AttendedEvidenceFixture(manifest);
   const checklist = buildPhase5PendingChecklist({
     candidate: candidateIdentity(manifest),
     automatedEvidence: { file: "automated.json", sha256: SHA_A },
-    rows,
+    phase6AttendedEvidence, rows,
     generatedAt: "2026-08-26T00:00:00.000Z",
   });
   assert.doesNotThrow(() => validatePhase5PendingChecklist(checklist, {
     candidate: candidateIdentity(manifest),
     automatedEvidence: { file: "automated.json", sha256: SHA_A },
-    rows,
+    phase6AttendedEvidence, rows,
   }));
   assert.equal(checklist.status, "pending");
   assert.equal(checklist.rows.every((row) => row.status === "pending"
     && row.observation === "" && row.attachments.length === 0), true);
   assert.doesNotMatch(JSON.stringify(checklist), /owner_token|approval_status|"status":"approved"/iu);
+});
+
+test("Phase 5 pending checklist requires exact passed Phase 6 N4 provenance", async () => {
+  const {
+    buildPhase5PendingChecklist,
+    derivePhase5AttendedRows,
+    validatePhase5PendingChecklist,
+  } = await load("scripts/generate-phase5-attended-checklist.mjs");
+  const manifest = manifestFixture();
+  const rows = derivePhase5AttendedRows(projectRoot);
+  const automatedEvidence = { file: "automated.json", sha256: SHA_A };
+  const phase6AttendedEvidence = phase6AttendedEvidenceFixture(manifest);
+  const checklist = buildPhase5PendingChecklist({
+    candidate: candidateIdentity(manifest), automatedEvidence,
+    phase6AttendedEvidence, rows, generatedAt: "2026-09-03T00:00:00.000Z",
+  });
+  assert.deepEqual(checklist.phase6_attended_evidence, phase6AttendedEvidence);
+  assert.doesNotThrow(() => validatePhase5PendingChecklist(checklist, {
+    candidate: candidateIdentity(manifest), automatedEvidence, phase6AttendedEvidence, rows,
+  }));
+  for (const mutation of [
+    undefined,
+    { ...phase6AttendedEvidence, status: "failed" },
+    { ...phase6AttendedEvidence, candidate_id: "wrong-candidate" },
+    { ...phase6AttendedEvidence, source_commit: "f".repeat(40) },
+    { ...phase6AttendedEvidence, manifest_sha256: SHA_A },
+    { ...phase6AttendedEvidence, apk_sha256: SHA_A },
+    { ...phase6AttendedEvidence, record_sha256: "not-a-digest" },
+    { ...phase6AttendedEvidence, evidence_run_id: "0" },
+    { ...phase6AttendedEvidence, artifact_name: "not canonical/artifact" },
+  ]) {
+    assert.throws(() => buildPhase5PendingChecklist({
+      candidate: candidateIdentity(manifest), automatedEvidence,
+      phase6AttendedEvidence: mutation, rows, generatedAt: "2026-09-03T00:00:00.000Z",
+    }), /Phase 6|N4|passed|candidate|commit|manifest|APK|digest|run|artifact|provenance/iu);
+  }
+});
+
+test("Phase 5 derives N4 provenance only by replaying the canonical Phase 6 record", async () => {
+  const temporaryDirectory = mkdtempSync(path.join(os.tmpdir(), "phase5-phase6-n4-"));
+  try {
+    const { loadPhase6N4AttendedEvidence } = await load(
+      "scripts/generate-phase5-attended-checklist.mjs",
+    );
+    const manifest = manifestFixture();
+    const n4 = await materializePhase6N4Evidence(temporaryDirectory, manifest);
+    const options = {
+      candidateManifest: manifest,
+      manifestSha256: SHA_D,
+      phase6N4RecordPath: n4.recordPath,
+      phase6N4ChecklistPath: n4.checklistPath,
+      phase6N4ObservationsPath: n4.observationsPath,
+      phase6N4EvidenceDirectory: n4.evidenceDirectory,
+      phase6N4RunId: n4.evidenceRunId,
+      phase6N4ArtifactName: n4.artifactName,
+    };
+    assert.deepEqual(loadPhase6N4AttendedEvidence(options), {
+      ...phase6AttendedEvidenceFixture(manifest),
+      record_sha256: createHash("sha256").update(n4.recordBytes).digest("hex"),
+    });
+
+    const failedDirectory = path.join(temporaryDirectory, "failed");
+    const failed = await materializePhase6N4Evidence(failedDirectory, manifest, { failed: true });
+    assert.throws(() => loadPhase6N4AttendedEvidence({
+      ...options,
+      phase6N4RecordPath: failed.recordPath,
+      phase6N4ChecklistPath: failed.checklistPath,
+      phase6N4ObservationsPath: failed.observationsPath,
+      phase6N4EvidenceDirectory: failed.evidenceDirectory,
+    }), /Phase 6|N4|passed|failed/iu);
+
+    const wrongCandidate = manifestFixture({ candidate_id: "wrong-candidate" });
+    assert.throws(() => loadPhase6N4AttendedEvidence({
+      ...options, candidateManifest: wrongCandidate,
+    }), /Phase 6|N4|candidate|identity/iu);
+    assert.throws(() => loadPhase6N4AttendedEvidence({
+      ...options, manifestSha256: SHA_A,
+    }), /Phase 6|N4|manifest|identity/iu);
+    const wrongApk = manifestFixture({
+      artifacts: manifest.artifacts.map((artifactValue) => artifactValue.kind === "apk"
+        ? { ...artifactValue, sha256: SHA_A }
+        : artifactValue),
+    });
+    assert.throws(() => loadPhase6N4AttendedEvidence({
+      ...options, candidateManifest: wrongApk,
+    }), /Phase 6|N4|APK|candidate|identity/iu);
+
+    writeFileSync(n4.recordPath, `${n4.recordBytes.toString("utf8")}\n`);
+    assert.throws(() => loadPhase6N4AttendedEvidence(options), /Phase 6|N4|canonical|record/iu);
+    writeFileSync(n4.recordPath, n4.recordBytes);
+    writeFileSync(path.join(temporaryDirectory, "N4-01.png"), Buffer.concat([
+      Buffer.from("89504e470d0a1a0a", "hex"), Buffer.from("altered"),
+    ]));
+    assert.throws(() => loadPhase6N4AttendedEvidence(options), /Phase 6|N4|attachment|hash|changed/iu);
+  } finally {
+    rmSync(temporaryDirectory, { recursive: true, force: true });
+  }
+});
+
+test("Phase 5 attended CLI requires every Phase 6 N4 binding argument", async () => {
+  const { parsePhase5AttendedCliArguments } = await load(
+    "scripts/generate-phase5-attended-checklist.mjs",
+  );
+  const exact = [
+    "prepare",
+    "--bundle-dir", "retained-candidate",
+    "--manifest-sha256", SHA_D,
+    "--automated-evidence", "automated.json",
+    "--phase6-n4-record", "phase6/attended-record.json",
+    "--phase6-n4-checklist", "phase6/checklist.json",
+    "--phase6-n4-observations", "phase6/observations.json",
+    "--phase6-n4-evidence-dir", "phase6",
+    "--phase6-n4-run-id", "987654321",
+    "--phase6-n4-artifact-name", "phase6-n4-evidence-candidate-001-987654321",
+    "--output", "checklist.pending.json",
+  ];
+  assert.deepEqual(parsePhase5AttendedCliArguments(exact), {
+    mode: "prepare", bundleDir: "retained-candidate", manifestSha256: SHA_D,
+    automatedEvidence: "automated.json",
+    phase6N4Record: "phase6/attended-record.json",
+    phase6N4Checklist: "phase6/checklist.json",
+    phase6N4Observations: "phase6/observations.json",
+    phase6N4EvidenceDir: "phase6", phase6N4RunId: "987654321",
+    phase6N4ArtifactName: "phase6-n4-evidence-candidate-001-987654321",
+    output: "checklist.pending.json",
+  });
+  for (const missingOption of [
+    "--phase6-n4-record", "--phase6-n4-checklist",
+    "--phase6-n4-observations", "--phase6-n4-evidence-dir",
+    "--phase6-n4-run-id", "--phase6-n4-artifact-name",
+  ]) {
+    const index = exact.indexOf(missingOption);
+    assert.throws(
+      () => parsePhase5AttendedCliArguments([
+        ...exact.slice(0, index), ...exact.slice(index + 2),
+      ]),
+      /missing|Phase 6|N4|argument/iu,
+    );
+  }
+  for (const [option, invalid] of [
+    ["--phase6-n4-run-id", "0"],
+    ["--phase6-n4-run-id", "12.5"],
+    ["--phase6-n4-artifact-name", "bad/artifact"],
+    ["--phase6-n4-artifact-name", ""],
+  ]) {
+    const index = exact.indexOf(option);
+    const changed = [...exact];
+    changed[index + 1] = invalid;
+    assert.throws(() => parsePhase5AttendedCliArguments(changed), /Phase 6|N4|run|artifact|argument/iu);
+  }
 });
 
 function attendedFixture(rows, manifest = manifestFixture()) {
@@ -871,9 +1115,18 @@ test("recorder requires explicit closed observations, real attachments, and exac
     const manifest = manifestFixture();
     const rows = derivePhase5AttendedRows(projectRoot);
     const candidate = candidateIdentity(manifest);
+    const n4 = await materializePhase6N4Evidence(path.join(temporaryDirectory, "phase6"), manifest);
+    const phase6Options = {
+      phase6N4RecordPath: n4.recordPath, phase6N4ChecklistPath: n4.checklistPath,
+      phase6N4ObservationsPath: n4.observationsPath,
+      phase6N4EvidenceDirectory: n4.evidenceDirectory,
+      phase6N4RunId: n4.evidenceRunId, phase6N4ArtifactName: n4.artifactName,
+    };
+    const phase6AttendedEvidence = phase6AttendedEvidenceFixture(manifest);
+    phase6AttendedEvidence.record_sha256 = createHash("sha256").update(n4.recordBytes).digest("hex");
     const checklist = buildPhase5PendingChecklist({
       candidate, automatedEvidence: { file: "automated.json", sha256: SHA_A },
-      rows, generatedAt: "2026-08-26T00:00:00.000Z",
+      phase6AttendedEvidence, rows, generatedAt: "2026-08-26T00:00:00.000Z",
     });
     const checklistBytes = Buffer.from(serializeCanonicalJson(checklist));
     const observations = attendedFixture(rows, manifest);
@@ -888,12 +1141,13 @@ test("recorder requires explicit closed observations, real attachments, and exac
     assert.doesNotThrow(() => createPhase5AttendedRecord({
       candidateManifest: manifest, manifestSha256: SHA_D, checklist, checklistBytes,
       observations, observationsBytes, ownerToken: "approved",
-      evidenceDirectory: temporaryDirectory, rows,
+      evidenceDirectory: temporaryDirectory, ...phase6Options, rows,
     }));
     for (const ownerToken of [undefined, "Approved", "APPROVED", " approved", "approved ", "approvеd"]) {
       assert.throws(() => createPhase5AttendedRecord({
         candidateManifest: manifest, manifestSha256: SHA_D, checklist, checklistBytes,
         observations, observationsBytes, ownerToken, evidenceDirectory: temporaryDirectory, rows,
+        ...phase6Options,
       }), /owner token|approved/iu);
     }
     for (const status of ["pending", "skipped", "failed", "unknown", ""]) {
@@ -903,6 +1157,7 @@ test("recorder requires explicit closed observations, real attachments, and exac
         candidateManifest: manifest, manifestSha256: SHA_D, checklist, checklistBytes,
         observations: changed, observationsBytes: Buffer.from(serializeCanonicalJson(changed)),
         ownerToken: "approved", evidenceDirectory: temporaryDirectory, rows,
+        ...phase6Options,
       }), /status|passed|closed/iu);
     }
     const blank = structuredClone(observations);
@@ -911,6 +1166,7 @@ test("recorder requires explicit closed observations, real attachments, and exac
       candidateManifest: manifest, manifestSha256: SHA_D, checklist, checklistBytes,
       observations: blank, observationsBytes: Buffer.from(serializeCanonicalJson(blank)),
       ownerToken: "approved", evidenceDirectory: temporaryDirectory, rows,
+      ...phase6Options,
     }), /observation|blank/iu);
   } finally {
     rmSync(temporaryDirectory, { recursive: true, force: true });
@@ -928,6 +1184,15 @@ test("attended verifier hashes canonical record, every attachment, automation, a
     const manifest = manifestFixture();
     const candidate = candidateIdentity(manifest);
     const rows = derivePhase5AttendedRows(projectRoot);
+    const n4 = await materializePhase6N4Evidence(path.join(temporaryDirectory, "phase6"), manifest);
+    const phase6AttendedEvidence = phase6AttendedEvidenceFixture(manifest);
+    phase6AttendedEvidence.record_sha256 = createHash("sha256").update(n4.recordBytes).digest("hex");
+    const phase6Options = {
+      phase6N4RecordPath: n4.recordPath, phase6N4ChecklistPath: n4.checklistPath,
+      phase6N4ObservationsPath: n4.observationsPath,
+      phase6N4EvidenceDirectory: n4.evidenceDirectory,
+      phase6N4RunId: n4.evidenceRunId, phase6N4ArtifactName: n4.artifactName,
+    };
     const automatedPath = path.join(temporaryDirectory, "automated.json");
     writeFileSync(automatedPath, "automated exact candidate evidence\n");
     const automated = {
@@ -936,7 +1201,7 @@ test("attended verifier hashes canonical record, every attachment, automation, a
     };
     const checklist = buildPhase5PendingChecklist({
       candidate, automatedEvidence: automated, rows,
-      generatedAt: "2026-08-26T00:00:00.000Z",
+      phase6AttendedEvidence, generatedAt: "2026-08-26T00:00:00.000Z",
     });
     const checklistBytes = Buffer.from(serializeCanonicalJson(checklist));
     const observations = attendedFixture(rows, manifest);
@@ -953,23 +1218,36 @@ test("attended verifier hashes canonical record, every attachment, automation, a
     const record = createPhase5AttendedRecord({
       candidateManifest: manifest, manifestSha256: SHA_D, checklist, checklistBytes,
       observations, observationsBytes, ownerToken: "approved",
-      evidenceDirectory: temporaryDirectory, rows,
+      evidenceDirectory: temporaryDirectory, ...phase6Options, rows,
     });
+    assert.deepEqual(record.phase6_attended_evidence, phase6AttendedEvidence);
     const canonicalRecordBytes = Buffer.from(serializeCanonicalJson(record));
     assert.deepEqual(validatePhase5AttendedRecordBytes({
       candidateManifest: manifest, manifestSha256: SHA_D, record,
       recordBytes: canonicalRecordBytes, evidenceDirectory: temporaryDirectory,
       automatedEvidencePath: automatedPath, checklistPath, observationsPath, rows,
+      ...phase6Options,
     }), {
       status: "approved",
       rows: record.rows,
       attended_record_sha256: createHash("sha256").update(canonicalRecordBytes).digest("hex"),
     });
+    const substitutedN4 = {
+      ...record,
+      phase6_attended_evidence: { ...record.phase6_attended_evidence, record_sha256: SHA_A },
+    };
+    assert.throws(() => validatePhase5AttendedRecordBytes({
+      candidateManifest: manifest, manifestSha256: SHA_D, record: substitutedN4,
+      recordBytes: Buffer.from(serializeCanonicalJson(substitutedN4)),
+      evidenceDirectory: temporaryDirectory, automatedEvidencePath: automatedPath,
+      checklistPath, observationsPath, rows, ...phase6Options,
+    }), /Phase 6|N4|provenance|record|retained/iu);
     writeFileSync(checklistPath, `${checklistBytes.toString("utf8")}\n`);
     assert.throws(() => validatePhase5AttendedRecordBytes({
       candidateManifest: manifest, manifestSha256: SHA_D, record,
       recordBytes: canonicalRecordBytes, evidenceDirectory: temporaryDirectory,
       automatedEvidencePath: automatedPath, checklistPath, observationsPath, rows,
+      ...phase6Options,
     }), /checklist|hash|canonical|bytes/iu);
     writeFileSync(checklistPath, checklistBytes);
     writeFileSync(observationsPath, `${observationsBytes.toString("utf8")}\n`);
@@ -977,6 +1255,7 @@ test("attended verifier hashes canonical record, every attachment, automation, a
       candidateManifest: manifest, manifestSha256: SHA_D, record,
       recordBytes: canonicalRecordBytes, evidenceDirectory: temporaryDirectory,
       automatedEvidencePath: automatedPath, checklistPath, observationsPath, rows,
+      ...phase6Options,
     }), /observation|hash|canonical|bytes/iu);
     writeFileSync(observationsPath, observationsBytes);
     const attachment = path.join(temporaryDirectory, observations.rows[0].attachments[0]);
@@ -985,12 +1264,14 @@ test("attended verifier hashes canonical record, every attachment, automation, a
       candidateManifest: manifest, manifestSha256: SHA_D, record,
       recordBytes: canonicalRecordBytes, evidenceDirectory: temporaryDirectory,
       automatedEvidencePath: automatedPath, checklistPath, observationsPath, rows,
+      ...phase6Options,
     }), /attachment|hash|bytes/iu);
     rmSync(attachment);
     assert.throws(() => validatePhase5AttendedRecordBytes({
       candidateManifest: manifest, manifestSha256: SHA_D, record,
       recordBytes: canonicalRecordBytes, evidenceDirectory: temporaryDirectory,
       automatedEvidencePath: automatedPath, checklistPath, observationsPath, rows,
+      ...phase6Options,
     }), /attachment|missing|evidence/iu);
   } finally {
     rmSync(temporaryDirectory, { recursive: true, force: true });
@@ -1007,10 +1288,19 @@ test("attended attachments reject zero bytes, symlinks, escapes, and reuse acros
     } = await load("scripts/generate-phase5-attended-checklist.mjs");
     const manifest = manifestFixture();
     const rows = derivePhase5AttendedRows(projectRoot);
+    const n4 = await materializePhase6N4Evidence(path.join(temporaryDirectory, "phase6"), manifest);
+    const phase6Options = {
+      phase6N4RecordPath: n4.recordPath, phase6N4ChecklistPath: n4.checklistPath,
+      phase6N4ObservationsPath: n4.observationsPath,
+      phase6N4EvidenceDirectory: n4.evidenceDirectory,
+      phase6N4RunId: n4.evidenceRunId, phase6N4ArtifactName: n4.artifactName,
+    };
+    const phase6AttendedEvidence = phase6AttendedEvidenceFixture(manifest);
+    phase6AttendedEvidence.record_sha256 = createHash("sha256").update(n4.recordBytes).digest("hex");
     const checklist = buildPhase5PendingChecklist({
       candidate: candidateIdentity(manifest),
       automatedEvidence: { file: "automated.json", sha256: SHA_A },
-      rows, generatedAt: "2026-08-26T00:00:00.000Z",
+      phase6AttendedEvidence, rows, generatedAt: "2026-08-26T00:00:00.000Z",
     });
     const checklistBytes = Buffer.from(serializeCanonicalJson(checklist));
     const original = attendedFixture(rows, manifest);
@@ -1025,6 +1315,7 @@ test("attended attachments reject zero bytes, symlinks, escapes, and reuse acros
       candidateManifest: manifest, manifestSha256: SHA_D, checklist, checklistBytes,
       observations, observationsBytes: Buffer.from(serializeCanonicalJson(observations)),
       ownerToken: "approved", evidenceDirectory: temporaryDirectory, rows,
+      ...phase6Options,
     });
     materialize(original);
     const zero = structuredClone(original);
@@ -1082,21 +1373,40 @@ test("promotion proof binds public APK/AAB bytes and workflow provenance", async
       artifactValue.size_bytes = bytes.length;
     }
     const candidate = { manifest, manifest_sha256: SHA_D };
+    const releaseId = 42;
+    const publicAssetMetadata = manifest.artifacts.map((artifactValue, index) => ({
+      id: 50 + index,
+      name: artifactValue.file,
+      size: artifactValue.size_bytes,
+      digest: `sha256:${artifactValue.sha256}`,
+    }));
     const proof = createPhase5PromotionProof({
       candidate, candidateRunId: "12345", attendedRunId: "23456",
       attendedArtifactName: "attended-release-evidence-candidate-001",
       attendedRecordSha256: SHA_A, promotionRunId: "34567",
+      phase6N4RunId: "45678",
+      phase6N4ArtifactName: "phase6-n4-evidence-candidate-001-45678",
+      phase6N4RecordSha256: SHA_B,
+      releaseId, publicationJobAttempt: 1, publicAssetMetadata,
       repository: "owner/gym-tracker", releaseTag: "v1.0.0",
       publicAssetsDirectory: publicAssets,
     });
     const bytes = Buffer.from(serializePhase5PromotionProof(proof));
     assert.doesNotThrow(() => validatePhase5PromotionProof({
       proof, proofBytes: bytes, candidate, attendedRecordSha256: SHA_A,
+      phase6N4RunId: "45678",
+      phase6N4ArtifactName: "phase6-n4-evidence-candidate-001-45678",
+      phase6N4RecordSha256: SHA_B,
+      releaseId, publicationJobAttempt: 1, publicAssetMetadata,
       publicAssetsDirectory: publicAssets,
     }));
     writeFileSync(path.join(publicAssets, "gym-tracker-release.apk"), "changed");
     assert.throws(() => validatePhase5PromotionProof({
       proof, proofBytes: bytes, candidate, attendedRecordSha256: SHA_A,
+      phase6N4RunId: "45678",
+      phase6N4ArtifactName: "phase6-n4-evidence-candidate-001-45678",
+      phase6N4RecordSha256: SHA_B,
+      releaseId, publicationJobAttempt: 1, publicAssetMetadata,
       publicAssetsDirectory: publicAssets,
     }), /public|asset|candidate/iu);
   } finally {
@@ -1124,6 +1434,21 @@ test("protected attended workflow consumes supplied evidence and uploads a verif
   assert.match(source, /test "\$\{OWNER_TOKEN\}" = "approved"/u);
   assert.match(source, /--owner-token "\$\{OWNER_TOKEN\}"/u);
   assert.doesNotMatch(source, /--owner-token approved/u);
+  assert.match(source, /test "\$\{GITHUB_SHA\}" = "\$\{CANDIDATE_COMMIT\}"/u);
+  assert.match(source, /test "\$\{GITHUB_REF_NAME\}" = "main"/u);
+  assert.match(source, /persist-credentials:\s*false/u);
+  assert.doesNotMatch(source, /Check out exact candidate source|npm ci|npm run (?:prepare|record|verify):attended/iu);
+  assert.doesNotMatch(source, /gh run download/iu);
+  for (const output of [
+    "candidate_artifact_id",
+    "observations_artifact_id",
+    "phase6_n4_artifact_id",
+  ]) {
+    assert.match(
+      source,
+      new RegExp(`artifact-ids:\\s*\\$\\{\\{ steps\\.selected_artifacts\\.outputs\\.${output} \\}\\}`, "u"),
+    );
+  }
   for (const workflow of [
     ".github/workflows/release-candidate.yml",
     ".github/workflows/release-attended-evidence.yml",
@@ -1182,12 +1507,17 @@ test("protected human observation producer uploads bounded local evidence with p
   assert.match(source, /permissions:[\s\S]*actions:\s*read[\s\S]*contents:\s*read[\s\S]*id-token:\s*none/iu);
   assert.match(source, /^\s*candidate_run_id:\s*$/mu);
   const provenance = source.indexOf("name: Validate candidate provenance with trusted inline shell");
-  const checkout = source.indexOf("name: Check out exact proven candidate source");
+  const checkout = source.indexOf("name: Check out trusted workflow source");
   const helper = source.indexOf("node workflow-source/scripts/stage-phase5-human-evidence.mjs");
   assert.equal(provenance >= 0 && provenance < checkout && checkout < helper, true);
+  assert.match(source, /test "\$\{GITHUB_SHA\}" = "\$\{CANDIDATE_COMMIT\}"/u);
+  assert.match(source, /test "\$\{GITHUB_REF_NAME\}" = "main"/u);
+  assert.match(source, /persist-credentials:\s*false/u);
   assert.match(source, /release-candidate\.yml/iu);
   assert.match(source, /private-release-candidate/iu);
   assert.match(source, /private-release-candidate-\$\{CANDIDATE_ID\}/u);
+  assert.doesNotMatch(source, /gh run download/iu);
+  assert.match(source, /artifact-ids:\s*\$\{\{ steps\.selected_candidate\.outputs\.candidate_artifact_id \}\}/u);
   const attended = readFileSync(
     path.join(projectRoot, ".github/workflows/release-attended-evidence.yml"),
     "utf8",
@@ -1379,18 +1709,22 @@ test("promotion and terminal contracts require selected successful cross-run inp
     ["CANDIDATE_RUN_ID", "private-release-candidate"],
     ["ATTENDED_RUN_ID", "private-release-attended"],
   ]);
-  const workflowCheckout = promotion.indexOf("name: Check out workflow source for input validation");
+  const workflowCheckout = promotion.indexOf("name: Check out exact trusted workflow source");
   const validator = promotion.indexOf("node workflow-source/scripts/validate-phase5-promotion-inputs.mjs");
-  const candidateCheckout = promotion.indexOf("name: Check out exact candidate source");
-  const attendedVerifier = promotion.indexOf("npm run verify:attended:phase5");
+  const attendedVerifier = promotion.indexOf(
+    "node workflow-source/scripts/generate-phase5-attended-checklist.mjs verify",
+  );
+  const sealedHandoff = promotion.indexOf("name: Upload sealed validation artifact");
+  const publishJob = promotion.indexOf("  publish:");
   const publisher = promotion.indexOf("gh release create");
   assert.equal(workflowCheckout >= 0 && workflowCheckout < validator, true);
-  assert.equal(validator < candidateCheckout && candidateCheckout < attendedVerifier, true);
-  assert.equal(attendedVerifier < publisher, true);
+  assert.equal(validator < attendedVerifier && attendedVerifier < sealedHandoff, true);
+  assert.equal(sealedHandoff < publishJob && publishJob < publisher, true);
+  assert.doesNotMatch(promotion, /name: Check out exact candidate source|npm run verify:attended:phase5/iu);
   assert.match(promotion, /group:\s*release-promotion\s*$/mu);
   assert.match(promotion, /cancel-in-progress:\s*false/u);
   assert.doesNotMatch(promotion, /group:\s*release-promotion-\$\{\{ github\.run_id \}\}/u);
-  assert.match(promotion, /release_bodies=\$\(gh api --paginate/iu);
+  assert.match(promotion, /release_pages=\$\(gh api --method GET --paginate --slurp/iu);
   assert.doesNotMatch(
     promotion,
     /gh api --paginate[^\n]*releases[\s\S]{0,160}\|\s*grep -F/iu,
@@ -1458,13 +1792,12 @@ test("promotion and terminal contracts require selected successful cross-run inp
     ),
   ), /provenance|attempt|ref|run/iu);
   assert.throws(() => validatePromotionWorkflowContract(
-    promotion.replace(/gh release view[^\n]+/u, "true"),
-  ), /existing|overwrite|release/iu);
+    promotion.replace("id: publication_state", "id: substituted_state"),
+  ), /publication|state|release/iu);
   assert.throws(() => validatePromotionWorkflowContract(
     promotion.replace(
-      /release_bodies=\$\(gh api --paginate[^\n]*\n\s*--jq[^\n]*\)/u,
-      'gh api --paginate "repos/${GITHUB_REPOSITORY}/releases" \
-            --jq \'.[].body // ""\' | grep -F "Candidate run: ${candidate_run_id}"',
+      'select(((.body // "") | split("\\n") | index($marker)) != null)',
+      'select(((.body // "") | split("\\n") | index($marker)) == null)',
     ),
   ), /candidate|reuse|API|release/iu);
   assert.throws(() => validatePromotionWorkflowContract(
@@ -1472,4 +1805,160 @@ test("promotion and terminal contracts require selected successful cross-run inp
   ), /draft|hash|publish/iu);
   assert.throws(() => validateTerminalSealDocument(`${terminal}\n\`\`\`bash\nnpm run build\n\`\`\`\n`),
     /exactly one|executable|build/iu);
+});
+
+test("Phase 6 N4 evidence crosses the protected release gate as one exact observation-only artifact", () => {
+  const upload = readFileSync(
+    path.join(projectRoot, ".github/workflows/release-human-evidence-upload.yml"),
+    "utf8",
+  );
+  for (const pattern of [
+    /^\s*phase6_n4_evidence_path:\s*$/mu,
+    /^\s*PHASE6_N4_EVIDENCE_PATH:\s*\$\{\{ inputs\.phase6_n4_evidence_path \}\}\s*$/mu,
+    /^\s*PHASE6_N4_ARTIFACT_NAME:\s*phase6-n4-evidence-\$\{\{ inputs\.candidate_id \}\}-\$\{\{ github\.run_id \}\}\s*$/mu,
+    /gym-tracker-phase6-candidate[\s\S]*phase6-n4-upload[\s\S]*mkdir -p "\$\{phase6_staging_root\}\/phase6"/u,
+    /name:\s*\$\{\{ env\.PHASE6_N4_ARTIFACT_NAME \}\}/u,
+    /^\s*group:\s*release-human-evidence-upload\s*$/mu,
+    /^\s*cancel-in-progress:\s*false\s*$/mu,
+  ]) {
+    assert.match(upload, pattern);
+  }
+  for (const file of [
+    "checklist.json",
+    "observations.json",
+    "N4-01.png",
+    "N4-02.png",
+    "N4-03.png",
+    "N4-04.png",
+    "attended-record.json",
+  ]) {
+    assert.match(upload, new RegExp(file.replace(".", "\\."), "u"));
+  }
+  assert.match(upload, /for phase6_entry in[\s\S]*test -f "\$\{phase6_entry\}"[\s\S]*test ! -L "\$\{phase6_entry\}"[\s\S]*phase6_entry_count=\$\(\(phase6_entry_count \+ 1\)\)[\s\S]*test "\$\{phase6_entry_count\}" -eq 7/u);
+  assert.match(upload, /source_file="\$\{phase6_source\}\/\$\{evidence_file\}"[\s\S]*cp -P "\$\{source_file\}" "\$\{phase6_staging_root\}\/phase6\/\$\{evidence_file\}"/u);
+  assert.doesNotMatch(upload, /cp --no-dereference/u);
+  const phase6Copy = upload.indexOf(
+    'cp -P "${source_file}" "${phase6_staging_root}/phase6/${evidence_file}"',
+  );
+  const stagedPhase6Validation = upload.indexOf(
+    'node workflow-source/scripts/generate-phase6-attended-checklist.mjs verify',
+  );
+  const phase6Upload = upload.indexOf(
+    "name: Upload immutable Phase 6 N4 observation-only evidence",
+  );
+  assert.equal(phase6Copy >= 0 && phase6Copy < stagedPhase6Validation, true);
+  assert.equal(stagedPhase6Validation < phase6Upload, true);
+  assert.match(upload, /path:\s*\$\{\{ runner\.temp \}\}\/gym-tracker-phase6-candidate\/evidence\/phase6-n4-upload/u);
+  assert.match(upload, /--checklist "\$\{phase6_staging_root\}\/phase6\/checklist\.json"[\s\S]*--observations "\$\{phase6_staging_root\}\/phase6\/observations\.json"[\s\S]*--evidence-dir "\$\{phase6_staging_root\}\/phase6"[\s\S]*--record "\$\{phase6_staging_root\}\/phase6\/attended-record\.json"/u);
+  assert.doesNotMatch(upload, /phase6[^\n]*owner[_-]token|owner[_-]token[^\n]*phase6/iu);
+
+  const attended = readFileSync(
+    path.join(projectRoot, ".github/workflows/release-attended-evidence.yml"),
+    "utf8",
+  );
+  for (const pattern of [
+    /^\s*phase6_evidence_run_id:\s*$/mu,
+    /^\s*phase6_evidence_artifact_name:\s*$/mu,
+    /^\s*phase6_n4_record_sha256:\s*$/mu,
+    /^\s*PHASE6_EVIDENCE_RUN_ID:\s*\$\{\{ inputs\.phase6_evidence_run_id \}\}\s*$/mu,
+    /^\s*PHASE6_EVIDENCE_ARTIFACT_NAME:\s*\$\{\{ inputs\.phase6_evidence_artifact_name \}\}\s*$/mu,
+    /^\s*PHASE6_N4_RECORD_SHA256:\s*\$\{\{ inputs\.phase6_n4_record_sha256 \}\}\s*$/mu,
+  ]) {
+    assert.match(attended, pattern);
+  }
+  assert.equal((attended.match(/^      [a-z0-9_]+:\s*$/gmu) ?? []).length, 10);
+  assert.match(
+    attended,
+    /^  OBSERVATIONS_ARTIFACT_NAME: human-release-observations-\$\{\{ inputs\.candidate_id \}\}-\$\{\{ inputs\.observations_run_id \}\}$/mu,
+  );
+  assert.match(
+    attended,
+    /test "\$\{PHASE6_EVIDENCE_ARTIFACT_NAME\}" = "phase6-n4-evidence-\$\{CANDIDATE_ID\}-\$\{PHASE6_EVIDENCE_RUN_ID\}"/u,
+  );
+  assertDeploymentStatusProvenance(attended, [
+    ["CANDIDATE_RUN_ID", "private-release-candidate"],
+    ["OBSERVATIONS_RUN_ID", "private-release-observation-upload"],
+  ]);
+  assert.match(
+    attended,
+    /verify_deployment_provenance "\$\{PHASE6_EVIDENCE_RUN_ID\}" "\$\{phase6_evidence_run_attempt\}" "\$\{CANDIDATE_COMMIT\}" "\$\{phase6_evidence_ref\}" "private-release-observation-upload"/u,
+  );
+
+  const phase6RunValidation = attended.slice(
+    attended.indexOf('jq -e --argjson run_id "${PHASE6_EVIDENCE_RUN_ID}"'),
+    attended.indexOf('<<<"${phase6_evidence_run}" >/dev/null')
+      + '<<<"${phase6_evidence_run}" >/dev/null'.length,
+  );
+  assert.notEqual(phase6RunValidation.length, 0);
+  for (const predicate of [
+    '.id == $run_id',
+    '.status == "completed"',
+    '.conclusion == "success"',
+    '.html_url == $run_url',
+    '.head_sha == $commit',
+    '.head_branch == "main"',
+    '.repository.full_name == $repo',
+    '.event == "workflow_dispatch"',
+    '.path == ".github/workflows/release-human-evidence-upload.yml"',
+  ]) {
+    assert.match(phase6RunValidation, new RegExp(predicate.replace(/[.*+?^${}()|[\]\\]/gu, "\\$&"), "u"));
+  }
+
+  const phase6ArtifactValidation = attended.slice(
+    attended.indexOf('repos/${GITHUB_REPOSITORY}/actions/runs/${PHASE6_EVIDENCE_RUN_ID}/artifacts'),
+    attended.indexOf('<<<"${phase6_evidence_artifacts}")')
+      + '<<<"${phase6_evidence_artifacts}")'.length,
+  );
+  assert.notEqual(phase6ArtifactValidation.length, 0);
+  for (const predicate of [
+    '.name == $name',
+    '.expired == false',
+    '.workflow_run.id == $run_id',
+    '.workflow_run.head_sha == $commit',
+    'if length == 1 then .[0]',
+  ]) {
+    assert.ok(phase6ArtifactValidation.includes(predicate), `missing Phase 6 artifact predicate: ${predicate}`);
+  }
+
+  assert.doesNotMatch(attended, /gh run download/iu);
+  assert.match(attended, /artifact-ids:\s*\$\{\{ steps\.selected_artifacts\.outputs\.phase6_n4_artifact_id \}\}/u);
+  assert.match(
+    attended,
+    /printf '%s  %s\\n' "\$\{PHASE6_N4_RECORD_SHA256\}" [^\n]*phase6\/attended-record\.json \| sha256sum --check/u,
+  );
+  assert.match(attended, /for evidence_file in checklist\.json observations\.json N4-01\.png N4-02\.png N4-03\.png N4-04\.png attended-record\.json/u);
+  for (const file of ["checklist.json", "observations.json", "attended-record.json"]) {
+    assert.match(attended, new RegExp(`phase6/${file.replace(".", "\\.")}`, "u"));
+  }
+  assert.doesNotMatch(attended, /(?:prepare|record):attended:phase6/iu);
+  const phase6Verifier = attended.indexOf(
+    "node trusted-workflow-source/scripts/generate-phase6-attended-checklist.mjs verify",
+  );
+  const ownerApproval = attended.indexOf('test "${OWNER_TOKEN}" = "approved"');
+  const phase5Recorder = attended.indexOf(
+    "node trusted-workflow-source/scripts/generate-phase5-attended-checklist.mjs record",
+  );
+  assert.equal(
+    phase6Verifier >= 0 && phase6Verifier < ownerApproval && ownerApproval < phase5Recorder,
+    true,
+  );
+  for (const command of [
+    "node trusted-workflow-source/scripts/generate-phase5-attended-checklist.mjs prepare",
+    "node trusted-workflow-source/scripts/generate-phase5-attended-checklist.mjs record",
+    "node trusted-workflow-source/scripts/generate-phase5-attended-checklist.mjs verify",
+  ]) {
+    const start = attended.indexOf(command);
+    const end = attended.indexOf("\n\n", start);
+    const block = attended.slice(start, end < 0 ? undefined : end);
+    for (const argument of [
+      '--phase6-n4-record retained-candidate/evidence/phase6-n4-upload/phase6/attended-record.json',
+      '--phase6-n4-checklist retained-candidate/evidence/phase6-n4-upload/phase6/checklist.json',
+      '--phase6-n4-observations retained-candidate/evidence/phase6-n4-upload/phase6/observations.json',
+      '--phase6-n4-evidence-dir retained-candidate/evidence/phase6-n4-upload/phase6',
+      '--phase6-n4-run-id "${PHASE6_EVIDENCE_RUN_ID}"',
+      '--phase6-n4-artifact-name "${PHASE6_EVIDENCE_ARTIFACT_NAME}"',
+    ]) {
+      assert.ok(block.includes(argument), `${command} is missing ${argument}`);
+    }
+  }
 });

@@ -671,9 +671,15 @@ test("Phase 2 remediation flows use public labels and deterministic seams", asyn
   );
   assert.ok(
     workout.includes(
-      `${retriedAddWorkingSetVisibilityGuard}\n${safeActionNudge}\n- assertVisible: "Add working set"\n- tapOn: "Add working set"`,
+      `${retriedAddWorkingSetVisibilityGuard}\n- assertVisible: "Add working set"\n- tapOn: "Add working set"`,
     ),
-    "the post-restart add action must be nudged above the system-navigation boundary before tapping",
+    "the post-restart add action must be used immediately after target-driven discovery",
+  );
+  assert.ok(
+    !workout.includes(
+      `${retriedAddWorkingSetVisibilityGuard}\n${safeActionNudge}`,
+    ),
+    "the post-restart Add working set discovery must not be followed by a blind swipe",
   );
   const boundedRetryAddWorkingSetTraversal = [
     "- repeat:",
@@ -825,7 +831,7 @@ test("Phase 2 remediation flows use public labels and deterministic seams", asyn
   );
   assert.match(
     workout,
-    /- repeat:\n    times: 12\n    while:\n      notVisible: "Complete warm-up W1"\n    commands:\n      - swipe:\n          start: 95%, 25%\n          end: 95%, 75%\n          duration: 300\n- assertVisible: "Complete warm-up W1"\n- tapOn: "Complete warm-up W1"\n- repeat:\n    times: 12\n    while:\n      notVisible: "Warm-up 1 of 4\.\*Completed\.\*"\n    commands:\n      - swipe:\n          start: 95%, 25%\n          end: 95%, 75%\n          duration: 300\n- assertVisible: "Warm-up 1 of 4\.\*Completed\.\*"\n- repeat:\n    times: 12\n    while:\n      notVisible: "Complete Set 1"\n    commands:\n      - swipe:\n          start: 95%, 75%\n          end: 95%, 25%\n          duration: 300\n- assertVisible: "Complete Set 1"/u,
+    /- repeat:\n    times: 12\n    while:\n      notVisible: "Complete warm-up W1"\n    commands:\n      - swipe:\n          start: 95%, 25%\n          end: 95%, 75%\n          duration: 300\n- assertVisible: "Complete warm-up W1"\n- tapOn: "Complete warm-up W1"\n- repeat:\n    times: 12\n    while:\n      notVisible: "Warm-up 1 of 4\.\*Completed\.\*"\n    commands:\n      - swipe:\n          start: 95%, 25%\n          end: 95%, 75%\n          duration: 300\n- assertVisible: "Warm-up 1 of 4\.\*Completed\.\*"\n- repeat:\n    times: 32\n    while:\n      notVisible: "Complete Set 1"\n    commands:\n      - swipe:\n          start: 95%, 75%\n          end: 95%, 25%\n          duration: 500\n- assertVisible: "Complete Set 1"/u,
   );
   assert.match(
     workout,
@@ -861,6 +867,18 @@ test("Phase 2 remediation flows use public labels and deterministic seams", asyn
     workout,
     /- assertVisible: "Correction was not saved\. Retry the correction\."[\s\S]*- assertVisible: "Working set 4 of 4\.\*"\n- repeat:\n    times: 4\n    while:\n      notVisible: "Retry completed set correction"\n    commands:\n      - swipe:\n          start: 95%, 75%\n          end: 95%, 45%\n          duration: 300\n- swipe:\n    start: 95%, 75%\n    end: 95%, 45%\n    duration: 300\n- assertVisible: "Retry completed set correction"\n- tapOn: "Retry completed set correction"[\s\S]*text: "Working set 1 correction saved"\n    direction: UP\n    centerElement: true\n    timeout: 60000/u,
   );
+  const completedSetEditTraversal = [
+    "- repeat:",
+    "    times: 32",
+    "    while:",
+    '      notVisible: "Edit completed set 1"',
+    "    commands:",
+    "      - swipe:",
+    "          start: 95%, 75%",
+    "          end: 95%, 25%",
+    "          duration: 500",
+    '- assertVisible: "Edit completed set 1"',
+  ].join("\n");
   const anchoredCompletedSetEditTraversal = [
     "- repeat:",
     "    times: 12",
@@ -872,21 +890,12 @@ test("Phase 2 remediation flows use public labels and deterministic seams", asyn
     "          end: 95%, 75%",
     "          duration: 300",
     '- assertVisible: "Add warm-up"',
-    "- repeat:",
-    "    times: 12",
-    "    while:",
-    '      notVisible: "Edit completed set 1"',
-    "    commands:",
-    "      - swipe:",
-    "          start: 95%, 75%",
-    "          end: 95%, 25%",
-    "          duration: 300",
-    '- assertVisible: "Edit completed set 1"',
+    completedSetEditTraversal,
   ].join("\n");
   assert.equal(
     workout.split(anchoredCompletedSetEditTraversal).length - 1,
-    1,
-    "the pre-control edit proof must stop moving once the completed-set action is visible",
+    2,
+    "both pre-correction paths must reset to the top anchor before target-driven completed-set discovery",
   );
   assert.ok(
     workout.includes([
@@ -901,10 +910,7 @@ test("Phase 2 remediation flows use public labels and deterministic seams", asyn
     '- assertVisible: "Completed set correction failure armed"',
     safeReturnToTodayTraversal,
     '- tapOn: "Resume workout"',
-    anchoredCompletedSetEditTraversal.replace(
-      '- assertVisible: "Edit completed set 1"',
-      `${safeActionNudge}\n- assertVisible: "Edit completed set 1"`,
-    ),
+    anchoredCompletedSetEditTraversal,
     '- tapOn: "Edit completed set 1"',
     '- assertVisible: "Working set 1 load in kilograms"',
     '- longPressOn: "Working set 1 load in kilograms"',
@@ -915,16 +921,7 @@ test("Phase 2 remediation flows use public labels and deterministic seams", asyn
     "the post-control correction path must safely position the completed-set action before tapping it",
   );
   const correctedWorkingSetVerification = [
-    "- repeat:",
-    "    times: 12",
-    "    while:",
-    '      notVisible: "Edit completed set 1"',
-    "    commands:",
-    "      - swipe:",
-    "          start: 95%, 75%",
-    "          end: 95%, 25%",
-    "          duration: 300",
-    '- assertVisible: "Edit completed set 1"',
+    completedSetEditTraversal,
     '- assertVisible: "Working set 1 of 4.*Current values 62.5 kg × 8.*Completed.*"',
   ].join("\n");
   assert.equal(
@@ -932,13 +929,42 @@ test("Phase 2 remediation flows use public labels and deterministic seams", asyn
     3,
     "corrected working-set persistence must use the completed-row action anchor after retry, restart, and review return",
   );
-  assert.match(
-    workout,
-    /clearState: false[\s\S]*- tapOn: "Resume workout"[\s\S]*- repeat:\n    times: 12\n    while:\n      notVisible: "Edit completed set 1"[\s\S]*- assertVisible: "Edit completed set 1"\n- assertVisible: "Working set 1 of 4\.\*Current values 62\.5 kg × 8\.\*Completed\.\*"/u,
+  const postRestartCorrectedSetVerification = [
+    "- stopApp",
+    "- launchApp:",
+    "    clearState: false",
+    "    stopApp: true",
+    "    permissions:",
+    "      notifications: deny",
+    '- assertVisible: "Today"',
+    "- extendedWaitUntil:",
+    '    visible: "Resume workout"',
+    "    timeout: 90000",
+    '- tapOn: "Resume workout"',
+    completedSetEditTraversal,
+    '- assertVisible: "Working set 1 of 4.*Current values 62.5 kg × 8.*Completed.*"',
+  ].join("\n");
+  assert.equal(
+    workout.split(postRestartCorrectedSetVerification).length - 1,
+    1,
+    "the cold-restart proof must reopen the saved workout before locating the corrected set",
   );
-  assert.match(
+  const postReviewCorrectedSetVerification = [
+    '- tapOn: "Return to current exercise"',
+    '- assertVisible: "FOCUSED WORKOUT"',
+    '- assertVisible: "Back Squat"',
+    completedSetEditTraversal,
+    '- assertVisible: "Working set 1 of 4.*Current values 62.5 kg × 8.*Completed.*"',
+  ].join("\n");
+  assert.equal(
+    workout.split(postReviewCorrectedSetVerification).length - 1,
+    1,
+    "the review-return proof must restore the focused Back Squat context before locating the corrected set",
+  );
+  assert.equal(workout.split(completedSetEditTraversal).length - 1, 5);
+  assert.doesNotMatch(
     workout,
-    /text: "Return to current exercise"\n    direction: UP\n    centerElement: true\n    timeout: 60000[\s\S]*- tapOn: "Return to current exercise"\n- assertVisible: "FOCUSED WORKOUT"\n- assertVisible: "Back Squat"[\s\S]*- repeat:\n    times: 12\n    while:\n      notVisible: "Edit completed set 1"[\s\S]*- assertVisible: "Edit completed set 1"\n- assertVisible: "Working set 1 of 4\.\*Current values 62\.5 kg × 8\.\*Completed\.\*"/u,
+    /- scrollUntilVisible:\n    element:\n      text: "Edit completed set 1"/u,
   );
   for (const absentOrdinal of [
     'text: "Warm-up 3 of .*"',
