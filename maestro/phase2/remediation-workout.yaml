@@ -154,10 +154,6 @@ tags:
           start: 95%, 75%
           end: 95%, 25%
           duration: 300
-- swipe:
-    start: 95%, 75%
-    end: 95%, 45%
-    duration: 300
 - assertVisible: "Add working set"
 - tapOn: "Add working set"
 - assertNotVisible:

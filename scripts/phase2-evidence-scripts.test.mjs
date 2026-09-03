@@ -671,9 +671,15 @@ test("Phase 2 remediation flows use public labels and deterministic seams", asyn
   );
   assert.ok(
     workout.includes(
-      `${retriedAddWorkingSetVisibilityGuard}\n${safeActionNudge}\n- assertVisible: "Add working set"\n- tapOn: "Add working set"`,
+      `${retriedAddWorkingSetVisibilityGuard}\n- assertVisible: "Add working set"\n- tapOn: "Add working set"`,
     ),
-    "the post-restart add action must be nudged above the system-navigation boundary before tapping",
+    "the post-restart add action must be used immediately after target-driven discovery",
+  );
+  assert.ok(
+    !workout.includes(
+      `${retriedAddWorkingSetVisibilityGuard}\n${safeActionNudge}`,
+    ),
+    "the post-restart Add working set discovery must not be followed by a blind swipe",
   );
   const boundedRetryAddWorkingSetTraversal = [
     "- repeat:",
