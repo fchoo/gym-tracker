@@ -251,14 +251,14 @@ tags:
           duration: 300
 - assertVisible: "Add warm-up"
 - repeat:
-    times: 12
+    times: 32
     while:
       notVisible: "Edit completed set 1"
     commands:
       - swipe:
           start: 95%, 75%
           end: 95%, 25%
-          duration: 300
+          duration: 500
 - assertVisible: "Edit completed set 1"
 - openLink: "gymtracker-devtest://__notification-test-controls?action=arm_completed_set_correction_failure"
 - assertVisible: "Completed set correction failure armed"
@@ -289,18 +289,14 @@ tags:
           duration: 300
 - assertVisible: "Add warm-up"
 - repeat:
-    times: 12
+    times: 32
     while:
       notVisible: "Edit completed set 1"
     commands:
       - swipe:
           start: 95%, 75%
           end: 95%, 25%
-          duration: 300
-- swipe:
-    start: 95%, 75%
-    end: 95%, 45%
-    duration: 300
+          duration: 500
 - assertVisible: "Edit completed set 1"
 - tapOn: "Edit completed set 1"
 - assertVisible: "Working set 1 load in kilograms"
@@ -364,14 +360,14 @@ tags:
     centerElement: true
     timeout: 60000
 - repeat:
-    times: 12
+    times: 32
     while:
       notVisible: "Edit completed set 1"
     commands:
       - swipe:
           start: 95%, 75%
           end: 95%, 25%
-          duration: 300
+          duration: 500
 - assertVisible: "Edit completed set 1"
 - assertVisible: "Working set 1 of 4.*Current values 62.5 kg × 8.*Completed.*"
 - assertNotVisible: "Undo completed set"
@@ -387,14 +383,14 @@ tags:
     timeout: 90000
 - tapOn: "Resume workout"
 - repeat:
-    times: 12
+    times: 32
     while:
       notVisible: "Edit completed set 1"
     commands:
       - swipe:
           start: 95%, 75%
           end: 95%, 25%
-          duration: 300
+          duration: 500
 - assertVisible: "Edit completed set 1"
 - assertVisible: "Working set 1 of 4.*Current values 62.5 kg × 8.*Completed.*"
 - assertNotVisible: "Undo completed set"
@@ -417,14 +413,14 @@ tags:
 - assertVisible: "FOCUSED WORKOUT"
 - assertVisible: "Back Squat"
 - repeat:
-    times: 12
+    times: 32
     while:
       notVisible: "Edit completed set 1"
     commands:
       - swipe:
           start: 95%, 75%
           end: 95%, 25%
-          duration: 300
+          duration: 500
 - assertVisible: "Edit completed set 1"
 - assertVisible: "Working set 1 of 4.*Current values 62.5 kg × 8.*Completed.*"
 - assertNotVisible: "Excluded from records and progression"
