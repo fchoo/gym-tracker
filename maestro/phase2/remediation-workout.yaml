@@ -219,14 +219,14 @@ tags:
           duration: 300
 - assertVisible: "Warm-up 1 of 4.*Completed.*"
 - repeat:
-    times: 12
+    times: 32
     while:
       notVisible: "Complete Set 1"
     commands:
       - swipe:
           start: 95%, 75%
           end: 95%, 25%
-          duration: 300
+          duration: 500
 - assertVisible: "Complete Set 1"
 - assertVisible: "FOCUSED WORKOUT"
 - assertVisible: "Back Squat"

@@ -825,7 +825,7 @@ test("Phase 2 remediation flows use public labels and deterministic seams", asyn
   );
   assert.match(
     workout,
-    /- repeat:\n    times: 12\n    while:\n      notVisible: "Complete warm-up W1"\n    commands:\n      - swipe:\n          start: 95%, 25%\n          end: 95%, 75%\n          duration: 300\n- assertVisible: "Complete warm-up W1"\n- tapOn: "Complete warm-up W1"\n- repeat:\n    times: 12\n    while:\n      notVisible: "Warm-up 1 of 4\.\*Completed\.\*"\n    commands:\n      - swipe:\n          start: 95%, 25%\n          end: 95%, 75%\n          duration: 300\n- assertVisible: "Warm-up 1 of 4\.\*Completed\.\*"\n- repeat:\n    times: 12\n    while:\n      notVisible: "Complete Set 1"\n    commands:\n      - swipe:\n          start: 95%, 75%\n          end: 95%, 25%\n          duration: 300\n- assertVisible: "Complete Set 1"/u,
+    /- repeat:\n    times: 12\n    while:\n      notVisible: "Complete warm-up W1"\n    commands:\n      - swipe:\n          start: 95%, 25%\n          end: 95%, 75%\n          duration: 300\n- assertVisible: "Complete warm-up W1"\n- tapOn: "Complete warm-up W1"\n- repeat:\n    times: 12\n    while:\n      notVisible: "Warm-up 1 of 4\.\*Completed\.\*"\n    commands:\n      - swipe:\n          start: 95%, 25%\n          end: 95%, 75%\n          duration: 300\n- assertVisible: "Warm-up 1 of 4\.\*Completed\.\*"\n- repeat:\n    times: 32\n    while:\n      notVisible: "Complete Set 1"\n    commands:\n      - swipe:\n          start: 95%, 75%\n          end: 95%, 25%\n          duration: 500\n- assertVisible: "Complete Set 1"/u,
   );
   assert.match(
     workout,
