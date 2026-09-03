@@ -114,6 +114,9 @@ function adbWith(execute, serial, ...args) {
 const ADB_PULL_ATTEMPTS = 3;
 const ADB_PULL_TIMEOUT_MS = 60_000;
 const TRANSIENT_ADB_TRANSPORT = /(?:device (?:'[^'\r\n]+' )?(?:offline|not found)|no devices\/emulators found|cannot connect|connection (?:closed|reset)|protocol fault)/iu;
+const INTERRUPTED_ADB_PULL = /\[\s*(?:\d{1,2}|100)%\]\s+[^\r\n]*\.apk(?:\r?\n|$)/iu;
+const ADB_ERROR_DIAGNOSTIC = /adb:\s*error:/iu;
+const PERMANENT_ADB_PULL = /(?:permission denied|no such file|does not exist|no space left on device|read-only file system|i\/o error)/iu;
 
 function errorOutput(error) {
   const stderr = error !== null
@@ -131,7 +134,11 @@ function isTransientAdbTransport(error) {
       && typeof error === "object"
       && "code" in error
       && error.code === "ETIMEDOUT";
-  return timedOut || TRANSIENT_ADB_TRANSPORT.test(errorOutput(error));
+  const output = errorOutput(error);
+  if (PERMANENT_ADB_PULL.test(output)) return false;
+  if (timedOut || TRANSIENT_ADB_TRANSPORT.test(output)) return true;
+  if (ADB_ERROR_DIAGNOSTIC.test(output)) return false;
+  return INTERRUPTED_ADB_PULL.test(output);
 }
 
 export function pullInstalledApkWithRetry({

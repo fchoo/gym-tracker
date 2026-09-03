@@ -378,9 +378,28 @@ test("Phase 5 installed-byte pull retries only transient ADB transport failures"
       Object.assign(new Error("Command failed: adb pull"), {
         stderr: "adb: device 'emulator-5554' not found\n",
       }),
+      Object.assign(new Error("Command failed: adb pull"), {
+        stderr: "adb: error: failed to get feature set: device offline\n",
+      }),
       Object.assign(new Error("spawnSync adb ETIMEDOUT"), {
         code: "ETIMEDOUT",
         stderr: "",
+      }),
+      Object.assign(new Error(
+        "Command failed: adb pull\n[ 64%] /data/app/base.apk\n",
+      ), {
+        stderr: "",
+      }),
+      Object.assign(new Error("Command failed: adb pull"), {
+        stderr: "[ 64%] /data/app/base.apk\n",
+      }),
+      Object.assign(new Error(
+        "Command failed: adb pull\n[  0%] /data/app/base.apk\n",
+      ), {
+        stderr: "",
+      }),
+      Object.assign(new Error("Command failed: adb pull"), {
+        stderr: "[  0%] /data/app/base.apk\n",
       }),
     ]) {
       const retryCalls = [];
@@ -402,7 +421,11 @@ test("Phase 5 installed-byte pull retries only transient ADB transport failures"
 
     const permanentCalls = [];
     const permanent = new Error("Command failed: adb pull");
-    permanent.stderr = "adb: error: failed to copy: Permission denied\n";
+    permanent.stderr = [
+      "[ 64%] /data/app/base.apk",
+      "adb: error: failed to copy: Permission denied",
+      "",
+    ].join("\n");
     assert.throws(() => pullInstalledApkWithRetry({
       execute: (_file, args) => {
         permanentCalls.push(args);
@@ -414,13 +437,35 @@ test("Phase 5 installed-byte pull retries only transient ADB transport failures"
     }), /Command failed: adb pull/u);
     assert.equal(permanentCalls.length, 1);
 
+    const diagnosticCalls = [];
+    const diagnostic = new Error("Command failed: adb pull");
+    diagnostic.stderr = [
+      "[ 64%] /data/app/base.apk",
+      "adb: error: cannot write: I/O error",
+      "",
+    ].join("\n");
+    assert.throws(() => pullInstalledApkWithRetry({
+      execute: (_file, args) => {
+        diagnosticCalls.push(args);
+        throw diagnostic;
+      },
+      localPath,
+      remotePath: "/data/app/base.apk",
+      serial: "emulator-5554",
+    }), /Command failed: adb pull/u);
+    assert.equal(diagnosticCalls.length, 1);
+
     const exhaustedCalls = [];
+    const interruptedTransfer = Object.assign(
+      new Error("Command failed: adb pull"),
+      { stderr: "[ 64%] /data/app/base.apk\n" },
+    );
     assert.throws(() => pullInstalledApkWithRetry({
       execute: (_file, args) => {
         exhaustedCalls.push(args);
         if (args.includes("pull")) {
           writeFileSync(localPath, "partial");
-          throw transient;
+          throw interruptedTransfer;
         }
         return "";
       },
