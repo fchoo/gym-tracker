@@ -122,20 +122,23 @@ tags:
     centerElement: true
     timeout: 60000
 - assertVisible: "Exercise progress"
-- scrollUntilVisible:
-    element:
-      text: "Open exercise history for Back Squat"
-    direction: DOWN
-    centerElement: true
-    timeout: 60000
-- assertVisible: "Back Squat"
 - tapOn: "Search exercises"
 - inputText: "Back"
 - pressKey: ENTER
 - assertVisible: "Search exercises"
+- scrollUntilVisible:
+    element:
+      id: "progress-exercise-row-5f140001-7e35-4a6d-9100-000000000001-load_reps:1:1-identity"
+    direction: DOWN
+    centerElement: true
+    timeout: 60000
+- assertVisible:
+    id: "progress-exercise-row-5f140001-7e35-4a6d-9100-000000000001-load_reps:1:1-identity"
 - takeScreenshot: phase6-progress-search
 - tapOn: "Clear search exercises"
 - pressKey: TAB
+- hideKeyboard
+- assertVisible: "Library"
 - tapOn: "Library"
 - assertVisible: "Library"
 - tapOn: "Exercises"

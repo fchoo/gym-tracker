@@ -28,6 +28,8 @@ import {
 } from "../theme";
 
 const BACK_SQUAT_ID = "5f140001-7e35-4a6d-9100-000000000001";
+const BACK_SQUAT_PROGRESS_ROW_ID =
+  `progress-exercise-row-${BACK_SQUAT_ID}-load_reps:1:1-identity`;
 
 function projection(
   overrides: Partial<ProgressPeriodProjection> = {},
@@ -61,7 +63,7 @@ function projection(
       exerciseId: BACK_SQUAT_ID,
       exerciseName: "Back Squat",
       identityKey: "load_reps:1:1",
-      comparatorKey: "load_reps",
+      comparatorKey: "identity",
       sessionId: "session-record",
       setId: "set-record",
       localDate: "2026-08-24",
@@ -86,7 +88,7 @@ function projection(
       exerciseId: BACK_SQUAT_ID,
       exerciseName: "Back Squat",
       identityKey: "load_reps:1:1",
-      comparatorKey: "load_reps",
+      comparatorKey: "identity",
       status: "improving",
       sessionId: "session-record",
       setId: "set-record",
@@ -95,7 +97,7 @@ function projection(
       exerciseId: "row",
       exerciseName: "Barbell Row",
       identityKey: "load_reps:1:1",
-      comparatorKey: "load_reps",
+      comparatorKey: "identity",
       status: "holding",
       sessionId: "session-row",
       setId: "set-row",
@@ -104,7 +106,7 @@ function projection(
       exerciseId: "squat",
       exerciseName: "Front Squat",
       identityKey: "load_reps:1:1",
-      comparatorKey: "load_reps",
+      comparatorKey: "identity",
       status: "baseline",
       sessionId: "session-squat",
       setId: "set-squat",
@@ -383,6 +385,8 @@ describe("ProgressScreen", () => {
     await fireEvent.changeText(input, "back");
     expect(screen.getByLabelText("1 Search exercises result")).toBeOnTheScreen();
     expect(screen.getByText("Back Squat")).toBeOnTheScreen();
+    expect(screen.getByTestId(BACK_SQUAT_PROGRESS_ROW_ID))
+      .toBeOnTheScreen();
     expect(screen.queryByText("Barbell Row")).not.toBeOnTheScreen();
 
     await fireEvent.changeText(input, "deadlift");
@@ -392,6 +396,31 @@ describe("ProgressScreen", () => {
 
     await fireEvent.changeText(input, "s");
     expect(screen.getByLabelText("2 Search exercises results")).toBeOnTheScreen();
+  });
+
+  it("gives distinct native selectors to multiple metric rows for one exercise", async () => {
+    const base = projection();
+    const backSquat = base.exercises[0]!;
+    const variationRow = {
+      ...backSquat,
+      identityKey: "bodyweight_reps:1:1",
+      comparatorKey: "variation:standard",
+      sessionId: "session-variation",
+      setId: "set-variation",
+    };
+    await renderProgress({
+      loadProgress: jest.fn(async () => ({
+        period: "4_weeks" as const,
+        freshness: "current" as const,
+        projection: projection({ exercises: [backSquat, variationRow] }),
+      })),
+    });
+
+    await screen.findByTestId(BACK_SQUAT_PROGRESS_ROW_ID);
+    expect(screen.getByTestId(BACK_SQUAT_PROGRESS_ROW_ID)).toBeOnTheScreen();
+    expect(screen.getByTestId(
+      `progress-exercise-row-${BACK_SQUAT_ID}-bodyweight_reps:1:1-variation:standard`,
+    )).toBeOnTheScreen();
   });
 
   it("disambiguates duplicate exercise names without exposing their identities", async () => {

@@ -409,7 +409,7 @@ test("Phase 6 Progress flow saves history-eligible workout facts before root nav
 
   assert.match(
     source,
-    /- tapOn: "Complete Set 1"[\s\S]*visible: "RESTING · NEXT: SET 2 AT 60 kg × 8"[\s\S]*- tapOn: "Complete Set 2"[\s\S]*visible: "RESTING · NEXT: SET 3 AT 60 kg × 8"[\s\S]*- tapOn: "Complete Set 3"[\s\S]*visible: "RESTING · NEXT: SET 1 AT 42\.5 kg × 10"\n    timeout: 60000\n- tapOn: "More workout actions"\n- tapOn: "Finish as partial"\n- assertVisible: "Save partial workout\?"\n- tapOn:\n    id: "save-partial-workout-confirm"\n- extendedWaitUntil:\n    visible: "PARTIAL SAVED"\n    timeout: 60000\n- assertVisible: "PARTIAL SAVED"\n- assertVisible: "Workout saved"\n- stopApp\n- launchApp:\n    clearState: false\n    stopApp: true\n    permissions:\n      notifications: deny\n- extendedWaitUntil:\n    visible: "Bench Press · Working set 1 · 3\/15 working sets"\n    timeout: 90000\n- assertVisible: "Today"\n- assertVisible: "Workout saved as partial"\n- tapOn: "Progress"\n- assertVisible: "4 weeks"\n- assertVisible: "Overall Progress"\n- scrollUntilVisible:\n    element:\n      text: "Working sets · 3 of 15 completed"\n    direction: DOWN\n    centerElement: true\n    timeout: 60000\n- assertNotVisible: "No progress history yet"\n- takeScreenshot: phase6-progress-summary\n- scrollUntilVisible:\n    element:\n      text: "Exercise progress"\n    direction: DOWN\n    centerElement: true\n    timeout: 60000\n- assertVisible: "Exercise progress"\n- scrollUntilVisible:\n    element:\n      text: "Open exercise history for Back Squat"\n    direction: DOWN\n    centerElement: true\n    timeout: 60000\n- assertVisible: "Back Squat"\n- tapOn: "Search exercises"/u,
+    /- tapOn: "Complete Set 1"[\s\S]*visible: "RESTING · NEXT: SET 2 AT 60 kg × 8"[\s\S]*- tapOn: "Complete Set 2"[\s\S]*visible: "RESTING · NEXT: SET 3 AT 60 kg × 8"[\s\S]*- tapOn: "Complete Set 3"[\s\S]*visible: "RESTING · NEXT: SET 1 AT 42\.5 kg × 10"\n    timeout: 60000\n- tapOn: "More workout actions"\n- tapOn: "Finish as partial"\n- assertVisible: "Save partial workout\?"\n- tapOn:\n    id: "save-partial-workout-confirm"\n- extendedWaitUntil:\n    visible: "PARTIAL SAVED"\n    timeout: 60000\n- assertVisible: "PARTIAL SAVED"\n- assertVisible: "Workout saved"\n- stopApp\n- launchApp:\n    clearState: false\n    stopApp: true\n    permissions:\n      notifications: deny\n- extendedWaitUntil:\n    visible: "Bench Press · Working set 1 · 3\/15 working sets"\n    timeout: 90000\n- assertVisible: "Today"\n- assertVisible: "Workout saved as partial"\n- tapOn: "Progress"\n- assertVisible: "4 weeks"\n- assertVisible: "Overall Progress"\n- scrollUntilVisible:\n    element:\n      text: "Working sets · 3 of 15 completed"\n    direction: DOWN\n    centerElement: true\n    timeout: 60000\n- assertNotVisible: "No progress history yet"\n- takeScreenshot: phase6-progress-summary\n- scrollUntilVisible:\n    element:\n      text: "Exercise progress"\n    direction: DOWN\n    centerElement: true\n    timeout: 60000\n- assertVisible: "Exercise progress"\n- tapOn: "Search exercises"\n- inputText: "Back"\n- pressKey: ENTER\n- assertVisible: "Search exercises"\n- scrollUntilVisible:\n    element:\n      id: "progress-exercise-row-5f140001-7e35-4a6d-9100-000000000001-load_reps:1:1-identity"\n    direction: DOWN\n    centerElement: true\n    timeout: 60000\n- assertVisible:\n    id: "progress-exercise-row-5f140001-7e35-4a6d-9100-000000000001-load_reps:1:1-identity"\n- takeScreenshot: phase6-progress-search/u,
   );
   assert.doesNotMatch(
     source,
@@ -422,6 +422,39 @@ test("Phase 6 Progress flow saves history-eligible workout facts before root nav
   assert.doesNotMatch(
     source,
     /- tapOn: "Return to Today"/u,
+  );
+});
+
+test("Phase 6 Progress flow anchors the filtered exercise row before asserting it", () => {
+  const source = readFileSync(
+    path.join(projectRoot, "maestro/phase6/progress-library.yaml"),
+    "utf8",
+  );
+  const filteredExerciseRow = [
+    '- assertVisible: "Exercise progress"',
+    '- tapOn: "Search exercises"',
+    '- inputText: "Back"',
+    '- pressKey: ENTER',
+    '- assertVisible: "Search exercises"',
+    '- scrollUntilVisible:',
+    '    element:',
+    '      id: "progress-exercise-row-5f140001-7e35-4a6d-9100-000000000001-load_reps:1:1-identity"',
+    '    direction: DOWN',
+    '    centerElement: true',
+    '    timeout: 60000',
+    '- assertVisible:',
+    '    id: "progress-exercise-row-5f140001-7e35-4a6d-9100-000000000001-load_reps:1:1-identity"',
+    '- takeScreenshot: phase6-progress-search',
+  ].join("\n");
+
+  assert.ok(source.includes(filteredExerciseRow));
+  assert.doesNotMatch(
+    source,
+    /text: "Open exercise history for Back Squat"[\s\S]*- assertVisible: "Back Squat"/u,
+  );
+  assert.match(
+    source,
+    /- tapOn: "Clear search exercises"\n- pressKey: TAB\n- hideKeyboard\n- assertVisible: "Library"\n- tapOn: "Library"/u,
   );
 });
 
