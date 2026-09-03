@@ -85,6 +85,33 @@ function isPositiveSafeInteger(value) {
   return Number.isSafeInteger(value) && value > 0;
 }
 
+function parseRfc3339Utc(value) {
+  if (typeof value !== "string") {
+    return null;
+  }
+  const match = /^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2}):(\d{2})(?:\.(\d{1,9}))?Z$/u.exec(value);
+  if (match === null) return null;
+  const [, yearText, monthText, dayText, hourText, minuteText, secondText, fraction = ""] = match;
+  const [year, month, day, hour, minute, second] = [
+    yearText, monthText, dayText, hourText, minuteText, secondText,
+  ].map(Number);
+  if (year < 1) return null;
+  const instant = new Date(0);
+  instant.setUTCFullYear(year, month - 1, day);
+  instant.setUTCHours(hour, minute, second, 0);
+  if (!Number.isFinite(instant.getTime())
+    || instant.getUTCFullYear() !== year
+    || instant.getUTCMonth() !== month - 1
+    || instant.getUTCDate() !== day
+    || instant.getUTCHours() !== hour
+    || instant.getUTCMinutes() !== minute
+    || instant.getUTCSeconds() !== second) {
+    return null;
+  }
+  return BigInt(instant.getTime()) * 1_000_000n
+    + BigInt(fraction.padEnd(9, "0") || "0");
+}
+
 function withoutTrailingSlash(value) {
   return typeof value === "string" ? value.replace(/\/+$/u, "") : "";
 }
@@ -135,17 +162,18 @@ function orderedDeploymentStatuses(deploymentStatuses) {
   }
   const statusIds = new Set();
   const parsed = deploymentStatuses.map((status) => {
-    const createdAt = Date.parse(status?.created_at);
+    const createdAt = parseRfc3339Utc(status?.created_at);
     if (!isPositiveSafeInteger(status?.id)
       || statusIds.has(status.id)
-      || !Number.isFinite(createdAt)) {
+      || createdAt === null) {
       throw new Error("live promotion deployment statuses are missing or malformed.");
     }
     statusIds.add(status.id);
     return { status, createdAt };
   });
   return parsed.sort((left, right) =>
-    left.createdAt - right.createdAt || left.status.id - right.status.id)
+    (left.createdAt < right.createdAt ? -1 : left.createdAt > right.createdAt ? 1 : 0)
+      || left.status.id - right.status.id)
     .map(({ status }) => status);
 }
 
@@ -160,7 +188,8 @@ function jobIdFromDeploymentStatus(status, runUrl) {
 
 export function validatePromotionDeploymentProvenance({
   candidateRepository, candidateCommit, promotionProofRunId, promotionRun, deployment,
-  deploymentStatuses, job, githubServerUrl = "https://github.com",
+  deploymentStatuses, job, publicationJobAttempt,
+  githubServerUrl = "https://github.com",
   githubApiUrl = "https://api.github.com",
 }) {
   const { runId, runUrl } = validatePromotionRunProvenance({
@@ -177,7 +206,9 @@ export function validatePromotionDeploymentProvenance({
     || !isPositiveSafeInteger(job?.run_id)
     || job.run_id !== runId
     || !isPositiveSafeInteger(job?.run_attempt)
-    || job.run_attempt !== promotionRun.run_attempt
+    || !isPositiveSafeInteger(publicationJobAttempt)
+    || job.run_attempt !== publicationJobAttempt
+    || job.run_attempt > promotionRun.run_attempt
     || job.head_sha !== candidateCommit
     || job.html_url !== latestStatus.log_url) {
     return null;
@@ -204,9 +235,10 @@ export function validateLivePhase5Promotion({
     candidateRepository, candidateCommit, promotionProofRunId, promotionRun, githubServerUrl,
   });
   const artifactId = Number(promotionProofArtifactId);
+  const publicationJobAttempt = proof?.workflow?.publication_job_attempt;
   const deploymentProvenance = validatePromotionDeploymentProvenance({
     candidateRepository, candidateCommit, promotionProofRunId, promotionRun, deployment,
-    deploymentStatuses, job, githubServerUrl, githubApiUrl,
+    deploymentStatuses, job, publicationJobAttempt, githubServerUrl, githubApiUrl,
   });
   const expectedAssets = proof?.assets?.map(({ id, file, size_bytes: size, api_digest: digest }) => ({
     id, name: file, size, digest,
@@ -227,7 +259,10 @@ export function validateLivePhase5Promotion({
     || proof?.release_id !== release?.id
     || tagRef?.ref !== `refs/tags/${releaseTag}`
     || tagRef?.object?.type !== "commit" || tagRef?.object?.sha !== candidateCommit
-    || release?.tag_name !== releaseTag || release?.draft !== false
+    || release?.tag_name !== releaseTag
+    || release?.name !== `Gym Tracker ${releaseTag}`
+    || release?.body !== `Candidate run: ${proof?.candidate_run_id}`
+    || release?.draft !== false
     || release?.prerelease !== false
     || JSON.stringify(exactAssetMetadata(release?.assets))
       !== JSON.stringify(exactAssetMetadata(expectedAssets))) {
@@ -282,48 +317,6 @@ export function loadAndValidateLivePhase5Promotion(options, {
     promotionRun,
     githubServerUrl,
   });
-  const deploymentPages = ghJson([
-    "--method", "GET", "--paginate", "--slurp",
-    `repos/${repository}/deployments`,
-    "-f", `sha=${options.candidateCommit}`,
-    "-f", "ref=main",
-    "-f", "environment=public-release-promotion",
-    "-F", "per_page=100",
-  ], execute);
-  const runUrl = `${withoutTrailingSlash(githubServerUrl)}/${repository}/actions/runs/${runId}`;
-  const successfulDeployments = [];
-  const deployments = flattenedPages(deploymentPages);
-  const deploymentIds = new Set();
-  for (const deployment of deployments) {
-    validateDeploymentIdentity({
-      candidateRepository: repository,
-      candidateCommit: options.candidateCommit,
-      deployment,
-      githubApiUrl,
-    });
-    if (deploymentIds.has(deployment.id)) {
-      throw new Error("live promotion deployments contain duplicate identities.");
-    }
-    deploymentIds.add(deployment.id);
-    const statusPages = ghJson([
-      "--method", "GET", "--paginate", "--slurp",
-      `repos/${repository}/deployments/${deployment.id}/statuses`,
-      "-F", "per_page=100",
-    ], execute);
-    const deploymentStatuses = orderedDeploymentStatuses(flattenedPages(statusPages));
-    const latest = deploymentStatuses.at(-1);
-    const jobId = jobIdFromDeploymentStatus(latest, runUrl);
-    if (jobId === null) continue;
-    const job = ghJson([`repos/${repository}/actions/jobs/${jobId}`], execute);
-    const provenance = validatePromotionDeploymentProvenance({
-      ...options, promotionRun, deployment, deploymentStatuses, job,
-      githubServerUrl, githubApiUrl,
-    });
-    if (provenance !== null) successfulDeployments.push(provenance);
-  }
-  if (successfulDeployments.length !== 1) {
-    throw new Error("live promotion deployment provenance is missing or ambiguous.");
-  }
   const artifactPages = ghJson([
     "--method", "GET", "--paginate", "--slurp",
     `repos/${repository}/actions/runs/${runId}/artifacts`, "-F", "per_page=100",
@@ -334,6 +327,18 @@ export function loadAndValidateLivePhase5Promotion(options, {
     throw new Error("live promotion proof artifact is missing, ambiguous, or substituted.");
   }
   const proofArtifact = ghJson([`repos/${repository}/actions/artifacts/${artifactId}`], execute);
+  const numericArtifactId = Number(artifactId);
+  if (!isPositiveSafeInteger(numericArtifactId)
+    || !ARTIFACT_DIGEST.test(options.promotionProofArtifactDigest ?? "")
+    || proofArtifacts[0]?.id !== numericArtifactId
+    || proofArtifact?.id !== numericArtifactId
+    || proofArtifact?.name !== `promotion-proof-${runId}`
+    || proofArtifact?.expired !== false
+    || proofArtifact?.digest !== options.promotionProofArtifactDigest
+    || proofArtifact?.workflow_run?.id !== Number(runId)
+    || proofArtifact?.workflow_run?.head_sha !== options.candidateCommit) {
+    throw new Error("live promotion proof artifact identity is invalid.");
+  }
   let archiveBytes;
   try {
     archiveBytes = execute("gh", [
@@ -344,6 +349,9 @@ export function loadAndValidateLivePhase5Promotion(options, {
     throw new Error("live promotion proof artifact download failed.");
   }
   if (!Buffer.isBuffer(archiveBytes)) archiveBytes = Buffer.from(archiveBytes);
+  if (sha256(archiveBytes) !== options.promotionProofArtifactDigest.slice(7)) {
+    throw new Error("live promotion proof artifact archive digest is invalid.");
+  }
   const temporaryDirectory = mkdtempSync(path.join(os.tmpdir(), "phase5-terminal-proof-"));
   try {
     const archivePath = path.join(temporaryDirectory, "promotion-proof.zip");
@@ -362,6 +370,55 @@ export function loadAndValidateLivePhase5Promotion(options, {
       proof = JSON.parse(proofBytes.toString("utf8"));
     } catch {
       throw new Error("live promotion proof is not valid JSON.");
+    }
+    const publicationJobAttempt = proof?.workflow?.publication_job_attempt;
+    if (!proofBytes.equals(localProofBytes)
+      || !isPositiveSafeInteger(publicationJobAttempt)
+      || publicationJobAttempt > promotionRun.run_attempt) {
+      throw new Error("live promotion proof publication attempt is invalid.");
+    }
+
+    const deploymentPages = ghJson([
+      "--method", "GET", "--paginate", "--slurp",
+      `repos/${repository}/deployments`,
+      "-f", `sha=${options.candidateCommit}`,
+      "-f", "ref=main",
+      "-f", "environment=public-release-promotion",
+      "-F", "per_page=100",
+    ], execute);
+    const runUrl = `${withoutTrailingSlash(githubServerUrl)}/${repository}/actions/runs/${runId}`;
+    const successfulDeployments = [];
+    const deployments = flattenedPages(deploymentPages);
+    const deploymentIds = new Set();
+    for (const deployment of deployments) {
+      validateDeploymentIdentity({
+        candidateRepository: repository,
+        candidateCommit: options.candidateCommit,
+        deployment,
+        githubApiUrl,
+      });
+      if (deploymentIds.has(deployment.id)) {
+        throw new Error("live promotion deployments contain duplicate identities.");
+      }
+      deploymentIds.add(deployment.id);
+      const statusPages = ghJson([
+        "--method", "GET", "--paginate", "--slurp",
+        `repos/${repository}/deployments/${deployment.id}/statuses`,
+        "-F", "per_page=100",
+      ], execute);
+      const deploymentStatuses = orderedDeploymentStatuses(flattenedPages(statusPages));
+      const latest = deploymentStatuses.at(-1);
+      const jobId = jobIdFromDeploymentStatus(latest, runUrl);
+      if (jobId === null) continue;
+      const job = ghJson([`repos/${repository}/actions/jobs/${jobId}`], execute);
+      const provenance = validatePromotionDeploymentProvenance({
+        ...options, promotionRun, deployment, deploymentStatuses, job, publicationJobAttempt,
+        githubServerUrl, githubApiUrl,
+      });
+      if (provenance !== null) successfulDeployments.push(provenance);
+    }
+    if (successfulDeployments.length !== 1) {
+      throw new Error("live promotion deployment provenance is missing or ambiguous.");
     }
     const tagRef = ghJson([`repos/${repository}/git/ref/tags/${options.releaseTag}`], execute);
     const release = ghJson([`repos/${repository}/releases/tags/${options.releaseTag}`], execute);
@@ -503,6 +560,7 @@ export function executePhase5ReleaseGate(args = process.argv.slice(2)) {
     phase6N4ArtifactName: phase6Binding.artifact_name,
     phase6N4RecordSha256: phase6Binding.record_sha256,
     releaseId: livePromotion.release.id,
+    publicationJobAttempt: proof.workflow.publication_job_attempt,
     publicAssetMetadata,
     publicAssetsDirectory: options.publicAssetsDirectory,
   });

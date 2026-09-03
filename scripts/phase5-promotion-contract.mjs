@@ -78,6 +78,74 @@ const SHA256 = /^[a-f0-9]{64}$/u;
 const ARTIFACT = /^[A-Za-z0-9][A-Za-z0-9._-]{2,127}$/u;
 const RELEASE_TAG = /^v[0-9]+\.[0-9]+\.[0-9]+(?:-[0-9A-Za-z.-]+)?$/u;
 
+export function classifyReleasePublicationState({
+  tagRef,
+  release,
+  releaseTag,
+  candidateCommit,
+  candidateRunId,
+}) {
+  const expectedRef = `refs/tags/${releaseTag}`;
+  if (tagRef !== null && (
+    tagRef?.ref !== expectedRef
+    || tagRef?.object?.type !== "commit"
+    || tagRef?.object?.sha !== candidateCommit
+  )) {
+    throw new Error("release tag exists with mismatched target.");
+  }
+  if (release === null) {
+    return tagRef === null ? "fresh" : "tag_reserved";
+  }
+  if (tagRef === null
+    || release?.tag_name !== releaseTag
+    || release?.name !== `Gym Tracker ${releaseTag}`
+    || release?.body !== `Candidate run: ${candidateRunId}`
+    || release?.prerelease !== false
+    || typeof release?.draft !== "boolean") {
+    throw new Error("existing release identity is mismatched.");
+  }
+  return release.draft ? "draft" : "published";
+}
+
+export function validateReleaseAssetState({
+  actualAssets,
+  expectedAssets,
+  publicationState,
+}) {
+  if (!Array.isArray(actualAssets) || !Array.isArray(expectedAssets)
+    || !["fresh", "tag_reserved", "draft", "published"].includes(publicationState)) {
+    throw new Error("release asset state is malformed.");
+  }
+  const expectedByName = new Map(expectedAssets.map((asset) => [asset.file, asset]));
+  if (expectedByName.size !== expectedAssets.length) {
+    throw new Error("expected release asset set is malformed.");
+  }
+  const actualNames = new Set();
+  for (const asset of actualAssets) {
+    const expected = expectedByName.get(asset?.name);
+    if (actualNames.has(asset?.name)
+      || expected === undefined
+      || !Number.isSafeInteger(asset?.id)
+      || asset.id < 1
+      || asset.size !== expected.size_bytes
+      || asset.digest !== `sha256:${expected.sha256}`) {
+      throw new Error("existing release asset set is mismatched.");
+    }
+    actualNames.add(asset.name);
+  }
+  const missing = expectedAssets
+    .map(({ file }) => file)
+    .filter((file) => !actualNames.has(file));
+  if ((publicationState === "fresh" || publicationState === "tag_reserved")
+    && actualAssets.length > 0) {
+    throw new Error("release without a draft cannot already contain assets.");
+  }
+  if (publicationState === "published" && missing.length > 0) {
+    throw new Error("published release asset set is incomplete.");
+  }
+  return Object.freeze(missing);
+}
+
 export function validateReleasePromotionInputValues(input) {
   if (!RUN_ID.test(input?.candidateRunId ?? "")
     || !RUN_ID.test(input?.attendedRunId ?? "")
@@ -209,7 +277,8 @@ export function validatePromotionWorkflowContract(source) {
     /\.original_environment == \$environment/iu,
     /\.performed_via_github_app\.slug == "github-actions"/iu,
     /\.statuses_url ==/iu,
-    /sort_by\(\[\.created_at, \.id\]\) \| last/iu,
+    /sort_by\(\[\.sort_time, \.status\.id\]\) \| last\.status/iu,
+    /created_at as \$created_at[\s\S]*sub\("\[\.\]\[0-9\]\{1,9\}Z\$"; "Z"\)[\s\S]*fromdateiso8601 \| todateiso8601/iu,
     /\.state == "success"[\s\S]*\.environment_url == \$run_url[\s\S]*\.deployment_url == \$deployment_url/iu,
     /actions\/jobs\/\$\{job_id\}/u,
     /\.run_id == \$run_id[\s\S]*\.run_attempt == \$run_attempt/iu,
@@ -262,10 +331,51 @@ export function validatePromotionWorkflowContract(source) {
     "promotion proof job must hash-check the sealed Phase 6 N4 record.");
   requirePattern(proofJob, /--release-id "\$\{\{ needs\.publish\.outputs\.release_id \}\}"/u,
     "promotion proof job must consume the published release ID through a job output.");
-  requirePattern(source, /gh release view[^\n]+(?:&&|then)\s*exit 1/iu,
-    "promotion must reject an existing tag instead of overwriting it.");
-  requirePattern(source, /candidate_run_id=[^\n]+[\s\S]*release_bodies=\$\(gh api --paginate[\s\S]*reused/iu,
-    "promotion must reject a candidate run already used by a release.");
+  requirePattern(proofJob, /git\/ref\/tags\/\$\{RELEASE_TAG\}[\s\S]*\.object\.type == "commit"[\s\S]*\.object\.sha == \$commit/iu,
+    "promotion proof job must revalidate the release tag target immediately before proof.");
+  requirePattern(proofJob, /releases\/tags\/\$\{RELEASE_TAG\}[\s\S]*\.tag_name == \$tag[\s\S]*\.name == \$title[\s\S]*\.body == \$body[\s\S]*\.draft == false[\s\S]*\.prerelease == false/iu,
+    "promotion proof job must revalidate the exact published release identity.");
+  const proofRecorderStep = boundedSourceBlock(
+    proofJob,
+    "- name: Record immutable post-promotion proof",
+    "--output promotion-proof.json",
+    "promotion proof recorder step",
+  );
+  requirePattern(proofRecorderStep, /git\/ref\/tags\/\$\{RELEASE_TAG\}[\s\S]*\.object\.sha == \$commit/iu,
+    "promotion proof recorder must revalidate the tag target immediately before proof creation.");
+  requirePattern(proofRecorderStep, /releases\/tags\/\$\{RELEASE_TAG\}[\s\S]*\.id == \$release_id[\s\S]*\.tag_name == \$tag[\s\S]*\.name == \$title[\s\S]*\.body == \$body[\s\S]*\.draft == false[\s\S]*\.prerelease == false/iu,
+    "promotion proof recorder must revalidate published release state immediately before proof creation.");
+  requirePattern(publishJob, /id:\s*publication_state[\s\S]*publication_state=/iu,
+    "publication must classify existing exact tag and release state before mutation.");
+  requirePattern(publishJob, /tag_ref=\$\(jq -cr[\s\S]*release=\$\(jq -cr/iu,
+    "publication must preserve null as a valid absent tag or release state.");
+  for (const assignment of [
+    "publication_state=fresh",
+    "publication_state=tag_reserved",
+    'if .draft then "draft" else "published" end',
+  ]) {
+    if (!publishJob.includes(assignment)) {
+      throw new Error(`publication state machine is missing ${assignment}.`);
+    }
+  }
+  requirePattern(publishJob, /existing release identity is mismatched/iu,
+    "publication must reject mismatched existing release identity.");
+  requirePattern(publishJob, /existing release asset set is mismatched/iu,
+    "publication must reject mismatched existing release assets.");
+  requirePattern(publishJob, /published release asset set is incomplete/iu,
+    "publication cannot repair or accept incomplete published assets.");
+  requirePattern(publishJob, /gh release upload[\s\S]*missing_asset/iu,
+    "publication must resume an exact partial draft by uploading only missing assets.");
+  requirePattern(publishJob, /case "\$\{publication_state\}" in[\s\S]*fresh\|tag_reserved\)[\s\S]*draft\)[\s\S]*published\)/iu,
+    "publication must route every resumable state through an explicit transition.");
+  for (const arm of ["draft", "published"]) {
+    requirePattern(publishJob, new RegExp(`^\\s*${arm}\\)$`, "mu"),
+      `publication state machine is missing the ${arm} transition.`);
+  }
+  requirePattern(source, /expected_body="Candidate run: \$\{CANDIDATE_RUN_ID\}"[\s\S]*release_pages=\$\(gh api --method GET --paginate --slurp[\s\S]*candidate run was already reused/iu,
+    "promotion must reject a candidate run already used by another release.");
+  requirePattern(publishJob, /select\(\(\(\.body \/\/ ""\) \| split\("\\n"\) \| index\(\$marker\)\) != null\)[\s\S]*select\(\.tag_name != \$tag\)/u,
+    "publication retry must exclude only its exact tag from candidate reuse detection.");
   if (/gh api --paginate[^\n]*releases[\s\S]{0,160}\|\s*grep -F/iu.test(source)) {
     throw new Error("promotion must not mask a release API failure in a grep pipeline.");
   }
@@ -279,8 +389,8 @@ export function validatePromotionWorkflowContract(source) {
     "promotion must verify the release tag is a lightweight ref to the candidate commit.");
   requirePattern(source, /gh release create[\s\S]*--target "\$\{CANDIDATE_COMMIT\}"[\s\S]*--verify-tag[\s\S]*--draft/iu,
     "promotion must create a draft only from the already-created candidate tag.");
-  requirePattern(source, /\.tag_name == \$tag[\s\S]*\.draft == true/iu,
-    "promotion must verify the draft release identity before publication.");
+  requirePattern(source, /\.tag_name == \$tag[\s\S]*\(\.draft \| type == "boolean"\)/iu,
+    "promotion must verify exact draft or published release identity before continuing.");
   if (/target_commitish == \$commit/iu.test(source)) {
     throw new Error("release target_commitish is not authoritative for an existing tag.");
   }
@@ -294,11 +404,17 @@ export function validatePromotionWorkflowContract(source) {
     "promotion must stage the release as a draft until public hashes pass.");
   requirePattern(source, /gh release edit[\s\S]*--draft=false/iu,
     "promotion must publish only after public asset verification.");
+  requirePattern(source, /if jq -e '\.draft == true'[\s\S]*gh release edit[\s\S]*--draft=false/iu,
+    "promotion must publish only a release that remains a draft.");
   if (/--clobber/iu.test(source)) {
     throw new Error("promotion cannot overwrite existing public assets.");
   }
   requirePattern(source, /sha256sum --check/iu,
     "promotion must verify public asset hashes after upload.");
+  requirePattern(source, /publication_job_attempt=\$\{GITHUB_RUN_ATTEMPT\}/u,
+    "publication must export its actual job attempt for proof and rerun validation.");
+  requirePattern(proofJob, /--publication-job-attempt "\$\{\{ needs\.publish\.outputs\.publication_job_attempt \}\}"/u,
+    "promotion proof must bind the successful publication job attempt.");
   requirePattern(source, /record-phase5-promotion-proof\.mjs[\s\S]*promotion-proof\.json/iu,
     "promotion must record post-publication proof.");
   requirePattern(source, /upload-artifact[\s\S]*promotion-proof-/iu,
@@ -326,6 +442,7 @@ export function validatePromotionWorkflowContract(source) {
   const tagCreate = source.indexOf(
     'gh api --method POST "repos/${GITHUB_REPOSITORY}/git/refs"',
   );
+  const publicationState = source.indexOf("name: Classify exact publication state");
   const publish = source.indexOf("gh release create");
   const tagReadback = source.indexOf(
     'gh api "repos/${GITHUB_REPOSITORY}/git/ref/tags/${RELEASE_TAG}"',
@@ -333,6 +450,7 @@ export function validatePromotionWorkflowContract(source) {
   const releaseIdentityCheck = source.indexOf(".tag_name == $tag");
   const publicAssetCheck = source.indexOf("name: Verify public release asset hashes");
   const publishDraft = source.indexOf("gh release edit");
+  const publishedReleaseIdentityCheck = source.indexOf(".tag_name == $tag", publicAssetCheck);
   const proofPhase6Verifier = proofJob.indexOf(
     "node workflow-source/scripts/generate-phase6-attended-checklist.mjs verify",
   );
@@ -343,12 +461,13 @@ export function validatePromotionWorkflowContract(source) {
     && validator < trustedPhase6Verifier
     && trustedPhase6Verifier < trustedPhase5Verifier
     && trustedPhase5Verifier === attendedVerifier
-    && attendedVerifier < tagCreate
+    && attendedVerifier < publicationState
+    && publicationState < tagCreate
     && tagCreate < publish
     && publish < publicAssetCheck
     && publicAssetCheck < tagReadback
-    && tagReadback < releaseIdentityCheck
-    && releaseIdentityCheck < publishDraft
+    && tagReadback < publishedReleaseIdentityCheck
+    && publishedReleaseIdentityCheck < publishDraft
     && proofPhase6Verifier >= 0
     && proofPhase6Verifier < proofRecorder)) {
     throw new Error("promotion checkout, validator, verifier, and publish order is unsafe.");

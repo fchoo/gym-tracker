@@ -53,7 +53,7 @@ export function createPhase5PromotionProof({
   candidate, candidateRunId, attendedRunId, attendedArtifactName,
   attendedRecordSha256, phase6N4RunId, phase6N4ArtifactName,
   phase6N4RecordSha256, promotionRunId, repository, releaseTag,
-  releaseId, publicAssetMetadata, publicAssetsDirectory,
+  releaseId, publicationJobAttempt, publicAssetMetadata, publicAssetsDirectory,
 }) {
   if (!RUN_ID.test(candidateRunId ?? "") || !RUN_ID.test(attendedRunId ?? "")
     || !RUN_ID.test(promotionRunId ?? "") || !REPOSITORY.test(repository ?? "")
@@ -67,6 +67,8 @@ export function createPhase5PromotionProof({
     || !SHA256_PATTERN.test(phase6N4RecordSha256 ?? "")
     || !Number.isSafeInteger(releaseId)
     || releaseId < 1
+    || !Number.isSafeInteger(publicationJobAttempt)
+    || publicationJobAttempt < 1
     || candidate.manifest.workflow.run_id !== candidateRunId
     || candidate.manifest.workflow.repository !== repository) {
     throw new Error("promotion proof identity is malformed or substituted.");
@@ -114,6 +116,7 @@ export function createPhase5PromotionProof({
       environment: "public-release-promotion",
       repository,
       run_id: promotionRunId,
+      publication_job_attempt: publicationJobAttempt,
     },
     candidate_run_id: candidateRunId,
     candidate_id: candidate.manifest.candidate_id,
@@ -133,8 +136,8 @@ export function createPhase5PromotionProof({
 
 export function validatePhase5PromotionProof({
   proof, proofBytes, candidate, attendedRecordSha256, phase6N4RunId,
-  phase6N4ArtifactName, phase6N4RecordSha256, releaseId, publicAssetMetadata,
-  publicAssetsDirectory,
+  phase6N4ArtifactName, phase6N4RecordSha256, releaseId,
+  publicationJobAttempt, publicAssetMetadata, publicAssetsDirectory,
 }) {
   if (proof?.phase6_n4_run_id !== phase6N4RunId
     || proof?.phase6_n4_artifact_name !== phase6N4ArtifactName
@@ -151,6 +154,7 @@ export function validatePhase5PromotionProof({
     phase6N4ArtifactName,
     phase6N4RecordSha256,
     releaseId,
+    publicationJobAttempt,
     publicAssetMetadata,
     promotionRunId: proof?.workflow?.run_id,
     repository: proof?.workflow?.repository,
@@ -178,6 +182,7 @@ export function parsePhase5PromotionProofArguments(args) {
     ["--phase6-n4-record", "phase6N4Record"],
     ["--phase6-n4-record-sha256", "phase6N4RecordSha256"],
     ["--release-id", "releaseId"],
+    ["--publication-job-attempt", "publicationJobAttempt"],
     ["--public-asset-metadata", "publicAssetMetadata"],
     ["--promotion-run-id", "promotionRunId"],
     ["--repository", "repository"],
@@ -220,8 +225,15 @@ export function executePhase5PromotionProof(args = process.argv.slice(2)) {
   if (!/^[1-9][0-9]*$/u.test(options.releaseId ?? "")) {
     throw new Error("promotion release ID is malformed.");
   }
+  if (!/^[1-9][0-9]*$/u.test(options.publicationJobAttempt ?? "")) {
+    throw new Error("promotion publication job attempt is malformed.");
+  }
   const proof = createPhase5PromotionProof({
-    candidate, ...options, releaseId: Number(options.releaseId), publicAssetMetadata,
+    candidate,
+    ...options,
+    releaseId: Number(options.releaseId),
+    publicationJobAttempt: Number(options.publicationJobAttempt),
+    publicAssetMetadata,
   });
   writeFileSync(options.output, serializePhase5PromotionProof(proof), { flag: "wx" });
   return proof;

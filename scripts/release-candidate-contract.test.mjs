@@ -28,6 +28,8 @@ import {
   configureReleaseSigning,
 } from "./configure-release-signing.mjs";
 import {
+  classifyReleasePublicationState,
+  validateReleaseAssetState,
   validatePromotionWorkflowContract,
   validatePhase6N4PromotionInputValues,
 } from "./phase5-promotion-contract.mjs";
@@ -422,7 +424,7 @@ test("release promotion requires the exact Phase 6 N4 upload run and canonical r
   }
   for (const expected of [
     'gh api --method POST "repos/${GITHUB_REPOSITORY}/git/refs"',
-    'name: Atomically reserve immutable release tag\n        env:\n          GH_TOKEN: ${{ github.token }}\n        run: |\n          set -euo pipefail',
+    "name: Atomically reserve immutable release tag\n        if: steps.publication_state.outputs.publication_state == 'fresh'\n        env:\n          GH_TOKEN: ${{ github.token }}\n        run: |\n          set -euo pipefail",
     '-f ref="refs/tags/${RELEASE_TAG}"',
     '-f sha="${CANDIDATE_COMMIT}"',
     'gh api "repos/${GITHUB_REPOSITORY}/git/ref/tags/${RELEASE_TAG}"',
@@ -470,9 +472,11 @@ test("release promotion requires the exact Phase 6 N4 upload run and canonical r
     'gh api --method POST "repos/${GITHUB_REPOSITORY}/git/refs"',
   );
   const releaseCreate = promotionWorkflow.indexOf('gh release create "${RELEASE_TAG}"');
-  const releaseIdentityCheck = promotionWorkflow.indexOf(".tag_name == $tag");
   const publicAssetCheck = promotionWorkflow.indexOf(
     "name: Verify public release asset hashes",
+  );
+  const releaseIdentityCheck = promotionWorkflow.indexOf(
+    ".tag_name == $tag", publicAssetCheck,
   );
   const publishDraft = promotionWorkflow.indexOf("gh release edit");
   assert.equal(
@@ -504,12 +508,104 @@ test("release promotion requires the exact Phase 6 N4 upload run and canonical r
       'true',
     ),
     promotionWorkflow.replace("--verify-tag", ""),
-    promotionWorkflow.replace(".tag_name == $tag", "true"),
+    promotionWorkflow.replaceAll(".tag_name == $tag", "true"),
   ]) {
     assert.throws(
       () => validatePromotionWorkflowContract(mutation),
       /Phase 6|N4|trusted|provenance|artifact|hash|source|tag|draft|release/iu,
     );
+  }
+  for (const mutation of [
+    promotionWorkflow.replace("tag_ref=$(jq -cr", "tag_ref=$(jq -cer"),
+    promotionWorkflow.replace("publication_state=fresh", "publication_state=new"),
+    promotionWorkflow.replace("publication_state=tag_reserved", "publication_state=reserved"),
+    promotionWorkflow.replace(
+      'if .draft then "draft" else "published" end',
+      'if .draft then "pending" else "complete" end',
+    ),
+    promotionWorkflow.replace("fresh|tag_reserved)", "fresh)"),
+    promotionWorkflow.replace(/^\s*draft\)$/mu, "            pending)"),
+    promotionWorkflow.replace(/^\s*published\)$/mu, "            complete)"),
+    promotionWorkflow.replace("if jq -e '.draft == true'", "if jq -e '.draft == false'"),
+    promotionWorkflow.replace("gh release upload", "true # release upload removed"),
+  ]) {
+    assert.notEqual(mutation, promotionWorkflow);
+    assert.throws(
+      () => validatePromotionWorkflowContract(mutation),
+      /publication|state|draft|release|asset|null/iu,
+    );
+  }
+});
+
+test("release publication resumes only exact tag, draft, and published states", () => {
+  const releaseTag = "v1.0.0";
+  const candidateCommit = SOURCE_COMMIT;
+  const candidateRunId = "12345";
+  const tagRef = {
+    ref: `refs/tags/${releaseTag}`,
+    object: { type: "commit", sha: candidateCommit },
+  };
+  const draft = {
+    id: 42,
+    tag_name: releaseTag,
+    name: `Gym Tracker ${releaseTag}`,
+    body: `Candidate run: ${candidateRunId}`,
+    draft: true,
+    prerelease: false,
+  };
+  const classify = (overrides = {}) => classifyReleasePublicationState({
+    tagRef: null, release: null, releaseTag, candidateCommit, candidateRunId, ...overrides,
+  });
+
+  assert.equal(classify(), "fresh");
+  assert.equal(classify({ tagRef }), "tag_reserved");
+  assert.equal(classify({ tagRef, release: draft }), "draft");
+  assert.equal(classify({ tagRef, release: { ...draft, draft: false } }), "published");
+  for (const overrides of [
+    { tagRef: { ...tagRef, object: { type: "commit", sha: "f".repeat(40) } } },
+    { release: draft },
+    { tagRef, release: { ...draft, name: "Other release" } },
+    { tagRef, release: { ...draft, body: "Candidate run: 99999" } },
+    { tagRef, release: { ...draft, prerelease: true } },
+    { tagRef, release: { ...draft, draft: "true" } },
+  ]) {
+    assert.throws(() => classify(overrides), /release|tag|mismatch/iu);
+  }
+
+  const expectedAssets = [
+    { file: "gym-tracker-release.aab", sha256: "a".repeat(64), size_bytes: 2 },
+    { file: "gym-tracker-release.apk", sha256: "b".repeat(64), size_bytes: 1 },
+  ];
+  const actualAssets = expectedAssets.map((asset, index) => ({
+    id: 50 + index, name: asset.file, size: asset.size_bytes,
+    digest: `sha256:${asset.sha256}`,
+  }));
+  assert.deepEqual(validateReleaseAssetState({
+    actualAssets: [], expectedAssets, publicationState: "fresh",
+  }), expectedAssets.map(({ file }) => file));
+  assert.throws(() => validateReleaseAssetState({
+    actualAssets: actualAssets.slice(0, 1), expectedAssets, publicationState: "tag_reserved",
+  }), /without a draft|asset/iu);
+  assert.deepEqual(validateReleaseAssetState({
+    actualAssets: actualAssets.slice(0, 1), expectedAssets, publicationState: "draft",
+  }), ["gym-tracker-release.apk"]);
+  assert.deepEqual(validateReleaseAssetState({
+    actualAssets, expectedAssets, publicationState: "draft",
+  }), []);
+  assert.deepEqual(validateReleaseAssetState({
+    actualAssets, expectedAssets, publicationState: "published",
+  }), []);
+  assert.throws(() => validateReleaseAssetState({
+    actualAssets: actualAssets.slice(0, 1), expectedAssets, publicationState: "published",
+  }), /published|incomplete/iu);
+  for (const substituted of [
+    [{ ...actualAssets[0], digest: `sha256:${"c".repeat(64)}` }],
+    [{ ...actualAssets[0], name: "unexpected.apk" }],
+    [actualAssets[0], { ...actualAssets[0] }],
+  ]) {
+    assert.throws(() => validateReleaseAssetState({
+      actualAssets: substituted, expectedAssets, publicationState: "draft",
+    }), /asset|mismatch/iu);
   }
 });
 
@@ -602,6 +698,14 @@ test("release promotion separates read-only validation from code-free publicatio
   assert.match(proof, /--attended-record sealed-release-validation\/attended\/attended-record\.json/u);
   assert.match(proof, /--phase6-n4-record sealed-release-validation\/candidate\/evidence\/phase6\/attended-record\.json/u);
   assert.match(proof, /--release-id "\$\{\{ needs\.publish\.outputs\.release_id \}\}"/u);
+  assert.match(proof, /git\/ref\/tags\/\$\{RELEASE_TAG\}[\s\S]*\.object\.sha == \$commit/u);
+  assert.match(proof, /releases\/tags\/\$\{RELEASE_TAG\}[\s\S]*\.draft == false[\s\S]*\.prerelease == false/u);
+  const recordProofStep = proof.slice(
+    proof.indexOf("name: Record immutable post-promotion proof"),
+    proof.indexOf("name: Upload immutable promotion proof"),
+  );
+  assert.match(recordProofStep, /git\/ref\/tags\/\$\{RELEASE_TAG\}[\s\S]*\.object\.sha == \$commit/u);
+  assert.match(recordProofStep, /releases\/tags\/\$\{RELEASE_TAG\}[\s\S]*\.draft == false[\s\S]*\.prerelease == false/u);
   for (const unsafe of [
     ["contents: read", "contents: write"],
     ["persist-credentials: false", "persist-credentials: true"],
@@ -614,6 +718,15 @@ test("release promotion separates read-only validation from code-free publicatio
       /validation|publication|proof|credential|trusted|permission/iu,
     );
   }
+  const unsafeProofIdentity = workflow.replace(
+    /(- name: Record immutable post-promotion proof[\s\S]*?\.id == \$release_id\n\s+)and \.tag_name == \$tag/u,
+    "$1and true",
+  );
+  assert.notEqual(unsafeProofIdentity, workflow);
+  assert.throws(
+    () => validatePromotionWorkflowContract(unsafeProofIdentity),
+    /promotion|deployment|publication|proof|trusted|release/iu,
+  );
 });
 
 test("promotion proof cryptographically binds the exact Phase 6 N4 artifact", () => {
@@ -648,6 +761,7 @@ test("promotion proof cryptographically binds the exact Phase 6 N4 artifact", ()
       repository: "owner/gym-tracker",
       releaseTag: "v1.0.0",
       releaseId,
+      publicationJobAttempt: 1,
       publicAssetMetadata,
       publicAssetsDirectory,
     });
@@ -660,6 +774,17 @@ test("promotion proof cryptographically binds the exact Phase 6 N4 artifact", ()
       phase6_n4_artifact_name: phase6N4ArtifactName,
       phase6_n4_record_sha256: phase6N4RecordSha256,
     });
+    assert.equal(proof.workflow.publication_job_attempt, 1);
+    for (const publicationJobAttempt of [undefined, 0, 1.5]) {
+      assert.throws(() => createPhase5PromotionProof({
+        candidate, candidateRunId: "12345", attendedRunId: "456",
+        attendedArtifactName: "attended-release-evidence-candidate-001",
+        attendedRecordSha256: SOURCE_DIGEST, phase6N4RunId, phase6N4ArtifactName,
+        phase6N4RecordSha256, promotionRunId: "999",
+        repository: "owner/gym-tracker", releaseTag: "v1.0.0", releaseId,
+        publicationJobAttempt, publicAssetMetadata, publicAssetsDirectory,
+      }), /promotion proof identity/iu);
+    }
     const proofBytes = Buffer.from(serializePhase5PromotionProof(proof));
     assert.doesNotThrow(() => validatePhase5PromotionProof({
       proof,
@@ -670,6 +795,7 @@ test("promotion proof cryptographically binds the exact Phase 6 N4 artifact", ()
       phase6N4ArtifactName,
       phase6N4RecordSha256,
       releaseId,
+      publicationJobAttempt: 1,
       publicAssetMetadata,
       publicAssetsDirectory,
     }));
@@ -687,6 +813,7 @@ test("promotion proof cryptographically binds the exact Phase 6 N4 artifact", ()
         phase6N4ArtifactName,
         phase6N4RecordSha256,
         releaseId,
+        publicationJobAttempt: 1,
         publicAssetMetadata,
         publicAssetsDirectory,
         ...substitution,
@@ -705,15 +832,26 @@ test("promotion proof cryptographically binds the exact Phase 6 N4 artifact", ()
       phase6N4ArtifactName,
       phase6N4RecordSha256,
       releaseId,
+      publicationJobAttempt: 1,
       publicAssetMetadata,
       publicAssetsDirectory,
     }), /promotion proof|Phase 6|noncanonical/iu);
+    const wrongAttemptProof = {
+      ...proof, workflow: { ...proof.workflow, publication_job_attempt: 2 },
+    };
+    assert.throws(() => validatePhase5PromotionProof({
+      proof: wrongAttemptProof,
+      proofBytes: Buffer.from(serializePhase5PromotionProof(wrongAttemptProof)),
+      candidate, attendedRecordSha256: SOURCE_DIGEST, phase6N4RunId,
+      phase6N4ArtifactName, phase6N4RecordSha256, releaseId,
+      publicationJobAttempt: 1, publicAssetMetadata, publicAssetsDirectory,
+    }), /promotion proof|noncanonical|identity/iu);
 
     writeFileSync(path.join(publicAssetsDirectory, "unexpected-release.txt"), "extra");
     assert.throws(() => validatePhase5PromotionProof({
       proof, proofBytes, candidate, attendedRecordSha256: SOURCE_DIGEST,
       phase6N4RunId, phase6N4ArtifactName, phase6N4RecordSha256,
-      releaseId, publicAssetMetadata, publicAssetsDirectory,
+      releaseId, publicationJobAttempt: 1, publicAssetMetadata, publicAssetsDirectory,
     }), /public release asset set|unexpected|regular/iu);
     rmSync(path.join(publicAssetsDirectory, "unexpected-release.txt"));
 
@@ -725,7 +863,7 @@ test("promotion proof cryptographically binds the exact Phase 6 N4 artifact", ()
     assert.throws(() => validatePhase5PromotionProof({
       proof, proofBytes, candidate, attendedRecordSha256: SOURCE_DIGEST,
       phase6N4RunId, phase6N4ArtifactName, phase6N4RecordSha256,
-      releaseId, publicAssetMetadata, publicAssetsDirectory,
+      releaseId, publicationJobAttempt: 1, publicAssetMetadata, publicAssetsDirectory,
     }), /public release asset set|symlink|regular/iu);
   });
 
@@ -742,6 +880,7 @@ test("promotion proof cryptographically binds the exact Phase 6 N4 artifact", ()
     "--phase6-n4-record", "phase6-record.json",
     "--phase6-n4-record-sha256", "d".repeat(64),
     "--release-id", "42",
+    "--publication-job-attempt", "1",
     "--public-asset-metadata", "public-assets.json",
     "--promotion-run-id", "999",
     "--repository", "owner/gym-tracker",
@@ -753,6 +892,7 @@ test("promotion proof cryptographically binds the exact Phase 6 N4 artifact", ()
   assert.equal(args.phase6N4RunId, "789");
   assert.equal(args.phase6N4ArtifactName, "phase6-n4-evidence-candidate-001-789");
   assert.equal(args.phase6N4RecordSha256, "d".repeat(64));
+  assert.equal(args.publicationJobAttempt, "1");
   assert.throws(() => parsePhase5PromotionProofArguments([
     "--bundle-dir", "retained-candidate",
   ]), /every immutable input|arguments/iu);
@@ -798,6 +938,7 @@ test("promotion proof cryptographically binds the exact Phase 6 N4 artifact", ()
       "--phase6-n4-record", phase6N4Record,
       "--phase6-n4-record-sha256", sha256(readFileSync(phase6N4Record)),
       "--release-id", "42",
+      "--publication-job-attempt", "1",
       "--public-asset-metadata", publicAssetMetadata,
       "--promotion-run-id", "999",
       "--repository", "owner/gym-tracker",
@@ -914,7 +1055,8 @@ test("Terminal Seal requires immutable promotion artifact identity and live GitH
   assert.equal(options.promotionProofArtifactDigest, `sha256:${"e".repeat(64)}`);
 
   const proof = {
-    workflow: { run_id: "999" },
+    workflow: { run_id: "999", publication_job_attempt: 1 },
+    candidate_run_id: "12345",
     release_id: 42,
     assets: [
       { id: 50, file: "gym-tracker-release.aab", retained_sha256: "a".repeat(64), public_sha256: "a".repeat(64), api_digest: `sha256:${"a".repeat(64)}`, size_bytes: 2 },
@@ -946,7 +1088,7 @@ test("Terminal Seal requires immutable promotion artifact identity and live GitH
       log_url: "https://github.com/owner/gym-tracker/actions/runs/999/job/11",
     }],
     job: {
-      id: 11, run_id: 999, run_attempt: 2, head_sha: SOURCE_COMMIT,
+      id: 11, run_id: 999, run_attempt: 1, head_sha: SOURCE_COMMIT,
       status: "completed", conclusion: "success",
       html_url: "https://github.com/owner/gym-tracker/actions/runs/999/job/11",
     },
@@ -965,7 +1107,8 @@ test("Terminal Seal requires immutable promotion artifact identity and live GitH
     localProofBytes: proofBytes,
     tagRef: { ref: "refs/tags/v1.0.0", object: { type: "commit", sha: SOURCE_COMMIT } },
     release: {
-      id: 42, tag_name: "v1.0.0", draft: false, prerelease: false,
+      id: 42, tag_name: "v1.0.0", name: "Gym Tracker v1.0.0",
+      body: "Candidate run: 12345", draft: false, prerelease: false,
       assets: [
         { id: 50, name: "gym-tracker-release.aab", size: 2, digest: `sha256:${"a".repeat(64)}` },
         { id: 51, name: "gym-tracker-release.apk", size: 1, digest: `sha256:${"b".repeat(64)}` },
@@ -1017,8 +1160,15 @@ test("Terminal Seal requires immutable promotion artifact identity and live GitH
     deployment: live.deployment,
     deploymentStatuses: live.deploymentStatuses,
     job: live.job,
+    publicationJobAttempt: 1,
   };
   assert.equal(validatePromotionDeploymentProvenance(provenanceInput)?.job.id, 11);
+  assert.equal(validatePromotionDeploymentProvenance({
+    ...provenanceInput,
+    deploymentStatuses: [{
+      ...live.deploymentStatuses[0], created_at: "2026-09-03T00:00:00.123456789Z",
+    }],
+  })?.job.id, 11);
   for (const mutation of [
     { promotionRun: { ...live.promotionRun, id: 0 } },
     { promotionRun: { ...live.promotionRun, run_attempt: 0 } },
@@ -1026,7 +1176,11 @@ test("Terminal Seal requires immutable promotion artifact identity and live GitH
     { deployment: { ...live.deployment, url: "https://api.github.com/substituted" } },
     { deploymentStatuses: [] },
     { deploymentStatuses: [{ ...live.deploymentStatuses[0], id: 0 }] },
-    { deploymentStatuses: [{ ...live.deploymentStatuses[0], created_at: "not-a-date" }] },
+    ...[null, 0, 1, true, "not-a-date", "2026-09-03", "2026-02-30T00:00:00Z",
+      "2026-09-03T00:00:00+00:00"]
+      .map((createdAt) => ({
+        deploymentStatuses: [{ ...live.deploymentStatuses[0], created_at: createdAt }],
+      })),
     { deploymentStatuses: [live.deploymentStatuses[0], live.deploymentStatuses[0]] },
   ]) {
     assert.throws(
@@ -1039,6 +1193,7 @@ test("Terminal Seal requires immutable promotion artifact identity and live GitH
     { job: { ...live.job, id: 12 } },
     { job: { ...live.job, run_id: 0 } },
     { job: { ...live.job, run_attempt: 0 } },
+    { publicationJobAttempt: 2 },
     { job: { ...live.job, html_url: "https://example.invalid/job/11" } },
     { job: { ...live.job, status: "queued" } },
   ]) {
@@ -1050,9 +1205,13 @@ test("Terminal Seal requires immutable promotion artifact identity and live GitH
   for (const mutation of [
     { promotionRun: { ...live.promotionRun, conclusion: "failure" } },
     { proofArtifact: { ...live.proofArtifact, id: 1002 } },
+    { proof: { ...live.proof, workflow: { run_id: "999" } } },
+    { proof: { ...live.proof, workflow: { run_id: "999", publication_job_attempt: 3 } } },
     { proofBytes: Buffer.from("substituted proof\n") },
     { localProofBytes: Buffer.from("substituted local proof\n") },
     { tagRef: { ...live.tagRef, object: { type: "commit", sha: "f".repeat(40) } } },
+    { release: { ...live.release, name: "Substituted title" } },
+    { release: { ...live.release, body: "Candidate run: 99999" } },
     { release: { ...live.release, draft: true } },
     { release: { ...live.release, assets: [...live.release.assets, { id: 52, name: "extra.txt", size: 1, digest: `sha256:${"c".repeat(64)}` }] } },
   ]) {
@@ -1107,19 +1266,22 @@ test("Terminal Seal requires immutable promotion artifact identity and live GitH
     deployment_url: secondValidDeployment.url,
     log_url: "https://github.com/owner/gym-tracker/actions/runs/999/job/13",
   }];
-  const secondValidJob = {
+  let secondValidJob = {
     ...live.job,
     id: 13,
+    run_attempt: 2,
     html_url: "https://github.com/owner/gym-tracker/actions/runs/999/job/13",
   };
   let selectedDeployments = [validDeployment, failedSiblingDeployment];
   const jobEndpoints = [];
+  const endpointCalls = [];
   const execute = (command, args, settings) => {
     assert.ok(command === "gh" || command === "unzip");
     if (command === "unzip") {
       return args[0] === "-Z1" ? "promotion-proof.json\n" : proofBytes;
     }
     const endpoint = args.find((value) => value.startsWith?.("repos/"));
+    if (endpoint !== undefined) endpointCalls.push(endpoint);
     if (endpoint === "repos/owner/gym-tracker/actions/runs/999") {
       return JSON.stringify(live.promotionRun);
     }
@@ -1178,6 +1340,11 @@ test("Terminal Seal requires immutable promotion artifact identity and live GitH
       promotionProofArtifactDigest: `sha256:${archiveDigest}`,
     }, { execute });
     assert.equal(loaded.release.id, 42);
+    assert.ok(
+      endpointCalls.indexOf("repos/owner/gym-tracker/actions/artifacts/1001/zip")
+        < endpointCalls.indexOf("repos/owner/gym-tracker/deployments"),
+      "Terminal Seal must authenticate and parse immutable proof bytes before selecting a publication deployment",
+    );
     assert.deepEqual(jobEndpoints, [
       "repos/owner/gym-tracker/actions/jobs/11",
       "repos/owner/gym-tracker/actions/jobs/10",
@@ -1191,6 +1358,12 @@ test("Terminal Seal requires immutable promotion artifact identity and live GitH
     }, { execute }), /deployment provenance is missing or ambiguous/iu);
 
     selectedDeployments = [validDeployment, secondValidDeployment];
+    const mixedAttempt = loadAndValidateLivePhase5Promotion({
+      ...options, promotionProof,
+      promotionProofArtifactDigest: "sha256:" + archiveDigest,
+    }, { execute });
+    assert.equal(mixedAttempt.release.id, 42);
+    secondValidJob = { ...secondValidJob, run_attempt: 1 };
     assert.throws(() => loadAndValidateLivePhase5Promotion({
       ...options, promotionProof,
       promotionProofArtifactDigest: "sha256:" + archiveDigest,

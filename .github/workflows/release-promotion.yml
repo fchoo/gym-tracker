@@ -170,13 +170,26 @@ jobs:
                 if all(.[]; type == "array") then
                   [.[][]] as $statuses
                   | if ($statuses | length) > 0
-                      and all($statuses[]; (.created_at | type == "string") and (.id | type == "number"))
+                      and all($statuses[];
+                        (.id | type == "number")
+                        and (.created_at as $created_at
+                          | ($created_at | type == "string")
+                          and ($created_at | test("^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}([.][0-9]{1,9})?Z$"))
+                          and ($created_at | sub("[.][0-9]{1,9}Z$"; "Z") as $canonical
+                            | try (($canonical | fromdateiso8601 | todateiso8601) == $canonical) catch false)))
                     then true
                     else error("missing or malformed deployment statuses")
                     end
                 else error("malformed deployment status pages") end
               ' <<<"${statuses}" >/dev/null
-              latest_status=$(jq -cer '[.[][]] | sort_by([.created_at, .id]) | last' <<<"${statuses}")
+              latest_status=$(jq -cer '
+                [.[][]
+                  | . as $status
+                  | (.created_at | capture("^(?<base>[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2})(?:[.](?<fraction>[0-9]{1,9}))?Z$")) as $timestamp
+                  | {status: $status,
+                     sort_time: ($timestamp.base + "." + ((($timestamp.fraction // "") + "000000000")[0:9]) + "Z")}
+                ] | sort_by([.sort_time, .status.id]) | last.status
+              ' <<<"${statuses}")
               if ! log_url=$(jq -er \
                 --arg environment "${environment}" --arg run_url "${run_url}" \
                 --arg run_job_prefix "${run_job_prefix}" \
@@ -540,6 +553,7 @@ jobs:
     outputs:
       release_id: ${{ steps.published.outputs.release_id }}
       release_assets_sha256: ${{ steps.published.outputs.release_assets_sha256 }}
+      publication_job_attempt: ${{ steps.published.outputs.publication_job_attempt }}
     environment:
       name: public-release-promotion
       url: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
@@ -610,16 +624,115 @@ jobs:
             test "$(sha256sum "sealed-release-validation/candidate/${file}" | cut -d' ' -f1)" = "${sha256}"
             test "$(wc -c < "sealed-release-validation/candidate/${file}" | tr -d '[:space:]')" = "${size_bytes}"
           done < <(jq -r '.assets[] | [.file, .sha256, .size_bytes] | @tsv' sealed-release-validation/release-validation.json)
-          if gh release view "${RELEASE_TAG}" >/dev/null 2>&1; then exit 1; fi
-          candidate_run_id="${CANDIDATE_RUN_ID}"
-          release_bodies=$(gh api --paginate "repos/${GITHUB_REPOSITORY}/releases" \
-            --jq '.[].body // ""')
-          if grep -F "Candidate run: ${candidate_run_id}" <<<"${release_bodies}"; then
-            echo "candidate run was already reused by a public release" >&2
+      - name: Classify exact publication state
+        id: publication_state
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          expected_ref="refs/tags/${RELEASE_TAG}"
+          expected_title="Gym Tracker ${RELEASE_TAG}"
+          expected_body="Candidate run: ${CANDIDATE_RUN_ID}"
+          tag_pages=$(gh api --method GET --paginate --slurp \
+            "repos/${GITHUB_REPOSITORY}/git/matching-refs/tags/${RELEASE_TAG}" \
+            -F per_page=100)
+          tag_ref=$(jq -cr --arg ref "${expected_ref}" '
+            if all(.[]; type == "array") then
+              [.[][] | select(.ref == $ref)]
+              | if length == 0 then null
+                elif length == 1 then .[0]
+                else error("release tag is ambiguous")
+                end
+            else error("malformed tag pages") end
+          ' <<<"${tag_pages}")
+          release_pages=$(gh api --method GET --paginate --slurp \
+            "repos/${GITHUB_REPOSITORY}/releases" -F per_page=100)
+          release=$(jq -cr --arg tag "${RELEASE_TAG}" '
+            if all(.[]; type == "array") then
+              [.[][] | select(.tag_name == $tag)]
+              | if length == 0 then null
+                elif length == 1 then .[0]
+                else error("release is ambiguous")
+                end
+            else error("malformed release pages") end
+          ' <<<"${release_pages}")
+          jq -e --arg marker "${expected_body}" --arg tag "${RELEASE_TAG}" '
+            if all(.[]; type == "array") then
+              [.[][]
+                | select(((.body // "") | split("\n") | index($marker)) != null)
+                | select(.tag_name != $tag)]
+                | length == 0
+            else error("malformed release pages") end
+          ' <<<"${release_pages}" >/dev/null || {
+            echo "candidate run was already reused by another release" >&2
+            exit 1
+          }
+
+          if [ "${tag_ref}" = "null" ] && [ "${release}" = "null" ]; then
+            publication_state=fresh
+          elif [ "${tag_ref}" != "null" ] && [ "${release}" = "null" ]; then
+            publication_state=tag_reserved
+          elif [ "${tag_ref}" != "null" ] && [ "${release}" != "null" ]; then
+            jq -e --arg ref "${expected_ref}" --arg commit "${CANDIDATE_COMMIT}" '
+              .ref == $ref and .object.type == "commit" and .object.sha == $commit
+            ' <<<"${tag_ref}" >/dev/null
+            jq -e --arg tag "${RELEASE_TAG}" --arg title "${expected_title}" \
+              --arg body "${expected_body}" '
+              .tag_name == $tag and .name == $title and .body == $body
+                and .prerelease == false and (.draft | type == "boolean")
+            ' <<<"${release}" >/dev/null || {
+              echo "existing release identity is mismatched" >&2
+              exit 1
+            }
+            publication_state=$(jq -er 'if .draft then "draft" else "published" end' \
+              <<<"${release}")
+          else
+            echo "existing release identity is mismatched" >&2
             exit 1
           fi
 
+          if [ "${tag_ref}" != "null" ]; then
+            jq -e --arg ref "${expected_ref}" --arg commit "${CANDIDATE_COMMIT}" '
+              .ref == $ref and .object.type == "commit" and .object.sha == $commit
+            ' <<<"${tag_ref}" >/dev/null || {
+              echo "release tag exists with mismatched target" >&2
+              exit 1
+            }
+          fi
+
+          expected_assets=$(jq -cer '
+            [.assets[] | {name: .file, size: .size_bytes, digest: ("sha256:" + .sha256)}]
+              | sort_by(.name)
+          ' sealed-release-validation/release-validation.json)
+          actual_assets=$(jq -cer '
+            if . == null then []
+            else [.assets[] | {id, name, size, digest}] | sort_by(.name)
+            end
+          ' <<<"${release}")
+          jq -e --argjson expected "${expected_assets}" '
+            (map(.name) | unique | length) == length
+              and all(.[]; (.id | type) == "number" and .id >= 1)
+              and all(.[] as $actual; any($expected[];
+                .name == $actual.name
+                  and .size == $actual.size
+                  and .digest == $actual.digest))
+          ' <<<"${actual_assets}" >/dev/null || {
+            echo "existing release asset set is mismatched" >&2
+            exit 1
+          }
+          jq -r --argjson actual "${actual_assets}" '
+            .[] | select(.name as $name | ($actual | map(.name) | index($name)) == null)
+              | .name
+          ' <<<"${expected_assets}" > "${RUNNER_TEMP}/missing-release-assets.txt"
+          if [ "${publication_state}" = "published" ] \
+            && [ -s "${RUNNER_TEMP}/missing-release-assets.txt" ]; then
+            echo "published release asset set is incomplete" >&2
+            exit 1
+          fi
+          printf 'publication_state=%s\n' "${publication_state}" >> "${GITHUB_OUTPUT}"
+
       - name: Atomically reserve immutable release tag
+        if: steps.publication_state.outputs.publication_state == 'fresh'
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
@@ -633,18 +746,36 @@ jobs:
               and .object.sha == $commit
             ' <<<"${tag_ref}" >/dev/null
 
-      - name: Create draft with verified retained bytes only
+      - name: Create or resume exact draft with verified retained bytes only
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          gh release create "${RELEASE_TAG}" \
-            sealed-release-validation/candidate/gym-tracker-release.apk \
-            sealed-release-validation/candidate/gym-tracker-release.aab \
-            --title "Gym Tracker ${RELEASE_TAG}" \
-            --target "${CANDIDATE_COMMIT}" \
-            --notes "Candidate run: ${CANDIDATE_RUN_ID}" \
-            --verify-tag \
-            --draft
+          set -euo pipefail
+          publication_state="${{ steps.publication_state.outputs.publication_state }}"
+          case "${publication_state}" in
+            fresh|tag_reserved)
+              gh release create "${RELEASE_TAG}" \
+                sealed-release-validation/candidate/gym-tracker-release.apk \
+                sealed-release-validation/candidate/gym-tracker-release.aab \
+                --title "Gym Tracker ${RELEASE_TAG}" \
+                --target "${CANDIDATE_COMMIT}" \
+                --notes "Candidate run: ${CANDIDATE_RUN_ID}" \
+                --verify-tag \
+                --draft
+              ;;
+            draft)
+              while IFS= read -r missing_asset; do
+                test -n "${missing_asset}"
+                gh release upload "${RELEASE_TAG}" \
+                  "sealed-release-validation/candidate/${missing_asset}"
+              done < "${RUNNER_TEMP}/missing-release-assets.txt"
+              ;;
+            published)
+              ;;
+            *)
+              exit 1
+              ;;
+          esac
 
       - name: Verify public release asset hashes
         env:
@@ -683,9 +814,13 @@ jobs:
               and .object.sha == $commit
             ' <<<"${verified_tag_ref}" >/dev/null
           release=$(gh api "repos/${GITHUB_REPOSITORY}/releases/tags/${RELEASE_TAG}")
-          jq -e --arg tag "${RELEASE_TAG}" --arg commit "${CANDIDATE_COMMIT}" '
+          jq -e --arg tag "${RELEASE_TAG}" --arg title "Gym Tracker ${RELEASE_TAG}" \
+            --arg body "Candidate run: ${CANDIDATE_RUN_ID}" '
             .tag_name == $tag
-              and .draft == true
+              and .name == $title
+              and .body == $body
+              and .prerelease == false
+              and (.draft | type == "boolean")
             ' <<<"${release}" >/dev/null
           current_release_assets=$(jq -cer '[.assets[] | {id, name, size, digest}] | sort_by(.name)' <<<"${release}")
           jq -e --argjson assets "${current_release_assets}" '
@@ -697,9 +832,12 @@ jobs:
           ' sealed-release-validation/release-validation.json >/dev/null
           release_id=$(jq -er '.id | select(type == "number" and . >= 1)' <<<"${release}")
           release_assets_sha256=$(printf '%s\n' "${current_release_assets}" | sha256sum | cut -d' ' -f1)
-          gh release edit "${RELEASE_TAG}" --draft=false
+          if jq -e '.draft == true' <<<"${release}" >/dev/null; then
+            gh release edit "${RELEASE_TAG}" --draft=false
+          fi
           printf '%s\n' "release_id=${release_id}" \
-            "release_assets_sha256=${release_assets_sha256}" >> "${GITHUB_OUTPUT}"
+            "release_assets_sha256=${release_assets_sha256}" \
+            "publication_job_attempt=${GITHUB_RUN_ATTEMPT}" >> "${GITHUB_OUTPUT}"
   record-proof:
     name: Record immutable post-promotion proof
     needs: [validate, publish]
@@ -747,7 +885,21 @@ jobs:
         run: |
           set -euo pipefail
           mkdir -p "${RUNNER_TEMP}/public-assets"
+          tag_ref=$(gh api "repos/${GITHUB_REPOSITORY}/git/ref/tags/${RELEASE_TAG}")
+          jq -e --arg tag "${RELEASE_TAG}" --arg commit "${CANDIDATE_COMMIT}" '
+            .ref == ("refs/tags/" + $tag)
+              and .object.type == "commit"
+              and .object.sha == $commit
+          ' <<<"${tag_ref}" >/dev/null
           release=$(gh api "repos/${GITHUB_REPOSITORY}/releases/tags/${RELEASE_TAG}")
+          jq -e --arg tag "${RELEASE_TAG}" --arg title "Gym Tracker ${RELEASE_TAG}" \
+            --arg body "Candidate run: ${CANDIDATE_RUN_ID}" '
+            .tag_name == $tag
+              and .name == $title
+              and .body == $body
+              and .draft == false
+              and .prerelease == false
+          ' <<<"${release}" >/dev/null
           release_id=$(jq -er '.id | select(type == "number" and . >= 1)' <<<"${release}")
           jq -c '[.assets[] | {id, name, size, digest}] | sort_by(.name)' \
             <<<"${release}" > release-assets.json
@@ -779,7 +931,31 @@ jobs:
             --record sealed-release-validation/candidate/evidence/phase6/attended-record.json
 
       - name: Record immutable post-promotion proof
+        env:
+          GH_TOKEN: ${{ github.token }}
         run: |
+          set -euo pipefail
+          tag_ref=$(gh api "repos/${GITHUB_REPOSITORY}/git/ref/tags/${RELEASE_TAG}")
+          jq -e --arg tag "${RELEASE_TAG}" --arg commit "${CANDIDATE_COMMIT}" '
+            .ref == ("refs/tags/" + $tag)
+              and .object.type == "commit"
+              and .object.sha == $commit
+          ' <<<"${tag_ref}" >/dev/null
+          release=$(gh api "repos/${GITHUB_REPOSITORY}/releases/tags/${RELEASE_TAG}")
+          jq -e --arg tag "${RELEASE_TAG}" --arg title "Gym Tracker ${RELEASE_TAG}" \
+            --arg body "Candidate run: ${CANDIDATE_RUN_ID}" \
+            --argjson release_id "${{ needs.publish.outputs.release_id }}" '
+            .id == $release_id
+              and .tag_name == $tag
+              and .name == $title
+              and .body == $body
+              and .draft == false
+              and .prerelease == false
+          ' <<<"${release}" >/dev/null
+          current_release_assets=$(jq -cer '[.assets[] | {id, name, size, digest}] | sort_by(.name)' \
+            <<<"${release}")
+          test "$(printf '%s\n' "${current_release_assets}" | sha256sum | cut -d' ' -f1)" \
+            = "${{ needs.publish.outputs.release_assets_sha256 }}"
           manifest_sha256=$(sha256sum sealed-release-validation/candidate/release-candidate.json | cut -d' ' -f1)
           node workflow-source/scripts/record-phase5-promotion-proof.mjs \
             --bundle-dir sealed-release-validation/candidate \
@@ -794,6 +970,7 @@ jobs:
             --phase6-n4-record sealed-release-validation/candidate/evidence/phase6/attended-record.json \
             --phase6-n4-record-sha256 "${PHASE6_N4_RECORD_SHA256}" \
             --release-id "${{ needs.publish.outputs.release_id }}" \
+            --publication-job-attempt "${{ needs.publish.outputs.publication_job_attempt }}" \
             --public-asset-metadata release-assets.json \
             --promotion-run-id "${GITHUB_RUN_ID}" \
             --repository "${GITHUB_REPOSITORY}" \

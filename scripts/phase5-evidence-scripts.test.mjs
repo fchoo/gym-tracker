@@ -62,7 +62,7 @@ function assertDeploymentStatusProvenance(source, expectedBindings) {
   assert.match(source, /\.environment_url == \$run_url/iu);
   assert.match(source, /\.deployment_url == \$deployment_url/iu);
   assert.match(source, /\.log_url[\s\S]*startswith\(\$run_job_prefix\)/iu);
-  assert.match(source, /sort_by\(\[\.created_at, \.id\]\) \| last/iu);
+  assert.match(source, /sort_by\(\[\.sort_time, \.status\.id\]\) \| last\.status|sort_by\(\[\.created_at, \.id\]\) \| last/iu);
   assert.match(source, /actions\/jobs\/\$\{job_id\}/u);
   assert.match(source, /\.run_id == \$run_id/iu);
   assert.match(source, /\.run_attempt == \$run_attempt/iu);
@@ -1387,7 +1387,7 @@ test("promotion proof binds public APK/AAB bytes and workflow provenance", async
       phase6N4RunId: "45678",
       phase6N4ArtifactName: "phase6-n4-evidence-candidate-001-45678",
       phase6N4RecordSha256: SHA_B,
-      releaseId, publicAssetMetadata,
+      releaseId, publicationJobAttempt: 1, publicAssetMetadata,
       repository: "owner/gym-tracker", releaseTag: "v1.0.0",
       publicAssetsDirectory: publicAssets,
     });
@@ -1397,7 +1397,7 @@ test("promotion proof binds public APK/AAB bytes and workflow provenance", async
       phase6N4RunId: "45678",
       phase6N4ArtifactName: "phase6-n4-evidence-candidate-001-45678",
       phase6N4RecordSha256: SHA_B,
-      releaseId, publicAssetMetadata,
+      releaseId, publicationJobAttempt: 1, publicAssetMetadata,
       publicAssetsDirectory: publicAssets,
     }));
     writeFileSync(path.join(publicAssets, "gym-tracker-release.apk"), "changed");
@@ -1406,7 +1406,7 @@ test("promotion proof binds public APK/AAB bytes and workflow provenance", async
       phase6N4RunId: "45678",
       phase6N4ArtifactName: "phase6-n4-evidence-candidate-001-45678",
       phase6N4RecordSha256: SHA_B,
-      releaseId, publicAssetMetadata,
+      releaseId, publicationJobAttempt: 1, publicAssetMetadata,
       publicAssetsDirectory: publicAssets,
     }), /public|asset|candidate/iu);
   } finally {
@@ -1724,7 +1724,7 @@ test("promotion and terminal contracts require selected successful cross-run inp
   assert.match(promotion, /group:\s*release-promotion\s*$/mu);
   assert.match(promotion, /cancel-in-progress:\s*false/u);
   assert.doesNotMatch(promotion, /group:\s*release-promotion-\$\{\{ github\.run_id \}\}/u);
-  assert.match(promotion, /release_bodies=\$\(gh api --paginate/iu);
+  assert.match(promotion, /release_pages=\$\(gh api --method GET --paginate --slurp/iu);
   assert.doesNotMatch(
     promotion,
     /gh api --paginate[^\n]*releases[\s\S]{0,160}\|\s*grep -F/iu,
@@ -1792,13 +1792,12 @@ test("promotion and terminal contracts require selected successful cross-run inp
     ),
   ), /provenance|attempt|ref|run/iu);
   assert.throws(() => validatePromotionWorkflowContract(
-    promotion.replace(/gh release view[^\n]+/u, "true"),
-  ), /existing|overwrite|release/iu);
+    promotion.replace("id: publication_state", "id: substituted_state"),
+  ), /publication|state|release/iu);
   assert.throws(() => validatePromotionWorkflowContract(
     promotion.replace(
-      /release_bodies=\$\(gh api --paginate[^\n]*\n\s*--jq[^\n]*\)/u,
-      'gh api --paginate "repos/${GITHUB_REPOSITORY}/releases" \
-            --jq \'.[].body // ""\' | grep -F "Candidate run: ${candidate_run_id}"',
+      'select(((.body // "") | split("\\n") | index($marker)) != null)',
+      'select(((.body // "") | split("\\n") | index($marker)) == null)',
     ),
   ), /candidate|reuse|API|release/iu);
   assert.throws(() => validatePromotionWorkflowContract(
