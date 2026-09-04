@@ -122,6 +122,18 @@ tags:
     centerElement: true
     timeout: 60000
 - assertVisible: "Exercise progress"
+- repeat:
+    times: 4
+    while:
+      notVisible:
+        id: "progress-exercise-search-control"
+    commands:
+      - swipe:
+          start: 95%, 75%
+          end: 95%, 25%
+          duration: 300
+- assertVisible:
+    id: "progress-exercise-search-control"
 - tapOn: "Search exercises"
 - inputText: "Back"
 - pressKey: ENTER
