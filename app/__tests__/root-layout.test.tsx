@@ -252,6 +252,8 @@ describe("RootLayout attended preview isolation", () => {
       .toBeOnTheScreen();
     expect(screen.getByTestId("startup-readiness-gate"))
       .toBeOnTheScreen();
+    expect(screen.getByTestId("gesture-handler-root"))
+      .toContainElement(screen.getByTestId("workout-runtime-provider"));
     expect(mockRuntimeProviderMounted).toHaveBeenCalledTimes(1);
     expect(mockProductionAppearanceRead).toHaveBeenCalledTimes(1);
     expect(mockSqliteStorageConstructed)

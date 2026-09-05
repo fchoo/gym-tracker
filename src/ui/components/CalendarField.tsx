@@ -18,6 +18,7 @@ import {
 import {
   Gesture,
   GestureDetector,
+  GestureHandlerRootView,
 } from "react-native-gesture-handler";
 
 import {
@@ -453,6 +454,10 @@ export function CalendarField({
         transparent
         visible={open}
       >
+        <GestureHandlerRootView
+          style={styles.modalGestureRoot}
+          testID="calendar-dialog-gesture-root"
+        >
         <View
           accessibilityViewIsModal
           style={styles.modalBackdrop}
@@ -646,6 +651,7 @@ export function CalendarField({
             </View>
           </ScrollView>
         </View>
+        </GestureHandlerRootView>
       </Modal>
     </View>
   );
@@ -683,6 +689,9 @@ const styles = StyleSheet.create({
   },
   modalBackdrop: {
     backgroundColor: "rgba(0, 0, 0, 0.45)",
+    flex: 1,
+  },
+  modalGestureRoot: {
     flex: 1,
   },
   modalScroll: {
