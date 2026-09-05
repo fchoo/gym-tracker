@@ -58,7 +58,6 @@ tags:
     element:
       text: "Activate plan"
     direction: DOWN
-    centerElement: true
 - tapOn: "Activate plan"
 - assertVisible: "Activate Full Body Foundation"
 - tapOn: "Start date"
@@ -130,7 +129,6 @@ tags:
     element:
       text: "Save target"
     direction: DOWN
-    centerElement: true
 - tapOn: "Save target"
 - tapOn: "Save day"
 - scrollUntilVisible:
@@ -150,7 +148,6 @@ tags:
     element:
       text: "Save target"
     direction: DOWN
-    centerElement: true
 - tapOn: "Save target"
 - scrollUntilVisible:
     element:

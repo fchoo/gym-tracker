@@ -453,6 +453,33 @@ test("Phase 6 production flows retain exact package, labelled coverage, and scre
   }
 });
 
+test("Phase 6 Calendar flow reaches bottom-anchored actions without requiring centering", () => {
+  const source = readFileSync(
+    path.join(projectRoot, "maestro/phase6/calendar-date-reorder.yaml"),
+    "utf8",
+  );
+  // Buttons pinned to the bottom of a maxed-out scroll view are already fully
+  // visible but can never be centered, so centerElement scrolls time out with
+  // "No visible element found" (candidate run 33953720413). Match the proven
+  // starter-activation and owned-plan-editor flows: scroll to visible, do not
+  // require centering, for the terminal Activate plan and Save target actions.
+  for (const target of ["Activate plan", "Save target"]) {
+    const blocks = source
+      .split(/(?=^- )/mu)
+      .filter((block) =>
+        block.includes("scrollUntilVisible")
+        && block.includes(`text: "${target}"`));
+    assert.ok(blocks.length > 0, `missing scroll to ${target}`);
+    for (const block of blocks) {
+      assert.doesNotMatch(
+        block,
+        /centerElement: true/u,
+        `${target} scroll must not require centering`,
+      );
+    }
+  }
+});
+
 test("Phase 6 Progress flow saves history-eligible workout facts before root navigation", () => {
   const source = readFileSync(
     path.join(projectRoot, "maestro/phase6/progress-library.yaml"),
