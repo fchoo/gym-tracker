@@ -350,15 +350,38 @@ export function phase6NativeDragCommands({
       "shell", "input", "touchscreen", "motionevent", "DOWN",
       String(startX), String(startY),
     ]),
-    move: Object.freeze([
-      "shell", "input", "touchscreen", "motionevent", "MOVE",
-      String(endX), String(endY),
-    ]),
     up: Object.freeze([
       "shell", "input", "touchscreen", "motionevent", "UP",
       String(endX), String(endY),
     ]),
   });
+}
+
+export function phase6NativeDragMoveSequence({
+  startX,
+  startY,
+  endX,
+  endY,
+}, steps = 12) {
+  const coordinates = [startX, startY, endX, endY];
+  if (!coordinates.every((value) => Number.isSafeInteger(value) && value >= 0)) {
+    fail("native drag coordinates are invalid.");
+  }
+  if (!Number.isSafeInteger(steps) || steps < 1) {
+    fail("native drag step count is invalid.");
+  }
+  // A single teleport MOVE does not advance the Reanimated Pan translation
+  // past the row-pitch reorder threshold, so the held neighbour never
+  // displaces. Interpolated incremental moves reproduce a real finger drag
+  // and deterministically cross the threshold (verified on API 36 at 200%).
+  return Object.freeze(Array.from({ length: steps }, (_unused, index) => {
+    const progress = (index + 1) / steps;
+    return Object.freeze([
+      "shell", "input", "touchscreen", "motionevent", "MOVE",
+      String(Math.round(startX + (endX - startX) * progress)),
+      String(Math.round(startY + (endY - startY) * progress)),
+    ]);
+  }));
 }
 
 export function phase6HeldDragIsDisplaced(
@@ -368,9 +391,21 @@ export function phase6HeldDragIsDisplaced(
   const expected = `Drag ${label}. Moving to position ${targetPosition} of ${count}`;
   return [...String(hierarchy).matchAll(/<node\b[^>]*>/gu)]
     .map(([node]) => node)
-    .some((node) =>
-      nodeAttribute(node, "resource-id") === `drag-exercise-${label}`
-      && nodeAttribute(node, "content-desc") === expected);
+    .some((node) => {
+      if (nodeAttribute(node, "resource-id") !== `drag-exercise-${label}`) {
+        return false;
+      }
+      const description = nodeAttribute(node, "content-desc");
+      if (description === null) {
+        return false;
+      }
+      // Android accessibility serializers can append a state suffix from
+      // accessibilityState (e.g. ", busy"). Accept the exact phrase optionally
+      // followed by such a suffix, but never a longer position number.
+      return description === expected
+        || (description.startsWith(expected)
+          && !/^\d/u.test(description.slice(expected.length)));
+    });
 }
 
 function waitSynchronously(milliseconds) {
@@ -1026,13 +1061,17 @@ export function executePhase6Maestro(args = process.argv.slice(2)) {
           targetLabel: "Back Squat",
         });
         const dragCommands = phase6NativeDragCommands(drag);
+        const dragMoves = phase6NativeDragMoveSequence(drag);
         let pointerDown = false;
         let dragFailure;
         try {
           adb(adbPath, options.serial, ...dragCommands.down);
           pointerDown = true;
           waitSynchronously(700);
-          adb(adbPath, options.serial, ...dragCommands.move);
+          for (const move of dragMoves) {
+            adb(adbPath, options.serial, ...move);
+            waitSynchronously(60);
+          }
           waitSynchronously(200);
           const displacedHierarchy = adb(
             adbPath,
