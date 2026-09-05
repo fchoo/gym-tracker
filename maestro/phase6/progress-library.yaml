@@ -33,14 +33,15 @@ tags:
     visible: "FOCUSED WORKOUT"
     timeout: 30000
 - repeat:
-    times: 12
+    times: 32
     while:
       notVisible: "Complete Set 1"
     commands:
       - swipe:
           start: 95%, 75%
           end: 95%, 25%
-          duration: 300
+          duration: 500
+- assertVisible: "Complete Set 1"
 - tapOn: "Complete Set 1"
 - extendedWaitUntil:
     visible: "RESTING · NEXT: SET 2 AT 60 kg × 8"
@@ -51,14 +52,14 @@ tags:
     notVisible: "Skip rest"
     timeout: 60000
 - repeat:
-    times: 12
+    times: 32
     while:
       notVisible: "Complete Set 2"
     commands:
       - swipe:
           start: 95%, 75%
           end: 95%, 25%
-          duration: 300
+          duration: 500
 - assertVisible: "Complete Set 2"
 - tapOn: "Complete Set 2"
 - extendedWaitUntil:
@@ -70,14 +71,14 @@ tags:
     notVisible: "Skip rest"
     timeout: 60000
 - repeat:
-    times: 12
+    times: 32
     while:
       notVisible: "Complete Set 3"
     commands:
       - swipe:
           start: 95%, 75%
           end: 95%, 25%
-          duration: 300
+          duration: 500
 - assertVisible: "Complete Set 3"
 - tapOn: "Complete Set 3"
 - extendedWaitUntil:

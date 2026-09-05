@@ -498,6 +498,29 @@ test("Phase 6 Calendar flow returns to the Library root before creating a plan",
   );
 });
 
+test("Phase 6 navigation flow switches tabs by label and anchors below-fold content", () => {
+  const source = readFileSync(
+    path.join(projectRoot, "maestro/phase6/navigation-accessibility.yaml"),
+    "utf8",
+  );
+  // Hardware TAB focus traversal never reaches the bottom tab bar (it walks the
+  // Today content in view-tree order and lands on "History and data"), so the
+  // per-route 200% screenshots must be reached by tapping each labelled tab.
+  // At 200% font "My Plans" is below the fold, so anchor it before asserting.
+  assert.doesNotMatch(source, /- pressKey: TAB\n- pressKey: TAB\n- pressKey: ENTER/u);
+  for (const tab of ["Calendar", "Library", "Progress", "Today"]) {
+    assert.match(source, new RegExp(`- tapOn: "${tab}"`, "u"), `missing tab tap ${tab}`);
+  }
+  assert.match(
+    source,
+    /- tapOn: "Library"\n- assertVisible: "Library"\n- scrollUntilVisible:\n    element:\n      text: "My Plans"\n    direction: DOWN\n    centerElement: true\n- assertVisible: "My Plans"\n- takeScreenshot: phase6-navigation-library-200pct/u,
+  );
+  assert.match(
+    source,
+    /- tapOn: "Calendar"\n- assertVisible: "Calendar"\n- assertVisible: "Calendar month grid"\n- takeScreenshot: phase6-navigation-calendar-200pct/u,
+  );
+});
+
 test("Phase 6 Calendar flow reveals exercise search results before tapping them", () => {
   const source = readFileSync(
     path.join(projectRoot, "maestro/phase6/calendar-date-reorder.yaml"),
@@ -535,6 +558,31 @@ test("Phase 6 Progress flow saves history-eligible workout facts before root nav
   assert.doesNotMatch(
     source,
     /- tapOn: "Return to Today"/u,
+  );
+});
+
+test("Phase 6 Progress flow uses a wide bounded traversal and asserts each Complete Set before tapping", () => {
+  const source = readFileSync(
+    path.join(projectRoot, "maestro/phase6/progress-library.yaml"),
+    "utf8",
+  );
+  // Candidate run 33971344366 failed on "Complete Set 1": the 12x300ms bounded
+  // swipe loop can exhaust or leave the active set's Complete action off-screen
+  // between the visibility poll and a separate tap (Working Set 2 and 3 editors
+  // were on screen at failure). Match the CI-proven remediation-workout budget:
+  // a 32x500ms right-edge traversal guarded by an explicit assertVisible before
+  // the tap for every working set.
+  for (const setNumber of [1, 2, 3]) {
+    const pattern = new RegExp(
+      `- repeat:\\n    times: 32\\n    while:\\n      notVisible: "Complete Set ${setNumber}"\\n    commands:\\n      - swipe:\\n          start: 95%, 75%\\n          end: 95%, 25%\\n          duration: 500\\n- assertVisible: "Complete Set ${setNumber}"\\n- tapOn: "Complete Set ${setNumber}"`,
+      "u",
+    );
+    assert.match(source, pattern, `Complete Set ${setNumber} must use the wide bounded traversal`);
+  }
+  assert.doesNotMatch(
+    source,
+    /notVisible: "Complete Set \d+"\n    commands:\n      - swipe:\n          start: 95%, 75%\n          end: 95%, 25%\n          duration: 300/u,
+    "Complete Set traversal must not use the exhausted 12x300ms budget",
   );
 });
 
