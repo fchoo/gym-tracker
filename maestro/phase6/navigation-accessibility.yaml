@@ -15,23 +15,25 @@ tags:
     visible: "Use Full Body Foundation"
     timeout: 90000
 - takeScreenshot: phase6-navigation-today-200pct
-- pressKey: TAB
-- pressKey: TAB
-- pressKey: ENTER
+- tapOn: "Calendar"
 - assertVisible: "Calendar"
 - assertVisible: "Calendar month grid"
 - takeScreenshot: phase6-navigation-calendar-200pct
-- pressKey: TAB
-- pressKey: TAB
-- pressKey: ENTER
+- tapOn: "Library"
 - assertVisible: "Library"
+- scrollUntilVisible:
+    element:
+      text: "My Plans"
+    direction: DOWN
+    centerElement: true
+- assertVisible: "My Plans"
 - takeScreenshot: phase6-navigation-library-200pct
-- pressKey: TAB
-- pressKey: TAB
-- pressKey: ENTER
+- tapOn: "Progress"
 - assertVisible: "Progress"
+- assertVisible: "4 weeks"
 - takeScreenshot: phase6-navigation-progress-200pct
 - tapOn: "Today"
+- assertVisible: "Use Full Body Foundation"
 - assertVisible: "History and data"
 - tapOn: "History and data"
 - assertVisible: "Data and recovery"
