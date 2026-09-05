@@ -91,9 +91,26 @@ tags:
 - takeScreenshot: phase6-calendar-dialog-200pct
 - tapOn: "Keep Original Date"
 - assertNotVisible: "Calendar dialog"
-- tapOn: "Go back"
-- assertVisible: "Library"
-- tapOn: "Plans"
+- stopApp
+- launchApp:
+    clearState: false
+    permissions:
+      notifications: deny
+- extendedWaitUntil:
+    visible: "^(Start Full Body A|Start Full Body B|Rest day)$"
+    timeout: 90000
+- assertVisible: "Today"
+- tapOn: "Library"
+- scrollUntilVisible:
+    element:
+      text: "My Plans"
+    direction: DOWN
+    centerElement: true
+- scrollUntilVisible:
+    element:
+      text: "Create my own"
+    direction: UP
+    centerElement: true
 - tapOn: "Create my own"
 - assertVisible: "Create my own"
 - tapOn: "Plan name"
@@ -123,6 +140,11 @@ tags:
     id: "owned-plan-exercise-search"
 - inputText: "Back Squat"
 - hideKeyboard
+- scrollUntilVisible:
+    element:
+      text: "Back Squat.*Load . reps"
+    direction: DOWN
+    centerElement: true
 - tapOn:
     text: "Back Squat.*Load . reps"
 - scrollUntilVisible:
@@ -142,6 +164,11 @@ tags:
     id: "owned-plan-exercise-search"
 - inputText: "Bench Press"
 - hideKeyboard
+- scrollUntilVisible:
+    element:
+      text: "Bench Press.*Load . reps"
+    direction: DOWN
+    centerElement: true
 - tapOn:
     text: "Bench Press.*Load . reps"
 - scrollUntilVisible:

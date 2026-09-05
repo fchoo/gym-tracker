@@ -480,6 +480,40 @@ test("Phase 6 Calendar flow reaches bottom-anchored actions without requiring ce
   }
 });
 
+test("Phase 6 Calendar flow returns to the Library root before creating a plan", () => {
+  const source = readFileSync(
+    path.join(projectRoot, "maestro/phase6/calendar-date-reorder.yaml"),
+    "utf8",
+  );
+  // The starter activation screen is pushed two levels above the Library tab
+  // (library/starter/[id] -> .../activate), so a single "Go back" lands on the
+  // starter detail, not Library, and there is no reachable "Plans" button there
+  // (candidate run 33953720413 successor). Relaunch to Today and reach the
+  // owned-plan editor through the proven Library -> Create my own path.
+  assert.doesNotMatch(source, /tapOn: "Go back"/u);
+  assert.doesNotMatch(source, /tapOn: "Plans"/u);
+  assert.match(
+    source,
+    /assertNotVisible: "Calendar dialog"\n- stopApp\n- launchApp:\n    clearState: false\n    permissions:\n      notifications: deny\n- extendedWaitUntil:\n    visible: "\^\(Start Full Body A\|Start Full Body B\|Rest day\)\$"\n    timeout: 90000\n- assertVisible: "Today"\n- tapOn: "Library"\n- scrollUntilVisible:\n    element:\n      text: "My Plans"[\s\S]*?text: "Create my own"[\s\S]*?direction: UP[\s\S]*?- tapOn: "Create my own"\n- assertVisible: "Create my own"/u,
+  );
+});
+
+test("Phase 6 Calendar flow reveals exercise search results before tapping them", () => {
+  const source = readFileSync(
+    path.join(projectRoot, "maestro/phase6/calendar-date-reorder.yaml"),
+    "utf8",
+  );
+  // At 200% font the single search result renders clipped against the bottom
+  // edge, so a bare tapOn misses it. Scroll each result into view first.
+  for (const exercise of ["Back Squat", "Bench Press"]) {
+    const pattern = new RegExp(
+      `inputText: "${exercise}"\\n- hideKeyboard\\n- scrollUntilVisible:\\n    element:\\n      text: "${exercise}\\.\\*Load \\. reps"\\n    direction: DOWN\\n    centerElement: true\\n- tapOn:\\n    text: "${exercise}\\.\\*Load \\. reps"`,
+      "u",
+    );
+    assert.match(source, pattern, `${exercise} result must be scrolled into view`);
+  }
+});
+
 test("Phase 6 Progress flow saves history-eligible workout facts before root navigation", () => {
   const source = readFileSync(
     path.join(projectRoot, "maestro/phase6/progress-library.yaml"),
@@ -622,6 +656,7 @@ test("Phase 6 N2 and N3 evidence proves reversible months and one native held dr
     phase6CalendarMonthEnvironment,
     phase6HeldDragIsDisplaced,
     phase6NativeDragCommands,
+    phase6NativeDragMoveSequence,
     phase6ReorderDragCoordinates,
     throwPhase6Failures,
   } = await load("scripts/run-phase6-maestro.mjs");
@@ -664,7 +699,6 @@ test("Phase 6 N2 and N3 evidence proves reversible months and one native held dr
     startY: 760,
   }), {
     down: ["shell", "input", "touchscreen", "motionevent", "DOWN", "240", "760"],
-    move: ["shell", "input", "touchscreen", "motionevent", "MOVE", "240", "560"],
     up: ["shell", "input", "touchscreen", "motionevent", "UP", "240", "560"],
   });
   assert.throws(() => phase6NativeDragCommands({
@@ -673,11 +707,53 @@ test("Phase 6 N2 and N3 evidence proves reversible months and one native held dr
     startX: -1,
     startY: 760,
   }), /drag.*coordinates/iu);
+  const moveSequence = phase6NativeDragMoveSequence({
+    endX: 240,
+    endY: 560,
+    startX: 240,
+    startY: 760,
+  }, 4);
+  assert.deepEqual(moveSequence, [
+    ["shell", "input", "touchscreen", "motionevent", "MOVE", "240", "710"],
+    ["shell", "input", "touchscreen", "motionevent", "MOVE", "240", "660"],
+    ["shell", "input", "touchscreen", "motionevent", "MOVE", "240", "610"],
+    ["shell", "input", "touchscreen", "motionevent", "MOVE", "240", "560"],
+  ]);
+  assert.equal(
+    phase6NativeDragMoveSequence({ endX: 240, endY: 560, startX: 240, startY: 760 })
+      .length,
+    12,
+  );
+  assert.equal(
+    phase6NativeDragMoveSequence({ endX: 240, endY: 560, startX: 240, startY: 760 })
+      .at(-1)
+      .at(-1),
+    "560",
+  );
+  assert.throws(() => phase6NativeDragMoveSequence({
+    endX: 240,
+    endY: 560,
+    startX: 240,
+    startY: 760,
+  }, 0), /step count/iu);
   assert.equal(phase6HeldDragIsDisplaced([
     "<hierarchy>",
     '<node resource-id="drag-exercise-Bench Press" content-desc="Drag Bench Press. Moving to position 1 of 2" bounds="[120,500][360,620]" />',
     "</hierarchy>",
   ].join(""), { label: "Bench Press", targetPosition: 1, count: 2 }), true);
+  // Android accessibility serializers can append a state suffix (", busy") from
+  // accessibilityState; the matcher must still recognize displacement.
+  assert.equal(phase6HeldDragIsDisplaced([
+    "<hierarchy>",
+    '<node resource-id="drag-exercise-Bench Press" content-desc="Drag Bench Press. Moving to position 1 of 2, busy" bounds="[120,500][360,620]" />',
+    "</hierarchy>",
+  ].join(""), { label: "Bench Press", targetPosition: 1, count: 2 }), true);
+  // A longer position number must not be accepted as the target position.
+  assert.equal(phase6HeldDragIsDisplaced([
+    "<hierarchy>",
+    '<node resource-id="drag-exercise-Bench Press" content-desc="Drag Bench Press. Moving to position 10 of 20" bounds="[120,500][360,620]" />',
+    "</hierarchy>",
+  ].join(""), { label: "Bench Press", targetPosition: 1, count: 2 }), false);
   assert.equal(phase6HeldDragIsDisplaced(hierarchy, {
     label: "Bench Press",
     targetPosition: 1,

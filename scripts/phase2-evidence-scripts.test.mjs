@@ -3039,6 +3039,7 @@ test("post-restart root actions wait for trusted Today content", async () => {
     '    visible: "Resume workout"',
     '    visible: "Bench Press · Working set 1 · 3/15 working sets"',
     '    visible: "^(Choose another day|Train anyway)$"',
+    '    visible: "^(Start Full Body A|Start Full Body B|Rest day)$"',
   ]);
   for (const relativePath of await maestroYamlPaths()) {
     const lines = (await readFile(path.join(projectRoot, relativePath), "utf8"))
