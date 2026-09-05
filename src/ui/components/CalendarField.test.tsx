@@ -375,6 +375,15 @@ describe("CalendarField", () => {
     expect(calendarFieldMonthDirectionForHorizontalSwipe(24)).toBeNull();
   });
 
+  it("hosts the swipeable grid under a gesture root inside the modal", async () => {
+    await renderCalendar();
+
+    await fireEvent.press(screen.getByRole("button", { name: "Effective date" }));
+
+    expect(screen.getByTestId("calendar-dialog-gesture-root"))
+      .toContainElement(screen.getByTestId("calendar-grid"));
+  });
+
   it("keeps every fixed-grid date present without requiring horizontal scrolling at 320dp", async () => {
     await setWindowDimensions(320, 568);
     await renderCalendar();

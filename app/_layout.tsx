@@ -2,7 +2,8 @@ import Constants from "expo-constants";
 import { useFonts } from "expo-font";
 import { Stack, usePathname } from "expo-router";
 import { StatusBar } from "expo-status-bar";
-import { useWindowDimensions } from "react-native";
+import { StyleSheet, useWindowDimensions } from "react-native";
+import { GestureHandlerRootView } from "react-native-gesture-handler";
 import { SafeAreaProvider } from "react-native-safe-area-context";
 
 import {
@@ -107,48 +108,60 @@ export default function RootLayout() {
 
   if (!fontsLoaded && fontError === null) {
     return (
-      <SafeAreaProvider>
-        <AppearanceProvider store={attendedPreviewEnabled
-          ? attendedPreviewAppearanceStore
-          : phase6GestureSmokeEnabled
-            ? phase6GestureSmokeAppearanceStore
-          : productionAppearanceStore}
-        >
-          <AppLoadingShell width={width} />
-        </AppearanceProvider>
-      </SafeAreaProvider>
+      <GestureHandlerRootView style={styles.root} testID="gesture-handler-root">
+        <SafeAreaProvider>
+          <AppearanceProvider store={attendedPreviewEnabled
+            ? attendedPreviewAppearanceStore
+            : phase6GestureSmokeEnabled
+              ? phase6GestureSmokeAppearanceStore
+            : productionAppearanceStore}
+          >
+            <AppLoadingShell width={width} />
+          </AppearanceProvider>
+        </SafeAreaProvider>
+      </GestureHandlerRootView>
     );
   }
 
   if (attendedPreviewEnabled) {
     return (
-      <SafeAreaProvider>
-        <AppearanceProvider store={attendedPreviewAppearanceStore}>
-          <AttendedPreviewNavigator />
-        </AppearanceProvider>
-      </SafeAreaProvider>
+      <GestureHandlerRootView style={styles.root} testID="gesture-handler-root">
+        <SafeAreaProvider>
+          <AppearanceProvider store={attendedPreviewAppearanceStore}>
+            <AttendedPreviewNavigator />
+          </AppearanceProvider>
+        </SafeAreaProvider>
+      </GestureHandlerRootView>
     );
   }
 
   if (phase6GestureSmokeEnabled) {
     return (
-      <SafeAreaProvider>
-        <AppearanceProvider store={phase6GestureSmokeAppearanceStore}>
-          <Phase6GestureSmokeNavigator />
-        </AppearanceProvider>
-      </SafeAreaProvider>
+      <GestureHandlerRootView style={styles.root} testID="gesture-handler-root">
+        <SafeAreaProvider>
+          <AppearanceProvider store={phase6GestureSmokeAppearanceStore}>
+            <Phase6GestureSmokeNavigator />
+          </AppearanceProvider>
+        </SafeAreaProvider>
+      </GestureHandlerRootView>
     );
   }
 
   return (
-    <SafeAreaProvider>
-      <AppearanceProvider store={productionAppearanceStore}>
-        <WorkoutAppRuntimeProvider
-          dependencies={productionWorkoutAppRuntimeDependencies}
-        >
-          <RootNavigator />
-        </WorkoutAppRuntimeProvider>
-      </AppearanceProvider>
-    </SafeAreaProvider>
+    <GestureHandlerRootView style={styles.root} testID="gesture-handler-root">
+      <SafeAreaProvider>
+        <AppearanceProvider store={productionAppearanceStore}>
+          <WorkoutAppRuntimeProvider
+            dependencies={productionWorkoutAppRuntimeDependencies}
+          >
+            <RootNavigator />
+          </WorkoutAppRuntimeProvider>
+        </AppearanceProvider>
+      </SafeAreaProvider>
+    </GestureHandlerRootView>
   );
 }
+
+const styles = StyleSheet.create({
+  root: { flex: 1 },
+});
