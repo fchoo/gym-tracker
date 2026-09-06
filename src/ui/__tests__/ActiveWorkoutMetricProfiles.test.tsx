@@ -543,6 +543,7 @@ describe("active workout metric profiles", () => {
           kind="working"
           onChangeValues={jest.fn(() => undefined)}
           onComplete={jest.fn()}
+          onRemove={jest.fn()}
           onSkip={jest.fn()}
           set={set}
         />
@@ -578,6 +579,7 @@ describe("active workout metric profiles", () => {
             kind="working"
             onChangeValues={jest.fn(() => undefined)}
             onComplete={onComplete}
+            onRemove={jest.fn()}
             onSkip={onSkip}
             set={set}
           />

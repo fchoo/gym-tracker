@@ -14,6 +14,11 @@ import {
 } from "@jest/globals";
 import React from "react";
 
+jest.mock("expo-crypto", () => ({
+  CryptoDigestAlgorithm: { SHA256: "SHA256" },
+  digestStringAsync: async () => "a".repeat(64),
+}));
+
 import type {
   RestCommandResult,
 } from "../../domains/rest";
@@ -670,9 +675,9 @@ describe("Plan 01-08 ActiveWorkoutScreen", () => {
       "Add warm-up",
       "Add working set",
       "Complete Set 1",
-      "Skip Set 1",
+      "Remove set 1",
       "Complete warm-up W1",
-      "Skip warm-up W1",
+      "Remove warm-up W1",
     ]) {
       expect(screen.getByRole("button", { name: label }))
         .toHaveStyle({ minHeight: 48, minWidth: 48 });
@@ -1169,28 +1174,24 @@ describe("Plan 01-08 ActiveWorkoutScreen", () => {
       .toHaveStyle({ right: 8, top: 8 });
   });
 
-  it("adds and skips warm-ups through separate persisted commands", async () => {
+  it("adds warm-ups and confirms removal only through the trusted removal port", async () => {
     const addWarmup = jest.fn<ActiveWorkoutCommands["addWarmup"]>(async () => ({
       ...initialView,
       committedSetId: "warmup-1",
     }));
-    const skipWarmup = jest.fn(async () => ({
+    const removedView: ActiveWorkoutView = {
       ...initialView,
       revision: 2,
       currentExercise: {
         ...initialView.currentExercise,
-        warmups: [{
-          ...initialView.currentExercise.warmups[0]!,
-          status: "skipped" as const,
-          completedAtMs: 2_000,
-          revision: 2,
-        }],
+        warmups: [],
       },
-    }));
+    };
+    const removeWarmup = jest.fn(async () => removedView);
     await renderActive({
       commands: commands({
         addWarmup,
-        skipWarmup,
+        removeWarmup,
       }),
     });
 
@@ -1204,14 +1205,22 @@ describe("Plan 01-08 ActiveWorkoutScreen", () => {
       }));
     });
     await fireEvent.press(
-      screen.getByRole("button", { name: "Skip warm-up W1" }),
+      screen.getByRole("button", { name: "Remove warm-up W1" }),
     );
+    expect(screen.getByText("Remove warm-up W1?")).toBeOnTheScreen();
+    expect(screen.getByText("This warm-up will be removed from this workout. This cannot be undone."))
+      .toBeOnTheScreen();
+    expect(removeWarmup).not.toHaveBeenCalled();
+    await fireEvent.press(screen.getByRole("button", { name: "Remove warm-up" }));
     await waitFor(() => {
-      expect(skipWarmup).toHaveBeenCalledWith(expect.objectContaining({
+      expect(removeWarmup).toHaveBeenCalledWith(expect.objectContaining({
         setId: "warmup-1",
+        requestSha256: expect.stringMatching(/^[a-f0-9]{64}$/u),
       }));
     });
-    expect(screen.getByText("Skipped warm-up W1")).toBeOnTheScreen();
+    expect(screen.queryByRole("button", { name: "Remove warm-up W1" }))
+      .not.toBeOnTheScreen();
+    expect(screen.getByText("Warm-up W1 removed")).toBeOnTheScreen();
   });
 
   it("adds a first warm-up from the active load/reps target when none are planned", async () => {
@@ -1241,7 +1250,7 @@ describe("Plan 01-08 ActiveWorkoutScreen", () => {
     });
   });
 
-  it("adds and skips working sets with the same visible action pattern as warm-ups", async () => {
+  it("adds working sets and leaves rows unchanged until confirmed removal commits", async () => {
     const addedView: ActiveWorkoutView = {
       ...initialView,
       revision: 2,
@@ -1264,16 +1273,14 @@ describe("Plan 01-08 ActiveWorkoutScreen", () => {
         totalWorkingSets: 3,
       },
     };
-    const skippedView: ActiveWorkoutView = {
+    const removedView: ActiveWorkoutView = {
       ...addedView,
       revision: 3,
       activeSetId: "working-2",
       currentExercise: {
         ...addedView.currentExercise,
-        workingSets: addedView.currentExercise.workingSets.map((set) =>
-          set.id === "working-1"
-            ? { ...set, status: "skipped" as const, revision: 2 }
-            : set
+        workingSets: addedView.currentExercise.workingSets.filter(
+          ({ id }) => id !== "working-1",
         ),
       },
     };
@@ -1281,9 +1288,9 @@ describe("Plan 01-08 ActiveWorkoutScreen", () => {
       ...addedView,
       committedSetId: "working-added",
     }));
-    const skipWorkingSet = jest.fn(async () => skippedView);
+    const removeWorkingSet = jest.fn(async () => removedView);
     await renderActive({
-      commands: commands({ addWorkingSet, skipWorkingSet }),
+      commands: commands({ addWorkingSet, removeWorkingSet }),
     });
     await fireEvent.press(
       screen.getByRole("button", { name: "Add working set" }),
@@ -1295,17 +1302,20 @@ describe("Plan 01-08 ActiveWorkoutScreen", () => {
       }));
     });
     await fireEvent.press(
-      screen.getByRole("button", { name: "Skip Set 1" }),
+      screen.getByRole("button", { name: "Remove set 1" }),
     );
+    expect(screen.getByRole("button", { name: "Keep set" })).toBeOnTheScreen();
+    await fireEvent.press(screen.getByRole("button", { name: "Keep set" }));
+    expect(removeWorkingSet).not.toHaveBeenCalled();
+    await fireEvent.press(screen.getByRole("button", { name: "Remove set 1" }));
+    await fireEvent.press(screen.getByRole("button", { name: "Remove set" }));
     await waitFor(() => {
-      expect(skipWorkingSet).toHaveBeenCalledWith(expect.objectContaining({
+      expect(removeWorkingSet).toHaveBeenCalledWith(expect.objectContaining({
         setId: "working-1",
         expectedSessionRevision: 2,
       }));
     });
-    expect(screen.getByText("Skipped working set 1")).toBeOnTheScreen();
-    expect(screen.getByTestId("working-1-status-glyph"))
-      .toHaveStyle({ right: 8, top: 8 });
+    expect(screen.getByText("Set 1 removed")).toBeOnTheScreen();
   });
 
   it("corrects a completed working set throughout the active workout without whole-session Undo", async () => {
@@ -1657,7 +1667,7 @@ describe("Plan 01-08 ActiveWorkoutScreen", () => {
     });
     expect(screen.getByRole("button", { name: "Complete Set 1" }))
       .toBeDisabled();
-    expect(screen.getByRole("button", { name: "Skip Set 1" }))
+    expect(screen.getByRole("button", { name: "Remove set 1" }))
       .toBeDisabled();
 
     await fireEvent.press(screen.getByRole("button", {
