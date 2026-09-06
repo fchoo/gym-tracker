@@ -98,30 +98,11 @@ tags:
           duration: 300
 - assertVisible: "^Weekday$"
 - tapOn: "^Rotation$"
-- assertVisible: "1. Push"
-- assertVisible: "2. Pull"
-- repeat:
-    times: 4
-    while:
-      notVisible: "Move Pull up"
-    commands:
-      - swipe:
-          start: 95%, 75%
-          end: 95%, 45%
-          duration: 300
-- assertVisible: "Move Pull up"
-- tapOn: "Move Pull up"
-- assertVisible: "1. Pull"
-- repeat:
-    times: 4
-    while:
-      notVisible: "3. Legs"
-    commands:
-      - swipe:
-          start: 95%, 75%
-          end: 95%, 45%
-          duration: 300
-- assertVisible: "3. Legs"
+- assertVisible: "Push"
+- assertVisible: "Pull"
+- assertVisible: "Legs"
+- assertVisible: "Reorder Pull"
+- assertVisible: "Reorder Push"
 - repeat:
     times: 4
     while:
@@ -152,21 +133,6 @@ tags:
 - extendedWaitUntil:
     notVisible: "Device timezone changed"
     timeout: 30000
-- assertVisible: "Repeat"
-- assertVisible: "Skip"
-- assertVisible: "Advance"
-- tapOn: "Repeat"
-- assertVisible: "Repeat Pull?"
-- tapOn: "Repeat"
-- waitForAnimationToEnd
-- assertVisible: "Pull"
-- tapOn: "Advance"
-- assertVisible: "Advance Pull?"
-- tapOn: "Advance"
-- extendedWaitUntil:
-    visible: "Rest day"
-    timeout: 30000
-- assertVisible: "Next scheduled workout · Push · .*"
 - tapOn: "Library"
 - scrollUntilVisible:
     element:
@@ -190,14 +156,56 @@ tags:
 - assertVisible: "No override"
 - scrollUntilVisible:
     element:
+      text: "Override with Skip"
+    direction: DOWN
+    centerElement: true
+- tapOn: "Override with Skip"
+- assertVisible: "Set this date override?"
+- assertVisible: "No override → Skip"
+- tapOn: "Save override"
+- extendedWaitUntil:
+    notVisible: "Set this date override?"
+    timeout: 30000
+- stopApp
+- launchApp:
+    clearState: false
+    permissions:
+      notifications: deny
+- assertVisible: "Today"
+- assertVisible: "Planned but not completed"
+- assertVisible: "Next scheduled workout · Push · .*"
+- tapOn: "Library"
+- scrollUntilVisible:
+    element:
+      text: "Active Plan"
+    direction: DOWN
+    centerElement: true
+- scrollUntilVisible:
+    element:
+      text: "Push / Pull / Legs"
+    direction: DOWN
+    centerElement: true
+- tapOn:
+    text: "Push / Pull / Legs. Active.*"
+- scrollUntilVisible:
+    element:
+      text: "Schedule"
+    direction: DOWN
+    centerElement: true
+- tapOn: "Schedule"
+- assertVisible: "Date override"
+- assertVisible: "Skip"
+- scrollUntilVisible:
+    element:
       text: "Override with Rest day"
     direction: DOWN
     centerElement: true
 - tapOn: "Override with Rest day"
-- assertVisible: "Set this date override?"
-- tapOn: "Save override"
+- assertVisible: "Replace this date override?"
+- assertVisible: "Skip → Rest day"
+- tapOn: "Replace override"
 - extendedWaitUntil:
-    notVisible: "Set this date override?"
+    notVisible: "Replace this date override?"
     timeout: 30000
 - stopApp
 - launchApp:
@@ -224,38 +232,6 @@ tags:
           end: 95%, 45%
           duration: 300
 - assertVisible: "Working set 1 repetitions"
-- tapOn: "More workout actions"
-- tapOn: "Skip Chin-Up"
-- assertVisible: "Skip Chin-Up?"
-- tapOn:
-    id: "skip-exercise-confirm"
-- assertVisible: "Bent Over Barbell Row"
-- repeat:
-    times: 4
-    while:
-      notVisible: "Working set 1 load in kilograms"
-    commands:
-      - swipe:
-          start: 95%, 75%
-          end: 95%, 45%
-          duration: 300
-- assertVisible: "Working set 1 load in kilograms"
-- repeat:
-    times: 4
-    while:
-      notVisible: "Working set 1 repetitions"
-    commands:
-      - swipe:
-          start: 95%, 75%
-          end: 95%, 45%
-          duration: 300
-- assertVisible: "Working set 1 repetitions"
-- tapOn: "More workout actions"
-- tapOn: "Skip Bent Over Barbell Row"
-- assertVisible: "Skip Bent Over Barbell Row?"
-- tapOn:
-    id: "skip-exercise-confirm"
-- assertVisible: "Barbell Curl"
 - tapOn: "More workout actions"
 - tapOn: "Discard workout"
 - assertVisible: "Discard workout?"
@@ -317,37 +293,14 @@ tags:
           duration: 300
 - assertVisible: "Working set 1 repetitions"
 - tapOn: "More workout actions"
-- tapOn: "Skip Bench Press"
-- assertVisible: "Skip Bench Press?"
+- tapOn: "Finish as partial"
+- assertVisible: "Save partial workout?"
 - tapOn:
-    id: "skip-exercise-confirm"
-- assertVisible: "Dumbbell Shoulder Press"
-- tapOn: "More workout actions"
-- tapOn: "Skip Dumbbell Shoulder Press"
-- assertVisible: "Skip Dumbbell Shoulder Press?"
-- tapOn:
-    id: "skip-exercise-confirm"
-- assertVisible: "Dip"
-- repeat:
-    times: 4
-    while:
-      notVisible: "Working set 1 added load in kilograms"
-    commands:
-      - swipe:
-          start: 95%, 75%
-          end: 95%, 45%
-          duration: 300
-- assertVisible: "Working set 1 added load in kilograms"
-- repeat:
-    times: 4
-    while:
-      notVisible: "Working set 1 repetitions"
-    commands:
-      - swipe:
-          start: 95%, 75%
-          end: 95%, 45%
-          duration: 300
-- assertVisible: "Working set 1 repetitions"
+    id: "save-partial-workout-confirm"
+- extendedWaitUntil:
+    visible: "Today"
+    timeout: 30000
+- assertVisible: "Rest day"
 - stopApp
 - launchApp:
     clearState: true
@@ -390,10 +343,45 @@ tags:
     permissions:
       notifications: deny
 - assertVisible: "Today"
-- assertVisible: "Push"
-- tapOn: "Skip"
-- assertVisible: "Skip Push?"
-- tapOn: "Skip"
+- assertVisible: "Train anyway"
+- tapOn: "Library"
+- scrollUntilVisible:
+    element:
+      text: "Active Plan"
+    direction: DOWN
+    centerElement: true
+- scrollUntilVisible:
+    element:
+      text: "Push / Pull / Legs"
+    direction: DOWN
+    centerElement: true
+- tapOn:
+    text: "Push / Pull / Legs. Active.*"
+- scrollUntilVisible:
+    element:
+      text: "Schedule"
+    direction: DOWN
+    centerElement: true
+- tapOn: "Schedule"
+- assertVisible: "No override"
+- scrollUntilVisible:
+    element:
+      text: "Override with Rest day"
+    direction: DOWN
+    centerElement: true
+- tapOn: "Override with Rest day"
+- assertVisible: "Set this date override?"
+- assertVisible: "No override → Rest day"
+- tapOn: "Save override"
+- extendedWaitUntil:
+    notVisible: "Set this date override?"
+    timeout: 30000
+- stopApp
+- launchApp:
+    clearState: false
+    permissions:
+      notifications: deny
+- assertVisible: "Today"
 - extendedWaitUntil:
     visible: "Rest day"
     timeout: 30000
