@@ -544,7 +544,6 @@ describe("active workout metric profiles", () => {
           onChangeValues={jest.fn(() => undefined)}
           onComplete={jest.fn()}
           onRemove={jest.fn()}
-          onSkip={jest.fn()}
           set={set}
         />
       </AppearanceProvider>,
@@ -560,16 +559,19 @@ describe("active workout metric profiles", () => {
       screen.getByRole("button", { name: "Complete Set 1" }),
     ).toBeOnTheScreen();
     expect(
-      screen.getByRole("button", { name: "Skip Set 1" }),
+      screen.getByRole("button", { name: "Reset set 1" }),
+    ).toBeOnTheScreen();
+    expect(
+      screen.getByRole("button", { name: "Remove set 1" }),
     ).toBeOnTheScreen();
   });
 
   it.each(uiProfileCases)(
-    "keeps $name inline with adjacent Complete and Skip",
+    "keeps $name inline with adjacent Reset, Complete, and Remove",
     async (profileCase) => {
       const set = profileSet(profileCase);
       const onComplete = jest.fn();
-      const onSkip = jest.fn();
+      const onRemove = jest.fn();
       await render(
         <AppearanceProvider>
           <SetRow
@@ -579,8 +581,7 @@ describe("active workout metric profiles", () => {
             kind="working"
             onChangeValues={jest.fn(() => undefined)}
             onComplete={onComplete}
-            onRemove={jest.fn()}
-            onSkip={onSkip}
+            onRemove={onRemove}
             set={set}
           />
         </AppearanceProvider>,
@@ -612,9 +613,9 @@ describe("active workout metric profiles", () => {
       );
       expect(onComplete).toHaveBeenCalledTimes(1);
       await fireEvent.press(
-        screen.getByRole("button", { name: "Skip Set 1" }),
+        screen.getByRole("button", { name: "Remove set 1" }),
       );
-      expect(onSkip).toHaveBeenCalledTimes(1);
+      expect(onRemove).toHaveBeenCalledTimes(1);
     },
   );
 
