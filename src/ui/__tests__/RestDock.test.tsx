@@ -80,6 +80,16 @@ function mockActiveAppState() {
   };
 }
 
+function deferred<Value>() {
+  let resolve!: (value: Value) => void;
+  let reject!: (reason?: unknown) => void;
+  const promise = new Promise<Value>((resolvePromise, rejectPromise) => {
+    resolve = resolvePromise;
+    reject = rejectPromise;
+  });
+  return { promise, reject, resolve };
+}
+
 let restoreAppState: (() => void) | undefined;
 let addEventListener: jest.SpiedFunction<typeof AppState.addEventListener>;
 
@@ -482,6 +492,74 @@ describe("Plan 02-29 RestDock", () => {
         jest.advanceTimersByTime(1_000);
       });
       expect(countdownCue.playShortCue).toHaveBeenCalledTimes(2);
+      expect(screen.queryByText("Countdown sound unavailable")).not.toBeOnTheScreen();
+    } finally {
+      rendered?.unmount();
+      jest.useRealTimers();
+    }
+  });
+
+  it("ignores a pending cue rejection from an earlier rest", async () => {
+    jest.useFakeTimers();
+    let rendered: Awaited<ReturnType<typeof renderDock>>["rendered"] | undefined;
+    try {
+      let nowMs = 96_000;
+      const firstCue = deferred<void>();
+      const countdownCue = {
+        playLongCue: jest.fn(async () => undefined),
+        playShortCue: jest
+          .fn<() => Promise<void>>()
+          .mockReturnValueOnce(firstCue.promise)
+          .mockResolvedValue(undefined),
+      };
+      ({ rendered } = await renderDock({
+        ...running,
+        endsAtMs: 100_000,
+      }, {
+        nowMs: () => nowMs,
+        restSoundEnabled: true,
+        countdownCue,
+      }));
+
+      nowMs = 97_000;
+      await act(async () => {
+        jest.advanceTimersByTime(1_000);
+      });
+      expect(countdownCue.playShortCue).toHaveBeenCalledTimes(1);
+
+      nowMs = 196_000;
+      await rendered.rerender(
+        <AppearanceProvider>
+          <RestDock
+            nextSetIndex={3}
+            nextTarget="70 kg × 6"
+            notificationPermission="granted"
+            nowMs={() => nowMs}
+            onAdjust={jest.fn()}
+            onExpired={jest.fn()}
+            onOpenSettings={jest.fn()}
+            onPause={jest.fn()}
+            onResume={jest.fn()}
+            onSkip={jest.fn()}
+            restSoundEnabled
+            countdownCue={countdownCue}
+            state={{
+              version: 1,
+              state: "running",
+              revision: 9,
+              startedAtMs: 196_000,
+              endsAtMs: 200_000,
+              nextSetId: "set-3",
+            }}
+          />
+        </AppearanceProvider>,
+      );
+
+      await act(async () => {
+        firstCue.reject(new Error("old rest audio unavailable"));
+        await Promise.resolve();
+      });
+
       expect(screen.queryByText("Countdown sound unavailable")).not.toBeOnTheScreen();
     } finally {
       rendered?.unmount();

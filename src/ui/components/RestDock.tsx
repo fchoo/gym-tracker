@@ -210,6 +210,7 @@ export function RestDock({
     paused: boolean;
     startedAtMs: number;
   }> | null>(null);
+  const cueRestGenerationRef = useRef(0);
   const previousRemainingSecondsRef = useRef<number | null>(null);
   const [cueFailure, setCueFailure] = useState(false);
 
@@ -247,6 +248,7 @@ export function RestDock({
       startedAtMs: state.startedAtMs,
     };
     if (isNewRest) {
+      cueRestGenerationRef.current += 1;
       cueLedgerRef.current = {
         emitted: new Set(),
       };
@@ -316,10 +318,15 @@ export function RestDock({
       ...ledger,
       emitted: new Set([...ledger.emitted, remainingSeconds]),
     };
+    const cueRestGeneration = cueRestGenerationRef.current;
     void (remainingSeconds === 0
       ? countdownCue.playLongCue()
       : countdownCue.playShortCue()
-    ).catch(() => setCueFailure(true));
+    ).catch(() => {
+      if (cueRestGeneration === cueRestGenerationRef.current) {
+        setCueFailure(true);
+      }
+    });
   }, [countdownCue, remainingSeconds, restSoundEnabled, state.state]);
 
   const label = state.state === "paused"
