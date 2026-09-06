@@ -549,7 +549,7 @@ describe("OwnedPlanEditorScreen create and save plan", () => {
     expect(onSchedule).toHaveBeenNthCalledWith(2, "plan-owner");
   });
 
-  it("preserves values, focuses the error summary, and retries save plan", async () => {
+  it("preserves the draft and retries persistence from the exact save failure action", async () => {
     const savePlan = jest.fn<
       React.ComponentProps<typeof OwnedPlanEditorScreen>["savePlan"]
     >()
@@ -576,13 +576,18 @@ describe("OwnedPlanEditorScreen create and save plan", () => {
 
     const summary = await screen.findByRole("alert");
     expect(screen.getByText(
-      "Plan could not be saved. Your edits are still here. Try again.",
+      "Plan changes could not be saved",
+    )).toBeOnTheScreen();
+    expect(screen.getByText(
+      "Your draft is still here. Your existing plan was not changed.",
     )).toBeOnTheScreen();
     expect(summary).toHaveProp("focusable", true);
     expect(screen.getByDisplayValue("Retry Plan Edited")).toBeOnTheScreen();
     expect(JSON.stringify(rendered.toJSON())).not.toMatch(/secret_storage/u);
 
-    await fireEvent.press(screen.getByRole("button", { name: "Retry" }));
+    await fireEvent.press(screen.getByRole("button", {
+      name: "Retry saving plan changes",
+    }));
     await waitFor(() => expect(savePlan).toHaveBeenCalledTimes(2));
   });
 

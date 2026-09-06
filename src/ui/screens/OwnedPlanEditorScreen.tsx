@@ -1143,10 +1143,16 @@ export function OwnedPlanEditorScreen({
                 typeScale.bodyStrong as TextStyle,
                 { color: colors.textPrimary },
               ]}>
-                Plan could not be saved. Your edits are still here. Try again.
+                Plan changes could not be saved
+              </Text>
+              <Text style={[
+                typeScale.body as TextStyle,
+                { color: colors.textPrimary },
+              ]}>
+                Your draft is still here. Your existing plan was not changed.
               </Text>
               <SecondaryAction
-                label="Retry"
+                label="Retry saving plan changes"
                 onPress={() => {
                   void commitPlan();
                 }}
