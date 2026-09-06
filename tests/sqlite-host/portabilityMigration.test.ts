@@ -1,12 +1,14 @@
 import { describe, expect, it } from "@jest/globals";
 
 import { portabilityRestoreStateMigration, PORTABILITY_RESTORE_STATE_TABLE } from "../../src/platform/sqlite/migrations/0016_portability_restore_state";
+import { workoutRemoveReceiptsMigration } from "../../src/platform/sqlite/migrations/0017_workout_remove_receipts";
 import { migrations } from "../../src/platform/sqlite/migrations";
 import type { SqliteTransactionExecutor } from "../../src/platform/sqlite/sqliteKernel";
 
 describe("portability restore-state migration", () => {
   it("is the retained additive v16 migration and creates only a singleton non-secret rebuild state", async () => {
-    expect(migrations.at(-1)).toBe(portabilityRestoreStateMigration);
+    expect(migrations.at(-2)).toBe(portabilityRestoreStateMigration);
+    expect(migrations.at(-1)).toBe(workoutRemoveReceiptsMigration);
     expect(portabilityRestoreStateMigration).toMatchObject({ version: 16, name: "portability-restore-state", kind: "additive" });
     const statements: string[] = [];
     let queryCount = 0;
