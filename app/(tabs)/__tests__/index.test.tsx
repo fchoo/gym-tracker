@@ -71,21 +71,14 @@ jest.mock("../../../src/ui/screens/TodayScreen", () => {
   return {
     TodayScreen: ({
       launchState,
-      onChangeRestAlertPreferences,
-      onOpenHistoryAndData,
-      onReadRestAlertPreferences,
+      onOpenSettings,
       onReviewSuggestion,
       pendingRecommendations,
       restAlertPreferences,
       restAlertPreferencesLoading,
     }: {
       launchState: string;
-      onChangeRestAlertPreferences(preferences: Readonly<{
-        soundEnabled: boolean;
-        vibrationEnabled: boolean;
-      }>): Promise<unknown>;
-      onOpenHistoryAndData(): void;
-      onReadRestAlertPreferences(): Promise<void>;
+      onOpenSettings(): void;
       onReviewSuggestion(exerciseId: string): void;
       restAlertPreferences: Readonly<{
         soundEnabled: boolean;
@@ -95,31 +88,14 @@ jest.mock("../../../src/ui/screens/TodayScreen", () => {
       pendingRecommendations: readonly { id: string }[];
     }) => (
       <View>
-        <Text testID="today-route-state">
-          {`${launchState}:${restAlertPreferences.soundEnabled}:${restAlertPreferences.vibrationEnabled}:${restAlertPreferencesLoading}`}
-        </Text>
+        <Text testID="today-route-state">{launchState}</Text>
         <Text testID="pending-review-count">
           {pendingRecommendations.length}
         </Text>
         <Pressable
-          accessibilityLabel="Open rest alerts"
+          accessibilityLabel="Open Settings"
           accessibilityRole="button"
-          onPress={() => { void onReadRestAlertPreferences(); }}
-        />
-        <Pressable
-          accessibilityLabel="Save rest alerts"
-          accessibilityRole="button"
-          onPress={() => {
-            void onChangeRestAlertPreferences({
-              soundEnabled: false,
-              vibrationEnabled: true,
-            });
-          }}
-        />
-        <Pressable
-          accessibilityLabel="Open history and data"
-          accessibilityRole="button"
-          onPress={() => onOpenHistoryAndData()}
+          onPress={() => onOpenSettings()}
         />
         <Pressable
           accessibilityLabel="Review pending target"
@@ -158,109 +134,16 @@ describe("TodayRoute readiness", () => {
   });
 
   it.each(["booting", "failed"] as const)(
-    "uses immutable default rest-alert preferences before runtime is %s",
+    "preserves Today route readiness while runtime is %s",
     async (launchState) => {
       mockLaunchState = launchState;
 
       await render(<TodayRoute />);
 
-      expect(mockReadRestAlertPreferences).not.toHaveBeenCalled();
       expect(screen.getByTestId("today-route-state"))
-        .toHaveTextContent(`${launchState}:true:true:false`);
+        .toHaveTextContent(launchState);
     },
   );
-
-  it("loads persisted rest-alert preferences only when the trusted settings action opens", async () => {
-    mockLaunchState = "trusted";
-    const readGate = new Promise<void>((resolve) => {
-      resolvePreferenceRead = resolve;
-    });
-    mockReadRestAlertPreferences.mockImplementationOnce(async () => {
-      await readGate;
-      return { soundEnabled: false, vibrationEnabled: false };
-    });
-
-    await render(<TodayRoute />);
-
-    expect(mockReadRestAlertPreferences).not.toHaveBeenCalled();
-    expect(screen.getByTestId("today-route-state"))
-      .toHaveTextContent("trusted:true:true:false");
-
-    await fireEvent.press(screen.getByRole("button", {
-      name: "Open rest alerts",
-    }));
-
-    expect(screen.getByTestId("today-route-state"))
-      .toHaveTextContent("trusted:true:true:true");
-    resolvePreferenceRead?.();
-    await waitFor(() => {
-      expect(mockReadRestAlertPreferences).toHaveBeenCalledTimes(1);
-      expect(screen.getByTestId("today-route-state"))
-        .toHaveTextContent("trusted:false:false:false");
-    });
-  });
-
-  it("settles a rejected preference read to immutable default-on values", async () => {
-    mockLaunchState = "trusted";
-    mockReadRestAlertPreferences.mockImplementationOnce(() => {
-      throw new Error("preference_read_failed");
-    });
-
-    await render(<TodayRoute />);
-    await fireEvent.press(screen.getByRole("button", {
-      name: "Open rest alerts",
-    }));
-
-    await waitFor(() => {
-      expect(screen.getByTestId("today-route-state"))
-        .toHaveTextContent("trusted:true:true:false");
-    });
-  });
-
-  it("ignores an in-flight preference read after the runtime leaves trusted state", async () => {
-    mockLaunchState = "trusted";
-    const readGate = new Promise<void>((resolve) => {
-      resolvePreferenceRead = resolve;
-    });
-    mockReadRestAlertPreferences.mockImplementationOnce(async () => {
-      await readGate;
-      return { soundEnabled: false, vibrationEnabled: false };
-    });
-    const rendered = await render(<TodayRoute />);
-
-    await fireEvent.press(screen.getByRole("button", {
-      name: "Open rest alerts",
-    }));
-    mockLaunchState = "failed";
-    await rendered.rerender(<TodayRoute />);
-    expect(screen.getByTestId("today-route-state"))
-      .toHaveTextContent("failed:true:true:false");
-
-    await act(async () => {
-      resolvePreferenceRead?.();
-      await readGate;
-    });
-    expect(screen.getByTestId("today-route-state"))
-      .toHaveTextContent("failed:true:true:false");
-  });
-
-  it("keeps route preferences aligned with the persisted write result", async () => {
-    mockLaunchState = "trusted";
-
-    await render(<TodayRoute />);
-    await fireEvent.press(screen.getByRole("button", {
-      name: "Save rest alerts",
-    }));
-
-    await waitFor(() => {
-      expect(mockSetRestAlertPreferences).toHaveBeenCalledWith({
-        soundEnabled: false,
-        vibrationEnabled: true,
-      });
-      expect(screen.getByTestId("today-route-state"))
-        .toHaveTextContent("trusted:false:true:false");
-    });
-  });
 
   it("opens Progress when Today requests a source-backed target review", async () => {
     mockLaunchState = "trusted";
@@ -273,12 +156,12 @@ describe("TodayRoute readiness", () => {
     expect(mockPush).toHaveBeenCalledWith("/progress");
   });
 
-  it("opens the established History and data surface from Today", async () => {
+  it("opens Settings from Today", async () => {
     mockLaunchState = "trusted";
 
     await render(<TodayRoute />);
     await fireEvent.press(screen.getByRole("button", {
-      name: "Open history and data",
+      name: "Open Settings",
     }));
 
     expect(mockPush).toHaveBeenCalledWith("/more");

@@ -14,6 +14,7 @@ import {
   EyeOff,
   LibraryBig,
   RotateCcw,
+  Settings,
   Star,
   Timer,
   TriangleAlert,
@@ -396,6 +397,7 @@ const actionIcons = {
   moveUp: ArrowUp,
   plan: ClipboardList,
   retry: RotateCcw,
+  settings: Settings,
   show: Eye,
 } as const;
 

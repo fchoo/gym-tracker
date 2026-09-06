@@ -20,7 +20,6 @@ import type {
   ProgressRecommendationReview,
 } from "../../domains/progress";
 import type {
-  ScheduleTodayAction,
   ScheduleTodayPresentation,
 } from "../../bootstrap/scheduleRuntime";
 import type {
@@ -30,28 +29,18 @@ import type {
   LaunchFailure,
 } from "../../bootstrap/launchCoordinator";
 import {
-  AppearanceSheet,
-  ConfirmationSheet,
   ExerciseRow,
   ContentCard,
   IconAction,
   InlineNotice,
   PlanActivationRow,
   PrimaryAction,
-  RestAlertSettingsSheet,
   ScreenHeader,
   SecondaryAction,
   SectionHeader,
   SkeletonBlock,
 } from "../components";
 import { WorkoutStartSheet } from "../components/WorkoutStartSheet";
-import type {
-  RestAlertPreferences,
-  RestNotificationPermission,
-} from "../../domains/rest";
-import type {
-  RestAlertPreferenceSaveResult,
-} from "../../bootstrap/workoutAppRuntime";
 import { AdaptiveScreen } from "../layout/AdaptiveScreen";
 import { RootFailureState } from "./RootFailureState";
 import {
@@ -84,20 +73,10 @@ export type TodayScreenProps = Readonly<{
     advanceRotation?: boolean,
   ) => void;
   scheduleToday?: ScheduleTodayPresentation;
-  actOnSchedule?: (action: ScheduleTodayAction) => void | Promise<void>;
   chooseScheduleTimeZone?: (
     choice: ScheduleTimeZoneChoice,
   ) => void | Promise<void>;
-  onWeekdaySkip?: () => void | Promise<void>;
-  restAlertPreferences?: RestAlertPreferences;
-  restAlertPreferencesLoading?: boolean;
-  notificationPermission?: RestNotificationPermission;
-  onReadRestAlertPreferences?: () => void | Promise<void>;
-  onChangeRestAlertPreferences?: (
-    preferences: RestAlertPreferences,
-  ) => void | Promise<void | RestAlertPreferenceSaveResult>;
-  onOpenRestNotificationSettings?: () => void | Promise<void>;
-  onOpenHistoryAndData?: () => void;
+  onOpenSettings?: () => void;
   onRetry?: () => void;
 }>;
 
@@ -200,8 +179,6 @@ function ScheduledContent({
   onReviewSuggestion,
   pendingRecommendations,
   scheduleToday,
-  onScheduleAction,
-  onWeekdaySkip,
 }: Readonly<{
   view: Extract<TodayView, { state: "scheduled" }>;
   planDays: readonly ActivatedPlanDay[];
@@ -214,8 +191,6 @@ function ScheduledContent({
   onReviewSuggestion: (exerciseId: string) => void;
   pendingRecommendations: readonly ProgressRecommendationReview[];
   scheduleToday?: ScheduleTodayPresentation;
-  onScheduleAction(action: ScheduleTodayAction): void;
-  onWeekdaySkip(): void;
 }>) {
   const [startSheetVisible, setStartSheetVisible] = useState(false);
   const { colors } = useAppTheme();
@@ -246,33 +221,6 @@ function ScheduledContent({
           onPress={() => setStartSheetVisible(true)}
           ref={startSheetActionRef}
         />
-        {scheduleToday?.mode === "rotation" ? (
-          <View style={styles.scheduleActions}>
-            <SecondaryAction
-              label="Repeat"
-              onPress={() => onScheduleAction("repeat")}
-            />
-            <SecondaryAction
-              label="Skip"
-              onPress={() => onScheduleAction("skip")}
-            />
-            <SecondaryAction
-              label="Advance"
-              onPress={() => onScheduleAction("advance")}
-            />
-          </View>
-        ) : scheduleToday?.mode === "weekday" ? (
-          <View style={styles.section}>
-            <SecondaryAction label="Skip" onPress={onWeekdaySkip} />
-            <Text style={[
-              typeScale.secondary as TextStyle,
-              { color: colors.contentCardTextSecondary },
-            ]}>
-              Skip applies to this local date only. The recurring Weekday
-              binding stays unchanged.
-            </Text>
-          </View>
-        ) : null}
       </ContentCard>
       <View style={styles.section}>
         <Text
@@ -424,27 +372,11 @@ export function TodayScreen({
   onStartEmpty = noOp,
   onStartPlanDay = noOp,
   scheduleToday,
-  actOnSchedule = noOp,
   chooseScheduleTimeZone = noOp,
-  onWeekdaySkip = noOp,
-  restAlertPreferences = { soundEnabled: true, vibrationEnabled: true },
-  restAlertPreferencesLoading = false,
-  notificationPermission = "undetermined",
-  onReadRestAlertPreferences = noOp,
-  onChangeRestAlertPreferences = async (preferences) => ({
-    status: "persisted" as const,
-    preferences,
-  }),
-  onOpenRestNotificationSettings = noOp,
-  onOpenHistoryAndData = noOp,
+  onOpenSettings = noOp,
   onRetry = noOp,
 }: TodayScreenProps) {
-  const [appearanceVisible, setAppearanceVisible] = useState(false);
-  const [restAlertSettingsVisible, setRestAlertSettingsVisible] = useState(false);
   const [activationPreview, setActivationPreview] = useState(false);
-  const [scheduleAction, setScheduleAction] =
-    useState<ScheduleTodayAction | null>(null);
-  const moreActionRef = useRef<View>(null);
   const trusted = launchState === "trusted";
   const adaptiveWidth = width === undefined ? {} : { width };
 
@@ -479,10 +411,6 @@ export function TodayScreen({
           <ScheduledContent
             onReviewSuggestion={onReviewSuggestion}
             pendingRecommendations={pendingRecommendations}
-            onScheduleAction={setScheduleAction}
-            onWeekdaySkip={() => {
-              void onWeekdaySkip();
-            }}
             onStart={(dayId, mode, advanceRotation) => {
               if (scheduleToday?.mode === "rotation") {
                 onStartPlanDay(dayId, mode, advanceRotation);
@@ -564,29 +492,16 @@ export function TodayScreen({
               action={
                 <IconAction
                   accessibilityHint={trusted
-                    ? "Opens appearance and rest-alert settings"
+                    ? "Opens Settings"
                     : "Unavailable while workout data is prepared"}
-                  accessibilityLabel="Appearance and rest-alert settings"
+                  accessibilityLabel="Settings"
                   disabled={!trusted}
-                  icon="more"
-                  onPress={() => {
-                    setRestAlertSettingsVisible(true);
-                    void onReadRestAlertPreferences();
-                  }}
-                  ref={moreActionRef}
+                  icon="settings"
+                  onPress={onOpenSettings}
                 />
               }
               title="Today"
             />
-            {trusted ? (
-              <View style={styles.secondaryTools}>
-                <SecondaryAction
-                  accessibilityHint="Opens workout history and data recovery"
-                  label="History and data"
-                  onPress={onOpenHistoryAndData}
-                />
-              </View>
-            ) : null}
             {actionFailure === undefined ? null : (
               <InlineNotice
                 action={
@@ -647,50 +562,6 @@ export function TodayScreen({
           </>
         }
       />
-      <RestAlertSettingsSheet
-        loading={restAlertPreferencesLoading}
-        notificationPermission={notificationPermission}
-        onChange={onChangeRestAlertPreferences}
-        onClose={() => setRestAlertSettingsVisible(false)}
-        onOpenAppearance={() => {
-          setRestAlertSettingsVisible(false);
-          setAppearanceVisible(true);
-        }}
-        onOpenNotificationSettings={onOpenRestNotificationSettings}
-        preferences={restAlertPreferences}
-        restoreFocusRef={moreActionRef}
-        visible={restAlertSettingsVisible}
-      />
-      <AppearanceSheet
-        onClose={() => setAppearanceVisible(false)}
-        restoreFocusRef={moreActionRef}
-        visible={appearanceVisible}
-      />
-      <ConfirmationSheet
-        body={[
-          `${scheduleToday?.currentDayName ?? "Current day"} remains the current plan fact until this action commits.`,
-          `${scheduleAction === "repeat"
-            ? scheduleToday?.currentDayName ?? "Current day"
-            : scheduleToday?.nextDayName ?? "Next day"} will be next.`,
-        ].join(" ")}
-        cancelLabel="Keep current schedule"
-        confirmLabel={scheduleAction === null
-          ? "Confirm"
-          : scheduleAction[0]!.toUpperCase() + scheduleAction.slice(1)}
-        heading={scheduleAction === null
-          ? "Review schedule action"
-          : `${
-              scheduleAction[0]!.toUpperCase() + scheduleAction.slice(1)
-            } ${scheduleToday?.currentDayName ?? "current day"}?`}
-        onCancel={() => setScheduleAction(null)}
-        onConfirm={() => {
-          if (scheduleAction !== null) {
-            void actOnSchedule(scheduleAction);
-          }
-          setScheduleAction(null);
-        }}
-        visible={scheduleAction !== null}
-      />
     </>
   );
 }
@@ -699,18 +570,10 @@ const styles = StyleSheet.create({
   section: {
     gap: space[4],
   },
-  secondaryTools: {
-    alignSelf: "flex-start",
-  },
   skeletonLayout: {
     gap: space[4],
   },
   exerciseGroup: {
-    gap: space[2],
-  },
-  scheduleActions: {
-    flexDirection: "row",
-    flexWrap: "wrap",
     gap: space[2],
   },
   timeZoneActions: {
