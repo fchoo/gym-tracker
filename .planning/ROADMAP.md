@@ -403,7 +403,7 @@ Plans:
   5. The More-actions dialog contains only the retained actions (no zero-set/finish-later/Close), sized to its content; plan editing removes up/down buttons and "Position x of y", exposes Replace as a right-aligned glyph, and the day editor and plan-activation schedule support long-press drag ordering; day editing is reachable for every day.
   6. The rest timer emits a short beep at each of the last three seconds and a long beep at zero; a distinctive owner-approved app icon ships; focused tests, full gates, clean Android generation/build, emulator verification, and a fresh replacement candidate with repeated Samsung N4 review pass, with release approval and promotion remaining separate explicit actions.
 
-**Plans:** 8/10 plans executed in 5 waves
+**Plans:** 9/10 plans executed in 5 waves
 
 **Wave 1**
 
@@ -424,7 +424,7 @@ Plans:
 
 **Wave 4** *(depends on all implementation plans)*
 
-- [ ] 07-09-PLAN.md — Build Phase 7 evidence tooling and wire native/evidence gates into the build-once workflow.
+- [x] 07-09-PLAN.md — Build Phase 7 evidence tooling and wire native/evidence gates into the build-once workflow.
 
 **Wave 5** *(depends on 07-09)*
 
