@@ -107,9 +107,9 @@ status: complete
 
 Each task was committed atomically:
 
-1. **Task 1: Define and validate distinct hard-remove commands** - `24453e4` (feat)
-2. **Task 2: Delete and repair active-session facts atomically** - `54b4859` (feat)
-3. **Task 3: Expose committed removal through runtime and route** - `1cc703c` (feat)
+1. **Task 1: Define and validate distinct hard-remove commands** - `ce8eeee` (feat)
+2. **Task 2: Delete and repair active-session facts atomically** - `0fc9b01` (feat)
+3. **Task 3: Expose committed removal through runtime and route** - `e605870` (feat)
 
 ## Files Created/Modified
 
@@ -147,7 +147,7 @@ Each task was committed atomically:
 - **Fix:** Read `getActiveWorkout` after the commit, increment refresh generation, publish the global trusted read, and return the active view; added ordered runtime assertions for removal → active read → trusted read.
 - **Files modified:** `src/bootstrap/workoutAppRuntime.tsx`, `src/bootstrap/workoutAppRuntime.test.tsx`, `src/ui/screens/ActiveWorkoutScreen.tsx`
 - **Verification:** Focused unit, integration, type, boundary, lint, coverage, and diff checks pass.
-- **Committed in:** `1cc703c`
+- **Committed in:** `e605870`
 
 ---
 
@@ -169,7 +169,7 @@ The dependent UI plan can consume typed `removeWarmup` and `removeWorkingSet` po
 ## Self-Check: PASSED
 
 - All eleven planned source and test files exist in the worktree.
-- Task commits `24453e4`, `54b4859`, and `1cc703c` exist and include the required co-author trailer.
+- Task commits `ce8eeee`, `0fc9b01`, and `e605870` exist and include the required co-author trailer.
 - No stubs, skipped checks, or unrun plan verification remain.
 
 ---

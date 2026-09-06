@@ -84,8 +84,8 @@ status: complete
 
 Each task was committed atomically:
 
-1. **Task 1: Add the durable removal-receipt migration** — efc727c (feat)
-2. **Task 2: Preserve logical restore compatibility across schema 17** — df77d4b (feat)
+1. **Task 1: Add the durable removal-receipt migration** — cac83ef (feat)
+2. **Task 2: Preserve logical restore compatibility across schema 17** — 4365bab (feat)
 
 **Plan metadata:** committed separately after this summary is self-checked.
 
@@ -108,7 +108,7 @@ Each task was committed atomically:
 - npm run test:unit -- --runInBand src/domains/portability/restoreCommands.test.ts — passed (50 tests).
 - npm run test:sqlite:host -- --runInBand tests/sqlite-host/migrations-effects.test.ts — passed (113 tests).
 - npm run typecheck — passed.
-- git diff --check d3fdd0e7c48314786d4ef857305342e7d8a47292..HEAD — passed.
+- git diff --check f6ca095..HEAD — passed.
 
 The restore unit suite emits deliberate codec-error diagnostic output while asserting its public error mapping; all tests passed.
 
@@ -133,7 +133,7 @@ Later D-01 removal-command work can write an immutable request receipt in the sa
 PASSED
 
 - Confirmed all five implementation/test artifacts exist in the worktree.
-- Confirmed task commits efc727c and df77d4b exist in repository history.
+- Confirmed task commits cac83ef and 4365bab exist in repository history.
 - Confirmed the summary artifact exists and git diff --check passes.
 
 ---

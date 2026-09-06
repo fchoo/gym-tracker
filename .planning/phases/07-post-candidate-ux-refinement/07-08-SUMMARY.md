@@ -94,10 +94,10 @@ status: complete
 
 Each task was committed atomically:
 
-1. **Task 1 RED: Pin the legitimate encoder and define the Concept G contract** — d85fa91 (test)
-2. **Task 1 GREEN: Add deterministic generator and exact direct encoder** — e0516a8 (feat)
-3. **Task 2: Generate five assets and prove clean CNG ownership** — c762155 (feat)
-4. **Task 1 security hardening: Record encoder supply-chain contract** — f52d3f0 (test)
+1. **Task 1 RED: Pin the legitimate encoder and define the Concept G contract** — 4bf8b02 (test)
+2. **Task 1 GREEN: Add deterministic generator and exact direct encoder** — 42efd54 (feat)
+3. **Task 2: Generate five assets and prove clean CNG ownership** — 3f10f41 (feat)
+4. **Task 1 security hardening: Record encoder supply-chain contract** — 35fc0d1 (test)
 
 ## Files Created/Modified
 
@@ -125,7 +125,7 @@ Each task was committed atomically:
 - **Fix:** Recorded the reviewed official provenance facts in the generator and made the contract assert the resolved module is node_modules/pngjs/lib/png.js at version 7.0.0 with no postinstall.
 - **Files modified:** scripts/generate-concept-g-icons.mjs and scripts/concept-g-image-contract.test.mjs.
 - **Verification:** All three asset-contract tests, npm ls pngjs, strict typecheck, deterministic --check, and CNG verification passed.
-- **Committed in:** f52d3f0.
+- **Committed in:** 35fc0d1.
 
 ---
 
@@ -162,5 +162,5 @@ None.
 ## Self-Check: PASSED
 
 - Created source files and all five generated PNGs exist in the isolated worktree.
-- Task commits d85fa91, e0516a8, c762155, and f52d3f0 are present in repository history.
+- Task commits 4bf8b02, 42efd54, 3f10f41, and 35fc0d1 are present in repository history.
 - The summary coverage manifest parses with D1 automated and D2 correctly routed to device judgment.

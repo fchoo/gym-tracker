@@ -75,9 +75,9 @@ status: complete
 
 ## Task Commits
 
-1. **Task 1: Apply drag parity to owned Weekday and Rotation schedules** — `d575ed9` (`feat`)
-2. **Task 2 RED: Cover starter activation schedule drag parity** — `fb35a85` (`test`)
-3. **Task 2 GREEN: Apply the same contract before starter activation** — `2411215` (`feat`)
+1. **Task 1: Apply drag parity to owned Weekday and Rotation schedules** — `6cebd3f` (`feat`)
+2. **Task 2 RED: Cover starter activation schedule drag parity** — `9e0f735` (`test`)
+3. **Task 2 GREEN: Apply the same contract before starter activation** — `1e47147` (`feat`)
 
 ## Files Created/Modified
 
@@ -102,7 +102,7 @@ status: complete
 - **Fix:** Restored the local theme binding without changing the schedule ordering contract.
 - **Files modified:** `src/ui/screens/StarterActivationScreen.tsx`
 - **Verification:** Focused activation and owned-schedule suite passed, followed by typecheck and lint.
-- **Committed in:** `2411215`
+- **Committed in:** `1e47147`
 
 **Total deviations:** 1 auto-fixed (Rule 1).
 
@@ -135,7 +135,7 @@ Both schedule contexts satisfy the UX-20 automated contract. Native visual and h
 ## Self-Check: PASSED
 
 - Confirmed all four implementation and test artifacts plus this summary exist.
-- Confirmed task commits `d575ed9`, `fb35a85`, and `2411215` exist in git history.
+- Confirmed task commits `6cebd3f`, `9e0f735`, and `1e47147` exist in git history.
 
 ---
 

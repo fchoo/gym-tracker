@@ -90,9 +90,9 @@ status: complete
 
 ## Task Commits
 
-1. **Task 1: Finish the quiet header sections and More sheet** — `74dbf62` (`feat`)
-2. **Task 2: Integrate confirmed removal in a responsive SetRow** — `1e9434d` (`feat`)
-3. **Task 3: Wire once-only foreground audio without rest authority** — `50a93cd` (`feat`)
+1. **Task 1: Finish the quiet header sections and More sheet** — `4056fb1` (`feat`)
+2. **Task 2: Integrate confirmed removal in a responsive SetRow** — `c2476a3` (`feat`)
+3. **Task 3: Wire once-only foreground audio without rest authority** — `8b1d417` (`feat`)
 
 ## Files Created/Modified
 
@@ -121,7 +121,7 @@ status: complete
 - **Fix:** Added `src/bootstrap/restCountdownCue.ts` as the approved composition boundary and changed the route to import only that bootstrap hook.
 - **Files modified:** `src/bootstrap/restCountdownCue.ts`, `app/workout/[sessionId].tsx`
 - **Verification:** 42 focused component tests, typecheck, and boundary check pass.
-- **Committed in:** `50a93cd`
+- **Committed in:** `8b1d417`
 
 **2. [Rule 1 - Feedback bug] Propagated cue playback failures to the UI observer**
 - **Found during:** Task 3
@@ -129,7 +129,7 @@ status: complete
 - **Fix:** Preserved non-authoritative playback by allowing the cue promise to reject and catching it only in RestDock.
 - **Files modified:** `src/platform/audio/expoRestCountdownCueAdapter.ts`, `src/ui/components/RestDock.tsx`
 - **Verification:** focused component tests and adapter test pass.
-- **Committed in:** `50a93cd`
+- **Committed in:** `8b1d417`
 
 **Total deviations:** 2 auto-fixed (2 Rule 1)
 
@@ -153,4 +153,4 @@ The active workout UI has committed removal and foreground countdown cue wiring.
 ## Self-Check: PASSED
 
 - Confirmed all listed implementation, test, bootstrap, route, and summary files exist.
-- Confirmed Task 1 (`74dbf62`), Task 2 (`1e9434d`), and Task 3 (`50a93cd`) commits exist in git history.
+- Confirmed Task 1 (`4056fb1`), Task 2 (`c2476a3`), and Task 3 (`8b1d417`) commits exist in git history.

@@ -78,8 +78,8 @@ status: complete
 
 ## Task Commits
 
-1. **Task 1: Clean the shared reorder primitive** — `e8082d3` (`feat`)
-2. **Task 2: Add the single-active-day switcher and trailing Replace glyph** — `98d30ea` (`feat`)
+1. **Task 1: Clean the shared reorder primitive** — `7b85e55` (`feat`)
+2. **Task 2: Add the single-active-day switcher and trailing Replace glyph** — `38af21c` (`feat`)
 
 ## Files Created/Modified
 
@@ -106,7 +106,7 @@ status: complete
 - **Fix:** Reused the captured selected index and selected its clamped equivalent in the committed day list.
 - **Files modified:** `src/ui/screens/OwnedPlanEditorScreen.tsx`, `src/ui/__tests__/OwnedPlanEditor.test.tsx`
 - **Verification:** Focused component tests pass with a committed-update removal regression.
-- **Committed in:** `98d30ea`
+- **Committed in:** `38af21c`
 
 **Total deviations:** 1 auto-fixed (Rule 1).
 
@@ -127,7 +127,7 @@ None.
 ## Self-Check: PASSED
 
 - Confirmed all five implementation and test artifacts exist.
-- Confirmed task commits `e8082d3` and `98d30ea` exist in git history.
+- Confirmed task commits `7b85e55` and `38af21c` exist in git history.
 
 ## Next Phase Readiness
 

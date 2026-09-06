@@ -90,9 +90,9 @@ status: complete
 
 Each task was committed atomically:
 
-1. **Task 2 RED: Define failing hook-owned cue contract** - `9f6ad33` (test)
-2. **Task 2 GREEN: Install Expo Audio and define the hook-shaped port** - `a4c8e0a` (feat)
-3. **Task 3: Generate deterministic local short and long tones** - `fc0c603` (feat)
+1. **Task 2 RED: Define failing hook-owned cue contract** - `cf717b2` (test)
+2. **Task 2 GREEN: Install Expo Audio and define the hook-shaped port** - `d849619` (feat)
+3. **Task 3: Generate deterministic local short and long tones** - `1cebfb0` (feat)
 
 ## Files Created/Modified
 
@@ -118,7 +118,7 @@ Each task was committed atomically:
 - **Fix:** Awaited `renderHook(...)` in the adapter tests before invoking the port.
 - **Files modified:** `src/platform/audio/expoRestCountdownCueAdapter.test.ts`
 - **Verification:** Focused unit suite and `npm run typecheck` pass.
-- **Committed in:** `a4c8e0a`
+- **Committed in:** `d849619`
 
 ---
 
@@ -153,4 +153,4 @@ None.
 ## Self-Check: PASSED
 
 - All seven planned artifacts exist.
-- Task commits `9f6ad33`, `a4c8e0a`, and `fc0c603` are present in repository history.
+- Task commits `cf717b2`, `d849619`, and `1cebfb0` are present in repository history.

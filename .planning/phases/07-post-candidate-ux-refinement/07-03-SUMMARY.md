@@ -102,9 +102,9 @@ status: complete
 
 ## Task Commits
 
-1. **Task 1: Lock the borderless selected-tab WIP** — `0b01425` (`test`)
-2. **Task 2: Reduce Today to valid starts and one Settings gear** — `07236f3` (`feat`)
-3. **Task 3: Build the fixed consolidated Settings hierarchy** — `a90407e` (`feat`)
+1. **Task 1: Lock the borderless selected-tab WIP** — `4540da2` (`test`)
+2. **Task 2: Reduce Today to valid starts and one Settings gear** — `64f3ceb` (`feat`)
+3. **Task 3: Build the fixed consolidated Settings hierarchy** — `e4cccbf` (`feat`)
 
 ## Files Created/Modified
 
@@ -131,7 +131,7 @@ status: complete
 - **Fix:** Asserted the new disabled Settings gear in the booting shell and removed the wrapper-level modal flow; dedicated Today and `/more` tests now cover the valid route behavior.
 - **Files modified:** `src/ui/__tests__/foundation.test.tsx`
 - **Verification:** Combined Plan 07-03 regression slice passed (72 tests).
-- **Committed in:** `a90407e`
+- **Committed in:** `e4cccbf`
 
 ---
 
@@ -159,7 +159,7 @@ None - no external service configuration required.
 ## Self-Check: PASSED
 
 - Confirmed `src/ui/screens/SettingsScreen.tsx`, `src/ui/__tests__/SettingsScreen.test.tsx`, and `app/more/__tests__/index.test.tsx` exist.
-- Confirmed task commits `0b01425`, `07236f3`, and `a90407e` exist in git history.
+- Confirmed task commits `4540da2`, `64f3ceb`, and `e4cccbf` exist in git history.
 
 ---
 *Phase: 07-post-candidate-ux-refinement*
