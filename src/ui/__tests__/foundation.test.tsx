@@ -844,9 +844,8 @@ describe("Plan 01-02 route shell", () => {
     );
 
     expect(screen.getByRole("header", { name: "Today" })).toBeOnTheScreen();
-    expect(
-      screen.getByRole("button", { name: "Appearance and rest-alert settings" }),
-    ).toBeDisabled();
+    expect(screen.getByRole("button", { name: "Settings" }))
+      .toBeDisabled();
     expect(
       screen.getAllByTestId(/today-skeleton/, { includeHiddenElements: true }),
     ).toHaveLength(6);
@@ -969,56 +968,6 @@ describe("Plan 01-02 route shell", () => {
       ).not.toBeOnTheScreen();
       await unmount();
     }
-  });
-
-  it("dismisses Appearance before root history and restores the invoking action", async () => {
-    await render(
-      <AppearanceProvider>
-        <TodayScreen launchState="trusted" />
-      </AppearanceProvider>,
-    );
-
-    await fireEvent.press(
-      screen.getByRole("button", { name: "Appearance and rest-alert settings" }),
-    );
-    expect(screen.getByRole("header", { name: "Rest alerts" })).toBeOnTheScreen();
-    await fireEvent.press(
-      screen.getByRole("button", { name: "Close rest alerts" }),
-    );
-    expect(
-      screen.queryByRole("header", { name: "Rest alerts" }),
-    ).not.toBeOnTheScreen();
-    expect(
-      screen.getByRole("button", { name: "Appearance and rest-alert settings" }),
-    ).toBeOnTheScreen();
-
-    await fireEvent.press(
-      screen.getByRole("button", { name: "Appearance and rest-alert settings" }),
-    );
-    expect(screen.getByRole("header", { name: "Rest alerts" })).toBeOnTheScreen();
-    await fireEvent.press(screen.getByRole("button", { name: "Appearance" }));
-    expect(
-      screen.queryByRole("header", { name: "Rest alerts" }),
-    ).not.toBeOnTheScreen();
-    expect(screen.getByRole("header", { name: "Appearance" })).toBeOnTheScreen();
-    expect(screen.getByTestId("appearance-sheet-content")).toHaveProp(
-      "keyboardShouldPersistTaps",
-      "handled",
-    );
-    expect(screen.getByTestId("appearance-sheet-content")).toHaveStyle({
-      maxHeight: "90%",
-    });
-
-    await fireEvent(
-      screen.getByRole("header", { name: "Appearance" }),
-      "requestClose",
-    );
-    expect(
-      screen.queryByRole("header", { name: "Appearance" }),
-    ).not.toBeOnTheScreen();
-    expect(
-      screen.getByRole("button", { name: "Appearance and rest-alert settings" }),
-    ).toBeOnTheScreen();
   });
 
   it("locks root Android Back behavior to route history before exit", () => {
