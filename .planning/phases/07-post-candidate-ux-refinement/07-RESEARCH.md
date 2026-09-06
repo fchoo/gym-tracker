@@ -1,7 +1,7 @@
 # Phase 7: Post-Candidate UX Refinement — Research
 
-**Researched:** 2026-09-06  
-**Domain:** Local-first Expo/React Native interaction refinement, transactional workout mutation, foreground native audio, and Android assets  
+**Researched:** 2026-09-06
+**Domain:** Local-first Expo/React Native interaction refinement, transactional workout mutation, foreground native audio, and Android assets
 **Confidence:** MEDIUM — repository seams are directly inspected; Expo SDK 57 audio documentation is official but the package-legitimacy seam flags the new package as SUS.
 
 <user_constraints>
@@ -122,7 +122,7 @@ The locked asset contract is verbatim: `icon.png | 1024 × 1024px`; `android-ico
 |---|---|---|---|---|
 | `expo-audio` | Official Expo SDK 57 docs; registry observed version `57.0.4` on 2026-09-06. | No `postinstall` script returned. | `SUS` (seam reason: too new; ~2.04M weekly downloads; Expo repo). | Flagged — planner must add `checkpoint:human-verify` before install. [CITED: https://docs.expo.dev/versions/v57.0.0/sdk/audio/] |
 
-**Packages removed due to `SLOP`:** none.  
+**Packages removed due to `SLOP`:** none.
 **Packages flagged `SUS`:** `expo-audio`; lock the SDK-compatible package range only after the checkpoint. [CITED: https://docs.expo.dev/versions/v57.0.0/sdk/audio/]
 
 ## Security / STRIDE Notes

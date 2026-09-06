@@ -1,7 +1,7 @@
 # Phase 7: Post-Candidate UX Refinement - Pattern Map
 
-**Mapped:** 2026-09-06  
-**Files classified:** 55 planned source, configuration, asset, test, and evidence targets  
+**Mapped:** 2026-09-06
+**Files classified:** 55 planned source, configuration, asset, test, and evidence targets
 **Analogs found:** 49 / 55 (six targets require the Phase 7 research contract because the repository has no behavior-equivalent implementation)
 
 ## File Classification
@@ -300,8 +300,8 @@ The Expo audio adapter itself has a useful *structural* analog (`expoForegroundR
 
 ## Metadata
 
-**Analog search scope:** `src/domains`, `src/platform`, `src/bootstrap`, `src/ui`, `app`, `tests`, `scripts`, `maestro`, `assets`, root config.  
-**Strong analog families:** 5.  
-**Files scanned:** 50+ source, test, script, config, and flow files; analog search stopped after the five families above.  
-**Pattern extraction date:** 2026-09-06.  
+**Analog search scope:** `src/domains`, `src/platform`, `src/bootstrap`, `src/ui`, `app`, `tests`, `scripts`, `maestro`, `assets`, root config.
+**Strong analog families:** 5.
+**Files scanned:** 50+ source, test, script, config, and flow files; analog search stopped after the five families above.
+**Pattern extraction date:** 2026-09-06.
 **Current reference commit:** `3c07f78` (`wip(ux/phase7): nav highlight, header icons, notices, add-set button, copy-warmup removal`).
