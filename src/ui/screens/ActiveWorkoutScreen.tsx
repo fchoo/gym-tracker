@@ -713,7 +713,25 @@ export function ActiveWorkoutScreen({
         throw new Error("remove_set_unavailable");
       }
       const removedAtMs = nowMs();
-      const requestId = `remove_${sessionId}_${currentSet.id}_${currentView.revision}_${removedAtMs}`;
+      const {
+        CryptoDigestAlgorithm,
+        digestStringAsync,
+      } = require("expo-crypto") as typeof import("expo-crypto");
+      const operation = candidate.kind === "warmup"
+        ? "remove_warmup"
+        : "remove_working_set";
+      const removalIdentity = {
+        operation,
+        sessionId,
+        setId: currentSet.id,
+        expectedSessionRevision: currentView.revision,
+        expectedSetRevision: currentSet.revision,
+        removedAtMs,
+      };
+      const requestId = `remove_${await digestStringAsync(
+        CryptoDigestAlgorithm.SHA256,
+        stableJson(removalIdentity),
+      )}`;
       const request = {
         requestId,
         sessionId,
@@ -722,10 +740,6 @@ export function ActiveWorkoutScreen({
         expectedSetRevision: currentSet.revision,
         removedAtMs,
       };
-      const {
-        CryptoDigestAlgorithm,
-        digestStringAsync,
-      } = require("expo-crypto") as typeof import("expo-crypto");
       const requestSha256 = await digestStringAsync(
         CryptoDigestAlgorithm.SHA256,
         stableJson(request),

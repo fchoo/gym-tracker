@@ -1223,6 +1223,57 @@ describe("Plan 01-08 ActiveWorkoutScreen", () => {
     expect(screen.getByText("Warm-up W1 removed")).toBeOnTheScreen();
   });
 
+  it("uses a bounded deterministic request ID when removing restored long IDs", async () => {
+    const sessionId = "s".repeat(128);
+    const setId = "w".repeat(128);
+    const longIdView: ActiveWorkoutView = {
+      ...initialView,
+      id: sessionId,
+      activeSetId: setId,
+      currentExercise: {
+        ...initialView.currentExercise,
+        workingSets: [{
+          ...initialView.currentExercise.workingSets[0]!,
+          id: setId,
+        }],
+      },
+      progress: {
+        completedWorkingSets: 0,
+        totalWorkingSets: 1,
+      },
+    };
+    const removeWorkingSet = jest.fn<NonNullable<
+      ActiveWorkoutCommands["removeWorkingSet"]
+    >>(async () => ({
+      ...longIdView,
+      revision: 2,
+      currentExercise: {
+        ...longIdView.currentExercise,
+        workingSets: [],
+      },
+    }));
+    await renderActive({
+      commands: commands({ removeWorkingSet }),
+      sessionId,
+      view: longIdView,
+    });
+
+    await fireEvent.press(screen.getByRole("button", { name: "Remove set 1" }));
+    await fireEvent.press(screen.getByRole("button", { name: "Remove set" }));
+
+    await waitFor(() => {
+      expect(removeWorkingSet).toHaveBeenCalledWith(expect.objectContaining({
+        requestId: `remove_${"a".repeat(64)}`,
+        requestSha256: expect.stringMatching(/^[a-f0-9]{64}$/u),
+        sessionId,
+        setId,
+      }));
+    });
+    const removalRequest = removeWorkingSet.mock.calls[0]?.[0];
+    expect(removalRequest).toBeDefined();
+    expect(removalRequest?.requestId).toHaveLength(71);
+  });
+
   it("adds a first warm-up from the active load/reps target when none are planned", async () => {
     const addWarmup = jest.fn<ActiveWorkoutCommands["addWarmup"]>(async () => ({
       ...initialView,
