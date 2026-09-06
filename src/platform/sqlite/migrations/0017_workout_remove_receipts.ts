@@ -58,10 +58,16 @@ const WORKOUT_REMOVE_RECEIPT_COLUMNS = [
   ["committed_at_ms", "INTEGER", 1, 0],
 ] as const;
 
-const WORKOUT_REMOVE_RECEIPT_TRIGGER_NAMES = [
-  "workout_remove_receipts_immutable_delete",
-  "workout_remove_receipts_immutable_update",
-] as const;
+const WORKOUT_REMOVE_RECEIPT_TRIGGER_SQL_BY_NAME: ReadonlyMap<string, string> = new Map([
+  [
+    "workout_remove_receipts_immutable_update",
+    WORKOUT_REMOVE_RECEIPT_SCHEMA_STATEMENTS[1],
+  ],
+  [
+    "workout_remove_receipts_immutable_delete",
+    WORKOUT_REMOVE_RECEIPT_SCHEMA_STATEMENTS[2],
+  ],
+] as const);
 
 function normalizedSql(sql: string): string {
   return sql.replace(/\s+/gu, " ").trim();
@@ -114,12 +120,12 @@ export const workoutRemoveReceiptsMigration: Migration = Object.freeze({
       || normalizedSql(table.sql) !== normalizedSql(WORKOUT_REMOVE_RECEIPT_SCHEMA_STATEMENTS[0])) {
       throw new Error("workout_remove_receipts_schema_incomplete");
     }
-    const triggerNames = objects
-      .filter(({ type }) => type === "trigger")
-      .map(({ name }) => name)
-      .sort();
-    if (triggerNames.length !== WORKOUT_REMOVE_RECEIPT_TRIGGER_NAMES.length
-      || triggerNames.some((name, index) => name !== WORKOUT_REMOVE_RECEIPT_TRIGGER_NAMES[index])) {
+    const triggers = objects.filter(({ type }) => type === "trigger");
+    if (triggers.length !== WORKOUT_REMOVE_RECEIPT_TRIGGER_SQL_BY_NAME.size
+      || triggers.some(({ name, sql }) => {
+        const expectedSql = WORKOUT_REMOVE_RECEIPT_TRIGGER_SQL_BY_NAME.get(name);
+        return expectedSql === undefined || normalizedSql(sql) !== normalizedSql(expectedSql);
+      })) {
       throw new Error("workout_remove_receipts_schema_incomplete");
     }
   },

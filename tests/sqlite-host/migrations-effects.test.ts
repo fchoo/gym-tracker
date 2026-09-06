@@ -49,6 +49,9 @@ import {
   exerciseHistoryIndexMigration,
 } from "../../src/platform/sqlite/migrations/0003_exercise_history_index";
 import {
+  workoutRemoveReceiptsMigration,
+} from "../../src/platform/sqlite/migrations/0017_workout_remove_receipts";
+import {
   migrations as runtimeMigrations,
 } from "../../src/platform/sqlite/migrations";
 import {
@@ -374,6 +377,37 @@ describe("Plan 01-06 forward migrations and internal recovery", () => {
       await assertReceiptSchema(upgraded);
     } finally {
       await upgraded.close();
+    }
+  });
+
+  it("rejects removal receipt triggers whose expected names have altered bodies", async () => {
+    const runtime = await createHostRuntime();
+    try {
+      await createMigrationRunner({
+        databaseName: "gym-tracker.db",
+        kernel: runtime.kernel,
+        migrations: runtimeMigrations,
+        recoveryBackup: validatedBackup(),
+      }).run();
+
+      await runtime.kernel.write(async (transaction) => {
+        await transaction.execute(
+          "DROP TRIGGER workout_remove_receipts_immutable_update",
+        );
+        await transaction.execute(
+          `CREATE TRIGGER workout_remove_receipts_immutable_update
+           BEFORE UPDATE ON workout_remove_receipts
+           BEGIN
+             SELECT 1;
+           END`,
+        );
+      });
+
+      await expect(runtime.kernel.write((transaction) => (
+        workoutRemoveReceiptsMigration.verify(transaction)
+      ))).rejects.toMatchObject({ code: "sqlite_transaction_failed" });
+    } finally {
+      await runtime.close();
     }
   });
 
