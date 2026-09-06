@@ -1406,6 +1406,57 @@ describe("Plan 01-08 ActiveWorkoutScreen", () => {
       .toBeOnTheScreen();
   });
 
+  it.each([
+    ["warm-up", "warmup-1", "Remove warm-up W1", "Remove warm-up"],
+    ["working set", "working-2", "Remove set 2", "Remove set"],
+  ])(
+    "confirms removal for a skipped %s",
+    async (_kind, setId, removeLabel, confirmLabel) => {
+      const view: ActiveWorkoutView = {
+        ...initialView,
+        currentExercise: {
+          ...initialView.currentExercise,
+          warmups: initialView.currentExercise.warmups.map((set) => ({
+            ...set,
+            status: "skipped" as const,
+          })),
+          workingSets: initialView.currentExercise.workingSets.map((set) =>
+            set.id === "working-2"
+              ? { ...set, status: "skipped" as const }
+              : set
+          ),
+        },
+      };
+      const removedView: ActiveWorkoutView = {
+        ...view,
+        revision: 2,
+        currentExercise: {
+          ...view.currentExercise,
+          warmups: setId === "warmup-1" ? [] : view.currentExercise.warmups,
+          workingSets: setId === "working-2"
+            ? view.currentExercise.workingSets.filter(({ id }) => id !== setId)
+            : view.currentExercise.workingSets,
+        },
+      };
+      const removeWarmup = jest.fn(async () => removedView);
+      const removeWorkingSet = jest.fn(async () => removedView);
+      await renderActive({
+        commands: commands({ removeWarmup, removeWorkingSet }),
+        view,
+      });
+
+      expect(screen.getByRole("button", { name: removeLabel })).toBeOnTheScreen();
+      await fireEvent.press(screen.getByRole("button", { name: removeLabel }));
+      expect(screen.getByRole("button", { name: confirmLabel })).toBeOnTheScreen();
+      await fireEvent.press(screen.getByRole("button", { name: confirmLabel }));
+
+      await waitFor(() => {
+        const remove = setId === "warmup-1" ? removeWarmup : removeWorkingSet;
+        expect(remove).toHaveBeenCalledWith(expect.objectContaining({ setId }));
+      });
+    },
+  );
+
   it("does not reissue a committed removal when the authoritative reload fails", async () => {
     const onGoBack = jest.fn();
     const removeWorkingSet = jest.fn<NonNullable<

@@ -184,6 +184,38 @@ describe("Plan 07-04 SetRow", () => {
       .not.toBeOnTheScreen();
   });
 
+  it.each([
+    ["working", "working-1", "Remove set 1"],
+    ["warmup", "warmup-1", "Remove warm-up W1"],
+  ])(
+    "renders skipped %s rows as remove-only",
+    async (kind, id, removeLabel) => {
+      const onRemove = jest.fn();
+      await renderRow(workingSet({
+        id,
+        kind: kind as "warmup" | "working",
+        sourceTargetId: kind === "warmup" ? null : "target-1",
+        status: "skipped",
+        valueSources: [],
+      }), {
+        kind: kind as "warmup" | "working",
+        onRemove,
+      });
+
+      expect(screen.getByRole("button", { name: removeLabel }))
+        .toBeOnTheScreen();
+      expect(screen.queryByRole("button", {
+        name: kind === "warmup" ? "Reset warm-up W1" : "Reset set 1",
+      })).not.toBeOnTheScreen();
+      expect(screen.queryByRole("button", {
+        name: kind === "warmup" ? "Complete warm-up W1" : "Complete Set 1",
+      })).not.toBeOnTheScreen();
+
+      await fireEvent.press(screen.getByRole("button", { name: removeLabel }));
+      expect(onRemove).toHaveBeenCalledTimes(1);
+    },
+  );
+
   it("labels warm-up Reset, Done, and Remove actions for the same wrapping band", async () => {
     await renderRow({
       ...workingSet(),

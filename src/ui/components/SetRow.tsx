@@ -1004,7 +1004,21 @@ export function SetRow({
             </FocusablePressable>
           </View>
         </>
-      ) : completed || skipped ? null : (
+      ) : completed ? null : skipped ? (
+        <View
+          style={styles.actions}
+          testID={`${kind === "warmup" ? `warmup-W${index}` : `working-set-${index}`}-actions`}
+        >
+          <GlyphAction
+            accessibilityLabel={`Remove ${resetActionKind}`}
+            disabled={busy || actionsDisabled}
+            icon={Trash2}
+            onPress={onRemove}
+            ref={removeRef}
+            tone={tone}
+          />
+        </View>
+      ) : (
         <>
           {fixedValueLabel === null ? null : (
             <Text
