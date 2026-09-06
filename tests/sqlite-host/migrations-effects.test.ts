@@ -238,7 +238,24 @@ describe("Plan 01-06 forward migrations and internal recovery", () => {
       11,
       12,
     ]);
-    expect(runtimeMigrations.at(-1)?.version).toBeGreaterThanOrEqual(12);
+    expect(runtimeMigrations.map(({ version }) => version)).toEqual([
+      1,
+      2,
+      3,
+      4,
+      5,
+      6,
+      8,
+      9,
+      10,
+      11,
+      12,
+      13,
+      14,
+      15,
+      16,
+      17,
+    ]);
     expect(runtimeMigrations.slice(0, 3)).toEqual(migrations);
     expect(initialMigration).toEqual(expect.objectContaining({
       kind: "additive",
@@ -246,6 +263,118 @@ describe("Plan 01-06 forward migrations and internal recovery", () => {
       version: 1,
     }));
     expect(INITIAL_SCHEMA_STATEMENTS.length).toBeGreaterThanOrEqual(20);
+  });
+
+  it("creates a bounded, immutable, foreign-key-free removal receipt schema on clean and schema-16 databases", async () => {
+    async function assertReceiptSchema(runtime: HostRuntime) {
+      expect(await userVersion(runtime.kernel)).toBe(17);
+      const columns = await runtime.kernel.queryAll<{
+        name: string;
+        type: string;
+        notnull: number;
+        pk: number;
+      }>("PRAGMA table_info(workout_remove_receipts)");
+      expect(columns.map(({ name, type, notnull, pk }) => ({ name, type, notnull, pk }))).toEqual([
+        { name: "request_id", type: "TEXT", notnull: 1, pk: 1 },
+        { name: "request_sha256", type: "TEXT", notnull: 1, pk: 0 },
+        { name: "operation", type: "TEXT", notnull: 1, pk: 0 },
+        { name: "session_id", type: "TEXT", notnull: 1, pk: 0 },
+        { name: "set_id", type: "TEXT", notnull: 1, pk: 0 },
+        { name: "expected_session_revision", type: "INTEGER", notnull: 1, pk: 0 },
+        { name: "expected_set_revision", type: "INTEGER", notnull: 1, pk: 0 },
+        { name: "result_session_revision", type: "INTEGER", notnull: 1, pk: 0 },
+        { name: "result_json", type: "TEXT", notnull: 1, pk: 0 },
+        { name: "committed_at_ms", type: "INTEGER", notnull: 1, pk: 0 },
+      ]);
+      expect(await runtime.kernel.queryAll(
+        "PRAGMA foreign_key_list(workout_remove_receipts)",
+      )).toEqual([]);
+
+      const [table] = await runtime.kernel.queryAll<{ sql: string }>(
+        `SELECT sql
+         FROM sqlite_master
+         WHERE type = 'table' AND name = 'workout_remove_receipts'`,
+      );
+      expect(table?.sql).toEqual(expect.stringContaining("STRICT"));
+      expect(table?.sql).toEqual(expect.stringContaining("request_sha256"));
+      expect(table?.sql).toEqual(expect.stringContaining("operation IN ('remove_warmup', 'remove_working_set')"));
+      expect(table?.sql).toEqual(expect.stringContaining("json_valid(result_json)"));
+
+      await runtime.kernel.write((transaction) => transaction.execute(
+        `INSERT INTO workout_remove_receipts
+          (request_id, request_sha256, operation, session_id, set_id,
+           expected_session_revision, expected_set_revision,
+           result_session_revision, result_json, committed_at_ms)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        [
+          "remove-request-1",
+          "a".repeat(64),
+          "remove_working_set",
+          "deleted-session",
+          "deleted-set",
+          4,
+          2,
+          5,
+          "{\"outcome\":\"committed\",\"sessionId\":\"deleted-session\",\"sessionRevision\":5}",
+          100,
+        ],
+      ));
+      await expect(runtime.kernel.write((transaction) => transaction.execute(
+        `INSERT INTO workout_remove_receipts
+          (request_id, request_sha256, operation, session_id, set_id,
+           expected_session_revision, expected_set_revision,
+           result_session_revision, result_json, committed_at_ms)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        [
+          "remove-request-invalid",
+          "A".repeat(64),
+          "remove_working_set",
+          "session-1",
+          "set-1",
+          1,
+          1,
+          2,
+          "{}",
+          100,
+        ],
+      ))).rejects.toMatchObject({ code: "sqlite_transaction_failed" });
+      await expect(runtime.kernel.write((transaction) => transaction.execute(
+        "UPDATE workout_remove_receipts SET committed_at_ms = 101 WHERE request_id = ?",
+        ["remove-request-1"],
+      ))).rejects.toMatchObject({ code: "sqlite_transaction_failed" });
+    }
+
+    const clean = await createHostRuntime();
+    try {
+      await createMigrationRunner({
+        databaseName: "gym-tracker.db",
+        kernel: clean.kernel,
+        migrations: runtimeMigrations,
+        recoveryBackup: validatedBackup(),
+      }).run();
+      await assertReceiptSchema(clean);
+    } finally {
+      await clean.close();
+    }
+
+    const upgraded = await createHostRuntime();
+    try {
+      await createMigrationRunner({
+        databaseName: "gym-tracker.db",
+        kernel: upgraded.kernel,
+        migrations: runtimeMigrations.slice(0, -1),
+        recoveryBackup: validatedBackup(),
+      }).run();
+      expect(await userVersion(upgraded.kernel)).toBe(16);
+      await createMigrationRunner({
+        databaseName: "gym-tracker.db",
+        kernel: upgraded.kernel,
+        migrations: runtimeMigrations,
+      }).run();
+      await assertReceiptSchema(upgraded);
+    } finally {
+      await upgraded.close();
+    }
   });
 
   it("migrates the empty v0 fixture and commits user_version with the schema", async () => {

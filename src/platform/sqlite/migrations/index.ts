@@ -13,6 +13,7 @@ import { historyIntegrityMigration } from "./0013_history_integrity";
 import { historyProjectionsMigration } from "./0014_history_projections";
 import { progressionEvidenceMigration } from "./0015_progression_evidence";
 import { portabilityRestoreStateMigration } from "./0016_portability_restore_state";
+import { workoutRemoveReceiptsMigration } from "./0017_workout_remove_receipts";
 
 export const migrations = Object.freeze([
   initialMigration,
@@ -30,6 +31,7 @@ export const migrations = Object.freeze([
   historyProjectionsMigration,
   progressionEvidenceMigration,
   portabilityRestoreStateMigration,
+  workoutRemoveReceiptsMigration,
 ]);
 
 export {
@@ -46,6 +48,7 @@ export {
   historyProjectionsMigration,
   progressionEvidenceMigration,
   portabilityRestoreStateMigration,
+  workoutRemoveReceiptsMigration,
   outcomeEffortMigration,
   scheduleActivationMigration,
 };
