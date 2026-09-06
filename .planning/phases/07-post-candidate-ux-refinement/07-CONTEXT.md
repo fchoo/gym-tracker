@@ -23,11 +23,15 @@ Owner-directed interaction and information-architecture refinements captured dur
 17. Plan configuration: remove up/down buttons and "Position x of y"; make Replace a right-aligned glyph button. → UX-20
 18. Day editor should not be limited to a single day. → UX-20
 19. Plan activation: apply the long-press drag handle to schedule ordering (Weekday and Rotation). → UX-20
-20. Add an app icon: simple, elegant "grow stronger" mark; propose a few for confirmation. → UX-22
+20. Add an app icon: simple, elegant "grow stronger" mark. Owner selected concept G: ascending bars in a blue tri-tone. → UX-22
 
 ## Decisions locked with owner
 - Set/warm-up removal = HARD DELETE of the row (new remove command in workout domain + SQLite repository; update progress totals and history snapshot). Not a relabelled skip.
+- Removal is available only for non-completed warm-ups and working sets. Completed rows retain their existing correction/undo path so immutable history and committed workout facts are never silently deleted.
 - Rest-timer audio = ADD a native audio dependency (expo-audio or expo-av) for in-app beeps; foreground-only cue, not authoritative for rest state. This regenerates the Android project → must pass `verify:cng` + full matrix.
+- Day editing remains single-active-day to avoid a long, dense all-days form. Add an unmistakable day switcher that keeps every plan day reachable.
+- Long-press drag ordering applies to Weekday and Rotation schedules in both plan activation and owned-plan schedule editing.
+- App icon direction is locked to concept G: ascending bars, blue tri-tone. Produce the standard icon plus Android adaptive foreground, background, and monochrome assets from that mark.
 - These changes supersede candidate `phase6-20260906-9cdecb8`; a fresh candidate + repeat N4 are accepted.
 
 ## Candidate/release context to preserve
@@ -70,13 +74,13 @@ Owner-directed interaction and information-architecture refinements captured dur
 - Reorder row: `src/ui/components/PlanEditorFields.tsx` `PlanEditorReorderableRow` (~175): position label ~403-409; up/down IconActions ~410-425; drag handle/gesture ~277-314/359-395 (KEEP). Remove up/down + position label. Replace control lives in consumer `OwnedPlanEditorScreen.tsx` ~1264-1272 — convert to a right-aligned glyph within the row.
 - Plan activation schedule: `StarterActivationScreen.tsx` `ScheduleMode` ~184-225, `ScheduleBindings` ~227-305 (rows ~269-302 use plain up/down IconActions ~287-298, NO drag). Wrap rows in `PlanEditorReorderableRow` and route `onMoveTo` → existing `move()`.
 - Owned-plan schedule editor already has rotation drag: `src/ui/components/ScheduleBindingEditor.tsx` `RotationEditor` ~210-247 (uses `PlanEditorReorderableRow`); `WeekdayEditor` ~103-208 has no drag — add if in scope.
-- Day editor single-day: `OwnedPlanEditorScreen.tsx` — days modeled as array (`draft.days`), listed ~1165-1208; editor renders only `selectedDay` (memo ~597-602, gated ~1210), `selectedDayId` init to `days[0].id`. By design single-active-day with the day list as switcher. Clarify with owner in discuss: do they want visible day tabs / all-days expanded, or is making the day-switcher obvious enough?
+- Day editor single-day: `OwnedPlanEditorScreen.tsx` — days modeled as array (`draft.days`), listed ~1165-1208; editor renders only `selectedDay` (memo ~597-602, gated ~1210), `selectedDayId` init to `days[0].id`. Keep the single-active-day model and make the day switcher visually explicit so every day is reachable without expanding all forms at once.
 
 ### UX-21 Rest-timer audio
 - `src/ui/components/RestDock.tsx`: countdown effect ~196-228 drives `remainingMs`; `onExpired` fires once at 0 (~213-228). `thresholdMessage` ~54-60 gives 60/30/10/… announcements. Add an audio cue: short beep at remaining 3/2/1s, long beep at 0. No audio dep installed (`expo-haptics`, `expo-notifications` only). Add `expo-audio` (SDK 57) → new native module → regenerate CNG. Consider a small `restCountdownAudioPort` adapter for testability; keep foreground-only and non-authoritative. Existing notification-channel sound (`expoForegroundRestFeedbackAdapter`) stays for the terminal alert.
 
 ### UX-22 App icon
-- `app.config.ts` ~20-32: `icon` `./assets/images/icon.png` (1024²); adaptive `foregroundImage` (512²), `backgroundImage` (512²), `monochromeImage` (432²); splash `splash-icon.png`. Generate candidate marks, get owner confirmation, replace assets, keep dimensions.
+- `app.config.ts` ~20-32: `icon` `./assets/images/icon.png` (1024²); adaptive `foregroundImage` (512²), `backgroundImage` (512²), `monochromeImage` (432²); splash `splash-icon.png`. Develop the owner-approved concept G ascending-bars mark into this complete asset set and preserve the configured dimensions/safe zones.
 
 ## Verification obligations (inherited)
 - Native dep + config changes (expo-audio, icon assets) rerun clean CNG generation and the full matrix.
