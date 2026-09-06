@@ -277,6 +277,21 @@ describe("Plan 07-02 hard-remove command validation", () => {
 
     expect(port.removeWarmup).not.toHaveBeenCalled();
   });
+
+  it.each([
+    ["warm-up", removeWarmup, "removeWarmup", "remove_warmup_unavailable"],
+    ["working-set", removeWorkingSet, "removeWorkingSet", "remove_working_set_unavailable"],
+  ] as const)("rejects a valid %s removal when its repository capability is unavailable", async (
+    _kind,
+    remove,
+    capability,
+    error,
+  ) => {
+    const port = repository();
+    const unavailable = { ...port, [capability]: undefined } as ActiveWorkoutRepository;
+
+    await expect(remove({ repository: unavailable, input: removeInput() })).rejects.toThrow(error);
+  });
 });
 
 const authoritativeObservations: readonly SetObservation[] = [
