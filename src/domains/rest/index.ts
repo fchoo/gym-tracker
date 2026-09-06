@@ -34,3 +34,6 @@ export {
   type RestNotificationScheduleInput,
   type ScheduledRestNotification,
 } from "./restNotificationPort";
+export {
+  type RestCountdownCuePort,
+} from "./restCountdownCuePort";

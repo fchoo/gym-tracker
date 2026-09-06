@@ -22,7 +22,7 @@ jest.mock("expo-audio", () => ({
 const mockedUseAudioPlayer = jest.mocked(useAudioPlayer);
 
 describe("Expo rest countdown cue adapter", () => {
-  it("creates local hook-owned players and replays the short and long cues without throwing", async () => {
+  it("creates hook-owned players and replays the short and long cues without throwing", async () => {
     const shortPlayer = {
       seekTo: jest.fn(),
       play: jest.fn(),
@@ -35,7 +35,7 @@ describe("Expo rest countdown cue adapter", () => {
       .mockReturnValueOnce(shortPlayer as never)
       .mockReturnValueOnce(longPlayer as never);
 
-    const rendered = renderHook(() => useExpoRestCountdownCueAdapter());
+    const rendered = await renderHook(() => useExpoRestCountdownCueAdapter());
 
     await expect(rendered.result.current.playShortCue()).resolves.toBeUndefined();
     await expect(rendered.result.current.playLongCue()).resolves.toBeUndefined();
@@ -58,7 +58,7 @@ describe("Expo rest countdown cue adapter", () => {
       .mockReturnValueOnce(failedPlayer as never)
       .mockReturnValueOnce({ seekTo: jest.fn(), play: jest.fn() } as never);
 
-    const rendered = renderHook(() => useExpoRestCountdownCueAdapter());
+    const rendered = await renderHook(() => useExpoRestCountdownCueAdapter());
 
     await expect(rendered.result.current.playShortCue()).resolves.toBeUndefined();
     expect(failedPlayer.play).not.toHaveBeenCalled();
