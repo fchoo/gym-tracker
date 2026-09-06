@@ -31,7 +31,6 @@ import {
   ConfirmationSheet,
   CalendarField,
   FocusablePressable,
-  IconAction,
   InlineNotice,
   PrimaryAction,
   ScreenHeader,
@@ -39,6 +38,9 @@ import {
   SectionHeader,
   SkeletonBlock,
 } from "../components";
+import {
+  PlanEditorReorderableRow,
+} from "../components/PlanEditorFields";
 import {
   radius,
   sizes,
@@ -165,19 +167,17 @@ function suggestedRotationBindings(
   }));
 }
 
-function reorder<Value>(
+function reordered<Value>(
   values: readonly Value[],
-  index: number,
-  direction: -1 | 1,
+  from: number,
+  to: number,
 ): readonly Value[] {
-  const destination = index + direction;
-  if (destination < 0 || destination >= values.length) {
+  if (from === to || to < 0 || to >= values.length) {
     return values;
   }
   const next = [...values];
-  const current = next[index]!;
-  next[index] = next[destination]!;
-  next[destination] = current;
+  const [value] = next.splice(from, 1);
+  next.splice(to, 0, value!);
   return next;
 }
 
@@ -245,20 +245,18 @@ function ScheduleBindings({
   );
   const rows = mode === "weekday" ? weekdayBindings : rotationBindings;
 
-  function move(index: number, direction: -1 | 1) {
+  function moveTo(index: number, targetPosition: number) {
     if (mode === "weekday") {
-      const reorderedDayIds = reorder(
-        weekdayBindings.map(({ planDaySourceId }) => planDaySourceId),
+      onWeekdayBindings(reordered(
+        weekdayBindings,
         index,
-        direction,
-      );
-      onWeekdayBindings(weekdayBindings.map((binding, ordinal) => ({
+        targetPosition,
+      ).map((binding, ordinal) => ({
         ...binding,
         ordinal,
-        planDaySourceId: reorderedDayIds[ordinal]!,
       })));
     } else {
-      onRotationBindings(reorder(rotationBindings, index, direction).map(
+      onRotationBindings(reordered(rotationBindings, index, targetPosition).map(
         (binding, ordinal) => ({ ...binding, ordinal }),
       ));
     }
@@ -269,13 +267,23 @@ function ScheduleBindings({
       {rows.map((binding, index) => {
         const name = names.get(binding.planDaySourceId)
           ?? binding.planDaySourceId;
-        const prefix = mode === "weekday"
-          ? `${(binding as InitialWeekdayScheduleBinding).weekday} · `
-          : `${index + 1}. `;
+        const weekdayBinding = mode === "weekday"
+          ? binding as InitialWeekdayScheduleBinding
+          : undefined;
+        const prefix = weekdayBinding ? `${weekdayBinding.weekday} · ` : "";
+        const reorderId = weekdayBinding
+          ? `activation-weekday-${weekdayBinding.weekIndex}-${weekdayBinding.weekday}-${binding.planDaySourceId}`
+          : `activation-rotation-${binding.planDaySourceId}-${index}`;
         return (
-          <View
+          <PlanEditorReorderableRow
+            count={rows.length}
             key={`${binding.planDaySourceId}:${index}`}
-            style={[styles.bindingRow, { borderColor: colors.divider }]}
+            label={name}
+            onMoveDown={() => moveTo(index, index + 1)}
+            onMoveTo={(targetPosition) => moveTo(index, targetPosition)}
+            onMoveUp={() => moveTo(index, index - 1)}
+            position={index}
+            reorderId={reorderId}
           >
             <Text style={[
               typeScale.bodyStrong as TextStyle,
@@ -283,21 +291,7 @@ function ScheduleBindings({
             ]}>
               {prefix}{name}
             </Text>
-            <View style={styles.bindingActions}>
-              <IconAction
-                accessibilityLabel={`Move ${name} up`}
-                disabled={index === 0}
-                icon="moveUp"
-                onPress={() => move(index, -1)}
-              />
-              <IconAction
-                accessibilityLabel={`Move ${name} down`}
-                disabled={index === rows.length - 1}
-                icon="moveDown"
-                onPress={() => move(index, 1)}
-              />
-            </View>
-          </View>
+          </PlanEditorReorderableRow>
         );
       })}
     </View>
@@ -804,16 +798,6 @@ const styles = StyleSheet.create({
     paddingVertical: space[2],
   },
   bindingList: {
-    gap: space[2],
-  },
-  bindingRow: {
-    borderBottomWidth: StyleSheet.hairlineWidth,
-    gap: space[2],
-    paddingBottom: space[2],
-  },
-  bindingActions: {
-    flexDirection: "row",
-    flexWrap: "wrap",
     gap: space[2],
   },
   choiceList: {
