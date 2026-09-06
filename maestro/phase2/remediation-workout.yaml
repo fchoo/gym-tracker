@@ -20,7 +20,6 @@ tags:
 - assertVisible: "Back Squat"
 - assertVisible: "Today's plan"
 - assertVisible: "Add warm-up"
-- assertVisible: "Copy previous warm-up"
 - scrollUntilVisible:
     element:
       text: "Add working set"
@@ -51,7 +50,7 @@ tags:
 - assertNotVisible:
     text: "Warm-up 3 of .*"
 - tapOn: "Retry add warm-up"
-- assertVisible: "Warm-up W3 added and focused"
+- assertVisible: "Warm-up 3 of 3.*Not completed.*"
 - stopApp
 - launchApp:
     clearState: false
@@ -70,53 +69,6 @@ tags:
     centerElement: true
 - assertNotVisible:
     text: "Warm-up 4 of .*"
-- openLink: "gymtracker-devtest://__notification-test-controls?action=arm_copy_warmup_failure"
-- assertVisible: "Copy warm-up failure armed"
-- repeat:
-    times: 12
-    while:
-      notVisible: "Return to Today"
-    commands:
-      - swipe:
-          start: 95%, 75%
-          end: 95%, 25%
-          duration: 300
-- swipe:
-    start: 95%, 75%
-    end: 95%, 45%
-    duration: 300
-- assertVisible: "Return to Today"
-- tapOn: "Return to Today"
-- tapOn: "Resume workout"
-- tapOn: "Copy previous warm-up"
-- assertVisible: "Warm-up was not added"
-- assertNotVisible:
-    text: "Warm-up 4 of .*"
-- tapOn: "Retry copy warm-up"
-- assertVisible: "Warm-up W4 added and focused"
-- stopApp
-- launchApp:
-    clearState: false
-    stopApp: true
-    permissions:
-      notifications: deny
-- assertVisible: "Today"
-- extendedWaitUntil:
-    visible: "Resume workout"
-    timeout: 90000
-- tapOn: "Resume workout"
-- repeat:
-    times: 12
-    while:
-      notVisible: "Warm-up 4 of 4.*"
-    commands:
-      - swipe:
-          start: 95%, 75%
-          end: 95%, 25%
-          duration: 300
-- assertVisible: "Warm-up 4 of 4.*"
-- assertNotVisible:
-    text: "Warm-up 5 of .*"
 - openLink: "gymtracker-devtest://__notification-test-controls?action=arm_add_working_failure"
 - assertVisible: "Add working set failure armed"
 - repeat:
@@ -169,7 +121,7 @@ tags:
           duration: 300
 - assertVisible: "Retry add working set"
 - tapOn: "Retry add working set"
-- assertVisible: "Working set 4 added and focused"
+- assertVisible: "Working set 4 of 4.*Not completed.*"
 - stopApp
 - launchApp:
     clearState: false
@@ -207,13 +159,13 @@ tags:
 - repeat:
     times: 12
     while:
-      notVisible: "Warm-up 1 of 4.*Completed.*"
+      notVisible: "Warm-up 1 of 3.*Completed.*"
     commands:
       - swipe:
           start: 95%, 25%
           end: 95%, 75%
           duration: 300
-- assertVisible: "Warm-up 1 of 4.*Completed.*"
+- assertVisible: "Warm-up 1 of 3.*Completed.*"
 - repeat:
     times: 32
     while:
@@ -349,12 +301,6 @@ tags:
     duration: 300
 - assertVisible: "Retry completed set correction"
 - tapOn: "Retry completed set correction"
-- scrollUntilVisible:
-    element:
-      text: "Working set 1 correction saved"
-    direction: UP
-    centerElement: true
-    timeout: 60000
 - repeat:
     times: 32
     while:

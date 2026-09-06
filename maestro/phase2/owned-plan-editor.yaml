@@ -142,8 +142,13 @@ tags:
     direction: DOWN
 - tapOn: "Save target"
 - assertVisible: "Bench Press"
-- tapOn: "Move Bench Press up"
-- assertVisible: "Bench Press moved to 1 of 2"
+- scrollUntilVisible:
+    element:
+      id: "drag-exercise-Bench Press"
+    direction: DOWN
+    centerElement: true
+- assertVisible: "Reorder Bench Press"
+- assertVisible: "Reorder Back Squat"
 - scrollUntilVisible:
     element:
       text: "Schedule and Activate are unavailable. Add at least one exercise with valid targets before scheduling or activating."

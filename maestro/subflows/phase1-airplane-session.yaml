@@ -31,31 +31,8 @@ name: Phase 1 airplane workout session
     centerElement: true
     timeout: 60000
 - tapOn: "More workout actions"
-- tapOn: "Skip Back Squat"
-- tapOn: "Skip exercise"
-- assertVisible: "Bench Press"
-- tapOn: "More workout actions"
-- tapOn: "Skip Bench Press"
-- tapOn: "Skip exercise"
-- assertVisible: "Lat Pulldown"
-- tapOn: "More workout actions"
-- tapOn: "Skip Lat Pulldown"
-- tapOn: "Skip exercise"
-- assertVisible: "Romanian Deadlift"
-- tapOn: "More workout actions"
-- tapOn: "Skip Romanian Deadlift"
-- tapOn: "Skip exercise"
-- assertVisible: "Plank"
-- tapOn: "More workout actions"
-- tapOn: "Skip Plank"
-- tapOn: "Skip exercise"
-- scrollUntilVisible:
-    element:
-      text: "Finish workout"
-    direction: UP
-    centerElement: true
-- assertVisible: "Finish workout"
-- tapOn: "Finish workout"
-- assertVisible: "Workout complete"
+- tapOn: "Discard workout"
+- assertVisible: "Discard workout?"
+- tapOn: "Discard workout"
 - tapOn: "Return to Today"
 - assertVisible: "Today"

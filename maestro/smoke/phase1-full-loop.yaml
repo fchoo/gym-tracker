@@ -103,29 +103,11 @@ tags:
     timeout: 60000
 - assertVisible: "Bench Press"
 - tapOn: "More workout actions"
-- tapOn: "Skip Bench Press"
-- assertVisible: "Skip Bench Press?"
-- tapOn: "Skip exercise"
-- assertVisible: "Lat Pulldown"
-- tapOn: "More workout actions"
-- tapOn: "Skip Lat Pulldown"
-- tapOn: "Skip exercise"
-- assertVisible: "Romanian Deadlift"
-- tapOn: "More workout actions"
-- tapOn: "Skip Romanian Deadlift"
-- tapOn: "Skip exercise"
-- assertVisible: "Plank"
-- tapOn: "More workout actions"
-- tapOn: "Skip Plank"
-- tapOn: "Skip exercise"
-- scrollUntilVisible:
-    element:
-      text: "Finish workout"
-    direction: UP
-    centerElement: true
-- assertVisible: "Finish workout"
-- tapOn: "Finish workout"
-- assertVisible: "Workout complete"
+- tapOn: "Finish as partial"
+- assertVisible: "Save partial workout?"
+- tapOn:
+    id: "save-partial-workout-confirm"
+- assertVisible: "Workout saved"
 - assertVisible: "Back Squat"
 - scrollUntilVisible:
     element:
