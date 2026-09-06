@@ -7,6 +7,9 @@ import {
   PHASE7_MAESTRO_FLOW_CONTRACTS,
   PHASE7_NATIVE_BACKSTOPS,
   parsePhase7MaestroArguments,
+  phase7NativeHeldDragCommands,
+  phase7NativeDragMoveSequence,
+  phase7PlanReorderCoordinates,
 } from "./run-phase7-maestro.mjs";
 import {
   PHASE7_N4_ROWS,
@@ -18,6 +21,7 @@ const runnerPath = path.join(projectRoot, "scripts/run-phase7-maestro.mjs");
 const checklistPath = path.join(projectRoot, "scripts/generate-phase7-attended-checklist.mjs");
 const packagePath = path.join(projectRoot, "package.json");
 const workflowPath = path.join(projectRoot, ".github/workflows/release-candidate.yml");
+const restDockPath = path.join(projectRoot, "src/ui/components/RestDock.tsx");
 
 const REQUIRED_FLOW_IDS = Object.freeze([
   "phase7-today-settings",
@@ -92,13 +96,28 @@ test("Phase 7 Maestro flows use source-aligned interactive labels and routes", (
   assert.doesNotMatch(todaySettings, /tapOn: "(?:Open Settings|History and data)"/u);
 
   const workoutRemovalAudio = flowSource("workout-removal-audio.yaml");
-  assert.match(workoutRemovalAudio, /- tapOn: "Cancel"\n- stopApp\n- launchApp:/u);
+  assert.match(workoutRemovalAudio, /- tapOn:\n    id: "remove-warmup-confirm"\n- extendedWaitUntil:\n    visible: "Warm-up W1 removed"/u);
+  assert.match(workoutRemovalAudio, /- assertNotVisible: "Remove warm-up W1"/u);
+  assert.match(workoutRemovalAudio, /- tapOn: "Complete Set 1"[\s\S]*?- extendedWaitUntil:\n    visible: "Rest ended"\n    timeout: 240000/u);
+  assert.doesNotMatch(workoutRemovalAudio, /- tapOn: "Cancel"/u);
   assert.match(workoutRemovalAudio, /- assertVisible: "Today"\n- tapOn: "Settings"/u);
   assert.doesNotMatch(workoutRemovalAudio, /tapOn: "Open Settings"/u);
 
   const planScheduleReorder = flowSource("plan-schedule-reorder.yaml");
   assert.match(planScheduleReorder, /- assertVisible: "Plan days"/u);
+  assert.match(planScheduleReorder, /- assertVisible: "Drag Bench Press\. Position 2 of 2"/u);
+  assert.match(planScheduleReorder, /- assertVisible: "Drag Back Squat\. Position 1 of 2"/u);
+  const runner = readFileSync(runnerPath, "utf8");
+  assert.match(runner, /phase7PlanOrderIs\(afterDrag, "Bench Press", 1\)/u);
+  assert.match(runner, /phase7PlanOrderIs\(afterAccessibilityMove, "Back Squat", 1\)/u);
+  assert.match(runner, /phase7-schedule-reorder\.png/u);
+  assert.doesNotMatch(planScheduleReorder, /(?:longPressOn|pressKey: ARROW_DOWN)/u);
   assert.doesNotMatch(planScheduleReorder, /assertVisible: "Selected day"/u);
+
+  const restDock = readFileSync(restDockPath, "utf8");
+  assert.match(restDock, /!\[3, 2, 1, 0\]\.includes\(remainingSeconds\)/u);
+  assert.match(restDock, /remainingSeconds === 0[\s\S]*playLongCue()[\s\S]*playShortCue()/u);
+  assert.doesNotMatch(restDock, /audible hardware|sound quality/u);
 
   const iconNavigation = flowSource("icon-navigation-accessibility.yaml");
   assert.match(iconNavigation, /- tapOn: "Settings"/u);
@@ -116,6 +135,22 @@ test("Phase 7 Maestro flows use source-aligned interactive labels and routes", (
   assert.equal(launcherEvidence.owner, "07-10 attended-only launcher evidence");
   assert.deepEqual(launcherEvidence.flows, []);
   assert.deepEqual(launcherEvidence.native_backstops, ["N4"]);
+});
+
+test("Phase 7 plan evidence uses live native drag and an accessibility action, not simulated gestures", () => {
+  const hierarchy = [
+    '<node resource-id="drag-exercise-Bench Press" content-desc="Drag Bench Press. Position 2 of 2" bounds="[120,640][240,720]"/>',
+    '<node resource-id="drag-exercise-Back Squat" content-desc="Drag Back Squat. Position 1 of 2" bounds="[120,480][240,560]"/>',
+  ].join("");
+  const drag = phase7PlanReorderCoordinates(hierarchy);
+  assert.deepEqual(drag, { startX: 180, startY: 680, endX: 180, endY: 520 });
+  assert.deepEqual(phase7NativeHeldDragCommands(drag), {
+    down: ["shell", "input", "touchscreen", "motionevent", "DOWN", "180", "680"],
+    up: ["shell", "input", "touchscreen", "motionevent", "UP", "180", "520"],
+    accessibilityMoveDown: ["shell", "input", "keycombination", "SHIFT_LEFT", "DPAD_DOWN"],
+  });
+  assert.equal(phase7NativeDragMoveSequence(drag).length, 12);
+  assert.throws(() => phase7PlanReorderCoordinates("<node/>"), /drag hierarchy/u);
 });
 
 test("Phase 7 attended evidence stays exact-byte, N4-only, and observation-only", () => {

@@ -44,6 +44,29 @@ tags:
     centerElement: true
 - assertVisible: "Drag Back Squat"
 - takeScreenshot: phase7-plan-drag-handle
-- tapOn: "Schedule"
-- assertVisible: "Weekday"
-- takeScreenshot: phase7-schedule-reorder
+- scrollUntilVisible:
+    element:
+      id: "owned-plan-add-exercise"
+    direction: DOWN
+    centerElement: true
+- tapOn:
+    id: "owned-plan-add-exercise"
+- tapOn:
+    id: "owned-plan-exercise-search"
+- inputText: "Bench Press"
+- hideKeyboard
+- tapOn:
+    text: "Bench Press.*Load . reps"
+- scrollUntilVisible:
+    element:
+      text: "Save target"
+    direction: DOWN
+    centerElement: true
+- tapOn: "Save target"
+- scrollUntilVisible:
+    element:
+      id: "drag-exercise-Bench Press"
+    direction: DOWN
+    centerElement: true
+- assertVisible: "Drag Bench Press. Position 2 of 2"
+- assertVisible: "Drag Back Squat. Position 1 of 2"

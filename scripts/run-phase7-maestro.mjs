@@ -251,6 +251,95 @@ function adb(adbPath, serial, ...argumentsList) {
   return execFileSync(adbPath, ["-s", serial, ...argumentsList], { encoding: "utf8" }).trim();
 }
 
+function hierarchyAttribute(node, name) {
+  return new RegExp(`${name}=\"([^\"]*)\"`, "u").exec(node)?.[1] ?? null;
+}
+
+export function phase7PlanReorderCoordinates(hierarchy, { sourceLabel = "Bench Press", sourcePosition = 2, targetLabel = "Back Squat", targetPosition = 1 } = {}) {
+  const nodes = [...String(hierarchy).matchAll(/<node\b[^>]*>/gu)].map(([node]) => node);
+  const coordinateFor = (label, position) => {
+    const node = nodes.find((candidate) =>
+      hierarchyAttribute(candidate, "resource-id") === `drag-exercise-${label}`
+      && hierarchyAttribute(candidate, "content-desc") === `Drag ${label}. Position ${position} of 2`);
+    const bounds = /^\[(\d+),(\d+)\]\[(\d+),(\d+)\]$/u.exec(
+      node === undefined ? "" : hierarchyAttribute(node, "bounds") ?? "",
+    );
+    if (bounds === null) fail(`drag hierarchy is missing ${label}.`);
+    const [left, top, right, bottom] = bounds.slice(1).map(Number);
+    if (right <= left || bottom <= top) fail(`drag hierarchy bounds are invalid for ${label}.`);
+    return Object.freeze({ x: Math.round((left + right) / 2), y: Math.round((top + bottom) / 2) });
+  };
+  const source = coordinateFor(sourceLabel, sourcePosition);
+  const target = coordinateFor(targetLabel, targetPosition);
+  return Object.freeze({ startX: source.x, startY: source.y, endX: target.x, endY: target.y });
+}
+
+export function phase7NativeHeldDragCommands({ startX, startY, endX, endY }) {
+  const coordinates = [startX, startY, endX, endY];
+  if (!coordinates.every((value) => Number.isSafeInteger(value) && value >= 0)) fail("native drag coordinates are invalid.");
+  return Object.freeze({
+    down: Object.freeze(["shell", "input", "touchscreen", "motionevent", "DOWN", String(startX), String(startY)]),
+    up: Object.freeze(["shell", "input", "touchscreen", "motionevent", "UP", String(endX), String(endY)]),
+    accessibilityMoveDown: Object.freeze(["shell", "input", "keycombination", "SHIFT_LEFT", "DPAD_DOWN"]),
+  });
+}
+
+export function phase7NativeDragMoveSequence({ startX, startY, endX, endY }, steps = 12) {
+  if (!Number.isSafeInteger(steps) || steps < 1) fail("native drag step count is invalid.");
+  phase7NativeHeldDragCommands({ startX, startY, endX, endY });
+  return Object.freeze(Array.from({ length: steps }, (_unused, index) => {
+    const progress = (index + 1) / steps;
+    return Object.freeze(["shell", "input", "touchscreen", "motionevent", "MOVE", String(Math.round(startX + (endX - startX) * progress)), String(Math.round(startY + (endY - startY) * progress))]);
+  }));
+}
+
+function waitSynchronously(milliseconds) {
+  Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, milliseconds);
+}
+
+function phase7PlanOrderIs(hierarchy, label, position) {
+  return String(hierarchy).includes(`resource-id=\"drag-exercise-${label}\"`)
+    && String(hierarchy).includes(`content-desc=\"Drag ${label}. Position ${position} of 2`);
+}
+
+function captureScreenshot(adbPath, serial, outputPath) {
+  const bytes = execFileSync(adbPath, ["-s", serial, "exec-out", "screencap", "-p"]);
+  if (!Buffer.isBuffer(bytes) || bytes.length === 0) fail("native plan reorder screenshot is missing.");
+  writeFileSync(outputPath, bytes, { flag: "wx" });
+}
+
+function executePhase7PlanReorderEvidence(adbPath, serial, flowDirectory) {
+  const before = adb(adbPath, serial, "exec-out", "uiautomator", "dump", "/dev/tty");
+  const drag = phase7PlanReorderCoordinates(before);
+  const commands = phase7NativeHeldDragCommands(drag);
+  let pointerDown = false;
+  try {
+    adb(adbPath, serial, ...commands.down);
+    pointerDown = true;
+    waitSynchronously(700);
+    for (const move of phase7NativeDragMoveSequence(drag)) {
+      adb(adbPath, serial, ...move);
+      waitSynchronously(60);
+    }
+  } finally {
+    if (pointerDown) adb(adbPath, serial, ...commands.up);
+  }
+  const afterDrag = adb(adbPath, serial, "exec-out", "uiautomator", "dump", "/dev/tty");
+  if (!phase7PlanOrderIs(afterDrag, "Bench Press", 1) || !phase7PlanOrderIs(afterDrag, "Back Squat", 2)) {
+    fail("native held drag did not commit the plan reorder.");
+  }
+  const accessibilityTarget = phase7PlanReorderCoordinates(afterDrag, {
+    sourceLabel: "Bench Press", sourcePosition: 1, targetLabel: "Back Squat", targetPosition: 2,
+  });
+  adb(adbPath, serial, "shell", "input", "tap", String(accessibilityTarget.startX), String(accessibilityTarget.startY));
+  adb(adbPath, serial, ...commands.accessibilityMoveDown);
+  const afterAccessibilityMove = adb(adbPath, serial, "exec-out", "uiautomator", "dump", "/dev/tty");
+  if (!phase7PlanOrderIs(afterAccessibilityMove, "Back Squat", 1) || !phase7PlanOrderIs(afterAccessibilityMove, "Bench Press", 2)) {
+    fail("native accessibility action did not commit the plan reorder.");
+  }
+  captureScreenshot(adbPath, serial, path.join(flowDirectory, "phase7-schedule-reorder.png"));
+}
+
 function installedDevice(adbPath, serial, candidate) {
   const packagePath = adb(adbPath, serial, "shell", "pm", "path", PACKAGE).split(/\r?\n/u)
     .find((line) => /^package:\/[^\r\n]+\.apk$/u.test(line))?.slice(8);
@@ -395,6 +484,7 @@ export function executePhase7Maestro(args = process.argv.slice(2)) {
       execFileSync("maestro", ["test", "--device", options.serial, "--format", "junit", "--output", reportPath, "--test-output-dir", flowDirectory, execution.flowPath], { stdio: "inherit" });
       if (!existsSync(reportPath)) fail(`Maestro report is missing: ${contract.id}`);
       rawReports[contract.id] = readFileSync(reportPath);
+      if (contract.id === "phase7-plan-schedule-reorder") executePhase7PlanReorderEvidence(adbPath, options.serial, flowDirectory);
       screenshots[contract.id] = exactPhase7ScreenshotEvidence(flowDirectory, contract.screenshots, contract.id);
     }
     evidence = createPhase7Evidence({ candidate, device, flowExecutions: executableFlows.flows, rawReports, screenshots, fontScaleRestored: false });

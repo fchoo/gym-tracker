@@ -40,7 +40,29 @@ tags:
 - tapOn: "Remove warm-up W1"
 - assertVisible: "Remove warm-up"
 - takeScreenshot: phase7-workout-remove-confirmation
-- tapOn: "Cancel"
+- tapOn:
+    id: "remove-warmup-confirm"
+- extendedWaitUntil:
+    visible: "Warm-up W1 removed"
+    timeout: 60000
+- assertNotVisible: "Remove warm-up W1"
+- repeat:
+    times: 32
+    while:
+      notVisible: "Complete Set 1"
+    commands:
+      - swipe:
+          start: 95%, 75%
+          end: 95%, 25%
+          duration: 500
+- assertVisible: "Complete Set 1"
+- tapOn: "Complete Set 1"
+- extendedWaitUntil:
+    visible: "RESTING · NEXT: SET 2 AT 60 kg × 8"
+    timeout: 60000
+- extendedWaitUntil:
+    visible: "Rest ended"
+    timeout: 240000
 - stopApp
 - launchApp:
     clearState: false
