@@ -6,6 +6,19 @@ import { PNG } from "pngjs";
 
 const projectRoot = path.resolve(import.meta.dirname, "..");
 
+// Reviewed before the exact direct devDependency was installed: the official
+// github.com/pngjs/pngjs package is stable (2023), reported about 57.97M
+// weekly downloads, and exposes no postinstall script. This generator imports
+// only the direct pinned copy below; it never resolves Expo's nested pngjs.
+export const PNGJS_SUPPLY_CHAIN_RECORD = Object.freeze({
+  package: "pngjs",
+  version: "7.0.0",
+  repository: "github.com/pngjs/pngjs",
+  stability: "stable since 2023",
+  weeklyDownloads: "about 57.97M",
+  postinstall: false,
+});
+
 const PALETTE = Object.freeze({
   background: Object.freeze([0xF6, 0xF8, 0xFB, 0xFF]),
   deep: Object.freeze([0x0B, 0x3A, 0x75, 0xFF]),

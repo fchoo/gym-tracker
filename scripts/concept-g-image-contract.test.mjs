@@ -13,6 +13,7 @@ import { PNG } from "pngjs";
 
 import {
   CONCEPT_G_ASSETS,
+  PNGJS_SUPPLY_CHAIN_RECORD,
   checkConceptGAssets,
   generateConceptGAssets,
   renderConceptGAsset,
@@ -146,6 +147,18 @@ test("pins pngjs 7.0.0 as the generator's direct, official dev dependency", () =
   assert.equal(installed.version, "7.0.0");
   assert.equal(installed.repository?.url, "git://github.com/pngjs/pngjs.git");
   assert.equal(installed.scripts?.postinstall, undefined);
+  assert.equal(
+    require.resolve("pngjs"),
+    path.join(projectRoot, "node_modules", "pngjs", "lib", "png.js"),
+  );
+  assert.deepEqual(PNGJS_SUPPLY_CHAIN_RECORD, {
+    package: "pngjs",
+    version: "7.0.0",
+    repository: "github.com/pngjs/pngjs",
+    stability: "stable since 2023",
+    weeklyDownloads: "about 57.97M",
+    postinstall: false,
+  });
 });
 
 test("renders the exact deterministic Concept G pixel contract from the sole generator", () => {
