@@ -20,4 +20,3 @@ tags:
 - tapOn: "Progress"
 - assertVisible: "Progress"
 - takeScreenshot: phase7-navigation-200pct
-- takeScreenshot: phase7-icon-launcher

@@ -67,6 +67,18 @@ test("Phase 7 tooling owns the full executable UX/UI matrix", () => {
   }]);
 });
 
+test("Phase 7 consideration checks resolve to tracked local files", () => {
+  for (const { id, automated_checks: automatedChecks } of PHASE7_CONSIDERATION_CONTRACTS) {
+    for (const check of automatedChecks) {
+      assert.equal(
+        existsSync(path.resolve(projectRoot, check)),
+        true,
+        `${id} cites a missing local check: ${check}`,
+      );
+    }
+  }
+});
+
 test("Phase 7 Maestro flows use source-aligned interactive labels and routes", () => {
   const flowSource = (name) => readFileSync(
     path.join(projectRoot, "maestro/phase7", name),
@@ -91,6 +103,19 @@ test("Phase 7 Maestro flows use source-aligned interactive labels and routes", (
   const iconNavigation = flowSource("icon-navigation-accessibility.yaml");
   assert.match(iconNavigation, /- tapOn: "Settings"/u);
   assert.doesNotMatch(iconNavigation, /tapOn: "Open Settings"/u);
+  assert.doesNotMatch(iconNavigation, /phase7-icon-launcher/u);
+
+  const iconFlow = PHASE7_MAESTRO_FLOW_CONTRACTS.find(({ id }) =>
+    id === "phase7-icon-navigation-accessibility");
+  assert.deepEqual(iconFlow.screenshots, [
+    "phase7-navigation-200pct.png",
+    "phase7-settings-200pct.png",
+  ]);
+
+  const launcherEvidence = PHASE7_CONSIDERATION_CONTRACTS.find(({ id }) => id === "UI-B04");
+  assert.equal(launcherEvidence.owner, "07-10 attended-only launcher evidence");
+  assert.deepEqual(launcherEvidence.flows, []);
+  assert.deepEqual(launcherEvidence.native_backstops, ["N4"]);
 });
 
 test("Phase 7 attended evidence stays exact-byte, N4-only, and observation-only", () => {
