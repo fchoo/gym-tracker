@@ -215,10 +215,6 @@ tags:
 - assertVisible: "Today"
 - assertVisible: "Rest day"
 - tapOn: "Train anyway"
-- assertVisible: "Advance rotation after this workout"
-- assertVisible: "Not selected"
-- tapOn: "Advance rotation after this workout"
-- assertVisible: "Selected"
 - tapOn: "Start Pull"
 - assertVisible: "FOCUSED WORKOUT"
 - assertVisible: "Chin-Up"
@@ -267,8 +263,6 @@ tags:
 - assertVisible: "Today"
 - assertVisible: "Rest day"
 - tapOn: "Train anyway"
-- assertVisible: "Advance rotation after this workout"
-- assertVisible: "Not selected"
 - tapOn: "Start Push"
 - assertVisible: "FOCUSED WORKOUT"
 - assertVisible: "Bench Press"
@@ -298,9 +292,14 @@ tags:
 - tapOn:
     id: "save-partial-workout-confirm"
 - extendedWaitUntil:
-    visible: "Today"
+    visible: "Workout saved"
     timeout: 30000
-- assertVisible: "Rest day"
+- assertVisible: "Return to Today"
+- tapOn: "Return to Today"
+- extendedWaitUntil:
+    visible: "Workout saved as partial"
+    timeout: 30000
+- assertVisible: "Resume workout"
 - stopApp
 - launchApp:
     clearState: true

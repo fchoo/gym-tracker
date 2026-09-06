@@ -34,5 +34,4 @@ name: Phase 1 airplane workout session
 - tapOn: "Discard workout"
 - assertVisible: "Discard workout?"
 - tapOn: "Discard workout"
-- tapOn: "Return to Today"
 - assertVisible: "Today"
