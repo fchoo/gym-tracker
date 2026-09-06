@@ -3349,6 +3349,7 @@ export function WorkoutAppRuntimeProvider({
       }));
       throw error;
     }
+    reconcileAfterCommit(services);
 
     let activeView: ActiveWorkoutView;
     try {
@@ -3373,7 +3374,7 @@ export function WorkoutAppRuntimeProvider({
       });
     }
     return activeView;
-  }, [requireServices, trustedRead]);
+  }, [reconcileAfterCommit, requireServices, trustedRead]);
 
   const updateDraft = useCallback((input: UpdateActiveSetDraftInput) =>
     runWorkoutMutation((repository) =>

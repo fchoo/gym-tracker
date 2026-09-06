@@ -490,6 +490,7 @@ function runtimeRepository(
 ): Repository & {
   activateStarterPlan: jest.MockedFunction<PlansRepository["activateStarterPlan"]>;
   startWorkout: jest.MockedFunction<WorkoutRepository["startWorkout"]>;
+  getTodayView: jest.MockedFunction<Repository["getTodayView"]>;
 } {
   let viewIndex = 0;
   let activationIndex = 0;
@@ -1558,6 +1559,7 @@ describe("WorkoutAppRuntimeProvider", () => {
 
   it("returns the committed active view only after the removal, active read, and trusted refresh", async () => {
     const repository = runtimeRepository([activeView, activeView], [activation]);
+    const lifecycle = runtimeLifecycle();
     const events: string[] = [];
     repository.getTodayView = jest.fn(async () => {
       events.push("trusted-read");
@@ -1599,6 +1601,7 @@ describe("WorkoutAppRuntimeProvider", () => {
       <RuntimeCaptureHarness
         dependencies={dependencies(repository, {
           createWorkoutRepository: () => workoutRepository,
+          createLifecycle: () => lifecycle,
         })}
         onReady={(runtime) => {
           captured = runtime;
@@ -1630,7 +1633,10 @@ describe("WorkoutAppRuntimeProvider", () => {
     expect(workoutRepository.removeWarmup).toHaveBeenCalledWith(warmupInput);
     expect(workoutRepository.getActiveWorkout).toHaveBeenCalledWith("session-1");
     expect(events).toEqual(["remove-warmup", "active-read", "trusted-read"]);
-    expect(captured.workoutRefreshGeneration).toBe(1);
+    expect(captured.workoutRefreshGeneration).toBe(2);
+    await waitFor(() => {
+      expect(lifecycle.trigger).toHaveBeenCalledWith("post_commit", {});
+    });
 
     events.splice(0);
     const workingInput = {
@@ -1653,7 +1659,7 @@ describe("WorkoutAppRuntimeProvider", () => {
     expect(rejected).toBe(conflict);
     expect(workoutRepository.removeWorkingSet).toHaveBeenCalledWith(workingInput);
     expect(events).toEqual(["remove-working"]);
-    expect(captured.workoutRefreshGeneration).toBe(1);
+    expect(captured.workoutRefreshGeneration).toBe(2);
     expect(captured.mutationFailure).toEqual({
       kind: "conflict",
       code: "remove_set_conflict",

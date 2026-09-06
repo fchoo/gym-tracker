@@ -1129,11 +1129,17 @@ async function removeSet(
       removedOrdinal: set.ordinal,
     });
     if (restOwnsRemovedSet) {
-      await setIdleRest(
+      const restRevision = await setIdleRest(
         transaction,
         input.sessionId,
         currentRest?.revision ?? 0,
       );
+      await enqueueRestReconciliation(transaction, {
+        idempotencyKey: `rest:remove:${input.requestId}`,
+        sessionId: input.sessionId,
+        restRevision,
+        nowMs: input.removedAtMs,
+      });
     }
 
     const result: RemoveSetResult = {
