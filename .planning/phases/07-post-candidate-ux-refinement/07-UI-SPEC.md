@@ -197,7 +197,7 @@ Tapping Remove opens a consequential `ConfirmationSheet`; it must focus its canc
 - The confirm button is destructive and busy/disabled while the remove command is in flight. Do not optimistically remove the row.
 - On committed success, remove the row, announce `{Warm-up W{n}|Set {n}} removed`, update the source-backed progress/total/history view, and focus the next available row of the same section; if none remains, focus that section’s Add glyph.
 - On recoverable failure, leave the row and values unchanged; render the inline alert `Set could not be removed. Your workout was not changed. Try again.` or `Warm-up could not be removed. Your workout was not changed. Try again.` The retry is the original Remove action after the error is announced.
-- The command must recalculate active-workout progress and the history snapshot in the serialized SQLite write before the UI announces success.
+- The command must delete and repair all active-session source facts in one serialized SQLite write before the UI announces success. The refreshed active view recalculates progress from remaining rows immediately; any later partial/completed history snapshot is built from those remaining rows at finalization. Do not create an in-progress effective-history projection solely for removal.
 
 ### More workout actions
 

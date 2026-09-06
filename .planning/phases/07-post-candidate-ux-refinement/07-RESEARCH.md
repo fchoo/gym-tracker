@@ -181,6 +181,6 @@ Before N4: `npm run verify:cng` → typecheck/lint/boundaries → full source ma
 - [VERIFIED: npm registry] — `expo-audio` registry queried on 2026-09-06 for version, repository, scripts, and publication metadata; package remains SUS and is not approved until human verification.
 - [VERIFIED: repository sources cited inline] — current writer, runtime, reorder, CNG, candidate, requirements, context, and UI contract.
 
-## Open Questions
+## Open Questions (RESOLVED)
 
-None blocking. The only mandatory execution checkpoint is the package-legitimacy human verification for `expo-audio`; the owner already locked the functional behavior and release gate.
+None blocking. The `expo-audio` package identity is resolved to the official `expo/expo` SDK 57 module at `~57.0.4`; its execution checkpoint records the verified source, range, adoption, absent postinstall, and recency-only heuristic warning before installation. The owner already locked the functional behavior and native-dependency direction.

@@ -26,7 +26,7 @@ Owner-directed interaction and information-architecture refinements captured dur
 20. Add an app icon: simple, elegant "grow stronger" mark. Owner selected concept G: ascending bars in a blue tri-tone. → UX-22
 
 ## Decisions locked with owner
-- Set/warm-up removal = HARD DELETE of the row (new remove command in workout domain + SQLite repository; update progress totals and history snapshot). Not a relabelled skip.
+- Set/warm-up removal = HARD DELETE of the row (new remove command in workout domain + SQLite repository). The committed active view must immediately derive new totals from the remaining rows, and any later partial/completed history snapshot must be created from those same remaining rows. No separate effective-history projection exists while the session is in progress. Not a relabelled skip.
 - Removal is available only for non-completed warm-ups and working sets. Completed rows retain their existing correction/undo path so immutable history and committed workout facts are never silently deleted.
 - Rest-timer audio = ADD a native audio dependency (expo-audio or expo-av) for in-app beeps; foreground-only cue, not authoritative for rest state. This regenerates the Android project → must pass `verify:cng` + full matrix.
 - Day editing remains single-active-day to avoid a long, dense all-days form. Add an unmistakable day switcher that keeps every plan day reachable.
@@ -65,7 +65,7 @@ Owner-directed interaction and information-architecture refinements captured dur
 
 ### UX-18 Remove instead of skip (HARD DELETE)
 - Current skip path: `src/domains/workout/setCommands.ts` `skipWarmup`/`skipWorkingSet` → `workoutRepository.skipWarmup/skipWorkingSet`. No remove/delete command exists yet.
-- Add: `removeWarmup`/`removeWorkingSet` domain commands + `workoutRepository` methods (`src/platform/sqlite/repositories/workoutRepository.ts`) that delete the set row inside the serialized `BEGIN IMMEDIATE` writer, recompute progress totals, and update the history snapshot. Wire through `workoutAppRuntime.tsx` and `ActiveWorkoutScreen` (replace onSkip with onRemove; SetRow glyph becomes a delete/trash action). Preserve idempotency-key/receipt discipline and expected-revision checks. Must add regression + migration-safe reasoning (deleting planned rows vs completed rows; disallow removing an already-completed set unless spec says otherwise — clarify in discuss).
+- Add: `removeWarmup`/`removeWorkingSet` domain commands + `workoutRepository` methods (`src/platform/sqlite/repositories/workoutRepository.ts`) that delete the set row inside the serialized `BEGIN IMMEDIATE` writer and return a committed view whose progress totals derive from the remaining rows. Later partial/completed history snapshots must likewise derive from those remaining rows; do not invent an in-progress effective-history projection. Wire through `workoutAppRuntime.tsx` and `ActiveWorkoutScreen` (replace onSkip with onRemove; SetRow glyph becomes a delete/trash action). Preserve idempotency-key/receipt discipline and expected-revision checks. Disallow removing an already-completed set; legacy skipped rows are incomplete and may be removed.
 
 ### UX-19 More-actions dialog
 - `ActiveWorkoutScreen.tsx` More dialog ~1178+ (`title="More workout actions"`, `closeMoreActions`). Remove: zero-set save, finish-workout-later, Close. Size dialog to content (the dialog/sheet component likely has a fixed min height — check `ConfirmationSheet`/modal styles in `src/ui/components/index.ts`).

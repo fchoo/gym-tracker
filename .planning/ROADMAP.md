@@ -403,4 +403,29 @@ Plans:
   5. The More-actions dialog contains only the retained actions (no zero-set/finish-later/Close), sized to its content; plan editing removes up/down buttons and "Position x of y", exposes Replace as a right-aligned glyph, and the day editor and plan-activation schedule support long-press drag ordering; day editing is reachable for every day.
   6. The rest timer emits a short beep at each of the last three seconds and a long beep at zero; a distinctive owner-approved app icon ships; focused tests, full gates, clean Android generation/build, emulator verification, and a fresh replacement candidate with repeated Samsung N4 review pass, with release approval and promotion remaining separate explicit actions.
 
-**Plans:** TBD (created by /gsd-plan-phase after discussion)
+**Plans:** 10 plans in 5 waves
+
+**Wave 1**
+
+- [ ] 07-01-PLAN.md — Add durable removal receipts and schema-17 restore compatibility.
+- [ ] 07-03-PLAN.md — Simplify Today and consolidate Appearance, rest alerts, history, and recovery in Settings.
+- [ ] 07-05-PLAN.md — Add the owned-plan day switcher and shared accessible drag-first plan editing.
+- [ ] 07-07-PLAN.md — Gate and implement the native local-audio dependency, cue port, and deterministic WAV assets.
+
+**Wave 2**
+
+- [ ] 07-02-PLAN.md — Implement removal commands, atomic repository mutation, remaining-row finalization tests, runtime, and route (depends on 07-01).
+- [ ] 07-06-PLAN.md — Give Weekday and Rotation schedules drag parity in editing and starter activation (depends on 07-05).
+- [ ] 07-08-PLAN.md — Generate and validate Concept G assets with direct pinned pngjs (depends on 07-07).
+
+**Wave 3**
+
+- [ ] 07-04-PLAN.md — Finish ActiveWorkout/SetRow, committed removal UI, More actions, and RestDock audio (depends on 07-02 and 07-07).
+
+**Wave 4** *(depends on all implementation plans)*
+
+- [ ] 07-09-PLAN.md — Build Phase 7 evidence tooling and wire native/evidence gates into the build-once workflow.
+
+**Wave 5** *(depends on 07-09)*
+
+- [ ] 07-10-PLAN.md — Run full gates, dispatch/download one fresh signed candidate, and capture emulator plus exact-byte Samsung N4 evidence without release actions.
