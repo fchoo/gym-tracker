@@ -25,7 +25,6 @@ import {
 
 import {
   FocusablePressable,
-  IconAction,
 } from "./index";
 import {
   GripVertical,
@@ -183,6 +182,7 @@ export function PlanEditorReorderableRow({
   preview = null,
   reorderId = label,
   children,
+  trailing,
   tone = "default",
 }: Readonly<{
   label: string;
@@ -198,6 +198,7 @@ export function PlanEditorReorderableRow({
   preview?: PlanEditorReorderPreview | null;
   reorderId?: string;
   children: React.ReactNode;
+  trailing?: React.ReactNode;
   tone?: "default" | "card";
 }>) {
   const { fontScale } = useWindowDimensions();
@@ -210,9 +211,6 @@ export function PlanEditorReorderableRow({
   const translationY = useSharedValue(0);
   const border = tone === "card" ? colors.contentCardBorder : colors.divider;
   const text = tone === "card" ? colors.contentCardText : colors.textPrimary;
-  const secondary = tone === "card"
-    ? colors.contentCardTextSecondary
-    : colors.textSecondary;
   const canMoveUp = position > 0;
   const canMoveDown = position < count - 1;
   const activePreview = preview ?? localPreview;
@@ -328,9 +326,6 @@ export function PlanEditorReorderableRow({
     motion.setCommitMs,
     neighborDisplacement,
   ]);
-  const handleLabel = isHeld
-    ? `Drag ${label}. Moving to position ${targetPosition + 1} of ${count}`
-    : `Drag ${label}. Position ${position + 1} of ${count}`;
   const recordRowHeight = React.useCallback((event: LayoutChangeEvent) => {
     const measuredHeight = Math.max(
       sizes.minimumTarget,
@@ -364,8 +359,8 @@ export function PlanEditorReorderableRow({
                 ? [{ name: "decrement", label: "Move down" }]
                 : []),
             ]}
-            accessibilityHint="Touch and hold to drag, or use Move up and Move down."
-            accessibilityLabel={handleLabel}
+            accessibilityHint="Touch and hold to drag. Use accessibility actions to move this item."
+            accessibilityLabel={`Reorder ${label}`}
             accessibilityRole="adjustable"
             accessibilityState={{ busy: isHeld }}
             focusable
@@ -374,6 +369,21 @@ export function PlanEditorReorderableRow({
                 requestMove(position - 1);
               }
               if (event.nativeEvent.actionName === "decrement" && canMoveDown) {
+                requestMove(position + 1);
+              }
+            }}
+            onKeyDown={(event) => {
+              const { key } = event.nativeEvent;
+              const shiftKey = (event.nativeEvent as Readonly<{
+                shiftKey?: boolean;
+              }>).shiftKey === true;
+              if (!shiftKey) {
+                return;
+              }
+              if (key === "ArrowUp" && canMoveUp) {
+                requestMove(position - 1);
+              }
+              if (key === "ArrowDown" && canMoveDown) {
                 requestMove(position + 1);
               }
             }}
@@ -400,29 +410,11 @@ export function PlanEditorReorderableRow({
           <View style={styles.reorderLabels}>
             {children}
           </View>
-          <Text style={[
-            typeScale.secondary as TextStyle,
-            styles.reorderPosition,
-            { color: secondary },
-          ]}>
-            {`Position ${position + 1} of ${count}`}
-          </Text>
-          <View style={styles.reorderActions}>
-            <IconAction
-              accessibilityLabel={`Move ${label} up`}
-              disabled={!canMoveUp}
-              icon="moveUp"
-              onPress={() => requestMove(position - 1)}
-              tone={tone}
-            />
-            <IconAction
-              accessibilityLabel={`Move ${label} down`}
-              disabled={!canMoveDown}
-              icon="moveDown"
-              onPress={() => requestMove(position + 1)}
-              tone={tone}
-            />
-          </View>
+          {trailing === undefined ? null : (
+            <View style={styles.reorderTrailing}>
+              {trailing}
+            </View>
+          )}
         </View>
       </Animated.View>
     </GestureHandlerRootView>
@@ -474,12 +466,7 @@ const styles = StyleSheet.create({
     flex: 1,
     minWidth: 0,
   },
-  reorderPosition: {
+  reorderTrailing: {
     flexShrink: 0,
-  },
-  reorderActions: {
-    flexDirection: "row",
-    flexShrink: 0,
-    gap: space[2],
   },
 });
