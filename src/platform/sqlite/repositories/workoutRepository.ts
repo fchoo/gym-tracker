@@ -6,6 +6,9 @@ import type {
   ActiveWorkoutSetStatus,
   ActiveWorkoutView,
   CompleteSetInput,
+  RemoveSetResult,
+  RemoveWarmupInput,
+  RemoveWorkingSetInput,
   SetObservation,
   SetTarget,
   SetValueSource,
@@ -86,6 +89,18 @@ type RestRow = Readonly<{
   expired_at_ms: number | null;
   next_set_id: string | null;
   revision: number;
+}>;
+
+type RemoveReceiptRow = Readonly<{
+  request_sha256: string;
+  operation: "remove_warmup" | "remove_working_set";
+  session_id: string;
+  set_id: string;
+  expected_session_revision: number;
+  expected_set_revision: number;
+  result_session_revision: number;
+  result_json: string;
+  committed_at_ms: number;
 }>;
 
 type CompletionSetRow = SetRow & Readonly<{
@@ -928,6 +943,232 @@ async function nextWorkingSet(
   return row ?? null;
 }
 
+type RemoveSetInput = RemoveWarmupInput | RemoveWorkingSetInput;
+
+type RemoveMutationResult =
+  | Readonly<{ kind: "result"; result: RemoveSetResult }>
+  | Readonly<{ kind: "conflict"; code: string }>;
+
+function receiptMatchesRemoveInput(
+  receipt: RemoveReceiptRow,
+  input: RemoveSetInput,
+  operation: RemoveReceiptRow["operation"],
+): boolean {
+  return receipt.request_sha256 === input.requestSha256
+    && receipt.operation === operation
+    && receipt.session_id === input.sessionId
+    && receipt.set_id === input.setId
+    && receipt.expected_session_revision === input.expectedSessionRevision
+    && receipt.expected_set_revision === input.expectedSetRevision
+    && receipt.committed_at_ms === input.removedAtMs;
+}
+
+async function normalizeRemovedSetOrdinals(
+  transaction: SqliteTransactionExecutor,
+  input: Readonly<{
+    sessionExerciseId: string;
+    setKind: "warmup" | "working";
+    removedOrdinal: number;
+  }>,
+): Promise<void> {
+  const [bounds] = await transaction.queryAll<{
+    max_ordinal: number | null;
+    row_count: number;
+  }>(
+    `SELECT MAX(ordinal) AS max_ordinal, COUNT(*) AS row_count
+     FROM session_sets
+     WHERE session_exercise_id = ? AND set_kind = ?
+       AND ordinal > ?`,
+    [input.sessionExerciseId, input.setKind, input.removedOrdinal],
+  );
+  if (bounds === undefined || bounds.row_count === 0) {
+    return;
+  }
+  const offset = (bounds.max_ordinal ?? 0) + bounds.row_count + 1;
+  await transaction.execute(
+    `UPDATE session_sets
+     SET ordinal = ordinal + ?
+     WHERE session_exercise_id = ? AND set_kind = ?
+       AND ordinal > ?`,
+    [
+      offset,
+      input.sessionExerciseId,
+      input.setKind,
+      input.removedOrdinal,
+    ],
+  );
+  await transaction.execute(
+    `UPDATE session_sets
+     SET ordinal = ordinal - ?
+     WHERE session_exercise_id = ? AND set_kind = ?
+       AND ordinal >= ?`,
+    [
+      offset + 1,
+      input.sessionExerciseId,
+      input.setKind,
+      offset,
+    ],
+  );
+}
+
+async function removeSet(
+  kernel: SqliteKernel,
+  input: RemoveSetInput,
+  operation: RemoveReceiptRow["operation"],
+): Promise<RemoveSetResult> {
+  const mutation = await kernel.write(async (transaction): Promise<RemoveMutationResult> => {
+    const [receipt] = await transaction.queryAll<RemoveReceiptRow>(
+      `SELECT request_sha256, operation, session_id, set_id,
+              expected_session_revision, expected_set_revision,
+              result_session_revision, result_json, committed_at_ms
+       FROM workout_remove_receipts
+       WHERE request_id = ?`,
+      [input.requestId],
+    );
+    if (receipt !== undefined) {
+      if (!receiptMatchesRemoveInput(receipt, input, operation)) {
+        return { kind: "conflict", code: "remove_set_replay_conflict" };
+      }
+      return {
+        kind: "result",
+        result: {
+          outcome: "already_committed",
+          sessionId: receipt.session_id,
+          setId: receipt.set_id,
+          sessionRevision: receipt.result_session_revision,
+        },
+      };
+    }
+
+    const rows = await completionRows(transaction, input.sessionId, input.setId);
+    if (rows === null) {
+      return { kind: "conflict", code: "remove_set_not_found" };
+    }
+    const { session, set } = rows;
+    if (
+      session.status !== "in_progress"
+      || session.revision !== input.expectedSessionRevision
+      || set.set_kind !== (operation === "remove_warmup" ? "warmup" : "working")
+      || set.revision !== input.expectedSetRevision
+      || !["planned", "draft", "skipped"].includes(set.status)
+    ) {
+      return { kind: "conflict", code: "remove_set_conflict" };
+    }
+
+    const [snapshotReference] = await transaction.queryAll<{ id: string }>(
+      `SELECT id
+       FROM session_undo_snapshots
+       WHERE completed_set_id = ?
+       LIMIT 1`,
+      [set.id],
+    );
+    if (snapshotReference !== undefined) {
+      return { kind: "conflict", code: "remove_set_history_immutable" };
+    }
+
+    const activeOwnsRemovedSet = session.active_set_id === set.id;
+    const next = activeOwnsRemovedSet
+      ? await nextWorkingSet(transaction, input.sessionId, set.id)
+      : null;
+    const currentRest = await restRow(transaction, input.sessionId);
+    const restOwnsRemovedSet = currentRest?.next_set_id === set.id;
+
+    if (activeOwnsRemovedSet) {
+      const hasCurrentExerciseWork = next?.exercise_id === set.session_exercise_id;
+      await transaction.execute(
+        `UPDATE session_exercises
+         SET status = ?, revision = revision + 1
+         WHERE id = ? AND session_id = ?`,
+        [
+          hasCurrentExerciseWork ? "active" : "completed",
+          set.session_exercise_id,
+          input.sessionId,
+        ],
+      );
+      if (next !== null && next.exercise_id !== set.session_exercise_id) {
+        await transaction.execute(
+          `UPDATE session_exercises
+           SET status = "active", revision = revision + 1
+           WHERE id = ? AND session_id = ?`,
+          [next.exercise_id, input.sessionId],
+        );
+      }
+    }
+
+    const sessionUpdate = await transaction.execute(
+      `UPDATE workout_sessions
+       SET active_session_exercise_id = ?,
+           active_set_id = ?,
+           revision = revision + 1
+       WHERE id = ? AND revision = ? AND status = 'in_progress'`,
+      [
+        activeOwnsRemovedSet
+          ? next?.exercise_id ?? set.session_exercise_id
+          : session.active_session_exercise_id,
+        activeOwnsRemovedSet ? next?.set_id ?? null : session.active_set_id,
+        input.sessionId,
+        input.expectedSessionRevision,
+      ],
+    );
+    if (sessionUpdate.changes !== 1) {
+      throw new Error("remove_set_session_update_failed");
+    }
+
+    const deletion = await transaction.execute(
+      `DELETE FROM session_sets
+       WHERE id = ? AND revision = ?
+         AND status IN ('planned', 'draft', 'skipped')`,
+      [set.id, input.expectedSetRevision],
+    );
+    if (deletion.changes !== 1) {
+      throw new Error("remove_set_conditional_delete_failed");
+    }
+    await normalizeRemovedSetOrdinals(transaction, {
+      sessionExerciseId: set.session_exercise_id,
+      setKind: set.set_kind,
+      removedOrdinal: set.ordinal,
+    });
+    if (restOwnsRemovedSet) {
+      await setIdleRest(
+        transaction,
+        input.sessionId,
+        currentRest?.revision ?? 0,
+      );
+    }
+
+    const result: RemoveSetResult = {
+      outcome: "committed",
+      sessionId: input.sessionId,
+      setId: input.setId,
+      sessionRevision: input.expectedSessionRevision + 1,
+    };
+    await transaction.execute(
+      `INSERT INTO workout_remove_receipts
+        (request_id, request_sha256, operation, session_id, set_id,
+         expected_session_revision, expected_set_revision,
+         result_session_revision, result_json, committed_at_ms)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      [
+        input.requestId,
+        input.requestSha256,
+        operation,
+        input.sessionId,
+        input.setId,
+        input.expectedSessionRevision,
+        input.expectedSetRevision,
+        result.sessionRevision,
+        JSON.stringify(result),
+        input.removedAtMs,
+      ],
+    );
+    return { kind: "result", result };
+  });
+  if (mutation.kind === "conflict") {
+    throw new WorkoutCommandConflictError(mutation.code);
+  }
+  return mutation.result;
+}
+
 async function restDurationSeconds(
   transaction: SqliteTransactionExecutor,
   set: CompletionSetRow,
@@ -1082,6 +1323,14 @@ export function createWorkoutRepository(
 
     getWorkoutSession: (sessionId: string) =>
       loadActiveWorkout(kernel, sessionId),
+
+    removeWarmup: (input) => removeSet(kernel, input, "remove_warmup"),
+
+    removeWorkingSet: (input) => removeSet(
+      kernel,
+      input,
+      "remove_working_set",
+    ),
 
     async updateActiveSetDraft(input) {
       const observation = observationColumns(input.observation);

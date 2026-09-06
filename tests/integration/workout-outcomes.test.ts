@@ -29,6 +29,7 @@ import {
 } from "../../src/domains/workout/finishWorkout";
 import {
   completeSet,
+  removeWorkingSet,
 } from "../../src/domains/workout/setCommands";
 import {
   createWorkoutOutcomeRepository,
@@ -213,6 +214,78 @@ async function setupPlannedWorkout(
   };
 }
 
+async function removeThenFinalize(
+  input: Readonly<{ terminal: "partial" | "completed" }>,
+) {
+  const { kernel, repository, session } = await setupPlannedWorkout();
+  const activeRepository = createWorkoutRepository(kernel);
+  const initial = await activeRepository.getActiveWorkout(session.id);
+  const removed = initial.currentExercise.workingSets[0]!;
+  await removeWorkingSet({
+    repository: activeRepository,
+    input: {
+      requestId: `remove-before-${input.terminal}`,
+      requestSha256: input.terminal === "partial" ? "f".repeat(64) : "a".repeat(64),
+      sessionId: session.id,
+      setId: removed.id,
+      expectedSessionRevision: initial.revision,
+      expectedSetRevision: removed.revision,
+      removedAtMs: 1_786_853_601_000,
+    },
+  });
+  const remaining = await activeRepository.getActiveWorkout(session.id);
+  if (input.terminal === "completed") {
+    await kernel.write(async (transaction) => {
+      await transaction.execute(
+        `UPDATE session_sets
+         SET status = 'completed',
+             observed_load_grams = target_load_grams,
+             observed_reps = target_max_reps,
+             observed_json = CASE metric_profile
+               WHEN 'load_reps' THEN json_object(
+                 'version', 1, 'profile', 'load_reps',
+                 'loadGrams', target_load_grams,
+                 'reps', target_max_reps, 'source', 'manual'
+               )
+               WHEN 'timed_hold' THEN json_object(
+                 'version', metric_contract_version, 'profile', 'timed_hold',
+                 'durationSeconds', json_extract(target_json, '$.durationSeconds'),
+                 'source', 'manual'
+               )
+               ELSE observed_json
+             END,
+             completed_at_ms = 1786853602000,
+             revision = revision + 1
+         WHERE id IN (
+           SELECT ss.id FROM session_sets ss
+           JOIN session_exercises se ON se.id = ss.session_exercise_id
+           WHERE se.session_id = ? AND ss.set_kind = 'working'
+         )`,
+        [session.id],
+      );
+      await transaction.execute(
+        `UPDATE session_exercises
+         SET status = 'completed', revision = revision + 1
+         WHERE session_id = ?`,
+        [session.id],
+      );
+    });
+  }
+  const result = input.terminal === "partial"
+    ? await repository.finishPartial({
+        sessionId: session.id,
+        expectedSessionRevision: remaining.revision,
+        confirmation: "save_partial_workout",
+        endedAtMs: 1_786_853_700_000,
+      })
+    : await repository.finishCompleted({
+        sessionId: session.id,
+        expectedSessionRevision: remaining.revision,
+        endedAtMs: 1_786_853_700_000,
+      });
+  return { kernel, repository, result, session, removed };
+}
+
 async function seedPendingRecommendation(
   kernel: SqliteKernel,
   sessionId: string,
@@ -278,6 +351,51 @@ async function seedPendingRecommendation(
 }
 
 describe("Plan 01-10 explicit workout outcomes", () => {
+  it.each(["partial", "completed"] as const)(
+    "finalizes %s history from remaining rows after hard removal without an active overlay",
+    async (terminal) => {
+      const { kernel, repository, result, session, removed } = await removeThenFinalize({
+        terminal,
+      });
+      expect(result.detail).toMatchObject({
+        status: terminal,
+        workingSetProgress: { planned: 14 },
+      });
+      expect(result.detail.exercises.flatMap(({ workingSets }) => workingSets))
+        .not.toContainEqual(expect.objectContaining({ id: removed.id }));
+      const outcomeSnapshot = await repository.getSessionDetail(session.id);
+      expect(outcomeSnapshot).toMatchObject({
+        status: terminal,
+        workingSetProgress: { planned: 14 },
+      });
+      expect(outcomeSnapshot.exercises.flatMap(({ workingSets }) => workingSets))
+        .not.toContainEqual(expect.objectContaining({ id: removed.id }));
+      await expect(kernel.queryAll<{ id: string }>(
+        `SELECT ss.id
+         FROM session_sets ss
+         JOIN session_exercises se ON se.id = ss.session_exercise_id
+         WHERE se.session_id = ?
+         ORDER BY ss.id`,
+        [session.id],
+      )).resolves.toEqual(expect.not.arrayContaining([
+        expect.objectContaining({ id: removed.id }),
+      ]));
+      await expect(kernel.queryAll(
+        "SELECT * FROM history_session_overlays WHERE session_id = ?",
+        [session.id],
+      )).resolves.toEqual([]);
+      const projection = await loadEffectiveHistoryProjectionSessions(kernel);
+      expect(projection.find(({ sessionId }) => sessionId === session.id))
+        .toMatchObject({ plannedWorkingSets: 14 });
+      const calendar = await createHistoryRepository(kernel).loadCalendarMonth({
+        month: "2026-08-01",
+        selectedDate: "2026-08-17",
+        today: "2026-08-17",
+      });
+      expect(calendar.sessions.find(({ id }) => id === session.id))
+        .toMatchObject({ workingSetProgress: { planned: 14 } });
+    },
+  );
   it("finishes completed only when every intended working set is resolved", async () => {
     const { kernel, repository, session } = await setupPlannedWorkout();
     await seedPendingRecommendation(
