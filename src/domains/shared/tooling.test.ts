@@ -439,15 +439,24 @@ describe("Plan 01-03 test and boundary tooling", () => {
     );
   });
 
-  it("targets the actionable finish control after the last skipped exercise", () => {
+  it("targets the retained partial finish flow without exercise skip actions", () => {
     const fullLoop = readFileSync(
       join(repositoryRoot, "maestro/smoke/phase1-full-loop.yaml"),
       "utf8",
     );
 
     expect(fullLoop).toMatch(
-      /tapOn: "Skip Plank"\n- tapOn: "Skip exercise"\n- scrollUntilVisible:\n    element:\n      text: "Finish workout"\n    direction: UP\n    centerElement: true\n- assertVisible: "Finish workout"\n- tapOn: "Finish workout"/u,
+      /tapOn: "More workout actions"\n- tapOn: "Finish as partial"\n- assertVisible: "Save partial workout\?"\n- tapOn:\n    id: "save-partial-workout-confirm"\n- assertVisible: "Workout saved"\n- assertVisible: "Back Squat"/u,
     );
+    for (const removedAction of [
+      "Skip Bench Press",
+      "Skip Lat Pulldown",
+      "Skip Romanian Deadlift",
+      "Skip Plank",
+      "Skip exercise",
+    ]) {
+      expect(fullLoop).not.toContain(removedAction);
+    }
   });
 
   it("scrolls through recommendation decisions and workout details", () => {
