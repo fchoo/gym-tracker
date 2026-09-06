@@ -405,6 +405,32 @@ test("Phase 6 screenshot evidence accepts Maestro nested output without weakenin
     () => exactScreenshotEvidence(root, expected, "phase6-progress-library"),
     /required screenshots are missing or renamed/u,
   );
+  rmSync(duplicateDirectory, { force: true, recursive: true });
+
+  // The N3 verify flow runs inside the reserved native-drag/ subdirectory and
+  // captures its own screenshot there; excluding that directory must keep the
+  // parent flow's exact screenshot set intact (candidate run 33998121093).
+  const nativeDragDirectory = path.join(
+    root,
+    "native-drag",
+    "2026-09-03_161000",
+    "Phase 6 production continuous held-drag verification",
+    "takeScreenshot",
+  );
+  mkdirSync(nativeDragDirectory, { recursive: true });
+  writeFileSync(
+    path.join(nativeDragDirectory, "phase6-reorder-displacement.png"),
+    Buffer.from("89504e470d0a1a0a03", "hex"),
+  );
+  assert.throws(
+    () => exactScreenshotEvidence(root, expected, "phase6-progress-library"),
+    /required screenshots are missing or renamed/u,
+  );
+  assert.deepEqual(
+    exactScreenshotEvidence(root, expected, "phase6-progress-library", ["native-drag"])
+      .map(({ file }) => file),
+    expected,
+  );
 });
 
 test("Phase 6 evidence outputs reject symlink escape through output or report descendants", async () => {
