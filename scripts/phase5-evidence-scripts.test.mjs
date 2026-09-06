@@ -590,17 +590,25 @@ test("Phase 5 recovery flows target the unique Data and recovery action", () => 
     path.join(projectRoot, "app/more/index.tsx"),
     "utf8",
   );
+  const settingsScreen = readFileSync(
+    path.join(projectRoot, "src/ui/screens/SettingsScreen.tsx"),
+    "utf8",
+  );
   const expectedTap = [
     "- tapOn:",
     '    id: "more-data-and-recovery"',
   ].join("\n");
 
   assert.match(
-    moreRoute,
+    settingsScreen,
     /label="Data and recovery"[\s\S]{0,160}testID="more-data-and-recovery"/u,
   );
-  assert.match(todayRoute, /onOpenHistoryAndData=\{\(\) => router\.push\("\/more" as Href\)\}/u);
-  assert.match(todayScreen, /label="History and data"[\s\S]{0,120}onPress=\{onOpenHistoryAndData\}/u);
+  assert.match(
+    moreRoute,
+    /onOpenDataAndRecovery=\{\(\) =>[\s\S]{0,120}router\.push\("\/more\/data-and-recovery" as Href\)\}/u,
+  );
+  assert.match(todayRoute, /onOpenSettings=\{\(\) => router\.push\("\/more" as Href\)\}/u);
+  assert.match(todayScreen, /accessibilityLabel="Settings"[\s\S]{0,120}onPress=\{onOpenSettings\}/u);
   for (const relativePath of [
     "maestro/phase5/data-recovery.yaml",
     "maestro/phase5/adaptive-accessibility.yaml",
@@ -608,7 +616,7 @@ test("Phase 5 recovery flows target the unique Data and recovery action", () => 
     const flow = readFileSync(path.join(projectRoot, relativePath), "utf8");
     assert.match(
       flow,
-      /- assertVisible: "Today"\n- extendedWaitUntil:\n    visible: "Use Full Body Foundation"\n    timeout: 90000\n- assertVisible: "History and data"\n- tapOn: "History and data"\n- assertVisible: "Data and recovery"\n- tapOn:\n    id: "more-data-and-recovery"/u,
+      /- assertVisible: "Today"\n- extendedWaitUntil:\n    visible: "Use Full Body Foundation"\n    timeout: 90000\n- assertVisible: "Settings"\n- tapOn: "Settings"\n- assertVisible: "Data and recovery"\n- tapOn:\n    id: "more-data-and-recovery"/u,
       relativePath,
     );
     assert.ok(flow.includes(expectedTap), relativePath);
