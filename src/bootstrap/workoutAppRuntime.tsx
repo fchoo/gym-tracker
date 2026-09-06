@@ -111,6 +111,9 @@ import {
 import type {
   ActiveWorkoutView,
   FinishOutcomeResult,
+  RemoveSetResult,
+  RemoveWarmupInput,
+  RemoveWorkingSetInput,
   ReviseCompletedSetInput,
   SessionDetail,
   TodayView,
@@ -128,6 +131,8 @@ import {
   startWorkout,
   completeSet,
   completeWarmup,
+  removeWarmup,
+  removeWorkingSet,
   reviseCompletedSet,
   resumePartialWorkout,
   saveZeroSetWorkout,
@@ -153,12 +158,6 @@ import {
   type UpdateActiveSetDraftInput,
   type UpdateWarmupDraftInput,
 } from "../domains/workout";
-import {
-  copyPreviousWarmup,
-} from "../domains/workout/setCommands";
-import type {
-  CopyPreviousWarmupInput,
-} from "../domains/workout/activeWorkout";
 import type {
   AppError,
 } from "../domains/shared";
@@ -627,9 +626,8 @@ type RuntimeValue = RuntimeState & Readonly<{
   discardWorkout(input: DiscardWorkoutInput): Promise<FinishOutcomeResult>;
   finishCompleted(input: FinishCompletedInput): Promise<FinishOutcomeResult>;
   finishPartial(input: FinishPartialInput): Promise<FinishOutcomeResult>;
-  copyPreviousWarmup(
-    input: CopyPreviousWarmupInput,
-  ): Promise<CommittedWorkoutMutationResult>;
+  removeWarmup(input: RemoveWarmupInput): Promise<ActiveWorkoutView>;
+  removeWorkingSet(input: RemoveWorkingSetInput): Promise<ActiveWorkoutView>;
   reviseCompletedSet(
     input: ReviseCompletedSetInput,
   ): Promise<CommittedWorkoutMutationResult>;
@@ -3318,6 +3316,47 @@ export function WorkoutAppRuntimeProvider({
       : Object.freeze({ ...view, committedSetId });
   }, [requireServices, trustedRead]);
 
+  const runWorkoutRemoval = useCallback(async (
+    input: RemoveWarmupInput | RemoveWorkingSetInput,
+    mutation: (
+      repository: ReturnType<typeof createWorkoutRepository>,
+    ) => Promise<RemoveSetResult>,
+  ): Promise<ActiveWorkoutView> => {
+    const services = requireServices();
+    try {
+      await mutation(services.workoutRepository);
+    } catch (error) {
+      const failure = mapWorkoutMutationFailure(error);
+      setState((current) => ({
+        ...current,
+        actionFailure: {
+          code: "workout_action_failed",
+          correlationCode: "GT-ACTION01",
+        },
+        mutationFailure: failure,
+      }));
+      throw error;
+    }
+
+    let activeView: ActiveWorkoutView;
+    try {
+      activeView = await services.workoutRepository.getActiveWorkout(input.sessionId);
+      workoutRefreshGenerationRef.current += 1;
+      setState(await trustedRead(services));
+    } catch (error) {
+      setState((current) => ({
+        ...current,
+        actionFailure: {
+          code: "workout_action_failed",
+          correlationCode: "GT-ACTION01",
+        },
+        workoutRefreshGeneration: workoutRefreshGenerationRef.current,
+      }));
+      throw error;
+    }
+    return activeView;
+  }, [requireServices, trustedRead]);
+
   const updateDraft = useCallback((input: UpdateActiveSetDraftInput) =>
     runWorkoutMutation((repository) =>
       updateActiveSetDraft({ repository, input }),
@@ -3342,11 +3381,13 @@ export function WorkoutAppRuntimeProvider({
     ) as Promise<CommittedWorkoutMutationResult>,
   [runWorkoutMutation]);
 
-  const copyWorkoutWarmup = useCallback((input: CopyPreviousWarmupInput) =>
-    runWorkoutMutation((repository) =>
-      copyPreviousWarmup({ repository, input }),
-      input.setId,
-    ) as Promise<CommittedWorkoutMutationResult>, [runWorkoutMutation]);
+  const removeWorkoutWarmup = useCallback((input: RemoveWarmupInput) =>
+    runWorkoutRemoval(input, (repository) => removeWarmup({ repository, input })),
+  [runWorkoutRemoval]);
+
+  const removeWorkoutWorkingSet = useCallback((input: RemoveWorkingSetInput) =>
+    runWorkoutRemoval(input, (repository) => removeWorkingSet({ repository, input })),
+  [runWorkoutRemoval]);
 
   const reviseWorkoutCompletedSet = useCallback((
     input: ReviseCompletedSetInput,
@@ -3549,7 +3590,6 @@ export function WorkoutAppRuntimeProvider({
     adjustRest: adjustWorkoutRest,
     completeSet: completeWorkoutSet,
     completeWarmup: completeWorkoutWarmup,
-    copyPreviousWarmup: copyWorkoutWarmup,
     createSecureBackup: (input) =>
       requireServices().backupCommands.createSecureBackup(input),
     createCsvExport: async () => {
@@ -3642,6 +3682,8 @@ export function WorkoutAppRuntimeProvider({
     recordTrainAnyway: (input) =>
       requireServices().schedules.recordTrainAnyway(input),
     recordExerciseEffort: recordWorkoutEffort,
+    removeWarmup: removeWorkoutWarmup,
+    removeWorkingSet: removeWorkoutWorkingSet,
     reviseCompletedSet: reviseWorkoutCompletedSet,
     refresh,
     retryRestoreRebuild: async () => {
@@ -3697,7 +3739,6 @@ export function WorkoutAppRuntimeProvider({
     adjustWorkoutRest,
     completeWorkoutSet,
     completeWorkoutWarmup,
-    copyWorkoutWarmup,
     requireServices,
     createRuntimeCustomExercise,
     editRuntimeCustomExercise,
@@ -3736,8 +3777,11 @@ export function WorkoutAppRuntimeProvider({
     requestRestNotificationPermission,
     setRestAlertPreferences,
     recordWorkoutEffort,
+    removeWorkoutWarmup,
+    removeWorkoutWorkingSet,
     reviseWorkoutCompletedSet,
     refresh,
+    runWorkoutRemoval,
     resumeWorkoutRest,
     resumeSavedPartial,
     searchLibraryExercises,

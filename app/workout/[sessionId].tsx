@@ -15,9 +15,6 @@ import {
   useWorkoutAppRuntime,
 } from "../../src/bootstrap/workoutAppRuntime";
 import {
-  createWorkoutMutationTestCommandAdapters,
-} from "../../src/bootstrap/workoutMutationTestControls";
-import {
   AdaptiveScreen,
 } from "../../src/ui/layout/AdaptiveScreen";
 import {
@@ -49,13 +46,6 @@ export default function ActiveWorkoutRoute() {
     "zero_sets" | "discard" | null
   >(null);
   const [outcomeBusy, setOutcomeBusy] = useState(false);
-  const mutationCommands = createWorkoutMutationTestCommandAdapters({
-    addWarmup: runtime.addWarmup,
-    addWorkingSet: runtime.addWorkingSet,
-    copyPreviousWarmup: runtime.copyPreviousWarmup,
-    reviseCompletedSet: runtime.reviseCompletedSet,
-  });
-
   useEffect(() => {
     let active = true;
     setFailed(false);
@@ -219,13 +209,15 @@ export default function ActiveWorkoutRoute() {
       commands={{
         updateActiveSetDraft: runtime.updateActiveSetDraft,
         updateWarmupDraft: runtime.updateWarmupDraft,
-        addWarmup: mutationCommands.addWarmup,
-        addWorkingSet: mutationCommands.addWorkingSet,
+        addWarmup: runtime.addWarmup,
+        addWorkingSet: runtime.addWorkingSet,
         completeWarmup: runtime.completeWarmup,
+        removeWarmup: runtime.removeWarmup,
+        removeWorkingSet: runtime.removeWorkingSet,
         skipWarmup: runtime.skipWarmup,
         skipWorkingSet: runtime.skipWorkingSet,
         completeSet: runtime.completeSet,
-        reviseCompletedSet: mutationCommands.reviseCompletedSet,
+        reviseCompletedSet: runtime.reviseCompletedSet,
         startManualRest: runtime.startManualRest,
         pauseRest: runtime.pauseRest,
         resumeRest: runtime.resumeRest,

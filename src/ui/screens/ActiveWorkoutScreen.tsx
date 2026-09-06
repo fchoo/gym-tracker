@@ -35,6 +35,8 @@ import type {
   FinishCompletedInput,
   FinishOutcomeResult,
   FinishPartialInput,
+  RemoveWarmupInput,
+  RemoveWorkingSetInput,
   ReviseCompletedSetInput,
   SaveZeroSetInput,
   SetObservation,
@@ -85,6 +87,8 @@ export interface ActiveWorkoutCommands {
   addWarmup(input: AddWarmupInput): Promise<CommittedSetMutationResult>;
   addWorkingSet(input: AddWorkingSetInput): Promise<CommittedSetMutationResult>;
   completeWarmup(input: CompleteWarmupInput): Promise<ActiveWorkoutView>;
+  removeWarmup?(input: RemoveWarmupInput): Promise<ActiveWorkoutView>;
+  removeWorkingSet?(input: RemoveWorkingSetInput): Promise<ActiveWorkoutView>;
   skipWarmup(input: SkipWarmupInput): Promise<ActiveWorkoutView>;
   skipWorkingSet(input: SkipWorkingSetInput): Promise<ActiveWorkoutView>;
   completeSet(input: CompleteSetInput): Promise<CompleteSetResult>;
