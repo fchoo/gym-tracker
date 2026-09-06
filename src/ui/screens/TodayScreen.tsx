@@ -66,11 +66,10 @@ export type TodayScreenProps = Readonly<{
   onResumeWorkout?: (sessionId: string, expectedRevision?: number) => void;
   onReviewSuggestion?: (exerciseId: string) => void;
   pendingRecommendations?: readonly ProgressRecommendationReview[];
-  onStartEmpty?: (advanceRotation?: boolean) => void;
+  onStartEmpty?: () => void;
   onStartPlanDay?: (
     dayId: string,
     mode: "scheduled" | "alternate" | "rest_day",
-    advanceRotation?: boolean,
   ) => void;
   scheduleToday?: ScheduleTodayPresentation;
   chooseScheduleTimeZone?: (
@@ -178,19 +177,16 @@ function ScheduledContent({
   onStartEmpty,
   onReviewSuggestion,
   pendingRecommendations,
-  scheduleToday,
 }: Readonly<{
   view: Extract<TodayView, { state: "scheduled" }>;
   planDays: readonly ActivatedPlanDay[];
   onStart: (
     dayId: string,
     mode: "scheduled" | "alternate",
-    advanceRotation: boolean,
   ) => void;
-  onStartEmpty: (advanceRotation: boolean) => void;
+  onStartEmpty: () => void;
   onReviewSuggestion: (exerciseId: string) => void;
   pendingRecommendations: readonly ProgressRecommendationReview[];
-  scheduleToday?: ScheduleTodayPresentation;
 }>) {
   const [startSheetVisible, setStartSheetVisible] = useState(false);
   const { colors } = useAppTheme();
@@ -214,7 +210,7 @@ function ScheduledContent({
         />
         <PrimaryAction
           label={`Start ${view.dayName}`}
-          onPress={() => onStart(view.dayId, "scheduled", false)}
+          onPress={() => onStart(view.dayId, "scheduled")}
         />
         <SecondaryAction
           label="Choose another day"
@@ -276,12 +272,10 @@ function ScheduledContent({
       </View>
       <WorkoutStartSheet
         onClose={() => setStartSheetVisible(false)}
-        allowRotationAdvance={scheduleToday?.mode === "rotation"}
-        onStartDay={(dayId, advanceRotation) => {
+        onStartDay={(dayId) => {
           onStart(
             dayId,
             dayId === view.dayId ? "scheduled" : "alternate",
-            dayId === view.dayId ? false : advanceRotation,
           );
         }}
         onStartEmpty={onStartEmpty}
@@ -299,17 +293,14 @@ function RestDayContent({
   planDays,
   onStart,
   onStartEmpty,
-  scheduleToday,
 }: Readonly<{
   view: Extract<TodayView, { state: "rest_day" }>;
   planDays: readonly ActivatedPlanDay[];
   onStart: (
     dayId: string,
     mode: "rest_day" | "alternate",
-    advanceRotation: boolean,
   ) => void;
-  onStartEmpty: (advanceRotation: boolean) => void;
-  scheduleToday?: ScheduleTodayPresentation;
+  onStartEmpty: () => void;
 }>) {
   const [startSheetVisible, setStartSheetVisible] = useState(false);
   const startSheetActionRef = useRef<View>(null);
@@ -329,13 +320,11 @@ function RestDayContent({
         />
       </ContentCard>
       <WorkoutStartSheet
-        allowRotationAdvance={scheduleToday?.mode === "rotation"}
         onClose={() => setStartSheetVisible(false)}
-        onStartDay={(dayId, advanceRotation) => {
+        onStartDay={(dayId) => {
           onStart(
             dayId,
             dayId === view.nextDayId ? "rest_day" : "alternate",
-            advanceRotation,
           );
         }}
         onStartEmpty={onStartEmpty}
@@ -411,16 +400,9 @@ export function TodayScreen({
           <ScheduledContent
             onReviewSuggestion={onReviewSuggestion}
             pendingRecommendations={pendingRecommendations}
-            onStart={(dayId, mode, advanceRotation) => {
-              if (scheduleToday?.mode === "rotation") {
-                onStartPlanDay(dayId, mode, advanceRotation);
-                return;
-              }
-              onStartPlanDay(dayId, mode);
-            }}
-            onStartEmpty={(advanceRotation) => onStartEmpty(advanceRotation)}
+            onStart={(dayId, mode) => onStartPlanDay(dayId, mode)}
+            onStartEmpty={onStartEmpty}
             planDays={planDays}
-            {...(scheduleToday === undefined ? {} : { scheduleToday })}
             view={view}
           />
         );
@@ -428,16 +410,9 @@ export function TodayScreen({
       case "rest_day":
         content = (
           <RestDayContent
-            onStart={(dayId, mode, advanceRotation) => {
-              if (scheduleToday?.mode === "rotation") {
-                onStartPlanDay(dayId, mode, advanceRotation);
-                return;
-              }
-              onStartPlanDay(dayId, mode);
-            }}
-            onStartEmpty={(advanceRotation) => onStartEmpty(advanceRotation)}
+            onStart={(dayId, mode) => onStartPlanDay(dayId, mode)}
+            onStartEmpty={onStartEmpty}
             planDays={planDays}
-            {...(scheduleToday === undefined ? {} : { scheduleToday })}
             view={view}
           />
         );

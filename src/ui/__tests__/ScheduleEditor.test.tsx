@@ -750,7 +750,7 @@ describe("schedule editor and Today expansion", () => {
     await fireEvent.press(screen.getByRole("button", {
       name: "Start empty workout",
     }));
-    expect(onStartEmpty).toHaveBeenCalledWith(false);
+    expect(onStartEmpty).toHaveBeenCalledWith();
   });
 
   it("omits manual rotation transitions from Today", async () => {
@@ -792,7 +792,7 @@ describe("schedule editor and Today expansion", () => {
     expect(screen.getByRole("button", { name: "Choose another day" })).toBeOnTheScreen();
   });
 
-  it("requires explicit rotation advancement for Train anyway", async () => {
+  it("does not expose manual rotation advancement for Train anyway", async () => {
     const start = jest.fn();
     const ExpandedToday = TodayScreen as React.ComponentType<any>;
     await render(
@@ -823,21 +823,15 @@ describe("schedule editor and Today expansion", () => {
     );
 
     await fireEvent.press(screen.getByRole("button", { name: "Train anyway" }));
-    const explicit = screen.getByRole("checkbox", {
+    expect(screen.queryByRole("checkbox", {
       name: "Advance rotation after this workout",
-    });
-    expect(explicit).not.toBeChecked();
+    })).not.toBeOnTheScreen();
+    expect(screen.queryByText("Advance rotation after this workout"))
+      .not.toBeOnTheScreen();
     await fireEvent.press(screen.getByRole("button", {
       name: "Start Strength A",
     }));
-    expect(start).toHaveBeenLastCalledWith("day-a", "rest_day", false);
-
-    await fireEvent.press(screen.getByRole("button", { name: "Train anyway" }));
-    await fireEvent.press(explicit);
-    await fireEvent.press(screen.getByRole("button", {
-      name: "Start Strength A",
-    }));
-    expect(start).toHaveBeenLastCalledWith("day-a", "rest_day", true);
+    expect(start).toHaveBeenLastCalledWith("day-a", "rest_day");
   });
 
   it("confirms pending override replacement and keeps Used override immutable", async () => {

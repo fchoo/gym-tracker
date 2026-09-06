@@ -282,7 +282,7 @@ describe("Plan 01-07 TodayScreen", () => {
     );
     expect(
       screen.getByText(
-        "This will not advance your schedule unless you explicitly mark the planned day complete or skipped.",
+        "Alternate, rest-day, and empty workouts do not advance your schedule. Completing the scheduled workout advances it.",
       ),
     ).toBeOnTheScreen();
     expect(screen.getByTestId("workout-start-sheet-content")).toHaveProp(
@@ -292,6 +292,9 @@ describe("Plan 01-07 TodayScreen", () => {
     expect(screen.getByTestId("workout-start-sheet-content")).toHaveStyle({
       maxHeight: "90%",
     });
+    expect(screen.queryByRole("checkbox", {
+      name: "Advance rotation after this workout",
+    })).not.toBeOnTheScreen();
     await fireEvent.press(
       screen.getByRole("button", { name: "Start Full Body B" }),
     );
@@ -299,7 +302,7 @@ describe("Plan 01-07 TodayScreen", () => {
     await fireEvent.press(
       screen.getByRole("button", { name: "Start empty workout" }),
     );
-    expect(startEmpty).toHaveBeenCalledTimes(1);
+    expect(startEmpty).toHaveBeenCalledWith();
   });
 
   it("shows rest day context and Train anyway without schedule advancement copy", async () => {
@@ -320,8 +323,11 @@ describe("Plan 01-07 TodayScreen", () => {
     await fireEvent.press(
       screen.getByRole("button", { name: "Train anyway" }),
     );
+    expect(screen.queryByRole("checkbox", {
+      name: "Advance rotation after this workout",
+    })).not.toBeOnTheScreen();
     expect(
-      screen.getByText(/will not advance your schedule/iu),
+      screen.getByText(/do not advance your schedule/iu),
     ).toBeOnTheScreen();
     await fireEvent.press(
       screen.getByRole("button", { name: "Start Full Body B" }),

@@ -99,17 +99,17 @@ export default function TodayRoute() {
         }).catch(() => undefined);
       }}
       onRetry={runtime.retry}
-      onStartEmpty={(advanceRotation = false) => {
+      onStartEmpty={() => {
         void runtime.startEmptyWorkout().then((sessionId) => {
           return runtime.recordTrainAnyway({
             workout: { kind: "empty", planDayId: null },
-            advanceRotation,
+            advanceRotation: false,
           }).catch(() => null).then(() => sessionId);
         }).then((sessionId) => {
           router.push(`/workout/${sessionId}`);
         }).catch(() => undefined);
       }}
-      onStartPlanDay={(dayId, mode, advanceRotation = false) => {
+      onStartPlanDay={(dayId, mode) => {
         void runtime.startPlanDay(dayId, mode).then((sessionId) => {
           const consumeOverride = runtime.scheduleToday?.overrideState
               === "pending"
@@ -123,7 +123,7 @@ export default function TodayRoute() {
           return consumeOverride.catch(() => null).then(() =>
             runtime.recordTrainAnyway({
               workout: { kind: "plan_day", planDayId: dayId },
-              advanceRotation,
+              advanceRotation: false,
             }).catch(() => null)
           ).then(() => sessionId);
         }).then((sessionId) => {
