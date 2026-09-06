@@ -1141,7 +1141,6 @@ export function SetRow({
                 disabled={
                   busy
                   || actionsDisabled
-                  || (kind === "working" && !active)
                 }
                 icon={Trash2}
                 onPress={onRemove}

@@ -1318,6 +1318,80 @@ describe("Plan 01-08 ActiveWorkoutScreen", () => {
     expect(screen.getByText("Set 1 removed")).toBeOnTheScreen();
   });
 
+  it("confirms and removes an inactive future working set, then follows the authoritative pointer", async () => {
+    const removedView: ActiveWorkoutView = {
+      ...initialView,
+      revision: 2,
+      activeSetId: "working-1",
+      currentExercise: {
+        ...initialView.currentExercise,
+        workingSets: [{
+          ...initialView.currentExercise.workingSets[0]!,
+          ordinal: 0,
+        }],
+      },
+    };
+    const removeWorkingSet = jest.fn(async () => removedView);
+    await renderActive({ commands: commands({ removeWorkingSet }) });
+
+    expect(screen.getByRole("button", { name: "Remove set 2" }).props
+      .accessibilityState).toMatchObject({ disabled: false });
+    await fireEvent.press(
+      screen.getByRole("button", { name: "Remove set 2" }),
+    );
+    expect(screen.getByText("Remove set 2?")).toBeOnTheScreen();
+    await fireEvent.press(screen.getByRole("button", { name: "Remove set" }));
+
+    await waitFor(() => {
+      expect(removeWorkingSet).toHaveBeenCalledWith(expect.objectContaining({
+        setId: "working-2",
+        expectedSessionRevision: 1,
+        expectedSetRevision: 1,
+      }));
+    });
+    expect(screen.getByText("Set 2 removed")).toBeOnTheScreen();
+    expect(screen.getByText("Current set")).toBeOnTheScreen();
+    expect(screen.getByRole("button", { name: "Remove set 1" }))
+      .toBeOnTheScreen();
+  });
+
+  it("does not reissue a committed removal when the authoritative reload fails", async () => {
+    const onGoBack = jest.fn();
+    const removeWorkingSet = jest.fn<NonNullable<
+      ActiveWorkoutCommands["removeWorkingSet"]
+    >>(
+      async () => ({
+        outcome: "committed_refresh_failed",
+        sessionId: "session-1",
+        setId: "working-2",
+        sessionRevision: 2,
+      }),
+    );
+    await renderActive({
+      commands: commands({ removeWorkingSet }),
+      onGoBack,
+    });
+
+    await fireEvent.press(
+      screen.getByRole("button", { name: "Remove set 2" }),
+    );
+    await fireEvent.press(screen.getByRole("button", { name: "Remove set" }));
+
+    await waitFor(() => {
+      expect(screen.getByText("Set removed. Reload workout")).toBeOnTheScreen();
+    });
+    expect(screen.getByText(
+      "The set was removed, but the latest workout could not be loaded. Return to Today and reopen this workout.",
+    )).toBeOnTheScreen();
+    expect(screen.queryByText("Your workout was not changed. Try again."))
+      .not.toBeOnTheScreen();
+    expect(removeWorkingSet).toHaveBeenCalledTimes(1);
+
+    await fireEvent.press(screen.getByRole("button", { name: "Return to Today" }));
+    expect(onGoBack).toHaveBeenCalledTimes(1);
+    expect(removeWorkingSet).toHaveBeenCalledTimes(1);
+  });
+
   it("corrects a completed working set throughout the active workout without whole-session Undo", async () => {
     const revisedView: ActiveWorkoutView = {
       ...completedView,

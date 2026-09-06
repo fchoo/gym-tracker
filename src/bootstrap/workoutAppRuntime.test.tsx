@@ -1662,6 +1662,104 @@ describe("WorkoutAppRuntimeProvider", () => {
     });
   });
 
+  it("preserves a committed removal when its authoritative refresh fails", async () => {
+    const repository = runtimeRepository([activeView], [activation]);
+    const workoutRepository = runtimeActiveWorkoutRepository();
+    const refreshFailure = new Error("active_workout_read_failed");
+    workoutRepository.getActiveWorkout.mockRejectedValueOnce(refreshFailure);
+    let captured: ReturnType<typeof useWorkoutAppRuntime> | undefined;
+    await render(
+      <RuntimeCaptureHarness
+        dependencies={dependencies(repository, {
+          createWorkoutRepository: () => workoutRepository,
+        })}
+        onReady={(runtime) => {
+          captured = runtime;
+        }}
+      />,
+    );
+    await waitFor(() => {
+      expect(captured?.launchState).toBe("trusted");
+    });
+    if (captured === undefined) {
+      throw new Error("runtime_not_captured");
+    }
+
+    const input = {
+      requestId: "remove-runtime-refresh-failure",
+      requestSha256: "c".repeat(64),
+      sessionId: "session-1",
+      setId: "set-1",
+      expectedSessionRevision: 1,
+      expectedSetRevision: 1,
+      removedAtMs: 2_002,
+    };
+    let result: Awaited<ReturnType<typeof captured.removeWorkingSet>>;
+    await act(async () => {
+      result = await captured!.removeWorkingSet(input);
+    });
+
+    expect(result!).toEqual({
+      outcome: "committed_refresh_failed",
+      sessionId: "session-1",
+      setId: "set-1",
+      sessionRevision: 2,
+    });
+    expect(workoutRepository.removeWorkingSet).toHaveBeenCalledTimes(1);
+    expect(workoutRepository.getActiveWorkout).toHaveBeenCalledWith("session-1");
+    expect(repository.getTodayView).toHaveBeenCalledTimes(1);
+    expect(captured.mutationFailure).toBeUndefined();
+  });
+
+  it("preserves a committed removal when the trusted global refresh fails", async () => {
+    const repository = runtimeRepository([activeView], [activation]);
+    const workoutRepository = runtimeActiveWorkoutRepository();
+    let captured: ReturnType<typeof useWorkoutAppRuntime> | undefined;
+    await render(
+      <RuntimeCaptureHarness
+        dependencies={dependencies(repository, {
+          createWorkoutRepository: () => workoutRepository,
+        })}
+        onReady={(runtime) => {
+          captured = runtime;
+        }}
+      />,
+    );
+    await waitFor(() => {
+      expect(captured?.launchState).toBe("trusted");
+    });
+    if (captured === undefined) {
+      throw new Error("runtime_not_captured");
+    }
+    repository.getTodayView.mockRejectedValueOnce(
+      new Error("trusted_global_read_failed"),
+    );
+
+    const input = {
+      requestId: "remove-runtime-trusted-refresh-failure",
+      requestSha256: "d".repeat(64),
+      sessionId: "session-1",
+      setId: "set-1",
+      expectedSessionRevision: 1,
+      expectedSetRevision: 1,
+      removedAtMs: 2_003,
+    };
+    let result: Awaited<ReturnType<typeof captured.removeWorkingSet>>;
+    await act(async () => {
+      result = await captured!.removeWorkingSet(input);
+    });
+
+    expect(result!).toEqual({
+      outcome: "committed_refresh_failed",
+      sessionId: "session-1",
+      setId: "set-1",
+      sessionRevision: 2,
+    });
+    expect(workoutRepository.removeWorkingSet).toHaveBeenCalledTimes(1);
+    expect(workoutRepository.getActiveWorkout).toHaveBeenCalledWith("session-1");
+    expect(captured.mutationFailure).toBeUndefined();
+  });
+
   it("builds Today activation from the accepted Full Body starter", async () => {
     const prettyBytes = (value: unknown) => `${JSON.stringify(value, null, 2)}
 `;

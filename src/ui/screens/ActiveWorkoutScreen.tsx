@@ -88,8 +88,8 @@ export interface ActiveWorkoutCommands {
   addWarmup(input: AddWarmupInput): Promise<CommittedSetMutationResult>;
   addWorkingSet(input: AddWorkingSetInput): Promise<CommittedSetMutationResult>;
   completeWarmup(input: CompleteWarmupInput): Promise<ActiveWorkoutView>;
-  removeWarmup?(input: RemoveWarmupInput): Promise<ActiveWorkoutView>;
-  removeWorkingSet?(input: RemoveWorkingSetInput): Promise<ActiveWorkoutView>;
+  removeWarmup?(input: RemoveWarmupInput): Promise<RemovalCommandResult>;
+  removeWorkingSet?(input: RemoveWorkingSetInput): Promise<RemovalCommandResult>;
   /** @deprecated The screen never invokes legacy skip commands. */
   skipWarmup?(input: import("../../domains/workout").SkipWarmupInput): Promise<ActiveWorkoutView>;
   /** @deprecated The screen never invokes legacy skip commands. */
@@ -119,6 +119,15 @@ type CommittedSetMutationResult = ActiveWorkoutView & Readonly<{
   committedSetId: string;
 }>;
 
+type CommittedRemovalRefreshFailure = Readonly<{
+  outcome: "committed_refresh_failed";
+  sessionId: string;
+  setId: string;
+  sessionRevision: number;
+}>;
+
+type RemovalCommandResult = ActiveWorkoutView | CommittedRemovalRefreshFailure;
+
 type WarmupCommandState = Readonly<{
   setId: string;
   action: "complete" | "skip" | "update" | "add";
@@ -145,6 +154,12 @@ type RemovalCandidate = Readonly<{
 }>;
 
 type RemovalFailure = RemovalCandidate;
+
+function isCommittedRemovalRefreshFailure(
+  result: RemovalCommandResult,
+): result is CommittedRemovalRefreshFailure {
+  return "outcome" in result && result.outcome === "committed_refresh_failed";
+}
 
 function isRecord(value: unknown): value is Readonly<Record<string, unknown>> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
@@ -375,6 +390,7 @@ export function ActiveWorkoutScreen({
   const [pendingRemoval, setPendingRemoval] = useState<RemovalCandidate | null>(null);
   const [removalBusy, setRemovalBusy] = useState(false);
   const [removalFailure, setRemovalFailure] = useState<RemovalFailure | null>(null);
+  const [removalRecovery, setRemovalRecovery] = useState<RemovalCandidate | null>(null);
   const [removalAnnouncement, setRemovalAnnouncement] = useState<string | null>(null);
   const moreActionRef = useRef<View>(null);
   const moreFirstActionRef = useRef<View>(null);
@@ -673,6 +689,7 @@ export function ActiveWorkoutScreen({
     removeFocusRef.current = removeGlyphRefs.current.get(set.id) ?? null;
     setRemovalAnnouncement(null);
     setRemovalFailure(null);
+    setRemovalRecovery(null);
     setPendingRemoval({ kind, setId: set.id, index });
   };
 
@@ -714,6 +731,12 @@ export function ActiveWorkoutScreen({
         stableJson(request),
       );
       const nextView = await remove({ ...request, requestSha256 });
+      if (isCommittedRemovalRefreshFailure(nextView)) {
+        setPendingRemoval(null);
+        setRemovalFailure(null);
+        setRemovalRecovery(candidate);
+        return;
+      }
       applyView(nextView);
       const nextSets = candidate.kind === "warmup"
         ? nextView.currentExercise.warmups
@@ -731,6 +754,7 @@ export function ActiveWorkoutScreen({
         : `Set ${candidate.index + 1} removed`);
       setPendingRemoval(null);
       setRemovalFailure(null);
+      setRemovalRecovery(null);
     } catch {
       setRemovalFailure(candidate);
       setPendingRemoval(null);
@@ -999,6 +1023,15 @@ export function ActiveWorkoutScreen({
                   tone="error"
                 />
               )}
+              {removalRecovery?.kind !== "warmup" ? null : (
+                <InlineNotice
+                  action={<SecondaryAction label="Return to Today" onPress={onGoBack} />}
+                  body="The warm-up was removed, but the latest workout could not be loaded. Return to Today and reopen this workout."
+                  card
+                  heading="Warm-up removed. Reload workout"
+                  tone="attention"
+                />
+              )}
               {viewedExercise.warmups.map((set, index) => (
                 reviewingEarlierOrLater ? <ReviewSetSummary
                   index={index + 1}
@@ -1141,6 +1174,15 @@ export function ActiveWorkoutScreen({
                   card
                   heading="Set could not be removed"
                   tone="error"
+                />
+              )}
+              {removalRecovery?.kind !== "working" ? null : (
+                <InlineNotice
+                  action={<SecondaryAction label="Return to Today" onPress={onGoBack} />}
+                  body="The set was removed, but the latest workout could not be loaded. Return to Today and reopen this workout."
+                  card
+                  heading="Set removed. Reload workout"
+                  tone="attention"
                 />
               )}
               {correctionFailure === null ? null : (

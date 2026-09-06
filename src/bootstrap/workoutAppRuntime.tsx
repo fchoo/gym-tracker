@@ -592,6 +592,13 @@ export type CommittedWorkoutMutationResult = ActiveWorkoutView & Readonly<{
   committedSetId: string;
 }>;
 
+export type CommittedWorkoutRemovalRefreshFailure = Readonly<{
+  outcome: "committed_refresh_failed";
+  sessionId: string;
+  setId: string;
+  sessionRevision: number;
+}>;
+
 export type RestAlertPreferenceSaveResult = Readonly<{
   status: "persisted" | "not_persisted" | "failed";
   preferences: RestAlertPreferences;
@@ -626,8 +633,12 @@ type RuntimeValue = RuntimeState & Readonly<{
   discardWorkout(input: DiscardWorkoutInput): Promise<FinishOutcomeResult>;
   finishCompleted(input: FinishCompletedInput): Promise<FinishOutcomeResult>;
   finishPartial(input: FinishPartialInput): Promise<FinishOutcomeResult>;
-  removeWarmup(input: RemoveWarmupInput): Promise<ActiveWorkoutView>;
-  removeWorkingSet(input: RemoveWorkingSetInput): Promise<ActiveWorkoutView>;
+  removeWarmup(
+    input: RemoveWarmupInput,
+  ): Promise<ActiveWorkoutView | CommittedWorkoutRemovalRefreshFailure>;
+  removeWorkingSet(
+    input: RemoveWorkingSetInput,
+  ): Promise<ActiveWorkoutView | CommittedWorkoutRemovalRefreshFailure>;
   reviseCompletedSet(
     input: ReviseCompletedSetInput,
   ): Promise<CommittedWorkoutMutationResult>;
@@ -3321,10 +3332,11 @@ export function WorkoutAppRuntimeProvider({
     mutation: (
       repository: ReturnType<typeof createWorkoutRepository>,
     ) => Promise<RemoveSetResult>,
-  ): Promise<ActiveWorkoutView> => {
+  ): Promise<ActiveWorkoutView | CommittedWorkoutRemovalRefreshFailure> => {
     const services = requireServices();
+    let committed: RemoveSetResult;
     try {
-      await mutation(services.workoutRepository);
+      committed = await mutation(services.workoutRepository);
     } catch (error) {
       const failure = mapWorkoutMutationFailure(error);
       setState((current) => ({
@@ -3343,7 +3355,8 @@ export function WorkoutAppRuntimeProvider({
       activeView = await services.workoutRepository.getActiveWorkout(input.sessionId);
       workoutRefreshGenerationRef.current += 1;
       setState(await trustedRead(services));
-    } catch (error) {
+    } catch {
+      workoutRefreshGenerationRef.current += 1;
       setState((current) => ({
         ...current,
         actionFailure: {
@@ -3352,7 +3365,12 @@ export function WorkoutAppRuntimeProvider({
         },
         workoutRefreshGeneration: workoutRefreshGenerationRef.current,
       }));
-      throw error;
+      return Object.freeze({
+        outcome: "committed_refresh_failed",
+        sessionId: committed.sessionId,
+        setId: committed.setId,
+        sessionRevision: committed.sessionRevision,
+      });
     }
     return activeView;
   }, [requireServices, trustedRead]);

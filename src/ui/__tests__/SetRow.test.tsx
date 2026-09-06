@@ -148,6 +148,30 @@ describe("Plan 07-04 SetRow", () => {
     expect(onSkip).not.toHaveBeenCalled();
   });
 
+  it("allows an incomplete future working set to be removed while keeping Reset and Done unavailable", async () => {
+    const onRemove = jest.fn();
+    await renderRow(workingSet({
+      id: "working-2",
+      ordinal: 1,
+      status: "planned",
+    }), {
+      active: false,
+      count: 2,
+      index: 2,
+      onRemove,
+    });
+
+    expect(screen.getByRole("button", { name: "Reset set 2" }).props
+      .accessibilityState).toMatchObject({ disabled: true });
+    expect(screen.getByRole("button", { name: "Complete Set 2" }).props
+      .accessibilityState).toMatchObject({ disabled: true });
+    expect(screen.getByRole("button", { name: "Remove set 2" }).props
+      .accessibilityState).toMatchObject({ disabled: false });
+
+    await fireEvent.press(screen.getByRole("button", { name: "Remove set 2" }));
+    expect(onRemove).toHaveBeenCalledTimes(1);
+  });
+
   it("keeps completed working rows correctable and never removable", async () => {
     await renderRow(workingSet({
       status: "completed",
