@@ -377,6 +377,10 @@ export function PlanEditorReorderableRow({
               const shiftKey = (event.nativeEvent as Readonly<{
                 shiftKey?: boolean;
               }>).shiftKey === true;
+              if (key === "Enter" || key === " ") {
+                requestMove(position + 1);
+                return;
+              }
               if (!shiftKey) {
                 return;
               }

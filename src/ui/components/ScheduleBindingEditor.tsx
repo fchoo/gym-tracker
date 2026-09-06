@@ -16,6 +16,7 @@ import type {
 } from "../../domains/scheduling/localDate";
 import {
   PlanEditorReorderableRow,
+  type PlanEditorReorderPreview,
 } from "./PlanEditorFields";
 import {
   FocusablePressable,
@@ -108,6 +109,9 @@ function WeekdayEditor({
   onChange(bindings: readonly ScheduleEditorWeekdayBinding[]): void;
 }>) {
   const { colors } = useAppTheme();
+  const [dragPreview, setDragPreview] = React.useState<
+    PlanEditorReorderPreview | null
+  >(null);
 
   function changeWeekday(index: number, weekday: Weekday) {
     onChange(bindings.map((binding, bindingIndex) => (
@@ -116,6 +120,7 @@ function WeekdayEditor({
   }
 
   function moveTo(index: number, targetPosition: number) {
+    setDragPreview(null);
     onChange(reordered(bindings, index, targetPosition).map(
       (binding, ordinal) => ({ ...binding, ordinal }),
     ));
@@ -156,10 +161,12 @@ function WeekdayEditor({
             count={bindings.length}
             key={`${binding.weekIndex}:${binding.weekday}:${binding.planDayId}:${index}`}
             label={name}
+            onDragPreview={setDragPreview}
             onMoveDown={() => moveTo(index, index + 1)}
             onMoveTo={(targetPosition) => moveTo(index, targetPosition)}
             onMoveUp={() => moveTo(index, index - 1)}
             position={index}
+            preview={dragPreview}
             reorderId={`weekday-${binding.weekIndex}-${binding.weekday}-${binding.planDayId}`}
           >
             <View style={styles.binding}>
@@ -229,7 +236,12 @@ function RotationEditor({
   bindings: readonly ScheduleEditorRotationBinding[];
   onChange(bindings: readonly ScheduleEditorRotationBinding[]): void;
 }>) {
+  const [dragPreview, setDragPreview] = React.useState<
+    PlanEditorReorderPreview | null
+  >(null);
+
   function moveTo(index: number, targetPosition: number) {
+    setDragPreview(null);
     onChange(reordered(bindings, index, targetPosition).map(
       (binding, ordinal) => ({ ...binding, ordinal }),
     ));
@@ -245,10 +257,12 @@ function RotationEditor({
             count={bindings.length}
             key={`${binding.planDayId}:${index}`}
             label={name}
+            onDragPreview={setDragPreview}
             onMoveDown={() => moveTo(index, index + 1)}
             onMoveTo={(targetPosition) => moveTo(index, targetPosition)}
             onMoveUp={() => moveTo(index, index -1)}
             position={index}
+            preview={dragPreview}
             reorderId={`rotation-${binding.planDayId}-${index}`}
           >
             <Text>

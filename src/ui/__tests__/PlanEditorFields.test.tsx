@@ -74,6 +74,12 @@ describe("PlanEditorReorderableRow", () => {
     await fireEvent(handle, "keyDown", {
       nativeEvent: { key: "ArrowDown", shiftKey: true },
     });
+    await fireEvent(handle, "keyDown", {
+      nativeEvent: { key: "Enter" },
+    });
+    await fireEvent(handle, "keyDown", {
+      nativeEvent: { key: " " },
+    });
 
     expect(onMoveUp).not.toHaveBeenCalled();
     expect(onMoveDown).not.toHaveBeenCalled();
@@ -81,6 +87,8 @@ describe("PlanEditorReorderableRow", () => {
     expect(onMoveTo).toHaveBeenNthCalledWith(2, 2, "fallback");
     expect(onMoveTo).toHaveBeenNthCalledWith(3, 0, "fallback");
     expect(onMoveTo).toHaveBeenNthCalledWith(4, 2, "fallback");
+    expect(onMoveTo).toHaveBeenNthCalledWith(5, 2, "fallback");
+    expect(onMoveTo).toHaveBeenNthCalledWith(6, 2, "fallback");
   });
 
 });

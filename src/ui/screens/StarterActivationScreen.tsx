@@ -40,6 +40,7 @@ import {
 } from "../components";
 import {
   PlanEditorReorderableRow,
+  type PlanEditorReorderPreview,
 } from "../components/PlanEditorFields";
 import {
   radius,
@@ -240,12 +241,16 @@ function ScheduleBindings({
   onRotationBindings(bindings: readonly InitialRotationScheduleBinding[]): void;
 }>) {
   const { colors } = useAppTheme();
+  const [dragPreview, setDragPreview] = useState<
+    PlanEditorReorderPreview | null
+  >(null);
   const names = new Map(
     template.days.map(({ id, displayName }) => [id, displayName]),
   );
   const rows = mode === "weekday" ? weekdayBindings : rotationBindings;
 
   function moveTo(index: number, targetPosition: number) {
+    setDragPreview(null);
     if (mode === "weekday") {
       onWeekdayBindings(reordered(
         weekdayBindings,
@@ -279,10 +284,12 @@ function ScheduleBindings({
             count={rows.length}
             key={`${binding.planDaySourceId}:${index}`}
             label={name}
+            onDragPreview={setDragPreview}
             onMoveDown={() => moveTo(index, index + 1)}
             onMoveTo={(targetPosition) => moveTo(index, targetPosition)}
             onMoveUp={() => moveTo(index, index - 1)}
             position={index}
+            preview={dragPreview}
             reorderId={reorderId}
           >
             <Text style={[

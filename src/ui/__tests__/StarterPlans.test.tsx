@@ -644,6 +644,26 @@ describe("starter activation", () => {
     expect(screen.queryByRole("button", { name: "Move Back up" }))
       .not.toBeOnTheScreen();
     expect(screen.queryByText("Position 2 of 5")).not.toBeOnTheScreen();
+    await fireEvent(
+      screen.getByTestId(
+        "reorder-row-activation-weekday-0-Tuesday-body-part-back",
+      ),
+      "layout",
+      { nativeEvent: { layout: { height: 80, width: 320, x: 0, y: 0 } } },
+    );
+    const weekdayGesture = reorderGesture(
+      "activation-weekday-0-Tuesday-body-part-back",
+    );
+    await act(() => {
+      weekdayGesture.handlers.onStart?.({ translationY: 0 });
+      weekdayGesture.handlers.onUpdate?.({ translationY: -100 });
+    });
+    expect(screen.getByTestId(
+      "reorder-row-activation-weekday-0-Monday-body-part-chest",
+    )).toHaveStyle({ transform: [{ translateY: 80 }] });
+    await act(() => {
+      weekdayGesture.handlers.onFinalize?.({ translationY: -100 }, true);
+    });
 
     await fireEvent(weekdayHandle, "keyDown", {
       nativeEvent: { key: "ArrowUp", shiftKey: true },
@@ -662,6 +682,11 @@ describe("starter activation", () => {
     await act(() => {
       rotationGesture.handlers.onStart?.({ translationY: 0 });
       rotationGesture.handlers.onUpdate?.({ translationY: -100 });
+    });
+    expect(screen.getByTestId(
+      "reorder-row-activation-rotation-body-part-chest-0",
+    )).toHaveStyle({ transform: [{ translateY: 80 }] });
+    await act(() => {
       rotationGesture.handlers.onEnd?.({ translationY: -100 }, true);
       rotationGesture.handlers.onFinalize?.({ translationY: -100 }, true);
     });

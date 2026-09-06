@@ -465,6 +465,21 @@ describe("schedule binding editor", () => {
     expect(screen.queryByRole("button", { name: "Move Strength B up" }))
       .not.toBeOnTheScreen();
     expect(screen.queryByText("Position 2 of 3")).not.toBeOnTheScreen();
+    await fireEvent(
+      screen.getByTestId("reorder-row-weekday-0-Thursday-day-b"),
+      "layout",
+      { nativeEvent: { layout: { height: 80, width: 320, x: 0, y: 0 } } },
+    );
+    const weekdayGesture = reorderGesture("weekday-0-Thursday-day-b");
+    await act(() => {
+      weekdayGesture.handlers.onStart?.({ translationY: 0 });
+      weekdayGesture.handlers.onUpdate?.({ translationY: -100 });
+    });
+    expect(screen.getByTestId("reorder-row-weekday-0-Monday-day-a"))
+      .toHaveStyle({ transform: [{ translateY: 80 }] });
+    await act(() => {
+      weekdayGesture.handlers.onFinalize?.({ translationY: -100 }, true);
+    });
 
     await fireEvent(weekdayHandle, "accessibilityAction", {
       nativeEvent: { actionName: "increment" },
@@ -507,6 +522,10 @@ describe("schedule binding editor", () => {
     await act(() => {
       rotationGesture.handlers.onStart?.({ translationY: 0 });
       rotationGesture.handlers.onUpdate?.({ translationY: -100 });
+    });
+    expect(screen.getByTestId("reorder-row-rotation-day-a-0"))
+      .toHaveStyle({ transform: [{ translateY: 80 }] });
+    await act(() => {
       rotationGesture.handlers.onEnd?.({ translationY: -100 }, true);
       rotationGesture.handlers.onFinalize?.({ translationY: -100 }, true);
     });
