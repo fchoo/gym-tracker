@@ -687,7 +687,7 @@ describe("schedule editor and Today expansion", () => {
     }));
   });
 
-  it("invokes Weekday Skip and alternate empty start callbacks explicitly", async () => {
+  it("omits Weekday Skip while retaining alternate empty start callbacks", async () => {
     const onWeekdaySkip = jest.fn();
     const onStartEmpty = jest.fn();
     const ExpandedToday = TodayScreen as React.ComponentType<any>;
@@ -723,8 +723,8 @@ describe("schedule editor and Today expansion", () => {
       </AppearanceProvider>,
     );
 
-    await fireEvent.press(screen.getByRole("button", { name: "Skip" }));
-    expect(onWeekdaySkip).toHaveBeenCalledTimes(1);
+    expect(screen.queryByRole("button", { name: "Skip" })).not.toBeOnTheScreen();
+    expect(onWeekdaySkip).not.toHaveBeenCalled();
     await fireEvent.press(screen.getByRole("button", {
       name: "Choose another day",
     }));
@@ -734,7 +734,7 @@ describe("schedule editor and Today expansion", () => {
     expect(onStartEmpty).toHaveBeenCalledWith(false);
   });
 
-  it("maps Repeat, Skip, and Advance to explicit confirmed schedule commands", async () => {
+  it("omits manual rotation transitions from Today", async () => {
     const actOnSchedule = jest.fn(async () => undefined);
     const ExpandedToday = TodayScreen as React.ComponentType<any>;
     await render(
@@ -766,21 +766,11 @@ describe("schedule editor and Today expansion", () => {
     );
 
     for (const action of ["Repeat", "Skip", "Advance"] as const) {
-      await fireEvent.press(screen.getByRole("button", { name: action }));
-      expect(screen.getByRole("header", {
-        name: `${action} Strength A?`,
-      })).toBeOnTheScreen();
-      expect(screen.getByText(
-        action === "Repeat"
-          ? /Strength A.*Strength A/u
-          : /Strength A.*Strength B/u,
-      )).toBeOnTheScreen();
-      const confirmations = screen.getAllByRole("button", { name: action });
-      await fireEvent.press(confirmations[confirmations.length - 1]!);
-      await waitFor(() =>
-        expect(actOnSchedule).toHaveBeenLastCalledWith(action.toLowerCase())
-      );
+      expect(screen.queryByRole("button", { name: action })).not.toBeOnTheScreen();
     }
+    expect(actOnSchedule).not.toHaveBeenCalled();
+    expect(screen.getByRole("button", { name: "Start Strength A" })).toBeOnTheScreen();
+    expect(screen.getByRole("button", { name: "Choose another day" })).toBeOnTheScreen();
   });
 
   it("requires explicit rotation advancement for Train anyway", async () => {
