@@ -339,7 +339,7 @@ export function ActiveWorkoutScreen({
     useState<OutcomeConfirmation>(null);
   const [outcomeBusy, setOutcomeBusy] = useState(false);
   const moreActionRef = useRef<View>(null);
-  const moreHeadingRef = useRef<View>(null);
+  const moreFirstActionRef = useRef<View>(null);
   const draftQueue = useRef(Promise.resolve());
   const sectionMutationRef = useRef<SectionMutation | null>(null);
   const correctionSetIdRef = useRef<string | null>(null);
@@ -436,7 +436,7 @@ export function ActiveWorkoutScreen({
 
   useEffect(() => {
     if (moreVisible) {
-      moreHeadingRef.current?.focus();
+      moreFirstActionRef.current?.focus();
     }
   }, [moreVisible]);
 
@@ -773,16 +773,7 @@ export function ActiveWorkoutScreen({
     }
   };
 
-  const confirmationCopy = outcomeConfirmation === "skip_exercise"
-    ? {
-        heading: `Skip ${view.currentExercise.name}?`,
-        body: "This exercise will be marked skipped for this workout. Completed sets stay recorded.",
-        cancelLabel: "Keep exercise",
-        confirmLabel: "Skip exercise",
-        confirmTestID: "skip-exercise-confirm",
-        destructive: false,
-      }
-    : outcomeConfirmation === "partial"
+  const confirmationCopy = outcomeConfirmation === "partial"
       ? {
           heading: "Save partial workout?",
           body: `You completed ${
@@ -795,23 +786,14 @@ export function ActiveWorkoutScreen({
           confirmTestID: "save-partial-workout-confirm",
           destructive: false,
         }
-      : outcomeConfirmation === "zero_sets"
-        ? {
-            heading: "Finish without working sets?",
-            body: "This workout will be saved with zero completed working sets.",
-            cancelLabel: "Keep training",
-            confirmLabel: "Save zero-set workout",
-            confirmTestID: "save-zero-set-workout-confirm",
-            destructive: false,
-          }
-        : {
-            heading: "Discard workout?",
-            body: "This ends the workout and marks it discarded. It cannot be resumed.",
-            cancelLabel: "Keep workout",
-            confirmLabel: "Discard workout",
-            confirmTestID: "discard-workout-confirm",
-            destructive: true,
-          };
+      : {
+          heading: "Discard workout?",
+          body: "This ends the workout and marks it discarded. It cannot be resumed.",
+          cancelLabel: "Keep workout",
+          confirmLabel: "Discard workout",
+          confirmTestID: "discard-workout-confirm",
+          destructive: true,
+        };
 
   function closeMoreActions() {
     setMoreVisible(false);
@@ -1093,37 +1075,12 @@ export function ActiveWorkoutScreen({
             ]}
             testID="workout-actions-sheet-content"
           >
-            <View
-              accessibilityRole="header"
-              accessible
-              focusable
-              ref={moreHeadingRef}
-            >
-              <SectionHeader
-                supportingText={`Uses ${view.currentExercise.defaultRestSeconds} seconds from this workout snapshot.`}
-                title="More workout actions"
-              />
-            </View>
-            <PrimaryAction
-              disabled={restBusy}
-              label="Start rest"
-              onPress={() => {
-                closeMoreActions();
-                void runRest(() => commands.startManualRest(restInput()));
-              }}
-            />
-            <SecondaryAction
-              disabled={outcomeBusy}
-              label={`Skip ${view.currentExercise.name}`}
-              onPress={() => {
-                closeMoreActions();
-                setOutcomeConfirmation("skip_exercise");
-              }}
-            />
+            <SectionHeader title="More workout actions" />
             {view.activeSetId === null ? (
               <PrimaryAction
                 busy={outcomeBusy}
                 label="Finish workout"
+                ref={moreFirstActionRef}
                 onPress={() => {
                   closeMoreActions();
                   void finishCompletedWorkout();
@@ -1133,27 +1090,10 @@ export function ActiveWorkoutScreen({
             <SecondaryAction
               disabled={outcomeBusy}
               label="Finish as partial"
+              ref={view.activeSetId === null ? undefined : moreFirstActionRef}
               onPress={() => {
                 closeMoreActions();
                 setOutcomeConfirmation("partial");
-              }}
-            />
-            {view.progress.completedWorkingSets === 0 ? (
-              <SecondaryAction
-                disabled={outcomeBusy}
-                label="Save zero-set workout"
-                onPress={() => {
-                  closeMoreActions();
-                  setOutcomeConfirmation("zero_sets");
-                }}
-              />
-            ) : null}
-            <SecondaryAction
-              disabled={outcomeBusy}
-              label="Finish workout later"
-              onPress={() => {
-                closeMoreActions();
-                onFinishLater();
               }}
             />
             <SecondaryAction
@@ -1164,10 +1104,6 @@ export function ActiveWorkoutScreen({
                 closeMoreActions();
                 setOutcomeConfirmation("discard");
               }}
-            />
-            <SecondaryAction
-              label="Close"
-              onPress={closeMoreActions}
             />
           </ScrollView>
         </View>

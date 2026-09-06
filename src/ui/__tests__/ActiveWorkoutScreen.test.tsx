@@ -1503,7 +1503,7 @@ describe("Plan 01-08 ActiveWorkoutScreen", () => {
     expect(finish).toHaveBeenCalledTimes(1);
   });
 
-  it("requires explicit partial, skip-exercise, and discard confirmations", async () => {
+  it("requires explicit partial and discard confirmations", async () => {
     const activeCommands = commands();
     const finishLater = jest.fn();
     const outcomeSaved = jest.fn();
@@ -1543,26 +1543,6 @@ describe("Plan 01-08 ActiveWorkoutScreen", () => {
       screen.getByRole("button", { name: "More workout actions" }),
     );
     await fireEvent.press(
-      screen.getByRole("button", { name: "Skip Back Squat" }),
-    );
-    expect(screen.getByRole("header", { name: "Skip Back Squat?" }))
-      .toBeOnTheScreen();
-    await fireEvent.press(
-      screen.getByRole("button", { name: "Skip exercise" }),
-    );
-    await waitFor(() => {
-      expect(activeCommands.skipExercise).toHaveBeenCalledWith(
-        expect.objectContaining({
-          confirmation: "skip_exercise",
-          sessionExerciseId: initialView.currentExercise.id,
-        }),
-      );
-    });
-
-    await fireEvent.press(
-      screen.getByRole("button", { name: "More workout actions" }),
-    );
-    await fireEvent.press(
       screen.getByRole("button", { name: "Discard workout" }),
     );
     expect(screen.getByRole("header", { name: "Discard workout?" }))
@@ -1579,56 +1559,34 @@ describe("Plan 01-08 ActiveWorkoutScreen", () => {
     });
   });
 
-  it("starts manual rest from More workout actions using current revisions", async () => {
-    const runningView: ActiveWorkoutView = {
-      ...initialView,
-      revision: 2,
-      rest: {
-        version: 1,
-        state: "running",
-        revision: 1,
-        startedAtMs: 2_000,
-        endsAtMs: 182_000,
-        nextSetId: "working-1",
-      },
-    };
-    const startManualRest = jest.fn(async () => ({
-      state: runningView.rest,
-      sessionRevision: runningView.revision,
-      invalidationScopes: [
-        ["active-workout", "session-1"],
-        ["today"],
-      ] as const,
-    }));
-    await renderActive({
-      commands: commands({ startManualRest }),
-    });
+  it("keeps the workout overflow quiet, natural-height, and limited to retained outcomes", async () => {
+    await renderActive();
 
+    expect(screen.queryByText("Rest resumed")).not.toBeOnTheScreen();
+    expect(screen.queryByText("Warm-up added")).not.toBeOnTheScreen();
     await fireEvent.press(
       screen.getByRole("button", { name: "More workout actions" }),
     );
-    expect(screen.getByText(/Uses 180 seconds/u)).toBeOnTheScreen();
-    expect(screen.getByTestId("workout-actions-sheet-content")).toHaveProp(
-      "keyboardShouldPersistTaps",
-      "handled",
-    );
-    expect(screen.getByTestId("workout-actions-sheet-content")).toHaveStyle({
-      maxHeight: "90%",
-    });
-    await fireEvent.press(
-      screen.getByRole("button", { name: "Start rest" }),
-    );
 
-    await waitFor(() => {
-      expect(startManualRest).toHaveBeenCalledWith({
-        sessionId: "session-1",
-        expectedSessionRevision: 1,
-        expectedRestRevision: 0,
-        nowMs: 2_000,
-      });
-    });
-    expect(screen.getByText("RESTING · NEXT: SET 1 AT 60 kg × 8"))
+    const sheet = screen.getByTestId("workout-actions-sheet-content");
+    expect(sheet).toHaveStyle({ maxHeight: "90%" });
+    expect(sheet.props.style).not.toEqual(expect.arrayContaining([
+      expect.objectContaining({ height: expect.anything() }),
+    ]));
+    expect(screen.getByRole("button", { name: "Finish as partial" }))
       .toBeOnTheScreen();
+    expect(screen.getByRole("button", { name: "Discard workout" }))
+      .toBeOnTheScreen();
+    for (const removedAction of [
+      "Start rest",
+      "Skip Back Squat",
+      "Save zero-set workout",
+      "Finish workout later",
+      "Close",
+    ]) {
+      expect(screen.queryByRole("button", { name: removedAction }))
+        .not.toBeOnTheScreen();
+    }
   });
 
   it("routes RestDock controls through revision-checked rest commands", async () => {
