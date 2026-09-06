@@ -516,8 +516,8 @@ function safeRelativeFile(value, label) {
   return value;
 }
 
-export function exactScreenshotEvidence(reportRoot, expectedFiles, flowId) {
-  const screenshots = screenshotFiles(reportRoot)
+export function exactScreenshotEvidence(reportRoot, expectedFiles, flowId, excludedDirectoryNames = []) {
+  const screenshots = screenshotFiles(reportRoot, new Set(excludedDirectoryNames))
     .map((file) => ({
       file: safeRelativeFile(path.basename(file), "screenshot file"),
       sha256: sha256File(file),
@@ -670,12 +670,15 @@ function installedDevice(adbPath, serial, candidate) {
   }
 }
 
-function screenshotFiles(root) {
+function screenshotFiles(root, excludedDirectoryNames = new Set()) {
   const files = [];
   for (const entry of readdirSync(root, { withFileTypes: true })) {
     const absolute = path.join(root, entry.name);
     if (entry.isDirectory()) {
-      files.push(...screenshotFiles(absolute));
+      if (excludedDirectoryNames.has(entry.name)) {
+        continue;
+      }
+      files.push(...screenshotFiles(absolute, excludedDirectoryNames));
     } else if (entry.isFile() && /\.png$/iu.test(entry.name) && statSync(absolute).size > 0) {
       files.push(absolute);
     }
@@ -1131,6 +1134,10 @@ export function executePhase6Maestro(args = process.argv.slice(2)) {
         flowReportDirectory,
         contract.screenshots,
         contract.id,
+        // The N3 verify flow runs inside the reserved native-drag/ subdirectory
+        // and captures its own screenshot there; its evidence is validated
+        // separately, so exclude it from the parent flow's exact screenshot set.
+        ["native-drag"],
       );
     }
     evidence = createPhase6Evidence({
