@@ -205,6 +205,11 @@ export function RestDock({
   const cueLedgerRef = useRef<Readonly<{
     emitted: ReadonlySet<number>;
   }> | null>(null);
+  const cueRestRef = useRef<Readonly<{
+    nextSetId: string | null;
+    paused: boolean;
+    startedAtMs: number;
+  }> | null>(null);
   const previousRemainingSecondsRef = useRef<number | null>(null);
   const [cueFailure, setCueFailure] = useState(false);
 
@@ -217,13 +222,38 @@ export function RestDock({
   }, []);
 
   useEffect(() => {
-    if (cueLedgerRef.current === null) {
+    const previousRest = cueRestRef.current;
+    if (state.state === "paused") {
+      if (previousRest !== null) {
+        cueRestRef.current = {
+          ...previousRest,
+          paused: true,
+        };
+      }
+      previousRemainingSecondsRef.current = null;
+      return;
+    }
+
+    const resumed = previousRest?.paused === true
+      && previousRest.nextSetId === state.nextSetId;
+    const isNewRest = !resumed && (
+      previousRest === null
+      || previousRest.startedAtMs !== state.startedAtMs
+      || previousRest.nextSetId !== state.nextSetId
+    );
+    cueRestRef.current = {
+      nextSetId: state.nextSetId,
+      paused: false,
+      startedAtMs: state.startedAtMs,
+    };
+    if (isNewRest) {
       cueLedgerRef.current = {
         emitted: new Set(),
       };
+      previousRemainingSecondsRef.current = null;
       setCueFailure(false);
     }
-  }, []);
+  }, [state]);
 
   useEffect(() => {
     setDisplayNowMs(nowMs());

@@ -5,12 +5,18 @@ import {
   screen,
 } from "@testing-library/react-native";
 import {
+  afterEach,
+  beforeEach,
   describe,
   expect,
   it,
   jest,
 } from "@jest/globals";
 import React from "react";
+import {
+  AppState,
+  type AppStateStatus,
+} from "react-native";
 
 import type {
   RestStateV1,
@@ -58,6 +64,35 @@ async function renderDock(
     ),
   };
 }
+
+function mockActiveAppState() {
+  const descriptor = Object.getOwnPropertyDescriptor(AppState, "currentState");
+  Object.defineProperty(AppState, "currentState", {
+    configurable: true,
+    get: () => "active",
+  });
+  return () => {
+    if (descriptor === undefined) {
+      Reflect.deleteProperty(AppState, "currentState");
+      return;
+    }
+    Object.defineProperty(AppState, "currentState", descriptor);
+  };
+}
+
+let restoreAppState: (() => void) | undefined;
+let addEventListener: jest.SpiedFunction<typeof AppState.addEventListener>;
+
+beforeEach(() => {
+  restoreAppState = mockActiveAppState();
+  addEventListener = jest.spyOn(AppState, "addEventListener")
+    .mockImplementation(() => ({ remove: jest.fn() }));
+});
+
+afterEach(() => {
+  addEventListener.mockRestore();
+  restoreAppState?.();
+});
 
 describe("Plan 02-29 RestDock", () => {
   it("keeps running time visible when collapsed and expands ordered controls", async () => {
@@ -206,6 +241,250 @@ describe("Plan 02-29 RestDock", () => {
       });
       expect(onExpired).toHaveBeenCalledTimes(1);
     } finally {
+      jest.useRealTimers();
+    }
+  });
+
+  it("plays each countdown cue again for a distinct consecutive rest", async () => {
+    jest.useFakeTimers();
+    let rendered: Awaited<ReturnType<typeof renderDock>>["rendered"] | undefined;
+    try {
+      let nowMs = 96_000;
+      const countdownCue = {
+        playLongCue: jest.fn(async () => undefined),
+        playShortCue: jest.fn(async () => undefined),
+      };
+      ({ rendered } = await renderDock({
+        ...running,
+        endsAtMs: 100_000,
+      }, {
+        nowMs: () => nowMs,
+        restSoundEnabled: true,
+        countdownCue,
+      }));
+
+      for (nowMs of [97_000, 98_000, 99_000, 100_000]) {
+        await act(async () => {
+          jest.advanceTimersByTime(1_000);
+        });
+      }
+      expect(countdownCue.playShortCue).toHaveBeenCalledTimes(3);
+      expect(countdownCue.playLongCue).toHaveBeenCalledTimes(1);
+
+      nowMs = 196_000;
+      await rendered.rerender(
+        <AppearanceProvider>
+          <RestDock
+            nextSetIndex={3}
+            nextTarget="70 kg × 6"
+            notificationPermission="granted"
+            nowMs={() => nowMs}
+            onAdjust={jest.fn()}
+            onExpired={jest.fn()}
+            onOpenSettings={jest.fn()}
+            onPause={jest.fn()}
+            onResume={jest.fn()}
+            onSkip={jest.fn()}
+            restSoundEnabled
+            countdownCue={countdownCue}
+            state={{
+              version: 1,
+              state: "running",
+              revision: 9,
+              startedAtMs: 196_000,
+              endsAtMs: 200_000,
+              nextSetId: "set-3",
+            }}
+          />
+        </AppearanceProvider>,
+      );
+      for (nowMs of [197_000, 198_000, 199_000, 200_000]) {
+        await act(async () => {
+          jest.advanceTimersByTime(1_000);
+        });
+      }
+
+      expect(countdownCue.playShortCue).toHaveBeenCalledTimes(6);
+      expect(countdownCue.playLongCue).toHaveBeenCalledTimes(2);
+    } finally {
+      rendered?.unmount();
+      jest.useRealTimers();
+    }
+  });
+
+  it("keeps cue history through pause and resume, and does not backfill after foregrounding", async () => {
+    jest.useFakeTimers();
+    let onAppStateChange: ((nextState: AppStateStatus) => void) | undefined;
+    addEventListener.mockImplementation((event, listener) => {
+      if (event === "change") {
+        onAppStateChange = listener;
+      }
+      return { remove: jest.fn() };
+    });
+    let rendered: Awaited<ReturnType<typeof renderDock>>["rendered"] | undefined;
+    try {
+      let nowMs = 95_000;
+      const countdownCue = {
+        playLongCue: jest.fn(async () => undefined),
+        playShortCue: jest.fn(async () => undefined),
+      };
+      ({ rendered } = await renderDock({
+        ...running,
+        endsAtMs: 100_000,
+      }, {
+        nowMs: () => nowMs,
+        restSoundEnabled: true,
+        countdownCue,
+      }));
+
+      for (nowMs of [96_000, 97_000]) {
+        await act(async () => {
+          jest.advanceTimersByTime(1_000);
+        });
+      }
+      expect(countdownCue.playShortCue).toHaveBeenCalledTimes(1);
+
+      await rendered.rerender(
+        <AppearanceProvider>
+          <RestDock
+            nextSetIndex={2}
+            nextTarget="60 kg × 8"
+            notificationPermission="granted"
+            nowMs={() => nowMs}
+            onAdjust={jest.fn()}
+            onExpired={jest.fn()}
+            onOpenSettings={jest.fn()}
+            onPause={jest.fn()}
+            onResume={jest.fn()}
+            onSkip={jest.fn()}
+            restSoundEnabled
+            countdownCue={countdownCue}
+            state={{
+              version: 1,
+              state: "paused",
+              revision: 4,
+              remainingMs: 4_000,
+              nextSetId: "set-2",
+            }}
+          />
+        </AppearanceProvider>,
+      );
+      nowMs = 120_000;
+      await rendered.rerender(
+        <AppearanceProvider>
+          <RestDock
+            nextSetIndex={2}
+            nextTarget="60 kg × 8"
+            notificationPermission="granted"
+            nowMs={() => nowMs}
+            onAdjust={jest.fn()}
+            onExpired={jest.fn()}
+            onOpenSettings={jest.fn()}
+            onPause={jest.fn()}
+            onResume={jest.fn()}
+            onSkip={jest.fn()}
+            restSoundEnabled
+            countdownCue={countdownCue}
+            state={{
+              version: 1,
+              state: "running",
+              revision: 5,
+              startedAtMs: 120_000,
+              endsAtMs: 124_000,
+              nextSetId: "set-2",
+            }}
+          />
+        </AppearanceProvider>,
+      );
+      nowMs = 121_000;
+      await act(async () => {
+        jest.advanceTimersByTime(1_000);
+      });
+      expect(countdownCue.playShortCue).toHaveBeenCalledTimes(1);
+
+      onAppStateChange?.("background");
+      nowMs = 123_000;
+      await act(async () => {
+        jest.advanceTimersByTime(2_000);
+      });
+      onAppStateChange?.("active");
+      nowMs = 122_000;
+      await act(async () => {
+        jest.advanceTimersByTime(1_000);
+      });
+
+      expect(countdownCue.playShortCue).toHaveBeenCalledTimes(1);
+      expect(countdownCue.playLongCue).toHaveBeenCalledTimes(0);
+    } finally {
+      rendered?.unmount();
+      jest.useRealTimers();
+    }
+  });
+
+  it("contains a cue playback failure to its rest and clears it for the next rest", async () => {
+    jest.useFakeTimers();
+    let rendered: Awaited<ReturnType<typeof renderDock>>["rendered"] | undefined;
+    try {
+      let nowMs = 96_000;
+      const countdownCue = {
+        playLongCue: jest.fn(async () => undefined),
+        playShortCue: jest
+          .fn<() => Promise<void>>()
+          .mockRejectedValueOnce(new Error("audio unavailable"))
+          .mockResolvedValue(undefined),
+      };
+      ({ rendered } = await renderDock({
+        ...running,
+        endsAtMs: 100_000,
+      }, {
+        nowMs: () => nowMs,
+        restSoundEnabled: true,
+        countdownCue,
+      }));
+
+      nowMs = 97_000;
+      await act(async () => {
+        jest.advanceTimersByTime(1_000);
+      });
+      expect(screen.getByText("Countdown sound unavailable")).toBeOnTheScreen();
+
+      nowMs = 196_000;
+      await rendered.rerender(
+        <AppearanceProvider>
+          <RestDock
+            nextSetIndex={3}
+            nextTarget="70 kg × 6"
+            notificationPermission="granted"
+            nowMs={() => nowMs}
+            onAdjust={jest.fn()}
+            onExpired={jest.fn()}
+            onOpenSettings={jest.fn()}
+            onPause={jest.fn()}
+            onResume={jest.fn()}
+            onSkip={jest.fn()}
+            restSoundEnabled
+            countdownCue={countdownCue}
+            state={{
+              version: 1,
+              state: "running",
+              revision: 9,
+              startedAtMs: 196_000,
+              endsAtMs: 200_000,
+              nextSetId: "set-3",
+            }}
+          />
+        </AppearanceProvider>,
+      );
+      expect(screen.queryByText("Countdown sound unavailable")).not.toBeOnTheScreen();
+
+      nowMs = 197_000;
+      await act(async () => {
+        jest.advanceTimersByTime(1_000);
+      });
+      expect(countdownCue.playShortCue).toHaveBeenCalledTimes(2);
+      expect(screen.queryByText("Countdown sound unavailable")).not.toBeOnTheScreen();
+    } finally {
+      rendered?.unmount();
       jest.useRealTimers();
     }
   });
