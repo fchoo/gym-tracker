@@ -84,7 +84,7 @@ describe("Expo rest countdown cue adapter", () => {
       .toBe("d9d9b12ca269b3d3dd269a8d6079c839266500a7b76cfcfeeee95b4a0d8938a8");
   });
 
-  it("contains a player failure so playback cannot become rest authority", async () => {
+  it("surfaces a player failure to the observing UI without changing rest authority", async () => {
     const failedPlayer = {
       seekTo: jest.fn(() => {
         throw new Error("audio_unavailable");
@@ -97,7 +97,9 @@ describe("Expo rest countdown cue adapter", () => {
 
     const rendered = await renderHook(() => useExpoRestCountdownCueAdapter());
 
-    await expect(rendered.result.current.playShortCue()).resolves.toBeUndefined();
+    await expect(rendered.result.current.playShortCue()).rejects.toThrow(
+      "audio_unavailable",
+    );
     expect(failedPlayer.play).not.toHaveBeenCalled();
   });
 });

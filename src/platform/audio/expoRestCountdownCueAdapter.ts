@@ -16,12 +16,8 @@ type CuePlayer = Readonly<{
 }>;
 
 async function replayCue(player: CuePlayer): Promise<void> {
-  try {
-    await player.seekTo(0);
-    player.play();
-  } catch {
-    // Countdown playback is supplementary feedback and must never affect rest.
-  }
+  await player.seekTo(0);
+  player.play();
 }
 
 export function useExpoRestCountdownCueAdapter(): RestCountdownCuePort {

@@ -59,6 +59,9 @@ import {
 import {
   RestDock,
 } from "../components/RestDock";
+import type {
+  RestCountdownCuePort,
+} from "../../domains/rest/restCountdownCuePort";
 import {
   formatObservation,
   observationForSet,
@@ -317,6 +320,8 @@ export type ActiveWorkoutScreenProps = Readonly<{
   commands: ActiveWorkoutCommands;
   nowMs: () => number;
   notificationPermission?: RestNotificationPermission;
+  restSoundEnabled?: boolean;
+  countdownCue?: RestCountdownCuePort | undefined;
   onOpenNotificationSettings?: () => void;
   onGoBack: () => void;
   onFinishLater: () => void;
@@ -334,6 +339,8 @@ export function ActiveWorkoutScreen({
   commands,
   nowMs,
   notificationPermission = "undetermined",
+  restSoundEnabled = false,
+  countdownCue,
   onOpenNotificationSettings = () => undefined,
   onGoBack,
   onFinishLater,
@@ -891,6 +898,8 @@ export function ActiveWorkoutScreen({
             nextSetIndex={activeIndex + 1}
             nextTarget={nextTarget}
             notificationPermission={notificationPermission}
+            restSoundEnabled={restSoundEnabled}
+            countdownCue={countdownCue}
             nowMs={nowMs}
             onAdjust={(deltaMs) => {
               void runRest(() => commands.adjustRest({

@@ -15,6 +15,9 @@ import {
   useWorkoutAppRuntime,
 } from "../../src/bootstrap/workoutAppRuntime";
 import {
+  useRestCountdownCue,
+} from "../../src/bootstrap/restCountdownCue";
+import {
   AdaptiveScreen,
 } from "../../src/ui/layout/AdaptiveScreen";
 import {
@@ -36,6 +39,7 @@ export default function ActiveWorkoutRoute() {
     reviewExerciseId?: string | string[];
   }>();
   const runtime = useWorkoutAppRuntime();
+  const countdownCue = useRestCountdownCue();
   const resolvedSessionId = sessionId ?? "unknown";
   const resolvedReviewExerciseId = Array.isArray(reviewExerciseId)
     ? reviewExerciseId[0]
@@ -230,6 +234,8 @@ export default function ActiveWorkoutRoute() {
       }}
       nowMs={() => Date.now()}
       notificationPermission={runtime.notificationPermission}
+      restSoundEnabled={runtime.readRestAlertPreferences().soundEnabled}
+      countdownCue={countdownCue}
       onOpenNotificationSettings={() => {
         void runtime.openRestNotificationSettings();
       }}
