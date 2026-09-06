@@ -25,8 +25,12 @@ async function replayCue(player: CuePlayer): Promise<void> {
 }
 
 export function useExpoRestCountdownCueAdapter(): RestCountdownCuePort {
-  const shortPlayer = useAudioPlayer(null);
-  const longPlayer = useAudioPlayer(null);
+  const shortPlayer = useAudioPlayer(
+    require("../../../assets/audio/rest-cue-short.wav"),
+  );
+  const longPlayer = useAudioPlayer(
+    require("../../../assets/audio/rest-cue-long.wav"),
+  );
 
   const playShortCue = useCallback(
     () => replayCue(shortPlayer),
