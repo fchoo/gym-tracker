@@ -3396,7 +3396,7 @@ test("custom exercise flow scrolls through the long editor contract", async () =
   }
   assert.match(
     flow,
-    /- tapOn: "Activate"\n- scrollUntilVisible:\n    element:\n      text: "Rotation"\n    direction: DOWN\n    centerElement: true\n- tapOn: "Rotation"\n- assertVisible: "1\. Custom Day"\n- scrollUntilVisible:\n    element:\n      text: "Save schedule"\n    direction: DOWN\n- tapOn: "Save schedule"\n- assertVisible: "Save this schedule\?"\n- tapOn: "Save schedule"/u,
+    /- tapOn: "Activate"\n- scrollUntilVisible:\n    element:\n      text: "Rotation"\n    direction: DOWN\n    centerElement: true\n- tapOn: "Rotation"\n- assertVisible: "Custom Day"\n- assertVisible: "Reorder Custom Day"\n- assertNotVisible: "1\. Custom Day"\n- scrollUntilVisible:\n    element:\n      text: "Save schedule"\n    direction: DOWN\n- tapOn: "Save schedule"\n- assertVisible: "Save this schedule\?"\n- tapOn: "Save schedule"/u,
   );
   assert.match(
     flow,

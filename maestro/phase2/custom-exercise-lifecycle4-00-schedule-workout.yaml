@@ -31,7 +31,9 @@ tags:
     direction: DOWN
     centerElement: true
 - tapOn: "Rotation"
-- assertVisible: "1. Custom Day"
+- assertVisible: "Custom Day"
+- assertVisible: "Reorder Custom Day"
+- assertNotVisible: "1. Custom Day"
 - scrollUntilVisible:
     element:
       text: "Save schedule"
