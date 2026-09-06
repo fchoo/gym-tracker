@@ -1,0 +1,22 @@
+appId: com.fchoo.gymtracker
+name: Phase 7 production Today and Settings evidence
+tags:
+  - phase-7
+  - production-candidate
+---
+- launchApp:
+    clearState: true
+    permissions:
+      notifications: deny
+- assertVisible: "Today"
+- assertVisible: "Use Full Body Foundation"
+- takeScreenshot: phase7-today-selected-navigation
+- tapOn: "Open Settings"
+- assertVisible: "Settings"
+- assertVisible: "Appearance"
+- assertVisible: "History and data"
+- assertVisible: "Data and recovery"
+- takeScreenshot: phase7-settings-root
+- tapOn: "History and data"
+- assertVisible: "Data and recovery"
+- takeScreenshot: phase7-settings-history-data

@@ -1,0 +1,49 @@
+appId: com.fchoo.gymtracker
+name: Phase 7 production plan schedule reorder evidence
+tags:
+  - phase-7
+  - production-candidate
+---
+- launchApp:
+    clearState: true
+    permissions:
+      notifications: deny
+- assertVisible: "Today"
+- tapOn: "Library"
+- scrollUntilVisible:
+    element:
+      text: "My Plans"
+    direction: DOWN
+    centerElement: true
+- scrollUntilVisible:
+    element:
+      text: "Create my own"
+    direction: UP
+    centerElement: true
+- tapOn: "Create my own"
+- tapOn: "Plan name"
+- inputText: "Phase Seven Reorder"
+- tapOn: "First day name"
+- inputText: "First"
+- hideKeyboard
+- scrollUntilVisible:
+    element:
+      text: "Create draft"
+    direction: DOWN
+    centerElement: true
+- tapOn: "Create draft"
+- extendedWaitUntil:
+    visible: "Draft"
+    timeout: 60000
+- assertVisible: "Selected day"
+- takeScreenshot: phase7-plan-selected-day
+- scrollUntilVisible:
+    element:
+      id: "drag-exercise-Back Squat"
+    direction: DOWN
+    centerElement: true
+- assertVisible: "Drag Back Squat"
+- takeScreenshot: phase7-plan-drag-handle
+- tapOn: "Schedule"
+- assertVisible: "Weekday"
+- takeScreenshot: phase7-schedule-reorder
