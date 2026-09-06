@@ -638,7 +638,8 @@ describe("Plan 01-02 route shell", () => {
       "Library",
       "Progress",
     ]);
-    expect(screen.getByRole("tab", { name: "Today" })).toBeSelected();
+    const today = screen.getByRole("tab", { name: "Today" });
+    expect(today).toBeSelected();
     for (const label of ["Today", "Calendar", "Library", "Progress"]) {
       expect(screen.getByText(label)).toBeOnTheScreen();
     }
@@ -648,10 +649,16 @@ describe("Plan 01-02 route shell", () => {
       paddingHorizontal: 4,
     });
     // The active tab is indicated by icon/label colour only; no box outline.
-    expect(screen.getByRole("tab", { name: "Today" }))
+    expect(screen.getByText("Today")).toHaveStyle({
+      color: themes.light.action,
+    });
+    expect(today)
       .toHaveStyle({ borderWidth: undefined });
-    expect(screen.getByRole("tab", { name: "Today" }))
+    expect(today)
       .not.toHaveStyle({ borderWidth: 2 });
+
+    await fireEvent(today, "focus");
+    expect(today).toHaveStyle({ outlineWidth: 2 });
   });
 
   it("reflows four complete root destinations into two accessible rows for 200% text", async () => {
