@@ -7,6 +7,7 @@ import {
   ChartNoAxesColumnIncreasing,
   Check,
   Circle,
+  ClipboardList,
   Dumbbell,
   Ellipsis,
   Eye,
@@ -393,6 +394,7 @@ const actionIcons = {
   more: Ellipsis,
   moveDown: ArrowDown,
   moveUp: ArrowUp,
+  plan: ClipboardList,
   retry: RotateCcw,
   show: Eye,
 } as const;
@@ -1126,8 +1128,6 @@ export function AppTabs({
             twoRowBottomLayout && styles.appTabTwoRows,
           {
             backgroundColor: pressed ? colors.surfaceSubtle : "transparent",
-              borderColor: selected ? colors.action : "transparent",
-              borderWidth: selected ? sizes.focusRing : 0,
             opacity: disabled ? 0.62 : 1,
           },
         ],

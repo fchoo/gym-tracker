@@ -647,6 +647,11 @@ describe("Plan 01-02 route shell", () => {
       paddingBottom: 2,
       paddingHorizontal: 4,
     });
+    // The active tab is indicated by icon/label colour only; no box outline.
+    expect(screen.getByRole("tab", { name: "Today" }))
+      .toHaveStyle({ borderWidth: undefined });
+    expect(screen.getByRole("tab", { name: "Today" }))
+      .not.toHaveStyle({ borderWidth: 2 });
   });
 
   it("reflows four complete root destinations into two accessible rows for 200% text", async () => {

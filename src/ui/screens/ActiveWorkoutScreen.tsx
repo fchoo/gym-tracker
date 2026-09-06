@@ -374,7 +374,7 @@ export function ActiveWorkoutScreen({
           <ActionCluster style={styles.headerActions}>
             <IconAction
               accessibilityLabel="Today's plan"
-              icon="more"
+              icon="plan"
               onPress={onOpenWorkoutPlan}
             />
             {reviewingEarlierOrLater ? null : <IconAction
@@ -582,59 +582,13 @@ export function ActiveWorkoutScreen({
         nowMs: nowMs(),
       });
       applyView(result);
-      const setIndex = result.currentExercise.warmups.findIndex(
-        ({ id }) => id === result.committedSetId,
-      );
       setRevealedSetId(result.committedSetId);
       setRevealedSetOffset(0);
-      setRevealedSetMessage(
-        `Warm-up W${setIndex + 1} added and focused`,
-      );
     } catch {
       setSectionFailure({
         operation: "add_warmup",
         retry: () => {
           void addWarmup();
-        },
-      });
-    } finally {
-      sectionMutationRef.current = null;
-      setWarmupBusy(null);
-    }
-  };
-
-  const copyWarmup = async () => {
-    if (sectionMutationRef.current !== null) {
-      return;
-    }
-    const source = view.currentExercise.warmups.at(-1);
-    if (source === undefined) {
-      return;
-    }
-    sectionMutationRef.current = "copy_warmup";
-    setWarmupBusy({ setId: source.id, action: "complete" });
-    setSectionFailure(null);
-    try {
-      const result = await commands.copyPreviousWarmup({
-        sessionId,
-        sourceSetId: source.id,
-        setId: `warmup_copy_${sessionId}_${nowMs()}`,
-        nowMs: nowMs(),
-      });
-      applyView(result);
-      const setIndex = result.currentExercise.warmups.findIndex(
-        ({ id }) => id === result.committedSetId,
-      );
-      setRevealedSetId(result.committedSetId);
-      setRevealedSetOffset(0);
-      setRevealedSetMessage(
-        `Warm-up W${setIndex + 1} added and focused`,
-      );
-    } catch {
-      setSectionFailure({
-        operation: "copy_warmup",
-        retry: () => {
-          void copyWarmup();
         },
       });
     } finally {
@@ -663,14 +617,8 @@ export function ActiveWorkoutScreen({
         nowMs: nowMs(),
       });
       applyView(result);
-      const setIndex = result.currentExercise.workingSets.findIndex(
-        ({ id }) => id === result.committedSetId,
-      );
       setRevealedSetId(result.committedSetId);
       setRevealedSetOffset(0);
-      setRevealedSetMessage(
-        `Working set ${setIndex + 1} added and focused`,
-      );
     } catch {
       setSectionFailure({
         operation: "add_working",
@@ -749,9 +697,6 @@ export function ActiveWorkoutScreen({
       setEditingCompletedSetId(null);
       setRevealedSetId(result.committedSetId);
       setRevealedSetOffset(0);
-      setRevealedSetMessage(
-        `Working set ${workingIndex(result.currentExercise.workingSets, result.committedSetId) + 1} correction saved`,
-      );
     } catch {
       setCorrectionFailure({
         setId: currentSet.id,
@@ -924,39 +869,6 @@ export function ActiveWorkoutScreen({
         ) : undefined}
         primary={
           <>
-            {revealedSetMessage === null ? null : (
-              <InlineNotice
-                body="The saved row is ready to review and edit."
-                heading={revealedSetMessage}
-                tone="completed"
-              />
-            )}
-            {reviewingEarlierOrLater || activeSet !== undefined ? null : (
-              <InlineNotice
-                body="Every planned working set in this exercise has been saved. You can still correct any completed set before finishing the workout."
-                heading="Exercise complete"
-                tone="completed"
-              />
-            )}
-            {!reviewingEarlierOrLater && view.rest.state === "expired" ? (
-              <InlineNotice
-                action={
-                  <SecondaryAction
-                    disabled={restBusy}
-                    label="Dismiss rest notice"
-                    onPress={() => {
-                      void runRest(() => commands.skipRest(restInput()));
-                    }}
-                  />
-                }
-                body={`Rest ended ${Math.max(
-                  0,
-                  Math.floor((nowMs() - view.rest.expiredAtMs) / 1_000),
-                )} seconds ago · working set ${activeIndex + 1} is ready`}
-                heading="Rest ended"
-                tone="attention"
-              />
-            ) : null}
             {reviewingEarlierOrLater ? (
               <InlineNotice
                 action={
@@ -976,48 +888,35 @@ export function ActiveWorkoutScreen({
               testID="active-workout-warmups-card"
             >
               <SectionHeader
+                action={reviewingEarlierOrLater ? undefined : (
+                  <View
+                    style={styles.inlineActions}
+                    testID="active-workout-warmup-actions"
+                  >
+                    <SectionGlyphAction
+                      busy={sectionMutationRef.current === "add_warmup"}
+                      disabled={
+                        warmupBusy !== null
+                        || view.currentExercise.metricProfile !== "load_reps"
+                      }
+                      accessibilityLabel="Add warm-up"
+                      icon={Plus}
+                      onPress={() => {
+                        void addWarmup();
+                      }}
+                    />
+                  </View>
+                )}
                 supportingText="Optional warm-up sets"
                 title="Warm-ups"
                 tone="card"
               />
-              {reviewingEarlierOrLater ? null : <View
-                style={styles.inlineActions}
-                testID="active-workout-warmup-actions"
-              >
-                <SectionGlyphAction
-                  busy={sectionMutationRef.current === "add_warmup"}
-                  disabled={
-                    warmupBusy !== null
-                    || view.currentExercise.metricProfile !== "load_reps"
-                  }
-                  accessibilityLabel="Add warm-up"
-                  icon={Plus}
-                  onPress={() => {
-                    void addWarmup();
-                  }}
-                />
-                <SectionGlyphAction
-                  busy={sectionMutationRef.current === "copy_warmup"}
-                  disabled={
-                    warmupBusy !== null
-                    || view.currentExercise.warmups.length === 0
-                  }
-                  accessibilityLabel="Copy previous warm-up"
-                  icon={Copy}
-                  onPress={() => {
-                    void copyWarmup();
-                  }}
-                />
-              </View>}
               {sectionFailure === null
-                || (sectionFailure.operation !== "add_warmup"
-                  && sectionFailure.operation !== "copy_warmup") ? null : (
+                || sectionFailure.operation !== "add_warmup" ? null : (
                   <InlineNotice
                     action={
                       <SecondaryAction
-                        label={sectionFailure.operation === "add_warmup"
-                          ? "Retry add warm-up"
-                          : "Retry copy warm-up"}
+                        label="Retry add warm-up"
                         onPress={sectionFailure.retry}
                       />
                     }
@@ -1061,24 +960,26 @@ export function ActiveWorkoutScreen({
               testID="active-workout-working-sets-card"
             >
               <SectionHeader
+                action={reviewingEarlierOrLater ? undefined : (
+                  <View
+                    style={styles.inlineActions}
+                    testID="active-workout-working-actions"
+                  >
+                    <SectionGlyphAction
+                      busy={sectionMutationRef.current === "add_working"}
+                      disabled={workingBusySetId !== null}
+                      accessibilityLabel="Add working set"
+                      icon={Plus}
+                      onPress={() => {
+                        void addWorking();
+                      }}
+                    />
+                  </View>
+                )}
                 supportingText={`${view.progress.completedWorkingSets} of ${view.progress.totalWorkingSets} working sets`}
                 title="Working sets"
                 tone="card"
               />
-              {reviewingEarlierOrLater ? null : <View
-                style={styles.inlineActions}
-                testID="active-workout-working-actions"
-              >
-                <SectionGlyphAction
-                  busy={sectionMutationRef.current === "add_working"}
-                  disabled={workingBusySetId !== null}
-                  accessibilityLabel="Add working set"
-                  icon={Plus}
-                  onPress={() => {
-                    void addWorking();
-                  }}
-                />
-              </View>}
               {sectionFailure?.operation !== "add_working" ? null : (
                 <InlineNotice
                   action={
