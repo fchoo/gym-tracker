@@ -187,7 +187,7 @@ describe("restore preflight", () => {
       .rejects.toEqual(new RestoreCommandError("restore_archive_invalid"));
   }
 
-  it.each([15, 16])("accepts logical producer schema version %i", async (schemaVersion) => {
+  it.each([15, 16, 17])("accepts logical producer schema version %i", async (schemaVersion) => {
     const commands = createRestoreCommands({
       crypto: cryptoPort(), files: { readSelectedArchiveAtMost: () => archiveFor(snapshot({ schemaVersion })) },
       kdf, schema, candidateProbe, store: createRestorePreflightStore({ tokenFactory: () => "schema-" + schemaVersion }),
@@ -195,12 +195,16 @@ describe("restore preflight", () => {
     await expect(commands.preflightSecureRestore({ password: "owner-password" })).resolves.toEqual(expect.objectContaining({ outcome: "ready" }));
   });
 
-  it.each([14, 17])("rejects unsupported logical producer schema version %i", async (schemaVersion) => {
+  it.each([14, 18])("rejects unsupported logical producer schema version %i", async (schemaVersion) => {
     const commands = createRestoreCommands({
       crypto: cryptoPort(), files: { readSelectedArchiveAtMost: () => archiveFor(snapshot({ schemaVersion })) },
       kdf, schema, candidateProbe, store: createRestorePreflightStore({ tokenFactory: () => "unsupported" }),
     });
     await expect(commands.preflightSecureRestore({ password: "owner-password" })).rejects.toEqual(expect.objectContaining({ code: "restore_archive_unsupported_version" }));
+  });
+
+  it("excludes operational removal receipts from logical backup and restore tables", () => {
+    expect(LOGICAL_BACKUP_TABLES).not.toContain("workout_remove_receipts");
   });
 
   it("returns a bounded preview only after authenticating, validating all 43 tables, and checking local references", async () => {
