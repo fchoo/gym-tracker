@@ -11,12 +11,12 @@ tags:
 - assertVisible: "Today"
 - assertVisible: "Use Full Body Foundation"
 - takeScreenshot: phase7-today-selected-navigation
-- tapOn: "Open Settings"
+- tapOn: "Settings"
 - assertVisible: "Settings"
 - assertVisible: "Appearance"
 - assertVisible: "History and data"
 - assertVisible: "Data and recovery"
 - takeScreenshot: phase7-settings-root
-- tapOn: "History and data"
-- assertVisible: "Data and recovery"
+- tapOn: "Removed sessions"
+- assertVisible: "Removed sessions"
 - takeScreenshot: phase7-settings-history-data

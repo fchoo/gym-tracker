@@ -9,7 +9,7 @@ tags:
     permissions:
       notifications: deny
 - assertVisible: "Today"
-- tapOn: "Open Settings"
+- tapOn: "Settings"
 - assertVisible: "Settings"
 - takeScreenshot: phase7-settings-200pct
 - pressKey: BACK

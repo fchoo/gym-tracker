@@ -41,6 +41,12 @@ tags:
 - assertVisible: "Remove warm-up"
 - takeScreenshot: phase7-workout-remove-confirmation
 - tapOn: "Cancel"
-- tapOn: "Open Settings"
+- stopApp
+- launchApp:
+    clearState: false
+    permissions:
+      notifications: deny
+- assertVisible: "Today"
+- tapOn: "Settings"
 - assertVisible: "Rest sound"
 - takeScreenshot: phase7-workout-audio-settings

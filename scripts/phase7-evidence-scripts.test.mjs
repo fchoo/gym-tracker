@@ -67,6 +67,32 @@ test("Phase 7 tooling owns the full executable UX/UI matrix", () => {
   }]);
 });
 
+test("Phase 7 Maestro flows use source-aligned interactive labels and routes", () => {
+  const flowSource = (name) => readFileSync(
+    path.join(projectRoot, "maestro/phase7", name),
+    "utf8",
+  );
+
+  const todaySettings = flowSource("today-settings.yaml");
+  assert.match(todaySettings, /- tapOn: "Settings"/u);
+  assert.match(todaySettings, /- tapOn: "Removed sessions"/u);
+  assert.match(todaySettings, /- assertVisible: "Removed sessions"/u);
+  assert.doesNotMatch(todaySettings, /tapOn: "(?:Open Settings|History and data)"/u);
+
+  const workoutRemovalAudio = flowSource("workout-removal-audio.yaml");
+  assert.match(workoutRemovalAudio, /- tapOn: "Cancel"\n- stopApp\n- launchApp:/u);
+  assert.match(workoutRemovalAudio, /- assertVisible: "Today"\n- tapOn: "Settings"/u);
+  assert.doesNotMatch(workoutRemovalAudio, /tapOn: "Open Settings"/u);
+
+  const planScheduleReorder = flowSource("plan-schedule-reorder.yaml");
+  assert.match(planScheduleReorder, /- assertVisible: "Plan days"/u);
+  assert.doesNotMatch(planScheduleReorder, /assertVisible: "Selected day"/u);
+
+  const iconNavigation = flowSource("icon-navigation-accessibility.yaml");
+  assert.match(iconNavigation, /- tapOn: "Settings"/u);
+  assert.doesNotMatch(iconNavigation, /tapOn: "Open Settings"/u);
+});
+
 test("Phase 7 attended evidence stays exact-byte, N4-only, and observation-only", () => {
   assert.equal(existsSync(checklistPath), true, "the Phase 7 N4 checklist must exist");
   const source = readFileSync(checklistPath, "utf8");

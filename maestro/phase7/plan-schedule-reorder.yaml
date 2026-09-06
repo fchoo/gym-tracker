@@ -35,7 +35,7 @@ tags:
 - extendedWaitUntil:
     visible: "Draft"
     timeout: 60000
-- assertVisible: "Selected day"
+- assertVisible: "Plan days"
 - takeScreenshot: phase7-plan-selected-day
 - scrollUntilVisible:
     element:
