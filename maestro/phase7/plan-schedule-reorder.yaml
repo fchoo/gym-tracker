@@ -42,7 +42,7 @@ tags:
       id: "drag-exercise-Back Squat"
     direction: DOWN
     centerElement: true
-- assertVisible: "Drag Back Squat"
+- assertVisible: "Reorder Back Squat"
 - takeScreenshot: phase7-plan-drag-handle
 - scrollUntilVisible:
     element:
@@ -68,5 +68,5 @@ tags:
       id: "drag-exercise-Bench Press"
     direction: DOWN
     centerElement: true
-- assertVisible: "Drag Bench Press. Position 2 of 2"
-- assertVisible: "Drag Back Squat. Position 1 of 2"
+- assertVisible: "Reorder Bench Press"
+- assertVisible: "Reorder Back Squat"

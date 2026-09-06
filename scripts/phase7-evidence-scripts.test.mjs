@@ -9,6 +9,7 @@ import {
   parsePhase7MaestroArguments,
   phase7NativeHeldDragCommands,
   phase7NativeDragMoveSequence,
+  phase7PlanOrderIs,
   phase7PlanReorderCoordinates,
 } from "./run-phase7-maestro.mjs";
 import {
@@ -105,11 +106,19 @@ test("Phase 7 Maestro flows use source-aligned interactive labels and routes", (
 
   const planScheduleReorder = flowSource("plan-schedule-reorder.yaml");
   assert.match(planScheduleReorder, /- assertVisible: "Plan days"/u);
-  assert.match(planScheduleReorder, /- assertVisible: "Drag Bench Press\. Position 2 of 2"/u);
-  assert.match(planScheduleReorder, /- assertVisible: "Drag Back Squat\. Position 1 of 2"/u);
+  assert.match(planScheduleReorder, /- assertVisible: "Reorder Bench Press"/u);
+  assert.match(planScheduleReorder, /- assertVisible: "Reorder Back Squat"/u);
+  const reorderComponent = readFileSync(
+    path.join(projectRoot, "src/ui/components/PlanEditorFields.tsx"),
+    "utf8",
+  );
+  assert.equal(
+    reorderComponent.includes('accessibilityLabel={`Reorder ${label}`}'),
+    true,
+  );
   const runner = readFileSync(runnerPath, "utf8");
-  assert.match(runner, /phase7PlanOrderIs\(afterDrag, "Bench Press", 1\)/u);
-  assert.match(runner, /phase7PlanOrderIs\(afterAccessibilityMove, "Back Squat", 1\)/u);
+  assert.match(runner, /phase7PlanOrderIs\(afterDrag, "Bench Press", "Back Squat"\)/u);
+  assert.match(runner, /phase7PlanOrderIs\(afterAccessibilityMove, "Back Squat", "Bench Press"\)/u);
   assert.match(runner, /phase7-schedule-reorder\.png/u);
   assert.doesNotMatch(planScheduleReorder, /(?:longPressOn|pressKey: ARROW_DOWN)/u);
   assert.doesNotMatch(planScheduleReorder, /assertVisible: "Selected day"/u);
@@ -139,8 +148,8 @@ test("Phase 7 Maestro flows use source-aligned interactive labels and routes", (
 
 test("Phase 7 plan evidence uses live native drag and an accessibility action, not simulated gestures", () => {
   const hierarchy = [
-    '<node resource-id="drag-exercise-Bench Press" content-desc="Drag Bench Press. Position 2 of 2" bounds="[120,640][240,720]"/>',
-    '<node resource-id="drag-exercise-Back Squat" content-desc="Drag Back Squat. Position 1 of 2" bounds="[120,480][240,560]"/>',
+    '<node resource-id="drag-exercise-Bench Press" content-desc="Reorder Bench Press" bounds="[120,640][240,720]"/>',
+    '<node resource-id="drag-exercise-Back Squat" content-desc="Reorder Back Squat" bounds="[120,480][240,560]"/>',
   ].join("");
   const drag = phase7PlanReorderCoordinates(hierarchy);
   assert.deepEqual(drag, { startX: 180, startY: 680, endX: 180, endY: 520 });
@@ -150,6 +159,8 @@ test("Phase 7 plan evidence uses live native drag and an accessibility action, n
     accessibilityMoveDown: ["shell", "input", "keycombination", "SHIFT_LEFT", "DPAD_DOWN"],
   });
   assert.equal(phase7NativeDragMoveSequence(drag).length, 12);
+  assert.equal(phase7PlanOrderIs(hierarchy, "Back Squat", "Bench Press"), true);
+  assert.equal(phase7PlanOrderIs(hierarchy, "Bench Press", "Back Squat"), false);
   assert.throws(() => phase7PlanReorderCoordinates("<node/>"), /drag hierarchy/u);
 });
 

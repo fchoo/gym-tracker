@@ -255,12 +255,12 @@ function hierarchyAttribute(node, name) {
   return new RegExp(`${name}=\"([^\"]*)\"`, "u").exec(node)?.[1] ?? null;
 }
 
-export function phase7PlanReorderCoordinates(hierarchy, { sourceLabel = "Bench Press", sourcePosition = 2, targetLabel = "Back Squat", targetPosition = 1 } = {}) {
+export function phase7PlanReorderCoordinates(hierarchy, { sourceLabel = "Bench Press", targetLabel = "Back Squat" } = {}) {
   const nodes = [...String(hierarchy).matchAll(/<node\b[^>]*>/gu)].map(([node]) => node);
-  const coordinateFor = (label, position) => {
+  const coordinateFor = (label) => {
     const node = nodes.find((candidate) =>
       hierarchyAttribute(candidate, "resource-id") === `drag-exercise-${label}`
-      && hierarchyAttribute(candidate, "content-desc") === `Drag ${label}. Position ${position} of 2`);
+      && hierarchyAttribute(candidate, "content-desc") === `Reorder ${label}`);
     const bounds = /^\[(\d+),(\d+)\]\[(\d+),(\d+)\]$/u.exec(
       node === undefined ? "" : hierarchyAttribute(node, "bounds") ?? "",
     );
@@ -269,8 +269,8 @@ export function phase7PlanReorderCoordinates(hierarchy, { sourceLabel = "Bench P
     if (right <= left || bottom <= top) fail(`drag hierarchy bounds are invalid for ${label}.`);
     return Object.freeze({ x: Math.round((left + right) / 2), y: Math.round((top + bottom) / 2) });
   };
-  const source = coordinateFor(sourceLabel, sourcePosition);
-  const target = coordinateFor(targetLabel, targetPosition);
+  const source = coordinateFor(sourceLabel);
+  const target = coordinateFor(targetLabel);
   return Object.freeze({ startX: source.x, startY: source.y, endX: target.x, endY: target.y });
 }
 
@@ -297,9 +297,12 @@ function waitSynchronously(milliseconds) {
   Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, milliseconds);
 }
 
-function phase7PlanOrderIs(hierarchy, label, position) {
-  return String(hierarchy).includes(`resource-id=\"drag-exercise-${label}\"`)
-    && String(hierarchy).includes(`content-desc=\"Drag ${label}. Position ${position} of 2`);
+export function phase7PlanOrderIs(hierarchy, firstLabel, secondLabel) {
+  const coordinates = phase7PlanReorderCoordinates(hierarchy, {
+    sourceLabel: firstLabel,
+    targetLabel: secondLabel,
+  });
+  return coordinates.startY < coordinates.endY;
 }
 
 function captureScreenshot(adbPath, serial, outputPath) {
@@ -325,16 +328,16 @@ function executePhase7PlanReorderEvidence(adbPath, serial, flowDirectory) {
     if (pointerDown) adb(adbPath, serial, ...commands.up);
   }
   const afterDrag = adb(adbPath, serial, "exec-out", "uiautomator", "dump", "/dev/tty");
-  if (!phase7PlanOrderIs(afterDrag, "Bench Press", 1) || !phase7PlanOrderIs(afterDrag, "Back Squat", 2)) {
+  if (!phase7PlanOrderIs(afterDrag, "Bench Press", "Back Squat")) {
     fail("native held drag did not commit the plan reorder.");
   }
   const accessibilityTarget = phase7PlanReorderCoordinates(afterDrag, {
-    sourceLabel: "Bench Press", sourcePosition: 1, targetLabel: "Back Squat", targetPosition: 2,
+    sourceLabel: "Bench Press", targetLabel: "Back Squat",
   });
   adb(adbPath, serial, "shell", "input", "tap", String(accessibilityTarget.startX), String(accessibilityTarget.startY));
   adb(adbPath, serial, ...commands.accessibilityMoveDown);
   const afterAccessibilityMove = adb(adbPath, serial, "exec-out", "uiautomator", "dump", "/dev/tty");
-  if (!phase7PlanOrderIs(afterAccessibilityMove, "Back Squat", 1) || !phase7PlanOrderIs(afterAccessibilityMove, "Bench Press", 2)) {
+  if (!phase7PlanOrderIs(afterAccessibilityMove, "Back Squat", "Bench Press")) {
     fail("native accessibility action did not commit the plan reorder.");
   }
   captureScreenshot(adbPath, serial, path.join(flowDirectory, "phase7-schedule-reorder.png"));
