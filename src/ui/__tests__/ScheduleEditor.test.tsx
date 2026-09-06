@@ -1,4 +1,5 @@
 import {
+  act,
   fireEvent,
   render,
   renderHook,
@@ -12,6 +13,9 @@ import {
   jest,
 } from "@jest/globals";
 import React from "react";
+import {
+  getByGestureTestId,
+} from "react-native-gesture-handler/jest-utils";
 
 import type {
   ScheduleRuntimeSource,
@@ -34,6 +38,25 @@ import {
 import {
   AppearanceProvider,
 } from "../theme";
+
+type TestGesture = Readonly<{
+  handlers: Readonly<{
+    onStart?: (event: Readonly<{ translationY: number }>) => void;
+    onUpdate?: (event: Readonly<{ translationY: number }>) => void;
+    onEnd?: (
+      event: Readonly<{ translationY: number }>,
+      success: boolean,
+    ) => void;
+    onFinalize?: (
+      event: Readonly<{ translationY: number }>,
+      success: boolean,
+    ) => void;
+  }>;
+}>;
+
+function reorderGesture(reorderId: string): TestGesture {
+  return getByGestureTestId(`reorder-gesture-${reorderId}`) as unknown as TestGesture;
+}
 
 function scheduleSnapshot(
   overrides: Partial<ScheduleEditorSnapshot> = {},
@@ -213,12 +236,16 @@ describe("schedule editor tracer", () => {
       .toHaveTextContent("2026-08-19");
 
     await fireEvent.press(screen.getByRole("radio", { name: "Rotation" }));
-    await fireEvent.press(screen.getByRole("button", {
-      name: "Move Strength B up",
-    }));
+    await fireEvent(
+      screen.getByTestId("drag-rotation-day-b-1"),
+      "accessibilityAction",
+      { nativeEvent: { actionName: "increment" } },
+    );
     expect(saveSchedule).not.toHaveBeenCalled();
-    expect(screen.getByText("1. Strength B")).toBeOnTheScreen();
-    expect(screen.getByText("2. Strength A")).toBeOnTheScreen();
+    expect(screen.getAllByText("Strength B").at(-1)).toBeOnTheScreen();
+    expect(screen.queryByText("Position 2 of 2")).not.toBeOnTheScreen();
+    expect(screen.queryByRole("button", { name: "Move Strength B up" }))
+      .not.toBeOnTheScreen();
 
     await fireEvent.press(screen.getByRole("button", {
       name: "Save schedule",
@@ -383,6 +410,118 @@ describe("schedule runtime adapter", () => {
 });
 
 describe("schedule binding editor", () => {
+  it("uses the shared drag and accessible ordering contract for Weekday and Rotation drafts", async () => {
+    const weekdayBindings = [{
+      ordinal: 0,
+      weekIndex: 0,
+      weekday: "Monday" as const,
+      planDayId: "day-a",
+    }, {
+      ordinal: 1,
+      weekIndex: 0,
+      weekday: "Thursday" as const,
+      planDayId: "day-b",
+    }, {
+      ordinal: 2,
+      weekIndex: 0,
+      weekday: "Saturday" as const,
+      planDayId: "day-c",
+    }];
+    const rotationBindings = weekdayBindings.map(({ planDayId }, ordinal) => ({
+      ordinal,
+      planDayId,
+    }));
+    const onWeekdayBindings = jest.fn();
+    const onRotationBindings = jest.fn();
+    const days = [
+      { id: "day-a", name: "Strength A", ordinal: 0 },
+      { id: "day-b", name: "Strength B", ordinal: 1 },
+      { id: "day-c", name: "Strength C", ordinal: 2 },
+    ];
+    const { rerender } = await render(
+      <AppearanceProvider>
+        <ScheduleBindingEditor
+          days={days}
+          mode="weekday"
+          onRotationBindings={onRotationBindings}
+          onWeekdayBindings={onWeekdayBindings}
+          rotationBindings={rotationBindings}
+          weekdayBindings={weekdayBindings}
+        />
+      </AppearanceProvider>,
+    );
+
+    const weekdayHandle = await screen.findByTestId(
+      "drag-weekday-0-Thursday-day-b",
+    );
+    expect(weekdayHandle).toHaveProp(
+      "accessibilityLabel",
+      "Reorder Strength B",
+    );
+    expect(weekdayHandle).toHaveProp(
+      "accessibilityActions",
+      expect.arrayContaining([{ name: "increment", label: "Move up" }]),
+    );
+    expect(screen.queryByRole("button", { name: "Move Strength B up" }))
+      .not.toBeOnTheScreen();
+    expect(screen.queryByText("Position 2 of 3")).not.toBeOnTheScreen();
+
+    await fireEvent(weekdayHandle, "accessibilityAction", {
+      nativeEvent: { actionName: "increment" },
+    });
+    expect(onWeekdayBindings).toHaveBeenLastCalledWith([{
+      ordinal: 0,
+      weekIndex: 0,
+      weekday: "Thursday",
+      planDayId: "day-b",
+    }, {
+      ordinal: 1,
+      weekIndex: 0,
+      weekday: "Monday",
+      planDayId: "day-a",
+    }, {
+      ordinal: 2,
+      weekIndex: 0,
+      weekday: "Saturday",
+      planDayId: "day-c",
+    }]);
+
+    await rerender(
+      <AppearanceProvider>
+        <ScheduleBindingEditor
+          days={days}
+          mode="rotation"
+          onRotationBindings={onRotationBindings}
+          onWeekdayBindings={onWeekdayBindings}
+          rotationBindings={rotationBindings}
+          weekdayBindings={weekdayBindings}
+        />
+      </AppearanceProvider>,
+    );
+    await fireEvent(
+      screen.getByTestId("reorder-row-rotation-day-b-1"),
+      "layout",
+      { nativeEvent: { layout: { height: 80, width: 320, x: 0, y: 0 } } },
+    );
+    const rotationGesture = reorderGesture("rotation-day-b-1");
+    await act(() => {
+      rotationGesture.handlers.onStart?.({ translationY: 0 });
+      rotationGesture.handlers.onUpdate?.({ translationY: -100 });
+      rotationGesture.handlers.onEnd?.({ translationY: -100 }, true);
+      rotationGesture.handlers.onFinalize?.({ translationY: -100 }, true);
+    });
+    expect(onRotationBindings).toHaveBeenLastCalledWith([{
+      ordinal: 0,
+      planDayId: "day-b",
+    }, {
+      ordinal: 1,
+      planDayId: "day-a",
+    }, {
+      ordinal: 2,
+      planDayId: "day-c",
+    }]);
+  });
+
   it("changes, removes, and adds Weekday bindings through accessible controls", async () => {
     const onWeekdayBindings = jest.fn();
     await render(
@@ -884,9 +1023,15 @@ describe("schedule editor and Today expansion", () => {
       nativeEvent: { key: "Enter" },
     });
     expect(rotation).toBeSelected();
-    const move = screen.getByRole("button", { name: `Move ${longName} down` });
-    expect(move).toHaveStyle({ minHeight: 48 });
-    await fireEvent(move, "keyDown", { nativeEvent: { key: " " } });
-    expect(screen.getByText(`2. ${longName}`)).toBeOnTheScreen();
+    const handle = screen.getByTestId(
+      `drag-rotation-day-a-0`,
+    );
+    expect(handle).toHaveStyle({ minHeight: 48, minWidth: 48 });
+    await fireEvent(handle, "keyDown", {
+      nativeEvent: { key: "ArrowDown", shiftKey: true },
+    });
+    expect(screen.getAllByText(longName).at(-1)).toBeOnTheScreen();
+    expect(screen.queryByRole("button", { name: `Move ${longName} down` }))
+      .not.toBeOnTheScreen();
   });
 });
