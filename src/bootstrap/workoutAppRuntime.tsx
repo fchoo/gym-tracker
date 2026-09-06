@@ -128,7 +128,6 @@ import {
   startWorkout,
   completeSet,
   completeWarmup,
-  copyPreviousWarmup,
   reviseCompletedSet,
   resumePartialWorkout,
   saveZeroSetWorkout,
@@ -142,7 +141,6 @@ import {
   type AddWorkingSetInput,
   type CompleteSetInput,
   type CompleteWarmupInput,
-  type CopyPreviousWarmupInput,
   type DiscardWorkoutInput,
   type FinishCompletedInput,
   type FinishPartialInput,
@@ -155,6 +153,12 @@ import {
   type UpdateActiveSetDraftInput,
   type UpdateWarmupDraftInput,
 } from "../domains/workout";
+import {
+  copyPreviousWarmup,
+} from "../domains/workout/setCommands";
+import type {
+  CopyPreviousWarmupInput,
+} from "../domains/workout/activeWorkout";
 import type {
   AppError,
 } from "../domains/shared";

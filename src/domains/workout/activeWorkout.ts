@@ -193,6 +193,33 @@ export type SkipWorkingSetInput = Readonly<{
   skippedAtMs: number;
 }>;
 
+export type RemoveWarmupInput = Readonly<{
+  requestId: string;
+  requestSha256: string;
+  sessionId: string;
+  setId: string;
+  expectedSessionRevision: number;
+  expectedSetRevision: number;
+  removedAtMs: number;
+}>;
+
+export type RemoveWorkingSetInput = Readonly<{
+  requestId: string;
+  requestSha256: string;
+  sessionId: string;
+  setId: string;
+  expectedSessionRevision: number;
+  expectedSetRevision: number;
+  removedAtMs: number;
+}>;
+
+export type RemoveSetResult = Readonly<{
+  outcome: "committed" | "already_committed";
+  sessionId: string;
+  setId: string;
+  sessionRevision: number;
+}>;
+
 export type CompleteSetInput = Readonly<{
   sessionId: string;
   setId: string;
@@ -257,6 +284,8 @@ export interface ActiveWorkoutRepository {
   completeWarmup(input: CompleteWarmupInput): Promise<ActiveWorkoutView>;
   skipWarmup(input: SkipWarmupInput): Promise<ActiveWorkoutView>;
   skipWorkingSet(input: SkipWorkingSetInput): Promise<ActiveWorkoutView>;
+  removeWarmup?: (input: RemoveWarmupInput) => Promise<RemoveSetResult>;
+  removeWorkingSet?: (input: RemoveWorkingSetInput) => Promise<RemoveSetResult>;
   completeSet(input: CompleteSetInput): Promise<CompleteSetResult>;
   reviseCompletedSet(
     input: ReviseCompletedSetInput,
