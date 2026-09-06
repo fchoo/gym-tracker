@@ -3618,6 +3618,15 @@ test("rest recovery finds the set action after each orientation change with boun
     "          start: 95%, 75%",
     "          end: 95%, 25%",
     "          duration: 300",
+    "- repeat:",
+    "    times: 12",
+    "    while:",
+    "      notVisible: \"Complete Set 1\"",
+    "    commands:",
+    "      - swipe:",
+    "          start: 95%, 25%",
+    "          end: 95%, 75%",
+    "          duration: 300",
     "- assertVisible: \"Complete Set 1\"",
   ].join("\n");
 
