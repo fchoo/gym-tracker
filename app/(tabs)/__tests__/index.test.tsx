@@ -46,6 +46,26 @@ const mockLoadProgress = jest.fn<() => Promise<Readonly<{
   projection: { recommendations: [] },
 }));
 const mockPush = jest.fn();
+const mockStartEmptyWorkout = jest.fn<() => Promise<string>>();
+const mockStartPlanDay = jest.fn<(
+  dayId: string,
+  mode: "scheduled" | "alternate" | "rest_day",
+) => Promise<string>>();
+const mockRecordTrainAnyway = jest.fn<(
+  input: Readonly<{
+    workout:
+      | Readonly<{ kind: "plan_day"; planDayId: string }>
+      | Readonly<{ kind: "rest_day" | "empty"; planDayId: null }>;
+    advanceRotation: boolean;
+  }>,
+) => Promise<null>>();
+const mockConsumeDateOverride = jest.fn<(
+  localDate: string,
+) => Promise<null>>();
+const mockScheduleToday = {
+  localDate: "2026-09-07",
+  overrideState: "pending" as const,
+};
 
 jest.mock("expo-router", () => ({
   router: { push: (...args: readonly unknown[]) => mockPush(...args) },
@@ -60,6 +80,11 @@ jest.mock("../../../src/bootstrap/workoutAppRuntime", () => ({
     notificationPermission: "undetermined",
     openRestNotificationSettings: jest.fn(),
     readRestAlertPreferences: mockReadRestAlertPreferences,
+    startEmptyWorkout: mockStartEmptyWorkout,
+    startPlanDay: mockStartPlanDay,
+    recordTrainAnyway: mockRecordTrainAnyway,
+    consumeDateOverride: mockConsumeDateOverride,
+    scheduleToday: mockScheduleToday,
     retry: jest.fn(),
     setRestAlertPreferences: mockSetRestAlertPreferences,
     workoutRefreshGeneration: mockWorkoutRefreshGeneration,
@@ -73,6 +98,8 @@ jest.mock("../../../src/ui/screens/TodayScreen", () => {
       launchState,
       onOpenSettings,
       onReviewSuggestion,
+      onStartEmpty,
+      onStartPlanDay,
       pendingRecommendations,
       restAlertPreferences,
       restAlertPreferencesLoading,
@@ -80,6 +107,11 @@ jest.mock("../../../src/ui/screens/TodayScreen", () => {
       launchState: string;
       onOpenSettings(): void;
       onReviewSuggestion(exerciseId: string): void;
+      onStartEmpty(): void;
+      onStartPlanDay(
+        dayId: string,
+        mode: "scheduled" | "alternate" | "rest_day",
+      ): void;
       restAlertPreferences: Readonly<{
         soundEnabled: boolean;
         vibrationEnabled: boolean;
@@ -102,6 +134,26 @@ jest.mock("../../../src/ui/screens/TodayScreen", () => {
           accessibilityRole="button"
           onPress={() => onReviewSuggestion("bench")}
         />
+        <Pressable
+          accessibilityLabel="Start empty workout"
+          accessibilityRole="button"
+          onPress={() => onStartEmpty()}
+        />
+        <Pressable
+          accessibilityLabel="Start scheduled workout"
+          accessibilityRole="button"
+          onPress={() => onStartPlanDay("day-scheduled", "scheduled")}
+        />
+        <Pressable
+          accessibilityLabel="Start alternate workout"
+          accessibilityRole="button"
+          onPress={() => onStartPlanDay("day-alternate", "alternate")}
+        />
+        <Pressable
+          accessibilityLabel="Start rest-day workout"
+          accessibilityRole="button"
+          onPress={() => onStartPlanDay("day-rest", "rest_day")}
+        />
       </View>
     ),
   };
@@ -114,6 +166,16 @@ describe("TodayRoute readiness", () => {
     mockLaunchState = "booting";
     mockWorkoutRefreshGeneration = 0;
     mockPush.mockReset();
+    mockStartEmptyWorkout.mockReset();
+    mockStartEmptyWorkout.mockResolvedValue("session-empty");
+    mockStartPlanDay.mockReset();
+    mockStartPlanDay.mockImplementation((dayId, mode) =>
+      Promise.resolve("session-" + mode + "-" + dayId)
+    );
+    mockRecordTrainAnyway.mockReset();
+    mockRecordTrainAnyway.mockResolvedValue(null);
+    mockConsumeDateOverride.mockReset();
+    mockConsumeDateOverride.mockResolvedValue(null);
     resolvePreferenceRead = null;
     mockReadRestAlertPreferences.mockReset();
     mockReadRestAlertPreferences.mockReturnValue({
@@ -197,5 +259,54 @@ describe("TodayRoute readiness", () => {
     await waitFor(() => {
       expect(screen.getByTestId("pending-review-count")).toHaveTextContent("0");
     });
+  });
+
+  it("routes the Today start choices through their distinct workout paths", async () => {
+    mockLaunchState = "trusted";
+
+    await render(<TodayRoute />);
+
+    await fireEvent.press(screen.getByRole("button", {
+      name: "Start empty workout",
+    }));
+    await waitFor(() => expect(mockPush).toHaveBeenLastCalledWith(
+      "/workout/session-empty",
+    ));
+    expect(mockRecordTrainAnyway).toHaveBeenLastCalledWith({
+      workout: { kind: "empty", planDayId: null },
+      advanceRotation: false,
+    });
+
+    await fireEvent.press(screen.getByRole("button", {
+      name: "Start scheduled workout",
+    }));
+    await waitFor(() => expect(mockPush).toHaveBeenLastCalledWith(
+      "/workout/session-scheduled-day-scheduled",
+    ));
+    expect(mockRecordTrainAnyway).toHaveBeenCalledTimes(1);
+
+    await fireEvent.press(screen.getByRole("button", {
+      name: "Start alternate workout",
+    }));
+    await waitFor(() => expect(mockPush).toHaveBeenLastCalledWith(
+      "/workout/session-alternate-day-alternate",
+    ));
+    expect(mockRecordTrainAnyway).toHaveBeenLastCalledWith({
+      workout: { kind: "plan_day", planDayId: "day-alternate" },
+      advanceRotation: false,
+    });
+
+    await fireEvent.press(screen.getByRole("button", {
+      name: "Start rest-day workout",
+    }));
+    await waitFor(() => expect(mockPush).toHaveBeenLastCalledWith(
+      "/workout/session-rest_day-day-rest",
+    ));
+    expect(mockRecordTrainAnyway).toHaveBeenLastCalledWith({
+      workout: { kind: "plan_day", planDayId: "day-rest" },
+      advanceRotation: false,
+    });
+    expect(mockRecordTrainAnyway).toHaveBeenCalledTimes(3);
+    expect(mockConsumeDateOverride).toHaveBeenCalledTimes(3);
   });
 });
