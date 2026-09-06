@@ -218,15 +218,19 @@ test("Phase 7 command parsing rejects package, stale-manifest, and malformed CLI
 test("release candidate workflow proves native Phase 2 before one verified production build and Phase 7 evidence", () => {
   const workflow = readFileSync(workflowPath, "utf8");
   const phase7SourceTest = workflow.indexOf("node --test scripts/phase7-evidence-scripts.test.mjs");
+  const iconContract = workflow.indexOf(
+    "node --test scripts/concept-g-image-contract.test.mjs",
+  );
   const phase2Build = workflow.indexOf("npm run android:devtest:fresh -- --suite phase2");
   const phase2Sqlite = workflow.indexOf("npm run test:sqlite:device -- --suite phase2 --manifest artifacts/native/phase2/build.json");
   const candidateBuild = workflow.indexOf("./scripts/build-release-candidate-once.sh --output-dir artifacts/release-candidate");
   const manifestVerification = workflow.indexOf("node scripts/verify-release-candidate-manifest.mjs --bundle-dir artifacts/release-candidate");
   const phase7Evidence = workflow.indexOf("npm run test:maestro:phase7 -- --bundle-dir artifacts/release-candidate");
 
-  for (const position of [phase7SourceTest, phase2Build, phase2Sqlite, candidateBuild, manifestVerification, phase7Evidence]) {
+  for (const position of [phase7SourceTest, iconContract, phase2Build, phase2Sqlite, candidateBuild, manifestVerification, phase7Evidence]) {
     assert.notEqual(position, -1);
   }
+  assert.equal(iconContract < candidateBuild, true);
   assert.equal(phase7SourceTest < phase2Build, true);
   assert.equal(phase2Build < phase2Sqlite, true);
   assert.equal(phase2Sqlite < candidateBuild, true);

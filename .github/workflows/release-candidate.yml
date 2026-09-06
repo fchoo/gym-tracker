@@ -82,6 +82,7 @@ jobs:
           } 2>&1 | tee "${RUNNER_TEMP}/phase5-static.txt"
           {
             npm run verify:cng
+            node --test scripts/concept-g-image-contract.test.mjs
             npm run android:devtest:fresh -- --suite phase2
             npm run test:sqlite:device -- --suite phase2 --manifest artifacts/native/phase2/build.json
             printf 'phase5-source-gate: passed\n'
