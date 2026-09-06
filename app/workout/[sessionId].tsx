@@ -221,7 +221,6 @@ export default function ActiveWorkoutRoute() {
         updateWarmupDraft: runtime.updateWarmupDraft,
         addWarmup: mutationCommands.addWarmup,
         addWorkingSet: mutationCommands.addWorkingSet,
-        copyPreviousWarmup: mutationCommands.copyPreviousWarmup,
         completeWarmup: runtime.completeWarmup,
         skipWarmup: runtime.skipWarmup,
         skipWorkingSet: runtime.skipWorkingSet,

@@ -92,6 +92,22 @@
 - [ ] **UX-09**: Root navigation and shared dialogs remain readable and operable at Android 200% font scale without clipped labels; Today exposes one unambiguous route to secondary tools/settings instead of duplicate More affordances.
 - [ ] **UX-10**: Progress loads its normal empty or populated view on the production runtime, Retry recovers from a transient failure, and any fix preserves SQLite source authority and rebuildable projections.
 
+### Post-Candidate UX Refinement
+
+- [ ] **UX-11**: The bottom navigation indicates the active tab by icon and label colour only, with no box/border outline on the selected tab, while retaining the accessible focus ring and selected accessibility state.
+- [ ] **UX-12**: The Today screen no longer exposes rotation repeat/skip/advance actions; scheduled-day start, choose-another-day, rest-day train-anyway, and empty-workout starts remain fully functional and rotation advancement still occurs through committed workout completion.
+- [ ] **UX-13**: Today reaches a single consolidated Settings page through a gear icon; the previous duplicate/ambiguous header affordances are removed.
+- [ ] **UX-14**: Appearance is a top-level Settings entry rather than nested inside rest-alert settings, and History and data / Data and recovery are reached from the consolidated Settings page.
+- [ ] **UX-15**: The active workout detail screen removes the top notice banners (rest-ended, exercise-complete, added-and-focused, reviewing) except where a genuine blocking error/retry must be shown, and presents a single overflow/menu affordance instead of two.
+- [ ] **UX-16**: Each set row presents load, reps, reset, done, and delete controls on one compact horizontal row at normal text scale, adapting legibly at 200% text.
+- [ ] **UX-17**: Adding a warm-up or working set uses a single + action aligned with the section header that reuses the last set's values; the separate copy-previous-warmup control is removed.
+- [ ] **UX-18**: Warm-ups and working sets can be removed (the row is deleted) instead of skipped, with progress totals and history snapshots remaining correct and rebuildable after removal.
+- [ ] **UX-19**: The workout More-actions dialog omits save-as-zero-set, finish-workout-later, and Close, and the dialog is sized to its content without a large trailing gap.
+- [ ] **UX-20**: Plan-configuration reorder rows remove the up/down buttons and the "Position x of y" text, expose Replace as a right-aligned glyph button, and retain touch-and-hold drag reordering; plan-activation Weekday and Rotation schedules and the day editor also support long-press drag ordering, and every day is reachable for editing.
+- [ ] **UX-21**: The rest timer emits a short beep at each of the final three seconds and a distinct long beep at zero, alongside existing haptics/notifications, without making audio authoritative for rest state.
+- [ ] **UX-22**: The app ships a distinctive, simple, owner-approved "grow stronger" icon across the standard and Android adaptive icon assets.
+
+
 ### Data Portability and Release
 
 - [x] **DATA-01**: Owner can create a versioned logical backup containing user-owned plans, exercises, sessions, corrections, void state, settings, and content references without raw database replacement.
@@ -212,6 +228,18 @@
 | UX-08 | Phase 6 | Pending |
 | UX-09 | Phase 6 | Pending |
 | UX-10 | Phase 6 | Pending |
+| UX-11 | Phase 7 | Pending |
+| UX-12 | Phase 7 | Pending |
+| UX-13 | Phase 7 | Pending |
+| UX-14 | Phase 7 | Pending |
+| UX-15 | Phase 7 | Pending |
+| UX-16 | Phase 7 | Pending |
+| UX-17 | Phase 7 | Pending |
+| UX-18 | Phase 7 | Pending |
+| UX-19 | Phase 7 | Pending |
+| UX-20 | Phase 7 | Pending |
+| UX-21 | Phase 7 | Pending |
+| UX-22 | Phase 7 | Pending |
 | DATA-01 | Phase 5 | Complete |
 | DATA-02 | Phase 5 | Complete |
 | DATA-03 | Phase 5 | Complete |

@@ -229,10 +229,6 @@ function commands(
       ...initialView,
       committedSetId: "working-1",
     })),
-    copyPreviousWarmup: jest.fn(async () => ({
-      ...initialView,
-      committedSetId: "warmup-1",
-    })),
     completeWarmup: jest.fn(async () => initialView),
     skipWarmup: jest.fn(async () => initialView),
     skipWorkingSet: jest.fn(async () => initialView),
@@ -672,7 +668,6 @@ describe("Plan 01-08 ActiveWorkoutScreen", () => {
       .toHaveStyle({ alignSelf: "flex-end" });
     for (const label of [
       "Add warm-up",
-      "Copy previous warm-up",
       "Add working set",
       "Complete Set 1",
       "Skip Set 1",
@@ -1174,14 +1169,8 @@ describe("Plan 01-08 ActiveWorkoutScreen", () => {
       .toHaveStyle({ right: 8, top: 8 });
   });
 
-  it("adds, copies, and skips warm-ups through separate persisted commands", async () => {
+  it("adds and skips warm-ups through separate persisted commands", async () => {
     const addWarmup = jest.fn<ActiveWorkoutCommands["addWarmup"]>(async () => ({
-      ...initialView,
-      committedSetId: "warmup-1",
-    }));
-    const copyPreviousWarmup = jest.fn<
-      ActiveWorkoutCommands["copyPreviousWarmup"]
-    >(async () => ({
       ...initialView,
       committedSetId: "warmup-1",
     }));
@@ -1201,7 +1190,6 @@ describe("Plan 01-08 ActiveWorkoutScreen", () => {
     await renderActive({
       commands: commands({
         addWarmup,
-        copyPreviousWarmup,
         skipWarmup,
       }),
     });
@@ -1213,14 +1201,6 @@ describe("Plan 01-08 ActiveWorkoutScreen", () => {
       expect(addWarmup).toHaveBeenCalledWith(expect.objectContaining({
         sessionExerciseId: "session-exercise-1",
         observation: loadReps(20_000, 8, "manual"),
-      }));
-    });
-    await fireEvent.press(
-      screen.getByRole("button", { name: "Copy previous warm-up" }),
-    );
-    await waitFor(() => {
-      expect(copyPreviousWarmup).toHaveBeenCalledWith(expect.objectContaining({
-        sourceSetId: "warmup-1",
       }));
     });
     await fireEvent.press(
@@ -1314,8 +1294,6 @@ describe("Plan 01-08 ActiveWorkoutScreen", () => {
         sourceSetId: "working-2",
       }));
     });
-    expect(screen.getByText("Working set 3 added and focused"))
-      .toBeOnTheScreen();
     await fireEvent.press(
       screen.getByRole("button", { name: "Skip Set 1" }),
     );
@@ -1385,21 +1363,15 @@ describe("Plan 01-08 ActiveWorkoutScreen", () => {
     const addWarmup = jest.fn<ActiveWorkoutCommands["addWarmup"]>()
       .mockRejectedValueOnce(new Error("storage_failed"))
       .mockResolvedValueOnce({ ...initialView, committedSetId: "warmup-2" });
-    const copyPreviousWarmup = jest.fn<
-      ActiveWorkoutCommands["copyPreviousWarmup"]
-    >()
-      .mockRejectedValueOnce(new Error("storage_failed"))
-      .mockResolvedValueOnce({ ...initialView, committedSetId: "warmup-copy-2" });
     const addWorkingSet = jest.fn<ActiveWorkoutCommands["addWorkingSet"]>()
       .mockRejectedValueOnce(new Error("storage_failed"))
       .mockResolvedValueOnce({ ...initialView, committedSetId: "working-added" });
     await renderActive({
-      commands: commands({ addWarmup, addWorkingSet, copyPreviousWarmup }),
+      commands: commands({ addWarmup, addWorkingSet }),
     });
 
     for (const [action, retry] of [
       ["Add warm-up", "Retry add warm-up"],
-      ["Copy previous warm-up", "Retry copy warm-up"],
       ["Add working set", "Retry add working set"],
     ] as const) {
       await fireEvent.press(screen.getByRole("button", { name: action }));
@@ -1411,7 +1383,6 @@ describe("Plan 01-08 ActiveWorkoutScreen", () => {
 
     await waitFor(() => {
       expect(addWarmup).toHaveBeenCalledTimes(2);
-      expect(copyPreviousWarmup).toHaveBeenCalledTimes(2);
       expect(addWorkingSet).toHaveBeenCalledTimes(2);
     });
   });
@@ -1521,7 +1492,8 @@ describe("Plan 01-08 ActiveWorkoutScreen", () => {
     );
 
     await waitFor(() => {
-      expect(screen.getByText("Exercise complete")).toBeOnTheScreen();
+      expect(screen.getByRole("button", { name: "Finish workout" }))
+        .toBeOnTheScreen();
     });
     expect(screen.getByLabelText(/Working set 1 of 2/u))
       .toBeOnTheScreen();
@@ -1830,7 +1802,8 @@ describe("Plan 01-08 ActiveWorkoutScreen", () => {
           expectedSessionRevision: 2,
           expectedRestRevision: 1,
         }));
-        expect(screen.getByText("Rest ended")).toBeOnTheScreen();
+        expect(screen.getByRole("button", { name: "Complete Set 1" }))
+          .toBeOnTheScreen();
       });
       expect(screen.queryByText("Rest skipped")).not.toBeOnTheScreen();
     } finally {
@@ -1985,9 +1958,9 @@ describe("Plan 01-08 ActiveWorkoutScreen", () => {
         />
       </AppearanceProvider>,
     );
-    expect(screen.getByText("Rest ended")).toBeOnTheScreen();
-    expect(screen.getByText(
-      "Rest ended 5 seconds ago · working set 1 is ready",
-    )).toBeOnTheScreen();
+    expect(screen.getByRole("button", { name: "Complete Set 1" }))
+      .toBeOnTheScreen();
+    expect(screen.queryByText("RESTING · NEXT: SET 1 AT 60 kg × 8"))
+      .not.toBeOnTheScreen();
   });
 });

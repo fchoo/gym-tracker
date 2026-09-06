@@ -465,10 +465,6 @@ function profileCommands(
       ...view,
       committedSetId: view.currentExercise.workingSets[0]?.id ?? "working",
     })),
-    copyPreviousWarmup: jest.fn(async () => ({
-      ...view,
-      committedSetId: view.currentExercise.warmups[0]?.id ?? "warmup",
-    })),
     completeWarmup: jest.fn(async () => view),
     skipWarmup: jest.fn(async () => view),
     skipWorkingSet: jest.fn(async () => view),

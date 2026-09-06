@@ -22,6 +22,7 @@ Gym Tracker v1 is delivered through six reviewed, dependency-ordered phases. Pha
 - [x] **Phase 4: Overall Progress and Complete Progression** - Deliver period-based evidence and the complete explicit, versioned recommendation lifecycle. (automated source evidence complete 2026-08-26; physical verification deferred to final release gate)
 - [ ] **Phase 5: Recovery, Distribution, and Release** - Complete encrypted portability, CSV export, release-wide accessibility proof, and unchanged signed-artifact promotion.
 - [ ] **Phase 6: Material 3 UX Remediation** - Resolve the whole-app Material 3, accessibility, and Progress-runtime blockers found on the exact Phase 5 candidate, then produce a replacement installable APK for final verification.
+- [ ] **Phase 7: Post-Candidate UX Refinement** - Apply owner-directed interaction and information-architecture refinements found during N4 device review (nav, settings IA, workout-detail density, plan editing, set removal, rest-timer audio, app icon), then produce a replacement candidate for re-verification.
 
 ## Phase Details
 
@@ -387,3 +388,19 @@ Plans:
 **Wave 3** *(blocked on Wave 2 completion)*
 
 - [ ] 06-09-PLAN.md — Build once, run the complete consideration/native evidence matrix, and pause for exact-byte Samsung observations without release authorization.
+
+### Phase 7: Post-Candidate UX Refinement
+
+**Goal:** The owner can navigate a simpler, denser, more intuitive interface — cleaner bottom nav and Today, a consolidated Settings page reached by a gear icon, a compact single-row set editor, streamlined plan editing and scheduling, set/warm-up removal, an audible rest-timer countdown, and a distinctive app icon — with all authoritative workout, schedule, history, and portability semantics unchanged, verified on one replacement candidate.
+**Requirements**: UX-11, UX-12, UX-13, UX-14, UX-15, UX-16, UX-17, UX-18, UX-19, UX-20, UX-21, UX-22
+**Depends on:** Phase 6 (green candidate `phase6-20260906-9cdecb8`; this phase supersedes it and requires a fresh candidate + repeat N4)
+**Success Criteria** (what must be TRUE):
+
+  1. The bottom navigation shows the active tab by icon/label colour only (no box outline), and Today no longer shows repeat/skip/advance rotation actions while all workout-start paths remain intact.
+  2. Settings is one intuitive page reached from Today by a gear icon: Appearance is a top-level setting (not nested inside rest alerts), and History and data / Data and recovery live in Settings; the duplicate/ambiguous header buttons are gone.
+  3. The workout detail page removes the top notice banners, shows a single overflow menu, and renders each set's load, reps, reset, done, and delete controls on one compact row; add-warm-up/add-set is a single + button aligned with the section header that reuses the last values, with no copy-warmup button.
+  4. Warm-ups and working sets can be removed (row deleted) rather than skipped, and progress totals plus history snapshots stay correct after removal.
+  5. The More-actions dialog contains only the retained actions (no zero-set/finish-later/Close), sized to its content; plan editing removes up/down buttons and "Position x of y", exposes Replace as a right-aligned glyph, and the day editor and plan-activation schedule support long-press drag ordering; day editing is reachable for every day.
+  6. The rest timer emits a short beep at each of the last three seconds and a long beep at zero; a distinctive owner-approved app icon ships; focused tests, full gates, clean Android generation/build, emulator verification, and a fresh replacement candidate with repeated Samsung N4 review pass, with release approval and promotion remaining separate explicit actions.
+
+**Plans:** TBD (created by /gsd-plan-phase after discussion)

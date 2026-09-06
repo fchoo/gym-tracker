@@ -4,7 +4,6 @@ import React, {
   useState,
 } from "react";
 import {
-  Copy,
   Plus,
   type LucideIcon,
 } from "lucide-react-native";
@@ -32,7 +31,6 @@ import type {
   CompleteSetInput,
   CompleteSetResult,
   CompleteWarmupInput,
-  CopyPreviousWarmupInput,
   DiscardWorkoutInput,
   FinishCompletedInput,
   FinishOutcomeResult,
@@ -86,9 +84,6 @@ export interface ActiveWorkoutCommands {
   ): Promise<ActiveWorkoutView>;
   addWarmup(input: AddWarmupInput): Promise<CommittedSetMutationResult>;
   addWorkingSet(input: AddWorkingSetInput): Promise<CommittedSetMutationResult>;
-  copyPreviousWarmup(
-    input: CopyPreviousWarmupInput,
-  ): Promise<CommittedSetMutationResult>;
   completeWarmup(input: CompleteWarmupInput): Promise<ActiveWorkoutView>;
   skipWarmup(input: SkipWarmupInput): Promise<ActiveWorkoutView>;
   skipWorkingSet(input: SkipWorkingSetInput): Promise<ActiveWorkoutView>;
@@ -129,7 +124,7 @@ type OutcomeConfirmation =
   | "discard"
   | null;
 
-type SectionMutation = "add_warmup" | "copy_warmup" | "add_working";
+type SectionMutation = "add_warmup" | "add_working";
 
 type SectionMutationFailure = Readonly<{
   operation: SectionMutation;
@@ -327,7 +322,6 @@ export function ActiveWorkoutScreen({
   const [sectionFailure, setSectionFailure] =
     useState<SectionMutationFailure | null>(null);
   const [revealedSetId, setRevealedSetId] = useState<string | null>(null);
-  const [revealedSetMessage, setRevealedSetMessage] = useState<string | null>(null);
   const [revealedSetOffset, setRevealedSetOffset] = useState(0);
   const [editingCompletedSetId, setEditingCompletedSetId] =
     useState<string | null>(null);

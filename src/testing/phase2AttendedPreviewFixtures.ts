@@ -442,7 +442,6 @@ export const phase2SetMutationPreviewCommands: ActiveWorkoutCommands = {
   updateWarmupDraft: async () => phase2SetMutationPreviewView,
   addWarmup: () => pendingPromise(),
   addWorkingSet: () => pendingPromise(),
-  copyPreviousWarmup: () => pendingPromise(),
   completeWarmup: async () => phase2SetMutationPreviewView,
   skipWarmup: async () => phase2SetMutationPreviewView,
   skipWorkingSet: async () => phase2SetMutationPreviewView,

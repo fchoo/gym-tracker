@@ -475,12 +475,11 @@ describe("Phase2AttendedPreviewRoute", () => {
   });
 
   it.each<[
-    "add-warmup" | "copy-warmup" | "add-working",
-    "addWarmup" | "copyPreviousWarmup" | "addWorkingSet",
-    "Add warm-up" | "Copy previous warm-up" | "Add working set",
+    "add-warmup" | "add-working",
+    "addWarmup" | "addWorkingSet",
+    "Add warm-up" | "Add working set",
   ]>([
     ["add-warmup", "addWarmup", "Add warm-up"],
-    ["copy-warmup", "copyPreviousWarmup", "Copy previous warm-up"],
     ["add-working", "addWorkingSet", "Add working set"],
   ])(
     "keeps %s pending, busy, and duplicate-safe without changing cardinality",
