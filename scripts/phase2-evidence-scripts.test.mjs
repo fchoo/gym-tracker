@@ -3624,7 +3624,7 @@ test("rest recovery finds the set action after each orientation change with boun
     "      notVisible: \"Complete Set 1\"",
     "    commands:",
     "      - swipe:",
-    "          start: 95%, 25%",
+    "          start: 95%, 45%",
     "          end: 95%, 75%",
     "          duration: 300",
     "- assertVisible: \"Complete Set 1\"",
