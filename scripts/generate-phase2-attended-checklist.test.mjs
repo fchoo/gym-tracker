@@ -438,11 +438,15 @@ test("only the exact 23 unsupported role rows use canonical preview deep links",
   );
   assert.match(
     setMutationLoading.action,
-    /for each Add warm-up, Copy previous warm-up, Add working set, and completed-set correction variant, start the named mutation once/iu,
+    /for each Add warm-up, Add working set, and completed-set correction variant, start the named mutation once/iu,
   );
   assert.match(setMutationLoading.action, /duplicate activation is unavailable/u);
   assert.match(setMutationLoading.action, /cardinality stays unchanged/u);
   assert.doesNotMatch(setMutationLoading.action, /Press Add warm-up twice/u);
+  assert.doesNotMatch(
+    setMutationLoading.action,
+    /Copy previous warm-up|copy warm-up/iu,
+  );
   for (const url of previewUrls("UI-02-SET-MUTATIONS|loading")) {
     assert.ok(setMutationLoading.navigation.includes(url), url);
   }
