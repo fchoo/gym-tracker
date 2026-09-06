@@ -697,10 +697,10 @@ test("plan reorder callbacks compile as UI worklets without remote helpers", () 
 
   assert.ok(transformed);
   const rowStyleStart = transformed.indexOf("var rowStyle=");
-  const handleLabelStart = transformed.indexOf("var handleLabel=");
+  const recordRowHeightStart = transformed.indexOf("var recordRowHeight=");
   assert.notEqual(rowStyleStart, -1);
-  assert.ok(handleLabelStart > rowStyleStart);
-  const rowStyle = transformed.slice(rowStyleStart, handleLabelStart);
+  assert.ok(recordRowHeightStart > rowStyleStart);
+  const rowStyle = transformed.slice(rowStyleStart, recordRowHeightStart);
   assert.match(rowStyle, /__workletHash=/u);
   assert.match(rowStyle, /useAnimatedStyle/u);
 
