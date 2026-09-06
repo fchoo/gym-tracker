@@ -281,7 +281,7 @@ describe("Plan 07-02 hard-remove command validation", () => {
   it.each([
     ["warm-up", removeWarmup, "removeWarmup", "remove_warmup_unavailable"],
     ["working-set", removeWorkingSet, "removeWorkingSet", "remove_working_set_unavailable"],
-  ] as const)("rejects a valid %s removal when its repository capability is unavailable", async (
+  ])("rejects a valid %s removal when its repository capability is unavailable", async (
     _kind,
     remove,
     capability,
