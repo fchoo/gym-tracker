@@ -104,7 +104,7 @@ const previewInstructions = Object.freeze({
     }),
   }),
   "UI-02-SET-MUTATIONS|loading": Object.freeze({
-    action: "For each Add warm-up, Copy previous warm-up, Add working set, and completed-set correction variant, start the named mutation once, then verify duplicate activation is unavailable while it remains pending and set cardinality stays unchanged.",
+    action: "For each Add warm-up, Add working set, and completed-set correction variant, start the named mutation once, then verify duplicate activation is unavailable while it remains pending and set cardinality stays unchanged.",
   }),
   "UI-02-TODAYS-PLAN|empty": Object.freeze({
     action: "Inspect the empty overview, confirm No exercises in today's plan is announced, then use the return action without fabricating a row.",
@@ -198,8 +198,8 @@ const caseInstructions = Object.freeze({
   }),
   "RC-02-LATEST-SCHEMA-ADD-COPY": Object.freeze({
     flow: "maestro/phase2/remediation-workout.yaml",
-    action: "Add one warm-up, copy the prior warm-up, add one working set, restart, and inspect the resulting row ordinals.",
-    expected: "Each operation creates exactly one fresh committed identity on the latest schema and persists with no duplicate row.",
+    action: "Add one warm-up and one working set, restart, and inspect the resulting row ordinals.",
+    expected: "Each add operation creates exactly one fresh committed identity on the latest schema and persists with no duplicate row.",
   }),
   "RC-02-NAV-LEFT-RAIL": Object.freeze({
     flow: "maestro/phase2/remediation-inputs-cards-navigation.yaml",
@@ -213,7 +213,7 @@ const caseInstructions = Object.freeze({
   }),
   "RC-02-RETRY-FOCUS": Object.freeze({
     flow: "maestro/phase2/remediation-workout.yaml",
-    action: "Inject each bounded add or copy failure, retry once, then use keyboard or D-pad to inspect focus on the committed target row.",
+    action: "Inject each bounded add failure, retry once, then use keyboard or D-pad to inspect focus on the committed target row.",
     expected: "The failed draft is retained, duplicate submission is blocked, and a successful retry reveals and focuses exactly one committed row.",
   }),
   "RC-02-ROLE-SPLIT": Object.freeze({
@@ -243,8 +243,8 @@ const caseInstructions = Object.freeze({
   }),
   "RC-02-WARMUP-EXCLUSION-COPY": Object.freeze({
     flow: "maestro/phase2/remediation-workout.yaml",
-    action: "Add and copy warm-ups, complete a working set, and compare the visible row summaries with working-set progress.",
-    expected: "Copied warm-ups persist but remain excluded from working progress, and retired exclusion prose does not appear.",
+    action: "Add warm-ups, complete a working set, and compare the visible row summaries with working-set progress.",
+    expected: "Added warm-ups persist but remain excluded from working progress, and retired exclusion prose does not appear.",
   }),
 });
 

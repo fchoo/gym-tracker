@@ -116,7 +116,7 @@ export const PHASE2_REMEDIATION_FLOW_OBSERVATIONS = Object.freeze({
     }),
     Object.freeze({
       case_id: "RC-02-LATEST-SCHEMA-ADD-COPY",
-      observation: "Add warm-up, Copy warm-up, and Add working set each retain exactly one new ordinal after restart.",
+      observation: "Add warm-up and Add working set each retain exactly one new ordinal after restart.",
     }),
     Object.freeze({
       case_id: "RC-02-RETRY-FOCUS",
@@ -136,7 +136,7 @@ export const PHASE2_REMEDIATION_FLOW_OBSERVATIONS = Object.freeze({
     }),
     Object.freeze({
       case_id: "RC-02-WARMUP-EXCLUSION-COPY",
-      observation: "Warm-up copy persists while the retired exclusion copy remains absent.",
+      observation: "Added warm-ups persist while remaining excluded from working-set progress and retired exclusion prose remains absent.",
     }),
   ]),
 });

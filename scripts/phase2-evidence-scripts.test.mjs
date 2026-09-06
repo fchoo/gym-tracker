@@ -1000,15 +1000,13 @@ test("Phase 2 date flows use CalendarField rather than text entry", async () => 
 });
 
 test("retained Maestro flows use the Phase 7 action and rotation vocabulary", async () => {
-  const retainedFlowPaths = [
-    "maestro/phase2/custom-exercise-lifecycle4-00-schedule-workout.yaml",
-    "maestro/phase2/owned-plan-editor.yaml",
-    "maestro/phase2/remediation-rest-alerts.yaml",
-    "maestro/phase2/remediation-workout.yaml",
-    "maestro/phase2/schedule-cross-profile.yaml",
-    "maestro/smoke/phase1-full-loop.yaml",
+  const { PHASE2_PUBLIC_FLOW_PATHS } = await load(
+    "scripts/run-phase2-maestro.mjs",
+  );
+  const retainedFlowPaths = [...new Set([
+    ...PHASE2_PUBLIC_FLOW_PATHS,
     "maestro/subflows/phase1-airplane-session.yaml",
-  ];
+  ])].toSorted();
   const contentsByPath = await Promise.all(
     retainedFlowPaths.map(async (relativePath) => [
       relativePath,
@@ -1052,6 +1050,21 @@ test("retained Maestro flows use the Phase 7 action and rotation vocabulary", as
     schedule,
     /- tapOn: "Train anyway"\n- tapOn: "Start Pull"[\s\S]*- tapOn: "Discard workout"[\s\S]*- assertVisible: "Today"[\s\S]*- tapOn: "Train anyway"\n- tapOn: "Start Push"[\s\S]*- tapOn: "Finish as partial"[\s\S]*- extendedWaitUntil:\n    visible: "Workout saved"\n    timeout: 30000\n- assertVisible: "Return to Today"\n- tapOn: "Return to Today"\n- extendedWaitUntil:\n    visible: "Workout saved as partial"\n    timeout: 30000\n- assertVisible: "Resume workout"/u,
   );
+});
+
+test("Phase 2 evidence metadata and checklist do not claim retired warm-up copy behavior", async () => {
+  const [maestroSource, checklistSource] = await Promise.all([
+    readFile(path.join(projectRoot, "scripts/run-phase2-maestro.mjs"), "utf8"),
+    readFile(path.join(projectRoot, "scripts/generate-phase2-attended-checklist.mjs"), "utf8"),
+  ]);
+  const evidenceText = `${maestroSource}\n${checklistSource}`;
+
+  assert.doesNotMatch(evidenceText, /Copy (?:previous )?warm-up/iu);
+  assert.doesNotMatch(evidenceText, /Add and copy warm-ups/iu);
+  assert.doesNotMatch(evidenceText, /add or copy failure/iu);
+  assert.match(evidenceText, /Add warm-up/u);
+  assert.match(evidenceText, /Add working set/u);
+  assert.match(evidenceText, /retry/u);
 });
 
 test("Phase 2 Maestro rejects failed, skipped, malformed, and identity-drifted JUnit", async () => {
