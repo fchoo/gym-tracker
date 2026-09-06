@@ -17,6 +17,7 @@ const projectRoot = path.resolve(path.dirname(new URL(import.meta.url).pathname)
 const runnerPath = path.join(projectRoot, "scripts/run-phase7-maestro.mjs");
 const checklistPath = path.join(projectRoot, "scripts/generate-phase7-attended-checklist.mjs");
 const packagePath = path.join(projectRoot, "package.json");
+const workflowPath = path.join(projectRoot, ".github/workflows/release-candidate.yml");
 
 const REQUIRED_FLOW_IDS = Object.freeze([
   "phase7-today-settings",
@@ -126,4 +127,30 @@ test("Phase 7 command parsing rejects package, stale-manifest, and malformed CLI
     "--manifest-sha256", "b".repeat(64), "--serial", "not safe!",
     "--output", "artifacts/release-candidate/evidence/phase7-n4.json",
   ]), /identity/u);
+});
+
+test("release candidate workflow proves native Phase 2 before one verified production build and Phase 7 evidence", () => {
+  const workflow = readFileSync(workflowPath, "utf8");
+  const phase7SourceTest = workflow.indexOf("node --test scripts/phase7-evidence-scripts.test.mjs");
+  const phase2Build = workflow.indexOf("npm run android:devtest:fresh -- --suite phase2");
+  const phase2Sqlite = workflow.indexOf("npm run test:sqlite:device -- --suite phase2 --manifest artifacts/native/phase2/build.json");
+  const candidateBuild = workflow.indexOf("./scripts/build-release-candidate-once.sh --output-dir artifacts/release-candidate");
+  const manifestVerification = workflow.indexOf("node scripts/verify-release-candidate-manifest.mjs --bundle-dir artifacts/release-candidate");
+  const phase7Evidence = workflow.indexOf("npm run test:maestro:phase7 -- --bundle-dir artifacts/release-candidate");
+
+  for (const position of [phase7SourceTest, phase2Build, phase2Sqlite, candidateBuild, manifestVerification, phase7Evidence]) {
+    assert.notEqual(position, -1);
+  }
+  assert.equal(phase7SourceTest < phase2Build, true);
+  assert.equal(phase2Build < phase2Sqlite, true);
+  assert.equal(phase2Sqlite < candidateBuild, true);
+  assert.equal(candidateBuild < manifestVerification, true);
+  assert.equal(manifestVerification < phase7Evidence, true);
+  assert.equal((workflow.match(/build-release-candidate-once\.sh/g) ?? []).length, 1);
+
+  const immutableEvidenceSlice = workflow.slice(manifestVerification, phase7Evidence + 500);
+  assert.doesNotMatch(immutableEvidenceSlice, /android:devtest:fresh|assembleRelease|expo (?:prebuild|run)|gradlew|build-release-candidate-once/u);
+  assert.match(immutableEvidenceSlice, /--manifest-sha256 "\$\{\{ steps\.candidate_manifest\.outputs\.manifest_sha256 \}\}"/u);
+  assert.match(workflow, /verify-release-candidate-manifest\.mjs --bundle-dir artifacts\/release-candidate/u);
+  assert.doesNotMatch(workflow, /(?:release-promotion|create release|gh release|Terminal Seal)/iu);
 });
