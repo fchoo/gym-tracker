@@ -26,8 +26,8 @@ export const PHASE2_ATTENDED_PREVIEW_REGISTRY = {
   "root-nav-loading": null,
   "set-mutations-loading": [
     "add-warmup",
-    "copy-warmup",
     "add-working",
+    "remove-warmup",
     "correction",
   ],
   "todays-plan-empty": null,
@@ -443,8 +443,8 @@ export const phase2SetMutationPreviewCommands: ActiveWorkoutCommands = {
   addWarmup: () => pendingPromise(),
   addWorkingSet: () => pendingPromise(),
   completeWarmup: async () => phase2SetMutationPreviewView,
-  skipWarmup: async () => phase2SetMutationPreviewView,
-  skipWorkingSet: async () => phase2SetMutationPreviewView,
+  removeWarmup: () => pendingPromise(),
+  removeWorkingSet: () => pendingPromise(),
   completeSet: async () => ({
     outcome: "committed",
     view: phase2SetMutationPreviewView,

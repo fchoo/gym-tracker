@@ -45,12 +45,29 @@ tags:
 - assertVisible: "Return to Today"
 - tapOn: "Return to Today"
 - tapOn: "Resume workout"
+- scrollUntilVisible:
+    element:
+      text: "Warm-up 2 of 2.*Current values 40 kg × 5.*Not completed.*"
+    direction: DOWN
+    centerElement: true
+- assertVisible: "Warm-up 2 of 2.*Current values 40 kg × 5.*Not completed.*"
+- repeat:
+    times: 12
+    while:
+      notVisible: "Add warm-up"
+    commands:
+      - swipe:
+          start: 95%, 25%
+          end: 95%, 75%
+          duration: 300
+- assertVisible: "Add warm-up"
+- assertVisible: "0 of 3 working sets"
 - tapOn: "Add warm-up"
 - assertVisible: "Warm-up was not added"
 - assertNotVisible:
     text: "Warm-up 3 of .*"
 - tapOn: "Retry add warm-up"
-- assertVisible: "Warm-up 3 of 3.*Not completed.*"
+- assertVisible: "Warm-up 3 of 3.*Current values 40 kg × 5.*Not completed.*"
 - stopApp
 - launchApp:
     clearState: false
@@ -64,11 +81,30 @@ tags:
 - tapOn: "Resume workout"
 - scrollUntilVisible:
     element:
-      text: "Warm-up 3 of 3.*"
+      text: "Warm-up 3 of 3.*Current values 40 kg × 5.*Not completed.*"
     direction: DOWN
     centerElement: true
+- assertVisible: "Warm-up 3 of 3.*Current values 40 kg × 5.*Not completed.*"
 - assertNotVisible:
     text: "Warm-up 4 of .*"
+- assertVisible: "Remove warm-up W3"
+- tapOn: "Remove warm-up W3"
+- assertVisible: "Remove warm-up W3?"
+- tapOn:
+    id: "remove-warmup-confirm"
+- extendedWaitUntil:
+    visible: "Warm-up W3 removed"
+    timeout: 60000
+- assertNotVisible: "Remove warm-up W3"
+- assertNotVisible:
+    text: "Warm-up 3 of .*"
+- assertVisible: "Warm-up 2 of 2.*Current values 40 kg × 5.*Not completed.*"
+- scrollUntilVisible:
+    element:
+      text: "0 of 3 working sets"
+    direction: DOWN
+    centerElement: true
+- assertVisible: "0 of 3 working sets"
 - openLink: "gymtracker-devtest://__notification-test-controls?action=arm_add_working_failure"
 - assertVisible: "Add working set failure armed"
 - repeat:
@@ -159,13 +195,13 @@ tags:
 - repeat:
     times: 12
     while:
-      notVisible: "Warm-up 1 of 3.*Completed.*"
+      notVisible: "Warm-up 1 of 2.*Completed.*"
     commands:
       - swipe:
           start: 95%, 25%
           end: 95%, 75%
           duration: 300
-- assertVisible: "Warm-up 1 of 3.*Completed.*"
+- assertVisible: "Warm-up 1 of 2.*Completed.*"
 - repeat:
     times: 32
     while:

@@ -785,8 +785,36 @@ test("Phase 2 remediation flows use public labels and deterministic seams", asyn
 
   assert.match(
     workout,
-    /- assertVisible: "Warm-up was not added"\n- assertNotVisible:\n    text: "Warm-up 3 of \.\*"\n- tapOn: "Retry add warm-up"\n- assertVisible: "Warm-up 3 of 3\.\*Not completed\.\*"/u,
+    /- assertVisible: "Warm-up was not added"\n- assertNotVisible:\n    text: "Warm-up 3 of \.\*"\n- tapOn: "Retry add warm-up"\n- assertVisible: "Warm-up 3 of 3\.\*Current values 40 kg × 5\.\*Not completed\.\*"/u,
   );
+  const warmupTwoValues =
+    '- assertVisible: "Warm-up 2 of 2.*Current values 40 kg × 5.*Not completed.*"';
+  assert.equal(
+    workout.split(warmupTwoValues).length - 1,
+    2,
+    "the source warm-up values must be proved before add and after removal",
+  );
+  assert.equal(
+    workout.split('- assertVisible: "0 of 3 working sets"').length - 1,
+    2,
+    "warm-up add and removal must leave working-set progress unchanged",
+  );
+  const warmupThreeValues =
+    '- assertVisible: "Warm-up 3 of 3.*Current values 40 kg × 5.*Not completed.*"';
+  assert.equal(
+    workout.split(warmupThreeValues).length - 1,
+    2,
+    "the added warm-up must retain the exact previous observation before and after restart",
+  );
+  assert.match(
+    workout,
+    /- scrollUntilVisible:\n    element:\n      text: "Warm-up 2 of 2\.\*Current values 40 kg × 5\.\*Not completed\.\*"\n    direction: DOWN\n    centerElement: true\n- assertVisible: "Warm-up 2 of 2\.\*Current values 40 kg × 5\.\*Not completed\.\*"[\s\S]*- assertVisible: "Add warm-up"\n- assertVisible: "0 of 3 working sets"\n- tapOn: "Add warm-up"/u,
+  );
+  assert.match(
+    workout,
+    /- assertVisible: "Remove warm-up W3"\n- tapOn: "Remove warm-up W3"\n- assertVisible: "Remove warm-up W3\?"\n- tapOn:\n    id: "remove-warmup-confirm"\n- extendedWaitUntil:\n    visible: "Warm-up W3 removed"\n    timeout: 60000\n- assertNotVisible: "Remove warm-up W3"\n- assertNotVisible:\n    text: "Warm-up 3 of \.\*"/u,
+  );
+  assert.doesNotMatch(workout, /(?:assertVisible|tapOn): "Skip (?:warm-up|set)/iu);
   const boundedWorkingSetFourTraversal = [
     "- repeat:",
     "    times: 16",
@@ -806,7 +834,7 @@ test("Phase 2 remediation flows use public labels and deterministic seams", asyn
   );
   assert.match(
     workout,
-    /- repeat:\n    times: 12\n    while:\n      notVisible: "Complete warm-up W1"\n    commands:\n      - swipe:\n          start: 95%, 25%\n          end: 95%, 75%\n          duration: 300\n- assertVisible: "Complete warm-up W1"\n- tapOn: "Complete warm-up W1"\n- repeat:\n    times: 12\n    while:\n      notVisible: "Warm-up 1 of 3\.\*Completed\.\*"\n    commands:\n      - swipe:\n          start: 95%, 25%\n          end: 95%, 75%\n          duration: 300\n- assertVisible: "Warm-up 1 of 3\.\*Completed\.\*"\n- repeat:\n    times: 32\n    while:\n      notVisible: "Complete Set 1"\n    commands:\n      - swipe:\n          start: 95%, 75%\n          end: 95%, 25%\n          duration: 500\n- assertVisible: "Complete Set 1"/u,
+    /- repeat:\n    times: 12\n    while:\n      notVisible: "Complete warm-up W1"\n    commands:\n      - swipe:\n          start: 95%, 25%\n          end: 95%, 75%\n          duration: 300\n- assertVisible: "Complete warm-up W1"\n- tapOn: "Complete warm-up W1"\n- repeat:\n    times: 12\n    while:\n      notVisible: "Warm-up 1 of 2\.\*Completed\.\*"\n    commands:\n      - swipe:\n          start: 95%, 25%\n          end: 95%, 75%\n          duration: 300\n- assertVisible: "Warm-up 1 of 2\.\*Completed\.\*"\n- repeat:\n    times: 32\n    while:\n      notVisible: "Complete Set 1"\n    commands:\n      - swipe:\n          start: 95%, 75%\n          end: 95%, 25%\n          duration: 500\n- assertVisible: "Complete Set 1"/u,
   );
   assert.match(
     workout,
@@ -1068,19 +1096,45 @@ test("retained Maestro flows use the Phase 7 action and rotation vocabulary", as
   );
 });
 
-test("Phase 2 evidence metadata and checklist do not claim retired warm-up copy behavior", async () => {
-  const [maestroSource, checklistSource] = await Promise.all([
+test("Phase 2 evidence metadata and checklist use the Phase 7 warm-up contract", async () => {
+  const [maestroSource, checklistSource, uiSpecSource] = await Promise.all([
     readFile(path.join(projectRoot, "scripts/run-phase2-maestro.mjs"), "utf8"),
     readFile(path.join(projectRoot, "scripts/generate-phase2-attended-checklist.mjs"), "utf8"),
+    readFile(path.join(
+      projectRoot,
+      ".planning/phases/02-owned-library-and-planning/02-UI-SPEC.md",
+    ), "utf8"),
   ]);
   const evidenceText = `${maestroSource}\n${checklistSource}`;
 
   assert.doesNotMatch(evidenceText, /Copy (?:previous )?warm-up/iu);
   assert.doesNotMatch(evidenceText, /Add and copy warm-ups/iu);
   assert.doesNotMatch(evidenceText, /add or copy failure/iu);
+  assert.doesNotMatch(evidenceText, /skipped rows|completed or skipped/iu);
+  assert.doesNotMatch(
+    evidenceText,
+    /(?:action|expected|observation): [^\n]*(?:skipped (?:row|set)|Skip (?:warm-up|set))/iu,
+  );
+  assert.match(
+    maestroSource,
+    /RC-02-LATEST-SCHEMA-ADD-COPY[\s\S]*previous 40 kg × 5 observation[\s\S]*survives restart[\s\S]*removed/iu,
+  );
+  assert.match(
+    maestroSource,
+    /RC-02-SET-STATUS[\s\S]*eligible incomplete row exposes Remove rather than Skip/iu,
+  );
+  assert.match(
+    checklistSource,
+    /RC-02-WARMUP-EXCLUSION-COPY[\s\S]*reuses and persists the previous observation[\s\S]*removal deletes the row/iu,
+  );
   assert.match(evidenceText, /Add warm-up/u);
   assert.match(evidenceText, /Add working set/u);
+  assert.match(evidenceText, /previous 40 kg × 5 observation/u);
+  assert.match(evidenceText, /Remove warm-up W3/u);
   assert.match(evidenceText, /retry/u);
+  assert.doesNotMatch(uiSpecSource, /Copy (?:previous )?warm-up|Skip warm-up|Skip set/iu);
+  assert.match(uiSpecSource, /Add warm-up[\s\S]*preceding observation values/iu);
+  assert.match(uiSpecSource, /Remove warm-up[\s\S]*incomplete rows expose Remove/iu);
 });
 
 test("Phase 2 Maestro rejects failed, skipped, malformed, and identity-drifted JUnit", async () => {

@@ -121,11 +121,11 @@ export const PHASE2_REMEDIATION_FLOW_OBSERVATIONS = Object.freeze({
     }),
     Object.freeze({
       case_id: "RC-02-GLYPH-ACTION-GEOMETRY",
-      observation: "Named glyph actions and status semantics are reachable; dimensions and alignment remain attended.",
+      observation: "Named complete, reset, and remove glyph actions are reachable; dimensions and alignment remain attended.",
     }),
     Object.freeze({
       case_id: "RC-02-LATEST-SCHEMA-ADD-COPY",
-      observation: "Add warm-up and Add working set each retain exactly one new ordinal after restart.",
+      observation: "Add warm-up reuses the previous 40 kg × 5 observation, survives restart as exactly one new row, and can be removed; Add working set also retains exactly one new ordinal after restart.",
     }),
     Object.freeze({
       case_id: "RC-02-RETRY-FOCUS",
@@ -133,7 +133,7 @@ export const PHASE2_REMEDIATION_FLOW_OBSERVATIONS = Object.freeze({
     }),
     Object.freeze({
       case_id: "RC-02-SET-STATUS",
-      observation: "Completed set status is exposed through the installed row summary; mixed geometry remains attended.",
+      observation: "Completed, current, planned, and warm-up status remains explicit while each eligible incomplete row exposes Remove rather than Skip.",
     }),
     Object.freeze({
       case_id: "RC-02-STICKY-IDENTITY",
@@ -145,7 +145,7 @@ export const PHASE2_REMEDIATION_FLOW_OBSERVATIONS = Object.freeze({
     }),
     Object.freeze({
       case_id: "RC-02-WARMUP-EXCLUSION-COPY",
-      observation: "Added warm-ups persist while remaining excluded from working-set progress and retired exclusion prose remains absent.",
+      observation: "The added warm-up reuses the previous observation, persists across restart, remains excluded from working-set progress, and is removed through Remove warm-up.",
     }),
   ]),
 });

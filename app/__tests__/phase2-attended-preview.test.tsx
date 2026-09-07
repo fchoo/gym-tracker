@@ -18,6 +18,7 @@ import React from "react";
 import {
   PHASE2_ATTENDED_PREVIEW_SCENARIOS,
   PHASE2_ATTENDED_PREVIEW_ROUTES,
+  PHASE2_SET_MUTATION_PREVIEW_VARIANTS,
   phase2ExerciseRecentItems,
   phase2SetCorrectionPreviewView,
   phase2SetMutationPreviewCommands,
@@ -86,6 +87,12 @@ describe("Phase2AttendedPreviewRoute", () => {
     expect(PHASE2_ATTENDED_PREVIEW_SCENARIOS).toHaveLength(15);
     expect(new Set(PHASE2_ATTENDED_PREVIEW_SCENARIOS).size).toBe(15);
     expect(PHASE2_ATTENDED_PREVIEW_ROUTES).toHaveLength(22);
+    expect(PHASE2_SET_MUTATION_PREVIEW_VARIANTS).toEqual([
+      "add-warmup",
+      "add-working",
+      "remove-warmup",
+      "correction",
+    ]);
     expect(new Set(PHASE2_ATTENDED_PREVIEW_ROUTES.map(({ scenario, variant }) =>
       `${scenario}:${variant ?? "default"}`
     )).size).toBe(PHASE2_ATTENDED_PREVIEW_ROUTES.length);
@@ -538,6 +545,36 @@ describe("Phase2AttendedPreviewRoute", () => {
     expect(screen.getAllByTestId(/(?:warmup-W|working-set-).*?-row/u))
       .toHaveLength(beforeRows);
     correction.mockRestore();
+  });
+
+  it("keeps warm-up removal pending, busy, and cardinality-safe", async () => {
+    mockParameters = {
+      scenario: "set-mutations-loading",
+      variant: "remove-warmup",
+    };
+    const removeWarmup = jest.spyOn(
+      phase2SetMutationPreviewCommands,
+      "removeWarmup",
+    );
+
+    await renderRoute();
+    const beforeRows = screen.getAllByTestId(/(?:warmup-W|working-set-).*?-row/u)
+      .length;
+    await fireEvent.press(screen.getByRole("button", {
+      name: "Remove warm-up W1",
+    }));
+    const remove = screen.getByRole("button", { name: "Remove warm-up" });
+    await fireEvent.press(remove);
+    await fireEvent.press(remove);
+
+    expect(removeWarmup).toHaveBeenCalledTimes(1);
+    expect(remove).toHaveProp("accessibilityState", expect.objectContaining({
+      busy: true,
+      disabled: true,
+    }));
+    expect(screen.getAllByTestId(/(?:warmup-W|working-set-).*?-row/u))
+      .toHaveLength(beforeRows);
+    removeWarmup.mockRestore();
   });
 
   it.each<["zero" | "one" | "many", number]>([

@@ -1101,15 +1101,16 @@ and the time-limited completed-set Undo presentation.
 
 ### Glyph and Status Actions
 
-- Use accessible glyph controls for `Move up`, `Move down`, Complete set, Skip
-  set, Complete warm-up, Skip warm-up, Plan default/reset, Add set, Add warm-up,
-  Copy warm-up, Pause/Resume rest, and Skip rest where compact icon treatment
+- Use accessible glyph controls for `Move up`, `Move down`, Complete set,
+  Remove set, Complete warm-up, Remove warm-up, Plan default/reset, Add set,
+  Add warm-up, Pause/Resume rest, and Skip rest where compact icon treatment
   improves scanning.
 - Every glyph retains an exact accessible name, visible focused state, keyboard
   and D-pad activation, and a minimum `48 × 48dp` target.
-- Completed and skipped sets place distinct circle glyphs at the top-right of
-  the set card and expose the state as text to assistive technology. A compact
-  visible status tag may reinforce but never replace the semantic label.
+- Completed sets place a distinct circle glyph at the top-right of the set
+  card and expose the state as text to assistive technology. Eligible
+  incomplete rows expose Remove; a compact visible status tag may reinforce
+  but never replace the semantic label.
 - Remove visible `Excluded from records and progression` copy from each warm-up
   row. Preserve warm-up exclusion in domain behavior and verification.
 
@@ -1120,9 +1121,10 @@ and the time-limited completed-set Undo presentation.
   completed, current, planned, and skipped states. Each row can open that
   exercise for review without silently changing the authoritative active
   pointer.
-- `Add warm-up`, `Copy warm-up`, and `Add working set` use glyph controls,
-  produce a persisted row on the current schema, move focus/scroll to that row,
-  and expose an inline retryable failure rather than failing silently.
+- `Add warm-up` and `Add working set` use glyph controls, reuse the immediately
+  preceding observation values, produce a persisted row on the current schema,
+  move focus/scroll to that row, and expose an inline retryable failure rather
+  than failing silently. Eligible incomplete rows use Remove, not Skip.
 - A completed working set remains editable while its workout is still active.
   Editing saves through a revision-checked command and preserves later
   set/exercise progress and the current rest state. Finalized-session correction
@@ -1176,7 +1178,7 @@ into the remediation-case ledger in `02-VALIDATION.md`, with unique values.
 | UI-02-REST-DOCK | Collapsible timer and ordered controls | RC-02-REST-DOCK | Plan 02-29 host proof; exact-HEAD native/emulator/Samsung review remains pending. |
 | UI-02-ROOT-NAV | Compact/medium tabs and expanded left rail | RC-02-NAV-LEFT-RAIL | Plan 02-22 host proof; exact-HEAD emulator/Samsung adaptive review remains pending. |
 | UI-02-SET-CARD | Set state, glyph, alignment, and warm-up exclusion presentation | RC-02-GLYPH-ACTION-GEOMETRY, RC-02-SET-STATUS, RC-02-WARMUP-EXCLUSION-COPY | Plan 02-28 host proof; exact-HEAD native/emulator review remains pending. |
-| UI-02-SET-MUTATIONS | Add/copy/retry/focus and active correction operations | RC-02-LATEST-SCHEMA-ADD-COPY, RC-02-RETRY-FOCUS, RC-02-ACTIVE-CORRECTION | Plans 02-27/02-28 host proof; exact-HEAD native/emulator/Samsung review remains pending. |
+| UI-02-SET-MUTATIONS | Add/reused-value/retry/removal/focus and active correction operations | RC-02-LATEST-SCHEMA-ADD-COPY, RC-02-RETRY-FOCUS, RC-02-ACTIVE-CORRECTION | Plans 02-27/02-28 host proof; exact-HEAD native/emulator/Samsung review remains pending. |
 | UI-02-STICKY-HEADER | Persistent active workout/exercise identity | RC-02-STICKY-IDENTITY | Plan 02-28 supplies the implementation summary; focused host layout-hierarchy proof and exact-HEAD attended review remain pending. |
 | UI-02-TODAYS-PLAN | Active workout overview and non-mutating review | RC-02-TODAYS-PLAN | Plan 02-28 host proof; exact-HEAD native/emulator/Samsung review remains pending. |
 
