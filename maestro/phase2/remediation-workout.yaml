@@ -22,9 +22,10 @@ tags:
 - assertVisible: "Add warm-up"
 - scrollUntilVisible:
     element:
-      text: "Add working set"
+      text: "0 of 3 working sets"
     direction: DOWN
     centerElement: true
+- assertVisible: "0 of 3 working sets"
 - assertVisible: "Add working set"
 - assertNotVisible: "Excluded from records and progression"
 - openLink: "gymtracker-devtest://__notification-test-controls?action=arm_add_warmup_failure"

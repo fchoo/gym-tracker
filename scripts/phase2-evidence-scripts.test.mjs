@@ -714,12 +714,22 @@ test("Phase 2 remediation flows use public labels and deterministic seams", asyn
   ]) {
     assert.match(workout, new RegExp(label.replace(/[.*+?^${}()|[\]\\]/gu, "\\$&"), "u"), label);
   }
-  const initialAddWorkingSetVisibilityGuard = [
+  const staleInitialAddWorkingSetVisibilityGuard = [
     "- scrollUntilVisible:",
     "    element:",
     '      text: "Add working set"',
     "    direction: DOWN",
     "    centerElement: true",
+  ].join("\n");
+  const initialWorkingSetSectionVisibilityGuard = [
+    '- assertVisible: "Add warm-up"',
+    "- scrollUntilVisible:",
+    "    element:",
+    '      text: "0 of 3 working sets"',
+    "    direction: DOWN",
+    "    centerElement: true",
+    '- assertVisible: "0 of 3 working sets"',
+    '- assertVisible: "Add working set"',
   ].join("\n");
   const safeActionNudge = [
     "- swipe:",
@@ -728,21 +738,19 @@ test("Phase 2 remediation flows use public labels and deterministic seams", asyn
     "    duration: 300",
   ].join("\n");
   assert.equal(
-    workout.split(initialAddWorkingSetVisibilityGuard).length - 1,
-    1,
-    "the initial Add working set visibility proof remains unchanged",
+    workout.split(staleInitialAddWorkingSetVisibilityGuard).length - 1,
+    0,
+    "the initial traversal must not target the compact Add working set glyph",
   );
   assert.ok(
-    workout.includes(
-      `${initialAddWorkingSetVisibilityGuard}\n- assertVisible: "Add working set"`,
-    ),
-    "the initial Add working set discovery must prove the action immediately without a blind swipe that can hide it",
+    workout.includes(initialWorkingSetSectionVisibilityGuard),
+    "the initial working-set discovery must anchor the stable section summary before proving its adjacent action",
   );
   assert.ok(
     !workout.includes(
-      `${initialAddWorkingSetVisibilityGuard}\n${safeActionNudge}`,
+      `${initialWorkingSetSectionVisibilityGuard}\n${safeActionNudge}`,
     ),
-    "the initial Add working set discovery must not be followed by an unconditional swipe",
+    "the initial working-set section discovery must not be followed by an unconditional swipe",
   );
   const retriedAddWorkingSetVisibilityGuard = [
     "- repeat:",
@@ -891,8 +899,8 @@ test("Phase 2 remediation flows use public labels and deterministic seams", asyn
   );
   assert.equal(
     workout.split('- assertVisible: "0 of 3 working sets"').length - 1,
-    2,
-    "warm-up add and removal must leave working-set progress unchanged",
+    3,
+    "the initial section anchor plus warm-up add and removal must prove unchanged working-set progress",
   );
   const warmupThreeValues =
     '- assertVisible: "Warm-up 3 of 3.*Current values 40 kg × 5.*Not completed.*"';
