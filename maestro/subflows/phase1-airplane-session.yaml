@@ -5,6 +5,23 @@ name: Phase 1 airplane workout session
 - runFlow: "phase1-start-full-body-a.yaml"
 - assertVisible: "Back Squat"
 - repeat:
+    times: 2
+    commands:
+      - scrollUntilVisible:
+          element:
+            text: "Remove warm-up W1"
+          direction: DOWN
+          centerElement: true
+          timeout: 60000
+      - tapOn: "Remove warm-up W1"
+      - assertVisible: "Remove warm-up W1?"
+      - tapOn:
+          id: "remove-warmup-confirm"
+      - extendedWaitUntil:
+          notVisible:
+            id: "remove-warmup-confirm"
+          timeout: 60000
+- repeat:
     times: 12
     while:
       notVisible: "Complete Set 1"
@@ -37,6 +54,10 @@ name: Phase 1 airplane workout session
       - assertVisible: "Remove set 2?"
       - tapOn:
           id: "remove-working-set-confirm"
+      - extendedWaitUntil:
+          notVisible:
+            id: "remove-working-set-confirm"
+          timeout: 60000
 - assertVisible: "Bench Press"
 - repeat:
     times: 3
@@ -51,6 +72,10 @@ name: Phase 1 airplane workout session
       - assertVisible: "Remove set 1?"
       - tapOn:
           id: "remove-working-set-confirm"
+      - extendedWaitUntil:
+          notVisible:
+            id: "remove-working-set-confirm"
+          timeout: 60000
 - assertVisible: "Lat Pulldown"
 - repeat:
     times: 3
@@ -65,6 +90,10 @@ name: Phase 1 airplane workout session
       - assertVisible: "Remove set 1?"
       - tapOn:
           id: "remove-working-set-confirm"
+      - extendedWaitUntil:
+          notVisible:
+            id: "remove-working-set-confirm"
+          timeout: 60000
 - assertVisible: "Romanian Deadlift"
 - repeat:
     times: 3
@@ -79,6 +108,10 @@ name: Phase 1 airplane workout session
       - assertVisible: "Remove set 1?"
       - tapOn:
           id: "remove-working-set-confirm"
+      - extendedWaitUntil:
+          notVisible:
+            id: "remove-working-set-confirm"
+          timeout: 60000
 - assertVisible: "Plank"
 - repeat:
     times: 3
@@ -93,6 +126,10 @@ name: Phase 1 airplane workout session
       - assertVisible: "Remove set 1?"
       - tapOn:
           id: "remove-working-set-confirm"
+      - extendedWaitUntil:
+          notVisible:
+            id: "remove-working-set-confirm"
+          timeout: 60000
 - scrollUntilVisible:
     element:
       text: "More workout actions"

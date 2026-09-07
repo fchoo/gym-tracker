@@ -445,8 +445,28 @@ describe("Plan 01-03 test and boundary tooling", () => {
       "utf8",
     );
 
+    const removeWorkingBlock = [
+      "- repeat:",
+      "    times: 3",
+      "    commands:",
+      "      - scrollUntilVisible:",
+      "          element:",
+      '            text: "Remove set 1"',
+      "          direction: DOWN",
+      "          centerElement: true",
+      "          timeout: 60000",
+      '      - tapOn: "Remove set 1"',
+      '      - assertVisible: "Remove set 1?"',
+      "      - tapOn:",
+      '          id: "remove-working-set-confirm"',
+      "      - extendedWaitUntil:",
+      "          notVisible:",
+      '            id: "remove-working-set-confirm"',
+      "          timeout: 60000",
+    ].join("\n");
+    expect(fullLoop.split(removeWorkingBlock)).toHaveLength(5);
     expect(fullLoop).toMatch(
-      /assertVisible: "Plank"\n- repeat:\n    times: 3\n    commands:\n      - scrollUntilVisible:\n          element:\n            text: "Remove set 1"\n          direction: DOWN\n          centerElement: true\n          timeout: 60000\n      - tapOn: "Remove set 1"\n      - assertVisible: "Remove set 1\?"\n      - tapOn:\n          id: "remove-working-set-confirm"\n- scrollUntilVisible:\n    element:\n      text: "More workout actions"\n    direction: UP\n    centerElement: true\n    timeout: 60000\n- tapOn: "More workout actions"\n- scrollUntilVisible:\n    element:\n      text: "Finish workout"\n    direction: UP\n    centerElement: true\n- assertVisible: "Finish workout"\n- tapOn: "Finish workout"\n- assertVisible: "Workout complete"\n- assertVisible: "Back Squat"/u,
+      /- tapOn: "More workout actions"\n- scrollUntilVisible:\n    element:\n      text: "Finish workout"\n    direction: UP\n    centerElement: true\n- assertVisible: "Finish workout"\n- tapOn: "Finish workout"\n- assertVisible: "Workout complete"\n- assertVisible: "Back Squat"/u,
     );
     for (const removedAction of [
       "Finish as partial",
@@ -466,6 +486,9 @@ describe("Plan 01-03 test and boundary tooling", () => {
 
     expect(airplaneSession).toMatch(
       /tapOn: "Complete Set 1"[\s\S]*- repeat:\n    times: 2\n    commands:\n      - scrollUntilVisible:\n          element:\n            text: "Remove set 2"\n          direction: DOWN\n          centerElement: true\n          timeout: 60000\n      - tapOn: "Remove set 2"\n      - assertVisible: "Remove set 2\?"\n      - tapOn:\n          id: "remove-working-set-confirm"[\s\S]*- assertVisible: "Bench Press"/u,
+    );
+    expect(airplaneSession).toMatch(
+      /- repeat:\n    times: 2\n    commands:\n      - scrollUntilVisible:\n          element:\n            text: "Remove warm-up W1"[\s\S]*id: "remove-warmup-confirm"/u,
     );
   });
 
@@ -507,7 +530,7 @@ describe("Plan 01-03 test and boundary tooling", () => {
     );
 
     expect(airplaneSession).toMatch(
-      /assertVisible: "Plank"[\s\S]*id: "remove-working-set-confirm"\n- scrollUntilVisible:\n    element:\n      text: "More workout actions"\n    direction: UP\n    centerElement: true\n    timeout: 60000\n- tapOn: "More workout actions"\n- scrollUntilVisible:\n    element:\n      text: "Finish workout"/u,
+      /assertVisible: "Plank"[\s\S]*id: "remove-working-set-confirm"[\s\S]*- tapOn: "More workout actions"\n- scrollUntilVisible:\n    element:\n      text: "Finish workout"/u,
     );
   });
 
