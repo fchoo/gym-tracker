@@ -24,6 +24,75 @@ name: Phase 1 airplane workout session
 - extendedWaitUntil:
     notVisible: "Skip rest"
     timeout: 60000
+- repeat:
+    times: 2
+    commands:
+      - scrollUntilVisible:
+          element:
+            text: "Remove set 2"
+          direction: DOWN
+          centerElement: true
+          timeout: 60000
+      - tapOn: "Remove set 2"
+      - assertVisible: "Remove set 2?"
+      - tapOn:
+          id: "remove-working-set-confirm"
+- assertVisible: "Bench Press"
+- repeat:
+    times: 3
+    commands:
+      - scrollUntilVisible:
+          element:
+            text: "Remove set 1"
+          direction: DOWN
+          centerElement: true
+          timeout: 60000
+      - tapOn: "Remove set 1"
+      - assertVisible: "Remove set 1?"
+      - tapOn:
+          id: "remove-working-set-confirm"
+- assertVisible: "Lat Pulldown"
+- repeat:
+    times: 3
+    commands:
+      - scrollUntilVisible:
+          element:
+            text: "Remove set 1"
+          direction: DOWN
+          centerElement: true
+          timeout: 60000
+      - tapOn: "Remove set 1"
+      - assertVisible: "Remove set 1?"
+      - tapOn:
+          id: "remove-working-set-confirm"
+- assertVisible: "Romanian Deadlift"
+- repeat:
+    times: 3
+    commands:
+      - scrollUntilVisible:
+          element:
+            text: "Remove set 1"
+          direction: DOWN
+          centerElement: true
+          timeout: 60000
+      - tapOn: "Remove set 1"
+      - assertVisible: "Remove set 1?"
+      - tapOn:
+          id: "remove-working-set-confirm"
+- assertVisible: "Plank"
+- repeat:
+    times: 3
+    commands:
+      - scrollUntilVisible:
+          element:
+            text: "Remove set 1"
+          direction: DOWN
+          centerElement: true
+          timeout: 60000
+      - tapOn: "Remove set 1"
+      - assertVisible: "Remove set 1?"
+      - tapOn:
+          id: "remove-working-set-confirm"
 - scrollUntilVisible:
     element:
       text: "More workout actions"
@@ -31,7 +100,13 @@ name: Phase 1 airplane workout session
     centerElement: true
     timeout: 60000
 - tapOn: "More workout actions"
-- tapOn: "Discard workout"
-- assertVisible: "Discard workout?"
-- tapOn: "Discard workout"
+- scrollUntilVisible:
+    element:
+      text: "Finish workout"
+    direction: UP
+    centerElement: true
+- assertVisible: "Finish workout"
+- tapOn: "Finish workout"
+- assertVisible: "Workout complete"
+- tapOn: "Return to Today"
 - assertVisible: "Today"

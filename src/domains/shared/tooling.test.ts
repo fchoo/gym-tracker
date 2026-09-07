@@ -439,24 +439,34 @@ describe("Plan 01-03 test and boundary tooling", () => {
     );
   });
 
-  it("targets the retained partial finish flow without exercise skip actions", () => {
+  it("targets the actionable finish control after removing the final incomplete rows", () => {
     const fullLoop = readFileSync(
       join(repositoryRoot, "maestro/smoke/phase1-full-loop.yaml"),
       "utf8",
     );
 
     expect(fullLoop).toMatch(
-      /tapOn: "More workout actions"\n- tapOn: "Finish as partial"\n- assertVisible: "Save partial workout\?"\n- tapOn:\n    id: "save-partial-workout-confirm"\n- assertVisible: "Workout saved"\n- assertVisible: "Back Squat"/u,
+      /assertVisible: "Plank"\n- repeat:\n    times: 3\n    commands:\n      - scrollUntilVisible:\n          element:\n            text: "Remove set 1"\n          direction: DOWN\n          centerElement: true\n          timeout: 60000\n      - tapOn: "Remove set 1"\n      - assertVisible: "Remove set 1\?"\n      - tapOn:\n          id: "remove-working-set-confirm"\n- scrollUntilVisible:\n    element:\n      text: "More workout actions"\n    direction: UP\n    centerElement: true\n    timeout: 60000\n- tapOn: "More workout actions"\n- scrollUntilVisible:\n    element:\n      text: "Finish workout"\n    direction: UP\n    centerElement: true\n- assertVisible: "Finish workout"\n- tapOn: "Finish workout"\n- assertVisible: "Workout complete"\n- assertVisible: "Back Squat"/u,
     );
     for (const removedAction of [
-      "Skip Bench Press",
-      "Skip Lat Pulldown",
-      "Skip Romanian Deadlift",
-      "Skip Plank",
-      "Skip exercise",
+      "Finish as partial",
+      "save-partial-workout-confirm",
+      "Workout saved",
+      "Discard workout",
     ]) {
       expect(fullLoop).not.toContain(removedAction);
     }
+  });
+
+  it("keeps the completed airplane set and removes only its two remaining rows", () => {
+    const airplaneSession = readFileSync(
+      join(repositoryRoot, "maestro/subflows/phase1-airplane-session.yaml"),
+      "utf8",
+    );
+
+    expect(airplaneSession).toMatch(
+      /tapOn: "Complete Set 1"[\s\S]*- repeat:\n    times: 2\n    commands:\n      - scrollUntilVisible:\n          element:\n            text: "Remove set 2"\n          direction: DOWN\n          centerElement: true\n          timeout: 60000\n      - tapOn: "Remove set 2"\n      - assertVisible: "Remove set 2\?"\n      - tapOn:\n          id: "remove-working-set-confirm"[\s\S]*- assertVisible: "Bench Press"/u,
+    );
   });
 
   it("scrolls through recommendation decisions and workout details", () => {
@@ -490,14 +500,14 @@ describe("Plan 01-03 test and boundary tooling", () => {
     );
   });
 
-  it("restores the airplane workout header before opening actions", () => {
+  it("opens airplane workout actions only after draining incomplete rows", () => {
     const airplaneSession = readFileSync(
       join(repositoryRoot, "maestro/subflows/phase1-airplane-session.yaml"),
       "utf8",
     );
 
     expect(airplaneSession).toMatch(
-      /tapOn: "Skip rest"\n- extendedWaitUntil:\n    notVisible: "Skip rest"\n    timeout: 60000\n- scrollUntilVisible:\n    element:\n      text: "More workout actions"\n    direction: UP\n    centerElement: true\n    timeout: 60000\n- tapOn: "More workout actions"/u,
+      /assertVisible: "Plank"[\s\S]*id: "remove-working-set-confirm"\n- scrollUntilVisible:\n    element:\n      text: "More workout actions"\n    direction: UP\n    centerElement: true\n    timeout: 60000\n- tapOn: "More workout actions"\n- scrollUntilVisible:\n    element:\n      text: "Finish workout"/u,
     );
   });
 

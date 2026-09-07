@@ -102,12 +102,76 @@ tags:
     centerElement: true
     timeout: 60000
 - assertVisible: "Bench Press"
+- repeat:
+    times: 3
+    commands:
+      - scrollUntilVisible:
+          element:
+            text: "Remove set 1"
+          direction: DOWN
+          centerElement: true
+          timeout: 60000
+      - tapOn: "Remove set 1"
+      - assertVisible: "Remove set 1?"
+      - tapOn:
+          id: "remove-working-set-confirm"
+- assertVisible: "Lat Pulldown"
+- repeat:
+    times: 3
+    commands:
+      - scrollUntilVisible:
+          element:
+            text: "Remove set 1"
+          direction: DOWN
+          centerElement: true
+          timeout: 60000
+      - tapOn: "Remove set 1"
+      - assertVisible: "Remove set 1?"
+      - tapOn:
+          id: "remove-working-set-confirm"
+- assertVisible: "Romanian Deadlift"
+- repeat:
+    times: 3
+    commands:
+      - scrollUntilVisible:
+          element:
+            text: "Remove set 1"
+          direction: DOWN
+          centerElement: true
+          timeout: 60000
+      - tapOn: "Remove set 1"
+      - assertVisible: "Remove set 1?"
+      - tapOn:
+          id: "remove-working-set-confirm"
+- assertVisible: "Plank"
+- repeat:
+    times: 3
+    commands:
+      - scrollUntilVisible:
+          element:
+            text: "Remove set 1"
+          direction: DOWN
+          centerElement: true
+          timeout: 60000
+      - tapOn: "Remove set 1"
+      - assertVisible: "Remove set 1?"
+      - tapOn:
+          id: "remove-working-set-confirm"
+- scrollUntilVisible:
+    element:
+      text: "More workout actions"
+    direction: UP
+    centerElement: true
+    timeout: 60000
 - tapOn: "More workout actions"
-- tapOn: "Finish as partial"
-- assertVisible: "Save partial workout?"
-- tapOn:
-    id: "save-partial-workout-confirm"
-- assertVisible: "Workout saved"
+- scrollUntilVisible:
+    element:
+      text: "Finish workout"
+    direction: UP
+    centerElement: true
+- assertVisible: "Finish workout"
+- tapOn: "Finish workout"
+- assertVisible: "Workout complete"
 - assertVisible: "Back Squat"
 - scrollUntilVisible:
     element:
@@ -131,5 +195,5 @@ tags:
     centerElement: true
 - tapOn: "View workout details"
 - assertVisible: "Workout details"
-- assertVisible: "Exercises · 1/5 (20%)"
-- assertVisible: "Working sets · 3/15 (20%)"
+- assertVisible: "Exercises · 5/5 (100%)"
+- assertVisible: "Working sets · 3/3 (100%)"
