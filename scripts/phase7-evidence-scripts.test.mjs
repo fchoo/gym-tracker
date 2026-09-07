@@ -124,9 +124,9 @@ test("Phase 7 Maestro flows use source-aligned interactive labels and routes", (
   );
   const runner = readFileSync(runnerPath, "utf8");
   assert.match(runner, /executePhase7HeldDrag\(adbPath, options\.serial, PLAN_DAY_REORDER\)[\s\S]*?phase7-plan-day-reorder\.png/u);
-  assert.match(runner, /executePhase7PlanReorderEvidence\(adbPath, options\.serial, flowDirectory\)/u);
+  assert.match(runner, /runStage\("plan-save"\)[\s\S]*?PLAN_DAY_PERSISTED_ORDER[\s\S]*?runStage\("plan-exercise-persisted-ready"\)[\s\S]*?PLAN_EXERCISE_PERSISTED_ORDER/u);
   assert.match(runner, /aggregatePhase7StageReports\(completedStages\)/u);
-  assert.match(runner, /"plan-day-ready", "plan-exercise-ready", "weekday-ready"/u);
+  assert.match(runner, /"plan-day-ready", "plan-exercise-ready", "plan-save"[\s\S]*?"plan-exercise-persisted-ready", "weekday-ready"/u);
   assert.match(runner, /WEEKDAY_PERSISTED_ORDER/u);
   assert.match(runner, /ROTATION_PERSISTED_ORDER/u);
   assert.match(runner, /phase7-weekday-schedule-reorder\.png/u);
@@ -137,7 +137,8 @@ test("Phase 7 Maestro flows use source-aligned interactive labels and routes", (
       .map(([, stage]) => stage)
       .filter((stage, index, stages) => stages.indexOf(stage) === index),
     [
-      "plan-day-ready", "plan-exercise-ready", "weekday-ready",
+      "plan-day-ready", "plan-exercise-ready", "plan-save",
+      "plan-exercise-persisted-ready", "weekday-ready",
       "weekday-save", "rotation-ready", "rotation-save",
     ],
   );

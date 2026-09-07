@@ -374,8 +374,16 @@ const WEEKDAY_PERSISTED_ORDER = Object.freeze({
   second: WEEKDAY_REORDER.target,
 });
 const ROTATION_PERSISTED_ORDER = Object.freeze({
-  first: Object.freeze({ idPattern: /^drag-rotation-.+-\d+$/u, label: "Full Body B" }),
-  second: Object.freeze({ idPattern: /^drag-rotation-.+-\d+$/u, label: "Full Body A" }),
+  first: ROTATION_REORDER.source,
+  second: ROTATION_REORDER.target,
+});
+const PLAN_DAY_PERSISTED_ORDER = Object.freeze({
+  first: PLAN_DAY_REORDER.source,
+  second: PLAN_DAY_REORDER.target,
+});
+const PLAN_EXERCISE_PERSISTED_ORDER = Object.freeze({
+  first: PLAN_REORDER.source,
+  second: PLAN_REORDER.target,
 });
 
 function deviceHierarchy(adbPath, serial) {
@@ -617,13 +625,32 @@ export function executePhase7Maestro(args = process.argv.slice(2)) {
           path.join(flowDirectory, "phase7-plan-selected-day.png"),
         );
         executePhase7HeldDrag(adbPath, options.serial, PLAN_DAY_REORDER);
+        runStage("plan-exercise-ready");
+        executePhase7HeldDrag(adbPath, options.serial, PLAN_REORDER);
+        runStage("plan-save");
+        assertPhase7PersistedReorder(
+          adbPath,
+          options.serial,
+          PLAN_DAY_PERSISTED_ORDER,
+          "plan-day",
+        );
         captureScreenshot(
           adbPath,
           options.serial,
           path.join(flowDirectory, "phase7-plan-day-reorder.png"),
         );
-        runStage("plan-exercise-ready");
-        executePhase7PlanReorderEvidence(adbPath, options.serial, flowDirectory);
+        runStage("plan-exercise-persisted-ready");
+        assertPhase7PersistedReorder(
+          adbPath,
+          options.serial,
+          PLAN_EXERCISE_PERSISTED_ORDER,
+          "plan-exercise",
+        );
+        captureScreenshot(
+          adbPath,
+          options.serial,
+          path.join(flowDirectory, "phase7-plan-exercise-reorder.png"),
+        );
         runStage("weekday-ready");
         executePhase7ScheduleReorderEvidence(adbPath, options.serial, WEEKDAY_REORDER);
         runStage("weekday-save");
@@ -668,7 +695,8 @@ export function executePhase7Maestro(args = process.argv.slice(2)) {
         contract.id,
         contract.id === "phase7-plan-schedule-reorder"
           ? [
-              "plan-day-ready", "plan-exercise-ready", "weekday-ready",
+              "plan-day-ready", "plan-exercise-ready", "plan-save",
+              "plan-exercise-persisted-ready", "weekday-ready",
               "weekday-save", "rotation-ready", "rotation-save",
             ]
           : [],

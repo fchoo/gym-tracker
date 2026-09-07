@@ -4,7 +4,7 @@ tags:
   - phase-7
   - production-candidate
 ---
-- assertTrue: ${REORDER_STAGE == 'plan-day-ready' || REORDER_STAGE == 'plan-exercise-ready' || REORDER_STAGE == 'weekday-ready' || REORDER_STAGE == 'weekday-save' || REORDER_STAGE == 'rotation-ready' || REORDER_STAGE == 'rotation-save'}
+- assertTrue: ${REORDER_STAGE == 'plan-day-ready' || REORDER_STAGE == 'plan-exercise-ready' || REORDER_STAGE == 'plan-save' || REORDER_STAGE == 'plan-exercise-persisted-ready' || REORDER_STAGE == 'weekday-ready' || REORDER_STAGE == 'weekday-save' || REORDER_STAGE == 'rotation-ready' || REORDER_STAGE == 'rotation-save'}
 - runFlow:
     when:
       true: ${REORDER_STAGE == 'plan-day-ready'}
@@ -43,11 +43,6 @@ tags:
             id: "drag-day-Full Body A"
           direction: DOWN
           centerElement: true
-      - scrollUntilVisible:
-          element:
-            id: "drag-day-Full Body A"
-          direction: DOWN
-          centerElement: true
       - assertVisible:
           id: "drag-day-Full Body A"
           above:
@@ -65,6 +60,83 @@ tags:
           id: "drag-exercise-Back Squat"
           above:
             id: "drag-exercise-Bench Press"
+- runFlow:
+    when:
+      true: ${REORDER_STAGE == 'plan-save'}
+    commands:
+      - scrollUntilVisible:
+          element:
+            text: "Save Plan Changes"
+          direction: UP
+          centerElement: true
+          timeout: 60000
+      - tapOn: "Save Plan Changes"
+      - waitForAnimationToEnd:
+          timeout: 10000
+      - scrollUntilVisible:
+          element:
+            text: "Go back"
+          direction: UP
+          centerElement: true
+          timeout: 60000
+      - tapOn: "Go back"
+      - assertVisible: "Library"
+      - stopApp
+      - launchApp:
+          clearState: false
+          permissions:
+            notifications: deny
+      - extendedWaitUntil:
+          visible: "Today"
+          timeout: 60000
+      - tapOn: "Library"
+      - scrollUntilVisible:
+          element:
+            text: "Active Plan"
+          direction: DOWN
+          centerElement: true
+      - scrollUntilVisible:
+          element:
+            text: "Full Body Foundation. Active.*"
+          direction: DOWN
+          centerElement: true
+      - tapOn:
+          text: "Full Body Foundation. Active.*"
+      - extendedWaitUntil:
+          visible: "Save Plan Changes"
+          timeout: 60000
+      - scrollUntilVisible:
+          element:
+            id: "drag-day-Full Body B"
+          direction: DOWN
+          centerElement: true
+          timeout: 60000
+      - assertVisible:
+          id: "drag-day-Full Body B"
+          above:
+            id: "drag-day-Full Body A"
+- runFlow:
+    when:
+      true: ${REORDER_STAGE == 'plan-exercise-persisted-ready'}
+    commands:
+      - scrollUntilVisible:
+          element:
+            text: "Full Body A. .* exercises"
+          direction: DOWN
+          centerElement: true
+          timeout: 60000
+      - tapOn:
+          text: "Full Body A. .* exercises"
+      - scrollUntilVisible:
+          element:
+            id: "drag-exercise-Bench Press"
+          direction: DOWN
+          centerElement: true
+          timeout: 60000
+      - assertVisible:
+          id: "drag-exercise-Bench Press"
+          above:
+            id: "drag-exercise-Back Squat"
 - runFlow:
     when:
       true: ${REORDER_STAGE == 'weekday-ready'}
