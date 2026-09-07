@@ -142,6 +142,9 @@ function nativeFixture(manifest, caseIds) {
 
 const OWNED_PLAN_FLOW = "maestro/phase2/owned-plan-editor.yaml";
 const OWNED_PLAN_CONTINUATION_FLOW = "maestro/subflows/phase2-owned-plan-editor-reorder-verify.yaml";
+const OWNED_PLAN_CONTINUATION_SHA256 = createHash("sha256")
+  .update(readFileSync(path.join(projectRoot, OWNED_PLAN_CONTINUATION_FLOW)))
+  .digest("hex");
 
 function maestroFixture(manifest, flows, {
   inputSourceAudit,
@@ -173,12 +176,12 @@ function maestroFixture(manifest, flows, {
       ...(flow !== OWNED_PLAN_FLOW ? {} : {
         native_owned_plan_reorder_proof: {
           continuation_flow: OWNED_PLAN_CONTINUATION_FLOW,
-          continuation_flow_sha256: "9e74e310b5017893cc841ebab1b0781c4d13b16a7a2cc90bbbbcb680ee4718f9",
+          continuation_flow_sha256: OWNED_PLAN_CONTINUATION_SHA256,
           continuation_report: `artifacts/native/phase2/${id}-native-reorder/report.xml`,
           continuation_report_sha256: "f".repeat(64),
           continuation_tests: 1,
           persisted_screenshot: {
-            file: "phase2-owned-plan-reorder-persisted.png",
+            file: `artifacts/native/phase2/${id}-native-reorder/phase2-owned-plan-reorder-persisted.png`,
             sha256: "a".repeat(64),
           },
         },
@@ -1865,6 +1868,16 @@ test("Phase 2 source ledger derives canonical remediation, matrix, and migration
     }, { requireRoundtrip: true }),
     /owned plan native reorder proof is malformed or stale/u,
   );
+  const ownedPlanProof = evidence.maestro.flows[ownedPlanFlowIndex]
+    .native_owned_plan_reorder_proof;
+  assert.throws(
+    () => validatePhase2AutomatedEvidence(evidence, {
+      evidenceBoundary: { root: projectRoot },
+      requireRoundtrip: true,
+    }),
+    /owned plan continuation report file is missing or unsafe/u,
+  );
+  assert.equal(ownedPlanProof.continuation_flow_sha256, OWNED_PLAN_CONTINUATION_SHA256);
   const observedFlowIndex = evidence.maestro.flows.findIndex((flow) => flow.remediation_case_observations.length > 0);
   assert.ok(observedFlowIndex >= 0);
   assert.throws(

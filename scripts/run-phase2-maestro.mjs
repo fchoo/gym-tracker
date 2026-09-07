@@ -523,7 +523,10 @@ async function executePhase2OwnedPlanNativeProof({ adb, artifactDirectory, flow,
       continuation_report_sha256: await sha256(continuationReportPath),
       continuation_tests: continuationSummary.tests,
       persisted_screenshot: {
-        file: path.basename(screenshotPath),
+        file: path.posix.join(
+          path.relative(projectRoot, artifactDirectory).split(path.sep).join(path.posix.sep),
+          `${flow.id}-native-reorder/${PHASE2_OWNED_PLAN_REORDER_VERIFY_SCREENSHOT}`,
+        ),
         sha256: await sha256(screenshotPath),
       },
     },
@@ -1154,20 +1157,12 @@ async function executeMain() {
         flow,
         manifest,
       });
-      const aggregateSummary = nativeOwnedPlanReorder === undefined
-        ? summary
-        : {
-            tests: summary.tests + nativeOwnedPlanReorder.continuationSummary.tests,
-            failures: summary.failures + nativeOwnedPlanReorder.continuationSummary.failures,
-            errors: summary.errors + nativeOwnedPlanReorder.continuationSummary.errors,
-            skipped: summary.skipped + nativeOwnedPlanReorder.continuationSummary.skipped,
-          };
       return {
         id: flow.id,
         flow: flow.flow,
         report: path.relative(projectRoot, reportPath),
         sha256: await sha256(reportPath),
-        ...aggregateSummary,
+        ...summary,
         airplane_mode: flow.airplane,
         remediation_case_observations: flow.remediation_case_observations,
         viewport: flow.viewport,

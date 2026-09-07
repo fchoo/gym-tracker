@@ -48,6 +48,12 @@ tags:
     above:
       id: "drag-exercise-Back Squat"
 - takeScreenshot: phase2-owned-plan-reorder-persisted
+- scrollUntilVisible:
+    element:
+      text: "Duplicate plan"
+    direction: UP
+    centerElement: true
+    timeout: 30000
 - tapOn: "Duplicate plan"
 - assertVisible: "Duplicate Maestro Strength?"
 - assertVisible: "Days, exercise order, targets, warm-ups, rest, policies, and schedule defaults are copied into fresh identities. The duplicate stays inactive."
