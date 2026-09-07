@@ -183,6 +183,10 @@ export function validatePhase7AttendedRecordBytes({ candidate, checklistBytes, o
   exactKeys(record, ["schema_version", "suite", "status", "mode", "approval_status", "candidate", "device", "checklist_sha256", "observations_sha256", "recorded_at", "rows", "evidence_limits"], "record");
   const expected = createPhase7AttendedRecord({ candidate, checklist, checklistBytes, observations, observationsBytes, evidenceDirectory, recordedAt: record.recorded_at });
   if (!exactJson(record, expected) || hasForbiddenKey(record)) fail("record identity, rows, release boundary, or privacy boundary is invalid.");
+  if (record.status !== "passed"
+    || record.rows.some(({ status }) => status !== "passed")) {
+    fail("all N4 rows must pass before attended evidence verifies.");
+  }
   return record;
 }
 

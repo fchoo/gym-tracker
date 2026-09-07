@@ -19,6 +19,8 @@ import {
   PHASE7_MAESTRO_FLOW_CONTRACTS,
   PHASE7_NATIVE_BACKSTOPS,
   PHASE7_PLAN_REORDER_STAGES,
+  PHASE7_ROTATION_PERSISTED_ORDER,
+  PHASE7_ROTATION_REORDER,
   aggregatePhase7StageReports,
   exactPhase7ScreenshotEvidence,
   parsePhase7MaestroArguments,
@@ -32,7 +34,11 @@ import {
 } from "./run-phase7-maestro.mjs";
 import {
   PHASE7_N4_ROWS,
+  buildPhase7AttendedChecklist,
+  createPhase7AttendedRecord,
   parsePhase7AttendedChecklistArguments,
+  serializePhase7AttendedChecklist,
+  validatePhase7AttendedRecordBytes,
 } from "./generate-phase7-attended-checklist.mjs";
 
 const projectRoot = path.resolve(path.dirname(new URL(import.meta.url).pathname), "..");
@@ -336,6 +342,22 @@ test("Phase 7 schedule evidence binds Weekday and Rotation screenshots to native
     first: { idPattern: /^drag-rotation-.+-\d+$/u, label: "First" },
     second: { idPattern: /^drag-rotation-.+-\d+$/u, label: "Second" },
   }), true);
+  const rotationBefore = [
+    '<node resource-id="drag-rotation-day-b-0" content-desc="Reorder Full Body B" bounds="[120,480][240,560]"/>',
+    '<node resource-id="drag-rotation-day-a-1" content-desc="Reorder Full Body A" bounds="[120,640][240,720]"/>',
+  ].join("");
+  const rotationAfter = [
+    '<node resource-id="drag-rotation-day-a-0" content-desc="Reorder Full Body A" bounds="[120,480][240,560]"/>',
+    '<node resource-id="drag-rotation-day-b-1" content-desc="Reorder Full Body B" bounds="[120,640][240,720]"/>',
+  ].join("");
+  assert.deepEqual(
+    phase7ReorderCoordinates(rotationBefore, PHASE7_ROTATION_REORDER),
+    { startX: 180, startY: 680, endX: 180, endY: 520 },
+  );
+  assert.equal(
+    phase7ReorderOrderIs(rotationAfter, PHASE7_ROTATION_PERSISTED_ORDER),
+    true,
+  );
 
   const scheduleFlow = PHASE7_MAESTRO_FLOW_CONTRACTS.find(({ id }) =>
     id === "phase7-plan-schedule-reorder");
@@ -627,6 +649,84 @@ test("Phase 7 attended evidence stays exact-byte, N4-only, and observation-only"
   assert.deepEqual(PHASE7_N4_ROWS.map(({ id }) => id), [
     "N4-01", "N4-02", "N4-03", "N4-04", "N4-05",
   ]);
+});
+
+test("Phase 7 attended verification rejects a truthful failed N4 record", () => {
+  const bundleDirectory = realpathSync(mkdtempSync(path.join(
+    os.tmpdir(),
+    "phase7-failed-attended-",
+  )));
+  const evidenceDirectory = path.join(bundleDirectory, "evidence");
+  mkdirSync(evidenceDirectory);
+  const apkSha256 = "a".repeat(64);
+  const candidate = {
+    manifest_sha256: "b".repeat(64),
+    manifest: {
+      candidate_id: "phase7-test-candidate",
+      source: { package: "com.fchoo.gymtracker", version_code: 7 },
+      build: { profile: "production" },
+      artifacts: [{ kind: "apk", sha256: apkSha256 }],
+      workflow: { run_id: 7 },
+    },
+  };
+  const device = {
+    role: "samsung-physical",
+    model: "SM-S916B",
+    serial_sha256: "c".repeat(64),
+    installed_package: "com.fchoo.gymtracker",
+    installed_apk_sha256: apkSha256,
+  };
+  try {
+    const checklist = buildPhase7AttendedChecklist({
+      candidate,
+      device,
+      generatedAt: "2026-09-06T00:00:00.000Z",
+    });
+    const checklistBytes = serializePhase7AttendedChecklist(checklist);
+    const rows = PHASE7_N4_ROWS.map(({ id }, index) => {
+      const attachment = Buffer.concat([
+        Buffer.from("89504e470d0a1a0a", "hex"),
+        Buffer.from([index]),
+      ]);
+      writeFileSync(path.join(evidenceDirectory, `${id}.png`), attachment);
+      return {
+        id,
+        status: index === 0 ? "failed" : "passed",
+        attachment_sha256: sha256Bytes(attachment),
+      };
+    });
+    const observations = {
+      schema_version: 1,
+      suite: "phase7-attended-observations",
+      candidate_id: candidate.manifest.candidate_id,
+      manifest_sha256: candidate.manifest_sha256,
+      device,
+      rows,
+    };
+    const observationsBytes = serializePhase7AttendedChecklist(observations);
+    const record = createPhase7AttendedRecord({
+      candidate,
+      checklist,
+      checklistBytes,
+      observations,
+      observationsBytes,
+      evidenceDirectory,
+      recordedAt: "2026-09-06T00:01:00.000Z",
+    });
+    assert.equal(record.status, "failed");
+    assert.throws(
+      () => validatePhase7AttendedRecordBytes({
+        candidate,
+        checklistBytes,
+        observationsBytes,
+        recordBytes: serializePhase7AttendedChecklist(record),
+        evidenceDirectory,
+      }),
+      /all N4 rows must pass/iu,
+    );
+  } finally {
+    rmSync(bundleDirectory, { force: true, recursive: true });
+  }
 });
 
 test("package scripts only delegate Phase 7 evidence operations to Phase 7 owners", () => {

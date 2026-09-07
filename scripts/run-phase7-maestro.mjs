@@ -459,7 +459,7 @@ const WEEKDAY_REORDER = Object.freeze({
   source: Object.freeze({ idPattern: /^drag-weekday-0-Wednesday-.+$/u, label: "Full Body B" }),
   target: Object.freeze({ idPattern: /^drag-weekday-0-Monday-.+$/u, label: "Full Body A" }),
 });
-const ROTATION_REORDER = Object.freeze({
+export const PHASE7_ROTATION_REORDER = Object.freeze({
   source: Object.freeze({ idPattern: /^drag-rotation-.+-\d+$/u, label: "Full Body A" }),
   target: Object.freeze({ idPattern: /^drag-rotation-.+-\d+$/u, label: "Full Body B" }),
 });
@@ -467,9 +467,9 @@ const WEEKDAY_PERSISTED_ORDER = Object.freeze({
   first: WEEKDAY_REORDER.source,
   second: WEEKDAY_REORDER.target,
 });
-const ROTATION_PERSISTED_ORDER = Object.freeze({
-  first: ROTATION_REORDER.source,
-  second: ROTATION_REORDER.target,
+export const PHASE7_ROTATION_PERSISTED_ORDER = Object.freeze({
+  first: PHASE7_ROTATION_REORDER.source,
+  second: PHASE7_ROTATION_REORDER.target,
 });
 const PLAN_DAY_PERSISTED_ORDER = Object.freeze({
   first: PLAN_DAY_REORDER.source,
@@ -929,12 +929,16 @@ export function executePhase7Maestro(args = process.argv.slice(2)) {
           path.join(flowDirectory, "phase7-weekday-schedule-reorder.png"),
         );
         runStage("rotation-ready");
-        executePhase7ScheduleReorderEvidence(adbPath, options.serial, ROTATION_REORDER);
+        executePhase7ScheduleReorderEvidence(
+          adbPath,
+          options.serial,
+          PHASE7_ROTATION_REORDER,
+        );
         runStage("rotation-save");
         assertPhase7PersistedReorder(
           adbPath,
           options.serial,
-          ROTATION_PERSISTED_ORDER,
+          PHASE7_ROTATION_PERSISTED_ORDER,
           "Rotation",
         );
         captureScreenshot(
