@@ -172,7 +172,7 @@ tags:
     permissions:
       notifications: deny
 - assertVisible: "Today"
-- assertVisible: "Planned but not completed"
+- assertVisible: "Rest day"
 - assertVisible: "Next scheduled workout · Push · .*"
 - tapOn: "Library"
 - scrollUntilVisible:
@@ -215,9 +215,19 @@ tags:
 - assertVisible: "Today"
 - assertVisible: "Rest day"
 - tapOn: "Train anyway"
-- tapOn: "Start Pull"
+- tapOn: "Start Push"
 - assertVisible: "FOCUSED WORKOUT"
-- assertVisible: "Chin-Up"
+- assertVisible: "Bench Press"
+- repeat:
+    times: 4
+    while:
+      notVisible: "Working set 1 load in kilograms"
+    commands:
+      - swipe:
+          start: 95%, 75%
+          end: 95%, 45%
+          duration: 300
+- assertVisible: "Working set 1 load in kilograms"
 - repeat:
     times: 4
     while:
@@ -342,7 +352,7 @@ tags:
     permissions:
       notifications: deny
 - assertVisible: "Today"
-- assertVisible: "Train anyway"
+- assertVisible: "Start Push"
 - tapOn: "Library"
 - scrollUntilVisible:
     element:
