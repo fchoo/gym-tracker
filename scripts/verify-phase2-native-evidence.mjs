@@ -57,6 +57,10 @@ import {
 
 const projectRoot = process.cwd();
 export const PHASE2_ADB_COMMAND_TIMEOUT_MS = 60_000;
+const PHASE2_OWNED_PLAN_REORDER_FLOW = "maestro/phase2/owned-plan-editor.yaml";
+const PHASE2_OWNED_PLAN_REORDER_CONTINUATION_FLOW = "maestro/subflows/phase2-owned-plan-editor-reorder-verify.yaml";
+const PHASE2_OWNED_PLAN_REORDER_VERIFY_SCREENSHOT = "phase2-owned-plan-reorder-persisted.png";
+
 function exactLedger(label, actual, expected) {
   if (!Array.isArray(actual)) {
     throw new Error(`${label} ledger is missing.`);
@@ -200,6 +204,7 @@ function validateMaestro(maestro, manifest, expectedFlows) {
     ) {
       throw new Error(`Maestro flow did not pass: ${String(flow.id)}`);
     }
+    validateOwnedPlanNativeProof(flow);
   }
   const expectedObservations = expectedFlows.map(({ id, remediation_case_observations: observations = [] }) =>
     [id, observations]);
@@ -216,6 +221,34 @@ function validateMaestro(maestro, manifest, expectedFlows) {
   });
   if (JSON.stringify(observed) !== JSON.stringify(expectedObservations)) {
     throw new Error("Maestro remediation observation ledger is incomplete or stale.");
+  }
+}
+
+function validateOwnedPlanNativeProof(flow) {
+  if (flow?.flow !== PHASE2_OWNED_PLAN_REORDER_FLOW) {
+    if (flow?.native_owned_plan_reorder_proof !== undefined) {
+      throw new Error(`unexpected owned plan native reorder proof: ${String(flow?.id)}`);
+    }
+    return;
+  }
+  const proof = flow?.native_owned_plan_reorder_proof;
+  const continuationFlowPath = path.join(
+    projectRoot,
+    PHASE2_OWNED_PLAN_REORDER_CONTINUATION_FLOW,
+  );
+  if (proof === null || typeof proof !== "object") {
+    throw new Error("owned plan native reorder proof is missing.");
+  }
+  if (proof.continuation_flow !== PHASE2_OWNED_PLAN_REORDER_CONTINUATION_FLOW
+    || proof.continuation_flow_sha256 !== sha256(continuationFlowPath)
+    || proof.persisted_screenshot?.file !== PHASE2_OWNED_PLAN_REORDER_VERIFY_SCREENSHOT
+    || !/^[a-f0-9]{64}$/u.test(proof.continuation_report_sha256 ?? "")
+    || !/^[a-f0-9]{64}$/u.test(proof.persisted_screenshot?.sha256 ?? "")
+    || !Number.isSafeInteger(proof.continuation_tests)
+    || proof.continuation_tests < 1
+    || typeof proof.continuation_report !== "string"
+    || !proof.continuation_report.endsWith('/phase2-owned-plan-editor-native-reorder/report.xml')) {
+    throw new Error("owned plan native reorder proof is malformed or stale.");
   }
 }
 

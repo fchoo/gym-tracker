@@ -1,5 +1,5 @@
 appId: com.fchoo.gymtracker.devtest
-name: Phase 2 installed owned plan create save reorder duplicate archive restore
+name: Phase 2 installed owned plan create save duplicate archive restore
 tags:
   - phase-2
   - library
@@ -155,23 +155,3 @@ tags:
     direction: UP
     centerElement: true
 - assertVisible: "Schedule and Activate are unavailable. Add at least one exercise with valid targets before scheduling or activating."
-- tapOn: "Save Plan Changes"
-- assertVisible: "Ready"
-- tapOn: "Duplicate plan"
-- assertVisible: "Duplicate Maestro Strength?"
-- assertVisible: "Days, exercise order, targets, warm-ups, rest, policies, and schedule defaults are copied into fresh identities. The duplicate stays inactive."
-- tapOn: "Create duplicate"
-- assertVisible: "Maestro Strength Copy"
-- assertVisible: "Ready"
-- assertNotVisible: "Active"
-- tapOn: "Archive plan"
-- assertVisible: "Archive Maestro Strength Copy?"
-- assertVisible: "The plan will leave the default Library view. Its history is unchanged, and you can restore it later."
-- tapOn: "Archive plan"
-- assertVisible: "Archived"
-- assertNotVisible: "Delete plan"
-- tapOn: "Restore plan"
-- assertVisible: "Ready"
-- assertNotVisible: "Archived"
-- tapOn: "Go back"
-- assertVisible: "Library"

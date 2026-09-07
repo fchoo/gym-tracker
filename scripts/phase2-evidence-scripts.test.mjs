@@ -140,6 +140,9 @@ function nativeFixture(manifest, caseIds) {
   };
 }
 
+const OWNED_PLAN_FLOW = "maestro/phase2/owned-plan-editor.yaml";
+const OWNED_PLAN_CONTINUATION_FLOW = "maestro/subflows/phase2-owned-plan-editor-reorder-verify.yaml";
+
 function maestroFixture(manifest, flows, {
   inputSourceAudit,
   proceduralRemediationCaseExclusions,
@@ -167,6 +170,19 @@ function maestroFixture(manifest, flows, {
       airplane_mode: airplane,
       remediation_case_observations: observations ?? [],
       viewport: viewport ?? null,
+      ...(flow !== OWNED_PLAN_FLOW ? {} : {
+        native_owned_plan_reorder_proof: {
+          continuation_flow: OWNED_PLAN_CONTINUATION_FLOW,
+          continuation_flow_sha256: "9e74e310b5017893cc841ebab1b0781c4d13b16a7a2cc90bbbbcb680ee4718f9",
+          continuation_report: `artifacts/native/phase2/${id}-native-reorder/report.xml`,
+          continuation_report_sha256: "f".repeat(64),
+          continuation_tests: 1,
+          persisted_screenshot: {
+            file: "phase2-owned-plan-reorder-persisted.png",
+            sha256: "a".repeat(64),
+          },
+        },
+      }),
     })),
     input_source_audit: inputSourceAudit,
     procedural_remediation_case_exclusions:
@@ -1763,6 +1779,38 @@ test("Phase 2 source ledger derives canonical remediation, matrix, and migration
     () => validatePhase2AutomatedEvidence({ ...evidence, maestro: { ...evidence.maestro, flows: evidence.maestro.flows.map((flow, index) => index === 0 ? { ...flow, airplane_mode: !flow.airplane_mode } : flow) } }, { requireRoundtrip: true }),
     /Maestro execution/u,
   );
+  const ownedPlanFlowIndex = evidence.maestro.flows.findIndex((flow) => flow.flow === OWNED_PLAN_FLOW);
+  assert.ok(ownedPlanFlowIndex >= 0);
+  assert.throws(
+    () => validatePhase2AutomatedEvidence({
+      ...evidence,
+      maestro: {
+        ...evidence.maestro,
+        flows: evidence.maestro.flows.map((flow, index) => index === ownedPlanFlowIndex
+          ? { ...flow, native_owned_plan_reorder_proof: undefined }
+          : flow),
+      },
+    }, { requireRoundtrip: true }),
+    /owned plan native reorder proof is missing/u,
+  );
+  assert.throws(
+    () => validatePhase2AutomatedEvidence({
+      ...evidence,
+      maestro: {
+        ...evidence.maestro,
+        flows: evidence.maestro.flows.map((flow, index) => index === ownedPlanFlowIndex
+          ? {
+              ...flow,
+              native_owned_plan_reorder_proof: {
+                ...flow.native_owned_plan_reorder_proof,
+                continuation_flow: "maestro/tampered.yaml",
+              },
+            }
+          : flow),
+      },
+    }, { requireRoundtrip: true }),
+    /owned plan native reorder proof is malformed or stale/u,
+  );
   const observedFlowIndex = evidence.maestro.flows.findIndex((flow) => flow.remediation_case_observations.length > 0);
   assert.ok(observedFlowIndex >= 0);
   assert.throws(
@@ -2841,7 +2889,8 @@ test("plan creation flows settle and re-locate the draft action before tapping",
 test("owned plan Maestro consumers use the canonical persistence label", async () => {
   const expectedCounts = new Map([
     ["maestro/phase2/custom-exercise-lifecycle3-active-workout.yaml", 1],
-    ["maestro/phase2/owned-plan-editor.yaml", 1],
+    ["maestro/phase2/owned-plan-editor.yaml", 0],
+    ["maestro/subflows/phase2-owned-plan-editor-reorder-verify.yaml", 1],
     ["maestro/phase2/plan-impact-replacement.yaml", 2],
     ["maestro/phase2/schedule-cross-profile.yaml", 1],
   ]);
@@ -2854,8 +2903,10 @@ test("owned plan Maestro consumers use the canonical persistence label", async (
       relativePath,
     );
     if (expectedCounts.has(relativePath)) {
+      const savePlanChangesCount =
+        flow.match(/(?:tapOn|visible|text): "Save Plan Changes"/gu)?.length ?? 0;
       assert.equal(
-        flow.match(/(?:tapOn|visible|text): "Save Plan Changes"/gu)?.length,
+        savePlanChangesCount,
         expectedCounts.get(relativePath),
         relativePath,
       );

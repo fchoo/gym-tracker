@@ -23,6 +23,15 @@ import { pathToFileURL } from "node:url";
 import {
   sourceTreeSha256,
 } from "./source-tree-digest.mjs";
+import {
+  phase7NativeDragMoveSequence,
+  phase7PlanOrderIs,
+  phase7PlanReorderCoordinates,
+} from "./run-phase7-maestro.mjs";
+
+const PHASE2_OWNED_PLAN_REORDER_FLOW = "maestro/phase2/owned-plan-editor.yaml";
+const PHASE2_OWNED_PLAN_REORDER_CONTINUATION_FLOW = "maestro/subflows/phase2-owned-plan-editor-reorder-verify.yaml";
+const PHASE2_OWNED_PLAN_REORDER_VERIFY_SCREENSHOT = "phase2-owned-plan-reorder-persisted.png";
 
 const projectRoot = process.cwd();
 const publicFlowDirectories = [
@@ -420,6 +429,105 @@ export async function enumeratePhase2MaestroFlows(root = projectRoot) {
     }
   }
   return derivePhase2MaestroExecutions(relativePaths);
+}
+
+function waitSynchronously(milliseconds) {
+  Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, milliseconds);
+}
+
+function phase2OwnedPlanRequiresNativeProof(flow) {
+  return flow?.flow === PHASE2_OWNED_PLAN_REORDER_FLOW;
+}
+
+async function executePhase2OwnedPlanNativeProof({ adb, artifactDirectory, flow, manifest }) {
+  if (!phase2OwnedPlanRequiresNativeProof(flow)) {
+    return undefined;
+  }
+  const before = await adb("exec-out", "uiautomator", "dump", "/dev/tty");
+  const drag = phase7PlanReorderCoordinates(before, {
+    sourceLabel: "Bench Press",
+    targetLabel: "Back Squat",
+  });
+  const coordinates = [drag.startX, drag.startY, drag.endX, drag.endY];
+  if (!coordinates.every((value) => Number.isSafeInteger(value) && value >= 0)) {
+    throw new Error("owned plan native reorder coordinates are invalid.");
+  }
+  let pointerDown = false;
+  try {
+    await adb("shell", "input", "touchscreen", "motionevent", "DOWN", String(drag.startX), String(drag.startY));
+    pointerDown = true;
+    waitSynchronously(700);
+    for (const move of phase7NativeDragMoveSequence(drag)) {
+      await adb(...move);
+      waitSynchronously(60);
+    }
+    waitSynchronously(200);
+  } finally {
+    if (pointerDown) {
+      await adb("shell", "input", "touchscreen", "motionevent", "UP", String(drag.endX), String(drag.endY));
+    }
+  }
+  const afterDrag = await adb("exec-out", "uiautomator", "dump", "/dev/tty");
+  if (!phase7PlanOrderIs(afterDrag, "Bench Press", "Back Squat")) {
+    throw new Error("owned plan native held drag did not reorder Bench Press above Back Squat.");
+  }
+
+  const continuationFlowPath = path.join(
+    projectRoot,
+    PHASE2_OWNED_PLAN_REORDER_CONTINUATION_FLOW,
+  );
+  const continuationDirectory = path.join(
+    artifactDirectory,
+    `${flow.id}-native-reorder`,
+  );
+  const continuationReportPath = path.join(continuationDirectory, "report.xml");
+  await rm(continuationDirectory, { recursive: true, force: true });
+  await command("mkdir", ["-p", continuationDirectory]);
+  await command(
+    "maestro",
+    [
+      "test",
+      "--no-ansi",
+      "--format", "junit",
+      "--output", continuationReportPath,
+      "--test-output-dir", continuationDirectory,
+      "--udid", manifest.device.serial,
+      PHASE2_OWNED_PLAN_REORDER_CONTINUATION_FLOW,
+    ],
+    {
+      timeoutMs: 10 * 60_000,
+      onOutput: (output) => process.stdout.write(output),
+    },
+  );
+  const continuationReport = await readFile(continuationReportPath, "utf8");
+  const continuationSummary = validatePhase2MaestroJunit(
+    continuationReport,
+    PHASE2_OWNED_PLAN_REORDER_CONTINUATION_FLOW,
+  );
+  const screenshotPath = path.join(
+    continuationDirectory,
+    PHASE2_OWNED_PLAN_REORDER_VERIFY_SCREENSHOT,
+  );
+  if (!existsSync(screenshotPath)) {
+    throw new Error("owned plan reorder persisted screenshot is missing.");
+  }
+  return {
+    continuationSummary,
+    proof: {
+      continuation_flow: PHASE2_OWNED_PLAN_REORDER_CONTINUATION_FLOW,
+      continuation_flow_sha256: await sha256(continuationFlowPath),
+      continuation_report: path.posix.join(
+        path.relative(projectRoot, artifactDirectory).split(path.sep).join(path.posix.sep),
+        `${flow.id}-native-reorder/report.xml`,
+      ),
+      continuation_report_sha256: await sha256(continuationReportPath),
+      continuation_tests: continuationSummary.tests,
+      persisted_screenshot: {
+        file: path.basename(screenshotPath),
+        sha256: await sha256(screenshotPath),
+      },
+    },
+  };
 }
 
 function command(name, commandArguments, options = {}) {
@@ -1040,15 +1148,32 @@ async function executeMain() {
         await readFile(reportPath, "utf8"),
         flow.flow,
       );
+      const nativeOwnedPlanReorder = await executePhase2OwnedPlanNativeProof({
+        adb,
+        artifactDirectory,
+        flow,
+        manifest,
+      });
+      const aggregateSummary = nativeOwnedPlanReorder === undefined
+        ? summary
+        : {
+            tests: summary.tests + nativeOwnedPlanReorder.continuationSummary.tests,
+            failures: summary.failures + nativeOwnedPlanReorder.continuationSummary.failures,
+            errors: summary.errors + nativeOwnedPlanReorder.continuationSummary.errors,
+            skipped: summary.skipped + nativeOwnedPlanReorder.continuationSummary.skipped,
+          };
       return {
         id: flow.id,
         flow: flow.flow,
         report: path.relative(projectRoot, reportPath),
         sha256: await sha256(reportPath),
-        ...summary,
+        ...aggregateSummary,
         airplane_mode: flow.airplane,
         remediation_case_observations: flow.remediation_case_observations,
         viewport: flow.viewport,
+        ...(nativeOwnedPlanReorder === undefined ? {} : {
+          native_owned_plan_reorder_proof: nativeOwnedPlanReorder.proof,
+        }),
       };
     },
     finalize: async (flowResults) => {
