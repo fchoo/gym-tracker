@@ -642,6 +642,10 @@ test("Phase 2 remediation flows use public labels and deterministic seams", asyn
     path.join(projectRoot, "maestro/phase2/remediation-workout.yaml"),
     "utf8",
   );
+  const workoutRoute = await readFile(
+    path.join(projectRoot, "app/workout/[sessionId].tsx"),
+    "utf8",
+  );
   const rest = await readFile(
     path.join(projectRoot, "maestro/phase2/remediation-rest-alerts.yaml"),
     "utf8",
@@ -701,6 +705,17 @@ test("Phase 2 remediation flows use public labels and deterministic seams", asyn
   ]) {
     assert.match(workout, new RegExp(`action=${action}`, "u"), action);
   }
+  assert.match(
+    workoutRoute,
+    /createWorkoutMutationTestCommandAdapters\(\{[\s\S]*addWarmup: runtime\.addWarmup,[\s\S]*addWorkingSet: runtime\.addWorkingSet,[\s\S]*reviseCompletedSet: runtime\.reviseCompletedSet,[\s\S]*\}\)/u,
+  );
+  for (const command of ["addWarmup", "addWorkingSet", "reviseCompletedSet"]) {
+    assert.match(
+      workoutRoute,
+      new RegExp(`${command}: mutationCommands\.${command}`, "u"),
+      `${command} must pass through the development-test mutation adapter`,
+    );
+  }
   for (const label of [
     "Add warm-up",
     "Add working set",
@@ -714,45 +729,14 @@ test("Phase 2 remediation flows use public labels and deterministic seams", asyn
   ]) {
     assert.match(workout, new RegExp(label.replace(/[.*+?^${}()|[\]\\]/gu, "\\$&"), "u"), label);
   }
-  const staleInitialAddWorkingSetVisibilityGuard = [
+  const staleInitialAddWorkingSetScroll = [
     "- scrollUntilVisible:",
     "    element:",
     '      text: "Add working set"',
     "    direction: DOWN",
     "    centerElement: true",
   ].join("\n");
-  const initialWorkingSetSectionVisibilityGuard = [
-    '- assertVisible: "Add warm-up"',
-    "- scrollUntilVisible:",
-    "    element:",
-    '      text: "0 of 3 working sets"',
-    "    direction: DOWN",
-    "    centerElement: true",
-    '- assertVisible: "0 of 3 working sets"',
-    '- assertVisible: "Add working set"',
-  ].join("\n");
-  const safeActionNudge = [
-    "- swipe:",
-    "    start: 95%, 75%",
-    "    end: 95%, 45%",
-    "    duration: 300",
-  ].join("\n");
-  assert.equal(
-    workout.split(staleInitialAddWorkingSetVisibilityGuard).length - 1,
-    0,
-    "the initial traversal must not target the compact Add working set glyph",
-  );
-  assert.ok(
-    workout.includes(initialWorkingSetSectionVisibilityGuard),
-    "the initial working-set discovery must anchor the stable section summary before proving its adjacent action",
-  );
-  assert.ok(
-    !workout.includes(
-      `${initialWorkingSetSectionVisibilityGuard}\n${safeActionNudge}`,
-    ),
-    "the initial working-set section discovery must not be followed by an unconditional swipe",
-  );
-  const retriedAddWorkingSetVisibilityGuard = [
+  const boundedAddWorkingSetTraversal = [
     "- repeat:",
     "    times: 12",
     "    while:",
@@ -763,10 +747,40 @@ test("Phase 2 remediation flows use public labels and deterministic seams", asyn
     "          end: 95%, 25%",
     "          duration: 300",
   ].join("\n");
+  const initialAddWorkingSetVisibilityGuard = [
+    '- assertVisible: "Add warm-up"',
+    boundedAddWorkingSetTraversal,
+    '- assertVisible: "0 of 15 working sets"',
+    '- assertVisible: "Add working set"',
+  ].join("\n");
+  const initialWarmupFailurePrelude = workout.split(
+    '- openLink: "gymtracker-devtest://__notification-test-controls?action=arm_add_warmup_failure"',
+  )[0];
+  const safeActionNudge = [
+    "- swipe:",
+    "    start: 95%, 75%",
+    "    end: 95%, 45%",
+    "    duration: 300",
+  ].join("\n");
   assert.equal(
-    workout.split(retriedAddWorkingSetVisibilityGuard).length - 1,
-    1,
-    "the post-restart Add working set action must use bounded right-edge swipes",
+    initialWarmupFailurePrelude.split(staleInitialAddWorkingSetScroll).length - 1,
+    0,
+    "the initial traversal must not target the compact Add working set glyph",
+  );
+  assert.ok(
+    workout.includes(initialAddWorkingSetVisibilityGuard),
+    "the initial working-set discovery must use bounded target-gated swipes before proving the action",
+  );
+  assert.ok(
+    !workout.includes(
+      `${initialAddWorkingSetVisibilityGuard}\n${safeActionNudge}`,
+    ),
+    "the initial Add working set discovery must not be followed by an unconditional swipe",
+  );
+  assert.equal(
+    workout.split(boundedAddWorkingSetTraversal).length - 1,
+    2,
+    "the initial and post-restart Add working set actions must use bounded right-edge swipes",
   );
   const postRestartWorkingSetTopAnchor = [
     '- tapOn: "Resume workout"',
@@ -780,7 +794,7 @@ test("Phase 2 remediation flows use public labels and deterministic seams", asyn
     "          end: 95%, 75%",
     "          duration: 300",
     '- assertVisible: "Add warm-up"',
-    retriedAddWorkingSetVisibilityGuard,
+    boundedAddWorkingSetTraversal,
   ].join("\n");
   assert.ok(
     workout.includes(postRestartWorkingSetTopAnchor),
@@ -788,13 +802,13 @@ test("Phase 2 remediation flows use public labels and deterministic seams", asyn
   );
   assert.ok(
     workout.includes(
-      `${retriedAddWorkingSetVisibilityGuard}\n- assertVisible: "Add working set"\n- tapOn: "Add working set"`,
+      `${boundedAddWorkingSetTraversal}\n- assertVisible: "Add working set"\n- tapOn: "Add working set"`,
     ),
     "the post-restart add action must be used immediately after target-driven discovery",
   );
   assert.ok(
     !workout.includes(
-      `${retriedAddWorkingSetVisibilityGuard}\n${safeActionNudge}`,
+      `${boundedAddWorkingSetTraversal}\n${safeActionNudge}`,
     ),
     "the post-restart Add working set discovery must not be followed by a blind swipe",
   );
@@ -898,9 +912,9 @@ test("Phase 2 remediation flows use public labels and deterministic seams", asyn
     "the source warm-up values must be proved before add and after removal",
   );
   assert.equal(
-    workout.split('- assertVisible: "0 of 3 working sets"').length - 1,
-    3,
-    "the initial section anchor plus warm-up add and removal must prove unchanged working-set progress",
+    workout.split('- assertVisible: "0 of 15 working sets"').length - 1,
+    2,
+    "warm-up add and removal must leave session-wide working-set progress unchanged",
   );
   const warmupThreeValues =
     '- assertVisible: "Warm-up 3 of 3.*Current values 40 kg × 5.*Not completed.*"';
@@ -911,7 +925,12 @@ test("Phase 2 remediation flows use public labels and deterministic seams", asyn
   );
   assert.match(
     workout,
-    /- scrollUntilVisible:\n    element:\n      text: "Warm-up 2 of 2\.\*Current values 40 kg × 5\.\*Not completed\.\*"\n    direction: DOWN\n    centerElement: true\n- assertVisible: "Warm-up 2 of 2\.\*Current values 40 kg × 5\.\*Not completed\.\*"[\s\S]*- assertVisible: "Add warm-up"\n- assertVisible: "0 of 3 working sets"\n- tapOn: "Add warm-up"/u,
+    /- scrollUntilVisible:\n    element:\n      text: "Warm-up 2 of 2\.\*Current values 40 kg × 5\.\*Not completed\.\*"\n    direction: DOWN\n    centerElement: true\n- assertVisible: "Warm-up 2 of 2\.\*Current values 40 kg × 5\.\*Not completed\.\*"[\s\S]*- assertVisible: "Add warm-up"\n- tapOn: "Add warm-up"/u,
+  );
+  assert.doesNotMatch(
+    workout,
+    /- assertVisible: "Add warm-up"\n- assertVisible: "0 of 15 working sets"\n- tapOn: "Add warm-up"/u,
+    "the warm-up header viewport must not claim the off-screen working-set summary",
   );
   assert.match(
     workout,

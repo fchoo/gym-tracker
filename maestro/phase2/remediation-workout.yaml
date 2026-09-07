@@ -20,12 +20,16 @@ tags:
 - assertVisible: "Back Squat"
 - assertVisible: "Today's plan"
 - assertVisible: "Add warm-up"
-- scrollUntilVisible:
-    element:
-      text: "0 of 3 working sets"
-    direction: DOWN
-    centerElement: true
-- assertVisible: "0 of 3 working sets"
+- repeat:
+    times: 12
+    while:
+      notVisible: "Add working set"
+    commands:
+      - swipe:
+          start: 95%, 75%
+          end: 95%, 25%
+          duration: 300
+- assertVisible: "0 of 15 working sets"
 - assertVisible: "Add working set"
 - assertNotVisible: "Excluded from records and progression"
 - openLink: "gymtracker-devtest://__notification-test-controls?action=arm_add_warmup_failure"
@@ -62,7 +66,6 @@ tags:
           end: 95%, 75%
           duration: 300
 - assertVisible: "Add warm-up"
-- assertVisible: "0 of 3 working sets"
 - tapOn: "Add warm-up"
 - assertVisible: "Warm-up was not added"
 - assertNotVisible:
@@ -102,10 +105,10 @@ tags:
 - assertVisible: "Warm-up 2 of 2.*Current values 40 kg × 5.*Not completed.*"
 - scrollUntilVisible:
     element:
-      text: "0 of 3 working sets"
+      text: "0 of 15 working sets"
     direction: DOWN
     centerElement: true
-- assertVisible: "0 of 3 working sets"
+- assertVisible: "0 of 15 working sets"
 - openLink: "gymtracker-devtest://__notification-test-controls?action=arm_add_working_failure"
 - assertVisible: "Add working set failure armed"
 - repeat:

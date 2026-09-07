@@ -15,6 +15,9 @@ import {
   useWorkoutAppRuntime,
 } from "../../src/bootstrap/workoutAppRuntime";
 import {
+  createWorkoutMutationTestCommandAdapters,
+} from "../../src/bootstrap/workoutMutationTestControls";
+import {
   useRestCountdownCue,
 } from "../../src/bootstrap/restCountdownCue";
 import {
@@ -50,6 +53,11 @@ export default function ActiveWorkoutRoute() {
     "zero_sets" | "discard" | null
   >(null);
   const [outcomeBusy, setOutcomeBusy] = useState(false);
+  const mutationCommands = createWorkoutMutationTestCommandAdapters({
+    addWarmup: runtime.addWarmup,
+    addWorkingSet: runtime.addWorkingSet,
+    reviseCompletedSet: runtime.reviseCompletedSet,
+  });
   useEffect(() => {
     let active = true;
     setFailed(false);
@@ -213,13 +221,13 @@ export default function ActiveWorkoutRoute() {
       commands={{
         updateActiveSetDraft: runtime.updateActiveSetDraft,
         updateWarmupDraft: runtime.updateWarmupDraft,
-        addWarmup: runtime.addWarmup,
-        addWorkingSet: runtime.addWorkingSet,
+        addWarmup: mutationCommands.addWarmup,
+        addWorkingSet: mutationCommands.addWorkingSet,
         completeWarmup: runtime.completeWarmup,
         removeWarmup: runtime.removeWarmup,
         removeWorkingSet: runtime.removeWorkingSet,
         completeSet: runtime.completeSet,
-        reviseCompletedSet: runtime.reviseCompletedSet,
+        reviseCompletedSet: mutationCommands.reviseCompletedSet,
         startManualRest: runtime.startManualRest,
         pauseRest: runtime.pauseRest,
         resumeRest: runtime.resumeRest,
