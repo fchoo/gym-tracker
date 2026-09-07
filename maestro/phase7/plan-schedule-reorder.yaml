@@ -4,69 +4,213 @@ tags:
   - phase-7
   - production-candidate
 ---
-- launchApp:
-    clearState: true
-    permissions:
-      notifications: deny
-- assertVisible: "Today"
-- tapOn: "Library"
-- scrollUntilVisible:
-    element:
-      text: "My Plans"
-    direction: DOWN
-    centerElement: true
-- scrollUntilVisible:
-    element:
-      text: "Create my own"
-    direction: UP
-    centerElement: true
-- tapOn: "Create my own"
-- tapOn: "Plan name"
-- inputText: "Phase Seven Reorder"
-- tapOn: "First day name"
-- inputText: "First"
-- hideKeyboard
-- scrollUntilVisible:
-    element:
-      text: "Create draft"
-    direction: DOWN
-    centerElement: true
-- tapOn: "Create draft"
-- extendedWaitUntil:
-    visible: "Draft"
-    timeout: 60000
-- assertVisible: "Plan days"
-- takeScreenshot: phase7-plan-selected-day
-- scrollUntilVisible:
-    element:
-      id: "drag-exercise-Back Squat"
-    direction: DOWN
-    centerElement: true
-- assertVisible: "Reorder Back Squat"
-- takeScreenshot: phase7-plan-drag-handle
-- scrollUntilVisible:
-    element:
-      id: "owned-plan-add-exercise"
-    direction: DOWN
-    centerElement: true
-- tapOn:
-    id: "owned-plan-add-exercise"
-- tapOn:
-    id: "owned-plan-exercise-search"
-- inputText: "Bench Press"
-- hideKeyboard
-- tapOn:
-    text: "Bench Press.*Load . reps"
-- scrollUntilVisible:
-    element:
-      text: "Save target"
-    direction: DOWN
-    centerElement: true
-- tapOn: "Save target"
-- scrollUntilVisible:
-    element:
-      id: "drag-exercise-Bench Press"
-    direction: DOWN
-    centerElement: true
-- assertVisible: "Reorder Bench Press"
-- assertVisible: "Reorder Back Squat"
+- assertTrue: ${REORDER_STAGE == 'plan-day-ready' || REORDER_STAGE == 'plan-exercise-ready' || REORDER_STAGE == 'weekday-ready' || REORDER_STAGE == 'weekday-save' || REORDER_STAGE == 'rotation-ready' || REORDER_STAGE == 'rotation-save'}
+- runFlow:
+    when:
+      true: ${REORDER_STAGE == 'plan-day-ready'}
+    commands:
+      - launchApp:
+          clearState: true
+          permissions:
+            notifications: deny
+      - assertVisible: "Today"
+      - extendedWaitUntil:
+          visible: "Use Full Body Foundation"
+          timeout: 90000
+      - tapOn: "Use Full Body Foundation"
+      - tapOn: "Activate Full Body Foundation"
+      - extendedWaitUntil:
+          visible: "^(Start Full Body A|Start Full Body B|Rest day)$"
+          timeout: 90000
+      - tapOn: "Library"
+      - scrollUntilVisible:
+          element:
+            text: "Active Plan"
+          direction: DOWN
+          centerElement: true
+      - scrollUntilVisible:
+          element:
+            text: "Full Body Foundation. Active.*"
+          direction: DOWN
+          centerElement: true
+      - tapOn:
+          text: "Full Body Foundation. Active.*"
+      - extendedWaitUntil:
+          visible: "Save Plan Changes"
+          timeout: 60000
+      - scrollUntilVisible:
+          element:
+            id: "drag-day-Full Body A"
+          direction: DOWN
+          centerElement: true
+      - scrollUntilVisible:
+          element:
+            id: "drag-day-Full Body A"
+          direction: DOWN
+          centerElement: true
+      - assertVisible:
+          id: "drag-day-Full Body A"
+          above:
+            id: "drag-day-Full Body B"
+- runFlow:
+    when:
+      true: ${REORDER_STAGE == 'plan-exercise-ready'}
+    commands:
+      - scrollUntilVisible:
+          element:
+            id: "drag-exercise-Bench Press"
+          direction: DOWN
+          centerElement: true
+      - assertVisible:
+          id: "drag-exercise-Back Squat"
+          above:
+            id: "drag-exercise-Bench Press"
+- runFlow:
+    when:
+      true: ${REORDER_STAGE == 'weekday-ready'}
+    commands:
+      - scrollUntilVisible:
+          element:
+            text: "Schedule"
+          direction: UP
+          centerElement: true
+      - tapOn: "Schedule"
+      - extendedWaitUntil:
+          visible: "Edit schedule"
+          timeout: 60000
+      - scrollUntilVisible:
+          element:
+            id: "drag-weekday-0-Monday-.*"
+          direction: DOWN
+          centerElement: true
+      - assertVisible:
+          id: "drag-weekday-0-Monday-.*"
+          above:
+            id: "drag-weekday-0-Wednesday-.*"
+- runFlow:
+    when:
+      true: ${REORDER_STAGE == 'weekday-save'}
+    commands:
+      - scrollUntilVisible:
+          element:
+            text: "Save schedule"
+          direction: DOWN
+          centerElement: true
+          timeout: 60000
+      - tapOn: "Save schedule"
+      - assertVisible: "Save this schedule?"
+      - tapOn: "Save schedule"
+      - extendedWaitUntil:
+          notVisible: "Save this schedule?"
+          timeout: 60000
+      - stopApp
+      - launchApp:
+          clearState: false
+          permissions:
+            notifications: deny
+      - extendedWaitUntil:
+          visible: "Today"
+          timeout: 60000
+      - tapOn: "Library"
+      - scrollUntilVisible:
+          element:
+            text: "Active Plan"
+          direction: DOWN
+          centerElement: true
+      - scrollUntilVisible:
+          element:
+            text: "Full Body Foundation. Active.*"
+          direction: DOWN
+          centerElement: true
+      - tapOn:
+          text: "Full Body Foundation. Active.*"
+      - extendedWaitUntil:
+          visible: "Save Plan Changes"
+          timeout: 60000
+      - scrollUntilVisible:
+          element:
+            text: "Schedule"
+          direction: UP
+          centerElement: true
+      - tapOn: "Schedule"
+      - extendedWaitUntil:
+          visible: "Edit schedule"
+          timeout: 60000
+      - scrollUntilVisible:
+          element:
+            id: "drag-weekday-0-Wednesday-.*"
+          direction: DOWN
+          centerElement: true
+- runFlow:
+    when:
+      true: ${REORDER_STAGE == 'rotation-ready'}
+    commands:
+      - scrollUntilVisible:
+          element:
+            text: "^Rotation$"
+          direction: UP
+          centerElement: true
+      - tapOn: "^Rotation$"
+      - scrollUntilVisible:
+          element:
+            id: "drag-rotation-.*-0"
+          direction: DOWN
+          centerElement: true
+      - assertVisible:
+          id: "drag-rotation-.*-0"
+          above:
+            id: "drag-rotation-.*-1"
+- runFlow:
+    when:
+      true: ${REORDER_STAGE == 'rotation-save'}
+    commands:
+      - scrollUntilVisible:
+          element:
+            text: "Save schedule"
+          direction: DOWN
+          centerElement: true
+          timeout: 60000
+      - tapOn: "Save schedule"
+      - assertVisible: "Save this schedule?"
+      - tapOn: "Save schedule"
+      - extendedWaitUntil:
+          notVisible: "Save this schedule?"
+          timeout: 60000
+      - stopApp
+      - launchApp:
+          clearState: false
+          permissions:
+            notifications: deny
+      - extendedWaitUntil:
+          visible: "Today"
+          timeout: 60000
+      - tapOn: "Library"
+      - scrollUntilVisible:
+          element:
+            text: "Active Plan"
+          direction: DOWN
+          centerElement: true
+      - scrollUntilVisible:
+          element:
+            text: "Full Body Foundation. Active.*"
+          direction: DOWN
+          centerElement: true
+      - tapOn:
+          text: "Full Body Foundation. Active.*"
+      - extendedWaitUntil:
+          visible: "Save Plan Changes"
+          timeout: 60000
+      - scrollUntilVisible:
+          element:
+            text: "Schedule"
+          direction: UP
+          centerElement: true
+      - tapOn: "Schedule"
+      - extendedWaitUntil:
+          visible: "Edit schedule"
+          timeout: 60000
+      - scrollUntilVisible:
+          element:
+            id: "drag-rotation-.*-0"
+          direction: DOWN
+          centerElement: true

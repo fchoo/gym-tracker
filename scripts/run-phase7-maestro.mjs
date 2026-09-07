@@ -86,9 +86,11 @@ export const PHASE7_MAESTRO_FLOW_CONTRACTS = Object.freeze([
     ]),
     native_backstops: Object.freeze(["UI-B01", "UI-B03", "UI-B05"]),
     screenshots: Object.freeze([
-      "phase7-plan-drag-handle.png",
       "phase7-plan-selected-day.png",
-      "phase7-schedule-reorder.png",
+      "phase7-plan-day-reorder.png",
+      "phase7-plan-exercise-reorder.png",
+      "phase7-weekday-schedule-reorder.png",
+      "phase7-rotation-schedule-reorder.png",
     ]),
   }),
   Object.freeze({
@@ -209,8 +211,11 @@ function screenshotFiles(root) {
   return files;
 }
 
-export function exactPhase7ScreenshotEvidence(reportRoot, expectedFiles, flowId) {
-  const actual = screenshotFiles(reportRoot).map((file) => Object.freeze({
+export function exactPhase7ScreenshotEvidence(reportRoot, expectedFiles, flowId, excludedDirectories = []) {
+  const excluded = new Set(excludedDirectories.map((directory) => path.resolve(reportRoot, directory)));
+  const actual = screenshotFiles(reportRoot).filter((file) =>
+    ![...excluded].some((directory) => isInside(directory, file))
+  ).map((file) => Object.freeze({
     file: safeRelativeFile(path.basename(file), "screenshot file"),
     sha256: sha256File(file),
   })).sort((left, right) => left.file.localeCompare(right.file));
@@ -255,23 +260,62 @@ function hierarchyAttribute(node, name) {
   return new RegExp(`${name}=\"([^\"]*)\"`, "u").exec(node)?.[1] ?? null;
 }
 
-export function phase7PlanReorderCoordinates(hierarchy, { sourceLabel = "Bench Press", targetLabel = "Back Squat" } = {}) {
+function matchesId(value, pattern) {
+  return value !== null && new RegExp(
+    pattern.source,
+    pattern.flags.replace(/[gy]/gu, ""),
+  ).test(value);
+}
+
+function reorderDescriptionMatches(description, label) {
+  return description === `Reorder ${label}`
+    || description === `Drag ${label}`
+    || description?.startsWith(`Drag ${label}. Position `) === true;
+}
+
+function phase7ReorderCoordinate(hierarchy, { idPattern, label }) {
   const nodes = [...String(hierarchy).matchAll(/<node\b[^>]*>/gu)].map(([node]) => node);
-  const coordinateFor = (label) => {
-    const node = nodes.find((candidate) =>
-      hierarchyAttribute(candidate, "resource-id") === `drag-exercise-${label}`
-      && hierarchyAttribute(candidate, "content-desc") === `Reorder ${label}`);
-    const bounds = /^\[(\d+),(\d+)\]\[(\d+),(\d+)\]$/u.exec(
-      node === undefined ? "" : hierarchyAttribute(node, "bounds") ?? "",
-    );
-    if (bounds === null) fail(`drag hierarchy is missing ${label}.`);
-    const [left, top, right, bottom] = bounds.slice(1).map(Number);
-    if (right <= left || bottom <= top) fail(`drag hierarchy bounds are invalid for ${label}.`);
-    return Object.freeze({ x: Math.round((left + right) / 2), y: Math.round((top + bottom) / 2) });
-  };
-  const source = coordinateFor(sourceLabel);
-  const target = coordinateFor(targetLabel);
-  return Object.freeze({ startX: source.x, startY: source.y, endX: target.x, endY: target.y });
+  if (!(idPattern instanceof RegExp) || typeof label !== "string" || label.length === 0) {
+    fail("drag hierarchy selector is invalid.");
+  }
+  const matching = nodes.filter((candidate) =>
+    matchesId(hierarchyAttribute(candidate, "resource-id"), idPattern)
+    && reorderDescriptionMatches(
+      hierarchyAttribute(candidate, "content-desc"),
+      label,
+    ));
+  if (matching.length !== 1) fail(`drag hierarchy must contain exactly one ${label} handle.`);
+  const bounds = /^\[(\d+),(\d+)\]\[(\d+),(\d+)\]$/u.exec(
+    hierarchyAttribute(matching[0], "bounds") ?? "",
+  );
+  if (bounds === null) fail(`drag hierarchy bounds are invalid for ${label}.`);
+  const [left, top, right, bottom] = bounds.slice(1).map(Number);
+  if (right <= left || bottom <= top) fail(`drag hierarchy bounds are invalid for ${label}.`);
+  return Object.freeze({ x: Math.round((left + right) / 2), y: Math.round((top + bottom) / 2) });
+}
+
+export function phase7ReorderCoordinates(hierarchy, { source, target }) {
+  const sourceCoordinate = phase7ReorderCoordinate(hierarchy, source);
+  const targetCoordinate = phase7ReorderCoordinate(hierarchy, target);
+  return Object.freeze({
+    startX: sourceCoordinate.x,
+    startY: sourceCoordinate.y,
+    endX: targetCoordinate.x,
+    endY: targetCoordinate.y,
+  });
+}
+
+export function phase7ReorderOrderIs(hierarchy, { first, second }) {
+  const firstCoordinate = phase7ReorderCoordinate(hierarchy, first);
+  const secondCoordinate = phase7ReorderCoordinate(hierarchy, second);
+  return firstCoordinate.y < secondCoordinate.y;
+}
+
+export function phase7PlanReorderCoordinates(hierarchy, { sourceLabel = "Bench Press", targetLabel = "Back Squat" } = {}) {
+  return phase7ReorderCoordinates(hierarchy, {
+    source: { idPattern: new RegExp(`^drag-exercise-${sourceLabel}$`, "u"), label: sourceLabel },
+    target: { idPattern: new RegExp(`^drag-exercise-${targetLabel}$`, "u"), label: targetLabel },
+  });
 }
 
 export function phase7NativeHeldDragCommands({ startX, startY, endX, endY }) {
@@ -280,7 +324,6 @@ export function phase7NativeHeldDragCommands({ startX, startY, endX, endY }) {
   return Object.freeze({
     down: Object.freeze(["shell", "input", "touchscreen", "motionevent", "DOWN", String(startX), String(startY)]),
     up: Object.freeze(["shell", "input", "touchscreen", "motionevent", "UP", String(endX), String(endY)]),
-    accessibilityMoveDown: Object.freeze(["shell", "input", "keycombination", "SHIFT_LEFT", "DPAD_DOWN"]),
   });
 }
 
@@ -298,11 +341,10 @@ function waitSynchronously(milliseconds) {
 }
 
 export function phase7PlanOrderIs(hierarchy, firstLabel, secondLabel) {
-  const coordinates = phase7PlanReorderCoordinates(hierarchy, {
-    sourceLabel: firstLabel,
-    targetLabel: secondLabel,
+  return phase7ReorderOrderIs(hierarchy, {
+    first: { idPattern: new RegExp(`^drag-exercise-${firstLabel}$`, "u"), label: firstLabel },
+    second: { idPattern: new RegExp(`^drag-exercise-${secondLabel}$`, "u"), label: secondLabel },
   });
-  return coordinates.startY < coordinates.endY;
 }
 
 function captureScreenshot(adbPath, serial, outputPath) {
@@ -311,9 +353,39 @@ function captureScreenshot(adbPath, serial, outputPath) {
   writeFileSync(outputPath, bytes, { flag: "wx" });
 }
 
-function executePhase7PlanReorderEvidence(adbPath, serial, flowDirectory) {
-  const before = adb(adbPath, serial, "exec-out", "uiautomator", "dump", "/dev/tty");
-  const drag = phase7PlanReorderCoordinates(before);
+const PLAN_REORDER = Object.freeze({
+  source: Object.freeze({ idPattern: /^drag-exercise-Bench Press$/u, label: "Bench Press" }),
+  target: Object.freeze({ idPattern: /^drag-exercise-Back Squat$/u, label: "Back Squat" }),
+});
+const PLAN_DAY_REORDER = Object.freeze({
+  source: Object.freeze({ idPattern: /^drag-day-Full Body B$/u, label: "Full Body B" }),
+  target: Object.freeze({ idPattern: /^drag-day-Full Body A$/u, label: "Full Body A" }),
+});
+const WEEKDAY_REORDER = Object.freeze({
+  source: Object.freeze({ idPattern: /^drag-weekday-0-Wednesday-.+$/u, label: "Full Body B" }),
+  target: Object.freeze({ idPattern: /^drag-weekday-0-Monday-.+$/u, label: "Full Body A" }),
+});
+const ROTATION_REORDER = Object.freeze({
+  source: Object.freeze({ idPattern: /^drag-rotation-.+-\d+$/u, label: "Full Body A" }),
+  target: Object.freeze({ idPattern: /^drag-rotation-.+-\d+$/u, label: "Full Body B" }),
+});
+const WEEKDAY_PERSISTED_ORDER = Object.freeze({
+  first: WEEKDAY_REORDER.source,
+  second: WEEKDAY_REORDER.target,
+});
+const ROTATION_PERSISTED_ORDER = Object.freeze({
+  first: Object.freeze({ idPattern: /^drag-rotation-.+-\d+$/u, label: "Full Body B" }),
+  second: Object.freeze({ idPattern: /^drag-rotation-.+-\d+$/u, label: "Full Body A" }),
+});
+
+function deviceHierarchy(adbPath, serial) {
+  return adb(adbPath, serial, "exec-out", "uiautomator", "dump", "/dev/tty");
+}
+
+function executePhase7HeldDrag(adbPath, serial, reorder) {
+  const before = deviceHierarchy(adbPath, serial);
+  const drag = phase7ReorderCoordinates(before, reorder);
+  const sourceStartedFirst = drag.startY < drag.endY;
   const commands = phase7NativeHeldDragCommands(drag);
   let pointerDown = false;
   try {
@@ -327,20 +399,56 @@ function executePhase7PlanReorderEvidence(adbPath, serial, flowDirectory) {
   } finally {
     if (pointerDown) adb(adbPath, serial, ...commands.up);
   }
-  const afterDrag = adb(adbPath, serial, "exec-out", "uiautomator", "dump", "/dev/tty");
-  if (!phase7PlanOrderIs(afterDrag, "Bench Press", "Back Squat")) {
-    fail("native held drag did not commit the plan reorder.");
-  }
-  const accessibilityTarget = phase7PlanReorderCoordinates(afterDrag, {
-    sourceLabel: "Bench Press", targetLabel: "Back Squat",
+  const afterDrag = deviceHierarchy(adbPath, serial);
+  const sourceFinishedFirst = phase7ReorderOrderIs(afterDrag, {
+    first: reorder.source,
+    second: reorder.target,
   });
-  adb(adbPath, serial, "shell", "input", "tap", String(accessibilityTarget.startX), String(accessibilityTarget.startY));
-  adb(adbPath, serial, ...commands.accessibilityMoveDown);
-  const afterAccessibilityMove = adb(adbPath, serial, "exec-out", "uiautomator", "dump", "/dev/tty");
-  if (!phase7PlanOrderIs(afterAccessibilityMove, "Back Squat", "Bench Press")) {
-    fail("native accessibility action did not commit the plan reorder.");
+  if (sourceFinishedFirst === sourceStartedFirst) {
+    fail(`native held drag did not commit the ${reorder.source.label} reorder.`);
   }
-  captureScreenshot(adbPath, serial, path.join(flowDirectory, "phase7-schedule-reorder.png"));
+  return afterDrag;
+}
+
+function executePhase7PlanReorderEvidence(adbPath, serial, flowDirectory) {
+  executePhase7HeldDrag(adbPath, serial, PLAN_REORDER);
+  captureScreenshot(
+    adbPath,
+    serial,
+    path.join(flowDirectory, "phase7-plan-exercise-reorder.png"),
+  );
+}
+
+function executePhase7ScheduleReorderEvidence(adbPath, serial, reorder) {
+  executePhase7HeldDrag(adbPath, serial, reorder);
+}
+
+function assertPhase7PersistedReorder(adbPath, serial, expected, mode) {
+  const hierarchy = deviceHierarchy(adbPath, serial);
+  if (!phase7ReorderOrderIs(hierarchy, expected)) {
+    fail(`persisted ${mode} schedule reorder is missing after save and reopen.`);
+  }
+}
+
+function aggregatePhase7StageReports(stages) {
+  const testCases = stages.map((stage) =>
+    `  <testcase classname="phase7-plan-schedule-reorder" name="${stage}"/>`
+  ).join("\n");
+  return Buffer.from([
+    '<?xml version="1.0" encoding="UTF-8"?>',
+    `<testsuite name="phase7-plan-schedule-reorder" tests="${stages.length}" failures="0" errors="0" skipped="0">`,
+    testCases,
+    "</testsuite>",
+    "",
+  ].join("\n"));
+}
+
+function executePhase7MaestroStage(serial, reportPath, flowDirectory, flowPath, stage) {
+  execFileSync("maestro", [
+    "test", "--device", serial, "-e", `REORDER_STAGE=${stage}`,
+    "--format", "junit", "--output", reportPath,
+    "--test-output-dir", flowDirectory, flowPath,
+  ], { stdio: "inherit" });
 }
 
 function installedDevice(adbPath, serial, candidate) {
@@ -484,11 +592,87 @@ export function executePhase7Maestro(args = process.argv.slice(2)) {
       const flowDirectory = path.join(reportDirectory, contract.id);
       const reportPath = path.join(flowDirectory, "report.xml");
       mkdirSync(flowDirectory);
-      execFileSync("maestro", ["test", "--device", options.serial, "--format", "junit", "--output", reportPath, "--test-output-dir", flowDirectory, execution.flowPath], { stdio: "inherit" });
+      if (contract.id === "phase7-plan-schedule-reorder") {
+        const completedStages = [];
+        const runStage = (stage) => {
+          const stageDirectory = path.join(flowDirectory, stage);
+          const stageReport = path.join(stageDirectory, "report.xml");
+          mkdirSync(stageDirectory);
+          executePhase7MaestroStage(
+            options.serial,
+            stageReport,
+            stageDirectory,
+            execution.flowPath,
+            stage,
+          );
+          if (!existsSync(stageReport)) fail(`Maestro stage report is missing: ${stage}`);
+          const report = readFileSync(stageReport);
+          parsePassingJunit(report, `${contract.id}/${stage}`);
+          completedStages.push(stage);
+        };
+        runStage("plan-day-ready");
+        captureScreenshot(
+          adbPath,
+          options.serial,
+          path.join(flowDirectory, "phase7-plan-selected-day.png"),
+        );
+        executePhase7HeldDrag(adbPath, options.serial, PLAN_DAY_REORDER);
+        captureScreenshot(
+          adbPath,
+          options.serial,
+          path.join(flowDirectory, "phase7-plan-day-reorder.png"),
+        );
+        runStage("plan-exercise-ready");
+        executePhase7PlanReorderEvidence(adbPath, options.serial, flowDirectory);
+        runStage("weekday-ready");
+        executePhase7ScheduleReorderEvidence(adbPath, options.serial, WEEKDAY_REORDER);
+        runStage("weekday-save");
+        assertPhase7PersistedReorder(
+          adbPath,
+          options.serial,
+          WEEKDAY_PERSISTED_ORDER,
+          "Weekday",
+        );
+        captureScreenshot(
+          adbPath,
+          options.serial,
+          path.join(flowDirectory, "phase7-weekday-schedule-reorder.png"),
+        );
+        runStage("rotation-ready");
+        executePhase7ScheduleReorderEvidence(adbPath, options.serial, ROTATION_REORDER);
+        runStage("rotation-save");
+        assertPhase7PersistedReorder(
+          adbPath,
+          options.serial,
+          ROTATION_PERSISTED_ORDER,
+          "Rotation",
+        );
+        captureScreenshot(
+          adbPath,
+          options.serial,
+          path.join(flowDirectory, "phase7-rotation-schedule-reorder.png"),
+        );
+        writeFileSync(
+          reportPath,
+          aggregatePhase7StageReports(completedStages),
+          { flag: "wx" },
+        );
+      } else {
+        execFileSync("maestro", ["test", "--device", options.serial, "--format", "junit", "--output", reportPath, "--test-output-dir", flowDirectory, execution.flowPath], { stdio: "inherit" });
+      }
       if (!existsSync(reportPath)) fail(`Maestro report is missing: ${contract.id}`);
       rawReports[contract.id] = readFileSync(reportPath);
-      if (contract.id === "phase7-plan-schedule-reorder") executePhase7PlanReorderEvidence(adbPath, options.serial, flowDirectory);
-      screenshots[contract.id] = exactPhase7ScreenshotEvidence(flowDirectory, contract.screenshots, contract.id);
+      screenshots[contract.id] = exactPhase7ScreenshotEvidence(
+        flowDirectory,
+        contract.screenshots,
+        contract.id,
+        contract.id === "phase7-plan-schedule-reorder"
+          ? [
+              "plan-day-ready", "plan-exercise-ready", "weekday-ready",
+              "weekday-save", "rotation-ready", "rotation-save",
+            ]
+          : [],
+      );
     }
     evidence = createPhase7Evidence({ candidate, device, flowExecutions: executableFlows.flows, rawReports, screenshots, fontScaleRestored: false });
   } catch (error) { primaryError = error; }

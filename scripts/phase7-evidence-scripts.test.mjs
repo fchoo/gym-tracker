@@ -9,6 +9,8 @@ import {
   parsePhase7MaestroArguments,
   phase7NativeHeldDragCommands,
   phase7NativeDragMoveSequence,
+  phase7ReorderCoordinates,
+  phase7ReorderOrderIs,
   phase7PlanOrderIs,
   phase7PlanReorderCoordinates,
 } from "./run-phase7-maestro.mjs";
@@ -105,9 +107,13 @@ test("Phase 7 Maestro flows use source-aligned interactive labels and routes", (
   assert.doesNotMatch(workoutRemovalAudio, /tapOn: "Open Settings"/u);
 
   const planScheduleReorder = flowSource("plan-schedule-reorder.yaml");
-  assert.match(planScheduleReorder, /- assertVisible: "Plan days"/u);
-  assert.match(planScheduleReorder, /- assertVisible: "Reorder Bench Press"/u);
-  assert.match(planScheduleReorder, /- assertVisible: "Reorder Back Squat"/u);
+  assert.match(planScheduleReorder, /true: \$\{REORDER_STAGE == 'plan-day-ready'\}[\s\S]*?id: "drag-day-Full Body A"/u);
+  assert.match(planScheduleReorder, /- tapOn: "Activate Full Body Foundation"[\s\S]*?- tapOn: "Schedule"/u);
+  assert.match(planScheduleReorder, /visible: "Edit schedule"/u);
+  assert.match(planScheduleReorder, /true: \$\{REORDER_STAGE == 'weekday-ready'\}[\s\S]*?id: "drag-weekday-0-Monday-.*"[\s\S]*?above:[\s\S]*?id: "drag-weekday-0-Wednesday-.*"/u);
+  assert.match(planScheduleReorder, /true: \$\{REORDER_STAGE == 'rotation-ready'\}[\s\S]*?- tapOn: "\^Rotation\$"[\s\S]*?id: "drag-rotation-.*-0"[\s\S]*?above:[\s\S]*?id: "drag-rotation-.*-1"/u);
+  assert.match(planScheduleReorder, /true: \$\{REORDER_STAGE == 'weekday-save'\}[\s\S]*?- tapOn: "Save schedule"[\s\S]*?- stopApp[\s\S]*?- tapOn: "Schedule"[\s\S]*?id: "drag-weekday-0-Wednesday-.*"/u);
+  assert.match(planScheduleReorder, /true: \$\{REORDER_STAGE == 'rotation-save'\}[\s\S]*?- tapOn: "Save schedule"[\s\S]*?- stopApp[\s\S]*?- tapOn: "Schedule"[\s\S]*?id: "drag-rotation-.*-0"/u);
   const reorderComponent = readFileSync(
     path.join(projectRoot, "src/ui/components/PlanEditorFields.tsx"),
     "utf8",
@@ -117,9 +123,25 @@ test("Phase 7 Maestro flows use source-aligned interactive labels and routes", (
     true,
   );
   const runner = readFileSync(runnerPath, "utf8");
-  assert.match(runner, /phase7PlanOrderIs\(afterDrag, "Bench Press", "Back Squat"\)/u);
-  assert.match(runner, /phase7PlanOrderIs\(afterAccessibilityMove, "Back Squat", "Bench Press"\)/u);
-  assert.match(runner, /phase7-schedule-reorder\.png/u);
+  assert.match(runner, /executePhase7HeldDrag\(adbPath, options\.serial, PLAN_DAY_REORDER\)[\s\S]*?phase7-plan-day-reorder\.png/u);
+  assert.match(runner, /executePhase7PlanReorderEvidence\(adbPath, options\.serial, flowDirectory\)/u);
+  assert.match(runner, /aggregatePhase7StageReports\(completedStages\)/u);
+  assert.match(runner, /"plan-day-ready", "plan-exercise-ready", "weekday-ready"/u);
+  assert.match(runner, /WEEKDAY_PERSISTED_ORDER/u);
+  assert.match(runner, /ROTATION_PERSISTED_ORDER/u);
+  assert.match(runner, /phase7-weekday-schedule-reorder\.png/u);
+  assert.match(runner, /phase7-rotation-schedule-reorder\.png/u);
+  assert.doesNotMatch(planScheduleReorder, /takeScreenshot: phase7-(?:plan-selected-day|weekday-schedule-reorder|rotation-schedule-reorder)/u);
+  assert.deepEqual(
+    [...planScheduleReorder.matchAll(/REORDER_STAGE == '([^']+)'/gu)]
+      .map(([, stage]) => stage)
+      .filter((stage, index, stages) => stages.indexOf(stage) === index),
+    [
+      "plan-day-ready", "plan-exercise-ready", "weekday-ready",
+      "weekday-save", "rotation-ready", "rotation-save",
+    ],
+  );
+  assert.doesNotMatch(runner, /phase7-schedule-reorder\.png/u);
   assert.doesNotMatch(planScheduleReorder, /(?:longPressOn|pressKey: ARROW_DOWN)/u);
   assert.doesNotMatch(planScheduleReorder, /assertVisible: "Selected day"/u);
 
@@ -146,22 +168,60 @@ test("Phase 7 Maestro flows use source-aligned interactive labels and routes", (
   assert.deepEqual(launcherEvidence.native_backstops, ["N4"]);
 });
 
-test("Phase 7 plan evidence uses live native drag and an accessibility action, not simulated gestures", () => {
+test("Phase 7 plan evidence uses live native held drag, not simulated gestures", () => {
   const hierarchy = [
     '<node resource-id="drag-exercise-Bench Press" content-desc="Reorder Bench Press" bounds="[120,640][240,720]"/>',
     '<node resource-id="drag-exercise-Back Squat" content-desc="Reorder Back Squat" bounds="[120,480][240,560]"/>',
+  ].join("");
+  const nativeHierarchy = [
+    '<node resource-id="drag-exercise-Bench Press" content-desc="Drag Bench Press. Position 2 of 2" bounds="[120,640][240,720]"/>',
+    '<node resource-id="drag-exercise-Back Squat" content-desc="Drag Back Squat. Position 1 of 2" bounds="[120,480][240,560]"/>',
   ].join("");
   const drag = phase7PlanReorderCoordinates(hierarchy);
   assert.deepEqual(drag, { startX: 180, startY: 680, endX: 180, endY: 520 });
   assert.deepEqual(phase7NativeHeldDragCommands(drag), {
     down: ["shell", "input", "touchscreen", "motionevent", "DOWN", "180", "680"],
     up: ["shell", "input", "touchscreen", "motionevent", "UP", "180", "520"],
-    accessibilityMoveDown: ["shell", "input", "keycombination", "SHIFT_LEFT", "DPAD_DOWN"],
   });
   assert.equal(phase7NativeDragMoveSequence(drag).length, 12);
   assert.equal(phase7PlanOrderIs(hierarchy, "Back Squat", "Bench Press"), true);
   assert.equal(phase7PlanOrderIs(hierarchy, "Bench Press", "Back Squat"), false);
+  assert.equal(phase7PlanOrderIs(nativeHierarchy, "Back Squat", "Bench Press"), true);
   assert.throws(() => phase7PlanReorderCoordinates("<node/>"), /drag hierarchy/u);
+});
+
+test("Phase 7 schedule evidence binds Weekday and Rotation screenshots to native schedule-row drags", () => {
+  const weekdayHierarchy = [
+    '<node resource-id="drag-weekday-0-Monday-day-first" content-desc="Reorder First" bounds="[120,480][240,560]"/>',
+    '<node resource-id="drag-weekday-0-Wednesday-day-second" content-desc="Reorder Second" bounds="[120,640][240,720]"/>',
+  ].join("");
+  const rotationHierarchy = [
+    '<node resource-id="drag-rotation-day-first-0" content-desc="Reorder First" bounds="[120,480][240,560]"/>',
+    '<node resource-id="drag-rotation-day-second-1" content-desc="Reorder Second" bounds="[120,640][240,720]"/>',
+  ].join("");
+
+  assert.deepEqual(phase7ReorderCoordinates(weekdayHierarchy, {
+    source: { idPattern: /^drag-weekday-[^-]+-[^-]+-.+$/u, label: "First" },
+    target: { idPattern: /^drag-weekday-[^-]+-[^-]+-.+$/u, label: "Second" },
+  }), { startX: 180, startY: 520, endX: 180, endY: 680 });
+  assert.equal(phase7ReorderOrderIs(weekdayHierarchy, {
+    first: { idPattern: /^drag-weekday-[^-]+-[^-]+-.+$/u, label: "First" },
+    second: { idPattern: /^drag-weekday-[^-]+-[^-]+-.+$/u, label: "Second" },
+  }), true);
+  assert.equal(phase7ReorderOrderIs(rotationHierarchy, {
+    first: { idPattern: /^drag-rotation-.+-\d+$/u, label: "First" },
+    second: { idPattern: /^drag-rotation-.+-\d+$/u, label: "Second" },
+  }), true);
+
+  const scheduleFlow = PHASE7_MAESTRO_FLOW_CONTRACTS.find(({ id }) =>
+    id === "phase7-plan-schedule-reorder");
+  assert.deepEqual(scheduleFlow.screenshots, [
+    "phase7-plan-selected-day.png",
+    "phase7-plan-day-reorder.png",
+    "phase7-plan-exercise-reorder.png",
+    "phase7-weekday-schedule-reorder.png",
+    "phase7-rotation-schedule-reorder.png",
+  ]);
 });
 
 test("Phase 7 attended evidence stays exact-byte, N4-only, and observation-only", () => {
