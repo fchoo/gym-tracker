@@ -3632,6 +3632,10 @@ test("custom exercise flow scrolls through the long editor contract", async () =
     /- tapOn: "Restore exercise"\n- extendedWaitUntil:\n    visible: "Archive exercise"\n    timeout: 60000\n- scrollUntilVisible:\n    element:\n      text: "Go back"/u,
   );
   assert.match(
+    segments[2],
+    /- tapOn: "Go back"\n- repeat:\n    times: 4\n    while:\n      notVisible: "Search exercises"\n    commands:\n      - swipe:\n          start: 50%, 25%\n          end: 50%, 75%\n          duration: 300\n- assertVisible: "Search exercises"/u,
+  );
+  assert.match(
     segments[3],
     /- tapOn:\n    id: "owned-plan-add-exercise"\n- scrollUntilVisible:\n    element:\n      id: "owned-plan-exercise-search"\n    direction: DOWN\n    centerElement: true\n- tapOn:\n    id: "owned-plan-exercise-search"/u,
   );
