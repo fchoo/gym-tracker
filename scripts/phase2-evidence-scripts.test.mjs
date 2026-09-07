@@ -10,11 +10,13 @@ import {
 } from "node:fs";
 import {
   chmod,
+  link,
   mkdir,
   mkdtemp,
   readFile,
   readdir,
   rm,
+  symlink,
   writeFile,
 } from "node:fs/promises";
 import { tmpdir } from "node:os";
@@ -533,6 +535,95 @@ test("Phase 2 Maestro source manifests reject missing, duplicate, stale, and col
     ),
     /observation.*malformed/u,
   );
+});
+
+test("owned plan reorder screenshot is canonicalized from Maestro nested output", async () => {
+  const { canonicalizePhase2OwnedPlanReorderScreenshot } = await load(
+    "scripts/run-phase2-maestro.mjs",
+  );
+  const directory = await mkdtemp(path.join(tmpdir(), "phase2-owned-plan-screenshot-"));
+  const screenshotName = "phase2-owned-plan-reorder-persisted.png";
+  const pngBytes = Buffer.concat([
+    Buffer.from("89504e470d0a1a0a", "hex"),
+    Buffer.from("fixture"),
+  ]);
+  const nestedScreenshot = (root) => path.join(
+    root,
+    "2026-09-07_051025",
+    "Phase 2 installed owned plan reorder continuation verify",
+    "takeScreenshot",
+    screenshotName,
+  );
+  const createNestedScreenshot = async (root, bytes = pngBytes) => {
+    const nested = nestedScreenshot(root);
+    await mkdir(path.dirname(nested), { recursive: true });
+    await writeFile(nested, bytes);
+    return nested;
+  };
+
+  try {
+    const validRoot = path.join(directory, "valid");
+    const nested = await createNestedScreenshot(validRoot);
+
+    const canonical = await canonicalizePhase2OwnedPlanReorderScreenshot(validRoot);
+    assert.equal(canonical, path.join(validRoot, screenshotName));
+    assert.deepEqual(readFileSync(canonical), pngBytes);
+    assert.deepEqual(readFileSync(nested), pngBytes);
+
+    await assert.rejects(
+      canonicalizePhase2OwnedPlanReorderScreenshot(validRoot),
+      /exactly one owned plan reorder persisted screenshot/u,
+    );
+
+    const missingRoot = path.join(directory, "missing");
+    await mkdir(missingRoot);
+    await assert.rejects(
+      canonicalizePhase2OwnedPlanReorderScreenshot(missingRoot),
+      /exactly one owned plan reorder persisted screenshot/u,
+    );
+
+    for (const [name, bytes, error] of [
+      ["empty", Buffer.alloc(0), /missing, linked, or unsafe/u],
+      ["not-png", Buffer.from("not a real PNG"), /not a stable PNG/u],
+    ]) {
+      const root = path.join(directory, name);
+      await createNestedScreenshot(root, bytes);
+      await assert.rejects(
+        canonicalizePhase2OwnedPlanReorderScreenshot(root),
+        error,
+      );
+    }
+
+    const symlinkRoot = path.join(directory, "symlink");
+    const symlinkTarget = path.join(symlinkRoot, "target.png");
+    await mkdir(path.dirname(nestedScreenshot(symlinkRoot)), { recursive: true });
+    await writeFile(symlinkTarget, pngBytes);
+    await symlink(symlinkTarget, nestedScreenshot(symlinkRoot));
+    await assert.rejects(
+      canonicalizePhase2OwnedPlanReorderScreenshot(symlinkRoot),
+      /exactly one owned plan reorder persisted screenshot/u,
+    );
+
+    const hardLinkRoot = path.join(directory, "hard-link");
+    const hardLinkSource = path.join(hardLinkRoot, "source.png");
+    await mkdir(path.dirname(nestedScreenshot(hardLinkRoot)), { recursive: true });
+    await writeFile(hardLinkSource, pngBytes);
+    await link(hardLinkSource, nestedScreenshot(hardLinkRoot));
+    await assert.rejects(
+      canonicalizePhase2OwnedPlanReorderScreenshot(hardLinkRoot),
+      /missing, linked, or unsafe/u,
+    );
+
+    const duplicateRoot = path.join(directory, "duplicate");
+    await createNestedScreenshot(path.join(duplicateRoot, "first"));
+    await createNestedScreenshot(path.join(duplicateRoot, "second"));
+    await assert.rejects(
+      canonicalizePhase2OwnedPlanReorderScreenshot(duplicateRoot),
+      /exactly one owned plan reorder persisted screenshot/u,
+    );
+  } finally {
+    await rm(directory, { force: true, recursive: true });
+  }
 });
 
 test("Phase 2 remediation flows use public labels and deterministic seams", async () => {

@@ -5,10 +5,13 @@ import {
 } from "node:child_process";
 import { createHash } from "node:crypto";
 import {
+  constants as fsConstants,
   createReadStream,
   existsSync,
 } from "node:fs";
 import {
+  lstat,
+  open,
   readFile,
   readdir,
   rename,
@@ -32,6 +35,8 @@ import {
 const PHASE2_OWNED_PLAN_REORDER_FLOW = "maestro/phase2/owned-plan-editor.yaml";
 const PHASE2_OWNED_PLAN_REORDER_CONTINUATION_FLOW = "maestro/subflows/phase2-owned-plan-editor-reorder-verify.yaml";
 const PHASE2_OWNED_PLAN_REORDER_VERIFY_SCREENSHOT = "phase2-owned-plan-reorder-persisted.png";
+const PNG_SIGNATURE = Buffer.from("89504e470d0a1a0a", "hex");
+const MAX_SCREENSHOT_BYTES = 64 * 1024 * 1024;
 
 const projectRoot = process.cwd();
 const publicFlowDirectories = [
@@ -439,6 +444,134 @@ function phase2OwnedPlanRequiresNativeProof(flow) {
   return flow?.flow === PHASE2_OWNED_PLAN_REORDER_FLOW;
 }
 
+async function matchingFiles(root, basename) {
+  const matches = [];
+  for (const entry of await readdir(root, { withFileTypes: true })) {
+    const candidate = path.join(root, entry.name);
+    if (entry.isDirectory()) {
+      matches.push(...await matchingFiles(candidate, basename));
+    } else if (entry.isFile() && entry.name === basename) {
+      matches.push(candidate);
+    }
+  }
+  return matches;
+}
+
+function sameFileIdentity(left, right) {
+  return left.dev === right.dev && left.ino === right.ino;
+}
+
+async function readStableScreenshot(filePath) {
+  let descriptor;
+  try {
+    descriptor = await open(
+      filePath,
+      fsConstants.O_RDONLY | fsConstants.O_NOFOLLOW,
+    );
+  } catch {
+    throw new Error(
+      "expected exactly one safe owned plan reorder persisted screenshot in Maestro output.",
+    );
+  }
+  try {
+    const before = await descriptor.stat({ bigint: true });
+    const linkedBefore = await lstat(filePath, { bigint: true });
+    if (!before.isFile()
+      || before.nlink !== 1n
+      || !linkedBefore.isFile()
+      || linkedBefore.isSymbolicLink()
+      || linkedBefore.nlink !== 1n
+      || !sameFileIdentity(before, linkedBefore)
+      || before.size < 9n
+      || before.size > BigInt(MAX_SCREENSHOT_BYTES)) {
+      throw new Error(
+        "owned plan reorder persisted screenshot is missing, linked, or unsafe.",
+      );
+    }
+    const bytes = await descriptor.readFile();
+    const after = await descriptor.stat({ bigint: true });
+    const linkedAfter = await lstat(filePath, { bigint: true });
+    if (!sameFileIdentity(before, after)
+      || !sameFileIdentity(after, linkedAfter)
+      || before.size !== after.size
+      || before.mtimeNs !== after.mtimeNs
+      || before.ctimeNs !== after.ctimeNs
+      || BigInt(bytes.length) !== after.size
+      || !bytes.subarray(0, PNG_SIGNATURE.length).equals(PNG_SIGNATURE)) {
+      throw new Error(
+        "owned plan reorder persisted screenshot is not a stable PNG.",
+      );
+    }
+    return bytes;
+  } finally {
+    await descriptor.close();
+  }
+}
+
+async function publishFreshScreenshot(filePath, bytes) {
+  let descriptor;
+  try {
+    descriptor = await open(
+      filePath,
+      fsConstants.O_CREAT
+        | fsConstants.O_EXCL
+        | fsConstants.O_RDWR
+        | fsConstants.O_NOFOLLOW,
+      0o400,
+    );
+  } catch {
+    throw new Error(
+      "owned plan reorder persisted screenshot canonical path is not fresh.",
+    );
+  }
+  try {
+    await descriptor.writeFile(bytes);
+    await descriptor.sync();
+    const opened = await descriptor.stat({ bigint: true });
+    const linked = await lstat(filePath, { bigint: true });
+    if (!opened.isFile()
+      || opened.nlink !== 1n
+      || !linked.isFile()
+      || linked.isSymbolicLink()
+      || linked.nlink !== 1n
+      || !sameFileIdentity(opened, linked)
+      || opened.size !== BigInt(bytes.length)) {
+      throw new Error(
+        "owned plan reorder persisted screenshot canonical path is unsafe.",
+      );
+    }
+  } finally {
+    await descriptor.close();
+  }
+}
+
+export async function canonicalizePhase2OwnedPlanReorderScreenshot(
+  continuationDirectory,
+) {
+  const canonicalPath = path.join(
+    continuationDirectory,
+    PHASE2_OWNED_PLAN_REORDER_VERIFY_SCREENSHOT,
+  );
+  const matches = (await matchingFiles(
+    continuationDirectory,
+    PHASE2_OWNED_PLAN_REORDER_VERIFY_SCREENSHOT,
+  )).filter((candidate) => candidate !== canonicalPath);
+  if (existsSync(canonicalPath) || matches.length !== 1) {
+    throw new Error(
+      "expected exactly one owned plan reorder persisted screenshot in Maestro output.",
+    );
+  }
+  const bytes = await readStableScreenshot(matches[0]);
+  await publishFreshScreenshot(canonicalPath, bytes);
+  const published = await readStableScreenshot(canonicalPath);
+  if (!published.equals(bytes)) {
+    throw new Error(
+      "owned plan reorder persisted screenshot canonical bytes changed.",
+    );
+  }
+  return canonicalPath;
+}
+
 async function executePhase2OwnedPlanNativeProof({ adb, artifactDirectory, flow, manifest }) {
   if (!phase2OwnedPlanRequiresNativeProof(flow)) {
     return undefined;
@@ -504,13 +637,9 @@ async function executePhase2OwnedPlanNativeProof({ adb, artifactDirectory, flow,
     continuationReport,
     PHASE2_OWNED_PLAN_REORDER_CONTINUATION_FLOW,
   );
-  const screenshotPath = path.join(
+  const screenshotPath = await canonicalizePhase2OwnedPlanReorderScreenshot(
     continuationDirectory,
-    PHASE2_OWNED_PLAN_REORDER_VERIFY_SCREENSHOT,
   );
-  if (!existsSync(screenshotPath)) {
-    throw new Error("owned plan reorder persisted screenshot is missing.");
-  }
   return {
     continuationSummary,
     proof: {
