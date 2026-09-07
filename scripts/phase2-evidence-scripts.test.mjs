@@ -1030,10 +1030,10 @@ test("Phase 2 date flows use CalendarField rather than text entry", async () => 
     /- assertNotVisible: "Calendar dialog"\n- tapOn: "Schedule timezone"\n- eraseText: 32\n- inputText: "Australia\/Sydney"\n- hideKeyboard\n- repeat:\n    times: 4\n    while:\n      notVisible: "\^Weekday\$"\n    commands:\n      - swipe:\n          start: 95%, 75%\n          end: 95%, 45%\n          duration: 300\n- assertVisible: "\^Weekday\$"\n- tapOn: "\^Rotation\$"/u,
   );
   const scheduleWorkoutFieldTraversal = /- repeat:\n    times: 4\n    while:\n      notVisible: "Working set 1 (?:added )?load in kilograms"\n    commands:\n      - swipe:\n          start: 95%, 75%\n          end: 95%, 45%\n          duration: 300\n- assertVisible: "Working set 1 (?:added )?load in kilograms"/gu;
-  assert.equal([...schedule.matchAll(scheduleWorkoutFieldTraversal)].length, 1);
+  assert.equal([...schedule.matchAll(scheduleWorkoutFieldTraversal)].length, 2);
   assert.match(
     schedule,
-    /- assertVisible: "Chin-Up"\n- repeat:\n    times: 4\n    while:\n      notVisible: "Working set 1 repetitions"\n    commands:\n      - swipe:\n          start: 95%, 75%\n          end: 95%, 45%\n          duration: 300\n- assertVisible: "Working set 1 repetitions"/u,
+    /- assertVisible: "Bench Press"\n- repeat:\n    times: 4\n    while:\n      notVisible: "Working set 1 load in kilograms"\n    commands:\n      - swipe:\n          start: 95%, 75%\n          end: 95%, 45%\n          duration: 300\n- assertVisible: "Working set 1 load in kilograms"\n- repeat:\n    times: 4\n    while:\n      notVisible: "Working set 1 repetitions"/u,
   );
   const scheduleWorkoutRepetitionTraversal = /- repeat:\n    times: 4\n    while:\n      notVisible: "Working set 1 repetitions"\n    commands:\n      - swipe:\n          start: 95%, 75%\n          end: 95%, 45%\n          duration: 300\n- assertVisible: "Working set 1 repetitions"/gu;
   assert.equal(
@@ -1092,11 +1092,11 @@ test("retained Maestro flows use the Phase 7 action and rotation vocabulary", as
   assert.match(schedule, /Override with Skip/u);
   assert.match(
     schedule,
-    /Override with Skip[\s\S]*Planned but not completed[\s\S]*Override with Rest day[\s\S]*Rest day/u,
+    /Override with Skip[\s\S]*No override → Skip[\s\S]*- assertVisible: "Rest day"[\s\S]*- assertVisible: "Skip"[\s\S]*Override with Rest day[\s\S]*Skip → Rest day[\s\S]*- assertVisible: "Rest day"/u,
   );
   assert.match(
     schedule,
-    /- tapOn: "Train anyway"\n- tapOn: "Start Pull"[\s\S]*- tapOn: "Discard workout"[\s\S]*- assertVisible: "Today"[\s\S]*- tapOn: "Train anyway"\n- tapOn: "Start Push"[\s\S]*- tapOn: "Finish as partial"[\s\S]*- extendedWaitUntil:\n    visible: "Workout saved"\n    timeout: 30000\n- assertVisible: "Return to Today"\n- tapOn: "Return to Today"\n- extendedWaitUntil:\n    visible: "Workout saved as partial"\n    timeout: 30000\n- assertVisible: "Resume workout"/u,
+    /- tapOn: "Train anyway"\n- tapOn: "Start Push"[\s\S]*- tapOn: "Discard workout"[\s\S]*- assertVisible: "Today"[\s\S]*- tapOn: "Train anyway"\n- tapOn: "Start Push"[\s\S]*- tapOn: "Finish as partial"[\s\S]*- extendedWaitUntil:\n    visible: "Workout saved"\n    timeout: 30000\n- assertVisible: "Return to Today"\n- tapOn: "Return to Today"\n- extendedWaitUntil:\n    visible: "Workout saved as partial"\n    timeout: 30000\n- assertVisible: "Resume workout"/u,
   );
 });
 
@@ -2871,11 +2871,11 @@ test("schedule flow reopens the active plan from authoritative state", async () 
   assert.doesNotMatch(flow, /Device timezone: Asia\/Singapore/u);
   assert.match(
     flow,
-    /- tapOn: "Override with Skip"\n- assertVisible: "Set this date override\?"\n- assertVisible: "No override → Skip"\n- tapOn: "Save override"[\s\S]*- assertVisible: "Planned but not completed"[\s\S]*- assertVisible: "Skip"\n- scrollUntilVisible:[\s\S]*- tapOn: "Override with Rest day"\n- assertVisible: "Replace this date override\?"\n- assertVisible: "Skip → Rest day"\n- tapOn: "Replace override"[\s\S]*- assertVisible: "Rest day"/u,
+    /- tapOn: "Override with Skip"\n- assertVisible: "Set this date override\?"\n- assertVisible: "No override → Skip"\n- tapOn: "Save override"[\s\S]*- assertVisible: "Rest day"[\s\S]*- assertVisible: "Skip"\n- scrollUntilVisible:[\s\S]*- tapOn: "Override with Rest day"\n- assertVisible: "Replace this date override\?"\n- assertVisible: "Skip → Rest day"\n- tapOn: "Replace override"[\s\S]*- assertVisible: "Rest day"/u,
   );
   assert.match(
     flow,
-    /- tapOn: "Train anyway"\n- tapOn: "Start Pull"[\s\S]*- tapOn: "Discard workout"[\s\S]*- assertVisible: "Today"[\s\S]*- tapOn: "Train anyway"\n- tapOn: "Start Push"[\s\S]*- tapOn: "Finish as partial"[\s\S]*- extendedWaitUntil:\n    visible: "Workout saved"\n    timeout: 30000\n- assertVisible: "Return to Today"\n- tapOn: "Return to Today"\n- extendedWaitUntil:\n    visible: "Workout saved as partial"\n    timeout: 30000\n- assertVisible: "Resume workout"/u,
+    /- tapOn: "Train anyway"\n- tapOn: "Start Push"[\s\S]*- tapOn: "Discard workout"[\s\S]*- assertVisible: "Today"[\s\S]*- tapOn: "Train anyway"\n- tapOn: "Start Push"[\s\S]*- tapOn: "Finish as partial"[\s\S]*- extendedWaitUntil:\n    visible: "Workout saved"\n    timeout: 30000\n- assertVisible: "Return to Today"\n- tapOn: "Return to Today"\n- extendedWaitUntil:\n    visible: "Workout saved as partial"\n    timeout: 30000\n- assertVisible: "Resume workout"[\s\S]*- assertVisible: "Start Push"[\s\S]*- assertVisible: "Next scheduled workout · Push · \.\*"/u,
   );
 });
 
@@ -3136,7 +3136,7 @@ test("post-restart root actions wait for trusted Today content", async () => {
   const rootTapPattern =
     /^- tapOn: "(?:Appearance and rest-alert settings|Calendar|Library|Progress|Today)"$/u;
   const trustedAssertPattern =
-    /^- assertVisible: "(?:Device timezone changed|Planned but not completed|Rest day|Train anyway|Workout in progress)"$/u;
+    /^- assertVisible: "(?:Device timezone changed|Rest day|Start Push|Workout in progress)"$/u;
   const trustedWaitTargets = new Set([
     '    visible: "Use Full Body Foundation"',
     '    visible: "Resume workout"',
