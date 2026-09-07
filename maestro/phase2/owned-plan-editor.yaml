@@ -45,14 +45,6 @@ tags:
     timeout: 60000
 - assertVisible: "Add at least one exercise with valid targets before scheduling or activating."
 - assertVisible: "Schedule and Activate are unavailable. Add at least one exercise with valid targets before scheduling or activating."
-- scrollUntilVisible:
-    element:
-      id: "drag-exercise-Bench Press"
-    direction: DOWN
-    centerElement: true
-    timeout: 30000
-- assertVisible: "Reorder Bench Press"
-- assertVisible: "Reorder Back Squat"
 - assertNotVisible: "Delete plan"
 - scrollUntilVisible:
     element:
@@ -155,11 +147,6 @@ tags:
       id: "drag-exercise-Bench Press"
     direction: DOWN
     centerElement: true
+    timeout: 30000
 - assertVisible: "Reorder Bench Press"
 - assertVisible: "Reorder Back Squat"
-- scrollUntilVisible:
-    element:
-      text: "Schedule and Activate are unavailable. Add at least one exercise with valid targets before scheduling or activating."
-    direction: UP
-    centerElement: true
-- assertVisible: "Schedule and Activate are unavailable. Add at least one exercise with valid targets before scheduling or activating."
