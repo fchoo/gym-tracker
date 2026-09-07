@@ -23,6 +23,7 @@ import {
   PHASE7_ROTATION_REORDER,
   aggregatePhase7StageReports,
   exactPhase7ScreenshotEvidence,
+  parsePassingJunit,
   parsePhase7MaestroArguments,
   phase7NativeHeldDragCommands,
   phase7NativeDragMoveSequence,
@@ -31,6 +32,7 @@ import {
   phase7PlanOrderIs,
   phase7PlanReorderCoordinates,
   validatePhase7RetainedArtifacts,
+  validatePhase7CandidateSourceIdentity,
 } from "./run-phase7-maestro.mjs";
 import {
   PHASE7_N4_ROWS,
@@ -38,6 +40,7 @@ import {
   createPhase7AttendedRecord,
   parsePhase7AttendedChecklistArguments,
   serializePhase7AttendedChecklist,
+  validatePhase7AttendedObservations,
   validatePhase7AttendedRecordBytes,
 } from "./generate-phase7-attended-checklist.mjs";
 
@@ -139,6 +142,7 @@ test("Phase 7 evidence creation binds all staged JUnit reports", () => {
   assert.match(runner, /validatePhase7RetainedArtifacts\(evidence, reportDirectory\)/u);
   assert.match(runner, /fsConstants\.O_RDONLY \| fsConstants\.O_NOFOLLOW/u);
   assert.match(runner, /readFileSync\(descriptor\)/u);
+  assert.match(runner, /validatePhase7CandidateSourceIdentity\(candidate\.manifest/u);
 });
 
 test("Phase 7 screenshot producer records paths from the retained report root", () => {
@@ -163,6 +167,43 @@ test("Phase 7 screenshot producer records paths from the retained report root", 
     assert.equal(evidence[0].report_file, `${flowId}/${screenshotName}`);
   } finally {
     rmSync(reportDirectory, { force: true, recursive: true });
+  }
+});
+
+test("Phase 7 candidate execution requires the exact committed source tree", () => {
+  const source = {
+    commit: "a".repeat(40),
+    tree_sha256: "b".repeat(64),
+  };
+  assert.equal(validatePhase7CandidateSourceIdentity(
+    { source },
+    { currentHead: source.commit, currentSourceSha256: source.tree_sha256 },
+  ), true);
+  assert.throws(() => validatePhase7CandidateSourceIdentity(
+    { source },
+    { currentHead: "c".repeat(40), currentSourceSha256: source.tree_sha256 },
+  ), /candidate source identity/iu);
+  assert.throws(() => validatePhase7CandidateSourceIdentity(
+    { source },
+    { currentHead: source.commit, currentSourceSha256: "d".repeat(64) },
+  ), /candidate source identity/iu);
+});
+
+test("Phase 7 JUnit validation rejects lying summary counters", () => {
+  assert.deepEqual(parsePassingJunit(
+    '<testsuite tests="1" failures="0" errors="0" skipped="0"><testcase name="ok"/></testsuite>',
+    "valid",
+  ), { tests: 1, failures: 0, errors: 0, skipped: 0 });
+  for (const invalid of [
+    '<testsuite tests="1" failures="1" errors="0" skipped="0"><testcase name="lied"/></testsuite>',
+    '<testsuite tests="1" failures="0" errors="1" skipped="0"><testcase name="lied"/></testsuite>',
+    '<testsuite tests="1" failures="0" errors="0" skipped="1"><testcase name="lied"/></testsuite>',
+    '<testsuite tests="2" failures="0" errors="0" skipped="0"><testcase name="one"/></testsuite>',
+  ]) {
+    assert.throws(
+      () => parsePassingJunit(invalid, "invalid"),
+      /did not produce a passing JUnit report/iu,
+    );
   }
 });
 
@@ -640,6 +681,7 @@ test("Phase 7 attended evidence stays exact-byte, N4-only, and observation-only"
   assert.match(source, /observation-only/u);
   assert.match(source, /N4-01/u);
   assert.match(source, /N4-05/u);
+  assert.match(source, /validatePhase7CandidateSourceIdentity\(candidate\.manifest/u);
   for (const forbidden of [
     "approval", "owner_approval", "promotion", "publication",
     "release_authorization", "terminal_seal", "tag",
@@ -723,6 +765,82 @@ test("Phase 7 attended verification rejects a truthful failed N4 record", () => 
         evidenceDirectory,
       }),
       /all N4 rows must pass/iu,
+    );
+  } finally {
+    rmSync(bundleDirectory, { force: true, recursive: true });
+  }
+});
+
+test("Phase 7 attended attachments reject hard links and unexpected files", () => {
+  const bundleDirectory = realpathSync(mkdtempSync(path.join(
+    os.tmpdir(),
+    "phase7-attended-attachments-",
+  )));
+  const evidenceDirectory = path.join(bundleDirectory, "evidence");
+  const outside = path.join(bundleDirectory, "outside.png");
+  mkdirSync(evidenceDirectory);
+  const candidate = {
+    manifest_sha256: "b".repeat(64),
+    manifest: {
+      candidate_id: "phase7-test-candidate",
+      source: { package: "com.fchoo.gymtracker", version_code: 7 },
+      build: { profile: "production" },
+      artifacts: [{ kind: "apk", sha256: "a".repeat(64) }],
+      workflow: { run_id: 7 },
+    },
+  };
+  const device = {
+    role: "samsung-physical",
+    model: "SM-S916B",
+    serial_sha256: "c".repeat(64),
+    installed_package: "com.fchoo.gymtracker",
+    installed_apk_sha256: "a".repeat(64),
+  };
+  const rows = PHASE7_N4_ROWS.map(({ id }, index) => {
+    const bytes = Buffer.concat([
+      Buffer.from("89504e470d0a1a0a", "hex"),
+      Buffer.from([index]),
+    ]);
+    writeFileSync(path.join(evidenceDirectory, `${id}.png`), bytes);
+    return { id, status: "passed", attachment_sha256: sha256Bytes(bytes) };
+  });
+  const observations = {
+    schema_version: 1,
+    suite: "phase7-attended-observations",
+    candidate_id: candidate.manifest.candidate_id,
+    manifest_sha256: candidate.manifest_sha256,
+    device,
+    rows,
+  };
+  try {
+    assert.equal(validatePhase7AttendedObservations(
+      observations,
+      { candidate, device, evidenceDirectory },
+    ), observations);
+
+    const firstPath = path.join(evidenceDirectory, `${rows[0].id}.png`);
+    const firstBytes = readFileSync(firstPath);
+    rmSync(firstPath);
+    writeFileSync(outside, firstBytes);
+    linkSync(outside, firstPath);
+    assert.throws(
+      () => validatePhase7AttendedObservations(
+        observations,
+        { candidate, device, evidenceDirectory },
+      ),
+      /attachment.*(?:missing|unsafe)/iu,
+    );
+    rmSync(firstPath);
+    rmSync(outside);
+    writeFileSync(firstPath, firstBytes);
+
+    writeFileSync(path.join(evidenceDirectory, "private-backup.json"), "{}");
+    assert.throws(
+      () => validatePhase7AttendedObservations(
+        observations,
+        { candidate, device, evidenceDirectory },
+      ),
+      /missing or unexpected files/iu,
     );
   } finally {
     rmSync(bundleDirectory, { force: true, recursive: true });

@@ -3,9 +3,14 @@
 import { execFileSync } from "node:child_process";
 import { createHash } from "node:crypto";
 import {
+  closeSync,
+  constants as fsConstants,
+  fstatSync,
   lstatSync,
   mkdtempSync,
+  openSync,
   readFileSync,
+  readdirSync,
   realpathSync,
   rmSync,
   writeFileSync,
@@ -22,7 +27,9 @@ import {
 } from "./phase5-candidate-evidence.mjs";
 import {
   loadPhase7Candidate,
+  validatePhase7CandidateSourceIdentity,
 } from "./run-phase7-maestro.mjs";
+import { sourceTreeSha256 } from "./source-tree-digest.mjs";
 
 const SAMSUNG_MODEL = "SM-S916B";
 const PACKAGE = "com.fchoo.gymtracker";
@@ -148,13 +155,43 @@ function parseCanonicalBytes(bytes, label) {
 }
 function validateAttachments(rows, evidenceDirectory) {
   const root = realpathSync(path.resolve(evidenceDirectory)); const usedDigests = new Set();
+  const expectedFiles = PHASE7_N4_ROWS.map(({ id }) => `${id}.png`).sort();
+  const assertExactFileSet = () => {
+    const entries = readdirSync(root, { withFileTypes: true });
+    if (!exactJson(entries.map(({ name }) => name).sort(), expectedFiles)
+      || entries.some((entry) => !entry.isFile() || entry.isSymbolicLink())) {
+      fail("attended evidence directory contains missing or unexpected files.");
+    }
+  };
+  assertExactFileSet();
   for (const row of rows) {
-    const target = path.join(root, `${row.id}.png`); const details = lstatSync(target, { throwIfNoEntry: false });
-    if (!details?.isFile() || details.isSymbolicLink() || realpathSync(target) !== target || details.size < 9 || details.size > 64 * 1024 * 1024) fail(`attended attachment is missing or unsafe: ${row.id}`);
-    const bytes = readFileSync(target); const attachmentDigest = digest(bytes);
+    const target = path.join(root, `${row.id}.png`);
+    let descriptor;
+    try {
+      descriptor = openSync(target, fsConstants.O_RDONLY | fsConstants.O_NOFOLLOW);
+    } catch {
+      fail(`attended attachment is missing or unsafe: ${row.id}`);
+    }
+    let bytes;
+    try {
+      const opened = fstatSync(descriptor);
+      const linked = lstatSync(target, { throwIfNoEntry: false });
+      if (!opened.isFile() || opened.nlink !== 1 || !linked?.isFile()
+        || linked.isSymbolicLink() || linked.nlink !== 1
+        || linked.dev !== opened.dev || linked.ino !== opened.ino
+        || realpathSync(target) !== target
+        || opened.size < 9 || opened.size > 64 * 1024 * 1024) {
+        fail(`attended attachment is missing or unsafe: ${row.id}`);
+      }
+      bytes = readFileSync(descriptor);
+    } finally {
+      closeSync(descriptor);
+    }
+    const attachmentDigest = digest(bytes);
     if (!bytes.subarray(0, 8).equals(Buffer.from("89504e470d0a1a0a", "hex")) || attachmentDigest !== row.attachment_sha256 || usedDigests.has(attachmentDigest)) fail(`attended attachment hash is missing, changed, or reused: ${row.id}`);
     usedDigests.add(attachmentDigest);
   }
+  assertExactFileSet();
 }
 
 export function validatePhase7AttendedObservations(observations, { candidate, device, evidenceDirectory } = {}) {
@@ -193,6 +230,12 @@ export function validatePhase7AttendedRecordBytes({ candidate, checklistBytes, o
 export function executePhase7AttendedChecklist(args = process.argv.slice(2)) {
   const options = parsePhase7AttendedChecklistArguments(args);
   const candidate = loadPhase7Candidate({ bundleDirectory: options.bundleDirectory, expectedManifestSha256: options.expectedManifestSha256, packageName: PACKAGE });
+  validatePhase7CandidateSourceIdentity(candidate.manifest, {
+    currentHead: execFileSync("git", ["rev-parse", "HEAD"], {
+      encoding: "utf8",
+    }).trim(),
+    currentSourceSha256: sourceTreeSha256(),
+  });
   if (options.mode === "prepare") {
     const adbPath = process.env.ADB_PATH ?? "adb"; const device = readPhase7SamsungDevice({ adbPath, serial: options.serial, candidate });
     const checklist = buildPhase7AttendedChecklist({ candidate, device, generatedAt: new Date().toISOString() }); validatePhase7AttendedChecklist(checklist, { candidate, device });

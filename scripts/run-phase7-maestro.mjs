@@ -33,6 +33,7 @@ import {
   loadPhase6Candidate,
   resolveAdb,
 } from "./run-phase6-maestro.mjs";
+import { sourceTreeSha256 } from "./source-tree-digest.mjs";
 
 const PACKAGE = "com.fchoo.gymtracker";
 const SERIAL = /^[A-Za-z0-9._:-]+$/u;
@@ -51,6 +52,7 @@ const FORBIDDEN_EVIDENCE_KEYS = new Set([
   "tag", "serial", "raw_path", "private_path", "raw_rows",
   "private_rows",
 ]);
+const projectRoot = path.resolve(path.dirname(new URL(import.meta.url).pathname), "..");
 
 export const PHASE7_MAESTRO_FLOW_CONTRACTS = Object.freeze([
   Object.freeze({
@@ -264,12 +266,129 @@ function containsForbiddenEvidenceKey(value) {
     FORBIDDEN_EVIDENCE_KEYS.has(key) || containsForbiddenEvidenceKey(nested));
 }
 
-function parsePassingJunit(bytes, flowId) {
+function parseJunitAttributes(tag, elementName) {
+  const source = tag
+    .replace(new RegExp(`^<${elementName}\\b`, "u"), "")
+    .replace(/\/?\s*>$/u, "");
+  const attributes = new Map();
+  const token = /\s+([A-Za-z_:][\w:.-]*)\s*=\s*(?:"([^"]*)"|'([^']*)')/uy;
+  let cursor = 0;
+  while (cursor < source.length) {
+    if (/^\s*$/u.test(source.slice(cursor))) break;
+    token.lastIndex = cursor;
+    const match = token.exec(source);
+    if (match === null || attributes.has(match[1])) {
+      fail(`Maestro JUnit ${elementName} attributes are malformed.`);
+    }
+    attributes.set(match[1], match[2] ?? match[3] ?? "");
+    cursor = token.lastIndex;
+  }
+  return attributes;
+}
+
+function junitElements(xml) {
+  const stack = [];
+  const elements = [];
+  let cursor = 0;
+  let rootCount = 0;
+  const tokenPattern = /<!--[\s\S]*?-->|<\?[\s\S]*?\?>|<!\[CDATA\[[\s\S]*?\]\]>|<!DOCTYPE(?:[^>]|\[[\s\S]*?\])*>|<\/?[A-Za-z_:][^<>]*>/gu;
+  for (const match of xml.matchAll(tokenPattern)) {
+    const token = match[0];
+    const index = match.index ?? 0;
+    if (/[<>]/u.test(xml.slice(cursor, index))
+      || xml.slice(cursor, index).trim().length > 0) {
+      fail("Maestro JUnit report is missing or malformed.");
+    }
+    cursor = index + token.length;
+    if (token.startsWith("<!DOCTYPE")) {
+      fail("Maestro JUnit DOCTYPE declarations are forbidden.");
+    }
+    if (/^<\?xml\b/iu.test(token) && (index !== 0 || rootCount !== 0)) {
+      fail("Maestro JUnit XML declaration is malformed.");
+    }
+    if (token.startsWith("<![CDATA[") && stack.length === 0) {
+      fail("Maestro JUnit CDATA must be inside the root element.");
+    }
+    if (token.startsWith("<?") || token.startsWith("<!")) continue;
+    const closing = token.match(/^<\/([A-Za-z_:][\w:.-]*)\s*>$/u);
+    if (closing !== null) {
+      if (stack.pop()?.name !== closing[1]) {
+        fail("Maestro JUnit report is missing or malformed.");
+      }
+      continue;
+    }
+    const opening = token.match(/^<([A-Za-z_:][\w:.-]*)\b/u);
+    if (opening === null) fail("Maestro JUnit report is missing or malformed.");
+    const element = {
+      name: opening[1],
+      parent: stack.at(-1)?.name ?? null,
+      tag: token,
+    };
+    elements.push(element);
+    if (stack.length === 0) rootCount += 1;
+    if (!/\/\s*>$/u.test(token)) stack.push(element);
+  }
+  if (xml.slice(cursor).trim().length > 0 || stack.length !== 0 || rootCount !== 1) {
+    fail("Maestro JUnit report is missing or malformed.");
+  }
+  return elements;
+}
+
+export function parsePassingJunit(bytes, flowId) {
   const text = Buffer.from(bytes ?? []).toString("utf8");
-  if (!/<testsuites?\b/u.test(text) || !/<testcase\b/u.test(text) || /<(?:failure|error|skipped)\b/u.test(text)) {
+  const elements = junitElements(text);
+  const root = elements.find(({ parent }) => parent === null);
+  if (![/^testsuite$/u, /^testsuites$/u].some((pattern) =>
+    pattern.test(root?.name ?? ""))) {
     fail(`Maestro did not produce a passing JUnit report: ${flowId}`);
   }
-  return Object.freeze({ tests: [...text.matchAll(/<testcase\b/gu)].length, failures: 0, errors: 0, skipped: 0 });
+  const suites = elements.filter(({ name }) => name === "testsuite");
+  const testcases = elements.filter(({ name }) => name === "testcase");
+  const allowed = elements.every(({ name, parent }) => {
+    if (name === "testsuites") return parent === null;
+    if (name === "testsuite") return parent === null || parent === "testsuites";
+    if (name === "testcase") return parent === "testsuite";
+    if (["failure", "error", "skipped"].includes(name)) return parent === "testcase";
+    if (name === "properties") return parent === "testsuite" || parent === "testcase";
+    return name === "property" && parent === "properties";
+  });
+  if (!allowed || suites.length < 1 || testcases.length < 1) {
+    fail(`Maestro did not produce a passing JUnit report: ${flowId}`);
+  }
+  const summary = { tests: 0, failures: 0, errors: 0, skipped: 0 };
+  for (const { tag } of suites) {
+    const attributes = parseJunitAttributes(tag, "testsuite");
+    for (const key of Object.keys(summary)) {
+      const value = attributes.get(key);
+      if (value === undefined && (key === "tests" || key === "failures")) {
+        fail(`Maestro JUnit report is missing ${key}: ${flowId}`);
+      }
+      if (value !== undefined && !/^\d+$/u.test(value)) {
+        fail(`Maestro JUnit report has malformed ${key}: ${flowId}`);
+      }
+      summary[key] += Number(value ?? 0);
+    }
+  }
+  if (summary.tests !== testcases.length
+    || summary.tests < 1
+    || summary.failures !== 0
+    || summary.errors !== 0
+    || summary.skipped !== 0
+    || elements.some(({ name }) => ["failure", "error", "skipped"].includes(name))) {
+    fail(`Maestro did not produce a passing JUnit report: ${flowId}`);
+  }
+  return Object.freeze(summary);
+}
+
+export function validatePhase7CandidateSourceIdentity(
+  manifest,
+  { currentHead, currentSourceSha256 },
+) {
+  if (currentHead !== manifest?.source?.commit
+    || currentSourceSha256 !== manifest?.source?.tree_sha256) {
+    fail("current source does not match the candidate source identity.");
+  }
+  return true;
 }
 
 function screenshotFiles(root) {
@@ -844,6 +963,13 @@ export function validatePhase7Evidence(
 export function executePhase7Maestro(args = process.argv.slice(2)) {
   const options = parsePhase7MaestroArguments(args);
   const candidate = loadPhase7Candidate(options);
+  validatePhase7CandidateSourceIdentity(candidate.manifest, {
+    currentHead: execFileSync("git", ["rev-parse", "HEAD"], {
+      cwd: projectRoot,
+      encoding: "utf8",
+    }).trim(),
+    currentSourceSha256: sourceTreeSha256(projectRoot),
+  });
   const bundleDirectory = canonicalDirectory(options.bundleDirectory, "retained candidate bundle");
   const output = requireFreshPathInsideBundle(bundleDirectory, options.output, "Phase 7 evidence output");
   const reportDirectory = requireFreshPathInsideBundle(bundleDirectory, options.reportDirectory, "Phase 7 Maestro report directory");
