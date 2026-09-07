@@ -394,4 +394,4 @@ tags:
 - extendedWaitUntil:
     visible: "Rest day"
     timeout: 30000
-- assertVisible: "Next scheduled workout · Pull · .*"
+- assertVisible: "Next scheduled workout · Push · .*"
