@@ -55,6 +55,9 @@ import {
   WORKOUT_REMOVE_RECEIPT_SCHEMA_STATEMENTS,
 } from "../platform/sqlite/migrations/0017_workout_remove_receipts";
 import {
+  WORKOUT_REMOVE_RECEIPT_ENTITY_ID_SCHEMA_STATEMENTS,
+} from "../platform/sqlite/migrations/0018_workout_remove_receipt_entity_ids";
+import {
   AppearanceProvider,
 } from "../ui/theme";
 
@@ -69,6 +72,21 @@ jest.mock("../platform/notifications/expoRestNotificationAdapter", () => ({
       input.identifier
     ),
     openSettings: jest.fn(async () => undefined),
+  })),
+}));
+jest.mock("../platform/sqlite/recoveryBackup", () => ({
+  createExpoRecoveryBackupPort: jest.fn(() => ({
+    createAndValidate: jest.fn(async (request: Readonly<{
+      databaseName: string;
+      fromVersion: number;
+      toVersion: number;
+    }>) => ({
+      backupId: "runtime-test-recovery",
+      databaseName: request.databaseName,
+      fromVersion: request.fromVersion,
+      toVersion: request.toVersion,
+      validated: true,
+    })),
   })),
 }));
 
@@ -1908,7 +1926,7 @@ describe("WorkoutAppRuntimeProvider", () => {
   });
 
   it("executes the production migration and clock adapters against a fake kernel", async () => {
-    const execute = jest.fn(async () => ({
+    const execute = jest.fn(async (_sql: string, _parameters?: readonly unknown[]) => ({
       changes: 0,
       lastInsertRowId: 0,
     }));
@@ -1934,21 +1952,29 @@ describe("WorkoutAppRuntimeProvider", () => {
         return [];
       }
       if (sql.includes("workout_remove_receipts_immutable_update")) {
+        const receiptSchema = execute.mock.calls.some(([statement]) => (
+          typeof statement === "string"
+          && statement.includes(
+            "ALTER TABLE workout_remove_receipts RENAME TO workout_remove_receipts_v17",
+          )
+        ))
+          ? WORKOUT_REMOVE_RECEIPT_ENTITY_ID_SCHEMA_STATEMENTS
+          : WORKOUT_REMOVE_RECEIPT_SCHEMA_STATEMENTS;
         return [
           {
             type: "table",
             name: "workout_remove_receipts",
-            sql: WORKOUT_REMOVE_RECEIPT_SCHEMA_STATEMENTS[0],
+            sql: receiptSchema[0],
           },
           {
             type: "trigger",
             name: "workout_remove_receipts_immutable_update",
-            sql: WORKOUT_REMOVE_RECEIPT_SCHEMA_STATEMENTS[1],
+            sql: receiptSchema[1],
           },
           {
             type: "trigger",
             name: "workout_remove_receipts_immutable_delete",
-            sql: WORKOUT_REMOVE_RECEIPT_SCHEMA_STATEMENTS[2],
+            sql: receiptSchema[2],
           },
         ];
       }

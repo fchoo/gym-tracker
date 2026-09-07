@@ -49,8 +49,13 @@ import {
   exerciseHistoryIndexMigration,
 } from "../../src/platform/sqlite/migrations/0003_exercise_history_index";
 import {
+  WORKOUT_REMOVE_RECEIPT_SCHEMA_STATEMENTS,
   workoutRemoveReceiptsMigration,
 } from "../../src/platform/sqlite/migrations/0017_workout_remove_receipts";
+import {
+  WORKOUT_REMOVE_RECEIPT_ENTITY_ID_SCHEMA_STATEMENTS,
+  workoutRemoveReceiptEntityIdsMigration,
+} from "../../src/platform/sqlite/migrations/0018_workout_remove_receipt_entity_ids";
 import {
   migrations as runtimeMigrations,
 } from "../../src/platform/sqlite/migrations";
@@ -258,6 +263,7 @@ describe("Plan 01-06 forward migrations and internal recovery", () => {
       15,
       16,
       17,
+      18,
     ]);
     expect(runtimeMigrations.slice(0, 3)).toEqual(migrations);
     expect(initialMigration).toEqual(expect.objectContaining({
@@ -268,9 +274,21 @@ describe("Plan 01-06 forward migrations and internal recovery", () => {
     expect(INITIAL_SCHEMA_STATEMENTS.length).toBeGreaterThanOrEqual(20);
   });
 
-  it("creates a bounded, immutable, foreign-key-free removal receipt schema on clean and schema-16 databases", async () => {
+  it("keeps migration 17 immutable before widening removal receipt entity IDs", () => {
+    expect(WORKOUT_REMOVE_RECEIPT_SCHEMA_STATEMENTS[0]).toContain(
+      "length(trim(request_id)) BETWEEN 1 AND 128",
+    );
+    expect(WORKOUT_REMOVE_RECEIPT_SCHEMA_STATEMENTS[0]).toContain(
+      "length(trim(session_id)) BETWEEN 1 AND 128",
+    );
+    expect(WORKOUT_REMOVE_RECEIPT_SCHEMA_STATEMENTS[0]).toContain(
+      "length(trim(set_id)) BETWEEN 1 AND 128",
+    );
+  });
+
+  it("creates a bounded, immutable, foreign-key-free removal receipt schema on clean and schema-17 databases", async () => {
     async function assertReceiptSchema(runtime: HostRuntime) {
-      expect(await userVersion(runtime.kernel)).toBe(17);
+      expect(await userVersion(runtime.kernel)).toBe(18);
       const columns = await runtime.kernel.queryAll<{
         name: string;
         type: string;
@@ -302,26 +320,67 @@ describe("Plan 01-06 forward migrations and internal recovery", () => {
       expect(table?.sql).toEqual(expect.stringContaining("request_sha256"));
       expect(table?.sql).toEqual(expect.stringContaining("operation IN ('remove_warmup', 'remove_working_set')"));
       expect(table?.sql).toEqual(expect.stringContaining("json_valid(result_json)"));
-
-      await runtime.kernel.write((transaction) => transaction.execute(
-        `INSERT INTO workout_remove_receipts
-          (request_id, request_sha256, operation, session_id, set_id,
-           expected_session_revision, expected_set_revision,
-           result_session_revision, result_json, committed_at_ms)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-        [
-          "remove-request-1",
-          "a".repeat(64),
-          "remove_working_set",
-          "deleted-session",
-          "deleted-set",
-          4,
-          2,
-          5,
-          "{\"outcome\":\"committed\",\"sessionId\":\"deleted-session\",\"sessionRevision\":5}",
-          100,
-        ],
+      expect(table?.sql).toEqual(expect.stringContaining(
+        "length(trim(request_id)) BETWEEN 1 AND 128",
       ));
+      expect(table?.sql).toEqual(expect.stringContaining(
+        "length(trim(session_id)) BETWEEN 1 AND 256",
+      ));
+      expect(table?.sql).toEqual(expect.stringContaining(
+        "length(trim(set_id)) BETWEEN 1 AND 256",
+      ));
+
+      async function insertReceipt(input: Readonly<{
+        requestId: string;
+        sessionId: string;
+        setId: string;
+      }>) {
+        return runtime.kernel.write((transaction) => transaction.execute(
+          `INSERT INTO workout_remove_receipts
+            (request_id, request_sha256, operation, session_id, set_id,
+             expected_session_revision, expected_set_revision,
+             result_session_revision, result_json, committed_at_ms)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+          [
+            input.requestId,
+            "a".repeat(64),
+            "remove_working_set",
+            input.sessionId,
+            input.setId,
+            4,
+            2,
+            5,
+            JSON.stringify({
+              outcome: "committed",
+              sessionId: input.sessionId,
+              setId: input.setId,
+              sessionRevision: 5,
+            }),
+            100,
+          ],
+        ));
+      }
+
+      await insertReceipt({
+        requestId: "r".repeat(128),
+        sessionId: "s".repeat(256),
+        setId: "w".repeat(256),
+      });
+      await expect(insertReceipt({
+        requestId: "r".repeat(129),
+        sessionId: "session-request-too-long",
+        setId: "set-request-too-long",
+      })).rejects.toMatchObject({ code: "sqlite_transaction_failed" });
+      await expect(insertReceipt({
+        requestId: "remove-session-too-long",
+        sessionId: "s".repeat(257),
+        setId: "set-session-too-long",
+      })).rejects.toMatchObject({ code: "sqlite_transaction_failed" });
+      await expect(insertReceipt({
+        requestId: "remove-set-too-long",
+        sessionId: "session-set-too-long",
+        setId: "w".repeat(257),
+      })).rejects.toMatchObject({ code: "sqlite_transaction_failed" });
       await expect(runtime.kernel.write((transaction) => transaction.execute(
         `INSERT INTO workout_remove_receipts
           (request_id, request_sha256, operation, session_id, set_id,
@@ -343,7 +402,7 @@ describe("Plan 01-06 forward migrations and internal recovery", () => {
       ))).rejects.toMatchObject({ code: "sqlite_transaction_failed" });
       await expect(runtime.kernel.write((transaction) => transaction.execute(
         "UPDATE workout_remove_receipts SET committed_at_ms = 101 WHERE request_id = ?",
-        ["remove-request-1"],
+        ["r".repeat(128)],
       ))).rejects.toMatchObject({ code: "sqlite_transaction_failed" });
     }
 
@@ -368,12 +427,51 @@ describe("Plan 01-06 forward migrations and internal recovery", () => {
         migrations: runtimeMigrations.slice(0, -1),
         recoveryBackup: validatedBackup(),
       }).run();
-      expect(await userVersion(upgraded.kernel)).toBe(16);
+      expect(await userVersion(upgraded.kernel)).toBe(17);
+      await upgraded.kernel.write((transaction) => transaction.execute(
+        `INSERT INTO workout_remove_receipts
+          (request_id, request_sha256, operation, session_id, set_id,
+           expected_session_revision, expected_set_revision,
+           result_session_revision, result_json, committed_at_ms)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        [
+          "preserved-v17-receipt",
+          "f".repeat(64),
+          "remove_warmup",
+          "preserved-v17-session",
+          "preserved-v17-set",
+          1,
+          1,
+          2,
+          JSON.stringify({
+            outcome: "committed",
+            sessionId: "preserved-v17-session",
+            setId: "preserved-v17-set",
+            sessionRevision: 2,
+          }),
+          99,
+        ],
+      ));
+      const backup = validatedBackup();
       await createMigrationRunner({
         databaseName: "gym-tracker.db",
         kernel: upgraded.kernel,
         migrations: runtimeMigrations,
+        recoveryBackup: backup,
       }).run();
+      expect(backup.createAndValidate).toHaveBeenCalledWith({
+        databaseName: "gym-tracker.db",
+        fromVersion: 17,
+        toVersion: 18,
+      });
+      await expect(upgraded.kernel.queryAll(
+        "SELECT * FROM workout_remove_receipts WHERE request_id = ?",
+        ["preserved-v17-receipt"],
+      )).resolves.toEqual([expect.objectContaining({
+        request_id: "preserved-v17-receipt",
+        session_id: "preserved-v17-session",
+        set_id: "preserved-v17-set",
+      })]);
       await assertReceiptSchema(upgraded);
     } finally {
       await upgraded.close();
@@ -404,11 +502,85 @@ describe("Plan 01-06 forward migrations and internal recovery", () => {
       });
 
       await expect(runtime.kernel.write((transaction) => (
-        workoutRemoveReceiptsMigration.verify(transaction)
+        workoutRemoveReceiptEntityIdsMigration.verify(transaction)
       ))).rejects.toMatchObject({ code: "sqlite_transaction_failed" });
     } finally {
       await runtime.close();
     }
+  });
+
+  it("fails v18 verification for malformed columns, foreign keys, stale tables, and trigger bodies", async () => {
+    const validColumns = [
+      { name: "request_id", type: "TEXT", notnull: 1, pk: 1 },
+      { name: "request_sha256", type: "TEXT", notnull: 1, pk: 0 },
+      { name: "operation", type: "TEXT", notnull: 1, pk: 0 },
+      { name: "session_id", type: "TEXT", notnull: 1, pk: 0 },
+      { name: "set_id", type: "TEXT", notnull: 1, pk: 0 },
+      { name: "expected_session_revision", type: "INTEGER", notnull: 1, pk: 0 },
+      { name: "expected_set_revision", type: "INTEGER", notnull: 1, pk: 0 },
+      { name: "result_session_revision", type: "INTEGER", notnull: 1, pk: 0 },
+      { name: "result_json", type: "TEXT", notnull: 1, pk: 0 },
+      { name: "committed_at_ms", type: "INTEGER", notnull: 1, pk: 0 },
+    ];
+    const validObjects = [
+      {
+        type: "table",
+        name: "workout_remove_receipts",
+        sql: WORKOUT_REMOVE_RECEIPT_ENTITY_ID_SCHEMA_STATEMENTS[0],
+      },
+      {
+        type: "trigger",
+        name: "workout_remove_receipts_immutable_update",
+        sql: WORKOUT_REMOVE_RECEIPT_ENTITY_ID_SCHEMA_STATEMENTS[1],
+      },
+      {
+        type: "trigger",
+        name: "workout_remove_receipts_immutable_delete",
+        sql: WORKOUT_REMOVE_RECEIPT_ENTITY_ID_SCHEMA_STATEMENTS[2],
+      },
+    ];
+    async function expectRejected(input: Readonly<{
+      columns?: readonly Record<string, unknown>[];
+      foreignKeys?: readonly Record<string, unknown>[];
+      objects?: readonly Record<string, unknown>[];
+    }>) {
+      const transaction: SqliteTransactionExecutor = {
+        execute: async () => ({ changes: 0, lastInsertRowId: 0 }),
+        queryAll: async <Row extends Record<string, unknown>>(sql: string) => {
+          if (sql === "PRAGMA table_info(workout_remove_receipts)") {
+            return (input.columns ?? validColumns) as readonly Row[];
+          }
+          if (sql === "PRAGMA foreign_key_list(workout_remove_receipts)") {
+            return (input.foreignKeys ?? []) as readonly Row[];
+          }
+          return (input.objects ?? validObjects) as readonly Row[];
+        },
+      };
+      await expect(workoutRemoveReceiptEntityIdsMigration.verify(transaction))
+        .rejects.toThrow("workout_remove_receipt_entity_ids_schema_incomplete");
+    }
+
+    await expectRejected({ columns: validColumns.slice(0, -1) });
+    await expectRejected({
+      columns: validColumns.map((column) => (
+        column.name === "session_id" ? { ...column, type: "INTEGER" } : column
+      )),
+    });
+    await expectRejected({ foreignKeys: [{ table: "workout_sessions" }] });
+    await expectRejected({
+      objects: [
+        ...validObjects,
+        { type: "table", name: "workout_remove_receipts_v17", sql: "CREATE TABLE stale(id)" },
+      ],
+    });
+    await expectRejected({ objects: validObjects.slice(1) });
+    await expectRejected({
+      objects: validObjects.map((object) => (
+        object.name === "workout_remove_receipts_immutable_update"
+          ? { ...object, sql: "CREATE TRIGGER changed AFTER INSERT ON workout_remove_receipts BEGIN SELECT 1; END" }
+          : object
+      )),
+    });
   });
 
   it("migrates the empty v0 fixture and commits user_version with the schema", async () => {

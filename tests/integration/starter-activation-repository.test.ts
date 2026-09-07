@@ -54,7 +54,10 @@ import {
   startWorkout,
 } from "../../src/domains/workout/startWorkout";
 import {
+  addWorkingSet,
   completeSet,
+  removeWarmup,
+  removeWorkingSet,
 } from "../../src/domains/workout/setCommands";
 import {
   type SqliteConnection,
@@ -92,6 +95,9 @@ import {
   createSqliteKernel,
   type SqliteKernel,
 } from "../../src/platform/sqlite/sqliteKernel";
+import {
+  validatedRecoveryBackup,
+} from "../support/validatedRecoveryBackup";
 
 class NodePreparedResult<Row extends Record<string, unknown>>
 implements SqlitePreparedResult<Row> {
@@ -254,6 +260,7 @@ async function createRuntime(
     migrations: options.includeOwnedPlans === false
       ? migrations.filter(({ version }) => version <= 8)
       : migrations,
+    recoveryBackup: validatedRecoveryBackup(),
   }).run();
   const catalog = await parseExerciseCatalog({
     catalogBytes,
@@ -586,6 +593,103 @@ describe("accepted starter activation repository", () => {
         maxReps: 8,
       }),
     );
+  });
+
+  it("removes and replays scheduled and dynamic set IDs that exceed 128 characters", async () => {
+    const kernel = await createRuntime();
+    const activation = await activate(kernel, {
+      templateId: "full-body-foundation",
+      requestId: "request-long-generated-remove",
+      activatedAtMs: 1_787_027_200_000,
+      expectedActiveScheduleRevision: null,
+    });
+    const session = await startWorkout({
+      repository: createPlansWorkoutRepository(kernel),
+      request: {
+        mode: "alternate",
+        planId: activation.plan.id,
+        planDayId: activation.days[0]!.id,
+        localDate: "2026-08-19",
+        timezone: "Asia/Singapore",
+        startedAtMs: 1_787_027_201_000,
+      },
+    });
+    const repository = createWorkoutRepository(kernel);
+    const workout = await repository.getActiveWorkout(session.id);
+    const warmup = workout.currentExercise.warmups[0]!;
+    const input = {
+      requestId: `remove_${"a".repeat(64)}`,
+      requestSha256: "b".repeat(64),
+      sessionId: session.id,
+      setId: warmup.id,
+      expectedSessionRevision: workout.revision,
+      expectedSetRevision: warmup.revision,
+      removedAtMs: 1_787_027_202_000,
+    };
+
+    expect(session.id.length).toBeGreaterThan(0);
+    expect(warmup.id.length).toBeGreaterThan(128);
+    expect(warmup.id.length).toBeLessThanOrEqual(256);
+    await expect(removeWarmup({ repository, input })).resolves.toEqual({
+      outcome: "committed",
+      sessionId: session.id,
+      setId: warmup.id,
+      sessionRevision: workout.revision + 1,
+    });
+    await expect(removeWarmup({ repository, input })).resolves.toEqual({
+      outcome: "already_committed",
+      sessionId: session.id,
+      setId: warmup.id,
+      sessionRevision: workout.revision + 1,
+    });
+
+    const afterWarmup = await repository.getActiveWorkout(session.id);
+    const source = afterWarmup.currentExercise.workingSets.at(-1)!;
+    const dynamicSetId = `working_${session.id}_1787027203000`;
+    const withAddedSet = await addWorkingSet({
+      repository,
+      input: {
+        sessionId: session.id,
+        sessionExerciseId: afterWarmup.currentExercise.id,
+        sourceSetId: source.id,
+        setId: dynamicSetId,
+        nowMs: 1_787_027_203_000,
+      },
+    });
+    const dynamicSet = withAddedSet.currentExercise.workingSets.find(
+      ({ id }) => id === dynamicSetId,
+    )!;
+    const dynamicInput = {
+      requestId: `remove_${"c".repeat(64)}`,
+      requestSha256: "d".repeat(64),
+      sessionId: session.id,
+      setId: dynamicSet.id,
+      expectedSessionRevision: withAddedSet.revision,
+      expectedSetRevision: dynamicSet.revision,
+      removedAtMs: 1_787_027_204_000,
+    };
+
+    expect(dynamicSet.id.length).toBeGreaterThan(128);
+    expect(dynamicSet.id.length).toBeLessThanOrEqual(256);
+    await expect(removeWorkingSet({ repository, input: dynamicInput }))
+      .resolves.toEqual({
+        outcome: "committed",
+        sessionId: session.id,
+        setId: dynamicSet.id,
+        sessionRevision: withAddedSet.revision + 1,
+      });
+    await expect(removeWorkingSet({ repository, input: dynamicInput }))
+      .resolves.toMatchObject({ outcome: "already_committed" });
+    await expect(kernel.queryAll<{ session_id: string; set_id: string }>(
+      `SELECT session_id, set_id FROM workout_remove_receipts
+       ORDER BY request_id`,
+    )).resolves.toEqual([{
+      session_id: session.id,
+      set_id: warmup.id,
+    }, {
+      session_id: session.id,
+      set_id: dynamicSet.id,
+    }]);
   });
 
   it("preserves accepted between-exercise rest in owned workout snapshots", async () => {

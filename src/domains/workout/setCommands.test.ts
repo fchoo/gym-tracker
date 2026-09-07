@@ -235,6 +235,20 @@ describe("Plan 01-08 set command validation", () => {
 });
 
 describe("Plan 07-02 hard-remove command validation", () => {
+  it("accepts bounded request IDs and app-generated persisted entity IDs", async () => {
+    const port = repository();
+    const input = {
+      ...removeInput(),
+      requestId: "r".repeat(128),
+      sessionId: "s".repeat(256),
+      setId: "w".repeat(256),
+    };
+
+    await expect(removeWarmup({ repository: port, input }))
+      .resolves.toMatchObject({ outcome: "committed" });
+    expect(port.removeWarmup).toHaveBeenCalledWith(input);
+  });
+
   it("forwards distinct warm-up and working-set removal commands without skip semantics", async () => {
     const port = repository();
     const warmup = removeInput();
@@ -263,6 +277,9 @@ describe("Plan 07-02 hard-remove command validation", () => {
 
   it.each([
     ["empty request ID", { requestId: " " }, "remove_set_identifier_invalid"],
+    ["request ID above 128 characters", { requestId: "r".repeat(129) }, "remove_set_identifier_invalid"],
+    ["session ID above 256 characters", { sessionId: "s".repeat(257) }, "remove_set_identifier_invalid"],
+    ["set ID above 256 characters", { setId: "w".repeat(257) }, "remove_set_identifier_invalid"],
     ["invalid request hash", { requestSha256: "bad" }, "remove_set_hash_invalid"],
     ["stale-shaped session revision", { expectedSessionRevision: -1 }, "remove_set_revision_invalid"],
     ["stale-shaped set revision", { expectedSetRevision: 1.5 }, "remove_set_revision_invalid"],

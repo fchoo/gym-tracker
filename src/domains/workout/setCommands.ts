@@ -24,14 +24,15 @@ import type {
   HapticsPort,
 } from "./hapticsPort";
 
-const IDENTIFIER_MAX_LENGTH = 128;
+const REQUEST_ID_MAX_LENGTH = 128;
+const PERSISTED_ENTITY_ID_MAX_LENGTH = 256;
 const SHA256_PATTERN = /^[a-f0-9]{64}$/u;
 
-function validIdentifier(value: string): boolean {
+function validIdentifier(value: string, maxLength: number): boolean {
   return typeof value === "string"
     && value.trim() === value
     && value.length > 0
-    && [...value].length <= IDENTIFIER_MAX_LENGTH;
+    && [...value].length <= maxLength;
 }
 
 function validRevision(value: number): boolean {
@@ -45,9 +46,9 @@ function validTime(value: number): boolean {
 function validateRemoveInput(
   input: RemoveWarmupInput | RemoveWorkingSetInput,
 ): void {
-  if (!validIdentifier(input.requestId)
-    || !validIdentifier(input.sessionId)
-    || !validIdentifier(input.setId)) {
+  if (!validIdentifier(input.requestId, REQUEST_ID_MAX_LENGTH)
+    || !validIdentifier(input.sessionId, PERSISTED_ENTITY_ID_MAX_LENGTH)
+    || !validIdentifier(input.setId, PERSISTED_ENTITY_ID_MAX_LENGTH)) {
     throw new TypeError("remove_set_identifier_invalid");
   }
   if (!SHA256_PATTERN.test(input.requestSha256)) {

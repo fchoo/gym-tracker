@@ -187,7 +187,7 @@ describe("restore preflight", () => {
       .rejects.toEqual(new RestoreCommandError("restore_archive_invalid"));
   }
 
-  it.each([15, 16, 17])("accepts logical producer schema version %i", async (schemaVersion) => {
+  it.each([15, 16, 17, 18])("accepts logical producer schema version %i", async (schemaVersion) => {
     const commands = createRestoreCommands({
       crypto: cryptoPort(), files: { readSelectedArchiveAtMost: () => archiveFor(snapshot({ schemaVersion })) },
       kdf, schema, candidateProbe, store: createRestorePreflightStore({ tokenFactory: () => "schema-" + schemaVersion }),
@@ -195,7 +195,7 @@ describe("restore preflight", () => {
     await expect(commands.preflightSecureRestore({ password: "owner-password" })).resolves.toEqual(expect.objectContaining({ outcome: "ready" }));
   });
 
-  it.each([14, 18])("rejects unsupported logical producer schema version %i", async (schemaVersion) => {
+  it.each([14, 19])("rejects unsupported logical producer schema version %i", async (schemaVersion) => {
     const commands = createRestoreCommands({
       crypto: cryptoPort(), files: { readSelectedArchiveAtMost: () => archiveFor(snapshot({ schemaVersion })) },
       kdf, schema, candidateProbe, store: createRestorePreflightStore({ tokenFactory: () => "unsupported" }),
