@@ -134,8 +134,13 @@ tags:
     id: "owned-plan-exercise-search"
 - inputText: "Bench Press"
 - hideKeyboard
+- scrollUntilVisible:
+    element:
+      text: "Barbell Bench Press - Medium Grip.*Load . reps"
+    direction: DOWN
+    centerElement: true
 - tapOn:
-    text: "Bench Press.*Load . reps"
+    text: "Barbell Bench Press - Medium Grip.*Load . reps"
 - scrollUntilVisible:
     element:
       text: "Save target"

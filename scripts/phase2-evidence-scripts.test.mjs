@@ -3632,6 +3632,13 @@ test("custom exercise flow scrolls through the long editor contract", async () =
     /- tapOn: "Restore exercise"\n- extendedWaitUntil:\n    visible: "Archive exercise"\n    timeout: 60000\n- scrollUntilVisible:\n    element:\n      text: "Go back"/u,
   );
   assert.match(
+    await readFile(
+      path.join(projectRoot, "maestro/phase2/owned-plan-editor.yaml"),
+      "utf8",
+    ),
+    /- inputText: "Bench Press"\n- hideKeyboard\n- scrollUntilVisible:\n    element:\n      text: "Barbell Bench Press - Medium Grip.*Load . reps"\n    direction: DOWN\n    centerElement: true\n- tapOn:\n    text: "Barbell Bench Press - Medium Grip.*Load . reps"/u,
+  );
+  assert.match(
     segments[2],
     /- tapOn: "Go back"\n- repeat:\n    times: 4\n    while:\n      notVisible: "Search exercises"\n    commands:\n      - swipe:\n          start: 50%, 25%\n          end: 50%, 75%\n          duration: 300\n- assertVisible: "Search exercises"/u,
   );
