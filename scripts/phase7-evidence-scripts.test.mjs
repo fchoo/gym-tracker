@@ -1,11 +1,26 @@
 import assert from "node:assert/strict";
-import { existsSync, readFileSync } from "node:fs";
+import { createHash } from "node:crypto";
+import {
+  existsSync,
+  linkSync,
+  mkdirSync,
+  mkdtempSync,
+  readFileSync,
+  realpathSync,
+  rmSync,
+  symlinkSync,
+  writeFileSync,
+} from "node:fs";
+import os from "node:os";
 import path from "node:path";
 import test from "node:test";
 import {
   PHASE7_CONSIDERATION_CONTRACTS,
   PHASE7_MAESTRO_FLOW_CONTRACTS,
   PHASE7_NATIVE_BACKSTOPS,
+  PHASE7_PLAN_REORDER_STAGES,
+  aggregatePhase7StageReports,
+  exactPhase7ScreenshotEvidence,
   parsePhase7MaestroArguments,
   phase7NativeHeldDragCommands,
   phase7NativeDragMoveSequence,
@@ -13,6 +28,7 @@ import {
   phase7ReorderOrderIs,
   phase7PlanOrderIs,
   phase7PlanReorderCoordinates,
+  validatePhase7RetainedArtifacts,
 } from "./run-phase7-maestro.mjs";
 import {
   PHASE7_N4_ROWS,
@@ -40,6 +56,109 @@ const REQUIRED_CONSIDERATION_IDS = Object.freeze([
   "UI-E07", "UI-E08", "UI-B01", "UI-B02", "UI-B03", "UI-B04",
   "UI-B05",
 ]);
+
+function sha256Bytes(bytes) {
+  return createHash("sha256").update(bytes).digest("hex");
+}
+
+function passingJunit(id, tests = 1) {
+  const cases = Array.from({ length: tests }, (_, index) =>
+    `<testcase classname="${id}" name="${id}-${index + 1}"/>`
+  ).join("");
+  return Buffer.from(
+    `<testsuite tests="${tests}" failures="0" errors="0" skipped="0">${cases}</testsuite>`,
+  );
+}
+
+function retainedArtifactsFixture() {
+  const reportDirectory = realpathSync(mkdtempSync(path.join(
+    os.tmpdir(),
+    "phase7-retained-artifacts-",
+  )));
+  const flows = PHASE7_MAESTRO_FLOW_CONTRACTS.map((contract) => {
+    const flowDirectory = path.join(reportDirectory, contract.id);
+    mkdirSync(flowDirectory, { recursive: true });
+    const stageReports = contract.id === "phase7-plan-schedule-reorder"
+      ? PHASE7_PLAN_REORDER_STAGES.map((stage) => {
+          const bytes = passingJunit(stage);
+          const reportFile = `${contract.id}/${stage}/report.xml`;
+          const absolute = path.join(reportDirectory, reportFile);
+          mkdirSync(path.dirname(absolute), { recursive: true });
+          writeFileSync(absolute, bytes);
+          return {
+            id: stage,
+            raw_report_file: reportFile,
+            raw_report_sha256: sha256Bytes(bytes),
+            tests: 1,
+            failures: 0,
+            errors: 0,
+            skipped: 0,
+          };
+        })
+      : [];
+    const reportTests = stageReports.length || 1;
+    const report = stageReports.length > 0
+      ? aggregatePhase7StageReports(stageReports.map(({ id }) => id))
+      : passingJunit(contract.id, reportTests);
+    writeFileSync(path.join(flowDirectory, "report.xml"), report);
+    const screenshots = contract.screenshots.map((file, index) => {
+      const reportFile = `${contract.id}/${file}`;
+      const bytes = Buffer.concat([
+        Buffer.from("89504e470d0a1a0a", "hex"),
+        Buffer.from([index]),
+      ]);
+      writeFileSync(path.join(reportDirectory, reportFile), bytes);
+      return { file, report_file: reportFile, sha256: sha256Bytes(bytes) };
+    });
+    return {
+      id: contract.id,
+      raw_report_file: `${contract.id}/report.xml`,
+      raw_report_sha256: sha256Bytes(report),
+      tests: reportTests,
+      failures: 0,
+      errors: 0,
+      skipped: 0,
+      stage_reports: stageReports,
+      screenshots,
+    };
+  });
+  return { evidence: { flows }, reportDirectory };
+}
+
+test("Phase 7 evidence creation binds all staged JUnit reports", () => {
+  const runner = readFileSync(runnerPath, "utf8");
+  assert.match(runner, /stage_reports: Object\.freeze\(flowStageReports\)/u);
+  assert.match(runner, /raw_report_sha256: sha256Bytes\(bytes\)/u);
+  assert.match(runner, /stageReports\[stage\] = report/u);
+  assert.match(runner, /validatePhase7RetainedArtifacts\(evidence, reportDirectory\)/u);
+  assert.match(runner, /fsConstants\.O_RDONLY \| fsConstants\.O_NOFOLLOW/u);
+  assert.match(runner, /readFileSync\(descriptor\)/u);
+});
+
+test("Phase 7 screenshot producer records paths from the retained report root", () => {
+  const reportDirectory = realpathSync(mkdtempSync(path.join(
+    os.tmpdir(),
+    "phase7-screenshot-producer-",
+  )));
+  const flowId = "phase7-today-settings";
+  const flowDirectory = path.join(reportDirectory, flowId);
+  const screenshotName = "phase7-today-selected-navigation.png";
+  mkdirSync(flowDirectory, { recursive: true });
+  writeFileSync(path.join(flowDirectory, screenshotName), Buffer.from(
+    "89504e470d0a1a0a",
+    "hex",
+  ));
+  try {
+    const evidence = exactPhase7ScreenshotEvidence(
+      flowDirectory,
+      [screenshotName],
+      flowId,
+    );
+    assert.equal(evidence[0].report_file, `${flowId}/${screenshotName}`);
+  } finally {
+    rmSync(reportDirectory, { force: true, recursive: true });
+  }
+});
 
 test("Phase 7 tooling owns the full executable UX/UI matrix", () => {
   assert.equal(existsSync(runnerPath), true, "the Phase 7 runner must exist");
@@ -126,7 +245,11 @@ test("Phase 7 Maestro flows use source-aligned interactive labels and routes", (
   assert.match(runner, /executePhase7HeldDrag\(adbPath, options\.serial, PLAN_DAY_REORDER\)[\s\S]*?phase7-plan-day-reorder\.png/u);
   assert.match(runner, /runStage\("plan-save"\)[\s\S]*?PLAN_DAY_PERSISTED_ORDER[\s\S]*?runStage\("plan-exercise-persisted-ready"\)[\s\S]*?PLAN_EXERCISE_PERSISTED_ORDER/u);
   assert.match(runner, /aggregatePhase7StageReports\(completedStages\)/u);
-  assert.match(runner, /"plan-day-ready", "plan-exercise-ready", "plan-save"[\s\S]*?"plan-exercise-persisted-ready", "weekday-ready"/u);
+  assert.deepEqual(PHASE7_PLAN_REORDER_STAGES, [
+    "plan-day-ready", "plan-exercise-ready", "plan-save",
+    "plan-exercise-persisted-ready", "weekday-ready",
+    "weekday-save", "rotation-ready", "rotation-save",
+  ]);
   assert.match(runner, /WEEKDAY_PERSISTED_ORDER/u);
   assert.match(runner, /ROTATION_PERSISTED_ORDER/u);
   assert.match(runner, /phase7-weekday-schedule-reorder\.png/u);
@@ -223,6 +346,268 @@ test("Phase 7 schedule evidence binds Weekday and Rotation screenshots to native
     "phase7-weekday-schedule-reorder.png",
     "phase7-rotation-schedule-reorder.png",
   ]);
+});
+
+test("Phase 7 retained stage reports reject tampering, missing files, and count drift", () => {
+  const fixture = retainedArtifactsFixture();
+  try {
+    assert.equal(
+      validatePhase7RetainedArtifacts(fixture.evidence, fixture.reportDirectory),
+      true,
+    );
+    const scheduleFlow = fixture.evidence.flows.find(({ id }) =>
+      id === "phase7-plan-schedule-reorder");
+    const firstStage = scheduleFlow.stage_reports[0];
+    const stagePath = path.join(
+      fixture.reportDirectory,
+      firstStage.raw_report_file,
+    );
+    const original = readFileSync(stagePath);
+
+    writeFileSync(stagePath, Buffer.concat([original, Buffer.from("tampered")]));
+    assert.throws(
+      () => validatePhase7RetainedArtifacts(
+        fixture.evidence,
+        fixture.reportDirectory,
+      ),
+      /stage report.*hash|hash.*stage report/iu,
+    );
+    writeFileSync(stagePath, original);
+
+    const failedStage = structuredClone(fixture.evidence);
+    const failedStageBytes = Buffer.from(
+      '<testsuite tests="1" failures="1"><testcase name="failed"><failure/></testcase></testsuite>',
+    );
+    writeFileSync(stagePath, failedStageBytes);
+    failedStage.flows.find(({ id }) => id === scheduleFlow.id)
+      .stage_reports[0].raw_report_sha256 = sha256Bytes(failedStageBytes);
+    assert.throws(
+      () => validatePhase7RetainedArtifacts(
+        failedStage,
+        fixture.reportDirectory,
+      ),
+      /did not produce a passing JUnit report/iu,
+    );
+    writeFileSync(stagePath, original);
+
+    rmSync(stagePath);
+    assert.throws(
+      () => validatePhase7RetainedArtifacts(
+        fixture.evidence,
+        fixture.reportDirectory,
+      ),
+      /stage report.*(?:missing|unsafe)|(?:missing|unsafe).*stage report/iu,
+    );
+    writeFileSync(stagePath, original);
+
+    const outsideStage = path.join(
+      fixture.reportDirectory,
+      "outside-stage.xml",
+    );
+    writeFileSync(outsideStage, original);
+    rmSync(stagePath);
+    symlinkSync(outsideStage, stagePath);
+    assert.throws(
+      () => validatePhase7RetainedArtifacts(
+        fixture.evidence,
+        fixture.reportDirectory,
+      ),
+      /stage report.*(?:symlink|unsafe)|(?:symlink|unsafe).*stage report/iu,
+    );
+    rmSync(stagePath);
+    rmSync(outsideStage);
+    writeFileSync(stagePath, original);
+
+    const missingStage = structuredClone(fixture.evidence);
+    missingStage.flows.find(({ id }) => id === scheduleFlow.id)
+      .stage_reports.pop();
+    assert.throws(
+      () => validatePhase7RetainedArtifacts(
+        missingStage,
+        fixture.reportDirectory,
+      ),
+      /stage report.*(?:count|ledger)|(?:count|ledger).*stage report/iu,
+    );
+
+    const unexpectedStagePath = path.join(
+      fixture.reportDirectory,
+      scheduleFlow.id,
+      "unexpected",
+      "report.xml",
+    );
+    mkdirSync(path.dirname(unexpectedStagePath), { recursive: true });
+    writeFileSync(unexpectedStagePath, passingJunit("unexpected"));
+    assert.throws(
+      () => validatePhase7RetainedArtifacts(
+        fixture.evidence,
+        fixture.reportDirectory,
+      ),
+      /retained report set/iu,
+    );
+    rmSync(path.dirname(unexpectedStagePath), { force: true, recursive: true });
+
+    const wrongCount = structuredClone(fixture.evidence);
+    wrongCount.flows.find(({ id }) => id === scheduleFlow.id)
+      .stage_reports[0].tests = 2;
+    assert.throws(
+      () => validatePhase7RetainedArtifacts(
+        wrongCount,
+        fixture.reportDirectory,
+      ),
+      /stage report.*count|count.*stage report/iu,
+    );
+
+    const aggregateCount = structuredClone(fixture.evidence);
+    const aggregateFlow = aggregateCount.flows.find(({ id }) =>
+      id === scheduleFlow.id);
+    const aggregateReport = passingJunit(
+      scheduleFlow.id,
+      PHASE7_PLAN_REORDER_STAGES.length - 1,
+    );
+    writeFileSync(
+      path.join(fixture.reportDirectory, aggregateFlow.raw_report_file),
+      aggregateReport,
+    );
+    aggregateFlow.raw_report_sha256 = sha256Bytes(aggregateReport);
+    aggregateFlow.tests = PHASE7_PLAN_REORDER_STAGES.length - 1;
+    assert.throws(
+      () => validatePhase7RetainedArtifacts(
+        aggregateCount,
+        fixture.reportDirectory,
+      ),
+      /aggregate report count.*stage reports/iu,
+    );
+
+    const unrelatedAggregate = structuredClone(fixture.evidence);
+    const unrelatedFlow = unrelatedAggregate.flows.find(({ id }) =>
+      id === scheduleFlow.id);
+    const unrelatedReport = passingJunit(
+      "unrelated-stage",
+      PHASE7_PLAN_REORDER_STAGES.length,
+    );
+    writeFileSync(
+      path.join(fixture.reportDirectory, unrelatedFlow.raw_report_file),
+      unrelatedReport,
+    );
+    unrelatedFlow.raw_report_sha256 = sha256Bytes(unrelatedReport);
+    assert.throws(
+      () => validatePhase7RetainedArtifacts(
+        unrelatedAggregate,
+        fixture.reportDirectory,
+      ),
+      /aggregate report.*stage ledger|stage ledger.*aggregate report/iu,
+    );
+  } finally {
+    rmSync(fixture.reportDirectory, { force: true, recursive: true });
+  }
+});
+
+test("Phase 7 retained screenshots reject tamper, missing, renamed, links, and path escape", () => {
+  const fixture = retainedArtifactsFixture();
+  const outside = realpathSync(mkdtempSync(path.join(
+    os.tmpdir(),
+    "phase7-retained-artifacts-outside-",
+  )));
+  try {
+    const flow = fixture.evidence.flows[0];
+    const screenshot = flow.screenshots[0];
+    const screenshotPath = path.join(
+      fixture.reportDirectory,
+      screenshot.report_file,
+    );
+    const original = readFileSync(screenshotPath);
+
+    writeFileSync(screenshotPath, Buffer.concat([original, Buffer.from("tampered")]));
+    assert.throws(
+      () => validatePhase7RetainedArtifacts(
+        fixture.evidence,
+        fixture.reportDirectory,
+      ),
+      /screenshot.*hash|hash.*screenshot/iu,
+    );
+    writeFileSync(screenshotPath, original);
+
+    const renamedPath = path.join(path.dirname(screenshotPath), "renamed.png");
+    writeFileSync(renamedPath, original);
+    rmSync(screenshotPath);
+    assert.throws(
+      () => validatePhase7RetainedArtifacts(
+        fixture.evidence,
+        fixture.reportDirectory,
+      ),
+      /screenshot.*(?:missing|unsafe)|(?:missing|unsafe).*screenshot/iu,
+    );
+    rmSync(renamedPath);
+    writeFileSync(screenshotPath, original);
+
+    const renamedLedger = structuredClone(fixture.evidence);
+    renamedLedger.flows[0].screenshots[0].file = "renamed.png";
+    renamedLedger.flows[0].screenshots[0].report_file = `${flow.id}/renamed.png`;
+    assert.throws(
+      () => validatePhase7RetainedArtifacts(
+        renamedLedger,
+        fixture.reportDirectory,
+      ),
+      /screenshot ledger/iu,
+    );
+    rmSync(screenshotPath);
+
+    const outsideScreenshot = path.join(outside, "outside.png");
+    writeFileSync(outsideScreenshot, original);
+    symlinkSync(outsideScreenshot, screenshotPath);
+    assert.throws(
+      () => validatePhase7RetainedArtifacts(
+        fixture.evidence,
+        fixture.reportDirectory,
+      ),
+      /screenshot.*(?:symlink|unsafe)|(?:symlink|unsafe).*screenshot/iu,
+    );
+    rmSync(screenshotPath);
+    writeFileSync(screenshotPath, original);
+
+    const outsideHardlink = path.join(outside, "outside-hardlink.png");
+    writeFileSync(outsideHardlink, original);
+    rmSync(screenshotPath);
+    linkSync(outsideHardlink, screenshotPath);
+    assert.throws(
+      () => validatePhase7RetainedArtifacts(
+        fixture.evidence,
+        fixture.reportDirectory,
+      ),
+      /screenshot.*(?:linked|unsafe)|(?:linked|unsafe).*screenshot/iu,
+    );
+    rmSync(screenshotPath);
+    rmSync(outsideHardlink);
+    writeFileSync(screenshotPath, original);
+
+    const unexpectedScreenshot = path.join(
+      fixture.reportDirectory,
+      flow.id,
+      "unexpected.png",
+    );
+    writeFileSync(unexpectedScreenshot, original);
+    assert.throws(
+      () => validatePhase7RetainedArtifacts(
+        fixture.evidence,
+        fixture.reportDirectory,
+      ),
+      /retained screenshot set/iu,
+    );
+    rmSync(unexpectedScreenshot);
+
+    const escaped = structuredClone(fixture.evidence);
+    escaped.flows[0].screenshots[0].report_file = "../outside.png";
+    assert.throws(
+      () => validatePhase7RetainedArtifacts(
+        escaped,
+        fixture.reportDirectory,
+      ),
+      /screenshot.*(?:path|malformed|unsafe)|(?:path|malformed|unsafe).*screenshot/iu,
+    );
+  } finally {
+    rmSync(fixture.reportDirectory, { force: true, recursive: true });
+    rmSync(outside, { force: true, recursive: true });
+  }
 });
 
 test("Phase 7 attended evidence stays exact-byte, N4-only, and observation-only", () => {
