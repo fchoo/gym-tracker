@@ -71,6 +71,15 @@ tags:
 - assertNotVisible:
     text: "Warm-up 3 of .*"
 - tapOn: "Retry add warm-up"
+- repeat:
+    times: 12
+    while:
+      notVisible: "Warm-up 3 of 3.*Current values 40 kg × 5.*Not completed.*"
+    commands:
+      - swipe:
+          start: 95%, 75%
+          end: 95%, 25%
+          duration: 300
 - assertVisible: "Warm-up 3 of 3.*Current values 40 kg × 5.*Not completed.*"
 - stopApp
 - launchApp:
@@ -91,6 +100,15 @@ tags:
 - assertVisible: "Warm-up 3 of 3.*Current values 40 kg × 5.*Not completed.*"
 - assertNotVisible:
     text: "Warm-up 4 of .*"
+- repeat:
+    times: 4
+    while:
+      notVisible: "Remove warm-up W3"
+    commands:
+      - swipe:
+          start: 95%, 75%
+          end: 95%, 45%
+          duration: 300
 - assertVisible: "Remove warm-up W3"
 - tapOn: "Remove warm-up W3"
 - assertVisible: "Remove warm-up W3?"

@@ -902,7 +902,7 @@ test("Phase 2 remediation flows use public labels and deterministic seams", asyn
 
   assert.match(
     workout,
-    /- assertVisible: "Warm-up was not added"\n- assertNotVisible:\n    text: "Warm-up 3 of \.\*"\n- tapOn: "Retry add warm-up"\n- assertVisible: "Warm-up 3 of 3\.\*Current values 40 kg × 5\.\*Not completed\.\*"/u,
+    /- assertVisible: "Warm-up was not added"\n- assertNotVisible:\n    text: "Warm-up 3 of \.\*"\n- tapOn: "Retry add warm-up"\n- repeat:\n    times: 12\n    while:\n      notVisible: "Warm-up 3 of 3\.\*Current values 40 kg × 5\.\*Not completed\.\*"\n    commands:\n      - swipe:\n          start: 95%, 75%\n          end: 95%, 25%\n          duration: 300\n- assertVisible: "Warm-up 3 of 3\.\*Current values 40 kg × 5\.\*Not completed\.\*"/u,
   );
   const warmupTwoValues =
     '- assertVisible: "Warm-up 2 of 2.*Current values 40 kg × 5.*Not completed.*"';
@@ -935,6 +935,11 @@ test("Phase 2 remediation flows use public labels and deterministic seams", asyn
   assert.match(
     workout,
     /- assertVisible: "Remove warm-up W3"\n- tapOn: "Remove warm-up W3"\n- assertVisible: "Remove warm-up W3\?"\n- tapOn:\n    id: "remove-warmup-confirm"\n- extendedWaitUntil:\n    visible: "Warm-up W3 removed"\n    timeout: 60000\n- assertNotVisible: "Remove warm-up W3"\n- assertNotVisible:\n    text: "Warm-up 3 of \.\*"/u,
+  );
+  assert.match(
+    workout,
+    /- repeat:\n    times: 4\n    while:\n      notVisible: "Remove warm-up W3"\n    commands:\n      - swipe:\n          start: 95%, 75%\n          end: 95%, 45%\n          duration: 300\n- assertVisible: "Remove warm-up W3"/u,
+    "the persisted added warm-up must reveal its trailing remove action before using it",
   );
   assert.doesNotMatch(workout, /(?:assertVisible|tapOn): "Skip (?:warm-up|set)/iu);
   const boundedWorkingSetFourTraversal = [
