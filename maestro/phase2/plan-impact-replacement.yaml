@@ -29,6 +29,11 @@ tags:
 - tapOn:
     text: "Upper / Lower. 4 days per week.*"
 - assertVisible: "Upper / Lower"
+- scrollUntilVisible:
+    element:
+      text: "Upper A"
+    direction: DOWN
+    centerElement: true
 - assertVisible: "Upper A"
 - scrollUntilVisible:
     element:

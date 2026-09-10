@@ -3402,6 +3402,10 @@ test("plan impact flow reaches replacement scope and impact without assuming cat
 
   assert.match(
     flow,
+    /- assertVisible: "Upper \/ Lower"\n- scrollUntilVisible:\n    element:\n      text: "Upper A"\n    direction: DOWN\n    centerElement: true\n- assertVisible: "Upper A"/u,
+  );
+  assert.match(
+    flow,
     /text: "Barbell Incline Bench Press\.\*Compatible metric identity"[\s\S]*?- tapOn:\n    text: "Barbell Incline Bench Press\.\*Compatible metric identity"[\s\S]*?- scrollUntilVisible:\n    element:\n      text: "This occurrence"\n    direction: UP\n    timeout: 60000\n- assertVisible: "This occurrence"/u,
   );
   assert.doesNotMatch(
