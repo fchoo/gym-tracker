@@ -3162,6 +3162,32 @@ test("Library exercise flow waits for trusted Today after process restart", asyn
   );
 });
 
+test("Library exercise alias search reveals results above the software keyboard", async () => {
+  const flow = await readFile(
+    path.join(projectRoot, "maestro/phase2/library-exercises.yaml"),
+    "utf8",
+  );
+  const stabilizedAliasSearch = [
+    '- tapOn: "Search exercises"',
+    '- inputText: "bench-press"',
+    "- hideKeyboard",
+    "- scrollUntilVisible:",
+    "    element:",
+    '      text: "Bench Press"',
+    "    direction: DOWN",
+    "    centerElement: true",
+    "    timeout: 90000",
+    '- assertVisible: "Bench Press"',
+    '- assertNotVisible: "Matched alias:"',
+  ].join("\n");
+
+  assert.ok(flow.includes(stabilizedAliasSearch));
+  assert.doesNotMatch(
+    flow,
+    /- inputText: "bench-press"\n- assertVisible: "Bench Press"/u,
+  );
+});
+
 test("Library exercise flow reveals the first working-set action with bounded swipes", async () => {
   const flow = await readFile(
     path.join(projectRoot, "maestro/phase2/library-exercises.yaml"),
@@ -3500,7 +3526,11 @@ test("Library exercise flow reaches compact Plans sections before asserting them
   );
   assert.match(
     flow,
-    /- tapOn: "Clear search exercises"\n- hideKeyboard\n- tapOn:\n    id: "library-filters-chip"[\s\S]*- tapOn: "Equipment: Barbell"\n- scrollUntilVisible:\n    element:\n      text: "Show results"\n    direction: DOWN\n- tapOn: "Show results"\n- assertVisible: "Results"\n- scrollUntilVisible:\n    element:\n      text: "Back Squat"\n    direction: DOWN\n    centerElement: true\n- assertVisible: "Back Squat"/u,
+    /- tapOn: "Clear search exercises"\n- scrollUntilVisible:\n    element:\n      id: "library-filters-chip"\n    direction: UP\n    centerElement: true\n- tapOn:\n    id: "library-filters-chip"[\s\S]*- tapOn: "Equipment: Barbell"\n- scrollUntilVisible:\n    element:\n      text: "Show results"\n    direction: DOWN\n- tapOn: "Show results"\n- assertVisible: "Results"\n- scrollUntilVisible:\n    element:\n      text: "Back Squat"\n    direction: DOWN\n    centerElement: true\n- assertVisible: "Back Squat"/u,
+  );
+  assert.doesNotMatch(
+    flow,
+    /- tapOn: "Clear search exercises"\n- hideKeyboard/u,
   );
   assert.match(
     flow,
