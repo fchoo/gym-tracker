@@ -578,7 +578,7 @@ async function executePhase2OwnedPlanNativeProof({ adb, artifactDirectory, flow,
   }
   const before = await adb("exec-out", "uiautomator", "dump", "/dev/tty");
   const drag = phase7PlanReorderCoordinates(before, {
-    sourceLabel: "Bench Press",
+    sourceLabel: "Barbell Bench Press - Medium Grip",
     targetLabel: "Back Squat",
   });
   const coordinates = [drag.startX, drag.startY, drag.endX, drag.endY];
@@ -601,8 +601,12 @@ async function executePhase2OwnedPlanNativeProof({ adb, artifactDirectory, flow,
     }
   }
   const afterDrag = await adb("exec-out", "uiautomator", "dump", "/dev/tty");
-  if (!phase7PlanOrderIs(afterDrag, "Bench Press", "Back Squat")) {
-    throw new Error("owned plan native held drag did not reorder Bench Press above Back Squat.");
+  if (!phase7PlanOrderIs(
+    afterDrag,
+    "Barbell Bench Press - Medium Grip",
+    "Back Squat",
+  )) {
+    throw new Error("owned plan native held drag did not reorder the selected bench press above Back Squat.");
   }
 
   const continuationFlowPath = path.join(

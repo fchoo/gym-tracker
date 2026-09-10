@@ -3105,6 +3105,35 @@ test("owned plan Maestro consumers use the canonical persistence label", async (
   }
 });
 
+test("owned plan native reorder uses the canonical selected exercise identity", async () => {
+  const setup = await readFile(
+    path.join(projectRoot, "maestro/phase2/owned-plan-editor.yaml"),
+    "utf8",
+  );
+  const continuation = await readFile(
+    path.join(
+      projectRoot,
+      "maestro/subflows/phase2-owned-plan-editor-reorder-verify.yaml",
+    ),
+    "utf8",
+  );
+  const runner = await readFile(
+    path.join(projectRoot, "scripts/run-phase2-maestro.mjs"),
+    "utf8",
+  );
+  const label = "Barbell Bench Press - Medium Grip";
+
+  assert.match(setup, new RegExp(`id: "drag-exercise-${label}"`, "u"));
+  assert.match(setup, new RegExp(`assertVisible: "Reorder ${label}"`, "u"));
+  assert.match(continuation, new RegExp(`${label} dragged to 1 of 2`, "u"));
+  assert.match(continuation, new RegExp(`id: "drag-exercise-${label}"`, "u"));
+  assert.match(runner, new RegExp(`sourceLabel: "${label}"`, "u"));
+  assert.doesNotMatch(
+    `${setup}\n${continuation}`,
+    /(?:drag-exercise-|Reorder | dragged to 1 of 2)Bench Press/u,
+  );
+});
+
 test("Library exercise flow waits for trusted Today after process restart", async () => {
   const flow = await readFile(
     path.join(projectRoot, "maestro/phase2/library-exercises.yaml"),

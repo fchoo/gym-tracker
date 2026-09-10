@@ -146,12 +146,12 @@ tags:
       text: "Save target"
     direction: DOWN
 - tapOn: "Save target"
-- assertVisible: "Bench Press"
+- assertVisible: "Barbell Bench Press - Medium Grip"
 - scrollUntilVisible:
     element:
-      id: "drag-exercise-Bench Press"
+      id: "drag-exercise-Barbell Bench Press - Medium Grip"
     direction: DOWN
     centerElement: true
     timeout: 30000
-- assertVisible: "Reorder Bench Press"
+- assertVisible: "Reorder Barbell Bench Press - Medium Grip"
 - assertVisible: "Reorder Back Squat"

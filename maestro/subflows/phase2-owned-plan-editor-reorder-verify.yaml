@@ -8,11 +8,11 @@ tags:
 ---
 - scrollUntilVisible:
     element:
-      text: "Bench Press dragged to 1 of 2"
+      text: "Barbell Bench Press - Medium Grip dragged to 1 of 2"
     direction: DOWN
     centerElement: true
     timeout: 30000
-- assertVisible: "Bench Press dragged to 1 of 2"
+- assertVisible: "Barbell Bench Press - Medium Grip dragged to 1 of 2"
 - assertVisible: "Save Plan Changes"
 - tapOn: "Save Plan Changes"
 - extendedWaitUntil:
@@ -37,14 +37,14 @@ tags:
     timeout: 30000
 - scrollUntilVisible:
     element:
-      id: "drag-exercise-Bench Press"
+      id: "drag-exercise-Barbell Bench Press - Medium Grip"
     direction: DOWN
     centerElement: true
     timeout: 30000
-- assertVisible: "Reorder Bench Press"
+- assertVisible: "Reorder Barbell Bench Press - Medium Grip"
 - assertVisible: "Reorder Back Squat"
 - assertVisible:
-    id: "drag-exercise-Bench Press"
+    id: "drag-exercise-Barbell Bench Press - Medium Grip"
     above:
       id: "drag-exercise-Back Squat"
 - takeScreenshot: phase2-owned-plan-reorder-persisted
