@@ -1994,13 +1994,29 @@ test("Phase 2 source ledger derives canonical remediation, matrix, and migration
   );
   const ownedPlanProof = evidence.maestro.flows[ownedPlanFlowIndex]
     .native_owned_plan_reorder_proof;
-  assert.throws(
-    () => validatePhase2AutomatedEvidence(evidence, {
-      evidenceBoundary: { root: projectRoot },
-      requireRoundtrip: true,
-    }),
-    /owned plan continuation report file is missing or unsafe/u,
+  const missingOwnedPlanEvidenceRoot = await mkdtemp(
+    path.join(tmpdir(), "phase2-missing-owned-plan-evidence-"),
   );
+  try {
+    const continuationFlowPath = path.join(
+      missingOwnedPlanEvidenceRoot,
+      OWNED_PLAN_CONTINUATION_FLOW,
+    );
+    await mkdir(path.dirname(continuationFlowPath), { recursive: true });
+    await writeFile(
+      continuationFlowPath,
+      readFileSync(path.join(projectRoot, OWNED_PLAN_CONTINUATION_FLOW)),
+    );
+    assert.throws(
+      () => validatePhase2AutomatedEvidence(evidence, {
+        evidenceBoundary: { root: missingOwnedPlanEvidenceRoot },
+        requireRoundtrip: true,
+      }),
+      /owned plan continuation report file is missing or unsafe/u,
+    );
+  } finally {
+    await rm(missingOwnedPlanEvidenceRoot, { force: true, recursive: true });
+  }
   assert.equal(ownedPlanProof.continuation_flow_sha256, OWNED_PLAN_CONTINUATION_SHA256);
   const observedFlowIndex = evidence.maestro.flows.findIndex((flow) => flow.remediation_case_observations.length > 0);
   assert.ok(observedFlowIndex >= 0);
