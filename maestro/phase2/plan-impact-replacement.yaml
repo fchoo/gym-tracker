@@ -211,14 +211,23 @@ tags:
     centerElement: true
 - tapOn: "Replace Bench Press"
 - assertVisible: "Review replacement"
-- assertVisible: "Compatible metric identity"
 - scrollUntilVisible:
     element:
-      text: "Barbell Incline Bench Press.*Compatible metric identity"
+      id: "exercise-replacement-search"
     direction: DOWN
+    centerElement: true
+- tapOn:
+    id: "exercise-replacement-search"
+- inputText: "Barbell Incline Bench Press"
+- hideKeyboard
+- scrollUntilVisible:
+    element:
+      text: "^Barbell Incline Bench Press[.] Compatible metric identity$"
+    direction: DOWN
+    centerElement: true
     timeout: 60000
 - tapOn:
-    text: "Barbell Incline Bench Press.*Compatible metric identity"
+    text: "^Barbell Incline Bench Press[.] Compatible metric identity$"
 - scrollUntilVisible:
     element:
       text: "This occurrence"
@@ -242,15 +251,12 @@ tags:
       text: "Exercise impact"
     direction: DOWN
     centerElement: true
-- repeat:
-    times: 64
-    while:
-      notVisible: "Review current values"
-    commands:
-      - swipe:
-          start: 50%, 75%
-          end: 50%, 25%
-          duration: 300
+- scrollUntilVisible:
+    element:
+      text: "Review current values"
+    direction: DOWN
+    centerElement: true
+    timeout: 60000
 - assertVisible: "Review current values"
 - scrollUntilVisible:
     element:

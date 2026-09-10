@@ -3406,7 +3406,7 @@ test("plan impact flow reaches replacement scope and impact without assuming cat
   );
   assert.match(
     flow,
-    /text: "Barbell Incline Bench Press\.\*Compatible metric identity"[\s\S]*?- tapOn:\n    text: "Barbell Incline Bench Press\.\*Compatible metric identity"[\s\S]*?- scrollUntilVisible:\n    element:\n      text: "This occurrence"\n    direction: UP\n    timeout: 60000\n- assertVisible: "This occurrence"/u,
+    /- tapOn:\n    id: "exercise-replacement-search"\n- inputText: "Barbell Incline Bench Press"\n- hideKeyboard\n- scrollUntilVisible:\n    element:\n      text: "\^Barbell Incline Bench Press\[\.\] Compatible metric identity\$"\n    direction: DOWN\n    centerElement: true\n    timeout: 60000\n- tapOn:\n    text: "\^Barbell Incline Bench Press\[\.\] Compatible metric identity\$"[\s\S]*?- scrollUntilVisible:\n    element:\n      text: "This occurrence"\n    direction: UP\n    timeout: 60000\n- assertVisible: "This occurrence"/u,
   );
   assert.doesNotMatch(
     flow,
@@ -3419,7 +3419,11 @@ test("plan impact flow reaches replacement scope and impact without assuming cat
   );
   assert.match(
     flow,
-    /text: "Exercise impact"\n    direction: DOWN\n    centerElement: true\n- repeat:\n    times: 64\n    while:\n      notVisible: "Review current values"\n    commands:\n      - swipe:\n          start: 50%, 75%\n          end: 50%, 25%\n          duration: 300\n- assertVisible: "Review current values"\n- scrollUntilVisible:\n    element:\n      text: "Compatibility does not mean historical comparability\. Existing sessions and snapshots are unchanged\."\n    direction: DOWN\n- assertVisible: "Compatibility does not mean historical comparability\. Existing sessions and snapshots are unchanged\."/u,
+    /text: "Exercise impact"\n    direction: DOWN\n    centerElement: true\n- scrollUntilVisible:\n    element:\n      text: "Review current values"\n    direction: DOWN\n    centerElement: true\n    timeout: 60000\n- assertVisible: "Review current values"\n- scrollUntilVisible:\n    element:\n      text: "Compatibility does not mean historical comparability\. Existing sessions and snapshots are unchanged\."\n    direction: DOWN\n- assertVisible: "Compatibility does not mean historical comparability\. Existing sessions and snapshots are unchanged\."/u,
+  );
+  assert.doesNotMatch(
+    flow,
+    /times: 64[\s\S]*?notVisible: "Review current values"/u,
   );
   assert.match(
     flow,
