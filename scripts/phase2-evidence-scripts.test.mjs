@@ -3469,11 +3469,15 @@ test("plan impact flow reaches replacement scope and impact without assuming cat
   );
   assert.match(
     flow,
-    /text: "Exercise impact"\n    direction: DOWN\n    centerElement: true\n- scrollUntilVisible:\n    element:\n      text: "Review current values"\n    direction: DOWN\n    centerElement: true\n    timeout: 60000\n- assertVisible: "Review current values"\n- scrollUntilVisible:\n    element:\n      text: "Compatibility does not mean historical comparability\. Existing sessions and snapshots are unchanged\."\n    direction: DOWN\n- assertVisible: "Compatibility does not mean historical comparability\. Existing sessions and snapshots are unchanged\."/u,
+    /text: "Exercise impact"\n    direction: DOWN\n    centerElement: true\n- repeat:\n    times: 12\n    while:\n      notVisible: "Review current values"\n    commands:\n      - swipe:\n          start: 95%, 75%\n          end: 95%, 25%\n          duration: 300\n- assertVisible: "Review current values"\n- scrollUntilVisible:\n    element:\n      text: "Compatibility does not mean historical comparability\. Existing sessions and snapshots are unchanged\."\n    direction: DOWN\n- assertVisible: "Compatibility does not mean historical comparability\. Existing sessions and snapshots are unchanged\."/u,
   );
   assert.doesNotMatch(
     flow,
     /times: 64[\s\S]*?notVisible: "Review current values"/u,
+  );
+  assert.doesNotMatch(
+    flow,
+    /- scrollUntilVisible:\n    element:\n      text: "Review current values"/u,
   );
   assert.match(
     flow,
