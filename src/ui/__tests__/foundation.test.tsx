@@ -16,6 +16,7 @@ import {
   BackHandler,
   RefreshControl,
   ScrollView,
+  StyleSheet,
   Text,
   View,
 } from "react-native";
@@ -407,6 +408,37 @@ describe("Plan 01-02 UI foundation", () => {
       flex: 1,
       width: "100%",
     });
+  });
+
+  it("uses intrinsic growth for scrollable content while non-scroll content fills the scene", async () => {
+    const rendered = await render(
+      <AppearanceProvider>
+        <AdaptiveScreen primary={<Text>Scrollable content</Text>} />
+      </AppearanceProvider>,
+    );
+
+    const scrollableStyle = StyleSheet.flatten(
+      screen.getByTestId("adaptive-screen").props.style,
+    );
+    expect(scrollableStyle).toEqual(expect.objectContaining({
+      flexBasis: "auto",
+      flexGrow: 1,
+      flexShrink: 0,
+    }));
+    expect(scrollableStyle).not.toHaveProperty("flex");
+
+    await rendered.rerender(
+      <AppearanceProvider>
+        <AdaptiveScreen
+          primary={<Text>Non-scroll content</Text>}
+          scrollable={false}
+        />
+      </AppearanceProvider>,
+    );
+
+    expect(StyleSheet.flatten(
+      screen.getByTestId("adaptive-screen").props.style,
+    )).toEqual(expect.objectContaining({ flex: 1 }));
   });
 
   it("restores a saved scroll offset only when the restore key changes", async () => {

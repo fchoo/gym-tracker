@@ -115,6 +115,7 @@ export function AdaptiveScreen({
       accessibilityLabel={`${widthClass} layout`}
       style={[
         styles.content,
+        scrollable ? styles.scrollableContent : styles.fillContent,
         {
           paddingHorizontal: horizontalInset,
           paddingVertical: space[4],
@@ -238,9 +239,16 @@ const styles = StyleSheet.create({
     paddingBottom: space[16],
   },
   content: {
-    flex: 1,
     gap: space[6],
     width: "100%",
+  },
+  scrollableContent: {
+    flexBasis: "auto",
+    flexGrow: 1,
+    flexShrink: 0,
+  },
+  fillContent: {
+    flex: 1,
   },
   contentTwoPane: {
     alignItems: "flex-start",
