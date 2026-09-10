@@ -687,6 +687,14 @@ test("Phase 2 remediation flows use public labels and deterministic seams", asyn
   );
   assert.match(
     inputs,
+    /- tapOn: "Create custom exercise"\n- assertVisible: "Create custom exercise"\n- repeat:\n    times: 12\n    while:\n      notVisible: "Default rest seconds"\n    commands:\n      - swipe:\n          start: 95%, 75%\n          end: 95%, 25%\n          duration: 300\n- assertVisible: "Default rest seconds"\n- tapOn: "Default rest seconds"/u,
+  );
+  assert.doesNotMatch(
+    inputs,
+    /- scrollUntilVisible:\n    element:\n      text: "Default rest seconds"/u,
+  );
+  assert.match(
+    inputs,
     /- tapOn: "Default rest seconds seconds"\n- eraseText: 2\n- inputText: "30"/u,
   );
   assert.match(
