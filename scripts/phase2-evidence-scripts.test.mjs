@@ -699,7 +699,7 @@ test("Phase 2 remediation flows use public labels and deterministic seams", asyn
   );
   assert.match(
     inputs,
-    /- assertNotVisible: "Default rest seconds duration dialog"\n- scrollUntilVisible:[\s\S]*text: "Go back"[\s\S]*- tapOn: "Go back"[\s\S]*text: "Plans"\n    direction: UP/u,
+    /- assertNotVisible: "Default rest seconds duration dialog"\n- repeat:\n    times: 12\n    while:\n      notVisible: "Go back"\n    commands:\n      - swipe:\n          start: 98%, 25%\n          end: 98%, 75%\n          duration: 300\n- assertVisible: "Go back"\n- tapOn: "Go back"[\s\S]*text: "Plans"\n    direction: UP/u,
   );
   assert.match(
     inputs,
