@@ -1,0 +1,101 @@
+{
+  "version": "1.0",
+  "timestamp": "2026-09-11T01:56:11.410Z",
+  "phase": "07",
+  "phase_name": "Post-Candidate UX Refinement",
+  "phase_dir": ".planning/phases/07-post-candidate-ux-refinement",
+  "plan": 10,
+  "task": 1,
+  "total_tasks": 2,
+  "status": "paused",
+  "completed_tasks": [
+    {
+      "id": 1,
+      "name": "Gate, dispatch, download, and verify one fresh candidate",
+      "status": "in_progress",
+      "progress": "Retained-native evidence failures were diagnosed and a nine-file hardening patch is present unstaged. Focused evidence suites and every modified long Maestro journey passed on the retained pre-patch APK. Two final reviewers were interrupted before verdict; no exact-HEAD rebuild, push, merge, or candidate dispatch has occurred."
+    }
+  ],
+  "remaining_tasks": [
+    {
+      "id": 1,
+      "name": "Finish exact-diff review, commit, rebuild, pass local and protected PR gates, squash-merge, then dispatch and verify exactly one main-bound candidate",
+      "status": "in_progress"
+    },
+    {
+      "id": 2,
+      "name": "Prepare, record, and verify Samsung SM-S916B N4 observation evidence, then complete Phase 7 evidence and GSD closure without release authority",
+      "status": "not_started"
+    }
+  ],
+  "blockers": [
+    {
+      "description": "The exact current nine-file diff has not received final CLEAR verdicts because final_retained_diff_review and phase7_durable_state_review were interrupted at the user's stop request.",
+      "type": "technical",
+      "workaround": "Restart fresh read-only reviewers against the exact on-disk diff and do not commit until both return CLEAR."
+    },
+    {
+      "description": "The retained Phase 2 APK and build manifest bind committed HEAD a31fe43 and therefore do not represent the dirty source tree.",
+      "type": "technical",
+      "workaround": "After the nine-file patch is reviewed and committed, rebuild once and run the complete exact-HEAD native evidence chain."
+    },
+    {
+      "description": "PR #26 remains blocked on its old remote head because native-and-smoke failed and artifact-roundtrip was skipped.",
+      "type": "external",
+      "workaround": "Push the verified local commits without force, then require all six protected checks before squash merge."
+    },
+    {
+      "description": "Samsung SM-S916B was not connected at pause; only emulator-5554 was present.",
+      "type": "human_action",
+      "workaround": "Connect the SM-S916B only after the exact main-bound candidate has passed immutable-byte verification."
+    }
+  ],
+  "async_jobs": [],
+  "human_actions_pending": [
+    {
+      "action": "Make Samsung SM-S916B available for the N4 observation pass after candidate verification",
+      "context": "N4-01 through N4-05 must be observed on the exact installed candidate APK; this is observation-only and grants no release authority.",
+      "blocking": false
+    }
+  ],
+  "decisions": [
+    {
+      "decision": "Use only /private/tmp/gym-tracker-phase7-final-integration.xNQHWn/worktree as the authoritative integration checkout",
+      "rationale": "The primary checkout contains user-owned dirty state and must remain untouched.",
+      "phase": "07"
+    },
+    {
+      "decision": "Hard-delete only non-completed sets",
+      "rationale": "Completed sets must retain correction, undo, and workout-history semantics.",
+      "phase": "07"
+    },
+    {
+      "decision": "Treat source, APK, reports, screenshots, and downloaded artifacts as one immutable evidence identity",
+      "rationale": "A passing behavioral probe on stale APK bytes cannot prove the current source tree.",
+      "phase": "07"
+    },
+    {
+      "decision": "Dispatch exactly one fresh Phase 7 candidate only after PR #26 is squash-merged to main",
+      "rationale": "The accepted candidate must be main-bound, fresh, and non-rebuilt after download.",
+      "phase": "07"
+    },
+    {
+      "decision": "Stop Phase 7 after N4 observation and GSD closure",
+      "rationale": "Phase 5 owner approval, promotion, publication, tagging, and Terminal Seal are explicitly outside this work.",
+      "phase": "07"
+    }
+  ],
+  "uncommitted_files": [
+    "maestro/phase2/remediation-workout.yaml",
+    "maestro/phase2/schedule-cross-profile.yaml",
+    "maestro/phase2/starter-activation.yaml",
+    "maestro/phase7/workout-removal-audio.yaml",
+    "maestro/smoke/phase1-full-loop.yaml",
+    "maestro/subflows/phase1-airplane-session.yaml",
+    "scripts/phase2-evidence-scripts.test.mjs",
+    "scripts/phase7-evidence-scripts.test.mjs",
+    "src/domains/shared/tooling.test.ts"
+  ],
+  "next_action": "In the authoritative integration worktree, confirm the metadata-only pause commit has parent a31fe43 and changed only .planning/HANDOFF.json plus the Phase 7 .continue-here.md, confirm the exact nine implementation files remain unstaged, then restart final_retained_diff_review and phase7_durable_state_review as fresh read-only reviews; require both verdicts to be CLEAR before staging or committing the patch.",
+  "context_notes": "Authoritative worktree: /private/tmp/gym-tracker-phase7-final-integration.xNQHWn/worktree. Branch fix/phase7-final-reconciliation. Implementation parent before the required metadata-only pause commit is a31fe43e74843c4ba5322e97ddc501fef890aedc. The retained APK SHA-256 5fa10741a74e398900fe2a31f83529e3a9d3891f9c9f95ba7a8975df0ecccb79 and source-tree digest 47abceaffa1c8c81b941b5222d6a87908fe24450fb0135c5629d2af7a3619b38 are stale relative to the dirty patch and may be used only to understand prior behavioral probes. Emulator-5554 is online with airplane mode off and physical display 1080x2400 at 420 dpi; no build or test process was active at pause. PR #26 is OPEN/BLOCKED at remote head 48d2909974dc87fb7be3f130ea26c49a37327aaf; origin/main is 9cdecb86dedeb9edd7bf5bc4d1c85d08bdc81660. No Phase 7 candidate has been dispatched. Candidate ID must be derived live in Asia/Singapore from the merged main SHA. Phase 7 commands must include explicit --manifest-sha256. Do not force-push, touch the primary checkout, approve, promote, publish, tag, or run Terminal Seal."
+}
