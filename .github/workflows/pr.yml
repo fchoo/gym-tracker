@@ -54,6 +54,11 @@ jobs:
         run: npm ci
 
       - name: Verify Expo compatibility
+        env:
+          # Pin dependency validation to the locked manifest instead of Expo's
+          # live version endpoint, whose recommended patches drift day to day
+          # and would otherwise fail this gate on unrelated PRs.
+          EXPO_OFFLINE: "1"
         run: |
           npx expo install --check
           npx expo-doctor
