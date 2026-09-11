@@ -831,11 +831,23 @@ test("Phase 2 remediation flows use public labels and deterministic seams", asyn
     "          end: 95%, 45%",
     "          duration: 300",
   ].join("\n");
+  const boundedRetriedWorkingSetReveal = [
+    "- repeat:",
+    "    times: 12",
+    "    while:",
+    '      notVisible: "Working set 4 of 4.*Not completed.*"',
+    "    commands:",
+    "      - swipe:",
+    "          start: 95%, 75%",
+    "          end: 95%, 25%",
+    "          duration: 300",
+    '- assertVisible: "Working set 4 of 4.*Not completed.*"',
+  ].join("\n");
   assert.ok(
     workout.includes(
-      `- tapOn: "Add working set"\n- assertNotVisible:\n    text: "Working set 4 of .*"\n${boundedRetryAddWorkingSetTraversal}\n- assertVisible: "Retry add working set"\n- tapOn: "Retry add working set"\n- assertVisible: "Working set 4 of 4.*Not completed.*"`,
+      `- tapOn: "Add working set"\n- assertNotVisible:\n    text: "Working set 4 of .*"\n${boundedRetryAddWorkingSetTraversal}\n- assertVisible: "Retry add working set"\n- tapOn: "Retry add working set"\n${boundedRetriedWorkingSetReveal}`,
     ),
-    "the absent new row and discovered retry action must prove failure and recovery without a blind swipe that can hide an already-visible target",
+    "the absent new row and discovered retry action must prove failure before bounded target-gated recovery",
   );
   assert.doesNotMatch(
     workout,
@@ -942,7 +954,12 @@ test("Phase 2 remediation flows use public labels and deterministic seams", asyn
   );
   assert.match(
     workout,
-    /- assertVisible: "Remove warm-up W3"\n- tapOn: "Remove warm-up W3"\n- assertVisible: "Remove warm-up W3\?"\n- tapOn:\n    id: "remove-warmup-confirm"\n- extendedWaitUntil:\n    visible: "Warm-up W3 removed"\n    timeout: 60000\n- assertNotVisible: "Remove warm-up W3"\n- assertNotVisible:\n    text: "Warm-up 3 of \.\*"/u,
+    /- assertVisible: "Remove warm-up W3"\n- tapOn: "Remove warm-up W3"\n- assertVisible: "Remove warm-up W3\?"\n- tapOn:\n    id: "remove-warmup-confirm"\n- extendedWaitUntil:\n    visible: "Warm-up 2 of 2\.\*Current values 40 kg × 5\.\*Not completed\.\*"\n    timeout: 60000\n- assertNotVisible: "Remove warm-up W3"\n- assertNotVisible:\n    text: "Warm-up 3 of \.\*"/u,
+  );
+  assert.doesNotMatch(
+    workout,
+    /extendedWaitUntil:\n    visible: "Warm-up W3 removed"/u,
+    "the mutation proof must not depend on a visually hidden live-region announcement",
   );
   assert.match(
     workout,
@@ -1146,7 +1163,20 @@ test("Phase 2 date flows use CalendarField rather than text entry", async () => 
     1,
   );
   const effectiveDateCalendarSequence = [
-    '- tapOn: "Effective date"',
+    '- repeat:',
+    '    times: 4',
+    '    while:',
+    '      notVisible: "Schedule timezone"',
+    '    commands:',
+    '      - swipe:',
+    '          start: 95%, 75%',
+    '          end: 95%, 45%',
+    '          duration: 300',
+    '- assertVisible: "Schedule timezone"',
+    '- tapOn:',
+    '    text: "Effective date"',
+    '    below:',
+    '      text: "Defaults to today and applies prospectively[.]"',
     '- assertVisible: "Calendar dialog"',
     '- tapOn: "Use Default Date"',
     '- tapOn: "Apply Date"',
@@ -1158,7 +1188,11 @@ test("Phase 2 date flows use CalendarField rather than text entry", async () => 
   );
   assert.match(
     schedule,
-    /- assertNotVisible: "Calendar dialog"\n- tapOn: "Schedule timezone"\n- eraseText: 32\n- inputText: "Australia\/Sydney"\n- hideKeyboard\n- repeat:\n    times: 4\n    while:\n      notVisible: "\^Weekday\$"\n    commands:\n      - swipe:\n          start: 95%, 75%\n          end: 95%, 45%\n          duration: 300\n- assertVisible: "\^Weekday\$"\n- tapOn: "\^Rotation\$"/u,
+    /- assertNotVisible: "Calendar dialog"\n- repeat:\n    times: 4\n    while:\n      notVisible: "Schedule timezone"\n    commands:\n      - swipe:\n          start: 95%, 75%\n          end: 95%, 45%\n          duration: 300\n- assertVisible: "Schedule timezone"\n- tapOn: "Schedule timezone"\n- eraseText: 32\n- inputText: "Australia\/Sydney"\n- hideKeyboard\n- repeat:\n    times: 4\n    while:\n      notVisible: "\^Weekday\$"\n    commands:\n      - swipe:\n          start: 95%, 75%\n          end: 95%, 45%\n          duration: 300\n- assertVisible: "\^Weekday\$"\n- tapOn: "\^Rotation\$"/u,
+  );
+  assert.match(
+    schedule,
+    /- tapOn: "\^Rotation\$"\n- assertVisible: "Push"\n- assertVisible: "Reorder Push"\n- repeat:\n    times: 4\n    while:\n      notVisible: "Reorder Pull"\n    commands:\n      - swipe:\n          start: 95%, 75%\n          end: 95%, 45%\n          duration: 300\n- assertVisible: "Pull"\n- assertVisible: "Reorder Pull"\n- repeat:\n    times: 4\n    while:\n      notVisible: "Reorder Legs"\n    commands:\n      - swipe:\n          start: 95%, 75%\n          end: 95%, 45%\n          duration: 300\n- assertVisible: "Legs"\n- assertVisible: "Reorder Legs"/u,
   );
   const scheduleWorkoutFieldTraversal = /- repeat:\n    times: 4\n    while:\n      notVisible: "Working set 1 (?:added )?load in kilograms"\n    commands:\n      - swipe:\n          start: 95%, 75%\n          end: 95%, 45%\n          duration: 300\n- assertVisible: "Working set 1 (?:added )?load in kilograms"/gu;
   assert.equal([...schedule.matchAll(scheduleWorkoutFieldTraversal)].length, 2);
@@ -1223,7 +1257,7 @@ test("retained Maestro flows use the Phase 7 action and rotation vocabulary", as
   assert.match(schedule, /Override with Skip/u);
   assert.match(
     schedule,
-    /Override with Skip[\s\S]*No override → Skip[\s\S]*- assertVisible: "Rest day"[\s\S]*- assertVisible: "Skip"[\s\S]*Override with Rest day[\s\S]*Skip → Rest day[\s\S]*- assertVisible: "Rest day"/u,
+    /Override with Skip[\s\S]*Current plan day → Skip[\s\S]*- assertVisible: "Rest day"[\s\S]*- assertVisible: "Skip"[\s\S]*Override with Rest day[\s\S]*Skip → Rest day[\s\S]*- assertVisible: "Rest day"/u,
   );
   assert.match(
     schedule,
@@ -3018,7 +3052,11 @@ test("schedule flow reopens the active plan from authoritative state", async () 
   assert.doesNotMatch(flow, /Device timezone: Asia\/Singapore/u);
   assert.match(
     flow,
-    /- tapOn: "Override with Skip"\n- assertVisible: "Set this date override\?"\n- assertVisible: "No override → Skip"\n- tapOn: "Save override"[\s\S]*- assertVisible: "Rest day"[\s\S]*- assertVisible: "Skip"\n- scrollUntilVisible:[\s\S]*- tapOn: "Override with Rest day"\n- assertVisible: "Replace this date override\?"\n- assertVisible: "Skip → Rest day"\n- tapOn: "Replace override"[\s\S]*- assertVisible: "Rest day"/u,
+    /- tapOn: "Override with Skip"\n- assertVisible: "Set this date override\?"\n- assertVisible: "Current plan day → Skip"\n- tapOn: "Save override"[\s\S]*- assertVisible: "Rest day"[\s\S]*- assertVisible: "Skip"\n- scrollUntilVisible:[\s\S]*- tapOn: "Override with Rest day"\n- assertVisible: "Replace this date override\?"\n- assertVisible: "Skip → Rest day"\n- tapOn: "Replace override"[\s\S]*- assertVisible: "Rest day"/u,
+  );
+  assert.match(
+    flow,
+    /- tapOn: "Override with Rest day"\n- assertVisible: "Set this date override\?"\n- assertVisible: "Current plan day → Rest day"\n- tapOn: "Save override"[\s\S]*- extendedWaitUntil:\n    visible: "Rest day"\n    timeout: 30000/u,
   );
   assert.match(
     flow,
@@ -3560,6 +3598,23 @@ test("starter activation uses current Material 3 filter labels", async () => {
   assert.match(
     flow,
     /id: "library-filters-chip"\n    direction: UP\n    centerElement: true\n- tapOn:\n    id: "library-filters-chip"[\s\S]*text: "Experience: Intermediate"[\s\S]*- tapOn: "Experience: Intermediate"[\s\S]*text: "Days per week: 5"[\s\S]*- tapOn: "Days per week: 5"[\s\S]*text: "Equipment: Barbell"[\s\S]*- tapOn: "Equipment: Barbell"/u,
+  );
+  assert.ok(flow.includes([
+    '- assertVisible: "Gym Body-Part Split[.] .*Intermediate experience · 5 days per week · Barbell equipment"',
+    '- tapOn:',
+    '    text: "Gym Body-Part Split. 5 days per week.*"',
+  ].join("\n")));
+  assert.match(
+    flow,
+    /- assertVisible: "Monday Chest · Tuesday Back · Wednesday Shoulders · Thursday Legs · Friday Arms"\n- scrollUntilVisible:\n    element:\n      text: "Source notes"\n    direction: DOWN\n    centerElement: true\n- assertVisible: "Source notes"/u,
+  );
+  assert.match(
+    flow,
+    /- assertVisible: "Cable Rope Overhead Triceps Extension"\n- repeat:\n    times: 12\n    while:\n      notVisible: "Activate plan"\n    commands:\n      - swipe:\n          start: 95%, 75%\n          end: 95%, 25%\n          duration: 300\n- assertVisible: "Activate plan"\n- tapOn: "Activate plan"/u,
+  );
+  assert.doesNotMatch(
+    flow,
+    /- assertVisible: "Why this fits: Intermediate experience · 5 days per week · Barbell equipment"/u,
   );
   assert.doesNotMatch(
     flow,

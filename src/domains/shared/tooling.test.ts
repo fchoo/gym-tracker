@@ -490,6 +490,21 @@ describe("Plan 01-03 test and boundary tooling", () => {
     expect(airplaneSession).toMatch(
       /- repeat:\n    times: 2\n    commands:\n      - scrollUntilVisible:\n          element:\n            text: "Remove warm-up W1"[\s\S]*id: "remove-warmup-confirm"/u,
     );
+    expect(airplaneSession).toContain([
+      '- assertVisible: "Workout complete"',
+      "- repeat:",
+      "    times: 12",
+      "    while:",
+      '      notVisible: "Return to Today"',
+      "    commands:",
+      "      - swipe:",
+      "          start: 95%, 75%",
+      "          end: 95%, 25%",
+      "          duration: 300",
+      '- assertVisible: "Return to Today"',
+      '- tapOn: "Return to Today"',
+      '- assertVisible: "Today"',
+    ].join("\n"));
   });
 
   it("scrolls through recommendation decisions and workout details", () => {
@@ -507,6 +522,24 @@ describe("Plan 01-03 test and boundary tooling", () => {
         `- scrollUntilVisible:\n    element:\n      text: "${target}"\n    direction: DOWN\n    centerElement: true`,
       );
     }
+    expect(fullLoop).toContain([
+      "- repeat:",
+      "    times: 12",
+      "    while:",
+      '      notVisible: "^On target$"',
+      "    commands:",
+      "      - swipe:",
+      "          start: 95%, 25%",
+      "          end: 95%, 75%",
+      "          duration: 300",
+      '- assertVisible: "^On target$"',
+      '- tapOn: "^On target$"',
+      "- scrollUntilVisible:",
+      "    element:",
+      '      text: "Repeat 60 kg next time"',
+      "    direction: DOWN",
+      "    centerElement: true",
+    ].join("\n"));
   });
 
   it("waits for React readiness before the final notification deep link", () => {

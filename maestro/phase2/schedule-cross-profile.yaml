@@ -76,13 +76,34 @@ tags:
 - assertVisible: "Edit schedule"
 - assertVisible: "Before"
 - assertVisible: "After"
-- assertVisible: "Effective date"
+- repeat:
+    times: 4
+    while:
+      notVisible: "Schedule timezone"
+    commands:
+      - swipe:
+          start: 95%, 75%
+          end: 95%, 45%
+          duration: 300
 - assertVisible: "Schedule timezone"
-- tapOn: "Effective date"
+- tapOn:
+    text: "Effective date"
+    below:
+      text: "Defaults to today and applies prospectively[.]"
 - assertVisible: "Calendar dialog"
 - tapOn: "Use Default Date"
 - tapOn: "Apply Date"
 - assertNotVisible: "Calendar dialog"
+- repeat:
+    times: 4
+    while:
+      notVisible: "Schedule timezone"
+    commands:
+      - swipe:
+          start: 95%, 75%
+          end: 95%, 45%
+          duration: 300
+- assertVisible: "Schedule timezone"
 - tapOn: "Schedule timezone"
 - eraseText: 32
 - inputText: "Australia/Sydney"
@@ -99,10 +120,29 @@ tags:
 - assertVisible: "^Weekday$"
 - tapOn: "^Rotation$"
 - assertVisible: "Push"
-- assertVisible: "Pull"
-- assertVisible: "Legs"
-- assertVisible: "Reorder Pull"
 - assertVisible: "Reorder Push"
+- repeat:
+    times: 4
+    while:
+      notVisible: "Reorder Pull"
+    commands:
+      - swipe:
+          start: 95%, 75%
+          end: 95%, 45%
+          duration: 300
+- assertVisible: "Pull"
+- assertVisible: "Reorder Pull"
+- repeat:
+    times: 4
+    while:
+      notVisible: "Reorder Legs"
+    commands:
+      - swipe:
+          start: 95%, 75%
+          end: 95%, 45%
+          duration: 300
+- assertVisible: "Legs"
+- assertVisible: "Reorder Legs"
 - repeat:
     times: 4
     while:
@@ -161,7 +201,7 @@ tags:
     centerElement: true
 - tapOn: "Override with Skip"
 - assertVisible: "Set this date override?"
-- assertVisible: "No override → Skip"
+- assertVisible: "Current plan day → Skip"
 - tapOn: "Save override"
 - extendedWaitUntil:
     notVisible: "Set this date override?"
@@ -380,7 +420,7 @@ tags:
     centerElement: true
 - tapOn: "Override with Rest day"
 - assertVisible: "Set this date override?"
-- assertVisible: "No override → Rest day"
+- assertVisible: "Current plan day → Rest day"
 - tapOn: "Save override"
 - extendedWaitUntil:
     notVisible: "Set this date override?"

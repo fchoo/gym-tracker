@@ -265,8 +265,14 @@ test("Phase 7 Maestro flows use source-aligned interactive labels and routes", (
   assert.doesNotMatch(todaySettings, /tapOn: "(?:Open Settings|History and data)"/u);
 
   const workoutRemovalAudio = flowSource("workout-removal-audio.yaml");
-  assert.match(workoutRemovalAudio, /- tapOn:\n    id: "remove-warmup-confirm"\n- extendedWaitUntil:\n    visible: "Warm-up W1 removed"/u);
-  assert.match(workoutRemovalAudio, /- assertNotVisible: "Remove warm-up W1"/u);
+  assert.match(
+    workoutRemovalAudio,
+    /text: "Remove warm-up W2"[\s\S]*- tapOn: "Remove warm-up W2"\n- assertVisible: "Remove warm-up W2\?"\n- takeScreenshot: phase7-workout-remove-confirmation\n- tapOn:\n    id: "remove-warmup-confirm"\n- repeat:\n    times: 8\n    while:\n      notVisible: "Warm-up 1 of 1\.\*Current values 20 kg × 8\.\*Not completed\.\*"\n    commands:\n      - swipe:\n          start: 95%, 25%\n          end: 95%, 75%\n          duration: 300\n- assertVisible: "Warm-up 1 of 1\.\*Current values 20 kg × 8\.\*Not completed\.\*"\n- assertNotVisible: "Remove warm-up W2"\n- assertNotVisible:\n    text: "Warm-up 2 of \.\*"/u,
+  );
+  assert.doesNotMatch(
+    workoutRemovalAudio,
+    /extendedWaitUntil:\n    visible: "Warm-up W[12] removed"/u,
+  );
   assert.match(workoutRemovalAudio, /- tapOn: "Complete Set 1"[\s\S]*?- extendedWaitUntil:\n    visible: "Rest ended"\n    timeout: 240000/u);
   assert.doesNotMatch(workoutRemovalAudio, /- tapOn: "Cancel"/u);
   assert.match(workoutRemovalAudio, /- assertVisible: "Today"\n- tapOn: "Settings"/u);

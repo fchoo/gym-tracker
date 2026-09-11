@@ -212,7 +212,22 @@ tags:
     direction: DOWN
     centerElement: true
 - assertVisible: "Repeat 60 kg next time"
-- tapOn: "On target"
+- repeat:
+    times: 12
+    while:
+      notVisible: "^On target$"
+    commands:
+      - swipe:
+          start: 95%, 25%
+          end: 95%, 75%
+          duration: 300
+- assertVisible: "^On target$"
+- tapOn: "^On target$"
+- scrollUntilVisible:
+    element:
+      text: "Repeat 60 kg next time"
+    direction: DOWN
+    centerElement: true
 - assertVisible: "Repeat 60 kg next time"
 - scrollUntilVisible:
     element:

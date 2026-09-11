@@ -33,19 +33,28 @@ tags:
     timeout: 30000
 - scrollUntilVisible:
     element:
-      text: "Remove warm-up W1"
+      text: "Remove warm-up W2"
     direction: DOWN
     centerElement: true
 - takeScreenshot: phase7-workout-set-row
-- tapOn: "Remove warm-up W1"
-- assertVisible: "Remove warm-up"
+- tapOn: "Remove warm-up W2"
+- assertVisible: "Remove warm-up W2?"
 - takeScreenshot: phase7-workout-remove-confirmation
 - tapOn:
     id: "remove-warmup-confirm"
-- extendedWaitUntil:
-    visible: "Warm-up W1 removed"
-    timeout: 60000
-- assertNotVisible: "Remove warm-up W1"
+- repeat:
+    times: 8
+    while:
+      notVisible: "Warm-up 1 of 1.*Current values 20 kg × 8.*Not completed.*"
+    commands:
+      - swipe:
+          start: 95%, 25%
+          end: 95%, 75%
+          duration: 300
+- assertVisible: "Warm-up 1 of 1.*Current values 20 kg × 8.*Not completed.*"
+- assertNotVisible: "Remove warm-up W2"
+- assertNotVisible:
+    text: "Warm-up 2 of .*"
 - repeat:
     times: 32
     while:
