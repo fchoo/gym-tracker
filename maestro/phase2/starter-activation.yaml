@@ -151,6 +151,7 @@ tags:
     element:
       text: "Activate plan"
     direction: DOWN
+    timeout: 60000
 - tapOn: "Activate plan"
 - assertVisible: "Activate Gym Body-Part Split?"
 - tapOn: "Activate plan"
@@ -210,6 +211,7 @@ tags:
     element:
       text: "Activate plan"
     direction: DOWN
+    timeout: 60000
 - tapOn: "Activate plan"
 - assertVisible: "Activate Gym Body-Part Split?"
 - tapOn:

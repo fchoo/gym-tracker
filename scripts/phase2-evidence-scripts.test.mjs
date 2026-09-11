@@ -3622,6 +3622,29 @@ test("starter activation uses current Material 3 filter labels", async () => {
   );
 });
 
+test("starter activation allows bounded long-form traversal at large text", async () => {
+  const flow = await readFile(
+    path.join(projectRoot, "maestro/phase2/starter-activation.yaml"),
+    "utf8",
+  );
+  const activationFormTraversal = [
+    "- scrollUntilVisible:",
+    "    element:",
+    '      text: "Activate plan"',
+    "    direction: DOWN",
+    "    timeout: 60000",
+    '- tapOn: "Activate plan"',
+    '- assertVisible: "Activate Gym Body-Part Split?"',
+  ].join("\n");
+
+  assert.ok(flow.includes(
+    `- assertVisible: "Monday · Chest"\n${activationFormTraversal}`,
+  ));
+  assert.ok(flow.includes(
+    `- tapOn:\n    text: "Gym Body-Part Split. Active.*"\n${activationFormTraversal}`,
+  ));
+});
+
 test("fresh plan flows scroll to compact Library sections before assertions", async () => {
   const expectations = [
     ["maestro/phase2/owned-plan-editor.yaml", "My Plans"],
