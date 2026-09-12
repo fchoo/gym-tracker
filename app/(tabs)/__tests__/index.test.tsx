@@ -46,6 +46,26 @@ const mockLoadProgress = jest.fn<() => Promise<Readonly<{
   projection: { recommendations: [] },
 }));
 const mockPush = jest.fn();
+const mockStartEmptyWorkout = jest.fn<() => Promise<string>>();
+const mockStartPlanDay = jest.fn<(
+  dayId: string,
+  mode: "scheduled" | "alternate" | "rest_day",
+) => Promise<string>>();
+const mockRecordTrainAnyway = jest.fn<(
+  input: Readonly<{
+    workout:
+      | Readonly<{ kind: "plan_day"; planDayId: string }>
+      | Readonly<{ kind: "rest_day" | "empty"; planDayId: null }>;
+    advanceRotation: boolean;
+  }>,
+) => Promise<null>>();
+const mockConsumeDateOverride = jest.fn<(
+  localDate: string,
+) => Promise<null>>();
+const mockScheduleToday = {
+  localDate: "2026-09-07",
+  overrideState: "pending" as const,
+};
 
 jest.mock("expo-router", () => ({
   router: { push: (...args: readonly unknown[]) => mockPush(...args) },
@@ -60,6 +80,11 @@ jest.mock("../../../src/bootstrap/workoutAppRuntime", () => ({
     notificationPermission: "undetermined",
     openRestNotificationSettings: jest.fn(),
     readRestAlertPreferences: mockReadRestAlertPreferences,
+    startEmptyWorkout: mockStartEmptyWorkout,
+    startPlanDay: mockStartPlanDay,
+    recordTrainAnyway: mockRecordTrainAnyway,
+    consumeDateOverride: mockConsumeDateOverride,
+    scheduleToday: mockScheduleToday,
     retry: jest.fn(),
     setRestAlertPreferences: mockSetRestAlertPreferences,
     workoutRefreshGeneration: mockWorkoutRefreshGeneration,
@@ -71,22 +96,22 @@ jest.mock("../../../src/ui/screens/TodayScreen", () => {
   return {
     TodayScreen: ({
       launchState,
-      onChangeRestAlertPreferences,
-      onOpenHistoryAndData,
-      onReadRestAlertPreferences,
+      onOpenSettings,
       onReviewSuggestion,
+      onStartEmpty,
+      onStartPlanDay,
       pendingRecommendations,
       restAlertPreferences,
       restAlertPreferencesLoading,
     }: {
       launchState: string;
-      onChangeRestAlertPreferences(preferences: Readonly<{
-        soundEnabled: boolean;
-        vibrationEnabled: boolean;
-      }>): Promise<unknown>;
-      onOpenHistoryAndData(): void;
-      onReadRestAlertPreferences(): Promise<void>;
+      onOpenSettings(): void;
       onReviewSuggestion(exerciseId: string): void;
+      onStartEmpty(): void;
+      onStartPlanDay(
+        dayId: string,
+        mode: "scheduled" | "alternate" | "rest_day",
+      ): void;
       restAlertPreferences: Readonly<{
         soundEnabled: boolean;
         vibrationEnabled: boolean;
@@ -95,36 +120,39 @@ jest.mock("../../../src/ui/screens/TodayScreen", () => {
       pendingRecommendations: readonly { id: string }[];
     }) => (
       <View>
-        <Text testID="today-route-state">
-          {`${launchState}:${restAlertPreferences.soundEnabled}:${restAlertPreferences.vibrationEnabled}:${restAlertPreferencesLoading}`}
-        </Text>
+        <Text testID="today-route-state">{launchState}</Text>
         <Text testID="pending-review-count">
           {pendingRecommendations.length}
         </Text>
         <Pressable
-          accessibilityLabel="Open rest alerts"
+          accessibilityLabel="Open Settings"
           accessibilityRole="button"
-          onPress={() => { void onReadRestAlertPreferences(); }}
-        />
-        <Pressable
-          accessibilityLabel="Save rest alerts"
-          accessibilityRole="button"
-          onPress={() => {
-            void onChangeRestAlertPreferences({
-              soundEnabled: false,
-              vibrationEnabled: true,
-            });
-          }}
-        />
-        <Pressable
-          accessibilityLabel="Open history and data"
-          accessibilityRole="button"
-          onPress={() => onOpenHistoryAndData()}
+          onPress={() => onOpenSettings()}
         />
         <Pressable
           accessibilityLabel="Review pending target"
           accessibilityRole="button"
           onPress={() => onReviewSuggestion("bench")}
+        />
+        <Pressable
+          accessibilityLabel="Start empty workout"
+          accessibilityRole="button"
+          onPress={() => onStartEmpty()}
+        />
+        <Pressable
+          accessibilityLabel="Start scheduled workout"
+          accessibilityRole="button"
+          onPress={() => onStartPlanDay("day-scheduled", "scheduled")}
+        />
+        <Pressable
+          accessibilityLabel="Start alternate workout"
+          accessibilityRole="button"
+          onPress={() => onStartPlanDay("day-alternate", "alternate")}
+        />
+        <Pressable
+          accessibilityLabel="Start rest-day workout"
+          accessibilityRole="button"
+          onPress={() => onStartPlanDay("day-rest", "rest_day")}
         />
       </View>
     ),
@@ -138,6 +166,16 @@ describe("TodayRoute readiness", () => {
     mockLaunchState = "booting";
     mockWorkoutRefreshGeneration = 0;
     mockPush.mockReset();
+    mockStartEmptyWorkout.mockReset();
+    mockStartEmptyWorkout.mockResolvedValue("session-empty");
+    mockStartPlanDay.mockReset();
+    mockStartPlanDay.mockImplementation((dayId, mode) =>
+      Promise.resolve("session-" + mode + "-" + dayId)
+    );
+    mockRecordTrainAnyway.mockReset();
+    mockRecordTrainAnyway.mockResolvedValue(null);
+    mockConsumeDateOverride.mockReset();
+    mockConsumeDateOverride.mockResolvedValue(null);
     resolvePreferenceRead = null;
     mockReadRestAlertPreferences.mockReset();
     mockReadRestAlertPreferences.mockReturnValue({
@@ -158,109 +196,16 @@ describe("TodayRoute readiness", () => {
   });
 
   it.each(["booting", "failed"] as const)(
-    "uses immutable default rest-alert preferences before runtime is %s",
+    "preserves Today route readiness while runtime is %s",
     async (launchState) => {
       mockLaunchState = launchState;
 
       await render(<TodayRoute />);
 
-      expect(mockReadRestAlertPreferences).not.toHaveBeenCalled();
       expect(screen.getByTestId("today-route-state"))
-        .toHaveTextContent(`${launchState}:true:true:false`);
+        .toHaveTextContent(launchState);
     },
   );
-
-  it("loads persisted rest-alert preferences only when the trusted settings action opens", async () => {
-    mockLaunchState = "trusted";
-    const readGate = new Promise<void>((resolve) => {
-      resolvePreferenceRead = resolve;
-    });
-    mockReadRestAlertPreferences.mockImplementationOnce(async () => {
-      await readGate;
-      return { soundEnabled: false, vibrationEnabled: false };
-    });
-
-    await render(<TodayRoute />);
-
-    expect(mockReadRestAlertPreferences).not.toHaveBeenCalled();
-    expect(screen.getByTestId("today-route-state"))
-      .toHaveTextContent("trusted:true:true:false");
-
-    await fireEvent.press(screen.getByRole("button", {
-      name: "Open rest alerts",
-    }));
-
-    expect(screen.getByTestId("today-route-state"))
-      .toHaveTextContent("trusted:true:true:true");
-    resolvePreferenceRead?.();
-    await waitFor(() => {
-      expect(mockReadRestAlertPreferences).toHaveBeenCalledTimes(1);
-      expect(screen.getByTestId("today-route-state"))
-        .toHaveTextContent("trusted:false:false:false");
-    });
-  });
-
-  it("settles a rejected preference read to immutable default-on values", async () => {
-    mockLaunchState = "trusted";
-    mockReadRestAlertPreferences.mockImplementationOnce(() => {
-      throw new Error("preference_read_failed");
-    });
-
-    await render(<TodayRoute />);
-    await fireEvent.press(screen.getByRole("button", {
-      name: "Open rest alerts",
-    }));
-
-    await waitFor(() => {
-      expect(screen.getByTestId("today-route-state"))
-        .toHaveTextContent("trusted:true:true:false");
-    });
-  });
-
-  it("ignores an in-flight preference read after the runtime leaves trusted state", async () => {
-    mockLaunchState = "trusted";
-    const readGate = new Promise<void>((resolve) => {
-      resolvePreferenceRead = resolve;
-    });
-    mockReadRestAlertPreferences.mockImplementationOnce(async () => {
-      await readGate;
-      return { soundEnabled: false, vibrationEnabled: false };
-    });
-    const rendered = await render(<TodayRoute />);
-
-    await fireEvent.press(screen.getByRole("button", {
-      name: "Open rest alerts",
-    }));
-    mockLaunchState = "failed";
-    await rendered.rerender(<TodayRoute />);
-    expect(screen.getByTestId("today-route-state"))
-      .toHaveTextContent("failed:true:true:false");
-
-    await act(async () => {
-      resolvePreferenceRead?.();
-      await readGate;
-    });
-    expect(screen.getByTestId("today-route-state"))
-      .toHaveTextContent("failed:true:true:false");
-  });
-
-  it("keeps route preferences aligned with the persisted write result", async () => {
-    mockLaunchState = "trusted";
-
-    await render(<TodayRoute />);
-    await fireEvent.press(screen.getByRole("button", {
-      name: "Save rest alerts",
-    }));
-
-    await waitFor(() => {
-      expect(mockSetRestAlertPreferences).toHaveBeenCalledWith({
-        soundEnabled: false,
-        vibrationEnabled: true,
-      });
-      expect(screen.getByTestId("today-route-state"))
-        .toHaveTextContent("trusted:false:true:false");
-    });
-  });
 
   it("opens Progress when Today requests a source-backed target review", async () => {
     mockLaunchState = "trusted";
@@ -273,12 +218,12 @@ describe("TodayRoute readiness", () => {
     expect(mockPush).toHaveBeenCalledWith("/progress");
   });
 
-  it("opens the established History and data surface from Today", async () => {
+  it("opens Settings from Today", async () => {
     mockLaunchState = "trusted";
 
     await render(<TodayRoute />);
     await fireEvent.press(screen.getByRole("button", {
-      name: "Open history and data",
+      name: "Open Settings",
     }));
 
     expect(mockPush).toHaveBeenCalledWith("/more");
@@ -314,5 +259,54 @@ describe("TodayRoute readiness", () => {
     await waitFor(() => {
       expect(screen.getByTestId("pending-review-count")).toHaveTextContent("0");
     });
+  });
+
+  it("routes the Today start choices through their distinct workout paths", async () => {
+    mockLaunchState = "trusted";
+
+    await render(<TodayRoute />);
+
+    await fireEvent.press(screen.getByRole("button", {
+      name: "Start empty workout",
+    }));
+    await waitFor(() => expect(mockPush).toHaveBeenLastCalledWith(
+      "/workout/session-empty",
+    ));
+    expect(mockRecordTrainAnyway).toHaveBeenLastCalledWith({
+      workout: { kind: "empty", planDayId: null },
+      advanceRotation: false,
+    });
+
+    await fireEvent.press(screen.getByRole("button", {
+      name: "Start scheduled workout",
+    }));
+    await waitFor(() => expect(mockPush).toHaveBeenLastCalledWith(
+      "/workout/session-scheduled-day-scheduled",
+    ));
+    expect(mockRecordTrainAnyway).toHaveBeenCalledTimes(1);
+
+    await fireEvent.press(screen.getByRole("button", {
+      name: "Start alternate workout",
+    }));
+    await waitFor(() => expect(mockPush).toHaveBeenLastCalledWith(
+      "/workout/session-alternate-day-alternate",
+    ));
+    expect(mockRecordTrainAnyway).toHaveBeenLastCalledWith({
+      workout: { kind: "plan_day", planDayId: "day-alternate" },
+      advanceRotation: false,
+    });
+
+    await fireEvent.press(screen.getByRole("button", {
+      name: "Start rest-day workout",
+    }));
+    await waitFor(() => expect(mockPush).toHaveBeenLastCalledWith(
+      "/workout/session-rest_day-day-rest",
+    ));
+    expect(mockRecordTrainAnyway).toHaveBeenLastCalledWith({
+      workout: { kind: "plan_day", planDayId: "day-rest" },
+      advanceRotation: false,
+    });
+    expect(mockRecordTrainAnyway).toHaveBeenCalledTimes(3);
+    expect(mockConsumeDateOverride).toHaveBeenCalledTimes(3);
   });
 });

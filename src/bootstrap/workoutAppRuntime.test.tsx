@@ -52,6 +52,12 @@ import {
   PrimaryAction,
 } from "../ui/components";
 import {
+  WORKOUT_REMOVE_RECEIPT_SCHEMA_STATEMENTS,
+} from "../platform/sqlite/migrations/0017_workout_remove_receipts";
+import {
+  WORKOUT_REMOVE_RECEIPT_ENTITY_ID_SCHEMA_STATEMENTS,
+} from "../platform/sqlite/migrations/0018_workout_remove_receipt_entity_ids";
+import {
   AppearanceProvider,
 } from "../ui/theme";
 
@@ -66,6 +72,21 @@ jest.mock("../platform/notifications/expoRestNotificationAdapter", () => ({
       input.identifier
     ),
     openSettings: jest.fn(async () => undefined),
+  })),
+}));
+jest.mock("../platform/sqlite/recoveryBackup", () => ({
+  createExpoRecoveryBackupPort: jest.fn(() => ({
+    createAndValidate: jest.fn(async (request: Readonly<{
+      databaseName: string;
+      fromVersion: number;
+      toVersion: number;
+    }>) => ({
+      backupId: "runtime-test-recovery",
+      databaseName: request.databaseName,
+      fromVersion: request.fromVersion,
+      toVersion: request.toVersion,
+      validated: true,
+    })),
   })),
 }));
 
@@ -246,6 +267,12 @@ function runtimeActiveWorkoutRepository(): ActiveWorkoutRepository & {
   copyPreviousWarmup: jest.MockedFunction<
     ActiveWorkoutRepository["copyPreviousWarmup"]
   >;
+  removeWarmup: jest.MockedFunction<
+    NonNullable<ActiveWorkoutRepository["removeWarmup"]>
+  >;
+  removeWorkingSet: jest.MockedFunction<
+    NonNullable<ActiveWorkoutRepository["removeWorkingSet"]>
+  >;
   reviseCompletedSet: jest.MockedFunction<
     ActiveWorkoutRepository["reviseCompletedSet"]
   >;
@@ -266,6 +293,18 @@ function runtimeActiveWorkoutRepository(): ActiveWorkoutRepository & {
     addWarmup: jest.fn(async () => activeWorkoutView),
     addWorkingSet: jest.fn(async () => activeWorkoutView),
     copyPreviousWarmup: jest.fn(async () => activeWorkoutView),
+    removeWarmup: jest.fn(async (input) => ({
+      outcome: "committed" as const,
+      sessionId: input.sessionId,
+      setId: input.setId,
+      sessionRevision: input.expectedSessionRevision + 1,
+    })),
+    removeWorkingSet: jest.fn(async (input) => ({
+      outcome: "committed" as const,
+      sessionId: input.sessionId,
+      setId: input.setId,
+      sessionRevision: input.expectedSessionRevision + 1,
+    })),
     reviseCompletedSet: jest.fn(async () => activeWorkoutView),
     completeWarmup: jest.fn(async () => activeWorkoutView),
     skipWarmup: jest.fn(async () => activeWorkoutView),
@@ -469,6 +508,7 @@ function runtimeRepository(
 ): Repository & {
   activateStarterPlan: jest.MockedFunction<PlansRepository["activateStarterPlan"]>;
   startWorkout: jest.MockedFunction<WorkoutRepository["startWorkout"]>;
+  getTodayView: jest.MockedFunction<Repository["getTodayView"]>;
 } {
   let viewIndex = 0;
   let activationIndex = 0;
@@ -637,12 +677,6 @@ function RuntimeProbe() {
               sourceSetId: set.id,
               setId: "working-added",
               nowMs: 2_000,
-            });
-            await runtime.copyPreviousWarmup({
-              sessionId: view.id,
-              sourceSetId: "warmup-added",
-              setId: "warmup-copied",
-              nowMs: 2_001,
             });
             await runtime.reviseCompletedSet({
               sessionId: view.id,
@@ -1371,9 +1405,6 @@ describe("WorkoutAppRuntimeProvider", () => {
     workoutRepository.addWarmup.mockResolvedValueOnce(
       activeWorkoutViewWithCommittedSet("warmup-added", "warmup"),
     );
-    workoutRepository.copyPreviousWarmup.mockResolvedValueOnce(
-      activeWorkoutViewWithCommittedSet("warmup-copied", "warmup"),
-    );
     workoutRepository.addWorkingSet.mockResolvedValueOnce(
       activeWorkoutViewWithCommittedSet("working-added", "working"),
     );
@@ -1414,15 +1445,6 @@ describe("WorkoutAppRuntimeProvider", () => {
       nowMs: 2_000,
       });
     });
-    let copied: Awaited<ReturnType<typeof captured.copyPreviousWarmup>>;
-    await act(async () => {
-      copied = await captured!.copyPreviousWarmup({
-      sessionId: "session-1",
-      sourceSetId: "warmup-added",
-      setId: "warmup-copied",
-      nowMs: 2_001,
-      });
-    });
     let working: Awaited<ReturnType<typeof captured.addWorkingSet>>;
     await act(async () => {
       working = await captured!.addWorkingSet({
@@ -1454,7 +1476,6 @@ describe("WorkoutAppRuntimeProvider", () => {
     });
 
     expect(warmup!.committedSetId).toBe("warmup-added");
-    expect(copied!.committedSetId).toBe("warmup-copied");
     expect(working!.committedSetId).toBe("working-added");
     expect(corrected!.committedSetId).toBe("set-1");
     expect(working!.currentExercise.workingSets.map(({ id }) => id))
@@ -1552,6 +1573,215 @@ describe("WorkoutAppRuntimeProvider", () => {
     await waitFor(() => {
       expect(repository.getTodayView).toHaveBeenCalledTimes(2);
     });
+  });
+
+  it("returns the committed active view only after the removal, active read, and trusted refresh", async () => {
+    const repository = runtimeRepository([activeView, activeView], [activation]);
+    const lifecycle = runtimeLifecycle();
+    const events: string[] = [];
+    repository.getTodayView = jest.fn(async () => {
+      events.push("trusted-read");
+      return activeView;
+    });
+    const workoutRepository = runtimeActiveWorkoutRepository();
+    const refreshedActiveView: ActiveWorkoutView = {
+      ...activeWorkoutView,
+      revision: 2,
+      currentExercise: {
+        ...activeWorkoutView.currentExercise,
+        warmups: [],
+      },
+      exercises: [{
+        ...activeWorkoutView.exercises[0]!,
+        warmups: [],
+      }],
+    };
+    workoutRepository.removeWarmup.mockImplementationOnce(async (input) => {
+      events.push("remove-warmup");
+      return {
+        outcome: "committed",
+        sessionId: input.sessionId,
+        setId: input.setId,
+        sessionRevision: input.expectedSessionRevision + 1,
+      };
+    });
+    workoutRepository.getActiveWorkout.mockImplementationOnce(async () => {
+      events.push("active-read");
+      return refreshedActiveView;
+    });
+    const conflict = new WorkoutCommandConflictError("remove_set_conflict");
+    workoutRepository.removeWorkingSet.mockImplementationOnce(async () => {
+      events.push("remove-working");
+      throw conflict;
+    });
+    let captured: ReturnType<typeof useWorkoutAppRuntime> | undefined;
+    await render(
+      <RuntimeCaptureHarness
+        dependencies={dependencies(repository, {
+          createWorkoutRepository: () => workoutRepository,
+          createLifecycle: () => lifecycle,
+        })}
+        onReady={(runtime) => {
+          captured = runtime;
+        }}
+      />,
+    );
+    await waitFor(() => {
+      expect(captured?.launchState).toBe("trusted");
+    });
+    if (captured === undefined) {
+      throw new Error("runtime_not_captured");
+    }
+
+    events.splice(0);
+    const warmupInput = {
+      requestId: "remove-runtime-warmup",
+      requestSha256: "a".repeat(64),
+      sessionId: "session-1",
+      setId: "warmup-1",
+      expectedSessionRevision: 1,
+      expectedSetRevision: 1,
+      removedAtMs: 2_000,
+    };
+    let removed: Awaited<ReturnType<typeof captured.removeWarmup>>;
+    await act(async () => {
+      removed = await captured!.removeWarmup(warmupInput);
+    });
+    expect(removed!).toBe(refreshedActiveView);
+    expect(workoutRepository.removeWarmup).toHaveBeenCalledWith(warmupInput);
+    expect(workoutRepository.getActiveWorkout).toHaveBeenCalledWith("session-1");
+    expect(events).toEqual(["remove-warmup", "active-read", "trusted-read"]);
+    expect(captured.workoutRefreshGeneration).toBe(2);
+    await waitFor(() => {
+      expect(lifecycle.trigger).toHaveBeenCalledWith("post_commit", {});
+    });
+
+    events.splice(0);
+    const workingInput = {
+      requestId: "remove-runtime-working",
+      requestSha256: "b".repeat(64),
+      sessionId: "session-1",
+      setId: "set-1",
+      expectedSessionRevision: 2,
+      expectedSetRevision: 1,
+      removedAtMs: 2_001,
+    };
+    let rejected: unknown;
+    await act(async () => {
+      try {
+        await captured!.removeWorkingSet(workingInput);
+      } catch (error) {
+        rejected = error;
+      }
+    });
+    expect(rejected).toBe(conflict);
+    expect(workoutRepository.removeWorkingSet).toHaveBeenCalledWith(workingInput);
+    expect(events).toEqual(["remove-working"]);
+    expect(captured.workoutRefreshGeneration).toBe(2);
+    expect(captured.mutationFailure).toEqual({
+      kind: "conflict",
+      code: "remove_set_conflict",
+      retryable: false,
+      correlationCode: "GT-ACTION01",
+    });
+  });
+
+  it("preserves a committed removal when its authoritative refresh fails", async () => {
+    const repository = runtimeRepository([activeView], [activation]);
+    const workoutRepository = runtimeActiveWorkoutRepository();
+    const refreshFailure = new Error("active_workout_read_failed");
+    workoutRepository.getActiveWorkout.mockRejectedValueOnce(refreshFailure);
+    let captured: ReturnType<typeof useWorkoutAppRuntime> | undefined;
+    await render(
+      <RuntimeCaptureHarness
+        dependencies={dependencies(repository, {
+          createWorkoutRepository: () => workoutRepository,
+        })}
+        onReady={(runtime) => {
+          captured = runtime;
+        }}
+      />,
+    );
+    await waitFor(() => {
+      expect(captured?.launchState).toBe("trusted");
+    });
+    if (captured === undefined) {
+      throw new Error("runtime_not_captured");
+    }
+
+    const input = {
+      requestId: "remove-runtime-refresh-failure",
+      requestSha256: "c".repeat(64),
+      sessionId: "session-1",
+      setId: "set-1",
+      expectedSessionRevision: 1,
+      expectedSetRevision: 1,
+      removedAtMs: 2_002,
+    };
+    let result: Awaited<ReturnType<typeof captured.removeWorkingSet>>;
+    await act(async () => {
+      result = await captured!.removeWorkingSet(input);
+    });
+
+    expect(result!).toEqual({
+      outcome: "committed_refresh_failed",
+      sessionId: "session-1",
+      setId: "set-1",
+      sessionRevision: 2,
+    });
+    expect(workoutRepository.removeWorkingSet).toHaveBeenCalledTimes(1);
+    expect(workoutRepository.getActiveWorkout).toHaveBeenCalledWith("session-1");
+    expect(repository.getTodayView).toHaveBeenCalledTimes(1);
+    expect(captured.mutationFailure).toBeUndefined();
+  });
+
+  it("preserves a committed removal when the trusted global refresh fails", async () => {
+    const repository = runtimeRepository([activeView], [activation]);
+    const workoutRepository = runtimeActiveWorkoutRepository();
+    let captured: ReturnType<typeof useWorkoutAppRuntime> | undefined;
+    await render(
+      <RuntimeCaptureHarness
+        dependencies={dependencies(repository, {
+          createWorkoutRepository: () => workoutRepository,
+        })}
+        onReady={(runtime) => {
+          captured = runtime;
+        }}
+      />,
+    );
+    await waitFor(() => {
+      expect(captured?.launchState).toBe("trusted");
+    });
+    if (captured === undefined) {
+      throw new Error("runtime_not_captured");
+    }
+    repository.getTodayView.mockRejectedValueOnce(
+      new Error("trusted_global_read_failed"),
+    );
+
+    const input = {
+      requestId: "remove-runtime-trusted-refresh-failure",
+      requestSha256: "d".repeat(64),
+      sessionId: "session-1",
+      setId: "set-1",
+      expectedSessionRevision: 1,
+      expectedSetRevision: 1,
+      removedAtMs: 2_003,
+    };
+    let result: Awaited<ReturnType<typeof captured.removeWorkingSet>>;
+    await act(async () => {
+      result = await captured!.removeWorkingSet(input);
+    });
+
+    expect(result!).toEqual({
+      outcome: "committed_refresh_failed",
+      sessionId: "session-1",
+      setId: "set-1",
+      sessionRevision: 2,
+    });
+    expect(workoutRepository.removeWorkingSet).toHaveBeenCalledTimes(1);
+    expect(workoutRepository.getActiveWorkout).toHaveBeenCalledWith("session-1");
+    expect(captured.mutationFailure).toBeUndefined();
   });
 
   it("builds Today activation from the accepted Full Body starter", async () => {
@@ -1696,13 +1926,57 @@ describe("WorkoutAppRuntimeProvider", () => {
   });
 
   it("executes the production migration and clock adapters against a fake kernel", async () => {
-    const execute = jest.fn(async () => ({
+    const execute = jest.fn(async (_sql: string, _parameters?: readonly unknown[]) => ({
       changes: 0,
       lastInsertRowId: 0,
     }));
     const queryAllMock = jest.fn(async (sql: string) => {
       if (sql === "PRAGMA user_version") {
         return [{ user_version: 10 }];
+      }
+      if (sql === "PRAGMA table_info(workout_remove_receipts)") {
+        return [
+          { name: "request_id", type: "TEXT", notnull: 1, pk: 1 },
+          { name: "request_sha256", type: "TEXT", notnull: 1, pk: 0 },
+          { name: "operation", type: "TEXT", notnull: 1, pk: 0 },
+          { name: "session_id", type: "TEXT", notnull: 1, pk: 0 },
+          { name: "set_id", type: "TEXT", notnull: 1, pk: 0 },
+          { name: "expected_session_revision", type: "INTEGER", notnull: 1, pk: 0 },
+          { name: "expected_set_revision", type: "INTEGER", notnull: 1, pk: 0 },
+          { name: "result_session_revision", type: "INTEGER", notnull: 1, pk: 0 },
+          { name: "result_json", type: "TEXT", notnull: 1, pk: 0 },
+          { name: "committed_at_ms", type: "INTEGER", notnull: 1, pk: 0 },
+        ];
+      }
+      if (sql === "PRAGMA foreign_key_list(workout_remove_receipts)") {
+        return [];
+      }
+      if (sql.includes("workout_remove_receipts_immutable_update")) {
+        const receiptSchema = execute.mock.calls.some(([statement]) => (
+          typeof statement === "string"
+          && statement.includes(
+            "ALTER TABLE workout_remove_receipts RENAME TO workout_remove_receipts_v17",
+          )
+        ))
+          ? WORKOUT_REMOVE_RECEIPT_ENTITY_ID_SCHEMA_STATEMENTS
+          : WORKOUT_REMOVE_RECEIPT_SCHEMA_STATEMENTS;
+        return [
+          {
+            type: "table",
+            name: "workout_remove_receipts",
+            sql: receiptSchema[0],
+          },
+          {
+            type: "trigger",
+            name: "workout_remove_receipts_immutable_update",
+            sql: receiptSchema[1],
+          },
+          {
+            type: "trigger",
+            name: "workout_remove_receipts_immutable_delete",
+            sql: receiptSchema[2],
+          },
+        ];
       }
       if (sql.includes("foreground_rest_feedback_consumptions")) {
         return [{ name: "foreground_rest_feedback_consumptions" }];
@@ -2347,7 +2621,6 @@ describe("WorkoutAppRuntimeProvider", () => {
       expect(workoutRepository.updateWarmupDraft).toHaveBeenCalledTimes(1);
       expect(workoutRepository.addWarmup).toHaveBeenCalledTimes(1);
       expect(workoutRepository.addWorkingSet).toHaveBeenCalledTimes(1);
-      expect(workoutRepository.copyPreviousWarmup).toHaveBeenCalledTimes(1);
       expect(workoutRepository.reviseCompletedSet).toHaveBeenCalledTimes(1);
       expect(workoutRepository.completeWarmup).toHaveBeenCalledTimes(1);
       expect(workoutRepository.skipWarmup).toHaveBeenCalledTimes(1);

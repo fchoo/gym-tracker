@@ -30,6 +30,7 @@ import {
   ContentCard,
   EmptyState,
   FocusablePressable,
+  IconAction,
   InlineNotice,
   M3SearchField,
   PrimaryAction,
@@ -46,6 +47,9 @@ import {
   type PlanEditorReorderMethod,
   type PlanEditorReorderPreview,
 } from "../components/PlanEditorFields";
+import {
+  PlanDaySwitcher,
+} from "../components/PlanDaySwitcher";
 import {
   radius,
   space,
@@ -528,6 +532,7 @@ export function OwnedPlanEditorScreen({
   const [archiveVisible, setArchiveVisible] = useState(false);
   const [lifecycleBusy, setLifecycleBusy] = useState(false);
   const [selectedDayId, setSelectedDayId] = useState<string | null>(null);
+  const selectedDayIndexRef = useRef(0);
   const [draftFeedback, setDraftFeedback] = useState<string | null>(null);
   const [dayReorderPreview, setDayReorderPreview] =
     useState<PlanEditorReorderPreview | null>(null);
@@ -600,6 +605,25 @@ export function OwnedPlanEditorScreen({
       ?? null,
     [draft, selectedDayId],
   );
+  useEffect(() => {
+    if (draft === null || draft.days.length === 0 || selectedDayId === null) {
+      return;
+    }
+    const selectedIndex = draft.days.findIndex(
+      (day) => day.id === selectedDayId,
+    );
+    if (selectedIndex >= 0) {
+      selectedDayIndexRef.current = selectedIndex;
+      return;
+    }
+    const survivor = draft.days[Math.min(
+      selectedDayIndexRef.current,
+      draft.days.length - 1,
+    )];
+    if (survivor !== undefined) {
+      setSelectedDayId(survivor.id);
+    }
+  }, [draft, selectedDayId]);
   const names = useMemo(
     () => new Map(exercises.map((exercise) => [exercise.id, exercise.name])),
     [exercises],
@@ -758,7 +782,15 @@ export function OwnedPlanEditorScreen({
       }
       setSnapshot(committed);
       setDraft(draftFromSnapshot(committed));
-      setSelectedDayId(committed.days[0]?.id ?? null);
+      setSelectedDayId((current) => {
+        if (committed.days.some((day) => day.id === current)) {
+          return current;
+        }
+        return committed.days[Math.min(
+          selectedDayIndexRef.current,
+          committed.days.length - 1,
+        )]?.id ?? null;
+      });
       setDirtyLeaveVisible(false);
       if (destination === "back") {
         onBack();
@@ -1111,10 +1143,16 @@ export function OwnedPlanEditorScreen({
                 typeScale.bodyStrong as TextStyle,
                 { color: colors.textPrimary },
               ]}>
-                Plan could not be saved. Your edits are still here. Try again.
+                Plan changes could not be saved
+              </Text>
+              <Text style={[
+                typeScale.body as TextStyle,
+                { color: colors.textPrimary },
+              ]}>
+                Your draft is still here. Your existing plan was not changed.
               </Text>
               <SecondaryAction
-                label="Retry"
+                label="Retry saving plan changes"
                 onPress={() => {
                   void commitPlan();
                 }}
@@ -1162,57 +1200,35 @@ export function OwnedPlanEditorScreen({
               title="Days"
               tone="card"
             />
-            {draft.days.map((day, index) => (
-              <PlanEditorReorderableRow
-                count={draft.days.length}
-                key={day.id}
-                label={day.name}
-                onDragPreview={setDayReorderPreview}
-                onMoveDown={() => moveDay(index, index + 1)}
-                onMoveTo={(targetIndex, method) =>
-                  moveDay(index, targetIndex, method)}
-                onMoveUp={() => moveDay(index, index - 1)}
-                position={index}
-                preview={dayReorderPreview}
-                reorderId={`day-${day.name}`}
-                tone="card"
-              >
-                <FocusablePressable
-                  accessibilityLabel={`${day.name}. ${day.occurrences.length} exercises`}
-                  accessibilityRole="button"
-                  accessibilityState={{ selected: selectedDay?.id === day.id }}
-                  focusable
-                  onPress={() => {
-                    setDayReorderPreview(null);
-                    setExerciseReorderPreview(null);
-                    setSelectedDayId(day.id);
-                  }}
-                  style={styles.daySelect}
-                >
-                  <Text style={[
-                    typeScale.bodyStrong as TextStyle,
-                    { color: colors.contentCardText },
-                  ]}>
-                    {day.name}
-                  </Text>
-                  <Text style={[
-                    typeScale.secondary as TextStyle,
-                    { color: colors.contentCardTextSecondary },
-                  ]}>
-                    {`${day.occurrences.length} ${
-                      day.occurrences.length === 1 ? "exercise" : "exercises"
-                    }`}
-                  </Text>
-                </FocusablePressable>
-              </PlanEditorReorderableRow>
-            ))}
+            <PlanDaySwitcher
+              days={draft.days}
+              onDragPreview={setDayReorderPreview}
+              onMoveDay={(dayId, targetIndex, method) => {
+                const index = draft.days.findIndex((day) => day.id === dayId);
+                moveDay(index, targetIndex, method);
+              }}
+              onSelectDay={(dayId) => {
+                selectedDayIndexRef.current = draft.days.findIndex(
+                  (day) => day.id === dayId,
+                );
+                setDayReorderPreview(null);
+                setExerciseReorderPreview(null);
+                setSelectedDayId(dayId);
+              }}
+              preview={dayReorderPreview}
+              selectedDayId={selectedDay?.id ?? null}
+            />
           </ContentCard>
           {selectedDay === null ? null : (
             <ContentCard
               style={styles.dayEditor}
               testID="owned-plan-day-editor-card"
             >
-              <SectionHeader title="Day editor" tone="card" />
+              <SectionHeader
+                supportingText={selectedDay.name}
+                title="Day editor"
+                tone="card"
+              />
               <PlanEditorTextField
                 label="Day name"
                 onChangeText={(name) =>
@@ -1245,6 +1261,17 @@ export function OwnedPlanEditorScreen({
                   reorderId={`exercise-${
                     names.get(occurrence.exerciseId) ?? occurrence.exerciseId
                   }`}
+                  trailing={onReplaceOccurrence === undefined ? undefined : (
+                    <IconAction
+                      accessibilityLabel={`Replace ${
+                        names.get(occurrence.exerciseId)
+                          ?? occurrence.exerciseId
+                      }`}
+                      icon="forward"
+                      onPress={() => onReplaceOccurrence(occurrence.id)}
+                      tone="card"
+                    />
+                  )}
                   tone="card"
                 >
                   <View style={styles.reorderLabelGroup}>
@@ -1261,15 +1288,6 @@ export function OwnedPlanEditorScreen({
                     ]}>
                       {targetSummary(occurrence)}
                     </Text>
-                    {onReplaceOccurrence === undefined ? null : (
-                      <SecondaryAction
-                        label={`Replace ${
-                          names.get(occurrence.exerciseId)
-                            ?? occurrence.exerciseId
-                        }`}
-                        onPress={() => onReplaceOccurrence(occurrence.id)}
-                      />
-                    )}
                   </View>
                 </PlanEditorReorderableRow>
               ))}
@@ -1552,15 +1570,6 @@ const styles = StyleSheet.create({
     borderWidth: StyleSheet.hairlineWidth,
     gap: space[2],
     padding: space[4],
-  },
-  daySelect: {
-    alignItems: "center",
-    flex: 1,
-    flexDirection: "row",
-    flexWrap: "wrap",
-    gap: space[1],
-    minHeight: 48,
-    minWidth: 0,
   },
   dayEditor: {
     gap: space[4],

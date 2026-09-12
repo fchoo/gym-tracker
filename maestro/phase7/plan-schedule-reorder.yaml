@@ -1,0 +1,288 @@
+appId: com.fchoo.gymtracker
+name: Phase 7 production plan schedule reorder evidence
+tags:
+  - phase-7
+  - production-candidate
+---
+- assertTrue: ${REORDER_STAGE == 'plan-day-ready' || REORDER_STAGE == 'plan-exercise-ready' || REORDER_STAGE == 'plan-save' || REORDER_STAGE == 'plan-exercise-persisted-ready' || REORDER_STAGE == 'weekday-ready' || REORDER_STAGE == 'weekday-save' || REORDER_STAGE == 'rotation-ready' || REORDER_STAGE == 'rotation-save'}
+- runFlow:
+    when:
+      true: ${REORDER_STAGE == 'plan-day-ready'}
+    commands:
+      - launchApp:
+          clearState: true
+          permissions:
+            notifications: deny
+      - assertVisible: "Today"
+      - extendedWaitUntil:
+          visible: "Use Full Body Foundation"
+          timeout: 90000
+      - tapOn: "Use Full Body Foundation"
+      - tapOn: "Activate Full Body Foundation"
+      - extendedWaitUntil:
+          visible: "^(Start Full Body A|Start Full Body B|Rest day)$"
+          timeout: 90000
+      - tapOn: "Library"
+      - scrollUntilVisible:
+          element:
+            text: "Active Plan"
+          direction: DOWN
+          centerElement: true
+      - scrollUntilVisible:
+          element:
+            text: "Full Body Foundation. Active.*"
+          direction: DOWN
+          centerElement: true
+      - tapOn:
+          text: "Full Body Foundation. Active.*"
+      - extendedWaitUntil:
+          visible: "Save Plan Changes"
+          timeout: 60000
+      - scrollUntilVisible:
+          element:
+            id: "drag-day-Full Body A"
+          direction: DOWN
+          centerElement: true
+      - assertVisible:
+          id: "drag-day-Full Body A"
+          above:
+            id: "drag-day-Full Body B"
+- runFlow:
+    when:
+      true: ${REORDER_STAGE == 'plan-exercise-ready'}
+    commands:
+      - scrollUntilVisible:
+          element:
+            id: "drag-exercise-Bench Press"
+          direction: DOWN
+          centerElement: true
+      - assertVisible:
+          id: "drag-exercise-Back Squat"
+          above:
+            id: "drag-exercise-Bench Press"
+- runFlow:
+    when:
+      true: ${REORDER_STAGE == 'plan-save'}
+    commands:
+      - scrollUntilVisible:
+          element:
+            text: "Save Plan Changes"
+          direction: UP
+          centerElement: true
+          timeout: 60000
+      - tapOn: "Save Plan Changes"
+      - waitForAnimationToEnd:
+          timeout: 10000
+      - scrollUntilVisible:
+          element:
+            text: "Go back"
+          direction: UP
+          centerElement: true
+          timeout: 60000
+      - tapOn: "Go back"
+      - assertVisible: "Library"
+      - stopApp
+      - launchApp:
+          clearState: false
+          permissions:
+            notifications: deny
+      - extendedWaitUntil:
+          visible: "Today"
+          timeout: 60000
+      - tapOn: "Library"
+      - scrollUntilVisible:
+          element:
+            text: "Active Plan"
+          direction: DOWN
+          centerElement: true
+      - scrollUntilVisible:
+          element:
+            text: "Full Body Foundation. Active.*"
+          direction: DOWN
+          centerElement: true
+      - tapOn:
+          text: "Full Body Foundation. Active.*"
+      - extendedWaitUntil:
+          visible: "Save Plan Changes"
+          timeout: 60000
+      - scrollUntilVisible:
+          element:
+            id: "drag-day-Full Body B"
+          direction: DOWN
+          centerElement: true
+          timeout: 60000
+      - assertVisible:
+          id: "drag-day-Full Body B"
+          above:
+            id: "drag-day-Full Body A"
+- runFlow:
+    when:
+      true: ${REORDER_STAGE == 'plan-exercise-persisted-ready'}
+    commands:
+      - scrollUntilVisible:
+          element:
+            text: "Full Body A. .* exercises"
+          direction: DOWN
+          centerElement: true
+          timeout: 60000
+      - tapOn:
+          text: "Full Body A. .* exercises"
+      - scrollUntilVisible:
+          element:
+            id: "drag-exercise-Bench Press"
+          direction: DOWN
+          centerElement: true
+          timeout: 60000
+      - assertVisible:
+          id: "drag-exercise-Bench Press"
+          above:
+            id: "drag-exercise-Back Squat"
+- runFlow:
+    when:
+      true: ${REORDER_STAGE == 'weekday-ready'}
+    commands:
+      - scrollUntilVisible:
+          element:
+            text: "Schedule"
+          direction: UP
+          centerElement: true
+      - tapOn: "Schedule"
+      - extendedWaitUntil:
+          visible: "Edit schedule"
+          timeout: 60000
+      - scrollUntilVisible:
+          element:
+            id: "drag-weekday-0-Monday-.*"
+          direction: DOWN
+          centerElement: true
+      - assertVisible:
+          id: "drag-weekday-0-Monday-.*"
+          above:
+            id: "drag-weekday-0-Wednesday-.*"
+- runFlow:
+    when:
+      true: ${REORDER_STAGE == 'weekday-save'}
+    commands:
+      - scrollUntilVisible:
+          element:
+            text: "Save schedule"
+          direction: DOWN
+          centerElement: true
+          timeout: 60000
+      - tapOn: "Save schedule"
+      - assertVisible: "Save this schedule?"
+      - tapOn: "Save schedule"
+      - extendedWaitUntil:
+          notVisible: "Save this schedule?"
+          timeout: 60000
+      - stopApp
+      - launchApp:
+          clearState: false
+          permissions:
+            notifications: deny
+      - extendedWaitUntil:
+          visible: "Today"
+          timeout: 60000
+      - tapOn: "Library"
+      - scrollUntilVisible:
+          element:
+            text: "Active Plan"
+          direction: DOWN
+          centerElement: true
+      - scrollUntilVisible:
+          element:
+            text: "Full Body Foundation. Active.*"
+          direction: DOWN
+          centerElement: true
+      - tapOn:
+          text: "Full Body Foundation. Active.*"
+      - extendedWaitUntil:
+          visible: "Save Plan Changes"
+          timeout: 60000
+      - scrollUntilVisible:
+          element:
+            text: "Schedule"
+          direction: UP
+          centerElement: true
+      - tapOn: "Schedule"
+      - extendedWaitUntil:
+          visible: "Edit schedule"
+          timeout: 60000
+      - scrollUntilVisible:
+          element:
+            id: "drag-weekday-0-Wednesday-.*"
+          direction: DOWN
+          centerElement: true
+- runFlow:
+    when:
+      true: ${REORDER_STAGE == 'rotation-ready'}
+    commands:
+      - scrollUntilVisible:
+          element:
+            text: "^Rotation$"
+          direction: UP
+          centerElement: true
+      - tapOn: "^Rotation$"
+      - scrollUntilVisible:
+          element:
+            id: "drag-rotation-.*-0"
+          direction: DOWN
+          centerElement: true
+      - assertVisible:
+          id: "drag-rotation-.*-0"
+          above:
+            id: "drag-rotation-.*-1"
+- runFlow:
+    when:
+      true: ${REORDER_STAGE == 'rotation-save'}
+    commands:
+      - scrollUntilVisible:
+          element:
+            text: "Save schedule"
+          direction: DOWN
+          centerElement: true
+          timeout: 60000
+      - tapOn: "Save schedule"
+      - assertVisible: "Save this schedule?"
+      - tapOn: "Save schedule"
+      - extendedWaitUntil:
+          notVisible: "Save this schedule?"
+          timeout: 60000
+      - stopApp
+      - launchApp:
+          clearState: false
+          permissions:
+            notifications: deny
+      - extendedWaitUntil:
+          visible: "Today"
+          timeout: 60000
+      - tapOn: "Library"
+      - scrollUntilVisible:
+          element:
+            text: "Active Plan"
+          direction: DOWN
+          centerElement: true
+      - scrollUntilVisible:
+          element:
+            text: "Full Body Foundation. Active.*"
+          direction: DOWN
+          centerElement: true
+      - tapOn:
+          text: "Full Body Foundation. Active.*"
+      - extendedWaitUntil:
+          visible: "Save Plan Changes"
+          timeout: 60000
+      - scrollUntilVisible:
+          element:
+            text: "Schedule"
+          direction: UP
+          centerElement: true
+      - tapOn: "Schedule"
+      - extendedWaitUntil:
+          visible: "Edit schedule"
+          timeout: 60000
+      - scrollUntilVisible:
+          element:
+            id: "drag-rotation-.*-0"
+          direction: DOWN
+          centerElement: true

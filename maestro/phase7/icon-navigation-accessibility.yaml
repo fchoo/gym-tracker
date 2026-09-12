@@ -1,0 +1,22 @@
+appId: com.fchoo.gymtracker
+name: Phase 7 production icon navigation and accessibility evidence
+tags:
+  - phase-7
+  - production-candidate
+---
+- launchApp:
+    clearState: true
+    permissions:
+      notifications: deny
+- assertVisible: "Today"
+- tapOn: "Settings"
+- assertVisible: "Settings"
+- takeScreenshot: phase7-settings-200pct
+- pressKey: BACK
+- tapOn: "Calendar"
+- assertVisible: "Calendar"
+- tapOn: "Library"
+- assertVisible: "Library"
+- tapOn: "Progress"
+- assertVisible: "Progress"
+- takeScreenshot: phase7-navigation-200pct

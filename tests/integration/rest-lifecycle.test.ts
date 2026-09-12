@@ -34,6 +34,7 @@ import {
   type RestRepository,
 } from "../../src/domains/rest";
 import {
+  removeWorkingSet,
   startWorkout,
 } from "../../src/domains/workout";
 import {
@@ -201,6 +202,90 @@ async function setupWorkout(
 }
 
 describe("Plan 01-09 persisted rest commands", () => {
+  it("cancels a scheduled rest notification after removing the referenced set and draining post-commit effects", async () => {
+    const { kernel, session, workoutRepository, restRepository } =
+      await setupWorkout();
+    const workout = await workoutRepository.getActiveWorkout(session.id);
+    const removedSet = workout.currentExercise.workingSets[0]!;
+    const running = await startManualRest({
+      repository: restRepository,
+      input: {
+        sessionId: session.id,
+        expectedSessionRevision: workout.revision,
+        expectedRestRevision: 0,
+        nowMs: 10_000,
+      },
+    });
+    const scheduled = new Map<string, {
+      sessionId: string;
+      restRevision: number;
+      endsAtMs: number;
+    }>();
+    const notifications: RestNotificationPort = {
+      ensureChannel: async () => undefined,
+      permission: async () => "granted",
+      requestPermission: async () => "granted",
+      async listScheduled() {
+        return [...scheduled].map(([identifier, request]) => ({
+          identifier,
+          ...request,
+        }));
+      },
+      async cancel(identifier) {
+        scheduled.delete(identifier);
+      },
+      async schedule(request) {
+        scheduled.set(request.identifier, {
+          sessionId: request.sessionId,
+          restRevision: request.restRevision,
+          endsAtMs: request.endsAtMs,
+        });
+        return request.identifier;
+      },
+      openSettings: async () => undefined,
+    };
+    const lifecycle = createWorkoutLifecycle({
+      kernel,
+      restRepository,
+      notifications,
+      nowMs: () => 11_000,
+    });
+
+    await lifecycle.trigger("post_commit");
+    expect(scheduled.has(`rest:${session.id}`)).toBe(true);
+
+    await expect(removeWorkingSet({
+      repository: workoutRepository,
+      input: {
+        requestId: "remove-rest-owned-set",
+        requestSha256: "a".repeat(64),
+        sessionId: session.id,
+        setId: removedSet.id,
+        expectedSessionRevision: running.sessionRevision,
+        expectedSetRevision: removedSet.revision,
+        removedAtMs: 12_000,
+      },
+    })).resolves.toMatchObject({ outcome: "committed" });
+    await expect(restRepository.getRestState(session.id)).resolves.toEqual({
+      version: 1,
+      state: "idle",
+      revision: running.state.revision + 1,
+      nextSetId: null,
+    });
+    await expect(kernel.queryAll<{ idempotency_key: string; status: string }>(
+      `SELECT idempotency_key, status
+       FROM pending_effects
+       WHERE idempotency_key = ?`,
+      ["rest:remove:remove-rest-owned-set"],
+    )).resolves.toEqual([{
+      idempotency_key: "rest:remove:remove-rest-owned-set",
+      status: "pending",
+    }]);
+
+    await lifecycle.trigger("post_commit");
+    expect(scheduled.has(`rest:${session.id}`)).toBe(false);
+  });
+
   it("delegates foreground expiry with the exact command input", async () => {
     const { restRepository } = await setupWorkout();
     const input = {

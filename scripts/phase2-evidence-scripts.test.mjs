@@ -5,15 +5,18 @@ import {
 import { createHash } from "node:crypto";
 import {
   existsSync,
+  readFileSync,
   writeFileSync,
 } from "node:fs";
 import {
   chmod,
+  link,
   mkdir,
   mkdtemp,
   readFile,
   readdir,
   rm,
+  symlink,
   writeFile,
 } from "node:fs/promises";
 import { tmpdir } from "node:os";
@@ -140,6 +143,12 @@ function nativeFixture(manifest, caseIds) {
   };
 }
 
+const OWNED_PLAN_FLOW = "maestro/phase2/owned-plan-editor.yaml";
+const OWNED_PLAN_CONTINUATION_FLOW = "maestro/subflows/phase2-owned-plan-editor-reorder-verify.yaml";
+const OWNED_PLAN_CONTINUATION_SHA256 = createHash("sha256")
+  .update(readFileSync(path.join(projectRoot, OWNED_PLAN_CONTINUATION_FLOW)))
+  .digest("hex");
+
 function maestroFixture(manifest, flows, {
   inputSourceAudit,
   proceduralRemediationCaseExclusions,
@@ -167,6 +176,19 @@ function maestroFixture(manifest, flows, {
       airplane_mode: airplane,
       remediation_case_observations: observations ?? [],
       viewport: viewport ?? null,
+      ...(flow !== OWNED_PLAN_FLOW ? {} : {
+        native_owned_plan_reorder_proof: {
+          continuation_flow: OWNED_PLAN_CONTINUATION_FLOW,
+          continuation_flow_sha256: OWNED_PLAN_CONTINUATION_SHA256,
+          continuation_report: `artifacts/native/phase2/${id}-native-reorder/report.xml`,
+          continuation_report_sha256: "f".repeat(64),
+          continuation_tests: 1,
+          persisted_screenshot: {
+            file: `artifacts/native/phase2/${id}-native-reorder/phase2-owned-plan-reorder-persisted.png`,
+            sha256: "a".repeat(64),
+          },
+        },
+      }),
     })),
     input_source_audit: inputSourceAudit,
     procedural_remediation_case_exclusions:
@@ -515,6 +537,95 @@ test("Phase 2 Maestro source manifests reject missing, duplicate, stale, and col
   );
 });
 
+test("owned plan reorder screenshot is canonicalized from Maestro nested output", async () => {
+  const { canonicalizePhase2OwnedPlanReorderScreenshot } = await load(
+    "scripts/run-phase2-maestro.mjs",
+  );
+  const directory = await mkdtemp(path.join(tmpdir(), "phase2-owned-plan-screenshot-"));
+  const screenshotName = "phase2-owned-plan-reorder-persisted.png";
+  const pngBytes = Buffer.concat([
+    Buffer.from("89504e470d0a1a0a", "hex"),
+    Buffer.from("fixture"),
+  ]);
+  const nestedScreenshot = (root) => path.join(
+    root,
+    "2026-09-07_051025",
+    "Phase 2 installed owned plan reorder continuation verify",
+    "takeScreenshot",
+    screenshotName,
+  );
+  const createNestedScreenshot = async (root, bytes = pngBytes) => {
+    const nested = nestedScreenshot(root);
+    await mkdir(path.dirname(nested), { recursive: true });
+    await writeFile(nested, bytes);
+    return nested;
+  };
+
+  try {
+    const validRoot = path.join(directory, "valid");
+    const nested = await createNestedScreenshot(validRoot);
+
+    const canonical = await canonicalizePhase2OwnedPlanReorderScreenshot(validRoot);
+    assert.equal(canonical, path.join(validRoot, screenshotName));
+    assert.deepEqual(readFileSync(canonical), pngBytes);
+    assert.deepEqual(readFileSync(nested), pngBytes);
+
+    await assert.rejects(
+      canonicalizePhase2OwnedPlanReorderScreenshot(validRoot),
+      /exactly one owned plan reorder persisted screenshot/u,
+    );
+
+    const missingRoot = path.join(directory, "missing");
+    await mkdir(missingRoot);
+    await assert.rejects(
+      canonicalizePhase2OwnedPlanReorderScreenshot(missingRoot),
+      /exactly one owned plan reorder persisted screenshot/u,
+    );
+
+    for (const [name, bytes, error] of [
+      ["empty", Buffer.alloc(0), /missing, linked, or unsafe/u],
+      ["not-png", Buffer.from("not a real PNG"), /not a stable PNG/u],
+    ]) {
+      const root = path.join(directory, name);
+      await createNestedScreenshot(root, bytes);
+      await assert.rejects(
+        canonicalizePhase2OwnedPlanReorderScreenshot(root),
+        error,
+      );
+    }
+
+    const symlinkRoot = path.join(directory, "symlink");
+    const symlinkTarget = path.join(symlinkRoot, "target.png");
+    await mkdir(path.dirname(nestedScreenshot(symlinkRoot)), { recursive: true });
+    await writeFile(symlinkTarget, pngBytes);
+    await symlink(symlinkTarget, nestedScreenshot(symlinkRoot));
+    await assert.rejects(
+      canonicalizePhase2OwnedPlanReorderScreenshot(symlinkRoot),
+      /exactly one owned plan reorder persisted screenshot/u,
+    );
+
+    const hardLinkRoot = path.join(directory, "hard-link");
+    const hardLinkSource = path.join(hardLinkRoot, "source.png");
+    await mkdir(path.dirname(nestedScreenshot(hardLinkRoot)), { recursive: true });
+    await writeFile(hardLinkSource, pngBytes);
+    await link(hardLinkSource, nestedScreenshot(hardLinkRoot));
+    await assert.rejects(
+      canonicalizePhase2OwnedPlanReorderScreenshot(hardLinkRoot),
+      /missing, linked, or unsafe/u,
+    );
+
+    const duplicateRoot = path.join(directory, "duplicate");
+    await createNestedScreenshot(path.join(duplicateRoot, "first"));
+    await createNestedScreenshot(path.join(duplicateRoot, "second"));
+    await assert.rejects(
+      canonicalizePhase2OwnedPlanReorderScreenshot(duplicateRoot),
+      /exactly one owned plan reorder persisted screenshot/u,
+    );
+  } finally {
+    await rm(directory, { force: true, recursive: true });
+  }
+});
+
 test("Phase 2 remediation flows use public labels and deterministic seams", async () => {
   const runner = await readFile(
     path.join(projectRoot, "scripts/run-phase2-maestro.mjs"),
@@ -529,6 +640,10 @@ test("Phase 2 remediation flows use public labels and deterministic seams", asyn
   );
   const workout = await readFile(
     path.join(projectRoot, "maestro/phase2/remediation-workout.yaml"),
+    "utf8",
+  );
+  const workoutRoute = await readFile(
+    path.join(projectRoot, "app/workout/[sessionId].tsx"),
     "utf8",
   );
   const rest = await readFile(
@@ -572,11 +687,19 @@ test("Phase 2 remediation flows use public labels and deterministic seams", asyn
   );
   assert.match(
     inputs,
+    /- tapOn: "Create custom exercise"\n- assertVisible: "Create custom exercise"\n- repeat:\n    times: 12\n    while:\n      notVisible: "Default rest seconds"\n    commands:\n      - swipe:\n          start: 95%, 75%\n          end: 95%, 25%\n          duration: 300\n- assertVisible: "Default rest seconds"\n- tapOn: "Default rest seconds"/u,
+  );
+  assert.doesNotMatch(
+    inputs,
+    /- scrollUntilVisible:\n    element:\n      text: "Default rest seconds"/u,
+  );
+  assert.match(
+    inputs,
     /- tapOn: "Default rest seconds seconds"\n- eraseText: 2\n- inputText: "30"/u,
   );
   assert.match(
     inputs,
-    /- assertNotVisible: "Default rest seconds duration dialog"\n- scrollUntilVisible:[\s\S]*text: "Go back"[\s\S]*- tapOn: "Go back"[\s\S]*text: "Plans"\n    direction: UP/u,
+    /- assertNotVisible: "Default rest seconds duration dialog"\n- repeat:\n    times: 12\n    while:\n      notVisible: "Go back"\n    commands:\n      - swipe:\n          start: 98%, 25%\n          end: 98%, 75%\n          duration: 300\n- assertVisible: "Go back"\n- tapOn: "Go back"[\s\S]*text: "Plans"\n    direction: UP/u,
   );
   assert.match(
     inputs,
@@ -585,18 +708,26 @@ test("Phase 2 remediation flows use public labels and deterministic seams", asyn
 
   for (const action of [
     "arm_add_warmup_failure",
-    "arm_copy_warmup_failure",
     "arm_add_working_failure",
     "arm_completed_set_correction_failure",
   ]) {
     assert.match(workout, new RegExp(`action=${action}`, "u"), action);
   }
+  assert.match(
+    workoutRoute,
+    /createWorkoutMutationTestCommandAdapters\(\{[\s\S]*addWarmup: runtime\.addWarmup,[\s\S]*addWorkingSet: runtime\.addWorkingSet,[\s\S]*reviseCompletedSet: runtime\.reviseCompletedSet,[\s\S]*\}\)/u,
+  );
+  for (const command of ["addWarmup", "addWorkingSet", "reviseCompletedSet"]) {
+    assert.match(
+      workoutRoute,
+      new RegExp(`${command}: mutationCommands\.${command}`, "u"),
+      `${command} must pass through the development-test mutation adapter`,
+    );
+  }
   for (const label of [
     "Add warm-up",
-    "Copy previous warm-up",
     "Add working set",
     "Retry add warm-up",
-    "Retry copy warm-up",
     "Retry add working set",
     "Today's plan",
     "Return to current exercise",
@@ -606,37 +737,14 @@ test("Phase 2 remediation flows use public labels and deterministic seams", asyn
   ]) {
     assert.match(workout, new RegExp(label.replace(/[.*+?^${}()|[\]\\]/gu, "\\$&"), "u"), label);
   }
-  const initialAddWorkingSetVisibilityGuard = [
+  const staleInitialAddWorkingSetScroll = [
     "- scrollUntilVisible:",
     "    element:",
     '      text: "Add working set"',
     "    direction: DOWN",
     "    centerElement: true",
   ].join("\n");
-  const safeActionNudge = [
-    "- swipe:",
-    "    start: 95%, 75%",
-    "    end: 95%, 45%",
-    "    duration: 300",
-  ].join("\n");
-  assert.equal(
-    workout.split(initialAddWorkingSetVisibilityGuard).length - 1,
-    1,
-    "the initial Add working set visibility proof remains unchanged",
-  );
-  assert.ok(
-    workout.includes(
-      `${initialAddWorkingSetVisibilityGuard}\n- assertVisible: "Add working set"`,
-    ),
-    "the initial Add working set discovery must prove the action immediately without a blind swipe that can hide it",
-  );
-  assert.ok(
-    !workout.includes(
-      `${initialAddWorkingSetVisibilityGuard}\n${safeActionNudge}`,
-    ),
-    "the initial Add working set discovery must not be followed by an unconditional swipe",
-  );
-  const retriedAddWorkingSetVisibilityGuard = [
+  const boundedAddWorkingSetTraversal = [
     "- repeat:",
     "    times: 12",
     "    while:",
@@ -647,10 +755,40 @@ test("Phase 2 remediation flows use public labels and deterministic seams", asyn
     "          end: 95%, 25%",
     "          duration: 300",
   ].join("\n");
+  const initialAddWorkingSetVisibilityGuard = [
+    '- assertVisible: "Add warm-up"',
+    boundedAddWorkingSetTraversal,
+    '- assertVisible: "0 of 15 working sets"',
+    '- assertVisible: "Add working set"',
+  ].join("\n");
+  const initialWarmupFailurePrelude = workout.split(
+    '- openLink: "gymtracker-devtest://__notification-test-controls?action=arm_add_warmup_failure"',
+  )[0];
+  const safeActionNudge = [
+    "- swipe:",
+    "    start: 95%, 75%",
+    "    end: 95%, 45%",
+    "    duration: 300",
+  ].join("\n");
   assert.equal(
-    workout.split(retriedAddWorkingSetVisibilityGuard).length - 1,
-    1,
-    "the post-restart Add working set action must use bounded right-edge swipes",
+    initialWarmupFailurePrelude.split(staleInitialAddWorkingSetScroll).length - 1,
+    0,
+    "the initial traversal must not target the compact Add working set glyph",
+  );
+  assert.ok(
+    workout.includes(initialAddWorkingSetVisibilityGuard),
+    "the initial working-set discovery must use bounded target-gated swipes before proving the action",
+  );
+  assert.ok(
+    !workout.includes(
+      `${initialAddWorkingSetVisibilityGuard}\n${safeActionNudge}`,
+    ),
+    "the initial Add working set discovery must not be followed by an unconditional swipe",
+  );
+  assert.equal(
+    workout.split(boundedAddWorkingSetTraversal).length - 1,
+    2,
+    "the initial and post-restart Add working set actions must use bounded right-edge swipes",
   );
   const postRestartWorkingSetTopAnchor = [
     '- tapOn: "Resume workout"',
@@ -664,7 +802,7 @@ test("Phase 2 remediation flows use public labels and deterministic seams", asyn
     "          end: 95%, 75%",
     "          duration: 300",
     '- assertVisible: "Add warm-up"',
-    retriedAddWorkingSetVisibilityGuard,
+    boundedAddWorkingSetTraversal,
   ].join("\n");
   assert.ok(
     workout.includes(postRestartWorkingSetTopAnchor),
@@ -672,13 +810,13 @@ test("Phase 2 remediation flows use public labels and deterministic seams", asyn
   );
   assert.ok(
     workout.includes(
-      `${retriedAddWorkingSetVisibilityGuard}\n- assertVisible: "Add working set"\n- tapOn: "Add working set"`,
+      `${boundedAddWorkingSetTraversal}\n- assertVisible: "Add working set"\n- tapOn: "Add working set"`,
     ),
     "the post-restart add action must be used immediately after target-driven discovery",
   );
   assert.ok(
     !workout.includes(
-      `${retriedAddWorkingSetVisibilityGuard}\n${safeActionNudge}`,
+      `${boundedAddWorkingSetTraversal}\n${safeActionNudge}`,
     ),
     "the post-restart Add working set discovery must not be followed by a blind swipe",
   );
@@ -693,11 +831,23 @@ test("Phase 2 remediation flows use public labels and deterministic seams", asyn
     "          end: 95%, 45%",
     "          duration: 300",
   ].join("\n");
+  const boundedRetriedWorkingSetReveal = [
+    "- repeat:",
+    "    times: 12",
+    "    while:",
+    '      notVisible: "Working set 4 of 4.*Not completed.*"',
+    "    commands:",
+    "      - swipe:",
+    "          start: 95%, 75%",
+    "          end: 95%, 25%",
+    "          duration: 300",
+    '- assertVisible: "Working set 4 of 4.*Not completed.*"',
+  ].join("\n");
   assert.ok(
     workout.includes(
-      `- tapOn: "Add working set"\n- assertNotVisible:\n    text: "Working set 4 of .*"\n${boundedRetryAddWorkingSetTraversal}\n- assertVisible: "Retry add working set"\n- tapOn: "Retry add working set"\n- assertVisible: "Working set 4 added and focused"`,
+      `- tapOn: "Add working set"\n- assertNotVisible:\n    text: "Working set 4 of .*"\n${boundedRetryAddWorkingSetTraversal}\n- assertVisible: "Retry add working set"\n- tapOn: "Retry add working set"\n${boundedRetriedWorkingSetReveal}`,
     ),
-    "the absent new row and discovered retry action must prove failure and recovery without a blind swipe that can hide an already-visible target",
+    "the absent new row and discovered retry action must prove failure before bounded target-gated recovery",
   );
   assert.doesNotMatch(
     workout,
@@ -723,8 +873,8 @@ test("Phase 2 remediation flows use public labels and deterministic seams", asyn
   ].join("\n");
   assert.equal(
     workout.split(safeReturnToTodayTraversal).length - 1,
-    4,
-    "every test-control return must use bounded discovery and a final safe-viewport nudge",
+    3,
+    "every retained test-control return must use bounded discovery and a final safe-viewport nudge",
   );
   assert.doesNotMatch(
     workout,
@@ -772,47 +922,51 @@ test("Phase 2 remediation flows use public labels and deterministic seams", asyn
 
   assert.match(
     workout,
-    /- assertVisible: "Warm-up was not added"\n- assertNotVisible:\n    text: "Warm-up 3 of \.\*"\n- tapOn: "Retry add warm-up"\n- assertVisible: "Warm-up W3 added and focused"/u,
+    /- assertVisible: "Warm-up was not added"\n- assertNotVisible:\n    text: "Warm-up 3 of \.\*"\n- tapOn: "Retry add warm-up"\n- repeat:\n    times: 12\n    while:\n      notVisible: "Warm-up 3 of 3\.\*Current values 40 kg × 5\.\*Not completed\.\*"\n    commands:\n      - swipe:\n          start: 95%, 75%\n          end: 95%, 25%\n          duration: 300\n- assertVisible: "Warm-up 3 of 3\.\*Current values 40 kg × 5\.\*Not completed\.\*"/u,
+  );
+  const warmupTwoValues =
+    '- assertVisible: "Warm-up 2 of 2.*Current values 40 kg × 5.*Not completed.*"';
+  assert.equal(
+    workout.split(warmupTwoValues).length - 1,
+    2,
+    "the source warm-up values must be proved before add and after removal",
+  );
+  assert.equal(
+    workout.split('- assertVisible: "0 of 15 working sets"').length - 1,
+    2,
+    "warm-up add and removal must leave session-wide working-set progress unchanged",
+  );
+  const warmupThreeValues =
+    '- assertVisible: "Warm-up 3 of 3.*Current values 40 kg × 5.*Not completed.*"';
+  assert.equal(
+    workout.split(warmupThreeValues).length - 1,
+    2,
+    "the added warm-up must retain the exact previous observation before and after restart",
   );
   assert.match(
     workout,
-    /clearState: false[\s\S]*text: "Warm-up 3 of 3\.\*"[\s\S]*- assertVisible: "Warm-up was not added"\n- assertNotVisible:\n    text: "Warm-up 4 of \.\*"\n- tapOn: "Retry copy warm-up"\n- assertVisible: "Warm-up W4 added and focused"/u,
+    /- scrollUntilVisible:\n    element:\n      text: "Warm-up 2 of 2\.\*Current values 40 kg × 5\.\*Not completed\.\*"\n    direction: DOWN\n    centerElement: true\n- assertVisible: "Warm-up 2 of 2\.\*Current values 40 kg × 5\.\*Not completed\.\*"[\s\S]*- assertVisible: "Add warm-up"\n- tapOn: "Add warm-up"/u,
   );
-  const boundedWarmupFourTraversal = [
-    "- repeat:",
-    "    times: 12",
-    "    while:",
-    '      notVisible: "Warm-up 4 of 4.*"',
-    "    commands:",
-    "      - swipe:",
-    "          start: 95%, 75%",
-    "          end: 95%, 25%",
-    "          duration: 300",
-    '- assertVisible: "Warm-up 4 of 4.*"',
-  ].join("\n");
-  const postCopyWarmupRestartContract = [
-    '- assertVisible: "Warm-up W4 added and focused"',
-    "- stopApp",
-    "- launchApp:",
-    "    clearState: false",
-    "    stopApp: true",
-    "    permissions:",
-    "      notifications: deny",
-    '- assertVisible: "Today"',
-    "- extendedWaitUntil:",
-    '    visible: "Resume workout"',
-    "    timeout: 90000",
-    '- tapOn: "Resume workout"',
-    boundedWarmupFourTraversal,
-    "- assertNotVisible:",
-    '    text: "Warm-up 5 of .*"',
-  ].join("\n");
-  assert.equal(
-    workout.split(postCopyWarmupRestartContract).length - 1,
-    1,
-    "post-copy restart must wait for Today, reopen the workout, and immediately reveal persisted warm-up W4 with bounded right-edge swipes",
+  assert.doesNotMatch(
+    workout,
+    /- assertVisible: "Add warm-up"\n- assertVisible: "0 of 15 working sets"\n- tapOn: "Add warm-up"/u,
+    "the warm-up header viewport must not claim the off-screen working-set summary",
   );
-  assert.match(workout, /text: "Warm-up 5 of \.\*"/u);
+  assert.match(
+    workout,
+    /- assertVisible: "Remove warm-up W3"\n- tapOn: "Remove warm-up W3"\n- assertVisible: "Remove warm-up W3\?"\n- tapOn:\n    id: "remove-warmup-confirm"\n- extendedWaitUntil:\n    visible: "Warm-up 2 of 2\.\*Current values 40 kg × 5\.\*Not completed\.\*"\n    timeout: 60000\n- assertNotVisible: "Remove warm-up W3"\n- assertNotVisible:\n    text: "Warm-up 3 of \.\*"/u,
+  );
+  assert.doesNotMatch(
+    workout,
+    /extendedWaitUntil:\n    visible: "Warm-up W3 removed"/u,
+    "the mutation proof must not depend on a visually hidden live-region announcement",
+  );
+  assert.match(
+    workout,
+    /- repeat:\n    times: 4\n    while:\n      notVisible: "Remove warm-up W3"\n    commands:\n      - swipe:\n          start: 95%, 75%\n          end: 95%, 45%\n          duration: 300\n- assertVisible: "Remove warm-up W3"/u,
+    "the persisted added warm-up must reveal its trailing remove action before using it",
+  );
+  assert.doesNotMatch(workout, /(?:assertVisible|tapOn): "Skip (?:warm-up|set)/iu);
   const boundedWorkingSetFourTraversal = [
     "- repeat:",
     "    times: 16",
@@ -828,11 +982,11 @@ test("Phase 2 remediation flows use public labels and deterministic seams", asyn
   assert.equal(
     workout.split(boundedWorkingSetFourTraversal).length - 1,
     2,
-    "both long working-set traversals must use bounded right-edge swipes",
+    "both retained long working-set traversals must use bounded right-edge swipes",
   );
   assert.match(
     workout,
-    /- repeat:\n    times: 12\n    while:\n      notVisible: "Complete warm-up W1"\n    commands:\n      - swipe:\n          start: 95%, 25%\n          end: 95%, 75%\n          duration: 300\n- assertVisible: "Complete warm-up W1"\n- tapOn: "Complete warm-up W1"\n- repeat:\n    times: 12\n    while:\n      notVisible: "Warm-up 1 of 4\.\*Completed\.\*"\n    commands:\n      - swipe:\n          start: 95%, 25%\n          end: 95%, 75%\n          duration: 300\n- assertVisible: "Warm-up 1 of 4\.\*Completed\.\*"\n- repeat:\n    times: 32\n    while:\n      notVisible: "Complete Set 1"\n    commands:\n      - swipe:\n          start: 95%, 75%\n          end: 95%, 25%\n          duration: 500\n- assertVisible: "Complete Set 1"/u,
+    /- repeat:\n    times: 12\n    while:\n      notVisible: "Complete warm-up W1"\n    commands:\n      - swipe:\n          start: 95%, 25%\n          end: 95%, 75%\n          duration: 300\n- assertVisible: "Complete warm-up W1"\n- tapOn: "Complete warm-up W1"\n- repeat:\n    times: 12\n    while:\n      notVisible: "Warm-up 1 of 2\.\*Completed\.\*"\n    commands:\n      - swipe:\n          start: 95%, 25%\n          end: 95%, 75%\n          duration: 300\n- assertVisible: "Warm-up 1 of 2\.\*Completed\.\*"\n- repeat:\n    times: 32\n    while:\n      notVisible: "Complete Set 1"\n    commands:\n      - swipe:\n          start: 95%, 75%\n          end: 95%, 25%\n          duration: 500\n- assertVisible: "Complete Set 1"/u,
   );
   assert.match(
     workout,
@@ -866,7 +1020,7 @@ test("Phase 2 remediation flows use public labels and deterministic seams", asyn
   );
   assert.match(
     workout,
-    /- assertVisible: "Correction was not saved\. Retry the correction\."[\s\S]*- assertVisible: "Working set 4 of 4\.\*"\n- repeat:\n    times: 4\n    while:\n      notVisible: "Retry completed set correction"\n    commands:\n      - swipe:\n          start: 95%, 75%\n          end: 95%, 45%\n          duration: 300\n- swipe:\n    start: 95%, 75%\n    end: 95%, 45%\n    duration: 300\n- assertVisible: "Retry completed set correction"\n- tapOn: "Retry completed set correction"[\s\S]*text: "Working set 1 correction saved"\n    direction: UP\n    centerElement: true\n    timeout: 60000/u,
+    /- assertVisible: "Correction was not saved\. Retry the correction\."[\s\S]*- assertVisible: "Working set 4 of 4\.\*"\n- repeat:\n    times: 4\n    while:\n      notVisible: "Retry completed set correction"\n    commands:\n      - swipe:\n          start: 95%, 75%\n          end: 95%, 45%\n          duration: 300\n- swipe:\n    start: 95%, 75%\n    end: 95%, 45%\n    duration: 300\n- assertVisible: "Retry completed set correction"\n- tapOn: "Retry completed set correction"[\s\S]*- assertVisible: "Working set 1 of 4\.\*Current values 62\.5 kg × 8\.\*Completed\.\*"/u,
   );
   const completedSetEditTraversal = [
     "- repeat:",
@@ -1009,7 +1163,20 @@ test("Phase 2 date flows use CalendarField rather than text entry", async () => 
     1,
   );
   const effectiveDateCalendarSequence = [
-    '- tapOn: "Effective date"',
+    '- repeat:',
+    '    times: 4',
+    '    while:',
+    '      notVisible: "Schedule timezone"',
+    '    commands:',
+    '      - swipe:',
+    '          start: 95%, 75%',
+    '          end: 95%, 45%',
+    '          duration: 300',
+    '- assertVisible: "Schedule timezone"',
+    '- tapOn:',
+    '    text: "Effective date"',
+    '    below:',
+    '      text: "Defaults to today and applies prospectively[.]"',
     '- assertVisible: "Calendar dialog"',
     '- tapOn: "Use Default Date"',
     '- tapOn: "Apply Date"',
@@ -1021,66 +1188,122 @@ test("Phase 2 date flows use CalendarField rather than text entry", async () => 
   );
   assert.match(
     schedule,
-    /- assertNotVisible: "Calendar dialog"\n- tapOn: "Schedule timezone"\n- eraseText: 32\n- inputText: "Australia\/Sydney"\n- hideKeyboard\n- repeat:\n    times: 4\n    while:\n      notVisible: "\^Weekday\$"\n    commands:\n      - swipe:\n          start: 95%, 75%\n          end: 95%, 45%\n          duration: 300\n- assertVisible: "\^Weekday\$"\n- tapOn: "\^Rotation\$"/u,
+    /- assertNotVisible: "Calendar dialog"\n- repeat:\n    times: 4\n    while:\n      notVisible: "Schedule timezone"\n    commands:\n      - swipe:\n          start: 95%, 75%\n          end: 95%, 45%\n          duration: 300\n- assertVisible: "Schedule timezone"\n- tapOn: "Schedule timezone"\n- eraseText: 32\n- inputText: "Australia\/Sydney"\n- hideKeyboard\n- repeat:\n    times: 4\n    while:\n      notVisible: "\^Weekday\$"\n    commands:\n      - swipe:\n          start: 95%, 75%\n          end: 95%, 45%\n          duration: 300\n- assertVisible: "\^Weekday\$"\n- tapOn: "\^Rotation\$"/u,
   );
-  const boundedRotationEditorTraversal = [
-    '- tapOn: "^Rotation$"',
-    '- assertVisible: "1. Push"',
-    '- assertVisible: "2. Pull"',
-    "- repeat:",
-    "    times: 4",
-    "    while:",
-    '      notVisible: "Move Pull up"',
-    "    commands:",
-    "      - swipe:",
-    "          start: 95%, 75%",
-    "          end: 95%, 45%",
-    "          duration: 300",
-    '- assertVisible: "Move Pull up"',
-    '- tapOn: "Move Pull up"',
-    '- assertVisible: "1. Pull"',
-    "- repeat:",
-    "    times: 4",
-    "    while:",
-    '      notVisible: "3. Legs"',
-    "    commands:",
-    "      - swipe:",
-    "          start: 95%, 75%",
-    "          end: 95%, 45%",
-    "          duration: 300",
-    '- assertVisible: "3. Legs"',
-    "- repeat:",
-    "    times: 4",
-    "    while:",
-    '      notVisible: "Save schedule"',
-    "    commands:",
-    "      - swipe:",
-    "          start: 95%, 75%",
-    "          end: 95%, 45%",
-    "          duration: 300",
-    '- assertVisible: "Save schedule"',
-    '- tapOn: "Save schedule"',
-  ].join("\n");
-  assert.ok(
-    schedule.includes(boundedRotationEditorTraversal),
-    "the expanded Rotation editor must reveal every row and action with bounded right-edge swipes",
-  );
-  const scheduleWorkoutFieldTraversal = /- repeat:\n    times: 4\n    while:\n      notVisible: "Working set 1 (?:added )?load in kilograms"\n    commands:\n      - swipe:\n          start: 95%, 75%\n          end: 95%, 45%\n          duration: 300\n- assertVisible: "Working set 1 (?:added )?load in kilograms"/gu;
-  assert.equal([...schedule.matchAll(scheduleWorkoutFieldTraversal)].length, 3);
   assert.match(
     schedule,
-    /- assertVisible: "Chin-Up"\n- repeat:\n    times: 4\n    while:\n      notVisible: "Working set 1 repetitions"\n    commands:\n      - swipe:\n          start: 95%, 75%\n          end: 95%, 45%\n          duration: 300\n- assertVisible: "Working set 1 repetitions"/u,
+    /- tapOn: "\^Rotation\$"\n- assertVisible: "Push"\n- assertVisible: "Reorder Push"\n- repeat:\n    times: 4\n    while:\n      notVisible: "Reorder Pull"\n    commands:\n      - swipe:\n          start: 95%, 75%\n          end: 95%, 45%\n          duration: 300\n- assertVisible: "Pull"\n- assertVisible: "Reorder Pull"\n- repeat:\n    times: 4\n    while:\n      notVisible: "Reorder Legs"\n    commands:\n      - swipe:\n          start: 95%, 75%\n          end: 95%, 45%\n          duration: 300\n- assertVisible: "Legs"\n- assertVisible: "Reorder Legs"/u,
+  );
+  const scheduleWorkoutFieldTraversal = /- repeat:\n    times: 4\n    while:\n      notVisible: "Working set 1 (?:added )?load in kilograms"\n    commands:\n      - swipe:\n          start: 95%, 75%\n          end: 95%, 45%\n          duration: 300\n- assertVisible: "Working set 1 (?:added )?load in kilograms"/gu;
+  assert.equal([...schedule.matchAll(scheduleWorkoutFieldTraversal)].length, 2);
+  assert.match(
+    schedule,
+    /- assertVisible: "Bench Press"\n- repeat:\n    times: 4\n    while:\n      notVisible: "Working set 1 load in kilograms"\n    commands:\n      - swipe:\n          start: 95%, 75%\n          end: 95%, 45%\n          duration: 300\n- assertVisible: "Working set 1 load in kilograms"\n- repeat:\n    times: 4\n    while:\n      notVisible: "Working set 1 repetitions"/u,
   );
   const scheduleWorkoutRepetitionTraversal = /- repeat:\n    times: 4\n    while:\n      notVisible: "Working set 1 repetitions"\n    commands:\n      - swipe:\n          start: 95%, 75%\n          end: 95%, 45%\n          duration: 300\n- assertVisible: "Working set 1 repetitions"/gu;
   assert.equal(
     [...schedule.matchAll(scheduleWorkoutRepetitionTraversal)].length,
-    4,
+    2,
   );
   assert.match(
     impact,
     /- tapOn:\n    text: "Effective date"[\s\S]{0,160}- assertVisible: "Calendar dialog"\n- tapOn: "Use Default Date"\n- tapOn: "Apply Date"/u,
   );
   assert.doesNotMatch(impact, /- tapOn:[\s\S]{0,100}text: "Effective date"[\s\S]{0,100}- eraseText:/u);
+});
+
+test("retained Maestro flows use the Phase 7 action and rotation vocabulary", async () => {
+  const { PHASE2_PUBLIC_FLOW_PATHS } = await load(
+    "scripts/run-phase2-maestro.mjs",
+  );
+  const retainedFlowPaths = [...new Set([
+    ...PHASE2_PUBLIC_FLOW_PATHS,
+    "maestro/subflows/phase1-airplane-session.yaml",
+  ])].toSorted();
+  const contentsByPath = await Promise.all(
+    retainedFlowPaths.map(async (relativePath) => [
+      relativePath,
+      await readFile(path.join(projectRoot, relativePath), "utf8"),
+    ]),
+  );
+  const retiredSelectors = [
+    /Appearance and rest-alert settings/u,
+    /Copy previous warm-up/u,
+    /Retry copy warm-up/u,
+    /Warm-up W[34] added and focused/u,
+    /Working set 4 added and focused/u,
+    /(?:assertVisible|tapOn): "Move [^"]+ (?:up|down)"/u,
+    /(?:assertVisible|tapOn): "[0-9]+\. [^"]+"/u,
+    /tapOn: "(?:Repeat|Skip|Advance)"/u,
+    /tapOn: "Skip (?!rest\b)[^"]+"/u,
+    /Advance rotation after this workout/u,
+  ];
+
+  for (const [relativePath, content] of contentsByPath) {
+    for (const retiredSelector of retiredSelectors) {
+      assert.doesNotMatch(content, retiredSelector, relativePath);
+    }
+  }
+
+  const allFlows = contentsByPath.map(([, content]) => content).join("\n");
+  assert.match(allFlows, /(?:tapOn|assertVisible): "Skip rest"/u);
+  assert.match(allFlows, /Repeat 60 kg next time/u);
+
+  const schedule = contentsByPath.find(
+    ([relativePath]) => relativePath === "maestro/phase2/schedule-cross-profile.yaml",
+  )?.[1];
+  assert.ok(schedule, "schedule cross-profile flow must exist");
+  assert.match(schedule, /Reorder [^"]+/u);
+  assert.match(schedule, /Override with Skip/u);
+  assert.match(
+    schedule,
+    /Override with Skip[\s\S]*Current plan day → Skip[\s\S]*- assertVisible: "Rest day"[\s\S]*- assertVisible: "Skip"[\s\S]*Override with Rest day[\s\S]*Skip → Rest day[\s\S]*- assertVisible: "Rest day"/u,
+  );
+  assert.match(
+    schedule,
+    /- tapOn: "Train anyway"\n- tapOn: "Start Push"[\s\S]*- tapOn: "Discard workout"[\s\S]*- assertVisible: "Today"[\s\S]*- tapOn: "Train anyway"\n- tapOn: "Start Push"[\s\S]*- tapOn: "Finish as partial"[\s\S]*- extendedWaitUntil:\n    visible: "Workout saved"\n    timeout: 30000\n- assertVisible: "Return to Today"\n- tapOn: "Return to Today"\n- extendedWaitUntil:\n    visible: "Workout saved as partial"\n    timeout: 30000\n- assertVisible: "Resume workout"/u,
+  );
+});
+
+test("Phase 2 evidence metadata and checklist use the Phase 7 warm-up contract", async () => {
+  const [maestroSource, checklistSource, uiSpecSource] = await Promise.all([
+    readFile(path.join(projectRoot, "scripts/run-phase2-maestro.mjs"), "utf8"),
+    readFile(path.join(projectRoot, "scripts/generate-phase2-attended-checklist.mjs"), "utf8"),
+    readFile(path.join(
+      projectRoot,
+      ".planning/phases/02-owned-library-and-planning/02-UI-SPEC.md",
+    ), "utf8"),
+  ]);
+  const evidenceText = `${maestroSource}\n${checklistSource}`;
+
+  assert.doesNotMatch(evidenceText, /Copy (?:previous )?warm-up/iu);
+  assert.doesNotMatch(evidenceText, /Add and copy warm-ups/iu);
+  assert.doesNotMatch(evidenceText, /add or copy failure/iu);
+  assert.doesNotMatch(evidenceText, /skipped rows|completed or skipped/iu);
+  assert.doesNotMatch(
+    evidenceText,
+    /(?:action|expected|observation): [^\n]*(?:skipped (?:row|set)|Skip (?:warm-up|set))/iu,
+  );
+  assert.match(
+    maestroSource,
+    /RC-02-LATEST-SCHEMA-ADD-COPY[\s\S]*previous 40 kg × 5 observation[\s\S]*survives restart[\s\S]*removed/iu,
+  );
+  assert.match(
+    maestroSource,
+    /RC-02-SET-STATUS[\s\S]*eligible incomplete row exposes Remove rather than Skip/iu,
+  );
+  assert.match(
+    checklistSource,
+    /RC-02-WARMUP-EXCLUSION-COPY[\s\S]*reuses and persists the previous observation[\s\S]*removal deletes the row/iu,
+  );
+  assert.match(evidenceText, /Add warm-up/u);
+  assert.match(evidenceText, /Add working set/u);
+  assert.match(evidenceText, /previous 40 kg × 5 observation/u);
+  assert.match(evidenceText, /Remove warm-up W3/u);
+  assert.match(evidenceText, /retry/u);
+  assert.doesNotMatch(uiSpecSource, /Copy (?:previous )?warm-up|Skip warm-up|Skip set/iu);
+  assert.match(uiSpecSource, /Add warm-up[\s\S]*preceding observation values/iu);
+  assert.match(uiSpecSource, /Remove warm-up[\s\S]*incomplete rows expose Remove/iu);
 });
 
 test("Phase 2 Maestro rejects failed, skipped, malformed, and identity-drifted JUnit", async () => {
@@ -1779,6 +2002,64 @@ test("Phase 2 source ledger derives canonical remediation, matrix, and migration
     () => validatePhase2AutomatedEvidence({ ...evidence, maestro: { ...evidence.maestro, flows: evidence.maestro.flows.map((flow, index) => index === 0 ? { ...flow, airplane_mode: !flow.airplane_mode } : flow) } }, { requireRoundtrip: true }),
     /Maestro execution/u,
   );
+  const ownedPlanFlowIndex = evidence.maestro.flows.findIndex((flow) => flow.flow === OWNED_PLAN_FLOW);
+  assert.ok(ownedPlanFlowIndex >= 0);
+  assert.throws(
+    () => validatePhase2AutomatedEvidence({
+      ...evidence,
+      maestro: {
+        ...evidence.maestro,
+        flows: evidence.maestro.flows.map((flow, index) => index === ownedPlanFlowIndex
+          ? { ...flow, native_owned_plan_reorder_proof: undefined }
+          : flow),
+      },
+    }, { requireRoundtrip: true }),
+    /owned plan native reorder proof is missing/u,
+  );
+  assert.throws(
+    () => validatePhase2AutomatedEvidence({
+      ...evidence,
+      maestro: {
+        ...evidence.maestro,
+        flows: evidence.maestro.flows.map((flow, index) => index === ownedPlanFlowIndex
+          ? {
+              ...flow,
+              native_owned_plan_reorder_proof: {
+                ...flow.native_owned_plan_reorder_proof,
+                continuation_flow: "maestro/tampered.yaml",
+              },
+            }
+          : flow),
+      },
+    }, { requireRoundtrip: true }),
+    /owned plan native reorder proof is malformed or stale/u,
+  );
+  const ownedPlanProof = evidence.maestro.flows[ownedPlanFlowIndex]
+    .native_owned_plan_reorder_proof;
+  const missingOwnedPlanEvidenceRoot = await mkdtemp(
+    path.join(tmpdir(), "phase2-missing-owned-plan-evidence-"),
+  );
+  try {
+    const continuationFlowPath = path.join(
+      missingOwnedPlanEvidenceRoot,
+      OWNED_PLAN_CONTINUATION_FLOW,
+    );
+    await mkdir(path.dirname(continuationFlowPath), { recursive: true });
+    await writeFile(
+      continuationFlowPath,
+      readFileSync(path.join(projectRoot, OWNED_PLAN_CONTINUATION_FLOW)),
+    );
+    assert.throws(
+      () => validatePhase2AutomatedEvidence(evidence, {
+        evidenceBoundary: { root: missingOwnedPlanEvidenceRoot },
+        requireRoundtrip: true,
+      }),
+      /owned plan continuation report file is missing or unsafe/u,
+    );
+  } finally {
+    await rm(missingOwnedPlanEvidenceRoot, { force: true, recursive: true });
+  }
+  assert.equal(ownedPlanProof.continuation_flow_sha256, OWNED_PLAN_CONTINUATION_SHA256);
   const observedFlowIndex = evidence.maestro.flows.findIndex((flow) => flow.remediation_case_observations.length > 0);
   assert.ok(observedFlowIndex >= 0);
   assert.throws(
@@ -2771,11 +3052,15 @@ test("schedule flow reopens the active plan from authoritative state", async () 
   assert.doesNotMatch(flow, /Device timezone: Asia\/Singapore/u);
   assert.match(
     flow,
-    /- tapOn: "Repeat"\n- assertVisible: "Repeat Pull\?"\n- tapOn: "Repeat"\n- waitForAnimationToEnd\n- assertVisible: "Pull"\n- tapOn: "Advance"\n- assertVisible: "Advance Pull\?"\n- tapOn: "Advance"\n- extendedWaitUntil:\n    visible: "Rest day"\n    timeout: 30000\n- assertVisible: "Next scheduled workout · Push · \.\*"/u,
+    /- tapOn: "Override with Skip"\n- assertVisible: "Set this date override\?"\n- assertVisible: "Current plan day → Skip"\n- tapOn: "Save override"[\s\S]*- assertVisible: "Rest day"[\s\S]*- assertVisible: "Skip"\n- scrollUntilVisible:[\s\S]*- tapOn: "Override with Rest day"\n- assertVisible: "Replace this date override\?"\n- assertVisible: "Skip → Rest day"\n- tapOn: "Replace override"[\s\S]*- assertVisible: "Rest day"/u,
   );
   assert.match(
     flow,
-    /- launchApp:\n    clearState: true\n    permissions:\n      notifications: deny[\s\S]*- assertVisible: "Push"\n- tapOn: "Skip"\n- assertVisible: "Skip Push\?"\n- tapOn: "Skip"\n- extendedWaitUntil:\n    visible: "Rest day"\n    timeout: 30000\n- assertVisible: "Next scheduled workout · Pull · \.\*"/u,
+    /- tapOn: "Override with Rest day"\n- assertVisible: "Set this date override\?"\n- assertVisible: "Current plan day → Rest day"\n- tapOn: "Save override"[\s\S]*- extendedWaitUntil:\n    visible: "Rest day"\n    timeout: 30000/u,
+  );
+  assert.match(
+    flow,
+    /- tapOn: "Train anyway"\n- tapOn: "Start Push"[\s\S]*- tapOn: "Discard workout"[\s\S]*- assertVisible: "Today"[\s\S]*- tapOn: "Train anyway"\n- tapOn: "Start Push"[\s\S]*- tapOn: "Finish as partial"[\s\S]*- extendedWaitUntil:\n    visible: "Workout saved"\n    timeout: 30000\n- assertVisible: "Return to Today"\n- tapOn: "Return to Today"\n- extendedWaitUntil:\n    visible: "Workout saved as partial"\n    timeout: 30000\n- assertVisible: "Resume workout"[\s\S]*- assertVisible: "Start Push"[\s\S]*- assertVisible: "Next scheduled workout · Push · \.\*"/u,
   );
 });
 
@@ -2857,7 +3142,8 @@ test("plan creation flows settle and re-locate the draft action before tapping",
 test("owned plan Maestro consumers use the canonical persistence label", async () => {
   const expectedCounts = new Map([
     ["maestro/phase2/custom-exercise-lifecycle3-active-workout.yaml", 1],
-    ["maestro/phase2/owned-plan-editor.yaml", 1],
+    ["maestro/phase2/owned-plan-editor.yaml", 0],
+    ["maestro/subflows/phase2-owned-plan-editor-reorder-verify.yaml", 1],
     ["maestro/phase2/plan-impact-replacement.yaml", 2],
     ["maestro/phase2/schedule-cross-profile.yaml", 1],
   ]);
@@ -2870,13 +3156,44 @@ test("owned plan Maestro consumers use the canonical persistence label", async (
       relativePath,
     );
     if (expectedCounts.has(relativePath)) {
+      const savePlanChangesCount =
+        flow.match(/(?:tapOn|visible|text): "Save Plan Changes"/gu)?.length ?? 0;
       assert.equal(
-        flow.match(/(?:tapOn|visible|text): "Save Plan Changes"/gu)?.length,
+        savePlanChangesCount,
         expectedCounts.get(relativePath),
         relativePath,
       );
     }
   }
+});
+
+test("owned plan native reorder uses the canonical selected exercise identity", async () => {
+  const setup = await readFile(
+    path.join(projectRoot, "maestro/phase2/owned-plan-editor.yaml"),
+    "utf8",
+  );
+  const continuation = await readFile(
+    path.join(
+      projectRoot,
+      "maestro/subflows/phase2-owned-plan-editor-reorder-verify.yaml",
+    ),
+    "utf8",
+  );
+  const runner = await readFile(
+    path.join(projectRoot, "scripts/run-phase2-maestro.mjs"),
+    "utf8",
+  );
+  const label = "Barbell Bench Press - Medium Grip";
+
+  assert.match(setup, new RegExp(`id: "drag-exercise-${label}"`, "u"));
+  assert.match(setup, new RegExp(`assertVisible: "Reorder ${label}"`, "u"));
+  assert.match(continuation, new RegExp(`${label} dragged to 1 of 2`, "u"));
+  assert.match(continuation, new RegExp(`id: "drag-exercise-${label}"`, "u"));
+  assert.match(runner, new RegExp(`sourceLabel: "${label}"`, "u"));
+  assert.doesNotMatch(
+    `${setup}\n${continuation}`,
+    /(?:drag-exercise-|Reorder | dragged to 1 of 2)Bench Press/u,
+  );
 });
 
 test("Library exercise flow waits for trusted Today after process restart", async () => {
@@ -2888,6 +3205,32 @@ test("Library exercise flow waits for trusted Today after process restart", asyn
   assert.match(
     flow,
     /- stopApp\n- launchApp:\n    clearState: false\n    stopApp: true\n    permissions:\n      notifications: deny\n- assertVisible: "Today"\n- extendedWaitUntil:\n    visible: "Use Full Body Foundation"\n    timeout: 90000\n- tapOn: "Library"\n- assertVisible: "Search exercises"/u,
+  );
+});
+
+test("Library exercise alias search reveals results above the software keyboard", async () => {
+  const flow = await readFile(
+    path.join(projectRoot, "maestro/phase2/library-exercises.yaml"),
+    "utf8",
+  );
+  const stabilizedAliasSearch = [
+    '- tapOn: "Search exercises"',
+    '- inputText: "bench-press"',
+    "- hideKeyboard",
+    "- scrollUntilVisible:",
+    "    element:",
+    '      text: "Bench Press"',
+    "    direction: DOWN",
+    "    centerElement: true",
+    "    timeout: 90000",
+    '- assertVisible: "Bench Press"',
+    '- assertNotVisible: "Matched alias:"',
+  ].join("\n");
+
+  assert.ok(flow.includes(stabilizedAliasSearch));
+  assert.doesNotMatch(
+    flow,
+    /- inputText: "bench-press"\n- assertVisible: "Bench Press"/u,
   );
 });
 
@@ -3033,7 +3376,7 @@ test("post-restart root actions wait for trusted Today content", async () => {
   const rootTapPattern =
     /^- tapOn: "(?:Appearance and rest-alert settings|Calendar|Library|Progress|Today)"$/u;
   const trustedAssertPattern =
-    /^- assertVisible: "(?:Device timezone changed|Rest day|Workout in progress)"$/u;
+    /^- assertVisible: "(?:Device timezone changed|Rest day|Start Push|Workout in progress)"$/u;
   const trustedWaitTargets = new Set([
     '    visible: "Use Full Body Foundation"',
     '    visible: "Resume workout"',
@@ -3113,11 +3456,6 @@ test("rest alert remediation waits for committed rest transitions and uses bound
     flow.includes(
       [
         '- tapOn: "Resume workout"',
-        '- assertVisible: "Rest ended"',
-        '- tapOn: "Dismiss rest notice"',
-        "- extendedWaitUntil:",
-        '    notVisible: "Dismiss rest notice"',
-        "    timeout: 60000",
         boundedSetTraversal(2),
         '- tapOn: "Complete Set 2"',
       ].join("\n"),
@@ -3152,7 +3490,11 @@ test("plan impact flow reaches replacement scope and impact without assuming cat
 
   assert.match(
     flow,
-    /text: "Barbell Incline Bench Press\.\*Compatible metric identity"[\s\S]*?- tapOn:\n    text: "Barbell Incline Bench Press\.\*Compatible metric identity"[\s\S]*?- scrollUntilVisible:\n    element:\n      text: "This occurrence"\n    direction: UP\n    timeout: 60000\n- assertVisible: "This occurrence"/u,
+    /- assertVisible: "Upper \/ Lower"\n- scrollUntilVisible:\n    element:\n      text: "Upper A"\n    direction: DOWN\n    centerElement: true\n- assertVisible: "Upper A"/u,
+  );
+  assert.match(
+    flow,
+    /- tapOn:\n    id: "exercise-replacement-search"\n- inputText: "Barbell Incline Bench Press"\n- hideKeyboard\n- scrollUntilVisible:\n    element:\n      text: "\^Barbell Incline Bench Press\[\.\] Compatible metric identity\$"\n    direction: DOWN\n    centerElement: true\n    timeout: 60000\n- tapOn:\n    text: "\^Barbell Incline Bench Press\[\.\] Compatible metric identity\$"[\s\S]*?- scrollUntilVisible:\n    element:\n      text: "This occurrence"\n    direction: UP\n    timeout: 60000\n- assertVisible: "This occurrence"/u,
   );
   assert.doesNotMatch(
     flow,
@@ -3165,7 +3507,15 @@ test("plan impact flow reaches replacement scope and impact without assuming cat
   );
   assert.match(
     flow,
-    /text: "Exercise impact"\n    direction: DOWN\n    centerElement: true\n- repeat:\n    times: 64\n    while:\n      notVisible: "Review current values"\n    commands:\n      - swipe:\n          start: 50%, 75%\n          end: 50%, 25%\n          duration: 300\n- assertVisible: "Review current values"\n- scrollUntilVisible:\n    element:\n      text: "Compatibility does not mean historical comparability\. Existing sessions and snapshots are unchanged\."\n    direction: DOWN\n- assertVisible: "Compatibility does not mean historical comparability\. Existing sessions and snapshots are unchanged\."/u,
+    /text: "Exercise impact"\n    direction: DOWN\n    centerElement: true\n- repeat:\n    times: 12\n    while:\n      notVisible: "Review current values"\n    commands:\n      - swipe:\n          start: 95%, 75%\n          end: 95%, 25%\n          duration: 300\n- assertVisible: "Review current values"\n- scrollUntilVisible:\n    element:\n      text: "Compatibility does not mean historical comparability\. Existing sessions and snapshots are unchanged\."\n    direction: DOWN\n- assertVisible: "Compatibility does not mean historical comparability\. Existing sessions and snapshots are unchanged\."/u,
+  );
+  assert.doesNotMatch(
+    flow,
+    /times: 64[\s\S]*?notVisible: "Review current values"/u,
+  );
+  assert.doesNotMatch(
+    flow,
+    /- scrollUntilVisible:\n    element:\n      text: "Review current values"/u,
   );
   assert.match(
     flow,
@@ -3226,7 +3576,11 @@ test("Library exercise flow reaches compact Plans sections before asserting them
   );
   assert.match(
     flow,
-    /- tapOn: "Clear search exercises"\n- hideKeyboard\n- tapOn:\n    id: "library-filters-chip"[\s\S]*- tapOn: "Equipment: Barbell"\n- scrollUntilVisible:\n    element:\n      text: "Show results"\n    direction: DOWN\n- tapOn: "Show results"\n- assertVisible: "Results"\n- scrollUntilVisible:\n    element:\n      text: "Back Squat"\n    direction: DOWN\n    centerElement: true\n- assertVisible: "Back Squat"/u,
+    /- tapOn: "Clear search exercises"\n- scrollUntilVisible:\n    element:\n      id: "library-filters-chip"\n    direction: UP\n    centerElement: true\n- tapOn:\n    id: "library-filters-chip"[\s\S]*- tapOn: "Equipment: Barbell"\n- scrollUntilVisible:\n    element:\n      text: "Show results"\n    direction: DOWN\n- tapOn: "Show results"\n- assertVisible: "Results"\n- scrollUntilVisible:\n    element:\n      text: "Back Squat"\n    direction: DOWN\n    centerElement: true\n- assertVisible: "Back Squat"/u,
+  );
+  assert.doesNotMatch(
+    flow,
+    /- tapOn: "Clear search exercises"\n- hideKeyboard/u,
   );
   assert.match(
     flow,
@@ -3245,10 +3599,50 @@ test("starter activation uses current Material 3 filter labels", async () => {
     flow,
     /id: "library-filters-chip"\n    direction: UP\n    centerElement: true\n- tapOn:\n    id: "library-filters-chip"[\s\S]*text: "Experience: Intermediate"[\s\S]*- tapOn: "Experience: Intermediate"[\s\S]*text: "Days per week: 5"[\s\S]*- tapOn: "Days per week: 5"[\s\S]*text: "Equipment: Barbell"[\s\S]*- tapOn: "Equipment: Barbell"/u,
   );
+  assert.ok(flow.includes([
+    '- assertVisible: "Gym Body-Part Split[.] .*Intermediate experience · 5 days per week · Barbell equipment"',
+    '- tapOn:',
+    '    text: "Gym Body-Part Split. 5 days per week.*"',
+  ].join("\n")));
+  assert.match(
+    flow,
+    /- assertVisible: "Monday Chest · Tuesday Back · Wednesday Shoulders · Thursday Legs · Friday Arms"\n- scrollUntilVisible:\n    element:\n      text: "Source notes"\n    direction: DOWN\n    centerElement: true\n- assertVisible: "Source notes"/u,
+  );
+  assert.match(
+    flow,
+    /- assertVisible: "Cable Rope Overhead Triceps Extension"\n- repeat:\n    times: 12\n    while:\n      notVisible: "Activate plan"\n    commands:\n      - swipe:\n          start: 95%, 75%\n          end: 95%, 25%\n          duration: 300\n- assertVisible: "Activate plan"\n- tapOn: "Activate plan"/u,
+  );
+  assert.doesNotMatch(
+    flow,
+    /- assertVisible: "Why this fits: Intermediate experience · 5 days per week · Barbell equipment"/u,
+  );
   assert.doesNotMatch(
     flow,
     /(?:tapOn|text): "(?:Filter|Experience · Intermediate|Days per week · 5|Equipment · Barbell)"/u,
   );
+});
+
+test("starter activation allows bounded long-form traversal at large text", async () => {
+  const flow = await readFile(
+    path.join(projectRoot, "maestro/phase2/starter-activation.yaml"),
+    "utf8",
+  );
+  const activationFormTraversal = [
+    "- scrollUntilVisible:",
+    "    element:",
+    '      text: "Activate plan"',
+    "    direction: DOWN",
+    "    timeout: 60000",
+    '- tapOn: "Activate plan"',
+    '- assertVisible: "Activate Gym Body-Part Split?"',
+  ].join("\n");
+
+  assert.ok(flow.includes(
+    `- assertVisible: "Monday · Chest"\n${activationFormTraversal}`,
+  ));
+  assert.ok(flow.includes(
+    `- tapOn:\n    text: "Gym Body-Part Split. Active.*"\n${activationFormTraversal}`,
+  ));
 });
 
 test("fresh plan flows scroll to compact Library sections before assertions", async () => {
@@ -3396,7 +3790,7 @@ test("custom exercise flow scrolls through the long editor contract", async () =
   }
   assert.match(
     flow,
-    /- tapOn: "Activate"\n- scrollUntilVisible:\n    element:\n      text: "Rotation"\n    direction: DOWN\n    centerElement: true\n- tapOn: "Rotation"\n- assertVisible: "1\. Custom Day"\n- scrollUntilVisible:\n    element:\n      text: "Save schedule"\n    direction: DOWN\n- tapOn: "Save schedule"\n- assertVisible: "Save this schedule\?"\n- tapOn: "Save schedule"/u,
+    /- tapOn: "Activate"\n- scrollUntilVisible:\n    element:\n      text: "Rotation"\n    direction: DOWN\n    centerElement: true\n- tapOn: "Rotation"\n- assertVisible: "Custom Day"\n- assertVisible: "Reorder Custom Day"\n- assertNotVisible: "1\. Custom Day"\n- scrollUntilVisible:\n    element:\n      text: "Save schedule"\n    direction: DOWN\n- tapOn: "Save schedule"\n- assertVisible: "Save this schedule\?"\n- tapOn: "Save schedule"/u,
   );
   assert.match(
     flow,
@@ -3409,6 +3803,17 @@ test("custom exercise flow scrolls through the long editor contract", async () =
   assert.match(
     segments[2],
     /- tapOn: "Restore exercise"\n- extendedWaitUntil:\n    visible: "Archive exercise"\n    timeout: 60000\n- scrollUntilVisible:\n    element:\n      text: "Go back"/u,
+  );
+  assert.match(
+    await readFile(
+      path.join(projectRoot, "maestro/phase2/owned-plan-editor.yaml"),
+      "utf8",
+    ),
+    /- inputText: "Bench Press"\n- hideKeyboard\n- scrollUntilVisible:\n    element:\n      text: "Barbell Bench Press - Medium Grip.*Load . reps"\n    direction: DOWN\n    centerElement: true\n- tapOn:\n    text: "Barbell Bench Press - Medium Grip.*Load . reps"/u,
+  );
+  assert.match(
+    segments[2],
+    /- tapOn: "Go back"\n- repeat:\n    times: 4\n    while:\n      notVisible: "Search exercises"\n    commands:\n      - swipe:\n          start: 50%, 25%\n          end: 50%, 75%\n          duration: 300\n- assertVisible: "Search exercises"/u,
   );
   assert.match(
     segments[3],
@@ -3617,6 +4022,15 @@ test("rest recovery finds the set action after each orientation change with boun
     "      - swipe:",
     "          start: 95%, 75%",
     "          end: 95%, 25%",
+    "          duration: 300",
+    "- repeat:",
+    "    times: 12",
+    "    while:",
+    "      notVisible: \"Complete Set 1\"",
+    "    commands:",
+    "      - swipe:",
+    "          start: 95%, 45%",
+    "          end: 95%, 75%",
     "          duration: 300",
     "- assertVisible: \"Complete Set 1\"",
   ].join("\n");

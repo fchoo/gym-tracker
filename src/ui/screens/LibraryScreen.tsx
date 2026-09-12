@@ -1,4 +1,5 @@
 import React, {
+  useCallback,
   useEffect,
   useRef,
   useState,
@@ -141,6 +142,7 @@ export type LibrarySectionState = Readonly<Record<
 type LibraryScreenProps = Readonly<{
   loadLibrary(): Promise<LibraryBrowseSnapshot>;
   refreshLibrary?(): Promise<LibraryBrowseSnapshot>;
+  refreshGeneration?: number;
   onCreateExercise(): void;
   onCreatePlan(): void;
   onOpenExercise(exerciseId: string): void;
@@ -1228,6 +1230,7 @@ export function LibraryScreen({
   contentUpdateResult,
   loadLibrary,
   refreshLibrary = loadLibrary,
+  refreshGeneration = 0,
   listRecentExercises,
   onCreateExercise,
   onCreatePlan,
@@ -1246,6 +1249,7 @@ export function LibraryScreen({
   const [loadRetrying, setLoadRetrying] = useState(false);
   const [refreshFailed, setRefreshFailed] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
+  const [refreshCompletionCount, setRefreshCompletionCount] = useState(0);
   const [processState, setProcessState] = useState(initialProcessState);
   const [exerciseBrowse, setExerciseBrowse] = useState<ExerciseBrowseState>(
     initialExerciseBrowseState,
@@ -1273,6 +1277,7 @@ export function LibraryScreen({
   const loadRetryInFlightRef = useRef(false);
   const searchGenerationRef = useRef(0);
   const refreshInFlightRef = useRef(false);
+  const observedRefreshGenerationRef = useRef(refreshGeneration);
   const { colors } = useAppTheme();
   const section = snapshot?.sectionPreference.section ?? "plans";
   const activeState = processState[section];
@@ -1493,9 +1498,9 @@ export function LibraryScreen({
     });
   }
 
-  function requestLibraryRefresh() {
+  const requestLibraryRefresh = useCallback((): boolean => {
     if (snapshot === null || refreshInFlightRef.current) {
-      return;
+      return false;
     }
     refreshInFlightRef.current = true;
     setRefreshing(true);
@@ -1521,9 +1526,26 @@ export function LibraryScreen({
       refreshInFlightRef.current = false;
       if (mountedRef.current) {
         setRefreshing(false);
+        setRefreshCompletionCount((current) => current + 1);
       }
     });
-  }
+    return true;
+  }, [refreshLibrary, snapshot]);
+
+  useEffect(() => {
+    if (observedRefreshGenerationRef.current === refreshGeneration
+      || snapshot === null) {
+      return;
+    }
+    if (requestLibraryRefresh()) {
+      observedRefreshGenerationRef.current = refreshGeneration;
+    }
+  }, [
+    refreshCompletionCount,
+    refreshGeneration,
+    requestLibraryRefresh,
+    snapshot,
+  ]);
 
   function retryInitialLoad() {
     if (loadRetryInFlightRef.current) {

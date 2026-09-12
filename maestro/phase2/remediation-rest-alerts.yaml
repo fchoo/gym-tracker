@@ -14,9 +14,10 @@ tags:
 - extendedWaitUntil:
     visible: "Use Full Body Foundation"
     timeout: 90000
-- tapOn: "Appearance and rest-alert settings"
+- tapOn: "Settings"
+- assertVisible: "Settings"
+- assertVisible: "Appearance"
 - assertVisible: "Rest alerts"
-- assertVisible: "Choose feedback for rest completion. The in-app timer remains the authoritative workout record."
 - assertVisible:
     text: "Rest sound"
     checked: true
@@ -33,7 +34,7 @@ tags:
 - assertVisible:
     text: "Rest vibration"
     checked: true
-- tapOn: "Close rest alerts"
+- tapOn: "Go back"
 - stopApp
 - launchApp:
     clearState: false
@@ -44,7 +45,8 @@ tags:
 - extendedWaitUntil:
     visible: "Use Full Body Foundation"
     timeout: 90000
-- tapOn: "Appearance and rest-alert settings"
+- tapOn: "Settings"
+- assertVisible: "Settings"
 - assertVisible: "Rest alerts"
 - assertVisible:
     text: "Rest sound"
@@ -52,7 +54,7 @@ tags:
 - assertVisible:
     text: "Rest vibration"
     checked: true
-- tapOn: "Close rest alerts"
+- tapOn: "Go back"
 - extendedWaitUntil:
     visible: "Use Full Body Foundation"
     timeout: 90000
@@ -85,11 +87,6 @@ tags:
     visible: "Resume workout"
     timeout: 90000
 - tapOn: "Resume workout"
-- assertVisible: "Rest ended"
-- tapOn: "Dismiss rest notice"
-- extendedWaitUntil:
-    notVisible: "Dismiss rest notice"
-    timeout: 60000
 - repeat:
     times: 12
     while:

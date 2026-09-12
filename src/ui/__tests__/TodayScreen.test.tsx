@@ -98,53 +98,37 @@ describe("Plan 01-07 TodayScreen", () => {
     expect(screen.queryByText(/60 kg/u)).not.toBeOnTheScreen();
   });
 
-  it("keeps History and data distinct from appearance and rest-alert settings", async () => {
-    const openHistoryAndData = jest.fn();
+  it("uses one labelled Settings gear without manual schedule or duplicate data controls", async () => {
+    const start = jest.fn();
     await renderToday(scheduledView, {
-      onOpenHistoryAndData: openHistoryAndData,
+      onStartPlanDay: start,
       width: 360,
     });
 
-    const historyAndData = screen.getByRole("button", {
-      name: "History and data",
-    });
-    expect(historyAndData).toHaveProp(
+    const settings = screen.getByRole("button", { name: "Settings" });
+    expect(settings).toHaveProp(
       "accessibilityHint",
-      "Opens workout history and data recovery",
+      "Opens Settings",
     );
-    expect(historyAndData).toHaveStyle({ minHeight: 48 });
+    expect(settings).toHaveStyle({ minHeight: 48 });
     expect(screen.getByTestId("adaptive-screen"))
       .toHaveProp("accessibilityLabel", "compact layout");
-    expect(screen.getByText("History and data").props.numberOfLines)
-      .toBeUndefined();
-    expect(screen.queryByRole("button", { name: "More" })).not.toBeOnTheScreen();
-    expect(
-      screen.getByRole("button", {
-        name: "Appearance and rest-alert settings",
-      }),
-    ).toBeOnTheScreen();
+    for (const label of [
+      "Repeat",
+      "Skip",
+      "Advance",
+      "History and data",
+      "Appearance and rest-alert settings",
+    ]) {
+      expect(screen.queryByRole("button", { name: label })).not.toBeOnTheScreen();
+    }
 
-    await fireEvent(historyAndData, "focus");
-    expect(historyAndData).toHaveStyle({ outlineWidth: 2 });
-    await fireEvent(historyAndData, "keyDown", {
+    await fireEvent(settings, "focus");
+    expect(settings).toHaveStyle({ outlineWidth: 2 });
+    await fireEvent(settings, "keyDown", {
       nativeEvent: { key: "Enter" },
     });
-    expect(openHistoryAndData).toHaveBeenCalledTimes(1);
-
-    await fireEvent.press(
-      screen.getByRole("button", {
-        name: "Appearance and rest-alert settings",
-      }),
-    );
-    expect(screen.getByRole("header", { name: "Rest alerts" })).toBeOnTheScreen();
-    await fireEvent.press(
-      screen.getByRole("button", { name: "Close rest alerts" }),
-    );
-    expect(
-      screen.getByRole("button", {
-        name: "Appearance and rest-alert settings",
-      }),
-    ).toBeOnTheScreen();
+    expect(start).not.toHaveBeenCalled();
   });
 
   it("shows only Full Body Foundation on first use and activates after preview", async () => {
@@ -176,202 +160,6 @@ describe("Plan 01-07 TodayScreen", () => {
       }),
     );
     expect(activate).toHaveBeenCalledTimes(1);
-  });
-
-  it("keeps independently toggled rest-alert settings when writes resolve later", async () => {
-    type PersistedPreferenceResult = Readonly<{
-      status: "persisted";
-      preferences: { soundEnabled: boolean; vibrationEnabled: boolean };
-    }>;
-    let resolveFirstWrite: ((value: PersistedPreferenceResult) => void) | undefined;
-    let resolveSecondWrite: ((value: PersistedPreferenceResult) => void) | undefined;
-    const firstWrite = new Promise<PersistedPreferenceResult>((resolve) => {
-      resolveFirstWrite = resolve;
-    });
-    const secondWrite = new Promise<PersistedPreferenceResult>((resolve) => {
-      resolveSecondWrite = resolve;
-    });
-    let writeCount = 0;
-    const changePreferences = (
-      _preferences: Readonly<{ soundEnabled: boolean; vibrationEnabled: boolean }>,
-    ) => ++writeCount === 1
-      ? firstWrite
-      : secondWrite;
-    const changePreferencesSpy = jest.fn(changePreferences);
-    const openNotificationSettings = () => undefined;
-    const openNotificationSettingsSpy = jest.fn(openNotificationSettings);
-    const { props, rendered } = await renderToday(scheduledView, {
-      notificationPermission: "denied",
-      onChangeRestAlertPreferences: changePreferencesSpy,
-      onOpenRestNotificationSettings: openNotificationSettingsSpy,
-      restAlertPreferences: { soundEnabled: true, vibrationEnabled: true },
-    });
-
-    await fireEvent.press(
-      screen.getByRole("button", {
-        name: "Appearance and rest-alert settings",
-      }),
-    );
-
-    expect(screen.getByRole("header", { name: "Rest alerts" })).toBeOnTheScreen();
-    expect(screen.getByText(/in-app timer remains the authoritative/u))
-      .toBeOnTheScreen();
-    expect(screen.getByRole("switch", { name: "Rest sound" }))
-      .toHaveProp("accessibilityState", expect.objectContaining({ checked: true }));
-    expect(screen.getByRole("switch", { name: "Rest vibration" }))
-      .toHaveProp("accessibilityState", expect.objectContaining({ checked: true }));
-
-    await fireEvent.press(screen.getByRole("switch", { name: "Rest sound" }));
-    await waitFor(() => expect(changePreferencesSpy).toHaveBeenCalledWith({
-      soundEnabled: false,
-      vibrationEnabled: true,
-    }));
-    await fireEvent.press(
-      screen.getByRole("switch", { name: "Rest vibration" }),
-    );
-    expect(screen.getByRole("switch", { name: "Rest sound" }))
-      .toHaveProp("accessibilityState", expect.objectContaining({ checked: false }));
-    expect(screen.getByRole("switch", { name: "Rest vibration" }))
-      .toHaveProp("accessibilityState", expect.objectContaining({ checked: false }));
-    expect(changePreferencesSpy).toHaveBeenCalledTimes(1);
-
-    await act(async () => {
-      resolveFirstWrite?.({
-        status: "persisted",
-        preferences: { soundEnabled: false, vibrationEnabled: true },
-      });
-      await firstWrite;
-    });
-    await waitFor(() => expect(changePreferencesSpy).toHaveBeenLastCalledWith({
-      soundEnabled: false,
-      vibrationEnabled: false,
-    }));
-    await act(async () => {
-      resolveSecondWrite?.({
-        status: "persisted",
-        preferences: { soundEnabled: false, vibrationEnabled: false },
-      });
-      await secondWrite;
-    });
-    await rendered.rerender(
-      <AppearanceProvider>
-        <TodayScreen
-          {...props}
-          restAlertPreferences={{ soundEnabled: true, vibrationEnabled: false }}
-        />
-      </AppearanceProvider>,
-    );
-    expect(screen.getByRole("switch", { name: "Rest sound" }))
-      .toHaveProp("accessibilityState", expect.objectContaining({ checked: true }));
-    expect(screen.getByRole("switch", { name: "Rest vibration" }))
-      .toHaveProp("accessibilityState", expect.objectContaining({ checked: false }));
-    await fireEvent.press(
-      screen.getByRole("button", { name: "Open notification settings" }),
-    );
-    expect(openNotificationSettingsSpy).toHaveBeenCalledTimes(1);
-    expect(screen.getByTestId("rest-alert-settings-sheet-content"))
-      .toHaveProp("keyboardShouldPersistTaps", "handled");
-  });
-
-  it("opens the production rest-alert sheet in its preference-read loading state", async () => {
-    const readPreferences = jest.fn<() => void>();
-    const { props, rendered } = await renderToday(scheduledView, {
-      notificationPermission: "denied",
-      onReadRestAlertPreferences: readPreferences,
-      restAlertPreferences: { soundEnabled: true, vibrationEnabled: true },
-      restAlertPreferencesLoading: true,
-    });
-
-    await fireEvent.press(screen.getByRole("button", {
-      name: "Appearance and rest-alert settings",
-    }));
-
-    expect(readPreferences).toHaveBeenCalledTimes(1);
-    expect(screen.getByRole("progressbar", {
-      name: "Loading rest alert settings",
-    })).toHaveProp("accessibilityState", expect.objectContaining({
-      busy: true,
-      disabled: true,
-    }));
-    expect(screen.queryByRole("switch", { name: "Rest sound" }))
-      .not.toBeOnTheScreen();
-    for (const name of [
-      "Open notification settings",
-      "Appearance",
-      "Close rest alerts",
-    ]) {
-      expect(screen.getByRole("button", { name }))
-        .toHaveProp("accessibilityState", expect.objectContaining({
-          disabled: true,
-        }));
-    }
-
-    await rendered.rerender(
-      <AppearanceProvider>
-        <TodayScreen
-          {...props}
-          restAlertPreferences={{ soundEnabled: false, vibrationEnabled: true }}
-          restAlertPreferencesLoading={false}
-        />
-      </AppearanceProvider>,
-    );
-    expect(screen.getByRole("switch", { name: "Rest sound" }))
-      .toHaveProp("accessibilityState", expect.objectContaining({
-        checked: false,
-      }));
-    expect(screen.getByRole("switch", { name: "Rest vibration" }))
-      .toHaveProp("accessibilityState", expect.objectContaining({
-        checked: true,
-      }));
-  });
-
-  it("reconciles a no-op preference write to persisted values with a bounded alert", async () => {
-    const { rendered, props } = await renderToday(scheduledView, {
-      restAlertPreferences: { soundEnabled: true, vibrationEnabled: true },
-      onChangeRestAlertPreferences: jest.fn(async () => ({
-        status: "not_persisted" as const,
-        preferences: { soundEnabled: true, vibrationEnabled: true },
-      })),
-    });
-
-    await fireEvent.press(screen.getByRole("button", {
-      name: "Appearance and rest-alert settings",
-    }));
-    await fireEvent.press(screen.getByRole("switch", { name: "Rest sound" }));
-
-    await waitFor(() => {
-      expect(screen.getByRole("alert"))
-        .toHaveTextContent("Rest alert setting was not saved");
-      expect(screen.getByRole("switch", { name: "Rest sound" }))
-        .toHaveProp("accessibilityState", expect.objectContaining({ checked: true }));
-    });
-
-    await rendered.rerender(
-      <AppearanceProvider>
-        <TodayScreen {...props} />
-      </AppearanceProvider>,
-    );
-  });
-
-  it("reverts a rejected preference write and announces the bounded error", async () => {
-    await renderToday(scheduledView, {
-      restAlertPreferences: { soundEnabled: true, vibrationEnabled: false },
-      onChangeRestAlertPreferences: jest.fn(async () => {
-        throw new Error("preference_write_failed");
-      }),
-    });
-
-    await fireEvent.press(screen.getByRole("button", {
-      name: "Appearance and rest-alert settings",
-    }));
-    await fireEvent.press(screen.getByRole("switch", { name: "Rest vibration" }));
-
-    await waitFor(() => {
-      expect(screen.getByRole("alert"))
-        .toHaveTextContent("Rest alert setting was not saved");
-      expect(screen.getByRole("switch", { name: "Rest vibration" }))
-        .toHaveProp("accessibilityState", expect.objectContaining({ checked: false }));
-    });
   });
 
   it("keeps Start before history and shows consistent targets and suggestion status", async () => {
@@ -494,7 +282,7 @@ describe("Plan 01-07 TodayScreen", () => {
     );
     expect(
       screen.getByText(
-        "This will not advance your schedule unless you explicitly mark the planned day complete or skipped.",
+        "Alternate, rest-day, and empty workouts do not advance your schedule. Completing the scheduled workout advances it.",
       ),
     ).toBeOnTheScreen();
     expect(screen.getByTestId("workout-start-sheet-content")).toHaveProp(
@@ -504,6 +292,9 @@ describe("Plan 01-07 TodayScreen", () => {
     expect(screen.getByTestId("workout-start-sheet-content")).toHaveStyle({
       maxHeight: "90%",
     });
+    expect(screen.queryByRole("checkbox", {
+      name: "Advance rotation after this workout",
+    })).not.toBeOnTheScreen();
     await fireEvent.press(
       screen.getByRole("button", { name: "Start Full Body B" }),
     );
@@ -511,7 +302,7 @@ describe("Plan 01-07 TodayScreen", () => {
     await fireEvent.press(
       screen.getByRole("button", { name: "Start empty workout" }),
     );
-    expect(startEmpty).toHaveBeenCalledTimes(1);
+    expect(startEmpty).toHaveBeenCalledWith();
   });
 
   it("shows rest day context and Train anyway without schedule advancement copy", async () => {
@@ -532,8 +323,11 @@ describe("Plan 01-07 TodayScreen", () => {
     await fireEvent.press(
       screen.getByRole("button", { name: "Train anyway" }),
     );
+    expect(screen.queryByRole("checkbox", {
+      name: "Advance rotation after this workout",
+    })).not.toBeOnTheScreen();
     expect(
-      screen.getByText(/will not advance your schedule/iu),
+      screen.getByText(/do not advance your schedule/iu),
     ).toBeOnTheScreen();
     await fireEvent.press(
       screen.getByRole("button", { name: "Start Full Body B" }),
@@ -717,12 +511,8 @@ describe("Plan 01-07 TodayScreen", () => {
       expect(screen.getByText("Back Squat")).toHaveStyle({
         color: colors.contentCardText,
       });
-      expect(screen.getByRole("button", { name: "History and data" }))
-        .toHaveStyle({
-          backgroundColor: colors.surface,
-          borderColor: colors.divider,
-          minHeight: 48,
-        });
+      expect(screen.getByRole("button", { name: "Settings" }))
+        .toHaveStyle({ minHeight: 48 });
     },
   );
 });

@@ -180,6 +180,24 @@ describe("development-test workout mutation controls", () => {
     expect(createWorkoutMutationTestCommandAdapters(commands)).toBe(commands);
   });
 
+  it("wraps the current route command surface without the retired copy action", async () => {
+    const commands = {
+      addWarmup: jest.fn(async () => "add-warmup committed"),
+      addWorkingSet: jest.fn(async () => "add-working committed"),
+      reviseCompletedSet: jest.fn(async () => "correction committed"),
+    };
+    const adapters = createWorkoutMutationTestCommandAdapters(commands);
+
+    applyWorkoutMutationTestControl("arm_add_warmup_failure");
+    await expect(adapters.addWarmup()).rejects.toThrow(
+      "Development-test workout mutation failed once.",
+    );
+    expect(commands.addWarmup).not.toHaveBeenCalled();
+    await expect(adapters.addWarmup()).resolves.toBe("add-warmup committed");
+    expect(commands.addWarmup).toHaveBeenCalledTimes(1);
+    expect("copyPreviousWarmup" in adapters).toBe(false);
+  });
+
   it("returns and throws only bounded control data", async () => {
     const sensitive = [
       "owner-secret",

@@ -5,6 +5,7 @@ import {
   CircleX,
   Copy,
   RotateCcw,
+  Trash2,
   type LucideIcon,
 } from "lucide-react-native";
 import React from "react";
@@ -276,16 +277,7 @@ const sourceLabels = {
   manual: "Manual",
 } as const;
 
-function GlyphAction({
-  accessibilityLabel,
-  accessibilityActions,
-  busy = false,
-  disabled = false,
-  icon: Icon,
-  onAccessibilityAction,
-  onPress,
-  tone,
-}: Readonly<{
+type GlyphActionProps = Readonly<{
   accessibilityLabel: string;
   accessibilityActions?: PressableProps["accessibilityActions"];
   busy?: boolean;
@@ -294,7 +286,21 @@ function GlyphAction({
   onAccessibilityAction?: PressableProps["onAccessibilityAction"];
   onPress: () => void;
   tone: "default" | "card";
-}>) {
+}>;
+
+const GlyphAction = React.forwardRef<View, GlyphActionProps>(function GlyphAction(
+  {
+    accessibilityLabel,
+    accessibilityActions,
+    busy = false,
+    disabled = false,
+    icon: Icon,
+    onAccessibilityAction,
+    onPress,
+    tone,
+  },
+  ref,
+) {
   const { colors } = useAppTheme();
   const unavailable = busy || disabled;
   const foreground = tone === "card"
@@ -313,6 +319,7 @@ function GlyphAction({
       disabled={unavailable}
       focusable={!unavailable}
       onPress={onPress}
+      ref={ref}
       style={({ pressed }) => [
         styles.glyphAction,
         {
@@ -333,7 +340,7 @@ function GlyphAction({
       />
     </FocusablePressable>
   );
-}
+});
 
 type InlineField = Readonly<{
   key: "distance" | "duration" | "load" | "reps" | "rounds";
@@ -362,8 +369,10 @@ export function SetRow({
   onComplete,
   onEditCompleted = () => undefined,
   onRevealedLayout,
+  onRemove,
+  removeRef,
   onSaveCorrection = () => undefined,
-  onSkip,
+  onSkip: _onSkip,
 }: Readonly<{
   set: ActiveWorkoutSet;
   kind: "warmup" | "working";
@@ -384,8 +393,10 @@ export function SetRow({
   onComplete: () => void;
   onEditCompleted?(): void;
   onRevealedLayout?(y: number): void;
+  onRemove(): void;
+  removeRef?: React.Ref<View>;
   onSaveCorrection?(observation: SetObservation): Promise<void> | void;
-  onSkip: () => void;
+  onSkip?(): void;
 }>) {
   const { colors } = useAppTheme();
   const completed = set.status === "completed";
@@ -410,6 +421,7 @@ export function SetRow({
   const rowLabel = kind === "warmup" ? `W${index}` : String(index);
   const spokenKind = kind === "warmup" ? "Warm-up" : "Working set";
   const actionKind = kind === "warmup" ? `warm-up W${index}` : `Set ${index}`;
+  const resetActionKind = kind === "warmup" ? `warm-up W${index}` : `set ${index}`;
   const observation = observationForSet(set);
   const [loadValue, setLoadValue] = React.useState(
     resistanceValue(observation),
@@ -644,6 +656,19 @@ export function SetRow({
     } finally {
       completionRequested.current = false;
     }
+  };
+
+  const resetValues = () => {
+    const resetObservation = set.valueSources.find(
+      ({ source }) => source === "plan_default",
+    )?.observation ?? observationForSet(set);
+    setLoadValue(resistanceValue(resetObservation));
+    setRepsValue(repetitionsValue(resetObservation));
+    setDurationValue(observationDurationValue(resetObservation));
+    setDistanceValueText(distanceValue(resetObservation));
+    setRoundsValueText(roundsValue(resetObservation));
+    setValidationMessage(null);
+    void Promise.resolve(onChangeValues(resetObservation));
   };
 
   const saveCorrection = async () => {
@@ -979,7 +1004,21 @@ export function SetRow({
             </FocusablePressable>
           </View>
         </>
-      ) : completed || skipped ? null : (
+      ) : completed ? null : skipped ? (
+        <View
+          style={styles.actions}
+          testID={`${kind === "warmup" ? `warmup-W${index}` : `working-set-${index}`}-actions`}
+        >
+          <GlyphAction
+            accessibilityLabel={`Remove ${resetActionKind}`}
+            disabled={busy || actionsDisabled}
+            icon={Trash2}
+            onPress={onRemove}
+            ref={removeRef}
+            tone={tone}
+          />
+        </View>
+      ) : (
         <>
           {fixedValueLabel === null ? null : (
             <Text
@@ -991,8 +1030,12 @@ export function SetRow({
               {fixedValueLabel}
             </Text>
           )}
-          <View style={styles.values}>
-            {inputFields.map((field) => (
+          <View
+            style={styles.controlBand}
+            testID={`${kind === "warmup" ? `warmup-W${index}` : `working-set-${index}`}-control-band`}
+          >
+            <View style={styles.values}>
+              {inputFields.map((field) => (
               <View key={field.key} style={styles.valueField}>
                 {field.kind === "duration" ? (
                   <TimeDurationField
@@ -1042,10 +1085,10 @@ export function SetRow({
                   {field.suffix}
                 </Text>
               </View>
-            ))}
-          </View>
-          {kind === "working" && set.valueSources.length > 0 ? (
-            <View style={styles.sources}>
+              ))}
+            </View>
+            {kind === "working" && set.valueSources.length > 0 ? (
+              <View style={styles.sources}>
               {set.valueSources
                 .filter(({ source }) => source !== "manual")
                 .map((source) => (
@@ -1065,8 +1108,61 @@ export function SetRow({
                     tone={tone}
                   />
                 ))}
+              </View>
+            ) : null}
+            <View
+              style={styles.actions}
+              testID={`${kind === "warmup" ? `warmup-W${index}` : `working-set-${index}`}-actions`}
+            >
+              <GlyphAction
+                accessibilityLabel={`Reset ${resetActionKind}`}
+                disabled={
+                  busy
+                  || actionsDisabled
+                  || (kind === "working" && !active)
+                }
+                icon={RotateCcw}
+                onPress={resetValues}
+                tone={tone}
+              />
+              <GlyphAction
+                accessibilityActions={[
+                  { name: "activate", label: "Complete current set" },
+                ]}
+                accessibilityLabel={
+                  busy && kind === "working"
+                    ? "Saving set…"
+                    : `Complete ${actionKind}`
+                }
+                busy={busy}
+                disabled={
+                  actionsDisabled
+                  || (kind === "working" && !active)
+                }
+                icon={CircleCheck}
+                onAccessibilityAction={(event) => {
+                  if (event.nativeEvent.actionName === "activate") {
+                    void complete();
+                  }
+                }}
+                onPress={() => {
+                  void complete();
+                }}
+                tone={tone}
+              />
+              <GlyphAction
+                accessibilityLabel={`Remove ${resetActionKind}`}
+                disabled={
+                  busy
+                  || actionsDisabled
+                }
+                icon={Trash2}
+                onPress={onRemove}
+                ref={removeRef}
+                tone={tone}
+              />
             </View>
-          ) : null}
+          </View>
           {validationMessage === null ? null : (
             <Text
               accessibilityLiveRegion="polite"
@@ -1087,47 +1183,6 @@ export function SetRow({
               Saving values…
             </Text>
           ) : null}
-          <View
-            style={styles.actions}
-            testID={`${kind === "warmup" ? `warmup-W${index}` : `working-set-${index}`}-actions`}
-          >
-            <GlyphAction
-              accessibilityActions={[
-                { name: "activate", label: "Complete current set" },
-              ]}
-              accessibilityLabel={
-                busy && kind === "working"
-                  ? "Saving set…"
-                  : `Complete ${actionKind}`
-              }
-              busy={busy}
-              disabled={
-                actionsDisabled
-                || (kind === "working" && !active)
-              }
-              icon={CircleCheck}
-              onAccessibilityAction={(event) => {
-                if (event.nativeEvent.actionName === "activate") {
-                  void complete();
-                }
-              }}
-              onPress={() => {
-                void complete();
-              }}
-              tone={tone}
-            />
-            <GlyphAction
-              accessibilityLabel={`Skip ${actionKind}`}
-              disabled={
-                busy
-                || actionsDisabled
-                || (kind === "working" && !active)
-              }
-              icon={CircleX}
-              onPress={onSkip}
-              tone={tone}
-            />
-          </View>
         </>
       )}
     </FocusablePressable>
@@ -1183,10 +1238,14 @@ const styles = StyleSheet.create({
     gap: space[1],
   },
   actions: {
-    alignSelf: "flex-end",
     flexDirection: "row",
     gap: space[2],
-    justifyContent: "flex-end",
+  },
+  controlBand: {
+    alignItems: "center",
+    flexDirection: "row",
+    flexWrap: "wrap",
+    gap: space[2],
   },
   glyphAction: {
     alignItems: "center",

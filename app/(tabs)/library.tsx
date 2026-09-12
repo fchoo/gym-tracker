@@ -1,7 +1,13 @@
 import {
   router,
+  useFocusEffect,
   type Href,
 } from "expo-router";
+import {
+  useCallback,
+  useRef,
+  useState,
+} from "react";
 
 import {
   useWorkoutAppRuntime,
@@ -15,6 +21,16 @@ import {
 
 export default function LibraryRoute() {
   const runtime = useWorkoutAppRuntime();
+  const [refreshGeneration, setRefreshGeneration] = useState(0);
+  const hasFocused = useRef(false);
+
+  useFocusEffect(useCallback(() => {
+    if (hasFocused.current) {
+      setRefreshGeneration((current) => current + 1);
+    } else {
+      hasFocused.current = true;
+    }
+  }, []));
 
   return (
     <LibraryScreen
@@ -25,6 +41,7 @@ export default function LibraryRoute() {
         ? {}
         : { contentUpdateFailed: runtime.contentUpdateFailed })}
       loadLibrary={runtime.loadLibrary}
+      refreshGeneration={refreshGeneration}
       listRecentExercises={runtime.listLibraryRecentExercises}
       onCreateExercise={() =>
         router.push("/library/exercise/create" as Href)}

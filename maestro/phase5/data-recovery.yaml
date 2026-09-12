@@ -10,8 +10,8 @@ tags:
 - extendedWaitUntil:
     visible: "Use Full Body Foundation"
     timeout: 90000
-- assertVisible: "History and data"
-- tapOn: "History and data"
+- assertVisible: "Settings"
+- tapOn: "Settings"
 - assertVisible: "Data and recovery"
 - tapOn:
     id: "more-data-and-recovery"

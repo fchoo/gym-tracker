@@ -1,0 +1,1140 @@
+#!/usr/bin/env node
+
+import { execFileSync } from "node:child_process";
+import { createHash } from "node:crypto";
+import {
+  closeSync,
+  constants as fsConstants,
+  existsSync,
+  fstatSync,
+  lstatSync,
+  mkdirSync,
+  mkdtempSync,
+  openSync,
+  readFileSync,
+  readdirSync,
+  realpathSync,
+  rmSync,
+  statSync,
+  writeFileSync,
+} from "node:fs";
+import os from "node:os";
+import path from "node:path";
+import process from "node:process";
+import { pathToFileURL } from "node:url";
+
+import {
+  SHA256_PATTERN,
+  phase5CandidateIdentity,
+  sha256File,
+  validatePhase5DeviceIdentity,
+} from "./phase5-candidate-evidence.mjs";
+import {
+  loadPhase6Candidate,
+  resolveAdb,
+} from "./run-phase6-maestro.mjs";
+import { sourceTreeSha256 } from "./source-tree-digest.mjs";
+
+const PACKAGE = "com.fchoo.gymtracker";
+const SERIAL = /^[A-Za-z0-9._:-]+$/u;
+const SAFE_RELATIVE_FILE = /^[A-Za-z0-9][A-Za-z0-9._/-]{0,239}$/u;
+const REQUIRED_OPTIONS = new Map([
+  ["--bundle-dir", "bundleDirectory"],
+  ["--manifest-sha256", "expectedManifestSha256"],
+  ["--package", "packageName"],
+  ["--serial", "serial"],
+  ["--output", "output"],
+  ["--report-dir", "reportDirectory"],
+]);
+const FORBIDDEN_EVIDENCE_KEYS = new Set([
+  "approval", "owner_approval", "promotion", "publication",
+  "public_release", "release_authorization", "terminal_seal",
+  "tag", "serial", "raw_path", "private_path", "raw_rows",
+  "private_rows",
+]);
+const projectRoot = path.resolve(path.dirname(new URL(import.meta.url).pathname), "..");
+
+export const PHASE7_MAESTRO_FLOW_CONTRACTS = Object.freeze([
+  Object.freeze({
+    id: "phase7-today-settings",
+    flow: "maestro/phase7/today-settings.yaml",
+    considerations: Object.freeze([
+      "UX-11", "UX-12", "UX-13", "UX-14",
+      "UI-E01", "UI-E02", "UI-E04", "UI-E05", "UI-E06", "UI-E08",
+    ]),
+    native_backstops: Object.freeze(["UI-B01", "UI-B03", "UI-B05"]),
+    screenshots: Object.freeze([
+      "phase7-today-selected-navigation.png",
+      "phase7-settings-root.png",
+      "phase7-settings-history-data.png",
+    ]),
+  }),
+  Object.freeze({
+    id: "phase7-workout-removal-audio",
+    flow: "maestro/phase7/workout-removal-audio.yaml",
+    considerations: Object.freeze([
+      "UX-15", "UX-16", "UX-17", "UX-18", "UX-19", "UX-21",
+      "UI-E01", "UI-E02", "UI-E03", "UI-E04", "UI-E05", "UI-E06",
+      "UI-E07", "UI-E08",
+    ]),
+    native_backstops: Object.freeze(["UI-B01", "UI-B02", "UI-B03"]),
+    screenshots: Object.freeze([
+      "phase7-workout-set-row.png",
+      "phase7-workout-remove-confirmation.png",
+      "phase7-workout-audio-settings.png",
+    ]),
+  }),
+  Object.freeze({
+    id: "phase7-plan-schedule-reorder",
+    flow: "maestro/phase7/plan-schedule-reorder.yaml",
+    considerations: Object.freeze([
+      "UX-20", "UI-E02", "UI-E04", "UI-E05", "UI-E06", "UI-E07", "UI-E08",
+    ]),
+    native_backstops: Object.freeze(["UI-B01", "UI-B03", "UI-B05"]),
+    screenshots: Object.freeze([
+      "phase7-plan-selected-day.png",
+      "phase7-plan-day-reorder.png",
+      "phase7-plan-exercise-reorder.png",
+      "phase7-weekday-schedule-reorder.png",
+      "phase7-rotation-schedule-reorder.png",
+    ]),
+  }),
+  Object.freeze({
+    id: "phase7-icon-navigation-accessibility",
+    flow: "maestro/phase7/icon-navigation-accessibility.yaml",
+    considerations: Object.freeze([
+      "UX-11", "UX-13", "UX-14", "UX-22",
+      "UI-E02", "UI-E04", "UI-E06", "UI-E08",
+    ]),
+    native_backstops: Object.freeze(["UI-B03", "UI-B04", "UI-B05"]),
+    screenshots: Object.freeze([
+      "phase7-navigation-200pct.png",
+      "phase7-settings-200pct.png",
+    ]),
+  }),
+]);
+
+export const PHASE7_CONSIDERATION_CONTRACTS = Object.freeze([
+  Object.freeze({ id: "UX-11", owner: "07-01 navigation semantics", automated_checks: Object.freeze(["app/(tabs)/__tests__/_layout.test.tsx" ]), flows: Object.freeze(["phase7-today-settings", "phase7-icon-navigation-accessibility"]), native_backstops: Object.freeze(["UI-B03", "UI-B05"]) }),
+  Object.freeze({ id: "UX-12", owner: "07-01 Today actions", automated_checks: Object.freeze(["src/ui/__tests__/TodayScreen.test.tsx" ]), flows: Object.freeze(["phase7-today-settings"]), native_backstops: Object.freeze([]) }),
+  Object.freeze({ id: "UX-13", owner: "07-01 Settings route", automated_checks: Object.freeze(["src/ui/__tests__/TodayScreen.test.tsx", "app/(tabs)/__tests__/_layout.test.tsx"]), flows: Object.freeze(["phase7-today-settings", "phase7-icon-navigation-accessibility"]), native_backstops: Object.freeze(["UI-B05"]) }),
+  Object.freeze({ id: "UX-14", owner: "07-01 Settings ordering", automated_checks: Object.freeze(["src/ui/__tests__/SettingsScreen.test.tsx" ]), flows: Object.freeze(["phase7-today-settings", "phase7-icon-navigation-accessibility"]), native_backstops: Object.freeze(["UI-B03"]) }),
+  Object.freeze({ id: "UX-15", owner: "07-02 workout surface", automated_checks: Object.freeze(["src/ui/__tests__/ActiveWorkoutScreen.test.tsx" ]), flows: Object.freeze(["phase7-workout-removal-audio"]), native_backstops: Object.freeze([]) }),
+  Object.freeze({ id: "UX-16", owner: "07-02 compact SetRow", automated_checks: Object.freeze(["src/ui/__tests__/SetRow.test.tsx" ]), flows: Object.freeze(["phase7-workout-removal-audio"]), native_backstops: Object.freeze(["UI-B03"]) }),
+  Object.freeze({ id: "UX-17", owner: "07-02 add values", automated_checks: Object.freeze(["src/ui/__tests__/ActiveWorkoutScreen.test.tsx" ]), flows: Object.freeze(["phase7-workout-removal-audio"]), native_backstops: Object.freeze([]) }),
+  Object.freeze({ id: "UX-18", owner: "07-02 authoritative removal", automated_checks: Object.freeze(["src/domains/workout/setCommands.test.ts", "src/bootstrap/workoutAppRuntime.test.tsx"]), flows: Object.freeze(["phase7-workout-removal-audio"]), native_backstops: Object.freeze(["UI-B01"]) }),
+  Object.freeze({ id: "UX-19", owner: "07-02 retained More actions", automated_checks: Object.freeze(["src/ui/__tests__/ActiveWorkoutScreen.test.tsx" ]), flows: Object.freeze(["phase7-workout-removal-audio"]), native_backstops: Object.freeze([]) }),
+  Object.freeze({ id: "UX-20", owner: "07-03 reorder parity", automated_checks: Object.freeze(["src/ui/__tests__/OwnedPlanEditor.test.tsx", "src/ui/__tests__/ScheduleEditor.test.tsx" ]), flows: Object.freeze(["phase7-plan-schedule-reorder"]), native_backstops: Object.freeze(["UI-B01", "UI-B05"]) }),
+  Object.freeze({ id: "UX-21", owner: "07-04 countdown cue port", automated_checks: Object.freeze(["src/ui/__tests__/RestDock.test.tsx", "src/platform/audio/expoRestCountdownCueAdapter.test.ts"]), flows: Object.freeze(["phase7-workout-removal-audio"]), native_backstops: Object.freeze(["UI-B02"]) }),
+  Object.freeze({ id: "UX-22", owner: "07-05 app icon assets", automated_checks: Object.freeze(["scripts/concept-g-image-contract.test.mjs", "scripts/check-cng-reproducible.sh" ]), flows: Object.freeze(["phase7-icon-navigation-accessibility"]), native_backstops: Object.freeze(["UI-B04"]) }),
+  Object.freeze({ id: "UI-E01", owner: "07-02 set collections", automated_checks: Object.freeze(["src/ui/__tests__/SetRow.test.tsx" ]), flows: Object.freeze(["phase7-today-settings", "phase7-workout-removal-audio"]), native_backstops: Object.freeze([]) }),
+  Object.freeze({ id: "UI-E02", owner: "07-01 through 07-05 command surfaces", automated_checks: Object.freeze(["src/ui/__tests__/SettingsScreen.test.tsx", "src/ui/__tests__/ActiveWorkoutScreen.test.tsx" ]), flows: Object.freeze(["phase7-today-settings", "phase7-workout-removal-audio", "phase7-plan-schedule-reorder", "phase7-icon-navigation-accessibility"]), native_backstops: Object.freeze(["UI-B01"]) }),
+  Object.freeze({ id: "UI-E03", owner: "07-04 audio failure", automated_checks: Object.freeze(["src/ui/__tests__/RestDock.test.tsx", "src/platform/audio/expoRestCountdownCueAdapter.test.ts"]), flows: Object.freeze(["phase7-workout-removal-audio"]), native_backstops: Object.freeze(["UI-B02"]) }),
+  Object.freeze({ id: "UI-E04", owner: "07-01 to 07-05 populated surfaces", automated_checks: Object.freeze(["src/ui/__tests__/SettingsScreen.test.tsx", "src/ui/__tests__/OwnedPlanEditor.test.tsx" ]), flows: Object.freeze(["phase7-today-settings", "phase7-workout-removal-audio", "phase7-plan-schedule-reorder", "phase7-icon-navigation-accessibility"]), native_backstops: Object.freeze(["UI-B04"]) }),
+  Object.freeze({ id: "UI-E05", owner: "07-02 and 07-03 partial rows", automated_checks: Object.freeze(["src/ui/__tests__/SetRow.test.tsx", "src/ui/__tests__/OwnedPlanEditor.test.tsx" ]), flows: Object.freeze(["phase7-today-settings", "phase7-workout-removal-audio", "phase7-plan-schedule-reorder"]), native_backstops: Object.freeze([]) }),
+  Object.freeze({ id: "UI-E06", owner: "07-01 through 07-05 responsive surfaces", automated_checks: Object.freeze(["src/ui/__tests__/foundation.test.tsx" ]), flows: Object.freeze(["phase7-today-settings", "phase7-workout-removal-audio", "phase7-plan-schedule-reorder", "phase7-icon-navigation-accessibility"]), native_backstops: Object.freeze(["UI-B03"]) }),
+  Object.freeze({ id: "UI-E07", owner: "07-02 and 07-03 cardinality", automated_checks: Object.freeze(["src/ui/__tests__/SetRow.test.tsx", "src/ui/__tests__/ScheduleEditor.test.tsx" ]), flows: Object.freeze(["phase7-workout-removal-audio", "phase7-plan-schedule-reorder"]), native_backstops: Object.freeze([]) }),
+  Object.freeze({ id: "UI-E08", owner: "07-01 through 07-05 long text", automated_checks: Object.freeze(["src/ui/__tests__/SettingsScreen.test.tsx", "src/ui/__tests__/SetRow.test.tsx" ]), flows: Object.freeze(["phase7-today-settings", "phase7-workout-removal-audio", "phase7-plan-schedule-reorder", "phase7-icon-navigation-accessibility"]), native_backstops: Object.freeze(["UI-B03"]) }),
+  Object.freeze({ id: "UI-B01", owner: "07-09 exact-candidate evidence", automated_checks: Object.freeze(["scripts/phase7-evidence-scripts.test.mjs" ]), flows: Object.freeze(["phase7-today-settings", "phase7-workout-removal-audio", "phase7-plan-schedule-reorder"]), native_backstops: Object.freeze(["N4"]) }),
+  Object.freeze({ id: "UI-B02", owner: "07-10 physical audio evidence", automated_checks: Object.freeze(["src/ui/__tests__/RestDock.test.tsx", "src/platform/audio/expoRestCountdownCueAdapter.test.ts"]), flows: Object.freeze(["phase7-workout-removal-audio"]), native_backstops: Object.freeze(["N4"]) }),
+  Object.freeze({ id: "UI-B03", owner: "07-10 native 200 percent evidence", automated_checks: Object.freeze(["scripts/phase7-evidence-scripts.test.mjs" ]), flows: Object.freeze(["phase7-today-settings", "phase7-workout-removal-audio", "phase7-plan-schedule-reorder", "phase7-icon-navigation-accessibility"]), native_backstops: Object.freeze(["N4"]) }),
+  Object.freeze({ id: "UI-B04", owner: "07-10 attended-only launcher evidence", automated_checks: Object.freeze(["scripts/concept-g-image-contract.test.mjs", "scripts/check-cng-reproducible.sh" ]), flows: Object.freeze([]), native_backstops: Object.freeze(["N4"]) }),
+  Object.freeze({ id: "UI-B05", owner: "07-10 assistive reorder evidence", automated_checks: Object.freeze(["src/ui/__tests__/OwnedPlanEditor.test.tsx" ]), flows: Object.freeze(["phase7-today-settings", "phase7-plan-schedule-reorder", "phase7-icon-navigation-accessibility"]), native_backstops: Object.freeze(["N4"]) }),
+]);
+
+export const PHASE7_NATIVE_BACKSTOPS = Object.freeze([
+  Object.freeze({ id: "N4", status: "pending_human", description: "Samsung exact-byte aggregated observation-only Phase 7 review.", flow_ids: Object.freeze([]) }),
+]);
+
+export const PHASE7_PLAN_REORDER_STAGES = Object.freeze([
+  "plan-day-ready",
+  "plan-exercise-ready",
+  "plan-save",
+  "plan-exercise-persisted-ready",
+  "weekday-ready",
+  "weekday-save",
+  "rotation-ready",
+  "rotation-save",
+]);
+
+function fail(message) {
+  throw new Error(`Phase 7 Maestro: ${message}`);
+}
+
+function exactJson(left, right) {
+  return JSON.stringify(left) === JSON.stringify(right);
+}
+
+function isInside(root, candidate) {
+  const relative = path.relative(root, candidate);
+  return relative === "" || (!relative.startsWith(`..${path.sep}`) && relative !== ".." && !path.isAbsolute(relative));
+}
+
+function canonicalDirectory(directory, label) {
+  const details = lstatSync(directory, { throwIfNoEntry: false });
+  if (!details?.isDirectory() || details.isSymbolicLink() || realpathSync(directory) !== path.resolve(directory)) {
+    fail(`${label} is missing or unsafe.`);
+  }
+  return path.resolve(directory);
+}
+
+function requireFreshPathInsideBundle(bundleDirectory, filePath, label) {
+  const target = path.resolve(filePath);
+  const parent = path.dirname(target);
+  if (!isInside(bundleDirectory, target) || lstatSync(target, { throwIfNoEntry: false }) !== undefined) {
+    fail(`${label} must be a fresh path inside the retained candidate bundle.`);
+  }
+  const parentDetails = lstatSync(parent, { throwIfNoEntry: false });
+  if (!parentDetails?.isDirectory() || parentDetails.isSymbolicLink() || realpathSync(parent) !== parent) {
+    fail(`${label} parent is unsafe.`);
+  }
+  return target;
+}
+
+function safeRelativeFile(value, label) {
+  if (typeof value !== "string" || !SAFE_RELATIVE_FILE.test(value) || value.startsWith("/")
+    || value.includes("\\") || value.split("/").some((part) => part === "." || part === ".." || part.length === 0)) {
+    fail(`${label} is malformed.`);
+  }
+  return value;
+}
+
+function sha256Bytes(bytes) {
+  return createHash("sha256").update(bytes).digest("hex");
+}
+
+function retainedFileBytes(reportDirectory, relativeFile, label) {
+  const root = canonicalDirectory(
+    reportDirectory,
+    "Phase 7 Maestro report directory",
+  );
+  const relative = safeRelativeFile(relativeFile, `${label} path`);
+  const target = path.resolve(root, relative);
+  if (!isInside(root, target)) {
+    fail(`${label} path escapes the report directory.`);
+  }
+  let descriptor;
+  try {
+    descriptor = openSync(
+      target,
+      fsConstants.O_RDONLY | fsConstants.O_NOFOLLOW,
+    );
+  } catch {
+    fail(`${label} is missing, a symlink, or unsafe.`);
+  }
+  try {
+    const opened = fstatSync(descriptor);
+    const linked = lstatSync(target, { throwIfNoEntry: false });
+    if (
+      !opened.isFile()
+      || opened.nlink !== 1
+      || !linked?.isFile()
+      || linked.isSymbolicLink()
+      || linked.nlink !== 1
+      || linked.dev !== opened.dev
+      || linked.ino !== opened.ino
+      || realpathSync(target) !== target
+    ) {
+      fail(`${label} is missing, linked, a symlink, or unsafe.`);
+    }
+    return readFileSync(descriptor);
+  } finally {
+    closeSync(descriptor);
+  }
+}
+
+function retainedArtifact(
+  reportDirectory,
+  relativeFile,
+  expectedSha256,
+  label,
+) {
+  if (!SHA256_PATTERN.test(expectedSha256 ?? "")) {
+    fail(`${label} hash is invalid.`);
+  }
+  const bytes = retainedFileBytes(reportDirectory, relativeFile, label);
+  if (sha256Bytes(bytes) !== expectedSha256) {
+    fail(`${label} hash does not match retained bytes.`);
+  }
+  return bytes;
+}
+
+function containsForbiddenEvidenceKey(value) {
+  if (Array.isArray(value)) return value.some(containsForbiddenEvidenceKey);
+  if (value === null || typeof value !== "object") return false;
+  return Object.entries(value).some(([key, nested]) =>
+    FORBIDDEN_EVIDENCE_KEYS.has(key) || containsForbiddenEvidenceKey(nested));
+}
+
+function parseJunitAttributes(tag, elementName) {
+  const source = tag
+    .replace(new RegExp(`^<${elementName}\\b`, "u"), "")
+    .replace(/\/?\s*>$/u, "");
+  const attributes = new Map();
+  const token = /\s+([A-Za-z_:][\w:.-]*)\s*=\s*(?:"([^"]*)"|'([^']*)')/uy;
+  let cursor = 0;
+  while (cursor < source.length) {
+    if (/^\s*$/u.test(source.slice(cursor))) break;
+    token.lastIndex = cursor;
+    const match = token.exec(source);
+    if (match === null || attributes.has(match[1])) {
+      fail(`Maestro JUnit ${elementName} attributes are malformed.`);
+    }
+    attributes.set(match[1], match[2] ?? match[3] ?? "");
+    cursor = token.lastIndex;
+  }
+  return attributes;
+}
+
+function junitElements(xml) {
+  const stack = [];
+  const elements = [];
+  let cursor = 0;
+  let rootCount = 0;
+  const tokenPattern = /<!--[\s\S]*?-->|<\?[\s\S]*?\?>|<!\[CDATA\[[\s\S]*?\]\]>|<!DOCTYPE(?:[^>]|\[[\s\S]*?\])*>|<\/?[A-Za-z_:][^<>]*>/gu;
+  for (const match of xml.matchAll(tokenPattern)) {
+    const token = match[0];
+    const index = match.index ?? 0;
+    if (/[<>]/u.test(xml.slice(cursor, index))
+      || xml.slice(cursor, index).trim().length > 0) {
+      fail("Maestro JUnit report is missing or malformed.");
+    }
+    cursor = index + token.length;
+    if (token.startsWith("<!DOCTYPE")) {
+      fail("Maestro JUnit DOCTYPE declarations are forbidden.");
+    }
+    if (/^<\?xml\b/iu.test(token) && (index !== 0 || rootCount !== 0)) {
+      fail("Maestro JUnit XML declaration is malformed.");
+    }
+    if (token.startsWith("<![CDATA[") && stack.length === 0) {
+      fail("Maestro JUnit CDATA must be inside the root element.");
+    }
+    if (token.startsWith("<?") || token.startsWith("<!")) continue;
+    const closing = token.match(/^<\/([A-Za-z_:][\w:.-]*)\s*>$/u);
+    if (closing !== null) {
+      if (stack.pop()?.name !== closing[1]) {
+        fail("Maestro JUnit report is missing or malformed.");
+      }
+      continue;
+    }
+    const opening = token.match(/^<([A-Za-z_:][\w:.-]*)\b/u);
+    if (opening === null) fail("Maestro JUnit report is missing or malformed.");
+    const element = {
+      name: opening[1],
+      parent: stack.at(-1)?.name ?? null,
+      tag: token,
+    };
+    elements.push(element);
+    if (stack.length === 0) rootCount += 1;
+    if (!/\/\s*>$/u.test(token)) stack.push(element);
+  }
+  if (xml.slice(cursor).trim().length > 0 || stack.length !== 0 || rootCount !== 1) {
+    fail("Maestro JUnit report is missing or malformed.");
+  }
+  return elements;
+}
+
+export function parsePassingJunit(bytes, flowId) {
+  const text = Buffer.from(bytes ?? []).toString("utf8");
+  const elements = junitElements(text);
+  const root = elements.find(({ parent }) => parent === null);
+  if (![/^testsuite$/u, /^testsuites$/u].some((pattern) =>
+    pattern.test(root?.name ?? ""))) {
+    fail(`Maestro did not produce a passing JUnit report: ${flowId}`);
+  }
+  const suites = elements.filter(({ name }) => name === "testsuite");
+  const testcases = elements.filter(({ name }) => name === "testcase");
+  const allowed = elements.every(({ name, parent }) => {
+    if (name === "testsuites") return parent === null;
+    if (name === "testsuite") return parent === null || parent === "testsuites";
+    if (name === "testcase") return parent === "testsuite";
+    if (["failure", "error", "skipped"].includes(name)) return parent === "testcase";
+    if (name === "properties") return parent === "testsuite" || parent === "testcase";
+    return name === "property" && parent === "properties";
+  });
+  if (!allowed || suites.length < 1 || testcases.length < 1) {
+    fail(`Maestro did not produce a passing JUnit report: ${flowId}`);
+  }
+  const summary = { tests: 0, failures: 0, errors: 0, skipped: 0 };
+  for (const { tag } of suites) {
+    const attributes = parseJunitAttributes(tag, "testsuite");
+    for (const key of Object.keys(summary)) {
+      const value = attributes.get(key);
+      if (value === undefined && (key === "tests" || key === "failures")) {
+        fail(`Maestro JUnit report is missing ${key}: ${flowId}`);
+      }
+      if (value !== undefined && !/^\d+$/u.test(value)) {
+        fail(`Maestro JUnit report has malformed ${key}: ${flowId}`);
+      }
+      summary[key] += Number(value ?? 0);
+    }
+  }
+  if (summary.tests !== testcases.length
+    || summary.tests < 1
+    || summary.failures !== 0
+    || summary.errors !== 0
+    || summary.skipped !== 0
+    || elements.some(({ name }) => ["failure", "error", "skipped"].includes(name))) {
+    fail(`Maestro did not produce a passing JUnit report: ${flowId}`);
+  }
+  return Object.freeze(summary);
+}
+
+export function validatePhase7CandidateSourceIdentity(
+  manifest,
+  { currentHead, currentSourceSha256 },
+) {
+  if (currentHead !== manifest?.source?.commit
+    || currentSourceSha256 !== manifest?.source?.tree_sha256) {
+    fail("current source does not match the candidate source identity.");
+  }
+  return true;
+}
+
+function screenshotFiles(root) {
+  const files = [];
+  for (const entry of readdirSync(root, { withFileTypes: true })) {
+    const candidate = path.join(root, entry.name);
+    if (entry.isDirectory()) files.push(...screenshotFiles(candidate));
+    else if (entry.isFile() && /\.png$/iu.test(entry.name) && statSync(candidate).size > 0) files.push(candidate);
+  }
+  return files;
+}
+
+function reportFiles(root) {
+  const files = [];
+  for (const entry of readdirSync(root, { withFileTypes: true })) {
+    const candidate = path.join(root, entry.name);
+    if (entry.isDirectory()) files.push(...reportFiles(candidate));
+    else if (entry.isFile() && entry.name === "report.xml") files.push(candidate);
+  }
+  return files;
+}
+
+function excludedScreenshotDirectories(contract) {
+  return contract.id === "phase7-plan-schedule-reorder"
+    ? PHASE7_PLAN_REORDER_STAGES
+    : [];
+}
+
+export function exactPhase7ScreenshotEvidence(reportRoot, expectedFiles, flowId, excludedDirectories = []) {
+  const excluded = new Set(excludedDirectories.map((directory) => path.resolve(reportRoot, directory)));
+  const actual = screenshotFiles(reportRoot).filter((file) =>
+    ![...excluded].some((directory) => isInside(directory, file))
+  ).map((file) => Object.freeze({
+    file: safeRelativeFile(path.basename(file), "screenshot file"),
+    report_file: safeRelativeFile(
+      [
+        safeRelativeFile(flowId, "screenshot flow id"),
+        path.relative(reportRoot, file).split(path.sep).join("/"),
+      ].join("/"),
+      "screenshot report file",
+    ),
+    sha256: sha256File(file),
+  })).sort((left, right) => left.file.localeCompare(right.file));
+  const expected = [...expectedFiles].sort((left, right) => left.localeCompare(right));
+  if (!exactJson(actual.map(({ file }) => file), expected)) {
+    fail(`required screenshots are missing or renamed for ${flowId}.`);
+  }
+  return Object.freeze(actual);
+}
+
+export function parsePhase7MaestroArguments(args = process.argv.slice(2)) {
+  const options = {};
+  if (args.length !== REQUIRED_OPTIONS.size * 2) fail("arguments are malformed.");
+  for (let index = 0; index < args.length; index += 2) {
+    const field = REQUIRED_OPTIONS.get(args[index]);
+    const value = args[index + 1];
+    if (field === undefined || options[field] !== undefined || typeof value !== "string" || value.length === 0 || value.startsWith("--")) fail("arguments are malformed.");
+    options[field] = value;
+  }
+  if (!SHA256_PATTERN.test(options.expectedManifestSha256) || options.packageName !== PACKAGE || !SERIAL.test(options.serial)) {
+    fail("candidate package, manifest, or serial identity is malformed.");
+  }
+  return Object.freeze(options);
+}
+
+export function loadPhase7Candidate(options) {
+  const candidate = loadPhase6Candidate(options);
+  if (candidate.manifest.source.package !== PACKAGE || candidate.manifest.build.profile !== "production" || candidate.manifest_sha256 !== options.expectedManifestSha256) {
+    fail("candidate identity is not the exact production replacement.");
+  }
+  if (!existsSync(candidate.apkPath) || sha256File(candidate.apkPath) !== candidate.apk.sha256) {
+    fail("candidate APK bytes do not match the immutable manifest.");
+  }
+  return candidate;
+}
+
+function adb(adbPath, serial, ...argumentsList) {
+  return execFileSync(adbPath, ["-s", serial, ...argumentsList], { encoding: "utf8" }).trim();
+}
+
+function hierarchyAttribute(node, name) {
+  return new RegExp(`${name}=\"([^\"]*)\"`, "u").exec(node)?.[1] ?? null;
+}
+
+function matchesId(value, pattern) {
+  return value !== null && new RegExp(
+    pattern.source,
+    pattern.flags.replace(/[gy]/gu, ""),
+  ).test(value);
+}
+
+function reorderDescriptionMatches(description, label) {
+  return description === `Reorder ${label}`
+    || description === `Drag ${label}`
+    || description?.startsWith(`Drag ${label}. Position `) === true;
+}
+
+function phase7ReorderCoordinate(hierarchy, { idPattern, label }) {
+  const nodes = [...String(hierarchy).matchAll(/<node\b[^>]*>/gu)].map(([node]) => node);
+  if (!(idPattern instanceof RegExp) || typeof label !== "string" || label.length === 0) {
+    fail("drag hierarchy selector is invalid.");
+  }
+  const matching = nodes.filter((candidate) =>
+    matchesId(hierarchyAttribute(candidate, "resource-id"), idPattern)
+    && reorderDescriptionMatches(
+      hierarchyAttribute(candidate, "content-desc"),
+      label,
+    ));
+  if (matching.length !== 1) fail(`drag hierarchy must contain exactly one ${label} handle.`);
+  const bounds = /^\[(\d+),(\d+)\]\[(\d+),(\d+)\]$/u.exec(
+    hierarchyAttribute(matching[0], "bounds") ?? "",
+  );
+  if (bounds === null) fail(`drag hierarchy bounds are invalid for ${label}.`);
+  const [left, top, right, bottom] = bounds.slice(1).map(Number);
+  if (right <= left || bottom <= top) fail(`drag hierarchy bounds are invalid for ${label}.`);
+  return Object.freeze({ x: Math.round((left + right) / 2), y: Math.round((top + bottom) / 2) });
+}
+
+export function phase7ReorderCoordinates(hierarchy, { source, target }) {
+  const sourceCoordinate = phase7ReorderCoordinate(hierarchy, source);
+  const targetCoordinate = phase7ReorderCoordinate(hierarchy, target);
+  return Object.freeze({
+    startX: sourceCoordinate.x,
+    startY: sourceCoordinate.y,
+    endX: targetCoordinate.x,
+    endY: targetCoordinate.y,
+  });
+}
+
+export function phase7ReorderOrderIs(hierarchy, { first, second }) {
+  const firstCoordinate = phase7ReorderCoordinate(hierarchy, first);
+  const secondCoordinate = phase7ReorderCoordinate(hierarchy, second);
+  return firstCoordinate.y < secondCoordinate.y;
+}
+
+export function phase7PlanReorderCoordinates(hierarchy, { sourceLabel = "Bench Press", targetLabel = "Back Squat" } = {}) {
+  return phase7ReorderCoordinates(hierarchy, {
+    source: { idPattern: new RegExp(`^drag-exercise-${sourceLabel}$`, "u"), label: sourceLabel },
+    target: { idPattern: new RegExp(`^drag-exercise-${targetLabel}$`, "u"), label: targetLabel },
+  });
+}
+
+export function phase7NativeHeldDragCommands({ startX, startY, endX, endY }) {
+  const coordinates = [startX, startY, endX, endY];
+  if (!coordinates.every((value) => Number.isSafeInteger(value) && value >= 0)) fail("native drag coordinates are invalid.");
+  return Object.freeze({
+    down: Object.freeze(["shell", "input", "touchscreen", "motionevent", "DOWN", String(startX), String(startY)]),
+    up: Object.freeze(["shell", "input", "touchscreen", "motionevent", "UP", String(endX), String(endY)]),
+  });
+}
+
+export function phase7NativeDragMoveSequence({ startX, startY, endX, endY }, steps = 12) {
+  if (!Number.isSafeInteger(steps) || steps < 1) fail("native drag step count is invalid.");
+  phase7NativeHeldDragCommands({ startX, startY, endX, endY });
+  return Object.freeze(Array.from({ length: steps }, (_unused, index) => {
+    const progress = (index + 1) / steps;
+    return Object.freeze(["shell", "input", "touchscreen", "motionevent", "MOVE", String(Math.round(startX + (endX - startX) * progress)), String(Math.round(startY + (endY - startY) * progress))]);
+  }));
+}
+
+function waitSynchronously(milliseconds) {
+  Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, milliseconds);
+}
+
+export function phase7PlanOrderIs(hierarchy, firstLabel, secondLabel) {
+  return phase7ReorderOrderIs(hierarchy, {
+    first: { idPattern: new RegExp(`^drag-exercise-${firstLabel}$`, "u"), label: firstLabel },
+    second: { idPattern: new RegExp(`^drag-exercise-${secondLabel}$`, "u"), label: secondLabel },
+  });
+}
+
+function captureScreenshot(adbPath, serial, outputPath) {
+  const bytes = execFileSync(adbPath, ["-s", serial, "exec-out", "screencap", "-p"]);
+  if (!Buffer.isBuffer(bytes) || bytes.length === 0) fail("native plan reorder screenshot is missing.");
+  writeFileSync(outputPath, bytes, { flag: "wx" });
+}
+
+const PLAN_REORDER = Object.freeze({
+  source: Object.freeze({ idPattern: /^drag-exercise-Bench Press$/u, label: "Bench Press" }),
+  target: Object.freeze({ idPattern: /^drag-exercise-Back Squat$/u, label: "Back Squat" }),
+});
+const PLAN_DAY_REORDER = Object.freeze({
+  source: Object.freeze({ idPattern: /^drag-day-Full Body B$/u, label: "Full Body B" }),
+  target: Object.freeze({ idPattern: /^drag-day-Full Body A$/u, label: "Full Body A" }),
+});
+const WEEKDAY_REORDER = Object.freeze({
+  source: Object.freeze({ idPattern: /^drag-weekday-0-Wednesday-.+$/u, label: "Full Body B" }),
+  target: Object.freeze({ idPattern: /^drag-weekday-0-Monday-.+$/u, label: "Full Body A" }),
+});
+export const PHASE7_ROTATION_REORDER = Object.freeze({
+  source: Object.freeze({ idPattern: /^drag-rotation-.+-\d+$/u, label: "Full Body A" }),
+  target: Object.freeze({ idPattern: /^drag-rotation-.+-\d+$/u, label: "Full Body B" }),
+});
+const WEEKDAY_PERSISTED_ORDER = Object.freeze({
+  first: WEEKDAY_REORDER.source,
+  second: WEEKDAY_REORDER.target,
+});
+export const PHASE7_ROTATION_PERSISTED_ORDER = Object.freeze({
+  first: PHASE7_ROTATION_REORDER.source,
+  second: PHASE7_ROTATION_REORDER.target,
+});
+const PLAN_DAY_PERSISTED_ORDER = Object.freeze({
+  first: PLAN_DAY_REORDER.source,
+  second: PLAN_DAY_REORDER.target,
+});
+const PLAN_EXERCISE_PERSISTED_ORDER = Object.freeze({
+  first: PLAN_REORDER.source,
+  second: PLAN_REORDER.target,
+});
+
+function deviceHierarchy(adbPath, serial) {
+  return adb(adbPath, serial, "exec-out", "uiautomator", "dump", "/dev/tty");
+}
+
+function executePhase7HeldDrag(adbPath, serial, reorder) {
+  const before = deviceHierarchy(adbPath, serial);
+  const drag = phase7ReorderCoordinates(before, reorder);
+  const sourceStartedFirst = drag.startY < drag.endY;
+  const commands = phase7NativeHeldDragCommands(drag);
+  let pointerDown = false;
+  try {
+    adb(adbPath, serial, ...commands.down);
+    pointerDown = true;
+    waitSynchronously(700);
+    for (const move of phase7NativeDragMoveSequence(drag)) {
+      adb(adbPath, serial, ...move);
+      waitSynchronously(60);
+    }
+  } finally {
+    if (pointerDown) adb(adbPath, serial, ...commands.up);
+  }
+  const afterDrag = deviceHierarchy(adbPath, serial);
+  const sourceFinishedFirst = phase7ReorderOrderIs(afterDrag, {
+    first: reorder.source,
+    second: reorder.target,
+  });
+  if (sourceFinishedFirst === sourceStartedFirst) {
+    fail(`native held drag did not commit the ${reorder.source.label} reorder.`);
+  }
+  return afterDrag;
+}
+
+function executePhase7PlanReorderEvidence(adbPath, serial, flowDirectory) {
+  executePhase7HeldDrag(adbPath, serial, PLAN_REORDER);
+  captureScreenshot(
+    adbPath,
+    serial,
+    path.join(flowDirectory, "phase7-plan-exercise-reorder.png"),
+  );
+}
+
+function executePhase7ScheduleReorderEvidence(adbPath, serial, reorder) {
+  executePhase7HeldDrag(adbPath, serial, reorder);
+}
+
+function assertPhase7PersistedReorder(adbPath, serial, expected, mode) {
+  const hierarchy = deviceHierarchy(adbPath, serial);
+  if (!phase7ReorderOrderIs(hierarchy, expected)) {
+    fail(`persisted ${mode} schedule reorder is missing after save and reopen.`);
+  }
+}
+
+export function aggregatePhase7StageReports(stages) {
+  const testCases = stages.map((stage) =>
+    `  <testcase classname="phase7-plan-schedule-reorder" name="${stage}"/>`
+  ).join("\n");
+  return Buffer.from([
+    '<?xml version="1.0" encoding="UTF-8"?>',
+    `<testsuite name="phase7-plan-schedule-reorder" tests="${stages.length}" failures="0" errors="0" skipped="0">`,
+    testCases,
+    "</testsuite>",
+    "",
+  ].join("\n"));
+}
+
+function executePhase7MaestroStage(serial, reportPath, flowDirectory, flowPath, stage) {
+  execFileSync("maestro", [
+    "test", "--device", serial, "-e", `REORDER_STAGE=${stage}`,
+    "--format", "junit", "--output", reportPath,
+    "--test-output-dir", flowDirectory, flowPath,
+  ], { stdio: "inherit" });
+}
+
+function installedDevice(adbPath, serial, candidate) {
+  const packagePath = adb(adbPath, serial, "shell", "pm", "path", PACKAGE).split(/\r?\n/u)
+    .find((line) => /^package:\/[^\r\n]+\.apk$/u.test(line))?.slice(8);
+  if (!packagePath) fail("installed production package is missing or malformed.");
+  const temporaryDirectory = mkdtempSync(path.join(os.tmpdir(), "phase7-installed-"));
+  const temporaryApk = path.join(temporaryDirectory, "installed.apk");
+  try {
+    execFileSync(adbPath, ["-s", serial, "pull", packagePath, temporaryApk], { stdio: "ignore" });
+    const device = Object.freeze({
+      role: "automated-emulator",
+      model: adb(adbPath, serial, "shell", "getprop", "ro.product.model"),
+      api: Number(adb(adbPath, serial, "shell", "getprop", "ro.build.version.sdk")),
+      abi: adb(adbPath, serial, "shell", "getprop", "ro.product.cpu.abi"),
+      serial_sha256: sha256Bytes(serial),
+      installed_package: PACKAGE,
+      installed_version_code: Number(adb(adbPath, serial, "shell", "dumpsys", "package", PACKAGE).match(/versionCode=(\d+)/u)?.[1]),
+      installed_apk_sha256: sha256File(temporaryApk),
+    });
+    validatePhase5DeviceIdentity(device, candidate.manifest);
+    return device;
+  } finally {
+    rmSync(temporaryDirectory, { recursive: true, force: true });
+  }
+}
+
+function snapshotFlow(directory, sourceRoot, contract) {
+  const source = path.resolve(sourceRoot, contract.flow);
+  if (!existsSync(source)) fail(`required Maestro flow is missing: ${contract.id}`);
+  const bytes = readFileSync(source);
+  const flowPath = path.join(directory, `${contract.id}.yaml`);
+  writeFileSync(flowPath, bytes, { flag: "wx", mode: 0o400 });
+  const flowSha256 = sha256Bytes(bytes);
+  if (sha256File(flowPath) !== flowSha256) fail(`Maestro flow snapshot failed: ${contract.id}`);
+  return Object.freeze({ source: contract.flow, flowPath, flowSha256 });
+}
+
+export function snapshotPhase7ExecutableFlows(parentDirectory = os.tmpdir(), sourceRoot = process.cwd()) {
+  const directory = mkdtempSync(path.join(path.resolve(parentDirectory), "phase7-executable-flows-"));
+  try {
+    const flows = Object.freeze(Object.fromEntries(PHASE7_MAESTRO_FLOW_CONTRACTS.map((contract) => [contract.id, snapshotFlow(directory, sourceRoot, contract)])));
+    return Object.freeze({ directory, flows, cleanup: () => rmSync(directory, { recursive: true, force: true }) });
+  } catch (error) {
+    rmSync(directory, { recursive: true, force: true });
+    throw error;
+  }
+}
+
+function assertFlowSnapshot(execution, contract, sourceRoot = process.cwd()) {
+  if (execution?.source !== contract.flow || !SHA256_PATTERN.test(execution?.flowSha256 ?? "")
+    || typeof execution?.flowPath !== "string" || sha256File(execution.flowPath) !== execution.flowSha256
+    || sha256File(path.resolve(sourceRoot, contract.flow)) !== execution.flowSha256) {
+    fail(`executed Maestro flow bytes changed: ${contract.id}`);
+  }
+  return execution;
+}
+
+export function validatePhase7ExecutableFlowSnapshots(flowExecutions, sourceRoot = process.cwd()) {
+  for (const contract of PHASE7_MAESTRO_FLOW_CONTRACTS) assertFlowSnapshot(flowExecutions?.[contract.id], contract, sourceRoot);
+}
+
+export function createPhase7Evidence({
+  candidate,
+  device,
+  flowExecutions,
+  rawReports,
+  stageReports = {},
+  screenshots,
+  fontScaleRestored,
+}) {
+  const flows = PHASE7_MAESTRO_FLOW_CONTRACTS.map((contract) => {
+    const execution = assertFlowSnapshot(flowExecutions?.[contract.id], contract);
+    const report = rawReports?.[contract.id];
+    const flowScreenshots = screenshots?.[contract.id];
+    const parsed = parsePassingJunit(report, contract.id);
+    const flowStageReports = contract.id === "phase7-plan-schedule-reorder"
+      ? PHASE7_PLAN_REORDER_STAGES.map((stage) => {
+          const bytes = stageReports?.[stage];
+          return Object.freeze({
+            id: stage,
+            raw_report_file: `${contract.id}/${stage}/report.xml`,
+            raw_report_sha256: sha256Bytes(bytes),
+            ...parsePassingJunit(bytes, `${contract.id}/${stage}`),
+          });
+        })
+      : [];
+    if (!Array.isArray(flowScreenshots) || !exactJson(flowScreenshots.map(({ file }) => file).slice().sort(), [...contract.screenshots].sort())) {
+      fail(`required screenshots are missing or renamed for ${contract.id}.`);
+    }
+    return Object.freeze({
+      id: contract.id, flow: contract.flow, flow_sha256: execution.flowSha256,
+      considerations: contract.considerations, native_backstops: contract.native_backstops,
+      raw_report_file: `${contract.id}/report.xml`, raw_report_sha256: sha256Bytes(report),
+      stage_reports: Object.freeze(flowStageReports),
+      screenshots: Object.freeze(flowScreenshots.map((screenshot) =>
+        Object.freeze({
+          file: safeRelativeFile(screenshot.file, "screenshot file"),
+          report_file: safeRelativeFile(
+            screenshot.report_file,
+            "screenshot report file",
+          ),
+          sha256: screenshot.sha256,
+        })
+      )),
+      ...parsed,
+    });
+  });
+  return Object.freeze({
+    schema_version: 1, suite: "phase7", status: "passed", mode: "automated-only",
+    approval_status: "evidence_pending", attended_scope: "N4_pending_human", producer: "phase7-maestro/v1",
+    candidate: phase5CandidateIdentity(candidate.manifest, candidate.manifest_sha256), device,
+    considerations: PHASE7_CONSIDERATION_CONTRACTS, flows,
+    native_backstops: PHASE7_NATIVE_BACKSTOPS.map((backstop) => Object.freeze({ id: backstop.id, status: "pending_human", flow_ids: backstop.flow_ids })),
+    font_scale_restored: fontScaleRestored,
+  });
+}
+
+export function validatePhase7RetainedArtifacts(evidence, reportDirectory) {
+  canonicalDirectory(reportDirectory, "Phase 7 Maestro report directory");
+  if (!Array.isArray(evidence?.flows)
+    || evidence.flows.length !== PHASE7_MAESTRO_FLOW_CONTRACTS.length) {
+    fail("automated evidence flow ledger is incomplete.");
+  }
+  for (const [index, contract] of PHASE7_MAESTRO_FLOW_CONTRACTS.entries()) {
+    const flow = evidence.flows[index];
+    if (flow?.id !== contract.id) {
+      fail(`retained flow order is invalid: ${contract.id}`);
+    }
+    const rawReport = retainedArtifact(
+      reportDirectory,
+      flow.raw_report_file,
+      flow.raw_report_sha256,
+      `raw report ${contract.id}`,
+    );
+    const parsed = parsePassingJunit(rawReport, contract.id);
+    if (!exactJson(parsed, {
+      tests: flow.tests,
+      failures: flow.failures,
+      errors: flow.errors,
+      skipped: flow.skipped,
+    })) {
+      fail(`raw report count does not match evidence: ${contract.id}`);
+    }
+
+    const expectedStages = contract.id === "phase7-plan-schedule-reorder"
+      ? PHASE7_PLAN_REORDER_STAGES
+      : [];
+    if (expectedStages.length > 0 && parsed.tests !== expectedStages.length) {
+      fail(`aggregate report count does not match stage reports: ${contract.id}`);
+    }
+    if (!Array.isArray(flow.stage_reports)
+      || flow.stage_reports.length !== expectedStages.length) {
+      fail(`stage report ledger or count is invalid: ${contract.id}`);
+    }
+    for (const [stageIndex, stage] of expectedStages.entries()) {
+      const entry = flow.stage_reports[stageIndex];
+      if (entry?.id !== stage
+        || entry?.raw_report_file
+          !== `${contract.id}/${stage}/report.xml`) {
+        fail(`stage report ledger is invalid: ${contract.id}/${stage}`);
+      }
+      const stageReport = retainedArtifact(
+        reportDirectory,
+        entry.raw_report_file,
+        entry.raw_report_sha256,
+        `stage report ${contract.id}/${stage}`,
+      );
+      const stageParsed = parsePassingJunit(
+        stageReport,
+        `${contract.id}/${stage}`,
+      );
+      if (stageParsed.tests !== 1 || !exactJson(stageParsed, {
+        tests: entry.tests,
+        failures: entry.failures,
+        errors: entry.errors,
+        skipped: entry.skipped,
+      })) {
+        fail(`stage report count does not match evidence: ${contract.id}/${stage}`);
+      }
+    }
+    if (expectedStages.length > 0
+      && !rawReport.equals(aggregatePhase7StageReports(
+        flow.stage_reports.map(({ id }) => id),
+      ))) {
+      fail(`aggregate report does not match the stage ledger: ${contract.id}`);
+    }
+    const flowDirectory = canonicalDirectory(
+      path.join(reportDirectory, contract.id),
+      `retained flow directory ${contract.id}`,
+    );
+    const expectedReports = [
+      flow.raw_report_file,
+      ...flow.stage_reports.map(({ raw_report_file: reportFile }) => reportFile),
+    ].sort();
+    const actualReports = reportFiles(flowDirectory).map((file) =>
+      path.relative(reportDirectory, file).split(path.sep).join("/")
+    ).sort();
+    if (!exactJson(actualReports, expectedReports)) {
+      fail(`retained report set is invalid: ${contract.id}`);
+    }
+
+    if (!Array.isArray(flow.screenshots)
+      || !exactJson(
+        flow.screenshots.map(({ file }) => file).slice().sort(),
+        [...contract.screenshots].sort(),
+      )) {
+      fail(`screenshot ledger is invalid: ${contract.id}`);
+    }
+    const retainedScreenshots = [];
+    for (const screenshot of flow.screenshots) {
+      const reportFile = safeRelativeFile(
+        screenshot?.report_file,
+        "screenshot report file",
+      );
+      retainedArtifact(
+        reportDirectory,
+        reportFile,
+        screenshot.sha256,
+        `screenshot ${contract.id}/${screenshot.file}`,
+      );
+      retainedScreenshots.push({
+        file: safeRelativeFile(screenshot.file, "screenshot file"),
+        report_file: reportFile,
+      });
+    }
+    const excluded = excludedScreenshotDirectories(contract).map((directory) =>
+      path.join(flowDirectory, directory)
+    );
+    const expectedRetainedScreenshots = screenshotFiles(flowDirectory)
+      .filter((file) => !excluded.some((directory) => isInside(directory, file)))
+      .map((file) => ({
+      file: path.basename(file),
+      report_file: path.relative(reportDirectory, file).split(path.sep).join("/"),
+      })).sort((left, right) =>
+        left.report_file.localeCompare(right.report_file));
+    if (!exactJson(
+      retainedScreenshots.sort((left, right) =>
+        left.report_file.localeCompare(right.report_file)),
+      expectedRetainedScreenshots,
+    )) fail(`retained screenshot set is invalid: ${contract.id}`);
+  }
+  return true;
+}
+
+export function validatePhase7Evidence(
+  evidence,
+  candidate,
+  rawReports,
+  flowExecutions = undefined,
+  reportDirectory = undefined,
+) {
+  const expectedCandidate = phase5CandidateIdentity(candidate.manifest, candidate.manifest_sha256);
+  if (evidence?.schema_version !== 1 || evidence?.suite !== "phase7" || evidence?.status !== "passed"
+    || evidence?.mode !== "automated-only" || evidence?.approval_status !== "evidence_pending"
+    || evidence?.attended_scope !== "N4_pending_human" || evidence?.producer !== "phase7-maestro/v1"
+    || !exactJson(evidence?.candidate, expectedCandidate) || !exactJson(evidence?.considerations, PHASE7_CONSIDERATION_CONTRACTS)
+    || evidence?.font_scale_restored !== true || containsForbiddenEvidenceKey(evidence)) {
+    fail("automated evidence identity, release boundary, or privacy boundary is invalid.");
+  }
+  validatePhase5DeviceIdentity(evidence.device, candidate.manifest);
+  if (!Array.isArray(evidence.flows) || evidence.flows.length !== PHASE7_MAESTRO_FLOW_CONTRACTS.length) fail("automated evidence flow ledger is incomplete.");
+  for (const [index, contract] of PHASE7_MAESTRO_FLOW_CONTRACTS.entries()) {
+    const flow = evidence.flows[index];
+    const execution = flowExecutions === undefined ? null : assertFlowSnapshot(flowExecutions[contract.id], contract);
+    const expectedHash = execution?.flowSha256 ?? sha256File(path.resolve(contract.flow));
+    const report = rawReports?.[contract.id];
+    if (flow?.id !== contract.id || flow?.flow !== contract.flow || flow?.flow_sha256 !== expectedHash
+      || !exactJson(flow?.considerations, contract.considerations) || !exactJson(flow?.native_backstops, contract.native_backstops)
+      || flow?.tests < 1 || flow?.failures !== 0 || flow?.errors !== 0 || flow?.skipped !== 0
+      || flow?.raw_report_file !== `${contract.id}/report.xml` || flow?.raw_report_sha256 !== sha256Bytes(report)
+      || !Array.isArray(flow?.stage_reports)
+      || !Array.isArray(flow?.screenshots) || !exactJson(flow.screenshots.map(({ file }) => file).slice().sort(), [...contract.screenshots].sort())) {
+      fail(`automated evidence flow is invalid: ${contract.id}`);
+    }
+    for (const screenshot of flow.screenshots) {
+      if (!SHA256_PATTERN.test(screenshot?.sha256 ?? "")) fail(`screenshot hash is invalid: ${contract.id}`);
+      safeRelativeFile(screenshot.file, "screenshot file");
+      safeRelativeFile(screenshot.report_file, "screenshot report file");
+    }
+  }
+  if (typeof reportDirectory !== "string") {
+    fail("Phase 7 Maestro report directory is required for validation.");
+  }
+  validatePhase7RetainedArtifacts(evidence, reportDirectory);
+  const expectedBackstops = PHASE7_NATIVE_BACKSTOPS.map((backstop) => ({ id: backstop.id, status: "pending_human", flow_ids: backstop.flow_ids }));
+  if (!exactJson(evidence.native_backstops, expectedBackstops)) fail("native backstop ledger is incomplete.");
+  return evidence;
+}
+
+export function executePhase7Maestro(args = process.argv.slice(2)) {
+  const options = parsePhase7MaestroArguments(args);
+  const candidate = loadPhase7Candidate(options);
+  validatePhase7CandidateSourceIdentity(candidate.manifest, {
+    currentHead: execFileSync("git", ["rev-parse", "HEAD"], {
+      cwd: projectRoot,
+      encoding: "utf8",
+    }).trim(),
+    currentSourceSha256: sourceTreeSha256(projectRoot),
+  });
+  const bundleDirectory = canonicalDirectory(options.bundleDirectory, "retained candidate bundle");
+  const output = requireFreshPathInsideBundle(bundleDirectory, options.output, "Phase 7 evidence output");
+  const reportDirectory = requireFreshPathInsideBundle(bundleDirectory, options.reportDirectory, "Phase 7 Maestro report directory");
+  mkdirSync(reportDirectory, { recursive: true });
+  const adbPath = resolveAdb();
+  const previousFontScale = adb(adbPath, options.serial, "shell", "settings", "get", "system", "font_scale");
+  let executableFlows; let evidence; let primaryError;
+  try {
+    executableFlows = snapshotPhase7ExecutableFlows();
+    execFileSync(adbPath, ["-s", options.serial, "install", "-r", candidate.apkPath], { stdio: "inherit" });
+    const device = installedDevice(adbPath, options.serial, candidate);
+    adb(adbPath, options.serial, "shell", "settings", "put", "system", "font_scale", "2.0");
+    const rawReports = {}; const stageReports = {}; const screenshots = {};
+    for (const contract of PHASE7_MAESTRO_FLOW_CONTRACTS) {
+      const execution = assertFlowSnapshot(executableFlows.flows[contract.id], contract);
+      const flowDirectory = path.join(reportDirectory, contract.id);
+      const reportPath = path.join(flowDirectory, "report.xml");
+      mkdirSync(flowDirectory);
+      if (contract.id === "phase7-plan-schedule-reorder") {
+        const completedStages = [];
+        const runStage = (stage) => {
+          const stageDirectory = path.join(flowDirectory, stage);
+          const stageReport = path.join(stageDirectory, "report.xml");
+          mkdirSync(stageDirectory);
+          executePhase7MaestroStage(
+            options.serial,
+            stageReport,
+            stageDirectory,
+            execution.flowPath,
+            stage,
+          );
+          if (!existsSync(stageReport)) fail(`Maestro stage report is missing: ${stage}`);
+          const report = readFileSync(stageReport);
+          parsePassingJunit(report, `${contract.id}/${stage}`);
+          stageReports[stage] = report;
+          completedStages.push(stage);
+        };
+        runStage("plan-day-ready");
+        captureScreenshot(
+          adbPath,
+          options.serial,
+          path.join(flowDirectory, "phase7-plan-selected-day.png"),
+        );
+        executePhase7HeldDrag(adbPath, options.serial, PLAN_DAY_REORDER);
+        runStage("plan-exercise-ready");
+        executePhase7HeldDrag(adbPath, options.serial, PLAN_REORDER);
+        runStage("plan-save");
+        assertPhase7PersistedReorder(
+          adbPath,
+          options.serial,
+          PLAN_DAY_PERSISTED_ORDER,
+          "plan-day",
+        );
+        captureScreenshot(
+          adbPath,
+          options.serial,
+          path.join(flowDirectory, "phase7-plan-day-reorder.png"),
+        );
+        runStage("plan-exercise-persisted-ready");
+        assertPhase7PersistedReorder(
+          adbPath,
+          options.serial,
+          PLAN_EXERCISE_PERSISTED_ORDER,
+          "plan-exercise",
+        );
+        captureScreenshot(
+          adbPath,
+          options.serial,
+          path.join(flowDirectory, "phase7-plan-exercise-reorder.png"),
+        );
+        runStage("weekday-ready");
+        executePhase7ScheduleReorderEvidence(adbPath, options.serial, WEEKDAY_REORDER);
+        runStage("weekday-save");
+        assertPhase7PersistedReorder(
+          adbPath,
+          options.serial,
+          WEEKDAY_PERSISTED_ORDER,
+          "Weekday",
+        );
+        captureScreenshot(
+          adbPath,
+          options.serial,
+          path.join(flowDirectory, "phase7-weekday-schedule-reorder.png"),
+        );
+        runStage("rotation-ready");
+        executePhase7ScheduleReorderEvidence(
+          adbPath,
+          options.serial,
+          PHASE7_ROTATION_REORDER,
+        );
+        runStage("rotation-save");
+        assertPhase7PersistedReorder(
+          adbPath,
+          options.serial,
+          PHASE7_ROTATION_PERSISTED_ORDER,
+          "Rotation",
+        );
+        captureScreenshot(
+          adbPath,
+          options.serial,
+          path.join(flowDirectory, "phase7-rotation-schedule-reorder.png"),
+        );
+        writeFileSync(
+          reportPath,
+          aggregatePhase7StageReports(completedStages),
+          { flag: "wx" },
+        );
+      } else {
+        execFileSync("maestro", ["test", "--device", options.serial, "--format", "junit", "--output", reportPath, "--test-output-dir", flowDirectory, execution.flowPath], { stdio: "inherit" });
+      }
+      if (!existsSync(reportPath)) fail(`Maestro report is missing: ${contract.id}`);
+      rawReports[contract.id] = readFileSync(reportPath);
+      screenshots[contract.id] = exactPhase7ScreenshotEvidence(
+        flowDirectory,
+        contract.screenshots,
+        contract.id,
+        excludedScreenshotDirectories(contract),
+      );
+    }
+    evidence = createPhase7Evidence({
+      candidate,
+      device,
+      flowExecutions: executableFlows.flows,
+      rawReports,
+      stageReports,
+      screenshots,
+      fontScaleRestored: false,
+    });
+  } catch (error) { primaryError = error; }
+  const cleanupErrors = []; let restored = false;
+  try {
+    adb(adbPath, options.serial, "shell", "settings", "put", "system", "font_scale", previousFontScale);
+    restored = adb(adbPath, options.serial, "shell", "settings", "get", "system", "font_scale") === previousFontScale;
+    if (!restored) fail("font scale cleanup did not restore the original value.");
+  } catch (error) { cleanupErrors.push(error); }
+  if (evidence !== undefined) {
+    try {
+      const finalized = { ...evidence, font_scale_restored: restored };
+      const reports = Object.fromEntries(PHASE7_MAESTRO_FLOW_CONTRACTS.map((contract) => [contract.id, readFileSync(path.join(reportDirectory, contract.id, "report.xml"))]));
+      validatePhase7Evidence(
+        finalized,
+        candidate,
+        reports,
+        executableFlows.flows,
+        reportDirectory,
+      );
+      writeFileSync(output, `${JSON.stringify(finalized, null, 2)}\n`, { flag: "wx" });
+      evidence = finalized;
+    } catch (error) { cleanupErrors.push(error); }
+  }
+  if (executableFlows !== undefined) { try { executableFlows.cleanup(); } catch (error) { cleanupErrors.push(error); } }
+  if (primaryError !== undefined || cleanupErrors.length > 0) {
+    if (primaryError !== undefined && cleanupErrors.length === 0) throw primaryError;
+    throw new AggregateError([...(primaryError === undefined ? [] : [primaryError]), ...cleanupErrors], "Phase 7 Maestro failed and cleanup was incomplete.");
+  }
+  return evidence;
+}
+
+const isMain = process.argv[1] !== undefined && import.meta.url === pathToFileURL(process.argv[1]).href;
+if (isMain) {
+  try {
+    const evidence = executePhase7Maestro();
+    process.stdout.write(`${JSON.stringify({ ok: true, flows: evidence.flows.length })}\n`);
+  } catch (error) {
+    process.stderr.write(`${JSON.stringify({ ok: false, error: error.message })}\n`);
+    process.exitCode = 1;
+  }
+}

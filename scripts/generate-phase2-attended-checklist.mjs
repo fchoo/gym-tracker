@@ -104,7 +104,8 @@ const previewInstructions = Object.freeze({
     }),
   }),
   "UI-02-SET-MUTATIONS|loading": Object.freeze({
-    action: "For each Add warm-up, Copy previous warm-up, Add working set, and completed-set correction variant, start the named mutation once, then verify duplicate activation is unavailable while it remains pending and set cardinality stays unchanged.",
+    action: "For each Add warm-up, Add working set, Remove warm-up, and completed-set correction variant, start the named mutation once, then verify duplicate activation is unavailable while it remains pending and set cardinality stays unchanged for add/correction while the removable row stays visible for removal.",
+    expected: "In-flight add, remove, or correction disables duplicate submission while preserving visible owner context.",
   }),
   "UI-02-TODAYS-PLAN|empty": Object.freeze({
     action: "Inspect the empty overview, confirm No exercises in today's plan is announced, then use the return action without fabricating a row.",
@@ -198,8 +199,8 @@ const caseInstructions = Object.freeze({
   }),
   "RC-02-LATEST-SCHEMA-ADD-COPY": Object.freeze({
     flow: "maestro/phase2/remediation-workout.yaml",
-    action: "Add one warm-up, copy the prior warm-up, add one working set, restart, and inspect the resulting row ordinals.",
-    expected: "Each operation creates exactly one fresh committed identity on the latest schema and persists with no duplicate row.",
+    action: "Confirm warm-up W2 is 40 kg × 5, use Add warm-up, verify warm-up W3 reuses the previous 40 kg × 5 observation, restart and verify those exact values persist, then Remove warm-up W3 and add one working set.",
+    expected: "Warm-up 3 has the reused 40 kg × 5 observation, survives restart as exactly one new row, is removed without changing warm-up 2's 40 kg × 5 values, and the working-set add also persists without a duplicate row.",
   }),
   "RC-02-NAV-LEFT-RAIL": Object.freeze({
     flow: "maestro/phase2/remediation-inputs-cards-navigation.yaml",
@@ -213,7 +214,7 @@ const caseInstructions = Object.freeze({
   }),
   "RC-02-RETRY-FOCUS": Object.freeze({
     flow: "maestro/phase2/remediation-workout.yaml",
-    action: "Inject each bounded add or copy failure, retry once, then use keyboard or D-pad to inspect focus on the committed target row.",
+    action: "Inject each bounded add failure, retry once, then use keyboard or D-pad to inspect focus on the committed target row.",
     expected: "The failed draft is retained, duplicate submission is blocked, and a successful retry reveals and focuses exactly one committed row.",
   }),
   "RC-02-ROLE-SPLIT": Object.freeze({
@@ -223,8 +224,8 @@ const caseInstructions = Object.freeze({
   }),
   "RC-02-SET-STATUS": Object.freeze({
     flow: "maestro/phase2/remediation-workout.yaml",
-    action: "Create warm-up, current, completed, planned, and skipped rows and inspect each label, glyph, top-right status, and progress count.",
-    expected: "Every row has explicit non-color state, warm-ups stay outside working progress, and completed or skipped semantics remain accurate.",
+    action: "Inspect warm-up, current, completed, and planned rows, then use Remove on an eligible incomplete warm-up and inspect each remaining label, glyph, top-right status, and progress count.",
+    expected: "Every remaining row has explicit non-color state, eligible incomplete rows expose Remove rather than Skip, and warm-ups stay outside working progress before and after removal.",
   }),
   "RC-02-STICKY-IDENTITY": Object.freeze({
     flow: "maestro/phase2/remediation-workout.yaml",
@@ -243,8 +244,8 @@ const caseInstructions = Object.freeze({
   }),
   "RC-02-WARMUP-EXCLUSION-COPY": Object.freeze({
     flow: "maestro/phase2/remediation-workout.yaml",
-    action: "Add and copy warm-ups, complete a working set, and compare the visible row summaries with working-set progress.",
-    expected: "Copied warm-ups persist but remain excluded from working progress, and retired exclusion prose does not appear.",
+    action: "Add a warm-up from the preceding row's values, restart, remove that added warm-up, complete a working set, and compare the visible row summaries with working-set progress.",
+    expected: "The added warm-up reuses and persists the previous observation, its removal deletes the row without changing working-set progress, and retired exclusion prose does not appear.",
   }),
 });
 

@@ -1,4 +1,5 @@
 import {
+  act,
   fireEvent,
   render,
   screen,
@@ -11,6 +12,9 @@ import {
   jest,
 } from "@jest/globals";
 import React from "react";
+import {
+  getByGestureTestId,
+} from "react-native-gesture-handler/jest-utils";
 
 import starterPlansAsset from "../../../assets/content/starter-plans.v2.json";
 import starterPlansAcceptanceAsset from "../../../artifacts/review/phase2/starter-plans-acceptance.json";
@@ -39,6 +43,25 @@ import {
 import {
   AppearanceProvider,
 } from "../theme";
+
+type TestGesture = Readonly<{
+  handlers: Readonly<{
+    onStart?: (event: Readonly<{ translationY: number }>) => void;
+    onUpdate?: (event: Readonly<{ translationY: number }>) => void;
+    onEnd?: (
+      event: Readonly<{ translationY: number }>,
+      success: boolean,
+    ) => void;
+    onFinalize?: (
+      event: Readonly<{ translationY: number }>,
+      success: boolean,
+    ) => void;
+  }>;
+}>;
+
+function reorderGesture(reorderId: string): TestGesture {
+  return getByGestureTestId(`reorder-gesture-${reorderId}`) as unknown as TestGesture;
+}
 
 const prettyBytes = (value: unknown) => `${JSON.stringify(value, null, 2)}\n`;
 const hashByBytes = new Map([
@@ -562,9 +585,11 @@ describe("starter activation", () => {
     }));
     await fireEvent.press(screen.getByRole("button", { name: "Apply Date" }));
     await fireEvent.press(screen.getByRole("radio", { name: "Rotation" }));
-    await fireEvent.press(screen.getByRole("button", {
-      name: "Move Back up",
-    }));
+    await fireEvent(
+      screen.getByTestId("drag-activation-rotation-body-part-back-1"),
+      "accessibilityAction",
+      { nativeEvent: { actionName: "increment" } },
+    );
     await fireEvent.press(screen.getByRole("button", { name: "Activate plan" }));
 
     expect(props.activateStarterPlan).not.toHaveBeenCalled();
@@ -596,6 +621,92 @@ describe("starter activation", () => {
       "Previous plans and schedules remain available as inactive copies.",
     )).toBeOnTheScreen();
     expect(props.onActivated).toHaveBeenCalledWith("owned-body-part");
+  });
+
+  it("keeps Weekday and Rotation reorder drafts accessible until confirmation", async () => {
+    const catalog = await acceptedCatalog();
+    const bodyPart = catalog.templates.find(
+      ({ id }) => id === "gym-body-part-split",
+    )!;
+    const { props } = await renderActivation(activationPreview(bodyPart));
+
+    const weekdayHandle = await screen.findByTestId(
+      "drag-activation-weekday-0-Tuesday-body-part-back",
+    );
+    expect(weekdayHandle).toHaveProp(
+      "accessibilityLabel",
+      "Reorder Back",
+    );
+    expect(weekdayHandle).toHaveProp(
+      "accessibilityActions",
+      expect.arrayContaining([{ name: "increment", label: "Move up" }]),
+    );
+    expect(screen.queryByRole("button", { name: "Move Back up" }))
+      .not.toBeOnTheScreen();
+    expect(screen.queryByText("Position 2 of 5")).not.toBeOnTheScreen();
+    await fireEvent(
+      screen.getByTestId(
+        "reorder-row-activation-weekday-0-Tuesday-body-part-back",
+      ),
+      "layout",
+      { nativeEvent: { layout: { height: 80, width: 320, x: 0, y: 0 } } },
+    );
+    const weekdayGesture = reorderGesture(
+      "activation-weekday-0-Tuesday-body-part-back",
+    );
+    await act(() => {
+      weekdayGesture.handlers.onStart?.({ translationY: 0 });
+      weekdayGesture.handlers.onUpdate?.({ translationY: -100 });
+    });
+    expect(screen.getByTestId(
+      "reorder-row-activation-weekday-0-Monday-body-part-chest",
+    )).toHaveStyle({ transform: [{ translateY: 80 }] });
+    await act(() => {
+      weekdayGesture.handlers.onFinalize?.({ translationY: -100 }, true);
+    });
+
+    await fireEvent(weekdayHandle, "keyDown", {
+      nativeEvent: { key: "ArrowUp", shiftKey: true },
+    });
+    expect(props.activateStarterPlan).not.toHaveBeenCalled();
+
+    await fireEvent.press(screen.getByRole("radio", { name: "Rotation" }));
+    await fireEvent(
+      screen.getByTestId("reorder-row-activation-rotation-body-part-back-1"),
+      "layout",
+      { nativeEvent: { layout: { height: 80, width: 320, x: 0, y: 0 } } },
+    );
+    const rotationGesture = reorderGesture(
+      "activation-rotation-body-part-back-1",
+    );
+    await act(() => {
+      rotationGesture.handlers.onStart?.({ translationY: 0 });
+      rotationGesture.handlers.onUpdate?.({ translationY: -100 });
+    });
+    expect(screen.getByTestId(
+      "reorder-row-activation-rotation-body-part-chest-0",
+    )).toHaveStyle({ transform: [{ translateY: 80 }] });
+    await act(() => {
+      rotationGesture.handlers.onEnd?.({ translationY: -100 }, true);
+      rotationGesture.handlers.onFinalize?.({ translationY: -100 }, true);
+    });
+    expect(props.activateStarterPlan).not.toHaveBeenCalled();
+
+    await fireEvent.press(screen.getByRole("button", { name: "Activate plan" }));
+    await fireEvent.press(screen.getAllByRole("button", {
+      name: "Activate plan",
+    }).at(-1)!);
+
+    expect(props.activateStarterPlan).toHaveBeenCalledWith(expect.objectContaining({
+      mode: "rotation",
+      bindings: [
+        { planDaySourceId: "body-part-back", ordinal: 0 },
+        { planDaySourceId: "body-part-chest", ordinal: 1 },
+        { planDaySourceId: "body-part-shoulders", ordinal: 2 },
+        { planDaySourceId: "body-part-legs", ordinal: 3 },
+        { planDaySourceId: "body-part-arms", ordinal: 4 },
+      ],
+    }));
   });
 
   it("requires the exact existing-copy choice and exposes current lifecycle facts", async () => {

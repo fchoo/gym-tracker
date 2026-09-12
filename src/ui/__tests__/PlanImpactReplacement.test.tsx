@@ -607,6 +607,39 @@ async function completeReplacementReview() {
 }
 
 describe("Exercise replacement", () => {
+  it("searches compatible and incompatible candidates by name without losing selection", async () => {
+    await renderReplacement();
+
+    const searchField = await screen.findByLabelText(
+      "Search replacement exercises",
+    );
+    expect(screen.getByTestId("exercise-replacement-search"))
+      .toBeOnTheScreen();
+    await fireEvent.press(screen.getByRole("radio", {
+      name: "Incline Press. Compatible metric identity",
+    }));
+
+    await fireEvent.changeText(searchField, "bodyWEIGHT");
+
+    expect(screen.queryByRole("radio", {
+      name: "Incline Press. Compatible metric identity",
+    })).not.toBeOnTheScreen();
+    expect(screen.getByRole("radio", {
+      name: "Bodyweight Push-Up. Incompatible metric identity",
+    })).toBeOnTheScreen();
+
+    await fireEvent.changeText(searchField, "INCLINE");
+
+    expect(screen.getByRole("radio", {
+      name: "Incline Press. Compatible metric identity",
+    })).toHaveProp("accessibilityState", expect.objectContaining({
+      checked: true,
+    }));
+    expect(screen.queryByRole("radio", {
+      name: "Bodyweight Push-Up. Incompatible metric identity",
+    })).not.toBeOnTheScreen();
+  });
+
   it("lists complete metric-compatible identities first and previews every occurrence", async () => {
     const { rendered } = await renderReplacement();
 

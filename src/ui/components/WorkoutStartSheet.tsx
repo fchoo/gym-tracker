@@ -1,7 +1,6 @@
 import React, {
   useEffect,
   useRef,
-  useState,
 } from "react";
 import {
   Modal,
@@ -14,13 +13,11 @@ import {
 
 import type { ActivatedPlanDay } from "../../domains/plans";
 import {
-  FocusablePressable,
   PrimaryAction,
   SecondaryAction,
 } from "./index";
 import {
   radius,
-  sizes,
   space,
   typeScale,
   useAppTheme,
@@ -33,21 +30,18 @@ export function WorkoutStartSheet({
   onClose,
   onStartDay,
   onStartEmpty,
-  allowRotationAdvance = false,
   restoreFocusRef,
 }: Readonly<{
   visible: boolean;
   scheduledDayId?: string;
   planDays: readonly ActivatedPlanDay[];
   onClose: () => void;
-  onStartDay: (dayId: string, advanceRotation: boolean) => void;
-  onStartEmpty: (advanceRotation: boolean) => void;
-  allowRotationAdvance?: boolean;
+  onStartDay: (dayId: string) => void;
+  onStartEmpty: () => void;
   restoreFocusRef?: React.RefObject<View | null>;
 }>) {
   const { colors } = useAppTheme();
   const headingRef = useRef<View>(null);
-  const [advanceRotation, setAdvanceRotation] = useState(false);
 
   useEffect(() => {
     if (visible) {
@@ -98,58 +92,28 @@ export function WorkoutStartSheet({
               { color: colors.textSecondary },
             ]}
           >
-            This will not advance your schedule unless you explicitly mark the
-            planned day complete or skipped.
+            Alternate, rest-day, and empty workouts do not advance your
+            schedule. Completing the scheduled workout advances it.
           </Text>
-          {allowRotationAdvance ? (
-            <FocusablePressable
-              accessibilityLabel="Advance rotation after this workout"
-              accessibilityRole="checkbox"
-              accessibilityState={{ checked: advanceRotation }}
-              focusable
-              onPress={() => setAdvanceRotation((current) => !current)}
-              style={[
-                styles.checkbox,
-                { borderColor: colors.divider },
-              ]}
-            >
-              <Text
-                style={[
-                  typeScale.bodyStrong as TextStyle,
-                  { color: colors.textPrimary },
-                ]}
-              >
-                {advanceRotation ? "Selected" : "Not selected"}
-              </Text>
-              <Text
-                style={[
-                  typeScale.body as TextStyle,
-                  { color: colors.textPrimary },
-                ]}
-              >
-                Advance rotation after this workout
-              </Text>
-            </FocusablePressable>
-          ) : null}
           {planDays.map((day) => (
             day.id === scheduledDayId ? (
               <PrimaryAction
                 key={day.id}
                 label={`Start ${day.name}`}
-                onPress={() => onStartDay(day.id, advanceRotation)}
+                onPress={() => onStartDay(day.id)}
                 testID="scheduled-start-option"
               />
             ) : (
               <PrimaryAction
                 key={day.id}
                 label={`Start ${day.name}`}
-                onPress={() => onStartDay(day.id, advanceRotation)}
+                onPress={() => onStartDay(day.id)}
               />
             )
           ))}
           <SecondaryAction
             label="Start empty workout"
-            onPress={() => onStartEmpty(advanceRotation)}
+            onPress={() => onStartEmpty()}
           />
           <SecondaryAction label="Cancel" onPress={close} />
         </ScrollView>
@@ -172,16 +136,5 @@ const styles = StyleSheet.create({
   sheetContent: {
     gap: space[4],
     padding: space[6],
-  },
-  checkbox: {
-    alignItems: "center",
-    borderRadius: radius.standard,
-    borderWidth: StyleSheet.hairlineWidth,
-    flexDirection: "row",
-    flexWrap: "wrap",
-    gap: space[2],
-    minHeight: sizes.minimumTarget,
-    paddingHorizontal: space[4],
-    paddingVertical: space[2],
   },
 });

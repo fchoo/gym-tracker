@@ -112,10 +112,21 @@ tags:
 - assertVisible: "Back Squat"
 - tapOn: "Search exercises"
 - inputText: "bench-press"
+- hideKeyboard
+- scrollUntilVisible:
+    element:
+      text: "Bench Press"
+    direction: DOWN
+    centerElement: true
+    timeout: 90000
 - assertVisible: "Bench Press"
 - assertNotVisible: "Matched alias:"
 - tapOn: "Clear search exercises"
-- hideKeyboard
+- scrollUntilVisible:
+    element:
+      id: "library-filters-chip"
+    direction: UP
+    centerElement: true
 - tapOn:
     id: "library-filters-chip"
 - scrollUntilVisible:

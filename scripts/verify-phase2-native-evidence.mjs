@@ -13,8 +13,10 @@ import {
 } from "node:fs/promises";
 import {
   existsSync,
+  lstatSync,
   mkdtempSync,
   readFileSync,
+  realpathSync,
   rmSync,
 } from "node:fs";
 import { tmpdir } from "node:os";
@@ -25,6 +27,7 @@ import { pathToFileURL } from "node:url";
 import {
   enumeratePhase2MaestroFlows,
   PHASE2_PROCEDURAL_REMEDIATION_CASE_IDS,
+  validatePhase2MaestroJunit,
 } from "./run-phase2-maestro.mjs";
 import {
   sourceTreeSha256,
@@ -57,6 +60,10 @@ import {
 
 const projectRoot = process.cwd();
 export const PHASE2_ADB_COMMAND_TIMEOUT_MS = 60_000;
+const PHASE2_OWNED_PLAN_REORDER_FLOW = "maestro/phase2/owned-plan-editor.yaml";
+const PHASE2_OWNED_PLAN_REORDER_CONTINUATION_FLOW = "maestro/subflows/phase2-owned-plan-editor-reorder-verify.yaml";
+const PHASE2_OWNED_PLAN_REORDER_VERIFY_SCREENSHOT = "phase2-owned-plan-reorder-persisted.png";
+
 function exactLedger(label, actual, expected) {
   if (!Array.isArray(actual)) {
     throw new Error(`${label} ledger is missing.`);
@@ -178,7 +185,12 @@ function normalizedRecordedMaestroExecutions(flows) {
   }));
 }
 
-function validateMaestro(maestro, manifest, expectedFlows) {
+function validateMaestro(
+  maestro,
+  manifest,
+  expectedFlows,
+  evidenceBoundary = undefined,
+) {
   if (!maestro || typeof maestro !== "object") {
     throw new Error("Maestro evidence is missing.");
   }
@@ -200,6 +212,7 @@ function validateMaestro(maestro, manifest, expectedFlows) {
     ) {
       throw new Error(`Maestro flow did not pass: ${String(flow.id)}`);
     }
+    validateOwnedPlanNativeProof(flow, evidenceBoundary);
   }
   const expectedObservations = expectedFlows.map(({ id, remediation_case_observations: observations = [] }) =>
     [id, observations]);
@@ -216,6 +229,81 @@ function validateMaestro(maestro, manifest, expectedFlows) {
   });
   if (JSON.stringify(observed) !== JSON.stringify(expectedObservations)) {
     throw new Error("Maestro remediation observation ledger is incomplete or stale.");
+  }
+}
+
+function exactRetainedEvidenceFile(root, relativePath, expectedRelativePath, label) {
+  if (relativePath !== expectedRelativePath) {
+    throw new Error(`${label} path is malformed or stale.`);
+  }
+  const rootPath = realpathSync(root);
+  const filePath = path.resolve(rootPath, relativePath);
+  const details = lstatSync(filePath, { throwIfNoEntry: false });
+  if (details === undefined
+    || !details.isFile()
+    || details.isSymbolicLink()
+    || realpathSync(filePath) !== filePath
+    || !filePath.startsWith(`${rootPath}${path.sep}`)
+    || details.size < 1) {
+    throw new Error(`${label} file is missing or unsafe.`);
+  }
+  return filePath;
+}
+
+function validateOwnedPlanNativeProof(flow, evidenceBoundary = undefined) {
+  if (flow?.flow !== PHASE2_OWNED_PLAN_REORDER_FLOW) {
+    if (flow?.native_owned_plan_reorder_proof !== undefined) {
+      throw new Error(`unexpected owned plan native reorder proof: ${String(flow?.id)}`);
+    }
+    return;
+  }
+  const proof = flow?.native_owned_plan_reorder_proof;
+  const continuationFlowPath = path.join(
+    evidenceBoundary?.root ?? projectRoot,
+    PHASE2_OWNED_PLAN_REORDER_CONTINUATION_FLOW,
+  );
+  const proofDirectory = `artifacts/native/phase2/${flow.id}-native-reorder`;
+  const expectedContinuationReport = `${proofDirectory}/report.xml`;
+  const expectedScreenshot = `${proofDirectory}/${PHASE2_OWNED_PLAN_REORDER_VERIFY_SCREENSHOT}`;
+  if (proof === null || typeof proof !== "object") {
+    throw new Error("owned plan native reorder proof is missing.");
+  }
+  if (proof.continuation_flow !== PHASE2_OWNED_PLAN_REORDER_CONTINUATION_FLOW
+    || proof.continuation_flow_sha256 !== sha256(continuationFlowPath)
+    || proof.continuation_report !== expectedContinuationReport
+    || proof.persisted_screenshot?.file !== expectedScreenshot
+    || !/^[a-f0-9]{64}$/u.test(proof.continuation_report_sha256 ?? "")
+    || !/^[a-f0-9]{64}$/u.test(proof.persisted_screenshot?.sha256 ?? "")
+    || !Number.isSafeInteger(proof.continuation_tests)
+    || proof.continuation_tests < 1
+    || typeof proof.continuation_report !== "string") {
+    throw new Error("owned plan native reorder proof is malformed or stale.");
+  }
+  if (evidenceBoundary === undefined) {
+    return;
+  }
+  const reportPath = exactRetainedEvidenceFile(
+    evidenceBoundary.root,
+    proof.continuation_report,
+    expectedContinuationReport,
+    "owned plan continuation report",
+  );
+  const screenshotPath = exactRetainedEvidenceFile(
+    evidenceBoundary.root,
+    proof.persisted_screenshot.file,
+    expectedScreenshot,
+    "owned plan persisted screenshot",
+  );
+  if (sha256(reportPath) !== proof.continuation_report_sha256
+    || sha256(screenshotPath) !== proof.persisted_screenshot.sha256) {
+    throw new Error("owned plan native reorder proof bytes do not match evidence.");
+  }
+  const summary = validatePhase2MaestroJunit(
+    readFileSync(reportPath, "utf8"),
+    PHASE2_OWNED_PLAN_REORDER_CONTINUATION_FLOW,
+  );
+  if (summary.tests !== proof.continuation_tests) {
+    throw new Error("owned plan native reorder report count does not match evidence.");
   }
 }
 
@@ -315,6 +403,7 @@ export function validatePhase2AutomatedEvidence(
     requireRoundtrip = false,
     outputPath,
     preflight = false,
+    evidenceBoundary,
   } = {},
 ) {
   const {
@@ -358,7 +447,12 @@ export function validatePhase2AutomatedEvidence(
   exactLedger("prohibition", prohibitions, ledger.prohibitions);
   validateCoverage(coverage, ledger.integrityCriticalFiles);
   validateNative(native, manifest, ledger.nativeCaseIds);
-  validateMaestro(maestro, manifest, evidence.expectedFlows ?? maestro.flows);
+  validateMaestro(
+    maestro,
+    manifest,
+    evidence.expectedFlows ?? maestro.flows,
+    evidenceBoundary,
+  );
   validateMaestroProducerEvidence(maestro, ledger);
   validateBenchmark(benchmark, manifest);
   if (requireRoundtrip) {
@@ -832,6 +926,7 @@ export async function executePhase2VerifierCli({
       requireRoundtrip,
       outputPath: requirePhysical ? outputArgument : undefined,
       preflight: attendedPreflight,
+      evidenceBoundary: { root },
     });
     if (requirePhysical) {
       await publishJsonNoClobber(protectedOutputPath, result);

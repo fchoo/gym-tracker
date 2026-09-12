@@ -438,14 +438,58 @@ test("only the exact 23 unsupported role rows use canonical preview deep links",
   );
   assert.match(
     setMutationLoading.action,
-    /for each Add warm-up, Copy previous warm-up, Add working set, and completed-set correction variant, start the named mutation once/iu,
+    /for each Add warm-up, Add working set, Remove warm-up, and completed-set correction variant, start the named mutation once/iu,
   );
   assert.match(setMutationLoading.action, /duplicate activation is unavailable/u);
-  assert.match(setMutationLoading.action, /cardinality stays unchanged/u);
+  assert.match(
+    setMutationLoading.action,
+    /cardinality stays unchanged for add\/correction.*removable row stays visible for removal/iu,
+  );
   assert.doesNotMatch(setMutationLoading.action, /Press Add warm-up twice/u);
+  assert.doesNotMatch(
+    setMutationLoading.action,
+    /Copy previous warm-up|copy warm-up/iu,
+  );
   for (const url of previewUrls("UI-02-SET-MUTATIONS|loading")) {
     assert.ok(setMutationLoading.navigation.includes(url), url);
   }
+  assert.ok(setMutationLoading.navigation.includes("variant=remove-warmup"));
+  assert.ok(!setMutationLoading.navigation.includes("variant=copy-warmup"));
+  const addContract = rows.find((row) =>
+    row.kind === "remediation"
+      && row.remediation_case_id === "RC-02-LATEST-SCHEMA-ADD-COPY"
+  );
+  assert.match(
+    addContract.action,
+    /Add warm-up.*reuses the previous 40 kg × 5 observation.*restart.*Remove warm-up W3/iu,
+  );
+  assert.match(
+    addContract.expected_observation,
+    /Warm-up 3.*40 kg × 5.*survives restart.*removed.*Warm-up 2.*40 kg × 5/iu,
+  );
+  const setStatusRows = rows.filter((row) =>
+    row.kind === "remediation"
+      && row.remediation_case_id === "RC-02-SET-STATUS"
+  );
+  assert.ok(setStatusRows.length > 0);
+  for (const row of setStatusRows) {
+    assert.match(row.action, /Remove/iu);
+    assert.doesNotMatch(
+      `${row.action}\n${row.expected_observation}`,
+      /skipped row|skipped set|completed or skipped/iu,
+    );
+  }
+  const generatedInstructions = rows.flatMap((row) => [
+    row.setup,
+    row.navigation.replace(/RC-02-[A-Z0-9-]+/gu, ""),
+    row.action,
+    row.expected_observation,
+    ...(row.substeps ?? []),
+  ]).join("\n");
+  assert.doesNotMatch(
+    generatedInstructions,
+    /Copy (?:previous )?warm-up|copy warm-up|skipped row|skipped set|completed or skipped/iu,
+  );
   const todayCardinality = previewRows.find((row) =>
     row.surface_id === "UI-02-TODAYS-PLAN"
       && row.truth_id === "zero-one-many"

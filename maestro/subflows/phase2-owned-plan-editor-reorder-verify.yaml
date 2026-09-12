@@ -1,0 +1,74 @@
+appId: com.fchoo.gymtracker.devtest
+name: Phase 2 installed owned plan reorder continuation verify
+tags:
+  - phase-2
+  - library
+  - owned-plans
+  - native-reorder-continuation
+---
+- scrollUntilVisible:
+    element:
+      text: "Barbell Bench Press - Medium Grip dragged to 1 of 2"
+    direction: DOWN
+    centerElement: true
+    timeout: 30000
+- assertVisible: "Barbell Bench Press - Medium Grip dragged to 1 of 2"
+- assertVisible: "Save Plan Changes"
+- tapOn: "Save Plan Changes"
+- extendedWaitUntil:
+    visible: "Ready"
+    timeout: 30000
+- tapOn: "Go back"
+- assertVisible: "Library"
+- scrollUntilVisible:
+    element:
+      text: "My Plans"
+    direction: DOWN
+    centerElement: true
+- assertVisible: "My Plans"
+- scrollUntilVisible:
+    element:
+      text: "Maestro Strength"
+    direction: DOWN
+    centerElement: true
+- tapOn: "Maestro Strength"
+- extendedWaitUntil:
+    visible: "Ready"
+    timeout: 30000
+- scrollUntilVisible:
+    element:
+      id: "drag-exercise-Barbell Bench Press - Medium Grip"
+    direction: DOWN
+    centerElement: true
+    timeout: 30000
+- assertVisible: "Reorder Barbell Bench Press - Medium Grip"
+- assertVisible: "Reorder Back Squat"
+- assertVisible:
+    id: "drag-exercise-Barbell Bench Press - Medium Grip"
+    above:
+      id: "drag-exercise-Back Squat"
+- takeScreenshot: phase2-owned-plan-reorder-persisted
+- scrollUntilVisible:
+    element:
+      text: "Duplicate plan"
+    direction: UP
+    centerElement: true
+    timeout: 30000
+- tapOn: "Duplicate plan"
+- assertVisible: "Duplicate Maestro Strength?"
+- assertVisible: "Days, exercise order, targets, warm-ups, rest, policies, and schedule defaults are copied into fresh identities. The duplicate stays inactive."
+- tapOn: "Create duplicate"
+- assertVisible: "Maestro Strength Copy"
+- assertVisible: "Ready"
+- assertNotVisible: "Active"
+- tapOn: "Archive plan"
+- assertVisible: "Archive Maestro Strength Copy?"
+- assertVisible: "The plan will leave the default Library view. Its history is unchanged, and you can restore it later."
+- tapOn: "Archive plan"
+- assertVisible: "Archived"
+- assertNotVisible: "Delete plan"
+- tapOn: "Restore plan"
+- assertVisible: "Ready"
+- assertNotVisible: "Archived"
+- tapOn: "Go back"
+- assertVisible: "Library"

@@ -13,6 +13,8 @@ import type {
 } from "./activeWorkout";
 import {
   completeSet,
+  removeWarmup,
+  removeWorkingSet,
   reviseCompletedSet,
   updateActiveSetDraft,
 } from "./setCommands";
@@ -36,11 +38,37 @@ function repository(
     completeWarmup: jest.fn(async () => view),
     skipWarmup: jest.fn(async () => view),
     skipWorkingSet: jest.fn(async () => view),
+    removeWarmup: jest.fn(async () => ({
+      outcome: "committed" as const,
+      sessionId: "session-1",
+      setId: "set-1",
+      sessionRevision: 2,
+    })),
+    removeWorkingSet: jest.fn(async () => ({
+      outcome: "committed" as const,
+      sessionId: "session-1",
+      setId: "set-1",
+      sessionRevision: 2,
+    })),
     completeSet: jest.fn(async () => completeResult),
     reviseCompletedSet: jest.fn(async () => view),
     undoCompletedSet: jest.fn<ActiveWorkoutRepository["undoCompletedSet"]>(
       async () => ({ outcome: "unavailable" as const }),
     ),
+  };
+}
+
+const removeHash = "a".repeat(64);
+
+function removeInput() {
+  return {
+    requestId: "remove-session-1-set-1",
+    requestSha256: removeHash,
+    sessionId: "session-1",
+    setId: "set-1",
+    expectedSessionRevision: 1,
+    expectedSetRevision: 4,
+    removedAtMs: 2_000,
   };
 }
 
@@ -203,6 +231,83 @@ describe("Plan 01-08 set command validation", () => {
         source: "manual",
       }),
     })).resolves.toMatchObject({ outcome: "committed" });
+  });
+});
+
+describe("Plan 07-02 hard-remove command validation", () => {
+  it("accepts bounded request IDs and app-generated persisted entity IDs", async () => {
+    const port = repository();
+    const input = {
+      ...removeInput(),
+      requestId: "r".repeat(128),
+      sessionId: "s".repeat(256),
+      setId: "w".repeat(256),
+    };
+
+    await expect(removeWarmup({ repository: port, input }))
+      .resolves.toMatchObject({ outcome: "committed" });
+    expect(port.removeWarmup).toHaveBeenCalledWith(input);
+  });
+
+  it("forwards distinct warm-up and working-set removal commands without skip semantics", async () => {
+    const port = repository();
+    const warmup = removeInput();
+    const working = { ...removeInput(), requestId: "remove-working-1" };
+
+    await expect(removeWarmup({ repository: port, input: warmup }))
+      .resolves.toEqual({
+        outcome: "committed",
+        sessionId: "session-1",
+        setId: "set-1",
+        sessionRevision: 2,
+      });
+    await expect(removeWorkingSet({ repository: port, input: working }))
+      .resolves.toEqual({
+        outcome: "committed",
+        sessionId: "session-1",
+        setId: "set-1",
+        sessionRevision: 2,
+      });
+
+    expect(port.removeWarmup).toHaveBeenCalledWith(warmup);
+    expect(port.removeWorkingSet).toHaveBeenCalledWith(working);
+    expect(port.skipWarmup).not.toHaveBeenCalled();
+    expect(port.skipWorkingSet).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    ["empty request ID", { requestId: " " }, "remove_set_identifier_invalid"],
+    ["request ID above 128 characters", { requestId: "r".repeat(129) }, "remove_set_identifier_invalid"],
+    ["session ID above 256 characters", { sessionId: "s".repeat(257) }, "remove_set_identifier_invalid"],
+    ["set ID above 256 characters", { setId: "w".repeat(257) }, "remove_set_identifier_invalid"],
+    ["invalid request hash", { requestSha256: "bad" }, "remove_set_hash_invalid"],
+    ["stale-shaped session revision", { expectedSessionRevision: -1 }, "remove_set_revision_invalid"],
+    ["stale-shaped set revision", { expectedSetRevision: 1.5 }, "remove_set_revision_invalid"],
+    ["invalid removal time", { removedAtMs: -1 }, "remove_set_time_invalid"],
+  ])("rejects %s before repository access", async (...[_name, change, code]) => {
+    const port = repository();
+
+    await expect(removeWarmup({
+      repository: port,
+      input: { ...removeInput(), ...change },
+    })).rejects.toThrow(code);
+
+    expect(port.removeWarmup).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    ["warm-up", removeWarmup, "removeWarmup", "remove_warmup_unavailable"],
+    ["working-set", removeWorkingSet, "removeWorkingSet", "remove_working_set_unavailable"],
+  ])("rejects a valid %s removal when its repository capability is unavailable", async (
+    _kind,
+    remove,
+    capability,
+    error,
+  ) => {
+    const port = repository();
+    const unavailable = { ...port, [capability]: undefined } as ActiveWorkoutRepository;
+
+    await expect(remove({ repository: unavailable, input: removeInput() })).rejects.toThrow(error);
   });
 });
 

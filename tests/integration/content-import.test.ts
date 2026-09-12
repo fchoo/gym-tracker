@@ -52,6 +52,9 @@ import {
   type SqliteKernel,
   type SqliteKernelTestObserver,
 } from "../../src/platform/sqlite/sqliteKernel";
+import {
+  validatedRecoveryBackup,
+} from "../support/validatedRecoveryBackup";
 
 class NodePreparedResult<Row extends Record<string, unknown>>
 implements SqlitePreparedResult<Row> {
@@ -158,6 +161,7 @@ async function createRuntime(
     databaseName: "gym-tracker.db",
     kernel,
     migrations,
+    recoveryBackup: validatedRecoveryBackup(),
   }).run();
   runtimes.push(kernel);
   return kernel;

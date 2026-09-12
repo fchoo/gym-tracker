@@ -4,7 +4,6 @@ import React, {
   useState,
 } from "react";
 import {
-  Copy,
   Plus,
   type LucideIcon,
 } from "lucide-react-native";
@@ -32,17 +31,16 @@ import type {
   CompleteSetInput,
   CompleteSetResult,
   CompleteWarmupInput,
-  CopyPreviousWarmupInput,
   DiscardWorkoutInput,
   FinishCompletedInput,
   FinishOutcomeResult,
   FinishPartialInput,
+  RemoveWarmupInput,
+  RemoveWorkingSetInput,
   ReviseCompletedSetInput,
   SaveZeroSetInput,
   SetObservation,
   SkipExerciseInput,
-  SkipWorkingSetInput,
-  SkipWarmupInput,
   UpdateActiveSetDraftInput,
   UpdateWarmupDraftInput,
 } from "../../domains/workout";
@@ -61,6 +59,9 @@ import {
 import {
   RestDock,
 } from "../components/RestDock";
+import type {
+  RestCountdownCuePort,
+} from "../../domains/rest/restCountdownCuePort";
 import {
   formatObservation,
   observationForSet,
@@ -86,12 +87,13 @@ export interface ActiveWorkoutCommands {
   ): Promise<ActiveWorkoutView>;
   addWarmup(input: AddWarmupInput): Promise<CommittedSetMutationResult>;
   addWorkingSet(input: AddWorkingSetInput): Promise<CommittedSetMutationResult>;
-  copyPreviousWarmup(
-    input: CopyPreviousWarmupInput,
-  ): Promise<CommittedSetMutationResult>;
   completeWarmup(input: CompleteWarmupInput): Promise<ActiveWorkoutView>;
-  skipWarmup(input: SkipWarmupInput): Promise<ActiveWorkoutView>;
-  skipWorkingSet(input: SkipWorkingSetInput): Promise<ActiveWorkoutView>;
+  removeWarmup?(input: RemoveWarmupInput): Promise<RemovalCommandResult>;
+  removeWorkingSet?(input: RemoveWorkingSetInput): Promise<RemovalCommandResult>;
+  /** @deprecated The screen never invokes legacy skip commands. */
+  skipWarmup?(input: import("../../domains/workout").SkipWarmupInput): Promise<ActiveWorkoutView>;
+  /** @deprecated The screen never invokes legacy skip commands. */
+  skipWorkingSet?(input: import("../../domains/workout").SkipWorkingSetInput): Promise<ActiveWorkoutView>;
   completeSet(input: CompleteSetInput): Promise<CompleteSetResult>;
   reviseCompletedSet(
     input: ReviseCompletedSetInput,
@@ -117,6 +119,15 @@ type CommittedSetMutationResult = ActiveWorkoutView & Readonly<{
   committedSetId: string;
 }>;
 
+type CommittedRemovalRefreshFailure = Readonly<{
+  outcome: "committed_refresh_failed";
+  sessionId: string;
+  setId: string;
+  sessionRevision: number;
+}>;
+
+type RemovalCommandResult = ActiveWorkoutView | CommittedRemovalRefreshFailure;
+
 type WarmupCommandState = Readonly<{
   setId: string;
   action: "complete" | "skip" | "update" | "add";
@@ -129,12 +140,45 @@ type OutcomeConfirmation =
   | "discard"
   | null;
 
-type SectionMutation = "add_warmup" | "copy_warmup" | "add_working";
+type SectionMutation = "add_warmup" | "add_working";
 
 type SectionMutationFailure = Readonly<{
   operation: SectionMutation;
   retry: () => void;
 }>;
+
+type RemovalCandidate = Readonly<{
+  kind: "warmup" | "working";
+  setId: string;
+  index: number;
+}>;
+
+type RemovalFailure = RemovalCandidate;
+
+function isCommittedRemovalRefreshFailure(
+  result: RemovalCommandResult,
+): result is CommittedRemovalRefreshFailure {
+  return "outcome" in result && result.outcome === "committed_refresh_failed";
+}
+
+function isRecord(value: unknown): value is Readonly<Record<string, unknown>> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+function stableJson(value: unknown): string {
+  if (Array.isArray(value)) {
+    return `[${value.map(stableJson).join(",")}]`;
+  }
+  if (isRecord(value)) {
+    const entries = Object.entries(value).sort(([left], [right]) =>
+      left.localeCompare(right, "en")
+    );
+    return `{${entries.map(([key, entry]) =>
+      `${JSON.stringify(key)}:${stableJson(entry)}`
+    ).join(",")}}`;
+  }
+  return JSON.stringify(value);
+}
 
 function idempotencyKey(
   sessionId: string,
@@ -240,19 +284,18 @@ function ReviewSetSummary({
   );
 }
 
-function SectionGlyphAction({
-  accessibilityLabel,
-  busy = false,
-  disabled = false,
-  icon: Icon,
-  onPress,
-}: Readonly<{
+type SectionGlyphActionProps = Readonly<{
   accessibilityLabel: string;
   busy?: boolean;
   disabled?: boolean;
   icon: LucideIcon;
   onPress: () => void;
-}>) {
+}>;
+
+const SectionGlyphAction = React.forwardRef<View, SectionGlyphActionProps>(function SectionGlyphAction(
+  { accessibilityLabel, busy = false, disabled = false, icon: Icon, onPress },
+  ref,
+) {
   const { colors } = useAppTheme();
   const unavailable = busy || disabled;
   return (
@@ -263,6 +306,7 @@ function SectionGlyphAction({
       disabled={unavailable}
       focusable={!unavailable}
       onPress={onPress}
+      ref={ref}
       style={({ pressed }) => [
         styles.sectionGlyphAction,
         {
@@ -283,7 +327,7 @@ function SectionGlyphAction({
       />
     </FocusablePressable>
   );
-}
+});
 
 export type ActiveWorkoutScreenProps = Readonly<{
   sessionId: string;
@@ -291,6 +335,8 @@ export type ActiveWorkoutScreenProps = Readonly<{
   commands: ActiveWorkoutCommands;
   nowMs: () => number;
   notificationPermission?: RestNotificationPermission;
+  restSoundEnabled?: boolean;
+  countdownCue?: RestCountdownCuePort | undefined;
   onOpenNotificationSettings?: () => void;
   onGoBack: () => void;
   onFinishLater: () => void;
@@ -308,6 +354,8 @@ export function ActiveWorkoutScreen({
   commands,
   nowMs,
   notificationPermission = "undetermined",
+  restSoundEnabled = false,
+  countdownCue,
   onOpenNotificationSettings = () => undefined,
   onGoBack,
   onFinishLater,
@@ -327,7 +375,6 @@ export function ActiveWorkoutScreen({
   const [sectionFailure, setSectionFailure] =
     useState<SectionMutationFailure | null>(null);
   const [revealedSetId, setRevealedSetId] = useState<string | null>(null);
-  const [revealedSetMessage, setRevealedSetMessage] = useState<string | null>(null);
   const [revealedSetOffset, setRevealedSetOffset] = useState(0);
   const [editingCompletedSetId, setEditingCompletedSetId] =
     useState<string | null>(null);
@@ -340,8 +387,17 @@ export function ActiveWorkoutScreen({
   const [outcomeConfirmation, setOutcomeConfirmation] =
     useState<OutcomeConfirmation>(null);
   const [outcomeBusy, setOutcomeBusy] = useState(false);
+  const [pendingRemoval, setPendingRemoval] = useState<RemovalCandidate | null>(null);
+  const [removalBusy, setRemovalBusy] = useState(false);
+  const [removalFailure, setRemovalFailure] = useState<RemovalFailure | null>(null);
+  const [removalRecovery, setRemovalRecovery] = useState<RemovalCandidate | null>(null);
+  const [removalAnnouncement, setRemovalAnnouncement] = useState<string | null>(null);
   const moreActionRef = useRef<View>(null);
-  const moreHeadingRef = useRef<View>(null);
+  const moreFirstActionRef = useRef<View>(null);
+  const warmupAddRef = useRef<View>(null);
+  const workingAddRef = useRef<View>(null);
+  const removeFocusRef = useRef<View>(null);
+  const removeGlyphRefs = useRef(new Map<string, View | null>());
   const draftQueue = useRef(Promise.resolve());
   const sectionMutationRef = useRef<SectionMutation | null>(null);
   const correctionSetIdRef = useRef<string | null>(null);
@@ -374,7 +430,7 @@ export function ActiveWorkoutScreen({
           <ActionCluster style={styles.headerActions}>
             <IconAction
               accessibilityLabel="Today's plan"
-              icon="more"
+              icon="plan"
               onPress={onOpenWorkoutPlan}
             />
             {reviewingEarlierOrLater ? null : <IconAction
@@ -438,7 +494,7 @@ export function ActiveWorkoutScreen({
 
   useEffect(() => {
     if (moreVisible) {
-      moreHeadingRef.current?.focus();
+      moreFirstActionRef.current?.focus();
     }
   }, [moreVisible]);
 
@@ -521,29 +577,19 @@ export function ActiveWorkoutScreen({
     return save;
   };
 
-  const runWarmup = async (
-    set: ActiveWorkoutSet,
-    action: "complete" | "skip",
-  ) => {
-    setWarmupBusy({ setId: set.id, action });
+  const runWarmup = async (set: ActiveWorkoutSet) => {
+    setWarmupBusy({ setId: set.id, action: "complete" });
     try {
       await draftQueue.current;
       const currentSet = viewRef.current.currentExercise.warmups.find(
         ({ id }) => id === set.id,
       ) ?? set;
-      const nextView = action === "complete"
-        ? await commands.completeWarmup({
-            sessionId,
-            setId: currentSet.id,
-            expectedSetRevision: currentSet.revision,
-            completedAtMs: nowMs(),
-          })
-        : await commands.skipWarmup({
-            sessionId,
-            setId: currentSet.id,
-            expectedSetRevision: currentSet.revision,
-            skippedAtMs: nowMs(),
-          });
+      const nextView = await commands.completeWarmup({
+        sessionId,
+        setId: currentSet.id,
+        expectedSetRevision: currentSet.revision,
+        completedAtMs: nowMs(),
+      });
       applyView(nextView);
     } finally {
       setWarmupBusy(null);
@@ -582,59 +628,13 @@ export function ActiveWorkoutScreen({
         nowMs: nowMs(),
       });
       applyView(result);
-      const setIndex = result.currentExercise.warmups.findIndex(
-        ({ id }) => id === result.committedSetId,
-      );
       setRevealedSetId(result.committedSetId);
       setRevealedSetOffset(0);
-      setRevealedSetMessage(
-        `Warm-up W${setIndex + 1} added and focused`,
-      );
     } catch {
       setSectionFailure({
         operation: "add_warmup",
         retry: () => {
           void addWarmup();
-        },
-      });
-    } finally {
-      sectionMutationRef.current = null;
-      setWarmupBusy(null);
-    }
-  };
-
-  const copyWarmup = async () => {
-    if (sectionMutationRef.current !== null) {
-      return;
-    }
-    const source = view.currentExercise.warmups.at(-1);
-    if (source === undefined) {
-      return;
-    }
-    sectionMutationRef.current = "copy_warmup";
-    setWarmupBusy({ setId: source.id, action: "complete" });
-    setSectionFailure(null);
-    try {
-      const result = await commands.copyPreviousWarmup({
-        sessionId,
-        sourceSetId: source.id,
-        setId: `warmup_copy_${sessionId}_${nowMs()}`,
-        nowMs: nowMs(),
-      });
-      applyView(result);
-      const setIndex = result.currentExercise.warmups.findIndex(
-        ({ id }) => id === result.committedSetId,
-      );
-      setRevealedSetId(result.committedSetId);
-      setRevealedSetOffset(0);
-      setRevealedSetMessage(
-        `Warm-up W${setIndex + 1} added and focused`,
-      );
-    } catch {
-      setSectionFailure({
-        operation: "copy_warmup",
-        retry: () => {
-          void copyWarmup();
         },
       });
     } finally {
@@ -663,14 +663,8 @@ export function ActiveWorkoutScreen({
         nowMs: nowMs(),
       });
       applyView(result);
-      const setIndex = result.currentExercise.workingSets.findIndex(
-        ({ id }) => id === result.committedSetId,
-      );
       setRevealedSetId(result.committedSetId);
       setRevealedSetOffset(0);
-      setRevealedSetMessage(
-        `Working set ${setIndex + 1} added and focused`,
-      );
     } catch {
       setSectionFailure({
         operation: "add_working",
@@ -684,31 +678,103 @@ export function ActiveWorkoutScreen({
     }
   };
 
-  const skipWorking = async (set: ActiveWorkoutSet) => {
-    if (workingBusySetId !== null) {
+  const requestRemoval = (
+    kind: RemovalCandidate["kind"],
+    set: ActiveWorkoutSet,
+    index: number,
+  ) => {
+    if (set.status === "completed") {
       return;
     }
-    setWorkingBusySetId(set.id);
+    removeFocusRef.current = removeGlyphRefs.current.get(set.id) ?? null;
+    setRemovalAnnouncement(null);
+    setRemovalFailure(null);
+    setRemovalRecovery(null);
+    setPendingRemoval({ kind, setId: set.id, index });
+  };
+
+  const confirmRemoval = async () => {
+    const candidate = pendingRemoval;
+    if (candidate === null || removalBusy) {
+      return;
+    }
+    setRemovalBusy(true);
     try {
       await draftQueue.current;
       const currentView = viewRef.current;
-      const currentSet = currentView.currentExercise.workingSets.find(
-        ({ id }) => id === set.id,
-      );
-      if (currentSet === undefined || currentView.activeSetId !== currentSet.id) {
-        return;
+      const sets = candidate.kind === "warmup"
+        ? currentView.currentExercise.warmups
+        : currentView.currentExercise.workingSets;
+      const currentSet = sets.find(({ id }) => id === candidate.setId);
+      const remove = candidate.kind === "warmup"
+        ? commands.removeWarmup
+        : commands.removeWorkingSet;
+      if (currentSet === undefined || currentSet.status === "completed" || remove === undefined) {
+        throw new Error("remove_set_unavailable");
       }
-      applyView(await commands.skipWorkingSet({
+      const removedAtMs = nowMs();
+      const {
+        CryptoDigestAlgorithm,
+        digestStringAsync,
+      } = require("expo-crypto") as typeof import("expo-crypto");
+      const operation = candidate.kind === "warmup"
+        ? "remove_warmup"
+        : "remove_working_set";
+      const removalIdentity = {
+        operation,
         sessionId,
         setId: currentSet.id,
         expectedSessionRevision: currentView.revision,
         expectedSetRevision: currentSet.revision,
-        metricIdentity: currentSet.metricIdentity,
-        skippedAtMs: nowMs(),
-      }));
-      setSaveFailedSetId(null);
+        removedAtMs,
+      };
+      const requestId = `remove_${await digestStringAsync(
+        CryptoDigestAlgorithm.SHA256,
+        stableJson(removalIdentity),
+      )}`;
+      const request = {
+        requestId,
+        sessionId,
+        setId: currentSet.id,
+        expectedSessionRevision: currentView.revision,
+        expectedSetRevision: currentSet.revision,
+        removedAtMs,
+      };
+      const requestSha256 = await digestStringAsync(
+        CryptoDigestAlgorithm.SHA256,
+        stableJson(request),
+      );
+      const nextView = await remove({ ...request, requestSha256 });
+      if (isCommittedRemovalRefreshFailure(nextView)) {
+        setPendingRemoval(null);
+        setRemovalFailure(null);
+        setRemovalRecovery(candidate);
+        return;
+      }
+      applyView(nextView);
+      const nextSets = candidate.kind === "warmup"
+        ? nextView.currentExercise.warmups
+        : nextView.currentExercise.workingSets;
+      const nextSet = nextSets[candidate.index] ?? nextSets.at(-1);
+      if (nextSet === undefined) {
+        (candidate.kind === "warmup" ? warmupAddRef : workingAddRef)
+          .current?.focus();
+      } else {
+        setRevealedSetId(nextSet.id);
+        setRevealedSetOffset(0);
+      }
+      setRemovalAnnouncement(candidate.kind === "warmup"
+        ? `Warm-up W${candidate.index + 1} removed`
+        : `Set ${candidate.index + 1} removed`);
+      setPendingRemoval(null);
+      setRemovalFailure(null);
+      setRemovalRecovery(null);
+    } catch {
+      setRemovalFailure(candidate);
+      setPendingRemoval(null);
+      removeFocusRef.current?.focus();
     } finally {
-      setWorkingBusySetId(null);
+      setRemovalBusy(false);
     }
   };
 
@@ -749,9 +815,6 @@ export function ActiveWorkoutScreen({
       setEditingCompletedSetId(null);
       setRevealedSetId(result.committedSetId);
       setRevealedSetOffset(0);
-      setRevealedSetMessage(
-        `Working set ${workingIndex(result.currentExercise.workingSets, result.committedSetId) + 1} correction saved`,
-      );
     } catch {
       setCorrectionFailure({
         setId: currentSet.id,
@@ -830,16 +893,7 @@ export function ActiveWorkoutScreen({
     }
   };
 
-  const confirmationCopy = outcomeConfirmation === "skip_exercise"
-    ? {
-        heading: `Skip ${view.currentExercise.name}?`,
-        body: "This exercise will be marked skipped for this workout. Completed sets stay recorded.",
-        cancelLabel: "Keep exercise",
-        confirmLabel: "Skip exercise",
-        confirmTestID: "skip-exercise-confirm",
-        destructive: false,
-      }
-    : outcomeConfirmation === "partial"
+  const confirmationCopy = outcomeConfirmation === "partial"
       ? {
           heading: "Save partial workout?",
           body: `You completed ${
@@ -852,23 +906,14 @@ export function ActiveWorkoutScreen({
           confirmTestID: "save-partial-workout-confirm",
           destructive: false,
         }
-      : outcomeConfirmation === "zero_sets"
-        ? {
-            heading: "Finish without working sets?",
-            body: "This workout will be saved with zero completed working sets.",
-            cancelLabel: "Keep training",
-            confirmLabel: "Save zero-set workout",
-            confirmTestID: "save-zero-set-workout-confirm",
-            destructive: false,
-          }
-        : {
-            heading: "Discard workout?",
-            body: "This ends the workout and marks it discarded. It cannot be resumed.",
-            cancelLabel: "Keep workout",
-            confirmLabel: "Discard workout",
-            confirmTestID: "discard-workout-confirm",
-            destructive: true,
-          };
+      : {
+          heading: "Discard workout?",
+          body: "This ends the workout and marks it discarded. It cannot be resumed.",
+          cancelLabel: "Keep workout",
+          confirmLabel: "Discard workout",
+          confirmTestID: "discard-workout-confirm",
+          destructive: true,
+        };
 
   function closeMoreActions() {
     setMoreVisible(false);
@@ -891,6 +936,8 @@ export function ActiveWorkoutScreen({
             nextSetIndex={activeIndex + 1}
             nextTarget={nextTarget}
             notificationPermission={notificationPermission}
+            restSoundEnabled={restSoundEnabled}
+            countdownCue={countdownCue}
             nowMs={nowMs}
             onAdjust={(deltaMs) => {
               void runRest(() => commands.adjustRest({
@@ -924,39 +971,6 @@ export function ActiveWorkoutScreen({
         ) : undefined}
         primary={
           <>
-            {revealedSetMessage === null ? null : (
-              <InlineNotice
-                body="The saved row is ready to review and edit."
-                heading={revealedSetMessage}
-                tone="completed"
-              />
-            )}
-            {reviewingEarlierOrLater || activeSet !== undefined ? null : (
-              <InlineNotice
-                body="Every planned working set in this exercise has been saved. You can still correct any completed set before finishing the workout."
-                heading="Exercise complete"
-                tone="completed"
-              />
-            )}
-            {!reviewingEarlierOrLater && view.rest.state === "expired" ? (
-              <InlineNotice
-                action={
-                  <SecondaryAction
-                    disabled={restBusy}
-                    label="Dismiss rest notice"
-                    onPress={() => {
-                      void runRest(() => commands.skipRest(restInput()));
-                    }}
-                  />
-                }
-                body={`Rest ended ${Math.max(
-                  0,
-                  Math.floor((nowMs() - view.rest.expiredAtMs) / 1_000),
-                )} seconds ago · working set ${activeIndex + 1} is ready`}
-                heading="Rest ended"
-                tone="attention"
-              />
-            ) : null}
             {reviewingEarlierOrLater ? (
               <InlineNotice
                 action={
@@ -976,48 +990,36 @@ export function ActiveWorkoutScreen({
               testID="active-workout-warmups-card"
             >
               <SectionHeader
+                action={reviewingEarlierOrLater ? undefined : (
+                  <View
+                    style={styles.inlineActions}
+                    testID="active-workout-warmup-actions"
+                  >
+                    <SectionGlyphAction
+                      busy={sectionMutationRef.current === "add_warmup"}
+                      disabled={
+                        warmupBusy !== null
+                        || view.currentExercise.metricProfile !== "load_reps"
+                      }
+                      accessibilityLabel="Add warm-up"
+                      icon={Plus}
+                      onPress={() => {
+                        void addWarmup();
+                      }}
+                      ref={warmupAddRef}
+                    />
+                  </View>
+                )}
                 supportingText="Optional warm-up sets"
                 title="Warm-ups"
                 tone="card"
               />
-              {reviewingEarlierOrLater ? null : <View
-                style={styles.inlineActions}
-                testID="active-workout-warmup-actions"
-              >
-                <SectionGlyphAction
-                  busy={sectionMutationRef.current === "add_warmup"}
-                  disabled={
-                    warmupBusy !== null
-                    || view.currentExercise.metricProfile !== "load_reps"
-                  }
-                  accessibilityLabel="Add warm-up"
-                  icon={Plus}
-                  onPress={() => {
-                    void addWarmup();
-                  }}
-                />
-                <SectionGlyphAction
-                  busy={sectionMutationRef.current === "copy_warmup"}
-                  disabled={
-                    warmupBusy !== null
-                    || view.currentExercise.warmups.length === 0
-                  }
-                  accessibilityLabel="Copy previous warm-up"
-                  icon={Copy}
-                  onPress={() => {
-                    void copyWarmup();
-                  }}
-                />
-              </View>}
               {sectionFailure === null
-                || (sectionFailure.operation !== "add_warmup"
-                  && sectionFailure.operation !== "copy_warmup") ? null : (
+                || sectionFailure.operation !== "add_warmup" ? null : (
                   <InlineNotice
                     action={
                       <SecondaryAction
-                        label={sectionFailure.operation === "add_warmup"
-                          ? "Retry add warm-up"
-                          : "Retry copy warm-up"}
+                        label="Retry add warm-up"
                         onPress={sectionFailure.retry}
                       />
                     }
@@ -1027,6 +1029,23 @@ export function ActiveWorkoutScreen({
                     tone="error"
                   />
                 )}
+              {removalFailure?.kind !== "warmup" ? null : (
+                <InlineNotice
+                  body="Warm-up could not be removed. Your workout was not changed. Try again."
+                  card
+                  heading="Warm-up could not be removed"
+                  tone="error"
+                />
+              )}
+              {removalRecovery?.kind !== "warmup" ? null : (
+                <InlineNotice
+                  action={<SecondaryAction label="Return to Today" onPress={onGoBack} />}
+                  body="The warm-up was removed, but the latest workout could not be loaded. Return to Today and reopen this workout."
+                  card
+                  heading="Warm-up removed. Reload workout"
+                  tone="attention"
+                />
+              )}
               {viewedExercise.warmups.map((set, index) => (
                 reviewingEarlierOrLater ? <ReviewSetSummary
                   index={index + 1}
@@ -1044,11 +1063,12 @@ export function ActiveWorkoutScreen({
                     return persistValues(set, observation);
                   }}
                   onComplete={() => {
-                    void runWarmup(set, "complete");
+                    void runWarmup(set);
                   }}
                   onRevealedLayout={setRevealedSetOffset}
-                  onSkip={() => {
-                    void runWarmup(set, "skip");
+                  onRemove={() => requestRemoval("warmup", set, index)}
+                  removeRef={(node) => {
+                    removeGlyphRefs.current.set(set.id, node);
                   }}
                   revealed={revealedSetId === set.id}
                   set={set}
@@ -1061,24 +1081,27 @@ export function ActiveWorkoutScreen({
               testID="active-workout-working-sets-card"
             >
               <SectionHeader
+                action={reviewingEarlierOrLater ? undefined : (
+                  <View
+                    style={styles.inlineActions}
+                    testID="active-workout-working-actions"
+                  >
+                    <SectionGlyphAction
+                      busy={sectionMutationRef.current === "add_working"}
+                      disabled={workingBusySetId !== null}
+                      accessibilityLabel="Add working set"
+                      icon={Plus}
+                      onPress={() => {
+                        void addWorking();
+                      }}
+                      ref={workingAddRef}
+                    />
+                  </View>
+                )}
                 supportingText={`${view.progress.completedWorkingSets} of ${view.progress.totalWorkingSets} working sets`}
                 title="Working sets"
                 tone="card"
               />
-              {reviewingEarlierOrLater ? null : <View
-                style={styles.inlineActions}
-                testID="active-workout-working-actions"
-              >
-                <SectionGlyphAction
-                  busy={sectionMutationRef.current === "add_working"}
-                  disabled={workingBusySetId !== null}
-                  accessibilityLabel="Add working set"
-                  icon={Plus}
-                  onPress={() => {
-                    void addWorking();
-                  }}
-                />
-              </View>}
               {sectionFailure?.operation !== "add_working" ? null : (
                 <InlineNotice
                   action={
@@ -1127,8 +1150,9 @@ export function ActiveWorkoutScreen({
                   onSaveCorrection={(observation) => {
                     return reviseCompletedSet(set, observation);
                   }}
-                  onSkip={() => {
-                    void skipWorking(set);
+                  onRemove={() => requestRemoval("working", set, index)}
+                  removeRef={(node) => {
+                    removeGlyphRefs.current.set(set.id, node);
                   }}
                   correctionBusy={correctionBusySetId === set.id}
                   correctionError={correctionFailure?.setId === set.id
@@ -1156,6 +1180,23 @@ export function ActiveWorkoutScreen({
                   heading="Set not saved"
                   card
                   tone="error"
+                />
+              )}
+              {removalFailure?.kind !== "working" ? null : (
+                <InlineNotice
+                  body="Set could not be removed. Your workout was not changed. Try again."
+                  card
+                  heading="Set could not be removed"
+                  tone="error"
+                />
+              )}
+              {removalRecovery?.kind !== "working" ? null : (
+                <InlineNotice
+                  action={<SecondaryAction label="Return to Today" onPress={onGoBack} />}
+                  body="The set was removed, but the latest workout could not be loaded. Return to Today and reopen this workout."
+                  card
+                  heading="Set removed. Reload workout"
+                  tone="attention"
                 />
               )}
               {correctionFailure === null ? null : (
@@ -1194,37 +1235,12 @@ export function ActiveWorkoutScreen({
             ]}
             testID="workout-actions-sheet-content"
           >
-            <View
-              accessibilityRole="header"
-              accessible
-              focusable
-              ref={moreHeadingRef}
-            >
-              <SectionHeader
-                supportingText={`Uses ${view.currentExercise.defaultRestSeconds} seconds from this workout snapshot.`}
-                title="More workout actions"
-              />
-            </View>
-            <PrimaryAction
-              disabled={restBusy}
-              label="Start rest"
-              onPress={() => {
-                closeMoreActions();
-                void runRest(() => commands.startManualRest(restInput()));
-              }}
-            />
-            <SecondaryAction
-              disabled={outcomeBusy}
-              label={`Skip ${view.currentExercise.name}`}
-              onPress={() => {
-                closeMoreActions();
-                setOutcomeConfirmation("skip_exercise");
-              }}
-            />
+            <SectionHeader title="More workout actions" />
             {view.activeSetId === null ? (
               <PrimaryAction
                 busy={outcomeBusy}
                 label="Finish workout"
+                ref={moreFirstActionRef}
                 onPress={() => {
                   closeMoreActions();
                   void finishCompletedWorkout();
@@ -1234,27 +1250,10 @@ export function ActiveWorkoutScreen({
             <SecondaryAction
               disabled={outcomeBusy}
               label="Finish as partial"
+              ref={view.activeSetId === null ? undefined : moreFirstActionRef}
               onPress={() => {
                 closeMoreActions();
                 setOutcomeConfirmation("partial");
-              }}
-            />
-            {view.progress.completedWorkingSets === 0 ? (
-              <SecondaryAction
-                disabled={outcomeBusy}
-                label="Save zero-set workout"
-                onPress={() => {
-                  closeMoreActions();
-                  setOutcomeConfirmation("zero_sets");
-                }}
-              />
-            ) : null}
-            <SecondaryAction
-              disabled={outcomeBusy}
-              label="Finish workout later"
-              onPress={() => {
-                closeMoreActions();
-                onFinishLater();
               }}
             />
             <SecondaryAction
@@ -1265,10 +1264,6 @@ export function ActiveWorkoutScreen({
                 closeMoreActions();
                 setOutcomeConfirmation("discard");
               }}
-            />
-            <SecondaryAction
-              label="Close"
-              onPress={closeMoreActions}
             />
           </ScrollView>
         </View>
@@ -1287,6 +1282,32 @@ export function ActiveWorkoutScreen({
         restoreFocusRef={moreActionRef}
         visible={outcomeConfirmation !== null}
       />}
+      {reviewingEarlierOrLater || pendingRemoval === null ? null : <ConfirmationSheet
+        body={pendingRemoval.kind === "warmup"
+          ? "This warm-up will be removed from this workout. This cannot be undone."
+          : "This set will be removed from this workout. This cannot be undone."}
+        cancelLabel={pendingRemoval.kind === "warmup" ? "Keep warm-up" : "Keep set"}
+        confirmBusy={removalBusy}
+        confirmLabel={pendingRemoval.kind === "warmup" ? "Remove warm-up" : "Remove set"}
+        confirmTestID={pendingRemoval.kind === "warmup"
+          ? "remove-warmup-confirm"
+          : "remove-working-set-confirm"}
+        destructive
+        heading={pendingRemoval.kind === "warmup"
+          ? `Remove warm-up W${pendingRemoval.index + 1}?`
+          : `Remove set ${pendingRemoval.index + 1}?`}
+        onCancel={() => setPendingRemoval(null)}
+        onConfirm={() => {
+          void confirmRemoval();
+        }}
+        restoreFocusRef={removeFocusRef}
+        visible
+      />}
+      {removalAnnouncement === null ? null : (
+        <Text accessibilityLiveRegion="polite" style={styles.visuallyHidden}>
+          {removalAnnouncement}
+        </Text>
+      )}
     </>
   );
 }
@@ -1333,5 +1354,11 @@ const styles = StyleSheet.create({
     gap: space[1],
     minHeight: 48,
     paddingVertical: space[2],
+  },
+  visuallyHidden: {
+    height: 1,
+    opacity: 0,
+    position: "absolute",
+    width: 1,
   },
 });

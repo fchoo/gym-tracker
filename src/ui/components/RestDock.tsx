@@ -16,6 +16,8 @@ import {
   StyleSheet,
   Text,
   View,
+  AppState,
+  type AppStateStatus,
   type TextStyle,
 } from "react-native";
 
@@ -26,6 +28,9 @@ import type {
 import {
   remainingRestMs,
 } from "../../domains/rest";
+import type {
+  RestCountdownCuePort,
+} from "../../domains/rest/restCountdownCuePort";
 import {
   InlineNotice,
   FocusablePressable,
@@ -168,6 +173,8 @@ export function RestDock({
   onPause,
   onResume,
   onSkip,
+  restSoundEnabled = false,
+  countdownCue,
 }: Readonly<{
   state: Extract<RestStateV1, { state: "running" | "paused" }>;
   nowMs: () => number;
@@ -186,12 +193,69 @@ export function RestDock({
   onPause: () => void;
   onResume: () => void;
   onSkip: () => void;
+  restSoundEnabled?: boolean;
+  countdownCue?: RestCountdownCuePort | undefined;
 }>) {
   const { colors } = useAppTheme();
   const [displayNowMs, setDisplayNowMs] = useState(nowMs());
   const [expanded, setExpanded] = useState(false);
   const expiredRef = useRef(false);
   const announcedRef = useRef<string | null>(null);
+  const appStateRef = useRef<AppStateStatus>(AppState.currentState);
+  const cueLedgerRef = useRef<Readonly<{
+    emitted: ReadonlySet<number>;
+  }> | null>(null);
+  const cueRestRef = useRef<Readonly<{
+    nextSetId: string | null;
+    paused: boolean;
+    startedAtMs: number;
+  }> | null>(null);
+  const cueRestGenerationRef = useRef(0);
+  const previousRemainingSecondsRef = useRef<number | null>(null);
+  const [cueFailure, setCueFailure] = useState(false);
+
+  useEffect(() => {
+    const subscription = AppState.addEventListener("change", (nextState) => {
+      appStateRef.current = nextState;
+      previousRemainingSecondsRef.current = null;
+    });
+    return () => subscription.remove();
+  }, []);
+
+  useEffect(() => {
+    const previousRest = cueRestRef.current;
+    if (state.state === "paused") {
+      if (previousRest !== null) {
+        cueRestRef.current = {
+          ...previousRest,
+          paused: true,
+        };
+      }
+      previousRemainingSecondsRef.current = null;
+      return;
+    }
+
+    const resumed = previousRest?.paused === true
+      && previousRest.nextSetId === state.nextSetId;
+    const isNewRest = !resumed && (
+      previousRest === null
+      || previousRest.startedAtMs !== state.startedAtMs
+      || previousRest.nextSetId !== state.nextSetId
+    );
+    cueRestRef.current = {
+      nextSetId: state.nextSetId,
+      paused: false,
+      startedAtMs: state.startedAtMs,
+    };
+    if (isNewRest) {
+      cueRestGenerationRef.current += 1;
+      cueLedgerRef.current = {
+        emitted: new Set(),
+      };
+      previousRemainingSecondsRef.current = null;
+      setCueFailure(false);
+    }
+  }, [state]);
 
   useEffect(() => {
     setDisplayNowMs(nowMs());
@@ -205,6 +269,7 @@ export function RestDock({
   }, [nowMs, state]);
 
   const remainingMs = remainingRestMs(state, displayNowMs);
+  const remainingSeconds = Math.ceil(remainingMs / 1_000);
   const announcement = useMemo(
     () => thresholdMessage(remainingMs),
     [remainingMs],
@@ -226,6 +291,43 @@ export function RestDock({
       expiredRef.current = false;
     }
   }, [announcement, onExpired, remainingMs, state.state]);
+
+  useEffect(() => {
+    const previousSeconds = previousRemainingSecondsRef.current;
+    previousRemainingSecondsRef.current = remainingSeconds;
+    const ledger = cueLedgerRef.current;
+    if (
+      state.state !== "running"
+      || !restSoundEnabled
+      || countdownCue === undefined
+      || appStateRef.current !== "active"
+      || previousSeconds === null
+      || previousSeconds < remainingSeconds
+      || ledger === null
+    ) {
+      return;
+    }
+    if (
+      ![3, 2, 1, 0].includes(remainingSeconds)
+      || previousSeconds !== remainingSeconds + 1
+      || ledger.emitted.has(remainingSeconds)
+    ) {
+      return;
+    }
+    cueLedgerRef.current = {
+      ...ledger,
+      emitted: new Set([...ledger.emitted, remainingSeconds]),
+    };
+    const cueRestGeneration = cueRestGenerationRef.current;
+    void (remainingSeconds === 0
+      ? countdownCue.playLongCue()
+      : countdownCue.playShortCue()
+    ).catch(() => {
+      if (cueRestGeneration === cueRestGenerationRef.current) {
+        setCueFailure(true);
+      }
+    });
+  }, [countdownCue, remainingSeconds, restSoundEnabled, state.state]);
 
   const label = state.state === "paused"
     ? `REST PAUSED · NEXT: SET ${nextSetIndex} AT ${nextTarget}`
@@ -251,6 +353,13 @@ export function RestDock({
           }
           body="The in-app timer stays accurate. You can allow notifications from Android settings."
           heading="Background rest alerts are off"
+          tone="attention"
+        />
+      ) : null}
+      {cueFailure ? (
+        <InlineNotice
+          body="The timer is still accurate. Keep watching the countdown."
+          heading="Countdown sound unavailable"
           tone="attention"
         />
       ) : null}

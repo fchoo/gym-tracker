@@ -63,7 +63,7 @@ type AsyncCommand = (...args: never[]) => Promise<unknown>;
 
 type WorkoutMutationCommands = Readonly<{
   addWarmup: AsyncCommand;
-  copyPreviousWarmup: AsyncCommand;
+  copyPreviousWarmup?: AsyncCommand;
   addWorkingSet: AsyncCommand;
   reviseCompletedSet: AsyncCommand;
 }>;
@@ -156,14 +156,16 @@ export function createWorkoutMutationTestCommandAdapters<
   return {
     ...commands,
     addWarmup: wrapCommand("add_warmup", commands.addWarmup),
-    copyPreviousWarmup: wrapCommand(
-      "copy_warmup",
-      commands.copyPreviousWarmup,
-    ),
+    ...(commands.copyPreviousWarmup === undefined ? {} : {
+      copyPreviousWarmup: wrapCommand(
+        "copy_warmup",
+        commands.copyPreviousWarmup,
+      ),
+    }),
     addWorkingSet: wrapCommand("add_working", commands.addWorkingSet),
     reviseCompletedSet: wrapCommand(
       "completed_set_correction",
       commands.reviseCompletedSet,
     ),
-  };
+  } as TCommands;
 }

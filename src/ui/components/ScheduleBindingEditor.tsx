@@ -16,6 +16,7 @@ import type {
 } from "../../domains/scheduling/localDate";
 import {
   PlanEditorReorderableRow,
+  type PlanEditorReorderPreview,
 } from "./PlanEditorFields";
 import {
   FocusablePressable,
@@ -43,17 +44,15 @@ const weekdays: readonly Weekday[] = [
 
 function reordered<Value>(
   values: readonly Value[],
-  index: number,
-  direction: -1 | 1,
+  from: number,
+  to: number,
 ): readonly Value[] {
-  const destination = index + direction;
-  if (destination < 0 || destination >= values.length) {
+  if (from === to || to < 0 || to >= values.length) {
     return values;
   }
   const next = [...values];
-  const value = next[index]!;
-  next[index] = next[destination]!;
-  next[destination] = value;
+  const [value] = next.splice(from, 1);
+  next.splice(to, 0, value!);
   return next;
 }
 
@@ -110,11 +109,21 @@ function WeekdayEditor({
   onChange(bindings: readonly ScheduleEditorWeekdayBinding[]): void;
 }>) {
   const { colors } = useAppTheme();
+  const [dragPreview, setDragPreview] = React.useState<
+    PlanEditorReorderPreview | null
+  >(null);
 
   function changeWeekday(index: number, weekday: Weekday) {
     onChange(bindings.map((binding, bindingIndex) => (
       bindingIndex === index ? { ...binding, weekday } : binding
     )));
+  }
+
+  function moveTo(index: number, targetPosition: number) {
+    setDragPreview(null);
+    onChange(reordered(bindings, index, targetPosition).map(
+      (binding, ordinal) => ({ ...binding, ordinal }),
+    ));
   }
 
   function remove(index: number) {
@@ -146,25 +155,35 @@ function WeekdayEditor({
     <View style={styles.list}>
       {bindings.map((binding, index) => {
         const day = days.find(({ id }) => id === binding.planDayId);
+        const name = day?.name ?? binding.planDayId;
         return (
-          <View
+          <PlanEditorReorderableRow
+            count={bindings.length}
             key={`${binding.weekIndex}:${binding.weekday}:${binding.planDayId}:${index}`}
-            style={[styles.binding, { borderColor: colors.divider }]}
+            label={name}
+            onDragPreview={setDragPreview}
+            onMoveDown={() => moveTo(index, index + 1)}
+            onMoveTo={(targetPosition) => moveTo(index, targetPosition)}
+            onMoveUp={() => moveTo(index, index - 1)}
+            position={index}
+            preview={dragPreview}
+            reorderId={`weekday-${binding.weekIndex}-${binding.weekday}-${binding.planDayId}`}
           >
-            <Text style={[
-              typeScale.bodyStrong as TextStyle,
-              { color: colors.textPrimary },
-            ]}>
-              {`${binding.weekday} · ${day?.name ?? binding.planDayId}`}
-            </Text>
+            <View style={styles.binding}>
+              <Text style={[
+                typeScale.bodyStrong as TextStyle,
+                { color: colors.textPrimary },
+              ]}>
+                {`${binding.weekday} · ${name}`}
+              </Text>
             <View
-              accessibilityLabel={`Weekday for ${day?.name ?? binding.planDayId}`}
+              accessibilityLabel={`Weekday for ${name}`}
               accessibilityRole="radiogroup"
               style={styles.weekdays}
             >
               {weekdays.map((weekday) => (
                 <FocusablePressable
-                  accessibilityLabel={`${day?.name ?? binding.planDayId}: ${weekday}`}
+                  accessibilityLabel={`${name}: ${weekday}`}
                   accessibilityRole="radio"
                   accessibilityState={{
                     checked: weekday === binding.weekday,
@@ -192,10 +211,11 @@ function WeekdayEditor({
               ))}
             </View>
             <SecondaryAction
-              label={`Remove ${day?.name ?? binding.planDayId} binding`}
+              label={`Remove ${name} binding`}
               onPress={() => remove(index)}
             />
-          </View>
+            </View>
+          </PlanEditorReorderableRow>
         );
       })}
       <SecondaryAction
@@ -216,8 +236,13 @@ function RotationEditor({
   bindings: readonly ScheduleEditorRotationBinding[];
   onChange(bindings: readonly ScheduleEditorRotationBinding[]): void;
 }>) {
-  function move(index: number, direction: -1 | 1) {
-    onChange(reordered(bindings, index, direction).map(
+  const [dragPreview, setDragPreview] = React.useState<
+    PlanEditorReorderPreview | null
+  >(null);
+
+  function moveTo(index: number, targetPosition: number) {
+    setDragPreview(null);
+    onChange(reordered(bindings, index, targetPosition).map(
       (binding, ordinal) => ({ ...binding, ordinal }),
     ));
   }
@@ -232,12 +257,16 @@ function RotationEditor({
             count={bindings.length}
             key={`${binding.planDayId}:${index}`}
             label={name}
-            onMoveDown={() => move(index, 1)}
-            onMoveUp={() => move(index, -1)}
+            onDragPreview={setDragPreview}
+            onMoveDown={() => moveTo(index, index + 1)}
+            onMoveTo={(targetPosition) => moveTo(index, targetPosition)}
+            onMoveUp={() => moveTo(index, index -1)}
             position={index}
+            preview={dragPreview}
+            reorderId={`rotation-${binding.planDayId}-${index}`}
           >
             <Text>
-              {`${index + 1}. ${name}`}
+              {name}
             </Text>
           </PlanEditorReorderableRow>
         );

@@ -6,6 +6,9 @@ import type {
   CompleteSetResult,
   CompleteWarmupInput,
   CopyPreviousWarmupInput,
+  RemoveSetResult,
+  RemoveWarmupInput,
+  RemoveWorkingSetInput,
   ReviseCompletedSetInput,
   SetObservation,
   SkipWorkingSetInput,
@@ -20,6 +23,45 @@ import {
 import type {
   HapticsPort,
 } from "./hapticsPort";
+
+const REQUEST_ID_MAX_LENGTH = 128;
+const PERSISTED_ENTITY_ID_MAX_LENGTH = 256;
+const SHA256_PATTERN = /^[a-f0-9]{64}$/u;
+
+function validIdentifier(value: string, maxLength: number): boolean {
+  return typeof value === "string"
+    && value.trim() === value
+    && value.length > 0
+    && [...value].length <= maxLength;
+}
+
+function validRevision(value: number): boolean {
+  return Number.isSafeInteger(value) && value >= 0;
+}
+
+function validTime(value: number): boolean {
+  return Number.isSafeInteger(value) && value >= 0;
+}
+
+function validateRemoveInput(
+  input: RemoveWarmupInput | RemoveWorkingSetInput,
+): void {
+  if (!validIdentifier(input.requestId, REQUEST_ID_MAX_LENGTH)
+    || !validIdentifier(input.sessionId, PERSISTED_ENTITY_ID_MAX_LENGTH)
+    || !validIdentifier(input.setId, PERSISTED_ENTITY_ID_MAX_LENGTH)) {
+    throw new TypeError("remove_set_identifier_invalid");
+  }
+  if (!SHA256_PATTERN.test(input.requestSha256)) {
+    throw new TypeError("remove_set_hash_invalid");
+  }
+  if (!validRevision(input.expectedSessionRevision)
+    || !validRevision(input.expectedSetRevision)) {
+    throw new TypeError("remove_set_revision_invalid");
+  }
+  if (!validTime(input.removedAtMs)) {
+    throw new TypeError("remove_set_time_invalid");
+  }
+}
 
 function validateObservation(
   identity: MetricIdentity,
@@ -118,6 +160,7 @@ export async function addWorkingSet(input: Readonly<{
   return input.repository.addWorkingSet(input.input);
 }
 
+/** @deprecated The UI no longer exposes this legacy command. */
 export async function copyPreviousWarmup(input: Readonly<{
   repository: ActiveWorkoutRepository;
   input: CopyPreviousWarmupInput;
@@ -144,6 +187,28 @@ export async function skipWorkingSet(input: Readonly<{
   input: SkipWorkingSetInput;
 }>) {
   return input.repository.skipWorkingSet(input.input);
+}
+
+export async function removeWarmup(input: Readonly<{
+  repository: ActiveWorkoutRepository;
+  input: RemoveWarmupInput;
+}>): Promise<RemoveSetResult> {
+  validateRemoveInput(input.input);
+  if (input.repository.removeWarmup === undefined) {
+    throw new TypeError("remove_warmup_unavailable");
+  }
+  return input.repository.removeWarmup(input.input);
+}
+
+export async function removeWorkingSet(input: Readonly<{
+  repository: ActiveWorkoutRepository;
+  input: RemoveWorkingSetInput;
+}>): Promise<RemoveSetResult> {
+  validateRemoveInput(input.input);
+  if (input.repository.removeWorkingSet === undefined) {
+    throw new TypeError("remove_working_set_unavailable");
+  }
+  return input.repository.removeWorkingSet(input.input);
 }
 
 export async function completeSet(input: Readonly<{

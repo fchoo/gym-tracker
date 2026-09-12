@@ -549,7 +549,7 @@ describe("OwnedPlanEditorScreen create and save plan", () => {
     expect(onSchedule).toHaveBeenNthCalledWith(2, "plan-owner");
   });
 
-  it("preserves values, focuses the error summary, and retries save plan", async () => {
+  it("preserves the draft and retries persistence from the exact save failure action", async () => {
     const savePlan = jest.fn<
       React.ComponentProps<typeof OwnedPlanEditorScreen>["savePlan"]
     >()
@@ -576,13 +576,18 @@ describe("OwnedPlanEditorScreen create and save plan", () => {
 
     const summary = await screen.findByRole("alert");
     expect(screen.getByText(
-      "Plan could not be saved. Your edits are still here. Try again.",
+      "Plan changes could not be saved",
+    )).toBeOnTheScreen();
+    expect(screen.getByText(
+      "Your draft is still here. Your existing plan was not changed.",
     )).toBeOnTheScreen();
     expect(summary).toHaveProp("focusable", true);
     expect(screen.getByDisplayValue("Retry Plan Edited")).toBeOnTheScreen();
     expect(JSON.stringify(rendered.toJSON())).not.toMatch(/secret_storage/u);
 
-    await fireEvent.press(screen.getByRole("button", { name: "Retry" }));
+    await fireEvent.press(screen.getByRole("button", {
+      name: "Retry saving plan changes",
+    }));
     await waitFor(() => expect(savePlan).toHaveBeenCalledTimes(2));
   });
 
@@ -737,8 +742,10 @@ describe("OwnedPlanEditorScreen dirty leave and lifecycle", () => {
         expect.objectContaining({ label: "Move up" }),
       ]),
     );
-    await fireEvent.press(
-      screen.getByRole("button", { name: "Move Recovery up" }),
+    await fireEvent(
+      screen.getByTestId("drag-day-Recovery"),
+      "keyDown",
+      { nativeEvent: { key: "ArrowUp", shiftKey: true } },
     );
 
     expect(savePlan).not.toHaveBeenCalled();
@@ -813,7 +820,7 @@ describe("OwnedPlanEditorScreen dirty leave and lifecycle", () => {
     });
     expect(screen.getByTestId("drag-day-Recovery")).toHaveProp(
       "accessibilityLabel",
-      "Drag Recovery. Moving to position 1 of 3",
+      "Reorder Recovery",
     );
     expect(dayOrder()).toEqual([
       "reorder-row-day-Strength Day",
@@ -964,7 +971,7 @@ describe("OwnedPlanEditorScreen dirty leave and lifecycle", () => {
     expect(savePlan).not.toHaveBeenCalled();
   });
 
-  it("keeps buttons, keyboard, and adjustable actions on the bounded draft move", async () => {
+  it("keeps keyboard and adjustable actions on the bounded draft move", async () => {
     const source = completeSnapshot({
       days: [
         completeSnapshot().days[0]!,
@@ -992,11 +999,9 @@ describe("OwnedPlanEditorScreen dirty leave and lifecycle", () => {
     ]);
     expect(screen.getByText("Recovery moved to 1 of 2")).toBeOnTheScreen();
 
-    await fireEvent(
-      screen.getByRole("button", { name: "Move Recovery down" }),
-      "keyDown",
-      { nativeEvent: { key: "Enter" } },
-    );
+    await fireEvent(handle, "keyDown", {
+      nativeEvent: { key: "ArrowDown", shiftKey: true },
+    });
     expect(dayOrder()).toEqual([
       "reorder-row-day-Strength Day",
       "reorder-row-day-Recovery",
@@ -1224,7 +1229,166 @@ for (const [layout, width] of [
 }
 
 describe("OwnedPlanEditorScreen reorder hierarchy", () => {
-  it("keeps handle, labels, position, and fallback actions in one row at normal text", async () => {
+  it("uses one stable-ID day switcher to select every day without saving", async () => {
+    const source = completeSnapshot({
+      days: [
+        completeSnapshot().days[0]!,
+        {
+          id: "day-conditioning",
+          name: "Conditioning",
+          ordinal: 1,
+          occurrences: [],
+        },
+      ],
+    });
+    const savePlan = jest.fn(async () => committed(source, "save"));
+    await renderEditor({
+      loadPlan: jest.fn(async () => source),
+      savePlan,
+    });
+
+    const switcher = await screen.findByLabelText("Plan days");
+    expect(switcher).toBeOnTheScreen();
+    const strength = screen.getByRole("button", {
+      name: "Strength Day. 1 exercises",
+    });
+    const conditioning = screen.getByRole("button", {
+      name: "Conditioning. 0 exercises",
+    });
+    expect(strength).toHaveStyle({ minHeight: 48 });
+    expect(conditioning).toHaveStyle({ minHeight: 48 });
+    expect(strength).toHaveProp("accessibilityState",
+      expect.objectContaining({ selected: true }));
+
+    await fireEvent.press(conditioning);
+
+    expect(conditioning).toHaveProp("accessibilityState",
+      expect.objectContaining({ selected: true }));
+    expect(screen.getByLabelText("Day name")).toHaveProp(
+      "value",
+      "Conditioning",
+    );
+    expect(savePlan).not.toHaveBeenCalled();
+  });
+
+  it("keeps the selected day by ID through reordering and uses a trailing Replace glyph", async () => {
+    const squat = completeSnapshot().days[0]!.occurrences[0]!;
+    const deadlift = {
+      ...squat,
+      id: "occurrence-owner-deadlift",
+      exerciseId: "exercise-deadlift",
+      ordinal: 1,
+      targets: squat.targets.map((target) => ({
+        ...target,
+        id: `${target.id}-deadlift`,
+      })),
+    };
+    const source = completeSnapshot({
+      days: [
+        {
+          ...completeSnapshot().days[0]!,
+          occurrences: [squat, deadlift],
+        },
+        {
+          id: "day-conditioning",
+          name: "Conditioning",
+          ordinal: 1,
+          occurrences: [],
+        },
+      ],
+    });
+    const onReplaceOccurrence = jest.fn();
+    const savePlan = jest.fn(async () => committed(source, "save"));
+    await renderEditor({
+      listExercises: jest.fn(async () => [
+        ...exercises,
+        {
+          id: "exercise-deadlift",
+          name: "Barbell Deadlift",
+          metricIdentity: {
+            profile: "load_reps" as const,
+            contractVersion: 1,
+            exerciseMetricGeneration: 1,
+          },
+        },
+      ]),
+      loadPlan: jest.fn(async () => source),
+      onReplaceOccurrence,
+      savePlan,
+    });
+
+    await fireEvent.press(await screen.findByRole("button", {
+      name: "Conditioning. 0 exercises",
+    }));
+    await fireEvent(
+      screen.getByTestId("drag-day-Conditioning"),
+      "keyDown",
+      { nativeEvent: { key: "ArrowUp", shiftKey: true } },
+    );
+
+    expect(screen.getByLabelText("Day name")).toHaveProp(
+      "value",
+      "Conditioning",
+    );
+    expect(savePlan).not.toHaveBeenCalled();
+
+    await fireEvent.press(screen.getByRole("button", {
+      name: "Strength Day. 2 exercises",
+    }));
+    const replace = screen.getByRole("button", {
+      name: "Replace Barbell Back Squat",
+    });
+    expect(replace).toHaveStyle({ minHeight: 48, minWidth: 48 });
+    await fireEvent.press(replace);
+    expect(onReplaceOccurrence).toHaveBeenCalledWith("occurrence-owner-squat");
+    expect(savePlan).not.toHaveBeenCalled();
+  });
+
+  it("chooses the nearest surviving day when a committed update removes the selection", async () => {
+    const source = completeSnapshot({
+      days: [
+        completeSnapshot().days[0]!,
+        {
+          id: "day-recovery",
+          name: "Recovery",
+          ordinal: 1,
+          occurrences: [],
+        },
+        {
+          id: "day-conditioning",
+          name: "Conditioning",
+          ordinal: 2,
+          occurrences: [],
+        },
+      ],
+    });
+    const savePlan = jest.fn(async () => committed({
+      ...source,
+      revision: 2,
+      days: [source.days[0]!, source.days[2]!],
+    }, "save"));
+    await renderEditor({
+      loadPlan: jest.fn(async () => source),
+      savePlan,
+    });
+
+    await fireEvent.press(await screen.findByRole("button", {
+      name: "Recovery. 0 exercises",
+    }));
+    await fireEvent.changeText(screen.getByLabelText("Plan name"),
+      "Owner Strength Updated");
+    await fireEvent.press(
+      screen.getByRole("button", { name: "Save Plan Changes" }),
+    );
+
+    await waitFor(() => expect(savePlan).toHaveBeenCalledTimes(1));
+    expect(screen.getByLabelText("Day name")).toHaveProp(
+      "value",
+      "Conditioning",
+    );
+  });
+
+  it("keeps handle, labels, and no visual ordinal or directional controls at normal text", async () => {
     const previous = Dimensions.get("window");
     Dimensions.set({
       screen: { ...previous, fontScale: 1 },
@@ -1249,10 +1413,11 @@ describe("OwnedPlanEditorScreen reorder hierarchy", () => {
       .toHaveStyle({ flexDirection: "row" });
     expect(screen.getByTestId("drag-day-Recovery"))
       .toHaveStyle({ minHeight: 48, minWidth: 48 });
-    expect(screen.getByRole("button", { name: "Move Recovery up" }))
-      .toHaveStyle({ minHeight: 48, minWidth: 48 });
-    expect(screen.getByRole("button", { name: "Move Recovery down" }))
-      .toHaveStyle({ minHeight: 48, minWidth: 48 });
+    expect(screen.queryByText("Position 2 of 2")).not.toBeOnTheScreen();
+    expect(screen.queryByRole("button", { name: "Move Recovery up" }))
+      .not.toBeOnTheScreen();
+    expect(screen.queryByRole("button", { name: "Move Recovery down" }))
+      .not.toBeOnTheScreen();
     await rendered.unmount();
     await act(() => {
       Dimensions.set({ screen: previous, window: previous });
@@ -1291,12 +1456,13 @@ describe("OwnedPlanEditorScreen reorder hierarchy", () => {
     expect(screen.getByTestId(
       "drag-day-A very long plan day name that must remain fully reachable",
     )).toHaveStyle({ minHeight: 48, minWidth: 48 });
-    expect(screen.getByRole("button", {
+    expect(screen.queryByText("Position 2 of 2")).not.toBeOnTheScreen();
+    expect(screen.queryByRole("button", {
       name: "Move A very long plan day name that must remain fully reachable up",
-    })).toHaveStyle({ minHeight: 48, minWidth: 48 });
-    expect(screen.getByRole("button", {
+    })).not.toBeOnTheScreen();
+    expect(screen.queryByRole("button", {
       name: "Move A very long plan day name that must remain fully reachable down",
-    })).toHaveStyle({ minHeight: 48, minWidth: 48 });
+    })).not.toBeOnTheScreen();
 
     await rendered.unmount();
     await act(() => {

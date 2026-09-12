@@ -32,6 +32,8 @@ import {
   completeSet,
   completeWarmup,
   copyPreviousWarmup,
+  removeWarmup,
+  removeWorkingSet,
   reviseCompletedSet,
   skipWorkingSet,
   skipWarmup,
@@ -520,6 +522,113 @@ describe("Plan 01-10 working-set structure commands", () => {
     expect(await kernel.queryAll<{ count: number }>(
       "SELECT COUNT(*) AS count FROM pending_effects",
     )).toEqual([{ count: 0 }]);
+  });
+});
+
+describe("Plan 07-02 receipt-backed hard removal", () => {
+  it("hard-deletes incomplete and legacy-skipped rows, repairs totals and ordinals, and replays only the same receipt", async () => {
+    const { kernel, repository, session } = await setupActiveWorkout();
+    const initial = await repository.getActiveWorkout(session.id);
+    const warmup = initial.currentExercise.warmups[0]!;
+    const firstWorking = initial.currentExercise.workingSets[0]!;
+
+    const warmupResult = await removeWarmup({
+      repository,
+      input: {
+        requestId: "remove-warmup-1",
+        requestSha256: "a".repeat(64),
+        sessionId: session.id,
+        setId: warmup.id,
+        expectedSessionRevision: initial.revision,
+        expectedSetRevision: warmup.revision,
+        removedAtMs: 1_786_853_601_000,
+      },
+    });
+
+    expect(warmupResult).toEqual({
+      outcome: "committed",
+      sessionId: session.id,
+      setId: warmup.id,
+      sessionRevision: initial.revision + 1,
+    });
+    expect((await repository.getActiveWorkout(session.id)).currentExercise.warmups)
+      .not.toContainEqual(expect.objectContaining({ id: warmup.id }));
+
+    const afterWarmup = await repository.getActiveWorkout(session.id);
+    await kernel.write((transaction) => transaction.execute(
+      `UPDATE session_sets
+       SET status = 'skipped', revision = revision + 1
+       WHERE id = ?`,
+      [firstWorking.id],
+    ));
+    const skippedSetRevision = firstWorking.revision + 1;
+
+    await expect(removeWorkingSet({
+      repository,
+      input: {
+        requestId: "remove-working-1",
+        requestSha256: "b".repeat(64),
+        sessionId: session.id,
+        setId: firstWorking.id,
+        expectedSessionRevision: afterWarmup.revision,
+        expectedSetRevision: skippedSetRevision,
+        removedAtMs: 1_786_853_601_100,
+      },
+    })).resolves.toMatchObject({ outcome: "committed" });
+
+    const afterWorking = await repository.getActiveWorkout(session.id);
+    expect(afterWorking.progress.totalWorkingSets)
+      .toBe(initial.progress.totalWorkingSets - 1);
+    expect(afterWorking.currentExercise.workingSets.map(({ ordinal }) => ordinal))
+      .toEqual(afterWorking.currentExercise.workingSets.map((_set, ordinal) => ordinal));
+    expect(await kernel.queryAll(
+      "SELECT * FROM history_session_overlays WHERE session_id = ?",
+      [session.id],
+    )).toEqual([]);
+    expect(await kernel.queryAll<{ request_id: string; operation: string }>(
+      `SELECT request_id, operation FROM workout_remove_receipts
+       ORDER BY request_id`,
+    )).toEqual([
+      { request_id: "remove-warmup-1", operation: "remove_warmup" },
+      { request_id: "remove-working-1", operation: "remove_working_set" },
+    ]);
+
+    await expect(removeWorkingSet({
+      repository,
+      input: {
+        requestId: "remove-working-1",
+        requestSha256: "b".repeat(64),
+        sessionId: session.id,
+        setId: firstWorking.id,
+        expectedSessionRevision: afterWarmup.revision,
+        expectedSetRevision: skippedSetRevision,
+        removedAtMs: 1_786_853_601_100,
+      },
+    })).resolves.toMatchObject({ outcome: "already_committed" });
+    await expect(removeWorkingSet({
+      repository,
+      input: {
+        requestId: "remove-working-1",
+        requestSha256: "c".repeat(64),
+        sessionId: session.id,
+        setId: firstWorking.id,
+        expectedSessionRevision: afterWarmup.revision,
+        expectedSetRevision: skippedSetRevision,
+        removedAtMs: 1_786_853_601_100,
+      },
+    })).rejects.toThrow("remove_set_replay_conflict");
+    await expect(removeWorkingSet({
+      repository,
+      input: {
+        requestId: "remove-working-1",
+        requestSha256: "b".repeat(64),
+        sessionId: session.id,
+        setId: firstWorking.id,
+        expectedSessionRevision: afterWarmup.revision,
+        expectedSetRevision: skippedSetRevision,
+        removedAtMs: 1_786_853_601_101,
+      },
+    })).rejects.toThrow("remove_set_replay_conflict");
   });
 });
 

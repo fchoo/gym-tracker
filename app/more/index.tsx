@@ -2,65 +2,80 @@ import {
   router,
   type Href,
 } from "expo-router";
-import React from "react";
-import {
-  Text,
-  View,
-  type TextStyle,
-} from "react-native";
+import React, {
+  useEffect,
+  useRef,
+  useState,
+} from "react";
 
 import {
-  ContentCard,
-  ScreenHeader,
-  SecondaryAction,
-} from "../../src/ui/components";
+  useWorkoutAppRuntime,
+} from "../../src/bootstrap/workoutAppRuntime";
 import {
-  AdaptiveScreen,
-} from "../../src/ui/layout/AdaptiveScreen";
+  type RestAlertPreferences,
+} from "../../src/domains/rest";
 import {
-  space,
-  typeScale,
-  useAppTheme,
-} from "../../src/ui/theme";
+  SettingsScreen,
+} from "../../src/ui/screens/SettingsScreen";
+
+const DEFAULT_REST_ALERT_PREFERENCES: RestAlertPreferences = Object.freeze({
+  soundEnabled: true,
+  vibrationEnabled: true,
+});
 
 export default function MoreRoute() {
-  const { colors } = useAppTheme();
-  return (
-    <AdaptiveScreen
-      primary={
-        <>
-          <ScreenHeader backAction={() => router.back()} title="More" />
-          <ContentCard>
-            <View style={{ gap: space[2] }}>
-              <Text style={[typeScale.sectionTitle as TextStyle, { color: colors.contentCardText }]}>
-                History
-              </Text>
-              <Text style={[typeScale.body as TextStyle, { color: colors.contentCardTextSecondary }]}>
-                Restore a completed workout that was removed from ordinary history.
-              </Text>
-              <SecondaryAction
-                label="Removed sessions"
-                onPress={() => router.push("/more/removed-sessions" as Href)}
-              />
-            </View>
-          </ContentCard>
-          <ContentCard>
-            <View style={{ gap: space[2] }}>
-              <Text style={[typeScale.sectionTitle as TextStyle, { color: colors.contentCardText }]}>
-                Data and recovery
-              </Text>
-              <Text style={[typeScale.body as TextStyle, { color: colors.contentCardTextSecondary }]}>
-                Create a secure backup, restore a previous backup, or export readable CSV data.
-              </Text>
-              <SecondaryAction
-                label="Data and recovery"
-                onPress={() => router.push("/more/data-and-recovery" as Href)}
-                testID="more-data-and-recovery"
-              />
-            </View>
-          </ContentCard>
-        </>
+  const runtime = useWorkoutAppRuntime();
+  const [preferences, setPreferences] = useState<RestAlertPreferences>(
+    DEFAULT_REST_ALERT_PREFERENCES,
+  );
+  const [loading, setLoading] = useState(false);
+  const readGenerationRef = useRef(0);
+
+  useEffect(() => {
+    if (runtime.launchState !== "trusted") {
+      readGenerationRef.current += 1;
+      setLoading(false);
+      return undefined;
+    }
+    const generation = readGenerationRef.current + 1;
+    readGenerationRef.current = generation;
+    let active = true;
+    setLoading(true);
+    Promise.resolve().then(() => runtime.readRestAlertPreferences()).then(
+      (savedPreferences) => {
+        if (active && generation === readGenerationRef.current) {
+          setPreferences(savedPreferences);
+        }
+      },
+      () => undefined,
+    ).finally(() => {
+      if (active && generation === readGenerationRef.current) {
+        setLoading(false);
       }
+    });
+    return () => { active = false; };
+  }, [
+    runtime.launchState,
+    runtime.readRestAlertPreferences,
+    runtime.workoutRefreshGeneration,
+  ]);
+
+  return (
+    <SettingsScreen
+      notificationPermission={runtime.notificationPermission}
+      onBack={() => router.back()}
+      onChangeRestAlertPreferences={async (nextPreferences) => {
+        const result = await runtime.setRestAlertPreferences(nextPreferences);
+        setPreferences(result.preferences);
+        return result;
+      }}
+      onOpenDataAndRecovery={() =>
+        router.push("/more/data-and-recovery" as Href)}
+      onOpenNotificationSettings={runtime.openRestNotificationSettings}
+      onOpenRemovedSessions={() =>
+        router.push("/more/removed-sessions" as Href)}
+      preferences={preferences}
+      restAlertPreferencesLoading={loading}
     />
   );
 }

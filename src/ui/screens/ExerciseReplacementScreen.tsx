@@ -27,6 +27,7 @@ import {
   EmptyState,
   FocusablePressable,
   InlineNotice,
+  M3SearchField,
   PrimaryAction,
   ScreenHeader,
   SecondaryAction,
@@ -205,6 +206,7 @@ export function ExerciseReplacementScreen({
   const [replacementExerciseId, setReplacementExerciseId] = useState<
     string | null
   >(null);
+  const [query, setQuery] = useState("");
   const [scope, setScope] = useState<ReplacementScope>("this_occurrence");
   const [review, setReview] = useState<ReplacePlanExerciseInput["review"]>({
     targets: false,
@@ -236,13 +238,19 @@ export function ExerciseReplacementScreen({
     };
   }, [loadPreview, occurrenceId, planId, retryGeneration]);
 
+  const candidates = useMemo(() => {
+    const normalizedQuery = query.trim().toLocaleLowerCase("en");
+    return preview?.candidates.filter(({ name }) =>
+      name.toLocaleLowerCase("en").includes(normalizedQuery)
+    ) ?? [];
+  }, [preview, query]);
   const compatible = useMemo(
-    () => preview?.candidates.filter(({ compatible: value }) => value) ?? [],
-    [preview],
+    () => candidates.filter(({ compatible: value }) => value),
+    [candidates],
   );
   const incompatible = useMemo(
-    () => preview?.candidates.filter(({ compatible: value }) => !value) ?? [],
-    [preview],
+    () => candidates.filter(({ compatible: value }) => !value),
+    [candidates],
   );
   const selectedOccurrences = useMemo(() => {
     if (preview === null) {
@@ -371,7 +379,7 @@ export function ExerciseReplacementScreen({
     );
   }
 
-  if (compatible.length === 0) {
+  if (!preview.candidates.some(({ compatible: value }) => value)) {
     return (
       <AdaptiveScreen
         primary={(
@@ -433,25 +441,46 @@ export function ExerciseReplacementScreen({
             heading="Exercise impact"
             revisionLabel={`Plan revision ${preview.planRevision}`}
           />
-          <SectionHeader
-            supportingText="Same profile, contract version, and exercise metric generation"
-            title="Compatible metric identity"
+          <M3SearchField
+            label="Search replacement exercises"
+            onChangeText={setQuery}
+            onSearch={() => setQuery((value) => value.trim())}
+            resultCount={candidates.length}
+            state={query.trim().length === 0
+              ? "idle"
+              : candidates.length === 0
+                ? "empty"
+                : "results"}
+            stateSlots={{ empty: null, results: null }}
+            testID="exercise-replacement-search"
+            value={query}
           />
-          <View accessibilityRole="radiogroup" style={styles.selectionGroup}>
-            {compatible.map((candidate) => (
-              <SelectionRow
-                checked={candidate.exerciseId === replacementExerciseId}
-                key={candidate.exerciseId}
-                label={`${candidate.name}. Compatible metric identity`}
-                onPress={() => {
-                  setReplacementExerciseId(candidate.exerciseId);
-                  setSaveError(null);
-                }}
-                role="radio"
-                supportingText={`${candidate.metricIdentity.profile} · contract ${candidate.metricIdentity.contractVersion} · generation ${candidate.metricIdentity.exerciseMetricGeneration}`}
+          {compatible.length === 0 ? null : (
+            <>
+              <SectionHeader
+                supportingText="Same profile, contract version, and exercise metric generation"
+                title="Compatible metric identity"
               />
-            ))}
-          </View>
+              <View
+                accessibilityRole="radiogroup"
+                style={styles.selectionGroup}
+              >
+                {compatible.map((candidate) => (
+                  <SelectionRow
+                    checked={candidate.exerciseId === replacementExerciseId}
+                    key={candidate.exerciseId}
+                    label={`${candidate.name}. Compatible metric identity`}
+                    onPress={() => {
+                      setReplacementExerciseId(candidate.exerciseId);
+                      setSaveError(null);
+                    }}
+                    role="radio"
+                    supportingText={`${candidate.metricIdentity.profile} · contract ${candidate.metricIdentity.contractVersion} · generation ${candidate.metricIdentity.exerciseMetricGeneration}`}
+                  />
+                ))}
+              </View>
+            </>
+          )}
           {incompatible.length === 0 ? null : (
             <>
               <SectionHeader

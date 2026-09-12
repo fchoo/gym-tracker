@@ -167,6 +167,116 @@ async function renderLibrary(
 }
 
 describe("LibraryScreen section state", () => {
+  it("reloads owned plans when the Library route regains focus", async () => {
+    const loadLibrary = jest.fn(async () => snapshot());
+    const refreshLibrary = jest.fn<() => Promise<LibraryBrowseSnapshot>>()
+      .mockResolvedValueOnce({
+        ...snapshot(),
+        plans: {
+          ...snapshot().plans,
+          owned: [{
+            id: "maestro-strength",
+            name: "Maestro Strength",
+            daysPerWeek: 1,
+            status: "Draft",
+            scheduleSummary: "Not scheduled",
+          }],
+        },
+      });
+    const { props, rendered } = await renderLibrary({
+      loadLibrary,
+      refreshLibrary,
+      refreshGeneration: 0,
+    });
+
+    expect(await screen.findByText("No personal plans yet"))
+      .toBeOnTheScreen();
+
+    await rendered.rerender(
+      <AppearanceProvider>
+        <LibraryScreen {...props} refreshGeneration={1} />
+      </AppearanceProvider>,
+    );
+
+    expect(await screen.findByText("Maestro Strength")).toBeOnTheScreen();
+    expect(loadLibrary).toHaveBeenCalledTimes(1);
+    expect(refreshLibrary).toHaveBeenCalledTimes(1);
+  });
+
+  it("keeps the last good Library snapshot when a focus refresh fails", async () => {
+    const refreshLibrary = jest.fn(async () => {
+      throw new Error("focus_refresh_failed");
+    });
+    const { props, rendered } = await renderLibrary({
+      refreshGeneration: 0,
+      refreshLibrary,
+    });
+
+    expect(await screen.findByText("Upper / Lower")).toBeOnTheScreen();
+    await rendered.rerender(
+      <AppearanceProvider>
+        <LibraryScreen {...props} refreshGeneration={1} />
+      </AppearanceProvider>,
+    );
+
+    expect(await screen.findByText(
+      "Library could not be refreshed. Your current content, selection, search, and filters are unchanged.",
+    )).toBeOnTheScreen();
+    expect(screen.getByText("Upper / Lower")).toBeOnTheScreen();
+    expect(screen.queryByText("Library could not be loaded"))
+      .not.toBeOnTheScreen();
+  });
+
+  it("runs a pending focus refresh after an in-flight pull refresh settles", async () => {
+    const initial = snapshot();
+    const pullRefresh = deferred<LibraryBrowseSnapshot>();
+    const focusRefresh = deferred<LibraryBrowseSnapshot>();
+    const refreshLibrary = jest.fn<() => Promise<LibraryBrowseSnapshot>>()
+      .mockImplementationOnce(() => pullRefresh.promise)
+      .mockImplementationOnce(() => focusRefresh.promise);
+    const { props, rendered } = await renderLibrary({
+      loadLibrary: jest.fn(async () => initial),
+      refreshGeneration: 0,
+      refreshLibrary,
+    });
+
+    await screen.findByText("No personal plans yet");
+    await act(async () => {
+      screen.getByTestId("library-screen-scroll")
+        .props.refreshControl.props.onRefresh();
+    });
+    await rendered.rerender(
+      <AppearanceProvider>
+        <LibraryScreen {...props} refreshGeneration={1} />
+      </AppearanceProvider>,
+    );
+    expect(refreshLibrary).toHaveBeenCalledTimes(1);
+
+    await act(async () => {
+      pullRefresh.reject(new Error("pull_refresh_failed"));
+      await pullRefresh.promise.catch(() => undefined);
+    });
+    await waitFor(() => expect(refreshLibrary).toHaveBeenCalledTimes(2));
+
+    await act(async () => {
+      focusRefresh.resolve({
+        ...initial,
+        plans: {
+          ...initial.plans,
+          owned: [{
+            id: "maestro-strength",
+            name: "Maestro Strength",
+            daysPerWeek: 1,
+            status: "Draft",
+            scheduleSummary: "Not scheduled",
+          }],
+        },
+      });
+      await focusRefresh.promise;
+    });
+    expect(await screen.findByText("Maestro Strength")).toBeOnTheScreen();
+  });
+
   it("groups active, owned, and starter plans into flat high-contrast content cards", async () => {
     const onOpenPlan = jest.fn();
     const onOpenStarter = jest.fn();

@@ -18,6 +18,9 @@ import {
   createWorkoutMutationTestCommandAdapters,
 } from "../../src/bootstrap/workoutMutationTestControls";
 import {
+  useRestCountdownCue,
+} from "../../src/bootstrap/restCountdownCue";
+import {
   AdaptiveScreen,
 } from "../../src/ui/layout/AdaptiveScreen";
 import {
@@ -39,6 +42,7 @@ export default function ActiveWorkoutRoute() {
     reviewExerciseId?: string | string[];
   }>();
   const runtime = useWorkoutAppRuntime();
+  const countdownCue = useRestCountdownCue();
   const resolvedSessionId = sessionId ?? "unknown";
   const resolvedReviewExerciseId = Array.isArray(reviewExerciseId)
     ? reviewExerciseId[0]
@@ -52,10 +56,8 @@ export default function ActiveWorkoutRoute() {
   const mutationCommands = createWorkoutMutationTestCommandAdapters({
     addWarmup: runtime.addWarmup,
     addWorkingSet: runtime.addWorkingSet,
-    copyPreviousWarmup: runtime.copyPreviousWarmup,
     reviseCompletedSet: runtime.reviseCompletedSet,
   });
-
   useEffect(() => {
     let active = true;
     setFailed(false);
@@ -221,10 +223,9 @@ export default function ActiveWorkoutRoute() {
         updateWarmupDraft: runtime.updateWarmupDraft,
         addWarmup: mutationCommands.addWarmup,
         addWorkingSet: mutationCommands.addWorkingSet,
-        copyPreviousWarmup: mutationCommands.copyPreviousWarmup,
         completeWarmup: runtime.completeWarmup,
-        skipWarmup: runtime.skipWarmup,
-        skipWorkingSet: runtime.skipWorkingSet,
+        removeWarmup: runtime.removeWarmup,
+        removeWorkingSet: runtime.removeWorkingSet,
         completeSet: runtime.completeSet,
         reviseCompletedSet: mutationCommands.reviseCompletedSet,
         startManualRest: runtime.startManualRest,
@@ -241,6 +242,8 @@ export default function ActiveWorkoutRoute() {
       }}
       nowMs={() => Date.now()}
       notificationPermission={runtime.notificationPermission}
+      restSoundEnabled={runtime.readRestAlertPreferences().soundEnabled}
+      countdownCue={countdownCue}
       onOpenNotificationSettings={() => {
         void runtime.openRestNotificationSettings();
       }}

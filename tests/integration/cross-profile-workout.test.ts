@@ -59,6 +59,9 @@ import {
   createSqliteKernel,
   type SqliteKernel,
 } from "../../src/platform/sqlite/sqliteKernel";
+import {
+  validatedRecoveryBackup,
+} from "../support/validatedRecoveryBackup";
 
 class NodePreparedResult<Row extends Record<string, unknown>>
 implements SqlitePreparedResult<Row> {
@@ -397,6 +400,7 @@ async function setupRuntime(): Promise<Readonly<{
     databaseName: "gym-tracker.db",
     kernel,
     migrations,
+    recoveryBackup: validatedRecoveryBackup(),
   }).run();
   await seedAllProfiles(kernel);
   return {

@@ -5,10 +5,13 @@ import {
 } from "node:child_process";
 import { createHash } from "node:crypto";
 import {
+  constants as fsConstants,
   createReadStream,
   existsSync,
 } from "node:fs";
 import {
+  lstat,
+  open,
   readFile,
   readdir,
   rename,
@@ -23,6 +26,17 @@ import { pathToFileURL } from "node:url";
 import {
   sourceTreeSha256,
 } from "./source-tree-digest.mjs";
+import {
+  phase7NativeDragMoveSequence,
+  phase7PlanOrderIs,
+  phase7PlanReorderCoordinates,
+} from "./run-phase7-maestro.mjs";
+
+const PHASE2_OWNED_PLAN_REORDER_FLOW = "maestro/phase2/owned-plan-editor.yaml";
+const PHASE2_OWNED_PLAN_REORDER_CONTINUATION_FLOW = "maestro/subflows/phase2-owned-plan-editor-reorder-verify.yaml";
+const PHASE2_OWNED_PLAN_REORDER_VERIFY_SCREENSHOT = "phase2-owned-plan-reorder-persisted.png";
+const PNG_SIGNATURE = Buffer.from("89504e470d0a1a0a", "hex");
+const MAX_SCREENSHOT_BYTES = 64 * 1024 * 1024;
 
 const projectRoot = process.cwd();
 const publicFlowDirectories = [
@@ -112,11 +126,11 @@ export const PHASE2_REMEDIATION_FLOW_OBSERVATIONS = Object.freeze({
     }),
     Object.freeze({
       case_id: "RC-02-GLYPH-ACTION-GEOMETRY",
-      observation: "Named glyph actions and status semantics are reachable; dimensions and alignment remain attended.",
+      observation: "Named complete, reset, and remove glyph actions are reachable; dimensions and alignment remain attended.",
     }),
     Object.freeze({
       case_id: "RC-02-LATEST-SCHEMA-ADD-COPY",
-      observation: "Add warm-up, Copy warm-up, and Add working set each retain exactly one new ordinal after restart.",
+      observation: "Add warm-up reuses the previous 40 kg × 5 observation, survives restart as exactly one new row, and can be removed; Add working set also retains exactly one new ordinal after restart.",
     }),
     Object.freeze({
       case_id: "RC-02-RETRY-FOCUS",
@@ -124,7 +138,7 @@ export const PHASE2_REMEDIATION_FLOW_OBSERVATIONS = Object.freeze({
     }),
     Object.freeze({
       case_id: "RC-02-SET-STATUS",
-      observation: "Completed set status is exposed through the installed row summary; mixed geometry remains attended.",
+      observation: "Completed, current, planned, and warm-up status remains explicit while each eligible incomplete row exposes Remove rather than Skip.",
     }),
     Object.freeze({
       case_id: "RC-02-STICKY-IDENTITY",
@@ -136,7 +150,7 @@ export const PHASE2_REMEDIATION_FLOW_OBSERVATIONS = Object.freeze({
     }),
     Object.freeze({
       case_id: "RC-02-WARMUP-EXCLUSION-COPY",
-      observation: "Warm-up copy persists while the retired exclusion copy remains absent.",
+      observation: "The added warm-up reuses the previous observation, persists across restart, remains excluded from working-set progress, and is removed through Remove warm-up.",
     }),
   ]),
 });
@@ -420,6 +434,236 @@ export async function enumeratePhase2MaestroFlows(root = projectRoot) {
     }
   }
   return derivePhase2MaestroExecutions(relativePaths);
+}
+
+function waitSynchronously(milliseconds) {
+  Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, milliseconds);
+}
+
+function phase2OwnedPlanRequiresNativeProof(flow) {
+  return flow?.flow === PHASE2_OWNED_PLAN_REORDER_FLOW;
+}
+
+async function matchingFiles(root, basename) {
+  const matches = [];
+  for (const entry of await readdir(root, { withFileTypes: true })) {
+    const candidate = path.join(root, entry.name);
+    if (entry.isDirectory()) {
+      matches.push(...await matchingFiles(candidate, basename));
+    } else if (entry.isFile() && entry.name === basename) {
+      matches.push(candidate);
+    }
+  }
+  return matches;
+}
+
+function sameFileIdentity(left, right) {
+  return left.dev === right.dev && left.ino === right.ino;
+}
+
+async function readStableScreenshot(filePath) {
+  let descriptor;
+  try {
+    descriptor = await open(
+      filePath,
+      fsConstants.O_RDONLY | fsConstants.O_NOFOLLOW,
+    );
+  } catch {
+    throw new Error(
+      "expected exactly one safe owned plan reorder persisted screenshot in Maestro output.",
+    );
+  }
+  try {
+    const before = await descriptor.stat({ bigint: true });
+    const linkedBefore = await lstat(filePath, { bigint: true });
+    if (!before.isFile()
+      || before.nlink !== 1n
+      || !linkedBefore.isFile()
+      || linkedBefore.isSymbolicLink()
+      || linkedBefore.nlink !== 1n
+      || !sameFileIdentity(before, linkedBefore)
+      || before.size < 9n
+      || before.size > BigInt(MAX_SCREENSHOT_BYTES)) {
+      throw new Error(
+        "owned plan reorder persisted screenshot is missing, linked, or unsafe.",
+      );
+    }
+    const bytes = await descriptor.readFile();
+    const after = await descriptor.stat({ bigint: true });
+    const linkedAfter = await lstat(filePath, { bigint: true });
+    if (!sameFileIdentity(before, after)
+      || !sameFileIdentity(after, linkedAfter)
+      || before.size !== after.size
+      || before.mtimeNs !== after.mtimeNs
+      || before.ctimeNs !== after.ctimeNs
+      || BigInt(bytes.length) !== after.size
+      || !bytes.subarray(0, PNG_SIGNATURE.length).equals(PNG_SIGNATURE)) {
+      throw new Error(
+        "owned plan reorder persisted screenshot is not a stable PNG.",
+      );
+    }
+    return bytes;
+  } finally {
+    await descriptor.close();
+  }
+}
+
+async function publishFreshScreenshot(filePath, bytes) {
+  let descriptor;
+  try {
+    descriptor = await open(
+      filePath,
+      fsConstants.O_CREAT
+        | fsConstants.O_EXCL
+        | fsConstants.O_RDWR
+        | fsConstants.O_NOFOLLOW,
+      0o400,
+    );
+  } catch {
+    throw new Error(
+      "owned plan reorder persisted screenshot canonical path is not fresh.",
+    );
+  }
+  try {
+    await descriptor.writeFile(bytes);
+    await descriptor.sync();
+    const opened = await descriptor.stat({ bigint: true });
+    const linked = await lstat(filePath, { bigint: true });
+    if (!opened.isFile()
+      || opened.nlink !== 1n
+      || !linked.isFile()
+      || linked.isSymbolicLink()
+      || linked.nlink !== 1n
+      || !sameFileIdentity(opened, linked)
+      || opened.size !== BigInt(bytes.length)) {
+      throw new Error(
+        "owned plan reorder persisted screenshot canonical path is unsafe.",
+      );
+    }
+  } finally {
+    await descriptor.close();
+  }
+}
+
+export async function canonicalizePhase2OwnedPlanReorderScreenshot(
+  continuationDirectory,
+) {
+  const canonicalPath = path.join(
+    continuationDirectory,
+    PHASE2_OWNED_PLAN_REORDER_VERIFY_SCREENSHOT,
+  );
+  const matches = (await matchingFiles(
+    continuationDirectory,
+    PHASE2_OWNED_PLAN_REORDER_VERIFY_SCREENSHOT,
+  )).filter((candidate) => candidate !== canonicalPath);
+  if (existsSync(canonicalPath) || matches.length !== 1) {
+    throw new Error(
+      "expected exactly one owned plan reorder persisted screenshot in Maestro output.",
+    );
+  }
+  const bytes = await readStableScreenshot(matches[0]);
+  await publishFreshScreenshot(canonicalPath, bytes);
+  const published = await readStableScreenshot(canonicalPath);
+  if (!published.equals(bytes)) {
+    throw new Error(
+      "owned plan reorder persisted screenshot canonical bytes changed.",
+    );
+  }
+  return canonicalPath;
+}
+
+async function executePhase2OwnedPlanNativeProof({ adb, artifactDirectory, flow, manifest }) {
+  if (!phase2OwnedPlanRequiresNativeProof(flow)) {
+    return undefined;
+  }
+  const before = await adb("exec-out", "uiautomator", "dump", "/dev/tty");
+  const drag = phase7PlanReorderCoordinates(before, {
+    sourceLabel: "Barbell Bench Press - Medium Grip",
+    targetLabel: "Back Squat",
+  });
+  const coordinates = [drag.startX, drag.startY, drag.endX, drag.endY];
+  if (!coordinates.every((value) => Number.isSafeInteger(value) && value >= 0)) {
+    throw new Error("owned plan native reorder coordinates are invalid.");
+  }
+  let pointerDown = false;
+  try {
+    await adb("shell", "input", "touchscreen", "motionevent", "DOWN", String(drag.startX), String(drag.startY));
+    pointerDown = true;
+    waitSynchronously(700);
+    for (const move of phase7NativeDragMoveSequence(drag)) {
+      await adb(...move);
+      waitSynchronously(60);
+    }
+    waitSynchronously(200);
+  } finally {
+    if (pointerDown) {
+      await adb("shell", "input", "touchscreen", "motionevent", "UP", String(drag.endX), String(drag.endY));
+    }
+  }
+  const afterDrag = await adb("exec-out", "uiautomator", "dump", "/dev/tty");
+  if (!phase7PlanOrderIs(
+    afterDrag,
+    "Barbell Bench Press - Medium Grip",
+    "Back Squat",
+  )) {
+    throw new Error("owned plan native held drag did not reorder the selected bench press above Back Squat.");
+  }
+
+  const continuationFlowPath = path.join(
+    projectRoot,
+    PHASE2_OWNED_PLAN_REORDER_CONTINUATION_FLOW,
+  );
+  const continuationDirectory = path.join(
+    artifactDirectory,
+    `${flow.id}-native-reorder`,
+  );
+  const continuationReportPath = path.join(continuationDirectory, "report.xml");
+  await rm(continuationDirectory, { recursive: true, force: true });
+  await command("mkdir", ["-p", continuationDirectory]);
+  await command(
+    "maestro",
+    [
+      "test",
+      "--no-ansi",
+      "--format", "junit",
+      "--output", continuationReportPath,
+      "--test-output-dir", continuationDirectory,
+      "--udid", manifest.device.serial,
+      PHASE2_OWNED_PLAN_REORDER_CONTINUATION_FLOW,
+    ],
+    {
+      timeoutMs: 10 * 60_000,
+      onOutput: (output) => process.stdout.write(output),
+    },
+  );
+  const continuationReport = await readFile(continuationReportPath, "utf8");
+  const continuationSummary = validatePhase2MaestroJunit(
+    continuationReport,
+    PHASE2_OWNED_PLAN_REORDER_CONTINUATION_FLOW,
+  );
+  const screenshotPath = await canonicalizePhase2OwnedPlanReorderScreenshot(
+    continuationDirectory,
+  );
+  return {
+    continuationSummary,
+    proof: {
+      continuation_flow: PHASE2_OWNED_PLAN_REORDER_CONTINUATION_FLOW,
+      continuation_flow_sha256: await sha256(continuationFlowPath),
+      continuation_report: path.posix.join(
+        path.relative(projectRoot, artifactDirectory).split(path.sep).join(path.posix.sep),
+        `${flow.id}-native-reorder/report.xml`,
+      ),
+      continuation_report_sha256: await sha256(continuationReportPath),
+      continuation_tests: continuationSummary.tests,
+      persisted_screenshot: {
+        file: path.posix.join(
+          path.relative(projectRoot, artifactDirectory).split(path.sep).join(path.posix.sep),
+          `${flow.id}-native-reorder/${PHASE2_OWNED_PLAN_REORDER_VERIFY_SCREENSHOT}`,
+        ),
+        sha256: await sha256(screenshotPath),
+      },
+    },
+  };
 }
 
 function command(name, commandArguments, options = {}) {
@@ -1040,6 +1284,12 @@ async function executeMain() {
         await readFile(reportPath, "utf8"),
         flow.flow,
       );
+      const nativeOwnedPlanReorder = await executePhase2OwnedPlanNativeProof({
+        adb,
+        artifactDirectory,
+        flow,
+        manifest,
+      });
       return {
         id: flow.id,
         flow: flow.flow,
@@ -1049,6 +1299,9 @@ async function executeMain() {
         airplane_mode: flow.airplane,
         remediation_case_observations: flow.remediation_case_observations,
         viewport: flow.viewport,
+        ...(nativeOwnedPlanReorder === undefined ? {} : {
+          native_owned_plan_reorder_proof: nativeOwnedPlanReorder.proof,
+        }),
       };
     },
     finalize: async (flowResults) => {
