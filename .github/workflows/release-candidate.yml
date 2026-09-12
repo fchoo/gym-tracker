@@ -83,10 +83,42 @@ jobs:
           {
             npm run verify:cng
             node --test scripts/concept-g-image-contract.test.mjs
-            npm run android:devtest:fresh -- --suite phase2
-            npm run test:sqlite:device -- --suite phase2 --manifest artifacts/native/phase2/build.json
             printf 'phase5-source-gate: passed\n'
           } 2>&1 | tee "${RUNNER_TEMP}/phase5-generated.txt"
+
+      - name: Install exact-candidate test tools
+        run: |
+          sh scripts/install-maestro.sh
+          echo "$HOME/.maestro/bin" >> "$GITHUB_PATH"
+
+      - name: Enable KVM for Android emulator
+        run: |
+          if [ -e /dev/kvm ]; then
+            printf '%s\n' 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' |
+              sudo tee /etc/udev/rules.d/99-kvm4all.rules >/dev/null
+            sudo udevadm control --reload-rules
+            sudo udevadm trigger --name-match=kvm
+          else
+            echo "KVM unavailable; using the emulator runner's software fallback."
+          fi
+
+      - name: Prove Phase 2 native contracts before the production build
+        uses: ReactiveCircus/android-emulator-runner@a421e43855164a8197daf9d8d40fe71c6996bb0d # v2.38.0
+        env:
+          GYM_TRACKER_ANDROID_SERIAL: emulator-5554
+        with:
+          api-level: 36
+          target: google_apis
+          arch: x86_64
+          profile: pixel_7
+          avd-name: gym-tracker-api36
+          disable-animations: true
+          disable-linux-hw-accel: auto
+          script: |
+            set -e
+            npm run android:devtest:fresh -- --suite phase2
+            npm run test:sqlite:device -- --suite phase2 --manifest artifacts/native/phase2/build.json
+            printf 'phase5-source-gate: passed\n' >> "${RUNNER_TEMP}/phase5-generated.txt"
 
       - name: Materialize signing inputs without logging their values
         env:
@@ -128,22 +160,6 @@ jobs:
           node scripts/verify-release-candidate-manifest.mjs --bundle-dir artifacts/release-candidate
           manifest_sha256=$(node -e 'const value=JSON.parse(process.argv[1]); if (!/^[a-f0-9]{64}$/.test(value.manifest_sha256 ?? "")) process.exit(1); process.stdout.write(value.manifest_sha256)' "${manifest_result}")
           printf 'manifest_sha256=%s\n' "${manifest_sha256}" >> "${GITHUB_OUTPUT}"
-
-      - name: Install exact-candidate test tools
-        run: |
-          sh scripts/install-maestro.sh
-          echo "$HOME/.maestro/bin" >> "$GITHUB_PATH"
-
-      - name: Enable KVM for Android emulator
-        run: |
-          if [ -e /dev/kvm ]; then
-            printf '%s\n' 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' |
-              sudo tee /etc/udev/rules.d/99-kvm4all.rules >/dev/null
-            sudo udevadm control --reload-rules
-            sudo udevadm trigger --name-match=kvm
-          else
-            echo "KVM unavailable; using the emulator runner's software fallback."
-          fi
 
       - name: Run exact production candidate automated matrix
         uses: ReactiveCircus/android-emulator-runner@a421e43855164a8197daf9d8d40fe71c6996bb0d # v2.38.0
