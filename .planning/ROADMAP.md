@@ -2,27 +2,30 @@
 
 ## Overview
 
-Gym Tracker v1 is delivered through six reviewed, dependency-ordered phases. Phase 1 proves the integrity kernel and one complete Full Body Foundation workout vertical slice on a real Android development-test APK. Later phases expand owned content and planning, make history safely correctable, add period-based progress and complete progression, prepare encrypted recovery and digest-bound release, then remediate the exact-candidate Material 3 and accessibility findings before final promotion. SQLite source facts remain authoritative throughout; notifications, FTS, projections, recommendations, and UI query caches remain replayable or rebuildable derivatives.
+Gym Tracker v1 is delivered through seven reviewed, dependency-ordered phases. Phase 1 proves the integrity kernel and one complete Full Body Foundation workout vertical slice on a real Android development-test APK. Later phases expand owned content and planning, make history safely correctable, add period-based progress and complete progression, prepare encrypted recovery and the signed-artifact build, remediate the whole-app Material 3 and accessibility findings, then apply owner-directed post-candidate UX refinements. SQLite source facts remain authoritative throughout; notifications, FTS, projections, recommendations, and UI query caches remain replayable or rebuildable derivatives.
+
+**Delivery model:** v1 ships as a signed personal-use Android APK/AAB built once by the device-free `personal-apk.yml` workflow (reviewed source gates → signed Gradle release build → `apksigner` verification → downloadable artifact). The earlier public-release ceremony (exact-candidate attended device matrix, owner-approval token, no-rebuild GitHub Release promotion, and Terminal Seal) is retired for the personal-use milestone and was removed in PR #29; it is tracked as V2-05 for any future public distribution.
 
 ## Delivery Contract
 
-- The phase order is fixed: trustworthy writes and lifecycle recovery → owned content and schedules → correctable history → progress and recommendation breadth → recovery/release preparation → Material 3 remediation and final release re-verification.
+- The phase order is fixed: trustworthy writes and lifecycle recovery → owned content and schedules → correctable history → progress and recommendation breadth → recovery and signed-artifact build → Material 3 remediation → post-candidate UX refinement.
 - Every phase leaves the repository buildable and its included user flow usable.
-- Accessibility, adaptive layout, CI, migrations, tests, diagnostics, native CNG proof, backup seams, and release-artifact identity begin in Phase 1 and are verified continuously. Phase 5 closes these foundations; it does not introduce them for the first time.
+- Accessibility, adaptive layout, CI, migrations, tests, diagnostics, native CNG proof, backup seams, and release-artifact identity begin in Phase 1 and are verified continuously. Phase 5 closes the portability and signed-build foundations; it does not introduce them for the first time.
 - Screens never execute SQL. All source mutations use the repository-owned private SQLite writer, FIFO serialization, and explicit `BEGIN IMMEDIATE` / `COMMIT` / `ROLLBACK`; correctness does not rely directly on `withExclusiveTransactionAsync()`.
 - A source mutation and its durable pending effects commit atomically before UI acknowledgement, haptics, notification work, cache invalidation, or other external effects.
 - Cross-cutting verification inherited by every plan: strict typecheck, lint, behavior tests, integrity-critical complete branch coverage, retained migration fixtures, redacted diagnostics, accessibility semantics, and clean build proof appropriate to the changed surface.
 - Native dependency, config-plugin, SQLite-kernel, notification, crypto, or Expo SDK changes rerun clean CNG generation, actual Expo SQLite contracts, and the applicable installed-APK smoke flows.
+- Release is the signed personal-use APK/AAB emitted once by `personal-apk.yml` and sideloaded unchanged; there is no attended-approval or public-promotion gate in the personal-use milestone.
 
 ## Phases
 
 - [x] **Phase 1: Trustworthy Workout Loop** - Prove the Android, SQLite, lifecycle, accessibility, CI, and release foundations through one complete offline workout loop. (completed 2026-08-17)
-- [x] **Phase 2: Owned Library and Planning** - Give the owner a reviewed searchable catalog, custom exercises, editable copied plans, complete schedules, and all approved metric profiles. (automated evidence complete; physical verification deferred to final release gate)
-- [x] **Phase 3: Calendar and History Integrity** - Make workout history chronological, metric-aware, correctable, reversible, and deterministically rebuildable. (automated source evidence complete 2026-08-25; physical verification deferred to final release gate)
-- [x] **Phase 4: Overall Progress and Complete Progression** - Deliver period-based evidence and the complete explicit, versioned recommendation lifecycle. (automated source evidence complete 2026-08-26; physical verification deferred to final release gate)
-- [ ] **Phase 5: Recovery, Distribution, and Release** - Complete encrypted portability, CSV export, release-wide accessibility proof, and unchanged signed-artifact promotion.
-- [ ] **Phase 6: Material 3 UX Remediation** - Resolve the whole-app Material 3, accessibility, and Progress-runtime blockers found on the exact Phase 5 candidate, then produce a replacement installable APK for final verification.
-- [ ] **Phase 7: Post-Candidate UX Refinement** - Apply owner-directed interaction and information-architecture refinements found during N4 device review (nav, settings IA, workout-detail density, plan editing, set removal, rest-timer audio, app icon), then produce a replacement candidate for re-verification.
+- [x] **Phase 2: Owned Library and Planning** - Give the owner a reviewed searchable catalog, custom exercises, editable copied plans, complete schedules, and all approved metric profiles. (automated evidence complete; delivered in the personal-use signed build)
+- [x] **Phase 3: Calendar and History Integrity** - Make workout history chronological, metric-aware, correctable, reversible, and deterministically rebuildable. (automated source evidence complete 2026-08-25)
+- [x] **Phase 4: Overall Progress and Complete Progression** - Deliver period-based evidence and the complete explicit, versioned recommendation lifecycle. (automated source evidence complete 2026-08-26)
+- [x] **Phase 5: Recovery, Distribution, and Release** - Complete encrypted portability, CSV export, release-wide accessibility proof, and the signed personal-use APK/AAB build. (automated source evidence complete; delivered via `personal-apk.yml`; public-promotion ceremony retired for personal-use)
+- [x] **Phase 6: Material 3 UX Remediation** - Resolve the whole-app Material 3, accessibility, and Progress-runtime blockers, merged to `main` and delivered in the signed personal-use build. (merged via PRs #10–#25)
+- [x] **Phase 7: Post-Candidate UX Refinement** - Apply owner-directed interaction and information-architecture refinements (nav, settings IA, workout-detail density, plan editing, set removal, rest-timer audio, app icon), merged to `main` and delivered in the signed personal-use build. (merged via PR #26)
 
 ## Phase Details
 
@@ -169,7 +172,7 @@ Gym Tracker v1 is delivered through six reviewed, dependency-ordered phases. Pha
 - Every glyph control retains an exact accessible name, visible focus, keyboard/D-pad activation, and a minimum 48dp target.
 - No remediation APK evidence is valid until Plan 02-34 builds one clean exact-HEAD candidate and all producers use those unchanged bytes.
 - Every implementation and metadata commit before terminal sealing ends with `Co-authored-by: TRAE CLI <noreply@users.noreply.github.com>`.
-- Phase 5 Plan 05-07 is the sole owner of the final exact-candidate attended checklist, truthful owner approval, no-rebuild promotion proof, and terminal-seal handoff across Phases 2–5.
+- Phase 5 Plan 05-07 prepared the signed build-once pipeline delivered as `personal-apk.yml`. *(The original exact-candidate attended checklist, owner-approval token, no-rebuild promotion proof, and terminal-seal handoff across Phases 2–5 were retired for personal-use in PR #29; see V2-05.)*
 
 **Research Flags**:
 
@@ -197,7 +200,7 @@ Gym Tracker v1 is delivered through six reviewed, dependency-ordered phases. Pha
   3. Owner can correct all approved completed/partial session fields and sets at any time, while a discreet audit shows field/set identity, previous value, corrected value, and timestamp without rewriting the original snapshot.
   4. Owner can remove a completed session from ordinary history and derived metrics, restore it from Removed sessions, and observe records, comparable exposures, period inputs, and pending recommendations update deterministically after correction, void, or restore.
 
-**Plans**: 5/5 implementation plans complete; physical verification deferred to final release gate
+**Plans**: 5/5 implementation plans complete; automated source verification complete; delivered in the signed personal-use build
 
 **Likely Plan Slices and Waves**:
 
@@ -236,7 +239,7 @@ Gym Tracker v1 is delivered through six reviewed, dependency-ordered phases. Pha
   4. Owner receives reproducible versioned outcomes for complete weighted double progression and each approved plan-authored non-load policy, including missing/hard/failed effort, incomplete exposure, regression, equipment increments, assistance, duration, variation, distance/time, intervals, and manual unscored work.
   5. Owner can inspect evidence/current/proposed target/rule/confidence, then accept or reject; pending suggestions remain visible until decided, invalidated, or superseded, and no unaccepted or stale suggestion changes a target or overwrites a manual edit.
 
-**Plans**: 8/8 implementation plans complete; automated source verification complete; physical verification deferred to final release gate
+**Plans**: 8/8 implementation plans complete; automated source verification complete; delivered in the signed personal-use build
 
 - [x] 04-01-PLAN.md
 - [x] 04-02-PLAN.md
@@ -280,7 +283,7 @@ Gym Tracker v1 is delivered through six reviewed, dependency-ordered phases. Pha
 
 ### Phase 5: Recovery, Distribution, and Release
 
-**Goal**: The owner can safely export and recover all user-owned data, and can install the exact signed, physically approved, accessible Android release bytes.
+**Goal**: The owner can safely export and recover all user-owned data, and can install the exact signed, accessible Android APK/AAB built once by the personal-use workflow.
 **Depends on**: Phase 4
 **Requirements**: DATA-01, DATA-02, DATA-03, DATA-04, DATA-05, DATA-06, DATA-07, REL-03, REL-04, REL-05, REL-06
 **Success Criteria** (what must be TRUE):
@@ -289,7 +292,7 @@ Gym Tracker v1 is delivered through six reviewed, dependency-ordered phases. Pha
   2. Owner can authenticate, preview, and restore a valid backup into an independently clean install, after which bundled references reconcile and search/progress/history rebuild to the same usable state.
   3. Wrong password, tampering, unsupported version, oversized/malformed input, cancellation, validation failure, or insert failure leaves the existing database unchanged and shows a safe, actionable error.
   4. Owner can export a versioned, safely escaped CSV with stable columns, explicit units, locale-independent values, timestamps, set kinds, corrections, void state, recommendations, and decisions.
-  5. On the signed release build, the complete app remains usable in airplane mode and passes System/Light/Dark, compact/medium/expanded, rotation, 200% text, keyboard/D-pad, logical focus, reduced motion, non-color, notification, process-death, performance, and post-implementation visual review; the public APK is byte-identical to the approved candidate.
+  5. The complete app remains usable in airplane mode and passes System/Light/Dark, compact/medium/expanded, rotation, 200% text, keyboard/D-pad, logical focus, reduced motion, non-color, notification, process-death, and performance behavior through the automated PR contract suite (native Expo SQLite contracts, Maestro flows, benchmark); the owner installs the signed APK/AAB built once by `personal-apk.yml` and sideloads it unchanged. *(Reframed for personal-use: the byte-identical public-promotion / attended-approval gate is retired; see V2-05.)*
 
 **Plans**: 7 likely plans
 
@@ -312,21 +315,21 @@ Gym Tracker v1 is delivered through six reviewed, dependency-ordered phases. Pha
   - [x] 05-05: Reconcile bundled references after restore, rebuild FTS and all projections/recommendations, verify independently clean-install restore with Auto Backup controlled, and prove every failure mode mutates nothing.
   - [x] 05-06: Implement versioned CSV serialization, stable columns/order/units/timestamps/decimals, correction/void/recommendation fields, injection-safe escaping, deterministic filenames, and explicit sharing. (completed 2026-08-26; native/device verification deferred to the final Phase 5 gate)
 - **Wave 3 — release closure**
-  - [x] 05-07: Prepare the production-only candidate matrix, exact Phase 2–5 attended ledger/recorder, cross-run no-rebuild promotion, and single-command Terminal Seal handoff. (source/automation preparation completed 2026-08-26; one real signed candidate, automated/device/assistive/design observations, literal owner approval, promotion, and Terminal Seal remain pending)
+  - [x] 05-07: Prepare the production-only signed build-once pipeline, portability/accessibility contract suite, and evidence tooling. (source/automation complete 2026-08-26; delivered as the `personal-apk.yml` signed build. The exact-candidate attended ledger, owner-approval token, no-rebuild GitHub Release promotion, and Terminal Seal were retired for personal-use in PR #29 and tracked as V2-05.)
 
 **Research Flags**:
 
 - **Deep security review**: native KDF implementation, envelope/AAD, whole-buffer AES-GCM resource ceiling, input bounds, password/key/plaintext lifetime, archive compatibility, cancellation, and atomic replacement.
-- **Operational rehearsal**: protected environment, signing secret isolation, retention/download, candidate rejection, digest evidence, and unchanged promotion.
-- **Physical/manual review**: keyboard/D-pad, logical focus, font scale, dynamic layouts, rotation, reduced motion, notification channel behavior, real process death/reboot wording, minimum-device performance, and visual comparison with approved references.
+- **Operational rehearsal**: signed build-once pipeline, signing-secret isolation, artifact retention/download, and `apksigner` signature verification.
+- **Physical/manual review (optional owner confidence, non-blocking)**: keyboard/D-pad, logical focus, font scale, dynamic layouts, rotation, reduced motion, notification channel behavior, real process death/reboot wording, and minimum-device performance.
 
 **Release / Verification Gate**:
 
 - Argon2id and AES-GCM known-answer tests, frozen archive compatibility, nonce uniqueness, calibrated minimum-device budgets, bounds, cleanup, and privacy-safe diagnostics pass through the audited native path.
 - Wrong-password, tampered, unsupported, oversized, malformed, cancelled, validation-failed, and insert-failed restores leave the pre-existing database byte-for-logical-state unchanged; valid restore succeeds on an independently clean install with Auto Backup/D2D contamination excluded.
 - Restore rebuilds FTS, records, comparable exposures, period progress, and recommendations deterministically; CSV fixtures prove stable versioned columns, units, decimals, timestamps, corrections/voids, and escaping.
-- The exact signed candidates pass retained-schema migration, airplane-mode workout, notification denied/late/granted, `killApp`, rotation, clean restore, adaptive widths, System/Light/Dark, 200% text, keyboard/D-pad, logical focus, reduced motion, performance, and post-implementation design-review gates.
-- Public promotion verifies that the GitHub Release APK/AAB SHA-256 values exactly match the privately retained, physically approved candidates; release is blocked on any failed gate and never rebuilds approved bytes.
+- The automated PR contract suite proves retained-schema migration, airplane-mode workout, notification denied/late/granted, `killApp`, rotation, clean restore, adaptive widths, System/Light/Dark, 200% text, keyboard/D-pad, logical focus, reduced motion, and performance behavior.
+- Delivery is the signed APK/AAB built once by `personal-apk.yml` and sideloaded unchanged. *(The public GitHub Release promotion / byte-identical no-rebuild gate is retired for personal-use and tracked as V2-05.)*
 
 **UI hint**: yes
 
@@ -340,20 +343,22 @@ Gym Tracker v1 is delivered through six reviewed, dependency-ordered phases. Pha
 | 4. Overall Progress and Complete Progression | 11 | PROG-01..11 |
 | 5. Recovery, Distribution, and Release | 11 | DATA-01..07, REL-03..06 |
 | 6. Material 3 UX Remediation | 10 | UX-01..10 |
-| **Total** | **82** | **82/82 mapped exactly once** |
+| 7. Post-Candidate UX Refinement | 12 | UX-11..22 |
+| **Total** | **94** | **94/94 mapped exactly once** |
 
 ## Progress
 
-**Execution Order:** Phase 1 → Phase 2 → Phase 3 → Phase 4 → Phase 5 source/release preparation → Phase 6 remediation → Phase 5 final promotion gate
+**Execution Order:** Phase 1 → Phase 2 → Phase 3 → Phase 4 → Phase 5 (portability + signed build) → Phase 6 remediation → Phase 7 post-candidate UX → signed personal-use APK delivery
 
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
 | 1. Trustworthy Workout Loop | 10/10 | Complete    | 2026-08-17 |
-| 2. Owned Library and Planning | 34/34 live; 1 superseded | Implementation verified; release gate in 05-07 | 2026-08-26 |
-| 3. Calendar and History Integrity | 5/5 | Implementation verified; release gate in 05-07 | 2026-08-25 |
-| 4. Overall Progress and Complete Progression | 8/8 | Implementation verified; release gate in 05-07 | 2026-08-26 |
-| 5. Recovery, Distribution, and Release | 7/7 | In Progress|  |
-| 6. Material 3 UX Remediation | 0/0 | Not planned |  |
+| 2. Owned Library and Planning | 34/34 live; 1 superseded | Complete | 2026-08-26 |
+| 3. Calendar and History Integrity | 5/5 | Complete | 2026-08-25 |
+| 4. Overall Progress and Complete Progression | 8/8 | Complete | 2026-08-26 |
+| 5. Recovery, Distribution, and Release | 7/7 | Complete (personal-use signed build; promotion ceremony retired) | 2026-09-14 |
+| 6. Material 3 UX Remediation | 9/9 | Complete (merged via PRs #10–#25) | 2026-09-06 |
+| 7. Post-Candidate UX Refinement | 10/10 | Complete (merged via PR #26; delivered in signed personal-use build) | 2026-09-14 |
 
 ### Phase 6: Material 3 UX Remediation
 
@@ -366,34 +371,34 @@ Gym Tracker v1 is delivered through six reviewed, dependency-ordered phases. Pha
   2. Root Calendar and every date picker render complete six-row grids with adjacent-month dates, support horizontal month swipes plus accessible button alternatives, and retain exact LocalDate/bounds/timezone behavior.
   3. Plan day/exercise rows support continuous touch-and-hold reordering, explicit accessible up/down fallbacks, a compact one-row hierarchy at normal text scale, and legible adaptation at 200% text.
   4. Root navigation remains usable at 200% text, Today has one unambiguous path to secondary tools/settings, and Progress loads or recovers through Retry on the production runtime.
-  5. Focused regression tests, full project gates, clean Android generation/build, emulator verification, and Samsung touch/accessibility review pass against one replacement APK; release approval and promotion remain separate explicit actions.
+  5. Focused regression tests, full project gates, clean Android generation/build, and the automated PR native/emulator matrix pass; the changes ship in the signed personal-use APK. (Merged to `main` via PRs #10–#25; the separate release-approval/promotion ceremony is retired for personal-use.)
 
 **Plans:** 9 plans
 
 Plans:
 **Wave 1**
 
-- [ ] 06-01-PLAN.md — Establish shared M3 Search, filter-chip, and owning-scroll refresh contracts.
-- [ ] 06-02-PLAN.md — Add the Phase 6 native runner and pass the actual Wave 0 emulator gesture smoke.
-- [ ] 06-03-PLAN.md — Diagnose the candidate-bound Progress failure and encode only its exact fixture.
-- [ ] 06-04-PLAN.md — Deliver complete civil-date Calendar and CalendarField dialog grids with swipe/button parity and explicit draft commit.
-- [ ] 06-05-PLAN.md — Deliver continuous accessible plan-day/exercise reordering plus owned-plan picker Search.
-- [ ] 06-06-PLAN.md — Remediate Library discovery, Favorite, pull-to-refresh, and browse/detail provenance composition.
-- [ ] 06-08-PLAN.md — Keep root navigation fully labelled at 200% text and give Today one distinct History and data route.
+- [x] 06-01-PLAN.md — Establish shared M3 Search, filter-chip, and owning-scroll refresh contracts.
+- [x] 06-02-PLAN.md — Add the Phase 6 native runner and pass the actual Wave 0 emulator gesture smoke.
+- [x] 06-03-PLAN.md — Diagnose the candidate-bound Progress failure and encode only its exact fixture.
+- [x] 06-04-PLAN.md — Deliver complete civil-date Calendar and CalendarField dialog grids with swipe/button parity and explicit draft commit.
+- [x] 06-05-PLAN.md — Deliver continuous accessible plan-day/exercise reordering plus owned-plan picker Search.
+- [x] 06-06-PLAN.md — Remediate Library discovery, Favorite, pull-to-refresh, and browse/detail provenance composition.
+- [x] 06-08-PLAN.md — Keep root navigation fully labelled at 200% text and give Today one distinct History and data route.
 
 **Wave 2** *(blocked on Wave 1 completion)*
 
-- [ ] 06-07-PLAN.md — Repair only the diagnosed Progress cause and deliver Progress Search plus truthful Retry recovery.
+- [x] 06-07-PLAN.md — Repair only the diagnosed Progress cause and deliver Progress Search plus truthful Retry recovery.
 
 **Wave 3** *(blocked on Wave 2 completion)*
 
-- [ ] 06-09-PLAN.md — Build once, run the complete consideration/native evidence matrix, and pause for exact-byte Samsung observations without release authorization.
+- [x] 06-09-PLAN.md — Build once and run the complete consideration/native evidence matrix; delivered in the signed personal-use build. (Attended Samsung ceremony retired for personal-use; see 06-VERIFICATION.md.)
 
 ### Phase 7: Post-Candidate UX Refinement
 
 **Goal:** The owner can navigate a simpler, denser, more intuitive interface — cleaner bottom nav and Today, a consolidated Settings page reached by a gear icon, a compact single-row set editor, streamlined plan editing and scheduling, set/warm-up removal, an audible rest-timer countdown, and a distinctive app icon — with all authoritative workout, schedule, history, and portability semantics unchanged, verified on one replacement candidate.
 **Requirements**: UX-11, UX-12, UX-13, UX-14, UX-15, UX-16, UX-17, UX-18, UX-19, UX-20, UX-21, UX-22
-**Depends on:** Phase 6 (green candidate `phase6-20260906-9cdecb8`; this phase supersedes it and requires a fresh candidate + repeat N4)
+**Depends on:** Phase 6 (built on the merged Phase 6 UX baseline; this phase supersedes the Phase 6 candidate and ships in the signed personal-use build)
 **Success Criteria** (what must be TRUE):
 
   1. The bottom navigation shows the active tab by icon/label colour only (no box outline), and Today no longer shows repeat/skip/advance rotation actions while all workout-start paths remain intact.
@@ -401,9 +406,9 @@ Plans:
   3. The workout detail page removes the top notice banners, shows a single overflow menu, and renders each set's load, reps, reset, done, and delete controls on one compact row; add-warm-up/add-set is a single + button aligned with the section header that reuses the last values, with no copy-warmup button.
   4. Warm-ups and working sets can be removed (row deleted) rather than skipped, and progress totals plus history snapshots stay correct after removal.
   5. The More-actions dialog contains only the retained actions (no zero-set/finish-later/Close), sized to its content; plan editing removes up/down buttons and "Position x of y", exposes Replace as a right-aligned glyph, and the day editor and plan-activation schedule support long-press drag ordering; day editing is reachable for every day.
-  6. The rest timer emits a short beep at each of the last three seconds and a long beep at zero; a distinctive owner-approved app icon ships; focused tests, full gates, clean Android generation/build, emulator verification, and a fresh replacement candidate with repeated Samsung N4 review pass, with release approval and promotion remaining separate explicit actions.
+  6. The rest timer emits a short beep at each of the last three seconds and a long beep at zero; a distinctive owner-approved app icon ships; focused tests, full gates, clean Android generation/build, and the automated PR native/emulator matrix pass; the changes ship in the signed personal-use APK. (Merged to `main` via PR #26; separate release approval/promotion is retired for personal-use.)
 
-**Plans:** 9/10 plans executed in 5 waves
+**Plans:** 10/10 plans executed in 5 waves
 
 **Wave 1**
 
@@ -428,4 +433,4 @@ Plans:
 
 **Wave 5** *(depends on 07-09)*
 
-- [ ] 07-10-PLAN.md — Run full gates, dispatch/download one fresh signed candidate, and capture emulator plus exact-byte Samsung N4 evidence without release actions.
+- [x] 07-10-PLAN.md — Merge Phase 7 to `main` (PR #26) and deliver the signed personal-use APK via `personal-apk.yml`. (Reframed for personal-use: the exact-candidate-dispatch and exact-byte Samsung N4 release-blocking gate is retired; optional device observation only.)

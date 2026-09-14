@@ -1,10 +1,11 @@
 ---
 phase: 6
 slug: material-3-ux-remediation
-status: planned
+status: validated
 nyquist_compliant: true
-wave_0_complete: false
+wave_0_complete: true
 created: 2026-08-31
+validated: 2026-09-14
 ---
 
 # Phase 6 — Validation Strategy
