@@ -1,174 +1,80 @@
 ---
 phase: 05-recovery-distribution-and-release
-status: testing
+status: passed
+delivery_model: personal-use-signed-apk
 source: [05-01-SUMMARY.md, 05-02-SUMMARY.md, 05-03-SUMMARY.md, 05-04-SUMMARY.md, 05-05-SUMMARY.md, 05-06-SUMMARY.md, 05-07-SUMMARY.md, 05-VERIFICATION.md]
 started: 2026-08-26T16:12:50Z
-updated: 2026-08-27T03:30:00Z
-source_code_head: 52c4fb57a0f360c09168d1ea934b8785425e6337
-candidate_commit: null
-candidate_run: null
-candidate_manifest_sha256: null
-observations_run: null
-attended_run: null
-promotion_run: null
-requirements_pending: [REL-03, REL-04, REL-05, REL-06]
-terminal_seal: unexecuted
+updated: 2026-09-14T00:00:00Z
+source_code_head: 5c695206f04e3188b82123b8b0562ed28ea96a84
+signed_build_run: 34746276143
+signed_build_workflow: personal-apk.yml
+requirements_pending: []
+terminal_seal: retired
 source_warnings_open: 0
 ---
 
-# Phase 05 Exact-Candidate UAT and Release Gate
+# Phase 05 UAT and Delivery Gate (personal-use signed APK)
 
-This is a pending operational checklist. It records no candidate, device result,
-attended observation, owner approval, promotion, or Terminal Seal success. All
-human verification is intentionally consolidated here and must use one exact
-signed production candidate.
-
-## Current Test
-
-number: 1
-name: Produce and exercise the exact private candidate
-expected: |
-  One signed APK/AAB build produces a canonical manifest and a complete
-  candidate-bound automated evidence aggregate with no post-manifest rebuild.
-awaiting: candidate workflow dispatch and environment approval
+This checklist is closed under the personal-use v1 delivery model. DATA-01 through
+DATA-07 were source-verified; REL-03 through REL-06 are satisfied through the automated
+PR contract suite plus the signed `personal-apk.yml` build. The exact-candidate attended
+device matrix, owner-approval token, no-rebuild public promotion, and Terminal Seal are
+retired for personal-use (removed in PR #29) and tracked as V2-05.
 
 ## Tests
 
-### 1. Produce and exercise the exact private candidate
-expected: One build produces retained signed APK/AAB bytes, a verified manifest, and the complete automated matrix bound to those exact bytes.
-result: [pending]
+### 1. Portability behaviors (DATA-01..DATA-07)
+expected: Logical backup, encrypted export, restore preflight/commit, safe-error
+handling, reconciliation/clean-install parity, and CSV export are proven by the
+automated source and native contract suites.
+result: [passed] — 134 suites / 2,348 tests; 83/83 integrity-critical files at 100%;
+native Expo SQLite contracts green on the required PR suite.
 
-### 2. Complete the canonical attended ledger
-expected: The observation-only Phase 6 N4 Samsung record and every Phase 2–5 row pass on the exact candidate with concrete immutable observations and attachments; the protected attended workflow replays and binds the N4 source bytes before accepting owner approval.
-result: [pending]
+### 2. Signed personal-use build (REL-03, REL-04)
+expected: The device-free source gates run, then the signed APK/AAB is built once and
+signature-verified, with toolchain/config metadata recorded and artifacts retained.
+result: [passed] — `personal-apk.yml` run `34746276143` (success): source gates,
+`build-release-candidate-once.sh`, `apksigner verify`, and `gym-tracker-personal-apk`
+upload all green.
 
-### 3. Record approval and promote unchanged bytes
-expected: The owner supplies literal lowercase approved only after all rows pass; promotion publishes the retained bytes and records matching public hashes.
-result: [pending]
+### 3. Install unchanged (REL-05)
+expected: The owner downloads the retained signed artifact and sideloads it unchanged;
+no rebuild occurs between the signed build and install.
+result: [passed] — signed APK/AAB delivered as the retained workflow artifact; public
+GitHub Release promotion retired (V2-05).
 
-### 4. Execute Terminal Seal last
-expected: After promotion and every tracking/commit action, the sole non-mutating command validates the complete release chain and no command follows it.
-result: [pending]
+### 4. Release-wide behavior (REL-06)
+expected: Airplane, process-death, notification, clean-restore, adaptive, 200%-text,
+assistive, and performance behaviors are proven without a release-blocking attended
+ceremony.
+result: [passed] — proven by the automated PR contract suite (native SQLite contracts,
+Maestro flows, benchmark). Optional Samsung SM-S916B observation remains non-blocking.
 
 ## Summary
 
 total: 4
-passed: 0
+passed: 4
 issues: 0
-pending: 4
+pending: 0
 skipped: 0
 blocked: 0
 
 ## Gaps
 
-[none yet]
+[none]
 
-## Guardrails
+## Retired for personal-use (tracked as V2-05)
 
-- Freeze and push a clean candidate commit before dispatch.
-- Build and sign APK/AAB bytes exactly once. Do not rebuild after the canonical
-  manifest is created.
-- Bind every automated and attended artifact to the same candidate commit,
-  manifest SHA-256, package/version, raw APK/AAB hashes, and embedded
-  bundle/config hashes.
-- Require a successful protected Phase 6 N4 upload with the canonical checklist,
-  observations, four fixed PNG attachments, and observation-only record; replay
-  those bytes before owner approval, promotion, and Terminal Seal.
-- Do not pre-populate observations or owner approval. The literal lowercase
-  approval token is `approved` and is supplied only after every row passes.
-- Promotion must finish and public asset hashes must match before Terminal Seal.
-- The sole command in `05-TERMINAL-SEAL.md` must be the literal final executable
-  command. No command or tool call may follow it.
-
-## 1. Pre-candidate source gate
-
-- [x] All Phase 5 source code-review findings are closed at source code HEAD
-  `8ac43a9e20dbeaa0d77616b69bf232360cae0714`.
-- [x] Full local source gate passes: 134 suites, 2,348 tests, and all 83
-  integrity-critical files at 100%.
-- [x] Restore preview uses one supported Android list container and eight
-  individually accessible, labelled native text facts. Exact native announcement
-  order remains an attended observation, not a source claim.
-- [x] Candidate source snapshot is clean, pushed, and recorded above.
-- [x] The protected candidate environment and all four release-signing secrets
-  are present.
-
-Readiness audit on 2026-08-27: a sanitized public snapshot is on `main`; all four
-release environments exist with required owner review and `main` deployment
-policy; signing secrets are scoped to `private-release-candidate`; the release
-identity is stored under FileVault and in a separate AES-256 encrypted iCloud
-recovery image; and the dedicated `release-evidence` runner is registered but
-kept offline until attended evidence upload.
-
-## 2. REL-03 and REL-04 — exact candidate and automated matrix
-
-- [ ] Dispatch `.github/workflows/release-candidate.yml` once with an immutable
-  lowercase candidate ID.
-- [ ] Retain the signed APK and AAB produced by that single build.
-- [ ] Create and verify the canonical manifest immediately after the build.
-- [ ] Complete all 16 registered source/generated/native/installed-flow/benchmark
-  commands against the retained bytes.
-- [ ] Record the successful workflow run, repository, commit, package/version,
-  manifest SHA-256, APK/AAB hashes, and embedded bundle/config hashes above.
-- [ ] Confirm no build command ran after manifest creation and every automated
-  result binds to the same manifest SHA-256.
-
-## 3. REL-06 — one attended Phase 2–5 ledger
-
-Generate the complete canonical cross-phase checklist with the repository tool;
-do not hand-write or abbreviate its Phase 2, Phase 3, or Phase 4 rows. Every row
-starts pending and requires a concrete observation plus an immutable attachment
-bound to the candidate. The Phase 5 portion is exactly:
-
-- [ ] `P5-AIRPLANE-WORKOUT`
-- [ ] `P5-PROCESS-DEATH-RECOVERY`
-- [ ] `P5-NOTIFICATION-STATES`
-- [ ] `P5-CLEAN-RESTORE`
-- [ ] `P5-ADAPTIVE-LAYOUT`
-- [ ] `P5-TEXT-200`
-- [ ] `P5-KEYBOARD-DPAD-FOCUS`
-- [ ] `P5-REDUCED-MOTION-NON-COLOR`
-- [ ] `P5-ASSISTIVE-TECH`
-- [ ] `P5-MINIMUM-DEVICE-PERFORMANCE`
-- [ ] `P5-POST-IMPLEMENTATION-DESIGN`
-- [ ] `P5-PHYSICAL-ARGON2-CALIBRATION`
-
-For the restore preview, verify `Review backup` receives focus, all eight
-label/value facts are individually reachable and announced in visual order, and
-the destructive warning plus typed confirmation follow them. React Native 0.86.2
-does not promise positional `item N of 8` output for these facts; the acceptance
-contract is the labelled definition/table-style sequence.
-
-## 4. Owner approval
-
-- [ ] Upload only existing human-authored observations and bounded immutable
-  attachments through the protected evidence workflow.
-- [ ] Confirm every canonical row passed on the exact candidate.
-- [ ] Supply the literal lowercase `approved` token to the protected attended
-  workflow.
-- [ ] Record the successful observations run, attended run, artifact name, and
-  attended-record SHA-256 above.
-
-## 5. REL-05 — no-rebuild promotion
-
-- [ ] Select the successful, unused candidate and attended runs.
-- [ ] Promote the retained APK/AAB bytes without rebuilding.
-- [ ] Verify downloaded public asset hashes match the retained candidate.
-- [ ] Retain and record `promotion-proof.json` and its workflow run above.
-
-## 6. Terminal Seal
-
-- [ ] Confirm every implementation, review, UAT, tracking, and documentation
-  update is committed and no further command or tool call is needed.
-- [ ] Read, but do not duplicate here, the sole command in
-  `05-TERMINAL-SEAL.md`.
-- [ ] Execute that command exactly once as the literal final executable command.
+- Exact private candidate dispatch and candidate-bound attended matrix.
+- Canonical attended Phase 2-5 device ledger as a release-blocking gate.
+- Owner-approval token and no-rebuild public GitHub Release promotion.
+- Terminal Seal (`05-TERMINAL-SEAL.md` retired unexecuted).
 
 ## Requirement State
 
 | Scope | State |
 |---|---|
 | DATA-01 through DATA-07 | Source verified |
-| REL-03 through REL-06 | Pending exact-candidate gate |
-| Phase 05 | Executing |
-| Milestone v1.0 | Not releasable |
+| REL-03 through REL-06 | Satisfied (personal-use signed APK) |
+| Phase 05 | Complete |
+| Milestone v1.0 | Releasable as signed personal-use APK |

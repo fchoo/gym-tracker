@@ -3,17 +3,17 @@ gsd_state_version: 1.0
 milestone: v1.0
 current_phase: 07
 current_phase_name: Post-Candidate UX Refinement
-status: executing
-stopped_at: Completed 07-09-PLAN.md; entering code review and full QA before candidate dispatch
-last_updated: "2026-09-06T15:55:42.898Z"
-last_activity: 2026-09-06
-last_activity_desc: Phase 07 execution started
-state_head: 6db61e6e1b806fb0e211ee7e72421de24c7cd1fa
+status: complete
+stopped_at: All 7 phases complete; v1 delivered as the signed personal-use APK (personal-apk.yml run 34746276143). Milestone audit ready.
+last_updated: "2026-09-14T00:00:00.000Z"
+last_activity: 2026-09-14
+last_activity_desc: GSD reconciled to the personal-use delivery model; Phases 5-7 closed; requirements/roadmap/traceability updated to 94/94
+state_head: 5c695206f04e3188b82123b8b0562ed28ea96a84
 progress:
   total_phases: 7
-  completed_phases: 4
+  completed_phases: 7
   total_plans: 83
-  completed_plans: 81
+  completed_plans: 83
 milestone_name: milestone
 ---
 
@@ -24,26 +24,24 @@ milestone_name: milestone
 See: `.planning/PROJECT.md` (updated 2026-08-17)
 
 **Core value:** Open today's workout, see trustworthy next targets, complete each working set with one primary action, recover safely from interruption, and understand exactly why the next target is recommended.
-**Current focus:** Phase 07 — Post-Candidate UX Refinement
+**Current focus:** Milestone v1.0 complete — delivered as the signed personal-use APK. Run `/gsd-audit-milestone v1.0` to archive.
 
 ## Current Position
 
-Phase: 07 (Post-Candidate UX Refinement) — EXECUTING
-Plan: 9 of 10
-Status: Executing Phase 07
-Last activity: 2026-09-06 — Phase 07 execution started
+Phase: 07 (Post-Candidate UX Refinement) — COMPLETE
+Plan: 10 of 10 complete
+Status: All phases complete; v1 delivered as the signed personal-use APK
+Last activity: 2026-09-14 — Personal-use delivery reconciliation
 
-Progress: 9/10 Phase 7 plans complete
+Progress: 7/7 phases complete; 83/83 live plans summarized
 
-## Shared Release Verification
+## Delivery model
 
-| Scope | State | Owner |
-|-------|-------|-------|
-| Accumulated Phase 2–5 native/device/accessibility/performance/design evidence and owner approval | pending_exact_candidate_gate | Phase 05 Plan 05-07 |
-
-Phases 2–4 have passed their implementation and phase-scoped automated
-verification. This table records the separate milestone/release gate; it is not evidence that any
-physical or attended check has passed.
+v1 ships as a signed personal-use Android APK/AAB built once by `personal-apk.yml`
+(reviewed source gates → signed Gradle build → `apksigner` verification → downloadable
+artifact; run `34746276143`, success). The public-release ceremony (exact-candidate
+attended device matrix, owner-approval token, no-rebuild GitHub Release promotion,
+Terminal Seal) is retired for personal-use (removed in PR #29) and tracked as V2-05.
 
 ## Performance Metrics
 
@@ -294,7 +292,9 @@ Full decisions live in `.planning/PROJECT.md`.
 
 ### Roadmap Evolution
 
-- Phase 6 added: Material 3 UX remediation added from the exact-candidate whole-app audit
+- Phase 6 added: Material 3 UX remediation added from the whole-app UX audit.
+- Phase 7 added: Post-candidate UX refinement (nav, settings IA, workout density, plan editing, set removal, rest audio, app icon).
+- Delivery model changed (2026-09-14): v1 delivered as the signed personal-use APK via `personal-apk.yml`; the public-release ceremony (exact-candidate attended matrix, owner-approval token, no-rebuild GitHub Release promotion, Terminal Seal) retired in PR #29 and tracked as V2-05.
 
 ## Deferred Items
 
@@ -303,10 +303,11 @@ Full decisions live in `.planning/PROJECT.md`.
 | Ecosystem | Wear OS and Health Connect | v2 | Project initialization |
 | Training | Per-repetition or cluster-set timers | v2 | Project initialization |
 | Portability | Merge restore | v2 | Project initialization |
+| Distribution | Public GitHub Release / store promotion with attended device matrix, owner-approval token, no-rebuild digest gate, and Terminal Seal (V2-05) | v2 | 2026-09-14 personal-use reconciliation |
 
 ## Session Continuity
 
-Last session: 2026-09-06T15:55:42.760Z
-Stopped at: Completed 07-09-PLAN.md; entering code review and full QA before candidate dispatch
+Last session: 2026-09-14T00:00:00.000Z
+Stopped at: All 7 phases complete; v1 delivered as the signed personal-use APK. GSD reconciled to personal-use delivery model.
 Resume file: None
-Next action: Generate and verify Phase 6 UI-SPEC, then plan and execute the remediation
+Next action: Run `/gsd-audit-milestone v1.0`, then `/gsd-complete-milestone v1.0` to archive.

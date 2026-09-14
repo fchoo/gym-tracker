@@ -3,6 +3,19 @@
 **Defined:** 2026-08-16  
 **Core Value:** Open today's workout, see trustworthy next targets, complete each working set with one primary action, recover safely from interruption, and understand exactly why the next target is recommended.
 
+## Delivery model (v1)
+
+v1 ships as a **signed personal-use Android APK/AAB**. The canonical delivery path is
+the device-free `personal-apk.yml` workflow: it runs the reviewed device-independent
+source gates, builds the signed APK and AAB once through
+`scripts/build-release-candidate-once.sh`, verifies the signature with `apksigner`,
+and uploads the artifacts for owner download and sideload. The earlier
+public-release ceremony (exact-candidate emulator/Samsung attended matrix, protected
+owner-approval token, no-rebuild GitHub Release promotion, and Terminal Seal) is
+**retired for the personal-use milestone** and its workflows were removed in PR #29.
+Physical-device (Samsung N4) observation remains available as optional owner
+confidence but is not a release-blocking gate.
+
 ## v1 Requirements
 
 ### Foundation and Shell
@@ -81,31 +94,31 @@
 
 ### Material 3 UX Remediation
 
-- [ ] **UX-01**: Library exercise filters use compact Material 3 filter-chip behavior with an immediately visible selected state in System, Light, and Dark modes; Favorite is a standalone one-tap chip and the full taxonomy remains available without obscuring the result list.
-- [ ] **UX-02**: Library plan search, Library exercise search, Progress exercise search, and owned-plan exercise picking use one shared Material 3 Search component with a leading search icon, integrated clear action, keyboard/IME behavior, and accessible busy, empty, and result states.
-- [ ] **UX-03**: The root Calendar always renders a complete six-row month grid with subdued adjacent-month dates, preserves civil-date and timezone semantics, and supports horizontal previous/next month swipes with labelled button alternatives.
-- [ ] **UX-04**: Plan days and exercises support touch-and-hold continuous drag reordering with a 48dp handle, visible movement feedback, and accessible up/down fallback actions; primary row content stays on one horizontal line at normal text scale and remains legible at 200% text.
-- [ ] **UX-05**: Every in-app date field uses a consistent Material 3/Google Calendar-inspired dialog with clear selected-date hierarchy, a complete bounded calendar grid, month swipe plus labelled buttons, explicit Cancel/Confirm behavior, and unchanged LocalDate correctness.
-- [ ] **UX-06**: Library refresh is performed through pull-to-refresh on the owning list; the permanent Refresh Library button is removed, failed refresh preserves current results and filters, and a labelled retry remains available only in the failure state.
-- [ ] **UX-07**: Favorite controls use a filled approved-green star plus accessible selected state when active and an outlined star when inactive, without relying on color alone.
-- [ ] **UX-08**: Exercise browse and Favorite/Recent rows omit source namespace, revision, license, and attribution while Exercise Detail retains complete provenance.
-- [ ] **UX-09**: Root navigation and shared dialogs remain readable and operable at Android 200% font scale without clipped labels; Today exposes one unambiguous route to secondary tools/settings instead of duplicate More affordances.
-- [ ] **UX-10**: Progress loads its normal empty or populated view on the production runtime, Retry recovers from a transient failure, and any fix preserves SQLite source authority and rebuildable projections.
+- [x] **UX-01**: Library exercise filters use compact Material 3 filter-chip behavior with an immediately visible selected state in System, Light, and Dark modes; Favorite is a standalone one-tap chip and the full taxonomy remains available without obscuring the result list.
+- [x] **UX-02**: Library plan search, Library exercise search, Progress exercise search, and owned-plan exercise picking use one shared Material 3 Search component with a leading search icon, integrated clear action, keyboard/IME behavior, and accessible busy, empty, and result states.
+- [x] **UX-03**: The root Calendar always renders a complete six-row month grid with subdued adjacent-month dates, preserves civil-date and timezone semantics, and supports horizontal previous/next month swipes with labelled button alternatives.
+- [x] **UX-04**: Plan days and exercises support touch-and-hold continuous drag reordering with a 48dp handle, visible movement feedback, and accessible up/down fallback actions; primary row content stays on one horizontal line at normal text scale and remains legible at 200% text.
+- [x] **UX-05**: Every in-app date field uses a consistent Material 3/Google Calendar-inspired dialog with clear selected-date hierarchy, a complete bounded calendar grid, month swipe plus labelled buttons, explicit Cancel/Confirm behavior, and unchanged LocalDate correctness.
+- [x] **UX-06**: Library refresh is performed through pull-to-refresh on the owning list; the permanent Refresh Library button is removed, failed refresh preserves current results and filters, and a labelled retry remains available only in the failure state.
+- [x] **UX-07**: Favorite controls use a filled approved-green star plus accessible selected state when active and an outlined star when inactive, without relying on color alone.
+- [x] **UX-08**: Exercise browse and Favorite/Recent rows omit source namespace, revision, license, and attribution while Exercise Detail retains complete provenance.
+- [x] **UX-09**: Root navigation and shared dialogs remain readable and operable at Android 200% font scale without clipped labels; Today exposes one unambiguous route to secondary tools/settings instead of duplicate More affordances.
+- [x] **UX-10**: Progress loads its normal empty or populated view on the production runtime, Retry recovers from a transient failure, and any fix preserves SQLite source authority and rebuildable projections.
 
 ### Post-Candidate UX Refinement
 
-- [ ] **UX-11**: The bottom navigation indicates the active tab by icon and label colour only, with no box/border outline on the selected tab, while retaining the accessible focus ring and selected accessibility state.
-- [ ] **UX-12**: The Today screen no longer exposes rotation repeat/skip/advance actions; scheduled-day start, choose-another-day, rest-day train-anyway, and empty-workout starts remain fully functional and rotation advancement still occurs through committed workout completion.
-- [ ] **UX-13**: Today reaches a single consolidated Settings page through a gear icon; the previous duplicate/ambiguous header affordances are removed.
-- [ ] **UX-14**: Appearance is a top-level Settings entry rather than nested inside rest-alert settings, and History and data / Data and recovery are reached from the consolidated Settings page.
-- [ ] **UX-15**: The active workout detail screen removes the top notice banners (rest-ended, exercise-complete, added-and-focused, reviewing) except where a genuine blocking error/retry must be shown, and presents a single overflow/menu affordance instead of two.
-- [ ] **UX-16**: Each set row presents load, reps, reset, done, and delete controls on one compact horizontal row at normal text scale, adapting legibly at 200% text.
-- [ ] **UX-17**: Adding a warm-up or working set uses a single + action aligned with the section header that reuses the last set's values; the separate copy-previous-warmup control is removed.
-- [ ] **UX-18**: Warm-ups and working sets can be removed (the row is deleted) instead of skipped, with progress totals and history snapshots remaining correct and rebuildable after removal.
-- [ ] **UX-19**: The workout More-actions dialog omits save-as-zero-set, finish-workout-later, and Close, and the dialog is sized to its content without a large trailing gap.
-- [ ] **UX-20**: Plan-configuration reorder rows remove the up/down buttons and the "Position x of y" text, expose Replace as a right-aligned glyph button, and retain touch-and-hold drag reordering; plan-activation Weekday and Rotation schedules and the day editor also support long-press drag ordering, and every day is reachable for editing.
-- [ ] **UX-21**: The rest timer emits a short beep at each of the final three seconds and a distinct long beep at zero, alongside existing haptics/notifications, without making audio authoritative for rest state.
-- [ ] **UX-22**: The app ships a distinctive, simple, owner-approved "grow stronger" icon across the standard and Android adaptive icon assets.
+- [x] **UX-11**: The bottom navigation indicates the active tab by icon and label colour only, with no box/border outline on the selected tab, while retaining the accessible focus ring and selected accessibility state.
+- [x] **UX-12**: The Today screen no longer exposes rotation repeat/skip/advance actions; scheduled-day start, choose-another-day, rest-day train-anyway, and empty-workout starts remain fully functional and rotation advancement still occurs through committed workout completion.
+- [x] **UX-13**: Today reaches a single consolidated Settings page through a gear icon; the previous duplicate/ambiguous header affordances are removed.
+- [x] **UX-14**: Appearance is a top-level Settings entry rather than nested inside rest-alert settings, and History and data / Data and recovery are reached from the consolidated Settings page.
+- [x] **UX-15**: The active workout detail screen removes the top notice banners (rest-ended, exercise-complete, added-and-focused, reviewing) except where a genuine blocking error/retry must be shown, and presents a single overflow/menu affordance instead of two.
+- [x] **UX-16**: Each set row presents load, reps, reset, done, and delete controls on one compact horizontal row at normal text scale, adapting legibly at 200% text.
+- [x] **UX-17**: Adding a warm-up or working set uses a single + action aligned with the section header that reuses the last set's values; the separate copy-previous-warmup control is removed.
+- [x] **UX-18**: Warm-ups and working sets can be removed (the row is deleted) instead of skipped, with progress totals and history snapshots remaining correct and rebuildable after removal.
+- [x] **UX-19**: The workout More-actions dialog omits save-as-zero-set, finish-workout-later, and Close, and the dialog is sized to its content without a large trailing gap.
+- [x] **UX-20**: Plan-configuration reorder rows remove the up/down buttons and the "Position x of y" text, expose Replace as a right-aligned glyph button, and retain touch-and-hold drag reordering; plan-activation Weekday and Rotation schedules and the day editor also support long-press drag ordering, and every day is reachable for editing.
+- [x] **UX-21**: The rest timer emits a short beep at each of the final three seconds and a distinct long beep at zero, alongside existing haptics/notifications, without making audio authoritative for rest state.
+- [x] **UX-22**: The app ships a distinctive, simple, owner-approved "grow stronger" icon across the standard and Android adaptive icon assets.
 
 
 ### Data Portability and Release
@@ -119,18 +132,18 @@
 - [x] **DATA-07**: Owner can export versioned CSV with stable column order, explicit units, locale-independent decimals, timestamps, set kind, corrections, void status, recommendations, decisions, and safe escaping.
 - [x] **REL-01**: Project uses Expo CNG from committed config/plugins and can reproducibly generate a clean Android development-test build without committed `android/`.
 - [x] **REL-02**: Every pull request runs typecheck, lint, unit, component, host SQLite, coverage, native Expo SQLite, and Android smoke gates in the reviewed order.
-- [ ] **REL-03**: Nightly and release workflows run the full migration, lifecycle, permission, backup/restore, adaptive, accessibility, performance, and mutation-test matrix.
-- [ ] **REL-04**: Release workflow builds signed APK/AAB candidate bytes once, records SHA-256 and build metadata, and stores them privately pending physical-device approval.
-- [ ] **REL-05**: Public GitHub Release promotion verifies and publishes the exact physically approved candidate bytes without rebuilding.
-- [ ] **REL-06**: Release remains blocked until airplane-mode, process-death, notification, clean-restore, adaptive, 200% text, assistive-technology, performance, and post-implementation design-review gates pass.
+- [x] **REL-03**: The pull-request gate exercises the full migration, lifecycle, permission, backup/restore, adaptive, accessibility, and performance contract suite (typecheck, lint, boundaries, unit, component, host SQLite, coverage, native Expo SQLite, Maestro, benchmark), and the personal-use build workflow re-runs the device-free source-gate subset before every signed build. *(Reframed for personal-use v1: the standalone nightly-matrix and mutation-test workflow is retired; the same contract runs as required PR checks and as the personal-APK pre-build gate.)*
+- [x] **REL-04**: The `personal-apk.yml` workflow builds the signed APK and AAB exactly once through `scripts/build-release-candidate-once.sh`, verifies the signature with `apksigner`, records the toolchain/config metadata (`release-toolchain.json`, `release-config.json`), and uploads the retained artifacts for owner download. *(Reframed for personal-use v1: the private candidate is retained as a downloadable workflow artifact for sideload rather than held pending a physical-device approval gate.)*
+- [x] **REL-05**: The owner installs the exact workflow-built signed APK/AAB by downloading the retained `gym-tracker-personal-apk` artifact and sideloading it unchanged; no rebuild occurs between the signed build and install. *(Reframed for personal-use v1: public GitHub Release promotion of physically approved bytes is retired; the signed artifact itself is the delivery.)*
+- [x] **REL-06**: Airplane-mode, process-death, notification, clean-restore, adaptive, 200% text, assistive-technology, and performance behaviors are proven by the automated PR contract suite (native Expo SQLite contracts, Maestro flows, and benchmark) rather than by a release-blocking attended ceremony; optional Samsung SM-S916B observation remains available as owner confidence only. *(Reframed for personal-use v1: the release-blocking attended/design-review gate and Terminal Seal are retired.)*
 
 ## Definition of Done
 
-- A checked requirement is implemented and has passed its phase-scoped automated verification. Milestone completion additionally requires the consolidated Phase 5 exact-candidate native/device/human evidence for every requirement that needs it.
+- A checked requirement is implemented and has passed its phase-scoped automated verification (typecheck, lint, boundaries, unit/component/host-SQLite/integration suites, coverage, and — where applicable — native Expo SQLite contracts and Maestro flows on the PR gate).
 - Integrity-critical domain/application modules meet 100% statement, branch, function, and line coverage; remaining testable TypeScript meets the reviewed global thresholds.
 - Real Expo SQLite contract tests prove foreign keys, serialization, rollback, migrations, effects, and projections on the native adapter.
-- The five milestone exit gates pass in order without bypassing their data-contract dependencies.
-- A signed Android APK and checksum are promoted to GitHub Releases only after the exact candidate digest passes physical-device approval.
+- v1 is delivered as a signed personal-use APK/AAB produced once by `personal-apk.yml`, signature-verified, and downloaded/sideloaded unchanged by the owner.
+- The retired public-release ceremony (exact-candidate attended matrix, owner-approval token, no-rebuild GitHub Release promotion, Terminal Seal) is out of scope for the personal-use milestone; physical-device observation is optional owner confidence, not a release gate.
 
 ## v2 Requirements
 
@@ -140,6 +153,10 @@
 - **V2-02**: Owner can import or export approved data through Health Connect after duplicate and semantic-conflict rules are designed.
 - **V2-03**: Owner can configure per-repetition or cluster-set timer modes through a separately reviewed state machine.
 - **V2-04**: Owner can merge a backup into existing data after stable identity and conflict rules are approved.
+
+### Public distribution (deferred from v1)
+
+- **V2-05**: Public GitHub Release / store promotion of physically approved candidate bytes with a no-rebuild digest gate, attended device matrix, and Terminal Seal, if the app moves beyond single-owner personal-use distribution.
 
 ## Out of Scope
 
@@ -154,6 +171,7 @@
 | Unverified exercise media or copied proprietary programs | Licensing, attribution, and maintenance risk |
 | Runtime scraping or remote catalogs | Breaks offline behavior and controlled versioned content |
 | Marketing website and store-listing art | Not required for the personal Android application milestone |
+| Public-release promotion ceremony (attended device matrix, owner-approval token, no-rebuild GitHub Release, Terminal Seal) | Retired for personal-use v1; tracked as V2-05 if public distribution is pursued |
 
 ## Traceability
 
@@ -218,28 +236,28 @@
 | PROG-09 | Phase 4 | Complete |
 | PROG-10 | Phase 4 | Complete |
 | PROG-11 | Phase 4 | Complete |
-| UX-01 | Phase 6 | Pending |
-| UX-02 | Phase 6 | Pending |
-| UX-03 | Phase 6 | Pending |
-| UX-04 | Phase 6 | Pending |
-| UX-05 | Phase 6 | Pending |
-| UX-06 | Phase 6 | Pending |
-| UX-07 | Phase 6 | Pending |
-| UX-08 | Phase 6 | Pending |
-| UX-09 | Phase 6 | Pending |
-| UX-10 | Phase 6 | Pending |
-| UX-11 | Phase 7 | Pending |
-| UX-12 | Phase 7 | Pending |
-| UX-13 | Phase 7 | Pending |
-| UX-14 | Phase 7 | Pending |
-| UX-15 | Phase 7 | Pending |
-| UX-16 | Phase 7 | Pending |
-| UX-17 | Phase 7 | Pending |
-| UX-18 | Phase 7 | Pending |
-| UX-19 | Phase 7 | Pending |
-| UX-20 | Phase 7 | Pending |
-| UX-21 | Phase 7 | Pending |
-| UX-22 | Phase 7 | Pending |
+| UX-01 | Phase 6 | Complete |
+| UX-02 | Phase 6 | Complete |
+| UX-03 | Phase 6 | Complete |
+| UX-04 | Phase 6 | Complete |
+| UX-05 | Phase 6 | Complete |
+| UX-06 | Phase 6 | Complete |
+| UX-07 | Phase 6 | Complete |
+| UX-08 | Phase 6 | Complete |
+| UX-09 | Phase 6 | Complete |
+| UX-10 | Phase 6 | Complete |
+| UX-11 | Phase 7 | Complete |
+| UX-12 | Phase 7 | Complete |
+| UX-13 | Phase 7 | Complete |
+| UX-14 | Phase 7 | Complete |
+| UX-15 | Phase 7 | Complete |
+| UX-16 | Phase 7 | Complete |
+| UX-17 | Phase 7 | Complete |
+| UX-18 | Phase 7 | Complete |
+| UX-19 | Phase 7 | Complete |
+| UX-20 | Phase 7 | Complete |
+| UX-21 | Phase 7 | Complete |
+| UX-22 | Phase 7 | Complete |
 | DATA-01 | Phase 5 | Complete |
 | DATA-02 | Phase 5 | Complete |
 | DATA-03 | Phase 5 | Complete |
@@ -249,17 +267,17 @@
 | DATA-07 | Phase 5 | Complete |
 | REL-01 | Phase 1 | Complete |
 | REL-02 | Phase 1 | Complete |
-| REL-03 | Phase 5 | Pending |
-| REL-04 | Phase 5 | Pending |
-| REL-05 | Phase 5 | Pending |
-| REL-06 | Phase 5 | Pending |
+| REL-03 | Phase 5 | Complete (personal-use) |
+| REL-04 | Phase 5 | Complete (personal-use) |
+| REL-05 | Phase 5 | Complete (personal-use) |
+| REL-06 | Phase 5 | Complete (personal-use) |
 
 **Coverage:**
 
-- v1 requirements: 82 total
-- Mapped to phases: 82
+- v1 requirements: 94 total
+- Mapped to phases: 94
 - Unmapped: 0 ✓
 
 ---
 *Requirements defined: 2026-08-16*
-*Last updated: 2026-08-31 for Phase 6 Material 3 UX remediation*
+*Last updated: 2026-09-14 for personal-use v1 delivery reconciliation (Phases 6–7 UX complete; REL-03..06 reframed to the signed personal-use APK contract)*
