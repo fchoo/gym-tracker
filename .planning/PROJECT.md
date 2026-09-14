@@ -10,29 +10,33 @@ The app should feel like a quiet training instrument. It should be faster and cl
 
 Open today's workout, see trustworthy next targets, complete each working set with one primary action, recover safely from interruption, and understand exactly why the next target is recommended.
 
+_Confirmed still correct at v1.0 close: the shipped app delivers exactly this loop; nothing during delivery shifted the core value._
+
 ## Requirements
 
 ### Validated
 
-- ✓ Offline Android workout critical path with no account or network requirement — Phase 1
-- ✓ Today, Calendar, Library, and Progress root shell with focused workouts outside root navigation — Phase 1
-- ✓ Full Body Foundation activation as a user-owned copy with scheduled, alternate, rest-day, and empty starts — Phase 1
-- ✓ Inline warm-up and working-set values, compact Complete/Skip actions, commit-gated Retry, eight-second Undo, and recoverable rest — Phase 1
-- ✓ SQLite-authoritative writes, migrations, durable effects, notification repair, and process-death recovery — Phase 1
-- ✓ Factual completion/detail plus one evidence-backed, explicitly accepted double-progression path — Phase 1
-- ✓ System/Light/Dark, compact/medium/expanded layouts, 200% text, keyboard/D-pad, visible focus, reduced motion, and non-color cues — Phase 1
-- ✓ Reproducible Expo CNG development-test APK with exact-byte native, E2E, performance, Argon2, and Samsung physical approval — Phase 1
-- ✓ Calendar, effective metric history, auditable corrections, reversible session removal, and deterministic history rebuilds — Phase 3 automated source evidence; final physical verification deferred
+- ✓ Offline Android workout critical path with no account or network requirement — Phase 1 (v1.0)
+- ✓ Today, Calendar, Library, and Progress root shell with focused workouts outside root navigation — Phase 1 (v1.0)
+- ✓ Full Body Foundation activation as a user-owned copy with scheduled, alternate, rest-day, and empty starts — Phase 1 (v1.0)
+- ✓ Inline warm-up and working-set values, compact Complete/Skip actions, commit-gated Retry, eight-second Undo, and recoverable rest — Phase 1 (v1.0)
+- ✓ SQLite-authoritative writes, migrations, durable effects, notification repair, and process-death recovery — Phase 1 (v1.0)
+- ✓ Factual completion/detail plus one evidence-backed, explicitly accepted double-progression path — Phase 1 (v1.0)
+- ✓ System/Light/Dark, compact/medium/expanded layouts, 200% text, keyboard/D-pad, visible focus, reduced motion, and non-color cues — Phase 1 (v1.0)
+- ✓ Reproducible Expo CNG build with exact-byte native, E2E, performance, and Argon2 contracts; signed personal-use APK/AAB delivered via `personal-apk.yml` — Phase 1/5 (v1.0)
+- ✓ Combined plans-and-exercises Library with a reviewed 300+ exercise catalog, custom exercises, and user-owned starter-plan copies — Phase 2 (v1.0)
+- ✓ Six original starter templates including an equipment-heavy weekday body-part split, with safe weekday/rotation schedule behavior — Phase 2 (v1.0)
+- ✓ All nine metric profiles with versioned observation/aggregate/comparator contracts — Phase 2 (v1.0)
+- ✓ Calendar, effective metric history, auditable corrections, reversible session removal, and deterministic history rebuilds — Phase 3 (v1.0)
+- ✓ Period-based Overall Progress (4/12/all-time) and explainable, explicitly accepted progression recommendations with a full lifecycle — Phase 4 (v1.0)
+- ✓ Encrypted backup/restore, CSV export, and privacy-safe diagnostics — Phase 5 (v1.0)
+- ✓ Coherent Material 3 UX across Library, Calendar, plan editing, Progress, Today, and navigation — Phase 6 (v1.0)
+- ✓ Post-candidate UX refinement: cleaner nav/Today, consolidated Settings, compact set editor, set/warm-up removal, rest-timer audio, and a distinctive app icon — Phase 7 (v1.0)
+- ✓ Signed personal-use Android APK/AAB delivery built once and sideloaded unchanged — Phase 5 (v1.0)
 
 ### Active
 
-- [ ] Combine plans and exercises in Library while preserving their distinct jobs.
-- [ ] Provide a reviewed built-in exercise catalog with type, muscle, equipment, metric profile, source revision, and attribution.
-- [ ] Allow custom exercises and user-owned copies of immutable starter plans.
-- [ ] Provide six original starter-plan templates, including an equipment-heavy weekday body-part split, with safe schedule behavior.
-- [ ] Provide period-based Overall Progress and explainable, explicitly accepted progression recommendations.
-- [ ] Support backup, restore, CSV export, and privacy-safe diagnostics.
-- [ ] Produce verified signed Android artifacts through a protected candidate-to-release workflow.
+(None — v1.0 shipped. Populate on the next milestone via /gsd-new-milestone.)
 
 ### Out of Scope
 
@@ -45,6 +49,7 @@ Open today's workout, see trustworthy next targets, complete each working set wi
 - Per-repetition or cluster-set timers — specialized mode deferred from v1.
 - Exercise media without independently verified licensing and attribution.
 - Screen-reader and switch-scanning assistive technology support — TalkBack and Samsung Universal/Switch Access are not required for this personal-use v1; existing semantic labels remain, while keyboard/D-pad stays release-gated.
+- Public GitHub Release / store promotion ceremony (attended device matrix, owner-approval token, no-rebuild digest gate, Terminal Seal) — retired for personal-use v1 delivery; tracked as V2-05 if public distribution is pursued.
 - Marketing site and app-store listing art — implementation and release follow-up.
 
 ## Context
@@ -54,6 +59,8 @@ Open today's workout, see trustworthy next targets, complete each working set wi
 - Plan-aware exercise history belongs on Today; Progress is overall and period-based.
 - The visual direction is a card-light precision instrument using Source Sans 3, IBM Plex Mono numerals, semantic colors, and explicit light/dark tokens.
 - The design and engineering plan passed interactive GStack reviews with no unresolved decisions.
+- **v1.0 shipped (2026-09-14)** as a signed personal-use Android APK/AAB via `personal-apk.yml`. All seven phases are verified; 94/94 v1 requirements complete. Latest signed build: workflow run `34746276143`.
+- **Tech stack as shipped:** Expo SDK 57 (CNG), TypeScript strict, Expo Router, Expo SQLite (FTS5), notifications, Bouncy Castle Argon2id + AES-256-GCM backup crypto, Concept G app icon. Coverage on the final PR gate: 141 suites / 2,473 tests, all 83 integrity-critical files at 100%.
 - Approved design references:
   - `~/.gstack/projects/gym_tracker/designs/approved-20260815/core-workout-flow.png`
   - `~/.gstack/projects/gym_tracker/designs/system-review-20260815/app-system-reference.png`
@@ -110,9 +117,10 @@ Add encrypted backup/restore, CSV export, complete adaptive/accessibility verifi
 | Four root destinations | Separates doing, chronology, configuration, and overall analytics | ✓ Validated Phase 1 |
 | Card-light precision-instrument design | Optimizes gym-floor scanning without generic dashboard styling | ✓ Validated Phase 1 |
 | Three-layer test strategy | Pure rules, real SQLite, and Android lifecycle each get appropriate proof | ✓ Validated Phase 1 |
-| Five staged milestones | Proves the load-bearing workout loop before broad features depend on it | — Pending |
-| Private signed candidate promotion | Exact physical-device-tested bytes become the public release | — Pending |
-| Exclude screen-reader and switch-scanning assistive technologies from v1 | The personal-use release does not require TalkBack or OEM switch setup; keyboard/D-pad, focus, labels, large text, reduced motion, non-color cues, and target sizing remain required | — Accepted 2026-08-17 |
+| Five staged milestones | Proves the load-bearing workout loop before broad features depend on it | ✓ Validated v1.0 (delivered as 7 phases) |
+| Private signed candidate promotion | Exact physical-device-tested bytes become the public release | ⚠️ Revisited v1.0 — replaced by the signed personal-use APK (`personal-apk.yml`); public promotion deferred to V2-05 |
+| Exclude screen-reader and switch-scanning assistive technologies from v1 | The personal-use release does not require TalkBack or OEM switch setup; keyboard/D-pad, focus, labels, large text, reduced motion, non-color cues, and target sizing remain required | ✓ Validated v1.0 |
+| Deliver v1 as a signed personal-use APK, retire the public-release ceremony | Single-owner personal use does not need the attended device matrix, owner-approval token, no-rebuild GitHub Release promotion, or Terminal Seal; the device-free `personal-apk.yml` build is the delivery | ✓ Accepted 2026-09-14 (PR #29; tracked as V2-05) |
 
 ## Evolution
 
@@ -132,4 +140,4 @@ This document evolves at phase transitions and milestone boundaries.
 4. Update Context with implementation and verification evidence.
 
 ---
-*Last updated: 2026-08-25 after Phase 3 automated completion*
+*Last updated: 2026-09-14 after v1.0 milestone completion (delivered as the signed personal-use APK)*

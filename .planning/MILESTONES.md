@@ -1,0 +1,91 @@
+# Milestones
+
+## v1.0 Personal-use Gym Tracker (Shipped: 2026-09-14)
+
+**Phases completed:** 7 phases, 83 plans, 161 tasks
+
+**Key accomplishments:**
+
+- Pinned Expo SDK 57 CNG foundation with generated-native contracts and a source-bound Android APK proven through install and launch
+- Exact precision-instrument tokens, adaptive accessible primitives, and a four-root Expo Router shell with immediate structured loading and intentional Phase 1 destinations
+- Strict Zod boundaries, privacy-safe typed diagnostics, deterministic clocks, and Node 24/Jest architecture gates with complete shared-module coverage
+- Private preconfigured Expo SQLite writer with FIFO explicit transactions, separate WAL reads, and ten shared integrity contracts proven on host and installed Android
+- Bounded Bouncy Castle Argon2id bridge with native and installed KATs, source-bound API 36 evidence, CNG/page-size proof, and metadata-only diagnostics
+- Complete Phase 1 SQLite schema with transactional recovery, leased durable effects, ordered trusted launch, and 20 installed-device contracts
+- Reviewed Full Body Foundation content now activates as an independent copied plan, drives a two-week schedule, starts immutable workouts, and renders trustworthy Today evidence from SQLite
+- Persisted profile-aware values, optional warm-ups, commit-gated exactly-once set completion, compact inline Retry, and eight-second transactional Undo now run through an accessible focused workout route
+- Timestamp-derived rest, SQLite-authoritative Android notification repair, accessible controls, and exact-APK rotation/process-death recovery now complete the interruption-safe workout tracer
+- Explicit workout outcomes, factual completion, revision-safe double progression, repeated offline recovery, and exact-APK Samsung approval now close the trustworthy workout loop
+- Owner-approved 310-row exercise catalog with pinned Kinetic.place provenance, preserved Phase 1 identities, deterministic D-50/D-51 diffs, and exact hash-bound acceptance
+- Nine explicit metric profiles now round-trip through strict versioned targets, observations, comparison, aggregation, precision, and exposure without reinterpreting legacy workout bytes
+- DST-safe LocalDate utilities and revisioned Weekday/Rotation state transitions now preserve explicit owner intent without silent schedule or history rewrites
+- Hash-bound runtime catalog parsing, additive SQLite source schema, and atomic bundled-only updates that preserve every owner and historical fact
+- Six owner-approved starter templates with all-nine-profile coverage, deterministic review tooling, an equipment-heavy weekday body-part split, and exact hash-bound acceptance
+- Source-synchronized external-content trigram FTS with private repair commands and exact installed Expo SQLite proof across eight fail-closed contracts
+- Versioned nine-profile SQLite persistence with an owner-approved, atomic future-target migration that preserves all historical workout bytes
+- Hash-bound six-template activation with complete fresh owned graphs, effective-dated Weekday/Rotation schedules, explicit reactivation choices, and exact D-55 5-day/20-occurrence proof
+- Prepared short-query and trigram candidate search with relational D-11 ranking, D-14 filters, exact Recent/Favorite semantics, and context-bound thirty-row keyset cursors
+- Nine-profile immutable workout snapshots with registry-validated commands, exactly-once complete/skip/retry, lossless detail/outcome readback, and one shared inline SetRow
+- Revisioned owned-plan aggregates with explicit inactive drafts, atomic complete-graph Save, durable replay, fresh-ID duplication, reversible lifecycle, and schedule/snapshot-safe structural impact
+- Adaptive Plans/Exercises Library with serialized section persistence, authoritative ranked exercise discovery, commit-gated Favorite and D-50 updates, and a public installed journey
+- Explicit-profile custom exercises with deterministic duplicate confirmation, atomic search synchronization, ownership-safe Favorite/hide/copy behavior, and revision-bound archive/restore
+- Hash-validated six-template discovery with complete D-55 detail, confirmation-bound activation, explicit copy/schedule choices, active-workout blocking, and non-mutating template comparison copies
+- Adaptive owned-plan creation and lifecycle editor with aggregate-only Save, exact dirty-leave semantics, accessible reorder, fresh duplication, reversible archive/restore, and snapshot-safe impact refusal
+- Prospective schedule versions, effective stored-timezone reads, and atomic Rotation, Weekday, override, and timezone commands now preserve every historical fact
+- Runtime-backed custom exercise detail, explicit create/copy/edit lifecycle, reversible archive state, and one-way future-target metric migration across both authoritative plan graphs
+- Revision-bound schedule-impact removal and complete-identity exercise replacement with explicit future-only choices, atomic SQLite persistence, and immutable workout history
+- Prospective Weekday/Rotation editing, explicit Today schedule actions, stored-timezone workout starts, immutable midnight completion, and a public cross-profile installed journey
+- Twenty-nine source-owned Expo SQLite-compatible cases covering six persistent domains, all 78 edge IDs, strict bounded evidence routing, and one exact-count aggregate Phase 2 suite
+- One exact implementation-HEAD APK now carries complete host, Expo SQLite, installed-flow, performance, roundtrip, requirement, decision, edge, UI-truth, and prohibition evidence.
+- Expo Router now owns the 840dp bottom-tab-to-left-rail transition, with focused tests proving adaptive geometry and accessible root-navigation behavior.
+- A dependency-free, accessible civil-date calendar now backs all three proven editable Phase 2 schedule flows without converting LocalDate values through JavaScript timezones.
+- Accessible duration, integer, and decimal controls now serve every Phase 2 planning and active-workout metric field without changing canonical values, versioned units, or autosave contracts.
+- Library now presents every plan and exercise item on a neutral-grey canvas as a high-contrast, flat near-black card, with ownership, attribution, search, filter, favorite, and accessibility behavior intact.
+- The approved neutral-grey canvas and flat near-black ContentCard system now covers Today, workout, details, planning, and completion content while preserving every interactive surface's existing semantic role.
+- Current-schema set insertion now saves complete metric identity, while active workouts support narrow revision-checked completed-working-set corrections and return committed row identities to the runtime.
+- Active Workout now offers presentation-only workout-plan review, compact accessible set actions, committed-row retry/focus feedback, and revision-checked completed-set correction for the full in-progress session.
+- Active Workout now offers a collapsible, timestamp-derived RestDock whose visible timer and paused/running state survive both presentations, with ordered accessible controls and a direct skip-to-ready transition.
+- Versioned default-on rest-alert preferences now drive four immutable v2 Android channels and safely reconcile derived rest notifications without changing SQLite workout truth.
+- Today now owns accessible, independently persisted rest sound and vibration controls, while eligible foreground expiry records one durable, best-effort feedback attempt without making platform effects authoritative.
+- Phase 2 now has canonical amendment ledgers that map every remediation to implementation proof, exact-HEAD routes, role-separated review, and source-derived UI coverage.
+- Phase 2 now has current-schema native contracts, deterministic installed remediation journeys, and a fail-closed role-aware verifier ready for one exact-HEAD APK build.
+- One immutable Phase 2 Android candidate now carries complete host, SQLite, installed-flow, performance, and roundtrip proof while physical approval remains absent.
+- Effective-history Calendar reads preserve original facts and show reliable civil-date session state.
+- Metric-aware Best, Average, and Last now read effective comparable working sets while keeping warm-ups visibly separate.
+- History-derived records, metrics, period inputs, and recommendation scopes now rebuild deterministically from revision-fenced effective facts.
+- Completed and partial sessions can now be safely corrected through immutable originals, effective overlays, and a discreet audit trail.
+- Completed sessions now support explicit reversible removal, while Phase 3 automated evidence is exact-identity bound and deliberately defers physical approval.
+- Progress now reads reproducible civil-window facts from current Phase 3 projections and persisted scheduling outcomes through one typed runtime capability.
+- The Progress tab now turns the factual period view model into an accessible, source-linked experience without introducing a second analytics model or dashboard-score language.
+- Weighted double progression now produces complete, reproducible evidence for every recommendation outcome while retaining conservative target mutation rules.
+- Copied-plan progression now accepts only exact named/versioned policy contracts, retaining fixed targets as factual evidence and preventing manual load/reps policies from entering automatic recommendations.
+- Recommendations now carry a validated v2 evidence envelope and can change future targets only through a source- and target-revision-fenced transaction.
+- Progress now presents persisted recommendation evidence without optimistic target changes, and its automated evidence contracts cannot impersonate a native or attended approval.
+- Overall Progress summaries and Baseline/Hold status are traceable to current selected-window workout and exercise facts through accessible drill-down actions.
+- Completed manual-hold and plan-authored non-load work now projects source-backed, versioned read-only outcomes from raw or effective session history, with no recommendation or target mutation.
+- GTBK v1 is now a bounded, authenticated, logical-only archive format with an audited native AES-GCM boundary and no raw database payload path.
+- Release identity is now bound to one privately retained APK/AAB bundle, and public promotion validates and uploads those same bytes without rebuilding.
+- The app can now collect its owner-owned SQLite facts into a bounded encrypted GTBK archive and explicitly share it from a runtime-only Data and recovery flow.
+- The app now authenticates and validates encrypted logical backups before preview, then replaces only user-owned source facts in one rollback-safe SQLite transaction after exact `REPLACE` confirmation.
+- Logical restore now retains local catalog authority, rebuilds search and history derivatives deterministically, and withholds recovery success until a clean local state is proven ready.
+- Owner-readable CSV now preserves authoritative history, audit, metric, and recommendation facts in byte-stable formula-safe rows, then shares them through a bounded URI-private cache lifecycle.
+- Production-candidate automation, immutable attended-evidence validation, and no-rebuild promotion are source-complete while the one real candidate/attended/owner gate remains explicitly unexecuted.
+- Controlled accessible Material 3 Search and filter chips plus a single-surface refresh seam for adaptive screens.
+- Manifest-bound Android evidence proving real horizontal swipe and held-row displacement from a cold-start Expo Router fixture.
+- Independent full-migration SQLite evidence for Progress runtime compatibility, with self-attesting candidate-diagnostic tooling removed.
+- A 42-cell civil-date Calendar and shared explicit-commit Material 3 date dialog that preserve LocalDate bounds, accessibility alternatives, and consumer write semantics.
+- Continuous accessible native reorder with live displacement, draft-only commits, and shared Material 3 exercise-picker Search states.
+- Library now uses shared Material 3 Search and selected chips, state-preserving pull-to-refresh, commit-bound Favorite stars, and concise provenance-free browse rows.
+- Hermes-safe factual Progress projection with a scoped compatibility bridge, shared Material 3 Search, and typed Retry recovery.
+- Adaptive full-label root navigation and a distinct Today History and data route preserve accessible typed navigation at large text
+- Schema-17 immutable SQLite removal receipts and explicit schemas 15–17 logical-restore support establish durable hard-delete replay metadata without adding it to user-owned backup facts.
+- Revision-checked hard deletion for incomplete workout rows, with receipt-backed atomic repair, trusted runtime refresh, and terminal history built solely from remaining SQLite facts.
+- A sole adaptive Settings route with persisted appearance choices, authoritative rest-alert recovery, and a simplified Today entry point.
+- Responsive active-workout removal, exact confirmation/focus recovery, and foreground-only rest countdown cues backed by route-safe Expo audio composition.
+- Accessible drag-first plan editing with stable-ID day selection, nearest-survivor fallback, and a right-aligned draft-only Replace glyph.
+- Weekday and Rotation schedule ordering now share drag-first, accessible, draft-only behavior in both owned-plan editing and starter activation.
+- Expo SDK 57 hook-owned local audio port with deterministic 3-2-1 and terminal PCM WAV countdown cues, isolated from rest authority.
+- A deterministic Concept G renderer now produces exact tri-tone ascending-bar launcher, adaptive, monochrome, and splash PNGs from one geometry source, protected by fail-closed pixel and CNG contracts.
+- Phase 7 now has a fail-closed, exact-candidate evidence chain: four source-aligned Maestro journeys, a Samsung N4 observation-only checklist, and a one-build workflow that proves native contracts before candidate evidence.
+
+---

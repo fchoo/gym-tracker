@@ -11,6 +11,10 @@ signed_build_workflow: personal-apk.yml
 requirements_pending: []
 terminal_seal: retired
 source_warnings_open: 0
+audit_acknowledged:
+  milestone: v1.0
+  at: 2026-09-14
+  gap_snapshot: "passed::scenarios=0"
 ---
 
 # Phase 05 UAT and Delivery Gate (personal-use signed APK)
@@ -24,6 +28,7 @@ retired for personal-use (removed in PR #29) and tracked as V2-05.
 ## Tests
 
 ### 1. Portability behaviors (DATA-01..DATA-07)
+
 expected: Logical backup, encrypted export, restore preflight/commit, safe-error
 handling, reconciliation/clean-install parity, and CSV export are proven by the
 automated source and native contract suites.
@@ -31,6 +36,7 @@ result: [passed] — 134 suites / 2,348 tests; 83/83 integrity-critical files at
 native Expo SQLite contracts green on the required PR suite.
 
 ### 2. Signed personal-use build (REL-03, REL-04)
+
 expected: The device-free source gates run, then the signed APK/AAB is built once and
 signature-verified, with toolchain/config metadata recorded and artifacts retained.
 result: [passed] — `personal-apk.yml` run `34746276143` (success): source gates,
@@ -38,12 +44,14 @@ result: [passed] — `personal-apk.yml` run `34746276143` (success): source gate
 upload all green.
 
 ### 3. Install unchanged (REL-05)
+
 expected: The owner downloads the retained signed artifact and sideloads it unchanged;
 no rebuild occurs between the signed build and install.
 result: [passed] — signed APK/AAB delivered as the retained workflow artifact; public
 GitHub Release promotion retired (V2-05).
 
 ### 4. Release-wide behavior (REL-06)
+
 expected: Airplane, process-death, notification, clean-restore, adaptive, 200%-text,
 assistive, and performance behaviors are proven without a release-blocking attended
 ceremony.
