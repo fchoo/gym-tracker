@@ -4,6 +4,9 @@ import React, {
   useState,
 } from "react";
 import {
+  ChevronDown,
+  ChevronRight,
+  CircleCheck,
   Plus,
   type LucideIcon,
 } from "lucide-react-native";
@@ -218,6 +221,39 @@ function workingIndex(
   return index < 0 ? 0 : index;
 }
 
+function exerciseStatusText(exercise: ActiveWorkoutExercise): string {
+  switch (exercise.status) {
+    case "completed":
+      return "Completed";
+    case "skipped":
+      return "Skipped";
+    case "active":
+      return "Active";
+    case "planned":
+      return "Upcoming";
+  }
+}
+
+function workingSetSummary(exercise: ActiveWorkoutExercise): Readonly<{
+  completed: number;
+  total: number;
+  observation: string;
+}> {
+  const completed = exercise.workingSets.filter(
+    ({ status }) => status === "completed",
+  ).length;
+  const topWorkingSet = exercise.workingSets.find(
+    ({ observation }) => observation !== null,
+  );
+  return {
+    completed,
+    total: exercise.workingSets.length,
+    observation: topWorkingSet === undefined
+      ? "Done"
+      : formatObservation(observationForSet(topWorkingSet)),
+  };
+}
+
 function TargetContext({
   set,
 }: Readonly<{ set: ActiveWorkoutSet }>) {
@@ -369,6 +405,12 @@ export function ActiveWorkoutScreen({
   >(null);
   const [editingCompletedSetId, setEditingCompletedSetId] =
     useState<string | null>(null);
+  const [expandedExerciseIds, setExpandedExerciseIds] = useState<ReadonlySet<string>>(
+    () => new Set(),
+  );
+  const [expandedCompactSetId, setExpandedCompactSetId] = useState<string | null>(
+    null,
+  );
   const [correctionBusySetId, setCorrectionBusySetId] =
     useState<string | null>(null);
   const [correctionFailure, setCorrectionFailure] =
@@ -403,6 +445,15 @@ export function ActiveWorkoutScreen({
   const activeIndex = workingIndex(activeSets, view.activeSetId);
   const activeSet = activeOwner?.set;
   const adaptiveWidth = width === undefined ? {} : { width };
+  const activeExerciseIndex = overviewExercises.findIndex(
+    ({ id }) => id === view.activeExerciseId,
+  );
+
+  const isExerciseCollapsed = (exercise: ActiveWorkoutExercise, index: number) =>
+    exercise.id !== view.activeExerciseId
+    && !expandedExerciseIds.has(exercise.id)
+    && (exercise.status === "completed"
+      || (activeExerciseIndex >= 0 && index < activeExerciseIndex));
 
   const applyView = (nextView: ActiveWorkoutView) => {
     viewRef.current = nextView;
@@ -479,6 +530,12 @@ export function ActiveWorkoutScreen({
     viewRef.current = initialView;
     setView(initialView);
   }, [initialView]);
+
+  useEffect(() => {
+    setExpandedCompactSetId((current) =>
+      current === view.activeSetId ? null : current
+    );
+  }, [view.activeSetId]);
 
   useEffect(() => {
     if (moreVisible) {
@@ -981,7 +1038,12 @@ export function ActiveWorkoutScreen({
         primary={
           <>
             {activeSet === undefined ? null : <TargetContext set={activeSet} />}
-            {overviewExercises.map((exercise) => (
+            {overviewExercises.map((exercise, index) => {
+              const collapsed = isExerciseCollapsed(exercise, index);
+              const summary = workingSetSummary(exercise);
+              const status = exerciseStatusText(exercise);
+              const collapseLabel = `${exercise.name}. ${status}. ${summary.completed} of ${summary.total} working sets. ${collapsed ? "Expand" : "Collapse"} exercise`;
+              return (
               <View
                 key={exercise.id}
                 onLayout={(event: LayoutChangeEvent) => {
@@ -996,18 +1058,67 @@ export function ActiveWorkoutScreen({
                 }}
                 style={styles.exerciseSection}
               >
-                <SectionHeader
-                  action={
-                    <SectionGlyphAction
-                      accessibilityLabel={`More actions for ${exercise.name}. Available in Phase 9.`}
-                      disabled
-                      icon={Plus}
-                      onPress={() => undefined}
+                <FocusablePressable
+                  accessibilityLabel={collapseLabel}
+                  accessibilityRole="button"
+                  accessibilityState={{ expanded: !collapsed }}
+                  onPress={() => {
+                    setExpandedExerciseIds((current) => {
+                      const next = new Set(current);
+                      if (collapsed) {
+                        next.add(exercise.id);
+                      } else {
+                        next.delete(exercise.id);
+                      }
+                      return next;
+                    });
+                  }}
+                  style={({ pressed }) => [
+                    styles.exerciseToggle,
+                    {
+                      backgroundColor: pressed
+                        ? colors.contentCardPressed
+                        : "transparent",
+                      borderColor: colors.contentCardBorder,
+                    },
+                  ]}
+                >
+                  <View style={styles.exerciseToggleCopy}>
+                    <Text
+                      accessibilityRole="header"
+                      style={[typeScale.bodyStrong as TextStyle, { color: colors.contentCardText }]}
+                    >
+                      {exercise.name}
+                    </Text>
+                    <Text style={[typeScale.secondary as TextStyle, { color: colors.contentCardTextSecondary }]}>
+                      {collapsed ? `${status} · ${summary.observation}` : `${status} · ${summary.completed} of ${summary.total} working sets`}
+                    </Text>
+                  </View>
+                  {collapsed && exercise.status === "completed" ? (
+                    <CircleCheck
+                      accessibilityElementsHidden
+                      color={colors.contentCardStatusCompleted}
+                      importantForAccessibility="no-hide-descendants"
+                      size={sizes.icon}
+                      strokeWidth={2.5}
                     />
-                  }
-                  title={exercise.name}
-                  tone="card"
-                />
+                  ) : collapsed ? (
+                    <ChevronRight
+                      accessibilityElementsHidden
+                      color={colors.contentCardTextSecondary}
+                      importantForAccessibility="no-hide-descendants"
+                      size={sizes.icon}
+                    />
+                  ) : (
+                    <ChevronDown
+                      accessibilityElementsHidden
+                      color={colors.contentCardTextSecondary}
+                      importantForAccessibility="no-hide-descendants"
+                      size={sizes.icon}
+                    />
+                  )}
+                </FocusablePressable>
+                {collapsed ? null : <>
                 <ContentCard
                   style={styles.section}
                   testID={isMultiExerciseOverview
@@ -1076,11 +1187,13 @@ export function ActiveWorkoutScreen({
               {exercise.warmups.map((set, index) => (
                 <SetRow
                   active={false}
-                  compact={isMultiExerciseOverview && set.id !== activeSet?.id}
+                  compact={isMultiExerciseOverview
+                    && set.id !== activeSet?.id
+                    && set.id !== expandedCompactSetId}
                   busy={warmupBusy?.setId === set.id}
                   count={exercise.warmups.length}
                   index={index + 1}
-                  key={set.id}
+                  key={`${set.id}-${set.id === activeSet?.id || set.id === expandedCompactSetId ? "expanded" : "compact"}`}
                   kind="warmup"
                   onChangeValues={(observation) => {
                     return persistValues(set, observation);
@@ -1088,6 +1201,7 @@ export function ActiveWorkoutScreen({
                   onComplete={() => {
                     void runWarmup(set);
                   }}
+                  onExpandCompact={() => setExpandedCompactSetId(set.id)}
                   onRevealedLayout={setRevealedSetOffset}
                   {...(set.id === activeSet?.id
                     ? { onMeasuredLayout: (y: number) => {
@@ -1170,7 +1284,9 @@ export function ActiveWorkoutScreen({
               {exercise.workingSets.map((set, index) => (
                 <SetRow
                   active={view.activeSetId === set.id}
-                  compact={isMultiExerciseOverview && set.id !== activeSet?.id}
+                  compact={isMultiExerciseOverview
+                    && set.id !== activeSet?.id
+                    && set.id !== expandedCompactSetId}
                   actionsDisabled={
                     view.rest.state === "running"
                     || view.rest.state === "paused"
@@ -1178,7 +1294,7 @@ export function ActiveWorkoutScreen({
                   busy={workingBusySetId === set.id}
                   count={exercise.workingSets.length}
                   index={index + 1}
-                  key={set.id}
+                  key={`${set.id}-${set.id === activeSet?.id || set.id === expandedCompactSetId ? "expanded" : "compact"}`}
                   kind="working"
                   onChangeValues={(observation) => {
                     return persistValues(set, observation);
@@ -1186,6 +1302,7 @@ export function ActiveWorkoutScreen({
                   onComplete={() => {
                     void completeCurrentSet(set);
                   }}
+                  onExpandCompact={() => setExpandedCompactSetId(set.id)}
                   onCancelCorrection={() => {
                     setEditingCompletedSetId(null);
                     setCorrectionFailure(null);
@@ -1274,8 +1391,10 @@ export function ActiveWorkoutScreen({
               )}
             </ContentCard>
             </View>
+              </>}
               </View>
-            ))}
+            );
+            })}
           </>
         }
         testID="active-workout"
@@ -1383,6 +1502,22 @@ const styles = StyleSheet.create({
   },
   exerciseSection: {
     gap: space[2],
+  },
+  exerciseToggle: {
+    alignItems: "center",
+    borderRadius: radius.standard,
+    borderWidth: StyleSheet.hairlineWidth,
+    flexDirection: "row",
+    justifyContent: "space-between",
+    minHeight: sizes.minimumTarget,
+    minWidth: sizes.minimumTarget,
+    paddingHorizontal: space[2],
+    paddingVertical: space[2],
+  },
+  exerciseToggleCopy: {
+    flex: 1,
+    gap: space[1],
+    paddingRight: space[2],
   },
   inlineActions: {
     alignSelf: "flex-end",

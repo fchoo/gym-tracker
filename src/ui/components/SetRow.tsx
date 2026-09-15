@@ -356,12 +356,14 @@ function CompactSetRow({
   kind,
   index,
   overviewTestID,
+  onPress,
   tone,
 }: Readonly<{
   set: ActiveWorkoutSet;
   kind: "warmup" | "working";
   index: number;
   overviewTestID?: string;
+  onPress: () => void;
   tone: "default" | "card";
 }>) {
   const { colors } = useAppTheme();
@@ -376,9 +378,10 @@ function CompactSetRow({
     ? colors.contentCardTextSecondary
     : colors.textSecondary;
   return (
-    <View
-      accessibilityLabel={`${spokenKind} ${rowLabel}. ${state}. ${current}.`}
-      accessibilityRole="summary"
+    <FocusablePressable
+      accessibilityLabel={`${kind === "warmup" ? `Warm-up ${rowLabel}` : `Set ${rowLabel}`}. ${current}. ${state}. Expand set editor`}
+      accessibilityRole="button"
+      onPress={onPress}
       style={[
         styles.compactRow,
         { borderColor: tone === "card" ? colors.contentCardBorder : colors.divider },
@@ -392,7 +395,7 @@ function CompactSetRow({
       <Text style={[typeScale.secondary as TextStyle, { color: secondary }]}>
         {`${state} · ${current}`}
       </Text>
-    </View>
+    </FocusablePressable>
   );
 }
 
@@ -412,6 +415,7 @@ export function SetRow({
   overviewTestID,
   onMeasuredLayout,
   compact = false,
+  onExpandCompact = () => undefined,
   onChangeValues,
   onCancelCorrection = () => undefined,
   onComplete,
@@ -437,6 +441,7 @@ export function SetRow({
   overviewTestID?: string;
   onMeasuredLayout?(y: number): void;
   compact?: boolean;
+  onExpandCompact?(): void;
   onChangeValues: (
     observation: SetObservation,
   ) => Promise<void> | void;
@@ -455,6 +460,7 @@ export function SetRow({
         index={index}
         kind={kind}
         {...(overviewTestID === undefined ? {} : { overviewTestID })}
+        onPress={onExpandCompact}
         set={set}
         tone={tone}
       />
@@ -1265,6 +1271,7 @@ const styles = StyleSheet.create({
     borderBottomWidth: StyleSheet.hairlineWidth,
     gap: space[1],
     minHeight: sizes.minimumTarget,
+    minWidth: sizes.minimumTarget,
     paddingVertical: space[2],
   },
   revealedRow: {

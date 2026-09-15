@@ -361,7 +361,7 @@ describe("Plan 01-08 ActiveWorkoutScreen", () => {
     const collapsed = screen.getByRole("button", {
       name: "Back Squat. Completed. 2 of 2 working sets. Expand exercise",
     });
-    expect(collapsed).toHaveProp("accessibilityState", { expanded: false });
+    expect(collapsed).toHaveProp("accessibilityState", expect.objectContaining({ expanded: false }));
     expect(collapsed).toHaveStyle({ minHeight: 48, minWidth: 48 });
     await fireEvent(collapsed, "focus");
     expect(collapsed).toHaveStyle({
@@ -371,26 +371,26 @@ describe("Plan 01-08 ActiveWorkoutScreen", () => {
     await fireEvent(collapsed, "keyDown", { nativeEvent: { key: "Enter" } });
     expect(screen.getByRole("button", {
       name: "Back Squat. Completed. 2 of 2 working sets. Collapse exercise",
-    })).toHaveProp("accessibilityState", { expanded: true });
+    })).toHaveProp("accessibilityState", expect.objectContaining({ expanded: true }));
     await fireEvent(screen.getByRole("button", {
       name: "Back Squat. Completed. 2 of 2 working sets. Collapse exercise",
     }), "keyDown", { nativeEvent: { key: " " } });
     expect(screen.getByRole("button", {
       name: "Back Squat. Completed. 2 of 2 working sets. Expand exercise",
-    })).toHaveProp("accessibilityState", { expanded: false });
+    })).toHaveProp("accessibilityState", expect.objectContaining({ expanded: false }));
 
-    const benchCompact = screen.getByRole("button", {
-      name: "Set 2. 60 kg × 8. Not completed. Expand set editor",
-    });
+    const benchCompact = screen.getByTestId(
+      "overview-session-exercise-2-bench-working-2",
+    );
     expect(benchCompact).toHaveStyle({ minHeight: 48, minWidth: 48 });
     await fireEvent.press(benchCompact);
-    expect(screen.getByLabelText("Working set 2 load")).toBeOnTheScreen();
+    expect(screen.getByLabelText("Working set 2 load in kilograms")).toBeOnTheScreen();
 
-    await fireEvent.press(screen.getAllByRole("button", {
-      name: "Set 1. 60 kg × 8. Not completed. Expand set editor",
-    }).at(-1)!);
-    expect(screen.queryByLabelText("Working set 2 load")).not.toBeOnTheScreen();
-    expect(screen.getByLabelText("Working set 1 load")).toBeOnTheScreen();
+    await fireEvent.press(screen.getByTestId(
+      "overview-session-exercise-3-overhead-working-1",
+    ));
+    expect(screen.queryByLabelText("Working set 2 load in kilograms")).not.toBeOnTheScreen();
+    expect(screen.getAllByLabelText("Working set 1 load in kilograms").length).toBeGreaterThan(0);
   });
 
   it("renders every exercise in one overview and completes the stable active-set identity inline", async () => {
@@ -403,6 +403,9 @@ describe("Plan 01-08 ActiveWorkoutScreen", () => {
 
     expect(screen.getByRole("header", { name: "Back Squat" })).toBeOnTheScreen();
     expect(screen.getByRole("header", { name: "Bench Press" })).toBeOnTheScreen();
+    await fireEvent.press(screen.getByRole("button", {
+      name: "Back Squat. Completed. 2 of 2 working sets. Expand exercise",
+    }));
     expect(screen.getByTestId("overview-session-exercise-1-working-1"))
       .toBeOnTheScreen();
     expect(screen.getByTestId("overview-session-exercise-2-bench-working-1"))

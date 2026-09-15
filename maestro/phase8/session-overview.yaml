@@ -33,6 +33,11 @@ tags:
     timeout: 30000
 - assertVisible: "Back Squat"
 - assertVisible: "Bench Press"
+- tapOn: "Back Squat. Completed. 2 of 2 working sets. Expand exercise"
+- assertVisible: "Working sets"
+- tapOn: "Back Squat. Completed. 2 of 2 working sets. Collapse exercise"
+- tapOn: "Set 2. 60 kg × 8. Not completed. Expand set editor"
+- assertVisible: "Complete Set 2"
 - scrollUntilVisible:
     element:
       text: "Complete Set 1"
