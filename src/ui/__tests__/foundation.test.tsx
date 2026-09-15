@@ -486,6 +486,64 @@ describe("Plan 01-02 UI foundation", () => {
     scrollTo.mockRestore();
   });
 
+  it("anchors a measured scroll request once without changing restoration behavior", async () => {
+    const scrollTo = jest.spyOn(
+      ScrollView.prototype,
+      "scrollTo",
+    ).mockImplementation(() => undefined);
+    const rendered = await render(
+      <AppearanceProvider>
+        <AdaptiveScreen
+          primary={<Text>Workout overview</Text>}
+          measuredScrollRequest={{
+            animated: true,
+            targetKey: "working-2",
+            y: 384,
+          }}
+        />
+      </AppearanceProvider>,
+    );
+
+    expect(scrollTo).toHaveBeenCalledWith({
+      animated: true,
+      x: 0,
+      y: 384,
+    });
+    await rendered.rerender(
+      <AppearanceProvider>
+        <AdaptiveScreen
+          primary={<Text>Workout overview updated</Text>}
+          measuredScrollRequest={{
+            animated: false,
+            targetKey: "working-2",
+            y: 96,
+          }}
+        />
+      </AppearanceProvider>,
+    );
+    expect(scrollTo).toHaveBeenCalledTimes(1);
+
+    await rendered.rerender(
+      <AppearanceProvider>
+        <AdaptiveScreen
+          primary={<Text>Workout overview with next set</Text>}
+          measuredScrollRequest={{
+            animated: false,
+            targetKey: "working-3",
+            y: -10,
+          }}
+        />
+      </AppearanceProvider>,
+    );
+    expect(scrollTo).toHaveBeenCalledTimes(2);
+    expect(scrollTo).toHaveBeenLastCalledWith({
+      animated: false,
+      x: 0,
+      y: 0,
+    });
+    scrollTo.mockRestore();
+  });
+
   it.each(adaptiveCases)(
     "attaches one controlled refresh seam to the owning ScrollView in the %s layout",
     async (widthClass, width) => {
