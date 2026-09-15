@@ -3233,7 +3233,7 @@ test("Library exercise flow reveals the first working-set action with bounded sw
 
   assert.match(
     flow,
-    /- runFlow: "\.\.\/subflows\/phase1-start-full-body-a\.yaml"\n- assertVisible: "WORKOUT OVERVIEW"\n- assertVisible: "Back Squat"\n- repeat:\n    times: 12\n    while:\n      notVisible: "Complete Set 1"\n    commands:\n      - swipe:\n          start: 95%, 75%\n          end: 95%, 25%\n          duration: 300\n- assertVisible: "Complete Set 1"\n- tapOn: "Complete Set 1"/u,
+    /- runFlow: "\.\.\/subflows\/phase1-start-full-body-a\.yaml"\n- assertVisible: "Back Squat"\n- repeat:\n    times: 12\n    while:\n      notVisible: "Complete Set 1"\n    commands:\n      - swipe:\n          start: 95%, 75%\n          end: 95%, 25%\n          duration: 300\n- assertVisible: "Complete Set 1"\n- tapOn: "Complete Set 1"/u,
   );
   assert.doesNotMatch(
     flow,

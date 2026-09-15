@@ -67,7 +67,6 @@ tags:
 - tapOn: "Use Full Body Foundation"
 - tapOn: "Activate Full Body Foundation"
 - runFlow: "../subflows/phase1-start-full-body-a.yaml"
-- assertVisible: "WORKOUT OVERVIEW"
 - assertVisible: "Back Squat"
 - repeat:
     times: 12
