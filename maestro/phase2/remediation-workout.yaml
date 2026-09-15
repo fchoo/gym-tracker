@@ -481,18 +481,11 @@ tags:
 - assertVisible: "WORKOUT OVERVIEW"
 - scrollUntilVisible:
     element:
-      text: "Back Squat"
+      text: "Completed working set 1"
     direction: UP
     centerElement: true
     timeout: 60000
-- assertVisible: "Back Squat"
-- scrollUntilVisible:
-    element:
-      text: "Set 1"
-    direction: DOWN
-    centerElement: true
-- assertVisible: "Set 1"
-- tapOn: "Set 1"
+- assertVisible: "Completed working set 1"
 - repeat:
     times: 4
     while:

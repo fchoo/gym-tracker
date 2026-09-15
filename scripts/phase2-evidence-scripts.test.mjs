@@ -1103,8 +1103,8 @@ test("Phase 2 remediation flows use public labels and deterministic seams", asyn
   ].join("\n");
   assert.equal(
     workout.split(correctedWorkingSetVerification).length - 1,
-    2,
-    "corrected working-set persistence must re-expand compact Set 1 after restart and review return",
+    1,
+    "corrected working-set persistence must re-expand compact Set 1 after restart",
   );
   const postRetryCorrectedSetVerification = [
     '- tapOn: "Retry completed set correction"',
@@ -1148,9 +1148,41 @@ test("Phase 2 remediation flows use public labels and deterministic seams", asyn
     1,
     "the cold-restart proof must reopen the saved workout before locating the corrected set",
   );
-  assert.match(workout, /assertVisible: "WORKOUT OVERVIEW"[\s\S]*?text: "Bench Press"[\s\S]*?assertVisible: "Bench Press"[\s\S]*?assertVisible: "WORKOUT OVERVIEW"[\s\S]*?text: "Back Squat"[\s\S]*?assertVisible: "Back Squat"[\s\S]*?Working set 1 of 4\.\*Current values 62\.5 kg × 8\.\*Completed\.\*/u,
-    "the overview traversal must preserve the corrected Back Squat proof without a return-to-current trip");
-  assert.equal(workout.split(completedSetEditTraversal).length - 1, 4);
+  const finalOverviewCorrectedSetTraversal = [
+    '- assertVisible: "WORKOUT OVERVIEW"',
+    "- scrollUntilVisible:",
+    "    element:",
+    '      text: "Bench Press"',
+    "    direction: DOWN",
+    "    centerElement: true",
+    "    timeout: 60000",
+    '- assertVisible: "Bench Press"',
+    '- assertVisible: "WORKOUT OVERVIEW"',
+    "- scrollUntilVisible:",
+    "    element:",
+    '      text: "Completed working set 1"',
+    "    direction: UP",
+    "    centerElement: true",
+    "    timeout: 60000",
+    '- assertVisible: "Completed working set 1"',
+    "- repeat:",
+    "    times: 4",
+    "    while:",
+    '      notVisible: "Edit completed set 1"',
+    "    commands:",
+    "      - swipe:",
+    "          start: 95%, 75%",
+    "          end: 95%, 45%",
+    "          duration: 300",
+    '- assertVisible: "Edit completed set 1"',
+    '- assertVisible: "Working set 1 of 4.*Current values 62.5 kg × 8.*Completed.*"',
+  ].join("\n");
+  assert.equal(
+    workout.split(finalOverviewCorrectedSetTraversal).length - 1,
+    1,
+    "the final overview round-trip must return through the visible corrected row rather than a no-longer-rendered exercise heading",
+  );
+  assert.equal(workout.split(completedSetEditTraversal).length - 1, 3);
   assert.doesNotMatch(
     workout,
     /- scrollUntilVisible:\n    element:\n      text: "Edit completed set 1"/u,
