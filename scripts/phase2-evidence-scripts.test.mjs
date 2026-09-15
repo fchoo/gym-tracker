@@ -987,7 +987,7 @@ test("Phase 2 remediation flows use public labels and deterministic seams", asyn
   );
   assert.match(
     workout,
-    /- repeat:\n    times: 12\n    while:\n      notVisible: "Complete warm-up W1"\n    commands:\n      - swipe:\n          start: 95%, 25%\n          end: 95%, 75%\n          duration: 300\n- assertVisible: "Complete warm-up W1"\n- tapOn: "Complete warm-up W1"\n- repeat:\n    times: 12\n    while:\n      notVisible: "Warm-up 1 of 2\.\*Completed\.\*"\n    commands:\n      - swipe:\n          start: 95%, 25%\n          end: 95%, 75%\n          duration: 300\n- assertVisible: "Warm-up 1 of 2\.\*Completed\.\*"\n- repeat:\n    times: 32\n    while:\n      notVisible: "Complete Set 1"\n    commands:\n      - swipe:\n          start: 95%, 75%\n          end: 95%, 25%\n          duration: 500\n- assertVisible: "Complete Set 1"/u,
+    /- scrollUntilVisible:\n    element:\n      text: "Warm-up W1"\n    direction: UP\n    centerElement: true\n- assertVisible: "Warm-up W1"\n- tapOn: "Warm-up W1"\n- repeat:\n    times: 4\n    while:\n      notVisible: "Complete warm-up W1"\n    commands:\n      - swipe:\n          start: 95%, 75%\n          end: 95%, 45%\n          duration: 300\n- assertVisible: "Complete warm-up W1"\n- tapOn: "Complete warm-up W1"\n- repeat:\n    times: 12\n    while:\n      notVisible: "Warm-up 1 of 2\.\*Completed\.\*"\n    commands:\n      - swipe:\n          start: 95%, 25%\n          end: 95%, 75%\n          duration: 300\n- assertVisible: "Warm-up 1 of 2\.\*Completed\.\*"\n- repeat:\n    times: 32\n    while:\n      notVisible: "Complete Set 1"\n    commands:\n      - swipe:\n          start: 95%, 75%\n          end: 95%, 25%\n          duration: 500\n- assertVisible: "Complete Set 1"/u,
   );
   assert.match(
     workout,
@@ -1024,34 +1024,37 @@ test("Phase 2 remediation flows use public labels and deterministic seams", asyn
     /- assertVisible: "Correction was not saved\. Retry the correction\."[\s\S]*- assertVisible: "Set 4"\n- repeat:\n    times: 4\n    while:\n      notVisible: "Retry completed set correction"\n    commands:\n      - swipe:\n          start: 95%, 75%\n          end: 95%, 45%\n          duration: 300\n- swipe:\n    start: 95%, 75%\n    end: 95%, 45%\n    duration: 300\n- assertVisible: "Retry completed set correction"\n- tapOn: "Retry completed set correction"[\s\S]*- assertVisible: "Working set 1 of 4\.\*Current values 62\.5 kg × 8\.\*Completed\.\*"/u,
   );
   const completedSetEditTraversal = [
+    "- scrollUntilVisible:",
+    "    element:",
+    '      text: "Set 1"',
+    "    direction: DOWN",
+    "    centerElement: true",
+    '- assertVisible: "Set 1"',
+    '- tapOn: "Set 1"',
     "- repeat:",
-    "    times: 32",
+    "    times: 4",
     "    while:",
     '      notVisible: "Edit completed set 1"',
     "    commands:",
     "      - swipe:",
     "          start: 95%, 75%",
-    "          end: 95%, 25%",
-    "          duration: 500",
+    "          end: 95%, 45%",
+    "          duration: 300",
     '- assertVisible: "Edit completed set 1"',
   ].join("\n");
   const anchoredCompletedSetEditTraversal = [
-    "- repeat:",
-    "    times: 12",
-    "    while:",
-    '      notVisible: "Add warm-up"',
-    "    commands:",
-    "      - swipe:",
-    "          start: 95%, 25%",
-    "          end: 95%, 75%",
-    "          duration: 300",
-    '- assertVisible: "Add warm-up"',
+    "- scrollUntilVisible:",
+    "    element:",
+    '      text: "Back Squat"',
+    "    direction: UP",
+    "    centerElement: true",
+    '- assertVisible: "Back Squat"',
     completedSetEditTraversal,
   ].join("\n");
   assert.equal(
     workout.split(anchoredCompletedSetEditTraversal).length - 1,
-    2,
-    "both pre-correction paths must reset to the top anchor before target-driven completed-set discovery",
+    4,
+    "every completed-set revisit must re-anchor Back Squat and expand compact Set 1 before correction",
   );
   assert.ok(
     workout.includes([
@@ -1083,7 +1086,7 @@ test("Phase 2 remediation flows use public labels and deterministic seams", asyn
   assert.equal(
     workout.split(correctedWorkingSetVerification).length - 1,
     3,
-    "corrected working-set persistence must use the completed-row action anchor after retry, restart, and review return",
+    "corrected working-set persistence must re-expand compact Set 1 after retry, restart, and review return",
   );
   const postRestartCorrectedSetVerification = [
     "- stopApp",
@@ -1097,6 +1100,12 @@ test("Phase 2 remediation flows use public labels and deterministic seams", asyn
     '    visible: "Resume workout"',
     "    timeout: 90000",
     '- tapOn: "Resume workout"',
+    "- scrollUntilVisible:",
+    "    element:",
+    '      text: "Back Squat"',
+    "    direction: UP",
+    "    centerElement: true",
+    '- assertVisible: "Back Squat"',
     completedSetEditTraversal,
     '- assertVisible: "Working set 1 of 4.*Current values 62.5 kg × 8.*Completed.*"',
   ].join("\n");

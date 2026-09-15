@@ -239,14 +239,21 @@ tags:
 - assertVisible: "Set 4"
 - assertNotVisible:
     text: "Working set 5 of .*"
+- scrollUntilVisible:
+    element:
+      text: "Warm-up W1"
+    direction: UP
+    centerElement: true
+- assertVisible: "Warm-up W1"
+- tapOn: "Warm-up W1"
 - repeat:
-    times: 12
+    times: 4
     while:
       notVisible: "Complete warm-up W1"
     commands:
       - swipe:
-          start: 95%, 25%
-          end: 95%, 75%
+          start: 95%, 75%
+          end: 95%, 45%
           duration: 300
 - assertVisible: "Complete warm-up W1"
 - tapOn: "Complete warm-up W1"
@@ -282,25 +289,28 @@ tags:
 - extendedWaitUntil:
     notVisible: "Skip rest"
     timeout: 60000
+- scrollUntilVisible:
+    element:
+      text: "Back Squat"
+    direction: UP
+    centerElement: true
+- assertVisible: "Back Squat"
+- scrollUntilVisible:
+    element:
+      text: "Set 1"
+    direction: DOWN
+    centerElement: true
+- assertVisible: "Set 1"
+- tapOn: "Set 1"
 - repeat:
-    times: 12
-    while:
-      notVisible: "Add warm-up"
-    commands:
-      - swipe:
-          start: 95%, 25%
-          end: 95%, 75%
-          duration: 300
-- assertVisible: "Add warm-up"
-- repeat:
-    times: 32
+    times: 4
     while:
       notVisible: "Edit completed set 1"
     commands:
       - swipe:
           start: 95%, 75%
-          end: 95%, 25%
-          duration: 500
+          end: 95%, 45%
+          duration: 300
 - assertVisible: "Edit completed set 1"
 - openLink: "gymtracker-devtest://__notification-test-controls?action=arm_completed_set_correction_failure"
 - assertVisible: "Completed set correction failure armed"
@@ -320,25 +330,28 @@ tags:
 - assertVisible: "Return to Today"
 - tapOn: "Return to Today"
 - tapOn: "Resume workout"
+- scrollUntilVisible:
+    element:
+      text: "Back Squat"
+    direction: UP
+    centerElement: true
+- assertVisible: "Back Squat"
+- scrollUntilVisible:
+    element:
+      text: "Set 1"
+    direction: DOWN
+    centerElement: true
+- assertVisible: "Set 1"
+- tapOn: "Set 1"
 - repeat:
-    times: 12
-    while:
-      notVisible: "Add warm-up"
-    commands:
-      - swipe:
-          start: 95%, 25%
-          end: 95%, 75%
-          duration: 300
-- assertVisible: "Add warm-up"
-- repeat:
-    times: 32
+    times: 4
     while:
       notVisible: "Edit completed set 1"
     commands:
       - swipe:
           start: 95%, 75%
-          end: 95%, 25%
-          duration: 500
+          end: 95%, 45%
+          duration: 300
 - assertVisible: "Edit completed set 1"
 - tapOn: "Edit completed set 1"
 - assertVisible: "Working set 1 load in kilograms"
@@ -397,15 +410,28 @@ tags:
     duration: 300
 - assertVisible: "Retry completed set correction"
 - tapOn: "Retry completed set correction"
+- scrollUntilVisible:
+    element:
+      text: "Back Squat"
+    direction: UP
+    centerElement: true
+- assertVisible: "Back Squat"
+- scrollUntilVisible:
+    element:
+      text: "Set 1"
+    direction: DOWN
+    centerElement: true
+- assertVisible: "Set 1"
+- tapOn: "Set 1"
 - repeat:
-    times: 32
+    times: 4
     while:
       notVisible: "Edit completed set 1"
     commands:
       - swipe:
           start: 95%, 75%
-          end: 95%, 25%
-          duration: 500
+          end: 95%, 45%
+          duration: 300
 - assertVisible: "Edit completed set 1"
 - assertVisible: "Working set 1 of 4.*Current values 62.5 kg × 8.*Completed.*"
 - assertNotVisible: "Undo completed set"
@@ -420,15 +446,28 @@ tags:
     visible: "Resume workout"
     timeout: 90000
 - tapOn: "Resume workout"
+- scrollUntilVisible:
+    element:
+      text: "Back Squat"
+    direction: UP
+    centerElement: true
+- assertVisible: "Back Squat"
+- scrollUntilVisible:
+    element:
+      text: "Set 1"
+    direction: DOWN
+    centerElement: true
+- assertVisible: "Set 1"
+- tapOn: "Set 1"
 - repeat:
-    times: 32
+    times: 4
     while:
       notVisible: "Edit completed set 1"
     commands:
       - swipe:
           start: 95%, 75%
-          end: 95%, 25%
-          duration: 500
+          end: 95%, 45%
+          duration: 300
 - assertVisible: "Edit completed set 1"
 - assertVisible: "Working set 1 of 4.*Current values 62.5 kg × 8.*Completed.*"
 - assertNotVisible: "Undo completed set"
@@ -448,15 +487,22 @@ tags:
     centerElement: true
     timeout: 60000
 - assertVisible: "Back Squat"
+- scrollUntilVisible:
+    element:
+      text: "Set 1"
+    direction: DOWN
+    centerElement: true
+- assertVisible: "Set 1"
+- tapOn: "Set 1"
 - repeat:
-    times: 32
+    times: 4
     while:
       notVisible: "Edit completed set 1"
     commands:
       - swipe:
           start: 95%, 75%
-          end: 95%, 25%
-          duration: 500
+          end: 95%, 45%
+          duration: 300
 - assertVisible: "Edit completed set 1"
 - assertVisible: "Working set 1 of 4.*Current values 62.5 kg × 8.*Completed.*"
 - assertNotVisible: "Excluded from records and progression"
