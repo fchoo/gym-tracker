@@ -16,6 +16,12 @@ tags:
 - tapOn: "Activate Full Body Foundation"
 - runFlow: "../subflows/phase1-start-full-body-a.yaml"
 - assertVisible: "WORKOUT OVERVIEW"
+- scrollUntilVisible:
+    element:
+      text: "Back Squat"
+    direction: UP
+    centerElement: true
+    timeout: 60000
 - assertVisible: "Back Squat"
 - repeat:
     times: 2

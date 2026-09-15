@@ -4074,6 +4074,25 @@ test("rest recovery starts Full Body A without depending on the calendar day", a
   );
 });
 
+test("Phase 1 full-loop re-anchors the compact overview before asserting its first exercise", async () => {
+  const flow = await readFile(
+    path.join(projectRoot, "maestro/smoke/phase1-full-loop.yaml"),
+    "utf8",
+  );
+
+  assert.ok(flow.includes([
+    '- runFlow: "../subflows/phase1-start-full-body-a.yaml"',
+    '- assertVisible: "WORKOUT OVERVIEW"',
+    "- scrollUntilVisible:",
+    "    element:",
+    '      text: "Back Squat"',
+    "    direction: UP",
+    "    centerElement: true",
+    "    timeout: 60000",
+    '- assertVisible: "Back Squat"',
+  ].join("\n")));
+});
+
 test("rest recovery finds the set action after each orientation change with semantic active-row traversal", async () => {
   const flow = await readFile(
     path.join(projectRoot, "maestro/lifecycle/rest-recovery.yaml"),
