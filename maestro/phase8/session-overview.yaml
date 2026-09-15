@@ -49,3 +49,19 @@ tags:
     visible: "RESTING · NEXT: SET 2 AT 60 kg × 8"
     timeout: 60000
 - assertVisible: "Complete Set 2"
+- tapOn: "Go back"
+- extendedWaitUntil:
+    visible: "Today"
+    timeout: 30000
+- tapOn: "Choose another day"
+- tapOn: "Start empty workout"
+- extendedWaitUntil:
+    visible: "Empty workout in progress"
+    timeout: 30000
+- assertVisible: "WORKOUT OVERVIEW"
+- assertVisible: "Add exercise. Available in Phase 9."
+- assertNotVisible: "Working sets"
+- tapOn: "Save zero-set workout"
+- assertVisible: "Finish without working sets?"
+- assertVisible: "This workout will be saved with zero completed working sets."
+- tapOn: "Keep training"

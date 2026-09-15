@@ -52,7 +52,6 @@ function RootNavigator() {
         >
           <Stack.Screen name="(tabs)" />
           <Stack.Screen name="workout/[sessionId]" />
-          <Stack.Screen name="workout-plan/[sessionId]" />
           <Stack.Screen name="completion/[sessionId]" />
           <Stack.Screen name="session/[sessionId]" />
           <Stack.Screen name="session/[sessionId]/correct" />

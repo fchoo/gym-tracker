@@ -33,10 +33,6 @@ import {
   type ActiveWorkoutCommands,
 } from "../screens/ActiveWorkoutScreen";
 import {
-  resolveWorkoutPlanOverviewScene,
-  WorkoutPlanOverviewScreen,
-} from "../screens/WorkoutPlanOverviewScreen";
-import {
   AppearanceProvider,
   createMemoryAppearanceStore,
   themes,
@@ -630,7 +626,6 @@ describe("Plan 01-08 ActiveWorkoutScreen", () => {
     expect(within(scroll).queryByTestId("active-workout-identity-current"))
       .not.toBeOnTheScreen();
 
-    expect(screen.queryByText("Return to current exercise")).not.toBeOnTheScreen();
   });
 
   it("keeps active-workout controls on the overview without a second plan surface", async () => {
@@ -640,106 +635,6 @@ describe("Plan 01-08 ActiveWorkoutScreen", () => {
       .not.toBeOnTheScreen();
     expect(screen.getByRole("button", { name: "More workout actions" }))
       .toBeOnTheScreen();
-  });
-
-  it("renders production-owned loading and error scenes with the existing navigation actions", async () => {
-    const onBack = jest.fn();
-    const onReturnToActiveWorkout = jest.fn();
-    const { rerender } = await render(
-      <AppearanceProvider>
-        <WorkoutPlanOverviewScreen
-          onBack={onBack}
-          onReturnToActiveWorkout={onReturnToActiveWorkout}
-          onReviewExercise={jest.fn()}
-          scene={{ state: "loading" }}
-        />
-      </AppearanceProvider>,
-    );
-
-    expect(screen.getByRole("header", { name: "Today's plan" }))
-      .toBeOnTheScreen();
-    expect(screen.getByLabelText("Loading today's plan"))
-      .toBeOnTheScreen();
-    await fireEvent.press(screen.getByRole("button", { name: "Go back" }));
-    expect(onBack).toHaveBeenCalledTimes(1);
-
-    await rerender(
-      <AppearanceProvider>
-        <WorkoutPlanOverviewScreen
-          onBack={onBack}
-          onReturnToActiveWorkout={onReturnToActiveWorkout}
-          onReviewExercise={jest.fn()}
-          scene={{ state: "error" }}
-        />
-      </AppearanceProvider>,
-    );
-
-    expect(screen.getByRole("header", {
-      name: "Today's plan could not be opened",
-    })).toBeOnTheScreen();
-    expect(screen.getByText(
-      "Your workout was not changed. Return to the active workout to continue.",
-    )).toBeOnTheScreen();
-    await fireEvent.press(screen.getByRole("button", { name: "Go back" }));
-    expect(onBack).toHaveBeenCalledTimes(2);
-    await fireEvent.press(screen.getByRole("button", {
-      name: "Return to active workout",
-    }));
-    expect(onReturnToActiveWorkout).toHaveBeenCalledTimes(1);
-  });
-
-  it("renders an accessible empty scene without fabricating currentExercise", async () => {
-    const emptyWorkout: EmptyWorkoutView = {
-      state: "empty_workout",
-      id: "session-empty",
-      status: "in_progress",
-      revision: 1,
-      activeSetId: null,
-      activeExerciseId: null,
-      progress: {
-        completedWorkingSets: 0,
-        totalWorkingSets: 0,
-      },
-      rest: {
-        version: 1,
-        state: "idle",
-        revision: 0,
-        nextSetId: null,
-      },
-    };
-    const onReturnToActiveWorkout = jest.fn();
-
-    expect(resolveWorkoutPlanOverviewScene(initialView)).toEqual({
-      state: "empty",
-    });
-    expect(resolveWorkoutPlanOverviewScene(emptyWorkout)).toEqual({
-      state: "empty",
-    });
-
-    await render(
-      <AppearanceProvider>
-        <WorkoutPlanOverviewScreen
-          onBack={jest.fn()}
-          onReturnToActiveWorkout={onReturnToActiveWorkout}
-          onReviewExercise={jest.fn()}
-          scene={resolveWorkoutPlanOverviewScene(initialView)}
-        />
-      </AppearanceProvider>,
-    );
-
-    expect(screen.getByRole("summary", {
-      name: "No exercises in today's plan",
-    })).toBeOnTheScreen();
-    expect(screen.getByText(
-      "No exercises are planned in this session yet.",
-    )).toBeOnTheScreen();
-    expect(screen.queryByText("Back Squat")).not.toBeOnTheScreen();
-    expect(screen.queryByTestId("today-plan-exercise-session-exercise-1"))
-      .not.toBeOnTheScreen();
-    await fireEvent.press(screen.getByRole("button", {
-      name: "Return to active workout",
-    }));
-    expect(onReturnToActiveWorkout).toHaveBeenCalledTimes(1);
   });
 
   it("lists every workout exercise in overview order without changing the active pointer", async () => {

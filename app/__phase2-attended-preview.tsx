@@ -27,6 +27,7 @@ import {
   phase2SetMutationPreviewCommands,
   phase2SetMutationPreviewView,
   phase2TodayPlanManyView,
+  phase2TodayPlanEmptyView,
   phase2TodayPlanOneView,
   previewSectionPreference,
   resolvePhase2AttendedPreviewRoute,
@@ -56,10 +57,6 @@ import {
   AppLoadingShell,
 } from "../src/ui/screens/RootScreens";
 import { TodayScreen } from "../src/ui/screens/TodayScreen";
-import {
-  WorkoutPlanOverviewScreen,
-  type WorkoutPlanOverviewScene,
-} from "../src/ui/screens/WorkoutPlanOverviewScreen";
 import { useAppTheme } from "../src/ui/theme";
 
 const noOp = () => undefined;
@@ -399,80 +396,20 @@ function SetMutationLoadingPreview({
   );
 }
 
-function TodayPlanPreview({
-  scene,
-  activeView,
-}: Readonly<{
-  scene: WorkoutPlanOverviewScene;
-  activeView?: React.ComponentProps<typeof ActiveWorkoutScreen>["view"];
-}>) {
-  const [destination, setDestination] = useState<Readonly<{
-    reviewExerciseId?: string;
-    state: "active" | "plan";
-  }>>({ state: "plan" });
-  if (destination.state === "active") {
-    if (activeView === undefined) {
-      return (
-        <AdaptiveScreen
-          constrainActiveWork
-          primary={(
-            <>
-              <ScreenHeader
-                backAction={() => setDestination({ state: "plan" })}
-                eyebrow="FOCUSED WORKOUT"
-                title="Empty workout"
-              />
-              <InlineNotice
-                body="No exercises are planned in this session yet. Save a zero-set visit explicitly, finish later, or discard it."
-                heading="Empty workout in progress"
-                tone="neutral"
-              />
-              <PrimaryAction label="Save zero-set workout" onPress={noOp} />
-              <SecondaryAction label="Finish workout later" onPress={noOp} />
-              <SecondaryAction destructive label="Discard workout" onPress={noOp} />
-            </>
-          )}
-        />
-      );
-    }
-    return (
-      <ActiveWorkoutScreen
-        commands={phase2SetMutationPreviewCommands}
-        nowMs={() => 1_800_000_000_000}
-        onFinishLater={noOp}
-        onGoBack={() => setDestination({ state: "plan" })}
-        sessionId={activeView.id}
-        view={activeView}
-      />
-    );
-  }
-
-  return (
-    <WorkoutPlanOverviewScreen
-      onBack={noOp}
-      onReturnToActiveWorkout={() => setDestination({ state: "active" })}
-      onReviewExercise={(reviewExerciseId) => setDestination({
-        reviewExerciseId,
-        state: "active",
-      })}
-      scene={scene}
-    />
-  );
-}
-
 function TodayPlanCardinalityPreview({
   variant,
 }: Readonly<{ variant: Phase2TodayPlanPreviewVariant }>) {
-  const activeView = variant === "zero"
-    ? undefined
+  const view = variant === "zero"
+    ? phase2TodayPlanEmptyView
     : variant === "one" ? phase2TodayPlanOneView : phase2TodayPlanManyView;
-  const scene: WorkoutPlanOverviewScene = variant === "zero"
-    ? { state: "empty" }
-    : { state: "ready", view: activeView! };
   return (
-    <TodayPlanPreview
-      {...(activeView === undefined ? {} : { activeView })}
-      scene={scene}
+    <ActiveWorkoutScreen
+      commands={phase2SetMutationPreviewCommands}
+      nowMs={() => 1_800_000_000_000}
+      onFinishLater={noOp}
+      onGoBack={noOp}
+      sessionId={view.id}
+      view={view}
     />
   );
 }
@@ -503,16 +440,9 @@ function scenarioContent(
     case "set-mutations-loading":
       return <SetMutationLoadingPreview variant={variant as Phase2SetMutationPreviewVariant} />;
     case "todays-plan-empty":
-      return <TodayPlanPreview scene={{ state: "empty" }} />;
+      return <TodayPlanCardinalityPreview variant="zero" />;
     case "todays-plan-loading":
-      return (
-        <WorkoutPlanOverviewScreen
-          onBack={noOp}
-          onReturnToActiveWorkout={noOp}
-          onReviewExercise={noOp}
-          scene={{ state: "loading" }}
-        />
-      );
+      return <AppLoadingShell width={windowWidth} />;
     case "todays-plan-zero-one-many":
       return <TodayPlanCardinalityPreview variant={variant as Phase2TodayPlanPreviewVariant} />;
   }
