@@ -1,37 +1,37 @@
 ---
 gsd_state_version: 1.0
-milestone: v1.0
-status: Awaiting next milestone
-stopped_at: All 7 phases complete; v1 delivered as the signed personal-use APK (personal-apk.yml run 34746276143). Milestone audit ready.
-last_updated: "2026-09-14T08:29:47.970Z"
-last_activity: 2026-09-14
-last_activity_desc: Milestone v1.0 completed and archived
-state_head: 89850734d30f1e63a162c927c164b79a8650ab06
+milestone: v1.1
+status: Designing (awaiting owner UX review)
+stopped_at: v1.1 requirements + UX flow drafted for review; no planning or implementation started.
+last_updated: "2026-09-15T00:00:00.000Z"
+last_activity: 2026-09-15
+last_activity_desc: Opened v1.1 design — in-workout editing, session overview, advanced timing, merge restore
+state_head: 44aeaad1e1e36610b3cc5d3554ccc5219c1b5382
 progress:
-  total_phases: 7
-  completed_phases: 7
-  total_plans: 83
-  completed_plans: 83
-milestone_name: milestone
-current_phase: 07
-current_phase_name: Post-Candidate UX Refinement
+  total_phases: 4
+  completed_phases: 0
+  total_plans: 0
+  completed_plans: 0
+milestone_name: In-Workout Editing & Advanced Timing
+current_phase: 08
+current_phase_name: Session Overview & Navigation
 ---
 
 # Project State
 
 ## Project Reference
 
-See: `.planning/PROJECT.md` (updated 2026-08-17)
+See: `.planning/PROJECT.md` (updated 2026-09-15)
 
 **Core value:** Open today's workout, see trustworthy next targets, complete each working set with one primary action, recover safely from interruption, and understand exactly why the next target is recommended.
-**Current focus:** Milestone v1.0 complete — delivered as the signed personal-use APK. Run `/gsd-audit-milestone v1.0` to archive.
+**Current focus:** v1.1 design — reviewing the active-workout UX (session overview + in-workout exercise editing) and open questions before planning.
 
 ## Current Position
 
-Phase: Milestone v1.0 complete
+Phase: v1.1 design (pre-planning)
 Plan: —
-Status: Awaiting next milestone
-Last activity: 2026-09-14 — Milestone v1.0 completed and archived
+Status: Designing — requirements draft (`.planning/REQUIREMENTS.md`), UX flow (`.planning/design/v1.1-UX-FLOW.md`), and open questions (`.planning/design/v1.1-OPEN-QUESTIONS.md`) awaiting owner review.
+Last activity: 2026-09-15 — v1.1 milestone opened for design
 
 ## Delivery model
 

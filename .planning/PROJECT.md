@@ -36,7 +36,12 @@ _Confirmed still correct at v1.0 close: the shipped app delivers exactly this lo
 
 ### Active
 
-(None — v1.0 shipped. Populate on the next milestone via /gsd-new-milestone.)
+**v1.1 — In-Workout Editing & Advanced Timing (in design, pending owner UX review):**
+
+- [ ] Land the active workout on a session-overview screen (all exercises + sets scrollable) instead of the first set — WORK-19.
+- [ ] Add / replace / remove / reorder exercises mid-workout without breaking append-only immutable history — WORK-20..WORK-25.
+- [ ] Per-repetition and cluster-set timer modes (advisory, non-authoritative) — WORK-26 (promoted from V2-03).
+- [ ] Merge a backup into existing data with conflict rules and preview — DATA-08 (promoted from V2-04).
 
 ### Out of Scope
 
