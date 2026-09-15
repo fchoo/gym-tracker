@@ -13,6 +13,7 @@ import {
   jest,
 } from "@jest/globals";
 import React from "react";
+import { ScrollView } from "react-native";
 
 jest.mock("expo-crypto", () => ({
   CryptoDigestAlgorithm: { SHA256: "SHA256" },
@@ -391,6 +392,32 @@ describe("Plan 01-08 ActiveWorkoutScreen", () => {
     ));
     expect(screen.queryByLabelText("Working set 2 load in kilograms")).not.toBeOnTheScreen();
     expect(screen.getAllByLabelText("Working set 1 load in kilograms").length).toBeGreaterThan(0);
+  });
+
+  it("scrolls the authoritative next active set once after its matching layout and honors reduced motion", async () => {
+    const scrollTo = jest.spyOn(ScrollView.prototype, "scrollTo")
+      .mockImplementation(() => undefined);
+    const completeSet = jest.fn<ActiveWorkoutCommands["completeSet"]>(async () => ({
+      outcome: "committed",
+      view: completedView,
+    }));
+    await renderActive({ commands: commands({ completeSet }) });
+
+    await fireEvent.press(screen.getByRole("button", { name: "Complete Set 1" }));
+    await waitFor(() => expect(completeSet).toHaveBeenCalledTimes(1));
+    await fireEvent(screen.getByTestId("overview-exercise-session-exercise-1"), "layout", {
+      nativeEvent: { layout: { x: 0, y: 120, width: 320, height: 400 } },
+    });
+    await fireEvent(screen.getByTestId("overview-working-card-session-exercise-1"), "layout", {
+      nativeEvent: { layout: { x: 0, y: 40, width: 320, height: 240 } },
+    });
+    await fireEvent(screen.getByTestId("working-set-2-row"), "layout", {
+      nativeEvent: { layout: { x: 0, y: 32, width: 320, height: 160 } },
+    });
+
+    await waitFor(() => expect(scrollTo).toHaveBeenCalledTimes(1));
+    expect(scrollTo).toHaveBeenLastCalledWith({ animated: true, x: 0, y: 192 });
+    scrollTo.mockRestore();
   });
 
   it("renders every exercise in one overview and completes the stable active-set identity inline", async () => {
