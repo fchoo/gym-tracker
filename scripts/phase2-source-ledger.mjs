@@ -5,6 +5,9 @@ import process from "node:process";
 import { collectPhase2InputSourceAudit } from "./run-phase2-maestro.mjs";
 
 const projectRoot = process.cwd();
+const phase2ArchiveDirectory =
+  ".planning/milestones/v1.0-phases/02-owned-library-and-planning";
+const v1RequirementsPath = ".planning/milestones/v1.0-REQUIREMENTS.md";
 const contractSources = [
   ["sqliteKernel.contract.ts", "SQLITE_KERNEL_CONTRACT_CASES"],
   ["migrationsEffects.contract.ts", "MIGRATIONS_EFFECTS_CONTRACT_CASES"],
@@ -191,20 +194,20 @@ export async function collectPhase2SourceLedger(root = projectRoot) {
   if (path.resolve(root) !== path.resolve(projectRoot)) {
     throw new Error("source ledger root must be the current project.");
   }
-  const requirementsSource = readFileSync(path.join(root, ".planning/REQUIREMENTS.md"), "utf8");
+  const requirementsSource = readFileSync(path.join(root, v1RequirementsPath), "utf8");
   const requirements = sourceIds(requirementsSource, /^- \[.\] \*\*(LIB-\d{2})\*\*:/gmu, "requirement source", numericIdOrder("LIB-"));
   const context = readFileSync(
-    path.join(root, ".planning/phases/02-owned-library-and-planning/02-CONTEXT.md"),
+    path.join(root, phase2ArchiveDirectory, "02-CONTEXT.md"),
     "utf8",
   );
   const decisions = sourceIds(context, /^- \*\*(D-\d{2}):\*\*/gmu, "decision source", numericIdOrder("D-"));
   contiguousIds("decision source", decisions, "D-", 67);
 
-  const validation = readFileSync(path.join(root, ".planning/phases/02-owned-library-and-planning/02-VALIDATION.md"), "utf8");
+  const validation = readFileSync(path.join(root, phase2ArchiveDirectory, "02-VALIDATION.md"), "utf8");
   const gaps = sourceIds(validation, /^\| (G-02-\d{2}) \|/gmu, "remediation gap source", numericIdOrder("G-02-"));
   contiguousIds("remediation gap source", gaps, "G-02-", 9);
-  const coverage = readFileSync(path.join(root, ".planning/phases/02-owned-library-and-planning/COVERAGE.md"), "utf8");
-  const uiSpec = readFileSync(path.join(root, ".planning/phases/02-owned-library-and-planning/02-UI-SPEC.md"), "utf8");
+  const coverage = readFileSync(path.join(root, phase2ArchiveDirectory, "COVERAGE.md"), "utf8");
+  const uiSpec = readFileSync(path.join(root, phase2ArchiveDirectory, "02-UI-SPEC.md"), "utf8");
   const remediationRows = parseLedgerTable(validation, "remediation-cases", [
     "id", "decision_ids", "gap_ids", "implementation_summary", "automated_evidence", "native_or_device_flow", "attended_roles", "status",
   ]);
@@ -227,8 +230,8 @@ export async function collectPhase2SourceLedger(root = projectRoot) {
     const caseIds = parseDelimitedIds(row.remediation_cases, row.requirement_id + " remediation cases", { expectedOrder: remediationCaseIds });
     const plans = parseDelimitedIds(row.evidence_owners, row.requirement_id + " evidence owners");
     if (caseIds.some((id) => !remediationCaseIds.includes(id))
-      || summaries.some((file) => !existsSync(path.join(root, ".planning/phases/02-owned-library-and-planning", file)))
-      || plans.some((file) => !existsSync(path.join(root, ".planning/phases/02-owned-library-and-planning", file)))) {
+      || summaries.some((file) => !existsSync(path.join(root, phase2ArchiveDirectory, file)))
+      || plans.some((file) => !existsSync(path.join(root, phase2ArchiveDirectory, file)))) {
       sourceError(row.requirement_id + " traceability foreign key");
     }
   }

@@ -44,8 +44,10 @@ const publicFlowDirectories = [
   "maestro/phase2",
   "maestro/smoke",
 ];
+const phase2ArchiveDirectory =
+  ".planning/milestones/v1.0-phases/02-owned-library-and-planning";
 const remediationLedgerPath =
-  ".planning/phases/02-owned-library-and-planning/02-VALIDATION.md";
+  `${phase2ArchiveDirectory}/02-VALIDATION.md`;
 const remediationFlowPaths = [
   "maestro/phase2/remediation-inputs-cards-navigation.yaml",
   "maestro/phase2/remediation-rest-alerts.yaml",

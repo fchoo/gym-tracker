@@ -1262,7 +1262,7 @@ test("Phase 2 evidence metadata and checklist use the Phase 7 warm-up contract",
     readFile(path.join(projectRoot, "scripts/generate-phase2-attended-checklist.mjs"), "utf8"),
     readFile(path.join(
       projectRoot,
-      ".planning/phases/02-owned-library-and-planning/02-UI-SPEC.md",
+      ".planning/milestones/v1.0-phases/02-owned-library-and-planning/02-UI-SPEC.md",
     ), "utf8"),
   ]);
   const evidenceText = `${maestroSource}\n${checklistSource}`;
