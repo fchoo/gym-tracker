@@ -36,14 +36,43 @@ jest.mock("expo-router", () => ({
   useLocalSearchParams: () => ({ sessionId: mockSessionId }),
 }));
 
+jest.mock("../../bootstrap/restCountdownCue", () => ({
+  useRestCountdownCue: () => ({
+    acknowledge: () => undefined,
+    observe: () => undefined,
+  }),
+}));
+
 jest.mock("../../bootstrap/workoutAppRuntime", () => ({
   useWorkoutAppRuntime: () => ({
+    adjustRest: jest.fn(),
+    addWarmup: jest.fn(),
+    addWorkingSet: jest.fn(),
+    completeSet: jest.fn(),
+    completeWarmup: jest.fn(),
+    discardWorkout: jest.fn(),
+    expireRest: jest.fn(),
+    finishCompleted: jest.fn(),
+    finishPartial: jest.fn(),
     getActiveWorkout: mockGetActiveWorkout,
+    openRestNotificationSettings: jest.fn(),
+    pauseRest: jest.fn(),
+    readRestAlertPreferences: () => ({ soundEnabled: false }),
+    removeWarmup: jest.fn(),
+    removeWorkingSet: jest.fn(),
+    resumeRest: jest.fn(),
+    reviseCompletedSet: jest.fn(),
+    saveZeroSetWorkout: jest.fn(),
+    skipExercise: jest.fn(),
+    skipRest: jest.fn(),
+    startManualRest: jest.fn(),
+    updateActiveSetDraft: jest.fn(),
+    updateWarmupDraft: jest.fn(),
     workoutRefreshGeneration: mockRefreshGeneration,
   }),
 }));
 
-import WorkoutPlanOverviewRoute from "../../../app/workout-plan/[sessionId]";
+import ActiveWorkoutRoute from "../../../app/workout/[sessionId]";
 
 function deferred<T>() {
   let resolve!: (value: T) => void;
@@ -100,12 +129,12 @@ function activeWorkout(
 async function renderRoute() {
   return render(
     <AppearanceProvider>
-      <WorkoutPlanOverviewRoute />
+      <ActiveWorkoutRoute />
     </AppearanceProvider>,
   );
 }
 
-describe("WorkoutPlanOverviewRoute", () => {
+describe("ActiveWorkoutRoute", () => {
   beforeEach(() => {
     mockSessionId = "session-a";
     mockRefreshGeneration = 0;
@@ -114,7 +143,7 @@ describe("WorkoutPlanOverviewRoute", () => {
     mockGetActiveWorkout.mockReset();
   });
 
-  it("never renders the prior session while a changed session is loading", async () => {
+  it("never renders the prior session while a changed session is loading and keeps the overview identity", async () => {
     const sessionA = deferred<WorkoutSessionView>();
     const sessionB = deferred<WorkoutSessionView>();
     mockGetActiveWorkout.mockImplementation((sessionId) =>
@@ -126,20 +155,18 @@ describe("WorkoutPlanOverviewRoute", () => {
       sessionA.resolve(activeWorkout("session-a", "Back Squat"));
       await sessionA.promise;
     });
-    expect(screen.getByLabelText(
-      "1. Back Squat. Current. Open for review",
-    )).toBeOnTheScreen();
+    expect(screen.getByRole("header", { name: "Workout" })).toBeOnTheScreen();
 
     mockSessionId = "session-b";
     await act(async () => {
       await rendered.rerender(
         <AppearanceProvider>
-          <WorkoutPlanOverviewRoute />
+          <ActiveWorkoutRoute />
         </AppearanceProvider>,
       );
     });
 
-    expect(screen.getByLabelText("Loading today's plan"))
+    expect(screen.getByText("WORKOUT OVERVIEW"))
       .toBeOnTheScreen();
     expect(screen.queryByText("Back Squat")).not.toBeOnTheScreen();
 
@@ -147,9 +174,7 @@ describe("WorkoutPlanOverviewRoute", () => {
       sessionB.resolve(activeWorkout("session-b", "Bench Press"));
       await sessionB.promise;
     });
-    expect(screen.getByLabelText(
-      "1. Bench Press. Current. Open for review",
-    )).toBeOnTheScreen();
+    expect(screen.getByText("Bench Press")).toBeOnTheScreen();
   });
 
   it("returns to loading when a failed request is refreshed", async () => {
@@ -165,28 +190,26 @@ describe("WorkoutPlanOverviewRoute", () => {
       await failed.promise.catch(() => undefined);
     });
     expect(screen.getByRole("header", {
-      name: "Today's plan could not be opened",
+      name: "Workout could not be opened",
     })).toBeOnTheScreen();
 
     mockRefreshGeneration = 1;
     await act(async () => {
       await rendered.rerender(
         <AppearanceProvider>
-          <WorkoutPlanOverviewRoute />
+          <ActiveWorkoutRoute />
         </AppearanceProvider>,
       );
     });
 
-    expect(screen.getByLabelText("Loading today's plan"))
+    expect(screen.getByText("WORKOUT OVERVIEW"))
       .toBeOnTheScreen();
     await act(async () => {
       retry.resolve(activeWorkout("session-a", "Back Squat"));
       await retry.promise;
     });
     await waitFor(() => {
-      expect(screen.getByLabelText(
-        "1. Back Squat. Current. Open for review",
-      )).toBeOnTheScreen();
+      expect(screen.getByText("Back Squat")).toBeOnTheScreen();
     });
   });
 });
