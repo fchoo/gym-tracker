@@ -142,6 +142,12 @@ tags:
 - assertVisible: "WORKOUT OVERVIEW"
 - assertVisible: "Add exercise. Available in Phase 9."
 - assertNotVisible: "Working sets"
+- scrollUntilVisible:
+    element:
+      text: "Save zero-set workout"
+    direction: DOWN
+    centerElement: true
+    timeout: 60000
 - tapOn: "Save zero-set workout"
 - assertVisible: "Finish without working sets?"
 - assertVisible: "This workout will be saved with zero completed working sets."

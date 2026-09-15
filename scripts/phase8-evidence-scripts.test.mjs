@@ -38,6 +38,7 @@ test("Phase 8 tracer targets the dev-test package and skips rest before the next
   assert.doesNotMatch(flow, /(?:start|end): 95%, 25%/u);
   assert.match(flow, /tapOn: "Skip rest"[\s\S]*?notVisible: "Skip rest"[\s\S]*?notVisible: "Complete Set 2"/u);
   assert.match(flow, /More workout actions[\s\S]*?Discard workout[\s\S]*?discard-workout-confirm[\s\S]*?\^\(Choose another day\|Train anyway\)\$[\s\S]*?visible: "Choose another day"[\s\S]*?tapOn: "Choose another day"[\s\S]*?visible: "Train anyway"[\s\S]*?tapOn: "Train anyway"[\s\S]*?Start empty workout/u);
+  assert.match(flow, /assertVisible: "Add exercise\. Available in Phase 9\."[\s\S]*?scrollUntilVisible:[\s\S]*?text: "Save zero-set workout"[\s\S]*?direction: DOWN[\s\S]*?centerElement: true[\s\S]*?tapOn: "Save zero-set workout"/u);
   assert.doesNotMatch(flow, /Back Squat\. Completed\. 2 of 2 working sets/u);
 });
 
