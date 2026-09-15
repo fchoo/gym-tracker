@@ -45,6 +45,7 @@ tags:
     timeout: 30000
 - pressKey: TAB
 - pressKey: ENTER
+- assertVisible: "Working set 1 load in kilograms"
 - repeat:
     times: 4
     while:
@@ -58,15 +59,15 @@ tags:
 - repeat:
     times: 4
     while:
-      notVisible: "Back Squat"
+      notVisible: "Warm-up W1"
     commands:
       - swipe:
           start: 95%, 40%
           end: 95%, 75%
           duration: 300
-- assertVisible: "Back Squat"
+- assertVisible: "Warm-up W1"
 - repeat:
-    times: 4
+    times: 12
     while:
       notVisible: "Complete Set 1"
     commands:
