@@ -4,12 +4,12 @@ milestone: v1.1
 milestone_name: In-Workout Editing, Advanced Timing & Cross-Device Sync
 current_phase: 8
 current_phase_name: Session Overview & Navigation
-status: Planned — all v1.1 phases (8-12) discussed, researched, and planned; ready to execute Phase 8
-stopped_at: Phases 8-12 planned (22 plans, all plan-checker PASSED); ready to execute Phase 8
-last_updated: "2026-09-15T09:37:45.320Z"
+status: Planned — all v1.1 phases (8-12) discussed, researched, and planned; pushed; ready to execute Phase 8
+stopped_at: Phases 8-12 planned (22 plans, all plan-checker PASSED); design branch pushed; handoff written; ready to execute Phase 8
+last_updated: "2026-09-15T11:11:17.000Z"
 last_activity: 2026-09-15
-last_activity_desc: Planned all five v1.1 phases (22 plans across research+plan+checker loops); design branch design/v1.1-workout-editing
-state_head: ff44eb148373870f07ade9d41933acc5f3a07c9b
+last_activity_desc: Pushed design/v1.1-workout-editing (trailers cleaned) and wrote cross-session execution handoff (.planning/HANDOFF.json + Phase 8 .continue-here.md)
+state_head: b09bc1772f51df36908375e65da3ef70bc5c3b12
 progress:
   total_phases: 5
   completed_phases: 0
@@ -31,7 +31,7 @@ See: `.planning/PROJECT.md` (updated 2026-09-15)
 
 Phase: 8 (Session Overview & Navigation) — READY TO EXECUTE (next up)
 Plan: 08-01 overview tracer → 08-02 → 08-03 → 08-04
-Status: Planned — Phases 8-12 fully discussed, researched, and planned (22 plans; every phase passed the plan-checker; decision-coverage gates 7/8/4/4/5 all green). Design branch `design/v1.1-workout-editing`, not yet pushed.
+Status: Planned — Phases 8-12 fully discussed, researched, and planned (22 plans; every phase passed the plan-checker; decision-coverage gates 7/8/4/4/5 all green). Design branch `design/v1.1-workout-editing` pushed to origin (HEAD b09bc17, 19 commits ahead of main). Cross-session execution handoff written (`.planning/HANDOFF.json` + Phase 8 `.continue-here.md`).
 Last activity: 2026-09-15 — v1.1 planning complete (Phases 8-12)
 
 ## Delivery model

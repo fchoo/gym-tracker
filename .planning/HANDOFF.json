@@ -1,0 +1,121 @@
+{
+  "version": "1.0",
+  "timestamp": "2026-09-15T11:11:17.000Z",
+  "milestone": "v1.1",
+  "milestone_name": "In-Workout Editing, Advanced Timing & Cross-Device Sync",
+  "phase": "08",
+  "phase_name": "Session Overview & Navigation",
+  "phase_dir": ".planning/phases/08-session-overview-navigation",
+  "plan": 1,
+  "task": 0,
+  "total_tasks": 4,
+  "status": "planned_ready_to_execute",
+  "handoff_reason": "All five v1.1 phases (8-12) are discussed, researched, planned, and plan-checker PASSED. Planning branch pushed. This handoff transfers EXECUTION of Phase 8 onward to a fresh session, potentially on a different model.",
+  "completed_tasks": [
+    {
+      "id": 1,
+      "name": "Reconcile GSD to personal-use v1 delivery and archive milestone v1.0",
+      "status": "complete",
+      "progress": "PR #30 (personal-use reconciliation) and PR #31 (v1.0 archive) merged to origin/main earlier. Public-release ceremony retired to V2-05."
+    },
+    {
+      "id": 2,
+      "name": "Open v1.1 milestone and finalize requirements + UX flow",
+      "status": "complete",
+      "progress": "12 requirements (WORK-19..27, WORK-26, DATA-08/09/10) in REQUIREMENTS.md; active-workout UX in design/v1.1-UX-FLOW.md; resolved decision record in design/v1.1-OPEN-QUESTIONS.md. ROADMAP/PROJECT/STATE opened for v1.1."
+    },
+    {
+      "id": 3,
+      "name": "Discuss + Research + Plan + Check all five phases",
+      "status": "complete",
+      "progress": "22 plans across Phases 8-12; every phase passed the plan-checker; decision-coverage gates green (7/8/4/4/5). Migration chain v19->v20->v21->v22 confirmed. Planning committed on design/v1.1-workout-editing."
+    },
+    {
+      "id": 4,
+      "name": "Clean commit trailers and push the design branch",
+      "status": "complete",
+      "progress": "filter-branch stripped the extra traecli@bytedance.com trailer from commit 0634047 (docs(08) research). All 19 commits now carry EXACTLY ONE Co-authored-by trailer. Branch pushed and tracking origin/design/v1.1-workout-editing at b09bc17."
+    }
+  ],
+  "remaining_tasks": [
+    {
+      "id": 1,
+      "name": "Execute Phase 8 (Session Overview & Navigation) plans 08-01 -> 08-02 -> 08-03 -> 08-04",
+      "status": "not_started"
+    },
+    {
+      "id": 2,
+      "name": "Execute Phase 9 (In-Workout Exercise Editing) plans 09-01..09-06 (migration 0019)",
+      "status": "not_started"
+    },
+    {
+      "id": 3,
+      "name": "Execute Phase 10 (Advanced Set Timing) plans 10-01..10-04 (migration 0020)",
+      "status": "not_started"
+    },
+    {
+      "id": 4,
+      "name": "Execute Phase 11 (Portable History & Merge Restore) plans 11-01..11-04 (migration 0021)",
+      "status": "not_started"
+    },
+    {
+      "id": 5,
+      "name": "Execute Phase 12 (Automatic Google-Drive Sync) plans 12-01..12-04 (migration 0022 + dependency-audit gate)",
+      "status": "not_started"
+    }
+  ],
+  "blockers": [],
+  "async_jobs": [],
+  "human_actions_pending": [
+    {
+      "action": "Owner reviews the v1.1 UX flow and phase plans before execution begins",
+      "context": "The owner asked to design via GSD first and review the active-workout UX reorientation (overview-first) before proceeding. UX flow is in .planning/design/v1.1-UX-FLOW.md; per-phase plans are under .planning/phases/08..12.",
+      "blocking": false
+    }
+  ],
+  "decisions": [
+    {
+      "decision": "v1 and v1.1 ship as a signed personal-use Android APK via personal-apk.yml; the public-release ceremony (attended device matrix, owner-approval token, no-rebuild Release promotion, Terminal Seal) is retired and tracked as V2-05",
+      "rationale": "Owner chose signed personal-use APK over public-release ceremony.",
+      "phase": "milestone"
+    },
+    {
+      "decision": "Reorient the active workout to an overview-first, single scrollable exercise list (D-03/D-06); land anchored on the active set (D-05); unify empty/unplanned workout into the same overview (D-07)",
+      "rationale": "Owner-approved UX reorientation based on Hevy/Liftin' references; retires the v1.0 dual focused/review mode.",
+      "phase": "08"
+    },
+    {
+      "decision": "Completed workout history is row-level append-only immutable (WORK-24, reframing WORK-04); replace keeps the original exercise as skipped (Q6); edits are modified-from-plan",
+      "rationale": "WORK-04 must not be weakened; completed sets keep correction/undo/history semantics.",
+      "phase": "09"
+    },
+    {
+      "decision": "End-of-workout 'save changes to plan?' opt-in defaults to No (Q9)",
+      "rationale": "Owner default: do not write back to the plan unless explicitly chosen.",
+      "phase": "09"
+    },
+    {
+      "decision": "Advanced set timing supports BOTH per-rep cadence AND cluster-set intra-rest modes (Q10); cues are advisory-only and never authoritative over recorded facts",
+      "rationale": "Owner selected full per-rep + cluster.",
+      "phase": "10"
+    },
+    {
+      "decision": "Backup is one canonical portable versioned encrypted archive that restores clean OR merges (authenticated, conflict-ruled, previewed, all-or-nothing); records get stable owner-scoped portable identities (schema 21)",
+      "rationale": "Owner wants a central place to keep history/backup and restore to any personal device (DATA-08/09).",
+      "phase": "11"
+    },
+    {
+      "decision": "Automatic sync uses the owner's OWN Google Drive (One-Tap sign-in, drive.file scope), one app-created client-side-encrypted store, passphrase-derived key; reuse helper-payroll-app's Google sign-in + Drive + Noble-cipher patterns but NOT its Firestore transport; sync is derivative replication over the Phase 11 merge engine and never blocks the offline workout path",
+      "rationale": "Owner chose automatic sync (Q13/DATA-10) across personal devices.",
+      "phase": "12"
+    },
+    {
+      "decision": "All v1.1 planning happens before any execution; Phase 9/10/11-produced files (migrations 0019-0021, phase summaries, phase-owned maestro runners) are execution-time givens and must be re-grounded against the ACTUAL migration registry at execution time, not the plan-time anchors",
+      "rationale": "Cross-phase planning reality: Phase 10's first plan-check failed for read_first-ing absent downstream files; plans were re-anchored on existing files (0018_*, run-phase7-maestro.mjs) and treat v19+ as depends_on givens.",
+      "phase": "milestone"
+    }
+  ],
+  "uncommitted_files": [],
+  "next_action": "In the design worktree /Users/bytedance/Documents/personal/gym_tracker_v11_design (branch design/v1.1-workout-editing, HEAD b09bc17), confirm the owner has reviewed the v1.1 UX flow, then run /gsd-execute-phase 8 starting with .planning/phases/08-session-overview-navigation/08-01-overview-tracer-PLAN.md. Auto-advance is enabled in config.json so execution chains 08->09->10->11->12; migrations must be added strictly after the real on-disk maximum (0018 today) as v19->v20->v21->v22, each bundling its LOGICAL_BACKUP reference-graph + supported-version update in the same wave.",
+  "context_notes": "AUTHORITATIVE CHECKOUT: /Users/bytedance/Documents/personal/gym_tracker_v11_design (branch design/v1.1-workout-editing). NEVER touch the dirty primary checkout /Users/bytedance/Documents/personal/gym_tracker (branch fix/release-candidate-ci). Design HEAD b09bc1772f51df36908375e65da3ef70bc5c3b12 == origin/design/v1.1-workout-editing (pushed). origin/main 44aeaad1e1e36610b3cc5d3554ccc5219c1b5382; design is 19 commits ahead. COMMIT HYGIENE: core.hooksPath points at commit-attribution which injects a SECOND 'Co-authored-by: TRAE CLI <traecli@bytedance.com>' trailer; every commit must end with EXACTLY ONE 'Co-authored-by: TRAE CLI <noreply@users.noreply.github.com>'. Reliable clean-commit pattern: TREE=$(git write-tree); PARENT=$(git rev-parse HEAD); NEWC=$(printf '%s' \"$MSG\" | git commit-tree \"$TREE\" -p \"$PARENT\"); git update-ref HEAD \"$NEWC\"; git reset -q --mixed HEAD. MODELS (config.json model_profile_overrides.trae): opus->gpt-5.6-sol (planner), sonnet->gpt-5.6-terra (researcher), haiku->gpt-5.6-luna (checker); runtime trae; do NOT route delegated agents through Claude-family paths. TOOLING: Node v24.19.0, npm 12.0.2 (was 11.17.0 at plan time). MIGRATIONS: highest on disk is 0018_workout_remove_receipt_entity_ids.ts; LOGICAL_BACKUP_SUPPORTED_SCHEMA_VERSIONS currently [15,16,17,18] in src/domains/portability/restoreCommands.ts:146. Coverage gate: scripts/run-coverage-gate.mjs via npm run test:coverage (integrity-critical files must stay 100%). gsd-tools shim: node /Users/bytedance/.trae/gsd-core/bin/gsd-tools.cjs query <verb> (ignore harmless zsh compdef warning and defaults.json/resolve_model noise). Phase 12 reuses (read-only) helper-payroll-app google-auth.ts / drive-client.ts / encrypted-envelope.ts / docs 0001-encrypted-family-sync.md; deps react-native-nitro-google-signin@^1.3.0, @noble/ciphers@2.2.0, expo-secure-store@~57.0.1; DRIVE_FILE_SCOPE='https://www.googleapis.com/auth/drive.file'; Argon2id 32-byte key, 16-byte salt, 19456 KiB, 2 iters, parallelism 1. Planning-only commits so far; the owner wanted to review the UX before code."
+}
