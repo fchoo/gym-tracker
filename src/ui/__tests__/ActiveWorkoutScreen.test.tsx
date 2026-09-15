@@ -212,6 +212,42 @@ const completedView: ActiveWorkoutView = {
   },
 };
 
+function overviewView(): ActiveWorkoutView {
+  const completedExercise = {
+    ...initialView.currentExercise,
+    id: "session-exercise-1",
+    name: "Back Squat",
+    revision: 7,
+    status: "completed" as const,
+    workingSets: initialView.currentExercise.workingSets.map((set) => ({
+      ...set,
+      status: "completed" as const,
+      completedAtMs: 1_000,
+      revision: 11,
+    })),
+  };
+  const activeExercise = {
+    ...initialView.currentExercise,
+    id: "session-exercise-2",
+    exerciseId: "bench-press",
+    name: "Bench Press",
+    ordinal: 1,
+    revision: 13,
+    workingSets: initialView.currentExercise.workingSets.map((set, index) => ({
+      ...set,
+      id: `bench-working-${index + 1}`,
+      revision: 17 + index,
+    })),
+  };
+  return {
+    ...initialView,
+    activeExerciseId: activeExercise.id,
+    activeSetId: "bench-working-1",
+    currentExercise: activeExercise,
+    exercises: [completedExercise, activeExercise],
+  };
+}
+
 function commands(
   overrides: Partial<ActiveWorkoutCommands> = {},
 ): ActiveWorkoutCommands {
@@ -306,7 +342,31 @@ async function renderActive(
 }
 
 describe("Plan 01-08 ActiveWorkoutScreen", () => {
-  it("keeps current and reviewed exercise identity outside scrolling content", async () => {
+  it("renders every exercise in one overview and completes the stable active-set identity inline", async () => {
+    const view = overviewView();
+    const completeSet = jest.fn<ActiveWorkoutCommands["completeSet"]>(async () => ({
+      outcome: "committed",
+      view,
+    }));
+    await renderActive({ commands: commands({ completeSet }), view });
+
+    expect(screen.getByRole("header", { name: "Back Squat" })).toBeOnTheScreen();
+    expect(screen.getByRole("header", { name: "Bench Press" })).toBeOnTheScreen();
+    expect(screen.getByTestId("overview-session-exercise-1-working-1"))
+      .toBeOnTheScreen();
+    expect(screen.getByTestId("overview-session-exercise-2-bench-working-1"))
+      .toBeOnTheScreen();
+
+    await fireEvent.press(screen.getByRole("button", { name: "Complete Set 1" }));
+    await waitFor(() => {
+      expect(completeSet).toHaveBeenCalledWith(expect.objectContaining({
+        setId: "bench-working-1",
+        expectedSetRevision: 17,
+      }));
+    });
+  });
+
+  it("keeps the workout overview identity outside scrolling content", async () => {
     const reviewedExercise = {
       ...initialView.currentExercise,
       id: "session-exercise-2",
@@ -325,42 +385,14 @@ describe("Plan 01-08 ActiveWorkoutScreen", () => {
     expect(within(stickyHeader).getByTestId(
       "active-workout-identity-current",
     )).toBeOnTheScreen();
-    expect(within(stickyHeader).getByRole("header", { name: "Back Squat" }))
+    expect(within(stickyHeader).getByRole("header", { name: "Workout" }))
       .toBeOnTheScreen();
-    expect(within(stickyHeader).getByText("FOCUSED WORKOUT"))
+    expect(within(stickyHeader).getByText("WORKOUT OVERVIEW"))
       .toBeOnTheScreen();
     expect(within(scroll).queryByTestId("active-workout-identity-current"))
       .not.toBeOnTheScreen();
 
-    await rendered.rerender(
-      <AppearanceProvider>
-        <ActiveWorkoutScreen
-          {...props}
-          reviewExerciseId="session-exercise-2"
-        />
-      </AppearanceProvider>,
-    );
-
-    const reviewStickyHeader = screen.getByTestId(
-      "active-workout-sticky-header",
-    );
-    const reviewScroll = screen.getByTestId("active-workout-scroll");
-    expect(within(reviewStickyHeader).getByTestId(
-      "active-workout-identity-review",
-    )).toBeOnTheScreen();
-    expect(within(reviewStickyHeader).getByRole("header", {
-      name: "Bench Press",
-    })).toBeOnTheScreen();
-    expect(within(reviewStickyHeader).getByText("REVIEWING WORKOUT"))
-      .toBeOnTheScreen();
-    expect(within(reviewStickyHeader).queryByRole("button", {
-      name: "More workout actions",
-    })).not.toBeOnTheScreen();
-    expect(within(reviewScroll).queryByTestId("active-workout-identity-review"))
-      .not.toBeOnTheScreen();
-    expect(within(reviewScroll).getByRole("button", {
-      name: "Return to current exercise",
-    })).toBeOnTheScreen();
+    expect(props.reviewExerciseId).toBeUndefined();
   });
 
   it("opens Today's plan without sending a workout mutation", async () => {
@@ -481,7 +513,7 @@ describe("Plan 01-08 ActiveWorkoutScreen", () => {
     expect(onReturnToActiveWorkout).toHaveBeenCalledTimes(1);
   });
 
-  it("lists every workout exercise in order and reviews it without changing the active pointer", async () => {
+  it("lists every workout exercise in overview order without changing the active pointer", async () => {
     const reviewedExercise = {
       ...initialView.currentExercise,
       id: "session-exercise-2",
@@ -516,62 +548,10 @@ describe("Plan 01-08 ActiveWorkoutScreen", () => {
         skippedExercise,
       ],
     };
-    const onReviewExercise = jest.fn();
-    await render(
-      <AppearanceProvider>
-        <WorkoutPlanOverviewScreen
-          onBack={jest.fn()}
-          onReturnToActiveWorkout={jest.fn()}
-          onReviewExercise={onReviewExercise}
-          scene={resolveWorkoutPlanOverviewScene(view)}
-        />
-      </AppearanceProvider>,
-    );
-
-    expect(screen.getByLabelText(
-      "1. Back Squat. Current. Open for review",
-    )).toBeOnTheScreen();
-    expect(screen.getByLabelText(
-      "2. Bench Press. Completed. Open for review",
-    )).toBeOnTheScreen();
-    expect(screen.getByLabelText(
-      "3. Barbell Row. Planned. Open for review",
-    )).toBeOnTheScreen();
-    expect(screen.getByLabelText(
-      "4. Pull-up. Skipped. Open for review",
-    )).toBeOnTheScreen();
-
-    await fireEvent.press(screen.getByLabelText(
-      "2. Bench Press. Completed. Open for review",
-    ));
-
-    expect(onReviewExercise).toHaveBeenCalledWith("session-exercise-2");
-    expect(view.activeExerciseId).toBe("session-exercise-1");
-
-    const activeCommands = commands();
-    const onReturnToCurrent = jest.fn();
-    await renderActive({
-      commands: activeCommands,
-      onReturnToCurrent,
-      reviewExerciseId: "session-exercise-2",
-      view,
-    });
-    expect(screen.getByRole("header", { name: "Bench Press" }))
-      .toBeOnTheScreen();
-    expect(screen.getByText("Reviewing another exercise"))
-      .toBeOnTheScreen();
-    expect(screen.getByRole("button", {
-      name: "Return to current exercise",
-    })).toBeOnTheScreen();
-    expect(screen.queryByRole("button", {
-      name: "Complete Set 1",
-    })).not.toBeOnTheScreen();
-    expect(activeCommands.completeSet).not.toHaveBeenCalled();
-
-    await fireEvent.press(screen.getByRole("button", {
-      name: "Return to current exercise",
-    }));
-    expect(onReturnToCurrent).toHaveBeenCalledTimes(1);
+    await renderActive({ view });
+    for (const name of ["Back Squat", "Bench Press", "Barbell Row", "Pull-up"]) {
+      expect(screen.getByRole("header", { name })).toBeOnTheScreen();
+    }
     expect(view.activeExerciseId).toBe("session-exercise-1");
   });
 
