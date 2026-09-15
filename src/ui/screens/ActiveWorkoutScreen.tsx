@@ -403,6 +403,11 @@ export function ActiveWorkoutScreen({
   const [activeWorkingCardOffset, setActiveWorkingCardOffset] = useState<
     Readonly<{ exerciseId: string; y: number }> | null
   >(null);
+  const [pendingScrollTarget, setPendingScrollTarget] = useState<
+    Readonly<{ setId: string; animated: boolean }> | null
+  >(() => initialView.activeSetId === null
+    ? null
+    : { setId: initialView.activeSetId, animated: false });
   const [editingCompletedSetId, setEditingCompletedSetId] =
     useState<string | null>(null);
   const [expandedExerciseIds, setExpandedExerciseIds] = useState<ReadonlySet<string>>(
@@ -529,6 +534,9 @@ export function ActiveWorkoutScreen({
   useEffect(() => {
     viewRef.current = initialView;
     setView(initialView);
+    setPendingScrollTarget(initialView.activeSetId === null
+      ? null
+      : { setId: initialView.activeSetId, animated: false });
   }, [initialView]);
 
   useEffect(() => {
@@ -581,6 +589,17 @@ export function ActiveWorkoutScreen({
         completedAtMs,
       });
       applyView(result.view);
+      if (
+        result.outcome === "committed"
+        && result.view.activeSetId !== null
+        && result.view.activeSetId !== currentView.activeSetId
+      ) {
+        setExpandedCompactSetId(null);
+        setPendingScrollTarget({
+          setId: result.view.activeSetId,
+          animated: !reduceMotion,
+        });
+      }
     } catch {
       setSaveFailedSetId(requestedSetId);
     } finally {
@@ -979,14 +998,16 @@ export function ActiveWorkoutScreen({
         scrollOffset={revealedSetOffset}
         {...(revealedSetId === null ? {} : { scrollRestoreKey: revealedSetId })}
         {...(
-          activeSet === undefined
+          pendingScrollTarget === null
+          || activeSet === undefined
+          || pendingScrollTarget.setId !== activeSet.id
           || activeSetMeasurement?.setId !== activeSet.id
           || activeExerciseOffset?.exerciseId !== activeExercise.id
           || activeWorkingCardOffset?.exerciseId !== activeExercise.id
             ? {}
             : {
           measuredScrollRequest: {
-            animated: !reduceMotion,
+            animated: pendingScrollTarget.animated,
             targetKey: activeSet.id,
             y: activeExerciseOffset.y
               + activeWorkingCardOffset.y
@@ -1046,6 +1067,7 @@ export function ActiveWorkoutScreen({
               return (
               <View
                 key={exercise.id}
+                testID={`overview-exercise-${exercise.id}`}
                 onLayout={(event: LayoutChangeEvent) => {
                   if (exercise.id === activeExercise.id) {
                     const y = event.nativeEvent.layout.y;
@@ -1226,6 +1248,7 @@ export function ActiveWorkoutScreen({
               ))}
                 </ContentCard>
             <View
+              testID={`overview-working-card-${exercise.id}`}
               onLayout={(event: LayoutChangeEvent) => {
                 if (exercise.id === activeExercise.id) {
                   const y = event.nativeEvent.layout.y;

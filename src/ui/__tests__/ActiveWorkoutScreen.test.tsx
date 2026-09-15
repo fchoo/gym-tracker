@@ -316,6 +316,7 @@ function commands(
 async function renderActive(
   overrides: Partial<React.ComponentProps<typeof ActiveWorkoutScreen>> = {},
   appearance?: "Light" | "Dark",
+  reduceMotion = false,
 ) {
   const activeCommands = overrides.commands ?? commands();
   const props = {
@@ -332,6 +333,7 @@ async function renderActive(
     props,
     rendered: await render(
       <AppearanceProvider
+        reduceMotion={reduceMotion}
         {...(appearance === undefined
           ? {}
           : { store: { read: () => appearance, write: () => undefined } })}
@@ -417,6 +419,43 @@ describe("Plan 01-08 ActiveWorkoutScreen", () => {
 
     await waitFor(() => expect(scrollTo).toHaveBeenCalledTimes(1));
     expect(scrollTo).toHaveBeenLastCalledWith({ animated: true, x: 0, y: 192 });
+    scrollTo.mockRestore();
+  });
+
+  it("uses a non-animated authoritative request under reduced motion and suppresses no-op results", async () => {
+    const scrollTo = jest.spyOn(ScrollView.prototype, "scrollTo")
+      .mockImplementation(() => undefined);
+    const noOpComplete = jest.fn<ActiveWorkoutCommands["completeSet"]>(async () => ({
+      outcome: "already_completed",
+      view: initialView,
+    }));
+    await renderActive({ commands: commands({ completeSet: noOpComplete }) }, undefined, true);
+    await fireEvent.press(screen.getByRole("button", { name: "Complete Set 1" }));
+    await waitFor(() => expect(noOpComplete).toHaveBeenCalledTimes(1));
+    expect(scrollTo).not.toHaveBeenCalled();
+
+    const committedComplete = jest.fn<ActiveWorkoutCommands["completeSet"]>(async () => ({
+      outcome: "committed",
+      view: completedView,
+    }));
+    const { rendered } = await renderActive({
+      commands: commands({ completeSet: committedComplete }),
+    }, undefined, true);
+    await fireEvent.press(screen.getByRole("button", { name: "Complete Set 1" }));
+    await waitFor(() => expect(committedComplete).toHaveBeenCalledTimes(1));
+    await fireEvent(screen.getByTestId("overview-exercise-session-exercise-1"), "layout", {
+      nativeEvent: { layout: { x: 0, y: 120, width: 320, height: 400 } },
+    });
+    await fireEvent(screen.getByTestId("overview-working-card-session-exercise-1"), "layout", {
+      nativeEvent: { layout: { x: 0, y: 40, width: 320, height: 240 } },
+    });
+    await fireEvent(screen.getByTestId("working-set-2-row"), "layout", {
+      nativeEvent: { layout: { x: 0, y: 32, width: 320, height: 160 } },
+    });
+
+    await waitFor(() => expect(scrollTo).toHaveBeenCalledTimes(1));
+    expect(scrollTo).toHaveBeenLastCalledWith({ animated: false, x: 0, y: 192 });
+    await rendered.unmount();
     scrollTo.mockRestore();
   });
 

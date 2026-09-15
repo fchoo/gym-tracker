@@ -48,3 +48,4 @@ tags:
 - extendedWaitUntil:
     visible: "RESTING · NEXT: SET 2 AT 60 kg × 8"
     timeout: 60000
+- assertVisible: "Complete Set 2"
