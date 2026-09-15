@@ -1,10 +1,10 @@
 ---
 schema_version: 1
-open_count: 1
+open_count: 2
 waived_count: 0
 fixed_count: 73
-total_count: 74
-last_updated: 2026-09-15T13:12:46.397Z
+total_count: 75
+last_updated: 2026-09-15T13:57:36.675Z
 ---
 
 # Broken Windows Ledger
@@ -89,6 +89,7 @@ last_updated: 2026-09-15T13:12:46.397Z
 | 72 | 08 | unrun-verify | maestro/phase8/session-overview.yaml |  | Maestro session-overview tracer unrun: no connected device is available in the design worktree. | open |  | 2026-09-15T12:51:16.455Z |  |
 | 73 | 08 | deviation | src/ui/components/SetRow.tsx |  | Compact set rows now enforce the required 48dp minimum width as well as height. | fixed |  | 2026-09-15T13:12:28.580Z | 2026-09-15T13:12:46.305Z |
 | 74 | 08 | deviation | src/ui/screens/ActiveWorkoutScreen.tsx |  | Measured scroll request keys now include authoritative revision to prevent later target suppression. | fixed |  | 2026-09-15T13:12:28.664Z | 2026-09-15T13:12:46.397Z |
+| 75 | 08 | unrun-verify | maestro/phase8/session-overview.yaml |  | Phase 8 Maestro runner unrun: declared development-test manifest artifacts/native/phase2/build.json is absent, so no 200 percent font-scale/device evidence could be captured. | open |  | 2026-09-15T13:57:36.675Z |  |
 
 ````json
 [
@@ -979,6 +980,18 @@ last_updated: 2026-09-15T13:12:46.397Z
     "reason": "",
     "recorded_at": "2026-09-15T13:12:28.664Z",
     "resolved_at": "2026-09-15T13:12:46.397Z"
+  },
+  {
+    "id": 75,
+    "kind": "unrun-verify",
+    "phase": "08",
+    "file": "maestro/phase8/session-overview.yaml",
+    "line": null,
+    "description": "Phase 8 Maestro runner unrun: declared development-test manifest artifacts/native/phase2/build.json is absent, so no 200 percent font-scale/device evidence could be captured.",
+    "status": "open",
+    "reason": "",
+    "recorded_at": "2026-09-15T13:57:36.675Z",
+    "resolved_at": null
   }
 ]
 ````

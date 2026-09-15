@@ -4,17 +4,17 @@ milestone: v1.1
 milestone_name: In-Workout Editing, Advanced Timing & Cross-Device Sync
 current_phase: 08
 current_phase_name: Session Overview & Navigation
-status: executing
-stopped_at: Completed 08-03-unified-route-PLAN.md
-last_updated: "2026-09-15T13:34:37.042Z"
+status: verifying
+stopped_at: Completed 08-04-lifecycle-verification-PLAN.md
+last_updated: "2026-09-15T13:59:28.677Z"
 last_activity: 2026-09-15
 last_activity_desc: Phase 08 execution started
-state_head: 21a655f647299f3d93dcbc938cbf337a9a2ee0c5
+state_head: e036cfd6d5fcdb393cf00da0778a148e2f8516ab
 progress:
   total_phases: 5
   completed_phases: 0
   total_plans: 22
-  completed_plans: 3
+  completed_plans: 4
   percent: 0
 ---
 
@@ -31,7 +31,7 @@ See: `.planning/PROJECT.md` (updated 2026-09-15)
 
 Phase: 08 (Session Overview & Navigation) — EXECUTING
 Plan: 4 of 4
-Status: Ready to execute
+Status: Phase complete — ready for verification
 Last activity: 2026-09-15 — Phase 08 execution started
 
 ## Delivery model
@@ -127,6 +127,7 @@ Terminal Seal) is retired for personal-use (removed in PR #29) and tracked as V2
 | Phase 08-session-overview-navigation P01 | 1h 15m | 2 tasks | 7 files |
 | Phase 08-session-overview-navigation P02 | 14min | 2 tasks | 4 files |
 | Phase 08-session-overview-navigation P03 | 13min | 2 tasks | 12 files |
+| Phase 08 P04 | 25min | 2 tasks | 17 files |
 
 ## Accumulated Context
 
@@ -285,6 +286,8 @@ Full decisions live in `.planning/PROJECT.md`.
 - [Phase 08]: Scroll only after a committed changed active-set result, using revision-keyed measured requests and reduced-motion policy.
 - [Phase 08]: Phase 08 Plan 03: one discriminated session route and overview shell replace the focused/review workout navigation model.
 - [Phase 08]: Phase 08 Plan 03: Phase 9 exercise creation remains a disabled explanatory affordance; zero-set and discard keep existing revision-checked commands.
+- [Phase 08]: Phase 8 native evidence uses one manifest-bound runner that restores Android font scale and fails closed without restoration.
+- [Phase 08]: Coverage diagnostics are not treated as a successful gate when inherited test failures prevent the required gate report.
 
 ### Blockers/Concerns
 
@@ -314,8 +317,8 @@ Full decisions live in `.planning/PROJECT.md`.
 
 ## Session Continuity
 
-Last session: 2026-09-15T13:34:37.029Z
-Stopped at: Completed 08-03-unified-route-PLAN.md
+Last session: 2026-09-15T13:59:28.665Z
+Stopped at: Completed 08-04-lifecycle-verification-PLAN.md
 Resume file: None
 Next action: Run `/gsd-audit-milestone v1.0`, then `/gsd-complete-milestone v1.0` to archive.
 
