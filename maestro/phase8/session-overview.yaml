@@ -123,9 +123,18 @@ tags:
     visible: "Today"
     timeout: 30000
 - extendedWaitUntil:
-    visible: "Train anyway"
+    visible: "^(Choose another day|Train anyway)$"
     timeout: 30000
-- tapOn: "Train anyway"
+- runFlow:
+    when:
+      visible: "Choose another day"
+    commands:
+      - tapOn: "Choose another day"
+- runFlow:
+    when:
+      visible: "Train anyway"
+    commands:
+      - tapOn: "Train anyway"
 - tapOn: "Start empty workout"
 - extendedWaitUntil:
     visible: "Empty workout in progress"
