@@ -1,18 +1,18 @@
 ---
 gsd_state_version: 1.0
 milestone: v1.1
-status: Designing (awaiting owner UX review)
-stopped_at: v1.1 requirements + UX flow drafted for review; no planning or implementation started.
+status: Planning (owner decisions locked; automatic Google-Drive sync approved)
+stopped_at: v1.1 requirements + UX finalized (12 reqs, Phases 8-12, automatic Drive sync). Ready for /gsd-new-milestone and phase planning.
 last_updated: "2026-09-15T00:00:00.000Z"
 last_activity: 2026-09-15
-last_activity_desc: Opened v1.1 design — in-workout editing, session overview, advanced timing, merge restore
+last_activity_desc: Locked v1.1 scope — in-workout editing, session overview, per-rep/cluster timing, portable/merge backup, automatic Google-Drive sync
 state_head: 44aeaad1e1e36610b3cc5d3554ccc5219c1b5382
 progress:
-  total_phases: 4
+  total_phases: 5
   completed_phases: 0
   total_plans: 0
   completed_plans: 0
-milestone_name: In-Workout Editing & Advanced Timing
+milestone_name: In-Workout Editing, Advanced Timing & Cross-Device Sync
 current_phase: 08
 current_phase_name: Session Overview & Navigation
 ---

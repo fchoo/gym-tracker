@@ -41,11 +41,12 @@ _Confirmed still correct at v1.0 close: the shipped app delivers exactly this lo
 - [ ] Land the active workout on a session-overview screen (all exercises + sets scrollable) instead of the first set — WORK-19.
 - [ ] Add / replace / remove / reorder exercises mid-workout without breaking append-only immutable history — WORK-20..WORK-25.
 - [ ] Per-repetition and cluster-set timer modes (advisory, non-authoritative) — WORK-26 (promoted from V2-03).
-- [ ] Merge a backup into existing data with conflict rules and preview — DATA-08 (promoted from V2-04).
+- [ ] One canonical portable encrypted history/backup with merge-into-existing-data — DATA-08/DATA-09 (promoted from V2-04).
+- [ ] Automatic cross-device sync via the owner's own Google Drive (optional sign-in, client-side encrypted) — DATA-10.
 
 ### Out of Scope
 
-- Accounts and cloud synchronization — v1 is single-user and local-first.
+- Multi-user accounts, social sharing, and a hosted app backend — still out of scope. *(v1.1 note: optional single-owner Google sign-in for the owner's own Drive sync is now in scope via DATA-10; this is owner-controlled personal storage, not a shared backend or multi-user account system.)*
 - Social profiles, plan sharing, leaderboards, and community features — not part of the personal-use goal.
 - Wear OS — defer until the phone workout loop is proven.
 - Health Connect — defer until the local session model has real usage history.

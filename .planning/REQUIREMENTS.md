@@ -43,15 +43,19 @@ destroying a committed fact. See **WORK-24**.
 ### Data Portability & Cross-Device History (promoted from V2-04, expanded)
 
 - [ ] **DATA-08**: The owner can **merge a backup into existing data** (in addition to today's clean-install replacement restore). Merge authenticates and decrypts before parsing, uses stable owner-scoped identities to detect duplicates, applies an approved per-record-class conflict rule (see WORK/DATA decisions), previews the merge outcome before commit, and mutates user-owned tables in one all-or-nothing transaction. Any authentication, validation, conflict, cancellation, or insert failure leaves the existing database unchanged and shows a safe, actionable error; FTS and all projections rebuild deterministically after a successful merge.
-- [ ] **DATA-09**: The owner has a **single canonical history/backup they can carry to any of their personal devices** and restore/merge without data loss. Backups are portable, versioned, integrity-protected, and password-encrypted (reusing the v1.0 GTBK format), carry stable owner-scoped record identities so the same session/plan is recognized across devices, and are self-describing enough that a fresh install on a new device can restore-clean **or** merge (DATA-08) into existing data. The owner can export the latest backup on demand and see when/where it was last produced. *(v1.1 remains offline-first and single-owner: this establishes device-portable identity + a manual export/import path. Automatic cloud sync is explicitly NOT in scope — see Out of Scope / V2.)*
+- [ ] **DATA-09**: The owner has a **single canonical history/backup they can carry to any of their personal devices** and restore/merge without data loss. Backups are portable, versioned, integrity-protected, and password-encrypted (reusing the v1.0 GTBK format), carry stable owner-scoped record identities so the same session/plan is recognized across devices, and are self-describing enough that a fresh install on a new device can restore-clean **or** merge (DATA-08) into existing data. The owner can export/import the latest backup on demand and see when/where it was last produced. This manual path is the fallback whenever automatic sync (DATA-10) is unavailable or declined.
+- [ ] **DATA-10**: The owner can enable **automatic cross-device sync through their own Google Drive**. With the same Google account signed in on each personal device (One-Tap sign-in, `drive.file` scope), the app keeps one canonical encrypted store in its own Drive-created file and reconciles devices automatically — triggered on app foreground, on background/close, and after a workout or edit commits (near-real-time, not millisecond-live). All payload is **client-side encrypted** (XChaCha20-Poly1305) so Google/Drive sees only ciphertext and sizes/timestamps; the encryption key never leaves the device unencrypted. Sync is a **derivative replication over the DATA-08 merge engine** (per-record-class conflict rules, append/merge of a change-log, never blind overwrite): local SQLite remains the authoritative source, sync never blocks or mutates the live workout path, and any auth, network, decryption, conflict, or write failure leaves local data unchanged and is safely retryable. Sign-out and "disconnect sync" are explicit, and DATA-09 manual export/import remains available as the no-Drive fallback.
+
+> **Architecture note (reuse + a key learning from `helper-payroll-app`):** That repo's ADR 0001 found Google Drive `drive.file` unusable as a *multi-account family* live-sync transport because "each account's app token discovered only files created under its own grant." That limitation does **not** apply here: Gym Tracker is single-owner with the **same Google account on every device**, so the same grant sees the app-created file everywhere — Drive is a valid transport for this case. Reuse the proven pieces: `react-native-nitro-google-signin` (One-Tap + Drive scope), `@noble/ciphers` XChaCha20-Poly1305 client-side encryption, Drive REST v3, `expo-secure-store` for key persistence. Firestore (their multi-account transport) is **not** adopted — no shared backend, no third-party data processor.
 
 ## Owner decisions (recorded 2026-09-15)
 
 These resolve the open questions and are now binding for planning:
 
-- **Scope (Q14):** Full batch — WORK-19..WORK-27, WORK-26, DATA-08, DATA-09. V2-03 and V2-04 are both included in v1.1.
+- **Scope (Q14):** Full batch — WORK-19..WORK-27, WORK-26, DATA-08, DATA-09, DATA-10. V2-03 and V2-04 are both included in v1.1.
 - **Advanced timing (Q10):** Both per-rep cadence **and** cluster-set intra-rests ship in v1.1 (WORK-26).
-- **Cross-device history (Q13):** In scope, expanded to DATA-09 — one canonical, portable, device-independent history/backup the owner can restore or merge onto any personal device. Manual export/import path; **no automatic cloud sync** in v1.1.
+- **Cross-device history (Q13):** In scope AND **automatic sync approved (owner, 2026-09-15).** DATA-09 delivers the portable canonical backup + manual import/export fallback; **DATA-10 delivers automatic sync via the owner's own Google Drive** (`drive.file`, client-side encrypted). This is an explicit, recorded reversal of the app's prior "no account / offline-only" stance: signing into Google is now an optional, owner-initiated feature; the app remains fully functional offline and unsynced if Drive is never connected.
+- **Sync backend (2026-09-15):** Owner's own Google Drive (not a managed service, not self-hosted). Refer to `helper-payroll-app` for the Google One-Tap + Drive REST + Noble-cipher implementation; do NOT adopt its Firestore transport (that existed only for its multi-account family case).
 - **Replace with completed sets (Q6):** Approved — original stays visible as **skipped**, replacement appended; history preserved (WORK-21).
 - **Write-back to plan (Q9):** End-of-workout **explicit choice, default No** (WORK-27); edits are session-scoped unless the owner opts in.
 - **Accepted recommendations (defaults):** Q1 anchor to active set within the full list; Q2 overview-only active screen; Q3 unify empty workout into overview; Q4 single-select add; Q5 append-to-end then reorder; Q7 added/replacement exercises are manual-only (no auto-progression); Q8 edited session consumes the scheduled opportunity + modified-from-plan flag; Q11 a cluster is one recorded set with advisory intra-rests.
@@ -63,6 +67,8 @@ These resolve the open questions and are now binding for planning:
 - Screens never execute SQL; all mutations use the repository-owned private writer with FIFO serialization and explicit `BEGIN IMMEDIATE` / `COMMIT` / `ROLLBACK`.
 - A source mutation and its durable pending effects commit atomically before UI acknowledgement, haptics, notifications, or cache invalidation.
 - Every new/changed control retains an exact accessible name, visible focus, keyboard/D-pad activation, non-color cue, and a minimum 48dp target; new surfaces pass System/Light/Dark, compact/medium/expanded, 200% text, and reduced-motion checks.
+- **Sync is derivative and non-authoritative:** local SQLite remains the source of truth; sync (DATA-10) replicates over the DATA-08 merge engine and never blocks, delays, or mutates the offline workout critical path. Google sign-in is optional; the app is fully usable offline and unsynced.
+- **Sync security:** all synced payload is client-side encrypted (XChaCha20-Poly1305) before leaving the device; keys live only in `expo-secure-store` / Android Keystore and are never written to Drive, logs, analytics, or exports; Drive uses the `drive.file` scope (app-created files only), and OAuth tokens are handled through the vetted sign-in library. New third-party native dependencies (Google sign-in, Noble ciphers) pass the repo's dependency-audit gate.
 - Integrity-critical domain/application modules keep 100% statement/branch/function/line coverage; new behavior ships with tests, real Expo SQLite contracts where persistence changes, and Maestro flows for lifecycle-visible behavior.
 - Delivery remains the signed personal-use APK/AAB via `personal-apk.yml`.
 
@@ -70,7 +76,7 @@ These resolve the open questions and are now binding for planning:
 
 - Every checked requirement is implemented and passes its phase-scoped automated verification (typecheck, lint, boundaries, unit/component/host-SQLite/integration, coverage, native Expo SQLite contracts and Maestro flows where applicable).
 - The session overview is the default active-workout surface; add/replace/remove/reorder operate from it and preserve the append-only snapshot invariant (WORK-24).
-- Merge restore leaves the existing database unchanged on any failure and rebuilds derivatives deterministically on success; the canonical backup restores or merges onto any personal device without data loss (DATA-09).
+- Merge restore leaves the existing database unchanged on any failure and rebuilds derivatives deterministically on success; the canonical backup restores or merges onto any personal device without data loss (DATA-09); automatic Google-Drive sync (DATA-10) keeps the same-account devices reconciled with client-side encryption and never corrupts the offline workout path.
 - v1.1 is delivered as a signed personal-use APK/AAB, sideloaded unchanged.
 
 ## Traceability (to be assigned during roadmap/planning)
@@ -88,15 +94,15 @@ These resolve the open questions and are now binding for planning:
 | WORK-26 | 10 (proposed) | Draft |
 | DATA-08 | 11 (proposed) | Draft |
 | DATA-09 | 11 (proposed) | Draft |
+| DATA-10 | 12 (proposed) | Draft |
 
-**Coverage:** 11 v1.1 requirements defined; phase mapping proposed (finalized at roadmap creation).
+**Coverage:** 12 v1.1 requirements defined; phase mapping proposed (finalized at roadmap creation).
 
 ## Deferred beyond v1.1
 
 - **V2-01**: Wear OS.
 - **V2-02**: Health Connect import/export.
 - **V2-05**: Public GitHub Release / store promotion ceremony (attended device matrix, owner-approval token, no-rebuild digest gate, Terminal Seal).
-- **V2-06**: Automatic cloud sync of the canonical history/backup (v1.1 delivers a manual device-portable export/import + merge via DATA-08/DATA-09; hands-off multi-device sync, a hosted store, and live conflict reconciliation are a separate milestone).
 
 ---
-*Requirements drafted: 2026-09-15 for v1.1 (in-workout editing, session overview, advanced timing, cross-device merge restore). Owner UX decisions recorded 2026-09-15; pending go-ahead to plan.*
+*Requirements drafted: 2026-09-15 for v1.1 (in-workout editing, session overview, advanced timing, cross-device merge + automatic Google-Drive sync). Owner UX + sync decisions recorded 2026-09-15; proceeding to milestone planning.*
