@@ -1037,7 +1037,7 @@ describe("Plan 01-02 route shell", () => {
     },
   );
 
-  it("keeps the focused workout outside root navigation at every width", async () => {
+  it("keeps the workout overview outside root navigation at every width", async () => {
     for (const width of [599, 600, 840]) {
       const { unmount } = await render(
         <AppearanceProvider>
@@ -1050,8 +1050,9 @@ describe("Plan 01-02 route shell", () => {
       );
 
       expect(
-        screen.getByRole("header", { name: "Active Workout" }),
+        screen.getByRole("header", { name: "Workout" }),
       ).toBeOnTheScreen();
+      expect(screen.getByText("WORKOUT OVERVIEW")).toBeOnTheScreen();
       expect(screen.queryByRole("tablist")).not.toBeOnTheScreen();
       expect(
         screen.queryByText(/working-set interface arrives/i),

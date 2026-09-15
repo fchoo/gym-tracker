@@ -198,7 +198,9 @@ describe("Plan 07-04 SetRow", () => {
     });
 
     expect(screen.getByTestId("overview-exercise-2-working-2"))
-      .toHaveAccessibleName("Working set 2. Not completed. 62.5 kg × 6.");
+      .toHaveAccessibleName(
+        "Set 2. 62.5 kg × 6. Not completed. Expand set editor",
+      );
     expect(screen.queryByLabelText("Working set 2 load in kilograms"))
       .not.toBeOnTheScreen();
     expect(screen.queryByRole("button", { name: "Complete Set 2" }))

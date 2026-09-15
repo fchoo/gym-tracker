@@ -657,8 +657,11 @@ describe("active workout metric profiles", () => {
         screen.getByRole("button", { name: "Set not saved · Retry" }),
       );
       await waitFor(() => {
-        expect(screen.getByText("Completed working set 1"))
-          .toBeOnTheScreen();
+        const completedRow = screen.getByTestId(
+          `overview-exercise-${profileCase.identity.profile}-set-${profileCase.identity.profile}`,
+        );
+        expect(completedRow.props.accessibilityLabel)
+          .toEqual(expect.stringContaining("Completed. Expand set editor"));
       });
       expect(completeSet).toHaveBeenCalledTimes(2);
       expect(completeSet.mock.calls[1]).toEqual(completeSet.mock.calls[0]);
