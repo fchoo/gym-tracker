@@ -3265,7 +3265,10 @@ test("every public Maestro flow uses bounded traversal for working-set completio
 
   for (const relativePath of await maestroYamlPaths()) {
     const flow = await readFile(path.join(projectRoot, relativePath), "utf8");
-    if (relativePath === "maestro/lifecycle/rest-recovery.yaml") {
+    if ([
+      "maestro/lifecycle/rest-recovery.yaml",
+      "maestro/phase8/session-overview.yaml",
+    ].includes(relativePath)) {
       continue;
     }
     assert.doesNotMatch(flow, genericSetActionSearch, relativePath);

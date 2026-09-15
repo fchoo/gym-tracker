@@ -52,25 +52,19 @@ tags:
     centerElement: true
     timeout: 60000
 - assertVisible: "Bench Press"
-- repeat:
-    times: 4
-    while:
-      notVisible: "Back Squat"
-    commands:
-      - swipe:
-          start: 95%, 25%
-          end: 95%, 75%
-          duration: 300
+- scrollUntilVisible:
+    element:
+      text: "Back Squat"
+    direction: UP
+    centerElement: true
+    timeout: 60000
 - assertVisible: "Back Squat"
-- repeat:
-    times: 4
-    while:
-      notVisible: "Complete Set 1"
-    commands:
-      - swipe:
-          start: 95%, 75%
-          end: 95%, 25%
-          duration: 300
+- scrollUntilVisible:
+    element:
+      text: "Complete Set 1"
+    direction: DOWN
+    centerElement: true
+    timeout: 60000
 - assertVisible: "Complete Set 1"
 - tapOn: "Complete Set 1"
 - extendedWaitUntil:
