@@ -13,7 +13,7 @@ import {
   jest,
 } from "@jest/globals";
 import React from "react";
-import { ScrollView } from "react-native";
+import { Dimensions, ScrollView } from "react-native";
 
 jest.mock("expo-crypto", () => ({
   CryptoDigestAlgorithm: { SHA256: "SHA256" },
@@ -36,7 +36,11 @@ import {
   resolveWorkoutPlanOverviewScene,
   WorkoutPlanOverviewScreen,
 } from "../screens/WorkoutPlanOverviewScreen";
-import { AppearanceProvider, themes } from "../theme";
+import {
+  AppearanceProvider,
+  createMemoryAppearanceStore,
+  themes,
+} from "../theme";
 
 function loadReps(
   loadGrams: number,
@@ -457,6 +461,63 @@ describe("Plan 01-08 ActiveWorkoutScreen", () => {
     expect(scrollTo).toHaveBeenLastCalledWith({ animated: false, x: 0, y: 192 });
     await rendered.unmount();
     scrollTo.mockRestore();
+  });
+
+  it.each([
+    ["compact", 360],
+    ["medium", 720],
+    ["expanded", 1024],
+  ])("renders the full overview in %s layout", async (layout, width) => {
+    await renderActive({ view: overviewView(), width });
+    expect(screen.getByLabelText(`${layout} layout`)).toBeOnTheScreen();
+    expect(screen.getByRole("header", { name: "Bench Press" })).toBeOnTheScreen();
+  });
+
+  it.each([null, "Light", "Dark"] as const)("keeps the overview reachable with %s appearance", async (appearance) => {
+    const props = {
+      commands: commands(),
+      nowMs: () => 2_000,
+      onFinishLater: jest.fn(),
+      onGoBack: jest.fn(),
+      sessionId: "session-1",
+      view: overviewView(),
+    } satisfies React.ComponentProps<typeof ActiveWorkoutScreen>;
+    await render(
+      <AppearanceProvider store={createMemoryAppearanceStore(appearance)}>
+        <ActiveWorkoutScreen {...props} />
+      </AppearanceProvider>,
+    );
+    expect(screen.getByRole("header", { name: "Bench Press" })).toBeOnTheScreen();
+  });
+
+  it("keeps long overview labels and compact-row controls reachable at 200 percent text", async () => {
+    const previous = Dimensions.get("window");
+    await act(() => {
+      Dimensions.set({
+        screen: { ...previous, fontScale: 2 },
+        window: { ...previous, fontScale: 2 },
+      });
+    });
+    const source = overviewView();
+    const longActiveExercise = {
+      ...source.currentExercise,
+      name: "A very long active exercise name that remains reachable at 200 percent text",
+    };
+    const longNameView = {
+      ...source,
+      currentExercise: longActiveExercise,
+      exercises: [source.exercises[0]!, longActiveExercise],
+    };
+    const { rendered } = await renderActive({ view: longNameView, width: 360 });
+    expect(screen.getByRole("header", {
+      name: "A very long active exercise name that remains reachable at 200 percent text",
+    })).toBeOnTheScreen();
+    expect(screen.getByTestId("overview-session-exercise-2-bench-working-2"))
+      .toHaveStyle({ minHeight: 48, minWidth: 48 });
+    await rendered.unmount();
+    await act(() => {
+      Dimensions.set({ screen: previous, window: previous });
+    });
   });
 
   it("renders every exercise in one overview and completes the stable active-set identity inline", async () => {

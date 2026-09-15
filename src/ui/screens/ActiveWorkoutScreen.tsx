@@ -404,10 +404,14 @@ export function ActiveWorkoutScreen({
     Readonly<{ exerciseId: string; y: number }> | null
   >(null);
   const [pendingScrollTarget, setPendingScrollTarget] = useState<
-    Readonly<{ setId: string; animated: boolean }> | null
+    Readonly<{ key: string; setId: string; animated: boolean }> | null
   >(() => initialView.activeSetId === null
     ? null
-    : { setId: initialView.activeSetId, animated: false });
+    : {
+      key: `entry-${initialView.revision}-${initialView.activeSetId}`,
+      setId: initialView.activeSetId,
+      animated: false,
+    });
   const [editingCompletedSetId, setEditingCompletedSetId] =
     useState<string | null>(null);
   const [expandedExerciseIds, setExpandedExerciseIds] = useState<ReadonlySet<string>>(
@@ -536,7 +540,11 @@ export function ActiveWorkoutScreen({
     setView(initialView);
     setPendingScrollTarget(initialView.activeSetId === null
       ? null
-      : { setId: initialView.activeSetId, animated: false });
+      : {
+        key: `entry-${initialView.revision}-${initialView.activeSetId}`,
+        setId: initialView.activeSetId,
+        animated: false,
+      });
   }, [initialView]);
 
   useEffect(() => {
@@ -596,6 +604,7 @@ export function ActiveWorkoutScreen({
       ) {
         setExpandedCompactSetId(null);
         setPendingScrollTarget({
+          key: `advance-${result.view.revision}-${result.view.activeSetId}`,
           setId: result.view.activeSetId,
           animated: !reduceMotion,
         });
@@ -1008,7 +1017,7 @@ export function ActiveWorkoutScreen({
             : {
           measuredScrollRequest: {
             animated: pendingScrollTarget.animated,
-            targetKey: activeSet.id,
+            targetKey: pendingScrollTarget.key,
             y: activeExerciseOffset.y
               + activeWorkingCardOffset.y
               + activeSetMeasurement.y,
