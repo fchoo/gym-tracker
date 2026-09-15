@@ -2,9 +2,9 @@
 schema_version: 1
 open_count: 1
 waived_count: 0
-fixed_count: 71
-total_count: 72
-last_updated: 2026-09-15T12:51:16.455Z
+fixed_count: 73
+total_count: 74
+last_updated: 2026-09-15T13:12:46.397Z
 ---
 
 # Broken Windows Ledger
@@ -87,6 +87,8 @@ last_updated: 2026-09-15T12:51:16.455Z
 | 70 | 05 | deviation | scripts/generate-phase5-attended-checklist.mjs |  | Replaced digest-only attended trust with exact rows and immutable attachment byte verification | fixed |  | 2026-08-26T13:20:54.291Z | 2026-08-26T13:21:13.860Z |
 | 71 | 05 | deviation | .github/workflows/release-promotion.yml |  | Hardened cross-run promotion with successful-run provenance reuse rejection and public hash verification | fixed |  | 2026-08-26T13:20:54.390Z | 2026-08-26T13:21:13.963Z |
 | 72 | 08 | unrun-verify | maestro/phase8/session-overview.yaml |  | Maestro session-overview tracer unrun: no connected device is available in the design worktree. | open |  | 2026-09-15T12:51:16.455Z |  |
+| 73 | 08 | deviation | src/ui/components/SetRow.tsx |  | Compact set rows now enforce the required 48dp minimum width as well as height. | fixed |  | 2026-09-15T13:12:28.580Z | 2026-09-15T13:12:46.305Z |
+| 74 | 08 | deviation | src/ui/screens/ActiveWorkoutScreen.tsx |  | Measured scroll request keys now include authoritative revision to prevent later target suppression. | fixed |  | 2026-09-15T13:12:28.664Z | 2026-09-15T13:12:46.397Z |
 
 ````json
 [
@@ -953,6 +955,30 @@ last_updated: 2026-09-15T12:51:16.455Z
     "reason": "",
     "recorded_at": "2026-09-15T12:51:16.455Z",
     "resolved_at": null
+  },
+  {
+    "id": 73,
+    "kind": "deviation",
+    "phase": "08",
+    "file": "src/ui/components/SetRow.tsx",
+    "line": null,
+    "description": "Compact set rows now enforce the required 48dp minimum width as well as height.",
+    "status": "fixed",
+    "reason": "",
+    "recorded_at": "2026-09-15T13:12:28.580Z",
+    "resolved_at": "2026-09-15T13:12:46.305Z"
+  },
+  {
+    "id": 74,
+    "kind": "deviation",
+    "phase": "08",
+    "file": "src/ui/screens/ActiveWorkoutScreen.tsx",
+    "line": null,
+    "description": "Measured scroll request keys now include authoritative revision to prevent later target suppression.",
+    "status": "fixed",
+    "reason": "",
+    "recorded_at": "2026-09-15T13:12:28.664Z",
+    "resolved_at": "2026-09-15T13:12:46.397Z"
   }
 ]
 ````
