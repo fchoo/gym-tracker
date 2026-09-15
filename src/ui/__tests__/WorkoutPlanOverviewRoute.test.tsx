@@ -22,6 +22,8 @@ import { AppearanceProvider } from "../theme";
 
 let mockSessionId = "session-a";
 let mockRefreshGeneration = 0;
+let mockFocusCallback: (() => void) | null = null;
+let mockActiveWorkoutScreenInstanceCount = 0;
 const mockBack = jest.fn();
 const mockReplace = jest.fn();
 const mockGetActiveWorkout = jest.fn<(
@@ -32,6 +34,9 @@ jest.mock("expo-router", () => ({
   router: {
     back: mockBack,
     replace: mockReplace,
+  },
+  useFocusEffect: (callback: () => void) => {
+    mockFocusCallback = callback;
   },
   useLocalSearchParams: () => ({ sessionId: mockSessionId }),
 }));
@@ -71,6 +76,36 @@ jest.mock("../../bootstrap/workoutAppRuntime", () => ({
     workoutRefreshGeneration: mockRefreshGeneration,
   }),
 }));
+
+jest.mock("../screens/ActiveWorkoutScreen", () => {
+  const React = require("react") as typeof import("react");
+  const { Text } = require("react-native") as typeof import("react-native");
+
+  return {
+    ActiveWorkoutScreen: ({
+      sessionId,
+      view,
+    }: Readonly<{
+      sessionId: string;
+      view: ActiveWorkoutView;
+    }>) => {
+      const [instance] = React.useState(() => {
+        mockActiveWorkoutScreenInstanceCount += 1;
+        return mockActiveWorkoutScreenInstanceCount;
+      });
+
+      return (
+        <>
+          <Text accessibilityRole="header">Workout</Text>
+          <Text>{view.currentExercise.name}</Text>
+          <Text testID="active-workout-screen-instance">
+            {`${sessionId}:${instance}`}
+          </Text>
+        </>
+      );
+    },
+  };
+});
 
 import ActiveWorkoutRoute from "../../../app/workout/[sessionId]";
 
@@ -138,6 +173,8 @@ describe("ActiveWorkoutRoute", () => {
   beforeEach(() => {
     mockSessionId = "session-a";
     mockRefreshGeneration = 0;
+    mockFocusCallback = null;
+    mockActiveWorkoutScreenInstanceCount = 0;
     mockBack.mockReset();
     mockReplace.mockReset();
     mockGetActiveWorkout.mockReset();
@@ -211,5 +248,25 @@ describe("ActiveWorkoutRoute", () => {
     await waitFor(() => {
       expect(screen.getByText("Back Squat")).toBeOnTheScreen();
     });
+  });
+
+  it("remounts the same active workout overview when the route regains focus", async () => {
+    mockGetActiveWorkout.mockResolvedValue(
+      activeWorkout("session-a", "Back Squat"),
+    );
+    await renderRoute();
+
+    await waitFor(() => {
+      expect(screen.getByTestId("active-workout-screen-instance"))
+        .toHaveTextContent("session-a:1");
+    });
+    expect(mockFocusCallback).toEqual(expect.any(Function));
+
+    await act(async () => {
+      mockFocusCallback?.();
+    });
+
+    expect(screen.getByTestId("active-workout-screen-instance"))
+      .toHaveTextContent("session-a:2");
   });
 });

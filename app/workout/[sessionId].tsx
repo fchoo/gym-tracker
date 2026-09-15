@@ -1,9 +1,11 @@
 import {
   router,
+  useFocusEffect,
   useLocalSearchParams,
   type Href,
 } from "expo-router";
 import React, {
+  useCallback,
   useEffect,
   useState,
 } from "react";
@@ -44,6 +46,7 @@ export default function ActiveWorkoutRoute() {
   const resolvedSessionId = sessionId ?? "unknown";
   const [view, setView] = useState<WorkoutSessionView | null>(null);
   const [failed, setFailed] = useState(false);
+  const [focusGeneration, setFocusGeneration] = useState(0);
   const mutationCommands = createWorkoutMutationTestCommandAdapters({
     addWarmup: runtime.addWarmup,
     addWorkingSet: runtime.addWorkingSet,
@@ -70,6 +73,9 @@ export default function ActiveWorkoutRoute() {
     runtime.getActiveWorkout,
     runtime.workoutRefreshGeneration,
   ]);
+  useFocusEffect(useCallback(() => {
+    setFocusGeneration((current) => current + 1);
+  }, []));
 
   if (failed) {
     return (
@@ -149,6 +155,7 @@ export default function ActiveWorkoutRoute() {
       onDiscarded={() => router.replace("/(tabs)")}
       sessionId={resolvedSessionId}
       view={view}
+      key={`${resolvedSessionId}:${focusGeneration}`}
     />
   );
 }

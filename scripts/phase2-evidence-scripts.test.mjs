@@ -932,10 +932,10 @@ test("Phase 2 remediation flows use public labels and deterministic seams", asyn
 
   assert.match(
     workout,
-    /- assertVisible: "Warm-up was not added"\n- assertNotVisible:\n    text: "Warm-up 3 of \.\*"\n- tapOn: "Retry add warm-up"\n- repeat:\n    times: 12\n    while:\n      notVisible: "Warm-up 3 of 3\.\*Current values 40 kg × 5\.\*Not completed\.\*"\n    commands:\n      - swipe:\n          start: 95%, 75%\n          end: 95%, 25%\n          duration: 300\n- assertVisible: "Warm-up 3 of 3\.\*Current values 40 kg × 5\.\*Not completed\.\*"/u,
+    /- assertVisible: "Warm-up was not added"\n- assertNotVisible:\n    text: "Warm-up 3 of \.\*"\n- tapOn: "Retry add warm-up"\n- repeat:\n    times: 12\n    while:\n      notVisible: "Warm-up W3\. 40 kg × 5\. Not completed\. Expand set editor"\n    commands:\n      - swipe:\n          start: 95%, 75%\n          end: 95%, 25%\n          duration: 300\n- assertVisible: "Warm-up W3\. 40 kg × 5\. Not completed\. Expand set editor"/u,
   );
   const warmupTwoValues =
-    '- assertVisible: "Warm-up 2 of 2.*Current values 40 kg × 5.*Not completed.*"';
+    '- assertVisible: "Warm-up W2. 40 kg × 5. Not completed. Expand set editor"';
   assert.equal(
     workout.split(warmupTwoValues).length - 1,
     2,
@@ -947,7 +947,7 @@ test("Phase 2 remediation flows use public labels and deterministic seams", asyn
     "warm-up add and removal must leave session-wide working-set progress unchanged",
   );
   const warmupThreeValues =
-    '- assertVisible: "Warm-up 3 of 3.*Current values 40 kg × 5.*Not completed.*"';
+    '- assertVisible: "Warm-up W3. 40 kg × 5. Not completed. Expand set editor"';
   assert.equal(
     workout.split(warmupThreeValues).length - 1,
     2,
@@ -955,7 +955,7 @@ test("Phase 2 remediation flows use public labels and deterministic seams", asyn
   );
   assert.match(
     workout,
-    /- scrollUntilVisible:\n    element:\n      text: "Warm-up 2 of 2\.\*Current values 40 kg × 5\.\*Not completed\.\*"\n    direction: DOWN\n    centerElement: true\n- assertVisible: "Warm-up 2 of 2\.\*Current values 40 kg × 5\.\*Not completed\.\*"[\s\S]*- assertVisible: "Add warm-up"\n- tapOn: "Add warm-up"/u,
+    /- scrollUntilVisible:\n    element:\n      text: "Warm-up W2\. 40 kg × 5\. Not completed\. Expand set editor"\n    direction: DOWN\n    centerElement: true\n- assertVisible: "Warm-up W2\. 40 kg × 5\. Not completed\. Expand set editor"[\s\S]*- assertVisible: "Add warm-up"\n- tapOn: "Add warm-up"/u,
   );
   assert.doesNotMatch(
     workout,
@@ -964,7 +964,7 @@ test("Phase 2 remediation flows use public labels and deterministic seams", asyn
   );
   assert.match(
     workout,
-    /- assertVisible: "Remove warm-up W3"\n- tapOn: "Remove warm-up W3"\n- assertVisible: "Remove warm-up W3\?"\n- tapOn:\n    id: "remove-warmup-confirm"\n- extendedWaitUntil:\n    visible: "Warm-up 2 of 2\.\*Current values 40 kg × 5\.\*Not completed\.\*"\n    timeout: 60000\n- assertNotVisible: "Remove warm-up W3"\n- assertNotVisible:\n    text: "Warm-up 3 of \.\*"/u,
+    /- assertVisible: "Warm-up W3\. 40 kg × 5\. Not completed\. Expand set editor"\n- assertNotVisible:\n    text: "Warm-up 4 of \.\*"\n- tapOn: "Warm-up W3\. 40 kg × 5\. Not completed\. Expand set editor"[\s\S]*- assertVisible: "Remove warm-up W3"\n- tapOn: "Remove warm-up W3"\n- assertVisible: "Remove warm-up W3\?"\n- tapOn:\n    id: "remove-warmup-confirm"\n- extendedWaitUntil:\n    visible: "Warm-up W2\. 40 kg × 5\. Not completed\. Expand set editor"\n    timeout: 60000\n- assertNotVisible: "Remove warm-up W3"\n- assertNotVisible:\n    text: "Warm-up 3 of \.\*"/u,
   );
   assert.doesNotMatch(
     workout,
@@ -973,8 +973,8 @@ test("Phase 2 remediation flows use public labels and deterministic seams", asyn
   );
   assert.match(
     workout,
-    /- repeat:\n    times: 4\n    while:\n      notVisible: "Remove warm-up W3"\n    commands:\n      - swipe:\n          start: 95%, 75%\n          end: 95%, 45%\n          duration: 300\n- assertVisible: "Remove warm-up W3"/u,
-    "the persisted added warm-up must reveal its trailing remove action before using it",
+    /- tapOn: "Warm-up W3\. 40 kg × 5\. Not completed\. Expand set editor"\n- repeat:\n    times: 4\n    while:\n      notVisible: "Remove warm-up W3"\n    commands:\n      - swipe:\n          start: 95%, 75%\n          end: 95%, 45%\n          duration: 300\n- assertVisible: "Remove warm-up W3"/u,
+    "the persisted added warm-up must expand its compact overview row before revealing its trailing remove action",
   );
   assert.doesNotMatch(workout, /(?:assertVisible|tapOn): "Skip (?:warm-up|set)/iu);
   const boundedWorkingSetFourTraversal = [
