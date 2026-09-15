@@ -4,7 +4,7 @@
 **Milestone:** v1.1 — In-Workout Editing, Session Overview, Advanced Timing, Merge Restore
 **Core Value:** Open today's workout, see trustworthy next targets, complete each working set with one primary action, recover safely from interruption, and understand exactly why the next target is recommended.
 
-> **Status:** DRAFT for owner review (UX flow + open questions accompany this file). No planning or implementation has started. Requirement text and IDs may change after the UX review.
+> **Status:** DRAFT — owner UX decisions recorded 2026-09-15 (see "Owner decisions" below). Requirements updated accordingly; still pre-planning. Ready for `/gsd-new-milestone` → discuss/plan on your go-ahead.
 
 ## Delivery model (unchanged from v1.0)
 
@@ -34,14 +34,28 @@ destroying a committed fact. See **WORK-24**.
 - [ ] **WORK-23**: From the session overview the owner can **reorder exercises** by touch-and-hold drag (with an accessible up/down fallback), changing only a presentation/display order. The original planned order captured at session start is preserved immutably for history; reordering never alters completed-set facts or the planned-order snapshot.
 - [ ] **WORK-24**: Every session-exercise and session-set row stores an **append-only immutable snapshot** of its name, order-at-creation, metric profile, units, targets, and rule versions. Mid-workout add/replace/remove/reorder operations only append new snapshot rows or transition status; no operation rewrites or deletes a committed snapshot, and completed sets always remain correct-or-undo (never hard-deleted). Owner-added exercises carry an explicit `added` origin and a null plan-target lineage (no automatic progression; manual only).
 - [ ] **WORK-25**: A workout whose composition was edited mid-session still completes its scheduled opportunity (the owner trained that day) but is marked as **modified-from-plan**; schedule rotation/weekday advancement and progression treat added/replaced/removed exercises deterministically (no silent target mutation, no advancement on exercises absent from the planned day).
+- [ ] **WORK-27**: When a workout that was edited mid-session finishes, the completion flow offers an explicit **"Save these changes to the plan?"** choice (default **No**). Choosing No keeps all edits session-scoped and never mutates the plan. Choosing Yes applies the session's add/replace/remove/reorder deltas to the owning plan day as an explicit, revision-checked plan edit (reusing the v1.0 owned-plan editing path), previews nothing silently, and leaves already-recorded history untouched. The prompt appears only when the session actually diverged from its planned day and never for empty/unplanned workouts.
 
 ### Advanced Set Timing (promoted from V2-03)
 
-- [ ] **WORK-26**: The owner can configure **per-repetition and cluster-set timer modes** on an exercise or set through a separately reviewed, versioned timer state machine, distinct from between-set rest. Per-rep mode emits a cadence cue per repetition; cluster mode inserts short intra-set rests (e.g. 3+3+3 with fixed gaps) without turning one set into multiple recorded sets. Timing cues are advisory and never authoritative for recorded set/rest facts; SQLite remains the source of truth, and denied/failed audio never corrupts the session.
+- [ ] **WORK-26**: The owner can configure **per-repetition and cluster-set timer modes** on an exercise or set through a separately reviewed, versioned timer state machine, distinct from between-set rest. **Both modes are in scope for v1.1.** Per-rep mode emits a cadence cue per repetition (configurable tempo); cluster mode inserts short intra-set rests (e.g. 3+3+3 with fixed gaps) without turning one set into multiple recorded sets. Modes are configurable per exercise and per set, persist with the plan/session, and survive backgrounding and process death. Timing cues are advisory and never authoritative for recorded set/rest facts; SQLite remains the source of truth, and denied/failed audio never corrupts the session.
 
-### Data Portability (promoted from V2-04)
+### Data Portability & Cross-Device History (promoted from V2-04, expanded)
 
-- [ ] **DATA-08**: The owner can **merge a backup into existing data** (in addition to today's clean-install replacement restore). Merge authenticates and decrypts before parsing, uses stable owner-scoped identities to detect duplicates, applies an approved conflict-resolution rule per record class (plans, exercises, sessions, corrections, void state, settings), previews the merge outcome before commit, and mutates user-owned tables in one all-or-nothing transaction. Any authentication, validation, conflict, cancellation, or insert failure leaves the existing database unchanged and shows a safe, actionable error; FTS and all projections rebuild deterministically after a successful merge.
+- [ ] **DATA-08**: The owner can **merge a backup into existing data** (in addition to today's clean-install replacement restore). Merge authenticates and decrypts before parsing, uses stable owner-scoped identities to detect duplicates, applies an approved per-record-class conflict rule (see WORK/DATA decisions), previews the merge outcome before commit, and mutates user-owned tables in one all-or-nothing transaction. Any authentication, validation, conflict, cancellation, or insert failure leaves the existing database unchanged and shows a safe, actionable error; FTS and all projections rebuild deterministically after a successful merge.
+- [ ] **DATA-09**: The owner has a **single canonical history/backup they can carry to any of their personal devices** and restore/merge without data loss. Backups are portable, versioned, integrity-protected, and password-encrypted (reusing the v1.0 GTBK format), carry stable owner-scoped record identities so the same session/plan is recognized across devices, and are self-describing enough that a fresh install on a new device can restore-clean **or** merge (DATA-08) into existing data. The owner can export the latest backup on demand and see when/where it was last produced. *(v1.1 remains offline-first and single-owner: this establishes device-portable identity + a manual export/import path. Automatic cloud sync is explicitly NOT in scope — see Out of Scope / V2.)*
+
+## Owner decisions (recorded 2026-09-15)
+
+These resolve the open questions and are now binding for planning:
+
+- **Scope (Q14):** Full batch — WORK-19..WORK-27, WORK-26, DATA-08, DATA-09. V2-03 and V2-04 are both included in v1.1.
+- **Advanced timing (Q10):** Both per-rep cadence **and** cluster-set intra-rests ship in v1.1 (WORK-26).
+- **Cross-device history (Q13):** In scope, expanded to DATA-09 — one canonical, portable, device-independent history/backup the owner can restore or merge onto any personal device. Manual export/import path; **no automatic cloud sync** in v1.1.
+- **Replace with completed sets (Q6):** Approved — original stays visible as **skipped**, replacement appended; history preserved (WORK-21).
+- **Write-back to plan (Q9):** End-of-workout **explicit choice, default No** (WORK-27); edits are session-scoped unless the owner opts in.
+- **Accepted recommendations (defaults):** Q1 anchor to active set within the full list; Q2 overview-only active screen; Q3 unify empty workout into overview; Q4 single-select add; Q5 append-to-end then reorder; Q7 added/replacement exercises are manual-only (no auto-progression); Q8 edited session consumes the scheduled opportunity + modified-from-plan flag; Q11 a cluster is one recorded set with advisory intra-rests.
+- **Conflict rule (Q12):** newest-by-timestamp for sessions/corrections/void state; existing-wins for settings; keep-both for distinct custom exercises/plans (dedup by stable owner-scoped identity). To be confirmed at DATA-08 discuss-phase.
 
 ## Cross-cutting constraints (inherited)
 
@@ -56,30 +70,33 @@ destroying a committed fact. See **WORK-24**.
 
 - Every checked requirement is implemented and passes its phase-scoped automated verification (typecheck, lint, boundaries, unit/component/host-SQLite/integration, coverage, native Expo SQLite contracts and Maestro flows where applicable).
 - The session overview is the default active-workout surface; add/replace/remove/reorder operate from it and preserve the append-only snapshot invariant (WORK-24).
-- Merge restore leaves the existing database unchanged on any failure and rebuilds derivatives deterministically on success.
+- Merge restore leaves the existing database unchanged on any failure and rebuilds derivatives deterministically on success; the canonical backup restores or merges onto any personal device without data loss (DATA-09).
 - v1.1 is delivered as a signed personal-use APK/AAB, sideloaded unchanged.
 
 ## Traceability (to be assigned during roadmap/planning)
 
 | Requirement | Phase | Status |
 |-------------|-------|--------|
-| WORK-19 | TBD | Draft |
-| WORK-20 | TBD | Draft |
-| WORK-21 | TBD | Draft |
-| WORK-22 | TBD | Draft |
-| WORK-23 | TBD | Draft |
-| WORK-24 | TBD | Draft |
-| WORK-25 | TBD | Draft |
-| WORK-26 | TBD | Draft |
-| DATA-08 | TBD | Draft |
+| WORK-19 | 8 (proposed) | Draft |
+| WORK-20 | 9 (proposed) | Draft |
+| WORK-21 | 9 (proposed) | Draft |
+| WORK-22 | 9 (proposed) | Draft |
+| WORK-23 | 9 (proposed) | Draft |
+| WORK-24 | 9 (proposed) | Draft |
+| WORK-25 | 9 (proposed) | Draft |
+| WORK-27 | 9 (proposed) | Draft |
+| WORK-26 | 10 (proposed) | Draft |
+| DATA-08 | 11 (proposed) | Draft |
+| DATA-09 | 11 (proposed) | Draft |
 
-**Coverage:** 9 v1.1 requirements defined; phase mapping pending roadmap creation.
+**Coverage:** 11 v1.1 requirements defined; phase mapping proposed (finalized at roadmap creation).
 
 ## Deferred beyond v1.1
 
 - **V2-01**: Wear OS.
 - **V2-02**: Health Connect import/export.
 - **V2-05**: Public GitHub Release / store promotion ceremony (attended device matrix, owner-approval token, no-rebuild digest gate, Terminal Seal).
+- **V2-06**: Automatic cloud sync of the canonical history/backup (v1.1 delivers a manual device-portable export/import + merge via DATA-08/DATA-09; hands-off multi-device sync, a hosted store, and live conflict reconciliation are a separate milestone).
 
 ---
-*Requirements drafted: 2026-09-15 for v1.1 (in-workout editing, session overview, advanced timing, merge restore). Pending owner UX review before planning.*
+*Requirements drafted: 2026-09-15 for v1.1 (in-workout editing, session overview, advanced timing, cross-device merge restore). Owner UX decisions recorded 2026-09-15; pending go-ahead to plan.*

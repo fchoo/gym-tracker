@@ -37,23 +37,25 @@ and `.planning/milestones/v1.0-MILESTONE-AUDIT.md`.
 
 ## v1.1 — In-Workout Editing & Advanced Timing (proposed)
 
-> Design stage. Requirements are drafted in `.planning/REQUIREMENTS.md`; the active-workout
-> UX is specified in `.planning/design/v1.1-UX-FLOW.md` and open questions in
-> `.planning/design/v1.1-OPEN-QUESTIONS.md`. Phases below are a **proposed** decomposition
-> for owner review — not yet planned or executed.
+> Design stage. Requirements are drafted in `.planning/REQUIREMENTS.md` (owner UX
+> decisions recorded 2026-09-15); the active-workout UX is specified in
+> `.planning/design/v1.1-UX-FLOW.md` and resolved questions in
+> `.planning/design/v1.1-OPEN-QUESTIONS.md`. Phases below are a **proposed**
+> decomposition for owner review — not yet planned or executed.
 
 **Goal:** The owner can run a workout from a session-overview screen (all exercises + sets
 on one scrollable page), add/replace/remove/reorder exercises live without breaking
-immutable history, use per-rep/cluster timing, and merge a backup into existing data —
-all delivered in the signed personal-use APK.
+immutable history, optionally write session edits back to the plan, use per-rep/cluster
+timing, and keep one canonical history/backup that restores or merges onto any personal
+device — all delivered in the signed personal-use APK.
 
-**Requirements:** WORK-19..WORK-26, DATA-08.
+**Requirements:** WORK-19..WORK-27, WORK-26, DATA-08, DATA-09.
 
 **Proposed phases:**
 
-- [ ] **Phase 8: Session Overview & Navigation** — Reorient the active workout to land on a scrollable exercise-list overview (WORK-19) with the active set anchored and Complete reachable inline; preserve all v1 workout-loop guarantees. (Requirements: WORK-19; touches WORK-24 read model.)
-- [ ] **Phase 9: In-Workout Exercise Editing** — Append-only add, history-safe replace, guarded remove, and presentation-order reorder from the overview, with the row-level immutable-snapshot model and modified-from-plan/scheduling semantics. (Requirements: WORK-20, WORK-21, WORK-22, WORK-23, WORK-24, WORK-25.)
-- [ ] **Phase 10: Advanced Set Timing** — Versioned per-rep and cluster-set timer state machine, advisory-only cues, non-authoritative over recorded facts. (Requirement: WORK-26.)
-- [ ] **Phase 11: Merge Restore** — Authenticated, conflict-ruled, previewed, all-or-nothing merge of a backup into existing data with deterministic derivative rebuild. (Requirement: DATA-08.)
+- [ ] **Phase 8: Session Overview & Navigation** — Reorient the active workout to land on a scrollable exercise-list overview (WORK-19) with the active set anchored and Complete reachable inline; unify the empty-workout state into the overview; preserve all v1 workout-loop guarantees. (Requirements: WORK-19; touches WORK-24 read model.)
+- [ ] **Phase 9: In-Workout Exercise Editing** — Append-only add, history-safe replace, guarded remove, and presentation-order reorder from the overview, with the row-level immutable-snapshot model, modified-from-plan/scheduling semantics, and the end-of-workout "save changes to plan?" opt-in (default No). (Requirements: WORK-20, WORK-21, WORK-22, WORK-23, WORK-24, WORK-25, WORK-27.)
+- [ ] **Phase 10: Advanced Set Timing** — Versioned per-rep cadence and cluster-set intra-rest timer state machine (both modes), advisory-only cues, non-authoritative over recorded facts, lifecycle-safe. (Requirement: WORK-26.)
+- [ ] **Phase 11: Cross-Device History & Merge Restore** — Stable owner-scoped record identities and one canonical, portable, versioned, encrypted backup that restores clean or **merges** (authenticated, conflict-ruled, previewed, all-or-nothing) into existing data on any personal device, with deterministic derivative rebuild. Manual export/import; no automatic cloud sync. (Requirements: DATA-08, DATA-09.)
 
-**Coverage (proposed):** 9/9 v1.1 requirements mapped across Phases 8-11 (pending owner review).
+**Coverage (proposed):** 11/11 v1.1 requirements mapped across Phases 8-11.
