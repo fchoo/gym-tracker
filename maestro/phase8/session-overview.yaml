@@ -52,7 +52,7 @@ tags:
     commands:
       - swipe:
           start: 95%, 75%
-          end: 95%, 25%
+          end: 95%, 40%
           duration: 300
 - assertVisible: "Bench Press"
 - repeat:
@@ -61,7 +61,7 @@ tags:
       notVisible: "Back Squat"
     commands:
       - swipe:
-          start: 95%, 25%
+          start: 95%, 40%
           end: 95%, 75%
           duration: 300
 - assertVisible: "Back Squat"
@@ -72,7 +72,7 @@ tags:
     commands:
       - swipe:
           start: 95%, 75%
-          end: 95%, 25%
+          end: 95%, 40%
           duration: 300
 - assertVisible: "Complete Set 1"
 - tapOn: "Complete Set 1"
@@ -105,7 +105,7 @@ tags:
     commands:
       - swipe:
           start: 95%, 75%
-          end: 95%, 25%
+          end: 95%, 40%
           duration: 300
 - assertVisible: "Complete Set 2"
 - tapOn: "More workout actions"
