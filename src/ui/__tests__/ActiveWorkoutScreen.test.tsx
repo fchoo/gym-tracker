@@ -253,6 +253,24 @@ function overviewView(): ActiveWorkoutView {
   };
 }
 
+function emptyWorkoutView(): EmptyWorkoutView {
+  return {
+    state: "empty_workout",
+    id: "empty-session",
+    status: "in_progress",
+    revision: 41,
+    activeSetId: null,
+    activeExerciseId: null,
+    progress: { completedWorkingSets: 0, totalWorkingSets: 0 },
+    rest: {
+      version: 1,
+      state: "idle",
+      revision: 0,
+      nextSetId: null,
+    },
+  };
+}
+
 function commands(
   overrides: Partial<ActiveWorkoutCommands> = {},
 ): ActiveWorkoutCommands {
@@ -349,6 +367,41 @@ async function renderActive(
 }
 
 describe("Plan 01-08 ActiveWorkoutScreen", () => {
+  it("keeps an empty workout in the overview shell with a disabled Phase 9 add-exercise affordance and revision-checked zero-set confirmation", async () => {
+    const saveZeroSetWorkout = jest.fn<ActiveWorkoutCommands["saveZeroSetWorkout"]>(async () => ({
+      detail: {} as never,
+      invalidationScopes: [],
+    }));
+    const outcomeSaved = jest.fn();
+    await renderActive({
+      commands: commands({ saveZeroSetWorkout }),
+      onOutcomeSaved: outcomeSaved,
+      sessionId: "empty-session",
+      view: emptyWorkoutView(),
+    });
+
+    expect(screen.getByRole("header", { name: "Workout" })).toBeOnTheScreen();
+    expect(screen.getByLabelText("Add exercise. Available in Phase 9."))
+      .toHaveProp("accessibilityState", expect.objectContaining({ disabled: true }));
+    expect(screen.queryByLabelText(/Working set/u)).not.toBeOnTheScreen();
+    expect(screen.getByText("Add exercises will be available in Phase 9."))
+      .toBeOnTheScreen();
+
+    await fireEvent.press(screen.getByRole("button", { name: "Save zero-set workout" }));
+    expect(screen.getByRole("header", { name: "Finish without working sets?" }))
+      .toBeOnTheScreen();
+    await fireEvent.press(screen.getByRole("button", { name: "Save zero-set workout" }));
+
+    await waitFor(() => {
+      expect(saveZeroSetWorkout).toHaveBeenCalledWith(expect.objectContaining({
+        confirmation: "save_zero_set_workout",
+        expectedSessionRevision: 41,
+        sessionId: "empty-session",
+      }));
+      expect(outcomeSaved).toHaveBeenCalledWith("empty-session");
+    });
+  });
+
   it("collapses earlier completed exercises accessibly and lets compact rows open one existing editor", async () => {
     const view = overviewView();
     const futureExercise = {
