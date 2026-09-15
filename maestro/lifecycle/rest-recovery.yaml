@@ -34,7 +34,7 @@ tags:
       notVisible: "Back Squat"
     commands:
       - swipe:
-          start: 95%, 25%
+          start: 95%, 40%
           end: 95%, 75%
           duration: 300
 - assertVisible: "Back Squat"

@@ -48,7 +48,7 @@ test("Phase 8 rest recovery traverses upward from the active-set anchor before a
     "utf8",
   );
 
-  assert.match(flow, /WORKOUT OVERVIEW[\s\S]*?notVisible: "Back Squat"[\s\S]*?start: 95%, 25%[\s\S]*?end: 95%, 75%[\s\S]*?assertVisible: "Back Squat"/u);
+  assert.match(flow, /WORKOUT OVERVIEW[\s\S]*?notVisible: "Back Squat"[\s\S]*?start: 95%, 40%[\s\S]*?end: 95%, 75%[\s\S]*?assertVisible: "Back Squat"/u);
   assert.match(flow, /Resume rest[\s\S]*?RESTING · NEXT: SET 2 AT 60 kg × 8[\s\S]*?Expand rest controls[\s\S]*?Skip rest/u);
 });
 
