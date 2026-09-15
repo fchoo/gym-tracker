@@ -19,6 +19,12 @@ import {
 
 export type WidthClass = "compact" | "medium" | "expanded";
 
+export type MeasuredScrollRequest = Readonly<{
+  targetKey: string;
+  y: number;
+  animated: boolean;
+}>;
+
 export function classifyWidth(width: number): WidthClass {
   if (width < 600) {
     return "compact";
@@ -53,6 +59,7 @@ type AdaptiveScreenProps = Readonly<{
   onScroll?: (event: NativeSyntheticEvent<NativeScrollEvent>) => void;
   scrollOffset?: number;
   scrollRestoreKey?: string;
+  measuredScrollRequest?: MeasuredScrollRequest;
   onRequestBack?: () => void;
   refreshing?: boolean;
   onRefresh?: () => void;
@@ -70,12 +77,14 @@ export function AdaptiveScreen({
   onScroll,
   scrollOffset = 0,
   scrollRestoreKey,
+  measuredScrollRequest,
   onRequestBack,
   refreshing = false,
   onRefresh,
 }: AdaptiveScreenProps) {
   const scrollViewRef = React.useRef<ScrollView>(null);
   const previousScrollRestoreKeyRef = React.useRef(scrollRestoreKey);
+  const completedMeasuredScrollKeysRef = React.useRef(new Set<string>());
   const { width: windowWidth } = useWindowDimensions();
   const { colors } = useAppTheme();
   const width = widthOverride ?? windowWidth;
@@ -110,6 +119,25 @@ export function AdaptiveScreen({
       y: scrollOffset,
     });
   }, [scrollOffset, scrollRestoreKey]);
+  React.useEffect(() => {
+    if (
+      !scrollable
+      || measuredScrollRequest === undefined
+      || completedMeasuredScrollKeysRef.current.has(
+        measuredScrollRequest.targetKey,
+      )
+    ) {
+      return;
+    }
+    completedMeasuredScrollKeysRef.current.add(measuredScrollRequest.targetKey);
+    scrollViewRef.current?.scrollTo({
+      animated: measuredScrollRequest.animated,
+      x: 0,
+      y: Number.isFinite(measuredScrollRequest.y)
+        ? Math.max(0, measuredScrollRequest.y)
+        : 0,
+    });
+  }, [measuredScrollRequest, scrollable]);
   const content = (
     <View
       accessibilityLabel={`${widthClass} layout`}
