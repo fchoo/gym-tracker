@@ -5,16 +5,16 @@ milestone_name: In-Workout Editing, Advanced Timing & Cross-Device Sync
 current_phase: 08
 current_phase_name: Session Overview & Navigation
 status: executing
-stopped_at: Completed 08-02-overview-interactions-PLAN.md
-last_updated: "2026-09-15T13:12:58.886Z"
+stopped_at: Completed 08-03-unified-route-PLAN.md
+last_updated: "2026-09-15T13:34:37.042Z"
 last_activity: 2026-09-15
 last_activity_desc: Phase 08 execution started
-state_head: 5a47d48e0631ed9a2b187ab188b0dbc43e1a9fdd
+state_head: 21a655f647299f3d93dcbc938cbf337a9a2ee0c5
 progress:
   total_phases: 5
   completed_phases: 0
   total_plans: 22
-  completed_plans: 2
+  completed_plans: 3
   percent: 0
 ---
 
@@ -30,7 +30,7 @@ See: `.planning/PROJECT.md` (updated 2026-09-15)
 ## Current Position
 
 Phase: 08 (Session Overview & Navigation) — EXECUTING
-Plan: 3 of 4
+Plan: 4 of 4
 Status: Ready to execute
 Last activity: 2026-09-15 — Phase 08 execution started
 
@@ -126,6 +126,7 @@ Terminal Seal) is retired for personal-use (removed in PR #29) and tracked as V2
 | Phase 05 P07 | 99m | 2 tasks | 37 files |
 | Phase 08-session-overview-navigation P01 | 1h 15m | 2 tasks | 7 files |
 | Phase 08-session-overview-navigation P02 | 14min | 2 tasks | 4 files |
+| Phase 08-session-overview-navigation P03 | 13min | 2 tasks | 12 files |
 
 ## Accumulated Context
 
@@ -282,6 +283,8 @@ Full decisions live in `.planning/PROJECT.md`.
 - [Phase 08]: Active workouts render a single ordered overview; stable set IDs resolve command ownership while mutation contracts remain unchanged.
 - [Phase 08]: Derive overview collapse from authoritative status/model order and keep user disclosure overrides keyed by stable IDs.
 - [Phase 08]: Scroll only after a committed changed active-set result, using revision-keyed measured requests and reduced-motion policy.
+- [Phase 08]: Phase 08 Plan 03: one discriminated session route and overview shell replace the focused/review workout navigation model.
+- [Phase 08]: Phase 08 Plan 03: Phase 9 exercise creation remains a disabled explanatory affordance; zero-set and discard keep existing revision-checked commands.
 
 ### Blockers/Concerns
 
@@ -311,8 +314,8 @@ Full decisions live in `.planning/PROJECT.md`.
 
 ## Session Continuity
 
-Last session: 2026-09-15T13:12:58.872Z
-Stopped at: Completed 08-02-overview-interactions-PLAN.md
+Last session: 2026-09-15T13:34:37.029Z
+Stopped at: Completed 08-03-unified-route-PLAN.md
 Resume file: None
 Next action: Run `/gsd-audit-milestone v1.0`, then `/gsd-complete-milestone v1.0` to archive.
 
