@@ -8,8 +8,8 @@ status: verifying
 stopped_at: Completed 08-04-lifecycle-verification-PLAN.md
 last_updated: "2026-09-15T13:59:28.677Z"
 last_activity: 2026-09-15
-last_activity_desc: Phase 08 execution started
-state_head: e036cfd6d5fcdb393cf00da0778a148e2f8516ab
+last_activity_desc: Phase 08 source gates reconciled; awaiting independent verification and manifest-bound native evidence
+state_head: 06a352a
 progress:
   total_phases: 5
   completed_phases: 0
@@ -29,10 +29,10 @@ See: `.planning/PROJECT.md` (updated 2026-09-15)
 
 ## Current Position
 
-Phase: 08 (Session Overview & Navigation) — EXECUTING
+Phase: 08 (Session Overview & Navigation) — VERIFYING
 Plan: 4 of 4
-Status: Phase complete — ready for verification
-Last activity: 2026-09-15 — Phase 08 execution started
+Status: All source gates pass; native Maestro evidence remains pending its declared dev-test manifest and connected device.
+Last activity: 2026-09-15 — Phase 08 source gates reconciled
 
 ## Delivery model
 
@@ -287,7 +287,7 @@ Full decisions live in `.planning/PROJECT.md`.
 - [Phase 08]: Phase 08 Plan 03: one discriminated session route and overview shell replace the focused/review workout navigation model.
 - [Phase 08]: Phase 08 Plan 03: Phase 9 exercise creation remains a disabled explanatory affordance; zero-set and discard keep existing revision-checked commands.
 - [Phase 08]: Phase 8 native evidence uses one manifest-bound runner that restores Android font scale and fails closed without restoration.
-- [Phase 08]: Coverage diagnostics are not treated as a successful gate when inherited test failures prevent the required gate report.
+- [Phase 08]: Full Jest and coverage gates pass after overview presentation contracts and archived v1.0 Phase 2 evidence paths were reconciled; only manifest-bound native evidence remains unrun.
 
 ### Blockers/Concerns
 

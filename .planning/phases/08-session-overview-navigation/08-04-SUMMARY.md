@@ -16,7 +16,7 @@ affects: [phase-8-verification, phase-9-in-workout-editing, native-evidence]
 actuals:
   tokens: 7268
   tasks: 2
-  commits: 3
+  commits: 5
 
 tech-stack:
   added: []
@@ -90,7 +90,7 @@ coverage:
         ref: coverage/coverage-summary.json diagnostic values for activeWorkout.ts, setCommands.ts, undoCompletedSet.ts, and outcomes.ts
         status: pass
     human_judgment: true
-    rationale: "The diagnostics show 100% for all four specified modules, but stale out-of-scope UI expectations prevented the standalone coverage gate from producing its required successful report."
+    rationale: "The source gate now passes; native device evidence remains separately unavailable because the manifest-bound artifact is absent."
 
 duration: 25min
 completed: 2026-09-15
@@ -99,7 +99,7 @@ status: complete
 
 # Phase 08 Plan 04: Lifecycle Verification Summary
 
-**Overview-aware Maestro contracts and the Phase 8 native runner now preserve workout-loop recovery and accessibility proof, with failed inherited gates and missing device artifacts explicitly ledgered rather than treated as green evidence.**
+**Overview-aware Maestro contracts and the Phase 8 native runner now preserve workout-loop recovery and accessibility proof; all source gates pass, while missing device artifacts remain explicitly ledgered rather than treated as green evidence.**
 
 ## Performance
 
@@ -125,6 +125,9 @@ status: complete
    - `e036cfd` — `fix(08-04): remove out-of-scope library assertion`
 3. **Task 2: Run the Phase 8 source, coverage, and native regression gate**
    - No implementation commit; this task executed the gate and recorded its outcome.
+4. **Post-plan verification repairs**
+   - `3e9ee63` — `test(08): align overview presentation contracts`
+   - `06a352a` — `fix(evidence): resolve archived Phase 2 planning sources`
 
 Plan metadata is committed separately after state updates.
 
@@ -148,15 +151,14 @@ Passed:
 - `npm run lint` and `npm run check:boundaries` — `Boundary check passed (231 files).`
 - `rg -n -i 'FOCUSED WORKOUT|REVIEWING WORKOUT|Return to current exercise' maestro scripts/phase2-evidence-scripts.test.mjs` — no matches.
 - `git diff --check`
+- `node --test scripts/phase2-evidence-scripts.test.mjs` — 73/73 passed after resolving completed v1.0 evidence references through `.planning/milestones/v1.0-phases/`.
+- `npm run test:all -- --runInBand` — 142 suites / 2,500 tests passed.
+- `npm run test:coverage -- --runInBand` — `{"ok":true,"integrity_critical_files":84,"metrics":["statements","branches","functions","lines"],"required_percent":100}`.
 
-Diagnostic only, not a coverage-gate pass:
+The generated `coverage/coverage-summary.json` reports 100% statements, branches, functions, and lines for `activeWorkout.ts`, `setCommands.ts`, `undoCompletedSet.ts`, and `outcomes.ts`.
 
-- The generated `coverage/coverage-summary.json` reports 100% statements, branches, functions, and lines for `activeWorkout.ts`, `setCommands.ts`, `undoCompletedSet.ts`, and `outcomes.ts`.
+Unrun:
 
-Failed or unrun:
-
-- `node --test scripts/phase2-evidence-scripts.test.mjs` — 68 passed / 5 failed because pre-existing Phase 2 files `02-VALIDATION.md` and `02-UI-SPEC.md` are missing and the Phase 2 source ledger is stale. The Plan 08 lifecycle assertions themselves passed.
-- `npm run test:all -- --runInBand` and the explicit `npm run test:coverage -- --runInBand` — blocked by inherited stale v1.0 presentation expectations in `ActiveWorkoutMetricProfiles.test.tsx`, `foundation.test.tsx`, and `SetRow.test.tsx`; therefore no valid `ok: true`, `integrity_critical_files: 84`, or `required_percent: 100` gate report is claimed.
 - `npm run test:maestro:phase8 -- --manifest artifacts/native/phase2/build.json` — safely failed before device mutation because the declared manifest is absent. No actual device run or 200% font-scale save/set/restore result is claimed.
 
 ## Deviations from Plan
@@ -176,8 +178,8 @@ Failed or unrun:
 
 ## Issues Encountered
 
-- The full Phase 2 evidence suite depends on missing historical planning files and a stale source ledger outside this plan’s ownership. These are listed in `deferred-items.md`; no artifacts were fabricated.
-- Whole-repository Jest/coverage gates inherit UI test expectations for the retired focused-workout presentation. The actual coverage summary was inspected, but it is deliberately not reported as the required successful coverage gate.
+- Phase 2 source-ledger paths required an archive-aware resolver after v1.0 planning was archived. The resolver now reads the immutable archived Phase 2 requirement and evidence artifacts; `node --test scripts/phase2-evidence-scripts.test.mjs` passes 73/73.
+- Retired focused-workout presentation expectations in `ActiveWorkoutMetricProfiles.test.tsx`, `foundation.test.tsx`, and `SetRow.test.tsx` were updated to assert the approved overview header and compact-row semantics; the full Jest/coverage gate now passes.
 - The required retained development-test manifest is absent. Existing Windows ledger entry 72 was preserved, and entry 75 records this runner-specific unrun verification.
 
 ## Known Stubs
@@ -190,7 +192,7 @@ To produce native evidence, restore or generate the declared development-test ma
 
 ## Next Phase Readiness
 
-Phase 9 can rely on the overview-native evidence pattern and semantic lifecycle selectors. Before any phase is represented as device-verified, resolve the inherited source/coverage test drift and execute the declared manifest-bound native suite; physical-device observations remain observation-only.
+Phase 9 can rely on the overview-native evidence pattern and semantic lifecycle selectors. Before any phase is represented as device-verified, execute the declared manifest-bound native suite; physical-device observations remain observation-only.
 
 ## Self-Check: PASSED
 
