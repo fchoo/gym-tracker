@@ -738,6 +738,15 @@ test("Phase 2 remediation flows use public labels and deterministic seams", asyn
   ]) {
     assert.match(workout, new RegExp(label.replace(/[.*+?^${}()|[\]\\]/gu, "\\$&"), "u"), label);
   }
+  assert.match(
+    workout,
+    /- runFlow: "\.\.\/subflows\/phase1-start-full-body-a\.yaml"\n- assertVisible: "WORKOUT OVERVIEW"\n- assertVisible: "Working set 1 load in kilograms"/u,
+    "the remediation flow must assert the active-set anchor rather than a sticky-header-clipped exercise title",
+  );
+  assert.doesNotMatch(
+    workout,
+    /- assertVisible: "WORKOUT OVERVIEW"\n- assertVisible: "Back Squat"\n- assertVisible: "Today's plan"/u,
+  );
   const staleInitialAddWorkingSetScroll = [
     "- scrollUntilVisible:",
     "    element:",

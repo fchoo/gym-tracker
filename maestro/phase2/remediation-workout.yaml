@@ -17,7 +17,7 @@ tags:
 - tapOn: "Activate Full Body Foundation"
 - runFlow: "../subflows/phase1-start-full-body-a.yaml"
 - assertVisible: "WORKOUT OVERVIEW"
-- assertVisible: "Back Squat"
+- assertVisible: "Working set 1 load in kilograms"
 - assertVisible: "Today's plan"
 - assertVisible: "Add warm-up"
 - repeat:
