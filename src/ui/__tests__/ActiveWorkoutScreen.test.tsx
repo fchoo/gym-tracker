@@ -342,6 +342,57 @@ async function renderActive(
 }
 
 describe("Plan 01-08 ActiveWorkoutScreen", () => {
+  it("collapses earlier completed exercises accessibly and lets compact rows open one existing editor", async () => {
+    const view = overviewView();
+    const futureExercise = {
+      ...view.currentExercise,
+      id: "session-exercise-3",
+      exerciseId: "overhead-press",
+      name: "Overhead Press",
+      ordinal: 2,
+      status: "planned" as const,
+      workingSets: view.currentExercise.workingSets.map((set, index) => ({
+        ...set,
+        id: `overhead-working-${index + 1}`,
+      })),
+    };
+    await renderActive({ view: { ...view, exercises: [...view.exercises, futureExercise] } });
+
+    const collapsed = screen.getByRole("button", {
+      name: "Back Squat. Completed. 2 of 2 working sets. Expand exercise",
+    });
+    expect(collapsed).toHaveProp("accessibilityState", { expanded: false });
+    expect(collapsed).toHaveStyle({ minHeight: 48, minWidth: 48 });
+    await fireEvent(collapsed, "focus");
+    expect(collapsed).toHaveStyle({
+      outlineColor: themes.light.focusRing,
+      outlineWidth: 2,
+    });
+    await fireEvent(collapsed, "keyDown", { nativeEvent: { key: "Enter" } });
+    expect(screen.getByRole("button", {
+      name: "Back Squat. Completed. 2 of 2 working sets. Collapse exercise",
+    })).toHaveProp("accessibilityState", { expanded: true });
+    await fireEvent(screen.getByRole("button", {
+      name: "Back Squat. Completed. 2 of 2 working sets. Collapse exercise",
+    }), "keyDown", { nativeEvent: { key: " " } });
+    expect(screen.getByRole("button", {
+      name: "Back Squat. Completed. 2 of 2 working sets. Expand exercise",
+    })).toHaveProp("accessibilityState", { expanded: false });
+
+    const benchCompact = screen.getByRole("button", {
+      name: "Set 2. 60 kg × 8. Not completed. Expand set editor",
+    });
+    expect(benchCompact).toHaveStyle({ minHeight: 48, minWidth: 48 });
+    await fireEvent.press(benchCompact);
+    expect(screen.getByLabelText("Working set 2 load")).toBeOnTheScreen();
+
+    await fireEvent.press(screen.getAllByRole("button", {
+      name: "Set 1. 60 kg × 8. Not completed. Expand set editor",
+    }).at(-1)!);
+    expect(screen.queryByLabelText("Working set 2 load")).not.toBeOnTheScreen();
+    expect(screen.getByLabelText("Working set 1 load")).toBeOnTheScreen();
+  });
+
   it("renders every exercise in one overview and completes the stable active-set identity inline", async () => {
     const view = overviewView();
     const completeSet = jest.fn<ActiveWorkoutCommands["completeSet"]>(async () => ({
