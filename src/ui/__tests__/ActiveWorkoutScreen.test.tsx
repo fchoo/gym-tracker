@@ -13,7 +13,7 @@ import {
   jest,
 } from "@jest/globals";
 import React from "react";
-import { Dimensions, ScrollView } from "react-native";
+import { Appearance, Dimensions, ScrollView } from "react-native";
 
 jest.mock("expo-crypto", () => ({
   CryptoDigestAlgorithm: { SHA256: "SHA256" },
@@ -535,12 +535,19 @@ describe("Plan 01-08 ActiveWorkoutScreen", () => {
       sessionId: "session-1",
       view: overviewView(),
     } satisfies React.ComponentProps<typeof ActiveWorkoutScreen>;
-    await render(
-      <AppearanceProvider store={createMemoryAppearanceStore(appearance)}>
-        <ActiveWorkoutScreen {...props} />
-      </AppearanceProvider>,
-    );
-    expect(screen.getByRole("header", { name: "Bench Press" })).toBeOnTheScreen();
+    const systemScheme = appearance === null
+      ? jest.spyOn(Appearance, "getColorScheme").mockReturnValue("dark")
+      : undefined;
+    try {
+      await render(
+        <AppearanceProvider store={createMemoryAppearanceStore(appearance)}>
+          <ActiveWorkoutScreen {...props} />
+        </AppearanceProvider>,
+      );
+      expect(screen.getByRole("header", { name: "Bench Press" })).toBeOnTheScreen();
+    } finally {
+      systemScheme?.mockRestore();
+    }
   });
 
   it("keeps long overview labels and compact-row controls reachable at 200 percent text", async () => {
@@ -567,10 +574,13 @@ describe("Plan 01-08 ActiveWorkoutScreen", () => {
     })).toBeOnTheScreen();
     expect(screen.getByTestId("overview-session-exercise-2-bench-working-2"))
       .toHaveStyle({ minHeight: 48, minWidth: 48 });
-    await rendered.unmount();
-    await act(() => {
-      Dimensions.set({ screen: previous, window: previous });
-    });
+    try {
+      await rendered.unmount();
+    } finally {
+      await act(() => {
+        Dimensions.set({ screen: previous, window: previous });
+      });
+    }
   });
 
   it("renders every exercise in one overview and completes the stable active-set identity inline", async () => {

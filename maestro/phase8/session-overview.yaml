@@ -31,6 +31,8 @@ tags:
 - extendedWaitUntil:
     visible: "WORKOUT OVERVIEW"
     timeout: 30000
+- pressKey: TAB
+- pressKey: ENTER
 - assertVisible: "Back Squat"
 - assertVisible: "Bench Press"
 - tapOn: "Back Squat. Completed. 2 of 2 working sets. Expand exercise"
@@ -38,16 +40,35 @@ tags:
 - tapOn: "Back Squat. Completed. 2 of 2 working sets. Collapse exercise"
 - tapOn: "Set 2. 60 kg × 8. Not completed. Expand set editor"
 - assertVisible: "Complete Set 2"
-- scrollUntilVisible:
-    element:
-      text: "Complete Set 1"
-    direction: DOWN
-    centerElement: true
-    timeout: 30000
+- repeat:
+    times: 12
+    while:
+      notVisible: "Complete Set 1"
+    commands:
+      - swipe:
+          start: 95%, 75%
+          end: 95%, 25%
+          duration: 300
+- assertVisible: "Complete Set 1"
 - tapOn: "Complete Set 1"
 - extendedWaitUntil:
     visible: "RESTING · NEXT: SET 2 AT 60 kg × 8"
     timeout: 60000
+- stopApp
+- launchApp:
+    clearState: false
+    stopApp: true
+    permissions:
+      notifications: deny
+- assertVisible: "Today"
+- extendedWaitUntil:
+    visible: "Resume workout"
+    timeout: 90000
+- tapOn: "Resume workout"
+- assertVisible: "WORKOUT OVERVIEW"
+- assertVisible: "RESTING · NEXT: SET 2 AT 60 kg × 8"
+- pressKey: TAB
+- pressKey: ENTER
 - assertVisible: "Complete Set 2"
 - tapOn: "Go back"
 - extendedWaitUntil:

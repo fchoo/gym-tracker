@@ -284,6 +284,7 @@ test("Phase 2 Maestro manifest derives every public Phase 1 and Phase 2 flow", a
     collectPhase2RemediationCaseIds,
     derivePhase2MaestroExecutions,
     enumeratePhase2MaestroFlows,
+    validatePhase2OverviewSelectors,
     validatePhase2RemediationFlowObservations,
   } = await load(
     "scripts/run-phase2-maestro.mjs",
@@ -308,6 +309,7 @@ test("Phase 2 Maestro manifest derives every public Phase 1 and Phase 2 flow", a
     );
   }
   const flows = derivePhase2MaestroExecutions(PHASE2_PUBLIC_FLOW_PATHS);
+  await assert.doesNotReject(validatePhase2OverviewSelectors(projectRoot));
   const paths = flows.map(({ flow }) => flow);
 
   assert.deepEqual(
@@ -729,8 +731,7 @@ test("Phase 2 remediation flows use public labels and deterministic seams", asyn
     "Add working set",
     "Retry add warm-up",
     "Retry add working set",
-    "Today's plan",
-    "Return to current exercise",
+    "WORKOUT OVERVIEW",
     "Edit completed set 1",
     "Save correction for completed set 1",
     "Retry completed set correction",
@@ -1104,18 +1105,8 @@ test("Phase 2 remediation flows use public labels and deterministic seams", asyn
     1,
     "the cold-restart proof must reopen the saved workout before locating the corrected set",
   );
-  const postReviewCorrectedSetVerification = [
-    '- tapOn: "Return to current exercise"',
-    '- assertVisible: "FOCUSED WORKOUT"',
-    '- assertVisible: "Back Squat"',
-    completedSetEditTraversal,
-    '- assertVisible: "Working set 1 of 4.*Current values 62.5 kg × 8.*Completed.*"',
-  ].join("\n");
-  assert.equal(
-    workout.split(postReviewCorrectedSetVerification).length - 1,
-    1,
-    "the review-return proof must restore the focused Back Squat context before locating the corrected set",
-  );
+  assert.match(workout, /assertVisible: "WORKOUT OVERVIEW"[\s\S]*?text: "Bench Press"[\s\S]*?assertVisible: "Bench Press"[\s\S]*?assertVisible: "WORKOUT OVERVIEW"[\s\S]*?text: "Back Squat"[\s\S]*?assertVisible: "Back Squat"[\s\S]*?Working set 1 of 4\.\*Current values 62\.5 kg × 8\.\*Completed\.\*/u,
+    "the overview traversal must preserve the corrected Back Squat proof without a return-to-current trip");
   assert.equal(workout.split(completedSetEditTraversal).length - 1, 5);
   assert.doesNotMatch(
     workout,
@@ -3242,7 +3233,7 @@ test("Library exercise flow reveals the first working-set action with bounded sw
 
   assert.match(
     flow,
-    /- runFlow: "\.\.\/subflows\/phase1-start-full-body-a\.yaml"\n- assertVisible: "Back Squat"\n- repeat:\n    times: 12\n    while:\n      notVisible: "Complete Set 1"\n    commands:\n      - swipe:\n          start: 95%, 75%\n          end: 95%, 25%\n          duration: 300\n- assertVisible: "Complete Set 1"\n- tapOn: "Complete Set 1"/u,
+    /- runFlow: "\.\.\/subflows\/phase1-start-full-body-a\.yaml"\n- assertVisible: "WORKOUT OVERVIEW"\n- assertVisible: "Back Squat"\n- repeat:\n    times: 12\n    while:\n      notVisible: "Complete Set 1"\n    commands:\n      - swipe:\n          start: 95%, 75%\n          end: 95%, 25%\n          duration: 300\n- assertVisible: "Complete Set 1"\n- tapOn: "Complete Set 1"/u,
   );
   assert.doesNotMatch(
     flow,
@@ -3261,7 +3252,7 @@ test("denied notification flow reveals the first set action with bounded swipes"
 
   assert.match(
     flow,
-    /- runFlow: "\.\.\/subflows\/phase1-start-full-body-a\.yaml"\n- repeat:\n    times: 12\n    while:\n      notVisible: "Complete Set 1"\n    commands:\n      - swipe:\n          start: 95%, 75%\n          end: 95%, 25%\n          duration: 300\n- assertVisible: "Complete Set 1"\n- tapOn: "Complete Set 1"/u,
+    /- runFlow: "\.\.\/subflows\/phase1-start-full-body-a\.yaml"\n- assertVisible: "WORKOUT OVERVIEW"\n- repeat:\n    times: 12\n    while:\n      notVisible: "Complete Set 1"\n    commands:\n      - swipe:\n          start: 95%, 75%\n          end: 95%, 25%\n          duration: 300\n- assertVisible: "Complete Set 1"\n- tapOn: "Complete Set 1"/u,
   );
   assert.doesNotMatch(
     flow,
@@ -3534,7 +3525,7 @@ test("plan impact workout start normalizes scheduled and rest-day states", async
   assert.match(flow, /visible: "Train anyway"[\s\S]*tapOn: "Train anyway"/u);
   assert.match(
     flow,
-    /- extendedWaitUntil:\n    visible: "Start Upper A"\n    timeout: 30000\n- tapOn: "Start Upper A"\n- extendedWaitUntil:\n    visible: "FOCUSED WORKOUT"\n    timeout: 30000/u,
+    /- extendedWaitUntil:\n    visible: "Start Upper A"\n    timeout: 30000\n- tapOn: "Start Upper A"\n- extendedWaitUntil:\n    visible: "WORKOUT OVERVIEW"\n    timeout: 30000/u,
   );
 });
 
@@ -3998,7 +3989,7 @@ test("rest recovery starts Full Body A without depending on the calendar day", a
   );
   assert.match(
     helper,
-    /- extendedWaitUntil:\n    visible: "Start Full Body A"\n    timeout: 30000\n- tapOn: "Start Full Body A"\n- extendedWaitUntil:\n    visible: "FOCUSED WORKOUT"\n    timeout: 30000/u,
+    /- extendedWaitUntil:\n    visible: "Start Full Body A"\n    timeout: 30000\n- tapOn: "Start Full Body A"\n- extendedWaitUntil:\n    visible: "WORKOUT OVERVIEW"\n    timeout: 30000/u,
   );
 });
 
@@ -4060,7 +4051,7 @@ test("rest recovery waits for the skipped rest to commit before finding set 2", 
 
   assert.match(
     flow,
-    /- tapOn: "Skip rest"\n- extendedWaitUntil:\n    notVisible: "Skip rest"\n    timeout: 60000\n- repeat:\n    times: 12\n    while:\n      notVisible: "Complete Set 2"\n    commands:\n      - swipe:\n          start: 95%, 75%\n          end: 95%, 25%\n          duration: 300\n- assertVisible: "Complete Set 2"/u,
+    /- tapOn: "Skip rest"\n- extendedWaitUntil:\n    notVisible: "Skip rest"\n    timeout: 60000\n- assertVisible: "WORKOUT OVERVIEW"\n- repeat:\n    times: 12\n    while:\n      notVisible: "Complete Set 2"\n    commands:\n      - swipe:\n          start: 95%, 75%\n          end: 95%, 25%\n          duration: 300\n- assertVisible: "Complete Set 2"/u,
   );
   assert.doesNotMatch(flow, /assertNotVisible: "Rest skipped"/u);
   assert.doesNotMatch(
@@ -4081,7 +4072,7 @@ test("rest recovery waits for persisted workout state after process death", asyn
   );
   assert.match(
     flow,
-    /- tapOn: "Resume workout"\n- assertVisible: "RESTING · NEXT: SET 2 AT 60 kg × 8"\n- assertVisible: "Expand rest controls"\n- tapOn: "Expand rest controls"\n- tapOn: "Pause rest"/u,
+    /- tapOn: "Resume workout"\n- assertVisible: "WORKOUT OVERVIEW"\n- assertVisible: "RESTING · NEXT: SET 2 AT 60 kg × 8"\n- assertVisible: "Expand rest controls"\n- tapOn: "Expand rest controls"\n- tapOn: "Pause rest"/u,
   );
   assert.match(
     flow,
@@ -4089,7 +4080,7 @@ test("rest recovery waits for persisted workout state after process death", asyn
   );
   assert.match(
     flow,
-    /- tapOn: "Resume workout"\n- assertVisible: "REST PAUSED · NEXT: SET 2 AT 60 kg × 8"\n- assertVisible: "Expand rest controls"\n- tapOn: "Expand rest controls"\n- tapOn: "Resume rest"/u,
+    /- tapOn: "Resume workout"\n- assertVisible: "WORKOUT OVERVIEW"\n- assertVisible: "REST PAUSED · NEXT: SET 2 AT 60 kg × 8"\n- assertVisible: "Expand rest controls"\n- tapOn: "Expand rest controls"\n- tapOn: "Resume rest"/u,
   );
 });
 

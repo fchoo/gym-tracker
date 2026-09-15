@@ -213,6 +213,19 @@ export function validatePhase2PublicFlowPaths(actual, expected) {
   }
 }
 
+export async function validatePhase2OverviewSelectors(
+  root = projectRoot,
+  flowPaths = PHASE2_PUBLIC_FLOW_PATHS,
+) {
+  const retired = /FOCUSED WORKOUT|REVIEWING WORKOUT|Return to current exercise/u;
+  for (const relativePath of flowPaths) {
+    const source = await readFile(path.join(root, relativePath), "utf8");
+    if (retired.test(source)) {
+      throw new Error(`Phase 2 public flow retains retired workout selector: ${relativePath}`);
+    }
+  }
+}
+
 export async function collectPhase2RemediationCaseIds(root = projectRoot) {
   const source = await readFile(path.join(root, remediationLedgerPath), "utf8");
   const ledger = source.match(
@@ -426,6 +439,7 @@ export async function enumeratePhase2MaestroFlows(root = projectRoot) {
     throw new Error("Phase 2 Maestro flow manifest is empty or duplicated.");
   }
   validatePhase2PublicFlowPaths(relativePaths, PHASE2_PUBLIC_FLOW_PATHS);
+  await validatePhase2OverviewSelectors(root, relativePaths);
   const remediationCaseIds = await collectPhase2RemediationCaseIds(root);
   validatePhase2RemediationFlowObservations(remediationCaseIds);
   for (const remediationFlow of remediationFlowPaths) {

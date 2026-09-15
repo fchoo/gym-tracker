@@ -16,7 +16,7 @@ tags:
 - tapOn: "Use Full Body Foundation"
 - tapOn: "Activate Full Body Foundation"
 - runFlow: "../subflows/phase1-start-full-body-a.yaml"
-- assertVisible: "FOCUSED WORKOUT"
+- assertVisible: "WORKOUT OVERVIEW"
 - assertVisible: "Back Squat"
 - assertVisible: "Today's plan"
 - assertVisible: "Add warm-up"
@@ -243,7 +243,7 @@ tags:
           end: 95%, 25%
           duration: 500
 - assertVisible: "Complete Set 1"
-- assertVisible: "FOCUSED WORKOUT"
+- assertVisible: "WORKOUT OVERVIEW"
 - assertVisible: "Back Squat"
 - tapOn: "Complete Set 1"
 - tapOn:
@@ -403,23 +403,21 @@ tags:
 - assertVisible: "Edit completed set 1"
 - assertVisible: "Working set 1 of 4.*Current values 62.5 kg × 8.*Completed.*"
 - assertNotVisible: "Undo completed set"
-- tapOn: "Today's plan"
-- assertVisible: "Today's plan"
-- assertVisible: "Review any exercise without changing the current workout."
-- tapOn:
-    text: "2. Bench Press. Planned. Open for review"
-- assertVisible: "REVIEWING WORKOUT"
-- assertVisible: "Bench Press"
-- assertVisible: "Reviewing another exercise"
-- assertVisible: "Return to current exercise"
+- assertVisible: "WORKOUT OVERVIEW"
 - scrollUntilVisible:
     element:
-      text: "Return to current exercise"
+      text: "Bench Press"
+    direction: DOWN
+    centerElement: true
+    timeout: 60000
+- assertVisible: "Bench Press"
+- assertVisible: "WORKOUT OVERVIEW"
+- scrollUntilVisible:
+    element:
+      text: "Back Squat"
     direction: UP
     centerElement: true
     timeout: 60000
-- tapOn: "Return to current exercise"
-- assertVisible: "FOCUSED WORKOUT"
 - assertVisible: "Back Squat"
 - repeat:
     times: 32

@@ -15,6 +15,7 @@ tags:
 - tapOn: "Use Full Body Foundation"
 - tapOn: "Activate Full Body Foundation"
 - runFlow: "../subflows/phase1-start-full-body-a.yaml"
+- assertVisible: "WORKOUT OVERVIEW"
 - assertVisible: "Back Squat"
 - repeat:
     times: 2
@@ -55,6 +56,7 @@ tags:
       notifications: deny
 - assertVisible: "Workout in progress"
 - tapOn: "Resume workout"
+- assertVisible: "WORKOUT OVERVIEW"
 - assertVisible: "RESTING · NEXT: SET 2 AT 60 kg × 8"
 - assertVisible: "Expand rest controls"
 - tapOn: "Expand rest controls"

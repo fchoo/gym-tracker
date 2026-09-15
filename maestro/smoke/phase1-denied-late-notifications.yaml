@@ -14,6 +14,7 @@ tags:
 - tapOn: "Use Full Body Foundation"
 - tapOn: "Activate Full Body Foundation"
 - runFlow: "../subflows/phase1-start-full-body-a.yaml"
+- assertVisible: "WORKOUT OVERVIEW"
 - repeat:
     times: 12
     while:
@@ -94,6 +95,7 @@ tags:
     centerElement: true
 - tapOn: "Return to Today"
 - tapOn: "Resume workout"
+- assertVisible: "WORKOUT OVERVIEW"
 - assertVisible: "Expand rest controls"
 - tapOn: "Expand rest controls"
 - tapOn: "Skip rest"

@@ -356,7 +356,7 @@ tags:
     timeout: 30000
 - tapOn: "Start Upper A"
 - extendedWaitUntil:
-    visible: "FOCUSED WORKOUT"
+    visible: "WORKOUT OVERVIEW"
     timeout: 30000
 - assertVisible: "Barbell Incline Bench Press"
 - tapOn: "Go back"
