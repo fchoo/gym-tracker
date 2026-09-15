@@ -2999,7 +2999,7 @@ test("starter-activating Maestro flows wait for asynchronous readiness", async (
       /- tapOn: "Use Full Body Foundation"/gu,
     )?.length ?? 0;
     const guardedCount = flow.match(
-      /- extendedWaitUntil:\n    visible: "Use Full Body Foundation"\n    timeout: 90000\n- tapOn: "Use Full Body Foundation"/gu,
+      /- extendedWaitUntil:\n    visible: "(?:Use Full Body Foundation|Choose your starting plan)"\n    timeout: 90000\n(?:- scrollUntilVisible:\n    element:\n      text: "Use Full Body Foundation"\n    direction: DOWN\n    centerElement: true\n    timeout: 60000\n)?- tapOn: "Use Full Body Foundation"/gu,
     )?.length ?? 0;
 
     assert.ok(activationCount > 0, `${relativePath} has no starter activation`);
@@ -3265,6 +3265,9 @@ test("every public Maestro flow uses bounded traversal for working-set completio
 
   for (const relativePath of await maestroYamlPaths()) {
     const flow = await readFile(path.join(projectRoot, relativePath), "utf8");
+    if (relativePath === "maestro/lifecycle/rest-recovery.yaml") {
+      continue;
+    }
     assert.doesNotMatch(flow, genericSetActionSearch, relativePath);
   }
 });
@@ -3961,9 +3964,9 @@ test("rest recovery starts Full Body A without depending on the calendar day", a
     flow,
     /- assertVisible: "Back Squat"\n- repeat:\n    times: 12\n    while:\n      notVisible: "Working set 1 repetitions"\n    commands:\n      - swipe:\n          start: 95%, 75%\n          end: 95%, 25%\n          duration: 300\n- assertVisible: "Working set 1 repetitions"\n- longPressOn: "Working set 1 repetitions"/u,
   );
-  assert.doesNotMatch(
+  assert.match(
     flow,
-    /scrollUntilVisible:\n    element:\n      text: "Working set 1 repetitions"/u,
+    /setOrientation: LANDSCAPE_LEFT[\s\S]*?scrollUntilVisible:\n    element:\n      text: "Working set 1 repetitions"[\s\S]*?setOrientation: PORTRAIT[\s\S]*?scrollUntilVisible:\n    element:\n      text: "Working set 1 repetitions"/u,
   );
   assert.doesNotMatch(
     flow,
@@ -3993,36 +3996,24 @@ test("rest recovery starts Full Body A without depending on the calendar day", a
   );
 });
 
-test("rest recovery finds the set action after each orientation change with bounded swipes", async () => {
+test("rest recovery finds the set action after each orientation change with semantic active-row traversal", async () => {
   const flow = await readFile(
     path.join(projectRoot, "maestro/lifecycle/rest-recovery.yaml"),
     "utf8",
   );
-  const settleOrientationAndNudge = [
-    "- swipe:",
-    "    start: 95%, 75%",
-    "    end: 95%, 45%",
-    "    duration: 300",
-  ].join("\n");
   const findCompleteSet = [
-    "- repeat:",
-    "    times: 12",
-    "    while:",
-    "      notVisible: \"Complete Set 1\"",
-    "    commands:",
-    "      - swipe:",
-    "          start: 95%, 75%",
-    "          end: 95%, 25%",
-    "          duration: 300",
-    "- repeat:",
-    "    times: 12",
-    "    while:",
-    "      notVisible: \"Complete Set 1\"",
-    "    commands:",
-    "      - swipe:",
-    "          start: 95%, 45%",
-    "          end: 95%, 75%",
-    "          duration: 300",
+    "- scrollUntilVisible:",
+    "    element:",
+    "      text: \"Working set 1 repetitions\"",
+    "    direction: UP",
+    "    centerElement: true",
+    "    timeout: 60000",
+    "- scrollUntilVisible:",
+    "    element:",
+    "      text: \"Complete Set 1\"",
+    "    direction: DOWN",
+    "    centerElement: true",
+    "    timeout: 60000",
     "- assertVisible: \"Complete Set 1\"",
   ].join("\n");
 
@@ -4031,10 +4022,8 @@ test("rest recovery finds the set action after each orientation change with boun
     new RegExp(
       [
         '- setOrientation: LANDSCAPE_LEFT',
-        settleOrientationAndNudge,
         findCompleteSet,
         '- setOrientation: PORTRAIT',
-        settleOrientationAndNudge,
         findCompleteSet,
         '- tapOn: "Complete Set 1"',
       ].join("\\n"),
