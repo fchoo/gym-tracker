@@ -31,6 +31,7 @@ import type {
   ActiveWorkoutSet,
   ActiveWorkoutExercise,
   ActiveWorkoutView,
+  EmptyWorkoutView,
   AddWorkingSetInput,
   AddWarmupInput,
   CompleteSetInput,
@@ -347,7 +348,7 @@ const SectionGlyphAction = React.forwardRef<View, SectionGlyphActionProps>(funct
 
 export type ActiveWorkoutScreenProps = Readonly<{
   sessionId: string;
-  view: ActiveWorkoutView;
+  view: ActiveWorkoutView | EmptyWorkoutView;
   commands: ActiveWorkoutCommands;
   nowMs: () => number;
   notificationPermission?: RestNotificationPermission;
@@ -358,11 +359,6 @@ export type ActiveWorkoutScreenProps = Readonly<{
   onFinishLater: () => void;
   onOutcomeSaved?: (sessionId: string) => void;
   onDiscarded?: () => void;
-  onOpenWorkoutPlan?: () => void;
-  /** @deprecated Overview is the only active-workout surface. */
-  onReturnToCurrent?: () => void;
-  /** @deprecated Overview is the only active-workout surface. */
-  reviewExerciseId?: string;
   width?: number;
 }>;
 
@@ -379,11 +375,199 @@ export function ActiveWorkoutScreen({
   onFinishLater,
   onOutcomeSaved = () => onFinishLater(),
   onDiscarded = onFinishLater,
-  onOpenWorkoutPlan = () => undefined,
-  onReturnToCurrent: _onReturnToCurrent = () => undefined,
-  reviewExerciseId: _reviewExerciseId,
   width,
 }: ActiveWorkoutScreenProps) {
+  if ("state" in initialView) {
+    return (
+      <EmptyWorkoutOverview
+        commands={commands}
+        nowMs={nowMs}
+        onDiscarded={onDiscarded}
+        onFinishLater={onFinishLater}
+        onGoBack={onGoBack}
+        onOutcomeSaved={onOutcomeSaved}
+        sessionId={sessionId}
+        view={initialView}
+        {...(width === undefined ? {} : { width })}
+      />
+    );
+  }
+
+  return (
+    <PopulatedWorkoutOverview
+      commands={commands}
+      countdownCue={countdownCue}
+      initialView={initialView}
+      notificationPermission={notificationPermission}
+      nowMs={nowMs}
+      onDiscarded={onDiscarded}
+      onFinishLater={onFinishLater}
+      onGoBack={onGoBack}
+      onOpenNotificationSettings={onOpenNotificationSettings}
+      onOutcomeSaved={onOutcomeSaved}
+      restSoundEnabled={restSoundEnabled}
+      sessionId={sessionId}
+      {...(width === undefined ? {} : { width })}
+    />
+  );
+}
+
+type EmptyWorkoutOverviewProps = Readonly<{
+  sessionId: string;
+  view: EmptyWorkoutView;
+  commands: ActiveWorkoutCommands;
+  nowMs: () => number;
+  onGoBack: () => void;
+  onFinishLater: () => void;
+  onOutcomeSaved: (sessionId: string) => void;
+  onDiscarded: () => void;
+  width?: number;
+}>;
+
+function EmptyWorkoutOverview({
+  sessionId,
+  view,
+  commands,
+  nowMs,
+  onGoBack,
+  onFinishLater,
+  onOutcomeSaved,
+  onDiscarded,
+  width,
+}: EmptyWorkoutOverviewProps) {
+  const { colors } = useAppTheme();
+  const [outcomeConfirmation, setOutcomeConfirmation] =
+    useState<"zero_sets" | "discard" | null>(null);
+  const [outcomeBusy, setOutcomeBusy] = useState(false);
+  const adaptiveWidth = width === undefined ? {} : { width };
+  const confirmationCopy = outcomeConfirmation === "zero_sets"
+    ? {
+        body: "This workout will be saved with zero completed working sets.",
+        cancelLabel: "Keep training",
+        confirmLabel: "Save zero-set workout",
+        heading: "Finish without working sets?",
+        destructive: false,
+      }
+    : {
+        body: "This ends the workout and marks it discarded. It cannot be resumed.",
+        cancelLabel: "Keep workout",
+        confirmLabel: "Discard workout",
+        heading: "Discard workout?",
+        destructive: true,
+      };
+
+  const confirmOutcome = async () => {
+    const confirmation = outcomeConfirmation;
+    if (confirmation === null) {
+      return;
+    }
+    setOutcomeBusy(true);
+    try {
+      if (confirmation === "zero_sets") {
+        await commands.saveZeroSetWorkout({
+          sessionId,
+          expectedSessionRevision: view.revision,
+          confirmation: "save_zero_set_workout",
+          endedAtMs: nowMs(),
+        });
+        onOutcomeSaved(sessionId);
+        return;
+      }
+      await commands.discardWorkout({
+        sessionId,
+        expectedSessionRevision: view.revision,
+        confirmation: "discard_workout",
+        endedAtMs: nowMs(),
+      });
+      onDiscarded();
+    } finally {
+      setOutcomeBusy(false);
+    }
+  };
+
+  return (
+    <>
+      <AdaptiveScreen
+        {...adaptiveWidth}
+        constrainActiveWork
+        stickyHeader={(
+          <ScreenHeader
+            backAction={onGoBack}
+            eyebrow="WORKOUT OVERVIEW"
+            title="Workout"
+          />
+        )}
+        primary={(
+          <>
+            <InlineNotice
+              body="No exercises are planned in this session yet. Save a zero-set visit explicitly, finish later, or discard it."
+              heading="Empty workout in progress"
+              tone="neutral"
+            />
+            <PrimaryAction
+              accessibilityHint="Exercises cannot be added until Phase 9."
+              disabled
+              label="Add exercise. Available in Phase 9."
+              onPress={() => undefined}
+            />
+            <Text style={[typeScale.body as TextStyle, { color: colors.textSecondary }]}>
+              Add exercises will be available in Phase 9.
+            </Text>
+            <PrimaryAction
+              busy={outcomeBusy}
+              label="Save zero-set workout"
+              onPress={() => setOutcomeConfirmation("zero_sets")}
+            />
+            <SecondaryAction
+              disabled={outcomeBusy}
+              label="Finish workout later"
+              onPress={onFinishLater}
+            />
+            <SecondaryAction
+              destructive
+              disabled={outcomeBusy}
+              label="Discard workout"
+              onPress={() => setOutcomeConfirmation("discard")}
+            />
+          </>
+        )}
+        testID="active-workout"
+      />
+      <ConfirmationSheet
+        body={confirmationCopy.body}
+        cancelLabel={confirmationCopy.cancelLabel}
+        confirmLabel={confirmationCopy.confirmLabel}
+        destructive={confirmationCopy.destructive}
+        heading={confirmationCopy.heading}
+        onCancel={() => setOutcomeConfirmation(null)}
+        onConfirm={() => {
+          void confirmOutcome();
+        }}
+        visible={outcomeConfirmation !== null}
+      />
+    </>
+  );
+}
+
+type PopulatedWorkoutOverviewProps = Omit<ActiveWorkoutScreenProps, "view"> & Readonly<{
+  initialView: ActiveWorkoutView;
+}>;
+
+function PopulatedWorkoutOverview({
+  sessionId,
+  initialView,
+  commands,
+  nowMs,
+  notificationPermission = "undetermined",
+  restSoundEnabled = false,
+  countdownCue,
+  onOpenNotificationSettings = () => undefined,
+  onGoBack,
+  onFinishLater,
+  onOutcomeSaved = () => onFinishLater(),
+  onDiscarded = onFinishLater,
+  width,
+}: PopulatedWorkoutOverviewProps) {
   const { colors, reduceMotion } = useAppTheme();
   const [view, setView] = useState(initialView);
   const viewRef = useRef(initialView);
@@ -476,11 +660,6 @@ export function ActiveWorkoutScreen({
       <ScreenHeader
         action={
           <ActionCluster style={styles.headerActions}>
-            <IconAction
-              accessibilityLabel="Today's plan"
-              icon="plan"
-              onPress={onOpenWorkoutPlan}
-            />
             <IconAction
               accessibilityLabel="More workout actions"
               icon="more"

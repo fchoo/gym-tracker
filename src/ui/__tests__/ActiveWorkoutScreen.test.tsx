@@ -390,7 +390,11 @@ describe("Plan 01-08 ActiveWorkoutScreen", () => {
     await fireEvent.press(screen.getByRole("button", { name: "Save zero-set workout" }));
     expect(screen.getByRole("header", { name: "Finish without working sets?" }))
       .toBeOnTheScreen();
-    await fireEvent.press(screen.getByRole("button", { name: "Save zero-set workout" }));
+    const confirmation = screen.getAllByRole("button", { name: "Save zero-set workout" }).at(1);
+    if (confirmation === undefined) {
+      throw new Error("zero-set confirmation action was not rendered");
+    }
+    await fireEvent.press(confirmation);
 
     await waitFor(() => {
       expect(saveZeroSetWorkout).toHaveBeenCalledWith(expect.objectContaining({
@@ -626,25 +630,16 @@ describe("Plan 01-08 ActiveWorkoutScreen", () => {
     expect(within(scroll).queryByTestId("active-workout-identity-current"))
       .not.toBeOnTheScreen();
 
-    expect(props.reviewExerciseId).toBeUndefined();
+    expect(screen.queryByText("Return to current exercise")).not.toBeOnTheScreen();
   });
 
-  it("opens Today's plan without sending a workout mutation", async () => {
-    const activeCommands = commands();
-    const onOpenWorkoutPlan = jest.fn();
-    await renderActive({
-      commands: activeCommands,
-      onOpenWorkoutPlan,
-    });
+  it("keeps active-workout controls on the overview without a second plan surface", async () => {
+    await renderActive();
 
-    await fireEvent.press(
-      screen.getByRole("button", { name: "Today's plan" }),
-    );
-
-    expect(onOpenWorkoutPlan).toHaveBeenCalledTimes(1);
-    expect(activeCommands.completeSet).not.toHaveBeenCalled();
-    expect(activeCommands.skipExercise).not.toHaveBeenCalled();
-    expect(activeCommands.updateActiveSetDraft).not.toHaveBeenCalled();
+    expect(screen.queryByRole("button", { name: "Today's plan" }))
+      .not.toBeOnTheScreen();
+    expect(screen.getByRole("button", { name: "More workout actions" }))
+      .toBeOnTheScreen();
   });
 
   it("renders production-owned loading and error scenes with the existing navigation actions", async () => {

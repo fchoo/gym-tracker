@@ -441,10 +441,6 @@ function TodayPlanPreview({
         nowMs={() => 1_800_000_000_000}
         onFinishLater={noOp}
         onGoBack={() => setDestination({ state: "plan" })}
-        onReturnToCurrent={() => setDestination({ state: "active" })}
-        {...(destination.reviewExerciseId === undefined
-          ? {}
-          : { reviewExerciseId: destination.reviewExerciseId })}
         sessionId={activeView.id}
         view={activeView}
       />

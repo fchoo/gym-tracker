@@ -37,22 +37,14 @@ import {
 } from "../../src/ui/screens/ActiveWorkoutScreen";
 
 export default function ActiveWorkoutRoute() {
-  const { sessionId, reviewExerciseId } = useLocalSearchParams<{
+  const { sessionId } = useLocalSearchParams<{
     sessionId: string;
-    reviewExerciseId?: string | string[];
   }>();
   const runtime = useWorkoutAppRuntime();
   const countdownCue = useRestCountdownCue();
   const resolvedSessionId = sessionId ?? "unknown";
-  const resolvedReviewExerciseId = Array.isArray(reviewExerciseId)
-    ? reviewExerciseId[0]
-    : reviewExerciseId;
   const [view, setView] = useState<WorkoutSessionView | null>(null);
   const [failed, setFailed] = useState(false);
-  const [emptyConfirmation, setEmptyConfirmation] = useState<
-    "zero_sets" | "discard" | null
-  >(null);
-  const [outcomeBusy, setOutcomeBusy] = useState(false);
   const mutationCommands = createWorkoutMutationTestCommandAdapters({
     addWarmup: runtime.addWarmup,
     addWorkingSet: runtime.addWorkingSet,
@@ -127,95 +119,6 @@ export default function ActiveWorkoutRoute() {
     );
   }
 
-  if ("state" in view) {
-    return (
-      <>
-        <AdaptiveScreen
-          constrainActiveWork
-          primary={
-            <>
-              <ScreenHeader
-                backAction={() => router.back()}
-                eyebrow="FOCUSED WORKOUT"
-                title="Empty workout"
-              />
-              <InlineNotice
-                body="No exercises are planned in this session yet. Save a zero-set visit explicitly, finish later, or discard it."
-                heading="Empty workout in progress"
-                tone="neutral"
-              />
-              <PrimaryAction
-                busy={outcomeBusy}
-                label="Save zero-set workout"
-                onPress={() => setEmptyConfirmation("zero_sets")}
-              />
-              <SecondaryAction
-                disabled={outcomeBusy}
-                label="Finish workout later"
-                onPress={() => router.replace("/(tabs)")}
-              />
-              <SecondaryAction
-                destructive
-                disabled={outcomeBusy}
-                label="Discard workout"
-                onPress={() => setEmptyConfirmation("discard")}
-              />
-            </>
-          }
-        />
-        <ConfirmationSheet
-          body={
-            emptyConfirmation === "discard"
-              ? "This ends the workout and marks it discarded. It cannot be resumed."
-              : "This workout will be saved with zero completed working sets."
-          }
-          cancelLabel={
-            emptyConfirmation === "discard" ? "Keep workout" : "Keep training"
-          }
-          confirmLabel={
-            emptyConfirmation === "discard"
-              ? "Discard workout"
-              : "Save zero-set workout"
-          }
-          destructive={emptyConfirmation === "discard"}
-          heading={
-            emptyConfirmation === "discard"
-              ? "Discard workout?"
-              : "Finish without working sets?"
-          }
-          onCancel={() => setEmptyConfirmation(null)}
-          onConfirm={() => {
-            setOutcomeBusy(true);
-            const operation = emptyConfirmation === "discard"
-              ? runtime.discardWorkout({
-                  sessionId: resolvedSessionId,
-                  expectedSessionRevision: view.revision,
-                  confirmation: "discard_workout",
-                  endedAtMs: Date.now(),
-                })
-              : runtime.saveZeroSetWorkout({
-                  sessionId: resolvedSessionId,
-                  expectedSessionRevision: view.revision,
-                  confirmation: "save_zero_set_workout",
-                  endedAtMs: Date.now(),
-                });
-            void operation.then(() => {
-              if (emptyConfirmation === "discard") {
-                router.replace("/(tabs)");
-              } else {
-                router.replace({
-                  pathname: "/completion/[sessionId]",
-                  params: { sessionId: resolvedSessionId },
-                } as unknown as Href);
-              }
-            }).finally(() => setOutcomeBusy(false));
-          }}
-          visible={emptyConfirmation !== null}
-        />
-      </>
-    );
-  }
-
   return (
     <ActiveWorkoutScreen
       commands={{
@@ -247,12 +150,6 @@ export default function ActiveWorkoutRoute() {
       onOpenNotificationSettings={() => {
         void runtime.openRestNotificationSettings();
       }}
-      onOpenWorkoutPlan={() => {
-        router.push(`/workout-plan/${resolvedSessionId}` as Href);
-      }}
-      onReturnToCurrent={() => {
-        router.replace(`/workout/${resolvedSessionId}`);
-      }}
       onFinishLater={() => router.replace("/(tabs)")}
       onGoBack={() => router.back()}
       onOutcomeSaved={(savedSessionId) => {
@@ -263,9 +160,6 @@ export default function ActiveWorkoutRoute() {
       }}
       onDiscarded={() => router.replace("/(tabs)")}
       sessionId={resolvedSessionId}
-      {...(resolvedReviewExerciseId === undefined
-        ? {}
-        : { reviewExerciseId: resolvedReviewExerciseId })}
       view={view}
     />
   );
