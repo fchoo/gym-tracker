@@ -136,7 +136,30 @@ export function executePhase8Maestro(args = process.argv.slice(2)) {
     if (command(adb, ["-s", serial, "shell", "settings", "get", "system", "font_scale"]) !== "2.0") {
       fail("font scale did not become 2.0.");
     }
-    flows = PHASE8_MAESTRO_FLOW_CONTRACTS.map((contract) => {
+    flows = PHASE8_MAESTRO_FLOW_CONTRACTS.map((contract, index) => {
+      if (index === 1) {
+        command(adb, [
+          "-s",
+          serial,
+          "shell",
+          "settings",
+          "put",
+          "system",
+          "font_scale",
+          priorFontScale,
+        ]);
+        if (command(adb, [
+          "-s",
+          serial,
+          "shell",
+          "settings",
+          "get",
+          "system",
+          "font_scale",
+        ]) !== priorFontScale) {
+          fail("font scale did not restore before inherited lifecycle flows.");
+        }
+      }
       const flowPath = path.resolve(projectRoot, contract.flow);
       if (!existsSync(flowPath)) fail(`missing Maestro flow: ${contract.flow}`);
       const reportPath = path.join(path.dirname(manifestPath), `${contract.id}.xml`);

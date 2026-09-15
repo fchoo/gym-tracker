@@ -45,26 +45,35 @@ tags:
     timeout: 30000
 - pressKey: TAB
 - pressKey: ENTER
-- scrollUntilVisible:
-    element:
-      text: "Bench Press"
-    direction: DOWN
-    centerElement: true
-    timeout: 60000
+- repeat:
+    times: 4
+    while:
+      notVisible: "Bench Press"
+    commands:
+      - swipe:
+          start: 95%, 75%
+          end: 95%, 25%
+          duration: 300
 - assertVisible: "Bench Press"
-- scrollUntilVisible:
-    element:
-      text: "Back Squat"
-    direction: UP
-    centerElement: true
-    timeout: 60000
+- repeat:
+    times: 4
+    while:
+      notVisible: "Back Squat"
+    commands:
+      - swipe:
+          start: 95%, 25%
+          end: 95%, 75%
+          duration: 300
 - assertVisible: "Back Squat"
-- scrollUntilVisible:
-    element:
-      text: "Complete Set 1"
-    direction: DOWN
-    centerElement: true
-    timeout: 60000
+- repeat:
+    times: 4
+    while:
+      notVisible: "Complete Set 1"
+    commands:
+      - swipe:
+          start: 95%, 75%
+          end: 95%, 25%
+          duration: 300
 - assertVisible: "Complete Set 1"
 - tapOn: "Complete Set 1"
 - extendedWaitUntil:

@@ -31,8 +31,8 @@ test("Phase 8 tracer targets the dev-test package and skips rest before the next
 
   assert.match(flow, /^appId: com\.fchoo\.gymtracker\.devtest$/mu);
   assert.match(flow, /Choose your starting plan[\s\S]*?scrollUntilVisible:[\s\S]*?text: "Use Full Body Foundation"[\s\S]*?Activate Full Body Foundation/u);
-  assert.match(flow, /scrollUntilVisible:[\s\S]*?text: "Bench Press"[\s\S]*?assertVisible: "Bench Press"/u);
-  assert.match(flow, /text: "Bench Press"[\s\S]*?text: "Back Squat"[\s\S]*?text: "Complete Set 1"[\s\S]*?assertVisible: "Complete Set 1"/u);
+  assert.match(flow, /notVisible: "Bench Press"[\s\S]*?start: 95%, 75%[\s\S]*?end: 95%, 25%[\s\S]*?assertVisible: "Bench Press"/u);
+  assert.match(flow, /notVisible: "Bench Press"[\s\S]*?assertVisible: "Bench Press"[\s\S]*?notVisible: "Back Squat"[\s\S]*?start: 95%, 25%[\s\S]*?end: 95%, 75%[\s\S]*?assertVisible: "Back Squat"[\s\S]*?notVisible: "Complete Set 1"/u);
   assert.match(flow, /assertVisible: "Back Squat"/u);
   assert.match(flow, /tapOn: "Skip rest"[\s\S]*?notVisible: "Skip rest"[\s\S]*?notVisible: "Complete Set 2"/u);
   assert.match(flow, /More workout actions[\s\S]*?Discard workout[\s\S]*?discard-workout-confirm[\s\S]*?Train anyway[\s\S]*?Start empty workout/u);
