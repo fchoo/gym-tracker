@@ -567,9 +567,9 @@ describe("Plan 02-29 RestDock", () => {
     }
   });
 
-  it("shows denied notification guidance without covering rest controls", async () => {
+  it("prioritizes rest controls before denied notification guidance", async () => {
     const onOpenSettings = jest.fn();
-    await renderDock(running, {
+    const { rendered } = await renderDock(running, {
       notificationPermission: "denied",
       onOpenSettings,
     });
@@ -584,6 +584,13 @@ describe("Plan 02-29 RestDock", () => {
     )).toBeOnTheScreen();
     expect(screen.getByRole("button", { name: "Pause rest" }))
       .toBeOnTheScreen();
+    const tree = JSON.stringify(rendered.toJSON());
+    expect(tree.indexOf("RESTING · NEXT: SET 2 AT 60 kg × 8"))
+      .toBeLessThan(tree.indexOf("Background rest alerts are off"));
+    expect(tree.indexOf("Expand rest controls"))
+      .toBeLessThan(tree.indexOf("Background rest alerts are off"));
+    expect(tree.indexOf("Skip rest"))
+      .toBeLessThan(tree.indexOf("Background rest alerts are off"));
     await fireEvent.press(
       screen.getByRole("button", { name: "Open notification settings" }),
     );

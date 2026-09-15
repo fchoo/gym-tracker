@@ -343,19 +343,6 @@ export function RestDock({
         },
       ]}
     >
-      {notificationPermission === "denied" ? (
-        <InlineNotice
-          action={
-            <SecondaryAction
-              label="Open notification settings"
-              onPress={onOpenSettings}
-            />
-          }
-          body="The in-app timer stays accurate. You can allow notifications from Android settings."
-          heading="Background rest alerts are off"
-          tone="attention"
-        />
-      ) : null}
       {cueFailure ? (
         <InlineNotice
           body="The timer is still accurate. Keep watching the countdown."
@@ -451,6 +438,19 @@ export function RestDock({
             onPress={undo.onUndo}
           />
         </View>
+      ) : null}
+      {notificationPermission === "denied" ? (
+        <InlineNotice
+          action={
+            <SecondaryAction
+              label="Open notification settings"
+              onPress={onOpenSettings}
+            />
+          }
+          body="The in-app timer stays accurate. You can allow notifications from Android settings."
+          heading="Background rest alerts are off"
+          tone="attention"
+        />
       ) : null}
     </View>
   );
