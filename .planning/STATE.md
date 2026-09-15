@@ -2,18 +2,18 @@
 gsd_state_version: 1.0
 milestone: v1.1
 milestone_name: In-Workout Editing, Advanced Timing & Cross-Device Sync
-current_phase: 10
-current_phase_name: Advanced Set Timing
+current_phase: 11
+current_phase_name: Portable History & Merge Restore
 status: Planning (owner decisions locked; automatic Google-Drive sync approved)
 stopped_at: Phases 8-12 context gathered; ready to plan
-last_updated: "2026-09-15T08:48:30.159Z"
+last_updated: "2026-09-15T09:13:36.821Z"
 last_activity: 2026-09-15
 last_activity_desc: Locked v1.1 scope — in-workout editing, session overview, per-rep/cluster timing, portable/merge backup, automatic Google-Drive sync
-state_head: 497b59c4bf58151c78afc5acec94d391f2ebe6c6
+state_head: 379a5930d05b9334d07feaa6e0e7541cfa77c25a
 progress:
   total_phases: 5
   completed_phases: 0
-  total_plans: 14
+  total_plans: 18
   completed_plans: 0
   percent: 0
 ---
@@ -29,7 +29,7 @@ See: `.planning/PROJECT.md` (updated 2026-09-15)
 
 ## Current Position
 
-Phase: 10 (Advanced Set Timing) — READY TO EXECUTE
+Phase: 11 (Portable History & Merge Restore) — READY TO EXECUTE
 Plan: —
 Status: Designing — requirements draft (`.planning/REQUIREMENTS.md`), UX flow (`.planning/design/v1.1-UX-FLOW.md`), and open questions (`.planning/design/v1.1-OPEN-QUESTIONS.md`) awaiting owner review.
 Last activity: 2026-09-15 — v1.1 milestone opened for design
