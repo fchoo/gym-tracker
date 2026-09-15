@@ -351,6 +351,51 @@ type InlineField = Readonly<{
   onChangeText(value: string): void;
 }>;
 
+function CompactSetRow({
+  set,
+  kind,
+  index,
+  overviewTestID,
+  tone,
+}: Readonly<{
+  set: ActiveWorkoutSet;
+  kind: "warmup" | "working";
+  index: number;
+  overviewTestID?: string;
+  tone: "default" | "card";
+}>) {
+  const { colors } = useAppTheme();
+  const completed = set.status === "completed";
+  const skipped = set.status === "skipped";
+  const state = completed ? "Completed" : skipped ? "Skipped" : "Not completed";
+  const rowLabel = kind === "warmup" ? `W${index}` : String(index);
+  const spokenKind = kind === "warmup" ? "Warm-up" : "Working set";
+  const current = formatObservation(observationForSet(set));
+  const primary = tone === "card" ? colors.contentCardText : colors.textPrimary;
+  const secondary = tone === "card"
+    ? colors.contentCardTextSecondary
+    : colors.textSecondary;
+  return (
+    <View
+      accessibilityLabel={`${spokenKind} ${rowLabel}. ${state}. ${current}.`}
+      accessibilityRole="summary"
+      style={[
+        styles.compactRow,
+        { borderColor: tone === "card" ? colors.contentCardBorder : colors.divider },
+      ]}
+      testID={overviewTestID
+        ?? `${kind === "warmup" ? `warmup-W${index}` : `working-set-${index}`}-row`}
+    >
+      <Text style={[typeScale.bodyStrong as TextStyle, { color: primary }]}>
+        {kind === "warmup" ? `Warm-up ${rowLabel}` : `Set ${rowLabel}`}
+      </Text>
+      <Text style={[typeScale.secondary as TextStyle, { color: secondary }]}>
+        {`${state} · ${current}`}
+      </Text>
+    </View>
+  );
+}
+
 export function SetRow({
   set,
   kind,
@@ -364,6 +409,9 @@ export function SetRow({
   correctionMode = false,
   revealed = false,
   tone = "default",
+  overviewTestID,
+  onMeasuredLayout,
+  compact = false,
   onChangeValues,
   onCancelCorrection = () => undefined,
   onComplete,
@@ -386,6 +434,9 @@ export function SetRow({
   correctionMode?: boolean;
   revealed?: boolean;
   tone?: "default" | "card";
+  overviewTestID?: string;
+  onMeasuredLayout?(y: number): void;
+  compact?: boolean;
   onChangeValues: (
     observation: SetObservation,
   ) => Promise<void> | void;
@@ -398,6 +449,17 @@ export function SetRow({
   onSaveCorrection?(observation: SetObservation): Promise<void> | void;
   onSkip?(): void;
 }>) {
+  if (compact) {
+    return (
+      <CompactSetRow
+        index={index}
+        kind={kind}
+        {...(overviewTestID === undefined ? {} : { overviewTestID })}
+        set={set}
+        tone={tone}
+      />
+    );
+  }
   const { colors } = useAppTheme();
   const completed = set.status === "completed";
   const primary = tone === "card" ? colors.contentCardText : colors.textPrimary;
@@ -791,13 +853,15 @@ export function SetRow({
       focusable={revealed}
       importantForAccessibility="no"
       onLayout={(event: LayoutChangeEvent) => {
+        onMeasuredLayout?.(event.nativeEvent.layout.y);
         if (revealed) {
           onRevealedLayout?.(event.nativeEvent.layout.y);
         }
       }}
       onPress={() => undefined}
       ref={rowRef}
-      testID={`${kind === "warmup" ? `warmup-W${index}` : `working-set-${index}`}-row`}
+      testID={overviewTestID
+        ?? `${kind === "warmup" ? `warmup-W${index}` : `working-set-${index}`}-row`}
       style={[
         styles.row,
         revealed && styles.revealedRow,
@@ -1196,6 +1260,12 @@ const styles = StyleSheet.create({
     gap: space[2],
     minHeight: 64,
     padding: space[2],
+  },
+  compactRow: {
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    gap: space[1],
+    minHeight: sizes.minimumTarget,
+    paddingVertical: space[2],
   },
   revealedRow: {
     borderWidth: sizes.focusRing,

@@ -14,6 +14,7 @@ import {
   StyleSheet,
   Text,
   View,
+  type LayoutChangeEvent,
   type TextStyle,
 } from "react-native";
 
@@ -25,6 +26,7 @@ import type {
 } from "../../domains/rest";
 import type {
   ActiveWorkoutSet,
+  ActiveWorkoutExercise,
   ActiveWorkoutView,
   AddWorkingSetInput,
   AddWarmupInput,
@@ -151,7 +153,27 @@ type RemovalCandidate = Readonly<{
   kind: "warmup" | "working";
   setId: string;
   index: number;
+  sessionExerciseId: string;
 }>;
+
+function exercisesFor(view: ActiveWorkoutView): readonly ActiveWorkoutExercise[] {
+  return view.exercises.length > 0 ? view.exercises : [view.currentExercise];
+}
+
+function resolveSetOwner(
+  view: ActiveWorkoutView,
+  setId: string,
+): Readonly<{ exercise: ActiveWorkoutExercise; set: ActiveWorkoutSet }> | undefined {
+  for (const exercise of exercisesFor(view)) {
+    const set = [...exercise.warmups, ...exercise.workingSets].find(
+      (candidate) => candidate.id === setId,
+    );
+    if (set !== undefined) {
+      return { exercise, set };
+    }
+  }
+  return undefined;
+}
 
 type RemovalFailure = RemovalCandidate;
 
@@ -242,48 +264,6 @@ function TargetContext({
   );
 }
 
-function ReviewSetSummary({
-  set,
-  kind,
-  index,
-}: Readonly<{
-  set: ActiveWorkoutSet;
-  kind: "warmup" | "working";
-  index: number;
-}>) {
-  const { colors } = useAppTheme();
-  const label = kind === "warmup" ? `Warm-up W${index}` : `Working set ${index}`;
-  const status = set.status === "completed"
-    ? "Completed"
-    : set.status === "skipped"
-      ? "Skipped"
-      : "Planned";
-  return (
-    <View
-      accessibilityLabel={`${label}. ${status}. ${formatObservation(observationForSet(set))}. Review only.`}
-      accessibilityRole="summary"
-      style={styles.reviewSet}
-    >
-      <Text
-        style={[
-          typeScale.bodyStrong as TextStyle,
-          { color: colors.contentCardText },
-        ]}
-      >
-        {label}
-      </Text>
-      <Text
-        style={[
-          typeScale.body as TextStyle,
-          { color: colors.contentCardTextSecondary },
-        ]}
-      >
-        {`${status} · ${formatObservation(observationForSet(set))}`}
-      </Text>
-    </View>
-  );
-}
-
 type SectionGlyphActionProps = Readonly<{
   accessibilityLabel: string;
   busy?: boolean;
@@ -296,7 +276,7 @@ const SectionGlyphAction = React.forwardRef<View, SectionGlyphActionProps>(funct
   { accessibilityLabel, busy = false, disabled = false, icon: Icon, onPress },
   ref,
 ) {
-  const { colors } = useAppTheme();
+  const { colors, reduceMotion } = useAppTheme();
   const unavailable = busy || disabled;
   return (
     <FocusablePressable
@@ -343,7 +323,9 @@ export type ActiveWorkoutScreenProps = Readonly<{
   onOutcomeSaved?: (sessionId: string) => void;
   onDiscarded?: () => void;
   onOpenWorkoutPlan?: () => void;
+  /** @deprecated Overview is the only active-workout surface. */
   onReturnToCurrent?: () => void;
+  /** @deprecated Overview is the only active-workout surface. */
   reviewExerciseId?: string;
   width?: number;
 }>;
@@ -362,11 +344,11 @@ export function ActiveWorkoutScreen({
   onOutcomeSaved = () => onFinishLater(),
   onDiscarded = onFinishLater,
   onOpenWorkoutPlan = () => undefined,
-  onReturnToCurrent = () => undefined,
-  reviewExerciseId,
+  onReturnToCurrent: _onReturnToCurrent = () => undefined,
+  reviewExerciseId: _reviewExerciseId,
   width,
 }: ActiveWorkoutScreenProps) {
-  const { colors } = useAppTheme();
+  const { colors, reduceMotion } = useAppTheme();
   const [view, setView] = useState(initialView);
   const viewRef = useRef(initialView);
   const [warmupBusy, setWarmupBusy] = useState<WarmupCommandState>(null);
@@ -376,6 +358,15 @@ export function ActiveWorkoutScreen({
     useState<SectionMutationFailure | null>(null);
   const [revealedSetId, setRevealedSetId] = useState<string | null>(null);
   const [revealedSetOffset, setRevealedSetOffset] = useState(0);
+  const [activeSetMeasurement, setActiveSetMeasurement] = useState<
+    Readonly<{ setId: string; y: number }> | null
+  >(null);
+  const [activeExerciseOffset, setActiveExerciseOffset] = useState<
+    Readonly<{ exerciseId: string; y: number }> | null
+  >(null);
+  const [activeWorkingCardOffset, setActiveWorkingCardOffset] = useState<
+    Readonly<{ exerciseId: string; y: number }> | null
+  >(null);
   const [editingCompletedSetId, setEditingCompletedSetId] =
     useState<string | null>(null);
   const [correctionBusySetId, setCorrectionBusySetId] =
@@ -402,16 +393,15 @@ export function ActiveWorkoutScreen({
   const sectionMutationRef = useRef<SectionMutation | null>(null);
   const correctionSetIdRef = useRef<string | null>(null);
   const restCommandInFlightRef = useRef(false);
-  const viewedExercise = reviewExerciseId === undefined
-    ? view.currentExercise
-    : view.exercises.find(({ id }) => id === reviewExerciseId)
-      ?? view.currentExercise;
-  const reviewingEarlierOrLater = viewedExercise.id !== view.currentExercise.id;
-  const activeSets = viewedExercise.workingSets;
-  const activeIndex = workingIndex(activeSets, view.activeSetId);
-  const activeSet = reviewingEarlierOrLater || view.activeSetId === null
+  const overviewExercises = React.useMemo(() => exercisesFor(view), [view]);
+  const isMultiExerciseOverview = view.exercises.length > 0;
+  const activeOwner = view.activeSetId === null
     ? undefined
-    : activeSets[activeIndex];
+    : resolveSetOwner(view, view.activeSetId);
+  const activeExercise = activeOwner?.exercise ?? view.currentExercise;
+  const activeSets = activeExercise.workingSets;
+  const activeIndex = workingIndex(activeSets, view.activeSetId);
+  const activeSet = activeOwner?.set;
   const adaptiveWidth = width === undefined ? {} : { width };
 
   const applyView = (nextView: ActiveWorkoutView) => {
@@ -421,9 +411,7 @@ export function ActiveWorkoutScreen({
 
   const identityHeader = (
     <View
-      testID={reviewingEarlierOrLater
-        ? "active-workout-identity-review"
-        : "active-workout-identity-current"}
+      testID="active-workout-identity-current"
     >
       <ScreenHeader
         action={
@@ -433,19 +421,19 @@ export function ActiveWorkoutScreen({
               icon="plan"
               onPress={onOpenWorkoutPlan}
             />
-            {reviewingEarlierOrLater ? null : <IconAction
+            <IconAction
               accessibilityLabel="More workout actions"
               icon="more"
               onPress={() => setMoreVisible(true)}
               ref={moreActionRef}
-            />}
+            />
           </ActionCluster>
         }
         backAction={onGoBack}
         eyebrow={
-          reviewingEarlierOrLater ? "REVIEWING WORKOUT" : "FOCUSED WORKOUT"
+          "WORKOUT OVERVIEW"
         }
-        title={viewedExercise.name}
+        title="Workout"
       />
     </View>
   );
@@ -511,10 +499,13 @@ export function ActiveWorkoutScreen({
     try {
       await draftQueue.current;
       const currentView = viewRef.current;
-      const currentSet = currentView.currentExercise.workingSets.find(
-        ({ id }) => id === requestedSetId,
-      );
-      if (currentSet === undefined || currentView.activeSetId !== currentSet.id) {
+      const owner = resolveSetOwner(currentView, requestedSetId);
+      const currentSet = owner?.set;
+      if (
+        currentSet === undefined
+        || currentSet.kind !== "working"
+        || currentView.activeSetId !== currentSet.id
+      ) {
         return;
       }
       const completedAtMs = nowMs();
@@ -546,10 +537,7 @@ export function ActiveWorkoutScreen({
   ) => {
     const save = draftQueue.current.then(async () => {
       const currentView = viewRef.current;
-      const currentSet = [
-        ...currentView.currentExercise.warmups,
-        ...currentView.currentExercise.workingSets,
-      ].find(({ id }) => id === set.id) ?? set;
+      const currentSet = resolveSetOwner(currentView, set.id)?.set ?? set;
       const nextView = set.kind === "warmup"
         ? observation.profile === "load_reps"
           ? await commands.updateWarmupDraft({
@@ -581,9 +569,7 @@ export function ActiveWorkoutScreen({
     setWarmupBusy({ setId: set.id, action: "complete" });
     try {
       await draftQueue.current;
-      const currentSet = viewRef.current.currentExercise.warmups.find(
-        ({ id }) => id === set.id,
-      ) ?? set;
+      const currentSet = resolveSetOwner(viewRef.current, set.id)?.set ?? set;
       const nextView = await commands.completeWarmup({
         sessionId,
         setId: currentSet.id,
@@ -596,12 +582,12 @@ export function ActiveWorkoutScreen({
     }
   };
 
-  const addWarmup = async () => {
+  const addWarmup = async (exercise = activeExercise) => {
     if (sectionMutationRef.current !== null) {
       return;
     }
-    const source = view.currentExercise.warmups.at(-1);
-    const workingSource = view.currentExercise.workingSets.find(
+    const source = exercise.warmups.at(-1);
+    const workingSource = exercise.workingSets.find(
       ({ target }) => target.profile === "load_reps",
     );
     const observation = source?.observation
@@ -619,7 +605,7 @@ export function ActiveWorkoutScreen({
     try {
       const result = await commands.addWarmup({
         sessionId,
-        sessionExerciseId: view.currentExercise.id,
+        sessionExerciseId: exercise.id,
         setId: `warmup_${sessionId}_${nowMs()}`,
         observation: {
           ...observation,
@@ -643,11 +629,11 @@ export function ActiveWorkoutScreen({
     }
   };
 
-  const addWorking = async () => {
+  const addWorking = async (exercise = activeExercise) => {
     if (sectionMutationRef.current !== null) {
       return;
     }
-    const source = view.currentExercise.workingSets.at(-1);
+    const source = exercise.workingSets.at(-1);
     if (source === undefined) {
       return;
     }
@@ -657,7 +643,7 @@ export function ActiveWorkoutScreen({
     try {
       const result = await commands.addWorkingSet({
         sessionId,
-        sessionExerciseId: view.currentExercise.id,
+        sessionExerciseId: exercise.id,
         sourceSetId: source.id,
         setId: `working_${sessionId}_${nowMs()}`,
         nowMs: nowMs(),
@@ -690,7 +676,16 @@ export function ActiveWorkoutScreen({
     setRemovalAnnouncement(null);
     setRemovalFailure(null);
     setRemovalRecovery(null);
-    setPendingRemoval({ kind, setId: set.id, index });
+    const owner = resolveSetOwner(viewRef.current, set.id);
+    if (owner === undefined) {
+      return;
+    }
+    setPendingRemoval({
+      kind,
+      setId: set.id,
+      index,
+      sessionExerciseId: owner.exercise.id,
+    });
   };
 
   const confirmRemoval = async () => {
@@ -702,10 +697,8 @@ export function ActiveWorkoutScreen({
     try {
       await draftQueue.current;
       const currentView = viewRef.current;
-      const sets = candidate.kind === "warmup"
-        ? currentView.currentExercise.warmups
-        : currentView.currentExercise.workingSets;
-      const currentSet = sets.find(({ id }) => id === candidate.setId);
+      const owner = resolveSetOwner(currentView, candidate.setId);
+      const currentSet = owner?.set;
       const remove = candidate.kind === "warmup"
         ? commands.removeWarmup
         : commands.removeWorkingSet;
@@ -752,9 +745,12 @@ export function ActiveWorkoutScreen({
         return;
       }
       applyView(nextView);
+      const nextExercise = exercisesFor(nextView).find(
+        ({ id }) => id === candidate.sessionExerciseId,
+      ) ?? nextView.currentExercise;
       const nextSets = candidate.kind === "warmup"
-        ? nextView.currentExercise.warmups
-        : nextView.currentExercise.workingSets;
+        ? nextExercise.warmups
+        : nextExercise.workingSets;
       const nextSet = nextSets[candidate.index] ?? nextSets.at(-1);
       if (nextSet === undefined) {
         (candidate.kind === "warmup" ? warmupAddRef : workingAddRef)
@@ -787,9 +783,7 @@ export function ActiveWorkoutScreen({
       return;
     }
     const currentView = viewRef.current;
-    const currentSet = currentView.currentExercise.workingSets.find(
-      ({ id }) => id === set.id,
-    );
+    const currentSet = resolveSetOwner(currentView, set.id)?.set;
     if (
       currentSet === undefined
       || currentSet.status !== "completed"
@@ -852,9 +846,9 @@ export function ActiveWorkoutScreen({
       if (confirmation === "skip_exercise") {
         await commands.skipExercise({
           sessionId,
-          sessionExerciseId: view.currentExercise.id,
+          sessionExerciseId: activeExercise.id,
           expectedSessionRevision: view.revision,
-          expectedExerciseRevision: view.currentExercise.revision,
+          expectedExerciseRevision: activeExercise.revision,
           confirmation: "skip_exercise",
           nowMs: nowMs(),
         });
@@ -927,8 +921,23 @@ export function ActiveWorkoutScreen({
         constrainActiveWork
         scrollOffset={revealedSetOffset}
         {...(revealedSetId === null ? {} : { scrollRestoreKey: revealedSetId })}
+        {...(
+          activeSet === undefined
+          || activeSetMeasurement?.setId !== activeSet.id
+          || activeExerciseOffset?.exerciseId !== activeExercise.id
+          || activeWorkingCardOffset?.exerciseId !== activeExercise.id
+            ? {}
+            : {
+          measuredScrollRequest: {
+            animated: !reduceMotion,
+            targetKey: activeSet.id,
+            y: activeExerciseOffset.y
+              + activeWorkingCardOffset.y
+              + activeSetMeasurement.y,
+          },
+        })}
         stickyHeader={identityHeader}
-        dock={reviewingEarlierOrLater ? undefined : (
+        dock={(
           view.rest.state === "running" || view.rest.state === "paused"
         ) ? (
           <RestDock
@@ -971,40 +980,58 @@ export function ActiveWorkoutScreen({
         ) : undefined}
         primary={
           <>
-            {reviewingEarlierOrLater ? (
-              <InlineNotice
-                action={
-                  <SecondaryAction
-                    label="Return to current exercise"
-                    onPress={onReturnToCurrent}
-                  />
-                }
-                body={`You are reviewing ${viewedExercise.name}. Workout progress remains on ${view.currentExercise.name}.`}
-                heading="Reviewing another exercise"
-                tone="neutral"
-              />
-            ) : null}
             {activeSet === undefined ? null : <TargetContext set={activeSet} />}
-            <ContentCard
-              style={styles.section}
-              testID="active-workout-warmups-card"
-            >
+            {overviewExercises.map((exercise) => (
+              <View
+                key={exercise.id}
+                onLayout={(event: LayoutChangeEvent) => {
+                  if (exercise.id === activeExercise.id) {
+                    const y = event.nativeEvent.layout.y;
+                    setActiveExerciseOffset((current) =>
+                      current?.exerciseId === exercise.id && current.y === y
+                        ? current
+                        : { exerciseId: exercise.id, y }
+                    );
+                  }
+                }}
+                style={styles.exerciseSection}
+              >
+                <SectionHeader
+                  action={
+                    <SectionGlyphAction
+                      accessibilityLabel={`More actions for ${exercise.name}. Available in Phase 9.`}
+                      disabled
+                      icon={Plus}
+                      onPress={() => undefined}
+                    />
+                  }
+                  title={exercise.name}
+                  tone="card"
+                />
+                <ContentCard
+                  style={styles.section}
+                  testID={isMultiExerciseOverview
+                    ? `active-workout-${exercise.id}-warmups-card`
+                    : "active-workout-warmups-card"}
+                >
               <SectionHeader
-                action={reviewingEarlierOrLater ? undefined : (
+                action={(
                   <View
                     style={styles.inlineActions}
-                    testID="active-workout-warmup-actions"
+                    testID={isMultiExerciseOverview
+                      ? `active-workout-${exercise.id}-warmup-actions`
+                      : "active-workout-warmup-actions"}
                   >
                     <SectionGlyphAction
                       busy={sectionMutationRef.current === "add_warmup"}
                       disabled={
                         warmupBusy !== null
-                        || view.currentExercise.metricProfile !== "load_reps"
+                        || exercise.metricProfile !== "load_reps"
                       }
                       accessibilityLabel="Add warm-up"
                       icon={Plus}
                       onPress={() => {
-                        void addWarmup();
+                        void addWarmup(exercise);
                       }}
                       ref={warmupAddRef}
                     />
@@ -1046,16 +1073,12 @@ export function ActiveWorkoutScreen({
                   tone="attention"
                 />
               )}
-              {viewedExercise.warmups.map((set, index) => (
-                reviewingEarlierOrLater ? <ReviewSetSummary
-                  index={index + 1}
-                  key={set.id}
-                  kind="warmup"
-                  set={set}
-                /> : <SetRow
+              {exercise.warmups.map((set, index) => (
+                <SetRow
                   active={false}
+                  compact={isMultiExerciseOverview && set.id !== activeSet?.id}
                   busy={warmupBusy?.setId === set.id}
-                  count={viewedExercise.warmups.length}
+                  count={exercise.warmups.length}
                   index={index + 1}
                   key={set.id}
                   kind="warmup"
@@ -1066,6 +1089,18 @@ export function ActiveWorkoutScreen({
                     void runWarmup(set);
                   }}
                   onRevealedLayout={setRevealedSetOffset}
+                  {...(set.id === activeSet?.id
+                    ? { onMeasuredLayout: (y: number) => {
+                      setActiveSetMeasurement((current) =>
+                        current?.setId === set.id && current.y === y
+                          ? current
+                          : { setId: set.id, y }
+                      );
+                    } }
+                    : {})}
+                  {...(isMultiExerciseOverview
+                    ? { overviewTestID: `overview-${exercise.id}-${set.id}` }
+                    : {})}
                   onRemove={() => requestRemoval("warmup", set, index)}
                   removeRef={(node) => {
                     removeGlyphRefs.current.set(set.id, node);
@@ -1075,16 +1110,32 @@ export function ActiveWorkoutScreen({
                   tone="card"
                 />
               ))}
-            </ContentCard>
+                </ContentCard>
+            <View
+              onLayout={(event: LayoutChangeEvent) => {
+                if (exercise.id === activeExercise.id) {
+                  const y = event.nativeEvent.layout.y;
+                  setActiveWorkingCardOffset((current) =>
+                    current?.exerciseId === exercise.id && current.y === y
+                      ? current
+                      : { exerciseId: exercise.id, y }
+                  );
+                }
+              }}
+            >
             <ContentCard
               style={styles.section}
-              testID="active-workout-working-sets-card"
+              testID={isMultiExerciseOverview
+                ? `active-workout-${exercise.id}-working-sets-card`
+                : "active-workout-working-sets-card"}
             >
               <SectionHeader
-                action={reviewingEarlierOrLater ? undefined : (
+                action={(
                   <View
                     style={styles.inlineActions}
-                    testID="active-workout-working-actions"
+                    testID={isMultiExerciseOverview
+                      ? `active-workout-${exercise.id}-working-actions`
+                      : "active-workout-working-actions"}
                   >
                     <SectionGlyphAction
                       busy={sectionMutationRef.current === "add_working"}
@@ -1092,7 +1143,7 @@ export function ActiveWorkoutScreen({
                       accessibilityLabel="Add working set"
                       icon={Plus}
                       onPress={() => {
-                        void addWorking();
+                        void addWorking(exercise);
                       }}
                       ref={workingAddRef}
                     />
@@ -1116,20 +1167,16 @@ export function ActiveWorkoutScreen({
                   tone="error"
                 />
               )}
-              {viewedExercise.workingSets.map((set, index) => (
-                reviewingEarlierOrLater ? <ReviewSetSummary
-                  index={index + 1}
-                  key={set.id}
-                  kind="working"
-                  set={set}
-                /> : <SetRow
+              {exercise.workingSets.map((set, index) => (
+                <SetRow
                   active={view.activeSetId === set.id}
+                  compact={isMultiExerciseOverview && set.id !== activeSet?.id}
                   actionsDisabled={
                     view.rest.state === "running"
                     || view.rest.state === "paused"
                   }
                   busy={workingBusySetId === set.id}
-                  count={viewedExercise.workingSets.length}
+                  count={exercise.workingSets.length}
                   index={index + 1}
                   key={set.id}
                   kind="working"
@@ -1151,6 +1198,15 @@ export function ActiveWorkoutScreen({
                     return reviseCompletedSet(set, observation);
                   }}
                   onRemove={() => requestRemoval("working", set, index)}
+                  {...(set.id === activeSet?.id
+                    ? { onMeasuredLayout: (y: number) => {
+                      setActiveSetMeasurement((current) =>
+                        current?.setId === set.id && current.y === y
+                          ? current
+                          : { setId: set.id, y }
+                      );
+                    } }
+                    : {})}
                   removeRef={(node) => {
                     removeGlyphRefs.current.set(set.id, node);
                   }}
@@ -1162,6 +1218,9 @@ export function ActiveWorkoutScreen({
                   revealed={revealedSetId === set.id}
                   set={set}
                   tone="card"
+                  {...(isMultiExerciseOverview
+                    ? { overviewTestID: `overview-${exercise.id}-${set.id}` }
+                    : {})}
                 />
               ))}
               {saveFailedSetId === null ? null : (
@@ -1214,11 +1273,14 @@ export function ActiveWorkoutScreen({
                 />
               )}
             </ContentCard>
+            </View>
+              </View>
+            ))}
           </>
         }
         testID="active-workout"
       />
-      {reviewingEarlierOrLater ? null : <Modal
+      <Modal
         animationType="fade"
         onRequestClose={closeMoreActions}
         transparent
@@ -1267,8 +1329,8 @@ export function ActiveWorkoutScreen({
             />
           </ScrollView>
         </View>
-      </Modal>}
-      {reviewingEarlierOrLater ? null : <ConfirmationSheet
+      </Modal>
+      <ConfirmationSheet
         body={confirmationCopy.body}
         cancelLabel={confirmationCopy.cancelLabel}
         confirmLabel={confirmationCopy.confirmLabel}
@@ -1281,8 +1343,8 @@ export function ActiveWorkoutScreen({
         }}
         restoreFocusRef={moreActionRef}
         visible={outcomeConfirmation !== null}
-      />}
-      {reviewingEarlierOrLater || pendingRemoval === null ? null : <ConfirmationSheet
+      />
+      {pendingRemoval === null ? null : <ConfirmationSheet
         body={pendingRemoval.kind === "warmup"
           ? "This warm-up will be removed from this workout. This cannot be undone."
           : "This set will be removed from this workout. This cannot be undone."}
@@ -1319,6 +1381,9 @@ const styles = StyleSheet.create({
   section: {
     gap: space[2],
   },
+  exerciseSection: {
+    gap: space[2],
+  },
   inlineActions: {
     alignSelf: "flex-end",
     flexDirection: "row",
@@ -1349,11 +1414,6 @@ const styles = StyleSheet.create({
   moreSheetContent: {
     gap: space[4],
     padding: space[6],
-  },
-  reviewSet: {
-    gap: space[1],
-    minHeight: 48,
-    paddingVertical: space[2],
   },
   visuallyHidden: {
     height: 1,

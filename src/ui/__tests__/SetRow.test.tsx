@@ -184,6 +184,27 @@ describe("Plan 07-04 SetRow", () => {
       .not.toBeOnTheScreen();
   });
 
+  it("renders non-active overview rows as compact status summaries without editor controls", async () => {
+    await renderRow(workingSet({
+      id: "overview-working-2",
+      ordinal: 1,
+      status: "planned",
+    }), {
+      active: false,
+      compact: true,
+      count: 2,
+      index: 2,
+      overviewTestID: "overview-exercise-2-working-2",
+    });
+
+    expect(screen.getByTestId("overview-exercise-2-working-2"))
+      .toHaveAccessibleName("Working set 2. Not completed. 62.5 kg × 6.");
+    expect(screen.queryByLabelText("Working set 2 load in kilograms"))
+      .not.toBeOnTheScreen();
+    expect(screen.queryByRole("button", { name: "Complete Set 2" }))
+      .not.toBeOnTheScreen();
+  });
+
   it.each([
     ["working", "working-1", "Remove set 1"],
     ["warmup", "warmup-1", "Remove warm-up W1"],
