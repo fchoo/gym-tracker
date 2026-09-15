@@ -21,17 +21,16 @@ import {
   useRestCountdownCue,
 } from "../../src/bootstrap/restCountdownCue";
 import {
-  AdaptiveScreen,
-} from "../../src/ui/layout/AdaptiveScreen";
+  ActiveWorkoutLoadingScreen,
+} from "../../src/ui/screens/RootScreens";
 import {
   EmptyState,
-  ConfirmationSheet,
-  InlineNotice,
   PrimaryAction,
   ScreenHeader,
-  SecondaryAction,
-  SkeletonBlock,
 } from "../../src/ui/components";
+import {
+  AdaptiveScreen,
+} from "../../src/ui/layout/AdaptiveScreen";
 import {
   ActiveWorkoutScreen,
 } from "../../src/ui/screens/ActiveWorkoutScreen";
@@ -53,6 +52,7 @@ export default function ActiveWorkoutRoute() {
   useEffect(() => {
     let active = true;
     setFailed(false);
+    setView(null);
     void runtime.getActiveWorkout(resolvedSessionId).then((nextView) => {
       if (active) {
         setView(nextView);
@@ -79,8 +79,8 @@ export default function ActiveWorkoutRoute() {
           <>
             <ScreenHeader
               backAction={() => router.back()}
-              eyebrow="FOCUSED WORKOUT"
-              title="Active Workout"
+              eyebrow="WORKOUT OVERVIEW"
+              title="Workout"
             />
             <EmptyState
               body="Your workout was not changed. Return to Today and resume the active session."
@@ -100,21 +100,9 @@ export default function ActiveWorkoutRoute() {
 
   if (view === null) {
     return (
-      <AdaptiveScreen
-        constrainActiveWork
-        primary={
-          <>
-            <ScreenHeader
-              backAction={() => router.back()}
-              eyebrow="FOCUSED WORKOUT"
-              title="Active Workout"
-            />
-            <SkeletonBlock height={34} width="72%" />
-            <SkeletonBlock height={72} />
-            <SkeletonBlock height={72} />
-            <SkeletonBlock height={56} />
-          </>
-        }
+      <ActiveWorkoutLoadingScreen
+        onGoBack={() => router.back()}
+        sessionId={resolvedSessionId}
       />
     );
   }

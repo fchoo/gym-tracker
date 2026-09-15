@@ -270,8 +270,8 @@ export function ActiveWorkoutLoadingScreen({
         <>
           <ScreenHeader
             backAction={onGoBack}
-            eyebrow="FOCUSED WORKOUT"
-            title="Active Workout"
+            eyebrow="WORKOUT OVERVIEW"
+            title="Workout"
           />
           <View
             accessibilityLabel={`Workout session ${sessionId}`}
