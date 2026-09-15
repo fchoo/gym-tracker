@@ -1042,6 +1042,24 @@ test("Phase 2 remediation flows use public labels and deterministic seams", asyn
     "          duration: 300",
     '- assertVisible: "Edit completed set 1"',
   ].join("\n");
+  const retriedCompletedSetEditTraversal = [
+    "- scrollUntilVisible:",
+    "    element:",
+    '      text: "Completed working set 1"',
+    "    direction: DOWN",
+    "    centerElement: true",
+    '- assertVisible: "Completed working set 1"',
+    "- repeat:",
+    "    times: 4",
+    "    while:",
+    '      notVisible: "Edit completed set 1"',
+    "    commands:",
+    "      - swipe:",
+    "          start: 95%, 75%",
+    "          end: 95%, 45%",
+    "          duration: 300",
+    '- assertVisible: "Edit completed set 1"',
+  ].join("\n");
   const anchoredCompletedSetEditTraversal = [
     "- scrollUntilVisible:",
     "    element:",
@@ -1053,8 +1071,8 @@ test("Phase 2 remediation flows use public labels and deterministic seams", asyn
   ].join("\n");
   assert.equal(
     workout.split(anchoredCompletedSetEditTraversal).length - 1,
-    4,
-    "every completed-set revisit must re-anchor Back Squat and expand compact Set 1 before correction",
+    3,
+    "only collapsed completed-set revisits must re-anchor Back Squat and expand compact Set 1 before correction",
   );
   assert.ok(
     workout.includes([
@@ -1085,8 +1103,24 @@ test("Phase 2 remediation flows use public labels and deterministic seams", asyn
   ].join("\n");
   assert.equal(
     workout.split(correctedWorkingSetVerification).length - 1,
-    3,
-    "corrected working-set persistence must re-expand compact Set 1 after retry, restart, and review return",
+    2,
+    "corrected working-set persistence must re-expand compact Set 1 after restart and review return",
+  );
+  const postRetryCorrectedSetVerification = [
+    '- tapOn: "Retry completed set correction"',
+    "- scrollUntilVisible:",
+    "    element:",
+    '      text: "Back Squat"',
+    "    direction: UP",
+    "    centerElement: true",
+    '- assertVisible: "Back Squat"',
+    retriedCompletedSetEditTraversal,
+    '- assertVisible: "Working set 1 of 4.*Current values 62.5 kg × 8.*Completed.*"',
+  ].join("\n");
+  assert.equal(
+    workout.split(postRetryCorrectedSetVerification).length - 1,
+    1,
+    "a successful correction retry must retain the completed row as the expanded editor instead of looking for its compact label",
   );
   const postRestartCorrectedSetVerification = [
     "- stopApp",
@@ -1116,7 +1150,7 @@ test("Phase 2 remediation flows use public labels and deterministic seams", asyn
   );
   assert.match(workout, /assertVisible: "WORKOUT OVERVIEW"[\s\S]*?text: "Bench Press"[\s\S]*?assertVisible: "Bench Press"[\s\S]*?assertVisible: "WORKOUT OVERVIEW"[\s\S]*?text: "Back Squat"[\s\S]*?assertVisible: "Back Squat"[\s\S]*?Working set 1 of 4\.\*Current values 62\.5 kg × 8\.\*Completed\.\*/u,
     "the overview traversal must preserve the corrected Back Squat proof without a return-to-current trip");
-  assert.equal(workout.split(completedSetEditTraversal).length - 1, 5);
+  assert.equal(workout.split(completedSetEditTraversal).length - 1, 4);
   assert.doesNotMatch(
     workout,
     /- scrollUntilVisible:\n    element:\n      text: "Edit completed set 1"/u,
