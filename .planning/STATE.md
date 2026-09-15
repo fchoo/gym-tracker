@@ -2,14 +2,14 @@
 gsd_state_version: 1.0
 milestone: v1.1
 milestone_name: In-Workout Editing, Advanced Timing & Cross-Device Sync
-current_phase: 8
+current_phase: 08
 current_phase_name: Session Overview & Navigation
-status: Planned — all v1.1 phases (8-12) discussed, researched, and planned; pushed; ready to execute Phase 8
-stopped_at: Phases 8-12 planned (22 plans, all plan-checker PASSED); design branch pushed; handoff written; ready to execute Phase 8
-last_updated: "2026-09-15T11:11:17.000Z"
+status: executing
+stopped_at: Completed 08-01-overview-tracer-PLAN.md
+last_updated: "2026-09-15T12:51:04.811Z"
 last_activity: 2026-09-15
-last_activity_desc: Pushed design/v1.1-workout-editing (trailers cleaned) and wrote cross-session execution handoff (.planning/HANDOFF.json + Phase 8 .continue-here.md)
-state_head: b09bc1772f51df36908375e65da3ef70bc5c3b12
+last_activity_desc: Phase 08 execution started
+state_head: 341448a3ca3b346ec50d952fbcb9f02364d5272d
 progress:
   total_phases: 5
   completed_phases: 0
@@ -25,14 +25,14 @@ progress:
 See: `.planning/PROJECT.md` (updated 2026-09-15)
 
 **Core value:** Open today's workout, see trustworthy next targets, complete each working set with one primary action, recover safely from interruption, and understand exactly why the next target is recommended.
-**Current focus:** v1.1 execution — all five phases planned; begin with Phase 8 (Session Overview & Navigation).
+**Current focus:** Phase 08 — Session Overview & Navigation
 
 ## Current Position
 
-Phase: 8 (Session Overview & Navigation) — READY TO EXECUTE (next up)
-Plan: 08-01 overview tracer → 08-02 → 08-03 → 08-04
-Status: Planned — Phases 8-12 fully discussed, researched, and planned (22 plans; every phase passed the plan-checker; decision-coverage gates 7/8/4/4/5 all green). Design branch `design/v1.1-workout-editing` pushed to origin (HEAD b09bc17, 19 commits ahead of main). Cross-session execution handoff written (`.planning/HANDOFF.json` + Phase 8 `.continue-here.md`).
-Last activity: 2026-09-15 — v1.1 planning complete (Phases 8-12)
+Phase: 08 (Session Overview & Navigation) — EXECUTING
+Plan: 2 of 4
+Status: Ready to execute
+Last activity: 2026-09-15 — Phase 08 execution started
 
 ## Delivery model
 
@@ -124,6 +124,7 @@ Terminal Seal) is retired for personal-use (removed in PR #29) and tracked as V2
 | Phase 05 P05 | 13m | 2 tasks | 9 files |
 | Phase 05 P06 | 50m | 2 tasks | 10 files |
 | Phase 05 P07 | 99m | 2 tasks | 37 files |
+| Phase 08-session-overview-navigation P01 | 1h 15m | 2 tasks | 7 files |
 
 ## Accumulated Context
 
@@ -277,6 +278,7 @@ Full decisions live in `.planning/PROJECT.md`.
 - [Phase 05]: Promotion selects successful candidate and attended runs, checks out the candidate commit, rejects reuse/existing tags, and publishes only after public hashes match.
 - [Phase 05]: Protected human evidence upload proves candidate workflow, commit, environment, and artifact provenance before executing candidate source; all staged files stay under a configured evidence root and fixed runner-temp directory.
 - [Phase 05]: Promotion is repository-serialized and completes before Terminal Seal; immutable public-asset promotion proof is an input to the sole final non-mutating verifier command.
+- [Phase 08]: Active workouts render a single ordered overview; stable set IDs resolve command ownership while mutation contracts remain unchanged.
 
 ### Blockers/Concerns
 
@@ -306,9 +308,9 @@ Full decisions live in `.planning/PROJECT.md`.
 
 ## Session Continuity
 
-Last session: 2026-09-15T06:55:48.550Z
-Stopped at: Phases 8-12 context gathered; ready to plan
-Resume file: .planning/phases/08-session-overview-navigation/08-CONTEXT.md
+Last session: 2026-09-15T12:51:04.799Z
+Stopped at: Completed 08-01-overview-tracer-PLAN.md
+Resume file: None
 Next action: Run `/gsd-audit-milestone v1.0`, then `/gsd-complete-milestone v1.0` to archive.
 
 ## Operator Next Steps

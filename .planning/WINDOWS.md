@@ -1,10 +1,10 @@
 ---
 schema_version: 1
-open_count: 0
+open_count: 1
 waived_count: 0
 fixed_count: 71
-total_count: 71
-last_updated: 2026-08-26T13:21:13.963Z
+total_count: 72
+last_updated: 2026-09-15T12:51:16.455Z
 ---
 
 # Broken Windows Ledger
@@ -86,6 +86,7 @@ last_updated: 2026-08-26T13:21:13.963Z
 | 69 | 05 | deviation | scripts/create-release-candidate-manifest.mjs |  | Made the immediate canonical manifest and explicit SHA propagation authoritative after the single build | fixed |  | 2026-08-26T13:20:54.198Z | 2026-08-26T13:21:13.728Z |
 | 70 | 05 | deviation | scripts/generate-phase5-attended-checklist.mjs |  | Replaced digest-only attended trust with exact rows and immutable attachment byte verification | fixed |  | 2026-08-26T13:20:54.291Z | 2026-08-26T13:21:13.860Z |
 | 71 | 05 | deviation | .github/workflows/release-promotion.yml |  | Hardened cross-run promotion with successful-run provenance reuse rejection and public hash verification | fixed |  | 2026-08-26T13:20:54.390Z | 2026-08-26T13:21:13.963Z |
+| 72 | 08 | unrun-verify | maestro/phase8/session-overview.yaml |  | Maestro session-overview tracer unrun: no connected device is available in the design worktree. | open |  | 2026-09-15T12:51:16.455Z |  |
 
 ````json
 [
@@ -940,6 +941,18 @@ last_updated: 2026-08-26T13:21:13.963Z
     "reason": "",
     "recorded_at": "2026-08-26T13:20:54.390Z",
     "resolved_at": "2026-08-26T13:21:13.963Z"
+  },
+  {
+    "id": 72,
+    "kind": "unrun-verify",
+    "phase": "08",
+    "file": "maestro/phase8/session-overview.yaml",
+    "line": null,
+    "description": "Maestro session-overview tracer unrun: no connected device is available in the design worktree.",
+    "status": "open",
+    "reason": "",
+    "recorded_at": "2026-09-15T12:51:16.455Z",
+    "resolved_at": null
   }
 ]
 ````
