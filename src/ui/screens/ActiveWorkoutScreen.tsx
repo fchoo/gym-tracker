@@ -261,13 +261,17 @@ function workingIndex(
 }
 
 function exerciseStatusText(exercise: ActiveWorkoutExercise): string {
+  if (exercise.status === "skipped") {
+    return "Skipped";
+  }
+  if (exercise.origin === "added") {
+    return "Added";
+  }
   switch (exercise.status) {
     case "completed":
       return "Completed";
-    case "skipped":
-      return "Skipped";
     case "active":
-      return exercise.origin === "added" ? "Added" : "Active";
+      return "Active";
     case "planned":
       return "Upcoming";
   }
