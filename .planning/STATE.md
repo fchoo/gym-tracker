@@ -5,17 +5,17 @@ milestone_name: In-Workout Editing, Advanced Timing & Cross-Device Sync
 current_phase: 09
 current_phase_name: In-Workout Exercise Editing
 status: executing
-stopped_at: Completed 09-06-PLAN.md
-last_updated: "2026-09-16T23:59:00.000Z"
+stopped_at: Completed 09-07-PLAN.md
+last_updated: "2026-09-17T00:00:00.000Z"
 last_activity: 2026-09-16
-last_activity_desc: Plan 09-06 completed separate receipt-backed exercise reorder with manifest-bound Android relaunch evidence
-state_head: 64b388ebd4ca4a6e45a8ecc72840297f8391646e
+last_activity_desc: Plan 09-07 completed immutable-lineage progression, exactly-once edited schedule consumption, and persisted native modified provenance
+state_head: 57ef6ce72148177d3a95c7e583c62fe31cff7bb8
 progress:
   total_phases: 5
   completed_phases: 1
   total_plans: 26
-  completed_plans: 10
-  percent: 38
+  completed_plans: 11
+  percent: 42
 ---
 
 # Project State
@@ -30,9 +30,9 @@ See: `.planning/PROJECT.md` (updated 2026-09-15)
 ## Current Position
 
 Phase: 09 (In-Workout Exercise Editing) — EXECUTING
-Plan: 6 of 10 complete; next is 09-07
-Status: Executing Phase 09 — Plan 09-06 persisted whole-exercise reorder and exact-HEAD Android relaunch evidence complete; 09-07 lineage-gated progression and scheduling is next
-Last activity: 2026-09-16 — Plan 09-06 receipt-backed reorder, protected-history retention, and cold-relaunch evidence completed
+Plan: 7 of 10 complete; next is 09-08
+Status: Executing Phase 09 — Plan 09-07 gates progression on immutable planned lineage, replays edited schedule consumption exactly once, and exposes persisted Modified from plan provenance; 09-08 is next
+Last activity: 2026-09-16 — Plan 09-07 lineage-safe progression, schedule retry, and durable native completion/detail cue completed
 
 ## Delivery model
 
@@ -296,6 +296,9 @@ Full decisions live in `.planning/PROJECT.md`.
 - [Phase 09]: Replace and Remove never write the separate reorder receipt authority; pointer selection follows display_ordinal with stable ordinal and ID fallback.
 - [Phase 09]: The overview applies Replace/Remove only from authoritative committed or refreshed views; native retry identity is bounded by a canonical request SHA-256.
 - [Phase 09]: Protected Remove renders `Skipped` before the added-origin label, retains the completed set observation, and cold relaunch returns to Today before an explicit resume reopens the persisted overview.
+- [Phase 09]: Only completed working sets whose immutable target reference belongs to the selected planned occurrence scope may influence recommendations or non-load outcomes; added/replacement null-lineage work is ignored without mutating snapshots or targets.
+- [Phase 09]: A retry of completed scheduled-session consumption reads the existing consumed opportunity first, avoiding an idempotency-hash conflict after the schedule revision advances.
+- [Phase 09]: `SessionDetail.modifiedFromPlan` is required and read from `workout_sessions.modified_from_plan`; existing native completion and detail summaries render literal `Modified from plan` plus an accessibility-hidden Pencil icon.
 
 ### Blockers/Concerns
 
@@ -325,12 +328,12 @@ Full decisions live in `.planning/PROJECT.md`.
 
 ## Session Continuity
 
-Last session: 2026-09-16T19:18:42.000Z
-Stopped at: Completed 09-05-PLAN.md
-Resume file: .planning/phases/09-in-workout-exercise-editing/09-05-SUMMARY.md
-Next action: Execute `.planning/phases/09-in-workout-exercise-editing/09-06-PLAN.md`, preserving the separate Add/Replace/Remove and reorder receipt authorities.
+Last session: 2026-09-16T23:59:00.000Z
+Stopped at: Completed 09-07-PLAN.md
+Resume file: .planning/phases/09-in-workout-exercise-editing/09-07-SUMMARY.md
+Next action: Execute `.planning/phases/09-in-workout-exercise-editing/09-08-PLAN.md`, preserving immutable planned lineage, exactly-once schedule consumption, and the separate Add/Replace/Remove and reorder receipt authorities.
 
 ## Operator Next Steps
 
-- Execute Phase 9 Plan 06 persistent whole-exercise reorder from the verified Add/Replace/Remove overview foundation.
-- Preserve append-only workout history, keep migration 0019 immutable, and keep reorder receipts separate from the Add/Replace/Remove receipt authority.
+- Execute Phase 9 Plan 08 from the verified lineage/schedule/provenance foundation.
+- Preserve append-only workout history, keep migration 0019 immutable, keep edit and reorder receipts separate, and do not allow plan write-back to mutate recorded session history.
