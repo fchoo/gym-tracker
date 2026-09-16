@@ -4,7 +4,7 @@
 **Milestone:** v1.1 — In-Workout Editing, Session Overview, Advanced Timing, Merge Restore
 **Core Value:** Open today's workout, see trustworthy next targets, complete each working set with one primary action, recover safely from interruption, and understand exactly why the next target is recommended.
 
-> **Status:** DRAFT — owner UX decisions recorded 2026-09-15 (see "Owner decisions" below). Requirements updated accordingly; still pre-planning. Ready for `/gsd-new-milestone` → discuss/plan on your go-ahead.
+> **Status:** ACTIVE — owner UX decisions recorded 2026-09-15 (see "Owner decisions" below). Phase 8 is complete; Phases 9–12 remain in the active milestone.
 
 ## Delivery model (unchanged from v1.0)
 
@@ -27,7 +27,7 @@ destroying a committed fact. See **WORK-24**.
 
 ### Session Overview and Navigation
 
-- [ ] **WORK-19**: Starting or resuming a workout lands on a **session overview** — a single scrollable list of every exercise in the session with its sets inline (planned, active, completed, skipped, added) — rather than jumping directly into the first exercise's set entry. The currently-active set remains visually distinguished and is the default scroll anchor; the primary set action (Complete) is reachable without leaving the overview. Empty workouts land on the overview with an Add-exercise affordance and no set rows.
+- [x] **WORK-19**: Starting or resuming a workout lands on a **session overview** — a single scrollable list of every exercise in the session with its sets inline (planned, active, completed, skipped, added) — rather than jumping directly into the first exercise's set entry. The currently-active set remains visually distinguished and is the default scroll anchor; the primary set action (Complete) is reachable without leaving the overview. Empty workouts land on the overview with an Add-exercise affordance and no set rows.
 - [ ] **WORK-20**: From the session overview the owner can **add an exercise** to the in-progress workout by choosing any available exercise from the reviewed library (with the shared Material 3 Search/filter used elsewhere). The added exercise appends to the end of the session with its metric profile's default target scheme and one working set, is marked as owner-added (distinct from planned), and never mutates any existing exercise or set.
 - [ ] **WORK-21**: From the session overview the owner can **replace an exercise**. Replacement never rewrites an exercise row: if the exercise has no completed working sets it is removed and the replacement is appended in its display position; if it has completed working sets the original is retained as skipped and the replacement is appended, so all completed history is preserved. The replacement is chosen from the reviewed library and carries its own immutable snapshot.
 - [ ] **WORK-22**: From the session overview the owner can **remove a whole exercise**. An exercise with zero completed working sets is hard-deleted from the session; an exercise with any completed working set cannot be hard-deleted and is instead **skipped** (its completed history is retained and excluded from remaining-work counts). Session progress totals and history snapshots stay correct and rebuildable after either outcome.
@@ -83,7 +83,7 @@ These resolve the open questions and are now binding for planning:
 
 | Requirement | Phase | Status |
 |-------------|-------|--------|
-| WORK-19 | 8 (proposed) | Draft |
+| WORK-19 | 8 | Complete |
 | WORK-20 | 9 (proposed) | Draft |
 | WORK-21 | 9 (proposed) | Draft |
 | WORK-22 | 9 (proposed) | Draft |
@@ -96,7 +96,7 @@ These resolve the open questions and are now binding for planning:
 | DATA-09 | 11 (proposed) | Draft |
 | DATA-10 | 12 (proposed) | Draft |
 
-**Coverage:** 12 v1.1 requirements defined; phase mapping proposed (finalized at roadmap creation).
+**Coverage:** 12 v1.1 requirements mapped; 1 complete and 11 pending.
 
 ## Deferred beyond v1.1
 

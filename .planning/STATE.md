@@ -2,20 +2,20 @@
 gsd_state_version: 1.0
 milestone: v1.1
 milestone_name: In-Workout Editing, Advanced Timing & Cross-Device Sync
-current_phase: 08
-current_phase_name: Session Overview & Navigation
-status: verifying
-stopped_at: Completed 08-04-lifecycle-verification-PLAN.md
-last_updated: "2026-09-15T13:59:28.677Z"
-last_activity: 2026-09-15
-last_activity_desc: Phase 08 source gates reconciled; awaiting independent verification and manifest-bound native evidence
-state_head: 06a352a
+current_phase: 09
+current_phase_name: In-Workout Exercise Editing
+status: planning
+stopped_at: Phase 08 complete, ready to plan Phase 09
+last_updated: "2026-09-16T03:04:41.655Z"
+last_activity: 2026-09-16
+last_activity_desc: Phase 08 complete, transitioned to Phase 09
+state_head: a66dc48639c97fb97d6ec2238b29c2ff96facfbe
 progress:
   total_phases: 5
-  completed_phases: 0
+  completed_phases: 1
   total_plans: 22
   completed_plans: 4
-  percent: 0
+  percent: 18
 ---
 
 # Project State
@@ -25,14 +25,14 @@ progress:
 See: `.planning/PROJECT.md` (updated 2026-09-15)
 
 **Core value:** Open today's workout, see trustworthy next targets, complete each working set with one primary action, recover safely from interruption, and understand exactly why the next target is recommended.
-**Current focus:** Phase 08 — Session Overview & Navigation
+**Current focus:** Phase 09 — In-Workout Exercise Editing
 
 ## Current Position
 
-Phase: 08 (Session Overview & Navigation) — VERIFYING
-Plan: 4 of 4
-Status: All source gates pass; native Maestro evidence remains pending its declared dev-test manifest and connected device.
-Last activity: 2026-09-15 — Phase 08 source gates reconciled
+Phase: 09 — In-Workout Exercise Editing
+Plan: Not started
+Status: Ready to plan
+Last activity: 2026-09-16 — Phase 08 complete, transitioned to Phase 09
 
 ## Delivery model
 
@@ -59,6 +59,7 @@ Terminal Seal) is retired for personal-use (removed in PR #29) and tracked as V2
 | 3. Calendar and History Integrity | 5/5 implementation-verified; release evidence in 05-07 | 8h 25m | 1h 41m |
 | 4. Overall Progress and Complete Progression | 8/8 implementation-verified; release evidence in 05-07 | source-only closeout | — |
 | 5. Recovery, Distribution, and Release | 7/7 source-preparation complete; exact-candidate attended gate pending | — | — |
+| 08 | 4 | - | - |
 
 **Recent Trend:** Phase 05 Plan 07 prepares a production-only build-once manifest pipeline, exact Phase 2–5 attended rows, protected owner-supplied evidence workflows, strict source-byte validation, serialized no-rebuild promotion, immutable public-asset proof, and post-promotion Terminal Seal validation. All source code-review and security findings are closed. The source-only gate passes 134 suites and 2,348 tests with 90.94% statements, 85.86% branches, 90.21% functions, and 91.13% lines; all 83 integrity-critical files pass at 100%, and focused Phase 5/release tests pass 29/29. Candidate build/sign/install, Maestro/device execution, attended emulator/phone/assistive/design review, owner approval, promotion, and Terminal Seal remain unexecuted.
 **Per-Plan Metrics:**
@@ -287,7 +288,7 @@ Full decisions live in `.planning/PROJECT.md`.
 - [Phase 08]: Phase 08 Plan 03: one discriminated session route and overview shell replace the focused/review workout navigation model.
 - [Phase 08]: Phase 08 Plan 03: Phase 9 exercise creation remains a disabled explanatory affordance; zero-set and discard keep existing revision-checked commands.
 - [Phase 08]: Phase 8 native evidence uses one manifest-bound runner that restores Android font scale and fails closed without restoration.
-- [Phase 08]: Full Jest and coverage gates pass after overview presentation contracts and archived v1.0 Phase 2 evidence paths were reconciled; only manifest-bound native evidence remains unrun.
+- [Phase 08]: Full Jest and coverage gates pass after overview presentation contracts and archived v1.0 Phase 2 evidence paths were reconciled; the exact-HEAD five-flow native gate also passes with 200% font scale restored.
 
 ### Blockers/Concerns
 
@@ -317,11 +318,12 @@ Full decisions live in `.planning/PROJECT.md`.
 
 ## Session Continuity
 
-Last session: 2026-09-15T13:59:28.665Z
-Stopped at: Completed 08-04-lifecycle-verification-PLAN.md
+Last session: 2026-09-16T03:06:09.000Z
+Stopped at: Phase 08 complete, ready to plan Phase 09
 Resume file: None
-Next action: Run `/gsd-audit-milestone v1.0`, then `/gsd-complete-milestone v1.0` to archive.
+Next action: Execute `.planning/phases/09-in-workout-exercise-editing/09-01-add-exercise-tracer-PLAN.md`.
 
 ## Operator Next Steps
 
-- Start the next milestone with /gsd-new-milestone
+- Execute Phase 9 from `09-01-add-exercise-tracer-PLAN.md`.
+- Preserve append-only workout history and bundle schema 19 with the logical-backup graph update.

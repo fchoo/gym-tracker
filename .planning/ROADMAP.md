@@ -53,7 +53,7 @@ in the signed personal-use APK.
 
 **Proposed phases:**
 
-- [ ] **Phase 8: Session Overview & Navigation** — Reorient the active workout to land on a scrollable exercise-list overview (WORK-19) with the active set anchored and Complete reachable inline; unify the empty-workout state into the overview; preserve all v1 workout-loop guarantees. (Requirements: WORK-19; touches WORK-24 read model.)
+- [x] **Phase 8: Session Overview & Navigation** — Reorient the active workout to land on a scrollable exercise-list overview (WORK-19) with the active set anchored and Complete reachable inline; unify the empty-workout state into the overview; preserve all v1 workout-loop guarantees. (Requirements: WORK-19; touches WORK-24 read model.) (completed 2026-09-16)
 - [ ] **Phase 9: In-Workout Exercise Editing** — Append-only add, history-safe replace, guarded remove, and presentation-order reorder from the overview, with the row-level immutable-snapshot model, modified-from-plan/scheduling semantics, and the end-of-workout "save changes to plan?" opt-in (default No). (Requirements: WORK-20, WORK-21, WORK-22, WORK-23, WORK-24, WORK-25, WORK-27.)
 - [ ] **Phase 10: Advanced Set Timing** — Versioned per-rep cadence and cluster-set intra-rest timer state machine (both modes), advisory-only cues, non-authoritative over recorded facts, lifecycle-safe. (Requirement: WORK-26.)
 - [ ] **Phase 11: Portable History & Merge Restore** — Stable owner-scoped record identities and one canonical, portable, versioned, encrypted backup that restores clean or **merges** (authenticated, conflict-ruled, previewed, all-or-nothing) into existing data, with deterministic derivative rebuild and a manual import/export path. (Requirements: DATA-08, DATA-09.)
