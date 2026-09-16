@@ -5,17 +5,17 @@ milestone_name: In-Workout Editing, Advanced Timing & Cross-Device Sync
 current_phase: 09
 current_phase_name: In-Workout Exercise Editing
 status: executing
-stopped_at: Completed 09-04-PLAN.md
-last_updated: "2026-09-16T14:51:20.726Z"
+stopped_at: Completed 09-05-PLAN.md
+last_updated: "2026-09-16T19:18:42.000Z"
 last_activity: 2026-09-16
-last_activity_desc: Plan 09-04 completed durable Replace/Remove v20 persistence with immutable-history coverage
-state_head: ae4f2685891997d757658f335dcf505c1c57ce0f
+last_activity_desc: Plan 09-05 completed native Replace/Remove overview and manifest-bound Android relaunch evidence
+state_head: 716fb82d3e538442f71b11c6c96ae952d75182dd
 progress:
   total_phases: 5
   completed_phases: 1
   total_plans: 26
-  completed_plans: 8
-  percent: 20
+  completed_plans: 9
+  percent: 23
 ---
 
 # Project State
@@ -30,9 +30,9 @@ See: `.planning/PROJECT.md` (updated 2026-09-15)
 ## Current Position
 
 Phase: 09 (In-Workout Exercise Editing) — EXECUTING
-Plan: 4 of 10 complete; next is 09-05
-Status: Executing Phase 09 — Plan 09-04 durable Replace/Remove persistence complete; 09-05 remains next
-Last activity: 2026-09-16 — Plan 09-04 Replace/Remove persistence and full integrity coverage completed
+Plan: 5 of 10 complete; next is 09-06
+Status: Executing Phase 09 — Plan 09-05 native Replace/Remove overview and exact-HEAD Android evidence complete; 09-06 reorder remains next
+Last activity: 2026-09-16 — Plan 09-05 Replace/Remove overview and cold-relaunch evidence completed
 
 ## Delivery model
 
@@ -130,6 +130,7 @@ Terminal Seal) is retired for personal-use (removed in PR #29) and tracked as V2
 | Phase 08-session-overview-navigation P03 | 13min | 2 tasks | 12 files |
 | Phase 08 P04 | 25min | 2 tasks | 17 files |
 | Phase 09-in-workout-exercise-editing P04 | 22 min | 2 tasks | 6 files |
+| Phase 09-in-workout-exercise-editing P05 | 4h 31m | 2 tasks | 10 files |
 
 ## Accumulated Context
 
@@ -293,6 +294,8 @@ Full decisions live in `.planning/PROJECT.md`.
 - [Phase 09]: Replace and Remove persist all replay-critical request facts in the v20 scalar edit receipt; the expected exercise revision is carried inside canonical result_json because the shipped receipt schema has no separate column.
 - [Phase 09]: A completed or undo-referenced exercise is never deleted: remaining mutable child rows are skipped, the original stays skipped, and Replace appends a fresh added-origin snapshot.
 - [Phase 09]: Replace and Remove never write the separate reorder receipt authority; pointer selection follows display_ordinal with stable ordinal and ID fallback.
+- [Phase 09]: The overview applies Replace/Remove only from authoritative committed or refreshed views; native retry identity is bounded by a canonical request SHA-256.
+- [Phase 09]: Protected Remove renders `Skipped` before the added-origin label, retains the completed set observation, and cold relaunch returns to Today before an explicit resume reopens the persisted overview.
 
 ### Blockers/Concerns
 
@@ -322,12 +325,12 @@ Full decisions live in `.planning/PROJECT.md`.
 
 ## Session Continuity
 
-Last session: 2026-09-16T14:51:20.695Z
-Stopped at: Completed 09-04-PLAN.md
-Resume file: None
-Next action: Execute `.planning/phases/09-in-workout-exercise-editing/09-05-PLAN.md`, preserving the separate reorder receipt authority.
+Last session: 2026-09-16T19:18:42.000Z
+Stopped at: Completed 09-05-PLAN.md
+Resume file: .planning/phases/09-in-workout-exercise-editing/09-05-SUMMARY.md
+Next action: Execute `.planning/phases/09-in-workout-exercise-editing/09-06-PLAN.md`, preserving the separate Add/Replace/Remove and reorder receipt authorities.
 
 ## Operator Next Steps
 
-- Execute Phase 9 Plan 02 schema-v20 receipt-authority core from the verified schema-19 and add-exercise foundation.
-- Preserve append-only workout history, keep migration 0019 immutable, and extend the logical-backup graph for both v20 receipt authorities.
+- Execute Phase 9 Plan 06 persistent whole-exercise reorder from the verified Add/Replace/Remove overview foundation.
+- Preserve append-only workout history, keep migration 0019 immutable, and keep reorder receipts separate from the Add/Replace/Remove receipt authority.
