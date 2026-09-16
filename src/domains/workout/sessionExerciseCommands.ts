@@ -2,6 +2,8 @@ import type {
   ActiveWorkoutRepository,
   AddExerciseInput,
   AddExerciseResult,
+  ReorderExercisesInput,
+  ReorderExercisesResult,
   RemoveExerciseInput,
   RemoveExerciseResult,
   ReplaceExerciseInput,
@@ -88,6 +90,41 @@ function validateRemoveExerciseInput(input: RemoveExerciseInput): void {
   validateEditEnvelope(input, "remove_exercise");
 }
 
+function validateReorderExercisesInput(input: ReorderExercisesInput): void {
+  if (!validIdentifier(input.requestId, REQUEST_ID_MAX_LENGTH)
+    || !validIdentifier(input.sessionId, PERSISTED_ENTITY_ID_MAX_LENGTH)) {
+    throw new TypeError("reorder_exercises_identifier_invalid");
+  }
+  if (!SHA256_PATTERN.test(input.requestSha256)) {
+    throw new TypeError("reorder_exercises_hash_invalid");
+  }
+  if (!validNonnegativeInteger(input.expectedSessionRevision)) {
+    throw new TypeError("reorder_exercises_revision_invalid");
+  }
+  if (!validNonnegativeInteger(input.occurredAtMs)) {
+    throw new TypeError("reorder_exercises_time_invalid");
+  }
+
+  const orderedIds = input.orderedSessionExerciseIds;
+  const revisions = input.expectedSessionExerciseRevisions;
+  if (orderedIds.length === 0 || revisions.length !== orderedIds.length
+    || orderedIds.some((id) => !validIdentifier(id, PERSISTED_ENTITY_ID_MAX_LENGTH))
+    || revisions.some(({ sessionExerciseId, revision }) => !validIdentifier(
+      sessionExerciseId,
+      PERSISTED_ENTITY_ID_MAX_LENGTH,
+    ) || !validNonnegativeInteger(revision))) {
+    throw new TypeError("reorder_exercises_membership_invalid");
+  }
+
+  const orderedIdSet = new Set(orderedIds);
+  const revisionIdSet = new Set(revisions.map(({ sessionExerciseId }) => sessionExerciseId));
+  if (orderedIdSet.size !== orderedIds.length
+    || revisionIdSet.size !== revisions.length
+    || [...orderedIdSet].some((id) => !revisionIdSet.has(id))) {
+    throw new TypeError("reorder_exercises_membership_invalid");
+  }
+}
+
 export async function addExercise(input: Readonly<{
   repository: ActiveWorkoutRepository;
   input: AddExerciseInput;
@@ -119,4 +156,15 @@ export async function removeExercise(input: Readonly<{
     throw new TypeError("remove_exercise_unavailable");
   }
   return input.repository.removeExercise(input.input);
+}
+
+export async function reorderExercises(input: Readonly<{
+  repository: ActiveWorkoutRepository;
+  input: ReorderExercisesInput;
+}>): Promise<ReorderExercisesResult> {
+  validateReorderExercisesInput(input.input);
+  if (input.repository.reorderExercises === undefined) {
+    throw new TypeError("reorder_exercises_unavailable");
+  }
+  return input.repository.reorderExercises(input.input);
 }

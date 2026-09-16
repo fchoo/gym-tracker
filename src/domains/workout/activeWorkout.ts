@@ -226,6 +226,28 @@ export type RemoveExerciseResult = Readonly<{
   sessionRevision: number;
 }>;
 
+export type ReorderExerciseRevision = Readonly<{
+  sessionExerciseId: string;
+  revision: number;
+}>;
+
+export type ReorderExercisesInput = Readonly<{
+  requestId: string;
+  requestSha256: string;
+  sessionId: string;
+  expectedSessionRevision: number;
+  occurredAtMs: number;
+  orderedSessionExerciseIds: readonly string[];
+  expectedSessionExerciseRevisions: readonly ReorderExerciseRevision[];
+}>;
+
+export type ReorderExercisesResult = Readonly<{
+  outcome: "committed" | "already_committed";
+  sessionId: string;
+  orderedSessionExerciseIds: readonly string[];
+  sessionRevision: number;
+}>;
+
 export type CopyPreviousWarmupInput = Readonly<{
   sessionId: string;
   sourceSetId: string;
@@ -348,6 +370,9 @@ export interface ActiveWorkoutRepository {
   removeExercise?: (
     input: RemoveExerciseInput,
   ) => Promise<RemoveExerciseResult>;
+  reorderExercises?: (
+    input: ReorderExercisesInput,
+  ) => Promise<ReorderExercisesResult>;
   copyPreviousWarmup(
     input: CopyPreviousWarmupInput,
   ): Promise<ActiveWorkoutView>;

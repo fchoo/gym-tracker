@@ -12,6 +12,7 @@ import type {
 import {
   addExercise,
   removeExercise,
+  reorderExercises,
   replaceExercise,
 } from "./sessionExerciseCommands";
 
@@ -55,6 +56,24 @@ function removeInput() {
     sessionExerciseId: "session-exercise-1",
     expectedSessionExerciseRevision: 2,
     occurredAtMs: 2_000,
+  };
+}
+
+function reorderInput() {
+  return {
+    requestId: "reorder-exercises-1",
+    requestSha256: validHash,
+    sessionId: "session-1",
+    expectedSessionRevision: 1,
+    occurredAtMs: 2_000,
+    orderedSessionExerciseIds: [
+      "session-exercise-2",
+      "session-exercise-1",
+    ],
+    expectedSessionExerciseRevisions: [
+      { sessionExerciseId: "session-exercise-2", revision: 3 },
+      { sessionExerciseId: "session-exercise-1", revision: 2 },
+    ],
   };
 }
 
@@ -246,5 +265,65 @@ describe("Phase 09 Replace and Remove command boundary", () => {
       .rejects.toThrow("replace_exercise_unavailable");
     await expect(removeExercise({ repository: port, input: removeInput() }))
       .rejects.toThrow("remove_exercise_unavailable");
+  });
+});
+
+describe("Phase 09 reorder command boundary", () => {
+  it.each([
+    { orderedSessionExerciseIds: [] },
+    { orderedSessionExerciseIds: ["session-exercise-1", "session-exercise-1"] },
+    { expectedSessionExerciseRevisions: [] },
+    {
+      expectedSessionExerciseRevisions: [
+        { sessionExerciseId: "session-exercise-2", revision: 3 },
+        { sessionExerciseId: "session-exercise-3", revision: 2 },
+      ],
+    },
+  ])("rejects incomplete or duplicate ordered membership: %j", async (invalid) => {
+    await expect(reorderExercises({
+      repository: repository(),
+      input: { ...reorderInput(), ...invalid },
+    })).rejects.toThrow("reorder_exercises_membership_invalid");
+  });
+
+  it.each([
+    { requestSha256: "A".repeat(64) },
+    { expectedSessionRevision: -1 },
+    { occurredAtMs: -1 },
+    {
+      expectedSessionExerciseRevisions: [
+        { sessionExerciseId: "session-exercise-2", revision: 3 },
+        { sessionExerciseId: "session-exercise-1", revision: 1.5 },
+      ],
+    },
+  ])("rejects malformed reorder envelope: %j", async (invalid) => {
+    await expect(reorderExercises({
+      repository: repository(),
+      input: { ...reorderInput(), ...invalid },
+    })).rejects.toThrow("reorder_exercises_");
+  });
+
+  it("forwards the exact independent reorder receipt envelope", async () => {
+    const port = repository();
+    const command = reorderInput();
+    port.reorderExercises = jest.fn(async () => ({
+      outcome: "committed" as const,
+      sessionId: command.sessionId,
+      orderedSessionExerciseIds: command.orderedSessionExerciseIds,
+      sessionRevision: 2,
+    }));
+
+    await expect(reorderExercises({ repository: port, input: command })).resolves.toEqual({
+      outcome: "committed",
+      sessionId: command.sessionId,
+      orderedSessionExerciseIds: command.orderedSessionExerciseIds,
+      sessionRevision: 2,
+    });
+    expect(port.reorderExercises).toHaveBeenCalledWith(command);
+  });
+
+  it("fails closed when reorder capability is unavailable", async () => {
+    await expect(reorderExercises({ repository: repository(), input: reorderInput() }))
+      .rejects.toThrow("reorder_exercises_unavailable");
   });
 });
