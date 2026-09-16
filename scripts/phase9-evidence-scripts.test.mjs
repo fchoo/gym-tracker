@@ -13,7 +13,7 @@ test("Phase 9 evidence runner requires a manifest and tracer relaunch assertions
   assert.match(flow, /Activate Full Body Foundation/);
   assert.match(flow, /Start empty workout/);
   assert.match(flow, /tapOn: "Add Back Squat"/);
-  assert.match(flow, /tapOn: "\.\*Add exercise"\n- pressKey: Back\n- tapOn: "Add Back Squat"/);
+  assert.match(flow, /tapOn: "\.\*Add exercise"\n- pressKey: Back\n- scrollUntilVisible:[\s\S]*text: "Add Back Squat"[\s\S]*- tapOn: "Add Back Squat"/);
   assert.doesNotMatch(flow, /tapOn: "Add \.\*"/);
   assert.match(flow, /Add exercise/);
   assert.match(flow, /Added/);
