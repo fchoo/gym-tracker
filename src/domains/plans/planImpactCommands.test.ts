@@ -15,6 +15,7 @@ import {
   PlanImpactInputError,
   previewDayRemoval,
   previewExerciseReplacement,
+  previewSessionExerciseEditsForPlan,
   removePlanDayWithImpact,
   replacePlanExercise,
   type DayRemovalPreview,
@@ -30,6 +31,147 @@ const identity = {
   profile: "load_reps" as const,
   contractVersion: 1,
   exerciseMetricGeneration: 1,
+};
+
+const writeBackTarget = {
+  profile: "load_reps" as const,
+  version: 1 as const,
+  loadGrams: 20_000,
+  minReps: 8,
+  maxReps: 12,
+  incrementGrams: 2_500,
+  perSide: false,
+};
+
+const writeBackUnits = {
+  version: 1,
+  load: "grams",
+  count: "repetitions",
+};
+
+const sessionWriteBackFacts = {
+  session: {
+    id: "session-edited",
+    planId: "plan-owner",
+    planDayId: "day-owner",
+    planName: "Owner Strength",
+    dayName: "Strength Day",
+    revision: 7,
+    source: "scheduled_day" as const,
+    status: "completed" as const,
+    modifiedFromPlan: true,
+  },
+  day: {
+    id: "day-owner",
+    name: "Strength Day",
+    planId: "plan-owner",
+    planRevision: 4,
+    occurrences: [{
+      occurrenceId: "owned-squat",
+      exerciseId: "exercise-squat",
+      ordinal: 0,
+      restSeconds: 90,
+      metricIdentity: identity,
+      warmups: [],
+      targets: [{ ordinal: 0, target: writeBackTarget, units: writeBackUnits }],
+      policy: {
+        kind: "automatic" as const,
+        policyId: "load_reps.double_progression.v1",
+        version: 1,
+        rule: {
+          kind: "automatic",
+          id: "load_reps.double_progression.v1",
+          version: 1,
+        },
+      },
+    }, {
+      occurrenceId: "owned-deadlift",
+      exerciseId: "exercise-deadlift",
+      ordinal: 1,
+      restSeconds: 120,
+      metricIdentity: identity,
+      warmups: [],
+      targets: [{ ordinal: 0, target: writeBackTarget, units: writeBackUnits }],
+      policy: {
+        kind: "automatic" as const,
+        policyId: "load_reps.double_progression.v1",
+        version: 1,
+        rule: {
+          kind: "automatic",
+          id: "load_reps.double_progression.v1",
+          version: 1,
+        },
+      },
+    }, {
+      occurrenceId: "owned-press",
+      exerciseId: "exercise-press",
+      ordinal: 2,
+      restSeconds: 90,
+      metricIdentity: identity,
+      warmups: [],
+      targets: [{ ordinal: 0, target: writeBackTarget, units: writeBackUnits }],
+      policy: {
+        kind: "automatic" as const,
+        policyId: "load_reps.double_progression.v1",
+        version: 1,
+        rule: {
+          kind: "automatic",
+          id: "load_reps.double_progression.v1",
+          version: 1,
+        },
+      },
+    }],
+  },
+  sessionExercises: [{
+    sessionExerciseId: "session-squat",
+    exerciseId: "exercise-squat",
+    displayOrdinal: 0,
+    sourceOccurrenceId: "owned-squat",
+    restSeconds: 90,
+    metricIdentity: identity,
+    targets: [{ ordinal: 0, target: writeBackTarget, units: writeBackUnits }],
+  }, {
+    sessionExerciseId: "session-bench",
+    exerciseId: "exercise-bench",
+    displayOrdinal: 0,
+    sourceOccurrenceId: null,
+    restSeconds: 75,
+    metricIdentity: identity,
+    targets: [{ ordinal: 0, target: { ...writeBackTarget, loadGrams: 0, minReps: 8, maxReps: 8 }, units: writeBackUnits }],
+  }, {
+    sessionExerciseId: "session-row",
+    exerciseId: "exercise-row",
+    displayOrdinal: 1,
+    sourceOccurrenceId: null,
+    restSeconds: 60,
+    metricIdentity: identity,
+    targets: [{ ordinal: 0, target: { ...writeBackTarget, loadGrams: 0, minReps: 8, maxReps: 8 }, units: writeBackUnits }],
+  }, {
+    sessionExerciseId: "session-deadlift",
+    exerciseId: "exercise-deadlift",
+    displayOrdinal: 2,
+    sourceOccurrenceId: "owned-deadlift",
+    restSeconds: 120,
+    metricIdentity: identity,
+    targets: [{ ordinal: 0, target: writeBackTarget, units: writeBackUnits }],
+  }, {
+    sessionExerciseId: "session-press",
+    exerciseId: "exercise-press",
+    displayOrdinal: 3,
+    sourceOccurrenceId: "owned-press",
+    restSeconds: 90,
+    metricIdentity: identity,
+    targets: [{ ordinal: 0, target: writeBackTarget, units: writeBackUnits }],
+  }],
+  edits: [{
+    operation: "replace_exercise" as const,
+    subjectSessionExerciseId: "session-squat",
+    replacementSessionExerciseId: "session-bench",
+  }, {
+    operation: "remove_exercise" as const,
+    subjectSessionExerciseId: "session-press",
+    replacementSessionExerciseId: null,
+  }],
 };
 
 const repositoryPreview: ExerciseReplacementRepositoryPreview = {
@@ -659,6 +801,139 @@ describe("D-52/D-53 exercise replacement commands", () => {
     })).rejects.toMatchObject({
       code: "plan_impact_occurrences_incomplete",
     });
+  });
+});
+
+describe("D-01/D-02 session exercise write-back preview", () => {
+  it("canonicalizes one edited completed owned session into its final manual and planned composition", async () => {
+    const readSessionExerciseEditsForPlan = jest.fn(async () =>
+      sessionWriteBackFacts
+    );
+
+    const preview = await previewSessionExerciseEditsForPlan({
+      repository: { readSessionExerciseEditsForPlan },
+      sha256,
+      input: { sessionId: "session-edited" },
+    });
+
+    expect(preview).toMatchObject({
+      kind: "session_exercise_edits",
+      sourceSessionId: "session-edited",
+      planId: "plan-owner",
+      planDayId: "day-owner",
+      expectedPlanRevision: 4,
+      currentWorkoutUnaffected: true,
+      composition: [{
+        source: "manual",
+        sessionExerciseId: "session-bench",
+        exerciseId: "exercise-bench",
+        ordinal: 0,
+        policy: {
+          kind: "manual_hold",
+          policyId: "load_reps.manual_hold.v1",
+        },
+      }, {
+        source: "manual",
+        sessionExerciseId: "session-row",
+        exerciseId: "exercise-row",
+        ordinal: 1,
+      }, {
+        source: "planned",
+        sourceOccurrenceId: "owned-deadlift",
+        sessionExerciseId: "session-deadlift",
+        exerciseId: "exercise-deadlift",
+        ordinal: 2,
+      }],
+    });
+    expect(preview).not.toBeNull();
+    expect(preview!.previewToken).toMatch(/^session-writeback-v1:[a-f0-9]{64}$/u);
+    expect(readSessionExerciseEditsForPlan).toHaveBeenCalledWith({
+      sessionId: "session-edited",
+    });
+  });
+
+  it("returns no aggregate for excluded or composition-restored sessions and binds final order", async () => {
+    const baseline = {
+      ...sessionWriteBackFacts,
+      sessionExercises: sessionWriteBackFacts.day.occurrences.map((occurrence) => ({
+        sessionExerciseId: `session-${occurrence.occurrenceId}`,
+        exerciseId: occurrence.exerciseId,
+        displayOrdinal: occurrence.ordinal,
+        sourceOccurrenceId: occurrence.occurrenceId,
+        restSeconds: occurrence.restSeconds,
+        metricIdentity: occurrence.metricIdentity,
+        targets: occurrence.targets,
+      })),
+      edits: [],
+    };
+    const unchanged = await previewSessionExerciseEditsForPlan({
+      repository: {
+        readSessionExerciseEditsForPlan: jest.fn(async () => baseline),
+      },
+      sha256,
+      input: { sessionId: "session-edited" },
+    });
+    expect(unchanged).toBeNull();
+
+    const unedited = await previewSessionExerciseEditsForPlan({
+      repository: {
+        readSessionExerciseEditsForPlan: jest.fn(async () => ({
+          ...sessionWriteBackFacts,
+          session: { ...sessionWriteBackFacts.session, modifiedFromPlan: false },
+        })),
+      },
+      sha256,
+      input: { sessionId: "session-edited" },
+    });
+    expect(unedited).toBeNull();
+
+    const orderSensitiveSha = async (value: string): Promise<string> => {
+      const parsed = JSON.parse(value) as {
+        composition?: readonly Readonly<{ sessionExerciseId: string }>[];
+      };
+      return parsed.composition?.[0]?.sessionExerciseId === "session-deadlift"
+        ? "c".repeat(64)
+        : "a".repeat(64);
+    };
+    const ordered = await previewSessionExerciseEditsForPlan({
+      repository: {
+        readSessionExerciseEditsForPlan: jest.fn(async () => sessionWriteBackFacts),
+      },
+      sha256: orderSensitiveSha,
+      input: { sessionId: "session-edited" },
+    });
+    const reorderedReceipts = await previewSessionExerciseEditsForPlan({
+      repository: {
+        readSessionExerciseEditsForPlan: jest.fn(async () => ({
+          ...sessionWriteBackFacts,
+          edits: [...sessionWriteBackFacts.edits].reverse(),
+        })),
+      },
+      sha256: orderSensitiveSha,
+      input: { sessionId: "session-edited" },
+    });
+    const reordered = await previewSessionExerciseEditsForPlan({
+      repository: {
+        readSessionExerciseEditsForPlan: jest.fn(async () => ({
+          ...sessionWriteBackFacts,
+          sessionExercises: sessionWriteBackFacts.sessionExercises.map((entry) =>
+            entry.sessionExerciseId === "session-deadlift"
+              ? { ...entry, displayOrdinal: 0 }
+              : entry.sessionExerciseId === "session-bench"
+                ? { ...entry, displayOrdinal: 2 }
+                : entry
+          ),
+          edits: sessionWriteBackFacts.edits,
+        })),
+      },
+      sha256: orderSensitiveSha,
+      input: { sessionId: "session-edited" },
+    });
+
+    expect(ordered?.previewToken).toBe(reorderedReceipts?.previewToken);
+    expect(ordered?.previewToken).not.toBe(reordered?.previewToken);
+    expect(reordered?.composition.map(({ sessionExerciseId }) => sessionExerciseId))
+      .toEqual(["session-deadlift", "session-row", "session-bench"]);
   });
 });
 
