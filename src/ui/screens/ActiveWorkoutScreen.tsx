@@ -1758,6 +1758,12 @@ function PopulatedWorkoutOverview({
                     <Text style={[typeScale.secondary as TextStyle, { color: colors.contentCardTextSecondary }]}>
                       Reorder exercise
                     </Text>
+                    <Text
+                      style={[typeScale.secondary as TextStyle, { color: colors.contentCardTextSecondary }]}
+                      testID={`exercise-reorder-position-${exercise.id}`}
+                    >
+                      {`${exercise.name} · Position ${index + 1} of ${overviewExercises.length}`}
+                    </Text>
                   </PlanEditorReorderableRow>
                   <View style={styles.reorderFallbackActions}>
                     <SecondaryAction

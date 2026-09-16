@@ -76,20 +76,18 @@ name: Phase 9 add exercise and relaunch persistence
 - extendedWaitUntil:
     visible: "Back Squat moved to 2 of 2"
     timeout: 30000
-- assertVisible:
-    id: "overview-exercise-add_exercise.*"
-    above:
-      id: "overview-exercise-add-exercise.*"
+- assertVisible: "Back Squat · Position 2 of 2"
 - stopApp
 - launchApp:
     clearState: false
     permissions:
       notifications: deny
 - assertVisible: '^Back Squat · Working set 1 · Rest idle$'
-- assertVisible:
-    id: "overview-exercise-add_exercise.*"
-    above:
-      id: "overview-exercise-add-exercise.*"
+- tapOn: "More workout actions"
+- tapOn: "Reorder exercises"
+- assertVisible: "Back Squat · Position 2 of 2"
+- tapOn: "More workout actions"
+- tapOn: "Done reordering"
 - openLink: "gymtracker-devtest://__notification-test-controls?action=arm_replace_exercise_failure"
 - extendedWaitUntil:
     visible: "Replace exercise failure armed"

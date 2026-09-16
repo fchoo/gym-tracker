@@ -652,6 +652,8 @@ describe("Plan 01-08 ActiveWorkoutScreen", () => {
     }));
     expect(screen.getByTestId("drag-exercise-session-exercise-2"))
       .toHaveProp("accessibilityLabel", "Reorder Bench Press");
+    expect(screen.getByTestId("exercise-reorder-position-session-exercise-2"))
+      .toHaveTextContent("Bench Press · Position 2 of 2");
     await fireEvent.press(screen.getByRole("button", {
       name: "Move Bench Press up",
     }));
