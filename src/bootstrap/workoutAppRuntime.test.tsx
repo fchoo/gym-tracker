@@ -289,6 +289,9 @@ function runtimeActiveWorkoutRepository(): ActiveWorkoutRepository & {
   removeExercise: jest.MockedFunction<
     NonNullable<ActiveWorkoutRepository["removeExercise"]>
   >;
+  reorderExercises: jest.MockedFunction<
+    NonNullable<ActiveWorkoutRepository["reorderExercises"]>
+  >;
   addWorkingSet: jest.MockedFunction<
     ActiveWorkoutRepository["addWorkingSet"]
   >;
@@ -339,6 +342,12 @@ function runtimeActiveWorkoutRepository(): ActiveWorkoutRepository & {
       disposition: "deleted_provisional" as const,
       sessionId: input.sessionId,
       sessionExerciseId: input.sessionExerciseId,
+      sessionRevision: input.expectedSessionRevision + 1,
+    })),
+    reorderExercises: jest.fn(async (input) => ({
+      outcome: "committed" as const,
+      sessionId: input.sessionId,
+      orderedSessionExerciseIds: input.orderedSessionExerciseIds,
       sessionRevision: input.expectedSessionRevision + 1,
     })),
     addWarmup: jest.fn(async () => activeWorkoutView),
@@ -1702,6 +1711,76 @@ describe("WorkoutAppRuntimeProvider", () => {
     expect(events).toEqual([
       "remove",
       "remove-active-read",
+      "trusted-read",
+    ]);
+  });
+
+  it("delegates reorder once, then returns only the authoritative reordered overview", async () => {
+    const repository = runtimeRepository([activeView], [activation]);
+    const workoutRepository = runtimeActiveWorkoutRepository();
+    const events: string[] = [];
+    const reorderedView: ActiveWorkoutView = {
+      ...activeWorkoutView,
+      revision: 2,
+      exercises: [activeWorkoutView.currentExercise],
+    };
+    repository.getTodayView = jest.fn(async () => {
+      events.push("trusted-read");
+      return activeView;
+    });
+    workoutRepository.reorderExercises.mockImplementationOnce(async (input) => {
+      events.push("reorder");
+      return {
+        outcome: "committed",
+        sessionId: input.sessionId,
+        orderedSessionExerciseIds: input.orderedSessionExerciseIds,
+        sessionRevision: input.expectedSessionRevision + 1,
+      };
+    });
+    workoutRepository.getActiveWorkout.mockImplementationOnce(async () => {
+      events.push("reorder-active-read");
+      return reorderedView;
+    });
+    let captured: ReturnType<typeof useWorkoutAppRuntime> | undefined;
+    await render(
+      <RuntimeCaptureHarness
+        dependencies={dependencies(repository, {
+          createWorkoutRepository: () => workoutRepository,
+        })}
+        onReady={(runtime) => {
+          captured = runtime;
+        }}
+      />,
+    );
+    await waitFor(() => {
+      expect(captured?.launchState).toBe("trusted");
+    });
+    if (captured === undefined) {
+      throw new Error("runtime_not_captured");
+    }
+
+    events.splice(0);
+    const input = {
+      requestId: "reorder-runtime",
+      requestSha256: "a".repeat(64),
+      sessionId: "session-1",
+      expectedSessionRevision: 1,
+      occurredAtMs: 2_000,
+      orderedSessionExerciseIds: ["exercise-1"],
+      expectedSessionExerciseRevisions: [{
+        sessionExerciseId: "exercise-1",
+        revision: 1,
+      }],
+    };
+    let reordered: Awaited<ReturnType<typeof captured.reorderExercises>>;
+    await act(async () => {
+      reordered = await captured!.reorderExercises(input);
+    });
+    expect(reordered!).toBe(reorderedView);
+    expect(workoutRepository.reorderExercises).toHaveBeenCalledWith(input);
+    expect(events).toEqual([
+      "reorder",
+      "reorder-active-read",
       "trusted-read",
     ]);
   });

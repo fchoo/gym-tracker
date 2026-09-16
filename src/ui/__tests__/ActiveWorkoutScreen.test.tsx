@@ -629,6 +629,93 @@ describe("Plan 01-08 ActiveWorkoutScreen", () => {
       .toBeOnTheScreen();
   });
 
+  it("submits drag and explicit fallback moves through one authoritative reorder command", async () => {
+    const before = overviewView();
+    const after: ActiveWorkoutView = {
+      ...before,
+      revision: 2,
+      exercises: [before.currentExercise, before.exercises[0]!],
+    };
+    const reorderExercises = jest.fn<
+      NonNullable<ActiveWorkoutCommands["reorderExercises"]>
+    >(async () => after);
+    await renderActive({
+      commands: commands({ reorderExercises }),
+      view: before,
+    });
+
+    await fireEvent.press(screen.getByRole("button", {
+      name: "More workout actions",
+    }));
+    await fireEvent.press(screen.getByRole("button", {
+      name: "Reorder exercises",
+    }));
+    expect(screen.getByTestId("drag-exercise-session-exercise-2"))
+      .toHaveProp("accessibilityLabel", "Reorder Bench Press");
+    await fireEvent.press(screen.getByRole("button", {
+      name: "Move Bench Press up",
+    }));
+
+    await waitFor(() => {
+      expect(reorderExercises).toHaveBeenCalledWith(expect.objectContaining({
+        expectedSessionExerciseRevisions: [
+          { sessionExerciseId: "session-exercise-2", revision: 13 },
+          { sessionExerciseId: "session-exercise-1", revision: 7 },
+        ],
+        expectedSessionRevision: 1,
+        orderedSessionExerciseIds: [
+          "session-exercise-2",
+          "session-exercise-1",
+        ],
+        sessionId: "session-1",
+      }));
+      expect(screen.getByText("Bench Press moved to 1 of 2"))
+        .toBeOnTheScreen();
+    });
+  });
+
+  it("adds one selected library exercise from the populated overview list end", async () => {
+    const addExercise = jest.fn<
+      NonNullable<ActiveWorkoutCommands["addExercise"]>
+    >(async (input) => ({
+      outcome: "committed",
+      sessionId: input.sessionId,
+      sessionExerciseId: input.sessionExerciseId,
+      setId: input.setId,
+      sessionRevision: input.expectedSessionRevision + 1,
+    }));
+    await renderActive({
+      availableExercises: [{
+        id: "5f140001-7e35-4a6d-9100-000000000007",
+        name: "Overhead Press",
+      }],
+      commands: commands({ addExercise }),
+      view: overviewView(),
+    });
+
+    await fireEvent.press(screen.getByRole("button", {
+      name: "Add exercise",
+    }));
+    await fireEvent.changeText(
+      screen.getByLabelText("Search exercises"),
+      "Overhead Press",
+    );
+    await fireEvent.press(screen.getByTestId(
+      "add-exercise-option-5f140001-7e35-4a6d-9100-000000000007",
+    ));
+    await fireEvent.press(screen.getByRole("button", {
+      name: "Add Overhead Press",
+    }));
+
+    await waitFor(() => {
+      expect(addExercise).toHaveBeenCalledWith(expect.objectContaining({
+        expectedSessionRevision: 1,
+        libraryExerciseId: "5f140001-7e35-4a6d-9100-000000000007",
+        sessionId: "session-1",
+      }));
+    });
+  });
+
   it("retries a provisional replacement through the selected authoritative exercise", async () => {
     const before = overviewView();
     const replacement = {

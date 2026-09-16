@@ -116,6 +116,7 @@ import type {
   RemoveSetResult,
   RemoveWarmupInput,
   RemoveWorkingSetInput,
+  ReorderExercisesInput,
   ReviseCompletedSetInput,
   SessionDetail,
   TodayView,
@@ -163,11 +164,13 @@ import {
 } from "../domains/workout";
 import {
   removeExercise,
+  reorderExercises,
   replaceExercise,
 } from "../domains/workout/sessionExerciseCommands";
 import type {
   RemoveExerciseInput,
   RemoveExerciseResult,
+  ReorderExercisesResult,
   ReplaceExerciseInput,
   ReplaceExerciseResult,
 } from "../domains/workout/activeWorkout";
@@ -619,6 +622,12 @@ export type CommittedExerciseEditRefreshFailure = Readonly<{
   sessionRevision: number;
 }>;
 
+export type CommittedExerciseReorderRefreshFailure = Readonly<{
+  outcome: "committed_refresh_failed";
+  sessionId: string;
+  sessionRevision: number;
+}>;
+
 export type RestAlertPreferenceSaveResult = Readonly<{
   status: "persisted" | "not_persisted" | "failed";
   preferences: RestAlertPreferences;
@@ -666,6 +675,9 @@ type RuntimeValue = RuntimeState & Readonly<{
   removeExercise(
     input: RemoveExerciseInput,
   ): Promise<ActiveWorkoutView | CommittedExerciseEditRefreshFailure>;
+  reorderExercises(
+    input: ReorderExercisesInput,
+  ): Promise<ActiveWorkoutView | CommittedExerciseReorderRefreshFailure>;
   reviseCompletedSet(
     input: ReviseCompletedSetInput,
   ): Promise<CommittedWorkoutMutationResult>;
@@ -3531,6 +3543,55 @@ export function WorkoutAppRuntimeProvider({
     })),
   [runExerciseEdit]);
 
+  const reorderWorkoutExercises = useCallback(async (
+    input: ReorderExercisesInput,
+  ): Promise<ActiveWorkoutView | CommittedExerciseReorderRefreshFailure> => {
+    const services = requireServices();
+    let committed: ReorderExercisesResult;
+    try {
+      committed = await reorderExercises({
+        repository: services.workoutRepository,
+        input,
+      });
+    } catch (error) {
+      const failure = mapWorkoutMutationFailure(error);
+      setState((current) => ({
+        ...current,
+        actionFailure: {
+          code: "workout_action_failed",
+          correlationCode: "GT-ACTION01",
+        },
+        mutationFailure: failure,
+      }));
+      throw error;
+    }
+    reconcileAfterCommit(services);
+
+    try {
+      const activeView = await services.workoutRepository.getActiveWorkout(
+        input.sessionId,
+      );
+      workoutRefreshGenerationRef.current += 1;
+      setState(await trustedRead(services));
+      return activeView;
+    } catch {
+      workoutRefreshGenerationRef.current += 1;
+      setState((current) => ({
+        ...current,
+        actionFailure: {
+          code: "workout_action_failed",
+          correlationCode: "GT-ACTION01",
+        },
+        workoutRefreshGeneration: workoutRefreshGenerationRef.current,
+      }));
+      return Object.freeze({
+        outcome: "committed_refresh_failed",
+        sessionId: committed.sessionId,
+        sessionRevision: committed.sessionRevision,
+      });
+    }
+  }, [reconcileAfterCommit, requireServices, trustedRead]);
+
   const removeWorkoutWarmup = useCallback((input: RemoveWarmupInput) =>
     runWorkoutRemoval(input, (repository) => removeWarmup({ repository, input })),
   [runWorkoutRemoval]);
@@ -3835,6 +3896,7 @@ export function WorkoutAppRuntimeProvider({
     recordExerciseEffort: recordWorkoutEffort,
     replaceExercise: replaceWorkoutExercise,
     removeExercise: removeWorkoutExercise,
+    reorderExercises: reorderWorkoutExercises,
     removeWarmup: removeWorkoutWarmup,
     removeWorkingSet: removeWorkoutWorkingSet,
     reviseCompletedSet: reviseWorkoutCompletedSet,

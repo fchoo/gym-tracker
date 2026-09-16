@@ -180,6 +180,7 @@ export function PlanEditorReorderableRow({
   onMoveTo,
   onDragPreview,
   preview = null,
+  disabled = false,
   reorderId = label,
   children,
   trailing,
@@ -196,6 +197,7 @@ export function PlanEditorReorderableRow({
   ): void;
   onDragPreview?(preview: PlanEditorReorderPreview | null): void;
   preview?: PlanEditorReorderPreview | null;
+  disabled?: boolean;
   reorderId?: string;
   children: React.ReactNode;
   trailing?: React.ReactNode;
@@ -211,8 +213,8 @@ export function PlanEditorReorderableRow({
   const translationY = useSharedValue(0);
   const border = tone === "card" ? colors.contentCardBorder : colors.divider;
   const text = tone === "card" ? colors.contentCardText : colors.textPrimary;
-  const canMoveUp = position > 0;
-  const canMoveDown = position < count - 1;
+  const canMoveUp = !disabled && position > 0;
+  const canMoveDown = !disabled && position < count - 1;
   const activePreview = preview ?? localPreview;
   const isHeld = activePreview?.sourcePosition === position;
   const targetPosition = isHeld
@@ -230,7 +232,7 @@ export function PlanEditorReorderableRow({
     nextPosition: number,
     method: PlanEditorReorderMethod = "fallback",
   ) => {
-    if (nextPosition === position) {
+    if (disabled || nextPosition === position) {
       return;
     }
     if (onMoveTo !== undefined) {
@@ -273,6 +275,7 @@ export function PlanEditorReorderableRow({
     ), "drag");
   }, [count, position, requestMove, rowHeight]);
   const dragGesture = React.useMemo(() => Gesture.Pan()
+    .enabled(!disabled)
     .activateAfterLongPress(REORDER_HOLD_MS)
     .maxPointers(1)
     .shouldCancelWhenOutside(false)
@@ -301,6 +304,7 @@ export function PlanEditorReorderableRow({
       scheduleOnRN(publishPreview, null);
     }), [
     count,
+    disabled,
     finishDrag,
     motion.setCommitMs,
     position,
@@ -362,8 +366,9 @@ export function PlanEditorReorderableRow({
             accessibilityHint="Touch and hold to drag. Use accessibility actions to move this item."
             accessibilityLabel={`Reorder ${label}`}
             accessibilityRole="adjustable"
-            accessibilityState={{ busy: isHeld }}
-            focusable
+            accessibilityState={{ busy: isHeld, disabled: disabled || isHeld }}
+            disabled={disabled || isHeld}
+            focusable={!disabled && !isHeld}
             onAccessibilityAction={(event) => {
               if (event.nativeEvent.actionName === "increment" && canMoveUp) {
                 requestMove(position - 1);

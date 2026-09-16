@@ -128,6 +128,9 @@ export {
   type RemoveSetResult,
   type RemoveWarmupInput,
   type RemoveWorkingSetInput,
+  type ReorderExerciseRevision,
+  type ReorderExercisesInput,
+  type ReorderExercisesResult,
   type ReviseCompletedSetInput,
   type LoadRepsObservation,
   type SetObservation,
@@ -146,6 +149,7 @@ export {
 } from "./activeWorkout";
 export {
   addExercise,
+  reorderExercises,
 } from "./sessionExerciseCommands";
 export {
   addWorkingSet,

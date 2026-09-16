@@ -134,6 +134,7 @@ export default function ActiveWorkoutRoute() {
         addExercise: runtime.addExercise,
         replaceExercise: mutationCommands.replaceExercise ?? runtime.replaceExercise,
         removeExercise: mutationCommands.removeExercise ?? runtime.removeExercise,
+        reorderExercises: runtime.reorderExercises,
         updateActiveSetDraft: runtime.updateActiveSetDraft,
         updateWarmupDraft: runtime.updateWarmupDraft,
         addWarmup: mutationCommands.addWarmup,

@@ -24,6 +24,8 @@ test("Phase 9 evidence runner requires a manifest and full edit/relaunch asserti
     "Phase 9 must assert the exact unique added-exercise accessibility label before relaunch",
   );
   assert.match(flow, /- assertVisible: '\^Working sets\$'/u);
+  assert.match(flow, /Add exercise[\s\S]*?inputText: "Overhead Press"[\s\S]*?add-exercise-option-5f140001-7e35-4a6d-9100-000000000007[\s\S]*?Add Overhead Press[\s\S]*?Reorder exercises[\s\S]*?tapOn: "Move Back Squat down"[\s\S]*?Back Squat moved to 2 of 2[\s\S]*?overview-exercise-add_exercise.*[\s\S]*?above:[\s\S]*?overview-exercise-add-exercise.*/u);
+  assert.match(flow, /clearState: false[\s\S]*?overview-exercise-add_exercise.*[\s\S]*?above:[\s\S]*?overview-exercise-add-exercise.*/u);
   assert.doesNotMatch(flow, /- assertVisible: "Added"/u);
   assert.match(flow, /arm_replace_exercise_failure/);
   assert.match(flow, /Replace exercise failure armed/);

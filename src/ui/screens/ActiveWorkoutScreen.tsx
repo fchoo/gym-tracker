@@ -11,6 +11,10 @@ import {
   Plus,
   type LucideIcon,
 } from "lucide-react-native";
+import {
+  PlanEditorReorderableRow,
+  type PlanEditorReorderMethod,
+} from "../components/PlanEditorFields";
 
 import {
   Modal,
@@ -54,6 +58,7 @@ import type {
 } from "../../domains/workout";
 import type {
   RemoveExerciseInput,
+  ReorderExercisesInput,
   ReplaceExerciseInput,
 } from "../../domains/workout/activeWorkout";
 import {
@@ -95,6 +100,7 @@ export interface ActiveWorkoutCommands {
   addExercise?(input: AddExerciseInput): Promise<import("../../domains/workout").AddExerciseResult>;
   replaceExercise?(input: ReplaceExerciseInput): Promise<ExerciseEditCommandResult>;
   removeExercise?(input: RemoveExerciseInput): Promise<ExerciseEditCommandResult>;
+  reorderExercises?(input: ReorderExercisesInput): Promise<ExerciseReorderCommandResult>;
   updateActiveSetDraft(
     input: UpdateActiveSetDraftInput,
   ): Promise<ActiveWorkoutView>;
@@ -152,6 +158,27 @@ type CommittedExerciseEditRefreshFailure = Readonly<{
 }>;
 
 type ExerciseEditCommandResult = ActiveWorkoutView | CommittedExerciseEditRefreshFailure;
+
+type ExerciseReorderCommandResult = ActiveWorkoutView
+  | CommittedExerciseReorderRefreshFailure;
+
+type CommittedExerciseReorderRefreshFailure = Readonly<{
+  outcome: "committed_refresh_failed";
+  sessionId: string;
+  sessionRevision: number;
+}>;
+
+type ExerciseReorderFailure = Readonly<{
+  sourcePosition: number;
+  targetPosition: number;
+  retry: () => void;
+}>;
+
+function isCommittedExerciseReorderRefreshFailure(
+  result: ExerciseReorderCommandResult,
+): result is CommittedExerciseReorderRefreshFailure {
+  return "outcome" in result && result.outcome === "committed_refresh_failed";
+}
 
 type ExerciseAction = "replace" | "remove";
 
@@ -749,6 +776,18 @@ function PopulatedWorkoutOverview({
     useState<ExerciseEditFailure | null>(null);
   const [exerciseEditRecovery, setExerciseEditRecovery] =
     useState<ExerciseEditCandidate | null>(null);
+  const [exerciseReorderBusy, setExerciseReorderBusy] = useState(false);
+  const [exerciseReorderFailure, setExerciseReorderFailure] =
+    useState<ExerciseReorderFailure | null>(null);
+  const [exerciseReorderRecovery, setExerciseReorderRecovery] = useState(false);
+  const [exerciseReorderAnnouncement, setExerciseReorderAnnouncement] =
+    useState<string | null>(null);
+  const [exerciseAddPickerVisible, setExerciseAddPickerVisible] = useState(false);
+  const [exerciseAddQuery, setExerciseAddQuery] = useState("");
+  const [exerciseAddSelectedId, setExerciseAddSelectedId] = useState<string | null>(null);
+  const [exerciseAddBusy, setExerciseAddBusy] = useState(false);
+  const [exerciseAddFailed, setExerciseAddFailed] = useState(false);
+  const [reorderMode, setReorderMode] = useState(false);
   const [replacementPickerForId, setReplacementPickerForId] =
     useState<string | null>(null);
   const [replacementQuery, setReplacementQuery] = useState("");
@@ -771,6 +810,14 @@ function PopulatedWorkoutOverview({
     exercise.name.toLocaleLowerCase("en").includes(
       replacementQuery.trim().toLocaleLowerCase("en"),
     ),
+  );
+  const exerciseAddCandidates = availableExercises.filter((exercise) =>
+    exercise.name.toLocaleLowerCase("en").includes(
+      exerciseAddQuery.trim().toLocaleLowerCase("en"),
+    ),
+  );
+  const selectedExerciseToAdd = availableExercises.find(
+    ({ id }) => id === exerciseAddSelectedId,
   );
   const isMultiExerciseOverview = view.exercises.length > 0;
   const activeOwner = view.activeSetId === null
@@ -1286,6 +1333,114 @@ function PopulatedWorkoutOverview({
     }
   };
 
+  const submitExerciseReorder = async (
+    sourcePosition: number,
+    targetPosition: number,
+    _method: PlanEditorReorderMethod = "fallback",
+  ) => {
+    if (exerciseReorderBusy || sourcePosition === targetPosition) {
+      return;
+    }
+    const currentView = viewRef.current;
+    const currentExercises = exercisesFor(currentView);
+    const source = currentExercises[sourcePosition];
+    if (source === undefined || targetPosition < 0
+      || targetPosition >= currentExercises.length) {
+      return;
+    }
+    const orderedExercises = [...currentExercises];
+    orderedExercises.splice(sourcePosition, 1);
+    orderedExercises.splice(targetPosition, 0, source);
+    setExerciseReorderBusy(true);
+    setExerciseReorderFailure(null);
+    setExerciseReorderRecovery(false);
+    try {
+      const occurredAtMs = nowMs();
+      const identity = {
+        operation: "reorder_exercises",
+        sessionId,
+        expectedSessionRevision: currentView.revision,
+        occurredAtMs,
+        orderedSessionExerciseIds: orderedExercises.map(({ id }) => id),
+        expectedSessionExerciseRevisions: orderedExercises.map(({ id, revision }) => ({
+          sessionExerciseId: id,
+          revision,
+        })),
+      };
+      const requestSha256 = await Crypto.digestStringAsync(
+        Crypto.CryptoDigestAlgorithm.SHA256,
+        stableJson(identity),
+      );
+      const result = await commands.reorderExercises?.({
+        requestId: `reorder_exercises:${requestSha256}`,
+        requestSha256,
+        ...identity,
+      });
+      if (result === undefined) {
+        throw new Error("reorder_exercises_unavailable");
+      }
+      if (isCommittedExerciseReorderRefreshFailure(result)) {
+        setExerciseReorderRecovery(true);
+        return;
+      }
+      applyView(result);
+      setExerciseReorderAnnouncement(
+        `${source.name} moved to ${targetPosition + 1} of ${orderedExercises.length}`,
+      );
+    } catch {
+      setExerciseReorderFailure({
+        sourcePosition,
+        targetPosition,
+        retry: () => {
+          void submitExerciseReorder(sourcePosition, targetPosition);
+        },
+      });
+    } finally {
+      setExerciseReorderBusy(false);
+    }
+  };
+
+  const submitExerciseAdd = async () => {
+    if (exerciseAddBusy || selectedExerciseToAdd === undefined) {
+      return;
+    }
+    const currentView = viewRef.current;
+    const occurredAtMs = nowMs();
+    const identity = {
+      operation: "add_exercise",
+      sessionId,
+      expectedSessionRevision: currentView.revision,
+      occurredAtMs,
+      libraryExerciseId: selectedExerciseToAdd.id,
+    };
+    setExerciseAddBusy(true);
+    setExerciseAddFailed(false);
+    try {
+      const requestSha256 = await Crypto.digestStringAsync(
+        Crypto.CryptoDigestAlgorithm.SHA256,
+        stableJson(identity),
+      );
+      const requestId = `add_exercise:${requestSha256}`;
+      const result = await commands.addExercise?.({
+        requestId,
+        requestSha256,
+        ...identity,
+        sessionExerciseId: `${requestId}:exercise`,
+        setId: `${requestId}:set`,
+      });
+      if (result === undefined) {
+        throw new Error("add_exercise_unavailable");
+      }
+      setExerciseAddPickerVisible(false);
+      setExerciseAddSelectedId(null);
+      setExerciseAddQuery("");
+    } catch {
+      setExerciseAddFailed(true);
+    } finally {
+      setExerciseAddBusy(false);
+    }
+  };
+
 
   const reviseCompletedSet = async (
     set: ActiveWorkoutSet,
@@ -1576,6 +1731,45 @@ function PopulatedWorkoutOverview({
                     />
                   )}
                 </FocusablePressable>
+                {reorderMode ? <>
+                  <PlanEditorReorderableRow
+                    count={overviewExercises.length}
+                    disabled={exerciseReorderBusy}
+                    label={exercise.name}
+                    onMoveDown={() => {
+                      void submitExerciseReorder(index, index + 1);
+                    }}
+                    onMoveTo={(targetPosition, method) => {
+                      void submitExerciseReorder(index, targetPosition, method);
+                    }}
+                    onMoveUp={() => {
+                      void submitExerciseReorder(index, index - 1);
+                    }}
+                    position={index}
+                    reorderId={`exercise-${exercise.id}`}
+                    tone="card"
+                  >
+                    <Text style={[typeScale.secondary as TextStyle, { color: colors.contentCardTextSecondary }]}>
+                      Reorder exercise
+                    </Text>
+                  </PlanEditorReorderableRow>
+                  <View style={styles.reorderFallbackActions}>
+                    <SecondaryAction
+                      disabled={exerciseReorderBusy || index === 0}
+                      label={`Move ${exercise.name} up`}
+                      onPress={() => {
+                        void submitExerciseReorder(index, index - 1);
+                      }}
+                    />
+                    <SecondaryAction
+                      disabled={exerciseReorderBusy || index === overviewExercises.length - 1}
+                      label={`Move ${exercise.name} down`}
+                      onPress={() => {
+                        void submitExerciseReorder(index, index + 1);
+                      }}
+                    />
+                  </View>
+                </> : null}
                 <FocusablePressable
                   accessibilityLabel={`${exercise.name} exercise actions`}
                   accessibilityRole="button"
@@ -1639,6 +1833,14 @@ function PopulatedWorkoutOverview({
                     body="The exercise change was saved, but the latest workout could not be loaded. Return to Today and reopen this workout."
                     heading="Exercise changed. Reload workout"
                     tone="attention"
+                  />
+                )}
+                {exerciseReorderFailure?.sourcePosition !== index ? null : (
+                  <InlineNotice
+                    action={<SecondaryAction label="Retry reordering exercise" onPress={exerciseReorderFailure.retry} />}
+                    body="Your workout order was not changed. Try again from the latest workout."
+                    heading="Exercise could not be reordered"
+                    tone="error"
                   />
                 )}
                 {collapsed ? null : <>
@@ -1919,6 +2121,17 @@ function PopulatedWorkoutOverview({
               </View>
             );
             })}
+            {commands.addExercise === undefined ? null : (
+              <PrimaryAction
+                accessibilityHint="Choose one library exercise to append to this workout."
+                label="Add exercise"
+                onPress={() => {
+                  setExerciseAddFailed(false);
+                  setExerciseAddPickerVisible(true);
+                }}
+                testID="active-workout-add-exercise"
+              />
+            )}
           </>
         }
         testID="active-workout"
@@ -1952,6 +2165,13 @@ function PopulatedWorkoutOverview({
                 }}
               />
             ) : null}
+            <SecondaryAction
+              label={reorderMode ? "Done reordering" : "Reorder exercises"}
+              onPress={() => {
+                closeMoreActions();
+                setReorderMode((current) => !current);
+              }}
+            />
             <SecondaryAction
               disabled={outcomeBusy}
               label="Finish as partial"
@@ -2014,6 +2234,81 @@ function PopulatedWorkoutOverview({
                 }}
               />
             )}
+          </ScrollView>
+        </View>
+      </Modal>
+      <Modal
+        animationType={reduceMotion ? "none" : "fade"}
+        onRequestClose={() => {
+          setExerciseAddPickerVisible(false);
+          setExerciseAddSelectedId(null);
+          setExerciseAddQuery("");
+        }}
+        transparent
+        visible={exerciseAddPickerVisible}
+      >
+        <View style={styles.modalBackdrop}>
+          <ScrollView
+            accessibilityViewIsModal
+            contentContainerStyle={styles.moreSheetContent}
+            keyboardShouldPersistTaps="handled"
+            style={[styles.moreSheet, { backgroundColor: colors.surface }]}
+            testID="active-workout-add-exercise-picker-content"
+          >
+            <SectionHeader title="Choose exercise" />
+            <M3SearchField
+              label="Search exercises"
+              onChangeText={setExerciseAddQuery}
+              resultCount={exerciseAddCandidates.length}
+              state={exerciseAddCandidates.length === 0 ? "empty" : "results"}
+              value={exerciseAddQuery}
+            />
+            {exerciseAddCandidates.map((candidate) => (
+              <FocusablePressable
+                accessibilityLabel={`${candidate.name}. Add exercise`}
+                accessibilityRole="button"
+                key={candidate.id}
+                onPress={() => setExerciseAddSelectedId(candidate.id)}
+                testID={`add-exercise-option-${candidate.id}`}
+                style={[
+                  styles.exerciseOption,
+                  {
+                    backgroundColor: exerciseAddSelectedId === candidate.id
+                      ? colors.contentCardSelected
+                      : colors.surface,
+                    borderColor: exerciseAddSelectedId === candidate.id
+                      ? colors.action
+                      : colors.divider,
+                  },
+                ]}
+              >
+                <Text style={[typeScale.bodyStrong as TextStyle, { color: colors.textPrimary }]}>
+                  {candidate.name}
+                </Text>
+                {exerciseAddSelectedId === candidate.id ? (
+                  <Text style={[typeScale.secondary as TextStyle, { color: colors.textSecondary }]}>
+                    Selected
+                  </Text>
+                ) : null}
+              </FocusablePressable>
+            ))}
+            {selectedExerciseToAdd === undefined ? null : (
+              <PrimaryAction
+                busy={exerciseAddBusy}
+                label={`Add ${selectedExerciseToAdd.name}`}
+                onPress={() => {
+                  void submitExerciseAdd();
+                }}
+              />
+            )}
+            {exerciseAddFailed ? (
+              <InlineNotice
+                action={<SecondaryAction label="Retry adding exercise" onPress={() => { void submitExerciseAdd(); }} />}
+                body="Your workout was not changed. Try again from the latest workout."
+                heading="Exercise was not added"
+                tone="error"
+              />
+            ) : null}
           </ScrollView>
         </View>
       </Modal>
@@ -2173,6 +2468,19 @@ function PopulatedWorkoutOverview({
           {removalAnnouncement}
         </Text>
       )}
+      {exerciseReorderAnnouncement === null ? null : (
+        <Text accessibilityLiveRegion="polite" style={styles.visuallyHidden}>
+          {exerciseReorderAnnouncement}
+        </Text>
+      )}
+      {exerciseReorderRecovery ? (
+        <InlineNotice
+          action={<SecondaryAction label="Return to Today" onPress={onGoBack} />}
+          body="The exercise order was saved, but the latest workout could not be loaded. Return to Today and reopen this workout."
+          heading="Exercise reordered. Reload workout"
+          tone="attention"
+        />
+      ) : null}
     </>
   );
 }
@@ -2224,6 +2532,11 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     gap: space[2],
     justifyContent: "flex-end",
+  },
+  reorderFallbackActions: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    gap: space[2],
   },
   sectionGlyphAction: {
     alignItems: "center",
