@@ -4,18 +4,18 @@ milestone: v1.1
 milestone_name: In-Workout Editing, Advanced Timing & Cross-Device Sync
 current_phase: 09
 current_phase_name: In-Workout Exercise Editing
-status: blocked
-stopped_at: 09-01 fresh exact-HEAD Phase 9 Maestro failed at assertVisible Added after Add Back Squat
-last_updated: "2026-09-16T13:48:00Z"
+status: executing
+stopped_at: Completed 09-01-add-exercise-tracer-PLAN.md; ready for 09-02 Replace/Remove
+last_updated: "2026-09-16T05:59:41Z"
 last_activity: 2026-09-16
-last_activity_desc: Phase 09 execution started
-state_head: 282036c9f86d249e7f0229985ba500dd4556d1a4
+last_activity_desc: Phase 09 Plan 01 complete with host, coverage, native SQLite, and Maestro evidence
+state_head: 797a9d1f091fb3bff818b16b732074dc2a869572
 progress:
   total_phases: 5
   completed_phases: 1
   total_plans: 22
-  completed_plans: 4
-  percent: 18
+  completed_plans: 5
+  percent: 23
 ---
 
 # Project State
@@ -30,9 +30,9 @@ See: `.planning/PROJECT.md` (updated 2026-09-15)
 ## Current Position
 
 Phase: 09 (In-Workout Exercise Editing) — EXECUTING
-Plan: 1 of 6
-Status: Blocked — Plan 09-01 native tracer fails at visible Added cue
-Last activity: 2026-09-16 — Phase 09 execution started
+Plan: 2 of 6
+Status: Executing Phase 09 — Plan 09-01 complete
+Last activity: 2026-09-16 — Phase 09 Plan 01 complete with exact native evidence
 
 ## Delivery model
 
@@ -301,8 +301,6 @@ Full decisions live in `.planning/PROJECT.md`.
 - The dedicated `release-evidence` runner is intentionally offline until the
   attended evidence-upload step. It must never service pull-request jobs.
 
-- 09-01 native evidence is blocked at exact source commit `282036c9f86d249e7f0229985ba500dd4556d1a4`: a fresh manifest-bound Phase 9 APK (SHA-256 `d1b13c16b9d995ce1738701a4b79bdd47faacce4aa3bbe4fdcd7da8036a7e8ac`) installed successfully, but unchanged Maestro failed `assertVisible: "Added"` after `Add Back Squat`. Evidence: `/Users/bytedance/.maestro/tests/2026-09-16_134709`. The failure hierarchy includes `Added · 0 of 1 working sets`, but Maestro did not treat it as visible; required working-set/end-position and relaunch persistence assertions did not execute. Source gates include the 11/11 migrations-effects contract evidence from commit `6c2e88e8d22c00a4a16e7239cc162e36c93ad020`.
-
 ### Roadmap Evolution
 
 - Phase 6 added: Material 3 UX remediation added from the whole-app UX audit.
@@ -320,12 +318,12 @@ Full decisions live in `.planning/PROJECT.md`.
 
 ## Session Continuity
 
-Last session: 2026-09-16T13:48:00Z
-Stopped at: 09-01 fresh exact-HEAD Phase 9 Maestro failed at assertVisible Added after Add Back Squat
-Resume file: .planning/phases/09-in-workout-exercise-editing/09-01-SUMMARY.md
-Next action: Diagnose and repair the post-add native UI state, then rebuild the exact HEAD Android APK and rerun `npm run test:maestro:phase9 -- --manifest artifacts/native/phase9/build.json`.
+Last session: 2026-09-16T05:59:41Z
+Stopped at: Completed 09-01-add-exercise-tracer-PLAN.md; ready for 09-02 Replace/Remove
+Resume file: None
+Next action: Execute `.planning/phases/09-in-workout-exercise-editing/09-02-replace-remove-PLAN.md`.
 
 ## Operator Next Steps
 
-- Repair the blocked Phase 9 Plan 01 native refresh defect before executing dependent plans.
+- Execute Phase 9 Plan 02 Replace/Remove from the verified schema-19 and add-exercise foundation.
 - Preserve append-only workout history and bundle schema 19 with the logical-backup graph update.
