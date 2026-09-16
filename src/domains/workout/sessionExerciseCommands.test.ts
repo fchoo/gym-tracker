@@ -11,12 +11,14 @@ import type {
 } from "./activeWorkout";
 import {
   addExercise,
+  removeExercise,
+  replaceExercise,
 } from "./sessionExerciseCommands";
 
 const view = {} as ActiveWorkoutView;
 const validHash = "a".repeat(64);
 
-function input() {
+function addInput() {
   return {
     requestId: "add-exercise-1",
     requestSha256: validHash,
@@ -29,6 +31,33 @@ function input() {
   };
 }
 
+function replaceInput() {
+  return {
+    requestId: "replace-exercise-1",
+    requestSha256: validHash,
+    sessionId: "session-1",
+    expectedSessionRevision: 1,
+    sessionExerciseId: "original-exercise-1",
+    expectedSessionExerciseRevision: 2,
+    occurredAtMs: 2_000,
+    libraryExerciseId: "replacement-library-1",
+    replacementSessionExerciseId: "replacement-exercise-1",
+    replacementSetId: "replacement-set-1",
+  };
+}
+
+function removeInput() {
+  return {
+    requestId: "remove-exercise-1",
+    requestSha256: validHash,
+    sessionId: "session-1",
+    expectedSessionRevision: 1,
+    sessionExerciseId: "session-exercise-1",
+    expectedSessionExerciseRevision: 2,
+    occurredAtMs: 2_000,
+  };
+}
+
 function repository(): ActiveWorkoutRepository {
   return {
     getActiveWorkout: jest.fn(async () => view),
@@ -38,6 +67,22 @@ function repository(): ActiveWorkoutRepository {
       sessionId: "session-1",
       sessionExerciseId: "session-exercise-1",
       setId: "set-1",
+      sessionRevision: 2,
+    })),
+    replaceExercise: jest.fn(async () => ({
+      outcome: "committed" as const,
+      disposition: "deleted_provisional" as const,
+      sessionId: "session-1",
+      sessionExerciseId: "original-exercise-1",
+      replacementSessionExerciseId: "replacement-exercise-1",
+      replacementSetId: "replacement-set-1",
+      sessionRevision: 2,
+    })),
+    removeExercise: jest.fn(async () => ({
+      outcome: "committed" as const,
+      disposition: "deleted_provisional" as const,
+      sessionId: "session-1",
+      sessionExerciseId: "session-exercise-1",
       sessionRevision: 2,
     })),
     updateActiveSetDraft: jest.fn(async () => view),
@@ -62,7 +107,7 @@ describe("Phase 09 add-exercise command boundary", () => {
     ["sessionExerciseId", ""],
     ["setId", ""],
   ])("rejects invalid %s", async (key, value) => {
-    const command = { ...input(), [key]: value };
+    const command = { ...addInput(), [key]: value };
     await expect(addExercise({ repository: repository(), input: command }))
       .rejects.toThrow("add_exercise_identifier_invalid");
   });
@@ -74,7 +119,7 @@ describe("Phase 09 add-exercise command boundary", () => {
   ])("rejects a non-lowercase SHA-256 request hash", async (requestSha256) => {
     await expect(addExercise({
       repository: repository(),
-      input: { ...input(), requestSha256 },
+      input: { ...addInput(), requestSha256 },
     })).rejects.toThrow("add_exercise_hash_invalid");
   });
 
@@ -86,13 +131,13 @@ describe("Phase 09 add-exercise command boundary", () => {
   ])("rejects invalid revision or time values", async (invalid) => {
     await expect(addExercise({
       repository: repository(),
-      input: { ...input(), ...invalid },
+      input: { ...addInput(), ...invalid },
     })).rejects.toThrow("add_exercise_");
   });
 
   it("forwards exactly the immutable add envelope to the repository", async () => {
     const port = repository();
-    const command = input();
+    const command = addInput();
 
     await expect(addExercise({ repository: port, input: command })).resolves.toEqual({
       outcome: "committed",
@@ -107,7 +152,99 @@ describe("Phase 09 add-exercise command boundary", () => {
   it("fails closed when the repository does not expose add support", async () => {
     const port = repository();
     delete port.addExercise;
-    await expect(addExercise({ repository: port, input: input() }))
+    await expect(addExercise({ repository: port, input: addInput() }))
       .rejects.toThrow("add_exercise_unavailable");
+  });
+});
+
+describe("Phase 09 Replace and Remove command boundary", () => {
+  it.each([
+    ["requestId", " invalid "],
+    ["sessionId", ""],
+    ["sessionExerciseId", ""],
+    ["libraryExerciseId", ""],
+    ["replacementSessionExerciseId", ""],
+    ["replacementSetId", ""],
+  ])("rejects invalid replace %s", async (key, value) => {
+    await expect(replaceExercise({
+      repository: repository(),
+      input: { ...replaceInput(), [key]: value },
+    })).rejects.toThrow("replace_exercise_identifier_invalid");
+  });
+
+  it.each([
+    ["requestId", " invalid "],
+    ["sessionId", ""],
+    ["sessionExerciseId", ""],
+  ])("rejects invalid remove %s", async (key, value) => {
+    await expect(removeExercise({
+      repository: repository(),
+      input: { ...removeInput(), [key]: value },
+    })).rejects.toThrow("remove_exercise_identifier_invalid");
+  });
+
+  it.each([
+    { requestSha256: "A".repeat(64) },
+    { requestSha256: "a".repeat(63) },
+    { expectedSessionRevision: -1 },
+    { expectedSessionExerciseRevision: 1.5 },
+    { occurredAtMs: -1 },
+  ])("rejects malformed replace envelopes", async (invalid) => {
+    await expect(replaceExercise({
+      repository: repository(),
+      input: { ...replaceInput(), ...invalid },
+    })).rejects.toThrow("replace_exercise_");
+  });
+
+  it.each([
+    { requestSha256: "A".repeat(64) },
+    { requestSha256: "a".repeat(63) },
+    { expectedSessionRevision: -1 },
+    { expectedSessionExerciseRevision: 1.5 },
+    { occurredAtMs: -1 },
+  ])("rejects malformed remove envelopes", async (invalid) => {
+    await expect(removeExercise({
+      repository: repository(),
+      input: { ...removeInput(), ...invalid },
+    })).rejects.toThrow("remove_exercise_");
+  });
+
+  it("forwards exact Replace and Remove envelopes and keeps history-preserved outcomes explicit", async () => {
+    const port = repository();
+    const replacement = replaceInput();
+    const removal = removeInput();
+    (port.removeExercise as unknown as {
+      mockResolvedValueOnce(value: unknown): void;
+    }).mockResolvedValueOnce({
+      outcome: "committed",
+      disposition: "skipped_history_preserved" as const,
+      sessionId: removal.sessionId,
+      sessionExerciseId: removal.sessionExerciseId,
+      sessionRevision: 2,
+    });
+
+    await expect(replaceExercise({ repository: port, input: replacement }))
+      .resolves.toMatchObject({ outcome: "committed" });
+    await expect(removeExercise({ repository: port, input: removal }))
+      .resolves.toEqual({
+        outcome: "committed",
+        disposition: "skipped_history_preserved",
+        sessionId: removal.sessionId,
+        sessionExerciseId: removal.sessionExerciseId,
+        sessionRevision: 2,
+      });
+    expect(port.replaceExercise).toHaveBeenCalledWith(replacement);
+    expect(port.removeExercise).toHaveBeenCalledWith(removal);
+  });
+
+  it("fails closed when Replace or Remove capability is unavailable", async () => {
+    const port = repository();
+    delete port.replaceExercise;
+    delete port.removeExercise;
+
+    await expect(replaceExercise({ repository: port, input: replaceInput() }))
+      .rejects.toThrow("replace_exercise_unavailable");
+    await expect(removeExercise({ repository: port, input: removeInput() }))
+      .rejects.toThrow("remove_exercise_unavailable");
   });
 });

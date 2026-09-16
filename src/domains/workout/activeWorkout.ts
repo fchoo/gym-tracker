@@ -185,6 +185,47 @@ export type AddExerciseResult = Readonly<{
   sessionRevision: number;
 }>;
 
+export type ReplaceExerciseInput = Readonly<{
+  requestId: string;
+  requestSha256: string;
+  sessionId: string;
+  expectedSessionRevision: number;
+  sessionExerciseId: string;
+  expectedSessionExerciseRevision: number;
+  occurredAtMs: number;
+  libraryExerciseId: string;
+  replacementSessionExerciseId: string;
+  replacementSetId: string;
+}>;
+
+export type ReplaceExerciseResult = Readonly<{
+  outcome: "committed" | "already_committed";
+  disposition: "deleted_provisional" | "skipped_history_preserved";
+  sessionId: string;
+  sessionExerciseId: string;
+  replacementSessionExerciseId: string;
+  replacementSetId: string;
+  sessionRevision: number;
+}>;
+
+export type RemoveExerciseInput = Readonly<{
+  requestId: string;
+  requestSha256: string;
+  sessionId: string;
+  expectedSessionRevision: number;
+  sessionExerciseId: string;
+  expectedSessionExerciseRevision: number;
+  occurredAtMs: number;
+}>;
+
+export type RemoveExerciseResult = Readonly<{
+  outcome: "committed" | "already_committed";
+  disposition: "deleted_provisional" | "skipped_history_preserved";
+  sessionId: string;
+  sessionExerciseId: string;
+  sessionRevision: number;
+}>;
+
 export type CopyPreviousWarmupInput = Readonly<{
   sessionId: string;
   sourceSetId: string;
@@ -301,6 +342,12 @@ export interface ActiveWorkoutRepository {
   addWarmup(input: AddWarmupInput): Promise<ActiveWorkoutView>;
   addWorkingSet(input: AddWorkingSetInput): Promise<ActiveWorkoutView>;
   addExercise?: (input: AddExerciseInput) => Promise<AddExerciseResult>;
+  replaceExercise?: (
+    input: ReplaceExerciseInput,
+  ) => Promise<ReplaceExerciseResult>;
+  removeExercise?: (
+    input: RemoveExerciseInput,
+  ) => Promise<RemoveExerciseResult>;
   copyPreviousWarmup(
     input: CopyPreviousWarmupInput,
   ): Promise<ActiveWorkoutView>;
