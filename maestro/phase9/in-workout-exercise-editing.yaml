@@ -191,9 +191,7 @@ name: Phase 9 add exercise and relaunch persistence
     direction: UP
     centerElement: true
     timeout: 30000
-- tapOn: "Overhead Press. Skipped. 1 of 1 working sets. Expand exercise"
-- assertVisible: 'Skipped · 1 of 1 working sets'
-- assertVisible: "Completed · 0 kg × 8"
+- assertVisible: "Skipped · Completed · 0 kg × 8"
 - stopApp
 - launchApp:
     clearState: false
@@ -210,6 +208,4 @@ name: Phase 9 add exercise and relaunch persistence
     direction: UP
     centerElement: true
     timeout: 30000
-- tapOn: "Overhead Press. Skipped. 1 of 1 working sets. Expand exercise"
-- assertVisible: 'Skipped · 1 of 1 working sets'
-- assertVisible: "Completed · 0 kg × 8"
+- assertVisible: "Skipped · Completed · 0 kg × 8"

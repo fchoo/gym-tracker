@@ -1660,6 +1660,9 @@ function PopulatedWorkoutOverview({
               const collapsed = isExerciseCollapsed(exercise, index);
               const summary = workingSetSummary(exercise);
               const status = exerciseStatusText(exercise);
+              const skippedSummary = exercise.status === "skipped" && summary.completed > 0
+                ? `${status} · Completed · ${summary.observation}`
+                : `${status} · ${summary.observation}`;
               const collapseLabel = `${exercise.name}. ${status}. ${summary.completed} of ${summary.total} working sets. ${collapsed ? "Expand" : "Collapse"} exercise`;
               return (
               <View
@@ -1710,7 +1713,11 @@ function PopulatedWorkoutOverview({
                       {exercise.name}
                     </Text>
                     <Text style={[typeScale.secondary as TextStyle, { color: colors.contentCardTextSecondary }]}>
-                      {collapsed ? `${status} · ${summary.observation}` : `${status} · ${summary.completed} of ${summary.total} working sets`}
+                      {exercise.status === "skipped" && summary.completed > 0
+                        ? skippedSummary
+                        : collapsed
+                          ? skippedSummary
+                          : `${status} · ${summary.completed} of ${summary.total} working sets`}
                     </Text>
                   </View>
                   {collapsed && exercise.status === "completed" ? (

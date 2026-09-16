@@ -40,11 +40,11 @@ test("Phase 9 evidence runner requires a manifest and full edit/relaunch asserti
   assert.match(flow, /Retry removing exercise/);
   assert.match(flow, /Keep exercise/);
   assert.match(flow, /This exercise has completed sets. They will be retained and this exercise will be marked Skipped, not deleted./);
-  assert.match(flow, /Retry removing exercise[\s\S]*?Overhead Press\. Skipped\. 1 of 1 working sets\. Expand exercise[\s\S]*?tapOn: "Overhead Press\. Skipped\. 1 of 1 working sets\. Expand exercise"[\s\S]*?Completed · 0 kg × 8/u);
-  assert.match(flow, /Skipped · 1 of 1 working sets/u);
+  assert.match(flow, /Retry removing exercise[\s\S]*?Overhead Press\. Skipped\. 1 of 1 working sets\. Expand exercise[\s\S]*?Skipped · Completed · 0 kg × 8/u);
+  assert.match(flow, /Skipped · Completed · 0 kg × 8/u);
   assert.match(flow, /Complete Set 1/);
   const retainedObservationAssertion =
-    /assertVisible: "Completed · 0 kg × 8"/gu;
+    /assertVisible: "Skipped · Completed · 0 kg × 8"/gu;
   assert.equal(
     [...flow.matchAll(retainedObservationAssertion)].length,
     2,
@@ -53,7 +53,7 @@ test("Phase 9 evidence runner requires a manifest and full edit/relaunch asserti
   assert.doesNotMatch(flow, /assertVisible: "0 kg × 8"/u);
   assert.match(
     flow,
-    /Completed · 0 kg × 8[\s\S]*?- stopApp[\s\S]*?- launchApp:[\s\S]*?clearState: false[\s\S]*?assertVisible: "Workout in progress"[\s\S]*?tapOn: "Resume workout"[\s\S]*?visible: "WORKOUT OVERVIEW"[\s\S]*?assertVisible: 'Skipped · 1 of 1 working sets'[\s\S]*?assertVisible: "Completed · 0 kg × 8"/u,
+    /Skipped · Completed · 0 kg × 8[\s\S]*?- stopApp[\s\S]*?- launchApp:[\s\S]*?clearState: false[\s\S]*?assertVisible: "Workout in progress"[\s\S]*?tapOn: "Resume workout"[\s\S]*?visible: "WORKOUT OVERVIEW"[\s\S]*?assertVisible: "Skipped · Completed · 0 kg × 8"/u,
     "Phase 9 must resume the persisted workout before proving protected history after relaunch",
   );
   assert.match(flow, /stopApp/);

@@ -939,6 +939,8 @@ describe("Plan 01-08 ActiveWorkoutScreen", () => {
       )).toBeOnTheScreen();
       expect(screen.getByText("Completed · 60 kg × 8")).toBeOnTheScreen();
     });
+    expect(screen.getByText("Skipped · Completed · 60 kg × 8"))
+      .toBeOnTheScreen();
   });
 
   it("keeps the workout overview identity outside scrolling content", async () => {
