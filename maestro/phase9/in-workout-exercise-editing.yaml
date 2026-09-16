@@ -90,7 +90,10 @@ name: Phase 9 add exercise and relaunch persistence
 - assertVisible: "Choose exercise"
 - tapOn: "Search exercises"
 - inputText: "Bench Press"
-- tapOn: "Bench Press"
+- tapOn:
+    text: "Bench Press"
+    below:
+      text: "Search exercises"
 - tapOn: "Replace with Bench Press"
 - extendedWaitUntil:
     visible: "Retry replacing exercise"

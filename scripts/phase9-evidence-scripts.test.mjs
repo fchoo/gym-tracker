@@ -28,6 +28,7 @@ test("Phase 9 evidence runner requires a manifest and full edit/relaunch asserti
   assert.match(flow, /arm_replace_exercise_failure/);
   assert.match(flow, /Replace exercise failure armed/);
   assert.match(flow, /Replace exercise failure armed[\s\S]*?scrollUntilVisible:[\s\S]*?text: "Return to Today"[\s\S]*?tapOn: "Return to Today"/u);
+  assert.match(flow, /inputText: "Bench Press"[\s\S]*?tapOn:\n    text: "Bench Press"\n    below:\n      text: "Search exercises"[\s\S]*?Replace with Bench Press/u);
   assert.match(flow, /Retry replacing exercise/);
   assert.match(flow, /arm_remove_exercise_failure/);
   assert.match(flow, /Remove exercise failure armed/);
