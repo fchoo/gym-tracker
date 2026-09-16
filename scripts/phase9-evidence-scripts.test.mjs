@@ -8,6 +8,7 @@ test("Phase 9 evidence runner requires a manifest and tracer relaunch assertions
   assert.match(runner, /native build manifest is required/);
   assert.match(runner, /build\.apk\?\.path/);
   assert.match(runner, /maestro\/phase9\/in-workout-exercise-editing\.yaml/);
+  assert.match(flow, /appId: com\.fchoo\.gymtracker\.devtest/);
   assert.match(flow, /Add exercise/);
   assert.match(flow, /Added/);
   assert.match(flow, /stopApp/);

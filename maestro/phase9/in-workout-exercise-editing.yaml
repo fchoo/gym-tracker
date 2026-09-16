@@ -1,4 +1,4 @@
-appId: com.fchoo.gymtracker
+appId: com.fchoo.gymtracker.devtest
 name: Phase 9 add exercise and relaunch persistence
 ---
 - launchApp:
