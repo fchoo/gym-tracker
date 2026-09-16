@@ -3315,6 +3315,7 @@ export function WorkoutAppRuntimeProvider({
       }));
       throw error;
     }
+    workoutRefreshGenerationRef.current += 1;
     try {
       setState(await trustedRead(services));
     } catch {
@@ -3324,6 +3325,7 @@ export function WorkoutAppRuntimeProvider({
           code: "workout_action_failed",
           correlationCode: "GT-ACTION01",
         },
+        workoutRefreshGeneration: workoutRefreshGenerationRef.current,
       }));
     }
     return committedSetId === undefined
@@ -3424,6 +3426,7 @@ export function WorkoutAppRuntimeProvider({
       }));
       throw error;
     }
+    workoutRefreshGenerationRef.current += 1;
     try {
       setState(await trustedRead(services));
     } catch {
@@ -3433,6 +3436,7 @@ export function WorkoutAppRuntimeProvider({
           code: "workout_action_failed",
           correlationCode: "GT-ACTION01",
         },
+        workoutRefreshGeneration: workoutRefreshGenerationRef.current,
       }));
     }
     return result;

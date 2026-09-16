@@ -264,6 +264,7 @@ function runtimeActiveWorkoutRepository(): ActiveWorkoutRepository & {
     ActiveWorkoutRepository["updateActiveSetDraft"]
   >;
   addWarmup: jest.MockedFunction<ActiveWorkoutRepository["addWarmup"]>;
+  addExercise: jest.MockedFunction<NonNullable<ActiveWorkoutRepository["addExercise"]>>;
   addWorkingSet: jest.MockedFunction<
     ActiveWorkoutRepository["addWorkingSet"]
   >;
@@ -293,6 +294,13 @@ function runtimeActiveWorkoutRepository(): ActiveWorkoutRepository & {
     getWorkoutSession: jest.fn(async () => activeWorkoutView),
     updateActiveSetDraft: jest.fn(async () => activeWorkoutView),
     updateWarmupDraft: jest.fn(async () => activeWorkoutView),
+    addExercise: jest.fn(async (input) => ({
+      outcome: "committed" as const,
+      sessionId: input.sessionId,
+      sessionExerciseId: input.sessionExerciseId,
+      setId: input.setId,
+      sessionRevision: input.expectedSessionRevision + 1,
+    })),
     addWarmup: jest.fn(async () => activeWorkoutView),
     addWorkingSet: jest.fn(async () => activeWorkoutView),
     copyPreviousWarmup: jest.fn(async () => activeWorkoutView),
@@ -1499,6 +1507,44 @@ describe("WorkoutAppRuntimeProvider", () => {
       },
       revisedAtMs: 2_003,
     });
+  });
+
+  it("publishes a committed exercise add so the active route rereads its empty workout view", async () => {
+    const repository = runtimeRepository([activeView, activeView], [activation]);
+    const workoutRepository = runtimeActiveWorkoutRepository();
+    let captured: ReturnType<typeof useWorkoutAppRuntime> | undefined;
+    await render(
+      <RuntimeCaptureHarness
+        dependencies={dependencies(repository, {
+          createWorkoutRepository: () => workoutRepository,
+        })}
+        onReady={(runtime) => {
+          captured = runtime;
+        }}
+      />,
+    );
+    await waitFor(() => {
+      expect(captured?.launchState).toBe("trusted");
+    });
+    if (captured === undefined) {
+      throw new Error("runtime_not_captured");
+    }
+
+    await act(async () => {
+      await captured!.addExercise({
+        requestId: "add-runtime-exercise",
+        requestSha256: "a".repeat(64),
+        sessionId: "session-1",
+        expectedSessionRevision: 1,
+        occurredAtMs: 2_000,
+        libraryExerciseId: "squat",
+        sessionExerciseId: "added-exercise",
+        setId: "added-set",
+      });
+    });
+
+    expect(workoutRepository.addExercise).toHaveBeenCalledTimes(1);
+    expect(captured.workoutRefreshGeneration).toBe(1);
   });
 
   it("propagates typed mutation rejection without refreshing before commit", async () => {
