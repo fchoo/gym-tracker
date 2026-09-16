@@ -4,12 +4,12 @@ milestone: v1.1
 milestone_name: In-Workout Editing, Advanced Timing & Cross-Device Sync
 current_phase: 09
 current_phase_name: In-Workout Exercise Editing
-status: executing
-stopped_at: 09-01 source and coverage complete; exact-HEAD Android/Maestro evidence pending
-last_updated: "2026-09-16T04:27:25.515Z"
+status: blocked
+stopped_at: 09-01 exact-HEAD Phase 9 Maestro failed after committed add; route remained stale empty-workout view
+last_updated: "2026-09-16T13:31:00Z"
 last_activity: 2026-09-16
 last_activity_desc: Phase 09 execution started
-state_head: 78f992dcea2bc0115669cd3a02fdc0e88d42d716
+state_head: acf24db2bd6255fd44964584f3647261ccc2835c
 progress:
   total_phases: 5
   completed_phases: 1
@@ -31,7 +31,7 @@ See: `.planning/PROJECT.md` (updated 2026-09-15)
 
 Phase: 09 (In-Workout Exercise Editing) — EXECUTING
 Plan: 1 of 6
-Status: Executing Phase 09
+Status: Blocked — Plan 09-01 native tracer refresh defect
 Last activity: 2026-09-16 — Phase 09 execution started
 
 ## Delivery model
@@ -301,7 +301,7 @@ Full decisions live in `.planning/PROJECT.md`.
 - The dedicated `release-evidence` runner is intentionally offline until the
   attended evidence-upload step. It must never service pull-request jobs.
 
-- 09-01 exact-HEAD native evidence pending: rebuild migrations-effects and phase9 manifests; prior device contract timed out waiting for log.
+- 09-01 native evidence is blocked at exact source commit `acf24db2bd6255fd44964584f3647261ccc2835c`: manifest-bound Phase 9 Maestro successfully tapped `Add Back Squat` but failed `assertVisible: "Added"`. The post-tap native screen remained `Empty workout in progress`, so the committed addition was not refreshed into the route's `EmptyWorkoutView`. Evidence: `/Users/bytedance/.maestro/tests/2026-09-16_132934`; APK SHA-256 `e13761042e691f6cd25f00c4564922a34ea66b30d50b059423f4e559c2302a2c`.
 
 ### Roadmap Evolution
 
@@ -320,12 +320,12 @@ Full decisions live in `.planning/PROJECT.md`.
 
 ## Session Continuity
 
-Last session: 2026-09-16T04:27:25.484Z
-Stopped at: 09-01 source and coverage complete; exact-HEAD Android/Maestro evidence pending
+Last session: 2026-09-16T13:31:00Z
+Stopped at: 09-01 exact-HEAD Phase 9 Maestro failed after committed add; route remained stale empty-workout view
 Resume file: .planning/phases/09-in-workout-exercise-editing/09-01-SUMMARY.md
-Next action: Execute `.planning/phases/09-in-workout-exercise-editing/09-01-add-exercise-tracer-PLAN.md`.
+Next action: Repair the add-exercise route/runtime refresh path, rebuild the exact HEAD Android APK, and rerun `npm run test:maestro:phase9 -- --manifest artifacts/native/phase9/build.json`.
 
 ## Operator Next Steps
 
-- Execute Phase 9 from `09-01-add-exercise-tracer-PLAN.md`.
+- Repair the blocked Phase 9 Plan 01 native refresh defect before executing dependent plans.
 - Preserve append-only workout history and bundle schema 19 with the logical-backup graph update.

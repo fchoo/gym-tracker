@@ -12,9 +12,9 @@ provides:
   - accessible Add exercise overview tracer and manifest-bound Maestro runner
 affects: [09-02-replace-remove, 09-03-reorder-display-order, 09-04-modified-progression]
 actuals:
-  tokens: 22020
+  tokens: 22288
   tasks: 4
-  commits: 10
+  commits: 13
 tech-stack:
   added: []
   patterns: [additive SQLite migration, immutable command receipts, request-hash idempotency, fail-closed native evidence]
@@ -41,7 +41,7 @@ status: blocked
 
 # Phase 09 Plan 01: Add Exercise Tracer Summary
 
-Schema 19 and the add-exercise tracer now provide append-only, idempotent session additions with full host coverage; exact-HEAD Android/Maestro evidence remains pending.
+Schema 19 and the add-exercise tracer provide append-only, idempotent session additions with full host coverage, but exact-HEAD Android/Maestro evidence exposes a UI refresh defect after a committed addition.
 
 ## Completed Work
 
@@ -63,9 +63,15 @@ Passed using Node 24.19.0, npm 11.17.0, and Temurin 17.0.20+8:
 
 ## Native Verification Blocker
 
-The retained `artifacts/native/migrations-effects/build.json` was originally digest-matched, but the plan closeout repairs changed the exact-HEAD source digest from `d23b0f49…` to `ad63a7a4…`. It therefore cannot prove current source. `artifacts/native/phase9/build.json` is absent, so the required `npm run test:maestro:phase9 -- --manifest artifacts/native/phase9/build.json` cannot run.
+Exact-HEAD Android build and manifest binding succeeded for source commit `acf24db2bd6255fd44964584f3647261ccc2835c`:
 
-The previous migration-effects device attempt also timed out waiting for the contract log after 90 seconds. Build exact-HEAD artifacts with `npm run android:devtest:fresh -- --suite migrations-effects` and `npm run android:devtest:fresh -- --suite phase9`, then run the two device/Phase 9 Maestro commands before treating the plan as fully verified.
+- `npm run android:devtest:fresh -- --suite phase9` completed successfully on `emulator-5554` (API 36, arm64-v8a).
+- Manifest: `artifacts/native/phase9/build.json`; APK SHA-256: `e13761042e691f6cd25f00c4564922a34ea66b30d50b059423f4e559c2302a2c`.
+- `npm run test:maestro:phase9 -- --manifest artifacts/native/phase9/build.json` reached and tapped the exact dynamic confirmation `Add Back Squat`.
+
+The final assertion failed at `assertVisible: "Added"`. Native debug evidence is at `/Users/bytedance/.maestro/tests/2026-09-16_132934`: the post-tap screenshot shows `Empty workout in progress`, with no added exercise or working set. The add command returned without displaying its error notice, but the route stayed on its stale `EmptyWorkoutView`; `EmptyWorkoutOverview` does not receive a refreshed `ActiveWorkoutView` after `commands.addExercise` commits. This directly violates Task 4's requirement to render an `Added` cue and a working set, then prove persistence after relaunch.
+
+Do not mark Plan 09-01 complete or start dependent plans until the route/runtime refresh path is corrected, a new exact-HEAD APK is built, and the same manifest-bound Maestro flow passes through its relaunch assertion.
 
 ## Deviations from Plan
 
@@ -80,4 +86,5 @@ The previous migration-effects device attempt also timed out waiting for the con
 ## Self-Check: PASSED
 
 - Summary exists at the required phase path.
-- Implementation commits `dd8231e`, `15a5b0e`, `c1219a1`, `3f29c1c`, `5263bab`, and `78f992d` exist.
+- Implementation commits `dd8231e`, `15a5b0e`, `c1219a1`, `3f29c1c`, `5263bab`, `78f992d`, `d08e799`, `ccfd913`, `3e0abe8`, `ffe521b`, `49be4f3`, and `acf24db` exist.
+- Exact-HEAD native evidence is recorded as blocked, not passed.
