@@ -15,6 +15,9 @@ import type {
   RemoveWorkingSetInput,
   ReplaceExerciseInput,
   ReplaceExerciseResult,
+  ReorderExerciseRevision,
+  ReorderExercisesInput,
+  ReorderExercisesResult,
   SetObservation,
   SetTarget,
   SetValueSource,
@@ -124,6 +127,17 @@ type SessionExerciseEditReceiptRow = Readonly<{
   committed_at_ms: number;
 }>;
 
+type SessionExerciseReorderReceiptRow = Readonly<{
+  request_sha256: string;
+  operation: "reorder_exercises";
+  session_id: string;
+  ordered_session_exercise_ids_json: string;
+  expected_session_revision: number;
+  result_session_revision: number;
+  result_json: string;
+  committed_at_ms: number;
+}>;
+
 type PersistedReplaceExerciseResult = Readonly<{
   outcome: "committed";
   disposition: "deleted_provisional" | "skipped_history_preserved";
@@ -142,6 +156,14 @@ type PersistedRemoveExerciseResult = Readonly<{
   sessionExerciseId: string;
   sessionRevision: number;
   expectedSessionExerciseRevision: number;
+}>;
+
+type PersistedReorderExercisesResult = Readonly<{
+  outcome: "committed";
+  sessionId: string;
+  orderedSessionExerciseIds: readonly string[];
+  expectedSessionExerciseRevisions: readonly ReorderExerciseRevision[];
+  sessionRevision: number;
 }>;
 
 type CompletionSetRow = SetRow & Readonly<{
@@ -676,7 +698,7 @@ async function loadActiveWorkout(
             default_rest_seconds, status, revision
      FROM session_exercises
      WHERE session_id = ?
-     ORDER BY display_ordinal, ordinal`,
+     ORDER BY display_ordinal, id`,
     [sessionId],
   );
   const setRows = await executor.queryAll<SetRow>(
@@ -696,7 +718,7 @@ async function loadActiveWorkout(
      FROM session_sets ss
      JOIN session_exercises se ON se.id = ss.session_exercise_id
      WHERE se.session_id = ?
-     ORDER BY se.ordinal,
+     ORDER BY se.display_ordinal, se.id,
               CASE ss.set_kind WHEN 'warmup' THEN 0 ELSE 1 END,
               ss.ordinal`,
     [sessionId],
@@ -925,7 +947,7 @@ function addReceiptMatches(
 }
 
 function parseReceiptResult<Result>(
-  receipt: SessionExerciseEditReceiptRow,
+  receipt: Readonly<{ result_json: string }>,
   code: string,
 ): Result | null {
   try {
@@ -1016,6 +1038,88 @@ async function editReceipt(
   return receipt;
 }
 
+function sameOrderedIds(
+  left: readonly string[],
+  right: readonly string[],
+): boolean {
+  return left.length === right.length
+    && left.every((value, index) => value === right[index]);
+}
+
+function toReorderResult(
+  result: PersistedReorderExercisesResult,
+  outcome: "committed" | "already_committed",
+): ReorderExercisesResult {
+  return {
+    outcome,
+    sessionId: result.sessionId,
+    orderedSessionExerciseIds: result.orderedSessionExerciseIds,
+    sessionRevision: result.sessionRevision,
+  };
+}
+
+function sameReorderRevisions(
+  left: readonly ReorderExerciseRevision[],
+  right: readonly ReorderExerciseRevision[],
+): boolean {
+  return left.length === right.length
+    && left.every(({ sessionExerciseId, revision }, index) =>
+      sessionExerciseId === right[index]?.sessionExerciseId
+      && revision === right[index]?.revision
+    );
+}
+
+function reorderReceiptMatches(
+  receipt: SessionExerciseReorderReceiptRow,
+  input: ReorderExercisesInput,
+): PersistedReorderExercisesResult | null {
+  if (receipt.request_sha256 !== input.requestSha256
+    || receipt.operation !== "reorder_exercises"
+    || receipt.session_id !== input.sessionId
+    || receipt.ordered_session_exercise_ids_json
+      !== JSON.stringify(input.orderedSessionExerciseIds)
+    || receipt.expected_session_revision !== input.expectedSessionRevision
+    || receipt.committed_at_ms !== input.occurredAtMs) {
+    return null;
+  }
+  const result = parseReceiptResult<PersistedReorderExercisesResult>(
+    receipt,
+    "reorder_exercises_receipt_invalid",
+  );
+  if (result === null
+    || result.outcome !== "committed"
+    || result.sessionId !== receipt.session_id
+    || !Array.isArray(result.orderedSessionExerciseIds)
+    || !sameOrderedIds(
+      result.orderedSessionExerciseIds,
+      input.orderedSessionExerciseIds,
+    )
+    || !Array.isArray(result.expectedSessionExerciseRevisions)
+    || !sameReorderRevisions(
+      result.expectedSessionExerciseRevisions,
+      input.expectedSessionExerciseRevisions,
+    )
+    || result.sessionRevision !== receipt.result_session_revision) {
+    return null;
+  }
+  return result;
+}
+
+async function reorderReceipt(
+  transaction: SqliteTransactionExecutor,
+  requestId: string,
+): Promise<SessionExerciseReorderReceiptRow | undefined> {
+  const [receipt] = await transaction.queryAll<SessionExerciseReorderReceiptRow>(
+    `SELECT request_sha256, operation, session_id,
+            ordered_session_exercise_ids_json, expected_session_revision,
+            result_session_revision, result_json, committed_at_ms
+     FROM workout_session_exercise_reorder_receipts
+     WHERE request_id = ?`,
+    [requestId],
+  );
+  return receipt;
+}
+
 async function exerciseRows(
   transaction: SqliteTransactionExecutor,
   input: Readonly<{ sessionId: string; sessionExerciseId: string }>,
@@ -1070,7 +1174,7 @@ async function stableNextWorkingSet(
        AND se.status <> 'skipped'
        AND ss.set_kind = 'working'
        AND ss.status IN ('planned', 'draft')
-     ORDER BY se.display_ordinal, se.ordinal, ss.ordinal, ss.id
+     ORDER BY se.display_ordinal, se.id, ss.ordinal, ss.id
      LIMIT 1`,
     [sessionId, removedExerciseId],
   );
@@ -1525,6 +1629,118 @@ async function removeExercise(
   return mutation.result;
 }
 
+async function reorderExercises(
+  kernel: SqliteKernel,
+  input: ReorderExercisesInput,
+): Promise<ReorderExercisesResult> {
+  const mutation = await kernel.write(async (transaction): Promise<
+    | Readonly<{ kind: "result"; result: ReorderExercisesResult }>
+    | Readonly<{ kind: "conflict"; code: string }>
+  > => {
+    const receipt = await reorderReceipt(transaction, input.requestId);
+    if (receipt !== undefined) {
+      const persisted = reorderReceiptMatches(receipt, input);
+      if (persisted === null) {
+        return { kind: "conflict", code: "reorder_exercises_replay_conflict" };
+      }
+      return {
+        kind: "result",
+        result: toReorderResult(persisted, "already_committed"),
+      };
+    }
+
+    const [session] = await transaction.queryAll<SessionRow>(
+      `SELECT id, status, active_session_exercise_id, active_set_id, revision
+       FROM workout_sessions WHERE id = ?`,
+      [input.sessionId],
+    );
+    if (session === undefined
+      || session.status !== "in_progress"
+      || session.revision !== input.expectedSessionRevision) {
+      return { kind: "conflict", code: "reorder_exercises_conflict" };
+    }
+
+    const exercises = await transaction.queryAll<ExerciseRow>(
+      `SELECT id, exercise_id, ordinal, origin, display_ordinal, exercise_name,
+              metric_profile, metric_contract_version, exercise_metric_generation,
+              default_rest_seconds, status, revision
+       FROM session_exercises
+       WHERE session_id = ?
+       ORDER BY display_ordinal, id`,
+      [input.sessionId],
+    );
+    const expectedRevisions = new Map(input.expectedSessionExerciseRevisions.map(
+      ({ sessionExerciseId, revision }) => [sessionExerciseId, revision],
+    ));
+    const liveIds = exercises.map(({ id }) => id);
+    if (exercises.length === 0
+      || !sameOrderedIds(
+        [...input.orderedSessionExerciseIds].sort(),
+        [...liveIds].sort(),
+      )
+      || expectedRevisions.size !== exercises.length
+      || exercises.some(({ id, revision }) => expectedRevisions.get(id) !== revision)
+      || exercises.every(({ status }) => status === "skipped")) {
+      return { kind: "conflict", code: "reorder_exercises_membership_conflict" };
+    }
+    if (sameOrderedIds(input.orderedSessionExerciseIds, liveIds)) {
+      return { kind: "conflict", code: "reorder_exercises_noop" };
+    }
+
+    for (const [displayOrdinal, sessionExerciseId] of input
+      .orderedSessionExerciseIds.entries()) {
+      const update = await transaction.execute(
+        `UPDATE session_exercises
+         SET display_ordinal = ?
+         WHERE id = ? AND session_id = ? AND revision = ?`,
+        [
+          displayOrdinal,
+          sessionExerciseId,
+          input.sessionId,
+          expectedRevisions.get(sessionExerciseId)!,
+        ],
+      );
+      if (update.changes !== 1) {
+        throw new Error("reorder_exercises_display_update_failed");
+      }
+    }
+    const sessionUpdate = await transaction.execute(
+      `UPDATE workout_sessions
+       SET modified_from_plan = 1, revision = revision + 1
+       WHERE id = ? AND status = 'in_progress' AND revision = ?`,
+      [input.sessionId, input.expectedSessionRevision],
+    );
+    if (sessionUpdate.changes !== 1) {
+      throw new Error("reorder_exercises_session_update_failed");
+    }
+    const result: PersistedReorderExercisesResult = {
+      outcome: "committed",
+      sessionId: input.sessionId,
+      orderedSessionExerciseIds: input.orderedSessionExerciseIds,
+      expectedSessionExerciseRevisions: input.expectedSessionExerciseRevisions,
+      sessionRevision: input.expectedSessionRevision + 1,
+    };
+    await transaction.execute(
+      `INSERT INTO workout_session_exercise_reorder_receipts
+        (request_id, request_sha256, operation, session_id,
+         ordered_session_exercise_ids_json, expected_session_revision,
+         result_session_revision, result_json, committed_at_ms)
+       VALUES (?, ?, 'reorder_exercises', ?, ?, ?, ?, ?, ?)`,
+      [
+        input.requestId, input.requestSha256, input.sessionId,
+        JSON.stringify(input.orderedSessionExerciseIds),
+        input.expectedSessionRevision, result.sessionRevision,
+        JSON.stringify(result), input.occurredAtMs,
+      ],
+    );
+    return { kind: "result", result: toReorderResult(result, "committed") };
+  });
+  if (mutation.kind === "conflict") {
+    throw new WorkoutCommandConflictError(mutation.code);
+  }
+  return mutation.result;
+}
+
 async function nextWarmupOrdinal(
   transaction: SqliteTransactionExecutor,
   sessionExerciseId: string,
@@ -1625,7 +1841,7 @@ async function nextWorkingSet(
        AND ss.set_kind = 'working'
        AND ss.id <> ?
        AND ss.status IN ('planned', 'draft')
-     ORDER BY se.ordinal, ss.ordinal
+     ORDER BY se.display_ordinal, se.id, ss.ordinal, ss.id
      LIMIT 1`,
     [sessionId, completedSetId],
   );
@@ -2165,6 +2381,8 @@ export function createWorkoutRepository(
     replaceExercise: (input) => replaceExercise(kernel, input),
 
     removeExercise: (input) => removeExercise(kernel, input),
+
+    reorderExercises: (input) => reorderExercises(kernel, input),
 
     removeWarmup: (input) => removeSet(kernel, input, "remove_warmup"),
 

@@ -125,6 +125,45 @@ function removeInput(
     occurredAtMs: 2_000,
   };
 }
+
+async function sessionExercises(
+  kernel: SqliteKernel,
+  sessionId: string,
+) {
+  return kernel.queryAll<Readonly<{
+    id: string;
+    revision: number;
+    ordinal: number;
+    display_ordinal: number;
+    exercise_id: string;
+  }>>(
+    `SELECT id, revision, ordinal, display_ordinal, exercise_id
+     FROM session_exercises
+     WHERE session_id = ?
+     ORDER BY display_ordinal, id`,
+    [sessionId],
+  );
+}
+
+function reorderInput(
+  sessionId: string,
+  expectedSessionRevision: number,
+  exercises: readonly Awaited<ReturnType<typeof sessionExercises>>[number][],
+  requestId = "reorder-1",
+) {
+  return {
+    requestId,
+    requestSha256: hash,
+    sessionId,
+    expectedSessionRevision,
+    occurredAtMs: 2_000,
+    orderedSessionExerciseIds: exercises.map(({ id }) => id),
+    expectedSessionExerciseRevisions: exercises.map(({ id, revision }) => ({
+      sessionExerciseId: id,
+      revision,
+    })),
+  };
+}
 describe("Phase 09 session exercise editing", () => {
   it("appends one added-origin exercise and one null-lineage working set without changing prior snapshots", async () => {
     const { kernel, repository, session, libraryExerciseId } = await setup();
@@ -146,6 +185,290 @@ describe("Phase 09 session exercise editing", () => {
     await expect(repository.addExercise!({ ...input, requestSha256: "b".repeat(64) })).rejects.toThrow("add_exercise_replay_conflict");
     await expect(repository.addExercise!({ ...input, requestId: "add-stale", expectedSessionRevision: session.revision, sessionExerciseId: "other-exercise", setId: "other-set" })).rejects.toThrow("add_exercise_conflict");
     expect(await kernel.queryAll<{ count: number }>("SELECT COUNT(*) AS count FROM session_exercises WHERE session_id = ?", [session.id])).toEqual(count);
+  });
+
+  it("persists only contiguous display order and the independent immutable reorder receipt", async () => {
+    const { kernel, repository, session, libraryExerciseId } = await setup();
+    const added = await repository.addExercise!({
+      requestId: "reorder-add", requestSha256: hash, sessionId: session.id,
+      expectedSessionRevision: session.revision, occurredAtMs: 1_900,
+      libraryExerciseId, sessionExerciseId: "reorder-added-exercise", setId: "reorder-added-set",
+    });
+    const before = await kernel.queryAll(
+      `SELECT se.*, ss.id AS set_id, ss.status AS set_status,
+              ss.observed_json, ss.completed_at_ms, su.snapshot_json
+       FROM session_exercises se
+       LEFT JOIN session_sets ss ON ss.session_exercise_id = se.id
+       LEFT JOIN session_undo_snapshots su ON su.completed_set_id = ss.id
+       WHERE se.session_id = ?
+       ORDER BY se.id, ss.id`,
+      [session.id],
+    );
+    const current = await sessionExercises(kernel, session.id);
+    const input = reorderInput(
+      session.id,
+      added.sessionRevision,
+      [...current].reverse(),
+    );
+
+    await expect(repository.reorderExercises!(input)).resolves.toEqual({
+      outcome: "committed",
+      sessionId: session.id,
+      orderedSessionExerciseIds: input.orderedSessionExerciseIds,
+      sessionRevision: added.sessionRevision + 1,
+    });
+    await expect(createWorkoutRepository(kernel).reorderExercises!(input))
+      .resolves.toEqual({
+        outcome: "already_committed",
+        sessionId: session.id,
+        orderedSessionExerciseIds: input.orderedSessionExerciseIds,
+        sessionRevision: added.sessionRevision + 1,
+      });
+    await expect(createWorkoutRepository(kernel).reorderExercises!({
+      ...input,
+      expectedSessionExerciseRevisions: input.expectedSessionExerciseRevisions.map(
+        (entry, index) => index === 0
+          ? { ...entry, revision: entry.revision + 1 }
+          : entry,
+      ),
+    })).rejects.toThrow("reorder_exercises_replay_conflict");
+    expect(await sessionExercises(kernel, session.id)).toEqual(
+      input.orderedSessionExerciseIds.map((id, display_ordinal) => ({
+        ...current.find((exercise) => exercise.id === id)!,
+        display_ordinal,
+      })),
+    );
+    const after = await kernel.queryAll(
+      `SELECT se.*, ss.id AS set_id, ss.status AS set_status,
+              ss.observed_json, ss.completed_at_ms, su.snapshot_json
+       FROM session_exercises se
+       LEFT JOIN session_sets ss ON ss.session_exercise_id = se.id
+       LEFT JOIN session_undo_snapshots su ON su.completed_set_id = ss.id
+       WHERE se.session_id = ?
+       ORDER BY se.id, ss.id`,
+      [session.id],
+    );
+    expect(after).toEqual(before.map((row) => ({
+      ...row,
+      display_ordinal: input.orderedSessionExerciseIds.indexOf(String(row.id)),
+    })));
+    expect(await kernel.queryAll(
+      `SELECT operation, ordered_session_exercise_ids_json, result_session_revision
+       FROM workout_session_exercise_reorder_receipts
+       WHERE request_id = ?`,
+      [input.requestId],
+    )).toEqual([{
+      operation: "reorder_exercises",
+      ordered_session_exercise_ids_json: JSON.stringify(input.orderedSessionExerciseIds),
+      result_session_revision: added.sessionRevision + 1,
+    }]);
+    expect(await kernel.queryAll(
+      "SELECT request_id FROM workout_session_exercise_edit_receipts WHERE request_id = ?",
+      [input.requestId],
+    )).toEqual([]);
+    await expect(repository.getActiveWorkout(session.id)).resolves.toMatchObject({
+      exercises: input.orderedSessionExerciseIds.map((id) => ({ id })),
+    });
+  });
+
+  it("uses reordered display order for the next active set without rewriting immutable ordinal", async () => {
+    const { kernel, repository, session, libraryExerciseId } = await setup();
+    const added = await repository.addExercise!({
+      requestId: "traversal-add", requestSha256: hash, sessionId: session.id,
+      expectedSessionRevision: session.revision, occurredAtMs: 1_900,
+      libraryExerciseId, sessionExerciseId: "traversal-added-exercise", setId: "traversal-added-set",
+    });
+    const current = await sessionExercises(kernel, session.id);
+    const reordered = [
+      current.find(({ id }) => id === "traversal-added-exercise")!,
+      ...current.filter(({ id }) => id !== "traversal-added-exercise"),
+    ];
+    await repository.reorderExercises!(reorderInput(
+      session.id, added.sessionRevision, reordered, "traversal-reorder",
+    ));
+    const [activeSet] = await kernel.queryAll<{ id: string; revision: number }>(
+      `SELECT id, revision FROM session_sets
+       WHERE session_exercise_id = ? AND set_kind = 'working'
+       ORDER BY ordinal, id LIMIT 1`,
+      [current[0]!.id],
+    );
+
+    const result = await repository.completeSet({
+      sessionId: session.id,
+      setId: activeSet!.id,
+      expectedSessionRevision: added.sessionRevision + 1,
+      expectedSetRevision: activeSet!.revision,
+      completionIdempotencyKey: "traversal-complete",
+      metricIdentity: { profile: "load_reps", contractVersion: 1, exerciseMetricGeneration: 1 },
+      observation: { profile: "load_reps", version: 1, loadGrams: 10_000, reps: 8, source: "manual" },
+      completedAtMs: 2_100,
+    });
+    expect(result.view.activeExerciseId).toBe("traversal-added-exercise");
+    expect(result.view.activeSetId).toBe("traversal-added-set");
+    expect(await kernel.queryAll(
+      "SELECT id, ordinal, display_ordinal FROM session_exercises WHERE id = 'traversal-added-exercise'",
+    )).toEqual([{ id: "traversal-added-exercise", ordinal: current.at(-1)!.ordinal, display_ordinal: 0 }]);
+  });
+
+  it("rejects no-op, stale, and skipped-only reorder requests without writing either receipt ledger", async () => {
+    const { kernel, repository, session, libraryExerciseId } = await setup();
+    const added = await repository.addExercise!({
+      requestId: "reorder-guard-add", requestSha256: hash, sessionId: session.id,
+      expectedSessionRevision: session.revision, occurredAtMs: 1_900,
+      libraryExerciseId, sessionExerciseId: "reorder-guard-exercise", setId: "reorder-guard-set",
+    });
+    const current = await sessionExercises(kernel, session.id);
+    const noOp = reorderInput(session.id, added.sessionRevision, current, "reorder-noop");
+    const before = await Promise.all([
+      kernel.queryAll("SELECT revision FROM workout_sessions WHERE id = ?", [session.id]),
+      kernel.queryAll("SELECT * FROM workout_session_exercise_reorder_receipts ORDER BY request_id"),
+      kernel.queryAll("SELECT * FROM workout_session_exercise_edit_receipts ORDER BY request_id"),
+    ]);
+    await expect(repository.reorderExercises!(noOp))
+      .rejects.toThrow("reorder_exercises_noop");
+    await expect(Promise.all([
+      kernel.queryAll("SELECT revision FROM workout_sessions WHERE id = ?", [session.id]),
+      kernel.queryAll("SELECT * FROM workout_session_exercise_reorder_receipts ORDER BY request_id"),
+      kernel.queryAll("SELECT * FROM workout_session_exercise_edit_receipts ORDER BY request_id"),
+    ])).resolves.toEqual(before);
+
+    const winner = reorderInput(
+      session.id, added.sessionRevision, [...current].reverse(), "reorder-winner",
+    );
+    await repository.reorderExercises!(winner);
+    await expect(repository.reorderExercises!(reorderInput(
+      session.id, added.sessionRevision, current, "reorder-stale",
+    ))).rejects.toThrow("reorder_exercises_conflict");
+    expect(await kernel.queryAll(
+      "SELECT request_id FROM workout_session_exercise_reorder_receipts ORDER BY request_id",
+    )).toEqual([{ request_id: "reorder-winner" }]);
+
+    const [afterWinner] = await kernel.queryAll<{ revision: number }>(
+      "SELECT revision FROM workout_sessions WHERE id = ?", [session.id],
+    );
+    await kernel.write(async (transaction) => {
+      await transaction.execute(
+        "UPDATE session_exercises SET status = 'skipped' WHERE session_id = ?",
+        [session.id],
+      );
+    });
+    const skipped = await sessionExercises(kernel, session.id);
+    await expect(repository.reorderExercises!(reorderInput(
+      session.id, afterWinner!.revision, [...skipped].reverse(), "reorder-skipped",
+    ))).rejects.toThrow("reorder_exercises_membership_conflict");
+    expect(await kernel.queryAll(
+      "SELECT request_id FROM workout_session_exercise_reorder_receipts ORDER BY request_id",
+    )).toEqual([{ request_id: "reorder-winner" }]);
+  });
+
+  it("preserves completed and undo-backed source facts across reorder", async () => {
+    const { kernel, repository, session, libraryExerciseId } = await setup();
+    const added = await repository.addExercise!({
+      requestId: "reorder-history-add", requestSha256: hash, sessionId: session.id,
+      expectedSessionRevision: session.revision, occurredAtMs: 1_900,
+      libraryExerciseId, sessionExerciseId: "reorder-history-exercise", setId: "reorder-history-set",
+    });
+    const [activeSet] = await kernel.queryAll<{ id: string; revision: number }>(
+      `SELECT id, revision FROM session_sets
+       WHERE session_exercise_id = (
+         SELECT active_session_exercise_id FROM workout_sessions WHERE id = ?
+       ) AND set_kind = 'working'
+       ORDER BY ordinal, id LIMIT 1`,
+      [session.id],
+    );
+    const completed = await repository.completeSet({
+      sessionId: session.id,
+      setId: activeSet!.id,
+      expectedSessionRevision: added.sessionRevision,
+      expectedSetRevision: activeSet!.revision,
+      completionIdempotencyKey: "reorder-history-complete",
+      metricIdentity: { profile: "load_reps", contractVersion: 1, exerciseMetricGeneration: 1 },
+      observation: { profile: "load_reps", version: 1, loadGrams: 10_000, reps: 8, source: "manual" },
+      completedAtMs: 2_000,
+    });
+    const before = await Promise.all([
+      kernel.queryAll(
+        `SELECT id, ordinal, origin, exercise_name, metric_profile,
+                metric_contract_version, exercise_metric_generation,
+                default_rest_seconds, target_revision, status, revision
+         FROM session_exercises WHERE session_id = ? ORDER BY id`,
+        [session.id],
+      ),
+      kernel.queryAll(
+        `SELECT ss.* FROM session_sets ss
+         JOIN session_exercises se ON se.id = ss.session_exercise_id
+         WHERE se.session_id = ? ORDER BY ss.id`,
+        [session.id],
+      ),
+      kernel.queryAll(
+        `SELECT su.* FROM session_undo_snapshots su
+         JOIN session_sets ss ON ss.id = su.completed_set_id
+         JOIN session_exercises se ON se.id = ss.session_exercise_id
+         WHERE se.session_id = ? ORDER BY su.id`,
+        [session.id],
+      ),
+    ]);
+    const current = await sessionExercises(kernel, session.id);
+    await repository.reorderExercises!(reorderInput(
+      session.id, completed.view.revision, [...current].reverse(), "reorder-history",
+    ));
+    await expect(Promise.all([
+      kernel.queryAll(
+        `SELECT id, ordinal, origin, exercise_name, metric_profile,
+                metric_contract_version, exercise_metric_generation,
+                default_rest_seconds, target_revision, status, revision
+         FROM session_exercises WHERE session_id = ? ORDER BY id`,
+        [session.id],
+      ),
+      kernel.queryAll(
+        `SELECT ss.* FROM session_sets ss
+         JOIN session_exercises se ON se.id = ss.session_exercise_id
+         WHERE se.session_id = ? ORDER BY ss.id`,
+        [session.id],
+      ),
+      kernel.queryAll(
+        `SELECT su.* FROM session_undo_snapshots su
+         JOIN session_sets ss ON ss.id = su.completed_set_id
+         JOIN session_exercises se ON se.id = ss.session_exercise_id
+         WHERE se.session_id = ? ORDER BY su.id`,
+        [session.id],
+      ),
+    ])).resolves.toEqual(before);
+  });
+
+  it("rolls back display order, session metadata, and reorder receipt on commit failure", async () => {
+    let failCommit = false;
+    const { kernel, repository, session, libraryExerciseId } = await setup({
+      beforeCommit: async () => {
+        if (failCommit) {
+          failCommit = false;
+          throw new Error("injected_reorder_commit_failure");
+        }
+      },
+    });
+    const added = await repository.addExercise!({
+      requestId: "reorder-rollback-add", requestSha256: hash, sessionId: session.id,
+      expectedSessionRevision: session.revision, occurredAtMs: 1_900,
+      libraryExerciseId, sessionExerciseId: "reorder-rollback-exercise", setId: "reorder-rollback-set",
+    });
+    const current = await sessionExercises(kernel, session.id);
+    const before = await Promise.all([
+      kernel.queryAll("SELECT * FROM workout_sessions WHERE id = ?", [session.id]),
+      kernel.queryAll("SELECT * FROM session_exercises WHERE session_id = ? ORDER BY id", [session.id]),
+      kernel.queryAll("SELECT * FROM workout_session_exercise_reorder_receipts ORDER BY request_id"),
+      kernel.queryAll("SELECT * FROM workout_session_exercise_edit_receipts ORDER BY request_id"),
+    ]);
+    failCommit = true;
+
+    await expect(repository.reorderExercises!(reorderInput(
+      session.id, added.sessionRevision, [...current].reverse(), "reorder-rollback",
+    ))).rejects.toThrow("sqlite_commit_failed");
+    await expect(Promise.all([
+      kernel.queryAll("SELECT * FROM workout_sessions WHERE id = ?", [session.id]),
+      kernel.queryAll("SELECT * FROM session_exercises WHERE session_id = ? ORDER BY id", [session.id]),
+      kernel.queryAll("SELECT * FROM workout_session_exercise_reorder_receipts ORDER BY request_id"),
+      kernel.queryAll("SELECT * FROM workout_session_exercise_edit_receipts ORDER BY request_id"),
+    ])).resolves.toEqual(before);
   });
 
   it("preserves populated v19 receipts, then writes and replays Add through v20", async () => {

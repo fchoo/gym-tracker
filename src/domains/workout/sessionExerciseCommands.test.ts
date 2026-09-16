@@ -279,6 +279,18 @@ describe("Phase 09 reorder command boundary", () => {
         { sessionExerciseId: "session-exercise-3", revision: 2 },
       ],
     },
+    {
+      expectedSessionExerciseRevisions: [
+        { sessionExerciseId: "session-exercise-1", revision: 2 },
+        { sessionExerciseId: "session-exercise-2", revision: 3 },
+      ],
+    },
+    {
+      expectedSessionExerciseRevisions: [
+        { sessionExerciseId: "session-exercise-2", revision: 3 },
+        { sessionExerciseId: " invalid ", revision: 2 },
+      ],
+    },
   ])("rejects incomplete or duplicate ordered membership: %j", async (invalid) => {
     await expect(reorderExercises({
       repository: repository(),
@@ -287,6 +299,7 @@ describe("Phase 09 reorder command boundary", () => {
   });
 
   it.each([
+    { requestId: " invalid " },
     { requestSha256: "A".repeat(64) },
     { expectedSessionRevision: -1 },
     { occurredAtMs: -1 },

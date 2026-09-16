@@ -120,7 +120,10 @@ function validateReorderExercisesInput(input: ReorderExercisesInput): void {
   const revisionIdSet = new Set(revisions.map(({ sessionExerciseId }) => sessionExerciseId));
   if (orderedIdSet.size !== orderedIds.length
     || revisionIdSet.size !== revisions.length
-    || [...orderedIdSet].some((id) => !revisionIdSet.has(id))) {
+    || [...orderedIdSet].some((id) => !revisionIdSet.has(id))
+    || revisions.some(({ sessionExerciseId }, index) =>
+      sessionExerciseId !== orderedIds[index]
+    )) {
     throw new TypeError("reorder_exercises_membership_invalid");
   }
 }

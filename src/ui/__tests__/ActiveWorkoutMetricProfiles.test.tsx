@@ -60,7 +60,7 @@ function persistedAddedLoadKernel() {
         revision: 4,
       }];
     }
-    if (sql.includes("FROM session_exercises") && sql.includes("ORDER BY display_ordinal, ordinal")) {
+    if (sql.includes("FROM session_exercises") && sql.includes("ORDER BY display_ordinal, id")) {
       return [{
         id: "session-exercise-added-load",
         exercise_id: "weighted-pull-up",
@@ -76,7 +76,7 @@ function persistedAddedLoadKernel() {
         revision: 2,
       }];
     }
-    if (sql.includes("FROM session_sets ss") && sql.includes("ORDER BY se.ordinal")) {
+    if (sql.includes("FROM session_sets ss") && sql.includes("ORDER BY se.display_ordinal, se.id")) {
       return [{
         id: "set-added-load",
         session_exercise_id: "session-exercise-added-load",
