@@ -1,5 +1,8 @@
 import React from "react";
 import {
+  Pencil,
+} from "lucide-react-native";
+import {
   StyleSheet,
   Text,
   View,
@@ -121,6 +124,27 @@ export function WorkoutCompletionScreen({
                 ? `Partial · ${detail.exerciseProgress.completed} of ${detail.exerciseProgress.planned} exercises`
                 : detail.statusLabel}
             </Text>
+            {detail.modifiedFromPlan !== true ? null : (
+              <View
+                accessibilityLabel="Modified from plan"
+                style={styles.modified}
+              >
+                <Pencil
+                  accessibilityElementsHidden
+                  color={colors.contentCardTextSecondary}
+                  importantForAccessibility="no-hide-descendants"
+                  size={20}
+                />
+                <Text
+                  style={[
+                    typeScale.bodyStrong as TextStyle,
+                    { color: colors.contentCardText },
+                  ]}
+                >
+                  Modified from plan
+                </Text>
+              </View>
+            )}
           </ContentCard>
           {summaryError ? (
             <InlineNotice
@@ -277,6 +301,11 @@ const styles = StyleSheet.create({
   },
   metrics: {
     gap: space[4],
+  },
+  modified: {
+    alignItems: "center",
+    flexDirection: "row",
+    gap: space[1],
   },
   result: {
     gap: space[2],

@@ -76,6 +76,7 @@ type SessionRow = Readonly<{
   started_at_ms: number;
   completed_at_ms: number | null;
   revision: number;
+  modified_from_plan: number;
   plan_name: string | null;
   day_name: string | null;
   effective_revision: number | null;
@@ -652,6 +653,7 @@ async function sessionRows(
     `SELECT ws.id, ws.source, ws.status, ws.plan_id, ws.plan_day_id,
             ws.local_date, ws.timezone,
             ws.started_at_ms, ws.completed_at_ms, ws.revision,
+            ws.modified_from_plan,
             p.name AS plan_name, pd.name AS day_name,
             overlay.effective_revision, overlay.lifecycle, overlay.snapshot_json
      FROM workout_sessions ws
@@ -1512,6 +1514,7 @@ function detailFromEffectiveOverlay(
     endedAtMs,
     durationMs: endedAtMs === null ? null : endedAtMs - snapshot.session.startedAtMs,
     revision: effectiveRevision,
+    modifiedFromPlan: session.modified_from_plan === 1,
     corrected: true,
     ownerNote: snapshot.session.ownerNote,
     exerciseProgress: percentage(
@@ -1753,6 +1756,7 @@ async function loadSessionDetail(
     endedAtMs,
     durationMs: endedAtMs === null ? null : endedAtMs - session.started_at_ms,
     revision: session.revision,
+    modifiedFromPlan: session.modified_from_plan === 1,
     exerciseProgress: percentage(
       exercises.filter(({ status }) => status === "completed").length,
       exercises.length,

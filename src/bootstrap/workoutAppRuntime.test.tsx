@@ -426,6 +426,7 @@ const runtimeSessionDetail: SessionDetail = {
   endedAtMs: 2_000,
   durationMs: 1_000,
   revision: 2,
+  modifiedFromPlan: false,
   exerciseProgress: { completed: 1, planned: 1, percent: 100 },
   workingSetProgress: { completed: 1, planned: 1, percent: 100 },
   exercises: [],

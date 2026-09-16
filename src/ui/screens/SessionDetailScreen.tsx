@@ -3,6 +3,9 @@ import React, {
   useState,
 } from "react";
 import {
+  Pencil,
+} from "lucide-react-native";
+import {
   StyleSheet,
   Text,
   View,
@@ -174,6 +177,27 @@ export function SessionDetailScreen({
             >
               Working sets · {progressText(detail.workingSetProgress)}
             </Text>
+            {detail.modifiedFromPlan !== true ? null : (
+              <View
+                accessibilityLabel="Modified from plan"
+                style={styles.modified}
+              >
+                <Pencil
+                  accessibilityElementsHidden
+                  color={colors.textSecondary}
+                  importantForAccessibility="no-hide-descendants"
+                  size={20}
+                />
+                <Text
+                  style={[
+                    typeScale.bodyStrong as TextStyle,
+                    { color: colors.textPrimary },
+                  ]}
+                >
+                  Modified from plan
+                </Text>
+              </View>
+            )}
             {detail.ownerNote === null || detail.ownerNote === undefined
               ? null
               : (
@@ -423,6 +447,11 @@ const styles = StyleSheet.create({
     borderWidth: StyleSheet.hairlineWidth,
     gap: space[4],
     padding: space[4],
+  },
+  modified: {
+    alignItems: "center",
+    flexDirection: "row",
+    gap: space[1],
   },
   setSection: {
     gap: space[2],
