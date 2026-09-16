@@ -61,6 +61,10 @@ import {
   SESSION_EXERCISE_EDITING_SCHEMA_STATEMENTS,
 } from "../platform/sqlite/migrations/0019_session_exercise_editing";
 import {
+  SESSION_EXERCISE_EDIT_RECEIPT_SCHEMA_STATEMENTS,
+  SESSION_EXERCISE_REORDER_RECEIPT_SCHEMA_STATEMENTS,
+} from "../platform/sqlite/migrations/0020_session_exercise_edit_receipts";
+import {
   AppearanceProvider,
 } from "../ui/theme";
 
@@ -92,6 +96,11 @@ jest.mock("../platform/sqlite/recoveryBackup", () => ({
     })),
   })),
 }));
+jest.mock("expo-sqlite", () => ({
+  backupDatabaseAsync: jest.fn(async () => undefined),
+  deleteDatabaseAsync: jest.fn(async () => undefined),
+  openDatabaseAsync: jest.fn(),
+}));
 
 import {
   acknowledgeCommittedRuntimeResult,
@@ -112,6 +121,15 @@ import type {
 import type {
   ScheduleRuntimeAdapter,
 } from "./scheduleRuntime";
+
+const recoveryBackupMock = jest.requireMock(
+  "../platform/sqlite/recoveryBackup",
+) as {
+  createExpoRecoveryBackupPort: jest.MockedFunction<typeof import("../platform/sqlite/recoveryBackup")["createExpoRecoveryBackupPort"]>;
+};
+const expoSqliteMock = jest.requireMock("expo-sqlite") as {
+  openDatabaseAsync: jest.MockedFunction<typeof import("expo-sqlite")["openDatabaseAsync"]>;
+};
 
 type Repository = PlansRepository & WorkoutRepository;
 
@@ -1975,6 +1993,8 @@ describe("WorkoutAppRuntimeProvider", () => {
   });
 
   it("executes the production migration and clock adapters against a fake kernel", async () => {
+    recoveryBackupMock.createExpoRecoveryBackupPort.mockClear();
+    expoSqliteMock.openDatabaseAsync.mockReset();
     const execute = jest.fn(async (_sql: string, _parameters?: readonly unknown[]) => ({
       changes: 0,
       lastInsertRowId: 0,
@@ -2100,27 +2120,121 @@ describe("WorkoutAppRuntimeProvider", () => {
         ];
       }
       if (sql === "PRAGMA foreign_key_list(workout_session_exercise_edit_receipts)") {
-        return [
-          { table: "workout_sessions" },
-          { table: "session_exercises" },
+        return execute.mock.calls.some(([statement]) => (
+          typeof statement === "string"
+          && statement.includes(
+            "ALTER TABLE workout_session_exercise_edit_receipts RENAME TO workout_session_exercise_edit_receipts_v19",
+          )
+        ))
+          ? [{ table: "workout_sessions" }]
+          : [{ table: "workout_sessions" }, { table: "session_exercises" }];
+      }
+      if (sql === "PRAGMA index_list(workout_session_exercise_edit_receipts)") {
+        return [{ name: "workout_session_exercise_edit_receipts_session_committed_request_idx" }];
+      }
+      if (sql === "PRAGMA table_info(workout_session_exercise_edit_receipts)") {
+        return execute.mock.calls.some(([statement]) => (
+          typeof statement === "string"
+          && statement.includes(
+            "ALTER TABLE workout_session_exercise_edit_receipts RENAME TO workout_session_exercise_edit_receipts_v19",
+          )
+        )) ? [
+          { name: "request_id", type: "TEXT", notnull: 1, pk: 1 },
+          { name: "request_sha256", type: "TEXT", notnull: 1, pk: 0 },
+          { name: "operation", type: "TEXT", notnull: 1, pk: 0 },
+          { name: "session_id", type: "TEXT", notnull: 1, pk: 0 },
+          { name: "subject_session_exercise_id", type: "TEXT", notnull: 1, pk: 0 },
+          { name: "replacement_session_exercise_id", type: "TEXT", notnull: 0, pk: 0 },
+          { name: "expected_session_revision", type: "INTEGER", notnull: 1, pk: 0 },
+          { name: "result_session_revision", type: "INTEGER", notnull: 1, pk: 0 },
+          { name: "result_json", type: "TEXT", notnull: 1, pk: 0 },
+          { name: "committed_at_ms", type: "INTEGER", notnull: 1, pk: 0 },
+        ] : [
+          { name: "request_id", type: "TEXT", notnull: 1, pk: 1 },
+          { name: "request_sha256", type: "TEXT", notnull: 1, pk: 0 },
+          { name: "operation", type: "TEXT", notnull: 1, pk: 0 },
+          { name: "session_id", type: "TEXT", notnull: 1, pk: 0 },
+          { name: "session_exercise_id", type: "TEXT", notnull: 1, pk: 0 },
+          { name: "expected_session_revision", type: "INTEGER", notnull: 1, pk: 0 },
+          { name: "result_session_revision", type: "INTEGER", notnull: 1, pk: 0 },
+          { name: "result_json", type: "TEXT", notnull: 1, pk: 0 },
+          { name: "committed_at_ms", type: "INTEGER", notnull: 1, pk: 0 },
         ];
       }
-      if (sql.includes("workout_session_exercise_edit_receipts_immutable_update")) {
+      if (sql === "PRAGMA table_info(workout_session_exercise_reorder_receipts)") {
         return [
+          { name: "request_id", type: "TEXT", notnull: 1, pk: 1 },
+          { name: "request_sha256", type: "TEXT", notnull: 1, pk: 0 },
+          { name: "operation", type: "TEXT", notnull: 1, pk: 0 },
+          { name: "session_id", type: "TEXT", notnull: 1, pk: 0 },
+          { name: "ordered_session_exercise_ids_json", type: "TEXT", notnull: 1, pk: 0 },
+          { name: "expected_session_revision", type: "INTEGER", notnull: 1, pk: 0 },
+          { name: "result_session_revision", type: "INTEGER", notnull: 1, pk: 0 },
+          { name: "result_json", type: "TEXT", notnull: 1, pk: 0 },
+          { name: "committed_at_ms", type: "INTEGER", notnull: 1, pk: 0 },
+        ];
+      }
+      if (sql === "PRAGMA foreign_key_list(workout_session_exercise_reorder_receipts)") {
+        return [{ table: "workout_sessions" }];
+      }
+      if (sql === "PRAGMA index_list(workout_session_exercise_reorder_receipts)") {
+        return [{ name: "workout_session_exercise_reorder_receipts_session_committed_request_idx" }];
+      }
+      if (sql.includes("workout_session_exercise_edit_receipts_immutable_update")) {
+        const receiptSchema = execute.mock.calls.some(([statement]) => (
+          typeof statement === "string"
+          && statement.includes(
+            "ALTER TABLE workout_session_exercise_edit_receipts RENAME TO workout_session_exercise_edit_receipts_v19",
+          )
+        ))
+          ? SESSION_EXERCISE_EDIT_RECEIPT_SCHEMA_STATEMENTS
+          : SESSION_EXERCISE_EDITING_SCHEMA_STATEMENTS;
+        return receiptSchema === SESSION_EXERCISE_EDITING_SCHEMA_STATEMENTS ? [
           {
             type: "table",
             name: "workout_session_exercise_edit_receipts",
-            sql: SESSION_EXERCISE_EDITING_SCHEMA_STATEMENTS[5],
+            sql: receiptSchema[5],
           },
           {
             type: "trigger",
             name: "workout_session_exercise_edit_receipts_immutable_update",
-            sql: SESSION_EXERCISE_EDITING_SCHEMA_STATEMENTS[6],
+            sql: receiptSchema[6],
           },
           {
             type: "trigger",
             name: "workout_session_exercise_edit_receipts_immutable_delete",
-            sql: SESSION_EXERCISE_EDITING_SCHEMA_STATEMENTS[7],
+            sql: receiptSchema[7],
+          },
+        ] : [
+          {
+            type: "table",
+            name: "workout_session_exercise_edit_receipts",
+            sql: receiptSchema[0],
+          },
+          {
+            type: "trigger",
+            name: "workout_session_exercise_edit_receipts_immutable_update",
+            sql: receiptSchema[2],
+          },
+          {
+            type: "trigger",
+            name: "workout_session_exercise_edit_receipts_immutable_delete",
+            sql: receiptSchema[3],
+          },
+          {
+            type: "table",
+            name: "workout_session_exercise_reorder_receipts",
+            sql: SESSION_EXERCISE_REORDER_RECEIPT_SCHEMA_STATEMENTS[0],
+          },
+          {
+            type: "trigger",
+            name: "workout_session_exercise_reorder_receipts_immutable_update",
+            sql: SESSION_EXERCISE_REORDER_RECEIPT_SCHEMA_STATEMENTS[2],
+          },
+          {
+            type: "trigger",
+            name: "workout_session_exercise_reorder_receipts_immutable_delete",
+            sql: SESSION_EXERCISE_REORDER_RECEIPT_SCHEMA_STATEMENTS[3],
           },
         ];
       }
@@ -2162,6 +2276,34 @@ describe("WorkoutAppRuntimeProvider", () => {
     expect(productionWorkoutAppRuntimeDependencies.now()).toBeInstanceOf(Date);
     expect(productionWorkoutAppRuntimeDependencies.nowMs()).toEqual(
       expect.any(Number),
+    );
+    const recoveryOptions = recoveryBackupMock.createExpoRecoveryBackupPort
+      .mock.calls[0]?.[0];
+    if (recoveryOptions === undefined) {
+      throw new Error("recovery_backup_port_not_created");
+    }
+    const source = { closeAsync: jest.fn(async () => undefined) };
+    const destination = { closeAsync: jest.fn(async () => undefined) };
+    expoSqliteMock.openDatabaseAsync
+      .mockResolvedValueOnce(source as never)
+      .mockResolvedValueOnce(destination as never);
+    await recoveryOptions.openSource("recovery-source.db");
+    await recoveryOptions.openDestination("recovery-destination.db");
+    expect(expoSqliteMock.openDatabaseAsync).toHaveBeenNthCalledWith(
+      1,
+      "recovery-source.db",
+      {
+        useNewConnection: true,
+        finalizeUnusedStatementsBeforeClosing: false,
+      },
+    );
+    expect(expoSqliteMock.openDatabaseAsync).toHaveBeenNthCalledWith(
+      2,
+      "recovery-destination.db",
+      {
+        useNewConnection: true,
+        finalizeUnusedStatementsBeforeClosing: false,
+      },
     );
   });
 

@@ -61,6 +61,11 @@ import {
   sessionExerciseEditingMigration,
 } from "../../src/platform/sqlite/migrations/0019_session_exercise_editing";
 import {
+  SESSION_EXERCISE_EDIT_RECEIPT_SCHEMA_STATEMENTS,
+  SESSION_EXERCISE_REORDER_RECEIPT_SCHEMA_STATEMENTS,
+  sessionExerciseEditReceiptsMigration,
+} from "../../src/platform/sqlite/migrations/0020_session_exercise_edit_receipts";
+import {
   migrations as runtimeMigrations,
 } from "../../src/platform/sqlite/migrations";
 import {
@@ -269,6 +274,7 @@ describe("Plan 01-06 forward migrations and internal recovery", () => {
       17,
       18,
       19,
+      20,
     ]);
     expect(runtimeMigrations.slice(0, 3)).toEqual(migrations);
     expect(initialMigration).toEqual(expect.objectContaining({
@@ -293,7 +299,7 @@ describe("Plan 01-06 forward migrations and internal recovery", () => {
 
   it("creates a bounded, immutable, foreign-key-free removal receipt schema on clean and schema-17 databases", async () => {
     async function assertReceiptSchema(runtime: HostRuntime) {
-      expect(await userVersion(runtime.kernel)).toBe(19);
+      expect(await userVersion(runtime.kernel)).toBe(20);
       const columns = await runtime.kernel.queryAll<{
         name: string;
         type: string;
@@ -432,7 +438,7 @@ describe("Plan 01-06 forward migrations and internal recovery", () => {
         migrations: runtimeMigrations.slice(0, -2),
         recoveryBackup: validatedBackup(),
       }).run();
-      expect(await userVersion(upgraded.kernel)).toBe(17);
+      expect(await userVersion(upgraded.kernel)).toBe(18);
       await upgraded.kernel.write((transaction) => transaction.execute(
         `INSERT INTO workout_remove_receipts
           (request_id, request_sha256, operation, session_id, set_id,
@@ -466,8 +472,8 @@ describe("Plan 01-06 forward migrations and internal recovery", () => {
       }).run();
       expect(backup.createAndValidate).toHaveBeenCalledWith({
         databaseName: "gym-tracker.db",
-        fromVersion: 17,
-        toVersion: 19,
+        fromVersion: 18,
+        toVersion: 20,
       });
       await expect(upgraded.kernel.queryAll(
         "SELECT * FROM workout_remove_receipts WHERE request_id = ?",
@@ -483,13 +489,13 @@ describe("Plan 01-06 forward migrations and internal recovery", () => {
     }
   });
 
-  it("creates schema 19 display metadata and immutable edit receipts without changing ordinal", async () => {
+  it("creates schema 19 display metadata before schema 20 rebuilds immutable edit receipts without changing ordinal", async () => {
     const runtime = await createHostRuntime();
     try {
       await createMigrationRunner({
         databaseName: "gym-tracker.db",
         kernel: runtime.kernel,
-        migrations: runtimeMigrations.slice(0, -1),
+        migrations: runtimeMigrations.slice(0, -2),
         recoveryBackup: validatedBackup(),
       }).run();
       await runtime.kernel.write(async (transaction) => {
@@ -512,7 +518,7 @@ describe("Plan 01-06 forward migrations and internal recovery", () => {
       await createMigrationRunner({
         databaseName: "gym-tracker.db",
         kernel: runtime.kernel,
-        migrations: runtimeMigrations,
+        migrations: runtimeMigrations.slice(0, -1),
         recoveryBackup: validatedBackup(),
       }).run();
       expect(await userVersion(runtime.kernel)).toBe(19);
@@ -536,6 +542,198 @@ describe("Plan 01-06 forward migrations and internal recovery", () => {
       await expect(runtime.kernel.write((transaction) => sessionExerciseEditingMigration.verify(transaction))).resolves.toBeUndefined();
     } finally {
       await runtime.close();
+    }
+  });
+
+  it("forward-rebuilds v19 edit receipts without retaining the provisional-exercise foreign key", async () => {
+    const runtime = await createHostRuntime();
+    try {
+      await createMigrationRunner({
+        databaseName: "gym-tracker.db",
+        kernel: runtime.kernel,
+        migrations: runtimeMigrations.slice(0, -1),
+        recoveryBackup: validatedBackup(),
+      }).run();
+      await runtime.kernel.write(async (transaction) => {
+        await transaction.execute(
+          `INSERT INTO workout_sessions
+            (id, plan_id, plan_day_id, source, status, local_date, timezone, started_at_ms, completed_at_ms, revision)
+           VALUES ('migration-20-session', NULL, NULL, 'manual', 'in_progress', '2026-09-16', 'Asia/Singapore', 1, NULL, 0)`,
+        );
+        await transaction.execute(
+          `INSERT INTO exercises
+            (id, content_pack_id, origin, source_namespace, upstream_id, name, metric_profile, metric_contract_version, exercise_metric_generation, equipment, default_rest_seconds, revision)
+           VALUES ('migration-20-exercise', NULL, 'custom', NULL, NULL, 'Migration 20', 'load_reps', 1, 1, 'Unspecified', 90, 1)`,
+        );
+        await transaction.execute(
+          `INSERT INTO session_exercises
+            (id, session_id, source_plan_day_exercise_id, exercise_id, ordinal, origin, display_ordinal, exercise_name, metric_profile, metric_contract_version, exercise_metric_generation, default_rest_seconds, target_revision, status, revision)
+           VALUES ('migration-20-subject', 'migration-20-session', NULL, 'migration-20-exercise', 0, 'added', 0, 'Migration 20', 'load_reps', 1, 1, 90, 0, 'planned', 1)`,
+        );
+        await transaction.execute(
+          `INSERT INTO workout_session_exercise_edit_receipts
+            (request_id, request_sha256, operation, session_id, session_exercise_id, expected_session_revision, result_session_revision, result_json, committed_at_ms)
+           VALUES ('migration-20-legacy', ?, 'add_exercise', 'migration-20-session', 'migration-20-subject', 0, 1, '{"legacy":true}', 2)`,
+          ['a'.repeat(64)],
+        );
+      });
+      await runtime.kernel.write((transaction) => sessionExerciseEditReceiptsMigration.up(transaction));
+      await runtime.kernel.write((transaction) => sessionExerciseEditReceiptsMigration.verify(transaction));
+      await expect(runtime.kernel.queryAll(
+        "SELECT request_id, request_sha256, operation, session_id, subject_session_exercise_id, replacement_session_exercise_id, expected_session_revision, result_session_revision, result_json, committed_at_ms FROM workout_session_exercise_edit_receipts",
+      )).resolves.toEqual([{
+        request_id: 'migration-20-legacy', request_sha256: 'a'.repeat(64), operation: 'add_exercise',
+        session_id: 'migration-20-session', subject_session_exercise_id: 'migration-20-subject', replacement_session_exercise_id: null,
+        expected_session_revision: 0, result_session_revision: 1, result_json: '{"legacy":true}', committed_at_ms: 2,
+      }]);
+      await expect(runtime.kernel.queryAll(
+        "PRAGMA foreign_key_list(workout_session_exercise_edit_receipts)",
+      )).resolves.toEqual([expect.objectContaining({ table: 'workout_sessions' })]);
+      await runtime.kernel.write((transaction) => transaction.execute(
+        "DELETE FROM session_exercises WHERE id = 'migration-20-subject'",
+      ));
+      await expect(runtime.kernel.queryAll(
+        "SELECT request_id FROM workout_session_exercise_edit_receipts WHERE request_id = 'migration-20-legacy'",
+      )).resolves.toEqual([{ request_id: 'migration-20-legacy' }]);
+    } finally {
+      await runtime.close();
+    }
+  });
+
+  it.each(Array.from({ length: 9 }, (_, statementIndex) => statementIndex))(
+    "rolls back the v20 receipt rebuild when statement %i fails",
+    async (statementIndex) => {
+      const runtime = await createHostRuntime();
+      try {
+        await createMigrationRunner({
+          databaseName: "gym-tracker.db",
+          kernel: runtime.kernel,
+          migrations: runtimeMigrations.slice(0, -1),
+          recoveryBackup: validatedBackup(),
+        }).run();
+        await runtime.kernel.write(async (transaction) => {
+          await transaction.execute("INSERT INTO workout_sessions (id, plan_id, plan_day_id, source, status, local_date, timezone, started_at_ms, completed_at_ms, revision) VALUES ('migration-20-rollback-session', NULL, NULL, 'manual', 'in_progress', '2026-09-16', 'Asia/Singapore', 1, NULL, 0)");
+          await transaction.execute("INSERT INTO exercises (id, content_pack_id, origin, source_namespace, upstream_id, name, metric_profile, metric_contract_version, exercise_metric_generation, equipment, default_rest_seconds, revision) VALUES ('migration-20-rollback-exercise', NULL, 'custom', NULL, NULL, 'Migration 20 rollback', 'load_reps', 1, 1, 'Unspecified', 90, 1)");
+          await transaction.execute("INSERT INTO session_exercises (id, session_id, source_plan_day_exercise_id, exercise_id, ordinal, origin, display_ordinal, exercise_name, metric_profile, metric_contract_version, exercise_metric_generation, default_rest_seconds, target_revision, status, revision) VALUES ('migration-20-rollback-subject', 'migration-20-rollback-session', NULL, 'migration-20-rollback-exercise', 0, 'added', 0, 'Migration 20 rollback', 'load_reps', 1, 1, 90, 0, 'planned', 1)");
+          await transaction.execute("INSERT INTO workout_session_exercise_edit_receipts (request_id, request_sha256, operation, session_id, session_exercise_id, expected_session_revision, result_session_revision, result_json, committed_at_ms) VALUES ('migration-20-rollback-receipt', ?, 'add_exercise', 'migration-20-rollback-session', 'migration-20-rollback-subject', 0, 1, ?, 2)", ['b'.repeat(64), JSON.stringify({ legacy: true })]);
+        });
+        const before = await runtime.kernel.queryAll(
+          "SELECT type, name, sql FROM sqlite_master WHERE name LIKE 'workout_session_exercise_edit_receipts%' ORDER BY type, name",
+        );
+        const beforeRows = await runtime.kernel.queryAll(
+          "SELECT * FROM workout_session_exercise_edit_receipts ORDER BY request_id",
+        );
+        const runner = createMigrationRunner({
+          databaseName: "gym-tracker.db",
+          kernel: runtime.kernel,
+          migrations: [sessionExerciseEditReceiptsMigration],
+          recoveryBackup: validatedBackup(),
+          failureInjector(event) {
+            if (event.migration.version === 20 && event.phase === "after"
+              && event.statementIndex === statementIndex) throw new Error("injected_v20_failure");
+          },
+        });
+        await expect(runner.run()).rejects.toMatchObject({ code: "migration_statement_failed" });
+        expect(await userVersion(runtime.kernel)).toBe(19);
+        await expect(runtime.kernel.queryAll(
+          "SELECT type, name, sql FROM sqlite_master WHERE name LIKE 'workout_session_exercise_edit_receipts%' ORDER BY type, name",
+        )).resolves.toEqual(before);
+        await expect(runtime.kernel.queryAll(
+          "SELECT * FROM workout_session_exercise_edit_receipts ORDER BY request_id",
+        )).resolves.toEqual(beforeRows);
+      } finally {
+        await runtime.close();
+      }
+    },
+  );
+
+  it("enforces the separate reorder receipt operation, JSON-array evidence, session-only foreign key, and immutable triggers", async () => {
+    const runtime = await createHostRuntime();
+    try {
+      await createMigrationRunner({
+        databaseName: "gym-tracker.db",
+        kernel: runtime.kernel,
+        migrations: runtimeMigrations,
+        recoveryBackup: validatedBackup(),
+      }).run();
+      await runtime.kernel.write(async (transaction) => {
+        await transaction.execute(
+          `INSERT INTO workout_sessions
+            (id, plan_id, plan_day_id, source, status, local_date, timezone, started_at_ms, completed_at_ms, revision)
+           VALUES ('migration-20-reorder-session', NULL, NULL, 'manual', 'in_progress', '2026-09-16', 'Asia/Singapore', 1, NULL, 0)`,
+        );
+        await transaction.execute(
+          `INSERT INTO workout_session_exercise_reorder_receipts
+            (request_id, request_sha256, operation, session_id, ordered_session_exercise_ids_json,
+             expected_session_revision, result_session_revision, result_json, committed_at_ms)
+           VALUES ('migration-20-reorder-valid', ?, 'reorder_exercises', 'migration-20-reorder-session',
+                   '["subject"]', 0, 1, '{}', 2)`,
+          ['c'.repeat(64)],
+        );
+      });
+      await expect(runtime.kernel.write((transaction) => transaction.execute(
+        `INSERT INTO workout_session_exercise_reorder_receipts
+          (request_id, request_sha256, operation, session_id, ordered_session_exercise_ids_json,
+           expected_session_revision, result_session_revision, result_json, committed_at_ms)
+         VALUES ('migration-20-reorder-invalid-operation', ?, 'add_exercise', 'migration-20-reorder-session',
+                 '[]', 1, 2, '{}', 3)`, ['d'.repeat(64)],
+      ))).rejects.toMatchObject({ code: "sqlite_transaction_failed" });
+      await expect(runtime.kernel.write((transaction) => transaction.execute(
+        `INSERT INTO workout_session_exercise_reorder_receipts
+          (request_id, request_sha256, operation, session_id, ordered_session_exercise_ids_json,
+           expected_session_revision, result_session_revision, result_json, committed_at_ms)
+         VALUES ('migration-20-reorder-invalid-json', ?, 'reorder_exercises', 'migration-20-reorder-session',
+                 '{}', 1, 2, '{}', 3)`, ['e'.repeat(64)],
+      ))).rejects.toMatchObject({ code: "sqlite_transaction_failed" });
+      await expect(runtime.kernel.write((transaction) => transaction.execute(
+        "UPDATE workout_session_exercise_reorder_receipts SET result_json = '{\"changed\":true}' WHERE request_id = 'migration-20-reorder-valid'",
+      ))).rejects.toMatchObject({ code: "sqlite_transaction_failed" });
+      await expect(runtime.kernel.write((transaction) => transaction.execute(
+        "DELETE FROM workout_session_exercise_reorder_receipts WHERE request_id = 'migration-20-reorder-valid'",
+      ))).rejects.toMatchObject({ code: "sqlite_transaction_failed" });
+      expect(await runtime.kernel.queryAll("PRAGMA foreign_key_list(workout_session_exercise_reorder_receipts)")).toEqual([expect.objectContaining({ table: "workout_sessions" })]);
+      expect(await runtime.kernel.queryAll("PRAGMA index_list(workout_session_exercise_reorder_receipts)")).toEqual(expect.arrayContaining([expect.objectContaining({ name: "workout_session_exercise_reorder_receipts_session_committed_request_idx" })]));
+    } finally {
+      await runtime.close();
+    }
+  });
+
+  it("rejects every malformed v20 verifier surface for both receipt authorities", async () => {
+    const editColumns = [
+      ["request_id", "TEXT", 1, 1], ["request_sha256", "TEXT", 1, 0], ["operation", "TEXT", 1, 0], ["session_id", "TEXT", 1, 0], ["subject_session_exercise_id", "TEXT", 1, 0], ["replacement_session_exercise_id", "TEXT", 0, 0], ["expected_session_revision", "INTEGER", 1, 0], ["result_session_revision", "INTEGER", 1, 0], ["result_json", "TEXT", 1, 0], ["committed_at_ms", "INTEGER", 1, 0],
+    ].map(([name, type, notnull, pk]) => ({ name, type, notnull, pk }));
+    const reorderColumns = ["request_id", "request_sha256", "operation", "session_id", "ordered_session_exercise_ids_json", "expected_session_revision", "result_session_revision", "result_json", "committed_at_ms"].map((name, index) => ({ name, type: index === 5 || index === 6 || index === 8 ? "INTEGER" : "TEXT", notnull: 1, pk: index === 0 ? 1 : 0 }));
+    const objects = [
+      { type: "table", name: "workout_session_exercise_edit_receipts", sql: SESSION_EXERCISE_EDIT_RECEIPT_SCHEMA_STATEMENTS[0] },
+      { type: "trigger", name: "workout_session_exercise_edit_receipts_immutable_update", sql: SESSION_EXERCISE_EDIT_RECEIPT_SCHEMA_STATEMENTS[2] },
+      { type: "trigger", name: "workout_session_exercise_edit_receipts_immutable_delete", sql: SESSION_EXERCISE_EDIT_RECEIPT_SCHEMA_STATEMENTS[3] },
+      { type: "table", name: "workout_session_exercise_reorder_receipts", sql: SESSION_EXERCISE_REORDER_RECEIPT_SCHEMA_STATEMENTS[0] },
+      { type: "trigger", name: "workout_session_exercise_reorder_receipts_immutable_update", sql: SESSION_EXERCISE_REORDER_RECEIPT_SCHEMA_STATEMENTS[2] },
+      { type: "trigger", name: "workout_session_exercise_reorder_receipts_immutable_delete", sql: SESSION_EXERCISE_REORDER_RECEIPT_SCHEMA_STATEMENTS[3] },
+    ];
+    const valid = { editColumns, editForeignKeys: [{ table: "workout_sessions" }], editIndexes: [{ name: "workout_session_exercise_edit_receipts_session_committed_request_idx" }], reorderColumns, reorderForeignKeys: [{ table: "workout_sessions" }], reorderIndexes: [{ name: "workout_session_exercise_reorder_receipts_session_committed_request_idx" }], objects };
+    const variants = [
+      { editColumns: [] }, { editColumns: [{ ...editColumns[0], type: "INTEGER" }] }, { editForeignKeys: [] }, { editForeignKeys: [{ table: "session_exercises" }] }, { editIndexes: [] },
+      { objects: objects.slice(1) }, { objects: [{ ...objects[0], sql: null }, ...objects.slice(1)] }, { objects: [...objects, { type: "table", name: "workout_session_exercise_edit_receipts_v19", sql: "CREATE TABLE stale" }] },
+      { objects: [objects[0], { ...objects[1], sql: "CREATE TRIGGER altered" }, ...objects.slice(2)] }, { objects: [objects[0], objects[1], ...objects.slice(3)] },
+      { reorderColumns: [] }, { reorderColumns: [{ ...reorderColumns[0], name: "wrong" }] }, { reorderForeignKeys: [] }, { reorderForeignKeys: [{ table: "session_exercises" }] }, { reorderIndexes: [] },
+      { objects: [objects[0], objects[1], objects[2], ...objects.slice(4)] }, { objects: [...objects.slice(0, 3), { ...objects[3], sql: null }, ...objects.slice(4)] }, { objects: [...objects.slice(0, 3), { ...objects[3], sql: "CREATE TABLE altered" }, ...objects.slice(4)] },
+    ];
+    for (const variant of variants) {
+      const scenario = { ...valid, ...variant };
+      const transaction: SqliteTransactionExecutor = {
+        execute: async () => ({ changes: 0, lastInsertRowId: 0 }),
+        async queryAll<Row extends Record<string, unknown>>(sql: string) {
+          const value = sql === "PRAGMA table_info(workout_session_exercise_edit_receipts)" ? scenario.editColumns
+            : sql === "PRAGMA foreign_key_list(workout_session_exercise_edit_receipts)" ? scenario.editForeignKeys
+              : sql === "PRAGMA index_list(workout_session_exercise_edit_receipts)" ? scenario.editIndexes
+                : sql === "PRAGMA table_info(workout_session_exercise_reorder_receipts)" ? scenario.reorderColumns
+                  : sql === "PRAGMA foreign_key_list(workout_session_exercise_reorder_receipts)" ? scenario.reorderForeignKeys
+                    : sql === "PRAGMA index_list(workout_session_exercise_reorder_receipts)" ? scenario.reorderIndexes : scenario.objects;
+          return value as unknown as readonly Row[];
+        },
+      };
+      await expect(sessionExerciseEditReceiptsMigration.verify(transaction)).rejects.toThrow("session_exercise_edit_receipts_schema_incomplete");
     }
   });
 
@@ -1892,7 +2090,7 @@ describe("Plan 01-06 native migration suite selection", () => {
       "migration-commit-rollback",
       "migration-integrity-block",
       "migration-recovery-backup",
-      "migration-session-exercise-editing-v19",
+      "migration-session-exercise-edit-receipts-v20",
       "effects-lease-replay",
       "effects-stale-revision",
       "effects-retry-limit",
@@ -1912,6 +2110,10 @@ describe("Plan 01-06 native migration suite selection", () => {
       join(repositoryRoot, "scripts/verify-native-evidence.mjs"),
       "utf8",
     );
+    const migrationsContract = readFileSync(
+      join(repositoryRoot, "src/testing/contracts/migrationsEffects.contract.ts"),
+      "utf8",
+    );
     const deviceCommand = packageJson.scripts?.["test:sqlite:device"] ?? "";
 
     expect(route).toContain("migrations-effects");
@@ -1921,6 +2123,8 @@ describe("Plan 01-06 native migration suite selection", () => {
     );
     expect(route).toContain("setState({ status: \"finished\", result });");
     expect(route).not.toContain("migrationsEffects?: MigrationsEffectsContractResult");
+    expect(migrationsContract).toContain("finalizeUnusedStatementsBeforeClosing: false");
+    expect(migrationsContract).toContain("migration_statement_rollback_${phase}_${statementIndex}_${safeErrorCode(error)}");
     expect(deviceCommand).toContain("migrations-effects");
     expect(deviceCommand).toContain("--assert-all");
     expect(deviceCommand).toContain("run-native-sqlite-contracts.mjs");

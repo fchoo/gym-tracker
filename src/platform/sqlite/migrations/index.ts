@@ -16,6 +16,7 @@ import { portabilityRestoreStateMigration } from "./0016_portability_restore_sta
 import { workoutRemoveReceiptsMigration } from "./0017_workout_remove_receipts";
 import { workoutRemoveReceiptEntityIdsMigration } from "./0018_workout_remove_receipt_entity_ids";
 import { sessionExerciseEditingMigration } from "./0019_session_exercise_editing";
+import { sessionExerciseEditReceiptsMigration } from "./0020_session_exercise_edit_receipts";
 
 export const migrations = Object.freeze([
   initialMigration,
@@ -36,6 +37,7 @@ export const migrations = Object.freeze([
   workoutRemoveReceiptsMigration,
   workoutRemoveReceiptEntityIdsMigration,
   sessionExerciseEditingMigration,
+  sessionExerciseEditReceiptsMigration,
 ]);
 
 export {
@@ -55,6 +57,7 @@ export {
   workoutRemoveReceiptsMigration,
   workoutRemoveReceiptEntityIdsMigration,
   sessionExerciseEditingMigration,
+  sessionExerciseEditReceiptsMigration,
   outcomeEffortMigration,
   scheduleActivationMigration,
 };

@@ -429,7 +429,7 @@ describe("clean install logical restore", () => {
       version: 1,
       snapshotId: "clean-install-empty-owner-state",
       createdAtMs: 1,
-      schemaVersion: 19,
+      schemaVersion: 20,
       manifest: {
         catalogReferenceCount: 0,
         rowCounts: expect.any(Object),

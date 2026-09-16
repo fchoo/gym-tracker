@@ -34,7 +34,7 @@ export const MIGRATIONS_EFFECTS_CONTRACT_CASES = [
   "migration-commit-rollback",
   "migration-integrity-block",
   "migration-recovery-backup",
-  "migration-session-exercise-editing-v19",
+  "migration-session-exercise-edit-receipts-v20",
   "effects-lease-replay",
   "effects-stale-revision",
   "effects-retry-limit",
@@ -244,7 +244,8 @@ const contractCases: Record<MigrationsEffectsContractCaseId, ContractCase> = {
     ) {
       for (const phase of ["before", "after"] as const) {
         const databaseKey = `${caseId}-${phase}-${statementIndex}`;
-        await withFreshRuntime(adapter, databaseKey, async ({ kernel }) => {
+        try {
+          await withFreshRuntime(adapter, databaseKey, async ({ kernel }) => {
           let failed = false;
           try {
             await createMigrationRunner({
@@ -272,7 +273,12 @@ const contractCases: Record<MigrationsEffectsContractCaseId, ContractCase> = {
             await tableCount(kernel) === 0,
             "statement_failure_schema_changed",
           );
-        });
+          });
+        } catch (error) {
+          throw new Error(
+            `migration_statement_rollback_${phase}_${statementIndex}_${safeErrorCode(error)}`,
+          );
+        }
       }
     }
   },
@@ -391,7 +397,7 @@ const contractCases: Record<MigrationsEffectsContractCaseId, ContractCase> = {
     });
   },
 
-  async "migration-session-exercise-editing-v19"(adapter, caseId) {
+  async "migration-session-exercise-edit-receipts-v20"(adapter, caseId) {
     await withFreshRuntime(adapter, caseId, async ({ databaseName, kernel }) => {
       await createMigrationRunner({
         databaseName,
@@ -405,7 +411,7 @@ const contractCases: Record<MigrationsEffectsContractCaseId, ContractCase> = {
         migrations: runtimeMigrations,
         recoveryBackup: adapter.recoveryBackup,
       }).run();
-      invariant(result.currentVersion === 19, "session_exercise_editing_version_not_committed");
+      invariant(result.currentVersion === 20, "session_exercise_edit_receipts_version_not_committed");
       const sessionColumns = await kernel.queryAll<{ name: string }>(
         "PRAGMA table_info(workout_sessions)",
       );
@@ -419,7 +425,26 @@ const contractCases: Record<MigrationsEffectsContractCaseId, ContractCase> = {
       invariant(exerciseColumns.some(({ name }) => name === "origin")
         && exerciseColumns.some(({ name }) => name === "display_ordinal"), "session_exercise_edit_columns_missing");
       invariant(receiptColumns.some(({ name }) => name === "request_id")
-        && receiptColumns.some(({ name }) => name === "session_exercise_id"), "session_exercise_receipt_missing");
+        && receiptColumns.some(({ name }) => name === "subject_session_exercise_id")
+        && receiptColumns.some(({ name }) => name === "replacement_session_exercise_id")
+        && !receiptColumns.some(({ name }) => name === "session_exercise_id"), "session_exercise_receipt_missing");
+      const receiptForeignKeys = await kernel.queryAll<{ table: string }>(
+        "PRAGMA foreign_key_list(workout_session_exercise_edit_receipts)",
+      );
+      invariant(receiptForeignKeys.length === 1
+        && receiptForeignKeys[0]?.table === "workout_sessions", "session_exercise_receipt_foreign_key_invalid");
+      const reorderColumns = await kernel.queryAll<{ name: string }>(
+        "PRAGMA table_info(workout_session_exercise_reorder_receipts)",
+      );
+      invariant(reorderColumns.some(({ name }) => name === "ordered_session_exercise_ids_json"), "session_exercise_reorder_receipt_missing");
+      const reorderForeignKeys = await kernel.queryAll<{ table: string }>(
+        "PRAGMA foreign_key_list(workout_session_exercise_reorder_receipts)",
+      );
+      invariant(reorderForeignKeys.length === 1 && reorderForeignKeys[0]?.table === "workout_sessions", "session_exercise_reorder_receipt_foreign_key_invalid");
+      const reorderObjects = await kernel.queryAll<{ name: string; sql: string | null }>(
+        "SELECT name, sql FROM sqlite_master WHERE name = 'workout_session_exercise_reorder_receipts'",
+      );
+      invariant(reorderObjects[0]?.sql?.includes("operation = 'reorder_exercises'") === true, "session_exercise_reorder_operation_invalid");
       const triggers = await kernel.queryAll<{ name: string }>(
         `SELECT name FROM sqlite_master
          WHERE type = 'trigger'
@@ -597,13 +622,17 @@ export async function createExpoMigrationsEffectsContractAdapter(
   } = require("expo-file-system") as typeof import("expo-file-system");
   const databaseName = (databaseKey: string) =>
     `migrations-effects-${runId}-${databaseKey}.db`;
+  const openOptions = {
+    useNewConnection: true,
+    finalizeUnusedStatementsBeforeClosing: false,
+  } as const;
   const recoveryDirectory = new Directory(Paths.document, "backup-staging");
   recoveryDirectory.create({ idempotent: true, intermediates: true });
   const recoveryBackup = createExpoRecoveryBackupPort({
     openSource: (sourceName) =>
-      openDatabaseAsync(sourceName, { useNewConnection: true }),
+      openDatabaseAsync(sourceName, openOptions),
     openDestination: (destinationName) =>
-      openDatabaseAsync(destinationName, { useNewConnection: true }),
+      openDatabaseAsync(destinationName, openOptions),
     backup: ({ sourceDatabase, destDatabase }) =>
       backupDatabaseAsync({
         sourceDatabase: sourceDatabase as Awaited<
@@ -650,7 +679,7 @@ export async function createExpoMigrationsEffectsContractAdapter(
     async insertForeignKeyViolation(databaseKey) {
       const database = await openDatabaseAsync(
         databaseName(databaseKey),
-        { useNewConnection: true },
+        openOptions,
       );
       try {
         await database.execAsync(`

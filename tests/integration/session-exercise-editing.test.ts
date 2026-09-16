@@ -88,4 +88,46 @@ describe("Phase 09 session exercise editing", () => {
     await expect(repository.addExercise!({ ...input, requestId: "add-stale", expectedSessionRevision: session.revision, sessionExerciseId: "other-exercise", setId: "other-set" })).rejects.toThrow("add_exercise_conflict");
     expect(await kernel.queryAll<{ count: number }>("SELECT COUNT(*) AS count FROM session_exercises WHERE session_id = ?", [session.id])).toEqual(count);
   });
+
+  it("preserves populated v19 receipts, then writes and replays Add through v20", async () => {
+    const directory = mkdtempSync(join(tmpdir(), "gym-phase9-v19-v20-"));
+    directories.add(directory);
+    const databasePath = join(directory, "gym.db");
+    const writer = new Connection(new DatabaseSync(databasePath));
+    const reader = new Connection(new DatabaseSync(databasePath));
+    await configureSqliteConnection(writer, { enableWal: true });
+    await configureSqliteConnection(reader, { enableWal: false });
+    const kernel = createSqliteKernel({ reader, writer });
+    kernels.push(kernel);
+    await createMigrationRunner({
+      databaseName: "gym.db", kernel, migrations: migrations.filter(({ version }) => version <= 19), recoveryBackup,
+    }).run();
+    const plans = createPlansWorkoutRepository(kernel);
+    const activation = await activateStarterPlan({ fixture: parseFullBodyFoundation(fullBodyFoundationAsset), repository: plans, activatedAtMs: 1_000, startLocalDate: "2026-09-16", timezone: "Asia/Singapore" });
+    await kernel.write((transaction) => transaction.execute(
+      `INSERT INTO exercise_library_entries
+        (exercise_id, origin, canonical_name, exercise_type, movement_class,
+         metric_profile, metric_contract_version, exercise_metric_generation,
+         availability, revision)
+       SELECT id, origin, name, 'strength', 'compound', metric_profile,
+              metric_contract_version, exercise_metric_generation, 'available', revision
+       FROM exercises WHERE id = (SELECT exercise_id FROM plan_day_exercises LIMIT 1)`,
+    ));
+    const session = await startWorkout({ repository: plans, request: { mode: "scheduled", planId: activation.plan.id, planDayId: activation.days[0]!.id, localDate: "2026-09-16", timezone: "Asia/Singapore", startedAtMs: 1_001 } });
+    const [legacy] = await kernel.queryAll<{ id: string }>("SELECT id FROM session_exercises WHERE session_id = ? ORDER BY ordinal LIMIT 1", [session.id]);
+    await kernel.write((transaction) => transaction.execute(
+      `INSERT INTO workout_session_exercise_edit_receipts
+        (request_id, request_sha256, operation, session_id, session_exercise_id,
+         expected_session_revision, result_session_revision, result_json, committed_at_ms)
+       VALUES ('legacy-v19-add', ?, 'add_exercise', ?, ?, ?, ?, ?, ?)`,
+      [hash, session.id, legacy!.id, session.revision, session.revision + 1, JSON.stringify({ setId: "legacy-set" }), 1_999],
+    ));
+    await createMigrationRunner({ databaseName: "gym.db", kernel, migrations, recoveryBackup }).run();
+    expect(await kernel.queryAll("SELECT request_id, subject_session_exercise_id, replacement_session_exercise_id FROM workout_session_exercise_edit_receipts WHERE request_id = 'legacy-v19-add'")).toEqual([{ request_id: "legacy-v19-add", subject_session_exercise_id: legacy!.id, replacement_session_exercise_id: null }]);
+    const [library] = await kernel.queryAll<{ exercise_id: string }>("SELECT exercise_id FROM exercise_library_entries WHERE availability = 'available' ORDER BY exercise_id LIMIT 1");
+    const input = { requestId: "v20-add", requestSha256: hash, sessionId: session.id, expectedSessionRevision: session.revision, occurredAtMs: 2_000, libraryExerciseId: library!.exercise_id, sessionExerciseId: "v20-added-exercise", setId: "v20-added-set" };
+    const first = await createWorkoutRepository(kernel).addExercise!(input);
+    await expect(createWorkoutRepository(kernel).addExercise!(input)).resolves.toEqual({ ...first, outcome: "already_committed" });
+    expect(await kernel.queryAll("SELECT operation, subject_session_exercise_id, replacement_session_exercise_id FROM workout_session_exercise_edit_receipts WHERE request_id = 'v20-add'")).toEqual([{ operation: "add_exercise", subject_session_exercise_id: "v20-added-exercise", replacement_session_exercise_id: null }]);
+  });
 });

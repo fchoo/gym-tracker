@@ -109,6 +109,7 @@ export const LOGICAL_BACKUP_TABLE_FILTERS = Object.freeze({
   starter_plan_activation_requests: "EXISTS (SELECT 1 FROM plans plan WHERE plan.id = starter_plan_activation_requests.result_plan_id AND plan.origin IN ('custom', 'copied'))",
   workout_sessions: "1",
   workout_session_exercise_edit_receipts: "1",
+  workout_session_exercise_reorder_receipts: "1",
   session_exercises: "1",
   session_sets: "1",
   session_rest_states: "1",

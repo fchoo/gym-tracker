@@ -112,7 +112,8 @@ type SessionExerciseEditReceiptRow = Readonly<{
   request_sha256: string;
   operation: "add_exercise";
   session_id: string;
-  session_exercise_id: string;
+  subject_session_exercise_id: string;
+  replacement_session_exercise_id: string | null;
   expected_session_revision: number;
   result_session_revision: number;
   result_json: string;
@@ -893,7 +894,8 @@ function addReceiptMatches(
   return receipt.request_sha256 === input.requestSha256
     && receipt.operation === "add_exercise"
     && receipt.session_id === input.sessionId
-    && receipt.session_exercise_id === input.sessionExerciseId
+    && receipt.subject_session_exercise_id === input.sessionExerciseId
+    && receipt.replacement_session_exercise_id === null
     && receipt.expected_session_revision === input.expectedSessionRevision
     && receipt.committed_at_ms === input.occurredAtMs;
 }
@@ -1397,7 +1399,8 @@ export function createWorkoutRepository(
         AddExerciseResult | { code: string }
       > => {
         const [receipt] = await transaction.queryAll<SessionExerciseEditReceiptRow>(
-          `SELECT request_sha256, operation, session_id, session_exercise_id,
+          `SELECT request_sha256, operation, session_id, subject_session_exercise_id,
+                  replacement_session_exercise_id,
                   expected_session_revision, result_session_revision, result_json,
                   committed_at_ms
            FROM workout_session_exercise_edit_receipts
@@ -1411,7 +1414,7 @@ export function createWorkoutRepository(
           return {
             outcome: "already_committed",
             sessionId: receipt.session_id,
-            sessionExerciseId: receipt.session_exercise_id,
+            sessionExerciseId: receipt.subject_session_exercise_id,
             setId: JSON.parse(receipt.result_json).setId as string,
             sessionRevision: receipt.result_session_revision,
           };
@@ -1518,9 +1521,10 @@ export function createWorkoutRepository(
         await transaction.execute(
           `INSERT INTO workout_session_exercise_edit_receipts
             (request_id, request_sha256, operation, session_id,
-             session_exercise_id, expected_session_revision,
+             subject_session_exercise_id, replacement_session_exercise_id,
+             expected_session_revision,
              result_session_revision, result_json, committed_at_ms)
-           VALUES (?, ?, 'add_exercise', ?, ?, ?, ?, ?, ?)`,
+           VALUES (?, ?, 'add_exercise', ?, ?, NULL, ?, ?, ?, ?)`,
           [input.requestId, input.requestSha256, input.sessionId,
             input.sessionExerciseId, input.expectedSessionRevision,
             result.sessionRevision, JSON.stringify(result), input.occurredAtMs],

@@ -1194,20 +1194,22 @@ export const productionWorkoutAppRuntimeDependencies =
   createWorkoutAppRuntimeDependencies({
     openKernel: openSqliteKernel,
     runMigrations: async ({ databaseName, kernel }) => {
+      const recoveryOpenOptions = {
+        useNewConnection: true,
+        finalizeUnusedStatementsBeforeClosing: false,
+      } as const;
       const recoveryBackup = createExpoRecoveryBackupPort({
         openSource(sourceName) {
           const {
             openDatabaseAsync,
           } = require("expo-sqlite") as typeof import("expo-sqlite");
-          return openDatabaseAsync(sourceName, { useNewConnection: true });
+          return openDatabaseAsync(sourceName, recoveryOpenOptions);
         },
         openDestination(destinationName) {
           const {
             openDatabaseAsync,
           } = require("expo-sqlite") as typeof import("expo-sqlite");
-          return openDatabaseAsync(destinationName, {
-            useNewConnection: true,
-          });
+          return openDatabaseAsync(destinationName, recoveryOpenOptions);
         },
         backup({ sourceDatabase, destDatabase }) {
           const {

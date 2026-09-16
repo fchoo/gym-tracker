@@ -81,6 +81,7 @@ const integrityCriticalFiles = [
   "src/platform/sqlite/migrations/0016_portability_restore_state.ts",
   "src/platform/sqlite/migrations/0018_workout_remove_receipt_entity_ids.ts",
   "src/platform/sqlite/migrations/0019_session_exercise_editing.ts",
+  "src/platform/sqlite/migrations/0020_session_exercise_edit_receipts.ts",
   "src/platform/sqlite/migrations/index.ts",
   "src/platform/sqlite/recoveryBackup.ts",
   "src/platform/sqlite/repositories/contentRepository.ts",

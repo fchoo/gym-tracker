@@ -207,7 +207,10 @@ export async function openSqliteKernelTestRuntime(
       const { openDatabaseAsync } = require("expo-sqlite") as typeof import("expo-sqlite");
       const competingDatabase = await openDatabaseAsync(
         databaseName,
-        { useNewConnection: true },
+        {
+          useNewConnection: true,
+          finalizeUnusedStatementsBeforeClosing: false,
+        },
       );
       const startedAt = Date.now();
       try {
