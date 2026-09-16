@@ -160,6 +160,10 @@ name: Phase 9 add exercise and relaunch persistence
     clearState: false
     permissions:
       notifications: deny
-- assertVisible: '^Bench Press · Working set 1 · Rest idle$'
+- assertVisible: "Workout in progress"
+- tapOn: "Resume workout"
+- extendedWaitUntil:
+    visible: "WORKOUT OVERVIEW"
+    timeout: 30000
 - assertVisible: 'Skipped · 1 of 1 working sets'
 - assertVisible: "Completed · 0 kg × 8"

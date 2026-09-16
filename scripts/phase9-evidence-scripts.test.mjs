@@ -47,6 +47,11 @@ test("Phase 9 evidence runner requires a manifest and full edit/relaunch asserti
     "Phase 9 must assert the full rendered retained observation before and after relaunch",
   );
   assert.doesNotMatch(flow, /assertVisible: "0 kg × 8"/u);
+  assert.match(
+    flow,
+    /Completed · 0 kg × 8[\s\S]*?- stopApp[\s\S]*?- launchApp:[\s\S]*?clearState: false[\s\S]*?assertVisible: "Workout in progress"[\s\S]*?tapOn: "Resume workout"[\s\S]*?visible: "WORKOUT OVERVIEW"[\s\S]*?assertVisible: 'Skipped · 1 of 1 working sets'[\s\S]*?assertVisible: "Completed · 0 kg × 8"/u,
+    "Phase 9 must resume the persisted workout before proving protected history after relaunch",
+  );
   assert.match(flow, /stopApp/);
   assert.match(flow, /clearState: false/);
   assert.match(flow, /clearState: false[\s\S]*- assertVisible: '\^Back Squat · Working set 1 · Rest idle\$'/u);
