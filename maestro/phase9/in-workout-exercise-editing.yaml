@@ -92,6 +92,12 @@ name: Phase 9 add exercise and relaunch persistence
 - inputText: "Bench Press"
 - tapOn:
     id: "replace-exercise-option-5f140001-7e35-4a6d-9100-000000000002"
+- scrollUntilVisible:
+    element:
+      text: "Replace with Bench Press"
+    direction: DOWN
+    centerElement: true
+    timeout: 30000
 - tapOn: "Replace with Bench Press"
 - extendedWaitUntil:
     visible: "Retry replacing exercise"
