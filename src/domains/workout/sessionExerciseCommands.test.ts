@@ -103,4 +103,11 @@ describe("Phase 09 add-exercise command boundary", () => {
     });
     expect(port.addExercise).toHaveBeenCalledWith(command);
   });
+
+  it("fails closed when the repository does not expose add support", async () => {
+    const port = repository();
+    delete port.addExercise;
+    await expect(addExercise({ repository: port, input: input() }))
+      .rejects.toThrow("add_exercise_unavailable");
+  });
 });
