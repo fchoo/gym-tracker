@@ -5,17 +5,17 @@ milestone_name: In-Workout Editing, Advanced Timing & Cross-Device Sync
 current_phase: 09
 current_phase_name: In-Workout Exercise Editing
 status: executing
-stopped_at: Completed 09-05-PLAN.md
-last_updated: "2026-09-16T19:18:42.000Z"
+stopped_at: Completed 09-06-PLAN.md
+last_updated: "2026-09-16T23:59:00.000Z"
 last_activity: 2026-09-16
-last_activity_desc: Plan 09-05 completed native Replace/Remove overview and manifest-bound Android relaunch evidence
-state_head: 716fb82d3e538442f71b11c6c96ae952d75182dd
+last_activity_desc: Plan 09-06 completed separate receipt-backed exercise reorder with manifest-bound Android relaunch evidence
+state_head: 64b388ebd4ca4a6e45a8ecc72840297f8391646e
 progress:
   total_phases: 5
   completed_phases: 1
   total_plans: 26
-  completed_plans: 9
-  percent: 23
+  completed_plans: 10
+  percent: 38
 ---
 
 # Project State
@@ -30,9 +30,9 @@ See: `.planning/PROJECT.md` (updated 2026-09-15)
 ## Current Position
 
 Phase: 09 (In-Workout Exercise Editing) — EXECUTING
-Plan: 5 of 10 complete; next is 09-06
-Status: Executing Phase 09 — Plan 09-05 native Replace/Remove overview and exact-HEAD Android evidence complete; 09-06 reorder remains next
-Last activity: 2026-09-16 — Plan 09-05 Replace/Remove overview and cold-relaunch evidence completed
+Plan: 6 of 10 complete; next is 09-07
+Status: Executing Phase 09 — Plan 09-06 persisted whole-exercise reorder and exact-HEAD Android relaunch evidence complete; 09-07 lineage-gated progression and scheduling is next
+Last activity: 2026-09-16 — Plan 09-06 receipt-backed reorder, protected-history retention, and cold-relaunch evidence completed
 
 ## Delivery model
 
