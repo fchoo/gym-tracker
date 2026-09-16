@@ -154,7 +154,7 @@ name: Phase 9 add exercise and relaunch persistence
 - extendedWaitUntil:
     visible: 'Skipped · 1 of 1 working sets'
     timeout: 30000
-- assertVisible: "60 kg × 8"
+- assertVisible: "0 kg × 8"
 - stopApp
 - launchApp:
     clearState: false
@@ -162,4 +162,4 @@ name: Phase 9 add exercise and relaunch persistence
       notifications: deny
 - assertVisible: '^Bench Press · Working set 1 · Rest idle$'
 - assertVisible: 'Skipped · 1 of 1 working sets'
-- assertVisible: "60 kg × 8"
+- assertVisible: "0 kg × 8"

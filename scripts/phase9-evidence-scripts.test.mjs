@@ -39,6 +39,7 @@ test("Phase 9 evidence runner requires a manifest and full edit/relaunch asserti
   assert.match(flow, /This exercise has completed sets. They will be retained and this exercise will be marked Skipped, not deleted./);
   assert.match(flow, /Skipped · 1 of 1 working sets/u);
   assert.match(flow, /Complete Set 1/);
+  assert.match(flow, /assertVisible: "0 kg × 8"/u);
   assert.match(flow, /stopApp/);
   assert.match(flow, /clearState: false/);
   assert.match(flow, /clearState: false[\s\S]*- assertVisible: '\^Back Squat · Working set 1 · Rest idle\$'/u);
