@@ -1,0 +1,23 @@
+appId: com.fchoo.gymtracker
+name: Phase 9 add exercise and relaunch persistence
+---
+- launchApp:
+    clearState: true
+    permissions:
+      notifications: deny
+- assertVisible: "Today"
+- tapOn: "Start Empty Workout"
+- assertVisible: "Add exercise"
+- tapOn: "Add exercise"
+- tapOn: "Search exercises"
+- inputText: "Squat"
+- tapOn: ".*Add exercise"
+- tapOn: "Add .*"
+- assertVisible: "Added"
+- assertVisible: "Working set"
+- stopApp
+- launchApp:
+    clearState: false
+    permissions:
+      notifications: deny
+- assertVisible: "Added"

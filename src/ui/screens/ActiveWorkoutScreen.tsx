@@ -3,6 +3,7 @@ import React, {
   useRef,
   useState,
 } from "react";
+import * as Crypto from "expo-crypto";
 import {
   ChevronDown,
   ChevronRight,
@@ -34,6 +35,7 @@ import type {
   EmptyWorkoutView,
   AddWorkingSetInput,
   AddWarmupInput,
+  AddExerciseInput,
   CompleteSetInput,
   CompleteSetResult,
   CompleteWarmupInput,
@@ -57,6 +59,7 @@ import {
   FocusablePressable,
   IconAction,
   InlineNotice,
+  M3SearchField,
   PrimaryAction,
   ScreenHeader,
   SecondaryAction,
@@ -85,6 +88,7 @@ import {
 } from "../theme";
 
 export interface ActiveWorkoutCommands {
+  addExercise?(input: AddExerciseInput): Promise<import("../../domains/workout").AddExerciseResult>;
   updateActiveSetDraft(
     input: UpdateActiveSetDraftInput,
   ): Promise<ActiveWorkoutView>;
@@ -223,6 +227,9 @@ function workingIndex(
 }
 
 function exerciseStatusText(exercise: ActiveWorkoutExercise): string {
+  if (exercise.origin === "added") {
+    return "Added";
+  }
   switch (exercise.status) {
     case "completed":
       return "Completed";
@@ -350,6 +357,7 @@ export type ActiveWorkoutScreenProps = Readonly<{
   sessionId: string;
   view: ActiveWorkoutView | EmptyWorkoutView;
   commands: ActiveWorkoutCommands;
+  availableExercises?: readonly Readonly<{ id: string; name: string }>[];
   nowMs: () => number;
   notificationPermission?: RestNotificationPermission;
   restSoundEnabled?: boolean;
@@ -375,12 +383,14 @@ export function ActiveWorkoutScreen({
   onFinishLater,
   onOutcomeSaved = () => onFinishLater(),
   onDiscarded = onFinishLater,
+  availableExercises = [],
   width,
 }: ActiveWorkoutScreenProps) {
   if ("state" in initialView) {
     return (
       <EmptyWorkoutOverview
         commands={commands}
+        availableExercises={availableExercises}
         nowMs={nowMs}
         onDiscarded={onDiscarded}
         onFinishLater={onFinishLater}
@@ -396,6 +406,7 @@ export function ActiveWorkoutScreen({
   return (
     <PopulatedWorkoutOverview
       commands={commands}
+      availableExercises={availableExercises}
       countdownCue={countdownCue}
       initialView={initialView}
       notificationPermission={notificationPermission}
@@ -416,6 +427,7 @@ type EmptyWorkoutOverviewProps = Readonly<{
   sessionId: string;
   view: EmptyWorkoutView;
   commands: ActiveWorkoutCommands;
+  availableExercises?: readonly Readonly<{ id: string; name: string }>[];
   nowMs: () => number;
   onGoBack: () => void;
   onFinishLater: () => void;
@@ -428,6 +440,7 @@ function EmptyWorkoutOverview({
   sessionId,
   view,
   commands,
+  availableExercises = [],
   nowMs,
   onGoBack,
   onFinishLater,
@@ -439,7 +452,41 @@ function EmptyWorkoutOverview({
   const [outcomeConfirmation, setOutcomeConfirmation] =
     useState<"zero_sets" | "discard" | null>(null);
   const [outcomeBusy, setOutcomeBusy] = useState(false);
+  const [pickerVisible, setPickerVisible] = useState(false);
+  const [query, setQuery] = useState("");
+  const [selectedExerciseId, setSelectedExerciseId] = useState<string | null>(null);
+  const [addFailed, setAddFailed] = useState(false);
   const adaptiveWidth = width === undefined ? {} : { width };
+  const filteredExercises = availableExercises.filter((exercise) =>
+    exercise.name.toLocaleLowerCase("en").includes(query.trim().toLocaleLowerCase("en")),
+  );
+  const selectedExercise = availableExercises.find(
+    ({ id }) => id === selectedExerciseId,
+  );
+  const addExercise = async () => {
+    if (selectedExercise === undefined || commands.addExercise === undefined) return;
+    setOutcomeBusy(true);
+    setAddFailed(false);
+    try {
+      const requestId = `add-exercise:${sessionId}:${view.revision}:${selectedExercise.id}`;
+      const requestSha256 = await Crypto.digestStringAsync(
+        Crypto.CryptoDigestAlgorithm.SHA256,
+        requestId,
+      );
+      await commands.addExercise({
+        requestId, requestSha256, sessionId,
+        expectedSessionRevision: view.revision, occurredAtMs: nowMs(),
+        libraryExerciseId: selectedExercise.id,
+        sessionExerciseId: `${requestId}:exercise`, setId: `${requestId}:set`,
+      });
+      setPickerVisible(false);
+      setSelectedExerciseId(null);
+    } catch {
+      setAddFailed(true);
+    } finally {
+      setOutcomeBusy(false);
+    }
+  };
   const confirmationCopy = outcomeConfirmation === "zero_sets"
     ? {
         body: "This workout will be saved with zero completed working sets.",
@@ -505,14 +552,53 @@ function EmptyWorkoutOverview({
               tone="neutral"
             />
             <PrimaryAction
-              accessibilityHint="Exercises cannot be added until Phase 9."
-              disabled
-              label="Add exercise. Available in Phase 9."
-              onPress={() => undefined}
+              accessibilityHint="Choose one library exercise to append to this workout."
+              label="Add exercise"
+              onPress={() => setPickerVisible(true)}
+              testID="add-exercise"
             />
-            <Text style={[typeScale.body as TextStyle, { color: colors.textSecondary }]}>
-              Add exercises will be available in Phase 9.
-            </Text>
+            {pickerVisible ? (
+              <ContentCard>
+                <SectionHeader title="Choose exercise" tone="card" />
+                <M3SearchField
+                  label="Search exercises"
+                  onChangeText={setQuery}
+                  resultCount={filteredExercises.length}
+                  state={filteredExercises.length === 0 ? "empty" : "results"}
+                  value={query}
+                />
+                {filteredExercises.map((exercise) => (
+                  <FocusablePressable
+                    accessibilityLabel={`${exercise.name}. Add exercise`}
+                    accessibilityRole="button"
+                    key={exercise.id}
+                    onPress={() => setSelectedExerciseId(exercise.id)}
+                    style={[styles.exerciseOption, { borderColor: colors.contentCardBorder }]}
+                  >
+                    <Text style={[typeScale.bodyStrong as TextStyle, { color: colors.contentCardText }]}>
+                      {exercise.name}
+                    </Text>
+                    <Text style={[typeScale.secondary as TextStyle, { color: colors.contentCardTextSecondary }]}>
+                      {selectedExerciseId === exercise.id ? "Selected" : "Select"}
+                    </Text>
+                  </FocusablePressable>
+                ))}
+                {selectedExercise === undefined ? null : (
+                  <PrimaryAction
+                    busy={outcomeBusy}
+                    label={`Add ${selectedExercise.name}`}
+                    onPress={() => void addExercise()}
+                  />
+                )}
+                {addFailed ? (
+                  <InlineNotice
+                    body="Your workout was not changed. Try again from the latest workout."
+                    heading="Exercise was not added"
+                    tone="error"
+                  />
+                ) : null}
+              </ContentCard>
+            ) : null}
             <PrimaryAction
               busy={outcomeBusy}
               label="Save zero-set workout"
@@ -1705,6 +1791,13 @@ function PopulatedWorkoutOverview({
 }
 
 const styles = StyleSheet.create({
+  exerciseOption: {
+    borderRadius: radius.standard,
+    borderWidth: StyleSheet.hairlineWidth,
+    gap: space[1],
+    minHeight: sizes.minimumTarget,
+    padding: space[2],
+  },
   targetSection: {
     gap: space[1],
   },

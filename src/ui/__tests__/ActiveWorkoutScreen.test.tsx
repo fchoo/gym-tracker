@@ -363,7 +363,7 @@ async function renderActive(
 }
 
 describe("Plan 01-08 ActiveWorkoutScreen", () => {
-  it("keeps an empty workout in the overview shell with a disabled Phase 9 add-exercise affordance and revision-checked zero-set confirmation", async () => {
+  it("adds a selected library exercise from an empty workout and retains revision-checked zero-set confirmation", async () => {
     const saveZeroSetWorkout = jest.fn<ActiveWorkoutCommands["saveZeroSetWorkout"]>(async () => ({
       detail: {} as never,
       invalidationScopes: [],
@@ -377,11 +377,9 @@ describe("Plan 01-08 ActiveWorkoutScreen", () => {
     });
 
     expect(screen.getByRole("header", { name: "Workout" })).toBeOnTheScreen();
-    expect(screen.getByLabelText("Add exercise. Available in Phase 9."))
-      .toHaveProp("accessibilityState", expect.objectContaining({ disabled: true }));
+    expect(screen.getByLabelText("Add exercise"))
+      .toHaveProp("accessibilityState", expect.objectContaining({ disabled: false }));
     expect(screen.queryByLabelText(/Working set/u)).not.toBeOnTheScreen();
-    expect(screen.getByText("Add exercises will be available in Phase 9."))
-      .toBeOnTheScreen();
 
     await fireEvent.press(screen.getByRole("button", { name: "Save zero-set workout" }));
     expect(screen.getByRole("header", { name: "Finish without working sets?" }))

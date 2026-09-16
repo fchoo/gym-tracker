@@ -47,6 +47,10 @@ export default function ActiveWorkoutRoute() {
   const [view, setView] = useState<WorkoutSessionView | null>(null);
   const [failed, setFailed] = useState(false);
   const [focusGeneration, setFocusGeneration] = useState(0);
+  const [availableExercises, setAvailableExercises] = useState<readonly Readonly<{
+    id: string;
+    name: string;
+  }>[]>([]);
   const mutationCommands = createWorkoutMutationTestCommandAdapters({
     addWarmup: runtime.addWarmup,
     addWorkingSet: runtime.addWorkingSet,
@@ -76,6 +80,15 @@ export default function ActiveWorkoutRoute() {
   useFocusEffect(useCallback(() => {
     setFocusGeneration((current) => current + 1);
   }, []));
+  useEffect(() => {
+    let active = true;
+    void runtime.listOwnedPlanExercises().then((exercises) => {
+      if (active) {
+        setAvailableExercises(exercises.map(({ id, name }) => ({ id, name })));
+      }
+    }).catch(() => { if (active) setAvailableExercises([]); });
+    return () => { active = false; };
+  }, [runtime.listOwnedPlanExercises]);
 
   if (failed) {
     return (
@@ -116,6 +129,7 @@ export default function ActiveWorkoutRoute() {
   return (
     <ActiveWorkoutScreen
       commands={{
+        addExercise: runtime.addExercise,
         updateActiveSetDraft: runtime.updateActiveSetDraft,
         updateWarmupDraft: runtime.updateWarmupDraft,
         addWarmup: mutationCommands.addWarmup,
@@ -137,6 +151,7 @@ export default function ActiveWorkoutRoute() {
         discardWorkout: runtime.discardWorkout,
         skipExercise: runtime.skipExercise,
       }}
+      availableExercises={availableExercises}
       nowMs={() => Date.now()}
       notificationPermission={runtime.notificationPermission}
       restSoundEnabled={runtime.readRestAlertPreferences().soundEnabled}
