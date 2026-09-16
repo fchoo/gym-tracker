@@ -27,9 +27,11 @@ test("Phase 9 evidence runner requires a manifest and full edit/relaunch asserti
   assert.doesNotMatch(flow, /- assertVisible: "Added"/u);
   assert.match(flow, /arm_replace_exercise_failure/);
   assert.match(flow, /Replace exercise failure armed/);
+  assert.match(flow, /Replace exercise failure armed[\s\S]*?scrollUntilVisible:[\s\S]*?text: "Return to Today"[\s\S]*?tapOn: "Return to Today"/u);
   assert.match(flow, /Retry replacing exercise/);
   assert.match(flow, /arm_remove_exercise_failure/);
   assert.match(flow, /Remove exercise failure armed/);
+  assert.match(flow, /Remove exercise failure armed[\s\S]*?scrollUntilVisible:[\s\S]*?text: "Return to Today"[\s\S]*?tapOn: "Return to Today"/u);
   assert.match(flow, /Retry removing exercise/);
   assert.match(flow, /Keep exercise/);
   assert.match(flow, /This exercise has completed sets. They will be retained and this exercise will be marked Skipped, not deleted./);

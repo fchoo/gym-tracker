@@ -65,6 +65,12 @@ name: Phase 9 add exercise and relaunch persistence
 - extendedWaitUntil:
     visible: "Replace exercise failure armed"
     timeout: 30000
+- scrollUntilVisible:
+    element:
+      text: "Return to Today"
+    direction: DOWN
+    centerElement: true
+    timeout: 30000
 - tapOn: "Return to Today"
 - extendedWaitUntil:
     visible: "Resume workout"
@@ -104,6 +110,12 @@ name: Phase 9 add exercise and relaunch persistence
 - openLink: "gymtracker-devtest://__notification-test-controls?action=arm_remove_exercise_failure"
 - extendedWaitUntil:
     visible: "Remove exercise failure armed"
+    timeout: 30000
+- scrollUntilVisible:
+    element:
+      text: "Return to Today"
+    direction: DOWN
+    centerElement: true
     timeout: 30000
 - tapOn: "Return to Today"
 - extendedWaitUntil:
