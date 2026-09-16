@@ -1663,7 +1663,10 @@ function PopulatedWorkoutOverview({
               const skippedSummary = exercise.status === "skipped" && summary.completed > 0
                 ? `${status} · Completed · ${summary.observation}`
                 : `${status} · ${summary.observation}`;
-              const collapseLabel = `${exercise.name}. ${status}. ${summary.completed} of ${summary.total} working sets. ${collapsed ? "Expand" : "Collapse"} exercise`;
+              const statusDescription = exercise.status === "skipped" && summary.completed > 0
+                ? `${status}. Completed · ${summary.observation}`
+                : status;
+              const collapseLabel = `${exercise.name}. ${statusDescription}. ${summary.completed} of ${summary.total} working sets. ${collapsed ? "Expand" : "Collapse"} exercise`;
               return (
               <View
                 key={exercise.id}

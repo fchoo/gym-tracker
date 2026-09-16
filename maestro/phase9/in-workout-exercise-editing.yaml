@@ -185,15 +185,15 @@ name: Phase 9 add exercise and relaunch persistence
     timeout: 30000
 - tapOn: "Retry removing exercise"
 - extendedWaitUntil:
-    visible: "Overhead Press. Skipped. 1 of 1 working sets. Expand exercise"
+    visible: "Overhead Press. Skipped. Completed · 0 kg × 8. 1 of 1 working sets. Expand exercise"
     timeout: 30000
 - scrollUntilVisible:
     element:
-      text: "Overhead Press. Skipped. 1 of 1 working sets. Expand exercise"
+      text: "Overhead Press. Skipped. Completed · 0 kg × 8. 1 of 1 working sets. Expand exercise"
     direction: UP
     centerElement: true
     timeout: 30000
-- assertVisible: "Skipped · Completed · 0 kg × 8"
+- assertVisible: "Overhead Press. Skipped. Completed · 0 kg × 8. 1 of 1 working sets. Expand exercise"
 - stopApp
 - launchApp:
     clearState: false
@@ -206,8 +206,8 @@ name: Phase 9 add exercise and relaunch persistence
     timeout: 30000
 - scrollUntilVisible:
     element:
-      text: "Overhead Press. Skipped. 1 of 1 working sets. Expand exercise"
+      text: "Overhead Press. Skipped. Completed · 0 kg × 8. 1 of 1 working sets. Expand exercise"
     direction: UP
     centerElement: true
     timeout: 30000
-- assertVisible: "Skipped · Completed · 0 kg × 8"
+- assertVisible: "Overhead Press. Skipped. Completed · 0 kg × 8. 1 of 1 working sets. Expand exercise"

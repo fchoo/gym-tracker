@@ -935,7 +935,7 @@ describe("Plan 01-08 ActiveWorkoutScreen", () => {
     await waitFor(() => {
       expect(removeExercise).toHaveBeenCalledTimes(2);
       expect(screen.getByLabelText(
-        "Overhead Press. Skipped. 1 of 2 working sets. Collapse exercise",
+        "Overhead Press. Skipped. Completed · 60 kg × 8. 1 of 2 working sets. Collapse exercise",
       )).toBeOnTheScreen();
       expect(screen.getByText("Completed · 60 kg × 8")).toBeOnTheScreen();
     });
