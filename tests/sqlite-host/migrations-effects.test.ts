@@ -57,6 +57,10 @@ import {
   workoutRemoveReceiptEntityIdsMigration,
 } from "../../src/platform/sqlite/migrations/0018_workout_remove_receipt_entity_ids";
 import {
+  SESSION_EXERCISE_EDITING_SCHEMA_STATEMENTS,
+  sessionExerciseEditingMigration,
+} from "../../src/platform/sqlite/migrations/0019_session_exercise_editing";
+import {
   migrations as runtimeMigrations,
 } from "../../src/platform/sqlite/migrations";
 import {
@@ -264,6 +268,7 @@ describe("Plan 01-06 forward migrations and internal recovery", () => {
       16,
       17,
       18,
+      19,
     ]);
     expect(runtimeMigrations.slice(0, 3)).toEqual(migrations);
     expect(initialMigration).toEqual(expect.objectContaining({
@@ -288,7 +293,7 @@ describe("Plan 01-06 forward migrations and internal recovery", () => {
 
   it("creates a bounded, immutable, foreign-key-free removal receipt schema on clean and schema-17 databases", async () => {
     async function assertReceiptSchema(runtime: HostRuntime) {
-      expect(await userVersion(runtime.kernel)).toBe(18);
+      expect(await userVersion(runtime.kernel)).toBe(19);
       const columns = await runtime.kernel.queryAll<{
         name: string;
         type: string;
@@ -424,7 +429,7 @@ describe("Plan 01-06 forward migrations and internal recovery", () => {
       await createMigrationRunner({
         databaseName: "gym-tracker.db",
         kernel: upgraded.kernel,
-        migrations: runtimeMigrations.slice(0, -1),
+        migrations: runtimeMigrations.slice(0, -2),
         recoveryBackup: validatedBackup(),
       }).run();
       expect(await userVersion(upgraded.kernel)).toBe(17);
@@ -462,7 +467,7 @@ describe("Plan 01-06 forward migrations and internal recovery", () => {
       expect(backup.createAndValidate).toHaveBeenCalledWith({
         databaseName: "gym-tracker.db",
         fromVersion: 17,
-        toVersion: 18,
+        toVersion: 19,
       });
       await expect(upgraded.kernel.queryAll(
         "SELECT * FROM workout_remove_receipts WHERE request_id = ?",
@@ -475,6 +480,62 @@ describe("Plan 01-06 forward migrations and internal recovery", () => {
       await assertReceiptSchema(upgraded);
     } finally {
       await upgraded.close();
+    }
+  });
+
+  it("creates schema 19 display metadata and immutable edit receipts without changing ordinal", async () => {
+    const runtime = await createHostRuntime();
+    try {
+      await createMigrationRunner({
+        databaseName: "gym-tracker.db",
+        kernel: runtime.kernel,
+        migrations: runtimeMigrations.slice(0, -1),
+        recoveryBackup: validatedBackup(),
+      }).run();
+      await runtime.kernel.write(async (transaction) => {
+        await transaction.execute(
+          `INSERT INTO workout_sessions
+            (id, plan_id, plan_day_id, source, status, local_date, timezone, started_at_ms, completed_at_ms, revision)
+           VALUES ('migration-19-session', NULL, NULL, 'manual', 'in_progress', '2026-09-16', 'Asia/Singapore', 1, NULL, 0)`,
+        );
+        await transaction.execute(
+          `INSERT INTO exercises
+            (id, content_pack_id, origin, source_namespace, upstream_id, name, metric_profile, metric_contract_version, exercise_metric_generation, equipment, default_rest_seconds, revision)
+           VALUES ('migration-19-exercise', NULL, 'custom', NULL, NULL, 'Migration 19', 'load_reps', 1, 1, 'Unspecified', 90, 1)`,
+        );
+        await transaction.execute(
+          `INSERT INTO session_exercises
+            (id, session_id, source_plan_day_exercise_id, exercise_id, ordinal, exercise_name, metric_profile, metric_contract_version, exercise_metric_generation, default_rest_seconds, target_revision, status, revision)
+           VALUES ('migration-19-session-exercise', 'migration-19-session', NULL, 'migration-19-exercise', 7, 'Migration 19', 'load_reps', 1, 1, 90, 0, 'planned', 0)`,
+        );
+      });
+      await createMigrationRunner({
+        databaseName: "gym-tracker.db",
+        kernel: runtime.kernel,
+        migrations: runtimeMigrations,
+        recoveryBackup: validatedBackup(),
+      }).run();
+      expect(await userVersion(runtime.kernel)).toBe(19);
+      await expect(runtime.kernel.queryAll(
+        "SELECT ordinal, display_ordinal, origin FROM session_exercises WHERE id = 'migration-19-session-exercise'",
+      )).resolves.toEqual([{ ordinal: 7, display_ordinal: 7, origin: 'planned' }]);
+      const [index] = await runtime.kernel.queryAll<{ name: string }>(
+        "SELECT name FROM sqlite_master WHERE type = 'index' AND name = 'session_exercises_session_display_ordinal_idx'",
+      );
+      expect(index?.name).toBe("session_exercises_session_display_ordinal_idx");
+      await runtime.kernel.write((transaction) => transaction.execute(
+        `INSERT INTO workout_session_exercise_edit_receipts
+          (request_id, request_sha256, operation, session_id, session_exercise_id, expected_session_revision, result_session_revision, result_json, committed_at_ms)
+         VALUES ('migration-19-receipt', ?, 'add_exercise', 'migration-19-session', 'migration-19-session-exercise', 0, 1, '{}', 2)`,
+        ['a'.repeat(64)],
+      ));
+      await expect(runtime.kernel.write((transaction) => transaction.execute(
+        "DELETE FROM workout_session_exercise_edit_receipts WHERE request_id = 'migration-19-receipt'",
+      ))).rejects.toMatchObject({ code: "sqlite_transaction_failed" });
+      expect(SESSION_EXERCISE_EDITING_SCHEMA_STATEMENTS[0]).toContain("modified_from_plan");
+      await expect(runtime.kernel.write((transaction) => sessionExerciseEditingMigration.verify(transaction))).resolves.toBeUndefined();
+    } finally {
+      await runtime.close();
     }
   });
 

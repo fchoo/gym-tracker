@@ -65,6 +65,7 @@ export const LOGICAL_BACKUP_TABLE_DEFINITIONS = Object.freeze({
   owned_plan_schedule_events: { primaryKey: ["id"] },
   starter_plan_activation_requests: { primaryKey: ["request_id"] },
   workout_sessions: { primaryKey: ["id"] },
+  workout_session_exercise_edit_receipts: { primaryKey: ["request_id"] },
   session_exercises: { primaryKey: ["id"] },
   session_sets: { primaryKey: ["id"] },
   session_rest_states: { primaryKey: ["session_id"] },
