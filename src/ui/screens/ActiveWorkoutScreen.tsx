@@ -1650,6 +1650,18 @@ function PopulatedWorkoutOverview({
         primary={
           <>
             {activeSet === undefined ? null : <TargetContext set={activeSet} />}
+            {exerciseReorderAnnouncement === null ? null : (
+              <Text
+                accessibilityLiveRegion="polite"
+                style={[
+                  typeScale.secondary as TextStyle,
+                  styles.reorderAnnouncement,
+                  { color: colors.contentCardTextSecondary },
+                ]}
+              >
+                {exerciseReorderAnnouncement}
+              </Text>
+            )}
             {overviewExercises.map((exercise, index) => {
               const collapsed = isExerciseCollapsed(exercise, index);
               const summary = workingSetSummary(exercise);
@@ -2468,11 +2480,6 @@ function PopulatedWorkoutOverview({
           {removalAnnouncement}
         </Text>
       )}
-      {exerciseReorderAnnouncement === null ? null : (
-        <Text accessibilityLiveRegion="polite" style={styles.visuallyHidden}>
-          {exerciseReorderAnnouncement}
-        </Text>
-      )}
       {exerciseReorderRecovery ? (
         <InlineNotice
           action={<SecondaryAction label="Return to Today" onPress={onGoBack} />}
@@ -2537,6 +2544,9 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     flexWrap: "wrap",
     gap: space[2],
+  },
+  reorderAnnouncement: {
+    paddingHorizontal: space[2],
   },
   sectionGlyphAction: {
     alignItems: "center",
