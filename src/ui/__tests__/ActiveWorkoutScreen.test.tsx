@@ -778,6 +778,7 @@ describe("Plan 01-08 ActiveWorkoutScreen", () => {
       ...active,
       id: "protected-exercise",
       name: "Overhead Press",
+      origin: "added" as const,
       revision: 23,
       workingSets: active.workingSets.map((set, index) => ({
         ...set,
