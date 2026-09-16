@@ -1265,6 +1265,110 @@ describe("Today schedule workout integration", () => {
       });
   });
 
+  it("consumes an edited scheduled session exactly once across a retry", async () => {
+    const runtime = await setupRuntime();
+    const before = await runtime.schedule.loadSchedule("plan-copy");
+    await runtime.schedule.saveSchedule({
+      planId: "plan-copy",
+      scheduleId: before.scheduleId,
+      expectedPlanRevision: before.planRevision,
+      expectedScheduleRevision: before.scheduleRevision,
+      expectedActivePair: before.activeSchedule,
+      before: before.current,
+      todayLocalDate: "2026-08-18",
+      next: {
+        effectiveLocalDate: "2026-08-18",
+        mode: "weekday",
+        timeZone: "Asia/Singapore",
+        bindings: [{
+          ordinal: 0,
+          weekIndex: 0,
+          weekday: "Tuesday",
+          planDayId: "plan-day-copy",
+        }],
+      },
+    });
+    runtime.setNow(Date.UTC(2026, 7, 18, 4));
+    const today = await runtime.schedule.loadToday(Date.UTC(2026, 7, 18, 4));
+    if (today === null || today.view.state !== "scheduled") {
+      throw new Error("edited_schedule_opportunity_missing");
+    }
+    const plans = createPlansWorkoutRepository(runtime.kernel);
+    const session = await startWorkout({
+      repository: plans,
+      request: {
+        mode: "scheduled",
+        planId: today.planId,
+        planDayId: today.view.dayId,
+        localDate: today.localDate,
+        timezone: today.timeZone,
+        startedAtMs: Date.UTC(2026, 7, 18, 4),
+      },
+    });
+    const workout = createWorkoutRepository(runtime.kernel);
+    const added = await workout.addExercise!({
+      requestId: "edited-scheduled-add",
+      requestSha256: "a".repeat(64),
+      sessionId: session.id,
+      expectedSessionRevision: session.revision,
+      occurredAtMs: Date.UTC(2026, 7, 18, 4, 1),
+      libraryExerciseId: "exercise-squat",
+      sessionExerciseId: "edited-scheduled-added-exercise",
+      setId: "edited-scheduled-added-set",
+    });
+    await runtime.kernel.write(async (transaction) => {
+      await transaction.execute(
+        `UPDATE session_sets
+         SET status = 'completed',
+             observed_load_grams = target_load_grams,
+             observed_reps = target_max_reps,
+             observed_json = json_object(
+               'version', 1, 'profile', 'load_reps',
+               'loadGrams', target_load_grams,
+               'reps', target_max_reps, 'source', 'manual'
+             ),
+             completed_at_ms = ?,
+             revision = revision + 1
+         WHERE session_exercise_id IN (
+           SELECT id FROM session_exercises WHERE session_id = ?
+         )`,
+        [Date.UTC(2026, 7, 18, 4, 2), session.id],
+      );
+      await transaction.execute(
+        `UPDATE session_exercises
+         SET status = 'completed', revision = revision + 1
+         WHERE session_id = ?`,
+        [session.id],
+      );
+    });
+    await finishCompleted({
+      repository: createWorkoutOutcomeRepository(runtime.kernel),
+      input: {
+        sessionId: session.id,
+        expectedSessionRevision: added.sessionRevision,
+        endedAtMs: Date.UTC(2026, 7, 18, 4, 3),
+      },
+    });
+
+    const first = await runtime.schedule.completeScheduledSession(session.id);
+    await expect(runtime.schedule.completeScheduledSession(session.id))
+      .resolves.toEqual(first);
+    await expect(runtime.kernel.queryAll(
+      `SELECT state, outcome, session_id
+       FROM owned_plan_schedule_opportunities
+       WHERE session_id = ?`,
+      [session.id],
+    )).resolves.toEqual([{
+      state: "consumed",
+      outcome: "completed",
+      session_id: session.id,
+    }]);
+    await expect(runtime.kernel.queryAll(
+      "SELECT modified_from_plan FROM workout_sessions WHERE id = ?",
+      [session.id],
+    )).resolves.toEqual([{ modified_from_plan: 1 }]);
+  });
+
   it("retains all six accepted starters and exact D-55 five-day behavior", async () => {
     const pack = await parseAcceptedStarterPlanPack({
       starterPackBytes: readFileSync(
