@@ -61,7 +61,7 @@ export default function ActiveWorkoutRoute() {
   useEffect(() => {
     let active = true;
     setFailed(false);
-    setView(null);
+    setView((current) => current?.id === resolvedSessionId ? current : null);
     void runtime.getActiveWorkout(resolvedSessionId).then((nextView) => {
       if (active) {
         setView(nextView);

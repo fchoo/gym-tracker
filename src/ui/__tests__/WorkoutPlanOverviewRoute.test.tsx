@@ -253,6 +253,48 @@ describe("ActiveWorkoutRoute", () => {
     });
   });
 
+  it("keeps the current session mounted while its refreshed view is loading", async () => {
+    const initial = deferred<WorkoutSessionView>();
+    const refreshed = deferred<WorkoutSessionView>();
+    mockGetActiveWorkout
+      .mockImplementationOnce(() => initial.promise)
+      .mockImplementationOnce(() => refreshed.promise);
+    const rendered = await renderRoute();
+
+    await act(async () => {
+      initial.resolve(activeWorkout("session-a", "Back Squat"));
+      await initial.promise;
+    });
+    await waitFor(() => {
+      expect(screen.getByTestId("active-workout-screen-instance"))
+        .toHaveTextContent("session-a:1");
+    });
+
+    mockRefreshGeneration = 1;
+    await act(async () => {
+      await rendered.rerender(
+        <AppearanceProvider>
+          <ActiveWorkoutRoute />
+        </AppearanceProvider>,
+      );
+    });
+
+    expect(screen.getByText("Back Squat")).toBeOnTheScreen();
+    expect(screen.getByTestId("active-workout-screen-instance"))
+      .toHaveTextContent("session-a:1");
+    expect(screen.queryByText("WORKOUT OVERVIEW")).not.toBeOnTheScreen();
+
+    await act(async () => {
+      refreshed.resolve(activeWorkout("session-a", "Overhead Press"));
+      await refreshed.promise;
+    });
+    await waitFor(() => {
+      expect(screen.getByText("Overhead Press")).toBeOnTheScreen();
+      expect(screen.getByTestId("active-workout-screen-instance"))
+        .toHaveTextContent("session-a:1");
+    });
+  });
+
   it("remounts the same active workout overview when the route regains focus", async () => {
     mockGetActiveWorkout.mockResolvedValue(
       activeWorkout("session-a", "Back Squat"),
