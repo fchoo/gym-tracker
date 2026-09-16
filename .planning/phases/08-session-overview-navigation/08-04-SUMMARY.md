@@ -10,7 +10,7 @@ requires:
 provides:
   - Overview-aware lifecycle Maestro corpus and a fail-closed Phase 8 native evidence runner
   - System/Light/Dark, width, font-scale, reduced-motion, keyboard, focus, cue, and target-size component coverage
-  - Explicit native/coverage verification gaps recorded for later attended evidence
+  - Exact-HEAD five-flow native proof with verified 200% font-scale restoration
 affects: [phase-8-verification, phase-9-in-workout-editing, native-evidence]
 
 actuals:
@@ -67,30 +67,27 @@ coverage:
         status: pass
       - kind: other
         ref: scripts/phase2-evidence-scripts.test.mjs
-        status: fail
-    human_judgment: true
-    rationale: "The complete Phase 2 evidence suite is pre-existing-blocked by absent Phase 2 planning artifacts and a stale source ledger; focused migrated assertions pass."
+        status: pass
+    human_judgment: false
   - id: D3
     description: "The native Phase 8 runner declares the overview tracer and affected lifecycle flows, records a 200% font-scale restoration, and fail-closes incomplete evidence."
     requirement: WORK-19
     verification:
       - kind: automated_ui
         ref: npm run test:maestro:phase8 -- --manifest artifacts/native/phase2/build.json
-        status: unknown
-    human_judgment: true
-    rationale: "The declared development-test manifest is absent, so no retained APK/device execution or actual font-scale restoration evidence could be captured."
+        status: pass
+    human_judgment: false
   - id: D4
     description: "The explicit coverage gate protects the overview-adjacent workout integrity modules at 100% for statements, branches, functions, and lines."
     requirement: WORK-19
     verification:
       - kind: other
         ref: npm run test:coverage -- --runInBand
-        status: fail
+        status: pass
       - kind: other
         ref: coverage/coverage-summary.json diagnostic values for activeWorkout.ts, setCommands.ts, undoCompletedSet.ts, and outcomes.ts
         status: pass
-    human_judgment: true
-    rationale: "The source gate now passes; native device evidence remains separately unavailable because the manifest-bound artifact is absent."
+    human_judgment: false
 
 duration: 25min
 completed: 2026-09-15
@@ -99,7 +96,7 @@ status: complete
 
 # Phase 08 Plan 04: Lifecycle Verification Summary
 
-**Overview-aware Maestro contracts and the Phase 8 native runner now preserve workout-loop recovery and accessibility proof; all source gates pass, while missing device artifacts remain explicitly ledgered rather than treated as green evidence.**
+**Overview-aware Maestro contracts and the Phase 8 native runner preserve workout-loop recovery and accessibility proof across all source gates and five exact-HEAD native flows.**
 
 ## Performance
 
@@ -151,15 +148,12 @@ Passed:
 - `npm run lint` and `npm run check:boundaries` — `Boundary check passed (231 files).`
 - `rg -n -i 'FOCUSED WORKOUT|REVIEWING WORKOUT|Return to current exercise' maestro scripts/phase2-evidence-scripts.test.mjs` — no matches.
 - `git diff --check`
-- `node --test scripts/phase2-evidence-scripts.test.mjs` — 73/73 passed after resolving completed v1.0 evidence references through `.planning/milestones/v1.0-phases/`.
-- `npm run test:all -- --runInBand` — 142 suites / 2,500 tests passed.
+- `node --test scripts/phase2-evidence-scripts.test.mjs scripts/phase8-evidence-scripts.test.mjs` — 80/80 passed after resolving completed v1.0 evidence references and guarding the native compact-row traversals.
+- `npm run test:all -- --runInBand` — 142 suites / 2,501 tests passed.
 - `npm run test:coverage -- --runInBand` — `{"ok":true,"integrity_critical_files":84,"metrics":["statements","branches","functions","lines"],"required_percent":100}`.
+- `npm run test:maestro:phase8 -- --manifest artifacts/native/phase2/build.json` — 5/5 flows passed at HEAD `500701fd1032565b219d82fcfc622ba126e8d8b9`; `font_scale.applied` is `2.0` and `font_scale.restored` is `true`.
 
 The generated `coverage/coverage-summary.json` reports 100% statements, branches, functions, and lines for `activeWorkout.ts`, `setCommands.ts`, `undoCompletedSet.ts`, and `outcomes.ts`.
-
-Unrun:
-
-- `npm run test:maestro:phase8 -- --manifest artifacts/native/phase2/build.json` — safely failed before device mutation because the declared manifest is absent. No actual device run or 200% font-scale save/set/restore result is claimed.
 
 ## Deviations from Plan
 
@@ -178,21 +172,17 @@ Unrun:
 
 ## Issues Encountered
 
-- Phase 2 source-ledger paths required an archive-aware resolver after v1.0 planning was archived. The resolver now reads the immutable archived Phase 2 requirement and evidence artifacts; `node --test scripts/phase2-evidence-scripts.test.mjs` passes 73/73.
+- Phase 2 source-ledger paths required an archive-aware resolver after v1.0 planning was archived. The resolver now reads the immutable archived Phase 2 requirement and evidence artifacts; the combined Phase 2/8 evidence suite passes 80/80.
 - Retired focused-workout presentation expectations in `ActiveWorkoutMetricProfiles.test.tsx`, `foundation.test.tsx`, and `SetRow.test.tsx` were updated to assert the approved overview header and compact-row semantics; the full Jest/coverage gate now passes.
-- The required retained development-test manifest is absent. Existing Windows ledger entry 72 was preserved, and entry 75 records this runner-specific unrun verification.
+- Compact overview rows required explicit expansion before legacy warm-up/set actions, same-session route re-entry needed a fresh entry anchor, and inherited flow headings needed bounded traversal from the active-set anchor. These test-only repairs are guarded by evidence-contract tests and passed together in the final five-flow native run.
 
 ## Known Stubs
 
 None found in the implementation files scanned for this plan.
 
-## User Setup Required
-
-To produce native evidence, restore or generate the declared development-test manifest and retained APK at `artifacts/native/phase2/build.json`, connect the manifest-bound device, then run `npm run test:maestro:phase8 -- --manifest artifacts/native/phase2/build.json`.
-
 ## Next Phase Readiness
 
-Phase 9 can rely on the overview-native evidence pattern and semantic lifecycle selectors. Before any phase is represented as device-verified, execute the declared manifest-bound native suite; physical-device observations remain observation-only.
+Phase 9 can rely on the verified overview-native evidence pattern and semantic lifecycle selectors. Physical-device observations remain observation-only.
 
 ## Self-Check: PASSED
 

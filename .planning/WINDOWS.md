@@ -1,10 +1,10 @@
 ---
 schema_version: 1
-open_count: 2
+open_count: 0
 waived_count: 0
-fixed_count: 73
+fixed_count: 75
 total_count: 75
-last_updated: 2026-09-15T13:57:36.675Z
+last_updated: 2026-09-16T02:59:06.000Z
 ---
 
 # Broken Windows Ledger
@@ -86,10 +86,10 @@ last_updated: 2026-09-15T13:57:36.675Z
 | 69 | 05 | deviation | scripts/create-release-candidate-manifest.mjs |  | Made the immediate canonical manifest and explicit SHA propagation authoritative after the single build | fixed |  | 2026-08-26T13:20:54.198Z | 2026-08-26T13:21:13.728Z |
 | 70 | 05 | deviation | scripts/generate-phase5-attended-checklist.mjs |  | Replaced digest-only attended trust with exact rows and immutable attachment byte verification | fixed |  | 2026-08-26T13:20:54.291Z | 2026-08-26T13:21:13.860Z |
 | 71 | 05 | deviation | .github/workflows/release-promotion.yml |  | Hardened cross-run promotion with successful-run provenance reuse rejection and public hash verification | fixed |  | 2026-08-26T13:20:54.390Z | 2026-08-26T13:21:13.963Z |
-| 72 | 08 | unrun-verify | maestro/phase8/session-overview.yaml |  | Maestro session-overview tracer unrun: no connected device is available in the design worktree. | open |  | 2026-09-15T12:51:16.455Z |  |
+| 72 | 08 | unrun-verify | maestro/phase8/session-overview.yaml |  | Maestro session-overview tracer unrun: no connected device is available in the design worktree. | fixed | Exact-HEAD session-overview tracer passed on emulator-5554 as part of the five-flow Phase 8 native gate. | 2026-09-15T12:51:16.455Z | 2026-09-16T02:37:08.000Z |
 | 73 | 08 | deviation | src/ui/components/SetRow.tsx |  | Compact set rows now enforce the required 48dp minimum width as well as height. | fixed |  | 2026-09-15T13:12:28.580Z | 2026-09-15T13:12:46.305Z |
 | 74 | 08 | deviation | src/ui/screens/ActiveWorkoutScreen.tsx |  | Measured scroll request keys now include authoritative revision to prevent later target suppression. | fixed |  | 2026-09-15T13:12:28.664Z | 2026-09-15T13:12:46.397Z |
-| 75 | 08 | unrun-verify | maestro/phase8/session-overview.yaml |  | Phase 8 Maestro runner unrun: declared development-test manifest artifacts/native/phase2/build.json is absent, so no 200 percent font-scale/device evidence could be captured. | open |  | 2026-09-15T13:57:36.675Z |  |
+| 75 | 08 | unrun-verify | maestro/phase8/session-overview.yaml |  | Phase 8 Maestro runner unrun: declared development-test manifest artifacts/native/phase2/build.json is absent, so no 200 percent font-scale/device evidence could be captured. | fixed | Manifest-bound Phase 8 runner passed all five flows at HEAD 500701fd1032565b219d82fcfc622ba126e8d8b9 and recorded font_scale applied 2.0/restored true. | 2026-09-15T13:57:36.675Z | 2026-09-16T02:37:08.000Z |
 
 ````json
 [
@@ -952,10 +952,10 @@ last_updated: 2026-09-15T13:57:36.675Z
     "file": "maestro/phase8/session-overview.yaml",
     "line": null,
     "description": "Maestro session-overview tracer unrun: no connected device is available in the design worktree.",
-    "status": "open",
-    "reason": "",
+    "status": "fixed",
+    "reason": "Exact-HEAD session-overview tracer passed on emulator-5554 as part of the five-flow Phase 8 native gate.",
     "recorded_at": "2026-09-15T12:51:16.455Z",
-    "resolved_at": null
+    "resolved_at": "2026-09-16T02:37:08.000Z"
   },
   {
     "id": 73,
@@ -988,10 +988,10 @@ last_updated: 2026-09-15T13:57:36.675Z
     "file": "maestro/phase8/session-overview.yaml",
     "line": null,
     "description": "Phase 8 Maestro runner unrun: declared development-test manifest artifacts/native/phase2/build.json is absent, so no 200 percent font-scale/device evidence could be captured.",
-    "status": "open",
-    "reason": "",
+    "status": "fixed",
+    "reason": "Manifest-bound Phase 8 runner passed all five flows at HEAD 500701fd1032565b219d82fcfc622ba126e8d8b9 and recorded font_scale applied 2.0/restored true.",
     "recorded_at": "2026-09-15T13:57:36.675Z",
-    "resolved_at": null
+    "resolved_at": "2026-09-16T02:37:08.000Z"
   }
 ]
 ````
