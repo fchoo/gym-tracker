@@ -4093,6 +4093,59 @@ test("Phase 1 full-loop re-anchors the compact overview before asserting its fir
   ].join("\n")));
 });
 
+test("full-loop expands each compact warm-up before removing it", async () => {
+  const flow = await readFile(
+    path.join(projectRoot, "maestro/smoke/phase1-full-loop.yaml"),
+    "utf8",
+  );
+
+  assert.ok(flow.includes([
+    "- repeat:",
+    "    times: 2",
+    "    commands:",
+    "      - scrollUntilVisible:",
+    "          element:",
+    '            text: "Warm-up W1"',
+    "          direction: UP",
+    "          centerElement: true",
+    "          timeout: 60000",
+    '      - tapOn: "Warm-up W1"',
+    "      - repeat:",
+    "          times: 4",
+    "          while:",
+    '            notVisible: "Remove warm-up W1"',
+    "          commands:",
+    "            - swipe:",
+    "                start: 95%, 75%",
+    "                end: 95%, 45%",
+    "                duration: 300",
+    '      - assertVisible: "Remove warm-up W1"',
+    '      - tapOn: "Remove warm-up W1"',
+  ].join("\n")));
+});
+
+test("full-loop reveals exercise headings above the active-row anchor after removal", async () => {
+  const flow = await readFile(
+    path.join(projectRoot, "maestro/smoke/phase1-full-loop.yaml"),
+    "utf8",
+  );
+
+  for (const exercise of ["Lat Pulldown", "Romanian Deadlift", "Plank"]) {
+    assert.ok(flow.includes([
+      "- repeat:",
+      "    times: 12",
+      "    while:",
+      `      notVisible: "${exercise}"`,
+      "    commands:",
+      "      - swipe:",
+      "          start: 95%, 25%",
+      "          end: 95%, 75%",
+      "          duration: 300",
+      `- assertVisible: "${exercise}"`,
+    ].join("\n")), exercise);
+  }
+});
+
 test("rest recovery finds the set action after each orientation change with semantic active-row traversal", async () => {
   const flow = await readFile(
     path.join(projectRoot, "maestro/lifecycle/rest-recovery.yaml"),
