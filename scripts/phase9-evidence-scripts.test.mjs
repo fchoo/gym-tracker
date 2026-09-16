@@ -16,7 +16,16 @@ test("Phase 9 evidence runner requires a manifest and tracer relaunch assertions
   assert.match(flow, /tapOn: "\.\*Add exercise"\n- pressKey: Back\n- scrollUntilVisible:[\s\S]*text: "Add Back Squat"[\s\S]*- tapOn: "Add Back Squat"/);
   assert.doesNotMatch(flow, /tapOn: "Add \.\*"/);
   assert.match(flow, /Add exercise/);
-  assert.match(flow, /Added/);
+  const addedExerciseAssertion =
+    /^- assertVisible: '\^Back Squat\\\. Added\\\. 0 of 1 working sets\\\. Collapse exercise\$'$/gmu;
+  assert.equal(
+    [...flow.matchAll(addedExerciseAssertion)].length,
+    1,
+    "Phase 9 must assert the exact unique added-exercise accessibility label before relaunch",
+  );
+  assert.match(flow, /- assertVisible: '\^Working sets\$'/u);
+  assert.doesNotMatch(flow, /- assertVisible: "Added"/u);
   assert.match(flow, /stopApp/);
   assert.match(flow, /clearState: false/);
+  assert.match(flow, /clearState: false[\s\S]*- assertVisible: '\^Back Squat · Working set 1 · Rest idle\$'/u);
 });
