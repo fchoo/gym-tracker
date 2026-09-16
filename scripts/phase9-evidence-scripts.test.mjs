@@ -7,6 +7,8 @@ test("Phase 9 evidence runner requires a manifest and full edit/relaunch asserti
   const flow = readFileSync("maestro/phase9/in-workout-exercise-editing.yaml", "utf8");
   assert.match(runner, /native build manifest is required/);
   assert.match(runner, /build\.apk\?\.path/);
+  assert.match(runner, /build\.device\?\.serial/);
+  assert.match(runner, /--udid/);
   assert.match(runner, /maestro\/phase9\/in-workout-exercise-editing\.yaml/);
   assert.match(flow, /appId: com\.fchoo\.gymtracker\.devtest/);
   assert.match(flow, /Choose your starting plan/);

@@ -13,5 +13,13 @@ const build = JSON.parse(readFileSync(manifest, "utf8"));
 if (typeof build.apk?.path !== "string" || !existsSync(build.apk.path)) {
   throw new Error("Phase 9 Maestro: manifest APK is missing.");
 }
-const result = spawnSync("maestro", ["test", "maestro/phase9/in-workout-exercise-editing.yaml"], { stdio: "inherit" });
+if (typeof build.device?.serial !== "string" || build.device.serial.length === 0) {
+  throw new Error("Phase 9 Maestro: manifest device serial is missing.");
+}
+const result = spawnSync("maestro", [
+  "test",
+  "--udid",
+  build.device.serial,
+  "maestro/phase9/in-workout-exercise-editing.yaml",
+], { stdio: "inherit" });
 if (result.status !== 0) process.exit(result.status ?? 1);
