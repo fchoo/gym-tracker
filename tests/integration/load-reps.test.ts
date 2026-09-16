@@ -775,6 +775,66 @@ describe("Plan 01-10 recommendation lifecycle", () => {
     )).resolves.toBe(0);
   });
 
+  it("ignores a completed null-lineage added working set when planned working sets are absent", async () => {
+    const { kernel, repository, sessionId, squatId } =
+      await setupCompletedWorkout();
+    const targetsBefore = await kernel.queryAll(
+      "SELECT * FROM plan_working_set_targets ORDER BY id",
+    );
+
+    await kernel.write(async (transaction) => {
+      await transaction.execute(
+        `UPDATE session_sets
+         SET status = 'skipped',
+             observed_load_grams = NULL,
+             observed_reps = NULL,
+             observed_json = NULL,
+             completed_at_ms = NULL
+         WHERE session_exercise_id = ?
+           AND set_kind = 'working'`,
+        [squatId],
+      );
+      await transaction.execute(
+        `INSERT INTO session_sets
+          (id, session_exercise_id, set_kind, ordinal,
+           source_plan_working_set_target_id,
+           source_owned_plan_working_set_target_id,
+           target_load_grams, target_min_reps, target_max_reps, target_json,
+           unit_json, rule_type, rule_version, metric_profile,
+           metric_contract_version, exercise_metric_generation,
+           observed_load_grams, observed_reps, observed_json, status,
+           draft_updated_at_ms, completed_at_ms, completion_idempotency_key,
+           revision)
+         SELECT 'added-null-lineage-working-set', session_exercise_id,
+                'working', 3, NULL, NULL, target_load_grams,
+                target_min_reps, target_max_reps, target_json, unit_json,
+                rule_type, rule_version, metric_profile,
+                metric_contract_version, exercise_metric_generation,
+                60000, 8,
+                '{"version":1,"profile":"load_reps","loadGrams":60000,"reps":8,"source":"manual"}',
+                'completed', NULL, 1786853800004,
+                'added-null-lineage-completion', 1
+         FROM session_sets
+         WHERE session_exercise_id = ?
+           AND set_kind = 'working'
+           AND ordinal = 0`,
+        [squatId],
+      );
+    });
+
+    await expect(repository.generateRecommendationsForSession(
+      sessionId,
+      2,
+      1_786_854_000_000,
+    )).resolves.toBe(0);
+    await expect(kernel.queryAll(
+      "SELECT * FROM progression_recommendations ORDER BY id",
+    )).resolves.toEqual([]);
+    await expect(kernel.queryAll(
+      "SELECT * FROM plan_working_set_targets ORDER BY id",
+    )).resolves.toEqual(targetsBefore);
+  });
+
   it("skips a sourced target when no working set completed", async () => {
     const { kernel, repository, sessionId, squatId } =
       await setupCompletedWorkout();
