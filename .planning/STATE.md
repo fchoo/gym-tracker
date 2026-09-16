@@ -5,11 +5,11 @@ milestone_name: In-Workout Editing, Advanced Timing & Cross-Device Sync
 current_phase: 09
 current_phase_name: In-Workout Exercise Editing
 status: executing
-stopped_at: Phase 08 complete, ready to plan Phase 09
-last_updated: "2026-09-16T03:15:43.463Z"
+stopped_at: 09-01 source and coverage complete; exact-HEAD Android/Maestro evidence pending
+last_updated: "2026-09-16T04:27:25.515Z"
 last_activity: 2026-09-16
 last_activity_desc: Phase 09 execution started
-state_head: 7b537f44782e3165bef181de753f2ad09223a5fe
+state_head: 78f992dcea2bc0115669cd3a02fdc0e88d42d716
 progress:
   total_phases: 5
   completed_phases: 1
@@ -301,6 +301,8 @@ Full decisions live in `.planning/PROJECT.md`.
 - The dedicated `release-evidence` runner is intentionally offline until the
   attended evidence-upload step. It must never service pull-request jobs.
 
+- 09-01 exact-HEAD native evidence pending: rebuild migrations-effects and phase9 manifests; prior device contract timed out waiting for log.
+
 ### Roadmap Evolution
 
 - Phase 6 added: Material 3 UX remediation added from the whole-app UX audit.
@@ -318,9 +320,9 @@ Full decisions live in `.planning/PROJECT.md`.
 
 ## Session Continuity
 
-Last session: 2026-09-16T03:06:09.000Z
-Stopped at: Phase 08 complete, ready to plan Phase 09
-Resume file: None
+Last session: 2026-09-16T04:27:25.484Z
+Stopped at: 09-01 source and coverage complete; exact-HEAD Android/Maestro evidence pending
+Resume file: .planning/phases/09-in-workout-exercise-editing/09-01-SUMMARY.md
 Next action: Execute `.planning/phases/09-in-workout-exercise-editing/09-01-add-exercise-tracer-PLAN.md`.
 
 ## Operator Next Steps
