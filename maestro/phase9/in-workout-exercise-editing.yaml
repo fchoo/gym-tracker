@@ -45,7 +45,7 @@ name: Phase 9 add exercise and relaunch persistence
 - tapOn: "Search exercises"
 - inputText: "Squat"
 - tapOn: ".*Add exercise"
-- tapOn: "Add .*"
+- tapOn: "Add Back Squat"
 - assertVisible: "Added"
 - assertVisible: "Working set"
 - stopApp

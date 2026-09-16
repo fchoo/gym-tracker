@@ -12,6 +12,8 @@ test("Phase 9 evidence runner requires a manifest and tracer relaunch assertions
   assert.match(flow, /Choose your starting plan/);
   assert.match(flow, /Activate Full Body Foundation/);
   assert.match(flow, /Start empty workout/);
+  assert.match(flow, /tapOn: "Add Back Squat"/);
+  assert.doesNotMatch(flow, /tapOn: "Add \.\*"/);
   assert.match(flow, /Add exercise/);
   assert.match(flow, /Added/);
   assert.match(flow, /stopApp/);
