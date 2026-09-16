@@ -830,7 +830,7 @@ describe("Plan 01-08 ActiveWorkoutScreen", () => {
       name: "Overhead Press exercise actions",
     }));
     await fireEvent.press(screen.getByRole("button", { name: "Remove exercise" }));
-    await fireEvent.press(screen.getByRole("button", { name: "Remove exercise" }));
+    await fireEvent.press(screen.getByTestId("remove-exercise-confirm"));
     await waitFor(() => {
       expect(screen.getByRole("button", { name: "Retry removing exercise" }))
         .toBeOnTheScreen();

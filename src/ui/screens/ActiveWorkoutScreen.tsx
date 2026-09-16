@@ -2127,6 +2127,7 @@ function PopulatedWorkoutOverview({
           cancelLabel="Keep exercise"
           confirmBusy={exerciseEditBusy}
           confirmLabel="Remove exercise"
+          confirmTestID="remove-exercise-confirm"
           destructive
           heading="Remove exercise"
           onCancel={() => {

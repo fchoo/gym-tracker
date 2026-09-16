@@ -145,7 +145,8 @@ name: Phase 9 add exercise and relaunch persistence
 - tapOn: "Keep exercise"
 - tapOn: "Bench Press exercise actions"
 - tapOn: "Remove exercise"
-- tapOn: "Remove exercise"
+- tapOn:
+    id: "remove-exercise-confirm"
 - extendedWaitUntil:
     visible: "Retry removing exercise"
     timeout: 30000
