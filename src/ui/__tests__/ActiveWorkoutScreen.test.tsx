@@ -687,6 +687,89 @@ describe("Plan 01-08 ActiveWorkoutScreen", () => {
     });
   });
 
+  it("retries replacement with bounded request identities for native-shaped exercise IDs", async () => {
+    const source = overviewView();
+    const nativeSessionId = "session_1789579784827_empty";
+    const nativeExerciseId =
+      "add-exercise:session_1789579784827_empty:1:5f140001-7e35-4a6d-9100-000000000001:exercise";
+    const nativeExercise = {
+      ...source.currentExercise,
+      id: nativeExerciseId,
+    };
+    const before: ActiveWorkoutView = {
+      ...source,
+      id: nativeSessionId,
+      activeExerciseId: nativeExercise.id,
+      currentExercise: nativeExercise,
+      exercises: [source.exercises[0]!, nativeExercise],
+    };
+    const replacement = {
+      ...nativeExercise,
+      id: "replacement-exercise",
+      exerciseId: "barbell-row",
+      name: "Barbell Row",
+      revision: 31,
+      origin: "added" as const,
+      workingSets: nativeExercise.workingSets.map((set, index) => ({
+        ...set,
+        id: "replacement-working-" + (index + 1),
+      })),
+    };
+    const after: ActiveWorkoutView = {
+      ...before,
+      revision: 32,
+      activeExerciseId: replacement.id,
+      activeSetId: "replacement-working-1",
+      currentExercise: replacement,
+      exercises: [before.exercises[0]!, replacement],
+    };
+    let attempts = 0;
+    const replaceExercise = jest.fn<NonNullable<ActiveWorkoutCommands["replaceExercise"]>>(
+      async (input) => {
+        attempts += 1;
+        if (input.requestId.length > 128) {
+          throw new Error("replace_exercise_identifier_invalid");
+        }
+        if (attempts === 1) {
+          throw new Error("offline");
+        }
+        return after;
+      },
+    );
+    await renderActive({
+      availableExercises: [
+        { id: "barbell-row", name: "Barbell Row" },
+        { id: "bench-press", name: "Bench Press" },
+      ],
+      commands: commands({ replaceExercise }),
+      sessionId: nativeSessionId,
+      view: before,
+    });
+
+    await fireEvent.press(screen.getByRole("button", {
+      name: "Bench Press exercise actions",
+    }));
+    await fireEvent.press(screen.getByRole("button", { name: "Replace exercise" }));
+    await fireEvent.press(screen.getByRole("radio", { name: "Barbell Row" }));
+    await fireEvent.press(screen.getByRole("button", { name: "Replace with Barbell Row" }));
+
+    await waitFor(() => {
+      expect(screen.getByRole("button", { name: "Retry replacing exercise" }))
+        .toBeOnTheScreen();
+    });
+    expect(replaceExercise).toHaveBeenCalledWith(expect.objectContaining({
+      requestId: expect.any(String),
+    }));
+    expect(replaceExercise.mock.calls[0]![0].requestId.length).toBeLessThanOrEqual(128);
+
+    await fireEvent.press(screen.getByRole("button", { name: "Retry replacing exercise" }));
+    await waitFor(() => {
+      expect(replaceExercise).toHaveBeenCalledTimes(2);
+      expect(screen.getByRole("header", { name: "Barbell Row" })).toBeOnTheScreen();
+    });
+    expect(replaceExercise.mock.calls[1]![0].requestId.length).toBeLessThanOrEqual(128);
+  });
+
   it("keeps protected completed history after cancellation and a retried removal", async () => {
     const before = overviewView();
     const active = before.currentExercise;

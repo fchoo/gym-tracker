@@ -1230,11 +1230,11 @@ function PopulatedWorkoutOverview({
           ? { libraryExerciseId: replacementExerciseId }
           : {}),
       };
-      const requestId = `${operation}:${sessionId}:${exercise.id}:${currentView.revision}:${occurredAtMs}`;
       const requestSha256 = await Crypto.digestStringAsync(
         Crypto.CryptoDigestAlgorithm.SHA256,
         stableJson(identity),
       );
+      const requestId = `${operation}:${requestSha256}`;
       const result = candidate.action === "replace"
         ? await commands.replaceExercise?.({
             requestId,
