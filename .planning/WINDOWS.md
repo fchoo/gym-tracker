@@ -2,9 +2,9 @@
 schema_version: 1
 open_count: 0
 waived_count: 0
-fixed_count: 75
-total_count: 75
-last_updated: 2026-09-16T02:59:06.000Z
+fixed_count: 76
+total_count: 76
+last_updated: 2026-09-16T14:50:59.927Z
 ---
 
 # Broken Windows Ledger
@@ -90,6 +90,7 @@ last_updated: 2026-09-16T02:59:06.000Z
 | 73 | 08 | deviation | src/ui/components/SetRow.tsx |  | Compact set rows now enforce the required 48dp minimum width as well as height. | fixed |  | 2026-09-15T13:12:28.580Z | 2026-09-15T13:12:46.305Z |
 | 74 | 08 | deviation | src/ui/screens/ActiveWorkoutScreen.tsx |  | Measured scroll request keys now include authoritative revision to prevent later target suppression. | fixed |  | 2026-09-15T13:12:28.664Z | 2026-09-15T13:12:46.397Z |
 | 75 | 08 | unrun-verify | maestro/phase8/session-overview.yaml |  | Phase 8 Maestro runner unrun: declared development-test manifest artifacts/native/phase2/build.json is absent, so no 200 percent font-scale/device evidence could be captured. | fixed | Manifest-bound Phase 8 runner passed all five flows at HEAD 500701fd1032565b219d82fcfc622ba126e8d8b9 and recorded font_scale applied 2.0/restored true. | 2026-09-15T13:57:36.675Z | 2026-09-16T02:37:08.000Z |
+| 76 | 09 | deviation | src/platform/sqlite/repositories/workoutRepository.ts |  | Plan 09-04 auto-fixed protected-history skip and replay validation branches | fixed |  | 2026-09-16T14:48:41.903Z | 2026-09-16T14:50:59.927Z |
 
 ````json
 [
@@ -992,6 +993,18 @@ last_updated: 2026-09-16T02:59:06.000Z
     "reason": "Manifest-bound Phase 8 runner passed all five flows at HEAD 500701fd1032565b219d82fcfc622ba126e8d8b9 and recorded font_scale applied 2.0/restored true.",
     "recorded_at": "2026-09-15T13:57:36.675Z",
     "resolved_at": "2026-09-16T02:37:08.000Z"
+  },
+  {
+    "id": 76,
+    "kind": "deviation",
+    "phase": "09",
+    "file": "src/platform/sqlite/repositories/workoutRepository.ts",
+    "line": null,
+    "description": "Plan 09-04 auto-fixed protected-history skip and replay validation branches",
+    "status": "fixed",
+    "reason": "",
+    "recorded_at": "2026-09-16T14:48:41.903Z",
+    "resolved_at": "2026-09-16T14:50:59.927Z"
   }
 ]
 ````

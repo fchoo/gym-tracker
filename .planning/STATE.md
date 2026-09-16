@@ -5,17 +5,17 @@ milestone_name: In-Workout Editing, Advanced Timing & Cross-Device Sync
 current_phase: 09
 current_phase_name: In-Workout Exercise Editing
 status: executing
-stopped_at: Replanned Phase 09; 09-01 complete and authorized schema-v20 Task 1 WIP resumes at 09-02
-last_updated: "2026-09-16T11:24:52.647Z"
+stopped_at: Completed 09-04-PLAN.md
+last_updated: "2026-09-16T14:51:20.726Z"
 last_activity: 2026-09-16
-last_activity_desc: Phase 09 replan verified with dual v20 receipt authorities, scoped Task 1 commit gate, and native-evidence parser
-state_head: 5346437181c857432586111a26ee741c5a4baaf6
+last_activity_desc: Plan 09-04 completed durable Replace/Remove v20 persistence with immutable-history coverage
+state_head: ae4f2685891997d757658f335dcf505c1c57ce0f
 progress:
   total_phases: 5
   completed_phases: 1
   total_plans: 26
-  completed_plans: 5
-  percent: 19
+  completed_plans: 8
+  percent: 20
 ---
 
 # Project State
@@ -30,9 +30,9 @@ See: `.planning/PROJECT.md` (updated 2026-09-15)
 ## Current Position
 
 Phase: 09 (In-Workout Exercise Editing) — EXECUTING
-Plan: 1 of 10 complete; next is 09-02
-Status: Executing Phase 09 — Plan 09-01 complete; 09-02 schema-v20 core ready
-Last activity: 2026-09-16 — Phase 09 replan independently verified
+Plan: 4 of 10 complete; next is 09-05
+Status: Executing Phase 09 — Plan 09-04 durable Replace/Remove persistence complete; 09-05 remains next
+Last activity: 2026-09-16 — Plan 09-04 Replace/Remove persistence and full integrity coverage completed
 
 ## Delivery model
 
@@ -129,6 +129,7 @@ Terminal Seal) is retired for personal-use (removed in PR #29) and tracked as V2
 | Phase 08-session-overview-navigation P02 | 14min | 2 tasks | 4 files |
 | Phase 08-session-overview-navigation P03 | 13min | 2 tasks | 12 files |
 | Phase 08 P04 | 25min | 2 tasks | 17 files |
+| Phase 09-in-workout-exercise-editing P04 | 22 min | 2 tasks | 6 files |
 
 ## Accumulated Context
 
@@ -289,6 +290,9 @@ Full decisions live in `.planning/PROJECT.md`.
 - [Phase 08]: Phase 08 Plan 03: Phase 9 exercise creation remains a disabled explanatory affordance; zero-set and discard keep existing revision-checked commands.
 - [Phase 08]: Phase 8 native evidence uses one manifest-bound runner that restores Android font scale and fails closed without restoration.
 - [Phase 08]: Full Jest and coverage gates pass after overview presentation contracts and archived v1.0 Phase 2 evidence paths were reconciled; the exact-HEAD five-flow native gate also passes with 200% font scale restored.
+- [Phase 09]: Replace and Remove persist all replay-critical request facts in the v20 scalar edit receipt; the expected exercise revision is carried inside canonical result_json because the shipped receipt schema has no separate column.
+- [Phase 09]: A completed or undo-referenced exercise is never deleted: remaining mutable child rows are skipped, the original stays skipped, and Replace appends a fresh added-origin snapshot.
+- [Phase 09]: Replace and Remove never write the separate reorder receipt authority; pointer selection follows display_ordinal with stable ordinal and ID fallback.
 
 ### Blockers/Concerns
 
@@ -318,10 +322,10 @@ Full decisions live in `.planning/PROJECT.md`.
 
 ## Session Continuity
 
-Last session: 2026-09-16T11:24:38.558Z
-Stopped at: Completed 09-01-add-exercise-tracer-PLAN.md; Task 1 v20 migration compatibility WIP continues in 09-02 and 09-03
+Last session: 2026-09-16T14:51:20.695Z
+Stopped at: Completed 09-04-PLAN.md
 Resume file: None
-Next action: Execute `.planning/phases/09-in-workout-exercise-editing/09-02-PLAN.md`, preserving the authorized Task 1 implementation WIP before 09-03 closes the scoped commit boundary.
+Next action: Execute `.planning/phases/09-in-workout-exercise-editing/09-05-PLAN.md`, preserving the separate reorder receipt authority.
 
 ## Operator Next Steps
 
