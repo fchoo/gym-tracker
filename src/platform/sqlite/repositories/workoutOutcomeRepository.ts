@@ -1252,7 +1252,10 @@ async function rawNonLoadOutcomes(
     const exerciseSets = sets.filter(
       ({ session_exercise_id }) => session_exercise_id === exercise.id,
     );
-    const completed = completeRawWorkingSets(exerciseSets, identity);
+    const completed = completeRawWorkingSets(
+      exerciseSets.filter((set) => targetReference(set) !== null),
+      identity,
+    );
     if (completed === null) {
       continue;
     }
