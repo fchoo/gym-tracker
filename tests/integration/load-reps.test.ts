@@ -425,6 +425,78 @@ async function setupCompletedWorkout() {
   };
 }
 
+async function setupCompletedTimedHoldWorkout() {
+  const kernel = await createKernel();
+  const plans = createPlansWorkoutRepository(kernel);
+  const activation = await activateStarterPlan({
+    fixture: parseFullBodyFoundation(fullBodyFoundationAsset),
+    repository: plans,
+    activatedAtMs: 1_786_853_600_000,
+    startLocalDate: "2026-08-17",
+    timezone: "Asia/Singapore",
+  });
+  const session = await startWorkout({
+    repository: plans,
+    request: {
+      mode: "scheduled",
+      planId: activation.plan.id,
+      planDayId: activation.days[0]!.id,
+      localDate: "2026-08-17",
+      timezone: "Asia/Singapore",
+      startedAtMs: 1_786_853_600_000,
+    },
+  });
+  const [plank] = await kernel.queryAll<{ id: string }>(
+    `SELECT id FROM session_exercises
+     WHERE session_id = ? AND metric_profile = 'timed_hold'`,
+    [session.id],
+  );
+  await kernel.write(async (transaction) => {
+    await transaction.execute(
+      `UPDATE session_sets
+       SET status = CASE
+             WHEN session_exercise_id = ? AND set_kind = 'working'
+               THEN 'completed'
+             ELSE 'skipped'
+           END,
+           observed_json = CASE
+             WHEN session_exercise_id = ? AND set_kind = 'working'
+               THEN '{"version":1,"profile":"timed_hold","durationSeconds":45,"source":"manual"}'
+             ELSE NULL
+           END,
+           completed_at_ms = CASE
+             WHEN session_exercise_id = ? AND set_kind = 'working'
+               THEN 1786853700000 + ordinal
+             ELSE NULL
+           END,
+           revision = revision + 1
+       WHERE session_exercise_id IN (
+         SELECT id FROM session_exercises WHERE session_id = ?
+       )`,
+      [plank!.id, plank!.id, plank!.id, session.id],
+    );
+    await transaction.execute(
+      `UPDATE session_exercises
+       SET status = CASE WHEN id = ? THEN 'completed' ELSE 'skipped' END,
+           revision = revision + 1
+       WHERE session_id = ?`,
+      [plank!.id, session.id],
+    );
+    await transaction.execute(
+      `UPDATE workout_sessions
+       SET status = 'partial', completed_at_ms = 1786853800000, revision = 2
+       WHERE id = ?`,
+      [session.id],
+    );
+  });
+  return {
+    kernel,
+    repository: createWorkoutOutcomeRepository(kernel),
+    sessionId: session.id,
+    plankId: plank!.id,
+  };
+}
+
 describe("Plan 01-10 recommendation lifecycle", () => {
   it("activates the legacy starter with complete identity on the latest schema", async () => {
     const kernel = await createLatestKernel();
@@ -833,6 +905,160 @@ describe("Plan 01-10 recommendation lifecycle", () => {
     await expect(kernel.queryAll(
       "SELECT * FROM plan_working_set_targets ORDER BY id",
     )).resolves.toEqual(targetsBefore);
+  });
+
+  it("uses only completed planned lineage when added work is also completed", async () => {
+    const { kernel, repository, sessionId, squatId } =
+      await setupCompletedWorkout();
+    const targetsBefore = await kernel.queryAll(
+      "SELECT * FROM plan_working_set_targets ORDER BY id",
+    );
+
+    await kernel.write(async (transaction) => {
+      await transaction.execute(
+        `UPDATE session_sets
+         SET observed_reps = 8,
+             observed_json = json_set(observed_json, '$.reps', 8)
+         WHERE session_exercise_id = ?
+           AND set_kind = 'working'`,
+        [squatId],
+      );
+      await transaction.execute(
+        `UPDATE session_exercises
+         SET effort = 'easy'
+         WHERE id = ?`,
+        [squatId],
+      );
+      await transaction.execute(
+        `INSERT INTO session_sets
+          (id, session_exercise_id, set_kind, ordinal,
+           source_plan_working_set_target_id,
+           source_owned_plan_working_set_target_id,
+           target_load_grams, target_min_reps, target_max_reps, target_json,
+           unit_json, rule_type, rule_version, metric_profile,
+           metric_contract_version, exercise_metric_generation,
+           observed_load_grams, observed_reps, observed_json, status,
+           draft_updated_at_ms, completed_at_ms, completion_idempotency_key,
+           revision)
+         SELECT 'added-completed-working-set', session_exercise_id,
+                'working', 3, NULL, NULL, target_load_grams,
+                target_min_reps, target_max_reps, target_json, unit_json,
+                rule_type, rule_version, metric_profile,
+                metric_contract_version, exercise_metric_generation,
+                60000, 1,
+                '{"version":1,"profile":"load_reps","loadGrams":60000,"reps":1,"source":"manual"}',
+                'completed', NULL, 1786853800004,
+                'added-completed-working-set-key', 1
+         FROM session_sets
+         WHERE session_exercise_id = ?
+           AND set_kind = 'working'
+           AND ordinal = 0`,
+        [squatId],
+      );
+    });
+
+    await expect(repository.generateRecommendationsForSession(
+      sessionId,
+      2,
+      1_786_854_000_000,
+    )).resolves.toBe(1);
+    const [recommendation] = await kernel.queryAll<{
+      evidence_json: string;
+      proposed_target_json: string;
+    }>(
+      "SELECT evidence_json, proposed_target_json FROM progression_recommendations",
+    );
+    expect(JSON.parse(recommendation!.evidence_json)).toMatchObject({
+      source: {
+        setIds: expect.not.arrayContaining(["added-completed-working-set"]),
+      },
+      evaluator: {
+        comparableReps: [8, 8, 8],
+      },
+    });
+    expect(recommendation!.proposed_target_json).toContain('"loadGrams":62500');
+    await expect(kernel.queryAll(
+      "SELECT * FROM plan_working_set_targets ORDER BY id",
+    )).resolves.toEqual(targetsBefore);
+  });
+
+  it("keeps non-load outcomes bound to completed planned lineage", async () => {
+    const { kernel, repository, sessionId, plankId } =
+      await setupCompletedTimedHoldWorkout();
+
+    await kernel.write(async (transaction) => {
+      await transaction.execute(
+        `UPDATE progression_policies
+         SET rule_json = '{"kind":"manual_hold","id":"timed_hold.v1","version":1}'
+         WHERE plan_day_exercise_id = (
+           SELECT target.plan_day_exercise_id
+           FROM plan_working_set_targets target
+           JOIN session_sets set_row
+             ON set_row.source_plan_working_set_target_id = target.id
+           WHERE set_row.session_exercise_id = ?
+             AND set_row.set_kind = 'working'
+           ORDER BY set_row.ordinal
+           LIMIT 1
+         )`,
+        [plankId],
+      );
+      await transaction.execute(
+        `INSERT INTO session_sets
+        (id, session_exercise_id, set_kind, ordinal,
+         source_plan_working_set_target_id,
+         source_owned_plan_working_set_target_id,
+         target_load_grams, target_min_reps, target_max_reps, target_json,
+         unit_json, rule_type, rule_version, metric_profile,
+         metric_contract_version, exercise_metric_generation,
+         observed_load_grams, observed_reps, observed_json, status,
+         draft_updated_at_ms, completed_at_ms, completion_idempotency_key,
+         revision)
+       SELECT 'added-null-lineage-timed-hold', session_exercise_id,
+              'working', 3, NULL, NULL, target_load_grams,
+              target_min_reps, target_max_reps, target_json, unit_json,
+              rule_type, rule_version, metric_profile,
+              metric_contract_version, exercise_metric_generation,
+              NULL, NULL,
+              '{"version":1,"profile":"timed_hold","durationSeconds":45,"source":"manual"}',
+              'completed', NULL, 1786853800004,
+              'added-null-lineage-timed-hold-key', 1
+       FROM session_sets
+       WHERE session_exercise_id = ?
+         AND set_kind = 'working'
+         AND ordinal = 0`,
+        [plankId],
+      );
+    });
+    expect(await kernel.queryAll(
+      `SELECT ss.id, ss.status, ss.rule_type,
+              ss.source_plan_working_set_target_id,
+              ss.source_owned_plan_working_set_target_id,
+              se.metric_profile
+       FROM session_sets ss
+       JOIN session_exercises se ON se.id = ss.session_exercise_id
+       WHERE se.id = ? AND ss.set_kind = 'working'
+       ORDER BY ss.ordinal`,
+      [plankId],
+    )).toEqual(expect.arrayContaining([
+      expect.objectContaining({
+        id: 'added-null-lineage-timed-hold',
+        source_plan_working_set_target_id: null,
+        status: 'completed',
+      }),
+    ]));
+
+    await expect(repository.getSessionDetail(sessionId)).resolves
+      .toMatchObject({
+        nonLoadOutcomes: [expect.objectContaining({
+          profile: 'timed_hold',
+          source: expect.objectContaining({
+            setIds: expect.not.arrayContaining([
+              'added-null-lineage-timed-hold',
+            ]),
+          }),
+          evidence: expect.objectContaining({ sourceFactCount: 3 }),
+        })],
+      });
   });
 
   it("skips a sourced target when no working set completed", async () => {
