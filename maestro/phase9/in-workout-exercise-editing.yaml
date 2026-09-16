@@ -6,7 +6,40 @@ name: Phase 9 add exercise and relaunch persistence
     permissions:
       notifications: deny
 - assertVisible: "Today"
-- tapOn: "Start Empty Workout"
+- extendedWaitUntil:
+    visible: "Choose your starting plan"
+    timeout: 90000
+- scrollUntilVisible:
+    element:
+      text: "Use Full Body Foundation"
+    direction: DOWN
+    centerElement: true
+    timeout: 60000
+- tapOn: "Use Full Body Foundation"
+- scrollUntilVisible:
+    element:
+      text: "Activate Full Body Foundation"
+    direction: DOWN
+    centerElement: true
+    timeout: 60000
+- tapOn: "Activate Full Body Foundation"
+- extendedWaitUntil:
+    visible: "^(Start Full Body A|Start Full Body B|Rest day)$"
+    timeout: 90000
+- runFlow:
+    when:
+      visible: "Start Full Body B"
+    commands:
+      - tapOn: "Choose another day"
+- runFlow:
+    when:
+      visible: "Rest day"
+    commands:
+      - tapOn: "Train anyway"
+- tapOn: "Start Full Body A"
+- extendedWaitUntil:
+    visible: "WORKOUT OVERVIEW"
+    timeout: 30000
 - assertVisible: "Add exercise"
 - tapOn: "Add exercise"
 - tapOn: "Search exercises"
