@@ -6,6 +6,7 @@ test("Phase 9 evidence runner requires a manifest and tracer relaunch assertions
   const runner = readFileSync("scripts/run-phase9-maestro.mjs", "utf8");
   const flow = readFileSync("maestro/phase9/in-workout-exercise-editing.yaml", "utf8");
   assert.match(runner, /native build manifest is required/);
+  assert.match(runner, /build\.apk\?\.path/);
   assert.match(runner, /maestro\/phase9\/in-workout-exercise-editing\.yaml/);
   assert.match(flow, /Add exercise/);
   assert.match(flow, /Added/);

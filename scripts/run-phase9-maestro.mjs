@@ -10,7 +10,7 @@ if (manifest === undefined || !existsSync(manifest)) {
   throw new Error("Phase 9 Maestro: a native build manifest is required.");
 }
 const build = JSON.parse(readFileSync(manifest, "utf8"));
-if (typeof build.apkPath !== "string" || !existsSync(build.apkPath)) {
+if (typeof build.apk?.path !== "string" || !existsSync(build.apk.path)) {
   throw new Error("Phase 9 Maestro: manifest APK is missing.");
 }
 const result = spawnSync("maestro", ["test", "maestro/phase9/in-workout-exercise-editing.yaml"], { stdio: "inherit" });
