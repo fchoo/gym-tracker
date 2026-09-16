@@ -1811,6 +1811,7 @@ describe("Plan 01-06 native migration suite selection", () => {
       "migration-commit-rollback",
       "migration-integrity-block",
       "migration-recovery-backup",
+      "migration-session-exercise-editing-v19",
       "effects-lease-replay",
       "effects-stale-revision",
       "effects-retry-limit",

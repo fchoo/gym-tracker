@@ -34,6 +34,7 @@ export const MIGRATIONS_EFFECTS_CONTRACT_CASES = [
   "migration-commit-rollback",
   "migration-integrity-block",
   "migration-recovery-backup",
+  "migration-session-exercise-editing-v19",
   "effects-lease-replay",
   "effects-stale-revision",
   "effects-retry-limit",
@@ -387,6 +388,47 @@ const contractCases: Record<MigrationsEffectsContractCaseId, ContractCase> = {
         result.recoveryBackup.fromVersion === 0,
         "recovery_backup_version_incorrect",
       );
+    });
+  },
+
+  async "migration-session-exercise-editing-v19"(adapter, caseId) {
+    await withFreshRuntime(adapter, caseId, async ({ databaseName, kernel }) => {
+      await createMigrationRunner({
+        databaseName,
+        kernel,
+        migrations: runtimeMigrations.slice(0, -1),
+        recoveryBackup: adapter.recoveryBackup,
+      }).run();
+      const result = await createMigrationRunner({
+        databaseName,
+        kernel,
+        migrations: runtimeMigrations,
+        recoveryBackup: adapter.recoveryBackup,
+      }).run();
+      invariant(result.currentVersion === 19, "session_exercise_editing_version_not_committed");
+      const sessionColumns = await kernel.queryAll<{ name: string }>(
+        "PRAGMA table_info(workout_sessions)",
+      );
+      const exerciseColumns = await kernel.queryAll<{ name: string }>(
+        "PRAGMA table_info(session_exercises)",
+      );
+      const receiptColumns = await kernel.queryAll<{ name: string }>(
+        "PRAGMA table_info(workout_session_exercise_edit_receipts)",
+      );
+      invariant(sessionColumns.some(({ name }) => name === "modified_from_plan"), "session_modified_flag_missing");
+      invariant(exerciseColumns.some(({ name }) => name === "origin")
+        && exerciseColumns.some(({ name }) => name === "display_ordinal"), "session_exercise_edit_columns_missing");
+      invariant(receiptColumns.some(({ name }) => name === "request_id")
+        && receiptColumns.some(({ name }) => name === "session_exercise_id"), "session_exercise_receipt_missing");
+      const triggers = await kernel.queryAll<{ name: string }>(
+        `SELECT name FROM sqlite_master
+         WHERE type = 'trigger'
+           AND name IN (
+             'workout_session_exercise_edit_receipts_immutable_update',
+             'workout_session_exercise_edit_receipts_immutable_delete'
+           )`,
+      );
+      invariant(triggers.length === 2, "session_exercise_receipt_immutability_missing");
     });
   },
 

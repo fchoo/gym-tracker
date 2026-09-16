@@ -108,7 +108,7 @@ const selectedSuite = configuredSuite === "migrations-effects"
   ? configuredSuite
   : "sqlite-kernel";
 const expectedCaseCount = {
-  "migrations-effects": 10,
+  "migrations-effects": MIGRATIONS_EFFECTS_CONTRACT_CASES.length,
   phase2: PHASE2_AGGREGATE_CASE_IDS.length,
   "phase2-content": PHASE2_CONTENT_CASE_IDS.length,
   "phase2-fts": PHASE2_FTS_CASE_IDS.length,
@@ -499,7 +499,7 @@ export default function NativeSqliteContractsScreen() {
       : selectedSuite === "phase2-starter"
       ? `Running ${expectedCaseCount} packaged starter contracts…`
       : selectedSuite === "migrations-effects"
-      ? "Running migrations/effects preflight and 10 SQLite integrity contracts…"
+      ? `Running migrations/effects preflight and ${expectedCaseCount} SQLite integrity contracts…`
       : "Running 10 SQLite integrity contracts…"
     : `${result?.passed ?? 0} / ${result?.total ?? expectedCaseCount} passed`;
 
