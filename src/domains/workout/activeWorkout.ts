@@ -60,6 +60,8 @@ export type ActiveWorkoutExercise = Readonly<{
   metricIdentity: MetricIdentity;
   metricProfile: MetricProfile;
   ordinal: number;
+  origin?: "planned" | "added";
+  displayOrdinal?: number;
   defaultRestSeconds: number;
   status: "planned" | "active" | "completed" | "skipped";
   revision: number;
@@ -106,6 +108,7 @@ export type ActiveWorkoutView = Readonly<{
   id: string;
   status: "in_progress";
   revision: number;
+  modifiedFromPlan?: boolean;
   activeSetId: string | null;
   activeExerciseId: string | null;
   currentExercise: ActiveWorkoutExercise;
@@ -161,6 +164,25 @@ export type AddWorkingSetInput = Readonly<{
   sourceSetId: string;
   setId: string;
   nowMs: number;
+}>;
+
+export type AddExerciseInput = Readonly<{
+  requestId: string;
+  requestSha256: string;
+  sessionId: string;
+  expectedSessionRevision: number;
+  occurredAtMs: number;
+  libraryExerciseId: string;
+  sessionExerciseId: string;
+  setId: string;
+}>;
+
+export type AddExerciseResult = Readonly<{
+  outcome: "committed" | "already_committed";
+  sessionId: string;
+  sessionExerciseId: string;
+  setId: string;
+  sessionRevision: number;
 }>;
 
 export type CopyPreviousWarmupInput = Readonly<{
@@ -278,6 +300,7 @@ export interface ActiveWorkoutRepository {
   ): Promise<ActiveWorkoutView>;
   addWarmup(input: AddWarmupInput): Promise<ActiveWorkoutView>;
   addWorkingSet(input: AddWorkingSetInput): Promise<ActiveWorkoutView>;
+  addExercise?: (input: AddExerciseInput) => Promise<AddExerciseResult>;
   copyPreviousWarmup(
     input: CopyPreviousWarmupInput,
   ): Promise<ActiveWorkoutView>;

@@ -858,13 +858,13 @@ export function createPlansWorkoutRepository(
             await transaction.execute(
               `INSERT INTO session_exercises
                 (id, session_id, source_plan_day_exercise_id, exercise_id,
-                 ordinal, exercise_name, metric_profile,
+                 ordinal, display_ordinal, exercise_name, metric_profile,
                  ${completeIdentity
                    ? `metric_contract_version,
                       exercise_metric_generation,`
                    : ""}
                  default_rest_seconds, target_revision, status, revision)
-               VALUES (?, ?, ?, ?, ?, ?, ?,
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?,
                        ${completeIdentity ? "?, ?," : ""}
                        ?, ?, ?, ?)`,
               completeIdentity
@@ -873,6 +873,7 @@ export function createPlansWorkoutRepository(
                     sessionId,
                     ownedGraph ? null : exercise.day_exercise_id,
                     exercise.exercise_id,
+                    exercise.ordinal,
                     exercise.ordinal,
                     exercise.exercise_name,
                     exercise.metric_profile,
@@ -888,6 +889,7 @@ export function createPlansWorkoutRepository(
                     sessionId,
                     ownedGraph ? null : exercise.day_exercise_id,
                     exercise.exercise_id,
+                    exercise.ordinal,
                     exercise.ordinal,
                     exercise.exercise_name,
                     exercise.metric_profile,

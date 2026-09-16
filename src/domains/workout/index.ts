@@ -112,6 +112,8 @@ export {
   WORKING_SET_VALUE_SOURCES,
   WorkoutCommandConflictError,
   type ActiveWorkoutExercise,
+  type AddExerciseInput,
+  type AddExerciseResult,
   type ActiveWorkoutProgress,
   type ActiveWorkoutRepository,
   type ActiveWorkoutRestState,
@@ -142,6 +144,9 @@ export {
   type EmptyWorkoutView,
   type WorkingSetValueSource,
 } from "./activeWorkout";
+export {
+  addExercise,
+} from "./sessionExerciseCommands";
 export {
   addWorkingSet,
   addWarmup,

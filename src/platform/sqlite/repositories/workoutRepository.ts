@@ -5,6 +5,8 @@ import type {
   ActiveWorkoutSet,
   ActiveWorkoutSetStatus,
   ActiveWorkoutView,
+  AddExerciseInput,
+  AddExerciseResult,
   CompleteSetInput,
   RemoveSetResult,
   RemoveWarmupInput,
@@ -41,12 +43,15 @@ type SessionRow = Readonly<{
   active_session_exercise_id: string | null;
   active_set_id: string | null;
   revision: number;
+  modified_from_plan?: number;
 }>;
 
 type ExerciseRow = Readonly<{
   id: string;
   exercise_id: string;
   ordinal: number;
+  origin?: "planned" | "added";
+  display_ordinal?: number;
   exercise_name: string;
   metric_profile: MetricProfile;
   metric_contract_version?: number;
@@ -98,6 +103,17 @@ type RemoveReceiptRow = Readonly<{
   set_id: string;
   expected_session_revision: number;
   expected_set_revision: number;
+  result_session_revision: number;
+  result_json: string;
+  committed_at_ms: number;
+}>;
+
+type SessionExerciseEditReceiptRow = Readonly<{
+  request_sha256: string;
+  operation: "add_exercise";
+  session_id: string;
+  session_exercise_id: string;
+  expected_session_revision: number;
   result_session_revision: number;
   result_json: string;
   committed_at_ms: number;
@@ -617,7 +633,8 @@ async function loadActiveWorkout(
   const completeIdentity = await supportsCompleteMetricIdentity(executor);
   const ownedTargetSnapshots = await supportsOwnedTargetSnapshots(executor);
   const [session] = await executor.queryAll<SessionRow>(
-    `SELECT id, status, active_session_exercise_id, active_set_id, revision
+    `SELECT id, status, active_session_exercise_id, active_set_id, revision,
+            modified_from_plan
      FROM workout_sessions
      WHERE id = ?`,
     [sessionId],
@@ -627,14 +644,14 @@ async function loadActiveWorkout(
   }
 
   const exerciseRows = await executor.queryAll<ExerciseRow>(
-    `SELECT id, exercise_id, ordinal, exercise_name, metric_profile,
+    `SELECT id, exercise_id, ordinal, origin, display_ordinal, exercise_name, metric_profile,
             ${completeIdentity
               ? "metric_contract_version, exercise_metric_generation,"
               : ""}
             default_rest_seconds, status, revision
      FROM session_exercises
      WHERE session_id = ?
-     ORDER BY ordinal`,
+     ORDER BY display_ordinal, ordinal`,
     [sessionId],
   );
   const setRows = await executor.queryAll<SetRow>(
@@ -702,6 +719,8 @@ async function loadActiveWorkout(
       metricIdentity: identity,
       metricProfile: exercise.metric_profile,
       ordinal: exercise.ordinal,
+      origin: exercise.origin ?? "planned",
+      displayOrdinal: exercise.display_ordinal ?? exercise.ordinal,
       defaultRestSeconds: exercise.default_rest_seconds,
       status: exercise.status,
       revision: exercise.revision,
@@ -748,6 +767,7 @@ async function loadActiveWorkout(
     id: session.id,
     status: "in_progress",
     revision: session.revision,
+    modifiedFromPlan: session.modified_from_plan === 1,
     activeSetId: session.active_set_id,
     activeExerciseId: session.active_session_exercise_id,
     currentExercise,
@@ -834,6 +854,48 @@ function loadRepsTargetJson(
     incrementGrams,
     perSide: false,
   });
+}
+
+function defaultAddedExerciseTarget(identity: MetricIdentity): Readonly<{
+  targetJson: string;
+  targetLoadGrams: number;
+  targetMinReps: number;
+  targetMaxReps: number;
+}> {
+  switch (identity.profile) {
+    case "load_reps":
+      return { targetJson: loadRepsTargetJson(0, 8), targetLoadGrams: 0, targetMinReps: 8, targetMaxReps: 8 };
+    case "bodyweight_reps":
+      return { targetJson: JSON.stringify({ version: identity.contractVersion, profile: identity.profile, minReps: 8, maxReps: 8, variationId: "default", perSide: false }), targetLoadGrams: 0, targetMinReps: 8, targetMaxReps: 8 };
+    case "added_load_reps":
+      return { targetJson: JSON.stringify({ version: identity.contractVersion, profile: identity.profile, addedLoadGrams: 0, minReps: 8, maxReps: 8, incrementGrams: 1_000, perSide: false }), targetLoadGrams: 0, targetMinReps: 8, targetMaxReps: 8 };
+    case "assisted_reps":
+      return { targetJson: JSON.stringify({ version: identity.contractVersion, profile: identity.profile, assistanceGrams: 0, minReps: 8, maxReps: 8, decrementGrams: 1_000, assistanceEquipmentId: "default", perSide: false }), targetLoadGrams: 0, targetMinReps: 8, targetMaxReps: 8 };
+    case "timed_hold":
+      return identity.contractVersion === 2
+        ? { targetJson: JSON.stringify({ version: 2, profile: identity.profile, durationMs: 30_000, perSide: false }), targetLoadGrams: 0, targetMinReps: 0, targetMaxReps: 0 }
+        : { targetJson: JSON.stringify({ version: 1, profile: identity.profile, durationSeconds: 30, perSide: false }), targetLoadGrams: 0, targetMinReps: 0, targetMaxReps: 0 };
+    case "fixed_distance":
+      return { targetJson: JSON.stringify({ version: 1, profile: identity.profile, plannedDistanceMeters: 1_000 }), targetLoadGrams: 0, targetMinReps: 0, targetMaxReps: 0 };
+    case "fixed_time":
+      return { targetJson: JSON.stringify({ version: 1, profile: identity.profile, plannedDurationMs: 60_000 }), targetLoadGrams: 0, targetMinReps: 0, targetMaxReps: 0 };
+    case "intervals":
+      return { targetJson: JSON.stringify({ version: 1, profile: identity.profile, protocolId: "manual", comparatorId: "rounds_then_work", comparatorVersion: 1, plannedRounds: 1, workIntervalMs: 60_000, restIntervalMs: 0 }), targetLoadGrams: 0, targetMinReps: 0, targetMaxReps: 0 };
+    case "unscored":
+      return { targetJson: JSON.stringify({ version: 1, profile: identity.profile, completionRequired: true }), targetLoadGrams: 0, targetMinReps: 0, targetMaxReps: 0 };
+  }
+}
+
+function addReceiptMatches(
+  receipt: SessionExerciseEditReceiptRow,
+  input: AddExerciseInput,
+): boolean {
+  return receipt.request_sha256 === input.requestSha256
+    && receipt.operation === "add_exercise"
+    && receipt.session_id === input.sessionId
+    && receipt.session_exercise_id === input.sessionExerciseId
+    && receipt.expected_session_revision === input.expectedSessionRevision
+    && receipt.committed_at_ms === input.occurredAtMs;
 }
 
 async function nextWarmupOrdinal(
@@ -1329,6 +1391,147 @@ export function createWorkoutRepository(
 
     getWorkoutSession: (sessionId: string) =>
       loadActiveWorkout(kernel, sessionId),
+
+    async addExercise(input) {
+      const mutation = await kernel.write(async (transaction): Promise<
+        AddExerciseResult | { code: string }
+      > => {
+        const [receipt] = await transaction.queryAll<SessionExerciseEditReceiptRow>(
+          `SELECT request_sha256, operation, session_id, session_exercise_id,
+                  expected_session_revision, result_session_revision, result_json,
+                  committed_at_ms
+           FROM workout_session_exercise_edit_receipts
+           WHERE request_id = ?`,
+          [input.requestId],
+        );
+        if (receipt !== undefined) {
+          if (!addReceiptMatches(receipt, input)) {
+            return { code: "add_exercise_replay_conflict" };
+          }
+          return {
+            outcome: "already_committed",
+            sessionId: receipt.session_id,
+            sessionExerciseId: receipt.session_exercise_id,
+            setId: JSON.parse(receipt.result_json).setId as string,
+            sessionRevision: receipt.result_session_revision,
+          };
+        }
+
+        const [session] = await transaction.queryAll<SessionRow>(
+          `SELECT id, status, active_session_exercise_id, active_set_id, revision
+           FROM workout_sessions WHERE id = ?`,
+          [input.sessionId],
+        );
+        if (session === undefined || session.status !== "in_progress"
+          || session.revision !== input.expectedSessionRevision) {
+          return { code: "add_exercise_conflict" };
+        }
+        const [library] = await transaction.queryAll<Readonly<{
+          id: string;
+          name: string;
+          metric_profile: MetricProfile;
+          metric_contract_version: number;
+          exercise_metric_generation: number;
+          default_rest_seconds: number;
+        }>>(
+          `SELECT exercise.id, exercise.name, entry.metric_profile,
+                  entry.metric_contract_version, entry.exercise_metric_generation,
+                  exercise.default_rest_seconds
+           FROM exercise_library_entries entry
+           JOIN exercises exercise ON exercise.id = entry.exercise_id
+           WHERE entry.exercise_id = ? AND entry.availability = 'available'`,
+          [input.libraryExerciseId],
+        );
+        const [existing] = await transaction.queryAll<{ id: string }>(
+          `SELECT id FROM session_exercises WHERE id = ?
+           UNION ALL SELECT id FROM session_sets WHERE id = ?`,
+          [input.sessionExerciseId, input.setId],
+        );
+        if (library === undefined || existing !== undefined) {
+          return { code: "add_exercise_not_available" };
+        }
+        const [ordinalRow] = await transaction.queryAll<Readonly<{
+          ordinal: number;
+          display_ordinal: number;
+        }>>(
+          `SELECT COALESCE(MAX(ordinal), -1) + 1 AS ordinal,
+                  COALESCE(MAX(display_ordinal), -1) + 1 AS display_ordinal
+           FROM session_exercises WHERE session_id = ?`,
+          [input.sessionId],
+        );
+        const identity = metricIdentity({
+          profile: library.metric_profile,
+          contractVersion: library.metric_contract_version,
+          exerciseMetricGeneration: library.exercise_metric_generation,
+        });
+        const target = defaultAddedExerciseTarget(identity);
+        const ordinal = ordinalRow?.ordinal ?? 0;
+        const displayOrdinal = ordinalRow?.display_ordinal ?? 0;
+        await transaction.execute(
+          `INSERT INTO session_exercises
+            (id, session_id, source_plan_day_exercise_id, exercise_id, ordinal,
+             origin, display_ordinal, exercise_name, metric_profile,
+             metric_contract_version, exercise_metric_generation,
+             default_rest_seconds, target_revision, status, revision)
+           VALUES (?, ?, NULL, ?, ?, 'added', ?, ?, ?, ?, ?, ?, 0, 'planned', 1)`,
+          [input.sessionExerciseId, input.sessionId, library.id, ordinal,
+            displayOrdinal, library.name, identity.profile, identity.contractVersion,
+            identity.exerciseMetricGeneration, library.default_rest_seconds],
+        );
+        await transaction.execute(
+          `INSERT INTO session_sets
+            (id, session_exercise_id, set_kind, ordinal,
+             source_plan_working_set_target_id,
+             source_owned_plan_working_set_target_id, target_load_grams,
+             target_min_reps, target_max_reps, target_json, unit_json,
+             rule_type, rule_version, metric_profile, metric_contract_version,
+             exercise_metric_generation, observed_load_grams, observed_reps,
+             observed_json, status, draft_updated_at_ms, completed_at_ms,
+             completion_idempotency_key, revision)
+           VALUES (?, ?, 'working', 0, NULL, NULL, ?, ?, ?, ?, ?, ?, 1,
+                   ?, ?, ?, NULL, NULL, NULL, 'planned', NULL, NULL, NULL, 1)`,
+          [input.setId, input.sessionExerciseId, target.targetLoadGrams,
+            target.targetMinReps, target.targetMaxReps, target.targetJson,
+            JSON.stringify({ version: 1 }), identity.profile, identity.profile,
+            identity.contractVersion, identity.exerciseMetricGeneration],
+        );
+        const isEmpty = session.active_session_exercise_id === null
+          && session.active_set_id === null;
+        const update = await transaction.execute(
+          `UPDATE workout_sessions
+           SET modified_from_plan = 1,
+               active_session_exercise_id = CASE WHEN ? THEN ? ELSE active_session_exercise_id END,
+               active_set_id = CASE WHEN ? THEN ? ELSE active_set_id END,
+               revision = revision + 1
+           WHERE id = ? AND status = 'in_progress' AND revision = ?`,
+          [isEmpty ? 1 : 0, input.sessionExerciseId, isEmpty ? 1 : 0, input.setId,
+            input.sessionId, input.expectedSessionRevision],
+        );
+        if (update.changes !== 1) {
+          throw new Error("add_exercise_session_update_failed");
+        }
+        const result: AddExerciseResult = {
+          outcome: "committed", sessionId: input.sessionId,
+          sessionExerciseId: input.sessionExerciseId, setId: input.setId,
+          sessionRevision: input.expectedSessionRevision + 1,
+        };
+        await transaction.execute(
+          `INSERT INTO workout_session_exercise_edit_receipts
+            (request_id, request_sha256, operation, session_id,
+             session_exercise_id, expected_session_revision,
+             result_session_revision, result_json, committed_at_ms)
+           VALUES (?, ?, 'add_exercise', ?, ?, ?, ?, ?, ?)`,
+          [input.requestId, input.requestSha256, input.sessionId,
+            input.sessionExerciseId, input.expectedSessionRevision,
+            result.sessionRevision, JSON.stringify(result), input.occurredAtMs],
+        );
+        return result;
+      });
+      if ("code" in mutation) {
+        throw new WorkoutCommandConflictError(mutation.code);
+      }
+      return mutation;
+    },
 
     removeWarmup: (input) => removeSet(kernel, input, "remove_warmup"),
 

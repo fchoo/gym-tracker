@@ -50,6 +50,7 @@ const integrityCriticalFiles = [
   "src/domains/workout/activeWorkout.ts",
   "src/domains/workout/outcomes.ts",
   "src/domains/workout/sessionDetail.ts",
+  "src/domains/workout/sessionExerciseCommands.ts",
   "src/domains/workout/setCommands.ts",
   "src/domains/workout/startWorkout.ts",
   "src/domains/workout/undoCompletedSet.ts",

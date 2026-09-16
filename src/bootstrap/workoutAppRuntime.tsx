@@ -110,6 +110,8 @@ import {
 } from "../domains/rest";
 import type {
   ActiveWorkoutView,
+  AddExerciseInput,
+  AddExerciseResult,
   FinishOutcomeResult,
   RemoveSetResult,
   RemoveWarmupInput,
@@ -123,6 +125,7 @@ import {
   DISCARD_CONFIRMATION,
   PARTIAL_CONFIRMATION,
   WorkoutCommandConflictError,
+  addExercise,
   addWarmup,
   addWorkingSet,
   discardWorkout,
@@ -617,6 +620,7 @@ type RuntimeValue = RuntimeState & Readonly<{
     ReturnType<typeof createScheduleRuntimePort>["actOnToday"]
   >;
   activatePlan(): Promise<void>;
+  addExercise(input: AddExerciseInput): Promise<AddExerciseResult>;
   addWarmup(input: AddWarmupInput): Promise<CommittedWorkoutMutationResult>;
   addWorkingSet(
     input: AddWorkingSetInput,
@@ -3400,6 +3404,40 @@ export function WorkoutAppRuntimeProvider({
     ) as Promise<CommittedWorkoutMutationResult>,
   [runWorkoutMutation]);
 
+  const addWorkoutExercise = useCallback(async (input: AddExerciseInput) => {
+    const services = requireServices();
+    let result: AddExerciseResult;
+    try {
+      result = await addExercise({
+        repository: services.workoutRepository,
+        input,
+      });
+    } catch (error) {
+      const failure = mapWorkoutMutationFailure(error);
+      setState((current) => ({
+        ...current,
+        actionFailure: {
+          code: "workout_action_failed",
+          correlationCode: "GT-ACTION01",
+        },
+        mutationFailure: failure,
+      }));
+      throw error;
+    }
+    try {
+      setState(await trustedRead(services));
+    } catch {
+      setState((current) => ({
+        ...current,
+        actionFailure: {
+          code: "workout_action_failed",
+          correlationCode: "GT-ACTION01",
+        },
+      }));
+    }
+    return result;
+  }, [requireServices, trustedRead]);
+
   const removeWorkoutWarmup = useCallback((input: RemoveWarmupInput) =>
     runWorkoutRemoval(input, (repository) => removeWarmup({ repository, input })),
   [runWorkoutRemoval]);
@@ -3604,6 +3642,7 @@ export function WorkoutAppRuntimeProvider({
     acceptRecommendation: acceptWorkoutRecommendation,
     activateAcceptedStarterPlan: activateAcceptedStarter,
     activatePlan,
+    addExercise: addWorkoutExercise,
     addWarmup: addWorkoutWarmup,
     addWorkingSet: addWorkoutWorkingSet,
     adjustRest: adjustWorkoutRest,
@@ -3753,6 +3792,7 @@ export function WorkoutAppRuntimeProvider({
     acceptWorkoutRecommendation,
     activateAcceptedStarter,
     activatePlan,
+    addWorkoutExercise,
     addWorkoutWarmup,
     addWorkoutWorkingSet,
     adjustWorkoutRest,
