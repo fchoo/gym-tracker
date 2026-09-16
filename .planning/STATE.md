@@ -5,11 +5,11 @@ milestone_name: In-Workout Editing, Advanced Timing & Cross-Device Sync
 current_phase: 09
 current_phase_name: In-Workout Exercise Editing
 status: blocked
-stopped_at: 09-01 exact-HEAD Phase 9 Maestro failed after committed add; route remained stale empty-workout view
-last_updated: "2026-09-16T13:31:00Z"
+stopped_at: 09-01 fresh exact-HEAD Phase 9 Maestro failed at assertVisible Added after Add Back Squat
+last_updated: "2026-09-16T13:48:00Z"
 last_activity: 2026-09-16
 last_activity_desc: Phase 09 execution started
-state_head: acf24db2bd6255fd44964584f3647261ccc2835c
+state_head: 282036c9f86d249e7f0229985ba500dd4556d1a4
 progress:
   total_phases: 5
   completed_phases: 1
@@ -31,7 +31,7 @@ See: `.planning/PROJECT.md` (updated 2026-09-15)
 
 Phase: 09 (In-Workout Exercise Editing) — EXECUTING
 Plan: 1 of 6
-Status: Blocked — Plan 09-01 native tracer refresh defect
+Status: Blocked — Plan 09-01 native tracer fails at visible Added cue
 Last activity: 2026-09-16 — Phase 09 execution started
 
 ## Delivery model
@@ -301,7 +301,7 @@ Full decisions live in `.planning/PROJECT.md`.
 - The dedicated `release-evidence` runner is intentionally offline until the
   attended evidence-upload step. It must never service pull-request jobs.
 
-- 09-01 native evidence is blocked at exact source commit `acf24db2bd6255fd44964584f3647261ccc2835c`: manifest-bound Phase 9 Maestro successfully tapped `Add Back Squat` but failed `assertVisible: "Added"`. The post-tap native screen remained `Empty workout in progress`, so the committed addition was not refreshed into the route's `EmptyWorkoutView`. Evidence: `/Users/bytedance/.maestro/tests/2026-09-16_132934`; APK SHA-256 `e13761042e691f6cd25f00c4564922a34ea66b30d50b059423f4e559c2302a2c`.
+- 09-01 native evidence is blocked at exact source commit `282036c9f86d249e7f0229985ba500dd4556d1a4`: a fresh manifest-bound Phase 9 APK (SHA-256 `d1b13c16b9d995ce1738701a4b79bdd47faacce4aa3bbe4fdcd7da8036a7e8ac`) installed successfully, but unchanged Maestro failed `assertVisible: "Added"` after `Add Back Squat`. Evidence: `/Users/bytedance/.maestro/tests/2026-09-16_134709`. The failure hierarchy includes `Added · 0 of 1 working sets`, but Maestro did not treat it as visible; required working-set/end-position and relaunch persistence assertions did not execute. Source gates include the 11/11 migrations-effects contract evidence from commit `6c2e88e8d22c00a4a16e7239cc162e36c93ad020`.
 
 ### Roadmap Evolution
 
@@ -320,10 +320,10 @@ Full decisions live in `.planning/PROJECT.md`.
 
 ## Session Continuity
 
-Last session: 2026-09-16T13:31:00Z
-Stopped at: 09-01 exact-HEAD Phase 9 Maestro failed after committed add; route remained stale empty-workout view
+Last session: 2026-09-16T13:48:00Z
+Stopped at: 09-01 fresh exact-HEAD Phase 9 Maestro failed at assertVisible Added after Add Back Squat
 Resume file: .planning/phases/09-in-workout-exercise-editing/09-01-SUMMARY.md
-Next action: Repair the add-exercise route/runtime refresh path, rebuild the exact HEAD Android APK, and rerun `npm run test:maestro:phase9 -- --manifest artifacts/native/phase9/build.json`.
+Next action: Diagnose and repair the post-add native UI state, then rebuild the exact HEAD Android APK and rerun `npm run test:maestro:phase9 -- --manifest artifacts/native/phase9/build.json`.
 
 ## Operator Next Steps
 

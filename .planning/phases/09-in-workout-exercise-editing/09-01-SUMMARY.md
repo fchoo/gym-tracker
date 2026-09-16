@@ -41,7 +41,7 @@ status: blocked
 
 # Phase 09 Plan 01: Add Exercise Tracer Summary
 
-Schema 19 and the add-exercise tracer provide append-only, idempotent session additions with full host coverage, but exact-HEAD Android/Maestro evidence exposes a UI refresh defect after a committed addition.
+Schema 19 and the add-exercise tracer provide append-only, idempotent session additions with full host coverage, but exact-HEAD Android/Maestro evidence still fails before the required post-add UI and relaunch-persistence assertions.
 
 ## Completed Work
 
@@ -60,16 +60,17 @@ Passed using Node 24.19.0, npm 11.17.0, and Temurin 17.0.20+8:
 - Active Workout component and evidence-script contract: 53 tests passed.
 - TypeScript: `npm run typecheck` passed.
 - Full integrity coverage: `npm run test:coverage -- --runInBand` passed 144 suites / 2,520 tests, with all 86 integrity-critical files at 100%.
+- Migration-effects source evidence: commit `6c2e88e8d22c00a4a16e7239cc162e36c93ad020` contains the Phase 9 `migration-session-exercise-editing-v19` case in the aggregate migrations-effects contract, whose result assertion requires all 11 of 11 declared cases to pass.
 
 ## Native Verification Blocker
 
-Exact-HEAD Android build and manifest binding succeeded for source commit `acf24db2bd6255fd44964584f3647261ccc2835c`:
+Fresh exact-HEAD Android build and manifest binding succeeded for source commit `282036c9f86d249e7f0229985ba500dd4556d1a4`:
 
-- `npm run android:devtest:fresh -- --suite phase9` completed successfully on `emulator-5554` (API 36, arm64-v8a).
-- Manifest: `artifacts/native/phase9/build.json`; APK SHA-256: `e13761042e691f6cd25f00c4564922a34ea66b30d50b059423f4e559c2302a2c`.
+- `npm run android:devtest:fresh -- --suite phase9` completed successfully on `emulator-5554` (API 36, arm64-v8a) using Node 24.19.0, npm 11.17.0, Temurin 17.0.20+8, and Android SDK API 36.
+- Manifest: `artifacts/native/phase9/build.json`; APK SHA-256: `d1b13c16b9d995ce1738701a4b79bdd47faacce4aa3bbe4fdcd7da8036a7e8ac`; installed APK digest matched the retained artifact.
 - `npm run test:maestro:phase9 -- --manifest artifacts/native/phase9/build.json` reached and tapped the exact dynamic confirmation `Add Back Squat`.
 
-The final assertion failed at `assertVisible: "Added"`. Native debug evidence is at `/Users/bytedance/.maestro/tests/2026-09-16_132934`: the post-tap screenshot shows `Empty workout in progress`, with no added exercise or working set. The add command returned without displaying its error notice, but the route stayed on its stale `EmptyWorkoutView`; `EmptyWorkoutOverview` does not receive a refreshed `ActiveWorkoutView` after `commands.addExercise` commits. This directly violates Task 4's requirement to render an `Added` cue and a working set, then prove persistence after relaunch.
+The final assertion failed at `assertVisible: "Added"`. Native debug evidence is at `/Users/bytedance/.maestro/tests/2026-09-16_134709`. The unchanged flow completed initial plan activation, empty-workout start, search for `Squat`, and `Add Back Squat`, then failed because Maestro did not treat `Added` as visible. Its captured hierarchy does contain `Added · 0 of 1 working sets` and the accessibility label `Back Squat. Added. 0 of 1 working sets. Collapse exercise`; nevertheless, the required visible assertion failed. The required working-set/end-position and stop/relaunch persistence assertions did not execute. This directly violates Task 4's native acceptance criteria. No source or Maestro-flow change was made during this verification task.
 
 Do not mark Plan 09-01 complete or start dependent plans until the route/runtime refresh path is corrected, a new exact-HEAD APK is built, and the same manifest-bound Maestro flow passes through its relaunch assertion.
 
@@ -87,4 +88,5 @@ Do not mark Plan 09-01 complete or start dependent plans until the route/runtime
 
 - Summary exists at the required phase path.
 - Implementation commits `dd8231e`, `15a5b0e`, `c1219a1`, `3f29c1c`, `5263bab`, `78f992d`, `d08e799`, `ccfd913`, `3e0abe8`, `ffe521b`, `49be4f3`, and `acf24db` exist.
-- Exact-HEAD native evidence is recorded as blocked, not passed.
+- Fresh exact-HEAD manifest is bound to `282036c9f86d249e7f0229985ba500dd4556d1a4` with APK SHA-256 `d1b13c16b9d995ce1738701a4b79bdd47faacce4aa3bbe4fdcd7da8036a7e8ac`.
+- Native evidence is recorded as blocked, not passed: the unchanged Phase 9 Maestro flow failed at `assertVisible: "Added"` in `/Users/bytedance/.maestro/tests/2026-09-16_134709`.
