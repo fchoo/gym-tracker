@@ -906,6 +906,19 @@ export function createScheduleRuntimePort(
       ) {
         return null;
       }
+      const [consumed] = await kernel.queryAll<{ schedule_id: string }>(
+        `SELECT schedule_id
+         FROM owned_plan_schedule_opportunities
+         WHERE session_id = ?
+           AND state = 'consumed'
+           AND outcome = 'completed'
+         ORDER BY consumed_at_ms DESC, id DESC
+         LIMIT 1`,
+        [sessionId],
+      );
+      if (consumed !== undefined) {
+        return this.loadToday(dependencies.nowMs());
+      }
       const active = await activeSchedule();
       if (active === null || active.plan_id !== session.plan_id) {
         return null;
