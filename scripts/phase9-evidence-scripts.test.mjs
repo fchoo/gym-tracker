@@ -11,7 +11,7 @@ test("Phase 9 evidence runner requires a manifest and tracer relaunch assertions
   assert.match(flow, /appId: com\.fchoo\.gymtracker\.devtest/);
   assert.match(flow, /Choose your starting plan/);
   assert.match(flow, /Activate Full Body Foundation/);
-  assert.match(flow, /Start Full Body A/);
+  assert.match(flow, /Start empty workout/);
   assert.match(flow, /Add exercise/);
   assert.match(flow, /Added/);
   assert.match(flow, /stopApp/);
