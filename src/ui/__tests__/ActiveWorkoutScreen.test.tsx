@@ -669,6 +669,8 @@ describe("Plan 01-08 ActiveWorkoutScreen", () => {
     await fireEvent.press(screen.getByRole("button", { name: "Replace exercise" }));
     expect(screen.getByRole("header", { name: "Choose exercise" })).toBeOnTheScreen();
     expect(screen.getByLabelText("Search exercises")).toBeOnTheScreen();
+    expect(screen.getByTestId("replace-exercise-option-barbell-row"))
+      .toBeOnTheScreen();
     await fireEvent.press(screen.getByRole("radio", { name: "Barbell Row" }));
     await fireEvent.press(screen.getByRole("button", { name: "Replace with Barbell Row" }));
 

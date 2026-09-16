@@ -2057,6 +2057,7 @@ function PopulatedWorkoutOverview({
                 accessibilityState={{ checked: replacementExerciseId === candidate.id }}
                 key={candidate.id}
                 onPress={() => setReplacementExerciseId(candidate.id)}
+                testID={`replace-exercise-option-${candidate.id}`}
                 style={[
                   styles.exerciseOption,
                   {
