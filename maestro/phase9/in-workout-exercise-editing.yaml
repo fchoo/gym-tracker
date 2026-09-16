@@ -61,3 +61,84 @@ name: Phase 9 add exercise and relaunch persistence
     permissions:
       notifications: deny
 - assertVisible: '^Back Squat · Working set 1 · Rest idle$'
+- openLink: "gymtracker-devtest://__notification-test-controls?action=arm_replace_exercise_failure"
+- extendedWaitUntil:
+    visible: "Replace exercise failure armed"
+    timeout: 30000
+- tapOn: "Return to Today"
+- extendedWaitUntil:
+    visible: "Resume workout"
+    timeout: 30000
+- tapOn: "Resume workout"
+- extendedWaitUntil:
+    visible: "WORKOUT OVERVIEW"
+    timeout: 30000
+- scrollUntilVisible:
+    element:
+      text: "Back Squat exercise actions"
+    direction: DOWN
+    centerElement: true
+    timeout: 30000
+- tapOn: "Back Squat exercise actions"
+- tapOn: "Replace exercise"
+- assertVisible: "Choose exercise"
+- tapOn: "Search exercises"
+- inputText: "Bench Press"
+- tapOn: "Bench Press"
+- tapOn: "Replace with Bench Press"
+- extendedWaitUntil:
+    visible: "Retry replacing exercise"
+    timeout: 30000
+- tapOn: "Retry replacing exercise"
+- extendedWaitUntil:
+    visible: "Bench Press"
+    timeout: 30000
+- scrollUntilVisible:
+    element:
+      text: "Complete Set 1"
+    direction: DOWN
+    centerElement: true
+    timeout: 30000
+- assertVisible: "Complete Set 1"
+- tapOn: "Complete Set 1"
+- openLink: "gymtracker-devtest://__notification-test-controls?action=arm_remove_exercise_failure"
+- extendedWaitUntil:
+    visible: "Remove exercise failure armed"
+    timeout: 30000
+- tapOn: "Return to Today"
+- extendedWaitUntil:
+    visible: "Resume workout"
+    timeout: 30000
+- tapOn: "Resume workout"
+- extendedWaitUntil:
+    visible: "WORKOUT OVERVIEW"
+    timeout: 30000
+- scrollUntilVisible:
+    element:
+      text: "Bench Press exercise actions"
+    direction: DOWN
+    centerElement: true
+    timeout: 30000
+- tapOn: "Bench Press exercise actions"
+- tapOn: "Remove exercise"
+- assertVisible: "This exercise has completed sets. They will be retained and this exercise will be marked Skipped, not deleted."
+- tapOn: "Keep exercise"
+- tapOn: "Bench Press exercise actions"
+- tapOn: "Remove exercise"
+- tapOn: "Remove exercise"
+- extendedWaitUntil:
+    visible: "Retry removing exercise"
+    timeout: 30000
+- tapOn: "Retry removing exercise"
+- extendedWaitUntil:
+    visible: "Skipped"
+    timeout: 30000
+- assertVisible: "60 kg × 8"
+- stopApp
+- launchApp:
+    clearState: false
+    permissions:
+      notifications: deny
+- assertVisible: '^Bench Press · Working set 1 · Rest idle$'
+- assertVisible: "Skipped"
+- assertVisible: "60 kg × 8"

@@ -629,6 +629,138 @@ describe("Plan 01-08 ActiveWorkoutScreen", () => {
       .toBeOnTheScreen();
   });
 
+  it("retries a provisional replacement through the selected authoritative exercise", async () => {
+    const before = overviewView();
+    const replacement = {
+      ...before.currentExercise,
+      id: "replacement-exercise",
+      exerciseId: "barbell-row",
+      name: "Barbell Row",
+      revision: 31,
+      origin: "added" as const,
+      workingSets: before.currentExercise.workingSets.map((set, index) => ({
+        ...set,
+        id: "replacement-working-" + (index + 1),
+      })),
+    };
+    const after: ActiveWorkoutView = {
+      ...before,
+      revision: 32,
+      activeExerciseId: replacement.id,
+      activeSetId: "replacement-working-1",
+      currentExercise: replacement,
+      exercises: [before.exercises[0]!, replacement],
+    };
+    const replaceExercise = jest.fn<NonNullable<ActiveWorkoutCommands["replaceExercise"]>>()
+      .mockRejectedValueOnce(new Error("offline"))
+      .mockResolvedValueOnce(after);
+    await renderActive({
+      availableExercises: [
+        { id: "barbell-row", name: "Barbell Row" },
+        { id: "bench-press", name: "Bench Press" },
+      ],
+      commands: commands({ replaceExercise }),
+      view: before,
+    });
+
+    await fireEvent.press(screen.getByRole("button", {
+      name: "Bench Press exercise actions",
+    }));
+    await fireEvent.press(screen.getByRole("button", { name: "Replace exercise" }));
+    expect(screen.getByRole("header", { name: "Choose exercise" })).toBeOnTheScreen();
+    expect(screen.getByLabelText("Search exercises")).toBeOnTheScreen();
+    await fireEvent.press(screen.getByRole("radio", { name: "Barbell Row" }));
+    await fireEvent.press(screen.getByRole("button", { name: "Replace with Barbell Row" }));
+
+    await waitFor(() => {
+      expect(screen.getByRole("button", { name: "Retry replacing exercise" }))
+        .toBeOnTheScreen();
+    });
+    expect(replaceExercise).toHaveBeenCalledTimes(1);
+    expect(screen.getByRole("header", { name: "Bench Press" })).toBeOnTheScreen();
+    await fireEvent.press(screen.getByRole("button", { name: "Retry replacing exercise" }));
+    await waitFor(() => {
+      expect(replaceExercise).toHaveBeenCalledTimes(2);
+      expect(screen.getByRole("header", { name: "Barbell Row" })).toBeOnTheScreen();
+    });
+  });
+
+  it("keeps protected completed history after cancellation and a retried removal", async () => {
+    const before = overviewView();
+    const active = before.currentExercise;
+    const completed = before.exercises[0]!;
+    const protectedExercise = {
+      ...active,
+      id: "protected-exercise",
+      name: "Overhead Press",
+      revision: 23,
+      workingSets: active.workingSets.map((set, index) => ({
+        ...set,
+        id: "protected-working-" + (index + 1),
+        observation: loadReps(60_000, 8, "manual"),
+        status: index === 0 ? "completed" as const : "planned" as const,
+        completedAtMs: index === 0 ? 2_000 : null,
+      })),
+    };
+    const protectedBefore: ActiveWorkoutView = {
+      ...before,
+      revision: 22,
+      activeExerciseId: protectedExercise.id,
+      activeSetId: "protected-working-2",
+      currentExercise: protectedExercise,
+      exercises: [completed, protectedExercise],
+    };
+    const skipped = {
+      ...protectedExercise,
+      revision: 24,
+      status: "skipped" as const,
+      workingSets: protectedExercise.workingSets.map((set) =>
+        set.status === "completed" ? set : { ...set, status: "skipped" as const }),
+    };
+    const protectedAfter: ActiveWorkoutView = {
+      ...protectedBefore,
+      revision: 24,
+      currentExercise: skipped,
+      exercises: [completed, skipped],
+    };
+    const removeExercise = jest.fn<NonNullable<ActiveWorkoutCommands["removeExercise"]>>()
+      .mockRejectedValueOnce(new Error("offline"))
+      .mockResolvedValueOnce(protectedAfter);
+    await renderActive({
+      commands: commands({ removeExercise }),
+      view: protectedBefore,
+    });
+
+    await fireEvent.press(screen.getByRole("button", {
+      name: "Overhead Press exercise actions",
+    }));
+    await fireEvent.press(screen.getByRole("button", { name: "Remove exercise" }));
+    expect(screen.getByText(
+      "This exercise has completed sets. They will be retained and this exercise will be marked Skipped, not deleted.",
+    )).toBeOnTheScreen();
+    await fireEvent.press(screen.getByRole("button", { name: "Keep exercise" }));
+    expect(removeExercise).not.toHaveBeenCalled();
+
+    await fireEvent.press(screen.getByRole("button", {
+      name: "Overhead Press exercise actions",
+    }));
+    await fireEvent.press(screen.getByRole("button", { name: "Remove exercise" }));
+    await fireEvent.press(screen.getByRole("button", { name: "Remove exercise" }));
+    await waitFor(() => {
+      expect(screen.getByRole("button", { name: "Retry removing exercise" }))
+        .toBeOnTheScreen();
+    });
+    expect(removeExercise).toHaveBeenCalledTimes(1);
+    await fireEvent.press(screen.getByRole("button", { name: "Retry removing exercise" }));
+    await waitFor(() => {
+      expect(removeExercise).toHaveBeenCalledTimes(2);
+      expect(screen.getByLabelText(
+        "Overhead Press. Skipped. 1 of 2 working sets. Collapse exercise",
+      )).toBeOnTheScreen();
+      expect(screen.getByText("Completed · 60 kg × 8")).toBeOnTheScreen();
+    });
+  });
+
   it("keeps the workout overview identity outside scrolling content", async () => {
     const reviewedExercise = {
       ...initialView.currentExercise,

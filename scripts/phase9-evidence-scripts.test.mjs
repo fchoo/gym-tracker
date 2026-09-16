@@ -2,7 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 
-test("Phase 9 evidence runner requires a manifest and tracer relaunch assertions", () => {
+test("Phase 9 evidence runner requires a manifest and full edit/relaunch assertions", () => {
   const runner = readFileSync("scripts/run-phase9-maestro.mjs", "utf8");
   const flow = readFileSync("maestro/phase9/in-workout-exercise-editing.yaml", "utf8");
   assert.match(runner, /native build manifest is required/);
@@ -25,6 +25,16 @@ test("Phase 9 evidence runner requires a manifest and tracer relaunch assertions
   );
   assert.match(flow, /- assertVisible: '\^Working sets\$'/u);
   assert.doesNotMatch(flow, /- assertVisible: "Added"/u);
+  assert.match(flow, /arm_replace_exercise_failure/);
+  assert.match(flow, /Replace exercise failure armed/);
+  assert.match(flow, /Retry replacing exercise/);
+  assert.match(flow, /arm_remove_exercise_failure/);
+  assert.match(flow, /Remove exercise failure armed/);
+  assert.match(flow, /Retry removing exercise/);
+  assert.match(flow, /Keep exercise/);
+  assert.match(flow, /This exercise has completed sets. They will be retained and this exercise will be marked Skipped, not deleted./);
+  assert.match(flow, /Skipped/);
+  assert.match(flow, /Complete Set 1/);
   assert.match(flow, /stopApp/);
   assert.match(flow, /clearState: false/);
   assert.match(flow, /clearState: false[\s\S]*- assertVisible: '\^Back Squat · Working set 1 · Rest idle\$'/u);

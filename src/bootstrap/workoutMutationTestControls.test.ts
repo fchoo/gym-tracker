@@ -60,6 +60,18 @@ const cases: [
     "Completed set correction failure armed",
     "The next completed set correction attempt will fail once.",
   ],
+  [
+    "arm_replace_exercise_failure",
+    "replace_exercise",
+    "Replace exercise failure armed",
+    "The next Replace exercise attempt will fail once.",
+  ],
+  [
+    "arm_remove_exercise_failure",
+    "remove_exercise",
+    "Remove exercise failure armed",
+    "The next Remove exercise attempt will fail once.",
+  ],
 ];
 
 describe("development-test workout mutation controls", () => {
@@ -185,6 +197,8 @@ describe("development-test workout mutation controls", () => {
       addWarmup: jest.fn(async () => "add-warmup committed"),
       addWorkingSet: jest.fn(async () => "add-working committed"),
       reviseCompletedSet: jest.fn(async () => "correction committed"),
+      replaceExercise: jest.fn(async () => "replace committed"),
+      removeExercise: jest.fn(async () => "remove committed"),
     };
     const adapters = createWorkoutMutationTestCommandAdapters(commands);
 
@@ -196,6 +210,16 @@ describe("development-test workout mutation controls", () => {
     await expect(adapters.addWarmup()).resolves.toBe("add-warmup committed");
     expect(commands.addWarmup).toHaveBeenCalledTimes(1);
     expect("copyPreviousWarmup" in adapters).toBe(false);
+    applyWorkoutMutationTestControl("arm_replace_exercise_failure");
+    await expect(adapters.replaceExercise()).rejects.toThrow(
+      "Development-test workout mutation failed once.",
+    );
+    await expect(adapters.replaceExercise()).resolves.toBe("replace committed");
+    applyWorkoutMutationTestControl("arm_remove_exercise_failure");
+    await expect(adapters.removeExercise()).rejects.toThrow(
+      "Development-test workout mutation failed once.",
+    );
+    await expect(adapters.removeExercise()).resolves.toBe("remove committed");
   });
 
   it("returns and throws only bounded control data", async () => {
@@ -237,12 +261,16 @@ describe("development-test workout mutation controls", () => {
         copy_warmup: "copyPreviousWarmup",
         add_working: "addWorkingSet",
         completed_set_correction: "reviseCompletedSet",
+        replace_exercise: "replaceExercise",
+        remove_exercise: "removeExercise",
       } as const;
       const source = {
         addWarmup: jest.fn(async () => "add-warmup committed"),
         copyPreviousWarmup: jest.fn(async () => "copy-warmup committed"),
         addWorkingSet: jest.fn(async () => "add-working committed"),
         reviseCompletedSet: jest.fn(async () => "correction committed"),
+        replaceExercise: jest.fn(async () => "replace committed"),
+        removeExercise: jest.fn(async () => "remove committed"),
       };
       const adapters = createWorkoutMutationTestCommandAdapters(source);
       const commandName = commandNames[operation];

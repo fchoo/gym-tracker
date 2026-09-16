@@ -181,6 +181,8 @@ describe("NotificationTestControlsRoute", () => {
       "arm_copy_warmup_failure",
       "arm_add_working_failure",
       "arm_completed_set_correction_failure",
+      "arm_replace_exercise_failure",
+      "arm_remove_exercise_failure",
       "reset_workout_failures",
     ]) {
       expect(rendered.getByTestId(`notification-test-${action}`))

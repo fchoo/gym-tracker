@@ -5,6 +5,8 @@ export const workoutMutationTestActions = [
   "arm_copy_warmup_failure",
   "arm_add_working_failure",
   "arm_completed_set_correction_failure",
+  "arm_replace_exercise_failure",
+  "arm_remove_exercise_failure",
   "reset_workout_failures",
 ] as const;
 
@@ -15,7 +17,9 @@ export type WorkoutMutationTestOperation =
   | "add_warmup"
   | "copy_warmup"
   | "add_working"
-  | "completed_set_correction";
+  | "completed_set_correction"
+  | "replace_exercise"
+  | "remove_exercise";
 
 export type WorkoutMutationTestResult = Readonly<{
   action: WorkoutMutationTestAction;
@@ -48,6 +52,16 @@ const armedControls = Object.freeze({
     heading: "Completed set correction failure armed",
     body: "The next completed set correction attempt will fail once.",
   }),
+  arm_replace_exercise_failure: Object.freeze({
+    operation: "replace_exercise",
+    heading: "Replace exercise failure armed",
+    body: "The next Replace exercise attempt will fail once.",
+  }),
+  arm_remove_exercise_failure: Object.freeze({
+    operation: "remove_exercise",
+    heading: "Remove exercise failure armed",
+    body: "The next Remove exercise attempt will fail once.",
+  }),
 } as const satisfies Readonly<Record<
   Exclude<WorkoutMutationTestAction, "reset_workout_failures">,
   Readonly<{
@@ -66,6 +80,8 @@ type WorkoutMutationCommands = Readonly<{
   copyPreviousWarmup?: AsyncCommand;
   addWorkingSet: AsyncCommand;
   reviseCompletedSet: AsyncCommand;
+  replaceExercise?: AsyncCommand;
+  removeExercise?: AsyncCommand;
 }>;
 
 function result(
@@ -167,5 +183,17 @@ export function createWorkoutMutationTestCommandAdapters<
       "completed_set_correction",
       commands.reviseCompletedSet,
     ),
+    ...(commands.replaceExercise === undefined ? {} : {
+      replaceExercise: wrapCommand(
+        "replace_exercise",
+        commands.replaceExercise,
+      ),
+    }),
+    ...(commands.removeExercise === undefined ? {} : {
+      removeExercise: wrapCommand(
+        "remove_exercise",
+        commands.removeExercise,
+      ),
+    }),
   } as TCommands;
 }

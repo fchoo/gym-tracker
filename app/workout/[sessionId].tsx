@@ -55,6 +55,8 @@ export default function ActiveWorkoutRoute() {
     addWarmup: runtime.addWarmup,
     addWorkingSet: runtime.addWorkingSet,
     reviseCompletedSet: runtime.reviseCompletedSet,
+    replaceExercise: runtime.replaceExercise,
+    removeExercise: runtime.removeExercise,
   });
   useEffect(() => {
     let active = true;
@@ -130,8 +132,8 @@ export default function ActiveWorkoutRoute() {
     <ActiveWorkoutScreen
       commands={{
         addExercise: runtime.addExercise,
-        replaceExercise: runtime.replaceExercise,
-        removeExercise: runtime.removeExercise,
+        replaceExercise: mutationCommands.replaceExercise ?? runtime.replaceExercise,
+        removeExercise: mutationCommands.removeExercise ?? runtime.removeExercise,
         updateActiveSetDraft: runtime.updateActiveSetDraft,
         updateWarmupDraft: runtime.updateWarmupDraft,
         addWarmup: mutationCommands.addWarmup,
