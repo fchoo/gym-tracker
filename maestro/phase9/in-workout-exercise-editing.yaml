@@ -83,6 +83,10 @@ name: Phase 9 add exercise and relaunch persistence
     permissions:
       notifications: deny
 - assertVisible: '^Back Squat · Working set 1 · Rest idle$'
+- tapOn: "Resume workout"
+- extendedWaitUntil:
+    visible: "WORKOUT OVERVIEW"
+    timeout: 30000
 - tapOn: "More workout actions"
 - tapOn: "Reorder exercises"
 - assertVisible: "Back Squat · Position 2 of 2"
