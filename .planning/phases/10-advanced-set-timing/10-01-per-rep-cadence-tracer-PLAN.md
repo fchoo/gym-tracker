@@ -12,7 +12,7 @@ files_modified:
   - src/domains/advancedTiming/advancedTimingCommands.ts
   - src/domains/advancedTiming/advancedTimingCommands.test.ts
   - src/domains/advancedTiming/index.ts
-  - src/platform/sqlite/migrations/0020_advanced_set_timing.ts
+  - src/platform/sqlite/migrations/0021_advanced_set_timing.ts
   - src/platform/sqlite/migrations/index.ts
   - src/platform/sqlite/repositories/advancedTimingRepository.ts
   - src/platform/sqlite/repositories/plansWorkoutRepository.ts
@@ -45,21 +45,21 @@ must_haves:
     - "D-02: the tracer configures a per-repetition interval on one session set, emits one advisory haptic cadence cue per due repetition, and recovers timestamp-derived progress after backgrounding and process death."
     - "D-03: advanced timing is a separate version-1 state machine, command boundary, repository, revision, and session_advanced_timing_states row; no RestStateV1 variant, rest command, rest revision, session_rest_states row, or rest-notification effect is changed."
     - "D-04: timing transitions commit only advanced-timing state before best-effort cues; cue success/failure cannot acknowledge, create, alter, complete, undo, skip, or delete a session set or rest fact."
-    - "Migration 20 carries exercise defaults, nullable set overrides, resolved immutable session snapshots, and the separate durable state across both legacy and owned plan graphs, with backup allowlist/reference/version updates in the same wave."
+    - "Migration 21 carries exercise defaults, nullable set overrides, resolved immutable session snapshots, and the separate durable state across both legacy and owned plan graphs, with backup allowlist/reference/version updates in the same wave."
     - "The tracer is production-quality and user-visible: a per-set cadence can be enabled and started from the active workout, a small non-color indicator shows mode/progress, and force-stop/relaunch resumes from SQLite without replaying missed cues."
   artifacts:
     - {path: src/domains/advancedTiming/advancedTimingState.ts, provides: separate versioned per-rep timer state machine}
-    - {path: src/platform/sqlite/migrations/0020_advanced_set_timing.ts, provides: schema v20 config snapshots and standalone advanced state}
+    - {path: src/platform/sqlite/migrations/0021_advanced_set_timing.ts, provides: schema v21 config snapshots and standalone advanced state}
     - {path: src/platform/sqlite/repositories/advancedTimingRepository.ts, provides: revision-checked private-writer transitions and lifecycle reconciliation}
     - {path: maestro/phase10/advanced-set-timing.yaml, provides: initial per-rep lifecycle tracer}
   key_links:
     - {from: plan exercise/set timing config, to: session_exercises/session_sets, via: plansWorkoutRepository snapshot resolution at workout start}
     - {from: src/bootstrap/workoutAppRuntime.tsx, to: src/platform/sqlite/repositories/advancedTimingRepository.ts, via: a separate runAdvancedTimingCommand/reconcile-after-commit path}
     - {from: committed advanced transition, to: HapticsPort.cue, via: post-commit best-effort effect outside SQLite transaction}
-    - {from: session_advanced_timing_states, to: logical backup restore, via: table allowlist plus session/set reference definitions and schema version 20}
+    - {from: session_advanced_timing_states, to: logical backup restore, via: table allowlist plus session/set reference definitions and schema version 21}
 ---
 
-<objective>Ship the Phase 10 tracer end to end: schema 20, portable exercise/set configuration snapshots, a separate durable per-rep state machine, one haptic cue channel, a compact active-workout indicator, and lifecycle recovery without touching recorded set/rest facts.</objective>
+<objective>Ship the Phase 10 tracer end to end: schema 21, portable exercise/set configuration snapshots, a separate durable per-rep state machine, one haptic cue channel, a compact active-workout indicator, and lifecycle recovery without touching recorded set/rest facts.</objective>
 
 <execution_context>
 @$HOME/.trae/gsd-core/workflows/execute-plan.md
@@ -77,12 +77,13 @@ must_haves:
 **Cross-phase dependency (depends_on: Phase 9).** Phase 9 is planned but not yet
 executed, so its execution outputs do not exist on disk while Phase 10 is being
 planned. Treat them as execution-time givens delivered by the depends_on phase,
-NOT as files to read now: Phase 9 introduces schema **migration v19**
+NOT as files to read now: Phase 9 introduces schema **migrations v19 and v20**
 (`session_exercises`/`session_sets` snapshot columns: `added` origin,
 `modified_from_plan`, immutable `ordinal` vs `display_ordinal`, idempotency
-receipts) — see `09-01-add-exercise-tracer-PLAN.md` for its shape. Phase 10's
-migration is the next version after whatever is highest at execution time (v19
-from Phase 9 → Phase 10 adds **v20**).
+receipts plus the forward-only receipt-ledger rebuild — see the completed Phase 9
+summaries and actual registry at execution. Phase 10's migration is the next version
+after whatever is highest at execution time (expected v20 from Phase 9 → Phase 10
+adds **v21**).
 
 Implementation anchors: `src/domains/rest/restState.ts:1-210` and `restState.test.ts:27-213` are structural templates only; `src/domains/rest/restCommands.ts:8-108` supplies the revisioned-command pattern; `src/platform/sqlite/repositories/restRepository.ts:43-197` supplies row conversion/persistence precedent; `src/platform/sqlite/repositories/plansWorkoutRepository.ts:758-768,859-925` selects the plan graph and creates session snapshots; `src/platform/sqlite/migrations/0018_workout_remove_receipt_entity_ids.ts` + `src/platform/sqlite/migrations/index.ts` are the concrete migration-file + registration pattern (highest present now is `0018`); `src/bootstrap/workoutAppRuntime.tsx:3019-3076` is the reconcile-after-commit seam; and `src/domains/workout/setCommands.ts:214-230` is the commit-before-effects integrity precedent.
 </context>
@@ -100,13 +101,13 @@ Implementation anchors: `src/domains/rest/restState.ts:1-210` and `restState.tes
 </task>
 
 <task type="auto" tdd="true">
-  <name>Task 2: Add migration 20, snapshot resolution, and portable backup support</name>
-  <files>src/platform/sqlite/migrations/0020_advanced_set_timing.ts, src/platform/sqlite/migrations/index.ts, src/platform/sqlite/repositories/plansWorkoutRepository.ts, src/platform/sqlite/repositories/logicalBackupRepository.ts, src/domains/portability/backupContracts.ts, src/domains/portability/restoreCommands.ts, src/testing/contracts/migrationsEffects.contract.ts, tests/sqlite-host/migrations-effects.test.ts, tests/sqlite-host/logicalBackupRepository.test.ts, tests/sqlite-host/logicalRestoreRepository.test.ts, scripts/run-coverage-gate.mjs</files>
+  <name>Task 2: Add migration 21, snapshot resolution, and portable backup support</name>
+  <files>src/platform/sqlite/migrations/0021_advanced_set_timing.ts, src/platform/sqlite/migrations/index.ts, src/platform/sqlite/repositories/plansWorkoutRepository.ts, src/platform/sqlite/repositories/logicalBackupRepository.ts, src/domains/portability/backupContracts.ts, src/domains/portability/restoreCommands.ts, src/testing/contracts/migrationsEffects.contract.ts, tests/sqlite-host/migrations-effects.test.ts, tests/sqlite-host/logicalBackupRepository.test.ts, tests/sqlite-host/logicalRestoreRepository.test.ts, scripts/run-coverage-gate.mjs</files>
   <read_first>src/platform/sqlite/migrations/0018_workout_remove_receipt_entity_ids.ts, src/platform/sqlite/migrations/index.ts, src/platform/sqlite/repositories/plansWorkoutRepository.ts, src/domains/portability/backupContracts.ts, src/domains/portability/restoreCommands.ts, src/platform/sqlite/repositories/logicalBackupRepository.ts, src/testing/contracts/migrationsEffects.contract.ts, tests/sqlite-host/migrations-effects.test.ts</read_first>
-  <action>Add and register the next migration after the highest present at execution time. Phase 9 (depends_on) introduces v19; Phase 10 adds `0020_advanced_set_timing.ts` (model the file + registration on the existing `0018_*` migration and `migrations/index.ts`; do NOT read Phase 9's v19 file — it is a depends_on given, not present at plan time). Store canonical validated JSON: a non-null version-1 exercise default (default `off`) on both `plan_day_exercises` and `owned_plan_day_exercises`; nullable set overrides on both legacy/owned warm-up and working-target tables; the copied exercise default on `session_exercises`; and nullable override plus non-null resolved config on `session_sets`. Add `json_valid`, version/mode, and bounded-value checks rather than accepting arbitrary JSON. Add standalone `session_advanced_timing_states` keyed by session with FK to `workout_sessions` and nullable target FK to `session_sets`, literal state version 1, independent revision, status/mode, canonical config/progress payload, and absolute timing columns/checks. At workout start resolve `set override ?? exercise default` and copy both provenance and resolved value into the session snapshot; an existing session never rereads later plan edits. In this same task update `LOGICAL_BACKUP_SUPPORTED_SCHEMA_VERSIONS` (currently `[15, 16, 17, 18]` in `restoreCommands.ts` at plan time) so it includes every version through the one this migration adds — append 19 if Phase 9 has not already, and append 20 — so restore stays compatible across the v1.1 chain; add the new table to `LOGICAL_BACKUP_TABLE_DEFINITIONS` and the logical-backup user-owned filter, and add both `session_id -> workout_sessions` and `session_set_id -> session_sets` references to `LOGICAL_BACKUP_REFERENCE_DEFINITIONS`. Add host tests for upgrade from the prior version, defaults, both plan graphs, precedence, immutable session copy, constraints/FKs/indexes, injected migration rollback, and exact backup/restore round trip at the new supported versions. Extend the real Expo `migrations-effects` contract with the same persistence cases. Register migration 20 and changed portability modules in the 100% gate.</action>
+  <action>Before mutation inspect the completed Phase 9 summaries and live registry; add and register only the next migration after the actual maximum (expected `0021_advanced_set_timing.ts` after Phase 9 v19/v20). Do not renumber or alter either Phase 9 migration. Store canonical validated JSON: a non-null version-1 exercise default (default `off`) on both `plan_day_exercises` and `owned_plan_day_exercises`; nullable set overrides on both legacy/owned warm-up and working-target tables; the copied exercise default on `session_exercises`; and nullable override plus non-null resolved config on `session_sets`. Add `json_valid`, version/mode, and bounded-value checks rather than accepting arbitrary JSON. Add standalone `session_advanced_timing_states` keyed by session with FK to `workout_sessions` and nullable target FK to `session_sets`, literal state version 1, independent revision, status/mode, canonical config/progress payload, and absolute timing columns/checks. At workout start resolve `set override ?? exercise default` and copy both provenance and resolved value into the session snapshot; an existing session never rereads later plan edits. In this same task extend `LOGICAL_BACKUP_SUPPORTED_SCHEMA_VERSIONS` through 21, retaining both Phase 9 receipt migrations; add the new table to `LOGICAL_BACKUP_TABLE_DEFINITIONS` and the logical-backup user-owned filter, and add both `session_id -> workout_sessions` and `session_set_id -> session_sets` references to `LOGICAL_BACKUP_REFERENCE_DEFINITIONS`. Add host tests for upgrade from the actual prior version, defaults, both plan graphs, precedence, immutable session copy, constraints/FKs/indexes, injected migration rollback, and exact backup/restore round trip at supported schemas through 21. Extend the real Expo `migrations-effects` contract with the same persistence cases. Register migration 21 and changed portability modules in the 100% gate.</action>
   <verify><automated>npm run test:sqlite:host -- --runInBand tests/sqlite-host/migrations-effects.test.ts tests/sqlite-host/logicalBackupRepository.test.ts tests/sqlite-host/logicalRestoreRepository.test.ts &amp;&amp; npm run typecheck &amp;&amp; npm run test:coverage -- --runInBand</automated><native>npm run android:devtest:fresh -- --suite migrations-effects &amp;&amp; npm run test:sqlite:device -- --suite migrations-effects --manifest artifacts/native/migrations-effects/build.json</native></verify>
-  <acceptance_criteria>D-02 persists exercise defaults and set overrides into resolved session snapshots in both plan graphs; D-03 has a physically separate state table/revision; schema 20, its new table/FKs, backup reference graph, table filter, and supported-version entry ship together; host and real Expo SQLite prove the contract.</acceptance_criteria>
-  <done>Schema 20 safely carries advanced timing through plan, session, process death, and logical backup without a portability gap.</done>
+  <acceptance_criteria>D-02 persists exercise defaults and set overrides into resolved session snapshots in both plan graphs; D-03 has a physically separate state table/revision; schema 21, its new table/FKs, backup reference graph, table filter, and supported-version entry ship together while retaining Phase 9 v19/v20 facts; host and real Expo SQLite prove the contract.</acceptance_criteria>
+  <done>Schema 21 safely carries advanced timing through plan, session, process death, and logical backup without a portability gap.</done>
 </task>
 
 <task type="auto" tdd="true">
@@ -145,6 +146,6 @@ Implementation anchors: `src/domains/rest/restState.ts:1-210` and `restState.tes
 </task>
 </tasks>
 
-<verification>Run the domain/command 100% gate, v20 host and real Expo SQLite contracts, logical backup/restore round trip, integration byte-equality assertions, and the focused per-rep background/force-stop/relaunch Maestro tracer before beginning Plan 10-02.</verification>
+<verification>Run the domain/command 100% gate, v21 host and real Expo SQLite contracts, logical backup/restore round trip retaining Phase 9 v19/v20 receipt facts, integration byte-equality assertions, and the focused per-rep background/force-stop/relaunch Maestro tracer before beginning Plan 10-02.</verification>
 <success_criteria>Roadmap criteria 2-4 are proven for the per-rep tracer, and criterion 1 is proven for per-rep cadence: one haptic cue per foreground due repetition, durable per-set config, process-death recovery, advisory-only effects, and zero rest-machine changes.</success_criteria>
 <output>Create `.planning/phases/10-advanced-set-timing/10-01-SUMMARY.md` when done.</output>

@@ -128,7 +128,7 @@ Minimum schema proposal:
 
 The migration must be additive and verify its exact columns/checks/indexes/triggers, following migration 17. Register it in `migrations/index.ts`; the runner validates ordered manifest, applies each migration through the private writer, and runs foreign-key/integrity checks. [VERIFIED: src/platform/sqlite/migrationRunner.ts:69-82] [VERIFIED: src/platform/sqlite/migrationRunner.ts:201-230] [VERIFIED: src/platform/sqlite/migrations/0017_workout_remove_receipts.ts:76-131]
 
-Because logical backups select real source-table columns and validate exact columns, new columns automatically appear in table snapshots but are not portable until restore accepts schema 19. Update `LOGICAL_BACKUP_SUPPORTED_SCHEMA_VERSIONS` from `[15, 16, 17, 18]`, any version fixtures, and restore schema tests. [VERIFIED: src/domains/portability/restoreCommands.ts:146-162] [VERIFIED: src/domains/portability/restoreCommands.ts:191-220]
+Because logical backups select real source-table columns and validate exact columns, new columns automatically appear in table snapshots but are not portable until restore accepts the resulting schema. Migration 19 already extended the live supported list through 19; the corrective receipt migration must extend it through 20, update version fixtures, and retain restore schema tests. [VERIFIED: src/domains/portability/restoreCommands.ts:146-162] [VERIFIED: src/domains/portability/restoreCommands.ts:191-220]
 
 Update `LOGICAL_BACKUP_REFERENCE_DEFINITIONS` for any new receipt/write-back table and its foreign keys. Existing definitions already cover sessions, session exercises, plan lineage, sets, rest, undo snapshots, and schedule opportunity/session link. [VERIFIED: src/domains/portability/restoreCommands.ts:157-162] Add any new user-owned table to `LOGICAL_BACKUP_TABLE_DEFINITIONS`; otherwise exact-key backup validation will reject or omit it. [VERIFIED: src/domains/portability/backupContracts.ts:22-79]
 
@@ -186,5 +186,195 @@ Create `maestro/phase9/in-workout-exercise-editing.yaml` plus any setup subflow.
 2. Session-exercise domain/repository commands + active-view read model, integrity receipts, deterministic active/rest/progression flag behavior, full coverage.
 3. Runtime/overview picker and add/replace/remove/reorder UI with accessibility, drag fallback, component tests, and Maestro persistence proof.
 4. Finish prompt and all-or-nothing owned-plan aggregate write-back, schedule/progression integration, full regression/coverage/Maestro.
+
+## 2026-09-16 Replan Correction — forward-only replace/remove receipts
+
+### Corrected premise and binding recommendation
+
+The prior migration recommendation is now stale. Migration 19 has already shipped
+`workout_session_exercise_edit_receipts`, but its exact operation constraint is
+`operation IN ('add_exercise')` and its `session_exercise_id` foreign key is
+`REFERENCES session_exercises(id) ON DELETE RESTRICT`. [VERIFIED:
+src/platform/sqlite/migrations/0019_session_exercise_editing.ts:12-22]
+
+The shipped add path inserts that receipt in the same writer transaction after it
+creates the added exercise and its initial set. [VERIFIED:
+src/platform/sqlite/repositories/workoutRepository.ts:1470-1528] Therefore, a
+later D-06 hard-delete of that provisional added exercise would be rejected by the
+existing add receipt even if the new remove command used a separate receipt table.
+Do not edit migration 19. Ship a **forward-only migration 20** that rebuilds the
+receipt table under the same public name, copies every v19 add receipt unchanged,
+and replaces the entity FK with scalar immutable evidence. This is the only safe
+way to keep both v19 replay and the permitted provisional-delete branch.
+
+**Primary recommendation:** Migration 20 must rebuild
+`workout_session_exercise_edit_receipts` as a portable, immutable command ledger
+whose exercise IDs are evidence values, not foreign keys; extend the operation
+set to `add_exercise`, `replace_exercise`, and `remove_exercise`. Retain a
+`workout_sessions(id) ON DELETE RESTRICT` FK if desired, but create **no foreign
+key at all** from a receipt to `session_exercises` or `session_sets`.
+
+### Required v20 receipt schema
+
+Use a destructive/rebuild migration patterned after v18: first drop v19's two
+immutability triggers, rename the legacy table, create the new strict table, copy
+the legacy columns verbatim, drop the legacy table, then recreate the immutable
+triggers. Migration 18 already establishes this repository's forward-only
+table-rebuild, copy, and trigger-recreation pattern. [VERIFIED:
+src/platform/sqlite/migrations/0018_workout_remove_receipt_entity_ids.ts:72-105]
+
+The v20 table should have these exact logical fields (names are recommendations,
+not yet source facts):
+
+| Column | Constraint / purpose |
+|---|---|
+| `request_id` | `TEXT PRIMARY KEY`, bounded nonblank request identity; replay lookup. |
+| `request_sha256` | Lowercase 64-hex digest of the full canonical request; mismatch means conflict. |
+| `operation` | `CHECK(operation IN ('add_exercise','replace_exercise','remove_exercise'))`. |
+| `session_id` | Bounded session identity; may retain `REFERENCES workout_sessions(id) ON DELETE RESTRICT`. |
+| `subject_session_exercise_id` | Non-null bounded scalar ID for the added/replaced/removed original; **no FK**. |
+| `replacement_session_exercise_id` | Nullable bounded scalar ID; non-null only for `replace_exercise`; **no FK**. |
+| `expected_session_revision` | Nonnegative optimistic-concurrency input. |
+| `result_session_revision` | `CHECK(result_session_revision = expected_session_revision + 1)`. |
+| `result_json` | Valid, canonical result facts sufficient to replay without querying a deleted row. |
+| `committed_at_ms` | Nonnegative immutable commit timestamp. |
+
+Add a partial/check constraint that `replacement_session_exercise_id IS NULL` for
+add/remove and `IS NOT NULL` for replace. Add an index on
+`(session_id, committed_at_ms, request_id)` for session receipt inspection; the
+primary key already supplies idempotency lookup. Recreate reject-all update and
+delete triggers on the rebuilt table. The old receipt design already proves the
+repository convention: immutable receipt triggers and a `json_valid(result_json)`
+constraint. [VERIFIED: src/platform/sqlite/migrations/0017_workout_remove_receipts.ts:6-45]
+
+`result_json` must be canonical JSON and include, at minimum, the verbatim result
+facts `outcome`, `sessionId`, `subjectSessionExerciseId`,
+`replacementSessionExerciseId`, and `sessionRevision`; add results also retain
+`initialSetId`. The repository must compare every persisted input fact
+(`request_sha256`, operation, session ID, subject ID, replacement ID where
+applicable, expected revision, and commit time) before returning this result; a
+same request ID with any differing fact returns a conflict. This mirrors the
+existing add replay gate, which compares hash, operation, session/exercise ID,
+expected revision, and committed time before returning the stored result.
+[VERIFIED: src/platform/sqlite/repositories/workoutRepository.ts:889-899]
+[VERIFIED: src/platform/sqlite/repositories/workoutRepository.ts:1399-1417]
+
+Do not make `result_json` the only copy of the subject/replacement identities.
+The scalar columns make exact matching/indexing auditable; JSON preserves the
+complete stable return value. Enforce JSON-to-column agreement in the command
+before insert and validate it on replay; SQL `json_extract` checks are an
+optional defense-in-depth addition. [ASSUMED]
+
+### D-03/D-05/D-06 behavior required by the receipt design
+
+- **D-03:** completed and undo-referenced rows are never deleted. A replace/remove
+  with any completed set marks the existing exercise skipped; its source rows and
+  undo facts remain byte-identical except for the allowed status/revision mutation.
+  The existing completed-set undo code reads a persisted snapshot and updates the
+  completed set/exercise states, confirming that dangling/deleted referenced rows
+  are not acceptable in this branch. [VERIFIED:
+  src/platform/sqlite/repositories/workoutRepository.ts:2397-2473]
+- **D-05:** with no completed sets, replace deletes the original provisional
+  exercise plus permitted provisional children only after the new replacement and
+  receipt outcome are staged in the same writer transaction. Its receipt refers
+  to the deleted original only through `subject_session_exercise_id`.
+  [ASSUMED]
+- **D-06:** with no completed sets, remove clears active/rest pointers first if
+  necessary, deletes provisional child sets, deletes the exercise, updates the
+  session revision, and inserts the receipt atomically. `workout_sessions` already
+  uses `ON DELETE SET NULL` for `active_session_exercise_id` and
+  `active_set_id`; the command must nevertheless produce its intended active/rest
+  state rather than depending on incidental FK action. [VERIFIED:
+  src/platform/sqlite/migrations/0001_initial.ts:160-162]
+
+### Required portability wave
+
+The receipt table is already a logical-backup source table with primary key
+`request_id`, and the collector currently treats it as categorically user-owned.
+[VERIFIED: src/domains/portability/backupContracts.ts:67-75]
+[VERIFIED: src/platform/sqlite/repositories/logicalBackupRepository.ts:67-75]
+[VERIFIED: src/platform/sqlite/repositories/logicalBackupRepository.ts:110-117]
+
+In the same v20 implementation wave, update all of the following:
+
+1. `backupContracts.ts`: retain the same table entry/primary key, and extend
+   snapshot fixtures so rows carry every rebuilt-table column exactly.
+2. `logicalBackupRepository.ts`: keep the `"1"` ownership filter; it is correct
+   because immutable command receipts are user-owned source facts.
+3. `restoreCommands.ts`: replace the obsolete receipt-to-exercise edge with only
+   `workout_session_exercise_edit_receipts.session_id -> workout_sessions.id`.
+   The current graph contains both edges, including the stale
+   `session_exercise_id -> session_exercises.id` relation that must disappear.
+   [VERIFIED: src/domains/portability/restoreCommands.ts:161-162]
+4. Extend `LOGICAL_BACKUP_SUPPORTED_SCHEMA_VERSIONS` through 20. It currently
+   explicitly accepts `[15, 16, 17, 18, 19]`, and restore rejects other producer
+   versions before writing. [VERIFIED: src/domains/portability/restoreCommands.ts:146-147]
+   [VERIFIED: src/domains/portability/restoreCommands.ts:186-220]
+5. Update host logical-backup/logical-restore fixtures and the shared
+   `migrations-effects` contract, then run the same named migration case on real
+   Expo SQLite; the existing v19 contract currently checks only v19 columns and
+   trigger existence. [VERIFIED:
+   src/testing/contracts/migrationsEffects.contract.ts:394-431]
+
+This is not optional cleanup: logical restore checks exact table keys, exact row
+columns against the destination schema, and every declared reference before it
+writes. [VERIFIED: src/domains/portability/restoreCommands.ts:191-220]
+
+### Downstream version re-grounding
+
+Phase 9's new v20 makes downstream fixed-version prose stale. Apply these edits
+when those plans are replanned; alternatively replace the fixed numbers with an
+execution-time "next migration after the registry maximum" rule wherever no
+specific on-disk file contract is needed:
+
+| Downstream file | Stale anchor | Required correction |
+|---|---|---|
+| `10-01-per-rep-cadence-tracer-PLAN.md` | Replanned Phase 10 anchor: `0021_advanced_set_timing.ts` / schema v21 after Phase 9 v19/v20. | Retain a live-registry check and support schemas through v21, including both Phase 9 receipt migrations. |
+| `10-04-integrity-lifecycle-verification-PLAN.md` | It repeatedly requires schema/v20 host and Expo proof. [VERIFIED: .planning/phases/10-advanced-set-timing/10-04-integrity-lifecycle-verification-PLAN.md:45-48] | Shift those assertions/artifact labels to v21. |
+| `11-01-stable-identity-merge-tracer-PLAN.md` | It fixes Phase 11 at `0021`, schema 21, and a v19/v20/v21 graph. [VERIFIED: .planning/phases/11-portable-history-merge-restore/11-01-stable-identity-merge-tracer-PLAN.md:80-110] | Shift to `0022_portable_owner_identities.ts`, schema v22, supported schemas through v22, and v19/v20/v21/v22 graph—or make it execution-time next-on-disk. |
+| `11-04-portability-verification-PLAN.md` | It specifies v19/v20 facts and critical v21 migration proof. [VERIFIED: .planning/phases/11-portable-history-merge-restore/11-04-portability-verification-PLAN.md:78-80] | Include Phase 9 v20 receipts, Phase 10 v21 facts, and Phase 11 v22 migration proof. |
+| `12-01-encrypted-drive-tracer-PLAN.md` | Replanned Phase 12 anchor: `0023_google_drive_sync.ts` / expected schema v23 after Phase 11 v22. | Inspect the live registry after Phase 11 and preserve the execution-time next-on-disk guard. |
+| `12-02-change-log-scheduler-reconcile-PLAN.md` and `12-04-sync-security-verification-PLAN.md` | They refer to v22 bookkeeping / a schema-21-to-22 upgrade. [VERIFIED: .planning/phases/12-automatic-google-drive-sync/12-02-change-log-scheduler-reconcile-PLAN.md:54-57] [VERIFIED: .planning/phases/12-automatic-google-drive-sync/12-04-sync-security-verification-PLAN.md:89-93] | Shift to v23 bookkeeping and populated schema-v22 -> v23 proof, or use execution-time next-on-disk constraints. |
+
+### Minimum replan proof matrix
+
+1. **Migration:** migrate a populated v19 database containing an add receipt;
+   assert the copy is byte-for-byte equal in all legacy fields, no receipt FK
+   targets `session_exercises`, the session FK/triggers/check/index exist, and
+   injected failure at each rename/create/copy/drop/trigger step rolls back to
+   the exact pre-v20 schema/data.
+2. **Remove provisional added exercise:** add, then remove the same zero-completed
+   exercise; assert its set/exercise are absent, its v19 add receipt and v20 remove
+   receipt remain, replay of each original request returns its stored result, and
+   a changed SHA-256/input returns a conflict rather than reapplying.
+3. **Replace provisional original:** replace a zero-completed original; assert the
+   old row/children disappear, result evidence names both identities, replay is
+   stable after process restart, and no receipt FK blocks delete.
+4. **Completed/undo branch:** complete a set, capture canonical serialized rows
+   for `session_exercises`, `session_sets`, and `session_undo_snapshots`, then
+   replace/remove; assert original is skipped, no completed/undo row is deleted,
+   and all non-allowed facts are byte-identical. Exercise undo after the command
+   to prove the snapshot still restores valid rows.
+5. **Transaction faults:** inject errors before the receipt insert, after the
+   receipt insert but before commit, and at every delete/update pointer step;
+   assert rollback leaves source rows, pointers, revision, and receipts exactly
+   as before. The private writer's commit/rollback contract is the governing
+   transaction boundary. [VERIFIED: src/platform/sqlite/serializedWriter.ts:27-84]
+6. **Portability:** host and real Expo contracts must round-trip an archive where
+   a receipt references a deleted subject ID, validate the one remaining receipt
+   graph edge, and reject a malformed/unsupported producer schema without any
+   write. [VERIFIED: src/domains/portability/restoreCommands.ts:186-220]
+
+### Replan-specific pitfalls
+
+- Do not create a companion replace/remove table while leaving v19's add receipt
+  FK in place; it fails D-06 for any added exercise.
+- Do not cascade-delete receipts: that destroys replay evidence and violates the
+  existing immutable-ledger convention.
+- Do not omit receipts from backup as "operational" data: this repository has
+  explicitly included this table as a logical source fact.
+- Do not claim a row is immutable merely because the schema has triggers: D-05/D-06
+  deliberately permit physical deletion only for provisional no-completion rows;
+  tests must prove the completed/undo boundary separately.
 
 ## RESEARCH COMPLETE

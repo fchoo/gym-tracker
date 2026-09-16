@@ -51,7 +51,7 @@ Persist at both scopes: an exercise default and a set override. Resolve effectiv
 
 There are two plan graphs: legacy plan_day_exercises / plan_warmup_sets / plan_working_set_targets and owned owned_plan_day_exercises / owned_plan_warmup_sets / owned_plan_working_set_targets. Workout start deliberately selects one graph. [VERIFIED: src/platform/sqlite/repositories/plansWorkoutRepository.ts:758-768] It creates session_exercises and session_sets from that graph. [VERIFIED: src/platform/sqlite/repositories/plansWorkoutRepository.ts:859-925]
 
-Migration 20 should add timing config to both exercise-level occurrence tables and both warm-up/working-target tables, then snapshot resolved defaults/config into session_exercises/session_sets. JSON is acceptable only with json_valid plus domain validation; normalised columns are also viable. Phase-9 add/replace/write-back must create/copy those fields under its snapshot rules. [ASSUMED]
+Migration 21 should add timing config to both exercise-level occurrence tables and both warm-up/working-target tables, then snapshot resolved defaults/config into session_exercises/session_sets. JSON is acceptable only with json_valid plus domain validation; normalised columns are also viable. Phase-9 add/replace/write-back must create/copy those fields under its snapshot rules. [ASSUMED]
 
 **Cluster is one recorded set:** session_sets has one row per session_exercise_id, set_kind, ordinal. [VERIFIED: src/platform/sqlite/migrations/0001_initial.ts:183-217] Complete-set validates then calls repository.completeSet; only a committed outcome causes invalidation, haptics, and effects. [VERIFIED: src/domains/workout/setCommands.ts:214-230] Cluster boundaries must advance only advanced timing and advisory cues. They must not insert session_sets, call addWorkingSet, or complete a set; the owner completes the existing single set normally. [ASSUMED]
 
@@ -83,18 +83,18 @@ Persist timer transition first; invoke audio/haptics outside the transaction and
 
 ## Migration and backup graph
 
-**Conclusion: migration 20 is required** after Phase 9 migration 19: it persists plan/session config and the new durable timing state. [VERIFIED: .planning/phases/09-in-workout-exercise-editing/09-RESEARCH.md:117-131] [ASSUMED]
+**Correction: migration 21 is required** after Phase 9 migrations 19 and 20: v20 forward-rebuilds the receipt ledger so provisional edits remain deletable while replay evidence stays portable; v21 persists plan/session config and the new durable timing state. Executors must inspect the live registry and Phase 9 summaries before assigning the next number. [VERIFIED: .planning/phases/09-in-workout-exercise-editing/09-RESEARCH.md:190-366] [ASSUMED]
 
 Register 20 in the migration manifest, with verified columns/checks/foreign keys/indexes. [VERIFIED: src/platform/sqlite/migrations/index.ts:15-37] [ASSUMED]
 
 Update portability in the same phase:
 
-- append 20 to LOGICAL_BACKUP_SUPPORTED_SCHEMA_VERSIONS, currently exactly [15, 16, 17, 18]; [VERIFIED: src/domains/portability/restoreCommands.ts:146-146]
+- extend the live supported-version list through 21, retaining both Phase 9 receipt migrations; [VERIFIED: src/domains/portability/restoreCommands.ts:146-146]
 - add session_advanced_timing_states with session_id primary key to LOGICAL_BACKUP_TABLE_DEFINITIONS; [VERIFIED: src/domains/portability/backupContracts.ts:27-75]
 - add session_id -> workout_sessions and session_set_id -> session_sets to LOGICAL_BACKUP_REFERENCE_DEFINITIONS, following rest; [VERIFIED: src/domains/portability/restoreCommands.ts:161-162]
 - add the user-owned table filter; current logical backup includes session_rest_states: “1”. [VERIFIED: src/platform/sqlite/repositories/logicalBackupRepository.ts:110-118]
 
-New config columns in existing plan/session tables are collected with their rows, but version-20 restore fixtures and schema validation must still change. [ASSUMED]
+New config columns in existing plan/session tables are collected with their rows, but version-21 restore fixtures and schema validation must still change. [ASSUMED]
 
 ## Reusable assets and integration points
 
@@ -133,11 +133,11 @@ UI should be a compact advanced indicator adjacent to the active set/overview, f
 
 ### SQLite and portability
 
-Extend migrationsEffects host/device contracts with migration-20 checks, both plan graphs, session snapshot copies, state recovery, backup round-trip, and failure rollback. Phase 9 establishes host plus real Expo migrations-effects as persistence proof. [VERIFIED: .planning/phases/09-in-workout-exercise-editing/09-06-phase-verification-PLAN.md:61-71]
+Extend migrationsEffects host/device contracts with migration-21 checks retaining Phase 9 v19/v20 receipt facts, both plan graphs, session snapshot copies, state recovery, backup round-trip, and failure rollback. Phase 9 establishes host plus real Expo migrations-effects as persistence proof. [VERIFIED: .planning/phases/09-in-workout-exercise-editing/09-06-phase-verification-PLAN.md:61-71]
 
 ### Coverage
 
-Register new advanced state/commands, migration 20, advanced repository, and changed portability modules in scripts/run-coverage-gate.mjs. It runs all Jest projects and demands exactly 100% statements/branches/functions/lines for registered integrity-critical files. [VERIFIED: scripts/run-coverage-gate.mjs:16-101] [VERIFIED: scripts/run-coverage-gate.mjs:122-180]
+Register new advanced state/commands, migration 21, advanced repository, and changed portability modules in scripts/run-coverage-gate.mjs. It runs all Jest projects and demands exactly 100% statements/branches/functions/lines for registered integrity-critical files. [VERIFIED: scripts/run-coverage-gate.mjs:16-101] [VERIFIED: scripts/run-coverage-gate.mjs:122-180]
 
 ### Maestro
 
@@ -148,13 +148,13 @@ Native proof should configure exercise default plus set override; demonstrate pe
 ## Planner-ready sequence
 
 1. Define and fully test separate advanced config/state machine and cue-port extension.
-2. Implement migration 20, both-plan-graph/session snapshot propagation, standalone repository/commands, and backup version/reference updates with host and Expo contracts.
+2. Implement migration 21, both-plan-graph/session snapshot propagation, standalone repository/commands, and backup version/reference updates with host and Expo contracts.
 3. Add runtime lifecycle reconciliation and compact indicator; wire best-effort effects strictly after durable timing transitions.
 4. Add coverage registration plus fail-closed Phase 10 Maestro/evidence proof for process death and denied effects.
 
 ## Confidence
 
-- **High:** rest-machine template, cue interfaces/failure precedent, runtime seam, backup obligations, coverage and Maestro conventions, and v20 numbering.
+- **High:** rest-machine template, cue interfaces/failure precedent, runtime seam, backup obligations, coverage and Maestro conventions, and v21 numbering after the Phase 9 v20 receipt rebuild.
 - **Medium:** exact config JSON/column/table field names and advanced progression states; these do not yet exist and remain planner discretion.
 - **High:** D-03/D-04 require independent state/revisions/table and best-effort effects to protect rest/session facts.
 

@@ -58,7 +58,7 @@ must_haves:
 @.planning/phases/11-portable-history-merge-restore/11-RESEARCH.md
 @.planning/phases/11-portable-history-merge-restore/11-01-SUMMARY.md
 
-Read the execution-time `11-01-SUMMARY.md` and actual schema-21 table/reference registry first. The locked aggregate map is in `11-RESEARCH.md` under “D-01 conflict engine”: workout session with session children; correction/void overlays/audits with the session aggregate; each setting key; each custom exercise with library/alias/search/taxonomy/preference/baseline children; and each plan with both legacy/owned plan/schedule/policy/source graphs. `logicalRestoreRepository.ts:100-141,292-395` remains the ordering/transaction precedent and `restoreReconciliationRepository.ts:125-331` remains the parity gate.
+Read the execution-time `11-01-SUMMARY.md` and actual schema-22 table/reference registry first. The locked aggregate map is in `11-RESEARCH.md` under “D-01 conflict engine”: workout session with session children; correction/void overlays/audits with the session aggregate; each setting key; each custom exercise with library/alias/search/taxonomy/preference/baseline children; and each plan with both legacy/owned plan/schedule/policy/source graphs. `logicalRestoreRepository.ts:100-141,292-395` remains the ordering/transaction precedent and `restoreReconciliationRepository.ts:125-331` remains the parity gate.
 </context>
 
 <tasks>

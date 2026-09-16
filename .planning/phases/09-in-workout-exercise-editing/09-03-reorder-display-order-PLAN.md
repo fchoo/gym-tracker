@@ -2,8 +2,8 @@
 phase: 09-in-workout-exercise-editing
 plan: 03
 type: execute
-wave: 2
-depends_on: [09-01]
+wave: 3
+depends_on: [09-01, 09-02]
 files_modified:
   - src/domains/workout/activeWorkout.ts
   - src/domains/workout/sessionExerciseCommands.ts
@@ -47,14 +47,16 @@ must_haves:
 @.planning/phases/09-in-workout-exercise-editing/09-01-SUMMARY.md
 
 Implementation references: `src/ui/screens/OwnedPlanEditorScreen.tsx:897-953,1246-1292` for drag plus Move up/down; `src/platform/sqlite/repositories/workoutRepository.ts:613-703` for active-workout ordering; and `maestro/phase7/plan-schedule-reorder.yaml:52-62,64-139` for stable drag/order/relaunch evidence.
+
+**Receipt dependency correction.** Plan 09-02 now owns migration 20, which forward-rebuilds the exercise-edit receipt ledger to preserve v19 add receipts and support add/replace/remove scalar receipt evidence without an entity FK blocking provisional deletion. Before implementing reorder, read the completed 09-02 summary and actual migration registry; use that post-v20 receipt contract rather than assuming migration 19's add-only receipt shape.
 </context>
 
 <tasks>
 <task type="auto" tdd="true">
   <name>Task 1: Persist revision-checked display-only reorder</name>
   <files>src/domains/workout/activeWorkout.ts, src/domains/workout/sessionExerciseCommands.ts, src/domains/workout/sessionExerciseCommands.test.ts, src/platform/sqlite/repositories/workoutRepository.ts, src/testing/contracts/migrationsEffects.contract.ts, tests/integration/session-exercise-editing.test.ts</files>
-  <read_first>src/domains/workout/sessionExerciseCommands.ts, src/platform/sqlite/repositories/workoutRepository.ts, src/platform/sqlite/migrations/0019_session_exercise_editing.ts, src/ui/screens/OwnedPlanEditorScreen.tsx</read_first>
-  <action>Add `reorderExercises` accepting the exact ordered session-exercise ID list plus expected session and affected exercise revisions. Validate uniqueness, exact membership, and legal in-progress state. In one writer transaction, replay receipts idempotently, reject stale/hash/list conflicts, update only `display_ordinal` to contiguous values, set modified-from-plan, increment the session revision once, retain active pointers unless invalid, and persist receipt/effects. Change active-workout and next-eligible queries to order by `display_ordinal` with stable ID fallback, while history/audit continues exposing immutable `ordinal`. Test no-op order, invalid/missing/duplicate IDs, stale revision, replay, rollback, concurrent requests, active/rest behavior, and before/after equality for ordinal, copied snapshot fields, source lineage and all completed set rows in host and real Expo SQLite.</action>
+  <read_first>src/domains/workout/sessionExerciseCommands.ts, src/platform/sqlite/repositories/workoutRepository.ts, src/platform/sqlite/migrations/0019_session_exercise_editing.ts, src/platform/sqlite/migrations/0020_session_exercise_edit_receipts.ts, .planning/phases/09-in-workout-exercise-editing/09-02-SUMMARY.md, src/ui/screens/OwnedPlanEditorScreen.tsx</read_first>
+  <action>After confirming the actual post-0020 registry and receipt schema, add `reorderExercises` accepting the exact ordered session-exercise ID list plus expected session and affected exercise revisions. Validate uniqueness, exact membership, and legal in-progress state. In one writer transaction, replay receipts through the v20 scalar ledger, reject stale/hash/list conflicts, update only `display_ordinal` to contiguous values, set modified-from-plan, increment the session revision once, retain active pointers unless invalid, and persist receipt/effects. Change active-workout and next-eligible queries to order by `display_ordinal` with stable ID fallback, while history/audit continues exposing immutable `ordinal`. Test no-op order, invalid/missing/duplicate IDs, stale revision, replay, rollback, concurrent requests, active/rest behavior, legacy add-receipt preservation, and before/after equality for ordinal, copied snapshot fields, source lineage and all completed set rows in host and real Expo SQLite.</action>
   <verify><automated>npm run test:unit -- --runInBand src/domains/workout/sessionExerciseCommands.test.ts &amp;&amp; npm run test:integration -- --runInBand tests/integration/session-exercise-editing.test.ts &amp;&amp; npm run test:coverage -- --runInBand</automated><native>npm run test:sqlite:device -- --suite migrations-effects --manifest artifacts/native/migrations-effects/build.json</native></verify>
   <acceptance_criteria>D-03 and D-07 are proven by column-level assertions: only display_ordinal, session revision/modified flag, receipt and required effects change; immutable ordinal and completed facts do not.</acceptance_criteria>
   <done>Repository reads and traversal honor durable display order without corrupting snapshot order.</done>

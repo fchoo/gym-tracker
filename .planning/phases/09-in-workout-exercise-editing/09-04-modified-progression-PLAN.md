@@ -2,7 +2,7 @@
 phase: 09-in-workout-exercise-editing
 plan: 04
 type: execute
-wave: 3
+wave: 4
 depends_on: [09-02, 09-03]
 files_modified:
   - src/domains/workout/activeWorkout.ts

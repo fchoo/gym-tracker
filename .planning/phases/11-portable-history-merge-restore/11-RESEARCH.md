@@ -6,9 +6,9 @@
 
 ## Research scope and current baseline
 
-This research is grounded in the Phase 11 context, discussion, roadmap, requirements, and source files that exist in the design worktree. Phases 9 and 10 are plan-time dependencies. Their v19/v20 migrations and summaries do not yet exist on disk; the highest existing migration is v18. [VERIFIED: src/platform/sqlite/migrations/index.ts:1-37]
+This research is grounded in the Phase 11 context, discussion, roadmap, requirements, and source files that exist in the design worktree. Phases 9 and 10 are plan-time dependencies. Their v19/v20/v21 migrations and summaries did not exist at original research time; the highest existing migration was v18. Phase 9's receipt correction reserves v20, so execution must inspect actual summaries and the live registry before mutation. [VERIFIED: src/platform/sqlite/migrations/index.ts:1-37] [VERIFIED: .planning/phases/09-in-workout-exercise-editing/09-RESEARCH.md:190-366]
 
-Phase 11 must reuse, not fork, the GTBK logical backup pipeline. The recommended implementation is a v21 identity/merge migration after execution-time v19 and v20, a backward-compatible GTBK v2 logical/envelope extension, a read-only merge preflight that returns a single-use plan token and preview, a single writer transaction for the commit, and the existing derivative reconciliation pipeline after commit. [VERIFIED: .planning/phases/11-portable-history-merge-restore/11-CONTEXT.md:23-43] [VERIFIED: .planning/REQUIREMENTS.md:45-47]
+Phase 11 must reuse, not fork, the GTBK logical backup pipeline. The recommended implementation is a v22 identity/merge migration after execution-time v19/v20 from Phase 9 and v21 from Phase 10, a backward-compatible GTBK v2 logical/envelope extension, a read-only merge preflight that returns a single-use plan token and preview, a single writer transaction for the commit, and the existing derivative reconciliation pipeline after commit. [VERIFIED: .planning/phases/11-portable-history-merge-restore/11-CONTEXT.md:23-43] [VERIFIED: .planning/REQUIREMENTS.md:45-47]
 
 ## Standard stack and required patterns
 
@@ -28,7 +28,7 @@ Phase 11 must reuse, not fork, the GTBK logical backup pipeline. The recommended
 
 ### D-03 implementation conclusion
 
-Bump the logical snapshot and envelope versions additively to v2, but make decoders accept v1 and v2. A v1 adapter must continue to support old clean restore. Do not simply change the current exact constants to 2, which would reject every existing backup. Add v19, v20, and v21 to the supported-schema allowlist after those migrations exist. [VERIFIED: src/domains/portability/backupContracts.ts:321-334] [VERIFIED: src/domains/portability/restoreCommands.ts:191-220] [ASSUMED: dual-version adapter design is required by the current exact guards]
+Bump the logical snapshot and envelope versions additively to v2, but make decoders accept v1 and v2. A v1 adapter must continue to support old clean restore. Do not simply change the current exact constants to 2, which would reject every existing backup. Add v19, v20, v21, and v22 to the supported-schema allowlist after those migrations exist. [VERIFIED: src/domains/portability/backupContracts.ts:321-334] [VERIFIED: src/domains/portability/restoreCommands.ts:191-220] [ASSUMED: dual-version adapter design is required by the current exact guards]
 
 ### Current logical source table contract
 
@@ -98,7 +98,7 @@ Current IDs survive a restore that preserves them, but they are not a defined ow
 
 ### Recommended migration and identity rule
 
-Add v21 after Phase 9 v19 and Phase 10 v20. Add one persistent opaque owner namespace and immutable opaque portable IDs for merge roots and merge-relevant dependents, either as columns or a strict mapping table. Prefer source-row fields where practical; use random IDs at creation; never derive IDs from names, timestamps, device ID, or mutable content. Preserve them in every v2 backup and clean restore. [ASSUMED: exact column versus mapping-table design remains planner discretion]
+Add v22 after Phase 9 v19/v20 and Phase 10 v21. Add one persistent opaque owner namespace and immutable opaque portable IDs for merge roots and merge-relevant dependents, either as columns or a strict mapping table. Prefer source-row fields where practical; use random IDs at creation; never derive IDs from names, timestamps, device ID, or mutable content. Preserve them in every v2 backup and clean restore. [ASSUMED: exact column versus mapping-table design remains planner discretion]
 
 Backfill existing records transactionally. Legacy v1 archives remain clean-restorable through a v1 adapter, then migration/backfill establishes identities for their next export. A legacy archive without portable IDs must not merge into unrelated existing data; fail closed or route the owner to restore-clean. [VERIFIED: src/domains/portability/backupContracts.ts:321-384] [ASSUMED: clean-only legacy merge policy is necessary because current backup lacks D-02 identity]
 
@@ -108,7 +108,7 @@ If adding non-null fields requires table reconstruction, classify migration dest
 
 | Locked record class | Aggregate/table set | Existing facts | Required merge behavior |
 |---|---|---|---|
-| Sessions | workout_sessions root plus session_exercises, session_sets, session_rest_states, session_undo_snapshots | started_at_ms, completed_at_ms, revision; set draft/completion timestamps | newest-by-timestamp selects one complete session aggregate. Add canonical merge modified-at timestamp in v21. [VERIFIED: src/platform/sqlite/migrations/0001_initial.ts:136-245] |
+| Sessions | workout_sessions root plus session_exercises, session_sets, session_rest_states, session_undo_snapshots | started_at_ms, completed_at_ms, revision; set draft/completion timestamps | newest-by-timestamp selects one complete session aggregate. Add canonical merge modified-at timestamp in v22. [VERIFIED: src/platform/sqlite/migrations/0001_initial.ts:136-245] |
 | Corrections / void | history_session_overlays, history_audit_events, voided session status | overlay updated_at_ms/effective_revision; audit occurred_at_ms/event type correction, void, restore; session allows voided | newest-by-timestamp with deterministic tie-break; preserve whole selected history aggregate. [VERIFIED: src/platform/sqlite/migrations/0013_history_integrity.ts:37-75] [VERIFIED: src/platform/sqlite/migrations/0001_initial.ts:143-163] |
 | Settings | app_settings | key, revision, updated_at_ms | existing/local wins on duplicate identity/key; import only missing settings. [VERIFIED: src/platform/sqlite/migrations/0001_initial.ts:326-332] |
 | Custom exercises | custom/copied exercises plus library, alias/search/taxonomy/preferences/baseline graph | physical ID today; no portable ID | keep both different portable identities; same portable ID dedupes; do not dedup by name. [VERIFIED: src/platform/sqlite/repositories/logicalBackupRepository.ts:74-85] |
@@ -152,7 +152,7 @@ Merge review must identify the operation, show conflict/count summary and settin
 
 ### Required automated tests
 
-- Extend backupContracts tests for v1/v2 parser compatibility, v19/v20/v21 table graph, portable-ID validation, limits and legacy clean-only behavior.
+- Extend backupContracts tests for v1/v2 parser compatibility, v19/v20/v21/v22 table graph, portable-ID validation, limits and legacy clean-only behavior.
 - Extend restoreCommands tests for authenticated-before-parse, schema/reference validation, merge preview, all D-01 outcomes, timestamp tie-break, token invalidation/staleness, cancellation, exact merge confirmation, and safe errors with no secret leakage.
 - Keep merge command implementation under the 100% integrity gate or add its file to scripts/run-coverage-gate.mjs. backupContracts.ts and restoreCommands.ts are already gate entries. [VERIFIED: scripts/run-coverage-gate.mjs:16-23] [VERIFIED: scripts/run-coverage-gate.mjs:60-101]
 - Current tests establish the relevant patterns: schema allowlist table cases, preview only after full authenticated validation, and token consume-before-writer. [VERIFIED: src/domains/portability/restoreCommands.test.ts:190-245] [VERIFIED: src/domains/portability/restoreCommands.test.ts:545-600]
@@ -171,7 +171,7 @@ Add logicalMergeRepository host tests or extend logicalRestoreRepository tests t
 
 The exact rollback-test pattern exists and must be duplicated for merge. [VERIFIED: tests/sqlite-host/logicalRestoreRepository.test.ts:375-405] The clean-install test already proves restored source facts and rebuilt derivatives on a clean host database. [VERIFIED: tests/sqlite-host/cleanInstallRestore.test.ts:345-460]
 
-Add v21 migration/backfill verification to migrationsEffects.contract.ts and run it in real Expo SQLite. The contract imports runtime migrations and includes migration rollback/verify/integrity cases. [VERIFIED: src/testing/contracts/migrationsEffects.contract.ts:1-40] [VERIFIED: src/testing/contracts/migrationsEffects.contract.ts:122-130]
+Add v22 migration/backfill verification to migrationsEffects.contract.ts and run it in real Expo SQLite. The contract imports runtime migrations and includes migration rollback/verify/integrity cases. [VERIFIED: src/testing/contracts/migrationsEffects.contract.ts:1-40] [VERIFIED: src/testing/contracts/migrationsEffects.contract.ts:122-130]
 
 ### Maestro surface
 
@@ -186,7 +186,7 @@ The existing component tests already verify accessible preview rows, exact confi
 | src/domains/portability/backupContracts.ts:1-384 | Logical registry, limits, parser, primary-key validation; make dual-version capable. |
 | src/domains/portability/backupFormat.ts:20-100,212-277 | GTBK envelope, authenticated header, version guards; accept v1/v2. |
 | src/domains/portability/restoreCommands.ts:73-364 | Crypto preflight, preview, validation, token store/error mapping; add merge mode. |
-| src/platform/sqlite/repositories/logicalBackupRepository.ts:67-117,195-234 | Explicit ownership filters and consistent source snapshot; add v19/v20/v21 graph. |
+| src/platform/sqlite/repositories/logicalBackupRepository.ts:67-117,195-234 | Explicit ownership filters and consistent source snapshot; add v19/v20/v21/v22 graph. |
 | src/platform/sqlite/repositories/logicalRestoreRepository.ts:100-141,292-395 | FK ordering, trigger handling, all-or-nothing writer verification; use for merge writer. |
 | src/platform/sqlite/repositories/restorePreflightAdapters.ts:138-235 | Pure candidate validation and read-only schema/catalog ports; add merge read seam. |
 | src/platform/sqlite/repositories/restoreReconciliationRepository.ts:125-331 | FTS/projection deterministic rebuild and parity gate. |
@@ -200,7 +200,7 @@ The existing component tests already verify accessible preview rows, exact confi
 2. Never merge child fragments independently of their selected aggregate root; this can create FK-invalid mixed snapshots. [VERIFIED: src/domains/portability/restoreCommands.ts:225-239] [ASSUMED: aggregate atomicity requirement]
 3. Do not use revision as a cross-device winner clock; add canonical modified timestamp plus stable-ID tie-break. [VERIFIED: src/platform/sqlite/migrations/0001_initial.ts:156-163] [ASSUMED: comparator design]
 4. Do not break v1 clean restore while adding v2. [VERIFIED: src/domains/portability/backupContracts.ts:321-334] [VERIFIED: src/domains/portability/backupFormat.ts:212-277]
-5. Update every backup graph surface for v19/v20/v21 or data will be rejected/lost. [VERIFIED: src/platform/sqlite/repositories/logicalBackupRepository.ts:67-117] [VERIFIED: src/domains/portability/restoreCommands.ts:186-239]
+5. Update every backup graph surface for v19/v20/v21/v22 or data will be rejected/lost. [VERIFIED: src/platform/sqlite/repositories/logicalBackupRepository.ts:67-117] [VERIFIED: src/domains/portability/restoreCommands.ts:186-239]
 6. Preserve immutable triggers. Existing restore drops only delete blockers inside its transaction and recreates/verifies before commit. [VERIFIED: src/platform/sqlite/repositories/logicalRestoreRepository.ts:35-53] [VERIFIED: src/platform/sqlite/repositories/logicalRestoreRepository.ts:344-395]
 7. Bind merge preview to current local state; current digest has archive facts only. [VERIFIED: src/domains/portability/restoreCommands.ts:262-285] [ASSUMED: local-state fingerprint]
 8. Do not call a merge ready until derivative parity succeeds; rebuild_pending is an explicit recoverable intermediate state. [VERIFIED: src/platform/sqlite/repositories/restoreReconciliationRepository.ts:307-329] [VERIFIED: app/more/data-and-recovery.tsx:675-685]
@@ -210,8 +210,8 @@ The existing component tests already verify accessible preview rows, exact confi
 | Topic | Confidence |
 |---|---|
 | D-01 lock, current GTBK/replacement restore/write/rebuild assets | High |
-| Need for v21 identity migration/backfill and merge aggregate planning | High |
+| Need for v22 identity migration/backfill and merge aggregate planning | High |
 | Exact owner identity column/mapping table and canonical timestamp field | Medium; planner choice required |
-| Exact v19/v20 tables and columns | Low until their phases execute; dependency recorded explicitly |
+| Exact v19/v20/v21 tables and columns | Low until their phases execute; dependency recorded explicitly |
 
 ## RESEARCH COMPLETE

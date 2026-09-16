@@ -2,7 +2,7 @@
 phase: 09-in-workout-exercise-editing
 plan: 05
 type: execute
-wave: 4
+wave: 5
 depends_on: [09-04]
 files_modified:
   - src/domains/plans/planImpactCommands.ts

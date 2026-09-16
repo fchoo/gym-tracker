@@ -8,7 +8,7 @@
 
 Phase 12 is optional, single-owner Google Drive replication. It must use one app-created file, drive.file, client-side encryption, local SQLite authority, and the Phase 11 merge engine; foreground, background/close, and post-workout/edit commit reconciliation are required. [VERIFIED: .planning/phases/12-automatic-google-drive-sync/12-CONTEXT.md:7-20] [VERIFIED: .planning/REQUIREMENTS.md:45-49]
 
-This worktree is pre-Phase-9/10/11. The highest migration actually on disk is v18; Phase 9/10 v19/v20 and the Phase 11 v21 identity/merge migration/module are execution-time dependencies, not existing code. Phase 11 requires a transport-agnostic API operating on a decrypted snapshot plus local DB. [VERIFIED: src/platform/sqlite/migrations/index.ts:1-37] [VERIFIED: .planning/phases/11-portable-history-merge-restore/11-RESEARCH.md:7-11] [VERIFIED: .planning/phases/11-portable-history-merge-restore/11-CONTEXT.md:105-109]
+This worktree is pre-Phase-9/10/11. The highest migration actually on disk is v18; Phase 9 v19/v20, Phase 10 v21, and the Phase 11 v22 identity/merge migration/module are execution-time dependencies, not existing code. Phase 11 requires a transport-agnostic API operating on a decrypted snapshot plus local DB. [VERIFIED: src/platform/sqlite/migrations/index.ts:1-37] [VERIFIED: .planning/phases/11-portable-history-merge-restore/11-RESEARCH.md:7-11] [VERIFIED: .planning/phases/11-portable-history-merge-restore/11-CONTEXT.md:105-109]
 
 ## Standard stack and reusable patterns
 
@@ -71,7 +71,7 @@ Add a runtime-owned SyncScheduler that coalesces foreground, background/close, a
 
 ## Schema and backup graph
 
-Recommend durable sync configuration/status plus append-only sync outbox/change-log so process death does not lose a requested reconcile and a source command can atomically record replication needed. Under v19/v20/v21 dependency order it is v22. Additive tables/indexes should suffice; a reconstructive alternative must be destructive so migration runner makes validated recovery backup. [VERIFIED: src/platform/sqlite/migrationRunner.ts:220-273] [VERIFIED: .planning/phases/11-portable-history-merge-restore/11-RESEARCH.md:99-105] [ASSUMED: v22/additive design]
+Recommend durable sync configuration/status plus append-only sync outbox/change-log so process death does not lose a requested reconcile and a source command can atomically record replication needed. Under v19/v20/v21/v22 dependency order it is v23. Additive tables/indexes should suffice; a reconstructive alternative must be destructive so migration runner makes validated recovery backup. [VERIFIED: src/platform/sqlite/migrationRunner.ts:220-273] [VERIFIED: .planning/phases/11-portable-history-merge-restore/11-RESEARCH.md:99-105] [ASSUMED: v23/additive design]
 
 Replication bookkeeping is transport-local, not canonical user-owned backup facts, and should normally be excluded from Phase-11 logical backup graph. Do not export queued ciphertext, tokens, or keys. Existing backup registry is explicit allowlist, not all-table copy. [VERIFIED: src/domains/portability/backupContracts.ts:22-79] [ASSUMED: config/backups policy]
 
@@ -93,7 +93,7 @@ Required tests:
 1. Unit: sign-in cancellation/scope/refresh/error map; Drive duplicate/limits/origin errors; XChaCha known-answer, fresh nonce, wrong key/tamper/AAD substitution; ciphertext-only egress; no secret in status/errors/logs.
 2. Coordinator integration with fakes: trigger coalescing, remote-first merge, every auth/network/download/decrypt/parse/conflict/merge/write/upload failure leaves local source byte-equivalent and retryable; retry succeeds; no blind overwrite.
 3. Non-blocking: fake sync hangs/rejects while workout/edit commands still return committed normal results; scheduler begins only after source commit. [VERIFIED: src/bootstrap/workoutAppRuntime.tsx:3019-3050]
-4. Host/native SQLite: v22 migration upgrade/verify/rollback/integrity; outbox atomically follows source command; injected merge/write failure preserves facts. [VERIFIED: src/platform/sqlite/migrationRunner.ts:242-268]
+4. Host/native SQLite: v23 migration upgrade from populated schema 22, verify/rollback/integrity; outbox atomically follows source command; injected merge/write failure preserves facts. [VERIFIED: src/platform/sqlite/migrationRunner.ts:242-268]
 5. Coverage: add all sync domain/coordinator/crypto/port/migration/repository modules to the explicit 100% integrity gate. [VERIFIED: scripts/run-coverage-gate.mjs:16-101]
 6. Maestro: Phase-12 runner/flow modeled on Phase 5 that visits Settings/Data recovery and exercises fake-adapter Not connected, Synced, Paused, Retry and Disconnect states plus lifecycle-visible refresh. OAuth/network remains faked; host/unit/native tests prove egress and rollback. [VERIFIED: maestro/phase5/data-recovery.yaml:7-26] [VERIFIED: scripts/run-phase5-maestro.mjs:21-49]
 
@@ -127,7 +127,7 @@ Required tests:
 | D-01..D-04, helper auth/Drive reuse, same-account/no-Firestore rationale | High |
 | Argon2 params, lifecycle seam, settings location, test/coverage patterns | High |
 | Missing dependency audit in current source/CI | High |
-| v22 outbox/config and encrypted snapshot+log model | Medium; planner choice after Phase 11 lands |
-| Exact Phase-11 API/module, v19/v20/v21 graph, Drive ETag approach | Low until dependency work executes |
+| v23 outbox/config and encrypted snapshot+log model | Medium; planner choice after Phase 11 lands |
+| Exact Phase-11 API/module, v19/v20/v21/v22 graph, Drive ETag approach | Low until dependency work executes |
 
 ## RESEARCH COMPLETE

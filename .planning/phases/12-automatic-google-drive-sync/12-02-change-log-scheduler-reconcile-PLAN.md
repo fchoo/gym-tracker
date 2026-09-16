@@ -53,7 +53,7 @@ must_haves:
 @.planning/phases/12-automatic-google-drive-sync/12-01-encrypted-drive-tracer-PLAN.md
 @.planning/phases/11-portable-history-merge-restore/11-02-conflict-engine-PLAN.md
 
-At execution, inspect the actual Phase 11 public API and 12-01 implementation; extend them rather than forking conflict rules or crypto/transport. Plan-time anchors are `src/bootstrap/workoutAppRuntime.tsx:2081-2108,2333-2347,3019-3050,3431-3454`, `src/platform/sqlite/serializedWriter.ts:27-85`, `src/platform/sqlite/migrations/0013_history_integrity.ts:54-75`, and `src/domains/portability/backupContracts.ts:27-75`. The history audit table is not a complete sync log because it excludes settings/plans/custom exercises; use the dedicated v22 bookkeeping created in Plan 01.
+At execution, inspect the actual Phase 11 public API and 12-01 implementation; extend them rather than forking conflict rules or crypto/transport. Plan-time anchors are `src/bootstrap/workoutAppRuntime.tsx:2081-2108,2333-2347,3019-3050,3431-3454`, `src/platform/sqlite/serializedWriter.ts:27-85`, `src/platform/sqlite/migrations/0013_history_integrity.ts:54-75`, and `src/domains/portability/backupContracts.ts:27-75`. The history audit table is not a complete sync log because it excludes settings/plans/custom exercises; use the dedicated v23 bookkeeping created in Plan 01.
 </context>
 
 <tasks>
