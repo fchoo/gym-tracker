@@ -166,15 +166,15 @@ name: Phase 9 add exercise and relaunch persistence
     timeout: 30000
 - scrollUntilVisible:
     element:
-      text: "Bench Press exercise actions"
-    direction: DOWN
+      text: "Overhead Press exercise actions"
+    direction: UP
     centerElement: true
     timeout: 30000
-- tapOn: "Bench Press exercise actions"
+- tapOn: "Overhead Press exercise actions"
 - tapOn: "Remove exercise"
 - assertVisible: "This exercise has completed sets. They will be retained and this exercise will be marked Skipped, not deleted."
 - tapOn: "Keep exercise"
-- tapOn: "Bench Press exercise actions"
+- tapOn: "Overhead Press exercise actions"
 - tapOn: "Remove exercise"
 - tapOn:
     id: "remove-exercise-confirm"
