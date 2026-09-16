@@ -8,6 +8,7 @@ import type {
 } from "../../platform/sqlite/repositories/planImpactRepository";
 import type {
   MetricIdentity,
+  MetricTarget,
 } from "../metrics";
 import {
   addLocalDays,
@@ -21,6 +22,100 @@ import {
 export type PlanImpactCommandResult = PlanImpactCommittedResult;
 export type ExerciseReplacementCommandResult =
   ExerciseReplacementCommittedResult;
+
+export type SessionExerciseWriteBackTarget = Readonly<{
+  ordinal: number;
+  target: MetricTarget;
+  units: Readonly<Record<string, unknown>>;
+}>;
+
+export type SessionExerciseWriteBackWarmup = Readonly<{
+  ordinal: number;
+  loadGrams: number;
+  reps: number;
+}>;
+
+export type SessionExerciseWriteBackComposition = Readonly<{
+  source: "manual" | "planned";
+  sessionExerciseId: string;
+  sourceOccurrenceId: string | null;
+  exerciseId: string;
+  ordinal: number;
+  restSeconds: number;
+  metricIdentity: MetricIdentity;
+  warmups: readonly SessionExerciseWriteBackWarmup[];
+  targets: readonly SessionExerciseWriteBackTarget[];
+  policy: Readonly<{
+    kind: "automatic" | "manual_hold" | "plan_authored";
+    policyId: string;
+    version: number;
+    rule: Readonly<Record<string, unknown>>;
+  }>;
+}>;
+
+export type SessionExerciseEditsForPlanFacts = Readonly<{
+  session: Readonly<{
+    id: string;
+    planId: string | null;
+    planDayId: string | null;
+    planName: string | null;
+    dayName: string | null;
+    revision: number;
+    source: "scheduled_day" | "alternate_day" | "rest_day" | "empty" | "manual";
+    status: "completed" | "partial" | "discarded" | "zero_sets" | "in_progress";
+    modifiedFromPlan: boolean;
+  }> ;
+  day: Readonly<{
+    id: string;
+    name: string;
+    planId: string;
+    planRevision: number;
+    occurrences: readonly Readonly<{
+      occurrenceId: string;
+      exerciseId: string;
+      ordinal: number;
+      restSeconds: number;
+      metricIdentity: MetricIdentity;
+      warmups: readonly SessionExerciseWriteBackWarmup[];
+      targets: readonly SessionExerciseWriteBackTarget[];
+      policy: SessionExerciseWriteBackComposition["policy"];
+    }>[];
+  }> ;
+  sessionExercises: readonly Readonly<{
+    sessionExerciseId: string;
+    exerciseId: string;
+    displayOrdinal: number;
+    sourceOccurrenceId: string | null;
+    restSeconds: number;
+    metricIdentity: MetricIdentity;
+    targets: readonly SessionExerciseWriteBackTarget[];
+  }>[];
+  edits: readonly Readonly<{
+    operation: "replace_exercise" | "remove_exercise";
+    subjectSessionExerciseId: string;
+    replacementSessionExerciseId: string | null;
+  }>[];
+}>;
+
+export type SessionExerciseEditsForPlanRepository = Readonly<{
+  readSessionExerciseEditsForPlan(input: Readonly<{
+    sessionId: string;
+  }>): Promise<SessionExerciseEditsForPlanFacts | null>;
+}>;
+
+export type SessionExerciseEditsForPlanPreview = Readonly<{
+  kind: "session_exercise_edits";
+  sourceSessionId: string;
+  sourceSessionRevision: number;
+  planId: string;
+  planName: string;
+  planDayId: string;
+  dayName: string;
+  expectedPlanRevision: number;
+  currentWorkoutUnaffected: true;
+  previewToken: string;
+  composition: readonly SessionExerciseWriteBackComposition[];
+}>;
 
 const IDENTIFIER_MAX_CODE_POINTS = 128;
 const SHA256_PATTERN = /^[a-f0-9]{64}$/u;
@@ -346,6 +441,189 @@ async function replacementPreviewToken(
     operation: "exercise_replacement",
     facts,
   })}`;
+}
+
+function sameTargets(
+  left: readonly SessionExerciseWriteBackTarget[],
+  right: readonly SessionExerciseWriteBackTarget[],
+): boolean {
+  return JSON.stringify(left) === JSON.stringify(right);
+}
+
+function manualPolicy(
+  identity: MetricIdentity,
+): SessionExerciseWriteBackComposition["policy"] {
+  const policyId = `${identity.profile}.manual_hold.v1`;
+  return Object.freeze({
+    kind: "manual_hold",
+    policyId,
+    version: 1,
+    rule: Object.freeze({
+      kind: "manual_hold",
+      id: policyId,
+      version: 1,
+    }),
+  });
+}
+
+function canonicalSessionWriteBackFacts(
+  facts: SessionExerciseEditsForPlanFacts,
+): readonly SessionExerciseWriteBackComposition[] | null {
+  const { session, day } = facts;
+  if (
+    session.status !== "completed"
+    || session.source !== "scheduled_day"
+    || !session.modifiedFromPlan
+    || session.planId === null
+    || session.planDayId === null
+    || session.planName === null
+    || session.dayName === null
+    || session.planId !== day.planId
+    || session.planDayId !== day.id
+  ) {
+    return null;
+  }
+  const removed = new Set(facts.edits.map(({ subjectSessionExerciseId }) =>
+    subjectSessionExerciseId
+  ));
+  const replacements = new Set(facts.edits.flatMap(({ replacementSessionExerciseId }) =>
+    replacementSessionExerciseId === null ? [] : [replacementSessionExerciseId]
+  ));
+  const occurrenceById = new Map(
+    day.occurrences.map((occurrence) => [occurrence.occurrenceId, occurrence]),
+  );
+  const composition = facts.sessionExercises
+    .filter(({ sessionExerciseId }) => !removed.has(sessionExerciseId))
+    .sort((left, right) =>
+      left.displayOrdinal - right.displayOrdinal
+      || left.sessionExerciseId.localeCompare(right.sessionExerciseId)
+    )
+    .map((exercise, ordinal): SessionExerciseWriteBackComposition | null => {
+      const source = exercise.sourceOccurrenceId === null
+        ? null
+        : occurrenceById.get(exercise.sourceOccurrenceId);
+      const isManual = source === null || replacements.has(exercise.sessionExerciseId);
+      if (
+        !isManual
+        && (
+          source === undefined
+          || source.exerciseId !== exercise.exerciseId
+          || !sameMetricIdentity(source.metricIdentity, exercise.metricIdentity)
+        )
+      ) {
+        return null;
+      }
+      return Object.freeze({
+        source: isManual ? "manual" : "planned",
+        sessionExerciseId: exercise.sessionExerciseId,
+        sourceOccurrenceId: isManual ? null : exercise.sourceOccurrenceId,
+        exerciseId: exercise.exerciseId,
+        ordinal,
+        restSeconds: isManual ? exercise.restSeconds : source!.restSeconds,
+        metricIdentity: Object.freeze({ ...exercise.metricIdentity }),
+        warmups: Object.freeze((isManual ? [] : source!.warmups).map((warmup) =>
+          Object.freeze({ ...warmup })
+        )),
+        targets: Object.freeze((isManual ? exercise.targets : source!.targets).map((target) => Object.freeze({
+          ordinal: target.ordinal,
+          target: Object.freeze({ ...target.target }),
+          units: Object.freeze({ ...target.units }),
+        }))),
+        policy: isManual
+          ? manualPolicy(exercise.metricIdentity)
+          : Object.freeze({
+              ...source!.policy,
+              rule: Object.freeze({ ...source!.policy.rule }),
+            }),
+      });
+    });
+  return composition.some((entry) => entry === null)
+    ? null
+    : Object.freeze(composition as readonly SessionExerciseWriteBackComposition[]);
+}
+
+function compositionMatchesDay(
+  composition: readonly SessionExerciseWriteBackComposition[],
+  day: SessionExerciseEditsForPlanFacts["day"],
+): boolean {
+  return composition.length === day.occurrences.length
+    && composition.every((entry, index) => {
+      const occurrence = day.occurrences[index];
+      return occurrence !== undefined
+        && entry.source === "planned"
+        && entry.sourceOccurrenceId === occurrence.occurrenceId
+        && entry.exerciseId === occurrence.exerciseId
+        && entry.ordinal === occurrence.ordinal
+        && entry.restSeconds === occurrence.restSeconds
+        && sameMetricIdentity(entry.metricIdentity, occurrence.metricIdentity)
+        && JSON.stringify(entry.warmups) === JSON.stringify(occurrence.warmups)
+        && sameTargets(entry.targets, occurrence.targets);
+    });
+}
+
+async function sessionWriteBackPreviewToken(
+  sha256: Sha256,
+  facts: SessionExerciseEditsForPlanFacts,
+  composition: readonly SessionExerciseWriteBackComposition[],
+): Promise<string> {
+  return `session-writeback-v1:${await digest(sha256, {
+    version: 1,
+    operation: "session_exercise_edits",
+    source: {
+      sessionId: facts.session.id,
+      sessionRevision: facts.session.revision,
+      planId: facts.session.planId,
+      planDayId: facts.session.planDayId,
+      status: facts.session.status,
+      source: facts.session.source,
+      modifiedFromPlan: facts.session.modifiedFromPlan,
+      dayId: facts.day.id,
+      dayName: facts.day.name,
+      dayPlanId: facts.day.planId,
+      planRevision: facts.day.planRevision,
+    },
+    composition,
+  })}`;
+}
+
+export async function previewSessionExerciseEditsForPlan(
+  context: Readonly<{
+    repository: SessionExerciseEditsForPlanRepository;
+    sha256: Sha256;
+    input: Readonly<{ sessionId: string }>;
+  }>,
+): Promise<SessionExerciseEditsForPlanPreview | null> {
+  if (!validIdentifier(context.input.sessionId)) {
+    throw new PlanImpactInputError("plan_impact_identifier_invalid");
+  }
+  const facts = await context.repository.readSessionExerciseEditsForPlan({
+    sessionId: context.input.sessionId,
+  });
+  if (facts === null) {
+    return null;
+  }
+  const composition = canonicalSessionWriteBackFacts(facts);
+  if (composition === null || compositionMatchesDay(composition, facts.day)) {
+    return null;
+  }
+  const { session, day } = facts;
+  return Object.freeze({
+    kind: "session_exercise_edits",
+    sourceSessionId: session.id,
+    sourceSessionRevision: session.revision,
+    planId: session.planId!,
+    planName: session.planName!,
+    planDayId: session.planDayId!,
+    dayName: session.dayName!,
+    expectedPlanRevision: day.planRevision,
+    currentWorkoutUnaffected: true,
+    previewToken: await sessionWriteBackPreviewToken(
+      context.sha256,
+      facts,
+      composition,
+    ),
+    composition,
+  });
 }
 
 function sortCandidates(
