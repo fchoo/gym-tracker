@@ -2607,8 +2607,11 @@ export function createWorkoutOutcomeRepository(
             ({ session_exercise_id: exerciseId }) =>
               exerciseId === exercise.id,
           );
-          const reference = exerciseSets
-            .filter(({ set_kind }) => set_kind === "working")
+          const working = exerciseSets.filter(
+            ({ set_kind }) => set_kind === "working",
+          );
+          const reference = working
+            .filter(({ status }) => status === "completed")
             .map(targetReference)
             .find((value): value is TargetReference => value !== null);
           if (reference === undefined) {
@@ -2659,13 +2662,32 @@ export function createWorkoutOutcomeRepository(
           if (target === undefined) {
             continue;
           }
-          const currentTarget = parseTarget(target.target_json);
-          const working = exerciseSets.filter(
-            ({ set_kind }) => set_kind === "working",
+          const targetScope = await transaction.queryAll<RecommendationTargetScopeRow>(
+            `SELECT id, target_json, revision
+             FROM ${targetTable(reference.graph)}
+             WHERE plan_day_exercise_id = ?
+             ORDER BY ordinal`,
+            [target.plan_day_exercise_id],
           );
-          if (!working.some(({ status }) => status === "completed")) {
+          if (
+            targetScope.length === 0
+            || targetScope.some(({ revision }) => revision !== target.revision)
+          ) {
+            throw new WorkoutOutcomeConflictError(
+              "recommendation_target_scope_stale",
+            );
+          }
+          const targetScopeIds = new Set(targetScope.map(({ id }) => id));
+          const eligibleWorking = working.filter((set) => {
+            const setReference = targetReference(set);
+            return setReference !== null
+              && setReference.graph === reference.graph
+              && targetScopeIds.has(setReference.id);
+          });
+          if (!eligibleWorking.some(({ status }) => status === "completed")) {
             continue;
           }
+          const currentTarget = parseTarget(target.target_json);
           const policy = reference.graph === "owned"
             ? await copiedOwnedPolicy(transaction, target.id)
             : null;
@@ -2697,9 +2719,9 @@ export function createWorkoutOutcomeRepository(
               minReps: Number(currentTarget.minReps),
               maxReps: Number(currentTarget.maxReps),
               incrementGrams: Number(currentTarget.incrementGrams),
-              plannedSets: working.length,
+              plannedSets: targetScope.length,
             },
-            sets: exerciseSets.map((set): LoadRepsEvidenceSet => ({
+            sets: eligibleWorking.map((set): LoadRepsEvidenceSet => ({
               id: set.id,
               kind: set.set_kind,
               status: set.status,
@@ -2715,21 +2737,6 @@ export function createWorkoutOutcomeRepository(
           const recommendation = evaluateLoadRepsV1(progressionInput);
           const table = recommendationTable(reference.graph);
           const targetColumn = recommendationTargetColumn(reference.graph);
-          const targetScope = await transaction.queryAll<RecommendationTargetScopeRow>(
-            `SELECT id, target_json, revision
-             FROM ${targetTable(reference.graph)}
-             WHERE plan_day_exercise_id = ?
-             ORDER BY ordinal`,
-            [target.plan_day_exercise_id],
-          );
-          if (
-            targetScope.length === 0
-            || targetScope.some(({ revision }) => revision !== target.revision)
-          ) {
-            throw new WorkoutOutcomeConflictError(
-              "recommendation_target_scope_stale",
-            );
-          }
           const proposedTarget = recommendationTarget(
             recommendation,
             currentTarget,
@@ -2742,7 +2749,7 @@ export function createWorkoutOutcomeRepository(
               sessionId,
               sessionExerciseId: exercise.id,
               sessionRevision: expectedSessionRevision,
-              setIds: working.map(({ id }) => id),
+              setIds: eligibleWorking.map(({ id }) => id),
             },
             revisions: {
               source: expectedSessionRevision,
