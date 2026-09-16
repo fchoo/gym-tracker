@@ -377,4 +377,69 @@ specific on-disk file contract is needed:
   deliberately permit physical deletion only for provisional no-completion rows;
   tests must prove the completed/undo boundary separately.
 
+## 2026-09-16 Execution Replan — Task 1 compatibility closure
+
+**Execution boundary:** Plans 09-02 and 09-03 together are the complete **Task 1**
+boundary. Preserve the authorized uncommitted migration/registry/restore/coverage/
+contract/host-test implementation as the starting WIP; do not begin 09-04
+Replace/Remove persistence until 09-02/09-03 pass the complete gate and are
+committed as the exact scoped boundary. [VERIFIED: Phase 09 live plan registry,
+09-02-PLAN.md and 09-03-PLAN.md]
+
+### Exact closure order
+
+1. Keep migration 0019 immutable. Complete the existing forward-only v20 rebuild:
+   drop its two receipt triggers, rename the table, create the replacement under
+   the public table name, copy legacy add receipts with `session_exercise_id`
+   mapped to `subject_session_exercise_id` and a null replacement ID, drop the
+   legacy table, then recreate the index and immutable triggers. [VERIFIED:
+   src/platform/sqlite/migrations/0020_session_exercise_edit_receipts.ts:53-73]
+2. Update `workoutRepository.addExercise` in this same Task 1 slice. It still
+   selects, compares, returns, and inserts `session_exercise_id`, which is absent
+   from the v20 table. Make its receipt shape and idempotent replay use
+   `subject_session_exercise_id`, inserting a null
+   `replacement_session_exercise_id` for `add_exercise`; preserve the request
+   SHA-256, expected/result session revisions, result JSON, and commit timestamp.
+   [VERIFIED: src/platform/sqlite/repositories/workoutRepository.ts:889-899]
+   [VERIFIED: src/platform/sqlite/repositories/workoutRepository.ts:1395-1528]
+3. Advance the schema-20 compatibility seams in the same change: producer schema
+   support in restore validation and the stale schema-19 fixtures in
+   `src/bootstrap/workoutAppRuntime.test.tsx`,
+   `tests/sqlite-host/portabilityMigration.test.ts`,
+   `src/domains/portability/restoreCommands.test.ts`, and
+   `tests/sqlite-host/cleanInstallRestore.test.ts`. Restore currently admits
+   `15, 16, 17, 18, 19` and rejects `20`; clean-install restore still expects
+   `schemaVersion: 19`. [VERIFIED:
+   src/domains/portability/restoreCommands.test.ts:190-203] [VERIFIED:
+   tests/sqlite-host/cleanInstallRestore.test.ts:427-437]
+4. Add the missing Add integration proof: populate a v19 database with a legacy
+   add receipt, migrate it to v20, call `workoutRepository.addExercise`, and retry
+   the same request. Assert v20 scalar-subject receipt persistence and
+   `already_committed` idempotency without a `session_exercise_id` column or
+   exercise FK. This must land before destructive Replace/Remove work. [VERIFIED:
+   src/platform/sqlite/migrations/0020_session_exercise_edit_receipts.ts:62-68]
+   [VERIFIED: src/platform/sqlite/repositories/workoutRepository.ts:1395-1528]
+
+### Verification order and hard blockers
+
+1. Run focused migration effects first, including v19-to-v20 preservation, exact
+   v20 schema/triggers/FK/index, subject deletion with receipt survival, and
+   every rebuild-statement rollback: `npm run test:sqlite:host -- --runInBand
+   tests/sqlite-host/migrations-effects.test.ts`. [VERIFIED:
+   tests/sqlite-host/migrations-effects.test.ts:490-700]
+2. Run the new Add integration proof and all four named compatibility fixtures,
+   then `npm run typecheck`.
+3. Run `npm run test:coverage -- --runInBand`; 0020, migration registration,
+   restore commands, and logical backup/restore are in the explicit 100%
+   integrity-critical gate. [VERIFIED: scripts/run-coverage-gate.mjs:16-104]
+   [VERIFIED: scripts/run-coverage-gate.mjs:152-185]
+4. Once host/full coverage is green, run the existing named real-Expo migration
+   suite `migration-session-exercise-edit-receipts-v20`. Host proof is not device
+   proof. [VERIFIED: src/testing/contracts/migrationsEffects.contract.ts:1-190]
+
+**Blockers:** the legacy repository receipt column and the four schema-19 fixture
+expectations are direct Task 1 compatibility failures. The existing focused migration
+work does not by itself prove the public Add command can read/write/replay the v20
+scalar receipt shape. Until those are closed, Task 2 and Task 3 stay blocked.
+
 ## RESEARCH COMPLETE

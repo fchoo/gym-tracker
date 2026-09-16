@@ -10,7 +10,7 @@ provides:
   - schema 19 additive session-exercise editing metadata and immutable receipts
   - atomic, idempotent added-exercise command through the serialized writer
   - accessible Add exercise overview tracer and manifest-bound Maestro runner
-affects: [09-02-replace-remove, 09-03-reorder-display-order, 09-04-modified-progression]
+affects: [09-02, 09-03, 09-04, 09-05, 09-06, 09-07, 09-08, 09-09, 09-10]
 actuals:
   tokens: 22288
   tasks: 4
@@ -146,7 +146,7 @@ All encountered source, native lifecycle, route-refresh, and test-oracle issues 
 
 ## Next Phase Readiness
 
-Ready for 09-02 Replace/Remove. The add command, generalized immutable receipt foundation, display-order metadata, route refresh signal, and manifest-bound Phase 9 tracer are established.
+Ready for the authoritative serial Phase 09 plan registry beginning with 09-02 migration core and 09-03 Add compatibility/Task 1 boundary. The add command, generalized immutable receipt foundation, display-order metadata, route refresh signal, and manifest-bound Phase 9 tracer are established.
 
 ## Self-Check: PASSED
 

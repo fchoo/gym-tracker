@@ -74,7 +74,7 @@ must_haves:
 @.planning/REQUIREMENTS.md
 @.planning/phases/11-portable-history-merge-restore/11-CONTEXT.md
 @.planning/phases/11-portable-history-merge-restore/11-RESEARCH.md
-@.planning/phases/09-in-workout-exercise-editing/09-06-phase-verification-PLAN.md
+@.planning/phases/09-in-workout-exercise-editing/09-10-SUMMARY.md
 @.planning/phases/10-advanced-set-timing/10-04-integrity-lifecycle-verification-PLAN.md
 
 **Cross-phase execution contract.** Phase 11 depends on completed Phases 9 and 10. Their planned migrations v19/v20 and v21 do not exist in this planning checkout. At execution, first read their SUMMARY files and inspect the actual migration registry/source graph. Add Phase 11 as the next migration after the execution-time maximum (expected `0022_portable_owner_identities.ts` after v21); never renumber, recreate, or guess Phase 9/10 columns. Ensure every Phase 9/10 authoritative source fact, including the Phase 9 v20 receipt ledger, is in the v2 table/filter/reference graph, while FTS, projections, recommendations, effect queues, and UI caches remain excluded derivatives.

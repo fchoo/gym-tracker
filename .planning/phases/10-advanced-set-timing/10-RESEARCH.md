@@ -133,7 +133,7 @@ UI should be a compact advanced indicator adjacent to the active set/overview, f
 
 ### SQLite and portability
 
-Extend migrationsEffects host/device contracts with migration-21 checks retaining Phase 9 v19/v20 receipt facts, both plan graphs, session snapshot copies, state recovery, backup round-trip, and failure rollback. Phase 9 establishes host plus real Expo migrations-effects as persistence proof. [VERIFIED: .planning/phases/09-in-workout-exercise-editing/09-06-phase-verification-PLAN.md:61-71]
+Extend migrationsEffects host/device contracts with migration-21 checks retaining Phase 9 v19/v20 receipt facts, both plan graphs, session snapshot copies, state recovery, backup round-trip, and failure rollback. Phase 9 establishes host plus real Expo migrations-effects as persistence proof. [VERIFIED: Phase 09 authoritative verification plan `.planning/phases/09-in-workout-exercise-editing/09-10-PLAN.md`]
 
 ### Coverage
 
@@ -141,7 +141,7 @@ Register new advanced state/commands, migration 21, advanced repository, and cha
 
 ### Maestro
 
-Create maestro/phase10/advanced-set-timing.yaml, scripts/run-phase10-maestro.mjs, package script, and fail-closed evidence tests following Phase 9's evidence pattern. [VERIFIED: .planning/phases/09-in-workout-exercise-editing/09-06-phase-verification-PLAN.md:50-57]
+Create maestro/phase10/advanced-set-timing.yaml, scripts/run-phase10-maestro.mjs, package script, and fail-closed evidence tests following Phase 9's evidence pattern. [VERIFIED: Phase 09 authoritative verification plan `.planning/phases/09-in-workout-exercise-editing/09-10-PLAN.md`]
 
 Native proof should configure exercise default plus set override; demonstrate per-rep and cluster indicator; rotate/background and force-stop/relaunch; prove resumed timing; complete exactly one cluster set; deny audio/notifications where testable; and prove RestDock remains independent. The rest flow supplies stopApp/relaunch/resume assertion conventions. [VERIFIED: maestro/lifecycle/rest-recovery.yaml:84-135] [ASSUMED]
 

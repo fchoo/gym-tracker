@@ -5,17 +5,17 @@ milestone_name: In-Workout Editing, Advanced Timing & Cross-Device Sync
 current_phase: 09
 current_phase_name: In-Workout Exercise Editing
 status: executing
-stopped_at: Completed 09-01-add-exercise-tracer-PLAN.md; ready for 09-02 Replace/Remove
-last_updated: "2026-09-16T05:59:41Z"
+stopped_at: Replanned Phase 09; 09-01 complete and authorized schema-v20 Task 1 WIP resumes at 09-02
+last_updated: "2026-09-16T11:24:52.647Z"
 last_activity: 2026-09-16
-last_activity_desc: Phase 09 Plan 01 complete with host, coverage, native SQLite, and Maestro evidence
-state_head: 797a9d1f091fb3bff818b16b732074dc2a869572
+last_activity_desc: Phase 09 replan verified with dual v20 receipt authorities, scoped Task 1 commit gate, and native-evidence parser
+state_head: 5346437181c857432586111a26ee741c5a4baaf6
 progress:
   total_phases: 5
   completed_phases: 1
-  total_plans: 22
+  total_plans: 26
   completed_plans: 5
-  percent: 23
+  percent: 19
 ---
 
 # Project State
@@ -30,9 +30,9 @@ See: `.planning/PROJECT.md` (updated 2026-09-15)
 ## Current Position
 
 Phase: 09 (In-Workout Exercise Editing) — EXECUTING
-Plan: 2 of 6
-Status: Executing Phase 09 — Plan 09-01 complete
-Last activity: 2026-09-16 — Phase 09 Plan 01 complete with exact native evidence
+Plan: 1 of 10 complete; next is 09-02
+Status: Executing Phase 09 — Plan 09-01 complete; 09-02 schema-v20 core ready
+Last activity: 2026-09-16 — Phase 09 replan independently verified
 
 ## Delivery model
 
@@ -318,12 +318,12 @@ Full decisions live in `.planning/PROJECT.md`.
 
 ## Session Continuity
 
-Last session: 2026-09-16T05:59:41Z
-Stopped at: Completed 09-01-add-exercise-tracer-PLAN.md; ready for 09-02 Replace/Remove
+Last session: 2026-09-16T11:24:38.558Z
+Stopped at: Completed 09-01-add-exercise-tracer-PLAN.md; Task 1 v20 migration compatibility WIP continues in 09-02 and 09-03
 Resume file: None
-Next action: Execute `.planning/phases/09-in-workout-exercise-editing/09-02-replace-remove-PLAN.md`.
+Next action: Execute `.planning/phases/09-in-workout-exercise-editing/09-02-PLAN.md`, preserving the authorized Task 1 implementation WIP before 09-03 closes the scoped commit boundary.
 
 ## Operator Next Steps
 
-- Execute Phase 9 Plan 02 Replace/Remove from the verified schema-19 and add-exercise foundation.
-- Preserve append-only workout history and bundle schema 19 with the logical-backup graph update.
+- Execute Phase 9 Plan 02 schema-v20 receipt-authority core from the verified schema-19 and add-exercise foundation.
+- Preserve append-only workout history, keep migration 0019 immutable, and extend the logical-backup graph for both v20 receipt authorities.

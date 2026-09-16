@@ -59,7 +59,7 @@ must_haves:
 @.planning/phases/10-advanced-set-timing/10-RESEARCH.md
 @.planning/phases/10-advanced-set-timing/10-03-SUMMARY.md
 
-Verification anchors: `scripts/run-coverage-gate.mjs:16-101,122-180` is the real exact-100% gate; `maestro/lifecycle/rest-recovery.yaml:84-135` supplies force-stop/relaunch conventions; `src/ui/__tests__/RestDock.test.tsx:31-105` supplies AppState/component conventions; and Phase 9's `09-06-phase-verification-PLAN.md:50-71` supplies the fail-closed evidence/real-Expo pattern.
+Verification anchors: `scripts/run-coverage-gate.mjs:16-101,122-180` is the real exact-100% gate; `maestro/lifecycle/rest-recovery.yaml:84-135` supplies force-stop/relaunch conventions; `src/ui/__tests__/RestDock.test.tsx:31-105` supplies AppState/component conventions; and Phase 9's authoritative `09-10-PLAN.md` supplies the fail-closed evidence/real-Expo pattern.
 </context>
 
 <tasks>
