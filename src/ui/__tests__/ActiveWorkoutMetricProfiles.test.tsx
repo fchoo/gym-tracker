@@ -60,11 +60,13 @@ function persistedAddedLoadKernel() {
         revision: 4,
       }];
     }
-    if (sql.includes("FROM session_exercises") && sql.includes("ORDER BY ordinal")) {
+    if (sql.includes("FROM session_exercises") && sql.includes("ORDER BY display_ordinal, ordinal")) {
       return [{
         id: "session-exercise-added-load",
         exercise_id: "weighted-pull-up",
         ordinal: 0,
+        origin: "added",
+        display_ordinal: 0,
         exercise_name: "Weighted Pull-up",
         metric_profile: "added_load_reps",
         metric_contract_version: 1,

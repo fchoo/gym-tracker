@@ -29,6 +29,7 @@ const mockReplace = jest.fn();
 const mockGetActiveWorkout = jest.fn<(
   sessionId: string,
 ) => Promise<WorkoutSessionView>>();
+const mockListOwnedPlanExercises = jest.fn(async () => []);
 
 jest.mock("expo-router", () => ({
   router: {
@@ -60,6 +61,7 @@ jest.mock("../../bootstrap/workoutAppRuntime", () => ({
     finishCompleted: jest.fn(),
     finishPartial: jest.fn(),
     getActiveWorkout: mockGetActiveWorkout,
+    listOwnedPlanExercises: mockListOwnedPlanExercises,
     openRestNotificationSettings: jest.fn(),
     pauseRest: jest.fn(),
     readRestAlertPreferences: () => ({ soundEnabled: false }),
@@ -178,6 +180,7 @@ describe("ActiveWorkoutRoute", () => {
     mockBack.mockReset();
     mockReplace.mockReset();
     mockGetActiveWorkout.mockReset();
+    mockListOwnedPlanExercises.mockClear();
   });
 
   it("never renders the prior session while a changed session is loading and keeps the overview identity", async () => {

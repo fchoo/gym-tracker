@@ -58,6 +58,9 @@ import {
   WORKOUT_REMOVE_RECEIPT_ENTITY_ID_SCHEMA_STATEMENTS,
 } from "../platform/sqlite/migrations/0018_workout_remove_receipt_entity_ids";
 import {
+  SESSION_EXERCISE_EDITING_SCHEMA_STATEMENTS,
+} from "../platform/sqlite/migrations/0019_session_exercise_editing";
+import {
   AppearanceProvider,
 } from "../ui/theme";
 
@@ -2030,13 +2033,50 @@ describe("WorkoutAppRuntimeProvider", () => {
         ];
       }
       if (sql === "PRAGMA table_info(workout_sessions)") {
-        return [{ name: "creation_timezone_offset_minutes" }];
+        return [
+          { name: "creation_timezone_offset_minutes", notnull: 1 },
+          { name: "modified_from_plan", notnull: 1 },
+        ];
+      }
+      if (sql === "PRAGMA table_info(session_exercises)") {
+        return [
+          { name: "origin", notnull: 1 },
+          { name: "display_ordinal", notnull: 1 },
+        ];
       }
       if (sql.includes("creation_timezone_offset_minutes IS NULL")) {
         return [];
       }
       if (sql === "PRAGMA index_list(session_exercises)") {
-        return [{ name: "exercise_history" }];
+        return [
+          { name: "exercise_history" },
+          { name: "session_exercises_session_display_ordinal_idx" },
+        ];
+      }
+      if (sql === "PRAGMA foreign_key_list(workout_session_exercise_edit_receipts)") {
+        return [
+          { table: "workout_sessions" },
+          { table: "session_exercises" },
+        ];
+      }
+      if (sql.includes("workout_session_exercise_edit_receipts_immutable_update")) {
+        return [
+          {
+            type: "table",
+            name: "workout_session_exercise_edit_receipts",
+            sql: SESSION_EXERCISE_EDITING_SCHEMA_STATEMENTS[5],
+          },
+          {
+            type: "trigger",
+            name: "workout_session_exercise_edit_receipts_immutable_update",
+            sql: SESSION_EXERCISE_EDITING_SCHEMA_STATEMENTS[6],
+          },
+          {
+            type: "trigger",
+            name: "workout_session_exercise_edit_receipts_immutable_delete",
+            sql: SESSION_EXERCISE_EDITING_SCHEMA_STATEMENTS[7],
+          },
+        ];
       }
       if (sql === "PRAGMA foreign_key_check") {
         return [];

@@ -539,6 +539,87 @@ describe("Plan 01-06 forward migrations and internal recovery", () => {
     }
   });
 
+  it("fails schema 19 verification for malformed columns, indexes, receipts, foreign keys, and triggers", async () => {
+    const validSessionColumns = [{ name: "modified_from_plan", notnull: 1 }];
+    const validExerciseColumns = [
+      { name: "origin", notnull: 1 },
+      { name: "display_ordinal", notnull: 1 },
+    ];
+    const validObjects = [
+      {
+        type: "table",
+        name: "workout_session_exercise_edit_receipts",
+        sql: SESSION_EXERCISE_EDITING_SCHEMA_STATEMENTS[5],
+      },
+      {
+        type: "trigger",
+        name: "workout_session_exercise_edit_receipts_immutable_update",
+        sql: SESSION_EXERCISE_EDITING_SCHEMA_STATEMENTS[6],
+      },
+      {
+        type: "trigger",
+        name: "workout_session_exercise_edit_receipts_immutable_delete",
+        sql: SESSION_EXERCISE_EDITING_SCHEMA_STATEMENTS[7],
+      },
+    ];
+    const validIndexes = [{ name: "session_exercises_session_display_ordinal_idx" }];
+    const validForeignKeys = [
+      { table: "workout_sessions" },
+      { table: "session_exercises" },
+    ];
+    const scenarios = [
+      { sessionColumns: [], exerciseColumns: validExerciseColumns, indexes: validIndexes, objects: validObjects, foreignKeys: validForeignKeys },
+      { sessionColumns: validSessionColumns, exerciseColumns: validExerciseColumns, indexes: [], objects: validObjects, foreignKeys: validForeignKeys },
+      { sessionColumns: validSessionColumns, exerciseColumns: validExerciseColumns, indexes: validIndexes, objects: validObjects.slice(1), foreignKeys: validForeignKeys },
+      {
+        sessionColumns: validSessionColumns,
+        exerciseColumns: validExerciseColumns,
+        indexes: validIndexes,
+        objects: [{ ...validObjects[0], sql: null }, validObjects[1], validObjects[2]],
+        foreignKeys: validForeignKeys,
+      },
+      { sessionColumns: validSessionColumns, exerciseColumns: validExerciseColumns, indexes: validIndexes, objects: validObjects, foreignKeys: validForeignKeys.slice(0, 1) },
+      {
+        sessionColumns: validSessionColumns,
+        exerciseColumns: validExerciseColumns,
+        indexes: validIndexes,
+        objects: [
+          validObjects[0],
+          { ...validObjects[1], sql: "CREATE TRIGGER altered" },
+          validObjects[2],
+        ],
+        foreignKeys: validForeignKeys,
+      },
+      {
+        sessionColumns: validSessionColumns,
+        exerciseColumns: validExerciseColumns,
+        indexes: validIndexes,
+        objects: [validObjects[0], validObjects[1], { ...validObjects[2], name: "unexpected_trigger" }],
+        foreignKeys: validForeignKeys,
+      },
+    ];
+
+    for (const scenario of scenarios) {
+      const transaction: SqliteTransactionExecutor = {
+        execute: async () => ({ changes: 0, lastInsertRowId: 0 }),
+        async queryAll<Row extends Record<string, unknown>>(sql: string) {
+          const result = sql === "PRAGMA table_info(workout_sessions)"
+            ? scenario.sessionColumns
+            : sql === "PRAGMA table_info(session_exercises)"
+              ? scenario.exerciseColumns
+              : sql === "PRAGMA index_list(session_exercises)"
+                ? scenario.indexes
+              : sql === "PRAGMA foreign_key_list(workout_session_exercise_edit_receipts)"
+                ? scenario.foreignKeys
+                : scenario.objects;
+          return result as unknown as readonly Row[];
+        },
+      };
+      await expect(sessionExerciseEditingMigration.verify(transaction))
+        .rejects.toThrow("session_exercise_editing_schema_incomplete");
+    }
+  });
+
   it("rejects removal receipt triggers whose expected names have altered bodies", async () => {
     const runtime = await createHostRuntime();
     try {

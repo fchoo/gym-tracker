@@ -597,8 +597,8 @@ describe("Phase2AttendedPreviewRoute", () => {
       if (count === 0) {
         expect(screen.getByText("Empty workout in progress"))
           .toBeOnTheScreen();
-        expect(screen.getByLabelText("Add exercise. Available in Phase 9."))
-          .toHaveProp("accessibilityState", expect.objectContaining({ disabled: true }));
+        expect(screen.getByLabelText("Add exercise"))
+          .toHaveProp("accessibilityState", expect.objectContaining({ disabled: false }));
       } else {
         expect(screen.getAllByTestId(/overview-exercise-preview-exercise-/u))
           .toHaveLength(count);
