@@ -7,13 +7,17 @@ import { join } from "node:path";
 import fullBodyFoundationAsset from "../../assets/content/full-body-foundation.v1.json";
 import { parseFullBodyFoundation } from "../../src/domains/content";
 import { activateStarterPlan } from "../../src/domains/plans";
-import { startWorkout } from "../../src/domains/workout";
+import {
+  finishPartial,
+  startWorkout,
+} from "../../src/domains/workout";
 import type { SqliteConnection, SqlitePreparedResult, SqlitePreparedStatement } from "../../src/platform/sqlite/connection";
 import { configureSqliteConnection } from "../../src/platform/sqlite/connection";
 import { createMigrationRunner } from "../../src/platform/sqlite/migrationRunner";
 import { migrations } from "../../src/platform/sqlite/migrations";
 import type { RecoveryBackupPort } from "../../src/platform/sqlite/recoveryBackup";
 import { createPlansWorkoutRepository } from "../../src/platform/sqlite/repositories/plansWorkoutRepository";
+import { createWorkoutOutcomeRepository } from "../../src/platform/sqlite/repositories/workoutOutcomeRepository";
 import { createWorkoutRepository } from "../../src/platform/sqlite/repositories/workoutRepository";
 import { createSqliteKernel, type SqliteKernel } from "../../src/platform/sqlite/sqliteKernel";
 import type { SqliteKernelTestObserver } from "../../src/platform/sqlite/sqliteKernel";
@@ -174,6 +178,36 @@ describe("Phase 09 session exercise editing", () => {
     expect(await kernel.queryAll("SELECT set_kind, source_plan_working_set_target_id, source_owned_plan_working_set_target_id, status FROM session_sets WHERE id = 'added-set'")).toEqual([{ set_kind: "working", source_plan_working_set_target_id: null, source_owned_plan_working_set_target_id: null, status: "planned" }]);
     expect(await kernel.queryAll<{ id: string; bytes: string }>("SELECT id, quote(session_id) || quote(exercise_id) || quote(ordinal) || quote(exercise_name) || quote(status) || quote(revision) AS bytes FROM session_exercises WHERE session_id = ? AND id <> 'added-exercise' ORDER BY id", [session.id])).toEqual(before);
     expect(await kernel.queryAll("SELECT modified_from_plan, revision FROM workout_sessions WHERE id = ?", [session.id])).toEqual([{ modified_from_plan: 1, revision: session.revision + 1 }]);
+  });
+
+  it("rehydrates the persisted modified-from-plan flag after an edited session finishes", async () => {
+    const { kernel, repository, session, libraryExerciseId } = await setup();
+    const added = await repository.addExercise!({
+      requestId: "modified-detail-add",
+      requestSha256: hash,
+      sessionId: session.id,
+      expectedSessionRevision: session.revision,
+      occurredAtMs: 2_000,
+      libraryExerciseId,
+      sessionExerciseId: "modified-detail-added-exercise",
+      setId: "modified-detail-added-set",
+    });
+
+    await finishPartial({
+      repository: createWorkoutOutcomeRepository(kernel),
+      input: {
+        sessionId: session.id,
+        expectedSessionRevision: added.sessionRevision,
+        confirmation: "save_partial_workout",
+        endedAtMs: 2_001,
+      },
+    });
+
+    await expect(createWorkoutOutcomeRepository(kernel).getSessionDetail(session.id))
+      .resolves.toMatchObject({
+        status: "partial",
+        modifiedFromPlan: true,
+      });
   });
 
   it("replays an identical receipt and rejects stale or mismatched commands without writes", async () => {

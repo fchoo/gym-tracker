@@ -54,6 +54,7 @@ const completedDetail: SessionDetail = {
   endedAtMs: 301_000,
   durationMs: 300_000,
   revision: 8,
+  modifiedFromPlan: false,
   exerciseProgress: {
     completed: 1,
     planned: 1,
@@ -174,6 +175,16 @@ describe("Plan 01-10 completion and detail", () => {
     expect(screen.getByText("Top working set · 60 kg × 8")).toBeOnTheScreen();
     expect(screen.getByText("Total working reps · 23")).toBeOnTheScreen();
     expect(screen.getByText("Warm-ups excluded")).toBeOnTheScreen();
+    expect(screen.queryByText("Modified from plan")).not.toBeOnTheScreen();
+  });
+
+  it("renders the literal persisted modified cue in the native completion flow", async () => {
+    await renderCompletion({
+      detail: { ...completedDetail, modifiedFromPlan: true },
+    });
+
+    expect(screen.getByText("Modified from plan")).toBeOnTheScreen();
+    expect(screen.getByLabelText("Modified from plan")).toBeOnTheScreen();
   });
 
   it("uses high-contrast flat cards for completion context, metrics, and exercise results", async () => {
@@ -336,6 +347,22 @@ describe("Plan 01-10 completion and detail", () => {
     expect(openExerciseHistory).toHaveBeenCalledWith(
       completedDetail.exercises[0],
     );
+  });
+
+  it("keeps the literal modified cue after reopening workout details", async () => {
+    await render(
+      <AppearanceProvider>
+        <SessionDetailScreen
+          detail={{ ...completedDetail, modifiedFromPlan: true }}
+          onGoBack={jest.fn()}
+          onOpenExerciseHistory={jest.fn()}
+          onResume={jest.fn()}
+        />
+      </AppearanceProvider>,
+    );
+
+    expect(screen.getByText("Modified from plan")).toBeOnTheScreen();
+    expect(screen.getByLabelText("Modified from plan")).toBeOnTheScreen();
   });
 
   it("presents manual and factual non-load outcomes as read-only source evidence", async () => {
