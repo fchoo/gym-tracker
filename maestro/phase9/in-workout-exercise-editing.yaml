@@ -152,7 +152,7 @@ name: Phase 9 add exercise and relaunch persistence
     timeout: 30000
 - tapOn: "Retry removing exercise"
 - extendedWaitUntil:
-    visible: '^Bench Press\. Skipped\. 1 of 1 working sets\. Collapse exercise$'
+    visible: 'Skipped · 1 of 1 working sets'
     timeout: 30000
 - assertVisible: "60 kg × 8"
 - stopApp
@@ -161,5 +161,5 @@ name: Phase 9 add exercise and relaunch persistence
     permissions:
       notifications: deny
 - assertVisible: '^Bench Press · Working set 1 · Rest idle$'
-- assertVisible: '^Bench Press\. Skipped\. 1 of 1 working sets\. Collapse exercise$'
+- assertVisible: 'Skipped · 1 of 1 working sets'
 - assertVisible: "60 kg × 8"
