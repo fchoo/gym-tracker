@@ -52,6 +52,10 @@ import type {
   UpdateActiveSetDraftInput,
   UpdateWarmupDraftInput,
 } from "../../domains/workout";
+import type {
+  RemoveExerciseInput,
+  ReplaceExerciseInput,
+} from "../../domains/workout/activeWorkout";
 import {
   ConfirmationSheet,
   ContentCard,
@@ -89,6 +93,8 @@ import {
 
 export interface ActiveWorkoutCommands {
   addExercise?(input: AddExerciseInput): Promise<import("../../domains/workout").AddExerciseResult>;
+  replaceExercise?(input: ReplaceExerciseInput): Promise<ExerciseEditCommandResult>;
+  removeExercise?(input: RemoveExerciseInput): Promise<ExerciseEditCommandResult>;
   updateActiveSetDraft(
     input: UpdateActiveSetDraftInput,
   ): Promise<ActiveWorkoutView>;
@@ -138,6 +144,28 @@ type CommittedRemovalRefreshFailure = Readonly<{
 
 type RemovalCommandResult = ActiveWorkoutView | CommittedRemovalRefreshFailure;
 
+type CommittedExerciseEditRefreshFailure = Readonly<{
+  outcome: "committed_refresh_failed";
+  sessionId: string;
+  sessionExerciseId: string;
+  sessionRevision: number;
+}>;
+
+type ExerciseEditCommandResult = ActiveWorkoutView | CommittedExerciseEditRefreshFailure;
+
+type ExerciseAction = "replace" | "remove";
+
+type ExerciseEditCandidate = Readonly<{
+  action: ExerciseAction;
+  exerciseId: string;
+}>;
+
+type ExerciseEditFailure = Readonly<{
+  action: ExerciseAction;
+  exerciseId: string;
+  retry: () => void;
+}>;
+
 type WarmupCommandState = Readonly<{
   setId: string;
   action: "complete" | "skip" | "update" | "add";
@@ -166,6 +194,12 @@ type RemovalCandidate = Readonly<{
 
 function exercisesFor(view: ActiveWorkoutView): readonly ActiveWorkoutExercise[] {
   return view.exercises.length > 0 ? view.exercises : [view.currentExercise];
+}
+
+function isCommittedExerciseEditRefreshFailure(
+  result: ExerciseEditCommandResult,
+): result is CommittedExerciseEditRefreshFailure {
+  return "outcome" in result && result.outcome === "committed_refresh_failed";
 }
 
 function resolveSetOwner(
@@ -652,6 +686,7 @@ function PopulatedWorkoutOverview({
   onFinishLater,
   onOutcomeSaved = () => onFinishLater(),
   onDiscarded = onFinishLater,
+  availableExercises = [],
   width,
 }: PopulatedWorkoutOverviewProps) {
   const { colors, reduceMotion } = useAppTheme();
@@ -704,8 +739,24 @@ function PopulatedWorkoutOverview({
   const [removalFailure, setRemovalFailure] = useState<RemovalFailure | null>(null);
   const [removalRecovery, setRemovalRecovery] = useState<RemovalCandidate | null>(null);
   const [removalAnnouncement, setRemovalAnnouncement] = useState<string | null>(null);
+  const [exerciseActionCandidate, setExerciseActionCandidate] =
+    useState<ExerciseEditCandidate | null>(null);
+  const [exerciseActionsVisibleForId, setExerciseActionsVisibleForId] =
+    useState<string | null>(null);
+  const [exerciseEditBusy, setExerciseEditBusy] = useState(false);
+  const [exerciseEditFailure, setExerciseEditFailure] =
+    useState<ExerciseEditFailure | null>(null);
+  const [exerciseEditRecovery, setExerciseEditRecovery] =
+    useState<ExerciseEditCandidate | null>(null);
+  const [replacementPickerForId, setReplacementPickerForId] =
+    useState<string | null>(null);
+  const [replacementQuery, setReplacementQuery] = useState("");
+  const [replacementExerciseId, setReplacementExerciseId] =
+    useState<string | null>(null);
   const moreActionRef = useRef<View>(null);
   const moreFirstActionRef = useRef<View>(null);
+  const exerciseActionRefs = useRef(new Map<string, View | null>());
+  const exerciseActionFirstRef = useRef<View>(null);
   const warmupAddRef = useRef<View>(null);
   const workingAddRef = useRef<View>(null);
   const removeFocusRef = useRef<View>(null);
@@ -715,6 +766,11 @@ function PopulatedWorkoutOverview({
   const correctionSetIdRef = useRef<string | null>(null);
   const restCommandInFlightRef = useRef(false);
   const overviewExercises = React.useMemo(() => exercisesFor(view), [view]);
+  const replacementCandidates = availableExercises.filter((exercise) =>
+    exercise.name.toLocaleLowerCase("en").includes(
+      replacementQuery.trim().toLocaleLowerCase("en"),
+    ),
+  );
   const isMultiExerciseOverview = view.exercises.length > 0;
   const activeOwner = view.activeSetId === null
     ? undefined
@@ -1124,6 +1180,111 @@ function PopulatedWorkoutOverview({
     }
   };
 
+  const closeExerciseActions = () => {
+    const exerciseId = exerciseActionsVisibleForId;
+    setExerciseActionsVisibleForId(null);
+    if (exerciseId !== null) {
+      exerciseActionRefs.current.get(exerciseId)?.focus();
+    }
+  };
+
+  const beginExerciseEdit = (candidate: ExerciseEditCandidate) => {
+    setExerciseActionCandidate(candidate);
+    setExerciseEditFailure(null);
+    setExerciseEditRecovery(null);
+  };
+
+  const openReplacementPicker = (exerciseId: string) => {
+    setReplacementQuery("");
+    setReplacementExerciseId(null);
+    setReplacementPickerForId(exerciseId);
+  };
+
+  const submitExerciseEdit = async (candidate: ExerciseEditCandidate) => {
+    if (exerciseEditBusy) {
+      return;
+    }
+    const currentView = viewRef.current;
+    const exercise = exercisesFor(currentView).find(
+      ({ id }) => id === candidate.exerciseId,
+    );
+    if (exercise === undefined) {
+      return;
+    }
+    setExerciseEditBusy(true);
+    setExerciseEditFailure(null);
+    setExerciseEditRecovery(null);
+    try {
+      const occurredAtMs = nowMs();
+      const operation = candidate.action === "replace"
+        ? "replace_exercise"
+        : "remove_exercise";
+      const identity = {
+        operation,
+        sessionId,
+        sessionExerciseId: exercise.id,
+        expectedSessionRevision: currentView.revision,
+        expectedSessionExerciseRevision: exercise.revision,
+        occurredAtMs,
+        ...(candidate.action === "replace"
+          ? { libraryExerciseId: replacementExerciseId }
+          : {}),
+      };
+      const requestId = `${operation}:${sessionId}:${exercise.id}:${currentView.revision}:${occurredAtMs}`;
+      const requestSha256 = await Crypto.digestStringAsync(
+        Crypto.CryptoDigestAlgorithm.SHA256,
+        stableJson(identity),
+      );
+      const result = candidate.action === "replace"
+        ? await commands.replaceExercise?.({
+            requestId,
+            requestSha256,
+            sessionId,
+            expectedSessionRevision: currentView.revision,
+            sessionExerciseId: exercise.id,
+            expectedSessionExerciseRevision: exercise.revision,
+            occurredAtMs,
+            libraryExerciseId: replacementExerciseId ?? "",
+            replacementSessionExerciseId: `${requestId}:exercise`,
+            replacementSetId: `${requestId}:set`,
+          })
+        : await commands.removeExercise?.({
+            requestId,
+            requestSha256,
+            sessionId,
+            expectedSessionRevision: currentView.revision,
+            sessionExerciseId: exercise.id,
+            expectedSessionExerciseRevision: exercise.revision,
+            occurredAtMs,
+          });
+      if (result === undefined) {
+        throw new Error("exercise_edit_unavailable");
+      }
+      if (isCommittedExerciseEditRefreshFailure(result)) {
+        setExerciseEditRecovery(candidate);
+        setExerciseActionCandidate(null);
+        setReplacementPickerForId(null);
+        return;
+      }
+      applyView(result);
+      setExerciseActionCandidate(null);
+      setReplacementPickerForId(null);
+      setReplacementExerciseId(null);
+    } catch {
+      setExerciseEditFailure({
+        ...candidate,
+        retry: () => {
+          void submitExerciseEdit(candidate);
+        },
+      });
+      setExerciseActionCandidate(null);
+      setReplacementPickerForId(null);
+      exerciseActionRefs.current.get(candidate.exerciseId)?.focus();
+    } finally {
+      setExerciseEditBusy(false);
+    }
+  };
+
 
   const reviseCompletedSet = async (
     set: ActiveWorkoutSet,
@@ -1414,6 +1575,71 @@ function PopulatedWorkoutOverview({
                     />
                   )}
                 </FocusablePressable>
+                <FocusablePressable
+                  accessibilityLabel={`${exercise.name} exercise actions`}
+                  accessibilityRole="button"
+                  accessibilityState={{
+                    busy: exerciseEditBusy,
+                    disabled: exerciseEditBusy,
+                    expanded: exerciseActionsVisibleForId === exercise.id,
+                  }}
+                  disabled={exerciseEditBusy}
+                  focusable={!exerciseEditBusy}
+                  onPress={() => {
+                    setExerciseActionsVisibleForId(exercise.id);
+                    setExerciseEditFailure(null);
+                    setExerciseEditRecovery(null);
+                  }}
+                  ref={(node) => {
+                    exerciseActionRefs.current.set(exercise.id, node);
+                  }}
+                  style={({ pressed }) => [
+                    styles.exerciseAction,
+                    {
+                      backgroundColor: pressed
+                        ? colors.contentCardPressed
+                        : "transparent",
+                      borderColor: exerciseActionsVisibleForId === exercise.id
+                        ? colors.action
+                        : colors.contentCardBorder,
+                      opacity: exerciseEditBusy ? 0.62 : 1,
+                    },
+                  ]}
+                  testID={`exercise-actions-${exercise.id}`}
+                >
+                  <Text
+                    accessibilityElementsHidden
+                    importantForAccessibility="no-hide-descendants"
+                    style={[typeScale.bodyStrong as TextStyle, { color: colors.contentCardText }]}
+                  >
+                    •••
+                  </Text>
+                </FocusablePressable>
+                {exerciseEditFailure?.exerciseId !== exercise.id ? null : (
+                  <InlineNotice
+                    action={
+                      <SecondaryAction
+                        label={exerciseEditFailure.action === "replace"
+                          ? "Retry replacing exercise"
+                          : "Retry removing exercise"}
+                        onPress={exerciseEditFailure.retry}
+                      />
+                    }
+                    body="Your workout was not changed. Try again from the latest workout."
+                    heading={exerciseEditFailure.action === "replace"
+                      ? "Exercise could not be replaced"
+                      : "Exercise could not be removed"}
+                    tone="error"
+                  />
+                )}
+                {exerciseEditRecovery?.exerciseId !== exercise.id ? null : (
+                  <InlineNotice
+                    action={<SecondaryAction label="Return to Today" onPress={onGoBack} />}
+                    body="The exercise change was saved, but the latest workout could not be loaded. Return to Today and reopen this workout."
+                    heading="Exercise changed. Reload workout"
+                    tone="attention"
+                  />
+                )}
                 {collapsed ? null : <>
                 <ContentCard
                   style={styles.section}
@@ -1746,6 +1972,130 @@ function PopulatedWorkoutOverview({
           </ScrollView>
         </View>
       </Modal>
+      <Modal
+        animationType={reduceMotion ? "none" : "fade"}
+        onRequestClose={closeExerciseActions}
+        transparent
+        visible={exerciseActionsVisibleForId !== null}
+      >
+        <View style={styles.modalBackdrop}>
+          <ScrollView
+            accessibilityViewIsModal
+            contentContainerStyle={styles.moreSheetContent}
+            keyboardShouldPersistTaps="handled"
+            style={[styles.moreSheet, { backgroundColor: colors.surface }]}
+            testID="exercise-actions-sheet-content"
+          >
+            <SectionHeader title="Exercise actions" />
+            {exerciseActionsVisibleForId === null ? null : (
+              <SecondaryAction
+                label="Replace exercise"
+                ref={exerciseActionFirstRef}
+                onPress={() => {
+                  const exerciseId = exerciseActionsVisibleForId;
+                  closeExerciseActions();
+                  if (exerciseId !== null) {
+                    openReplacementPicker(exerciseId);
+                  }
+                }}
+              />
+            )}
+            {exerciseActionsVisibleForId === null ? null : (
+              <SecondaryAction
+                destructive
+                label="Remove exercise"
+                onPress={() => {
+                  const exerciseId = exerciseActionsVisibleForId;
+                  closeExerciseActions();
+                  if (exerciseId !== null) {
+                    beginExerciseEdit({ action: "remove", exerciseId });
+                  }
+                }}
+              />
+            )}
+          </ScrollView>
+        </View>
+      </Modal>
+      <Modal
+        animationType={reduceMotion ? "none" : "fade"}
+        onRequestClose={() => {
+          setReplacementPickerForId(null);
+          if (replacementPickerForId !== null) {
+            exerciseActionRefs.current.get(replacementPickerForId)?.focus();
+          }
+        }}
+        transparent
+        visible={replacementPickerForId !== null}
+      >
+        <View style={styles.modalBackdrop}>
+          <ScrollView
+            accessibilityViewIsModal
+            contentContainerStyle={styles.moreSheetContent}
+            keyboardShouldPersistTaps="handled"
+            style={[styles.moreSheet, { backgroundColor: colors.surface }]}
+            testID="replace-exercise-picker-content"
+          >
+            <SectionHeader title="Choose exercise" />
+            <M3SearchField
+              label="Search exercises"
+              onChangeText={setReplacementQuery}
+              resultCount={replacementCandidates.length}
+              state={replacementCandidates.length === 0 ? "empty" : "results"}
+              value={replacementQuery}
+            />
+            {replacementCandidates.length !== 0 ? null : (
+              <InlineNotice
+                body="Try a different search or clear a filter."
+                heading="No exercises found"
+                tone="neutral"
+              />
+            )}
+            {replacementCandidates.map((candidate) => (
+              <FocusablePressable
+                accessibilityLabel={candidate.name}
+                accessibilityRole="radio"
+                accessibilityState={{ checked: replacementExerciseId === candidate.id }}
+                key={candidate.id}
+                onPress={() => setReplacementExerciseId(candidate.id)}
+                style={[
+                  styles.exerciseOption,
+                  {
+                    backgroundColor: replacementExerciseId === candidate.id
+                      ? colors.contentCardSelected
+                      : colors.surface,
+                    borderColor: replacementExerciseId === candidate.id
+                      ? colors.action
+                      : colors.divider,
+                  },
+                ]}
+              >
+                <Text style={[typeScale.bodyStrong as TextStyle, { color: colors.textPrimary }]}>
+                  {candidate.name}
+                </Text>
+                {replacementExerciseId === candidate.id ? (
+                  <Text style={[typeScale.secondary as TextStyle, { color: colors.textSecondary }]}>
+                    Selected
+                  </Text>
+                ) : null}
+              </FocusablePressable>
+            ))}
+            {replacementPickerForId === null || replacementExerciseId === null ? null : (
+              <PrimaryAction
+                busy={exerciseEditBusy}
+                label={`Replace with ${availableExercises.find(
+                  ({ id }) => id === replacementExerciseId,
+                )?.name ?? "exercise"}`}
+                onPress={() => {
+                  void submitExerciseEdit({
+                    action: "replace",
+                    exerciseId: replacementPickerForId,
+                  });
+                }}
+              />
+            )}
+          </ScrollView>
+        </View>
+      </Modal>
       <ConfirmationSheet
         body={confirmationCopy.body}
         cancelLabel={confirmationCopy.cancelLabel}
@@ -1760,6 +2110,40 @@ function PopulatedWorkoutOverview({
         restoreFocusRef={moreActionRef}
         visible={outcomeConfirmation !== null}
       />
+      {exerciseActionCandidate?.action !== "remove" ? null : (
+        <ConfirmationSheet
+          body={(() => {
+            const exercise = exercisesFor(view).find(
+              ({ id }) => id === exerciseActionCandidate.exerciseId,
+            );
+            const hasCompletedHistory = exercise?.workingSets.some(
+              ({ status }) => status === "completed",
+            ) ?? false;
+            return hasCompletedHistory
+              ? "This exercise has completed sets. They will be retained and this exercise will be marked Skipped, not deleted."
+              : `Remove ${exercise?.name ?? "this exercise"} from this workout?`;
+          })()}
+          cancelLabel="Keep exercise"
+          confirmBusy={exerciseEditBusy}
+          confirmLabel="Remove exercise"
+          destructive
+          heading="Remove exercise"
+          onCancel={() => {
+            const exerciseId = exerciseActionCandidate.exerciseId;
+            setExerciseActionCandidate(null);
+            exerciseActionRefs.current.get(exerciseId)?.focus();
+          }}
+          onConfirm={() => {
+            void submitExerciseEdit(exerciseActionCandidate);
+          }}
+          restoreFocusRef={{
+            current: exerciseActionRefs.current.get(
+              exerciseActionCandidate.exerciseId,
+            ) ?? null,
+          }}
+          visible
+        />
+      )}
       {pendingRemoval === null ? null : <ConfirmationSheet
         body={pendingRemoval.kind === "warmup"
           ? "This warm-up will be removed from this workout. This cannot be undone."
@@ -1797,6 +2181,15 @@ const styles = StyleSheet.create({
     gap: space[1],
     minHeight: sizes.minimumTarget,
     padding: space[2],
+  },
+  exerciseAction: {
+    alignItems: "center",
+    alignSelf: "flex-start",
+    borderRadius: radius.standard,
+    borderWidth: StyleSheet.hairlineWidth,
+    justifyContent: "center",
+    minHeight: sizes.minimumTarget,
+    minWidth: sizes.minimumTarget,
   },
   targetSection: {
     gap: space[1],

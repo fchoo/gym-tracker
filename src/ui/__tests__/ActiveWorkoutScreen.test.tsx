@@ -608,6 +608,27 @@ describe("Plan 01-08 ActiveWorkoutScreen", () => {
     });
   });
 
+  it("exposes the exact per-exercise action overflow with expanded accessibility state", async () => {
+    await renderActive({ view: overviewView() });
+
+    const actions = screen.getByRole("button", {
+      name: "Bench Press exercise actions",
+    });
+    expect(actions).toHaveProp("accessibilityState", expect.objectContaining({
+      expanded: false,
+    }));
+
+    await fireEvent.press(actions);
+
+    expect(actions).toHaveProp("accessibilityState", expect.objectContaining({
+      expanded: true,
+    }));
+    expect(screen.getByRole("button", { name: "Replace exercise" }))
+      .toBeOnTheScreen();
+    expect(screen.getByRole("button", { name: "Remove exercise" }))
+      .toBeOnTheScreen();
+  });
+
   it("keeps the workout overview identity outside scrolling content", async () => {
     const reviewedExercise = {
       ...initialView.currentExercise,

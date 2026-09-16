@@ -130,6 +130,8 @@ export default function ActiveWorkoutRoute() {
     <ActiveWorkoutScreen
       commands={{
         addExercise: runtime.addExercise,
+        replaceExercise: runtime.replaceExercise,
+        removeExercise: runtime.removeExercise,
         updateActiveSetDraft: runtime.updateActiveSetDraft,
         updateWarmupDraft: runtime.updateWarmupDraft,
         addWarmup: mutationCommands.addWarmup,
