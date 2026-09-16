@@ -16,6 +16,7 @@ import type { RecoveryBackupPort } from "../../src/platform/sqlite/recoveryBacku
 import { createPlansWorkoutRepository } from "../../src/platform/sqlite/repositories/plansWorkoutRepository";
 import { createWorkoutRepository } from "../../src/platform/sqlite/repositories/workoutRepository";
 import { createSqliteKernel, type SqliteKernel } from "../../src/platform/sqlite/sqliteKernel";
+import type { SqliteKernelTestObserver } from "../../src/platform/sqlite/sqliteKernel";
 
 class Result<Row extends Record<string, unknown>> implements SqlitePreparedResult<Row> {
   constructor(readonly changes: number, readonly lastInsertRowId: number, private readonly rows: readonly Row[]) {}
@@ -42,12 +43,12 @@ const kernels: SqliteKernel[] = [];
 const recoveryBackup: RecoveryBackupPort = { createAndValidate: async (request) => ({ backupId: "phase9", databaseName: request.databaseName, fromVersion: request.fromVersion, toVersion: request.toVersion, validated: true }) };
 afterEach(async () => { await Promise.all(kernels.splice(0).map((kernel) => kernel.close())); for (const directory of directories) rmSync(directory, { force: true, recursive: true }); directories.clear(); });
 
-async function setup() {
+async function setup(observer: SqliteKernelTestObserver = {}) {
   const directory = mkdtempSync(join(tmpdir(), "gym-phase9-")); directories.add(directory);
   const path = join(directory, "gym.db");
   const writer = new Connection(new DatabaseSync(path)); const reader = new Connection(new DatabaseSync(path));
   await configureSqliteConnection(writer, { enableWal: true }); await configureSqliteConnection(reader, { enableWal: false });
-  const kernel = createSqliteKernel({ reader, writer }); kernels.push(kernel);
+  const kernel = createSqliteKernel({ reader, writer }, observer); kernels.push(kernel);
   await createMigrationRunner({ databaseName: "gym.db", kernel, migrations, recoveryBackup }).run();
   const plans = createPlansWorkoutRepository(kernel);
   const activation = await activateStarterPlan({ fixture: parseFullBodyFoundation(fullBodyFoundationAsset), repository: plans, activatedAtMs: 1_000, startLocalDate: "2026-09-16", timezone: "Asia/Singapore" });
@@ -62,10 +63,68 @@ async function setup() {
   ));
   const session = await startWorkout({ repository: plans, request: { mode: "scheduled", planId: activation.plan.id, planDayId: activation.days[0]!.id, localDate: "2026-09-16", timezone: "Asia/Singapore", startedAtMs: 1_001 } });
   const [library] = await kernel.queryAll<{ exercise_id: string }>("SELECT exercise_id FROM exercise_library_entries WHERE availability = 'available' ORDER BY exercise_id LIMIT 1");
-  return { kernel, repository: createWorkoutRepository(kernel), session, libraryExerciseId: library!.exercise_id };
+  const [replacement] = await kernel.queryAll<{ exercise_id: string }>(
+    "SELECT exercise_id FROM exercise_library_entries WHERE availability = 'available' ORDER BY exercise_id DESC LIMIT 1",
+  );
+  return { kernel, repository: createWorkoutRepository(kernel), session, libraryExerciseId: library!.exercise_id, replacementLibraryExerciseId: replacement!.exercise_id };
 }
 
 const hash = "a".repeat(64);
+
+async function sessionExercise(kernel: SqliteKernel, sessionId: string) {
+  const [row] = await kernel.queryAll<{
+    id: string;
+    revision: number;
+    display_ordinal: number;
+    exercise_id: string;
+  }>(
+    `SELECT id, revision, display_ordinal, exercise_id
+     FROM session_exercises
+     WHERE session_id = ?
+     ORDER BY display_ordinal, ordinal
+     LIMIT 1`,
+    [sessionId],
+  );
+  return row!;
+}
+
+function replaceInput(
+  sessionId: string,
+  sessionRevision: number,
+  exercise: Awaited<ReturnType<typeof sessionExercise>>,
+  libraryExerciseId: string,
+  requestId = "replace-1",
+) {
+  return {
+    requestId,
+    requestSha256: hash,
+    sessionId,
+    expectedSessionRevision: sessionRevision,
+    sessionExerciseId: exercise.id,
+    expectedSessionExerciseRevision: exercise.revision,
+    occurredAtMs: 2_000,
+    libraryExerciseId,
+    replacementSessionExerciseId: `${requestId}-exercise`,
+    replacementSetId: `${requestId}-set`,
+  };
+}
+
+function removeInput(
+  sessionId: string,
+  sessionRevision: number,
+  exercise: Awaited<ReturnType<typeof sessionExercise>>,
+  requestId = "remove-1",
+) {
+  return {
+    requestId,
+    requestSha256: hash,
+    sessionId,
+    expectedSessionRevision: sessionRevision,
+    sessionExerciseId: exercise.id,
+    expectedSessionExerciseRevision: exercise.revision,
+    occurredAtMs: 2_000,
+  };
+}
 describe("Phase 09 session exercise editing", () => {
   it("appends one added-origin exercise and one null-lineage working set without changing prior snapshots", async () => {
     const { kernel, repository, session, libraryExerciseId } = await setup();
@@ -129,5 +188,266 @@ describe("Phase 09 session exercise editing", () => {
     const first = await createWorkoutRepository(kernel).addExercise!(input);
     await expect(createWorkoutRepository(kernel).addExercise!(input)).resolves.toEqual({ ...first, outcome: "already_committed" });
     expect(await kernel.queryAll("SELECT operation, subject_session_exercise_id, replacement_session_exercise_id FROM workout_session_exercise_edit_receipts WHERE request_id = 'v20-add'")).toEqual([{ operation: "add_exercise", subject_session_exercise_id: "v20-added-exercise", replacement_session_exercise_id: null }]);
+  });
+
+  it("replaces a provisional exercise by deleting only its zero-completed rows and writing one scalar v20 receipt", async () => {
+    const { kernel, repository, session, replacementLibraryExerciseId } = await setup();
+    const original = await sessionExercise(kernel, session.id);
+    const input = replaceInput(
+      session.id,
+      session.revision,
+      original,
+      replacementLibraryExerciseId,
+    );
+
+    await expect(repository.replaceExercise!(input)).resolves.toEqual({
+      outcome: "committed",
+      disposition: "deleted_provisional",
+      sessionId: session.id,
+      sessionExerciseId: original.id,
+      replacementSessionExerciseId: input.replacementSessionExerciseId,
+      replacementSetId: input.replacementSetId,
+      sessionRevision: session.revision + 1,
+    });
+    expect(await kernel.queryAll(
+      "SELECT id FROM session_exercises WHERE id = ?",
+      [original.id],
+    )).toEqual([]);
+    expect(await kernel.queryAll(
+      "SELECT id FROM session_sets WHERE session_exercise_id = ?",
+      [original.id],
+    )).toEqual([]);
+    expect(await kernel.queryAll(
+      `SELECT origin, source_plan_day_exercise_id, display_ordinal
+       FROM session_exercises WHERE id = ?`,
+      [input.replacementSessionExerciseId],
+    )).toEqual([{
+      origin: "added",
+      source_plan_day_exercise_id: null,
+      display_ordinal: original.display_ordinal,
+    }]);
+    expect(await kernel.queryAll(
+      `SELECT operation, subject_session_exercise_id, replacement_session_exercise_id
+       FROM workout_session_exercise_edit_receipts WHERE request_id = ?`,
+      [input.requestId],
+    )).toEqual([{
+      operation: "replace_exercise",
+      subject_session_exercise_id: original.id,
+      replacement_session_exercise_id: input.replacementSessionExerciseId,
+    }]);
+    expect(await kernel.queryAll(
+      "SELECT COUNT(*) AS count FROM workout_session_exercise_reorder_receipts",
+    )).toEqual([{ count: 0 }]);
+  });
+
+  it("removes a provisional added exercise and replays its immutable v20 receipt after repository restart", async () => {
+    const { kernel, repository, session, libraryExerciseId } = await setup();
+    const added = await repository.addExercise!({
+      requestId: "provisional-add", requestSha256: hash, sessionId: session.id,
+      expectedSessionRevision: session.revision, occurredAtMs: 1_900,
+      libraryExerciseId, sessionExerciseId: "provisional-exercise", setId: "provisional-set",
+    });
+    const original = await sessionExercise(kernel, session.id);
+    const provisional = (await kernel.queryAll<{ id: string; revision: number; display_ordinal: number; exercise_id: string }>(
+      "SELECT id, revision, display_ordinal, exercise_id FROM session_exercises WHERE id = 'provisional-exercise'",
+    ))[0]!;
+    const input = removeInput(session.id, added.sessionRevision, provisional);
+
+    const first = await repository.removeExercise!(input);
+    await expect(createWorkoutRepository(kernel).removeExercise!(input)).resolves.toEqual({
+      ...first, outcome: "already_committed",
+    });
+    expect(await kernel.queryAll(
+      "SELECT id FROM session_exercises WHERE id = 'provisional-exercise'",
+    )).toEqual([]);
+    expect(await kernel.queryAll(
+      "SELECT request_id FROM workout_session_exercise_edit_receipts WHERE request_id IN ('provisional-add', 'remove-1') ORDER BY request_id",
+    )).toEqual([{ request_id: "provisional-add" }, { request_id: "remove-1" }]);
+    expect(await kernel.queryAll(
+      "SELECT id FROM session_exercises WHERE id = ?",
+      [original.id],
+    )).toEqual([{ id: original.id }]);
+  });
+
+  it("moves active and rest-owned provisional work to stable display-order next work", async () => {
+    const { kernel, repository, session, libraryExerciseId } = await setup();
+    const added = await repository.addExercise!({
+      requestId: "pointer-add", requestSha256: hash, sessionId: session.id,
+      expectedSessionRevision: session.revision, occurredAtMs: 1_900,
+      libraryExerciseId, sessionExerciseId: "pointer-provisional", setId: "pointer-provisional-set",
+    });
+    const original = await sessionExercise(kernel, session.id);
+    const [originalWorking] = await kernel.queryAll<{ id: string }>(
+      `SELECT id FROM session_sets
+       WHERE session_exercise_id = ? AND set_kind = 'working'
+       ORDER BY ordinal, id LIMIT 1`,
+      [original.id],
+    );
+    await kernel.write(async (transaction) => {
+      await transaction.execute(
+        `UPDATE workout_sessions
+         SET active_session_exercise_id = ?, active_set_id = ?
+         WHERE id = ?`,
+        ["pointer-provisional", "pointer-provisional-set", session.id],
+      );
+      await transaction.execute(
+        `INSERT INTO session_rest_states
+          (session_id, state_version, status, started_at_ms, ends_at_ms,
+           remaining_ms, expired_at_ms, next_set_id, revision)
+         VALUES (?, 1, 'running', 1_901, 1_961, NULL, NULL, ?, 3)`,
+        [session.id, "pointer-provisional-set"],
+      );
+    });
+    const provisional = (await kernel.queryAll<{ id: string; revision: number; display_ordinal: number; exercise_id: string }>(
+      "SELECT id, revision, display_ordinal, exercise_id FROM session_exercises WHERE id = 'pointer-provisional'",
+    ))[0]!;
+
+    await expect(repository.removeExercise!(removeInput(
+      session.id, added.sessionRevision, provisional, "pointer-remove",
+    ))).resolves.toMatchObject({ disposition: "deleted_provisional" });
+    expect(await kernel.queryAll(
+      `SELECT active_session_exercise_id, active_set_id
+       FROM workout_sessions WHERE id = ?`,
+      [session.id],
+    )).toEqual([{
+      active_session_exercise_id: original.id,
+      active_set_id: originalWorking!.id,
+    }]);
+    expect(await kernel.queryAll(
+      `SELECT status, next_set_id, revision
+       FROM session_rest_states WHERE session_id = ?`,
+      [session.id],
+    )).toEqual([{ status: "idle", next_set_id: null, revision: 4 }]);
+    expect(await kernel.queryAll(
+      `SELECT effect_type, idempotency_key, expected_revision
+       FROM pending_effects
+       WHERE subject_id = ? AND effect_type = 'reconcile_rest_notification'`,
+      [session.id],
+    )).toEqual([{
+      effect_type: "reconcile_rest_notification",
+      idempotency_key: "rest:exercise-edit:pointer-remove",
+      expected_revision: 4,
+    }]);
+  });
+
+  it("rejects a concurrent stale replace without creating rows or a receipt", async () => {
+    const { kernel, repository, session, replacementLibraryExerciseId } = await setup();
+    const original = await sessionExercise(kernel, session.id);
+    const winner = replaceInput(
+      session.id, session.revision, original, replacementLibraryExerciseId, "replace-winner",
+    );
+    const stale = replaceInput(
+      session.id, session.revision, original, replacementLibraryExerciseId, "replace-stale",
+    );
+
+    await repository.replaceExercise!(winner);
+    await expect(repository.replaceExercise!(stale)).rejects.toMatchObject({
+      code: "replace_exercise_conflict",
+    });
+    expect(await kernel.queryAll(
+      `SELECT id FROM session_exercises
+       WHERE id IN (?, ?) ORDER BY id`,
+      [winner.replacementSessionExerciseId, stale.replacementSessionExerciseId],
+    )).toEqual([{ id: winner.replacementSessionExerciseId }]);
+    expect(await kernel.queryAll(
+      `SELECT request_id FROM workout_session_exercise_edit_receipts
+       WHERE request_id IN (?, ?) ORDER BY request_id`,
+      [winner.requestId, stale.requestId],
+    )).toEqual([{ request_id: winner.requestId }]);
+  });
+
+  it("preserves completed facts and valid undo when replace or remove would otherwise destroy history", async () => {
+    const { kernel, repository, session, replacementLibraryExerciseId } = await setup();
+    const original = await sessionExercise(kernel, session.id);
+    const [working] = await kernel.queryAll<{ id: string; revision: number }>(
+      `SELECT id, revision FROM session_sets
+       WHERE session_exercise_id = ? AND set_kind = 'working'
+       ORDER BY ordinal LIMIT 1`,
+      [original.id],
+    );
+    await repository.completeSet({
+      sessionId: session.id, setId: working!.id, expectedSessionRevision: session.revision,
+      expectedSetRevision: working!.revision, completionIdempotencyKey: "complete-protected",
+      metricIdentity: { profile: "load_reps", contractVersion: 1, exerciseMetricGeneration: 1 },
+      observation: { profile: "load_reps", version: 1, loadGrams: 10_000, reps: 8, source: "manual" },
+      completedAtMs: 1_950,
+    });
+    const [afterCompletion] = await kernel.queryAll<{ revision: number }>(
+      "SELECT revision FROM workout_sessions WHERE id = ?", [session.id],
+    );
+    const protectedRows = await kernel.queryAll(
+      `SELECT ss.id, ss.status, ss.observed_json, ss.completed_at_ms, su.snapshot_json
+       FROM session_sets ss
+       LEFT JOIN session_undo_snapshots su ON su.completed_set_id = ss.id
+       WHERE ss.session_exercise_id = ? ORDER BY ss.id`,
+      [original.id],
+    );
+    const replace = replaceInput(
+      session.id, afterCompletion!.revision, { ...original, revision: 2 },
+      replacementLibraryExerciseId, "replace-protected",
+    );
+
+    await expect(repository.replaceExercise!(replace)).resolves.toMatchObject({
+      disposition: "skipped_history_preserved",
+    });
+    expect(await kernel.queryAll(
+      `SELECT ss.id, ss.status, ss.observed_json, ss.completed_at_ms, su.snapshot_json
+       FROM session_sets ss
+       LEFT JOIN session_undo_snapshots su ON su.completed_set_id = ss.id
+       WHERE ss.session_exercise_id = ? ORDER BY ss.id`,
+      [original.id],
+    )).toEqual(protectedRows.map((row) => row.id === working!.id
+      ? row
+      : { ...row, status: "skipped" }));
+    const [afterReplace] = await kernel.queryAll<{ revision: number }>(
+      "SELECT revision FROM workout_sessions WHERE id = ?", [session.id],
+    );
+    const [exerciseAfterReplace] = await kernel.queryAll<{ revision: number }>(
+      "SELECT revision FROM session_exercises WHERE id = ?", [original.id],
+    );
+    const protectedRemove = removeInput(
+      session.id, afterReplace!.revision, { ...original, revision: exerciseAfterReplace!.revision }, "remove-protected",
+    );
+    await expect(repository.removeExercise!(protectedRemove)).resolves.toMatchObject({
+      disposition: "skipped_history_preserved",
+    });
+    expect(await kernel.queryAll(
+      "SELECT status FROM session_exercises WHERE id = ?", [original.id],
+    )).toEqual([{ status: "skipped" }]);
+    await expect(repository.undoCompletedSet({
+      sessionId: session.id, completedSetId: working!.id, nowMs: 2_001,
+    })).resolves.toMatchObject({ outcome: "undone" });
+  });
+
+  it("rolls every replace write back when the FIFO transaction commit fails", async () => {
+    let failCommit = false;
+    const { kernel, repository, session, replacementLibraryExerciseId } = await setup({
+      beforeCommit: async () => {
+        if (failCommit) {
+          failCommit = false;
+          throw new Error("injected_replace_commit_failure");
+        }
+      },
+    });
+    const original = await sessionExercise(kernel, session.id);
+    const before = await Promise.all([
+      kernel.queryAll("SELECT * FROM workout_sessions WHERE id = ?", [session.id]),
+      kernel.queryAll("SELECT * FROM session_exercises WHERE session_id = ? ORDER BY id", [session.id]),
+      kernel.queryAll("SELECT ss.* FROM session_sets ss JOIN session_exercises se ON se.id = ss.session_exercise_id WHERE se.session_id = ? ORDER BY ss.id", [session.id]),
+      kernel.queryAll("SELECT * FROM workout_session_exercise_edit_receipts ORDER BY request_id"),
+      kernel.queryAll("SELECT * FROM pending_effects ORDER BY id"),
+    ]);
+    failCommit = true;
+
+    await expect(repository.replaceExercise!(replaceInput(
+      session.id, session.revision, original, replacementLibraryExerciseId, "replace-rollback",
+    ))).rejects.toMatchObject({ code: "sqlite_commit_failed" });
+    await expect(Promise.all([
+      kernel.queryAll("SELECT * FROM workout_sessions WHERE id = ?", [session.id]),
+      kernel.queryAll("SELECT * FROM session_exercises WHERE session_id = ? ORDER BY id", [session.id]),
+      kernel.queryAll("SELECT ss.* FROM session_sets ss JOIN session_exercises se ON se.id = ss.session_exercise_id WHERE se.session_id = ? ORDER BY ss.id", [session.id]),
+      kernel.queryAll("SELECT * FROM workout_session_exercise_edit_receipts ORDER BY request_id"),
+      kernel.queryAll("SELECT * FROM pending_effects ORDER BY id"),
+    ])).resolves.toEqual(before);
   });
 });

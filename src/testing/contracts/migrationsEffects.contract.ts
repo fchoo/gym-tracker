@@ -445,6 +445,70 @@ const contractCases: Record<MigrationsEffectsContractCaseId, ContractCase> = {
         "SELECT name, sql FROM sqlite_master WHERE name = 'workout_session_exercise_reorder_receipts'",
       );
       invariant(reorderObjects[0]?.sql?.includes("operation = 'reorder_exercises'") === true, "session_exercise_reorder_operation_invalid");
+      await kernel.write(async (transaction) => {
+        await transaction.execute(
+          `INSERT INTO workout_sessions
+            (id, plan_id, plan_day_id, source, status, local_date, timezone,
+             started_at_ms, completed_at_ms, revision)
+           VALUES (?, NULL, NULL, 'manual', 'in_progress', '2026-09-16',
+                   'Asia/Singapore', 1, NULL, 0)`,
+          ["v20-edit-receipt-contract-session"],
+        );
+        for (const operation of ["replace_exercise", "remove_exercise"] as const) {
+          await transaction.execute(
+            `INSERT INTO workout_session_exercise_edit_receipts
+              (request_id, request_sha256, operation, session_id,
+               subject_session_exercise_id, replacement_session_exercise_id,
+               expected_session_revision, result_session_revision, result_json,
+               committed_at_ms)
+             VALUES (?, ?, ?, ?, ?, ?, 0, 1, '{}', 2)`,
+            [
+              `v20-${operation}`,
+              "a".repeat(64),
+              operation,
+              "v20-edit-receipt-contract-session",
+              `v20-${operation}-subject`,
+              operation === "replace_exercise"
+                ? "v20-replacement"
+                : null,
+            ],
+          );
+        }
+      });
+      const scalarOperations = await kernel.queryAll<{ operation: string }>(
+        `SELECT operation
+         FROM workout_session_exercise_edit_receipts
+         WHERE request_id IN ('v20-replace_exercise', 'v20-remove_exercise')
+         ORDER BY request_id`,
+      );
+      invariant(
+        scalarOperations.map(({ operation }) => operation).join(",")
+          === "remove_exercise,replace_exercise",
+        "session_exercise_edit_scalar_operations_rejected",
+      );
+      for (const operation of ["invalid_edit_operation", "reorder_exercises"]) {
+        let rejected = false;
+        try {
+          await kernel.write((transaction) => transaction.execute(
+            `INSERT INTO workout_session_exercise_edit_receipts
+              (request_id, request_sha256, operation, session_id,
+               subject_session_exercise_id, replacement_session_exercise_id,
+               expected_session_revision, result_session_revision, result_json,
+               committed_at_ms)
+             VALUES (?, ?, ?, ?, ?, NULL, 0, 1, '{}', 2)`,
+            [
+              `v20-rejected-${operation}`,
+              "a".repeat(64),
+              operation,
+              "v20-edit-receipt-contract-session",
+              "v20-rejected-subject",
+            ],
+          ));
+        } catch {
+          rejected = true;
+        }
+        invariant(rejected, `session_exercise_edit_${operation}_accepted`);
+      }
       const triggers = await kernel.queryAll<{ name: string }>(
         `SELECT name FROM sqlite_master
          WHERE type = 'trigger'
