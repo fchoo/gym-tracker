@@ -1916,6 +1916,11 @@ describe("Plan 01-06 native migration suite selection", () => {
 
     expect(route).toContain("migrations-effects");
     expect(route).toContain("EXPO_PUBLIC_NATIVE_CONTRACT_SUITE");
+    expect(route).toContain(
+      "console.log(`${RESULT_MARKER}${JSON.stringify(result)}`);",
+    );
+    expect(route).toContain("setState({ status: \"finished\", result });");
+    expect(route).not.toContain("migrationsEffects?: MigrationsEffectsContractResult");
     expect(deviceCommand).toContain("migrations-effects");
     expect(deviceCommand).toContain("--assert-all");
     expect(deviceCommand).toContain("run-native-sqlite-contracts.mjs");

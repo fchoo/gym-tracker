@@ -75,7 +75,10 @@ const expoSqliteMock = jest.requireMock("expo-sqlite") as {
   openDatabaseAsync: jest.MockedFunction<
     (
       databaseName: string,
-      options: Readonly<{ useNewConnection: true }>,
+      options: Readonly<{
+        useNewConnection: true;
+        finalizeUnusedStatementsBeforeClosing: false;
+      }>,
     ) => Promise<MockExpoDatabase>
   >;
 };
@@ -317,12 +320,18 @@ describe("Expo SQLite connection adapter", () => {
     expect(expoSqliteMock.openDatabaseAsync).toHaveBeenNthCalledWith(
       1,
       "adapter.db",
-      { useNewConnection: true },
+      {
+        useNewConnection: true,
+        finalizeUnusedStatementsBeforeClosing: false,
+      },
     );
     expect(expoSqliteMock.openDatabaseAsync).toHaveBeenNthCalledWith(
       2,
       "adapter.db",
-      { useNewConnection: true },
+      {
+        useNewConnection: true,
+        finalizeUnusedStatementsBeforeClosing: false,
+      },
     );
     expect(writer.statements.every(
       (statement) => statement.finalizeAsync.mock.calls.length === 1,

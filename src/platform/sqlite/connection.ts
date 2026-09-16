@@ -179,13 +179,19 @@ export async function openConfiguredSqliteConnections(
 }>> {
   const { openDatabaseAsync } = require("expo-sqlite") as typeof import("expo-sqlite");
   const writer = new ExpoSqliteConnection(
-    await openDatabaseAsync(databaseName, { useNewConnection: true }),
+    await openDatabaseAsync(databaseName, {
+      useNewConnection: true,
+      finalizeUnusedStatementsBeforeClosing: false,
+    }),
   );
 
   try {
     await configureSqliteConnection(writer, { enableWal: true });
     const reader = new ExpoSqliteConnection(
-      await openDatabaseAsync(databaseName, { useNewConnection: true }),
+      await openDatabaseAsync(databaseName, {
+        useNewConnection: true,
+        finalizeUnusedStatementsBeforeClosing: false,
+      }),
     );
     try {
       await configureSqliteConnection(reader, { enableWal: false });

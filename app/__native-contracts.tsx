@@ -149,9 +149,8 @@ type NativeContractResult =
   | Phase2ScheduleContractResult
   | Phase2SearchContractResult
   | Phase2StarterContractResult
-  | (SqliteKernelContractResult & Readonly<{
-      migrationsEffects?: MigrationsEffectsContractResult;
-    }>);
+  | SqliteKernelContractResult
+  | MigrationsEffectsContractResult;
 
 type RouteState =
   | Readonly<{ status: "disabled" | "running" }>
@@ -442,25 +441,18 @@ export default function NativeSqliteContractsScreen() {
           return;
         }
 
-        let migrationsEffects: MigrationsEffectsContractResult | undefined;
         if (selectedSuite === "migrations-effects") {
-          migrationsEffects = await verifyMigrationsEffectsContract(
+          const result = await verifyMigrationsEffectsContract(
             await createExpoMigrationsEffectsContractAdapter(runId),
           );
-          if (migrationsEffects.status !== "passed") {
-            throw new Error("migrations_effects_preflight_failed");
-          }
+          console.log(`${RESULT_MARKER}${JSON.stringify(result)}`);
+          setState({ status: "finished", result });
+          return;
         }
         const adapter = await createExpoSqliteContractAdapter(runId);
         const kernelResult = await verifySqliteKernelContract(adapter);
-        const result: NativeContractResult = migrationsEffects === undefined
-          ? kernelResult
-          : {
-              ...kernelResult,
-              migrationsEffects,
-            };
-        console.log(`${RESULT_MARKER}${JSON.stringify(result)}`);
-        setState({ status: "finished", result });
+        console.log(`${RESULT_MARKER}${JSON.stringify(kernelResult)}`);
+        setState({ status: "finished", result: kernelResult });
       } catch (error: unknown) {
         const errorCode = boundedErrorCode(error);
         console.error(`${ERROR_MARKER}${JSON.stringify({
