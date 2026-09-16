@@ -174,6 +174,11 @@ type ExerciseReorderFailure = Readonly<{
   retry: () => void;
 }>;
 
+type ExerciseReorderAnnouncement = Readonly<{
+  sessionExerciseId: string;
+  text: string;
+}>;
+
 function isCommittedExerciseReorderRefreshFailure(
   result: ExerciseReorderCommandResult,
 ): result is CommittedExerciseReorderRefreshFailure {
@@ -781,7 +786,7 @@ function PopulatedWorkoutOverview({
     useState<ExerciseReorderFailure | null>(null);
   const [exerciseReorderRecovery, setExerciseReorderRecovery] = useState(false);
   const [exerciseReorderAnnouncement, setExerciseReorderAnnouncement] =
-    useState<string | null>(null);
+    useState<ExerciseReorderAnnouncement | null>(null);
   const [exerciseAddPickerVisible, setExerciseAddPickerVisible] = useState(false);
   const [exerciseAddQuery, setExerciseAddQuery] = useState("");
   const [exerciseAddSelectedId, setExerciseAddSelectedId] = useState<string | null>(null);
@@ -1384,9 +1389,10 @@ function PopulatedWorkoutOverview({
         return;
       }
       applyView(result);
-      setExerciseReorderAnnouncement(
-        `${source.name} moved to ${targetPosition + 1} of ${orderedExercises.length}`,
-      );
+      setExerciseReorderAnnouncement({
+        sessionExerciseId: source.id,
+        text: `${source.name} moved to ${targetPosition + 1} of ${orderedExercises.length}`,
+      });
     } catch {
       setExerciseReorderFailure({
         sourcePosition,
@@ -1650,18 +1656,6 @@ function PopulatedWorkoutOverview({
         primary={
           <>
             {activeSet === undefined ? null : <TargetContext set={activeSet} />}
-            {exerciseReorderAnnouncement === null ? null : (
-              <Text
-                accessibilityLiveRegion="polite"
-                style={[
-                  typeScale.secondary as TextStyle,
-                  styles.reorderAnnouncement,
-                  { color: colors.contentCardTextSecondary },
-                ]}
-              >
-                {exerciseReorderAnnouncement}
-              </Text>
-            )}
             {overviewExercises.map((exercise, index) => {
               const collapsed = isExerciseCollapsed(exercise, index);
               const summary = workingSetSummary(exercise);
@@ -1781,6 +1775,21 @@ function PopulatedWorkoutOverview({
                       }}
                     />
                   </View>
+                  {exerciseReorderAnnouncement?.sessionExerciseId === exercise.id
+                    ? (
+                      <Text
+                        accessibilityLiveRegion="polite"
+                        style={[
+                          typeScale.secondary as TextStyle,
+                          styles.reorderAnnouncement,
+                          { color: colors.contentCardTextSecondary },
+                        ]}
+                        testID={`exercise-reorder-announcement-${exercise.id}`}
+                      >
+                        {exerciseReorderAnnouncement.text}
+                      </Text>
+                    )
+                    : null}
                 </> : null}
                 <FocusablePressable
                   accessibilityLabel={`${exercise.name} exercise actions`}

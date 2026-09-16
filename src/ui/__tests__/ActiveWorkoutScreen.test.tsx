@@ -671,6 +671,9 @@ describe("Plan 01-08 ActiveWorkoutScreen", () => {
       }));
       expect(screen.getByText("Bench Press moved to 1 of 2"))
         .toBeOnTheScreen();
+      expect(screen.getByTestId(
+        "exercise-reorder-announcement-session-exercise-2",
+      )).toHaveTextContent("Bench Press moved to 1 of 2");
       expect(screen.getByText("Bench Press moved to 1 of 2"))
         .toHaveProp("accessibilityLiveRegion", "polite");
     });
