@@ -95,6 +95,11 @@ test("Phase 9 evidence runner requires a manifest and full edit/relaunch asserti
 
   for (const writeBackFlow of [keepFlow, retryFlow]) {
     assert.match(writeBackFlow, /appId: com\.fchoo\.gymtracker\.devtest/);
+    assert.match(
+      writeBackFlow,
+      /extendedWaitUntil:\n    visible: "Choose your starting plan"\n    timeout: 180000/u,
+      "Phase 9 planned write-back flows must tolerate a cold native startup after state clearing",
+    );
     assert.match(writeBackFlow, /Start Full Body A/);
     assert.match(writeBackFlow, /Complete Set 1[\s\S]*?Complete Set 2[\s\S]*?Complete Set 3/u);
     assert.match(

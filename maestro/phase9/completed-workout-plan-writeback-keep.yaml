@@ -7,7 +7,7 @@ name: Phase 9 completed planned workout keeps the plan unchanged
       notifications: deny
 - extendedWaitUntil:
     visible: "Choose your starting plan"
-    timeout: 90000
+    timeout: 180000
 - tapOn: "Use Full Body Foundation"
 - tapOn: "Activate Full Body Foundation"
 - runFlow:
