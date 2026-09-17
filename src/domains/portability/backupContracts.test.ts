@@ -58,6 +58,7 @@ describe("logical backup contract", () => {
     expect(LOGICAL_BACKUP_TABLES).toContain("workout_sessions");
     expect(LOGICAL_BACKUP_TABLES).toContain("history_audit_events");
     expect(LOGICAL_BACKUP_TABLES).toContain("session_rest_states");
+    expect(LOGICAL_BACKUP_TABLES).toContain("session_advanced_timing_states");
     expect(LOGICAL_BACKUP_TABLES).toContain("progression_recommendations");
     expect(LOGICAL_BACKUP_TABLES).toContain("owned_progression_recommendations");
     expect(LOGICAL_BACKUP_TABLES).toContain("exercise_metric_baselines");

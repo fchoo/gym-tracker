@@ -113,6 +113,7 @@ export const LOGICAL_BACKUP_TABLE_FILTERS = Object.freeze({
   session_exercises: "1",
   session_sets: "1",
   session_rest_states: "1",
+  session_advanced_timing_states: "1",
   session_undo_snapshots: "1",
   history_session_overlays: "1",
   history_audit_events: "1",

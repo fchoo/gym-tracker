@@ -182,6 +182,7 @@ async function seed(kernel: SqliteKernel): Promise<void> {
     await transaction.execute("INSERT INTO session_exercises (id, session_id, source_plan_day_exercise_id, exercise_id, ordinal, exercise_name, metric_profile, metric_contract_version, exercise_metric_generation, default_rest_seconds, target_revision, status, revision) VALUES ('session-custom', 'session', NULL, 'custom-exercise', 0, 'Custom row', 'load_reps', 1, 1, 90, 1, 'completed', 1), ('session-bundled', 'session', NULL, 'bundled-exercise', 1, 'Barbell row', 'load_reps', 1, 1, 90, 1, 'completed', 1)");
     await transaction.execute("INSERT INTO session_sets (id, session_exercise_id, set_kind, ordinal, source_plan_working_set_target_id, target_load_grams, target_min_reps, target_max_reps, target_json, unit_json, rule_type, rule_version, metric_profile, metric_contract_version, exercise_metric_generation, observed_json, status, completed_at_ms, revision) VALUES ('set', 'session-custom', 'working', 0, 'legacy-target', 40000, 8, 10, ?, '{}', 'load_reps', 1, 'load_reps', 1, 1, '{\"version\":1,\"profile\":\"load_reps\",\"loadGrams\":40000,\"reps\":8,\"source\":\"manual\"}', 'completed', 200, 1)", [targetJson]);
     await transaction.execute("INSERT INTO session_rest_states (session_id, state_version, status, started_at_ms, ends_at_ms, remaining_ms, expired_at_ms, next_set_id, revision) VALUES ('session', 1, 'idle', NULL, NULL, NULL, NULL, NULL, 1)");
+    await transaction.execute("INSERT INTO session_advanced_timing_states (session_id, session_set_id, state_version, revision, status, mode, config_json, progress_json, started_at_ms, next_boundary_at_ms, remaining_ms, stopped_at_ms) VALUES ('session', 'set', 1, 2, 'stopped', 'per_rep', '{\"version\":1,\"mode\":\"per_rep\",\"intervalMs\":1000,\"cueChannels\":\"haptic\"}', '{\"nextRepetitionIndex\":3}', NULL, NULL, NULL, 200)");
     await transaction.execute("INSERT INTO session_undo_snapshots (id, session_id, completed_set_id, idempotency_key, snapshot_version, snapshot_json, undo_until_ms, consumed_at_ms, created_at_ms) VALUES ('undo', 'session', 'set', 'undo-key', 1, '{}', 300, NULL, 200)");
     await transaction.execute("INSERT INTO history_session_overlays (session_id, effective_revision, lifecycle, snapshot_json, effective_local_date, effective_timezone, effective_started_at_ms, effective_completed_at_ms, created_at_ms, updated_at_ms) VALUES ('session', 1, 'active', '{}', '2026-08-24', 'Asia/Singapore', 100, 200, 200, 200)");
     await transaction.execute("INSERT INTO history_audit_events (id, session_id, effective_revision, event_type, field_identity, before_json, after_json, occurred_at_ms) VALUES ('audit-correction', 'session', 1, 'correction', 'session', '{}', '{}', 201), ('audit-void', 'session', 1, 'void', 'session', '{}', '{}', 202), ('audit-restore', 'session', 1, 'restore', 'session', '{}', '{}', 203)");
@@ -274,6 +275,20 @@ describe("logical backup repository", () => {
       "restore",
       "void",
     ]);
+    expect(first.tables.session_advanced_timing_states).toEqual([{
+      session_id: "session",
+      session_set_id: "set",
+      state_version: 1,
+      revision: 2,
+      status: "stopped",
+      mode: "per_rep",
+      config_json: '{"version":1,"mode":"per_rep","intervalMs":1000,"cueChannels":"haptic"}',
+      progress_json: '{"nextRepetitionIndex":3}',
+      started_at_ms: null,
+      next_boundary_at_ms: null,
+      remaining_ms: null,
+      stopped_at_ms: 200,
+    }]);
     expect(Object.keys(first.tables).sort()).toEqual([...LOGICAL_BACKUP_TABLES]);
     expect(first.manifest.totalRows).toBe(
       Object.values(first.manifest.rowCounts).reduce((total, count) => total + count, 0),

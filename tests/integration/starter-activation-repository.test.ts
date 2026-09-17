@@ -595,6 +595,78 @@ describe("accepted starter activation repository", () => {
     );
   });
 
+  it("resolves owned exercise defaults and set overrides into immutable v21 session snapshots", async () => {
+    const kernel = await createRuntime();
+    const activation = await activate(kernel, {
+      templateId: "full-body-foundation",
+      requestId: "request-owned-advanced-timing",
+      activatedAtMs: 1_787_027_200_000,
+      expectedActiveScheduleRevision: null,
+    });
+    const perRep = '{"version":1,"mode":"per_rep","intervalMs":1000,"cueChannels":"haptic"}';
+    const override = '{"version":1,"mode":"per_rep","intervalMs":2000,"cueChannels":"audio"}';
+    const [occurrence] = await kernel.queryAll<{ id: string }>(
+      `SELECT id FROM owned_plan_day_exercises
+       WHERE plan_day_id = ? AND ordinal = 0`,
+      [activation.days[0]!.id],
+    );
+    await kernel.write(async (transaction) => {
+      await transaction.execute(
+        `UPDATE owned_plan_day_exercises
+         SET advanced_timing_default_json = ?
+         WHERE id = ?`,
+        [perRep, occurrence!.id],
+      );
+      await transaction.execute(
+        `UPDATE owned_plan_working_set_targets
+         SET advanced_timing_override_json = ?
+         WHERE plan_day_exercise_id = ? AND ordinal = 1`,
+        [override, occurrence!.id],
+      );
+    });
+
+    const session = await startWorkout({
+      repository: createPlansWorkoutRepository(kernel),
+      request: {
+        mode: "alternate",
+        planId: activation.plan.id,
+        planDayId: activation.days[0]!.id,
+        localDate: "2026-08-19",
+        timezone: "Asia/Singapore",
+        startedAtMs: 1_787_027_201_001,
+      },
+    });
+
+    await expect(kernel.queryAll(
+      `SELECT se.advanced_timing_default_json, ss.ordinal,
+              ss.advanced_timing_override_json, ss.advanced_timing_resolved_json
+       FROM session_exercises se
+       JOIN session_sets ss ON ss.session_exercise_id = se.id
+       WHERE se.session_id = ? AND se.ordinal = 0 AND ss.set_kind = 'working'
+       ORDER BY ss.ordinal`,
+      [session.id],
+    )).resolves.toEqual([
+      {
+        advanced_timing_default_json: perRep,
+        ordinal: 0,
+        advanced_timing_override_json: null,
+        advanced_timing_resolved_json: perRep,
+      },
+      {
+        advanced_timing_default_json: perRep,
+        ordinal: 1,
+        advanced_timing_override_json: override,
+        advanced_timing_resolved_json: override,
+      },
+      {
+        advanced_timing_default_json: perRep,
+        ordinal: 2,
+        advanced_timing_override_json: null,
+        advanced_timing_resolved_json: perRep,
+      },
+    ]);
+  });
+
   it("removes and replays scheduled and dynamic set IDs that exceed 128 characters", async () => {
     const kernel = await createRuntime();
     const activation = await activate(kernel, {

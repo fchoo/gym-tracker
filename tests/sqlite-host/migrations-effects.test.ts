@@ -66,8 +66,22 @@ import {
   sessionExerciseEditReceiptsMigration,
 } from "../../src/platform/sqlite/migrations/0020_session_exercise_edit_receipts";
 import {
+  ADVANCED_SET_TIMING_SCHEMA_STATEMENTS,
+  advancedSetTimingMigration,
+} from "../../src/platform/sqlite/migrations/0021_advanced_set_timing";
+import {
   migrations as runtimeMigrations,
 } from "../../src/platform/sqlite/migrations";
+
+const MIGRATIONS_THROUGH_V18 = runtimeMigrations.filter(
+  ({ version }) => version <= 18,
+);
+const MIGRATIONS_THROUGH_V19 = runtimeMigrations.filter(
+  ({ version }) => version <= 19,
+);
+const MIGRATIONS_THROUGH_V20 = runtimeMigrations.filter(
+  ({ version }) => version <= 20,
+);
 import {
   createExpoRecoveryBackupPort,
   type RecoveryBackupPort,
@@ -275,6 +289,7 @@ describe("Plan 01-06 forward migrations and internal recovery", () => {
       18,
       19,
       20,
+      21,
     ]);
     expect(runtimeMigrations.slice(0, 3)).toEqual(migrations);
     expect(initialMigration).toEqual(expect.objectContaining({
@@ -422,7 +437,7 @@ describe("Plan 01-06 forward migrations and internal recovery", () => {
       await createMigrationRunner({
         databaseName: "gym-tracker.db",
         kernel: clean.kernel,
-        migrations: runtimeMigrations,
+        migrations: MIGRATIONS_THROUGH_V20,
         recoveryBackup: validatedBackup(),
       }).run();
       await assertReceiptSchema(clean);
@@ -435,7 +450,7 @@ describe("Plan 01-06 forward migrations and internal recovery", () => {
       await createMigrationRunner({
         databaseName: "gym-tracker.db",
         kernel: upgraded.kernel,
-        migrations: runtimeMigrations.slice(0, -2),
+        migrations: MIGRATIONS_THROUGH_V18,
         recoveryBackup: validatedBackup(),
       }).run();
       expect(await userVersion(upgraded.kernel)).toBe(18);
@@ -467,7 +482,7 @@ describe("Plan 01-06 forward migrations and internal recovery", () => {
       await createMigrationRunner({
         databaseName: "gym-tracker.db",
         kernel: upgraded.kernel,
-        migrations: runtimeMigrations,
+        migrations: MIGRATIONS_THROUGH_V20,
         recoveryBackup: backup,
       }).run();
       expect(backup.createAndValidate).toHaveBeenCalledWith({
@@ -495,7 +510,7 @@ describe("Plan 01-06 forward migrations and internal recovery", () => {
       await createMigrationRunner({
         databaseName: "gym-tracker.db",
         kernel: runtime.kernel,
-        migrations: runtimeMigrations.slice(0, -2),
+        migrations: MIGRATIONS_THROUGH_V18,
         recoveryBackup: validatedBackup(),
       }).run();
       await runtime.kernel.write(async (transaction) => {
@@ -518,7 +533,7 @@ describe("Plan 01-06 forward migrations and internal recovery", () => {
       await createMigrationRunner({
         databaseName: "gym-tracker.db",
         kernel: runtime.kernel,
-        migrations: runtimeMigrations.slice(0, -1),
+        migrations: MIGRATIONS_THROUGH_V19,
         recoveryBackup: validatedBackup(),
       }).run();
       expect(await userVersion(runtime.kernel)).toBe(19);
@@ -551,7 +566,7 @@ describe("Plan 01-06 forward migrations and internal recovery", () => {
       await createMigrationRunner({
         databaseName: "gym-tracker.db",
         kernel: runtime.kernel,
-        migrations: runtimeMigrations.slice(0, -1),
+        migrations: MIGRATIONS_THROUGH_V19,
         recoveryBackup: validatedBackup(),
       }).run();
       await runtime.kernel.write(async (transaction) => {
@@ -600,6 +615,357 @@ describe("Plan 01-06 forward migrations and internal recovery", () => {
     }
   });
 
+  it("migrates v20 plan and session facts into bounded v21 advanced-timing snapshots", async () => {
+    const runtime = await createHostRuntime();
+    try {
+      await createMigrationRunner({
+        databaseName: "gym-tracker.db",
+        kernel: runtime.kernel,
+        migrations: MIGRATIONS_THROUGH_V20,
+        recoveryBackup: validatedBackup(),
+      }).run();
+      await runtime.kernel.write(async (transaction) => {
+        await transaction.execute(
+          `INSERT INTO exercises
+            (id, content_pack_id, origin, source_namespace, upstream_id, name,
+             metric_profile, metric_contract_version, exercise_metric_generation,
+             equipment, default_rest_seconds, revision)
+           VALUES ('v21-exercise', NULL, 'custom', NULL, NULL, 'V21 exercise',
+                   'load_reps', 1, 1, 'Unspecified', 90, 1)`,
+        );
+        await transaction.execute(
+          `INSERT INTO exercise_library_entries
+            (exercise_id, origin, canonical_name, exercise_type, movement_class,
+             metric_profile, metric_contract_version, exercise_metric_generation,
+             availability, revision)
+           VALUES ('v21-exercise', 'custom', 'V21 exercise', 'strength', 'compound',
+                   'load_reps', 1, 1, 'available', 1)`,
+        );
+        await transaction.execute(
+          `INSERT INTO plans
+            (id, content_pack_id, origin, source_namespace, upstream_id, name,
+             days_per_week, audience, goal, estimate_minutes, attribution, is_active, revision)
+           VALUES ('v21-plan', NULL, 'custom', NULL, NULL, 'V21 plan',
+                   1, 'Owner', 'Strength', 45, 'Owner', 0, 1)`,
+        );
+        await transaction.execute(
+          `INSERT INTO plan_days (id, plan_id, ordinal, name, revision)
+           VALUES ('v21-day', 'v21-plan', 0, 'V21 day', 1)`,
+        );
+        await transaction.execute(
+          `INSERT INTO plan_day_exercises
+            (id, plan_day_id, exercise_id, ordinal, between_exercise_rest_seconds,
+             metric_profile, metric_contract_version, exercise_metric_generation, revision)
+           VALUES ('v21-legacy-occurrence', 'v21-day', 'v21-exercise', 0, 90,
+                   'load_reps', 1, 1, 1)`,
+        );
+        await transaction.execute(
+          `INSERT INTO owned_plan_day_exercises
+            (id, plan_day_id, exercise_id, ordinal, between_exercise_rest_seconds,
+             metric_profile, metric_contract_version, exercise_metric_generation, revision)
+           VALUES ('v21-owned-occurrence', 'v21-day', 'v21-exercise', 1, 90,
+                   'load_reps', 1, 1, 1)`,
+        );
+        await transaction.execute(
+          `INSERT INTO plan_warmup_sets
+            (id, plan_day_exercise_id, ordinal, load_grams, reps, revision)
+           VALUES ('v21-legacy-warmup', 'v21-legacy-occurrence', 0, 20000, 8, 1)`,
+        );
+        await transaction.execute(
+          `INSERT INTO owned_plan_warmup_sets
+            (id, plan_day_exercise_id, ordinal, load_grams, reps, revision)
+           VALUES ('v21-owned-warmup', 'v21-owned-occurrence', 0, 20000, 8, 1)`,
+        );
+        await transaction.execute(
+          `INSERT INTO plan_working_set_targets
+            (id, plan_day_exercise_id, ordinal, load_grams, min_reps, max_reps,
+             target_json, unit_json, metric_profile, metric_contract_version,
+             exercise_metric_generation, revision)
+           VALUES ('v21-legacy-target', 'v21-legacy-occurrence', 0, 40000, 8, 10,
+                   '{}', '{}', 'load_reps', 1, 1, 1)`,
+        );
+        await transaction.execute(
+          `INSERT INTO owned_plan_working_set_targets
+            (id, plan_day_exercise_id, ordinal, target_json, unit_json, metric_profile,
+             metric_contract_version, exercise_metric_generation, revision)
+           VALUES ('v21-owned-target', 'v21-owned-occurrence', 0, '{}', '{}',
+                   'load_reps', 1, 1, 1)`,
+        );
+        await transaction.execute(
+          `INSERT INTO workout_sessions
+            (id, plan_id, plan_day_id, source, status, local_date, timezone,
+             started_at_ms, completed_at_ms, revision)
+           VALUES ('v21-session', 'v21-plan', 'v21-day', 'scheduled_day',
+                   'in_progress', '2026-09-16', 'Asia/Singapore', 1, NULL, 1)`,
+        );
+        await transaction.execute(
+          `INSERT INTO session_exercises
+            (id, session_id, source_plan_day_exercise_id, exercise_id, ordinal,
+             origin, display_ordinal, exercise_name, metric_profile,
+             metric_contract_version, exercise_metric_generation, default_rest_seconds,
+             target_revision, status, revision)
+           VALUES ('v21-session-exercise', 'v21-session', 'v21-legacy-occurrence',
+                   'v21-exercise', 0, 'planned', 0, 'V21 exercise', 'load_reps',
+                   1, 1, 90, 1, 'active', 1)`,
+        );
+        await transaction.execute(
+          `INSERT INTO session_sets
+            (id, session_exercise_id, set_kind, ordinal, source_plan_working_set_target_id,
+             target_load_grams, target_min_reps, target_max_reps, target_json, unit_json,
+             rule_type, rule_version, metric_profile, metric_contract_version,
+             exercise_metric_generation, status, revision)
+           VALUES ('v21-session-set', 'v21-session-exercise', 'working', 0,
+                   'v21-legacy-target', 40000, 8, 10, '{}', '{}', 'load_reps', 1,
+                   'load_reps', 1, 1, 'planned', 1)`,
+        );
+      });
+
+      const result = await createMigrationRunner({
+        databaseName: "gym-tracker.db",
+        kernel: runtime.kernel,
+        migrations: runtimeMigrations,
+        recoveryBackup: validatedBackup(),
+      }).run();
+
+      expect(result).toEqual(expect.objectContaining({
+        appliedVersions: [21],
+        currentVersion: 21,
+      }));
+      await expect(runtime.kernel.queryAll(
+        `SELECT advanced_timing_default_json FROM plan_day_exercises
+         WHERE id = 'v21-legacy-occurrence'`,
+      )).resolves.toEqual([{ advanced_timing_default_json: '{"version":1,"mode":"off"}' }]);
+      await expect(runtime.kernel.queryAll(
+        `SELECT advanced_timing_default_json FROM owned_plan_day_exercises
+         WHERE id = 'v21-owned-occurrence'`,
+      )).resolves.toEqual([{ advanced_timing_default_json: '{"version":1,"mode":"off"}' }]);
+      await expect(runtime.kernel.queryAll(
+        `SELECT advanced_timing_override_json, advanced_timing_resolved_json
+         FROM session_sets WHERE id = 'v21-session-set'`,
+      )).resolves.toEqual([{
+        advanced_timing_override_json: null,
+        advanced_timing_resolved_json: '{"version":1,"mode":"off"}',
+      }]);
+
+      const perRep = '{"version":1,"mode":"per_rep","intervalMs":1000,"cueChannels":"haptic"}';
+      await expect(runtime.kernel.write((transaction) => transaction.execute(
+        `UPDATE plan_day_exercises
+         SET advanced_timing_default_json = ?
+         WHERE id = 'v21-legacy-occurrence'`,
+        [perRep],
+      ))).resolves.toBeDefined();
+      await expect(runtime.kernel.write((transaction) => transaction.execute(
+        `UPDATE plan_warmup_sets
+         SET advanced_timing_override_json = ?
+         WHERE id = 'v21-legacy-warmup'`,
+        [perRep],
+      ))).resolves.toBeDefined();
+      await expect(runtime.kernel.write((transaction) => transaction.execute(
+        `UPDATE owned_plan_working_set_targets
+         SET advanced_timing_override_json = ?
+         WHERE id = 'v21-owned-target'`,
+        [perRep],
+      ))).resolves.toBeDefined();
+      await expect(runtime.kernel.write((transaction) => transaction.execute(
+        `UPDATE session_sets
+         SET advanced_timing_resolved_json = '{"version":1,"mode":"per_rep","intervalMs":99,"cueChannels":"haptic"}'
+         WHERE id = 'v21-session-set'`,
+      ))).rejects.toMatchObject({ code: "sqlite_transaction_failed" });
+      await expect(runtime.kernel.write((transaction) => transaction.execute(
+        `UPDATE session_sets
+         SET advanced_timing_resolved_json = '{"version":1,"mode":"per_rep","intervalMs":1000,"cueChannels":"haptic","unexpected":true}'
+         WHERE id = 'v21-session-set'`,
+      ))).rejects.toMatchObject({ code: "sqlite_transaction_failed" });
+      await expect(runtime.kernel.write((transaction) => transaction.execute(
+        `UPDATE session_sets
+         SET advanced_timing_resolved_json = '{"version":1,"mode":"cluster","groupSizes":[3,0],"intraRestMs":1000,"cueChannels":"haptic"}'
+         WHERE id = 'v21-session-set'`,
+      ))).rejects.toMatchObject({ code: "sqlite_transaction_failed" });
+      await expect(runtime.kernel.write((transaction) => transaction.execute(
+        `UPDATE session_sets
+         SET advanced_timing_resolved_json = '{"version":1,"mode":"cluster","groupSizes":[50,51],"intraRestMs":1000,"cueChannels":"haptic"}'
+         WHERE id = 'v21-session-set'`,
+      ))).rejects.toMatchObject({ code: "sqlite_transaction_failed" });
+      await expect(runtime.kernel.write((transaction) => transaction.execute(
+        `INSERT INTO session_advanced_timing_states
+          (session_id, session_set_id, state_version, revision, status, mode, config_json,
+           progress_json, started_at_ms, next_boundary_at_ms, remaining_ms, stopped_at_ms)
+         VALUES ('v21-session', 'v21-session-set', 1, 2, 'stopped', 'per_rep', ?,
+                 '{"nextRepetitionIndex":3}', NULL, NULL, NULL, 5)`,
+        [perRep],
+      ))).resolves.toBeDefined();
+      await expect(runtime.kernel.write((transaction) => transaction.execute(
+        `UPDATE session_advanced_timing_states
+         SET config_json = '{"version":1,"mode":"off"}'
+         WHERE session_id = 'v21-session'`,
+      ))).rejects.toMatchObject({ code: "sqlite_transaction_failed" });
+      await expect(runtime.kernel.queryAll(
+        "PRAGMA foreign_key_list(session_advanced_timing_states)",
+      )).resolves.toEqual(expect.arrayContaining([
+        expect.objectContaining({ table: "workout_sessions" }),
+        expect.objectContaining({ table: "session_sets" }),
+      ]));
+      await expect(runtime.kernel.write((transaction) => transaction.execute(
+        `INSERT INTO session_advanced_timing_states
+          (session_id, session_set_id, state_version, revision, status, mode, config_json,
+           progress_json, started_at_ms, next_boundary_at_ms, remaining_ms, stopped_at_ms)
+         VALUES ('missing-session', NULL, 1, 0, 'idle', NULL,
+                 '{"version":1,"mode":"off"}', '{}', NULL, NULL, NULL, NULL)`,
+      ))).rejects.toMatchObject({ code: "sqlite_commit_failed" });
+    } finally {
+      await runtime.close();
+    }
+  });
+
+  it.each(ADVANCED_SET_TIMING_SCHEMA_STATEMENTS.map((_, index) => index))(
+    "rolls back v21 advanced timing when statement %i fails",
+    async (statementIndex) => {
+      const runtime = await createHostRuntime();
+      try {
+        await createMigrationRunner({
+          databaseName: "gym-tracker.db",
+          kernel: runtime.kernel,
+          migrations: MIGRATIONS_THROUGH_V20,
+          recoveryBackup: validatedBackup(),
+        }).run();
+        const runner = createMigrationRunner({
+          databaseName: "gym-tracker.db",
+          kernel: runtime.kernel,
+          migrations: [advancedSetTimingMigration],
+          failureInjector(event) {
+            if (event.phase === "after" && event.statementIndex === statementIndex) {
+              throw new Error("injected_v21_failure");
+            }
+          },
+        });
+        await expect(runner.run()).rejects.toMatchObject({
+          code: "migration_statement_failed",
+        });
+        expect(await userVersion(runtime.kernel)).toBe(20);
+        await expect(runtime.kernel.queryAll(
+          "PRAGMA table_info(session_sets)",
+        )).resolves.not.toContainEqual(expect.objectContaining({
+          name: "advanced_timing_resolved_json",
+        }));
+        await expect(runtime.kernel.queryAll(
+          `SELECT name FROM sqlite_master
+           WHERE type = 'table' AND name = 'session_advanced_timing_states'`,
+        )).resolves.toEqual([]);
+      } finally {
+        await runtime.close();
+      }
+    },
+  );
+
+  it.each([
+    "missing_column",
+    "missing_table",
+    "missing_foreign_key",
+    "missing_target_foreign_key",
+    "missing_index",
+  ] as const)(
+    "fails v21 verification when %s is malformed",
+    async (scenario) => {
+      const transaction: SqliteTransactionExecutor = {
+        execute: async () => ({ changes: 0, lastInsertRowId: 0 }),
+        queryAll: async <Row extends Record<string, unknown>>(sql: string) => {
+          if (sql.startsWith("PRAGMA table_info(")) {
+            const table = sql.slice("PRAGMA table_info(".length, -1);
+            const expected = new Map([
+              ["plan_day_exercises", "advanced_timing_default_json"],
+              ["owned_plan_day_exercises", "advanced_timing_default_json"],
+              ["plan_warmup_sets", "advanced_timing_override_json"],
+              ["plan_working_set_targets", "advanced_timing_override_json"],
+              ["owned_plan_warmup_sets", "advanced_timing_override_json"],
+              ["owned_plan_working_set_targets", "advanced_timing_override_json"],
+              ["session_exercises", "advanced_timing_default_json"],
+              ["session_sets", "advanced_timing_override_json"],
+            ]);
+            const column = expected.get(table);
+            const columns = table === "session_sets"
+              ? [
+                  { name: "advanced_timing_override_json" },
+                  { name: "advanced_timing_resolved_json" },
+                ]
+              : column === undefined ? [] : [{ name: column }];
+            return (scenario === "missing_column" && table === "plan_day_exercises"
+              ? []
+              : columns) as unknown as readonly Row[];
+          }
+          if (sql.includes("FROM sqlite_master")) {
+            return (scenario === "missing_table" ? [] : [
+              { name: "session_advanced_timing_states" },
+            ]) as unknown as readonly Row[];
+          }
+          if (sql === "PRAGMA foreign_key_list(session_advanced_timing_states)") {
+            const foreignKeys = scenario === "missing_foreign_key"
+              ? [{ table: "session_sets" }]
+              : scenario === "missing_target_foreign_key"
+                ? [{ table: "workout_sessions" }]
+                : [
+                    { table: "workout_sessions" },
+                    { table: "session_sets" },
+                  ];
+            return foreignKeys as unknown as readonly Row[];
+          }
+          if (sql === "PRAGMA index_list(session_advanced_timing_states)") {
+            return (scenario === "missing_index" ? [] : [
+              { name: "session_advanced_timing_states_target_idx" },
+            ]) as unknown as readonly Row[];
+          }
+          return [] as readonly Row[];
+        },
+      };
+      await expect(advancedSetTimingMigration.verify(transaction))
+        .rejects.toThrow("advanced_set_timing_schema_incomplete");
+    },
+  );
+
+  it("accepts a fully shaped v21 schema verifier surface", async () => {
+    const columnsByTable = new Map([
+      ["plan_day_exercises", "advanced_timing_default_json"],
+      ["owned_plan_day_exercises", "advanced_timing_default_json"],
+      ["plan_warmup_sets", "advanced_timing_override_json"],
+      ["plan_working_set_targets", "advanced_timing_override_json"],
+      ["owned_plan_warmup_sets", "advanced_timing_override_json"],
+      ["owned_plan_working_set_targets", "advanced_timing_override_json"],
+      ["session_exercises", "advanced_timing_default_json"],
+    ]);
+    const transaction: SqliteTransactionExecutor = {
+      execute: async () => ({ changes: 0, lastInsertRowId: 0 }),
+      async queryAll<Row extends Record<string, unknown>>(sql: string) {
+        const table = /^PRAGMA table_info\((.+)\)$/u.exec(sql)?.[1];
+        if (table !== undefined) {
+          const columns = table === "session_sets"
+            ? [
+                { name: "advanced_timing_override_json" },
+                { name: "advanced_timing_resolved_json" },
+              ]
+            : [{ name: columnsByTable.get(table) }];
+          return columns as unknown as readonly Row[];
+        }
+        if (sql.includes("FROM sqlite_master")) {
+          const result = [{ name: "session_advanced_timing_states" }];
+          return result as unknown as readonly Row[];
+        }
+        if (sql === "PRAGMA foreign_key_list(session_advanced_timing_states)") {
+          return [
+            { table: "workout_sessions" },
+            { table: "session_sets" },
+          ] as unknown as readonly Row[];
+        }
+        if (sql === "PRAGMA index_list(session_advanced_timing_states)") {
+          const result = [{ name: "session_advanced_timing_states_target_idx" }];
+          return result as unknown as readonly Row[];
+        }
+        return [] as readonly Row[];
+      },
+    };
+
+    await expect(advancedSetTimingMigration.verify(transaction))
+      .resolves.toBeUndefined();
+  });
+
   it.each(Array.from({ length: 9 }, (_, statementIndex) => statementIndex))(
     "rolls back the v20 receipt rebuild when statement %i fails",
     async (statementIndex) => {
@@ -608,7 +974,7 @@ describe("Plan 01-06 forward migrations and internal recovery", () => {
         await createMigrationRunner({
           databaseName: "gym-tracker.db",
           kernel: runtime.kernel,
-          migrations: runtimeMigrations.slice(0, -1),
+          migrations: MIGRATIONS_THROUGH_V19,
           recoveryBackup: validatedBackup(),
         }).run();
         await runtime.kernel.write(async (transaction) => {
@@ -2097,6 +2463,7 @@ describe("Plan 01-06 native migration suite selection", () => {
       "migration-integrity-block",
       "migration-recovery-backup",
       "migration-session-exercise-edit-receipts-v20",
+      "migration-advanced-set-timing-v21",
       "effects-lease-replay",
       "effects-stale-revision",
       "effects-retry-limit",

@@ -70,6 +70,7 @@ export const LOGICAL_BACKUP_TABLE_DEFINITIONS = Object.freeze({
   session_exercises: { primaryKey: ["id"] },
   session_sets: { primaryKey: ["id"] },
   session_rest_states: { primaryKey: ["session_id"] },
+  session_advanced_timing_states: { primaryKey: ["session_id"] },
   session_undo_snapshots: { primaryKey: ["id"] },
   history_session_overlays: { primaryKey: ["session_id"] },
   history_audit_events: { primaryKey: ["id"] },

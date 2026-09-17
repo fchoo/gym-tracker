@@ -167,6 +167,85 @@ describe("AdvancedTimingStateV1", () => {
     });
   });
 
+  it("handles stopped restarts, zero-remaining pauses, and a paused stop", () => {
+    const running = startAdvancedTimingState({
+      current: idle,
+      config: perRep,
+      sessionSetId: "set-1",
+      nowMs: 10_000,
+    });
+    const pausedAtBoundary = pauseAdvancedTimingState(running, 11_000);
+    if (pausedAtBoundary.state !== "paused") {
+      throw new Error("advanced_timing_pause_state_invalid");
+    }
+    expect(pausedAtBoundary.remainingMs).toBe(0);
+    expect(stopAdvancedTimingState(pausedAtBoundary, 11_001)).toEqual({
+      version: 1,
+      state: "stopped",
+      mode: "per_rep",
+      revision: 5,
+      targetSessionSetId: "set-1",
+      stoppedAtMs: 11_001,
+      nextRepetitionIndex: 1,
+    });
+    const stopped: AdvancedTimingStateV1 = {
+      version: 1,
+      state: "stopped",
+      mode: "per_rep",
+      revision: 5,
+      targetSessionSetId: "set-1",
+      stoppedAtMs: 11_001,
+      nextRepetitionIndex: 1,
+    };
+    expect(startAdvancedTimingState({
+      current: stopped,
+      config: perRep,
+      sessionSetId: "set-2",
+      nowMs: 20_000,
+    })).toEqual(expect.objectContaining({
+      state: "running",
+      revision: 6,
+      targetSessionSetId: "set-2",
+    }));
+  });
+
+  it("advances missed boundaries without a cue when none crossed while foreground", () => {
+    const running = startAdvancedTimingState({
+      current: idle,
+      config: perRep,
+      sessionSetId: "set-1",
+      nowMs: 10_000,
+    });
+    expect(reconcileAdvancedTimingState({
+      state: running,
+      nowMs: 20_050,
+      foregroundSinceMs: 20_001,
+    })).toEqual({
+      state: {
+        ...running,
+        revision: 4,
+        nextBoundaryAtMs: 21_000,
+        nextRepetitionIndex: 11,
+      },
+      cue: null,
+      skippedBoundaryCount: 10,
+    });
+    const stopped: AdvancedTimingStateV1 = {
+      version: 1,
+      state: "stopped",
+      mode: "per_rep",
+      revision: 4,
+      targetSessionSetId: "set-1",
+      stoppedAtMs: 20_050,
+      nextRepetitionIndex: 11,
+    };
+    expect(reconcileAdvancedTimingState({
+      state: stopped,
+      nowMs: 20_051,
+      foregroundSinceMs: 20_051,
+    })).toEqual({ state: stopped, cue: null, skippedBoundaryCount: 0 });
+  });
+
   it("rejects invalid transitions, identifiers, revisions, and clock values", () => {
     const running = startAdvancedTimingState({
       current: idle,
@@ -194,6 +273,36 @@ describe("AdvancedTimingStateV1", () => {
       sessionSetId: "",
       nowMs: 1,
     })).toThrow(AdvancedTimingStateTransitionError);
+    expect(() => startAdvancedTimingState({
+      current: { ...idle, revision: -1 },
+      config: perRep,
+      sessionSetId: "set-1",
+      nowMs: 1,
+    })).toThrow("advanced_timing_state_invalid");
+    expect(() => startAdvancedTimingState({
+      current: { ...idle, revision: 1.5 },
+      config: perRep,
+      sessionSetId: "set-1",
+      nowMs: 1,
+    })).toThrow("advanced_timing_state_invalid");
+    expect(() => startAdvancedTimingState({
+      current: idle,
+      config: perRep,
+      sessionSetId: "x".repeat(257),
+      nowMs: 1,
+    })).toThrow("advanced_timing_target_invalid");
+    expect(() => startAdvancedTimingState({
+      current: idle,
+      config: perRep,
+      sessionSetId: "set-1",
+      nowMs: -1,
+    })).toThrow("advanced_timing_time_invalid");
+    expect(() => startAdvancedTimingState({
+      current: idle,
+      config: perRep,
+      sessionSetId: "set-1",
+      nowMs: Number.POSITIVE_INFINITY,
+    })).toThrow("advanced_timing_time_invalid");
   });
 });
 import {

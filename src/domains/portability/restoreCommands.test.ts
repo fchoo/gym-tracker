@@ -187,7 +187,7 @@ describe("restore preflight", () => {
       .rejects.toEqual(new RestoreCommandError("restore_archive_invalid"));
   }
 
-  it.each([15, 16, 17, 18, 19, 20])("accepts logical producer schema version %i", async (schemaVersion) => {
+  it.each([15, 16, 17, 18, 19, 20, 21])("accepts logical producer schema version %i", async (schemaVersion) => {
     const commands = createRestoreCommands({
       crypto: cryptoPort(), files: { readSelectedArchiveAtMost: () => archiveFor(snapshot({ schemaVersion })) },
       kdf, schema, candidateProbe, store: createRestorePreflightStore({ tokenFactory: () => "schema-" + schemaVersion }),
@@ -195,7 +195,7 @@ describe("restore preflight", () => {
     await expect(commands.preflightSecureRestore({ password: "owner-password" })).resolves.toEqual(expect.objectContaining({ outcome: "ready" }));
   });
 
-  it.each([14, 21])("rejects unsupported logical producer schema version %i", async (schemaVersion) => {
+  it.each([14, 22])("rejects unsupported logical producer schema version %i", async (schemaVersion) => {
     const commands = createRestoreCommands({
       crypto: cryptoPort(), files: { readSelectedArchiveAtMost: () => archiveFor(snapshot({ schemaVersion })) },
       kdf, schema, candidateProbe, store: createRestorePreflightStore({ tokenFactory: () => "unsupported" }),
@@ -207,7 +207,7 @@ describe("restore preflight", () => {
     expect(LOGICAL_BACKUP_TABLES).not.toContain("workout_remove_receipts");
   });
 
-  it("returns a bounded preview only after authenticating, validating all 43 tables, and checking local references", async () => {
+  it("returns a bounded preview only after authenticating, validating all 44 tables, and checking local references", async () => {
     const store = createRestorePreflightStore({ tokenFactory: () => "opaque-token" });
     const archive = await archiveFor();
     const readSelectedArchiveAtMost = jest.fn(async (limit: number) => {

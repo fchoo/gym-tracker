@@ -241,6 +241,22 @@ async function seed(kernel: SqliteKernel, suffix: string): Promise<void> {
       [`target-${suffix}`, `occurrence-${suffix}`],
     );
     await transaction.execute(
+      "INSERT INTO workout_sessions (id, plan_id, plan_day_id, source, status, local_date, timezone, started_at_ms, completed_at_ms, revision) VALUES (?, ?, ?, 'scheduled_day', 'completed', '2026-09-16', 'Asia/Singapore', 1, 2, 1)",
+      [`session-${suffix}`, `plan-${suffix}`, `day-${suffix}`],
+    );
+    await transaction.execute(
+      "INSERT INTO session_exercises (id, session_id, source_plan_day_exercise_id, exercise_id, ordinal, origin, display_ordinal, exercise_name, metric_profile, metric_contract_version, exercise_metric_generation, advanced_timing_default_json, default_rest_seconds, target_revision, status, revision) VALUES (?, ?, ?, ?, 0, 'planned', 0, ?, 'load_reps', 1, 1, '{\"version\":1,\"mode\":\"off\"}', 90, 1, 'completed', 1)",
+      [`session-exercise-${suffix}`, `session-${suffix}`, `occurrence-${suffix}`, `exercise-${suffix}`, `Exercise ${suffix}`],
+    );
+    await transaction.execute(
+      "INSERT INTO session_sets (id, session_exercise_id, set_kind, ordinal, source_plan_working_set_target_id, source_owned_plan_working_set_target_id, advanced_timing_override_json, advanced_timing_resolved_json, target_load_grams, target_min_reps, target_max_reps, target_json, unit_json, rule_type, rule_version, metric_profile, metric_contract_version, exercise_metric_generation, status, completed_at_ms, revision) VALUES (?, ?, 'working', 0, ?, NULL, NULL, '{\"version\":1,\"mode\":\"per_rep\",\"intervalMs\":1000,\"cueChannels\":\"haptic\"}', 10000, 8, 10, '{}', '{}', 'load_reps', 1, 'load_reps', 1, 1, 'completed', 2, 1)",
+      [`set-${suffix}`, `session-exercise-${suffix}`, `target-${suffix}`],
+    );
+    await transaction.execute(
+      "INSERT INTO session_advanced_timing_states (session_id, session_set_id, state_version, revision, status, mode, config_json, progress_json, started_at_ms, next_boundary_at_ms, remaining_ms, stopped_at_ms) VALUES (?, ?, 1, 2, 'stopped', 'per_rep', '{\"version\":1,\"mode\":\"per_rep\",\"intervalMs\":1000,\"cueChannels\":\"haptic\"}', '{\"nextRepetitionIndex\":3}', NULL, NULL, NULL, 2)",
+      [`session-${suffix}`, `set-${suffix}`],
+    );
+    await transaction.execute(
       "INSERT INTO app_settings (key, value_version, value_json, revision, updated_at_ms) VALUES (?, 1, '{}', 1, 1)",
       [`setting-${suffix}`],
     );
@@ -260,6 +276,17 @@ describe("logical restore repository", () => {
     expect(restored).toEqual({ state: "rebuild_pending" });
 
     expect(await snapshot(kernel)).toEqual(archive);
+    await expect(kernel.queryAll(
+      "SELECT session_id, session_set_id, revision, status, mode, config_json, progress_json FROM session_advanced_timing_states",
+    )).resolves.toEqual([{
+      session_id: "session-archive",
+      session_set_id: "set-archive",
+      revision: 2,
+      status: "stopped",
+      mode: "per_rep",
+      config_json: '{"version":1,"mode":"per_rep","intervalMs":1000,"cueChannels":"haptic"}',
+      progress_json: '{"nextRepetitionIndex":3}',
+    }]);
     await expect(kernel.queryAll("SELECT state, updated_at_ms FROM portability_restore_state"))
       .resolves.toEqual([{ state: "rebuild_pending", updated_at_ms: 99 }]);
     await expect(kernel.queryAll("PRAGMA foreign_keys"))
@@ -398,6 +425,7 @@ describe("logical restore repository", () => {
 
   it("keeps the complete logical table registry under restore coverage", () => {
     expect(LOGICAL_BACKUP_TABLES).toContain("history_audit_events");
+    expect(LOGICAL_BACKUP_TABLES).toContain("session_advanced_timing_states");
     expect(LOGICAL_BACKUP_FORMAT_VERSION).toBe(1);
     expect(LOGICAL_RESTORE_DELETE_TRIGGER_NAMES).not.toContain("starter_plan_sources_immutable_delete");
     expect(LOGICAL_RESTORE_DELETE_TRIGGER_NAMES).not.toContain("session_sets_target_graph_insert");

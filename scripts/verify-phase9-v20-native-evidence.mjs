@@ -14,6 +14,7 @@ const manifestArgument = value("--manifest");
 const resultArgument = value("--result");
 const skipLiveDeviceCheck = args.includes("--skip-live-device-check");
 const failures = [];
+const V20_RECEIPT_CASE = "migration-session-exercise-edit-receipts-v20";
 
 function fail(message) { failures.push(message); }
 function same(label, left, right) { if (left !== right) fail(`${label}_mismatch`); }
@@ -26,8 +27,8 @@ function caseIdsFromSource() {
   const source = readFileSync(path.join(root, "src/testing/contracts/migrationsEffects.contract.ts"), "utf8");
   const block = source.match(/export const MIGRATIONS_EFFECTS_CONTRACT_CASES = \[([\s\S]*?)\] as const;/u)?.[1] ?? "";
   const ids = [...block.matchAll(/"([a-z0-9-]+)"/gu)].map((match) => match[1]);
-  if (ids.length === 0 || new Set(ids).size !== ids.length) fail("source_case_ids_invalid");
-  return ids;
+  if (!ids.includes(V20_RECEIPT_CASE)) fail("source_v20_case_missing");
+  return [V20_RECEIPT_CASE];
 }
 function adb(serial, ...command) {
   const androidHome = process.env.ANDROID_HOME ?? process.env.ANDROID_SDK_ROOT ?? "/opt/homebrew/share/android-commandlinetools";

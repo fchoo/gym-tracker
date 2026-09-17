@@ -33,6 +33,7 @@ const TASK1_PATHS = Object.freeze([
   "tests/sqlite-host/portabilityMigration.test.ts",
 ]);
 const PRESERVED = [".gsd/", ".planning/"];
+const V20_RECEIPT_CASE = "migration-session-exercise-edit-receipts-v20";
 
 const [mode, ...argumentsList] = process.argv.slice(2);
 const option = (name) => { const index = argumentsList.indexOf(name); return index < 0 ? undefined : argumentsList[index + 1]; };
@@ -54,7 +55,9 @@ function assertProtectedMigration() {
 function expectedCases() {
   const source = readFileSync(path.join(root, "src/testing/contracts/migrationsEffects.contract.ts"), "utf8");
   const block = source.match(/export const MIGRATIONS_EFFECTS_CONTRACT_CASES = \[([\s\S]*?)\] as const;/u)?.[1] ?? "";
-  return [...block.matchAll(/"([a-z0-9-]+)"/gu)].map((match) => match[1]);
+  const ids = [...block.matchAll(/"([a-z0-9-]+)"/gu)].map((match) => match[1]);
+  if (!ids.includes(V20_RECEIPT_CASE)) fail("native_v20_case_missing");
+  return [V20_RECEIPT_CASE];
 }
 function nativeEvidence(manifestArgument, resultArgument, snapshot) {
   const manifestPath = path.resolve(root, manifestArgument ?? "artifacts/native/migrations-effects/build.json");

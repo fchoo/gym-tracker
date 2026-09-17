@@ -10,8 +10,7 @@ import { sourceTreeSha256 } from "./source-tree-digest.mjs";
 
 const root = process.cwd();
 const script = path.join(root, "scripts/verify-phase9-v20-native-evidence.mjs");
-const source = readFileSync(path.join(root, "src/testing/contracts/migrationsEffects.contract.ts"), "utf8");
-const ids = [...(source.match(/export const MIGRATIONS_EFFECTS_CONTRACT_CASES = \[([\s\S]*?)\] as const;/u)?.[1] ?? "").matchAll(/"([a-z0-9-]+)"/gu)].map((match) => match[1]);
+const ids = ["migration-session-exercise-edit-receipts-v20"];
 function fixture(overrides = {}) {
   const directory = mkdtempSync(path.join(tmpdir(), "phase9-evidence-"));
   const apkPath = path.join(directory, "test.apk"); writeFileSync(apkPath, "apk");

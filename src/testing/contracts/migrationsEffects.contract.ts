@@ -35,6 +35,7 @@ export const MIGRATIONS_EFFECTS_CONTRACT_CASES = [
   "migration-integrity-block",
   "migration-recovery-backup",
   "migration-session-exercise-edit-receipts-v20",
+  "migration-advanced-set-timing-v21",
   "effects-lease-replay",
   "effects-stale-revision",
   "effects-retry-limit",
@@ -42,6 +43,15 @@ export const MIGRATIONS_EFFECTS_CONTRACT_CASES = [
 
 const PHASE1_MIGRATIONS = runtimeMigrations.filter(
   ({ version }) => version <= 3,
+);
+const MIGRATIONS_THROUGH_V19 = runtimeMigrations.filter(
+  ({ version }) => version <= 19,
+);
+const MIGRATIONS_THROUGH_V20 = runtimeMigrations.filter(
+  ({ version }) => version <= 20,
+);
+const MIGRATIONS_THROUGH_V21 = runtimeMigrations.filter(
+  ({ version }) => version <= 21,
 );
 
 export type MigrationsEffectsContractCaseId =
@@ -404,13 +414,13 @@ const contractCases: Record<MigrationsEffectsContractCaseId, ContractCase> = {
       await createMigrationRunner({
         databaseName,
         kernel,
-        migrations: runtimeMigrations.slice(0, -1),
+        migrations: MIGRATIONS_THROUGH_V19,
         recoveryBackup: adapter.recoveryBackup,
       }).run();
       const result = await createMigrationRunner({
         databaseName,
         kernel,
-        migrations: runtimeMigrations,
+        migrations: MIGRATIONS_THROUGH_V20,
         recoveryBackup: adapter.recoveryBackup,
       }).run();
       invariant(result.currentVersion === 20, "session_exercise_edit_receipts_version_not_committed");
@@ -520,6 +530,140 @@ const contractCases: Record<MigrationsEffectsContractCaseId, ContractCase> = {
            )`,
       );
       invariant(triggers.length === 2, "session_exercise_receipt_immutability_missing");
+    });
+  },
+
+  async "migration-advanced-set-timing-v21"(adapter, caseId) {
+    await withFreshRuntime(adapter, caseId, async ({ databaseName, kernel }) => {
+      await createMigrationRunner({
+        databaseName,
+        kernel,
+        migrations: MIGRATIONS_THROUGH_V20,
+        recoveryBackup: adapter.recoveryBackup,
+      }).run();
+      const result = await createMigrationRunner({
+        databaseName,
+        kernel,
+        migrations: MIGRATIONS_THROUGH_V21,
+        recoveryBackup: adapter.recoveryBackup,
+      }).run();
+      invariant(result.currentVersion === 21, "advanced_timing_version_not_committed");
+      const perRep = '{"version":1,"mode":"per_rep","intervalMs":1000,"cueChannels":"haptic"}';
+      const off = '{"version":1,"mode":"off"}';
+      const planColumns = await kernel.queryAll<{ name: string }>(
+        "PRAGMA table_info(plan_day_exercises)",
+      );
+      const ownedPlanColumns = await kernel.queryAll<{ name: string }>(
+        "PRAGMA table_info(owned_plan_day_exercises)",
+      );
+      const setColumns = await kernel.queryAll<{ name: string }>(
+        "PRAGMA table_info(session_sets)",
+      );
+      invariant(
+        planColumns.some(({ name }) => name === "advanced_timing_default_json")
+          && ownedPlanColumns.some(({ name }) => name === "advanced_timing_default_json")
+          && setColumns.some(({ name }) => name === "advanced_timing_override_json")
+          && setColumns.some(({ name }) => name === "advanced_timing_resolved_json"),
+        "advanced_timing_snapshot_columns_missing",
+      );
+      const stateColumns = await kernel.queryAll<{ name: string }>(
+        "PRAGMA table_info(session_advanced_timing_states)",
+      );
+      invariant(
+        stateColumns.some(({ name }) => name === "session_id")
+          && stateColumns.some(({ name }) => name === "session_set_id")
+          && stateColumns.some(({ name }) => name === "revision"),
+        "advanced_timing_state_columns_missing",
+      );
+      await kernel.write(async (transaction) => {
+        await transaction.execute(
+          `INSERT INTO workout_sessions
+            (id, plan_id, plan_day_id, source, status, local_date, timezone,
+             started_at_ms, completed_at_ms, revision)
+           VALUES ('v21-contract-session', NULL, NULL, 'manual', 'in_progress',
+                   '2026-09-16', 'Asia/Singapore', 1, NULL, 0)`,
+        );
+        await transaction.execute(
+          `INSERT INTO exercises
+            (id, content_pack_id, origin, source_namespace, upstream_id, name,
+             metric_profile, metric_contract_version, exercise_metric_generation,
+             equipment, default_rest_seconds, revision)
+           VALUES ('v21-contract-exercise', NULL, 'custom', NULL, NULL,
+                   'V21 contract exercise', 'load_reps', 1, 1, 'Unspecified', 90, 1)`,
+        );
+        await transaction.execute(
+          `INSERT INTO session_exercises
+            (id, session_id, source_plan_day_exercise_id, exercise_id, ordinal,
+             origin, display_ordinal, exercise_name, metric_profile,
+             metric_contract_version, exercise_metric_generation,
+             advanced_timing_default_json, default_rest_seconds, target_revision,
+             status, revision)
+           VALUES ('v21-contract-session-exercise', 'v21-contract-session', NULL,
+                   'v21-contract-exercise', 0, 'planned', 0, 'V21 contract exercise',
+                   'load_reps', 1, 1, ?, 90, 0, 'active', 0)`,
+          [perRep],
+        );
+        await transaction.execute(
+          `INSERT INTO session_sets
+            (id, session_exercise_id, set_kind, ordinal,
+             source_plan_working_set_target_id, source_owned_plan_working_set_target_id,
+             advanced_timing_override_json, advanced_timing_resolved_json,
+             target_load_grams, target_min_reps, target_max_reps, target_json, unit_json,
+             rule_type, rule_version, metric_profile, metric_contract_version,
+             exercise_metric_generation, status, revision)
+           VALUES ('v21-contract-set', 'v21-contract-session-exercise', 'working', 0,
+                   NULL, NULL, NULL, ?, 0, 0, 0, '{}', '{}', 'load_reps', 1,
+                   'load_reps', 1, 1, 'planned', 0)`,
+          [perRep],
+        );
+        await transaction.execute(
+          `INSERT INTO session_advanced_timing_states
+            (session_id, session_set_id, state_version, revision, status, mode,
+             config_json, progress_json, started_at_ms, next_boundary_at_ms,
+             remaining_ms, stopped_at_ms)
+           VALUES ('v21-contract-session', 'v21-contract-set', 1, 0, 'running',
+                   'per_rep', ?, '{"nextRepetitionIndex":1}', 1, 1001, NULL, NULL)`,
+          [perRep],
+        );
+      });
+      const [state] = await kernel.queryAll<{
+        config_json: string;
+        revision: number;
+        session_set_id: string;
+      }>(
+        `SELECT config_json, revision, session_set_id
+         FROM session_advanced_timing_states
+         WHERE session_id = 'v21-contract-session'`,
+      );
+      invariant(
+        state?.config_json === perRep
+          && state.revision === 0
+          && state.session_set_id === "v21-contract-set",
+        "advanced_timing_state_not_persisted",
+      );
+      let malformedRejected = false;
+      try {
+        await kernel.write((transaction) => transaction.execute(
+          `UPDATE session_sets
+           SET advanced_timing_resolved_json = ?
+           WHERE id = 'v21-contract-set'`,
+          ['{"version":1,"mode":"per_rep","intervalMs":99,"cueChannels":"haptic"}'],
+        ));
+      } catch {
+        malformedRejected = true;
+      }
+      invariant(malformedRejected, "advanced_timing_invalid_config_accepted");
+      const [resolved] = await kernel.queryAll<{
+        advanced_timing_resolved_json: string;
+      }>(
+        `SELECT advanced_timing_resolved_json
+         FROM session_sets WHERE id = 'v21-contract-set'`,
+      );
+      invariant(
+        resolved?.advanced_timing_resolved_json === perRep
+          && off === '{"version":1,"mode":"off"}',
+        "advanced_timing_snapshot_not_immutable",
+      );
     });
   },
 

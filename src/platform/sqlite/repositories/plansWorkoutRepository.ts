@@ -13,6 +13,9 @@ import type {
   MetricProfile,
 } from "../../../domains/metrics";
 import {
+  parseAdvancedTimingConfig,
+} from "../../../domains/advancedTiming";
+import {
   assertValidHistoryCorrectionSnapshot,
   type HistoryCorrectionSnapshot,
 } from "../../../domains/history";
@@ -59,6 +62,31 @@ async function supportsOwnedTargetSnapshots(
   return columns.some(({ name }) =>
     name === "source_owned_plan_working_set_target_id"
   );
+}
+
+async function supportsAdvancedTimingSnapshots(
+  executor: Pick<SqliteKernel, "queryAll"> | SqliteTransactionExecutor,
+): Promise<boolean> {
+  const [exerciseColumns, setColumns] = await Promise.all([
+    executor.queryAll<{ name: string }>("PRAGMA table_info(session_exercises)"),
+    executor.queryAll<{ name: string }>("PRAGMA table_info(session_sets)"),
+  ]);
+  const exerciseNames = new Set(exerciseColumns.map(({ name }) => name));
+  const setNames = new Set(setColumns.map(({ name }) => name));
+  return exerciseNames.has("advanced_timing_default_json")
+    && setNames.has("advanced_timing_override_json")
+    && setNames.has("advanced_timing_resolved_json");
+}
+
+function canonicalAdvancedTimingConfigJson(value: string): string {
+  return JSON.stringify(parseAdvancedTimingConfig(JSON.parse(value)));
+}
+
+function resolvedAdvancedTimingConfigJson(
+  defaultJson: string,
+  overrideJson: string | null,
+): string {
+  return canonicalAdvancedTimingConfigJson(overrideJson ?? defaultJson);
 }
 
 async function hasOwnedWorkoutGraph(
@@ -755,6 +783,9 @@ export function createPlansWorkoutRepository(
         const ownedTargetSnapshots = await supportsOwnedTargetSnapshots(
           transaction,
         );
+        const advancedTimingSnapshots = await supportsAdvancedTimingSnapshots(
+          transaction,
+        );
         const ownedGraph = request.mode !== "empty"
           && await hasOwnedWorkoutGraph(transaction, request.planDayId);
         const occurrenceTable = ownedGraph
@@ -814,6 +845,7 @@ export function createPlansWorkoutRepository(
             exercise_metric_generation?: number;
             default_rest_seconds: number;
             increment_grams: number;
+            advanced_timing_default_json?: string;
           }>(
             `SELECT de.id AS day_exercise_id, de.exercise_id, de.ordinal,
                     ${ownedGraph ? "e.canonical_name" : "e.name"}
@@ -826,6 +858,9 @@ export function createPlansWorkoutRepository(
                     ${ownedGraph
                       ? "de.between_exercise_rest_seconds"
                       : "e.default_rest_seconds"} AS default_rest_seconds,
+                    ${advancedTimingSnapshots
+                      ? "de.advanced_timing_default_json"
+                      : "NULL"} AS advanced_timing_default_json,
                     COALESCE(
                       json_extract(p.rule_json, '$.incrementGrams'),
                       1000
@@ -856,6 +891,11 @@ export function createPlansWorkoutRepository(
             if (targetRevision === undefined || targetRevision.revision === null) {
               throw new Error("workout_start_target_missing");
             }
+            const advancedTimingDefaultJson = advancedTimingSnapshots
+              ? canonicalAdvancedTimingConfigJson(
+                  exercise.advanced_timing_default_json!,
+                )
+              : undefined;
             await transaction.execute(
               `INSERT INTO session_exercises
                 (id, session_id, source_plan_day_exercise_id, exercise_id,
@@ -864,9 +904,13 @@ export function createPlansWorkoutRepository(
                    ? `metric_contract_version,
                       exercise_metric_generation,`
                    : ""}
+                 ${advancedTimingSnapshots
+                   ? "advanced_timing_default_json,"
+                   : ""}
                  default_rest_seconds, target_revision, status, revision)
                VALUES (?, ?, ?, ?, ?, ?, ?, ?,
                        ${completeIdentity ? "?, ?," : ""}
+                       ${advancedTimingSnapshots ? "?," : ""}
                        ?, ?, ?, ?)`,
               completeIdentity
                 ? [
@@ -880,6 +924,9 @@ export function createPlansWorkoutRepository(
                     exercise.metric_profile,
                     exercise.metric_contract_version!,
                     exercise.exercise_metric_generation!,
+                    ...(advancedTimingSnapshots
+                      ? [advancedTimingDefaultJson!]
+                      : []),
                     exercise.default_rest_seconds,
                     targetRevision.revision,
                     exercise.ordinal === 0 ? "active" : "planned",
@@ -894,6 +941,9 @@ export function createPlansWorkoutRepository(
                     exercise.ordinal,
                     exercise.exercise_name,
                     exercise.metric_profile,
+                    ...(advancedTimingSnapshots
+                      ? [advancedTimingDefaultJson!]
+                      : []),
                     exercise.default_rest_seconds,
                     targetRevision.revision,
                     exercise.ordinal === 0 ? "active" : "planned",
@@ -904,8 +954,13 @@ export function createPlansWorkoutRepository(
               ordinal: number;
               load_grams: number;
               reps: number;
+              advanced_timing_override_json?: string | null;
             }>(
-              `SELECT ordinal, load_grams, reps FROM ${warmupTable}
+              `SELECT ordinal, load_grams, reps
+                      ${advancedTimingSnapshots
+                        ? ", advanced_timing_override_json"
+                        : ""}
+                 FROM ${warmupTable}
                WHERE plan_day_exercise_id = ? ORDER BY ordinal`,
               [exercise.day_exercise_id],
             );
@@ -914,12 +969,28 @@ export function createPlansWorkoutRepository(
                 ? warmups
                 : []
             ) {
+              const advancedTimingOverrideJson = advancedTimingSnapshots
+                ? warmup.advanced_timing_override_json == null
+                  ? null
+                  : canonicalAdvancedTimingConfigJson(
+                      warmup.advanced_timing_override_json,
+                    )
+                : undefined;
+              const advancedTimingResolvedJson = advancedTimingSnapshots
+                ? resolvedAdvancedTimingConfigJson(
+                    advancedTimingDefaultJson!,
+                    advancedTimingOverrideJson!,
+                  )
+                : undefined;
               await transaction.execute(
                 `INSERT INTO session_sets
                   (id, session_exercise_id, set_kind, ordinal,
                    source_plan_working_set_target_id,
                    ${ownedTargetSnapshots
                      ? "source_owned_plan_working_set_target_id,"
+                     : ""}
+                   ${advancedTimingSnapshots
+                     ? "advanced_timing_override_json, advanced_timing_resolved_json,"
                      : ""}
                    target_load_grams, target_min_reps, target_max_reps,
                    target_json, unit_json, rule_type, rule_version,
@@ -932,6 +1003,7 @@ export function createPlansWorkoutRepository(
                    completion_idempotency_key, revision)
                  VALUES (?, ?, 'warmup', ?, NULL,
                          ${ownedTargetSnapshots ? "NULL," : ""}
+                         ${advancedTimingSnapshots ? "?, ?," : ""}
                          ?, ?, ?, ?, ?, 'load_reps', 1,
                          ${completeIdentity ? "'load_reps', 1, ?," : ""}
                          NULL, NULL, 'planned', NULL, NULL, NULL, 1)`,
@@ -939,6 +1011,9 @@ export function createPlansWorkoutRepository(
                   copiedId("session_warmup", sessionExerciseId, String(warmup.ordinal)),
                   sessionExerciseId,
                   warmup.ordinal,
+                  ...(advancedTimingSnapshots
+                    ? [advancedTimingOverrideJson!, advancedTimingResolvedJson!]
+                    : []),
                   warmup.load_grams,
                   warmup.reps,
                   warmup.reps,
@@ -975,6 +1050,7 @@ export function createPlansWorkoutRepository(
               metric_profile?: MetricProfile;
               metric_contract_version?: number;
               exercise_metric_generation?: number;
+              advanced_timing_override_json?: string | null;
             }>(
               `SELECT t.id, t.ordinal,
                       ${ownedGraph
@@ -994,6 +1070,9 @@ export function createPlansWorkoutRepository(
                            ) AS max_reps,`
                         : "t.load_grams, t.min_reps, t.max_reps,"}
                       t.target_json, t.unit_json,
+                      ${advancedTimingSnapshots
+                        ? "t.advanced_timing_override_json,"
+                        : ""}
                       ${ownedGraph
                         ? `CASE
                              WHEN p.policy_kind = 'manual_hold'
@@ -1022,12 +1101,28 @@ export function createPlansWorkoutRepository(
               [exercise.day_exercise_id],
             );
             for (const target of targets) {
+              const advancedTimingOverrideJson = advancedTimingSnapshots
+                ? target.advanced_timing_override_json == null
+                  ? null
+                  : canonicalAdvancedTimingConfigJson(
+                      target.advanced_timing_override_json,
+                    )
+                : undefined;
+              const advancedTimingResolvedJson = advancedTimingSnapshots
+                ? resolvedAdvancedTimingConfigJson(
+                    advancedTimingDefaultJson!,
+                    advancedTimingOverrideJson!,
+                  )
+                : undefined;
               await transaction.execute(
                 `INSERT INTO session_sets
                   (id, session_exercise_id, set_kind, ordinal,
                    source_plan_working_set_target_id,
                    ${ownedTargetSnapshots
                      ? "source_owned_plan_working_set_target_id,"
+                     : ""}
+                   ${advancedTimingSnapshots
+                     ? "advanced_timing_override_json, advanced_timing_resolved_json,"
                      : ""}
                    target_load_grams, target_min_reps, target_max_reps,
                    target_json, unit_json, rule_type, rule_version,
@@ -1040,6 +1135,7 @@ export function createPlansWorkoutRepository(
                    completion_idempotency_key, revision)
                  VALUES (?, ?, 'working', ?, ?,
                          ${ownedTargetSnapshots ? "?," : ""}
+                         ${advancedTimingSnapshots ? "?, ?," : ""}
                          ?, ?, ?, ?, ?, ?, ?,
                          ${completeIdentity ? "?, ?, ?," : ""}
                          NULL, NULL, 'planned', NULL, NULL, NULL, 1)`,
@@ -1050,6 +1146,9 @@ export function createPlansWorkoutRepository(
                   ownedGraph ? null : target.id,
                   ...(ownedTargetSnapshots
                     ? [ownedGraph ? target.id : null]
+                    : []),
+                  ...(advancedTimingSnapshots
+                    ? [advancedTimingOverrideJson!, advancedTimingResolvedJson!]
                     : []),
                   target.load_grams,
                   target.min_reps,

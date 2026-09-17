@@ -2425,11 +2425,41 @@ describe("WorkoutAppRuntimeProvider", () => {
           { name: "modified_from_plan", notnull: 1 },
         ];
       }
+      if ([
+        "PRAGMA table_info(plan_day_exercises)",
+        "PRAGMA table_info(owned_plan_day_exercises)",
+      ].includes(sql)) {
+        return [{ name: "advanced_timing_default_json", notnull: 1 }];
+      }
+      if ([
+        "PRAGMA table_info(plan_warmup_sets)",
+        "PRAGMA table_info(plan_working_set_targets)",
+        "PRAGMA table_info(owned_plan_warmup_sets)",
+        "PRAGMA table_info(owned_plan_working_set_targets)",
+      ].includes(sql)) {
+        return [{ name: "advanced_timing_override_json", notnull: 0 }];
+      }
       if (sql === "PRAGMA table_info(session_exercises)") {
         return [
           { name: "origin", notnull: 1 },
           { name: "display_ordinal", notnull: 1 },
+          { name: "advanced_timing_default_json", notnull: 1 },
         ];
+      }
+      if (sql === "PRAGMA table_info(session_sets)") {
+        return [
+          { name: "advanced_timing_override_json", notnull: 0 },
+          { name: "advanced_timing_resolved_json", notnull: 1 },
+        ];
+      }
+      if (sql === "SELECT name FROM sqlite_master WHERE type = 'table' AND name = 'session_advanced_timing_states'") {
+        return [{ name: "session_advanced_timing_states" }];
+      }
+      if (sql === "PRAGMA foreign_key_list(session_advanced_timing_states)") {
+        return [{ table: "workout_sessions" }, { table: "session_sets" }];
+      }
+      if (sql === "PRAGMA index_list(session_advanced_timing_states)") {
+        return [{ name: "session_advanced_timing_states_target_idx" }];
       }
       if (sql.includes("creation_timezone_offset_minutes IS NULL")) {
         return [];
