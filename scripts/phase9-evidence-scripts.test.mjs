@@ -103,13 +103,33 @@ test("Phase 9 evidence runner requires a manifest and full edit/relaunch asserti
   assert.doesNotMatch(flow, /- assertVisible: "Added"/u);
   assert.match(flow, /arm_replace_exercise_failure/);
   assert.match(flow, /Replace exercise failure armed/);
-  assert.match(flow, /Replace exercise failure armed[\s\S]*?scrollUntilVisible:[\s\S]*?text: "Return to Today"[\s\S]*?tapOn: "Return to Today"/u);
+  const boundedReturnToToday = [
+    "- repeat:",
+    "    times: 12",
+    "    while:",
+    '      notVisible: "Return to Today"',
+    "    commands:",
+    "      - swipe:",
+    "          start: 95%, 75%",
+    "          end: 95%, 25%",
+    "          duration: 300",
+    "- swipe:",
+    "    start: 95%, 75%",
+    "    end: 95%, 45%",
+    "    duration: 300",
+    '- assertVisible: "Return to Today"',
+    '- tapOn: "Return to Today"',
+  ].join("\n");
+  assert.equal(
+    flow.split(boundedReturnToToday).length - 1,
+    2,
+    "Phase 9 injected failure paths must use bounded Return to Today discovery before resuming the workout",
+  );
   assert.match(flow, /inputText: "Bench Press"[\s\S]*?tapOn:\n    id: "replace-exercise-option-5f140001-7e35-4a6d-9100-000000000002"\n- waitForAnimationToEnd:\n    timeout: 10000\n- extendedWaitUntil:\n    visible: "Replace with Bench Press"\n    timeout: 30000\n- tapOn: "Replace with Bench Press"/u);
   assert.match(flow, /Retry replacing exercise/);
   assert.match(flow, /Complete Set 1[\s\S]*?Overhead Press exercise actions[\s\S]*?This exercise has completed sets/u);
   assert.match(flow, /arm_remove_exercise_failure/);
   assert.match(flow, /Remove exercise failure armed/);
-  assert.match(flow, /Remove exercise failure armed[\s\S]*?scrollUntilVisible:[\s\S]*?text: "Return to Today"[\s\S]*?tapOn: "Return to Today"/u);
   assert.match(flow, /tapOn: "Remove exercise"[\s\S]*?tapOn:\n    id: "remove-exercise-confirm"[\s\S]*?Retry removing exercise/u);
   assert.match(flow, /Retry removing exercise/);
   assert.match(flow, /Keep exercise/);
