@@ -13,6 +13,7 @@ import {
 import React from "react";
 
 import type {
+  CompletedWorkoutPlanWriteBackState,
   SessionDetail,
 } from "../../domains/workout";
 import {
@@ -137,6 +138,20 @@ const completedDetail: SessionDetail = {
   readOnly: true,
 };
 
+const writeBackPreview = {
+  kind: "session_exercise_edits" as const,
+  sourceSessionId: completedDetail.id,
+  sourceSessionRevision: completedDetail.revision,
+  planId: "plan-owner",
+  planName: "Owner Strength",
+  planDayId: "day-owner",
+  dayName: "Strength Day",
+  expectedPlanRevision: 3,
+  currentWorkoutUnaffected: true as const,
+  previewToken: `session-writeback-v1:${"a".repeat(64)}`,
+  composition: [],
+};
+
 async function renderCompletion(
   overrides: Partial<React.ComponentProps<typeof WorkoutCompletionScreen>> = {},
   appearance?: "Light" | "Dark",
@@ -164,6 +179,93 @@ async function renderCompletion(
 }
 
 describe("Plan 01-10 completion and detail", () => {
+  it("renders the exact default-No plan write-back sheet and keeps the plan inert until Save is chosen", async () => {
+    const keep = jest.fn();
+    const apply = jest.fn();
+    const planWriteBack: CompletedWorkoutPlanWriteBackState = {
+      state: "awaiting_choice",
+      preview: writeBackPreview,
+    };
+    await renderCompletion({
+      planWriteBack,
+      onApplyPlanWriteBack: apply,
+      onKeepPlanAsIs: keep,
+    });
+
+    expect(screen.getByRole("header", {
+      name: "Save these changes to the plan?",
+    })).toBeOnTheScreen();
+    expect(screen.getByText(
+      "You changed this workout from its plan. Save these changes to Owner Strength · Strength Day?",
+    )).toBeOnTheScreen();
+    const keepAction = screen.getByRole("button", {
+      name: "Keep plan as-is",
+    });
+    expect(keepAction).toHaveStyle({ minHeight: 56 });
+    expect(keepAction).toHaveProp(
+      "accessibilityState",
+      expect.objectContaining({ disabled: false }),
+    );
+    await fireEvent.press(keepAction);
+    expect(keep).toHaveBeenCalledTimes(1);
+    expect(apply).not.toHaveBeenCalled();
+    await fireEvent(
+      screen.getByTestId("workout-plan-write-back-sheet"),
+      "requestClose",
+    );
+    expect(keep).toHaveBeenCalledTimes(2);
+    expect(apply).not.toHaveBeenCalled();
+
+    await fireEvent.press(screen.getByRole("button", {
+      name: "Save changes to plan",
+    }));
+    expect(apply).toHaveBeenCalledTimes(1);
+  });
+
+  it("keeps the completed workout visible while write-back is busy or retryable", async () => {
+    const apply = jest.fn();
+    const keep = jest.fn();
+    await renderCompletion({
+      planWriteBack: { state: "applying", preview: writeBackPreview },
+      onApplyPlanWriteBack: apply,
+      onKeepPlanAsIs: keep,
+    });
+
+    expect(screen.getByRole("button", { name: "Keep plan as-is" }))
+      .toHaveProp("accessibilityState", expect.objectContaining({
+        busy: true,
+        disabled: true,
+      }));
+    expect(screen.getByRole("button", { name: "Save changes to plan" }))
+      .toHaveProp("accessibilityState", expect.objectContaining({
+        busy: true,
+        disabled: true,
+      }));
+    expect(screen.getByRole("header", { name: "Workout complete" }))
+      .toBeOnTheScreen();
+
+    const failure: CompletedWorkoutPlanWriteBackState = {
+      state: "save_failed",
+      preview: writeBackPreview,
+      failure: { kind: "stale", code: "plan_impact_preview_stale" },
+    };
+    await renderCompletion({
+      planWriteBack: failure,
+      onApplyPlanWriteBack: apply,
+      onKeepPlanAsIs: keep,
+    });
+    expect(screen.getByRole("header", {
+      name: "Changes were not saved to the plan",
+    })).toBeOnTheScreen();
+    expect(screen.getByText(
+      "Your completed workout is safe. Try again or keep the plan as-is.",
+    )).toBeOnTheScreen();
+    await fireEvent.press(screen.getByRole("button", {
+      name: "Retry saving changes",
+    }));
+    expect(apply).toHaveBeenCalledTimes(1);
+  });
+
   it("leads with committed factual completion and metric-appropriate results", async () => {
     await renderCompletion();
 
@@ -185,6 +287,19 @@ describe("Plan 01-10 completion and detail", () => {
 
     expect(screen.getByText("Modified from plan")).toBeOnTheScreen();
     expect(screen.getByLabelText("Modified from plan")).toBeOnTheScreen();
+  });
+
+  it("does not infer a plan write-back prompt from modified provenance alone", async () => {
+    await renderCompletion({
+      detail: { ...completedDetail, modifiedFromPlan: true },
+    });
+
+    expect(screen.queryByRole("header", {
+      name: "Save these changes to the plan?",
+    })).not.toBeOnTheScreen();
+    expect(screen.queryByRole("button", {
+      name: "Save changes to plan",
+    })).not.toBeOnTheScreen();
   });
 
   it("uses high-contrast flat cards for completion context, metrics, and exercise results", async () => {

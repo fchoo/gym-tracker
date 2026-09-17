@@ -3,6 +3,8 @@ import {
   Pencil,
 } from "lucide-react-native";
 import {
+  Modal,
+  ScrollView,
   StyleSheet,
   Text,
   View,
@@ -13,6 +15,8 @@ import type {
   ExerciseEffort,
 } from "../../domains/progression";
 import type {
+  CompletedWorkoutPlanWriteBackChoiceState,
+  CompletedWorkoutPlanWriteBackState,
   SessionDetail,
 } from "../../domains/workout";
 import {
@@ -31,6 +35,7 @@ import {
   AdaptiveScreen,
 } from "../layout/AdaptiveScreen";
 import {
+  radius,
   space,
   typeScale,
   useAppTheme,
@@ -66,6 +71,9 @@ export function WorkoutCompletionScreen({
   onRecordEffort,
   onAcceptRecommendation,
   onKeepCurrentTarget,
+  onApplyPlanWriteBack = () => undefined,
+  onKeepPlanAsIs = () => undefined,
+  planWriteBack = { state: "completed", disposition: "not_eligible" },
   onRetrySummary,
   onViewDetails,
   onReturnToday,
@@ -81,6 +89,13 @@ export function WorkoutCompletionScreen({
   ) => void;
   onAcceptRecommendation: (recommendationId: string) => void;
   onKeepCurrentTarget: (recommendationId: string) => void;
+  onApplyPlanWriteBack?: (
+    state: CompletedWorkoutPlanWriteBackChoiceState,
+  ) => void;
+  onKeepPlanAsIs?: (
+    state: CompletedWorkoutPlanWriteBackChoiceState,
+  ) => void;
+  planWriteBack?: CompletedWorkoutPlanWriteBackState;
   onRetrySummary: () => void;
   onViewDetails: () => void;
   onReturnToday: () => void;
@@ -88,12 +103,31 @@ export function WorkoutCompletionScreen({
   const { colors } = useAppTheme();
   const adaptiveWidth = width === undefined ? {} : { width };
   const savedPartial = detail.status === "partial";
+  const keepPlanAsIsRef = React.useRef<View>(null);
   const completedExercises = detail.exercises.filter(
     ({ status }) => status === "completed",
   );
+  const writeBackChoice = planWriteBack.state === "awaiting_choice"
+    || planWriteBack.state === "save_failed"
+    ? planWriteBack
+    : null;
+  const writeBackVisible = writeBackChoice !== null
+    || planWriteBack.state === "applying";
+  const writeBackBusy = planWriteBack.state === "applying";
+  const writeBackFailed = planWriteBack.state === "save_failed";
+  const writeBackPreview = planWriteBack.state === "applying"
+    ? planWriteBack.preview
+    : writeBackChoice?.preview ?? null;
+
+  React.useEffect(() => {
+    if (writeBackChoice !== null) {
+      keepPlanAsIsRef.current?.focus();
+    }
+  }, [writeBackChoice]);
 
   return (
-    <AdaptiveScreen
+    <>
+      <AdaptiveScreen
       {...adaptiveWidth}
       primary={
         <>
@@ -280,7 +314,70 @@ export function WorkoutCompletionScreen({
           </View>
         </>
       }
-    />
+      />
+      <Modal
+      animationType="fade"
+      onRequestClose={() => {
+        if (writeBackChoice !== null) {
+          onKeepPlanAsIs(writeBackChoice);
+        }
+      }}
+      transparent
+      visible={writeBackVisible}
+    >
+      <View style={styles.modalBackdrop}>
+        <ScrollView
+          accessibilityViewIsModal
+          contentContainerStyle={styles.writeBackSheetContent}
+          keyboardShouldPersistTaps="handled"
+          style={[styles.writeBackSheet, { backgroundColor: colors.surface }]}
+          testID="workout-plan-write-back-sheet"
+        >
+          <SectionHeader
+            title={writeBackFailed
+              ? "Changes were not saved to the plan"
+              : "Save these changes to the plan?"}
+          />
+          <Text
+            style={[
+              typeScale.body as TextStyle,
+              { color: colors.textSecondary },
+            ]}
+          >
+            {writeBackFailed
+              ? "Your completed workout is safe. Try again or keep the plan as-is."
+              : writeBackPreview === null
+                ? "Saving these changes to the plan."
+                : `You changed this workout from its plan. Save these changes to ${writeBackPreview.planName} · ${writeBackPreview.dayName}?`}
+          </Text>
+          <View style={styles.writeBackActions}>
+            <PrimaryAction
+              busy={writeBackBusy}
+              label="Keep plan as-is"
+              onPress={() => {
+                if (writeBackChoice !== null) {
+                  onKeepPlanAsIs(writeBackChoice);
+                }
+              }}
+              ref={keepPlanAsIsRef}
+            />
+            <SecondaryAction
+              busy={writeBackBusy}
+              disabled={writeBackChoice === null}
+              label={writeBackFailed
+                ? "Retry saving changes"
+                : "Save changes to plan"}
+              onPress={() => {
+                if (writeBackChoice !== null) {
+                  onApplyPlanWriteBack(writeBackChoice);
+                }
+              }}
+            />
+          </View>
+        </ScrollView>
+      </View>
+      </Modal>
+    </>
   );
 }
 
@@ -307,11 +404,28 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     gap: space[1],
   },
+  modalBackdrop: {
+    backgroundColor: "rgba(0, 0, 0, 0.48)",
+    flex: 1,
+    justifyContent: "flex-end",
+  },
   result: {
     gap: space[2],
     padding: space[4],
   },
   section: {
     gap: space[4],
+  },
+  writeBackActions: {
+    gap: space[2],
+  },
+  writeBackSheet: {
+    borderTopLeftRadius: radius.emphasized,
+    borderTopRightRadius: radius.emphasized,
+    maxHeight: "90%",
+  },
+  writeBackSheetContent: {
+    gap: space[4],
+    padding: space[6],
   },
 });

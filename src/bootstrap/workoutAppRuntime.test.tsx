@@ -3297,6 +3297,110 @@ describe("WorkoutAppRuntimeProvider", () => {
     expect(ownedPlans.applySessionExerciseEdits).not.toHaveBeenCalled();
   });
 
+  it("refreshes a stale write-back preview before retrying the aggregate apply", async () => {
+    const repository = runtimeRepository([activeView, activeView], [activation]);
+    const previewSessionExerciseEdits = jest.fn(async () =>
+      sessionWriteBackPreview
+    );
+    const applySessionExerciseEdits = jest.fn(async () => ({
+      outcome: "committed" as const,
+      operation: "session_exercise_edits" as const,
+      planId: "plan-copy",
+      planRevision: 2,
+      sourceSessionId: "session-1",
+      currentWorkoutUnaffected: true as const,
+      invalidations: [],
+    }));
+    mockedCreateOwnedPlanRuntimePort.mockReturnValueOnce({
+      ...({} as ReturnType<typeof createOwnedPlanRuntimePort>),
+      previewSessionExerciseEdits,
+      applySessionExerciseEdits,
+    } as unknown as ReturnType<typeof createOwnedPlanRuntimePort>);
+    let captured: ReturnType<typeof useWorkoutAppRuntime> | undefined;
+    await render(
+      <RuntimeCaptureHarness
+        dependencies={dependencies(repository)}
+        onReady={(runtime) => {
+          captured = runtime;
+        }}
+      />,
+    );
+    await waitFor(() => {
+      expect(captured?.launchState).toBe("trusted");
+    });
+    if (captured === undefined) {
+      throw new Error("runtime_not_captured");
+    }
+
+    let result: Awaited<
+      ReturnType<typeof captured.applyCompletedWorkoutPlanWriteBack>
+    >;
+    await act(async () => {
+      result = await captured!.applyCompletedWorkoutPlanWriteBack({
+        state: "save_failed",
+        preview: sessionWriteBackPreview,
+        failure: { kind: "stale", code: "plan_impact_preview_stale" },
+      });
+    });
+
+    expect(result!).toEqual({
+      state: "completed",
+      disposition: "saved",
+      outcome: "committed",
+    });
+    expect(previewSessionExerciseEdits).toHaveBeenCalledWith({
+      sessionId: "session-1",
+    });
+    expect(applySessionExerciseEdits).toHaveBeenCalledWith({
+      sourceSessionId: "session-1",
+      expectedPlanRevision: 1,
+      previewToken: sessionWriteBackPreview.previewToken,
+      composition: [],
+    });
+  });
+
+  it("keeps the completed workout retryable when a stale retry cannot refresh its preview", async () => {
+    const repository = runtimeRepository([activeView], [activation]);
+    const previewSessionExerciseEdits = jest.fn(async () => {
+      throw new Error("preview_read_failed");
+    });
+    const applySessionExerciseEdits = jest.fn();
+    mockedCreateOwnedPlanRuntimePort.mockReturnValueOnce({
+      ...({} as ReturnType<typeof createOwnedPlanRuntimePort>),
+      previewSessionExerciseEdits,
+      applySessionExerciseEdits,
+    } as unknown as ReturnType<typeof createOwnedPlanRuntimePort>);
+    let captured: ReturnType<typeof useWorkoutAppRuntime> | undefined;
+    await render(
+      <RuntimeCaptureHarness
+        dependencies={dependencies(repository)}
+        onReady={(runtime) => {
+          captured = runtime;
+        }}
+      />,
+    );
+    await waitFor(() => {
+      expect(captured?.launchState).toBe("trusted");
+    });
+    if (captured === undefined) {
+      throw new Error("runtime_not_captured");
+    }
+
+    await expect(captured.applyCompletedWorkoutPlanWriteBack({
+      state: "save_failed",
+      preview: sessionWriteBackPreview,
+      failure: { kind: "stale", code: "plan_impact_preview_stale" },
+    })).resolves.toEqual({
+      state: "save_failed",
+      preview: sessionWriteBackPreview,
+      failure: {
+        kind: "failed",
+        code: "session_write_back_preview_failed",
+      },
+    });
+    expect(applySessionExerciseEdits).not.toHaveBeenCalled();
+  });
+
   it("composes custom create, edit, archive preview, and migration capabilities", async () => {
     const repository = runtimeRepository([noPlanView], [null]);
     await render(

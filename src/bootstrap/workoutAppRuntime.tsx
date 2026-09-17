@@ -3731,9 +3731,31 @@ export function WorkoutAppRuntimeProvider({
     state: CompletedWorkoutPlanWriteBackChoiceState,
   ) => {
     const services = requireServices();
+    let retryState: CompletedWorkoutPlanWriteBackState = state;
+    if (state.state === "save_failed" && state.failure.kind === "stale") {
+      try {
+        retryState = await previewCompletedWorkoutPlanWriteBack({
+          port: services.ownedPlans,
+          sessionId: state.preview.sourceSessionId,
+        });
+      } catch {
+        return {
+          state: "save_failed",
+          preview: state.preview,
+          failure: {
+            kind: "failed",
+            code: "session_write_back_preview_failed",
+          },
+        } satisfies CompletedWorkoutPlanWriteBackState;
+      }
+    }
+    if (retryState.state !== "awaiting_choice"
+      && retryState.state !== "save_failed") {
+      return retryState;
+    }
     const result = await applyCompletedWorkoutPlanWriteBack({
       port: services.ownedPlans,
-      state: beginCompletedWorkoutPlanWriteBack(state),
+      state: beginCompletedWorkoutPlanWriteBack(retryState),
     });
     if (result.state === "completed" && result.disposition === "saved") {
       workoutRefreshGenerationRef.current += 1;

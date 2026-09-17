@@ -16,6 +16,7 @@ import type {
   ExerciseEffort,
 } from "../../src/domains/progression";
 import type {
+  CompletedWorkoutPlanWriteBackState,
   SessionDetail,
 } from "../../src/domains/workout";
 import {
@@ -39,11 +40,24 @@ export default function WorkoutCompletionRoute() {
   const [summaryError, setSummaryError] = useState(false);
   const [effortBusy, setEffortBusy] = useState(false);
   const [recommendationBusy, setRecommendationBusy] = useState(false);
+  const [planWriteBack, setPlanWriteBack] =
+    useState<CompletedWorkoutPlanWriteBackState>({
+      state: "completed",
+      disposition: "not_eligible",
+    });
 
   const load = useCallback(async () => {
     setSummaryError(false);
     try {
-      setDetail(await runtime.getSessionDetail(resolvedSessionId));
+      const nextDetail = await runtime.getSessionDetail(resolvedSessionId);
+      setDetail(nextDetail);
+      if (nextDetail.status === "completed") {
+        setPlanWriteBack(await runtime.previewCompletedWorkoutPlanWriteBack(
+          resolvedSessionId,
+        ));
+      } else {
+        setPlanWriteBack({ state: "completed", disposition: "not_eligible" });
+      }
     } catch {
       setSummaryError(true);
     }
@@ -128,6 +142,32 @@ export default function WorkoutCompletionRoute() {
     }
   };
 
+  const keepPlanAsIs = (state: Extract<
+    CompletedWorkoutPlanWriteBackState,
+    Readonly<{ state: "awaiting_choice" | "save_failed" }>
+  >) => {
+    const result = runtime.keepCompletedWorkoutPlanAsIs(state);
+    setPlanWriteBack(result);
+    router.replace("/(tabs)");
+  };
+
+  const applyPlanWriteBack = async (state: Extract<
+    CompletedWorkoutPlanWriteBackState,
+    Readonly<{ state: "awaiting_choice" | "save_failed" }>
+  >) => {
+    setPlanWriteBack({ state: "applying", preview: state.preview });
+    const result = await runtime.applyCompletedWorkoutPlanWriteBack(state);
+    if (result.state === "completed" && result.disposition === "saved") {
+      router.replace("/(tabs)");
+      return;
+    }
+    if (result.state === "save_failed") {
+      setPlanWriteBack(result);
+      return;
+    }
+    setPlanWriteBack(result);
+  };
+
   return (
     <WorkoutCompletionScreen
       detail={detail}
@@ -138,6 +178,10 @@ export default function WorkoutCompletionRoute() {
       onKeepCurrentTarget={(recommendationId) => {
         void decide(recommendationId, "keep");
       }}
+      onApplyPlanWriteBack={(state) => {
+        void applyPlanWriteBack(state);
+      }}
+      onKeepPlanAsIs={keepPlanAsIs}
       onRecordEffort={(sessionExerciseId, effort) => {
         void recordEffort(sessionExerciseId, effort);
       }}
@@ -148,6 +192,7 @@ export default function WorkoutCompletionRoute() {
         params: { sessionId: resolvedSessionId },
       } as unknown as Href)}
       recommendationBusy={recommendationBusy}
+      planWriteBack={planWriteBack}
       summaryError={summaryError}
     />
   );
