@@ -4,18 +4,18 @@ milestone: v1.1
 milestone_name: In-Workout Editing, Advanced Timing & Cross-Device Sync
 current_phase: 09
 current_phase_name: In-Workout Exercise Editing
-status: executing
-stopped_at: Completed 09-09-PLAN.md
-last_updated: "2026-09-17T09:39:06.000Z"
+status: verifying
+stopped_at: Completed 09-10-PLAN.md; phase goal verification pending
+last_updated: "2026-09-17T13:02:49.000Z"
 last_activity: 2026-09-17
-last_activity_desc: Plan 09-09 completed the post-finish default-No aggregate plan write-back choice with manifest-bound Android Keep and failure-retry evidence
-state_head: 339cd5cce7cc1894aaabe1c92ec097accf4002ec
+last_activity_desc: Plan 09-10 retained exact-head source, v20, and three-flow Android evidence; Phase 09 is ready for review and goal verification
+state_head: 4f1ecf8f274a10ab27fdf3c0b83507cdf3c9c07d
 progress:
   total_phases: 5
   completed_phases: 1
   total_plans: 26
-  completed_plans: 13
-  percent: 50
+  completed_plans: 14
+  percent: 54
 ---
 
 # Project State
@@ -25,14 +25,14 @@ progress:
 See: `.planning/PROJECT.md` (updated 2026-09-15)
 
 **Core value:** Open today's workout, see trustworthy next targets, complete each working set with one primary action, recover safely from interruption, and understand exactly why the next target is recommended.
-**Current focus:** Phase 09 — In-Workout Exercise Editing
+**Current focus:** Phase 09 — In-Workout Exercise Editing (verification)
 
 ## Current Position
 
-Phase: 09 (In-Workout Exercise Editing) — EXECUTING
-Plan: 9 of 10 complete; next is 09-10
-Status: Executing Phase 09 — Plan 09-09 now shows an eligible completed edited planned workout the exact default-No plan write-back choice after its durable completion, while Keep and failure/retry preserve immutable history; 09-10 is next
-Last activity: 2026-09-17 — Plan 09-09 final manifest-bound Android suite passed editing/relaunch, Keep, and injected write-back failure/retry flows on exact source and APK bytes
+Phase: 09 (In-Workout Exercise Editing) — VERIFYING
+Plan: 10 of 10 complete; independent review and goal verification pending
+Status: Phase 09 has complete exact-head source, 100% integrity coverage, v20 native SQLite, and three-flow Android Maestro evidence. Do not begin Phase 10 until review and goal-backward verification pass.
+Last activity: 2026-09-17 — Plan 09-10 final head `4f1ecf8` passed 146 suites / 2,635 tests, v20 11/11, and all three Phase 09 Maestro flows; device automatic time was restored.
 
 ## Delivery model
 
@@ -301,6 +301,8 @@ Full decisions live in `.planning/PROJECT.md`.
 - [Phase 09]: `SessionDetail.modifiedFromPlan` is required and read from `workout_sessions.modified_from_plan`; existing native completion and detail summaries render literal `Modified from plan` plus an accessibility-hidden Pencil icon.
 - [Phase 09]: Completion write-back eligibility is recomputed from the post-commit canonical aggregate preview; Keep/dismiss/Back are pure no-write transitions, while explicit Save alone invokes the revision-bound aggregate writer.
 - [Phase 09]: Phase 09 planned write-back native evidence serializes clear-state flows, verifies adb root, pins a Friday scheduled fixture, tolerates cold startup, and restores the prior device time configuration; the final 09-09 manifest is bound to HEAD `339cd5c`.
+- [Phase 09]: Android may rotate the ephemeral `/data/app` package path on each reinstall. Phase 09 evidence therefore validates the installed APK by pulled SHA-256 plus package/device identity; it verifies v20 before installing the distinct Phase 09 APK and records that ordered result in the final ledger.
+- [Phase 09]: Native migrations/effects databases already have unique run IDs. Do not delete them before `openDatabaseAsync`; cleanup after close prevents Expo SQLite's released-shared-object race without weakening isolation.
 
 ### Blockers/Concerns
 
@@ -330,12 +332,12 @@ Full decisions live in `.planning/PROJECT.md`.
 
 ## Session Continuity
 
-Last session: 2026-09-17T09:39:06.000Z
-Stopped at: Completed 09-09-PLAN.md
-Resume file: .planning/phases/09-in-workout-exercise-editing/09-09-SUMMARY.md
-Next action: Execute `.planning/phases/09-in-workout-exercise-editing/09-10-PLAN.md`, completing the fail-closed Phase 09 evidence contract and full source/native closure from the retained 09-09 manifest identity.
+Last session: 2026-09-17T13:02:49.000Z
+Stopped at: Completed 09-10-PLAN.md; Phase 09 review and goal verification pending
+Resume file: .planning/phases/09-in-workout-exercise-editing/09-10-SUMMARY.md
+Next action: Run the Phase 09 code-review and verifier gates. Only mark the Roadmap, requirements, and phase complete if the independent verification report passes.
 
 ## Operator Next Steps
 
-- Execute Phase 9 Plan 10 from the verified default-No write-back foundation.
-- Preserve append-only workout history, keep migration 0019 immutable, retain separate Add/Replace/Remove and reorder receipts, and fail closed if any native manifest, v20 result, coverage, or evidence identity is stale or absent.
+- Complete Phase 09 review and goal-backward verification; resolve any finding before transitioning to Phase 10.
+- Preserve append-only workout history, keep migrations 0019/0020 immutable, retain separate Add/Replace/Remove and reorder receipts, and preserve the v20-before-Phase-09 native evidence order.
