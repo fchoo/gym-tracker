@@ -57,6 +57,7 @@ const actions = [
   ],
   ["arm_replace_exercise_failure", "Arm Replace exercise failure"],
   ["arm_remove_exercise_failure", "Arm Remove exercise failure"],
+  ["arm_plan_write_back_failure", "Arm plan write-back failure"],
   ["reset_workout_failures", "Reset workout mutation failures"],
 ] as const satisfies readonly (readonly [NotificationTestControlAction, string])[];
 

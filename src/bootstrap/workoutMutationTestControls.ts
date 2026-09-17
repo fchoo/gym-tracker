@@ -7,6 +7,7 @@ export const workoutMutationTestActions = [
   "arm_completed_set_correction_failure",
   "arm_replace_exercise_failure",
   "arm_remove_exercise_failure",
+  "arm_plan_write_back_failure",
   "reset_workout_failures",
 ] as const;
 
@@ -19,7 +20,8 @@ export type WorkoutMutationTestOperation =
   | "add_working"
   | "completed_set_correction"
   | "replace_exercise"
-  | "remove_exercise";
+  | "remove_exercise"
+  | "plan_write_back";
 
 export type WorkoutMutationTestResult = Readonly<{
   action: WorkoutMutationTestAction;
@@ -61,6 +63,11 @@ const armedControls = Object.freeze({
     operation: "remove_exercise",
     heading: "Remove exercise failure armed",
     body: "The next Remove exercise attempt will fail once.",
+  }),
+  arm_plan_write_back_failure: Object.freeze({
+    operation: "plan_write_back",
+    heading: "Plan write-back failure armed",
+    body: "The next Save changes to plan attempt will fail once.",
   }),
 } as const satisfies Readonly<Record<
   Exclude<WorkoutMutationTestAction, "reset_workout_failures">,

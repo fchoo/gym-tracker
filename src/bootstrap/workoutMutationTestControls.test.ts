@@ -72,7 +72,20 @@ const cases: [
     "Remove exercise failure armed",
     "The next Remove exercise attempt will fail once.",
   ],
+  [
+    "arm_plan_write_back_failure",
+    "plan_write_back",
+    "Plan write-back failure armed",
+    "The next Save changes to plan attempt will fail once.",
+  ],
 ];
+
+const activeWorkoutAdapterCases = cases.filter((entry): entry is [
+  Exclude<WorkoutMutationTestAction, "reset_workout_failures">,
+  Exclude<WorkoutMutationTestOperation, "plan_write_back">,
+  string,
+  string,
+] => entry[1] !== "plan_write_back");
 
 describe("development-test workout mutation controls", () => {
   beforeEach(() => {
@@ -220,6 +233,11 @@ describe("development-test workout mutation controls", () => {
       "Development-test workout mutation failed once.",
     );
     await expect(adapters.removeExercise()).resolves.toBe("remove committed");
+    applyWorkoutMutationTestControl("arm_plan_write_back_failure");
+    await expect(runWorkoutMutationWithTestFailure(
+      "plan_write_back",
+      async () => "plan write-back committed",
+    )).rejects.toThrow("Development-test workout mutation failed once.");
   });
 
   it("returns and throws only bounded control data", async () => {
@@ -253,7 +271,7 @@ describe("development-test workout mutation controls", () => {
     ]);
   });
 
-  it.each(cases)(
+  it.each(activeWorkoutAdapterCases)(
     "maps %s to only its matching active-workout command adapter",
     async (action, operation) => {
       const commandNames = {

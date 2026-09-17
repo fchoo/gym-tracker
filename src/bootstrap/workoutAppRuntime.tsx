@@ -187,6 +187,9 @@ import {
   createExpoHapticsAdapter,
 } from "../platform/haptics/expoHapticsAdapter";
 import {
+  runWorkoutMutationWithTestFailure,
+} from "./workoutMutationTestControls";
+import {
   createExpoRestNotificationAdapter,
 } from "../platform/notifications/expoRestNotificationAdapter";
 import {
@@ -3753,10 +3756,25 @@ export function WorkoutAppRuntimeProvider({
       && retryState.state !== "save_failed") {
       return retryState;
     }
-    const result = await applyCompletedWorkoutPlanWriteBack({
-      port: services.ownedPlans,
-      state: beginCompletedWorkoutPlanWriteBack(retryState),
-    });
+    let result: CompletedWorkoutPlanWriteBackState;
+    try {
+      result = await runWorkoutMutationWithTestFailure(
+        "plan_write_back",
+        () => applyCompletedWorkoutPlanWriteBack({
+          port: services.ownedPlans,
+          state: beginCompletedWorkoutPlanWriteBack(retryState),
+        }),
+      );
+    } catch {
+      return {
+        state: "save_failed",
+        preview: retryState.preview,
+        failure: {
+          kind: "failed",
+          code: "session_write_back_failed",
+        },
+      } satisfies CompletedWorkoutPlanWriteBackState;
+    }
     if (result.state === "completed" && result.disposition === "saved") {
       workoutRefreshGenerationRef.current += 1;
       try {

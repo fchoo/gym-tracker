@@ -6,6 +6,7 @@ import {
   waitFor,
 } from "@testing-library/react-native";
 import {
+  beforeEach,
   describe,
   expect,
   it,
@@ -14,6 +15,8 @@ import {
 import { createHash } from "node:crypto";
 import React from "react";
 import { Text } from "react-native";
+
+let mockNativeContractsEnabled = true;
 
 import starterPlansAsset from "../../assets/content/starter-plans.v2.json";
 import starterPlansAcceptanceAsset from "../../artifacts/review/phase2/starter-plans-acceptance.json";
@@ -102,6 +105,18 @@ jest.mock("expo-sqlite", () => ({
   deleteDatabaseAsync: jest.fn(async () => undefined),
   openDatabaseAsync: jest.fn(),
 }));
+jest.mock("expo-constants", () => ({
+  __esModule: true,
+  default: {
+    expoConfig: {
+      extra: {
+        get nativeContractsEnabled() {
+          return mockNativeContractsEnabled;
+        },
+      },
+    },
+  },
+}));
 jest.mock("./ownedPlanRuntime", () => {
   const actual = jest.requireActual<typeof import("./ownedPlanRuntime")>(
     "./ownedPlanRuntime",
@@ -125,6 +140,9 @@ import {
 import {
   createOwnedPlanRuntimePort,
 } from "./ownedPlanRuntime";
+import {
+  applyWorkoutMutationTestControl,
+} from "./workoutMutationTestControls";
 import {
   createStarterPlanRuntimeCatalog,
 } from "./starterPlanRuntime";
@@ -1050,6 +1068,11 @@ function RuntimeCaptureHarness({
 }
 
 describe("WorkoutAppRuntimeProvider", () => {
+  beforeEach(() => {
+    mockNativeContractsEnabled = true;
+    applyWorkoutMutationTestControl("reset_workout_failures");
+  });
+
   it("exposes factual progress only through the trusted runtime boundary", async () => {
     const kernel = {
       close: jest.fn(async () => undefined),
@@ -3396,6 +3419,48 @@ describe("WorkoutAppRuntimeProvider", () => {
       failure: {
         kind: "failed",
         code: "session_write_back_preview_failed",
+      },
+    });
+    expect(applySessionExerciseEdits).not.toHaveBeenCalled();
+  });
+
+  it("keeps the completed workout safe when the development-test write-back hook fails", async () => {
+    const repository = runtimeRepository([activeView], [activation]);
+    const previewSessionExerciseEdits = jest.fn(async () =>
+      sessionWriteBackPreview
+    );
+    const applySessionExerciseEdits = jest.fn();
+    mockedCreateOwnedPlanRuntimePort.mockReturnValueOnce({
+      ...({} as ReturnType<typeof createOwnedPlanRuntimePort>),
+      previewSessionExerciseEdits,
+      applySessionExerciseEdits,
+    } as unknown as ReturnType<typeof createOwnedPlanRuntimePort>);
+    let captured: ReturnType<typeof useWorkoutAppRuntime> | undefined;
+    await render(
+      <RuntimeCaptureHarness
+        dependencies={dependencies(repository)}
+        onReady={(runtime) => {
+          captured = runtime;
+        }}
+      />,
+    );
+    await waitFor(() => {
+      expect(captured?.launchState).toBe("trusted");
+    });
+    if (captured === undefined) {
+      throw new Error("runtime_not_captured");
+    }
+
+    applyWorkoutMutationTestControl("arm_plan_write_back_failure");
+    await expect(captured.applyCompletedWorkoutPlanWriteBack({
+      state: "awaiting_choice",
+      preview: sessionWriteBackPreview,
+    })).resolves.toEqual({
+      state: "save_failed",
+      preview: sessionWriteBackPreview,
+      failure: {
+        kind: "failed",
+        code: "session_write_back_failed",
       },
     });
     expect(applySessionExerciseEdits).not.toHaveBeenCalled();
