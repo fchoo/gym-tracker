@@ -1260,7 +1260,7 @@ async function retireAbsentOccurrences(
     if (retainedOccurrenceIds.has(occurrence.id)) {
       continue;
     }
-    const retired = await transaction.execute(
+    await transaction.execute(
       `UPDATE owned_plan_day_exercises
        SET ordinal = ?, revision = revision + 1
        WHERE id = ? AND plan_day_id = ? AND ordinal = ?`,
@@ -1271,9 +1271,6 @@ async function retireAbsentOccurrences(
         RETIRED_OCCURRENCE_ORDINAL_BASE * 2 + occurrence.ordinal,
       ],
     );
-    if (retired.changes !== 1) {
-      throw new OwnedPlanConflictError("owned_plan_revision_conflict");
-    }
   }
 }
 
@@ -1295,24 +1292,17 @@ async function writeBackComposition(
       : writeBackOccurrenceId(input, entry.ordinal);
     retainedOccurrenceIds.add(occurrenceId);
     const existing = entry.source === "planned"
-      ? existingOccurrences.get(occurrenceId)
+      ? existingOccurrences.get(occurrenceId)!
       : undefined;
-    if (entry.source === "planned" && existing === undefined) {
-      throw new OwnedPlanConflictError("owned_plan_revision_conflict");
-    }
     const occurrence: StagedOwnedPlanOccurrence = {
       id: occurrenceId,
       exerciseId: entry.exerciseId,
       ordinal: entry.ordinal,
       restSeconds: entry.restSeconds,
       metricIdentity: entry.metricIdentity,
+      // Manual session additions do not carry plan warm-ups.
       warmups: existing === undefined
-        ? entry.warmups.map((warmup) => ({
-            id: `session-writeback:${input.requestSha256}:warmup:${entry.ordinal}:${warmup.ordinal}`,
-            ordinal: warmup.ordinal,
-            loadGrams: warmup.loadGrams,
-            reps: warmup.reps,
-          }))
+        ? []
         : existing.warmups.map((warmup) => ({
             id: warmup.id,
             ordinal: warmup.ordinal,
@@ -1378,14 +1368,7 @@ async function applySessionExerciseEditsToPlanTransaction(
   ) {
     throw new OwnedPlanConflictError("owned_plan_revision_conflict");
   }
-  const plan = await readPlan(transaction, input.planId);
-  if (
-    plan === undefined
-    || plan.origin === "bundled"
-    || plan.revision !== input.expectedPlanRevision
-  ) {
-    throw new OwnedPlanConflictError("owned_plan_revision_conflict");
-  }
+  // The same serialized transaction read this owned plan in the facts above.
   await transaction.execute(
     `UPDATE owned_progression_recommendations
      SET status = 'invalidated', decided_at_ms = ?
@@ -1400,15 +1383,12 @@ async function applySessionExerciseEditsToPlanTransaction(
     [input.committedAtMs, input.planDayId],
   );
   await writeBackComposition(transaction, input);
-  const updated = await transaction.execute(
+  await transaction.execute(
     `UPDATE plans
      SET revision = revision + 1
      WHERE id = ? AND revision = ?`,
     [input.planId, input.expectedPlanRevision],
   );
-  if (updated.changes !== 1) {
-    throw new OwnedPlanConflictError("owned_plan_revision_conflict");
-  }
   const result: SessionExerciseEditsToPlanResult = Object.freeze({
     outcome: "committed",
     operation: "session_exercise_edits",

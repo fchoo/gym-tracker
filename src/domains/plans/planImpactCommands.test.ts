@@ -938,6 +938,107 @@ describe("D-01/D-02 session exercise write-back preview", () => {
     expect(ordered?.previewToken).not.toBe(reordered?.previewToken);
     expect(reordered?.composition.map(({ sessionExerciseId }) => sessionExerciseId))
       .toEqual(["session-deadlift", "session-row", "session-bench"]);
+
+    const sameOrdinal = await previewSessionExerciseEditsForPlan({
+      repository: {
+        readSessionExerciseEditsForPlan: jest.fn(async () => ({
+          ...sessionWriteBackFacts,
+          sessionExercises: sessionWriteBackFacts.sessionExercises.map((entry) =>
+            entry.sessionExerciseId === "session-row"
+              ? { ...entry, displayOrdinal: 0 }
+              : entry
+          ),
+        })),
+      },
+      sha256: orderSensitiveSha,
+      input: { sessionId: "session-edited" },
+    });
+    expect(sameOrdinal?.composition.map(({ sessionExerciseId }) => sessionExerciseId))
+      .toEqual(["session-bench", "session-row", "session-deadlift"]);
+  });
+
+  it("fails closed for invalid preview inputs and no-longer-canonical planned facts", async () => {
+    await expect(previewSessionExerciseEditsForPlan({
+      repository: {
+        readSessionExerciseEditsForPlan: jest.fn(async () => sessionWriteBackFacts),
+      },
+      sha256,
+      input: { sessionId: "" },
+    })).rejects.toMatchObject({ code: "plan_impact_identifier_invalid" });
+
+    await expect(previewSessionExerciseEditsForPlan({
+      repository: {
+        readSessionExerciseEditsForPlan: jest.fn(async () => null),
+      },
+      sha256,
+      input: { sessionId: "session-edited" },
+    })).resolves.toBeNull();
+
+    for (const facts of [
+      {
+        ...sessionWriteBackFacts,
+        sessionExercises: sessionWriteBackFacts.sessionExercises.map((exercise) =>
+          exercise.sessionExerciseId === "session-deadlift"
+            ? { ...exercise, sourceOccurrenceId: "missing-occurrence" }
+            : exercise
+        ),
+      },
+      {
+        ...sessionWriteBackFacts,
+        sessionExercises: sessionWriteBackFacts.sessionExercises.map((exercise) =>
+          exercise.sessionExerciseId === "session-deadlift"
+            ? { ...exercise, exerciseId: "exercise-wrong" }
+            : exercise
+        ),
+      },
+      {
+        ...sessionWriteBackFacts,
+        sessionExercises: sessionWriteBackFacts.sessionExercises.map((exercise) =>
+          exercise.sessionExerciseId === "session-deadlift"
+            ? {
+                ...exercise,
+                metricIdentity: {
+                  ...exercise.metricIdentity,
+                  exerciseMetricGeneration: 2,
+                },
+              }
+            : exercise
+        ),
+      },
+    ]) {
+      await expect(previewSessionExerciseEditsForPlan({
+        repository: {
+          readSessionExerciseEditsForPlan: jest.fn(async () => facts),
+        },
+        sha256,
+        input: { sessionId: "session-edited" },
+      })).resolves.toBeNull();
+    }
+
+    const plannedWithWarmup = {
+      ...sessionWriteBackFacts,
+      day: {
+        ...sessionWriteBackFacts.day,
+        occurrences: sessionWriteBackFacts.day.occurrences.map((occurrence) =>
+          occurrence.occurrenceId === "owned-deadlift"
+            ? {
+                ...occurrence,
+                warmups: [{ ordinal: 0, loadGrams: 10_000, reps: 5 }],
+              }
+            : occurrence
+        ),
+      },
+    };
+    const warmupPreview = await previewSessionExerciseEditsForPlan({
+      repository: {
+        readSessionExerciseEditsForPlan: jest.fn(async () => plannedWithWarmup),
+      },
+      sha256,
+      input: { sessionId: "session-edited" },
+    });
+    expect(warmupPreview?.composition.find(({ sessionExerciseId }) =>
+      sessionExerciseId === "session-deadlift"
+    )?.warmups).toEqual([{ ordinal: 0, loadGrams: 10_000, reps: 5 }]);
   });
 
   it("applies exactly one canonical aggregate only after revalidating its preview", async () => {
@@ -1002,6 +1103,204 @@ describe("D-01/D-02 session exercise write-back preview", () => {
       },
     })).rejects.toMatchObject({ code: "plan_impact_preview_stale" });
     expect(repository.applySessionExerciseEditsToPlan).toHaveBeenCalledTimes(1);
+  });
+
+  it("rejects invalid, stale, and time-invalid write-back inputs before mutation", async () => {
+    const repository = {
+      readSessionExerciseEditsForPlan: jest.fn(async () => sessionWriteBackFacts),
+      readSessionExerciseEditsToPlanResult: jest.fn(async () => null),
+      applySessionExerciseEditsToPlan: jest.fn(async () => {
+        throw new Error("write_back_must_not_apply");
+      }),
+    };
+    const preview = await previewSessionExerciseEditsForPlan({
+      repository,
+      sha256,
+      input: { sessionId: "session-edited" },
+    });
+    if (preview === null) {
+      throw new Error("expected_write_back_preview");
+    }
+    const base = {
+      requestId: "apply-session-edits-validation",
+      sourceSessionId: preview.sourceSessionId,
+      expectedPlanRevision: preview.expectedPlanRevision,
+      previewToken: preview.previewToken,
+      composition: preview.composition,
+    };
+
+    for (const [input, code] of [
+      [{ ...base, requestId: "" }, "plan_impact_identifier_invalid"],
+      [{ ...base, expectedPlanRevision: 0 }, "plan_impact_revision_invalid"],
+      [{ ...base, previewToken: "stale" }, "plan_impact_preview_stale"],
+    ] as const) {
+      await expect(applySessionExerciseEditsToPlan({
+        repository,
+        sha256,
+        nowMs,
+        invalidate: async () => undefined,
+        input,
+      })).rejects.toMatchObject({ code });
+    }
+
+    await expect(applySessionExerciseEditsToPlan({
+      repository: {
+        ...repository,
+        readSessionExerciseEditsForPlan: jest.fn(async () => null),
+      },
+      sha256,
+      nowMs,
+      invalidate: async () => undefined,
+      input: base,
+    })).rejects.toMatchObject({ code: "plan_impact_preview_stale" });
+
+    await expect(applySessionExerciseEditsToPlan({
+      repository,
+      sha256,
+      nowMs: () => -1,
+      invalidate: async () => undefined,
+      input: base,
+    })).rejects.toMatchObject({ code: "plan_impact_date_invalid" });
+
+    const staleFacts = {
+      ...sessionWriteBackFacts,
+      session: {
+        ...sessionWriteBackFacts.session,
+        planId: null,
+        planDayId: null,
+      },
+    };
+    await expect(applySessionExerciseEditsToPlan({
+      repository: {
+        ...repository,
+        readSessionExerciseEditsForPlan: jest.fn(async () => staleFacts),
+      },
+      sha256,
+      nowMs,
+      invalidate: async () => undefined,
+      input: base,
+    })).rejects.toMatchObject({ code: "plan_impact_preview_stale" });
+    expect(repository.applySessionExerciseEditsToPlan).not.toHaveBeenCalled();
+  });
+
+  it("swallows only post-commit invalidation failures", async () => {
+    const repository = {
+      readSessionExerciseEditsForPlan: jest.fn(async () => sessionWriteBackFacts),
+      readSessionExerciseEditsToPlanResult: jest.fn(async () => null),
+      applySessionExerciseEditsToPlan: jest.fn(async (
+        input: StagedSessionExerciseEditsToPlanInput,
+      ) => ({
+        outcome: "committed" as const,
+        operation: "session_exercise_edits" as const,
+        planId: input.planId,
+        planRevision: input.expectedPlanRevision + 1,
+        sourceSessionId: input.sourceSessionId,
+        currentWorkoutUnaffected: true as const,
+        invalidations: ["library:plans"],
+      })),
+    };
+    const preview = await previewSessionExerciseEditsForPlan({
+      repository,
+      sha256,
+      input: { sessionId: "session-edited" },
+    });
+    if (preview === null) {
+      throw new Error("expected_write_back_preview");
+    }
+    await expect(applySessionExerciseEditsToPlan({
+      repository,
+      sha256,
+      nowMs,
+      invalidate: async () => {
+        throw new Error("post_commit_invalidation_failed");
+      },
+      input: {
+        requestId: "apply-session-edits-invalidation",
+        sourceSessionId: preview.sourceSessionId,
+        expectedPlanRevision: preview.expectedPlanRevision,
+        previewToken: preview.previewToken,
+        composition: preview.composition,
+      },
+    })).resolves.toMatchObject({ outcome: "committed" });
+  });
+
+  it("returns an already-committed write-back without reading stale facts", async () => {
+    const replay = {
+      outcome: "already_committed" as const,
+      operation: "session_exercise_edits" as const,
+      planId: "plan-owner",
+      planRevision: 5,
+      sourceSessionId: "session-edited",
+      currentWorkoutUnaffected: true as const,
+      invalidations: [],
+    };
+    const repository = {
+      readSessionExerciseEditsForPlan: jest.fn(async () => {
+        throw new Error("replay_must_not_read_facts");
+      }),
+      readSessionExerciseEditsToPlanResult: jest.fn(async () => replay),
+      applySessionExerciseEditsToPlan: jest.fn(async () => {
+        throw new Error("replay_must_not_apply");
+      }),
+    };
+    await expect(applySessionExerciseEditsToPlan({
+      repository,
+      sha256,
+      nowMs,
+      invalidate: async () => {
+        throw new Error("replay_must_not_invalidate");
+      },
+      input: {
+        requestId: "apply-session-edits-replay",
+        sourceSessionId: "session-edited",
+        expectedPlanRevision: 4,
+        previewToken: `session-writeback-v1:${"a".repeat(64)}`,
+        composition: [],
+      },
+    })).resolves.toEqual(replay);
+    expect(repository.readSessionExerciseEditsForPlan).not.toHaveBeenCalled();
+    expect(repository.applySessionExerciseEditsToPlan).not.toHaveBeenCalled();
+  });
+
+  it("does not invalidate an already-committed aggregate returned after revalidation", async () => {
+    const repository = {
+      readSessionExerciseEditsForPlan: jest.fn(async () => sessionWriteBackFacts),
+      readSessionExerciseEditsToPlanResult: jest.fn(async () => null),
+      applySessionExerciseEditsToPlan: jest.fn(async (
+        input: StagedSessionExerciseEditsToPlanInput,
+      ) => ({
+        outcome: "already_committed" as const,
+        operation: "session_exercise_edits" as const,
+        planId: input.planId,
+        planRevision: input.expectedPlanRevision + 1,
+        sourceSessionId: input.sourceSessionId,
+        currentWorkoutUnaffected: true as const,
+        invalidations: [],
+      })),
+    };
+    const preview = await previewSessionExerciseEditsForPlan({
+      repository,
+      sha256,
+      input: { sessionId: "session-edited" },
+    });
+    if (preview === null) {
+      throw new Error("expected_write_back_preview");
+    }
+    const invalidate = jest.fn(async () => undefined);
+    await expect(applySessionExerciseEditsToPlan({
+      repository,
+      sha256,
+      nowMs,
+      invalidate,
+      input: {
+        requestId: "apply-session-edits-already-committed",
+        sourceSessionId: preview.sourceSessionId,
+        expectedPlanRevision: preview.expectedPlanRevision,
+        previewToken: preview.previewToken,
+        composition: preview.composition,
+      },
+    })).resolves.toMatchObject({ outcome: "already_committed" });
+    expect(invalidate).not.toHaveBeenCalled();
   });
 });
 

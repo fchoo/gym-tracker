@@ -1401,6 +1401,229 @@ describe("plan impact day removal", () => {
 });
 
 describe("D-01/D-02 session exercise write-back aggregate", () => {
+  async function applyWriteBack(
+    runtime: Awaited<ReturnType<typeof setupRuntime>>,
+    requestId: string,
+    changes: Partial<Parameters<typeof applySessionExerciseEditsToPlan>[0]["input"]> = {},
+  ) {
+    const preview = await sessionWriteBackPreview(runtime.ownedPlans);
+    return applySessionExerciseEditsToPlan({
+      repository: runtime.ownedPlans,
+      sha256,
+      nowMs: () => 500,
+      invalidate: async () => undefined,
+      input: {
+        requestId,
+        sourceSessionId: preview.sourceSessionId,
+        expectedPlanRevision: preview.expectedPlanRevision,
+        previewToken: preview.previewToken,
+        composition: preview.composition,
+        ...changes,
+      },
+    });
+  }
+
+  it("fails closed for unavailable write-back facts and malformed or mismatched receipts", async () => {
+    const missing = await setupRuntime();
+    await expect(missing.ownedPlans.readSessionExerciseEditsForPlan({
+      sessionId: "missing-session",
+    })).resolves.toBeNull();
+
+    const noPlan = await setupRuntime();
+    await noPlan.kernel.write((transaction) => transaction.execute(
+      `UPDATE workout_sessions
+       SET plan_id = NULL, plan_day_id = NULL
+       WHERE id = 'retained-completed-session'`,
+    ));
+    await expect(noPlan.ownedPlans.readSessionExerciseEditsForPlan({
+      sessionId: "retained-completed-session",
+    })).resolves.toBeNull();
+
+    const missingDay = await setupRuntime();
+    await missingDay.kernel.write((transaction) => transaction.execute(
+      `UPDATE workout_sessions
+       SET plan_day_id = 'plan-day-copy'
+       WHERE id = 'retained-completed-session'`,
+    ));
+    await expect(missingDay.ownedPlans.readSessionExerciseEditsForPlan({
+      sessionId: "retained-completed-session",
+    })).resolves.toBeNull();
+
+    const missingSnapshotDay = await setupRuntime();
+    await missingSnapshotDay.kernel.write(async (transaction) => {
+      await transaction.execute(
+        `UPDATE plan_days
+         SET ordinal = 2
+         WHERE id = 'retained-day'`,
+      );
+      await transaction.execute(
+        `UPDATE plan_days
+         SET ordinal = 0
+         WHERE id = 'retained-power-day'`,
+      );
+    });
+    await expect(missingSnapshotDay.ownedPlans.readSessionExerciseEditsForPlan({
+      sessionId: "retained-completed-session",
+    })).resolves.toBeNull();
+
+    const receipt = await setupRuntime();
+    await seedCompletedEditedSession(receipt.kernel);
+    const committed = await applyWriteBack(receipt, "writeback-receipt");
+    await expect(receipt.ownedPlans.readSessionExerciseEditsToPlanResult({
+      requestId: "writeback-receipt",
+      requestSha256: "b".repeat(64),
+    })).rejects.toMatchObject({ code: "owned_plan_idempotency_conflict" });
+    expect(committed.sourceSessionId).toBe("retained-completed-session");
+
+    const malformed = await setupRuntime();
+    await malformed.kernel.write((transaction) => transaction.execute(
+      `INSERT INTO owned_plan_mutation_requests
+        (request_id, request_sha256, operation, source_plan_id,
+         result_plan_id, expected_revision, result_revision, result_json,
+         committed_at_ms)
+       VALUES (?, ?, 'create', NULL, 'plan-copy', NULL, 1, '{}', 500)`,
+      ["writeback-malformed", "a".repeat(64)],
+    ));
+    await expect(malformed.ownedPlans.readSessionExerciseEditsToPlanResult({
+      requestId: "writeback-malformed",
+      requestSha256: "a".repeat(64),
+    })).rejects.toThrow("owned_plan_receipt_invalid");
+  });
+
+  it("reads copied-plan facts and rejects a missing owned policy", async () => {
+    const copied = await setupRuntime();
+    await copied.kernel.write((transaction) => transaction.execute(
+      `UPDATE workout_sessions
+       SET plan_id = 'plan-copy', plan_day_id = 'plan-day-copy'
+       WHERE id = 'retained-completed-session'`,
+    ));
+    await expect(copied.ownedPlans.readSessionExerciseEditsForPlan({
+      sessionId: 'retained-completed-session',
+    })).resolves.toMatchObject({
+      session: { planId: 'plan-copy', planDayId: 'plan-day-copy' },
+      day: { id: 'plan-day-copy', planId: 'plan-copy' },
+    });
+
+    const bundled = await setupRuntime();
+    await bundled.kernel.write(async (transaction) => {
+      await transaction.execute(
+        `INSERT INTO plan_days
+          (id, plan_id, ordinal, name, revision)
+         VALUES ('bundled-day', 'plan-bundled', 0, 'Bundled Day', 1)`,
+      );
+      await transaction.execute(
+        `INSERT INTO workout_sessions
+          (id, plan_id, plan_day_id, source, status, local_date, timezone,
+           started_at_ms, completed_at_ms, active_session_exercise_id,
+           active_set_id, revision, modified_from_plan)
+         VALUES ('bundled-completed-session', 'plan-bundled', 'bundled-day',
+                 'scheduled_day', 'completed', '2026-08-17',
+                 'Asia/Singapore', 10, 20, NULL, NULL, 1, 0)`,
+      );
+    });
+    await expect(bundled.ownedPlans.readSessionExerciseEditsForPlan({
+      sessionId: 'bundled-completed-session',
+    })).resolves.toBeNull();
+
+    const missingPolicy = await setupRuntime({ seedPrimaryPolicy: false });
+    await expect(missingPolicy.ownedPlans.read('retained-plan'))
+      .rejects.toThrow('owned_plan_policy_missing');
+  });
+
+  it("preserves planned warmups and enforces direct receipt replay and stale revision checks", async () => {
+    const runtime = await setupRuntime();
+    await seedCompletedEditedSession(runtime.kernel);
+    await runtime.kernel.write((transaction) => transaction.execute(
+      `INSERT INTO owned_plan_warmup_sets
+        (id, plan_day_exercise_id, ordinal, load_grams, reps, revision)
+       VALUES ('retained-load-kept-warmup', 'retained-load-kept', 0, 15000, 5, 1)`,
+    ));
+    const preview = await sessionWriteBackPreview(runtime.ownedPlans);
+    await expect(applySessionExerciseEditsToPlan({
+      repository: runtime.ownedPlans,
+      sha256,
+      nowMs: () => 500,
+      invalidate: async () => undefined,
+      input: {
+        requestId: 'writeback-direct-replay',
+        sourceSessionId: preview.sourceSessionId,
+        expectedPlanRevision: preview.expectedPlanRevision,
+        previewToken: preview.previewToken,
+        composition: preview.composition,
+      },
+    })).resolves.toMatchObject({ outcome: 'committed' });
+    await expect(runtime.kernel.queryAll(
+      `SELECT id, load_grams, reps
+       FROM owned_plan_warmup_sets
+       WHERE id = 'retained-load-kept-warmup'`,
+    )).resolves.toEqual([{
+      id: 'retained-load-kept-warmup',
+      load_grams: 15000,
+      reps: 5,
+    }]);
+
+    const [receipt] = await runtime.kernel.queryAll<{ request_sha256: string }>(
+      `SELECT request_sha256
+       FROM owned_plan_mutation_requests
+       WHERE request_id = 'writeback-direct-replay'`,
+    );
+    if (receipt === undefined) {
+      throw new Error('writeback_receipt_missing');
+    }
+    const directInput = {
+      requestId: 'writeback-direct-replay',
+      requestSha256: receipt.request_sha256,
+      sourceSessionId: preview.sourceSessionId,
+      sourceSessionRevision: preview.sourceSessionRevision,
+      planId: preview.planId,
+      planDayId: preview.planDayId,
+      expectedPlanRevision: preview.expectedPlanRevision,
+      previewToken: preview.previewToken,
+      composition: preview.composition,
+      committedAtMs: 500,
+    };
+    await expect(runtime.ownedPlans.applySessionExerciseEditsToPlan(directInput))
+      .resolves.toMatchObject({ outcome: 'already_committed' });
+    await expect(runtime.ownedPlans.applySessionExerciseEditsToPlan({
+      ...directInput,
+      requestSha256: 'b'.repeat(64),
+    })).rejects.toMatchObject({
+      cause: { code: 'owned_plan_idempotency_conflict' },
+    });
+
+    const stale = await setupRuntime();
+    await seedCompletedEditedSession(stale.kernel);
+    const stalePreview = await sessionWriteBackPreview(stale.ownedPlans);
+    await expect(stale.ownedPlans.applySessionExerciseEditsToPlan({
+      requestId: 'writeback-direct-stale',
+      requestSha256: 'c'.repeat(64),
+      sourceSessionId: stalePreview.sourceSessionId,
+      sourceSessionRevision: stalePreview.sourceSessionRevision + 1,
+      planId: stalePreview.planId,
+      planDayId: stalePreview.planDayId,
+      expectedPlanRevision: stalePreview.expectedPlanRevision,
+      previewToken: stalePreview.previewToken,
+      composition: stalePreview.composition,
+      committedAtMs: 500,
+    })).rejects.toMatchObject({
+      cause: { code: 'owned_plan_revision_conflict' },
+    });
+    await expect(stale.ownedPlans.applySessionExerciseEditsToPlan({
+      requestId: 'writeback-direct-missing-session',
+      requestSha256: 'd'.repeat(64),
+      sourceSessionId: 'missing-session',
+      sourceSessionRevision: 1,
+      planId: stalePreview.planId,
+      planDayId: stalePreview.planDayId,
+      expectedPlanRevision: stalePreview.expectedPlanRevision,
+      previewToken: stalePreview.previewToken,
+      composition: stalePreview.composition,
+      committedAtMs: 500,
+    })).rejects.toMatchObject({
+      cause: { code: 'owned_plan_revision_conflict' },
+    });
+  });
+
   it("recomputes eligibility only after the edited workout finish commits and never rewrites the finished history", async () => {
     const runtime = await setupRuntime();
     await seedCompletedEditedSession(runtime.kernel);

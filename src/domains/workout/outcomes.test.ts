@@ -163,6 +163,43 @@ describe("Plan 01-10 outcome transitions and commands", () => {
   });
 
   it.each([
+    [
+      "classifies a non-stale coded write-back failure",
+      Object.assign(new Error("write_back_conflict"), {
+        code: "owned_plan_revision_conflict",
+      }),
+      { kind: "failed", code: "owned_plan_revision_conflict" },
+    ],
+    [
+      "classifies an uncoded write-back failure",
+      new Error("write_back_failed"),
+      { kind: "failed", code: "session_write_back_failed" },
+    ],
+    [
+      "classifies a non-error write-back failure",
+      "write_back_failed",
+      { kind: "failed", code: "session_write_back_failed" },
+    ],
+  ] as const)("%s", async (...[_label, error, failure]) => {
+    const port = writeBackPort({
+      applySessionExerciseEdits: jest.fn(async () => {
+        throw error;
+      }),
+    });
+
+    const result = await applyCompletedWorkoutPlanWriteBack({
+      port,
+      state: { state: "applying", preview: writeBackPreview },
+    });
+
+    expect(result).toEqual({
+      state: "save_failed",
+      preview: writeBackPreview,
+      failure,
+    });
+  });
+
+  it.each([
     { from: "in_progress", action: "finish_completed", to: "completed" },
     { from: "in_progress", action: "finish_partial", to: "partial" },
     { from: "in_progress", action: "save_zero_sets", to: "zero_sets" },

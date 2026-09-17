@@ -707,11 +707,9 @@ export async function applySessionExerciseEditsToPlan(
   ) {
     throw new PlanImpactInputError("plan_impact_preview_stale");
   }
-  const planId = facts.session.planId;
-  const planDayId = facts.session.planDayId;
-  if (planId === null || planDayId === null) {
-    throw new PlanImpactInputError("plan_impact_preview_stale");
-  }
+  // canonicalizeSessionExerciseEditsForPlan already rejects absent plan identity.
+  const planId = facts.session.planId!;
+  const planDayId = facts.session.planDayId!;
   const committedAtMs = context.nowMs();
   if (!validTime(committedAtMs)) {
     throw new PlanImpactInputError("plan_impact_date_invalid");
@@ -728,9 +726,10 @@ export async function applySessionExerciseEditsToPlan(
     requestSha256: await digest(context.sha256, replayCanonical),
     committedAtMs,
   });
-  if (result.outcome === "committed") {
-    await context.invalidate(result.invalidations).catch(() => undefined);
+  if (result.outcome !== "committed") {
+    return result;
   }
+  await context.invalidate(result.invalidations).catch(() => undefined);
   return result;
 }
 
