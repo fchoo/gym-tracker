@@ -21,6 +21,14 @@ test("Phase 9 evidence runner requires a manifest and full edit/relaunch asserti
   assert.match(runner, /completed-workout-plan-writeback-keep\.yaml/);
   assert.match(runner, /completed-workout-plan-writeback-retry\.yaml/);
   assert.match(runner, /for \(const flow of phase9Flows\)/);
+  assert.match(runner, /const PHASE9_SCHEDULED_WORKOUT_CLOCK = "091812002026"/);
+  assert.match(runner, /"settings",\s*\n\s*"get",\s*\n\s*"global",\s*\n\s*"auto_time"/u);
+  assert.match(runner, /"settings",\s*\n\s*"put",\s*\n\s*"global",\s*\n\s*"auto_time",\s*\n\s*"0"/u);
+  assert.match(runner, /"shell",\s*\n\s*"date",\s*\n\s*PHASE9_SCHEDULED_WORKOUT_CLOCK/u);
+  assert.match(runner, /const scheduledDate = command\(adb, \[[\s\S]*?"\+%Y-%m-%d"/u);
+  assert.match(runner, /if \(scheduledDate !== "2026-09-18"\) \{[\s\S]*?scheduled workout date was not applied/u);
+  assert.match(runner, /finally \{[\s\S]*?"settings",\s*\n\s*"put",\s*\n\s*"global",\s*\n\s*"auto_time",\s*\n\s*priorAutoTime/u);
+  assert.match(runner, /if \(priorAutoTime === "0"\) \{[\s\S]*?"shell",\s*\n\s*"date",\s*\n\s*priorDate/u);
   assert.doesNotMatch(
     runner,
     /spawnSync\("maestro", \[\s*"test",[\s\S]*?in-workout-exercise-editing\.yaml[\s\S]*?completed-workout-plan-writeback-keep\.yaml[\s\S]*?completed-workout-plan-writeback-retry\.yaml/u,
