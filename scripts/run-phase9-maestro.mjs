@@ -342,6 +342,16 @@ export function executePhase9Maestro(args = process.argv.slice(2)) {
   verifyImmutableMigration(boundary);
   const v20 = verifyV20(options);
   const { manifest, apkPath, currentHead, currentDigest } = loadManifest(options.manifest);
+  const expectedEvidence = Object.freeze({
+    identity: Object.freeze({
+      base_head: currentHead,
+      source_tree_sha256: currentDigest,
+      apk_sha256: manifest.apk.sha256,
+      installed_apk_sha256: manifest.installed_apk.sha256,
+      device: manifest.device,
+    }),
+    v20,
+  });
   const adb = resolveAdb();
   const serial = manifest.device.serial;
   const reportDirectory = path.join(path.dirname(options.manifest), "phase9-maestro");
@@ -394,21 +404,12 @@ export function executePhase9Maestro(args = process.argv.slice(2)) {
       status: "passed",
       producer: "phase9-maestro/v1",
       build_manifest: path.relative(PROJECT_ROOT, options.manifest),
-      identity: {
-        base_head: currentHead,
-        source_tree_sha256: currentDigest,
-        apk_sha256: manifest.apk.sha256,
-        installed_apk_sha256: manifest.installed_apk.sha256,
-        device: manifest.device,
-      },
+      identity: expectedEvidence.identity,
       v20,
       matrix: PHASE9_EVIDENCE_MATRIX,
       flows: reports,
     };
-    validatePhase9Evidence(evidence, flows, Object.freeze({
-      identity: evidence.identity,
-      v20,
-    }));
+    validatePhase9Evidence(evidence, flows, expectedEvidence);
   } catch (error) {
     primaryError = error;
   } finally {
