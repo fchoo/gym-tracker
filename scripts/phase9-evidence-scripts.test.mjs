@@ -15,7 +15,7 @@ test("Phase 9 evidence runner requires a manifest and full edit/relaunch asserti
   assert.match(flow, /Activate Full Body Foundation/);
   assert.match(flow, /Start empty workout/);
   assert.match(flow, /tapOn: "Add Back Squat"/);
-  assert.match(flow, /inputText: "Squat"\n- hideKeyboard\n- tapOn:\n    id: "add-exercise-option-5f140001-7e35-4a6d-9100-000000000001"\n- tapOn: "Add Back Squat"/);
+  assert.match(flow, /inputText: "Squat"\n- tapOn: "Back Squat"\n- extendedWaitUntil:\n    visible: "Add Back Squat"\n    timeout: 30000\n- tapOn: "Add Back Squat"/);
   assert.doesNotMatch(flow, /tapOn: "Add \.\*"/);
   assert.match(flow, /Add exercise/);
   const addedExerciseAssertion =

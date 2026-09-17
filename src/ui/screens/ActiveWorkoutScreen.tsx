@@ -17,6 +17,7 @@ import {
 } from "../components/PlanEditorFields";
 
 import {
+  Keyboard,
   Modal,
   ScrollView,
   StyleSheet,
@@ -2305,7 +2306,10 @@ function PopulatedWorkoutOverview({
                 accessibilityLabel={`${candidate.name}. Add exercise`}
                 accessibilityRole="button"
                 key={candidate.id}
-                onPress={() => setExerciseAddSelectedId(candidate.id)}
+                onPress={() => {
+                  setExerciseAddSelectedId(candidate.id);
+                  Keyboard.dismiss();
+                }}
                 testID={`add-exercise-option-${candidate.id}`}
                 style={[
                   styles.exerciseOption,
@@ -2389,7 +2393,10 @@ function PopulatedWorkoutOverview({
                 accessibilityRole="radio"
                 accessibilityState={{ checked: replacementExerciseId === candidate.id }}
                 key={candidate.id}
-                onPress={() => setReplacementExerciseId(candidate.id)}
+                onPress={() => {
+                  setReplacementExerciseId(candidate.id);
+                  Keyboard.dismiss();
+                }}
                 testID={`replace-exercise-option-${candidate.id}`}
                 style={[
                   styles.exerciseOption,

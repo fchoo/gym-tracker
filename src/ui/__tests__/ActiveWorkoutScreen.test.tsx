@@ -13,7 +13,7 @@ import {
   jest,
 } from "@jest/globals";
 import React from "react";
-import { Appearance, Dimensions, ScrollView } from "react-native";
+import { Appearance, Dimensions, Keyboard, ScrollView } from "react-native";
 
 jest.mock("expo-crypto", () => ({
   CryptoDigestAlgorithm: { SHA256: "SHA256" },
@@ -682,6 +682,7 @@ describe("Plan 01-08 ActiveWorkoutScreen", () => {
   });
 
   it("adds one selected library exercise from the populated overview list end", async () => {
+    const dismissKeyboard = jest.spyOn(Keyboard, "dismiss");
     const addExercise = jest.fn<
       NonNullable<ActiveWorkoutCommands["addExercise"]>
     >(async (input) => ({
@@ -710,6 +711,7 @@ describe("Plan 01-08 ActiveWorkoutScreen", () => {
     await fireEvent.press(screen.getByTestId(
       "add-exercise-option-5f140001-7e35-4a6d-9100-000000000007",
     ));
+    expect(dismissKeyboard).toHaveBeenCalledTimes(1);
     await fireEvent.press(screen.getByRole("button", {
       name: "Add Overhead Press",
     }));
@@ -721,9 +723,11 @@ describe("Plan 01-08 ActiveWorkoutScreen", () => {
         sessionId: "session-1",
       }));
     });
+    dismissKeyboard.mockRestore();
   });
 
   it("retries a provisional replacement through the selected authoritative exercise", async () => {
+    const dismissKeyboard = jest.spyOn(Keyboard, "dismiss");
     const before = overviewView();
     const replacement = {
       ...before.currentExercise,
@@ -766,6 +770,7 @@ describe("Plan 01-08 ActiveWorkoutScreen", () => {
     expect(screen.getByTestId("replace-exercise-option-barbell-row"))
       .toBeOnTheScreen();
     await fireEvent.press(screen.getByRole("radio", { name: "Barbell Row" }));
+    expect(dismissKeyboard).toHaveBeenCalledTimes(1);
     await fireEvent.press(screen.getByRole("button", { name: "Replace with Barbell Row" }));
 
     await waitFor(() => {
@@ -779,6 +784,7 @@ describe("Plan 01-08 ActiveWorkoutScreen", () => {
       expect(replaceExercise).toHaveBeenCalledTimes(2);
       expect(screen.getByRole("header", { name: "Barbell Row" })).toBeOnTheScreen();
     });
+    dismissKeyboard.mockRestore();
   });
 
   it("retries replacement with bounded request identities for native-shaped exercise IDs", async () => {
