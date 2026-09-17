@@ -46,14 +46,9 @@ name: Phase 9 add exercise and relaunch persistence
 - tapOn: "Add exercise"
 - tapOn: "Search exercises"
 - inputText: "Squat"
-- tapOn: ".*Add exercise"
 - pressKey: Back
-- scrollUntilVisible:
-    element:
-      text: "Add Back Squat"
-    direction: DOWN
-    centerElement: true
-    timeout: 30000
+- tapOn:
+    id: "add-exercise-option-5f140001-7e35-4a6d-9100-000000000001"
 - tapOn: "Add Back Squat"
 - assertVisible: '^Back Squat\. Added\. 0 of 1 working sets\. Collapse exercise$'
 - assertVisible: '^Working sets$'
