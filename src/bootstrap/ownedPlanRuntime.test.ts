@@ -18,8 +18,10 @@ import {
   createOwnedPlanRepository,
 } from "../platform/sqlite/repositories/ownedPlanRepository";
 import {
+  applySessionExerciseEditsToPlan,
   previewDayRemoval,
   previewExerciseReplacement,
+  previewSessionExerciseEditsForPlan,
   removePlanDayWithImpact,
   replacePlanExercise,
 } from "../domains/plans";
@@ -48,8 +50,10 @@ jest.mock("../domains/plans", () => {
     ...actual,
     previewDayRemoval: jest.fn(),
     previewExerciseReplacement: jest.fn(),
+    previewSessionExerciseEditsForPlan: jest.fn(),
     removePlanDayWithImpact: jest.fn(),
     replacePlanExercise: jest.fn(),
+    applySessionExerciseEditsToPlan: jest.fn(),
   };
 });
 
@@ -60,6 +64,12 @@ const mockedPreviewExerciseReplacement = jest.mocked(
   previewExerciseReplacement,
 );
 const mockedReplacePlanExercise = jest.mocked(replacePlanExercise);
+const mockedPreviewSessionExerciseEditsForPlan = jest.mocked(
+  previewSessionExerciseEditsForPlan,
+);
+const mockedApplySessionExerciseEditsToPlan = jest.mocked(
+  applySessionExerciseEditsToPlan,
+);
 
 const snapshot: OwnedPlanSnapshot = {
   id: "plan-owner",
@@ -309,5 +319,200 @@ describe("owned plan runtime port", () => {
         sha256,
       }),
     );
+  });
+
+  it("exposes dedicated session write-back preview and apply without using replacement calls", async () => {
+    mockedReplacePlanExercise.mockClear();
+    const ownedRepository = repository();
+    mockedCreateRepository.mockReturnValue(ownedRepository);
+    mockedPreviewSessionExerciseEditsForPlan.mockResolvedValue({
+      kind: 'session_exercise_edits',
+      sourceSessionId: 'session-1',
+      sourceSessionRevision: 4,
+      planId: 'plan-owner',
+      planName: 'Owner Strength',
+      planDayId: 'day-owner',
+      dayName: 'Strength Day',
+      expectedPlanRevision: 1,
+      currentWorkoutUnaffected: true,
+      previewToken: `session-writeback-v1:${'a'.repeat(64)}`,
+      composition: [],
+    });
+    mockedApplySessionExerciseEditsToPlan.mockResolvedValue({
+      outcome: 'committed',
+      operation: 'session_exercise_edits',
+      planId: 'plan-owner',
+      planRevision: 2,
+      sourceSessionId: 'session-1',
+      currentWorkoutUnaffected: true,
+      invalidations: ['library:plans', 'plan:plan-owner'],
+    });
+    const runtime = createOwnedPlanRuntimePort(
+      { queryAll: jest.fn(async () => []) } as unknown as SqliteKernel,
+      {
+        nowMs: () => 42_000,
+        randomUUID: () => 'writeback-uuid',
+        sha256: async () => 'b'.repeat(64),
+      },
+    );
+
+    await expect(runtime.previewSessionExerciseEdits({ sessionId: 'session-1' }))
+      .resolves.toMatchObject({ sourceSessionId: 'session-1' });
+    await expect(runtime.applySessionExerciseEdits({
+      sourceSessionId: 'session-1',
+      expectedPlanRevision: 1,
+      previewToken: `session-writeback-v1:${'a'.repeat(64)}`,
+      composition: [],
+    })).resolves.toMatchObject({ outcome: 'committed', planRevision: 2 });
+
+    expect(mockedPreviewSessionExerciseEditsForPlan).toHaveBeenCalledWith(
+      expect.objectContaining({
+        repository: ownedRepository,
+        input: { sessionId: 'session-1' },
+      }),
+    );
+    expect(mockedApplySessionExerciseEditsToPlan).toHaveBeenCalledWith(
+      expect.objectContaining({
+        input: expect.objectContaining({
+          requestId: `session-writeback:session-writeback-v1:${'a'.repeat(64)}`,
+          sourceSessionId: 'session-1',
+          expectedPlanRevision: 1,
+        }),
+      }),
+    );
+    expect(mockedReplacePlanExercise).not.toHaveBeenCalled();
+  });
+
+  it("returns committed plan state through the next stateless plan load", async () => {
+    const ownedRepository = repository();
+    const committedPlan = {
+      ...snapshot,
+      revision: 2,
+    };
+    ownedRepository.read.mockResolvedValue(committedPlan);
+    mockedCreateRepository.mockReturnValue(ownedRepository);
+    mockedApplySessionExerciseEditsToPlan.mockResolvedValue({
+      outcome: "committed",
+      operation: "session_exercise_edits",
+      planId: "plan-owner",
+      planRevision: 2,
+      sourceSessionId: "session-1",
+      currentWorkoutUnaffected: true,
+      invalidations: ["library:plans", "plan:plan-owner"],
+    });
+    const runtime = createOwnedPlanRuntimePort(
+      { queryAll: jest.fn(async () => []) } as unknown as SqliteKernel,
+      {
+        nowMs: () => 42_000,
+        randomUUID: () => "writeback-uuid",
+        sha256: async () => "b".repeat(64),
+      },
+    );
+
+    await runtime.applySessionExerciseEdits({
+      sourceSessionId: "session-1",
+      expectedPlanRevision: 1,
+      previewToken: `session-writeback-v1:${"a".repeat(64)}`,
+      composition: [],
+    });
+
+    await expect(runtime.loadPlan("plan-owner")).resolves.toEqual(
+      committedPlan,
+    );
+    expect(ownedRepository.read).toHaveBeenCalledWith("plan-owner");
+  });
+
+  it("reuses a preview-bound request identity for an exact apply retry", async () => {
+    mockedApplySessionExerciseEditsToPlan.mockClear();
+    mockedCreateRepository.mockReturnValue(repository());
+    mockedApplySessionExerciseEditsToPlan
+      .mockResolvedValueOnce({
+        outcome: "committed",
+        operation: "session_exercise_edits",
+        planId: "plan-owner",
+        planRevision: 2,
+        sourceSessionId: "session-1",
+        currentWorkoutUnaffected: true,
+        invalidations: [],
+      })
+      .mockResolvedValueOnce({
+        outcome: "already_committed",
+        operation: "session_exercise_edits",
+        planId: "plan-owner",
+        planRevision: 2,
+        sourceSessionId: "session-1",
+        currentWorkoutUnaffected: true,
+        invalidations: [],
+      });
+    const previewToken = `session-writeback-v1:${"a".repeat(64)}`;
+    const runtime = createOwnedPlanRuntimePort(
+      { queryAll: jest.fn(async () => []) } as unknown as SqliteKernel,
+      {
+        nowMs: () => 42_000,
+        randomUUID: jest
+          .fn(() => "first-uuid")
+          .mockReturnValueOnce("first-uuid")
+          .mockReturnValueOnce("second-uuid"),
+        sha256: async () => "b".repeat(64),
+      },
+    );
+    const input = {
+      sourceSessionId: "session-1",
+      expectedPlanRevision: 1,
+      previewToken,
+      composition: [],
+    } as const;
+
+    await expect(runtime.applySessionExerciseEdits(input)).resolves
+      .toMatchObject({ outcome: "committed" });
+    await expect(runtime.applySessionExerciseEdits(input)).resolves
+      .toMatchObject({ outcome: "already_committed" });
+
+    const requestIds = mockedApplySessionExerciseEditsToPlan.mock.calls.map(
+      ([context]) => context.input.requestId,
+    );
+    expect(requestIds).toEqual([
+      `session-writeback:${previewToken}`,
+      `session-writeback:${previewToken}`,
+    ]);
+  });
+
+  it("suppresses a duplicate in-flight aggregate apply", async () => {
+    mockedApplySessionExerciseEditsToPlan.mockClear();
+    mockedCreateRepository.mockReturnValue(repository());
+    let release: (() => void) | undefined;
+    mockedApplySessionExerciseEditsToPlan.mockImplementation(() =>
+      new Promise((resolve) => {
+        release = () => resolve({
+          outcome: 'committed',
+          operation: 'session_exercise_edits',
+          planId: 'plan-owner',
+          planRevision: 2,
+          sourceSessionId: 'session-1',
+          currentWorkoutUnaffected: true,
+          invalidations: [],
+        });
+      })
+    );
+    const runtime = createOwnedPlanRuntimePort(
+      { queryAll: jest.fn(async () => []) } as unknown as SqliteKernel,
+      {
+        nowMs: () => 42_000,
+        randomUUID: () => 'writeback-uuid',
+        sha256: async () => 'b'.repeat(64),
+      },
+    );
+    const input = {
+      sourceSessionId: 'session-1',
+      expectedPlanRevision: 1,
+      previewToken: `session-writeback-v1:${'a'.repeat(64)}`,
+      composition: [],
+    } as const;
+    const first = runtime.applySessionExerciseEdits(input);
+    await expect(runtime.applySessionExerciseEdits(input))
+      .rejects.toThrow('session_write_back_apply_in_flight');
+    release?.();
+    await expect(first).resolves.toMatchObject({ outcome: 'committed' });
+    expect(mockedApplySessionExerciseEditsToPlan).toHaveBeenCalledTimes(1);
   });
 });

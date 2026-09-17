@@ -2,11 +2,13 @@ import type {
   MetricIdentity,
 } from "../domains/metrics";
 import {
+  applySessionExerciseEditsToPlan,
   archiveOwnedPlan,
   createOwnedPlanDraft,
   duplicateOwnedPlan,
   previewDayRemoval,
   previewExerciseReplacement,
+  previewSessionExerciseEditsForPlan,
   removePlanDayWithImpact,
   replacePlanExercise,
   restoreOwnedPlan,
@@ -14,6 +16,8 @@ import {
   type DayRemovalPreview,
   type ExerciseReplacementCommandResult,
   type ExerciseReplacementPreview,
+  type ApplySessionExerciseEditsToPlanInput,
+  type SessionExerciseEditsForPlanPreview,
   type OwnedPlanDraftInput,
   type RemovePlanDayWithImpactInput,
   type ReplacePlanExerciseInput,
@@ -25,6 +29,7 @@ import {
   createOwnedPlanRepository,
   type OwnedPlanRepositoryResult,
   type OwnedPlanSnapshot,
+  type SessionExerciseEditsToPlanResult,
 } from "../platform/sqlite/repositories/ownedPlanRepository";
 import {
   createPlanImpactRepository,
@@ -76,6 +81,12 @@ export type OwnedPlanRuntimePort = Readonly<{
   replaceExercise(
     input: ReplacePlanExerciseInput,
   ): Promise<ExerciseReplacementCommandResult>;
+  previewSessionExerciseEdits(input: Readonly<{
+    sessionId: string;
+  }>): Promise<SessionExerciseEditsForPlanPreview | null>;
+  applySessionExerciseEdits(
+    input: Omit<ApplySessionExerciseEditsToPlanInput, "requestId">,
+  ): Promise<SessionExerciseEditsToPlanResult>;
   createId(kind: string): string;
 }>;
 
@@ -104,6 +115,7 @@ export function createOwnedPlanRuntimePort(
     invalidate: async () => undefined,
     sha256: dependencies.sha256,
   };
+  const inFlightSessionApplies = new Set<string>();
 
   return Object.freeze({
     createId,
@@ -219,5 +231,32 @@ export function createOwnedPlanRuntimePort(
         nowMs: dependencies.nowMs,
         input,
       }),
+    previewSessionExerciseEdits: (input) =>
+      previewSessionExerciseEditsForPlan({
+        repository,
+        sha256: dependencies.sha256,
+        input,
+      }),
+    async applySessionExerciseEdits(input) {
+      const key = `${input.sourceSessionId}:${input.previewToken}`;
+      if (inFlightSessionApplies.has(key)) {
+        throw new Error("session_write_back_apply_in_flight");
+      }
+      inFlightSessionApplies.add(key);
+      try {
+        return await applySessionExerciseEditsToPlan({
+          repository,
+          sha256: dependencies.sha256,
+          nowMs: dependencies.nowMs,
+          invalidate: async () => undefined,
+          input: {
+            ...input,
+            requestId: `session-writeback:${input.previewToken}`,
+          },
+        });
+      } finally {
+        inFlightSessionApplies.delete(key);
+      }
+    },
   });
 }

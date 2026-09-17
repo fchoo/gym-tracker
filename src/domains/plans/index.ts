@@ -86,6 +86,7 @@ export {
   type SetOwnedPlanArchivedInput,
 } from "./ownedPlanCommands";
 export {
+  applySessionExerciseEditsToPlan,
   PlanImpactInputError,
   previewSessionExerciseEditsForPlan,
   previewDayRemoval,
@@ -93,6 +94,7 @@ export {
   removePlanDayWithImpact,
   replacePlanExercise,
   type DayRemovalPreview,
+  type ApplySessionExerciseEditsToPlanInput,
   type ExerciseReplacementCandidate,
   type ExerciseReplacementCommandResult,
   type ExerciseReplacementPreview,
