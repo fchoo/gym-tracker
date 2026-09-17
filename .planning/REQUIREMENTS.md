@@ -4,7 +4,7 @@
 **Milestone:** v1.1 — In-Workout Editing, Session Overview, Advanced Timing, Merge Restore
 **Core Value:** Open today's workout, see trustworthy next targets, complete each working set with one primary action, recover safely from interruption, and understand exactly why the next target is recommended.
 
-> **Status:** ACTIVE — owner UX decisions recorded 2026-09-15 (see "Owner decisions" below). Phase 8 is complete; Phases 9–12 remain in the active milestone.
+> **Status:** ACTIVE — owner UX decisions recorded 2026-09-15 (see "Owner decisions" below). Phases 8 and 9 are complete; Phases 10–12 remain in the active milestone.
 
 ## Delivery model (unchanged from v1.0)
 
@@ -28,13 +28,13 @@ destroying a committed fact. See **WORK-24**.
 ### Session Overview and Navigation
 
 - [x] **WORK-19**: Starting or resuming a workout lands on a **session overview** — a single scrollable list of every exercise in the session with its sets inline (planned, active, completed, skipped, added) — rather than jumping directly into the first exercise's set entry. The currently-active set remains visually distinguished and is the default scroll anchor; the primary set action (Complete) is reachable without leaving the overview. Empty workouts land on the overview with an Add-exercise affordance and no set rows.
-- [ ] **WORK-20**: From the session overview the owner can **add an exercise** to the in-progress workout by choosing any available exercise from the reviewed library (with the shared Material 3 Search/filter used elsewhere). The added exercise appends to the end of the session with its metric profile's default target scheme and one working set, is marked as owner-added (distinct from planned), and never mutates any existing exercise or set.
-- [ ] **WORK-21**: From the session overview the owner can **replace an exercise**. Replacement never rewrites an exercise row: if the exercise has no completed working sets it is removed and the replacement is appended in its display position; if it has completed working sets the original is retained as skipped and the replacement is appended, so all completed history is preserved. The replacement is chosen from the reviewed library and carries its own immutable snapshot.
-- [ ] **WORK-22**: From the session overview the owner can **remove a whole exercise**. An exercise with zero completed working sets is hard-deleted from the session; an exercise with any completed working set cannot be hard-deleted and is instead **skipped** (its completed history is retained and excluded from remaining-work counts). Session progress totals and history snapshots stay correct and rebuildable after either outcome.
-- [ ] **WORK-23**: From the session overview the owner can **reorder exercises** by touch-and-hold drag (with an accessible up/down fallback), changing only a presentation/display order. The original planned order captured at session start is preserved immutably for history; reordering never alters completed-set facts or the planned-order snapshot.
-- [ ] **WORK-24**: Every session-exercise and session-set row stores an **append-only immutable snapshot** of its name, order-at-creation, metric profile, units, targets, and rule versions. Mid-workout add/replace/remove/reorder operations only append new snapshot rows or transition status; no operation rewrites or deletes a committed snapshot, and completed sets always remain correct-or-undo (never hard-deleted). Owner-added exercises carry an explicit `added` origin and a null plan-target lineage (no automatic progression; manual only).
-- [ ] **WORK-25**: A workout whose composition was edited mid-session still completes its scheduled opportunity (the owner trained that day) but is marked as **modified-from-plan**; schedule rotation/weekday advancement and progression treat added/replaced/removed exercises deterministically (no silent target mutation, no advancement on exercises absent from the planned day).
-- [ ] **WORK-27**: When a workout that was edited mid-session finishes, the completion flow offers an explicit **"Save these changes to the plan?"** choice (default **No**). Choosing No keeps all edits session-scoped and never mutates the plan. Choosing Yes applies the session's add/replace/remove/reorder deltas to the owning plan day as an explicit, revision-checked plan edit (reusing the v1.0 owned-plan editing path), previews nothing silently, and leaves already-recorded history untouched. The prompt appears only when the session actually diverged from its planned day and never for empty/unplanned workouts.
+- [x] **WORK-20**: From the session overview the owner can **add an exercise** to the in-progress workout by choosing any available exercise from the reviewed library (with the shared Material 3 Search/filter used elsewhere). The added exercise appends to the end of the session with its metric profile's default target scheme and one working set, is marked as owner-added (distinct from planned), and never mutates any existing exercise or set.
+- [x] **WORK-21**: From the session overview the owner can **replace an exercise**. Replacement never rewrites an exercise row: if the exercise has no completed working sets it is removed and the replacement is appended in its display position; if it has completed working sets the original is retained as skipped and the replacement is appended, so all completed history is preserved. The replacement is chosen from the reviewed library and carries its own immutable snapshot.
+- [x] **WORK-22**: From the session overview the owner can **remove a whole exercise**. An exercise with zero completed working sets is hard-deleted from the session; an exercise with any completed working set cannot be hard-deleted and is instead **skipped** (its completed history is retained and excluded from remaining-work counts). Session progress totals and history snapshots stay correct and rebuildable after either outcome.
+- [x] **WORK-23**: From the session overview the owner can **reorder exercises** by touch-and-hold drag (with an accessible up/down fallback), changing only a presentation/display order. The original planned order captured at session start is preserved immutably for history; reordering never alters completed-set facts or the planned-order snapshot.
+- [x] **WORK-24**: Every session-exercise and session-set row stores an **append-only immutable snapshot** of its name, order-at-creation, metric profile, units, targets, and rule versions. Mid-workout add/replace/remove/reorder operations only append new snapshot rows or transition status; no operation rewrites or deletes a committed snapshot, and completed sets always remain correct-or-undo (never hard-deleted). Owner-added exercises carry an explicit `added` origin and a null plan-target lineage (no automatic progression; manual only).
+- [x] **WORK-25**: A workout whose composition was edited mid-session still completes its scheduled opportunity (the owner trained that day) but is marked as **modified-from-plan**; schedule rotation/weekday advancement and progression treat added/replaced/removed exercises deterministically (no silent target mutation, no advancement on exercises absent from the planned day).
+- [x] **WORK-27**: When a workout that was edited mid-session finishes, the completion flow offers an explicit **"Save these changes to the plan?"** choice (default **No**). Choosing No keeps all edits session-scoped and never mutates the plan. Choosing Yes applies the session's add/replace/remove/reorder deltas to the owning plan day as an explicit, revision-checked plan edit (reusing the v1.0 owned-plan editing path), previews nothing silently, and leaves already-recorded history untouched. The prompt appears only when the session actually diverged from its planned day and never for empty/unplanned workouts.
 
 ### Advanced Set Timing (promoted from V2-03)
 
@@ -84,19 +84,19 @@ These resolve the open questions and are now binding for planning:
 | Requirement | Phase | Status |
 |-------------|-------|--------|
 | WORK-19 | 8 | Complete |
-| WORK-20 | 9 (proposed) | Draft |
-| WORK-21 | 9 (proposed) | Draft |
-| WORK-22 | 9 (proposed) | Draft |
-| WORK-23 | 9 (proposed) | Draft |
-| WORK-24 | 9 (proposed) | Draft |
-| WORK-25 | 9 (proposed) | Draft |
-| WORK-27 | 9 (proposed) | Draft |
+| WORK-20 | 9 | Complete |
+| WORK-21 | 9 | Complete |
+| WORK-22 | 9 | Complete |
+| WORK-23 | 9 | Complete |
+| WORK-24 | 9 | Complete |
+| WORK-25 | 9 | Complete |
+| WORK-27 | 9 | Complete |
 | WORK-26 | 10 (proposed) | Draft |
 | DATA-08 | 11 (proposed) | Draft |
 | DATA-09 | 11 (proposed) | Draft |
 | DATA-10 | 12 (proposed) | Draft |
 
-**Coverage:** 12 v1.1 requirements mapped; 1 complete and 11 pending.
+**Coverage:** 12 v1.1 requirements mapped; 8 complete and 4 pending.
 
 ## Deferred beyond v1.1
 

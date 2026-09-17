@@ -14,9 +14,9 @@ provides:
 affects: [phase-9-verification, 10-advanced-set-timing, 11-portable-history-merge-restore]
 
 actuals:
-  tokens: 16429
+  tokens: 21783
   tasks: 2
-  commits: 7
+  commits: 12
 
 tech-stack:
   added: []
@@ -37,6 +37,7 @@ key-files:
 
 key-decisions:
   - "The Phase 9 runner validates v20 evidence before installing the separate Phase 9 APK, then proves installed bytes by pulling and hashing the APK rather than comparing Android's rotated /data/app path."
+  - "All adb preconditions target the manifest serial; every clear-state Maestro scenario force-stops that same package before launch, and full Task 1 successor-range scope plus immutable-migration checks run before device mutation."
   - "Unique native contract database names already isolate each run; deleting before open is removed because Expo SQLite can race a released shared native object. Cleanup stays after runtime close."
   - "Write-back remains read-snapshot guarded: a disappeared scheduled day returns no write-back facts rather than risking a stale or mutated plan update."
 
@@ -131,11 +132,13 @@ status: complete
    - `91f0a09` — harden the phase evidence contract
    - `b5a0923` — make native constants safe in integration tests
    - `3b0d683` — tolerate Android package-path rotation while retaining installed-byte validation
+   - `4a7ab07`, `ded93f8`, and `d5976f6` — bind every precondition and retained ledger to the manifest/current source, and isolate each serial Maestro flow
 2. **Task 2: Run complete source and native verification**
    - `64bc62c` — close write-back integrity coverage
    - `e91e8cb` — cover the write-back snapshot race
    - `1eb182b` — label native effect-lease replay failures
    - `4f1ecf8` — avoid the pre-open Expo SQLite teardown race
+   - `4f60ed6` and `848efd0` — stabilize completion and injected-failure navigation with explicit viewport-safe Maestro actions
 
 ## Verification
 
@@ -155,15 +158,16 @@ The full source run still emits the pre-existing Expo Go push-notification and R
 
 ### Fresh native evidence
 
-Both native artifacts are bound to implementation HEAD `4f1ecf8f274a10ab27fdf3c0b83507cdf3c9c07d` and source digest `a3889174429ef55323ffe861792c4af509da3f6ed6ea91d02c6cefe0fd19c2a1` on `emulator-5554` (API 36, arm64-v8a, Android 16).
+Both native artifacts are bound to implementation HEAD `d5976f691005fd81dd6a5b92bc42f48371709377` and source digest `93f71cbd9916e002b3da47a5f741f5eb9b7927bd02ee165d5e9962329d4590bc` on `emulator-5554` (API 36, arm64-v8a, Android 16).
 
-- **v20 migrations/effects:** retained APK SHA-256 `99a0672cc5ada800207c8b31c05d0dffe8b5ef388811b8043624a0950dd773f9`; exact contract passed 11/11 with 0 failed and 0 skipped.
-- **Phase 09 Maestro:** retained and installed APK SHA-256 `eec2c391a6941b2a11b67e8b4c4a3133ac766979c791de829a8b7981fafb27b4`; the evidence ledger is `status: passed`.
+- **v20 migrations/effects:** retained and installed APK SHA-256 `d93d382a207a5f19511462a3c5ef86d4c80754f348650c50704e40c5fa8888e6`; exact contract passed 11/11 with 0 failed and 0 skipped.
+- **Phase 09 Maestro:** retained and installed APK SHA-256 `22919c62e7c13214fac7742c77314742563ad09c7fec74bf5deb0a8b9054aa89`; the evidence ledger is `status: passed`.
   - `in-workout-exercise-editing` — 1 test, 0 failures, 0 errors, 0 skipped.
   - `completed-workout-plan-writeback-keep` — 1 test, 0 failures, 0 errors, 0 skipped.
   - `completed-workout-plan-writeback-retry` — 1 test, 0 failures, 0 errors, 0 skipped.
 - The runner validates v20 first, then installs the distinct Phase 09 APK. Re-running the standalone v20 parser after that final install intentionally fails its installed-package identity guard; the retained Phase 09 ledger records the valid pre-install `v20.ok: true` result instead of weakening the guard.
 - Cleanup proof: automatic device time is restored (`auto_time=1`).
+- The retained ledger proves all three flow reports have zero failures, errors, and skips after a manifest-device force-stop before each clear-state scenario.
 
 ## Decisions Made
 
@@ -195,9 +199,26 @@ Both native artifacts are bound to implementation HEAD `4f1ecf8f274a10ab27fdf3c0
 
 **Total deviations:** 2 auto-fixed correctness repairs. Both strengthen verification without expanding product scope.
 
+### Review and Native-Stability Remediation
+
+**3. [Code review blocker] Device setup and retained evidence were not fully source-bound**
+
+- **Found during:** Independent Phase 09 review.
+- **Fix:** Bound adb root/wait/id to the manifest serial, scanned the entire Task 1 successor range for forbidden scope and migration-0019 drift, and compared the ledger to independently derived manifest/current-source identity plus the strict v20 result.
+- **Verification:** Negative runner contracts and fresh exact-head v20/Phase 09 native evidence passed.
+- **Committed in:** `4a7ab07`, `ded93f8`.
+
+**4. [Native evidence reliability] Clear-state scenarios inherited viewport/process state**
+
+- **Found during:** Fresh serial Phase 09 Maestro evidence runs.
+- **Fix:** Guarded completion and return-to-Today traversal with bounded discovery, then force-stopped the manifest package before every serial flow.
+- **Verification:** The final serialized ledger at `d5976f6` has all three reports at 1 test and zero failures, errors, and skips; automatic device time is restored.
+- **Committed in:** `4f60ed6`, `848efd0`, `d5976f6`.
+
 ## Issues Encountered
 
 - The final standalone v20 parser cannot be run after the Phase 09 runner’s distinct APK has been installed because its installed-package identity check correctly fails. The runner’s required order is v20 parser first, Phase 09 install second, and it atomically retains the combined ledger only after all checks and flows pass.
+- Earlier pre-remediation artifact identities are superseded. Only the `d5976f6` manifests and retained ledger above are Phase 09 completion proof.
 - Generated artifacts, coverage folders, `.gsd`, `.planning/debug`, and `.planning/milestone.lock` remain untracked by design. They were not included in this plan’s commit.
 
 ## User Setup Required

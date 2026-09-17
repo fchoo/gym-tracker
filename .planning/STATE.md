@@ -2,20 +2,20 @@
 gsd_state_version: 1.0
 milestone: v1.1
 milestone_name: In-Workout Editing, Advanced Timing & Cross-Device Sync
-current_phase: 09
-current_phase_name: In-Workout Exercise Editing
-status: verifying
-stopped_at: Completed 09-10-PLAN.md; phase goal verification pending
-last_updated: "2026-09-17T13:02:49.000Z"
+current_phase: 10
+current_phase_name: Advanced Set Timing
+status: planning
+stopped_at: Phase 09 complete, ready to plan Phase 10
+last_updated: "2026-09-17T15:33:59.435Z"
 last_activity: 2026-09-17
-last_activity_desc: Plan 09-10 retained exact-head source, v20, and three-flow Android evidence; Phase 09 is ready for review and goal verification
-state_head: 4f1ecf8f274a10ab27fdf3c0b83507cdf3c9c07d
+last_activity_desc: Phase 09 complete, transitioned to Phase 10
+state_head: d5976f691005fd81dd6a5b92bc42f48371709377
 progress:
   total_phases: 5
-  completed_phases: 1
+  completed_phases: 2
   total_plans: 26
   completed_plans: 14
-  percent: 54
+  percent: 40
 ---
 
 # Project State
@@ -25,14 +25,14 @@ progress:
 See: `.planning/PROJECT.md` (updated 2026-09-15)
 
 **Core value:** Open today's workout, see trustworthy next targets, complete each working set with one primary action, recover safely from interruption, and understand exactly why the next target is recommended.
-**Current focus:** Phase 09 — In-Workout Exercise Editing (verification)
+**Current focus:** Phase 10 — Advanced Set Timing
 
 ## Current Position
 
-Phase: 09 (In-Workout Exercise Editing) — VERIFYING
-Plan: 10 of 10 complete; independent review and goal verification pending
-Status: Phase 09 has complete exact-head source, 100% integrity coverage, v20 native SQLite, and three-flow Android Maestro evidence. Do not begin Phase 10 until review and goal-backward verification pass.
-Last activity: 2026-09-17 — Plan 09-10 final head `4f1ecf8` passed 146 suites / 2,635 tests, v20 11/11, and all three Phase 09 Maestro flows; device automatic time was restored.
+Phase: 10 — Advanced Set Timing
+Plan: Not started
+Status: Ready to plan
+Last activity: 2026-09-17 — Phase 09 complete, transitioned to Phase 10
 
 ## Delivery model
 
@@ -60,6 +60,7 @@ Terminal Seal) is retired for personal-use (removed in PR #29) and tracked as V2
 | 4. Overall Progress and Complete Progression | 8/8 implementation-verified; release evidence in 05-07 | source-only closeout | — |
 | 5. Recovery, Distribution, and Release | 7/7 source-preparation complete; exact-candidate attended gate pending | — | — |
 | 08 | 4 | - | - |
+| 09 | 10 | - | - |
 
 **Recent Trend:** Phase 05 Plan 07 prepares a production-only build-once manifest pipeline, exact Phase 2–5 attended rows, protected owner-supplied evidence workflows, strict source-byte validation, serialized no-rebuild promotion, immutable public-asset proof, and post-promotion Terminal Seal validation. All source code-review and security findings are closed. The source-only gate passes 134 suites and 2,348 tests with 90.94% statements, 85.86% branches, 90.21% functions, and 91.13% lines; all 83 integrity-critical files pass at 100%, and focused Phase 5/release tests pass 29/29. Candidate build/sign/install, Maestro/device execution, attended emulator/phone/assistive/design review, owner approval, promotion, and Terminal Seal remain unexecuted.
 **Per-Plan Metrics:**
@@ -303,6 +304,7 @@ Full decisions live in `.planning/PROJECT.md`.
 - [Phase 09]: Phase 09 planned write-back native evidence serializes clear-state flows, verifies adb root, pins a Friday scheduled fixture, tolerates cold startup, and restores the prior device time configuration; the final 09-09 manifest is bound to HEAD `339cd5c`.
 - [Phase 09]: Android may rotate the ephemeral `/data/app` package path on each reinstall. Phase 09 evidence therefore validates the installed APK by pulled SHA-256 plus package/device identity; it verifies v20 before installing the distinct Phase 09 APK and records that ordered result in the final ledger.
 - [Phase 09]: Native migrations/effects databases already have unique run IDs. Do not delete them before `openDatabaseAsync`; cleanup after close prevents Expo SQLite's released-shared-object race without weakening isolation.
+- [Phase 09]: Final source-bound evidence is d5976f6: the runner validates all adb work against the manifest serial, full Task 1 successor-range scope and immutable migration 0019, exact v20 and Phase 09 artifact identities, and force-stops the manifest package before each clear-state flow. v20 passed 11/11 and all three Maestro flows passed with automatic device time restored.
 
 ### Blockers/Concerns
 
@@ -332,12 +334,12 @@ Full decisions live in `.planning/PROJECT.md`.
 
 ## Session Continuity
 
-Last session: 2026-09-17T13:02:49.000Z
-Stopped at: Completed 09-10-PLAN.md; Phase 09 review and goal verification pending
-Resume file: .planning/phases/09-in-workout-exercise-editing/09-10-SUMMARY.md
-Next action: Run the Phase 09 code-review and verifier gates. Only mark the Roadmap, requirements, and phase complete if the independent verification report passes.
+Last session: 2026-09-17T23:22:51.000Z
+Stopped at: Phase 09 complete, ready to plan Phase 10
+Resume file: .planning/phases/10-advanced-set-timing/10-01-per-rep-cadence-tracer-PLAN.md
+Next action: Execute Phase 10 Plan 10-01 from the verified Phase 09 schema v20, preserving separate receipt authorities and all completed-history invariants.
 
 ## Operator Next Steps
 
-- Complete Phase 09 review and goal-backward verification; resolve any finding before transitioning to Phase 10.
-- Preserve append-only workout history, keep migrations 0019/0020 immutable, retain separate Add/Replace/Remove and reorder receipts, and preserve the v20-before-Phase-09 native evidence order.
+- Execute Phase 10 Plan 10-01, preserving append-only workout history, migrations 0019/0020, separate Add/Replace/Remove and reorder receipts, and the v20-before-Phase-09 native evidence pattern.
+- Keep advanced timing completely separate from the v1.0 rest state machine and advisory-only over all recorded set, rest, and workout facts.
