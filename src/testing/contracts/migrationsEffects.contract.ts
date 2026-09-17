@@ -126,7 +126,9 @@ async function withFreshRuntime<Result>(
   operation: (runtime: ContractRuntime) => Promise<Result>,
   observer: SqliteKernelTestObserver = {},
 ): Promise<Result> {
-  await adapter.deleteDatabase(databaseKey);
+  // Expo SQLite database names are already scoped by the native run ID.
+  // Deleting one immediately before opening it can race native shared-object
+  // teardown, while cleanup after the runtime closes preserves isolation.
   const runtime = await adapter.createRuntime(databaseKey, observer);
   try {
     return await operation(runtime);

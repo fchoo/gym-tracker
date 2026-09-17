@@ -2037,6 +2037,12 @@ describe("Plan 01-06 native migration suite selection", () => {
         };
       },
       async deleteDatabase(databaseKey) {
+        if (
+          !databasePaths.has(databaseKey)
+          && databaseKey !== "migration-integrity-block"
+        ) {
+          throw new Error("contract_database_deleted_before_open");
+        }
         const runtime = runtimes.get(databaseKey);
         if (runtime !== undefined) {
           await runtime.close().catch(() => undefined);
