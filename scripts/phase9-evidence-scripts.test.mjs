@@ -85,6 +85,11 @@ test("Phase 9 evidence runner requires a manifest and full edit/relaunch asserti
     assert.match(writeBackFlow, /appId: com\.fchoo\.gymtracker\.devtest/);
     assert.match(writeBackFlow, /Start Full Body A/);
     assert.match(writeBackFlow, /Complete Set 1[\s\S]*?Complete Set 2[\s\S]*?Complete Set 3/u);
+    assert.match(
+      writeBackFlow,
+      /- assertVisible: "Complete Set 3"\n- tapOn:\n    text: "Complete Set 3"\n    retryTapIfNoChange: true/u,
+      "Phase 9 must wait out the final completion control's brief disabled state",
+    );
     for (const exerciseId of [
       "5f140001-7e35-4a6d-9100-000000000002",
       "5f140001-7e35-4a6d-9100-000000000003",
@@ -107,8 +112,15 @@ test("Phase 9 evidence runner requires a manifest and full edit/relaunch asserti
     assert.match(writeBackFlow, /Keep plan as-is/);
     assert.match(writeBackFlow, /Save changes to plan/);
   }
-  assert.match(keepFlow, /Save these changes to the plan\?[\s\S]*?Keep plan as-is[\s\S]*?visible: "Today"/u);
+  assert.match(
+    keepFlow,
+    /retryTapIfNoChange: true\n- extendedWaitUntil:\n    visible: "Finish workout"[\s\S]*?Save these changes to the plan\?[\s\S]*?Keep plan as-is[\s\S]*?visible: "Today"/u,
+  );
   assert.match(retryFlow, /arm_plan_write_back_failure/);
+  assert.match(
+    retryFlow,
+    /retryTapIfNoChange: true\n- extendedWaitUntil:\n    visible: "Finish workout"[\s\S]*?openLink: "gymtracker-devtest:\/\/__notification-test-controls\?action=arm_plan_write_back_failure"/u,
+  );
   assert.match(retryFlow, /Plan write-back failure armed/);
   assert.match(retryFlow, /Changes were not saved to the plan/);
   assert.match(retryFlow, /Your completed workout is safe\. Try again or keep the plan as-is\./);

@@ -106,7 +106,12 @@ name: Phase 9 completed planned workout retries a failed plan write-back
 - tapOn: "Expand rest controls"
 - tapOn: "Skip rest"
 - assertVisible: "Complete Set 3"
-- tapOn: "Complete Set 3"
+- tapOn:
+    text: "Complete Set 3"
+    retryTapIfNoChange: true
+- extendedWaitUntil:
+    visible: "Finish workout"
+    timeout: 30000
 - openLink: "gymtracker-devtest://__notification-test-controls?action=arm_plan_write_back_failure"
 - extendedWaitUntil:
     visible: "Plan write-back failure armed"

@@ -106,7 +106,9 @@ name: Phase 9 completed planned workout keeps the plan unchanged
 - tapOn: "Expand rest controls"
 - tapOn: "Skip rest"
 - assertVisible: "Complete Set 3"
-- tapOn: "Complete Set 3"
+- tapOn:
+    text: "Complete Set 3"
+    retryTapIfNoChange: true
 - extendedWaitUntil:
     visible: "Finish workout"
     timeout: 30000
