@@ -92,7 +92,7 @@ test("Phase 9 evidence runner requires a manifest and full edit/relaunch asserti
       assert.match(
         writeBackFlow,
         new RegExp(
-          `repeat:\\n    times: 32\\n    while:\\n      notVisible:\\n        id: \"exercise-actions-${exerciseId}\"\\n    commands:\\n      - swipe:\\n          start: 95%, 75%\\n          end: 95%, 25%\\n          duration: 500`,
+          `scrollUntilVisible:[\\s\\S]*?id: \"exercise-actions-${exerciseId}\"[\\s\\S]*?tapOn:[\\s\\S]*?id: \"exercise-actions-${exerciseId}\"[\\s\\S]*?retryTapIfNoChange: true`,
           "u",
         ),
       );
