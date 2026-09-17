@@ -600,6 +600,7 @@ async function readReplacementOccurrenceRows(
      JOIN exercise_library_entries entry
        ON entry.exercise_id = occurrence.exercise_id
      WHERE plan.id = ? AND day.ordinal < plan.days_per_week
+       AND occurrence.ordinal < 1000000
      ORDER BY day.ordinal, occurrence.ordinal, occurrence.id`,
     [planId],
   );

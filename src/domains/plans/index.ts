@@ -87,6 +87,7 @@ export {
 } from "./ownedPlanCommands";
 export {
   PlanImpactInputError,
+  previewSessionExerciseEditsForPlan,
   previewDayRemoval,
   previewExerciseReplacement,
   removePlanDayWithImpact,
@@ -96,6 +97,10 @@ export {
   type ExerciseReplacementCommandResult,
   type ExerciseReplacementPreview,
   type PlanImpactCommandResult,
+  type SessionExerciseEditsForPlanPreview,
+  type SessionExerciseEditsForPlanRepository,
+  type SessionExerciseEditsForPlanFacts,
+  type SessionExerciseWriteBackComposition,
   type RemovePlanDayWithImpactInput,
   type ReplacePlanExerciseInput,
 } from "./planImpactCommands";

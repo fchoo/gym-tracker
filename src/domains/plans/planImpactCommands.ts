@@ -7,6 +7,10 @@ import type {
   PlanImpactRepository,
 } from "../../platform/sqlite/repositories/planImpactRepository";
 import type {
+  ApplySessionExerciseEditsToPlanInput as StagedSessionExerciseEditsToPlanInput,
+  SessionExerciseEditsToPlanResult,
+} from "../../platform/sqlite/repositories/ownedPlanRepository";
+import type {
   MetricIdentity,
   MetricTarget,
 } from "../metrics";
@@ -97,10 +101,22 @@ export type SessionExerciseEditsForPlanFacts = Readonly<{
   }>[];
 }>;
 
-export type SessionExerciseEditsForPlanRepository = Readonly<{
+export type SessionExerciseEditsForPlanReader = Readonly<{
   readSessionExerciseEditsForPlan(input: Readonly<{
     sessionId: string;
   }>): Promise<SessionExerciseEditsForPlanFacts | null>;
+}>;
+
+export type SessionExerciseEditsForPlanRepository =
+  & SessionExerciseEditsForPlanReader
+  & Readonly<{
+  applySessionExerciseEditsToPlan(
+    input: StagedSessionExerciseEditsToPlanInput,
+  ): Promise<SessionExerciseEditsToPlanResult>;
+  readSessionExerciseEditsToPlanResult(input: Readonly<{
+    requestId: string;
+    requestSha256: string;
+  }>): Promise<SessionExerciseEditsToPlanResult | null>;
 }>;
 
 export type SessionExerciseEditsForPlanPreview = Readonly<{
@@ -117,9 +133,18 @@ export type SessionExerciseEditsForPlanPreview = Readonly<{
   composition: readonly SessionExerciseWriteBackComposition[];
 }>;
 
+export type ApplySessionExerciseEditsToPlanInput = Readonly<{
+  requestId: string;
+  sourceSessionId: string;
+  expectedPlanRevision: number;
+  previewToken: string;
+  composition: readonly SessionExerciseWriteBackComposition[];
+}>;
+
 const IDENTIFIER_MAX_CODE_POINTS = 128;
 const SHA256_PATTERN = /^[a-f0-9]{64}$/u;
 const PREVIEW_TOKEN_PATTERN = /^plan-impact-v1:[a-f0-9]{64}$/u;
+const SESSION_WRITE_BACK_PREVIEW_TOKEN_PATTERN = /^session-writeback-v1:[a-f0-9]{64}$/u;
 
 export type DayRemovalPreview = Readonly<{
   kind: "day_removal";
@@ -466,7 +491,7 @@ function manualPolicy(
   });
 }
 
-function canonicalSessionWriteBackFacts(
+export function canonicalizeSessionExerciseEditsForPlan(
   facts: SessionExerciseEditsForPlanFacts,
 ): readonly SessionExerciseWriteBackComposition[] | null {
   const { session, day } = facts;
@@ -588,7 +613,7 @@ async function sessionWriteBackPreviewToken(
 
 export async function previewSessionExerciseEditsForPlan(
   context: Readonly<{
-    repository: SessionExerciseEditsForPlanRepository;
+    repository: SessionExerciseEditsForPlanReader;
     sha256: Sha256;
     input: Readonly<{ sessionId: string }>;
   }>,
@@ -602,7 +627,7 @@ export async function previewSessionExerciseEditsForPlan(
   if (facts === null) {
     return null;
   }
-  const composition = canonicalSessionWriteBackFacts(facts);
+  const composition = canonicalizeSessionExerciseEditsForPlan(facts);
   if (composition === null || compositionMatchesDay(composition, facts.day)) {
     return null;
   }
@@ -624,6 +649,89 @@ export async function previewSessionExerciseEditsForPlan(
     ),
     composition,
   });
+}
+
+export async function applySessionExerciseEditsToPlan(
+  context: Readonly<{
+    repository: SessionExerciseEditsForPlanRepository;
+    sha256: Sha256;
+    nowMs(): number;
+    invalidate(keys: readonly string[]): Promise<void>;
+    input: ApplySessionExerciseEditsToPlanInput;
+  }>,
+): Promise<SessionExerciseEditsToPlanResult> {
+  const value = context.input;
+  if (
+    !validIdentifier(value.requestId)
+    || !validIdentifier(value.sourceSessionId)
+  ) {
+    throw new PlanImpactInputError("plan_impact_identifier_invalid");
+  }
+  if (!validRevision(value.expectedPlanRevision)) {
+    throw new PlanImpactInputError("plan_impact_revision_invalid");
+  }
+  if (!SESSION_WRITE_BACK_PREVIEW_TOKEN_PATTERN.test(value.previewToken)) {
+    throw new PlanImpactInputError("plan_impact_preview_stale");
+  }
+  const replayCanonical = Object.freeze({
+    operation: "session_exercise_edits" as const,
+    requestId: value.requestId,
+    sourceSessionId: value.sourceSessionId,
+    expectedPlanRevision: value.expectedPlanRevision,
+    previewToken: value.previewToken,
+    composition: value.composition,
+  });
+  const replay = await context.repository.readSessionExerciseEditsToPlanResult({
+    requestId: value.requestId,
+    requestSha256: await digest(context.sha256, replayCanonical),
+  });
+  if (replay !== null) {
+    return replay;
+  }
+  const facts = await context.repository.readSessionExerciseEditsForPlan({
+    sessionId: value.sourceSessionId,
+  });
+  const composition = facts === null
+    ? null
+    : canonicalizeSessionExerciseEditsForPlan(facts);
+  if (
+    facts === null
+    || composition === null
+    || facts.day.planRevision !== value.expectedPlanRevision
+    || JSON.stringify(composition) !== JSON.stringify(value.composition)
+    || value.previewToken !== await sessionWriteBackPreviewToken(
+      context.sha256,
+      facts,
+      composition,
+    )
+  ) {
+    throw new PlanImpactInputError("plan_impact_preview_stale");
+  }
+  const planId = facts.session.planId;
+  const planDayId = facts.session.planDayId;
+  if (planId === null || planDayId === null) {
+    throw new PlanImpactInputError("plan_impact_preview_stale");
+  }
+  const committedAtMs = context.nowMs();
+  if (!validTime(committedAtMs)) {
+    throw new PlanImpactInputError("plan_impact_date_invalid");
+  }
+  const canonical = Object.freeze({
+    ...replayCanonical,
+    sourceSessionRevision: facts.session.revision,
+    planId,
+    planDayId,
+    composition,
+  });
+  const result = await context.repository.applySessionExerciseEditsToPlan({
+    ...canonical,
+    requestSha256: await digest(context.sha256, replayCanonical),
+    committedAtMs,
+  });
+  if (result.outcome === "committed") {
+    await context.invalidate(result.invalidations).catch(() => undefined);
+  }
+  return result;
 }
 
 function sortCandidates(

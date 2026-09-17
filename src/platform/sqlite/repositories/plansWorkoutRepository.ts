@@ -835,6 +835,7 @@ export function createPlansWorkoutRepository(
              LEFT JOIN ${policyTable} p
                ON p.plan_day_exercise_id = de.id
              WHERE de.plan_day_id = ?
+               ${ownedGraph ? "AND de.ordinal < 1000000" : ""}
              ORDER BY de.ordinal`,
             [request.planDayId],
           );
@@ -1403,6 +1404,7 @@ export function createPlansWorkoutRepository(
            ON t.plan_day_exercise_id = de.id
          ${recommendationJoin}
          WHERE de.plan_day_id = ?
+           ${ownedGraph ? "AND de.ordinal < 1000000" : ""}
          GROUP BY de.id
          ORDER BY de.ordinal`,
         [binding.plan_day_id],
