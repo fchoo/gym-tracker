@@ -2,6 +2,12 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 
+import {
+  PHASE9_EVIDENCE_MATRIX,
+  PHASE9_MAESTRO_FLOW_CONTRACTS,
+  validatePhase9Evidence,
+} from "./run-phase9-maestro.mjs";
+
 test("Phase 9 evidence runner requires a manifest and full edit/relaunch assertions", () => {
   const runner = readFileSync("scripts/run-phase9-maestro.mjs", "utf8");
   const flow = readFileSync("maestro/phase9/in-workout-exercise-editing.yaml", "utf8");
@@ -13,26 +19,45 @@ test("Phase 9 evidence runner requires a manifest and full edit/relaunch asserti
     "maestro/phase9/completed-workout-plan-writeback-retry.yaml",
     "utf8",
   );
-  assert.match(runner, /native build manifest is required/);
-  assert.match(runner, /build\.apk\?\.path/);
-  assert.match(runner, /build\.device\?\.serial/);
+  assert.match(runner, /native manifest identity does not match the current Phase 9 source/);
+  assert.match(runner, /export const PHASE9_MAESTRO_FLOW_CONTRACTS/);
+  assert.match(runner, /export const PHASE9_EVIDENCE_MATRIX/);
+  assert.match(runner, /export function validatePhase9Evidence/);
+  assert.match(runner, /phase9-maestro\.json/);
+  assert.match(runner, /verify-phase9-v20-native-evidence\.mjs/);
+  assert.match(runner, /verify-phase9-task1-boundary\.mjs/);
+  assert.match(runner, /sourceTreeSha256/);
+  assert.match(runner, /installed APK bytes do not match/u);
+  assert.match(runner, /--format", "junit"/);
+  for (const id of [
+    "D-01", "D-02", "D-03", "D-04", "D-05", "D-06", "D-07", "D-08",
+    "WORK-20", "WORK-21", "WORK-22", "WORK-23", "WORK-24", "WORK-25", "WORK-27",
+    "ROADMAP-09-01", "ROADMAP-09-02", "ROADMAP-09-03", "ROADMAP-09-04", "ROADMAP-09-05", "ROADMAP-09-06",
+    "UI-populated", "UI-partial", "UI-overflow", "UI-zero-one-many", "UI-long-text", "UI-loading", "UI-empty", "UI-error",
+    "UI-themes", "UI-widths", "UI-font-scale-2", "UI-reduced-motion", "UI-role-name-state", "UI-focus-input", "UI-minimum-target", "UI-non-color",
+  ]) {
+    assert.match(runner, new RegExp(`id: "${id}"`, "u"));
+  }
+  assert.match(runner, /manifest\.apk\?\.sha256/);
+  assert.match(runner, /manifest\.device\?\.serial/);
   assert.match(runner, /--udid/);
   assert.match(runner, /maestro\/phase9\/in-workout-exercise-editing\.yaml/);
   assert.match(runner, /completed-workout-plan-writeback-keep\.yaml/);
   assert.match(runner, /completed-workout-plan-writeback-retry\.yaml/);
-  assert.match(runner, /for \(const flow of phase9Flows\)/);
+  assert.match(runner, /for \(const contract of flows\)/);
   assert.match(runner, /const PHASE9_SCHEDULED_WORKOUT_CLOCK = "091812002026"/);
   assert.match(runner, /command\(adb, \["root"\]\)/);
   assert.match(runner, /command\(adb, \["wait-for-device"\]\)/);
   assert.match(runner, /const adbUser = command\(adb, \["shell", "id"\]\)/);
   assert.match(runner, /if \(!adbUser\.includes\("uid=0\(root\)"\)\)/);
-  assert.match(runner, /"settings",\s*\n\s*"get",\s*\n\s*"global",\s*\n\s*"auto_time"/u);
-  assert.match(runner, /"settings",\s*\n\s*"put",\s*\n\s*"global",\s*\n\s*"auto_time",\s*\n\s*"0"/u);
-  assert.match(runner, /"shell",\s*\n\s*"date",\s*\n\s*PHASE9_SCHEDULED_WORKOUT_CLOCK/u);
-  assert.match(runner, /const scheduledDate = command\(adb, \[[\s\S]*?"\+%Y-%m-%d"/u);
-  assert.match(runner, /if \(scheduledDate !== "2026-09-18"\) \{[\s\S]*?scheduled workout date was not applied/u);
-  assert.match(runner, /finally \{[\s\S]*?"settings",\s*\n\s*"put",\s*\n\s*"global",\s*\n\s*"auto_time",\s*\n\s*priorAutoTime/u);
-  assert.match(runner, /if \(priorAutoTime === "0"\) \{[\s\S]*?"shell",\s*\n\s*"date",\s*\n\s*priorDate/u);
+  assert.match(runner, /"settings", "get", "global", "auto_time"/u);
+  assert.match(runner, /"settings", "put", "global", "auto_time", "0"/u);
+  assert.match(runner, /"shell", "date", PHASE9_SCHEDULED_WORKOUT_CLOCK/u);
+  assert.match(runner, /command\(adb, \["-s", serial, "shell", "date", "\+%Y-%m-%d"\]\)/u);
+  assert.match(runner, /command\(adb, \["-s", serial, "shell", "date", "\+%Y-%m-%d"\]\) !== "2026-09-18"[\s\S]*?scheduled workout date was not applied/u);
+  assert.match(runner, /finally \{[\s\S]*?"settings", "put", "global", "auto_time", priorAutoTime/u);
+  assert.match(runner, /if \(priorAutoTime === "0"\)/u);
+  assert.match(runner, /"shell", "date", priorDate/u);
   assert.doesNotMatch(
     runner,
     /spawnSync\("maestro", \[\s*"test",[\s\S]*?in-workout-exercise-editing\.yaml[\s\S]*?completed-workout-plan-writeback-keep\.yaml[\s\S]*?completed-workout-plan-writeback-retry\.yaml/u,
@@ -142,4 +167,41 @@ test("Phase 9 evidence runner requires a manifest and full edit/relaunch asserti
   assert.match(retryFlow, /Changes were not saved to the plan/);
   assert.match(retryFlow, /Your completed workout is safe\. Try again or keep the plan as-is\./);
   assert.match(retryFlow, /Retry saving changes/);
+});
+
+test("Phase 9 retained evidence rejects a missing or duplicate native flow", () => {
+  const snapshot = PHASE9_MAESTRO_FLOW_CONTRACTS.map((contract, index) => ({
+    ...contract,
+    sha256: `${index + 1}`.repeat(64),
+  }));
+  const evidence = {
+    schema_version: 1,
+    suite: "phase9",
+    status: "passed",
+    matrix: PHASE9_EVIDENCE_MATRIX,
+    v20: { exact_cases: 1 },
+    flows: snapshot.map((contract) => ({
+      id: contract.id,
+      flow: contract.flow,
+      flow_sha256: contract.sha256,
+      report_sha256: "a".repeat(64),
+      tests: 1,
+      failures: 0,
+      errors: 0,
+      skipped: 0,
+    })),
+  };
+
+  assert.equal(validatePhase9Evidence(evidence, snapshot), evidence);
+  assert.throws(
+    () => validatePhase9Evidence({ ...evidence, flows: evidence.flows.slice(1) }, snapshot),
+    /flow ledger is incomplete/u,
+  );
+  assert.throws(
+    () => validatePhase9Evidence({
+      ...evidence,
+      flows: [evidence.flows[0], evidence.flows[0], evidence.flows[2]],
+    }, snapshot),
+    /flow is invalid/u,
+  );
 });
