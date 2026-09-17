@@ -112,6 +112,8 @@ import type {
   ActiveWorkoutView,
   AddExerciseInput,
   AddExerciseResult,
+  CompletedWorkoutPlanWriteBackState,
+  CompletedWorkoutPlanWriteBackChoiceState,
   FinishOutcomeResult,
   RemoveSetResult,
   RemoveWarmupInput,
@@ -129,9 +131,13 @@ import {
   addExercise,
   addWarmup,
   addWorkingSet,
+  applyCompletedWorkoutPlanWriteBack,
+  beginCompletedWorkoutPlanWriteBack,
   discardWorkout,
   finishCompleted,
   finishPartial,
+  keepCompletedWorkoutPlanAsIs,
+  previewCompletedWorkoutPlanWriteBack,
   startWorkout,
   completeSet,
   completeWarmup,
@@ -663,6 +669,15 @@ type RuntimeValue = RuntimeState & Readonly<{
   discardWorkout(input: DiscardWorkoutInput): Promise<FinishOutcomeResult>;
   finishCompleted(input: FinishCompletedInput): Promise<FinishOutcomeResult>;
   finishPartial(input: FinishPartialInput): Promise<FinishOutcomeResult>;
+  previewCompletedWorkoutPlanWriteBack(
+    sessionId: string,
+  ): Promise<CompletedWorkoutPlanWriteBackState>;
+  applyCompletedWorkoutPlanWriteBack(
+    state: CompletedWorkoutPlanWriteBackChoiceState,
+  ): Promise<CompletedWorkoutPlanWriteBackState>;
+  keepCompletedWorkoutPlanAsIs(
+    state: CompletedWorkoutPlanWriteBackChoiceState,
+  ): CompletedWorkoutPlanWriteBackState;
   removeWarmup(
     input: RemoveWarmupInput,
   ): Promise<ActiveWorkoutView | CommittedWorkoutRemovalRefreshFailure>;
@@ -3705,6 +3720,43 @@ export function WorkoutAppRuntimeProvider({
     return result;
   }, [requireServices, runOutcomeMutation]);
 
+  const previewCompletedPlanWriteBack = useCallback((sessionId: string) =>
+    previewCompletedWorkoutPlanWriteBack({
+      port: requireServices().ownedPlans,
+      sessionId,
+    }),
+  [requireServices]);
+
+  const applyCompletedPlanWriteBack = useCallback(async (
+    state: CompletedWorkoutPlanWriteBackChoiceState,
+  ) => {
+    const services = requireServices();
+    const result = await applyCompletedWorkoutPlanWriteBack({
+      port: services.ownedPlans,
+      state: beginCompletedWorkoutPlanWriteBack(state),
+    });
+    if (result.state === "completed" && result.disposition === "saved") {
+      workoutRefreshGenerationRef.current += 1;
+      try {
+        setState(await trustedRead(services));
+      } catch {
+        setState((current) => ({
+          ...current,
+          actionFailure: {
+            code: "workout_action_failed",
+            correlationCode: "GT-ACTION01",
+          },
+          workoutRefreshGeneration: workoutRefreshGenerationRef.current,
+        }));
+      }
+    }
+    return result;
+  }, [requireServices, trustedRead]);
+
+  const keepCompletedPlanAsIs = useCallback((
+    state: CompletedWorkoutPlanWriteBackChoiceState,
+  ) => keepCompletedWorkoutPlanAsIs(state), []);
+
   const finishWorkoutPartial = useCallback((input: FinishPartialInput) =>
     runOutcomeMutation((repository) =>
       finishPartial({ repository, input }),
@@ -3848,6 +3900,7 @@ export function WorkoutAppRuntimeProvider({
     discardStarterSwitchWorkout,
     expireRest: expireWorkoutRest,
     exerciseNotificationExpiry,
+    applyCompletedWorkoutPlanWriteBack: applyCompletedPlanWriteBack,
     finishCompleted: finishWorkoutCompleted,
     finishPartial: finishWorkoutPartial,
     finishStarterSwitchWorkout,
@@ -3863,6 +3916,7 @@ export function WorkoutAppRuntimeProvider({
     loadExerciseMetricHistory,
     loadProgress,
     keepCurrentTarget: keepWorkoutTarget,
+    keepCompletedWorkoutPlanAsIs: keepCompletedPlanAsIs,
     chooseTimeZone: (choice, detectedDeviceTimeZone) =>
       requireServices().schedules.chooseTimeZone(
         choice,
@@ -3883,6 +3937,7 @@ export function WorkoutAppRuntimeProvider({
       requireServices().schedules.markWeekdayMissed(localDate),
     previewOwnedPlanDayRemoval: previewOwnedDayRemoval,
     previewOwnedPlanExerciseReplacement: previewOwnedExerciseReplacement,
+    previewCompletedWorkoutPlanWriteBack: previewCompletedPlanWriteBack,
     loadStarterActivationPreview,
     loadStarterPlan,
     loadStarterTemplateUpdate,

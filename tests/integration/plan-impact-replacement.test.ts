@@ -26,6 +26,15 @@ import {
   replacePlanExercise,
 } from "../../src/domains/plans/planImpactCommands";
 import {
+  applyCompletedWorkoutPlanWriteBack,
+  beginCompletedWorkoutPlanWriteBack,
+  finishCompleted,
+  previewCompletedWorkoutPlanWriteBack,
+} from "../../src/domains/workout";
+import {
+  createOwnedPlanRuntimePort,
+} from "../../src/bootstrap/ownedPlanRuntime";
+import {
   type SqliteConnection,
   type SqlitePreparedResult,
   type SqlitePreparedStatement,
@@ -41,6 +50,9 @@ import {
   ownedRecommendationsMigration,
 } from "../../src/platform/sqlite/migrations/0010_owned_recommendations";
 import {
+  historyIntegrityMigration,
+} from "../../src/platform/sqlite/migrations/0013_history_integrity";
+import {
   sessionExerciseEditingMigration,
 } from "../../src/platform/sqlite/migrations/0019_session_exercise_editing";
 import {
@@ -52,6 +64,9 @@ import {
 import {
   createOwnedPlanRepository,
 } from "../../src/platform/sqlite/repositories/ownedPlanRepository";
+import {
+  createWorkoutOutcomeRepository,
+} from "../../src/platform/sqlite/repositories/workoutOutcomeRepository";
 import {
   type ApplyDayRemovalRepositoryInput,
   type ApplyExerciseReplacementRepositoryInput,
@@ -199,6 +214,7 @@ async function setupRuntime(
       scheduleActivationMigration,
       ownedPlansMigration,
       ownedRecommendationsMigration,
+      historyIntegrityMigration,
       sessionExerciseEditingMigration,
       sessionExerciseEditReceiptsMigration,
     ],
@@ -1385,6 +1401,66 @@ describe("plan impact day removal", () => {
 });
 
 describe("D-01/D-02 session exercise write-back aggregate", () => {
+  it("recomputes eligibility only after the edited workout finish commits and never rewrites the finished history", async () => {
+    const runtime = await setupRuntime();
+    await seedCompletedEditedSession(runtime.kernel);
+    await runtime.kernel.write((transaction) => transaction.execute(
+      `UPDATE workout_sessions
+       SET status = 'in_progress', completed_at_ms = NULL
+       WHERE id = 'retained-completed-session'`,
+    ));
+    const ownedPlans = createOwnedPlanRuntimePort(runtime.kernel, {
+      nowMs: () => 500,
+      randomUUID: () => 'unused-preview-bound-id',
+      sha256,
+    });
+
+    await expect(previewCompletedWorkoutPlanWriteBack({
+      port: ownedPlans,
+      sessionId: 'retained-completed-session',
+    })).resolves.toEqual({
+      state: 'completed',
+      disposition: 'not_eligible',
+    });
+    const [beforeFinish] = await runtime.kernel.queryAll<{ revision: number }>(
+      `SELECT revision FROM workout_sessions
+       WHERE id = 'retained-completed-session'`,
+    );
+    await finishCompleted({
+      repository: createWorkoutOutcomeRepository(runtime.kernel),
+      input: {
+        sessionId: 'retained-completed-session',
+        expectedSessionRevision: beforeFinish!.revision,
+        endedAtMs: 499,
+      },
+    });
+    const afterFinish = await immutableRows(runtime.kernel);
+    const awaiting = await previewCompletedWorkoutPlanWriteBack({
+      port: ownedPlans,
+      sessionId: 'retained-completed-session',
+    });
+    expect(awaiting).toMatchObject({
+      state: 'awaiting_choice',
+      preview: {
+        sourceSessionId: 'retained-completed-session',
+        planId: 'retained-plan',
+      },
+    });
+    if (awaiting.state !== 'awaiting_choice') {
+      throw new Error('expected_write_back_choice');
+    }
+
+    await expect(applyCompletedWorkoutPlanWriteBack({
+      port: ownedPlans,
+      state: beginCompletedWorkoutPlanWriteBack(awaiting),
+    })).resolves.toEqual({
+      state: 'completed',
+      disposition: 'saved',
+      outcome: 'committed',
+    });
+    expect(await immutableRows(runtime.kernel)).toEqual(afterFinish);
+  });
+
   it("applies the final edited composition once while leaving recorded session facts byte-identical", async () => {
     const runtime = await setupRuntime();
     await seedCompletedEditedSession(runtime.kernel);

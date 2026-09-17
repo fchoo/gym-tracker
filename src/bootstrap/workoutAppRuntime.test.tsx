@@ -19,6 +19,7 @@ import starterPlansAsset from "../../assets/content/starter-plans.v2.json";
 import starterPlansAcceptanceAsset from "../../artifacts/review/phase2/starter-plans-acceptance.json";
 import type {
   PlansRepository,
+  SessionExerciseEditsForPlanPreview,
   StarterActivation,
 } from "../domains/plans";
 import {
@@ -101,6 +102,15 @@ jest.mock("expo-sqlite", () => ({
   deleteDatabaseAsync: jest.fn(async () => undefined),
   openDatabaseAsync: jest.fn(),
 }));
+jest.mock("./ownedPlanRuntime", () => {
+  const actual = jest.requireActual<typeof import("./ownedPlanRuntime")>(
+    "./ownedPlanRuntime",
+  );
+  return {
+    ...actual,
+    createOwnedPlanRuntimePort: jest.fn(actual.createOwnedPlanRuntimePort),
+  };
+});
 
 import {
   acknowledgeCommittedRuntimeResult,
@@ -112,6 +122,9 @@ import {
   type WorkoutAppRuntimeDependencies,
   useWorkoutAppRuntime,
 } from "./workoutAppRuntime";
+import {
+  createOwnedPlanRuntimePort,
+} from "./ownedPlanRuntime";
 import {
   createStarterPlanRuntimeCatalog,
 } from "./starterPlanRuntime";
@@ -130,6 +143,9 @@ const recoveryBackupMock = jest.requireMock(
 const expoSqliteMock = jest.requireMock("expo-sqlite") as {
   openDatabaseAsync: jest.MockedFunction<typeof import("expo-sqlite")["openDatabaseAsync"]>;
 };
+const mockedCreateOwnedPlanRuntimePort = jest.mocked(
+  createOwnedPlanRuntimePort,
+);
 
 type Repository = PlansRepository & WorkoutRepository;
 
@@ -435,6 +451,20 @@ const runtimeSessionDetail: SessionDetail = {
   recommendationStatus: "none",
   resumable: false,
   readOnly: true,
+};
+
+const sessionWriteBackPreview: SessionExerciseEditsForPlanPreview = {
+  kind: "session_exercise_edits",
+  sourceSessionId: "session-1",
+  sourceSessionRevision: 2,
+  planId: "plan-copy",
+  planName: "Full Body Foundation",
+  planDayId: "day-a",
+  dayName: "Full Body A",
+  expectedPlanRevision: 1,
+  currentWorkoutUnaffected: true,
+  previewToken: `session-writeback-v1:${"a".repeat(64)}`,
+  composition: [],
 };
 
 function runtimeOutcomeRepository():
@@ -3189,6 +3219,82 @@ describe("WorkoutAppRuntimeProvider", () => {
       expect(outcomeRepository.acceptRecommendation).toHaveBeenCalledTimes(1);
       expect(outcomeRepository.keepCurrentTarget).toHaveBeenCalledTimes(1);
     });
+  });
+
+  it("reads aggregate write-back eligibility only after durable completion and never applies an ineligible session", async () => {
+    const repository = runtimeRepository([activeView, activeView], [activation]);
+    const outcomeRepository = runtimeOutcomeRepository();
+    const schedule = runtimeScheduleAdapter();
+    const events: string[] = [];
+    jest.spyOn(outcomeRepository, "finishCompleted").mockImplementationOnce(async () => {
+      events.push("finish");
+      return {
+        detail: runtimeSessionDetail,
+        invalidationScopes: [],
+      };
+    });
+    jest.spyOn(schedule, "completeScheduledSession").mockImplementationOnce(async () => {
+      events.push("schedule");
+      return null;
+    });
+    const ownedPlans = {
+      previewSessionExerciseEdits: jest.fn(async () => {
+        events.push("preview");
+        return null;
+      }),
+      applySessionExerciseEdits: jest.fn(async () => {
+        events.push("apply");
+        return {
+          outcome: "committed" as const,
+          operation: "session_exercise_edits" as const,
+          planId: "plan-copy",
+          planRevision: 2,
+          sourceSessionId: "session-1",
+          currentWorkoutUnaffected: true,
+          invalidations: [],
+        };
+      }),
+    };
+    mockedCreateOwnedPlanRuntimePort.mockReturnValueOnce({
+      ...({} as ReturnType<typeof createOwnedPlanRuntimePort>),
+      ...ownedPlans,
+    } as unknown as ReturnType<typeof createOwnedPlanRuntimePort>);
+    let captured: ReturnType<typeof useWorkoutAppRuntime> | undefined;
+    await render(
+      <RuntimeCaptureHarness
+        dependencies={dependencies(repository, {
+          createOutcomeRepository: () => outcomeRepository,
+          createScheduleRuntime: () => schedule,
+        })}
+        onReady={(runtime) => {
+          captured = runtime;
+        }}
+      />,
+    );
+    await waitFor(() => {
+      expect(captured?.launchState).toBe("trusted");
+    });
+    if (captured === undefined) {
+      throw new Error("runtime_not_captured");
+    }
+
+    await act(async () => {
+      await captured!.finishCompleted({
+        sessionId: "session-1",
+        expectedSessionRevision: 1,
+        endedAtMs: 2_000,
+      });
+    });
+    const writeBack = await captured.previewCompletedWorkoutPlanWriteBack(
+      "session-1",
+    );
+
+    expect(events).toEqual(["finish", "schedule", "preview"]);
+    expect(writeBack).toEqual({
+      state: "completed",
+      disposition: "not_eligible",
+    });
+    expect(ownedPlans.applySessionExerciseEdits).not.toHaveBeenCalled();
   });
 
   it("composes custom create, edit, archive preview, and migration capabilities", async () => {

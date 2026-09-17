@@ -181,14 +181,22 @@ describe("Phase 09 session exercise editing", () => {
   });
 
   it("rehydrates the persisted modified-from-plan flag after an edited session finishes", async () => {
-    const { kernel, repository, session, libraryExerciseId } = await setup();
+    const { kernel, repository, session } = await setup();
+    const [loadRepsLibrary] = await kernel.queryAll<{ exercise_id: string }>(
+      `SELECT exercise_id FROM exercise_library_entries
+       WHERE metric_profile = 'load_reps'
+       ORDER BY exercise_id LIMIT 1`,
+    );
+    if (loadRepsLibrary === undefined) {
+      throw new Error("load_reps_library_entry_missing");
+    }
     const added = await repository.addExercise!({
       requestId: "modified-detail-add",
       requestSha256: hash,
       sessionId: session.id,
       expectedSessionRevision: session.revision,
       occurredAtMs: 2_000,
-      libraryExerciseId,
+      libraryExerciseId: loadRepsLibrary.exercise_id,
       sessionExerciseId: "modified-detail-added-exercise",
       setId: "modified-detail-added-set",
     });
