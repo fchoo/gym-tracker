@@ -5,17 +5,17 @@ milestone_name: In-Workout Editing, Advanced Timing & Cross-Device Sync
 current_phase: 09
 current_phase_name: In-Workout Exercise Editing
 status: executing
-stopped_at: Completed 09-07-PLAN.md
-last_updated: "2026-09-17T00:00:00.000Z"
-last_activity: 2026-09-16
-last_activity_desc: Plan 09-07 completed immutable-lineage progression, exactly-once edited schedule consumption, and persisted native modified provenance
-state_head: 57ef6ce72148177d3a95c7e583c62fe31cff7bb8
+stopped_at: Completed 09-08-PLAN.md
+last_updated: "2026-09-17T00:15:05.000Z"
+last_activity: 2026-09-17
+last_activity_desc: Plan 09-08 completed the canonical atomic session-to-owned-plan write-back aggregate and replay-safe runtime port
+state_head: db1fb6972d03718f51b6cac17e0dcf5f53d4ea16
 progress:
   total_phases: 5
   completed_phases: 1
   total_plans: 26
-  completed_plans: 11
-  percent: 42
+  completed_plans: 12
+  percent: 46
 ---
 
 # Project State
@@ -30,9 +30,9 @@ See: `.planning/PROJECT.md` (updated 2026-09-15)
 ## Current Position
 
 Phase: 09 (In-Workout Exercise Editing) — EXECUTING
-Plan: 7 of 10 complete; next is 09-08
-Status: Executing Phase 09 — Plan 09-07 gates progression on immutable planned lineage, replays edited schedule consumption exactly once, and exposes persisted Modified from plan provenance; 09-08 is next
-Last activity: 2026-09-16 — Plan 09-07 lineage-safe progression, schedule retry, and durable native completion/detail cue completed
+Plan: 8 of 10 complete; next is 09-09
+Status: Executing Phase 09 — Plan 09-08 now derives and applies one canonical, revision-bound session write-back aggregate while preserving immutable completed workout history; 09-09 is next
+Last activity: 2026-09-17 — Plan 09-08 aggregate preview/apply, receipt replay, rollback, and runtime duplicate/retry safety completed
 
 ## Delivery model
 
@@ -328,12 +328,12 @@ Full decisions live in `.planning/PROJECT.md`.
 
 ## Session Continuity
 
-Last session: 2026-09-16T23:59:00.000Z
-Stopped at: Completed 09-07-PLAN.md
-Resume file: .planning/phases/09-in-workout-exercise-editing/09-07-SUMMARY.md
-Next action: Execute `.planning/phases/09-in-workout-exercise-editing/09-08-PLAN.md`, preserving immutable planned lineage, exactly-once schedule consumption, and the separate Add/Replace/Remove and reorder receipt authorities.
+Last session: 2026-09-17T00:15:05.000Z
+Stopped at: Completed 09-08-PLAN.md
+Resume file: .planning/phases/09-in-workout-exercise-editing/09-08-SUMMARY.md
+Next action: Execute `.planning/phases/09-in-workout-exercise-editing/09-09-PLAN.md`, adding the post-finish default-No choice only after durable completion and using the exact Plan 09-08 aggregate preview/apply port.
 
 ## Operator Next Steps
 
-- Execute Phase 9 Plan 08 from the verified lineage/schedule/provenance foundation.
-- Preserve append-only workout history, keep migration 0019 immutable, keep edit and reorder receipts separate, and do not allow plan write-back to mutate recorded session history.
+- Execute Phase 9 Plan 09 from the verified aggregate write-back foundation.
+- Preserve append-only workout history, keep migration 0019 immutable, keep Add/Replace/Remove and reorder receipts separate, and show no write-back prompt unless the fresh post-finish aggregate preview is eligible.
