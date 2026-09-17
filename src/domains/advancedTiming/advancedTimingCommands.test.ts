@@ -90,10 +90,10 @@ describe("advanced timing command boundary", () => {
       repository: port,
       input: { ...valid, expectedSessionRevision: -1 },
     })).toThrow("advanced_timing_command_invalid");
-    await expect(reconcileAdvancedTiming({
+    expect(() => reconcileAdvancedTiming({
       repository: port,
       input: { ...valid, foregroundSinceMs: 10_001 },
-    })).rejects.toThrow("advanced_timing_command_invalid");
+    })).toThrow("advanced_timing_command_invalid");
     expect(port.pauseAdvancedTiming).not.toHaveBeenCalled();
   });
 });

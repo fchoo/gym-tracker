@@ -100,7 +100,7 @@ export function reconcileAdvancedTiming(input: Readonly<{
 }>): Promise<AdvancedTimingCommandResult & Readonly<{ cue: AdvancedTimingCue | null }>> {
   validate(input.input);
   if (!validTime(input.input.foregroundSinceMs) || input.input.foregroundSinceMs > input.input.nowMs) {
-    return Promise.reject(new AdvancedTimingCommandError());
+    throw new AdvancedTimingCommandError();
   }
   return input.repository.reconcileAdvancedTiming(input.input);
 }
