@@ -51,7 +51,7 @@ name: Phase 9 add exercise and relaunch persistence
 - tapOn: "Add exercise"
 - tapOn: "Search exercises"
 - inputText: "Back Squat"
-- tapOn: "Back Squat"
+- tapOn: "Back Squat. Add exercise"
 - extendedWaitUntil:
     visible: "Add Back Squat"
     timeout: 30000
