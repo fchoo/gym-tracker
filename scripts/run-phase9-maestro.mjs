@@ -43,6 +43,12 @@ const phase9Flows = [
   "maestro/phase9/completed-workout-plan-writeback-retry.yaml",
 ];
 const adb = resolveAdb();
+command(adb, ["root"]);
+command(adb, ["wait-for-device"]);
+const adbUser = command(adb, ["shell", "id"]);
+if (!adbUser.includes("uid=0(root)")) {
+  throw new Error("Phase 9 Maestro: the manifest device must allow adb root for the scheduled-day fixture.");
+}
 const priorAutoTime = command(adb, [
   "-s",
   build.device.serial,

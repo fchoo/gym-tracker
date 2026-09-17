@@ -22,6 +22,10 @@ test("Phase 9 evidence runner requires a manifest and full edit/relaunch asserti
   assert.match(runner, /completed-workout-plan-writeback-retry\.yaml/);
   assert.match(runner, /for \(const flow of phase9Flows\)/);
   assert.match(runner, /const PHASE9_SCHEDULED_WORKOUT_CLOCK = "091812002026"/);
+  assert.match(runner, /command\(adb, \["root"\]\)/);
+  assert.match(runner, /command\(adb, \["wait-for-device"\]\)/);
+  assert.match(runner, /const adbUser = command\(adb, \["shell", "id"\]\)/);
+  assert.match(runner, /if \(!adbUser\.includes\("uid=0\(root\)"\)\)/);
   assert.match(runner, /"settings",\s*\n\s*"get",\s*\n\s*"global",\s*\n\s*"auto_time"/u);
   assert.match(runner, /"settings",\s*\n\s*"put",\s*\n\s*"global",\s*\n\s*"auto_time",\s*\n\s*"0"/u);
   assert.match(runner, /"shell",\s*\n\s*"date",\s*\n\s*PHASE9_SCHEDULED_WORKOUT_CLOCK/u);
