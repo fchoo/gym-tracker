@@ -5,11 +5,21 @@ import { readFileSync } from "node:fs";
 test("Phase 9 evidence runner requires a manifest and full edit/relaunch assertions", () => {
   const runner = readFileSync("scripts/run-phase9-maestro.mjs", "utf8");
   const flow = readFileSync("maestro/phase9/in-workout-exercise-editing.yaml", "utf8");
+  const keepFlow = readFileSync(
+    "maestro/phase9/completed-workout-plan-writeback-keep.yaml",
+    "utf8",
+  );
+  const retryFlow = readFileSync(
+    "maestro/phase9/completed-workout-plan-writeback-retry.yaml",
+    "utf8",
+  );
   assert.match(runner, /native build manifest is required/);
   assert.match(runner, /build\.apk\?\.path/);
   assert.match(runner, /build\.device\?\.serial/);
   assert.match(runner, /--udid/);
   assert.match(runner, /maestro\/phase9\/in-workout-exercise-editing\.yaml/);
+  assert.match(runner, /completed-workout-plan-writeback-keep\.yaml/);
+  assert.match(runner, /completed-workout-plan-writeback-retry\.yaml/);
   assert.match(flow, /appId: com\.fchoo\.gymtracker\.devtest/);
   assert.match(flow, /Choose your starting plan/);
   assert.match(flow, /Activate Full Body Foundation/);
@@ -63,4 +73,30 @@ test("Phase 9 evidence runner requires a manifest and full edit/relaunch asserti
   assert.match(flow, /stopApp/);
   assert.match(flow, /clearState: false/);
   assert.match(flow, /clearState: false[\s\S]*- assertVisible: '\^Back Squat · Working set 1 · Rest idle\$'/u);
+
+  for (const writeBackFlow of [keepFlow, retryFlow]) {
+    assert.match(writeBackFlow, /appId: com\.fchoo\.gymtracker\.devtest/);
+    assert.match(writeBackFlow, /Start Full Body A/);
+    assert.match(writeBackFlow, /Complete Set 1[\s\S]*?Complete Set 2[\s\S]*?Complete Set 3/u);
+    for (const exerciseId of [
+      "5f140001-7e35-4a6d-9100-000000000002",
+      "5f140001-7e35-4a6d-9100-000000000003",
+      "5f140001-7e35-4a6d-9100-000000000004",
+      "5f140001-7e35-4a6d-9100-000000000005",
+    ]) {
+      assert.match(
+        writeBackFlow,
+        new RegExp(`exercise-actions-${exerciseId}`, "u"),
+      );
+    }
+    assert.match(writeBackFlow, /Save these changes to the plan\?/);
+    assert.match(writeBackFlow, /Keep plan as-is/);
+    assert.match(writeBackFlow, /Save changes to plan/);
+  }
+  assert.match(keepFlow, /Save these changes to the plan\?[\s\S]*?Keep plan as-is[\s\S]*?visible: "Today"/u);
+  assert.match(retryFlow, /arm_plan_write_back_failure/);
+  assert.match(retryFlow, /Plan write-back failure armed/);
+  assert.match(retryFlow, /Changes were not saved to the plan/);
+  assert.match(retryFlow, /Your completed workout is safe\. Try again or keep the plan as-is\./);
+  assert.match(retryFlow, /Retry saving changes/);
 });

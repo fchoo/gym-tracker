@@ -1,0 +1,114 @@
+appId: com.fchoo.gymtracker.devtest
+name: Phase 9 completed planned workout keeps the plan unchanged
+---
+- launchApp:
+    clearState: true
+    permissions:
+      notifications: deny
+- extendedWaitUntil:
+    visible: "Choose your starting plan"
+    timeout: 90000
+- tapOn: "Use Full Body Foundation"
+- tapOn: "Activate Full Body Foundation"
+- runFlow:
+    when:
+      visible: "Retry Today action"
+    commands:
+      - tapOn: "Retry Today action"
+- extendedWaitUntil:
+    visible: "Start Full Body A"
+    timeout: 90000
+- tapOn: "Start Full Body A"
+- extendedWaitUntil:
+    visible: "WORKOUT OVERVIEW"
+    timeout: 30000
+- assertVisible: "Complete Set 1"
+- tapOn: "Complete Set 1"
+- extendedWaitUntil:
+    visible: "Expand rest controls"
+    timeout: 30000
+- tapOn: "Expand rest controls"
+- tapOn: "Skip rest"
+- assertVisible: "Complete Set 2"
+- tapOn: "Complete Set 2"
+- extendedWaitUntil:
+    visible: "Expand rest controls"
+    timeout: 30000
+- tapOn: "Expand rest controls"
+- tapOn: "Skip rest"
+- assertVisible: "Complete Set 3"
+- tapOn: "Complete Set 3"
+- extendedWaitUntil:
+    visible: "Expand rest controls"
+    timeout: 30000
+- tapOn: "Expand rest controls"
+- tapOn: "Skip rest"
+- scrollUntilVisible:
+    element:
+      id: "exercise-actions-5f140001-7e35-4a6d-9100-000000000002"
+    direction: DOWN
+    centerElement: true
+    timeout: 30000
+- tapOn:
+    id: "exercise-actions-5f140001-7e35-4a6d-9100-000000000002"
+- tapOn: "Remove exercise"
+- tapOn:
+    id: "remove-exercise-confirm"
+- extendedWaitUntil:
+    notVisible:
+      id: "exercise-actions-5f140001-7e35-4a6d-9100-000000000002"
+    timeout: 30000
+- scrollUntilVisible:
+    element:
+      id: "exercise-actions-5f140001-7e35-4a6d-9100-000000000003"
+    direction: DOWN
+    centerElement: true
+    timeout: 30000
+- tapOn:
+    id: "exercise-actions-5f140001-7e35-4a6d-9100-000000000003"
+- tapOn: "Remove exercise"
+- tapOn:
+    id: "remove-exercise-confirm"
+- extendedWaitUntil:
+    notVisible:
+      id: "exercise-actions-5f140001-7e35-4a6d-9100-000000000003"
+    timeout: 30000
+- scrollUntilVisible:
+    element:
+      id: "exercise-actions-5f140001-7e35-4a6d-9100-000000000004"
+    direction: DOWN
+    centerElement: true
+    timeout: 30000
+- tapOn:
+    id: "exercise-actions-5f140001-7e35-4a6d-9100-000000000004"
+- tapOn: "Remove exercise"
+- tapOn:
+    id: "remove-exercise-confirm"
+- extendedWaitUntil:
+    notVisible:
+      id: "exercise-actions-5f140001-7e35-4a6d-9100-000000000004"
+    timeout: 30000
+- scrollUntilVisible:
+    element:
+      id: "exercise-actions-5f140001-7e35-4a6d-9100-000000000005"
+    direction: DOWN
+    centerElement: true
+    timeout: 30000
+- tapOn:
+    id: "exercise-actions-5f140001-7e35-4a6d-9100-000000000005"
+- tapOn: "Remove exercise"
+- tapOn:
+    id: "remove-exercise-confirm"
+- extendedWaitUntil:
+    visible: "Finish workout"
+    timeout: 30000
+- tapOn: "Finish workout"
+- extendedWaitUntil:
+    visible: "Save these changes to the plan?"
+    timeout: 60000
+- assertVisible: "Keep plan as-is"
+- assertVisible: "Save changes to plan"
+- tapOn: "Keep plan as-is"
+- extendedWaitUntil:
+    visible: "Today"
+    timeout: 30000

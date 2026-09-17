@@ -21,5 +21,7 @@ const result = spawnSync("maestro", [
   "--udid",
   build.device.serial,
   "maestro/phase9/in-workout-exercise-editing.yaml",
+  "maestro/phase9/completed-workout-plan-writeback-keep.yaml",
+  "maestro/phase9/completed-workout-plan-writeback-retry.yaml",
 ], { stdio: "inherit" });
 if (result.status !== 0) process.exit(result.status ?? 1);
