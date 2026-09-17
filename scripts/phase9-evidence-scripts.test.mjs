@@ -28,6 +28,12 @@ test("Phase 9 evidence runner requires a manifest and full edit/relaunch asserti
   assert.match(runner, /verify-phase9-task1-boundary\.mjs/);
   assert.match(runner, /sourceTreeSha256/);
   assert.match(runner, /installed APK bytes do not match/u);
+  assert.match(runner, /typeof installedPath !== "string"/u);
+  assert.doesNotMatch(
+    runner,
+    /installedPath !== manifest.installed_apk.device_path/u,
+    "Android may reassign the package install path after the runner reinstalls the exact APK",
+  );
   assert.match(runner, /--format", "junit"/);
   for (const id of [
     "D-01", "D-02", "D-03", "D-04", "D-05", "D-06", "D-07", "D-08",

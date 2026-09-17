@@ -249,7 +249,12 @@ function validateLiveInstallation(adb, manifest) {
   const abi = command(adb, ["-s", serial, "shell", "getprop", "ro.product.cpu.abi"]);
   const installedPath = command(adb, ["-s", serial, "shell", "pm", "path", PACKAGE])
     .split(/\r?\n/u).find((line) => line.startsWith("package:"))?.slice(8);
-  if (api !== manifest.device.api || abi !== manifest.device.abi || installedPath !== manifest.installed_apk.device_path) {
+  if (
+    api !== manifest.device.api
+    || abi !== manifest.device.abi
+    || typeof installedPath !== "string"
+    || installedPath.length === 0
+  ) {
     fail("live manifest device or installed package does not match");
   }
   const temporaryDirectory = mkdtempSync(path.join(os.tmpdir(), "phase9-installed-apk-"));
