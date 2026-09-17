@@ -95,6 +95,11 @@ function result(
 function repository(): jest.Mocked<OwnedPlanRepository> {
   return {
     read: jest.fn(async () => snapshot),
+    readSessionExerciseEditsForPlan: jest.fn(async () => null),
+    applySessionExerciseEditsToPlan: jest.fn(async () => {
+      throw new Error("unexpected_session_write_back");
+    }),
+    readSessionExerciseEditsToPlanResult: jest.fn(async () => null),
     createDraft: jest.fn(async () => result("create")),
     save: jest.fn(async () => result("save")),
     duplicate: jest.fn(async () => result("duplicate")),

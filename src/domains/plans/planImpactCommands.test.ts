@@ -11,11 +11,15 @@ import type {
   PlanImpactRepository,
   ExerciseReplacementRepositoryPreview,
 } from "../../platform/sqlite/repositories/planImpactRepository";
+import type {
+  ApplySessionExerciseEditsToPlanInput as StagedSessionExerciseEditsToPlanInput,
+} from "../../platform/sqlite/repositories/ownedPlanRepository";
 import {
   PlanImpactInputError,
   previewDayRemoval,
   previewExerciseReplacement,
   previewSessionExerciseEditsForPlan,
+  applySessionExerciseEditsToPlan,
   removePlanDayWithImpact,
   replacePlanExercise,
   type DayRemovalPreview,
@@ -934,6 +938,70 @@ describe("D-01/D-02 session exercise write-back preview", () => {
     expect(ordered?.previewToken).not.toBe(reordered?.previewToken);
     expect(reordered?.composition.map(({ sessionExerciseId }) => sessionExerciseId))
       .toEqual(["session-deadlift", "session-row", "session-bench"]);
+  });
+
+  it("applies exactly one canonical aggregate only after revalidating its preview", async () => {
+    const repository = {
+      readSessionExerciseEditsForPlan: jest.fn(async () => sessionWriteBackFacts),
+      readSessionExerciseEditsToPlanResult: jest.fn(async () => null),
+      applySessionExerciseEditsToPlan: jest.fn(async (
+        input: StagedSessionExerciseEditsToPlanInput,
+      ) => ({
+        outcome: "committed" as const,
+        operation: "session_exercise_edits" as const,
+        planId: input.planId,
+        planRevision: input.expectedPlanRevision + 1,
+        sourceSessionId: input.sourceSessionId,
+        currentWorkoutUnaffected: true as const,
+        invalidations: ["library:plans", `plan:${input.planId}`],
+      })),
+    };
+    const preview = await previewSessionExerciseEditsForPlan({
+      repository,
+      sha256,
+      input: { sessionId: "session-edited" },
+    });
+    const invalidate = jest.fn(async () => undefined);
+
+    await expect(applySessionExerciseEditsToPlan({
+      repository,
+      sha256,
+      nowMs,
+      invalidate,
+      input: {
+        requestId: "apply-session-edits",
+        sourceSessionId: "session-edited",
+        expectedPlanRevision: preview!.expectedPlanRevision,
+        previewToken: preview!.previewToken,
+        composition: preview!.composition,
+      },
+    })).resolves.toMatchObject({
+      outcome: "committed",
+      planRevision: 5,
+    });
+    expect(repository.applySessionExerciseEditsToPlan).toHaveBeenCalledTimes(1);
+    expect(invalidate).toHaveBeenCalledWith([
+      "library:plans",
+      "plan:plan-owner",
+    ]);
+
+    await expect(applySessionExerciseEditsToPlan({
+      repository,
+      sha256,
+      nowMs,
+      invalidate: async () => undefined,
+      input: {
+        requestId: "apply-session-edits-stale",
+        sourceSessionId: "session-edited",
+        expectedPlanRevision: preview!.expectedPlanRevision,
+        previewToken: preview!.previewToken,
+        composition: preview!.composition.map((entry) => ({
+          ...entry,
+          ...(entry.ordinal === 0 ? { restSeconds: entry.restSeconds + 1 } : {}),
+        })),
+      },
+    })).rejects.toMatchObject({ code: "plan_impact_preview_stale" });
+    expect(repository.applySessionExerciseEditsToPlan).toHaveBeenCalledTimes(1);
   });
 });
 

@@ -18,8 +18,10 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 
 import {
+  applySessionExerciseEditsToPlan,
   previewDayRemoval,
   previewExerciseReplacement,
+  previewSessionExerciseEditsForPlan,
   removePlanDayWithImpact,
   replacePlanExercise,
 } from "../../src/domains/plans/planImpactCommands";
@@ -39,6 +41,12 @@ import {
   ownedRecommendationsMigration,
 } from "../../src/platform/sqlite/migrations/0010_owned_recommendations";
 import {
+  sessionExerciseEditingMigration,
+} from "../../src/platform/sqlite/migrations/0019_session_exercise_editing";
+import {
+  sessionExerciseEditReceiptsMigration,
+} from "../../src/platform/sqlite/migrations/0020_session_exercise_edit_receipts";
+import {
   scheduleActivationMigration,
 } from "../../src/platform/sqlite/migrations/0008_schedule_activation";
 import {
@@ -56,6 +64,9 @@ import {
   createSqliteKernel,
   type SqliteKernel,
 } from "../../src/platform/sqlite/sqliteKernel";
+import {
+  validatedRecoveryBackup,
+} from "../support/validatedRecoveryBackup";
 
 class NodePreparedResult<Row extends Record<string, unknown>>
 implements SqlitePreparedResult<Row> {
@@ -188,7 +199,10 @@ async function setupRuntime(
       scheduleActivationMigration,
       ownedPlansMigration,
       ownedRecommendationsMigration,
+      sessionExerciseEditingMigration,
+      sessionExerciseEditReceiptsMigration,
     ],
+    recoveryBackup: validatedRecoveryBackup(),
   }).run();
   const scheduleMode = options.scheduleMode ?? "weekday";
   const removedBindingOrdinal = options.removedBindingOrdinal ?? 0;
@@ -275,6 +289,41 @@ async function setupRuntime(
            '{"kind":"manual_hold","id":"manual-hold-v1","version":1}',
            'load_reps', 1, 1, 'active', 2
          )`,
+      );
+    }
+    for (const [id, ordinal, targetId] of [
+      ['retained-bodyweight-kept', 1, 'retained-bodyweight-kept-target'],
+      ['retained-bodyweight-removed', 2, 'retained-bodyweight-removed-target'],
+    ] as const) {
+      await transaction.execute(
+        `INSERT INTO owned_plan_day_exercises
+          (id, plan_day_id, exercise_id, ordinal,
+           between_exercise_rest_seconds, metric_profile,
+           metric_contract_version, exercise_metric_generation, revision)
+         VALUES (?, 'retained-day', 'exercise-bodyweight', ?, 60,
+                 'bodyweight_reps', 1, 1, 1)`,
+        [id, ordinal],
+      );
+      await transaction.execute(
+        `INSERT INTO owned_plan_working_set_targets
+          (id, plan_day_exercise_id, ordinal, target_json, unit_json,
+           metric_profile, metric_contract_version,
+           exercise_metric_generation, revision)
+         VALUES (?, ?, 0,
+                 '{"version":1,"profile":"bodyweight_reps","minReps":8,"maxReps":12,"variationId":"strict","perSide":false}',
+                 '{"version":1,"count":"repetitions"}',
+                 'bodyweight_reps', 1, 1, 1)`,
+        [targetId, id],
+      );
+      await transaction.execute(
+        `INSERT INTO owned_plan_progression_policies
+          (id, plan_day_exercise_id, policy_kind, policy_id, policy_version,
+           rule_json, metric_profile, metric_contract_version,
+           exercise_metric_generation, status, revision)
+         VALUES (?, ?, 'manual_hold', 'bodyweight_reps.manual_hold.v1', 1,
+                 '{"kind":"manual_hold","id":"bodyweight_reps.manual_hold.v1","version":1}',
+                 'bodyweight_reps', 1, 1, 'active', 1)`,
+        [`${id}-policy`, id],
       );
     }
     await transaction.execute(
@@ -450,6 +499,9 @@ async function setupRuntime(
     databasePath,
     kernel,
     ownedPlans: createOwnedPlanRepository(kernel),
+    setFailCommit(value: boolean) {
+      rejectCommit = value;
+    },
     repository: createPlanImpactRepository(kernel, {
       beforeWrite: async (stage, transaction) => {
         if (
@@ -495,6 +547,144 @@ async function immutableRows(kernel: SqliteKernel) {
     opportunities: JSON.stringify(opportunities),
     oldVersions: JSON.stringify(oldVersions),
   };
+}
+
+async function seedCompletedEditedSession(
+  kernel: SqliteKernel,
+): Promise<void> {
+  await kernel.write(async (transaction) => {
+    await transaction.execute(
+      `UPDATE workout_sessions
+       SET modified_from_plan = 1
+       WHERE id = 'retained-completed-session'`,
+    );
+    await transaction.execute(
+      `INSERT INTO owned_plan_day_exercises
+        (id, plan_day_id, exercise_id, ordinal,
+         between_exercise_rest_seconds, metric_profile,
+         metric_contract_version, exercise_metric_generation, revision)
+       VALUES ('retained-load-kept', 'retained-day', 'exercise-incline', 3,
+               120, 'load_reps', 1, 1, 1)`,
+    );
+    await transaction.execute(
+      `INSERT INTO owned_plan_working_set_targets
+        (id, plan_day_exercise_id, ordinal, target_json, unit_json,
+         metric_profile, metric_contract_version,
+         exercise_metric_generation, revision)
+       VALUES ('retained-load-kept-target', 'retained-load-kept', 0,
+               '{"version":1,"profile":"load_reps","loadGrams":30000,"minReps":6,"maxReps":8,"incrementGrams":2500,"perSide":false}',
+               '{"version":1,"load":"grams","count":"repetitions"}',
+               'load_reps', 1, 1, 1)`,
+    );
+    await transaction.execute(
+      `INSERT INTO owned_plan_progression_policies
+        (id, plan_day_exercise_id, policy_kind, policy_id, policy_version,
+         rule_json, metric_profile, metric_contract_version,
+         exercise_metric_generation, status, revision)
+       VALUES ('retained-load-kept-policy', 'retained-load-kept', 'automatic',
+               'load_reps.double_progression.v1', 1,
+               '{"kind":"automatic","id":"load_reps.double_progression.v1","version":1}',
+               'load_reps', 1, 1, 'active', 1)`,
+    );
+    await transaction.execute(
+      `INSERT INTO session_exercises
+        (id, session_id, source_plan_day_exercise_id, exercise_id, ordinal,
+         origin, display_ordinal, exercise_name, metric_profile,
+         metric_contract_version, exercise_metric_generation,
+         default_rest_seconds, target_revision, status, revision)
+       VALUES
+        ('writeback-squat', 'retained-completed-session', NULL,
+         'exercise-squat', 0, 'planned', 0, 'Back Squat', 'load_reps',
+         1, 1, 90, 1, 'completed', 1),
+        ('writeback-incline', 'retained-completed-session', NULL,
+         'exercise-incline', 1, 'added', 1, 'Incline Press', 'load_reps',
+         1, 1, 75, 0, 'completed', 1),
+        ('writeback-deadlift', 'retained-completed-session', NULL,
+         'exercise-incline', 2, 'planned', 2, 'Incline Press', 'load_reps',
+         1, 1, 120, 1, 'completed', 1),
+        ('writeback-removed', 'retained-completed-session', NULL,
+         'exercise-bodyweight', 3, 'planned', 3, 'Press', 'bodyweight_reps',
+         1, 1, 60, 1, 'skipped', 1)`,
+    );
+    for (const [setId, exerciseId, sourceTargetId, profile, targetJson, unitJson] of [
+      [
+        'writeback-squat-set',
+        'writeback-squat',
+        'retained-target',
+        'load_reps',
+        '{"version":1,"profile":"load_reps","loadGrams":20000,"minReps":8,"maxReps":12,"incrementGrams":2500,"perSide":false}',
+        '{"version":1,"load":"grams","count":"repetitions"}',
+      ],
+      [
+        'writeback-incline-set',
+        'writeback-incline',
+        null,
+        'load_reps',
+        '{"version":1,"profile":"load_reps","loadGrams":0,"minReps":8,"maxReps":8,"incrementGrams":1000,"perSide":false}',
+        '{"version":1,"load":"grams","count":"repetitions"}',
+      ],
+      [
+        'writeback-deadlift-set',
+        'writeback-deadlift',
+        'retained-load-kept-target',
+        'load_reps',
+        '{"version":1,"profile":"load_reps","loadGrams":30000,"minReps":6,"maxReps":8,"incrementGrams":2500,"perSide":false}',
+        '{"version":1,"load":"grams","count":"repetitions"}',
+      ],
+      [
+        'writeback-removed-set',
+        'writeback-removed',
+        null,
+        'bodyweight_reps',
+        '{"version":1,"profile":"bodyweight_reps","minReps":8,"maxReps":12,"variationId":"strict","perSide":false}',
+        '{"version":1,"count":"repetitions"}',
+      ],
+    ] as const) {
+      await transaction.execute(
+        `INSERT INTO session_sets
+          (id, session_exercise_id, set_kind, ordinal,
+           source_plan_working_set_target_id,
+           source_owned_plan_working_set_target_id, target_load_grams,
+           target_min_reps, target_max_reps, target_json, unit_json,
+           rule_type, rule_version, metric_profile, metric_contract_version,
+           exercise_metric_generation, observed_load_grams, observed_reps,
+           observed_json, status, draft_updated_at_ms, completed_at_ms,
+           completion_idempotency_key, revision)
+         VALUES (?, ?, 'working', 0, NULL, ?, 0, 0, 0, ?, ?,
+                 ?, 1, ?, 1, 1, NULL, NULL, NULL, 'completed', NULL, 20, NULL, 1)`,
+        [setId, exerciseId, sourceTargetId, targetJson, unitJson, profile, profile],
+      );
+    }
+    await transaction.execute(
+      `INSERT INTO workout_session_exercise_edit_receipts
+        (request_id, request_sha256, operation, session_id,
+         subject_session_exercise_id, replacement_session_exercise_id,
+         expected_session_revision, result_session_revision, result_json,
+         committed_at_ms)
+       VALUES
+        ('writeback-replace', ?, 'replace_exercise',
+         'retained-completed-session', 'writeback-squat', 'writeback-incline',
+         1, 2, '{"outcome":"committed"}', 15),
+        ('writeback-remove', ?, 'remove_exercise',
+         'retained-completed-session', 'writeback-removed', NULL,
+         2, 3, '{"outcome":"committed"}', 16)`,
+      ["a".repeat(64), "b".repeat(64)],
+    );
+  });
+}
+
+async function sessionWriteBackPreview(
+  ownedPlans: ReturnType<typeof createOwnedPlanRepository>,
+) {
+  const preview = await previewSessionExerciseEditsForPlan({
+    repository: ownedPlans,
+    sha256,
+    input: { sessionId: 'retained-completed-session' },
+  });
+  if (preview === null) {
+    throw new Error('session_write_back_preview_missing');
+  }
+  return preview;
 }
 
 async function replacementRepositoryInput(
@@ -1191,6 +1381,164 @@ describe("plan impact day removal", () => {
     ).get()).toEqual({ count: 1 });
     inspection.close();
     expect(await immutableRows(failedRuntime.kernel)).toEqual(before);
+  });
+});
+
+describe("D-01/D-02 session exercise write-back aggregate", () => {
+  it("applies the final edited composition once while leaving recorded session facts byte-identical", async () => {
+    const runtime = await setupRuntime();
+    await seedCompletedEditedSession(runtime.kernel);
+  const facts = await runtime.ownedPlans.readSessionExerciseEditsForPlan({
+    sessionId: 'retained-completed-session',
+  });
+  expect(facts).toMatchObject({
+    session: {
+      source: 'scheduled_day',
+      status: 'completed',
+      modifiedFromPlan: true,
+      planId: 'retained-plan',
+      planDayId: 'retained-day',
+    },
+    day: { planRevision: 4 },
+  });
+  if (facts === null) {
+    throw new Error('session_write_back_facts_missing');
+  }
+  if (facts.sessionExercises.length !== 4 || facts.edits.length !== 2) {
+    throw new Error(`session_write_back_facts_invalid:${JSON.stringify(facts)}`);
+  }
+    const before = await immutableRows(runtime.kernel);
+    const preview = await sessionWriteBackPreview(runtime.ownedPlans);
+
+    const result = await applySessionExerciseEditsToPlan({
+      repository: runtime.ownedPlans,
+      sha256,
+      nowMs: () => 500,
+      invalidate: async () => undefined,
+      input: {
+        requestId: 'apply-session-writeback',
+        sourceSessionId: preview.sourceSessionId,
+        expectedPlanRevision: preview.expectedPlanRevision,
+        previewToken: preview.previewToken,
+        composition: preview.composition,
+      },
+    });
+
+    expect(result).toMatchObject({
+      outcome: 'committed',
+      operation: 'session_exercise_edits',
+      planId: 'retained-plan',
+      planRevision: 5,
+      sourceSessionId: 'retained-completed-session',
+      currentWorkoutUnaffected: true,
+    });
+    await expect(runtime.ownedPlans.read('retained-plan')).resolves
+      .toMatchObject({
+        revision: 5,
+        days: expect.arrayContaining([expect.objectContaining({
+          id: 'retained-day',
+          occurrences: [
+            expect.objectContaining({ exerciseId: 'exercise-incline', ordinal: 0 }),
+            expect.objectContaining({ exerciseId: 'exercise-incline', ordinal: 1 }),
+          ],
+        })]),
+      });
+    await expect(runtime.kernel.queryAll(
+      `SELECT id, ordinal
+       FROM owned_plan_day_exercises
+       WHERE id IN ('retained-occurrence', 'retained-bodyweight-removed')
+       ORDER BY id`,
+    )).resolves.toEqual([
+      { id: 'retained-bodyweight-removed', ordinal: expect.any(Number) },
+      { id: 'retained-occurrence', ordinal: expect.any(Number) },
+    ]);
+    const retired = await runtime.kernel.queryAll<{ id: string; ordinal: number }>(
+      `SELECT id, ordinal
+       FROM owned_plan_day_exercises
+       WHERE id IN ('retained-occurrence', 'retained-bodyweight-removed')
+       ORDER BY id`,
+    );
+    expect(retired.every(({ ordinal }) => ordinal >= 1_000_000)).toBe(true);
+    expect(await immutableRows(runtime.kernel)).toEqual(before);
+
+    await expect(applySessionExerciseEditsToPlan({
+      repository: runtime.ownedPlans,
+      sha256,
+      nowMs: () => 900,
+      invalidate: async () => { throw new Error('replay_must_not_invalidate'); },
+      input: {
+        requestId: 'apply-session-writeback',
+        sourceSessionId: preview.sourceSessionId,
+        expectedPlanRevision: preview.expectedPlanRevision,
+        previewToken: preview.previewToken,
+        composition: preview.composition,
+      },
+    })).resolves.toEqual({
+      ...result,
+      outcome: 'already_committed',
+    });
+  });
+
+  it("rejects stale previews and rolls back every write on commit failure", async () => {
+    const stale = await setupRuntime();
+    await seedCompletedEditedSession(stale.kernel);
+    const preview = await sessionWriteBackPreview(stale.ownedPlans);
+    const before = await immutableRows(stale.kernel);
+    await stale.kernel.write((transaction) => transaction.execute(
+      `UPDATE plans SET revision = revision + 1 WHERE id = 'retained-plan'`,
+    ));
+    await expect(applySessionExerciseEditsToPlan({
+      repository: stale.ownedPlans,
+      sha256,
+      nowMs: () => 500,
+      invalidate: async () => undefined,
+      input: {
+        requestId: 'apply-session-writeback-stale',
+        sourceSessionId: preview.sourceSessionId,
+        expectedPlanRevision: preview.expectedPlanRevision,
+        previewToken: preview.previewToken,
+        composition: preview.composition,
+      },
+    })).rejects.toMatchObject({ code: 'plan_impact_preview_stale' });
+    await expect(immutableRows(stale.kernel)).resolves.toEqual(before);
+
+    const failed = await setupRuntime();
+    await seedCompletedEditedSession(failed.kernel);
+    const failedPreview = await sessionWriteBackPreview(failed.ownedPlans);
+    const failedBefore = await Promise.all([
+      immutableRows(failed.kernel),
+      failed.kernel.queryAll(
+        `SELECT * FROM owned_plan_day_exercises
+         WHERE plan_day_id = 'retained-day' ORDER BY id`,
+      ),
+      failed.kernel.queryAll(
+        `SELECT * FROM owned_plan_mutation_requests ORDER BY request_id`,
+      ),
+    ]);
+    failed.setFailCommit(true);
+    await expect(applySessionExerciseEditsToPlan({
+      repository: failed.ownedPlans,
+      sha256,
+      nowMs: () => 500,
+      invalidate: async () => undefined,
+      input: {
+        requestId: 'apply-session-writeback-failed',
+        sourceSessionId: failedPreview.sourceSessionId,
+        expectedPlanRevision: failedPreview.expectedPlanRevision,
+        previewToken: failedPreview.previewToken,
+        composition: failedPreview.composition,
+      },
+    })).rejects.toMatchObject({ code: 'sqlite_commit_failed' });
+    await expect(Promise.all([
+      immutableRows(failed.kernel),
+      failed.kernel.queryAll(
+        `SELECT * FROM owned_plan_day_exercises
+         WHERE plan_day_id = 'retained-day' ORDER BY id`,
+      ),
+      failed.kernel.queryAll(
+        `SELECT * FROM owned_plan_mutation_requests ORDER BY request_id`,
+      ),
+    ])).resolves.toEqual(failedBefore);
   });
 });
 
