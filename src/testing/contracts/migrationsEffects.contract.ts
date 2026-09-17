@@ -210,42 +210,51 @@ const contractCases: Record<MigrationsEffectsContractCaseId, ContractCase> = {
   },
 
   async "migration-retained-v1"(adapter, caseId) {
-    await withFreshRuntime(adapter, caseId, async ({ kernel }) => {
-      await createMigrationRunner({
-        databaseName: caseId,
-        kernel,
-        migrations: PHASE1_MIGRATIONS,
-      }).run();
-      await kernel.write(async (transaction) => {
-        await transaction.execute(
-          `INSERT INTO content_packs
-            (id, namespace, version, source_revision, installed_at_ms)
-           VALUES (?, ?, ?, ?, ?)`,
-          ["retained-pack", "retained", 1, 9, 100],
+    let stage = "open";
+    try {
+      await withFreshRuntime(adapter, caseId, async ({ kernel }) => {
+        stage = "initial_migration";
+        await createMigrationRunner({
+          databaseName: caseId,
+          kernel,
+          migrations: PHASE1_MIGRATIONS,
+        }).run();
+        stage = "retained_write";
+        await kernel.write(async (transaction) => {
+          await transaction.execute(
+            `INSERT INTO content_packs
+              (id, namespace, version, source_revision, installed_at_ms)
+             VALUES (?, ?, ?, ?, ?)`,
+            ["retained-pack", "retained", 1, 9, 100],
+          );
+        });
+        stage = "repeat_migration";
+        const result = await createMigrationRunner({
+          databaseName: caseId,
+          kernel,
+          migrations: PHASE1_MIGRATIONS,
+        }).run();
+        stage = "retained_read";
+        const rows = await kernel.queryAll<{
+          id: string;
+          source_revision: number;
+        }>(
+          `SELECT id, source_revision FROM content_packs
+           WHERE id = 'retained-pack'`,
+        );
+        invariant(
+          result.appliedVersions.length === 0,
+          "retained_current_reapplied",
+        );
+        invariant(
+          rows[0]?.id === "retained-pack"
+          && rows[0].source_revision === 9,
+          "retained_v1_row_changed",
         );
       });
-      const result = await createMigrationRunner({
-        databaseName: caseId,
-        kernel,
-        migrations: PHASE1_MIGRATIONS,
-      }).run();
-      const rows = await kernel.queryAll<{
-        id: string;
-        source_revision: number;
-      }>(
-        `SELECT id, source_revision FROM content_packs
-         WHERE id = 'retained-pack'`,
-      );
-      invariant(
-        result.appliedVersions.length === 0,
-        "retained_current_reapplied",
-      );
-      invariant(
-        rows[0]?.id === "retained-pack"
-        && rows[0].source_revision === 9,
-        "retained_v1_row_changed",
-      );
-    });
+    } catch (error) {
+      throw new Error(`retained_v1_${stage}_${safeErrorCode(error)}`);
+    }
   },
 
   async "migration-statement-rollback"(adapter, caseId) {
