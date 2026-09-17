@@ -18,6 +18,7 @@ import {
 
 import {
   Keyboard,
+  KeyboardAvoidingView,
   Modal,
   ScrollView,
   StyleSheet,
@@ -2285,7 +2286,11 @@ function PopulatedWorkoutOverview({
         transparent
         visible={exerciseAddPickerVisible}
       >
-        <View style={styles.modalBackdrop}>
+        <KeyboardAvoidingView
+          behavior="padding"
+          style={styles.modalBackdrop}
+          testID="active-workout-add-exercise-picker-keyboard-layout"
+        >
           <ScrollView
             accessibilityViewIsModal
             contentContainerStyle={styles.moreSheetContent}
@@ -2351,7 +2356,7 @@ function PopulatedWorkoutOverview({
               />
             ) : null}
           </ScrollView>
-        </View>
+        </KeyboardAvoidingView>
       </Modal>
       <Modal
         animationType={reduceMotion ? "none" : "fade"}
@@ -2364,7 +2369,11 @@ function PopulatedWorkoutOverview({
         transparent
         visible={replacementPickerForId !== null}
       >
-        <View style={styles.modalBackdrop}>
+        <KeyboardAvoidingView
+          behavior="padding"
+          style={styles.modalBackdrop}
+          testID="replace-exercise-picker-keyboard-layout"
+        >
           <ScrollView
             accessibilityViewIsModal
             contentContainerStyle={styles.moreSheetContent}
@@ -2435,7 +2444,7 @@ function PopulatedWorkoutOverview({
               />
             )}
           </ScrollView>
-        </View>
+        </KeyboardAvoidingView>
       </Modal>
       <ConfirmationSheet
         body={confirmationCopy.body}

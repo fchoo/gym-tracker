@@ -704,6 +704,9 @@ describe("Plan 01-08 ActiveWorkoutScreen", () => {
     await fireEvent.press(screen.getByRole("button", {
       name: "Add exercise",
     }));
+    expect(screen.getByTestId(
+      "active-workout-add-exercise-picker-keyboard-layout",
+    )).toBeOnTheScreen();
     await fireEvent.changeText(
       screen.getByLabelText("Search exercises"),
       "Overhead Press",
@@ -766,6 +769,9 @@ describe("Plan 01-08 ActiveWorkoutScreen", () => {
     }));
     await fireEvent.press(screen.getByRole("button", { name: "Replace exercise" }));
     expect(screen.getByRole("header", { name: "Choose exercise" })).toBeOnTheScreen();
+    expect(screen.getByTestId(
+      "replace-exercise-picker-keyboard-layout",
+    )).toBeOnTheScreen();
     expect(screen.getByLabelText("Search exercises")).toBeOnTheScreen();
     expect(screen.getByTestId("replace-exercise-option-barbell-row"))
       .toBeOnTheScreen();
