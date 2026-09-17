@@ -62,6 +62,7 @@ export {
 } from "./RestAlertSettingsSheet";
 export {
   M3SearchField,
+  type M3SearchFieldHandle,
   type M3SearchFieldProps,
   type M3SearchFieldState,
 } from "./M3SearchField";

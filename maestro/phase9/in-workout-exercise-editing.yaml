@@ -52,6 +52,8 @@ name: Phase 9 add exercise and relaunch persistence
 - tapOn: "Search exercises"
 - inputText: "Back Squat"
 - tapOn: "Back Squat. Add exercise"
+- waitForAnimationToEnd:
+    timeout: 10000
 - extendedWaitUntil:
     visible: "Add Back Squat"
     timeout: 30000
@@ -126,6 +128,8 @@ name: Phase 9 add exercise and relaunch persistence
 - inputText: "Bench Press"
 - tapOn:
     id: "replace-exercise-option-5f140001-7e35-4a6d-9100-000000000002"
+- waitForAnimationToEnd:
+    timeout: 10000
 - extendedWaitUntil:
     visible: "Replace with Bench Press"
     timeout: 30000

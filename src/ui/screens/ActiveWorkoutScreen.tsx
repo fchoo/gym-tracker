@@ -71,6 +71,7 @@ import {
   IconAction,
   InlineNotice,
   M3SearchField,
+  type M3SearchFieldHandle,
   PrimaryAction,
   ScreenHeader,
   SecondaryAction,
@@ -800,6 +801,8 @@ function PopulatedWorkoutOverview({
   const [replacementQuery, setReplacementQuery] = useState("");
   const [replacementExerciseId, setReplacementExerciseId] =
     useState<string | null>(null);
+  const exerciseAddSearchRef = useRef<M3SearchFieldHandle>(null);
+  const replacementSearchRef = useRef<M3SearchFieldHandle>(null);
   const moreActionRef = useRef<View>(null);
   const moreFirstActionRef = useRef<View>(null);
   const exerciseActionRefs = useRef(new Map<string, View | null>());
@@ -2303,6 +2306,7 @@ function PopulatedWorkoutOverview({
               label="Search exercises"
               onChangeText={setExerciseAddQuery}
               resultCount={exerciseAddCandidates.length}
+              ref={exerciseAddSearchRef}
               state={exerciseAddCandidates.length === 0 ? "empty" : "results"}
               value={exerciseAddQuery}
             />
@@ -2313,6 +2317,7 @@ function PopulatedWorkoutOverview({
                 key={candidate.id}
                 onPress={() => {
                   setExerciseAddSelectedId(candidate.id);
+                  exerciseAddSearchRef.current?.blur();
                   Keyboard.dismiss();
                 }}
                 testID={`add-exercise-option-${candidate.id}`}
@@ -2386,6 +2391,7 @@ function PopulatedWorkoutOverview({
               label="Search exercises"
               onChangeText={setReplacementQuery}
               resultCount={replacementCandidates.length}
+              ref={replacementSearchRef}
               state={replacementCandidates.length === 0 ? "empty" : "results"}
               value={replacementQuery}
             />
@@ -2404,6 +2410,7 @@ function PopulatedWorkoutOverview({
                 key={candidate.id}
                 onPress={() => {
                   setReplacementExerciseId(candidate.id);
+                  replacementSearchRef.current?.blur();
                   Keyboard.dismiss();
                 }}
                 testID={`replace-exercise-option-${candidate.id}`}
