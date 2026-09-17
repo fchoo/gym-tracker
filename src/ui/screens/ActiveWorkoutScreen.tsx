@@ -1848,7 +1848,7 @@ function PopulatedWorkoutOverview({
                       opacity: exerciseEditBusy ? 0.62 : 1,
                     },
                   ]}
-                  testID={`exercise-actions-${exercise.id}`}
+                  testID={`exercise-actions-${exercise.exerciseId}`}
                 >
                   <Text
                     accessibilityElementsHidden

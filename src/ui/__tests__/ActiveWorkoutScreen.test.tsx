@@ -637,6 +637,7 @@ describe("Plan 01-08 ActiveWorkoutScreen", () => {
     const actions = screen.getByRole("button", {
       name: "Bench Press exercise actions",
     });
+    expect(actions).toHaveProp("testID", "exercise-actions-bench-press");
     expect(actions).toHaveProp("accessibilityState", expect.objectContaining({
       expanded: false,
     }));
