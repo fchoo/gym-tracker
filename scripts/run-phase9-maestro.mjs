@@ -16,12 +16,18 @@ if (typeof build.apk?.path !== "string" || !existsSync(build.apk.path)) {
 if (typeof build.device?.serial !== "string" || build.device.serial.length === 0) {
   throw new Error("Phase 9 Maestro: manifest device serial is missing.");
 }
-const result = spawnSync("maestro", [
-  "test",
-  "--udid",
-  build.device.serial,
+const phase9Flows = [
   "maestro/phase9/in-workout-exercise-editing.yaml",
   "maestro/phase9/completed-workout-plan-writeback-keep.yaml",
   "maestro/phase9/completed-workout-plan-writeback-retry.yaml",
-], { stdio: "inherit" });
-if (result.status !== 0) process.exit(result.status ?? 1);
+];
+
+for (const flow of phase9Flows) {
+  const result = spawnSync("maestro", [
+    "test",
+    "--udid",
+    build.device.serial,
+    flow,
+  ], { stdio: "inherit" });
+  if (result.status !== 0) process.exit(result.status ?? 1);
+}

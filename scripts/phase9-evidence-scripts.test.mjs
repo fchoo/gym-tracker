@@ -20,6 +20,12 @@ test("Phase 9 evidence runner requires a manifest and full edit/relaunch asserti
   assert.match(runner, /maestro\/phase9\/in-workout-exercise-editing\.yaml/);
   assert.match(runner, /completed-workout-plan-writeback-keep\.yaml/);
   assert.match(runner, /completed-workout-plan-writeback-retry\.yaml/);
+  assert.match(runner, /for \(const flow of phase9Flows\)/);
+  assert.doesNotMatch(
+    runner,
+    /spawnSync\("maestro", \[\s*"test",[\s\S]*?in-workout-exercise-editing\.yaml[\s\S]*?completed-workout-plan-writeback-keep\.yaml[\s\S]*?completed-workout-plan-writeback-retry\.yaml/u,
+    "Phase 9 must run clear-state flows one at a time on the single manifest device",
+  );
   assert.match(flow, /appId: com\.fchoo\.gymtracker\.devtest/);
   assert.match(flow, /Choose your starting plan/);
   assert.match(flow, /Activate Full Body Foundation/);
