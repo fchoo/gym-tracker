@@ -522,13 +522,17 @@ const contractCases: Record<MigrationsEffectsContractCaseId, ContractCase> = {
   },
 
   async "effects-lease-replay"(adapter, caseId) {
-    await withFreshRuntime(adapter, caseId, async ({ kernel }) => {
+    let stage = "create_runtime";
+    try {
+      await withFreshRuntime(adapter, caseId, async ({ kernel }) => {
+      stage = "migrate";
       await createMigrationRunner({
         databaseName: caseId,
         kernel,
         migrations: PHASE1_MIGRATIONS,
       }).run();
       const store = createEffectStore(kernel);
+      stage = "enqueue";
       await kernel.write((transaction) => enqueuePendingEffect(
         transaction,
         {
@@ -542,12 +546,14 @@ const contractCases: Record<MigrationsEffectsContractCaseId, ContractCase> = {
           nowMs: 100,
         },
       ));
+      stage = "first_claim";
       const firstClaim = await store.claimNext({
         nowMs: 100,
         leaseDurationMs: 50,
         maxAttempts: EFFECT_MAX_ATTEMPTS,
       });
       invariant(firstClaim?.attemptCount === 1, "native_effect_not_claimed");
+      stage = "reset_expired_claim";
       invariant(
         await store.resetExpiredClaims(150) === 1,
         "native_effect_lease_not_reset",
@@ -570,14 +576,19 @@ const contractCases: Record<MigrationsEffectsContractCaseId, ContractCase> = {
           regenerate_load_reps_recommendation: async () => undefined,
         },
       });
+      stage = "drain";
       const result = await runner.drain({ nowMs: 200, limit: 2 });
       invariant(result.completed === 1, "native_effect_not_completed");
       invariant(executions === 1, "native_effect_executed_more_than_once");
+      stage = "verify_replay";
       invariant(
         (await store.findById("native-effect-lease"))?.attemptCount === 2,
         "native_effect_replay_attempt_missing",
       );
-    });
+      });
+    } catch (error) {
+      throw new Error(`native_effect_lease_${stage}_${safeErrorCode(error)}`);
+    }
   },
 
   async "effects-stale-revision"(adapter, caseId) {
