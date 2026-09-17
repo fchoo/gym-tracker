@@ -526,6 +526,7 @@ function EmptyWorkoutOverview({
   const [query, setQuery] = useState("");
   const [selectedExerciseId, setSelectedExerciseId] = useState<string | null>(null);
   const [addFailed, setAddFailed] = useState(false);
+  const searchRef = useRef<M3SearchFieldHandle>(null);
   const adaptiveWidth = width === undefined ? {} : { width };
   const filteredExercises = availableExercises.filter((exercise) =>
     exercise.name.toLocaleLowerCase("en").includes(query.trim().toLocaleLowerCase("en")),
@@ -630,10 +631,18 @@ function EmptyWorkoutOverview({
             {pickerVisible ? (
               <ContentCard>
                 <SectionHeader title="Choose exercise" tone="card" />
+                {selectedExercise === undefined ? null : (
+                  <PrimaryAction
+                    busy={outcomeBusy}
+                    label={`Add ${selectedExercise.name}`}
+                    onPress={() => void addExercise()}
+                  />
+                )}
                 <M3SearchField
                   label="Search exercises"
                   onChangeText={setQuery}
                   resultCount={filteredExercises.length}
+                  ref={searchRef}
                   state={filteredExercises.length === 0 ? "empty" : "results"}
                   value={query}
                 />
@@ -642,7 +651,11 @@ function EmptyWorkoutOverview({
                     accessibilityLabel={`${exercise.name}. Add exercise`}
                     accessibilityRole="button"
                     key={exercise.id}
-                    onPress={() => setSelectedExerciseId(exercise.id)}
+                    onPress={() => {
+                      setSelectedExerciseId(exercise.id);
+                      searchRef.current?.blur();
+                      Keyboard.dismiss();
+                    }}
                     style={[styles.exerciseOption, { borderColor: colors.contentCardBorder }]}
                   >
                     <Text style={[typeScale.bodyStrong as TextStyle, { color: colors.contentCardText }]}>
@@ -653,13 +666,6 @@ function EmptyWorkoutOverview({
                     </Text>
                   </FocusablePressable>
                 ))}
-                {selectedExercise === undefined ? null : (
-                  <PrimaryAction
-                    busy={outcomeBusy}
-                    label={`Add ${selectedExercise.name}`}
-                    onPress={() => void addExercise()}
-                  />
-                )}
                 {addFailed ? (
                   <InlineNotice
                     body="Your workout was not changed. Try again from the latest workout."

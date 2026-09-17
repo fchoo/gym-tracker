@@ -364,13 +364,22 @@ async function renderActive(
 
 describe("Plan 01-08 ActiveWorkoutScreen", () => {
   it("adds a selected library exercise from an empty workout and retains revision-checked zero-set confirmation", async () => {
+    const addExercise = jest.fn<NonNullable<ActiveWorkoutCommands["addExercise"]>>(async (input) => ({
+      outcome: "committed",
+      sessionId: input.sessionId,
+      sessionExerciseId: input.sessionExerciseId,
+      setId: input.setId,
+      sessionRevision: input.expectedSessionRevision + 1,
+    }));
+    const dismissKeyboard = jest.spyOn(Keyboard, "dismiss");
     const saveZeroSetWorkout = jest.fn<ActiveWorkoutCommands["saveZeroSetWorkout"]>(async () => ({
       detail: {} as never,
       invalidationScopes: [],
     }));
     const outcomeSaved = jest.fn();
     await renderActive({
-      commands: commands({ saveZeroSetWorkout }),
+      availableExercises: [{ id: "back-squat", name: "Back Squat" }],
+      commands: commands({ addExercise, saveZeroSetWorkout }),
       onOutcomeSaved: outcomeSaved,
       sessionId: "empty-session",
       view: emptyWorkoutView(),
@@ -380,6 +389,20 @@ describe("Plan 01-08 ActiveWorkoutScreen", () => {
     expect(screen.getByLabelText("Add exercise"))
       .toHaveProp("accessibilityState", expect.objectContaining({ disabled: false }));
     expect(screen.queryByLabelText(/Working set/u)).not.toBeOnTheScreen();
+
+    await fireEvent.press(screen.getByRole("button", { name: "Add exercise" }));
+    await fireEvent.changeText(screen.getByLabelText("Search exercises"), "Back Squat");
+    await fireEvent.press(screen.getByRole("button", {
+      name: "Back Squat. Add exercise",
+    }));
+    expect(dismissKeyboard).toHaveBeenCalledTimes(1);
+    await fireEvent.press(screen.getByRole("button", { name: "Add Back Squat" }));
+    await waitFor(() => expect(addExercise).toHaveBeenCalledWith(expect.objectContaining({
+      expectedSessionRevision: 41,
+      libraryExerciseId: "back-squat",
+      sessionId: "empty-session",
+    })));
+    dismissKeyboard.mockRestore();
 
     await fireEvent.press(screen.getByRole("button", { name: "Save zero-set workout" }));
     expect(screen.getByRole("header", { name: "Finish without working sets?" }))
