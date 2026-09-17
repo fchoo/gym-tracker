@@ -2302,6 +2302,15 @@ function PopulatedWorkoutOverview({
             testID="active-workout-add-exercise-picker-content"
           >
             <SectionHeader title="Choose exercise" />
+            {selectedExerciseToAdd === undefined ? null : (
+              <PrimaryAction
+                busy={exerciseAddBusy}
+                label={`Add ${selectedExerciseToAdd.name}`}
+                onPress={() => {
+                  void submitExerciseAdd();
+                }}
+              />
+            )}
             <M3SearchField
               label="Search exercises"
               onChangeText={setExerciseAddQuery}
@@ -2343,15 +2352,6 @@ function PopulatedWorkoutOverview({
                 ) : null}
               </FocusablePressable>
             ))}
-            {selectedExerciseToAdd === undefined ? null : (
-              <PrimaryAction
-                busy={exerciseAddBusy}
-                label={`Add ${selectedExerciseToAdd.name}`}
-                onPress={() => {
-                  void submitExerciseAdd();
-                }}
-              />
-            )}
             {exerciseAddFailed ? (
               <InlineNotice
                 action={<SecondaryAction label="Retry adding exercise" onPress={() => { void submitExerciseAdd(); }} />}
@@ -2387,6 +2387,20 @@ function PopulatedWorkoutOverview({
             testID="replace-exercise-picker-content"
           >
             <SectionHeader title="Choose exercise" />
+            {replacementPickerForId === null || replacementExerciseId === null ? null : (
+              <PrimaryAction
+                busy={exerciseEditBusy}
+                label={`Replace with ${availableExercises.find(
+                  ({ id }) => id === replacementExerciseId,
+                )?.name ?? "exercise"}`}
+                onPress={() => {
+                  void submitExerciseEdit({
+                    action: "replace",
+                    exerciseId: replacementPickerForId,
+                  });
+                }}
+              />
+            )}
             <M3SearchField
               label="Search exercises"
               onChangeText={setReplacementQuery}
@@ -2436,20 +2450,6 @@ function PopulatedWorkoutOverview({
                 ) : null}
               </FocusablePressable>
             ))}
-            {replacementPickerForId === null || replacementExerciseId === null ? null : (
-              <PrimaryAction
-                busy={exerciseEditBusy}
-                label={`Replace with ${availableExercises.find(
-                  ({ id }) => id === replacementExerciseId,
-                )?.name ?? "exercise"}`}
-                onPress={() => {
-                  void submitExerciseEdit({
-                    action: "replace",
-                    exerciseId: replacementPickerForId,
-                  });
-                }}
-              />
-            )}
           </ScrollView>
         </KeyboardAvoidingView>
       </Modal>
