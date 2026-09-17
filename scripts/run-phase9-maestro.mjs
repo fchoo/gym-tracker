@@ -181,11 +181,29 @@ function ensureEvidenceMatrix() {
   }
 }
 
-function verifyNoForbiddenScope() {
-  const changed = command("git", ["diff", "--name-only", "HEAD~1..HEAD", "--"])
+function task1Boundary() {
+  const source = readFileSync(path.join(PROJECT_ROOT, TASK1_SUMMARY), "utf8");
+  const matches = source.match(/^task1_boundary_commit: ([0-9a-f]{40})$/gmu) ?? [];
+  if (matches.length !== 1) fail("Task 1 boundary is invalid");
+  return matches[0].slice("task1_boundary_commit: ".length);
+}
+
+function verifyNoForbiddenScope(boundary) {
+  const changed = command("git", ["diff", "--name-only", `${boundary}..HEAD`, "--"])
     .split(/\r?\n/u).filter(Boolean);
   if (changed.some((filePath) => /^(?:web|dashboard|api)(?:\/|$)/u.test(filePath))) {
     fail("dashboard, web, or external API artifacts are outside the Phase 9 scope");
+  }
+}
+
+function verifyImmutableMigration(boundary) {
+  try {
+    command("git", [
+      "diff", "--quiet", `${boundary}..HEAD`, "--",
+      "src/platform/sqlite/migrations/0019_session_exercise_editing.ts",
+    ]);
+  } catch {
+    fail("migration 0019 changed after the Task 1 boundary");
   }
 }
 
@@ -197,6 +215,7 @@ function verifyTask1Boundary() {
     "--paths",
     ...TASK1_PATHS,
   ]);
+  return task1Boundary();
 }
 
 function verifyV20(options) {
@@ -277,12 +296,23 @@ function snapshotFlows() {
   }));
 }
 
-export function validatePhase9Evidence(evidence, snapshot = PHASE9_MAESTRO_FLOW_CONTRACTS) {
+export function validatePhase9Evidence(
+  evidence,
+  snapshot = PHASE9_MAESTRO_FLOW_CONTRACTS,
+  expected,
+) {
   if (evidence?.schema_version !== 1
     || evidence.suite !== "phase9"
     || evidence.status !== "passed"
+    || evidence.producer !== "phase9-maestro/v1"
     || !same(evidence.matrix, PHASE9_EVIDENCE_MATRIX)
-    || typeof evidence.v20?.exact_cases !== "number") {
+    || expected === undefined
+    || evidence.v20?.ok !== true
+    || evidence.v20.suite !== "migrations-effects"
+    || !Number.isInteger(evidence.v20.exact_cases)
+    || evidence.v20.exact_cases < 1
+    || !same(evidence.identity, expected.identity)
+    || !same(evidence.v20, expected.v20)) {
     fail("Phase 9 evidence identity or matrix is invalid");
   }
   if (!Array.isArray(evidence.flows) || evidence.flows.length !== snapshot.length) {
@@ -307,8 +337,9 @@ export function validatePhase9Evidence(evidence, snapshot = PHASE9_MAESTRO_FLOW_
 export function executePhase9Maestro(args = process.argv.slice(2)) {
   const options = parseArguments(args);
   ensureEvidenceMatrix();
-  verifyNoForbiddenScope();
-  verifyTask1Boundary();
+  const boundary = verifyTask1Boundary();
+  verifyNoForbiddenScope(boundary);
+  verifyImmutableMigration(boundary);
   const v20 = verifyV20(options);
   const { manifest, apkPath, currentHead, currentDigest } = loadManifest(options.manifest);
   const adb = resolveAdb();
@@ -323,9 +354,9 @@ export function executePhase9Maestro(args = process.argv.slice(2)) {
   let evidence;
 
   try {
-    command(adb, ["root"]);
-    command(adb, ["wait-for-device"]);
-    const adbUser = command(adb, ["shell", "id"]);
+    command(adb, ["-s", serial, "root"]);
+    command(adb, ["-s", serial, "wait-for-device"]);
+    const adbUser = command(adb, ["-s", serial, "shell", "id"]);
     if (!adbUser.includes("uid=0(root)")) fail("the manifest device must allow adb root for the scheduled-day fixture");
     command(adb, ["-s", serial, "install", "-r", apkPath]);
     validateLiveInstallation(adb, manifest);
@@ -374,7 +405,10 @@ export function executePhase9Maestro(args = process.argv.slice(2)) {
       matrix: PHASE9_EVIDENCE_MATRIX,
       flows: reports,
     };
-    validatePhase9Evidence(evidence, flows);
+    validatePhase9Evidence(evidence, flows, Object.freeze({
+      identity: evidence.identity,
+      v20,
+    }));
   } catch (error) {
     primaryError = error;
   } finally {

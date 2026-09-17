@@ -52,10 +52,20 @@ test("Phase 9 evidence runner requires a manifest and full edit/relaunch asserti
   assert.match(runner, /completed-workout-plan-writeback-retry\.yaml/);
   assert.match(runner, /for \(const contract of flows\)/);
   assert.match(runner, /const PHASE9_SCHEDULED_WORKOUT_CLOCK = "091812002026"/);
-  assert.match(runner, /command\(adb, \["root"\]\)/);
-  assert.match(runner, /command\(adb, \["wait-for-device"\]\)/);
-  assert.match(runner, /const adbUser = command\(adb, \["shell", "id"\]\)/);
+  assert.match(runner, /command\(adb, \["-s", serial, "root"\]\)/);
+  assert.match(runner, /command\(adb, \["-s", serial, "wait-for-device"\]\)/);
+  assert.match(runner, /const adbUser = command\(adb, \["-s", serial, "shell", "id"\]\)/);
   assert.match(runner, /if \(!adbUser\.includes\("uid=0\(root\)"\)\)/);
+  assert.match(
+    runner,
+    /function verifyNoForbiddenScope\(boundary\) \{[\s\S]*?\$\{boundary\}\.\.HEAD/u,
+    "Phase 9 scope validation must inspect every successor of the recorded Task 1 boundary",
+  );
+  assert.match(
+    runner,
+    /function verifyImmutableMigration\(boundary\) \{[\s\S]*?\$\{boundary\}\.\.HEAD[\s\S]*?0019_session_exercise_editing/u,
+    "Phase 9 native execution must reject committed migration-0019 drift after the Task 1 boundary",
+  );
   assert.match(runner, /"settings", "get", "global", "auto_time"/u);
   assert.match(runner, /"settings", "put", "global", "auto_time", "0"/u);
   assert.match(runner, /"shell", "date", PHASE9_SCHEDULED_WORKOUT_CLOCK/u);
@@ -180,12 +190,36 @@ test("Phase 9 retained evidence rejects a missing or duplicate native flow", () 
     ...contract,
     sha256: `${index + 1}`.repeat(64),
   }));
+  const identity = {
+    base_head: "b".repeat(40),
+    source_tree_sha256: "c".repeat(64),
+    apk_sha256: "d".repeat(64),
+    installed_apk_sha256: "d".repeat(64),
+    device: {
+      serial: "emulator-5554",
+      api: 36,
+      abi: "arm64-v8a",
+      model: "sdk_gphone64_arm64",
+      android_release: "16",
+    },
+  };
+  const v20 = {
+    ok: true,
+    suite: "migrations-effects",
+    base_head: identity.base_head,
+    source_tree_sha256: identity.source_tree_sha256,
+    apk_sha256: "e".repeat(64),
+    device: identity.device,
+    exact_cases: 11,
+  };
   const evidence = {
     schema_version: 1,
     suite: "phase9",
     status: "passed",
+    producer: "phase9-maestro/v1",
+    identity,
     matrix: PHASE9_EVIDENCE_MATRIX,
-    v20: { exact_cases: 1 },
+    v20,
     flows: snapshot.map((contract) => ({
       id: contract.id,
       flow: contract.flow,
@@ -198,16 +232,39 @@ test("Phase 9 retained evidence rejects a missing or duplicate native flow", () 
     })),
   };
 
-  assert.equal(validatePhase9Evidence(evidence, snapshot), evidence);
+  const expected = { identity, v20 };
+  assert.equal(validatePhase9Evidence(evidence, snapshot, expected), evidence);
   assert.throws(
-    () => validatePhase9Evidence({ ...evidence, flows: evidence.flows.slice(1) }, snapshot),
+    () => validatePhase9Evidence({ ...evidence, v20: { ...v20, ok: false } }, snapshot, expected),
+    /identity or matrix is invalid/u,
+  );
+  assert.throws(
+    () => validatePhase9Evidence({ ...evidence, flows: evidence.flows.slice(1) }, snapshot, expected),
     /flow ledger is incomplete/u,
   );
   assert.throws(
     () => validatePhase9Evidence({
       ...evidence,
       flows: [evidence.flows[0], evidence.flows[0], evidence.flows[2]],
-    }, snapshot),
+    }, snapshot, expected),
     /flow is invalid/u,
+  );
+  assert.throws(
+    () => validatePhase9Evidence({ ...evidence, v20: { ...v20, exact_cases: 0 } }, snapshot, expected),
+    /identity or matrix is invalid/u,
+  );
+  assert.throws(
+    () => validatePhase9Evidence({
+      ...evidence,
+      identity: { ...identity, source_tree_sha256: "f".repeat(64) },
+    }, snapshot, expected),
+    /identity or matrix is invalid/u,
+  );
+  assert.throws(
+    () => validatePhase9Evidence({
+      ...evidence,
+      identity: { ...identity, device: { ...identity.device, serial: "other-device" } },
+    }, snapshot, expected),
+    /identity or matrix is invalid/u,
   );
 });
