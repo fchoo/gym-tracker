@@ -51,6 +51,11 @@ test("Phase 9 evidence runner requires a manifest and full edit/relaunch asserti
   assert.match(runner, /completed-workout-plan-writeback-keep\.yaml/);
   assert.match(runner, /completed-workout-plan-writeback-retry\.yaml/);
   assert.match(runner, /for \(const contract of flows\)/);
+  assert.match(
+    runner,
+    /for \(const contract of flows\) \{[\s\S]*?command\(adb, \["-s", serial, "shell", "am", "force-stop", PACKAGE\]\)[\s\S]*?execFileSync\("maestro"/u,
+    "Phase 9 must terminate the manifest package before each clear-state flow so prior lifecycle UI cannot leak into the next scenario",
+  );
   assert.match(runner, /const PHASE9_SCHEDULED_WORKOUT_CLOCK = "091812002026"/);
   assert.match(runner, /command\(adb, \["-s", serial, "root"\]\)/);
   assert.match(runner, /command\(adb, \["-s", serial, "wait-for-device"\]\)/);

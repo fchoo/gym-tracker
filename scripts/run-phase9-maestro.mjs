@@ -381,6 +381,7 @@ export function executePhase9Maestro(args = process.argv.slice(2)) {
     const reports = [];
     for (const contract of flows) {
       const reportPath = path.join(temporaryReports, `${contract.id}.xml`);
+      command(adb, ["-s", serial, "shell", "am", "force-stop", PACKAGE]);
       execFileSync("maestro", [
         "test", "--no-ansi", "--format", "junit", "--output", reportPath,
         "--udid", serial, contract.absolute,
