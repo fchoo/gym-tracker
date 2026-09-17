@@ -5,17 +5,17 @@ milestone_name: In-Workout Editing, Advanced Timing & Cross-Device Sync
 current_phase: 09
 current_phase_name: In-Workout Exercise Editing
 status: executing
-stopped_at: Completed 09-08-PLAN.md
-last_updated: "2026-09-17T00:15:05.000Z"
+stopped_at: Completed 09-09-PLAN.md
+last_updated: "2026-09-17T09:39:06.000Z"
 last_activity: 2026-09-17
-last_activity_desc: Plan 09-08 completed the canonical atomic session-to-owned-plan write-back aggregate and replay-safe runtime port
-state_head: db1fb6972d03718f51b6cac17e0dcf5f53d4ea16
+last_activity_desc: Plan 09-09 completed the post-finish default-No aggregate plan write-back choice with manifest-bound Android Keep and failure-retry evidence
+state_head: 339cd5cce7cc1894aaabe1c92ec097accf4002ec
 progress:
   total_phases: 5
   completed_phases: 1
   total_plans: 26
-  completed_plans: 12
-  percent: 46
+  completed_plans: 13
+  percent: 50
 ---
 
 # Project State
@@ -30,9 +30,9 @@ See: `.planning/PROJECT.md` (updated 2026-09-15)
 ## Current Position
 
 Phase: 09 (In-Workout Exercise Editing) — EXECUTING
-Plan: 8 of 10 complete; next is 09-09
-Status: Executing Phase 09 — Plan 09-08 now derives and applies one canonical, revision-bound session write-back aggregate while preserving immutable completed workout history; 09-09 is next
-Last activity: 2026-09-17 — Plan 09-08 aggregate preview/apply, receipt replay, rollback, and runtime duplicate/retry safety completed
+Plan: 9 of 10 complete; next is 09-10
+Status: Executing Phase 09 — Plan 09-09 now shows an eligible completed edited planned workout the exact default-No plan write-back choice after its durable completion, while Keep and failure/retry preserve immutable history; 09-10 is next
+Last activity: 2026-09-17 — Plan 09-09 final manifest-bound Android suite passed editing/relaunch, Keep, and injected write-back failure/retry flows on exact source and APK bytes
 
 ## Delivery model
 
@@ -299,6 +299,8 @@ Full decisions live in `.planning/PROJECT.md`.
 - [Phase 09]: Only completed working sets whose immutable target reference belongs to the selected planned occurrence scope may influence recommendations or non-load outcomes; added/replacement null-lineage work is ignored without mutating snapshots or targets.
 - [Phase 09]: A retry of completed scheduled-session consumption reads the existing consumed opportunity first, avoiding an idempotency-hash conflict after the schedule revision advances.
 - [Phase 09]: `SessionDetail.modifiedFromPlan` is required and read from `workout_sessions.modified_from_plan`; existing native completion and detail summaries render literal `Modified from plan` plus an accessibility-hidden Pencil icon.
+- [Phase 09]: Completion write-back eligibility is recomputed from the post-commit canonical aggregate preview; Keep/dismiss/Back are pure no-write transitions, while explicit Save alone invokes the revision-bound aggregate writer.
+- [Phase 09]: Phase 09 planned write-back native evidence serializes clear-state flows, verifies adb root, pins a Friday scheduled fixture, tolerates cold startup, and restores the prior device time configuration; the final 09-09 manifest is bound to HEAD `339cd5c`.
 
 ### Blockers/Concerns
 
@@ -328,12 +330,12 @@ Full decisions live in `.planning/PROJECT.md`.
 
 ## Session Continuity
 
-Last session: 2026-09-17T00:15:05.000Z
-Stopped at: Completed 09-08-PLAN.md
-Resume file: .planning/phases/09-in-workout-exercise-editing/09-08-SUMMARY.md
-Next action: Execute `.planning/phases/09-in-workout-exercise-editing/09-09-PLAN.md`, adding the post-finish default-No choice only after durable completion and using the exact Plan 09-08 aggregate preview/apply port.
+Last session: 2026-09-17T09:39:06.000Z
+Stopped at: Completed 09-09-PLAN.md
+Resume file: .planning/phases/09-in-workout-exercise-editing/09-09-SUMMARY.md
+Next action: Execute `.planning/phases/09-in-workout-exercise-editing/09-10-PLAN.md`, completing the fail-closed Phase 09 evidence contract and full source/native closure from the retained 09-09 manifest identity.
 
 ## Operator Next Steps
 
-- Execute Phase 9 Plan 09 from the verified aggregate write-back foundation.
-- Preserve append-only workout history, keep migration 0019 immutable, keep Add/Replace/Remove and reorder receipts separate, and show no write-back prompt unless the fresh post-finish aggregate preview is eligible.
+- Execute Phase 9 Plan 10 from the verified default-No write-back foundation.
+- Preserve append-only workout history, keep migration 0019 immutable, retain separate Add/Replace/Remove and reorder receipts, and fail closed if any native manifest, v20 result, coverage, or evidence identity is stale or absent.
