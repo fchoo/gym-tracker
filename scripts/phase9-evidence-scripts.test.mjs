@@ -13,6 +13,7 @@ test("Phase 9 evidence runner requires a manifest and full edit/relaunch asserti
   assert.match(flow, /appId: com\.fchoo\.gymtracker\.devtest/);
   assert.match(flow, /Choose your starting plan/);
   assert.match(flow, /Activate Full Body Foundation/);
+  assert.match(flow, /tapOn: "Activate Full Body Foundation"\n- runFlow:\n    when:\n      visible: "Retry Today action"\n    commands:\n      - tapOn: "Retry Today action"\n- extendedWaitUntil:\n    visible: "[\^]\(Start Full Body A\|Start Full Body B\|Rest day\)[$]"/);
   assert.match(flow, /Start empty workout/);
   assert.match(flow, /tapOn: "Add Back Squat"/);
   assert.match(flow, /inputText: "Squat"\n- tapOn: "Back Squat"\n- extendedWaitUntil:\n    visible: "Add Back Squat"\n    timeout: 30000\n- tapOn: "Add Back Squat"/);
@@ -33,7 +34,7 @@ test("Phase 9 evidence runner requires a manifest and full edit/relaunch asserti
   assert.match(flow, /arm_replace_exercise_failure/);
   assert.match(flow, /Replace exercise failure armed/);
   assert.match(flow, /Replace exercise failure armed[\s\S]*?scrollUntilVisible:[\s\S]*?text: "Return to Today"[\s\S]*?tapOn: "Return to Today"/u);
-  assert.match(flow, /inputText: "Bench Press"[\s\S]*?tapOn:\n    id: "replace-exercise-option-5f140001-7e35-4a6d-9100-000000000002"\n- pressKey: Back\n- scrollUntilVisible:[\s\S]*?text: "Replace with Bench Press"[\s\S]*?tapOn: "Replace with Bench Press"/u);
+  assert.match(flow, /inputText: "Bench Press"[\s\S]*?tapOn:\n    id: "replace-exercise-option-5f140001-7e35-4a6d-9100-000000000002"\n- extendedWaitUntil:\n    visible: "Replace with Bench Press"\n    timeout: 30000\n- tapOn: "Replace with Bench Press"/u);
   assert.match(flow, /Retry replacing exercise/);
   assert.match(flow, /Complete Set 1[\s\S]*?Overhead Press exercise actions[\s\S]*?This exercise has completed sets/u);
   assert.match(flow, /arm_remove_exercise_failure/);
