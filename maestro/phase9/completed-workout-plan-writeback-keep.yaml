@@ -45,7 +45,7 @@ name: Phase 9 completed planned workout keeps the plan unchanged
 - tapOn: "Skip rest"
 - scrollUntilVisible:
     element:
-      id: "exercise-actions-5f140001-7e35-4a6d-9100-000000000002"
+      text: "Bench Press"
     direction: DOWN
     centerElement: true
     timeout: 30000
@@ -60,7 +60,7 @@ name: Phase 9 completed planned workout keeps the plan unchanged
     timeout: 30000
 - scrollUntilVisible:
     element:
-      id: "exercise-actions-5f140001-7e35-4a6d-9100-000000000003"
+      text: "Lat Pulldown"
     direction: DOWN
     centerElement: true
     timeout: 30000
@@ -75,7 +75,7 @@ name: Phase 9 completed planned workout keeps the plan unchanged
     timeout: 30000
 - scrollUntilVisible:
     element:
-      id: "exercise-actions-5f140001-7e35-4a6d-9100-000000000004"
+      text: "Romanian Deadlift"
     direction: DOWN
     centerElement: true
     timeout: 30000
@@ -90,7 +90,7 @@ name: Phase 9 completed planned workout keeps the plan unchanged
     timeout: 30000
 - scrollUntilVisible:
     element:
-      id: "exercise-actions-5f140001-7e35-4a6d-9100-000000000005"
+      text: "Plank"
     direction: DOWN
     centerElement: true
     timeout: 30000

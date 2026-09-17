@@ -33,7 +33,7 @@ name: Phase 9 add exercise and relaunch persistence
     timeout: 90000
 - runFlow:
     when:
-      visible: "Start Full Body B"
+      visible: "^(Start Full Body A|Start Full Body B)$"
     commands:
       - tapOn: "Choose another day"
 - runFlow:
