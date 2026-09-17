@@ -637,6 +637,15 @@ describe("Plan 01-08 ActiveWorkoutScreen", () => {
     const actions = screen.getByRole("button", {
       name: "Bench Press exercise actions",
     });
+    expect(screen.getByTestId("exercise-divider-session-exercise-2"))
+      .toHaveStyle({
+        backgroundColor: themes.light.divider,
+        height: 2,
+      });
+    expect(actions).toHaveStyle({
+      position: "absolute",
+      right: 0,
+    });
     expect(actions).toHaveProp("testID", "exercise-actions-bench-press");
     expect(actions).toHaveProp("accessibilityState", expect.objectContaining({
       expanded: false,

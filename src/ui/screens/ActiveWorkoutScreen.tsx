@@ -1694,6 +1694,12 @@ function PopulatedWorkoutOverview({
                 }}
                 style={styles.exerciseSection}
               >
+                {index === 0 ? null : (
+                  <View
+                    style={[styles.exerciseDivider, { backgroundColor: colors.divider }]}
+                    testID={`exercise-divider-${exercise.id}`}
+                  />
+                )}
                 <FocusablePressable
                   accessibilityLabel={collapseLabel}
                   accessibilityRole="button"
@@ -1838,6 +1844,9 @@ function PopulatedWorkoutOverview({
                   }}
                   style={({ pressed }) => [
                     styles.exerciseAction,
+                    index === 0
+                      ? styles.exerciseActionFirst
+                      : styles.exerciseActionAfterDivider,
                     {
                       backgroundColor: pressed
                         ? colors.contentCardPressed
@@ -2556,12 +2565,23 @@ const styles = StyleSheet.create({
   },
   exerciseAction: {
     alignItems: "center",
-    alignSelf: "flex-start",
     borderRadius: radius.standard,
     borderWidth: StyleSheet.hairlineWidth,
     justifyContent: "center",
     minHeight: sizes.minimumTarget,
     minWidth: sizes.minimumTarget,
+    position: "absolute",
+    right: 0,
+  },
+  exerciseActionAfterDivider: {
+    top: sizes.focusRing + space[2],
+  },
+  exerciseActionFirst: {
+    top: 0,
+  },
+  exerciseDivider: {
+    height: sizes.focusRing,
+    width: "100%",
   },
   targetSection: {
     gap: space[1],
@@ -2571,6 +2591,7 @@ const styles = StyleSheet.create({
   },
   exerciseSection: {
     gap: space[2],
+    position: "relative",
   },
   exerciseToggle: {
     alignItems: "center",
@@ -2581,6 +2602,7 @@ const styles = StyleSheet.create({
     minHeight: sizes.minimumTarget,
     minWidth: sizes.minimumTarget,
     paddingHorizontal: space[2],
+    paddingRight: sizes.minimumTarget + space[2],
     paddingVertical: space[2],
   },
   exerciseToggleCopy: {
