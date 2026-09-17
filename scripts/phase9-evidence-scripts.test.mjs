@@ -142,7 +142,11 @@ test("Phase 9 evidence runner requires a manifest and full edit/relaunch asserti
       "Phase 9 planned write-back flows must tolerate a cold native startup after state clearing",
     );
     assert.match(writeBackFlow, /Start Full Body A/);
-    assert.match(writeBackFlow, /Complete Set 1[\s\S]*?Complete Set 2[\s\S]*?Complete Set 3/u);
+    assert.match(
+      writeBackFlow,
+      /- assertVisible: "Complete Set 1"\n- tapOn:\n    text: "Complete Set 1"\n    retryTapIfNoChange: true[\s\S]*?- assertVisible: "Complete Set 2"\n- tapOn:\n    text: "Complete Set 2"\n    retryTapIfNoChange: true[\s\S]*?- assertVisible: "Complete Set 3"\n- tapOn:\n    text: "Complete Set 3"\n    retryTapIfNoChange: true/u,
+      "Phase 9 planned write-back flows must retry every completion transition when native rendering has not advanced",
+    );
     assert.match(
       writeBackFlow,
       /- assertVisible: "Complete Set 3"\n- tapOn:\n    text: "Complete Set 3"\n    retryTapIfNoChange: true/u,
@@ -169,6 +173,15 @@ test("Phase 9 evidence runner requires a manifest and full edit/relaunch asserti
     assert.match(writeBackFlow, /Save these changes to the plan\?/);
     assert.match(writeBackFlow, /Keep plan as-is/);
     assert.match(writeBackFlow, /Save changes to plan/);
+    const finishCount = writeBackFlow.match(/- tapOn: "Finish workout"/gu)?.length ?? 0;
+    const guardedFinishCount = writeBackFlow.match(
+      /- scrollUntilVisible:\n    element:\n      text: "Finish workout"\n    direction: UP\n    centerElement: true\n    timeout: 30000\n- assertVisible: "Finish workout"\n- tapOn: "Finish workout"/gu,
+    )?.length ?? 0;
+    assert.equal(
+      guardedFinishCount,
+      finishCount,
+      "Phase 9 planned write-back flows must reveal the finish action after overview resume before tapping it",
+    );
   }
   assert.match(
     keepFlow,
