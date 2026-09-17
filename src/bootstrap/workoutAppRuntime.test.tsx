@@ -14,7 +14,11 @@ import {
 } from "@jest/globals";
 import { createHash } from "node:crypto";
 import React from "react";
-import { Text } from "react-native";
+import {
+  AppState,
+  Text,
+  type AppStateStatus,
+} from "react-native";
 
 let mockNativeContractsEnabled = true;
 
@@ -33,6 +37,14 @@ import {
   type ScheduledRestNotification,
   type RestStateV1,
 } from "../domains/rest";
+import type {
+  AdvancedTimingCommandResult,
+  AdvancedTimingRepository,
+  AdvancedTimingStateV1,
+} from "../domains/advancedTiming";
+import type {
+  AdvancedTimingRepositoryPort,
+} from "../platform/sqlite/repositories/advancedTimingRepository";
 import type {
   ProgressionRepository,
 } from "../domains/progression";
@@ -444,6 +456,63 @@ function runtimeRestRepository(): RestRepository {
     skipRest: jest.fn(async () => result),
     expireRest: jest.fn(async () => result),
     expireRestWithForegroundFeedback: jest.fn(async () => result),
+  };
+}
+
+function runtimeAdvancedTimingRepository(): AdvancedTimingRepositoryPort & {
+  getAdvancedTimingContext: jest.MockedFunction<
+    AdvancedTimingRepositoryPort["getAdvancedTimingContext"]
+  >;
+  listActiveTimingContexts: jest.MockedFunction<
+    AdvancedTimingRepositoryPort["listActiveTimingContexts"]
+  >;
+  startAdvancedTiming: jest.MockedFunction<
+    AdvancedTimingRepository["startAdvancedTiming"]
+  >;
+  reconcileAdvancedTiming: jest.MockedFunction<
+    AdvancedTimingRepository["reconcileAdvancedTiming"]
+  >;
+} {
+  const idle: AdvancedTimingStateV1 = {
+    version: 1,
+    state: "idle",
+    revision: 0,
+    targetSessionSetId: null,
+  };
+  const result: AdvancedTimingCommandResult = {
+    state: idle,
+    sessionRevision: 1,
+    invalidationScopes: [
+      ["active-workout", "session-1"],
+      ["today"],
+    ],
+  };
+  return {
+    getAdvancedTimingContext: jest.fn<
+      AdvancedTimingRepositoryPort["getAdvancedTimingContext"]
+    >(async () => ({
+      sessionId: "session-1",
+      sessionRevision: 1,
+      state: idle,
+    })),
+    listActiveTimingContexts: jest.fn<
+      AdvancedTimingRepositoryPort["listActiveTimingContexts"]
+    >(async () => []),
+    startAdvancedTiming: jest.fn<AdvancedTimingRepository["startAdvancedTiming"]>(
+      async () => result,
+    ),
+    pauseAdvancedTiming: jest.fn<AdvancedTimingRepository["pauseAdvancedTiming"]>(
+      async () => result,
+    ),
+    resumeAdvancedTiming: jest.fn<AdvancedTimingRepository["resumeAdvancedTiming"]>(
+      async () => result,
+    ),
+    reconcileAdvancedTiming: jest.fn<
+      AdvancedTimingRepository["reconcileAdvancedTiming"]
+    >(async () => ({ ...result, cue: null })),
+    stopAdvancedTiming: jest.fn<AdvancedTimingRepository["stopAdvancedTiming"]>(
+      async () => result,
+    ),
   };
 }
 
@@ -1142,6 +1211,167 @@ describe("WorkoutAppRuntimeProvider", () => {
     await waitFor(() => {
       expect(captured?.launchState).toBe("trusted");
     });
+  });
+
+  it("runs advanced timing through its separate repository without rest effects or permission work", async () => {
+    const repository = runtimeRepository([activeView, activeView, activeView], [activation]);
+    const advanced = runtimeAdvancedTimingRepository();
+    const rest = runtimeRestRepository();
+    const lifecycle = runtimeLifecycle();
+    const notifications = runtimeNotifications("undetermined");
+    const running: AdvancedTimingStateV1 = {
+      version: 1,
+      state: "running",
+      mode: "per_rep",
+      revision: 1,
+      targetSessionSetId: "set-1",
+      cueChannels: "haptic",
+      intervalMs: 1_000,
+      startedAtMs: 10_000,
+      nextBoundaryAtMs: 11_000,
+      nextRepetitionIndex: 1,
+    };
+    advanced.startAdvancedTiming.mockResolvedValue({
+      state: running,
+      sessionRevision: 1,
+      invalidationScopes: [
+        ["active-workout", "session-1"],
+        ["today"],
+      ],
+    });
+    let captured: ReturnType<typeof useWorkoutAppRuntime> | undefined;
+
+    await render(
+      <RuntimeCaptureHarness
+        dependencies={dependencies(repository, {
+          createAdvancedTimingRepository: () => advanced,
+          createRestRepository: () => rest,
+          createLifecycle: () => lifecycle,
+          createNotifications: () => notifications,
+        })}
+        onReady={(runtime) => {
+          captured = runtime;
+        }}
+      />,
+    );
+    await waitFor(() => {
+      expect(captured?.launchState).toBe("trusted");
+    });
+    lifecycle.trigger.mockClear();
+
+    let result: AdvancedTimingCommandResult | undefined;
+    await act(async () => {
+      result = await captured!.startAdvancedTiming({
+        sessionId: "session-1",
+        sessionSetId: "set-1",
+        expectedSessionRevision: 1,
+        expectedAdvancedTimingRevision: 0,
+        nowMs: 10_000,
+        config: {
+          version: 1,
+          mode: "per_rep",
+          intervalMs: 1_000,
+          cueChannels: "haptic",
+        },
+      });
+    });
+    expect(result).toEqual(expect.objectContaining({ state: running }));
+
+    expect(advanced.startAdvancedTiming).toHaveBeenCalledTimes(1);
+    expect(advanced.listActiveTimingContexts).toHaveBeenCalled();
+    expect(rest.listActiveSessionIds).not.toHaveBeenCalled();
+    expect(lifecycle.trigger).not.toHaveBeenCalled();
+    expect(notifications.requestPermission).not.toHaveBeenCalled();
+  });
+
+  it("reconciles advanced timing on foreground without entering the rest lifecycle", async () => {
+    const repository = runtimeRepository([activeView, activeView], [activation]);
+    const advanced = runtimeAdvancedTimingRepository();
+    const rest = runtimeRestRepository();
+    const lifecycle = runtimeLifecycle();
+    const notifications = runtimeNotifications("undetermined");
+    const running: AdvancedTimingStateV1 = {
+      version: 1,
+      state: "running",
+      mode: "per_rep",
+      revision: 3,
+      targetSessionSetId: "set-1",
+      cueChannels: "haptic",
+      intervalMs: 1_000,
+      startedAtMs: 10_000,
+      nextBoundaryAtMs: 11_000,
+      nextRepetitionIndex: 1,
+    };
+    jest.mocked(advanced.reconcileAdvancedTiming).mockResolvedValue({
+      state: {
+        ...running,
+        revision: 4,
+        nextBoundaryAtMs: 21_000,
+        nextRepetitionIndex: 11,
+      },
+      sessionRevision: 1,
+      invalidationScopes: [
+        ["active-workout", "session-1"],
+        ["today"],
+      ],
+      cue: null,
+    });
+    let onAppStateChange: ((state: AppStateStatus) => void) | undefined;
+    const addEventListener = jest.spyOn(AppState, "addEventListener")
+      .mockImplementation((event, listener) => {
+        if (event === "change") {
+          onAppStateChange = listener;
+        }
+        return { remove: jest.fn() };
+      });
+    let captured: ReturnType<typeof useWorkoutAppRuntime> | undefined;
+    try {
+      await render(
+        <RuntimeCaptureHarness
+          dependencies={dependencies(repository, {
+            createAdvancedTimingRepository: () => advanced,
+            createRestRepository: () => rest,
+            createLifecycle: () => lifecycle,
+            createNotifications: () => notifications,
+            nowMs: () => 20_050,
+          })}
+          onReady={(runtime) => {
+            captured = runtime;
+          }}
+        />,
+      );
+      await waitFor(() => {
+        expect(captured?.launchState).toBe("trusted");
+      });
+      advanced.listActiveTimingContexts.mockResolvedValue([{
+        sessionId: "session-1",
+        sessionRevision: 1,
+        state: running,
+      }]);
+      jest.mocked(advanced.reconcileAdvancedTiming).mockClear();
+      lifecycle.trigger.mockClear();
+
+      await act(async () => {
+        onAppStateChange?.("background");
+        onAppStateChange?.("active");
+        await Promise.resolve();
+      });
+      await waitFor(() => {
+        expect(advanced.reconcileAdvancedTiming).toHaveBeenCalledWith({
+          sessionId: "session-1",
+          sessionSetId: "set-1",
+          expectedSessionRevision: 1,
+          expectedAdvancedTimingRevision: 3,
+          nowMs: 20_050,
+          foregroundSinceMs: 20_050,
+        });
+      });
+      expect(rest.listActiveSessionIds).not.toHaveBeenCalled();
+      expect(lifecycle.trigger).not.toHaveBeenCalled();
+      expect(notifications.requestPermission).not.toHaveBeenCalled();
+    } finally {
+      addEventListener.mockRestore();
+    }
   });
 
   it("expires one authoritative running rest and proves its foreground feedback claim is consumed", async () => {

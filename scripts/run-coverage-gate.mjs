@@ -92,6 +92,7 @@ const integrityCriticalFiles = [
   "src/platform/sqlite/repositories/logicalBackupRepository.ts",
   "src/platform/sqlite/repositories/csvExportRepository.ts",
   "src/platform/sqlite/repositories/logicalRestoreRepository.ts",
+  "src/platform/sqlite/repositories/advancedTimingRepository.ts",
   "src/platform/sqlite/repositories/restoreReconciliationRepository.ts",
   "src/platform/sqlite/repositories/restorePreflightAdapters.ts",
   "src/platform/sqlite/repositories/exerciseSearchIndexRepository.ts",

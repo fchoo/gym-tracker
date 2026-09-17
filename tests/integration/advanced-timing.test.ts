@@ -343,6 +343,7 @@ describe("advanced timing repository", () => {
 
     await expect(createAdvancedTimingRepository(kernel)
       .getAdvancedTimingContext(session.id)).resolves.toEqual({
+      sessionId: session.id,
       sessionRevision: session.revision,
       state: stopped.state,
     });
@@ -438,6 +439,40 @@ describe("advanced timing repository", () => {
           nextBoundaryAtMs: 21_000,
           nextRepetitionIndex: 11,
         }),
+      }));
+  });
+
+  it("reconstructs durable running state and rejects malformed persisted versions", async () => {
+    const { kernel, session, activeSet, repository } = await setupWorkout();
+    await startAdvancedTiming({
+      repository,
+      input: {
+        sessionId: session.id,
+        sessionSetId: activeSet.id,
+        expectedSessionRevision: session.revision,
+        expectedAdvancedTimingRevision: 0,
+        nowMs: 10_000,
+        config: perRep,
+      },
+    });
+    const reconstructed = createAdvancedTimingRepository(kernel);
+    await expect(reconstructed.getAdvancedTimingContext(session.id))
+      .resolves.toEqual(expect.objectContaining({
+        sessionId: session.id,
+        sessionRevision: session.revision,
+        state: expect.objectContaining({
+          state: "running",
+          revision: 1,
+          nextBoundaryAtMs: 11_000,
+        }),
+      }));
+    await expect(kernel.write((transaction) => transaction.execute(
+      "UPDATE session_advanced_timing_states SET state_version = 2 WHERE session_id = ?",
+      [session.id],
+    ))).rejects.toMatchObject({ code: "sqlite_transaction_failed" });
+    await expect(reconstructed.getAdvancedTimingContext(session.id))
+      .resolves.toEqual(expect.objectContaining({
+        state: expect.objectContaining({ state: "running", revision: 1 }),
       }));
   });
 });

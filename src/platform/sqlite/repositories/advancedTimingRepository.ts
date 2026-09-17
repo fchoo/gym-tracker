@@ -1,5 +1,4 @@
 import {
-  AdvancedTimingCommandError,
   AdvancedTimingStateTransitionError,
   parseAdvancedTimingConfig,
   pauseAdvancedTimingState,
@@ -20,6 +19,7 @@ import type {
 
 type AdvancedTimingRow = Readonly<{
   session_set_id: string | null;
+  state_version: number;
   revision: number;
   status: "idle" | "running" | "paused" | "stopped" | "expired";
   mode: "per_rep" | "cluster" | null;
@@ -42,6 +42,7 @@ type TargetRow = Readonly<{
 }>;
 
 export type AdvancedTimingContext = Readonly<{
+  sessionId: string;
   state: AdvancedTimingStateV1;
   sessionRevision: number;
 }>;
@@ -60,6 +61,11 @@ export class AdvancedTimingRepositoryError extends Error {
     this.name = "AdvancedTimingRepositoryError";
   }
 }
+
+type PersistedAdvancedTimingState = Exclude<
+  AdvancedTimingStateV1,
+  Readonly<{ state: "idle" }>
+>;
 
 function idleState(revision = 0): AdvancedTimingStateV1 {
   return Object.freeze({
@@ -99,6 +105,9 @@ function stateFromRow(
   try {
     config = parseAdvancedTimingConfig(JSON.parse(row.config_json));
   } catch {
+    throw new AdvancedTimingRepositoryError("advanced_timing_state_invalid");
+  }
+  if (row.state_version !== 1) {
     throw new AdvancedTimingRepositoryError("advanced_timing_state_invalid");
   }
   if (row.status === "idle") {
@@ -173,7 +182,7 @@ function stateFromRow(
 }
 
 function stateColumns(
-  state: AdvancedTimingStateV1,
+  state: PersistedAdvancedTimingState,
   config: AdvancedTimingConfigV1,
 ): Readonly<{
   sessionSetId: string | null;
@@ -186,22 +195,6 @@ function stateColumns(
   remainingMs: number | null;
   stoppedAtMs: number | null;
 }> {
-  if (state.state === "idle") {
-    return {
-      sessionSetId: null,
-      status: "idle",
-      mode: null,
-      configJson: JSON.stringify({ version: 1, mode: "off" }),
-      progressJson: "{}",
-      startedAtMs: null,
-      nextBoundaryAtMs: null,
-      remainingMs: null,
-      stoppedAtMs: null,
-    };
-  }
-  if (config.mode !== "per_rep") {
-    throw new AdvancedTimingRepositoryError("advanced_timing_state_invalid");
-  }
   const common = {
     sessionSetId: state.targetSessionSetId,
     mode: "per_rep" as const,
@@ -245,7 +238,7 @@ async function readStoredState(
   sessionId: string,
 ) {
   const [row] = await executor.queryAll<AdvancedTimingRow>(
-    `SELECT session_set_id, revision, status, mode, config_json, progress_json,
+    `SELECT session_set_id, state_version, revision, status, mode, config_json, progress_json,
             started_at_ms, next_boundary_at_ms, remaining_ms, stopped_at_ms
      FROM session_advanced_timing_states
      WHERE session_id = ?`,
@@ -285,7 +278,7 @@ async function readTarget(
 async function persistState(
   transaction: SqliteTransactionExecutor,
   sessionId: string,
-  state: AdvancedTimingStateV1,
+  state: PersistedAdvancedTimingState,
   config: AdvancedTimingConfigV1,
 ): Promise<void> {
   const columns = stateColumns(state, config);
@@ -411,7 +404,12 @@ async function transition(
           sessionSetId: input.sessionSetId,
           nowMs: input.nowMs,
         });
-        await persistState(transaction, input.sessionId, state, snapshotConfig);
+        await persistState(
+          transaction,
+          input.sessionId,
+          state as PersistedAdvancedTimingState,
+          snapshotConfig,
+        );
         return {
           kind: "result" as const,
           result: commandResult(input.sessionId, session.revision, state),
@@ -419,7 +417,12 @@ async function transition(
       }
       if (input.operation === "pause") {
         const state = pauseAdvancedTimingState(stored.state, input.nowMs);
-        await persistState(transaction, input.sessionId, state, stored.config);
+        await persistState(
+          transaction,
+          input.sessionId,
+          state as PersistedAdvancedTimingState,
+          stored.config,
+        );
         return {
           kind: "result" as const,
           result: commandResult(input.sessionId, session.revision, state),
@@ -427,7 +430,12 @@ async function transition(
       }
       if (input.operation === "resume") {
         const state = resumeAdvancedTimingState(stored.state, input.nowMs);
-        await persistState(transaction, input.sessionId, state, stored.config);
+        await persistState(
+          transaction,
+          input.sessionId,
+          state as PersistedAdvancedTimingState,
+          stored.config,
+        );
         return {
           kind: "result" as const,
           result: commandResult(input.sessionId, session.revision, state),
@@ -435,7 +443,12 @@ async function transition(
       }
       if (input.operation === "stop") {
         const state = stopAdvancedTimingState(stored.state, input.nowMs);
-        await persistState(transaction, input.sessionId, state, stored.config);
+        await persistState(
+          transaction,
+          input.sessionId,
+          state as PersistedAdvancedTimingState,
+          stored.config,
+        );
         return {
           kind: "result" as const,
           result: commandResult(input.sessionId, session.revision, state),
@@ -455,7 +468,12 @@ async function transition(
           }),
         };
       }
-      await persistState(transaction, input.sessionId, reconciled.state, stored.config);
+      await persistState(
+        transaction,
+        input.sessionId,
+        reconciled.state as PersistedAdvancedTimingState,
+        stored.config,
+      );
       return {
         kind: "result" as const,
         result: Object.freeze({
@@ -466,13 +484,10 @@ async function transition(
     } catch (error) {
       if (
         error instanceof AdvancedTimingStateTransitionError
-        || error instanceof AdvancedTimingCommandError
       ) {
         return {
           kind: "conflict" as const,
-          code: error instanceof AdvancedTimingStateTransitionError
-            ? error.code
-            : "advanced_timing_command_invalid",
+          code: error.code,
         };
       }
       throw error;
@@ -502,6 +517,7 @@ export function createAdvancedTimingRepository(
       sessionId,
     );
     return Object.freeze({
+      sessionId,
       state: stored.state,
       sessionRevision: session.revision,
     });
@@ -551,8 +567,8 @@ export function createAdvancedTimingRepository(
     }>) => transition(kernel, {
       ...input,
       operation: "reconcile",
-    }).then(({ state, sessionRevision, invalidationScopes, cue = null }) =>
-      Object.freeze({ state, sessionRevision, invalidationScopes, cue })
+    }).then(({ state, sessionRevision, invalidationScopes, cue }) =>
+      Object.freeze({ state, sessionRevision, invalidationScopes, cue: cue! })
     ),
     stopAdvancedTiming: (input: AdvancedTimingRevisionInput) => transition(kernel, {
       ...input,

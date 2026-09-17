@@ -108,6 +108,15 @@ import {
   type RestNotificationPort,
   type RestRevisionInput,
 } from "../domains/rest";
+import {
+  pauseAdvancedTiming,
+  reconcileAdvancedTiming,
+  resumeAdvancedTiming,
+  startAdvancedTiming,
+  stopAdvancedTiming,
+  type AdvancedTimingCommandResult,
+  type AdvancedTimingRevisionInput,
+} from "../domains/advancedTiming";
 import type {
   ActiveWorkoutView,
   AddExerciseInput,
@@ -280,6 +289,9 @@ import {
 import {
   createRestRepository,
 } from "../platform/sqlite/repositories/restRepository";
+import {
+  createAdvancedTimingRepository,
+} from "../platform/sqlite/repositories/advancedTimingRepository";
 import {
   createStarterPlanRepository,
 } from "../platform/sqlite/repositories/starterPlanRepository";
@@ -950,6 +962,14 @@ type RuntimeValue = RuntimeState & Readonly<{
   skipWarmup(input: SkipWarmupInput): Promise<ActiveWorkoutView>;
   skipRest(input: RestRevisionInput): Promise<RestCommandResult>;
   startManualRest(input: RestRevisionInput): Promise<RestCommandResult>;
+  startAdvancedTiming(
+    input: AdvancedTimingRevisionInput & Readonly<{
+      config: import("../domains/advancedTiming").AdvancedTimingConfigV1;
+    }>,
+  ): Promise<AdvancedTimingCommandResult>;
+  pauseAdvancedTiming(input: AdvancedTimingRevisionInput): Promise<AdvancedTimingCommandResult>;
+  resumeAdvancedTiming(input: AdvancedTimingRevisionInput): Promise<AdvancedTimingCommandResult>;
+  stopAdvancedTiming(input: AdvancedTimingRevisionInput): Promise<AdvancedTimingCommandResult>;
   startEmptyWorkout(): Promise<string>;
   startPlanDay(
     dayId: string,
@@ -991,6 +1011,7 @@ type RuntimeServices = Readonly<{
   schedules: ReturnType<typeof createScheduleRuntimePort>;
   repository: ReturnType<typeof createPlansWorkoutRepository>;
   restRepository: ReturnType<typeof createRestRepository>;
+  advancedTimingRepository: ReturnType<typeof createAdvancedTimingRepository>;
   outcomeRepository: ReturnType<typeof createWorkoutOutcomeRepository>;
   workoutRepository: ReturnType<typeof createWorkoutRepository>;
 }>;
@@ -1023,6 +1044,9 @@ export type WorkoutAppRuntimeDependencies = Readonly<{
   createRestRepository(
     kernel: SqliteKernel,
   ): ReturnType<typeof createRestRepository>;
+  createAdvancedTimingRepository?(
+    kernel: SqliteKernel,
+  ): ReturnType<typeof createAdvancedTimingRepository>;
   createOutcomeRepository(
     kernel: SqliteKernel,
   ): ReturnType<typeof createWorkoutOutcomeRepository>;
@@ -1068,6 +1092,9 @@ export type WorkoutAppRuntimeAdapters = Readonly<{
   createRestRepository(
     kernel: SqliteKernel,
   ): ReturnType<typeof createRestRepository>;
+  createAdvancedTimingRepository?(
+    kernel: SqliteKernel,
+  ): ReturnType<typeof createAdvancedTimingRepository>;
   createOutcomeRepository(
     kernel: SqliteKernel,
   ): ReturnType<typeof createWorkoutOutcomeRepository>;
@@ -1163,6 +1190,9 @@ export function createWorkoutAppRuntimeDependencies(
       : { restAlertPreferenceStore: adapters.restAlertPreferenceStore }),
     createLifecycle: adapters.createLifecycle,
     createRestRepository: adapters.createRestRepository,
+    ...(adapters.createAdvancedTimingRepository === undefined
+      ? {}
+      : { createAdvancedTimingRepository: adapters.createAdvancedTimingRepository }),
     createOutcomeRepository: adapters.createOutcomeRepository,
     createWorkoutRepository: adapters.createWorkoutRepository,
     ...(adapters.createBackupCommands === undefined
@@ -1398,6 +1428,7 @@ export const productionWorkoutAppRuntimeDependencies =
     createNotifications: createExpoRestNotificationAdapter,
     createLifecycle: createWorkoutLifecycle,
     createRestRepository,
+    createAdvancedTimingRepository,
     createOutcomeRepository: createWorkoutOutcomeRepository,
     createWorkoutRepository,
     createScheduleRuntime: (kernel, ownedPlans) =>
@@ -2146,6 +2177,7 @@ export function WorkoutAppRuntimeProvider({
 }>) {
   const servicesRef = useRef<RuntimeServices | null>(null);
   const foregroundUnsubscribeRef = useRef<(() => void) | null>(null);
+  const advancedForegroundUnsubscribeRef = useRef<(() => void) | null>(null);
   const generationRef = useRef(0);
   const workoutRefreshGenerationRef = useRef(0);
   const contentUpdateResultRef = useRef<ContentUpdateResult | undefined>(
@@ -2160,6 +2192,8 @@ export function WorkoutAppRuntimeProvider({
   const closeServices = useCallback(async () => {
     foregroundUnsubscribeRef.current?.();
     foregroundUnsubscribeRef.current = null;
+    advancedForegroundUnsubscribeRef.current?.();
+    advancedForegroundUnsubscribeRef.current = null;
     const services = servicesRef.current;
     servicesRef.current = null;
     await services?.lifecycle.dispose?.().catch(() => undefined);
@@ -2230,6 +2264,8 @@ export function WorkoutAppRuntimeProvider({
     const restAlertPreferenceStore = dependencies.restAlertPreferenceStore
       ?? productionRestAlertPreferenceStore;
     const restRepository = dependencies.createRestRepository(kernel);
+    const advancedTimingRepository = dependencies.createAdvancedTimingRepository?.(kernel)
+      ?? createAdvancedTimingRepository(kernel);
     const outcomeRepository = dependencies.createOutcomeRepository(kernel);
     const customExerciseRepository = createCustomExerciseRepository(kernel);
     const librarySearchRepository = createLibrarySearchRepository(kernel);
@@ -2331,6 +2367,7 @@ export function WorkoutAppRuntimeProvider({
       outcomeRepository,
       repository: dependencies.createRepository(kernel),
       restRepository,
+      advancedTimingRepository,
       workoutRepository: dependencies.createWorkoutRepository(kernel),
     };
     servicesRef.current = services;
@@ -2404,6 +2441,20 @@ export function WorkoutAppRuntimeProvider({
           }));
         },
       );
+      const appState = (require("react-native") as typeof import("react-native"))
+        .AppState;
+      let priorAppState = appState.currentState;
+      const advancedSubscription = appState.addEventListener("change", (next) => {
+        const enteringForeground = priorAppState !== "active" && next === "active";
+        priorAppState = next;
+        if (enteringForeground && generation === generationRef.current) {
+          void reconcileAdvancedTimingAfterForeground(services, generation);
+        }
+      });
+      advancedForegroundUnsubscribeRef.current = () => {
+        advancedSubscription?.remove();
+      };
+      await reconcileAdvancedTimingAfterForeground(services, generation);
       const next = await trustedRead(services);
       if (generation !== generationRef.current) {
         await lifecycle.dispose().catch(() => undefined);
@@ -3133,6 +3184,100 @@ export function WorkoutAppRuntimeProvider({
       return result;
     });
   }, [reconcileAfterCommit, requireServices, trustedRead]);
+
+  const reconcileAdvancedTimingAfterForeground = useCallback(async (
+    services: RuntimeServices,
+    generation: number,
+  ) => {
+    const contexts = await services.advancedTimingRepository
+      .listActiveTimingContexts()
+      .catch(() => []);
+    if (contexts.length === 0) {
+      return;
+    }
+    const nowMs = dependencies.nowMs();
+    for (const context of contexts) {
+      if (
+        generation !== generationRef.current
+        || context.state.state !== "running"
+      ) {
+        return;
+      }
+      await reconcileAdvancedTiming({
+        repository: services.advancedTimingRepository,
+        input: {
+          sessionId: context.sessionId,
+          sessionSetId: context.state.targetSessionSetId,
+          expectedSessionRevision: context.sessionRevision,
+          expectedAdvancedTimingRevision: context.state.revision,
+          nowMs,
+          foregroundSinceMs: nowMs,
+        },
+      }).catch(() => undefined);
+    }
+    if (generation === generationRef.current) {
+      workoutRefreshGenerationRef.current += 1;
+      setState((current) => ({
+        ...current,
+        workoutRefreshGeneration: workoutRefreshGenerationRef.current,
+      }));
+    }
+  }, [dependencies]);
+
+  const runAdvancedTimingCommand = useCallback(async (
+    command: (
+      repository: ReturnType<typeof createAdvancedTimingRepository>,
+    ) => Promise<AdvancedTimingCommandResult>,
+  ): Promise<AdvancedTimingCommandResult> => {
+    const services = requireServices();
+    const result = await command(services.advancedTimingRepository);
+    await reconcileAdvancedTimingAfterForeground(
+      services,
+      generationRef.current,
+    );
+    try {
+      setState(await trustedRead(services));
+    } catch {
+      setState((current) => ({
+        ...current,
+        actionFailure: {
+          code: "workout_action_failed",
+          correlationCode: "GT-ACTION01",
+        },
+      }));
+    }
+    return result;
+  }, [reconcileAdvancedTimingAfterForeground, requireServices, trustedRead]);
+
+  const startRuntimeAdvancedTiming = useCallback((
+    input: AdvancedTimingRevisionInput & Readonly<{
+      config: import("../domains/advancedTiming").AdvancedTimingConfigV1;
+    }>,
+  ) => runAdvancedTimingCommand((repository) => startAdvancedTiming({
+    repository,
+    input,
+  })), [runAdvancedTimingCommand]);
+
+  const pauseRuntimeAdvancedTiming = useCallback((
+    input: AdvancedTimingRevisionInput,
+  ) => runAdvancedTimingCommand((repository) => pauseAdvancedTiming({
+    repository,
+    input,
+  })), [runAdvancedTimingCommand]);
+
+  const resumeRuntimeAdvancedTiming = useCallback((
+    input: AdvancedTimingRevisionInput,
+  ) => runAdvancedTimingCommand((repository) => resumeAdvancedTiming({
+    repository,
+    input,
+  })), [runAdvancedTimingCommand]);
+
+  const stopRuntimeAdvancedTiming = useCallback((
+    input: AdvancedTimingRevisionInput,
+  ) => runAdvancedTimingCommand((repository) => stopAdvancedTiming({
+    repository,
+    input,
+  })), [runAdvancedTimingCommand]);
 
   const openRestNotificationSettings = useCallback(() => {
     return requireServices().notifications.openSettings();
@@ -3983,6 +4128,7 @@ export function WorkoutAppRuntimeProvider({
     loadStarterTemplateUpdate,
     openRestNotificationSettings,
     readRestAlertPreferences,
+    pauseAdvancedTiming: pauseRuntimeAdvancedTiming,
     pauseRest: pauseWorkoutRest,
     requestRestNotificationPermission,
     setRestAlertPreferences,
@@ -4008,6 +4154,7 @@ export function WorkoutAppRuntimeProvider({
           : "rebuild_pending" as const,
       };
     },
+    resumeAdvancedTiming: resumeRuntimeAdvancedTiming,
     resumeRest: resumeWorkoutRest,
     resumePartialWorkout: resumeSavedPartial,
     retry: () => {
@@ -4028,6 +4175,7 @@ export function WorkoutAppRuntimeProvider({
     skipRest: skipWorkoutRest,
     skipWorkingSet: skipWorkoutWorkingSet,
     skipWarmup: skipWorkoutWarmup,
+    startAdvancedTiming: startRuntimeAdvancedTiming,
     startManualRest: startWorkoutRest,
     startEmptyWorkout,
     startPlanDay,
@@ -4035,6 +4183,7 @@ export function WorkoutAppRuntimeProvider({
     duplicateOwnedPlan: duplicateOwnedDraft,
     archiveOwnedPlan: archiveOwnedDraft,
     restoreOwnedPlan: restoreOwnedDraft,
+    stopAdvancedTiming: stopRuntimeAdvancedTiming,
     removeOwnedPlanDayWithImpact: removeOwnedDayWithImpact,
     replaceOwnedPlanExercise: replaceOwnedExercise,
     undoCompletedSet: undoWorkoutSet,
@@ -4085,6 +4234,7 @@ export function WorkoutAppRuntimeProvider({
     openRestNotificationSettings,
     readRestAlertPreferences,
     pauseWorkoutRest,
+    pauseRuntimeAdvancedTiming,
     requestRestNotificationPermission,
     setRestAlertPreferences,
     recordWorkoutEffort,
@@ -4097,6 +4247,7 @@ export function WorkoutAppRuntimeProvider({
     runExerciseEdit,
     runWorkoutRemoval,
     resumeWorkoutRest,
+    resumeRuntimeAdvancedTiming,
     resumeSavedPartial,
     searchLibraryExercises,
     saveOwnedDraft,
@@ -4109,8 +4260,10 @@ export function WorkoutAppRuntimeProvider({
     skipWorkoutRest,
     skipWorkoutWorkingSet,
     skipWorkoutWarmup,
+    startRuntimeAdvancedTiming,
     startEmptyWorkout,
     startWorkoutRest,
+    stopRuntimeAdvancedTiming,
     startPlanDay,
     createStarterTemplateUpdateCopy,
     migrateRuntimeCustomExerciseProfile,
