@@ -43,12 +43,16 @@ name: Phase 9 completed planned workout retries a failed plan write-back
     timeout: 30000
 - tapOn: "Expand rest controls"
 - tapOn: "Skip rest"
-- scrollUntilVisible:
-    element:
-      text: "Bench Press"
-    direction: DOWN
-    centerElement: true
-    timeout: 30000
+- repeat:
+    times: 32
+    while:
+      notVisible:
+        id: "exercise-actions-5f140001-7e35-4a6d-9100-000000000002"
+    commands:
+      - swipe:
+          start: 95%, 75%
+          end: 95%, 25%
+          duration: 500
 - tapOn:
     id: "exercise-actions-5f140001-7e35-4a6d-9100-000000000002"
 - tapOn: "Remove exercise"
@@ -58,12 +62,16 @@ name: Phase 9 completed planned workout retries a failed plan write-back
     notVisible:
       id: "exercise-actions-5f140001-7e35-4a6d-9100-000000000002"
     timeout: 30000
-- scrollUntilVisible:
-    element:
-      text: "Lat Pulldown"
-    direction: DOWN
-    centerElement: true
-    timeout: 30000
+- repeat:
+    times: 32
+    while:
+      notVisible:
+        id: "exercise-actions-5f140001-7e35-4a6d-9100-000000000003"
+    commands:
+      - swipe:
+          start: 95%, 75%
+          end: 95%, 25%
+          duration: 500
 - tapOn:
     id: "exercise-actions-5f140001-7e35-4a6d-9100-000000000003"
 - tapOn: "Remove exercise"
@@ -73,12 +81,16 @@ name: Phase 9 completed planned workout retries a failed plan write-back
     notVisible:
       id: "exercise-actions-5f140001-7e35-4a6d-9100-000000000003"
     timeout: 30000
-- scrollUntilVisible:
-    element:
-      text: "Romanian Deadlift"
-    direction: DOWN
-    centerElement: true
-    timeout: 30000
+- repeat:
+    times: 32
+    while:
+      notVisible:
+        id: "exercise-actions-5f140001-7e35-4a6d-9100-000000000004"
+    commands:
+      - swipe:
+          start: 95%, 75%
+          end: 95%, 25%
+          duration: 500
 - tapOn:
     id: "exercise-actions-5f140001-7e35-4a6d-9100-000000000004"
 - tapOn: "Remove exercise"
@@ -88,12 +100,16 @@ name: Phase 9 completed planned workout retries a failed plan write-back
     notVisible:
       id: "exercise-actions-5f140001-7e35-4a6d-9100-000000000004"
     timeout: 30000
-- scrollUntilVisible:
-    element:
-      text: "Plank"
-    direction: DOWN
-    centerElement: true
-    timeout: 30000
+- repeat:
+    times: 32
+    while:
+      notVisible:
+        id: "exercise-actions-5f140001-7e35-4a6d-9100-000000000005"
+    commands:
+      - swipe:
+          start: 95%, 75%
+          end: 95%, 25%
+          duration: 500
 - tapOn:
     id: "exercise-actions-5f140001-7e35-4a6d-9100-000000000005"
 - tapOn: "Remove exercise"

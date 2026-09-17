@@ -79,11 +79,11 @@ test("Phase 9 evidence runner requires a manifest and full edit/relaunch asserti
     assert.match(writeBackFlow, /appId: com\.fchoo\.gymtracker\.devtest/);
     assert.match(writeBackFlow, /Start Full Body A/);
     assert.match(writeBackFlow, /Complete Set 1[\s\S]*?Complete Set 2[\s\S]*?Complete Set 3/u);
-    for (const [exerciseId, exerciseName] of [
-      ["5f140001-7e35-4a6d-9100-000000000002", "Bench Press"],
-      ["5f140001-7e35-4a6d-9100-000000000003", "Lat Pulldown"],
-      ["5f140001-7e35-4a6d-9100-000000000004", "Romanian Deadlift"],
-      ["5f140001-7e35-4a6d-9100-000000000005", "Plank"],
+    for (const exerciseId of [
+      "5f140001-7e35-4a6d-9100-000000000002",
+      "5f140001-7e35-4a6d-9100-000000000003",
+      "5f140001-7e35-4a6d-9100-000000000004",
+      "5f140001-7e35-4a6d-9100-000000000005",
     ]) {
       assert.match(
         writeBackFlow,
@@ -91,7 +91,10 @@ test("Phase 9 evidence runner requires a manifest and full edit/relaunch asserti
       );
       assert.match(
         writeBackFlow,
-        new RegExp(`scrollUntilVisible:[\\s\\S]*?text: \"${exerciseName}\"`, "u"),
+        new RegExp(
+          `repeat:\\n    times: 32\\n    while:\\n      notVisible:\\n        id: \"exercise-actions-${exerciseId}\"\\n    commands:\\n      - swipe:\\n          start: 95%, 75%\\n          end: 95%, 25%\\n          duration: 500`,
+          "u",
+        ),
       );
     }
     assert.match(writeBackFlow, /Save these changes to the plan\?/);
