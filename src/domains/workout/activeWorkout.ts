@@ -1,4 +1,7 @@
 import type {
+  AdvancedTimingConfigV1,
+} from "../advancedTiming";
+import type {
   MetricIdentity,
   MetricObservation,
   MetricProfile,
@@ -50,6 +53,8 @@ export type ActiveWorkoutSet = Readonly<{
   status: ActiveWorkoutSetStatus;
   completedAtMs: number | null;
   revision: number;
+  advancedTimingOverride?: AdvancedTimingConfigV1 | null;
+  advancedTimingResolved?: AdvancedTimingConfigV1;
   valueSources: readonly SetValueSource[];
 }>;
 
@@ -63,6 +68,7 @@ export type ActiveWorkoutExercise = Readonly<{
   origin?: "planned" | "added";
   displayOrdinal?: number;
   defaultRestSeconds: number;
+  advancedTimingDefault?: AdvancedTimingConfigV1;
   status: "planned" | "active" | "completed" | "skipped";
   revision: number;
   warmups: readonly ActiveWorkoutSet[];

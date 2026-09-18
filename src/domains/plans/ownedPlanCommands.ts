@@ -15,6 +15,13 @@ import type {
   MetricIdentity,
   MetricTarget,
 } from "../metrics";
+import type {
+  AdvancedTimingConfigV1,
+} from "../advancedTiming";
+import {
+  OFF_ADVANCED_TIMING_CONFIG,
+  canonicalAdvancedTimingConfig,
+} from "../advancedTiming";
 import {
   getMetricContract,
   parseMetricTarget,
@@ -32,6 +39,7 @@ export type OwnedPlanWarmupInput = Readonly<{
   ordinal: number;
   loadGrams: number;
   reps: number;
+  advancedTimingOverride?: AdvancedTimingConfigV1 | null;
 }>;
 
 export type OwnedPlanTargetInput = Readonly<{
@@ -39,6 +47,7 @@ export type OwnedPlanTargetInput = Readonly<{
   ordinal: number;
   target: MetricTarget;
   units: Readonly<Record<string, unknown>>;
+  advancedTimingOverride?: AdvancedTimingConfigV1 | null;
 }>;
 
 export type OwnedPlanPolicyInput = Readonly<{
@@ -55,6 +64,7 @@ export type OwnedPlanOccurrenceInput = Readonly<{
   ordinal: number;
   restSeconds: number;
   metricIdentity: MetricIdentity;
+  advancedTimingDefault?: AdvancedTimingConfigV1;
   warmups: readonly OwnedPlanWarmupInput[];
   targets: readonly OwnedPlanTargetInput[];
   policy: OwnedPlanPolicyInput;
@@ -230,6 +240,19 @@ function assertContiguousOrdinals(
   }
 }
 
+function stagedAdvancedTimingOverride(
+  value: AdvancedTimingConfigV1 | null | undefined,
+): Readonly<{ advancedTimingOverride?: AdvancedTimingConfigV1 | null }> {
+  if (value === undefined) {
+    return Object.freeze({});
+  }
+  return Object.freeze({
+    advancedTimingOverride: value === null
+      ? null
+      : canonicalAdvancedTimingConfig(value),
+  });
+}
+
 function stageWarmups(
   values: readonly OwnedPlanWarmupInput[],
 ): readonly StagedOwnedPlanWarmup[] {
@@ -245,7 +268,10 @@ function stageWarmups(
     ) {
       throw new OwnedPlanInputError("owned_plan_warmup_invalid");
     }
-    return Object.freeze({ ...value });
+    return Object.freeze({
+      ...value,
+      ...stagedAdvancedTimingOverride(value.advancedTimingOverride),
+    });
   }));
 }
 
@@ -277,6 +303,7 @@ function stageTargets(
       ordinal: value.ordinal,
       target: Object.freeze({ ...target }),
       units: Object.freeze({ ...value.units }),
+      ...stagedAdvancedTimingOverride(value.advancedTimingOverride),
     });
   }));
 }
@@ -332,6 +359,9 @@ function stageOccurrence(
     ordinal: value.ordinal,
     restSeconds: value.restSeconds,
     metricIdentity: Object.freeze({ ...identity }),
+    advancedTimingDefault: value.advancedTimingDefault === undefined
+      ? OFF_ADVANCED_TIMING_CONFIG
+      : canonicalAdvancedTimingConfig(value.advancedTimingDefault),
     warmups: stageWarmups(value.warmups),
     targets: stageTargets(identity, value.targets),
     policy: stagePolicy(value.policy),

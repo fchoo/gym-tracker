@@ -125,6 +125,86 @@ function kernelForTransition(input: Readonly<{
   return { kernel, executeCount: () => executeCount };
 }
 
+function kernelForConfigUpdate(input: Readonly<{
+  exercise?: Readonly<{
+    session_revision: number;
+    exercise_revision: number;
+    status: "planned" | "active" | "completed" | "skipped";
+  }> | null;
+  set?: Readonly<{
+    session_revision: number;
+    set_revision: number;
+    status: "planned" | "draft" | "completed" | "skipped";
+    exercise_default_json: string;
+  }> | null;
+  state?: Readonly<Record<string, unknown>> | null;
+  storedStateError?: Error;
+  executeChanges?: readonly number[];
+}>) {
+  let executeIndex = 0;
+  const transaction: SqliteTransactionExecutor = {
+    execute: async () => {
+      const changes = input.executeChanges?.[
+        Math.min(executeIndex, input.executeChanges.length - 1)
+      ] ?? 1;
+      executeIndex += 1;
+      return { changes, lastInsertRowId: 0 };
+    },
+    queryAll: async <Row extends Record<string, unknown>>(sql: string) => {
+      if (sql.includes("FROM session_exercises se")
+        && sql.includes("ws.status = 'in_progress'")) {
+        return input.exercise === null
+          ? [] as readonly Row[]
+          : [input.exercise ?? {
+            session_revision: 1,
+            exercise_revision: 2,
+            status: "planned",
+          }] as unknown as readonly Row[];
+      }
+      if (sql.includes("FROM session_sets ss")
+        && sql.includes("se.advanced_timing_default_json AS exercise_default_json")) {
+        return input.set === null
+          ? [] as readonly Row[]
+          : [input.set ?? {
+            session_revision: 1,
+            set_revision: 2,
+            status: "planned",
+            exercise_default_json: offJson,
+          }] as unknown as readonly Row[];
+      }
+      if (sql.includes("FROM session_advanced_timing_states")) {
+        if (input.storedStateError !== undefined) {
+          throw input.storedStateError;
+        }
+        return input.state === null
+          ? [] as readonly Row[]
+          : [input.state ?? row({
+            session_set_id: null,
+            status: "idle",
+            mode: null,
+            config_json: offJson,
+            progress_json: "{}",
+            started_at_ms: null,
+            next_boundary_at_ms: null,
+            stopped_at_ms: null,
+          })] as unknown as readonly Row[];
+      }
+      return [] as readonly Row[];
+    },
+  };
+  const kernel: SqliteKernel = {
+    write: async <Result>(command: (executor: SqliteTransactionExecutor) => Promise<Result>) =>
+      command(transaction),
+    queryAll: transaction.queryAll,
+    connectionConfiguration: async () => ({
+      reader: { busyTimeoutMs: 1, foreignKeys: true, journalMode: "wal" },
+      writer: { busyTimeoutMs: 1, foreignKeys: true, journalMode: "wal" },
+    }),
+    close: async () => undefined,
+  };
+  return { kernel, executeCount: () => executeIndex };
+}
+
 describe("advanced timing repository state decoding", () => {
   it.each([
     ["invalid progress json", row({ progress_json: "{" })],
@@ -532,5 +612,136 @@ describe("advanced timing repository state decoding", () => {
       expectedAdvancedTimingRevision: 0, nowMs: 1_000,
       config: { version: 1, mode: "per_rep", intervalMs: 1_000, cueChannels: "haptic" },
     })).rejects.toThrow("injected_advanced_timing_write_failure");
+  });
+
+  it.each([
+    [
+      "missing exercise",
+      { exercise: null },
+      "advanced_timing_session_exercise_config_conflict",
+    ],
+    [
+      "stale session",
+      { exercise: { session_revision: 2, exercise_revision: 2, status: "planned" as const } },
+      "advanced_timing_session_revision_conflict",
+    ],
+    [
+      "stale exercise",
+      { exercise: { session_revision: 1, exercise_revision: 3, status: "planned" as const } },
+      "advanced_timing_session_exercise_config_conflict",
+    ],
+    [
+      "completed exercise",
+      { exercise: { session_revision: 1, exercise_revision: 2, status: "completed" as const } },
+      "advanced_timing_session_exercise_config_conflict",
+    ],
+    [
+      "active timer",
+      { state: row() },
+      "advanced_timing_config_active",
+    ],
+    [
+      "invalid stored state",
+      { state: row({ config_json: "{}" }) },
+      "advanced_timing_state_invalid",
+    ],
+    [
+      "unexpected stored-state read failure",
+      { storedStateError: new Error("injected_exercise_config_read_failure") },
+      "injected_exercise_config_read_failure",
+    ],
+    [
+      "failed exercise update",
+      { executeChanges: [0] },
+      "advanced_timing_session_exercise_config_conflict",
+    ],
+    [
+      "failed session update",
+      { executeChanges: [1, 1, 0] },
+      "advanced_timing_session_revision_conflict",
+    ],
+  ])("rejects %s while updating a session exercise timing default", async (
+    _label,
+    scenario,
+    code,
+  ) => {
+    const { kernel } = kernelForConfigUpdate(scenario);
+    await expect(createAdvancedTimingRepository(kernel)
+      .updateSessionExerciseAdvancedTiming({
+        sessionId: "session-1",
+        sessionExerciseId: "exercise-1",
+        expectedSessionRevision: 1,
+        expectedSessionExerciseRevision: 2,
+        nowMs: 1_000,
+        config: { version: 1, mode: "per_rep", intervalMs: 1_000, cueChannels: "haptic" },
+      })).rejects.toThrow(code);
+  });
+
+  it.each([
+    [
+      "missing set",
+      { set: null },
+      "advanced_timing_session_set_config_conflict",
+    ],
+    [
+      "stale session",
+      { set: { session_revision: 2, set_revision: 2, status: "planned" as const, exercise_default_json: offJson } },
+      "advanced_timing_session_revision_conflict",
+    ],
+    [
+      "stale set",
+      { set: { session_revision: 1, set_revision: 3, status: "planned" as const, exercise_default_json: offJson } },
+      "advanced_timing_session_set_config_conflict",
+    ],
+    [
+      "skipped set",
+      { set: { session_revision: 1, set_revision: 2, status: "skipped" as const, exercise_default_json: offJson } },
+      "advanced_timing_session_set_config_conflict",
+    ],
+    [
+      "active timer",
+      { state: row() },
+      "advanced_timing_config_active",
+    ],
+    [
+      "invalid stored state",
+      { state: row({ config_json: "{}" }) },
+      "advanced_timing_state_invalid",
+    ],
+    [
+      "unexpected stored-state read failure",
+      { storedStateError: new Error("injected_set_config_read_failure") },
+      "injected_set_config_read_failure",
+    ],
+    [
+      "invalid inherited default",
+      { set: { session_revision: 1, set_revision: 2, status: "planned" as const, exercise_default_json: "{}" } },
+      "advanced_timing_snapshot_invalid",
+    ],
+    [
+      "failed set update",
+      { executeChanges: [0] },
+      "advanced_timing_session_set_config_conflict",
+    ],
+    [
+      "failed session update",
+      { executeChanges: [1, 0] },
+      "advanced_timing_session_revision_conflict",
+    ],
+  ])("rejects %s while updating a session set timing override", async (
+    _label,
+    scenario,
+    code,
+  ) => {
+    const { kernel } = kernelForConfigUpdate(scenario);
+    await expect(createAdvancedTimingRepository(kernel)
+      .updateSessionSetAdvancedTiming({
+        sessionId: "session-1",
+        sessionSetId: "set-1",
+        expectedSessionRevision: 1,
+        expectedSetRevision: 2,
+        nowMs: 1_000,
+        override: null,
+      })).rejects.toThrow(code);
   });
 });

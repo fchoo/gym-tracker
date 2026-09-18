@@ -27,6 +27,8 @@ import {
   skipAdvancedTimingClusterGap,
   startAdvancedTiming,
   stopAdvancedTiming,
+  updateSessionExerciseAdvancedTiming,
+  updateSessionSetAdvancedTiming,
 } from "../../src/domains/advancedTiming";
 import {
   completeSet,
@@ -134,6 +136,19 @@ const cluster = {
   intraRestMs: 20_000,
   cueChannels: "haptic" as const,
 };
+const audioPerRep = {
+  version: 1 as const,
+  mode: "per_rep" as const,
+  intervalMs: 1_200,
+  cueChannels: "audio" as const,
+};
+const bothCluster = {
+  version: 1 as const,
+  mode: "cluster" as const,
+  groupSizes: [2, 2] as const,
+  intraRestMs: 15_000,
+  cueChannels: "both" as const,
+};
 
 afterEach(async () => {
   await Promise.all(kernels.splice(0).map((kernel) => kernel.close()));
@@ -214,7 +229,7 @@ async function setupWorkout(
     `SELECT id FROM session_sets
      WHERE session_exercise_id = (
        SELECT session_exercise_id FROM session_sets WHERE id = ?
-     ) AND id <> ?
+     ) AND set_kind = 'working' AND id <> ?
      ORDER BY ordinal`,
     [activeSet!.id, activeSet!.id],
   );
@@ -254,6 +269,47 @@ async function protectedFacts(kernel: SqliteKernel, sessionId: string) {
     ),
   ]);
   return { session, sets, rest, undo, restEffects };
+}
+
+type ProtectedSetRow = Readonly<{
+  id: string;
+  session_exercise_id: string;
+  status: string;
+  revision: number;
+  advanced_timing_resolved_json?: string;
+}>;
+
+async function timingRows(
+  kernel: SqliteKernel,
+  sessionId: string,
+  sessionExerciseId: string,
+) {
+  return kernel.queryAll<{
+    exercise_id: string;
+    exercise_revision: number;
+    set_id: string;
+    set_revision: number;
+    ordinal: number;
+    advanced_timing_default_json: string;
+    advanced_timing_override_json: string | null;
+    advanced_timing_resolved_json: string;
+  }>(
+    `SELECT se.id AS exercise_id,
+            se.revision AS exercise_revision,
+            ss.id AS set_id,
+            ss.revision AS set_revision,
+            ss.ordinal,
+            se.advanced_timing_default_json,
+            ss.advanced_timing_override_json,
+            ss.advanced_timing_resolved_json
+     FROM session_exercises se
+     JOIN session_sets ss ON ss.session_exercise_id = se.id
+     WHERE se.session_id = ?
+       AND se.id = ?
+       AND ss.set_kind = 'working'
+     ORDER BY ss.ordinal`,
+    [sessionId, sessionExerciseId],
+  );
 }
 
 describe("advanced timing repository", () => {
@@ -661,5 +717,125 @@ describe("advanced timing repository", () => {
        WHERE se.session_id = ? AND ss.id = ?`,
       [session.id, activeSet.id],
     )).resolves.toEqual([{ count: 1, completed: 1 }]);
+  });
+
+  it("updates active-session exercise defaults and set overrides without touching completed or rest facts", async () => {
+    const { kernel, session, activeSet, repository } =
+      await setupWorkout();
+    const before = await protectedFacts(kernel, session.id);
+    const beforeSets = before.sets as readonly ProtectedSetRow[];
+    const [exercise] = await kernel.queryAll<{ id: string; revision: number }>(
+      `SELECT se.id, se.revision
+       FROM session_exercises se
+       JOIN session_sets ss ON ss.session_exercise_id = se.id
+       WHERE ss.id = ?`,
+      [activeSet.id],
+    );
+    expect(exercise).toBeDefined();
+
+    const exerciseUpdate = await updateSessionExerciseAdvancedTiming({
+      repository,
+      input: {
+        sessionId: session.id,
+        sessionExerciseId: exercise!.id,
+        expectedSessionRevision: session.revision,
+        expectedSessionExerciseRevision: exercise!.revision,
+        config: audioPerRep,
+        nowMs: 140_000,
+      },
+    });
+    expect(exerciseUpdate).toEqual(expect.objectContaining({
+      sessionRevision: session.revision + 1,
+      state: expect.objectContaining({ state: "idle", revision: 0 }),
+    }));
+    const defaultRows = await timingRows(kernel, session.id, exercise!.id);
+    expect(defaultRows).toHaveLength(3);
+    expect(defaultRows).toEqual(defaultRows.map((row) => expect.objectContaining({
+      set_id: row.set_id,
+      exercise_revision: exercise!.revision + 1,
+      set_revision: beforeSets.find(({ id }) => id === row.set_id)!.revision + 1,
+      advanced_timing_default_json: JSON.stringify(audioPerRep),
+      advanced_timing_override_json: null,
+      advanced_timing_resolved_json: JSON.stringify(audioPerRep),
+    })));
+    const afterDefault = await protectedFacts(kernel, session.id);
+    expect(afterDefault.rest).toEqual(before.rest);
+    expect(afterDefault.undo).toEqual(before.undo);
+    expect(afterDefault.restEffects).toEqual(before.restEffects);
+    expect(afterDefault.session).toEqual([{
+      ...before.session[0]!,
+      revision: session.revision + 1,
+    }]);
+    expect(afterDefault.sets).toEqual(beforeSets.map((set) => {
+      if (
+        set.session_exercise_id !== exercise!.id
+        || set.status === "completed"
+      ) {
+        return set;
+      }
+      return {
+        ...set,
+        revision: set.revision + 1,
+        advanced_timing_resolved_json: JSON.stringify(audioPerRep),
+      };
+    }));
+
+    const override = await updateSessionSetAdvancedTiming({
+      repository,
+      input: {
+        sessionId: session.id,
+        sessionSetId: activeSet.id,
+        expectedSessionRevision: session.revision + 1,
+        expectedSetRevision: (afterDefault.sets as readonly ProtectedSetRow[]).find(({ id }) =>
+          id === activeSet.id
+        )!.revision,
+        override: bothCluster,
+        nowMs: 141_000,
+      },
+    });
+    expect(override.sessionRevision).toBe(session.revision + 2);
+    const overrideRows = await timingRows(kernel, session.id, exercise!.id);
+    expect(overrideRows).toEqual(defaultRows.map((row) => expect.objectContaining({
+      set_id: row.set_id,
+      advanced_timing_override_json: row.set_id === activeSet.id
+        ? JSON.stringify(bothCluster)
+        : null,
+      advanced_timing_resolved_json: row.set_id === activeSet.id
+        ? JSON.stringify(bothCluster)
+        : JSON.stringify(audioPerRep),
+    })));
+
+    const cleared = await updateSessionSetAdvancedTiming({
+      repository,
+      input: {
+        sessionId: session.id,
+        sessionSetId: activeSet.id,
+        expectedSessionRevision: session.revision + 2,
+        expectedSetRevision: (afterDefault.sets as readonly ProtectedSetRow[]).find(({ id }) =>
+          id === activeSet.id
+        )!.revision + 1,
+        override: null,
+        nowMs: 142_000,
+      },
+    });
+    expect(cleared.sessionRevision).toBe(session.revision + 3);
+    const clearedRows = await timingRows(kernel, session.id, exercise!.id);
+    expect(clearedRows).toEqual(defaultRows.map((row) => expect.objectContaining({
+      set_id: row.set_id,
+      advanced_timing_override_json: null,
+      advanced_timing_resolved_json: JSON.stringify(audioPerRep),
+    })));
+
+    await expect(updateSessionSetAdvancedTiming({
+      repository,
+      input: {
+        sessionId: session.id,
+        sessionSetId: activeSet.id,
+        expectedSessionRevision: session.revision,
+        expectedSetRevision: 1,
+        override: cluster,
+        nowMs: 143_000,
+      },
+    })).rejects.toThrow("advanced_timing_session_revision_conflict");
   });
 });

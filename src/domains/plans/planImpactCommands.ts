@@ -7,6 +7,12 @@ import type {
   PlanImpactRepository,
 } from "../../platform/sqlite/repositories/planImpactRepository";
 import type {
+  AdvancedTimingConfigV1,
+} from "../advancedTiming";
+import {
+  OFF_ADVANCED_TIMING_CONFIG,
+} from "../advancedTiming";
+import type {
   ApplySessionExerciseEditsToPlanInput as StagedSessionExerciseEditsToPlanInput,
   SessionExerciseEditsToPlanResult,
 } from "../../platform/sqlite/repositories/ownedPlanRepository";
@@ -31,12 +37,14 @@ export type SessionExerciseWriteBackTarget = Readonly<{
   ordinal: number;
   target: MetricTarget;
   units: Readonly<Record<string, unknown>>;
+  advancedTimingOverride?: AdvancedTimingConfigV1 | null;
 }>;
 
 export type SessionExerciseWriteBackWarmup = Readonly<{
   ordinal: number;
   loadGrams: number;
   reps: number;
+  advancedTimingOverride?: AdvancedTimingConfigV1 | null;
 }>;
 
 export type SessionExerciseWriteBackComposition = Readonly<{
@@ -47,6 +55,7 @@ export type SessionExerciseWriteBackComposition = Readonly<{
   ordinal: number;
   restSeconds: number;
   metricIdentity: MetricIdentity;
+  advancedTimingDefault?: AdvancedTimingConfigV1;
   warmups: readonly SessionExerciseWriteBackWarmup[];
   targets: readonly SessionExerciseWriteBackTarget[];
   policy: Readonly<{
@@ -80,6 +89,7 @@ export type SessionExerciseEditsForPlanFacts = Readonly<{
       ordinal: number;
       restSeconds: number;
       metricIdentity: MetricIdentity;
+      advancedTimingDefault?: AdvancedTimingConfigV1;
       warmups: readonly SessionExerciseWriteBackWarmup[];
       targets: readonly SessionExerciseWriteBackTarget[];
       policy: SessionExerciseWriteBackComposition["policy"];
@@ -92,6 +102,8 @@ export type SessionExerciseEditsForPlanFacts = Readonly<{
     sourceOccurrenceId: string | null;
     restSeconds: number;
     metricIdentity: MetricIdentity;
+    advancedTimingDefault?: AdvancedTimingConfigV1;
+    warmups?: readonly SessionExerciseWriteBackWarmup[];
     targets: readonly SessionExerciseWriteBackTarget[];
   }>[];
   edits: readonly Readonly<{
@@ -472,7 +484,36 @@ function sameTargets(
   left: readonly SessionExerciseWriteBackTarget[],
   right: readonly SessionExerciseWriteBackTarget[],
 ): boolean {
-  return JSON.stringify(left) === JSON.stringify(right);
+  const normalize = (values: readonly SessionExerciseWriteBackTarget[]) =>
+    values.map((target) => ({
+      ...target,
+      advancedTimingOverride: target.advancedTimingOverride ?? null,
+    }));
+  return JSON.stringify(normalize(left)) === JSON.stringify(normalize(right));
+}
+
+function sameWarmups(
+  left: readonly SessionExerciseWriteBackWarmup[],
+  right: readonly SessionExerciseWriteBackWarmup[],
+): boolean {
+  const normalize = (values: readonly SessionExerciseWriteBackWarmup[]) =>
+    values.map((warmup) => ({
+      ...warmup,
+      advancedTimingOverride: warmup.advancedTimingOverride ?? null,
+    }));
+  return JSON.stringify(normalize(left)) === JSON.stringify(normalize(right));
+}
+
+function timingConfig(
+  value: AdvancedTimingConfigV1 | undefined,
+): AdvancedTimingConfigV1 {
+  return value ?? OFF_ADVANCED_TIMING_CONFIG;
+}
+
+function timingOverride(
+  value: AdvancedTimingConfigV1 | null | undefined,
+): AdvancedTimingConfigV1 | null {
+  return value ?? null;
 }
 
 function manualPolicy(
@@ -546,14 +587,42 @@ export function canonicalizeSessionExerciseEditsForPlan(
         ordinal,
         restSeconds: isManual ? exercise.restSeconds : source!.restSeconds,
         metricIdentity: Object.freeze({ ...exercise.metricIdentity }),
-        warmups: Object.freeze((isManual ? [] : source!.warmups).map((warmup) =>
-          Object.freeze({ ...warmup })
+        advancedTimingDefault: Object.freeze({
+          ...timingConfig(
+            exercise.advancedTimingDefault ?? source?.advancedTimingDefault,
+          ),
+        }),
+        warmups: Object.freeze((isManual
+          ? exercise.warmups ?? []
+          : source!.warmups).map((warmup) => {
+          const sessionWarmup = exercise.warmups?.find(({ ordinal: index }) =>
+            index === warmup.ordinal
+          );
+          return Object.freeze({
+            ...warmup,
+            advancedTimingOverride: timingOverride(
+              sessionWarmup?.advancedTimingOverride
+                ?? warmup.advancedTimingOverride,
+            ),
+          });
+        }
         )),
-        targets: Object.freeze((isManual ? exercise.targets : source!.targets).map((target) => Object.freeze({
-          ordinal: target.ordinal,
-          target: Object.freeze({ ...target.target }),
-          units: Object.freeze({ ...target.units }),
-        }))),
+        targets: Object.freeze((isManual
+          ? exercise.targets
+          : source!.targets).map((target) => {
+          const sessionTarget = exercise.targets.find(({ ordinal: index }) =>
+            index === target.ordinal
+          );
+          return Object.freeze({
+            ordinal: target.ordinal,
+            target: Object.freeze({ ...target.target }),
+            units: Object.freeze({ ...target.units }),
+            advancedTimingOverride: timingOverride(
+              sessionTarget?.advancedTimingOverride
+                ?? target.advancedTimingOverride,
+            ),
+          });
+        })),
         policy: isManual
           ? manualPolicy(exercise.metricIdentity)
           : Object.freeze({
@@ -581,7 +650,9 @@ function compositionMatchesDay(
         && entry.ordinal === occurrence.ordinal
         && entry.restSeconds === occurrence.restSeconds
         && sameMetricIdentity(entry.metricIdentity, occurrence.metricIdentity)
-        && JSON.stringify(entry.warmups) === JSON.stringify(occurrence.warmups)
+        && JSON.stringify(timingConfig(entry.advancedTimingDefault))
+          === JSON.stringify(timingConfig(occurrence.advancedTimingDefault))
+        && sameWarmups(entry.warmups, occurrence.warmups)
         && sameTargets(entry.targets, occurrence.targets);
     });
 }

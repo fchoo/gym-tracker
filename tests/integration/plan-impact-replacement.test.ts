@@ -59,6 +59,9 @@ import {
   sessionExerciseEditReceiptsMigration,
 } from "../../src/platform/sqlite/migrations/0020_session_exercise_edit_receipts";
 import {
+  advancedSetTimingMigration,
+} from "../../src/platform/sqlite/migrations/0021_advanced_set_timing";
+import {
   scheduleActivationMigration,
 } from "../../src/platform/sqlite/migrations/0008_schedule_activation";
 import {
@@ -168,6 +171,7 @@ async function setupRuntime(
     seedPowerBinding?: boolean;
     seedPrimaryPolicy?: boolean;
     seedSecondOccurrence?: boolean;
+    advancedTiming?: boolean;
     beforeRepositoryWrite?: Readonly<{
       stage: PlanImpactRepositoryTestStage;
       run(
@@ -217,6 +221,7 @@ async function setupRuntime(
       historyIntegrityMigration,
       sessionExerciseEditingMigration,
       sessionExerciseEditReceiptsMigration,
+      ...(options.advancedTiming === false ? [] : [advancedSetTimingMigration]),
     ],
     recoveryBackup: validatedRecoveryBackup(),
   }).run();
@@ -671,6 +676,23 @@ async function seedCompletedEditedSession(
         [setId, exerciseId, sourceTargetId, targetJson, unitJson, profile, profile],
       );
     }
+    await transaction.execute(
+      `INSERT INTO session_sets
+        (id, session_exercise_id, set_kind, ordinal,
+         source_plan_working_set_target_id,
+         source_owned_plan_working_set_target_id, target_load_grams,
+         target_min_reps, target_max_reps, target_json, unit_json,
+         rule_type, rule_version, metric_profile, metric_contract_version,
+         exercise_metric_generation, observed_load_grams, observed_reps,
+         observed_json, status, draft_updated_at_ms, completed_at_ms,
+         completion_idempotency_key, revision)
+       VALUES ('writeback-incline-warmup', 'writeback-incline', 'warmup',
+               0, NULL, NULL, 5000, 8, 8,
+               '{"version":1,"profile":"load_reps","loadGrams":5000,"minReps":8,"maxReps":8,"incrementGrams":1000,"perSide":false}',
+               '{"version":1,"load":"grams","count":"repetitions"}',
+               'load_reps', 1, 'load_reps', 1, 1, NULL, NULL, NULL,
+               'completed', NULL, 20, NULL, 1)`,
+    );
     await transaction.execute(
       `INSERT INTO workout_session_exercise_edit_receipts
         (request_id, request_sha256, operation, session_id,
@@ -1530,6 +1552,31 @@ describe("D-01/D-02 session exercise write-back aggregate", () => {
       .rejects.toThrow('owned_plan_policy_missing');
   });
 
+  it("omits timing fields from legacy write-back facts before v21 columns exist", async () => {
+    const legacy = await setupRuntime({ advancedTiming: false });
+    await seedCompletedEditedSession(legacy.kernel);
+
+    const facts = await legacy.ownedPlans.readSessionExerciseEditsForPlan({
+      sessionId: 'retained-completed-session',
+    });
+
+    expect(facts?.day.occurrences[0]).not.toHaveProperty(
+      'advancedTimingDefault',
+    );
+    expect(facts?.day.occurrences[0]?.warmups[0]).not.toHaveProperty(
+      'advancedTimingOverride',
+    );
+    expect(facts?.day.occurrences[0]?.targets[0]).not.toHaveProperty(
+      'advancedTimingOverride',
+    );
+    expect(facts?.sessionExercises[0]).not.toHaveProperty(
+      'advancedTimingDefault',
+    );
+    expect(facts?.sessionExercises[0]?.targets[0]).not.toHaveProperty(
+      'advancedTimingOverride',
+    );
+  });
+
   it("preserves planned warmups and enforces direct receipt replay and stale revision checks", async () => {
     const runtime = await setupRuntime();
     await seedCompletedEditedSession(runtime.kernel);
@@ -1687,6 +1734,23 @@ describe("D-01/D-02 session exercise write-back aggregate", () => {
   it("applies the final edited composition once while leaving recorded session facts byte-identical", async () => {
     const runtime = await setupRuntime();
     await seedCompletedEditedSession(runtime.kernel);
+    await runtime.kernel.write((transaction) => transaction.execute(
+      `INSERT INTO owned_progression_recommendations
+        (id, exercise_id, owned_plan_working_set_target_id, rule_type,
+         rule_version, evidence_version, evidence_json, current_target_json,
+         proposed_target_json, metric_profile, metric_contract_version,
+         exercise_metric_generation, status, source_revision, target_revision,
+         created_at_ms, decided_at_ms)
+       SELECT 'writeback-recommendation-a', occurrence.exercise_id, target.id,
+              'load_reps', 1, 1, '{}', target.target_json, target.target_json,
+              target.metric_profile, target.metric_contract_version,
+              target.exercise_metric_generation, 'pending',
+              target.revision, target.revision, 450, NULL
+       FROM owned_plan_working_set_targets target
+       JOIN owned_plan_day_exercises occurrence
+         ON occurrence.id = target.plan_day_exercise_id
+       WHERE target.id = 'retained-target'`,
+    ));
   const facts = await runtime.ownedPlans.readSessionExerciseEditsForPlan({
     sessionId: 'retained-completed-session',
   });
@@ -1759,6 +1823,14 @@ describe("D-01/D-02 session exercise write-back aggregate", () => {
     );
     expect(retired.every(({ ordinal }) => ordinal >= 1_000_000)).toBe(true);
     expect(await immutableRows(runtime.kernel)).toEqual(before);
+    await expect(runtime.kernel.queryAll(
+      `SELECT status, decided_at_ms
+       FROM owned_progression_recommendations
+       WHERE id = 'writeback-recommendation-a'`,
+    )).resolves.toEqual([{
+      status: 'invalidated',
+      decided_at_ms: 500,
+    }]);
 
     await expect(applySessionExerciseEditsToPlan({
       repository: runtime.ownedPlans,

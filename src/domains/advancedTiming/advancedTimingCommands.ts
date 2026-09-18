@@ -24,7 +24,31 @@ export type AdvancedTimingRevisionInput = Readonly<{
   nowMs: number;
 }>;
 
+export type UpdateSessionExerciseAdvancedTimingInput = Readonly<{
+  sessionId: string;
+  sessionExerciseId: string;
+  expectedSessionRevision: number;
+  expectedSessionExerciseRevision: number;
+  config: AdvancedTimingConfigV1;
+  nowMs: number;
+}>;
+
+export type UpdateSessionSetAdvancedTimingInput = Readonly<{
+  sessionId: string;
+  sessionSetId: string;
+  expectedSessionRevision: number;
+  expectedSetRevision: number;
+  override: AdvancedTimingConfigV1 | null;
+  nowMs: number;
+}>;
+
 export interface AdvancedTimingRepository {
+  updateSessionExerciseAdvancedTiming(
+    input: UpdateSessionExerciseAdvancedTimingInput,
+  ): Promise<AdvancedTimingCommandResult>;
+  updateSessionSetAdvancedTiming(
+    input: UpdateSessionSetAdvancedTimingInput,
+  ): Promise<AdvancedTimingCommandResult>;
   configureAdvancedTiming(input: AdvancedTimingRevisionInput & Readonly<{
     config: AdvancedTimingConfigV1;
   }>): Promise<AdvancedTimingCommandResult>;
@@ -71,6 +95,56 @@ function validate(input: AdvancedTimingRevisionInput): void {
     || !validRevision(input.expectedAdvancedTimingRevision)
     || !validTime(input.nowMs)
   ) throw new AdvancedTimingCommandError();
+}
+
+function validateSessionExerciseInput(
+  input: UpdateSessionExerciseAdvancedTimingInput,
+): void {
+  if (
+    !validIdentifier(input.sessionId)
+    || !validIdentifier(input.sessionExerciseId)
+    || !validRevision(input.expectedSessionRevision)
+    || !validRevision(input.expectedSessionExerciseRevision)
+    || !validTime(input.nowMs)
+  ) throw new AdvancedTimingCommandError();
+}
+
+function validateSessionSetInput(
+  input: UpdateSessionSetAdvancedTimingInput,
+): void {
+  if (
+    !validIdentifier(input.sessionId)
+    || !validIdentifier(input.sessionSetId)
+    || !validRevision(input.expectedSessionRevision)
+    || !validRevision(input.expectedSetRevision)
+    || !validTime(input.nowMs)
+  ) throw new AdvancedTimingCommandError();
+}
+
+export async function updateSessionExerciseAdvancedTiming(input: Readonly<{
+  repository: AdvancedTimingRepository;
+  input: UpdateSessionExerciseAdvancedTimingInput;
+}>): Promise<AdvancedTimingCommandResult> {
+  validateSessionExerciseInput(input.input);
+  const config = parseAdvancedTimingConfig(input.input.config);
+  return input.repository.updateSessionExerciseAdvancedTiming({
+    ...input.input,
+    config,
+  });
+}
+
+export async function updateSessionSetAdvancedTiming(input: Readonly<{
+  repository: AdvancedTimingRepository;
+  input: UpdateSessionSetAdvancedTimingInput;
+}>): Promise<AdvancedTimingCommandResult> {
+  validateSessionSetInput(input.input);
+  const override = input.input.override === null
+    ? null
+    : parseAdvancedTimingConfig(input.input.override);
+  return input.repository.updateSessionSetAdvancedTiming({
+    ...input.input,
+    override,
+  });
 }
 
 export async function startAdvancedTiming(input: Readonly<{

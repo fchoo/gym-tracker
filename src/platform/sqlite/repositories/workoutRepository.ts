@@ -28,6 +28,11 @@ import {
   WorkoutCommandConflictError,
 } from "../../../domains/workout/activeWorkout";
 import {
+  OFF_ADVANCED_TIMING_CONFIG,
+  parseAdvancedTimingConfig,
+  type AdvancedTimingConfigV1,
+} from "../../../domains/advancedTiming";
+import {
   parseMetricIdentity,
   parseMetricObservation,
   parseMetricTarget,
@@ -43,6 +48,9 @@ import type {
 } from "../sqliteKernel";
 
 type QueryExecutor = Pick<SqliteTransactionExecutor, "queryAll">;
+const OFF_ADVANCED_TIMING_CONFIG_JSON = JSON.stringify(
+  OFF_ADVANCED_TIMING_CONFIG,
+);
 
 type SessionRow = Readonly<{
   id: string;
@@ -64,6 +72,7 @@ type ExerciseRow = Readonly<{
   metric_contract_version?: number;
   exercise_metric_generation?: number;
   default_rest_seconds: number;
+  advanced_timing_default_json?: string;
   status: "planned" | "active" | "completed" | "skipped";
   revision: number;
 }>;
@@ -90,6 +99,8 @@ type SetRow = Readonly<{
   completed_at_ms: number | null;
   completion_idempotency_key: string | null;
   revision: number;
+  advanced_timing_override_json?: string | null;
+  advanced_timing_resolved_json?: string;
 }>;
 
 type RestRow = Readonly<{
@@ -510,6 +521,37 @@ async function supportsOwnedTargetSnapshots(
   );
 }
 
+async function supportsAdvancedTimingSnapshots(
+  executor: Pick<SqliteKernel, "queryAll"> | SqliteTransactionExecutor,
+): Promise<boolean> {
+  const [exerciseColumns, setColumns] = await Promise.all([
+    executor.queryAll<{ name: string }>("PRAGMA table_info(session_exercises)"),
+    executor.queryAll<{ name: string }>("PRAGMA table_info(session_sets)"),
+  ]);
+  const exerciseNames = new Set(exerciseColumns.map(({ name }) => name));
+  const setNames = new Set(setColumns.map(({ name }) => name));
+  return exerciseNames.has("advanced_timing_default_json")
+    && setNames.has("advanced_timing_override_json")
+    && setNames.has("advanced_timing_resolved_json");
+}
+
+function parseTimingConfigJson(value: string | undefined): AdvancedTimingConfigV1 {
+  if (value === undefined) {
+    return OFF_ADVANCED_TIMING_CONFIG;
+  }
+  try {
+    return parseAdvancedTimingConfig(JSON.parse(value));
+  } catch {
+    throw new Error("active_workout_advanced_timing_invalid");
+  }
+}
+
+function parseTimingOverrideJson(
+  value: string | null | undefined,
+): AdvancedTimingConfigV1 | null {
+  return value == null ? null : parseTimingConfigJson(value);
+}
+
 async function valueSources(
   executor: QueryExecutor,
   sessionId: string,
@@ -679,6 +721,7 @@ async function loadActiveWorkout(
 ): Promise<WorkoutSessionView> {
   const completeIdentity = await supportsCompleteMetricIdentity(executor);
   const ownedTargetSnapshots = await supportsOwnedTargetSnapshots(executor);
+  const advancedTimingSnapshots = await supportsAdvancedTimingSnapshots(executor);
   const [session] = await executor.queryAll<SessionRow>(
     `SELECT id, status, active_session_exercise_id, active_set_id, revision,
             modified_from_plan
@@ -694,6 +737,9 @@ async function loadActiveWorkout(
     `SELECT id, exercise_id, ordinal, origin, display_ordinal, exercise_name, metric_profile,
             ${completeIdentity
               ? "metric_contract_version, exercise_metric_generation,"
+              : ""}
+            ${advancedTimingSnapshots
+              ? "advanced_timing_default_json,"
               : ""}
             default_rest_seconds, status, revision
      FROM session_exercises
@@ -711,6 +757,10 @@ async function loadActiveWorkout(
             ${completeIdentity
               ? `ss.metric_profile, ss.metric_contract_version,
                  ss.exercise_metric_generation,`
+              : ""}
+            ${advancedTimingSnapshots
+              ? `ss.advanced_timing_override_json,
+                 ss.advanced_timing_resolved_json,`
               : ""}
             ss.observed_load_grams, ss.observed_reps, ss.observed_json,
             ss.status, ss.draft_updated_at_ms, ss.completed_at_ms,
@@ -745,6 +795,12 @@ async function loadActiveWorkout(
         status: row.status,
         completedAtMs: row.completed_at_ms,
         revision: row.revision,
+        advancedTimingOverride: advancedTimingSnapshots
+          ? parseTimingOverrideJson(row.advanced_timing_override_json)
+          : null,
+        advancedTimingResolved: advancedTimingSnapshots
+          ? parseTimingConfigJson(row.advanced_timing_resolved_json)
+          : OFF_ADVANCED_TIMING_CONFIG,
         valueSources: row.set_kind === "working"
           ? await valueSources(
               executor,
@@ -769,6 +825,9 @@ async function loadActiveWorkout(
       origin: exercise.origin ?? "planned",
       displayOrdinal: exercise.display_ordinal ?? exercise.ordinal,
       defaultRestSeconds: exercise.default_rest_seconds,
+      advancedTimingDefault: advancedTimingSnapshots
+        ? parseTimingConfigJson(exercise.advanced_timing_default_json)
+        : OFF_ADVANCED_TIMING_CONFIG,
       status: exercise.status,
       revision: exercise.revision,
       warmups: sets.filter(({ kind }) => kind === "warmup"),
@@ -1244,6 +1303,9 @@ async function insertReplacementSnapshot(
   input: ReplaceExerciseInput,
   displayOrdinal: number,
 ): Promise<boolean> {
+  const advancedTimingSnapshots = await supportsAdvancedTimingSnapshots(
+    transaction,
+  );
   const [library] = await transaction.queryAll<Readonly<{
     id: string;
     name: string;
@@ -1288,12 +1350,16 @@ async function insertReplacementSnapshot(
       (id, session_id, source_plan_day_exercise_id, exercise_id, ordinal,
        origin, display_ordinal, exercise_name, metric_profile,
        metric_contract_version, exercise_metric_generation,
+       ${advancedTimingSnapshots ? "advanced_timing_default_json," : ""}
        default_rest_seconds, target_revision, status, revision)
-     VALUES (?, ?, NULL, ?, ?, 'added', ?, ?, ?, ?, ?, ?, 0, 'planned', 1)`,
+     VALUES (?, ?, NULL, ?, ?, 'added', ?, ?, ?, ?, ?,
+             ${advancedTimingSnapshots ? "?," : ""}
+             ?, 0, 'planned', 1)`,
     [
       input.replacementSessionExerciseId, input.sessionId, library.id,
       ordinal?.next_ordinal ?? 0, displayOrdinal, library.name, identity.profile,
       identity.contractVersion, identity.exerciseMetricGeneration,
+      ...(advancedTimingSnapshots ? [JSON.stringify(OFF_ADVANCED_TIMING_CONFIG)] : []),
       library.default_rest_seconds,
     ],
   );
@@ -1301,17 +1367,25 @@ async function insertReplacementSnapshot(
     `INSERT INTO session_sets
       (id, session_exercise_id, set_kind, ordinal,
        source_plan_working_set_target_id,
-       source_owned_plan_working_set_target_id, target_load_grams,
+       source_owned_plan_working_set_target_id,
+       ${advancedTimingSnapshots
+         ? "advanced_timing_override_json, advanced_timing_resolved_json,"
+         : ""}
+       target_load_grams,
        target_min_reps, target_max_reps, target_json, unit_json, rule_type,
        rule_version, metric_profile, metric_contract_version,
        exercise_metric_generation, observed_load_grams, observed_reps,
        observed_json, status, draft_updated_at_ms, completed_at_ms,
        completion_idempotency_key, revision)
-     VALUES (?, ?, 'working', 0, NULL, NULL, ?, ?, ?, ?, ?, ?, 1,
+     VALUES (?, ?, 'working', 0, NULL, NULL,
+             ${advancedTimingSnapshots ? "NULL, ?," : ""}
+             ?, ?, ?, ?, ?, ?, 1,
              ?, ?, ?, NULL, NULL, NULL, 'planned', NULL, NULL, NULL, 1)`,
     [
       input.replacementSetId, input.replacementSessionExerciseId,
-      target.targetLoadGrams, target.targetMinReps, target.targetMaxReps,
+      ...(advancedTimingSnapshots ? [JSON.stringify(OFF_ADVANCED_TIMING_CONFIG)] : []),
+      target.targetLoadGrams,
+      target.targetMinReps, target.targetMaxReps,
       target.targetJson, JSON.stringify({ version: 1 }), identity.profile,
       identity.profile, identity.contractVersion, identity.exerciseMetricGeneration,
     ],
@@ -2270,6 +2344,9 @@ export function createWorkoutRepository(
           || session.revision !== input.expectedSessionRevision) {
           return { code: "add_exercise_conflict" };
         }
+        const advancedTimingSnapshots = await supportsAdvancedTimingSnapshots(
+          transaction,
+        );
         const [library] = await transaction.queryAll<Readonly<{
           id: string;
           name: string;
@@ -2316,25 +2393,40 @@ export function createWorkoutRepository(
             (id, session_id, source_plan_day_exercise_id, exercise_id, ordinal,
              origin, display_ordinal, exercise_name, metric_profile,
              metric_contract_version, exercise_metric_generation,
+             ${advancedTimingSnapshots ? "advanced_timing_default_json," : ""}
              default_rest_seconds, target_revision, status, revision)
-           VALUES (?, ?, NULL, ?, ?, 'added', ?, ?, ?, ?, ?, ?, 0, 'planned', 1)`,
+           VALUES (?, ?, NULL, ?, ?, 'added', ?, ?, ?, ?, ?,
+                   ${advancedTimingSnapshots ? "?," : ""}
+                   ?, 0, 'planned', 1)`,
           [input.sessionExerciseId, input.sessionId, library.id, ordinal,
             displayOrdinal, library.name, identity.profile, identity.contractVersion,
-            identity.exerciseMetricGeneration, library.default_rest_seconds],
+            identity.exerciseMetricGeneration,
+            ...(advancedTimingSnapshots ? [OFF_ADVANCED_TIMING_CONFIG_JSON] : []),
+            library.default_rest_seconds],
         );
         await transaction.execute(
           `INSERT INTO session_sets
             (id, session_exercise_id, set_kind, ordinal,
              source_plan_working_set_target_id,
-             source_owned_plan_working_set_target_id, target_load_grams,
+             source_owned_plan_working_set_target_id,
+             ${advancedTimingSnapshots
+               ? "advanced_timing_override_json, advanced_timing_resolved_json,"
+               : ""}
+             target_load_grams,
              target_min_reps, target_max_reps, target_json, unit_json,
              rule_type, rule_version, metric_profile, metric_contract_version,
              exercise_metric_generation, observed_load_grams, observed_reps,
              observed_json, status, draft_updated_at_ms, completed_at_ms,
              completion_idempotency_key, revision)
-           VALUES (?, ?, 'working', 0, NULL, NULL, ?, ?, ?, ?, ?, ?, 1,
+           VALUES (?, ?, 'working', 0, NULL, NULL,
+                   ${advancedTimingSnapshots ? "NULL, ?," : ""}
+                   ?, ?, ?, ?, ?, ?, 1,
                    ?, ?, ?, NULL, NULL, NULL, 'planned', NULL, NULL, NULL, 1)`,
-          [input.setId, input.sessionExerciseId, target.targetLoadGrams,
+          [
+            input.setId,
+            input.sessionExerciseId,
+            ...(advancedTimingSnapshots ? [OFF_ADVANCED_TIMING_CONFIG_JSON] : []),
+            target.targetLoadGrams,
             target.targetMinReps, target.targetMaxReps, target.targetJson,
             JSON.stringify({ version: 1 }), identity.profile, identity.profile,
             identity.contractVersion, identity.exerciseMetricGeneration],
@@ -2509,10 +2601,16 @@ export function createWorkoutRepository(
     async addWarmup(input) {
       const observation = observationColumns(input.observation);
       const result = await kernel.write(async (transaction) => {
+        const advancedTimingSnapshots = await supportsAdvancedTimingSnapshots(
+          transaction,
+        );
         const [exercise] = await transaction.queryAll<ExerciseRow>(
           `SELECT se.id, se.exercise_id, se.ordinal, se.exercise_name,
                   se.metric_profile, se.metric_contract_version,
                   se.exercise_metric_generation, se.default_rest_seconds,
+                  ${advancedTimingSnapshots
+                    ? "se.advanced_timing_default_json,"
+                    : ""}
                   se.status, se.revision
            FROM session_exercises se
            JOIN workout_sessions ws ON ws.id = se.session_id
@@ -2535,6 +2633,9 @@ export function createWorkoutRepository(
           `INSERT INTO session_sets
             (id, session_exercise_id, set_kind, ordinal,
              source_plan_working_set_target_id,
+             ${advancedTimingSnapshots
+               ? "advanced_timing_override_json, advanced_timing_resolved_json,"
+               : ""}
              target_load_grams, target_min_reps, target_max_reps,
              target_json, unit_json, rule_type, rule_version,
              metric_profile, metric_contract_version,
@@ -2542,12 +2643,17 @@ export function createWorkoutRepository(
              observed_load_grams, observed_reps, observed_json, status,
              draft_updated_at_ms, completed_at_ms,
              completion_idempotency_key, revision)
-           VALUES (?, ?, 'warmup', ?, NULL, ?, ?, ?, ?, ?,
+           VALUES (?, ?, 'warmup', ?, NULL,
+                   ${advancedTimingSnapshots ? "NULL, ?," : ""}
+                   ?, ?, ?, ?, ?,
                    'load_reps', 1, ?, ?, ?, ?, ?, ?, 'draft', ?, NULL, NULL, 1)`,
           [
             input.setId,
             input.sessionExerciseId,
             ordinal,
+            ...(advancedTimingSnapshots
+              ? [exercise.advanced_timing_default_json ?? OFF_ADVANCED_TIMING_CONFIG_JSON]
+              : []),
             input.observation.loadGrams,
             input.observation.reps,
             input.observation.reps,
@@ -2580,6 +2686,9 @@ export function createWorkoutRepository(
 
     async addWorkingSet(input) {
       const result = await kernel.write(async (transaction) => {
+        const advancedTimingSnapshots = await supportsAdvancedTimingSnapshots(
+          transaction,
+        );
         const [source] = await transaction.queryAll<SetRow & Readonly<{
           unit_json: string;
           rule_type: "load_reps" | "manual_hold";
@@ -2592,6 +2701,10 @@ export function createWorkoutRepository(
                   ss.unit_json, ss.rule_type, ss.rule_version,
                   ss.metric_profile, ss.metric_contract_version,
                   ss.exercise_metric_generation,
+                  ${advancedTimingSnapshots
+                    ? `ss.advanced_timing_override_json,
+                       ss.advanced_timing_resolved_json,`
+                    : ""}
                   ss.observed_load_grams, ss.observed_reps, ss.observed_json,
                   ss.status, ss.draft_updated_at_ms, ss.completed_at_ms,
                   ss.completion_idempotency_key, ss.revision,
@@ -2639,6 +2752,9 @@ export function createWorkoutRepository(
           `INSERT INTO session_sets
             (id, session_exercise_id, set_kind, ordinal,
              source_plan_working_set_target_id,
+             ${advancedTimingSnapshots
+               ? "advanced_timing_override_json, advanced_timing_resolved_json,"
+               : ""}
              target_load_grams, target_min_reps, target_max_reps,
              target_json, unit_json, rule_type, rule_version,
              metric_profile, metric_contract_version,
@@ -2646,12 +2762,20 @@ export function createWorkoutRepository(
              observed_load_grams, observed_reps, observed_json, status,
              draft_updated_at_ms, completed_at_ms,
              completion_idempotency_key, revision)
-           VALUES (?, ?, 'working', ?, NULL, ?, ?, ?, ?, ?, ?, ?,
+           VALUES (?, ?, 'working', ?, NULL,
+                   ${advancedTimingSnapshots ? "?, ?," : ""}
+                   ?, ?, ?, ?, ?, ?, ?,
                    ?, ?, ?, ?, ?, ?, 'draft', ?, NULL, NULL, 1)`,
           [
             input.setId,
             input.sessionExerciseId,
             ordinal,
+            ...(advancedTimingSnapshots
+              ? [
+                  source.advanced_timing_override_json ?? null,
+                  source.advanced_timing_resolved_json ?? OFF_ADVANCED_TIMING_CONFIG_JSON,
+                ]
+              : []),
             source.target_load_grams,
             source.target_min_reps,
             source.target_max_reps,
@@ -2679,6 +2803,9 @@ export function createWorkoutRepository(
 
     async copyPreviousWarmup(input) {
       const result = await kernel.write(async (transaction) => {
+        const advancedTimingSnapshots = await supportsAdvancedTimingSnapshots(
+          transaction,
+        );
         const [source] = await transaction.queryAll<SetRow & Readonly<{
           exercise_metric_profile: MetricProfile;
           exercise_metric_contract_version: number;
@@ -2689,6 +2816,10 @@ export function createWorkoutRepository(
                   ss.target_min_reps, ss.target_max_reps, ss.target_json,
                   ss.metric_profile, ss.metric_contract_version,
                   ss.exercise_metric_generation,
+                  ${advancedTimingSnapshots
+                    ? `ss.advanced_timing_override_json,
+                       ss.advanced_timing_resolved_json,`
+                    : ""}
                   ss.observed_load_grams, ss.observed_reps, ss.observed_json,
                   ss.status, ss.draft_updated_at_ms, ss.completed_at_ms,
                   ss.completion_idempotency_key, ss.revision,
@@ -2738,6 +2869,9 @@ export function createWorkoutRepository(
           `INSERT INTO session_sets
             (id, session_exercise_id, set_kind, ordinal,
              source_plan_working_set_target_id,
+             ${advancedTimingSnapshots
+               ? "advanced_timing_override_json, advanced_timing_resolved_json,"
+               : ""}
              target_load_grams, target_min_reps, target_max_reps,
              target_json, unit_json, rule_type, rule_version,
              metric_profile, metric_contract_version,
@@ -2745,12 +2879,20 @@ export function createWorkoutRepository(
              observed_load_grams, observed_reps, observed_json, status,
              draft_updated_at_ms, completed_at_ms,
              completion_idempotency_key, revision)
-           VALUES (?, ?, 'warmup', ?, NULL, ?, ?, ?, ?, ?,
+           VALUES (?, ?, 'warmup', ?, NULL,
+                   ${advancedTimingSnapshots ? "?, ?," : ""}
+                   ?, ?, ?, ?, ?,
                    'load_reps', 1, ?, ?, ?, ?, ?, ?, 'draft', ?, NULL, NULL, 1)`,
           [
             input.setId,
             source.session_exercise_id,
             ordinal,
+            ...(advancedTimingSnapshots
+              ? [
+                  source.advanced_timing_override_json ?? null,
+                  source.advanced_timing_resolved_json ?? OFF_ADVANCED_TIMING_CONFIG_JSON,
+                ]
+              : []),
             observation.loadGrams,
             observation.reps,
             observation.reps,

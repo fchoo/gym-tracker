@@ -24,6 +24,9 @@ export type AdvancedTimingConfigV1 =
       cueChannels: AdvancedTimingCueChannels;
     }>;
 
+export const OFF_ADVANCED_TIMING_CONFIG: AdvancedTimingConfigV1 =
+  Object.freeze({ version: 1, mode: "off" });
+
 export class AdvancedTimingConfigError extends Error {
   constructor() {
     super("advanced_timing_config_invalid");
@@ -88,4 +91,16 @@ export function parseAdvancedTimingConfig(value: unknown): AdvancedTimingConfigV
     });
   }
   throw new AdvancedTimingConfigError();
+}
+
+export function canonicalAdvancedTimingConfig(
+  value: AdvancedTimingConfigV1,
+): AdvancedTimingConfigV1 {
+  return parseAdvancedTimingConfig(value);
+}
+
+export function canonicalAdvancedTimingConfigJson(
+  value: AdvancedTimingConfigV1,
+): string {
+  return JSON.stringify(canonicalAdvancedTimingConfig(value));
 }

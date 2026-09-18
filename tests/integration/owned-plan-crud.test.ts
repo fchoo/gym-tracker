@@ -38,6 +38,9 @@ import {
   ownedPlansMigration,
 } from "../../src/platform/sqlite/migrations/0009_owned_plans";
 import {
+  ADVANCED_SET_TIMING_SCHEMA_STATEMENTS,
+} from "../../src/platform/sqlite/migrations/0021_advanced_set_timing";
+import {
   createOwnedPlanRepository,
   type OwnedPlanCommittedResult,
   OwnedPlanConflictError,
@@ -112,6 +115,23 @@ const temporaryDirectories = new Set<string>();
 const kernels = new Set<SqliteKernel>();
 const sha256 = async (value: string): Promise<string> =>
   createHash("sha256").update(value).digest("hex");
+const offTiming = {
+  version: 1 as const,
+  mode: "off" as const,
+};
+const perRepTiming = {
+  version: 1 as const,
+  mode: "per_rep" as const,
+  intervalMs: 1_200,
+  cueChannels: "audio" as const,
+};
+const clusterTiming = {
+  version: 1 as const,
+  mode: "cluster" as const,
+  groupSizes: [3, 3, 3] as const,
+  intraRestMs: 20_000,
+  cueChannels: "both" as const,
+};
 
 function expectCommitted(
   result: OwnedPlanRepositoryResult,
@@ -172,6 +192,58 @@ async function setupRuntime(
     kernel,
     migrations: [ownedPlansMigration],
   }).run();
+  rejectCommit = options.failCommit ?? false;
+  return {
+    databasePath,
+    kernel,
+    repository: createOwnedPlanRepository(kernel),
+  };
+}
+
+async function setupAdvancedTimingRuntime(
+  options: Readonly<{ failCommit?: boolean }> = {},
+): Promise<Awaited<ReturnType<typeof setupRuntime>>> {
+  const directory = mkdtempSync(join(tmpdir(), "gym-owned-plan-timing-"));
+  temporaryDirectories.add(directory);
+  const databasePath = join(directory, "gym-tracker.db");
+  const fixtureDatabase = new DatabaseSync(databasePath);
+  fixtureDatabase.exec(readFileSync(
+    join(
+      repositoryRoot,
+      "tests/migrations/fixtures/v8-schedule-activation.sql",
+    ),
+    "utf8",
+  ));
+  fixtureDatabase.close();
+
+  const writer = new NodeSqliteConnection(new DatabaseSync(databasePath));
+  const reader = new NodeSqliteConnection(new DatabaseSync(databasePath));
+  await configureSqliteConnection(writer, { enableWal: true });
+  await configureSqliteConnection(reader, { enableWal: false });
+  let rejectCommit = false;
+  const kernel = createSqliteKernel(
+    { reader, writer },
+    {
+      beforeCommit: async () => {
+        if (rejectCommit) {
+          throw new Error("injected_commit_failure");
+        }
+      },
+    },
+  );
+  kernels.add(kernel);
+  await createMigrationRunner({
+    databaseName: "gym-tracker.db",
+    kernel,
+    migrations: [ownedPlansMigration],
+  }).run();
+  await kernel.write(async (transaction) => {
+    for (const statement of ADVANCED_SET_TIMING_SCHEMA_STATEMENTS) {
+      if (statement.startsWith("ALTER TABLE owned_plan")) {
+        await transaction.execute(statement);
+      }
+    }
+  });
   rejectCommit = options.failCommit ?? false;
   return {
     databasePath,
@@ -387,6 +459,123 @@ describe("owned-plan CRUD repository", () => {
         policy_id: "policy-owner-squat",
       },
     ]);
+  });
+
+  it("persists advanced timing defaults and per-set overrides through save, read, and duplicate", async () => {
+    const runtime = await setupAdvancedTimingRuntime();
+    const saved = expectCommitted(await createOwnedPlanDraft({
+      repository: runtime.repository,
+      invalidate: async () => undefined,
+      sha256,
+      input: {
+        requestId: "create-timing-plan",
+        planId: "plan-timing",
+        name: "Timing Plan",
+        dayId: "day-timing",
+        dayName: "Timing Day",
+        createdAtMs: 20_000,
+      },
+    }));
+    const plan = completePlan({
+      id: "plan-timing",
+      name: "Timing Plan",
+      days: [{
+        ...completePlan().days[0]!,
+        id: "day-timing",
+        name: "Timing Day",
+        occurrences: [{
+          ...completePlan().days[0]!.occurrences[0]!,
+          advancedTimingDefault: perRepTiming,
+          warmups: [{
+            ...completePlan().days[0]!.occurrences[0]!.warmups[0]!,
+            advancedTimingOverride: null,
+          }],
+          targets: [
+            {
+              ...completePlan().days[0]!.occurrences[0]!.targets[0]!,
+              advancedTimingOverride: null,
+            },
+            {
+              ...completePlan().days[0]!.occurrences[0]!.targets[1]!,
+              advancedTimingOverride: clusterTiming,
+            },
+          ],
+        }],
+      }],
+    });
+
+    const committed = expectCommitted(await saveOwnedPlan({
+      repository: runtime.repository,
+      invalidate: async () => undefined,
+      sha256,
+      input: {
+        requestId: "save-timing-plan",
+        expectedRevision: saved.plan.revision,
+        savedAtMs: 20_001,
+        plan,
+      },
+    }));
+    const occurrence = committed.plan.days[0]!.occurrences[0]!;
+    expect(occurrence.advancedTimingDefault).toEqual(perRepTiming);
+    expect(occurrence.warmups[0]!.advancedTimingOverride).toBeUndefined();
+    expect(occurrence.targets[0]!.advancedTimingOverride).toBeUndefined();
+    expect(occurrence.targets[1]!.advancedTimingOverride).toEqual(clusterTiming);
+    await expect(runtime.repository.read("plan-timing")).resolves
+      .toEqual(committed.plan);
+    await expect(runtime.kernel.queryAll(
+      `SELECT advanced_timing_default_json
+       FROM owned_plan_day_exercises
+       WHERE id = 'occurrence-owner-squat'`,
+    )).resolves.toEqual([{
+      advanced_timing_default_json: JSON.stringify(perRepTiming),
+    }]);
+    await expect(runtime.kernel.queryAll(
+      `SELECT id, advanced_timing_override_json
+       FROM owned_plan_working_set_targets
+       WHERE plan_day_exercise_id = 'occurrence-owner-squat'
+       ORDER BY ordinal`,
+    )).resolves.toEqual([
+      { id: "target-owner-squat-a", advanced_timing_override_json: null },
+      {
+        id: "target-owner-squat-b",
+        advanced_timing_override_json: JSON.stringify(clusterTiming),
+      },
+    ]);
+
+    const duplicate = expectCommitted(await duplicateOwnedPlan({
+      repository: runtime.repository,
+      invalidate: async () => undefined,
+      sha256,
+      input: {
+        requestId: "duplicate-timing-plan",
+        sourcePlanId: "plan-timing",
+        expectedRevision: committed.plan.revision,
+        newPlanId: "plan-timing-copy",
+        name: "Timing Plan Copy",
+        duplicatedAtMs: 20_002,
+      },
+    }));
+    expect(duplicate.plan.days[0]!.occurrences[0]!.advancedTimingDefault)
+      .toEqual(perRepTiming);
+    expect(duplicate.plan.days[0]!.occurrences[0]!.targets[1]!
+      .advancedTimingOverride).toEqual(clusterTiming);
+  });
+
+  it("fails closed on corrupt owned-plan timing JSON", async () => {
+    const runtime = await setupAdvancedTimingRuntime();
+    const saved = await createAndSave(runtime);
+    await runtime.kernel.write(async (transaction) => {
+      await transaction.execute("PRAGMA ignore_check_constraints = ON");
+      await transaction.execute(
+        `UPDATE owned_plan_day_exercises
+         SET advanced_timing_default_json = '{"version":1,"mode":"unknown"}'
+         WHERE plan_day_id = 'day-owner'`,
+      );
+      await transaction.execute("PRAGMA ignore_check_constraints = OFF");
+    });
+
+    await expect(runtime.repository.read(saved.plan.id))
+      .rejects.toThrow("owned_plan_advanced_timing_invalid");
   });
 
   it("D-23/D-25 persists name and reorder only when aggregate Save commits", async () => {

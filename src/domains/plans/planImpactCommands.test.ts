@@ -52,6 +52,19 @@ const writeBackUnits = {
   load: "grams",
   count: "repetitions",
 };
+const writeBackPerRepTiming = {
+  version: 1 as const,
+  mode: "per_rep" as const,
+  intervalMs: 1_200,
+  cueChannels: "audio" as const,
+};
+const writeBackClusterTiming = {
+  version: 1 as const,
+  mode: "cluster" as const,
+  groupSizes: [3, 3] as const,
+  intraRestMs: 20_000,
+  cueChannels: "both" as const,
+};
 
 const sessionWriteBackFacts = {
   session: {
@@ -879,6 +892,51 @@ describe("D-01/D-02 session exercise write-back preview", () => {
     });
     expect(unchanged).toBeNull();
 
+    const warmupBaseline = {
+      ...sessionWriteBackFacts,
+      day: {
+        ...sessionWriteBackFacts.day,
+        occurrences: sessionWriteBackFacts.day.occurrences.map((occurrence) =>
+          occurrence.occurrenceId === "owned-deadlift"
+            ? {
+                ...occurrence,
+                warmups: [{
+                  ordinal: 0,
+                  loadGrams: 10_000,
+                  reps: 5,
+                  advancedTimingOverride: null,
+                }],
+              }
+            : occurrence
+        ),
+      },
+      sessionExercises: sessionWriteBackFacts.day.occurrences.map((occurrence) => ({
+        sessionExerciseId: `session-${occurrence.occurrenceId}`,
+        exerciseId: occurrence.exerciseId,
+        displayOrdinal: occurrence.ordinal,
+        sourceOccurrenceId: occurrence.occurrenceId,
+        restSeconds: occurrence.restSeconds,
+        metricIdentity: occurrence.metricIdentity,
+        warmups: occurrence.occurrenceId === "owned-deadlift"
+          ? [{
+              ordinal: 0,
+              loadGrams: 10_000,
+              reps: 5,
+              advancedTimingOverride: null,
+            }]
+          : [],
+        targets: occurrence.targets,
+      })),
+      edits: [],
+    };
+    await expect(previewSessionExerciseEditsForPlan({
+      repository: {
+        readSessionExerciseEditsForPlan: jest.fn(async () => warmupBaseline),
+      },
+      sha256,
+      input: { sessionId: "session-edited" },
+    })).resolves.toBeNull();
+
     const unedited = await previewSessionExerciseEditsForPlan({
       repository: {
         readSessionExerciseEditsForPlan: jest.fn(async () => ({
@@ -955,6 +1013,124 @@ describe("D-01/D-02 session exercise write-back preview", () => {
     });
     expect(sameOrdinal?.composition.map(({ sessionExerciseId }) => sessionExerciseId))
       .toEqual(["session-bench", "session-row", "session-deadlift"]);
+  });
+
+  it("preserves explicit timing defaults and nullable set overrides in write-back previews", async () => {
+    const timingFacts = {
+      ...sessionWriteBackFacts,
+      day: {
+        ...sessionWriteBackFacts.day,
+        occurrences: sessionWriteBackFacts.day.occurrences.map((occurrence) =>
+          occurrence.occurrenceId === "owned-deadlift"
+            ? {
+                ...occurrence,
+                advancedTimingDefault: writeBackPerRepTiming,
+                targets: [{
+                  ...occurrence.targets[0]!,
+                  advancedTimingOverride: null,
+                }],
+              }
+            : occurrence
+        ),
+      },
+      sessionExercises: sessionWriteBackFacts.sessionExercises.map((exercise) =>
+        exercise.sessionExerciseId === "session-deadlift"
+          ? {
+              ...exercise,
+              targets: [{
+                ...exercise.targets[0]!,
+                advancedTimingOverride: writeBackClusterTiming,
+              }],
+            }
+          : exercise
+      ),
+    };
+
+    const preview = await previewSessionExerciseEditsForPlan({
+      repository: {
+        readSessionExerciseEditsForPlan: jest.fn(async () => timingFacts),
+      },
+      sha256,
+      input: { sessionId: "session-edited" },
+    });
+
+    const deadlift = preview?.composition.find(({ sessionExerciseId }) =>
+      sessionExerciseId === "session-deadlift"
+    );
+    expect(deadlift).toEqual(expect.objectContaining({
+      source: "planned",
+      advancedTimingDefault: writeBackPerRepTiming,
+      targets: [expect.objectContaining({
+        advancedTimingOverride: writeBackClusterTiming,
+      })],
+    }));
+  });
+
+  it("canonicalizes planned and manual write-back warmups with explicit timing inheritance", async () => {
+    const warmup = {
+      ordinal: 0,
+      loadGrams: 10_000,
+      reps: 5,
+      advancedTimingOverride: writeBackClusterTiming,
+    };
+    const timingFacts = {
+      ...sessionWriteBackFacts,
+      day: {
+        ...sessionWriteBackFacts.day,
+        occurrences: sessionWriteBackFacts.day.occurrences.map((occurrence) =>
+          occurrence.occurrenceId === "owned-deadlift"
+            ? {
+                ...occurrence,
+                advancedTimingDefault: writeBackPerRepTiming,
+                warmups: [warmup],
+              }
+            : occurrence
+        ),
+      },
+      sessionExercises: sessionWriteBackFacts.sessionExercises.map((exercise) =>
+        exercise.sessionExerciseId === "session-bench"
+          ? {
+              ...exercise,
+              warmups: [{
+                ordinal: 0,
+                loadGrams: 5_000,
+                reps: 8,
+                advancedTimingOverride: null,
+              }],
+            }
+          : exercise.sessionExerciseId === "session-deadlift"
+            ? {
+                ...exercise,
+                warmups: [{
+                  ordinal: 0,
+                  loadGrams: 99_000,
+                  reps: 1,
+                  advancedTimingOverride: null,
+                }],
+              }
+            : exercise
+      ),
+    };
+
+    const preview = await previewSessionExerciseEditsForPlan({
+      repository: {
+        readSessionExerciseEditsForPlan: jest.fn(async () => timingFacts),
+      },
+      sha256,
+      input: { sessionId: "session-edited" },
+    });
+
+    expect(preview?.composition.find(({ sessionExerciseId }) =>
+      sessionExerciseId === "session-bench"
+    )?.warmups).toEqual([{
+      ordinal: 0,
+      loadGrams: 5_000,
+      reps: 8,
+      advancedTimingOverride: null,
+    }]);
+    expect(preview?.composition.find(({ sessionExerciseId }) =>
+      sessionExerciseId === "session-deadlift"
+    )?.warmups).toEqual([warmup]);
   });
 
   it("fails closed for invalid preview inputs and no-longer-canonical planned facts", async () => {
@@ -1038,7 +1214,12 @@ describe("D-01/D-02 session exercise write-back preview", () => {
     });
     expect(warmupPreview?.composition.find(({ sessionExerciseId }) =>
       sessionExerciseId === "session-deadlift"
-    )?.warmups).toEqual([{ ordinal: 0, loadGrams: 10_000, reps: 5 }]);
+    )?.warmups).toEqual([{
+      ordinal: 0,
+      loadGrams: 10_000,
+      reps: 5,
+      advancedTimingOverride: null,
+    }]);
   });
 
   it("applies exactly one canonical aggregate only after revalidating its preview", async () => {

@@ -13,6 +13,8 @@ import {
   type AdvancedTimingRepository,
   type AdvancedTimingRevisionInput,
   type AdvancedTimingStateV1,
+  type UpdateSessionExerciseAdvancedTimingInput,
+  type UpdateSessionSetAdvancedTimingInput,
 } from "../../../domains/advancedTiming";
 import type {
   SqliteKernel,
@@ -41,6 +43,19 @@ type SessionRow = Readonly<{
 type TargetRow = Readonly<{
   status: "planned" | "draft" | "completed" | "skipped";
   advanced_timing_resolved_json: string;
+}>;
+
+type SessionExerciseConfigRow = Readonly<{
+  session_revision: number;
+  exercise_revision: number;
+  status: "planned" | "active" | "completed" | "skipped";
+}>;
+
+type SessionSetConfigRow = Readonly<{
+  session_revision: number;
+  set_revision: number;
+  status: "planned" | "draft" | "completed" | "skipped";
+  exercise_default_json: string;
 }>;
 
 export type AdvancedTimingContext = Readonly<{
@@ -552,6 +567,217 @@ function commandResult(
   });
 }
 
+async function updateSessionExerciseConfig(
+  kernel: SqliteKernel,
+  input: UpdateSessionExerciseAdvancedTimingInput,
+): Promise<AdvancedTimingCommandResult> {
+  const outcome = await kernel.write(async (transaction) => {
+    const [context] = await transaction.queryAll<SessionExerciseConfigRow>(
+      `SELECT ws.revision AS session_revision,
+              se.revision AS exercise_revision,
+              se.status
+       FROM session_exercises se
+       JOIN workout_sessions ws ON ws.id = se.session_id
+       WHERE se.id = ? AND se.session_id = ? AND ws.status = 'in_progress'`,
+      [input.sessionExerciseId, input.sessionId],
+    );
+    if (context === undefined) {
+      return {
+        kind: "conflict" as const,
+        code: "advanced_timing_session_exercise_config_conflict",
+      };
+    }
+    if (context.session_revision !== input.expectedSessionRevision) {
+      return {
+        kind: "conflict" as const,
+        code: "advanced_timing_session_revision_conflict",
+      };
+    }
+    if (
+      context.exercise_revision !== input.expectedSessionExerciseRevision
+      || context.status === "completed"
+      || context.status === "skipped"
+    ) {
+      return {
+        kind: "conflict" as const,
+        code: "advanced_timing_session_exercise_config_conflict",
+      };
+    }
+    let stored: Awaited<ReturnType<typeof readStoredState>>;
+    try {
+      stored = await readStoredState(transaction, input.sessionId);
+    } catch (error) {
+      if (error instanceof AdvancedTimingRepositoryError) {
+        return { kind: "conflict" as const, code: error.code };
+      }
+      throw error;
+    }
+    if (stored.state.state !== "idle" && stored.state.state !== "stopped") {
+      return { kind: "conflict" as const, code: "advanced_timing_config_active" };
+    }
+    const configJson = JSON.stringify(parseAdvancedTimingConfig(input.config));
+    const exerciseUpdate = await transaction.execute(
+      `UPDATE session_exercises
+       SET advanced_timing_default_json = ?,
+           revision = revision + 1
+       WHERE id = ? AND session_id = ?
+         AND revision = ?
+         AND status IN ('planned', 'active')`,
+      [
+        configJson,
+        input.sessionExerciseId,
+        input.sessionId,
+        input.expectedSessionExerciseRevision,
+      ],
+    );
+    if (exerciseUpdate.changes !== 1) {
+      return {
+        kind: "conflict" as const,
+        code: "advanced_timing_session_exercise_config_conflict",
+      };
+    }
+    await transaction.execute(
+      `UPDATE session_sets
+       SET advanced_timing_resolved_json = ?,
+           revision = revision + 1
+       WHERE session_exercise_id = ?
+         AND status IN ('planned', 'draft')
+         AND advanced_timing_override_json IS NULL`,
+      [configJson, input.sessionExerciseId],
+    );
+    const sessionUpdate = await transaction.execute(
+      `UPDATE workout_sessions
+       SET revision = revision + 1
+       WHERE id = ? AND status = 'in_progress' AND revision = ?`,
+      [input.sessionId, input.expectedSessionRevision],
+    );
+    if (sessionUpdate.changes !== 1) {
+      return {
+        kind: "conflict" as const,
+        code: "advanced_timing_session_revision_conflict",
+      };
+    }
+    return {
+      kind: "result" as const,
+      result: commandResult(input.sessionId, context.session_revision + 1, stored.state),
+    };
+  });
+  if (outcome.kind === "conflict") {
+    throw new AdvancedTimingRepositoryError(outcome.code);
+  }
+  return outcome.result;
+}
+
+async function updateSessionSetConfig(
+  kernel: SqliteKernel,
+  input: UpdateSessionSetAdvancedTimingInput,
+): Promise<AdvancedTimingCommandResult> {
+  const outcome = await kernel.write(async (transaction) => {
+    const [context] = await transaction.queryAll<SessionSetConfigRow>(
+      `SELECT ws.revision AS session_revision,
+              ss.revision AS set_revision,
+              ss.status,
+              se.advanced_timing_default_json AS exercise_default_json
+       FROM session_sets ss
+       JOIN session_exercises se ON se.id = ss.session_exercise_id
+       JOIN workout_sessions ws ON ws.id = se.session_id
+       WHERE ss.id = ? AND se.session_id = ? AND ws.status = 'in_progress'`,
+      [input.sessionSetId, input.sessionId],
+    );
+    if (context === undefined) {
+      return {
+        kind: "conflict" as const,
+        code: "advanced_timing_session_set_config_conflict",
+      };
+    }
+    if (context.session_revision !== input.expectedSessionRevision) {
+      return {
+        kind: "conflict" as const,
+        code: "advanced_timing_session_revision_conflict",
+      };
+    }
+    if (
+      context.set_revision !== input.expectedSetRevision
+      || context.status === "completed"
+      || context.status === "skipped"
+    ) {
+      return {
+        kind: "conflict" as const,
+        code: "advanced_timing_session_set_config_conflict",
+      };
+    }
+    let stored: Awaited<ReturnType<typeof readStoredState>>;
+    try {
+      stored = await readStoredState(transaction, input.sessionId);
+    } catch (error) {
+      if (error instanceof AdvancedTimingRepositoryError) {
+        return { kind: "conflict" as const, code: error.code };
+      }
+      throw error;
+    }
+    if (stored.state.state !== "idle" && stored.state.state !== "stopped") {
+      return { kind: "conflict" as const, code: "advanced_timing_config_active" };
+    }
+    const overrideJson = input.override === null
+      ? null
+      : JSON.stringify(parseAdvancedTimingConfig(input.override));
+    let resolvedJson: string;
+    try {
+      resolvedJson = overrideJson
+        ?? JSON.stringify(parseAdvancedTimingConfig(
+          JSON.parse(context.exercise_default_json),
+        ));
+    } catch {
+      return { kind: "conflict" as const, code: "advanced_timing_snapshot_invalid" };
+    }
+    const setUpdate = await transaction.execute(
+      `UPDATE session_sets
+       SET advanced_timing_override_json = ?,
+           advanced_timing_resolved_json = ?,
+           revision = revision + 1
+       WHERE id = ?
+         AND revision = ?
+         AND status IN ('planned', 'draft')
+         AND session_exercise_id IN (
+           SELECT id FROM session_exercises WHERE session_id = ?
+         )`,
+      [
+        overrideJson,
+        resolvedJson,
+        input.sessionSetId,
+        input.expectedSetRevision,
+        input.sessionId,
+      ],
+    );
+    if (setUpdate.changes !== 1) {
+      return {
+        kind: "conflict" as const,
+        code: "advanced_timing_session_set_config_conflict",
+      };
+    }
+    const sessionUpdate = await transaction.execute(
+      `UPDATE workout_sessions
+       SET revision = revision + 1
+       WHERE id = ? AND status = 'in_progress' AND revision = ?`,
+      [input.sessionId, input.expectedSessionRevision],
+    );
+    if (sessionUpdate.changes !== 1) {
+      return {
+        kind: "conflict" as const,
+        code: "advanced_timing_session_revision_conflict",
+      };
+    }
+    return {
+      kind: "result" as const,
+      result: commandResult(input.sessionId, context.session_revision + 1, stored.state),
+    };
+  });
+  if (outcome.kind === "conflict") {
+    throw new AdvancedTimingRepositoryError(outcome.code);
+  }
+  return outcome.result;
+}
+
 type TransitionInput = AdvancedTimingRevisionInput & Readonly<{
   config?: AdvancedTimingConfigV1;
   foregroundSinceMs?: number;
@@ -792,6 +1018,14 @@ export function createAdvancedTimingRepository(
 
   const repository: AdvancedTimingRepositoryPort = {
     getAdvancedTimingContext,
+
+    updateSessionExerciseAdvancedTiming: (
+      input: UpdateSessionExerciseAdvancedTimingInput,
+    ) => updateSessionExerciseConfig(kernel, input),
+
+    updateSessionSetAdvancedTiming: (
+      input: UpdateSessionSetAdvancedTimingInput,
+    ) => updateSessionSetConfig(kernel, input),
 
     configureAdvancedTiming: (input: AdvancedTimingRevisionInput & Readonly<{
       config: AdvancedTimingConfigV1;

@@ -10,6 +10,8 @@ import {
   ADVANCED_TIMING_MAX_INTERVAL_MS,
   ADVANCED_TIMING_MIN_INTERVAL_MS,
   AdvancedTimingConfigError,
+  OFF_ADVANCED_TIMING_CONFIG,
+  canonicalAdvancedTimingConfigJson,
   parseAdvancedTimingConfig,
 } from "./advancedTimingConfig";
 
@@ -19,6 +21,18 @@ describe("AdvancedTimingConfigV1", () => {
       version: 1,
       mode: "off",
     });
+    expect(OFF_ADVANCED_TIMING_CONFIG).toEqual({
+      version: 1,
+      mode: "off",
+    });
+    expect(canonicalAdvancedTimingConfigJson({
+      version: 1,
+      mode: "per_rep",
+      intervalMs: 1_000,
+      cueChannels: "haptic",
+    })).toBe(
+      "{\"version\":1,\"mode\":\"per_rep\",\"intervalMs\":1000,\"cueChannels\":\"haptic\"}",
+    );
     expect(parseAdvancedTimingConfig({
       version: 1,
       mode: "per_rep",
