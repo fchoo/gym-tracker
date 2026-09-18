@@ -1177,6 +1177,8 @@ function RuntimeCaptureHarness({
 describe("WorkoutAppRuntimeProvider", () => {
   beforeEach(() => {
     mockNativeContractsEnabled = true;
+    mockCommittedHaptic.mockClear();
+    mockCueHaptic.mockClear();
     applyWorkoutMutationTestControl("reset_workout_failures");
   });
 
@@ -1418,6 +1420,150 @@ describe("WorkoutAppRuntimeProvider", () => {
     }));
 
     expect(mockCueHaptic).toHaveBeenCalledTimes(1);
+    expect(rest.listActiveSessionIds).not.toHaveBeenCalled();
+    expect(lifecycle.trigger).not.toHaveBeenCalled();
+    expect(notifications.requestPermission).not.toHaveBeenCalled();
+    await waitFor(() => {
+      expect(captured?.advancedTimingCueFailed).toBe(true);
+    });
+  });
+
+  it("plays audio-only advanced timing cues without haptics or rest side effects", async () => {
+    const repository = runtimeRepository([activeView, activeView], [activation]);
+    const advanced = runtimeAdvancedTimingRepository();
+    const rest = runtimeRestRepository();
+    const lifecycle = runtimeLifecycle();
+    const notifications = runtimeNotifications("undetermined");
+    const countdownCue = {
+      playShortCue: jest.fn(async () => undefined),
+      playLongCue: jest.fn(async () => undefined),
+    };
+    const running: AdvancedTimingStateV1 = {
+      version: 1,
+      state: "running",
+      mode: "per_rep",
+      revision: 3,
+      targetSessionSetId: "set-1",
+      cueChannels: "audio",
+      intervalMs: 1_000,
+      startedAtMs: 10_000,
+      nextBoundaryAtMs: 11_000,
+      nextRepetitionIndex: 1,
+    };
+    advanced.reconcileAdvancedTiming.mockResolvedValue({
+      state: {
+        ...running,
+        revision: 4,
+        nextBoundaryAtMs: 21_000,
+        nextRepetitionIndex: 11,
+      },
+      sessionRevision: 1,
+      invalidationScopes: [["active-workout", "session-1"], ["today"]],
+      cue: { repetitionIndex: 10, boundaryAtMs: 20_000 },
+    });
+    let captured: ReturnType<typeof useWorkoutAppRuntime> | undefined;
+
+    await render(
+      <RuntimeCaptureHarness
+        dependencies={dependencies(repository, {
+          createAdvancedTimingRepository: () => advanced,
+          createRestRepository: () => rest,
+          createLifecycle: () => lifecycle,
+          createNotifications: () => notifications,
+        })}
+        onReady={(runtime) => {
+          captured = runtime;
+        }}
+      />,
+    );
+    await waitFor(() => {
+      expect(captured?.launchState).toBe("trusted");
+    });
+    lifecycle.trigger.mockClear();
+
+    await act(async () => {
+      await captured!.reconcileAdvancedTiming({
+        sessionId: "session-1",
+        sessionSetId: "set-1",
+        expectedSessionRevision: 1,
+        expectedAdvancedTimingRevision: 3,
+        nowMs: 20_050,
+        foregroundSinceMs: 20_000,
+        countdownCue,
+      });
+    });
+
+    expect(countdownCue.playShortCue).toHaveBeenCalledTimes(1);
+    expect(countdownCue.playLongCue).not.toHaveBeenCalled();
+    expect(mockCueHaptic).not.toHaveBeenCalled();
+    expect(rest.listActiveSessionIds).not.toHaveBeenCalled();
+    expect(lifecycle.trigger).not.toHaveBeenCalled();
+    expect(notifications.requestPermission).not.toHaveBeenCalled();
+  });
+
+  it("keeps both-channel cue delivery independent when both channels fail", async () => {
+    const repository = runtimeRepository([activeView, activeView], [activation]);
+    const advanced = runtimeAdvancedTimingRepository();
+    const rest = runtimeRestRepository();
+    const lifecycle = runtimeLifecycle();
+    const notifications = runtimeNotifications("undetermined");
+    const countdownCue = {
+      playShortCue: jest.fn(async () => undefined),
+      playLongCue: jest.fn(async () => undefined),
+    };
+    const clusterReady: AdvancedTimingStateV1 = {
+      version: 1,
+      state: "cluster_ready",
+      mode: "cluster",
+      revision: 4,
+      targetSessionSetId: "set-1",
+      cueChannels: "both",
+      groupSizes: [3, 3, 3],
+      intraRestMs: 20_000,
+      currentGroupIndex: 1,
+    };
+    advanced.skipAdvancedTimingClusterGap.mockResolvedValue({
+      state: clusterReady,
+      sessionRevision: 1,
+      invalidationScopes: [["active-workout", "session-1"], ["today"]],
+    });
+    mockCueHaptic.mockRejectedValueOnce(new Error("haptics_unavailable"));
+    countdownCue.playLongCue.mockRejectedValueOnce(new Error("audio_unavailable"));
+    let captured: ReturnType<typeof useWorkoutAppRuntime> | undefined;
+
+    await render(
+      <RuntimeCaptureHarness
+        dependencies={dependencies(repository, {
+          createAdvancedTimingRepository: () => advanced,
+          createRestRepository: () => rest,
+          createLifecycle: () => lifecycle,
+          createNotifications: () => notifications,
+        })}
+        onReady={(runtime) => {
+          captured = runtime;
+        }}
+      />,
+    );
+    await waitFor(() => {
+      expect(captured?.launchState).toBe("trusted");
+    });
+    lifecycle.trigger.mockClear();
+
+    await act(async () => {
+      await captured!.skipAdvancedTimingClusterGap({
+        sessionId: "session-1",
+        sessionSetId: "set-1",
+        expectedSessionRevision: 1,
+        expectedAdvancedTimingRevision: 3,
+        nowMs: 20_000,
+        countdownCue,
+      });
+      await Promise.resolve();
+    });
+
+    expect(mockCueHaptic).toHaveBeenCalledTimes(1);
+    expect(countdownCue.playLongCue).toHaveBeenCalledTimes(1);
+    expect(countdownCue.playShortCue).not.toHaveBeenCalled();
     expect(rest.listActiveSessionIds).not.toHaveBeenCalled();
     expect(lifecycle.trigger).not.toHaveBeenCalled();
     expect(notifications.requestPermission).not.toHaveBeenCalled();

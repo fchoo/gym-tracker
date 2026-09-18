@@ -31,6 +31,12 @@ const mockGetActiveWorkout = jest.fn<(
 ) => Promise<WorkoutSessionView>>();
 const mockGetAdvancedTimingContext = jest.fn(async () => null);
 const mockListOwnedPlanExercises = jest.fn(async () => []);
+const mockBeginAdvancedTimingClusterGap = jest.fn();
+const mockSkipAdvancedTimingClusterGap = jest.fn();
+const mockCountdownCue = {
+  playShortCue: jest.fn(async () => undefined),
+  playLongCue: jest.fn(async () => undefined),
+};
 
 jest.mock("expo-router", () => ({
   router: {
@@ -44,10 +50,7 @@ jest.mock("expo-router", () => ({
 }));
 
 jest.mock("../../bootstrap/restCountdownCue", () => ({
-  useRestCountdownCue: () => ({
-    acknowledge: () => undefined,
-    observe: () => undefined,
-  }),
+  useRestCountdownCue: () => mockCountdownCue,
 }));
 
 jest.mock("../../bootstrap/workoutAppRuntime", () => ({
@@ -62,6 +65,8 @@ jest.mock("../../bootstrap/workoutAppRuntime", () => ({
     finishCompleted: jest.fn(),
     finishPartial: jest.fn(),
     configureAdvancedTiming: jest.fn(),
+    beginAdvancedTimingClusterGap: mockBeginAdvancedTimingClusterGap,
+    skipAdvancedTimingClusterGap: mockSkipAdvancedTimingClusterGap,
     getActiveWorkout: mockGetActiveWorkout,
     getAdvancedTimingContext: mockGetAdvancedTimingContext,
     listOwnedPlanExercises: mockListOwnedPlanExercises,
@@ -93,9 +98,16 @@ jest.mock("../screens/ActiveWorkoutScreen", () => {
 
   return {
     ActiveWorkoutScreen: ({
+      countdownCue,
+      commands,
       sessionId,
       view,
     }: Readonly<{
+      countdownCue: unknown;
+      commands: Readonly<{
+        beginAdvancedTimingClusterGap?: unknown;
+        skipAdvancedTimingClusterGap?: unknown;
+      }>;
       sessionId: string;
       view: ActiveWorkoutView;
     }>) => {
@@ -108,6 +120,15 @@ jest.mock("../screens/ActiveWorkoutScreen", () => {
         <>
           <Text accessibilityRole="header">Workout</Text>
           <Text>{view.currentExercise.name}</Text>
+          <Text testID="advanced-timing-route-wiring">
+            {String(
+              commands.beginAdvancedTimingClusterGap
+                === mockBeginAdvancedTimingClusterGap
+                && commands.skipAdvancedTimingClusterGap
+                === mockSkipAdvancedTimingClusterGap
+                && countdownCue === mockCountdownCue,
+            )}
+          </Text>
           <Text testID="active-workout-screen-instance">
             {`${sessionId}:${instance}`}
           </Text>
@@ -190,6 +211,10 @@ describe("ActiveWorkoutRoute", () => {
     mockGetActiveWorkout.mockReset();
     mockGetAdvancedTimingContext.mockClear();
     mockListOwnedPlanExercises.mockClear();
+    mockBeginAdvancedTimingClusterGap.mockReset();
+    mockSkipAdvancedTimingClusterGap.mockReset();
+    mockCountdownCue.playShortCue.mockClear();
+    mockCountdownCue.playLongCue.mockClear();
   });
 
   it("never renders the prior session while a changed session is loading and keeps the overview identity", async () => {
@@ -205,6 +230,8 @@ describe("ActiveWorkoutRoute", () => {
       await sessionA.promise;
     });
     expect(screen.getByRole("header", { name: "Workout" })).toBeOnTheScreen();
+    expect(screen.getByTestId("advanced-timing-route-wiring"))
+      .toHaveTextContent("true");
 
     mockSessionId = "session-b";
     await act(async () => {

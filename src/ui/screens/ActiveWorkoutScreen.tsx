@@ -147,13 +147,23 @@ export interface ActiveWorkoutCommands {
   startAdvancedTiming?(
     input: AdvancedTimingRevisionInput & Readonly<{
       config: AdvancedTimingConfigV1;
+      countdownCue?: RestCountdownCuePort | undefined;
     }>,
   ): Promise<AdvancedTimingCommandResult>;
-  beginAdvancedTimingClusterGap?(input: AdvancedTimingRevisionInput): Promise<AdvancedTimingCommandResult>;
-  skipAdvancedTimingClusterGap?(input: AdvancedTimingRevisionInput): Promise<AdvancedTimingCommandResult>;
+  beginAdvancedTimingClusterGap?(
+    input: AdvancedTimingRevisionInput & Readonly<{
+      countdownCue?: RestCountdownCuePort | undefined;
+    }>,
+  ): Promise<AdvancedTimingCommandResult>;
+  skipAdvancedTimingClusterGap?(
+    input: AdvancedTimingRevisionInput & Readonly<{
+      countdownCue?: RestCountdownCuePort | undefined;
+    }>,
+  ): Promise<AdvancedTimingCommandResult>;
   pauseAdvancedTiming?(input: AdvancedTimingRevisionInput): Promise<AdvancedTimingCommandResult>;
   resumeAdvancedTiming?(input: AdvancedTimingRevisionInput): Promise<AdvancedTimingCommandResult>;
   reconcileAdvancedTiming?(input: AdvancedTimingRevisionInput & Readonly<{
+    countdownCue?: RestCountdownCuePort | undefined;
     foregroundSinceMs: number;
   }>): Promise<AdvancedTimingCommandResult>;
   stopAdvancedTiming?(input: AdvancedTimingRevisionInput): Promise<AdvancedTimingCommandResult>;
@@ -1001,6 +1011,7 @@ function PopulatedWorkoutOverview({
       expectedAdvancedTimingRevision: configured.state.revision,
       nowMs: nowMs(),
       config,
+      countdownCue,
     });
     applyAdvancedTimingResult(started);
     return started;
@@ -1038,6 +1049,7 @@ function PopulatedWorkoutOverview({
       expectedAdvancedTimingRevision: configured.state.revision,
       nowMs: nowMs(),
       config,
+      countdownCue,
     });
     applyAdvancedTimingResult(started);
     return started;
@@ -2239,7 +2251,10 @@ function PopulatedWorkoutOverview({
                     if (commands.beginAdvancedTimingClusterGap === undefined) {
                       throw new Error("advanced_timing_unavailable");
                     }
-                    return commands.beginAdvancedTimingClusterGap(input);
+                    return commands.beginAdvancedTimingClusterGap({
+                      ...input,
+                      countdownCue,
+                    });
                   })}
                   onPause={() => runAdvancedTiming((input) => {
                     if (commands.pauseAdvancedTiming === undefined) {
@@ -2253,6 +2268,7 @@ function PopulatedWorkoutOverview({
                     }
                     return commands.reconcileAdvancedTiming({
                       ...input,
+                      countdownCue,
                       foregroundSinceMs,
                     });
                   })}
@@ -2266,7 +2282,10 @@ function PopulatedWorkoutOverview({
                     if (commands.skipAdvancedTimingClusterGap === undefined) {
                       throw new Error("advanced_timing_unavailable");
                     }
-                    return commands.skipAdvancedTimingClusterGap(input);
+                    return commands.skipAdvancedTimingClusterGap({
+                      ...input,
+                      countdownCue,
+                    });
                   })}
                   onStop={() => runAdvancedTiming((input) => {
                     if (commands.stopAdvancedTiming === undefined) {

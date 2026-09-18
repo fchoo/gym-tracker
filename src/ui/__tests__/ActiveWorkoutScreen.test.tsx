@@ -2745,6 +2745,10 @@ describe("Plan 01-08 ActiveWorkoutScreen", () => {
       sessionRevision: 2,
       invalidationScopes: [["active-workout", "session-1"], ["today"]],
     }));
+    const countdownCue = {
+      playShortCue: jest.fn(async () => undefined),
+      playLongCue: jest.fn(async () => undefined),
+    };
     const onAdvancedTimingChanged = jest.fn();
 
     const { rendered } = await renderActive({
@@ -2766,6 +2770,7 @@ describe("Plan 01-08 ActiveWorkoutScreen", () => {
         startAdvancedTiming,
         startManualRest,
       }),
+      countdownCue,
       onAdvancedTimingChanged,
     });
 
@@ -2793,6 +2798,7 @@ describe("Plan 01-08 ActiveWorkoutScreen", () => {
       sessionSetId: "working-1",
       expectedSessionRevision: 2,
       expectedAdvancedTimingRevision: 0,
+      countdownCue,
     }));
 
     await rendered.rerender(
@@ -2812,6 +2818,7 @@ describe("Plan 01-08 ActiveWorkoutScreen", () => {
           onGoBack={jest.fn()}
           sessionId="session-1"
           view={{ ...initialView, revision: 2 }}
+          countdownCue={countdownCue}
           advancedTimingContext={{
             sessionId: "session-1",
             sessionRevision: 2,
@@ -2831,6 +2838,7 @@ describe("Plan 01-08 ActiveWorkoutScreen", () => {
       expectedSessionRevision: 2,
       expectedAdvancedTimingRevision: 1,
       nowMs: 2_000,
+      countdownCue,
     });
 
     await rendered.rerender(
@@ -2861,6 +2869,7 @@ describe("Plan 01-08 ActiveWorkoutScreen", () => {
               nextSetId: "working-2",
             },
           }}
+          countdownCue={countdownCue}
           advancedTimingContext={{
             sessionId: "session-1",
             sessionRevision: 2,
@@ -2884,6 +2893,7 @@ describe("Plan 01-08 ActiveWorkoutScreen", () => {
       expectedSessionRevision: 2,
       expectedAdvancedTimingRevision: 2,
       nowMs: 2_000,
+      countdownCue,
     });
     expect(completeSet).not.toHaveBeenCalled();
     expect(startManualRest).not.toHaveBeenCalled();

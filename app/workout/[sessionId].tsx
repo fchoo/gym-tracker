@@ -166,6 +166,8 @@ export default function ActiveWorkoutRoute() {
         expireRest: runtime.expireRest,
         configureAdvancedTiming: runtime.configureAdvancedTiming,
         startAdvancedTiming: runtime.startAdvancedTiming,
+        beginAdvancedTimingClusterGap: runtime.beginAdvancedTimingClusterGap,
+        skipAdvancedTimingClusterGap: runtime.skipAdvancedTimingClusterGap,
         pauseAdvancedTiming: runtime.pauseAdvancedTiming,
         resumeAdvancedTiming: runtime.resumeAdvancedTiming,
         reconcileAdvancedTiming: runtime.reconcileAdvancedTiming,

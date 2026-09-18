@@ -103,6 +103,7 @@ import {
   startManualRest,
   REST_NOTIFICATION_CHANNEL_IDS,
   type AdjustRestInput,
+  type RestCountdownCuePort,
   type RestCommandResult,
   type RestNotificationPermission,
   type RestNotificationPort,
@@ -977,6 +978,7 @@ type RuntimeValue = RuntimeState & Readonly<{
   startAdvancedTiming(
     input: AdvancedTimingRevisionInput & Readonly<{
       config: AdvancedTimingConfigV1;
+      countdownCue?: RestCountdownCuePort | undefined;
     }>,
   ): Promise<AdvancedTimingCommandResult>;
   configureAdvancedTiming(
@@ -985,10 +987,15 @@ type RuntimeValue = RuntimeState & Readonly<{
     }>,
   ): Promise<AdvancedTimingCommandResult>;
   reconcileAdvancedTiming(input: AdvancedTimingRevisionInput & Readonly<{
+    countdownCue?: RestCountdownCuePort | undefined;
     foregroundSinceMs: number;
   }>): Promise<AdvancedTimingCommandResult & Readonly<{ cue: AdvancedTimingCue | null }>>;
-  beginAdvancedTimingClusterGap(input: AdvancedTimingRevisionInput): Promise<AdvancedTimingCommandResult>;
-  skipAdvancedTimingClusterGap(input: AdvancedTimingRevisionInput): Promise<AdvancedTimingCommandResult>;
+  beginAdvancedTimingClusterGap(input: AdvancedTimingRevisionInput & Readonly<{
+    countdownCue?: RestCountdownCuePort | undefined;
+  }>): Promise<AdvancedTimingCommandResult>;
+  skipAdvancedTimingClusterGap(input: AdvancedTimingRevisionInput & Readonly<{
+    countdownCue?: RestCountdownCuePort | undefined;
+  }>): Promise<AdvancedTimingCommandResult>;
   pauseAdvancedTiming(input: AdvancedTimingRevisionInput): Promise<AdvancedTimingCommandResult>;
   resumeAdvancedTiming(input: AdvancedTimingRevisionInput): Promise<AdvancedTimingCommandResult>;
   stopAdvancedTiming(input: AdvancedTimingRevisionInput): Promise<AdvancedTimingCommandResult>;
@@ -2639,28 +2646,63 @@ export function WorkoutAppRuntimeProvider({
 
   const emitAdvancedTimingCue = useCallback(async (
     result: AdvancedTimingCommandResult & Readonly<{ cue?: AdvancedTimingCue | null }>,
+    countdownCue?: RestCountdownCuePort | undefined,
   ) => {
     if (
       result.cue === undefined
       || result.cue === null
-      || result.state.state !== "running"
-      || result.state.cueChannels === "audio"
+      || (
+        result.state.state !== "running"
+        && result.state.state !== "cluster_ready"
+        && result.state.state !== "cluster_gap_running"
+      )
     ) {
       return;
     }
-    try {
-      await createExpoHapticsAdapter().cue();
+    const cueChannels = result.state.cueChannels;
+    const cueTasks: Promise<void>[] = [];
+    if (cueChannels === "haptic" || cueChannels === "both") {
+      cueTasks.push(createExpoHapticsAdapter().cue());
+    }
+    if (
+      countdownCue !== undefined
+      && (cueChannels === "audio" || cueChannels === "both")
+    ) {
+      cueTasks.push(result.state.mode === "cluster"
+        && result.state.state === "cluster_ready"
+        ? countdownCue.playLongCue()
+        : countdownCue.playShortCue());
+    }
+    if (cueTasks.length === 0) {
+      return;
+    }
+    const results = await Promise.allSettled(cueTasks);
+    if (results.every((entry) => entry.status === "fulfilled")) {
       setState((current) => {
         const { advancedTimingCueFailed: _failed, ...next } = current;
         return next;
       });
+      return;
+    }
+    setState((current) => ({
+      ...current,
+      advancedTimingCueFailed: true as const,
+    }));
+  }, []);
+
+  const emitAdvancedTimingCueBeforeRefresh = useCallback(async (
+    result: AdvancedTimingCommandResult & Readonly<{ cue?: AdvancedTimingCue | null }>,
+    countdownCue?: RestCountdownCuePort | undefined,
+  ) => {
+    try {
+      await emitAdvancedTimingCue(result, countdownCue);
     } catch {
       setState((current) => ({
         ...current,
         advancedTimingCueFailed: true as const,
       }));
     }
-  }, []);
+  }, [emitAdvancedTimingCue]);
 
   const getSessionDetail = useCallback((sessionId: string) => {
     return requireServices().outcomeRepository.getSessionDetail(sessionId);
@@ -3272,10 +3314,8 @@ export function WorkoutAppRuntimeProvider({
           foregroundSinceMs: nowMs,
         },
       }).catch(() => undefined);
-      if (
-        result !== undefined
-      ) {
-        await emitAdvancedTimingCue(result);
+      if (result !== undefined) {
+        await emitAdvancedTimingCueBeforeRefresh(result);
       }
     }
     if (generation === generationRef.current) {
@@ -3328,36 +3368,90 @@ export function WorkoutAppRuntimeProvider({
   })), [runAdvancedTimingCommand]);
 
   const reconcileRuntimeAdvancedTiming = useCallback((
-    input: AdvancedTimingRevisionInput & Readonly<{ foregroundSinceMs: number }>,
+    input: AdvancedTimingRevisionInput & Readonly<{
+      countdownCue?: RestCountdownCuePort | undefined;
+      foregroundSinceMs: number;
+    }>,
   ) => runAdvancedTimingCommand(async (repository) => {
-    const result = await reconcileAdvancedTiming({ repository, input });
-    await emitAdvancedTimingCue(result);
+    const {
+      countdownCue,
+      ...commandInput
+    } = input;
+    const result = await reconcileAdvancedTiming({
+      repository,
+      input: commandInput,
+    });
+    await emitAdvancedTimingCueBeforeRefresh(result, countdownCue);
     return result;
   }) as Promise<AdvancedTimingCommandResult & Readonly<{ cue: AdvancedTimingCue | null }>>,
-  [emitAdvancedTimingCue, runAdvancedTimingCommand]);
+  [emitAdvancedTimingCueBeforeRefresh, runAdvancedTimingCommand]);
 
   const beginRuntimeAdvancedTimingClusterGap = useCallback((
-    input: AdvancedTimingRevisionInput,
-  ) => runAdvancedTimingCommand((repository) => beginAdvancedTimingClusterGap({
-    repository,
-    input,
-  })), [runAdvancedTimingCommand]);
+    input: AdvancedTimingRevisionInput & Readonly<{
+      countdownCue?: RestCountdownCuePort | undefined;
+    }>,
+  ) => runAdvancedTimingCommand(async (repository) => {
+    const {
+      countdownCue,
+      ...commandInput
+    } = input;
+    const result = await beginAdvancedTimingClusterGap({
+      repository,
+      input: commandInput,
+    });
+    await emitAdvancedTimingCueBeforeRefresh({
+      ...result,
+      cue: {
+        repetitionIndex: 0,
+        boundaryAtMs: commandInput.nowMs,
+      },
+    }, countdownCue);
+    return result;
+  }), [emitAdvancedTimingCueBeforeRefresh, runAdvancedTimingCommand]);
 
   const skipRuntimeAdvancedTimingClusterGap = useCallback((
-    input: AdvancedTimingRevisionInput,
-  ) => runAdvancedTimingCommand((repository) => skipAdvancedTimingClusterGap({
-    repository,
-    input,
-  })), [runAdvancedTimingCommand]);
+    input: AdvancedTimingRevisionInput & Readonly<{
+      countdownCue?: RestCountdownCuePort | undefined;
+    }>,
+  ) => runAdvancedTimingCommand(async (repository) => {
+    const {
+      countdownCue,
+      ...commandInput
+    } = input;
+    const result = await skipAdvancedTimingClusterGap({
+      repository,
+      input: commandInput,
+    });
+    await emitAdvancedTimingCueBeforeRefresh({
+      ...result,
+      cue: {
+        repetitionIndex: 0,
+        boundaryAtMs: commandInput.nowMs,
+      },
+    }, countdownCue);
+    return result;
+  }), [emitAdvancedTimingCueBeforeRefresh, runAdvancedTimingCommand]);
 
   const startRuntimeAdvancedTiming = useCallback((
     input: AdvancedTimingRevisionInput & Readonly<{
       config: AdvancedTimingConfigV1;
+      countdownCue?: RestCountdownCuePort | undefined;
     }>,
-  ) => runAdvancedTimingCommand((repository) => startAdvancedTiming({
-    repository,
-    input,
-  })), [runAdvancedTimingCommand]);
+  ) => runAdvancedTimingCommand(async (repository) => {
+    const commandInput = {
+      sessionId: input.sessionId,
+      sessionSetId: input.sessionSetId,
+      expectedSessionRevision: input.expectedSessionRevision,
+      expectedAdvancedTimingRevision: input.expectedAdvancedTimingRevision,
+      nowMs: input.nowMs,
+      config: input.config,
+    };
+    const result = await startAdvancedTiming({
+      repository,
+      input: commandInput,
+    });
+    return result;
+  }), [runAdvancedTimingCommand]);
 
   const pauseRuntimeAdvancedTiming = useCallback((
     input: AdvancedTimingRevisionInput,
