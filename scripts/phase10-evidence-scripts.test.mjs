@@ -75,6 +75,13 @@ test("Phase 10 Maestro flow exercises per-rep and 3+3+3 cluster lifecycle timing
 
   assert.match(flow, /^appId: com\.fchoo\.gymtracker\.devtest$/mu);
   assert.match(flow, /WORKOUT OVERVIEW/u);
+  assert.match(flow, /Back Squat exercise actions/u);
+  assert.match(flow, /Configure timing/u);
+  assert.match(flow, /Exercise timing/u);
+  assert.match(flow, /advanced-timing-config-interval/u);
+  assert.match(flow, /Set timing/u);
+  assert.match(flow, /advanced-timing-config-cluster-pattern/u);
+  assert.match(flow, /Save timing/u);
   assert.match(flow, /Per-rep cadence/u);
   assert.match(flow, /Per-rep interval in seconds/u);
   assert.match(flow, /Configure and start per-rep cadence/u);

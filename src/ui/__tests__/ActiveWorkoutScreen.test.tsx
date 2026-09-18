@@ -2970,4 +2970,134 @@ describe("Plan 01-08 ActiveWorkoutScreen", () => {
       }),
     ));
   });
+
+  it("configures the active exercise timing default through the session command", async () => {
+    const updateSessionExerciseAdvancedTiming = jest.fn<NonNullable<
+      ActiveWorkoutCommands["updateSessionExerciseAdvancedTiming"]
+    >>(async () => advancedResult({
+      version: 1,
+      state: "idle",
+      revision: 0,
+      targetSessionSetId: null,
+    }, 2));
+
+    await renderActive({
+      advancedTimingContext: {
+        sessionId: "session-1",
+        sessionRevision: 1,
+        state: { version: 1, state: "idle", revision: 0, targetSessionSetId: null },
+      },
+      commands: commands({ updateSessionExerciseAdvancedTiming }),
+    });
+
+    await fireEvent.press(
+      screen.getByRole("button", { name: "Back Squat exercise actions" }),
+    );
+    await fireEvent.press(
+      screen.getByRole("button", { name: "Configure timing" }),
+    );
+    await fireEvent.press(screen.getByRole("button", { name: "Per-rep timing" }));
+    await act(async () => {
+      fireEvent.changeText(
+        screen.getByTestId("advanced-timing-config-interval"),
+        "3",
+      );
+    });
+    await fireEvent.press(screen.getByRole("button", { name: "Save timing" }));
+
+    await waitFor(() =>
+      expect(updateSessionExerciseAdvancedTiming).toHaveBeenCalledWith({
+        sessionId: "session-1",
+        sessionExerciseId: "session-exercise-1",
+        expectedSessionRevision: 1,
+        expectedSessionExerciseRevision: 1,
+        nowMs: 2_000,
+        config: {
+          version: 1,
+          mode: "per_rep",
+          intervalMs: 3_000,
+          cueChannels: "haptic",
+        },
+      }));
+  });
+
+  it("overrides the active working-set timing and inherits from the exercise", async () => {
+    const updateSessionSetAdvancedTiming = jest.fn<NonNullable<
+      ActiveWorkoutCommands["updateSessionSetAdvancedTiming"]
+    >>(async () => advancedResult({
+      version: 1,
+      state: "idle",
+      revision: 0,
+      targetSessionSetId: null,
+    }, 2));
+
+    await renderActive({
+      advancedTimingContext: {
+        sessionId: "session-1",
+        sessionRevision: 1,
+        state: { version: 1, state: "idle", revision: 0, targetSessionSetId: null },
+      },
+      commands: commands({ updateSessionSetAdvancedTiming }),
+    });
+
+    expect(screen.getByTestId("working-set-timing-summary-working-1"))
+      .toHaveTextContent("Set timing · Inherits exercise timing");
+
+    await fireEvent.press(screen.getByRole("button", { name: "Set timing" }));
+    await fireEvent.press(screen.getByRole("button", { name: "Off timing" }));
+    await fireEvent.press(screen.getByRole("button", { name: "Save timing" }));
+
+    await waitFor(() =>
+      expect(updateSessionSetAdvancedTiming).toHaveBeenCalledWith({
+        sessionId: "session-1",
+        sessionSetId: "working-1",
+        expectedSessionRevision: 1,
+        expectedSetRevision: 1,
+        override: { version: 1, mode: "off" },
+        nowMs: 2_000,
+      }));
+  });
+
+  it("keeps a completed working set read-only for advanced timing", async () => {
+    const updateSessionSetAdvancedTiming = jest.fn<NonNullable<
+      ActiveWorkoutCommands["updateSessionSetAdvancedTiming"]
+    >>(async () => advancedResult({
+      version: 1,
+      state: "idle",
+      revision: 0,
+      targetSessionSetId: null,
+    }, 2));
+    const completedActiveSet: ActiveWorkoutView = {
+      ...initialView,
+      currentExercise: {
+        ...initialView.currentExercise,
+        workingSets: initialView.currentExercise.workingSets.map((set, index) =>
+          index === 0
+            ? {
+                ...set,
+                status: "completed" as const,
+                completedAtMs: 3_000,
+                observation: loadReps(60_000, 8, "manual"),
+              }
+            : set
+        ),
+      },
+    };
+
+    await renderActive({
+      view: completedActiveSet,
+      advancedTimingContext: {
+        sessionId: "session-1",
+        sessionRevision: 1,
+        state: { version: 1, state: "idle", revision: 0, targetSessionSetId: null },
+      },
+      commands: commands({ updateSessionSetAdvancedTiming }),
+    });
+
+    expect(screen.getByTestId("working-set-timing-readonly-working-1"))
+      .toHaveTextContent("Completed sets are read-only. Timing cannot change.");
+    expect(screen.queryByRole("button", { name: "Set timing" }))
+      .not.toBeOnTheScreen();
+    expect(updateSessionSetAdvancedTiming).not.toHaveBeenCalled();
+  });
 });

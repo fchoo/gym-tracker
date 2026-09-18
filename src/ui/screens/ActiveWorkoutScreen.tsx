@@ -33,6 +33,8 @@ import type {
   AdvancedTimingConfigV1,
   AdvancedTimingRevisionInput,
   AdvancedTimingStateV1,
+  UpdateSessionExerciseAdvancedTimingInput,
+  UpdateSessionSetAdvancedTimingInput,
 } from "../../domains/advancedTiming";
 import type {
   AdjustRestInput,
@@ -87,6 +89,11 @@ import {
   AdvancedTimingIndicator,
   type AdvancedTimingIndicatorContext,
 } from "../components/AdvancedTimingIndicator";
+import {
+  AdvancedTimingConfigSheet,
+  advancedTimingConfigSummary,
+  type AdvancedTimingConfigScope,
+} from "../components/AdvancedTimingConfigSheet";
 import {
   RestDock,
 } from "../components/RestDock";
@@ -143,6 +150,12 @@ export interface ActiveWorkoutCommands {
     input: AdvancedTimingRevisionInput & Readonly<{
       config: AdvancedTimingConfigV1;
     }>,
+  ): Promise<AdvancedTimingCommandResult>;
+  updateSessionExerciseAdvancedTiming?(
+    input: UpdateSessionExerciseAdvancedTimingInput,
+  ): Promise<AdvancedTimingCommandResult>;
+  updateSessionSetAdvancedTiming?(
+    input: UpdateSessionSetAdvancedTimingInput,
   ): Promise<AdvancedTimingCommandResult>;
   startAdvancedTiming?(
     input: AdvancedTimingRevisionInput & Readonly<{
@@ -852,6 +865,13 @@ function PopulatedWorkoutOverview({
   const [exerciseAddBusy, setExerciseAddBusy] = useState(false);
   const [exerciseAddFailed, setExerciseAddFailed] = useState(false);
   const [reorderMode, setReorderMode] = useState(false);
+  const [timingConfig, setTimingConfig] = useState<Readonly<{
+    scope: AdvancedTimingConfigScope;
+    exercise: ActiveWorkoutExercise;
+    set?: ActiveWorkoutSet;
+  }> | null>(null);
+  const [timingConfigBusy, setTimingConfigBusy] = useState(false);
+  const [timingConfigFailed, setTimingConfigFailed] = useState(false);
   const [replacementPickerForId, setReplacementPickerForId] =
     useState<string | null>(null);
   const [replacementQuery, setReplacementQuery] = useState("");
@@ -1067,6 +1087,56 @@ function PopulatedWorkoutOverview({
     const result = await command(input);
     applyAdvancedTimingResult(result);
     return result;
+  };
+
+  const saveAdvancedTimingConfig = async (
+    value: AdvancedTimingConfigV1 | null,
+  ) => {
+    const target = timingConfig;
+    if (target === null || timingConfigBusy) {
+      return;
+    }
+    setTimingConfigBusy(true);
+    setTimingConfigFailed(false);
+    try {
+      if (target.scope === "exercise") {
+        if (
+          commands.updateSessionExerciseAdvancedTiming === undefined
+          || value === null
+        ) {
+          throw new Error("advanced_timing_config_unavailable");
+        }
+        const result = await commands.updateSessionExerciseAdvancedTiming({
+          sessionId,
+          sessionExerciseId: target.exercise.id,
+          expectedSessionRevision: viewRef.current.revision,
+          expectedSessionExerciseRevision: target.exercise.revision,
+          config: value,
+          nowMs: nowMs(),
+        });
+        applyAdvancedTimingResult(result);
+      } else {
+        const set = target.set;
+        if (set === undefined
+          || commands.updateSessionSetAdvancedTiming === undefined) {
+          throw new Error("advanced_timing_config_unavailable");
+        }
+        const result = await commands.updateSessionSetAdvancedTiming({
+          sessionId,
+          sessionSetId: set.id,
+          expectedSessionRevision: viewRef.current.revision,
+          expectedSetRevision: set.revision,
+          override: value,
+          nowMs: nowMs(),
+        });
+        applyAdvancedTimingResult(result);
+      }
+      setTimingConfig(null);
+    } catch {
+      setTimingConfigFailed(true);
+    } finally {
+      setTimingConfigBusy(false);
+    }
   };
 
   const runRest = async (
@@ -2355,6 +2425,55 @@ function PopulatedWorkoutOverview({
                     : {})}
                 />
               ))}
+              {activeSet !== undefined
+                && activeSet.kind === "working"
+                && exercise.workingSets.some(({ id }) => id === activeSet.id)
+                ? (
+                <View
+                  style={styles.setTimingRow}
+                  testID={`working-set-timing-${activeSet.id}`}
+                >
+                  <Text
+                    style={[
+                      typeScale.secondary as TextStyle,
+                      { color: colors.contentCardTextSecondary },
+                    ]}
+                    testID={`working-set-timing-summary-${activeSet.id}`}
+                  >
+                    {`Set timing · ${advancedTimingConfigSummary(
+                      activeSet.advancedTimingOverride ?? null,
+                      "set",
+                    )}`}
+                  </Text>
+                  {activeSet.status === "completed" ? (
+                    <Text
+                      style={[
+                        typeScale.secondary as TextStyle,
+                        { color: colors.contentCardTextSecondary },
+                      ]}
+                      testID={`working-set-timing-readonly-${activeSet.id}`}
+                    >
+                      Completed sets are read-only. Timing cannot change.
+                    </Text>
+                  ) : (
+                    <SecondaryAction
+                      disabled={
+                        timingConfigBusy
+                        || commands.updateSessionSetAdvancedTiming === undefined
+                      }
+                      label="Set timing"
+                      onPress={() => {
+                        setTimingConfigFailed(false);
+                        setTimingConfig({
+                          scope: "set",
+                          exercise,
+                          set: activeSet,
+                        });
+                      }}
+                    />
+                  )}
+                </View>
+              ) : null}
               {saveFailedSetId === null ? null : (
                 <InlineNotice
                   action={
@@ -2497,6 +2616,22 @@ function PopulatedWorkoutOverview({
             testID="exercise-actions-sheet-content"
           >
             <SectionHeader title="Exercise actions" />
+            {exerciseActionsVisibleForId === null ? null : (
+              <SecondaryAction
+                label="Configure timing"
+                onPress={() => {
+                  const exerciseId = exerciseActionsVisibleForId;
+                  closeExerciseActions();
+                  const target = exercisesFor(viewRef.current).find(
+                    ({ id }) => id === exerciseId,
+                  );
+                  if (target !== undefined) {
+                    setTimingConfigFailed(false);
+                    setTimingConfig({ scope: "exercise", exercise: target });
+                  }
+                }}
+              />
+            )}
             {exerciseActionsVisibleForId === null ? null : (
               <SecondaryAction
                 label="Replace exercise"
@@ -2714,6 +2849,29 @@ function PopulatedWorkoutOverview({
         restoreFocusRef={moreActionRef}
         visible={outcomeConfirmation !== null}
       />
+      {timingConfig === null ? null : (
+        <AdvancedTimingConfigSheet
+          initialValue={timingConfig.scope === "exercise"
+            ? timingConfig.exercise.advancedTimingDefault ?? null
+            : timingConfig.set?.advancedTimingOverride ?? null}
+          onCancel={() => {
+            setTimingConfig(null);
+            setTimingConfigFailed(false);
+          }}
+          onSave={(value) => {
+            void saveAdvancedTimingConfig(value);
+          }}
+          scope={timingConfig.scope}
+          visible
+        />
+      )}
+      {timingConfigFailed ? (
+        <InlineNotice
+          body="Your recorded sets and rest were not changed. Try again."
+          heading="Timing could not be saved"
+          tone="error"
+        />
+      ) : null}
       {exerciseActionCandidate?.action !== "remove" ? null : (
         <ConfirmationSheet
           body={(() => {
@@ -2820,6 +2978,13 @@ const styles = StyleSheet.create({
   },
   section: {
     gap: space[2],
+  },
+  setTimingRow: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    alignItems: "center",
+    gap: space[2],
+    justifyContent: "space-between",
   },
   exerciseSection: {
     gap: space[2],

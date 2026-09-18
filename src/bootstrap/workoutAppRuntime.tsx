@@ -118,11 +118,15 @@ import {
   skipAdvancedTimingClusterGap,
   startAdvancedTiming,
   stopAdvancedTiming,
+  updateSessionExerciseAdvancedTiming,
+  updateSessionSetAdvancedTiming,
   type AdvancedTimingCommandResult,
   type AdvancedTimingConfigV1,
   type AdvancedTimingCue,
   type AdvancedTimingRevisionInput,
   type AdvancedTimingStateV1,
+  type UpdateSessionExerciseAdvancedTimingInput,
+  type UpdateSessionSetAdvancedTimingInput,
 } from "../domains/advancedTiming";
 import type {
   ActiveWorkoutView,
@@ -985,6 +989,12 @@ type RuntimeValue = RuntimeState & Readonly<{
     input: AdvancedTimingRevisionInput & Readonly<{
       config: AdvancedTimingConfigV1;
     }>,
+  ): Promise<AdvancedTimingCommandResult>;
+  updateSessionExerciseAdvancedTiming(
+    input: UpdateSessionExerciseAdvancedTimingInput,
+  ): Promise<AdvancedTimingCommandResult>;
+  updateSessionSetAdvancedTiming(
+    input: UpdateSessionSetAdvancedTimingInput,
   ): Promise<AdvancedTimingCommandResult>;
   reconcileAdvancedTiming(input: AdvancedTimingRevisionInput & Readonly<{
     countdownCue?: RestCountdownCuePort | undefined;
@@ -3367,6 +3377,18 @@ export function WorkoutAppRuntimeProvider({
     input,
   })), [runAdvancedTimingCommand]);
 
+  const updateRuntimeSessionExerciseAdvancedTiming = useCallback((
+    input: UpdateSessionExerciseAdvancedTimingInput,
+  ) => runAdvancedTimingCommand((repository) =>
+    updateSessionExerciseAdvancedTiming({ repository, input })),
+  [runAdvancedTimingCommand]);
+
+  const updateRuntimeSessionSetAdvancedTiming = useCallback((
+    input: UpdateSessionSetAdvancedTimingInput,
+  ) => runAdvancedTimingCommand((repository) =>
+    updateSessionSetAdvancedTiming({ repository, input })),
+  [runAdvancedTimingCommand]);
+
   const reconcileRuntimeAdvancedTiming = useCallback((
     input: AdvancedTimingRevisionInput & Readonly<{
       countdownCue?: RestCountdownCuePort | undefined;
@@ -4283,6 +4305,9 @@ export function WorkoutAppRuntimeProvider({
     exerciseNotificationExpiry,
     applyCompletedWorkoutPlanWriteBack: applyCompletedPlanWriteBack,
     configureAdvancedTiming: configureRuntimeAdvancedTiming,
+    updateSessionExerciseAdvancedTiming:
+      updateRuntimeSessionExerciseAdvancedTiming,
+    updateSessionSetAdvancedTiming: updateRuntimeSessionSetAdvancedTiming,
     finishCompleted: finishWorkoutCompleted,
     finishPartial: finishWorkoutPartial,
     finishStarterSwitchWorkout,

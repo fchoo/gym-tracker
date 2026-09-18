@@ -433,6 +433,105 @@ describe("OwnedPlanEditorScreen create and save plan", () => {
     expect(onSaved).toHaveBeenCalledWith("plan-owner");
   });
 
+  it("stages exercise-default and working-set advanced timing into the saved plan", async () => {
+    const savePlan = jest.fn(async (
+      input: Parameters<
+        React.ComponentProps<typeof OwnedPlanEditorScreen>["savePlan"]
+      >[0],
+    ) => committed({
+      ...completeSnapshot(),
+      revision: 2,
+      days: input.plan.days,
+    }, "save"));
+    await renderEditor({ savePlan });
+
+    await fireEvent.press(
+      await screen.findByRole("button", { name: "Add exercise" }),
+    );
+    await fireEvent.changeText(
+      screen.getByLabelText("Search plan exercises"),
+      "barbell",
+    );
+    await fireEvent.press(
+      screen.getByRole("button", { name: /Barbell Back Squat/u }),
+    );
+    await fireEvent.changeText(screen.getByLabelText("Working sets"), "1");
+    await fireEvent.changeText(screen.getByLabelText("Load (kg)"), "20");
+    await fireEvent.changeText(screen.getByLabelText("Minimum reps"), "8");
+    await fireEvent.changeText(screen.getByLabelText("Maximum reps"), "12");
+
+    expect(screen.getByTestId("advanced-timing-exercise-summary"))
+      .toHaveTextContent("Exercise · Off");
+    expect(screen.getByTestId("advanced-timing-working-summary"))
+      .toHaveTextContent("Working sets · Inherits exercise timing");
+
+    await fireEvent.press(
+      screen.getByRole("button", { name: "Exercise timing" }),
+    );
+    await fireEvent.press(screen.getByRole("button", { name: "Per-rep timing" }));
+    await act(async () => {
+      fireEvent.changeText(
+        screen.getByTestId("advanced-timing-config-interval"),
+        "3",
+      );
+    });
+    await fireEvent.press(screen.getByRole("button", { name: "Save timing" }));
+
+    expect(screen.getByTestId("advanced-timing-exercise-summary"))
+      .toHaveTextContent("Exercise · Per-rep every 3 sec · haptic");
+
+    await fireEvent.press(
+      screen.getByRole("button", { name: "Working set timing" }),
+    );
+    await fireEvent.press(screen.getByRole("button", { name: "Cluster timing" }));
+    await act(async () => {
+      fireEvent.changeText(
+        screen.getByTestId("advanced-timing-config-cluster-pattern"),
+        "3+3+3",
+      );
+      fireEvent.changeText(
+        screen.getByTestId("advanced-timing-config-cluster-rest"),
+        "20",
+      );
+    });
+    await fireEvent.press(screen.getByRole("button", { name: "Save timing" }));
+
+    expect(screen.getByTestId("advanced-timing-working-summary"))
+      .toHaveTextContent("Working sets · Cluster 3+3+3 · 20 sec · haptic");
+
+    await fireEvent.press(screen.getByRole("button", { name: "Save target" }));
+    await fireEvent.press(screen.getByRole("button", { name: "Save day" }));
+    await fireEvent.press(
+      screen.getByRole("button", { name: "Save Plan Changes" }),
+    );
+
+    await waitFor(() => expect(savePlan).toHaveBeenCalledTimes(1));
+    expect(savePlan).toHaveBeenCalledWith({
+      expectedRevision: 1,
+      plan: expect.objectContaining({
+        days: [expect.objectContaining({
+          occurrences: [expect.objectContaining({
+            advancedTimingDefault: {
+              version: 1,
+              mode: "per_rep",
+              intervalMs: 3_000,
+              cueChannels: "haptic",
+            },
+            targets: [expect.objectContaining({
+              advancedTimingOverride: {
+                version: 1,
+                mode: "cluster",
+                groupSizes: [3, 3, 3],
+                intraRestMs: 20_000,
+                cueChannels: "haptic",
+              },
+            })],
+          })],
+        })],
+      }),
+    });
+  });
+
   it("uses shared Search busy and many-result states for the exercise picker", async () => {
     const exerciseLoad = deferred<readonly OwnedPlanEditorExerciseOption[]>();
     await renderEditor({

@@ -18,6 +18,9 @@ import type {
   MetricTarget,
 } from "../../domains/metrics";
 import type {
+  AdvancedTimingConfigV1,
+} from "../../domains/advancedTiming";
+import type {
   OwnedPlanDayInput,
   OwnedPlanDraftInput,
   OwnedPlanOccurrenceInput,
@@ -39,6 +42,10 @@ import {
   SectionHeader,
   SkeletonBlock,
 } from "../components";
+import {
+  AdvancedTimingConfigSheet,
+  advancedTimingConfigSummary,
+} from "../components/AdvancedTimingConfigSheet";
 import {
   PlanEditorReorderableRow,
   PlanEditorTextField,
@@ -141,6 +148,8 @@ type TargetDraft = Readonly<{
   plannedRounds: string;
   workIntervalSeconds: string;
   intervalRestSeconds: string;
+  advancedTimingDefault: AdvancedTimingConfigV1 | null;
+  advancedTimingWorkingOverride: AdvancedTimingConfigV1 | null;
 }>;
 
 const PROFILE_LABELS: Readonly<Record<MetricProfile, string>> = {
@@ -203,6 +212,8 @@ function initialTargetDraft(
     plannedRounds: "3",
     workIntervalSeconds: "30",
     intervalRestSeconds: "30",
+    advancedTimingDefault: null,
+    advancedTimingWorkingOverride: null,
   };
 }
 
@@ -719,18 +730,25 @@ export function OwnedPlanEditorScreen({
     const occurrenceId = nextId("owned-plan-occurrence");
     const profile = targetDraft.exercise.metricIdentity.profile;
     const policyId = `${profile}.manual_hold.v1`;
+    const workingOverride = targetDraft.advancedTimingWorkingOverride;
     const occurrence: OwnedPlanOccurrenceInput = {
       id: occurrenceId,
       exerciseId: targetDraft.exercise.id,
       ordinal: selectedDay.occurrences.length,
       restSeconds,
       metricIdentity: { ...targetDraft.exercise.metricIdentity },
+      ...(targetDraft.advancedTimingDefault === null
+        ? {}
+        : { advancedTimingDefault: targetDraft.advancedTimingDefault }),
       warmups: [],
       targets: Array.from({ length: workingSets }, (_, ordinal) => ({
         id: nextId("owned-plan-target"),
         ordinal,
         target: { ...metric.target },
         units: { ...metric.units },
+        ...(workingOverride === null
+          ? {}
+          : { advancedTimingOverride: workingOverride }),
       })),
       policy: {
         id: nextId("owned-plan-policy"),
@@ -1445,7 +1463,10 @@ function TargetEditor({
   onChange(value: TargetDraft): void;
   onSave(): void;
 }>) {
+  const { colors } = useAppTheme();
   const profile = draft.exercise.metricIdentity.profile;
+  const [timingScope, setTimingScope] =
+    useState<"exercise" | "working" | null>(null);
   const textField = (
     key: keyof TargetDraft,
     label: string,
@@ -1541,6 +1562,50 @@ function TargetEditor({
         </>
       ) : null}
       {durationField("restSeconds", "Rest (seconds)")}
+      <View style={styles.timingRow}>
+        <View style={styles.timingCopy}>
+          <Text style={[
+            typeScale.bodyStrong as TextStyle,
+            { color: colors.contentCardText },
+          ]}>
+            Advanced timing
+          </Text>
+          <Text
+            style={[
+              typeScale.secondary as TextStyle,
+              { color: colors.contentCardTextSecondary },
+            ]}
+            testID="advanced-timing-exercise-summary"
+          >
+            {`Exercise · ${advancedTimingConfigSummary(
+              draft.advancedTimingDefault,
+              "exercise",
+            )}`}
+          </Text>
+          <Text
+            style={[
+              typeScale.secondary as TextStyle,
+              { color: colors.contentCardTextSecondary },
+            ]}
+            testID="advanced-timing-working-summary"
+          >
+            {`Working sets · ${advancedTimingConfigSummary(
+              draft.advancedTimingWorkingOverride,
+              "set",
+            )}`}
+          </Text>
+        </View>
+        <View style={styles.timingActions}>
+          <SecondaryAction
+            label="Exercise timing"
+            onPress={() => setTimingScope("exercise")}
+          />
+          <SecondaryAction
+            label="Working set timing"
+            onPress={() => setTimingScope("working")}
+          />
+        </View>
+      </View>
       {error ? (
         <InlineNotice
           body="Enter complete valid target values. Your edits are still here."
@@ -1550,6 +1615,26 @@ function TargetEditor({
         />
       ) : null}
       <PrimaryAction label="Save target" onPress={onSave} />
+      <AdvancedTimingConfigSheet
+        initialValue={draft.advancedTimingDefault}
+        onCancel={() => setTimingScope(null)}
+        onSave={(value) => {
+          onChange({ ...draft, advancedTimingDefault: value });
+          setTimingScope(null);
+        }}
+        scope="exercise"
+        visible={timingScope === "exercise"}
+      />
+      <AdvancedTimingConfigSheet
+        initialValue={draft.advancedTimingWorkingOverride}
+        onCancel={() => setTimingScope(null)}
+        onSave={(value) => {
+          onChange({ ...draft, advancedTimingWorkingOverride: value });
+          setTimingScope(null);
+        }}
+        scope="set"
+        visible={timingScope === "working"}
+      />
     </View>
   );
 }
@@ -1593,5 +1678,16 @@ const styles = StyleSheet.create({
   },
   targetEditor: {
     gap: space[4],
+  },
+  timingRow: {
+    gap: space[2],
+  },
+  timingCopy: {
+    gap: space[1],
+  },
+  timingActions: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    gap: space[2],
   },
 });

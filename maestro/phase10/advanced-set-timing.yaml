@@ -45,6 +45,31 @@ tags:
 - extendedWaitUntil:
     visible: "WORKOUT OVERVIEW"
     timeout: 30000
+- tapOn: "Back Squat exercise actions"
+- assertVisible: "Exercise actions"
+- tapOn: "Configure timing"
+- assertVisible: "Exercise timing"
+- tapOn: "Per-rep timing"
+- tapOn:
+    id: "advanced-timing-config-interval"
+- eraseText: 3
+- inputText: "3"
+- tapOn: "audio cues"
+- tapOn: "Save timing"
+- assertVisible: "Set timing"
+- tapOn: "Set timing"
+- assertVisible: "Set timing"
+- tapOn: "Cluster timing"
+- tapOn:
+    id: "advanced-timing-config-cluster-pattern"
+- eraseText: 5
+- inputText: "3+3+3"
+- tapOn:
+    id: "advanced-timing-config-cluster-rest"
+- eraseText: 2
+- inputText: "20"
+- tapOn: "both cues"
+- tapOn: "Save timing"
 - assertVisible: "Per-rep cadence"
 - assertVisible: "Per-rep interval in seconds"
 - tapOn:
