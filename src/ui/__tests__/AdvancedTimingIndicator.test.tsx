@@ -92,6 +92,30 @@ async function renderIndicator(
         nextBoundaryAtMs: now + intervalMs,
       }))
     ),
+    onConfigureAndStartCluster: jest.fn(async () => result({
+      version: 1,
+      state: "cluster_ready" as const,
+      mode: "cluster" as const,
+      revision: 1,
+      targetSessionSetId: "set-1",
+      cueChannels: "haptic" as const,
+      groupSizes: [3, 3, 3],
+      intraRestMs: 20_000,
+      currentGroupIndex: 0,
+    })),
+    onBeginClusterGap: jest.fn(async () => result({
+      version: 1,
+      state: "cluster_gap_running" as const,
+      mode: "cluster" as const,
+      revision: 2,
+      targetSessionSetId: "set-1",
+      cueChannels: "haptic" as const,
+      groupSizes: [3, 3, 3],
+      intraRestMs: 20_000,
+      currentGroupIndex: 0,
+      gapStartedAtMs: now,
+      gapEndsAtMs: now + 20_000,
+    })),
     onPause: jest.fn(async () => result({
       version: 1,
       state: "paused" as const,
@@ -110,6 +134,17 @@ async function renderIndicator(
       nextRepetitionIndex: 2,
     })),
     onResume: jest.fn(async () => result(running)),
+    onSkipClusterGap: jest.fn(async () => result({
+      version: 1,
+      state: "cluster_ready" as const,
+      mode: "cluster" as const,
+      revision: 3,
+      targetSessionSetId: "set-1",
+      cueChannels: "haptic" as const,
+      groupSizes: [3, 3, 3],
+      intraRestMs: 20_000,
+      currentGroupIndex: 1,
+    })),
     onStop: jest.fn(async () => result({
       version: 1,
       state: "stopped" as const,
@@ -180,6 +215,123 @@ describe("AdvancedTimingIndicator", () => {
     }));
 
     expect(props.onConfigureAndStart).toHaveBeenCalledWith(4_000);
+  });
+
+  it("configures and starts cluster timing from a 3+3+3 grouping", async () => {
+    const { props, rendered } = await renderIndicator();
+
+    await fireEvent.press(rendered.getByRole("button", { name: "Select cluster timing" }));
+    expect(rendered.getByText("Cluster timing")).toBeOnTheScreen();
+    expect(rendered.getByLabelText("Cluster timing status. Ready"))
+      .toBeOnTheScreen();
+    expect(rendered.getByLabelText("Cluster grouping")).toBeOnTheScreen();
+    expect(rendered.getByLabelText("Cluster gap in seconds")).toBeOnTheScreen();
+    expect(rendered.getByRole("button", { name: "Configure and start cluster timing" }))
+      .toHaveStyle({ minHeight: 48, minWidth: 48 });
+
+    await act(async () => {
+      fireEvent.changeText(
+        rendered.getByTestId("advanced-timing-cluster-pattern"),
+        "3+3+3",
+      );
+      fireEvent.changeText(
+        rendered.getByTestId("advanced-timing-cluster-gap-seconds"),
+        "20",
+      );
+    });
+    await fireEvent.press(rendered.getByRole("button", {
+      name: "Configure and start cluster timing",
+    }));
+
+    expect(props.onConfigureAndStartCluster).toHaveBeenCalledWith({
+      groupSizes: [3, 3, 3],
+      intraRestMs: 20_000,
+    });
+  });
+
+  it("validates cluster grouping before invoking timing commands", async () => {
+    const { props, rendered } = await renderIndicator();
+
+    await fireEvent.press(rendered.getByRole("button", { name: "Select cluster timing" }));
+    await act(async () => {
+      fireEvent.changeText(rendered.getByTestId("advanced-timing-cluster-pattern"), "9");
+    });
+    await fireEvent.press(rendered.getByRole("button", {
+      name: "Configure and start cluster timing",
+    }));
+
+    expect(rendered.getByText("Use groups like 3+3+3 with at least 2 groups."))
+      .toBeOnTheScreen();
+    expect(props.onConfigureAndStartCluster).not.toHaveBeenCalled();
+  });
+
+  it("renders cluster ready and gap controls with explicit progress", async () => {
+    const ready: AdvancedTimingStateV1 = {
+      version: 1,
+      state: "cluster_ready",
+      mode: "cluster",
+      revision: 2,
+      targetSessionSetId: "set-1",
+      cueChannels: "haptic",
+      groupSizes: [3, 3, 3],
+      intraRestMs: 20_000,
+      currentGroupIndex: 1,
+    };
+    const { props, rendered } = await renderIndicator({ context: context(ready) });
+
+    expect(rendered.getByText("Cluster timing")).toBeOnTheScreen();
+    expect(rendered.getByLabelText("Cluster timing status. Cluster 2 of 3"))
+      .toBeOnTheScreen();
+    await fireEvent.press(rendered.getByRole("button", {
+      name: "Start rest after group 2",
+    }));
+
+    expect(props.onBeginClusterGap).toHaveBeenCalledTimes(1);
+
+    const gap: AdvancedTimingStateV1 = {
+      ...ready,
+      state: "cluster_gap_running",
+      gapStartedAtMs: 10_000,
+      gapEndsAtMs: 30_000,
+    };
+    await rendered.rerender(
+      <AppearanceProvider>
+        <AdvancedTimingIndicator {...props} context={context(gap)} />
+      </AppearanceProvider>,
+    );
+    expect(rendered.getByLabelText(
+      "Cluster timing status. Cluster 2 of 3. Intra-set rest · 00:20",
+    )).toBeOnTheScreen();
+    await fireEvent.press(rendered.getByRole("button", { name: "Skip intra-set rest" }));
+    expect(props.onSkipClusterGap).toHaveBeenCalledTimes(1);
+  });
+
+  it("renders paused cluster gap controls with stable accessible targets", async () => {
+    const paused: AdvancedTimingStateV1 = {
+      version: 1,
+      state: "cluster_gap_paused",
+      mode: "cluster",
+      revision: 4,
+      targetSessionSetId: "set-1",
+      cueChannels: "haptic",
+      groupSizes: [3, 3, 3],
+      intraRestMs: 20_000,
+      currentGroupIndex: 0,
+      remainingMs: 12_000,
+    };
+    const { props, rendered } = await renderIndicator({ context: context(paused) });
+
+    expect(rendered.getByLabelText(
+      "Cluster timing status. Cluster 1 of 3. Paused · Intra-set rest · 00:12",
+    )).toBeOnTheScreen();
+    expect(rendered.getByRole("button", { name: "Resume intra-set rest" }))
+      .toHaveStyle({ minHeight: 48, minWidth: 48 });
+
+    await fireEvent.press(rendered.getByRole("button", { name: "Resume intra-set rest" }));
+    await fireEvent.press(rendered.getByRole("button", { name: "Stop cluster timing" }));
+
+    expect(props.onResume).toHaveBeenCalledTimes(1);
+    expect(props.onStop).toHaveBeenCalledTimes(1);
   });
 
   it("validates interval bounds without invoking timing commands", async () => {

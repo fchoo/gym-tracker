@@ -70,10 +70,32 @@ tags:
 - extendedWaitUntil:
     visible: "Configure and start per-rep cadence"
     timeout: 30000
-- tapOn: "Configure and start per-rep cadence"
+- tapOn: "Select cluster timing"
+- assertVisible: "Cluster timing"
+- assertVisible: "Cluster grouping"
+- assertVisible: "Cluster gap in seconds"
+- tapOn:
+    id: "advanced-timing-cluster-pattern"
+- eraseText: 5
+- inputText: "3+3+3"
+- tapOn:
+    id: "advanced-timing-cluster-gap-seconds"
+- eraseText: 2
+- inputText: "20"
+- tapOn: "Configure and start cluster timing"
 - extendedWaitUntil:
-    visible: "Pause per-rep cadence"
+    visible: "Start rest after group 1"
     timeout: 30000
+- assertVisible: "Cluster 1 of 3"
+- tapOn: "Start rest after group 1"
+- extendedWaitUntil:
+    visible: "Intra-set rest"
+    timeout: 30000
+- tapOn: "Skip intra-set rest"
+- extendedWaitUntil:
+    visible: "Start rest after group 2"
+    timeout: 30000
+- tapOn: "Start rest after group 2"
 - stopApp
 - launchApp:
     clearState: false
@@ -86,8 +108,8 @@ tags:
     timeout: 90000
 - tapOn: "Resume workout"
 - assertVisible: "WORKOUT OVERVIEW"
-- assertVisible: "Per-rep cadence"
-- assertVisible: "Pause per-rep cadence"
+- assertVisible: "Cluster timing"
+- assertVisible: "^(Cluster 2 of 3|Cluster 3 of 3|Intra-set rest)"
 - assertVisible: "Complete Set 1"
 - tapOn: "Complete Set 1"
 - extendedWaitUntil:

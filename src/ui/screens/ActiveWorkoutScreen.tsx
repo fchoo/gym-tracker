@@ -149,6 +149,8 @@ export interface ActiveWorkoutCommands {
       config: AdvancedTimingConfigV1;
     }>,
   ): Promise<AdvancedTimingCommandResult>;
+  beginAdvancedTimingClusterGap?(input: AdvancedTimingRevisionInput): Promise<AdvancedTimingCommandResult>;
+  skipAdvancedTimingClusterGap?(input: AdvancedTimingRevisionInput): Promise<AdvancedTimingCommandResult>;
   pauseAdvancedTiming?(input: AdvancedTimingRevisionInput): Promise<AdvancedTimingCommandResult>;
   resumeAdvancedTiming?(input: AdvancedTimingRevisionInput): Promise<AdvancedTimingCommandResult>;
   reconcileAdvancedTiming?(input: AdvancedTimingRevisionInput & Readonly<{
@@ -986,6 +988,43 @@ function PopulatedWorkoutOverview({
       version: 1,
       mode: "per_rep",
       intervalMs,
+      cueChannels: "haptic",
+    };
+    const configured = await commands.configureAdvancedTiming({
+      ...input,
+      config,
+    });
+    applyAdvancedTimingResult(configured);
+    const started = await commands.startAdvancedTiming({
+      ...input,
+      expectedSessionRevision: configured.sessionRevision,
+      expectedAdvancedTimingRevision: configured.state.revision,
+      nowMs: nowMs(),
+      config,
+    });
+    applyAdvancedTimingResult(started);
+    return started;
+  };
+
+  const configureAndStartClusterTiming = async (
+    inputConfig: Readonly<{
+      groupSizes: readonly number[];
+      intraRestMs: number;
+    }>,
+  ): Promise<AdvancedTimingCommandResult> => {
+    const input = advancedInput();
+    if (
+      input === null
+      || commands.configureAdvancedTiming === undefined
+      || commands.startAdvancedTiming === undefined
+    ) {
+      throw new Error("advanced_timing_unavailable");
+    }
+    const config: AdvancedTimingConfigV1 = {
+      version: 1,
+      mode: "cluster",
+      groupSizes: inputConfig.groupSizes,
+      intraRestMs: inputConfig.intraRestMs,
       cueChannels: "haptic",
     };
     const configured = await commands.configureAdvancedTiming({
@@ -2190,13 +2229,18 @@ function PopulatedWorkoutOverview({
                     || activeSet.status === "skipped"
                     || advancedTimingContext === null
                     || advancedTimingContext === undefined
-                    || view.rest.state === "running"
-                    || view.rest.state === "paused"
                     || commands.configureAdvancedTiming === undefined
                     || commands.startAdvancedTiming === undefined
                   }
                   nowMs={nowMs}
                   onConfigureAndStart={configureAndStartAdvancedTiming}
+                  onConfigureAndStartCluster={configureAndStartClusterTiming}
+                  onBeginClusterGap={() => runAdvancedTiming((input) => {
+                    if (commands.beginAdvancedTimingClusterGap === undefined) {
+                      throw new Error("advanced_timing_unavailable");
+                    }
+                    return commands.beginAdvancedTimingClusterGap(input);
+                  })}
                   onPause={() => runAdvancedTiming((input) => {
                     if (commands.pauseAdvancedTiming === undefined) {
                       throw new Error("advanced_timing_unavailable");
@@ -2217,6 +2261,12 @@ function PopulatedWorkoutOverview({
                       throw new Error("advanced_timing_unavailable");
                     }
                     return commands.resumeAdvancedTiming(input);
+                  })}
+                  onSkipClusterGap={() => runAdvancedTiming((input) => {
+                    if (commands.skipAdvancedTimingClusterGap === undefined) {
+                      throw new Error("advanced_timing_unavailable");
+                    }
+                    return commands.skipAdvancedTimingClusterGap(input);
                   })}
                   onStop={() => runAdvancedTiming((input) => {
                     if (commands.stopAdvancedTiming === undefined) {

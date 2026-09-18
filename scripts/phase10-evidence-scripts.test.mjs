@@ -67,7 +67,7 @@ test("Phase 10 runner fails closed for missing matrix items and wrong build iden
   }), /flow evidence is invalid/u);
 });
 
-test("Phase 10 Maestro flow exercises the per-rep advisory lifecycle tracer", async () => {
+test("Phase 10 Maestro flow exercises per-rep and 3+3+3 cluster lifecycle timing", async () => {
   const flow = await readFile(
     path.join(projectRoot, "maestro/phase10/advanced-set-timing.yaml"),
     "utf8",
@@ -81,6 +81,15 @@ test("Phase 10 Maestro flow exercises the per-rep advisory lifecycle tracer", as
   assert.match(flow, /Pause per-rep cadence/u);
   assert.match(flow, /Resume per-rep cadence/u);
   assert.match(flow, /Stop per-rep cadence/u);
+  assert.match(flow, /Select cluster timing/u);
+  assert.match(flow, /Cluster grouping/u);
+  assert.match(flow, /3\+3\+3/u);
+  assert.match(flow, /Cluster gap in seconds/u);
+  assert.match(flow, /Configure and start cluster timing/u);
+  assert.match(flow, /Start rest after group 1/u);
+  assert.match(flow, /Skip intra-set rest/u);
+  assert.match(flow, /Start rest after group 2/u);
+  assert.match(flow, /\^\(Cluster 2 of 3\|Cluster 3 of 3\|Intra-set rest\)/u);
   assert.match(flow, /Complete Set 1/u);
   assert.match(flow, /stopApp[\s\S]*?clearState: false/u);
 });
@@ -101,8 +110,12 @@ test("Phase 10 source evidence keeps cue failure advisory", async () => {
 
   assert.match(indicator, /Timing cue unavailable/u);
   assert.match(indicator, /The timer and recorded set remain accurate/u);
+  assert.match(indicator, /Cluster timing/u);
+  assert.match(indicator, /Start rest after group/u);
+  assert.match(indicator, /Skip intra-set rest/u);
   assert.match(runtime, /createExpoHapticsAdapter\(\)\.cue\(\)/u);
   assert.match(runtime, /advancedTimingCueFailed: true/u);
   assert.match(screenTest, /Complete Set 1/u);
+  assert.ok(screenTest.includes("startManualRest).not.toHaveBeenCalled"));
   assert.match(screenTest, /Timing cue unavailable/u);
 });

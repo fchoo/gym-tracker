@@ -2610,7 +2610,7 @@ describe("Plan 01-08 ActiveWorkoutScreen", () => {
       </AppearanceProvider>,
     );
     expect(screen.getByRole("button", { name: "Complete Set 1" }))
-      .toBeOnTheScreen();
+      .toHaveProp("accessibilityState", expect.objectContaining({ disabled: false }));
     expect(screen.queryByText("RESTING · NEXT: SET 1 AT 60 kg × 8"))
       .not.toBeOnTheScreen();
   });
@@ -2693,6 +2693,200 @@ describe("Plan 01-08 ActiveWorkoutScreen", () => {
       sessionRevision: 2,
       state: running,
     });
+  });
+
+  it("configures cluster timing and advances intra-set gaps without rest or set commands", async () => {
+    const configureAdvancedTiming = jest.fn<NonNullable<
+      ActiveWorkoutCommands["configureAdvancedTiming"]
+    >>(async () => advancedResult({
+      version: 1,
+      state: "idle",
+      revision: 0,
+      targetSessionSetId: null,
+    }, 2));
+    const ready: AdvancedTimingStateV1 = {
+      version: 1,
+      state: "cluster_ready",
+      mode: "cluster",
+      revision: 1,
+      targetSessionSetId: "working-1",
+      cueChannels: "haptic",
+      groupSizes: [3, 3, 3],
+      intraRestMs: 20_000,
+      currentGroupIndex: 0,
+    };
+    const gap: AdvancedTimingStateV1 = {
+      ...ready,
+      state: "cluster_gap_running",
+      revision: 2,
+      gapStartedAtMs: 2_000,
+      gapEndsAtMs: 22_000,
+    };
+    const secondReady: AdvancedTimingStateV1 = {
+      ...ready,
+      revision: 3,
+      currentGroupIndex: 1,
+    };
+    const startAdvancedTiming = jest.fn<NonNullable<
+      ActiveWorkoutCommands["startAdvancedTiming"]
+    >>(async () => advancedResult(ready, 2));
+    const beginAdvancedTimingClusterGap = jest.fn<NonNullable<
+      ActiveWorkoutCommands["beginAdvancedTimingClusterGap"]
+    >>(async () => advancedResult(gap, 2));
+    const skipAdvancedTimingClusterGap = jest.fn<NonNullable<
+      ActiveWorkoutCommands["skipAdvancedTimingClusterGap"]
+    >>(async () => advancedResult(secondReady, 2));
+    const completeSet = jest.fn<ActiveWorkoutCommands["completeSet"]>(async () => ({
+      outcome: "committed",
+      view: completedView,
+    }));
+    const startManualRest = jest.fn<ActiveWorkoutCommands["startManualRest"]>(async () => ({
+      state: completedView.rest,
+      sessionRevision: 2,
+      invalidationScopes: [["active-workout", "session-1"], ["today"]],
+    }));
+    const onAdvancedTimingChanged = jest.fn();
+
+    const { rendered } = await renderActive({
+      advancedTimingContext: {
+        sessionId: "session-1",
+        sessionRevision: 1,
+        state: {
+          version: 1,
+          state: "idle",
+          revision: 0,
+          targetSessionSetId: null,
+        },
+      },
+      commands: commands({
+        beginAdvancedTimingClusterGap,
+        completeSet,
+        configureAdvancedTiming,
+        skipAdvancedTimingClusterGap,
+        startAdvancedTiming,
+        startManualRest,
+      }),
+      onAdvancedTimingChanged,
+    });
+
+    await fireEvent.press(screen.getByRole("button", { name: "Select cluster timing" }));
+    await fireEvent.press(screen.getByRole("button", {
+      name: "Configure and start cluster timing",
+    }));
+
+    expect(configureAdvancedTiming).toHaveBeenCalledWith({
+      sessionId: "session-1",
+      sessionSetId: "working-1",
+      expectedSessionRevision: 1,
+      expectedAdvancedTimingRevision: 0,
+      nowMs: 2_000,
+      config: {
+        version: 1,
+        mode: "cluster",
+        groupSizes: [3, 3, 3],
+        intraRestMs: 20_000,
+        cueChannels: "haptic",
+      },
+    });
+    expect(startAdvancedTiming).toHaveBeenCalledWith(expect.objectContaining({
+      sessionId: "session-1",
+      sessionSetId: "working-1",
+      expectedSessionRevision: 2,
+      expectedAdvancedTimingRevision: 0,
+    }));
+
+    await rendered.rerender(
+      <AppearanceProvider>
+        <ActiveWorkoutScreen
+          commands={commands({
+            beginAdvancedTimingClusterGap,
+            completeSet,
+            configureAdvancedTiming,
+            skipAdvancedTimingClusterGap,
+            startAdvancedTiming,
+            startManualRest,
+          })}
+          nowMs={() => 2_000}
+          onAdvancedTimingChanged={onAdvancedTimingChanged}
+          onFinishLater={jest.fn()}
+          onGoBack={jest.fn()}
+          sessionId="session-1"
+          view={{ ...initialView, revision: 2 }}
+          advancedTimingContext={{
+            sessionId: "session-1",
+            sessionRevision: 2,
+            state: ready,
+          }}
+        />
+      </AppearanceProvider>,
+    );
+    expect(screen.getByRole("button", { name: "Complete Set 1" }))
+      .toBeOnTheScreen();
+    await fireEvent.press(screen.getByRole("button", {
+      name: "Start rest after group 1",
+    }));
+    expect(beginAdvancedTimingClusterGap).toHaveBeenCalledWith({
+      sessionId: "session-1",
+      sessionSetId: "working-1",
+      expectedSessionRevision: 2,
+      expectedAdvancedTimingRevision: 1,
+      nowMs: 2_000,
+    });
+
+    await rendered.rerender(
+      <AppearanceProvider>
+        <ActiveWorkoutScreen
+          commands={commands({
+            beginAdvancedTimingClusterGap,
+            completeSet,
+            configureAdvancedTiming,
+            skipAdvancedTimingClusterGap,
+            startAdvancedTiming,
+            startManualRest,
+          })}
+          nowMs={() => 2_000}
+          onAdvancedTimingChanged={onAdvancedTimingChanged}
+          onFinishLater={jest.fn()}
+          onGoBack={jest.fn()}
+          sessionId="session-1"
+          view={{
+            ...initialView,
+            revision: 2,
+            rest: {
+              version: 1,
+              state: "running",
+              revision: 4,
+              startedAtMs: 2_000,
+              endsAtMs: 62_000,
+              nextSetId: "working-2",
+            },
+          }}
+          advancedTimingContext={{
+            sessionId: "session-1",
+            sessionRevision: 2,
+            state: gap,
+          }}
+        />
+      </AppearanceProvider>,
+    );
+    expect(screen.getByText("RESTING · NEXT: SET 1 AT 60 kg × 8"))
+      .toBeOnTheScreen();
+    expect(screen.getByLabelText(
+      "Cluster timing status. Cluster 1 of 3. Intra-set rest · 00:20",
+    )).toBeOnTheScreen();
+    expect(screen.getByRole("button", { name: "Complete Set 1" }))
+      .toHaveProp("accessibilityState", expect.objectContaining({ disabled: true }));
+    await fireEvent.press(screen.getByRole("button", { name: "Skip intra-set rest" }));
+
+    expect(skipAdvancedTimingClusterGap).toHaveBeenCalledWith({
+      sessionId: "session-1",
+      sessionSetId: "working-1",
+      expectedSessionRevision: 2,
+      expectedAdvancedTimingRevision: 2,
+      nowMs: 2_000,
+    });
+    expect(completeSet).not.toHaveBeenCalled();
+    expect(startManualRest).not.toHaveBeenCalled();
   });
 
   it("keeps normal set completion available while per-rep timing is visible", async () => {
