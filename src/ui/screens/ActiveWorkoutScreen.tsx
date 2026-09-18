@@ -29,6 +29,12 @@ import {
 } from "react-native";
 
 import type {
+  AdvancedTimingCommandResult,
+  AdvancedTimingConfigV1,
+  AdvancedTimingRevisionInput,
+  AdvancedTimingStateV1,
+} from "../../domains/advancedTiming";
+import type {
   AdjustRestInput,
   RestCommandResult,
   RestNotificationPermission,
@@ -77,6 +83,10 @@ import {
   SecondaryAction,
   SectionHeader,
 } from "../components";
+import {
+  AdvancedTimingIndicator,
+  type AdvancedTimingIndicatorContext,
+} from "../components/AdvancedTimingIndicator";
 import {
   RestDock,
 } from "../components/RestDock";
@@ -129,6 +139,22 @@ export interface ActiveWorkoutCommands {
   adjustRest(input: AdjustRestInput): Promise<RestCommandResult>;
   skipRest(input: RestRevisionInput): Promise<RestCommandResult>;
   expireRest(input: RestRevisionInput): Promise<RestCommandResult>;
+  configureAdvancedTiming?(
+    input: AdvancedTimingRevisionInput & Readonly<{
+      config: AdvancedTimingConfigV1;
+    }>,
+  ): Promise<AdvancedTimingCommandResult>;
+  startAdvancedTiming?(
+    input: AdvancedTimingRevisionInput & Readonly<{
+      config: AdvancedTimingConfigV1;
+    }>,
+  ): Promise<AdvancedTimingCommandResult>;
+  pauseAdvancedTiming?(input: AdvancedTimingRevisionInput): Promise<AdvancedTimingCommandResult>;
+  resumeAdvancedTiming?(input: AdvancedTimingRevisionInput): Promise<AdvancedTimingCommandResult>;
+  reconcileAdvancedTiming?(input: AdvancedTimingRevisionInput & Readonly<{
+    foregroundSinceMs: number;
+  }>): Promise<AdvancedTimingCommandResult>;
+  stopAdvancedTiming?(input: AdvancedTimingRevisionInput): Promise<AdvancedTimingCommandResult>;
   finishCompleted(input: FinishCompletedInput): Promise<FinishOutcomeResult>;
   finishPartial(input: FinishPartialInput): Promise<FinishOutcomeResult>;
   saveZeroSetWorkout(input: SaveZeroSetInput): Promise<FinishOutcomeResult>;
@@ -432,6 +458,9 @@ export type ActiveWorkoutScreenProps = Readonly<{
   notificationPermission?: RestNotificationPermission;
   restSoundEnabled?: boolean;
   countdownCue?: RestCountdownCuePort | undefined;
+  advancedTimingContext?: AdvancedTimingIndicatorContext | null | undefined;
+  cueUnavailable?: boolean;
+  onAdvancedTimingChanged?: (context: AdvancedTimingIndicatorContext) => void;
   onOpenNotificationSettings?: () => void;
   onGoBack: () => void;
   onFinishLater: () => void;
@@ -448,6 +477,9 @@ export function ActiveWorkoutScreen({
   notificationPermission = "undetermined",
   restSoundEnabled = false,
   countdownCue,
+  advancedTimingContext = null,
+  cueUnavailable = false,
+  onAdvancedTimingChanged = () => undefined,
   onOpenNotificationSettings = () => undefined,
   onGoBack,
   onFinishLater,
@@ -478,6 +510,9 @@ export function ActiveWorkoutScreen({
       commands={commands}
       availableExercises={availableExercises}
       countdownCue={countdownCue}
+      advancedTimingContext={advancedTimingContext}
+      cueUnavailable={cueUnavailable}
+      onAdvancedTimingChanged={onAdvancedTimingChanged}
       initialView={initialView}
       notificationPermission={notificationPermission}
       nowMs={nowMs}
@@ -723,6 +758,9 @@ function PopulatedWorkoutOverview({
   notificationPermission = "undetermined",
   restSoundEnabled = false,
   countdownCue,
+  advancedTimingContext,
+  cueUnavailable = false,
+  onAdvancedTimingChanged,
   onOpenNotificationSettings = () => undefined,
   onGoBack,
   onFinishLater,
@@ -897,12 +935,88 @@ function PopulatedWorkoutOverview({
     setView(nextView);
   };
 
+  const applyAdvancedTimingResult = (result: AdvancedTimingCommandResult) => {
+    onAdvancedTimingChanged?.({
+      sessionId,
+      sessionRevision: result.sessionRevision,
+      state: result.state,
+    });
+    const nextView = {
+      ...viewRef.current,
+      revision: result.sessionRevision,
+    };
+    viewRef.current = nextView;
+    setView(nextView);
+  };
+
   const restInput = (): RestRevisionInput => ({
     sessionId,
     expectedSessionRevision: view.revision,
     expectedRestRevision: view.rest.revision,
     nowMs: nowMs(),
   });
+
+  const advancedInput = (): AdvancedTimingRevisionInput | null => {
+    const context = advancedTimingContext ?? null;
+    const target = activeSet;
+    if (context === null || target === undefined) {
+      return null;
+    }
+    return {
+      sessionId,
+      sessionSetId: target.id,
+      expectedSessionRevision: view.revision,
+      expectedAdvancedTimingRevision: context.state.revision,
+      nowMs: nowMs(),
+    };
+  };
+
+  const configureAndStartAdvancedTiming = async (
+    intervalMs: number,
+  ): Promise<AdvancedTimingCommandResult> => {
+    const input = advancedInput();
+    if (
+      input === null
+      || commands.configureAdvancedTiming === undefined
+      || commands.startAdvancedTiming === undefined
+    ) {
+      throw new Error("advanced_timing_unavailable");
+    }
+    const config: AdvancedTimingConfigV1 = {
+      version: 1,
+      mode: "per_rep",
+      intervalMs,
+      cueChannels: "haptic",
+    };
+    const configured = await commands.configureAdvancedTiming({
+      ...input,
+      config,
+    });
+    applyAdvancedTimingResult(configured);
+    const started = await commands.startAdvancedTiming({
+      ...input,
+      expectedSessionRevision: configured.sessionRevision,
+      expectedAdvancedTimingRevision: configured.state.revision,
+      nowMs: nowMs(),
+      config,
+    });
+    applyAdvancedTimingResult(started);
+    return started;
+  };
+
+  const runAdvancedTiming = async (
+    command: (
+      input: AdvancedTimingRevisionInput,
+    ) => Promise<AdvancedTimingCommandResult>,
+  ): Promise<AdvancedTimingCommandResult> => {
+    const input = advancedInput();
+    if (input === null) {
+      throw new Error("advanced_timing_unavailable");
+    }
+    const result = await command(input);
+    applyAdvancedTimingResult(result);
+    return result;
+  };
 
   const runRest = async (
     command: () => Promise<RestCommandResult>,
@@ -2064,6 +2178,55 @@ function PopulatedWorkoutOverview({
                   tone="error"
                 />
               )}
+              {exercise.id === activeExercise.id ? (
+                <AdvancedTimingIndicator
+                  busy={workingBusySetId !== null}
+                  context={advancedTimingContext ?? null}
+                  cueUnavailable={cueUnavailable}
+                  disabled={
+                    activeSet === undefined
+                    || activeSet.kind !== "working"
+                    || activeSet.status === "completed"
+                    || activeSet.status === "skipped"
+                    || advancedTimingContext === null
+                    || advancedTimingContext === undefined
+                    || view.rest.state === "running"
+                    || view.rest.state === "paused"
+                    || commands.configureAdvancedTiming === undefined
+                    || commands.startAdvancedTiming === undefined
+                  }
+                  nowMs={nowMs}
+                  onConfigureAndStart={configureAndStartAdvancedTiming}
+                  onPause={() => runAdvancedTiming((input) => {
+                    if (commands.pauseAdvancedTiming === undefined) {
+                      throw new Error("advanced_timing_unavailable");
+                    }
+                    return commands.pauseAdvancedTiming(input);
+                  })}
+                  onReconcile={(foregroundSinceMs) => runAdvancedTiming((input) => {
+                    if (commands.reconcileAdvancedTiming === undefined) {
+                      throw new Error("advanced_timing_unavailable");
+                    }
+                    return commands.reconcileAdvancedTiming({
+                      ...input,
+                      foregroundSinceMs,
+                    });
+                  })}
+                  onResume={() => runAdvancedTiming((input) => {
+                    if (commands.resumeAdvancedTiming === undefined) {
+                      throw new Error("advanced_timing_unavailable");
+                    }
+                    return commands.resumeAdvancedTiming(input);
+                  })}
+                  onStop={() => runAdvancedTiming((input) => {
+                    if (commands.stopAdvancedTiming === undefined) {
+                      throw new Error("advanced_timing_unavailable");
+                    }
+                    return commands.stopAdvancedTiming(input);
+                  })}
+                  targetSetId={activeSet?.id ?? null}
+                />
+              ) : null}
               {exercise.workingSets.map((set, index) => (
                 <SetRow
                   active={view.activeSetId === set.id}

@@ -21,6 +21,10 @@ jest.mock("expo-crypto", () => ({
 }));
 
 import type {
+  AdvancedTimingCommandResult,
+  AdvancedTimingStateV1,
+} from "../../domains/advancedTiming";
+import type {
   RestCommandResult,
 } from "../../domains/rest";
 import type {
@@ -328,6 +332,17 @@ function commands(
       sessionRevision: initialView.revision + 1,
     })),
     ...overrides,
+  };
+}
+
+function advancedResult(
+  state: AdvancedTimingStateV1,
+  sessionRevision = initialView.revision,
+): AdvancedTimingCommandResult {
+  return {
+    state,
+    sessionRevision,
+    invalidationScopes: [["active-workout", initialView.id], ["today"]],
   };
 }
 
@@ -2598,5 +2613,157 @@ describe("Plan 01-08 ActiveWorkoutScreen", () => {
       .toBeOnTheScreen();
     expect(screen.queryByText("RESTING · NEXT: SET 1 AT 60 kg × 8"))
       .not.toBeOnTheScreen();
+  });
+
+  it("configures and starts per-rep cadence for the active working set", async () => {
+    const configureAdvancedTiming = jest.fn<NonNullable<
+      ActiveWorkoutCommands["configureAdvancedTiming"]
+    >>(async () => advancedResult({
+      version: 1,
+      state: "idle",
+      revision: 0,
+      targetSessionSetId: null,
+    }, 2));
+    const running: AdvancedTimingStateV1 = {
+      version: 1,
+      state: "running",
+      mode: "per_rep",
+      revision: 1,
+      targetSessionSetId: "working-1",
+      cueChannels: "haptic",
+      intervalMs: 4_000,
+      startedAtMs: 2_000,
+      nextBoundaryAtMs: 6_000,
+      nextRepetitionIndex: 1,
+    };
+    const startAdvancedTiming = jest.fn<NonNullable<
+      ActiveWorkoutCommands["startAdvancedTiming"]
+    >>(async () => advancedResult(running, 2));
+    const onAdvancedTimingChanged = jest.fn();
+
+    await renderActive({
+      advancedTimingContext: {
+        sessionId: "session-1",
+        sessionRevision: 1,
+        state: {
+          version: 1,
+          state: "idle",
+          revision: 0,
+          targetSessionSetId: null,
+        },
+      },
+      commands: commands({
+        configureAdvancedTiming,
+        startAdvancedTiming,
+      }),
+      onAdvancedTimingChanged,
+    });
+
+    await act(async () => {
+      fireEvent.changeText(
+        screen.getByTestId("advanced-timing-interval-seconds"),
+        "4",
+      );
+    });
+    await fireEvent.press(screen.getByRole("button", {
+      name: "Configure and start per-rep cadence",
+    }));
+
+    expect(configureAdvancedTiming).toHaveBeenCalledWith({
+      sessionId: "session-1",
+      sessionSetId: "working-1",
+      expectedSessionRevision: 1,
+      expectedAdvancedTimingRevision: 0,
+      nowMs: 2_000,
+      config: {
+        version: 1,
+        mode: "per_rep",
+        intervalMs: 4_000,
+        cueChannels: "haptic",
+      },
+    });
+    expect(startAdvancedTiming).toHaveBeenCalledWith(expect.objectContaining({
+      sessionId: "session-1",
+      sessionSetId: "working-1",
+      expectedSessionRevision: 2,
+      expectedAdvancedTimingRevision: 0,
+    }));
+    expect(onAdvancedTimingChanged).toHaveBeenLastCalledWith({
+      sessionId: "session-1",
+      sessionRevision: 2,
+      state: running,
+    });
+  });
+
+  it("keeps normal set completion available while per-rep timing is visible", async () => {
+    const completeSet = jest.fn<ActiveWorkoutCommands["completeSet"]>(async () => ({
+      outcome: "committed",
+      view: completedView,
+    }));
+    await renderActive({
+      advancedTimingContext: {
+        sessionId: "session-1",
+        sessionRevision: 1,
+        state: {
+          version: 1,
+          state: "running",
+          mode: "per_rep",
+          revision: 1,
+          targetSessionSetId: "working-1",
+          cueChannels: "haptic",
+          intervalMs: 3_000,
+          startedAtMs: 2_000,
+          nextBoundaryAtMs: 5_000,
+          nextRepetitionIndex: 1,
+        },
+      },
+      commands: commands({
+        completeSet,
+        pauseAdvancedTiming: jest.fn(async () => advancedResult({
+          version: 1,
+          state: "paused",
+          mode: "per_rep",
+          revision: 2,
+          targetSessionSetId: "working-1",
+          cueChannels: "haptic",
+          intervalMs: 3_000,
+          remainingMs: 2_000,
+          nextRepetitionIndex: 1,
+        })),
+        resumeAdvancedTiming: jest.fn(async () => advancedResult({
+          version: 1,
+          state: "running",
+          mode: "per_rep",
+          revision: 3,
+          targetSessionSetId: "working-1",
+          cueChannels: "haptic",
+          intervalMs: 3_000,
+          startedAtMs: 4_000,
+          nextBoundaryAtMs: 6_000,
+          nextRepetitionIndex: 1,
+        })),
+        stopAdvancedTiming: jest.fn(async () => advancedResult({
+          version: 1,
+          state: "stopped",
+          mode: "per_rep",
+          revision: 2,
+          targetSessionSetId: "working-1",
+          stoppedAtMs: 2_000,
+          nextRepetitionIndex: 1,
+        })),
+      }),
+      cueUnavailable: true,
+    });
+
+    expect(screen.getByText("Timing cue unavailable")).toBeOnTheScreen();
+    expect(screen.getByRole("button", { name: "Complete Set 1" }))
+      .toBeOnTheScreen();
+    await fireEvent.press(screen.getByRole("button", { name: "Complete Set 1" }));
+    await waitFor(() => expect(completeSet).toHaveBeenCalledWith(
+      expect.objectContaining({
+        sessionId: "session-1",
+        setId: "working-1",
+      }),
+    ));
   });
 });

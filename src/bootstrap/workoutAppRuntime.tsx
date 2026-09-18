@@ -109,13 +109,17 @@ import {
   type RestRevisionInput,
 } from "../domains/rest";
 import {
+  configureAdvancedTiming,
   pauseAdvancedTiming,
   reconcileAdvancedTiming,
   resumeAdvancedTiming,
   startAdvancedTiming,
   stopAdvancedTiming,
   type AdvancedTimingCommandResult,
+  type AdvancedTimingConfigV1,
+  type AdvancedTimingCue,
   type AdvancedTimingRevisionInput,
+  type AdvancedTimingStateV1,
 } from "../domains/advancedTiming";
 import type {
   ActiveWorkoutView,
@@ -593,6 +597,7 @@ type RuntimeState = Readonly<{
     code: "workout_action_failed";
     correlationCode: "GT-ACTION01";
   }>;
+  advancedTimingCueFailed?: true;
   mutationFailure?: AppError;
 }>;
 
@@ -717,6 +722,11 @@ type RuntimeValue = RuntimeState & Readonly<{
     mode: NotificationExpiryExerciseMode,
   ): Promise<NotificationExpiryExerciseCode>;
   getActiveWorkout(sessionId: string): Promise<WorkoutSessionView>;
+  getAdvancedTimingContext(sessionId: string): Promise<Readonly<{
+    sessionId: string;
+    state: AdvancedTimingStateV1;
+    sessionRevision: number;
+  }> | null>;
   getSessionDetail(sessionId: string): Promise<SessionDetail>;
   loadHistoryCorrectionSession(sessionId: string): Promise<HistoryCorrectionEditorState>;
   listAvailableCorrectionExercises(): Promise<readonly AvailableCorrectionExercise[]>;
@@ -964,9 +974,17 @@ type RuntimeValue = RuntimeState & Readonly<{
   startManualRest(input: RestRevisionInput): Promise<RestCommandResult>;
   startAdvancedTiming(
     input: AdvancedTimingRevisionInput & Readonly<{
-      config: import("../domains/advancedTiming").AdvancedTimingConfigV1;
+      config: AdvancedTimingConfigV1;
     }>,
   ): Promise<AdvancedTimingCommandResult>;
+  configureAdvancedTiming(
+    input: AdvancedTimingRevisionInput & Readonly<{
+      config: AdvancedTimingConfigV1;
+    }>,
+  ): Promise<AdvancedTimingCommandResult>;
+  reconcileAdvancedTiming(input: AdvancedTimingRevisionInput & Readonly<{
+    foregroundSinceMs: number;
+  }>): Promise<AdvancedTimingCommandResult & Readonly<{ cue: AdvancedTimingCue | null }>>;
   pauseAdvancedTiming(input: AdvancedTimingRevisionInput): Promise<AdvancedTimingCommandResult>;
   resumeAdvancedTiming(input: AdvancedTimingRevisionInput): Promise<AdvancedTimingCommandResult>;
   stopAdvancedTiming(input: AdvancedTimingRevisionInput): Promise<AdvancedTimingCommandResult>;
@@ -2492,7 +2510,13 @@ export function WorkoutAppRuntimeProvider({
   const refresh = useCallback(async () => {
     const services = requireServices();
     try {
-      setState(await trustedRead(services));
+      const next = await trustedRead(services);
+      setState((current) => ({
+        ...next,
+        ...(current.advancedTimingCueFailed === true
+          ? { advancedTimingCueFailed: true as const }
+          : {}),
+      }));
     } catch {
       setState((current) => ({
         ...current,
@@ -2603,6 +2627,36 @@ export function WorkoutAppRuntimeProvider({
   const getActiveWorkout = useCallback((sessionId: string) => {
     return requireServices().workoutRepository.getWorkoutSession(sessionId);
   }, [requireServices]);
+
+  const getAdvancedTimingContext = useCallback((sessionId: string) => {
+    return requireServices().advancedTimingRepository
+      .getAdvancedTimingContext(sessionId);
+  }, [requireServices]);
+
+  const emitAdvancedTimingCue = useCallback(async (
+    result: AdvancedTimingCommandResult & Readonly<{ cue?: AdvancedTimingCue | null }>,
+  ) => {
+    if (
+      result.cue === undefined
+      || result.cue === null
+      || result.state.state !== "running"
+      || result.state.cueChannels === "audio"
+    ) {
+      return;
+    }
+    try {
+      await createExpoHapticsAdapter().cue();
+      setState((current) => {
+        const { advancedTimingCueFailed: _failed, ...next } = current;
+        return next;
+      });
+    } catch {
+      setState((current) => ({
+        ...current,
+        advancedTimingCueFailed: true as const,
+      }));
+    }
+  }, []);
 
   const getSessionDetail = useCallback((sessionId: string) => {
     return requireServices().outcomeRepository.getSessionDetail(sessionId);
@@ -3203,7 +3257,7 @@ export function WorkoutAppRuntimeProvider({
       ) {
         return;
       }
-      await reconcileAdvancedTiming({
+      const result = await reconcileAdvancedTiming({
         repository: services.advancedTimingRepository,
         input: {
           sessionId: context.sessionId,
@@ -3214,6 +3268,11 @@ export function WorkoutAppRuntimeProvider({
           foregroundSinceMs: nowMs,
         },
       }).catch(() => undefined);
+      if (
+        result !== undefined
+      ) {
+        await emitAdvancedTimingCue(result);
+      }
     }
     if (generation === generationRef.current) {
       workoutRefreshGenerationRef.current += 1;
@@ -3222,7 +3281,7 @@ export function WorkoutAppRuntimeProvider({
         workoutRefreshGeneration: workoutRefreshGenerationRef.current,
       }));
     }
-  }, [dependencies]);
+  }, [dependencies, emitAdvancedTimingCue]);
 
   const runAdvancedTimingCommand = useCallback(async (
     command: (
@@ -3236,7 +3295,13 @@ export function WorkoutAppRuntimeProvider({
       generationRef.current,
     );
     try {
-      setState(await trustedRead(services));
+      const next = await trustedRead(services);
+      setState((current) => ({
+        ...next,
+        ...(current.advancedTimingCueFailed === true
+          ? { advancedTimingCueFailed: true as const }
+          : {}),
+      }));
     } catch {
       setState((current) => ({
         ...current,
@@ -3249,9 +3314,27 @@ export function WorkoutAppRuntimeProvider({
     return result;
   }, [reconcileAdvancedTimingAfterForeground, requireServices, trustedRead]);
 
+  const configureRuntimeAdvancedTiming = useCallback((
+    input: AdvancedTimingRevisionInput & Readonly<{
+      config: AdvancedTimingConfigV1;
+    }>,
+  ) => runAdvancedTimingCommand((repository) => configureAdvancedTiming({
+    repository,
+    input,
+  })), [runAdvancedTimingCommand]);
+
+  const reconcileRuntimeAdvancedTiming = useCallback((
+    input: AdvancedTimingRevisionInput & Readonly<{ foregroundSinceMs: number }>,
+  ) => runAdvancedTimingCommand(async (repository) => {
+    const result = await reconcileAdvancedTiming({ repository, input });
+    await emitAdvancedTimingCue(result);
+    return result;
+  }) as Promise<AdvancedTimingCommandResult & Readonly<{ cue: AdvancedTimingCue | null }>>,
+  [emitAdvancedTimingCue, runAdvancedTimingCommand]);
+
   const startRuntimeAdvancedTiming = useCallback((
     input: AdvancedTimingRevisionInput & Readonly<{
-      config: import("../domains/advancedTiming").AdvancedTimingConfigV1;
+      config: AdvancedTimingConfigV1;
     }>,
   ) => runAdvancedTimingCommand((repository) => startAdvancedTiming({
     repository,
@@ -4086,10 +4169,12 @@ export function WorkoutAppRuntimeProvider({
     expireRest: expireWorkoutRest,
     exerciseNotificationExpiry,
     applyCompletedWorkoutPlanWriteBack: applyCompletedPlanWriteBack,
+    configureAdvancedTiming: configureRuntimeAdvancedTiming,
     finishCompleted: finishWorkoutCompleted,
     finishPartial: finishWorkoutPartial,
     finishStarterSwitchWorkout,
     getActiveWorkout,
+    getAdvancedTimingContext,
     getSessionDetail,
     loadHistoryCorrectionSession,
     listAvailableCorrectionExercises,
@@ -4130,6 +4215,7 @@ export function WorkoutAppRuntimeProvider({
     readRestAlertPreferences,
     pauseAdvancedTiming: pauseRuntimeAdvancedTiming,
     pauseRest: pauseWorkoutRest,
+    reconcileAdvancedTiming: reconcileRuntimeAdvancedTiming,
     requestRestNotificationPermission,
     setRestAlertPreferences,
     recordTrainAnyway: (input) =>
@@ -4199,6 +4285,7 @@ export function WorkoutAppRuntimeProvider({
     adjustWorkoutRest,
     completeWorkoutSet,
     completeWorkoutWarmup,
+    configureRuntimeAdvancedTiming,
     requireServices,
     createRuntimeCustomExercise,
     editRuntimeCustomExercise,
@@ -4212,6 +4299,7 @@ export function WorkoutAppRuntimeProvider({
     finishStarterSwitchWorkout,
     finishZeroSetWorkout,
     getActiveWorkout,
+    getAdvancedTimingContext,
     getSessionDetail,
     loadHistoryCorrectionSession,
     listAvailableCorrectionExercises,
@@ -4235,6 +4323,7 @@ export function WorkoutAppRuntimeProvider({
     readRestAlertPreferences,
     pauseWorkoutRest,
     pauseRuntimeAdvancedTiming,
+    reconcileRuntimeAdvancedTiming,
     requestRestNotificationPermission,
     setRestAlertPreferences,
     recordWorkoutEffort,

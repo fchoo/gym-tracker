@@ -12,5 +12,8 @@ export function createExpoHapticsAdapter(): HapticsPort {
     async committed() {
       await impactAsync(ImpactFeedbackStyle.Light).catch(() => undefined);
     },
+    async cue() {
+      await impactAsync(ImpactFeedbackStyle.Light);
+    },
   });
 }

@@ -20,6 +20,7 @@ export {
 } from "./advancedTimingState";
 export {
   AdvancedTimingCommandError,
+  configureAdvancedTiming,
   pauseAdvancedTiming,
   reconcileAdvancedTiming,
   resumeAdvancedTiming,

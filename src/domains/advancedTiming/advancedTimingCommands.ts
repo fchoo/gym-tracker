@@ -25,6 +25,9 @@ export type AdvancedTimingRevisionInput = Readonly<{
 }>;
 
 export interface AdvancedTimingRepository {
+  configureAdvancedTiming(input: AdvancedTimingRevisionInput & Readonly<{
+    config: AdvancedTimingConfigV1;
+  }>): Promise<AdvancedTimingCommandResult>;
   startAdvancedTiming(input: AdvancedTimingRevisionInput & Readonly<{
     config: AdvancedTimingConfigV1;
   }>): Promise<AdvancedTimingCommandResult>;
@@ -76,6 +79,15 @@ export async function startAdvancedTiming(input: Readonly<{
   const config = parseAdvancedTimingConfig(input.input.config);
   if (config.mode !== "per_rep") throw new AdvancedTimingCommandError();
   return input.repository.startAdvancedTiming({ ...input.input, config });
+}
+
+export async function configureAdvancedTiming(input: Readonly<{
+  repository: AdvancedTimingRepository;
+  input: AdvancedTimingRevisionInput & Readonly<{ config: AdvancedTimingConfigV1 }>;
+}>): Promise<AdvancedTimingCommandResult> {
+  validate(input.input);
+  const config = parseAdvancedTimingConfig(input.input.config);
+  return input.repository.configureAdvancedTiming({ ...input.input, config });
 }
 
 export function pauseAdvancedTiming(input: Readonly<{

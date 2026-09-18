@@ -791,7 +791,7 @@ describe("accepted starter activation repository", () => {
       const completedAtMs = 1_787_027_202_000 + ordinal * 1_000;
       const result = await completeSet({
         repository,
-        haptics: { committed: async () => undefined },
+        haptics: { committed: async () => undefined, cue: async () => undefined },
         invalidate: async () => undefined,
         drainEffects: async () => undefined,
         input: {
@@ -857,7 +857,7 @@ describe("accepted starter activation repository", () => {
       const set = workout.currentExercise.workingSets[ordinal]!;
       const result = await completeSet({
         repository: workoutRepository,
-        haptics: { committed: async () => undefined },
+        haptics: { committed: async () => undefined, cue: async () => undefined },
         invalidate: async () => undefined,
         drainEffects: async () => undefined,
         input: {
@@ -1449,7 +1449,7 @@ describe("accepted starter activation repository", () => {
       })();
       view = await completeSet({
         repository: workout,
-        haptics: { committed: async () => undefined },
+        haptics: { committed: async () => undefined, cue: async () => undefined },
         invalidate: async () => undefined,
         drainEffects: async () => undefined,
         input: {

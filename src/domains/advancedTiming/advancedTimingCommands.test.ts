@@ -8,6 +8,7 @@ import {
 import {
   AdvancedTimingCommandError,
   type AdvancedTimingCommandResult,
+  configureAdvancedTiming,
   pauseAdvancedTiming,
   reconcileAdvancedTiming,
   resumeAdvancedTiming,
@@ -25,6 +26,7 @@ const idle: AdvancedTimingStateV1 = {
 };
 
 type RepositoryDouble = AdvancedTimingRepository & Readonly<{
+  configureAdvancedTiming: jest.MockedFunction<AdvancedTimingRepository["configureAdvancedTiming"]>;
   startAdvancedTiming: jest.MockedFunction<AdvancedTimingRepository["startAdvancedTiming"]>;
   pauseAdvancedTiming: jest.MockedFunction<AdvancedTimingRepository["pauseAdvancedTiming"]>;
   resumeAdvancedTiming: jest.MockedFunction<AdvancedTimingRepository["resumeAdvancedTiming"]>;
@@ -39,6 +41,7 @@ function repository(): RepositoryDouble {
     invalidationScopes: [["active-workout", "session-1"], ["today"]] as const,
   };
   return {
+    configureAdvancedTiming: jest.fn<AdvancedTimingRepository["configureAdvancedTiming"]>(async () => result),
     startAdvancedTiming: jest.fn<AdvancedTimingRepository["startAdvancedTiming"]>(async () => result),
     pauseAdvancedTiming: jest.fn<AdvancedTimingRepository["pauseAdvancedTiming"]>(async () => result),
     resumeAdvancedTiming: jest.fn<AdvancedTimingRepository["resumeAdvancedTiming"]>(async () => result),
@@ -64,11 +67,13 @@ describe("advanced timing command boundary", () => {
       expectedAdvancedTimingRevision: 2,
       nowMs: 10_000,
     };
+    await expect(configureAdvancedTiming({ repository: port, input: { ...revision, config: perRep } })).resolves.toMatchObject({ sessionRevision: 4 });
     await expect(startAdvancedTiming({ repository: port, input: { ...revision, config: perRep } })).resolves.toMatchObject({ sessionRevision: 4 });
     await expect(pauseAdvancedTiming({ repository: port, input: revision })).resolves.toMatchObject({ state: idle });
     await expect(resumeAdvancedTiming({ repository: port, input: revision })).resolves.toMatchObject({ state: idle });
     await expect(reconcileAdvancedTiming({ repository: port, input: { ...revision, foregroundSinceMs: 9_000 } })).resolves.toMatchObject({ cue: null });
     await expect(stopAdvancedTiming({ repository: port, input: revision })).resolves.toMatchObject({ state: idle });
+    expect(port.configureAdvancedTiming).toHaveBeenCalledWith({ ...revision, config: perRep });
     expect(port.startAdvancedTiming).toHaveBeenCalledWith({ ...revision, config: perRep });
     expect(port.reconcileAdvancedTiming).toHaveBeenCalledWith({ ...revision, foregroundSinceMs: 9_000 });
   });
@@ -86,6 +91,10 @@ describe("advanced timing command boundary", () => {
       repository: port,
       input: { ...valid, config: { version: 1, mode: "off" } },
     })).rejects.toThrow(AdvancedTimingCommandError);
+    await expect(configureAdvancedTiming({
+      repository: port,
+      input: { ...valid, config: { version: 1, mode: "off" } },
+    })).resolves.toMatchObject({ sessionRevision: 4 });
     expect(() => pauseAdvancedTiming({
       repository: port,
       input: { ...valid, expectedSessionRevision: -1 },

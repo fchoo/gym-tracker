@@ -1219,7 +1219,7 @@ describe("Today schedule workout integration", () => {
 
     const completion = await completeSet({
       repository: workout,
-      haptics: { committed: jest.fn(async () => undefined) },
+      haptics: { committed: jest.fn(async () => undefined), cue: jest.fn(async () => undefined) },
       invalidate: jest.fn(async () => undefined),
       drainEffects: jest.fn(async () => undefined),
       input: {

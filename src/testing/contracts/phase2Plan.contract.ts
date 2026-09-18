@@ -1402,7 +1402,7 @@ const contractCases: Record<Phase2PlanContractCaseId, ContractCase> = {
     );
     const completed = await completeSet({
       repository,
-      haptics: { committed: async () => undefined },
+      haptics: { committed: async () => undefined, cue: async () => undefined },
       invalidate: async () => undefined,
       drainEffects: async () => undefined,
       input: {

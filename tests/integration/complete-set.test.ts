@@ -207,9 +207,11 @@ async function setupActiveWorkout(
 
 function haptics(): HapticsPort & {
   committed: jest.MockedFunction<HapticsPort["committed"]>;
+  cue: jest.MockedFunction<HapticsPort["cue"]>;
 } {
   return {
     committed: jest.fn(async () => undefined),
+    cue: jest.fn(async () => undefined),
   };
 }
 
@@ -774,6 +776,7 @@ describe("Plan 01-08 exactly-once completeSet and Undo", () => {
         committed: async () => {
           throw new Error("haptic_failed");
         },
+        cue: async () => undefined,
       },
       invalidate: async () => {
         throw new Error("invalidation_failed");

@@ -21,6 +21,8 @@ import {
 } from "react-native";
 
 let mockNativeContractsEnabled = true;
+const mockCommittedHaptic = jest.fn(async () => undefined);
+const mockCueHaptic = jest.fn(async () => undefined);
 
 import starterPlansAsset from "../../assets/content/starter-plans.v2.json";
 import starterPlansAcceptanceAsset from "../../artifacts/review/phase2/starter-plans-acceptance.json";
@@ -128,6 +130,12 @@ jest.mock("expo-constants", () => ({
       },
     },
   },
+}));
+jest.mock("../platform/haptics/expoHapticsAdapter", () => ({
+  createExpoHapticsAdapter: jest.fn(() => ({
+    committed: mockCommittedHaptic,
+    cue: mockCueHaptic,
+  })),
 }));
 jest.mock("./ownedPlanRuntime", () => {
   const actual = jest.requireActual<typeof import("./ownedPlanRuntime")>(
@@ -466,6 +474,9 @@ function runtimeAdvancedTimingRepository(): AdvancedTimingRepositoryPort & {
   listActiveTimingContexts: jest.MockedFunction<
     AdvancedTimingRepositoryPort["listActiveTimingContexts"]
   >;
+  configureAdvancedTiming: jest.MockedFunction<
+    AdvancedTimingRepository["configureAdvancedTiming"]
+  >;
   startAdvancedTiming: jest.MockedFunction<
     AdvancedTimingRepository["startAdvancedTiming"]
   >;
@@ -498,6 +509,9 @@ function runtimeAdvancedTimingRepository(): AdvancedTimingRepositoryPort & {
     listActiveTimingContexts: jest.fn<
       AdvancedTimingRepositoryPort["listActiveTimingContexts"]
     >(async () => []),
+    configureAdvancedTiming: jest.fn<
+      AdvancedTimingRepository["configureAdvancedTiming"]
+    >(async () => result),
     startAdvancedTiming: jest.fn<AdvancedTimingRepository["startAdvancedTiming"]>(
       async () => result,
     ),
@@ -1261,6 +1275,29 @@ describe("WorkoutAppRuntimeProvider", () => {
 
     let result: AdvancedTimingCommandResult | undefined;
     await act(async () => {
+      result = await captured!.configureAdvancedTiming({
+        sessionId: "session-1",
+        sessionSetId: "set-1",
+        expectedSessionRevision: 1,
+        expectedAdvancedTimingRevision: 0,
+        nowMs: 10_000,
+        config: {
+          version: 1,
+          mode: "per_rep",
+          intervalMs: 1_000,
+          cueChannels: "haptic",
+        },
+      });
+    });
+    expect(result).toEqual(expect.objectContaining({
+      state: {
+        version: 1,
+        state: "idle",
+        revision: 0,
+        targetSessionSetId: null,
+      },
+    }));
+    await act(async () => {
       result = await captured!.startAdvancedTiming({
         sessionId: "session-1",
         sessionSetId: "set-1",
@@ -1277,11 +1314,92 @@ describe("WorkoutAppRuntimeProvider", () => {
     });
     expect(result).toEqual(expect.objectContaining({ state: running }));
 
+    expect(advanced.configureAdvancedTiming).toHaveBeenCalledTimes(1);
     expect(advanced.startAdvancedTiming).toHaveBeenCalledTimes(1);
     expect(advanced.listActiveTimingContexts).toHaveBeenCalled();
     expect(rest.listActiveSessionIds).not.toHaveBeenCalled();
     expect(lifecycle.trigger).not.toHaveBeenCalled();
     expect(notifications.requestPermission).not.toHaveBeenCalled();
+  });
+
+  it("contains advisory advanced timing cue failures after committed reconcile", async () => {
+    const repository = runtimeRepository([activeView, activeView], [activation]);
+    const advanced = runtimeAdvancedTimingRepository();
+    const rest = runtimeRestRepository();
+    const lifecycle = runtimeLifecycle();
+    const notifications = runtimeNotifications("undetermined");
+    const running: AdvancedTimingStateV1 = {
+      version: 1,
+      state: "running",
+      mode: "per_rep",
+      revision: 3,
+      targetSessionSetId: "set-1",
+      cueChannels: "haptic",
+      intervalMs: 1_000,
+      startedAtMs: 10_000,
+      nextBoundaryAtMs: 11_000,
+      nextRepetitionIndex: 1,
+    };
+    advanced.reconcileAdvancedTiming.mockResolvedValue({
+      state: {
+        ...running,
+        revision: 4,
+        nextBoundaryAtMs: 21_000,
+        nextRepetitionIndex: 11,
+      },
+      sessionRevision: 1,
+      invalidationScopes: [
+        ["active-workout", "session-1"],
+        ["today"],
+      ],
+      cue: { repetitionIndex: 10, boundaryAtMs: 20_000 },
+    });
+    mockCueHaptic.mockRejectedValueOnce(new Error("haptics_unavailable"));
+    let captured: ReturnType<typeof useWorkoutAppRuntime> | undefined;
+
+    await render(
+      <RuntimeCaptureHarness
+        dependencies={dependencies(repository, {
+          createAdvancedTimingRepository: () => advanced,
+          createRestRepository: () => rest,
+          createLifecycle: () => lifecycle,
+          createNotifications: () => notifications,
+        })}
+        onReady={(runtime) => {
+          captured = runtime;
+        }}
+      />,
+    );
+    await waitFor(() => {
+      expect(captured?.launchState).toBe("trusted");
+    });
+    lifecycle.trigger.mockClear();
+
+    let result: (AdvancedTimingCommandResult & Readonly<{
+      cue: { repetitionIndex: number; boundaryAtMs: number } | null;
+    }>) | undefined;
+    await act(async () => {
+      result = await captured!.reconcileAdvancedTiming({
+        sessionId: "session-1",
+        sessionSetId: "set-1",
+        expectedSessionRevision: 1,
+        expectedAdvancedTimingRevision: 3,
+        nowMs: 20_050,
+        foregroundSinceMs: 20_000,
+      });
+      await Promise.resolve();
+    });
+    expect(result).toEqual(expect.objectContaining({
+      cue: { repetitionIndex: 10, boundaryAtMs: 20_000 },
+    }));
+
+    expect(mockCueHaptic).toHaveBeenCalledTimes(1);
+    expect(rest.listActiveSessionIds).not.toHaveBeenCalled();
+    expect(lifecycle.trigger).not.toHaveBeenCalled();
+    expect(notifications.requestPermission).not.toHaveBeenCalled();
+    await waitFor(() => {
+      expect(captured?.advancedTimingCueFailed).toBe(true);
+    });
   });
 
   it("reconciles advanced timing on foreground without entering the rest lifecycle", async () => {

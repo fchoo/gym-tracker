@@ -179,14 +179,14 @@ describe("Plan 01-08 set command validation", () => {
 
     await expect(completeSet({
       repository: port,
-      haptics: { committed: jest.fn(async () => undefined) },
+      haptics: { committed: jest.fn(async () => undefined), cue: jest.fn(async () => undefined) },
       invalidate: jest.fn(async () => undefined),
       drainEffects: jest.fn(async () => undefined),
       input: completeInput(loadDraft),
     })).rejects.toThrow("invalid_load_reps_observation");
     await expect(completeSet({
       repository: port,
-      haptics: { committed: jest.fn(async () => undefined) },
+      haptics: { committed: jest.fn(async () => undefined), cue: jest.fn(async () => undefined) },
       invalidate: jest.fn(async () => undefined),
       drainEffects: jest.fn(async () => undefined),
       input: completeInput(holdDraft),
@@ -200,7 +200,7 @@ describe("Plan 01-08 set command validation", () => {
 
     await expect(completeSet({
       repository: repository(),
-      haptics: { committed },
+      haptics: { committed, cue: jest.fn(async () => undefined) },
       invalidate,
       drainEffects,
       input: completeInput({
@@ -221,6 +221,7 @@ describe("Plan 01-08 set command validation", () => {
       repository: repository({ outcome: "committed", view }),
       haptics: {
         committed: jest.fn(async () => Promise.reject(new Error("haptic"))),
+        cue: jest.fn(async () => undefined),
       },
       invalidate: jest.fn(async () => Promise.reject(new Error("invalidate"))),
       drainEffects: jest.fn(async () => Promise.reject(new Error("drain"))),
@@ -472,7 +473,7 @@ describe("Plan 02-10 authoritative set command validation", () => {
 
       await expect(completeSet({
         repository: port,
-        haptics: { committed: jest.fn(async () => undefined) },
+        haptics: { committed: jest.fn(async () => undefined), cue: jest.fn(async () => undefined) },
         invalidate: jest.fn(async () => undefined),
         drainEffects: jest.fn(async () => undefined),
         input: completeInput(observation),

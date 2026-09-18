@@ -242,6 +242,79 @@ describe("advanced timing repository state decoding", () => {
     })).rejects.toThrow("advanced_timing_session_revision_conflict");
   });
 
+  it("persists an active set timing override without changing advanced state", async () => {
+    let configJson: string | undefined;
+    const { kernel, executeCount } = kernelForTransition({
+      state: null,
+      target: { status: "draft", advanced_timing_resolved_json: offJson },
+    });
+    const configuredKernel: SqliteKernel = {
+      ...kernel,
+      write: async <Result>(command: (executor: SqliteTransactionExecutor) => Promise<Result>) =>
+        command({
+          execute: async (sql, params) => {
+            if (sql.includes("advanced_timing_override_json")) {
+              configJson = String(params?.[0]);
+            }
+            return { changes: 1, lastInsertRowId: 0 };
+          },
+          queryAll: kernel.queryAll,
+        }),
+    };
+    await expect(createAdvancedTimingRepository(configuredKernel).configureAdvancedTiming({
+      sessionId: "session-1",
+      sessionSetId: "set-1",
+      expectedSessionRevision: 1,
+      expectedAdvancedTimingRevision: 0,
+      nowMs: 1_000,
+      config: { version: 1, mode: "per_rep", intervalMs: 1_000, cueChannels: "haptic" },
+    })).resolves.toEqual({
+      invalidationScopes: [["active-workout", "session-1"], ["today"]],
+      sessionRevision: 2,
+      state: {
+        version: 1,
+        state: "idle",
+        revision: 0,
+        targetSessionSetId: null,
+      },
+    });
+    expect(configJson).toBe(perRepJson);
+    expect(executeCount()).toBe(0);
+  });
+
+  it.each([
+    ["set update", [0]],
+    ["session revision update", [1, 0]],
+  ])("rejects failed %s while configuring timing", async (_label, changes) => {
+    let executeIndex = 0;
+    const { kernel } = kernelForTransition({
+      state: null,
+      target: { status: "draft", advanced_timing_resolved_json: offJson },
+    });
+    const configuredKernel: SqliteKernel = {
+      ...kernel,
+      write: async <Result>(command: (executor: SqliteTransactionExecutor) => Promise<Result>) =>
+        command({
+          execute: async () => {
+            const change = changes[Math.min(executeIndex, changes.length - 1)]!;
+            executeIndex += 1;
+            return { changes: change, lastInsertRowId: 0 };
+          },
+          queryAll: kernel.queryAll,
+        }),
+    };
+    await expect(createAdvancedTimingRepository(configuredKernel).configureAdvancedTiming({
+      sessionId: "session-1",
+      sessionSetId: "set-1",
+      expectedSessionRevision: 1,
+      expectedAdvancedTimingRevision: 0,
+      nowMs: 1_000,
+      config: { version: 1, mode: "per_rep", intervalMs: 1_000, cueChannels: "haptic" },
+    })).rejects.toThrow(_label === "set update"
+      ? "advanced_timing_config_conflict"
+      : "advanced_timing_session_revision_conflict");
+  });
+
   it.each([
     ["missing session", { session: null }, "advanced_timing_session_missing"],
     ["missing target ownership", { target: null }, "advanced_timing_target_not_owned"],
@@ -264,6 +337,32 @@ describe("advanced timing repository state decoding", () => {
         cueChannels: "haptic",
       },
     })).rejects.toThrow(code);
+    expect(executeCount()).toBe(0);
+  });
+
+  it("rejects timing configuration while a timer is active", async () => {
+    const { kernel, executeCount } = kernelForTransition({ state: row() });
+    await expect(createAdvancedTimingRepository(kernel).configureAdvancedTiming({
+      sessionId: "session-1",
+      sessionSetId: "set-1",
+      expectedSessionRevision: 1,
+      expectedAdvancedTimingRevision: 2,
+      nowMs: 1_000,
+      config: { version: 1, mode: "per_rep", intervalMs: 1_000, cueChannels: "haptic" },
+    })).rejects.toThrow("advanced_timing_config_active");
+    expect(executeCount()).toBe(0);
+  });
+
+  it("maps shared context conflicts while configuring timing", async () => {
+    const { kernel, executeCount } = kernelForTransition({ session: null });
+    await expect(createAdvancedTimingRepository(kernel).configureAdvancedTiming({
+      sessionId: "session-1",
+      sessionSetId: "set-1",
+      expectedSessionRevision: 1,
+      expectedAdvancedTimingRevision: 0,
+      nowMs: 1_000,
+      config: { version: 1, mode: "per_rep", intervalMs: 1_000, cueChannels: "haptic" },
+    })).rejects.toThrow("advanced_timing_session_missing");
     expect(executeCount()).toBe(0);
   });
 

@@ -67,6 +67,19 @@ type PersistedAdvancedTimingState = Exclude<
   Readonly<{ state: "idle" }>
 >;
 
+type MutableTimingContext = Readonly<{
+  session: SessionRow;
+  stored: Readonly<{
+    state: AdvancedTimingStateV1;
+    config: AdvancedTimingConfigV1;
+  }>;
+  target: TargetRow;
+}>;
+
+type MutableTimingContextResult =
+  | Readonly<{ kind: "context"; context: MutableTimingContext }>
+  | Readonly<{ kind: "conflict"; code: string }>;
+
 function idleState(revision = 0): AdvancedTimingStateV1 {
   return Object.freeze({
     version: 1,
@@ -316,6 +329,45 @@ async function persistState(
   );
 }
 
+async function readMutableTimingContext(
+  transaction: SqliteTransactionExecutor,
+  input: AdvancedTimingRevisionInput,
+): Promise<MutableTimingContextResult> {
+  const session = await readSession(transaction, input.sessionId);
+  if (session === null) {
+    return { kind: "conflict", code: "advanced_timing_session_missing" };
+  }
+  if (session.revision !== input.expectedSessionRevision) {
+    return { kind: "conflict", code: "advanced_timing_session_revision_conflict" };
+  }
+  const target = await readTarget(transaction, input.sessionId, input.sessionSetId);
+  if (target === null) {
+    return { kind: "conflict", code: "advanced_timing_target_not_owned" };
+  }
+  if (session.active_set_id !== input.sessionSetId) {
+    return { kind: "conflict", code: "advanced_timing_target_not_active" };
+  }
+  if (target.status !== "planned" && target.status !== "draft") {
+    return { kind: "conflict", code: "advanced_timing_target_not_available" };
+  }
+  let stored: MutableTimingContext["stored"];
+  try {
+    stored = await readStoredState(transaction, input.sessionId);
+  } catch (error) {
+    if (error instanceof AdvancedTimingRepositoryError) {
+      return { kind: "conflict", code: error.code };
+    }
+    throw error;
+  }
+  if (stored.state.revision !== input.expectedAdvancedTimingRevision) {
+    return { kind: "conflict", code: "advanced_timing_revision_conflict" };
+  }
+  return {
+    kind: "context",
+    context: Object.freeze({ session, stored, target }),
+  };
+}
+
 function commandResult(
   sessionId: string,
   sessionRevision: number,
@@ -337,40 +389,63 @@ type TransitionInput = AdvancedTimingRevisionInput & Readonly<{
   operation: "start" | "pause" | "resume" | "reconcile" | "stop";
 }>;
 
+async function configure(
+  kernel: SqliteKernel,
+  input: AdvancedTimingRevisionInput & Readonly<{ config: AdvancedTimingConfigV1 }>,
+): Promise<AdvancedTimingCommandResult> {
+  const outcome = await kernel.write(async (transaction) => {
+    const context = await readMutableTimingContext(transaction, input);
+    if (context.kind === "conflict") return context;
+    const { session, stored } = context.context;
+    if (stored.state.state !== "idle" && stored.state.state !== "stopped") {
+      return { kind: "conflict" as const, code: "advanced_timing_config_active" };
+    }
+
+    const config = parseAdvancedTimingConfig(input.config);
+    const configJson = JSON.stringify(config);
+    const update = await transaction.execute(
+      `UPDATE session_sets
+       SET advanced_timing_override_json = ?,
+           advanced_timing_resolved_json = ?
+       WHERE id = ?
+         AND set_kind = 'working'
+         AND status IN ('planned', 'draft')
+         AND session_exercise_id IN (
+           SELECT id FROM session_exercises WHERE session_id = ?
+         )`,
+      [configJson, configJson, input.sessionSetId, input.sessionId],
+    );
+    if (update.changes !== 1) {
+      return { kind: "conflict" as const, code: "advanced_timing_config_conflict" };
+    }
+    const sessionUpdate = await transaction.execute(
+      `UPDATE workout_sessions
+       SET revision = revision + 1
+       WHERE id = ? AND status = 'in_progress' AND revision = ?`,
+      [input.sessionId, input.expectedSessionRevision],
+    );
+    if (sessionUpdate.changes !== 1) {
+      return { kind: "conflict" as const, code: "advanced_timing_session_revision_conflict" };
+    }
+    return {
+      kind: "result" as const,
+      result: commandResult(input.sessionId, session.revision + 1, stored.state),
+    };
+  });
+  if (outcome.kind === "conflict") {
+    throw new AdvancedTimingRepositoryError(outcome.code);
+  }
+  return outcome.result;
+}
+
 async function transition(
   kernel: SqliteKernel,
   input: TransitionInput,
 ): Promise<AdvancedTimingCommandResult & Readonly<{ cue?: ReturnType<typeof reconcileAdvancedTimingState>["cue"] }>> {
   const outcome = await kernel.write(async (transaction) => {
-    const session = await readSession(transaction, input.sessionId);
-    if (session === null) {
-      return { kind: "conflict" as const, code: "advanced_timing_session_missing" };
-    }
-    if (session.revision !== input.expectedSessionRevision) {
-      return { kind: "conflict" as const, code: "advanced_timing_session_revision_conflict" };
-    }
-    const target = await readTarget(transaction, input.sessionId, input.sessionSetId);
-    if (target === null) {
-      return { kind: "conflict" as const, code: "advanced_timing_target_not_owned" };
-    }
-    if (session.active_set_id !== input.sessionSetId) {
-      return { kind: "conflict" as const, code: "advanced_timing_target_not_active" };
-    }
-    if (target.status !== "planned" && target.status !== "draft") {
-      return { kind: "conflict" as const, code: "advanced_timing_target_not_available" };
-    }
-    let stored: Readonly<{ state: AdvancedTimingStateV1; config: AdvancedTimingConfigV1 }> ;
-    try {
-      stored = await readStoredState(transaction, input.sessionId);
-    } catch (error) {
-      if (error instanceof AdvancedTimingRepositoryError) {
-        return { kind: "conflict" as const, code: error.code };
-      }
-      throw error;
-    }
-    if (stored.state.revision !== input.expectedAdvancedTimingRevision) {
-      return { kind: "conflict" as const, code: "advanced_timing_revision_conflict" };
-    }
+    const context = await readMutableTimingContext(transaction, input);
+    if (context.kind === "conflict") return context;
+    const { session, stored, target } = context.context;
 
     let snapshotConfig: AdvancedTimingConfigV1;
     try {
@@ -525,6 +600,10 @@ export function createAdvancedTimingRepository(
 
   const repository: AdvancedTimingRepositoryPort = {
     getAdvancedTimingContext,
+
+    configureAdvancedTiming: (input: AdvancedTimingRevisionInput & Readonly<{
+      config: AdvancedTimingConfigV1;
+    }>) => configure(kernel, input),
 
     async listActiveTimingContexts() {
       const sessions = await kernel.queryAll<{ id: string }>(

@@ -614,7 +614,7 @@ describe("Plan 01-10 explicit workout outcomes", () => {
       )!;
       const completed = await completeSet({
         repository: workout,
-        haptics: { committed: async () => undefined },
+        haptics: { committed: async () => undefined, cue: async () => undefined },
         invalidate: async () => undefined,
         drainEffects: async () => undefined,
         input: {
@@ -1270,7 +1270,7 @@ describe("Plan 01-10 explicit workout outcomes", () => {
     )!;
     const completed = await completeSet({
       repository: workout,
-      haptics: { committed: async () => undefined },
+      haptics: { committed: async () => undefined, cue: async () => undefined },
       invalidate: async () => undefined,
       drainEffects: async () => undefined,
       input: {

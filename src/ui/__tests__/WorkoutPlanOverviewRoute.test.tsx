@@ -29,6 +29,7 @@ const mockReplace = jest.fn();
 const mockGetActiveWorkout = jest.fn<(
   sessionId: string,
 ) => Promise<WorkoutSessionView>>();
+const mockGetAdvancedTimingContext = jest.fn(async () => null);
 const mockListOwnedPlanExercises = jest.fn(async () => []);
 
 jest.mock("expo-router", () => ({
@@ -60,19 +61,26 @@ jest.mock("../../bootstrap/workoutAppRuntime", () => ({
     expireRest: jest.fn(),
     finishCompleted: jest.fn(),
     finishPartial: jest.fn(),
+    configureAdvancedTiming: jest.fn(),
     getActiveWorkout: mockGetActiveWorkout,
+    getAdvancedTimingContext: mockGetAdvancedTimingContext,
     listOwnedPlanExercises: mockListOwnedPlanExercises,
     openRestNotificationSettings: jest.fn(),
     pauseRest: jest.fn(),
+    pauseAdvancedTiming: jest.fn(),
+    reconcileAdvancedTiming: jest.fn(),
     readRestAlertPreferences: () => ({ soundEnabled: false }),
     removeWarmup: jest.fn(),
     removeWorkingSet: jest.fn(),
     resumeRest: jest.fn(),
+    resumeAdvancedTiming: jest.fn(),
     reviseCompletedSet: jest.fn(),
     saveZeroSetWorkout: jest.fn(),
     skipExercise: jest.fn(),
     skipRest: jest.fn(),
     startManualRest: jest.fn(),
+    startAdvancedTiming: jest.fn(),
+    stopAdvancedTiming: jest.fn(),
     updateActiveSetDraft: jest.fn(),
     updateWarmupDraft: jest.fn(),
     workoutRefreshGeneration: mockRefreshGeneration,
@@ -180,6 +188,7 @@ describe("ActiveWorkoutRoute", () => {
     mockBack.mockReset();
     mockReplace.mockReset();
     mockGetActiveWorkout.mockReset();
+    mockGetAdvancedTimingContext.mockClear();
     mockListOwnedPlanExercises.mockClear();
   });
 
