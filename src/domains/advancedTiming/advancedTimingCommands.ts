@@ -31,6 +31,8 @@ export interface AdvancedTimingRepository {
   startAdvancedTiming(input: AdvancedTimingRevisionInput & Readonly<{
     config: AdvancedTimingConfigV1;
   }>): Promise<AdvancedTimingCommandResult>;
+  beginAdvancedTimingClusterGap(input: AdvancedTimingRevisionInput): Promise<AdvancedTimingCommandResult>;
+  skipAdvancedTimingClusterGap(input: AdvancedTimingRevisionInput): Promise<AdvancedTimingCommandResult>;
   pauseAdvancedTiming(input: AdvancedTimingRevisionInput): Promise<AdvancedTimingCommandResult>;
   resumeAdvancedTiming(input: AdvancedTimingRevisionInput): Promise<AdvancedTimingCommandResult>;
   reconcileAdvancedTiming(input: AdvancedTimingRevisionInput & Readonly<{
@@ -77,7 +79,7 @@ export async function startAdvancedTiming(input: Readonly<{
 }>): Promise<AdvancedTimingCommandResult> {
   validate(input.input);
   const config = parseAdvancedTimingConfig(input.input.config);
-  if (config.mode !== "per_rep") throw new AdvancedTimingCommandError();
+  if (config.mode === "off") throw new AdvancedTimingCommandError();
   return input.repository.startAdvancedTiming({ ...input.input, config });
 }
 
@@ -96,6 +98,22 @@ export function pauseAdvancedTiming(input: Readonly<{
 }>): Promise<AdvancedTimingCommandResult> {
   validate(input.input);
   return input.repository.pauseAdvancedTiming(input.input);
+}
+
+export function beginAdvancedTimingClusterGap(input: Readonly<{
+  repository: AdvancedTimingRepository;
+  input: AdvancedTimingRevisionInput;
+}>): Promise<AdvancedTimingCommandResult> {
+  validate(input.input);
+  return input.repository.beginAdvancedTimingClusterGap(input.input);
+}
+
+export function skipAdvancedTimingClusterGap(input: Readonly<{
+  repository: AdvancedTimingRepository;
+  input: AdvancedTimingRevisionInput;
+}>): Promise<AdvancedTimingCommandResult> {
+  validate(input.input);
+  return input.repository.skipAdvancedTimingClusterGap(input.input);
 }
 
 export function resumeAdvancedTiming(input: Readonly<{

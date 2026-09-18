@@ -8,10 +8,12 @@ import {
 import {
   AdvancedTimingCommandError,
   type AdvancedTimingCommandResult,
+  beginAdvancedTimingClusterGap,
   configureAdvancedTiming,
   pauseAdvancedTiming,
   reconcileAdvancedTiming,
   resumeAdvancedTiming,
+  skipAdvancedTimingClusterGap,
   startAdvancedTiming,
   stopAdvancedTiming,
   type AdvancedTimingRepository,
@@ -28,6 +30,8 @@ const idle: AdvancedTimingStateV1 = {
 type RepositoryDouble = AdvancedTimingRepository & Readonly<{
   configureAdvancedTiming: jest.MockedFunction<AdvancedTimingRepository["configureAdvancedTiming"]>;
   startAdvancedTiming: jest.MockedFunction<AdvancedTimingRepository["startAdvancedTiming"]>;
+  beginAdvancedTimingClusterGap: jest.MockedFunction<AdvancedTimingRepository["beginAdvancedTimingClusterGap"]>;
+  skipAdvancedTimingClusterGap: jest.MockedFunction<AdvancedTimingRepository["skipAdvancedTimingClusterGap"]>;
   pauseAdvancedTiming: jest.MockedFunction<AdvancedTimingRepository["pauseAdvancedTiming"]>;
   resumeAdvancedTiming: jest.MockedFunction<AdvancedTimingRepository["resumeAdvancedTiming"]>;
   reconcileAdvancedTiming: jest.MockedFunction<AdvancedTimingRepository["reconcileAdvancedTiming"]>;
@@ -43,6 +47,8 @@ function repository(): RepositoryDouble {
   return {
     configureAdvancedTiming: jest.fn<AdvancedTimingRepository["configureAdvancedTiming"]>(async () => result),
     startAdvancedTiming: jest.fn<AdvancedTimingRepository["startAdvancedTiming"]>(async () => result),
+    beginAdvancedTimingClusterGap: jest.fn<AdvancedTimingRepository["beginAdvancedTimingClusterGap"]>(async () => result),
+    skipAdvancedTimingClusterGap: jest.fn<AdvancedTimingRepository["skipAdvancedTimingClusterGap"]>(async () => result),
     pauseAdvancedTiming: jest.fn<AdvancedTimingRepository["pauseAdvancedTiming"]>(async () => result),
     resumeAdvancedTiming: jest.fn<AdvancedTimingRepository["resumeAdvancedTiming"]>(async () => result),
     reconcileAdvancedTiming: jest.fn<AdvancedTimingRepository["reconcileAdvancedTiming"]>(async () => ({ ...result, cue: null })),
@@ -69,12 +75,16 @@ describe("advanced timing command boundary", () => {
     };
     await expect(configureAdvancedTiming({ repository: port, input: { ...revision, config: perRep } })).resolves.toMatchObject({ sessionRevision: 4 });
     await expect(startAdvancedTiming({ repository: port, input: { ...revision, config: perRep } })).resolves.toMatchObject({ sessionRevision: 4 });
+    await expect(beginAdvancedTimingClusterGap({ repository: port, input: revision })).resolves.toMatchObject({ state: idle });
+    await expect(skipAdvancedTimingClusterGap({ repository: port, input: revision })).resolves.toMatchObject({ state: idle });
     await expect(pauseAdvancedTiming({ repository: port, input: revision })).resolves.toMatchObject({ state: idle });
     await expect(resumeAdvancedTiming({ repository: port, input: revision })).resolves.toMatchObject({ state: idle });
     await expect(reconcileAdvancedTiming({ repository: port, input: { ...revision, foregroundSinceMs: 9_000 } })).resolves.toMatchObject({ cue: null });
     await expect(stopAdvancedTiming({ repository: port, input: revision })).resolves.toMatchObject({ state: idle });
     expect(port.configureAdvancedTiming).toHaveBeenCalledWith({ ...revision, config: perRep });
     expect(port.startAdvancedTiming).toHaveBeenCalledWith({ ...revision, config: perRep });
+    expect(port.beginAdvancedTimingClusterGap).toHaveBeenCalledWith(revision);
+    expect(port.skipAdvancedTimingClusterGap).toHaveBeenCalledWith(revision);
     expect(port.reconcileAdvancedTiming).toHaveBeenCalledWith({ ...revision, foregroundSinceMs: 9_000 });
   });
 

@@ -1,8 +1,10 @@
 import {
   AdvancedTimingStateTransitionError,
+  beginClusterGapState,
   pauseAdvancedTimingState,
   reconcileAdvancedTimingState,
   resumeAdvancedTimingState,
+  skipClusterGapState,
   startAdvancedTimingState,
   stopAdvancedTimingState,
   type AdvancedTimingStateV1,
@@ -12,6 +14,14 @@ const perRep = {
   version: 1 as const,
   mode: "per_rep" as const,
   intervalMs: 1_000,
+  cueChannels: "haptic" as const,
+};
+
+const cluster = {
+  version: 1 as const,
+  mode: "cluster" as const,
+  groupSizes: [3, 3, 3] as const,
+  intraRestMs: 20_000,
   cueChannels: "haptic" as const,
 };
 
@@ -54,6 +64,155 @@ describe("AdvancedTimingStateV1", () => {
       sessionSetId: "set-1",
       nowMs: 10_000,
     })).toThrow("advanced_timing_state_invalid");
+  });
+
+  it("starts a cluster set as one target row with explicit group readiness", () => {
+    expect(startAdvancedTimingState({
+      current: idle,
+      config: cluster,
+      sessionSetId: "set-1",
+      nowMs: 10_000,
+    })).toEqual({
+      version: 1,
+      state: "cluster_ready",
+      mode: "cluster",
+      revision: 3,
+      targetSessionSetId: "set-1",
+      cueChannels: "haptic",
+      groupSizes: [3, 3, 3],
+      intraRestMs: 20_000,
+      currentGroupIndex: 0,
+    });
+  });
+
+  it("runs, pauses, resumes, skips, and rejects final cluster gaps", () => {
+    const ready = startAdvancedTimingState({
+      current: idle,
+      config: cluster,
+      sessionSetId: "set-1",
+      nowMs: 10_000,
+    });
+    const gap = beginClusterGapState(ready, 30_000);
+    expect(gap).toEqual({
+      version: 1,
+      state: "cluster_gap_running",
+      mode: "cluster",
+      revision: 4,
+      targetSessionSetId: "set-1",
+      cueChannels: "haptic",
+      groupSizes: [3, 3, 3],
+      intraRestMs: 20_000,
+      currentGroupIndex: 0,
+      gapStartedAtMs: 30_000,
+      gapEndsAtMs: 50_000,
+    });
+    const paused = pauseAdvancedTimingState(gap, 40_000);
+    expect(paused).toEqual({
+      version: 1,
+      state: "cluster_gap_paused",
+      mode: "cluster",
+      revision: 5,
+      targetSessionSetId: "set-1",
+      cueChannels: "haptic",
+      groupSizes: [3, 3, 3],
+      intraRestMs: 20_000,
+      currentGroupIndex: 0,
+      remainingMs: 10_000,
+    });
+    const resumed = resumeAdvancedTimingState(paused, 60_000);
+    expect(resumed).toEqual({
+      ...gap,
+      revision: 6,
+      gapStartedAtMs: 60_000,
+      gapEndsAtMs: 70_000,
+    });
+    const secondReady = skipClusterGapState(resumed);
+    expect(secondReady).toEqual({
+      ...ready,
+      revision: 7,
+      currentGroupIndex: 1,
+    });
+    const thirdReady = skipClusterGapState(beginClusterGapState(secondReady, 90_000));
+    expect(thirdReady).toEqual({
+      ...ready,
+      revision: 9,
+      currentGroupIndex: 2,
+    });
+    expect(() => beginClusterGapState(thirdReady, 100_000))
+      .toThrow("advanced_timing_cluster_complete");
+    expect(() => skipClusterGapState(ready))
+      .toThrow("advanced_timing_cluster_gap_not_active");
+    expect(() => beginClusterGapState(gap, 100_000))
+      .toThrow("advanced_timing_cluster_not_ready");
+  });
+
+  it("reconciles cluster gaps from absolute timestamps without replaying missed cues", () => {
+    const ready = startAdvancedTimingState({
+      current: idle,
+      config: cluster,
+      sessionSetId: "set-1",
+      nowMs: 10_000,
+    });
+    const gap = beginClusterGapState(ready, 30_000);
+    expect(reconcileAdvancedTimingState({
+      state: gap,
+      nowMs: 49_999,
+      foregroundSinceMs: 30_000,
+    })).toEqual({ state: gap, cue: null, skippedBoundaryCount: 0 });
+    expect(reconcileAdvancedTimingState({
+      state: gap,
+      nowMs: 50_000,
+      foregroundSinceMs: 49_000,
+    })).toEqual({
+      state: {
+        ...ready,
+        revision: 5,
+        currentGroupIndex: 1,
+      },
+      cue: { repetitionIndex: 2, boundaryAtMs: 50_000 },
+      skippedBoundaryCount: 0,
+    });
+    expect(reconcileAdvancedTimingState({
+      state: gap,
+      nowMs: 70_000,
+      foregroundSinceMs: 50_001,
+    })).toEqual({
+      state: {
+        ...ready,
+        revision: 5,
+        currentGroupIndex: 1,
+      },
+      cue: null,
+      skippedBoundaryCount: 1,
+    });
+  });
+
+  it("stops cluster progress without completing the recorded set", () => {
+    const ready = startAdvancedTimingState({
+      current: idle,
+      config: cluster,
+      sessionSetId: "set-1",
+      nowMs: 10_000,
+    });
+    expect(stopAdvancedTimingState(ready, 20_000)).toEqual({
+      version: 1,
+      state: "stopped",
+      mode: "cluster",
+      revision: 4,
+      targetSessionSetId: "set-1",
+      stoppedAtMs: 20_000,
+      currentGroupIndex: 0,
+    });
+    expect(stopAdvancedTimingState(beginClusterGapState(ready, 30_000), 40_000))
+      .toEqual({
+        version: 1,
+        state: "stopped",
+        mode: "cluster",
+        revision: 5,
+        targetSessionSetId: "set-1",
+        stoppedAtMs: 40_000,
+        currentGroupIndex: 1,
+      });
   });
 
   it("reconciles one foreground boundary without deriving a decrementing clock", () => {

@@ -136,9 +136,20 @@ describe("advanced timing repository state decoding", () => {
     ["idle mode", row({ status: "idle", session_set_id: null, mode: "per_rep", config_json: offJson })],
     ["idle config", row({ status: "idle", session_set_id: null, mode: null })],
     ["expired state", row({ status: "expired", stopped_at_ms: 3_000 })],
-    ["cluster mode", row({ mode: "cluster" })],
-    ["cluster config", row({ config_json: clusterJson })],
+    ["cluster/per-rep mismatch", row({ mode: "cluster" })],
+    ["per-rep/cluster mismatch", row({ config_json: clusterJson })],
+    ["cluster invalid progress json", row({ mode: "cluster", config_json: clusterJson, progress_json: "{" })],
+    ["cluster missing group index", row({ mode: "cluster", config_json: clusterJson, progress_json: "{}" })],
+    ["cluster fractional group index", row({ mode: "cluster", config_json: clusterJson, progress_json: '{"currentGroupIndex":1.5}' })],
+    ["cluster invalid phase", row({ mode: "cluster", config_json: clusterJson, progress_json: '{"currentGroupIndex":0,"phase":"waiting"}' })],
+    ["cluster out-of-range group index", row({ mode: "cluster", config_json: clusterJson, progress_json: '{"currentGroupIndex":2}' })],
+    ["cluster running missing timestamps", row({ mode: "cluster", config_json: clusterJson, progress_json: '{"currentGroupIndex":0}', started_at_ms: null })],
+    ["cluster paused missing remaining", row({ mode: "cluster", config_json: clusterJson, progress_json: '{"currentGroupIndex":0}', status: "paused", started_at_ms: null, next_boundary_at_ms: null, remaining_ms: null })],
+    ["cluster stopped missing timestamp", row({ mode: "cluster", config_json: clusterJson, progress_json: '{"currentGroupIndex":0,"phase":"stopped"}', status: "stopped", started_at_ms: null, next_boundary_at_ms: null, stopped_at_ms: null })],
+    ["cluster stopped missing phase", row({ mode: "cluster", config_json: clusterJson, progress_json: '{"currentGroupIndex":0}', status: "stopped", started_at_ms: null, next_boundary_at_ms: null, stopped_at_ms: 1_000 })],
+    ["cluster impossible status", row({ mode: "cluster", config_json: clusterJson, progress_json: '{"currentGroupIndex":0}', status: "skipped" })],
     ["missing target", row({ session_set_id: null })],
+    ["missing mode", row({ mode: null })],
     ["missing running timestamps", row({ started_at_ms: null })],
     ["missing running boundary", row({ next_boundary_at_ms: null })],
     ["missing paused remaining", row({ status: "paused", started_at_ms: null, next_boundary_at_ms: null, remaining_ms: null })],
@@ -171,6 +182,38 @@ describe("advanced timing repository state decoding", () => {
       next_boundary_at_ms: null,
       stopped_at_ms: 3_000,
     }), { state: "stopped", stoppedAtMs: 3_000, nextRepetitionIndex: 3 }],
+    ["cluster running", row({
+      mode: "cluster",
+      config_json: clusterJson,
+      progress_json: '{"currentGroupIndex":0}',
+    }), { state: "cluster_gap_running", gapStartedAtMs: 1_000, gapEndsAtMs: 2_000, currentGroupIndex: 0 }],
+    ["cluster paused", row({
+      mode: "cluster",
+      config_json: clusterJson,
+      progress_json: '{"currentGroupIndex":0}',
+      status: "paused",
+      started_at_ms: null,
+      next_boundary_at_ms: null,
+      remaining_ms: 500,
+    }), { state: "cluster_gap_paused", remainingMs: 500, currentGroupIndex: 0 }],
+    ["cluster ready", row({
+      mode: "cluster",
+      config_json: clusterJson,
+      progress_json: '{"currentGroupIndex":1,"phase":"ready"}',
+      status: "stopped",
+      started_at_ms: null,
+      next_boundary_at_ms: null,
+      stopped_at_ms: 0,
+    }), { state: "cluster_ready", currentGroupIndex: 1 }],
+    ["cluster stopped", row({
+      mode: "cluster",
+      config_json: clusterJson,
+      progress_json: '{"currentGroupIndex":1,"phase":"stopped"}',
+      status: "stopped",
+      started_at_ms: null,
+      next_boundary_at_ms: null,
+      stopped_at_ms: 9_000,
+    }), { state: "stopped", stoppedAtMs: 9_000, currentGroupIndex: 1 }],
   ])("reconstructs a valid %s persisted state", async (_label, persisted, expected) => {
     await expect(createAdvancedTimingRepository(kernelForRows(persisted))
       .getAdvancedTimingContext("session-1")).resolves.toEqual(expect.objectContaining({
@@ -320,7 +363,7 @@ describe("advanced timing repository state decoding", () => {
     ["missing target ownership", { target: null }, "advanced_timing_target_not_owned"],
     ["invalid stored state", { state: row({ config_json: "{}" }) }, "advanced_timing_state_invalid"],
     ["invalid snapshot", { target: { status: "planned" as const, advanced_timing_resolved_json: "{}" } }, "advanced_timing_snapshot_invalid"],
-    ["cluster snapshot", { target: { status: "planned" as const, advanced_timing_resolved_json: clusterJson } }, "advanced_timing_config_not_per_rep"],
+    ["cluster snapshot mismatch", { target: { status: "planned" as const, advanced_timing_resolved_json: clusterJson } }, "advanced_timing_config_mismatch"],
     ["different start config", {}, "advanced_timing_config_mismatch"],
   ])("rejects %s without writing durable state", async (_label, scenario, code) => {
     const { kernel, executeCount } = kernelForTransition(scenario);
@@ -351,6 +394,38 @@ describe("advanced timing repository state decoding", () => {
       config: { version: 1, mode: "per_rep", intervalMs: 1_000, cueChannels: "haptic" },
     })).rejects.toThrow("advanced_timing_config_active");
     expect(executeCount()).toBe(0);
+  });
+
+  it("persists stopped cluster state distinctly from cluster readiness", async () => {
+    const { kernel } = kernelForTransition({
+      state: row({
+        mode: "cluster",
+        config_json: clusterJson,
+        progress_json: '{"currentGroupIndex":1,"phase":"ready"}',
+        status: "stopped",
+        started_at_ms: null,
+        next_boundary_at_ms: null,
+        stopped_at_ms: 0,
+      }),
+      target: { status: "draft", advanced_timing_resolved_json: clusterJson },
+    });
+    await expect(createAdvancedTimingRepository(kernel).stopAdvancedTiming({
+      sessionId: "session-1",
+      sessionSetId: "set-1",
+      expectedSessionRevision: 1,
+      expectedAdvancedTimingRevision: 2,
+      nowMs: 10_000,
+    })).resolves.toEqual(expect.objectContaining({
+      state: {
+        version: 1,
+        state: "stopped",
+        mode: "cluster",
+        revision: 3,
+        targetSessionSetId: "set-1",
+        stoppedAtMs: 10_000,
+        currentGroupIndex: 1,
+      },
+    }));
   });
 
   it("maps shared context conflicts while configuring timing", async () => {

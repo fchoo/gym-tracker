@@ -480,6 +480,12 @@ function runtimeAdvancedTimingRepository(): AdvancedTimingRepositoryPort & {
   startAdvancedTiming: jest.MockedFunction<
     AdvancedTimingRepository["startAdvancedTiming"]
   >;
+  beginAdvancedTimingClusterGap: jest.MockedFunction<
+    AdvancedTimingRepository["beginAdvancedTimingClusterGap"]
+  >;
+  skipAdvancedTimingClusterGap: jest.MockedFunction<
+    AdvancedTimingRepository["skipAdvancedTimingClusterGap"]
+  >;
   reconcileAdvancedTiming: jest.MockedFunction<
     AdvancedTimingRepository["reconcileAdvancedTiming"]
   >;
@@ -515,6 +521,12 @@ function runtimeAdvancedTimingRepository(): AdvancedTimingRepositoryPort & {
     startAdvancedTiming: jest.fn<AdvancedTimingRepository["startAdvancedTiming"]>(
       async () => result,
     ),
+    beginAdvancedTimingClusterGap: jest.fn<
+      AdvancedTimingRepository["beginAdvancedTimingClusterGap"]
+    >(async () => result),
+    skipAdvancedTimingClusterGap: jest.fn<
+      AdvancedTimingRepository["skipAdvancedTimingClusterGap"]
+    >(async () => result),
     pauseAdvancedTiming: jest.fn<AdvancedTimingRepository["pauseAdvancedTiming"]>(
       async () => result,
     ),

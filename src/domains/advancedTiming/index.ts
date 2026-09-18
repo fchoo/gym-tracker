@@ -10,9 +10,11 @@ export {
 } from "./advancedTimingConfig";
 export {
   AdvancedTimingStateTransitionError,
+  beginClusterGapState,
   pauseAdvancedTimingState,
   reconcileAdvancedTimingState,
   resumeAdvancedTimingState,
+  skipClusterGapState,
   startAdvancedTimingState,
   stopAdvancedTimingState,
   type AdvancedTimingCue,
@@ -20,11 +22,13 @@ export {
 } from "./advancedTimingState";
 export {
   AdvancedTimingCommandError,
+  beginAdvancedTimingClusterGap,
   configureAdvancedTiming,
   pauseAdvancedTiming,
   reconcileAdvancedTiming,
   resumeAdvancedTiming,
   startAdvancedTiming,
+  skipAdvancedTimingClusterGap,
   stopAdvancedTiming,
   type AdvancedTimingCommandResult,
   type AdvancedTimingRepository,

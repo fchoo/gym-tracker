@@ -109,10 +109,12 @@ import {
   type RestRevisionInput,
 } from "../domains/rest";
 import {
+  beginAdvancedTimingClusterGap,
   configureAdvancedTiming,
   pauseAdvancedTiming,
   reconcileAdvancedTiming,
   resumeAdvancedTiming,
+  skipAdvancedTimingClusterGap,
   startAdvancedTiming,
   stopAdvancedTiming,
   type AdvancedTimingCommandResult,
@@ -985,6 +987,8 @@ type RuntimeValue = RuntimeState & Readonly<{
   reconcileAdvancedTiming(input: AdvancedTimingRevisionInput & Readonly<{
     foregroundSinceMs: number;
   }>): Promise<AdvancedTimingCommandResult & Readonly<{ cue: AdvancedTimingCue | null }>>;
+  beginAdvancedTimingClusterGap(input: AdvancedTimingRevisionInput): Promise<AdvancedTimingCommandResult>;
+  skipAdvancedTimingClusterGap(input: AdvancedTimingRevisionInput): Promise<AdvancedTimingCommandResult>;
   pauseAdvancedTiming(input: AdvancedTimingRevisionInput): Promise<AdvancedTimingCommandResult>;
   resumeAdvancedTiming(input: AdvancedTimingRevisionInput): Promise<AdvancedTimingCommandResult>;
   stopAdvancedTiming(input: AdvancedTimingRevisionInput): Promise<AdvancedTimingCommandResult>;
@@ -3332,6 +3336,20 @@ export function WorkoutAppRuntimeProvider({
   }) as Promise<AdvancedTimingCommandResult & Readonly<{ cue: AdvancedTimingCue | null }>>,
   [emitAdvancedTimingCue, runAdvancedTimingCommand]);
 
+  const beginRuntimeAdvancedTimingClusterGap = useCallback((
+    input: AdvancedTimingRevisionInput,
+  ) => runAdvancedTimingCommand((repository) => beginAdvancedTimingClusterGap({
+    repository,
+    input,
+  })), [runAdvancedTimingCommand]);
+
+  const skipRuntimeAdvancedTimingClusterGap = useCallback((
+    input: AdvancedTimingRevisionInput,
+  ) => runAdvancedTimingCommand((repository) => skipAdvancedTimingClusterGap({
+    repository,
+    input,
+  })), [runAdvancedTimingCommand]);
+
   const startRuntimeAdvancedTiming = useCallback((
     input: AdvancedTimingRevisionInput & Readonly<{
       config: AdvancedTimingConfigV1;
@@ -4120,6 +4138,7 @@ export function WorkoutAppRuntimeProvider({
     addWarmup: addWorkoutWarmup,
     addWorkingSet: addWorkoutWorkingSet,
     adjustRest: adjustWorkoutRest,
+    beginAdvancedTimingClusterGap: beginRuntimeAdvancedTimingClusterGap,
     completeSet: completeWorkoutSet,
     completeWarmup: completeWorkoutWarmup,
     createSecureBackup: (input) =>
@@ -4258,6 +4277,7 @@ export function WorkoutAppRuntimeProvider({
     setLibraryExerciseFavorite,
     setLibrarySection,
     skipExercise: skipActiveExercise,
+    skipAdvancedTimingClusterGap: skipRuntimeAdvancedTimingClusterGap,
     skipRest: skipWorkoutRest,
     skipWorkingSet: skipWorkoutWorkingSet,
     skipWarmup: skipWorkoutWarmup,
@@ -4283,6 +4303,7 @@ export function WorkoutAppRuntimeProvider({
     addWorkoutWarmup,
     addWorkoutWorkingSet,
     adjustWorkoutRest,
+    beginRuntimeAdvancedTimingClusterGap,
     completeWorkoutSet,
     completeWorkoutWarmup,
     configureRuntimeAdvancedTiming,
@@ -4345,6 +4366,7 @@ export function WorkoutAppRuntimeProvider({
     setRuntimeCustomExerciseHidden,
     setLibraryExerciseFavorite,
     setLibrarySection,
+    skipRuntimeAdvancedTimingClusterGap,
     skipActiveExercise,
     skipWorkoutRest,
     skipWorkoutWorkingSet,

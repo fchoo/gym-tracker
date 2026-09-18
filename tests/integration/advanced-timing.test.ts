@@ -20,13 +20,16 @@ import {
   activateStarterPlan,
 } from "../../src/domains/plans";
 import {
+  beginAdvancedTimingClusterGap,
   pauseAdvancedTiming,
   reconcileAdvancedTiming,
   resumeAdvancedTiming,
+  skipAdvancedTimingClusterGap,
   startAdvancedTiming,
   stopAdvancedTiming,
 } from "../../src/domains/advancedTiming";
 import {
+  completeSet,
   startWorkout,
 } from "../../src/domains/workout";
 import type {
@@ -52,6 +55,9 @@ import {
 import {
   createPlansWorkoutRepository,
 } from "../../src/platform/sqlite/repositories/plansWorkoutRepository";
+import {
+  createWorkoutRepository,
+} from "../../src/platform/sqlite/repositories/workoutRepository";
 import {
   createSqliteKernel,
   type SqliteKernel,
@@ -121,6 +127,13 @@ const perRep = {
   intervalMs: 1_000,
   cueChannels: "haptic" as const,
 };
+const cluster = {
+  version: 1 as const,
+  mode: "cluster" as const,
+  groupSizes: [3, 3, 3] as const,
+  intraRestMs: 20_000,
+  cueChannels: "haptic" as const,
+};
 
 afterEach(async () => {
   await Promise.all(kernels.splice(0).map((kernel) => kernel.close()));
@@ -162,6 +175,7 @@ async function createKernel(
 
 async function setupWorkout(
   observer: SqliteKernelTestObserver = {},
+  advancedConfig: typeof perRep | typeof cluster = perRep,
 ) {
   const kernel = await createKernel(observer);
   const plans = createPlansWorkoutRepository(kernel);
@@ -176,7 +190,7 @@ async function setupWorkout(
     `UPDATE plan_day_exercises
      SET advanced_timing_default_json = ?
      WHERE plan_day_id = ? AND ordinal = 0`,
-    [JSON.stringify(perRep), activation.days[0]!.id],
+    [JSON.stringify(advancedConfig), activation.days[0]!.id],
   ));
   const session = await startWorkout({
     repository: plans,
@@ -474,5 +488,178 @@ describe("advanced timing repository", () => {
       .resolves.toEqual(expect.objectContaining({
         state: expect.objectContaining({ state: "running", revision: 1 }),
       }));
+  });
+
+  it("persists cluster gaps as advanced-only state and preserves one recorded set", async () => {
+    const { kernel, session, activeSet, repository } = await setupWorkout(
+      {},
+      cluster,
+    );
+    const before = await protectedFacts(kernel, session.id);
+
+    const started = await startAdvancedTiming({
+      repository,
+      input: {
+        sessionId: session.id,
+        sessionSetId: activeSet.id,
+        expectedSessionRevision: session.revision,
+        expectedAdvancedTimingRevision: 0,
+        nowMs: 10_000,
+        config: cluster,
+      },
+    });
+    expect(started).toEqual(expect.objectContaining({
+      sessionRevision: session.revision,
+      state: expect.objectContaining({
+        state: "cluster_ready",
+        currentGroupIndex: 0,
+        targetSessionSetId: activeSet.id,
+      }),
+    }));
+    expect(await protectedFacts(kernel, session.id)).toEqual(before);
+
+    const firstGap = await beginAdvancedTimingClusterGap({
+      repository,
+      input: {
+        sessionId: session.id,
+        sessionSetId: activeSet.id,
+        expectedSessionRevision: session.revision,
+        expectedAdvancedTimingRevision: 1,
+        nowMs: 30_000,
+      },
+    });
+    expect(firstGap.state).toEqual(expect.objectContaining({
+      state: "cluster_gap_running",
+      revision: 2,
+      gapEndsAtMs: 50_000,
+    }));
+    expect(await protectedFacts(kernel, session.id)).toEqual(before);
+
+    const paused = await pauseAdvancedTiming({
+      repository,
+      input: {
+        sessionId: session.id,
+        sessionSetId: activeSet.id,
+        expectedSessionRevision: session.revision,
+        expectedAdvancedTimingRevision: 2,
+        nowMs: 40_000,
+      },
+    });
+    expect(paused.state).toEqual(expect.objectContaining({
+      state: "cluster_gap_paused",
+      revision: 3,
+      remainingMs: 10_000,
+    }));
+    const resumed = await resumeAdvancedTiming({
+      repository,
+      input: {
+        sessionId: session.id,
+        sessionSetId: activeSet.id,
+        expectedSessionRevision: session.revision,
+        expectedAdvancedTimingRevision: 3,
+        nowMs: 60_000,
+      },
+    });
+    expect(resumed.state).toEqual(expect.objectContaining({
+      state: "cluster_gap_running",
+      revision: 4,
+      gapEndsAtMs: 70_000,
+    }));
+    const secondReady = await skipAdvancedTimingClusterGap({
+      repository,
+      input: {
+        sessionId: session.id,
+        sessionSetId: activeSet.id,
+        expectedSessionRevision: session.revision,
+        expectedAdvancedTimingRevision: 4,
+        nowMs: 61_000,
+      },
+    });
+    expect(secondReady.state).toEqual(expect.objectContaining({
+      state: "cluster_ready",
+      revision: 5,
+      currentGroupIndex: 1,
+    }));
+
+    const secondGap = await beginAdvancedTimingClusterGap({
+      repository,
+      input: {
+        sessionId: session.id,
+        sessionSetId: activeSet.id,
+        expectedSessionRevision: session.revision,
+        expectedAdvancedTimingRevision: 5,
+        nowMs: 80_000,
+      },
+    });
+    expect(secondGap.state).toEqual(expect.objectContaining({
+      state: "cluster_gap_running",
+      revision: 6,
+      currentGroupIndex: 1,
+      gapEndsAtMs: 100_000,
+    }));
+    const finalReady = await reconcileAdvancedTiming({
+      repository,
+      input: {
+        sessionId: session.id,
+        sessionSetId: activeSet.id,
+        expectedSessionRevision: session.revision,
+        expectedAdvancedTimingRevision: 6,
+        nowMs: 100_001,
+        foregroundSinceMs: 99_500,
+      },
+    });
+    expect(finalReady).toEqual(expect.objectContaining({
+      cue: { repetitionIndex: 3, boundaryAtMs: 100_000 },
+      state: expect.objectContaining({
+        state: "cluster_ready",
+        revision: 7,
+        currentGroupIndex: 2,
+      }),
+    }));
+    expect(await protectedFacts(kernel, session.id)).toEqual(before);
+
+    const sets = await kernel.queryAll<{ id: string; status: string }>(
+      `SELECT ss.id, ss.status FROM session_sets ss
+       JOIN session_exercises se ON se.id = ss.session_exercise_id
+       WHERE se.session_id = ? AND ss.id = ?`,
+      [session.id, activeSet.id],
+    );
+    expect(sets).toEqual([{ id: activeSet.id, status: "planned" }]);
+
+    const workout = createWorkoutRepository(kernel);
+    const activeView = await workout.getActiveWorkout(session.id);
+    const workingSet = activeView.currentExercise.workingSets.find(
+      ({ id }) => id === activeSet.id,
+    );
+    if (workingSet === undefined) {
+      throw new Error("cluster_active_set_missing");
+    }
+    await expect(completeSet({
+      repository: workout,
+      haptics: {
+        committed: async () => undefined,
+        cue: async () => undefined,
+      },
+      invalidate: async () => undefined,
+      drainEffects: async () => undefined,
+      input: {
+        sessionId: session.id,
+        setId: workingSet.id,
+        expectedSessionRevision: activeView.revision,
+        expectedSetRevision: workingSet.revision,
+        completionIdempotencyKey: "cluster-complete-once",
+        metricIdentity: workingSet.metricIdentity,
+        observation: workingSet.valueSources[0]!.observation,
+        completedAtMs: 120_000,
+      },
+    })).resolves.toMatchObject({ outcome: "committed" });
+    await expect(kernel.queryAll<{ count: number; completed: number }>(
+      `SELECT COUNT(*) AS count,
+              SUM(CASE WHEN ss.status = 'completed' THEN 1 ELSE 0 END) AS completed
+       FROM session_sets ss
+       JOIN session_exercises se ON se.id = ss.session_exercise_id
+       WHERE se.session_id = ? AND ss.id = ?`,
+      [session.id, activeSet.id],
+    )).resolves.toEqual([{ count: 1, completed: 1 }]);
   });
 });
