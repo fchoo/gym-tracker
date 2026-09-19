@@ -70,7 +70,7 @@ tags:
 - tapOn:
     id: "advanced-timing-interval-seconds"
 - eraseText: 1
-- inputText: "30"
+- inputText: "60"
 - hideKeyboard
 - scrollUntilVisible:
     element:
@@ -82,21 +82,15 @@ tags:
 - extendedWaitUntil:
     visible: "Pause per-rep cadence"
     timeout: 30000
-- tapOn:
-    text: "Pause per-rep cadence"
-    retryTapIfNoChange: true
+- tapOn: "Pause per-rep cadence"
 - extendedWaitUntil:
     visible: "Resume per-rep cadence"
     timeout: 30000
-- tapOn:
-    text: "Resume per-rep cadence"
-    retryTapIfNoChange: true
+- tapOn: "Resume per-rep cadence"
 - extendedWaitUntil:
     visible: "Pause per-rep cadence"
     timeout: 30000
-- tapOn:
-    text: "Stop per-rep cadence"
-    retryTapIfNoChange: true
+- tapOn: "Stop per-rep cadence"
 - extendedWaitUntil:
     visible: "Configure and start per-rep cadence"
     timeout: 30000
