@@ -59,6 +59,13 @@ tags:
 - inputText: "3"
 - tapOn: "audio cues"
 - tapOn: "Save timing"
+- scrollUntilVisible:
+    element:
+      id: "advanced-timing-indicator"
+    direction: DOWN
+    centerElement: true
+    timeout: 30000
+    visibilityPercentage: 1
 - assertVisible: "Per-rep cadence"
 - assertVisible: "Per-rep interval in seconds"
 - tapOn:
@@ -79,30 +86,33 @@ tags:
 - tapOn: "Pause per-rep cadence"
 - scrollUntilVisible:
     element:
-      text: "Resume per-rep cadence"
+      id: "advanced-timing-indicator"
     direction: DOWN
     centerElement: true
     timeout: 30000
+    visibilityPercentage: 1
 - extendedWaitUntil:
     visible: "Resume per-rep cadence"
     timeout: 30000
 - tapOn: "Resume per-rep cadence"
 - scrollUntilVisible:
     element:
-      text: "Pause per-rep cadence"
+      id: "advanced-timing-indicator"
     direction: DOWN
     centerElement: true
     timeout: 30000
+    visibilityPercentage: 1
 - extendedWaitUntil:
     visible: "Pause per-rep cadence"
     timeout: 30000
 - tapOn: "Stop per-rep cadence"
 - scrollUntilVisible:
     element:
-      text: "Configure and start per-rep cadence"
+      id: "advanced-timing-indicator"
     direction: DOWN
     centerElement: true
     timeout: 30000
+    visibilityPercentage: 1
 - extendedWaitUntil:
     visible: "Configure and start per-rep cadence"
     timeout: 30000

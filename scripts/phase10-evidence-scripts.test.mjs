@@ -141,7 +141,10 @@ test("Phase 10 Maestro flow exercises per-rep and 3+3+3 cluster lifecycle timing
   const clusterControl = flow.indexOf('assertVisible: "Cluster timing"');
   assert.ok(perRepControl >= 0 && perRepControl < setOverride);
   assert.ok(setOverride >= 0 && setOverride < clusterControl);
-  assert.match(flow, /tapOn: "Save timing"[\s\S]*?assertVisible: "Per-rep cadence"/u);
+  assert.match(
+    flow,
+    /tapOn: "Save timing"[\s\S]*?scrollUntilVisible:[\s\S]*?id: "advanced-timing-indicator"[\s\S]*?direction: DOWN[\s\S]*?visibilityPercentage: 1[\s\S]*?assertVisible: "Per-rep cadence"/u,
+  );
   assert.match(
     flow,
     /inputText: "20"[\s\S]*?tapOn: "Save timing"[\s\S]*?scrollUntilVisible:[\s\S]*?text: "Cluster timing"/u,
@@ -160,15 +163,15 @@ test("Phase 10 Maestro flow exercises per-rep and 3+3+3 cluster lifecycle timing
   assert.match(flow, /Pause per-rep cadence/u);
   assert.match(
     flow,
-    /tapOn: "Pause per-rep cadence"[\s\S]*?scrollUntilVisible:[\s\S]*?text: "Resume per-rep cadence"[\s\S]*?direction: DOWN[\s\S]*?visible: "Resume per-rep cadence"/u,
+    /tapOn: "Pause per-rep cadence"[\s\S]*?scrollUntilVisible:[\s\S]*?id: "advanced-timing-indicator"[\s\S]*?direction: DOWN[\s\S]*?visibilityPercentage: 1[\s\S]*?visible: "Resume per-rep cadence"/u,
   );
   assert.match(
     flow,
-    /tapOn: "Resume per-rep cadence"[\s\S]*?scrollUntilVisible:[\s\S]*?text: "Pause per-rep cadence"[\s\S]*?direction: DOWN[\s\S]*?visible: "Pause per-rep cadence"/u,
+    /tapOn: "Resume per-rep cadence"[\s\S]*?scrollUntilVisible:[\s\S]*?id: "advanced-timing-indicator"[\s\S]*?direction: DOWN[\s\S]*?visibilityPercentage: 1[\s\S]*?visible: "Pause per-rep cadence"/u,
   );
   assert.match(
     flow,
-    /tapOn: "Stop per-rep cadence"[\s\S]*?scrollUntilVisible:[\s\S]*?text: "Configure and start per-rep cadence"[\s\S]*?direction: DOWN[\s\S]*?visible: "Configure and start per-rep cadence"/u,
+    /tapOn: "Stop per-rep cadence"[\s\S]*?scrollUntilVisible:[\s\S]*?id: "advanced-timing-indicator"[\s\S]*?direction: DOWN[\s\S]*?visibilityPercentage: 1[\s\S]*?visible: "Configure and start per-rep cadence"/u,
   );
   assert.doesNotMatch(flow, /visible: "Rep 2"/u);
   assert.match(flow, /Resume per-rep cadence/u);
