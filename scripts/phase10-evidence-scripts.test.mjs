@@ -143,7 +143,7 @@ test("Phase 10 Maestro flow exercises per-rep and 3+3+3 cluster lifecycle timing
   assert.ok(setOverride >= 0 && setOverride < clusterControl);
   assert.match(
     flow,
-    /tapOn: "Save timing"[\s\S]*?swipe:[\s\S]*?start: 95%, 45%[\s\S]*?end: 95%, 75%[\s\S]*?assertVisible: "Per-rep cadence"/u,
+    /tapOn: "Save timing"[\s\S]*?swipe:[\s\S]*?start: 50%, 45%[\s\S]*?end: 50%, 75%[\s\S]*?assertVisible: "Per-rep cadence"/u,
   );
   assert.match(
     flow,
@@ -163,15 +163,15 @@ test("Phase 10 Maestro flow exercises per-rep and 3+3+3 cluster lifecycle timing
   assert.match(flow, /Pause per-rep cadence/u);
   assert.match(
     flow,
-    /tapOn: "Pause per-rep cadence"[\s\S]*?swipe:[\s\S]*?start: 95%, 45%[\s\S]*?end: 95%, 75%[\s\S]*?visible: "Resume per-rep cadence"/u,
+    /tapOn: "Pause per-rep cadence"[\s\S]*?swipe:[\s\S]*?start: 50%, 45%[\s\S]*?end: 50%, 75%[\s\S]*?visible: "Resume per-rep cadence"/u,
   );
   assert.match(
     flow,
-    /tapOn: "Resume per-rep cadence"[\s\S]*?swipe:[\s\S]*?start: 95%, 45%[\s\S]*?end: 95%, 75%[\s\S]*?visible: "Pause per-rep cadence"/u,
+    /tapOn: "Resume per-rep cadence"[\s\S]*?swipe:[\s\S]*?start: 50%, 45%[\s\S]*?end: 50%, 75%[\s\S]*?visible: "Pause per-rep cadence"/u,
   );
   assert.match(
     flow,
-    /tapOn: "Stop per-rep cadence"[\s\S]*?swipe:[\s\S]*?start: 95%, 45%[\s\S]*?end: 95%, 75%[\s\S]*?visible: "Configure and start per-rep cadence"/u,
+    /tapOn: "Stop per-rep cadence"[\s\S]*?swipe:[\s\S]*?start: 50%, 45%[\s\S]*?end: 50%, 75%[\s\S]*?visible: "Configure and start per-rep cadence"/u,
   );
   assert.doesNotMatch(flow, /visible: "Rep 2"/u);
   assert.match(flow, /Resume per-rep cadence/u);

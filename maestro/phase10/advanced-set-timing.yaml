@@ -60,8 +60,8 @@ tags:
 - tapOn: "audio cues"
 - tapOn: "Save timing"
 - swipe:
-    start: 95%, 45%
-    end: 95%, 75%
+    start: 50%, 45%
+    end: 50%, 75%
     duration: 300
 - assertVisible: "Per-rep cadence"
 - assertVisible: "Per-rep interval in seconds"
@@ -82,24 +82,24 @@ tags:
     timeout: 30000
 - tapOn: "Pause per-rep cadence"
 - swipe:
-    start: 95%, 45%
-    end: 95%, 75%
+    start: 50%, 45%
+    end: 50%, 75%
     duration: 300
 - extendedWaitUntil:
     visible: "Resume per-rep cadence"
     timeout: 30000
 - tapOn: "Resume per-rep cadence"
 - swipe:
-    start: 95%, 45%
-    end: 95%, 75%
+    start: 50%, 45%
+    end: 50%, 75%
     duration: 300
 - extendedWaitUntil:
     visible: "Pause per-rep cadence"
     timeout: 30000
 - tapOn: "Stop per-rep cadence"
 - swipe:
-    start: 95%, 45%
-    end: 95%, 75%
+    start: 50%, 45%
+    end: 50%, 75%
     duration: 300
 - extendedWaitUntil:
     visible: "Configure and start per-rep cadence"
