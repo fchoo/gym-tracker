@@ -565,6 +565,7 @@ export const __logicalMergeRepositoryTestOnly = Object.freeze({
   assertSessionAggregate,
   captureDeleteTriggers,
   dropDeleteTriggers,
+  deleteLocalAggregate,
   fail,
   fullPlanTable,
   identifier,
@@ -583,6 +584,7 @@ export const __logicalMergeRepositoryTestOnly = Object.freeze({
   recreateDeleteTriggers,
   sessionAggregatesForFullPlan,
   scalar,
+  requireValid,
   textId,
   snapshotFullPlan,
   verifyFullPlanSlice,
@@ -918,8 +920,8 @@ async function verifyFullPlanSlice(
 ): Promise<void> {
   const verifyRow = async (table: FullPlanInsertTable, row: LogicalBackupRow) => {
     const primaryKey = LOGICAL_BACKUP_TABLE_DEFINITIONS[table].primaryKey;
-    const values = primaryKey.map((column) => scalar(row[column]));
     if (primaryKey.some((column) => !hasOwn(row, column))) fail();
+    const values = primaryKey.map((column) => scalar(row[column]));
     const actual = await transaction.queryAll<Record<string, unknown>>(
       `SELECT * FROM ${identifier(table)} WHERE ${primaryKey.map((column) =>
         `${identifier(column)} = ?`).join(" AND ")}`,
@@ -960,7 +962,7 @@ async function verifyFullPlanSlice(
     const root = aggregate.tables.workout_sessions?.[0];
     if (root?.id !== operation.localId) fail();
     const verified = await readSqliteMergeLocalFacts(transaction);
-    const actual = (verified.tables.workout_sessions ?? []).find(
+    const actual = verified.tables.workout_sessions!.find(
       (row) => row.id === operation.localId,
     );
     if (actual === undefined || actual.portable_id !== operation.portableId
@@ -1085,7 +1087,7 @@ export function createLogicalMergeRepository(
           }
           const archive = portableMergeArchiveSessionAggregate(preflight.snapshot);
 
-          const localSessions = (local.tables.workout_sessions ?? []).filter(
+          const localSessions = local.tables.workout_sessions!.filter(
             (row) => row.portable_id === preflight.operation.portableId,
           );
           if (localSessions.length > 1) fail();
@@ -1107,7 +1109,7 @@ export function createLogicalMergeRepository(
           await recreateDeleteTriggers(transaction, triggers, input.faultAfter);
 
           const verified = await readSqliteMergeLocalFacts(transaction);
-          const mergedSession = (verified.tables.workout_sessions ?? []).find(
+          const mergedSession = verified.tables.workout_sessions!.find(
             (row) => row.id === archive.session.id,
           );
           if (mergedSession === undefined

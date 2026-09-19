@@ -275,6 +275,34 @@ describe("secure merge preflight", () => {
     }, sha256)).resolves.toEqual({ kind: "insert", portableId: "a".repeat(32) });
   });
 
+  it("treats absent local session facts as empty before the full planner rejects the incomplete snapshot", async () => {
+    const archiveSnapshot = snapshot({ snapshotId: "missing-local-session-facts" });
+    const archive = await archiveFor(archiveSnapshot);
+    const commands = createMergeCommands({
+      crypto: cryptoPort(),
+      files: { readSelectedArchiveAtMost: async () => archive },
+      kdf: { derive: async () => ({ algorithm: "argon2id", bytes: new Uint8Array(32), durationMs: 1, provider: "Bouncy Castle", providerVersion: "1.85.2" }) },
+      schema: schemaFor(archiveSnapshot),
+      candidateProbe: { validateCandidate: async () => undefined },
+      local: {
+        read: async () => ({
+          ownerNamespace: "11111111111111111111111111111111",
+          schemaVersion: 22,
+          tables: Object.fromEntries(
+            logicalBackupTablesForVersion(2)
+              .filter((table) => table !== "workout_sessions" && table !== "portable_owner_identity")
+              .map((table) => [table, []]),
+          ),
+        }),
+      },
+      sha256,
+      store: createMergePreflightStore({ tokenFactory: () => "missing-session-table-token" }),
+    });
+
+    await expect(commands.preflightSecureMerge({ password: "owner-password" }))
+      .rejects.toEqual(new MergeCommandError("merge_archive_unavailable"));
+  });
+
   it("collects a complete session aggregate without leaking sibling rows", () => {
     const aggregate = portableMergeSessionAggregate({
       tables: {

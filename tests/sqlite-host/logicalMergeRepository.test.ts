@@ -15,6 +15,7 @@ import { createHash } from "node:crypto";
 
 import {
   canonicalMergeValue,
+  portableMergeArchiveSessionAggregate,
   portableMergeSessionAggregate,
   type StoredMergePreflight,
 } from "../../src/domains/portability/mergeCommands";
@@ -523,6 +524,85 @@ function verificationTransaction(plan: PortableMergePlan): SqliteTransactionExec
   });
 }
 
+function fullReadbackTransaction(
+  plan: PortableMergePlan,
+  input: Readonly<{
+    foreignKeyRows?: readonly Record<string, unknown>[];
+    workoutSessions?: readonly Record<string, unknown>[];
+  }> = {},
+): SqliteTransactionExecutor {
+  const rowsByTable = new Map<string, readonly Record<string, unknown>[]>();
+  for (const aggregate of plan.aggregates) {
+    for (const [table, rows] of Object.entries(aggregate.tables)) {
+      rowsByTable.set(table, rows);
+    }
+  }
+  if (input.workoutSessions !== undefined) {
+    rowsByTable.set("workout_sessions", input.workoutSessions);
+  }
+  return transactionStub({
+    queryAll: async (sql) => {
+      if (sql.includes("PRAGMA user_version")) return [{ user_version: 22 }];
+      if (sql.includes("FROM portable_owner_identity")) {
+        return [{ owner_namespace: "9".repeat(32) }];
+      }
+      if (sql.includes("PRAGMA foreign_key_check")) return input.foreignKeyRows ?? [];
+      const table = Object.keys(LOGICAL_BACKUP_TABLE_DEFINITIONS).find((name) =>
+        sql.includes(`FROM \"${name}\"`));
+      if (table === undefined || !sql.includes("ORDER BY")) return [];
+      return rowsByTable.get(table) ?? [];
+    },
+  });
+}
+
+function transactionKernel(transaction: SqliteTransactionExecutor): SqliteKernel {
+  return {
+    write: async <Result>(command: (input: SqliteTransactionExecutor) => Promise<Result>) => command(transaction),
+  } as SqliteKernel;
+}
+
+function mergeTransaction(
+  local: MergeLocalFacts,
+  input: Readonly<{
+    afterWrite?: MergeLocalFacts;
+    foreignKeyRows?: readonly Record<string, unknown>[];
+    foreignKeys?: number;
+  }> = {},
+): SqliteTransactionExecutor {
+  const triggerNames = [
+    "history_audit_events_immutable_delete",
+    "workout_session_exercise_edit_receipts_immutable_delete",
+    "workout_session_exercise_reorder_receipts_immutable_delete",
+  ];
+  let reads = 0;
+  return transactionStub({
+    queryAll: async (sql) => {
+      if (sql.includes("PRAGMA user_version")) {
+        reads += 1;
+        return [{ user_version: local.schemaVersion }];
+      }
+      if (sql.includes("FROM portable_owner_identity")) {
+        return [{ owner_namespace: local.ownerNamespace }];
+      }
+      if (sql.includes("PRAGMA foreign_keys")) {
+        return [{ foreign_keys: input.foreignKeys ?? 1 }];
+      }
+      if (sql.includes("FROM sqlite_master")) {
+        return triggerNames.map((name) => ({
+          name,
+          sql: `CREATE TRIGGER ${name} AFTER DELETE ON workout_sessions BEGIN SELECT 1; END`,
+        }));
+      }
+      if (sql.includes("PRAGMA foreign_key_check")) return input.foreignKeyRows ?? [];
+      const table = Object.keys(LOGICAL_BACKUP_TABLE_DEFINITIONS).find((name) =>
+        sql.includes(`FROM \"${name}\"`));
+      if (table === undefined) return [];
+      const source = reads > 1 ? input.afterWrite ?? local : local;
+      return source.tables[table] ?? [];
+    },
+  });
+}
+
 function operationPlan(operations: PortableMergePlan["operations"]): PortableMergePlan {
   return {
     operations,
@@ -613,6 +693,106 @@ describe("logical merge repository", () => {
 
     expect(() => __logicalMergeRepositoryTestOnly.assertFullPlanMatchesLocal(operationPlan(operations), local))
       .not.toThrow();
+  });
+
+  it("accepts optional child tables and a remapped owned-plan aggregate through direct validation", () => {
+    const portableId = "a".repeat(32);
+    const minimalCustom = {
+      aggregateClass: "custom_exercise" as const,
+      portableId,
+      tables: {
+        exercises: [{ id: "exercise", portable_id: portableId, origin: "custom" }],
+        exercise_library_entries: [{ exercise_id: "exercise" }],
+      },
+    };
+    expect(() => __logicalMergeRepositoryTestOnly.assertCustomExerciseAggregate(minimalCustom, {
+      aggregateClass: "custom_exercise", kind: "insert", portableId, archiveId: "exercise", localId: "exercise",
+    })).not.toThrow();
+
+    const minimalSession = {
+      aggregateClass: "workout_session" as const,
+      portableId,
+      tables: {
+        workout_sessions: [{
+          id: "session",
+          portable_id: portableId,
+          active_session_exercise_id: null,
+          active_set_id: null,
+        }],
+        session_rest_states: [{ session_id: "session", next_set_id: null }],
+      },
+    };
+    expect(() => __logicalMergeRepositoryTestOnly.assertSessionAggregate(minimalSession, {
+      aggregateClass: "workout_session", kind: "insert", portableId, archiveId: "session", localId: "session",
+    })).not.toThrow();
+
+    const owned = maximalOwnedPlanAggregate();
+    const operation = { ...owned.operation, kind: "keep_both" as const, archiveId: "archive-plan" };
+    const remappedPlan: PortableMergePlan = {
+      ...operationPlan([operation]),
+      aggregates: [owned.aggregate],
+      idMappings: [{ recordClass: "owned_plan", archiveId: operation.archiveId, localId: operation.localId }],
+      idRemaps: [{ recordClass: "owned_plan", archiveId: operation.archiveId, localId: operation.localId }],
+    };
+    expect(() => __logicalMergeRepositoryTestOnly.assertFullPlanSlice(remappedPlan))
+      .not.toThrow();
+
+    const sessionOperation = {
+      aggregateClass: "workout_session" as const,
+      kind: "insert" as const,
+      portableId: "b".repeat(32),
+      archiveId: "archive-session",
+      localId: "local-session",
+    };
+    expect(() => __logicalMergeRepositoryTestOnly.assertFullPlanSlice({
+      ...operationPlan([sessionOperation]),
+      aggregates: [{
+        aggregateClass: "workout_session",
+        portableId: sessionOperation.portableId,
+        tables: { workout_sessions: [{ id: sessionOperation.localId, portable_id: sessionOperation.portableId }] },
+      }],
+      idMappings: [{ recordClass: "workout_session", archiveId: sessionOperation.archiveId, localId: sessionOperation.localId }],
+      idRemaps: [{ recordClass: "workout_session", archiveId: sessionOperation.archiveId, localId: sessionOperation.localId }],
+    })).not.toThrow();
+  });
+
+  it("rejects direct full-plan and live-local routing fallthroughs", () => {
+    expect(() => __logicalMergeRepositoryTestOnly.assertFullPlanSlice({
+      ...operationPlan([{ aggregateClass: "unknown", kind: "insert" } as never]),
+      aggregates: [{ aggregateClass: "unknown", portableId: "unknown", tables: {} } as never],
+    })).toThrow(expect.objectContaining({ code: "logical_merge_failed" }));
+    expect(() => __logicalMergeRepositoryTestOnly.assertFullPlanSlice({
+      ...operationPlan([]),
+      aggregates: [{ aggregateClass: "unknown", portableId: "unknown", tables: {} } as never],
+    })).toThrow(expect.objectContaining({ code: "logical_merge_failed" }));
+
+    expect(() => __logicalMergeRepositoryTestOnly.assertFullPlanMatchesLocal(operationPlan([]), {
+      ownerNamespace: "9".repeat(32), schemaVersion: 22, tables: {},
+    })).not.toThrow();
+    expect(() => __logicalMergeRepositoryTestOnly.assertFullPlanMatchesLocal(operationPlan([]), {
+      ownerNamespace: "9".repeat(32), schemaVersion: 22, tables: { app_settings: [{ key: " " }] },
+    })).toThrow(expect.objectContaining({ code: "logical_merge_failed" }));
+
+    expect(() => __logicalMergeRepositoryTestOnly.assertFullPlanMatchesLocal(operationPlan([{
+      aggregateClass: "workout_session", kind: "archive_won", portableId: "b".repeat(32), archiveId: "archive", localId: "local",
+    }]), {
+      ownerNamespace: "9".repeat(32), schemaVersion: 22,
+      tables: { workout_sessions: [{ id: "wrong-local", portable_id: "b".repeat(32) }] },
+    })).toThrow(expect.objectContaining({ code: "logical_merge_failed" }));
+
+    expect(() => __logicalMergeRepositoryTestOnly.assertFullPlanMatchesLocal(operationPlan([{
+      aggregateClass: "owned_plan", kind: "duplicate", portableId: "c".repeat(32), archiveId: "archive", localId: "local",
+    }]), {
+      ownerNamespace: "9".repeat(32), schemaVersion: 22,
+      tables: { plans: [{ id: "wrong-local", origin: "custom", portable_id: "c".repeat(32) }] },
+    })).toThrow(expect.objectContaining({ code: "logical_merge_failed" }));
+
+    expect(() => __logicalMergeRepositoryTestOnly.assertFullPlanMatchesLocal(operationPlan([{
+      aggregateClass: "custom_exercise", kind: "duplicate", portableId: "d".repeat(32), archiveId: "archive", localId: "local",
+    }]), {
+      ownerNamespace: "9".repeat(32), schemaVersion: 22,
+      tables: { exercises: [{ id: "wrong-local", origin: "custom", portable_id: "d".repeat(32) }] },
+    })).toThrow(expect.objectContaining({ code: "logical_merge_failed" }));
   });
 
   it("covers private table classification, keying, and primitive identity guards", () => {
@@ -778,6 +958,11 @@ describe("logical merge repository", () => {
       complete,
       undefined,
     )).rejects.toEqual(expect.objectContaining({ code: "logical_merge_failed" }));
+    await expect(__logicalMergeRepositoryTestOnly.recreateDeleteTriggers(
+      transactionStub(),
+      new Map(),
+      undefined,
+    )).rejects.toEqual(expect.objectContaining({ code: "logical_merge_failed" }));
   });
 
   it("rejects taxonomy conflicts and non-single-row writes", async () => {
@@ -796,6 +981,24 @@ describe("logical merge repository", () => {
       noChange,
       "app_settings",
       { key: "units", value_json: '"metric"' },
+    )).rejects.toEqual(expect.objectContaining({ code: "logical_merge_failed" }));
+    await expect(__logicalMergeRepositoryTestOnly.insertFullPlanRow(
+      transactionStub(),
+      "app_settings",
+      {},
+    )).rejects.toEqual(expect.objectContaining({ code: "logical_merge_failed" }));
+    await expect(__logicalMergeRepositoryTestOnly.insertFullPlanTaxonomyTerm(
+      transactionStub(),
+      { slug: "bar" },
+    )).rejects.toEqual(expect.objectContaining({ code: "logical_merge_failed" }));
+    await expect(__logicalMergeRepositoryTestOnly.insertRow(
+      noChange,
+      "workout_sessions",
+      { id: "session" },
+    )).rejects.toEqual(expect.objectContaining({ code: "logical_merge_failed" }));
+    await expect(__logicalMergeRepositoryTestOnly.insertFullPlanTaxonomyTerm(
+      transactionStub({ queryAll: async () => [{ kind: "equipment", slug: "bar", display_name: "Different" }] }),
+      { kind: "equipment", slug: "bar", display_name: "Bar" },
     )).rejects.toEqual(expect.objectContaining({ code: "logical_merge_failed" }));
   });
 
@@ -867,6 +1070,190 @@ describe("logical merge repository", () => {
     });
     await expect(__logicalMergeRepositoryTestOnly.markRebuildPending(invalidState, 1))
       .rejects.toEqual(expect.objectContaining({ code: "logical_merge_failed" }));
+    await expect(__logicalMergeRepositoryTestOnly.markRebuildPending(
+      transactionStub({
+        execute: async () => ({ changes: 0, lastInsertRowId: 0 }),
+        queryAll: async () => [{ updated_at_ms: 1 }],
+      }),
+      1,
+    )).rejects.toEqual(expect.objectContaining({ code: "logical_merge_failed" }));
+    let stateReads = 0;
+    await expect(__logicalMergeRepositoryTestOnly.markRebuildPending(
+      transactionStub({
+        queryAll: async () => {
+          stateReads += 1;
+          return stateReads === 1 ? [{ updated_at_ms: 1 }] : [{ state: "ready" }];
+        },
+      }),
+      1,
+    )).rejects.toEqual(expect.objectContaining({ code: "logical_merge_failed" }));
+  });
+
+  it("rejects malformed verification roots, session readbacks, and foreign-key rows", async () => {
+    const customKernel = await open("verify-custom-root");
+    const { plan: customPlan } = await fullPlanFixture(customKernel);
+    const customWithoutRoot = {
+      ...customPlan,
+      aggregates: customPlan.aggregates.map((aggregate) => aggregate.aggregateClass === "custom_exercise"
+        ? { ...aggregate, tables: { ...aggregate.tables, exercises: [] } }
+        : aggregate),
+    };
+    await expect(__logicalMergeRepositoryTestOnly.verifyFullPlanSlice(
+      verificationTransaction(customPlan),
+      customWithoutRoot,
+      undefined,
+    )).rejects.toEqual(expect.objectContaining({ code: "logical_merge_failed" }));
+
+    const { plan: ownedPlan } = await fullOwnedPlanFixture();
+    const ownedWithWrongRoot = {
+      ...ownedPlan,
+      aggregates: ownedPlan.aggregates.map((aggregate) => aggregate.aggregateClass === "owned_plan"
+        ? { ...aggregate, tables: { ...aggregate.tables, plans: [{ ...aggregate.tables.plans![0]!, id: "wrong-plan" }] } }
+        : aggregate),
+    };
+    await expect(__logicalMergeRepositoryTestOnly.verifyFullPlanSlice(
+      verificationTransaction(ownedPlan),
+      ownedWithWrongRoot,
+      undefined,
+    )).rejects.toEqual(expect.objectContaining({ code: "logical_merge_failed" }));
+
+    const { plan: sessionPlan } = await fullSessionPlanFixture();
+    const sessionWithWrongRoot = {
+      ...sessionPlan,
+      aggregates: sessionPlan.aggregates.map((aggregate) => aggregate.aggregateClass === "workout_session"
+        ? { ...aggregate, tables: { ...aggregate.tables, workout_sessions: [{ ...aggregate.tables.workout_sessions![0]!, id: "wrong-session" }] } }
+        : aggregate),
+    };
+    await expect(__logicalMergeRepositoryTestOnly.verifyFullPlanSlice(
+      fullReadbackTransaction(sessionPlan),
+      sessionWithWrongRoot,
+      undefined,
+    )).rejects.toEqual(expect.objectContaining({ code: "logical_merge_failed" }));
+    const sessionAggregate = sessionPlan.aggregates.find((aggregate) => aggregate.aggregateClass === "workout_session")!;
+    await expect(__logicalMergeRepositoryTestOnly.verifyFullPlanSlice(
+      fullReadbackTransaction(sessionPlan, {
+        workoutSessions: [{ ...sessionAggregate.tables.workout_sessions![0]!, portable_id: "wrong-portable" }],
+      }),
+      sessionPlan,
+      undefined,
+    )).rejects.toEqual(expect.objectContaining({ code: "logical_merge_failed" }));
+    await expect(__logicalMergeRepositoryTestOnly.verifyFullPlanSlice(
+      verificationTransaction(customPlan),
+      customPlan,
+      undefined,
+    )).resolves.toBeUndefined();
+    await expect(__logicalMergeRepositoryTestOnly.verifyFullPlanSlice(
+      fullReadbackTransaction({ ...sessionPlan, aggregates: [] }, { foreignKeyRows: [{ table: "orphan" }] }),
+      { ...sessionPlan, aggregates: [] },
+      undefined,
+    )).rejects.toEqual(expect.objectContaining({ code: "logical_merge_failed" }));
+  });
+
+  it("rejects disabled foreign keys before a full-plan write can begin", async () => {
+    const kernel = await open("full-plan-disabled-foreign-keys");
+    const { local, plan } = await fullPlanFixture(kernel);
+
+    await expect(createLogicalMergeRepository(
+      transactionKernel(mergeTransaction(local, { foreignKeys: 0 })),
+      { sha256 },
+    ).commitFullPlan({
+      localFingerprint: await sha256(canonicalMergeValue(local)),
+      plan,
+    })).rejects.toEqual(expect.objectContaining({ code: "logical_merge_failed" }));
+  });
+
+  it("fails closed for every rejected legacy transaction precondition", async () => {
+    const archiveKernel = await open("legacy-transaction-edges-archive");
+    await seedSession(archiveKernel, {
+      id: "archive-session",
+      portableId: "a".repeat(32),
+      modifiedAtMs: 20,
+    });
+    const archive = await snapshot(archiveKernel);
+    const localKernel = await open("legacy-transaction-edges-local");
+    const local = await createSqliteMergeLocalFactsPort(localKernel).read();
+    const archiveSession = archive.tables.workout_sessions![0]!;
+    const archivePortableId = archiveSession.portable_id as string;
+    const baseInput = async (facts: MergeLocalFacts, operation: StoredMergePreflight["operation"]) => ({
+      archiveDigest: "archive",
+      localFingerprint: await sha256(canonicalMergeValue(facts)),
+      operation,
+      snapshot: archive,
+    });
+
+    const duplicateLocal: MergeLocalFacts = {
+      ...local,
+      tables: {
+        ...local.tables,
+        workout_sessions: [
+          { id: "first", portable_id: archivePortableId },
+          { id: "second", portable_id: archivePortableId },
+        ],
+      },
+    };
+    await expect(createLogicalMergeRepository(
+      transactionKernel(mergeTransaction(duplicateLocal)),
+      { sha256 },
+    ).commit(await baseInput(duplicateLocal, {
+      kind: "insert",
+      portableId: archivePortableId,
+    }))).rejects.toEqual(expect.objectContaining({ code: "logical_merge_failed" }));
+
+    await expect(createLogicalMergeRepository(
+      transactionKernel(mergeTransaction(local)),
+      { sha256 },
+    ).commit(await baseInput(local, {
+      kind: "insert",
+      portableId: "b".repeat(32),
+    }))).rejects.toEqual(expect.objectContaining({ code: "logical_merge_failed" }));
+
+    await expect(createLogicalMergeRepository(
+      transactionKernel(mergeTransaction(local, { foreignKeys: 0 })),
+      { sha256 },
+    ).commit(await baseInput(local, {
+      kind: "insert",
+      portableId: archivePortableId,
+    }))).rejects.toEqual(expect.objectContaining({ code: "logical_merge_failed" }));
+
+    const malformedIdLocal: MergeLocalFacts = {
+      ...local,
+      tables: {
+        ...local.tables,
+        workout_sessions: [{ id: 1, portable_id: archivePortableId }],
+      },
+    };
+    await expect(createLogicalMergeRepository(
+      transactionKernel(mergeTransaction(malformedIdLocal)),
+      { sha256 },
+    ).commit(await baseInput(malformedIdLocal, {
+      kind: "archive_won",
+      portableId: archivePortableId,
+    }))).rejects.toEqual(expect.objectContaining({ code: "logical_merge_failed" }));
+
+    const afterInsert: MergeLocalFacts = {
+      ...local,
+      tables: {
+        ...local.tables,
+        ...portableMergeArchiveSessionAggregate(archive).tables,
+      },
+    };
+    await expect(createLogicalMergeRepository(
+      transactionKernel(mergeTransaction(local)),
+      { sha256 },
+    ).commit(await baseInput(local, {
+      kind: "insert",
+      portableId: archivePortableId,
+    }))).rejects.toEqual(expect.objectContaining({ code: "logical_merge_failed" }));
+    await expect(createLogicalMergeRepository(
+      transactionKernel(mergeTransaction(local, {
+        afterWrite: afterInsert,
+        foreignKeyRows: [{ table: "orphan" }],
+      })),
+      { sha256 },
+    ).commit(await baseInput(local, {
+      kind: "insert",
+      portableId: archivePortableId,
+    }))).rejects.toEqual(expect.objectContaining({ code: "logical_merge_failed" }));
   });
 
   it("verifies a populated full-plan row graph and clean foreign-key check", async () => {
