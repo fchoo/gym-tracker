@@ -2767,6 +2767,58 @@ describe("Plan 01-08 ActiveWorkoutScreen", () => {
     }));
   });
 
+  it("keeps the independent RestDock visible while advanced timing is running", async () => {
+    const runningAdvanced: AdvancedTimingStateV1 = {
+      version: 1,
+      state: "running",
+      mode: "per_rep",
+      revision: 1,
+      targetSessionSetId: "working-1",
+      cueChannels: "both",
+      intervalMs: 3_000,
+      startedAtMs: 2_000,
+      nextBoundaryAtMs: 5_000,
+      nextRepetitionIndex: 1,
+    };
+    const view: ActiveWorkoutView = {
+      ...initialView,
+      rest: {
+        version: 1,
+        state: "running",
+        revision: 2,
+        startedAtMs: 2_000,
+        endsAtMs: 92_000,
+        nextSetId: "working-1",
+      },
+    };
+
+    await renderActive({
+      advancedTimingContext: {
+        sessionId: "session-1",
+        sessionRevision: 1,
+        state: runningAdvanced,
+      },
+      commands: commands({
+        pauseAdvancedTiming: jest.fn(async () => advancedResult({
+          ...runningAdvanced,
+          state: "paused",
+          remainingMs: 3_000,
+        }, 1)),
+      }),
+      view,
+    });
+
+    expect(screen.getByLabelText("Per-rep cadence status. Rep 1 · 00:03"))
+      .toBeOnTheScreen();
+    expect(screen.getByText("RESTING · NEXT: SET 1 AT 60 kg × 8"))
+      .toBeOnTheScreen();
+    await fireEvent.press(screen.getByRole("button", { name: "Expand rest controls" }));
+    expect(screen.getByRole("button", { name: "Pause rest" }))
+      .toBeOnTheScreen();
+    expect(screen.getByRole("button", { name: "Pause per-rep cadence" }))
+      .toBeOnTheScreen();
+  });
+
   it("configures cluster timing and advances intra-set gaps without rest or set commands", async () => {
     const configureAdvancedTiming = jest.fn<NonNullable<
       ActiveWorkoutCommands["configureAdvancedTiming"]

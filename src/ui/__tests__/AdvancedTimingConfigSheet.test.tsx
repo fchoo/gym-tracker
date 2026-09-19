@@ -135,6 +135,22 @@ describe("AdvancedTimingConfigSheet", () => {
       .toHaveStyle({ minHeight: 48, minWidth: 48 });
   });
 
+  it("supports focus and keyboard activation without relying on color", async () => {
+    await renderSheet({ scope: "set" });
+
+    const perRep = screen.getByRole("button", { name: "Per-rep timing" });
+    await fireEvent(perRep, "focus");
+    expect(perRep).toHaveStyle({ outlineWidth: 2 });
+    await fireEvent(perRep, "keyDown", { nativeEvent: { key: "Enter" } });
+    expect(perRep).toHaveProp("accessibilityState",
+      expect.objectContaining({ selected: true }));
+
+    const audio = screen.getByRole("button", { name: "audio cues" });
+    await fireEvent(audio, "keyDown", { nativeEvent: { key: " " } });
+    expect(audio).toHaveProp("accessibilityState",
+      expect.objectContaining({ selected: true }));
+  });
+
   it("saves an off config from exercise scope", async () => {
     const { onSave } = await renderSheet({ scope: "exercise" });
 
