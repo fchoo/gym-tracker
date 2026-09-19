@@ -2,20 +2,20 @@
 gsd_state_version: 1.0
 milestone: v1.1
 milestone_name: In-Workout Editing, Advanced Timing & Cross-Device Sync
-current_phase: 10
-current_phase_name: Advanced Set Timing
+current_phase: 11
+current_phase_name: Portable History & Merge Restore
 status: executing
-stopped_at: Plan 10-03 complete; starting 10-04-integrity-lifecycle-verification-PLAN.md
-last_updated: "2026-09-19T00:00:00+08:00"
+stopped_at: Phase 10 complete; starting 11-01-stable-identity-merge-tracer-PLAN.md
+last_updated: "2026-09-19T23:56:00+08:00"
 last_activity: 2026-09-19
-last_activity_desc: Reconciled stale 10-03 Task 3 handoff against committed implementation 5b747e5 and completion summary e174ad1; proceeding to Plan 10-04
-state_head: e174ad1f1c16e1cd9496d4750d5e70ec18f20b7e
+last_activity_desc: Phase 10 Plan 10-04 native manifest, real Expo matrix, and Maestro evidence passed; transitioned to Phase 11
+state_head: 9fb05ab677b0a6f6a1d2c9b5b942daa007421093
 progress:
   total_phases: 5
-  completed_phases: 2
+  completed_phases: 3
   total_plans: 26
-  completed_plans: 16
-  percent: 40
+  completed_plans: 17
+  percent: 52
 ---
 
 # Project State
@@ -25,14 +25,14 @@ progress:
 See: `.planning/PROJECT.md` (updated 2026-09-15)
 
 **Core value:** Open today's workout, see trustworthy next targets, complete each working set with one primary action, recover safely from interruption, and understand exactly why the next target is recommended.
-**Current focus:** Phase 10 — Advanced Set Timing
+**Current focus:** Phase 11 — Portable History & Merge Restore
 
 ## Current Position
 
-Phase: 10 (Advanced Set Timing) — EXECUTING
-Plan: 4 of 4
-Status: Plan 10-03 is complete; integrity/lifecycle verification is next
-Last activity: 2026-09-19 — Verified 10-03 Task 3 completion from committed source and summary, then retired stale pause metadata
+Phase: 11 (Portable History & Merge Restore) — EXECUTING
+Plan: 1 of 4
+Status: Phase 10 complete; stable identity and merge tracer is next
+Last activity: 2026-09-19 — Phase 10 passed its source, coverage, real Expo, and manifest-bound Maestro gates
 
 ## Delivery model
 
@@ -334,14 +334,14 @@ Full decisions live in `.planning/PROJECT.md`.
 
 ## Session Continuity
 
-Last session: 2026-09-19T00:00:00+08:00
-Last handoff: reconciled stale 10-03 Task 3 checkpoint
-Stopped at: Starting 10-04-integrity-lifecycle-verification-PLAN.md
-Resume file: .planning/phases/10-advanced-set-timing/10-04-integrity-lifecycle-verification-PLAN.md
+Last session: 2026-09-19T23:56:00+08:00
+Last handoff: Phase 10 Plan 10-04 completed from exact-head manifest-bound Android evidence
+Stopped at: Starting 11-01-stable-identity-merge-tracer-PLAN.md
+Resume file: .planning/phases/11-portable-history-merge-restore/.continue-here.md
 Handoff file: none (the prior one-shot handoff was consumed and removed)
-Next action: Complete the Phase 10 integrity/lifecycle, rest non-regression, accessibility, native-evidence, and exact-coverage gate without changing release status or starting Phase 11 prematurely.
+Next action: Execute Phase 11 Plan 11-01 test-first, keeping SQLite local authority and failure-preserves-local-state invariants.
 
 ## Operator Next Steps
 
-- Execute Phase 10 Plan 10-04 and retain its source, host, native-manifest, and accessibility evidence.
-- Keep advanced timing completely separate from the v1.0 rest state machine and advisory-only over all recorded set, rest, and workout facts.
+- Execute Phase 11 Plan 11-01 test-first: stable owner-scoped identities, canonical encrypted backup/merge tracer, bounded parsing, and strict failure preservation.
+- Retain Phase 10's advanced-timing/rest separation and manifest-bound evidence as portability regression constraints.
