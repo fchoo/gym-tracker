@@ -585,8 +585,21 @@ function assertFullPlanSlice(plan: PortableMergePlan): void {
  * repository. This read-only test seam has no kernel or writer capability.
  */
 export const __logicalMergeRepositoryTestOnly = Object.freeze({
+  aggregateRows,
   assertFullPlanSlice,
   assertFullPlanMatchesLocal,
+  assertNoExternalSessionReferences,
+  captureDeleteTriggers,
+  dropDeleteTriggers,
+  identifier,
+  insertFullPlanRow,
+  insertFullPlanTaxonomyTerm,
+  insertRow,
+  markRebuildPending,
+  recreateDeleteTriggers,
+  scalar,
+  snapshotFullPlan,
+  verifyFullPlanSlice,
 });
 
 function assertFullPlanMatchesLocal(

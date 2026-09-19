@@ -54,6 +54,7 @@ import {
 import {
   createSqliteKernel,
   type SqliteKernel,
+  type SqliteTransactionExecutor,
 } from "../../src/platform/sqlite/sqliteKernel";
 import { createMigrationRunner } from "../../src/platform/sqlite/migrationRunner";
 import { migrations } from "../../src/platform/sqlite/migrations";
@@ -480,7 +481,110 @@ async function expectRejectedFullPlan(
   await expect(canonicalState(kernel)).resolves.toEqual(before);
 }
 
+function transactionStub(input: Readonly<{
+  execute?: (sql: string) => Promise<Readonly<{ changes: number; lastInsertRowId: number }>>;
+  queryAll?: (sql: string) => Promise<readonly Record<string, unknown>[]>;
+}> = {}): SqliteTransactionExecutor {
+  return {
+    execute: async (sql) => input.execute?.(sql) ?? { changes: 1, lastInsertRowId: 0 },
+    queryAll: async <Row extends Record<string, unknown>>(sql: string) =>
+      (input.queryAll?.(sql) ?? []) as readonly Row[],
+  };
+}
+
 describe("logical merge repository", () => {
+  it("rejects malformed private SQL values and row mutations before they reach SQLite", async () => {
+    const transaction = transactionStub();
+
+    expect(() => __logicalMergeRepositoryTestOnly.identifier("plans; DROP TABLE plans"))
+      .toThrow(expect.objectContaining({ code: "logical_merge_failed" }));
+    expect(() => __logicalMergeRepositoryTestOnly.scalar(true))
+      .toThrow(expect.objectContaining({ code: "logical_merge_failed" }));
+    await expect(__logicalMergeRepositoryTestOnly.insertRow(
+      transaction,
+      "workout_sessions",
+      {},
+    )).rejects.toEqual(expect.objectContaining({ code: "logical_merge_failed" }));
+    await expect(__logicalMergeRepositoryTestOnly.insertFullPlanRow(
+      transaction,
+      "app_settings",
+      { key: "units", value_json: true },
+    )).rejects.toEqual(expect.objectContaining({ code: "logical_merge_failed" }));
+  });
+
+  it("rejects invalid trigger metadata and external session references before replacement", async () => {
+    const missingTriggerMetadata = transactionStub({
+      queryAll: async () => [],
+    });
+    await expect(__logicalMergeRepositoryTestOnly.captureDeleteTriggers(missingTriggerMetadata))
+      .rejects.toEqual(expect.objectContaining({ code: "logical_merge_failed" }));
+
+    const referencedSession = transactionStub({
+      queryAll: async () => [{ count: 1 }],
+    });
+    await expect(__logicalMergeRepositoryTestOnly.assertNoExternalSessionReferences(referencedSession, "session"))
+      .rejects.toEqual(expect.objectContaining({ code: "logical_merge_failed" }));
+  });
+
+  it("rejects incomplete trigger maps and trigger recreation drift", async () => {
+    const incomplete = new Map<string, string>();
+    await expect(__logicalMergeRepositoryTestOnly.dropDeleteTriggers(
+      transactionStub(),
+      incomplete,
+      undefined,
+    )).rejects.toEqual(expect.objectContaining({ code: "logical_merge_failed" }));
+
+    const triggerNames = [
+      "history_audit_events_immutable_delete",
+      "workout_session_exercise_edit_receipts_immutable_delete",
+      "workout_session_exercise_reorder_receipts_immutable_delete",
+    ];
+    const complete = new Map(triggerNames.map((name) => [name, `CREATE TRIGGER ${name} AFTER DELETE ON workout_sessions BEGIN SELECT 1; END`]));
+    const recreatedWithDrift = transactionStub({
+      queryAll: async () => triggerNames.map((name) => ({ name, sql: "different trigger SQL" })),
+    });
+    await expect(__logicalMergeRepositoryTestOnly.recreateDeleteTriggers(
+      recreatedWithDrift,
+      complete,
+      undefined,
+    )).rejects.toEqual(expect.objectContaining({ code: "logical_merge_failed" }));
+  });
+
+  it("rejects taxonomy conflicts and non-single-row writes", async () => {
+    const duplicateTaxonomy = transactionStub({
+      queryAll: async () => [{ kind: "equipment", slug: "bar" }, { kind: "equipment", slug: "bar" }],
+    });
+    await expect(__logicalMergeRepositoryTestOnly.insertFullPlanTaxonomyTerm(
+      duplicateTaxonomy,
+      { kind: "equipment", slug: "bar", display_name: "Bar" },
+    )).rejects.toEqual(expect.objectContaining({ code: "logical_merge_failed" }));
+
+    const noChange = transactionStub({
+      execute: async () => ({ changes: 0, lastInsertRowId: 0 }),
+    });
+    await expect(__logicalMergeRepositoryTestOnly.insertFullPlanRow(
+      noChange,
+      "app_settings",
+      { key: "units", value_json: '"metric"' },
+    )).rejects.toEqual(expect.objectContaining({ code: "logical_merge_failed" }));
+  });
+
+  it("rejects verification and rebuild-state readbacks that are not exact", async () => {
+    const kernel = await open("full-plan-verification-guards");
+    const { plan } = await fullPlanFixture(kernel);
+    const verificationMiss = transactionStub({
+      queryAll: async () => [],
+    });
+    await expect(__logicalMergeRepositoryTestOnly.verifyFullPlanSlice(verificationMiss, plan, undefined))
+      .rejects.toEqual(expect.objectContaining({ code: "logical_merge_failed" }));
+
+    const invalidState = transactionStub({
+      queryAll: async () => [{ updated_at_ms: -1 }],
+    });
+    await expect(__logicalMergeRepositoryTestOnly.markRebuildPending(invalidState, 1))
+      .rejects.toEqual(expect.objectContaining({ code: "logical_merge_failed" }));
+  });
+
   it("exposes no production writer path through the full-plan validation test seam", async () => {
     const kernel = await open("full-plan-test-seam");
     const { plan } = await fullPlanFixture(kernel);
