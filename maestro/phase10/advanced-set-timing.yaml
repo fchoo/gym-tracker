@@ -65,7 +65,7 @@ tags:
     direction: DOWN
     centerElement: true
     timeout: 30000
-    visibilityPercentage: 1
+    visibilityPercentage: 100
 - assertVisible: "Per-rep cadence"
 - assertVisible: "Per-rep interval in seconds"
 - tapOn:
@@ -90,7 +90,7 @@ tags:
     direction: DOWN
     centerElement: true
     timeout: 30000
-    visibilityPercentage: 1
+    visibilityPercentage: 100
 - extendedWaitUntil:
     visible: "Resume per-rep cadence"
     timeout: 30000
@@ -101,7 +101,7 @@ tags:
     direction: DOWN
     centerElement: true
     timeout: 30000
-    visibilityPercentage: 1
+    visibilityPercentage: 100
 - extendedWaitUntil:
     visible: "Pause per-rep cadence"
     timeout: 30000
@@ -112,7 +112,7 @@ tags:
     direction: DOWN
     centerElement: true
     timeout: 30000
-    visibilityPercentage: 1
+    visibilityPercentage: 100
 - extendedWaitUntil:
     visible: "Configure and start per-rep cadence"
     timeout: 30000
