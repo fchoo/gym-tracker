@@ -76,6 +76,13 @@ tags:
     id: "advanced-timing-interval-seconds"
 - eraseText: 1
 - inputText: "1"
+- hideKeyboard
+- scrollUntilVisible:
+    element:
+      text: "Configure and start per-rep cadence"
+    direction: DOWN
+    centerElement: true
+    timeout: 30000
 - tapOn: "Configure and start per-rep cadence"
 - extendedWaitUntil:
     visible: "Pause per-rep cadence"
