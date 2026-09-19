@@ -82,15 +82,21 @@ tags:
 - extendedWaitUntil:
     visible: "Pause per-rep cadence"
     timeout: 30000
-- tapOn: "Pause per-rep cadence"
+- tapOn:
+    text: "Pause per-rep cadence"
+    retryTapIfNoChange: true
 - extendedWaitUntil:
     visible: "Resume per-rep cadence"
     timeout: 30000
-- tapOn: "Resume per-rep cadence"
+- tapOn:
+    text: "Resume per-rep cadence"
+    retryTapIfNoChange: true
 - extendedWaitUntil:
     visible: "Pause per-rep cadence"
     timeout: 30000
-- tapOn: "Stop per-rep cadence"
+- tapOn:
+    text: "Stop per-rep cadence"
+    retryTapIfNoChange: true
 - extendedWaitUntil:
     visible: "Configure and start per-rep cadence"
     timeout: 30000

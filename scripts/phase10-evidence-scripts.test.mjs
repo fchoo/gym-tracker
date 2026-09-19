@@ -161,6 +161,18 @@ test("Phase 10 Maestro flow exercises per-rep and 3+3+3 cluster lifecycle timing
   assert.match(flow, /Per-rep interval in seconds/u);
   assert.match(flow, /Configure and start per-rep cadence/u);
   assert.match(flow, /Pause per-rep cadence/u);
+  assert.match(
+    flow,
+    /tapOn:[\s\S]*?text: "Pause per-rep cadence"[\s\S]*?retryTapIfNoChange: true[\s\S]*?visible: "Resume per-rep cadence"/u,
+  );
+  assert.match(
+    flow,
+    /tapOn:[\s\S]*?text: "Resume per-rep cadence"[\s\S]*?retryTapIfNoChange: true[\s\S]*?visible: "Pause per-rep cadence"/u,
+  );
+  assert.match(
+    flow,
+    /tapOn:[\s\S]*?text: "Stop per-rep cadence"[\s\S]*?retryTapIfNoChange: true[\s\S]*?visible: "Configure and start per-rep cadence"/u,
+  );
   assert.doesNotMatch(flow, /visible: "Rep 2"/u);
   assert.match(flow, /Resume per-rep cadence/u);
   assert.match(flow, /Stop per-rep cadence/u);
