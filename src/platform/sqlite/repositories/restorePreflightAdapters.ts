@@ -1,9 +1,13 @@
 import {
+  LOGICAL_BACKUP_TABLE_DEFINITIONS,
   LOGICAL_BACKUP_TABLES,
   type LogicalBackupTableName,
   type LogicalBackupRow,
   type LogicalBackupSnapshot,
 } from "../../../domains/portability/backupContracts";
+import type {
+  MergeLocalFactsPort,
+} from "../../../domains/portability/mergeCommands";
 import {
   RestoreCandidateProbeError,
   type RestoreCandidateProbePort,
@@ -12,6 +16,9 @@ import {
   type RestoreSchemaPort,
 } from "../../../domains/portability/restoreCommands";
 import type { SqliteKernel } from "../sqliteKernel";
+import {
+  LOGICAL_BACKUP_TABLE_FILTERS,
+} from "./logicalBackupRepository";
 
 type CandidateTables = Record<string, readonly LogicalBackupRow[]> & {
   session_sets: readonly LogicalBackupRow[];
@@ -23,6 +30,27 @@ type CandidateTables = Record<string, readonly LogicalBackupRow[]> & {
 // formatter branch-free makes that invariant explicit and avoids treating an
 // otherwise unreachable private error path as a restore behavior.
 function identifier(value: string): string { return `"${value}"`; }
+
+function orderBy(table: LogicalBackupTableName): string {
+  return LOGICAL_BACKUP_TABLE_DEFINITIONS[table].primaryKey
+    .map(identifier)
+    .join(", " );
+}
+
+function localRow(
+  value: Record<string, unknown>,
+): LogicalBackupSnapshot["tables"][string][number] {
+  const row: Record<string, string | number | null> = {};
+  for (const [key, nested] of Object.entries(value)) {
+    if (nested === null || typeof nested === "string"
+      || (typeof nested === "number" && Number.isSafeInteger(nested))) {
+      row[key] = nested;
+      continue;
+    }
+    throw new RestoreCandidateProbeError();
+  }
+  return Object.freeze(row);
+}
 
 function rowMap(snapshot: LogicalBackupSnapshot, table: string): Map<string, LogicalBackupRow> {
   const tables = snapshot.tables as Record<string, readonly LogicalBackupRow[]>;
@@ -214,6 +242,44 @@ export function createSqliteRestoreSchemaPort(kernel: SqliteKernel): RestoreSche
         const sqliteType = row.type.toUpperCase();
         if (!(["INTEGER", "TEXT"] as const).includes(sqliteType as "INTEGER" | "TEXT")) throw new RestoreCandidateProbeError();
         return Object.freeze({ name: row.name, sqliteType, notNull: row.notnull === 1 }) as { name: string; sqliteType: "INTEGER" | "TEXT"; notNull: boolean };
+      });
+    },
+  });
+}
+
+/**
+ * This adapter intentionally exposes no writer: it fingerprints the live
+ * source facts needed to bind a merge preflight token to the current SQLite
+ * state. The Task 5 writer rechecks that fingerprint before its transaction.
+ */
+export function createSqliteMergeLocalFactsPort(
+  kernel: SqliteKernel,
+): MergeLocalFactsPort {
+  return Object.freeze({
+    async read() {
+      const [schema, owner] = await Promise.all([
+        kernel.queryAll<{ user_version: number }>("PRAGMA user_version"),
+        kernel.queryAll<{ owner_namespace: string }>(
+          "SELECT owner_namespace FROM portable_owner_identity WHERE id = 1",
+        ),
+      ]);
+      if (schema.length !== 1 || !Number.isSafeInteger(schema[0]?.user_version)
+        || owner.length !== 1 || typeof owner[0]?.owner_namespace !== "string") {
+        throw new RestoreCandidateProbeError();
+      }
+      const tables: Record<string, readonly LogicalBackupSnapshot["tables"][string][number][]> = {};
+      for (const table of LOGICAL_BACKUP_TABLES) {
+        const rows = await kernel.queryAll<Record<string, unknown>>(
+          `SELECT * FROM ${identifier(table)}
+           WHERE ${LOGICAL_BACKUP_TABLE_FILTERS[table]}
+           ORDER BY ${orderBy(table)}`,
+        );
+        tables[table] = Object.freeze(rows.map(localRow));
+      }
+      return Object.freeze({
+        ownerNamespace: owner[0]!.owner_namespace,
+        schemaVersion: schema[0]!.user_version,
+        tables: Object.freeze(tables),
       });
     },
   });

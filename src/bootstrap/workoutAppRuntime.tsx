@@ -231,6 +231,11 @@ import {
   type RestoreCommands,
 } from "../domains/portability/restoreCommands";
 import {
+  createMergeCommands,
+  createMergePreflightStore,
+  type SecureMergeCommands,
+} from "../domains/portability/mergeCommands";
+import {
   createAesGcmArchivePort,
   createExpoAesGcmArchiveDriver,
 } from "../platform/crypto/aesGcmArchivePort";
@@ -324,6 +329,7 @@ import type {
 import {
   createSqliteRestoreCandidateProbe,
   createSqliteRestoreCatalogReferenceAvailabilityPort,
+  createSqliteMergeLocalFactsPort,
   createSqliteRestoreRetainedReferencePort,
   createSqliteRestoreSchemaPort,
 } from "../platform/sqlite/repositories/restorePreflightAdapters";
@@ -401,6 +407,7 @@ export type LibraryRuntimeStarterPlanSummary = StarterPlanRuntimeSummary;
 export type RuntimeSecureBackupArchive = BackupArchiveHandle;
 export type RuntimeCsvExport = CsvExportHandle;
 export type RuntimeRestorePreflightResult = Awaited<ReturnType<RestoreCommands["preflightSecureRestore"]>>;
+export type RuntimeMergePreflightResult = Awaited<ReturnType<SecureMergeCommands["preflightSecureMerge"]>>;
 export type RuntimeRestoreCommitResult = Readonly<{
   state: "ready" | "rebuild_pending";
 }>;
@@ -964,6 +971,8 @@ type RuntimeValue = RuntimeState & Readonly<{
   >;
   saveZeroSetWorkout(input: SaveZeroSetInput): Promise<FinishOutcomeResult>;
   preflightSecureRestore(input: Readonly<{ password: string }>): Promise<RuntimeRestorePreflightResult>;
+  preflightSecureMerge(input: Readonly<{ password: string }>): Promise<RuntimeMergePreflightResult>;
+  invalidateSecureMergePreflight(token: string): void;
   invalidateSecureRestorePreflight(token: string): void;
   commitSecureRestore(input: Readonly<{ token: string; confirmation: string }>): Promise<RuntimeRestoreCommitResult>;
   retryRestoreRebuild(): Promise<RuntimeRestoreCommitResult>;
@@ -1036,6 +1045,7 @@ type RuntimeServices = Readonly<{
   csvExportRepository: CsvExportRepository;
   csvFiles: CsvFilePort;
   restoreCommands: RestoreCommands;
+  mergeCommands: SecureMergeCommands;
   reconcileRestore?: () => Promise<RestoreReconciliationResult>;
   customExerciseRepository: ReturnType<typeof createCustomExerciseRepository>;
   historyCommandRepository: ReturnType<typeof createHistoryCommandRepository>;
@@ -1096,6 +1106,7 @@ export type WorkoutAppRuntimeDependencies = Readonly<{
   createCsvExportRepository?(kernel: SqliteKernel): CsvExportRepository;
   createCsvFiles?(): CsvFilePort;
   createRestoreCommands?(kernel: SqliteKernel): RestoreCommands;
+  createMergeCommands?(kernel: SqliteKernel): SecureMergeCommands;
   reconcileRestore?(kernel: SqliteKernel): Promise<RestoreReconciliationResult>;
   createScheduleRuntime?(
     kernel: SqliteKernel,
@@ -1144,6 +1155,7 @@ export type WorkoutAppRuntimeAdapters = Readonly<{
   createCsvExportRepository?(kernel: SqliteKernel): CsvExportRepository;
   createCsvFiles?(): CsvFilePort;
   createRestoreCommands?(kernel: SqliteKernel): RestoreCommands;
+  createMergeCommands?(kernel: SqliteKernel): SecureMergeCommands;
   reconcileRestore?(kernel: SqliteKernel): Promise<RestoreReconciliationResult>;
   createScheduleRuntime?(
     kernel: SqliteKernel,
@@ -1246,6 +1258,9 @@ export function createWorkoutAppRuntimeDependencies(
     ...(adapters.createRestoreCommands === undefined
       ? {}
       : { createRestoreCommands: adapters.createRestoreCommands }),
+    ...(adapters.createMergeCommands === undefined
+      ? {}
+      : { createMergeCommands: adapters.createMergeCommands }),
     ...(adapters.reconcileRestore === undefined
       ? {}
       : { reconcileRestore: adapters.reconcileRestore }),
@@ -1452,6 +1467,28 @@ export const productionWorkoutAppRuntimeDependencies =
       candidateProbe: createSqliteRestoreCandidateProbe(),
       restorer: createLogicalRestoreRepository(kernel, { nowMs: () => Date.now() }),
       store: createRestorePreflightStore({
+        tokenFactory() {
+          const { randomUUID } = require("expo-crypto") as typeof import("expo-crypto");
+          return randomUUID();
+        },
+      }),
+    }),
+    createMergeCommands: (kernel) => createMergeCommands({
+      crypto: createAesGcmArchivePort(createExpoAesGcmArchiveDriver()),
+      files: createProductionExpoRestoreFilePort(),
+      kdf: createPasswordKdfPort(),
+      schema: createSqliteRestoreSchemaPort(kernel),
+      retainedReferences: createSqliteRestoreRetainedReferencePort(kernel),
+      candidateProbe: createSqliteRestoreCandidateProbe(),
+      local: createSqliteMergeLocalFactsPort(kernel),
+      sha256: async (value) => {
+        const {
+          CryptoDigestAlgorithm,
+          digestStringAsync,
+        } = require("expo-crypto") as typeof import("expo-crypto");
+        return digestStringAsync(CryptoDigestAlgorithm.SHA256, value);
+      },
+      store: createMergePreflightStore({
         tokenFactory() {
           const { randomUUID } = require("expo-crypto") as typeof import("expo-crypto");
           return randomUUID();
@@ -2388,6 +2425,13 @@ export function WorkoutAppRuntimeProvider({
           commitSecureRestore: async () => {
             throw new Error("restore_commands_unavailable");
           },
+        }),
+      mergeCommands: dependencies.createMergeCommands?.(kernel)
+        ?? Object.freeze({
+          preflightSecureMerge: async () => {
+            throw new Error("merge_commands_unavailable");
+          },
+          invalidateSecureMergePreflight: () => undefined,
         }),
       ...(dependencies.reconcileRestore === undefined
         ? {}
@@ -4270,6 +4314,10 @@ export function WorkoutAppRuntimeProvider({
     discardCsvExport: (handle) => requireServices().csvFiles.discardCsv(handle),
     preflightSecureRestore: (input) =>
       requireServices().restoreCommands.preflightSecureRestore(input),
+    preflightSecureMerge: (input) =>
+      requireServices().mergeCommands.preflightSecureMerge(input),
+    invalidateSecureMergePreflight: (token) =>
+      requireServices().mergeCommands.invalidateSecureMergePreflight(token),
     invalidateSecureRestorePreflight: (token) =>
       requireServices().restoreCommands.invalidateSecureRestorePreflight(token),
     commitSecureRestore: async (input) => {

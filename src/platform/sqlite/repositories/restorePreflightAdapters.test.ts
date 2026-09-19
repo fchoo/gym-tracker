@@ -5,6 +5,7 @@ import { RestoreCandidateProbeError } from "../../../domains/portability/restore
 import {
   createSqliteRestoreCandidateProbe,
   createSqliteRestoreCatalogReferenceAvailabilityPort,
+  createSqliteMergeLocalFactsPort,
   createSqliteRestoreRetainedReferencePort,
   createSqliteRestoreSchemaPort,
 } from "./restorePreflightAdapters";
@@ -335,6 +336,52 @@ describe("SQLite restore preflight adapters", () => {
     await expect(schema.columnsFor("not_a_backup_table" as never)).rejects.toBeInstanceOf(RestoreCandidateProbeError);
     const badSchema = createSqliteRestoreSchemaPort(readKernel([{ name: "amount", type: "REAL", notnull: 1 }], []));
     await expect(badSchema.columnsFor("exercises")).rejects.toBeInstanceOf(RestoreCandidateProbeError);
+  });
+
+  it("reads bounded merge facts through the reader only and never opens a writer", async () => {
+    const statements: string[] = [];
+    const rows = [
+      [{ user_version: 22 }],
+      [{ owner_namespace: "11111111111111111111111111111111" }],
+      ...LOGICAL_BACKUP_TABLES.map((table) => table === "workout_sessions"
+        ? [{ id: "session", portable_id: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", merge_modified_at_ms: 2 }]
+        : table === "portable_owner_identity"
+          ? [{ id: 1, owner_namespace: "11111111111111111111111111111111" }]
+          : []),
+    ];
+    let index = 0;
+    const kernel: SqliteKernel = {
+      async queryAll<Row extends Record<string, unknown>>(sql: string) {
+        statements.push(sql);
+        const next = rows[index] ?? [];
+        index += 1;
+        return next as unknown as readonly Row[];
+      },
+      write: jest.fn(async () => {
+        throw new Error("merge_preflight_must_not_write");
+      }),
+      connectionConfiguration: jest.fn(),
+      close: jest.fn(),
+    } as unknown as SqliteKernel;
+    const local = await createSqliteMergeLocalFactsPort(kernel).read();
+
+    expect(local).toEqual(expect.objectContaining({
+      ownerNamespace: "11111111111111111111111111111111",
+      schemaVersion: 22,
+      tables: expect.objectContaining({
+        workout_sessions: [{
+          id: "session",
+          portable_id: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          merge_modified_at_ms: 2,
+        }],
+      }),
+    }));
+    expect(kernel.write).not.toHaveBeenCalled();
+    expect(statements).toEqual(expect.arrayContaining([
+      "PRAGMA user_version",
+      "SELECT owner_namespace FROM portable_owner_identity WHERE id = 1",
+    ]));
+    expect(statements.every((statement) => !/INSERT|UPDATE|DELETE|BEGIN IMMEDIATE/iu.test(statement))).toBe(true);
   });
 
   it("rejects retained identities with bad values or arity before querying and supports the full exercise identity", async () => {

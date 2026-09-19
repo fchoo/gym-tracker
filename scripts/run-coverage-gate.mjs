@@ -18,6 +18,7 @@ const integrityCriticalFiles = [
   "src/domains/portability/backupContracts.ts",
   "src/domains/portability/backupCommands.ts",
   "src/domains/portability/backupFormat.ts",
+  "src/domains/portability/mergeCommands.ts",
   "src/domains/portability/portableIdentity.ts",
   "src/domains/portability/csvExport.ts",
   "src/domains/portability/restoreCommands.ts",

@@ -248,6 +248,18 @@ async function validateRows(
   return { internal, retained: retainedCount };
 }
 
+/**
+ * Shared authenticated-preflight validator for replacement restore and merge.
+ * It only reads schema/reference ports; the merge path deliberately has no writer.
+ */
+export async function validateLogicalRestoreSnapshot(
+  snapshot: LogicalBackupSnapshot,
+  schema: RestoreSchemaPort,
+  retained: RestoreRetainedReferencePort | undefined,
+): Promise<void> {
+  await validateRows(snapshot, schema, retained);
+}
+
 async function createPreview(snapshot: LogicalBackupSnapshot, availability: RestoreReferenceAvailabilityPort | undefined, referenceCounts: Readonly<{ internal: number; retained: number }>): Promise<RestorePreview> {
   const referenceFacts = await Promise.all(snapshot.catalogReferences.map(async (reference) => availability?.availabilityFor(reference) ?? "unavailable" as const));
   const availableCatalogReferences = referenceFacts.filter((value) => value === "available").length;
