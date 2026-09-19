@@ -6,6 +6,7 @@ import {
 
 import {
   buildPortableMergePlan,
+  MergePlanError,
   PORTABLE_MERGE_TABLE_CLASSES,
 } from "./mergePlan";
 import {
@@ -14,6 +15,7 @@ import {
 
 const ownerNamespace = "1".repeat(32);
 const sessionPortableId = "a".repeat(32);
+const payloadDigest = async () => "0".repeat(64);
 
 function snapshot(
   session: Readonly<{ id: string; marker: string; modifiedAtMs: number }>,
@@ -45,6 +47,181 @@ describe("portable merge plan", () => {
   it("classifies every portable source table before planning a merge", () => {
     expect(Object.keys(PORTABLE_MERGE_TABLE_CLASSES).sort())
       .toEqual([...LOGICAL_BACKUP_TABLES].sort());
+  });
+
+  const invalidSnapshotCases: Array<[
+    string,
+    (value: ReturnType<typeof snapshot>) => unknown,
+  ]> = [
+    ["a pre-identity schema", (value) => ({ ...value, schemaVersion: 21 })],
+    ["a missing owner identity", (value) => ({
+      ...value,
+      tables: { ...value.tables, portable_owner_identity: [] },
+    })],
+    ["an owner namespace mismatch", (value) => ({
+      ...value,
+      tables: {
+        ...value.tables,
+        portable_owner_identity: [{ id: 1, owner_namespace: "2".repeat(32) }],
+      },
+    })],
+    ["a missing session table", (value) => {
+      const { workout_sessions: _sessions, ...tables } = value.tables;
+      return { ...value, tables };
+    }],
+  ];
+
+  it.each(invalidSnapshotCases)("rejects %s before building a plan", async (_label, mutate) => {
+    const archive = snapshot({ id: "archive-session", marker: "archive", modifiedAtMs: 20 });
+    const local = snapshot({ id: "local-session", marker: "local", modifiedAtMs: 10 });
+
+    await expect(buildPortableMergePlan({
+      archive: mutate(archive) as never,
+      local,
+      payloadDigest,
+    })).rejects.toEqual(new MergePlanError("merge_plan_invalid"));
+  });
+
+  const invalidSessionGraphCases: Array<[
+    string,
+    Readonly<Record<string, readonly Record<string, unknown>[]>>,
+  ]> = [
+    ["a session exercise without its session", {
+      session_exercises: [{ id: "orphan-exercise", session_id: "missing" }],
+    }],
+    ["a session set without its exercise", {
+      session_sets: [{ id: "orphan-set", session_exercise_id: "missing" }],
+    }],
+    ["a rest pointer outside the session aggregate", {
+      session_rest_states: [{ session_id: "archive-session", next_set_id: "missing" }],
+    }],
+    ["an advanced timing pointer outside the session aggregate", {
+      session_advanced_timing_states: [{ session_id: "archive-session", session_set_id: "missing" }],
+    }],
+    ["an undo snapshot outside the session aggregate", {
+      session_undo_snapshots: [{ id: "undo", session_id: "archive-session", completed_set_id: "missing" }],
+    }],
+    ["a receipt without its owning session", {
+      history_audit_events: [{ id: "audit", session_id: "missing" }],
+    }],
+  ];
+
+  it.each(invalidSessionGraphCases)("rejects %s", async (_label, extra) => {
+    const archive = snapshot({ id: "archive-session", marker: "archive", modifiedAtMs: 20 }, extra);
+    const local = snapshot({ id: "local-session", marker: "local", modifiedAtMs: 10 });
+
+    await expect(buildPortableMergePlan({ archive, local, payloadDigest }))
+      .rejects.toEqual(new MergePlanError("merge_plan_invalid"));
+  });
+
+  const invalidRootAndSettingCases: Array<[
+    string,
+    Readonly<Record<string, readonly Record<string, unknown>[]>>,
+    Readonly<Record<string, readonly Record<string, unknown>[]>>,
+  ]> = [
+    ["a blank archive session id", {
+      workout_sessions: [{ id: " " , portable_id: sessionPortableId, merge_modified_at_ms: 20 }],
+    }, {}],
+    ["an invalid archive portable identity", {
+      workout_sessions: [{ id: "archive-session", portable_id: "bad", merge_modified_at_ms: 20 }],
+    }, {}],
+    ["an invalid archive modification timestamp", {
+      workout_sessions: [{ id: "archive-session", portable_id: sessionPortableId, merge_modified_at_ms: -1 }],
+    }, {}],
+    ["two archive sessions with one portable identity", {
+      workout_sessions: [
+        { id: "archive-session", portable_id: sessionPortableId, merge_modified_at_ms: 20 },
+        { id: "archive-session-2", portable_id: sessionPortableId, merge_modified_at_ms: 21 },
+      ],
+    }, {}],
+    ["two local sessions with one portable identity", {}, {
+      workout_sessions: [
+        { id: "local-session", portable_id: sessionPortableId, merge_modified_at_ms: 10 },
+        { id: "local-session-2", portable_id: sessionPortableId, merge_modified_at_ms: 11 },
+      ],
+    }],
+    ["a duplicate archive setting key", {
+      app_settings: [{ key: "units" }, { key: "units" }],
+    }, {}],
+    ["a duplicate local setting key", {}, {
+      app_settings: [{ key: "units" }, { key: "units" }],
+    }],
+    ["an owned archive exercise with a duplicate portable identity", {
+      exercises: [
+        { id: "exercise-one", origin: "custom", portable_id: "b".repeat(32) },
+        { id: "exercise-two", origin: "copied", portable_id: "b".repeat(32) },
+      ],
+    }, {}],
+    ["an owned local plan with a duplicate portable identity", {}, {
+      plans: [
+        { id: "plan-one", origin: "custom", portable_id: "c".repeat(32) },
+        { id: "plan-two", origin: "copied", portable_id: "c".repeat(32) },
+      ],
+    }],
+  ];
+
+  it.each(invalidRootAndSettingCases)("rejects %s", async (_label, archiveExtra, localExtra) => {
+    const archive = snapshot(
+      { id: "archive-session", marker: "archive", modifiedAtMs: 20 },
+      archiveExtra,
+    );
+    const local = snapshot(
+      { id: "local-session", marker: "local", modifiedAtMs: 10 },
+      localExtra,
+    );
+
+    await expect(buildPortableMergePlan({ archive, local, payloadDigest }))
+      .rejects.toEqual(new MergePlanError("merge_plan_invalid"));
+  });
+
+  const invalidReceiptCases: Array<[
+    string,
+    Readonly<Record<string, readonly Record<string, unknown>[]>>,
+  ]> = [
+    ["an active session exercise pointer that cannot be rewritten", {
+      workout_sessions: [{
+        id: "archive-session", portable_id: sessionPortableId, merge_modified_at_ms: 20,
+        active_session_exercise_id: "missing", active_set_id: null,
+      }],
+    }],
+    ["an edit receipt with an unsupported operation", {
+      session_exercises: [{ id: "exercise", session_id: "archive-session" }],
+      workout_session_exercise_edit_receipts: [{
+        request_id: "edit", session_id: "archive-session", operation: "rename",
+        subject_session_exercise_id: "exercise", replacement_session_exercise_id: null, result_json: "{}",
+      }],
+    }],
+    ["an edit receipt with a non-object result", {
+      session_exercises: [{ id: "exercise", session_id: "archive-session" }],
+      workout_session_exercise_edit_receipts: [{
+        request_id: "edit", session_id: "archive-session", operation: "remove_exercise",
+        subject_session_exercise_id: "exercise", replacement_session_exercise_id: null, result_json: "[]",
+      }],
+    }],
+    ["a reorder receipt with a non-array ordered payload", {
+      session_exercises: [{ id: "exercise", session_id: "archive-session" }],
+      workout_session_exercise_reorder_receipts: [{
+        request_id: "reorder", session_id: "archive-session", ordered_session_exercise_ids_json: "{}",
+        result_json: JSON.stringify({ sessionId: "archive-session", orderedSessionExerciseIds: [], expectedSessionExerciseRevisions: [] }),
+      }],
+    }],
+    ["a reorder receipt result with a non-object revision entry", {
+      session_exercises: [{ id: "exercise", session_id: "archive-session" }],
+      workout_session_exercise_reorder_receipts: [{
+        request_id: "reorder", session_id: "archive-session", ordered_session_exercise_ids_json: JSON.stringify(["exercise"]),
+        result_json: JSON.stringify({
+          sessionId: "archive-session", orderedSessionExerciseIds: ["exercise"], expectedSessionExerciseRevisions: ["bad"],
+        }),
+      }],
+    }],
+  ];
+
+  it.each(invalidReceiptCases)("rejects %s", async (_label, extra) => {
+    const archive = snapshot({ id: "archive-session", marker: "archive", modifiedAtMs: 20 }, extra);
+    const local = snapshot({ id: "local-session", marker: "local", modifiedAtMs: 10 });
+
+    await expect(buildPortableMergePlan({ archive, local, payloadDigest }))
+      .rejects.toEqual(new MergePlanError("merge_plan_invalid"));
   });
 
   it("uses the canonical payload digest to break an equal-timestamp session tie deterministically", async () => {
