@@ -118,10 +118,13 @@ test("Phase 10 Maestro flow exercises per-rep and 3+3+3 cluster lifecycle timing
   assert.match(flow, /WORKOUT OVERVIEW/u);
   assert.ok(flow.indexOf('visible: "Start a workout"')
     < flow.indexOf('visible: "Start Full Body A"'));
-  assert.match(flow, /extendedWaitUntil:[\s\S]*?visible: "Choose your starting plan"[\s\S]*?tapOn: "Use Full Body Foundation"/u);
+  assert.match(
+    flow,
+    /extendedWaitUntil:[\s\S]*?visible: "Choose your starting plan"[\s\S]*?tapOn:[\s\S]*?text: "Use Full Body Foundation"[\s\S]*?retryTapIfNoChange: true[\s\S]*?extendedWaitUntil:[\s\S]*?visible: "Activate Full Body Foundation"[\s\S]*?tapOn:[\s\S]*?text: "Activate Full Body Foundation"[\s\S]*?retryTapIfNoChange: true/u,
+  );
   assert.doesNotMatch(
     flow,
-    /scrollUntilVisible:[\s\S]*?text: "Use Full Body Foundation"/u,
+    /scrollUntilVisible:[\s\S]*?text: "(?:Use|Activate) Full Body Foundation"/u,
   );
   assert.ok(flow.indexOf('visible: "Resume workout"')
     > flow.indexOf('stopApp'));

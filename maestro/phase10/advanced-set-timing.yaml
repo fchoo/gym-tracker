@@ -12,14 +12,15 @@ tags:
 - extendedWaitUntil:
     visible: "Choose your starting plan"
     timeout: 90000
-- tapOn: "Use Full Body Foundation"
-- scrollUntilVisible:
-    element:
-      text: "Activate Full Body Foundation"
-    direction: DOWN
-    centerElement: true
-    timeout: 60000
-- tapOn: "Activate Full Body Foundation"
+- tapOn:
+    text: "Use Full Body Foundation"
+    retryTapIfNoChange: true
+- extendedWaitUntil:
+    visible: "Activate Full Body Foundation"
+    timeout: 30000
+- tapOn:
+    text: "Activate Full Body Foundation"
+    retryTapIfNoChange: true
 - extendedWaitUntil:
     visible: "^(Start Full Body A|Start Full Body B|Rest day)$"
     timeout: 90000
