@@ -141,10 +141,7 @@ test("Phase 10 Maestro flow exercises per-rep and 3+3+3 cluster lifecycle timing
   const clusterControl = flow.indexOf('assertVisible: "Cluster timing"');
   assert.ok(perRepControl >= 0 && perRepControl < setOverride);
   assert.ok(setOverride >= 0 && setOverride < clusterControl);
-  assert.match(
-    flow,
-    /tapOn: "Save timing"[\s\S]*?scrollUntilVisible:[\s\S]*?text: "Per-rep cadence"/u,
-  );
+  assert.match(flow, /tapOn: "Save timing"[\s\S]*?assertVisible: "Per-rep cadence"/u);
   assert.match(
     flow,
     /inputText: "20"[\s\S]*?tapOn: "Save timing"[\s\S]*?scrollUntilVisible:[\s\S]*?text: "Cluster timing"/u,
