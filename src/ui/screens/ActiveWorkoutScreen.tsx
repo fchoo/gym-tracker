@@ -1062,6 +1062,47 @@ function PopulatedWorkoutOverview({
     setView(nextView);
   };
 
+  const applySetTimingConfig = (
+    exerciseId: string,
+    setId: string,
+    override: AdvancedTimingConfigV1 | null,
+    sessionRevision: number,
+  ) => {
+    const current = viewRef.current;
+    const nextExercises = exercisesFor(current).map((exercise) => {
+      if (exercise.id !== exerciseId) return exercise;
+      const resolvedConfig = override ?? exercise.advancedTimingDefault;
+      const applyConfig = (set: ActiveWorkoutSet): ActiveWorkoutSet => {
+        if (set.id !== setId) return set;
+        const { advancedTimingResolved: _previousResolvedConfig, ...setWithoutResolved } = set;
+        return {
+          ...setWithoutResolved,
+          revision: set.revision + 1,
+          advancedTimingOverride: override,
+          ...(resolvedConfig === undefined
+            ? {}
+            : { advancedTimingResolved: resolvedConfig }),
+        };
+      };
+      return {
+        ...exercise,
+        warmups: exercise.warmups.map(applyConfig),
+        workingSets: exercise.workingSets.map(applyConfig),
+      };
+    });
+    const currentExercise = nextExercises.find(
+      ({ id }) => id === current.currentExercise.id,
+    ) ?? current.currentExercise;
+    const nextView = {
+      ...current,
+      revision: sessionRevision,
+      currentExercise,
+      exercises: current.exercises.length === 0 ? [] : nextExercises,
+    };
+    viewRef.current = nextView;
+    setView(nextView);
+  };
+
   const restInput = (): RestRevisionInput => ({
     sessionId,
     expectedSessionRevision: view.revision,
@@ -1201,6 +1242,12 @@ function PopulatedWorkoutOverview({
           nowMs: nowMs(),
         });
         applyAdvancedTimingResult(result);
+        applySetTimingConfig(
+          target.exercise.id,
+          set.id,
+          value,
+          result.sessionRevision,
+        );
         scheduleTimingPanelScroll(target.exercise.id, result.sessionRevision);
       }
       setTimingConfig(null);

@@ -3330,7 +3330,7 @@ describe("Plan 01-08 ActiveWorkoutScreen", () => {
       }));
   });
 
-  it("uses the refreshed inherited set revision after saving an exercise timing default", async () => {
+  it("uses the refreshed inherited revision and immediately renders a saved set-level cluster override", async () => {
     const updateSessionExerciseAdvancedTiming = jest.fn<NonNullable<
       ActiveWorkoutCommands["updateSessionExerciseAdvancedTiming"]
     >>(async () => advancedResult({
@@ -3433,6 +3433,80 @@ describe("Plan 01-08 ActiveWorkoutScreen", () => {
       },
       nowMs: 2_000,
     }));
+
+    expect(screen.getByTestId("working-set-timing-summary-working-1"))
+      .toHaveTextContent("Set timing · Cluster 3+3+3 · 20 sec · both");
+    expect(screen.getByText("Cluster timing")).toBeOnTheScreen();
+    expect(screen.getByLabelText("Cluster grouping")).toBeOnTheScreen();
+  });
+
+  it("immediately restores the exercise default after clearing a set-level override", async () => {
+    const updateSessionSetAdvancedTiming = jest.fn<NonNullable<
+      ActiveWorkoutCommands["updateSessionSetAdvancedTiming"]
+    >>(async () => advancedResult({
+      version: 1,
+      state: "idle",
+      revision: 0,
+      targetSessionSetId: null,
+    }, 2));
+    const perRepDefault = {
+      version: 1 as const,
+      mode: "per_rep" as const,
+      intervalMs: 3_000,
+      cueChannels: "audio" as const,
+    };
+    const clusterOverride = {
+      version: 1 as const,
+      mode: "cluster" as const,
+      groupSizes: [3, 3, 3],
+      intraRestMs: 20_000,
+      cueChannels: "both" as const,
+    };
+    const view: ActiveWorkoutView = {
+      ...initialView,
+      currentExercise: {
+        ...initialView.currentExercise,
+        advancedTimingDefault: perRepDefault,
+        workingSets: initialView.currentExercise.workingSets.map((set) =>
+          set.id === "working-1"
+            ? {
+                ...set,
+                advancedTimingOverride: clusterOverride,
+                advancedTimingResolved: clusterOverride,
+              }
+            : set),
+      },
+    };
+
+    await renderActive({
+      advancedTimingContext: {
+        sessionId: "session-1",
+        sessionRevision: 1,
+        state: { version: 1, state: "idle", revision: 0, targetSessionSetId: null },
+      },
+      commands: commands({ updateSessionSetAdvancedTiming }),
+      view,
+    });
+
+    expect(screen.getByText("Cluster timing")).toBeOnTheScreen();
+    await fireEvent.press(screen.getByRole("button", { name: "Set timing" }));
+    await fireEvent.press(screen.getByRole("button", { name: "Inherit timing" }));
+    await fireEvent.press(screen.getByRole("button", { name: "Save timing" }));
+
+    await waitFor(() => expect(updateSessionSetAdvancedTiming).toHaveBeenCalledWith({
+      sessionId: "session-1",
+      sessionSetId: "working-1",
+      expectedSessionRevision: 1,
+      expectedSetRevision: 1,
+      override: null,
+      nowMs: 2_000,
+    }));
+
+    expect(screen.getByTestId("working-set-timing-summary-working-1"))
+      .toHaveTextContent("Set timing · Inherits exercise timing");
+    expect(screen.getByText("Per-rep cadence")).toBeOnTheScreen();
+    expect(screen.getByLabelText("Per-rep interval in seconds"))
+      .toHaveProp("value", "3");
   });
 
   it("keeps a completed working set read-only for advanced timing", async () => {
