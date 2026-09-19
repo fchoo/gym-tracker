@@ -4,12 +4,12 @@ milestone: v1.1
 milestone_name: In-Workout Editing, Advanced Timing & Cross-Device Sync
 current_phase: 10
 current_phase_name: Advanced Set Timing
-status: paused
-stopped_at: Paused during 10-03-configuration-and-cue-channels-PLAN.md Task 3
-last_updated: "2026-09-18T09:00:43.000Z"
-last_activity: 2026-09-18
-last_activity_desc: Completed Phase 10 Plan 10-03 Tasks 1-2 and paused before configuration UI wiring
-state_head: feb655abf137bb0cb74db5076eb80d578f9df51f
+status: executing
+stopped_at: Plan 10-03 complete; starting 10-04-integrity-lifecycle-verification-PLAN.md
+last_updated: "2026-09-19T00:00:00+08:00"
+last_activity: 2026-09-19
+last_activity_desc: Reconciled stale 10-03 Task 3 handoff against committed implementation 5b747e5 and completion summary e174ad1; proceeding to Plan 10-04
+state_head: e174ad1f1c16e1cd9496d4750d5e70ec18f20b7e
 progress:
   total_phases: 5
   completed_phases: 2
@@ -29,10 +29,10 @@ See: `.planning/PROJECT.md` (updated 2026-09-15)
 
 ## Current Position
 
-Phase: 10 (Advanced Set Timing) — PAUSED
-Plan: 3 of 4
-Status: Paused during 10-03 Task 3
-Last activity: 2026-09-18 — Completed 10-03 Tasks 1-2 and started configuration UI scaffold
+Phase: 10 (Advanced Set Timing) — EXECUTING
+Plan: 4 of 4
+Status: Plan 10-03 is complete; integrity/lifecycle verification is next
+Last activity: 2026-09-19 — Verified 10-03 Task 3 completion from committed source and summary, then retired stale pause metadata
 
 ## Delivery model
 
@@ -334,15 +334,14 @@ Full decisions live in `.planning/PROJECT.md`.
 
 ## Session Continuity
 
-Last session: 2026-09-18T04:54:46.350Z
-Last handoff: 2026-09-18T09:00:43.000Z
-Stopped at: Paused during 10-03-configuration-and-cue-channels-PLAN.md Task 3
-Resume file: .planning/phases/10-advanced-set-timing/10-03-configuration-and-cue-channels-PLAN.md
-Handoff file: .planning/phases/10-advanced-set-timing/.continue-here.md
-Next action: Repair or replace untracked src/ui/components/AdvancedTimingConfigSheet.tsx, add focused component tests for the configuration sheet, then wire owned-plan and active-workout configuration controls while preserving D-04 advisory-only cue behavior and the separate advanced timing state machine.
+Last session: 2026-09-19T00:00:00+08:00
+Last handoff: reconciled stale 10-03 Task 3 checkpoint
+Stopped at: Starting 10-04-integrity-lifecycle-verification-PLAN.md
+Resume file: .planning/phases/10-advanced-set-timing/10-04-integrity-lifecycle-verification-PLAN.md
+Handoff file: none (the prior one-shot handoff was consumed and removed)
+Next action: Complete the Phase 10 integrity/lifecycle, rest non-regression, accessibility, native-evidence, and exact-coverage gate without changing release status or starting Phase 11 prematurely.
 
 ## Operator Next Steps
 
-- Resume Phase 10 Plan 10-03 Task 3 from .planning/phases/10-advanced-set-timing/.continue-here.md.
-- Repair or replace the malformed untracked AdvancedTimingConfigSheet.tsx before importing it anywhere.
+- Execute Phase 10 Plan 10-04 and retain its source, host, native-manifest, and accessibility evidence.
 - Keep advanced timing completely separate from the v1.0 rest state machine and advisory-only over all recorded set, rest, and workout facts.
