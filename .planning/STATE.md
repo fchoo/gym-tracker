@@ -5,17 +5,17 @@ milestone_name: In-Workout Editing, Advanced Timing & Cross-Device Sync
 current_phase: 11
 current_phase_name: Portable History & Merge Restore
 status: executing
-stopped_at: Phase 10 complete; starting 11-01-stable-identity-merge-tracer-PLAN.md
-last_updated: "2026-09-19T23:56:00+08:00"
-last_activity: 2026-09-19
-last_activity_desc: Phase 10 Plan 10-04 native manifest, real Expo matrix, and Maestro evidence passed; transitioned to Phase 11
-state_head: 9fb05ab677b0a6f6a1d2c9b5b942daa007421093
+stopped_at: Plan 11-01 complete; starting 11-02-conflict-engine-PLAN.md
+last_updated: "2026-09-20T02:35:09+08:00"
+last_activity: 2026-09-20
+last_activity_desc: Plan 11-01 schema-22/GTBK-v2/session-merge tracer passed strict coverage, host/integration rollback, and manifest-bound Expo SQLite evidence
+state_head: b3c0df871017b7d5184d32126a6ddab9ad3b082d
 progress:
   total_phases: 5
   completed_phases: 3
   total_plans: 26
-  completed_plans: 17
-  percent: 52
+  completed_plans: 18
+  percent: 56
 ---
 
 # Project State
@@ -30,9 +30,9 @@ See: `.planning/PROJECT.md` (updated 2026-09-15)
 ## Current Position
 
 Phase: 11 (Portable History & Merge Restore) — EXECUTING
-Plan: 1 of 4
-Status: Phase 10 complete; stable identity and merge tracer is next
-Last activity: 2026-09-19 — Phase 10 passed its source, coverage, real Expo, and manifest-bound Maestro gates
+Plan: 2 of 4
+Status: Plan 11-01 complete; full conflict engine is next
+Last activity: 2026-09-20 — Plan 11-01 passed schema-22/GTBK-v2, host/integration merge rollback, and manifest-bound Expo SQLite proof
 
 ## Delivery model
 
@@ -334,14 +334,14 @@ Full decisions live in `.planning/PROJECT.md`.
 
 ## Session Continuity
 
-Last session: 2026-09-19T23:56:00+08:00
-Last handoff: Phase 10 Plan 10-04 completed from exact-head manifest-bound Android evidence
-Stopped at: Starting 11-01-stable-identity-merge-tracer-PLAN.md
+Last session: 2026-09-20T02:35:09+08:00
+Last handoff: Plan 11-01 completed with schema-22/GTBK-v2, a one-session atomic merge tracer, and exact manifest-bound Expo SQLite proof
+Stopped at: Starting 11-02-conflict-engine-PLAN.md
 Resume file: .planning/phases/11-portable-history-merge-restore/.continue-here.md
 Handoff file: none (the prior one-shot handoff was consumed and removed)
-Next action: Execute Phase 11 Plan 11-01 test-first, keeping SQLite local authority and failure-preserves-local-state invariants.
+Next action: Execute Phase 11 Plan 11-02 test-first, keeping D-01 class policies, D-02 identity remapping, D-04 one-writer atomicity, and derived-state rebuild boundaries intact.
 
 ## Operator Next Steps
 
-- Execute Phase 11 Plan 11-01 test-first: stable owner-scoped identities, canonical encrypted backup/merge tracer, bounded parsing, and strict failure preservation.
-- Retain Phase 10's advanced-timing/rest separation and manifest-bound evidence as portability regression constraints.
+- Execute Phase 11 Plan 11-02 test-first: full conflict classification and deterministic physical-ID remapping before widening the writer.
+- Retain Plan 11-01's GTBK-v2-only merge, one-use preflight token, one-writer transaction, and manifest-bound native contract as non-negotiable downstream constraints.
