@@ -536,6 +536,50 @@ function operationPlan(operations: PortableMergePlan["operations"]): PortableMer
   };
 }
 
+function maximalOwnedPlanAggregate() {
+  const portableId = "6".repeat(32);
+  const operation = {
+    aggregateClass: "owned_plan" as const,
+    kind: "insert" as const,
+    portableId,
+    archiveId: "plan",
+    localId: "plan",
+  };
+  const aggregate = {
+    aggregateClass: "owned_plan" as const,
+    portableId,
+    tables: {
+      plans: [{ id: "plan", portable_id: portableId, origin: "custom" }],
+      plan_days: [{ id: "day", plan_id: "plan" }],
+      plan_schedules: [{ id: "legacy-schedule", plan_id: "plan" }],
+      plan_schedule_bindings: [{ id: "legacy-binding", schedule_id: "legacy-schedule", plan_day_id: "day" }],
+      plan_day_exercises: [{ id: "legacy-occurrence", plan_day_id: "day" }],
+      plan_warmup_sets: [{ id: "legacy-warmup", plan_day_exercise_id: "legacy-occurrence" }],
+      plan_working_set_targets: [{ id: "legacy-target", plan_day_exercise_id: "legacy-occurrence" }],
+      progression_policies: [{ id: "legacy-policy", plan_day_exercise_id: "legacy-occurrence" }],
+      progression_recommendations: [{ id: "legacy-recommendation", plan_working_set_target_id: "legacy-target" }],
+      owned_plan_aggregate_states: [{ plan_id: "plan" }],
+      owned_plan_starter_sources: [{ plan_id: "plan" }],
+      owned_plan_day_sources: [{ plan_day_id: "day", plan_id: "plan" }],
+      owned_plan_day_exercises: [{ id: "owned-occurrence", plan_day_id: "day" }],
+      owned_plan_warmup_sets: [{ id: "owned-warmup", plan_day_exercise_id: "owned-occurrence" }],
+      owned_plan_working_set_targets: [{ id: "owned-target", plan_day_exercise_id: "owned-occurrence" }],
+      owned_plan_progression_policies: [{ id: "owned-policy", plan_day_exercise_id: "owned-occurrence" }],
+      owned_plan_occurrence_sources: [{ plan_day_exercise_id: "owned-occurrence", plan_day_id: "day" }],
+      owned_plan_schedules: [{ id: "owned-schedule", plan_id: "plan" }],
+      owned_plan_schedule_versions: [{ id: "owned-version", schedule_id: "owned-schedule" }],
+      owned_plan_schedule_bindings: [{ id: "owned-binding", schedule_version_id: "owned-version", plan_day_id: "day" }],
+      owned_plan_schedule_overrides: [{ id: "owned-override", schedule_id: "owned-schedule" }],
+      owned_plan_schedule_opportunities: [{ id: "owned-opportunity", schedule_id: "owned-schedule" }],
+      owned_plan_schedule_events: [{ id: "owned-event", schedule_id: "owned-schedule" }],
+      owned_plan_mutation_requests: [{ request_id: "mutation" }],
+      starter_plan_activation_requests: [{ request_id: "activation" }],
+      owned_progression_recommendations: [{ id: "owned-recommendation", owned_plan_working_set_target_id: "owned-target" }],
+    },
+  };
+  return { aggregate, operation };
+}
+
 describe("logical merge repository", () => {
   it("accepts matching live local facts for every full-plan operation class", () => {
     const operations: PortableMergePlan["operations"] = [
@@ -790,6 +834,28 @@ describe("logical merge repository", () => {
     const ownedAggregate = ownedPlan.aggregates.find((value) => value.aggregateClass === "owned_plan")!;
     const ownedOperation = ownedPlan.operations.find((value) => value.aggregateClass === "owned_plan")!;
     expect(() => __logicalMergeRepositoryTestOnly.assertOwnedPlanAggregate(ownedAggregate, ownedOperation as never))
+      .not.toThrow();
+
+    const maximal = maximalOwnedPlanAggregate();
+    expect(() => __logicalMergeRepositoryTestOnly.assertOwnedPlanAggregate(maximal.aggregate, maximal.operation))
+      .not.toThrow();
+  });
+
+  it("accepts a combined all-class plan with matching aggregate mappings", async () => {
+    const customKernel = await open("combined-plan-custom");
+    const { plan: customPlan } = await fullPlanFixture(customKernel);
+    const { plan: sessionPlan } = await fullSessionPlanFixture();
+    const { plan: ownedPlan } = await fullOwnedPlanFixture();
+    const combined: PortableMergePlan = {
+      operations: [...customPlan.operations, ...sessionPlan.operations, ...ownedPlan.operations],
+      idMappings: [...customPlan.idMappings, ...sessionPlan.idMappings, ...ownedPlan.idMappings],
+      idRemaps: [...customPlan.idRemaps, ...sessionPlan.idRemaps, ...ownedPlan.idRemaps],
+      settings: customPlan.settings,
+      aggregates: [...customPlan.aggregates, ...sessionPlan.aggregates, ...ownedPlan.aggregates],
+      preview: { inserted: 0, duplicates: 0, archiveWon: 0, localWon: 0, keptBoth: 0, remapped: 0, conflicts: 0 },
+    };
+
+    expect(() => __logicalMergeRepositoryTestOnly.assertFullPlanSlice(combined))
       .not.toThrow();
   });
 
