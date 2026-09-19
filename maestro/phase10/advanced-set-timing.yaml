@@ -76,6 +76,7 @@ tags:
     id: "advanced-timing-config-cluster-rest"
 - eraseText: 2
 - inputText: "20"
+- hideKeyboard
 - tapOn: "both cues"
 - tapOn: "Save timing"
 - assertVisible: "Per-rep cadence"
@@ -115,6 +116,7 @@ tags:
     id: "advanced-timing-cluster-gap-seconds"
 - eraseText: 2
 - inputText: "20"
+- hideKeyboard
 - tapOn: "Configure and start cluster timing"
 - extendedWaitUntil:
     visible: "Start rest after group 1"
