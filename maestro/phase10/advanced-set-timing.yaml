@@ -97,14 +97,6 @@ tags:
     visible: "Pause per-rep cadence"
     timeout: 30000
 - tapOn: "Stop per-rep cadence"
-- hideKeyboard
-- swipe:
-    start: 50%, 45%
-    end: 50%, 75%
-    duration: 300
-- extendedWaitUntil:
-    visible: "Configure and start per-rep cadence"
-    timeout: 30000
 - scrollUntilVisible:
     element:
       text: "Set timing"

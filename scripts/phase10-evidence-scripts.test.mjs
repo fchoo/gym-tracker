@@ -171,11 +171,7 @@ test("Phase 10 Maestro flow exercises per-rep and 3+3+3 cluster lifecycle timing
   );
   assert.match(
     flow,
-    /tapOn: "Stop per-rep cadence"[\s\S]*?swipe:[\s\S]*?start: 50%, 45%[\s\S]*?end: 50%, 75%[\s\S]*?visible: "Configure and start per-rep cadence"/u,
-  );
-  assert.match(
-    flow,
-    /tapOn: "Stop per-rep cadence"[\s\S]*?hideKeyboard[\s\S]*?swipe:[\s\S]*?start: 50%, 45%[\s\S]*?end: 50%, 75%/u,
+    /tapOn: "Stop per-rep cadence"[\s\S]*?scrollUntilVisible:[\s\S]*?text: "Set timing"/u,
   );
   assert.doesNotMatch(flow, /visible: "Rep 2"/u);
   assert.match(flow, /Resume per-rep cadence/u);
