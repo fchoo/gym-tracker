@@ -27,6 +27,7 @@ import {
 } from "../../src/platform/sqlite/repositories/logicalBackupRepository";
 import {
   LOGICAL_BACKUP_TABLE_DEFINITIONS,
+  type LogicalBackupRow,
 } from "../../src/domains/portability/backupContracts";
 import {
   __logicalMergeRepositoryTestOnly,
@@ -652,6 +653,76 @@ describe("logical merge repository", () => {
       async () => { throw new Error("fault"); },
     )).rejects.toThrow("fault");
   });
+
+  it("deletes every session child before its root and exposes exact fault stages", async () => {
+    const statements: string[] = [];
+    const stages: string[] = [];
+    const transaction = transactionStub({
+      execute: async (sql) => { statements.push(sql); return { changes: 1, lastInsertRowId: 0 }; },
+    });
+    await __logicalMergeRepositoryTestOnly.deleteLocalAggregate(
+      transaction,
+      "session",
+      async (stage) => { stages.push(stage); },
+    );
+    expect(statements).toHaveLength(10);
+    expect(statements.at(-1)).toContain('DELETE FROM "workout_sessions"');
+    expect(stages).toEqual(expect.arrayContaining([
+      "delete:session_advanced_timing_states",
+      "delete:workout_sessions",
+    ]));
+  });
+
+  it("accepts exact state advancement and taxonomy insertion through direct helpers", async () => {
+    let stateRead = 0;
+    const stateTransaction = transactionStub({
+      execute: async () => ({ changes: 1, lastInsertRowId: 0 }),
+      queryAll: async (sql) => {
+        if (sql.includes("portability_restore_state")) {
+          stateRead += 1;
+          return stateRead === 1 ? [{ updated_at_ms: 5 }] : [{ state: "rebuild_pending" }];
+        }
+        return [];
+      },
+    });
+    await expect(__logicalMergeRepositoryTestOnly.markRebuildPending(stateTransaction, 1))
+      .resolves.toBeUndefined();
+
+    const inserts: string[] = [];
+    const taxonomyTransaction = transactionStub({
+      execute: async (sql) => { inserts.push(sql); return { changes: 1, lastInsertRowId: 0 }; },
+      queryAll: async () => [],
+    });
+    await expect(__logicalMergeRepositoryTestOnly.insertFullPlanTaxonomyTerm(
+      taxonomyTransaction,
+      { kind: "equipment", slug: "bar", display_name: "Bar" },
+    )).resolves.toBeUndefined();
+    expect(inserts[0]).toContain('"taxonomy_terms"');
+  });
+
+  it("rejects exact verification helper faults", async () => {
+    const kernel = await open("verification-helper-faults");
+    const { plan } = await fullPlanFixture(kernel);
+    const missingPrimaryKey = {
+      ...plan,
+      settings: [{ value_json: '"metric"' }],
+    };
+    await expect(__logicalMergeRepositoryTestOnly.verifyFullPlanSlice(
+      transactionStub(),
+      missingPrimaryKey,
+      undefined,
+    )).rejects.toEqual(expect.objectContaining({ code: "logical_merge_failed" }));
+
+    const mismatch = verificationTransaction(plan);
+    await expect(__logicalMergeRepositoryTestOnly.verifyFullPlanSlice(
+      mismatch,
+      {
+        ...plan,
+        settings: plan.settings.map((row) => ({ ...row, value_json: '"different"' })),
+      },
+      undefined,
+    )).rejects.toEqual(expect.objectContaining({ code: "logical_merge_failed" }));
+  });
   it("rejects malformed private SQL values and row mutations before they reach SQLite", async () => {
     const transaction = transactionStub();
 
@@ -857,6 +928,59 @@ describe("logical merge repository", () => {
 
     expect(() => __logicalMergeRepositoryTestOnly.assertFullPlanSlice(combined))
       .not.toThrow();
+  });
+
+  it.each([
+    ["an unsupported operation class", (plan: PortableMergePlan) => ({
+      ...plan,
+      operations: [...plan.operations, { aggregateClass: "unsupported", kind: "insert" } as never],
+    })],
+    ["an unsupported aggregate class", (plan: PortableMergePlan) => ({
+      ...plan,
+      aggregates: [...plan.aggregates, { aggregateClass: "unsupported", portableId: "x", tables: {} } as never],
+    })],
+    ["a mapping with an unsupported record class", (plan: PortableMergePlan) => ({
+      ...plan,
+      idMappings: [...plan.idMappings, { recordClass: "unsupported", archiveId: "x", localId: "x" } as never],
+    })],
+    ["an unmatched required custom remap", (plan: PortableMergePlan) => {
+      const custom = plan.operations.find((operation) => operation.aggregateClass === "custom_exercise")!;
+      return {
+        ...plan,
+        operations: plan.operations.map((operation) => operation === custom
+          ? { ...operation, kind: "keep_both" as const }
+          : operation),
+        idRemaps: [],
+      };
+    }],
+  ] as Array<[string, (plan: PortableMergePlan) => PortableMergePlan]>)("rejects %s in direct full-plan validation", async (_label, mutate) => {
+    const kernel = await open(`direct-plan-${_label}`);
+    const { plan } = await fullPlanFixture(kernel);
+    expect(() => __logicalMergeRepositoryTestOnly.assertFullPlanSlice(mutate(plan)))
+      .toThrow(expect.objectContaining({ code: "logical_merge_failed" }));
+  });
+
+  it.each([
+    ["a blank local setting key", operationPlan([]), { app_settings: [{ key: " " }] }],
+    ["a session winner without its local identity", operationPlan([{
+      aggregateClass: "workout_session", kind: "archive_won", portableId: "a".repeat(32), archiveId: "archive", localId: "local",
+    }]), { workout_sessions: [] }],
+    ["an owned insert whose archive and local physical ids differ", operationPlan([{
+      aggregateClass: "owned_plan", kind: "insert", portableId: "b".repeat(32), archiveId: "archive", localId: "local",
+    }]), { plans: [] }],
+    ["an owned keep-both whose archive physical id is absent", operationPlan([{
+      aggregateClass: "owned_plan", kind: "keep_both", portableId: "c".repeat(32), archiveId: "archive", localId: "local",
+    }]), { plans: [] }],
+    ["a custom insert whose archive and local physical ids differ", operationPlan([{
+      aggregateClass: "custom_exercise", kind: "insert", portableId: "d".repeat(32), archiveId: "archive", localId: "local",
+    }]), { exercises: [] }],
+    ["a custom keep-both whose archive physical id is absent", operationPlan([{
+      aggregateClass: "custom_exercise", kind: "keep_both", portableId: "e".repeat(32), archiveId: "archive", localId: "local",
+    }]), { exercises: [] }],
+  ] as Array<[string, PortableMergePlan, Record<string, readonly LogicalBackupRow[]>]>)("rejects live local facts with %s", (_label, plan, tables) => {
+    const local: MergeLocalFacts = { ownerNamespace: "9".repeat(32), schemaVersion: 22, tables };
+    expect(() => __logicalMergeRepositoryTestOnly.assertFullPlanMatchesLocal(plan, local))
+      .toThrow(expect.objectContaining({ code: "logical_merge_failed" }));
   });
 
   it.each([
