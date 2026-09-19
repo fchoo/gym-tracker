@@ -1332,3 +1332,39 @@ export async function buildPortableMergePlan(input: Readonly<{
     preview: Object.freeze({ ...basePreview, remapped: idRemaps.length }),
   });
 }
+
+/**
+ * Pure planner helpers are kept private to production callers. This read-only
+ * surface exists solely for exhaustive malformed-aggregate contract tests.
+ */
+export const __mergePlanTestOnly = Object.freeze({
+  addCounts,
+  assertReferenceClosure,
+  assertSessionAggregateClosure,
+  canonicalValue,
+  countFor,
+  encodeJson,
+  exerciseAggregate,
+  mappedIdentifier,
+  mappedRows,
+  nextPhysicalId,
+  nonNegativeInteger,
+  ownerNamespace,
+  parseJsonObject,
+  planAggregate,
+  remappedChildId,
+  replaceScalar,
+  rewriteEditReceiptResult,
+  rewriteReorderReceipt,
+  rewriteReorderReceiptResult,
+  rootOperations,
+  rowsFor,
+  sessionAggregate,
+  sessionDigestInput,
+  sessionOperation,
+  sessionRows,
+  settingPlan,
+  tableOccupiedIds,
+  textId,
+  tupleKey,
+});

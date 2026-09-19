@@ -22,6 +22,7 @@ import {
   createMergePreflightStore,
   MergeCommandError,
   portableMergeArchiveSessionAggregate,
+  portableMergeSessionAggregate,
   resolvePortableMergeOperation,
   canonicalMergeValue,
   type StoredFullMergePreflight,
@@ -208,12 +209,21 @@ describe("secure merge preflight", () => {
         ...base.tables,
         workout_sessions: [{ id: "equal", portable_id: "a".repeat(32), merge_modified_at_ms: 20 }],
       },
+    }, async (value) => value.includes("archive-session") ? "0".repeat(64) : "f".repeat(64)))
+      .resolves.toEqual({ kind: "local_won", portableId: "a".repeat(32) });
+    await expect(resolvePortableMergeOperation(archive, {
+      ...base,
+      tables: {
+        ...base.tables,
+        workout_sessions: [{ id: "equal", portable_id: "a".repeat(32), merge_modified_at_ms: 20 }],
+      },
     }, async () => "bad"))
       .rejects.toEqual(new MergeCommandError("merge_local_state_invalid"));
   });
 
   it("rejects non-canonical merge values and malformed legacy archive roots", async () => {
     expect(() => canonicalMergeValue(new Date())).toThrow("merge_local_state_invalid");
+    expect(() => canonicalMergeValue(Symbol("invalid"))).toThrow("merge_local_state_invalid");
     expect(canonicalMergeValue(Object.assign(Object.create(null), { z: 1, a: 2 })))
       .toBe('{"a":2,"z":1}');
     const malformed = {
@@ -249,6 +259,42 @@ describe("secure merge preflight", () => {
 
     expect(() => portableMergeArchiveSessionAggregate(malformed))
       .toThrow(new MergeCommandError("merge_archive_invalid"));
+  });
+
+  it("rejects an archive aggregate when the session table is absent", () => {
+    expect(() => portableMergeArchiveSessionAggregate({ tables: {} } as LogicalBackupSnapshot))
+      .toThrow(new MergeCommandError("merge_archive_invalid"));
+  });
+
+  it("treats an absent local session table as an empty merge identity set", async () => {
+    const archive = snapshot({ snapshotId: "missing-local-session-table" });
+    await expect(resolvePortableMergeOperation(archive, {
+      ownerNamespace: "11111111111111111111111111111111",
+      schemaVersion: 22,
+      tables: {},
+    }, sha256)).resolves.toEqual({ kind: "insert", portableId: "a".repeat(32) });
+  });
+
+  it("collects a complete session aggregate without leaking sibling rows", () => {
+    const aggregate = portableMergeSessionAggregate({
+      tables: {
+        workout_sessions: [{ id: "session" }, { id: "sibling" }],
+        session_exercises: [{ id: "exercise", session_id: "session" }, { id: "other-exercise", session_id: "sibling" }],
+        session_sets: [{ id: "set", session_exercise_id: "exercise" }, { id: "other-set", session_exercise_id: "other-exercise" }],
+        session_rest_states: [{ session_id: "session", next_set_id: "set" }, { session_id: "sibling", next_set_id: "other-set" }],
+        session_advanced_timing_states: [{ session_id: "session", session_set_id: "set" }],
+        session_undo_snapshots: [{ id: "undo", session_id: "session", completed_set_id: "set" }],
+      },
+    }, { id: "session" });
+
+    expect(aggregate.tables).toEqual({
+      workout_sessions: [{ id: "session" }],
+      session_exercises: [{ id: "exercise", session_id: "session" }],
+      session_sets: [{ id: "set", session_exercise_id: "exercise" }],
+      session_rest_states: [{ session_id: "session", next_set_id: "set" }],
+      session_advanced_timing_states: [{ session_id: "session", session_set_id: "set" }],
+      session_undo_snapshots: [{ id: "undo", session_id: "session", completed_set_id: "set" }],
+    });
   });
 
   it("authenticates a v1 archive before rejecting it as restore-clean only", async () => {
