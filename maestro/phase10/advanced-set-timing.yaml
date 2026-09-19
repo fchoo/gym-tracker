@@ -64,21 +64,6 @@ tags:
 - inputText: "3"
 - tapOn: "audio cues"
 - tapOn: "Save timing"
-- assertVisible: "Set timing"
-- tapOn: "Set timing"
-- assertVisible: "Set timing"
-- tapOn: "Cluster timing"
-- tapOn:
-    id: "advanced-timing-config-cluster-pattern"
-- eraseText: 5
-- inputText: "3+3+3"
-- tapOn:
-    id: "advanced-timing-config-cluster-rest"
-- eraseText: 2
-- inputText: "20"
-- hideKeyboard
-- tapOn: "both cues"
-- tapOn: "Save timing"
 - assertVisible: "Per-rep cadence"
 - assertVisible: "Per-rep interval in seconds"
 - tapOn:
@@ -104,7 +89,8 @@ tags:
 - extendedWaitUntil:
     visible: "Configure and start per-rep cadence"
     timeout: 30000
-- tapOn: "Select cluster timing"
+- assertVisible: "Set timing"
+- tapOn: "Set timing"
 - assertVisible: "Cluster timing"
 - assertVisible: "Cluster grouping"
 - assertVisible: "Cluster gap in seconds"
@@ -117,6 +103,10 @@ tags:
 - eraseText: 2
 - inputText: "20"
 - hideKeyboard
+- tapOn: "both cues"
+- tapOn: "Save timing"
+- assertVisible: "Cluster timing"
+- assertVisible: "Cluster grouping"
 - tapOn: "Configure and start cluster timing"
 - extendedWaitUntil:
     visible: "Start rest after group 1"
