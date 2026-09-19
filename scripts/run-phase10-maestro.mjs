@@ -19,10 +19,10 @@ export const PHASE10_MAESTRO_FLOW_CONTRACTS = Object.freeze([
 
 export const PHASE10_EVIDENCE_MATRIX = Object.freeze([
   Object.freeze({ id: "WORK-26", source: "src/ui/__tests__/AdvancedTimingIndicator.test.tsx", flows: ["phase10-advanced-set-timing"] }),
-  Object.freeze({ id: "D-01", source: "src/platform/haptics/expoHapticsAdapter.test.ts", flows: ["phase10-advanced-set-timing"] }),
+  Object.freeze({ id: "D-01", source: "src/bootstrap/workoutAppRuntime.test.tsx", flows: ["phase10-advanced-set-timing"] }),
   Object.freeze({ id: "D-02", source: "tests/integration/advanced-timing.test.ts", flows: ["phase10-advanced-set-timing"] }),
-  Object.freeze({ id: "D-03", source: "src/bootstrap/workoutAppRuntime.test.tsx", flows: ["phase10-advanced-set-timing"] }),
-  Object.freeze({ id: "D-04", source: "src/ui/__tests__/ActiveWorkoutScreen.test.tsx", flows: ["phase10-advanced-set-timing"] }),
+  Object.freeze({ id: "D-03", source: "tests/integration/rest-lifecycle.test.ts", flows: ["phase10-advanced-set-timing"] }),
+  Object.freeze({ id: "D-04", source: "tests/integration/advanced-timing.test.ts", flows: ["phase10-advanced-set-timing"] }),
   Object.freeze({ id: "ROADMAP-10-01", source: "tests/integration/advanced-timing.test.ts", flows: ["phase10-advanced-set-timing"] }),
   Object.freeze({ id: "ROADMAP-10-02", source: "src/ui/__tests__/AdvancedTimingIndicator.test.tsx", flows: ["phase10-advanced-set-timing"] }),
   Object.freeze({ id: "ROADMAP-10-03", source: "src/bootstrap/workoutAppRuntime.test.tsx", flows: ["phase10-advanced-set-timing"] }),
@@ -58,6 +58,29 @@ function command(executable, args) {
   }).trim();
 }
 
+function sha256File(filePath) {
+  return createHash("sha256").update(readFileSync(filePath)).digest("hex");
+}
+
+export function validatePhase10Manifest(manifest, apkPath, apkSha256) {
+  if (manifest?.schema_version !== 1
+    || manifest.profile !== "development-test"
+    || manifest.suite !== "phase10"
+    || manifest.package !== "com.fchoo.gymtracker.devtest"
+    || typeof manifest.device?.serial !== "string"
+    || manifest.device.serial.length === 0
+    || typeof manifest.apk?.path !== "string"
+    || !/^[a-f0-9]{64}$/u.test(manifest.apk?.sha256 ?? "")) {
+    fail("manifest is not a Phase 10 development-test APK contract.");
+  }
+  if (typeof apkPath !== "string" || apkPath.length === 0
+    || !/^[a-f0-9]{64}$/u.test(apkSha256 ?? "")
+    || apkSha256 !== manifest.apk.sha256) {
+    fail("APK bytes do not match the declared Phase 10 manifest.");
+  }
+  return true;
+}
+
 function resolveAdb() {
   const configured = process.env.ANDROID_HOME ?? process.env.ANDROID_SDK_ROOT;
   const candidate = configured === undefined
@@ -70,17 +93,9 @@ function resolveAdb() {
 function parseManifest(manifestPath) {
   if (!existsSync(manifestPath)) fail(`manifest is missing: ${manifestPath}`);
   const manifest = JSON.parse(readFileSync(manifestPath, "utf8"));
-  if (manifest?.schema_version !== 1
-    || manifest.profile !== "development-test"
-    || manifest.suite !== "phase10"
-    || manifest.package !== "com.fchoo.gymtracker.devtest"
-    || typeof manifest.device?.serial !== "string"
-    || manifest.device.serial.length === 0
-    || typeof manifest.apk?.path !== "string") {
-    fail("manifest is not a Phase 10 development-test APK contract.");
-  }
   const apkPath = path.resolve(projectRoot, manifest.apk.path);
   if (!existsSync(apkPath)) fail(`retained APK is missing: ${apkPath}`);
+  validatePhase10Manifest(manifest, apkPath, sha256File(apkPath));
   return { manifest, apkPath };
 }
 

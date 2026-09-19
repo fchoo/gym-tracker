@@ -6,6 +6,7 @@ import test from "node:test";
 import {
   PHASE10_EVIDENCE_MATRIX,
   PHASE10_MAESTRO_FLOW_CONTRACTS,
+  validatePhase10Manifest,
   validatePhase10Evidence,
 } from "./run-phase10-maestro.mjs";
 
@@ -30,6 +31,11 @@ test("Phase 10 runner declares the advanced timing tracer flow and evidence matr
       "ROADMAP-10-04",
     ],
   );
+  const byId = new Map(PHASE10_EVIDENCE_MATRIX.map((entry) => [entry.id, entry]));
+  assert.match(byId.get("D-01")?.source ?? "", /workoutAppRuntime.test/u);
+  assert.match(byId.get("D-02")?.source ?? "", /advanced-timing.test/u);
+  assert.match(byId.get("D-03")?.source ?? "", /rest-lifecycle.test/u);
+  assert.match(byId.get("D-04")?.source ?? "", /advanced-timing.test/u);
 });
 
 test("Phase 10 runner fails closed for missing matrix items and wrong build identity", () => {
@@ -65,6 +71,28 @@ test("Phase 10 runner fails closed for missing matrix items and wrong build iden
       failures: 1,
     }],
   }), /flow evidence is invalid/u);
+});
+
+test("Phase 10 runner rejects a retained APK whose bytes disagree with the manifest", () => {
+  const manifest = {
+    schema_version: 1,
+    profile: "development-test",
+    suite: "phase10",
+    package: "com.fchoo.gymtracker.devtest",
+    device: { serial: "emulator-5554" },
+    apk: { path: "artifacts/native/phase10/app.apk", sha256: "a".repeat(64) },
+  };
+
+  assert.doesNotThrow(() => validatePhase10Manifest(
+    manifest,
+    "/retained/app.apk",
+    "a".repeat(64),
+  ));
+  assert.throws(() => validatePhase10Manifest(
+    manifest,
+    "/retained/app.apk",
+    "b".repeat(64),
+  ), /APK bytes do not match/u);
 });
 
 test("Phase 10 Maestro flow exercises per-rep and 3+3+3 cluster lifecycle timing", async () => {
@@ -114,6 +142,10 @@ test("Phase 10 source evidence keeps cue failure advisory", async () => {
     path.join(projectRoot, "src/ui/__tests__/ActiveWorkoutScreen.test.tsx"),
     "utf8",
   );
+  const integration = await readFile(
+    path.join(projectRoot, "tests/integration/advanced-timing.test.ts"),
+    "utf8",
+  );
 
   assert.match(indicator, /Timing cue unavailable/u);
   assert.match(indicator, /The timer and recorded set remain accurate/u);
@@ -122,7 +154,23 @@ test("Phase 10 source evidence keeps cue failure advisory", async () => {
   assert.match(indicator, /Skip intra-set rest/u);
   assert.match(runtime, /createExpoHapticsAdapter\(\)\.cue\(\)/u);
   assert.match(runtime, /advancedTimingCueFailed: true/u);
+  assert.ok(runtime.includes("Promise.allSettled(cueTasks)"));
   assert.match(screenTest, /Complete Set 1/u);
   assert.ok(screenTest.includes("startManualRest).not.toHaveBeenCalled"));
   assert.match(screenTest, /Timing cue unavailable/u);
+  assert.match(integration, /protectedFacts/u);
+  assert.match(integration, /persists cluster gaps as advanced-only state and preserves one recorded set/u);
+});
+
+test("Phase 10 runner binds retained APK bytes before device installation", async () => {
+  const runner = await readFile(
+    path.join(projectRoot, "scripts/run-phase10-maestro.mjs"),
+    "utf8",
+  );
+
+  assert.match(runner, /function sha256File/u);
+  assert.ok(runner.includes(
+    "validatePhase10Manifest(manifest, apkPath, sha256File(apkPath));",
+  ));
+  assert.match(runner, /APK bytes do not match the declared Phase 10 manifest/u);
 });
