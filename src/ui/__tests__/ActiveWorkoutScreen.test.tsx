@@ -3235,6 +3235,57 @@ describe("Plan 01-08 ActiveWorkoutScreen", () => {
       }));
   });
 
+  it("clears a pending active-set scroll before a timing save can reflow the panel", async () => {
+    const scrollTo = jest.spyOn(ScrollView.prototype, "scrollTo")
+      .mockImplementation(() => undefined);
+    const updateSessionExerciseAdvancedTiming = jest.fn<NonNullable<
+      ActiveWorkoutCommands["updateSessionExerciseAdvancedTiming"]
+    >>(async () => advancedResult({
+      version: 1,
+      state: "idle",
+      revision: 0,
+      targetSessionSetId: null,
+    }, 2));
+
+    const { props, rendered } = await renderActive({
+      advancedTimingContext: {
+        sessionId: "session-1",
+        sessionRevision: 1,
+        state: { version: 1, state: "idle", revision: 0, targetSessionSetId: null },
+      },
+      commands: commands({ updateSessionExerciseAdvancedTiming }),
+    });
+    scrollTo.mockClear();
+
+    await fireEvent.press(screen.getByRole("button", {
+      name: "Configure Back Squat timing",
+    }));
+    await fireEvent.press(screen.getByRole("button", { name: "Per-rep timing" }));
+    await fireEvent.press(screen.getByRole("button", { name: "Save timing" }));
+    await waitFor(() => expect(updateSessionExerciseAdvancedTiming).toHaveBeenCalledTimes(1));
+    await rendered.rerender(
+      <AppearanceProvider>
+        <ActiveWorkoutScreen
+          {...props}
+          view={{ ...initialView, revision: 2 }}
+        />
+      </AppearanceProvider>,
+    );
+
+    await fireEvent(screen.getByTestId("overview-exercise-session-exercise-1"), "layout", {
+      nativeEvent: { layout: { x: 0, y: 120, width: 320, height: 400 } },
+    });
+    await fireEvent(screen.getByTestId("overview-working-card-session-exercise-1"), "layout", {
+      nativeEvent: { layout: { x: 0, y: 40, width: 320, height: 240 } },
+    });
+    await fireEvent(screen.getByTestId("working-set-1-row"), "layout", {
+      nativeEvent: { layout: { x: 0, y: 32, width: 320, height: 160 } },
+    });
+
+    expect(scrollTo).not.toHaveBeenCalled();
+    scrollTo.mockRestore();
+  });
+
   it("overrides the active working-set timing and inherits from the exercise", async () => {
     const updateSessionSetAdvancedTiming = jest.fn<NonNullable<
       ActiveWorkoutCommands["updateSessionSetAdvancedTiming"]

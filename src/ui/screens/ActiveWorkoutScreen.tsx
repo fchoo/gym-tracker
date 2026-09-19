@@ -797,6 +797,7 @@ function PopulatedWorkoutOverview({
   const { colors, reduceMotion } = useAppTheme();
   const [view, setView] = useState(initialView);
   const viewRef = useRef(initialView);
+  const parentActiveSetIdRef = useRef(initialView.activeSetId);
   const [warmupBusy, setWarmupBusy] = useState<WarmupCommandState>(null);
   const [workingBusySetId, setWorkingBusySetId] = useState<string | null>(null);
   const [saveFailedSetId, setSaveFailedSetId] = useState<string | null>(null);
@@ -986,6 +987,7 @@ function PopulatedWorkoutOverview({
   };
 
   const applyAdvancedTimingResult = (result: AdvancedTimingCommandResult) => {
+    setPendingScrollTarget(null);
     const nextContext = {
       sessionId,
       sessionRevision: result.sessionRevision,
@@ -1206,15 +1208,19 @@ function PopulatedWorkoutOverview({
   };
 
   useEffect(() => {
+    const previousActiveSetId = parentActiveSetIdRef.current;
+    parentActiveSetIdRef.current = initialView.activeSetId;
     viewRef.current = initialView;
     setView(initialView);
-    setPendingScrollTarget(initialView.activeSetId === null
-      ? null
-      : {
-        key: `entry-${initialView.revision}-${initialView.activeSetId}`,
-        setId: initialView.activeSetId,
-        animated: false,
-      });
+    if (previousActiveSetId !== initialView.activeSetId) {
+      setPendingScrollTarget(initialView.activeSetId === null
+        ? null
+        : {
+          key: `entry-${initialView.revision}-${initialView.activeSetId}`,
+          setId: initialView.activeSetId,
+          animated: false,
+        });
+    }
   }, [initialView]);
 
   useEffect(() => {
