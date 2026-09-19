@@ -147,7 +147,7 @@ test("Phase 10 Maestro flow exercises per-rep and 3+3+3 cluster lifecycle timing
   );
   assert.match(
     flow,
-    /inputText: "20"[\s\S]*?tapOn: "Save timing"[\s\S]*?scrollUntilVisible:[\s\S]*?text: "Cluster timing"/u,
+    /id: "advanced-timing-config-cluster-pattern"[\s\S]*?inputText: "3\+3\+3"[\s\S]*?id: "advanced-timing-config-cluster-rest"[\s\S]*?inputText: "60"[\s\S]*?tapOn: "Save timing"[\s\S]*?scrollUntilVisible:[\s\S]*?text: "Cluster timing"/u,
   );
   assert.match(
     flow,
@@ -155,7 +155,7 @@ test("Phase 10 Maestro flow exercises per-rep and 3+3+3 cluster lifecycle timing
   );
   assert.match(
     flow,
-    /inputText: "20"[\s\S]*?hideKeyboard[\s\S]*?tapOn: "both cues"[\s\S]*?tapOn: "Save timing"/u,
+    /id: "advanced-timing-config-cluster-rest"[\s\S]*?inputText: "60"[\s\S]*?hideKeyboard[\s\S]*?tapOn: "both cues"[\s\S]*?tapOn: "Save timing"/u,
   );
   assert.match(flow, /Per-rep cadence/u);
   assert.match(flow, /Per-rep interval in seconds/u);

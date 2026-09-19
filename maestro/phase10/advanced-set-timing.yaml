@@ -123,7 +123,7 @@ tags:
 - tapOn:
     id: "advanced-timing-config-cluster-rest"
 - eraseText: 2
-- inputText: "20"
+- inputText: "60"
 - hideKeyboard
 - tapOn: "both cues"
 - tapOn: "Save timing"
