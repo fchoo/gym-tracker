@@ -26,6 +26,9 @@ import {
   createLogicalBackupRepository,
 } from "../../src/platform/sqlite/repositories/logicalBackupRepository";
 import {
+  LOGICAL_BACKUP_TABLE_DEFINITIONS,
+} from "../../src/domains/portability/backupContracts";
+import {
   __logicalMergeRepositoryTestOnly,
   createLogicalMergeRepository,
   type LogicalMergeFaultStage,
@@ -483,13 +486,40 @@ async function expectRejectedFullPlan(
 
 function transactionStub(input: Readonly<{
   execute?: (sql: string) => Promise<Readonly<{ changes: number; lastInsertRowId: number }>>;
-  queryAll?: (sql: string) => Promise<readonly Record<string, unknown>[]>;
+  queryAll?: (sql: string, parameters: readonly (null | number | string | Uint8Array)[]) => Promise<readonly Record<string, unknown>[]>;
 }> = {}): SqliteTransactionExecutor {
   return {
     execute: async (sql) => input.execute?.(sql) ?? { changes: 1, lastInsertRowId: 0 },
-    queryAll: async <Row extends Record<string, unknown>>(sql: string) =>
-      (input.queryAll?.(sql) ?? []) as readonly Row[],
+    queryAll: async <Row extends Record<string, unknown>>(sql: string, parameters = []) =>
+      (input.queryAll?.(sql, parameters) ?? []) as readonly Row[],
   };
+}
+
+function verificationTransaction(plan: PortableMergePlan): SqliteTransactionExecutor {
+  const rowsByPrimaryKey = new Map<string, Record<string, unknown>>();
+  const addRow = (table: keyof typeof LOGICAL_BACKUP_TABLE_DEFINITIONS, row: Record<string, unknown>) => {
+    const primaryKey = LOGICAL_BACKUP_TABLE_DEFINITIONS[table].primaryKey;
+    rowsByPrimaryKey.set(String(table) + "@@" + JSON.stringify(primaryKey.map((column) => row[column])), row);
+  };
+  for (const setting of plan.settings) addRow("app_settings", { ...setting });
+  for (const aggregate of plan.aggregates) {
+    for (const [table, rows] of Object.entries(aggregate.tables)) {
+      if (!(table in LOGICAL_BACKUP_TABLE_DEFINITIONS)) continue;
+      for (const row of rows) {
+        addRow(table as keyof typeof LOGICAL_BACKUP_TABLE_DEFINITIONS, { ...row });
+      }
+    }
+  }
+  return transactionStub({
+    queryAll: async (sql, parameters) => {
+      if (sql.includes("PRAGMA foreign_key_check")) return [];
+      if (sql.includes("FROM workout_sessions")) return [];
+      const table = Object.keys(LOGICAL_BACKUP_TABLE_DEFINITIONS).find((name) => sql.includes("FROM \"" + name + "\""));
+      if (table === undefined) return [];
+      const row = rowsByPrimaryKey.get(table + "@@" + JSON.stringify(parameters));
+      return row === undefined ? [] : [row];
+    },
+  });
 }
 
 function operationPlan(operations: PortableMergePlan["operations"]): PortableMergePlan {
@@ -722,6 +752,16 @@ describe("logical merge repository", () => {
     });
     await expect(__logicalMergeRepositoryTestOnly.markRebuildPending(invalidState, 1))
       .rejects.toEqual(expect.objectContaining({ code: "logical_merge_failed" }));
+  });
+
+  it("verifies a populated full-plan row graph and clean foreign-key check", async () => {
+    const kernel = await open("full-plan-verification-success");
+    const { plan } = await fullPlanFixture(kernel);
+    await expect(__logicalMergeRepositoryTestOnly.verifyFullPlanSlice(
+      verificationTransaction(plan),
+      { ...plan, aggregates: plan.aggregates.filter((aggregate) => aggregate.aggregateClass !== "workout_session") },
+      undefined,
+    )).resolves.toBeUndefined();
   });
 
   it("exposes no production writer path through the full-plan validation test seam", async () => {
