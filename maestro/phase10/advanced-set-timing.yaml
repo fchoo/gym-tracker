@@ -12,12 +12,6 @@ tags:
 - extendedWaitUntil:
     visible: "Choose your starting plan"
     timeout: 90000
-- scrollUntilVisible:
-    element:
-      text: "Use Full Body Foundation"
-    direction: DOWN
-    centerElement: true
-    timeout: 60000
 - tapOn: "Use Full Body Foundation"
 - scrollUntilVisible:
     element:
