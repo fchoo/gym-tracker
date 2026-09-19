@@ -225,6 +225,7 @@ export function AdvancedTimingIndicator({
     AppState.currentState === "active" ? nowMs() : null,
   );
   const reconcileInFlightRef = useRef(false);
+  const reconciledRevisionRef = useRef<number | null>(null);
   const state = context?.state ?? null;
   const activeState = state?.targetSessionSetId === targetSetId ? state : null;
   const isRunning = activeState?.state === "running"
@@ -278,12 +279,19 @@ export function AdvancedTimingIndicator({
         || (activeState.state !== "running" && activeState.state !== "cluster_gap_running")
         || currentNowMs < nextBoundaryAtMs
         || reconcileInFlightRef.current
+        || reconciledRevisionRef.current === activeState.revision
       ) {
         return;
       }
       reconcileInFlightRef.current = true;
       void onReconcile(previousForegroundMs)
-        .catch(() => setCommandFailed(true))
+        .then(() => {
+          reconciledRevisionRef.current = activeState.revision;
+        })
+        .catch(() => {
+          reconciledRevisionRef.current = null;
+          setCommandFailed(true);
+        })
         .finally(() => {
           reconcileInFlightRef.current = false;
         });

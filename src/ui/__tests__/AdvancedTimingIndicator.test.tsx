@@ -378,6 +378,56 @@ describe("AdvancedTimingIndicator", () => {
     expect(props.onReconcile).toHaveBeenCalledWith(10_000);
   });
 
+  it("does not reconcile the same elapsed cluster gap twice while the parent refreshes", async () => {
+    jest.useFakeTimers();
+    const gap: Extract<AdvancedTimingStateV1, {
+      state: "cluster_gap_running";
+    }> = {
+      version: 1,
+      state: "cluster_gap_running",
+      mode: "cluster",
+      revision: 4,
+      targetSessionSetId: "set-1",
+      cueChannels: "both",
+      groupSizes: [3, 3, 3],
+      intraRestMs: 20_000,
+      currentGroupIndex: 0,
+      gapStartedAtMs: 10_000,
+      gapEndsAtMs: 30_000,
+    };
+    const ready: Extract<AdvancedTimingStateV1, {
+      state: "cluster_ready";
+    }> = {
+      version: 1,
+      state: "cluster_ready",
+      mode: "cluster",
+      revision: 5,
+      targetSessionSetId: "set-1",
+      cueChannels: "both",
+      groupSizes: [3, 3, 3],
+      intraRestMs: 20_000,
+      currentGroupIndex: 1,
+    };
+    const onReconcile = jest.fn(async () => result(ready));
+    const { nowMs } = await renderIndicator({
+      context: context(gap),
+      onReconcile,
+    });
+
+    nowMs(30_000);
+    await act(async () => {
+      jest.advanceTimersByTime(1_000);
+      await Promise.resolve();
+    });
+    await act(async () => {
+      jest.advanceTimersByTime(1_000);
+      await Promise.resolve();
+    });
+
+    expect(onReconcile).toHaveBeenCalledTimes(1);
+    expect(onReconcile).toHaveBeenCalledWith(10_000);
+  });
+
   it("renders paused controls and disables unavailable timing actions", async () => {
     const paused: Extract<AdvancedTimingStateV1, { state: "paused" }> = {
       version: 1,
