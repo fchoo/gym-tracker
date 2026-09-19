@@ -236,4 +236,23 @@ describe("portable merge plan", () => {
       }),
     ]));
   });
+
+  it("rejects an orphan session child before returning any plan", () => {
+    const archive = snapshot(
+      { id: "archive-session", marker: "archive", modifiedAtMs: 20 },
+      {
+        session_exercises: [{
+          id: "orphan-exercise",
+          session_id: "missing-session",
+        }],
+      },
+    );
+    const local = snapshot({ id: "local-session", marker: "local", modifiedAtMs: 10 });
+
+    expect(() => buildPortableMergePlan({
+      archive,
+      local,
+      payloadDigest: () => "0".repeat(64),
+    })).toThrow("merge_plan_invalid");
+  });
 });

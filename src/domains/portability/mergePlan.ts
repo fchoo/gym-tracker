@@ -118,6 +118,44 @@ function sessionRows(snapshot: PortableMergePlanSnapshot): readonly LogicalBacku
   return rows;
 }
 
+function assertSessionAggregateClosure(snapshot: PortableMergePlanSnapshot): void {
+  const sessionIds = new Set(sessionRows(snapshot).map((row) => textId(row.id)));
+  const exerciseIds = new Set<string>();
+  for (const row of rowsFor(snapshot, "session_exercises")) {
+    if (!sessionIds.has(textId(row.session_id))) invalid();
+    exerciseIds.add(textId(row.id));
+  }
+  const setIds = new Set<string>();
+  for (const row of rowsFor(snapshot, "session_sets")) {
+    if (!exerciseIds.has(textId(row.session_exercise_id))) invalid();
+    setIds.add(textId(row.id));
+  }
+  for (const table of [
+    "session_rest_states",
+    "session_advanced_timing_states",
+    "session_undo_snapshots",
+    "history_session_overlays",
+    "history_audit_events",
+    "workout_session_exercise_edit_receipts",
+    "workout_session_exercise_reorder_receipts",
+  ]) {
+    for (const row of rowsFor(snapshot, table)) {
+      if (!sessionIds.has(textId(row.session_id))) invalid();
+    }
+  }
+  for (const row of rowsFor(snapshot, "session_rest_states")) {
+    if (row.next_set_id !== null && row.next_set_id !== undefined
+      && !setIds.has(textId(row.next_set_id))) invalid();
+  }
+  for (const row of rowsFor(snapshot, "session_advanced_timing_states")) {
+    if (row.session_set_id !== null && row.session_set_id !== undefined
+      && !setIds.has(textId(row.session_set_id))) invalid();
+  }
+  for (const row of rowsFor(snapshot, "session_undo_snapshots")) {
+    if (!setIds.has(textId(row.completed_set_id))) invalid();
+  }
+}
+
 function sessionDigestInput(
   snapshot: PortableMergePlanSnapshot,
   session: LogicalBackupRow,
@@ -362,6 +400,8 @@ export function buildPortableMergePlan(input: Readonly<{
   payloadDigest(value: string): string;
 }>): PortableMergePlan {
   if (ownerNamespace(input.archive) !== ownerNamespace(input.local)) invalid();
+  assertSessionAggregateClosure(input.archive);
+  assertSessionAggregateClosure(input.local);
   const localByPortableId = new Map<string, LogicalBackupRow[]>();
   for (const row of sessionRows(input.local)) {
     if (!isOpaquePortableId(row.portable_id)) invalid();
