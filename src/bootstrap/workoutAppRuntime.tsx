@@ -321,6 +321,9 @@ import {
   createLogicalRestoreRepository,
 } from "../platform/sqlite/repositories/logicalRestoreRepository";
 import {
+  createLogicalMergeRepository,
+} from "../platform/sqlite/repositories/logicalMergeRepository";
+import {
   createRestoreReconciliationRepository,
 } from "../platform/sqlite/repositories/restoreReconciliationRepository";
 import type {
@@ -972,6 +975,7 @@ type RuntimeValue = RuntimeState & Readonly<{
   saveZeroSetWorkout(input: SaveZeroSetInput): Promise<FinishOutcomeResult>;
   preflightSecureRestore(input: Readonly<{ password: string }>): Promise<RuntimeRestorePreflightResult>;
   preflightSecureMerge(input: Readonly<{ password: string }>): Promise<RuntimeMergePreflightResult>;
+  commitSecureMerge(input: Readonly<{ token: string; confirmation: string }>): Promise<RuntimeRestoreCommitResult>;
   invalidateSecureMergePreflight(token: string): void;
   invalidateSecureRestorePreflight(token: string): void;
   commitSecureRestore(input: Readonly<{ token: string; confirmation: string }>): Promise<RuntimeRestoreCommitResult>;
@@ -1492,6 +1496,16 @@ export const productionWorkoutAppRuntimeDependencies =
         tokenFactory() {
           const { randomUUID } = require("expo-crypto") as typeof import("expo-crypto");
           return randomUUID();
+        },
+      }),
+      writer: createLogicalMergeRepository(kernel, {
+        nowMs: () => Date.now(),
+        sha256: async (value) => {
+          const {
+            CryptoDigestAlgorithm,
+            digestStringAsync,
+          } = require("expo-crypto") as typeof import("expo-crypto");
+          return digestStringAsync(CryptoDigestAlgorithm.SHA256, value);
         },
       }),
     }),
@@ -2429,6 +2443,9 @@ export function WorkoutAppRuntimeProvider({
       mergeCommands: dependencies.createMergeCommands?.(kernel)
         ?? Object.freeze({
           preflightSecureMerge: async () => {
+            throw new Error("merge_commands_unavailable");
+          },
+          commitSecureMerge: async () => {
             throw new Error("merge_commands_unavailable");
           },
           invalidateSecureMergePreflight: () => undefined,
@@ -4316,6 +4333,18 @@ export function WorkoutAppRuntimeProvider({
       requireServices().restoreCommands.preflightSecureRestore(input),
     preflightSecureMerge: (input) =>
       requireServices().mergeCommands.preflightSecureMerge(input),
+    commitSecureMerge: async (input) => {
+      const services = requireServices();
+      await services.mergeCommands.commitSecureMerge(input);
+      const result = services.reconcileRestore === undefined
+        ? { outcome: "retryable_failure" as const }
+        : await services.reconcileRestore();
+      return {
+        state: result.outcome === "rebuilt" || result.outcome === "already_ready"
+          ? "ready" as const
+          : "rebuild_pending" as const,
+      };
+    },
     invalidateSecureMergePreflight: (token) =>
       requireServices().mergeCommands.invalidateSecureMergePreflight(token),
     invalidateSecureRestorePreflight: (token) =>

@@ -15,7 +15,10 @@ import {
   type RestoreRetainedReferencePort,
   type RestoreSchemaPort,
 } from "../../../domains/portability/restoreCommands";
-import type { SqliteKernel } from "../sqliteKernel";
+import type {
+  SqliteKernel,
+  SqliteTransactionExecutor,
+} from "../sqliteKernel";
 import {
   LOGICAL_BACKUP_TABLE_FILTERS,
 } from "./logicalBackupRepository";
@@ -256,32 +259,37 @@ export function createSqliteMergeLocalFactsPort(
   kernel: SqliteKernel,
 ): MergeLocalFactsPort {
   return Object.freeze({
-    async read() {
-      const [schema, owner] = await Promise.all([
-        kernel.queryAll<{ user_version: number }>("PRAGMA user_version"),
-        kernel.queryAll<{ owner_namespace: string }>(
-          "SELECT owner_namespace FROM portable_owner_identity WHERE id = 1",
-        ),
-      ]);
-      if (schema.length !== 1 || !Number.isSafeInteger(schema[0]?.user_version)
-        || owner.length !== 1 || typeof owner[0]?.owner_namespace !== "string") {
-        throw new RestoreCandidateProbeError();
-      }
-      const tables: Record<string, readonly LogicalBackupSnapshot["tables"][string][number][]> = {};
-      for (const table of LOGICAL_BACKUP_TABLES) {
-        const rows = await kernel.queryAll<Record<string, unknown>>(
-          `SELECT * FROM ${identifier(table)}
-           WHERE ${LOGICAL_BACKUP_TABLE_FILTERS[table]}
-           ORDER BY ${orderBy(table)}`,
-        );
-        tables[table] = Object.freeze(rows.map(localRow));
-      }
-      return Object.freeze({
-        ownerNamespace: owner[0]!.owner_namespace,
-        schemaVersion: schema[0]!.user_version,
-        tables: Object.freeze(tables),
-      });
-    },
+    read: () => readSqliteMergeLocalFacts(kernel),
+  });
+}
+
+/** Shared canonical read path for preflight and the merge writer recheck. */
+export async function readSqliteMergeLocalFacts(
+  reader: Pick<SqliteKernel | SqliteTransactionExecutor, "queryAll">,
+): Promise<Awaited<ReturnType<MergeLocalFactsPort["read"]>>> {
+  const [schema, owner] = await Promise.all([
+    reader.queryAll<{ user_version: number }>("PRAGMA user_version"),
+    reader.queryAll<{ owner_namespace: string }>(
+      "SELECT owner_namespace FROM portable_owner_identity WHERE id = 1",
+    ),
+  ]);
+  if (schema.length !== 1 || !Number.isSafeInteger(schema[0]?.user_version)
+    || owner.length !== 1 || typeof owner[0]?.owner_namespace !== "string") {
+    throw new RestoreCandidateProbeError();
+  }
+  const tables: Record<string, readonly LogicalBackupSnapshot["tables"][string][number][]> = {};
+  for (const table of LOGICAL_BACKUP_TABLES) {
+    const rows = await reader.queryAll<Record<string, unknown>>(
+      `SELECT * FROM ${identifier(table)}
+       WHERE ${LOGICAL_BACKUP_TABLE_FILTERS[table]}
+       ORDER BY ${orderBy(table)}`,
+    );
+    tables[table] = Object.freeze(rows.map(localRow));
+  }
+  return Object.freeze({
+    ownerNamespace: owner[0]!.owner_namespace,
+    schemaVersion: schema[0]!.user_version,
+    tables: Object.freeze(tables),
   });
 }
 

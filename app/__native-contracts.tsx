@@ -76,6 +76,12 @@ import {
   runSqliteKernelContract as verifySqliteKernelContract,
   type SqliteKernelContractResult,
 } from "../src/testing/contracts/sqliteKernel.contract";
+import {
+  createExpoPortableMergeContractAdapter,
+  PORTABLE_MERGE_CONTRACT_CASES,
+  runPortableMergeContract as verifyPortableMergeContract,
+  type PortableMergeContractResult,
+} from "../src/testing/contracts/portableMerge.contract";
 
 const RESULT_MARKER = "GYM_TRACKER_SQLITE_CONTRACT_RESULT:";
 const CASE_MARKER = "GYM_TRACKER_SQLITE_CONTRACT_CASE:";
@@ -107,6 +113,7 @@ const selectedSuite = configuredSuite === "phase10" || configuredSuite === "phas
   || configuredSuite === "phase2-schedule"
   || configuredSuite === "phase2-search"
   || configuredSuite === "phase2-starter"
+  || configuredSuite === "portable-merge"
   ? configuredSuite
   : "sqlite-kernel";
 const expectedCaseCount = {
@@ -119,6 +126,7 @@ const expectedCaseCount = {
   "phase2-schedule": PHASE2_SCHEDULE_CASE_IDS.length,
   "phase2-search": PHASE2_SEARCH_CASE_IDS.length,
   "phase2-starter": PHASE2_STARTER_CASE_IDS.length,
+  "portable-merge": PORTABLE_MERGE_CONTRACT_CASES.length,
   "sqlite-kernel": 10,
 }[selectedSuite];
 
@@ -152,7 +160,8 @@ type NativeContractResult =
   | Phase2SearchContractResult
   | Phase2StarterContractResult
   | SqliteKernelContractResult
-  | MigrationsEffectsContractResult;
+  | MigrationsEffectsContractResult
+  | PortableMergeContractResult;
 
 type RouteState =
   | Readonly<{ status: "disabled" | "running" }>
@@ -451,6 +460,14 @@ export default function NativeSqliteContractsScreen() {
           setState({ status: "finished", result });
           return;
         }
+        if (selectedSuite === "portable-merge") {
+          const result = await verifyPortableMergeContract(
+            await createExpoPortableMergeContractAdapter(runId),
+          );
+          console.log(`${RESULT_MARKER}${JSON.stringify(result)}`);
+          setState({ status: "finished", result });
+          return;
+        }
         const adapter = await createExpoSqliteContractAdapter(runId);
         const kernelResult = await verifySqliteKernelContract(adapter);
         console.log(`${RESULT_MARKER}${JSON.stringify(kernelResult)}`);
@@ -494,6 +511,8 @@ export default function NativeSqliteContractsScreen() {
       ? `Running ${expectedCaseCount} packaged starter contracts…`
       : selectedSuite === "migrations-effects"
       ? `Running migrations/effects preflight and ${expectedCaseCount} SQLite integrity contracts…`
+      : selectedSuite === "portable-merge"
+      ? `Running ${expectedCaseCount} portable merge SQLite contracts…`
       : "Running 10 SQLite integrity contracts…"
     : `${result?.passed ?? 0} / ${result?.total ?? expectedCaseCount} passed`;
 
@@ -519,6 +538,8 @@ export default function NativeSqliteContractsScreen() {
           ? "Phase 2 Starter Contracts"
           : selectedSuite === "migrations-effects"
           ? "Migrations & Effects Contracts"
+          : selectedSuite === "portable-merge"
+          ? "Portable Merge Contracts"
           : "SQLite Kernel Contracts"}
       </Text>
       <Text

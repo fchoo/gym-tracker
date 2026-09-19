@@ -64,6 +64,11 @@ export type MergeOperation = Readonly<{
   portableId: string;
 }>;
 
+export type MergeSessionAggregate = Readonly<{
+  session: LogicalBackupRow;
+  tables: Readonly<Record<string, readonly LogicalBackupRow[]>>;
+}>;
+
 export type StoredMergePreflight = Readonly<{
   archiveDigest: string;
   localFingerprint: string;
@@ -77,11 +82,26 @@ export type MergePreflightStore = Readonly<{
   consume(token: string): StoredMergePreflight | null;
 }>;
 
+export type MergeWriterPort = Readonly<{
+  /**
+   * Runs the selected plan in the repository-owned writer. The implementation
+   * must recompute `localFingerprint` from the live transaction before it
+   * changes source facts.
+   */
+  commit(input: StoredMergePreflight): Promise<Readonly<{
+    state: "ready" | "rebuild_pending";
+  }>>;
+}>;
+
 export type SecureMergeCommands = Readonly<{
   preflightSecureMerge(input: Readonly<{ password: string }>): Promise<
     | Readonly<{ outcome: "cancelled" }>
     | Readonly<{ outcome: "ready"; token: string; preview: MergePreview }>
   >;
+  commitSecureMerge(input: Readonly<{
+    confirmation: string;
+    token: string;
+  }>): Promise<Readonly<{ state: "ready" | "rebuild_pending" }>>;
   invalidateSecureMergePreflight(token: string): void;
 }>;
 
@@ -98,7 +118,9 @@ export class MergeCommandError extends Error {
     | "merge_archive_requires_v2"
     | "merge_owner_namespace_conflict"
     | "merge_local_state_invalid"
-    | "merge_preflight_token_invalid",
+    | "merge_preflight_token_invalid"
+    | "merge_confirmation_invalid"
+    | "merge_commit_failed",
   ) {
     super(code);
     this.name = "MergeCommandError";
@@ -115,6 +137,7 @@ export type MergeCommandDependencies = Readonly<{
   local: MergeLocalFactsPort;
   sha256(value: string): Promise<string>;
   store: MergePreflightStore;
+  writer?: MergeWriterPort;
 }>;
 
 function wipe(...buffers: Array<Uint8Array | undefined>): void {
@@ -138,18 +161,18 @@ function isPlainObject(value: unknown): value is Record<string, unknown> {
   return prototype === Object.prototype || prototype === null;
 }
 
-function stableJson(value: unknown): string {
+export function canonicalMergeValue(value: unknown): string {
   if (value === null || typeof value === "boolean" || typeof value === "number" || typeof value === "string") {
     return JSON.stringify(value);
   }
   if (Array.isArray(value)) {
-    return `[${value.map(stableJson).join(",")}]`;
+    return `[${value.map(canonicalMergeValue).join(",")}]`;
   }
   if (!isPlainObject(value)) {
     throw new MergeCommandError("merge_local_state_invalid");
   }
   return `{${Object.keys(value).sort().map((key) => (
-    `${JSON.stringify(key)}:${stableJson(value[key])}`
+    `${JSON.stringify(key)}:${canonicalMergeValue(value[key])}`
   )).join(",")}}`;
 }
 
@@ -157,8 +180,12 @@ function archiveDigestInput(archive: Uint8Array): string {
   return Array.from(archive, (byte) => byte.toString(16).padStart(2, "0")).join("");
 }
 
+type MergeFactSnapshot = Readonly<{
+  tables: Readonly<Record<string, readonly LogicalBackupRow[]>>;
+}>;
+
 function sessionAggregate(
-  snapshot: LogicalBackupSnapshot | MergeLocalFacts,
+  snapshot: MergeFactSnapshot,
   session: LogicalBackupRow,
 ): Readonly<Record<string, readonly LogicalBackupRow[]>> {
   const sessionId = session.id;
@@ -189,6 +216,23 @@ function sessionAggregate(
   return Object.freeze(result);
 }
 
+export function portableMergeSessionAggregate(
+  snapshot: MergeFactSnapshot,
+  session: LogicalBackupRow,
+): MergeSessionAggregate {
+  return Object.freeze({
+    session,
+    tables: sessionAggregate(snapshot, session),
+  });
+}
+
+export function portableMergeArchiveSessionAggregate(
+  snapshot: LogicalBackupSnapshot,
+): MergeSessionAggregate {
+  const session = archiveSession(snapshot);
+  return portableMergeSessionAggregate(snapshot, session);
+}
+
 function archiveSession(snapshot: LogicalBackupSnapshot): LogicalBackupRow {
   const rows = snapshot.tables.workout_sessions ?? [];
   if (rows.length !== 1 || !isPlainObject(rows[0])) {
@@ -209,7 +253,7 @@ function assertLocalFacts(value: MergeLocalFacts): void {
   }
 }
 
-async function resolveOperation(
+export async function resolvePortableMergeOperation(
   snapshot: LogicalBackupSnapshot,
   local: MergeLocalFacts,
   sha256: MergeCommandDependencies["sha256"],
@@ -239,8 +283,8 @@ async function resolveOperation(
   if (freshness < 0) return Object.freeze({ kind: "local_won", portableId: archivePortableId });
 
   const [archiveDigest, localDigest] = await Promise.all([
-    sha256(stableJson(sessionAggregate(snapshot, archive))),
-    sha256(stableJson(sessionAggregate(local, current))),
+    sha256(canonicalMergeValue(sessionAggregate(snapshot, archive))),
+    sha256(canonicalMergeValue(sessionAggregate(local, current))),
   ]);
   if (!/^[a-f0-9]{64}$/u.test(archiveDigest) || !/^[a-f0-9]{64}$/u.test(localDigest)) {
     throw new MergeCommandError("merge_local_state_invalid");
@@ -346,9 +390,9 @@ export function createMergeCommands(
           throw new MergeCommandError("merge_owner_namespace_conflict");
         }
         const [operation, archiveDigest, localFingerprint] = await Promise.all([
-          resolveOperation(snapshot, local, dependencies.sha256),
+          resolvePortableMergeOperation(snapshot, local, dependencies.sha256),
           dependencies.sha256(archiveDigestInput(archive)),
-          dependencies.sha256(stableJson(local)),
+          dependencies.sha256(canonicalMergeValue(local)),
         ]);
         if (!/^[a-f0-9]{64}$/u.test(archiveDigest)
           || !/^[a-f0-9]{64}$/u.test(localFingerprint)) {
@@ -386,6 +430,20 @@ export function createMergeCommands(
         throw new MergeCommandError("merge_archive_unavailable");
       } finally {
         wipe(password, archive ?? undefined);
+      }
+    },
+    async commitSecureMerge(input) {
+      if (input.confirmation !== "MERGE") {
+        throw new MergeCommandError("merge_confirmation_invalid");
+      }
+      const preflight = dependencies.store.consume(input.token);
+      if (preflight === null || dependencies.writer === undefined) {
+        throw new MergeCommandError("merge_preflight_token_invalid");
+      }
+      try {
+        return await dependencies.writer.commit(preflight);
+      } catch {
+        throw new MergeCommandError("merge_commit_failed");
       }
     },
     invalidateSecureMergePreflight(token) {

@@ -461,4 +461,58 @@ describe("secure merge preflight", () => {
     commands.invalidateSecureMergePreflight("other");
     expect(store.consume("active")).toEqual(expect.objectContaining({ operation: expect.any(Object) }));
   });
+
+  it("requires exact MERGE confirmation without consuming the preflight token", async () => {
+    const archiveSnapshot = snapshot({ snapshotId: "confirmation" });
+    const archive = await archiveFor(archiveSnapshot);
+    const store = createMergePreflightStore({ tokenFactory: () => "confirm-token" });
+    const writer = { commit: jest.fn(async () => ({ state: "rebuild_pending" as const })) };
+    const commands = createMergeCommands({
+      crypto: cryptoPort(),
+      files: { readSelectedArchiveAtMost: async () => archive },
+      kdf: { derive: async () => ({ algorithm: "argon2id", bytes: new Uint8Array(32), durationMs: 1, provider: "Bouncy Castle", providerVersion: "1.85.2" }) },
+      schema: schemaFor(archiveSnapshot),
+      candidateProbe: { validateCandidate: async () => undefined },
+      local: localFacts(),
+      sha256,
+      store,
+      writer,
+    });
+
+    await commands.preflightSecureMerge({ password: "owner-password" });
+    await expect(commands.commitSecureMerge({
+      confirmation: "merge",
+      token: "confirm-token",
+    })).rejects.toEqual(new MergeCommandError("merge_confirmation_invalid"));
+    expect(writer.commit).not.toHaveBeenCalled();
+    expect(store.consume("confirm-token")).toEqual(expect.objectContaining({
+      operation: expect.any(Object),
+    }));
+  });
+
+  it("consumes a valid token before mapping a writer failure to a safe commit error", async () => {
+    const archiveSnapshot = snapshot({ snapshotId: "commit-failure" });
+    const archive = await archiveFor(archiveSnapshot);
+    const store = createMergePreflightStore({ tokenFactory: () => "commit-token" });
+    const writer = { commit: jest.fn(async () => { throw new Error("source facts must not leak"); }) };
+    const commands = createMergeCommands({
+      crypto: cryptoPort(),
+      files: { readSelectedArchiveAtMost: async () => archive },
+      kdf: { derive: async () => ({ algorithm: "argon2id", bytes: new Uint8Array(32), durationMs: 1, provider: "Bouncy Castle", providerVersion: "1.85.2" }) },
+      schema: schemaFor(archiveSnapshot),
+      candidateProbe: { validateCandidate: async () => undefined },
+      local: localFacts(),
+      sha256,
+      store,
+      writer,
+    });
+
+    await commands.preflightSecureMerge({ password: "owner-password" });
+    await expect(commands.commitSecureMerge({
+      confirmation: "MERGE",
+      token: "commit-token",
+    })).rejects.toEqual(new MergeCommandError("merge_commit_failed"));
+    expect(writer.commit).toHaveBeenCalledTimes(1);
+    expect(store.consume("commit-token")).toBeNull();
+  });
 });

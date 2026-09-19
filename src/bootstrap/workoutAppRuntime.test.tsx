@@ -170,6 +170,9 @@ import {
   createStarterPlanRuntimeCatalog,
 } from "./starterPlanRuntime";
 import type {
+  SecureMergeCommands,
+} from "../domains/portability/mergeCommands";
+import type {
   WorkoutLifecycleResult,
 } from "./workoutLifecycle";
 import type {
@@ -1183,6 +1186,63 @@ describe("WorkoutAppRuntimeProvider", () => {
     mockCommittedHaptic.mockClear();
     mockCueHaptic.mockClear();
     applyWorkoutMutationTestControl("reset_workout_failures");
+  });
+
+  it.each([
+    ["rebuilt", "ready"],
+    ["retryable_failure", "rebuild_pending"],
+  ] as Array<["rebuilt" | "retryable_failure", "ready" | "rebuild_pending"]>)("reports %s merge reconciliation as %s without replaying the writer", async (outcome, expectedState) => {
+    const repository = runtimeRepository([noPlanView], [null]);
+    const commitSecureMerge = jest.fn(async () => ({ state: "rebuild_pending" as const }));
+    const mergeCommands: SecureMergeCommands = {
+      preflightSecureMerge: async () => ({ outcome: "cancelled" }),
+      commitSecureMerge,
+      invalidateSecureMergePreflight: () => undefined,
+    };
+    const reconcileRestore = jest.fn<
+      NonNullable<WorkoutAppRuntimeDependencies["reconcileRestore"]>
+    >()
+      .mockResolvedValueOnce({
+        outcome: "already_ready" as const,
+        state: "ready" as const,
+        unavailableCatalogReferences: 0,
+      })
+      .mockResolvedValueOnce({
+        outcome,
+        state: outcome === "rebuilt" ? "ready" as const : "rebuild_pending" as const,
+        unavailableCatalogReferences: 0,
+      });
+    let captured: ReturnType<typeof useWorkoutAppRuntime> | undefined;
+
+    await render(
+      <RuntimeCaptureHarness
+        dependencies={dependencies(repository, {
+          createMergeCommands: () => mergeCommands,
+          reconcileRestore,
+        })}
+        onReady={(runtime) => {
+          captured = runtime;
+        }}
+      />,
+    );
+    await waitFor(() => {
+      expect(captured?.launchState).toBe("trusted");
+    });
+
+    let result: Awaited<ReturnType<NonNullable<typeof captured>["commitSecureMerge"]>>;
+    await act(async () => {
+      result = await captured!.commitSecureMerge({
+        confirmation: "MERGE",
+        token: "single-use",
+      });
+    });
+
+    expect(result!).toEqual({ state: expectedState });
+    expect(commitSecureMerge).toHaveBeenCalledWith({
+      confirmation: "MERGE",
+      token: "single-use",
+    });
+    expect(reconcileRestore).toHaveBeenCalledTimes(2);
   });
 
   it("exposes factual progress only through the trusted runtime boundary", async () => {
