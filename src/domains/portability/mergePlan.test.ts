@@ -162,6 +162,155 @@ describe("portable merge plan", () => {
     ]);
   });
 
+  it("remaps colliding session descendants and rewrites their internal references", async () => {
+    const children = {
+      session_exercises: [{
+        id: "exercise-1",
+        session_id: "session-1",
+        metric_profile: "load_reps",
+        metric_contract_version: 1,
+        exercise_metric_generation: 1,
+      }],
+      session_sets: [{
+        id: "set-1",
+        session_exercise_id: "exercise-1",
+        metric_profile: "load_reps",
+        metric_contract_version: 1,
+        exercise_metric_generation: 1,
+      }],
+      session_rest_states: [{ session_id: "session-1", next_set_id: "set-1" }],
+      session_advanced_timing_states: [{ session_id: "session-1", session_set_id: "set-1" }],
+      session_undo_snapshots: [{
+        id: "undo-1", session_id: "session-1", completed_set_id: "set-1",
+      }],
+      history_audit_events: [{ id: "audit-1", session_id: "session-1" }],
+      workout_session_exercise_edit_receipts: [{
+        request_id: "edit-1",
+        operation: "replace_exercise",
+        session_id: "session-1",
+        subject_session_exercise_id: "exercise-1",
+        replacement_session_exercise_id: "exercise-1",
+        result_json: JSON.stringify({
+          sessionId: "session-1",
+          sessionExerciseId: "exercise-1",
+          replacementSessionExerciseId: "exercise-1",
+          replacementSetId: "set-1",
+        }),
+      }],
+      workout_session_exercise_reorder_receipts: [{
+        request_id: "reorder-1",
+        session_id: "session-1",
+        ordered_session_exercise_ids_json: JSON.stringify(["exercise-1"]),
+        result_json: JSON.stringify({
+          sessionId: "session-1",
+          orderedSessionExerciseIds: ["exercise-1"],
+          expectedSessionExerciseRevisions: [{
+            sessionExerciseId: "exercise-1",
+            revision: 1,
+          }],
+        }),
+      }],
+    } as const;
+    const archive = snapshot(
+      { id: "session-1", marker: "archive", modifiedAtMs: 20 },
+      children,
+    );
+    const archiveWithActivePointers = {
+      ...archive,
+      tables: {
+        ...archive.tables,
+        workout_sessions: [{
+          ...archive.tables.workout_sessions[0]!,
+          active_session_exercise_id: "exercise-1",
+          active_set_id: "set-1",
+        }],
+      },
+    };
+    const local = {
+      ...snapshot({ id: "session-1", marker: "local", modifiedAtMs: 10 }, children),
+      tables: {
+        ...snapshot({ id: "session-1", marker: "local", modifiedAtMs: 10 }, children).tables,
+        workout_sessions: [{
+          id: "session-1",
+          portable_id: "b".repeat(32),
+          merge_modified_at_ms: 10,
+          marker: "local",
+        }],
+      },
+    };
+
+    const plan = await buildPortableMergePlan({
+      archive: archiveWithActivePointers,
+      local,
+      payloadDigest: async () => "0".repeat(64),
+    });
+    const aggregate = plan.aggregates.find((value) =>
+      value.aggregateClass === "workout_session" && value.portableId === sessionPortableId,
+    );
+    const sessionId = aggregate?.tables.workout_sessions?.[0]?.id;
+    const exerciseId = aggregate?.tables.session_exercises?.[0]?.id;
+    const setId = aggregate?.tables.session_sets?.[0]?.id;
+
+    expect(sessionId).not.toBe("session-1");
+    expect(exerciseId).not.toBe("exercise-1");
+    expect(setId).not.toBe("set-1");
+    expect(aggregate?.tables.session_exercises).toEqual([
+      expect.objectContaining({ id: exerciseId, session_id: sessionId }),
+    ]);
+    expect(aggregate?.tables.session_sets).toEqual([
+      expect.objectContaining({ id: setId, session_exercise_id: exerciseId }),
+    ]);
+    expect(aggregate?.tables.workout_sessions).toEqual([
+      expect.objectContaining({
+        id: sessionId,
+        active_session_exercise_id: exerciseId,
+        active_set_id: setId,
+      }),
+    ]);
+    expect(aggregate?.tables.session_rest_states).toEqual([
+      expect.objectContaining({ session_id: sessionId, next_set_id: setId }),
+    ]);
+    expect(aggregate?.tables.session_advanced_timing_states).toEqual([
+      expect.objectContaining({ session_id: sessionId, session_set_id: setId }),
+    ]);
+    expect(aggregate?.tables.session_undo_snapshots).toEqual([
+      expect.objectContaining({
+        id: expect.not.stringMatching(/^undo-1$/u),
+        session_id: sessionId,
+        completed_set_id: setId,
+      }),
+    ]);
+    expect(aggregate?.tables.history_audit_events).toEqual([
+      expect.objectContaining({ id: expect.not.stringMatching(/^audit-1$/u), session_id: sessionId }),
+    ]);
+    expect(aggregate?.tables.workout_session_exercise_edit_receipts).toEqual([
+      expect.objectContaining({
+        request_id: expect.not.stringMatching(/^edit-1$/u),
+        session_id: sessionId,
+        subject_session_exercise_id: exerciseId,
+        replacement_session_exercise_id: exerciseId,
+        result_json: JSON.stringify({
+          sessionId,
+          sessionExerciseId: exerciseId,
+          replacementSessionExerciseId: exerciseId,
+          replacementSetId: setId,
+        }),
+      }),
+    ]);
+    expect(aggregate?.tables.workout_session_exercise_reorder_receipts).toEqual([
+      expect.objectContaining({
+        request_id: expect.not.stringMatching(/^reorder-1$/u),
+        session_id: sessionId,
+        ordered_session_exercise_ids_json: JSON.stringify([exerciseId]),
+        result_json: JSON.stringify({
+          sessionId,
+          orderedSessionExerciseIds: [exerciseId],
+          expectedSessionExerciseRevisions: [{ sessionExerciseId: exerciseId, revision: 1 }],
+        }),
+      }),
+    ]);
+  });
+
   it("keeps distinct custom exercise identities and remaps a physical ID collision", async () => {
     const archive = snapshot(
       { id: "archive-session", marker: "archive", modifiedAtMs: 20 },

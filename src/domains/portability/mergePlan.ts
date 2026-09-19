@@ -273,38 +273,231 @@ function sessionDigestInput(
   return canonicalValue(tables);
 }
 
+function parseJsonObject(serialized: unknown): Record<string, unknown> {
+  if (typeof serialized !== "string") invalid();
+  try {
+    const parsed = JSON.parse(serialized);
+    if (!isPlainObject(parsed)) invalid();
+    return parsed;
+  } catch {
+    return invalid();
+  }
+}
+
+function encodeJson(value: unknown): string {
+  const encoded = JSON.stringify(value);
+  return typeof encoded === "string" ? encoded : invalid();
+}
+
+function mappedIdentifier(
+  mappings: ReadonlyMap<string, string>,
+  value: unknown,
+): string {
+  const replacement = mappings.get(textId(value));
+  return replacement === undefined ? invalid() : replacement;
+}
+
+function rewriteEditReceiptResult(
+  serialized: unknown,
+  operation: unknown,
+  sessionIds: ReadonlyMap<string, string>,
+  exerciseIds: ReadonlyMap<string, string>,
+  setIds: ReadonlyMap<string, string>,
+): string {
+  if (operation !== "replace_exercise" && operation !== "remove_exercise") invalid();
+  const result = parseJsonObject(serialized);
+  const rewritten: Record<string, unknown> = {
+    ...result,
+    sessionId: mappedIdentifier(sessionIds, result.sessionId),
+    sessionExerciseId: mappedIdentifier(exerciseIds, result.sessionExerciseId),
+  };
+  if (operation === "replace_exercise") {
+    rewritten.replacementSessionExerciseId = mappedIdentifier(
+      exerciseIds,
+      result.replacementSessionExerciseId,
+    );
+    rewritten.replacementSetId = mappedIdentifier(setIds, result.replacementSetId);
+  }
+  return encodeJson(rewritten);
+}
+
+function rewriteReorderReceipt(
+  serialized: unknown,
+  exerciseIds: ReadonlyMap<string, string>,
+): string {
+  if (typeof serialized !== "string") invalid();
+  try {
+    const values = JSON.parse(serialized);
+    if (!Array.isArray(values)) invalid();
+    return encodeJson(values.map((value) => mappedIdentifier(exerciseIds, value)));
+  } catch {
+    return invalid();
+  }
+}
+
+function rewriteReorderReceiptResult(
+  serialized: unknown,
+  sessionIds: ReadonlyMap<string, string>,
+  exerciseIds: ReadonlyMap<string, string>,
+): string {
+  const result = parseJsonObject(serialized);
+  if (!Array.isArray(result.orderedSessionExerciseIds)
+    || !Array.isArray(result.expectedSessionExerciseRevisions)) {
+    invalid();
+  }
+  const rewritten: Record<string, unknown> = {
+    ...result,
+    sessionId: mappedIdentifier(sessionIds, result.sessionId),
+    orderedSessionExerciseIds: result.orderedSessionExerciseIds.map((value) =>
+      mappedIdentifier(exerciseIds, value)),
+    expectedSessionExerciseRevisions: result.expectedSessionExerciseRevisions.map((value) => {
+      if (!isPlainObject(value)) invalid();
+      return {
+        ...value,
+        sessionExerciseId: mappedIdentifier(exerciseIds, value.sessionExerciseId),
+      };
+    }),
+  };
+  return encodeJson(rewritten);
+}
+
 function sessionAggregate(
   snapshot: PortableMergePlanSnapshot,
+  local: PortableMergePlanSnapshot,
   portableId: string,
   localSessionId: string,
 ): PortableMergeAggregate {
   const sessions = sessionRows(snapshot).filter((row) => row.portable_id === portableId);
   if (sessions.length !== 1) invalid();
   const sessionId = textId(sessions[0]!.id);
-  const exerciseIds = new Set(rowsFor(snapshot, "session_exercises")
-    .filter((row) => row.session_id === sessionId)
-    .map((row) => textId(row.id)));
-  const setIds = new Set(rowsFor(snapshot, "session_sets")
-    .filter((row) => exerciseIds.has(textId(row.session_exercise_id)))
-    .map((row) => textId(row.id)));
+  const exercises = rowsFor(snapshot, "session_exercises")
+    .filter((row) => row.session_id === sessionId);
+  const mappedExercises = mappedRows(local, "session_exercises", exercises, [
+    { column: "session_id", ids: new Map([[sessionId, localSessionId]]) },
+  ], sessionId !== localSessionId, portableId);
+  const archiveExerciseIds = new Set(exercises.map((row) => textId(row.id)));
+  const sets = rowsFor(snapshot, "session_sets")
+    .filter((row) => archiveExerciseIds.has(textId(row.session_exercise_id)));
+  const mappedSets = mappedRows(local, "session_sets", sets, [
+    { column: "session_exercise_id", ids: mappedExercises.ids },
+  ], sessionId !== localSessionId, portableId);
+  const archiveSetIds = new Set(sets.map((row) => textId(row.id)));
+  const immutableChildren = new Map<string, ReadonlyMap<string, string>>();
+  for (const [table, keyColumn] of [
+    ["session_undo_snapshots", "id"],
+    ["history_audit_events", "id"],
+    ["workout_session_exercise_edit_receipts", "request_id"],
+    ["workout_session_exercise_reorder_receipts", "request_id"],
+  ] as const) {
+    const rows = rowsFor(snapshot, table).filter((row) => row.session_id === sessionId);
+    const mapped = mappedRows(local, table, rows, [
+      { column: "session_id", ids: new Map([[sessionId, localSessionId]]) },
+      { column: "completed_set_id", ids: mappedSets.ids, optional: true },
+    ], sessionId !== localSessionId, portableId, keyColumn);
+    immutableChildren.set(table, mapped.ids);
+  }
   const isKnown = (ids: ReadonlySet<string>, value: unknown): boolean =>
     value !== null && value !== undefined && ids.has(textId(value));
   const tables: Record<string, readonly LogicalBackupRow[]> = {};
+  const sessionMap = new Map([[sessionId, localSessionId]]);
   for (const [table, rows] of Object.entries(snapshot.tables)) {
     const selected = table === "workout_sessions"
       ? rows.filter((row) => row.id === sessionId)
       : rows.filter((row) => row.session_id === sessionId
-        || isKnown(exerciseIds, row.session_exercise_id)
-        || isKnown(setIds, row.session_set_id)
-        || isKnown(setIds, row.completed_set_id));
+        || isKnown(archiveExerciseIds, row.session_exercise_id)
+        || isKnown(archiveSetIds, row.session_set_id)
+        || isKnown(archiveSetIds, row.completed_set_id));
     if (selected.length > 0) {
       tables[table] = Object.freeze(selected.map((row) => {
         let mapped: LogicalBackupRow = row;
         if (table === "workout_sessions") {
           mapped = Object.freeze({ ...mapped, id: localSessionId });
+          for (const [column, ids] of [
+            ["active_session_exercise_id", mappedExercises.ids],
+            ["active_set_id", mappedSets.ids],
+          ] as const) {
+            const value = mapped[column];
+            if (value === null || value === undefined) continue;
+            const replacement = ids.get(textId(value));
+            if (replacement === undefined) invalid();
+            mapped = Object.freeze({ ...mapped, [column]: replacement });
+          }
+        }
+        if (table === "session_exercises") {
+          return mappedExercises.rows.find((candidate) => candidate.session_id === localSessionId
+            && mappedExercises.ids.get(textId(row.id)) === candidate.id)!;
+        }
+        if (table === "session_sets") {
+          return mappedSets.rows.find((candidate) =>
+            mappedSets.ids.get(textId(row.id)) === candidate.id)!;
+        }
+        const immutableIds = immutableChildren.get(table);
+        if (immutableIds !== undefined) {
+          const keyColumn = table === "workout_session_exercise_edit_receipts"
+            || table === "workout_session_exercise_reorder_receipts"
+            ? "request_id"
+            : "id";
+          const replacement = immutableIds.get(textId(row[keyColumn]));
+          if (replacement === undefined) invalid();
+          mapped = Object.freeze({ ...mapped, [keyColumn]: replacement });
         }
         if (mapped.session_id === sessionId) {
           mapped = Object.freeze({ ...mapped, session_id: localSessionId });
+        }
+        if (mapped.session_exercise_id !== null && mapped.session_exercise_id !== undefined) {
+          const replacement = mappedExercises.ids.get(textId(mapped.session_exercise_id));
+          if (replacement !== undefined) {
+            mapped = Object.freeze({ ...mapped, session_exercise_id: replacement });
+          }
+        }
+        if (table === "workout_session_exercise_edit_receipts") {
+          for (const column of [
+            "subject_session_exercise_id",
+            "replacement_session_exercise_id",
+          ] as const) {
+            const value = mapped[column];
+            if (value === null || value === undefined) continue;
+            const replacement = mappedExercises.ids.get(textId(value));
+            if (replacement === undefined) invalid();
+            mapped = Object.freeze({ ...mapped, [column]: replacement });
+          }
+        }
+        if (table === "workout_session_exercise_reorder_receipts") {
+          mapped = Object.freeze({
+            ...mapped,
+            ordered_session_exercise_ids_json: rewriteReorderReceipt(
+              mapped.ordered_session_exercise_ids_json,
+              mappedExercises.ids,
+            ),
+          });
+        }
+        if (table === "workout_session_exercise_edit_receipts") {
+          mapped = Object.freeze({
+            ...mapped,
+            result_json: rewriteEditReceiptResult(
+              mapped.result_json,
+              mapped.operation,
+              sessionMap,
+              mappedExercises.ids,
+              mappedSets.ids,
+            ),
+          });
+        }
+        if (table === "workout_session_exercise_reorder_receipts") {
+          mapped = Object.freeze({
+            ...mapped,
+            result_json: rewriteReorderReceiptResult(
+              mapped.result_json,
+              sessionMap,
+              mappedExercises.ids,
+            ),
+          });
+        }
+        for (const column of ["session_set_id", "completed_set_id", "next_set_id"] as const) {
+          const value = mapped[column];
+          if (value === null || value === undefined) continue;
+          const replacement = mappedSets.ids.get(textId(value));
+          if (replacement !== undefined) mapped = Object.freeze({ ...mapped, [column]: replacement });
         }
         return mapped;
       }));
@@ -579,8 +772,9 @@ function exerciseAggregate(
 function tableOccupiedIds(
   snapshot: PortableMergePlanSnapshot,
   table: string,
+  keyColumn = "id",
 ): Set<string> {
-  return new Set(rowsFor(snapshot, table).map((row) => textId(row.id)));
+  return new Set(rowsFor(snapshot, table).map((row) => textId(row[keyColumn])));
 }
 
 function remappedChildId(
@@ -611,12 +805,13 @@ function mappedRows(
   }>[],
   remapIds: boolean,
   portableId: string,
+  keyColumn = "id",
 ): Readonly<{ rows: readonly LogicalBackupRow[]; ids: ReadonlyMap<string, string> }> {
-  const occupied = tableOccupiedIds(snapshot, table);
+  const occupied = tableOccupiedIds(snapshot, table, keyColumn);
   const ids = new Map<string, string>();
   for (const [index, row] of [...selected].sort((left, right) =>
-    textId(left.id).localeCompare(textId(right.id))).entries()) {
-    const sourceId = textId(row.id);
+    textId(left[keyColumn]).localeCompare(textId(right[keyColumn]))).entries()) {
+    const sourceId = textId(row[keyColumn]);
     const localId = remapIds && occupied.has(sourceId)
       ? remappedChildId(table, portableId, index, occupied)
       : sourceId;
@@ -624,7 +819,10 @@ function mappedRows(
     ids.set(sourceId, localId);
   }
   const rows = selected.map((row) => {
-    let mapped: LogicalBackupRow = Object.freeze({ ...row, id: ids.get(textId(row.id))! });
+    let mapped: LogicalBackupRow = Object.freeze({
+      ...row,
+      [keyColumn]: ids.get(textId(row[keyColumn]))!,
+    });
     for (const { column, ids: references, optional } of rowMaps) {
       const value = mapped[column];
       if (value === null || value === undefined) continue;
@@ -929,7 +1127,7 @@ export async function buildPortableMergePlan(input: Readonly<{
   const aggregates = Object.freeze(operations.flatMap((operation) => {
     if (operation.aggregateClass === "workout_session"
       && (operation.kind === "insert" || operation.kind === "archive_won")) {
-      return [sessionAggregate(input.archive, operation.portableId, operation.localId)];
+      return [sessionAggregate(input.archive, input.local, operation.portableId, operation.localId)];
     }
     if (operation.aggregateClass === "custom_exercise"
       && (operation.kind === "insert" || operation.kind === "keep_both")) {
