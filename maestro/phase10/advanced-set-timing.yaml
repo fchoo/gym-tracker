@@ -83,14 +83,32 @@ tags:
     visible: "Pause per-rep cadence"
     timeout: 30000
 - tapOn: "Pause per-rep cadence"
+- scrollUntilVisible:
+    element:
+      text: "Resume per-rep cadence"
+    direction: UP
+    centerElement: true
+    timeout: 30000
 - extendedWaitUntil:
     visible: "Resume per-rep cadence"
     timeout: 30000
 - tapOn: "Resume per-rep cadence"
+- scrollUntilVisible:
+    element:
+      text: "Pause per-rep cadence"
+    direction: UP
+    centerElement: true
+    timeout: 30000
 - extendedWaitUntil:
     visible: "Pause per-rep cadence"
     timeout: 30000
 - tapOn: "Stop per-rep cadence"
+- scrollUntilVisible:
+    element:
+      text: "Configure and start per-rep cadence"
+    direction: UP
+    centerElement: true
+    timeout: 30000
 - extendedWaitUntil:
     visible: "Configure and start per-rep cadence"
     timeout: 30000
