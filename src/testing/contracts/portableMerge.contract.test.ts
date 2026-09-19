@@ -137,6 +137,8 @@ describe("portable merge contract", () => {
     expect(runner).toContain("manifestSuite === 'phase11'");
     expect(runner).toContain("requestedSuite === 'portable-merge'");
     expect(runner).toContain("&suite=${encodeURIComponent(suite)}");
+    expect(runner).toContain("const deepLink = `gymtracker-devtest://__native-contracts?runId=${runId}&suite=${encodeURIComponent(suite)}`;");
+    expect(runner).toContain("].map(shellQuote).join(' ')");
     expect(packageJson.scripts?.["test:sqlite:device"]).toContain("portable-merge");
   });
 });

@@ -264,6 +264,10 @@ function adb(...args) {
   return command('adb', ['-s', manifest.device.serial, ...args]);
 }
 
+function shellQuote(value) {
+  return `'${value.replaceAll("'", "'\\''")}'`;
+}
+
 function exactKeys(input, expected) {
   if (typeof input !== 'object' || input === null || Array.isArray(input)) {
     return false;
@@ -412,14 +416,16 @@ try {
   await adb('shell', 'am', 'force-stop', manifest.package);
   await adb(
     'shell',
-    'am',
-    'start',
-    '-W',
-    '-a',
-    'android.intent.action.VIEW',
-    '-d',
-    deepLink,
-    manifest.package,
+    [
+      'am',
+      'start',
+      '-W',
+      '-a',
+      'android.intent.action.VIEW',
+      '-d',
+      deepLink,
+      manifest.package,
+    ].map(shellQuote).join(' '),
   );
   const contractResult = await dumpResult(runId);
   if (suite === 'phase2-fts') {
