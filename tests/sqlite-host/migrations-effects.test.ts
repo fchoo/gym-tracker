@@ -2365,6 +2365,7 @@ describe("Plan 01-06 native migration suite selection", () => {
   it("executes all shared migration and effect cases in the aggregate suite", async () => {
     const runtimes = new Map<string, HostRuntime>();
     const databasePaths = new Map<string, string>();
+    const cleanup = jest.fn(async () => undefined);
     const openKeyedRuntime = async (
       databaseKey: string,
       observer: SqliteKernelTestObserver,
@@ -2402,25 +2403,7 @@ describe("Plan 01-06 native migration suite selection", () => {
           close: runtime.close,
         };
       },
-      async deleteDatabase(databaseKey) {
-        if (
-          !databasePaths.has(databaseKey)
-          && databaseKey !== "migration-integrity-block"
-        ) {
-          throw new Error("contract_database_deleted_before_open");
-        }
-        const runtime = runtimes.get(databaseKey);
-        if (runtime !== undefined) {
-          await runtime.close().catch(() => undefined);
-          runtimes.delete(databaseKey);
-        }
-        const databasePath = databasePaths.get(databaseKey);
-        if (databasePath !== undefined) {
-          rmSync(databasePath, { force: true });
-          rmSync(`${databasePath}-shm`, { force: true });
-          rmSync(`${databasePath}-wal`, { force: true });
-        }
-      },
+      cleanup,
       async insertForeignKeyViolation(databaseKey) {
         const runtime = runtimes.get(databaseKey);
         if (runtime === undefined) {
@@ -2451,6 +2434,7 @@ describe("Plan 01-06 native migration suite selection", () => {
     });
     expect(result.cases.map(({ id }) => id))
       .toEqual(MIGRATIONS_EFFECTS_CONTRACT_CASES);
+    expect(cleanup).toHaveBeenCalledTimes(1);
   });
 
   it("keeps a dedicated migration suite without changing the kernel ten-case contract", () => {

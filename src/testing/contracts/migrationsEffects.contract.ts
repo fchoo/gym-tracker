@@ -68,7 +68,7 @@ export interface MigrationsEffectsContractAdapter {
     databaseKey: string,
     observer?: SqliteKernelTestObserver,
   ): Promise<ContractRuntime>;
-  deleteDatabase(databaseKey: string): Promise<void>;
+  cleanup?(): Promise<void>;
   insertForeignKeyViolation(databaseKey: string): Promise<void>;
   recoveryBackup: ReturnType<typeof createExpoRecoveryBackupPort>;
 }
@@ -137,14 +137,13 @@ async function withFreshRuntime<Result>(
   observer: SqliteKernelTestObserver = {},
 ): Promise<Result> {
   // Expo SQLite database names are already scoped by the native run ID.
-  // Deleting one immediately before opening it can race native shared-object
-  // teardown, while cleanup after the runtime closes preserves isolation.
+  // Deleting an isolated case while native handles are still releasing can
+  // race Expo shared-object teardown, so cleanup is deferred to the matrix.
   const runtime = await adapter.createRuntime(databaseKey, observer);
   try {
     return await operation(runtime);
   } finally {
     await runtime.close();
-    await adapter.deleteDatabase(databaseKey);
   }
 }
 
@@ -356,7 +355,6 @@ const contractCases: Record<MigrationsEffectsContractCaseId, ContractCase> = {
   },
 
   async "migration-integrity-block"(adapter, caseId) {
-    await adapter.deleteDatabase(caseId);
     let runtime = await adapter.createRuntime(caseId);
     try {
       await createMigrationRunner({
@@ -391,7 +389,6 @@ const contractCases: Record<MigrationsEffectsContractCaseId, ContractCase> = {
       invariant(rows[0]?.id === "orphan-day", "integrity_failure_row_changed");
     } finally {
       await runtime.close();
-      await adapter.deleteDatabase(caseId);
     }
   },
 
@@ -852,6 +849,7 @@ export async function createExpoMigrationsEffectsContractAdapter(
   } = require("expo-file-system") as typeof import("expo-file-system");
   const databaseName = (databaseKey: string) =>
     `migrations-effects-${runId}-${databaseKey}.db`;
+  const contractDatabaseNames = new Set<string>();
   const openOptions = {
     useNewConnection: true,
     finalizeUnusedStatementsBeforeClosing: false,
@@ -895,6 +893,7 @@ export async function createExpoMigrationsEffectsContractAdapter(
     recoveryBackup,
     async createRuntime(databaseKey, observer = {}) {
       const resolvedDatabaseName = databaseName(databaseKey);
+      contractDatabaseNames.add(resolvedDatabaseName);
       const runtime = await openSqliteKernelTestRuntime(
         resolvedDatabaseName,
         observer,
@@ -904,8 +903,12 @@ export async function createExpoMigrationsEffectsContractAdapter(
         databaseName: resolvedDatabaseName,
       };
     },
-    deleteDatabase: (databaseKey) =>
-      deleteDatabaseAsync(databaseName(databaseKey)).catch(() => undefined),
+    async cleanup() {
+      await Promise.all(
+        [...contractDatabaseNames].map((name) =>
+          deleteDatabaseAsync(name).catch(() => undefined)),
+      );
+    },
     async insertForeignKeyViolation(databaseKey) {
       const database = await openDatabaseAsync(
         databaseName(databaseKey),
@@ -930,22 +933,28 @@ export async function runMigrationsEffectsContract(
   const startedAt = new Date().toISOString();
   const results: MigrationsEffectsContractCaseResult[] = [];
 
-  for (const caseId of MIGRATIONS_EFFECTS_CONTRACT_CASES) {
-    const caseStartedAt = Date.now();
-    try {
-      await contractCases[caseId](adapter, caseId);
-      results.push({
-        id: caseId,
-        status: "passed",
-        durationMs: Date.now() - caseStartedAt,
-      });
-    } catch (error) {
-      results.push({
-        id: caseId,
-        status: "failed",
-        durationMs: Date.now() - caseStartedAt,
-        errorCode: safeErrorCode(error),
-      });
+  try {
+    for (const caseId of MIGRATIONS_EFFECTS_CONTRACT_CASES) {
+      const caseStartedAt = Date.now();
+      try {
+        await contractCases[caseId](adapter, caseId);
+        results.push({
+          id: caseId,
+          status: "passed",
+          durationMs: Date.now() - caseStartedAt,
+        });
+      } catch (error) {
+        results.push({
+          id: caseId,
+          status: "failed",
+          durationMs: Date.now() - caseStartedAt,
+          errorCode: safeErrorCode(error),
+        });
+      }
+    }
+  } finally {
+    if (adapter.cleanup !== undefined) {
+      await adapter.cleanup().catch(() => undefined);
     }
   }
 
