@@ -324,6 +324,13 @@ describe("AdvancedTimingConfigSheet", () => {
     });
   });
 
+  it("suppresses the sheet transition when reduced motion is enabled", async () => {
+    const { rendered } = await renderSheet({}, "System", true);
+
+    expect(JSON.stringify(rendered.toJSON()))
+      .toContain('"animationType":"none"');
+  });
+
   it("remains usable at 200% font scale and a narrow width", async () => {
     await setWindowDimensions(360, 780, 2);
     const { onSave } = await renderSheet({ scope: "exercise" });

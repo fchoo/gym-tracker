@@ -160,7 +160,7 @@ export function AdvancedTimingConfigSheet({
   scope: AdvancedTimingConfigScope;
   visible: boolean;
 }>) {
-  const { colors } = useAppTheme();
+  const { colors, reduceMotion } = useAppTheme();
   const [draft, setDraft] = useState<DraftState>(() =>
     draftFromValue(initialValue, scope)
   );
@@ -220,7 +220,7 @@ export function AdvancedTimingConfigSheet({
 
   return (
     <Modal
-      animationType="fade"
+      animationType={reduceMotion ? "none" : "fade"}
       transparent
       visible={visible}
       onRequestClose={onCancel}
