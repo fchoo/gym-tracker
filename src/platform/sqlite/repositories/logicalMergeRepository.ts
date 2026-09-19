@@ -149,7 +149,11 @@ function plannedRootOperationKey(
     aggregateClass: "app_setting";
   }>,
 ): string {
-  return `${operation.archiveId}\u0000${operation.localId}`;
+  return `${operation.aggregateClass}\u0000${operation.archiveId}\u0000${operation.localId}`;
+}
+
+function aggregateKey(aggregate: PortableMergeAggregate): string {
+  return `${aggregate.aggregateClass}\u0000${aggregate.portableId}`;
 }
 
 function textId(value: unknown): string {
@@ -308,6 +312,30 @@ function assertOwnedPlanAggregate(
       fail();
     }
   }
+  const legacyOccurrenceIds = new Set<string>();
+  for (const row of aggregate.tables.plan_day_exercises ?? []) {
+    if (!nonEmptyText(row.id) || legacyOccurrenceIds.has(row.id)
+      || !dayIds.has(textId(row.plan_day_id))) {
+      fail();
+    }
+    legacyOccurrenceIds.add(row.id);
+  }
+  const legacyTargetIds = new Set<string>();
+  for (const row of aggregate.tables.plan_working_set_targets ?? []) {
+    if (!nonEmptyText(row.id) || legacyTargetIds.has(row.id)
+      || !legacyOccurrenceIds.has(textId(row.plan_day_exercise_id))) {
+      fail();
+    }
+    legacyTargetIds.add(row.id);
+  }
+  for (const table of ["plan_warmup_sets", "progression_policies"] as const) {
+    for (const row of aggregate.tables[table] ?? []) {
+      if (!legacyOccurrenceIds.has(textId(row.plan_day_exercise_id))) fail();
+    }
+  }
+  for (const row of aggregate.tables.progression_recommendations ?? []) {
+    if (!legacyTargetIds.has(textId(row.plan_working_set_target_id))) fail();
+  }
   const ownedOccurrenceIds = new Set<string>();
   for (const row of aggregate.tables.owned_plan_day_exercises ?? []) {
     if (!nonEmptyText(row.id) || ownedOccurrenceIds.has(row.id)
@@ -315,6 +343,22 @@ function assertOwnedPlanAggregate(
       fail();
     }
     ownedOccurrenceIds.add(row.id);
+  }
+  const ownedTargetIds = new Set<string>();
+  for (const row of aggregate.tables.owned_plan_working_set_targets ?? []) {
+    if (!nonEmptyText(row.id) || ownedTargetIds.has(row.id)
+      || !ownedOccurrenceIds.has(textId(row.plan_day_exercise_id))) {
+      fail();
+    }
+    ownedTargetIds.add(row.id);
+  }
+  for (const table of ["owned_plan_warmup_sets", "owned_plan_progression_policies"] as const) {
+    for (const row of aggregate.tables[table] ?? []) {
+      if (!ownedOccurrenceIds.has(textId(row.plan_day_exercise_id))) fail();
+    }
+  }
+  for (const row of aggregate.tables.owned_progression_recommendations ?? []) {
+    if (!ownedTargetIds.has(textId(row.owned_plan_working_set_target_id))) fail();
   }
   const ownedScheduleIds = new Set<string>();
   for (const row of aggregate.tables.owned_plan_schedules ?? []) {
@@ -434,7 +478,8 @@ function assertFullPlanSlice(plan: PortableMergePlan): void {
 
   const aggregates = new Map<string, PortableMergeAggregate>();
   for (const aggregate of plan.aggregates) {
-    if (aggregates.has(aggregate.portableId)) {
+    const key = aggregateKey(aggregate);
+    if (aggregates.has(key)) {
       fail();
     }
     if (aggregate.aggregateClass === "custom_exercise") {
@@ -461,22 +506,22 @@ function assertFullPlanSlice(plan: PortableMergePlan): void {
     } else {
       fail();
     }
-    aggregates.set(aggregate.portableId, aggregate);
+    aggregates.set(key, aggregate);
   }
   for (const operation of customWrites.values()) {
-    const hasAggregate = aggregates.has(operation.portableId);
+    const hasAggregate = aggregates.has(`custom_exercise\u0000${operation.portableId}`);
     if (hasAggregate !== (operation.kind === "insert" || operation.kind === "keep_both")) {
       fail();
     }
   }
   for (const operation of sessionWrites.values()) {
-    const hasAggregate = aggregates.has(operation.portableId);
+    const hasAggregate = aggregates.has(`workout_session\u0000${operation.portableId}`);
     if (hasAggregate !== (operation.kind === "insert" || operation.kind === "archive_won")) {
       fail();
     }
   }
   for (const operation of ownedPlanWrites.values()) {
-    const hasAggregate = aggregates.has(operation.portableId);
+    const hasAggregate = aggregates.has(`owned_plan\u0000${operation.portableId}`);
     if (hasAggregate !== (operation.kind === "insert" || operation.kind === "keep_both")) {
       fail();
     }
@@ -490,7 +535,7 @@ function assertFullPlanSlice(plan: PortableMergePlan): void {
   );
   const mappings = new Set<string>();
   for (const mapping of plan.idMappings) {
-    const key = `${mapping.archiveId}\u0000${mapping.localId}`;
+    const key = `${mapping.recordClass}\u0000${mapping.archiveId}\u0000${mapping.localId}`;
     if ((mapping.recordClass !== "custom_exercise"
       && mapping.recordClass !== "workout_session"
       && mapping.recordClass !== "owned_plan")
@@ -502,7 +547,7 @@ function assertFullPlanSlice(plan: PortableMergePlan): void {
   if (mappings.size !== customWrites.size + sessionWrites.size + ownedPlanWrites.size) fail();
   const remaps = new Set<string>();
   for (const remap of plan.idRemaps) {
-    const key = `${remap.archiveId}\u0000${remap.localId}`;
+    const key = `${remap.recordClass}\u0000${remap.archiveId}\u0000${remap.localId}`;
     const operation = admittedOperationsByPair.get(key);
     const validRemap = (remap.recordClass === "custom_exercise"
       && operation?.aggregateClass === "custom_exercise"

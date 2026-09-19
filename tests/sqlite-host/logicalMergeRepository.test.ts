@@ -842,6 +842,113 @@ describe("logical merge repository", () => {
     await expect(canonicalState(localKernel)).resolves.toEqual(before);
   });
 
+  it("rejects an owned-plan legacy occurrence that targets a retained plan day", async () => {
+    const { local, localKernel, plan } = await fullOwnedPlanFixture();
+    await seedOwnedPlan(localKernel, {
+      id: "retained-plan",
+      portableId: "e".repeat(32),
+      dayId: "retained-day",
+    });
+    const aggregate = plan.aggregates.find((value) =>
+      value.aggregateClass === "owned_plan",
+    )!;
+    const mismatchedPlan = {
+      ...plan,
+      aggregates: [{
+        ...aggregate,
+        tables: {
+          ...aggregate.tables,
+          plan_day_exercises: [
+            ...(aggregate.tables.plan_day_exercises ?? []),
+            {
+              id: "retained-occurrence",
+              plan_day_id: "retained-day",
+              exercise_id: "bundled",
+              ordinal: 1,
+              metric_profile: "load_reps",
+              metric_contract_version: 1,
+              exercise_metric_generation: 1,
+            },
+          ],
+        },
+      }],
+    };
+    const before = await canonicalState(localKernel);
+
+    await expect(createLogicalMergeRepository(localKernel, { sha256 })
+      .commitFullPlan({
+        localFingerprint: await sha256(canonicalMergeValue(local)),
+        plan: mismatchedPlan,
+      }))
+      .rejects.toEqual(expect.objectContaining({ code: "logical_merge_failed" }));
+    await expect(canonicalState(localKernel)).resolves.toEqual(before);
+  });
+
+  it("accepts separate custom-exercise and owned-plan identity namespaces", async () => {
+    const kernel = await open("full-plan-cross-class-identities");
+    const { local, plan } = await fullPlanFixture(kernel);
+    const customAggregate = plan.aggregates.find((value) =>
+      value.aggregateClass === "custom_exercise",
+    )!;
+    const customOperation = plan.operations.find((value) =>
+      value.aggregateClass === "custom_exercise",
+    )!;
+    const ownedPlanAggregate = {
+      aggregateClass: "owned_plan" as const,
+      portableId: customAggregate.portableId,
+      tables: {
+        plans: [{
+          id: "archive-exercise",
+          origin: "custom",
+          portable_id: customAggregate.portableId,
+          name: "Independent plan",
+          days_per_week: 1,
+          audience: "Owner",
+          goal: "Strength",
+          estimate_minutes: 30,
+          attribution: "Owner",
+          is_active: 0,
+          revision: 1,
+          content_pack_id: null,
+          source_namespace: null,
+          upstream_id: null,
+        }],
+      },
+    };
+    const crossClassPlan = {
+      ...plan,
+      operations: [
+        ...plan.operations,
+        {
+          aggregateClass: "owned_plan" as const,
+          kind: "insert" as const,
+          portableId: customAggregate.portableId,
+          archiveId: customOperation.archiveId,
+          localId: customOperation.localId,
+        },
+      ],
+      idMappings: [
+        ...plan.idMappings,
+        {
+          recordClass: "owned_plan" as const,
+          archiveId: customOperation.archiveId,
+          localId: customOperation.localId,
+        },
+      ],
+      aggregates: [...plan.aggregates, ownedPlanAggregate],
+    };
+
+    await expect(createLogicalMergeRepository(kernel, { sha256 })
+      .commitFullPlan({
+        localFingerprint: await sha256(canonicalMergeValue(local)),
+        plan: crossClassPlan,
+      }))
+      .resolves.toEqual({ state: "rebuild_pending" });
+    await expect(kernel.queryAll(
+      "SELECT id FROM exercises WHERE id = 'archive-exercise' UNION ALL SELECT id FROM plans WHERE id = 'archive-exercise' ORDER BY id",
+    )).resolves.toEqual([{ id: "archive-exercise" }, { id: "archive-exercise" }]);
+  });
+
   it("rejects non-custom mapping metadata before the full-plan writer opens", async () => {
     const kernel = await open("full-plan-mapping-mismatch");
     const { local, plan } = await fullPlanFixture(kernel);
