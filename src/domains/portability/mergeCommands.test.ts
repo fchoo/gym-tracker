@@ -10,6 +10,7 @@ import {
 
 import {
   createBackupEnvelopeCodec,
+  BackupFormatError,
   type BackupEnvelopeCryptoPort,
 } from "./backupFormat";
 import {
@@ -20,10 +21,14 @@ import {
   createMergeCommands,
   createMergePreflightStore,
   MergeCommandError,
+  portableMergeArchiveSessionAggregate,
   resolvePortableMergeOperation,
   canonicalMergeValue,
   type StoredFullMergePreflight,
 } from "./mergeCommands";
+import {
+  RestoreCandidateProbeError,
+} from "./restoreCommands";
 import {
   RestoreFilePortError,
 } from "../../platform/files/expoBackupFilePort";
@@ -221,6 +226,27 @@ describe("secure merge preflight", () => {
       schemaVersion: 22,
       tables: { workout_sessions: [], session_exercises: [], session_sets: [] },
     }, sha256)).rejects.toEqual(new MergeCommandError("merge_archive_invalid"));
+  });
+
+  const malformedArchiveRoots: Array<[string, readonly Record<string, unknown>[]]> = [
+    ["missing root id", [{ portable_id: "a".repeat(32), merge_modified_at_ms: 1 }]],
+    ["multiple roots", [
+      { id: "first", portable_id: "a".repeat(32), merge_modified_at_ms: 1 },
+      { id: "second", portable_id: "b".repeat(32), merge_modified_at_ms: 2 },
+    ]],
+  ];
+  it.each(malformedArchiveRoots)("rejects %s through the archive aggregate boundary", (_label, workoutSessions) => {
+    const value = snapshot({ snapshotId: `invalid-aggregate-${_label}` });
+    const malformed = {
+      ...value,
+      tables: {
+        ...value.tables,
+        workout_sessions: workoutSessions,
+      },
+    } as LogicalBackupSnapshot;
+
+    expect(() => portableMergeArchiveSessionAggregate(malformed))
+      .toThrow(new MergeCommandError("merge_archive_invalid"));
   });
 
   it("authenticates a v1 archive before rejecting it as restore-clean only", async () => {
@@ -446,6 +472,7 @@ describe("secure merge preflight", () => {
     const archive = await archiveFor(archiveSnapshot);
     const cases = [
       { read: async () => { throw new RestoreFilePortError("limit_exceeded"); }, code: "merge_archive_limit_exceeded" },
+      { read: async () => { throw new RestoreFilePortError("read_failed"); }, code: "merge_archive_invalid" },
       { read: async () => archive.map((value, index) => index === archive.byteLength - 1 ? value ^ 1 : value), code: "merge_archive_unavailable" },
     ] as const;
     for (const item of cases) {
@@ -462,6 +489,25 @@ describe("secure merge preflight", () => {
       await expect(commands.preflightSecureMerge({ password: "owner-password" }))
         .rejects.toEqual(new MergeCommandError(item.code));
     }
+
+  });
+
+  it("maps candidate-probe rejections to a bounded invalid-archive error", async () => {
+    const archiveSnapshot = snapshot({ snapshotId: "candidate-probe-error" });
+    const archive = await archiveFor(archiveSnapshot);
+    const commands = createMergeCommands({
+      crypto: cryptoPort(),
+      files: { readSelectedArchiveAtMost: async () => archive },
+      kdf: { derive: async () => ({ algorithm: "argon2id", bytes: new Uint8Array(32), durationMs: 1, provider: "Bouncy Castle", providerVersion: "1.85.2" }) },
+      schema: schemaFor(archiveSnapshot),
+      candidateProbe: { validateCandidate: async () => { throw new RestoreCandidateProbeError(); } },
+      local: localFacts(),
+      sha256,
+      store: createMergePreflightStore({ tokenFactory: () => "unused" }),
+    });
+
+    await expect(commands.preflightSecureMerge({ password: "owner-password" }))
+      .rejects.toEqual(new MergeCommandError("merge_archive_invalid"));
   });
 
   it("previews an archive containing multiple independent sessions", async () => {
@@ -603,6 +649,28 @@ describe("secure merge preflight", () => {
     })).rejects.toEqual(new MergeCommandError("merge_commit_failed"));
     expect(writer.commitFullPlan).toHaveBeenCalledTimes(1);
     expect(store.consume("commit-token")).toBeNull();
+  });
+
+  it("rejects a valid consumed token when the full-plan writer is unavailable", async () => {
+    const archiveSnapshot = snapshot({ snapshotId: "missing-writer" });
+    const archive = await archiveFor(archiveSnapshot);
+    const store = createMergePreflightStore({ tokenFactory: () => "missing-writer-token" });
+    const commands = createMergeCommands({
+      crypto: cryptoPort(),
+      files: { readSelectedArchiveAtMost: async () => archive },
+      kdf: { derive: async () => ({ algorithm: "argon2id", bytes: new Uint8Array(32), durationMs: 1, provider: "Bouncy Castle", providerVersion: "1.85.2" }) },
+      schema: schemaFor(archiveSnapshot),
+      candidateProbe: { validateCandidate: async () => undefined },
+      local: localFacts(),
+      sha256,
+      store,
+    });
+
+    await commands.preflightSecureMerge({ password: "owner-password" });
+    await expect(commands.commitSecureMerge({
+      confirmation: "MERGE",
+      token: "missing-writer-token",
+    })).rejects.toEqual(new MergeCommandError("merge_preflight_token_invalid"));
   });
 
   it("commits the exact authenticated full plan bound into the one-time token", async () => {

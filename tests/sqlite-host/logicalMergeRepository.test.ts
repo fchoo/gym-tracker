@@ -20,6 +20,7 @@ import {
 } from "../../src/domains/portability/mergeCommands";
 import {
   buildPortableMergePlan,
+  type PortableMergePlan,
 } from "../../src/domains/portability/mergePlan";
 import {
   createLogicalBackupRepository,
@@ -31,6 +32,9 @@ import {
 import {
   createSqliteMergeLocalFactsPort,
 } from "../../src/platform/sqlite/repositories/restorePreflightAdapters";
+import type {
+  MergeLocalFacts,
+} from "../../src/domains/portability/mergeCommands";
 import {
   createExerciseSearchIndexRepository,
 } from "../../src/platform/sqlite/repositories/exerciseSearchIndexRepository";
@@ -458,6 +462,21 @@ async function fullOwnedPlanFixture() {
     payloadDigest: sha256,
   });
   return { local, localKernel, plan };
+}
+
+async function expectRejectedFullPlan(
+  kernel: SqliteKernel,
+  local: MergeLocalFacts,
+  plan: PortableMergePlan,
+): Promise<void> {
+  const before = await canonicalState(kernel);
+  await expect(createLogicalMergeRepository(kernel, { sha256 })
+    .commitFullPlan({
+      localFingerprint: await sha256(canonicalMergeValue(local)),
+      plan,
+    }))
+    .rejects.toEqual(expect.objectContaining({ code: "logical_merge_failed" }));
+  await expect(canonicalState(kernel)).resolves.toEqual(before);
 }
 
 describe("logical merge repository", () => {
@@ -969,6 +988,129 @@ describe("logical merge repository", () => {
       }))
       .rejects.toEqual(expect.objectContaining({ code: "logical_merge_failed" }));
     await expect(canonicalState(kernel)).resolves.toEqual(before);
+  });
+
+  const fullPlanInvariantCases: Array<[string, (plan: PortableMergePlan) => PortableMergePlan]> = [
+    ["duplicate setting insert operation", (plan: PortableMergePlan) => ({
+      ...plan,
+      operations: [...plan.operations, plan.operations.find((operation) =>
+        operation.aggregateClass === "app_setting" && operation.kind === "insert")!],
+    })],
+    ["setting row without its insert operation", (plan: PortableMergePlan) => ({
+      ...plan,
+      operations: plan.operations.filter((operation) =>
+        operation.aggregateClass !== "app_setting" || operation.kind !== "insert"),
+    })],
+    ["duplicate aggregate key", (plan: PortableMergePlan) => ({
+      ...plan,
+      aggregates: [...plan.aggregates, plan.aggregates[0]!],
+    })],
+    ["aggregate attached to a duplicate operation", (plan: PortableMergePlan) => {
+      const operation = plan.operations.find((value) => value.aggregateClass === "custom_exercise")!;
+      return {
+        ...plan,
+        operations: plan.operations.map((value) => value === operation
+          ? { ...value, kind: "duplicate" as const }
+          : value),
+      };
+    }],
+    ["missing required identity mapping", (plan: PortableMergePlan) => ({
+      ...plan,
+      idMappings: plan.idMappings.slice(1),
+    })],
+    ["duplicate identity mapping", (plan: PortableMergePlan) => ({
+      ...plan,
+      idMappings: [...plan.idMappings, plan.idMappings[0]!],
+    })],
+  ];
+  it.each(fullPlanInvariantCases)("rejects a full plan with %s before source mutation", async (_label, mutate) => {
+    const kernel = await open(`full-plan-invariant-${_label}`);
+    const { local, plan } = await fullPlanFixture(kernel);
+
+    await expectRejectedFullPlan(kernel, local, mutate(plan));
+  });
+
+  const customAggregateCases: Array<[string, (plan: PortableMergePlan) => PortableMergePlan]> = [
+    ["missing custom library entry", (plan: PortableMergePlan) => ({
+      ...plan,
+      aggregates: plan.aggregates.map((aggregate) => aggregate.aggregateClass === "custom_exercise"
+        ? { ...aggregate, tables: { ...aggregate.tables, exercise_library_entries: [] } }
+        : aggregate),
+    })],
+    ["unsupported custom table", (plan: PortableMergePlan) => ({
+      ...plan,
+      aggregates: plan.aggregates.map((aggregate) => aggregate.aggregateClass === "custom_exercise"
+        ? { ...aggregate, tables: { ...aggregate.tables, app_settings: [] } }
+        : aggregate),
+    })],
+    ["taxonomy term outside exercise taxonomy", (plan: PortableMergePlan) => ({
+      ...plan,
+      aggregates: plan.aggregates.map((aggregate) => aggregate.aggregateClass === "custom_exercise"
+        ? {
+          ...aggregate,
+          tables: {
+            ...aggregate.tables,
+            taxonomy_terms: [{ kind: "equipment", slug: "barbell", display_name: "Barbell" }],
+          },
+        }
+        : aggregate),
+    })],
+  ];
+  it.each(customAggregateCases)("rejects custom aggregate %s before source mutation", async (_label, mutate) => {
+    const kernel = await open(`full-plan-custom-${_label}`);
+    const { local, plan } = await fullPlanFixture(kernel);
+
+    await expectRejectedFullPlan(kernel, local, mutate(plan));
+  });
+
+  const ownedPlanAggregateCases: Array<[string, (plan: PortableMergePlan) => PortableMergePlan]> = [
+    ["duplicate day id", (plan: PortableMergePlan) => ({
+      ...plan,
+      aggregates: plan.aggregates.map((aggregate) => aggregate.aggregateClass === "owned_plan"
+        ? {
+          ...aggregate,
+          tables: {
+            ...aggregate.tables,
+            plan_days: [...(aggregate.tables.plan_days ?? []), aggregate.tables.plan_days![0]!],
+          },
+        }
+        : aggregate),
+    })],
+    ["binding with unknown schedule version", (plan: PortableMergePlan) => ({
+      ...plan,
+      aggregates: plan.aggregates.map((aggregate) => aggregate.aggregateClass === "owned_plan"
+        ? {
+          ...aggregate,
+          tables: {
+            ...aggregate.tables,
+            owned_plan_schedule_bindings: (aggregate.tables.owned_plan_schedule_bindings ?? []).map((row) => ({
+              ...row,
+              schedule_version_id: "missing-version",
+            })),
+          },
+        }
+        : aggregate),
+    })],
+    ["owned target with unknown occurrence", (plan: PortableMergePlan) => ({
+      ...plan,
+      aggregates: plan.aggregates.map((aggregate) => aggregate.aggregateClass === "owned_plan"
+        ? {
+          ...aggregate,
+          tables: {
+            ...aggregate.tables,
+            owned_plan_working_set_targets: (aggregate.tables.owned_plan_working_set_targets ?? []).map((row) => ({
+              ...row,
+              plan_day_exercise_id: "missing-occurrence",
+            })),
+          },
+        }
+        : aggregate),
+    })],
+  ];
+  it.each(ownedPlanAggregateCases)("rejects owned-plan aggregate %s before source mutation", async (_label, mutate) => {
+    const { local, localKernel, plan } = await fullOwnedPlanFixture();
+
+    await expectRejectedFullPlan(localKernel, local, mutate(plan));
   });
 
   it("replaces one older local session aggregate with the newer archive aggregate in one writer transaction", async () => {

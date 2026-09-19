@@ -384,6 +384,34 @@ describe("SQLite restore preflight adapters", () => {
     expect(statements.every((statement) => !/INSERT|UPDATE|DELETE|BEGIN IMMEDIATE/iu.test(statement))).toBe(true);
   });
 
+  it("rejects merge-preflight reads with invalid metadata or non-scalar source rows", async () => {
+    const invalidMetadata: SqliteKernel = {
+      queryAll: async <Row extends Record<string, unknown>>() => [] as readonly Row[],
+      write: jest.fn(), connectionConfiguration: jest.fn(), close: jest.fn(),
+    } as unknown as SqliteKernel;
+    await expect(createSqliteMergeLocalFactsPort(invalidMetadata).read())
+      .rejects.toBeInstanceOf(RestoreCandidateProbeError);
+
+    const rows = [
+      [{ user_version: 22 }],
+      [{ owner_namespace: "11111111111111111111111111111111" }],
+      ...LOGICAL_BACKUP_TABLES.map((table) => table === "workout_sessions"
+        ? [{ id: "session", portable_id: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", merge_modified_at_ms: true }]
+        : []),
+    ];
+    let index = 0;
+    const invalidRow: SqliteKernel = {
+      async queryAll<Row extends Record<string, unknown>>() {
+        const next = rows[index] ?? [];
+        index += 1;
+        return next as unknown as readonly Row[];
+      },
+      write: jest.fn(), connectionConfiguration: jest.fn(), close: jest.fn(),
+    } as unknown as SqliteKernel;
+    await expect(createSqliteMergeLocalFactsPort(invalidRow).read())
+      .rejects.toBeInstanceOf(RestoreCandidateProbeError);
+  });
+
   it("rejects retained identities with bad values or arity before querying and supports the full exercise identity", async () => {
     const statements: string[] = [];
     const retained = createSqliteRestoreRetainedReferencePort(readKernel([{ present: 1 }, { present: 1 }], statements));
