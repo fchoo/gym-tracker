@@ -117,11 +117,11 @@ tags:
 - assertVisible: "Cluster group pattern"
 - assertVisible: "Cluster rest in seconds"
 - tapOn:
-    id: "advanced-timing-cluster-pattern"
+    id: "advanced-timing-config-cluster-pattern"
 - eraseText: 5
 - inputText: "3+3+3"
 - tapOn:
-    id: "advanced-timing-cluster-gap-seconds"
+    id: "advanced-timing-config-cluster-rest"
 - eraseText: 2
 - inputText: "20"
 - hideKeyboard
