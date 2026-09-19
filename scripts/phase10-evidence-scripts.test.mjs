@@ -176,9 +176,9 @@ test("Phase 10 Maestro flow exercises per-rep and 3+3+3 cluster lifecycle timing
   assert.doesNotMatch(flow, /visible: "Rep 2"/u);
   assert.match(flow, /Resume per-rep cadence/u);
   assert.match(flow, /Stop per-rep cadence/u);
-  assert.match(flow, /Cluster grouping/u);
+  assert.match(flow, /Cluster group pattern/u);
   assert.match(flow, /3\+3\+3/u);
-  assert.match(flow, /Cluster gap in seconds/u);
+  assert.match(flow, /Cluster rest in seconds/u);
   assert.match(flow, /Configure and start cluster timing/u);
   assert.match(flow, /Start rest after group 1/u);
   assert.match(flow, /Skip intra-set rest/u);

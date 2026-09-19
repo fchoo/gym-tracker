@@ -113,8 +113,9 @@ tags:
 - assertVisible: "Set timing"
 - tapOn: "Set timing"
 - assertVisible: "Cluster timing"
-- assertVisible: "Cluster grouping"
-- assertVisible: "Cluster gap in seconds"
+- tapOn: "Cluster timing"
+- assertVisible: "Cluster group pattern"
+- assertVisible: "Cluster rest in seconds"
 - tapOn:
     id: "advanced-timing-cluster-pattern"
 - eraseText: 5
