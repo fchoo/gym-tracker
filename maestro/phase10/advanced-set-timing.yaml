@@ -39,11 +39,21 @@ tags:
       visible: "Rest day"
     commands:
       - tapOn: "Train anyway"
+- runFlow:
+    when:
+      visible: "Start a workout"
+    commands:
+      - extendedWaitUntil:
+          visible: "Start Full Body A"
+          timeout: 30000
 - tapOn:
     text: "Start Full Body A"
     retryTapIfNoChange: true
 - extendedWaitUntil:
     visible: "WORKOUT OVERVIEW"
+    timeout: 30000
+- extendedWaitUntil:
+    visible: "Back Squat exercise actions"
     timeout: 30000
 - tapOn: "Back Squat exercise actions"
 - assertVisible: "Exercise actions"
