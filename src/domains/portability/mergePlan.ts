@@ -437,8 +437,7 @@ function sessionAggregate(
             || table === "workout_session_exercise_reorder_receipts"
             ? "request_id"
             : "id";
-          const replacement = immutableIds.get(textId(row[keyColumn]));
-          if (replacement === undefined) invalid();
+          const replacement = mappedIdentifier(immutableIds, row[keyColumn]);
           mapped = Object.freeze({ ...mapped, [keyColumn]: replacement });
         }
         if (mapped.session_id === sessionId) {
@@ -767,7 +766,6 @@ function exerciseAggregate(
         occupied.add(id);
         return row;
       }
-      while (occupied.has(nextId)) nextId += 1;
       occupied.add(nextId);
       return Object.freeze({ ...row, id: nextId });
     });
@@ -1143,7 +1141,9 @@ async function sessionOperation(
   localSessions: readonly LogicalBackupRow[],
   occupiedIds: Set<string>,
   payloadDigest: (value: string) => Promise<string>,
-): Promise<PortableMergeOperation> {
+): Promise<Extract<PortableMergeOperation, {
+  aggregateClass: "workout_session";
+}>> {
   const archiveId = textId(archiveSession.id);
   const portableId = archiveSession.portable_id;
   if (!isOpaquePortableId(portableId)) invalid();
@@ -1227,7 +1227,9 @@ export async function buildPortableMergePlan(input: Readonly<{
     rows.push(row);
     localByPortableId.set(row.portable_id, rows);
   }
-  const sessionOperations: readonly PortableMergeOperation[] = Object.freeze(
+  const sessionOperations: readonly Extract<PortableMergeOperation, {
+    aggregateClass: "workout_session";
+  }>[] = Object.freeze(
     (await Promise.all(sessionRows(input.archive).map((session) => sessionOperation(
       input.archive,
       input.local,
@@ -1289,10 +1291,7 @@ export async function buildPortableMergePlan(input: Readonly<{
     plans.idMappings.map(({ archiveId, localId }) => [archiveId, localId]),
   );
   const sessionMappings = new Map(
-    sessionOperations.map((operation) => {
-      if (operation.aggregateClass !== "workout_session") invalid();
-      return [operation.archiveId, operation.localId] as const;
-    }),
+    sessionOperations.map((operation) => [operation.archiveId, operation.localId] as const),
   );
   const aggregates = Object.freeze(operations.flatMap((operation) => {
     if (operation.aggregateClass === "workout_session"

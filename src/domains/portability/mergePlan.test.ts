@@ -1331,4 +1331,281 @@ describe("portable merge plan", () => {
     await expect(__mergePlanTestOnly.sessionOperation(archive, tiedLocal, archiveRow, [tiedLocal.tables.workout_sessions[0]!], new Set(), async () => "bad"))
       .rejects.toEqual(new MergePlanError("merge_plan_invalid"));
   });
+
+  it("remaps every owned-plan child family through a keep-both graph collision", () => {
+    const archive = snapshot({ id: "archive-session", marker: "archive", modifiedAtMs: 20 }, {
+      plans: [{ id: "archive-plan", origin: "custom", portable_id: "c".repeat(32), is_active: 1 }],
+      plan_days: [{ id: "day", plan_id: "archive-plan" }],
+      plan_day_exercises: [{ id: "legacy-occurrence", plan_day_id: "day", exercise_id: "archive-exercise" }],
+      plan_warmup_sets: [{ id: "legacy-warmup", plan_day_exercise_id: "legacy-occurrence" }],
+      plan_working_set_targets: [{ id: "legacy-target", plan_day_exercise_id: "legacy-occurrence" }],
+      progression_policies: [{ id: "legacy-policy", plan_day_exercise_id: "legacy-occurrence" }],
+      progression_recommendations: [{ id: "legacy-recommendation", plan_working_set_target_id: "legacy-target", exercise_id: "archive-exercise" }],
+      plan_schedules: [{ id: "legacy-schedule", plan_id: "archive-plan" }],
+      plan_schedule_bindings: [{ id: "legacy-binding", schedule_id: "legacy-schedule", plan_day_id: "day" }],
+      owned_plan_aggregate_states: [{ plan_id: "archive-plan" }],
+      owned_plan_starter_sources: [{ plan_id: "archive-plan" }],
+      owned_plan_day_sources: [{ plan_day_id: "day", plan_id: "archive-plan" }],
+      owned_plan_day_exercises: [{ id: "owned-occurrence", plan_day_id: "day", exercise_id: "archive-exercise" }],
+      owned_plan_warmup_sets: [{ id: "owned-warmup", plan_day_exercise_id: "owned-occurrence" }],
+      owned_plan_working_set_targets: [{ id: "owned-target", plan_day_exercise_id: "owned-occurrence" }],
+      owned_plan_progression_policies: [{ id: "owned-policy", plan_day_exercise_id: "owned-occurrence" }],
+      owned_plan_occurrence_sources: [{ plan_day_exercise_id: "owned-occurrence", plan_day_id: "day" }],
+      owned_progression_recommendations: [{ id: "owned-recommendation", owned_plan_working_set_target_id: "owned-target", exercise_id: "archive-exercise" }],
+      owned_plan_schedules: [{ id: "owned-schedule", plan_id: "archive-plan", lifecycle: "active", activated_at_ms: 7, deactivated_at_ms: null }],
+      owned_plan_schedule_versions: [{ id: "owned-version", schedule_id: "owned-schedule" }],
+      owned_plan_schedule_bindings: [{ id: "owned-binding", schedule_version_id: "owned-version", plan_day_id: "day" }],
+      owned_plan_schedule_overrides: [{ id: "override", schedule_id: "owned-schedule", plan_day_id: "day", schedule_version_id: "owned-version", session_id: "archive-session" }],
+      owned_plan_schedule_opportunities: [{ id: "opportunity", schedule_id: "owned-schedule", plan_day_id: "day", schedule_version_id: "owned-version", session_id: "archive-session" }],
+      owned_plan_schedule_events: [{ id: "event", schedule_id: "owned-schedule" }],
+      owned_plan_mutation_requests: [{ request_id: "mutation", source_plan_id: "archive-plan", result_plan_id: "archive-plan" }],
+      starter_plan_activation_requests: [{ request_id: "activation", selected_plan_id: "archive-plan", result_plan_id: "archive-plan", result_schedule_id: "owned-schedule" }],
+    });
+    const local = snapshot({ id: "local-session", marker: "local", modifiedAtMs: 10 }, {
+      plans: [{ id: "archive-plan", origin: "custom", portable_id: "d".repeat(32), is_active: 1 }],
+      plan_days: [{ id: "day" }],
+      plan_day_exercises: [{ id: "legacy-occurrence" }],
+      plan_warmup_sets: [{ id: "legacy-warmup" }],
+      plan_working_set_targets: [{ id: "legacy-target" }],
+      progression_policies: [{ id: "legacy-policy" }],
+      progression_recommendations: [{ id: "legacy-recommendation" }],
+      plan_schedules: [{ id: "legacy-schedule" }],
+      plan_schedule_bindings: [{ id: "legacy-binding" }],
+      owned_plan_day_exercises: [{ id: "owned-occurrence" }],
+      owned_plan_warmup_sets: [{ id: "owned-warmup" }],
+      owned_plan_working_set_targets: [{ id: "owned-target" }],
+      owned_plan_progression_policies: [{ id: "owned-policy" }],
+      owned_progression_recommendations: [{ id: "owned-recommendation" }],
+      owned_plan_schedules: [{ id: "owned-schedule", lifecycle: "active" }],
+      owned_plan_schedule_versions: [{ id: "owned-version" }],
+      owned_plan_schedule_bindings: [{ id: "owned-binding" }],
+      owned_plan_schedule_overrides: [{ id: "override" }],
+      owned_plan_schedule_opportunities: [{ id: "opportunity" }],
+      owned_plan_schedule_events: [{ id: "event" }],
+      owned_plan_mutation_requests: [{ request_id: "mutation" }],
+      starter_plan_activation_requests: [{ request_id: "activation" }],
+    });
+    const aggregate = __mergePlanTestOnly.planAggregate(
+      archive,
+      local,
+      { aggregateClass: "owned_plan", kind: "keep_both", portableId: "c".repeat(32), archiveId: "archive-plan", localId: "local-plan" },
+      new Map([["archive-exercise", "local-exercise"]]),
+      new Map([["archive-plan", "local-plan"]]),
+      new Map([["archive-session", "local-session"]]),
+    );
+
+    expect(aggregate.tables.plans).toEqual([expect.objectContaining({ id: "local-plan", is_active: 0 })]);
+    expect(aggregate.tables.owned_plan_schedules).toEqual([expect.objectContaining({ lifecycle: "inactive", deactivated_at_ms: 7 })]);
+    for (const table of [
+      "plan_days", "plan_day_exercises", "plan_warmup_sets", "plan_working_set_targets",
+      "progression_policies", "progression_recommendations", "plan_schedules", "plan_schedule_bindings",
+      "owned_plan_aggregate_states", "owned_plan_starter_sources", "owned_plan_day_sources",
+      "owned_plan_day_exercises", "owned_plan_warmup_sets", "owned_plan_working_set_targets",
+      "owned_plan_progression_policies", "owned_plan_occurrence_sources", "owned_progression_recommendations",
+      "owned_plan_schedules", "owned_plan_schedule_versions", "owned_plan_schedule_bindings",
+      "owned_plan_schedule_overrides", "owned_plan_schedule_opportunities", "owned_plan_schedule_events",
+      "owned_plan_mutation_requests", "starter_plan_activation_requests",
+    ]) {
+      expect(aggregate.tables[table]).toHaveLength(1);
+    }
+    expect(aggregate.tables.owned_plan_schedule_opportunities).toEqual([expect.objectContaining({ session_id: "local-session" })]);
+  });
+
+  it("rejects remaining malformed pure planner helper inputs", async () => {
+    expect(() => __mergePlanTestOnly.parseJsonObject(1)).toThrow(new MergePlanError("merge_plan_invalid"));
+    expect(() => __mergePlanTestOnly.rewriteReorderReceipt(1, new Map())).toThrow(new MergePlanError("merge_plan_invalid"));
+    const archive = snapshot({ id: "archive-session", marker: "archive", modifiedAtMs: 20 });
+    const local = snapshot({ id: "local-session", marker: "local", modifiedAtMs: 10 });
+    expect(() => __mergePlanTestOnly.sessionAggregate(
+      { ...archive, tables: { ...archive.tables, workout_sessions: [] } }, local, sessionPortableId, "local-session",
+    )).toThrow(new MergePlanError("merge_plan_invalid"));
+    expect(() => __mergePlanTestOnly.exerciseAggregate(
+      archive, local,
+      { aggregateClass: "custom_exercise", kind: "insert", portableId: "b".repeat(32), archiveId: "missing", localId: "missing" },
+    )).toThrow(new MergePlanError("merge_plan_invalid"));
+    expect(() => __mergePlanTestOnly.planAggregate(
+      archive, local,
+      { aggregateClass: "owned_plan", kind: "insert", portableId: "c".repeat(32), archiveId: "missing", localId: "missing" },
+      new Map(), new Map([["missing", "missing"]]), new Map(),
+    )).toThrow(new MergePlanError("merge_plan_invalid"));
+  });
+
+  it("rejects partial references and invalid occupied child keys", async () => {
+    const partial = snapshot({ id: "archive-session", marker: "archive", modifiedAtMs: 20 }, {
+      plan_days: [{ id: "day" }],
+      plan_day_exercises: [{
+        id: "occurrence", plan_day_id: "day", exercise_id: "exercise",
+        metric_profile: null, metric_contract_version: null, exercise_metric_generation: null,
+      }],
+    });
+    expect(() => __mergePlanTestOnly.assertReferenceClosure(partial))
+      .toThrow(new MergePlanError("merge_plan_invalid"));
+    const localWithBadAlias = snapshot({ id: "local-session", marker: "local", modifiedAtMs: 10 }, {
+      exercise_aliases: [{ id: "bad" }],
+    });
+    const archiveExercise = snapshot({ id: "archive-session", marker: "archive", modifiedAtMs: 20 }, {
+      exercises: [{ id: "exercise", origin: "custom", portable_id: "b".repeat(32) }],
+      exercise_library_entries: [{ exercise_id: "exercise", origin: "custom" }],
+      exercise_aliases: [{ id: 1, exercise_id: "exercise" }],
+    });
+    expect(() => __mergePlanTestOnly.exerciseAggregate(
+      archiveExercise, localWithBadAlias,
+      { aggregateClass: "custom_exercise", kind: "insert", portableId: "b".repeat(32), archiveId: "exercise", localId: "exercise" },
+    )).toThrow(new MergePlanError("merge_plan_invalid"));
+
+    const invalidLocal = {
+      ...snapshot({ id: "local-session", marker: "local", modifiedAtMs: 10 }),
+      tables: {
+        ...snapshot({ id: "local-session", marker: "local", modifiedAtMs: 10 }).tables,
+        workout_sessions: [{ id: "local-session", portable_id: "invalid", merge_modified_at_ms: 10 }],
+      },
+    };
+    const validArchive = snapshot({ id: "archive-session", marker: "archive", modifiedAtMs: 20 });
+    await expect(buildPortableMergePlan({ archive: validArchive, local: invalidLocal, payloadDigest }))
+      .rejects.toEqual(new MergePlanError("merge_plan_invalid"));
+  });
+
+  it("rewrites optional session descendants while retaining unrelated optional ids", () => {
+    const archive = snapshot({ id: "archive-session", marker: "archive", modifiedAtMs: 20 }, {
+      session_exercises: [{ id: "exercise", session_id: "archive-session" }],
+      session_sets: [{ id: "set", session_exercise_id: "exercise" }],
+      extension_rows: [
+        { id: "mapped-exercise", session_id: "archive-session", session_exercise_id: "exercise" },
+        { id: "unmapped-exercise", session_id: "archive-session", session_exercise_id: "other" },
+        { id: "mapped-set", session_id: "archive-session", session_set_id: "set" },
+        { id: "unmapped-set", session_id: "archive-session", session_set_id: "other-set" },
+      ],
+    });
+    const local = snapshot({ id: "local-session", marker: "local", modifiedAtMs: 10 });
+    const aggregate = __mergePlanTestOnly.sessionAggregate(archive, local, sessionPortableId, "local-session");
+    const rows = aggregate.tables.extension_rows!;
+
+    expect(rows).toEqual(expect.arrayContaining([
+      expect.objectContaining({ id: "mapped-exercise", session_id: "local-session", session_exercise_id: "exercise" }),
+      expect.objectContaining({ id: "unmapped-exercise", session_id: "local-session", session_exercise_id: "other" }),
+      expect.objectContaining({ id: "mapped-set", session_id: "local-session", session_set_id: "set" }),
+      expect.objectContaining({ id: "unmapped-set", session_id: "local-session", session_set_id: "other-set" }),
+    ]));
+  });
+
+  it("uses a suffix when an already-remapped metric event key also collides", () => {
+    const portableId = "b".repeat(32);
+    const archive = snapshot({ id: "archive-session", marker: "archive", modifiedAtMs: 20 }, {
+      exercises: [{ id: "exercise", origin: "custom", portable_id: portableId }],
+      exercise_library_entries: [{ exercise_id: "exercise", origin: "custom" }],
+      metric_profile_migration_events: [{ idempotency_key: "event", exercise_id: "exercise" }],
+    });
+    const local = snapshot({ id: "local-session", marker: "local", modifiedAtMs: 10 }, {
+      metric_profile_migration_events: [
+        { idempotency_key: "event" },
+        { idempotency_key: `merge_metric_event_${portableId}_0` },
+      ],
+    });
+    const aggregate = __mergePlanTestOnly.exerciseAggregate(
+      archive, local,
+      { aggregateClass: "custom_exercise", kind: "insert", portableId, archiveId: "exercise", localId: "exercise" },
+    );
+
+    expect(aggregate.tables.metric_profile_migration_events).toEqual([
+      expect.objectContaining({ idempotency_key: `merge_metric_event_${portableId}_0_1` }),
+    ]);
+  });
+
+  it("sorts and remaps multiple child identities deterministically", () => {
+    const source = snapshot({ id: "archive-session", marker: "archive", modifiedAtMs: 20 }, {
+      child_rows: [{ id: "z", parent_id: "parent" }, { id: "a", parent_id: "parent" }],
+    });
+    const rows = (source.tables as Readonly<Record<string, readonly LogicalBackupRow[]>>).child_rows!;
+    const mapped = __mergePlanTestOnly.mappedRows(
+      snapshot({ id: "local-session", marker: "local", modifiedAtMs: 10 }), "child_rows", rows,
+      [{ column: "parent_id", ids: new Map([["parent", "local-parent"]]) }],
+      true, sessionPortableId,
+    );
+    expect([...mapped.ids.keys()]).toEqual(["a", "z"]);
+    expect(mapped.rows).toEqual(expect.arrayContaining([
+      expect.objectContaining({ id: "z", parent_id: "local-parent" }),
+      expect.objectContaining({ id: "a", parent_id: "local-parent" }),
+    ]));
+  });
+
+  it("rejects invalid local portable identity before session operation selection", async () => {
+    const archive = snapshot({ id: "archive-session", marker: "archive", modifiedAtMs: 20 });
+    const invalidLocal = { id: "local-session", portable_id: "invalid", merge_modified_at_ms: 20 };
+
+    await expect(__mergePlanTestOnly.sessionOperation(archive, archive, archive.tables.workout_sessions[0]!, [invalidLocal], new Set(), payloadDigest))
+      .rejects.toEqual(new MergePlanError("merge_plan_invalid"));
+  });
+
+  it("covers absent optional digest tables, default child keys, and every session tie outcome", async () => {
+    const bare = {
+      ...snapshot({ id: "archive-session", marker: "archive", modifiedAtMs: 20 }),
+      tables: {
+        portable_owner_identity: [{ id: 1, owner_namespace: ownerNamespace }],
+        workout_sessions: [{ id: "archive-session", portable_id: sessionPortableId, merge_modified_at_ms: 20 }],
+      },
+    };
+    expect(__mergePlanTestOnly.sessionDigestInput(bare, bare.tables.workout_sessions[0]!))
+      .toContain('"workout_sessions"');
+    expect(__mergePlanTestOnly.tableOccupiedIds(bare, "session_exercises")).toEqual(new Set());
+
+    const archive = snapshot({ id: "archive-session", marker: "archive", modifiedAtMs: 20 });
+    const local = snapshot({ id: "local-session", marker: "local", modifiedAtMs: 20 });
+    const archiveRow = archive.tables.workout_sessions[0]!;
+    const localRow = local.tables.workout_sessions[0]!;
+    await expect(__mergePlanTestOnly.sessionOperation(archive, local, archiveRow, [], new Set(), payloadDigest))
+      .resolves.toEqual(expect.objectContaining({ kind: "insert", localId: "archive-session" }));
+    await expect(__mergePlanTestOnly.sessionOperation(archive, local, archiveRow, [localRow], new Set(), async () => "0".repeat(64)))
+      .resolves.toEqual(expect.objectContaining({ kind: "duplicate" }));
+    await expect(__mergePlanTestOnly.sessionOperation(archive, local, archiveRow, [localRow], new Set(), (() => {
+      let calls = 0;
+      return async () => calls++ === 0 ? "0".repeat(64) : "f".repeat(64);
+    })()))
+      .resolves.toEqual(expect.objectContaining({ kind: "local_won" }));
+  });
+
+  it("preserves a supplied imported deactivation and routes source-only request records", () => {
+    const archive = snapshot({ id: "archive-session", marker: "archive", modifiedAtMs: 20 }, {
+      plans: [{ id: "archive-plan", origin: "custom", portable_id: "c".repeat(32), is_active: 1 }],
+      plan_days: [{ id: "day", plan_id: "archive-plan" }],
+      owned_plan_schedules: [{ id: "schedule", plan_id: "archive-plan", lifecycle: "active", activated_at_ms: 4, deactivated_at_ms: 9 }],
+      owned_plan_schedule_versions: [{ id: "version", schedule_id: "schedule" }],
+      owned_plan_mutation_requests: [{ request_id: "mutation", source_plan_id: "other-plan", result_plan_id: "archive-plan" }],
+      starter_plan_activation_requests: [{ request_id: "activation", selected_plan_id: "other-plan", result_plan_id: "archive-plan", result_schedule_id: "schedule" }],
+    });
+    const local = snapshot({ id: "local-session", marker: "local", modifiedAtMs: 10 }, {
+      plans: [{ id: "local-plan", origin: "custom", portable_id: "d".repeat(32), is_active: 1 }],
+      owned_plan_schedules: [{ id: "local-schedule", lifecycle: "active" }],
+    });
+    const aggregate = __mergePlanTestOnly.planAggregate(
+      archive, local,
+      { aggregateClass: "owned_plan", kind: "insert", portableId: "c".repeat(32), archiveId: "archive-plan", localId: "archive-plan" },
+      new Map(), new Map([["archive-plan", "archive-plan"]]), new Map(),
+    );
+
+    expect(aggregate.tables.owned_plan_schedules).toEqual([expect.objectContaining({ lifecycle: "inactive", deactivated_at_ms: 9 })]);
+    expect(aggregate.tables.owned_plan_mutation_requests).toHaveLength(1);
+    expect(aggregate.tables.starter_plan_activation_requests).toHaveLength(1);
+  });
+
+  it.each([
+    ["a mutation request whose source selects this plan but result cannot map", {
+      owned_plan_mutation_requests: [{ request_id: "mutation", source_plan_id: "archive-plan", result_plan_id: "other-plan" }],
+    }],
+    ["an activation request whose selection selects this plan but result cannot map", {
+      starter_plan_activation_requests: [{ request_id: "activation", selected_plan_id: "archive-plan", result_plan_id: "other-plan", result_schedule_id: "schedule" }],
+      owned_plan_schedules: [{ id: "schedule", plan_id: "archive-plan", lifecycle: "inactive" }],
+    }],
+  ] as Array<[string, Readonly<Record<string, readonly Record<string, unknown>[]>>]>)("rejects %s", (_label, extra) => {
+    const archive = snapshot({ id: "archive-session", marker: "archive", modifiedAtMs: 20 }, {
+      plans: [{ id: "archive-plan", origin: "custom", portable_id: "c".repeat(32) }],
+      ...extra,
+    });
+    const local = snapshot({ id: "local-session", marker: "local", modifiedAtMs: 10 });
+
+    expect(() => __mergePlanTestOnly.planAggregate(
+      archive, local,
+      { aggregateClass: "owned_plan", kind: "insert", portableId: "c".repeat(32), archiveId: "archive-plan", localId: "archive-plan" },
+      new Map(), new Map([["archive-plan", "archive-plan"]]), new Map(),
+    )).toThrow(new MergePlanError("merge_plan_invalid"));
+  });
 });
