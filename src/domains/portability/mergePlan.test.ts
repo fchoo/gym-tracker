@@ -331,4 +331,34 @@ describe("portable merge plan", () => {
       payloadDigest: () => "0".repeat(64),
     })).toThrow("merge_plan_invalid");
   });
+
+  it("is order-independent for the same archive facts", () => {
+    const base = snapshot(
+      { id: "archive-session", marker: "archive", modifiedAtMs: 20 },
+      {
+        app_settings: [
+          { key: "z", value_json: "1" },
+          { key: "a", value_json: "2" },
+        ],
+        exercises: [
+          { id: "exercise-z", origin: "custom", portable_id: "c".repeat(32) },
+          { id: "exercise-a", origin: "custom", portable_id: "b".repeat(32) },
+        ],
+      },
+    );
+    const tables = base.tables as Readonly<Record<string, readonly import("./backupContracts").LogicalBackupRow[]>>;
+    const reordered = {
+      ...base,
+      tables: {
+        ...base.tables,
+        app_settings: [...tables.app_settings!].reverse(),
+        exercises: [...tables.exercises!].reverse(),
+      },
+    };
+    const local = snapshot({ id: "local-session", marker: "local", modifiedAtMs: 10 });
+    const input = { local, payloadDigest: () => "0".repeat(64) };
+
+    expect(buildPortableMergePlan({ ...input, archive: base }))
+      .toEqual(buildPortableMergePlan({ ...input, archive: reordered }));
+  });
 });
