@@ -550,6 +550,13 @@ function exerciseAggregate(
   }
   const root = tables.exercises?.[0];
   if (root === undefined || root.id !== localId) invalid();
+  const taxonomyKeys = new Set((tables.exercise_taxonomy ?? []).map((row) =>
+    tupleKey([row.kind, row.slug]),
+  ));
+  const terms = rowsFor(snapshot, "taxonomy_terms").filter((row) =>
+    taxonomyKeys.has(tupleKey([row.kind, row.slug])),
+  );
+  if (terms.length > 0) tables.taxonomy_terms = Object.freeze(terms);
   return Object.freeze({
     aggregateClass: "custom_exercise",
     portableId: operation.portableId,

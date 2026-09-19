@@ -176,6 +176,18 @@ describe("portable merge plan", () => {
           exercise_id: "exercise-1",
           origin: "custom",
         }],
+        exercise_taxonomy: [{
+          exercise_id: "exercise-1",
+          kind: "equipment",
+          slug: "barbell",
+          relation: "equipment",
+          ordinal: 0,
+        }],
+        taxonomy_terms: [{
+          kind: "equipment",
+          slug: "barbell",
+          display_name: "Barbell",
+        }],
       },
     );
     const local = snapshot(
@@ -218,6 +230,9 @@ describe("portable merge plan", () => {
     );
     expect(aggregate?.tables.exercise_library_entries).toEqual([
       expect.objectContaining({ exercise_id: plan.idRemaps[0]?.localId }),
+    ]);
+    expect(aggregate?.tables.taxonomy_terms).toEqual([
+      expect.objectContaining({ kind: "equipment", slug: "barbell" }),
     ]);
   });
 
