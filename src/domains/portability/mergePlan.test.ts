@@ -47,14 +47,14 @@ describe("portable merge plan", () => {
       .toEqual([...LOGICAL_BACKUP_TABLES].sort());
   });
 
-  it("uses the canonical payload digest to break an equal-timestamp session tie deterministically", () => {
+  it("uses the canonical payload digest to break an equal-timestamp session tie deterministically", async () => {
     const archive = snapshot({ id: "archive-session", marker: "archive", modifiedAtMs: 20 });
     const local = snapshot({ id: "local-session", marker: "local", modifiedAtMs: 20 });
 
-    const plan = buildPortableMergePlan({
+    const plan = await buildPortableMergePlan({
       archive,
       local,
-      payloadDigest: (value) => value.includes("archive")
+      payloadDigest: async (value) => value.includes("archive")
         ? "f".repeat(64)
         : "0".repeat(64),
     });
@@ -82,7 +82,7 @@ describe("portable merge plan", () => {
     })]);
   });
 
-  it("keeps local settings on duplicate keys while importing missing keys", () => {
+  it("keeps local settings on duplicate keys while importing missing keys", async () => {
     const archive = snapshot(
       { id: "archive-session", marker: "archive", modifiedAtMs: 20 },
       {
@@ -97,10 +97,10 @@ describe("portable merge plan", () => {
       { app_settings: [{ key: "appearance", value_json: '"light"' }] },
     );
 
-    const plan = buildPortableMergePlan({
+    const plan = await buildPortableMergePlan({
       archive,
       local,
-      payloadDigest: () => "0".repeat(64),
+      payloadDigest: async () => "0".repeat(64),
     });
 
     expect(plan.preview).toEqual(expect.objectContaining({
@@ -121,7 +121,7 @@ describe("portable merge plan", () => {
     ]));
   });
 
-  it("remaps a distinct portable session that collides with a local physical ID", () => {
+  it("remaps a distinct portable session that collides with a local physical ID", async () => {
     const archive = snapshot(
       { id: "session-1", marker: "archive", modifiedAtMs: 20 },
       {
@@ -141,10 +141,10 @@ describe("portable merge plan", () => {
       },
     };
 
-    const plan = buildPortableMergePlan({
+    const plan = await buildPortableMergePlan({
       archive,
       local,
-      payloadDigest: () => "0".repeat(64),
+      payloadDigest: async () => "0".repeat(64),
     });
     const remap = plan.idRemaps.find((value) =>
       value.recordClass === "workout_session" && value.archiveId === "session-1",
@@ -162,7 +162,7 @@ describe("portable merge plan", () => {
     ]);
   });
 
-  it("keeps distinct custom exercise identities and remaps a physical ID collision", () => {
+  it("keeps distinct custom exercise identities and remaps a physical ID collision", async () => {
     const archive = snapshot(
       { id: "archive-session", marker: "archive", modifiedAtMs: 20 },
       {
@@ -190,10 +190,10 @@ describe("portable merge plan", () => {
       },
     );
 
-    const plan = buildPortableMergePlan({
+    const plan = await buildPortableMergePlan({
       archive,
       local,
-      payloadDigest: () => "0".repeat(64),
+      payloadDigest: async () => "0".repeat(64),
     });
 
     expect(plan.preview).toEqual(expect.objectContaining({
@@ -221,7 +221,7 @@ describe("portable merge plan", () => {
     ]);
   });
 
-  it("deduplicates matching custom exercise identities even when physical IDs differ", () => {
+  it("deduplicates matching custom exercise identities even when physical IDs differ", async () => {
     const archive = snapshot(
       { id: "archive-session", marker: "archive", modifiedAtMs: 20 },
       {
@@ -243,10 +243,10 @@ describe("portable merge plan", () => {
       },
     );
 
-    const plan = buildPortableMergePlan({
+    const plan = await buildPortableMergePlan({
       archive,
       local,
-      payloadDigest: () => "0".repeat(64),
+      payloadDigest: async () => "0".repeat(64),
     });
 
     expect(plan.operations).toEqual(expect.arrayContaining([
@@ -260,7 +260,7 @@ describe("portable merge plan", () => {
     expect(plan.idRemaps).toEqual([]);
   });
 
-  it("keeps distinct owned plan identities through a physical ID collision", () => {
+  it("keeps distinct owned plan identities through a physical ID collision", async () => {
     const archive = snapshot(
       { id: "archive-session", marker: "archive", modifiedAtMs: 20 },
       {
@@ -284,10 +284,10 @@ describe("portable merge plan", () => {
       },
     );
 
-    const plan = buildPortableMergePlan({
+    const plan = await buildPortableMergePlan({
       archive,
       local,
-      payloadDigest: () => "0".repeat(64),
+      payloadDigest: async () => "0".repeat(64),
     });
 
     expect(plan.operations).toEqual(expect.arrayContaining([
@@ -305,7 +305,7 @@ describe("portable merge plan", () => {
     ]));
   });
 
-  it("rewrites an owned plan child graph through deterministic root and day remaps", () => {
+  it("rewrites an owned plan child graph through deterministic root and day remaps", async () => {
     const archive = snapshot(
       { id: "archive-session", marker: "archive", modifiedAtMs: 20 },
       {
@@ -357,10 +357,10 @@ describe("portable merge plan", () => {
       },
     );
 
-    const plan = buildPortableMergePlan({
+    const plan = await buildPortableMergePlan({
       archive,
       local,
-      payloadDigest: () => "0".repeat(64),
+      payloadDigest: async () => "0".repeat(64),
     });
     const aggregate = plan.aggregates.find((value) =>
       value.aggregateClass === "owned_plan"
@@ -410,7 +410,7 @@ describe("portable merge plan", () => {
     ]);
   });
 
-  it("rejects an orphan session child before returning any plan", () => {
+  it("rejects an orphan session child before returning any plan", async () => {
     const archive = snapshot(
       { id: "archive-session", marker: "archive", modifiedAtMs: 20 },
       {
@@ -422,14 +422,14 @@ describe("portable merge plan", () => {
     );
     const local = snapshot({ id: "local-session", marker: "local", modifiedAtMs: 10 });
 
-    expect(() => buildPortableMergePlan({
+    await expect(buildPortableMergePlan({
       archive,
       local,
-      payloadDigest: () => "0".repeat(64),
-    })).toThrow("merge_plan_invalid");
+      payloadDigest: async () => "0".repeat(64),
+    })).rejects.toThrow("merge_plan_invalid");
   });
 
-  it("is order-independent for the same archive facts", () => {
+  it("is order-independent for the same archive facts", async () => {
     const base = snapshot(
       { id: "archive-session", marker: "archive", modifiedAtMs: 20 },
       {
@@ -453,9 +453,9 @@ describe("portable merge plan", () => {
       },
     };
     const local = snapshot({ id: "local-session", marker: "local", modifiedAtMs: 10 });
-    const input = { local, payloadDigest: () => "0".repeat(64) };
+    const input = { local, payloadDigest: async () => "0".repeat(64) };
 
-    expect(buildPortableMergePlan({ ...input, archive: base }))
-      .toEqual(buildPortableMergePlan({ ...input, archive: reordered }));
+    await expect(buildPortableMergePlan({ ...input, archive: base }))
+      .resolves.toEqual(await buildPortableMergePlan({ ...input, archive: reordered }));
   });
 });

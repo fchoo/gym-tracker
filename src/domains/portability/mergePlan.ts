@@ -738,14 +738,14 @@ function planAggregate(
   });
 }
 
-function sessionOperation(
+async function sessionOperation(
   archive: PortableMergePlanSnapshot,
   local: PortableMergePlanSnapshot,
   archiveSession: LogicalBackupRow,
   localSessions: readonly LogicalBackupRow[],
   occupiedIds: Set<string>,
-  payloadDigest: (value: string) => string,
-): PortableMergeOperation {
+  payloadDigest: (value: string) => Promise<string>,
+): Promise<PortableMergeOperation> {
   const archiveId = textId(archiveSession.id);
   const portableId = archiveSession.portable_id;
   if (!isOpaquePortableId(portableId)) invalid();
@@ -783,8 +783,10 @@ function sessionOperation(
       aggregateClass: "workout_session", kind: "local_won", portableId, archiveId, localId,
     });
   }
-  const archiveDigest = payloadDigest(sessionDigestInput(archive, archiveSession));
-  const localDigest = payloadDigest(sessionDigestInput(local, localSession));
+  const [archiveDigest, localDigest] = await Promise.all([
+    payloadDigest(sessionDigestInput(archive, archiveSession)),
+    payloadDigest(sessionDigestInput(local, localSession)),
+  ]);
   if (!/^[a-f0-9]{64}$/u.test(archiveDigest)
     || !/^[a-f0-9]{64}$/u.test(localDigest)) {
     invalid();
@@ -806,11 +808,11 @@ function operationKey(operation: PortableMergeOperation): string {
     : operation.aggregateClass + ":" + operation.portableId;
 }
 
-export function buildPortableMergePlan(input: Readonly<{
+export async function buildPortableMergePlan(input: Readonly<{
   archive: PortableMergePlanSnapshot;
   local: PortableMergePlanSnapshot;
-  payloadDigest(value: string): string;
-}>): PortableMergePlan {
+  payloadDigest(value: string): Promise<string>;
+}>): Promise<PortableMergePlan> {
   if (ownerNamespace(input.archive) !== ownerNamespace(input.local)) invalid();
   assertReferenceClosure(input.archive);
   assertReferenceClosure(input.local);
@@ -825,14 +827,14 @@ export function buildPortableMergePlan(input: Readonly<{
     localByPortableId.set(row.portable_id, rows);
   }
   const sessionOperations: readonly PortableMergeOperation[] = Object.freeze(
-    sessionRows(input.archive).map((session) => sessionOperation(
-    input.archive,
-    input.local,
-    session,
-    localByPortableId.get(session.portable_id as string) ?? [],
-    occupiedSessionIds,
-    input.payloadDigest,
-    )).sort((left, right) => operationKey(left).localeCompare(operationKey(right))),
+    (await Promise.all(sessionRows(input.archive).map((session) => sessionOperation(
+      input.archive,
+      input.local,
+      session,
+      localByPortableId.get(session.portable_id as string) ?? [],
+      occupiedSessionIds,
+      input.payloadDigest,
+    )))).sort((left, right) => operationKey(left).localeCompare(operationKey(right))),
   );
   if (new Set(sessionOperations.map(operationKey)).size !== sessionOperations.length) {
     invalid();
