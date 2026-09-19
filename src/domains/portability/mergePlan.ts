@@ -806,23 +806,23 @@ function mappedRows(
   remapIds: boolean,
   portableId: string,
   keyColumn = "id",
+  keyIds?: ReadonlyMap<string, string>,
 ): Readonly<{ rows: readonly LogicalBackupRow[]; ids: ReadonlyMap<string, string> }> {
   const occupied = tableOccupiedIds(snapshot, table, keyColumn);
   const ids = new Map<string, string>();
   for (const [index, row] of [...selected].sort((left, right) =>
     textId(left[keyColumn]).localeCompare(textId(right[keyColumn]))).entries()) {
     const sourceId = textId(row[keyColumn]);
-    const localId = remapIds && occupied.has(sourceId)
+    const suppliedId = keyIds?.get(sourceId);
+    if (keyIds !== undefined && suppliedId === undefined) invalid();
+    const localId = suppliedId ?? (remapIds && occupied.has(sourceId)
       ? remappedChildId(table, portableId, index, occupied)
-      : sourceId;
+      : sourceId);
     occupied.add(localId);
     ids.set(sourceId, localId);
   }
   const rows = selected.map((row) => {
-    let mapped: LogicalBackupRow = Object.freeze({
-      ...row,
-      [keyColumn]: ids.get(textId(row[keyColumn]))!,
-    });
+    let mapped: LogicalBackupRow = row;
     for (const { column, ids: references, optional } of rowMaps) {
       const value = mapped[column];
       if (value === null || value === undefined) continue;
@@ -833,7 +833,10 @@ function mappedRows(
       }
       mapped = Object.freeze({ ...mapped, [column]: replacement });
     }
-    return mapped;
+    return Object.freeze({
+      ...mapped,
+      [keyColumn]: ids.get(textId(row[keyColumn]))!,
+    });
   });
   return Object.freeze({ rows: Object.freeze(rows), ids });
 }
@@ -843,6 +846,8 @@ function planAggregate(
   local: PortableMergePlanSnapshot,
   operation: Extract<PortableMergeOperation, { aggregateClass: "owned_plan" }>,
   exerciseMappings: ReadonlyMap<string, string>,
+  planMappings: ReadonlyMap<string, string>,
+  sessionMappings: ReadonlyMap<string, string>,
 ): PortableMergeAggregate {
   const archivePlanId = operation.archiveId;
   const localPlanId = operation.localId;
@@ -851,6 +856,7 @@ function planAggregate(
   if (root.length !== 1) invalid();
   tables.plans = Object.freeze([Object.freeze({ ...root[0]!, id: localPlanId })]);
 
+  if (planMappings.get(archivePlanId) !== localPlanId) invalid();
   const planMap = new Map([[archivePlanId, localPlanId]]);
   const days = rowsFor(snapshot, "plan_days").filter((row) => row.plan_id === archivePlanId);
   const mappedDays = mappedRows(local, "plan_days", days, [
@@ -875,6 +881,15 @@ function planAggregate(
   ], operation.kind === "keep_both", operation.portableId);
   if (mappedLegacySchedules.rows.length > 0) {
     tables.plan_schedules = mappedLegacySchedules.rows;
+  }
+  const legacyBindings = rowsFor(snapshot, "plan_schedule_bindings")
+    .filter((row) => mappedLegacySchedules.ids.has(textId(row.schedule_id)));
+  const mappedLegacyBindings = mappedRows(local, "plan_schedule_bindings", legacyBindings, [
+    { column: "schedule_id", ids: mappedLegacySchedules.ids },
+    { column: "plan_day_id", ids: mappedDays.ids },
+  ], operation.kind === "keep_both", operation.portableId);
+  if (mappedLegacyBindings.rows.length > 0) {
+    tables.plan_schedule_bindings = mappedLegacyBindings.rows;
   }
 
   const ownedSchedules = rowsFor(snapshot, "owned_plan_schedules")
@@ -916,6 +931,7 @@ function planAggregate(
       { column: "schedule_id", ids: mappedOwnedSchedules.ids },
       { column: "plan_day_id", ids: mappedDays.ids, optional: true as const },
       { column: "schedule_version_id", ids: mappedScheduleVersions.ids, optional: true as const },
+      { column: "session_id", ids: sessionMappings, optional: true as const },
     ];
     const mapped = mappedRows(local, table, rows, maps,
       operation.kind === "keep_both", operation.portableId);
@@ -926,25 +942,45 @@ function planAggregate(
     .filter((row) => mappedDays.ids.has(textId(row.plan_day_id)));
   const mappedOwnedDayExercises = mappedRows(local, "owned_plan_day_exercises", ownedDayExercises, [
     { column: "plan_day_id", ids: mappedDays.ids },
-    { column: "exercise_id", ids: new Map<string, string>(), optional: true },
+    { column: "exercise_id", ids: exerciseMappings, optional: true },
   ], operation.kind === "keep_both", operation.portableId);
   if (mappedOwnedDayExercises.rows.length > 0) {
     tables.owned_plan_day_exercises = mappedOwnedDayExercises.rows;
   }
 
-  for (const table of [
-    "owned_plan_warmup_sets",
-    "owned_plan_working_set_targets",
-    "owned_plan_progression_policies",
-    "owned_plan_occurrence_sources",
-  ]) {
-    const rows = rowsFor(snapshot, table)
-      .filter((row) => mappedOwnedDayExercises.ids.has(textId(row.plan_day_exercise_id)));
-    const mapped = mappedRows(local, table, rows, [
-      { column: "plan_day_exercise_id", ids: mappedOwnedDayExercises.ids },
-      { column: "plan_day_id", ids: mappedDays.ids, optional: true },
-    ], operation.kind === "keep_both", operation.portableId);
-    if (mapped.rows.length > 0) tables[table] = mapped.rows;
+  const ownedWarmups = rowsFor(snapshot, "owned_plan_warmup_sets")
+    .filter((row) => mappedOwnedDayExercises.ids.has(textId(row.plan_day_exercise_id)));
+  const mappedOwnedWarmups = mappedRows(local, "owned_plan_warmup_sets", ownedWarmups, [
+    { column: "plan_day_exercise_id", ids: mappedOwnedDayExercises.ids },
+  ], operation.kind === "keep_both", operation.portableId);
+  if (mappedOwnedWarmups.rows.length > 0) tables.owned_plan_warmup_sets = mappedOwnedWarmups.rows;
+
+  const ownedTargets = rowsFor(snapshot, "owned_plan_working_set_targets")
+    .filter((row) => mappedOwnedDayExercises.ids.has(textId(row.plan_day_exercise_id)));
+  const mappedOwnedTargets = mappedRows(local, "owned_plan_working_set_targets", ownedTargets, [
+    { column: "plan_day_exercise_id", ids: mappedOwnedDayExercises.ids },
+  ], operation.kind === "keep_both", operation.portableId);
+  if (mappedOwnedTargets.rows.length > 0) {
+    tables.owned_plan_working_set_targets = mappedOwnedTargets.rows;
+  }
+
+  const ownedPolicies = rowsFor(snapshot, "owned_plan_progression_policies")
+    .filter((row) => mappedOwnedDayExercises.ids.has(textId(row.plan_day_exercise_id)));
+  const mappedOwnedPolicies = mappedRows(local, "owned_plan_progression_policies", ownedPolicies, [
+    { column: "plan_day_exercise_id", ids: mappedOwnedDayExercises.ids },
+  ], operation.kind === "keep_both", operation.portableId);
+  if (mappedOwnedPolicies.rows.length > 0) {
+    tables.owned_plan_progression_policies = mappedOwnedPolicies.rows;
+  }
+
+  const occurrenceSources = rowsFor(snapshot, "owned_plan_occurrence_sources")
+    .filter((row) => mappedOwnedDayExercises.ids.has(textId(row.plan_day_exercise_id)));
+  const mappedOccurrenceSources = mappedRows(local, "owned_plan_occurrence_sources", occurrenceSources, [
+    { column: "plan_day_exercise_id", ids: mappedOwnedDayExercises.ids },
+    { column: "plan_day_id", ids: mappedDays.ids },
+  ], operation.kind === "keep_both", operation.portableId, "plan_day_exercise_id", mappedOwnedDayExercises.ids);
+  if (mappedOccurrenceSources.rows.length > 0) {
+    tables.owned_plan_occurrence_sources = mappedOccurrenceSources.rows;
   }
 
   for (const table of [
@@ -955,21 +991,80 @@ function planAggregate(
       .filter((row) => row.plan_id === archivePlanId);
     const mapped = mappedRows(local, table, rows, [
       { column: "plan_id", ids: planMap },
-    ], operation.kind === "keep_both", operation.portableId);
+    ], operation.kind === "keep_both", operation.portableId, "plan_id", planMap);
     if (mapped.rows.length > 0) tables[table] = mapped.rows;
   }
 
-  for (const table of [
-    "plan_warmup_sets",
-    "plan_working_set_targets",
-    "progression_policies",
-  ]) {
-    const rows = rowsFor(snapshot, table)
-      .filter((row) => mappedOccurrences.ids.has(textId(row.plan_day_exercise_id)));
-    const mapped = mappedRows(local, table, rows, [
-      { column: "plan_day_exercise_id", ids: mappedOccurrences.ids },
-    ], operation.kind === "keep_both", operation.portableId);
-    if (mapped.rows.length > 0) tables[table] = mapped.rows;
+  const daySources = rowsFor(snapshot, "owned_plan_day_sources")
+    .filter((row) => mappedDays.ids.has(textId(row.plan_day_id)));
+  const mappedDaySources = mappedRows(local, "owned_plan_day_sources", daySources, [
+    { column: "plan_day_id", ids: mappedDays.ids },
+    { column: "plan_id", ids: planMap },
+  ], operation.kind === "keep_both", operation.portableId, "plan_day_id", mappedDays.ids);
+  if (mappedDaySources.rows.length > 0) tables.owned_plan_day_sources = mappedDaySources.rows;
+
+  const mutationRequests = rowsFor(snapshot, "owned_plan_mutation_requests")
+    .filter((row) => row.result_plan_id === archivePlanId || row.source_plan_id === archivePlanId);
+  const mappedMutationRequests = mappedRows(local, "owned_plan_mutation_requests", mutationRequests, [
+    { column: "source_plan_id", ids: planMappings, optional: true },
+    { column: "result_plan_id", ids: planMappings },
+  ], operation.kind === "keep_both", operation.portableId, "request_id");
+  if (mappedMutationRequests.rows.length > 0) {
+    tables.owned_plan_mutation_requests = mappedMutationRequests.rows;
+  }
+
+  const activationRequests = rowsFor(snapshot, "starter_plan_activation_requests")
+    .filter((row) => row.result_plan_id === archivePlanId || row.selected_plan_id === archivePlanId);
+  const mappedActivationRequests = mappedRows(local, "starter_plan_activation_requests", activationRequests, [
+    { column: "selected_plan_id", ids: planMappings, optional: true },
+    { column: "result_plan_id", ids: planMappings },
+    { column: "result_schedule_id", ids: mappedOwnedSchedules.ids },
+  ], operation.kind === "keep_both", operation.portableId, "request_id");
+  if (mappedActivationRequests.rows.length > 0) {
+    tables.starter_plan_activation_requests = mappedActivationRequests.rows;
+  }
+
+  const legacyWarmups = rowsFor(snapshot, "plan_warmup_sets")
+    .filter((row) => mappedOccurrences.ids.has(textId(row.plan_day_exercise_id)));
+  const mappedLegacyWarmups = mappedRows(local, "plan_warmup_sets", legacyWarmups, [
+    { column: "plan_day_exercise_id", ids: mappedOccurrences.ids },
+  ], operation.kind === "keep_both", operation.portableId);
+  if (mappedLegacyWarmups.rows.length > 0) tables.plan_warmup_sets = mappedLegacyWarmups.rows;
+
+  const legacyTargets = rowsFor(snapshot, "plan_working_set_targets")
+    .filter((row) => mappedOccurrences.ids.has(textId(row.plan_day_exercise_id)));
+  const mappedLegacyTargets = mappedRows(local, "plan_working_set_targets", legacyTargets, [
+    { column: "plan_day_exercise_id", ids: mappedOccurrences.ids },
+  ], operation.kind === "keep_both", operation.portableId);
+  if (mappedLegacyTargets.rows.length > 0) {
+    tables.plan_working_set_targets = mappedLegacyTargets.rows;
+  }
+
+  const legacyPolicies = rowsFor(snapshot, "progression_policies")
+    .filter((row) => mappedOccurrences.ids.has(textId(row.plan_day_exercise_id)));
+  const mappedLegacyPolicies = mappedRows(local, "progression_policies", legacyPolicies, [
+    { column: "plan_day_exercise_id", ids: mappedOccurrences.ids },
+  ], operation.kind === "keep_both", operation.portableId);
+  if (mappedLegacyPolicies.rows.length > 0) tables.progression_policies = mappedLegacyPolicies.rows;
+
+  const recommendations = rowsFor(snapshot, "progression_recommendations")
+    .filter((row) => mappedLegacyTargets.ids.has(textId(row.plan_working_set_target_id)));
+  const mappedRecommendations = mappedRows(local, "progression_recommendations", recommendations, [
+    { column: "plan_working_set_target_id", ids: mappedLegacyTargets.ids },
+    { column: "exercise_id", ids: exerciseMappings, optional: true },
+  ], operation.kind === "keep_both", operation.portableId);
+  if (mappedRecommendations.rows.length > 0) {
+    tables.progression_recommendations = mappedRecommendations.rows;
+  }
+
+  const ownedRecommendations = rowsFor(snapshot, "owned_progression_recommendations")
+    .filter((row) => mappedOwnedTargets.ids.has(textId(row.owned_plan_working_set_target_id)));
+  const mappedOwnedRecommendations = mappedRows(local, "owned_progression_recommendations", ownedRecommendations, [
+    { column: "owned_plan_working_set_target_id", ids: mappedOwnedTargets.ids },
+    { column: "exercise_id", ids: exerciseMappings, optional: true },
+  ], operation.kind === "keep_both", operation.portableId);
+  if (mappedOwnedRecommendations.rows.length > 0) {
+    tables.owned_progression_recommendations = mappedOwnedRecommendations.rows;
   }
   return Object.freeze({
     aggregateClass: "owned_plan",
@@ -1124,6 +1219,15 @@ export async function buildPortableMergePlan(input: Readonly<{
   const exerciseMappings = new Map(
     exercises.idMappings.map(({ archiveId, localId }) => [archiveId, localId]),
   );
+  const planMappings = new Map(
+    plans.idMappings.map(({ archiveId, localId }) => [archiveId, localId]),
+  );
+  const sessionMappings = new Map(
+    sessionOperations.map((operation) => {
+      if (operation.aggregateClass !== "workout_session") invalid();
+      return [operation.archiveId, operation.localId] as const;
+    }),
+  );
   const aggregates = Object.freeze(operations.flatMap((operation) => {
     if (operation.aggregateClass === "workout_session"
       && (operation.kind === "insert" || operation.kind === "archive_won")) {
@@ -1135,7 +1239,14 @@ export async function buildPortableMergePlan(input: Readonly<{
     }
     if (operation.aggregateClass === "owned_plan"
       && (operation.kind === "insert" || operation.kind === "keep_both")) {
-      return [planAggregate(input.archive, input.local, operation, exerciseMappings)];
+      return [planAggregate(
+        input.archive,
+        input.local,
+        operation,
+        exerciseMappings,
+        planMappings,
+        sessionMappings,
+      )];
     }
     return [];
   }));

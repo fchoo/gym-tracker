@@ -483,6 +483,11 @@ describe("portable merge plan", () => {
         plans: [{ id: "plan-1", origin: "custom", portable_id: "f".repeat(32) }],
         plan_days: [{ id: "day-1", plan_id: "plan-1", ordinal: 0 }],
         plan_schedules: [{ id: "schedule-1", plan_id: "plan-1" }],
+        plan_schedule_bindings: [{
+          id: "legacy-schedule-binding-1",
+          schedule_id: "schedule-1",
+          plan_day_id: "day-1",
+        }],
         owned_plan_schedules: [{ id: "owned-schedule-1", plan_id: "plan-1" }],
         owned_plan_schedule_versions: [{
           id: "schedule-version-1",
@@ -504,6 +509,48 @@ describe("portable merge plan", () => {
           schedule_version_id: "schedule-version-1",
           plan_day_id: "day-1",
         }],
+        owned_plan_day_sources: [{ plan_day_id: "day-1", plan_id: "plan-1" }],
+        owned_plan_day_exercises: [{
+          id: "owned-occurrence-1",
+          plan_day_id: "day-1",
+          exercise_id: "retained-exercise",
+        }],
+        owned_plan_working_set_targets: [{
+          id: "owned-target-1",
+          plan_day_exercise_id: "owned-occurrence-1",
+        }],
+        owned_plan_occurrence_sources: [{
+          plan_day_exercise_id: "owned-occurrence-1",
+          plan_day_id: "day-1",
+        }],
+        owned_progression_recommendations: [{
+          id: "owned-recommendation-1",
+          exercise_id: "retained-exercise",
+          owned_plan_working_set_target_id: "owned-target-1",
+        }],
+        plan_working_set_targets: [{
+          id: "target-1",
+          plan_day_exercise_id: "occurrence-1",
+          metric_profile: "load_reps",
+          metric_contract_version: 1,
+          exercise_metric_generation: 1,
+        }],
+        progression_recommendations: [{
+          id: "recommendation-1",
+          exercise_id: "retained-exercise",
+          plan_working_set_target_id: "target-1",
+        }],
+        owned_plan_mutation_requests: [{
+          request_id: "mutation-1",
+          source_plan_id: "plan-1",
+          result_plan_id: "plan-1",
+        }],
+        starter_plan_activation_requests: [{
+          request_id: "activation-1",
+          selected_plan_id: "plan-1",
+          result_plan_id: "plan-1",
+          result_schedule_id: "owned-schedule-1",
+        }],
         plan_day_exercises: [{
           id: "occurrence-1",
           plan_day_id: "day-1",
@@ -524,6 +571,11 @@ describe("portable merge plan", () => {
         owned_plan_schedule_versions: [{
           id: "schedule-version-1",
           schedule_id: "owned-schedule-1",
+        }],
+        owned_plan_day_exercises: [{
+          id: "owned-occurrence-1",
+          plan_day_id: "day-1",
+          exercise_id: "retained-exercise",
         }],
       },
     );
@@ -554,6 +606,12 @@ describe("portable merge plan", () => {
     expect(aggregate?.tables.plan_schedules).toEqual([
       expect.objectContaining({ plan_id: rootId }),
     ]);
+    expect(aggregate?.tables.plan_schedule_bindings).toEqual([
+      expect.objectContaining({
+        schedule_id: expect.not.stringMatching(/^schedule-1$/u),
+        plan_day_id: expect.not.stringMatching(/^day-1$/u),
+      }),
+    ]);
     expect(aggregate?.tables.owned_plan_schedules).toEqual([
       expect.objectContaining({ plan_id: rootId }),
     ]);
@@ -578,6 +636,34 @@ describe("portable merge plan", () => {
         schedule_version_id: expect.not.stringMatching(/^schedule-version-1$/u),
         plan_day_id: expect.not.stringMatching(/^day-1$/u),
       }),
+    ]);
+    expect(aggregate?.tables.owned_plan_day_sources).toEqual([
+      expect.objectContaining({
+        plan_day_id: expect.not.stringMatching(/^day-1$/u),
+        plan_id: rootId,
+      }),
+    ]);
+    expect(aggregate?.tables.owned_plan_occurrence_sources).toEqual([
+      expect.objectContaining({
+        plan_day_exercise_id: expect.not.stringMatching(/^owned-occurrence-1$/u),
+        plan_day_id: expect.not.stringMatching(/^day-1$/u),
+      }),
+    ]);
+    expect(aggregate?.tables.owned_plan_mutation_requests).toEqual([
+      expect.objectContaining({ source_plan_id: rootId, result_plan_id: rootId }),
+    ]);
+    expect(aggregate?.tables.starter_plan_activation_requests).toEqual([
+      expect.objectContaining({
+        selected_plan_id: rootId,
+        result_plan_id: rootId,
+        result_schedule_id: expect.not.stringMatching(/^owned-schedule-1$/u),
+      }),
+    ]);
+    expect(aggregate?.tables.progression_recommendations).toEqual([
+      expect.objectContaining({ plan_working_set_target_id: "target-1" }),
+    ]);
+    expect(aggregate?.tables.owned_progression_recommendations).toEqual([
+      expect.objectContaining({ owned_plan_working_set_target_id: "owned-target-1" }),
     ]);
   });
 
