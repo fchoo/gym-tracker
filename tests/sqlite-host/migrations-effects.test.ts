@@ -2500,7 +2500,10 @@ describe("Plan 01-06 native migration suite selection", () => {
     expect(migrationsContract).toContain("migration_statement_rollback_${phase}_${statementIndex}_${safeErrorCode(error)}");
     expect(deviceCommand).toContain("migrations-effects");
     expect(deviceCommand).toContain("--assert-all");
+    expect(deviceCommand).toContain('--suite "$suite"');
     expect(deviceCommand).toContain("run-native-sqlite-contracts.mjs");
+    expect(deviceCommand).toContain("EXPO_PUBLIC_NATIVE_CONTRACT_SUITE");
+    expect(route).toContain('configuredSuite === "phase10"');
     expect(verifier).toContain("expectedCaseIds");
     expect(verifier).toContain("contract expected count");
     expect(verifier).toContain("contract cases must contain exactly ten results");

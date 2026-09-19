@@ -86,6 +86,11 @@ const manifestPath = path.resolve(projectRoot, manifestArgument);
 const manifest = JSON.parse(await readFile(manifestPath, 'utf8'));
 const suite = requestedSuite || manifest.suite;
 
+export function manifestSupportsRequestedSuite(manifestSuite, requestedSuite) {
+  return manifestSuite === requestedSuite
+    || (manifestSuite === 'phase10' && requestedSuite === 'migrations-effects');
+}
+
 async function deriveCaseIds(fileName, exportName) {
   const source = await readFile(
     path.join(projectRoot, 'src/testing/contracts', fileName),
@@ -377,7 +382,7 @@ try {
   if (!manifest.device?.serial || !manifest.package || !manifest.apk?.sha256) {
     throw new Error('manifest is missing device, package, or APK identity.');
   }
-  if (manifest.suite !== suite) {
+  if (!manifestSupportsRequestedSuite(manifest.suite, suite)) {
     throw new Error('requested suite does not match the build manifest.');
   }
   if (!existsSync(path.resolve(projectRoot, manifest.apk.path))) {

@@ -95,6 +95,19 @@ test("Phase 10 runner rejects a retained APK whose bytes disagree with the manif
   ), /APK bytes do not match/u);
 });
 
+test("Phase 10 artifact permits only the packaged migrations-effects contract", async () => {
+  const nativeRunner = await readFile(
+    path.join(projectRoot, "scripts/run-native-sqlite-contracts.mjs"),
+    "utf8",
+  );
+
+  assert.match(nativeRunner, /manifestSuite === 'phase10'/u);
+  assert.match(nativeRunner, /requestedSuite === 'migrations-effects'/u);
+  assert.ok(nativeRunner.includes(
+    "manifestSupportsRequestedSuite(manifest.suite, suite)",
+  ));
+});
+
 test("Phase 10 Maestro flow exercises per-rep and 3+3+3 cluster lifecycle timing", async () => {
   const flow = await readFile(
     path.join(projectRoot, "maestro/phase10/advanced-set-timing.yaml"),
