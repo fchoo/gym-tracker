@@ -1212,10 +1212,13 @@ export async function buildPortableMergePlan(input: Readonly<{
   payloadDigest(value: string): Promise<string>;
 }>): Promise<PortableMergePlan> {
   if (ownerNamespace(input.archive) !== ownerNamespace(input.local)) invalid();
-  assertReferenceClosure(input.archive);
-  assertReferenceClosure(input.local);
+  // Exercise the session aggregate's own closure contract before the generic
+  // cross-table check. Both reject the same invalid input; this ordering keeps
+  // the more specific invariant as the first fail-closed boundary.
   assertSessionAggregateClosure(input.archive);
   assertSessionAggregateClosure(input.local);
+  assertReferenceClosure(input.archive);
+  assertReferenceClosure(input.local);
   const localByPortableId = new Map<string, LogicalBackupRow[]>();
   const occupiedSessionIds = new Set(sessionRows(input.local).map((row) => textId(row.id)));
   for (const row of sessionRows(input.local)) {

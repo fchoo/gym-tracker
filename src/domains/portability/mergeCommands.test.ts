@@ -214,6 +214,8 @@ describe("secure merge preflight", () => {
 
   it("rejects non-canonical merge values and malformed legacy archive roots", async () => {
     expect(() => canonicalMergeValue(new Date())).toThrow("merge_local_state_invalid");
+    expect(canonicalMergeValue(Object.assign(Object.create(null), { z: 1, a: 2 })))
+      .toBe('{"a":2,"z":1}');
     const malformed = {
       ...snapshot({ snapshotId: "missing-session-id" }),
       tables: {
@@ -508,6 +510,28 @@ describe("secure merge preflight", () => {
 
     await expect(commands.preflightSecureMerge({ password: "owner-password" }))
       .rejects.toEqual(new MergeCommandError("merge_archive_invalid"));
+  });
+
+  it("maps an authenticated plaintext limit failure to the bounded archive-limit error", async () => {
+    const archiveSnapshot = snapshot({ snapshotId: "plaintext-limit" });
+    const archive = await archiveFor(archiveSnapshot);
+    const crypto = {
+      ...cryptoPort(),
+      decrypt: async () => { throw new BackupFormatError("backup_archive_limit_exceeded"); },
+    };
+    const commands = createMergeCommands({
+      crypto,
+      files: { readSelectedArchiveAtMost: async () => archive },
+      kdf: { derive: async () => ({ algorithm: "argon2id", bytes: new Uint8Array(32), durationMs: 1, provider: "Bouncy Castle", providerVersion: "1.85.2" }) },
+      schema: schemaFor(archiveSnapshot),
+      candidateProbe: { validateCandidate: async () => undefined },
+      local: localFacts(),
+      sha256,
+      store: createMergePreflightStore({ tokenFactory: () => "unused" }),
+    });
+
+    await expect(commands.preflightSecureMerge({ password: "owner-password" }))
+      .rejects.toEqual(new MergeCommandError("merge_archive_limit_exceeded"));
   });
 
   it("previews an archive containing multiple independent sessions", async () => {

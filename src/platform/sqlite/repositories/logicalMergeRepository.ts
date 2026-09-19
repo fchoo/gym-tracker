@@ -580,6 +580,15 @@ function assertFullPlanSlice(plan: PortableMergePlan): void {
   }
 }
 
+/**
+ * Exhaustive fail-closed plan validation is intentionally private to the
+ * repository. This read-only test seam has no kernel or writer capability.
+ */
+export const __logicalMergeRepositoryTestOnly = Object.freeze({
+  assertFullPlanSlice,
+  assertFullPlanMatchesLocal,
+});
+
 function assertFullPlanMatchesLocal(
   plan: PortableMergePlan,
   local: Awaited<ReturnType<typeof readSqliteMergeLocalFacts>>,

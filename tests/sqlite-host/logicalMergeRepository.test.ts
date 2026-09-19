@@ -26,6 +26,7 @@ import {
   createLogicalBackupRepository,
 } from "../../src/platform/sqlite/repositories/logicalBackupRepository";
 import {
+  __logicalMergeRepositoryTestOnly,
   createLogicalMergeRepository,
   type LogicalMergeFaultStage,
 } from "../../src/platform/sqlite/repositories/logicalMergeRepository";
@@ -480,6 +481,227 @@ async function expectRejectedFullPlan(
 }
 
 describe("logical merge repository", () => {
+  it("exposes no production writer path through the full-plan validation test seam", async () => {
+    const kernel = await open("full-plan-test-seam");
+    const { plan } = await fullPlanFixture(kernel);
+
+    expect(() => __logicalMergeRepositoryTestOnly.assertFullPlanSlice(plan))
+      .not.toThrow();
+  });
+
+  it.each([
+    ["a custom root with the wrong physical id", (plan: PortableMergePlan) => ({
+      ...plan,
+      aggregates: plan.aggregates.map((aggregate) => aggregate.aggregateClass === "custom_exercise"
+        ? {
+          ...aggregate,
+          tables: {
+            ...aggregate.tables,
+            exercises: aggregate.tables.exercises!.map((row) => ({ ...row, id: "wrong-id" })),
+          },
+        }
+        : aggregate),
+    })],
+    ["a non-owned custom root", (plan: PortableMergePlan) => ({
+      ...plan,
+      aggregates: plan.aggregates.map((aggregate) => aggregate.aggregateClass === "custom_exercise"
+        ? {
+          ...aggregate,
+          tables: {
+            ...aggregate.tables,
+            exercises: aggregate.tables.exercises!.map((row) => ({ ...row, origin: "bundled" })),
+          },
+        }
+        : aggregate),
+    })],
+    ["a custom aggregate with a blank taxonomy slug", (plan: PortableMergePlan) => ({
+      ...plan,
+      aggregates: plan.aggregates.map((aggregate) => aggregate.aggregateClass === "custom_exercise"
+        ? {
+          ...aggregate,
+          tables: {
+            ...aggregate.tables,
+            exercise_taxonomy: (aggregate.tables.exercise_taxonomy ?? []).map((row) => ({ ...row, slug: " " })),
+          },
+        }
+        : aggregate),
+    })],
+  ] as Array<[string, (plan: PortableMergePlan) => PortableMergePlan]>)("rejects %s through full-plan aggregate validation", async (_label, mutate) => {
+    const kernel = await open(`full-plan-seam-custom-${_label}`);
+    const { plan } = await fullPlanFixture(kernel);
+
+    expect(() => __logicalMergeRepositoryTestOnly.assertFullPlanSlice(mutate(plan)))
+      .toThrow(expect.objectContaining({ code: "logical_merge_failed" }));
+  });
+
+  it("rejects full-plan setting operations that drift from the live local keys", async () => {
+    const kernel = await open("full-plan-live-settings");
+    const { local, plan } = await fullPlanFixture(kernel);
+    const settings = local.tables.app_settings ?? [];
+    const localWithImportedKey: MergeLocalFacts = {
+      ...local,
+      tables: {
+        ...local.tables,
+        app_settings: [...settings, { key: "units" }],
+      },
+    };
+    const localWithoutExistingKey: MergeLocalFacts = {
+      ...local,
+      tables: {
+        ...local.tables,
+        app_settings: settings.filter((row) => row.key !== "appearance"),
+      },
+    };
+
+    expect(() => __logicalMergeRepositoryTestOnly.assertFullPlanMatchesLocal(plan, localWithImportedKey))
+      .toThrow(expect.objectContaining({ code: "logical_merge_failed" }));
+    expect(() => __logicalMergeRepositoryTestOnly.assertFullPlanMatchesLocal(plan, localWithoutExistingKey))
+      .toThrow(expect.objectContaining({ code: "logical_merge_failed" }));
+  });
+
+  it("rejects a session insert operation when the live identity already exists", async () => {
+    const { local, plan } = await fullSessionPlanFixture();
+    const forged: PortableMergePlan = {
+      ...plan,
+      operations: plan.operations.map((operation) => operation.aggregateClass === "workout_session"
+        ? { ...operation, kind: "insert" as const }
+        : operation),
+    };
+
+    expect(() => __logicalMergeRepositoryTestOnly.assertFullPlanMatchesLocal(forged, local))
+      .toThrow(expect.objectContaining({ code: "logical_merge_failed" }));
+  });
+
+  it.each([
+    ["custom exercise", async () => {
+      const kernel = await open("full-plan-live-custom");
+      const { local, plan } = await fullPlanFixture(kernel);
+      return {
+        local,
+        plan: {
+          ...plan,
+          operations: plan.operations.map((operation) => operation.aggregateClass === "custom_exercise"
+            ? { ...operation, kind: "duplicate" as const }
+            : operation),
+        } as PortableMergePlan,
+      };
+    }],
+    ["owned plan", async () => {
+      const { local, plan } = await fullOwnedPlanFixture();
+      return {
+        local,
+        plan: {
+          ...plan,
+          operations: plan.operations.map((operation) => operation.aggregateClass === "owned_plan"
+            ? { ...operation, kind: "duplicate" as const }
+            : operation),
+        } as PortableMergePlan,
+      };
+    }],
+  ] as Array<[string, () => Promise<Readonly<{ local: MergeLocalFacts; plan: PortableMergePlan }>>]>)("rejects a forged duplicate %s operation against live local identities", async (_label, fixture) => {
+    const { local, plan } = await fixture();
+
+    expect(() => __logicalMergeRepositoryTestOnly.assertFullPlanMatchesLocal(plan, local))
+      .toThrow(expect.objectContaining({ code: "logical_merge_failed" }));
+  });
+
+  it.each([
+    ["a session root with an unmatched active exercise pointer", (plan: PortableMergePlan) => ({
+      ...plan,
+      aggregates: plan.aggregates.map((aggregate) => aggregate.aggregateClass === "workout_session"
+        ? {
+          ...aggregate,
+          tables: {
+            ...aggregate.tables,
+            workout_sessions: aggregate.tables.workout_sessions!.map((row) => ({
+              ...row, active_session_exercise_id: "missing-exercise",
+            })),
+          },
+        }
+        : aggregate),
+    })],
+    ["a duplicate session exercise child id", (plan: PortableMergePlan) => ({
+      ...plan,
+      aggregates: plan.aggregates.map((aggregate) => aggregate.aggregateClass === "workout_session"
+        ? {
+          ...aggregate,
+          tables: {
+            ...aggregate.tables,
+            session_exercises: [
+              ...(aggregate.tables.session_exercises ?? []),
+              aggregate.tables.session_exercises![0]!,
+            ],
+          },
+        }
+        : aggregate),
+    })],
+    ["a session set linked to an absent exercise", (plan: PortableMergePlan) => ({
+      ...plan,
+      aggregates: plan.aggregates.map((aggregate) => aggregate.aggregateClass === "workout_session"
+        ? {
+          ...aggregate,
+          tables: {
+            ...aggregate.tables,
+            session_sets: (aggregate.tables.session_sets ?? []).map((row) => ({
+              ...row, session_exercise_id: "missing-exercise",
+            })),
+          },
+        }
+        : aggregate),
+    })],
+    ["a child from another session", (plan: PortableMergePlan) => ({
+      ...plan,
+      aggregates: plan.aggregates.map((aggregate) => aggregate.aggregateClass === "workout_session"
+        ? {
+          ...aggregate,
+          tables: {
+            ...aggregate.tables,
+            session_exercises: (aggregate.tables.session_exercises ?? []).map((row) => ({
+              ...row, session_id: "other-session",
+            })),
+          },
+        }
+        : aggregate),
+    })],
+  ] as Array<[string, (plan: PortableMergePlan) => PortableMergePlan]>)("rejects %s through session aggregate validation", async (_label, mutate) => {
+    const { plan } = await fullSessionPlanFixture();
+
+    expect(() => __logicalMergeRepositoryTestOnly.assertFullPlanSlice(mutate(plan)))
+      .toThrow(expect.objectContaining({ code: "logical_merge_failed" }));
+  });
+
+  it.each([
+    ["a non-owned plan root", (plan: PortableMergePlan) => ({
+      ...plan,
+      aggregates: plan.aggregates.map((aggregate) => aggregate.aggregateClass === "owned_plan"
+        ? { ...aggregate, tables: { ...aggregate.tables, plans: aggregate.tables.plans!.map((row) => ({ ...row, origin: "bundled" })) } }
+        : aggregate),
+    })],
+    ["an aggregate state owned by another plan", (plan: PortableMergePlan) => ({
+      ...plan,
+      aggregates: plan.aggregates.map((aggregate) => aggregate.aggregateClass === "owned_plan"
+        ? { ...aggregate, tables: { ...aggregate.tables, owned_plan_aggregate_states: (aggregate.tables.owned_plan_aggregate_states ?? []).map((row) => ({ ...row, plan_id: "other-plan" })) } }
+        : aggregate),
+    })],
+    ["a schedule with a duplicate id", (plan: PortableMergePlan) => ({
+      ...plan,
+      aggregates: plan.aggregates.map((aggregate) => aggregate.aggregateClass === "owned_plan"
+        ? { ...aggregate, tables: { ...aggregate.tables, owned_plan_schedules: [...(aggregate.tables.owned_plan_schedules ?? []), aggregate.tables.owned_plan_schedules![0]!] } }
+        : aggregate),
+    })],
+    ["an occurrence source outside the owned graph", (plan: PortableMergePlan) => ({
+      ...plan,
+      aggregates: plan.aggregates.map((aggregate) => aggregate.aggregateClass === "owned_plan"
+        ? { ...aggregate, tables: { ...aggregate.tables, owned_plan_occurrence_sources: (aggregate.tables.owned_plan_occurrence_sources ?? []).map((row) => ({ ...row, plan_day_id: "missing-day" })) } }
+        : aggregate),
+    })],
+  ] as Array<[string, (plan: PortableMergePlan) => PortableMergePlan]>)("rejects %s through owned-plan aggregate validation", async (_label, mutate) => {
+    const { plan } = await fullOwnedPlanFixture();
+
+    expect(() => __logicalMergeRepositoryTestOnly.assertFullPlanSlice(mutate(plan)))
+      .toThrow(expect.objectContaining({ code: "logical_merge_failed" }));
+  });
+
   it("applies a precomputed custom-exercise aggregate and missing setting atomically", async () => {
     const kernel = await open("full-plan");
     const { local, plan } = await fullPlanFixture(kernel);
