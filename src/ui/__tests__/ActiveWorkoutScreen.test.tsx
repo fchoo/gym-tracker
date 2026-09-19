@@ -3204,6 +3204,111 @@ describe("Plan 01-08 ActiveWorkoutScreen", () => {
       }));
   });
 
+  it("uses the refreshed inherited set revision after saving an exercise timing default", async () => {
+    const updateSessionExerciseAdvancedTiming = jest.fn<NonNullable<
+      ActiveWorkoutCommands["updateSessionExerciseAdvancedTiming"]
+    >>(async () => advancedResult({
+      version: 1,
+      state: "idle",
+      revision: 0,
+      targetSessionSetId: null,
+    }, 2));
+    const updateSessionSetAdvancedTiming = jest.fn<NonNullable<
+      ActiveWorkoutCommands["updateSessionSetAdvancedTiming"]
+    >>(async () => advancedResult({
+      version: 1,
+      state: "idle",
+      revision: 0,
+      targetSessionSetId: null,
+    }, 3));
+
+    await renderActive({
+      advancedTimingContext: {
+        sessionId: "session-1",
+        sessionRevision: 1,
+        state: { version: 1, state: "idle", revision: 0, targetSessionSetId: null },
+      },
+      commands: commands({
+        updateSessionExerciseAdvancedTiming,
+        updateSessionSetAdvancedTiming,
+      }),
+    });
+
+    await act(async () => {
+      fireEvent.press(screen.getByRole("button", {
+        name: "Configure Back Squat timing",
+      }));
+    });
+    await waitFor(() => expect(screen.getByRole("button", {
+      name: "Per-rep timing",
+    })).toBeOnTheScreen());
+    await act(async () => {
+      fireEvent.press(screen.getByRole("button", { name: "Per-rep timing" }));
+    });
+    await waitFor(() => expect(screen.getByTestId(
+      "advanced-timing-config-interval",
+    )).toBeOnTheScreen());
+    await act(async () => {
+      fireEvent.changeText(
+        screen.getByTestId("advanced-timing-config-interval"),
+        "3",
+      );
+    });
+    await act(async () => {
+      fireEvent.press(screen.getByRole("button", { name: "Save timing" }));
+    });
+
+    await waitFor(() => expect(updateSessionExerciseAdvancedTiming)
+      .toHaveBeenCalledTimes(1));
+    await waitFor(() => expect(screen.queryByRole("button", {
+      name: "Per-rep timing",
+    })).not.toBeOnTheScreen());
+
+    await act(async () => {
+      fireEvent.press(screen.getByRole("button", { name: "Set timing" }));
+    });
+    await waitFor(() => expect(screen.getByRole("button", {
+      name: "Cluster timing",
+    })).toBeOnTheScreen());
+    await act(async () => {
+      fireEvent.press(screen.getByRole("button", { name: "Cluster timing" }));
+    });
+    await waitFor(() => expect(screen.getByTestId(
+      "advanced-timing-config-cluster-pattern",
+    )).toBeOnTheScreen());
+    await act(async () => {
+      fireEvent.changeText(
+        screen.getByTestId("advanced-timing-config-cluster-pattern"),
+        "3+3+3",
+      );
+      fireEvent.changeText(
+        screen.getByTestId("advanced-timing-config-cluster-rest"),
+        "20",
+      );
+    });
+    await act(async () => {
+      fireEvent.press(screen.getByRole("button", { name: "both cues" }));
+    });
+    await act(async () => {
+      fireEvent.press(screen.getByRole("button", { name: "Save timing" }));
+    });
+
+    await waitFor(() => expect(updateSessionSetAdvancedTiming).toHaveBeenCalledWith({
+      sessionId: "session-1",
+      sessionSetId: "working-1",
+      expectedSessionRevision: 2,
+      expectedSetRevision: 2,
+      override: {
+        version: 1,
+        mode: "cluster",
+        groupSizes: [3, 3, 3],
+        intraRestMs: 20_000,
+        cueChannels: "both",
+      },
+      nowMs: 2_000,
+    }));
+  });
+
   it("keeps a completed working set read-only for advanced timing", async () => {
     const updateSessionSetAdvancedTiming = jest.fn<NonNullable<
       ActiveWorkoutCommands["updateSessionSetAdvancedTiming"]

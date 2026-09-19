@@ -995,6 +995,47 @@ function PopulatedWorkoutOverview({
     setView(nextView);
   };
 
+  const applyExerciseTimingConfig = (
+    exerciseId: string,
+    config: AdvancedTimingConfigV1,
+    sessionRevision: number,
+  ) => {
+    const current = viewRef.current;
+    const nextExercises = exercisesFor(current).map((exercise) => {
+      if (exercise.id !== exerciseId) return exercise;
+      const appliesInheritedConfig = (set: ActiveWorkoutSet) =>
+        (set.status === "planned" || set.status === "draft")
+        && (set.advancedTimingOverride === null
+          || set.advancedTimingOverride === undefined);
+      const applyInheritedConfig = (set: ActiveWorkoutSet): ActiveWorkoutSet => {
+        if (!appliesInheritedConfig(set)) return set;
+        return {
+          ...set,
+          revision: set.revision + 1,
+          advancedTimingResolved: config,
+        };
+      };
+      return {
+        ...exercise,
+        revision: exercise.revision + 1,
+        advancedTimingDefault: config,
+        warmups: exercise.warmups.map(applyInheritedConfig),
+        workingSets: exercise.workingSets.map(applyInheritedConfig),
+      };
+    });
+    const currentExercise = nextExercises.find(
+      ({ id }) => id === current.currentExercise.id,
+    ) ?? current.currentExercise;
+    const nextView = {
+      ...current,
+      revision: sessionRevision,
+      currentExercise,
+      exercises: current.exercises.length === 0 ? [] : nextExercises,
+    };
+    viewRef.current = nextView;
+    setView(nextView);
+  };
+
   const restInput = (): RestRevisionInput => ({
     sessionId,
     expectedSessionRevision: view.revision,
@@ -1113,6 +1154,11 @@ function PopulatedWorkoutOverview({
           nowMs: nowMs(),
         });
         applyAdvancedTimingResult(result);
+        applyExerciseTimingConfig(
+          target.exercise.id,
+          value,
+          result.sessionRevision,
+        );
       } else {
         const set = target.set;
         if (set === undefined
