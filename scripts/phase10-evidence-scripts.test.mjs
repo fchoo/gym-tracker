@@ -121,9 +121,8 @@ test("Phase 10 Maestro flow exercises per-rep and 3+3+3 cluster lifecycle timing
   assert.ok(flow.indexOf('visible: "Resume workout"')
     > flow.indexOf('stopApp'));
   assert.ok(flow.indexOf('visible: "WORKOUT OVERVIEW"')
-    < flow.indexOf('visible: "Back Squat exercise actions"'));
-  assert.match(flow, /Back Squat exercise actions/u);
-  assert.match(flow, /Configure timing/u);
+    < flow.indexOf('visible: "Configure Back Squat timing"'));
+  assert.match(flow, /Configure Back Squat timing/u);
   assert.match(flow, /Exercise timing/u);
   assert.match(flow, /advanced-timing-config-interval/u);
   assert.match(flow, /Set timing/u);

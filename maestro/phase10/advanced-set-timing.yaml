@@ -53,11 +53,9 @@ tags:
     visible: "WORKOUT OVERVIEW"
     timeout: 30000
 - extendedWaitUntil:
-    visible: "Back Squat exercise actions"
+    visible: "Configure Back Squat timing"
     timeout: 30000
-- tapOn: "Back Squat exercise actions"
-- assertVisible: "Exercise actions"
-- tapOn: "Configure timing"
+- tapOn: "Configure Back Squat timing"
 - assertVisible: "Exercise timing"
 - tapOn: "Per-rep timing"
 - tapOn:
