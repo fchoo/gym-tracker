@@ -127,11 +127,10 @@ async function assertNoExternalSessionReferences(
   sessionId: string,
 ): Promise<void> {
   const references = await transaction.queryAll<{ count: number }>(
-    `SELECT (
-      (SELECT COUNT(*) FROM owned_plan_schedule_opportunities WHERE session_id = ?)
-      + (SELECT COUNT(*) FROM pending_effects WHERE json_extract(payload_json, '$.sessionId') = ?)
-    ) AS count`,
-    [sessionId, sessionId],
+    `SELECT COUNT(*) AS count
+     FROM owned_plan_schedule_opportunities
+     WHERE session_id = ?`,
+    [sessionId],
   );
   if (references.length !== 1 || references[0]?.count !== 0) fail();
 }

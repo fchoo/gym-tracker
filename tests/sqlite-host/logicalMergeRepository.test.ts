@@ -366,4 +366,41 @@ describe("logical merge repository", () => {
       state: await localKernel.queryAll("SELECT state FROM portability_restore_state"),
     }).toEqual(first);
   });
+
+  it("allows replayable pending effects to be superseded after an archive-wins merge", async () => {
+    const archiveKernel = await open("effects-archive");
+    await seedSession(archiveKernel, {
+      id: "archive-session",
+      portableId: "a".repeat(32),
+      modifiedAtMs: 20,
+    });
+    const archive = await snapshot(archiveKernel);
+    const localKernel = await open("effects-local");
+    await seedSession(localKernel, {
+      id: "local-session",
+      portableId: "a".repeat(32),
+      modifiedAtMs: 10,
+    });
+    await localKernel.write((transaction) => transaction.execute(
+      `INSERT INTO pending_effects
+        (id, effect_type, payload_version, payload_json, idempotency_key,
+         subject_id, expected_revision, status, attempt_count, next_attempt_at_ms,
+         claimed_at_ms, lease_expires_at_ms, last_error_code, created_at_ms, updated_at_ms)
+       VALUES ('merge-pending-effect', 'reconcile_rest_notification', 1,
+               '{"version":1,"sessionId":"local-session","sessionRevision":1}',
+               'merge:pending', 'local-session', 1, 'pending', 0, 1, NULL, NULL, NULL, 1, 1)`,
+    ));
+
+    await expect(createLogicalMergeRepository(localKernel, { sha256 })
+      .commit(await preflight(localKernel, archive)))
+      .resolves.toEqual({ state: "rebuild_pending" });
+    await expect(reconciliation(localKernel).reconcileAndRebuild())
+      .resolves.toMatchObject({ outcome: "rebuilt", state: "ready" });
+    await expect(localKernel.queryAll(
+      "SELECT status, last_error_code FROM pending_effects WHERE id = 'merge-pending-effect'",
+    )).resolves.toEqual([{
+      status: "superseded",
+      last_error_code: "restore_source_replaced",
+    }]);
+  });
 });
