@@ -181,6 +181,10 @@ test("Phase 10 Maestro flow exercises per-rep and 3+3+3 cluster lifecycle timing
   assert.match(flow, /Cluster rest in seconds/u);
   assert.match(flow, /Configure and start cluster timing/u);
   assert.match(flow, /Start rest after group 1/u);
+  assert.match(
+    flow,
+    /tapOn: "Start rest after group 1"[\s\S]*?visible: "Skip intra-set rest"[\s\S]*?tapOn: "Skip intra-set rest"/u,
+  );
   assert.match(flow, /Skip intra-set rest/u);
   assert.match(flow, /Start rest after group 2/u);
   assert.match(flow, /\^\(Cluster 2 of 3\|Cluster 3 of 3\|Intra-set rest\)/u);

@@ -142,7 +142,7 @@ tags:
 - assertVisible: "Cluster 1 of 3"
 - tapOn: "Start rest after group 1"
 - extendedWaitUntil:
-    visible: "Intra-set rest"
+    visible: "Skip intra-set rest"
     timeout: 30000
 - tapOn: "Skip intra-set rest"
 - extendedWaitUntil:
