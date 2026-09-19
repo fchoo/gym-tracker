@@ -5,11 +5,11 @@ milestone_name: In-Workout Editing, Advanced Timing & Cross-Device Sync
 current_phase: 11
 current_phase_name: Portable History & Merge Restore
 status: executing
-stopped_at: Plan 11-02 full planner/writer/token wiring committed; closing strict coverage gate before shared/native full-plan contracts
-last_updated: "2026-09-20T08:45:00+08:00"
+stopped_at: Plan 11-02 planner coverage closed; repository transaction coverage remains before shared/native full-plan contracts
+last_updated: "2026-09-20T13:10:00+08:00"
 last_activity: 2026-09-20
-last_activity_desc: Plan 11-02 full conflict planner, atomic multi-class writer, reviewer hardening, and authenticated full-plan token wiring committed; focused suites green, global integrity coverage still open
-state_head: 2a4bba1bc724a95614208c5e3b5836747bcfe815
+last_activity_desc: Plan 11-02 closed pure planner coverage to 100%, expanded repository rollback/graph/readback checks, and retained strict global integrity gate; repository coverage remains open
+state_head: 96c5933dc319f97ba750701a251ddaa431726061
 progress:
   total_phases: 5
   completed_phases: 3
@@ -31,8 +31,8 @@ See: `.planning/PROJECT.md` (updated 2026-09-15)
 
 Phase: 11 (Portable History & Merge Restore) — EXECUTING
 Plan: 2 of 4
-Status: Full conflict engine implemented; strict coverage closure and shared/native contract expansion remain
-Last activity: 2026-09-20 — Plan 11-02 committed all-class atomic writer and authenticated deterministic full-plan tokens; focused unit/host/integration/typecheck pass
+Status: Full conflict engine implemented; pure planner coverage closed, repository coverage closure and shared/native contract expansion remain
+Last activity: 2026-09-20 — Plan 11-02 passed 3,040 tests, closed planner coverage, and expanded all-class repository graph/readback coverage; global integrity gate remains repository-only
 
 ## Delivery model
 
