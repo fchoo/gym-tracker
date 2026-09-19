@@ -49,6 +49,11 @@ tags:
 - tapOn:
     text: "Start Full Body A"
     retryTapIfNoChange: true
+- runFlow:
+    when:
+      visible: "Resume workout"
+    commands:
+      - tapOn: "Resume workout"
 - extendedWaitUntil:
     visible: "WORKOUT OVERVIEW"
     timeout: 30000
