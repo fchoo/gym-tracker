@@ -2717,6 +2717,74 @@ describe("Plan 01-08 ActiveWorkoutScreen", () => {
     });
   });
 
+  it("uses the locally committed timing revision for the next command before route refresh", async () => {
+    const configureAdvancedTiming = jest.fn<NonNullable<
+      ActiveWorkoutCommands["configureAdvancedTiming"]
+    >>(async () => advancedResult({
+      version: 1,
+      state: "idle",
+      revision: 0,
+      targetSessionSetId: null,
+    }, 2));
+    const running: AdvancedTimingStateV1 = {
+      version: 1,
+      state: "running",
+      mode: "per_rep",
+      revision: 1,
+      targetSessionSetId: "working-1",
+      cueChannels: "haptic",
+      intervalMs: 3_000,
+      startedAtMs: 2_000,
+      nextBoundaryAtMs: 5_000,
+      nextRepetitionIndex: 1,
+    };
+    const startAdvancedTiming = jest.fn<NonNullable<
+      ActiveWorkoutCommands["startAdvancedTiming"]
+    >>(async () => advancedResult(running, 2));
+    const pauseAdvancedTiming = jest.fn<NonNullable<
+      ActiveWorkoutCommands["pauseAdvancedTiming"]
+    >>(async () => advancedResult({
+      version: 1,
+      state: "paused",
+      mode: "per_rep",
+      revision: 2,
+      targetSessionSetId: "working-1",
+      cueChannels: "haptic",
+      intervalMs: 3_000,
+      remainingMs: 2_000,
+      nextRepetitionIndex: 1,
+    }, 2));
+
+    await renderActive({
+      advancedTimingContext: {
+        sessionId: "session-1",
+        sessionRevision: 1,
+        state: { version: 1, state: "idle", revision: 0, targetSessionSetId: null },
+      },
+      commands: commands({
+        configureAdvancedTiming,
+        pauseAdvancedTiming,
+        startAdvancedTiming,
+      }),
+    });
+
+    await fireEvent.press(screen.getByRole("button", {
+      name: "Configure and start per-rep cadence",
+    }));
+    await waitFor(() => expect(startAdvancedTiming).toHaveBeenCalledTimes(1));
+    await fireEvent.press(screen.getByRole("button", {
+      name: "Pause per-rep cadence",
+    }));
+
+    await waitFor(() => expect(pauseAdvancedTiming).toHaveBeenCalledWith({
+      sessionId: "session-1",
+      sessionSetId: "working-1",
+      expectedSessionRevision: 2,
+      expectedAdvancedTimingRevision: 1,
+      nowMs: 2_000,
+    }));
+  });
+
   it("uses the active set's resolved audio preference when starting per-rep cadence", async () => {
     const configureAdvancedTiming = jest.fn<NonNullable<
       ActiveWorkoutCommands["configureAdvancedTiming"]

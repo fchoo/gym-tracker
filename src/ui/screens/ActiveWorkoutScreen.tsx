@@ -872,6 +872,9 @@ function PopulatedWorkoutOverview({
   }> | null>(null);
   const [timingConfigBusy, setTimingConfigBusy] = useState(false);
   const [timingConfigFailed, setTimingConfigFailed] = useState(false);
+  const [latestAdvancedTimingContext, setLatestAdvancedTimingContext] = useState(
+    advancedTimingContext ?? null,
+  );
   const [replacementPickerForId, setReplacementPickerForId] =
     useState<string | null>(null);
   const [replacementQuery, setReplacementQuery] = useState("");
@@ -891,6 +894,7 @@ function PopulatedWorkoutOverview({
   const sectionMutationRef = useRef<SectionMutation | null>(null);
   const correctionSetIdRef = useRef<string | null>(null);
   const restCommandInFlightRef = useRef(false);
+  const timingContext = latestAdvancedTimingContext ?? advancedTimingContext ?? null;
   const overviewExercises = React.useMemo(() => exercisesFor(view), [view]);
   const replacementCandidates = availableExercises.filter((exercise) =>
     exercise.name.toLocaleLowerCase("en").includes(
@@ -982,11 +986,13 @@ function PopulatedWorkoutOverview({
   };
 
   const applyAdvancedTimingResult = (result: AdvancedTimingCommandResult) => {
-    onAdvancedTimingChanged?.({
+    const nextContext = {
       sessionId,
       sessionRevision: result.sessionRevision,
       state: result.state,
-    });
+    };
+    setLatestAdvancedTimingContext(nextContext);
+    onAdvancedTimingChanged?.(nextContext);
     const nextView = {
       ...viewRef.current,
       revision: result.sessionRevision,
@@ -1044,7 +1050,7 @@ function PopulatedWorkoutOverview({
   });
 
   const advancedInput = (): AdvancedTimingRevisionInput | null => {
-    const context = advancedTimingContext ?? null;
+    const context = timingContext;
     const target = activeSet;
     if (context === null || target === undefined) {
       return null;
@@ -1210,6 +1216,17 @@ function PopulatedWorkoutOverview({
         animated: false,
       });
   }, [initialView]);
+
+  useEffect(() => {
+    if (advancedTimingContext === null || advancedTimingContext === undefined) {
+      return;
+    }
+    setLatestAdvancedTimingContext((current) =>
+      current === null || advancedTimingContext.sessionRevision >= current.sessionRevision
+        ? advancedTimingContext
+        : current
+    );
+  }, [advancedTimingContext]);
 
   useEffect(() => {
     setExpandedCompactSetId((current) =>
@@ -2346,15 +2363,14 @@ function PopulatedWorkoutOverview({
               {exercise.id === activeExercise.id ? (
                 <AdvancedTimingIndicator
                   busy={workingBusySetId !== null}
-                  context={advancedTimingContext ?? null}
+                  context={timingContext}
                   cueUnavailable={cueUnavailable}
                   disabled={
                     activeSet === undefined
                     || activeSet.kind !== "working"
                     || activeSet.status === "completed"
                     || activeSet.status === "skipped"
-                    || advancedTimingContext === null
-                    || advancedTimingContext === undefined
+                    || timingContext === null
                     || commands.configureAdvancedTiming === undefined
                     || commands.startAdvancedTiming === undefined
                   }
