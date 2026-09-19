@@ -476,6 +476,44 @@ describe("portable merge plan", () => {
     ]));
   });
 
+  it("keeps the existing active plan when importing a distinct active plan", async () => {
+    const archive = snapshot(
+      { id: "archive-session", marker: "archive", modifiedAtMs: 20 },
+      {
+        plans: [{
+          id: "archive-plan",
+          origin: "custom",
+          portable_id: "a".repeat(32),
+          is_active: 1,
+        }],
+      },
+    );
+    const local = snapshot(
+      { id: "local-session", marker: "local", modifiedAtMs: 10 },
+      {
+        plans: [{
+          id: "local-plan",
+          origin: "custom",
+          portable_id: "b".repeat(32),
+          is_active: 1,
+        }],
+      },
+    );
+
+    const plan = await buildPortableMergePlan({
+      archive,
+      local,
+      payloadDigest: async () => "0".repeat(64),
+    });
+    const aggregate = plan.aggregates.find((value) =>
+      value.aggregateClass === "owned_plan" && value.portableId === "a".repeat(32),
+    );
+
+    expect(aggregate?.tables.plans).toEqual([
+      expect.objectContaining({ id: "archive-plan", is_active: 0 }),
+    ]);
+  });
+
   it("rewrites an owned plan child graph through deterministic root and day remaps", async () => {
     const archive = snapshot(
       { id: "archive-session", marker: "archive", modifiedAtMs: 20 },

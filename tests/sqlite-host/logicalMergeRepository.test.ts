@@ -153,6 +153,68 @@ async function seedSession(
   });
 }
 
+async function seedOwnedPlan(
+  kernel: SqliteKernel,
+  input: Readonly<{ id: string; portableId: string; dayId: string }>,
+): Promise<void> {
+  await kernel.write(async (transaction) => {
+    await transaction.execute(
+      "INSERT INTO plans (id, content_pack_id, origin, source_namespace, upstream_id, name, days_per_week, audience, goal, estimate_minutes, attribution, is_active, revision, portable_id) VALUES (?, NULL, 'custom', NULL, NULL, 'Portable plan', 1, 'Owner', 'Strength', 30, 'Owner', 0, 1, ?)",
+      [input.id, input.portableId],
+    );
+    await transaction.execute(
+      "INSERT INTO plan_days (id, plan_id, ordinal, name, revision) VALUES (?, ?, 0, 'Day one', 1)",
+      [input.dayId, input.id],
+    );
+    await transaction.execute(
+      "INSERT INTO owned_plan_aggregate_states (plan_id, lifecycle, graph_status, missing_requirement_code, missing_requirement, created_at_ms, updated_at_ms, archived_at_ms) VALUES (?, 'draft', 'missing_valid_target', 'owned_plan_missing_valid_target', 'Add at least one exercise with valid targets before scheduling or activating.', 1, 1, NULL)",
+      [input.id],
+    );
+  });
+}
+
+async function seedOwnedPlanExerciseGraph(
+  kernel: SqliteKernel,
+  input: Readonly<{ planId: string; dayId: string }>,
+): Promise<void> {
+  await seedBundledExercise(kernel);
+  await kernel.write(async (transaction) => {
+    await transaction.execute(
+      "INSERT INTO plan_day_exercises (id, plan_day_id, exercise_id, ordinal, between_exercise_rest_seconds, metric_profile, metric_contract_version, exercise_metric_generation, revision) VALUES ('legacy-occurrence', ?, 'bundled', 0, NULL, 'load_reps', 1, 1, 1)",
+      [input.dayId],
+    );
+    await transaction.execute(
+      "INSERT INTO plan_working_set_targets (id, plan_day_exercise_id, ordinal, load_grams, min_reps, max_reps, target_json, unit_json, metric_profile, metric_contract_version, exercise_metric_generation, revision) VALUES ('legacy-target', 'legacy-occurrence', 0, 10000, 8, 10, '{}', '{}', 'load_reps', 1, 1, 1)",
+    );
+    await transaction.execute(
+      "INSERT INTO owned_plan_day_exercises (id, plan_day_id, exercise_id, ordinal, between_exercise_rest_seconds, metric_profile, metric_contract_version, exercise_metric_generation, revision) VALUES ('owned-occurrence', ?, 'bundled', 0, 60, 'load_reps', 1, 1, 1)",
+      [input.dayId],
+    );
+    await transaction.execute(
+      "INSERT INTO owned_plan_working_set_targets (id, plan_day_exercise_id, ordinal, target_json, unit_json, metric_profile, metric_contract_version, exercise_metric_generation, revision) VALUES ('owned-target', 'owned-occurrence', 0, '{}', '{}', 'load_reps', 1, 1, 1)",
+    );
+    await transaction.execute(
+      "INSERT INTO owned_plan_schedules (id, plan_id, lifecycle, revision, activated_at_ms, deactivated_at_ms) VALUES ('owned-schedule', ?, 'inactive', 1, 1, 1)",
+      [input.planId],
+    );
+    await transaction.execute(
+      "INSERT INTO owned_plan_schedule_versions (id, schedule_id, version_number, effective_local_date, mode, timezone, rotation_pointer, created_at_ms) VALUES ('owned-version', 'owned-schedule', 1, '2026-09-20', 'weekday', 'Asia/Singapore', NULL, 1)",
+    );
+    await transaction.execute(
+      "INSERT INTO owned_plan_schedule_bindings (id, schedule_version_id, mode, ordinal, week_index, weekday, plan_day_id) VALUES ('owned-binding', 'owned-version', 'weekday', 0, 0, 'Monday', ?)",
+      [input.dayId],
+    );
+    await transaction.execute(
+      "INSERT INTO owned_plan_day_sources (plan_day_id, plan_id, source_day_id, source_ordinal) VALUES (?, ?, 'source-day', 1)",
+      [input.dayId, input.planId],
+    );
+    await transaction.execute(
+      "INSERT INTO owned_plan_occurrence_sources (plan_day_exercise_id, plan_day_id, source_occurrence_id, source_exercise_id, source_ordinal, catalog_metric_profile, catalog_metric_contract_version, catalog_exercise_metric_generation, metric_override_json, content_rationale) VALUES ('owned-occurrence', ?, 'source-occurrence', 'source-exercise', 1, 'load_reps', 1, 1, NULL, 'Source')",
+      [input.dayId],
+    );
+  });
+}
+
 async function snapshot(kernel: SqliteKernel) {
   return createLogicalBackupRepository(kernel).collect({
     createdAtMs: 1,
@@ -361,6 +423,43 @@ async function fullSessionPlanFixture() {
   };
 }
 
+async function fullOwnedPlanFixture() {
+  const archiveKernel = await open("full-plan-owned-archive");
+  await seedOwnedPlan(archiveKernel, {
+    id: "archive-plan",
+    portableId: "d".repeat(32),
+    dayId: "archive-day",
+  });
+  await seedOwnedPlanExerciseGraph(archiveKernel, {
+    planId: "archive-plan",
+    dayId: "archive-day",
+  });
+  const archive = await snapshot(archiveKernel);
+  const localKernel = await open("full-plan-owned-local");
+  await seedBundledExercise(localKernel);
+  const local = await createSqliteMergeLocalFactsPort(localKernel).read();
+  const plan = await buildPortableMergePlan({
+    archive: {
+      ...archive,
+      version: 2 as const,
+      tables: {
+        ...archive.tables,
+        portable_owner_identity: [{ id: 1, owner_namespace: local.ownerNamespace }],
+      },
+    },
+    local: {
+      version: 2,
+      ...local,
+      tables: {
+        ...local.tables,
+        portable_owner_identity: [{ id: 1, owner_namespace: local.ownerNamespace }],
+      },
+    },
+    payloadDigest: sha256,
+  });
+  return { local, localKernel, plan };
+}
+
 describe("logical merge repository", () => {
   it("applies a precomputed custom-exercise aggregate and missing setting atomically", async () => {
     const kernel = await open("full-plan");
@@ -423,6 +522,8 @@ describe("logical merge repository", () => {
       .commitFullPlan({
         localFingerprint: await sha256(canonicalMergeValue(local)),
         plan,
+      }).catch((error: unknown) => {
+        throw (error as Readonly<{ cause?: unknown }>).cause ?? error;
       }))
       .resolves.toEqual({ state: "rebuild_pending" });
     await expect(localKernel.queryAll(
@@ -439,6 +540,94 @@ describe("logical merge repository", () => {
       session_id: "local-session",
     }]);
   });
+
+  it("applies a precomputed owned-plan root, day, and aggregate state atomically", async () => {
+    const { local, localKernel, plan } = await fullOwnedPlanFixture();
+
+    await expect(createLogicalMergeRepository(localKernel, { sha256 })
+      .commitFullPlan({
+        localFingerprint: await sha256(canonicalMergeValue(local)),
+        plan,
+      }))
+      .resolves.toEqual({ state: "rebuild_pending" });
+    await expect(localKernel.queryAll(
+      "SELECT id, portable_id FROM plans WHERE origin = 'custom'",
+    )).resolves.toEqual([{ id: "archive-plan", portable_id: "d".repeat(32) }]);
+    await expect(localKernel.queryAll(
+      "SELECT id, plan_id FROM plan_days WHERE plan_id = 'archive-plan'",
+    )).resolves.toEqual([{ id: "archive-day", plan_id: "archive-plan" }]);
+    await expect(localKernel.queryAll(
+      "SELECT plan_id, graph_status FROM owned_plan_aggregate_states WHERE plan_id = 'archive-plan'",
+    )).resolves.toEqual([{ plan_id: "archive-plan", graph_status: "missing_valid_target" }]);
+    await expect(localKernel.queryAll(
+      "SELECT plan_day_id FROM plan_day_exercises WHERE id = 'legacy-occurrence'",
+    )).resolves.toEqual([{ plan_day_id: "archive-day" }]);
+    await expect(localKernel.queryAll(
+      "SELECT plan_day_exercise_id FROM plan_working_set_targets WHERE id = 'legacy-target'",
+    )).resolves.toEqual([{ plan_day_exercise_id: "legacy-occurrence" }]);
+    await expect(localKernel.queryAll(
+      "SELECT plan_day_id FROM owned_plan_day_exercises WHERE id = 'owned-occurrence'",
+    )).resolves.toEqual([{ plan_day_id: "archive-day" }]);
+    await expect(localKernel.queryAll(
+      "SELECT plan_day_exercise_id FROM owned_plan_working_set_targets WHERE id = 'owned-target'",
+    )).resolves.toEqual([{ plan_day_exercise_id: "owned-occurrence" }]);
+    await expect(localKernel.queryAll(
+      "SELECT plan_id FROM owned_plan_schedules WHERE id = 'owned-schedule'",
+    )).resolves.toEqual([{ plan_id: "archive-plan" }]);
+    await expect(localKernel.queryAll(
+      "SELECT plan_day_id FROM owned_plan_schedule_bindings WHERE id = 'owned-binding'",
+    )).resolves.toEqual([{ plan_day_id: "archive-day" }]);
+  });
+
+  it("rolls back every admitted owned-plan insertion stage", async () => {
+    const stages: readonly LogicalMergeFaultStage[] = [
+      "fingerprint_checked",
+      "full_plan_insert:plans",
+      "full_plan_insert:plan_days",
+      "full_plan_insert:plan_schedules",
+      "full_plan_insert:plan_schedule_bindings",
+      "full_plan_insert:plan_day_exercises",
+      "full_plan_insert:plan_warmup_sets",
+      "full_plan_insert:plan_working_set_targets",
+      "full_plan_insert:progression_policies",
+      "full_plan_insert:progression_recommendations",
+      "full_plan_insert:owned_plan_aggregate_states",
+      "full_plan_insert:owned_plan_starter_sources",
+      "full_plan_insert:owned_plan_day_sources",
+      "full_plan_insert:owned_plan_day_exercises",
+      "full_plan_insert:owned_plan_warmup_sets",
+      "full_plan_insert:owned_plan_working_set_targets",
+      "full_plan_insert:owned_plan_progression_policies",
+      "full_plan_insert:owned_plan_occurrence_sources",
+      "full_plan_insert:owned_plan_schedules",
+      "full_plan_insert:owned_plan_schedule_versions",
+      "full_plan_insert:owned_plan_schedule_bindings",
+      "full_plan_insert:owned_plan_schedule_overrides",
+      "full_plan_insert:owned_plan_schedule_opportunities",
+      "full_plan_insert:owned_plan_schedule_events",
+      "full_plan_insert:owned_plan_mutation_requests",
+      "full_plan_insert:starter_plan_activation_requests",
+      "full_plan_insert:owned_progression_recommendations",
+      "verified",
+      "state_updated",
+    ];
+
+    for (const stage of stages) {
+      const { local, localKernel, plan } = await fullOwnedPlanFixture();
+      const before = await canonicalState(localKernel);
+
+      await expect(createLogicalMergeRepository(localKernel, {
+        sha256,
+        faultAfter: async (actual) => {
+          if (actual === stage) throw new Error("fault");
+        },
+      }).commitFullPlan({
+        localFingerprint: await sha256(canonicalMergeValue(local)),
+        plan,
+      })).rejects.toEqual(expect.objectContaining({ code: "logical_merge_failed" }));
+      await expect(canonicalState(localKernel)).resolves.toEqual(before);
+    }
+  }, 90_000);
 
   it("rolls back every admitted full-plan session write fault", async () => {
     const stages: readonly LogicalMergeFaultStage[] = [
@@ -622,6 +811,35 @@ describe("logical merge repository", () => {
       }))
       .rejects.toEqual(expect.objectContaining({ code: "logical_merge_failed" }));
     await expect(canonicalState(kernel)).resolves.toEqual(before);
+  });
+
+  it("rejects an owned-plan aggregate that contains a day from another root", async () => {
+    const { local, localKernel, plan } = await fullOwnedPlanFixture();
+    const aggregate = plan.aggregates.find((value) =>
+      value.aggregateClass === "owned_plan",
+    )!;
+    const mismatchedPlan = {
+      ...plan,
+      aggregates: [{
+        ...aggregate,
+        tables: {
+          ...aggregate.tables,
+          plan_days: [
+            ...(aggregate.tables.plan_days ?? []),
+            { id: "other-day", plan_id: "other-plan", ordinal: 0, name: "Other", revision: 1 },
+          ],
+        },
+      }],
+    };
+    const before = await canonicalState(localKernel);
+
+    await expect(createLogicalMergeRepository(localKernel, { sha256 })
+      .commitFullPlan({
+        localFingerprint: await sha256(canonicalMergeValue(local)),
+        plan: mismatchedPlan,
+      }))
+      .rejects.toEqual(expect.objectContaining({ code: "logical_merge_failed" }));
+    await expect(canonicalState(localKernel)).resolves.toEqual(before);
   });
 
   it("rejects non-custom mapping metadata before the full-plan writer opens", async () => {

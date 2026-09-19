@@ -854,7 +854,15 @@ function planAggregate(
   const tables: Record<string, readonly LogicalBackupRow[]> = {};
   const root = rowsFor(snapshot, "plans").filter((row) => row.id === archivePlanId);
   if (root.length !== 1) invalid();
-  tables.plans = Object.freeze([Object.freeze({ ...root[0]!, id: localPlanId })]);
+  const activeLocalPlanExists = rowsFor(local, "plans").some(
+    (row) => row.is_active === 1,
+  );
+  const importedRoot = Object.freeze({
+    ...root[0]!,
+    id: localPlanId,
+    ...(root[0]!.is_active === 1 && activeLocalPlanExists ? { is_active: 0 } : {}),
+  });
+  tables.plans = Object.freeze([importedRoot]);
 
   if (planMappings.get(archivePlanId) !== localPlanId) invalid();
   const planMap = new Map([[archivePlanId, localPlanId]]);
