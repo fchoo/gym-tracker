@@ -102,7 +102,7 @@ const PHASE2_AGGREGATE_CASE_IDS = [
   ...PHASE2_CASE_IDS,
 ] as const;
 const configuredSuite = process.env.EXPO_PUBLIC_NATIVE_CONTRACT_SUITE;
-const selectedSuite = configuredSuite === "phase10" || configuredSuite === "phase11"
+const defaultSuite = configuredSuite === "phase10" || configuredSuite === "phase11"
   ? "migrations-effects"
   : configuredSuite === "migrations-effects"
   || configuredSuite === "phase2"
@@ -116,7 +116,18 @@ const selectedSuite = configuredSuite === "phase10" || configuredSuite === "phas
   || configuredSuite === "portable-merge"
   ? configuredSuite
   : "sqlite-kernel";
-const expectedCaseCount = {
+
+function requestedPortableMergeSuite(
+  value: string | string[] | undefined,
+): "portable-merge" | undefined {
+  const candidate = Array.isArray(value) ? value[0] : value;
+  return configuredSuite === "phase11" && candidate === "portable-merge"
+    ? "portable-merge"
+    : undefined;
+}
+
+function expectedCaseCountFor(suite: typeof defaultSuite): number {
+  return {
   "migrations-effects": MIGRATIONS_EFFECTS_CONTRACT_CASES.length,
   phase2: PHASE2_AGGREGATE_CASE_IDS.length,
   "phase2-content": PHASE2_CONTENT_CASE_IDS.length,
@@ -128,7 +139,8 @@ const expectedCaseCount = {
   "phase2-starter": PHASE2_STARTER_CASE_IDS.length,
   "portable-merge": PORTABLE_MERGE_CONTRACT_CASES.length,
   "sqlite-kernel": 10,
-}[selectedSuite];
+  }[suite];
+}
 
 type Phase2ContractCaseResult = Readonly<{
   id: (typeof PHASE2_AGGREGATE_CASE_IDS)[number];
@@ -344,8 +356,14 @@ async function verifyPhase2Aggregate(
 }
 
 export default function NativeSqliteContractsScreen() {
-  const parameters = useLocalSearchParams<{ runId?: string | string[] }>();
+  const parameters = useLocalSearchParams<{
+    runId?: string | string[];
+    suite?: string | string[];
+  }>();
   const runId = boundedRunId(parameters.runId);
+  const selectedSuite = requestedPortableMergeSuite(parameters.suite)
+    ?? defaultSuite;
+  const expectedCaseCount = expectedCaseCountFor(selectedSuite);
   const started = useRef(false);
   const nativeContractsEnabled =
     Constants.expoConfig?.extra?.nativeContractsEnabled === true;
@@ -484,7 +502,7 @@ export default function NativeSqliteContractsScreen() {
         });
       }
     })();
-  }, [nativeContractsEnabled, runId]);
+  }, [nativeContractsEnabled, runId, selectedSuite]);
 
   const result = state.status === "finished" ? state.result : undefined;
   if (state.status === "disabled") {

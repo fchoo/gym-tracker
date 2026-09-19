@@ -407,7 +407,7 @@ try {
   ].join(path.delimiter);
 
   const runId = `${suite}-${Date.now()}`;
-  const deepLink = `gymtracker-devtest://__native-contracts?runId=${runId}`;
+  const deepLink = `gymtracker-devtest://__native-contracts?runId=${runId}&suite=${encodeURIComponent(suite)}`;
   await adb('logcat', '-c');
   await adb('shell', 'am', 'force-stop', manifest.package);
   await adb(

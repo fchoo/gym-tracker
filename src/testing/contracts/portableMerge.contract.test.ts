@@ -131,9 +131,12 @@ describe("portable merge contract", () => {
 
     expect(route).toContain("portable-merge");
     expect(route).toContain("runPortableMergeContract");
+    expect(route).toContain("parameters.suite");
+    expect(route).toContain("configuredSuite === \"phase11\"");
     expect(runner).toContain("PORTABLE_MERGE_CASE_IDS");
     expect(runner).toContain("manifestSuite === 'phase11'");
     expect(runner).toContain("requestedSuite === 'portable-merge'");
+    expect(runner).toContain("&suite=${encodeURIComponent(suite)}");
     expect(packageJson.scripts?.["test:sqlite:device"]).toContain("portable-merge");
   });
 });
