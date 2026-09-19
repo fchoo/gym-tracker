@@ -320,6 +320,47 @@ async function fullPlanFixture(kernel: SqliteKernel) {
   };
 }
 
+async function fullSessionPlanFixture() {
+  const archiveKernel = await open("full-plan-session-archive");
+  await seedSession(archiveKernel, {
+    id: "archive-session",
+    portableId: "c".repeat(32),
+    modifiedAtMs: 20,
+  });
+  const archive = await snapshot(archiveKernel);
+  const localKernel = await open("full-plan-session-local");
+  await seedSession(localKernel, {
+    id: "local-session",
+    portableId: "c".repeat(32),
+    modifiedAtMs: 10,
+  });
+  const local = await createSqliteMergeLocalFactsPort(localKernel).read();
+  const plan = await buildPortableMergePlan({
+    archive: {
+      ...archive,
+      version: 2 as const,
+      tables: {
+        ...archive.tables,
+        portable_owner_identity: [{ id: 1, owner_namespace: local.ownerNamespace }],
+      },
+    },
+    local: {
+      version: 2,
+      ...local,
+      tables: {
+        ...local.tables,
+        portable_owner_identity: [{ id: 1, owner_namespace: local.ownerNamespace }],
+      },
+    },
+    payloadDigest: sha256,
+  });
+  return {
+    local,
+    localKernel,
+    plan,
+  };
+}
+
 describe("logical merge repository", () => {
   it("applies a precomputed custom-exercise aggregate and missing setting atomically", async () => {
     const kernel = await open("full-plan");
@@ -374,6 +415,80 @@ describe("logical merge repository", () => {
       status: "awaiting_comparable_observation",
     }]);
   });
+
+  it("applies a precomputed archive-wins session aggregate under its local physical ID", async () => {
+    const { local, localKernel, plan } = await fullSessionPlanFixture();
+
+    await expect(createLogicalMergeRepository(localKernel, { sha256 })
+      .commitFullPlan({
+        localFingerprint: await sha256(canonicalMergeValue(local)),
+        plan,
+      }))
+      .resolves.toEqual({ state: "rebuild_pending" });
+    await expect(localKernel.queryAll(
+      "SELECT id, portable_id, merge_modified_at_ms FROM workout_sessions",
+    )).resolves.toEqual([{
+      id: "local-session",
+      portable_id: "c".repeat(32),
+      merge_modified_at_ms: 20,
+    }]);
+    await expect(localKernel.queryAll(
+      "SELECT id, session_id FROM session_exercises",
+    )).resolves.toEqual([{
+      id: "exercise-archive-session",
+      session_id: "local-session",
+    }]);
+  });
+
+  it("rolls back every admitted full-plan session write fault", async () => {
+    const stages: readonly LogicalMergeFaultStage[] = [
+      "fingerprint_checked",
+      "trigger_drop:history_audit_events_immutable_delete",
+      "trigger_drop:workout_session_exercise_edit_receipts_immutable_delete",
+      "trigger_drop:workout_session_exercise_reorder_receipts_immutable_delete",
+      "delete:session_advanced_timing_states",
+      "delete:session_undo_snapshots",
+      "delete:session_rest_states",
+      "delete:history_session_overlays",
+      "delete:history_audit_events",
+      "delete:workout_session_exercise_edit_receipts",
+      "delete:workout_session_exercise_reorder_receipts",
+      "delete:session_sets",
+      "delete:session_exercises",
+      "delete:workout_sessions",
+      "insert:workout_sessions",
+      "insert:session_exercises",
+      "insert:session_sets",
+      "insert:session_rest_states",
+      "insert:session_advanced_timing_states",
+      "insert:session_undo_snapshots",
+      "insert:history_session_overlays",
+      "insert:history_audit_events",
+      "insert:workout_session_exercise_edit_receipts",
+      "insert:workout_session_exercise_reorder_receipts",
+      "trigger_recreate:history_audit_events_immutable_delete",
+      "trigger_recreate:workout_session_exercise_edit_receipts_immutable_delete",
+      "trigger_recreate:workout_session_exercise_reorder_receipts_immutable_delete",
+      "verified",
+      "state_updated",
+    ];
+
+    for (const stage of stages) {
+      const { local, localKernel, plan } = await fullSessionPlanFixture();
+      const before = await canonicalState(localKernel);
+
+      await expect(createLogicalMergeRepository(localKernel, {
+        sha256,
+        faultAfter: async (actual) => {
+          if (actual === stage) throw new Error("fault");
+        },
+      }).commitFullPlan({
+        localFingerprint: await sha256(canonicalMergeValue(local)),
+        plan,
+      })).rejects.toEqual(expect.objectContaining({ code: "logical_merge_failed" }));
+      await expect(canonicalState(localKernel)).resolves.toEqual(before);
+    }
+  }, 90_000);
 
   it("rolls back the admitted full-plan slice after every injected write fault", async () => {
     const stages: readonly LogicalMergeFaultStage[] = [

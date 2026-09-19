@@ -108,12 +108,17 @@ function nonEmptyText(value: unknown): value is string {
   return typeof value === "string" && value.trim().length > 0;
 }
 
-function customExerciseOperationKey(
-  operation: Extract<PortableMergePlan["operations"][number], {
-    aggregateClass: "custom_exercise";
+function plannedRootOperationKey(
+  operation: Exclude<PortableMergePlan["operations"][number], {
+    aggregateClass: "app_setting";
   }>,
 ): string {
   return `${operation.archiveId}\u0000${operation.localId}`;
+}
+
+function textId(value: unknown): string {
+  if (!nonEmptyText(value)) fail();
+  return value;
 }
 
 function assertCustomExerciseAggregate(
@@ -160,11 +165,81 @@ function assertCustomExerciseAggregate(
   }
 }
 
+function assertSessionAggregate(
+  aggregate: PortableMergeAggregate,
+  operation: Extract<PortableMergePlan["operations"][number], {
+    aggregateClass: "workout_session";
+  }>,
+): void {
+  const roots = aggregate.tables.workout_sessions;
+  if (roots?.length !== 1 || roots[0]?.id !== operation.localId
+    || roots[0]?.portable_id !== operation.portableId) {
+    fail();
+  }
+  for (const [table, rows] of Object.entries(aggregate.tables)) {
+    if (!(SESSION_AGGREGATE_TABLES as readonly string[]).includes(table)
+      || !Array.isArray(rows)) {
+      fail();
+    }
+  }
+  const exerciseIds = new Set<string>();
+  for (const row of aggregate.tables.session_exercises ?? []) {
+    if (row.session_id !== operation.localId || !nonEmptyText(row.id)
+      || exerciseIds.has(row.id)) {
+      fail();
+    }
+    exerciseIds.add(row.id);
+  }
+  const setIds = new Set<string>();
+  for (const row of aggregate.tables.session_sets ?? []) {
+    if (!nonEmptyText(row.id) || setIds.has(row.id)
+      || !exerciseIds.has(textId(row.session_exercise_id))) {
+      fail();
+    }
+    setIds.add(row.id);
+  }
+  for (const row of roots) {
+    for (const [column, ids] of [
+      ["active_session_exercise_id", exerciseIds],
+      ["active_set_id", setIds],
+    ] as const) {
+      const value = row[column];
+      if (value !== null && value !== undefined && !ids.has(textId(value))) fail();
+    }
+  }
+  for (const table of [
+    "session_rest_states",
+    "session_advanced_timing_states",
+    "session_undo_snapshots",
+    "history_session_overlays",
+    "history_audit_events",
+    "workout_session_exercise_edit_receipts",
+    "workout_session_exercise_reorder_receipts",
+  ] as const) {
+    for (const row of aggregate.tables[table] ?? []) {
+      if (row.session_id !== operation.localId) fail();
+    }
+  }
+  for (const [table, column] of [
+    ["session_rest_states", "next_set_id"],
+    ["session_advanced_timing_states", "session_set_id"],
+    ["session_undo_snapshots", "completed_set_id"],
+  ] as const) {
+    for (const row of aggregate.tables[table] ?? []) {
+      const value = row[column];
+      if (value !== null && value !== undefined && !setIds.has(textId(value))) fail();
+    }
+  }
+}
+
 function assertFullPlanSlice(plan: PortableMergePlan): void {
   const settingInserts = new Set<string>();
   const settingLocalWins = new Set<string>();
   const customWrites = new Map<string, Extract<PortableMergePlan["operations"][number], {
     aggregateClass: "custom_exercise";
+  }>>();
+  const sessionWrites = new Map<string, Extract<PortableMergePlan["operations"][number], {
+    aggregateClass: "workout_session";
   }>>();
   for (const operation of plan.operations) {
     if (operation.aggregateClass === "app_setting") {
@@ -192,6 +267,17 @@ function assertFullPlanSlice(plan: PortableMergePlan): void {
       customWrites.set(operation.portableId, operation);
       continue;
     }
+    if (operation.aggregateClass === "workout_session") {
+      if ((operation.kind !== "insert" && operation.kind !== "duplicate"
+        && operation.kind !== "archive_won" && operation.kind !== "local_won")
+        || !isOpaquePortableId(operation.portableId)
+        || !nonEmptyText(operation.archiveId) || !nonEmptyText(operation.localId)
+        || sessionWrites.has(operation.portableId)) {
+        fail();
+      }
+      sessionWrites.set(operation.portableId, operation);
+      continue;
+    }
     fail();
   }
 
@@ -208,16 +294,26 @@ function assertFullPlanSlice(plan: PortableMergePlan): void {
 
   const aggregates = new Map<string, PortableMergeAggregate>();
   for (const aggregate of plan.aggregates) {
-    if (aggregate.aggregateClass !== "custom_exercise"
-      || aggregates.has(aggregate.portableId)) {
+    if (aggregates.has(aggregate.portableId)) {
       fail();
     }
-    const operation = customWrites.get(aggregate.portableId);
-    if (operation === undefined
-      || (operation.kind !== "insert" && operation.kind !== "keep_both")) {
+    if (aggregate.aggregateClass === "custom_exercise") {
+      const operation = customWrites.get(aggregate.portableId);
+      if (operation === undefined
+        || (operation.kind !== "insert" && operation.kind !== "keep_both")) {
+        fail();
+      }
+      assertCustomExerciseAggregate(aggregate, operation);
+    } else if (aggregate.aggregateClass === "workout_session") {
+      const operation = sessionWrites.get(aggregate.portableId);
+      if (operation === undefined
+        || (operation.kind !== "insert" && operation.kind !== "archive_won")) {
+        fail();
+      }
+      assertSessionAggregate(aggregate, operation);
+    } else {
       fail();
     }
-    assertCustomExerciseAggregate(aggregate, operation);
     aggregates.set(aggregate.portableId, aggregate);
   }
   for (const operation of customWrites.values()) {
@@ -226,36 +322,53 @@ function assertFullPlanSlice(plan: PortableMergePlan): void {
       fail();
     }
   }
+  for (const operation of sessionWrites.values()) {
+    const hasAggregate = aggregates.has(operation.portableId);
+    if (hasAggregate !== (operation.kind === "insert" || operation.kind === "archive_won")) {
+      fail();
+    }
+  }
   if (plan.settings.length === 0 && plan.aggregates.length === 0) fail();
-  const customOperationsByPair = new Map(
-    [...customWrites.values()].map((operation) => [
-      customExerciseOperationKey(operation),
+  const admittedOperationsByPair = new Map(
+    [...customWrites.values(), ...sessionWrites.values()].map((operation) => [
+      plannedRootOperationKey(operation),
       operation,
     ] as const),
   );
   const mappings = new Set<string>();
   for (const mapping of plan.idMappings) {
     const key = `${mapping.archiveId}\u0000${mapping.localId}`;
-    if (mapping.recordClass !== "custom_exercise"
-      || !customOperationsByPair.has(key) || mappings.has(key)) {
+    if ((mapping.recordClass !== "custom_exercise"
+      && mapping.recordClass !== "workout_session")
+      || !admittedOperationsByPair.has(key) || mappings.has(key)) {
       fail();
     }
     mappings.add(key);
   }
-  if (mappings.size !== customWrites.size) fail();
+  if (mappings.size !== customWrites.size + sessionWrites.size) fail();
   const remaps = new Set<string>();
   for (const remap of plan.idRemaps) {
     const key = `${remap.archiveId}\u0000${remap.localId}`;
-    const operation = customOperationsByPair.get(key);
-    if (remap.recordClass !== "custom_exercise"
-      || operation?.kind !== "keep_both" || remaps.has(key)) {
+    const operation = admittedOperationsByPair.get(key);
+    const validRemap = (remap.recordClass === "custom_exercise"
+      && operation?.aggregateClass === "custom_exercise"
+      && operation.kind === "keep_both")
+      || (remap.recordClass === "workout_session"
+        && operation?.aggregateClass === "workout_session"
+        && operation.kind === "insert"
+        && operation.archiveId !== operation.localId);
+    if (!validRemap || remaps.has(key)) {
       fail();
     }
     remaps.add(key);
   }
   const expectedRemaps = [...customWrites.values()]
     .filter((operation) => operation.kind === "keep_both")
-    .map(customExerciseOperationKey);
+    .map(plannedRootOperationKey)
+    .concat([...sessionWrites.values()]
+      .filter((operation) => operation.kind === "insert"
+        && operation.archiveId !== operation.localId)
+      .map(plannedRootOperationKey));
   if (remaps.size !== expectedRemaps.length
     || expectedRemaps.some((key) => !remaps.has(key))) {
     fail();
@@ -271,12 +384,23 @@ function assertFullPlanMatchesLocal(
     return row.key;
   }));
   const exercises = local.tables.exercises ?? [];
+  const sessions = local.tables.workout_sessions ?? [];
   for (const operation of plan.operations) {
     if (operation.aggregateClass === "app_setting") {
       if ((operation.kind === "insert" && settings.has(operation.key))
         || (operation.kind === "local_won" && !settings.has(operation.key))) {
         fail();
       }
+      continue;
+    }
+    if (operation.aggregateClass === "workout_session") {
+      const sameIdentity = sessions.filter((row) => row.portable_id === operation.portableId);
+      const localPhysicalIdTaken = sessions.some((row) => row.id === operation.localId);
+      if (operation.kind === "insert") {
+        if (sameIdentity.length !== 0 || localPhysicalIdTaken) fail();
+        continue;
+      }
+      if (sameIdentity.length !== 1 || sameIdentity[0]?.id !== operation.localId) fail();
       continue;
     }
     const sameIdentity = exercises.filter((row) =>
@@ -296,6 +420,27 @@ function assertFullPlanMatchesLocal(
       fail();
     }
   }
+}
+
+function sessionAggregatesForFullPlan(
+  plan: PortableMergePlan,
+): readonly Readonly<{
+  aggregate: PortableMergeAggregate;
+  operation: Extract<PortableMergePlan["operations"][number], {
+    aggregateClass: "workout_session";
+  }>;
+}>[] {
+  const operations = new Map(plan.operations.flatMap((operation) =>
+    operation.aggregateClass === "workout_session"
+      ? [[operation.portableId, operation] as const]
+      : [],
+  ));
+  return Object.freeze(plan.aggregates.flatMap((aggregate) => {
+    if (aggregate.aggregateClass !== "workout_session") return [];
+    const operation = operations.get(aggregate.portableId);
+    if (operation === undefined) fail();
+    return [Object.freeze({ aggregate, operation })];
+  }));
 }
 
 function snapshotFullPlan(plan: PortableMergePlan): PortableMergePlan {
@@ -487,6 +632,19 @@ async function insertCustomExerciseAggregate(
   }
 }
 
+async function insertFullPlanSessionAggregate(
+  transaction: SqliteTransactionExecutor,
+  aggregate: PortableMergeAggregate,
+  faultAfter: ((stage: LogicalMergeFaultStage) => Promise<void>) | undefined,
+): Promise<void> {
+  for (const table of SESSION_AGGREGATE_TABLES) {
+    for (const row of aggregate.tables[table] ?? []) {
+      await insertRow(transaction, table, row);
+    }
+    await faultAfter?.(`insert:${table}`);
+  }
+}
+
 async function verifyFullPlanSlice(
   transaction: SqliteTransactionExecutor,
   plan: PortableMergePlan,
@@ -507,6 +665,7 @@ async function verifyFullPlanSlice(
   };
   for (const setting of plan.settings) await verifyRow("app_settings", setting);
   for (const aggregate of plan.aggregates) {
+    if (aggregate.aggregateClass !== "custom_exercise") continue;
     const root = aggregate.tables.exercises?.[0];
     if (root === undefined || typeof root.id !== "string"
       || typeof root.portable_id !== "string") {
@@ -516,6 +675,19 @@ async function verifyFullPlanSlice(
       for (const row of aggregate.tables[table] ?? []) {
         await verifyRow(table, row);
       }
+    }
+  }
+  for (const { aggregate, operation } of sessionAggregatesForFullPlan(plan)) {
+    const root = aggregate.tables.workout_sessions?.[0];
+    if (root?.id !== operation.localId) fail();
+    const verified = await readSqliteMergeLocalFacts(transaction);
+    const actual = (verified.tables.workout_sessions ?? []).find(
+      (row) => row.id === operation.localId,
+    );
+    if (actual === undefined || actual.portable_id !== operation.portableId
+      || canonicalMergeValue(portableMergeSessionAggregate(verified, actual).tables)
+        !== canonicalMergeValue(aggregate.tables)) {
+      fail();
     }
   }
   const foreignKeyCheck = await transaction.queryAll<Record<string, unknown>>(
@@ -583,7 +755,28 @@ export function createLogicalMergeRepository(
           await transaction.execute("PRAGMA defer_foreign_keys = ON");
           await insertFullPlanSettings(transaction, plan, input.faultAfter);
           for (const aggregate of plan.aggregates) {
-            await insertCustomExerciseAggregate(transaction, aggregate, input.faultAfter);
+            if (aggregate.aggregateClass === "custom_exercise") {
+              await insertCustomExerciseAggregate(transaction, aggregate, input.faultAfter);
+            }
+          }
+          const sessionAggregates = sessionAggregatesForFullPlan(plan);
+          const archiveWins = sessionAggregates.filter(({ operation }) =>
+            operation.kind === "archive_won");
+          const triggers = archiveWins.length === 0
+            ? undefined
+            : await captureDeleteTriggers(transaction);
+          if (triggers !== undefined) {
+            await dropDeleteTriggers(transaction, triggers, input.faultAfter);
+          }
+          for (const { operation } of archiveWins) {
+            await assertNoExternalSessionReferences(transaction, operation.localId);
+            await deleteLocalAggregate(transaction, operation.localId, input.faultAfter);
+          }
+          for (const { aggregate } of sessionAggregates) {
+            await insertFullPlanSessionAggregate(transaction, aggregate, input.faultAfter);
+          }
+          if (triggers !== undefined) {
+            await recreateDeleteTriggers(transaction, triggers, input.faultAfter);
           }
           await verifyFullPlanSlice(transaction, plan);
           await input.faultAfter?.("verified");
