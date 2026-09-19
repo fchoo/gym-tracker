@@ -256,6 +256,6 @@ describe("portable merge integration", () => {
       search: await createExerciseSearchIndexRepository(relaunched).verifyParity(),
       sessions: await relaunched.queryAll("SELECT id, merge_modified_at_ms FROM workout_sessions"),
     }).toEqual(first);
-    expect(first.sessions).toEqual([{ id: "archive-session", merge_modified_at_ms: 20 }]);
+    expect(first.sessions).toEqual([{ id: "local-session", merge_modified_at_ms: 20 }]);
   });
 });

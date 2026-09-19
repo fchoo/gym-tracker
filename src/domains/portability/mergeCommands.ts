@@ -20,6 +20,10 @@ import {
   isOpaquePortableId,
 } from "./portableIdentity";
 import {
+  buildPortableMergePlan,
+  type PortableMergePlan,
+} from "./mergePlan";
+import {
   ARGON2ID_DESCRIPTOR_VERSION,
   ARGON2ID_ITERATIONS,
   ARGON2ID_MEMORY_KIB,
@@ -56,6 +60,8 @@ export type MergePreview = Readonly<{
   duplicates: number;
   archiveWon: number;
   localWon: number;
+  keptBoth: number;
+  remapped: number;
   conflicts: number;
 }>;
 
@@ -76,10 +82,16 @@ export type StoredMergePreflight = Readonly<{
   snapshot: LogicalBackupSnapshot;
 }>;
 
+export type StoredFullMergePreflight = Readonly<{
+  archiveDigest: string;
+  localFingerprint: string;
+  plan: PortableMergePlan;
+}>;
+
 export type MergePreflightStore = Readonly<{
   invalidate(): void;
-  issue(value: StoredMergePreflight): string;
-  consume(token: string): StoredMergePreflight | null;
+  issue(value: StoredFullMergePreflight): string;
+  consume(token: string): StoredFullMergePreflight | null;
 }>;
 
 export type MergeWriterPort = Readonly<{
@@ -91,6 +103,13 @@ export type MergeWriterPort = Readonly<{
   commit(input: StoredMergePreflight): Promise<Readonly<{
     state: "ready" | "rebuild_pending";
   }>>;
+}>;
+
+export type FullMergeWriterPort = Readonly<{
+  commitFullPlan(input: Readonly<{
+    localFingerprint: string;
+    plan: PortableMergePlan;
+  }>): Promise<Readonly<{ state: "rebuild_pending" }>>;
 }>;
 
 export type SecureMergeCommands = Readonly<{
@@ -137,7 +156,7 @@ export type MergeCommandDependencies = Readonly<{
   local: MergeLocalFactsPort;
   sha256(value: string): Promise<string>;
   store: MergePreflightStore;
-  writer?: MergeWriterPort;
+  writer?: FullMergeWriterPort;
 }>;
 
 function wipe(...buffers: Array<Uint8Array | undefined>): void {
@@ -251,6 +270,16 @@ function assertLocalFacts(value: MergeLocalFacts): void {
     || Object.values(value.tables).some((rows) => !Array.isArray(rows))) {
     throw new MergeCommandError("merge_local_state_invalid");
   }
+  const sessionPortableIds = new Set<string>();
+  for (const row of value.tables.workout_sessions ?? []) {
+    if (!isOpaquePortableId(row.portable_id)
+      || !Number.isSafeInteger(row.merge_modified_at_ms)
+      || (row.merge_modified_at_ms as number) < 0
+      || sessionPortableIds.has(row.portable_id)) {
+      throw new MergeCommandError("merge_local_state_invalid");
+    }
+    sessionPortableIds.add(row.portable_id);
+  }
 }
 
 export async function resolvePortableMergeOperation(
@@ -297,22 +326,24 @@ export async function resolvePortableMergeOperation(
     : Object.freeze({ kind: "local_won", portableId: archivePortableId });
 }
 
-function previewFor(operation: MergeOperation): MergePreview {
+function previewFor(plan: PortableMergePlan): MergePreview {
   return Object.freeze({
     mode: "merge",
     sourceFormatVersion: 2,
-    inserted: operation.kind === "insert" ? 1 : 0,
-    duplicates: operation.kind === "duplicate" ? 1 : 0,
-    archiveWon: operation.kind === "archive_won" ? 1 : 0,
-    localWon: operation.kind === "local_won" ? 1 : 0,
-    conflicts: 0,
+    inserted: plan.preview.inserted,
+    duplicates: plan.preview.duplicates,
+    archiveWon: plan.preview.archiveWon,
+    localWon: plan.preview.localWon,
+    keptBoth: plan.preview.keptBoth,
+    remapped: plan.preview.remapped,
+    conflicts: plan.preview.conflicts,
   });
 }
 
 export function createMergePreflightStore(
   input: Readonly<{ tokenFactory(): string }>,
 ): MergePreflightStore {
-  let active: Readonly<{ token: string; value: StoredMergePreflight }> | undefined;
+  let active: Readonly<{ token: string; value: StoredFullMergePreflight }> | undefined;
   const issued = new Set<string>();
   return Object.freeze({
     invalidate() { active = undefined; },
@@ -389,8 +420,25 @@ export function createMergeCommands(
         if (archiveNamespace !== local.ownerNamespace) {
           throw new MergeCommandError("merge_owner_namespace_conflict");
         }
-        const [operation, archiveDigest, localFingerprint] = await Promise.all([
-          resolvePortableMergeOperation(snapshot, local, dependencies.sha256),
+        const archiveForPlan = Object.freeze({
+          version: 2 as const,
+          schemaVersion: snapshot.schemaVersion,
+          tables: snapshot.tables,
+        });
+        const localForPlan = Object.freeze({
+          version: 2 as const,
+          schemaVersion: local.schemaVersion,
+          tables: Object.freeze({
+            ...local.tables,
+            portable_owner_identity: [{ id: 1, owner_namespace: local.ownerNamespace }],
+          }),
+        });
+        const [plan, archiveDigest, localFingerprint] = await Promise.all([
+          buildPortableMergePlan({
+            archive: archiveForPlan,
+            local: localForPlan,
+            payloadDigest: dependencies.sha256,
+          }),
           dependencies.sha256(archiveDigestInput(archive)),
           dependencies.sha256(canonicalMergeValue(local)),
         ]);
@@ -401,13 +449,12 @@ export function createMergeCommands(
         const token = dependencies.store.issue(Object.freeze({
           archiveDigest,
           localFingerprint,
-          operation,
-          snapshot,
+          plan,
         }));
         return Object.freeze({
           outcome: "ready" as const,
           token,
-          preview: previewFor(operation),
+          preview: previewFor(plan),
         });
       } catch (error) {
         dependencies.store.invalidate();
@@ -441,7 +488,10 @@ export function createMergeCommands(
         throw new MergeCommandError("merge_preflight_token_invalid");
       }
       try {
-        return await dependencies.writer.commit(preflight);
+        return await dependencies.writer.commitFullPlan({
+          localFingerprint: preflight.localFingerprint,
+          plan: preflight.plan,
+        });
       } catch {
         throw new MergeCommandError("merge_commit_failed");
       }

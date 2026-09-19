@@ -20,6 +20,7 @@ import {
   createMergeCommands,
   createMergePreflightStore,
   MergeCommandError,
+  type StoredFullMergePreflight,
 } from "./mergeCommands";
 import {
   RestoreFilePortError,
@@ -204,6 +205,8 @@ describe("secure merge preflight", () => {
           duplicates: 0,
           archiveWon: 1,
           localWon: 0,
+          keptBoth: 0,
+          remapped: 0,
           conflicts: 0,
         },
       });
@@ -377,7 +380,7 @@ describe("secure merge preflight", () => {
     }
   });
 
-  it("rejects an archive with more than one session after authentication", async () => {
+  it("previews an archive containing multiple independent sessions", async () => {
     const archiveSnapshot = snapshot({ snapshotId: "two-sessions" });
     const twoSessions = {
       ...archiveSnapshot,
@@ -414,7 +417,9 @@ describe("secure merge preflight", () => {
       store: createMergePreflightStore({ tokenFactory: () => "unused" }),
     });
     await expect(commands.preflightSecureMerge({ password: "owner-password" }))
-      .rejects.toEqual(new MergeCommandError("merge_archive_invalid"));
+      .resolves.toEqual(expect.objectContaining({
+        preview: expect.objectContaining({ inserted: 2 }),
+      }));
   });
 
   it("maps invalid preflight store and invalid digest output to safe merge errors", async () => {
@@ -459,14 +464,14 @@ describe("secure merge preflight", () => {
     });
     await commands.preflightSecureMerge({ password: "owner-password" });
     commands.invalidateSecureMergePreflight("other");
-    expect(store.consume("active")).toEqual(expect.objectContaining({ operation: expect.any(Object) }));
+    expect(store.consume("active")).toEqual(expect.objectContaining({ plan: expect.any(Object) }));
   });
 
   it("requires exact MERGE confirmation without consuming the preflight token", async () => {
     const archiveSnapshot = snapshot({ snapshotId: "confirmation" });
     const archive = await archiveFor(archiveSnapshot);
     const store = createMergePreflightStore({ tokenFactory: () => "confirm-token" });
-    const writer = { commit: jest.fn(async () => ({ state: "rebuild_pending" as const })) };
+    const writer = { commitFullPlan: jest.fn(async () => ({ state: "rebuild_pending" as const })) };
     const commands = createMergeCommands({
       crypto: cryptoPort(),
       files: { readSelectedArchiveAtMost: async () => archive },
@@ -484,9 +489,9 @@ describe("secure merge preflight", () => {
       confirmation: "merge",
       token: "confirm-token",
     })).rejects.toEqual(new MergeCommandError("merge_confirmation_invalid"));
-    expect(writer.commit).not.toHaveBeenCalled();
+    expect(writer.commitFullPlan).not.toHaveBeenCalled();
     expect(store.consume("confirm-token")).toEqual(expect.objectContaining({
-      operation: expect.any(Object),
+      plan: expect.any(Object),
     }));
   });
 
@@ -494,7 +499,7 @@ describe("secure merge preflight", () => {
     const archiveSnapshot = snapshot({ snapshotId: "commit-failure" });
     const archive = await archiveFor(archiveSnapshot);
     const store = createMergePreflightStore({ tokenFactory: () => "commit-token" });
-    const writer = { commit: jest.fn(async () => { throw new Error("source facts must not leak"); }) };
+    const writer = { commitFullPlan: jest.fn(async () => { throw new Error("source facts must not leak"); }) };
     const commands = createMergeCommands({
       crypto: cryptoPort(),
       files: { readSelectedArchiveAtMost: async () => archive },
@@ -512,7 +517,55 @@ describe("secure merge preflight", () => {
       confirmation: "MERGE",
       token: "commit-token",
     })).rejects.toEqual(new MergeCommandError("merge_commit_failed"));
-    expect(writer.commit).toHaveBeenCalledTimes(1);
+    expect(writer.commitFullPlan).toHaveBeenCalledTimes(1);
     expect(store.consume("commit-token")).toBeNull();
+  });
+
+  it("commits the exact authenticated full plan bound into the one-time token", async () => {
+    const archiveSnapshot = snapshot({ snapshotId: "full-plan-token" });
+    const archive = await archiveFor(archiveSnapshot);
+    type FullToken = StoredFullMergePreflight;
+    let captured: FullToken | undefined;
+    let active: FullToken | null = null;
+    const store = {
+      invalidate() { active = null; },
+      issue(value: FullToken) {
+        captured = value;
+        active = value;
+        return "full-plan-token";
+      },
+      consume(token: string) {
+        if (token !== "full-plan-token" || active === null) return null;
+        const value = active;
+        active = null;
+        return value;
+      },
+    };
+    const writer = { commitFullPlan: jest.fn(async () => ({ state: "rebuild_pending" as const })) };
+    const commands = createMergeCommands({
+      crypto: cryptoPort(),
+      files: { readSelectedArchiveAtMost: async () => archive },
+      kdf: { derive: async () => ({ algorithm: "argon2id", bytes: new Uint8Array(32), durationMs: 1, provider: "Bouncy Castle", providerVersion: "1.85.2" }) },
+      schema: schemaFor(archiveSnapshot),
+      candidateProbe: { validateCandidate: async () => undefined },
+      local: localFacts(),
+      sha256,
+      store,
+      writer,
+    });
+
+    await commands.preflightSecureMerge({ password: "owner-password" });
+    const token = captured;
+    expect(token).toEqual(expect.objectContaining({ plan: expect.any(Object) }));
+    if (token === undefined) throw new Error("full_plan_token_missing");
+
+    await expect(commands.commitSecureMerge({
+      confirmation: "MERGE",
+      token: "full-plan-token",
+    })).resolves.toEqual({ state: "rebuild_pending" });
+    expect(writer.commitFullPlan).toHaveBeenCalledWith({
+      localFingerprint: token.localFingerprint,
+      plan: token.plan,
+    });
   });
 });
