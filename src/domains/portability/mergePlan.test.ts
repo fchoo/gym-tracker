@@ -311,6 +311,17 @@ describe("portable merge plan", () => {
       {
         plans: [{ id: "plan-1", origin: "custom", portable_id: "f".repeat(32) }],
         plan_days: [{ id: "day-1", plan_id: "plan-1", ordinal: 0 }],
+        plan_schedules: [{ id: "schedule-1", plan_id: "plan-1" }],
+        owned_plan_schedules: [{ id: "owned-schedule-1", plan_id: "plan-1" }],
+        owned_plan_schedule_versions: [{
+          id: "schedule-version-1",
+          schedule_id: "owned-schedule-1",
+        }],
+        owned_plan_schedule_bindings: [{
+          id: "schedule-binding-1",
+          schedule_version_id: "schedule-version-1",
+          plan_day_id: "day-1",
+        }],
         plan_day_exercises: [{
           id: "occurrence-1",
           plan_day_id: "day-1",
@@ -326,6 +337,12 @@ describe("portable merge plan", () => {
       {
         plans: [{ id: "plan-1", origin: "custom", portable_id: "e".repeat(32) }],
         plan_days: [{ id: "day-1", plan_id: "plan-1", ordinal: 0 }],
+        plan_schedules: [{ id: "schedule-1", plan_id: "plan-1" }],
+        owned_plan_schedules: [{ id: "owned-schedule-1", plan_id: "plan-1" }],
+        owned_plan_schedule_versions: [{
+          id: "schedule-version-1",
+          schedule_id: "owned-schedule-1",
+        }],
       },
     );
 
@@ -351,6 +368,21 @@ describe("portable merge plan", () => {
     ]);
     expect(aggregate?.tables.plan_day_exercises).toEqual([
       expect.objectContaining({ plan_day_id: expect.not.stringMatching(/^day-1$/u) }),
+    ]);
+    expect(aggregate?.tables.plan_schedules).toEqual([
+      expect.objectContaining({ plan_id: rootId }),
+    ]);
+    expect(aggregate?.tables.owned_plan_schedules).toEqual([
+      expect.objectContaining({ plan_id: rootId }),
+    ]);
+    expect(aggregate?.tables.owned_plan_schedule_versions).toEqual([
+      expect.objectContaining({ schedule_id: expect.not.stringMatching(/^owned-schedule-1$/u) }),
+    ]);
+    expect(aggregate?.tables.owned_plan_schedule_bindings).toEqual([
+      expect.objectContaining({
+        schedule_version_id: expect.not.stringMatching(/^schedule-version-1$/u),
+        plan_day_id: expect.not.stringMatching(/^day-1$/u),
+      }),
     ]);
   });
 

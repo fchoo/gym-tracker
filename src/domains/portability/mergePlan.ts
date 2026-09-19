@@ -621,6 +621,43 @@ function planAggregate(
     tables.plan_day_exercises = mappedOccurrences.rows;
   }
 
+  const legacySchedules = rowsFor(snapshot, "plan_schedules")
+    .filter((row) => row.plan_id === archivePlanId);
+  const mappedLegacySchedules = mappedRows(local, "plan_schedules", legacySchedules, [
+    { column: "plan_id", ids: planMap },
+  ], operation.kind === "keep_both", operation.portableId);
+  if (mappedLegacySchedules.rows.length > 0) {
+    tables.plan_schedules = mappedLegacySchedules.rows;
+  }
+
+  const ownedSchedules = rowsFor(snapshot, "owned_plan_schedules")
+    .filter((row) => row.plan_id === archivePlanId);
+  const mappedOwnedSchedules = mappedRows(local, "owned_plan_schedules", ownedSchedules, [
+    { column: "plan_id", ids: planMap },
+  ], operation.kind === "keep_both", operation.portableId);
+  if (mappedOwnedSchedules.rows.length > 0) {
+    tables.owned_plan_schedules = mappedOwnedSchedules.rows;
+  }
+
+  const scheduleVersions = rowsFor(snapshot, "owned_plan_schedule_versions")
+    .filter((row) => mappedOwnedSchedules.ids.has(textId(row.schedule_id)));
+  const mappedScheduleVersions = mappedRows(local, "owned_plan_schedule_versions", scheduleVersions, [
+    { column: "schedule_id", ids: mappedOwnedSchedules.ids },
+  ], operation.kind === "keep_both", operation.portableId);
+  if (mappedScheduleVersions.rows.length > 0) {
+    tables.owned_plan_schedule_versions = mappedScheduleVersions.rows;
+  }
+
+  const scheduleBindings = rowsFor(snapshot, "owned_plan_schedule_bindings")
+    .filter((row) => mappedScheduleVersions.ids.has(textId(row.schedule_version_id)));
+  const mappedScheduleBindings = mappedRows(local, "owned_plan_schedule_bindings", scheduleBindings, [
+    { column: "schedule_version_id", ids: mappedScheduleVersions.ids },
+    { column: "plan_day_id", ids: mappedDays.ids },
+  ], operation.kind === "keep_both", operation.portableId);
+  if (mappedScheduleBindings.rows.length > 0) {
+    tables.owned_plan_schedule_bindings = mappedScheduleBindings.rows;
+  }
+
   for (const table of [
     "plan_warmup_sets",
     "plan_working_set_targets",
