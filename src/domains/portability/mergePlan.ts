@@ -200,6 +200,38 @@ function sessionDigestInput(
   return canonicalValue(tables);
 }
 
+function sessionAggregate(
+  snapshot: PortableMergePlanSnapshot,
+  portableId: string,
+): PortableMergeAggregate {
+  const sessions = sessionRows(snapshot).filter((row) => row.portable_id === portableId);
+  if (sessions.length !== 1) invalid();
+  const sessionId = textId(sessions[0]!.id);
+  const exerciseIds = new Set(rowsFor(snapshot, "session_exercises")
+    .filter((row) => row.session_id === sessionId)
+    .map((row) => textId(row.id)));
+  const setIds = new Set(rowsFor(snapshot, "session_sets")
+    .filter((row) => exerciseIds.has(textId(row.session_exercise_id)))
+    .map((row) => textId(row.id)));
+  const isKnown = (ids: ReadonlySet<string>, value: unknown): boolean =>
+    value !== null && value !== undefined && ids.has(textId(value));
+  const tables: Record<string, readonly LogicalBackupRow[]> = {};
+  for (const [table, rows] of Object.entries(snapshot.tables)) {
+    const selected = table === "workout_sessions"
+      ? rows.filter((row) => row.id === sessionId)
+      : rows.filter((row) => row.session_id === sessionId
+        || isKnown(exerciseIds, row.session_exercise_id)
+        || isKnown(setIds, row.session_set_id)
+        || isKnown(setIds, row.completed_set_id));
+    if (selected.length > 0) tables[table] = Object.freeze(selected);
+  }
+  return Object.freeze({
+    aggregateClass: "workout_session",
+    portableId,
+    tables: Object.freeze(tables),
+  });
+}
+
 function countFor(
   operation: PortableMergeOperation,
 ): PortableMergePreview {
@@ -628,6 +660,10 @@ export function buildPortableMergePlan(input: Readonly<{
   ].sort((left, right) => operationKey(left).localeCompare(operationKey(right))));
   const idRemaps = Object.freeze([...exercises.idRemaps, ...plans.idRemaps]);
   const aggregates = Object.freeze(operations.flatMap((operation) => {
+    if (operation.aggregateClass === "workout_session"
+      && (operation.kind === "insert" || operation.kind === "archive_won")) {
+      return [sessionAggregate(input.archive, operation.portableId)];
+    }
     if (operation.aggregateClass === "custom_exercise"
       && (operation.kind === "insert" || operation.kind === "keep_both")) {
       return [exerciseAggregate(input.archive, operation)];

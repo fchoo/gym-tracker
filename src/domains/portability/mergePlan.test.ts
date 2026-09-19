@@ -64,6 +64,13 @@ describe("portable merge plan", () => {
       kind: "archive_won",
       portableId: sessionPortableId,
     })]);
+    expect(plan.aggregates).toEqual([expect.objectContaining({
+      aggregateClass: "workout_session",
+      portableId: sessionPortableId,
+      tables: expect.objectContaining({
+        workout_sessions: [expect.objectContaining({ id: "archive-session" })],
+      }),
+    })]);
   });
 
   it("keeps local settings on duplicate keys while importing missing keys", () => {
