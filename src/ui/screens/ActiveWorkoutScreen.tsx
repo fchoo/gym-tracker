@@ -937,6 +937,20 @@ function PopulatedWorkoutOverview({
         action={
           <ActionCluster style={styles.headerActions}>
             <IconAction
+              accessibilityLabel={`Configure ${activeExercise.name} timing`}
+              disabled={
+                timingConfigBusy
+                || commands.updateSessionExerciseAdvancedTiming === undefined
+                || activeExercise.status === "completed"
+                || activeExercise.status === "skipped"
+              }
+              icon="settings"
+              onPress={() => {
+                setTimingConfigFailed(false);
+                setTimingConfig({ scope: "exercise", exercise: activeExercise });
+              }}
+            />
+            <IconAction
               accessibilityLabel="More workout actions"
               icon="more"
               onPress={() => setMoreVisible(true)}

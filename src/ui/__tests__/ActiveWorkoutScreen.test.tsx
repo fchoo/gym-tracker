@@ -1040,6 +1040,28 @@ describe("Plan 01-08 ActiveWorkoutScreen", () => {
       .toBeOnTheScreen();
   });
 
+  it("keeps active-exercise timing configuration reachable from the sticky header", async () => {
+    await renderActive({
+      commands: commands({
+        updateSessionExerciseAdvancedTiming: jest.fn(async () => advancedResult({
+          version: 1,
+          state: "idle",
+          revision: 0,
+          targetSessionSetId: null,
+        }, 2)),
+      }),
+    });
+
+    const configureTiming = screen.getByRole("button", {
+      name: "Configure Back Squat timing",
+    });
+    expect(configureTiming).toHaveStyle({ minHeight: 48, minWidth: 48 });
+
+    await fireEvent.press(configureTiming);
+
+    expect(screen.getByText("Exercise timing")).toBeOnTheScreen();
+  });
+
   it("lists every workout exercise in overview order without changing the active pointer", async () => {
     const reviewedExercise = {
       ...initialView.currentExercise,
