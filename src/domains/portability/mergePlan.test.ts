@@ -258,6 +258,13 @@ describe("portable merge plan", () => {
       }),
     ]));
     expect(plan.idRemaps).toEqual([]);
+    expect(plan.idMappings).toEqual(expect.arrayContaining([
+      expect.objectContaining({
+        recordClass: "custom_exercise",
+        archiveId: "archive-exercise",
+        localId: "local-exercise",
+      }),
+    ]));
   });
 
   it("keeps distinct owned plan identities through a physical ID collision", async () => {

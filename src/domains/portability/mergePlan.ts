@@ -124,6 +124,12 @@ export type PortableMergeIdRemap = Readonly<{
   localId: string;
 }>;
 
+export type PortableMergeIdMapping = Readonly<{
+  recordClass: "workout_session" | "custom_exercise" | "owned_plan";
+  archiveId: string;
+  localId: string;
+}>;
+
 export type PortableMergeAggregate = Readonly<{
   aggregateClass: "workout_session" | "custom_exercise" | "owned_plan";
   portableId: string;
@@ -133,6 +139,7 @@ export type PortableMergeAggregate = Readonly<{
 export type PortableMergePlan = Readonly<{
   operations: readonly PortableMergeOperation[];
   idRemaps: readonly PortableMergeIdRemap[];
+  idMappings: readonly PortableMergeIdMapping[];
   aggregates: readonly PortableMergeAggregate[];
   preview: PortableMergePreview;
 }>;
@@ -429,6 +436,7 @@ function rootOperations(
 ): Readonly<{
   operations: readonly PortableMergeOperation[];
   idRemaps: readonly PortableMergeIdRemap[];
+  idMappings: readonly PortableMergeIdMapping[];
 }> {
   const isOwned = (row: LogicalBackupRow) =>
     row.origin === "custom" || row.origin === "copied";
@@ -449,6 +457,7 @@ function rootOperations(
   const archivePortableIds = new Set<string>();
   const operations: PortableMergeOperation[] = [];
   const idRemaps: PortableMergeIdRemap[] = [];
+  const idMappings: PortableMergeIdMapping[] = [];
   for (const root of [...archiveRoots].sort((left, right) =>
     textId(left.portable_id).localeCompare(textId(right.portable_id)))) {
     const archiveId = textId(root.id);
@@ -459,12 +468,18 @@ function rootOperations(
     archivePortableIds.add(portableId);
     const existing = localByPortableId.get(portableId);
     if (existing !== undefined) {
+      const localId = textId(existing.id);
       operations.push(Object.freeze({
         aggregateClass: input.aggregateClass,
         kind: "duplicate",
         portableId,
         archiveId,
-        localId: textId(existing.id),
+        localId,
+      }));
+      idMappings.push(Object.freeze({
+        recordClass: input.aggregateClass,
+        archiveId,
+        localId,
       }));
       continue;
     }
@@ -480,6 +495,11 @@ function rootOperations(
       archiveId,
       localId,
     }));
+    idMappings.push(Object.freeze({
+      recordClass: input.aggregateClass,
+      archiveId,
+      localId,
+    }));
     if (physicalCollision) {
       idRemaps.push(Object.freeze({
         recordClass: input.aggregateClass,
@@ -491,6 +511,7 @@ function rootOperations(
   return Object.freeze({
     operations: Object.freeze(operations),
     idRemaps: Object.freeze(idRemaps),
+    idMappings: Object.freeze(idMappings),
   });
 }
 
@@ -870,6 +891,17 @@ export async function buildPortableMergePlan(input: Readonly<{
     ...exercises.idRemaps,
     ...plans.idRemaps,
   ]);
+  const idMappings = Object.freeze([
+    ...sessionOperations.filter((operation): operation is Extract<PortableMergeOperation, {
+      aggregateClass: "workout_session";
+    }> => operation.aggregateClass === "workout_session").map((operation) => Object.freeze({
+      recordClass: "workout_session" as const,
+      archiveId: operation.archiveId,
+      localId: operation.localId,
+    })),
+    ...exercises.idMappings,
+    ...plans.idMappings,
+  ]);
   const aggregates = Object.freeze(operations.flatMap((operation) => {
     if (operation.aggregateClass === "workout_session"
       && (operation.kind === "insert" || operation.kind === "archive_won")) {
@@ -895,6 +927,7 @@ export async function buildPortableMergePlan(input: Readonly<{
   return Object.freeze({
     operations,
     idRemaps,
+    idMappings,
     aggregates,
     preview: Object.freeze({ ...basePreview, remapped: idRemaps.length }),
   });
