@@ -20,6 +20,8 @@ import {
   createMergeCommands,
   createMergePreflightStore,
   MergeCommandError,
+  resolvePortableMergeOperation,
+  canonicalMergeValue,
   type StoredFullMergePreflight,
 } from "./mergeCommands";
 import {
@@ -139,6 +141,88 @@ function localFacts(input: Readonly<{
 }
 
 describe("secure merge preflight", () => {
+  it("keeps the legacy session comparator fail-closed across every outcome", async () => {
+    const archive = snapshot({ snapshotId: "legacy-comparator", modifiedAtMs: 20 });
+    const base = {
+      ownerNamespace: "11111111111111111111111111111111",
+      schemaVersion: 22,
+      tables: { workout_sessions: [], session_exercises: [], session_sets: [] },
+    };
+
+    await expect(resolvePortableMergeOperation(archive, base, sha256))
+      .resolves.toEqual({ kind: "insert", portableId: "a".repeat(32) });
+    await expect(resolvePortableMergeOperation(archive, {
+      ...base,
+      tables: {
+        ...base.tables,
+        workout_sessions: [
+          { id: "one", portable_id: "a".repeat(32), merge_modified_at_ms: 1 },
+          { id: "two", portable_id: "a".repeat(32), merge_modified_at_ms: 2 },
+        ],
+      },
+    }, sha256)).rejects.toEqual(new MergeCommandError("merge_local_state_invalid"));
+    await expect(resolvePortableMergeOperation(archive, {
+      ...base,
+      tables: {
+        ...base.tables,
+        workout_sessions: [{ id: "invalid", portable_id: "a".repeat(32), merge_modified_at_ms: -1 }],
+      },
+    }, sha256)).rejects.toEqual(new MergeCommandError("merge_local_state_invalid"));
+    await expect(resolvePortableMergeOperation(archive, {
+      ...base,
+      tables: {
+        ...base.tables,
+        workout_sessions: [{ id: "older", portable_id: "a".repeat(32), merge_modified_at_ms: 10 }],
+      },
+    }, sha256)).resolves.toEqual({ kind: "archive_won", portableId: "a".repeat(32) });
+    await expect(resolvePortableMergeOperation(archive, {
+      ...base,
+      tables: {
+        ...base.tables,
+        workout_sessions: [{ id: "newer", portable_id: "a".repeat(32), merge_modified_at_ms: 30 }],
+      },
+    }, sha256)).resolves.toEqual({ kind: "local_won", portableId: "a".repeat(32) });
+    await expect(resolvePortableMergeOperation(archive, {
+      ...base,
+      tables: {
+        ...base.tables,
+        workout_sessions: [{ id: "equal", portable_id: "a".repeat(32), merge_modified_at_ms: 20 }],
+      },
+    }, async () => "0".repeat(64))).resolves.toEqual({ kind: "duplicate", portableId: "a".repeat(32) });
+    await expect(resolvePortableMergeOperation(archive, {
+      ...base,
+      tables: {
+        ...base.tables,
+        workout_sessions: [{ id: "equal", portable_id: "a".repeat(32), merge_modified_at_ms: 20 }],
+      },
+    }, async (value) => value.includes("archive-session") ? "f".repeat(64) : "0".repeat(64)))
+      .resolves.toEqual({ kind: "archive_won", portableId: "a".repeat(32) });
+    await expect(resolvePortableMergeOperation(archive, {
+      ...base,
+      tables: {
+        ...base.tables,
+        workout_sessions: [{ id: "equal", portable_id: "a".repeat(32), merge_modified_at_ms: 20 }],
+      },
+    }, async () => "bad"))
+      .rejects.toEqual(new MergeCommandError("merge_local_state_invalid"));
+  });
+
+  it("rejects non-canonical merge values and malformed legacy archive roots", async () => {
+    expect(() => canonicalMergeValue(new Date())).toThrow("merge_local_state_invalid");
+    const malformed = {
+      ...snapshot({ snapshotId: "missing-session-id" }),
+      tables: {
+        ...snapshot({ snapshotId: "missing-session-id" }).tables,
+        workout_sessions: [{ portable_id: "a".repeat(32), merge_modified_at_ms: 1 }],
+      },
+    } as LogicalBackupSnapshot;
+    await expect(resolvePortableMergeOperation(malformed, {
+      ownerNamespace: "11111111111111111111111111111111",
+      schemaVersion: 22,
+      tables: { workout_sessions: [], session_exercises: [], session_sets: [] },
+    }, sha256)).rejects.toEqual(new MergeCommandError("merge_archive_invalid"));
+  });
+
   it("authenticates a v1 archive before rejecting it as restore-clean only", async () => {
     const archive = await archiveFor(snapshot({ snapshotId: "legacy", version: 1 }));
     const local = localFacts();

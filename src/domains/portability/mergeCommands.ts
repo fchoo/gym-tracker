@@ -288,7 +288,13 @@ export async function resolvePortableMergeOperation(
   sha256: MergeCommandDependencies["sha256"],
 ): Promise<MergeOperation> {
   const archive = archiveSession(snapshot);
-  const archivePortableId = archive.portable_id as string;
+  if (typeof archive.id !== "string" || archive.id.trim().length === 0
+    || !isOpaquePortableId(archive.portable_id)
+    || !Number.isSafeInteger(archive.merge_modified_at_ms)
+    || (archive.merge_modified_at_ms as number) < 0) {
+    throw new MergeCommandError("merge_archive_invalid");
+  }
+  const archivePortableId = archive.portable_id;
   const matches = (local.tables.workout_sessions ?? []).filter(
     (row) => row.portable_id === archivePortableId,
   );
