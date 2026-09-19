@@ -765,6 +765,7 @@ describe("advanced timing repository", () => {
     expect(afterDefault.session).toEqual([{
       ...before.session[0]!,
       revision: session.revision + 1,
+      merge_modified_at_ms: (before.session[0]!.merge_modified_at_ms as number) + 1,
     }]);
     expect(afterDefault.sets).toEqual(beforeSets.map((set) => {
       if (

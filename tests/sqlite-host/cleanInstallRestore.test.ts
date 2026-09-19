@@ -426,14 +426,14 @@ describe("clean install logical restore", () => {
       createdAtMs: 1,
       snapshotId: "clean-install-empty-owner-state",
     })).resolves.toEqual({
-      version: 1,
+      version: 2,
       snapshotId: "clean-install-empty-owner-state",
       createdAtMs: 1,
-      schemaVersion: 21,
+      schemaVersion: 22,
       manifest: {
         catalogReferenceCount: 0,
         rowCounts: expect.any(Object),
-        totalRows: 0,
+        totalRows: 1,
       },
       tables: expect.any(Object),
       catalogReferences: [],
@@ -443,7 +443,9 @@ describe("clean install logical restore", () => {
       snapshotId: "clean-install-empty-owner-state-verify",
     });
     expect(
-      Object.values(cleanOwnerState.manifest.rowCounts).every((count) => count === 0),
+      Object.entries(cleanOwnerState.manifest.rowCounts)
+        .filter(([table]) => table !== "portable_owner_identity")
+        .every(([, count]) => count === 0),
     ).toBe(true);
     await expect(createLogicalRestoreRepository(clean, { nowMs: () => 2 })
       .restore(archive)).resolves.toEqual({ state: "rebuild_pending" });

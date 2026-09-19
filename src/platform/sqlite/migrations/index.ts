@@ -18,6 +18,7 @@ import { workoutRemoveReceiptEntityIdsMigration } from "./0018_workout_remove_re
 import { sessionExerciseEditingMigration } from "./0019_session_exercise_editing";
 import { sessionExerciseEditReceiptsMigration } from "./0020_session_exercise_edit_receipts";
 import { advancedSetTimingMigration } from "./0021_advanced_set_timing";
+import { portableOwnerIdentitiesMigration } from "./0022_portable_owner_identities";
 
 export const migrations = Object.freeze([
   initialMigration,
@@ -40,6 +41,7 @@ export const migrations = Object.freeze([
   sessionExerciseEditingMigration,
   sessionExerciseEditReceiptsMigration,
   advancedSetTimingMigration,
+  portableOwnerIdentitiesMigration,
 ]);
 
 export {
@@ -61,6 +63,7 @@ export {
   sessionExerciseEditingMigration,
   sessionExerciseEditReceiptsMigration,
   advancedSetTimingMigration,
+  portableOwnerIdentitiesMigration,
   outcomeEffortMigration,
   scheduleActivationMigration,
 };

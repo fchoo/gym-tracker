@@ -6,17 +6,19 @@ import { workoutRemoveReceiptEntityIdsMigration } from "../../src/platform/sqlit
 import { sessionExerciseEditingMigration } from "../../src/platform/sqlite/migrations/0019_session_exercise_editing";
 import { sessionExerciseEditReceiptsMigration } from "../../src/platform/sqlite/migrations/0020_session_exercise_edit_receipts";
 import { advancedSetTimingMigration } from "../../src/platform/sqlite/migrations/0021_advanced_set_timing";
+import { portableOwnerIdentitiesMigration } from "../../src/platform/sqlite/migrations/0022_portable_owner_identities";
 import { migrations } from "../../src/platform/sqlite/migrations";
 import type { SqliteTransactionExecutor } from "../../src/platform/sqlite/sqliteKernel";
 
 describe("portability restore-state migration", () => {
   it("is the retained additive v16 migration and creates only a singleton non-secret rebuild state", async () => {
-    expect(migrations.at(-6)).toBe(portabilityRestoreStateMigration);
-    expect(migrations.at(-5)).toBe(workoutRemoveReceiptsMigration);
-    expect(migrations.at(-4)).toBe(workoutRemoveReceiptEntityIdsMigration);
-    expect(migrations.at(-3)).toBe(sessionExerciseEditingMigration);
-    expect(migrations.at(-2)).toBe(sessionExerciseEditReceiptsMigration);
-    expect(migrations.at(-1)).toBe(advancedSetTimingMigration);
+    expect(migrations.at(-7)).toBe(portabilityRestoreStateMigration);
+    expect(migrations.at(-6)).toBe(workoutRemoveReceiptsMigration);
+    expect(migrations.at(-5)).toBe(workoutRemoveReceiptEntityIdsMigration);
+    expect(migrations.at(-4)).toBe(sessionExerciseEditingMigration);
+    expect(migrations.at(-3)).toBe(sessionExerciseEditReceiptsMigration);
+    expect(migrations.at(-2)).toBe(advancedSetTimingMigration);
+    expect(migrations.at(-1)).toBe(portableOwnerIdentitiesMigration);
     expect(portabilityRestoreStateMigration).toMatchObject({ version: 16, name: "portability-restore-state", kind: "additive" });
     const statements: string[] = [];
     let queryCount = 0;

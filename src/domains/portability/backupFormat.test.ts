@@ -108,7 +108,22 @@ function archiveWithPayload(archive: Uint8Array, payload: Uint8Array): Uint8Arra
   return replacement;
 }
 
-describe("GTBK v1 backup envelope", () => {
+describe("GTBK backup envelope", () => {
+  it("writes v2 only when the logical snapshot carries its identity namespace", async () => {
+    const v2: LogicalBackupSnapshot = {
+      ...snapshot,
+      version: 2,
+      schemaVersion: 22,
+      manifest: { catalogReferenceCount: 0, rowCounts: { portable_owner_identity: 1 }, totalRows: 1 },
+      tables: { portable_owner_identity: [{ id: 1, owner_namespace: "0123456789abcdef0123456789abcdef" }] },
+    };
+    const archive = await createBackupEnvelopeCodec(cryptoPort()).seal({
+      snapshot: v2, password, salt, nonce,
+    });
+    expect(archive[4]).toBe(2);
+    await expect(createBackupEnvelopeCodec(cryptoPort()).open({ archive, password }))
+      .resolves.toEqual(v2);
+  });
   it("emits deterministic canonical header bytes that are authenticated as AAD", async () => {
     const codec = createBackupEnvelopeCodec(cryptoPort());
 
@@ -136,7 +151,7 @@ describe("GTBK v1 backup envelope", () => {
 
   it.each([
     ["the magic", (archive: Uint8Array) => { archive[0] = (archive[0] ?? 0) ^ 1; }],
-    ["the format version", (archive: Uint8Array) => { archive[4] = 2; }],
+    ["the format version", (archive: Uint8Array) => { archive[4] = 3; }],
     ["one canonical header byte", (archive: Uint8Array) => { archive[9] = (archive[9] ?? 0) ^ 1; }],
     ["one ciphertext byte", (archive: Uint8Array) => { const index = archive.length - 17; archive[index] = (archive[index] ?? 0) ^ 1; }],
     ["the authentication tag", (archive: Uint8Array) => { const index = archive.length - 1; archive[index] = (archive[index] ?? 0) ^ 1; }],
@@ -174,6 +189,16 @@ describe("GTBK v1 backup envelope", () => {
       expect.objectContaining({ code: "backup_archive_invalid" }),
     );
     expect(derived).toEqual([]);
+  });
+
+  it("rejects an archive prefix whose supported version disagrees with its header", async () => {
+    const codec = createBackupEnvelopeCodec(cryptoPort());
+    const archive = await codec.seal({ snapshot, password, salt, nonce });
+    archive[4] = 2;
+
+    await expect(codec.open({ archive, password })).rejects.toEqual(
+      expect.objectContaining({ code: "backup_archive_invalid" }),
+    );
   });
 
   it("wipes caller-owned temporary password/key/plaintext copies on every path", async () => {
@@ -258,7 +283,7 @@ describe("GTBK v1 backup envelope", () => {
     }],
     ["a short nonce", (header: Record<string, unknown>) => { header.nonce = "AA=="; }],
     ["a negative payload size", (header: Record<string, unknown>) => { header.payloadBytes = -1; }],
-    ["an unsupported header version", (header: Record<string, unknown>) => { header.version = 2; }],
+    ["an unsupported header version", (header: Record<string, unknown>) => { header.version = 3; }],
   ])("rejects %s before key derivation", async (_label, mutateHeader) => {
     const archive = await createBackupEnvelopeCodec(cryptoPort()).seal({ snapshot, password, salt, nonce });
     const header = headerFrom(archive);
@@ -268,7 +293,7 @@ describe("GTBK v1 backup envelope", () => {
 
     await expect(codec.open({ archive: archiveWithHeader(archive, header), password })).rejects.toEqual(
       expect.objectContaining({
-        code: header.version === 2
+        code: header.version === 3
           ? "backup_archive_unsupported_version"
           : "backup_archive_invalid",
       }),

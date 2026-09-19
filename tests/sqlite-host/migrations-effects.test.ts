@@ -70,6 +70,11 @@ import {
   advancedSetTimingMigration,
 } from "../../src/platform/sqlite/migrations/0021_advanced_set_timing";
 import {
+  PORTABLE_OWNER_IDENTITIES_SCHEMA_STATEMENTS,
+  PORTABLE_OWNER_IDENTITIES_TRIGGER_STATEMENTS,
+  portableOwnerIdentitiesMigration,
+} from "../../src/platform/sqlite/migrations/0022_portable_owner_identities";
+import {
   migrations as runtimeMigrations,
 } from "../../src/platform/sqlite/migrations";
 
@@ -81,6 +86,9 @@ const MIGRATIONS_THROUGH_V19 = runtimeMigrations.filter(
 );
 const MIGRATIONS_THROUGH_V20 = runtimeMigrations.filter(
   ({ version }) => version <= 20,
+);
+const MIGRATIONS_THROUGH_V21 = runtimeMigrations.filter(
+  ({ version }) => version <= 21,
 );
 import {
   createExpoRecoveryBackupPort,
@@ -290,6 +298,7 @@ describe("Plan 01-06 forward migrations and internal recovery", () => {
       19,
       20,
       21,
+      22,
     ]);
     expect(runtimeMigrations.slice(0, 3)).toEqual(migrations);
     expect(initialMigration).toEqual(expect.objectContaining({
@@ -723,7 +732,7 @@ describe("Plan 01-06 forward migrations and internal recovery", () => {
       const result = await createMigrationRunner({
         databaseName: "gym-tracker.db",
         kernel: runtime.kernel,
-        migrations: runtimeMigrations,
+        migrations: MIGRATIONS_THROUGH_V21,
         recoveryBackup: validatedBackup(),
       }).run();
 
@@ -815,6 +824,315 @@ describe("Plan 01-06 forward migrations and internal recovery", () => {
     } finally {
       await runtime.close();
     }
+  });
+
+  it("backfills opaque immutable owner identities in schema 22 and allocates them in root writes", async () => {
+    const runtime = await createHostRuntime();
+    try {
+      await createMigrationRunner({
+        databaseName: "gym-tracker.db",
+        kernel: runtime.kernel,
+        migrations: MIGRATIONS_THROUGH_V21,
+        recoveryBackup: validatedBackup(),
+      }).run();
+      await runtime.kernel.write(async (transaction) => {
+        await transaction.execute(
+          `INSERT INTO exercises
+            (id, content_pack_id, origin, source_namespace, upstream_id, name,
+             metric_profile, metric_contract_version, exercise_metric_generation,
+             equipment, default_rest_seconds, revision)
+           VALUES ('v22-custom-exercise', NULL, 'custom', NULL, NULL, 'V22 exercise',
+                   'load_reps', 1, 1, 'Unspecified', 90, 1)`,
+        );
+        await transaction.execute(
+          `INSERT INTO plans
+            (id, content_pack_id, origin, source_namespace, upstream_id, name,
+             days_per_week, audience, goal, estimate_minutes, attribution, is_active, revision)
+           VALUES ('v22-custom-plan', NULL, 'custom', NULL, NULL, 'V22 plan',
+                   1, 'Owner', 'Strength', 45, 'Owner', 0, 1)`,
+        );
+        await transaction.execute(
+          `INSERT INTO workout_sessions
+            (id, plan_id, plan_day_id, source, status, local_date, timezone,
+             started_at_ms, completed_at_ms, revision)
+           VALUES ('v22-session', NULL, NULL, 'manual', 'in_progress',
+                   '2026-09-19', 'Asia/Singapore', 19, NULL, 1)`,
+        );
+      });
+
+      const result = await createMigrationRunner({
+        databaseName: "gym-tracker.db",
+        kernel: runtime.kernel,
+        migrations: runtimeMigrations,
+        recoveryBackup: validatedBackup(),
+      }).run();
+
+      expect(result).toEqual(expect.objectContaining({
+        appliedVersions: [22],
+        currentVersion: 22,
+      }));
+      await expect(runtime.kernel.queryAll(
+        "SELECT id, owner_namespace FROM portable_owner_identity",
+      )).resolves.toEqual([expect.objectContaining({
+        id: 1,
+        owner_namespace: expect.stringMatching(/^[a-f0-9]{32}$/u),
+      })]);
+      await expect(runtime.kernel.queryAll(
+        `SELECT portable_id FROM exercises WHERE id = 'v22-custom-exercise'`,
+      )).resolves.toEqual([expect.objectContaining({
+        portable_id: expect.stringMatching(/^[a-f0-9]{32}$/u),
+      })]);
+      await expect(runtime.kernel.queryAll(
+        `SELECT portable_id FROM plans WHERE id = 'v22-custom-plan'`,
+      )).resolves.toEqual([expect.objectContaining({
+        portable_id: expect.stringMatching(/^[a-f0-9]{32}$/u),
+      })]);
+      await expect(runtime.kernel.queryAll(
+        `SELECT portable_id, merge_modified_at_ms FROM workout_sessions
+         WHERE id = 'v22-session'`,
+      )).resolves.toEqual([expect.objectContaining({
+        portable_id: expect.stringMatching(/^[a-f0-9]{32}$/u),
+        merge_modified_at_ms: 19,
+      })]);
+
+      await expect(runtime.kernel.write((transaction) => transaction.execute(
+        `UPDATE exercises SET portable_id = '00000000000000000000000000000000'
+         WHERE id = 'v22-custom-exercise'`,
+      ))).rejects.toMatchObject({ code: "sqlite_transaction_failed" });
+      await expect(runtime.kernel.write((transaction) => transaction.execute(
+        `UPDATE plans SET portable_id = 'not-an-opaque-portable-identity'
+         WHERE id = 'v22-custom-plan'`,
+      ))).rejects.toMatchObject({ code: "sqlite_transaction_failed" });
+      await expect(runtime.kernel.write((transaction) => transaction.execute(
+        `UPDATE portable_owner_identity
+         SET owner_namespace = '00000000000000000000000000000000'
+         WHERE id = 1`,
+      ))).rejects.toMatchObject({ code: "sqlite_transaction_failed" });
+
+      await runtime.kernel.write(async (transaction) => {
+        await transaction.execute(
+          `INSERT INTO exercises
+            (id, content_pack_id, origin, source_namespace, upstream_id, name,
+             metric_profile, metric_contract_version, exercise_metric_generation,
+             equipment, default_rest_seconds, revision)
+           VALUES ('v22-new-custom-exercise', NULL, 'custom', NULL, NULL, 'V22 new exercise',
+                   'load_reps', 1, 1, 'Unspecified', 90, 1)`,
+        );
+        await transaction.execute(
+          `INSERT INTO plans
+            (id, content_pack_id, origin, source_namespace, upstream_id, name,
+             days_per_week, audience, goal, estimate_minutes, attribution, is_active, revision)
+           VALUES ('v22-new-custom-plan', NULL, 'custom', NULL, NULL, 'V22 new plan',
+                   1, 'Owner', 'Strength', 45, 'Owner', 0, 1)`,
+        );
+        await transaction.execute(
+          `INSERT INTO workout_sessions
+            (id, plan_id, plan_day_id, source, status, local_date, timezone,
+             started_at_ms, completed_at_ms, revision)
+           VALUES ('v22-new-session', NULL, NULL, 'manual', 'completed',
+                   '2026-09-19', 'Asia/Singapore', 20, NULL, 1)`,
+        );
+      });
+      await expect(runtime.kernel.queryAll(
+        `SELECT portable_id FROM exercises WHERE id = 'v22-new-custom-exercise'`,
+      )).resolves.toEqual([expect.objectContaining({
+        portable_id: expect.stringMatching(/^[a-f0-9]{32}$/u),
+      })]);
+      await expect(runtime.kernel.queryAll(
+        `SELECT portable_id FROM plans WHERE id = 'v22-new-custom-plan'`,
+      )).resolves.toEqual([expect.objectContaining({
+        portable_id: expect.stringMatching(/^[a-f0-9]{32}$/u),
+      })]);
+      await expect(runtime.kernel.queryAll(
+        `SELECT portable_id, merge_modified_at_ms FROM workout_sessions
+         WHERE id = 'v22-new-session'`,
+      )).resolves.toEqual([expect.objectContaining({
+        portable_id: expect.stringMatching(/^[a-f0-9]{32}$/u),
+        merge_modified_at_ms: 20,
+      })]);
+    } finally {
+      await runtime.close();
+    }
+  });
+
+  it.each(PORTABLE_OWNER_IDENTITIES_SCHEMA_STATEMENTS.map((_, index) => index))(
+    "rolls back v22 portable owner identities when statement %i fails",
+    async (statementIndex) => {
+      const runtime = await createHostRuntime();
+      try {
+        await createMigrationRunner({
+          databaseName: "gym-tracker.db",
+          kernel: runtime.kernel,
+          migrations: MIGRATIONS_THROUGH_V21,
+          recoveryBackup: validatedBackup(),
+        }).run();
+        await expect(createMigrationRunner({
+          databaseName: "gym-tracker.db",
+          kernel: runtime.kernel,
+          migrations: [portableOwnerIdentitiesMigration],
+          failureInjector(event) {
+            if (event.phase === "after" && event.statementIndex === statementIndex) {
+              throw new Error("injected_v22_failure");
+            }
+          },
+        }).run()).rejects.toMatchObject({
+          code: "migration_statement_failed",
+        });
+        expect(await userVersion(runtime.kernel)).toBe(21);
+        await expect(runtime.kernel.queryAll(
+          `SELECT name FROM sqlite_master
+           WHERE name IN ('portable_owner_identity', 'exercises_portable_id_immutable')`,
+        )).resolves.toEqual([]);
+        await expect(runtime.kernel.queryAll(
+          "PRAGMA table_info(workout_sessions)",
+        )).resolves.not.toContainEqual(expect.objectContaining({
+          name: "portable_id",
+        }));
+      } finally {
+        await runtime.close();
+      }
+    },
+  );
+
+  it.each([
+    "missing_column",
+    "invalid_owner",
+    "invalid_backfill",
+    "missing_index",
+    "missing_trigger",
+    "altered_trigger",
+  ] as const)(
+    "fails v22 verification when %s is malformed",
+    async (scenario) => {
+      const triggerNames = [
+        "portable_owner_identity_immutable",
+        "portable_owner_identity_no_delete",
+        "exercises_portable_id_insert_valid",
+        "exercises_portable_id_allocate",
+        "exercises_portable_id_allocate_on_origin",
+        "plans_portable_id_insert_valid",
+        "plans_portable_id_allocate",
+        "plans_portable_id_allocate_on_origin",
+        "workout_sessions_portable_identity_insert_valid",
+        "workout_sessions_portable_identity_allocate",
+        "exercises_portable_id_valid",
+        "plans_portable_id_valid",
+        "workout_sessions_portable_id_valid",
+        "exercises_portable_id_immutable",
+        "plans_portable_id_immutable",
+        "workout_sessions_portable_id_immutable",
+        "workout_sessions_portable_merge_freshness",
+      ];
+      const transaction: SqliteTransactionExecutor = {
+        execute: async () => ({ changes: 0, lastInsertRowId: 0 }),
+        async queryAll<Row extends Record<string, unknown>>(sql: string) {
+          if (sql.startsWith("PRAGMA table_info(")) {
+            const table = sql.slice("PRAGMA table_info(".length, -1);
+            const columns = table === "workout_sessions"
+              ? [{ name: "portable_id" }, { name: "merge_modified_at_ms" }]
+              : [{ name: "portable_id" }];
+            return (scenario === "missing_column" && table === "plans"
+              ? []
+              : columns) as unknown as readonly Row[];
+          }
+          if (sql === "SELECT id, owner_namespace FROM portable_owner_identity") {
+            const ownerRows = scenario === "invalid_owner"
+              ? [{ id: 2, owner_namespace: "bad" }]
+              : [{ id: 1, owner_namespace: "0123456789abcdef0123456789abcdef" }];
+            return ownerRows as unknown as readonly Row[];
+          }
+          if (sql.includes("portable_id IS NULL")) {
+            const invalidRows = [{ count: scenario === "invalid_backfill" ? 1 : 0 }];
+            return invalidRows as unknown as readonly Row[];
+          }
+          if (sql.includes("FROM sqlite_master")) {
+            const indexes = [
+              "exercises_portable_id_unique",
+              "plans_portable_id_unique",
+              "workout_sessions_portable_id_unique",
+              "workout_sessions_portable_merge_freshness_idx",
+            ].map((name) => ({ name, type: "index", sql: "" }));
+            const triggers = triggerNames.map((name, index) => ({
+              name,
+              type: "trigger",
+              sql: scenario === "altered_trigger" && index === 0
+                ? "CREATE TRIGGER altered"
+                : PORTABLE_OWNER_IDENTITIES_TRIGGER_STATEMENTS[index],
+            }));
+            const objects = [...indexes, ...triggers];
+            return (scenario === "missing_index"
+              ? objects.slice(1)
+              : scenario === "missing_trigger"
+                ? objects.slice(0, -1)
+                : objects) as unknown as readonly Row[];
+          }
+          return [] as readonly Row[];
+        },
+      };
+      await expect(portableOwnerIdentitiesMigration.verify(transaction))
+        .rejects.toThrow("portable_owner_identity_schema_incomplete");
+    },
+  );
+
+  it("accepts a fully shaped v22 owner identity verifier surface", async () => {
+    const triggerNames = [
+      "portable_owner_identity_immutable",
+      "portable_owner_identity_no_delete",
+      "exercises_portable_id_insert_valid",
+      "exercises_portable_id_allocate",
+      "exercises_portable_id_allocate_on_origin",
+      "plans_portable_id_insert_valid",
+      "plans_portable_id_allocate",
+      "plans_portable_id_allocate_on_origin",
+      "workout_sessions_portable_identity_insert_valid",
+      "workout_sessions_portable_identity_allocate",
+      "exercises_portable_id_valid",
+      "plans_portable_id_valid",
+      "workout_sessions_portable_id_valid",
+      "exercises_portable_id_immutable",
+      "plans_portable_id_immutable",
+      "workout_sessions_portable_id_immutable",
+      "workout_sessions_portable_merge_freshness",
+    ];
+    const transaction: SqliteTransactionExecutor = {
+      execute: async () => ({ changes: 0, lastInsertRowId: 0 }),
+      async queryAll<Row extends Record<string, unknown>>(sql: string) {
+        if (sql.startsWith("PRAGMA table_info(")) {
+          const table = sql.slice("PRAGMA table_info(".length, -1);
+          return (table === "workout_sessions"
+            ? [{ name: "portable_id" }, { name: "merge_modified_at_ms" }]
+            : [{ name: "portable_id" }]) as unknown as readonly Row[];
+        }
+        if (sql === "SELECT id, owner_namespace FROM portable_owner_identity") {
+          const ownerRows = [{
+            id: 1,
+            owner_namespace: "0123456789abcdef0123456789abcdef",
+          }];
+          return ownerRows as unknown as readonly Row[];
+        }
+        if (sql.includes("portable_id IS NULL")) {
+          return [{ count: 0 }] as unknown as readonly Row[];
+        }
+        if (sql.includes("FROM sqlite_master")) {
+          return [
+            ...[
+              "exercises_portable_id_unique",
+              "plans_portable_id_unique",
+              "workout_sessions_portable_id_unique",
+              "workout_sessions_portable_merge_freshness_idx",
+            ].map((name) => ({ name, type: "index", sql: "" })),
+            ...triggerNames.map((name, index) => ({
+              name,
+              type: "trigger",
+              sql: PORTABLE_OWNER_IDENTITIES_TRIGGER_STATEMENTS[index],
+            })),
+          ] as unknown as readonly Row[];
+        }
+        return [] as readonly Row[];
+      },
+    };
+    await expect(portableOwnerIdentitiesMigration.verify(transaction))
+      .resolves.toBeUndefined();
   });
 
   it.each(ADVANCED_SET_TIMING_SCHEMA_STATEMENTS.map((_, index) => index))(
@@ -2448,6 +2766,7 @@ describe("Plan 01-06 native migration suite selection", () => {
       "migration-recovery-backup",
       "migration-session-exercise-edit-receipts-v20",
       "migration-advanced-set-timing-v21",
+      "migration-portable-owner-identities-v22",
       "effects-lease-replay",
       "effects-stale-revision",
       "effects-retry-limit",
@@ -2483,14 +2802,14 @@ describe("Plan 01-06 native migration suite selection", () => {
     expect(migrationsContract).toContain("finalizeUnusedStatementsBeforeClosing: false");
     expect(migrationsContract).toContain("migration_statement_rollback_${phase}_${statementIndex}_${safeErrorCode(error)}");
     expect(deviceCommand).toContain("migrations-effects");
-    expect(deviceCommand).toContain("--assert-all");
+    expect(deviceCommand).not.toContain("--assert-all=10");
     expect(deviceCommand).toContain('--suite "$suite"');
     expect(deviceCommand).toContain("run-native-sqlite-contracts.mjs");
     expect(deviceCommand).toContain("EXPO_PUBLIC_NATIVE_CONTRACT_SUITE");
-    expect(route).toContain('configuredSuite === "phase10"');
+    expect(route).toContain('configuredSuite === "phase10" || configuredSuite === "phase11"');
     expect(verifier).toContain("expectedCaseIds");
     expect(verifier).toContain("contract expected count");
-    expect(verifier).toContain("contract cases must contain exactly ten results");
+    expect(verifier).toContain("MIGRATIONS_EFFECTS_CONTRACT_CASES");
   });
 });
 

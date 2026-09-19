@@ -8,6 +8,7 @@ import {
   BACKUP_LIMITS,
   BackupContractError,
   LOGICAL_BACKUP_TABLES,
+  logicalBackupTablesForVersion,
   parseLogicalBackupSnapshot,
 } from "./backupContracts";
 
@@ -76,6 +77,195 @@ describe("logical backup contract", () => {
     expect(parseLogicalBackupSnapshot(snapshot())).toEqual(snapshot());
   });
 
+  it("requires exactly one opaque owner namespace in a v2 snapshot", () => {
+    const v2 = snapshot({
+      version: 2,
+      schemaVersion: 22,
+      tables: {
+        portable_owner_identity: [{
+          id: 1,
+          owner_namespace: "0123456789abcdef0123456789abcdef",
+        }],
+      },
+      manifest: {
+        catalogReferenceCount: 1,
+        rowCounts: { portable_owner_identity: 1 },
+        totalRows: 1,
+      },
+    });
+    expect(parseLogicalBackupSnapshot(v2)).toEqual(v2);
+    expect(() => parseLogicalBackupSnapshot({
+      ...v2,
+      tables: { portable_owner_identity: [] },
+      manifest: { ...v2.manifest, rowCounts: { portable_owner_identity: 0 }, totalRows: 0 },
+    })).toThrow("backup_snapshot_invalid");
+    expect(() => parseLogicalBackupSnapshot({
+      ...v2,
+      tables: {
+        portable_owner_identity: [{
+          id: 1,
+          owner_namespace: "0123456789abcdef0123456789abcdef",
+          extra: "rejected",
+        }],
+      },
+    })).toThrow("backup_snapshot_invalid");
+  });
+
+  it("keeps portable owner identity out of legacy v1 payloads", () => {
+    expect(logicalBackupTablesForVersion(1)).not.toContain("portable_owner_identity");
+    expect(logicalBackupTablesForVersion(2)).toContain("portable_owner_identity");
+    const legacy = snapshot();
+    expect(() => parseLogicalBackupSnapshot({
+      ...legacy,
+      tables: {
+        ...legacy.tables,
+        portable_owner_identity: [],
+      },
+      manifest: {
+        ...legacy.manifest,
+        rowCounts: {
+          ...legacy.manifest.rowCounts,
+          portable_owner_identity: 0,
+        },
+      },
+    })).toThrow("backup_snapshot_invalid");
+  });
+
+  it("rejects v2 owner-created roots missing their portable identity or session freshness", () => {
+    const v2 = snapshot({
+      version: 2,
+      schemaVersion: 22,
+      tables: {
+        portable_owner_identity: [{ id: 1, owner_namespace: "0123456789abcdef0123456789abcdef" }],
+        exercises: [{ id: "custom", origin: "custom" }],
+      },
+      manifest: {
+        catalogReferenceCount: 1,
+        rowCounts: { portable_owner_identity: 1, exercises: 1 },
+        totalRows: 2,
+      },
+    });
+    expect(() => parseLogicalBackupSnapshot(v2)).toThrow("backup_snapshot_invalid");
+    expect(() => parseLogicalBackupSnapshot({
+      ...v2,
+      tables: {
+        ...v2.tables,
+        exercises: [{
+          id: "custom",
+          origin: "custom",
+          portable_id: "11111111111111111111111111111111",
+        }],
+        workout_sessions: [{
+          id: "session",
+          portable_id: "22222222222222222222222222222222",
+        }],
+      },
+      manifest: {
+        ...v2.manifest,
+        rowCounts: { portable_owner_identity: 1, exercises: 1, workout_sessions: 1 },
+        totalRows: 3,
+      },
+    })).toThrow("backup_snapshot_invalid");
+  });
+
+  it("allows v2 bundled roots without a portable ID but requires copied roots to carry one", () => {
+    const base = {
+      version: 2 as const,
+      schemaVersion: 22,
+      tables: {
+        portable_owner_identity: [{ id: 1, owner_namespace: "0123456789abcdef0123456789abcdef" }],
+        exercises: [{ id: "bundled", origin: "bundled" }],
+      },
+      manifest: {
+        catalogReferenceCount: 1,
+        rowCounts: { portable_owner_identity: 1, exercises: 1 },
+        totalRows: 2,
+      },
+    };
+    expect(parseLogicalBackupSnapshot(snapshot(base))).toEqual(expect.objectContaining({
+      version: 2,
+    }));
+    expect(() => parseLogicalBackupSnapshot(snapshot({
+      ...base,
+      tables: {
+        ...base.tables,
+        exercises: [{ id: "copied", origin: "copied" }],
+      },
+    }))).toThrow("backup_snapshot_invalid");
+    expect(parseLogicalBackupSnapshot(snapshot({
+      ...base,
+      tables: {
+        ...base.tables,
+        plans: [{
+          id: "copied-plan",
+          origin: "copied",
+          portable_id: "33333333333333333333333333333333",
+        }],
+      },
+      manifest: {
+        ...base.manifest,
+        rowCounts: { ...base.manifest.rowCounts, plans: 1 },
+        totalRows: 3,
+      },
+    }))).toEqual(expect.objectContaining({ version: 2 }));
+  });
+
+  it("rejects a v2 session with a portable identity but no canonical merge timestamp", () => {
+    expect(() => parseLogicalBackupSnapshot(snapshot({
+      version: 2,
+      schemaVersion: 22,
+      tables: {
+        portable_owner_identity: [{ id: 1, owner_namespace: "0123456789abcdef0123456789abcdef" }],
+        workout_sessions: [{
+          id: "session",
+          portable_id: "22222222222222222222222222222222",
+        }],
+      },
+      manifest: {
+        catalogReferenceCount: 1,
+        rowCounts: { portable_owner_identity: 1, workout_sessions: 1 },
+        totalRows: 2,
+      },
+    }))).toThrow("backup_snapshot_invalid");
+  });
+
+  it("rejects a v2 session with a negative canonical merge timestamp", () => {
+    expect(() => parseLogicalBackupSnapshot(snapshot({
+      version: 2,
+      schemaVersion: 22,
+      tables: {
+        portable_owner_identity: [{ id: 1, owner_namespace: "0123456789abcdef0123456789abcdef" }],
+        workout_sessions: [{
+          id: "session",
+          portable_id: "22222222222222222222222222222222",
+          merge_modified_at_ms: -1,
+        }],
+      },
+      manifest: {
+        catalogReferenceCount: 1,
+        rowCounts: { portable_owner_identity: 1, workout_sessions: 1 },
+        totalRows: 2,
+      },
+    }))).toThrow("backup_snapshot_invalid");
+  });
+
+  it("ignores malformed non-root rows when deciding whether a v2 root needs an identity", () => {
+    const v2 = snapshot({
+      version: 2,
+      schemaVersion: 22,
+      tables: {
+        portable_owner_identity: [{ id: 1, owner_namespace: "0123456789abcdef0123456789abcdef" }],
+        exercises: [null],
+      },
+      manifest: {
+        catalogReferenceCount: 1,
+        rowCounts: { portable_owner_identity: 1, exercises: 1 },
+        totalRows: 2,
+      },
+    });
+    expect(() => parseLogicalBackupSnapshot(v2)).toThrow("backup_snapshot_invalid");
+  });
+
   it("rejects inherited object property names rather than treating them as logical tables", () => {
     expect(() => parseLogicalBackupSnapshot(snapshot({
       tables: {
@@ -85,7 +275,7 @@ describe("logical backup contract", () => {
   });
 
   it.each([
-    ["an unsupported snapshot version", snapshot({ version: 2 })],
+    ["an unsupported snapshot version", snapshot({ version: 3 })],
     ["an unknown root field", snapshot({ rawDatabasePath: "/private/data.db" })],
     ["an unknown table", snapshot({
       tables: { sqlite_master: [] },

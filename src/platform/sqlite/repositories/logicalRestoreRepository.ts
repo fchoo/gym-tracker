@@ -1,6 +1,7 @@
 import {
   LOGICAL_BACKUP_TABLE_DEFINITIONS,
   LOGICAL_BACKUP_TABLES,
+  type LogicalBackupTableName,
   type LogicalBackupSnapshot,
 } from "../../../domains/portability/backupContracts";
 import {
@@ -9,6 +10,9 @@ import {
 import {
   HISTORY_INTEGRITY_SCHEMA_STATEMENTS,
 } from "../migrations/0013_history_integrity";
+import {
+  PORTABLE_OWNER_IDENTITIES_TRIGGER_STATEMENTS,
+} from "../migrations/0022_portable_owner_identities";
 import {
   OWNED_PLAN_SCHEMA_STATEMENTS,
 } from "../migrations/0009_owned_plans";
@@ -23,7 +27,11 @@ import type {
   SqliteTransactionExecutor,
 } from "../sqliteKernel";
 
-type LogicalTableName = keyof typeof LOGICAL_BACKUP_TABLE_DEFINITIONS;
+type LogicalTableName = LogicalBackupTableName;
+
+function isLogicalTableName(value: string): value is LogicalTableName {
+  return (LOGICAL_BACKUP_TABLES as readonly string[]).includes(value);
+}
 
 export type LogicalRestoreRepository = Readonly<{
   /** Accepts only a snapshot already authenticated and validated by restoreCommands. */
@@ -33,6 +41,11 @@ export type LogicalRestoreRepository = Readonly<{
 }>;
 
 export const LOGICAL_RESTORE_DELETE_TRIGGER_NAMES = Object.freeze([
+  "portable_owner_identity_immutable",
+  "portable_owner_identity_no_delete",
+  "exercises_portable_id_immutable",
+  "plans_portable_id_immutable",
+  "workout_sessions_portable_id_immutable",
   "owned_starter_sources_immutable_delete",
   "owned_day_sources_immutable_delete",
   "owned_occurrence_sources_immutable_delete",
@@ -87,6 +100,7 @@ const TRIGGER_SOURCE_STATEMENTS = Object.freeze([
   ...SCHEDULE_ACTIVATION_SCHEMA_STATEMENTS,
   ...OWNED_PLAN_SCHEMA_STATEMENTS,
   ...HISTORY_INTEGRITY_SCHEMA_STATEMENTS,
+  ...PORTABLE_OWNER_IDENTITIES_TRIGGER_STATEMENTS,
 ].filter((statement) => /^CREATE TRIGGER /u.test(statement)));
 
 /** Only delete blockers for facts replaced by this transaction. Insert validators stay active. */
@@ -115,7 +129,8 @@ function sourceDependencies(): ReadonlyMap<string, ReadonlySet<string>> {
       && reference.childColumns[0] === "next_set_id"
     );
     if (nullableBackReference) continue;
-    if (tables.has(reference.childTable) && tables.has(reference.parentTable)) {
+    if (isLogicalTableName(reference.childTable)
+      && isLogicalTableName(reference.parentTable)) {
       parents.get(reference.childTable)?.add(reference.parentTable);
     }
   }
@@ -213,13 +228,14 @@ function primaryKeyJson(table: LogicalTableName, alias = ""): string {
 
 async function captureCurrentSourceOwnership(
   transaction: SqliteTransactionExecutor,
+  tables: readonly LogicalTableName[],
 ): Promise<void> {
   await transaction.execute(`CREATE TEMP TABLE IF NOT EXISTS logical_restore_current_rows (
     table_name TEXT NOT NULL, identity_json TEXT NOT NULL,
     PRIMARY KEY(table_name, identity_json)
   ) WITHOUT ROWID`);
   await transaction.execute("DELETE FROM logical_restore_current_rows");
-  for (const table of LOGICAL_BACKUP_TABLES as readonly LogicalTableName[]) {
+  for (const table of tables) {
     await transaction.execute(`INSERT INTO logical_restore_current_rows(table_name, identity_json)
       SELECT ?, ${primaryKeyJson(table)} FROM ${identifier(table)}
       WHERE ${LOGICAL_BACKUP_TABLE_FILTERS[table]}`, [table]);
@@ -234,22 +250,26 @@ function capturedWhere(table: LogicalTableName): string {
 
 async function deleteCurrentSources(
   transaction: SqliteTransactionExecutor,
+  tables: readonly LogicalTableName[],
   fault?: (stage: LogicalRestoreFaultStage) => Promise<void>,
 ): Promise<void> {
+  const snapshotTables = new Set(tables);
   for (const table of DELETE_ORDER) {
-    if (table === "taxonomy_terms") continue;
+    if (!snapshotTables.has(table) || table === "taxonomy_terms") continue;
     await transaction.execute(`DELETE FROM ${identifier(table)} WHERE ${capturedWhere(table)}`);
     await fault?.(`delete:${table}`);
   }
   // Only terms captured from the old owned graph may be removed. A term shared
   // with retained taxonomy stays even if its snapshot counterpart differs.
-  await transaction.execute(`DELETE FROM taxonomy_terms
-    WHERE ${capturedWhere("taxonomy_terms")} AND NOT EXISTS (
-      SELECT 1 FROM exercise_taxonomy taxonomy
-      WHERE taxonomy.kind = taxonomy_terms.kind
-        AND taxonomy.slug = taxonomy_terms.slug
-    )`);
-  await fault?.("delete:taxonomy_terms");
+  if (snapshotTables.has("taxonomy_terms")) {
+    await transaction.execute(`DELETE FROM taxonomy_terms
+      WHERE ${capturedWhere("taxonomy_terms")} AND NOT EXISTS (
+        SELECT 1 FROM exercise_taxonomy taxonomy
+        WHERE taxonomy.kind = taxonomy_terms.kind
+          AND taxonomy.slug = taxonomy_terms.slug
+      )`);
+    await fault?.("delete:taxonomy_terms");
+  }
 }
 
 async function insertTaxonomyTerms(
@@ -294,7 +314,9 @@ async function insertSnapshot(
   snapshot: LogicalBackupSnapshot,
   fault?: (stage: LogicalRestoreFaultStage) => Promise<void>,
 ): Promise<void> {
+  const snapshotTables = new Set(Object.keys(snapshot.tables));
   for (const table of INSERT_ORDER) {
+    if (!snapshotTables.has(table)) continue;
     const rows = snapshot.tables[table] as readonly Record<string, unknown>[];
     if (table === "taxonomy_terms") {
       await insertTaxonomyTerms(transaction, rows);
@@ -310,7 +332,7 @@ async function verifySourceTables(
   transaction: SqliteTransactionExecutor,
   snapshot: LogicalBackupSnapshot,
 ): Promise<void> {
-  for (const table of LOGICAL_BACKUP_TABLES as readonly LogicalTableName[]) {
+  for (const table of Object.keys(snapshot.tables) as LogicalTableName[]) {
     const expected = snapshot.tables[table] as readonly Record<string, unknown>[];
     const actual = table === "taxonomy_terms"
       ? await transaction.queryAll<Record<string, unknown>>(
@@ -349,11 +371,12 @@ export function createLogicalRestoreRepository(
             throw new LogicalRestoreRepositoryError("logical_restore_failed");
           }
           await transaction.execute("PRAGMA defer_foreign_keys = ON");
-          await captureCurrentSourceOwnership(transaction);
+          const snapshotTables = Object.keys(snapshot.tables) as LogicalTableName[];
+          await captureCurrentSourceOwnership(transaction, snapshotTables);
           await input.faultAfter?.("captured_current_ownership");
           const triggers = await capturedRestoreTriggers(transaction);
           await dropRestoreTriggers(transaction, triggers, input.faultAfter);
-          await deleteCurrentSources(transaction, input.faultAfter);
+          await deleteCurrentSources(transaction, snapshotTables, input.faultAfter);
           await insertSnapshot(transaction, snapshot, input.faultAfter);
           await recreateRestoreTriggers(transaction, triggers, input.faultAfter);
           await verifySourceTables(transaction, snapshot);

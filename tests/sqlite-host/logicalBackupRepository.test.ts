@@ -14,6 +14,7 @@ import { join } from "node:path";
 
 import {
   LOGICAL_BACKUP_TABLES,
+  LOGICAL_BACKUP_FORMAT_VERSION,
   type LogicalBackupSnapshot,
 } from "../../src/domains/portability/backupContracts";
 import {
@@ -238,15 +239,26 @@ describe("logical backup repository", () => {
   it("collects a manifest-complete empty logical snapshot without raw database data", async () => {
     const snapshot = await collect(await open());
 
-    expect(snapshot.tables).toEqual(
-      Object.fromEntries(LOGICAL_BACKUP_TABLES.map((table) => [table, []])),
-    );
+    expect(snapshot.tables).toEqual(expect.objectContaining(
+      Object.fromEntries(LOGICAL_BACKUP_TABLES
+        .filter((table) => table !== "portable_owner_identity")
+        .map((table) => [table, []])),
+    ));
+    expect(snapshot.tables.portable_owner_identity).toEqual([
+      expect.objectContaining({
+        id: 1,
+        owner_namespace: expect.stringMatching(/^[a-f0-9]{32}$/u),
+      }),
+    ]);
     expect(snapshot.manifest).toEqual({
       catalogReferenceCount: 0,
-      rowCounts: Object.fromEntries(LOGICAL_BACKUP_TABLES.map((table) => [table, 0])),
-      totalRows: 0,
+      rowCounts: expect.objectContaining(Object.fromEntries(LOGICAL_BACKUP_TABLES
+        .filter((table) => table !== "portable_owner_identity")
+        .map((table) => [table, 0]))),
+      totalRows: 1,
     });
     expect(snapshot.catalogReferences).toEqual([]);
+    expect(snapshot.version).toBe(LOGICAL_BACKUP_FORMAT_VERSION);
     expect(JSON.stringify(snapshot)).not.toMatch(/\.db|sqlite_master|pending_effects/i);
   });
 

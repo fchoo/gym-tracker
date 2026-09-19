@@ -2,6 +2,7 @@ import {
   BACKUP_LIMITS,
   LOGICAL_BACKUP_TABLE_DEFINITIONS,
   LOGICAL_BACKUP_TABLES,
+  logicalBackupTablesForVersion,
   type LogicalBackupSnapshot,
 } from "./backupContracts";
 import {
@@ -143,7 +144,7 @@ function validPassword(value: string): boolean {
   }
 }
 
-export const LOGICAL_BACKUP_SUPPORTED_SCHEMA_VERSIONS = Object.freeze([15, 16, 17, 18, 19, 20, 21] as const);
+export const LOGICAL_BACKUP_SUPPORTED_SCHEMA_VERSIONS = Object.freeze([15, 16, 17, 18, 19, 20, 21, 22] as const);
 
 type LogicalReference = Readonly<{
   childTable: string;
@@ -176,7 +177,15 @@ function tupleKey(values: readonly unknown[]): string { return JSON.stringify(va
 function validateDomainInvariants(snapshot: LogicalBackupSnapshot): void {
   const enumValues: ReadonlyArray<readonly [string, string, readonly string[]]> = [["exercises", "origin", ["custom", "copied"]], ["plans", "origin", ["custom", "copied"]], ["workout_sessions", "status", ["in_progress", "completed", "partial", "discarded", "voided", "manual_visit", "zero_sets"]]];
   for (const [table, column, allowed] of enumValues) for (const row of snapshot.tables[table]!) if (row[column] !== undefined && (typeof row[column] !== "string" || !allowed.includes(row[column] as string))) invalid();
-  for (const table of LOGICAL_BACKUP_TABLES) for (const row of snapshot.tables[table]!) for (const [column, value] of Object.entries(row)) if (column.endsWith("_json") && typeof value === "string") { try { JSON.parse(value); } catch { invalid(); } }
+  for (const table of logicalBackupTablesForVersion(snapshot.version)) {
+    for (const row of snapshot.tables[table]!) {
+      for (const [column, value] of Object.entries(row)) {
+        if (column.endsWith("_json") && typeof value === "string") {
+          try { JSON.parse(value); } catch { invalid(); }
+        }
+      }
+    }
+  }
   for (const [table, column] of [["plans", "is_active"], ["workout_sessions", "status"]] as const) {
     const active = snapshot.tables[table]!.filter((row) => table === "plans" ? row[column] === 1 : row[column] === "in_progress");
     if (active.length > 1) invalid();
@@ -189,11 +198,12 @@ async function validateRows(
   retained: RestoreRetainedReferencePort | undefined,
 ): Promise<Readonly<{ internal: number; retained: number }>> {
   if (!(LOGICAL_BACKUP_SUPPORTED_SCHEMA_VERSIONS as readonly number[]).includes(snapshot.schemaVersion)) throw new RestoreCommandError("restore_archive_unsupported_version");
-  if (!exactKeys(snapshot.tables, LOGICAL_BACKUP_TABLES)) invalid();
-  if (!exactKeys(snapshot.manifest.rowCounts, LOGICAL_BACKUP_TABLES)) invalid();
+  const sourceTables = logicalBackupTablesForVersion(snapshot.version);
+  if (!exactKeys(snapshot.tables, sourceTables)) invalid();
+  if (!exactKeys(snapshot.manifest.rowCounts, sourceTables)) invalid();
   if (snapshot.manifest.totalRows !== Object.values(snapshot.manifest.rowCounts).reduce((sum, count) => sum + count, 0)) invalid();
 
-  for (const table of LOGICAL_BACKUP_TABLES) {
+  for (const table of sourceTables) {
     const rows = snapshot.tables[table]!;
     if (snapshot.manifest.rowCounts[table] !== rows.length) invalid();
     const columns = await schema.columnsFor(table);
@@ -244,7 +254,11 @@ async function createPreview(snapshot: LogicalBackupSnapshot, availability: Rest
   return Object.freeze({
     sourceFormatVersion: snapshot.version,
     createdAtMs: snapshot.createdAtMs,
-    replacementCounts: Object.freeze(Object.fromEntries(LOGICAL_BACKUP_TABLES.filter((table) => snapshot.tables[table]!.length > 0).map((table) => [table, snapshot.tables[table]!.length]))),
+    replacementCounts: Object.freeze(Object.fromEntries(
+      logicalBackupTablesForVersion(snapshot.version)
+        .filter((table) => snapshot.tables[table]!.length > 0)
+        .map((table) => [table, snapshot.tables[table]!.length]),
+    )),
     references: Object.freeze({
       internalSnapshotReferences: referenceCounts.internal,
       requiredLocalBundled: Object.freeze({

@@ -27,7 +27,11 @@ import type {
 function snapshot(): LogicalBackupSnapshot {
   const tables = Object.fromEntries(
     LOGICAL_BACKUP_TABLES.map((table) => [table, []]),
-  );
+  ) as Record<string, Array<Record<string, string | number>>>;
+  tables.portable_owner_identity = [{
+    id: 1,
+    owner_namespace: "0123456789abcdef0123456789abcdef",
+  }];
   return parseLogicalBackupSnapshot({
     version: LOGICAL_BACKUP_FORMAT_VERSION,
     snapshotId: "snapshot",
@@ -35,8 +39,11 @@ function snapshot(): LogicalBackupSnapshot {
     schemaVersion: 15,
     manifest: {
       catalogReferenceCount: 0,
-      rowCounts: Object.fromEntries(LOGICAL_BACKUP_TABLES.map((table) => [table, 0])),
-      totalRows: 0,
+      rowCounts: Object.fromEntries(LOGICAL_BACKUP_TABLES.map((table) => [
+        table,
+        tables[table]!.length,
+      ])),
+      totalRows: 1,
     },
     tables,
     catalogReferences: [],

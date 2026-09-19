@@ -1,4 +1,8 @@
-export const LOGICAL_BACKUP_FORMAT_VERSION = 1 as const;
+export const LOGICAL_BACKUP_FORMAT_VERSION = 2 as const;
+export const LOGICAL_BACKUP_ACCEPTED_FORMAT_VERSIONS = Object.freeze([1, 2] as const);
+
+export type LogicalBackupFormatVersion =
+  (typeof LOGICAL_BACKUP_ACCEPTED_FORMAT_VERSIONS)[number];
 
 export const BACKUP_LIMITS = Object.freeze({
   maxHeaderBytes: 16 * 1024,
@@ -25,6 +29,7 @@ type LogicalTableDefinition = Readonly<{
  * such as exercises/plans and must never copy catalog/FTS/effect tables.
  */
 export const LOGICAL_BACKUP_TABLE_DEFINITIONS = Object.freeze({
+  portable_owner_identity: { primaryKey: ["id"] },
   app_settings: { primaryKey: ["key"] },
   exercise_owner_preferences: { primaryKey: ["exercise_id"] },
   exercises: { primaryKey: ["id"] },
@@ -77,9 +82,24 @@ export const LOGICAL_BACKUP_TABLE_DEFINITIONS = Object.freeze({
   owned_progression_recommendations: { primaryKey: ["id"] },
 } satisfies Readonly<Record<string, LogicalTableDefinition>>);
 
+export type LogicalBackupTableName =
+  keyof typeof LOGICAL_BACKUP_TABLE_DEFINITIONS;
+
 export const LOGICAL_BACKUP_TABLES = Object.freeze(
   Object.keys(LOGICAL_BACKUP_TABLE_DEFINITIONS).sort(),
-);
+) as readonly LogicalBackupTableName[];
+
+export const LOGICAL_BACKUP_V1_TABLES = Object.freeze(
+  LOGICAL_BACKUP_TABLES.filter((table) => table !== "portable_owner_identity"),
+) as readonly LogicalBackupTableName[];
+
+export function logicalBackupTablesForVersion(
+  version: LogicalBackupFormatVersion,
+): readonly (keyof typeof LOGICAL_BACKUP_TABLE_DEFINITIONS)[] {
+  return version === 1
+    ? LOGICAL_BACKUP_V1_TABLES
+    : LOGICAL_BACKUP_TABLES;
+}
 
 export type BackupContractErrorCode =
   | "backup_snapshot_invalid"
@@ -128,7 +148,7 @@ export type LogicalBackupManifest = Readonly<{
 }>;
 
 export type LogicalBackupSnapshot = Readonly<{
-  version: typeof LOGICAL_BACKUP_FORMAT_VERSION;
+  version: LogicalBackupFormatVersion;
   snapshotId: string;
   createdAtMs: number;
   schemaVersion: number;
@@ -244,6 +264,7 @@ function assertExactManifest(
   value: unknown,
   tables: Record<string, unknown>,
   catalogReferences: readonly unknown[],
+  version: LogicalBackupFormatVersion,
 ): asserts value is LogicalBackupManifest {
   if (!isPlainObject(value) || !hasExactKeys(value, [
     "catalogReferenceCount",
@@ -314,6 +335,52 @@ function assertRows(
   }
 }
 
+function assertV2PortableOwnerIdentity(
+  tables: Record<string, unknown>,
+): void {
+  const rows = tables.portable_owner_identity;
+  if (!Array.isArray(rows) || rows.length !== 1 || !isPlainObject(rows[0])) {
+    invalid();
+  }
+  const row = rows[0];
+  if (!hasExactKeys(row, ["id", "owner_namespace"])
+    || row.id !== 1
+    || typeof row.owner_namespace !== "string"
+    || !/^[a-f0-9]{32}$/u.test(row.owner_namespace)) {
+    invalid();
+  }
+}
+
+function assertV2RootIdentities(
+  tables: Record<string, unknown>,
+): void {
+  const roots = [
+    ["exercises", (row: Record<string, unknown>) => (
+      row.origin === "custom" || row.origin === "copied"
+    )],
+    ["plans", (row: Record<string, unknown>) => (
+      row.origin === "custom" || row.origin === "copied"
+    )],
+    ["workout_sessions", () => true],
+  ] as const;
+  for (const [table, requiresIdentity] of roots) {
+    const rows = tables[table];
+    if (!Array.isArray(rows)) continue;
+    for (const row of rows) {
+      if (!isPlainObject(row) || !requiresIdentity(row)) continue;
+      if (typeof row.portable_id !== "string"
+        || !/^[a-f0-9]{32}$/u.test(row.portable_id)) {
+        invalid();
+      }
+      if (table === "workout_sessions"
+        && (!Number.isSafeInteger(row.merge_modified_at_ms)
+          || (row.merge_modified_at_ms as number) < 0)) {
+        invalid();
+      }
+    }
+  }
+}
+
 /**
  * Validates a decoded logical payload before any restore writer can receive it.
  * It does not touch SQLite and intentionally returns no raw parsing details.
@@ -332,7 +399,7 @@ export function parseLogicalBackupSnapshot(
   ])) {
     invalid();
   }
-  if (input.version !== LOGICAL_BACKUP_FORMAT_VERSION) {
+  if (!(LOGICAL_BACKUP_ACCEPTED_FORMAT_VERSIONS as readonly unknown[]).includes(input.version)) {
     throw new BackupContractError("backup_snapshot_unsupported_version");
   }
   assertBoundedString(input.snapshotId);
@@ -382,7 +449,18 @@ export function parseLogicalBackupSnapshot(
     catalogIdentities.add(identity);
   }
 
-  assertExactManifest(input.manifest, input.tables, input.catalogReferences);
-
+  const version = input.version as LogicalBackupFormatVersion;
+  assertExactManifest(
+    input.manifest,
+    input.tables,
+    input.catalogReferences,
+    version,
+  );
+  if (version === 2) {
+    assertV2PortableOwnerIdentity(input.tables);
+    assertV2RootIdentities(input.tables);
+  } else if (Object.prototype.hasOwnProperty.call(input.tables, "portable_owner_identity")) {
+    invalid();
+  }
   return input as LogicalBackupSnapshot;
 }

@@ -1,5 +1,6 @@
 import {
   LOGICAL_BACKUP_TABLES,
+  type LogicalBackupTableName,
   type LogicalBackupRow,
   type LogicalBackupSnapshot,
 } from "../../../domains/portability/backupContracts";
@@ -205,7 +206,9 @@ export function createSqliteRestoreCandidateProbe(): RestoreCandidateProbePort {
 export function createSqliteRestoreSchemaPort(kernel: SqliteKernel): RestoreSchemaPort {
   return Object.freeze({
     async columnsFor(table) {
-      if (!LOGICAL_BACKUP_TABLES.includes(table)) throw new RestoreCandidateProbeError();
+      if (!LOGICAL_BACKUP_TABLES.includes(table as LogicalBackupTableName)) {
+        throw new RestoreCandidateProbeError();
+      }
       const rows = await kernel.queryAll<{ name: string; type: string; notnull: number }>(`PRAGMA table_info(${identifier(table)})`);
       return rows.map((row) => {
         const sqliteType = row.type.toUpperCase();

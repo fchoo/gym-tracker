@@ -1,5 +1,6 @@
 import {
   LOGICAL_BACKUP_FORMAT_VERSION,
+  logicalBackupTablesForVersion,
   LOGICAL_BACKUP_TABLE_DEFINITIONS,
   LOGICAL_BACKUP_TABLES,
   parseLogicalBackupSnapshot,
@@ -72,6 +73,7 @@ function ownedOccurrenceWhere(alias: string): string {
  * categorically user-owned source facts.
  */
 export const LOGICAL_BACKUP_TABLE_FILTERS = Object.freeze({
+  portable_owner_identity: "1",
   app_settings: "1",
   exercise_owner_preferences: "1",
   exercises: "origin IN ('custom', 'copied')",
@@ -210,8 +212,11 @@ export function createLogicalBackupRepository(
           }
           const tables = await collectTables(transaction);
           const catalogReferences = await collectCatalogReferences(transaction);
+          const tablesForVersion = logicalBackupTablesForVersion(
+            LOGICAL_BACKUP_FORMAT_VERSION,
+          );
           const rowCounts = Object.fromEntries(
-            LOGICAL_BACKUP_TABLES.map((table) => [table, tables[table]!.length]),
+            tablesForVersion.map((table) => [table, tables[table]!.length]),
           );
           return parseLogicalBackupSnapshot({
             version: LOGICAL_BACKUP_FORMAT_VERSION,

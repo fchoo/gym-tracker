@@ -117,7 +117,7 @@ async function snapshot(kernel: SqliteKernel): Promise<LogicalBackupSnapshot> {
 
 function emptySnapshot(): LogicalBackupSnapshot {
   return {
-    version: LOGICAL_BACKUP_FORMAT_VERSION,
+    version: 1,
     snapshotId: "empty-restore-fixture",
     createdAtMs: 1,
     schemaVersion: 16,
@@ -399,6 +399,41 @@ describe("logical restore repository", () => {
       .resolves.toEqual([]);
   });
 
+  it("keeps legacy v1 taxonomy and source rows untouched when the snapshot omits those tables", async () => {
+    const kernel = await open();
+    await kernel.write(async (transaction) => {
+      await transaction.execute(
+        "INSERT INTO taxonomy_terms (kind, slug, display_name) VALUES ('equipment', 'legacy-term', 'Legacy term')",
+      );
+      await transaction.execute(
+        `INSERT INTO exercises
+          (id, content_pack_id, origin, source_namespace, upstream_id, name,
+           metric_profile, metric_contract_version, exercise_metric_generation,
+           equipment, default_rest_seconds, revision)
+         VALUES ('legacy-custom', NULL, 'custom', NULL, NULL, 'Legacy custom',
+                 'load_reps', 1, 1, 'Unspecified', 90, 1)`,
+      );
+    });
+    const legacy = {
+      ...emptySnapshot(),
+      tables: { app_settings: [] },
+      manifest: {
+        catalogReferenceCount: 0,
+        rowCounts: { app_settings: 0 },
+        totalRows: 0,
+      },
+    } as LogicalBackupSnapshot;
+
+    await expect(createLogicalRestoreRepository(kernel).restore(legacy))
+      .resolves.toEqual({ state: "rebuild_pending" });
+    await expect(kernel.queryAll(
+      "SELECT slug FROM taxonomy_terms WHERE slug = 'legacy-term'",
+    )).resolves.toEqual([{ slug: "legacy-term" }]);
+    await expect(kernel.queryAll(
+      "SELECT id FROM exercises WHERE id = 'legacy-custom'",
+    )).resolves.toEqual([{ id: "legacy-custom" }]);
+  });
+
   it("rolls back canonical facts and schema after every named transactional fault stage", async () => {
     const stages: readonly LogicalRestoreFaultStage[] = [
       "captured_current_ownership",
@@ -426,7 +461,7 @@ describe("logical restore repository", () => {
   it("keeps the complete logical table registry under restore coverage", () => {
     expect(LOGICAL_BACKUP_TABLES).toContain("history_audit_events");
     expect(LOGICAL_BACKUP_TABLES).toContain("session_advanced_timing_states");
-    expect(LOGICAL_BACKUP_FORMAT_VERSION).toBe(1);
+    expect(LOGICAL_BACKUP_FORMAT_VERSION).toBe(2);
     expect(LOGICAL_RESTORE_DELETE_TRIGGER_NAMES).not.toContain("starter_plan_sources_immutable_delete");
     expect(LOGICAL_RESTORE_DELETE_TRIGGER_NAMES).not.toContain("session_sets_target_graph_insert");
     expect(LOGICAL_RESTORE_DELETE_TRIGGER_NAMES).not.toContain("progression_recommendations_actionable_evidence_insert");

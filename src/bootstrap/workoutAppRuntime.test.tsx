@@ -83,6 +83,9 @@ import {
   SESSION_EXERCISE_REORDER_RECEIPT_SCHEMA_STATEMENTS,
 } from "../platform/sqlite/migrations/0020_session_exercise_edit_receipts";
 import {
+  PORTABLE_OWNER_IDENTITIES_TRIGGER_STATEMENTS,
+} from "../platform/sqlite/migrations/0022_portable_owner_identities";
+import {
   AppearanceProvider,
 } from "../ui/theme";
 
@@ -2941,6 +2944,8 @@ describe("WorkoutAppRuntimeProvider", () => {
         return [
           { name: "creation_timezone_offset_minutes", notnull: 1 },
           { name: "modified_from_plan", notnull: 1 },
+          { name: "portable_id", notnull: 0 },
+          { name: "merge_modified_at_ms", notnull: 0 },
         ];
       }
       if ([
@@ -2968,6 +2973,47 @@ describe("WorkoutAppRuntimeProvider", () => {
         return [
           { name: "advanced_timing_override_json", notnull: 0 },
           { name: "advanced_timing_resolved_json", notnull: 1 },
+        ];
+      }
+      if (sql === "PRAGMA table_info(exercises)" || sql === "PRAGMA table_info(plans)") {
+        return [{ name: "portable_id" }];
+      }
+      if (sql === "SELECT id, owner_namespace FROM portable_owner_identity") {
+        return [{ id: 1, owner_namespace: "0123456789abcdef0123456789abcdef" }];
+      }
+      if (sql.includes("portable_id IS NULL")) {
+        return [{ count: 0 }];
+      }
+      if (sql.includes("portable_owner_identity_immutable")) {
+        const triggerNames = [
+          "portable_owner_identity_immutable",
+          "portable_owner_identity_no_delete",
+          "exercises_portable_id_insert_valid",
+          "exercises_portable_id_allocate",
+          "exercises_portable_id_allocate_on_origin",
+          "plans_portable_id_insert_valid",
+          "plans_portable_id_allocate",
+          "plans_portable_id_allocate_on_origin",
+          "workout_sessions_portable_identity_insert_valid",
+          "workout_sessions_portable_identity_allocate",
+          "exercises_portable_id_valid",
+          "plans_portable_id_valid",
+          "workout_sessions_portable_id_valid",
+          "exercises_portable_id_immutable",
+          "plans_portable_id_immutable",
+          "workout_sessions_portable_id_immutable",
+          "workout_sessions_portable_merge_freshness",
+        ];
+        return [
+          { type: "index", name: "exercises_portable_id_unique", sql: "" },
+          { type: "index", name: "plans_portable_id_unique", sql: "" },
+          { type: "index", name: "workout_sessions_portable_id_unique", sql: "" },
+          { type: "index", name: "workout_sessions_portable_merge_freshness_idx", sql: "" },
+          ...triggerNames.map((name, index) => ({
+            type: "trigger",
+            name,
+            sql: PORTABLE_OWNER_IDENTITIES_TRIGGER_STATEMENTS[index],
+          })),
         ];
       }
       if (sql === "SELECT name FROM sqlite_master WHERE type = 'table' AND name = 'session_advanced_timing_states'") {

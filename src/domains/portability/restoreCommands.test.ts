@@ -3,6 +3,7 @@ import { afterEach, describe, expect, it, jest } from "@jest/globals";
 import {
   BACKUP_LIMITS,
   LOGICAL_BACKUP_TABLES,
+  logicalBackupTablesForVersion,
   type LogicalBackupSnapshot,
 } from "./backupContracts";
 import * as backupFormat from "./backupFormat";
@@ -24,17 +25,24 @@ import { RestoreFilePortError } from "../../platform/files/expoBackupFilePort";
 const text = new TextEncoder();
 
 function snapshot(override: Partial<LogicalBackupSnapshot> = {}): LogicalBackupSnapshot {
-  const emptyTables = Object.fromEntries(LOGICAL_BACKUP_TABLES.map((table) => [table, []])) as LogicalBackupSnapshot["tables"];
+  const version = override.version ?? 1;
+  const sourceTables = logicalBackupTablesForVersion(version);
+  const emptyTables = Object.fromEntries(sourceTables.map((table) => [table, []])) as LogicalBackupSnapshot["tables"];
   const appSettings = [{ key: "theme", revision: 1, updated_at_ms: 100, value_json: "{\"mode\":\"dark\"}", value_version: 1 }];
   const tables: LogicalBackupSnapshot["tables"] = { ...emptyTables, app_settings: appSettings, ...(override.tables ?? {}) };
   const catalogReferences = override.catalogReferences ?? [{ kind: "exercise" as const, sourceNamespace: "gym-tracker.catalog", sourceRevision: "7", upstreamId: "row" }];
-  const rowCounts = Object.fromEntries(LOGICAL_BACKUP_TABLES.map((table) => [table, tables[table]!.length]));
+  const rowCounts = Object.fromEntries(sourceTables.map((table) => [table, tables[table]!.length]));
+  const manifest = override.manifest ?? {
+    catalogReferenceCount: catalogReferences.length,
+    rowCounts,
+    totalRows: Object.values(rowCounts).reduce((total, count) => total + count, 0),
+  };
   return {
-    version: 1,
+    version,
     snapshotId: "backup_01J5AV2QAXM8QQYWD0S8Y4A001",
     createdAtMs: 1_786_853_900_000,
-    schemaVersion: 16,
-    manifest: { catalogReferenceCount: catalogReferences.length, rowCounts, totalRows: Object.values(rowCounts).reduce((total, count) => total + count, 0) },
+    schemaVersion: version === 1 ? 16 : 22,
+    manifest,
     ...override,
     tables,
     catalogReferences,
@@ -66,6 +74,10 @@ const schema = {
         { name: "updated_at_ms", sqliteType: "INTEGER" as const, notNull: true },
       ];
     }
+    if (table === "portable_owner_identity") return [
+      { name: "id", sqliteType: "INTEGER" as const, notNull: true },
+      { name: "owner_namespace", sqliteType: "TEXT" as const, notNull: true },
+    ];
     if (table === "exercise_owner_preferences") return [
       { name: "exercise_id", sqliteType: "TEXT" as const, notNull: true },
       { name: "favorite", sqliteType: "INTEGER" as const, notNull: true },
@@ -187,17 +199,30 @@ describe("restore preflight", () => {
       .rejects.toEqual(new RestoreCommandError("restore_archive_invalid"));
   }
 
-  it.each([15, 16, 17, 18, 19, 20, 21])("accepts logical producer schema version %i", async (schemaVersion) => {
+  it.each([15, 16, 17, 18, 19, 20, 21])("accepts logical v1 producer schema version %i for restore-clean", async (schemaVersion) => {
     const commands = createRestoreCommands({
-      crypto: cryptoPort(), files: { readSelectedArchiveAtMost: () => archiveFor(snapshot({ schemaVersion })) },
+      crypto: cryptoPort(), files: { readSelectedArchiveAtMost: () => archiveFor(snapshot({ version: 1, schemaVersion })) },
       kdf, schema, candidateProbe, store: createRestorePreflightStore({ tokenFactory: () => "schema-" + schemaVersion }),
     });
     await expect(commands.preflightSecureRestore({ password: "owner-password" })).resolves.toEqual(expect.objectContaining({ outcome: "ready" }));
   });
 
-  it.each([14, 22])("rejects unsupported logical producer schema version %i", async (schemaVersion) => {
+  it("accepts schema 22 only in the v2 envelope/logical contract", async () => {
     const commands = createRestoreCommands({
-      crypto: cryptoPort(), files: { readSelectedArchiveAtMost: () => archiveFor(snapshot({ schemaVersion })) },
+      crypto: cryptoPort(), files: { readSelectedArchiveAtMost: () => archiveFor(snapshot({
+        version: 2,
+        schemaVersion: 22,
+        tables: { portable_owner_identity: [{ id: 1, owner_namespace: "0123456789abcdef0123456789abcdef" }] },
+      })) },
+      kdf, schema, candidateProbe, store: createRestorePreflightStore({ tokenFactory: () => "schema-22" }),
+    });
+    await expect(commands.preflightSecureRestore({ password: "owner-password" }))
+      .resolves.toEqual(expect.objectContaining({ outcome: "ready" }));
+  });
+
+  it.each([14, 23])("rejects unsupported logical producer schema version %i", async (schemaVersion) => {
+    const commands = createRestoreCommands({
+      crypto: cryptoPort(), files: { readSelectedArchiveAtMost: () => archiveFor(snapshot({ version: 1, schemaVersion })) },
       kdf, schema, candidateProbe, store: createRestorePreflightStore({ tokenFactory: () => "unsupported" }),
     });
     await expect(commands.preflightSecureRestore({ password: "owner-password" })).rejects.toEqual(expect.objectContaining({ code: "restore_archive_unsupported_version" }));
@@ -674,7 +699,9 @@ describe("restore preflight", () => {
       source_plan_id: "bundled-plan", result_plan_id: "copied-plan", expected_revision: 1,
       result_revision: 1, result_json: "{}", committed_at_ms: 1,
     }];
-    const rowCounts = Object.fromEntries(LOGICAL_BACKUP_TABLES.map((table) => [table, tables[table]!.length]));
+    const rowCounts = Object.fromEntries(
+      Object.keys(tables).map((table) => [table, tables[table]!.length]),
+    );
     const value = snapshot({ tables });
     const manifest = { catalogReferenceCount: 1, rowCounts, totalRows: Object.values(rowCounts).reduce((sum, count) => sum + count, 0) };
     const valid = { ...value, manifest } as LogicalBackupSnapshot;

@@ -88,7 +88,8 @@ const suite = requestedSuite || manifest.suite;
 
 export function manifestSupportsRequestedSuite(manifestSuite, requestedSuite) {
   return manifestSuite === requestedSuite
-    || (manifestSuite === 'phase10' && requestedSuite === 'migrations-effects');
+    || ((manifestSuite === 'phase10' || manifestSuite === 'phase11')
+      && requestedSuite === 'migrations-effects');
 }
 
 async function deriveCaseIds(fileName, exportName) {
@@ -184,6 +185,9 @@ if (!(suite in supportedSuiteCases)) {
 }
 const expectedPhase2Cases = supportedSuiteCases[suite];
 const expectedCount = expectedPhase2Cases.length;
+if (legacyExpectedCount !== undefined && legacyExpectedCount !== expectedCount) {
+  fail(`--assert-all must equal the source-derived ${suite} case count (${expectedCount}).`);
+}
 const resultPath = path.join(path.dirname(manifestPath), 'result.json');
 const temporaryDirectory = await mkdtemp(path.join(tmpdir(), 'gym-native-contracts-'));
 const installedApkCopy = path.join(temporaryDirectory, 'installed.apk');

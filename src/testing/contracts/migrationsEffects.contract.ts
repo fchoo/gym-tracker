@@ -36,6 +36,7 @@ export const MIGRATIONS_EFFECTS_CONTRACT_CASES = [
   "migration-recovery-backup",
   "migration-session-exercise-edit-receipts-v20",
   "migration-advanced-set-timing-v21",
+  "migration-portable-owner-identities-v22",
   "effects-lease-replay",
   "effects-stale-revision",
   "effects-retry-limit",
@@ -52,6 +53,9 @@ const MIGRATIONS_THROUGH_V20 = runtimeMigrations.filter(
 );
 const MIGRATIONS_THROUGH_V21 = runtimeMigrations.filter(
   ({ version }) => version <= 21,
+);
+const MIGRATIONS_THROUGH_V22 = runtimeMigrations.filter(
+  ({ version }) => version <= 22,
 );
 
 export type MigrationsEffectsContractCaseId =
@@ -670,6 +674,86 @@ const contractCases: Record<MigrationsEffectsContractCaseId, ContractCase> = {
           && off === '{"version":1,"mode":"off"}',
         "advanced_timing_snapshot_not_immutable",
       );
+    });
+  },
+
+  async "migration-portable-owner-identities-v22"(adapter, caseId) {
+    await withFreshRuntime(adapter, caseId, async ({ databaseName, kernel }) => {
+      await createMigrationRunner({
+        databaseName,
+        kernel,
+        migrations: MIGRATIONS_THROUGH_V21,
+        recoveryBackup: adapter.recoveryBackup,
+      }).run();
+      await kernel.write(async (transaction) => {
+        await transaction.execute(
+          `INSERT INTO exercises
+            (id, content_pack_id, origin, source_namespace, upstream_id, name,
+             metric_profile, metric_contract_version, exercise_metric_generation,
+             equipment, default_rest_seconds, revision)
+           VALUES ('v22-contract-exercise', NULL, 'custom', NULL, NULL,
+                   'V22 contract exercise', 'load_reps', 1, 1, 'Unspecified', 90, 1)`,
+        );
+        await transaction.execute(
+          `INSERT INTO plans
+            (id, content_pack_id, origin, source_namespace, upstream_id, name,
+             days_per_week, audience, goal, estimate_minutes, attribution, is_active, revision)
+           VALUES ('v22-contract-plan', NULL, 'custom', NULL, NULL,
+                   'V22 contract plan', 1, 'Owner', 'Strength', 45, 'Owner', 0, 1)`,
+        );
+        await transaction.execute(
+          `INSERT INTO workout_sessions
+            (id, plan_id, plan_day_id, source, status, local_date, timezone,
+             started_at_ms, completed_at_ms, revision)
+           VALUES ('v22-contract-session', NULL, NULL, 'manual', 'in_progress',
+                   '2026-09-19', 'Asia/Singapore', 19, NULL, 1)`,
+        );
+      });
+      const result = await createMigrationRunner({
+        databaseName,
+        kernel,
+        migrations: MIGRATIONS_THROUGH_V22,
+        recoveryBackup: adapter.recoveryBackup,
+      }).run();
+      invariant(result.currentVersion === 22, "portable_owner_identity_version_not_committed");
+      const [owner] = await kernel.queryAll<{ id: number; owner_namespace: string }>(
+        "SELECT id, owner_namespace FROM portable_owner_identity",
+      );
+      invariant(
+        owner?.id === 1 && /^[a-f0-9]{32}$/u.test(owner.owner_namespace),
+        "portable_owner_namespace_invalid",
+      );
+      const roots = await kernel.queryAll<{ portable_id: string | null; merge_modified_at_ms?: number }>(
+        `SELECT portable_id FROM exercises WHERE id = 'v22-contract-exercise'
+         UNION ALL
+         SELECT portable_id FROM plans WHERE id = 'v22-contract-plan'`,
+      );
+      invariant(
+        roots.length === 2
+          && roots.every(({ portable_id }) => portable_id !== null && /^[a-f0-9]{32}$/u.test(portable_id)),
+        "portable_owner_roots_not_backfilled",
+      );
+      const [session] = await kernel.queryAll<{ portable_id: string; merge_modified_at_ms: number }>(
+        `SELECT portable_id, merge_modified_at_ms FROM workout_sessions
+         WHERE id = 'v22-contract-session'`,
+      );
+      invariant(
+        session !== undefined
+          && /^[a-f0-9]{32}$/u.test(session.portable_id)
+          && session.merge_modified_at_ms === 19,
+        "portable_owner_session_not_backfilled",
+      );
+      let immutableRejected = false;
+      try {
+        await kernel.write((transaction) => transaction.execute(
+          `UPDATE workout_sessions
+           SET portable_id = '00000000000000000000000000000000'
+           WHERE id = 'v22-contract-session'`,
+        ));
+      } catch {
+        immutableRejected = true;
+      }
+      invariant(immutableRejected, "portable_owner_identity_mutation_accepted");
     });
   },
 
