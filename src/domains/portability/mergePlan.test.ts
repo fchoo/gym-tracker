@@ -77,7 +77,7 @@ describe("portable merge plan", () => {
       aggregateClass: "workout_session",
       portableId: sessionPortableId,
       tables: expect.objectContaining({
-        workout_sessions: [expect.objectContaining({ id: "archive-session" })],
+        workout_sessions: [expect.objectContaining({ id: "local-session" })],
       }),
     })]);
   });
@@ -119,6 +119,47 @@ describe("portable merge plan", () => {
         key: "units",
       }),
     ]));
+  });
+
+  it("remaps a distinct portable session that collides with a local physical ID", () => {
+    const archive = snapshot(
+      { id: "session-1", marker: "archive", modifiedAtMs: 20 },
+      {
+        session_exercises: [{ id: "session-exercise-1", session_id: "session-1" }],
+      },
+    );
+    const local = {
+      ...snapshot({ id: "session-1", marker: "local", modifiedAtMs: 10 }),
+      tables: {
+        ...snapshot({ id: "session-1", marker: "local", modifiedAtMs: 10 }).tables,
+        workout_sessions: [{
+          id: "session-1",
+          portable_id: "b".repeat(32),
+          merge_modified_at_ms: 10,
+          marker: "local",
+        }],
+      },
+    };
+
+    const plan = buildPortableMergePlan({
+      archive,
+      local,
+      payloadDigest: () => "0".repeat(64),
+    });
+    const remap = plan.idRemaps.find((value) =>
+      value.recordClass === "workout_session" && value.archiveId === "session-1",
+    );
+    const aggregate = plan.aggregates.find((value) =>
+      value.aggregateClass === "workout_session" && value.portableId === sessionPortableId,
+    );
+
+    expect(remap?.localId).not.toBe("session-1");
+    expect(aggregate?.tables.workout_sessions).toEqual([
+      expect.objectContaining({ id: remap?.localId }),
+    ]);
+    expect(aggregate?.tables.session_exercises).toEqual([
+      expect.objectContaining({ session_id: remap?.localId }),
+    ]);
   });
 
   it("keeps distinct custom exercise identities and remaps a physical ID collision", () => {

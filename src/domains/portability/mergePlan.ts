@@ -95,6 +95,8 @@ export type PortableMergeOperation =
     aggregateClass: "workout_session";
     kind: "insert" | "duplicate" | "archive_won" | "local_won";
     portableId: string;
+    archiveId: string;
+    localId: string;
   }>
   | Readonly<{
     aggregateClass: "app_setting";
@@ -117,7 +119,7 @@ export type PortableMergeOperation =
   }>;
 
 export type PortableMergeIdRemap = Readonly<{
-  recordClass: "custom_exercise" | "owned_plan";
+  recordClass: "workout_session" | "custom_exercise" | "owned_plan";
   archiveId: string;
   localId: string;
 }>;
@@ -266,6 +268,7 @@ function sessionDigestInput(
 function sessionAggregate(
   snapshot: PortableMergePlanSnapshot,
   portableId: string,
+  localSessionId: string,
 ): PortableMergeAggregate {
   const sessions = sessionRows(snapshot).filter((row) => row.portable_id === portableId);
   if (sessions.length !== 1) invalid();
@@ -286,7 +289,18 @@ function sessionAggregate(
         || isKnown(exerciseIds, row.session_exercise_id)
         || isKnown(setIds, row.session_set_id)
         || isKnown(setIds, row.completed_set_id));
-    if (selected.length > 0) tables[table] = Object.freeze(selected);
+    if (selected.length > 0) {
+      tables[table] = Object.freeze(selected.map((row) => {
+        let mapped: LogicalBackupRow = row;
+        if (table === "workout_sessions") {
+          mapped = Object.freeze({ ...mapped, id: localSessionId });
+        }
+        if (mapped.session_id === sessionId) {
+          mapped = Object.freeze({ ...mapped, session_id: localSessionId });
+        }
+        return mapped;
+      }));
+    }
   }
   return Object.freeze({
     aggregateClass: "workout_session",
@@ -386,13 +400,15 @@ function settingOperations(
 }
 
 function nextPhysicalId(
-  recordClass: "custom_exercise" | "owned_plan",
+  recordClass: "workout_session" | "custom_exercise" | "owned_plan",
   portableId: string,
   occupied: Set<string>,
 ): string {
   const prefix = recordClass === "custom_exercise"
     ? "merge_exercise_"
-    : "merge_plan_";
+    : recordClass === "owned_plan"
+      ? "merge_plan_"
+      : "merge_session_";
   let candidate = `${prefix}${portableId}`;
   let suffix = 1;
   while (occupied.has(candidate)) {
@@ -629,18 +645,27 @@ function sessionOperation(
   local: PortableMergePlanSnapshot,
   archiveSession: LogicalBackupRow,
   localSessions: readonly LogicalBackupRow[],
+  occupiedIds: Set<string>,
   payloadDigest: (value: string) => string,
 ): PortableMergeOperation {
+  const archiveId = textId(archiveSession.id);
   const portableId = archiveSession.portable_id;
   if (!isOpaquePortableId(portableId)) invalid();
   const archiveModifiedAtMs = nonNegativeInteger(
     archiveSession.merge_modified_at_ms,
   );
   if (localSessions.length === 0) {
-    return Object.freeze({ aggregateClass: "workout_session", kind: "insert", portableId });
+    const localId = occupiedIds.has(archiveId)
+      ? nextPhysicalId("workout_session", portableId, occupiedIds)
+      : archiveId;
+    occupiedIds.add(localId);
+    return Object.freeze({
+      aggregateClass: "workout_session", kind: "insert", portableId, archiveId, localId,
+    });
   }
   if (localSessions.length !== 1) invalid();
   const localSession = localSessions[0]!;
+  const localId = textId(localSession.id);
   const localPortableId = localSession.portable_id;
   if (!isOpaquePortableId(localPortableId)) invalid();
   const localModifiedAtMs = nonNegativeInteger(
@@ -651,10 +676,14 @@ function sessionOperation(
     { mergeModifiedAtMs: localModifiedAtMs, portableId: localPortableId },
   );
   if (freshness > 0) {
-    return Object.freeze({ aggregateClass: "workout_session", kind: "archive_won", portableId });
+    return Object.freeze({
+      aggregateClass: "workout_session", kind: "archive_won", portableId, archiveId, localId,
+    });
   }
   if (freshness < 0) {
-    return Object.freeze({ aggregateClass: "workout_session", kind: "local_won", portableId });
+    return Object.freeze({
+      aggregateClass: "workout_session", kind: "local_won", portableId, archiveId, localId,
+    });
   }
   const archiveDigest = payloadDigest(sessionDigestInput(archive, archiveSession));
   const localDigest = payloadDigest(sessionDigestInput(local, localSession));
@@ -668,6 +697,8 @@ function sessionOperation(
       ? "duplicate"
       : archiveDigest > localDigest ? "archive_won" : "local_won",
     portableId,
+    archiveId,
+    localId,
   });
 }
 
@@ -688,6 +719,7 @@ export function buildPortableMergePlan(input: Readonly<{
   assertSessionAggregateClosure(input.archive);
   assertSessionAggregateClosure(input.local);
   const localByPortableId = new Map<string, LogicalBackupRow[]>();
+  const occupiedSessionIds = new Set(sessionRows(input.local).map((row) => textId(row.id)));
   for (const row of sessionRows(input.local)) {
     if (!isOpaquePortableId(row.portable_id)) invalid();
     const rows = localByPortableId.get(row.portable_id) ?? [];
@@ -700,6 +732,7 @@ export function buildPortableMergePlan(input: Readonly<{
     input.local,
     session,
     localByPortableId.get(session.portable_id as string) ?? [],
+    occupiedSessionIds,
     input.payloadDigest,
     )).sort((left, right) => operationKey(left).localeCompare(operationKey(right))),
   );
@@ -721,11 +754,26 @@ export function buildPortableMergePlan(input: Readonly<{
     ...exercises.operations,
     ...plans.operations,
   ].sort((left, right) => operationKey(left).localeCompare(operationKey(right))));
-  const idRemaps = Object.freeze([...exercises.idRemaps, ...plans.idRemaps]);
+  const sessionRemaps = sessionOperations
+    .filter((operation): operation is Extract<PortableMergeOperation, {
+      aggregateClass: "workout_session";
+    }> => operation.aggregateClass === "workout_session"
+      && operation.kind === "insert"
+      && operation.archiveId !== operation.localId)
+    .map((operation) => Object.freeze({
+      recordClass: "workout_session" as const,
+      archiveId: operation.archiveId,
+      localId: operation.localId,
+    }));
+  const idRemaps = Object.freeze([
+    ...sessionRemaps,
+    ...exercises.idRemaps,
+    ...plans.idRemaps,
+  ]);
   const aggregates = Object.freeze(operations.flatMap((operation) => {
     if (operation.aggregateClass === "workout_session"
       && (operation.kind === "insert" || operation.kind === "archive_won")) {
-      return [sessionAggregate(input.archive, operation.portableId)];
+      return [sessionAggregate(input.archive, operation.portableId, operation.localId)];
     }
     if (operation.aggregateClass === "custom_exercise"
       && (operation.kind === "insert" || operation.kind === "keep_both")) {
