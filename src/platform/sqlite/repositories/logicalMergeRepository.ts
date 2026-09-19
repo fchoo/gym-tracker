@@ -87,6 +87,12 @@ const FULL_PLAN_OWNED_PLAN_TABLES = Object.freeze([
   "owned_progression_recommendations",
 ] as const satisfies readonly LogicalBackupTableName[]);
 
+const OWNED_ORIGINS = new Set(["custom", "copied"]);
+const CUSTOM_OPERATION_KINDS = new Set(["insert", "duplicate", "keep_both"]);
+const SESSION_OPERATION_KINDS = new Set(["insert", "duplicate", "archive_won", "local_won"]);
+const OWNED_PLAN_OPERATION_KINDS = new Set(["insert", "duplicate", "keep_both"]);
+const ROOT_RECORD_CLASSES = new Set(["custom_exercise", "workout_session", "owned_plan"]);
+
 type FullPlanInsertTable = "app_settings"
   | (typeof FULL_PLAN_CUSTOM_EXERCISE_TABLES)[number]
   | (typeof FULL_PLAN_OWNED_PLAN_TABLES)[number];
@@ -144,6 +150,27 @@ function nonEmptyText(value: unknown): value is string {
   return typeof value === "string" && value.trim().length > 0;
 }
 
+function ownedOrigin(value: unknown): boolean {
+  return OWNED_ORIGINS.has(value as string);
+}
+
+function requireValid(condition: boolean): void {
+  if (!condition) fail();
+}
+
+function aggregateRequired(kind: string): boolean {
+  return kind === "insert" || kind === "keep_both" || kind === "archive_won";
+}
+
+function remapRequired(operation: Exclude<PortableMergePlan["operations"][number], {
+  aggregateClass: "app_setting";
+}>): boolean {
+  if (operation.aggregateClass === "workout_session") {
+    return operation.kind === "insert" && operation.archiveId !== operation.localId;
+  }
+  return operation.kind === "keep_both";
+}
+
 function plannedRootOperationKey(
   operation: Exclude<PortableMergePlan["operations"][number], {
     aggregateClass: "app_setting";
@@ -168,12 +195,12 @@ function assertCustomExerciseAggregate(
   }>,
 ): void {
   const roots = aggregate.tables.exercises;
-  if (roots?.length !== 1 || roots[0]?.id !== operation.localId
-    || roots[0]?.portable_id !== operation.portableId
-    || (roots[0]?.origin !== "custom" && roots[0]?.origin !== "copied")) {
-    fail();
-  }
-  if (aggregate.tables.exercise_library_entries?.length !== 1) fail();
+  requireValid(roots?.length === 1);
+  const [root] = roots!;
+  requireValid(root!.id === operation.localId);
+  requireValid(root!.portable_id === operation.portableId);
+  requireValid(ownedOrigin(root!.origin));
+  requireValid(aggregate.tables.exercise_library_entries?.length === 1);
   const exerciseRows = [
     "exercise_library_entries",
     "exercise_aliases",
@@ -184,25 +211,24 @@ function assertCustomExerciseAggregate(
     "metric_profile_migration_events",
   ] as const;
   for (const [table, rows] of Object.entries(aggregate.tables)) {
-    if (!fullPlanTable(table) || !Array.isArray(rows)) fail();
+    requireValid(fullPlanTable(table));
+    requireValid(Array.isArray(rows));
   }
   for (const table of exerciseRows) {
-    if ((aggregate.tables[table] ?? []).some((row) => row.exercise_id !== operation.localId)) {
-      fail();
-    }
+    requireValid((aggregate.tables[table] ?? []).every((row) => row.exercise_id === operation.localId));
   }
   const taxonomyKeys = new Set((aggregate.tables.exercise_taxonomy ?? []).map((row) => {
-    if (!nonEmptyText(row.kind) || !nonEmptyText(row.slug)) fail();
+    requireValid(nonEmptyText(row.kind));
+    requireValid(nonEmptyText(row.slug));
     return `${row.kind}\u0000${row.slug}`;
   }));
   const termKeys = new Set((aggregate.tables.taxonomy_terms ?? []).map((row) => {
-    if (!nonEmptyText(row.kind) || !nonEmptyText(row.slug)) fail();
+    requireValid(nonEmptyText(row.kind));
+    requireValid(nonEmptyText(row.slug));
     return `${row.kind}\u0000${row.slug}`;
   }));
-  if (taxonomyKeys.size !== termKeys.size
-    || [...termKeys].some((key) => !taxonomyKeys.has(key))) {
-    fail();
-  }
+  requireValid(taxonomyKeys.size === termKeys.size);
+  requireValid([...termKeys].every((key) => taxonomyKeys.has(key)));
 }
 
 function assertSessionAggregate(
@@ -212,39 +238,35 @@ function assertSessionAggregate(
   }>,
 ): void {
   const roots = aggregate.tables.workout_sessions;
-  if (roots?.length !== 1 || roots[0]?.id !== operation.localId
-    || roots[0]?.portable_id !== operation.portableId) {
-    fail();
-  }
+  requireValid(roots?.length === 1);
+  const [root] = roots!;
+  requireValid(root!.id === operation.localId);
+  requireValid(root!.portable_id === operation.portableId);
   for (const [table, rows] of Object.entries(aggregate.tables)) {
-    if (!(SESSION_AGGREGATE_TABLES as readonly string[]).includes(table)
-      || !Array.isArray(rows)) {
-      fail();
-    }
+    requireValid((SESSION_AGGREGATE_TABLES as readonly string[]).includes(table));
+    requireValid(Array.isArray(rows));
   }
   const exerciseIds = new Set<string>();
   for (const row of aggregate.tables.session_exercises ?? []) {
-    if (row.session_id !== operation.localId || !nonEmptyText(row.id)
-      || exerciseIds.has(row.id)) {
-      fail();
-    }
-    exerciseIds.add(row.id);
+    requireValid(row.session_id === operation.localId);
+    const exerciseId = textId(row.id);
+    requireValid(!exerciseIds.has(exerciseId));
+    exerciseIds.add(exerciseId);
   }
   const setIds = new Set<string>();
   for (const row of aggregate.tables.session_sets ?? []) {
-    if (!nonEmptyText(row.id) || setIds.has(row.id)
-      || !exerciseIds.has(textId(row.session_exercise_id))) {
-      fail();
-    }
-    setIds.add(row.id);
+    const setId = textId(row.id);
+    requireValid(!setIds.has(setId));
+    requireValid(exerciseIds.has(textId(row.session_exercise_id)));
+    setIds.add(setId);
   }
-  for (const row of roots) {
+  for (const row of roots!) {
     for (const [column, ids] of [
       ["active_session_exercise_id", exerciseIds],
       ["active_set_id", setIds],
     ] as const) {
       const value = row[column];
-      if (value !== null && value !== undefined && !ids.has(textId(value))) fail();
+      if (value !== null && value !== undefined) requireValid(ids.has(textId(value)));
     }
   }
   for (const table of [
@@ -257,7 +279,7 @@ function assertSessionAggregate(
     "workout_session_exercise_reorder_receipts",
   ] as const) {
     for (const row of aggregate.tables[table] ?? []) {
-      if (row.session_id !== operation.localId) fail();
+      requireValid(row.session_id === operation.localId);
     }
   }
   for (const [table, column] of [
@@ -267,7 +289,7 @@ function assertSessionAggregate(
   ] as const) {
     for (const row of aggregate.tables[table] ?? []) {
       const value = row[column];
-      if (value !== null && value !== undefined && !setIds.has(textId(value))) fail();
+      if (value !== null && value !== undefined) requireValid(setIds.has(textId(value)));
     }
   }
 }
@@ -279,108 +301,99 @@ function assertOwnedPlanAggregate(
   }>,
 ): void {
   const roots = aggregate.tables.plans;
-  if (roots?.length !== 1 || roots[0]?.id !== operation.localId
-    || roots[0]?.portable_id !== operation.portableId
-    || (roots[0]?.origin !== "custom" && roots[0]?.origin !== "copied")) {
-    fail();
-  }
+  requireValid(roots?.length === 1);
+  const [root] = roots!;
+  requireValid(root!.id === operation.localId);
+  requireValid(root!.portable_id === operation.portableId);
+  requireValid(ownedOrigin(root!.origin));
   for (const [table, rows] of Object.entries(aggregate.tables)) {
-    if (!ownedPlanTable(table) || !Array.isArray(rows)) fail();
+    requireValid(ownedPlanTable(table));
+    requireValid(Array.isArray(rows));
   }
   for (const row of aggregate.tables.plan_days ?? []) {
-    if (row.plan_id !== operation.localId) fail();
+    requireValid(row.plan_id === operation.localId);
   }
   for (const row of aggregate.tables.owned_plan_aggregate_states ?? []) {
-    if (row.plan_id !== operation.localId) fail();
+    requireValid(row.plan_id === operation.localId);
   }
   const dayIds = new Set<string>();
   for (const row of aggregate.tables.plan_days ?? []) {
-    if (!nonEmptyText(row.id) || dayIds.has(row.id)) fail();
-    dayIds.add(row.id);
+    const dayId = textId(row.id);
+    requireValid(!dayIds.has(dayId));
+    dayIds.add(dayId);
   }
   const legacyScheduleIds = new Set<string>();
   for (const row of aggregate.tables.plan_schedules ?? []) {
-    if (row.plan_id !== operation.localId || !nonEmptyText(row.id)
-      || legacyScheduleIds.has(row.id)) {
-      fail();
-    }
-    legacyScheduleIds.add(row.id);
+    requireValid(row.plan_id === operation.localId);
+    const scheduleId = textId(row.id);
+    requireValid(!legacyScheduleIds.has(scheduleId));
+    legacyScheduleIds.add(scheduleId);
   }
   for (const row of aggregate.tables.plan_schedule_bindings ?? []) {
-    if (!legacyScheduleIds.has(textId(row.schedule_id))
-      || !dayIds.has(textId(row.plan_day_id))) {
-      fail();
-    }
+    requireValid(legacyScheduleIds.has(textId(row.schedule_id)));
+    requireValid(dayIds.has(textId(row.plan_day_id)));
   }
   const legacyOccurrenceIds = new Set<string>();
   for (const row of aggregate.tables.plan_day_exercises ?? []) {
-    if (!nonEmptyText(row.id) || legacyOccurrenceIds.has(row.id)
-      || !dayIds.has(textId(row.plan_day_id))) {
-      fail();
-    }
-    legacyOccurrenceIds.add(row.id);
+    const occurrenceId = textId(row.id);
+    requireValid(!legacyOccurrenceIds.has(occurrenceId));
+    requireValid(dayIds.has(textId(row.plan_day_id)));
+    legacyOccurrenceIds.add(occurrenceId);
   }
   const legacyTargetIds = new Set<string>();
   for (const row of aggregate.tables.plan_working_set_targets ?? []) {
-    if (!nonEmptyText(row.id) || legacyTargetIds.has(row.id)
-      || !legacyOccurrenceIds.has(textId(row.plan_day_exercise_id))) {
-      fail();
-    }
-    legacyTargetIds.add(row.id);
+    const targetId = textId(row.id);
+    requireValid(!legacyTargetIds.has(targetId));
+    requireValid(legacyOccurrenceIds.has(textId(row.plan_day_exercise_id)));
+    legacyTargetIds.add(targetId);
   }
   for (const table of ["plan_warmup_sets", "progression_policies"] as const) {
     for (const row of aggregate.tables[table] ?? []) {
-      if (!legacyOccurrenceIds.has(textId(row.plan_day_exercise_id))) fail();
+      requireValid(legacyOccurrenceIds.has(textId(row.plan_day_exercise_id)));
     }
   }
   for (const row of aggregate.tables.progression_recommendations ?? []) {
-    if (!legacyTargetIds.has(textId(row.plan_working_set_target_id))) fail();
+    requireValid(legacyTargetIds.has(textId(row.plan_working_set_target_id)));
   }
   const ownedOccurrenceIds = new Set<string>();
   for (const row of aggregate.tables.owned_plan_day_exercises ?? []) {
-    if (!nonEmptyText(row.id) || ownedOccurrenceIds.has(row.id)
-      || !dayIds.has(textId(row.plan_day_id))) {
-      fail();
-    }
-    ownedOccurrenceIds.add(row.id);
+    const occurrenceId = textId(row.id);
+    requireValid(!ownedOccurrenceIds.has(occurrenceId));
+    requireValid(dayIds.has(textId(row.plan_day_id)));
+    ownedOccurrenceIds.add(occurrenceId);
   }
   const ownedTargetIds = new Set<string>();
   for (const row of aggregate.tables.owned_plan_working_set_targets ?? []) {
-    if (!nonEmptyText(row.id) || ownedTargetIds.has(row.id)
-      || !ownedOccurrenceIds.has(textId(row.plan_day_exercise_id))) {
-      fail();
-    }
-    ownedTargetIds.add(row.id);
+    const targetId = textId(row.id);
+    requireValid(!ownedTargetIds.has(targetId));
+    requireValid(ownedOccurrenceIds.has(textId(row.plan_day_exercise_id)));
+    ownedTargetIds.add(targetId);
   }
   for (const table of ["owned_plan_warmup_sets", "owned_plan_progression_policies"] as const) {
     for (const row of aggregate.tables[table] ?? []) {
-      if (!ownedOccurrenceIds.has(textId(row.plan_day_exercise_id))) fail();
+      requireValid(ownedOccurrenceIds.has(textId(row.plan_day_exercise_id)));
     }
   }
   for (const row of aggregate.tables.owned_progression_recommendations ?? []) {
-    if (!ownedTargetIds.has(textId(row.owned_plan_working_set_target_id))) fail();
+    requireValid(ownedTargetIds.has(textId(row.owned_plan_working_set_target_id)));
   }
   const ownedScheduleIds = new Set<string>();
   for (const row of aggregate.tables.owned_plan_schedules ?? []) {
-    if (row.plan_id !== operation.localId || !nonEmptyText(row.id)
-      || ownedScheduleIds.has(row.id)) {
-      fail();
-    }
-    ownedScheduleIds.add(row.id);
+    requireValid(row.plan_id === operation.localId);
+    const scheduleId = textId(row.id);
+    requireValid(!ownedScheduleIds.has(scheduleId));
+    ownedScheduleIds.add(scheduleId);
   }
   const ownedVersionIds = new Set<string>();
   for (const row of aggregate.tables.owned_plan_schedule_versions ?? []) {
-    if (!nonEmptyText(row.id) || ownedVersionIds.has(row.id)
-      || !ownedScheduleIds.has(textId(row.schedule_id))) {
-      fail();
-    }
-    ownedVersionIds.add(row.id);
+    const versionId = textId(row.id);
+    requireValid(!ownedVersionIds.has(versionId));
+    requireValid(ownedScheduleIds.has(textId(row.schedule_id)));
+    ownedVersionIds.add(versionId);
   }
   for (const row of aggregate.tables.owned_plan_schedule_bindings ?? []) {
-    if (!ownedVersionIds.has(textId(row.schedule_version_id))
-      || !dayIds.has(textId(row.plan_day_id))) {
-      fail();
-    }
+    requireValid(ownedVersionIds.has(textId(row.schedule_version_id)));
+    requireValid(dayIds.has(textId(row.plan_day_id)));
   }
   for (const table of [
     "owned_plan_schedule_overrides",
@@ -388,17 +401,16 @@ function assertOwnedPlanAggregate(
     "owned_plan_schedule_events",
   ] as const) {
     for (const row of aggregate.tables[table] ?? []) {
-      if (!ownedScheduleIds.has(textId(row.schedule_id))) fail();
+      requireValid(ownedScheduleIds.has(textId(row.schedule_id)));
     }
   }
   for (const row of aggregate.tables.owned_plan_day_sources ?? []) {
-    if (!dayIds.has(textId(row.plan_day_id)) || row.plan_id !== operation.localId) fail();
+    requireValid(dayIds.has(textId(row.plan_day_id)));
+    requireValid(row.plan_id === operation.localId);
   }
   for (const row of aggregate.tables.owned_plan_occurrence_sources ?? []) {
-    if (!ownedOccurrenceIds.has(textId(row.plan_day_exercise_id))
-      || !dayIds.has(textId(row.plan_day_id))) {
-      fail();
-    }
+    requireValid(ownedOccurrenceIds.has(textId(row.plan_day_exercise_id)));
+    requireValid(dayIds.has(textId(row.plan_day_id)));
   }
 }
 
@@ -416,49 +428,41 @@ function assertFullPlanSlice(plan: PortableMergePlan): void {
   }>>();
   for (const operation of plan.operations) {
     if (operation.aggregateClass === "app_setting") {
-      if ((operation.kind !== "insert" && operation.kind !== "local_won")
-        || typeof operation.key !== "string" || operation.key.trim().length === 0) {
-        fail();
-      }
+      requireValid(operation.kind === "insert" || operation.kind === "local_won");
+      requireValid(nonEmptyText(operation.key));
       if (operation.kind === "insert") {
-        if (settingInserts.has(operation.key)) fail();
+        requireValid(!settingInserts.has(operation.key));
         settingInserts.add(operation.key);
       } else {
-        if (settingLocalWins.has(operation.key)) fail();
+        requireValid(!settingLocalWins.has(operation.key));
         settingLocalWins.add(operation.key);
       }
       continue;
     }
     if (operation.aggregateClass === "custom_exercise") {
-      if ((operation.kind !== "insert" && operation.kind !== "duplicate"
-        && operation.kind !== "keep_both")
-        || !isOpaquePortableId(operation.portableId)
-        || !nonEmptyText(operation.archiveId) || !nonEmptyText(operation.localId)
-        || customWrites.has(operation.portableId)) {
-        fail();
-      }
+      requireValid(CUSTOM_OPERATION_KINDS.has(operation.kind));
+      requireValid(isOpaquePortableId(operation.portableId));
+      requireValid(nonEmptyText(operation.archiveId));
+      requireValid(nonEmptyText(operation.localId));
+      requireValid(!customWrites.has(operation.portableId));
       customWrites.set(operation.portableId, operation);
       continue;
     }
     if (operation.aggregateClass === "workout_session") {
-      if ((operation.kind !== "insert" && operation.kind !== "duplicate"
-        && operation.kind !== "archive_won" && operation.kind !== "local_won")
-        || !isOpaquePortableId(operation.portableId)
-        || !nonEmptyText(operation.archiveId) || !nonEmptyText(operation.localId)
-        || sessionWrites.has(operation.portableId)) {
-        fail();
-      }
+      requireValid(SESSION_OPERATION_KINDS.has(operation.kind));
+      requireValid(isOpaquePortableId(operation.portableId));
+      requireValid(nonEmptyText(operation.archiveId));
+      requireValid(nonEmptyText(operation.localId));
+      requireValid(!sessionWrites.has(operation.portableId));
       sessionWrites.set(operation.portableId, operation);
       continue;
     }
     if (operation.aggregateClass === "owned_plan") {
-      if ((operation.kind !== "insert" && operation.kind !== "duplicate"
-        && operation.kind !== "keep_both")
-        || !isOpaquePortableId(operation.portableId)
-        || !nonEmptyText(operation.archiveId) || !nonEmptyText(operation.localId)
-        || ownedPlanWrites.has(operation.portableId)) {
-        fail();
-      }
+      requireValid(OWNED_PLAN_OPERATION_KINDS.has(operation.kind));
+      requireValid(isOpaquePortableId(operation.portableId));
+      requireValid(nonEmptyText(operation.archiveId));
+      requireValid(nonEmptyText(operation.localId));
+      requireValid(!ownedPlanWrites.has(operation.portableId));
       ownedPlanWrites.set(operation.portableId, operation);
       continue;
     }
@@ -467,42 +471,35 @@ function assertFullPlanSlice(plan: PortableMergePlan): void {
 
   const settingKeys = new Set<string>();
   for (const row of plan.settings) {
-    const key = row.key;
-    if (typeof key !== "string" || key.trim().length === 0 || settingKeys.has(key)
-      || !settingInserts.has(key)) {
-      fail();
-    }
+    const key = textId(row.key);
+    requireValid(!settingKeys.has(key));
+    requireValid(settingInserts.has(key));
     settingKeys.add(key);
   }
-  if (settingKeys.size !== settingInserts.size) fail();
+  requireValid(settingKeys.size === settingInserts.size);
 
   const aggregates = new Map<string, PortableMergeAggregate>();
   for (const aggregate of plan.aggregates) {
     const key = aggregateKey(aggregate);
-    if (aggregates.has(key)) {
-      fail();
-    }
+    requireValid(!aggregates.has(key));
     if (aggregate.aggregateClass === "custom_exercise") {
       const operation = customWrites.get(aggregate.portableId);
-      if (operation === undefined
-        || (operation.kind !== "insert" && operation.kind !== "keep_both")) {
-        fail();
-      }
-      assertCustomExerciseAggregate(aggregate, operation);
+      requireValid(operation !== undefined);
+      const admittedOperation = operation!;
+      requireValid(admittedOperation.kind === "insert" || admittedOperation.kind === "keep_both");
+      assertCustomExerciseAggregate(aggregate, admittedOperation);
     } else if (aggregate.aggregateClass === "workout_session") {
       const operation = sessionWrites.get(aggregate.portableId);
-      if (operation === undefined
-        || (operation.kind !== "insert" && operation.kind !== "archive_won")) {
-        fail();
-      }
-      assertSessionAggregate(aggregate, operation);
+      requireValid(operation !== undefined);
+      const admittedOperation = operation!;
+      requireValid(admittedOperation.kind === "insert" || admittedOperation.kind === "archive_won");
+      assertSessionAggregate(aggregate, admittedOperation);
     } else if (aggregate.aggregateClass === "owned_plan") {
       const operation = ownedPlanWrites.get(aggregate.portableId);
-      if (operation === undefined
-        || (operation.kind !== "insert" && operation.kind !== "keep_both")) {
-        fail();
-      }
-      assertOwnedPlanAggregate(aggregate, operation);
+      requireValid(operation !== undefined);
+      const admittedOperation = operation!;
+      requireValid(admittedOperation.kind === "insert" || admittedOperation.kind === "keep_both");
+      assertOwnedPlanAggregate(aggregate, admittedOperation);
     } else {
       fail();
     }
@@ -510,23 +507,17 @@ function assertFullPlanSlice(plan: PortableMergePlan): void {
   }
   for (const operation of customWrites.values()) {
     const hasAggregate = aggregates.has(`custom_exercise\u0000${operation.portableId}`);
-    if (hasAggregate !== (operation.kind === "insert" || operation.kind === "keep_both")) {
-      fail();
-    }
+    requireValid(hasAggregate === aggregateRequired(operation.kind));
   }
   for (const operation of sessionWrites.values()) {
     const hasAggregate = aggregates.has(`workout_session\u0000${operation.portableId}`);
-    if (hasAggregate !== (operation.kind === "insert" || operation.kind === "archive_won")) {
-      fail();
-    }
+    requireValid(hasAggregate === aggregateRequired(operation.kind));
   }
   for (const operation of ownedPlanWrites.values()) {
     const hasAggregate = aggregates.has(`owned_plan\u0000${operation.portableId}`);
-    if (hasAggregate !== (operation.kind === "insert" || operation.kind === "keep_both")) {
-      fail();
-    }
+    requireValid(hasAggregate === aggregateRequired(operation.kind));
   }
-  if (plan.settings.length === 0 && plan.aggregates.length === 0) fail();
+  requireValid(plan.settings.length > 0 || plan.aggregates.length > 0);
   const admittedOperationsByPair = new Map(
     [...customWrites.values(), ...sessionWrites.values(), ...ownedPlanWrites.values()].map((operation) => [
       plannedRootOperationKey(operation),
@@ -536,48 +527,27 @@ function assertFullPlanSlice(plan: PortableMergePlan): void {
   const mappings = new Set<string>();
   for (const mapping of plan.idMappings) {
     const key = `${mapping.recordClass}\u0000${mapping.archiveId}\u0000${mapping.localId}`;
-    if ((mapping.recordClass !== "custom_exercise"
-      && mapping.recordClass !== "workout_session"
-      && mapping.recordClass !== "owned_plan")
-      || !admittedOperationsByPair.has(key) || mappings.has(key)) {
-      fail();
-    }
+    requireValid(ROOT_RECORD_CLASSES.has(mapping.recordClass));
+    requireValid(admittedOperationsByPair.has(key));
+    requireValid(!mappings.has(key));
     mappings.add(key);
   }
-  if (mappings.size !== customWrites.size + sessionWrites.size + ownedPlanWrites.size) fail();
+  requireValid(mappings.size === customWrites.size + sessionWrites.size + ownedPlanWrites.size);
   const remaps = new Set<string>();
   for (const remap of plan.idRemaps) {
     const key = `${remap.recordClass}\u0000${remap.archiveId}\u0000${remap.localId}`;
     const operation = admittedOperationsByPair.get(key);
-    const validRemap = (remap.recordClass === "custom_exercise"
-      && operation?.aggregateClass === "custom_exercise"
-      && operation.kind === "keep_both")
-      || (remap.recordClass === "workout_session"
-        && operation?.aggregateClass === "workout_session"
-        && operation.kind === "insert"
-        && operation.archiveId !== operation.localId)
-      || (remap.recordClass === "owned_plan"
-        && operation?.aggregateClass === "owned_plan"
-        && operation.kind === "keep_both");
-    if (!validRemap || remaps.has(key)) {
-      fail();
-    }
+    requireValid(operation !== undefined);
+    requireValid(remap.recordClass === operation!.aggregateClass);
+    requireValid(remapRequired(operation!));
+    requireValid(!remaps.has(key));
     remaps.add(key);
   }
-  const expectedRemaps = [...customWrites.values()]
-    .filter((operation) => operation.kind === "keep_both")
-    .map(plannedRootOperationKey)
-    .concat([...sessionWrites.values()]
-      .filter((operation) => operation.kind === "insert"
-        && operation.archiveId !== operation.localId)
-      .map(plannedRootOperationKey))
-    .concat([...ownedPlanWrites.values()]
-      .filter((operation) => operation.kind === "keep_both")
-      .map(plannedRootOperationKey));
-  if (remaps.size !== expectedRemaps.length
-    || expectedRemaps.some((key) => !remaps.has(key))) {
-    fail();
-  }
+  const expectedRemaps = [...customWrites.values(), ...sessionWrites.values(), ...ownedPlanWrites.values()]
+    .filter(remapRequired)
+    .map(plannedRootOperationKey);
+  requireValid(remaps.size === expectedRemaps.length);
+  requireValid(expectedRemaps.every((key) => remaps.has(key)));
 }
 
 /**
