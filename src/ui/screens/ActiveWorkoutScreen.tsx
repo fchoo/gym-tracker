@@ -1004,7 +1004,7 @@ function PopulatedWorkoutOverview({
   };
 
   const configureAndStartAdvancedTiming = async (
-    intervalMs: number,
+    config: Extract<AdvancedTimingConfigV1, { mode: "per_rep" }>,
   ): Promise<AdvancedTimingCommandResult> => {
     const input = advancedInput();
     if (
@@ -1014,12 +1014,6 @@ function PopulatedWorkoutOverview({
     ) {
       throw new Error("advanced_timing_unavailable");
     }
-    const config: AdvancedTimingConfigV1 = {
-      version: 1,
-      mode: "per_rep",
-      intervalMs,
-      cueChannels: "haptic",
-    };
     const configured = await commands.configureAdvancedTiming({
       ...input,
       config,
@@ -1038,10 +1032,7 @@ function PopulatedWorkoutOverview({
   };
 
   const configureAndStartClusterTiming = async (
-    inputConfig: Readonly<{
-      groupSizes: readonly number[];
-      intraRestMs: number;
-    }>,
+    config: Extract<AdvancedTimingConfigV1, { mode: "cluster" }>,
   ): Promise<AdvancedTimingCommandResult> => {
     const input = advancedInput();
     if (
@@ -1051,13 +1042,6 @@ function PopulatedWorkoutOverview({
     ) {
       throw new Error("advanced_timing_unavailable");
     }
-    const config: AdvancedTimingConfigV1 = {
-      version: 1,
-      mode: "cluster",
-      groupSizes: inputConfig.groupSizes,
-      intraRestMs: inputConfig.intraRestMs,
-      cueChannels: "haptic",
-    };
     const configured = await commands.configureAdvancedTiming({
       ...input,
       config,
@@ -2363,6 +2347,9 @@ function PopulatedWorkoutOverview({
                     }
                     return commands.stopAdvancedTiming(input);
                   })}
+                  {...(activeSet?.advancedTimingResolved === undefined
+                    ? {}
+                    : { resolvedConfig: activeSet.advancedTimingResolved })}
                   targetSetId={activeSet?.id ?? null}
                 />
               ) : null}

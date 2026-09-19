@@ -86,10 +86,12 @@ async function renderIndicator(
   const defaults = {
     context: context(),
     nowMs: () => now,
-    onConfigureAndStart: jest.fn(async (intervalMs: number) =>
+    onConfigureAndStart: jest.fn(async (config: Readonly<{
+      intervalMs: number;
+    }>) =>
       result(runningState({
-        intervalMs,
-        nextBoundaryAtMs: now + intervalMs,
+        intervalMs: config.intervalMs,
+        nextBoundaryAtMs: now + config.intervalMs,
       }))
     ),
     onConfigureAndStartCluster: jest.fn(async () => result({
@@ -214,7 +216,12 @@ describe("AdvancedTimingIndicator", () => {
       name: "Configure and start per-rep cadence",
     }));
 
-    expect(props.onConfigureAndStart).toHaveBeenCalledWith(4_000);
+    expect(props.onConfigureAndStart).toHaveBeenCalledWith({
+      version: 1,
+      mode: "per_rep",
+      intervalMs: 4_000,
+      cueChannels: "haptic",
+    });
   });
 
   it("configures and starts cluster timing from a 3+3+3 grouping", async () => {
@@ -244,8 +251,11 @@ describe("AdvancedTimingIndicator", () => {
     }));
 
     expect(props.onConfigureAndStartCluster).toHaveBeenCalledWith({
+      version: 1,
+      mode: "cluster",
       groupSizes: [3, 3, 3],
       intraRestMs: 20_000,
+      cueChannels: "haptic",
     });
   });
 

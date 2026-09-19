@@ -22,6 +22,7 @@ import {
 
 import type {
   AdvancedTimingCommandResult,
+  AdvancedTimingConfigV1,
   AdvancedTimingStateV1,
 } from "../../domains/advancedTiming";
 import {
@@ -170,6 +171,14 @@ export type AdvancedTimingIndicatorContext = Readonly<{
   state: AdvancedTimingStateV1;
 }>;
 
+type PerRepTimingConfig = Extract<AdvancedTimingConfigV1, {
+  mode: "per_rep";
+}>;
+
+type ClusterTimingConfig = Extract<AdvancedTimingConfigV1, {
+  mode: "cluster";
+}>;
+
 export function AdvancedTimingIndicator({
   busy = false,
   context,
@@ -184,6 +193,7 @@ export function AdvancedTimingIndicator({
   onResume,
   onSkipClusterGap,
   onStop,
+  resolvedConfig,
   targetSetId,
 }: Readonly<{
   busy?: boolean;
@@ -191,17 +201,15 @@ export function AdvancedTimingIndicator({
   cueUnavailable?: boolean;
   disabled?: boolean;
   nowMs(): number;
-  onConfigureAndStart(intervalMs: number): Promise<AdvancedTimingCommandResult>;
-  onConfigureAndStartCluster(input: Readonly<{
-    groupSizes: readonly number[];
-    intraRestMs: number;
-  }>): Promise<AdvancedTimingCommandResult>;
+  onConfigureAndStart(config: PerRepTimingConfig): Promise<AdvancedTimingCommandResult>;
+  onConfigureAndStartCluster(config: ClusterTimingConfig): Promise<AdvancedTimingCommandResult>;
   onBeginClusterGap(): Promise<AdvancedTimingCommandResult>;
   onPause(): Promise<AdvancedTimingCommandResult>;
   onReconcile(foregroundSinceMs: number): Promise<AdvancedTimingCommandResult>;
   onResume(): Promise<AdvancedTimingCommandResult>;
   onSkipClusterGap(): Promise<AdvancedTimingCommandResult>;
   onStop(): Promise<AdvancedTimingCommandResult>;
+  resolvedConfig?: AdvancedTimingConfigV1;
   targetSetId: string | null;
 }>) {
   const { colors } = useAppTheme();
@@ -230,6 +238,19 @@ export function AdvancedTimingIndicator({
     ? activeState.mode
     : null;
   const controlsDisabled = disabled || busy || targetSetId === null;
+
+  useEffect(() => {
+    if (resolvedConfig?.mode === "per_rep") {
+      setDraftMode("per_rep");
+      setIntervalSeconds(String(resolvedConfig.intervalMs / 1_000));
+      return;
+    }
+    if (resolvedConfig?.mode === "cluster") {
+      setDraftMode("cluster");
+      setClusterPattern(resolvedConfig.groupSizes.join("+"));
+      setClusterGapSeconds(String(resolvedConfig.intraRestMs / 1_000));
+    }
+  }, [resolvedConfig, targetSetId]);
 
   useEffect(() => {
     const subscription = AppState.addEventListener("change", (nextState) => {
@@ -283,7 +304,14 @@ export function AdvancedTimingIndicator({
     setValidation(undefined);
     setCommandFailed(false);
     try {
-      await onConfigureAndStart(seconds * 1_000);
+      await onConfigureAndStart({
+        version: 1,
+        mode: "per_rep",
+        intervalMs: seconds * 1_000,
+        cueChannels: resolvedConfig?.mode === "per_rep"
+          ? resolvedConfig.cueChannels
+          : "haptic",
+      });
     } catch {
       setCommandFailed(true);
     }
@@ -310,8 +338,13 @@ export function AdvancedTimingIndicator({
     setCommandFailed(false);
     try {
       await onConfigureAndStartCluster({
+        version: 1,
+        mode: "cluster",
         groupSizes,
         intraRestMs: seconds * 1_000,
+        cueChannels: resolvedConfig?.mode === "cluster"
+          ? resolvedConfig.cueChannels
+          : "haptic",
       });
     } catch {
       setCommandFailed(true);

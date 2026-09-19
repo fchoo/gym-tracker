@@ -2695,6 +2695,78 @@ describe("Plan 01-08 ActiveWorkoutScreen", () => {
     });
   });
 
+  it("uses the active set's resolved audio preference when starting per-rep cadence", async () => {
+    const configureAdvancedTiming = jest.fn<NonNullable<
+      ActiveWorkoutCommands["configureAdvancedTiming"]
+    >>(async () => advancedResult({
+      version: 1,
+      state: "idle",
+      revision: 0,
+      targetSessionSetId: null,
+    }, 2));
+    const startAdvancedTiming = jest.fn<NonNullable<
+      ActiveWorkoutCommands["startAdvancedTiming"]
+    >>(async () => advancedResult({
+      version: 1,
+      state: "running",
+      mode: "per_rep",
+      revision: 1,
+      targetSessionSetId: "working-1",
+      cueChannels: "audio",
+      intervalMs: 3_000,
+      startedAtMs: 2_000,
+      nextBoundaryAtMs: 5_000,
+      nextRepetitionIndex: 1,
+    }, 2));
+    const view: ActiveWorkoutView = {
+      ...initialView,
+      currentExercise: {
+        ...initialView.currentExercise,
+        workingSets: initialView.currentExercise.workingSets.map((set) =>
+          set.id === "working-1"
+            ? {
+                ...set,
+                advancedTimingResolved: {
+                  version: 1,
+                  mode: "per_rep",
+                  intervalMs: 3_000,
+                  cueChannels: "audio",
+                },
+              }
+            : set
+        ),
+      },
+    };
+
+    await renderActive({
+      advancedTimingContext: {
+        sessionId: "session-1",
+        sessionRevision: 1,
+        state: {
+          version: 1,
+          state: "idle",
+          revision: 0,
+          targetSessionSetId: null,
+        },
+      },
+      commands: commands({ configureAdvancedTiming, startAdvancedTiming }),
+      view,
+    });
+
+    await fireEvent.press(screen.getByRole("button", {
+      name: "Configure and start per-rep cadence",
+    }));
+
+    expect(configureAdvancedTiming).toHaveBeenCalledWith(expect.objectContaining({
+      config: {
+        version: 1,
+        mode: "per_rep",
+        intervalMs: 3_000,
+        cueChannels: "audio",
+      },
+    }));
+  });
+
   it("configures cluster timing and advances intra-set gaps without rest or set commands", async () => {
     const configureAdvancedTiming = jest.fn<NonNullable<
       ActiveWorkoutCommands["configureAdvancedTiming"]
