@@ -3235,7 +3235,7 @@ describe("Plan 01-08 ActiveWorkoutScreen", () => {
       }));
   });
 
-  it("clears a pending active-set scroll before a timing save can reflow the panel", async () => {
+  it("scrolls to the timing panel after a timing save instead of restoring the active set", async () => {
     const scrollTo = jest.spyOn(ScrollView.prototype, "scrollTo")
       .mockImplementation(() => undefined);
     const updateSessionExerciseAdvancedTiming = jest.fn<NonNullable<
@@ -3281,8 +3281,15 @@ describe("Plan 01-08 ActiveWorkoutScreen", () => {
     await fireEvent(screen.getByTestId("working-set-1-row"), "layout", {
       nativeEvent: { layout: { x: 0, y: 32, width: 320, height: 160 } },
     });
+    await fireEvent(screen.getByTestId("advanced-timing-panel-measurement"), "layout", {
+      nativeEvent: { layout: { x: 0, y: 16, width: 320, height: 240 } },
+    });
 
-    expect(scrollTo).not.toHaveBeenCalled();
+    await waitFor(() => expect(scrollTo).toHaveBeenLastCalledWith({
+      animated: true,
+      x: 0,
+      y: 176,
+    }));
     scrollTo.mockRestore();
   });
 

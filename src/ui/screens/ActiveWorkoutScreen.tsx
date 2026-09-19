@@ -814,6 +814,9 @@ function PopulatedWorkoutOverview({
   const [activeWorkingCardOffset, setActiveWorkingCardOffset] = useState<
     Readonly<{ exerciseId: string; y: number }> | null
   >(null);
+  const [timingPanelMeasurement, setTimingPanelMeasurement] = useState<
+    Readonly<{ exerciseId: string; y: number }> | null
+  >(null);
   const [pendingScrollTarget, setPendingScrollTarget] = useState<
     Readonly<{ key: string; setId: string; animated: boolean }> | null
   >(() => initialView.activeSetId === null
@@ -823,6 +826,9 @@ function PopulatedWorkoutOverview({
       setId: initialView.activeSetId,
       animated: false,
     });
+  const [pendingTimingPanelScroll, setPendingTimingPanelScroll] = useState<
+    Readonly<{ key: string; exerciseId: string; animated: boolean }> | null
+  >(null);
   const [editingCompletedSetId, setEditingCompletedSetId] =
     useState<string | null>(null);
   const [expandedExerciseIds, setExpandedExerciseIds] = useState<ReadonlySet<string>>(
@@ -1003,6 +1009,18 @@ function PopulatedWorkoutOverview({
     setView(nextView);
   };
 
+  const scheduleTimingPanelScroll = (
+    exerciseId: string,
+    sessionRevision: number,
+  ) => {
+    setPendingScrollTarget(null);
+    setPendingTimingPanelScroll({
+      animated: !reduceMotion,
+      exerciseId,
+      key: `timing-${sessionRevision}-${exerciseId}`,
+    });
+  };
+
   const applyExerciseTimingConfig = (
     exerciseId: string,
     config: AdvancedTimingConfigV1,
@@ -1167,6 +1185,7 @@ function PopulatedWorkoutOverview({
           value,
           result.sessionRevision,
         );
+        scheduleTimingPanelScroll(target.exercise.id, result.sessionRevision);
       } else {
         const set = target.set;
         if (set === undefined
@@ -1182,6 +1201,7 @@ function PopulatedWorkoutOverview({
           nowMs: nowMs(),
         });
         applyAdvancedTimingResult(result);
+        scheduleTimingPanelScroll(target.exercise.id, result.sessionRevision);
       }
       setTimingConfig(null);
     } catch {
@@ -1908,22 +1928,36 @@ function PopulatedWorkoutOverview({
         scrollOffset={revealedSetOffset}
         {...(revealedSetId === null ? {} : { scrollRestoreKey: revealedSetId })}
         {...(
-          pendingScrollTarget === null
-          || activeSet === undefined
-          || pendingScrollTarget.setId !== activeSet.id
-          || activeSetMeasurement?.setId !== activeSet.id
-          || activeExerciseOffset?.exerciseId !== activeExercise.id
-          || activeWorkingCardOffset?.exerciseId !== activeExercise.id
-            ? {}
-            : {
-          measuredScrollRequest: {
-            animated: pendingScrollTarget.animated,
-            targetKey: pendingScrollTarget.key,
-            y: activeExerciseOffset.y
-              + activeWorkingCardOffset.y
-              + activeSetMeasurement.y,
-          },
-        })}
+          pendingTimingPanelScroll !== null
+          && timingPanelMeasurement?.exerciseId === pendingTimingPanelScroll.exerciseId
+          && activeExerciseOffset?.exerciseId === pendingTimingPanelScroll.exerciseId
+          && activeWorkingCardOffset?.exerciseId === pendingTimingPanelScroll.exerciseId
+            ? {
+              measuredScrollRequest: {
+                animated: pendingTimingPanelScroll.animated,
+                targetKey: pendingTimingPanelScroll.key,
+                y: activeExerciseOffset.y
+                  + activeWorkingCardOffset.y
+                  + timingPanelMeasurement.y,
+              },
+            }
+            : pendingScrollTarget === null
+              || activeSet === undefined
+              || pendingScrollTarget.setId !== activeSet.id
+              || activeSetMeasurement?.setId !== activeSet.id
+              || activeExerciseOffset?.exerciseId !== activeExercise.id
+              || activeWorkingCardOffset?.exerciseId !== activeExercise.id
+                ? {}
+                : {
+                  measuredScrollRequest: {
+                    animated: pendingScrollTarget.animated,
+                    targetKey: pendingScrollTarget.key,
+                    y: activeExerciseOffset.y
+                      + activeWorkingCardOffset.y
+                      + activeSetMeasurement.y,
+                  },
+                }
+        )}
         stickyHeader={identityHeader}
         dock={(
           view.rest.state === "running" || view.rest.state === "paused"
@@ -2367,6 +2401,17 @@ function PopulatedWorkoutOverview({
                 />
               )}
               {exercise.id === activeExercise.id ? (
+                <View
+                  onLayout={(event: LayoutChangeEvent) => {
+                    const y = event.nativeEvent.layout.y;
+                    setTimingPanelMeasurement((current) =>
+                      current?.exerciseId === exercise.id && current.y === y
+                        ? current
+                        : { exerciseId: exercise.id, y }
+                    );
+                  }}
+                  testID="advanced-timing-panel-measurement"
+                >
                 <AdvancedTimingIndicator
                   busy={workingBusySetId !== null}
                   context={timingContext}
@@ -2434,6 +2479,7 @@ function PopulatedWorkoutOverview({
                     : { resolvedConfig: activeSet.advancedTimingResolved })}
                   targetSetId={activeSet?.id ?? null}
                 />
+                </View>
               ) : null}
               {exercise.workingSets.map((set, index) => (
                 <SetRow
