@@ -115,6 +115,10 @@ describe("portable merge plan", () => {
           portable_id: "b".repeat(32),
           name: "Same visible name",
         }],
+        exercise_library_entries: [{
+          exercise_id: "exercise-1",
+          origin: "custom",
+        }],
       },
     );
     const local = snapshot(
@@ -151,6 +155,13 @@ describe("portable merge plan", () => {
       recordClass: "custom_exercise",
     })]);
     expect(plan.idRemaps[0]?.localId).not.toBe("exercise-1");
+    const aggregate = plan.aggregates.find((value) =>
+      value.aggregateClass === "custom_exercise"
+      && value.portableId === "b".repeat(32),
+    );
+    expect(aggregate?.tables.exercise_library_entries).toEqual([
+      expect.objectContaining({ exercise_id: plan.idRemaps[0]?.localId }),
+    ]);
   });
 
   it("deduplicates matching custom exercise identities even when physical IDs differ", () => {
@@ -235,6 +246,55 @@ describe("portable merge plan", () => {
         archiveId: "plan-1",
       }),
     ]));
+  });
+
+  it("rewrites an owned plan child graph through deterministic root and day remaps", () => {
+    const archive = snapshot(
+      { id: "archive-session", marker: "archive", modifiedAtMs: 20 },
+      {
+        plans: [{ id: "plan-1", origin: "custom", portable_id: "f".repeat(32) }],
+        plan_days: [{ id: "day-1", plan_id: "plan-1", ordinal: 0 }],
+        plan_day_exercises: [{
+          id: "occurrence-1",
+          plan_day_id: "day-1",
+          exercise_id: "retained-exercise",
+          metric_profile: "load_reps",
+          metric_contract_version: 1,
+          exercise_metric_generation: 1,
+        }],
+      },
+    );
+    const local = snapshot(
+      { id: "local-session", marker: "local", modifiedAtMs: 10 },
+      {
+        plans: [{ id: "plan-1", origin: "custom", portable_id: "e".repeat(32) }],
+        plan_days: [{ id: "day-1", plan_id: "plan-1", ordinal: 0 }],
+      },
+    );
+
+    const plan = buildPortableMergePlan({
+      archive,
+      local,
+      payloadDigest: () => "0".repeat(64),
+    });
+    const aggregate = plan.aggregates.find((value) =>
+      value.aggregateClass === "owned_plan"
+      && value.portableId === "f".repeat(32),
+    );
+    const rootId = plan.idRemaps.find((value) =>
+      value.recordClass === "owned_plan" && value.archiveId === "plan-1",
+    )?.localId;
+
+    expect(rootId).toBeDefined();
+    expect(aggregate?.tables.plans).toEqual([
+      expect.objectContaining({ id: rootId }),
+    ]);
+    expect(aggregate?.tables.plan_days).toEqual([
+      expect.objectContaining({ plan_id: rootId }),
+    ]);
+    expect(aggregate?.tables.plan_day_exercises).toEqual([
+      expect.objectContaining({ plan_day_id: expect.not.stringMatching(/^day-1$/u) }),
+    ]);
   });
 
   it("rejects an orphan session child before returning any plan", () => {

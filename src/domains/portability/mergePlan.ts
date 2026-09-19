@@ -5,6 +5,9 @@ import {
 import type {
   LogicalBackupRow,
 } from "./backupContracts";
+import {
+  LOGICAL_BACKUP_REFERENCE_DEFINITIONS,
+} from "./restoreCommands";
 
 type MergeTables = Readonly<Record<string, readonly LogicalBackupRow[]>>;
 
@@ -36,7 +39,14 @@ export type PortableMergeOperation =
     key: string;
   }>
   | Readonly<{
-    aggregateClass: "custom_exercise" | "owned_plan";
+    aggregateClass: "custom_exercise";
+    kind: "insert" | "duplicate" | "keep_both";
+    portableId: string;
+    archiveId: string;
+    localId: string;
+  }>
+  | Readonly<{
+    aggregateClass: "owned_plan";
     kind: "insert" | "duplicate" | "keep_both";
     portableId: string;
     archiveId: string;
@@ -49,9 +59,16 @@ export type PortableMergeIdRemap = Readonly<{
   localId: string;
 }>;
 
+export type PortableMergeAggregate = Readonly<{
+  aggregateClass: "workout_session" | "custom_exercise" | "owned_plan";
+  portableId: string;
+  tables: Readonly<Record<string, readonly LogicalBackupRow[]>>;
+}>;
+
 export type PortableMergePlan = Readonly<{
   operations: readonly PortableMergeOperation[];
   idRemaps: readonly PortableMergeIdRemap[];
+  aggregates: readonly PortableMergeAggregate[];
   preview: PortableMergePreview;
 }>;
 
@@ -225,6 +242,31 @@ function rowsFor(
   return rows === undefined ? [] : rows;
 }
 
+function tupleKey(values: readonly unknown[]): string {
+  return JSON.stringify(values);
+}
+
+function assertReferenceClosure(snapshot: PortableMergePlanSnapshot): void {
+  for (const definition of LOGICAL_BACKUP_REFERENCE_DEFINITIONS) {
+    const childRows = rowsFor(snapshot, definition.childTable);
+    if (childRows.length === 0) continue;
+    const parentRows = rowsFor(snapshot, definition.parentTable);
+    const parentKeys = new Set(parentRows.map((row) => tupleKey(
+      definition.parentColumns.map((column) => row[column]),
+    )));
+    for (const child of childRows) {
+      const values = definition.childColumns.map((column) => child[column]);
+      if (values.every((value) => value === null || value === undefined)) {
+        continue;
+      }
+      if (values.some((value) => value === null || value === undefined)) invalid();
+      if (parentKeys.has(tupleKey(values))) continue;
+      if (definition.allowRetained === true) continue;
+      invalid();
+    }
+  }
+}
+
 function settingOperations(
   archive: PortableMergePlanSnapshot,
   local: PortableMergePlanSnapshot,
@@ -341,6 +383,152 @@ function rootOperations(
   });
 }
 
+function replaceScalar(
+  row: LogicalBackupRow,
+  column: string,
+  oldValue: string,
+  newValue: string,
+): LogicalBackupRow {
+  if (row[column] !== oldValue) return row;
+  return Object.freeze({ ...row, [column]: newValue });
+}
+
+function exerciseAggregate(
+  snapshot: PortableMergePlanSnapshot,
+  operation: Extract<PortableMergeOperation, { aggregateClass: "custom_exercise" }>,
+): PortableMergeAggregate {
+  const archiveId = operation.archiveId;
+  const localId = operation.localId;
+  const tables: Record<string, readonly LogicalBackupRow[]> = {};
+  for (const table of [
+    "exercises",
+    "exercise_library_entries",
+    "exercise_aliases",
+    "exercise_search_terms",
+    "exercise_taxonomy",
+    "exercise_owner_preferences",
+    "exercise_metric_baselines",
+    "metric_profile_migration_events",
+  ]) {
+    const rows = rowsFor(snapshot, table)
+      .filter((row) => row.id === archiveId || row.exercise_id === archiveId)
+      .map((row) => replaceScalar(row, "id", archiveId, localId))
+      .map((row) => replaceScalar(row, "exercise_id", archiveId, localId));
+    if (rows.length > 0) tables[table] = Object.freeze(rows);
+  }
+  const root = tables.exercises?.[0];
+  if (root === undefined || root.id !== localId) invalid();
+  return Object.freeze({
+    aggregateClass: "custom_exercise",
+    portableId: operation.portableId,
+    tables: Object.freeze(tables),
+  });
+}
+
+function tableOccupiedIds(
+  snapshot: PortableMergePlanSnapshot,
+  table: string,
+): Set<string> {
+  return new Set(rowsFor(snapshot, table).map((row) => textId(row.id)));
+}
+
+function remappedChildId(
+  table: string,
+  portableId: string,
+  ordinal: number,
+  occupied: Set<string>,
+): string {
+  const prefix = "merge_" + table + "_" + portableId + "_" + String(ordinal);
+  let candidate = prefix;
+  let suffix = 1;
+  while (occupied.has(candidate)) {
+    candidate = prefix + "_" + String(suffix);
+    suffix += 1;
+  }
+  occupied.add(candidate);
+  return candidate;
+}
+
+function mappedRows(
+  snapshot: PortableMergePlanSnapshot,
+  table: string,
+  selected: readonly LogicalBackupRow[],
+  rowMaps: readonly Readonly<{ column: string; ids: ReadonlyMap<string, string> }>[],
+  remapIds: boolean,
+  portableId: string,
+): Readonly<{ rows: readonly LogicalBackupRow[]; ids: ReadonlyMap<string, string> }> {
+  const occupied = tableOccupiedIds(snapshot, table);
+  const ids = new Map<string, string>();
+  for (const [index, row] of [...selected].sort((left, right) =>
+    textId(left.id).localeCompare(textId(right.id))).entries()) {
+    const sourceId = textId(row.id);
+    const localId = remapIds && occupied.has(sourceId)
+      ? remappedChildId(table, portableId, index, occupied)
+      : sourceId;
+    occupied.add(localId);
+    ids.set(sourceId, localId);
+  }
+  const rows = selected.map((row) => {
+    let mapped: LogicalBackupRow = Object.freeze({ ...row, id: ids.get(textId(row.id))! });
+    for (const { column, ids: references } of rowMaps) {
+      const value = mapped[column];
+      if (value === null || value === undefined) continue;
+      const replacement = references.get(textId(value));
+      if (replacement === undefined) invalid();
+      mapped = Object.freeze({ ...mapped, [column]: replacement });
+    }
+    return mapped;
+  });
+  return Object.freeze({ rows: Object.freeze(rows), ids });
+}
+
+function planAggregate(
+  snapshot: PortableMergePlanSnapshot,
+  local: PortableMergePlanSnapshot,
+  operation: Extract<PortableMergeOperation, { aggregateClass: "owned_plan" }>,
+): PortableMergeAggregate {
+  const archivePlanId = operation.archiveId;
+  const localPlanId = operation.localId;
+  const tables: Record<string, readonly LogicalBackupRow[]> = {};
+  const root = rowsFor(snapshot, "plans").filter((row) => row.id === archivePlanId);
+  if (root.length !== 1) invalid();
+  tables.plans = Object.freeze([Object.freeze({ ...root[0]!, id: localPlanId })]);
+
+  const planMap = new Map([[archivePlanId, localPlanId]]);
+  const days = rowsFor(snapshot, "plan_days").filter((row) => row.plan_id === archivePlanId);
+  const mappedDays = mappedRows(local, "plan_days", days, [
+    { column: "plan_id", ids: planMap },
+  ], operation.kind === "keep_both", operation.portableId);
+  if (mappedDays.rows.length > 0) tables.plan_days = mappedDays.rows;
+
+  const occurrences = rowsFor(snapshot, "plan_day_exercises")
+    .filter((row) => mappedDays.ids.has(textId(row.plan_day_id)));
+  const mappedOccurrences = mappedRows(local, "plan_day_exercises", occurrences, [
+    { column: "plan_day_id", ids: mappedDays.ids },
+  ], operation.kind === "keep_both", operation.portableId);
+  if (mappedOccurrences.rows.length > 0) {
+    tables.plan_day_exercises = mappedOccurrences.rows;
+  }
+
+  for (const table of [
+    "plan_warmup_sets",
+    "plan_working_set_targets",
+    "progression_policies",
+  ]) {
+    const rows = rowsFor(snapshot, table)
+      .filter((row) => mappedOccurrences.ids.has(textId(row.plan_day_exercise_id)));
+    const mapped = mappedRows(local, table, rows, [
+      { column: "plan_day_exercise_id", ids: mappedOccurrences.ids },
+    ], operation.kind === "keep_both", operation.portableId);
+    if (mapped.rows.length > 0) tables[table] = mapped.rows;
+  }
+  return Object.freeze({
+    aggregateClass: "owned_plan",
+    portableId: operation.portableId,
+    tables: Object.freeze(tables),
+  });
+}
+
 function sessionOperation(
   archive: PortableMergePlanSnapshot,
   local: PortableMergePlanSnapshot,
@@ -400,6 +588,8 @@ export function buildPortableMergePlan(input: Readonly<{
   payloadDigest(value: string): string;
 }>): PortableMergePlan {
   if (ownerNamespace(input.archive) !== ownerNamespace(input.local)) invalid();
+  assertReferenceClosure(input.archive);
+  assertReferenceClosure(input.local);
   assertSessionAggregateClosure(input.archive);
   assertSessionAggregateClosure(input.local);
   const localByPortableId = new Map<string, LogicalBackupRow[]>();
@@ -437,6 +627,17 @@ export function buildPortableMergePlan(input: Readonly<{
     ...plans.operations,
   ].sort((left, right) => operationKey(left).localeCompare(operationKey(right))));
   const idRemaps = Object.freeze([...exercises.idRemaps, ...plans.idRemaps]);
+  const aggregates = Object.freeze(operations.flatMap((operation) => {
+    if (operation.aggregateClass === "custom_exercise"
+      && (operation.kind === "insert" || operation.kind === "keep_both")) {
+      return [exerciseAggregate(input.archive, operation)];
+    }
+    if (operation.aggregateClass === "owned_plan"
+      && (operation.kind === "insert" || operation.kind === "keep_both")) {
+      return [planAggregate(input.archive, input.local, operation)];
+    }
+    return [];
+  }));
   const basePreview = operations.reduce<PortableMergePreview>(
     (total, operation) => addCounts(total, countFor(operation)),
     Object.freeze({
@@ -447,6 +648,7 @@ export function buildPortableMergePlan(input: Readonly<{
   return Object.freeze({
     operations,
     idRemaps,
+    aggregates,
     preview: Object.freeze({ ...basePreview, remapped: idRemaps.length }),
   });
 }
