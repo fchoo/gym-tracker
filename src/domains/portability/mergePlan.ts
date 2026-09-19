@@ -564,7 +564,11 @@ function mappedRows(
   snapshot: PortableMergePlanSnapshot,
   table: string,
   selected: readonly LogicalBackupRow[],
-  rowMaps: readonly Readonly<{ column: string; ids: ReadonlyMap<string, string> }>[],
+  rowMaps: readonly Readonly<{
+    column: string;
+    ids: ReadonlyMap<string, string>;
+    optional?: true;
+  }>[],
   remapIds: boolean,
   portableId: string,
 ): Readonly<{ rows: readonly LogicalBackupRow[]; ids: ReadonlyMap<string, string> }> {
@@ -581,11 +585,14 @@ function mappedRows(
   }
   const rows = selected.map((row) => {
     let mapped: LogicalBackupRow = Object.freeze({ ...row, id: ids.get(textId(row.id))! });
-    for (const { column, ids: references } of rowMaps) {
+    for (const { column, ids: references, optional } of rowMaps) {
       const value = mapped[column];
       if (value === null || value === undefined) continue;
       const replacement = references.get(textId(value));
-      if (replacement === undefined) invalid();
+      if (replacement === undefined) {
+        if (optional === true) continue;
+        invalid();
+      }
       mapped = Object.freeze({ ...mapped, [column]: replacement });
     }
     return mapped;
@@ -656,6 +663,60 @@ function planAggregate(
   ], operation.kind === "keep_both", operation.portableId);
   if (mappedScheduleBindings.rows.length > 0) {
     tables.owned_plan_schedule_bindings = mappedScheduleBindings.rows;
+  }
+
+  for (const table of [
+    "owned_plan_schedule_overrides",
+    "owned_plan_schedule_opportunities",
+    "owned_plan_schedule_events",
+  ]) {
+    const rows = rowsFor(snapshot, table)
+      .filter((row) => mappedOwnedSchedules.ids.has(textId(row.schedule_id)));
+    const maps = [
+      { column: "schedule_id", ids: mappedOwnedSchedules.ids },
+      { column: "plan_day_id", ids: mappedDays.ids, optional: true as const },
+      { column: "schedule_version_id", ids: mappedScheduleVersions.ids, optional: true as const },
+    ];
+    const mapped = mappedRows(local, table, rows, maps,
+      operation.kind === "keep_both", operation.portableId);
+    if (mapped.rows.length > 0) tables[table] = mapped.rows;
+  }
+
+  const ownedDayExercises = rowsFor(snapshot, "owned_plan_day_exercises")
+    .filter((row) => mappedDays.ids.has(textId(row.plan_day_id)));
+  const mappedOwnedDayExercises = mappedRows(local, "owned_plan_day_exercises", ownedDayExercises, [
+    { column: "plan_day_id", ids: mappedDays.ids },
+    { column: "exercise_id", ids: new Map<string, string>(), optional: true },
+  ], operation.kind === "keep_both", operation.portableId);
+  if (mappedOwnedDayExercises.rows.length > 0) {
+    tables.owned_plan_day_exercises = mappedOwnedDayExercises.rows;
+  }
+
+  for (const table of [
+    "owned_plan_warmup_sets",
+    "owned_plan_working_set_targets",
+    "owned_plan_progression_policies",
+    "owned_plan_occurrence_sources",
+  ]) {
+    const rows = rowsFor(snapshot, table)
+      .filter((row) => mappedOwnedDayExercises.ids.has(textId(row.plan_day_exercise_id)));
+    const mapped = mappedRows(local, table, rows, [
+      { column: "plan_day_exercise_id", ids: mappedOwnedDayExercises.ids },
+      { column: "plan_day_id", ids: mappedDays.ids, optional: true },
+    ], operation.kind === "keep_both", operation.portableId);
+    if (mapped.rows.length > 0) tables[table] = mapped.rows;
+  }
+
+  for (const table of [
+    "owned_plan_aggregate_states",
+    "owned_plan_starter_sources",
+  ]) {
+    const rows = rowsFor(snapshot, table)
+      .filter((row) => row.plan_id === archivePlanId);
+    const mapped = mappedRows(local, table, rows, [
+      { column: "plan_id", ids: planMap },
+    ], operation.kind === "keep_both", operation.portableId);
+    if (mapped.rows.length > 0) tables[table] = mapped.rows;
   }
 
   for (const table of [

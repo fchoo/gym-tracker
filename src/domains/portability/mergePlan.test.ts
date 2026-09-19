@@ -322,6 +322,17 @@ describe("portable merge plan", () => {
           schedule_version_id: "schedule-version-1",
           plan_day_id: "day-1",
         }],
+        owned_plan_schedule_overrides: [{
+          id: "schedule-override-1",
+          schedule_id: "owned-schedule-1",
+          plan_day_id: "day-1",
+        }],
+        owned_plan_schedule_opportunities: [{
+          id: "schedule-opportunity-1",
+          schedule_id: "owned-schedule-1",
+          schedule_version_id: "schedule-version-1",
+          plan_day_id: "day-1",
+        }],
         plan_day_exercises: [{
           id: "occurrence-1",
           plan_day_id: "day-1",
@@ -380,6 +391,19 @@ describe("portable merge plan", () => {
     ]);
     expect(aggregate?.tables.owned_plan_schedule_bindings).toEqual([
       expect.objectContaining({
+        schedule_version_id: expect.not.stringMatching(/^schedule-version-1$/u),
+        plan_day_id: expect.not.stringMatching(/^day-1$/u),
+      }),
+    ]);
+    expect(aggregate?.tables.owned_plan_schedule_overrides).toEqual([
+      expect.objectContaining({
+        schedule_id: expect.not.stringMatching(/^owned-schedule-1$/u),
+        plan_day_id: expect.not.stringMatching(/^day-1$/u),
+      }),
+    ]);
+    expect(aggregate?.tables.owned_plan_schedule_opportunities).toEqual([
+      expect.objectContaining({
+        schedule_id: expect.not.stringMatching(/^owned-schedule-1$/u),
         schedule_version_id: expect.not.stringMatching(/^schedule-version-1$/u),
         plan_day_id: expect.not.stringMatching(/^day-1$/u),
       }),
