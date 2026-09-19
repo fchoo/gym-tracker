@@ -29,6 +29,15 @@ import {
   createSqliteMergeLocalFactsPort,
 } from "../../src/platform/sqlite/repositories/restorePreflightAdapters";
 import {
+  createExerciseSearchIndexRepository,
+} from "../../src/platform/sqlite/repositories/exerciseSearchIndexRepository";
+import {
+  createHistoryProjectionRepository,
+} from "../../src/platform/sqlite/repositories/historyProjectionRepository";
+import {
+  createRestoreReconciliationRepository,
+} from "../../src/platform/sqlite/repositories/restoreReconciliationRepository";
+import {
   configureSqliteConnection,
   type SqliteConnection,
   type SqlitePreparedResult,
@@ -174,6 +183,14 @@ async function canonicalState(kernel: SqliteKernel): Promise<unknown> {
   };
 }
 
+function reconciliation(kernel: SqliteKernel) {
+  return createRestoreReconciliationRepository(kernel, {
+    history: createHistoryProjectionRepository(kernel),
+    nowMs: () => 100,
+    search: createExerciseSearchIndexRepository(kernel),
+  });
+}
+
 describe("logical merge repository", () => {
   it("replaces one older local session aggregate with the newer archive aggregate in one writer transaction", async () => {
     const archiveKernel = await open("archive");
@@ -315,5 +332,38 @@ describe("logical merge repository", () => {
       .commit(planned))
       .rejects.toEqual(expect.objectContaining({ code: "logical_merge_failed" }));
     await expect(canonicalState(localKernel)).resolves.toEqual(before);
+  });
+
+  it("rebuilds deterministic derivatives after an archive-wins merge", async () => {
+    const archiveKernel = await open("reconcile-archive");
+    await seedSession(archiveKernel, {
+      id: "archive-session",
+      portableId: "a".repeat(32),
+      modifiedAtMs: 20,
+    });
+    const archive = await snapshot(archiveKernel);
+    const localKernel = await open("reconcile-local");
+    await seedSession(localKernel, {
+      id: "local-session",
+      portableId: "a".repeat(32),
+      modifiedAtMs: 10,
+    });
+
+    await createLogicalMergeRepository(localKernel, { sha256 })
+      .commit(await preflight(localKernel, archive));
+    await expect(reconciliation(localKernel).reconcileAndRebuild())
+      .resolves.toMatchObject({ outcome: "rebuilt", state: "ready" });
+    const first = {
+      history: await createHistoryProjectionRepository(localKernel).dumpProjectionRows(),
+      search: await createExerciseSearchIndexRepository(localKernel).verifyParity(),
+      state: await localKernel.queryAll("SELECT state FROM portability_restore_state"),
+    };
+    await expect(reconciliation(localKernel).reconcileAndRebuild())
+      .resolves.toMatchObject({ outcome: "already_ready", state: "ready" });
+    expect({
+      history: await createHistoryProjectionRepository(localKernel).dumpProjectionRows(),
+      search: await createExerciseSearchIndexRepository(localKernel).verifyParity(),
+      state: await localKernel.queryAll("SELECT state FROM portability_restore_state"),
+    }).toEqual(first);
   });
 });

@@ -31,6 +31,7 @@ export const PORTABLE_MERGE_CONTRACT_VERSION = 1 as const;
 export const PORTABLE_MERGE_CONTRACT_CASES = [
   "portable-merge-archive-wins",
   "portable-merge-insert-rollback",
+  "portable-merge-verification-rollback",
 ] as const;
 
 export type PortableMergeContractCaseId =
@@ -235,6 +236,19 @@ const contractCases: Record<PortableMergeContractCaseId, ContractCase> = {
   },
 
   async "portable-merge-insert-rollback"(adapter, caseId) {
+    await assertRollback(adapter, caseId, "insert:session_sets");
+  },
+
+  async "portable-merge-verification-rollback"(adapter, caseId) {
+    await assertRollback(adapter, caseId, "verified");
+  },
+};
+
+async function assertRollback(
+  adapter: PortableMergeContractAdapter,
+  caseId: PortableMergeContractCaseId,
+  faultStage: "insert:session_sets" | "verified",
+): Promise<void> {
     await withRuntimes(adapter, caseId, async (archive, local) => {
       await seedSession(archive.kernel, {
         id: "archive-session", portableId: "a".repeat(32), modifiedAtMs: 20,
@@ -249,7 +263,7 @@ const contractCases: Record<PortableMergeContractCaseId, ContractCase> = {
         await createLogicalMergeRepository(local.kernel, {
           sha256: adapter.sha256,
           faultAfter: async (stage) => {
-            if (stage === "insert:session_sets") throw new Error("portable_merge_injected_fault");
+            if (stage === faultStage) throw new Error("portable_merge_injected_fault");
           },
         }).commit(plan);
       } catch {
@@ -259,8 +273,7 @@ const contractCases: Record<PortableMergeContractCaseId, ContractCase> = {
       invariant(await canonicalState(local.kernel) === before,
         "portable_merge_rollback_changed_source");
     });
-  },
-};
+}
 
 export async function runPortableMergeContract(
   adapter: PortableMergeContractAdapter,

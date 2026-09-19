@@ -111,6 +111,7 @@ describe("portable merge contract", () => {
     expect(result.cases).toEqual(expect.arrayContaining([
       expect.objectContaining({ id: "portable-merge-archive-wins", status: "passed" }),
       expect.objectContaining({ id: "portable-merge-insert-rollback", status: "passed" }),
+      expect.objectContaining({ id: "portable-merge-verification-rollback", status: "passed" }),
     ]));
   });
 
