@@ -135,6 +135,14 @@ test("Phase 10 Maestro flow exercises per-rep and 3+3+3 cluster lifecycle timing
   assert.ok(setOverride >= 0 && setOverride < clusterControl);
   assert.match(
     flow,
+    /tapOn: "Save timing"[\s\S]*?scrollUntilVisible:[\s\S]*?text: "Per-rep cadence"/u,
+  );
+  assert.match(
+    flow,
+    /inputText: "20"[\s\S]*?tapOn: "Save timing"[\s\S]*?scrollUntilVisible:[\s\S]*?text: "Cluster timing"/u,
+  );
+  assert.match(
+    flow,
     /inputText: "20"[\s\S]*?hideKeyboard[\s\S]*?tapOn: "both cues"[\s\S]*?tapOn: "Save timing"/u,
   );
   assert.match(flow, /Per-rep cadence/u);

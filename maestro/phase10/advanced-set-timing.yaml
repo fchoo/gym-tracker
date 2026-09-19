@@ -64,6 +64,12 @@ tags:
 - inputText: "3"
 - tapOn: "audio cues"
 - tapOn: "Save timing"
+- scrollUntilVisible:
+    element:
+      text: "Per-rep cadence"
+    direction: UP
+    centerElement: true
+    timeout: 30000
 - assertVisible: "Per-rep cadence"
 - assertVisible: "Per-rep interval in seconds"
 - tapOn:
@@ -89,6 +95,12 @@ tags:
 - extendedWaitUntil:
     visible: "Configure and start per-rep cadence"
     timeout: 30000
+- scrollUntilVisible:
+    element:
+      text: "Set timing"
+    direction: DOWN
+    centerElement: true
+    timeout: 30000
 - assertVisible: "Set timing"
 - tapOn: "Set timing"
 - assertVisible: "Cluster timing"
@@ -105,6 +117,12 @@ tags:
 - hideKeyboard
 - tapOn: "both cues"
 - tapOn: "Save timing"
+- scrollUntilVisible:
+    element:
+      text: "Cluster timing"
+    direction: UP
+    centerElement: true
+    timeout: 30000
 - assertVisible: "Cluster timing"
 - assertVisible: "Cluster grouping"
 - tapOn: "Configure and start cluster timing"
