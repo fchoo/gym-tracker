@@ -70,7 +70,7 @@ tags:
 - tapOn:
     id: "advanced-timing-interval-seconds"
 - eraseText: 1
-- inputText: "1"
+- inputText: "30"
 - hideKeyboard
 - scrollUntilVisible:
     element:
