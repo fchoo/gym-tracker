@@ -140,6 +140,7 @@ export type PortableMergePlan = Readonly<{
   operations: readonly PortableMergeOperation[];
   idRemaps: readonly PortableMergeIdRemap[];
   idMappings: readonly PortableMergeIdMapping[];
+  settings: readonly LogicalBackupRow[];
   aggregates: readonly PortableMergeAggregate[];
   preview: PortableMergePreview;
 }>;
@@ -383,10 +384,13 @@ function assertReferenceClosure(snapshot: PortableMergePlanSnapshot): void {
   }
 }
 
-function settingOperations(
+function settingPlan(
   archive: PortableMergePlanSnapshot,
   local: PortableMergePlanSnapshot,
-): readonly PortableMergeOperation[] {
+): Readonly<{
+  operations: readonly PortableMergeOperation[];
+  inserts: readonly LogicalBackupRow[];
+}> {
   const localKeys = new Set<string>();
   for (const row of rowsFor(local, "app_settings")) {
     const key = textId(row.key);
@@ -394,16 +398,24 @@ function settingOperations(
     localKeys.add(key);
   }
   const archiveKeys = new Set<string>();
-  return Object.freeze(rowsFor(archive, "app_settings").map((row) => {
+  const inserts: LogicalBackupRow[] = [];
+  const operations = rowsFor(archive, "app_settings").map((row) => {
     const key = textId(row.key);
     if (archiveKeys.has(key)) invalid();
     archiveKeys.add(key);
-    return Object.freeze({
+    const operation = Object.freeze({
       aggregateClass: "app_setting" as const,
       kind: localKeys.has(key) ? "local_won" as const : "insert" as const,
       key,
     });
-  }).sort((left, right) => left.key.localeCompare(right.key)));
+    if (operation.kind === "insert") inserts.push(row);
+    return operation;
+  }).sort((left, right) => left.key.localeCompare(right.key));
+  return Object.freeze({
+    operations: Object.freeze(operations),
+    inserts: Object.freeze(inserts.sort((left, right) =>
+      textId(left.key).localeCompare(textId(right.key)))),
+  });
 }
 
 function nextPhysicalId(
@@ -869,7 +881,7 @@ export async function buildPortableMergePlan(input: Readonly<{
   if (new Set(sessionOperations.map(operationKey)).size !== sessionOperations.length) {
     invalid();
   }
-  const settings = settingOperations(input.archive, input.local);
+  const settings = settingPlan(input.archive, input.local);
   const exercises = rootOperations(input.archive, input.local, {
     aggregateClass: "custom_exercise",
     table: "exercises",
@@ -880,7 +892,7 @@ export async function buildPortableMergePlan(input: Readonly<{
   });
   const operations: readonly PortableMergeOperation[] = Object.freeze([
     ...sessionOperations,
-    ...settings,
+    ...settings.operations,
     ...exercises.operations,
     ...plans.operations,
   ].sort((left, right) => operationKey(left).localeCompare(operationKey(right))));
@@ -940,6 +952,7 @@ export async function buildPortableMergePlan(input: Readonly<{
     operations,
     idRemaps,
     idMappings,
+    settings: settings.inserts,
     aggregates,
     preview: Object.freeze({ ...basePreview, remapped: idRemaps.length }),
   });

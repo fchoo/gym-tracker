@@ -19,6 +19,9 @@ import {
   type StoredMergePreflight,
 } from "../../src/domains/portability/mergeCommands";
 import {
+  buildPortableMergePlan,
+} from "../../src/domains/portability/mergePlan";
+import {
   createLogicalBackupRepository,
 } from "../../src/platform/sqlite/repositories/logicalBackupRepository";
 import {
@@ -191,7 +194,343 @@ function reconciliation(kernel: SqliteKernel) {
   });
 }
 
+async function fullPlanFixture(kernel: SqliteKernel) {
+  await kernel.write(async (transaction) => {
+    await transaction.execute(
+      "INSERT INTO app_settings (key, value_version, value_json, revision, updated_at_ms) VALUES ('appearance', 1, ?, 1, 1)",
+      ['"light"'],
+    );
+    await transaction.execute(
+      "INSERT INTO exercises (id, content_pack_id, origin, source_namespace, upstream_id, name, metric_profile, metric_contract_version, exercise_metric_generation, equipment, default_rest_seconds, revision, portable_id) VALUES ('local-exercise', NULL, 'custom', NULL, NULL, 'Local', 'load_reps', 1, 1, 'Unspecified', 90, 1, ?)",
+      ["a".repeat(32)],
+    );
+    await transaction.execute(
+      "INSERT INTO exercise_library_entries (exercise_id, origin, canonical_name, exercise_type, movement_class, metric_profile, metric_contract_version, exercise_metric_generation, availability, revision) VALUES ('local-exercise', 'custom', 'Local', 'strength', 'compound', 'load_reps', 1, 1, 'available', 1)",
+    );
+    await transaction.execute(
+      "INSERT INTO taxonomy_terms (kind, slug, display_name) VALUES ('exercise_type', 'strength', 'Strength')",
+    );
+  });
+  const local = await createSqliteMergeLocalFactsPort(kernel).read();
+  const archive = {
+    version: 2 as const,
+    schemaVersion: 22,
+    tables: {
+      ...local.tables,
+      portable_owner_identity: [{ id: 1, owner_namespace: local.ownerNamespace }],
+      app_settings: [
+        { key: "appearance", value_version: 1, value_json: '"dark"', revision: 1, updated_at_ms: 2 },
+        { key: "units", value_version: 1, value_json: '"metric"', revision: 1, updated_at_ms: 2 },
+      ],
+      exercises: [{
+        id: "archive-exercise",
+        content_pack_id: null,
+        origin: "custom",
+        source_namespace: null,
+        upstream_id: null,
+        name: "Archive",
+        metric_profile: "load_reps",
+        metric_contract_version: 1,
+        exercise_metric_generation: 1,
+        equipment: "Unspecified",
+        default_rest_seconds: 90,
+        revision: 1,
+        portable_id: "b".repeat(32),
+      }],
+      exercise_library_entries: [{
+        exercise_id: "archive-exercise",
+        origin: "custom",
+        canonical_name: "Archive",
+        exercise_type: "strength",
+        movement_class: "compound",
+        metric_profile: "load_reps",
+        metric_contract_version: 1,
+        exercise_metric_generation: 1,
+        availability: "available",
+        revision: 1,
+      }],
+      exercise_aliases: [{
+        id: 101,
+        exercise_id: "archive-exercise",
+        ordinal: 0,
+        display_text: "Archive alias",
+        normalized_text: "archive alias",
+      }],
+      exercise_search_terms: [{
+        id: 201,
+        exercise_id: "archive-exercise",
+        kind: "canonical",
+        ordinal: 0,
+        display_text: "Archive",
+        normalized_text: "archive",
+      }],
+      exercise_taxonomy: [
+        {
+          exercise_id: "archive-exercise",
+          kind: "exercise_type",
+          slug: "strength",
+          relation: "type",
+          ordinal: 0,
+        },
+        {
+          exercise_id: "archive-exercise",
+          kind: "movement_class",
+          slug: "compound",
+          relation: "movement",
+          ordinal: 0,
+        },
+      ],
+      taxonomy_terms: [
+        { kind: "exercise_type", slug: "strength", display_name: "Strength" },
+        { kind: "movement_class", slug: "compound", display_name: "Compound" },
+      ],
+      exercise_owner_preferences: [{
+        exercise_id: "archive-exercise",
+        favorite: 1,
+        hidden: 0,
+        archived: 0,
+        revision: 1,
+        updated_at_ms: 2,
+      }],
+      exercise_metric_baselines: [{
+        exercise_id: "archive-exercise",
+        metric_profile: "load_reps",
+        metric_contract_version: 1,
+        exercise_metric_generation: 1,
+        status: "awaiting_comparable_observation",
+        established_at_ms: 2,
+      }],
+    },
+  };
+  const plan = await buildPortableMergePlan({
+    archive,
+    local: {
+      version: 2,
+      ...local,
+      tables: {
+        ...local.tables,
+        portable_owner_identity: [{ id: 1, owner_namespace: local.ownerNamespace }],
+      },
+    },
+    payloadDigest: sha256,
+  });
+  return {
+    local,
+    plan,
+  };
+}
+
 describe("logical merge repository", () => {
+  it("applies a precomputed custom-exercise aggregate and missing setting atomically", async () => {
+    const kernel = await open("full-plan");
+    const { local, plan } = await fullPlanFixture(kernel);
+
+    await expect(createLogicalMergeRepository(kernel, { sha256 })
+      .commitFullPlan({
+        localFingerprint: await sha256(canonicalMergeValue(local)),
+        plan,
+      }))
+      .resolves.toEqual({ state: "rebuild_pending" });
+    await expect(kernel.queryAll(
+      "SELECT key, value_json FROM app_settings ORDER BY key",
+    )).resolves.toEqual([
+      { key: "appearance", value_json: '"light"' },
+      { key: "units", value_json: '"metric"' },
+    ]);
+    await expect(kernel.queryAll(
+      "SELECT id, portable_id FROM exercises WHERE origin = 'custom' ORDER BY id",
+    )).resolves.toEqual([
+      { id: "archive-exercise", portable_id: "b".repeat(32) },
+      { id: "local-exercise", portable_id: "a".repeat(32) },
+    ]);
+    await expect(kernel.queryAll(
+      "SELECT exercise_id, canonical_name FROM exercise_library_entries WHERE exercise_id = 'archive-exercise'",
+    )).resolves.toEqual([{ exercise_id: "archive-exercise", canonical_name: "Archive" }]);
+    await expect(kernel.queryAll(
+      "SELECT kind, slug FROM taxonomy_terms WHERE (kind = 'exercise_type' AND slug = 'strength') OR (kind = 'movement_class' AND slug = 'compound') ORDER BY kind",
+    )).resolves.toEqual([
+      { kind: "exercise_type", slug: "strength" },
+      { kind: "movement_class", slug: "compound" },
+    ]);
+    await expect(kernel.queryAll(
+      "SELECT exercise_id, ordinal FROM exercise_aliases WHERE exercise_id = 'archive-exercise'",
+    )).resolves.toEqual([{ exercise_id: "archive-exercise", ordinal: 0 }]);
+    await expect(kernel.queryAll(
+      "SELECT exercise_id, ordinal FROM exercise_search_terms WHERE exercise_id = 'archive-exercise'",
+    )).resolves.toEqual([{ exercise_id: "archive-exercise", ordinal: 0 }]);
+    await expect(kernel.queryAll(
+      "SELECT exercise_id, kind, relation FROM exercise_taxonomy WHERE exercise_id = 'archive-exercise' ORDER BY kind",
+    )).resolves.toEqual([
+      { exercise_id: "archive-exercise", kind: "exercise_type", relation: "type" },
+      { exercise_id: "archive-exercise", kind: "movement_class", relation: "movement" },
+    ]);
+    await expect(kernel.queryAll(
+      "SELECT exercise_id, favorite FROM exercise_owner_preferences WHERE exercise_id = 'archive-exercise'",
+    )).resolves.toEqual([{ exercise_id: "archive-exercise", favorite: 1 }]);
+    await expect(kernel.queryAll(
+      "SELECT exercise_id, status FROM exercise_metric_baselines WHERE exercise_id = 'archive-exercise'",
+    )).resolves.toEqual([{
+      exercise_id: "archive-exercise",
+      status: "awaiting_comparable_observation",
+    }]);
+  });
+
+  it("rolls back the admitted full-plan slice after every injected write fault", async () => {
+    const stages: readonly LogicalMergeFaultStage[] = [
+      "fingerprint_checked",
+      "full_plan_insert:app_settings",
+      "full_plan_insert:taxonomy_terms",
+      "full_plan_insert:exercises",
+      "full_plan_insert:exercise_library_entries",
+      "full_plan_insert:exercise_aliases",
+      "full_plan_insert:exercise_search_terms",
+      "full_plan_insert:exercise_taxonomy",
+      "full_plan_insert:exercise_owner_preferences",
+      "full_plan_insert:exercise_metric_baselines",
+      "full_plan_insert:metric_profile_migration_events",
+      "verified",
+      "state_updated",
+    ];
+
+    for (const stage of stages) {
+      const kernel = await open(`full-plan-fault-${stage}`);
+      const { local, plan } = await fullPlanFixture(kernel);
+      const before = await canonicalState(kernel);
+
+      await expect(createLogicalMergeRepository(kernel, {
+        sha256,
+        faultAfter: async (actual) => {
+          if (actual === stage) throw new Error("fault");
+        },
+      }).commitFullPlan({
+        localFingerprint: await sha256(canonicalMergeValue(local)),
+        plan,
+      })).rejects.toEqual(expect.objectContaining({ code: "logical_merge_failed" }));
+      await expect(canonicalState(kernel)).resolves.toEqual(before);
+    }
+  }, 90_000);
+
+  it("rejects a stale full-plan fingerprint before changing source facts", async () => {
+    const kernel = await open("full-plan-stale");
+    const { local, plan } = await fullPlanFixture(kernel);
+    await kernel.write((transaction) => transaction.execute(
+      "UPDATE app_settings SET revision = revision + 1 WHERE key = 'appearance'",
+    ));
+    const before = await canonicalState(kernel);
+
+    await expect(createLogicalMergeRepository(kernel, { sha256 })
+      .commitFullPlan({
+        localFingerprint: await sha256(canonicalMergeValue(local)),
+        plan,
+      }))
+      .rejects.toEqual(expect.objectContaining({ code: "logical_merge_failed" }));
+    await expect(canonicalState(kernel)).resolves.toEqual(before);
+  });
+
+  it("rejects unsupported aggregate classes before the full-plan writer opens", async () => {
+    const kernel = await open("full-plan-unsupported");
+    const { local, plan } = await fullPlanFixture(kernel);
+    const unsupportedPlan = {
+      ...plan,
+      operations: [
+        ...plan.operations,
+        {
+          aggregateClass: "workout_session" as const,
+          kind: "insert" as const,
+          portableId: "c".repeat(32),
+          archiveId: "archive-session",
+          localId: "archive-session",
+        },
+      ],
+    };
+    const before = await canonicalState(kernel);
+
+    await expect(createLogicalMergeRepository(kernel, { sha256 })
+      .commitFullPlan({
+        localFingerprint: await sha256(canonicalMergeValue(local)),
+        plan: unsupportedPlan,
+      }))
+      .rejects.toEqual(expect.objectContaining({ code: "logical_merge_failed" }));
+    await expect(canonicalState(kernel)).resolves.toEqual(before);
+  });
+
+  it("rejects a local-wins setting whose key is absent from the current database", async () => {
+    const kernel = await open("full-plan-setting-mismatch");
+    const { local, plan } = await fullPlanFixture(kernel);
+    const mismatchedPlan = {
+      ...plan,
+      operations: [{
+        aggregateClass: "app_setting" as const,
+        kind: "local_won" as const,
+        key: "absent",
+      }],
+      idMappings: [],
+      idRemaps: [],
+      settings: [],
+      aggregates: [],
+    };
+    const before = await canonicalState(kernel);
+
+    await expect(createLogicalMergeRepository(kernel, { sha256 })
+      .commitFullPlan({
+        localFingerprint: await sha256(canonicalMergeValue(local)),
+        plan: mismatchedPlan,
+      }))
+      .rejects.toEqual(expect.objectContaining({ code: "logical_merge_failed" }));
+    await expect(canonicalState(kernel)).resolves.toEqual(before);
+  });
+
+  it("rejects a custom-exercise aggregate that writes a child into another exercise", async () => {
+    const kernel = await open("full-plan-cross-aggregate");
+    const { local, plan } = await fullPlanFixture(kernel);
+    const aggregate = plan.aggregates[0]!;
+    const aliases = aggregate.tables.exercise_aliases ?? [];
+    const mismatchedPlan = {
+      ...plan,
+      aggregates: [{
+        ...aggregate,
+        tables: {
+          ...aggregate.tables,
+          exercise_aliases: aliases.map((alias) => ({
+            ...alias,
+            exercise_id: "local-exercise",
+          })),
+        },
+      }],
+    };
+    const before = await canonicalState(kernel);
+
+    await expect(createLogicalMergeRepository(kernel, { sha256 })
+      .commitFullPlan({
+        localFingerprint: await sha256(canonicalMergeValue(local)),
+        plan: mismatchedPlan,
+      }))
+      .rejects.toEqual(expect.objectContaining({ code: "logical_merge_failed" }));
+    await expect(canonicalState(kernel)).resolves.toEqual(before);
+  });
+
+  it("rejects non-custom mapping metadata before the full-plan writer opens", async () => {
+    const kernel = await open("full-plan-mapping-mismatch");
+    const { local, plan } = await fullPlanFixture(kernel);
+    const mismatchedPlan = {
+      ...plan,
+      idMappings: [...plan.idMappings, {
+        recordClass: "owned_plan" as const,
+        archiveId: "archive-plan",
+        localId: "archive-plan",
+      }],
+    };
+    const before = await canonicalState(kernel);
+
+    await expect(createLogicalMergeRepository(kernel, { sha256 })
+      .commitFullPlan({
+        localFingerprint: await sha256(canonicalMergeValue(local)),
+        plan: mismatchedPlan,
+      }))
+      .rejects.toEqual(expect.objectContaining({ code: "logical_merge_failed" }));
+    await expect(canonicalState(kernel)).resolves.toEqual(before);
+  });
+
   it("replaces one older local session aggregate with the newer archive aggregate in one writer transaction", async () => {
     const archiveKernel = await open("archive");
     await seedSession(archiveKernel, {
