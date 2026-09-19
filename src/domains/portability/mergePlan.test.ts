@@ -6,7 +6,11 @@ import {
 
 import {
   buildPortableMergePlan,
+  PORTABLE_MERGE_TABLE_CLASSES,
 } from "./mergePlan";
+import {
+  LOGICAL_BACKUP_TABLES,
+} from "./backupContracts";
 
 const ownerNamespace = "1".repeat(32);
 const sessionPortableId = "a".repeat(32);
@@ -38,6 +42,11 @@ function snapshot(
 }
 
 describe("portable merge plan", () => {
+  it("classifies every portable source table before planning a merge", () => {
+    expect(Object.keys(PORTABLE_MERGE_TABLE_CLASSES).sort())
+      .toEqual([...LOGICAL_BACKUP_TABLES].sort());
+  });
+
   it("uses the canonical payload digest to break an equal-timestamp session tie deterministically", () => {
     const archive = snapshot({ id: "archive-session", marker: "archive", modifiedAtMs: 20 });
     const local = snapshot({ id: "local-session", marker: "local", modifiedAtMs: 20 });

@@ -4,12 +4,75 @@ import {
 } from "./portableIdentity";
 import type {
   LogicalBackupRow,
+  LogicalBackupTableName,
 } from "./backupContracts";
 import {
   LOGICAL_BACKUP_REFERENCE_DEFINITIONS,
 } from "./restoreCommands";
 
 type MergeTables = Readonly<Record<string, readonly LogicalBackupRow[]>>;
+
+export type PortableMergeTableClass =
+  | "metadata"
+  | "app_setting"
+  | "custom_exercise"
+  | "owned_plan"
+  | "workout_session";
+
+/**
+ * Every persisted v2 source table belongs to exactly one merge aggregate
+ * class. The planner remains fail-closed when a future portability table is
+ * added without extending this map.
+ */
+export const PORTABLE_MERGE_TABLE_CLASSES = Object.freeze({
+  portable_owner_identity: "metadata",
+  app_settings: "app_setting",
+  exercises: "custom_exercise",
+  exercise_library_entries: "custom_exercise",
+  exercise_owner_preferences: "custom_exercise",
+  exercise_aliases: "custom_exercise",
+  exercise_search_terms: "custom_exercise",
+  exercise_taxonomy: "custom_exercise",
+  taxonomy_terms: "custom_exercise",
+  metric_profile_migration_events: "custom_exercise",
+  exercise_metric_baselines: "custom_exercise",
+  plans: "owned_plan",
+  plan_schedules: "owned_plan",
+  plan_schedule_bindings: "owned_plan",
+  plan_days: "owned_plan",
+  plan_day_exercises: "owned_plan",
+  plan_warmup_sets: "owned_plan",
+  plan_working_set_targets: "owned_plan",
+  progression_policies: "owned_plan",
+  progression_recommendations: "owned_plan",
+  owned_plan_aggregate_states: "owned_plan",
+  owned_plan_mutation_requests: "owned_plan",
+  owned_plan_starter_sources: "owned_plan",
+  owned_plan_day_sources: "owned_plan",
+  owned_plan_day_exercises: "owned_plan",
+  owned_plan_warmup_sets: "owned_plan",
+  owned_plan_working_set_targets: "owned_plan",
+  owned_plan_progression_policies: "owned_plan",
+  owned_plan_occurrence_sources: "owned_plan",
+  owned_plan_schedules: "owned_plan",
+  owned_plan_schedule_versions: "owned_plan",
+  owned_plan_schedule_bindings: "owned_plan",
+  owned_plan_schedule_overrides: "owned_plan",
+  owned_plan_schedule_opportunities: "owned_plan",
+  owned_plan_schedule_events: "owned_plan",
+  starter_plan_activation_requests: "owned_plan",
+  owned_progression_recommendations: "owned_plan",
+  workout_sessions: "workout_session",
+  workout_session_exercise_edit_receipts: "workout_session",
+  workout_session_exercise_reorder_receipts: "workout_session",
+  session_exercises: "workout_session",
+  session_sets: "workout_session",
+  session_rest_states: "workout_session",
+  session_advanced_timing_states: "workout_session",
+  session_undo_snapshots: "workout_session",
+  history_session_overlays: "workout_session",
+  history_audit_events: "workout_session",
+} satisfies Readonly<Record<LogicalBackupTableName, PortableMergeTableClass>>);
 
 export type PortableMergePlanSnapshot = Readonly<{
   version: 2;
