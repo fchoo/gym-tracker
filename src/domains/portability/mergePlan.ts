@@ -625,6 +625,7 @@ function planAggregate(
   snapshot: PortableMergePlanSnapshot,
   local: PortableMergePlanSnapshot,
   operation: Extract<PortableMergeOperation, { aggregateClass: "owned_plan" }>,
+  exerciseMappings: ReadonlyMap<string, string>,
 ): PortableMergeAggregate {
   const archivePlanId = operation.archiveId;
   const localPlanId = operation.localId;
@@ -644,6 +645,7 @@ function planAggregate(
     .filter((row) => mappedDays.ids.has(textId(row.plan_day_id)));
   const mappedOccurrences = mappedRows(local, "plan_day_exercises", occurrences, [
     { column: "plan_day_id", ids: mappedDays.ids },
+    { column: "exercise_id", ids: exerciseMappings, optional: true },
   ], operation.kind === "keep_both", operation.portableId);
   if (mappedOccurrences.rows.length > 0) {
     tables.plan_day_exercises = mappedOccurrences.rows;
@@ -902,6 +904,9 @@ export async function buildPortableMergePlan(input: Readonly<{
     ...exercises.idMappings,
     ...plans.idMappings,
   ]);
+  const exerciseMappings = new Map(
+    exercises.idMappings.map(({ archiveId, localId }) => [archiveId, localId]),
+  );
   const aggregates = Object.freeze(operations.flatMap((operation) => {
     if (operation.aggregateClass === "workout_session"
       && (operation.kind === "insert" || operation.kind === "archive_won")) {
@@ -913,7 +918,7 @@ export async function buildPortableMergePlan(input: Readonly<{
     }
     if (operation.aggregateClass === "owned_plan"
       && (operation.kind === "insert" || operation.kind === "keep_both")) {
-      return [planAggregate(input.archive, input.local, operation)];
+      return [planAggregate(input.archive, input.local, operation, exerciseMappings)];
     }
     return [];
   }));

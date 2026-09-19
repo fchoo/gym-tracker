@@ -417,6 +417,52 @@ describe("portable merge plan", () => {
     ]);
   });
 
+  it("rewrites a plan occurrence to the mapped local custom exercise identity", async () => {
+    const archive = snapshot(
+      { id: "archive-session", marker: "archive", modifiedAtMs: 20 },
+      {
+        exercises: [{
+          id: "archive-exercise",
+          origin: "custom",
+          portable_id: "c".repeat(32),
+        }],
+        plans: [{ id: "archive-plan", origin: "custom", portable_id: "d".repeat(32) }],
+        plan_days: [{ id: "archive-day", plan_id: "archive-plan", ordinal: 0 }],
+        plan_day_exercises: [{
+          id: "archive-occurrence",
+          plan_day_id: "archive-day",
+          exercise_id: "archive-exercise",
+          metric_profile: "load_reps",
+          metric_contract_version: 1,
+          exercise_metric_generation: 1,
+        }],
+      },
+    );
+    const local = snapshot(
+      { id: "local-session", marker: "local", modifiedAtMs: 10 },
+      {
+        exercises: [{
+          id: "local-exercise",
+          origin: "custom",
+          portable_id: "c".repeat(32),
+        }],
+      },
+    );
+
+    const plan = await buildPortableMergePlan({
+      archive,
+      local,
+      payloadDigest: async () => "0".repeat(64),
+    });
+    const aggregate = plan.aggregates.find((value) =>
+      value.aggregateClass === "owned_plan" && value.portableId === "d".repeat(32),
+    );
+
+    expect(aggregate?.tables.plan_day_exercises).toEqual([
+      expect.objectContaining({ exercise_id: "local-exercise" }),
+    ]);
+  });
+
   it("rejects an orphan session child before returning any plan", async () => {
     const archive = snapshot(
       { id: "archive-session", marker: "archive", modifiedAtMs: 20 },
