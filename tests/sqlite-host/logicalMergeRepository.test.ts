@@ -492,7 +492,92 @@ function transactionStub(input: Readonly<{
   };
 }
 
+function operationPlan(operations: PortableMergePlan["operations"]): PortableMergePlan {
+  return {
+    operations,
+    idRemaps: [],
+    idMappings: [],
+    settings: [],
+    aggregates: [],
+    preview: {
+      inserted: 0, duplicates: 0, archiveWon: 0, localWon: 0,
+      keptBoth: 0, remapped: 0, conflicts: 0,
+    },
+  };
+}
+
 describe("logical merge repository", () => {
+  it("accepts matching live local facts for every full-plan operation class", () => {
+    const operations: PortableMergePlan["operations"] = [
+      { aggregateClass: "app_setting", kind: "insert", key: "new-setting" },
+      { aggregateClass: "app_setting", kind: "local_won", key: "existing-setting" },
+      { aggregateClass: "workout_session", kind: "insert", portableId: "a".repeat(32), archiveId: "new-session", localId: "new-session" },
+      { aggregateClass: "workout_session", kind: "archive_won", portableId: "b".repeat(32), archiveId: "archive-session", localId: "local-session" },
+      { aggregateClass: "owned_plan", kind: "duplicate", portableId: "c".repeat(32), archiveId: "archive-dup-plan", localId: "local-dup-plan" },
+      { aggregateClass: "owned_plan", kind: "insert", portableId: "d".repeat(32), archiveId: "new-plan", localId: "new-plan" },
+      { aggregateClass: "owned_plan", kind: "keep_both", portableId: "e".repeat(32), archiveId: "physical-plan", localId: "new-physical-plan" },
+      { aggregateClass: "custom_exercise", kind: "duplicate", portableId: "f".repeat(32), archiveId: "archive-dup-exercise", localId: "local-dup-exercise" },
+      { aggregateClass: "custom_exercise", kind: "insert", portableId: "1".repeat(32), archiveId: "new-exercise", localId: "new-exercise" },
+      { aggregateClass: "custom_exercise", kind: "keep_both", portableId: "2".repeat(32), archiveId: "physical-exercise", localId: "new-physical-exercise" },
+    ];
+    const local: MergeLocalFacts = {
+      ownerNamespace: "9".repeat(32), schemaVersion: 22,
+      tables: {
+        app_settings: [{ key: "existing-setting" }],
+        workout_sessions: [{ id: "local-session", portable_id: "b".repeat(32) }],
+        plans: [
+          { id: "local-dup-plan", origin: "custom", portable_id: "c".repeat(32) },
+          { id: "physical-plan", origin: "copied", portable_id: "8".repeat(32) },
+        ],
+        exercises: [
+          { id: "local-dup-exercise", origin: "custom", portable_id: "f".repeat(32) },
+          { id: "physical-exercise", origin: "copied", portable_id: "7".repeat(32) },
+        ],
+      },
+    };
+
+    expect(() => __logicalMergeRepositoryTestOnly.assertFullPlanMatchesLocal(operationPlan(operations), local))
+      .not.toThrow();
+  });
+
+  it("covers private table classification, keying, and primitive identity guards", () => {
+    expect(__logicalMergeRepositoryTestOnly.fullPlanTable("exercises")).toBe(true);
+    expect(__logicalMergeRepositoryTestOnly.fullPlanTable("plans")).toBe(false);
+    expect(__logicalMergeRepositoryTestOnly.ownedPlanTable("plans")).toBe(true);
+    expect(__logicalMergeRepositoryTestOnly.ownedPlanTable("exercises")).toBe(false);
+    expect(__logicalMergeRepositoryTestOnly.aggregateKey({ aggregateClass: "custom_exercise", portableId: "id", tables: {} }))
+      .toBe("custom_exercise\u0000id");
+    expect(__logicalMergeRepositoryTestOnly.plannedRootOperationKey({
+      aggregateClass: "workout_session", kind: "insert", portableId: "id", archiveId: "archive", localId: "local",
+    })).toBe("workout_session\u0000archive\u0000local");
+    expect(__logicalMergeRepositoryTestOnly.textId("text")).toBe("text");
+    expect(() => __logicalMergeRepositoryTestOnly.textId(" "))
+      .toThrow(expect.objectContaining({ code: "logical_merge_failed" }));
+  });
+
+  it("covers valid and fault-injected per-table aggregate insertion hooks", async () => {
+    const stages: string[] = [];
+    const transaction = transactionStub({ execute: async () => ({ changes: 1, lastInsertRowId: 0 }) });
+    await __logicalMergeRepositoryTestOnly.insertArchiveAggregate(
+      transaction,
+      { workout_sessions: [{ id: "session" }], session_sets: [{ id: "set" }] },
+      async (stage) => { stages.push(stage); },
+    );
+    await __logicalMergeRepositoryTestOnly.insertFullPlanSettings(
+      transaction,
+      { ...operationPlan([]), settings: [{ key: "units" }] },
+      async (stage) => { stages.push(stage); },
+    );
+    expect(stages).toContain("insert:workout_sessions");
+    expect(stages).toContain("insert:session_sets");
+    expect(stages).toContain("full_plan_insert:app_settings");
+
+    await expect(__logicalMergeRepositoryTestOnly.insertArchiveAggregate(
+      transaction,
+      { workout_sessions: [{ id: "session" }] },
+      async () => { throw new Error("fault"); },
+    )).rejects.toThrow("fault");
+  });
   it("rejects malformed private SQL values and row mutations before they reach SQLite", async () => {
     const transaction = transactionStub();
 
@@ -569,6 +654,60 @@ describe("logical merge repository", () => {
     )).rejects.toEqual(expect.objectContaining({ code: "logical_merge_failed" }));
   });
 
+  it("captures, recreates, and fault-checks the complete immutable trigger set", async () => {
+    const triggerNames = [
+      "history_audit_events_immutable_delete",
+      "workout_session_exercise_edit_receipts_immutable_delete",
+      "workout_session_exercise_reorder_receipts_immutable_delete",
+    ];
+    const triggers = new Map(triggerNames.map((name) => [name, `CREATE TRIGGER ${name} AFTER DELETE ON workout_sessions BEGIN SELECT 1; END`]));
+    const executed: string[] = [];
+    const transaction = transactionStub({
+      execute: async (sql) => { executed.push(sql); return { changes: 1, lastInsertRowId: 0 }; },
+      queryAll: async () => triggerNames.map((name) => ({ name, sql: triggers.get(name)! })),
+    });
+    const captured = await __logicalMergeRepositoryTestOnly.captureDeleteTriggers(transaction);
+    await __logicalMergeRepositoryTestOnly.dropDeleteTriggers(transaction, captured, undefined);
+    await __logicalMergeRepositoryTestOnly.recreateDeleteTriggers(transaction, captured, undefined);
+
+    expect(captured).toEqual(triggers);
+    expect(executed.filter((sql) => sql.startsWith("DROP TRIGGER"))).toHaveLength(3);
+    expect(executed.filter((sql) => sql.startsWith("CREATE TRIGGER"))).toHaveLength(3);
+  });
+
+  it("inserts source rows, existing taxonomy rows, and all aggregate table families", async () => {
+    const statements: string[] = [];
+    const transaction = transactionStub({
+      execute: async (sql) => { statements.push(sql); return { changes: 1, lastInsertRowId: 0 }; },
+      queryAll: async (sql) => sql.includes("FROM taxonomy_terms")
+        ? [{ kind: "equipment", slug: "bar", display_name: "Bar" }]
+        : [],
+    });
+    await __logicalMergeRepositoryTestOnly.insertRow(transaction, "workout_sessions", { id: "session" });
+    await __logicalMergeRepositoryTestOnly.insertFullPlanTaxonomyTerm(transaction, { kind: "equipment", slug: "bar", display_name: "Bar" });
+    const custom = {
+      aggregateClass: "custom_exercise" as const, portableId: "a".repeat(32),
+      tables: { exercises: [{ id: "exercise" }], taxonomy_terms: [{ kind: "equipment", slug: "bar", display_name: "Bar" }] },
+    };
+    const session = {
+      aggregateClass: "workout_session" as const, portableId: "b".repeat(32),
+      tables: { workout_sessions: [{ id: "session" }] },
+    };
+    const owned = {
+      aggregateClass: "owned_plan" as const, portableId: "c".repeat(32),
+      tables: { plans: [{ id: "plan" }] },
+    };
+    await __logicalMergeRepositoryTestOnly.insertCustomExerciseAggregate(transaction, custom, undefined);
+    await __logicalMergeRepositoryTestOnly.insertFullPlanSessionAggregate(transaction, session, undefined);
+    await __logicalMergeRepositoryTestOnly.insertOwnedPlanAggregate(transaction, owned, undefined);
+    await __logicalMergeRepositoryTestOnly.insertFullPlanSettings(transaction, { ...operationPlan([]), settings: [{ key: "units" }] }, undefined);
+    await __logicalMergeRepositoryTestOnly.insertArchiveAggregate(transaction, { workout_sessions: [{ id: "legacy-session" }] }, undefined);
+
+    expect(statements.some((sql) => sql.includes('"workout_sessions"'))).toBe(true);
+    expect(statements.some((sql) => sql.includes('"plans"'))).toBe(true);
+    expect(statements.some((sql) => sql.includes('"app_settings"'))).toBe(true);
+  });
+
   it("rejects verification and rebuild-state readbacks that are not exact", async () => {
     const kernel = await open("full-plan-verification-guards");
     const { plan } = await fullPlanFixture(kernel);
@@ -591,6 +730,142 @@ describe("logical merge repository", () => {
 
     expect(() => __logicalMergeRepositoryTestOnly.assertFullPlanSlice(plan))
       .not.toThrow();
+  });
+
+  it("accepts each FK-closed aggregate class through its direct validator", async () => {
+    const customKernel = await open("direct-valid-custom");
+    const { plan: customPlan } = await fullPlanFixture(customKernel);
+    const customAggregate = customPlan.aggregates.find((value) => value.aggregateClass === "custom_exercise")!;
+    const customOperation = customPlan.operations.find((value) => value.aggregateClass === "custom_exercise")!;
+    expect(() => __logicalMergeRepositoryTestOnly.assertCustomExerciseAggregate(customAggregate, customOperation as never))
+      .not.toThrow();
+
+    const { plan: sessionPlan } = await fullSessionPlanFixture();
+    const sessionAggregate = sessionPlan.aggregates.find((value) => value.aggregateClass === "workout_session")!;
+    const sessionOperation = sessionPlan.operations.find((value) => value.aggregateClass === "workout_session")!;
+    expect(() => __logicalMergeRepositoryTestOnly.assertSessionAggregate(sessionAggregate, sessionOperation as never))
+      .not.toThrow();
+
+    const { plan: ownedPlan } = await fullOwnedPlanFixture();
+    const ownedAggregate = ownedPlan.aggregates.find((value) => value.aggregateClass === "owned_plan")!;
+    const ownedOperation = ownedPlan.operations.find((value) => value.aggregateClass === "owned_plan")!;
+    expect(() => __logicalMergeRepositoryTestOnly.assertOwnedPlanAggregate(ownedAggregate, ownedOperation as never))
+      .not.toThrow();
+  });
+
+  it.each([
+    ["a custom aggregate missing its root", (plan: PortableMergePlan) => ({
+      ...plan, aggregates: plan.aggregates.map((aggregate) => aggregate.aggregateClass === "custom_exercise"
+        ? { ...aggregate, tables: { ...aggregate.tables, exercises: [] } }
+        : aggregate),
+    })],
+    ["a custom aggregate with a non-array table", (plan: PortableMergePlan) => ({
+      ...plan, aggregates: plan.aggregates.map((aggregate) => aggregate.aggregateClass === "custom_exercise"
+        ? { ...aggregate, tables: { ...aggregate.tables, exercise_aliases: {} as never } }
+        : aggregate),
+    })],
+    ["a custom aggregate whose taxonomy term has a blank kind", (plan: PortableMergePlan) => ({
+      ...plan, aggregates: plan.aggregates.map((aggregate) => aggregate.aggregateClass === "custom_exercise"
+        ? { ...aggregate, tables: { ...aggregate.tables, taxonomy_terms: [{ kind: " ", slug: "strength" }] } }
+        : aggregate),
+    })],
+  ] as Array<[string, (plan: PortableMergePlan) => PortableMergePlan]>)("rejects %s through direct custom aggregate validation", async (_label, mutate) => {
+    const kernel = await open(`direct-custom-${_label}`);
+    const { plan } = await fullPlanFixture(kernel);
+    const invalid = mutate(plan);
+    const aggregate = invalid.aggregates.find((value) => value.aggregateClass === "custom_exercise")!;
+    const operation = invalid.operations.find((value) => value.aggregateClass === "custom_exercise")!;
+
+    expect(() => __logicalMergeRepositoryTestOnly.assertCustomExerciseAggregate(aggregate, operation as never))
+      .toThrow(expect.objectContaining({ code: "logical_merge_failed" }));
+  });
+
+  it.each([
+    ["a session aggregate with an unsupported table", (plan: PortableMergePlan) => ({
+      ...plan, aggregates: plan.aggregates.map((aggregate) => aggregate.aggregateClass === "workout_session"
+        ? { ...aggregate, tables: { ...aggregate.tables, app_settings: [] } }
+        : aggregate),
+    })],
+    ["a session aggregate with a blank exercise id", (plan: PortableMergePlan) => ({
+      ...plan, aggregates: plan.aggregates.map((aggregate) => aggregate.aggregateClass === "workout_session"
+        ? { ...aggregate, tables: { ...aggregate.tables, session_exercises: (aggregate.tables.session_exercises ?? []).map((row) => ({ ...row, id: " " })) } }
+        : aggregate),
+    })],
+    ["a session aggregate with a rest pointer outside its set graph", (plan: PortableMergePlan) => ({
+      ...plan, aggregates: plan.aggregates.map((aggregate) => aggregate.aggregateClass === "workout_session"
+        ? { ...aggregate, tables: { ...aggregate.tables, session_rest_states: [{ session_id: "local-session", next_set_id: "missing" }] } }
+        : aggregate),
+    })],
+  ] as Array<[string, (plan: PortableMergePlan) => PortableMergePlan]>)("rejects %s through direct session aggregate validation", async (_label, mutate) => {
+    const { plan } = await fullSessionPlanFixture();
+    const invalid = mutate(plan);
+    const aggregate = invalid.aggregates.find((value) => value.aggregateClass === "workout_session")!;
+    const operation = invalid.operations.find((value) => value.aggregateClass === "workout_session")!;
+
+    expect(() => __logicalMergeRepositoryTestOnly.assertSessionAggregate(aggregate, operation as never))
+      .toThrow(expect.objectContaining({ code: "logical_merge_failed" }));
+  });
+
+  it.each([
+    ["an unsupported owned-plan table", (plan: PortableMergePlan) => ({
+      ...plan, aggregates: plan.aggregates.map((aggregate) => aggregate.aggregateClass === "owned_plan"
+        ? { ...aggregate, tables: { ...aggregate.tables, exercises: [] } }
+        : aggregate),
+    })],
+    ["a legacy schedule binding outside its schedule/day graph", (plan: PortableMergePlan) => ({
+      ...plan, aggregates: plan.aggregates.map((aggregate) => aggregate.aggregateClass === "owned_plan"
+        ? { ...aggregate, tables: { ...aggregate.tables, plan_schedule_bindings: [{ id: "binding", schedule_id: "missing", plan_day_id: "missing" }] } }
+        : aggregate),
+    })],
+    ["a legacy target outside its occurrence graph", (plan: PortableMergePlan) => ({
+      ...plan, aggregates: plan.aggregates.map((aggregate) => aggregate.aggregateClass === "owned_plan"
+        ? { ...aggregate, tables: { ...aggregate.tables, plan_working_set_targets: [{ id: "target", plan_day_exercise_id: "missing" }] } }
+        : aggregate),
+    })],
+    ["an owned schedule version outside its schedule graph", (plan: PortableMergePlan) => ({
+      ...plan, aggregates: plan.aggregates.map((aggregate) => aggregate.aggregateClass === "owned_plan"
+        ? { ...aggregate, tables: { ...aggregate.tables, owned_plan_schedule_versions: [{ id: "version", schedule_id: "missing" }] } }
+        : aggregate),
+    })],
+    ["an owned schedule override outside its schedule graph", (plan: PortableMergePlan) => ({
+      ...plan, aggregates: plan.aggregates.map((aggregate) => aggregate.aggregateClass === "owned_plan"
+        ? { ...aggregate, tables: { ...aggregate.tables, owned_plan_schedule_overrides: [{ id: "override", schedule_id: "missing" }] } }
+        : aggregate),
+    })],
+  ] as Array<[string, (plan: PortableMergePlan) => PortableMergePlan]>)("rejects %s through direct owned-plan aggregate validation", async (_label, mutate) => {
+    const { plan } = await fullOwnedPlanFixture();
+    const invalid = mutate(plan);
+    const aggregate = invalid.aggregates.find((value) => value.aggregateClass === "owned_plan")!;
+    const operation = invalid.operations.find((value) => value.aggregateClass === "owned_plan")!;
+
+    expect(() => __logicalMergeRepositoryTestOnly.assertOwnedPlanAggregate(aggregate, operation as never))
+      .toThrow(expect.objectContaining({ code: "logical_merge_failed" }));
+  });
+
+  it("rejects aggregate selection with missing planned operations", async () => {
+    const { plan } = await fullOwnedPlanFixture();
+    const orphaned: PortableMergePlan = {
+      ...plan,
+      operations: plan.operations.filter((operation) => operation.aggregateClass !== "owned_plan"),
+    };
+    expect(() => __logicalMergeRepositoryTestOnly.ownedPlanAggregatesForFullPlan(orphaned))
+      .toThrow(expect.objectContaining({ code: "logical_merge_failed" }));
+
+    const { plan: sessionPlan } = await fullSessionPlanFixture();
+    const orphanedSession: PortableMergePlan = {
+      ...sessionPlan,
+      operations: sessionPlan.operations.filter((operation) => operation.aggregateClass !== "workout_session"),
+    };
+    expect(() => __logicalMergeRepositoryTestOnly.sessionAggregatesForFullPlan(orphanedSession))
+      .toThrow(expect.objectContaining({ code: "logical_merge_failed" }));
+  });
+
+  it("rejects non-canonical full-plan snapshots before the writer can start", async () => {
+    expect(() => __logicalMergeRepositoryTestOnly.snapshotFullPlan({
+      circular: undefined,
+      toJSON: () => undefined,
+    } as unknown as PortableMergePlan)).toThrow(expect.objectContaining({ code: "logical_merge_failed" }));
+    expect(__logicalMergeRepositoryTestOnly.aggregateRows({}, "session_sets")).toEqual([]);
   });
 
   it.each([
@@ -1465,6 +1740,45 @@ describe("logical merge repository", () => {
       }]);
     await expect(localKernel.queryAll("SELECT session_id FROM session_exercises"))
       .resolves.toEqual([{ session_id: "archive-session" }]);
+  });
+
+  it("returns ready for fresh legacy duplicate and local-won tracer operations", async () => {
+    const archiveKernel = await open("legacy-noop-archive");
+    await seedSession(archiveKernel, { id: "archive-session", portableId: "a".repeat(32), modifiedAtMs: 20 });
+    const archive = await snapshot(archiveKernel);
+    const localKernel = await open("legacy-noop-local");
+    await seedSession(localKernel, { id: "local-session", portableId: "a".repeat(32), modifiedAtMs: 20 });
+    const base = await preflight(localKernel, archive);
+
+    await expect(createLogicalMergeRepository(localKernel, { sha256 }).commit({
+      ...base, operation: { kind: "duplicate", portableId: "a".repeat(32) },
+    })).resolves.toEqual({ state: "ready" });
+    await expect(createLogicalMergeRepository(localKernel, { sha256 }).commit({
+      ...base, operation: { kind: "local_won", portableId: "a".repeat(32) },
+    })).resolves.toEqual({ state: "ready" });
+  });
+
+  it.each([
+    ["archive_wins without a matching local session", async () => {
+      const archiveKernel = await open("legacy-missing-local-archive");
+      await seedSession(archiveKernel, { id: "archive-session", portableId: "a".repeat(32), modifiedAtMs: 20 });
+      const localKernel = await open("legacy-missing-local");
+      return { localKernel, preflight: await preflight(localKernel, await snapshot(archiveKernel)) };
+    }, "archive_won" as const],
+    ["insert with an existing local session", async () => {
+      const archiveKernel = await open("legacy-existing-local-archive");
+      await seedSession(archiveKernel, { id: "archive-session", portableId: "a".repeat(32), modifiedAtMs: 20 });
+      const localKernel = await open("legacy-existing-local");
+      await seedSession(localKernel, { id: "local-session", portableId: "a".repeat(32), modifiedAtMs: 10 });
+      return { localKernel, preflight: await preflight(localKernel, await snapshot(archiveKernel)) };
+    }, "insert" as const],
+  ] as Array<[string, () => Promise<Readonly<{ localKernel: SqliteKernel; preflight: StoredMergePreflight }>>, "archive_won" | "insert"]>)("rejects legacy %s", async (_label, fixture, kind) => {
+    const { localKernel, preflight: preflightValue } = await fixture();
+    const before = await canonicalState(localKernel);
+    await expect(createLogicalMergeRepository(localKernel, { sha256 }).commit({
+      ...preflightValue, operation: { kind, portableId: "a".repeat(32) },
+    })).rejects.toEqual(expect.objectContaining({ code: "logical_merge_failed" }));
+    await expect(canonicalState(localKernel)).resolves.toEqual(before);
   });
 
   it("rolls back authoritative rows, schema metadata, and portability state after every writer fault stage", async () => {
