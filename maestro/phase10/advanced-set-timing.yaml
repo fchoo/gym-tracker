@@ -86,7 +86,7 @@ tags:
 - scrollUntilVisible:
     element:
       text: "Resume per-rep cadence"
-    direction: UP
+    direction: DOWN
     centerElement: true
     timeout: 30000
 - extendedWaitUntil:
@@ -96,7 +96,7 @@ tags:
 - scrollUntilVisible:
     element:
       text: "Pause per-rep cadence"
-    direction: UP
+    direction: DOWN
     centerElement: true
     timeout: 30000
 - extendedWaitUntil:
@@ -106,7 +106,7 @@ tags:
 - scrollUntilVisible:
     element:
       text: "Configure and start per-rep cadence"
-    direction: UP
+    direction: DOWN
     centerElement: true
     timeout: 30000
 - extendedWaitUntil:
