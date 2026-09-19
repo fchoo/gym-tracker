@@ -431,6 +431,52 @@ describe("portable merge plan", () => {
     ]));
   });
 
+  it("remaps colliding custom-exercise child primary keys", async () => {
+    const archive = snapshot(
+      { id: "archive-session", marker: "archive", modifiedAtMs: 20 },
+      {
+        exercises: [{ id: "archive-exercise", origin: "custom", portable_id: "e".repeat(32) }],
+        exercise_library_entries: [{ exercise_id: "archive-exercise", origin: "custom" }],
+        exercise_aliases: [{ id: 1, exercise_id: "archive-exercise", ordinal: 0 }],
+        exercise_search_terms: [{ id: 1, exercise_id: "archive-exercise", kind: "canonical", ordinal: 0 }],
+        metric_profile_migration_events: [{
+          idempotency_key: "event-1",
+          exercise_id: "archive-exercise",
+        }],
+      },
+    );
+    const local = snapshot(
+      { id: "local-session", marker: "local", modifiedAtMs: 10 },
+      {
+        exercises: [{ id: "local-exercise", origin: "custom", portable_id: "f".repeat(32) }],
+        exercise_library_entries: [{ exercise_id: "local-exercise", origin: "custom" }],
+        exercise_aliases: [{ id: 1, exercise_id: "local-exercise", ordinal: 0 }],
+        exercise_search_terms: [{ id: 1, exercise_id: "local-exercise", kind: "canonical", ordinal: 0 }],
+        metric_profile_migration_events: [{
+          idempotency_key: "event-1",
+          exercise_id: "local-exercise",
+        }],
+      },
+    );
+
+    const plan = await buildPortableMergePlan({
+      archive,
+      local,
+      payloadDigest: async () => "0".repeat(64),
+    });
+    const aggregate = plan.aggregates.find((value) =>
+      value.aggregateClass === "custom_exercise" && value.portableId === "e".repeat(32),
+    );
+
+    expect(aggregate?.tables.exercise_aliases).toEqual([
+      expect.objectContaining({ id: expect.any(Number), exercise_id: "archive-exercise" }),
+    ]);
+    expect(aggregate?.tables.exercise_aliases?.[0]?.id).not.toBe(1);
+    expect(aggregate?.tables.exercise_search_terms?.[0]?.id).not.toBe(1);
+    expect(aggregate?.tables.metric_profile_migration_events?.[0]?.idempotency_key)
+      .not.toBe("event-1");
+  });
+
   it("keeps distinct owned plan identities through a physical ID collision", async () => {
     const archive = snapshot(
       { id: "archive-session", marker: "archive", modifiedAtMs: 20 },
@@ -511,6 +557,44 @@ describe("portable merge plan", () => {
 
     expect(aggregate?.tables.plans).toEqual([
       expect.objectContaining({ id: "archive-plan", is_active: 0 }),
+    ]);
+  });
+
+  it("keeps the existing active schedule when importing a distinct active plan", async () => {
+    const archive = snapshot(
+      { id: "archive-session", marker: "archive", modifiedAtMs: 20 },
+      {
+        plans: [{ id: "archive-plan", origin: "custom", portable_id: "a".repeat(32) }],
+        owned_plan_schedules: [{
+          id: "archive-schedule",
+          plan_id: "archive-plan",
+          lifecycle: "active",
+        }],
+      },
+    );
+    const local = snapshot(
+      { id: "local-session", marker: "local", modifiedAtMs: 10 },
+      {
+        plans: [{ id: "local-plan", origin: "custom", portable_id: "b".repeat(32) }],
+        owned_plan_schedules: [{
+          id: "local-schedule",
+          plan_id: "local-plan",
+          lifecycle: "active",
+        }],
+      },
+    );
+
+    const plan = await buildPortableMergePlan({
+      archive,
+      local,
+      payloadDigest: async () => "0".repeat(64),
+    });
+    const aggregate = plan.aggregates.find((value) =>
+      value.aggregateClass === "owned_plan" && value.portableId === "a".repeat(32),
+    );
+
+    expect(aggregate?.tables.owned_plan_schedules).toEqual([
+      expect.objectContaining({ id: "archive-schedule", lifecycle: "inactive" }),
     ]);
   });
 

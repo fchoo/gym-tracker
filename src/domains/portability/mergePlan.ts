@@ -732,26 +732,68 @@ function replaceScalar(
 
 function exerciseAggregate(
   snapshot: PortableMergePlanSnapshot,
+  local: PortableMergePlanSnapshot,
   operation: Extract<PortableMergeOperation, { aggregateClass: "custom_exercise" }>,
 ): PortableMergeAggregate {
   const archiveId = operation.archiveId;
   const localId = operation.localId;
   const tables: Record<string, readonly LogicalBackupRow[]> = {};
+  const rowsForExercise = (table: string) => rowsFor(snapshot, table)
+    .filter((row) => row.id === archiveId || row.exercise_id === archiveId)
+    .map((row) => replaceScalar(row, "id", archiveId, localId))
+    .map((row) => replaceScalar(row, "exercise_id", archiveId, localId));
   for (const table of [
     "exercises",
     "exercise_library_entries",
-    "exercise_aliases",
-    "exercise_search_terms",
     "exercise_taxonomy",
     "exercise_owner_preferences",
     "exercise_metric_baselines",
-    "metric_profile_migration_events",
   ]) {
-    const rows = rowsFor(snapshot, table)
-      .filter((row) => row.id === archiveId || row.exercise_id === archiveId)
-      .map((row) => replaceScalar(row, "id", archiveId, localId))
-      .map((row) => replaceScalar(row, "exercise_id", archiveId, localId));
+    const rows = rowsForExercise(table);
     if (rows.length > 0) tables[table] = Object.freeze(rows);
+  }
+  for (const table of ["exercise_aliases", "exercise_search_terms"] as const) {
+    const selected = rowsForExercise(table);
+    const occupied = new Set(rowsFor(local, table).map((row) => {
+      const id = row.id;
+      if (typeof id !== "number" || !Number.isSafeInteger(id)) invalid();
+      return id;
+    }));
+    let nextId = Math.max(0, ...occupied) + 1;
+    const rows = selected.map((row) => {
+      const id = row.id;
+      if (typeof id !== "number" || !Number.isSafeInteger(id)) invalid();
+      if (!occupied.has(id)) {
+        occupied.add(id);
+        return row;
+      }
+      while (occupied.has(nextId)) nextId += 1;
+      occupied.add(nextId);
+      return Object.freeze({ ...row, id: nextId });
+    });
+    if (rows.length > 0) tables[table] = Object.freeze(rows);
+  }
+  const events = rowsForExercise("metric_profile_migration_events");
+  const occupiedEventKeys = new Set(rowsFor(local, "metric_profile_migration_events").map(
+    (row) => textId(row.idempotency_key),
+  ));
+  const eventRows = events.map((row, index) => {
+    const key = textId(row.idempotency_key);
+    if (!occupiedEventKeys.has(key)) {
+      occupiedEventKeys.add(key);
+      return row;
+    }
+    let candidate = `merge_metric_event_${operation.portableId}_${String(index)}`;
+    let suffix = 1;
+    while (occupiedEventKeys.has(candidate)) {
+      candidate = `merge_metric_event_${operation.portableId}_${String(index)}_${String(suffix)}`;
+      suffix += 1;
+    }
+    occupiedEventKeys.add(candidate);
+    return Object.freeze({ ...row, idempotency_key: candidate });
+  });
+  if (eventRows.length > 0) {
+    tables.metric_profile_migration_events = Object.freeze(eventRows);
   }
   const root = tables.exercises?.[0];
   if (root === undefined || root.id !== localId) invalid();
@@ -905,8 +947,21 @@ function planAggregate(
   const mappedOwnedSchedules = mappedRows(local, "owned_plan_schedules", ownedSchedules, [
     { column: "plan_id", ids: planMap },
   ], operation.kind === "keep_both", operation.portableId);
+  const activeLocalScheduleExists = rowsFor(local, "owned_plan_schedules")
+    .some((row) => row.lifecycle === "active");
+  const normalizedOwnedSchedules = mappedOwnedSchedules.rows.map((row) =>
+    row.lifecycle === "active" && activeLocalScheduleExists
+      ? Object.freeze({
+        ...row,
+        lifecycle: "inactive",
+        ...(row.deactivated_at_ms === null || row.deactivated_at_ms === undefined
+          ? { deactivated_at_ms: row.activated_at_ms }
+          : {}),
+      })
+      : row,
+  );
   if (mappedOwnedSchedules.rows.length > 0) {
-    tables.owned_plan_schedules = mappedOwnedSchedules.rows;
+    tables.owned_plan_schedules = Object.freeze(normalizedOwnedSchedules);
   }
 
   const scheduleVersions = rowsFor(snapshot, "owned_plan_schedule_versions")
@@ -1243,7 +1298,7 @@ export async function buildPortableMergePlan(input: Readonly<{
     }
     if (operation.aggregateClass === "custom_exercise"
       && (operation.kind === "insert" || operation.kind === "keep_both")) {
-      return [exerciseAggregate(input.archive, operation)];
+      return [exerciseAggregate(input.archive, input.local, operation)];
     }
     if (operation.aggregateClass === "owned_plan"
       && (operation.kind === "insert" || operation.kind === "keep_both")) {
