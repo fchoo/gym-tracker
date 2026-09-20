@@ -25,6 +25,7 @@ import {
   type SqliteKernel,
 } from "../../platform/sqlite/sqliteKernel";
 import {
+  PORTABLE_MERGE_CONTRACT_CASES,
   runPortableMergeContract,
   type PortableMergeContractAdapter,
 } from "./portableMerge.contract";
@@ -72,7 +73,7 @@ afterEach(async () => {
 
 function createHostAdapter(): PortableMergeContractAdapter {
   return {
-    async createRuntime(databaseKey) {
+    async createRuntime(databaseKey, observer = {}) {
       const directory = mkdtempSync(join(tmpdir(), `gym-portable-merge-${databaseKey}-`));
       directories.add(directory);
       const databasePath = join(directory, "gym.db");
@@ -80,7 +81,7 @@ function createHostAdapter(): PortableMergeContractAdapter {
       const reader = new Connection(new DatabaseSync(databasePath));
       await configureSqliteConnection(writer, { enableWal: true });
       await configureSqliteConnection(reader, { enableWal: false });
-      const kernel = createSqliteKernel({ reader, writer });
+      const kernel = createSqliteKernel({ reader, writer }, observer);
       kernels.add(kernel);
       return {
         databaseName: databasePath,
@@ -105,14 +106,30 @@ describe("portable merge contract", () => {
   it("runs every source-owned merge case against host SQLite without skips", async () => {
     const result = await runPortableMergeContract(createHostAdapter());
 
+    expect(PORTABLE_MERGE_CONTRACT_CASES).toEqual([
+      "portable-merge-mixed-full-plan-success",
+      "portable-merge-same-name-keep-both",
+      "portable-merge-same-identity-dedup-remap",
+      "portable-merge-session-history-newest-wins",
+      "portable-merge-settings-existing-wins",
+      "portable-merge-stale-preview-rollback",
+      "portable-merge-unmappable-graph",
+      "portable-merge-insert-rollback",
+      "portable-merge-replace-rollback",
+      "portable-merge-verification-rollback",
+      "portable-merge-commit-rollback",
+      "portable-merge-deterministic-derivative-parity",
+    ]);
+    expect(result.cases.filter((item) => item.status === "failed")).toEqual([]);
     expect(result.status).toBe("passed");
     expect(result.failed).toBe(0);
     expect(result.skipped).toBe(0);
-    expect(result.cases).toEqual(expect.arrayContaining([
-      expect.objectContaining({ id: "portable-merge-archive-wins", status: "passed" }),
-      expect.objectContaining({ id: "portable-merge-insert-rollback", status: "passed" }),
-      expect.objectContaining({ id: "portable-merge-verification-rollback", status: "passed" }),
-    ]));
+    expect(result.total).toBe(PORTABLE_MERGE_CONTRACT_CASES.length);
+    expect(result.cases.map((item) => item.id)).toEqual(PORTABLE_MERGE_CONTRACT_CASES);
+    expect(result.cases).toEqual(
+      PORTABLE_MERGE_CONTRACT_CASES.map((id) =>
+        expect.objectContaining({ id, status: "passed" })),
+    );
   });
 
   it("keeps the Phase 11 manifest-bound native route and device command registered", () => {
