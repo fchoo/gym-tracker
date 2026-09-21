@@ -443,6 +443,7 @@ describe("DataAndRecoveryRoute", () => {
     expect(await screen.findByText("Backup restored. Recalculating search and progress.")).toBeOnTheScreen();
     expect(screen.queryByText("Backup restored. Search and progress are ready.")).not.toBeOnTheScreen();
     expect(screen.getByRole("button", { name: "Retry rebuild" })).toBeOnTheScreen();
+    expect(screen.getByTestId("restore-rebuild-retry-action")).toBeOnTheScreen();
 
     await fireEvent.press(screen.getByRole("button", { name: "Retry rebuild" }));
     await waitFor(() => expect(mockRetryRestoreRebuild).toHaveBeenCalledTimes(1));
@@ -688,6 +689,7 @@ describe("DataAndRecoveryRoute", () => {
     expect(await screen.findByText("Merge saved. Recalculating search and progress.")).toBeOnTheScreen();
     expect(screen.queryByText("Merge complete. Search and progress are ready.")).not.toBeOnTheScreen();
     expect(screen.getByRole("button", { name: "Retry rebuild" })).toBeOnTheScreen();
+    expect(screen.getByTestId("merge-rebuild-retry-action")).toBeOnTheScreen();
 
     await fireEvent.press(screen.getByRole("button", { name: "Retry rebuild" }));
     await waitFor(() => expect(mockRetryRestoreRebuild).toHaveBeenCalledTimes(1));

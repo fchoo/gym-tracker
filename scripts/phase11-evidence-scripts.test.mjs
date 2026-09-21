@@ -337,9 +337,11 @@ test("Phase 11 flow exercises the split UI without claiming database rollback pr
   for (const id of [
     "restore-clean-action",
     "restore-backup-action",
+    "restore-rebuild-retry-action",
     "merge-open-action",
     "merge-cancel-action",
     "merge-backup-action",
+    "merge-rebuild-retry-action",
   ]) {
     assert.match(flow, new RegExp(`id: "${id}"`, "u"));
   }

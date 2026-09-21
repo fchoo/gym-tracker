@@ -109,7 +109,8 @@ tags:
           when:
             visible: "Backup restored. Recalculating search and progress."
           commands:
-            - tapOn: "Retry rebuild"
+            - tapOn:
+                id: "restore-rebuild-retry-action"
             - extendedWaitUntil:
                 visible: "Backup restored. Search and progress are ready."
                 timeout: 90000
@@ -219,7 +220,8 @@ tags:
           when:
             visible: "Merge saved. Recalculating search and progress."
           commands:
-            - tapOn: "Retry rebuild"
+            - tapOn:
+                id: "merge-rebuild-retry-action"
             - extendedWaitUntil:
                 visible: "Merge complete. Search and progress are ready."
                 timeout: 90000

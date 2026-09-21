@@ -851,7 +851,11 @@ export default function DataAndRecoveryRoute() {
               {restoreState.kind === "rebuild_pending" ? (
                 <>
                   <Text accessibilityLiveRegion="polite" style={[typeScale.bodyStrong as TextStyle, { color: colors.contentCardText }]}>Backup restored. Recalculating search and progress.</Text>
-                  <SecondaryAction label="Retry rebuild" onPress={() => { void retryRestoreRebuild(); }} />
+                  <SecondaryAction
+                    label="Retry rebuild"
+                    onPress={() => { void retryRestoreRebuild(); }}
+                    testID="restore-rebuild-retry-action"
+                  />
                 </>
               ) : null}
             </View>
@@ -959,7 +963,11 @@ export default function DataAndRecoveryRoute() {
               {mergeState.kind === "rebuild_pending" ? (
                 <>
                   <Text accessibilityLiveRegion="polite" style={[typeScale.bodyStrong as TextStyle, { color: colors.contentCardText }]}>Merge saved. Recalculating search and progress.</Text>
-                  <SecondaryAction label="Retry rebuild" onPress={() => { void retryMergeRebuild(); }} />
+                  <SecondaryAction
+                    label="Retry rebuild"
+                    onPress={() => { void retryMergeRebuild(); }}
+                    testID="merge-rebuild-retry-action"
+                  />
                 </>
               ) : null}
             </View>
