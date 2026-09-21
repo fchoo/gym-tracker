@@ -45,11 +45,17 @@ jest.mock("expo-file-system", () => ({
     size = 1;
     uri = "file:///cache/gym-tracker-backups/backup-production.gtbk";
     constructor(..._args: unknown[]) {}
+    bytesSync() {
+      return Uint8Array.from([1]);
+    }
     create(options: unknown) {
       mockFileCreate(options);
     }
     delete() {
       mockFileDelete();
+    }
+    textSync() {
+      return "phase11-restore-base.gtbk";
     }
     write(bytes: Uint8Array) {
       mockFileWrite(bytes);
@@ -706,5 +712,13 @@ describe("Expo restore file port", () => {
       driver,
       selectorFile: PHASE11_MERGE_FIXTURE_SELECTOR_FILE,
     }).readSelectedArchiveAtMost(5)).resolves.toEqual(Uint8Array.from([4, 5, 6]));
+  });
+
+  it("uses the default Phase 11 fixture driver against app-owned files", async () => {
+    const port = createPhase11FixtureRestoreFilePort();
+
+    await expect(port.readSelectedArchiveAtMost(5))
+      .resolves.toEqual(Uint8Array.from([1]));
+    expect(mockPickFileAsync).not.toHaveBeenCalled();
   });
 });
