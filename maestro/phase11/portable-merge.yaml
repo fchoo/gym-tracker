@@ -116,7 +116,7 @@ tags:
                 timeout: 90000
       - assertVisible:
           text: "^(Backup restored. Search and progress are ready.|Backup restored. Recalculating search and progress.)$"
-      - tapOn: "Go back"
+      - pressKey: BACK
       - tapOn: "Calendar"
       - extendedWaitUntil:
           visible: "Local Merge Baseline · Base Day"
