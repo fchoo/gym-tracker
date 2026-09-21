@@ -5,11 +5,11 @@ milestone_name: In-Workout Editing, Advanced Timing & Cross-Device Sync
 current_phase: 11
 current_phase_name: Portable History & Merge Restore
 status: executing
-stopped_at: Plan 11-02 source and host validation complete; fresh manifest-bound Expo device contract requires a new approved build
-last_updated: "2026-09-20T16:15:00+08:00"
-last_activity: 2026-09-20
-last_activity_desc: Plan 11-02 closed the full strict integrity gate and expanded the shared portable-merge contract to twelve real-SQLite full-plan cases
-state_head: 5e32f9d252e9f6fafd30cb31c37347c86f4807a8
+stopped_at: Plan 11-02 source, host, and fresh manifest-bound Expo device contract complete
+last_updated: "2026-09-21T14:40:00+08:00"
+last_activity: 2026-09-21
+last_activity_desc: Fresh Phase 11 development-test APK bound to c97b14a passed all 12 portable-merge Expo SQLite contract cases
+state_head: c97b14a7b5b2c518f0188dee5f759fcfb8c37f98
 progress:
   total_phases: 5
   completed_phases: 3
@@ -31,8 +31,8 @@ See: `.planning/PROJECT.md` (updated 2026-09-15)
 
 Phase: 11 (Portable History & Merge Restore) — EXECUTING
 Plan: 2 of 4
-Status: Full conflict engine and host/shared contract are verified; fresh Expo device proof remains
-Last activity: 2026-09-20 — Plan 11-02 passed the strict 100% integrity gate and expanded the shared full-plan contract to twelve source-derived cases; the retained device APK predates that contract
+Status: Full conflict engine and host/device contract are verified
+Last activity: 2026-09-21 — Plan 11-02 fresh exact-source Phase 11 APK passed all 12 manifest-bound portable-merge Expo SQLite cases
 
 ## Delivery model
 
