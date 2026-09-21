@@ -771,6 +771,12 @@ function dependencies(
 ): WorkoutAppRuntimeDependencies {
   const kernel = {
     close: jest.fn(async () => undefined),
+    queryAll: jest.fn(async () => []),
+    write: jest.fn(async (command: (transaction: SqliteTransactionExecutor) => Promise<unknown>) =>
+      command({
+        execute: jest.fn(async () => ({ changes: 1, lastInsertRowId: 0 })),
+        queryAll: jest.fn(async () => []),
+      })),
   } as unknown as SqliteKernel;
   return {
     openKernel: jest.fn(async () => kernel),
@@ -1243,6 +1249,127 @@ describe("WorkoutAppRuntimeProvider", () => {
       token: "single-use",
     });
     expect(reconcileRestore).toHaveBeenCalledTimes(2);
+  });
+
+  it("loads and records latest safe backup metadata after a successful share", async () => {
+    const repository = runtimeRepository([noPlanView], [null]);
+    const writes: Array<readonly unknown[]> = [];
+    const kernel = {
+      close: jest.fn(async () => undefined),
+      queryAll: jest.fn(async (sql: string) => {
+        if (sql.includes("FROM app_settings")) {
+          return [{
+            value_version: 1,
+            value_json: JSON.stringify({
+              archiveId: "previous-backup",
+              createdAtMs: 1_786_853_000_000,
+              displayName: "previous-backup.gtbk",
+            }),
+          }];
+        }
+        return [];
+      }),
+      write: jest.fn(async (
+        command: (transaction: SqliteTransactionExecutor) => Promise<unknown>,
+      ) => command({
+        execute: jest.fn(async (
+          _sql,
+          parameters: readonly unknown[] = [],
+        ) => {
+          writes.push(parameters);
+          return { changes: 1, lastInsertRowId: 0 };
+        }),
+        queryAll: jest.fn(async () => []),
+      })),
+    } as unknown as SqliteKernel;
+    const backupArchive = {
+      archiveId: "backup-20260921",
+      createdAtMs: 1_789_977_000_000,
+      displayName: "backup-20260921.gtbk",
+    };
+    const backupCommands = {
+      createSecureBackup: jest.fn(async () => backupArchive),
+      discardSecureBackup: jest.fn(async () => undefined),
+      shareSecureBackup: jest.fn(async () => undefined),
+    };
+    let captured: ReturnType<typeof useWorkoutAppRuntime> | undefined;
+
+    await render(
+      <RuntimeCaptureHarness
+        dependencies={dependencies(repository, {
+          openKernel: jest.fn(async () => kernel),
+          createBackupCommands: () => backupCommands,
+        })}
+        onReady={(runtime) => {
+          captured = runtime;
+        }}
+      />,
+    );
+    await waitFor(() => {
+      expect(captured?.latestBackup).toEqual({
+        archiveId: "previous-backup",
+        createdAtMs: 1_786_853_000_000,
+        displayName: "previous-backup.gtbk",
+      });
+    });
+
+    await act(async () => {
+      await captured!.shareSecureBackup(backupArchive);
+    });
+
+    expect(backupCommands.shareSecureBackup).toHaveBeenCalledWith(backupArchive);
+    expect(captured!.latestBackup).toEqual(backupArchive);
+    expect(writes.at(-1)).toEqual([
+      "backup.latest",
+      JSON.stringify(backupArchive),
+      1_786_853_600_000,
+    ]);
+    expect(JSON.stringify(writes)).not.toContain("file:");
+  });
+
+  it("does not fail an already-shared backup when metadata persistence fails", async () => {
+    const repository = runtimeRepository([noPlanView], [null]);
+    const kernel = {
+      close: jest.fn(async () => undefined),
+      queryAll: jest.fn(async () => []),
+      write: jest.fn(async () => {
+        throw new Error("metadata_write_failed");
+      }),
+    } as unknown as SqliteKernel;
+    const backupArchive = {
+      archiveId: "backup-20260921",
+      createdAtMs: 1_789_977_000_000,
+      displayName: "backup-20260921.gtbk",
+    };
+    const backupCommands = {
+      createSecureBackup: jest.fn(async () => backupArchive),
+      discardSecureBackup: jest.fn(async () => undefined),
+      shareSecureBackup: jest.fn(async () => undefined),
+    };
+    let captured: ReturnType<typeof useWorkoutAppRuntime> | undefined;
+
+    await render(
+      <RuntimeCaptureHarness
+        dependencies={dependencies(repository, {
+          openKernel: jest.fn(async () => kernel),
+          createBackupCommands: () => backupCommands,
+        })}
+        onReady={(runtime) => {
+          captured = runtime;
+        }}
+      />,
+    );
+    await waitFor(() => {
+      expect(captured?.launchState).toBe("trusted");
+    });
+
+    await act(async () => {
+      await expect(captured!.shareSecureBackup(backupArchive)).resolves.toBeUndefined();
+    });
+    expect(backupCommands.shareSecureBackup).toHaveBeenCalledWith(backupArchive);
+    await waitFor(() => {
+      expect(captured!.latestBackup).toEqual(backupArchive);
+    });
   });
 
   it("exposes factual progress only through the trusted runtime boundary", async () => {

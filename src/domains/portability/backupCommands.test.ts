@@ -140,7 +140,11 @@ describe("secure backup commands", () => {
       password: "correct horse battery staple",
     });
 
-    expect(archive).toEqual({ archiveId: "snapshot" });
+    expect(archive).toEqual({
+      archiveId: "snapshot",
+      createdAtMs: 2,
+      displayName: "snapshot.gtbk",
+    });
     expect(subject.sharedArchives).toEqual([]);
     expect(subject.archiveBuffers).toHaveLength(1);
     expect([...subject.archiveBuffers[0]!.subarray(0, 4)]).toEqual([0, 0, 0, 0]);

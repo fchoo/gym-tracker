@@ -223,6 +223,7 @@ import {
 } from "../platform/sqlite/effects/effectStore";
 import {
   createBackupCommands,
+  type SecureBackupArchiveHandle,
   type SecureBackupCommands,
 } from "../domains/portability/backupCommands";
 import {
@@ -388,6 +389,7 @@ import type {
 
 const DATABASE_NAME = "gym-tracker.db";
 const LIBRARY_SECTION_SETTING_KEY = "library.section";
+const LATEST_BACKUP_METADATA_SETTING_KEY = "backup.latest";
 
 export type LibraryRuntimeSection = "plans" | "exercises";
 
@@ -407,12 +409,17 @@ export type LibraryRuntimePlanSummary = Readonly<{
 }>;
 
 export type LibraryRuntimeStarterPlanSummary = StarterPlanRuntimeSummary;
-export type RuntimeSecureBackupArchive = BackupArchiveHandle;
+export type RuntimeSecureBackupArchive = SecureBackupArchiveHandle;
 export type RuntimeCsvExport = CsvExportHandle;
 export type RuntimeRestorePreflightResult = Awaited<ReturnType<RestoreCommands["preflightSecureRestore"]>>;
 export type RuntimeMergePreflightResult = Awaited<ReturnType<SecureMergeCommands["preflightSecureMerge"]>>;
 export type RuntimeRestoreCommitResult = Readonly<{
   state: "ready" | "rebuild_pending";
+}>;
+export type RuntimeBackupMetadata = Readonly<{
+  archiveId: string;
+  createdAtMs: number;
+  displayName: string;
 }>;
 
 export type LibraryRuntimeSnapshot = Readonly<{
@@ -604,6 +611,7 @@ type RuntimeState = Readonly<{
   launchState: "booting" | "trusted" | "failed";
   view?: TodayView;
   planDays: readonly ActivatedPlanDay[];
+  latestBackup: RuntimeBackupMetadata | null;
   contentUpdateResult?: ContentUpdateResult;
   contentUpdateFailed?: true;
   scheduleToday?: ScheduleTodayPresentation;
@@ -699,7 +707,7 @@ type RuntimeValue = RuntimeState & Readonly<{
   createSecureBackup(input: Readonly<{
     password: string;
     signal?: AbortSignal;
-  }>): Promise<BackupArchiveHandle>;
+  }>): Promise<RuntimeSecureBackupArchive>;
   createCsvExport(): Promise<CsvExportHandle>;
   discardSecureBackup(archive: BackupArchiveHandle): Promise<void>;
   discardCsvExport(handle: CsvExportHandle): Promise<void>;
@@ -980,7 +988,7 @@ type RuntimeValue = RuntimeState & Readonly<{
   invalidateSecureRestorePreflight(token: string): void;
   commitSecureRestore(input: Readonly<{ token: string; confirmation: string }>): Promise<RuntimeRestoreCommitResult>;
   retryRestoreRebuild(): Promise<RuntimeRestoreCommitResult>;
-  shareSecureBackup(archive: BackupArchiveHandle): Promise<void>;
+  shareSecureBackup(archive: RuntimeSecureBackupArchive): Promise<void>;
   shareCsvExport(handle: CsvExportHandle): Promise<void>;
   skipExercise(input: SkipExerciseInput): Promise<Readonly<{
     sessionId: string;
@@ -1172,6 +1180,7 @@ export type WorkoutAppRuntimeAdapters = Readonly<{
 const initialState: RuntimeState = {
   launchState: "booting",
   planDays: [],
+  latestBackup: null,
   notificationPermission: "undetermined",
   workoutRefreshGeneration: 0,
 };
@@ -1562,6 +1571,7 @@ function failedState(
   return {
     launchState: "failed",
     planDays: [],
+    latestBackup: null,
     notificationPermission: "undetermined",
     workoutRefreshGeneration: 0,
     failure: {
@@ -1601,6 +1611,80 @@ function parseLibrarySectionPreference(
     throw new Error("library_section_preference_invalid");
   }
   return { section, revision: row.revision };
+}
+
+type BackupMetadataSettingRow = Readonly<{
+  value_version: number;
+  value_json: string;
+}>;
+
+function validBackupMetadata(
+  value: unknown,
+): value is RuntimeBackupMetadata {
+  return typeof value === "object"
+    && value !== null
+    && !Array.isArray(value)
+    && Object.keys(value).length === 3
+    && typeof (value as RuntimeBackupMetadata).archiveId === "string"
+    && /^[a-z0-9][a-z0-9_-]{0,119}$/u.test((value as RuntimeBackupMetadata).archiveId)
+    && Number.isSafeInteger((value as RuntimeBackupMetadata).createdAtMs)
+    && (value as RuntimeBackupMetadata).createdAtMs >= 0
+    && typeof (value as RuntimeBackupMetadata).displayName === "string"
+    && (value as RuntimeBackupMetadata).displayName.trim().length > 0
+    && !/[\\/]/u.test((value as RuntimeBackupMetadata).displayName);
+}
+
+function parseBackupMetadata(
+  row: BackupMetadataSettingRow | undefined,
+): RuntimeBackupMetadata | null {
+  if (row === undefined) return null;
+  if (row.value_version !== 1) return null;
+  try {
+    const parsed: unknown = JSON.parse(row.value_json);
+    return validBackupMetadata(parsed) ? Object.freeze(parsed) : null;
+  } catch {
+    return null;
+  }
+}
+
+async function readLatestBackupMetadata(
+  kernel: SqliteKernel,
+): Promise<RuntimeBackupMetadata | null> {
+  try {
+    const [row] = await kernel.queryAll<BackupMetadataSettingRow>(
+      `SELECT value_version, value_json
+       FROM app_settings
+       WHERE key = ?`,
+      [LATEST_BACKUP_METADATA_SETTING_KEY],
+    );
+    return parseBackupMetadata(row);
+  } catch {
+    return null;
+  }
+}
+
+async function writeLatestBackupMetadata(
+  kernel: SqliteKernel,
+  metadata: RuntimeBackupMetadata,
+  nowMs: number,
+): Promise<void> {
+  await kernel.write(async (transaction) => {
+    await transaction.execute(
+      `INSERT INTO app_settings
+        (key, value_version, value_json, revision, updated_at_ms)
+       VALUES (?, 1, ?, 1, ?)
+       ON CONFLICT(key) DO UPDATE SET
+        value_version = excluded.value_version,
+        value_json = excluded.value_json,
+        revision = app_settings.revision + 1,
+        updated_at_ms = excluded.updated_at_ms`,
+      [
+        LATEST_BACKUP_METADATA_SETTING_KEY,
+        JSON.stringify(metadata),
+        nowMs,
+      ],
+    );
+  });
 }
 
 async function readLibrarySectionPreference(
@@ -2294,7 +2378,7 @@ export function WorkoutAppRuntimeProvider({
     services: RuntimeServices,
   ): Promise<RuntimeState> => {
     const context = localContext(dependencies.now());
-    const [legacyView, scheduledToday, activation, notificationPermission] =
+    const [legacyView, scheduledToday, activation, notificationPermission, latestBackup] =
       await Promise.all([
         services.repository.getTodayView({
           localDate: context.localDate,
@@ -2305,6 +2389,7 @@ export function WorkoutAppRuntimeProvider({
       services.notifications.permission().catch(
         () => "undetermined" as const,
       ),
+      readLatestBackupMetadata(services.kernel),
     ]);
     const preserveWorkoutState = legacyView.state === "active_workout"
       || legacyView.state === "saved_partial";
@@ -2314,6 +2399,7 @@ export function WorkoutAppRuntimeProvider({
         ? legacyView
         : scheduledToday?.view ?? legacyView,
       planDays: scheduledToday?.planDays ?? activation?.days ?? [],
+      latestBackup,
       ...(scheduledToday === null
         ? {}
         : { scheduleToday: scheduledToday.scheduleToday }),
@@ -4462,8 +4548,24 @@ export function WorkoutAppRuntimeProvider({
       void initialize();
     },
     saveZeroSetWorkout: finishZeroSetWorkout,
-    shareSecureBackup: (archive) =>
-      requireServices().backupCommands.shareSecureBackup(archive),
+    shareSecureBackup: async (archive) => {
+      const services = requireServices();
+      await services.backupCommands.shareSecureBackup(archive);
+      const latestBackup: RuntimeBackupMetadata = Object.freeze({
+        archiveId: archive.archiveId,
+        createdAtMs: archive.createdAtMs,
+        displayName: archive.displayName,
+      });
+      await writeLatestBackupMetadata(
+        services.kernel,
+        latestBackup,
+        dependencies.nowMs(),
+      ).catch(() => undefined);
+      setState((current) => ({
+        ...current,
+        latestBackup,
+      }));
+    },
     shareCsvExport: (handle) => requireServices().csvFiles.shareCsv(handle),
     saveOwnedPlan: saveOwnedDraft,
     saveSchedule: (input) => requireServices().schedules.saveSchedule(input),

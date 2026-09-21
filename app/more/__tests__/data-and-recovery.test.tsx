@@ -78,7 +78,11 @@ describe("DataAndRecoveryRoute", () => {
   beforeEach(() => {
     mockBack.mockReset();
     mockCreateSecureBackup.mockReset();
-    mockCreateSecureBackup.mockResolvedValue({ archiveId: "backup-1" });
+    mockCreateSecureBackup.mockResolvedValue({
+      archiveId: "backup-1",
+      createdAtMs: 1_789_977_000_000,
+      displayName: "backup-1.gtbk",
+    });
     mockShareSecureBackup.mockReset();
     mockShareSecureBackup.mockResolvedValue(undefined);
     mockDiscardSecureBackup.mockReset();
@@ -150,9 +154,9 @@ describe("DataAndRecoveryRoute", () => {
     expect(mockShareSecureBackup).not.toHaveBeenCalled();
 
     await fireEvent.press(screen.getByRole("button", { name: "Share backup" }));
-    await waitFor(() => expect(mockShareSecureBackup).toHaveBeenCalledWith({
+    await waitFor(() => expect(mockShareSecureBackup).toHaveBeenCalledWith(expect.objectContaining({
       archiveId: "backup-1",
-    }));
+    })));
     await waitFor(() => expect(screen.queryByText("Secure backup ready"))
       .not.toBeOnTheScreen());
   });
@@ -225,12 +229,16 @@ describe("DataAndRecoveryRoute", () => {
     expect(screen.getByLabelText("Backup password")).toBeOnTheScreen();
 
     await act(async () => {
-      resolveCreate?.({ archiveId: "late-backup" });
+      resolveCreate?.({
+        archiveId: "late-backup",
+        createdAtMs: 1_789_977_000_000,
+        displayName: "late-backup.gtbk",
+      });
     });
 
-    await waitFor(() => expect(mockDiscardSecureBackup).toHaveBeenCalledWith({
+    await waitFor(() => expect(mockDiscardSecureBackup).toHaveBeenCalledWith(expect.objectContaining({
       archiveId: "late-backup",
-    }));
+    })));
     expect(screen.queryByText("Secure backup ready")).not.toBeOnTheScreen();
     expect(screen.queryByText("Backup could not be created")).not.toBeOnTheScreen();
     expect(mockShareSecureBackup).not.toHaveBeenCalled();
@@ -245,9 +253,9 @@ describe("DataAndRecoveryRoute", () => {
 
     route.unmount();
 
-    await waitFor(() => expect(mockDiscardSecureBackup).toHaveBeenCalledWith({
+    await waitFor(() => expect(mockDiscardSecureBackup).toHaveBeenCalledWith(expect.objectContaining({
       archiveId: "backup-1",
-    }));
+    })));
     expect(mockShareSecureBackup).not.toHaveBeenCalled();
   });
 
