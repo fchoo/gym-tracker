@@ -132,6 +132,9 @@ tags:
           permissions:
             notifications: deny
       - assertVisible: "Today"
+      - extendedWaitUntil:
+          visible: "Use Full Body Foundation"
+          timeout: 90000
       - tapOn: "Settings"
       - scrollUntilVisible:
           element:
@@ -181,6 +184,9 @@ tags:
           permissions:
             notifications: deny
       - assertVisible: "Today"
+      - extendedWaitUntil:
+          visible: "Use Full Body Foundation"
+          timeout: 90000
       - tapOn: "Settings"
       - scrollUntilVisible:
           element:

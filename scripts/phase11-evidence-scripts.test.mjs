@@ -331,6 +331,10 @@ test("Phase 11 flow exercises the split UI without claiming database rollback pr
     (flow.match(/scrollUntilVisible:[\s\S]{0,140}?id: "more-data-and-recovery"/gu) ?? []).length,
     4,
   );
+  assert.equal(
+    (flow.match(/visible: "Use Full Body Foundation"/gu) ?? []).length,
+    4,
+  );
   assert.match(flow, /Latest backup: Never exported/u);
   assert.match(flow, /Restore clean/u);
   assert.match(flow, /Import \/ merge backup/u);
