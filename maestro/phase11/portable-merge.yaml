@@ -145,6 +145,12 @@ tags:
       - tapOn:
           id: "more-data-and-recovery"
       - assertVisible: "Import / merge backup"
+      - scrollUntilVisible:
+          element:
+            text: "Merge password"
+          direction: DOWN
+          centerElement: true
+          timeout: 60000
       - tapOn: "Merge password"
       - inputText: ${PHASE11_BACKUP_PASSWORD}
       - hideKeyboard
@@ -197,6 +203,12 @@ tags:
       - tapOn:
           id: "more-data-and-recovery"
       - assertVisible: "Import / merge backup"
+      - scrollUntilVisible:
+          element:
+            text: "Merge password"
+          direction: DOWN
+          centerElement: true
+          timeout: 60000
       - tapOn: "Merge password"
       - inputText: ${PHASE11_BACKUP_PASSWORD}
       - hideKeyboard

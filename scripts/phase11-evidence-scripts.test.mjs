@@ -384,6 +384,10 @@ test("Phase 11 flow exercises the split UI without claiming database rollback pr
   assert.match(flow, /id: "restore-rebuild-retry-action"[\s\S]*?Backup restored\. Recalculating search and progress/u);
   assert.match(flow, /id: "merge-rebuild-retry-action"[\s\S]*?Merge saved\. Recalculating search and progress/u);
   assert.match(flow, /Backup restored[\s\S]*?pressKey: BACK[\s\S]*?pressKey: BACK[\s\S]*?tapOn: "Calendar"/u);
+  assert.equal(
+    (flow.match(/scrollUntilVisible:[\s\S]{0,160}?text: "Merge password"/gu) ?? []).length,
+    2,
+  );
   assert.match(flow, /Cancel merge/u);
   assert.match(flow, /Merge complete\. Search and progress are ready\./u);
   assert.match(flow, /Local Merge Baseline · Base Day/u);
