@@ -330,6 +330,10 @@ test("Phase 11 flow exercises the split UI without claiming database rollback pr
   assert.match(flow, /Latest backup: Never exported/u);
   assert.match(flow, /Restore clean/u);
   assert.match(flow, /Import \/ merge backup/u);
+  assert.match(
+    flow,
+    /assertNotVisible: "Review restore clean"[\s\S]*?scrollUntilVisible:[\s\S]*?text: "Export CSV"[\s\S]*?assertVisible: "Export CSV"/u,
+  );
   assert.match(flow, /phase11-restore-base\.gtbk/u);
   assert.match(flow, /phase11-merge-fixture\.gtbk/u);
   assert.match(flow, /No changes have been made yet\./u);

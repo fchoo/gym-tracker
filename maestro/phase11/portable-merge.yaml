@@ -31,7 +31,6 @@ tags:
       - assertVisible: "Latest backup: Never exported"
       - assertVisible: "Restore clean"
       - assertVisible: "Import / merge backup"
-      - assertVisible: "Export CSV"
       - pressKey: TAB
       - pressKey: ENTER
       - tapOn: "Restore password"
@@ -41,6 +40,13 @@ tags:
       - pressKey: BACK
       - assertVisible: "No backup was selected"
       - assertNotVisible: "Review restore clean"
+      - scrollUntilVisible:
+          element:
+            text: "Export CSV"
+          direction: DOWN
+          centerElement: true
+          timeout: 60000
+      - assertVisible: "Export CSV"
 - runFlow:
     when:
       true: ${PHASE11_STAGE == 'restore-clean-fixture'}
