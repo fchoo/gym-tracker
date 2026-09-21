@@ -31,7 +31,8 @@ const FLOW_PATH = "maestro/phase11/portable-merge.yaml";
 const RESTORE_FIXTURE_FILE = "phase11-restore-base.gtbk";
 const MERGE_FIXTURE_FILE = "phase11-merge-fixture.gtbk";
 const FIXTURE_SELECTION_FILE = "phase11-fixture-selection.txt";
-const DEVICE_FIXTURE_DIRECTORY = "/sdcard/Android/data/com.fchoo.gymtracker.devtest/files/phase11";
+const DEVICE_APP_EXTERNAL_DIRECTORY = "/sdcard/Android/data/com.fchoo.gymtracker.devtest";
+const DEVICE_FIXTURE_DIRECTORY = `${DEVICE_APP_EXTERNAL_DIRECTORY}/files/phase11`;
 const FIXTURE_PASSWORD = "phase11-merge-password";
 const FIXTURE_OWNER_NAMESPACE = "11111111111111111111111111111111";
 const BACK_SQUAT_ID = "5f140001-7e35-4a6d-9100-000000000001";
@@ -713,6 +714,14 @@ export function executePhase11Maestro(args = process.argv.slice(2)) {
       }
       writeFileSync(selectorPath, contract.fixtureSelection);
       command(adb, ["-s", serial, "push", selectorPath, `${DEVICE_FIXTURE_DIRECTORY}/${FIXTURE_SELECTION_FILE}`]);
+      command(adb, ["-s", serial, "shell", "chmod", "755",
+        DEVICE_APP_EXTERNAL_DIRECTORY,
+        `${DEVICE_APP_EXTERNAL_DIRECTORY}/files`,
+        DEVICE_FIXTURE_DIRECTORY]);
+      command(adb, ["-s", serial, "shell", "chmod", "644",
+        `${DEVICE_FIXTURE_DIRECTORY}/${RESTORE_FIXTURE_FILE}`,
+        `${DEVICE_FIXTURE_DIRECTORY}/${MERGE_FIXTURE_FILE}`,
+        `${DEVICE_FIXTURE_DIRECTORY}/${FIXTURE_SELECTION_FILE}`]);
       command(adb, ["-s", serial, "shell", "am", "force-stop", PACKAGE]);
       execFileSync("maestro", [
         "test", "--no-ansi", "--format", "junit", "--output", reportPath,
