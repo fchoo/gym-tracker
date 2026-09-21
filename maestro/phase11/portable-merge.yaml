@@ -79,10 +79,6 @@ tags:
       - tapOn:
           id: "restore-clean-action"
       - tapOn: "Show roots"
-      - tapOn: ${PHASE11_DEVICE_ROOT}
-      - extendedWaitUntil:
-          visible: "Download"
-          timeout: 30000
       - tapOn: "Download"
       - extendedWaitUntil:
           visible: "phase11-restore-base.gtbk"
@@ -155,10 +151,6 @@ tags:
       - tapOn:
           id: "merge-open-action"
       - tapOn: "Show roots"
-      - tapOn: ${PHASE11_DEVICE_ROOT}
-      - extendedWaitUntil:
-          visible: "Download"
-          timeout: 30000
       - tapOn: "Download"
       - extendedWaitUntil:
           visible: "phase11-merge-fixture.gtbk"
@@ -214,10 +206,6 @@ tags:
       - tapOn:
           id: "merge-open-action"
       - tapOn: "Show roots"
-      - tapOn: ${PHASE11_DEVICE_ROOT}
-      - extendedWaitUntil:
-          visible: "Download"
-          timeout: 30000
       - tapOn: "Download"
       - extendedWaitUntil:
           visible: "phase11-merge-fixture.gtbk"
