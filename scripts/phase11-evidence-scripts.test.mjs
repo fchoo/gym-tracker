@@ -348,7 +348,8 @@ test("Phase 11 flow exercises the split UI without claiming database rollback pr
   assert.match(flow, /phase11-restore-base\.gtbk/u);
   assert.match(flow, /phase11-merge-fixture\.gtbk/u);
   assert.equal((flow.match(/tapOn: "Show roots"/gu) ?? []).length, 3);
-  assert.equal((flow.match(/tapOn: "Downloads"/gu) ?? []).length, 3);
+  assert.equal((flow.match(/tapOn: \$\{PHASE11_DEVICE_ROOT\}/gu) ?? []).length, 3);
+  assert.equal((flow.match(/tapOn: "Download"/gu) ?? []).length, 3);
   assert.match(
     flow,
     /Review restore clean[\s\S]*?scrollUntilVisible:[\s\S]*?text: "Type REPLACE to continue"/u,
@@ -381,6 +382,7 @@ test("Phase 11 flow exercises the split UI without claiming database rollback pr
     "utf8",
   );
   assert.match(runner, /PHASE11_BACKUP_PASSWORD=/u);
+  assert.match(runner, /PHASE11_DEVICE_ROOT=\$\{manifest\.device\.model\}/u);
   assert.match(runner, /createPhase11FixtureArchives/u);
   assert.match(runner, /validatePhase11SqliteBackstop/u);
   assert.match(runner, /current source does not match the Phase 11 manifest/u);

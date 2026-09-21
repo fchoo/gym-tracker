@@ -703,6 +703,7 @@ export function executePhase11Maestro(args = process.argv.slice(2)) {
       execFileSync("maestro", [
         "test", "--no-ansi", "--format", "junit", "--output", reportPath,
         "--udid", serial, "-e", `PHASE11_STAGE=${contract.stage}`,
+        "-e", `PHASE11_DEVICE_ROOT=${manifest.device.model}`,
         "-e", `PHASE11_BACKUP_PASSWORD=${FIXTURE_PASSWORD}`, flowPath,
       ], { cwd: PROJECT_ROOT, stdio: "inherit" });
       if (sha256File(contract.absolute) !== contract.sha256) {
