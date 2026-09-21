@@ -330,6 +330,17 @@ test("Phase 11 flow exercises the split UI without claiming database rollback pr
   assert.match(flow, /Latest backup: Never exported/u);
   assert.match(flow, /Restore clean/u);
   assert.match(flow, /Import \/ merge backup/u);
+  for (const id of [
+    "restore-clean-action",
+    "restore-backup-action",
+    "merge-open-action",
+    "merge-cancel-action",
+    "merge-backup-action",
+  ]) {
+    assert.match(flow, new RegExp(`id: "${id}"`, "u"));
+  }
+  assert.match(flow, /pressKey: TAB[\s\S]*?assertVisible: "Restore password"/u);
+  assert.doesNotMatch(flow, /pressKey: TAB\n\s+- pressKey: ENTER/u);
   assert.match(
     flow,
     /assertNotVisible: "Review restore clean"[\s\S]*?scrollUntilVisible:[\s\S]*?text: "Export CSV"[\s\S]*?assertVisible: "Export CSV"/u,

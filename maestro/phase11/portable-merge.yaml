@@ -32,11 +32,12 @@ tags:
       - assertVisible: "Restore clean"
       - assertVisible: "Import / merge backup"
       - pressKey: TAB
-      - pressKey: ENTER
+      - assertVisible: "Restore password"
       - tapOn: "Restore password"
       - inputText: ${PHASE11_BACKUP_PASSWORD}
       - hideKeyboard
-      - tapOn: "Restore clean"
+      - tapOn:
+          id: "restore-clean-action"
       - pressKey: BACK
       - assertVisible: "No backup was selected"
       - assertNotVisible: "Review restore clean"
@@ -72,7 +73,8 @@ tags:
       - tapOn: "Restore password"
       - inputText: ${PHASE11_BACKUP_PASSWORD}
       - hideKeyboard
-      - tapOn: "Restore clean"
+      - tapOn:
+          id: "restore-clean-action"
       - extendedWaitUntil:
           visible: "phase11-restore-base.gtbk"
           timeout: 30000
@@ -91,7 +93,8 @@ tags:
       - assertVisible: "Restore backup"
       - eraseText: 7
       - inputText: "REPLACE"
-      - tapOn: "Restore backup"
+      - tapOn:
+          id: "restore-backup-action"
       - extendedWaitUntil:
           visible: "^(Backup restored. Search and progress are ready.|Backup restored. Recalculating search and progress.)$"
           timeout: 90000
@@ -132,7 +135,8 @@ tags:
       - tapOn: "Merge password"
       - inputText: ${PHASE11_BACKUP_PASSWORD}
       - hideKeyboard
-      - tapOn: "Import / merge backup"
+      - tapOn:
+          id: "merge-open-action"
       - extendedWaitUntil:
           visible: "phase11-merge-fixture.gtbk"
           timeout: 30000
@@ -152,7 +156,8 @@ tags:
       - assertVisible: "Type MERGE to continue"
       - assertVisible: "Merge backup"
       - assertVisible: "Cancel merge"
-      - tapOn: "Cancel merge"
+      - tapOn:
+          id: "merge-cancel-action"
       - assertVisible: "Merge cancelled. No changes have been made."
 - runFlow:
     when:
@@ -177,7 +182,8 @@ tags:
       - tapOn: "Merge password"
       - inputText: ${PHASE11_BACKUP_PASSWORD}
       - hideKeyboard
-      - tapOn: "Import / merge backup"
+      - tapOn:
+          id: "merge-open-action"
       - extendedWaitUntil:
           visible: "phase11-merge-fixture.gtbk"
           timeout: 30000
@@ -191,7 +197,8 @@ tags:
       - assertVisible: "Merge backup"
       - eraseText: 5
       - inputText: "MERGE"
-      - tapOn: "Merge backup"
+      - tapOn:
+          id: "merge-backup-action"
       - extendedWaitUntil:
           visible: "^(Merge complete. Search and progress are ready.|Merge saved. Recalculating search and progress.)$"
           timeout: 90000

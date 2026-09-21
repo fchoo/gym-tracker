@@ -770,6 +770,7 @@ export default function DataAndRecoveryRoute() {
                     disabled={restorePassword.length === 0}
                     label="Restore clean"
                     onPress={() => { void selectRestore(); }}
+                    testID="restore-clean-action"
                   />
                   {restoreState.kind === "cancelled" ? (
                     <Text accessibilityLiveRegion="polite" style={[typeScale.body as TextStyle, { color: colors.contentCardTextSecondary }]}>No backup was selected</Text>
@@ -836,8 +837,9 @@ export default function DataAndRecoveryRoute() {
                     disabled={replaceConfirmation !== "REPLACE"}
                     label="Restore backup"
                     onPress={() => { void commitRestore(); }}
+                    testID="restore-backup-action"
                   />
-                  <SecondaryAction label="Cancel restore clean" onPress={cancelRestoreReview} />
+                  <SecondaryAction label="Cancel restore clean" onPress={cancelRestoreReview} testID="restore-cancel-action" />
                 </>
               ) : null}
               {restoreState.kind === "restoring" ? (
@@ -878,6 +880,7 @@ export default function DataAndRecoveryRoute() {
                     disabled={mergePassword.length === 0}
                     label="Import / merge backup"
                     onPress={() => { void selectMerge(); }}
+                    testID="merge-open-action"
                   />
                   {mergeState.kind === "cancelled" ? (
                     <Text accessibilityLiveRegion="polite" style={[typeScale.body as TextStyle, { color: colors.contentCardTextSecondary }]}>Merge cancelled. No changes have been made.</Text>
@@ -942,8 +945,9 @@ export default function DataAndRecoveryRoute() {
                     disabled={mergeConfirmation !== "MERGE"}
                     label="Merge backup"
                     onPress={() => { void commitMerge(); }}
+                    testID="merge-backup-action"
                   />
-                  <SecondaryAction label="Cancel merge" onPress={cancelMergeReview} />
+                  <SecondaryAction label="Cancel merge" onPress={cancelMergeReview} testID="merge-cancel-action" />
                 </>
               ) : null}
               {mergeState.kind === "merging" ? (
