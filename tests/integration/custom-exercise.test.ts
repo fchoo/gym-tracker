@@ -30,7 +30,7 @@ import {
 } from "../../src/domains/library/customExerciseCommands";
 import {
   createCustomExerciseRuntimeReadPort,
-} from "../../src/bootstrap/workoutAppRuntime";
+} from "../../src/bootstrap/customExerciseRuntimeReadPort";
 
 jest.mock("../../src/platform/haptics/expoHapticsAdapter", () => ({
   createExpoHapticsAdapter: jest.fn(() => ({

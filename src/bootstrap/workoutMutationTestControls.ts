@@ -1,5 +1,3 @@
-import Constants from "expo-constants";
-
 export const workoutMutationTestActions = [
   "arm_add_warmup_failure",
   "arm_copy_warmup_failure",
@@ -157,6 +155,9 @@ export function runWorkoutMutationWithTestFailure<T>(
 }
 
 export function workoutMutationTestControlsEnabled(): boolean {
+  const {
+    default: Constants,
+  } = require("expo-constants") as typeof import("expo-constants");
   return Constants.expoConfig?.extra?.nativeContractsEnabled === true;
 }
 
