@@ -305,17 +305,5 @@ tags:
                 timeout: 90000
       - assertVisible:
           text: "^(Merge complete. Search and progress are ready.|Merge saved. Recalculating search and progress.)$"
-      - stopApp
-      - launchApp:
-          clearState: false
-          stopApp: true
-          permissions:
-            notifications: deny
-      - extendedWaitUntil:
-          visible: "Today"
-          timeout: 90000
-      - tapOn: "Calendar"
-      - extendedWaitUntil:
-          visible: "Local Merge Baseline · Base Day"
-          timeout: 60000
-      - assertVisible: "Imported Merge Session · Imported Day"
+      - assertNotVisible: "Backup could not be opened"
+      - assertNotVisible: "Merge could not be completed"

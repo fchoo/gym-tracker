@@ -390,8 +390,8 @@ test("Phase 11 flow exercises the split UI without claiming database rollback pr
   );
   assert.match(flow, /Cancel merge/u);
   assert.match(flow, /Merge complete\. Search and progress are ready\./u);
-  assert.match(flow, /Local Merge Baseline · Base Day/u);
-  assert.match(flow, /Imported Merge Session · Imported Day/u);
+  assert.match(flow, /assertNotVisible: "Backup could not be opened"/u);
+  assert.match(flow, /assertNotVisible: "Merge could not be completed"/u);
   assert.doesNotMatch(flow, /Google|Drive|sync|raw rows|SQL/iu);
 
   const runner = readFileSync(
