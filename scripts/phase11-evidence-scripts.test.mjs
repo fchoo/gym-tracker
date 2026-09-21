@@ -349,6 +349,14 @@ test("Phase 11 flow exercises the split UI without claiming database rollback pr
   assert.match(flow, /phase11-merge-fixture\.gtbk/u);
   assert.equal((flow.match(/tapOn: "Show roots"/gu) ?? []).length, 3);
   assert.equal((flow.match(/tapOn: "Downloads"/gu) ?? []).length, 3);
+  assert.match(
+    flow,
+    /Review restore clean[\s\S]*?scrollUntilVisible:[\s\S]*?text: "Type REPLACE to continue"/u,
+  );
+  assert.match(
+    flow,
+    /Review merge[\s\S]*?scrollUntilVisible:[\s\S]*?text: "Type MERGE to continue"/u,
+  );
   assert.match(flow, /No changes have been made yet\./u);
   for (const label of [
     "Records inserted",

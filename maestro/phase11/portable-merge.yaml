@@ -87,6 +87,12 @@ tags:
       - assertVisible: "Source format version"
       - assertVisible: "Sessions"
       - assertVisible: "Settings"
+      - scrollUntilVisible:
+          element:
+            text: "Type REPLACE to continue"
+          direction: DOWN
+          centerElement: true
+          timeout: 60000
       - assertVisible: "Type REPLACE to continue"
       - assertVisible: "Restore backup"
       - assertVisible: "Cancel restore clean"
@@ -156,6 +162,12 @@ tags:
       - assertVisible: "Kept both"
       - assertVisible: "Remapped IDs"
       - assertVisible: "Conflicts"
+      - scrollUntilVisible:
+          element:
+            text: "Type MERGE to continue"
+          direction: DOWN
+          centerElement: true
+          timeout: 60000
       - assertVisible: "Newer sessions and corrections win. Existing settings stay. Different custom exercises and plans are kept by identity."
       - assertVisible: "Type MERGE to continue"
       - assertVisible: "Merge backup"
@@ -198,6 +210,12 @@ tags:
           visible: "Review merge"
           timeout: 60000
       - assertVisible: "No changes have been made yet."
+      - scrollUntilVisible:
+          element:
+            text: "Type MERGE to continue"
+          direction: DOWN
+          centerElement: true
+          timeout: 60000
       - tapOn: "Type MERGE to continue"
       - inputText: "merge"
       - assertVisible: "Merge backup"
