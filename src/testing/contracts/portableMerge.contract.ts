@@ -64,6 +64,7 @@ export type PortableMergeContractCaseId =
 type PortableMergeContractRuntime = Readonly<{
   databaseName: string;
   kernel: SqliteKernel;
+  recoveryBackup?: RecoveryBackupPort;
   close(): Promise<void>;
 }>;
 
@@ -392,8 +393,8 @@ async function withRuntimes(
   const archive = await adapter.createRuntime(`${caseId}-archive`);
   const local = await adapter.createRuntime(`${caseId}-local`, observers.local);
   try {
-    await migrate(archive, adapter.recoveryBackup);
-    await migrate(local, adapter.recoveryBackup);
+    await migrate(archive, archive.recoveryBackup ?? adapter.recoveryBackup);
+    await migrate(local, local.recoveryBackup ?? adapter.recoveryBackup);
     await action(archive, local);
   } finally {
     await Promise.all([archive.close(), local.close()]);

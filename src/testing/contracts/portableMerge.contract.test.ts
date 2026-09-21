@@ -159,4 +159,26 @@ describe("portable merge contract", () => {
     expect(runner).toContain("].map(shellQuote).join(' ')");
     expect(packageJson.scripts?.["test:sqlite:device"]).toContain("portable-merge");
   });
+
+  it("migrates paired native runtimes through their runtime-scoped recovery backups", () => {
+    const repositoryRoot = join(__dirname, "../../..");
+    const contract = readFileSync(
+      join(repositoryRoot, "src/testing/contracts/portableMerge.contract.ts"),
+      "utf8",
+    );
+    const migrationsAdapter = readFileSync(
+      join(repositoryRoot, "src/testing/contracts/migrationsEffects.contract.ts"),
+      "utf8",
+    );
+
+    expect(contract).toContain(
+      "await migrate(archive, archive.recoveryBackup ?? adapter.recoveryBackup);",
+    );
+    expect(contract).toContain(
+      "await migrate(local, local.recoveryBackup ?? adapter.recoveryBackup);",
+    );
+    expect(migrationsAdapter).toContain("const recoveryBackupFor = (databaseKey: string)");
+    expect(migrationsAdapter).toContain("backupIdPrefix: `${databaseName(databaseKey).replace(/\\.db$/u, \"\")}-`");
+    expect(migrationsAdapter).toContain("recoveryBackup: recoveryBackupFor(databaseKey)");
+  });
 });

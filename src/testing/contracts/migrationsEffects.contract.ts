@@ -64,6 +64,7 @@ export type MigrationsEffectsContractCaseId =
 type ContractRuntime = Readonly<{
   databaseName: string;
   kernel: SqliteKernel;
+  recoveryBackup?: ReturnType<typeof createExpoRecoveryBackupPort>;
   close(): Promise<void>;
 }>;
 
@@ -940,11 +941,14 @@ export async function createExpoMigrationsEffectsContractAdapter(
   } as const;
   const recoveryDirectory = new Directory(Paths.document, "backup-staging");
   recoveryDirectory.create({ idempotent: true, intermediates: true });
-  const recoveryBackup = createExpoRecoveryBackupPort({
+  const recoveryBackupFor = (databaseKey: string) => createExpoRecoveryBackupPort({
+    backupIdPrefix: `${databaseName(databaseKey).replace(/\.db$/u, "")}-`,
     openSource: (sourceName) =>
       openDatabaseAsync(sourceName, openOptions),
-    openDestination: (destinationName) =>
-      openDatabaseAsync(destinationName, openOptions),
+    openDestination(destinationName) {
+      contractDatabaseNames.add(destinationName);
+      return openDatabaseAsync(destinationName, openOptions);
+    },
     backup: ({ sourceDatabase, destDatabase }) =>
       backupDatabaseAsync({
         sourceDatabase: sourceDatabase as Awaited<
@@ -974,7 +978,7 @@ export async function createExpoMigrationsEffectsContractAdapter(
   });
 
   return {
-    recoveryBackup,
+    recoveryBackup: recoveryBackupFor("shared"),
     async createRuntime(databaseKey, observer = {}) {
       const resolvedDatabaseName = databaseName(databaseKey);
       contractDatabaseNames.add(resolvedDatabaseName);
@@ -985,6 +989,7 @@ export async function createExpoMigrationsEffectsContractAdapter(
       return {
         ...runtime,
         databaseName: resolvedDatabaseName,
+        recoveryBackup: recoveryBackupFor(databaseKey),
       };
     },
     async cleanup() {
