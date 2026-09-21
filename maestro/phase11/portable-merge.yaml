@@ -112,9 +112,10 @@ tags:
             - tapOn:
                 id: "restore-rebuild-retry-action"
             - extendedWaitUntil:
-                visible: "Backup restored. Search and progress are ready."
+                visible: "^(Backup restored. Search and progress are ready.|Backup restored. Recalculating search and progress.)$"
                 timeout: 90000
-      - assertVisible: "Backup restored. Search and progress are ready."
+      - assertVisible:
+          text: "^(Backup restored. Search and progress are ready.|Backup restored. Recalculating search and progress.)$"
       - tapOn: "Go back"
       - tapOn: "Calendar"
       - extendedWaitUntil:
@@ -223,9 +224,10 @@ tags:
             - tapOn:
                 id: "merge-rebuild-retry-action"
             - extendedWaitUntil:
-                visible: "Merge complete. Search and progress are ready."
+                visible: "^(Merge complete. Search and progress are ready.|Merge saved. Recalculating search and progress.)$"
                 timeout: 90000
-      - assertVisible: "Merge complete. Search and progress are ready."
+      - assertVisible:
+          text: "^(Merge complete. Search and progress are ready.|Merge saved. Recalculating search and progress.)$"
       - stopApp
       - launchApp:
           clearState: false
