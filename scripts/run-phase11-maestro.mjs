@@ -696,20 +696,21 @@ export function executePhase11Maestro(args = process.argv.slice(2)) {
       directory: path.join(temporaryDirectory, "fixtures"),
       localDate: command(adb, ["-s", serial, "shell", "date", "+%Y-%m-%d"]),
     });
-    command(adb, ["-s", serial, "install", "-r", apkPath]);
-    validateLiveInstallation(adb, manifest);
-    command(adb, ["-s", serial, "shell", "mkdir", "-p", DEVICE_FIXTURE_DIRECTORY]);
-    command(adb, ["-s", serial, "shell", "rm", "-f",
-      `${DEVICE_FIXTURE_DIRECTORY}/${RESTORE_FIXTURE_FILE}`,
-      `${DEVICE_FIXTURE_DIRECTORY}/${MERGE_FIXTURE_FILE}`,
-      `${DEVICE_FIXTURE_DIRECTORY}/${FIXTURE_SELECTION_FILE}`]);
-    for (const fixture of fixtures) {
-      command(adb, ["-s", serial, "push", fixture.path, `${DEVICE_FIXTURE_DIRECTORY}/${fixture.file}`]);
-    }
     const flows = [];
     for (const contract of snapshotFlows()) {
       const reportPath = path.join(temporaryDirectory, `${contract.id}.xml`);
       const selectorPath = path.join(temporaryDirectory, FIXTURE_SELECTION_FILE);
+      command(adb, ["-s", serial, "shell", "pm", "clear", PACKAGE]);
+      command(adb, ["-s", serial, "install", "-r", apkPath]);
+      validateLiveInstallation(adb, manifest);
+      command(adb, ["-s", serial, "shell", "mkdir", "-p", DEVICE_FIXTURE_DIRECTORY]);
+      command(adb, ["-s", serial, "shell", "rm", "-f",
+        `${DEVICE_FIXTURE_DIRECTORY}/${RESTORE_FIXTURE_FILE}`,
+        `${DEVICE_FIXTURE_DIRECTORY}/${MERGE_FIXTURE_FILE}`,
+        `${DEVICE_FIXTURE_DIRECTORY}/${FIXTURE_SELECTION_FILE}`]);
+      for (const fixture of fixtures) {
+        command(adb, ["-s", serial, "push", fixture.path, `${DEVICE_FIXTURE_DIRECTORY}/${fixture.file}`]);
+      }
       writeFileSync(selectorPath, contract.fixtureSelection);
       command(adb, ["-s", serial, "push", selectorPath, `${DEVICE_FIXTURE_DIRECTORY}/${FIXTURE_SELECTION_FILE}`]);
       command(adb, ["-s", serial, "shell", "am", "force-stop", PACKAGE]);

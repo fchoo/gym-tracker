@@ -10,7 +10,8 @@ tags:
       true: ${PHASE11_STAGE == 'navigation-cancel'}
     commands:
       - launchApp:
-          clearState: true
+          clearState: false
+          stopApp: true
           permissions:
             notifications: deny
       - assertVisible: "Today"
@@ -54,7 +55,8 @@ tags:
       true: ${PHASE11_STAGE == 'restore-clean-fixture'}
     commands:
       - launchApp:
-          clearState: true
+          clearState: false
+          stopApp: true
           permissions:
             notifications: deny
       - assertVisible: "Today"
