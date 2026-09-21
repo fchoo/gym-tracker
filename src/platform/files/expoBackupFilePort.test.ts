@@ -621,7 +621,7 @@ describe("Expo restore file port", () => {
     const port = createProductionExpoRestoreFilePort();
 
     await expect(port.readSelectedArchiveAtMost(5)).resolves.toEqual(Uint8Array.from([1, 2, 3]));
-    expect(mockPickFileAsync).toHaveBeenCalledWith({ mimeTypes: "application/octet-stream", multipleFiles: false });
+    expect(mockPickFileAsync).toHaveBeenCalledWith({ mimeTypes: "*/*", multipleFiles: false });
     expect(open).toHaveBeenCalledWith("r");
     expect(handle.close).toHaveBeenCalledTimes(1);
 

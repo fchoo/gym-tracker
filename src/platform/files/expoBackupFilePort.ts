@@ -108,7 +108,7 @@ export function createProductionExpoRestoreFilePort() {
     async pickSingleArchive() {
       const { File, FileMode } = require("expo-file-system") as typeof import("expo-file-system");
       const selected = await File.pickFileAsync({
-        mimeTypes: "application/octet-stream",
+        mimeTypes: "*/*",
         multipleFiles: false,
       });
       if (selected.canceled) return null;

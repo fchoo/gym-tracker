@@ -385,6 +385,7 @@ test("Phase 11 flow exercises the split UI without claiming database rollback pr
   );
   assert.match(runner, /PHASE11_BACKUP_PASSWORD=/u);
   assert.match(runner, /createPhase11FixtureArchives/u);
+  assert.match(runner, /rm -f \/sdcard\/Download\/phase11-\*\.gtbk/u);
   assert.match(runner, /validatePhase11SqliteBackstop/u);
   assert.match(runner, /current source does not match the Phase 11 manifest/u);
 });
