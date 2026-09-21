@@ -1,0 +1,214 @@
+appId: com.fchoo.gymtracker.devtest
+name: Phase 11 portable merge Data and recovery flow
+tags:
+  - phase-11
+  - portable-merge
+---
+- assertTrue: ${PHASE11_STAGE == 'navigation-cancel' || PHASE11_STAGE == 'restore-clean-fixture' || PHASE11_STAGE == 'merge-review-cancel' || PHASE11_STAGE == 'merge-commit-relaunch'}
+- runFlow:
+    when:
+      true: ${PHASE11_STAGE == 'navigation-cancel'}
+    commands:
+      - launchApp:
+          clearState: true
+          permissions:
+            notifications: deny
+      - assertVisible: "Today"
+      - extendedWaitUntil:
+          visible: "Use Full Body Foundation"
+          timeout: 90000
+      - assertVisible: "Settings"
+      - tapOn: "Settings"
+      - scrollUntilVisible:
+          element:
+            id: "more-data-and-recovery"
+          direction: DOWN
+          centerElement: true
+          timeout: 60000
+      - tapOn:
+          id: "more-data-and-recovery"
+      - assertVisible: "Create secure backup"
+      - assertVisible: "Latest backup: Never exported"
+      - assertVisible: "Restore clean"
+      - assertVisible: "Import / merge backup"
+      - assertVisible: "Export CSV"
+      - pressKey: TAB
+      - pressKey: ENTER
+      - tapOn: "Restore password"
+      - inputText: ${PHASE11_BACKUP_PASSWORD}
+      - hideKeyboard
+      - tapOn: "Restore clean"
+      - pressKey: BACK
+      - assertVisible: "No backup was selected"
+      - assertNotVisible: "Review restore clean"
+- runFlow:
+    when:
+      true: ${PHASE11_STAGE == 'restore-clean-fixture'}
+    commands:
+      - launchApp:
+          clearState: true
+          permissions:
+            notifications: deny
+      - assertVisible: "Today"
+      - extendedWaitUntil:
+          visible: "Use Full Body Foundation"
+          timeout: 90000
+      - tapOn: "Settings"
+      - scrollUntilVisible:
+          element:
+            id: "more-data-and-recovery"
+          direction: DOWN
+          centerElement: true
+          timeout: 60000
+      - tapOn:
+          id: "more-data-and-recovery"
+      - assertVisible: "Restore clean"
+      - tapOn: "Restore password"
+      - inputText: ${PHASE11_BACKUP_PASSWORD}
+      - hideKeyboard
+      - tapOn: "Restore clean"
+      - extendedWaitUntil:
+          visible: "phase11-restore-base.gtbk"
+          timeout: 30000
+      - tapOn: "phase11-restore-base.gtbk"
+      - extendedWaitUntil:
+          visible: "Review restore clean"
+          timeout: 60000
+      - assertVisible: "Source format version"
+      - assertVisible: "Sessions"
+      - assertVisible: "Settings"
+      - assertVisible: "Type REPLACE to continue"
+      - assertVisible: "Restore backup"
+      - assertVisible: "Cancel restore clean"
+      - tapOn: "Type REPLACE to continue"
+      - inputText: "replace"
+      - assertVisible: "Restore backup"
+      - eraseText: 7
+      - inputText: "REPLACE"
+      - tapOn: "Restore backup"
+      - extendedWaitUntil:
+          visible: "^(Backup restored. Search and progress are ready.|Backup restored. Recalculating search and progress.)$"
+          timeout: 90000
+      - runFlow:
+          when:
+            visible: "Backup restored. Recalculating search and progress."
+          commands:
+            - tapOn: "Retry rebuild"
+            - extendedWaitUntil:
+                visible: "Backup restored. Search and progress are ready."
+                timeout: 90000
+      - assertVisible: "Backup restored. Search and progress are ready."
+      - tapOn: "Go back"
+      - tapOn: "Calendar"
+      - extendedWaitUntil:
+          visible: "Local Merge Baseline · Base Day"
+          timeout: 60000
+- runFlow:
+    when:
+      true: ${PHASE11_STAGE == 'merge-review-cancel'}
+    commands:
+      - launchApp:
+          clearState: false
+          stopApp: true
+          permissions:
+            notifications: deny
+      - assertVisible: "Today"
+      - tapOn: "Settings"
+      - scrollUntilVisible:
+          element:
+            id: "more-data-and-recovery"
+          direction: DOWN
+          centerElement: true
+          timeout: 60000
+      - tapOn:
+          id: "more-data-and-recovery"
+      - assertVisible: "Import / merge backup"
+      - tapOn: "Merge password"
+      - inputText: ${PHASE11_BACKUP_PASSWORD}
+      - hideKeyboard
+      - tapOn: "Import / merge backup"
+      - extendedWaitUntil:
+          visible: "phase11-merge-fixture.gtbk"
+          timeout: 30000
+      - tapOn: "phase11-merge-fixture.gtbk"
+      - extendedWaitUntil:
+          visible: "Review merge"
+          timeout: 60000
+      - assertVisible: "No changes have been made yet."
+      - assertVisible: "Records inserted"
+      - assertVisible: "Duplicates unchanged"
+      - assertVisible: "Archive wins"
+      - assertVisible: "Local wins"
+      - assertVisible: "Kept both"
+      - assertVisible: "Remapped IDs"
+      - assertVisible: "Conflicts"
+      - assertVisible: "Newer sessions and corrections win. Existing settings stay. Different custom exercises and plans are kept by identity."
+      - assertVisible: "Type MERGE to continue"
+      - assertVisible: "Merge backup"
+      - assertVisible: "Cancel merge"
+      - tapOn: "Cancel merge"
+      - assertVisible: "Merge cancelled. No changes have been made."
+- runFlow:
+    when:
+      true: ${PHASE11_STAGE == 'merge-commit-relaunch'}
+    commands:
+      - launchApp:
+          clearState: false
+          stopApp: true
+          permissions:
+            notifications: deny
+      - assertVisible: "Today"
+      - tapOn: "Settings"
+      - scrollUntilVisible:
+          element:
+            id: "more-data-and-recovery"
+          direction: DOWN
+          centerElement: true
+          timeout: 60000
+      - tapOn:
+          id: "more-data-and-recovery"
+      - assertVisible: "Import / merge backup"
+      - tapOn: "Merge password"
+      - inputText: ${PHASE11_BACKUP_PASSWORD}
+      - hideKeyboard
+      - tapOn: "Import / merge backup"
+      - extendedWaitUntil:
+          visible: "phase11-merge-fixture.gtbk"
+          timeout: 30000
+      - tapOn: "phase11-merge-fixture.gtbk"
+      - extendedWaitUntil:
+          visible: "Review merge"
+          timeout: 60000
+      - assertVisible: "No changes have been made yet."
+      - tapOn: "Type MERGE to continue"
+      - inputText: "merge"
+      - assertVisible: "Merge backup"
+      - eraseText: 5
+      - inputText: "MERGE"
+      - tapOn: "Merge backup"
+      - extendedWaitUntil:
+          visible: "^(Merge complete. Search and progress are ready.|Merge saved. Recalculating search and progress.)$"
+          timeout: 90000
+      - runFlow:
+          when:
+            visible: "Merge saved. Recalculating search and progress."
+          commands:
+            - tapOn: "Retry rebuild"
+            - extendedWaitUntil:
+                visible: "Merge complete. Search and progress are ready."
+                timeout: 90000
+      - assertVisible: "Merge complete. Search and progress are ready."
+      - stopApp
+      - launchApp:
+          clearState: false
+          stopApp: true
+          permissions:
+            notifications: deny
+      - extendedWaitUntil:
+          visible: "Today"
+          timeout: 90000
+      - tapOn: "Calendar"
+      - extendedWaitUntil:
+          visible: "Local Merge Baseline · Base Day"
+          timeout: 60000
+      - assertVisible: "Imported Merge Session · Imported Day"
