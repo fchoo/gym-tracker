@@ -345,11 +345,9 @@ test("Phase 11 flow exercises the split UI without claiming database rollback pr
     flow,
     /assertNotVisible: "Review restore clean"[\s\S]*?scrollUntilVisible:[\s\S]*?text: "Export CSV"[\s\S]*?assertVisible: "Export CSV"/u,
   );
-  assert.match(flow, /pressKey: BACK\n\s+- pressKey: BACK[\s\S]*?visible: "No backup was selected"/u);
-  assert.match(flow, /phase11-restore-base\.gtbk/u);
-  assert.match(flow, /phase11-merge-fixture\.gtbk/u);
-  assert.equal((flow.match(/tapOn: "Show roots"/gu) ?? []).length, 3);
-  assert.equal((flow.match(/tapOn: "Download"/gu) ?? []).length, 3);
+  assert.doesNotMatch(flow, /tapOn: "Show roots"/u);
+  assert.doesNotMatch(flow, /tapOn: "Download"/u);
+  assert.doesNotMatch(flow, /phase11-(?:restore-base|merge-fixture)\.gtbk/u);
   assert.match(
     flow,
     /Review restore clean[\s\S]*?scrollUntilVisible:[\s\S]*?text: "Type REPLACE to continue"/u,
@@ -385,9 +383,21 @@ test("Phase 11 flow exercises the split UI without claiming database rollback pr
   );
   assert.match(runner, /PHASE11_BACKUP_PASSWORD=/u);
   assert.match(runner, /createPhase11FixtureArchives/u);
-  assert.match(runner, /rm", "-f"[\s\S]*?RESTORE_FIXTURE_FILE[\s\S]*?MERGE_FIXTURE_FILE/u);
+  assert.match(runner, /fixtureSelection: RESTORE_FIXTURE_FILE/u);
+  assert.match(runner, /fixtureSelection: MERGE_FIXTURE_FILE/u);
+  assert.match(runner, /FIXTURE_SELECTION_FILE/u);
+  assert.match(runner, /DEVICE_FIXTURE_DIRECTORY/u);
+  assert.match(runner, /writeFileSync\(selectorPath, contract\.fixtureSelection\)/u);
   assert.match(runner, /validatePhase11SqliteBackstop/u);
   assert.match(runner, /current source does not match the Phase 11 manifest/u);
+
+  const runtime = readFileSync(
+    path.join(projectRoot, "src/bootstrap/workoutAppRuntime.tsx"),
+    "utf8",
+  );
+  assert.match(runtime, /buildProfile === "development-test"/u);
+  assert.match(runtime, /process\.env\.EXPO_PUBLIC_NATIVE_CONTRACT_SUITE === "phase11"/u);
+  assert.match(runtime, /createPhase11FixtureRestoreFilePort/u);
 });
 
 test("Phase 11 package script exposes the manifest-bound runner", () => {

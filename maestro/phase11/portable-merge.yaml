@@ -38,8 +38,6 @@ tags:
       - hideKeyboard
       - tapOn:
           id: "restore-clean-action"
-      - pressKey: BACK
-      - pressKey: BACK
       - extendedWaitUntil:
           visible: "No backup was selected"
           timeout: 30000
@@ -78,12 +76,6 @@ tags:
       - hideKeyboard
       - tapOn:
           id: "restore-clean-action"
-      - tapOn: "Show roots"
-      - tapOn: "Download"
-      - extendedWaitUntil:
-          visible: "phase11-restore-base.gtbk"
-          timeout: 30000
-      - tapOn: "phase11-restore-base.gtbk"
       - extendedWaitUntil:
           visible: "Review restore clean"
           timeout: 60000
@@ -150,12 +142,6 @@ tags:
       - hideKeyboard
       - tapOn:
           id: "merge-open-action"
-      - tapOn: "Show roots"
-      - tapOn: "Download"
-      - extendedWaitUntil:
-          visible: "phase11-merge-fixture.gtbk"
-          timeout: 30000
-      - tapOn: "phase11-merge-fixture.gtbk"
       - extendedWaitUntil:
           visible: "Review merge"
           timeout: 60000
@@ -205,12 +191,6 @@ tags:
       - hideKeyboard
       - tapOn:
           id: "merge-open-action"
-      - tapOn: "Show roots"
-      - tapOn: "Download"
-      - extendedWaitUntil:
-          visible: "phase11-merge-fixture.gtbk"
-          timeout: 30000
-      - tapOn: "phase11-merge-fixture.gtbk"
       - extendedWaitUntil:
           visible: "Review merge"
           timeout: 60000

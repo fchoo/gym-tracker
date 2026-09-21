@@ -30,6 +30,8 @@ const DEFAULT_SQLITE_RESULT = "artifacts/native/phase11/result.json";
 const FLOW_PATH = "maestro/phase11/portable-merge.yaml";
 const RESTORE_FIXTURE_FILE = "phase11-restore-base.gtbk";
 const MERGE_FIXTURE_FILE = "phase11-merge-fixture.gtbk";
+const FIXTURE_SELECTION_FILE = "phase11-fixture-selection.txt";
+const DEVICE_FIXTURE_DIRECTORY = "/sdcard/Android/data/com.fchoo.gymtracker.devtest/files/phase11";
 const FIXTURE_PASSWORD = "phase11-merge-password";
 const FIXTURE_OWNER_NAMESPACE = "11111111111111111111111111111111";
 const BACK_SQUAT_ID = "5f140001-7e35-4a6d-9100-000000000001";
@@ -44,6 +46,7 @@ export const PHASE11_MAESTRO_FLOW_CONTRACTS = Object.freeze([
     id: "phase11-data-recovery-navigation",
     flow: FLOW_PATH,
     stage: "navigation-cancel",
+    fixtureSelection: "cancel",
     coverage: Object.freeze([
       "DATA-09-manual-export-entry",
       "D-03-restore-clean-merge-separation",
@@ -56,6 +59,7 @@ export const PHASE11_MAESTRO_FLOW_CONTRACTS = Object.freeze([
     id: "phase11-restore-clean-fixture",
     flow: FLOW_PATH,
     stage: "restore-clean-fixture",
+    fixtureSelection: RESTORE_FIXTURE_FILE,
     coverage: Object.freeze([
       "D-03-clean-restore",
       "DATA-09-portable-v2-restore",
@@ -65,6 +69,7 @@ export const PHASE11_MAESTRO_FLOW_CONTRACTS = Object.freeze([
     id: "phase11-merge-review-cancel",
     flow: FLOW_PATH,
     stage: "merge-review-cancel",
+    fixtureSelection: MERGE_FIXTURE_FILE,
     coverage: Object.freeze([
       "D-01-merge-preview-summary",
       "D-02-owner-scoped-identity-copy",
@@ -76,6 +81,7 @@ export const PHASE11_MAESTRO_FLOW_CONTRACTS = Object.freeze([
     id: "phase11-merge-commit-relaunch",
     flow: FLOW_PATH,
     stage: "merge-commit-relaunch",
+    fixtureSelection: MERGE_FIXTURE_FILE,
     coverage: Object.freeze([
       "D-01-merge-commit-lifecycle",
       "D-04-exact-merge-confirmation",
@@ -692,16 +698,20 @@ export function executePhase11Maestro(args = process.argv.slice(2)) {
     });
     command(adb, ["-s", serial, "install", "-r", apkPath]);
     validateLiveInstallation(adb, manifest);
-    command(adb, ["-s", serial, "shell", "mkdir", "-p", "/sdcard/Download"]);
+    command(adb, ["-s", serial, "shell", "mkdir", "-p", DEVICE_FIXTURE_DIRECTORY]);
     command(adb, ["-s", serial, "shell", "rm", "-f",
-      `/sdcard/Download/${RESTORE_FIXTURE_FILE}`,
-      `/sdcard/Download/${MERGE_FIXTURE_FILE}`]);
+      `${DEVICE_FIXTURE_DIRECTORY}/${RESTORE_FIXTURE_FILE}`,
+      `${DEVICE_FIXTURE_DIRECTORY}/${MERGE_FIXTURE_FILE}`,
+      `${DEVICE_FIXTURE_DIRECTORY}/${FIXTURE_SELECTION_FILE}`]);
     for (const fixture of fixtures) {
-      command(adb, ["-s", serial, "push", fixture.path, `/sdcard/Download/${fixture.file}`]);
+      command(adb, ["-s", serial, "push", fixture.path, `${DEVICE_FIXTURE_DIRECTORY}/${fixture.file}`]);
     }
     const flows = [];
     for (const contract of snapshotFlows()) {
       const reportPath = path.join(temporaryDirectory, `${contract.id}.xml`);
+      const selectorPath = path.join(temporaryDirectory, FIXTURE_SELECTION_FILE);
+      writeFileSync(selectorPath, contract.fixtureSelection);
+      command(adb, ["-s", serial, "push", selectorPath, `${DEVICE_FIXTURE_DIRECTORY}/${FIXTURE_SELECTION_FILE}`]);
       command(adb, ["-s", serial, "shell", "am", "force-stop", PACKAGE]);
       execFileSync("maestro", [
         "test", "--no-ansi", "--format", "junit", "--output", reportPath,

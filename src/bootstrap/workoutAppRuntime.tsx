@@ -7,6 +7,7 @@ import React, {
   useRef,
   useState,
 } from "react";
+import Constants from "expo-constants";
 
 import exerciseCatalogAsset from "../../assets/content/exercise-library.v1.json";
 import exerciseCatalogManifestAsset from "../../assets/content/exercise-library.v1.manifest.json";
@@ -245,6 +246,7 @@ import {
 } from "../platform/crypto/passwordKdf";
 import {
   createProductionExpoBackupFilePort,
+  createPhase11FixtureRestoreFilePort,
   createProductionExpoRestoreFilePort,
   type BackupArchiveHandle,
 } from "../platform/files/expoBackupFilePort";
@@ -1340,6 +1342,12 @@ export async function activateInitialAcceptedStarter(
   });
 }
 
+function phase11NativeFixtureFilesEnabled(): boolean {
+  return Constants.expoConfig?.extra?.buildProfile === "development-test"
+    && Constants.expoConfig.extra.nativeContractsEnabled === true
+    && process.env.EXPO_PUBLIC_NATIVE_CONTRACT_SUITE === "phase11";
+}
+
 export const productionWorkoutAppRuntimeDependencies =
   createWorkoutAppRuntimeDependencies({
     openKernel: openSqliteKernel,
@@ -1470,45 +1478,39 @@ export const productionWorkoutAppRuntimeDependencies =
     }),
     createCsvExportRepository,
     createCsvFiles: createProductionExpoCsvFilePort,
-    createRestoreCommands: (kernel) => createRestoreCommands({
-      crypto: createAesGcmArchivePort(createExpoAesGcmArchiveDriver()),
-      files: createProductionExpoRestoreFilePort(),
-      kdf: createPasswordKdfPort(),
-      schema: createSqliteRestoreSchemaPort(kernel),
-      retainedReferences: createSqliteRestoreRetainedReferencePort(kernel),
-      referenceAvailability: createSqliteRestoreCatalogReferenceAvailabilityPort(kernel),
-      candidateProbe: createSqliteRestoreCandidateProbe(),
-      restorer: createLogicalRestoreRepository(kernel, { nowMs: () => Date.now() }),
-      store: createRestorePreflightStore({
-        tokenFactory() {
-          const { randomUUID } = require("expo-crypto") as typeof import("expo-crypto");
-          return randomUUID();
-        },
-      }),
-    }),
-    createMergeCommands: (kernel) => createMergeCommands({
-      crypto: createAesGcmArchivePort(createExpoAesGcmArchiveDriver()),
-      files: createProductionExpoRestoreFilePort(),
-      kdf: createPasswordKdfPort(),
-      schema: createSqliteRestoreSchemaPort(kernel),
-      retainedReferences: createSqliteRestoreRetainedReferencePort(kernel),
-      candidateProbe: createSqliteRestoreCandidateProbe(),
-      local: createSqliteMergeLocalFactsPort(kernel),
-      sha256: async (value) => {
-        const {
-          CryptoDigestAlgorithm,
-          digestStringAsync,
-        } = require("expo-crypto") as typeof import("expo-crypto");
-        return digestStringAsync(CryptoDigestAlgorithm.SHA256, value);
-      },
-      store: createMergePreflightStore({
-        tokenFactory() {
-          const { randomUUID } = require("expo-crypto") as typeof import("expo-crypto");
-          return randomUUID();
-        },
-      }),
-      writer: createLogicalMergeRepository(kernel, {
-        nowMs: () => Date.now(),
+    createRestoreCommands: (kernel) => {
+      const files = phase11NativeFixtureFilesEnabled()
+        ? createPhase11FixtureRestoreFilePort()
+        : createProductionExpoRestoreFilePort();
+      return createRestoreCommands({
+        crypto: createAesGcmArchivePort(createExpoAesGcmArchiveDriver()),
+        files,
+        kdf: createPasswordKdfPort(),
+        schema: createSqliteRestoreSchemaPort(kernel),
+        retainedReferences: createSqliteRestoreRetainedReferencePort(kernel),
+        referenceAvailability: createSqliteRestoreCatalogReferenceAvailabilityPort(kernel),
+        candidateProbe: createSqliteRestoreCandidateProbe(),
+        restorer: createLogicalRestoreRepository(kernel, { nowMs: () => Date.now() }),
+        store: createRestorePreflightStore({
+          tokenFactory() {
+            const { randomUUID } = require("expo-crypto") as typeof import("expo-crypto");
+            return randomUUID();
+          },
+        }),
+      });
+    },
+    createMergeCommands: (kernel) => {
+      const files = phase11NativeFixtureFilesEnabled()
+        ? createPhase11FixtureRestoreFilePort()
+        : createProductionExpoRestoreFilePort();
+      return createMergeCommands({
+        crypto: createAesGcmArchivePort(createExpoAesGcmArchiveDriver()),
+        files,
+        kdf: createPasswordKdfPort(),
+        schema: createSqliteRestoreSchemaPort(kernel),
+        retainedReferences: createSqliteRestoreRetainedReferencePort(kernel),
+        candidateProbe: createSqliteRestoreCandidateProbe(),
+        local: createSqliteMergeLocalFactsPort(kernel),
         sha256: async (value) => {
           const {
             CryptoDigestAlgorithm,
@@ -1516,8 +1518,24 @@ export const productionWorkoutAppRuntimeDependencies =
           } = require("expo-crypto") as typeof import("expo-crypto");
           return digestStringAsync(CryptoDigestAlgorithm.SHA256, value);
         },
-      }),
-    }),
+        store: createMergePreflightStore({
+          tokenFactory() {
+            const { randomUUID } = require("expo-crypto") as typeof import("expo-crypto");
+            return randomUUID();
+          },
+        }),
+        writer: createLogicalMergeRepository(kernel, {
+          nowMs: () => Date.now(),
+          sha256: async (value) => {
+            const {
+              CryptoDigestAlgorithm,
+              digestStringAsync,
+            } = require("expo-crypto") as typeof import("expo-crypto");
+            return digestStringAsync(CryptoDigestAlgorithm.SHA256, value);
+          },
+        }),
+      });
+    },
     reconcileRestore: (kernel) => createRestoreReconciliationRepository(kernel, {
       history: createHistoryProjectionRepository(kernel),
       nowMs: () => Date.now(),

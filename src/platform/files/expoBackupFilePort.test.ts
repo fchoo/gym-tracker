@@ -8,12 +8,16 @@ import {
 
 import {
   BackupFilePortError,
+  PHASE11_RESTORE_FIXTURE_DIRECTORY_URI,
+  PHASE11_RESTORE_FIXTURE_SELECTOR_FILE,
   RestoreFilePortError,
   createExpoBackupFilePort,
   createExpoRestoreFilePort,
+  createPhase11FixtureRestoreFilePort,
   createProductionExpoBackupFilePort,
   createProductionExpoRestoreFilePort,
   type ExpoBackupFileDriver,
+  type Phase11FixtureRestoreFileDriver,
 } from "./expoBackupFilePort";
 
 const mockDirectoryCreate = jest.fn<(options: unknown) => void>();
@@ -519,6 +523,10 @@ describe("Expo backup file port", () => {
 });
 
 describe("Expo restore file port", () => {
+  beforeEach(() => {
+    mockPickFileAsync.mockReset();
+  });
+
   function selectedFile(input: Readonly<{
     size: number;
     bytes: Uint8Array;
@@ -621,11 +629,58 @@ describe("Expo restore file port", () => {
     const port = createProductionExpoRestoreFilePort();
 
     await expect(port.readSelectedArchiveAtMost(5)).resolves.toEqual(Uint8Array.from([1, 2, 3]));
-    expect(mockPickFileAsync).toHaveBeenCalledWith({ mimeTypes: "*/*", multipleFiles: false });
+    expect(mockPickFileAsync).toHaveBeenCalledWith({ mimeTypes: "application/octet-stream", multipleFiles: false });
     expect(open).toHaveBeenCalledWith("r");
     expect(handle.close).toHaveBeenCalledTimes(1);
 
     mockPickFileAsync.mockResolvedValueOnce({ canceled: true, result: null });
     await expect(port.readSelectedArchiveAtMost(5)).resolves.toBeNull();
+  });
+
+  it("reads only the selected Phase 11 fixture from the app-owned test directory", async () => {
+    const files = new Map<string, Uint8Array | string>([
+      [
+        `${PHASE11_RESTORE_FIXTURE_DIRECTORY_URI}/${PHASE11_RESTORE_FIXTURE_SELECTOR_FILE}`,
+        "phase11-restore-base.gtbk\n",
+      ],
+      [
+        `${PHASE11_RESTORE_FIXTURE_DIRECTORY_URI}/phase11-restore-base.gtbk`,
+        Uint8Array.from([7, 8, 9]),
+      ],
+    ]);
+    const driver: Phase11FixtureRestoreFileDriver = {
+      readFileBytes: (uri) => files.get(uri) as Uint8Array,
+      readTextFile: (uri) => files.get(uri) as string,
+      fileSize: (uri) => (files.get(uri) as Uint8Array).byteLength,
+    };
+    const port = createPhase11FixtureRestoreFilePort({ driver });
+
+    await expect(port.readSelectedArchiveAtMost(5)).resolves.toEqual(Uint8Array.from([7, 8, 9]));
+    expect(mockPickFileAsync).not.toHaveBeenCalled();
+  });
+
+  it("maps Phase 11 cancel and invalid selector states through the safe restore port", async () => {
+    const files = new Map<string, Uint8Array | string>([
+      [
+        `${PHASE11_RESTORE_FIXTURE_DIRECTORY_URI}/${PHASE11_RESTORE_FIXTURE_SELECTOR_FILE}`,
+        "cancel",
+      ],
+      [
+        `${PHASE11_RESTORE_FIXTURE_DIRECTORY_URI}/phase11-merge-fixture.gtbk`,
+        Uint8Array.from([1]),
+      ],
+    ]);
+    const driver: Phase11FixtureRestoreFileDriver = {
+      readFileBytes: (uri) => files.get(uri) as Uint8Array,
+      readTextFile: (uri) => files.get(uri) as string,
+      fileSize: (uri) => (files.get(uri) as Uint8Array).byteLength,
+    };
+
+    await expect(createPhase11FixtureRestoreFilePort({ driver }).readSelectedArchiveAtMost(5))
+      .resolves.toBeNull();
+
+    files.set(`${PHASE11_RESTORE_FIXTURE_DIRECTORY_URI}/${PHASE11_RESTORE_FIXTURE_SELECTOR_FILE}`, "unexpected.gtbk");
+    await expect(createPhase11FixtureRestoreFilePort({ driver }).readSelectedArchiveAtMost(5))
+      .rejects.toEqual(new RestoreFilePortError("picker_failed"));
   });
 });
