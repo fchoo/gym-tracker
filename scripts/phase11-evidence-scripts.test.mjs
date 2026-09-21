@@ -345,6 +345,7 @@ test("Phase 11 flow exercises the split UI without claiming database rollback pr
     flow,
     /assertNotVisible: "Review restore clean"[\s\S]*?scrollUntilVisible:[\s\S]*?text: "Export CSV"[\s\S]*?assertVisible: "Export CSV"/u,
   );
+  assert.match(flow, /pressKey: BACK\n\s+- pressKey: BACK[\s\S]*?visible: "No backup was selected"/u);
   assert.match(flow, /phase11-restore-base\.gtbk/u);
   assert.match(flow, /phase11-merge-fixture\.gtbk/u);
   assert.equal((flow.match(/tapOn: "Show roots"/gu) ?? []).length, 3);

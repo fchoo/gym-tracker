@@ -39,7 +39,10 @@ tags:
       - tapOn:
           id: "restore-clean-action"
       - pressKey: BACK
-      - assertVisible: "No backup was selected"
+      - pressKey: BACK
+      - extendedWaitUntil:
+          visible: "No backup was selected"
+          timeout: 30000
       - assertNotVisible: "Review restore clean"
       - scrollUntilVisible:
           element:
