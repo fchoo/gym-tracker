@@ -693,7 +693,9 @@ export function executePhase11Maestro(args = process.argv.slice(2)) {
     command(adb, ["-s", serial, "install", "-r", apkPath]);
     validateLiveInstallation(adb, manifest);
     command(adb, ["-s", serial, "shell", "mkdir", "-p", "/sdcard/Download"]);
-    command(adb, ["-s", serial, "shell", "sh", "-c", "rm -f /sdcard/Download/phase11-*.gtbk"]);
+    command(adb, ["-s", serial, "shell", "rm", "-f",
+      `/sdcard/Download/${RESTORE_FIXTURE_FILE}`,
+      `/sdcard/Download/${MERGE_FIXTURE_FILE}`]);
     for (const fixture of fixtures) {
       command(adb, ["-s", serial, "push", fixture.path, `/sdcard/Download/${fixture.file}`]);
     }
