@@ -371,6 +371,8 @@ test("Phase 11 flow exercises the split UI without claiming database rollback pr
     assert.match(flow, new RegExp(label, "u"));
   }
   assert.match(flow, /inputText: "merge"[\s\S]*?eraseText: 5[\s\S]*?inputText: "MERGE"/u);
+  assert.match(flow, /inputText: "replace"[\s\S]*?hideKeyboard[\s\S]*?eraseText: 7[\s\S]*?inputText: "REPLACE"[\s\S]*?hideKeyboard/u);
+  assert.match(flow, /inputText: "merge"[\s\S]*?hideKeyboard[\s\S]*?eraseText: 5[\s\S]*?inputText: "MERGE"[\s\S]*?hideKeyboard/u);
   assert.match(flow, /Cancel merge/u);
   assert.match(flow, /Merge complete\. Search and progress are ready\./u);
   assert.match(flow, /Local Merge Baseline · Base Day/u);

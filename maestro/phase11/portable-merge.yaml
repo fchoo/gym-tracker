@@ -102,9 +102,11 @@ tags:
       - assertVisible: "Cancel restore clean"
       - tapOn: "Type REPLACE to continue"
       - inputText: "replace"
+      - hideKeyboard
       - assertVisible: "Restore backup"
       - eraseText: 7
       - inputText: "REPLACE"
+      - hideKeyboard
       - tapOn:
           id: "restore-backup-action"
       - extendedWaitUntil:
@@ -230,9 +232,11 @@ tags:
           timeout: 60000
       - tapOn: "Type MERGE to continue"
       - inputText: "merge"
+      - hideKeyboard
       - assertVisible: "Merge backup"
       - eraseText: 5
       - inputText: "MERGE"
+      - hideKeyboard
       - tapOn:
           id: "merge-backup-action"
       - extendedWaitUntil:
