@@ -19,9 +19,11 @@ import {
 } from "../../../src/ui/theme";
 import type {
   RuntimeCsvExport,
+  RuntimeMergePreflightResult,
   RuntimeRestoreCommitResult,
   RuntimeRestorePreflightResult,
   RuntimeSecureBackupArchive,
+  RuntimeBackupMetadata,
 } from "../../../src/bootstrap/workoutAppRuntime";
 
 const mockBack = jest.fn();
@@ -38,12 +40,24 @@ const mockDiscardSecureBackup = jest.fn<(
 const mockPreflightSecureRestore = jest.fn<(input: Readonly<{
   password: string;
 }>) => Promise<RuntimeRestorePreflightResult>>();
-const mockCommitSecureRestore = jest.fn<() => Promise<RuntimeRestoreCommitResult>>();
+const mockCommitSecureRestore = jest.fn<(input: Readonly<{
+  confirmation: string;
+  token: string;
+}>) => Promise<RuntimeRestoreCommitResult>>();
 const mockInvalidateSecureRestorePreflight = jest.fn<(token: string) => void>();
+const mockPreflightSecureMerge = jest.fn<(input: Readonly<{
+  password: string;
+}>) => Promise<RuntimeMergePreflightResult>>();
+const mockCommitSecureMerge = jest.fn<(input: Readonly<{
+  confirmation: string;
+  token: string;
+}>) => Promise<RuntimeRestoreCommitResult>>();
+const mockInvalidateSecureMergePreflight = jest.fn<(token: string) => void>();
 const mockRetryRestoreRebuild = jest.fn<() => Promise<RuntimeRestoreCommitResult>>();
 const mockCreateCsvExport = jest.fn<() => Promise<RuntimeCsvExport>>();
 const mockShareCsvExport = jest.fn<(handle: RuntimeCsvExport) => Promise<void>>();
 const mockDiscardCsvExport = jest.fn<(handle: RuntimeCsvExport) => Promise<void>>();
+let mockLatestBackup: RuntimeBackupMetadata | null = null;
 
 jest.mock("expo-router", () => ({
   router: { back: () => mockBack() },
@@ -57,10 +71,14 @@ jest.mock("../../../src/bootstrap/workoutAppRuntime", () => ({
     preflightSecureRestore: mockPreflightSecureRestore,
     commitSecureRestore: mockCommitSecureRestore,
     invalidateSecureRestorePreflight: mockInvalidateSecureRestorePreflight,
+    preflightSecureMerge: mockPreflightSecureMerge,
+    commitSecureMerge: mockCommitSecureMerge,
+    invalidateSecureMergePreflight: mockInvalidateSecureMergePreflight,
     retryRestoreRebuild: mockRetryRestoreRebuild,
     createCsvExport: mockCreateCsvExport,
     shareCsvExport: mockShareCsvExport,
     discardCsvExport: mockDiscardCsvExport,
+    latestBackup: mockLatestBackup,
   }),
 }));
 
@@ -76,6 +94,7 @@ async function renderRoute() {
 
 describe("DataAndRecoveryRoute", () => {
   beforeEach(() => {
+    mockLatestBackup = null;
     mockBack.mockReset();
     mockCreateSecureBackup.mockReset();
     mockCreateSecureBackup.mockResolvedValue({
@@ -99,6 +118,25 @@ describe("DataAndRecoveryRoute", () => {
     mockCommitSecureRestore.mockReset();
     mockCommitSecureRestore.mockResolvedValue({ state: "ready" });
     mockInvalidateSecureRestorePreflight.mockReset();
+    mockPreflightSecureMerge.mockReset();
+    mockPreflightSecureMerge.mockResolvedValue({
+      outcome: "ready",
+      token: "merge-token",
+      preview: {
+        mode: "merge",
+        sourceFormatVersion: 2,
+        inserted: 5,
+        duplicates: 4,
+        archiveWon: 3,
+        localWon: 2,
+        keptBoth: 1,
+        remapped: 6,
+        conflicts: 0,
+      },
+    });
+    mockCommitSecureMerge.mockReset();
+    mockCommitSecureMerge.mockResolvedValue({ state: "ready" });
+    mockInvalidateSecureMergePreflight.mockReset();
     mockRetryRestoreRebuild.mockReset();
     mockRetryRestoreRebuild.mockResolvedValue({ state: "ready" });
     mockCreateCsvExport.mockReset();
@@ -113,6 +151,8 @@ describe("DataAndRecoveryRoute", () => {
     await renderRoute();
 
     expect(screen.getByRole("header", { name: "Data and recovery" }))
+      .toBeOnTheScreen();
+    expect(screen.getByLabelText("Latest backup: Never exported"))
       .toBeOnTheScreen();
     expect(screen.getByRole("button", { name: "Create secure backup" }))
       .toBeDisabled();
@@ -137,6 +177,20 @@ describe("DataAndRecoveryRoute", () => {
     );
     expect(screen.getByRole("button", { name: "Create secure backup" }))
       .toBeEnabled();
+  });
+
+  it("shows latest backup metadata without exposing archive internals", async () => {
+    mockLatestBackup = {
+      archiveId: "private-archive-id",
+      createdAtMs: 1_789_977_000_000,
+      displayName: "backup-2026-09-21.gtbk",
+    };
+
+    await renderRoute();
+
+    expect(screen.getByLabelText("Latest backup: backup-2026-09-21.gtbk, 2026-09-21T07:50:00.000Z"))
+      .toBeOnTheScreen();
+    expect(screen.queryByText("private-archive-id")).not.toBeOnTheScreen();
   });
 
   it("creates before showing the explicit share action, then clears the completed archive after sharing", async () => {
@@ -282,7 +336,7 @@ describe("DataAndRecoveryRoute", () => {
     mockPreflightSecureRestore.mockResolvedValueOnce({ outcome: "cancelled" });
     await renderRoute();
     await fireEvent.changeText(screen.getByLabelText("Restore password"), "password");
-    await fireEvent.press(screen.getByRole("button", { name: "Choose a Gym Tracker backup" }));
+    await fireEvent.press(screen.getByRole("button", { name: "Restore clean" }));
 
     expect(await screen.findByText("No backup was selected")).toBeOnTheScreen();
     expect(mockCommitSecureRestore).not.toHaveBeenCalled();
@@ -295,18 +349,20 @@ describe("DataAndRecoveryRoute", () => {
     }));
     const route = await renderRoute();
     await fireEvent.changeText(screen.getByLabelText("Restore password"), "password");
-    await fireEvent.press(screen.getByRole("button", { name: "Choose a Gym Tracker backup" }));
+    await fireEvent.press(screen.getByRole("button", { name: "Restore clean" }));
 
-    route.unmount();
-    resolvePreflight?.({
-      outcome: "ready",
-      token: "late-token",
-      preview: {
-        sourceFormatVersion: 1,
-        createdAtMs: 1_786_853_900_000,
-        replacementCounts: {},
-        references: { internalSnapshotReferences: 0, requiredLocalBundled: { available: 0, unavailable: 0 }, catalogReferences: { available: 0, unavailable: 0 } },
-      },
+    await act(async () => {
+      route.unmount();
+      resolvePreflight?.({
+        outcome: "ready",
+        token: "late-token",
+        preview: {
+          sourceFormatVersion: 1,
+          createdAtMs: 1_786_853_900_000,
+          replacementCounts: {},
+          references: { internalSnapshotReferences: 0, requiredLocalBundled: { available: 0, unavailable: 0 }, catalogReferences: { available: 0, unavailable: 0 } },
+        },
+      });
     });
 
     await waitFor(() => expect(mockInvalidateSecureRestorePreflight)
@@ -319,9 +375,9 @@ describe("DataAndRecoveryRoute", () => {
     mockCommitSecureRestore.mockImplementationOnce(() => new Promise((resolve) => { resolveCommit = resolve; }));
     await renderRoute();
     await fireEvent.changeText(screen.getByLabelText("Restore password"), "password");
-    await fireEvent.press(screen.getByRole("button", { name: "Choose a Gym Tracker backup" }));
+    await fireEvent.press(screen.getByRole("button", { name: "Restore clean" }));
 
-    expect(await screen.findByRole("header", { name: "Review backup" })).toBeOnTheScreen();
+    expect(await screen.findByRole("header", { name: "Review restore clean" })).toBeOnTheScreen();
     expect(screen.getByLabelText("Source format version: 1")).toBeOnTheScreen();
     expect(screen.getByLabelText("Backup created: 2026-08-16T04:18:20.000Z")).toBeOnTheScreen();
     expect(screen.getByLabelText("Plans: 3")).toBeOnTheScreen();
@@ -356,16 +412,31 @@ describe("DataAndRecoveryRoute", () => {
     await fireEvent.press(button);
     expect(mockCommitSecureRestore).toHaveBeenCalledTimes(1);
     expect(mockCommitSecureRestore).toHaveBeenCalledWith({ token: "opaque-token", confirmation: "REPLACE" });
-    resolveCommit?.({ state: "ready" });
+    await act(async () => {
+      resolveCommit?.({ state: "ready" });
+    });
     expect(await screen.findByText("Backup restored. Search and progress are ready.")).toBeOnTheScreen();
+  });
+
+  it("cancels restore clean review and invalidates the active restore token", async () => {
+    await renderRoute();
+    await fireEvent.changeText(screen.getByLabelText("Restore password"), "password");
+    await fireEvent.press(screen.getByRole("button", { name: "Restore clean" }));
+    await screen.findByRole("header", { name: "Review restore clean" });
+
+    await fireEvent.press(screen.getByRole("button", { name: "Cancel restore clean" }));
+
+    expect(mockInvalidateSecureRestorePreflight).toHaveBeenCalledWith("opaque-token");
+    expect(mockCommitSecureRestore).not.toHaveBeenCalled();
+    expect(screen.getByText("No backup was selected")).toBeOnTheScreen();
   });
 
   it("keeps derivative-dependent success unavailable and offers retry when rebuilding remains pending", async () => {
     mockCommitSecureRestore.mockResolvedValueOnce({ state: "rebuild_pending" });
     await renderRoute();
     await fireEvent.changeText(screen.getByLabelText("Restore password"), "password");
-    await fireEvent.press(screen.getByRole("button", { name: "Choose a Gym Tracker backup" }));
-    await screen.findByText("Review backup");
+    await fireEvent.press(screen.getByRole("button", { name: "Restore clean" }));
+    await screen.findByText("Review restore clean");
     await fireEvent.changeText(screen.getByLabelText("Type REPLACE to continue"), "REPLACE");
     await fireEvent.press(screen.getByRole("button", { name: "Restore backup" }));
 
@@ -382,7 +453,7 @@ describe("DataAndRecoveryRoute", () => {
     mockPreflightSecureRestore.mockRejectedValueOnce(Object.assign(new Error("secret archive path"), { code: "restore_archive_unavailable" }));
     await renderRoute();
     await fireEvent.changeText(screen.getByLabelText("Restore password"), "password");
-    await fireEvent.press(screen.getByRole("button", { name: "Choose a Gym Tracker backup" }));
+    await fireEvent.press(screen.getByRole("button", { name: "Restore clean" }));
     expect(await screen.findByText("Backup could not be opened")).toBeOnTheScreen();
     expect(screen.getByText("Your current saved data was not changed.")).toBeOnTheScreen();
     expect(screen.queryByText("secret archive path")).not.toBeOnTheScreen();
@@ -413,8 +484,8 @@ describe("DataAndRecoveryRoute", () => {
     mockCommitSecureRestore.mockRejectedValueOnce(Object.assign(new Error("private database exception"), { code: "restore_commit_failed" }));
     await renderRoute();
     await fireEvent.changeText(screen.getByLabelText("Restore password"), "password");
-    await fireEvent.press(screen.getByRole("button", { name: "Choose a Gym Tracker backup" }));
-    await screen.findByText("Review backup");
+    await fireEvent.press(screen.getByRole("button", { name: "Restore clean" }));
+    await screen.findByText("Review restore clean");
     await fireEvent.changeText(screen.getByLabelText("Type REPLACE to continue"), "REPLACE");
     await fireEvent.press(screen.getByRole("button", { name: "Restore backup" }));
 
@@ -424,8 +495,8 @@ describe("DataAndRecoveryRoute", () => {
     expect(screen.queryByText("Backup restored. Recalculating search and progress.")).not.toBeOnTheScreen();
 
     await fireEvent.changeText(screen.getByLabelText("Restore password"), "new-password");
-    await fireEvent.press(screen.getByRole("button", { name: "Try restore again" }));
-    await screen.findByRole("header", { name: "Review backup" });
+    await fireEvent.press(screen.getByRole("button", { name: "Try restore clean again" }));
+    await screen.findByRole("header", { name: "Review restore clean" });
     expect(mockPreflightSecureRestore).toHaveBeenNthCalledWith(1, { password: "password" });
     expect(mockPreflightSecureRestore).toHaveBeenNthCalledWith(2, { password: "new-password" });
     expect(screen.getByRole("button", { name: "Restore backup" })).toBeDisabled();
@@ -434,6 +505,193 @@ describe("DataAndRecoveryRoute", () => {
     await waitFor(() => expect(mockCommitSecureRestore).toHaveBeenCalledTimes(2));
     expect(mockCommitSecureRestore).toHaveBeenNthCalledWith(1, { token: "first-token", confirmation: "REPLACE" });
     expect(mockCommitSecureRestore).toHaveBeenNthCalledWith(2, { token: "second-token", confirmation: "REPLACE" });
+  });
+
+  it("cancels merge selection without writing and keeps the merge action accessible", async () => {
+    mockPreflightSecureMerge.mockResolvedValueOnce({ outcome: "cancelled" });
+    await renderRoute();
+    await fireEvent.changeText(screen.getByLabelText("Merge password"), "password");
+    await fireEvent.press(screen.getByRole("button", { name: "Import / merge backup" }));
+
+    expect(await screen.findByText("Merge cancelled. No changes have been made.")).toBeOnTheScreen();
+    expect(mockCommitSecureMerge).not.toHaveBeenCalled();
+    expect(screen.getByRole("button", { name: "Import / merge backup" }))
+      .toBeDisabled();
+  });
+
+  it("invalidates a merge preflight that completes after the route unmounts", async () => {
+    let resolvePreflight: ((result: RuntimeMergePreflightResult) => void) | undefined;
+    mockPreflightSecureMerge.mockImplementationOnce(() => new Promise((resolve) => {
+      resolvePreflight = resolve;
+    }));
+    const route = await renderRoute();
+    await fireEvent.changeText(screen.getByLabelText("Merge password"), "password");
+    await fireEvent.press(screen.getByRole("button", { name: "Import / merge backup" }));
+
+    await act(async () => {
+      route.unmount();
+      resolvePreflight?.({
+        outcome: "ready",
+        token: "late-merge-token",
+        preview: {
+          mode: "merge",
+          sourceFormatVersion: 2,
+          inserted: 0,
+          duplicates: 0,
+          archiveWon: 0,
+          localWon: 0,
+          keptBoth: 0,
+          remapped: 0,
+          conflicts: 0,
+        },
+      });
+    });
+
+    await waitFor(() => expect(mockInvalidateSecureMergePreflight)
+      .toHaveBeenCalledWith("late-merge-token"));
+    expect(mockCommitSecureMerge).not.toHaveBeenCalled();
+  });
+
+  it("reviews merge counts, requires exact MERGE, and latches duplicate merge presses", async () => {
+    let resolveCommit: ((value: RuntimeRestoreCommitResult) => void) | undefined;
+    mockCommitSecureMerge.mockImplementationOnce(() => new Promise((resolve) => { resolveCommit = resolve; }));
+    await renderRoute();
+    await fireEvent.changeText(screen.getByLabelText("Merge password"), "password");
+    await fireEvent.press(screen.getByRole("button", { name: "Import / merge backup" }));
+
+    expect(await screen.findByRole("header", { name: "Review merge" })).toBeOnTheScreen();
+    expect(screen.getByText("No changes have been made yet.")).toBeOnTheScreen();
+    expect(screen.getByLabelText("Records inserted: 5")).toBeOnTheScreen();
+    expect(screen.getByLabelText("Duplicates unchanged: 4")).toBeOnTheScreen();
+    expect(screen.getByLabelText("Archive wins: 3")).toBeOnTheScreen();
+    expect(screen.getByLabelText("Local wins: 2")).toBeOnTheScreen();
+    expect(screen.getByLabelText("Kept both: 1")).toBeOnTheScreen();
+    expect(screen.getByLabelText("Remapped IDs: 6")).toBeOnTheScreen();
+    expect(screen.getByLabelText("Conflicts: 0")).toBeOnTheScreen();
+    expect(screen.getByText(
+      "Newer sessions and corrections win. Existing settings stay. Different custom exercises and plans are kept by identity.",
+    )).toBeOnTheScreen();
+    expect(screen.container.queryAll((node) => node.props.role === "list", { includeSelf: true }))
+      .toHaveLength(1);
+    expect(screen.getByRole("button", { name: "Merge backup" })).toBeDisabled();
+    await fireEvent.changeText(screen.getByLabelText("Type MERGE to continue"), "merge");
+    expect(screen.getByRole("button", { name: "Merge backup" })).toBeDisabled();
+    await fireEvent.changeText(screen.getByLabelText("Type MERGE to continue"), "MERGE");
+    const button = screen.getByRole("button", { name: "Merge backup" });
+    await fireEvent.press(button);
+    await fireEvent.press(button);
+    expect(mockCommitSecureMerge).toHaveBeenCalledTimes(1);
+    expect(mockCommitSecureMerge).toHaveBeenCalledWith({ token: "merge-token", confirmation: "MERGE" });
+    await act(async () => {
+      resolveCommit?.({ state: "ready" });
+    });
+    expect(await screen.findByText("Merge complete. Search and progress are ready.")).toBeOnTheScreen();
+  });
+
+  it("cancels merge review and invalidates the active merge token", async () => {
+    await renderRoute();
+    await fireEvent.changeText(screen.getByLabelText("Merge password"), "password");
+    await fireEvent.press(screen.getByRole("button", { name: "Import / merge backup" }));
+    await screen.findByRole("header", { name: "Review merge" });
+
+    await fireEvent.press(screen.getByRole("button", { name: "Cancel merge" }));
+
+    expect(mockInvalidateSecureMergePreflight).toHaveBeenCalledWith("merge-token");
+    expect(mockCommitSecureMerge).not.toHaveBeenCalled();
+    expect(screen.getByText("Merge cancelled. No changes have been made.")).toBeOnTheScreen();
+  });
+
+  it("guides old backups to restore clean without leaking merge-open failures", async () => {
+    mockPreflightSecureMerge.mockRejectedValueOnce(Object.assign(new Error("private archive v1 path"), {
+      code: "merge_archive_requires_v2",
+    }));
+    await renderRoute();
+    await fireEvent.changeText(screen.getByLabelText("Merge password"), "password");
+    await fireEvent.press(screen.getByRole("button", { name: "Import / merge backup" }));
+
+    expect(await screen.findByText("Backup could not be opened")).toBeOnTheScreen();
+    expect(screen.getByText("Use Restore clean for this older backup. Your current saved data was not changed."))
+      .toBeOnTheScreen();
+    expect(screen.queryByText("private archive v1 path")).not.toBeOnTheScreen();
+    expect(mockCommitSecureMerge).not.toHaveBeenCalled();
+  });
+
+  it("keeps merge transaction failures to safe copy and retries through a fresh preflight token", async () => {
+    mockPreflightSecureMerge
+      .mockResolvedValueOnce({
+        outcome: "ready",
+        token: "first-merge-token",
+        preview: {
+          mode: "merge",
+          sourceFormatVersion: 2,
+          inserted: 1,
+          duplicates: 0,
+          archiveWon: 0,
+          localWon: 0,
+          keptBoth: 0,
+          remapped: 0,
+          conflicts: 0,
+        },
+      })
+      .mockResolvedValueOnce({
+        outcome: "ready",
+        token: "second-merge-token",
+        preview: {
+          mode: "merge",
+          sourceFormatVersion: 2,
+          inserted: 1,
+          duplicates: 0,
+          archiveWon: 0,
+          localWon: 0,
+          keptBoth: 0,
+          remapped: 0,
+          conflicts: 0,
+        },
+      });
+    mockCommitSecureMerge.mockRejectedValueOnce(Object.assign(new Error("private sqlite stack"), {
+      code: "merge_commit_failed",
+    }));
+    await renderRoute();
+    await fireEvent.changeText(screen.getByLabelText("Merge password"), "password");
+    await fireEvent.press(screen.getByRole("button", { name: "Import / merge backup" }));
+    await screen.findByRole("header", { name: "Review merge" });
+    await fireEvent.changeText(screen.getByLabelText("Type MERGE to continue"), "MERGE");
+    await fireEvent.press(screen.getByRole("button", { name: "Merge backup" }));
+
+    expect(await screen.findByText("Merge could not be completed")).toBeOnTheScreen();
+    expect(screen.getByText("Your current saved data was kept.")).toBeOnTheScreen();
+    expect(screen.queryByText("private sqlite stack")).not.toBeOnTheScreen();
+    expect(screen.queryByText("Merge saved. Recalculating search and progress.")).not.toBeOnTheScreen();
+
+    await fireEvent.changeText(screen.getByLabelText("Merge password"), "new-password");
+    await fireEvent.press(screen.getByRole("button", { name: "Try merge again" }));
+    await screen.findByRole("header", { name: "Review merge" });
+    expect(mockPreflightSecureMerge).toHaveBeenNthCalledWith(1, { password: "password" });
+    expect(mockPreflightSecureMerge).toHaveBeenNthCalledWith(2, { password: "new-password" });
+    expect(screen.getByRole("button", { name: "Merge backup" })).toBeDisabled();
+    await fireEvent.changeText(screen.getByLabelText("Type MERGE to continue"), "MERGE");
+    await fireEvent.press(screen.getByRole("button", { name: "Merge backup" }));
+    await waitFor(() => expect(mockCommitSecureMerge).toHaveBeenCalledTimes(2));
+    expect(mockCommitSecureMerge).toHaveBeenNthCalledWith(1, { token: "first-merge-token", confirmation: "MERGE" });
+    expect(mockCommitSecureMerge).toHaveBeenNthCalledWith(2, { token: "second-merge-token", confirmation: "MERGE" });
+  });
+
+  it("keeps merge success pending until rebuild retry completes", async () => {
+    mockCommitSecureMerge.mockResolvedValueOnce({ state: "rebuild_pending" });
+    await renderRoute();
+    await fireEvent.changeText(screen.getByLabelText("Merge password"), "password");
+    await fireEvent.press(screen.getByRole("button", { name: "Import / merge backup" }));
+    await screen.findByRole("header", { name: "Review merge" });
+    await fireEvent.changeText(screen.getByLabelText("Type MERGE to continue"), "MERGE");
+    await fireEvent.press(screen.getByRole("button", { name: "Merge backup" }));
+
+    expect(await screen.findByText("Merge saved. Recalculating search and progress.")).toBeOnTheScreen();
+    expect(screen.queryByText("Merge complete. Search and progress are ready.")).not.toBeOnTheScreen();
+    expect(screen.getByRole("button", { name: "Retry rebuild" })).toBeOnTheScreen();
+
+    await fireEvent.press(screen.getByRole("button", { name: "Retry rebuild" }));
+    await waitFor(() => expect(mockRetryRestoreRebuild).toHaveBeenCalledTimes(1));
+    expect(await screen.findByText("Merge complete. Search and progress are ready.")).toBeOnTheScreen();
   });
 
   it("shows the exact readable CSV warning and latches duplicate export/share presses", async () => {
@@ -487,9 +745,14 @@ describe("DataAndRecoveryRoute", () => {
   });
 
   it("handles unavailable or rejected sharing as a safe terminal file-lifecycle failure", async () => {
+    let resolveCreate: ((value: RuntimeCsvExport) => void) | undefined;
+    mockCreateCsvExport.mockImplementationOnce(() => new Promise((resolve) => { resolveCreate = resolve; }));
     mockShareCsvExport.mockRejectedValueOnce(new Error("content://private/export.csv"));
     await renderRoute();
     await fireEvent.press(screen.getByRole("button", { name: "Export CSV" }));
+    await act(async () => {
+      resolveCreate?.({ exportId: "csv-v1" });
+    });
     await screen.findByText("CSV export ready");
     await fireEvent.press(screen.getByRole("button", { name: "Share CSV" }));
 
@@ -501,8 +764,13 @@ describe("DataAndRecoveryRoute", () => {
   });
 
   it("discards a ready unshared CSV when Back unmounts the route", async () => {
+    let resolveCreate: ((value: RuntimeCsvExport) => void) | undefined;
+    mockCreateCsvExport.mockImplementationOnce(() => new Promise((resolve) => { resolveCreate = resolve; }));
     const route = await renderRoute();
     await fireEvent.press(screen.getByRole("button", { name: "Export CSV" }));
+    await act(async () => {
+      resolveCreate?.({ exportId: "csv-v1" });
+    });
     await screen.findByText("CSV export ready");
 
     await fireEvent.press(screen.getByRole("button", { name: "Go back" }));
@@ -530,8 +798,13 @@ describe("DataAndRecoveryRoute", () => {
   });
 
   it("does not discard the handle already consumed by sharing", async () => {
+    let resolveCreate: ((value: RuntimeCsvExport) => void) | undefined;
+    mockCreateCsvExport.mockImplementationOnce(() => new Promise((resolve) => { resolveCreate = resolve; }));
     const route = await renderRoute();
     await fireEvent.press(screen.getByRole("button", { name: "Export CSV" }));
+    await act(async () => {
+      resolveCreate?.({ exportId: "csv-v1" });
+    });
     await screen.findByText("CSV export ready");
     await fireEvent.press(screen.getByRole("button", { name: "Share CSV" }));
     await waitFor(() => expect(mockShareCsvExport).toHaveBeenCalledTimes(1));

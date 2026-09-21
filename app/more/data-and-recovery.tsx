@@ -19,6 +19,8 @@ import {
 
 import {
   useWorkoutAppRuntime,
+  type RuntimeBackupMetadata,
+  type RuntimeMergePreflightResult,
   type RuntimeRestorePreflightResult,
   type RuntimeSecureBackupArchive,
   type RuntimeCsvExport,
@@ -58,6 +60,16 @@ type RestoreViewState =
   | Readonly<{ kind: "restored" }>
   | Readonly<{ kind: "rebuild_pending" }>
   | Readonly<{ kind: "failed"; heading: "Backup could not be opened" | "Restore could not be completed"; message: string }>;
+
+type MergeViewState =
+  | Readonly<{ kind: "ready" }>
+  | Readonly<{ kind: "opening" }>
+  | Readonly<{ kind: "cancelled" }>
+  | Readonly<{ kind: "review"; token: string; preview: Extract<RuntimeMergePreflightResult, { outcome: "ready" }>["preview"] }>
+  | Readonly<{ kind: "merging" }>
+  | Readonly<{ kind: "merged" }>
+  | Readonly<{ kind: "rebuild_pending" }>
+  | Readonly<{ kind: "failed"; heading: "Backup could not be opened" | "Merge could not be completed"; message: string }>;
 
 type CsvViewState =
   | Readonly<{ kind: "ready" }>
@@ -163,6 +175,34 @@ function formatBackupCreatedAt(createdAtMs: number): string | null {
   return Number.isNaN(createdAt.valueOf()) ? null : createdAt.toISOString();
 }
 
+function LatestBackupMetadata({
+  metadata,
+}: Readonly<{
+  metadata: RuntimeBackupMetadata | null;
+}>) {
+  const { colors } = useAppTheme();
+  if (metadata === null) {
+    return (
+      <Text
+        accessibilityLabel="Latest backup: Never exported"
+        style={[typeScale.secondary as TextStyle, { color: colors.contentCardTextSecondary }]}
+      >
+        Latest backup: Never exported
+      </Text>
+    );
+  }
+  const createdAt = formatBackupCreatedAt(metadata.createdAtMs)
+    ?? "Unknown time";
+  return (
+    <Text
+      accessibilityLabel={`Latest backup: ${metadata.displayName}, ${createdAt}`}
+      style={[typeScale.secondary as TextStyle, { color: colors.contentCardTextSecondary }]}
+    >
+      {`Latest backup: ${metadata.displayName}, ${createdAt}`}
+    </Text>
+  );
+}
+
 export default function DataAndRecoveryRoute() {
   const runtime = useWorkoutAppRuntime();
   const { colors } = useAppTheme();
@@ -180,8 +220,12 @@ export default function DataAndRecoveryRoute() {
   const [restoreState, setRestoreState] = useState<RestoreViewState>({ kind: "ready" });
   const [restorePassword, setRestorePassword] = useState("");
   const [replaceConfirmation, setReplaceConfirmation] = useState("");
+  const [mergeState, setMergeState] = useState<MergeViewState>({ kind: "ready" });
+  const [mergePassword, setMergePassword] = useState("");
+  const [mergeConfirmation, setMergeConfirmation] = useState("");
   const [csvState, setCsvState] = useState<CsvViewState>({ kind: "ready" });
   const reviewHeadingRef = useRef<View>(null);
+  const mergeReviewHeadingRef = useRef<View>(null);
   const backupLatch = useRef(false);
   const backupGenerationRef = useRef(0);
   const backupAbortRef = useRef<AbortController | null>(null);
@@ -189,6 +233,9 @@ export default function DataAndRecoveryRoute() {
   const restoreLatch = useRef(false);
   const restoreGenerationRef = useRef(0);
   const restoreTokenRef = useRef<string | null>(null);
+  const mergeLatch = useRef(false);
+  const mergeGenerationRef = useRef(0);
+  const mergeTokenRef = useRef<string | null>(null);
   const csvLatch = useRef(false);
   const csvHandleRef = useRef<RuntimeCsvExport | null>(null);
   const mountedRef = useRef(true);
@@ -196,6 +243,8 @@ export default function DataAndRecoveryRoute() {
   discardBackupRef.current = runtime.discardSecureBackup;
   const invalidateRestoreRef = useRef(runtime.invalidateSecureRestorePreflight);
   invalidateRestoreRef.current = runtime.invalidateSecureRestorePreflight;
+  const invalidateMergeRef = useRef(runtime.invalidateSecureMergePreflight);
+  invalidateMergeRef.current = runtime.invalidateSecureMergePreflight;
   const discardCsvRef = useRef(runtime.discardCsvExport);
   discardCsvRef.current = runtime.discardCsvExport;
   const passwordValid = passwordState.hasPassword && passwordState.matches;
@@ -307,6 +356,15 @@ export default function DataAndRecoveryRoute() {
     return "Your current saved data was not changed.";
   };
 
+  const mergeFailureCopy = (error: unknown): string => {
+    const code = typeof error === "object" && error !== null && "code" in error
+      ? String(error.code) : "";
+    if (code === "merge_archive_requires_v2") return "Use Restore clean for this older backup. Your current saved data was not changed.";
+    if (code === "merge_archive_limit_exceeded") return "This backup is too large to open safely. Your current saved data was not changed.";
+    if (code === "merge_commit_failed") return "Your current saved data was kept.";
+    return "Your current saved data was not changed.";
+  };
+
   const selectRestore = async () => {
     if (restoreLatch.current || restorePassword.length === 0) return;
     restoreLatch.current = true;
@@ -367,6 +425,101 @@ export default function DataAndRecoveryRoute() {
       if (generation === restoreGenerationRef.current) {
         restoreLatch.current = false;
       }
+    }
+  };
+
+  const cancelRestoreReview = () => {
+    if (restoreState.kind !== "review") return;
+    invalidateRestoreRef.current(restoreState.token);
+    restoreTokenRef.current = null;
+    restoreGenerationRef.current += 1;
+    setReplaceConfirmation("");
+    setRestoreState({ kind: "cancelled" });
+  };
+
+  const selectMerge = async () => {
+    if (mergeLatch.current || mergePassword.length === 0) return;
+    mergeLatch.current = true;
+    const generation = mergeGenerationRef.current + 1;
+    mergeGenerationRef.current = generation;
+    const previousToken = mergeTokenRef.current;
+    mergeTokenRef.current = null;
+    if (previousToken !== null) {
+      invalidateMergeRef.current(previousToken);
+    }
+    const password = mergePassword;
+    setMergePassword("");
+    setMergeConfirmation("");
+    setMergeState({ kind: "opening" });
+    try {
+      const result = await runtime.preflightSecureMerge({ password });
+      if (!mountedRef.current || generation !== mergeGenerationRef.current) {
+        if (result.outcome === "ready") {
+          invalidateMergeRef.current(result.token);
+        }
+        return;
+      }
+      if (result.outcome === "cancelled") {
+        setMergeState({ kind: "cancelled" });
+      } else {
+        mergeTokenRef.current = result.token;
+        setMergeState({ kind: "review", token: result.token, preview: result.preview });
+        setTimeout(() => mergeReviewHeadingRef.current?.focus(), 0);
+      }
+    } catch (error) {
+      if (!mountedRef.current || generation !== mergeGenerationRef.current) return;
+      setMergeState({ kind: "failed", heading: "Backup could not be opened", message: mergeFailureCopy(error) });
+    } finally {
+      if (generation === mergeGenerationRef.current) {
+        mergeLatch.current = false;
+      }
+    }
+  };
+
+  const commitMerge = async () => {
+    if (mergeState.kind !== "review" || mergeConfirmation !== "MERGE" || mergeLatch.current) return;
+    mergeLatch.current = true;
+    const token = mergeState.token;
+    mergeTokenRef.current = null;
+    const generation = mergeGenerationRef.current;
+    setMergeConfirmation("");
+    setMergeState({ kind: "merging" });
+    try {
+      const result = await runtime.commitSecureMerge({ token, confirmation: "MERGE" });
+      if (!mountedRef.current || generation !== mergeGenerationRef.current) return;
+      setMergeState(result.state === "ready"
+        ? { kind: "merged" }
+        : { kind: "rebuild_pending" });
+    } catch (error) {
+      if (!mountedRef.current || generation !== mergeGenerationRef.current) return;
+      setMergeState({ kind: "failed", heading: "Merge could not be completed", message: mergeFailureCopy(error) });
+    } finally {
+      if (generation === mergeGenerationRef.current) {
+        mergeLatch.current = false;
+      }
+    }
+  };
+
+  const cancelMergeReview = () => {
+    if (mergeState.kind !== "review") return;
+    invalidateMergeRef.current(mergeState.token);
+    mergeTokenRef.current = null;
+    mergeGenerationRef.current += 1;
+    setMergeConfirmation("");
+    setMergeState({ kind: "cancelled" });
+  };
+
+  const retryMergeRebuild = async () => {
+    if (mergeState.kind !== "rebuild_pending" || mergeLatch.current) return;
+    mergeLatch.current = true;
+    setMergeState({ kind: "merging" });
+    try {
+      const result = await runtime.retryRestoreRebuild();
+      setMergeState(result.state === "ready"
+        ? { kind: "merged" }
+        : { kind: "rebuild_pending" });
+    } finally {
+      mergeLatch.current = false;
     }
   };
 
@@ -432,6 +585,12 @@ export default function DataAndRecoveryRoute() {
   }, [restoreState.kind]);
 
   useEffect(() => {
+    if (mergeState.kind !== "review") return;
+    const node = findNodeHandle(mergeReviewHeadingRef.current);
+    if (node !== null) AccessibilityInfo.setAccessibilityFocus(node);
+  }, [mergeState.kind]);
+
+  useEffect(() => {
     mountedRef.current = true;
     return () => {
       mountedRef.current = false;
@@ -450,6 +609,13 @@ export default function DataAndRecoveryRoute() {
       restoreTokenRef.current = null;
       if (restoreToken !== null) {
         invalidateRestoreRef.current(restoreToken);
+      }
+      mergeGenerationRef.current += 1;
+      mergeLatch.current = false;
+      const mergeToken = mergeTokenRef.current;
+      mergeTokenRef.current = null;
+      if (mergeToken !== null) {
+        invalidateMergeRef.current(mergeToken);
       }
       const handle = csvHandleRef.current;
       csvHandleRef.current = null;
@@ -476,6 +642,7 @@ export default function DataAndRecoveryRoute() {
               <Text style={[typeScale.body as TextStyle, { color: colors.contentCardTextSecondary }]}>
                 A password protects a portable logical copy of your saved workouts, plans, and settings.
               </Text>
+              <LatestBackupMetadata metadata={runtime.latestBackup} />
               {backupState.kind === "ready_to_share" ? (
                 <>
                   <Text
@@ -582,7 +749,7 @@ export default function DataAndRecoveryRoute() {
           <ContentCard>
             <View style={styles.card}>
               <Text style={[typeScale.sectionTitle as TextStyle, { color: colors.contentCardText }]}>
-                Restore backup
+                Restore clean
               </Text>
               <Text style={[typeScale.body as TextStyle, { color: colors.contentCardTextSecondary }]}>
                 Choose a Gym Tracker backup. It replaces current user-owned data only after preview and confirmation.
@@ -599,9 +766,9 @@ export default function DataAndRecoveryRoute() {
                     value={restorePassword}
                   />
                   <PrimaryAction
-                    accessibilityHint="Opens a backup picker and reviews it before restoring"
+                    accessibilityHint="Opens a backup picker and reviews it before clean restore"
                     disabled={restorePassword.length === 0}
-                    label="Choose a Gym Tracker backup"
+                    label="Restore clean"
                     onPress={() => { void selectRestore(); }}
                   />
                   {restoreState.kind === "cancelled" ? (
@@ -625,7 +792,7 @@ export default function DataAndRecoveryRoute() {
                   <SecondaryAction
                     accessibilityHint="Selects and checks the backup again with a newly entered password"
                     disabled={restorePassword.length === 0}
-                    label="Try restore again"
+                    label="Try restore clean again"
                     onPress={() => { void selectRestore(); }}
                   />
                 </>
@@ -637,11 +804,11 @@ export default function DataAndRecoveryRoute() {
                 <>
                   <Text
                     accessibilityRole="header"
-                    accessibilityLabel="Review backup"
+                    accessibilityLabel="Review restore clean"
                     nativeID="restore-review-heading"
                     ref={reviewHeadingRef as never}
                     style={[typeScale.sectionTitle as TextStyle, { color: colors.contentCardText }]}
-                  >Review backup</Text>
+                  >Review restore clean</Text>
                   <View role="list" style={styles.previewFacts}>
                     <PreviewFact label="Source format version" value={restoreState.preview.sourceFormatVersion} />
                     {backupCreatedAt === null ? null : (
@@ -670,6 +837,7 @@ export default function DataAndRecoveryRoute() {
                     label="Restore backup"
                     onPress={() => { void commitRestore(); }}
                   />
+                  <SecondaryAction label="Cancel restore clean" onPress={cancelRestoreReview} />
                 </>
               ) : null}
               {restoreState.kind === "restoring" ? (
@@ -682,6 +850,112 @@ export default function DataAndRecoveryRoute() {
                 <>
                   <Text accessibilityLiveRegion="polite" style={[typeScale.bodyStrong as TextStyle, { color: colors.contentCardText }]}>Backup restored. Recalculating search and progress.</Text>
                   <SecondaryAction label="Retry rebuild" onPress={() => { void retryRestoreRebuild(); }} />
+                </>
+              ) : null}
+            </View>
+          </ContentCard>
+          <ContentCard>
+            <View style={styles.card}>
+              <Text style={[typeScale.sectionTitle as TextStyle, { color: colors.contentCardText }]}>
+                Import / merge backup
+              </Text>
+              <Text style={[typeScale.body as TextStyle, { color: colors.contentCardTextSecondary }]}>
+                Merge imports missing records, keeps distinct custom exercises and plans, and keeps your local settings.
+              </Text>
+              {mergeState.kind === "ready" || mergeState.kind === "cancelled" ? (
+                <>
+                  <TextInput
+                    accessibilityLabel="Merge password"
+                    autoCapitalize="none"
+                    onChangeText={setMergePassword}
+                    secureTextEntry
+                    style={[typeScale.body as TextStyle, styles.input, { backgroundColor: colors.surface, borderColor: colors.divider, color: colors.textPrimary }]}
+                    textContentType="password"
+                    value={mergePassword}
+                  />
+                  <PrimaryAction
+                    accessibilityHint="Opens a backup picker and reviews merge changes before import"
+                    disabled={mergePassword.length === 0}
+                    label="Import / merge backup"
+                    onPress={() => { void selectMerge(); }}
+                  />
+                  {mergeState.kind === "cancelled" ? (
+                    <Text accessibilityLiveRegion="polite" style={[typeScale.body as TextStyle, { color: colors.contentCardTextSecondary }]}>Merge cancelled. No changes have been made.</Text>
+                  ) : null}
+                </>
+              ) : null}
+              {mergeState.kind === "failed" ? (
+                <>
+                  <Text accessibilityLiveRegion="assertive" style={[typeScale.sectionTitle as TextStyle, { color: colors.destructive }]}>{mergeState.heading}</Text>
+                  <Text style={[typeScale.body as TextStyle, { color: colors.contentCardTextSecondary }]}>{mergeState.message}</Text>
+                  <TextInput
+                    accessibilityLabel="Merge password"
+                    autoCapitalize="none"
+                    onChangeText={setMergePassword}
+                    secureTextEntry
+                    style={[typeScale.body as TextStyle, styles.input, { backgroundColor: colors.surface, borderColor: colors.divider, color: colors.textPrimary }]}
+                    textContentType="password"
+                    value={mergePassword}
+                  />
+                  <SecondaryAction
+                    accessibilityHint="Selects and checks the backup again with a newly entered password"
+                    disabled={mergePassword.length === 0}
+                    label="Try merge again"
+                    onPress={() => { void selectMerge(); }}
+                  />
+                </>
+              ) : null}
+              {mergeState.kind === "opening" ? (
+                <Text accessibilityLiveRegion="polite" style={[typeScale.bodyStrong as TextStyle, { color: colors.contentCardText }]}>Opening backup for merge</Text>
+              ) : null}
+              {mergeState.kind === "review" ? (
+                <>
+                  <Text
+                    accessibilityRole="header"
+                    accessibilityLabel="Review merge"
+                    nativeID="merge-review-heading"
+                    ref={mergeReviewHeadingRef as never}
+                    style={[typeScale.sectionTitle as TextStyle, { color: colors.contentCardText }]}
+                  >Review merge</Text>
+                  <Text style={[typeScale.body as TextStyle, { color: colors.contentCardTextSecondary }]}>No changes have been made yet.</Text>
+                  <View role="list" style={styles.previewFacts}>
+                    <PreviewFact label="Records inserted" value={mergeState.preview.inserted} />
+                    <PreviewFact label="Duplicates unchanged" value={mergeState.preview.duplicates} />
+                    <PreviewFact label="Archive wins" value={mergeState.preview.archiveWon} />
+                    <PreviewFact label="Local wins" value={mergeState.preview.localWon} />
+                    <PreviewFact label="Kept both" value={mergeState.preview.keptBoth} />
+                    <PreviewFact label="Remapped IDs" value={mergeState.preview.remapped} />
+                    <PreviewFact label="Conflicts" value={mergeState.preview.conflicts} />
+                  </View>
+                  <Text style={[typeScale.body as TextStyle, { color: colors.contentCardTextSecondary }]}>
+                    Newer sessions and corrections win. Existing settings stay. Different custom exercises and plans are kept by identity.
+                  </Text>
+                  <Text style={[typeScale.label as TextStyle, { color: colors.contentCardText }]}>Type MERGE to continue</Text>
+                  <TextInput
+                    accessibilityLabel="Type MERGE to continue"
+                    autoCapitalize="characters"
+                    onChangeText={setMergeConfirmation}
+                    style={[typeScale.body as TextStyle, styles.input, { backgroundColor: colors.surface, borderColor: colors.destructive, color: colors.textPrimary }]}
+                  />
+                  <PrimaryAction
+                    accessibilityHint={mergeConfirmation === "MERGE" ? "Ready to merge the reviewed backup" : "Enter the exact phrase MERGE to enable merge"}
+                    disabled={mergeConfirmation !== "MERGE"}
+                    label="Merge backup"
+                    onPress={() => { void commitMerge(); }}
+                  />
+                  <SecondaryAction label="Cancel merge" onPress={cancelMergeReview} />
+                </>
+              ) : null}
+              {mergeState.kind === "merging" ? (
+                <Text accessibilityLiveRegion="polite" style={[typeScale.bodyStrong as TextStyle, { color: colors.contentCardText }]}>Merging backup</Text>
+              ) : null}
+              {mergeState.kind === "merged" ? (
+                <Text accessibilityLiveRegion="polite" style={[typeScale.bodyStrong as TextStyle, { color: colors.completed }]}>Merge complete. Search and progress are ready.</Text>
+              ) : null}
+              {mergeState.kind === "rebuild_pending" ? (
+                <>
+                  <Text accessibilityLiveRegion="polite" style={[typeScale.bodyStrong as TextStyle, { color: colors.contentCardText }]}>Merge saved. Recalculating search and progress.</Text>
+                  <SecondaryAction label="Retry rebuild" onPress={() => { void retryMergeRebuild(); }} />
                 </>
               ) : null}
             </View>
