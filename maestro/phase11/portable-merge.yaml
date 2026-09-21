@@ -144,6 +144,35 @@ tags:
           timeout: 60000
       - tapOn:
           id: "more-data-and-recovery"
+      - assertVisible: "Restore clean"
+      - tapOn: "Restore password"
+      - inputText: ${PHASE11_BACKUP_PASSWORD}
+      - hideKeyboard
+      - tapOn:
+          id: "restore-clean-action"
+      - extendedWaitUntil:
+          visible: "Review restore clean"
+          timeout: 60000
+      - scrollUntilVisible:
+          element:
+            text: "Type REPLACE to continue"
+          direction: DOWN
+          centerElement: true
+          timeout: 60000
+      - tapOn: "Type REPLACE to continue"
+      - inputText: "REPLACE"
+      - hideKeyboard
+      - tapOn:
+          id: "restore-backup-action"
+      - extendedWaitUntil:
+          visible: "^(Backup restored. Search and progress are ready.|Backup restored. Recalculating search and progress.)$"
+          timeout: 90000
+      - scrollUntilVisible:
+          element:
+            text: "Import / merge backup"
+          direction: DOWN
+          centerElement: true
+          timeout: 60000
       - assertVisible: "Import / merge backup"
       - scrollUntilVisible:
           element:
@@ -202,6 +231,35 @@ tags:
           timeout: 60000
       - tapOn:
           id: "more-data-and-recovery"
+      - assertVisible: "Restore clean"
+      - tapOn: "Restore password"
+      - inputText: ${PHASE11_BACKUP_PASSWORD}
+      - hideKeyboard
+      - tapOn:
+          id: "restore-clean-action"
+      - extendedWaitUntil:
+          visible: "Review restore clean"
+          timeout: 60000
+      - scrollUntilVisible:
+          element:
+            text: "Type REPLACE to continue"
+          direction: DOWN
+          centerElement: true
+          timeout: 60000
+      - tapOn: "Type REPLACE to continue"
+      - inputText: "REPLACE"
+      - hideKeyboard
+      - tapOn:
+          id: "restore-backup-action"
+      - extendedWaitUntil:
+          visible: "^(Backup restored. Search and progress are ready.|Backup restored. Recalculating search and progress.)$"
+          timeout: 90000
+      - scrollUntilVisible:
+          element:
+            text: "Import / merge backup"
+          direction: DOWN
+          centerElement: true
+          timeout: 60000
       - assertVisible: "Import / merge backup"
       - scrollUntilVisible:
           element:

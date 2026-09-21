@@ -400,16 +400,18 @@ test("Phase 11 flow exercises the split UI without claiming database rollback pr
   );
   assert.match(runner, /PHASE11_BACKUP_PASSWORD=/u);
   assert.match(runner, /createPhase11FixtureArchives/u);
-  assert.match(runner, /fixtureSelection: RESTORE_FIXTURE_FILE/u);
-  assert.match(runner, /fixtureSelection: MERGE_FIXTURE_FILE/u);
+  assert.match(runner, /restoreFixtureSelection: RESTORE_FIXTURE_FILE/u);
+  assert.match(runner, /mergeFixtureSelection: MERGE_FIXTURE_FILE/u);
   assert.match(runner, /FIXTURE_SELECTION_FILE/u);
+  assert.match(runner, /MERGE_FIXTURE_SELECTION_FILE/u);
   assert.match(runner, /DEVICE_APP_EXTERNAL_DIRECTORY/u);
   assert.match(runner, /DEVICE_FIXTURE_DIRECTORY/u);
   assert.ok(runner.includes('"pm", "clear", PACKAGE'));
   assert.ok(runner.includes('"install", "-r", apkPath'));
   assert.ok(runner.includes('"chmod", "755"'));
   assert.ok(runner.includes('"chmod", "644"'));
-  assert.match(runner, /writeFileSync\(selectorPath, contract\.fixtureSelection\)/u);
+  assert.match(runner, /writeFileSync\(selectorPath, contract\.restoreFixtureSelection\)/u);
+  assert.match(runner, /writeFileSync\(selectorPath, contract\.mergeFixtureSelection\)/u);
   assert.match(runner, /validatePhase11SqliteBackstop/u);
   assert.match(runner, /current source does not match the Phase 11 manifest/u);
 
@@ -419,6 +421,7 @@ test("Phase 11 flow exercises the split UI without claiming database rollback pr
   );
   assert.match(runtime, /buildProfile === "development-test"/u);
   assert.match(runtime, /process\.env\.EXPO_PUBLIC_NATIVE_CONTRACT_SUITE === "phase11"/u);
+  assert.match(runtime, /PHASE11_MERGE_FIXTURE_SELECTOR_FILE/u);
   assert.match(runtime, /createPhase11FixtureRestoreFilePort/u);
 });
 

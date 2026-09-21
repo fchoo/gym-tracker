@@ -246,6 +246,7 @@ import {
 } from "../platform/crypto/passwordKdf";
 import {
   createProductionExpoBackupFilePort,
+  PHASE11_MERGE_FIXTURE_SELECTOR_FILE,
   createPhase11FixtureRestoreFilePort,
   createProductionExpoRestoreFilePort,
   type BackupArchiveHandle,
@@ -1501,7 +1502,9 @@ export const productionWorkoutAppRuntimeDependencies =
     },
     createMergeCommands: (kernel) => {
       const files = phase11NativeFixtureFilesEnabled()
-        ? createPhase11FixtureRestoreFilePort()
+        ? createPhase11FixtureRestoreFilePort({
+            selectorFile: PHASE11_MERGE_FIXTURE_SELECTOR_FILE,
+          })
         : createProductionExpoRestoreFilePort();
       return createMergeCommands({
         crypto: createAesGcmArchivePort(createExpoAesGcmArchiveDriver()),

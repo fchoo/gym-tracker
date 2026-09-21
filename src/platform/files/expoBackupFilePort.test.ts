@@ -8,6 +8,7 @@ import {
 
 import {
   BackupFilePortError,
+  PHASE11_MERGE_FIXTURE_SELECTOR_FILE,
   PHASE11_RESTORE_FIXTURE_DIRECTORY_URI,
   PHASE11_RESTORE_FIXTURE_SELECTOR_FILE,
   RestoreFilePortError,
@@ -682,5 +683,28 @@ describe("Expo restore file port", () => {
     files.set(`${PHASE11_RESTORE_FIXTURE_DIRECTORY_URI}/${PHASE11_RESTORE_FIXTURE_SELECTOR_FILE}`, "unexpected.gtbk");
     await expect(createPhase11FixtureRestoreFilePort({ driver }).readSelectedArchiveAtMost(5))
       .rejects.toEqual(new RestoreFilePortError("picker_failed"));
+  });
+
+  it("supports a distinct Phase 11 merge fixture selector", async () => {
+    const files = new Map<string, Uint8Array | string>([
+      [
+        `${PHASE11_RESTORE_FIXTURE_DIRECTORY_URI}/${PHASE11_MERGE_FIXTURE_SELECTOR_FILE}`,
+        "phase11-merge-fixture.gtbk",
+      ],
+      [
+        `${PHASE11_RESTORE_FIXTURE_DIRECTORY_URI}/phase11-merge-fixture.gtbk`,
+        Uint8Array.from([4, 5, 6]),
+      ],
+    ]);
+    const driver: Phase11FixtureRestoreFileDriver = {
+      readFileBytes: (uri) => files.get(uri) as Uint8Array,
+      readTextFile: (uri) => files.get(uri) as string,
+      fileSize: (uri) => (files.get(uri) as Uint8Array).byteLength,
+    };
+
+    await expect(createPhase11FixtureRestoreFilePort({
+      driver,
+      selectorFile: PHASE11_MERGE_FIXTURE_SELECTOR_FILE,
+    }).readSelectedArchiveAtMost(5)).resolves.toEqual(Uint8Array.from([4, 5, 6]));
   });
 });

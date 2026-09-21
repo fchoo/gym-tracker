@@ -31,6 +31,7 @@ const FLOW_PATH = "maestro/phase11/portable-merge.yaml";
 const RESTORE_FIXTURE_FILE = "phase11-restore-base.gtbk";
 const MERGE_FIXTURE_FILE = "phase11-merge-fixture.gtbk";
 const FIXTURE_SELECTION_FILE = "phase11-fixture-selection.txt";
+const MERGE_FIXTURE_SELECTION_FILE = "phase11-merge-fixture-selection.txt";
 const DEVICE_APP_EXTERNAL_DIRECTORY = "/sdcard/Android/data/com.fchoo.gymtracker.devtest";
 const DEVICE_FIXTURE_DIRECTORY = `${DEVICE_APP_EXTERNAL_DIRECTORY}/files/phase11`;
 const FIXTURE_PASSWORD = "phase11-merge-password";
@@ -47,7 +48,8 @@ export const PHASE11_MAESTRO_FLOW_CONTRACTS = Object.freeze([
     id: "phase11-data-recovery-navigation",
     flow: FLOW_PATH,
     stage: "navigation-cancel",
-    fixtureSelection: "cancel",
+    restoreFixtureSelection: "cancel",
+    mergeFixtureSelection: "cancel",
     coverage: Object.freeze([
       "DATA-09-manual-export-entry",
       "D-03-restore-clean-merge-separation",
@@ -60,7 +62,8 @@ export const PHASE11_MAESTRO_FLOW_CONTRACTS = Object.freeze([
     id: "phase11-restore-clean-fixture",
     flow: FLOW_PATH,
     stage: "restore-clean-fixture",
-    fixtureSelection: RESTORE_FIXTURE_FILE,
+    restoreFixtureSelection: RESTORE_FIXTURE_FILE,
+    mergeFixtureSelection: "cancel",
     coverage: Object.freeze([
       "D-03-clean-restore",
       "DATA-09-portable-v2-restore",
@@ -70,7 +73,8 @@ export const PHASE11_MAESTRO_FLOW_CONTRACTS = Object.freeze([
     id: "phase11-merge-review-cancel",
     flow: FLOW_PATH,
     stage: "merge-review-cancel",
-    fixtureSelection: MERGE_FIXTURE_FILE,
+    restoreFixtureSelection: RESTORE_FIXTURE_FILE,
+    mergeFixtureSelection: MERGE_FIXTURE_FILE,
     coverage: Object.freeze([
       "D-01-merge-preview-summary",
       "D-02-owner-scoped-identity-copy",
@@ -82,7 +86,8 @@ export const PHASE11_MAESTRO_FLOW_CONTRACTS = Object.freeze([
     id: "phase11-merge-commit-relaunch",
     flow: FLOW_PATH,
     stage: "merge-commit-relaunch",
-    fixtureSelection: MERGE_FIXTURE_FILE,
+    restoreFixtureSelection: RESTORE_FIXTURE_FILE,
+    mergeFixtureSelection: MERGE_FIXTURE_FILE,
     coverage: Object.freeze([
       "D-01-merge-commit-lifecycle",
       "D-04-exact-merge-confirmation",
@@ -708,12 +713,15 @@ export function executePhase11Maestro(args = process.argv.slice(2)) {
       command(adb, ["-s", serial, "shell", "rm", "-f",
         `${DEVICE_FIXTURE_DIRECTORY}/${RESTORE_FIXTURE_FILE}`,
         `${DEVICE_FIXTURE_DIRECTORY}/${MERGE_FIXTURE_FILE}`,
-        `${DEVICE_FIXTURE_DIRECTORY}/${FIXTURE_SELECTION_FILE}`]);
+        `${DEVICE_FIXTURE_DIRECTORY}/${FIXTURE_SELECTION_FILE}`,
+        `${DEVICE_FIXTURE_DIRECTORY}/${MERGE_FIXTURE_SELECTION_FILE}`]);
       for (const fixture of fixtures) {
         command(adb, ["-s", serial, "push", fixture.path, `${DEVICE_FIXTURE_DIRECTORY}/${fixture.file}`]);
       }
-      writeFileSync(selectorPath, contract.fixtureSelection);
+      writeFileSync(selectorPath, contract.restoreFixtureSelection);
       command(adb, ["-s", serial, "push", selectorPath, `${DEVICE_FIXTURE_DIRECTORY}/${FIXTURE_SELECTION_FILE}`]);
+      writeFileSync(selectorPath, contract.mergeFixtureSelection);
+      command(adb, ["-s", serial, "push", selectorPath, `${DEVICE_FIXTURE_DIRECTORY}/${MERGE_FIXTURE_SELECTION_FILE}`]);
       command(adb, ["-s", serial, "shell", "chmod", "755",
         DEVICE_APP_EXTERNAL_DIRECTORY,
         `${DEVICE_APP_EXTERNAL_DIRECTORY}/files`,
@@ -721,7 +729,8 @@ export function executePhase11Maestro(args = process.argv.slice(2)) {
       command(adb, ["-s", serial, "shell", "chmod", "644",
         `${DEVICE_FIXTURE_DIRECTORY}/${RESTORE_FIXTURE_FILE}`,
         `${DEVICE_FIXTURE_DIRECTORY}/${MERGE_FIXTURE_FILE}`,
-        `${DEVICE_FIXTURE_DIRECTORY}/${FIXTURE_SELECTION_FILE}`]);
+        `${DEVICE_FIXTURE_DIRECTORY}/${FIXTURE_SELECTION_FILE}`,
+        `${DEVICE_FIXTURE_DIRECTORY}/${MERGE_FIXTURE_SELECTION_FILE}`]);
       command(adb, ["-s", serial, "shell", "am", "force-stop", PACKAGE]);
       execFileSync("maestro", [
         "test", "--no-ansi", "--format", "junit", "--output", reportPath,

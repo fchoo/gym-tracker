@@ -37,6 +37,8 @@ export const PHASE11_RESTORE_FIXTURE_DIRECTORY_URI =
   "file:///sdcard/Android/data/com.fchoo.gymtracker.devtest/files/phase11";
 export const PHASE11_RESTORE_FIXTURE_SELECTOR_FILE =
   "phase11-fixture-selection.txt";
+export const PHASE11_MERGE_FIXTURE_SELECTOR_FILE =
+  "phase11-merge-fixture-selection.txt";
 const PHASE11_RESTORE_FIXTURE_FILES = new Set([
   "phase11-restore-base.gtbk",
   "phase11-merge-fixture.gtbk",
