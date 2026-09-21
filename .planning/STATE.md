@@ -5,17 +5,17 @@ milestone_name: In-Workout Editing, Advanced Timing & Cross-Device Sync
 current_phase: 11
 current_phase_name: Portable History & Merge Restore
 status: executing
-stopped_at: Plan 11-02 source, host, and fresh manifest-bound Expo device contract complete
-last_updated: "2026-09-21T14:40:00+08:00"
-last_activity: 2026-09-21
-last_activity_desc: Fresh Phase 11 development-test APK bound to c97b14a passed all 12 portable-merge Expo SQLite contract cases
-state_head: c97b14a7b5b2c518f0188dee5f759fcfb8c37f98
+stopped_at: Plan 11-03 data recovery merge UI complete; ready for Plan 11-04 verification
+last_updated: "2026-09-22T04:02:10+08:00"
+last_activity: 2026-09-22
+last_activity_desc: Plan 11-03 split Data & recovery UI and Phase 11 Maestro evidence passed against implementation commit e754785
+state_head: e754785d407642b4c72b0e756853c9a38213d2a9
 progress:
   total_phases: 5
   completed_phases: 3
   total_plans: 26
-  completed_plans: 18
-  percent: 56
+  completed_plans: 19
+  percent: 59
 ---
 
 # Project State
@@ -30,9 +30,9 @@ See: `.planning/PROJECT.md` (updated 2026-09-15)
 ## Current Position
 
 Phase: 11 (Portable History & Merge Restore) — EXECUTING
-Plan: 2 of 4
-Status: Full conflict engine and host/device contract are verified
-Last activity: 2026-09-21 — Plan 11-02 fresh exact-source Phase 11 APK passed all 12 manifest-bound portable-merge Expo SQLite cases
+Plan: 3 of 4
+Status: Data & recovery merge UI and manifest-bound native evidence are verified
+Last activity: 2026-09-22 — Plan 11-03 split Data & recovery UI passed host coverage, portable-merge SQLite 12/12, and Phase 11 Maestro 4/4
 
 ## Delivery model
 
@@ -334,14 +334,15 @@ Full decisions live in `.planning/PROJECT.md`.
 
 ## Session Continuity
 
-Last session: 2026-09-20T02:35:09+08:00
-Last handoff: Plan 11-01 completed with schema-22/GTBK-v2, a one-session atomic merge tracer, and exact manifest-bound Expo SQLite proof
-Stopped at: Starting 11-02-conflict-engine-PLAN.md
+Last session: 2026-09-22T04:02:10+08:00
+Last handoff: Plan 11-03 completed with split Data & recovery restore/merge UI, safe metadata, manifest-bound SQLite backstop, and four-stage Maestro evidence
+Stopped at: Starting 11-04-portability-verification-PLAN.md
 Resume file: .planning/phases/11-portable-history-merge-restore/.continue-here.md
-Handoff file: none (the prior one-shot handoff was consumed and removed)
-Next action: Execute Phase 11 Plan 11-02 test-first, keeping D-01 class policies, D-02 identity remapping, D-04 one-writer atomicity, and derived-state rebuild boundaries intact.
+Handoff file: none
+Next action: Execute Phase 11 Plan 11-04 final verification, reusing Plan 11-03 implementation/evidence and rebuilding only if source changes.
 
 ## Operator Next Steps
 
-- Execute Phase 11 Plan 11-02 test-first: full conflict classification and deterministic physical-ID remapping before widening the writer.
-- Retain Plan 11-01's GTBK-v2-only merge, one-use preflight token, one-writer transaction, and manifest-bound native contract as non-negotiable downstream constraints.
+- Execute Phase 11 Plan 11-04 final verification across DATA-08, DATA-09, D-01..D-04, source/host/native SQLite, accessibility, coverage, and Maestro.
+- Treat the final Plan 11-03 native artifact as implementation-bound to `e754785`; rebuild before rerunning native evidence from later metadata commits.
+- Keep Phase 12 Drive, Google sign-in, account, network, and sync behavior out of Phase 11 until the Phase 11 verification summary is complete.
