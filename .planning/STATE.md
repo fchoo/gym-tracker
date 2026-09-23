@@ -5,11 +5,11 @@ milestone_name: In-Workout Editing, Advanced Timing & Cross-Device Sync
 current_phase: 11
 current_phase_name: Portable History & Merge Restore
 status: executing
-stopped_at: Plan 11-03 data recovery merge UI complete; ready for Plan 11-04 verification
-last_updated: "2026-09-22T04:02:10+08:00"
-last_activity: 2026-09-22
-last_activity_desc: Plan 11-03 split Data & recovery UI and Phase 11 Maestro evidence passed against implementation commit e754785
-state_head: e754785d407642b4c72b0e756853c9a38213d2a9
+stopped_at: Plan 11-04 portability verification complete; awaiting Phase 11 orchestrator verification
+last_updated: "2026-09-23T10:49:29+08:00"
+last_activity: 2026-09-23
+last_activity_desc: Plan 11-04 passed full source/host/native evidence against fresh c483dc3-bound APK; writer capability boundary narrowed
+state_head: c483dc3e707b4c6b1f65878c4ea6a4ce57865f9c
 progress:
   total_phases: 5
   completed_phases: 3
@@ -30,9 +30,9 @@ See: `.planning/PROJECT.md` (updated 2026-09-15)
 ## Current Position
 
 Phase: 11 (Portable History & Merge Restore) — EXECUTING
-Plan: 3 of 4
-Status: Data & recovery merge UI and manifest-bound native evidence are verified
-Last activity: 2026-09-22 — Plan 11-03 split Data & recovery UI passed host coverage, portable-merge SQLite 12/12, and Phase 11 Maestro 4/4
+Plan: 4 of 4
+Status: Plan 11-04 complete; Phase 11 awaits orchestrator verification
+Last activity: 2026-09-23 — Plan 11-04 passed full automated evidence, fresh c483dc3 native SQLite 25/25, and four manifest-bound Maestro flows
 
 ## Delivery model
 
@@ -132,6 +132,7 @@ Terminal Seal) is retired for personal-use (removed in PR #29) and tracked as V2
 | Phase 08 P04 | 25min | 2 tasks | 17 files |
 | Phase 09-in-workout-exercise-editing P04 | 22 min | 2 tasks | 6 files |
 | Phase 09-in-workout-exercise-editing P05 | 4h 31m | 2 tasks | 10 files |
+| Phase 11-portable-history-merge-restore P04 | multi-session | 3 tasks | 5 files |
 
 ## Accumulated Context
 
@@ -305,6 +306,7 @@ Full decisions live in `.planning/PROJECT.md`.
 - [Phase 09]: Android may rotate the ephemeral `/data/app` package path on each reinstall. Phase 09 evidence therefore validates the installed APK by pulled SHA-256 plus package/device identity; it verifies v20 before installing the distinct Phase 09 APK and records that ordered result in the final ledger.
 - [Phase 09]: Native migrations/effects databases already have unique run IDs. Do not delete them before `openDatabaseAsync`; cleanup after close prevents Expo SQLite's released-shared-object race without weakening isolation.
 - [Phase 09]: Final source-bound evidence is d5976f6: the runner validates all adb work against the manifest serial, full Task 1 successor-range scope and immutable migration 0019, exact v20 and Phase 09 artifact identities, and force-stops the manifest package before each clear-state flow. v20 passed 11/11 and all three Maestro flows passed with automatic device time restored.
+- [Phase 11]: Full-plan secure merge receives a least-privilege writer exposing only `commitFullPlan`; legacy tracer `commit` remains isolated behind its own factory. Fresh c483dc3-bound native evidence passed migrations-effects 13/13, portable-merge 12/12, and four Maestro flows.
 
 ### Blockers/Concerns
 
@@ -334,15 +336,15 @@ Full decisions live in `.planning/PROJECT.md`.
 
 ## Session Continuity
 
-Last session: 2026-09-22T04:02:10+08:00
-Last handoff: Plan 11-03 completed with split Data & recovery restore/merge UI, safe metadata, manifest-bound SQLite backstop, and four-stage Maestro evidence
-Stopped at: Starting 11-04-portability-verification-PLAN.md
-Resume file: .planning/phases/11-portable-history-merge-restore/.continue-here.md
+Last session: 2026-09-23T10:49:29+08:00
+Last handoff: Plan 11-04 completed with fresh c483dc3-bound source, SQLite, coverage, and Maestro evidence plus narrowed merge writer capabilities
+Stopped at: Plan 11-04 closeout complete; awaiting Phase 11 verification
+Resume file: .planning/phases/11-portable-history-merge-restore/11-04-SUMMARY.md
 Handoff file: none
-Next action: Execute Phase 11 Plan 11-04 final verification, reusing Plan 11-03 implementation/evidence and rebuilding only if source changes.
+Next action: Run the Phase 11 verification workflow; do not begin Phase 12 automatically.
 
 ## Operator Next Steps
 
-- Execute Phase 11 Plan 11-04 final verification across DATA-08, DATA-09, D-01..D-04, source/host/native SQLite, accessibility, coverage, and Maestro.
-- Treat the final Plan 11-03 native artifact as implementation-bound to `e754785`; rebuild before rerunning native evidence from later metadata commits.
+- Verify Phase 11 against the 11-04 summary and fresh c483dc3-bound evidence across DATA-08, DATA-09, D-01..D-04, source/host/native SQLite, accessibility, coverage, and Maestro.
+- Treat c483dc3 as the final Plan 11-04 native implementation head; e754785 evidence is superseded diagnostic history.
 - Keep Phase 12 Drive, Google sign-in, account, network, and sync behavior out of Phase 11 until the Phase 11 verification summary is complete.
