@@ -49,6 +49,7 @@ export const PORTABLE_MERGE_CONTRACT_CASES = [
   "portable-merge-same-identity-dedup-remap",
   "portable-merge-session-history-newest-wins",
   "portable-merge-settings-existing-wins",
+  "portable-merge-duplicate-only-ready",
   "portable-merge-stale-preview-rollback",
   "portable-merge-unmappable-graph",
   "portable-merge-insert-rollback",
@@ -328,7 +329,7 @@ async function commitFullPlan(
   options: Readonly<{
     faultAfter?: (stage: LogicalMergeFaultStage) => Promise<void>;
   }> = {},
-): Promise<Readonly<{ state: "rebuild_pending" }>> {
+): Promise<Readonly<{ state: "ready" | "rebuild_pending" }>> {
   return createFullPlanLogicalMergeWriter(kernel, {
     nowMs: () => 99,
     sha256: adapter.sha256,
@@ -564,6 +565,25 @@ const contractCases: Record<PortableMergeContractCaseId, ContractCase> = {
         { key: "appearance", value_json: '"light"' },
         { key: "units", value_json: '"metric"' },
       ]), "portable_merge_settings_existing_winner_missing");
+    });
+  },
+
+  async "portable-merge-duplicate-only-ready"(adapter, caseId) {
+    await withRuntimes(adapter, caseId, async (archive, local) => {
+      await seedSession(archive.kernel, {
+        id: "same-session", portableId: "a".repeat(32), modifiedAtMs: 20,
+      });
+      await seedSession(local.kernel, {
+        id: "same-session", portableId: "a".repeat(32), modifiedAtMs: 20,
+      });
+      const input = await plannedFullMerge(adapter, archive.kernel, local.kernel);
+      invariant(input.plan.settings.length === 0 && input.plan.aggregates.length === 0
+        && input.plan.preview.duplicates === 1, "portable_merge_duplicate_only_plan_invalid");
+      const before = await canonicalState(local.kernel);
+      const result = await commitFullPlan(adapter, local.kernel, input);
+      invariant(result.state === "ready", "portable_merge_duplicate_only_not_ready");
+      invariant(await canonicalState(local.kernel) === before,
+        "portable_merge_duplicate_only_changed_source");
     });
   },
 

@@ -112,6 +112,7 @@ describe("portable merge contract", () => {
       "portable-merge-same-identity-dedup-remap",
       "portable-merge-session-history-newest-wins",
       "portable-merge-settings-existing-wins",
+      "portable-merge-duplicate-only-ready",
       "portable-merge-stale-preview-rollback",
       "portable-merge-unmappable-graph",
       "portable-merge-insert-rollback",

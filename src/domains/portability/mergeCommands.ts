@@ -109,7 +109,7 @@ export type FullMergeWriterPort = Readonly<{
   commitFullPlan(input: Readonly<{
     localFingerprint: string;
     plan: PortableMergePlan;
-  }>): Promise<Readonly<{ state: "rebuild_pending" }>>;
+  }>): Promise<Readonly<{ state: "ready" | "rebuild_pending" }>>;
 }>;
 
 export type SecureMergeCommands = Readonly<{

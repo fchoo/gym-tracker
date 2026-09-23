@@ -416,6 +416,7 @@ function assertOwnedPlanAggregate(
 }
 
 function assertFullPlanSlice(plan: PortableMergePlan): void {
+  requireValid(plan.operations.length > 0);
   const settingInserts = new Set<string>();
   const settingLocalWins = new Set<string>();
   const customWrites = new Map<string, Extract<PortableMergePlan["operations"][number], {
@@ -518,7 +519,6 @@ function assertFullPlanSlice(plan: PortableMergePlan): void {
     const hasAggregate = aggregates.has(`owned_plan\u0000${operation.portableId}`);
     requireValid(hasAggregate === aggregateRequired(operation.kind));
   }
-  requireValid(plan.settings.length > 0 || plan.aggregates.length > 0);
   const admittedOperationsByPair = new Map(
     [...customWrites.values(), ...sessionWrites.values(), ...ownedPlanWrites.values()].map((operation) => [
       plannedRootOperationKey(operation),
@@ -1006,7 +1006,7 @@ type LogicalMergeRepository = MergeWriterPort & Readonly<{
   commitFullPlan(input: Readonly<{
     localFingerprint: string;
     plan: PortableMergePlan;
-  }>): Promise<Readonly<{ state: "rebuild_pending" }>>;
+  }>): Promise<Readonly<{ state: "ready" | "rebuild_pending" }>>;
 }>;
 
 function createLogicalMergeRepositoryInternal(
@@ -1031,6 +1031,9 @@ function createLogicalMergeRepositoryInternal(
           assertFullPlanSlice(plan);
           assertFullPlanMatchesLocal(plan, local);
           await input.faultAfter?.("fingerprint_checked");
+          if (plan.settings.length === 0 && plan.aggregates.length === 0) {
+            return Object.freeze({ state: "ready" as const });
+          }
 
           const foreignKeys = await transaction.queryAll<{ foreign_keys: number }>("PRAGMA foreign_keys");
           if (foreignKeys.length !== 1 || foreignKeys[0]?.foreign_keys !== 1) fail();

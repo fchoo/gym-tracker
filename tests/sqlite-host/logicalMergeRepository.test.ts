@@ -2386,6 +2386,51 @@ describe("logical merge repository", () => {
     })).resolves.toEqual({ state: "ready" });
   });
 
+  it("accepts a planner-produced local-won-only full plan without changing canonical SQLite state", async () => {
+    const archiveKernel = await open("full-plan-duplicate-archive");
+    await seedSession(archiveKernel, {
+      id: "archive-session", portableId: "a".repeat(32), modifiedAtMs: 20,
+    });
+    const archive = await snapshot(archiveKernel);
+    const localKernel = await open("full-plan-duplicate-local");
+    await seedSession(localKernel, {
+      id: "local-session", portableId: "a".repeat(32), modifiedAtMs: 20,
+    });
+    const local = await createSqliteMergeLocalFactsPort(localKernel).read();
+    const plan = await buildPortableMergePlan({
+      archive: {
+        ...archive,
+        version: 2,
+        tables: {
+          ...archive.tables,
+          portable_owner_identity: [{ id: 1, owner_namespace: local.ownerNamespace }],
+        },
+      },
+      local: {
+        version: 2,
+        ...local,
+        tables: {
+          ...local.tables,
+          portable_owner_identity: [{ id: 1, owner_namespace: local.ownerNamespace }],
+        },
+      },
+      payloadDigest: sha256,
+    });
+    expect(plan).toEqual(expect.objectContaining({
+      settings: [],
+      aggregates: [],
+      preview: expect.objectContaining({ localWon: 1 }),
+    }));
+    const before = await canonicalState(localKernel);
+
+    await expect(createFullPlanLogicalMergeWriter(localKernel, { sha256 }).commitFullPlan({
+      localFingerprint: await sha256(canonicalMergeValue(local)),
+      plan,
+    })).resolves.toEqual({ state: "ready" });
+
+    await expect(canonicalState(localKernel)).resolves.toEqual(before);
+  });
+
   it.each([
     ["archive_wins without a matching local session", async () => {
       const archiveKernel = await open("legacy-missing-local-archive");

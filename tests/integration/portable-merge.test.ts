@@ -158,6 +158,18 @@ async function seedSession(
   });
 }
 
+async function canonicalState(kernel: SqliteKernel): Promise<unknown> {
+  return {
+    backup: await createLogicalBackupRepository(kernel).collect({
+      createdAtMs: 1,
+      snapshotId: "portable-merge-canonical-state",
+    }),
+    state: await kernel.queryAll("SELECT state, updated_at_ms FROM portability_restore_state"),
+    schema: await kernel.queryAll("SELECT type, name, tbl_name, sql FROM sqlite_master WHERE type IN ('trigger', 'index') ORDER BY type, name"),
+    userVersion: await kernel.queryAll("PRAGMA user_version"),
+  };
+}
+
 function crypto(): BackupEnvelopeCryptoPort {
   return {
     async deriveKey() { return { key: new Uint8Array(32).fill(7) }; },
@@ -188,6 +200,63 @@ function reconciliation(kernel: SqliteKernel) {
 }
 
 describe("portable merge integration", () => {
+  it("authenticates and consumes a duplicate-only full-plan token without changing local state", async () => {
+    const archiveRuntime = await createRuntime("duplicate-archive");
+    await seedSession(archiveRuntime.kernel, {
+      id: "same-session", portableId: "a".repeat(32), modifiedAtMs: 20,
+    });
+    const archive = await createLogicalBackupRepository(archiveRuntime.kernel).collect({
+      createdAtMs: 1,
+      snapshotId: "portable-merge-duplicate-archive",
+    });
+    const localRuntime = await createRuntime("duplicate-local");
+    await seedSession(localRuntime.kernel, {
+      id: "same-session", portableId: "a".repeat(32), modifiedAtMs: 20,
+    });
+    const localFacts = await createSqliteMergeLocalFactsPort(localRuntime.kernel).read();
+    const bytes = await createBackupEnvelopeCodec(crypto()).seal({
+      snapshot: {
+        ...archive,
+        tables: {
+          ...archive.tables,
+          portable_owner_identity: [{ id: 1, owner_namespace: localFacts.ownerNamespace }],
+        },
+      },
+      password: new TextEncoder().encode("owner-password"),
+      salt: new Uint8Array(16).fill(1),
+      nonce: new Uint8Array(12).fill(2),
+    });
+    const commands = createMergeCommands({
+      crypto: crypto(),
+      files: { readSelectedArchiveAtMost: async () => bytes },
+      kdf: { derive: async () => ({ algorithm: "argon2id", bytes: new Uint8Array(32), durationMs: 1, provider: "Bouncy Castle", providerVersion: "1.85.2" }) },
+      schema: createSqliteRestoreSchemaPort(localRuntime.kernel),
+      retainedReferences: createSqliteRestoreRetainedReferencePort(localRuntime.kernel),
+      candidateProbe: createSqliteRestoreCandidateProbe(),
+      local: createSqliteMergeLocalFactsPort(localRuntime.kernel),
+      sha256,
+      store: createMergePreflightStore({ tokenFactory: () => "portable-merge-duplicate-token" }),
+      writer: createFullPlanLogicalMergeWriter(localRuntime.kernel, { sha256 }),
+    });
+    const before = await canonicalState(localRuntime.kernel);
+
+    const preflight = await commands.preflightSecureMerge({ password: "owner-password" });
+    expect(preflight).toEqual(expect.objectContaining({
+      outcome: "ready",
+      preview: expect.objectContaining({ duplicates: 1 }),
+    }));
+    if (preflight.outcome !== "ready") throw new Error("merge_not_ready");
+    await expect(commands.commitSecureMerge({
+      confirmation: "MERGE",
+      token: preflight.token,
+    })).resolves.toEqual({ state: "ready" });
+    await expect(canonicalState(localRuntime.kernel)).resolves.toEqual(before);
+    await expect(commands.commitSecureMerge({
+      confirmation: "MERGE",
+      token: preflight.token,
+    })).rejects.toEqual(expect.objectContaining({ code: "merge_preflight_token_invalid" }));
+  });
+
   it("authenticates, commits, relaunches, and deterministically rebuilds an archive-wins session", async () => {
     const archiveRuntime = await createRuntime("archive");
     await seedSession(archiveRuntime.kernel, {
