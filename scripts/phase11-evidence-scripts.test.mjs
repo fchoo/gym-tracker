@@ -438,7 +438,7 @@ test("Phase 11 package script exposes the manifest-bound runner", () => {
 });
 
 test("Phase 11 runner derives contract IDs and backup tables from source", () => {
-  assert.equal(derivePortableMergeCaseIds().length, 12);
+  assert.equal(derivePortableMergeCaseIds().length, 13);
   assert.deepEqual(
     deriveLogicalBackupTableNames().slice(0, 3),
     ["app_settings", "exercise_aliases", "exercise_library_entries"],
