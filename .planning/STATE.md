@@ -2,20 +2,20 @@
 gsd_state_version: 1.0
 milestone: v1.1
 milestone_name: In-Workout Editing, Advanced Timing & Cross-Device Sync
-current_phase: 11
-current_phase_name: Portable History & Merge Restore
-status: executing
-stopped_at: Plan 11-04 portability verification complete; awaiting Phase 11 orchestrator verification
-last_updated: "2026-09-23T11:47:12+08:00"
+current_phase: 12
+current_phase_name: Automatic Google-Drive Sync
+status: planning
+stopped_at: Phase 11 complete, ready to plan Phase 12
+last_updated: "2026-09-23T04:27:52.888Z"
 last_activity: 2026-09-23
-last_activity_desc: Plan 11-04 passed full source/host/native evidence against fresh 4173c72-bound APK; 13-case evidence gate aligned and green
-state_head: 4173c72b105315e76c95c4b25538c23ea1eb51e7
+last_activity_desc: Phase 11 complete, transitioned to Phase 12
+state_head: b1d7bd4592690db6bec46bf7e400c74af659c01d
 progress:
   total_phases: 5
-  completed_phases: 3
+  completed_phases: 4
   total_plans: 26
-  completed_plans: 19
-  percent: 59
+  completed_plans: 22
+  percent: 80
 ---
 
 # Project State
@@ -25,14 +25,14 @@ progress:
 See: `.planning/PROJECT.md` (updated 2026-09-15)
 
 **Core value:** Open today's workout, see trustworthy next targets, complete each working set with one primary action, recover safely from interruption, and understand exactly why the next target is recommended.
-**Current focus:** Phase 11 — Portable History & Merge Restore
+**Current focus:** Phase 12 — Automatic Google-Drive Sync
 
 ## Current Position
 
-Phase: 11 (Portable History & Merge Restore) — EXECUTING
-Plan: 4 of 4
-Status: Plan 11-04 complete; Phase 11 awaits orchestrator verification
-Last activity: 2026-09-23 — Plan 11-04 passed full automated evidence, fresh 4173c72 native SQLite 26/26, fail-closed evidence 7/7, and four manifest-bound Maestro flows
+Phase: 12 — Automatic Google-Drive Sync
+Plan: Not started
+Status: Ready to plan
+Last activity: 2026-09-23 — Phase 11 complete, transitioned to Phase 12
 
 ## Delivery model
 
@@ -61,6 +61,7 @@ Terminal Seal) is retired for personal-use (removed in PR #29) and tracked as V2
 | 5. Recovery, Distribution, and Release | 7/7 source-preparation complete; exact-candidate attended gate pending | — | — |
 | 08 | 4 | - | - |
 | 09 | 10 | - | - |
+| 11 | 4 | - | - |
 
 **Recent Trend:** Phase 05 Plan 07 prepares a production-only build-once manifest pipeline, exact Phase 2–5 attended rows, protected owner-supplied evidence workflows, strict source-byte validation, serialized no-rebuild promotion, immutable public-asset proof, and post-promotion Terminal Seal validation. All source code-review and security findings are closed. The source-only gate passes 134 suites and 2,348 tests with 90.94% statements, 85.86% branches, 90.21% functions, and 91.13% lines; all 83 integrity-critical files pass at 100%, and focused Phase 5/release tests pass 29/29. Candidate build/sign/install, Maestro/device execution, attended emulator/phone/assistive/design review, owner approval, promotion, and Terminal Seal remain unexecuted.
 **Per-Plan Metrics:**
@@ -338,13 +339,13 @@ Full decisions live in `.planning/PROJECT.md`.
 
 Last session: 2026-09-23T11:47:12+08:00
 Last handoff: Plan 11-04 completed with fresh 4173c72-bound source, SQLite, coverage, and Maestro evidence plus narrowed merge writer, validated no-op, and aligned evidence-count contracts
-Stopped at: Plan 11-04 closeout complete; awaiting Phase 11 verification
-Resume file: .planning/phases/11-portable-history-merge-restore/11-04-SUMMARY.md
+Stopped at: Phase 11 complete, ready to plan Phase 12
+Resume file: .planning/phases/11-portable-history-merge-restore/.continue-here.md
 Handoff file: none
-Next action: Run the Phase 11 verification workflow; do not begin Phase 12 automatically.
+Next action: Discuss and plan Phase 12; do not begin implementation automatically.
 
 ## Operator Next Steps
 
-- Re-verify Phase 11 against the closed 12-to-13 evidence-count gap and fresh 4173c72-bound evidence across DATA-08, DATA-09, D-01..D-04, source/host/native SQLite, accessibility, coverage, and Maestro.
-- Treat 4173c72 as the final Plan 11-04 evidence head and abc6005 as the application behavior head; earlier native manifests are superseded diagnostic history.
-- Keep Phase 12 Drive, Google sign-in, account, network, and sync behavior out of Phase 11 until the Phase 11 verification summary is complete.
+- Start Phase 12 with `/gsd-discuss-phase 12`; review Google sign-in, Drive, encryption-key, conflict, retry, and offline-path decisions before planning implementation.
+- Treat `4173c72` as the final Phase 11 evidence head and `abc6005` as the application behavior head; earlier native manifests are superseded diagnostic history.
+- Keep local SQLite authoritative and preserve Phase 11's manual export/restore/merge fallback throughout Phase 12.
