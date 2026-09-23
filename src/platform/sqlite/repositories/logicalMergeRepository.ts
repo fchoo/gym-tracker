@@ -1,5 +1,6 @@
 import {
   canonicalMergeValue,
+  type FullMergeWriterPort,
   portableMergeArchiveSessionAggregate,
   portableMergeSessionAggregate,
   type MergeWriterPort,
@@ -1008,7 +1009,7 @@ type LogicalMergeRepository = MergeWriterPort & Readonly<{
   }>): Promise<Readonly<{ state: "rebuild_pending" }>>;
 }>;
 
-export function createLogicalMergeRepository(
+function createLogicalMergeRepositoryInternal(
   kernel: SqliteKernel,
   input: Readonly<{
     nowMs?(): number;
@@ -1132,4 +1133,38 @@ export function createLogicalMergeRepository(
       }
     },
   });
+}
+
+/**
+ * Legacy single-session writer used only by the original tracer contract.
+ * Full aggregate imports must pass through `createFullPlanLogicalMergeWriter`,
+ * which is the capability supplied to secure merge commands.
+ */
+export function createLogicalMergeRepository(
+  kernel: SqliteKernel,
+  input: Readonly<{
+    nowMs?(): number;
+    sha256(value: string): Promise<string>;
+    faultAfter?(stage: LogicalMergeFaultStage): Promise<void>;
+  }>,
+): MergeWriterPort {
+  const repository = createLogicalMergeRepositoryInternal(kernel, input);
+  return Object.freeze({ commit: repository.commit });
+}
+
+/**
+ * Narrow full-plan capability. Production secure-merge commands receive this
+ * interface only, so the private writer cannot be reached through the legacy
+ * tracer repository surface.
+ */
+export function createFullPlanLogicalMergeWriter(
+  kernel: SqliteKernel,
+  input: Readonly<{
+    nowMs?(): number;
+    sha256(value: string): Promise<string>;
+    faultAfter?(stage: LogicalMergeFaultStage): Promise<void>;
+  }>,
+): FullMergeWriterPort {
+  const repository = createLogicalMergeRepositoryInternal(kernel, input);
+  return Object.freeze({ commitFullPlan: repository.commitFullPlan });
 }

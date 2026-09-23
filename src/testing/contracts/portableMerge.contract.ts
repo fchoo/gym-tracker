@@ -11,7 +11,7 @@ import {
   createLogicalBackupRepository,
 } from "../../platform/sqlite/repositories/logicalBackupRepository";
 import {
-  createLogicalMergeRepository,
+  createFullPlanLogicalMergeWriter,
   type LogicalMergeFaultStage,
 } from "../../platform/sqlite/repositories/logicalMergeRepository";
 import {
@@ -329,7 +329,7 @@ async function commitFullPlan(
     faultAfter?: (stage: LogicalMergeFaultStage) => Promise<void>;
   }> = {},
 ): Promise<Readonly<{ state: "rebuild_pending" }>> {
-  return createLogicalMergeRepository(kernel, {
+  return createFullPlanLogicalMergeWriter(kernel, {
     nowMs: () => 99,
     sha256: adapter.sha256,
     ...(options.faultAfter === undefined ? {} : { faultAfter: options.faultAfter }),

@@ -313,7 +313,7 @@ import {
   createLogicalRestoreRepository,
 } from "../platform/sqlite/repositories/logicalRestoreRepository";
 import {
-  createLogicalMergeRepository,
+  createFullPlanLogicalMergeWriter,
 } from "../platform/sqlite/repositories/logicalMergeRepository";
 import {
   createRestoreReconciliationRepository,
@@ -1416,7 +1416,7 @@ export const productionWorkoutAppRuntimeDependencies =
             return randomUUID();
           },
         }),
-        writer: createLogicalMergeRepository(kernel, {
+        writer: createFullPlanLogicalMergeWriter(kernel, {
           nowMs: () => Date.now(),
           sha256: async (value) => {
             const {

@@ -32,6 +32,7 @@ import {
 } from "../../src/domains/portability/backupContracts";
 import {
   __logicalMergeRepositoryTestOnly,
+  createFullPlanLogicalMergeWriter,
   createLogicalMergeRepository,
   type LogicalMergeFaultStage,
 } from "../../src/platform/sqlite/repositories/logicalMergeRepository";
@@ -477,7 +478,7 @@ async function expectRejectedFullPlan(
   plan: PortableMergePlan,
 ): Promise<void> {
   const before = await canonicalState(kernel);
-  await expect(createLogicalMergeRepository(kernel, { sha256 })
+  await expect(createFullPlanLogicalMergeWriter(kernel, { sha256 })
     .commitFullPlan({
       localFingerprint: await sha256(canonicalMergeValue(local)),
       plan,
@@ -1153,7 +1154,7 @@ describe("logical merge repository", () => {
     const kernel = await open("full-plan-disabled-foreign-keys");
     const { local, plan } = await fullPlanFixture(kernel);
 
-    await expect(createLogicalMergeRepository(
+    await expect(createFullPlanLogicalMergeWriter(
       transactionKernel(mergeTransaction(local, { foreignKeys: 0 })),
       { sha256 },
     ).commitFullPlan({
@@ -1272,6 +1273,16 @@ describe("logical merge repository", () => {
 
     expect(() => __logicalMergeRepositoryTestOnly.assertFullPlanSlice(plan))
       .not.toThrow();
+  });
+
+  it("supplies production secure merge with only the full-plan writer capability", () => {
+    const writer = createFullPlanLogicalMergeWriter(
+      transactionKernel(transactionStub()),
+      { sha256 },
+    );
+
+    expect(writer).toEqual({ commitFullPlan: expect.any(Function) });
+    expect("commit" in writer).toBe(false);
   });
 
   it("accepts each FK-closed aggregate class through its direct validator", async () => {
@@ -1702,7 +1713,7 @@ describe("logical merge repository", () => {
     const kernel = await open("full-plan");
     const { local, plan } = await fullPlanFixture(kernel);
 
-    await expect(createLogicalMergeRepository(kernel, { sha256 })
+    await expect(createFullPlanLogicalMergeWriter(kernel, { sha256 })
       .commitFullPlan({
         localFingerprint: await sha256(canonicalMergeValue(local)),
         plan,
@@ -1755,7 +1766,7 @@ describe("logical merge repository", () => {
   it("applies a precomputed archive-wins session aggregate under its local physical ID", async () => {
     const { local, localKernel, plan } = await fullSessionPlanFixture();
 
-    await expect(createLogicalMergeRepository(localKernel, { sha256 })
+    await expect(createFullPlanLogicalMergeWriter(localKernel, { sha256 })
       .commitFullPlan({
         localFingerprint: await sha256(canonicalMergeValue(local)),
         plan,
@@ -1781,7 +1792,7 @@ describe("logical merge repository", () => {
   it("applies a precomputed owned-plan root, day, and aggregate state atomically", async () => {
     const { local, localKernel, plan } = await fullOwnedPlanFixture();
 
-    await expect(createLogicalMergeRepository(localKernel, { sha256 })
+    await expect(createFullPlanLogicalMergeWriter(localKernel, { sha256 })
       .commitFullPlan({
         localFingerprint: await sha256(canonicalMergeValue(local)),
         plan,
@@ -1853,7 +1864,7 @@ describe("logical merge repository", () => {
       const { local, localKernel, plan } = await fullOwnedPlanFixture();
       const before = await canonicalState(localKernel);
 
-      await expect(createLogicalMergeRepository(localKernel, {
+      await expect(createFullPlanLogicalMergeWriter(localKernel, {
         sha256,
         faultAfter: async (actual) => {
           if (actual === stage) throw new Error("fault");
@@ -1903,7 +1914,7 @@ describe("logical merge repository", () => {
       const { local, localKernel, plan } = await fullSessionPlanFixture();
       const before = await canonicalState(localKernel);
 
-      await expect(createLogicalMergeRepository(localKernel, {
+      await expect(createFullPlanLogicalMergeWriter(localKernel, {
         sha256,
         faultAfter: async (actual) => {
           if (actual === stage) throw new Error("fault");
@@ -1938,7 +1949,7 @@ describe("logical merge repository", () => {
       const { local, plan } = await fullPlanFixture(kernel);
       const before = await canonicalState(kernel);
 
-      await expect(createLogicalMergeRepository(kernel, {
+      await expect(createFullPlanLogicalMergeWriter(kernel, {
         sha256,
         faultAfter: async (actual) => {
           if (actual === stage) throw new Error("fault");
@@ -1959,7 +1970,7 @@ describe("logical merge repository", () => {
     ));
     const before = await canonicalState(kernel);
 
-    await expect(createLogicalMergeRepository(kernel, { sha256 })
+    await expect(createFullPlanLogicalMergeWriter(kernel, { sha256 })
       .commitFullPlan({
         localFingerprint: await sha256(canonicalMergeValue(local)),
         plan,
@@ -1986,7 +1997,7 @@ describe("logical merge repository", () => {
     };
     const before = await canonicalState(kernel);
 
-    await expect(createLogicalMergeRepository(kernel, { sha256 })
+    await expect(createFullPlanLogicalMergeWriter(kernel, { sha256 })
       .commitFullPlan({
         localFingerprint: await sha256(canonicalMergeValue(local)),
         plan: unsupportedPlan,
@@ -2012,7 +2023,7 @@ describe("logical merge repository", () => {
     };
     const before = await canonicalState(kernel);
 
-    await expect(createLogicalMergeRepository(kernel, { sha256 })
+    await expect(createFullPlanLogicalMergeWriter(kernel, { sha256 })
       .commitFullPlan({
         localFingerprint: await sha256(canonicalMergeValue(local)),
         plan: mismatchedPlan,
@@ -2041,7 +2052,7 @@ describe("logical merge repository", () => {
     };
     const before = await canonicalState(kernel);
 
-    await expect(createLogicalMergeRepository(kernel, { sha256 })
+    await expect(createFullPlanLogicalMergeWriter(kernel, { sha256 })
       .commitFullPlan({
         localFingerprint: await sha256(canonicalMergeValue(local)),
         plan: mismatchedPlan,
@@ -2070,7 +2081,7 @@ describe("logical merge repository", () => {
     };
     const before = await canonicalState(localKernel);
 
-    await expect(createLogicalMergeRepository(localKernel, { sha256 })
+    await expect(createFullPlanLogicalMergeWriter(localKernel, { sha256 })
       .commitFullPlan({
         localFingerprint: await sha256(canonicalMergeValue(local)),
         plan: mismatchedPlan,
@@ -2112,7 +2123,7 @@ describe("logical merge repository", () => {
     };
     const before = await canonicalState(localKernel);
 
-    await expect(createLogicalMergeRepository(localKernel, { sha256 })
+    await expect(createFullPlanLogicalMergeWriter(localKernel, { sha256 })
       .commitFullPlan({
         localFingerprint: await sha256(canonicalMergeValue(local)),
         plan: mismatchedPlan,
@@ -2175,7 +2186,7 @@ describe("logical merge repository", () => {
       aggregates: [...plan.aggregates, ownedPlanAggregate],
     };
 
-    await expect(createLogicalMergeRepository(kernel, { sha256 })
+    await expect(createFullPlanLogicalMergeWriter(kernel, { sha256 })
       .commitFullPlan({
         localFingerprint: await sha256(canonicalMergeValue(local)),
         plan: crossClassPlan,
@@ -2199,7 +2210,7 @@ describe("logical merge repository", () => {
     };
     const before = await canonicalState(kernel);
 
-    await expect(createLogicalMergeRepository(kernel, { sha256 })
+    await expect(createFullPlanLogicalMergeWriter(kernel, { sha256 })
       .commitFullPlan({
         localFingerprint: await sha256(canonicalMergeValue(local)),
         plan: mismatchedPlan,

@@ -42,7 +42,7 @@ import {
   createLogicalBackupRepository,
 } from "../../src/platform/sqlite/repositories/logicalBackupRepository";
 import {
-  createLogicalMergeRepository,
+  createFullPlanLogicalMergeWriter,
 } from "../../src/platform/sqlite/repositories/logicalMergeRepository";
 import {
   createRestoreReconciliationRepository,
@@ -225,7 +225,7 @@ describe("portable merge integration", () => {
       local: createSqliteMergeLocalFactsPort(localRuntime.kernel),
       sha256,
       store: createMergePreflightStore({ tokenFactory: () => "portable-merge-token" }),
-      writer: createLogicalMergeRepository(localRuntime.kernel, { sha256 }),
+      writer: createFullPlanLogicalMergeWriter(localRuntime.kernel, { sha256 }),
     });
 
     const preview = await commands.preflightSecureMerge({ password: "owner-password" });
