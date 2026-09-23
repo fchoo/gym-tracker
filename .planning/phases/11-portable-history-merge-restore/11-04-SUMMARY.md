@@ -36,7 +36,7 @@ key-files:
 key-decisions:
   - "The public logical-merge factory remains legacy-tracer-only, while full-plan production merge uses a separate factory exposing only commitFullPlan."
   - "A fully duplicate/local-won merge is a valid authenticated no-op: it revalidates the live fingerprint and plan, consumes its token, returns ready, and never marks derivatives pending."
-  - "The final Phase 11 evidence is the abc6005 manifest; e754785 and c483dc3 evidence are superseded because implementation source changed after each run."
+  - "The final Phase 11 evidence is the 4173c72 manifest; application behavior is fixed at abc6005, while the final commit aligns the fail-closed evidence fixture with the 13-case source contract."
   - "Global coverage totals remain informational; the passing run-coverage-gate exact 100% per registered integrity module is the acceptance threshold."
 
 patterns-established:
@@ -111,7 +111,7 @@ status: complete
 
 # Phase 11 Plan 04: Portability Verification Summary
 
-**Phase 11 now has fresh abc6005-bound proof that encrypted GTBK backups restore cleanly or merge atomically, including a validated no-op path for already-present data, with immutable history, deterministic derivative rebuilds, and a fully exercised manual Android recovery path.**
+**Phase 11 now has fresh 4173c72-bound proof that encrypted GTBK backups restore cleanly or merge atomically, including a validated no-op path for already-present data, with immutable history, deterministic derivative rebuilds, and a fully exercised manual Android recovery path.**
 
 ## Performance
 
@@ -123,7 +123,7 @@ status: complete
 ## Accomplishments
 
 - Completed the fail-closed compatibility and deterministic-rebuild matrix through unit, host SQLite, integration, real Expo SQLite, integrity-coverage, and manifest-bound Android evidence.
-- Rebuilt the exact implementation commit `abc60051060e746e530853fb698d1d1fd1ac9eb6`, then ran schema/migration effects (13/13), portable merge (13/13 twice from fresh app processes), and all four Phase 11 Maestro flows against that one APK.
+- Rebuilt the exact current commit `4173c72b105315e76c95c4b25538c23ea1eb51e7` after aligning the evidence fixture, then ran schema/migration effects (13/13), portable merge (13/13), and all four Phase 11 Maestro flows against that one APK. Application behavior remains fixed at `abc6005`.
 - Narrowed full-plan merge capabilities after adversarial review: secure production merge, the shared device contract, and integration wiring now receive only `commitFullPlan`, not the legacy `commit` tracer surface.
 - Fixed the code-review blocker where a fully duplicate/local-won plan previewed successfully but failed at commit; it now consumes its token and returns `ready` after full live validation without changing canonical SQLite state.
 - Ran the complete Jest gate successfully: 79 unit suites / 1,625 tests and 40 component suites / 577 tests, plus all host SQLite, integration, and integrity-coverage projects. Existing Expo-notification and React `act()` test-environment warnings were non-fatal and did not fail a suite.
@@ -132,7 +132,7 @@ status: complete
 
 1. **Task 1: Complete compatibility, fail-closed, and deterministic-rebuild matrices** — inherited Phase 11 source/host/native matrices re-run and passed; no separate task commit was required.
 2. **Task 2: Finalize accessibility and fail-closed Phase 11 native evidence** — inherited native runner and accessibility corpus re-run against the fresh manifest; no separate task commit was required.
-3. **Task 3: Run the complete Phase 11 gate and close review findings** — `c483dc3` (least-privilege writer fix), `abc6005` (validated no-op merge fix)
+3. **Task 3: Run the complete Phase 11 gate and close review findings** — `c483dc3` (least-privilege writer fix), `abc6005` (validated no-op merge fix), `4173c72` (13-case evidence fixture)
 
 ## Files Created/Modified
 
@@ -146,7 +146,7 @@ status: complete
 
 ## Decisions Made
 
-- Both source corrections required replacement Android evidence. The final artifact is bound to `abc6005`; the older `e754785` and `c483dc3` manifests are superseded diagnostic history.
+- Both source corrections and the final evidence-fixture correction required replacement Android evidence under the project's full-tree digest contract. The final artifact is bound to `4173c72`; the older `e754785`, `c483dc3`, and `abc6005` manifests are superseded diagnostic history.
 - The writer-boundary correction is intentionally structural but non-architectural: it does not change schema, conflict rules, GTBK format, or any user-visible recovery behavior.
 - Duplicate/local-won-only plans are not empty plans: they remain fully validated and fingerprint-bound, but produce no source writes and therefore return `ready` without derivative rebuild.
 - Phase 11 remains isolated from Phase 12: no Drive, Google account, network, sync, publishing, release, or deployment behavior was added.
@@ -164,9 +164,10 @@ status: complete
 
 ## Fresh Native Evidence
 
-- **Implementation/base head:** `abc60051060e746e530853fb698d1d1fd1ac9eb6`
-- **Source tree SHA-256:** `8c9e180d70251bbefa5fdf62863b1664c1d55b555d1ea8a484cb1a87773bd5d4`
-- **APK SHA-256:** `9718e24c39d35ae6b711562d33996e28d36033f3125cdea382ed53d461f37086`
+- **Implementation/evidence head:** `4173c72b105315e76c95c4b25538c23ea1eb51e7`
+- **Application behavior head:** `abc60051060e746e530853fb698d1d1fd1ac9eb6`
+- **Source tree SHA-256:** `92857bec0aa62ba612973a1e8ff8361f1349638cd237e133b8ab032f528349bd`
+- **APK SHA-256:** `b40e5d7ac7d9fe2ae247565a46c27ede8695c3d3a25496b42ee7f6182f50d1c7`
 - **Device:** `emulator-5554`, API 36, arm64-v8a, Android 16
 - **Build environment:** Node 24.19.0, npm 11.17.0, Temurin Java 17.0.20+8
 
@@ -211,13 +212,29 @@ status: complete
 - **Verification:** RED host test rejected with `logical_merge_failed`; GREEN host 97/97, integration 2/2, contract 3/3, exact coverage, clean code re-review, and native `portable-merge-duplicate-only-ready` in both 13/13 runs.
 - **Committed in:** `abc6005`.
 
-**Total deviations:** 3 auto-fixed (1 Rule 1, 1 Rule 2, 1 Rule 3).
+**4. [Rule 3 - Blocking evidence drift] Aligned the fail-closed evidence fixture with the source-owned contract**
+
+- **Found during:** Independent Phase 11 goal verification.
+- **Issue:** `scripts/phase11-evidence-scripts.test.mjs` still expected 12 portable-merge cases after `abc6005` added the 13th source-owned case, leaving one evidence test red.
+- **Fix:** Updated the fixture expectation to 13; the runner continues deriving actual IDs from source and fails closed on future count drift.
+- **Files modified:** `scripts/phase11-evidence-scripts.test.mjs`.
+- **Verification:** RED 6/7 (`13 !== 12`), GREEN 7/7, lint/boundaries pass, and fresh 4173c72-bound migrations 13/13, portable merge 13/13, and Maestro 4/4.
+- **Committed in:** `4173c72`.
+
+**Total deviations:** 4 auto-fixed (1 Rule 1, 1 Rule 2, 2 Rule 3).
 **Impact on plan:** Both writer corrections improve correctness without changing the approved data model or Phase 11 scope; the environment correction produced fresh, exact-HEAD proof.
 
 ## Issues Encountered
 
-- The first post-fix native portable-merge attempt reported `migration_statement_failed` in `portable-merge-mixed-full-plan-success` while the new no-op case passed. The runner intentionally sanitizes nested Expo SQLite causes, so no statement-level cause was retained. The unchanged `abc6005` APK then passed all 13 cases twice from fresh app processes. This is recorded as a non-reproduced Expo SQLite lifecycle transient, not silently omitted and not treated as source evidence.
+- The first post-fix `abc6005` native portable-merge attempt reported `migration_statement_failed` in `portable-merge-mixed-full-plan-success` while the new no-op case passed. The runner intentionally sanitizes nested Expo SQLite causes, so no statement-level cause was retained. The unchanged `abc6005` APK then passed all 13 cases twice from fresh app processes, and the final `4173c72` artifact passed 13/13 without retry. This is recorded as a non-reproduced Expo SQLite lifecycle transient, not silently omitted and not treated as source evidence.
 - The first Maestro retry was blocked by Android's `System UI isn't responding` dialog. A screenshot and accessibility dump confirmed the app was already rendering `Today` beneath the OS dialog. After selecting `Wait` and allowing System UI to settle, the unchanged APK passed all four flows.
+
+## Phase-Level Audit Results
+
+- `11-VERIFICATION.md`: passed, 18/18 must-haves verified, no behavioral item left unverified.
+- `11-VALIDATION.md`: validated and Nyquist-compliant; DATA-08, DATA-09, and D-01..D-04 are covered with no skipped automated case.
+- `11-SECURITY.md`: verified, 12/12 retroactive STRIDE threats closed, `threats_open: 0`.
+- `11-UI-REVIEW.md`: advisory score 19/24 with no blockers. Three rendered-device follow-ups remain for explicit identity copy, responsive/200% layout, and theme contrast/focus review.
 
 ## Known Stubs
 
@@ -229,10 +246,10 @@ None — no external service, account, Drive, network, or release setup was intr
 
 ## Next Phase Readiness
 
-Plan 11-04 is complete and Phase 11 is ready for orchestrator verification. Do not mark the phase complete or start Phase 12 until the separate phase-verification workflow evaluates all four roadmap criteria.
+Plan 11-04 and the Phase 11 goal/security/validation gates are complete. Phase 12 may be discussed and planned next, but automatic Drive/sync implementation has not started. The UI audit's rendered-device recommendations remain advisory follow-ups, not Phase 11 blockers.
 
 ## Self-Check: PASSED
 
 - Confirmed this Summary and all seven implementation/contract/test files exist in the design worktree.
-- Confirmed `c483dc3` and `abc6005` exist in repository history and each commit message contains exactly the required sole co-author trailer.
+- Confirmed `c483dc3`, `abc6005`, and `4173c72` exist in repository history and each commit message contains exactly the required sole co-author trailer.
 - Confirmed the planning closeout diff is whitespace-clean and intentionally excludes generated `coverage/` and `artifacts/native/` output plus unrelated untracked worktree items.
