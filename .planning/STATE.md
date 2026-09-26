@@ -337,14 +337,14 @@ Full decisions live in `.planning/PROJECT.md`.
 
 Last session: 2026-09-26T23:20:00+08:00
 Last handoff: Phase 12 design review approved guided recovery mode, split administration/manual recovery routes, full state matrix, NavigationRow, and responsive/accessibility contracts
-Stopped at: Phase 12 design review complete; implementation remains unstarted
+Stopped at: Phase 12 design and focused engineering reviews complete; implementation is authorized but unstarted
 Resume file: .planning/phases/12-automatic-google-drive-sync/12-CONTEXT.md
 Handoff file: none
-Next action: Re-run a focused Phase 12 engineering review for the new route/component/state contracts, then explicitly authorize `/gsd-execute-phase 12`; do not begin implementation automatically.
+Next action: Execute Phase 12; the owner authorized proceeding with development after automatically selecting the top recommended focused-review options.
 
 ## Operator Next Steps
 
 - Review the four Phase 12 plans as one architecture before execution; the approved scope is Google-account-only, single-active-device backup/restore with no backup passphrase or live multi-device reconciliation.
-- Treat the prior 4d467eb engineering review as stale for Plan 12-03 UI structure only: the design review added Automatic backup settings, Manual encrypted backup, NavigationRow, and new state/evidence requirements.
+- Treat the prior 4d467eb engineering review as superseded by the focused post-design recheck covering Plans 12-03 and 12-04: runtime-owned recovery, one observable backup model, controller extraction, route/state evidence, and maximum-size merge performance are the locked amendments.
 - Treat `4173c72` as the final Phase 11 evidence head and `abc6005` as the application behavior head; earlier native manifests are superseded diagnostic history.
 - Keep local SQLite authoritative and preserve Phase 11's manual export/restore/merge fallback throughout Phase 12.

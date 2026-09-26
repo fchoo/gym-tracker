@@ -19,11 +19,19 @@ files_modified:
   - src/ui/__tests__/SettingsScreen.test.tsx
   - src/ui/components/NavigationRow.tsx
   - src/ui/components/NavigationRow.test.tsx
+  - src/ui/portability/useManualBackupController.ts
+  - src/ui/portability/useManualBackupController.test.tsx
+  - src/ui/portability/useCsvExportController.ts
+  - src/ui/portability/useCsvExportController.test.tsx
+  - src/ui/portability/BackupPreviewFacts.tsx
+  - src/ui/portability/BackupPreviewFacts.test.tsx
   - src/ui/components/index.ts
   - src/bootstrap/workoutAppRuntime.tsx
   - src/bootstrap/workoutAppRuntime.test.tsx
   - src/domains/backup/automaticBackupPresentation.ts
   - src/domains/backup/automaticBackupPresentation.test.ts
+  - src/domains/portability/mergePlan.ts
+  - src/domains/portability/mergePlan.test.ts
   - src/bootstrap/phase12BackupTestControls.ts
   - src/bootstrap/phase12BackupTestControls.test.ts
   - src/testing/phase12AutomaticBackupFixtures.ts
@@ -88,7 +96,8 @@ Existing UI anchors are `app/more/data-and-recovery.tsx`, `app/more/__tests__/da
 
 - `AutomaticBackupViewModel`, `AutomaticBackupRecoveryPrompt`, `AutomaticBackupDataUsePolicy`, and `projectAutomaticBackupPresentation` in `src/domains/backup/automaticBackupPresentation.ts`.
 - Shared `NavigationRow` in `src/ui/components/NavigationRow.tsx` for titled route rows with optional supporting text and a forward affordance.
-- Runtime façade commands `connectAutomaticBackup`, `continueAutomaticRestore`, `requestAutomaticBackupNow`, `retryAutomaticBackup`, `setAutomaticBackupDataUsePolicy`, `disconnectAutomaticBackup`, and `deleteAutomaticCloudBackup`.
+- Root-runtime-owned `automaticBackup: AutomaticBackupViewModel`, plus typed façade commands `connectAutomaticBackup`, `continueAutomaticRestore`, `deferAutomaticRestore`, `cancelAutomaticBackupCheck`, `requestAutomaticBackupNow`, `retryAutomaticBackup`, `checkAutomaticBackupAgain`, `finishAutomaticBackupSetup`, `setAutomaticBackupDataUsePolicy`, `takeOverAutomaticBackup`, `disconnectAutomaticBackup`, `deleteAutomaticCloudBackup`, `finishDeletingAutomaticCloudBackup`, and `startNewAutomaticCloudBackup`.
+- UI-owned `useManualBackupController` and `useCsvExportController`; these preserve manual behavior without giving either route authority over automatic recovery.
 - Development-test-only `Phase12BackupTestControls` and deterministic `phase12AutomaticBackupFixtures`.
 - `app/more/drive-backup-privacy.tsx`, `maestro/phase12/automatic-drive-backup.yaml`, `scripts/run-phase12-maestro.mjs`, and the `test:maestro:phase12` package command.
 
@@ -111,24 +120,29 @@ Settings
 The main page answers `Am I protected?` before presenting tools. Administrative and
 destructive controls never compete with `Back up now` on that page.
 
-`Manual encrypted backup` opens `app/more/manual-encrypted-backup.tsx`. Move the existing
-Create secure backup, Restore clean, and Import / merge backup UI/state machines to that
-route without weakening their token invalidation, password handling, exact confirmations,
-review focus, cancellation, safe errors, rebuild-pending retry, or unmount cleanup. Give
-the route one `Manual encrypted backup` heading and three flat independently scannable
-operation cards; do not place these workflows in a sheet or expandable hub section.
+`Manual encrypted backup` opens `app/more/manual-encrypted-backup.tsx`. First extract the
+existing Create secure backup, Restore clean, and Import / merge backup behavior into one
+UI-owned `useManualBackupController`; keep latches, preflight tokens, password clearing,
+generation fencing, safe error mapping, rebuild retry, and cleanup in that controller. Share
+only pure `BackupPreviewFacts` presentation with automatic recovery. Do not reuse the manual
+route's local state machine for automatic recovery, which remains runtime-owned. Port the
+complete existing component suite before changing the hub, then give the route one `Manual
+encrypted backup` heading and three flat independently scannable operation cards. Do not
+place these workflows in a sheet or expandable hub section.
 
-Use one shared `NavigationRow` primitive for the two Recovery tools destinations, the
-direct Export CSV action row, and interactive network/privacy rows on Automatic backup
-settings. Render the Google account as a noninteractive factual row. Its contract is: required title,
+Use one shared render-only `NavigationRow` primitive for the two Recovery tools destinations,
+the direct Export CSV action row, and interactive network/privacy rows on Automatic backup
+settings. The primitive renders semantics and delegates activation; it owns no CSV, Drive,
+navigation, or recovery state. Render the Google account as a noninteractive factual row. Its contract is: required title,
 optional supporting text, outlined Lucide `ChevronRight`, full-row activation, default/card
 tone, minimum 48dp target, wrapping vertical growth, pressed/disabled/visible-focus states,
 exact accessible label and optional hint, Enter/Space/D-pad parity, and decorative icon
 hidden from accessibility. It is not a content card and never nests a card. Do not create
 route-local pressable-row styling or use `SecondaryAction` plus detached description text.
-The Export CSV row is the one action-row variant rather than a navigation destination:
-it owns the existing prepare/share lifecycle in place. Use exactly these six identifiers
-and contracts:
+The Export CSV row is the one action-row variant rather than a navigation destination. A
+dedicated UI-owned `useCsvExportController` owns the existing prepare/share lifecycle, handle
+disposal, generation fence, and focus requests; `NavigationRow` only renders its projected
+state. Use exactly these six identifiers and contracts:
 
 | State | Visible title/supporting text | Accessible action | Announcement / focus |
 |---|---|---|---|
@@ -177,6 +191,25 @@ STEP  OWNER SEES                    OWNER SHOULD FEEL       DESIGN SUPPORT
 6     Backed up + verified time     Protected               Proof-first normal-state card
 ```
 
+The route is a projection, not the recovery owner:
+
+```text
+coordinator / scheduler / persisted recovery state
+                    |
+                    v
+ root WorkoutAppRuntimeProvider (one AutomaticBackupViewModel)
+          | publish only the newest runtime generation
+          +----------------------+----------------------+
+          v                      v                      v
+ Data & recovery       Automatic backup settings   route remount/foreground
+```
+
+Load the model in the trusted runtime read, refresh it on foreground, and publish after every
+coordinator transition and façade-command completion. A repository/coordinator subscription
+may drive those publications, but it must be disposed with runtime services and every callback
+must be fenced by runtime generation plus connection/account/claim identity. Route focus may
+request a refresh as a safety net; routes must not read the repository independently.
+
 During execution expose exactly three progress stages: `Checking backup`, `Restoring
 on this phone`, and `Finishing backup setup`. Supporting copy may name the current user
 outcome, but never exposes `writer epoch`, `claim`, `manifest`, `promotion`, ETag, or
@@ -198,11 +231,41 @@ setup`; completing handover replaces it with the normal Backed up proof.
 <tasks>
 <task type="auto" tdd="true">
   <name>Task 1: Publish a bounded backup, restore, and recovery presentation surface</name>
-  <files>src/domains/backup/automaticBackupPresentation.ts, src/domains/backup/automaticBackupPresentation.test.ts, src/bootstrap/workoutAppRuntime.tsx, src/bootstrap/workoutAppRuntime.test.tsx</files>
+  <files>src/domains/backup/automaticBackupPresentation.ts, src/domains/backup/automaticBackupPresentation.test.ts, src/domains/portability/mergePlan.ts, src/domains/portability/mergePlan.test.ts, src/bootstrap/workoutAppRuntime.tsx, src/bootstrap/workoutAppRuntime.test.tsx</files>
   <read_first>.planning/REQUIREMENTS.md, .planning/design/v1.1-UX-FLOW.md, .planning/phases/12-automatic-google-drive-sync/12-01-SUMMARY.md, .planning/phases/12-automatic-google-drive-sync/12-02-SUMMARY.md, src/domains/backup/automaticBackupContracts.ts, src/domains/backup/automaticBackupCoordinator.ts, src/domains/backup/automaticBackupScheduler.ts, src/platform/sqlite/repositories/automaticBackupStateRepository.ts, src/bootstrap/workoutAppRuntime.tsx, src/bootstrap/workoutAppRuntime.test.tsx, src/domains/portability/mergeCommands.ts</read_first>
   <action>Create a pure `projectAutomaticBackupPresentation` boundary over the Plan 01/02 state. Preserve public `AutomaticBackupStatus` values exactly as `not_connected | idle | backup_pending | backing_up | restore_pending | restoring | paused`; express finer UI causes as bounded presentation fields rather than adding transport states. The projection contains only a sanitized account label, last successful backup instant, current/pending generation relationship, data-use policy, recovery candidate dates, safe reason codes, retry eligibility, and action availability. It must never expose OAuth tokens, Drive file IDs, raw ETags, claim tokens, writer epochs, object bodies, local row content, or provider exceptions. Derive `Changes not backed up for 24h` only when committed work remains pending continuously for at least 24 hours; clear the warning only after a verified promoted receipt makes `backed_up_generation >= mutation_generation`.
 
-Add runtime façade commands named in the artifacts section. `connectAutomaticBackup` performs explicit One-Tap/drive.file authorization and starts `AutomaticBackupCoordinator.run("startup")`; it accepts no extra credential. The resulting installation remains in restore quarantine until bounded Drive discovery resolves: no artifacts enters `backup_pending` and permits the first snapshot attempt, but no remote manifest or writer epoch is created until that candidate passes round-trip validation; existing invalid artifacts stay paused/quarantined; a valid backup creates an `AutomaticBackupRecoveryPrompt`. If the automatic portability boundary reports an active workout, keep `restore_pending` and do not mutate until the workout is finished. For an empty local database, `continueAutomaticRestore` uses `AutomaticPortableRestorePort` to apply the selected verified snapshot under the current restore claim without a Phase 11 merge preview. For a non-empty database, use `AutomaticPortableMergePort` to reuse the Phase 11 preview/token lifecycle and exact `MERGE` confirmation. If namespaces differ, require an explicit adoption selection and fresh Google authentication immediately before commit; the cloud namespace, identity change, adoption receipt, and full merge must be applied in the same serialized SQLite transaction. Cancellation, stale claim, auth failure, route unmount, or commit failure invalidates the attempt and leaves both namespaces and local facts unchanged. Never pre-adopt.
+Add the complete typed runtime façade named in the artifacts section so no route reaches into
+the coordinator, scheduler, repository, or auth adapter. `connectAutomaticBackup` performs
+explicit One-Tap/drive.file authorization and starts `AutomaticBackupCoordinator.run("startup")`;
+it accepts no extra credential. `checkAutomaticBackupAgain`, `finishAutomaticBackupSetup`,
+`takeOverAutomaticBackup`, `finishDeletingAutomaticCloudBackup`, and
+`startNewAutomaticCloudBackup` map the remaining visible-state actions to explicit coordinator
+events instead of overloading generic retry. The resulting installation remains in restore
+quarantine until bounded Drive discovery resolves: no artifacts enters `backup_pending` and
+permits the first snapshot attempt, but no remote manifest or writer epoch is created until that
+candidate passes round-trip validation; existing invalid artifacts stay paused/quarantined; a
+valid backup creates an `AutomaticBackupRecoveryPrompt`. If the automatic portability boundary
+reports an active workout, keep `restore_pending` and do not mutate until the workout is finished.
+For an empty local database, `continueAutomaticRestore` uses `AutomaticPortableRestorePort` to
+apply the selected verified snapshot under the current restore claim without a Phase 11 merge
+preview. For a non-empty database, use `AutomaticPortableMergePort` to reuse the Phase 11
+preview/token lifecycle and exact `MERGE` confirmation. If namespaces differ, require an explicit
+adoption selection and fresh Google authentication immediately before commit; the cloud namespace,
+identity change, adoption receipt, and full merge must be applied in the same serialized SQLite
+transaction. Cancellation or route unmount may abort and invalidate only `Checking backup`/preflight
+before the serialized local transaction begins, leaving namespaces and local facts unchanged. Once
+that transaction begins, recovery is runtime/repository-owned: route unmount detaches presentation
+only, pre-commit failure rolls back, and post-commit teardown must resume durable rebuild and writer
+claim without rerunning restore. Component generation fences suppress stale UI delivery; they never
+cancel committed recovery work. Stale claim or authentication failure preserves the durable state
+specified by Plan 12-02. Never pre-adopt.
+
+Before automatic merge uses the Phase 11 planner at the supported 100,000-row bound, replace
+per-session whole-snapshot filtering with one immutable archive/local index keyed by session,
+exercise, and set identity. Feed session operations through `MERGE_DIGEST_CONCURRENCY = 4` rather
+than one unbounded `Promise.all`; preserve canonical ordering and byte-identical plan/digest results
+for all existing fixtures. This is a behavior-preserving prerequisite, not a second merge engine.
 
 Model candidate handling exactly: a valid latest candidate is offered with its produced date; an invalid latest plus verified previous produces an explicit previous-candidate prompt and never auto-restores; a valid candidate whose schema is newer than this app produces `restore_pending` with presentation reason `update_required`, disables restore/backup/delete, and never claims the app can update itself. Show heading `Newer Gym Tracker version required` and body `This backup was created by a newer version. Install a newer Gym Tracker build, then return here. Your cloud backup won't be changed.` Expose `Check again` as the primary action after the user returns, `Not now` as secondary, and keep manual GTBK recovery available. Do not render an Update button, disabled dead end, app-store assumption, or unconfigured external download link. Add `requestAutomaticBackupNow` so `wifi_and_cellular` runs immediately on available connectivity. Under `wifi_only`, Wi-Fi runs immediately; cellular returns a one-run confirmation state. Cancellation leaves the pending generation unchanged; confirmation schedules only that manual attempt with a cellular override and does not mutate the saved policy. `retryAutomaticBackup` calls `AutomaticBackupScheduler.request("retry")`; all requests return synchronously and all async errors remain scheduler-owned.
 
@@ -218,13 +281,13 @@ successor takeover. It never reuses the stale epoch or uploads local data first.
 
 `disconnectAutomaticBackup` confirms and disposes the scheduler, clears only this installation's authorization/writer/cache state, and preserves local SQLite plus every Drive object. `deleteAutomaticCloudBackup` is a distinct flow that requires fresh Google authentication and exact case-sensitive `DELETE`; it invokes the Plan 02 contract to promote a metadata-only successor-epoch tombstone and permanently delete only environment-scoped workout snapshot objects, preserves local facts and the tombstone, and cannot be reached from the disconnect confirmation. Latch duplicate actions and reject stale completions after account, claim, route, or component generation changes.</action>
   <verify><automated>npm run test:unit -- --runInBand src/domains/backup/automaticBackupPresentation.test.ts &amp;&amp; npm run test:components -- --runInBand src/bootstrap/workoutAppRuntime.test.tsx &amp;&amp; npm run typecheck &amp;&amp; npm run test:coverage -- --runInBand</automated></verify>
-  <acceptance_criteria>`automaticBackupPresentation.test.ts` covers every public status, 23:59:59/24:00:00 warning boundaries, latest/previous/update-required choices, redaction, both data-use values, the exact 3x3 recovery exit matrix, and all six CSV state identifiers; runtime tests prove direct empty restore, guarded non-empty merge/adoption rollback, active-workout deferral, manual cellular cancel/confirm semantics, non-awaited requests, disconnect-without-delete, fresh-auth DELETE, duplicate presses, forced teardown recovery, and stale completion rejection.</acceptance_criteria>
+  <acceptance_criteria>`automaticBackupPresentation.test.ts` covers every public status, 23:59:59/24:00:00 warning boundaries, latest/previous/update-required choices, redaction, both data-use values, and every stage/action availability projection. `mergePlan.test.ts` proves the indexed/bounded-concurrency planner is byte-for-byte equivalent, deterministic, and never exceeds the configured worker bound. Runtime-provider tests observe `backup_pending -> backing_up -> backed_up` and bounded failure transitions after the initiating command has already returned; prove startup/foreground hydration, both routes receiving one model, connection/account/claim generation rejection, and subscription disposal. A table-driven route/runtime suite owns all nine Checking/Restoring/Finishing x Back/Cancel/unmount cells, remount rehydration, no duplicate restore, and pre-/post-commit teardown outcomes. Runtime tests also prove direct empty restore, guarded non-empty merge/adoption rollback, active-workout deferral, manual cellular cancel/confirm semantics, non-awaited requests, disconnect-without-delete, fresh-auth DELETE, duplicate presses, forced teardown recovery, and stale completion rejection.</acceptance_criteria>
   <done>The UI receives one typed, secret-free backup/recovery model and owner-command surface that cannot bypass quarantine, writer handover, Phase 11 merge, connectivity policy, or remote-retention rules.</done>
 </task>
 
 <task type="auto" tdd="true">
   <name>Task 2: Build the accessible Data and recovery backup and replacement flow</name>
-  <files>app/more/data-and-recovery.tsx, app/more/automatic-backup-settings.tsx, app/more/manual-encrypted-backup.tsx, app/more/drive-backup-privacy.tsx, app/more/__tests__/data-and-recovery.test.tsx, app/more/__tests__/automatic-backup-settings.test.tsx, app/more/__tests__/manual-encrypted-backup.test.tsx, app/more/__tests__/drive-backup-privacy.test.tsx, app/_layout.tsx, app/__tests__/root-layout.test.tsx, src/ui/screens/SettingsScreen.tsx, src/ui/__tests__/SettingsScreen.test.tsx, src/ui/components/NavigationRow.tsx, src/ui/components/NavigationRow.test.tsx, src/ui/components/index.ts</files>
+  <files>app/more/data-and-recovery.tsx, app/more/automatic-backup-settings.tsx, app/more/manual-encrypted-backup.tsx, app/more/drive-backup-privacy.tsx, app/more/__tests__/data-and-recovery.test.tsx, app/more/__tests__/automatic-backup-settings.test.tsx, app/more/__tests__/manual-encrypted-backup.test.tsx, app/more/__tests__/drive-backup-privacy.test.tsx, app/_layout.tsx, app/__tests__/root-layout.test.tsx, src/ui/screens/SettingsScreen.tsx, src/ui/__tests__/SettingsScreen.test.tsx, src/ui/components/NavigationRow.tsx, src/ui/components/NavigationRow.test.tsx, src/ui/portability/useManualBackupController.ts, src/ui/portability/useManualBackupController.test.tsx, src/ui/portability/useCsvExportController.ts, src/ui/portability/useCsvExportController.test.tsx, src/ui/portability/BackupPreviewFacts.tsx, src/ui/portability/BackupPreviewFacts.test.tsx, src/ui/components/index.ts</files>
   <read_first>.planning/REQUIREMENTS.md, .planning/design/v1.1-UX-FLOW.md, DESIGN.md, app/more/data-and-recovery.tsx, app/more/__tests__/data-and-recovery.test.tsx, src/ui/screens/SettingsScreen.tsx, src/ui/__tests__/SettingsScreen.test.tsx, src/ui/components/index.ts, src/ui/components/PlanRow.tsx, src/domains/backup/automaticBackupPresentation.ts, .planning/phases/11-portable-history-merge-restore/11-03-SUMMARY.md</read_first>
   <action>Implement the approved `Guided recovery mode` hierarchy. Data & recovery is a compact status/recovery hub, not a long control panel. In normal, pending, or paused use, show one flat Google Drive backup card first with status, last verified success, and exactly one dominant action (`Connect Google Drive`, `Back up now`, `Retry`, or `Reconnect Google Drive`). Below it, render one `Recovery tools` card with three scannable rows in this order: `Automatic backup settings`, `Manual encrypted backup`, and `Export CSV`. Preserve the existing GTBK and CSV operations behind those rows without nesting content cards. Add `app/more/automatic-backup-settings.tsx`; it owns sanitized account, data-use policy, privacy navigation, Disconnect, Delete cloud backup, and the explicit Start a new cloud backup flow after a deletion tombstone. Administrative/destructive actions never appear on the everyday Data & recovery page.
 
@@ -288,8 +351,12 @@ remain quarantined.
 On Automatic backup settings, Disconnect is a secondary action and Delete cloud backup is the final destructive action after a divider; neither is a peer of Back up now. Disconnect confirmation must say that automatic backup stops on this phone, local workouts remain, and cloud backups remain in Drive. It must not present or call deletion. `Delete cloud backup …` opens a separate danger flow, explains local data is retained, requires fresh Google authentication, requires exact `DELETE`, and explains that workout snapshots are permanently removed while a metadata-only deletion marker with no workout data remains to stop an old phone from recreating them. Latch duplicate submission and report partial/failure outcomes without claiming snapshot removal unless the bounded deletion contract succeeds. A later `Start a new cloud backup` action requires fresh authentication and explicit confirmation before the tombstone may become active. Keep `Create secure backup`, `Restore clean`, and `Import / merge backup` on the Manual encrypted backup route, plus the direct CSV control on the hub, operational in every automatic-backup state.
 
 Component tests cover every status/recovery branch, account redaction, timestamp states, first-connect no-artifact/valid/invalid, empty restore, non-empty merge, namespace match/mismatch/adoption rollback, active workout, latest/previous confirmation, update-required behavior, both data-use policies, one-run cellular override, 24-hour warning, disconnect retention, guarded deletion, duplicate press, the exact Checking/Restoring/Finishing Back-Cancel-unmount matrix, and retained manual controls. Assert exact accessible names/roles/states, live-region semantics, focus return, keyboard Enter/Space and D-pad activation, >=48dp targets, non-color icons plus text, System/Light/Dark, compact/medium/expanded, 200% text, and reduced motion. Do not expand the established personal-use scope into a TalkBack or switch-scanning release gate.</action>
-  <verify><automated>npm run test:components -- --runInBand app/__tests__/root-layout.test.tsx src/ui/components/NavigationRow.test.tsx app/more/__tests__/data-and-recovery.test.tsx app/more/__tests__/automatic-backup-settings.test.tsx app/more/__tests__/manual-encrypted-backup.test.tsx app/more/__tests__/drive-backup-privacy.test.tsx src/ui/__tests__/SettingsScreen.test.tsx &amp;&amp; npm run typecheck &amp;&amp; npm run lint &amp;&amp; npm run check:boundaries</automated></verify>
-  <acceptance_criteria>The tested UI contains the exact connection, privacy, restore/fallback/update, status, 24-hour warning, data-use, disconnect, and DELETE behavior above; the Google section contains no extra credential input; manual GTBK/CSV actions remain independently usable; every new control passes the complete accessibility matrix.</acceptance_criteria>
+
+Implement this task as three gated slices, each green before the next begins. Slice 1 is behavior-preserving structure: add render-only `NavigationRow`, extract `useManualBackupController`, `useCsvExportController`, and pure preview facts, port every existing Phase 11 manual GTBK/CSV test, and explicitly register the four routes. Slice 2 builds the two destination routes and compact hub solely against the typed runtime model/commands. Slice 3 adds the full state matrix, recovery navigation blocking, accessibility/focus behavior, and native evidence wiring. Do not combine route extraction and new automatic behavior in the same unverified edit.
+
+Testing ownership is exact. `manual-encrypted-backup.test.tsx` plus `useManualBackupController.test.tsx` inherit every existing create/restore/merge assertion: token invalidation, late completion, password clearing, exact REPLACE/MERGE, rebuild retry, safe errors, duplicate press, review focus, and unmount cleanup. `data-and-recovery.test.tsx` plus `useCsvExportController.test.tsx` own a six-row table for `ready`, `preparing`, `ready_to_share`, `sharing`, `create_failed`, and `share_failed`, asserting visible copy, accessible label/hint, busy/disabled state, live-region priority, stable focus, retry focus, post-share reset, and handle cleanup. `root-layout.test.tsx` owns a parameterized four-route registration/direct-entry/Back-return matrix; Maestro deep-links each route, verifies heading focus, and returns to the expected parent. Automatic-presentation tests must not import or assert CSV state.</action>
+  <verify><automated>npm run test:components -- --runInBand app/__tests__/root-layout.test.tsx src/ui/components/NavigationRow.test.tsx src/ui/portability/useManualBackupController.test.tsx src/ui/portability/useCsvExportController.test.tsx src/ui/portability/BackupPreviewFacts.test.tsx app/more/__tests__/data-and-recovery.test.tsx app/more/__tests__/automatic-backup-settings.test.tsx app/more/__tests__/manual-encrypted-backup.test.tsx app/more/__tests__/drive-backup-privacy.test.tsx src/ui/__tests__/SettingsScreen.test.tsx &amp;&amp; npm run typecheck &amp;&amp; npm run lint &amp;&amp; npm run check:boundaries</automated></verify>
+  <acceptance_criteria>The tested UI contains the exact connection, privacy, restore/fallback/update, status, 24-hour warning, data-use, disconnect, and DELETE behavior above; the four-route direct-entry/Back/focus matrix passes; the complete Phase 11 manual regression suite passes after extraction; all six CSV lifecycle/accessibility states pass under their UI controller; the Google section contains no extra credential input; manual GTBK/CSV actions remain independently usable; every new control passes the complete accessibility matrix.</acceptance_criteria>
   <done>The owner can connect, recover onto a replacement installation, understand backup health/privacy, control data use, manually back up, disconnect, or deliberately delete cloud data without an unsafe or inaccessible path.</done>
 </task>
 
@@ -299,7 +366,7 @@ Component tests cover every status/recovery branch, account redaction, timestamp
   <read_first>src/bootstrap/workoutMutationTestControls.ts, src/bootstrap/workoutMutationTestControls.test.ts, app/__native-contracts.tsx, scripts/run-phase11-maestro.mjs, scripts/phase11-evidence-scripts.test.mjs, maestro/phase11/portable-merge.yaml, package.json</read_first>
   <action>Add development-test-only `Phase12BackupTestControls` backed by `GoogleAuthPort`, `DriveBackupStorePort`, `AutomaticPortableRestorePort`, `AutomaticPortableMergePort`, coordinator, scheduler, clock, and network fakes. Gate them with the existing native-contract/development-test build identity; production must fail closed if a route, query parameter, deep link, fixture, or environment variable attempts to enable them. Fixtures must contain bounded synthetic workout data and expose no real Google identity, access token, remote object, or production environment marker. Include the direct Export CSV row's `ready`, `preparing`, `ready_to_share`, `sharing`, `create_failed`, and `share_failed` states in component coverage; it remains local/manual behavior and makes no Google call.
 
-Add `test:maestro:phase12` and a manifest-bound runner for `artifacts/native/phase12/build.json`. Run named scenarios for: disconnected privacy help and Google-only Connect; no-cloud first initialization; valid-backup empty direct restore; populated Phase 11 merge with one-time namespace adoption and owner-facing summary/details disclosure; cancel/back/unmount quarantine; Not now persistent restore card without reprompt; invalid latest with explicit dated previous fallback; future-schema Newer Gym Tracker version required with Check again; status/last-success/account; wifi_and_cellular and wifi_only; one-run cellular cancel/confirm; 24-hour warning and Retry; backup moved to another phone plus guarded takeover entry; disconnect retaining fake cloud objects; guarded fresh-auth DELETE/tombstone/partial-delete states; direct Export CSV lifecycle; and manual GTBK page actions retained. At least one paused/pending scenario must open and complete a local workout to prove the UI remains non-blocking. The runner verifies exact source-tree/APK/package/device identity, exact flow and evidence IDs, zero skipped/failed assertions, and rejects stale/missing output. Maestro proves UI/lifecycle behavior only; Plan 04 supplies persistence, crash, transport, and real-Google evidence.</action>
+Add `test:maestro:phase12` and a manifest-bound runner for `artifacts/native/phase12/build.json`. Run named scenarios for: all four routes via direct deep link with heading focus and Android Back return; disconnected privacy help and Google-only Connect; no-cloud first initialization; valid-backup empty direct restore; populated Phase 11 merge with one-time namespace adoption and owner-facing summary/details disclosure; the exact Checking/Restoring/Finishing x Back/Cancel/unmount contract including remount without duplicate restore; Not now persistent restore card without reprompt; invalid latest with explicit dated previous fallback; future-schema Newer Gym Tracker version required with Check again; status/last-success/account; wifi_and_cellular and wifi_only; one-run cellular cancel/confirm; 24-hour warning and Retry; backup moved to another phone plus guarded takeover entry; disconnect retaining fake cloud objects; guarded fresh-auth DELETE/tombstone/partial-delete states; direct Export CSV lifecycle; and manual GTBK page actions retained. At least one paused/pending scenario must open and complete a local workout to prove the UI remains non-blocking. The runner verifies exact source-tree/APK/package/device identity, exact flow and evidence IDs, zero skipped/failed assertions, and rejects stale/missing output. Maestro proves UI/lifecycle behavior only; Plan 04 supplies persistence, crash, transport, and real-Google evidence.</action>
   <verify><automated>npm run test:unit -- --runInBand src/bootstrap/phase12BackupTestControls.test.ts &amp;&amp; node --test scripts/phase12-evidence-scripts.test.mjs &amp;&amp; node --check scripts/run-phase12-maestro.mjs &amp;&amp; npm run typecheck &amp;&amp; npm run lint &amp;&amp; npm run check:boundaries</automated><native>npm run test:maestro:phase12 -- --manifest artifacts/native/phase12/build.json</native></verify>
   <acceptance_criteria>The manifest-bound fake flow exercises every named recovery/status/privacy/data-use/disconnect/delete state with zero skips; production cannot enable test controls; local workout use succeeds while backup is pending/paused; no real Google call or production namespace appears in fixtures or artifacts.</acceptance_criteria>
   <done>The complete user-visible automatic-backup and replacement-recovery lifecycle has reproducible, accessible native UI evidence over deterministic fakes.</done>
@@ -311,3 +378,109 @@ Add `test:maestro:phase12` and a manifest-bound runner for `artifacts/native/pha
 <success_criteria>DATA-10 is understandable and safely operable from Data & recovery: Google-only connection enters quarantine; recovery is explicit and local-shape-aware; latest/previous/update handling cannot silently downgrade; backup health and connectivity preferences are visible; 24-hour warning, manual backup, disconnect, and deletion behave exactly as documented; manual recovery and offline workouts remain available.</success_criteria>
 
 <output>Create `.planning/phases/12-automatic-google-drive-sync/12-03-SUMMARY.md` when done.</output>
+
+## Focused engineering review amendments
+
+### Scope and implementation gates
+
+The approved Guided recovery UX remains intact. Implement it as three sequential green slices:
+
+1. **Make the change easy:** add render-only `NavigationRow`, extract manual GTBK and CSV
+   controllers plus pure preview facts, port parity tests, and register all four routes.
+2. **Make the easy change:** publish one runtime-owned `AutomaticBackupViewModel`, complete
+   the typed façade, and build the compact hub plus destination routes against that boundary.
+3. **Close behavior and evidence:** wire every visible state, lifecycle guard, accessibility/focus
+   contract, fake-port control, and Maestro path.
+
+No slice may begin until the previous slice's focused tests, typecheck, lint, and boundary checks
+are green. This sequencing contains a 34-file plan without dropping approved behavior.
+
+### Focused coverage map
+
+```text
+CODE PATHS                                           USER FLOWS
+[+] automaticBackupPresentation                      [+] Data & recovery hub
+  +- [★★★ PLANNED] all statuses/reasons/actions        +- [★★★ PLANNED] full visible-state matrix
+  +- [★★★ PLANNED] redaction + 24h boundaries          +- [★★★ PLANNED] mounted async state refresh
+[+] root runtime publication                         [+] Guided replacement recovery [E2E]
+  +- [★★★ PLANNED] startup/foreground hydration        +- [★★★ PLANNED] empty direct restore
+  +- [★★★ PLANNED] coordinator transition publish      +- [★★★ PLANNED] merge + adoption
+  +- [★★★ PLANNED] stale generation rejection          +- [★★★ PLANNED] exact 3x3 exit/remount matrix
+  +- [★★★ PLANNED] teardown unsubscribe                +- [★★★ PLANNED] previous/future-schema paths
+[+] manual GTBK controller                           [+] Route system [E2E]
+  +- [★★★ REGRESSION] create/restore/merge parity       +- [★★★ PLANNED] four direct links
+  +- [★★★ REGRESSION] tokens/latches/late results       +- [★★★ PLANNED] heading focus + Back return
+  +- [★★★ REGRESSION] errors/rebuild/unmount            +- [★★★ PLANNED] manual page navigation smoke
+[+] CSV controller                                   [+] Destructive/account flows [E2E]
+  +- [★★★ PLANNED] exact six-state table                +- [★★★ PLANNED] disconnect retains cloud
+  +- [★★★ PLANNED] focus/live-region/cleanup            +- [★★★ PLANNED] fresh-auth DELETE/partial finish
+[+] merge planner                                    [+] Large replacement backup
+  +- [★★★ PLANNED] indexed equivalent output            +- [★★★ PLANNED] Android time/memory gate
+  +- [★★★ PLANNED] concurrency never exceeds four
+
+COVERAGE AFTER AMENDMENT: 22/22 named branches and user-flow groups have an explicit owner.
+QUALITY TARGET: ★★★ behavior + boundaries + error/restart paths. No LLM eval applies.
+```
+
+### Focused failure modes
+
+| Boundary | Realistic failure | Required proof | Owner-visible result |
+|---|---|---|---|
+| Runtime publication | Old account callback wins after reconnect | Generation/account/claim rejection test | Both routes keep the current account state. |
+| Checking cancellation | Back or unmount races discovery | 3x3 runtime/route table | Restore required returns; no local mutation. |
+| Restore transaction | Process dies before or after commit | Host/native crash cut plus remount test | Rollback before commit; durable finishing after commit. |
+| Manual extraction | Route split drops token cleanup or exact confirmation | Ported Phase 11 parity suite | Manual encrypted recovery behaves unchanged. |
+| CSV row | Share closes/fails while route unmounts | Six-state controller table | Handle is disposed and focus returns safely. |
+| Deep link | Nested route starts without a parent history entry | Root matrix plus native deep link | Heading receives focus and Back returns predictably. |
+| Large merge | Valid 100,000-row archive causes quadratic scans or digest fan-out | Equivalence/concurrency unit tests plus Android benchmark | Replacement merge is disabled if limits fail; manual GTBK remains. |
+
+No reviewed failure is silent, unhandled, and untested.
+
+### NOT in scope
+
+- Live multi-device reconciliation or a second merge engine; this remains single-active-device replacement recovery.
+- Route-local SQLite or coordinator access; routes consume only the root-runtime model and typed façade.
+- Shared automatic/manual workflow state; only pure preview presentation is shared.
+- Polling for UI freshness; coordinator publications plus startup/foreground refresh are sufficient.
+- A CSV route, automatic-backup-owned CSV state, or stateful `NavigationRow`.
+- Public/store distribution; the existing personal APK delivery model remains unchanged.
+
+### What already exists
+
+| Existing code | Reuse decision |
+|---|---|
+| Phase 11 manual backup, restore, and merge behavior in `data-and-recovery.tsx` | Extract behind one UI controller and preserve with a complete regression suite. |
+| Phase 11 merge planner and fingerprinted writer | Optimize indexing/concurrency without changing its canonical result; do not fork it. |
+| Root `WorkoutAppRuntimeProvider` and `trustedRead` | Own and publish the one automatic-backup view model for every route. |
+| Expo Router root Stack | Explicitly register all four recovery routes and prove deep-link/Back behavior. |
+| Phase 11 manifest-bound native and Maestro patterns | Extend for Phase 12 identities and exact cases. |
+| Existing post-implementation visual QA TODO | Retain; no new TODO is needed from this focused review. |
+
+### Parallelization
+
+Sequential implementation, no safe parallelization inside Plan 12-03. The three slices share
+`app/more`, runtime types, and route/component tests. Plan 12-04 follows the merged Plan 12-03
+source so evidence cannot bind to stale interfaces or APK bytes.
+
+### Implementation tasks from focused review
+
+- [ ] **T1 (P1, human: ~2h / CC: ~15m)** — Runtime recovery — Make recovery runtime-owned once local restore starts.
+  - Surfaced by: Architecture review — lines 185-205 previously contradicted route-unmount semantics.
+  - Files: `src/bootstrap/workoutAppRuntime.tsx`, automatic coordinator/repository, route tests.
+  - Verify: table-driven 3x3 lifecycle suite plus host/native process-death cuts.
+- [ ] **T2 (P1, human: ~3h / CC: ~20m)** — Runtime presentation — Publish one generation-fenced automatic-backup model and exhaustive command façade.
+  - Surfaced by: Architecture/code-quality review — background transitions had no shared observable owner.
+  - Files: automatic presentation, `workoutAppRuntime.tsx`, runtime tests.
+  - Verify: mounted pending/backing-up/success/error transitions, foreground hydration, stale callback rejection, disposal.
+- [ ] **T3 (P1 regression, human: ~4h / CC: ~30m)** — Manual portability UI — Extract controllers and pure facts before splitting routes.
+  - Surfaced by: Code-quality/test review — moving the 1,055-line route intact would retain duplicate state machinery and risk regressions.
+  - Files: `src/ui/portability/*`, manual route, Data & recovery route, component tests.
+  - Verify: complete port of existing Phase 11 create/restore/merge and CSV assertions.
+- [ ] **T4 (P1, human: ~3h / CC: ~25m)** — Navigation and recovery UI — Prove the route and state matrices.
+  - Surfaced by: Test review — direct entry, Back/focus, and 3x3 recovery lifecycle lacked exact test owners.
+  - Files: root layout, four routes, route/component tests, Phase 12 Maestro.
+  - Verify: parameterized root test and native deep-link/Back/focus/recovery flows.
+- [ ] **T5 (P1, human: ~1d / CC: ~1h)** — Merge performance — Remove quadratic session scans and bound digest concurrency at four.
+  - Surfaced by: Performance review — valid maximum archives could freeze or exhaust JS memory.
+  - Files: `mergePlan.ts`, merge-plan tests, Phase 12 benchmark/evidence scripts.
+  - Verify: byte-equivalence, deterministic ordering, concurrency bound, and Android 10s p95/192 MiB growth gates.

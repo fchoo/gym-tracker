@@ -1,6 +1,6 @@
 # Gym Tracker Design System
 
-This file is the repository-owned implementation source for the approved Phase 1 UI contract in `.planning/phases/01-trustworthy-workout-loop/01-UI-SPEC.md`.
+This file is the repository-wide implementation source for the design system established by the approved Phase 1 UI contract in `.planning/phases/01-trustworthy-workout-loop/01-UI-SPEC.md` and evolved by later reviewed phases.
 
 ## Direction
 
@@ -201,7 +201,7 @@ Screens reuse these treatments instead of creating local variants:
 - `RootFailureState`
 - `SkeletonBlock`
 
-Phase 1 may add behavior to these components, but it must not create parallel styling or expose later-phase Calendar, Library, or Progress controls.
+Later phases may add behavior to these components, but they must not create parallel styling or expose controls outside their approved phase scope.
 
 `NavigationRow` is the shared full-row navigation or bounded-action affordance for
 task-focused settings and detail surfaces. It carries a title, optional supporting text,
