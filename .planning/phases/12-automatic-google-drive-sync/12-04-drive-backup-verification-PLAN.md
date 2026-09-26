@@ -300,7 +300,7 @@ Overall design completeness: **7/10 -> 10/10**. Fourteen design decisions were i
 | CEO Review | `/plan-ceo-review` | Scope & strategy | 0 | - | Not run |
 | Codex Review | `/codex review` | Independent second opinion | 0 | - | Not run |
 | Outside Voice | Independent Gemini review | Cross-model challenge | 1 | CLEAR | Passed; 3 low-risk clarifications folded into Plans 01-02 |
-| Eng Review | `/plan-eng-review` | Architecture & tests (required) | 2 | CLEAR | Focused post-design recheck folded 10 findings with 0 unresolved and 0 critical gaps |
+| Eng Review | `/plan-eng-review` | Architecture & tests (required) | 3 | CLEAR | Focused post-design recheck folded 10 findings with 0 unresolved and 0 critical gaps |
 | Design Review | `/plan-design-review` | UI/UX gaps | 1 | CLEAR | 7/10 -> 10/10; 14 design decisions incorporated; 0 unresolved |
 | DX Review | `/plan-devex-review` | Developer experience gaps | 0 | - | Not applicable |
 
