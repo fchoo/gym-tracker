@@ -36,23 +36,22 @@ _Confirmed still correct at v1.0 close: the shipped app delivers exactly this lo
 
 ### Active
 
-**v1.1 — In-Workout Editing & Advanced Timing (in design, pending owner UX review):**
+**v1.1 — In-Workout Editing, Advanced Timing & Drive Backup:**
 
-- [ ] Land the active workout on a session-overview screen (all exercises + sets scrollable) instead of the first set — WORK-19.
-- [ ] Add / replace / remove / reorder exercises mid-workout without breaking append-only immutable history — WORK-20..WORK-25.
-- [ ] Per-repetition and cluster-set timer modes (advisory, non-authoritative) — WORK-26 (promoted from V2-03).
-- [ ] One canonical portable encrypted history/backup with merge-into-existing-data — DATA-08/DATA-09 (promoted from V2-04).
-- [ ] Automatic cross-device sync via the owner's own Google Drive (optional sign-in, client-side encrypted) — DATA-10.
+- [x] Land the active workout on a session-overview screen (all exercises + sets scrollable) instead of the first set — WORK-19 (Phase 8).
+- [x] Add / replace / remove / reorder exercises mid-workout without breaking append-only immutable history — WORK-20..WORK-25 (Phase 9).
+- [x] Per-repetition and cluster-set timer modes (advisory, non-authoritative) — WORK-26 (Phase 10; promoted from V2-03).
+- [x] One canonical portable password-encrypted history/backup with merge-into-existing-data — DATA-08/DATA-09 (Phase 11; promoted from V2-04).
+- [ ] WhatsApp-like automatic Google Drive backup for replacement-phone recovery, with optional sign-in, one active writer, and verified latest/previous snapshots — DATA-10 (Phase 12). Automatic Drive JSON is not client-side encrypted; the Google account is its confidentiality boundary.
 
 ### Out of Scope
 
-- Multi-user accounts, social sharing, and a hosted app backend — still out of scope. *(v1.1 note: optional single-owner Google sign-in for the owner's own Drive sync is now in scope via DATA-10; this is owner-controlled personal storage, not a shared backend or multi-user account system.)*
+- Multi-user accounts, social sharing, a hosted app backend, and concurrent multi-device sync — still out of scope. *(v1.1 note: optional single-owner Google sign-in for automatic replacement-phone backup is in scope via DATA-10; this is owner-controlled personal storage, not a shared backend or multi-user account system.)*
 - Social profiles, plan sharing, leaderboards, and community features — not part of the personal-use goal.
 - Wear OS — defer until the phone workout loop is proven.
 - Health Connect — defer until the local session model has real usage history.
 - Camera form analysis and generative coaching — outside the trust and complexity boundary.
 - Nutrition, body measurements, and recovery scoring — unrelated to the workout-tracking core.
-- Per-repetition or cluster-set timers — specialized mode deferred from v1.
 - Exercise media without independently verified licensing and attribution.
 - Screen-reader and switch-scanning assistive technology support — TalkBack and Samsung Universal/Switch Access are not required for this personal-use v1; existing semantic labels remain, while keyboard/D-pad stays release-gated.
 - Public GitHub Release / store promotion ceremony (attended device matrix, owner-approval token, no-rebuild digest gate, Terminal Seal) — retired for personal-use v1 delivery; tracked as V2-05 if public distribution is pursued.
@@ -82,7 +81,7 @@ _Confirmed still correct at v1.0 close: the shipped app delivers exactly this lo
 - **Source of truth**: SQLite source facts are authoritative; notifications, projections, recommendations, and UI query caches are replayable or rebuildable derivatives.
 - **Persistence**: Multi-statement writes use repository-owned exclusive transactions; screens never execute SQL.
 - **Offline**: Starting, completing, resuming, and reviewing a workout works in airplane mode.
-- **Security**: Backup archives use integrity protection and password encryption by default; secrets and workout payloads never enter diagnostics.
+- **Security**: Manual GTBK backup archives use integrity protection and password encryption; automatic Drive snapshots are integrity-checked unencrypted JSON protected by Google-account access. Secrets and workout payloads never enter diagnostics.
 - **Performance**: Working-set commit and dock transition p95 is at most 150 ms on the minimum supported Android profile.
 - **Testing**: Integrity-critical domain and application code requires complete branch coverage, real SQLite contract tests, and Android E2E for lifecycle behavior.
 - **Distribution**: Expo CNG generates native projects; GitHub Actions produces private signed candidates promoted unchanged after physical-device digest approval.
@@ -127,6 +126,8 @@ Add encrypted backup/restore, CSV export, complete adaptive/accessibility verifi
 | Private signed candidate promotion | Exact physical-device-tested bytes become the public release | ⚠️ Revisited v1.0 — replaced by the signed personal-use APK (`personal-apk.yml`); public promotion deferred to V2-05 |
 | Exclude screen-reader and switch-scanning assistive technologies from v1 | The personal-use release does not require TalkBack or OEM switch setup; keyboard/D-pad, focus, labels, large text, reduced motion, non-color cues, and target sizing remain required | ✓ Validated v1.0 |
 | Deliver v1 as a signed personal-use APK, retire the public-release ceremony | Single-owner personal use does not need the attended device matrix, owner-approval token, no-rebuild GitHub Release promotion, or Terminal Seal; the device-free `personal-apk.yml` build is the delivery | ✓ Accepted 2026-09-14 (PR #29; tracked as V2-05) |
+| Use Drive as single-active-device backup, not live sync | The owner has one active phone and needs simple replacement recovery; writer fencing and restore quarantine prevent an old or fresh install from replacing the recovery copy | ✓ Accepted 2026-09-26 (DATA-10) |
+| Protect automatic backup with the Google account only | Removes a separate backup passphrase and gives a WhatsApp-like restore flow; automatic JSON is readable to anyone with Drive access, while manual GTBK remains password-encrypted | ✓ Accepted 2026-09-26 (DATA-10) |
 
 ## Evolution
 

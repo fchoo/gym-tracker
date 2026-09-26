@@ -3,7 +3,7 @@
 ## Milestones
 
 - ✅ **v1.0 Personal-use Gym Tracker** — Phases 1-7 (shipped 2026-09-14, delivered as the signed personal-use APK)
-- 🚧 **v1.1 In-Workout Editing, Advanced Timing & Cross-Device Sync** — Phases 8-12 (Phases 8-11 complete; Phase 12 ready to discuss and plan)
+- 🚧 **v1.1 In-Workout Editing, Advanced Timing & Drive Backup** — Phases 8-12 (Phases 8-11 complete; Phase 12 planned, implementation not started)
 
 ## Delivery model
 
@@ -35,9 +35,9 @@ and `.planning/milestones/v1.0-MILESTONE-AUDIT.md`.
 
 </details>
 
-## v1.1 — In-Workout Editing, Advanced Timing & Cross-Device Sync
+## v1.1 — In-Workout Editing, Advanced Timing & Drive Backup
 
-> Requirements finalized in `.planning/REQUIREMENTS.md` (owner UX + sync decisions
+> Requirements finalized in `.planning/REQUIREMENTS.md` (owner UX + backup decisions
 > recorded 2026-09-15); active-workout UX in `.planning/design/v1.1-UX-FLOW.md` and the
 > resolved decision record in `.planning/design/v1.1-OPEN-QUESTIONS.md`. Phases 8-12 below
 > are ready for per-phase discuss/plan.
@@ -45,9 +45,10 @@ and `.planning/milestones/v1.0-MILESTONE-AUDIT.md`.
 **Goal:** The owner can run a workout from a session-overview screen (all exercises + sets
 on one scrollable page), add/replace/remove/reorder exercises live without breaking
 immutable history, optionally write session edits back to the plan, use per-rep/cluster
-timing, keep one canonical history/backup, and have it **automatically sync across their
-personal devices through their own Google Drive** (client-side encrypted) — all delivered
-in the signed personal-use APK.
+timing, keep one canonical portable history/backup, and have the active phone
+**automatically back up to their own Google Drive for replacement-phone recovery** — all
+delivered in the signed personal-use APK. Phase 12 is single-active-device backup, not
+multi-device live sync.
 
 **Requirements:** WORK-19..WORK-27, WORK-26, DATA-08, DATA-09, DATA-10.
 
@@ -57,13 +58,14 @@ in the signed personal-use APK.
 - [x] **Phase 9: In-Workout Exercise Editing** — Append-only add, history-safe replace, guarded remove, and presentation-order reorder from the overview, with the row-level immutable-snapshot model, modified-from-plan/scheduling semantics, and the end-of-workout "save changes to plan?" opt-in (default No). (Requirements: WORK-20, WORK-21, WORK-22, WORK-23, WORK-24, WORK-25, WORK-27.) (completed 2026-09-17)
 - [x] **Phase 10: Advanced Set Timing** — Versioned per-rep cadence and cluster-set intra-rest timer state machine (both modes), advisory-only cues, non-authoritative over recorded facts, lifecycle-safe. (Requirement: WORK-26.) (completed 2026-09-19)
 - [x] **Phase 11: Portable History & Merge Restore** — Stable owner-scoped record identities and one canonical, portable, versioned, encrypted backup that restores clean or **merges** (authenticated, conflict-ruled, previewed, all-or-nothing) into existing data, with deterministic derivative rebuild and a manual import/export path. (Requirements: DATA-08, DATA-09.) (completed 2026-09-23)
-- [ ] **Phase 12: Automatic Google-Drive Sync** — Optional owner-initiated Google sign-in (One-Tap, `drive.file`), one app-created encrypted store per account, and automatic reconciliation on foreground/background/commit built as derivative replication over the Phase 11 merge engine; client-side XChaCha20-Poly1305 encryption, secure key storage, retryable failure, and no impact on the offline workout path. Reuses `helper-payroll-app`'s Google sign-in + Drive + Noble-cipher patterns; does NOT adopt its Firestore transport. (Requirement: DATA-10.)
+- [ ] **Phase 12: Automatic Google Drive Backup & Replacement Restore** — Optional owner-initiated Google sign-in (One-Tap, `drive.file`), single-active-device writer handover, immutable unencrypted JSON snapshots, and quarantined replacement-phone restore. An ETag-protected manifest promotes only verified latest/previous snapshots; dirty/backed-up generations make backup freshness durable; Drive work never blocks the offline workout path. Reuses `helper-payroll-app`'s Google sign-in + bounded Drive REST patterns only, not its Firestore or encryption design. (Requirement: DATA-10.)
 
 **Coverage (proposed):** 12/12 v1.1 requirements mapped across Phases 8-12.
 
 **Recorded reversal:** v1.0 was strictly no-account / offline-only. v1.1 adds **optional**
-Google sign-in for owner-controlled Drive sync (DATA-10). The app stays fully functional
-offline and unsynced; sign-in is never required to log workouts.
+Google sign-in for owner-controlled automatic Drive backup (DATA-10). The app stays fully
+functional offline and unbacked-up; sign-in is never required to log workouts. Drive is
+for phone replacement, not concurrent use across devices.
 
 ## Phase Details
 
@@ -125,18 +127,20 @@ offline and unsynced; sign-in is never required to log workouts.
 
 **UI hint**: yes
 
-### Phase 12: Automatic Google-Drive Sync
+### Phase 12: Automatic Google Drive Backup & Replacement Restore
 
-**Goal**: The owner can optionally sign into their own Google account so the app automatically keeps one app-created, client-side-encrypted store synced across their personal devices through Google Drive, built as derivative replication over the Phase 11 merge engine, with local SQLite remaining authoritative and the offline workout path never blocked.
+**Goal**: The owner can optionally sign into their own Google account so the active phone automatically maintains recoverable Google Drive snapshots for a future replacement phone. Local SQLite remains authoritative, only one writer generation may publish at a time, automatic Drive JSON is unencrypted and protected only by the Google account, and backup/restore never blocks the offline workout path.
 **Depends on**: Phase 11
 **Requirements**: DATA-10
 **Success Criteria** (what must be TRUE):
 
-  1. Optional owner-initiated Google One-Tap sign-in with `drive.file` scope connects sync; the app remains fully usable offline and unsynced without it, and sign-out/disconnect is explicit.
-  2. One app-created Drive file per account holds the canonical store; with the same account on multiple devices each device sees and reconciles that file automatically on foreground, background/close, and after a workout/edit commit.
-  3. All synced payload is client-side encrypted (XChaCha20-Poly1305) before upload; keys live only in secure device storage and never reach Drive, logs, analytics, or exports.
-  4. Sync replicates over the DATA-08 merge engine (per-record-class conflict rules, never blind overwrite); any auth, network, decryption, conflict, or write failure leaves local data unchanged and is retryable; sync never blocks or mutates the live workout path.
-  5. New native dependencies (Google sign-in, Noble ciphers) pass the repository dependency-audit gate; the reused patterns come from `helper-payroll-app` without adopting its Firestore transport.
+  1. Optional owner-initiated Google One-Tap sign-in with `drive.file` connects automatic backup. The app remains fully usable offline without it. Data & recovery provides discoverable help explaining that automatic snapshots are unencrypted JSON readable through the Google account; connection has no blocking privacy acknowledgement.
+  2. First connect is a restore quarantine: the installation may discover and validate cloud state but cannot upload, replace, or delete it. Only an account with no app backup artifacts may begin first-backup initialization; no manifest or writer epoch becomes authoritative until the first immutable snapshot passes round-trip validation. Invalid existing artifacts stay quarantined for recovery. With a valid snapshot, an empty local database restores directly, while a non-empty database uses the Phase 11 previewed, all-or-nothing merge and permits one-time owner-namespace adoption only after fresh Google authentication and explicit confirmation.
+  3. A successful replacement restore/merge conditionally claims a new `writer_epoch`. Every publish verifies that epoch and conditionally updates the manifest with its current ETag, so an old or concurrent installation cannot continue writing. No multi-device live sync or background device reconciliation is provided.
+  4. Every committed user-owned mutation durably advances `mutation_generation`; `backed_up_generation` advances only after upload plus download/integrity/schema verification and manifest promotion. Backup runs asynchronously on any available connection by default, offers a Wi-Fi-only option, and shows a non-blocking warning with Retry when unbacked changes remain for 24 hours.
+  5. Each backup is a new immutable, versioned, unencrypted JSON snapshot. The ETag-protected manifest references the verified latest and previous snapshots. A missing/corrupt manifest is recoverable through a bounded snapshot scan; corrupt latest offers the dated verified previous snapshot; a newer supported-by-future-app schema requires an app update and is never overwritten or mislabeled as corruption.
+  6. Disconnect stops backup and clears local authorization/writer state but retains Drive snapshots. Delete cloud backup is a separate guarded action requiring fresh authentication and explicit destructive confirmation; it permanently deletes workout snapshots but retains a metadata-only successor-epoch tombstone so an old phone cannot recreate them. Any auth, network, validation, restore/merge, or upload failure preserves local source facts and the last verified active/tombstone manifest for safe retry.
+  7. Phase 11 manual password-encrypted GTBK export, restore-clean, and merge remain separate and available. Reuse `helper-payroll-app` only for Google sign-in and bounded Drive REST transport; do not adopt Firestore, family sync, or client-side encryption for DATA-10.
 
 **UI hint**: yes
 

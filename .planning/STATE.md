@@ -1,15 +1,15 @@
 ---
 gsd_state_version: 1.0
 milestone: v1.1
-milestone_name: In-Workout Editing, Advanced Timing & Cross-Device Sync
+milestone_name: In-Workout Editing, Advanced Timing & Drive Backup
 current_phase: 12
-current_phase_name: Automatic Google-Drive Sync
+current_phase_name: Automatic Google Drive Backup & Replacement Restore
 status: planning
-stopped_at: Phase 11 complete, ready to plan Phase 12
-last_updated: "2026-09-23T04:27:52.888Z"
-last_activity: 2026-09-23
-last_activity_desc: Phase 11 complete, transitioned to Phase 12
-state_head: b1d7bd4592690db6bec46bf7e400c74af659c01d
+stopped_at: Phase 12 engineering review complete, ready for optional design review or execution approval
+last_updated: "2026-09-26T22:35:04+08:00"
+last_activity: 2026-09-26
+last_activity_desc: Phase 12 replanned as single-active-device Google Drive backup and replacement restore
+state_head: 982e63e84c82a632399b682e68677bbd1b5ba9e2
 progress:
   total_phases: 5
   completed_phases: 4
@@ -25,14 +25,14 @@ progress:
 See: `.planning/PROJECT.md` (updated 2026-09-15)
 
 **Core value:** Open today's workout, see trustworthy next targets, complete each working set with one primary action, recover safely from interruption, and understand exactly why the next target is recommended.
-**Current focus:** Phase 12 — Automatic Google-Drive Sync
+**Current focus:** Phase 12 — Automatic Google Drive Backup & Replacement Restore
 
 ## Current Position
 
-Phase: 12 — Automatic Google-Drive Sync
-Plan: Not started
-Status: Ready to plan
-Last activity: 2026-09-23 — Phase 11 complete, transitioned to Phase 12
+Phase: 12 — Automatic Google Drive Backup & Replacement Restore
+Plan: 4 plans written; implementation not started
+Status: Engineering review complete; optional design review or execution approval next
+Last activity: 2026-09-26 — Phase 12 architecture and four-wave plan rewritten
 
 ## Delivery model
 
@@ -331,21 +331,19 @@ Full decisions live in `.planning/PROJECT.md`.
 | Category | Item | Status | Deferred At |
 |----------|------|--------|-------------|
 | Ecosystem | Wear OS and Health Connect | v2 | Project initialization |
-| Training | Per-repetition or cluster-set timers | v2 | Project initialization |
-| Portability | Merge restore | v2 | Project initialization |
 | Distribution | Public GitHub Release / store promotion with attended device matrix, owner-approval token, no-rebuild digest gate, and Terminal Seal (V2-05) | v2 | 2026-09-14 personal-use reconciliation |
 
 ## Session Continuity
 
-Last session: 2026-09-23T11:47:12+08:00
-Last handoff: Plan 11-04 completed with fresh 4173c72-bound source, SQLite, coverage, and Maestro evidence plus narrowed merge writer, validated no-op, and aligned evidence-count contracts
-Stopped at: Phase 11 complete, ready to plan Phase 12
-Resume file: .planning/phases/11-portable-history-merge-restore/.continue-here.md
+Last session: 2026-09-26T22:35:04+08:00
+Last handoff: Phase 12 engineering review replaced encrypted multi-device sync with single-active-device Drive backup, restore quarantine, writer fencing, and four executable plans
+Stopped at: Phase 12 engineering review complete; implementation remains unstarted
+Resume file: .planning/phases/12-automatic-google-drive-sync/12-CONTEXT.md
 Handoff file: none
-Next action: Discuss and plan Phase 12; do not begin implementation automatically.
+Next action: Run the optional Phase 12 design review or explicitly authorize `/gsd-execute-phase 12`; do not begin implementation automatically.
 
 ## Operator Next Steps
 
-- Start Phase 12 with `/gsd-discuss-phase 12`; review Google sign-in, Drive, encryption-key, conflict, retry, and offline-path decisions before planning implementation.
+- Review the four Phase 12 plans as one architecture before execution; the approved scope is Google-account-only, single-active-device backup/restore with no backup passphrase or live multi-device reconciliation.
 - Treat `4173c72` as the final Phase 11 evidence head and `abc6005` as the application behavior head; earlier native manifests are superseded diagnostic history.
 - Keep local SQLite authoritative and preserve Phase 11's manual export/restore/merge fallback throughout Phase 12.

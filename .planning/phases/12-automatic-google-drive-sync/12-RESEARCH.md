@@ -1,133 +1,316 @@
-# Phase 12 Research: Automatic Google-Drive Sync
+# Phase 12 Research: Automatic Google Drive Backup
 
-**Phase:** 12 — Automatic Google-Drive Sync (v1.1)  
-**Requirement:** DATA-10  
-**Research date:** 2026-09-15
+**Phase:** 12 - Automatic Google Drive Backup (v1.1)
 
-## Research scope and execution-time baseline
+**Requirement:** DATA-10
 
-Phase 12 is optional, single-owner Google Drive replication. It must use one app-created file, drive.file, client-side encryption, local SQLite authority, and the Phase 11 merge engine; foreground, background/close, and post-workout/edit commit reconciliation are required. [VERIFIED: .planning/phases/12-automatic-google-drive-sync/12-CONTEXT.md:7-20] [VERIFIED: .planning/REQUIREMENTS.md:45-49]
+**Original research:** 2026-09-15
 
-This worktree is pre-Phase-9/10/11. The highest migration actually on disk is v18; Phase 9 v19/v20, Phase 10 v21, and the Phase 11 v22 identity/merge migration/module are execution-time dependencies, not existing code. Phase 11 requires a transport-agnostic API operating on a decrypted snapshot plus local DB. [VERIFIED: src/platform/sqlite/migrations/index.ts:1-37] [VERIFIED: .planning/phases/11-portable-history-merge-restore/11-RESEARCH.md:7-11] [VERIFIED: .planning/phases/11-portable-history-merge-restore/11-CONTEXT.md:105-109]
+**Rewritten for approved architecture:** 2026-09-26
 
-## Standard stack and reusable patterns
+## Research conclusion
 
-| Concern | Required/reusable choice | Evidence |
+Implement DATA-10 as single-active-device snapshot backup and replacement-phone
+restore. Do not implement a replication log or concurrent device convergence. The
+safe core is a small ETag-protected manifest pointing to immutable, round-trip-
+validated canonical JSON snapshots, with a semantic `writer_epoch` fence and local
+generation accounting.
+
+Automatic snapshots are deliberately **unencrypted**. SHA-256 detects corruption
+but does not make data secret or prove who produced it. The Google account and
+Drive authorization are the confidentiality boundary. Manual GTBK export remains
+the encrypted option and must retain the Phase 11 Argon2id/AES-GCM behavior. No
+Phase 12 passphrase, XChaCha cipher, derived-key cache, or SecureStore dependency is
+needed.
+
+## Verified execution baseline
+
+| Fact | Evidence | Planning impact |
 |---|---|---|
-| Google sign-in | react-native-nitro-google-signin@^1.3.0, One-Tap, then request drive.file scope | [VERIFIED: /Users/bytedance/Documents/personal/helper-payroll-app/apps/mobile/package.json:42-45] [VERIFIED: /Users/bytedance/Documents/personal/helper-payroll-app/apps/mobile/src/features/google-auth/google-auth.ts:1-15] |
-| Drive transport | REST v3 through https://www.googleapis.com; /drive/v3/files, /upload/drive/v3/files, /drive/v3/about | [VERIFIED: /Users/bytedance/Documents/personal/helper-payroll-app/apps/mobile/src/features/google-drive/drive-client.ts:1-17] |
-| Payload encryption | @noble/ciphers@2.2.0, XChaCha20-Poly1305, fresh 24-byte nonce and 32-byte key | [VERIFIED: /Users/bytedance/Documents/personal/helper-payroll-app/apps/mobile/package.json:7-11] [VERIFIED: /Users/bytedance/Documents/personal/helper-payroll-app/apps/mobile/src/features/family-sync/encrypted-envelope.ts:1-9] |
-| Key derivation | Existing native Argon2id family: descriptor v1, 32-byte output, 16-byte salt, 19,456 KiB / 2 iterations / parallelism 1 | [VERIFIED: src/platform/crypto/passwordKdf.ts:14-44] |
-| Key cache | expo-secure-store@~57.0.1 / Android Keystore; new dependency for Gym Tracker; cache derived key only | [VERIFIED: /Users/bytedance/Documents/personal/helper-payroll-app/apps/mobile/package.json:29-32] [VERIFIED: .planning/phases/12-automatic-google-drive-sync/12-CONTEXT.md:26-34] |
-| Curves | @noble/curves@2.2.0 is in helper-payroll-app for family key wrapping, not required by this single-owner passphrase-derived scheme | [VERIFIED: /Users/bytedance/Documents/personal/helper-payroll-app/docs/architecture/0001-encrypted-family-sync.md:14-27] [ASSUMED: no Phase-12 use] |
+| The live migration registry ends at v22, `portable-owner-identities`. | `src/platform/sqlite/migrations/index.ts:1-45`; `src/platform/sqlite/migrations/0022_portable_owner_identities.ts:211-226` | The Phase 12 migration is **v23 planned**, not v19 or an unspecified future version. |
+| Logical backup format v2 is implemented with a strict allowlist and limits of 24 MiB plaintext, 100,000 total rows, 25,000 rows/table, 64 KiB/string, and depth 16. | `src/domains/portability/backupContracts.ts:1-11,31-101,402-468` | Automatic snapshots should reuse this canonical logical payload and its parser rather than define another user-data schema. |
+| The collector reads schema, every allowlisted table, references, and manifest counts in one serialized SQLite write transaction. | `src/platform/sqlite/repositories/logicalBackupRepository.ts:200-239` | Extend collection to capture `mutation_generation` coherently, but release the writer before JSON serialization, hashing, or Drive I/O. |
+| Phase 11 merge rejects owner-namespace mismatch and binds commit to a canonical local fingerprint. | `src/domains/portability/mergeCommands.ts:415-453`; `src/platform/sqlite/repositories/logicalMergeRepository.ts:1018-1068` | Replacement restore needs an explicit, one-time namespace-adoption capability; background sync must not bypass the guard. |
+| The full-plan merge writer and direct logical restore writer exist, but the public secure commands are file/password/confirmation oriented. | `src/domains/portability/mergeCommands.ts:98-130,398-475`; `src/platform/sqlite/repositories/logicalMergeRepository.ts:1150-1179`; `src/platform/sqlite/repositories/logicalRestoreRepository.ts:358-418` | Add narrow programmatic automatic-restore/merge ports that reuse validation, planning, atomic writers, and rebuild without exposing private writer APIs or altering GTBK. |
+| The runtime already has foreground and post-commit reconciliation seams; lifecycle completion cannot guarantee network work after backgrounding. | `src/bootstrap/workoutLifecycle.ts:559-568`; `src/bootstrap/workoutAppRuntime.tsx:3036-3057,3572-3847` | Schedule asynchronously and treat background as one abortable opportunity; next launch/foreground is the recovery guarantee. |
+| Production and development-test packages differ. | `app.config.ts:21-27`; `scripts/build-current-native-test-apk.sh:9` | Remote object namespaces and manifest validation must encode the environment; package naming alone is not enough. |
+| Existing sibling code contains useful One-Tap and bounded Drive REST patterns. | `/Users/bytedance/Documents/personal/helper-payroll-app/apps/mobile/src/features/google-auth/google-auth.ts`; `.../google-drive/drive-client.ts` | Reuse authentication, scope, token refresh, response parsing, origin, and size guards only. Do not port Firestore, family sync, key distribution, or encrypted envelopes. |
 
-Helper Payroll chose Firestore only because different family accounts could not discover one another's app-created Drive files: “each account's app token discovered only files created under its own grant.” Gym Tracker uses the same account on every device, so do not plan Firestore, Firebase, sharing, or appDataFolder. [VERIFIED: /Users/bytedance/Documents/personal/helper-payroll-app/docs/architecture/0001-encrypted-family-sync.md:6-11] [VERIFIED: .planning/REQUIREMENTS.md:49-49]
+## Target protocol
 
-## Decisions D-01 through D-05
+```text
+authoritative local mutation
+  -> same SQLite transaction increments mutation_generation
+  -> idle scheduler coalesces pending generations
+  -> one short transaction captures canonical snapshot + generation G
+  -> canonical JSON + SHA-256 outside writer
+  -> upload new immutable snapshot
+  -> bounded download and full validation of uploaded bytes
+  -> If-Match manifest promotion under matching writer_epoch
+  -> reread and verify manifest
+  -> local receipt conditionally advances backed_up_generation to G
+  -> later G+1 mutation remains pending for a trailing backup
+```
 
-### D-01 — passphrase-derived key
+The manifest is the only mutable Drive object. Snapshot objects are immutable. A
+manifest promotion retains two valid recovery points: `latest` and `previous`. A
+candidate is not a backup merely because Drive accepted the upload; it becomes
+authoritative only after download validation and conditional manifest promotion.
 
-Create a versioned sync key descriptor using the exact current Argon2id parameters. Generate a random 16-byte salt on first initialization and store the non-secret descriptor/salt inside the encrypted-store envelope header. A new device signs into Google and enters the same passphrase to derive the identical 32-byte key. Cache only derived bytes in SecureStore, scoped by Google identity and protocol/key version; Disconnect clears the cache. Do not cache the passphrase. The KDF implementation already copies and wipes password, salt, and native output buffers. [VERIFIED: src/platform/crypto/passwordKdf.ts:147-190] [VERIFIED: src/domains/portability/restoreCommands.ts:287-303] [ASSUMED: sync header and SecureStore key names]
+### Manifest and snapshot contract
 
-GTBK uses Argon2id with AES-256-GCM; sync must use the locked XChaCha20-Poly1305 cipher. Reuse GTBK's non-oracular handling: wrong passphrase, tampering, ciphertext, nonce, and tag errors must map to safe generic decryption failure. [VERIFIED: src/domains/portability/backupFormat.ts:84-100] [VERIFIED: src/domains/portability/restoreCommands.ts:332-344] [VERIFIED: .planning/REQUIREMENTS.md:47-47]
+Use exact-key parsing and a versioned tagged union. The manifest must fit within 16
+KiB. Its `active` variant contains only the metadata needed to validate ownership and
+locate recovery objects: protocol version, environment/package discriminator, owner namespace,
+writer epoch, promoted generation, and `latest`/optional `previous` descriptors. Its
+`deleted` variant contains only its protocol tag, environment, successor writer epoch,
+and deletion time, with no owner/account identifier, snapshot reference, Drive object
+ID, or workout content. A
+descriptor includes immutable object identity, snapshot/schema version, byte length,
+`object_sha256`, generation, and creation time. The Drive ETag is transport metadata returned
+with a manifest read, not a trusted field copied into its JSON body.
 
-Reusable Noble pattern: validate 32-byte key/24-byte nonce, serialize bounded JSON, authenticate canonical metadata as AAD, encrypt before returning an envelope, validate exact fields before decrypt, and base64-encode nonce/ciphertext. [VERIFIED: /Users/bytedance/Documents/personal/helper-payroll-app/apps/mobile/src/features/family-sync/encrypted-envelope.ts:56-120] [VERIFIED: /Users/bytedance/Documents/personal/helper-payroll-app/apps/mobile/src/features/family-sync/encrypted-envelope.ts:123-163]
+The snapshot is exact canonical JSON with `header`, `payload`, and
+`payload_sha256`. The header binds protocol, environment, package, owner namespace,
+writer epoch, generation, schema, snapshot ID, and creation time; payload is the Phase
+11 logical snapshot. Compute `payload_sha256` over the canonical UTF-8 bytes of the
+exact `{header,payload}` object, excluding the digest field itself. The manifest
+descriptor independently stores `object_sha256` over the complete uploaded snapshot
+bytes. This avoids a self-referential digest and lets a manifest-recovery scan verify
+candidate payload integrity before reconstructing descriptors. The snapshot is limited
+to 24 MiB and 100,000 rows, with the stricter existing per-table/string/depth limits
+still applied. Reject unknown fields, invalid UTF-8,
+noncanonical JSON, wrong byte length/payload/object hash, unsupported schema/protocol, graph errors,
+and environment/namespace/generation mismatches before restore or promotion.
 
-### D-02/D-03 — One-Tap and one Drive file
+### Drive transport
 
-Port helper One-Tap: configure web client ID; check Play Services; try signIn, createAccount, then presentExplicitSignIn; cancellation returns no identity. getTokens returns an existing scoped token or requestScopes grants Drive; refresh clears a stale token then gets a fresh one; Disconnect calls native signOut. Retain error-code mapping while changing family-vault copy. [VERIFIED: /Users/bytedance/Documents/personal/helper-payroll-app/apps/mobile/src/features/google-auth/google-auth.ts:37-115] [VERIFIED: /Users/bytedance/Documents/personal/helper-payroll-app/apps/mobile/src/features/google-auth/google-auth.ts:118-163]
+- Request only `https://www.googleapis.com/auth/drive.file` after optional One-Tap
+  sign-in. Verify the scoped token belongs to the intended Google identity before
+  discovery. OAuth setup must register stable production and development-test
+  package/signing identities.
+- Use Drive REST v3 with Google-origin-only requests, redirect rejection, bounded
+  tokens/list/response bodies, strict metadata parsing, `trashed=false`, and exact
+  environment app properties. File IDs are caches, never authority.
+- Snapshot size <= 5 MiB uses one bounded multipart upload. Snapshot size > 5 MiB uses a
+  resumable upload session with bounded chunks, validated offsets/ranges, and safe
+  restart after interruption. The 24 MiB snapshot limit always applies.
+- Every manifest mutation sends `If-Match` with the ETag from its exact read. HTTP
+  409/412 causes a bounded reread. If the remote writer epoch changed, transition to
+  terminal `stale_writer`; do not retry the upload under the new epoch.
 
-Adapt Drive client from named recovery folder/archive to one deterministic app-created root file. Query files with strict appProperty/mime/name plus trashed=false and pageSize=2; reject duplicate files; multipart POST only if no match; GET file media to download; PATCH upload media to update. Persist file ID only as a cache and rediscover on absence/staleness for another same-account device. [VERIFIED: /Users/bytedance/Documents/personal/helper-payroll-app/apps/mobile/src/features/google-drive/drive-client.ts:215-263] [VERIFIED: /Users/bytedance/Documents/personal/helper-payroll-app/apps/mobile/src/features/google-drive/drive-client.ts:266-412] [ASSUMED: Gym Tracker root predicate, mime/name/appProperty]
+## Restore-first quarantine and claim state machine
 
-Retain Drive defenses: exact parseDriveFile/parseDriveFileList, list bound 500, bounded response/archive size, DriveApiError status, Google-origin-only fetch, max 8192 token, redirect error, and bearer token contained by the adapter. [VERIFIED: /Users/bytedance/Documents/personal/helper-payroll-app/apps/mobile/src/features/google-drive/drive-client.ts:73-137] [VERIFIED: /Users/bytedance/Documents/personal/helper-payroll-app/apps/mobile/src/features/google-drive/drive-client.ts:572-615]
+All connects enter quarantine before any mutation of Drive state:
 
-### D-04 — derivative replication over Phase 11
+1. Authenticate, verify identity/scope, and discover only this environment's app
+   artifacts.
+2. If no app backup artifacts exist, remain locally backup-pending, create and
+   round-trip validate the first immutable snapshot, then create the first manifest
+   and writer epoch. A missing manifest is not proof of an
+   empty account when snapshot artifacts exist.
+3. If a manifest is valid, validate `latest`; if needed, validate `previous`. If the
+   manifest is missing/corrupt, use the bounded recovery scan described below.
+4. If the local user-owned graph is empty, direct-restore the selected verified
+   snapshot in one Phase 11 transaction and rebuild derivatives. Define empty as
+   zero owner-created portable facts across the Phase 11 canonical graph, excluding
+   the mandatory owner-identity singleton, bundled catalog rows, replayable
+   derivatives, and Phase 12 bookkeeping.
+5. If local user data is non-empty, create the Phase 11 merge preview and require
+   explicit confirmation. When namespaces differ, fresh Google authentication and a
+   separate explicit confirmation may authorize one-time adoption of the cloud owner
+   namespace inside the same state-bound merge transaction. No silent, repeat, or
+   background adoption is allowed.
+6. After restore/merge and rebuild succeed locally, issue a conditional manifest
+   claim that creates a successor `writer_epoch`. Only after rereading and validating
+   that claim may the installation leave quarantine and make a fresh backup.
 
-Phase 11 locks authenticate/decrypt → parse → duplicate identity detection → per-record-class rules → preview → one all-or-nothing commit. Rules: newest timestamp wins for sessions/set corrections/void; local existing wins settings; distinct custom exercises/plans keep both by stable identity. Sync feeds its decrypted remote snapshot/change-log into that transport-agnostic merge primitive; it never remote-restores or direct-writes live workout tables. [VERIFIED: .planning/phases/11-portable-history-merge-restore/11-CONTEXT.md:24-49] [VERIFIED: .planning/phases/11-portable-history-merge-restore/11-CONTEXT.md:105-109]
+Restore failure rolls back source facts, namespace changes, and local generation
+state together. Claim failure leaves the valid restored/merged local facts in place
+but does not confer cloud write authority. The first later authoritative mutation
+increments from the restored generation.
 
-Recommended container: encrypted/versioned canonical Phase-11 logical snapshot plus an append/merge change-log. Each delta has opaque operation ID, device ID, authored timestamp, version, base/snapshot identity, and FK-closed aggregate delta/reference. Authenticate header metadata as AAD; compact only after successful reconciliation into a fresh canonical snapshot plus deduplicated operation IDs. Before upload always download/decrypt/validate/merge remote state; use Drive revision/ETag conditional update when adapter exposes it, and re-download/retry contention. [ASSUMED: exact log schema, compaction, ETag implementation]
+## Local persistence: planned migration v23
 
-history_audit_events is an immutable append-only model (id, session, revision, event type, before/after JSON, timestamp), but it is history-specific and cannot represent plans/settings/custom exercises. Prefer a separate sync outbox/change-log or Phase-11 snapshot derivation. [VERIFIED: src/platform/sqlite/migrations/0013_history_integrity.ts:54-75] [VERIFIED: src/domains/portability/backupContracts.ts:27-75] [ASSUMED: separate table preferred]
+The additive v23 schema should keep one strict singleton containing non-secret
+connection and backup state: validated Drive permissionId/display metadata, environment,
+cached manifest file ID/ETag, writer epoch/state, `mutation_generation`,
+`backed_up_generation`, last attempt/success timestamps, stale-since timestamp,
+network preference, safe finite status/error code, and bounded claim/lease data.
+Tokens, snapshot bodies, raw provider responses, and workout rows do not belong there.
 
-### D-05 — dependency audit
+SQLite triggers on every authoritative user-owned table must increment
+`mutation_generation` in the source mutation's transaction. This is coverage for
+*whether* a new full snapshot is needed, not a change-log of operations. Trigger
+registration should be derived from or checked against the explicit Phase 11 backup
+ownership allowlist so a new authoritative table cannot silently escape backup.
+Transport metadata and generation rows stay outside the logical backup graph.
 
-New native dependencies must use config/plugin/prebuild verification. Existing CI runs npm ci, expo install --check, expo-doctor, and reproducible CNG; app config has a deliberate plugin list. [VERIFIED: .github/workflows/pr.yml:53-70] [VERIFIED: .github/workflows/pr.yml:181-186] [VERIFIED: app.config.ts:41-65]
+An acknowledgement must be a conditional local transaction: update
+`backed_up_generation` only when the current account/environment, writer epoch,
+manifest identity, snapshot identity, and captured generation still match the
+accepted receipt. A later `mutation_generation` remains dirty. Expired in-flight
+claims are recovered on launch/foreground.
 
-**Finding:** no npm audit, dependency-audit script, or CI audit command exists in the current checked-in worktree, despite D-05 saying one exists. Plan an explicit audit script/package command and CI invocation before enablement, with documented severity and exception policy. Expo doctor is not an advisory audit. [VERIFIED: package.json:35-96] [VERIFIED: .github/workflows/pr.yml:53-70] [VERIFIED: .planning/phases/12-automatic-google-drive-sync/12-CONTEXT.md:57-58]
+## Scheduling and performance
 
-## Architecture and runtime integration
+- Admit automatic snapshot collection only while idle and with no interactive
+  workout active. Manual **Back up now** may request priority but still cannot block
+  a workout mutation.
+- Coalesce many mutation generations into one run and allow one run at a time. A
+  mutation after capture schedules a trailing run rather than altering or falsely
+  acknowledging the in-flight snapshot.
+- Trigger on launch, foreground, post-commit request, manual retry/back up, and one
+  bounded `active -> inactive/background` opportunity. No polling or new background
+  execution framework is needed.
+- Network/auth/Drive work is never awaited by mutation or lifecycle acknowledgement.
+  Use finite debounce, attempt, backoff, jitter, byte, and time budgets.
+- Allow any available connection, including cellular, by default. With Wi-Fi-only
+  enabled, leave dirty state pending until an allowed connection or manual policy
+  change.
+- Persist when dirty time begins. At 24 hours without a matching verified promotion,
+  expose a non-blocking stale warning and Retry; do not reset the timer on a failed
+  attempt.
+- Add measured gates for SQLite writer occupancy, command latency during capture,
+  JSON serialization, peak memory at the size cap, and resumable transfer behavior.
 
-1. **Connect:** explicit Data & recovery control invokes auth port, requests drive.file, prompts for sync passphrase, derives/caches key, discovers/creates store, queues first reconciliation. Offline remains fully usable if never connected/cancelled. [VERIFIED: .planning/design/v1.1-UX-FLOW.md:129-142]
-2. **Download/preflight:** coordinator gets token, downloads bounded ciphertext, authenticates/decrypts locally, validates container and Phase-11 snapshot/log, then gets a read-only Phase-11 merge plan. [VERIFIED: .planning/phases/11-portable-history-merge-restore/11-CONTEXT.md:43-49] [ASSUMED: coordinator composition]
-3. **Atomic reconcile:** Phase 11 applies complete plan via FIFO BEGIN IMMEDIATE / commit / rollback writer, then derivative rebuild. [VERIFIED: src/platform/sqlite/serializedWriter.ts:27-85] [VERIFIED: .planning/phases/11-portable-history-merge-restore/11-RESEARCH.md:131-137]
-4. **Encrypt/upload:** locally create merged snapshot + deduped log, encrypt with fresh nonce/AAD, then invoke Drive port. Failure only publishes retryable/paused status. [VERIFIED: .planning/phases/12-automatic-google-drive-sync/12-CONTEXT.md:49-65] [ASSUMED: status storage]
-5. **Disconnect:** stop queued work, delete local auth/key/file-ID/status credentials, sign out, retain remote ciphertext and local SQLite. Manual Phase-11 import/export remains. [VERIFIED: .planning/design/v1.1-UX-FLOW.md:124-142] [ASSUMED: remote preservation]
+## Recovery, cleanup, and destructive actions
 
-### Non-blocking trigger seam
+### Manifest recovery scan
 
-Runtime already subscribes to foreground lifecycle and disposes subscription on close. [VERIFIED: src/bootstrap/workoutAppRuntime.tsx:2081-2108] [VERIFIED: src/bootstrap/workoutAppRuntime.tsx:2333-2347] Its reconcileAfterCommit invokes an async IIFE using void, catches errors, and completeWorkoutSet uses it through drainEffects. [VERIFIED: src/bootstrap/workoutAppRuntime.tsx:3019-3050] [VERIFIED: src/bootstrap/workoutAppRuntime.tsx:3431-3454]
+When a manifest is absent or invalid, list a bounded number of immutable snapshots
+from the exact environment namespace. Validate each candidate completely, group by
+owner namespace/writer lineage, and select the newest internally consistent latest
+and previous pair by generation only after validation. Reconstruct the manifest with
+a conditional create/update. Ambiguous lineages remain quarantined for owner action;
+never choose by Drive modified time alone. A future-schema snapshot produces an
+update-required state and must not be replaced by an older candidate.
 
-Add a runtime-owned SyncScheduler that coalesces foreground, background/close, and post_commit requests behind one in-flight job/debounce. Call scheduler.request only after durable command result; never await it in workout/edit/complete/undo/finish/lifecycle acknowledgement. Scheduler catches failures and updates safe state. [ASSUMED: scheduler API]
+### Retention and cleanup
 
-## Schema and backup graph
+Never overwrite snapshots and never delete either manifest-referenced object. After
+successful promotion and reread, a best-effort cleanup may inspect only unreferenced
+objects in the same environment namespace that are at least 24 hours old. Before each
+trash call, re-read the manifest and require both its ETag and writer epoch to match
+the cleanup claim. Move eligible objects to Drive trash; do not permanently delete.
+Cleanup failure does not fail the backup. Disconnect performs no cleanup.
 
-Recommend durable sync configuration/status plus append-only sync outbox/change-log so process death does not lose a requested reconcile and a source command can atomically record replication needed. Under v19/v20/v21/v22 dependency order it is v23. Additive tables/indexes should suffice; a reconstructive alternative must be destructive so migration runner makes validated recovery backup. [VERIFIED: src/platform/sqlite/migrationRunner.ts:220-273] [VERIFIED: .planning/phases/11-portable-history-merge-restore/11-RESEARCH.md:99-105] [ASSUMED: v23/additive design]
+Deleting cloud backup data is a separate destructive workflow requiring fresh Google
+authentication, exact environment/account checks, and explicit confirmation. First
+conditionally promote a metadata-only `deleted` tombstone under a successor writer
+epoch; then permanently delete all accepted snapshot objects, retrying partial cleanup
+without ever reconstructing those snapshots. On every tombstone discovery, repeat a
+bounded sweep until no matching snapshot objects remain so a stale upload that completed
+after the first sweep is also removed. Retain the tombstone so a retired phone cannot
+see an empty namespace and recreate deleted workout data. A later intentional
+new backup requires fresh authentication and an explicit tombstone-to-active claim. It
+is not part of automatic retention.
 
-Replication bookkeeping is transport-local, not canonical user-owned backup facts, and should normally be excluded from Phase-11 logical backup graph. Do not export queued ciphertext, tokens, or keys. Existing backup registry is explicit allowlist, not all-table copy. [VERIFIED: src/domains/portability/backupContracts.ts:22-79] [ASSUMED: config/backups policy]
+## Environment isolation
 
-## Settings UI
+Derive a fixed remote namespace from the build profile/package and encode it in app
+properties plus manifest/snapshot metadata. Production and development-test must have
+separate OAuth Android registrations and disjoint object discovery predicates. Reject
+cross-environment objects before download; recovery and cleanup must use the same
+predicate. Live tests should use a dedicated test account and prove production objects
+are absent without recording account details or Drive IDs.
 
-Current Settings has Data and recovery card/route. Phase 11 extends destination; Phase 12 places Cross-device sync above manual backup/restore: Not connected + Connect Google Drive; Synced + last synced/account + Sync now/Disconnect; Paused offline/auth expired + Retry. Status line is only workout-path surface; no spinner/modal blocks logging. [VERIFIED: src/ui/screens/SettingsScreen.tsx:328-345] [VERIFIED: .planning/design/v1.1-UX-FLOW.md:129-143]
+## Required ports and reuse boundary
 
-## Ports, test, coverage, and Maestro surface
+- `GoogleAuthPort`: connect, verified identity, scoped token, refresh, disconnect.
+- `DriveBackupStorePort`: bounded environment-scoped discovery; manifest read with
+  ETag; conditional manifest create/update; immutable snapshot upload/download;
+  resumable session operations; fenced trash. It deals in bytes and safe metadata,
+  not logical rows.
+- `AutomaticPortableRestorePort`: validate and atomically direct-restore a canonical
+  snapshot, then drive deterministic rebuild.
+- `AutomaticPortableMergePort`: collect local facts, build preview, enforce optional
+  one-time namespace adoption, fingerprint and atomically commit the complete Phase 11
+  plan, then drive deterministic rebuild.
+- `BackupRepository`/scheduler ports: generation, epoch, claim, connection, stale-state,
+  clock, lifecycle, connectivity, and cancellation abstractions for deterministic tests.
 
-Create injectable ports:
+The automatic ports must reuse Phase 11's parser, candidate validation, merge planner,
+private full-plan capability, logical restore writer, and reconciliation logic. They
+must not call the manual password/file UI commands, expose the private writer, or alter
+manual GTBK serialization.
 
-- GoogleAuthPort: identity, interactive connect, access token, refresh, disconnect. Native adapter wraps One-Tap. [VERIFIED: /Users/bytedance/Documents/personal/helper-payroll-app/apps/mobile/src/features/google-auth/google-auth.ts:32-93]
-- DriveStorePort: discover/create-one, bounded ciphertext download, conditional ciphertext upload. It accepts bytes only, never snapshot/passphrase/key. [ASSUMED: signature]
-- SecureSyncKeyPort: read/write/delete derived key bytes only, backed by SecureStore; fake proves passphrase is never persisted. [ASSUMED: signature]
-- SyncSchedulerPort/clock/lifecycle: deterministic trigger coalescing. This follows narrow existing ports like RestNotificationPort, HapticsPort and RestCountdownCuePort. [VERIFIED: src/domains/rest/restNotificationPort.ts:37-50] [VERIFIED: src/domains/workout/hapticsPort.ts:1-3] [VERIFIED: src/domains/rest/restCountdownCuePort.ts:1-4]
+## Verification strategy
 
-Required tests:
+### Deterministic CI
 
-1. Unit: sign-in cancellation/scope/refresh/error map; Drive duplicate/limits/origin errors; XChaCha known-answer, fresh nonce, wrong key/tamper/AAD substitution; ciphertext-only egress; no secret in status/errors/logs.
-2. Coordinator integration with fakes: trigger coalescing, remote-first merge, every auth/network/download/decrypt/parse/conflict/merge/write/upload failure leaves local source byte-equivalent and retryable; retry succeeds; no blind overwrite.
-3. Non-blocking: fake sync hangs/rejects while workout/edit commands still return committed normal results; scheduler begins only after source commit. [VERIFIED: src/bootstrap/workoutAppRuntime.tsx:3019-3050]
-4. Host/native SQLite: v23 migration upgrade from populated schema 22, verify/rollback/integrity; outbox atomically follows source command; injected merge/write failure preserves facts. [VERIFIED: src/platform/sqlite/migrationRunner.ts:242-268]
-5. Coverage: add all sync domain/coordinator/crypto/port/migration/repository modules to the explicit 100% integrity gate. [VERIFIED: scripts/run-coverage-gate.mjs:16-101]
-6. Maestro: Phase-12 runner/flow modeled on Phase 5 that visits Settings/Data recovery and exercises fake-adapter Not connected, Synced, Paused, Retry and Disconnect states plus lifecycle-visible refresh. OAuth/network remains faked; host/unit/native tests prove egress and rollback. [VERIFIED: maestro/phase5/data-recovery.yaml:7-26] [VERIFIED: scripts/run-phase5-maestro.mjs:21-49]
+1. **Contracts and parser:** exact manifest/snapshot fields, 16 KiB/24 MiB/100,000-
+   row limits, 5 MiB upload boundary, canonical serialization, SHA-256 mismatch,
+   unsupported/newer schema, environment and namespace rejection.
+2. **Drive/auth adapters:** cancellation, identity/scope mismatch, refresh, bounded
+   list/download, redirect/origin rejection, multipart/resumable upload, ETag conflict,
+   missing/stale file cache, and trash fencing.
+3. **SQLite v23:** populated-v22 upgrade on host and real Expo SQLite; exact strict
+   tables/indexes/triggers; mutation and generation atomicity; trigger coverage for
+   every authoritative table; rollback and reopen recovery; backup-graph exclusion.
+4. **Backup coordinator:** mutations `G..G+n` coalesce; coherent capture at `G`;
+   round-trip validation precedes promotion; exact receipt acknowledgement; later
+   mutation remains dirty; stale writer and stale ETag cannot promote or acknowledge.
+5. **Restore/handover:** quarantine forbids cloud mutation; empty direct restore;
+   non-empty merge preview/commit; one-time authenticated namespace adoption; local
+   restore then conditional epoch claim then backup; claim failure preserves local data.
+6. **Crash-cut matrix:** cut after candidate upload, download validation, manifest
+   promotion, manifest reread, local acknowledgement, quarantine creation, restore/
+   merge commit, epoch claim, and cleanup eligibility. Reopen and prove old or new
+   complete state, never a mixed state.
+7. **Recovery/retention:** missing/corrupt manifest scan; corrupt latest and valid
+   previous; future schema; orphan grace period; latest/previous deletion immunity;
+   stale-epoch and stale-ETag cleanup rejection.
+8. **Runtime/UI:** no awaited backup on complete/edit/undo/finish/lifecycle paths; idle-
+   only capture; foreground recovery; best-effort background cancellation; any-network
+   default, Wi-Fi-only behavior, 24-hour warning, quarantine/fenced/retry/disconnect/
+   delete states, accessibility, and manual GTBK controls always present.
+9. **Security/privacy:** scans prove no Firestore, automatic encryption/passphrase/
+   SecureStore key path, broad Drive scope, token/account/Drive-ID leakage, or production
+   namespace access from development-test evidence.
 
-## Reusable assets
+Integrity-critical backup contracts, coordinator, scheduler, ports, v23 migration,
+repository, and automatic portability adapters should join the repository's exact 100%
+statement/branch/function/line gate. Fake-port Maestro covers visible state transitions;
+it is not persistence or Drive proof.
 
-| Path and lines | Reuse |
-|---|---|
-| /Users/bytedance/Documents/personal/helper-payroll-app/apps/mobile/src/features/google-auth/google-auth.ts:14-115 | One-Tap/scope/token/refresh/signout/error template. Quote: “export const DRIVE_FILE_SCOPE = 'https://www.googleapis.com/auth/drive.file';” [VERIFIED] |
-| /Users/bytedance/Documents/personal/helper-payroll-app/apps/mobile/src/features/google-drive/drive-client.ts:1-17,73-137,266-412,572-615 | Drive paths, multipart, parsing/limits/error/origin guards. Quote: “const DRIVE_UPLOAD_PATH = '/upload/drive/v3/files';” [VERIFIED] |
-| /Users/bytedance/Documents/personal/helper-payroll-app/apps/mobile/src/features/family-sync/encrypted-envelope.ts:56-120,152-208 | XChaCha/AAD/envelope model. Quote: “const NONCE_BYTES = 24;” [VERIFIED] |
-| /Users/bytedance/Documents/personal/helper-payroll-app/docs/architecture/0001-encrypted-family-sync.md:8-27 | Negative Firestore reuse constraint. Quote: “Firestore is therefore the encrypted transport.” [VERIFIED] |
-| src/platform/crypto/passwordKdf.ts:14-44,77-102,147-200 | D-01 Argon2 descriptor/wipe. |
-| src/domains/portability/restoreCommands.ts:287-345 | KDF and generic decrypt failure handling. |
-| .planning/phases/11-portable-history-merge-restore/11-CONTEXT.md:24-49,105-109 | Contract-only merge seam, not code yet. |
-| src/bootstrap/workoutAppRuntime.tsx:2333-2347,3019-3050,3431-3454 | Lifecycle and post-commit non-blocking seam. |
+### Attended native evidence
 
-## Pitfalls
+- **Signed development-test emulator:** with a dedicated test Google account, perform
+  first backup, second backup with latest/previous retention, destructive local reset,
+  restore-first quarantine, direct restore and non-empty merge/adoption cases, writer
+  transfer/stale-writer rejection, manifest recovery, and fenced trash cleanup.
+- **Physical phone:** prove One-Tap identity, registered signing/package configuration,
+  `drive.file` consent, token refresh, and environment isolation only. Do not upload,
+  download, or destructively restore Gym Tracker backup data on the personal phone.
+- Evidence contains only build identity, case IDs, pass/fail, redacted object counts,
+  sizes, timestamps, and hashes. Never retain OAuth tokens, emails, Google subjects,
+  Drive file IDs, or workout content.
 
-1. Never await network/auth/crypto/merge in workout critical path. [VERIFIED: .planning/REQUIREMENTS.md:64-72]
-2. Never egress plaintext, passphrase, derived key, decrypted snapshot, tokens, or secret-containing diagnostics. Assert fake Drive bodies/arguments are ciphertext only. [VERIFIED: .planning/REQUIREMENTS.md:70-72]
-3. Never blind-overwrite: remote-read/decrypt/merge/re-encrypt/conditional update, retry contention. [VERIFIED: .planning/phases/12-automatic-google-drive-sync/12-CONTEXT.md:49-56] [ASSUMED: conditional header]
-4. Never make Drive authoritative; all failure classes preserve local data and retry. [VERIFIED: .planning/REQUIREMENTS.md:47-47]
-5. Do not adopt helper Firestore/Firebase/X25519/family/recovery-folder behavior. [VERIFIED: /Users/bytedance/Documents/personal/helper-payroll-app/docs/architecture/0001-encrypted-family-sync.md:8-27]
-6. SecureStore is absent today and must be added/configured/tested. [VERIFIED: package.json:1-96] [VERIFIED: app.config.ts:41-65]
-7. Implement missing dependency-audit gate before D-05 is called complete. [VERIFIED: .github/workflows/pr.yml:53-70]
+## Failure rules
 
-## Confidence
+1. Never use Drive upload success as proof of a backup; require bounded download, full
+   validation, conditional promotion, manifest reread, and matching local receipt.
+2. Never upload, promote, clean, or delete during restore quarantine.
+3. Never retry under a different writer epoch or silently reclaim authority.
+4. Never treat corrupt/missing manifest, invalid artifacts, or future schema as empty
+   Drive.
+5. Never hold the SQLite writer during serialization, hashing, or network I/O, and
+   never start automatic capture while an interactive workout is active.
+6. Never let cleanup touch current latest/previous, another environment, or an object
+   younger than 24 hours.
+7. Never claim automatic snapshots are encrypted. Keep manual encrypted GTBK distinct.
+8. Never add Firestore, live multi-device sync, operation change-log convergence, or a
+   Phase 12 passphrase/SecureStore key path.
+
+## Confidence and remaining planner choices
 
 | Topic | Confidence |
 |---|---|
-| D-01..D-04, helper auth/Drive reuse, same-account/no-Firestore rationale | High |
-| Argon2 params, lifecycle seam, settings location, test/coverage patterns | High |
-| Missing dependency audit in current source/CI | High |
-| v23 outbox/config and encrypted snapshot+log model | Medium; planner choice after Phase 11 lands |
-| Exact Phase-11 API/module, v19/v20/v21/v22 graph, Drive ETag approach | Low until dependency work executes |
+| Live v22 baseline, Phase 11 snapshot/merge/restore anchors, v23 next migration | High |
+| Single-writer epoch + ETag manifest protocol, validated promotion, generation acknowledgement | High; approved design |
+| Quarantine, restore routing, namespace adoption, retention, recovery, environment isolation | High; approved design |
+| Exact Google REST request syntax and resumable-session details | Verify against current official Drive API documentation during implementation |
+| Exact debounce/backoff/chunk size/performance thresholds and recovery-scan count | Planner discretion within the locked bounded behavior |
 
 ## RESEARCH COMPLETE
