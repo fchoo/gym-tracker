@@ -138,6 +138,10 @@ Present the generated checklist to the owner. Only after explicit attended appro
 - Guaranteed network completion after app close; background is best effort and launch/foreground is the recovery guarantee.
 - Destructive testing of the owner's production phone data or production Drive namespace.
 - Public/store release promotion; this phase verifies the signed personal-use development-test artifact and DATA-10 implementation.
+- A two-column or context-rail Data & recovery tablet layout; recovery preserves one centered reading/focus order at every width.
+- An in-app updater or unconfigured download link for future-schema backups; the personal APK flow explains how to return and Check again.
+- A dedicated CSV page or pre-export confirmation sheet; CSV remains a proportional direct hub action.
+- A bottom sheet or inline expansion for the three GTBK workflows; they require a dedicated Manual encrypted backup route.
 
 ## What already exists
 
@@ -148,6 +152,9 @@ Present the generated checklist to the owner. Only after explicit attended appro
 | SQLite FIFO BEGIN IMMEDIATE writer | Preserves coherent capture and atomic generations; capture is idle-only and measured. |
 | Phase 11 native contracts and manifest-bound evidence tooling | Extended with Phase 12 suite recognition and case IDs rather than replaced. |
 | Data & recovery route and manual GTBK/CSV actions | Preserved below the new automatic backup surface. |
+| Repository DESIGN.md and semantic theme/type/spacing tokens | Calibrate every Phase 12 screen; no new visual language or local color/type literals. |
+| AdaptiveScreen, ScreenHeader, ContentCard, PrimaryAction, SecondaryAction, InlineNotice, and ConfirmationSheet | Reuse for the approved one-column hub, guided stages, attention states, and confirmations. |
+| Existing Phase 11 GTBK state machines | Move intact to Manual encrypted backup; preserve review focus, exact confirmation, cancellation, safe errors, and rebuild retry. |
 | helper-payroll-app One-Tap and bounded Drive parsing patterns | Read-only references for auth/REST structure; unconditional PATCH, Firestore, and encryption are rejected. |
 
 ## Architecture and state flow
@@ -240,14 +247,34 @@ Execute A and B sequentially where they share restore/schema files; C follows th
   - Surfaced by: Architecture and code-quality review — multi-device change-log was unnecessary and unsafe for the replacement-phone goal.
   - Files: Plan 12-02 allowlist.
   - Verify: Plan 12-02 unit, integration, host, and real Expo contracts.
-- [ ] **T3 (P1, human: ~2d / CC: ~2h)** — Recovery UX — Build quarantine, direct restore/merge, fallback/update, privacy, health, data-use, disconnect, delete, and fake-port Maestro flows.
-  - Surfaced by: UX/error-recovery review — backup must feel simple without hiding destructive or stale states.
+- [ ] **T3 (P1, human: ~2d / CC: ~2h)** — Recovery UX — Implement the approved guided-recovery hierarchy, route split, shared NavigationRow, complete state/cancellation matrix, and fake-port Maestro flows.
+  - Surfaced by: Design review — the original single long page obscured protection proof, mixed administration/destruction with routine backup, and left recovery-state hierarchy underspecified.
   - Files: Plan 12-03 allowlist.
   - Verify: Plan 12-03 component, accessibility, and Maestro commands.
 - [ ] **T4 (P1, human: ~2d / CC: ~2h)** — Verification — Close crash/security/performance/CI matrices and produce isolated attended real-Google evidence.
   - Surfaced by: Test and performance review — mock-only proof cannot validate OAuth, Drive preconditions, replacement restore, or writer latency.
   - Files: Plan 12-04 allowlist.
   - Verify: Plan 12-04 automated, native, benchmark, and attended gates.
+
+## Approved Mockups
+
+| Screen/Section | Mockup Path | Direction | Notes |
+|---|---|---|---|
+| Phase 12 Data & recovery state family | `/Users/bytedance/.gstack/projects/fchoo-gym-tracker/designs/phase12-data-recovery-20260926/approved-guided-recovery.html` | Guided recovery mode | Compact proof-first normal hub; quarantine becomes one guided task; includes normal, restore, merge, problem, and automatic-settings references. |
+
+## Design Review Outcome
+
+| Pass | Initial | Final | Approved fix |
+|---|---:|---:|---|
+| Information architecture | 7/10 | 10/10 | Compact status/recovery hub plus separate Automatic backup settings and Manual encrypted backup routes. |
+| Interaction state coverage | 8/10 | 10/10 | Persistent non-blocking restore-required state and complete visible-state matrix. |
+| User journey | 8/10 | 10/10 | Three plain-language recovery stages with stage-specific recovery actions. |
+| AI-slop / visual specificity | 9/10 | 10/10 | Neutral factual status, no filled success card, metric treatment, or status pill. |
+| Design-system alignment | 8/10 | 10/10 | Shared NavigationRow contract and reuse of existing semantic primitives. |
+| Responsive/accessibility | 8/10 | 10/10 | One centered 720dp column, 200% vertical growth, stable reading/focus order. |
+| Unresolved decisions | 7 open | 0 open | Manual GTBK page, direct CSV, owner-facing merge summary, fallback tone, newer-build state, retired-phone state, and stage-aware cancellation resolved. |
+
+Overall design completeness: **7/10 -> 10/10**. Fifteen decisions were incorporated; none were deferred. The existing `TODOS.md` post-implementation visual QA item remains the rendered-device follow-up.
 
 ## GSTACK REVIEW REPORT
 
@@ -256,12 +283,12 @@ Execute A and B sequentially where they share restore/schema files; C follows th
 | CEO Review | `/plan-ceo-review` | Scope & strategy | 0 | - | Not run |
 | Codex Review | `/codex review` | Independent second opinion | 0 | - | Not run |
 | Outside Voice | Independent Gemini review | Cross-model challenge | 1 | CLEAR | Passed; 3 low-risk clarifications folded into Plans 01-02 |
-| Eng Review | `/plan-eng-review` | Architecture & tests (required) | 1 | CLEAR | 25 decisions accepted; 0 unresolved; 0 critical gaps after rewrite |
-| Design Review | `/plan-design-review` | UI/UX gaps | 0 | - | Recommended before implementation because Phase 12 changes Data & recovery UX |
+| Eng Review | `/plan-eng-review` | Architecture & tests (required) | 1 | STALE | Cleared before design review; new routes, NavigationRow, state matrix, and evidence scope require focused recheck |
+| Design Review | `/plan-design-review` | UI/UX gaps | 1 | CLEAR | 7/10 -> 10/10; 15 decisions incorporated; 0 unresolved |
 | DX Review | `/plan-devex-review` | Developer experience gaps | 0 | - | Not applicable |
 
 **CROSS-MODEL:** Internal merge-boundary, plan-quality, scheduler, and Drive-transport reviews plus an independent Gemini plan review converge on the replacement-backup architecture; the outside voice's transaction, first-backup Wi-Fi-only, and resumable-token clarifications are incorporated.
 
-**VERDICT:** ENG + OUTSIDE VOICE CLEARED - ready for implementation after the user chooses whether to run the optional design review.
+**VERDICT:** DESIGN + OUTSIDE VOICE CLEARED - focused ENG recheck required before implementation.
 
 NO UNRESOLVED DECISIONS

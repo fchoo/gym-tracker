@@ -125,7 +125,7 @@ semantic surfaces; they are not content cards.
 - Default size is `24dp`; compact inline status may use `20dp`.
 - Icon-only controls remain at least `48 × 48dp` and have programmatic labels.
 - Decorative icons and dividers are hidden from accessibility APIs.
-- Required mappings: `ArrowLeft`, `Ellipsis`, `Check`, `Timer`, `Pause`, `Play`, `SkipForward`, `TriangleAlert`, `Trash2`, and `RotateCcw`.
+- Required mappings: `ArrowLeft`, `ChevronRight`, `Download`, `Share2`, `Ellipsis`, `Check`, `Timer`, `Pause`, `Play`, `SkipForward`, `TriangleAlert`, `Trash2`, and `RotateCcw`.
 
 ## Motion
 
@@ -185,6 +185,7 @@ Screens reuse these treatments instead of creating local variants:
 - `PrimaryAction`
 - `SecondaryAction`
 - `IconAction`
+- `NavigationRow`
 - `ExerciseRow`
 - `PlanActivationRow`
 - `TargetValue`
@@ -201,6 +202,16 @@ Screens reuse these treatments instead of creating local variants:
 - `SkeletonBlock`
 
 Phase 1 may add behavior to these components, but it must not create parallel styling or expose later-phase Calendar, Library, or Progress controls.
+
+`NavigationRow` is the shared full-row navigation or bounded-action affordance for
+task-focused settings and detail surfaces. It carries a title, optional supporting text,
+and a semantic trailing affordance; the entire row activates. Navigation mode uses an
+outlined `ChevronRight`; direct CSV export uses `Download`, share-ready uses `Share2`,
+and retry uses `RotateCcw`. Action mode may expose bounded busy, success, or retry state. It
+grows vertically at large text, keeps a minimum 48dp target, exposes one exact accessible
+label/hint, hides decorative trailing icons from accessibility, and uses the shared
+pressed, disabled, and 2dp focus treatments. It is not a content card and must not be
+recreated as route-local pressable styling.
 
 ## Voice
 

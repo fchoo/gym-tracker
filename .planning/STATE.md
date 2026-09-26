@@ -5,11 +5,11 @@ milestone_name: In-Workout Editing, Advanced Timing & Drive Backup
 current_phase: 12
 current_phase_name: Automatic Google Drive Backup & Replacement Restore
 status: planning
-stopped_at: Phase 12 engineering review complete, ready for optional design review or execution approval
-last_updated: "2026-09-26T22:35:04+08:00"
+stopped_at: Phase 12 design review complete, focused engineering recheck required before execution
+last_updated: "2026-09-26T23:20:00+08:00"
 last_activity: 2026-09-26
-last_activity_desc: Phase 12 replanned as single-active-device Google Drive backup and replacement restore
-state_head: 982e63e84c82a632399b682e68677bbd1b5ba9e2
+last_activity_desc: Phase 12 guided-recovery UX reviewed from 7/10 to 10/10 with 13 decisions resolved
+state_head: 4d467ebfb4e130df76f913e348a1cdc6fb1f67fe
 progress:
   total_phases: 5
   completed_phases: 4
@@ -31,8 +31,8 @@ See: `.planning/PROJECT.md` (updated 2026-09-15)
 
 Phase: 12 — Automatic Google Drive Backup & Replacement Restore
 Plan: 4 plans written; implementation not started
-Status: Engineering review complete; optional design review or execution approval next
-Last activity: 2026-09-26 — Phase 12 architecture and four-wave plan rewritten
+Status: Design review complete; focused engineering recheck required before execution
+Last activity: 2026-09-26 — Phase 12 guided-recovery UX approved and folded into Plans 12-03/12-04
 
 ## Delivery model
 
@@ -335,15 +335,16 @@ Full decisions live in `.planning/PROJECT.md`.
 
 ## Session Continuity
 
-Last session: 2026-09-26T22:35:04+08:00
-Last handoff: Phase 12 engineering review replaced encrypted multi-device sync with single-active-device Drive backup, restore quarantine, writer fencing, and four executable plans
-Stopped at: Phase 12 engineering review complete; implementation remains unstarted
+Last session: 2026-09-26T23:20:00+08:00
+Last handoff: Phase 12 design review approved guided recovery mode, split administration/manual recovery routes, full state matrix, NavigationRow, and responsive/accessibility contracts
+Stopped at: Phase 12 design review complete; implementation remains unstarted
 Resume file: .planning/phases/12-automatic-google-drive-sync/12-CONTEXT.md
 Handoff file: none
-Next action: Run the optional Phase 12 design review or explicitly authorize `/gsd-execute-phase 12`; do not begin implementation automatically.
+Next action: Re-run a focused Phase 12 engineering review for the new route/component/state contracts, then explicitly authorize `/gsd-execute-phase 12`; do not begin implementation automatically.
 
 ## Operator Next Steps
 
 - Review the four Phase 12 plans as one architecture before execution; the approved scope is Google-account-only, single-active-device backup/restore with no backup passphrase or live multi-device reconciliation.
+- Treat the prior 4d467eb engineering review as stale for Plan 12-03 UI structure only: the design review added Automatic backup settings, Manual encrypted backup, NavigationRow, and new state/evidence requirements.
 - Treat `4173c72` as the final Phase 11 evidence head and `abc6005` as the application behavior head; earlier native manifests are superseded diagnostic history.
 - Keep local SQLite authoritative and preserve Phase 11's manual export/restore/merge fallback throughout Phase 12.
