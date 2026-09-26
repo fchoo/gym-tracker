@@ -4,18 +4,18 @@ milestone: v1.1
 milestone_name: In-Workout Editing, Advanced Timing & Drive Backup
 current_phase: 12
 current_phase_name: Automatic Google Drive Backup & Replacement Restore
-status: planning
-stopped_at: Phase 12 design review complete, focused engineering recheck required before execution
-last_updated: "2026-09-26T23:20:00+08:00"
-last_activity: 2026-09-26
-last_activity_desc: Phase 12 guided-recovery UX reviewed from 7/10 to 10/10 with 14 design decisions resolved
-state_head: dfeabbcf0e96958c43afb9a4a97fb7182dc1fde7
+status: executing
+stopped_at: Phase 12 Plan 12-01 Task 1 Google OAuth provisioning checkpoint
+last_updated: "2026-09-26T18:00:34.675Z"
+last_activity: 2026-09-27
+last_activity_desc: Phase 12 execution started
+state_head: d7b2f6c02dcf8acf1e06a34852c8cd4a46cb7c30
 progress:
   total_phases: 5
-  completed_phases: 4
+  completed_phases: 3
   total_plans: 26
   completed_plans: 22
-  percent: 80
+  percent: 60
 ---
 
 # Project State
@@ -29,10 +29,10 @@ See: `.planning/PROJECT.md` (updated 2026-09-15)
 
 ## Current Position
 
-Phase: 12 — Automatic Google Drive Backup & Replacement Restore
-Plan: 4 plans written; implementation not started
-Status: Design review complete; focused engineering recheck required before execution
-Last activity: 2026-09-26 — Phase 12 guided-recovery UX approved and folded into Plans 12-03/12-04
+Phase: 12 (Automatic Google Drive Backup & Replacement Restore) — EXECUTING
+Plan: 1 of 4
+Status: Executing Phase 12
+Last activity: 2026-09-27 — Phase 12 execution started
 
 ## Delivery model
 
@@ -320,6 +320,8 @@ Full decisions live in `.planning/PROJECT.md`.
 - The dedicated `release-evidence` runner is intentionally offline until the
   attended evidence-upload step. It must never service pull-request jobs.
 
+- Phase 12 Plan 12-01 Task 1 requires one approved public Google web OAuth client ID plus Android OAuth registrations for com.fchoo.gymtracker and com.fchoo.gymtracker.devtest with their approved signing SHA-1/SHA-256 fingerprints; EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID is absent.
+
 ### Roadmap Evolution
 
 - Phase 6 added: Material 3 UX remediation added from the whole-app UX audit.
@@ -335,10 +337,10 @@ Full decisions live in `.planning/PROJECT.md`.
 
 ## Session Continuity
 
-Last session: 2026-09-26T23:20:00+08:00
+Last session: 2026-09-26T18:00:34.592Z
 Last handoff: Phase 12 design review approved guided recovery mode, split administration/manual recovery routes, full state matrix, NavigationRow, and responsive/accessibility contracts
-Stopped at: Phase 12 design and focused engineering reviews complete; implementation is authorized but unstarted
-Resume file: .planning/phases/12-automatic-google-drive-sync/12-CONTEXT.md
+Stopped at: Phase 12 Plan 12-01 Task 1 Google OAuth provisioning checkpoint
+Resume file: .planning/phases/12-automatic-google-drive-sync/12-01-drive-backup-foundation-PLAN.md
 Handoff file: none
 Next action: Execute Phase 12; the owner authorized proceeding with development after automatically selecting the top recommended focused-review options.
 
