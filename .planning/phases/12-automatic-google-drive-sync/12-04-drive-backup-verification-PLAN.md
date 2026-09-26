@@ -274,7 +274,7 @@ Execute A and B sequentially where they share restore/schema files; C follows th
 | Responsive/accessibility | 8/10 | 10/10 | One centered 720dp column, 200% vertical growth, stable reading/focus order. |
 | Unresolved decisions | 7 open | 0 open | Manual GTBK page, direct CSV, owner-facing merge summary, fallback tone, newer-build state, retired-phone state, and stage-aware cancellation resolved. |
 
-Overall design completeness: **7/10 -> 10/10**. Fifteen decisions were incorporated; none were deferred. The existing `TODOS.md` post-implementation visual QA item remains the rendered-device follow-up.
+Overall design completeness: **7/10 -> 10/10**. Fourteen design decisions were incorporated; none were deferred. The existing `TODOS.md` post-implementation visual QA item remains the rendered-device follow-up.
 
 ## GSTACK REVIEW REPORT
 
@@ -284,7 +284,7 @@ Overall design completeness: **7/10 -> 10/10**. Fifteen decisions were incorpora
 | Codex Review | `/codex review` | Independent second opinion | 0 | - | Not run |
 | Outside Voice | Independent Gemini review | Cross-model challenge | 1 | CLEAR | Passed; 3 low-risk clarifications folded into Plans 01-02 |
 | Eng Review | `/plan-eng-review` | Architecture & tests (required) | 1 | STALE | Cleared before design review; new routes, NavigationRow, state matrix, and evidence scope require focused recheck |
-| Design Review | `/plan-design-review` | UI/UX gaps | 1 | CLEAR | 7/10 -> 10/10; 15 decisions incorporated; 0 unresolved |
+| Design Review | `/plan-design-review` | UI/UX gaps | 1 | CLEAR | 7/10 -> 10/10; 14 design decisions incorporated; 0 unresolved |
 | DX Review | `/plan-devex-review` | Developer experience gaps | 0 | - | Not applicable |
 
 **CROSS-MODEL:** Internal merge-boundary, plan-quality, scheduler, and Drive-transport reviews plus an independent Gemini plan review converge on the replacement-backup architecture; the outside voice's transaction, first-backup Wi-Fi-only, and resumable-token clarifications are incorporated.
