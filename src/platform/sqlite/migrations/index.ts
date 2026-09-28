@@ -20,6 +20,7 @@ import { sessionExerciseEditReceiptsMigration } from "./0020_session_exercise_ed
 import { advancedSetTimingMigration } from "./0021_advanced_set_timing";
 import { portableOwnerIdentitiesMigration } from "./0022_portable_owner_identities";
 import { automaticDriveBackupMigration } from "./0023_automatic_drive_backup";
+import { automaticBackupReceiptsMigration } from "./0024_automatic_backup_receipts";
 
 export const migrations = Object.freeze([
   initialMigration,
@@ -44,6 +45,7 @@ export const migrations = Object.freeze([
   advancedSetTimingMigration,
   portableOwnerIdentitiesMigration,
   automaticDriveBackupMigration,
+  automaticBackupReceiptsMigration,
 ]);
 
 export {
@@ -67,6 +69,7 @@ export {
   advancedSetTimingMigration,
   portableOwnerIdentitiesMigration,
   automaticDriveBackupMigration,
+  automaticBackupReceiptsMigration,
   outcomeEffortMigration,
   scheduleActivationMigration,
 };
