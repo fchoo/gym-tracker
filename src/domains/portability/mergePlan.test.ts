@@ -7,6 +7,7 @@ import {
 import {
   __mergePlanTestOnly,
   buildPortableMergePlan,
+  MERGE_DIGEST_CONCURRENCY,
   MergePlanError,
   PORTABLE_MERGE_TABLE_CLASSES,
 } from "./mergePlan";
@@ -46,6 +47,44 @@ function snapshot(
 }
 
 describe("portable merge plan", () => {
+  it("bounds equal-timestamp session digests while preserving canonical plan order", async () => {
+    const portableIds = Array.from({ length: MERGE_DIGEST_CONCURRENCY + 2 }, (_, index) => (
+      `${index.toString(16)}${"a".repeat(31)}`
+    ));
+    const archive = snapshot({ id: "archive-0", marker: "archive", modifiedAtMs: 20 });
+    const local = snapshot({ id: "local-0", marker: "local", modifiedAtMs: 20 });
+    const withSessions = (value: typeof archive, prefix: string) => ({
+      ...value,
+      tables: {
+        ...value.tables,
+        workout_sessions: portableIds.map((portableId, index) => ({
+          id: `${prefix}-${index}`,
+          portable_id: portableId,
+          merge_modified_at_ms: 20,
+          marker: prefix,
+        })),
+      },
+    });
+    let active = 0;
+    let maxActive = 0;
+    const plan = await buildPortableMergePlan({
+      archive: withSessions(archive, "archive"),
+      local: withSessions(local, "local"),
+      payloadDigest: async (value) => {
+        active += 1;
+        maxActive = Math.max(maxActive, active);
+        await Promise.resolve();
+        active -= 1;
+        return value.includes("archive") ? "0".repeat(64) : "f".repeat(64);
+      },
+    });
+
+    expect(maxActive).toBeLessThanOrEqual(MERGE_DIGEST_CONCURRENCY * 2);
+    const operations = plan.operations.filter((operation) => operation.aggregateClass === "workout_session");
+    expect(operations.map((operation) => operation.portableId)).toEqual([...portableIds].sort());
+    expect(operations.every((operation) => operation.kind === "local_won")).toBe(true);
+  });
+
   it("classifies every portable source table before planning a merge", () => {
     expect(Object.keys(PORTABLE_MERGE_TABLE_CLASSES).sort())
       .toEqual([...LOGICAL_BACKUP_TABLES].sort());
