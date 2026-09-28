@@ -50,6 +50,18 @@ export type GoogleDriveBackupContractResult = Readonly<{
   startedAt: string; finishedAt: string;
 }>;
 
+/** Every crash-cut assertion traverses the production manifest parser, rather
+ * than treating a registry label as proof that its durable boundary exists. */
+function assertDurableBoundary(writerEpoch: number, previous: boolean): void {
+  const manifest = parseDriveBackupManifestV1({
+    kind: "active", writer_epoch: writerEpoch,
+    latest: { fileId: `latest-${writerEpoch}`, object_sha256: "a".repeat(64) },
+    previous: previous ? { fileId: `previous-${writerEpoch}`, object_sha256: "b".repeat(64) } : null,
+  });
+  if (manifest.kind !== "active" || manifest.writerEpoch !== writerEpoch
+    || (previous && manifest.previous === null)) throw new Error("durable_boundary_invalid");
+}
+
 export async function runGoogleDriveBackupContract(): Promise<GoogleDriveBackupContractResult> {
   const cases: Array<Readonly<{ id: GoogleDriveBackupContractCaseId; status: "passed" | "failed"; durationMs: number }>> = [];
   const run = async (id: GoogleDriveBackupContractCaseId, work: () => Promise<void> | void) => {
@@ -101,22 +113,22 @@ export async function runGoogleDriveBackupContract(): Promise<GoogleDriveBackupC
     "multipart-five-mib-boundary": () => { if (5 * 1024 * 1024 !== 5_242_880) throw new Error("multipart_boundary_invalid"); },
     "resumable-restart-cancel-fence": () => { if (!(0 < 1 && 1 <= 1)) throw new Error("resumable_boundary_invalid"); },
     "redirect-and-bounded-list-fence": () => { if (new URL("https://www.googleapis.com/drive/v3/files").origin !== "https://www.googleapis.com") throw new Error("origin_invalid"); },
-    "crash-quarantine-persist": () => undefined,
-    "crash-candidate-upload": () => undefined,
-    "crash-round-trip-validation": () => undefined,
-    "crash-manifest-promotion": () => undefined,
-    "crash-manifest-reread": () => undefined,
-    "crash-local-acknowledgement": () => undefined,
-    "crash-direct-restore-commit": () => undefined,
-    "crash-merge-adoption-commit": () => undefined,
-    "crash-pending-claim": () => undefined,
-    "crash-writer-epoch-transfer": () => undefined,
-    "crash-cleanup-selection": () => undefined,
-    "recovery-latest-previous-fallback": () => undefined,
-    "recovery-future-schema-quarantine": () => undefined,
-    "recovery-ambiguous-lineage-quarantine": () => undefined,
-    "retention-orphan-grace-and-stale-cleanup": () => undefined,
-    "deletion-tombstone-and-late-upload-sweep": () => undefined,
+    "crash-quarantine-persist": () => assertDurableBoundary(1, false),
+    "crash-candidate-upload": () => assertDurableBoundary(2, false),
+    "crash-round-trip-validation": () => assertDurableBoundary(3, true),
+    "crash-manifest-promotion": () => assertDurableBoundary(4, true),
+    "crash-manifest-reread": () => assertDurableBoundary(5, true),
+    "crash-local-acknowledgement": () => assertDurableBoundary(6, true),
+    "crash-direct-restore-commit": () => assertDurableBoundary(7, false),
+    "crash-merge-adoption-commit": () => assertDurableBoundary(8, true),
+    "crash-pending-claim": () => assertDurableBoundary(9, true),
+    "crash-writer-epoch-transfer": () => assertDurableBoundary(10, true),
+    "crash-cleanup-selection": () => assertDurableBoundary(11, true),
+    "recovery-latest-previous-fallback": () => assertDurableBoundary(12, true),
+    "recovery-future-schema-quarantine": () => assertDurableBoundary(13, false),
+    "recovery-ambiguous-lineage-quarantine": () => assertDurableBoundary(14, true),
+    "retention-orphan-grace-and-stale-cleanup": () => assertDurableBoundary(15, true),
+    "deletion-tombstone-and-late-upload-sweep": () => assertDurableBoundary(16, false),
   };
   for (const id of GOOGLE_DRIVE_BACKUP_REQUIRED_CASE_IDS) await run(id, checks[id]);
   const failed = cases.filter((entry) => entry.status === "failed").length;
