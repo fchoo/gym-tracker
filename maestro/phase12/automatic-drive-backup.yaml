@@ -10,7 +10,7 @@ tags:
     stopApp: true
     permissions:
       notifications: deny
-- openLink: "gymtracker-devtest://more/data-and-recovery"
+- openLink: "gymtracker-devtest:///more/data-and-recovery"
 - assertVisible: "Data and recovery"
 - assertVisible: "Google Drive backup"
 - assertVisible: "Recovery tools"
