@@ -105,10 +105,16 @@ export function buildPhase12SyntheticSnapshot(
   const sessionExercises = Array.from({ length: ROWS_PER_TABLE }, (_, index) => ({
     id: `e${index.toString(36)}`,
     session_id: sessions[index]!.id,
+    metric_profile: "load_reps",
+    metric_contract_version: 1,
+    exercise_metric_generation: 1,
   }));
   const sessionSets = Array.from({ length: ROWS_PER_TABLE }, (_, index) => ({
     id: `t${index.toString(36)}`,
     session_exercise_id: sessionExercises[index]!.id,
+    metric_profile: "load_reps",
+    metric_contract_version: 1,
+    exercise_metric_generation: 1,
   }));
   const settingCount = PHASE12_MAX_SNAPSHOT_ROWS - 1 - (ROWS_PER_TABLE * 3);
   const settings = Array.from({ length: settingCount }, (_, index) => ({

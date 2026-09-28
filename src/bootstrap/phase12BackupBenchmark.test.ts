@@ -9,6 +9,9 @@ import {
   parseLogicalBackupSnapshot,
 } from "../domains/portability/backupContracts";
 import {
+  buildPortableMergePlan,
+} from "../domains/portability/mergePlan";
+import {
   PHASE12_BENCHMARK_RESULT_MARKER,
   PHASE12_BENCHMARK_START_MARKER,
   PHASE12_SQLITE_FIXTURE_ROW_COUNTS,
@@ -61,5 +64,18 @@ describe("Phase 12 native backup benchmark", () => {
       .reduce((total, count) => total + count, 0)).toBe(BACKUP_LIMITS.maxRowsTotal);
     expect(Math.max(...Object.values(PHASE12_SQLITE_FIXTURE_ROW_COUNTS)))
       .toBeLessThanOrEqual(BACKUP_LIMITS.maxRowsPerTable);
+  });
+
+  it("keeps the maximum fixture valid for indexed merge preflight", async () => {
+    const snapshot = buildPhase12SyntheticSnapshot();
+
+    await expect(buildPortableMergePlan({
+      archive: snapshot,
+      local: snapshot,
+      payloadDigest: async () => "0".repeat(64),
+    })).resolves.toEqual(expect.objectContaining({
+      operations: expect.any(Array),
+      preview: expect.objectContaining({ duplicates: BACKUP_LIMITS.maxRowsPerTable }),
+    }));
   });
 });
