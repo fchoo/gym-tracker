@@ -27,7 +27,9 @@ export function executePhase12Maestro(args = process.argv.slice(2)) {
   const results = PHASE12_MAESTRO_STAGES.map((stage) => {
     const report = path.join(reportDirectory, `${stage}.xml`);
     execFileSync("maestro", ["test", "--no-ansi", "--format", "junit", "--output", report, "--udid", manifest.device.serial, "-e", `PHASE12_STAGE=${stage}`, path.join(ROOT, FLOW)], { cwd: ROOT, stdio: "inherit" });
-    const bytes = readFileSync(report); if (!bytes.includes("failures=\"0\"") || !bytes.includes("skipped=\"0\"")) throw new Error(`invalid Maestro report: ${stage}`);
+    const bytes = readFileSync(report);
+    const reportText = bytes.toString("utf8");
+    if (!reportText.includes("failures=\"0\"") || /skipped="(?!0")/u.test(reportText)) throw new Error(`invalid Maestro report: ${stage}`);
     return { stage, sha256: sha256(bytes) };
   });
   const evidence = { schema_version: 1, suite: "phase12", status: "passed", manifest: manifestPath, stages: results };
