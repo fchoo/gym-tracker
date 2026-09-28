@@ -246,12 +246,74 @@ function assertSessionAggregateClosure(snapshot: PortableMergePlanSnapshot): voi
   }
 }
 
+export const MERGE_DIGEST_CONCURRENCY = 4;
+
+type SessionDigestIndex = ReadonlyMap<string, Readonly<Record<string, readonly LogicalBackupRow[]>>>;
+
+/**
+ * Builds the immutable session closure once per snapshot.  The former planner
+ * re-filtered every table for every session, which became quadratic at the
+ * supported archive bound.  Keeping this index private preserves the exact
+ * canonical digest input while making each operation a lookup.
+ */
+function createSessionDigestIndex(snapshot: PortableMergePlanSnapshot): SessionDigestIndex {
+  const sessions = sessionRows(snapshot);
+  const bySession = new Map<string, Record<string, LogicalBackupRow[]>>();
+  const exerciseSession = new Map<string, string>();
+  const setSession = new Map<string, string>();
+  for (const session of sessions) {
+    const id = textId(session.id);
+    bySession.set(id, { workout_sessions: [session] });
+  }
+  const append = (sessionId: string, table: string, row: LogicalBackupRow) => {
+    const tables = bySession.get(sessionId);
+    if (tables === undefined) return;
+    (tables[table] ??= []).push(row);
+  };
+  for (const row of rowsFor(snapshot, "session_exercises")) {
+    const sessionId = textId(row.session_id);
+    exerciseSession.set(textId(row.id), sessionId);
+    append(sessionId, "session_exercises", row);
+  }
+  for (const row of rowsFor(snapshot, "session_sets")) {
+    const sessionId = exerciseSession.get(textId(row.session_exercise_id));
+    if (sessionId !== undefined) {
+      setSession.set(textId(row.id), sessionId);
+      append(sessionId, "session_sets", row);
+    }
+  }
+  for (const [table, rows] of Object.entries(snapshot.tables)) {
+    if (table === "workout_sessions" || table === "session_exercises" || table === "session_sets") continue;
+    for (const row of rows) {
+      const candidates = new Set<string>();
+      if (row.session_id !== null && row.session_id !== undefined) candidates.add(textId(row.session_id));
+      if (row.session_exercise_id !== null && row.session_exercise_id !== undefined) {
+        const id = exerciseSession.get(textId(row.session_exercise_id));
+        if (id !== undefined) candidates.add(id);
+      }
+      for (const key of ["session_set_id", "completed_set_id"] as const) {
+        if (row[key] !== null && row[key] !== undefined) {
+          const id = setSession.get(textId(row[key]));
+          if (id !== undefined) candidates.add(id);
+        }
+      }
+      for (const sessionId of candidates) append(sessionId, table, row);
+    }
+  }
+  return new Map([...bySession].map(([id, tables]) => [id, Object.freeze(
+    Object.fromEntries(Object.entries(tables).map(([table, rows]) => [table, Object.freeze([...rows])])),
+  )]));
+}
+
 function sessionDigestInput(
   snapshot: PortableMergePlanSnapshot,
   session: LogicalBackupRow,
+  index?: SessionDigestIndex,
 ): string {
   const sessionId = session.id;
   if (typeof sessionId !== "string") invalid();
+  const indexed = index?.get(sessionId);
+  if (indexed !== undefined) return canonicalValue(indexed);
   const exercises = (snapshot.tables.session_exercises ?? []).filter(
     (row) => row.session_id === sessionId,
   );
@@ -271,6 +333,23 @@ function sessionDigestInput(
     if (selected.length > 0) tables[table] = selected;
   }
   return canonicalValue(tables);
+}
+
+async function mapWithConcurrency<T, R>(
+  values: readonly T[],
+  limit: number,
+  map: (value: T) => Promise<R>,
+): Promise<readonly R[]> {
+  const output: R[] = new Array(values.length);
+  let next = 0;
+  const worker = async () => {
+    while (next < values.length) {
+      const index = next++;
+      output[index] = await map(values[index]!);
+    }
+  };
+  await Promise.all(Array.from({ length: Math.min(limit, values.length) }, worker));
+  return output;
 }
 
 function parseJsonObject(serialized: unknown): Record<string, unknown> {
@@ -1141,6 +1220,8 @@ async function sessionOperation(
   localSessions: readonly LogicalBackupRow[],
   occupiedIds: Set<string>,
   payloadDigest: (value: string) => Promise<string>,
+  archiveDigestIndex?: SessionDigestIndex,
+  localDigestIndex?: SessionDigestIndex,
 ): Promise<Extract<PortableMergeOperation, {
   aggregateClass: "workout_session";
 }>> {
@@ -1182,8 +1263,8 @@ async function sessionOperation(
     });
   }
   const [archiveDigest, localDigest] = await Promise.all([
-    payloadDigest(sessionDigestInput(archive, archiveSession)),
-    payloadDigest(sessionDigestInput(local, localSession)),
+    payloadDigest(sessionDigestInput(archive, archiveSession, archiveDigestIndex)),
+    payloadDigest(sessionDigestInput(local, localSession, localDigestIndex)),
   ]);
   if (!/^[a-f0-9]{64}$/u.test(archiveDigest)
     || !/^[a-f0-9]{64}$/u.test(localDigest)) {
@@ -1220,6 +1301,8 @@ export async function buildPortableMergePlan(input: Readonly<{
   assertReferenceClosure(input.archive);
   assertReferenceClosure(input.local);
   const localByPortableId = new Map<string, LogicalBackupRow[]>();
+  const archiveDigestIndex = createSessionDigestIndex(input.archive);
+  const localDigestIndex = createSessionDigestIndex(input.local);
   const occupiedSessionIds = new Set(sessionRows(input.local).map((row) => textId(row.id)));
   for (const row of sessionRows(input.local)) {
     if (!isOpaquePortableId(row.portable_id)) invalid();
@@ -1230,14 +1313,16 @@ export async function buildPortableMergePlan(input: Readonly<{
   const sessionOperations: readonly Extract<PortableMergeOperation, {
     aggregateClass: "workout_session";
   }>[] = Object.freeze(
-    (await Promise.all(sessionRows(input.archive).map((session) => sessionOperation(
+    [...await mapWithConcurrency(sessionRows(input.archive), MERGE_DIGEST_CONCURRENCY, async (session) => sessionOperation(
       input.archive,
       input.local,
       session,
       localByPortableId.get(session.portable_id as string) ?? [],
       occupiedSessionIds,
       input.payloadDigest,
-    )))).sort((left, right) => operationKey(left).localeCompare(operationKey(right))),
+      archiveDigestIndex,
+      localDigestIndex,
+    ))].sort((left, right) => operationKey(left).localeCompare(operationKey(right))),
   );
   if (new Set(sessionOperations.map(operationKey)).size !== sessionOperations.length) {
     invalid();
@@ -1359,8 +1444,10 @@ export const __mergePlanTestOnly = Object.freeze({
   rootOperations,
   rowsFor,
   sessionAggregate,
+  createSessionDigestIndex,
   sessionDigestInput,
   sessionOperation,
+  mapWithConcurrency,
   sessionRows,
   settingPlan,
   tableOccupiedIds,
