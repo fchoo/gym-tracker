@@ -2357,6 +2357,7 @@ export function WorkoutAppRuntimeProvider({
         priorAppState = next;
         if (enteringForeground && generation === generationRef.current) {
           void reconcileAdvancedTimingAfterForeground(services, generation);
+          void services.automaticBackupRuntime?.refresh();
         }
       });
       advancedForegroundUnsubscribeRef.current = () => {
