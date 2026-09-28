@@ -344,6 +344,7 @@ import {
 import type { AutomaticBackupScheduler } from "../domains/backup/automaticBackupScheduler";
 import { projectAutomaticBackupPresentation, type AutomaticBackupViewModel } from "../domains/backup/automaticBackupPresentation";
 import { createAutomaticBackupStateRepository } from "../platform/sqlite/repositories/automaticBackupStateRepository";
+import type { AutomaticBackupRuntime } from "./automaticBackupRuntime";
 import {
   createOwnedPlanRuntimePort,
   type OwnedPlanRuntimeExerciseOption,
@@ -586,6 +587,21 @@ function sameRestAlertPreferences(
 }
 
 type RuntimeValue = RuntimeState & Readonly<{
+  connectAutomaticBackup(): Promise<void>;
+  deferAutomaticRestore(): Promise<void>;
+  cancelAutomaticBackupCheck(): Promise<void>;
+  checkAutomaticBackupAgain(): Promise<void>;
+  continueAutomaticRestore(): Promise<void>;
+  finishAutomaticBackupSetup(): Promise<void>;
+  requestAutomaticBackupNow(): Promise<void>;
+  retryAutomaticBackup(): Promise<void>;
+  useAutomaticBackupCellularThisTime(): Promise<void>;
+  setAutomaticBackupDataUsePolicy(policy: "wifi_and_cellular" | "wifi_only"): Promise<void>;
+  takeOverAutomaticBackup(): Promise<void>;
+  disconnectAutomaticBackup(): Promise<void>;
+  deleteAutomaticCloudBackup(): Promise<void>;
+  finishDeletingAutomaticCloudBackup(): Promise<void>;
+  startNewAutomaticCloudBackup(): Promise<void>;
   actOnToday(action: ScheduleTodayAction): ReturnType<
     ReturnType<typeof createScheduleRuntimePort>["actOnToday"]
   >;
@@ -946,6 +962,7 @@ type LocalContext = Readonly<{
 }>;
 
 type RuntimeServices = Readonly<{
+  automaticBackupRuntime?: AutomaticBackupRuntime;
   backupCommands: SecureBackupCommands;
   csvExportRepository: CsvExportRepository;
   csvFiles: CsvFilePort;
@@ -994,6 +1011,7 @@ export type WorkoutAppRuntimeDependencies = Readonly<{
   createAutomaticBackupScheduler?(
     kernel: SqliteKernel,
   ): AutomaticBackupScheduler;
+  createAutomaticBackupRuntime?(kernel: SqliteKernel): AutomaticBackupRuntime;
   restAlertPreferenceStore?: RestAlertPreferenceStore;
   createLifecycle(
     input: Parameters<typeof createWorkoutLifecycle>[0],
@@ -1046,6 +1064,7 @@ export type WorkoutAppRuntimeAdapters = Readonly<{
   createAutomaticBackupScheduler?(
     kernel: SqliteKernel,
   ): AutomaticBackupScheduler;
+  createAutomaticBackupRuntime?(kernel: SqliteKernel): AutomaticBackupRuntime;
   restAlertPreferenceStore?: RestAlertPreferenceStore;
   createLifecycle(
     input: Parameters<typeof createWorkoutLifecycle>[0],
@@ -1152,6 +1171,9 @@ export function createWorkoutAppRuntimeDependencies(
     ...(adapters.createAutomaticBackupScheduler === undefined
       ? {}
       : { createAutomaticBackupScheduler: adapters.createAutomaticBackupScheduler }),
+    ...(adapters.createAutomaticBackupRuntime === undefined
+      ? {}
+      : { createAutomaticBackupRuntime: adapters.createAutomaticBackupRuntime }),
     ...(adapters.restAlertPreferenceStore === undefined
       ? {}
       : { restAlertPreferenceStore: adapters.restAlertPreferenceStore }),
@@ -2017,6 +2039,7 @@ export function WorkoutAppRuntimeProvider({
   const servicesRef = useRef<RuntimeServices | null>(null);
   const foregroundUnsubscribeRef = useRef<(() => void) | null>(null);
   const advancedForegroundUnsubscribeRef = useRef<(() => void) | null>(null);
+  const automaticBackupUnsubscribeRef = useRef<(() => void) | null>(null);
   const generationRef = useRef(0);
   const workoutRefreshGenerationRef = useRef(0);
   const contentUpdateResultRef = useRef<ContentUpdateResult | undefined>(
@@ -2033,9 +2056,12 @@ export function WorkoutAppRuntimeProvider({
     foregroundUnsubscribeRef.current = null;
     advancedForegroundUnsubscribeRef.current?.();
     advancedForegroundUnsubscribeRef.current = null;
+    automaticBackupUnsubscribeRef.current?.();
+    automaticBackupUnsubscribeRef.current = null;
     const services = servicesRef.current;
     servicesRef.current = null;
     await services?.lifecycle.dispose?.().catch(() => undefined);
+    services?.automaticBackupRuntime?.dispose();
     await services?.kernel.close().catch(() => undefined);
   }, []);
 
@@ -2066,7 +2092,7 @@ export function WorkoutAppRuntimeProvider({
         : scheduledToday?.view ?? legacyView,
       planDays: scheduledToday?.planDays ?? activation?.days ?? [],
       latestBackup,
-      automaticBackup: projectAutomaticBackupPresentation({
+      automaticBackup: services.automaticBackupRuntime?.current() ?? projectAutomaticBackupPresentation({
         status: automaticBackupState.permissionId === null ? "not_connected"
           : automaticBackupState.statusCode === "restore_pending" ? "restore_pending"
             : automaticBackupState.statusCode === "restoring" ? "restoring"
@@ -2181,6 +2207,9 @@ export function WorkoutAppRuntimeProvider({
         },
       });
     const services: RuntimeServices = {
+      ...(dependencies.createAutomaticBackupRuntime === undefined
+        ? {}
+        : { automaticBackupRuntime: dependencies.createAutomaticBackupRuntime(kernel) }),
       backupCommands: dependencies.createBackupCommands?.(kernel)
         ?? Object.freeze({
           createSecureBackup: async () => {
@@ -2299,6 +2328,14 @@ export function WorkoutAppRuntimeProvider({
 
     try {
       await lifecycle.trigger("launch").catch(() => undefined);
+      if (services.automaticBackupRuntime !== undefined) {
+        automaticBackupUnsubscribeRef.current = services.automaticBackupRuntime.subscribe((automaticBackup) => {
+          if (generation === generationRef.current) {
+            setState((current) => ({ ...current, automaticBackup }));
+          }
+        });
+        await services.automaticBackupRuntime.start();
+      }
       foregroundUnsubscribeRef.current = lifecycle.subscribeForeground(
         (result) => {
           if (generation !== generationRef.current) {
@@ -2380,6 +2417,15 @@ export function WorkoutAppRuntimeProvider({
       }));
     }
   }, [requireServices, trustedRead]);
+
+  const runAutomaticBackupCommand = useCallback(async (
+    command: (runtime: AutomaticBackupRuntime) => Promise<void>,
+  ) => {
+    const runtime = requireServices().automaticBackupRuntime;
+    if (runtime === undefined) throw new Error("automatic_backup_unavailable");
+    await command(runtime);
+    setState((current) => ({ ...current, automaticBackup: runtime.current() }));
+  }, [requireServices]);
 
   const activatePlan = useCallback(async () => {
     const services = requireServices();
@@ -4091,6 +4137,21 @@ export function WorkoutAppRuntimeProvider({
     completeWarmup: completeWorkoutWarmup,
     createSecureBackup: (input) =>
       requireServices().backupCommands.createSecureBackup(input),
+    connectAutomaticBackup: () => runAutomaticBackupCommand((runtime) => runtime.connect()),
+    deferAutomaticRestore: () => runAutomaticBackupCommand((runtime) => runtime.deferRestore()),
+    cancelAutomaticBackupCheck: () => runAutomaticBackupCommand((runtime) => runtime.cancelChecking()),
+    checkAutomaticBackupAgain: () => runAutomaticBackupCommand((runtime) => runtime.checkAgain()),
+    continueAutomaticRestore: () => runAutomaticBackupCommand((runtime) => runtime.continueRestore()),
+    finishAutomaticBackupSetup: () => runAutomaticBackupCommand((runtime) => runtime.finishSetup()),
+    requestAutomaticBackupNow: () => runAutomaticBackupCommand((runtime) => runtime.backupNow()),
+    retryAutomaticBackup: () => runAutomaticBackupCommand((runtime) => runtime.retryBackup()),
+    useAutomaticBackupCellularThisTime: () => runAutomaticBackupCommand((runtime) => runtime.useCellularThisTime()),
+    setAutomaticBackupDataUsePolicy: (policy) => runAutomaticBackupCommand((runtime) => runtime.setDataUsePolicy(policy)),
+    takeOverAutomaticBackup: () => runAutomaticBackupCommand((runtime) => runtime.takeOver()),
+    disconnectAutomaticBackup: () => runAutomaticBackupCommand((runtime) => runtime.disconnect()),
+    deleteAutomaticCloudBackup: () => runAutomaticBackupCommand((runtime) => runtime.deleteCloudBackup()),
+    finishDeletingAutomaticCloudBackup: () => runAutomaticBackupCommand((runtime) => runtime.finishDeletingCloudBackup()),
+    startNewAutomaticCloudBackup: () => runAutomaticBackupCommand((runtime) => runtime.startNewCloudBackup()),
     createCsvExport: async () => {
       const services = requireServices();
       return services.csvFiles.writeCsv(
@@ -4292,6 +4353,7 @@ export function WorkoutAppRuntimeProvider({
     configureRuntimeAdvancedTiming,
     requireServices,
     createRuntimeCustomExercise,
+    runAutomaticBackupCommand,
     editRuntimeCustomExercise,
     createOwnedDraft,
     discardActiveWorkout,
