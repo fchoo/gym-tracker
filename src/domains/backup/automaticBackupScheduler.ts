@@ -7,19 +7,23 @@ export type AutomaticBackupScheduler = Readonly<{
 
 /** A fire-and-forget coalescer; callers never await network backup work. */
 export function createAutomaticBackupScheduler(input: Readonly<{
-  isWorkoutActive(): boolean;
+  isWorkoutActive(): boolean | Promise<boolean>;
   run(reason: AutomaticBackupRequest): Promise<void>;
   queue(work: () => void): void;
-  eligible?(): boolean;
+  eligible?(): boolean | Promise<boolean>;
   isBackgroundAllowed?(): boolean;
   onError?(reason: AutomaticBackupRequest): void;
 }>): AutomaticBackupScheduler {
   let queued = false;
   let running = false;
   let pending: AutomaticBackupRequest | null = null;
-  const drain = () => {
+  const drain = async () => {
     queued = false;
-    if (running || pending === null || input.isWorkoutActive() || input.eligible?.() === false) return;
+    if (running || pending === null || await input.isWorkoutActive()) return;
+    if (input.eligible !== undefined && !await input.eligible()) return;
+    // A workout may start while the read-only eligibility check is resolving.
+    // Recheck immediately before handing work to any network capture.
+    if (await input.isWorkoutActive()) return;
     const reason = pending;
     if (reason === "background" && input.isBackgroundAllowed?.() === false) return;
     pending = null;
@@ -32,7 +36,7 @@ export function createAutomaticBackupScheduler(input: Readonly<{
   const schedule = () => {
     if (queued) return;
     queued = true;
-    input.queue(drain);
+    input.queue(() => { void drain(); });
   };
   return Object.freeze({
     request(reason) {

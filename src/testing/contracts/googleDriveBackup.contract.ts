@@ -34,8 +34,8 @@ export async function runGoogleDriveBackupContract(): Promise<GoogleDriveBackupC
   await run("single-flight-idle-scheduler", async () => {
     let active = true; let calls = 0;
     const scheduler = createAutomaticBackupScheduler({ isWorkoutActive: () => active, run: async () => { calls += 1; }, queue: (work) => { void work(); } });
-    scheduler.request("post_commit"); await Promise.resolve(); if (calls !== 0) throw new Error("scheduler_ran_while_active");
-    active = false; scheduler.request("foreground"); await Promise.resolve(); if (Number(calls) !== 1) throw new Error("scheduler_did_not_recover");
+    scheduler.request("post_commit"); await new Promise<void>((resolve) => setTimeout(resolve, 0)); if (calls !== 0) throw new Error("scheduler_ran_while_active");
+    active = false; scheduler.request("foreground"); await new Promise<void>((resolve) => setTimeout(resolve, 0)); if (Number(calls) !== 1) throw new Error("scheduler_did_not_recover");
   });
   const failed = cases.filter((entry) => entry.status === "failed").length;
   const finishedAt = new Date().toISOString();
