@@ -102,7 +102,7 @@ const PHASE2_AGGREGATE_CASE_IDS = [
   ...PHASE2_CASE_IDS,
 ] as const;
 const configuredSuite = process.env.EXPO_PUBLIC_NATIVE_CONTRACT_SUITE;
-const defaultSuite = configuredSuite === "phase10" || configuredSuite === "phase11"
+const defaultSuite = configuredSuite === "phase10" || configuredSuite === "phase11" || configuredSuite === "phase12"
   ? "migrations-effects"
   : configuredSuite === "migrations-effects"
   || configuredSuite === "phase2"

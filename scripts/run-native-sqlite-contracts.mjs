@@ -88,7 +88,7 @@ const suite = requestedSuite || manifest.suite;
 
 export function manifestSupportsRequestedSuite(manifestSuite, requestedSuite) {
   return manifestSuite === requestedSuite
-    || ((manifestSuite === 'phase10' || manifestSuite === 'phase11')
+    || ((manifestSuite === 'phase10' || manifestSuite === 'phase11' || manifestSuite === 'phase12')
       && requestedSuite === 'migrations-effects')
     || (manifestSuite === 'phase11' && requestedSuite === 'portable-merge');
 }
