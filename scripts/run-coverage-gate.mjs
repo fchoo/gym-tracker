@@ -24,6 +24,9 @@ const integrityCriticalFiles = [
   "src/domains/portability/csvExport.ts",
   "src/domains/portability/restoreCommands.ts",
   "src/domains/portability/automaticPortability.ts",
+  "src/domains/backup/automaticBackupContracts.ts",
+  "src/domains/backup/automaticBackupCoordinator.ts",
+  "src/domains/backup/automaticBackupScheduler.ts",
   "src/domains/library/customExerciseCommands.ts",
   "src/domains/library/search.ts",
   "src/domains/metrics/aggregates.ts",
@@ -91,6 +94,7 @@ const integrityCriticalFiles = [
   "src/platform/sqlite/migrations/0020_session_exercise_edit_receipts.ts",
   "src/platform/sqlite/migrations/0021_advanced_set_timing.ts",
   "src/platform/sqlite/migrations/0022_portable_owner_identities.ts",
+  "src/platform/sqlite/migrations/0023_automatic_drive_backup.ts",
   "src/platform/sqlite/migrations/index.ts",
   "src/platform/sqlite/recoveryBackup.ts",
   "src/platform/sqlite/repositories/contentRepository.ts",
@@ -108,10 +112,13 @@ const integrityCriticalFiles = [
   "src/platform/sqlite/repositories/ownedPlanRepository.ts",
   "src/platform/sqlite/repositories/planImpactRepository.ts",
   "src/platform/sqlite/repositories/starterPlanRepository.ts",
+  "src/platform/sqlite/repositories/automaticBackupStateRepository.ts",
   "src/platform/sqlite/serializedWriter.ts",
   "src/platform/sqlite/sqliteKernel.ts",
   "src/platform/files/expoBackupFilePort.ts",
   "src/platform/files/expoCsvFilePort.ts",
+  "src/platform/google/googleAuthAdapter.ts",
+  "src/platform/google/driveBackupStoreAdapter.ts",
 ];
 
 function coverageDirectoryArgument(args) {

@@ -49,4 +49,31 @@ describe("automatic backup contracts", () => {
       kind: "active", latest: { fileId: "id", object_sha256: "a".repeat(64) }, previous: null,
     })).toThrow();
   });
+
+  it("canonicalizes every supported JSON shape and rejects non-plain values", () => {
+    expect(canonicalJson({ z: [null, true, 2, "x"], a: { b: false } })).toBe('{"a":{"b":false},"z":[null,true,2,"x"]}');
+    expect(() => canonicalJson(new Date())).toThrow("automatic_backup_contract_invalid");
+  });
+
+  it.each([
+    [{ kind: "active", writer_epoch: 0, latest: { fileId: "id", object_sha256: "a".repeat(64) }, previous: null }],
+    [{ kind: "active", writer_epoch: 1.5, latest: { fileId: "id", object_sha256: "a".repeat(64) }, previous: null }],
+    [{ kind: "active", writer_epoch: 1, latest: { fileId: "", object_sha256: "a".repeat(64) }, previous: null }],
+    [{ kind: "active", writer_epoch: 1, latest: { fileId: "id", object_sha256: "A".repeat(64) }, previous: null }],
+    [{ kind: "active", writer_epoch: 1, latest: { fileId: "id", object_sha256: "a".repeat(64), extra: true }, previous: null }],
+    [{ kind: "deleted", successorWriterEpoch: -1, deletedAtMs: 0 }],
+    [{ kind: "deleted", successorWriterEpoch: 0, deletedAtMs: -1 }],
+    [{ kind: "deleted", successorWriterEpoch: 0.5, deletedAtMs: 0 }],
+  ])("rejects invalid strict manifest data", (manifest) => {
+    expect(() => parseDriveBackupManifestV1(manifest)).toThrow("automatic_backup_manifest_invalid");
+  });
+
+  it("accepts an exact previous descriptor and a zero epoch tombstone", () => {
+    expect(parseDriveBackupManifestV1({
+      kind: "active", writer_epoch: 1,
+      latest: { fileId: "latest", object_sha256: "a".repeat(64) },
+      previous: { fileId: "previous", object_sha256: "b".repeat(64) },
+    })).toMatchObject({ kind: "active", previous: { fileId: "previous" } });
+    expect(parseDriveBackupManifestV1({ kind: "deleted", successorWriterEpoch: 0, deletedAtMs: 0 })).toMatchObject({ kind: "deleted" });
+  });
 });

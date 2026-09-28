@@ -41,4 +41,31 @@ describe("automatic backup scheduler", () => {
 
     expect(run).not.toHaveBeenCalled();
   });
+
+  it("cancels a queued request, preserves manual priority, and reports a rejected run", async () => {
+    const queued: Array<() => void> = [];
+    const errors: string[] = [];
+    const scheduler = createAutomaticBackupScheduler({
+      isWorkoutActive: () => false,
+      eligible: () => true,
+      isBackgroundAllowed: () => false,
+      run: async (reason) => { if (reason === "manual") throw new Error("offline"); },
+      queue: (work) => { queued.push(work); },
+      onError: (reason) => { errors.push(reason); },
+    });
+    scheduler.request("background");
+    queued.shift()?.();
+    await settle();
+    scheduler.request("retry");
+    scheduler.request("manual");
+    scheduler.request("post_commit");
+    queued.shift()?.();
+    await settle();
+    expect(errors).toEqual(["manual"]);
+    scheduler.request("retry");
+    scheduler.cancel();
+    queued.shift()?.();
+    await settle();
+    expect(errors).toEqual(["manual"]);
+  });
 });
