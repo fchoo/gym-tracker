@@ -32,3 +32,11 @@ test("Phase 12 becomes the explicit credential-free PR native producer", () => {
   assert.match(workflow, /verify:phase12:evidence/u);
   assert.doesNotMatch(workflow, /GOOGLE_(?:TOKEN|TEST_ACCOUNT)|access[_-]?token/iu);
 });
+
+test("Phase 12 native benchmark route is development-test and suite gated", () => {
+  const route = readFileSync("app/__phase12-benchmark.tsx", "utf8");
+  assert.match(route, /nativeContractsEnabled === true/u);
+  assert.match(route, /suite === "phase12"/u);
+  assert.match(route, /PHASE12_BENCHMARK_START_MARKER/u);
+  assert.match(route, /PHASE12_BENCHMARK_RESULT_MARKER/u);
+});
