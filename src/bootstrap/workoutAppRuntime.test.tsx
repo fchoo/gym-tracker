@@ -86,6 +86,9 @@ import {
   PORTABLE_OWNER_IDENTITIES_TRIGGER_STATEMENTS,
 } from "../platform/sqlite/migrations/0022_portable_owner_identities";
 import {
+  AUTOMATIC_BACKUP_GENERATION_TRIGGER_STATEMENTS,
+} from "../platform/sqlite/migrations/0023_automatic_drive_backup";
+import {
   AppearanceProvider,
 } from "../ui/theme";
 
@@ -3167,6 +3170,15 @@ describe("WorkoutAppRuntimeProvider", () => {
       }
       if (sql === "SELECT id, owner_namespace FROM portable_owner_identity") {
         return [{ id: 1, owner_namespace: "0123456789abcdef0123456789abcdef" }];
+      }
+      if (sql === "SELECT id, mutation_generation, backed_up_generation FROM automatic_backup_state") {
+        return [{ id: 1, mutation_generation: 0, backed_up_generation: 0 }];
+      }
+      if (sql === "SELECT name FROM sqlite_master WHERE type = 'trigger' AND name LIKE 'automatic_backup_generation_%'") {
+        return AUTOMATIC_BACKUP_GENERATION_TRIGGER_STATEMENTS.map((_, index) => ({ name: `automatic_backup_generation_${index}` }));
+      }
+      if (sql === "SELECT id, environment FROM automatic_backup_receipt_state") {
+        return [{ id: 1, environment: "production" }];
       }
       if (sql.includes("portable_id IS NULL")) {
         return [{ count: 0 }];
