@@ -15,11 +15,13 @@ describe("automatic backup state repository", () => {
 
     await repository.setRecoveryStatus("restore_pending");
     await repository.setDataUsePolicy("wifi-only");
+    await repository.beginQuarantine({ environment: "development-test", permissionId: "permission", connectionGeneration: 3, accountDisplayLabel: "…@example.com" });
     await repository.disconnectLocal();
 
     expect(statements.join("\n")).toContain("status_code");
     expect(statements.join("\n")).toContain("data_use_policy");
     expect(statements.join("\n")).toContain("permission_id = NULL");
+    expect(statements.join("\n")).toContain("account_display_label");
   });
   it("returns only bounded state and conditionally acknowledges captured generation", async () => {
     const repository = createAutomaticBackupStateRepository({

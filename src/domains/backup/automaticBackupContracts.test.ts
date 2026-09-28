@@ -32,8 +32,8 @@ describe("automatic backup contracts", () => {
 
   it("accepts exact active and deleted manifest variants only", () => {
     expect(parseDriveBackupManifestV1({
-      kind: "active", latest: { fileId: "id", object_sha256: "a".repeat(64) }, previous: null,
-    })).toMatchObject({ kind: "active" });
+      kind: "active", writer_epoch: 2, latest: { fileId: "id", object_sha256: "a".repeat(64) }, previous: null,
+    })).toMatchObject({ kind: "active", writerEpoch: 2 });
     expect(parseDriveBackupManifestV1({
       kind: "deleted", successorWriterEpoch: 3, deletedAtMs: 4,
     })).toMatchObject({ kind: "deleted" });
@@ -42,8 +42,11 @@ describe("automatic backup contracts", () => {
 
   it("rejects a manifest above its strict byte bound", () => {
     expect(() => parseDriveBackupManifestV1({
-      kind: "active", latest: { fileId: "id", object_sha256: "a".repeat(64) },
+      kind: "active", writer_epoch: 2, latest: { fileId: "id", object_sha256: "a".repeat(64) },
       previous: "x".repeat(AUTOMATIC_BACKUP_LIMITS.maxManifestBytes),
+    })).toThrow();
+    expect(() => parseDriveBackupManifestV1({
+      kind: "active", latest: { fileId: "id", object_sha256: "a".repeat(64) }, previous: null,
     })).toThrow();
   });
 });

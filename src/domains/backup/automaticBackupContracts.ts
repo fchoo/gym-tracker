@@ -11,7 +11,7 @@ export type DriveBackupSnapshotV1 = Readonly<{
 }>;
 export type DriveBackupObjectDescriptorV1 = Readonly<{ fileId: string; object_sha256: string }>;
 export type DriveBackupManifestV1 = Readonly<
-  | { kind: "active"; latest: DriveBackupObjectDescriptorV1; previous: DriveBackupObjectDescriptorV1 | null }
+  | { kind: "active"; writerEpoch: number; latest: DriveBackupObjectDescriptorV1; previous: DriveBackupObjectDescriptorV1 | null }
   | { kind: "deleted"; successorWriterEpoch: number; deletedAtMs: number }
 >;
 
@@ -34,7 +34,12 @@ export function createDriveBackupSnapshotV1(input: Readonly<{ header: DriveBacku
 }
 export function parseDriveBackupManifestV1(value: unknown): DriveBackupManifestV1 {
   if (!plain(value) || new TextEncoder().encode(canonicalJson(value)).byteLength > AUTOMATIC_BACKUP_LIMITS.maxManifestBytes) throw new Error("automatic_backup_manifest_invalid");
-  if (value.kind === "active" && Object.keys(value).length === 3 && descriptor(value.latest) && (value.previous === null || descriptor(value.previous))) return Object.freeze({ kind: "active", latest: value.latest, previous: value.previous });
+  const writerEpoch = value.writer_epoch;
+  if (value.kind === "active" && Object.keys(value).length === 4
+    && typeof writerEpoch === "number" && Number.isSafeInteger(writerEpoch) && writerEpoch >= 1
+    && descriptor(value.latest) && (value.previous === null || descriptor(value.previous))) {
+    return Object.freeze({ kind: "active", writerEpoch, latest: value.latest, previous: value.previous });
+  }
   const successorWriterEpoch = value.successorWriterEpoch;
   const deletedAtMs = value.deletedAtMs;
   if (value.kind === "deleted" && Object.keys(value).length === 3 && typeof successorWriterEpoch === "number" && Number.isSafeInteger(successorWriterEpoch) && successorWriterEpoch >= 0 && typeof deletedAtMs === "number" && Number.isSafeInteger(deletedAtMs) && deletedAtMs >= 0) return Object.freeze({ kind: "deleted", successorWriterEpoch, deletedAtMs });

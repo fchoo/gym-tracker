@@ -44,7 +44,7 @@ export function createAutomaticBackupCoordinator(input: Readonly<{
     read(): Promise<BackupState>;
     persistAttempt(input: Receipt & Readonly<{ candidateId: string; nowMs: number }>): Promise<void>;
     acknowledgeReceipt(input: Receipt): Promise<boolean>;
-    beginQuarantine?(value: Readonly<{ environment: AutomaticBackupEnvironment; permissionId: string; connectionGeneration: number }>): Promise<void>;
+    beginQuarantine?(value: Readonly<{ environment: AutomaticBackupEnvironment; permissionId: string; connectionGeneration: number; accountDisplayLabel?: string | null }>): Promise<void>;
     activateWriter?(value: Readonly<{ manifestId: string; manifestEtag: string; writerEpoch: number; permissionId: string; connectionGeneration: number }>): Promise<boolean>;
     markStaleWriter?(writerEpoch: number): Promise<boolean>;
     setRecoveryStatus?(status: "idle" | "checking" | "restore_pending" | "restoring" | "finishing" | "paused"): Promise<void>;
@@ -112,7 +112,7 @@ export function createAutomaticBackupCoordinator(input: Readonly<{
     const prior = await input.state.read();
     const permissionId = identity?.permissionId ?? prior.permissionId;
     if (permissionId === null) return Object.freeze({ status: "cancelled" as const });
-    await input.state.beginQuarantine?.({ environment: prior.environment, permissionId, connectionGeneration: prior.connectionGeneration + (identity === undefined ? 0 : 1) });
+    await input.state.beginQuarantine?.({ environment: prior.environment, permissionId, connectionGeneration: prior.connectionGeneration + (identity === undefined ? 0 : 1), ...(identity === undefined ? {} : { accountDisplayLabel: identity.displayEmail }) });
     await input.state.setRecoveryStatus?.("checking");
     const result = await recover();
     if (generation !== checkingGeneration) return Object.freeze({ status: "cancelled" as const });

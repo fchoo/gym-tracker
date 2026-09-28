@@ -22,6 +22,7 @@ import { portableOwnerIdentitiesMigration } from "./0022_portable_owner_identiti
 import { automaticDriveBackupMigration } from "./0023_automatic_drive_backup";
 import { automaticBackupReceiptsMigration } from "./0024_automatic_backup_receipts";
 import { automaticBackupDeletionProgressMigration } from "./0025_automatic_backup_deletion_progress";
+import { automaticBackupAccountLabelMigration } from "./0026_automatic_backup_account_label";
 
 export const migrations = Object.freeze([
   initialMigration,
@@ -48,6 +49,7 @@ export const migrations = Object.freeze([
   automaticDriveBackupMigration,
   automaticBackupReceiptsMigration,
   automaticBackupDeletionProgressMigration,
+  automaticBackupAccountLabelMigration,
 ]);
 
 export {
@@ -73,6 +75,7 @@ export {
   automaticDriveBackupMigration,
   automaticBackupReceiptsMigration,
   automaticBackupDeletionProgressMigration,
+  automaticBackupAccountLabelMigration,
   outcomeEffortMigration,
   scheduleActivationMigration,
 };
