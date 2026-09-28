@@ -93,9 +93,23 @@ export function createDriveBackupStoreAdapter(input: Readonly<{ environment: Aut
     assertId(manifestId); bytes(manifest, 16 * 1024); assertEtag(etag); const response = await request(`${DRIVE_UPLOAD}/files/${encodeURIComponent(manifestId)}?uploadType=media`, { method: "PATCH", headers: { "Content-Type": "application/json", "If-Match": etag }, body: manifest as unknown as BodyInit });
     if (response.status === 409 || response.status === 412) throw new Error("drive_manifest_conflict"); if (!response.ok) throw new Error("drive_manifest_update_failed"); return responseEtag(response);
   }
+  async function createManifest(candidateId: string, manifest: Uint8Array): Promise<Readonly<{ fileId: string; etag: string }>> {
+    assertId(candidateId); bytes(manifest, 16 * 1024);
+    const boundary = "gym-tracker-drive-backup-v1";
+    const metadata = JSON.stringify({ id: candidateId, name: "manifest.json", appProperties: properties, mimeType: "application/json" });
+    const prefix = new TextEncoder().encode(`--${boundary}\r\nContent-Type: application/json; charset=UTF-8\r\n\r\n${metadata}\r\n--${boundary}\r\nContent-Type: application/json\r\n\r\n`);
+    const suffix = new TextEncoder().encode(`\r\n--${boundary}--\r\n`);
+    const payload = new Uint8Array(prefix.byteLength + manifest.byteLength + suffix.byteLength); payload.set(prefix); payload.set(manifest, prefix.byteLength); payload.set(suffix, prefix.byteLength + manifest.byteLength);
+    const response = await request(`${DRIVE_UPLOAD}/files?uploadType=multipart&fields=id`, { method: "POST", headers: { "Content-Type": `multipart/related; boundary=${boundary}` }, body: payload as unknown as BodyInit });
+    if (response.status === 409 || response.status === 412) throw new Error("drive_manifest_conflict");
+    if (!response.ok) throw new Error("drive_manifest_create_failed");
+    const result = json(await body(response, 64 * 1024));
+    if (typeof result !== "object" || result === null || typeof (result as { id?: unknown }).id !== "string" || (result as { id: string }).id !== candidateId) throw new Error("drive_manifest_create_invalid");
+    return Object.freeze({ fileId: candidateId, etag: responseEtag(response) });
+  }
   async function trash(fileId: string, expectedWriterEpoch: number, etag: string): Promise<void> {
     assertId(fileId); if (!Number.isSafeInteger(expectedWriterEpoch) || expectedWriterEpoch < 0) throw new Error("drive_writer_epoch_invalid"); assertEtag(etag); const response = await request(`${DRIVE_API}/files/${encodeURIComponent(fileId)}`, { method: "PATCH", headers: { "Content-Type": "application/json", "If-Match": etag, "X-Gym-Tracker-Writer-Epoch": String(expectedWriterEpoch) }, body: JSON.stringify({ trashed: true }) }); if (response.status === 409 || response.status === 412) throw new Error("drive_trash_fenced"); if (!response.ok) throw new Error("drive_trash_failed");
   }
   async function deleteTombstoned(fileId: string): Promise<void> { assertId(fileId); const response = await request(`${DRIVE_API}/files/${encodeURIComponent(fileId)}`, { method: "DELETE" }); if (response.status !== 404 && !response.ok) throw new Error("drive_delete_failed"); }
-  return Object.freeze({ environment: input.environment, discover, readManifest, download, createSnapshot, createResumableSnapshot, resumeSnapshot, updateManifest, trash, deleteTombstoned });
+  return Object.freeze({ environment: input.environment, discover, readManifest, createManifest, claimManifest: updateManifest, download, createSnapshot, createResumableSnapshot, resumeSnapshot, updateManifest, trash, deleteTombstoned });
 }
