@@ -108,4 +108,51 @@ describe("Drive backup store adapter", () => {
     const session = await badRange.createResumableSnapshot("candidate", payload);
     await expect(badRange.resumeSnapshot(session, payload)).rejects.toThrow("drive_resumable_range_invalid");
   });
+
+  it("fails closed for every malformed Drive transport and mutation acknowledgement", async () => {
+    const tokenTooLarge = createDriveBackupStoreAdapter({ environment: "development-test", token: async () => "x".repeat(16 * 1024 + 1), fetch: async () => response({ files: [] }) });
+    await expect(tokenTooLarge.discover()).rejects.toThrow("drive_token_invalid");
+    const listFailed = createDriveBackupStoreAdapter({ environment: "development-test", token: async () => "token", fetch: async () => response(null, { status: 500 }) });
+    await expect(listFailed.discover()).rejects.toThrow("drive_list_failed");
+    const listShape = createDriveBackupStoreAdapter({ environment: "development-test", token: async () => "token", fetch: async () => response({ files: [{}] }) });
+    await expect(listShape.discover()).rejects.toThrow("drive_metadata_invalid");
+    const badLength = createDriveBackupStoreAdapter({ environment: "development-test", token: async () => "token", fetch: async () => response("{}", { headers: { "content-length": "bad" } }) });
+    await expect(badLength.discover()).rejects.toThrow("drive_response_too_large");
+    const noEtag = createDriveBackupStoreAdapter({ environment: "development-test", token: async () => "token", fetch: async (url) => url.includes("alt=media") ? response("{}") : response({ files: [{ id: "manifest", name: "manifest.json", appProperties: properties }] }) });
+    await expect(noEtag.readManifest()).rejects.toThrow("drive_etag_missing");
+
+    const mutation = createDriveBackupStoreAdapter({ environment: "development-test", token: async () => "token", fetch: async (url) => {
+      if (url.includes("uploadType=multipart")) return response({}, { headers: { etag: '"etag"' } });
+      if (url.includes("uploadType=resumable")) return response(null, { headers: { location: "https://www.googleapis.com/upload/session" } });
+      if (url.includes("/session")) return response({});
+      return response(null, { status: 500 });
+    } });
+    await expect(mutation.createSnapshot("candidate", new Uint8Array([1]))).rejects.toThrow("drive_metadata_invalid");
+    await expect(mutation.createManifest("manifest", new Uint8Array([1]))).rejects.toThrow("drive_manifest_create_invalid");
+    const session = await mutation.createResumableSnapshot("candidate", new Uint8Array(5 * 1024 * 1024 + 1));
+    await expect(mutation.resumeSnapshot(session, new Uint8Array(5 * 1024 * 1024 + 1))).rejects.toThrow("drive_metadata_invalid");
+    await expect(mutation.updateManifest("manifest", new Uint8Array([1]), '"etag"')).rejects.toThrow("drive_manifest_update_failed");
+    await expect(mutation.trash("candidate", 1, '"etag"')).rejects.toThrow("drive_trash_failed");
+    await expect(mutation.deleteTombstoned("candidate")).rejects.toThrow("drive_delete_failed");
+    await expect(mutation.trash("candidate", -1, '"etag"')).rejects.toThrow("drive_writer_epoch_invalid");
+  });
+
+  it("preserves production namespace and bounded discovery/deletion behavior", async () => {
+    const productionProperties = { gym_tracker_backup: "v1", environment: "production", package: "com.fchoo.gymtracker" };
+    const adapter = createDriveBackupStoreAdapter({
+      environment: "production", token: async () => "token", fetch: async (url) => {
+        if (url.includes("files?q=")) return response({ files: [
+          { id: "snapshot", name: "snapshot-snapshot.json", appProperties: { ...productionProperties, object_kind: "snapshot" } },
+          { id: "other", name: "other", appProperties: { ...productionProperties, object_kind: "other" } },
+        ] });
+        if (url.includes("alt=media")) return response("x".repeat(17 * 1024));
+        return response({ id: "candidate" }, { headers: { etag: '"etag"' } });
+      },
+    });
+    await expect(adapter.discoverSnapshotsForDeletion()).resolves.toEqual([expect.objectContaining({ fileId: "snapshot" })]);
+    await expect(adapter.download("snapshot", 16 * 1024)).rejects.toThrow("drive_response_too_large");
+    await expect(adapter.createSnapshot("candidate", new Uint8Array(5 * 1024 * 1024 + 1))).rejects.toThrow("drive_response_too_large");
+    await expect(adapter.createManifest("manifest", new Uint8Array(16 * 1024 + 1))).rejects.toThrow("drive_response_too_large");
+    await expect(adapter.createResumableSnapshot("candidate", new Uint8Array(24 * 1024 * 1024 + 1))).rejects.toThrow("drive_resumable_size_invalid");
+  });
 });

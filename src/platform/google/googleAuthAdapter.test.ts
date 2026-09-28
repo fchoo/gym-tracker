@@ -72,4 +72,11 @@ describe("Google auth adapter", () => {
     expect(auth.identity()).toBeNull();
     expect(native.signOut).toHaveBeenCalledTimes(1);
   });
+
+  it("rejects non-string identity fields and strips only an actual email local part", async () => {
+    const badPermission = createGoogleAuthAdapter({ webClientId: clientId, bridge: bridge() as never, about: async () => ({ user: { permissionId: 1 } }) });
+    await expect(badPermission.connect()).rejects.toThrow("google_identity_invalid");
+    const noEmail = createGoogleAuthAdapter({ webClientId: clientId, bridge: bridge() as never, about: async () => ({ user: { permissionId: "permission", emailAddress: 1 } }) });
+    await expect(noEmail.connect()).resolves.toEqual({ permissionId: "permission", displayEmail: null });
+  });
 });

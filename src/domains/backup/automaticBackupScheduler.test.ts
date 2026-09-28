@@ -95,4 +95,21 @@ describe("automatic backup scheduler", () => {
 
     expect(calls).toEqual(["background", "retry"]);
   });
+
+  it("coalesces manual priority, cancellation, ineligible, and a workout that starts during eligibility", async () => {
+    const queued: Array<() => void> = [];
+    const calls: string[] = [];
+    let active = false;
+    const scheduler = createAutomaticBackupScheduler({
+      isWorkoutActive: () => active, eligible: async () => { active = true; return true; },
+      run: async (reason) => { calls.push(reason); }, queue: (work) => { queued.push(work); },
+    });
+    scheduler.request("retry"); scheduler.request("manual"); queued.shift()?.(); await settle();
+    expect(calls).toEqual([]);
+    active = false;
+    const ineligible = createAutomaticBackupScheduler({ isWorkoutActive: () => false, eligible: () => false, run: async (reason) => { calls.push(reason); }, queue: (work) => { queued.push(work); } });
+    ineligible.request("manual"); queued.shift()?.(); await settle();
+    ineligible.request("retry"); ineligible.cancel(); queued.shift()?.(); await settle();
+    expect(calls).toEqual([]);
+  });
 });

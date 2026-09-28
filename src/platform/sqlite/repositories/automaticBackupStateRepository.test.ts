@@ -131,5 +131,6 @@ describe("automatic backup state repository", () => {
     await expect(automaticDriveBackupMigration.verify(transaction as SqliteTransactionExecutor)).resolves.toBeUndefined();
     await expect(automaticDriveBackupMigration.verify({ ...transaction, queryAll: async () => [] } as unknown as SqliteTransactionExecutor)).rejects.toThrow("automatic_backup_schema_incomplete");
     await expect(automaticDriveBackupMigration.verify({ ...transaction, queryAll: async (sql: string) => sql.includes("automatic_backup_state") ? [{ id: 1, mutation_generation: 1, backed_up_generation: 2 }] : [] } as unknown as SqliteTransactionExecutor)).rejects.toThrow("automatic_backup_schema_incomplete");
+    await expect(automaticDriveBackupMigration.verify({ ...transaction, queryAll: async (sql: string) => sql.includes("automatic_backup_state") ? [{ id: 1, mutation_generation: 2, backed_up_generation: 2 }] : [] } as unknown as SqliteTransactionExecutor)).rejects.toThrow("automatic_backup_schema_incomplete");
   });
 });
