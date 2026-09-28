@@ -1,7 +1,11 @@
 import { describe, expect, it, jest } from "@jest/globals";
 
 jest.mock("react-native-nitro-google-signin", () => ({
-  GoogleOneTapSignIn: {},
+  GoogleOneTapSignIn: {
+    configure: jest.fn(), signIn: jest.fn(async () => ({ ok: true })),
+    requestScopes: jest.fn(async () => ({ accessToken: "default-token" })),
+    getTokens: jest.fn(async () => ({ accessToken: "default-token" })), signOut: jest.fn(async () => undefined),
+  },
   isSuccessResponse: (value: unknown) => (value as { ok?: unknown })?.ok === true,
 }));
 
@@ -78,5 +82,18 @@ describe("Google auth adapter", () => {
     await expect(badPermission.connect()).rejects.toThrow("google_identity_invalid");
     const noEmail = createGoogleAuthAdapter({ webClientId: clientId, bridge: bridge() as never, about: async () => ({ user: { permissionId: "permission", emailAddress: 1 } }) });
     await expect(noEmail.connect()).resolves.toEqual({ permissionId: "permission", displayEmail: null });
+  });
+
+  it("uses the native One-Tap bridge when no override is supplied and rejects a null identity", async () => {
+    const auth = createGoogleAuthAdapter({
+      webClientId: clientId,
+      about: async () => ({ user: { permissionId: "default-permission" } }),
+    });
+    await expect(auth.connect()).resolves.toEqual({ permissionId: "default-permission", displayEmail: null });
+
+    const nullIdentity = createGoogleAuthAdapter({
+      webClientId: clientId, bridge: bridge() as never, about: async () => null,
+    });
+    await expect(nullIdentity.connect()).rejects.toThrow("google_identity_invalid");
   });
 });

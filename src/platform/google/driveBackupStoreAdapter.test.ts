@@ -155,4 +155,65 @@ describe("Drive backup store adapter", () => {
     await expect(adapter.createManifest("manifest", new Uint8Array(16 * 1024 + 1))).rejects.toThrow("drive_response_too_large");
     await expect(adapter.createResumableSnapshot("candidate", new Uint8Array(24 * 1024 * 1024 + 1))).rejects.toThrow("drive_resumable_size_invalid");
   });
+
+  it("fails closed for every remaining response branch while preserving valid empty and final responses", async () => {
+    const nativeFetch = global.fetch;
+    const defaultFetch = jest.fn(async () => response({ files: [] }));
+    global.fetch = defaultFetch as typeof fetch;
+    try {
+      await expect(createDriveBackupStoreAdapter({ environment: "development-test", token: async () => "token" }).discover()).resolves.toEqual([]);
+      expect(defaultFetch).toHaveBeenCalledTimes(1);
+    } finally {
+      global.fetch = nativeFetch;
+    }
+
+    const empty = createDriveBackupStoreAdapter({ environment: "development-test", token: async () => "token", fetch: async () => response({ files: [] }) });
+    await expect(empty.discover()).resolves.toEqual([]);
+    await expect(empty.readManifest()).resolves.toBeNull();
+
+    const badListShape = createDriveBackupStoreAdapter({ environment: "development-test", token: async () => "token", fetch: async () => response(null) });
+    await expect(badListShape.discover()).rejects.toThrow("drive_response_invalid");
+    const nonObjectList = createDriveBackupStoreAdapter({ environment: "development-test", token: async () => "token", fetch: async () => response('"not-an-object"') });
+    await expect(nonObjectList.discover()).rejects.toThrow("drive_response_invalid");
+    const nonObjectEntry = createDriveBackupStoreAdapter({ environment: "development-test", token: async () => "token", fetch: async () => response({ files: [null] }) });
+    await expect(nonObjectEntry.discover()).rejects.toThrow("drive_metadata_invalid");
+
+    const downloadFailure = createDriveBackupStoreAdapter({ environment: "development-test", token: async () => "token", fetch: async () => response(null, { status: 500 }) });
+    await expect(downloadFailure.download("snapshot", 1)).rejects.toThrow("drive_download_failed");
+
+    const readFailure = createDriveBackupStoreAdapter({
+      environment: "development-test", token: async () => "token",
+      fetch: async (url) => url.includes("files?q=")
+        ? response({ files: [{ id: "manifest", name: "manifest.json", appProperties: properties }] })
+        : response(null, { status: 500 }),
+    });
+    await expect(readFailure.readManifest()).rejects.toThrow("drive_manifest_read_failed");
+
+    const candidateChanged = createDriveBackupStoreAdapter({ environment: "development-test", token: async () => "token", fetch: async () => response({ id: "other" }) });
+    await expect(candidateChanged.createSnapshot("candidate", new Uint8Array([1]))).rejects.toThrow("drive_candidate_id_changed");
+    const rejectedCandidate = createDriveBackupStoreAdapter({ environment: "development-test", token: async () => "token", fetch: async () => response(null, { status: 500 }) });
+    await expect(rejectedCandidate.createSnapshot("candidate", new Uint8Array([1]))).rejects.toThrow("drive_snapshot_create_failed");
+
+    const resumableFailures = createDriveBackupStoreAdapter({
+      environment: "development-test", token: async () => "token",
+      fetch: async (url) => url.includes("uploadType=resumable")
+        ? response(null, { status: 500 }) : response(null, { status: 500 }),
+    });
+    await expect(resumableFailures.createResumableSnapshot("candidate", new Uint8Array(5 * 1024 * 1024 + 1))).rejects.toThrow("drive_resumable_create_failed");
+
+    const missingLocation = createDriveBackupStoreAdapter({ environment: "development-test", token: async () => "token", fetch: async () => response(null) });
+    await expect(missingLocation.createResumableSnapshot("candidate", new Uint8Array(5 * 1024 * 1024 + 1))).rejects.toThrow("drive_resumable_location_missing");
+
+    const rejectedUpload = createDriveBackupStoreAdapter({ environment: "development-test", token: async () => "token", fetch: async () => response(null, { status: 500 }) });
+    await expect(rejectedUpload.resumeSnapshot({ location: "https://www.googleapis.com/upload/session", uploadedBytes: 0 }, new Uint8Array([1]))).rejects.toThrow("drive_resumable_upload_failed");
+    const missingRange = createDriveBackupStoreAdapter({ environment: "development-test", token: async () => "token", fetch: async () => response(null, { status: 308 }) });
+    await expect(missingRange.resumeSnapshot({ location: "https://www.googleapis.com/upload/session", uploadedBytes: 0 }, new Uint8Array([1]))).rejects.toThrow("drive_resumable_range_invalid");
+    const staleRange = createDriveBackupStoreAdapter({ environment: "development-test", token: async () => "token", fetch: async () => response(null, { status: 308, headers: { range: "bytes=0-0" } }) });
+    await expect(staleRange.resumeSnapshot({ location: "https://www.googleapis.com/upload/session", uploadedBytes: 1 }, new Uint8Array([2, 3]))).rejects.toThrow("drive_resumable_range_invalid");
+
+    const badCreate = createDriveBackupStoreAdapter({ environment: "development-test", token: async () => "token", fetch: async () => response(null, { status: 500 }) });
+    await expect(badCreate.createManifest("manifest", new Uint8Array([1]))).rejects.toThrow("drive_manifest_create_failed");
+    const deleted = createDriveBackupStoreAdapter({ environment: "development-test", token: async () => "token", fetch: async () => response(null, { status: 204 }) });
+    await expect(deleted.deleteTombstoned("snapshot")).resolves.toBeUndefined();
+  });
 });

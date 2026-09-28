@@ -1602,6 +1602,35 @@ describe("portable merge plan", () => {
       .resolves.toEqual(expect.objectContaining({ kind: "local_won" }));
   });
 
+  it("indexes every valid descendant once and leaves dangling extension references out of a session digest", () => {
+    const source = snapshot({ id: "session", marker: "source", modifiedAtMs: 20 }, {
+      session_exercises: [{ id: "exercise", session_id: "session" }],
+      session_sets: [
+        { id: "set", session_exercise_id: "exercise" },
+        { id: "orphan-set", session_exercise_id: "missing-exercise" },
+      ],
+      extension_rows: [
+        { id: "by-session", session_id: "session" },
+        { id: "by-exercise", session_exercise_id: "exercise" },
+        { id: "by-set", session_set_id: "set" },
+        { id: "by-completed-set", completed_set_id: "set" },
+        { id: "unknown-exercise", session_exercise_id: "missing-exercise" },
+        { id: "unknown-set", session_set_id: "missing-set" },
+        { id: "unknown-session", session_id: "missing-session" },
+      ],
+    });
+
+    const index = __mergePlanTestOnly.createSessionDigestIndex(source);
+    const indexed = __mergePlanTestOnly.sessionDigestInput(source, source.tables.workout_sessions[0]!, index);
+    const fallback = __mergePlanTestOnly.sessionDigestInput(source, source.tables.workout_sessions[0]!);
+
+    expect(indexed).toEqual(fallback);
+    expect(indexed).toContain('"by-completed-set"');
+    expect(indexed).not.toContain('"unknown-exercise"');
+    expect(indexed).not.toContain('"unknown-set"');
+    expect(indexed).not.toContain('"unknown-session"');
+  });
+
   it("preserves a supplied imported deactivation and routes source-only request records", () => {
     const archive = snapshot({ id: "archive-session", marker: "archive", modifiedAtMs: 20 }, {
       plans: [{ id: "archive-plan", origin: "custom", portable_id: "c".repeat(32), is_active: 1 }],

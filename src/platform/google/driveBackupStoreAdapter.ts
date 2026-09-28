@@ -29,7 +29,7 @@ function appPropertiesQuery(expected: Readonly<Record<string, string>>): string 
 function assertId(value: string): void { if (!/^[A-Za-z0-9_-]{1,256}$/u.test(value)) throw new Error("drive_file_id_invalid"); }
 function assertEtag(value: string): void { if (value.length === 0 || value === "*") throw new Error("drive_etag_invalid"); }
 function origin(url: string): void { const parsed = new URL(url); if (parsed.origin !== "https://www.googleapis.com") throw new Error("drive_origin_invalid"); }
-function bytes(value: Uint8Array, limit = MAX_RESPONSE_BYTES): void { if (value.byteLength > limit) throw new Error("drive_response_too_large"); }
+function bytes(value: Uint8Array, limit: number): void { if (value.byteLength > limit) throw new Error("drive_response_too_large"); }
 async function body(response: Response, limit: number): Promise<Uint8Array> {
   const length = response.headers.get("content-length");
   if (length !== null && (!/^\d+$/u.test(length) || Number(length) > limit)) throw new Error("drive_response_too_large");
