@@ -13,6 +13,19 @@ export type DriveToken = () => Promise<string>;
 function namespace(environment: AutomaticBackupEnvironment): Readonly<Record<string, string>> {
   return Object.freeze({ gym_tracker_backup: "v1", environment, package: environment === "production" ? "com.fchoo.gymtracker" : "com.fchoo.gymtracker.devtest" });
 }
+function escapeDriveQueryLiteral(value: string): string {
+  return value.replace(/\\/gu, "\\\\").replace(/'/gu, "\\'");
+}
+/**
+ * Never enumerate a user's whole Drive and filter it locally.  The namespace is
+ * part of the server-side predicate; the parser below is a second fence for
+ * malformed or cross-environment metadata returned by a proxy/test double.
+ */
+function appPropertiesQuery(expected: Readonly<Record<string, string>>): string {
+  return ["trashed = false", ...Object.entries(expected).map(([key, value]) =>
+    `appProperties has { key='${escapeDriveQueryLiteral(key)}' and value='${escapeDriveQueryLiteral(value)}' }`,
+  )].join(" and ");
+}
 function assertId(value: string): void { if (!/^[A-Za-z0-9_-]{1,256}$/u.test(value)) throw new Error("drive_file_id_invalid"); }
 function assertEtag(value: string): void { if (value.length === 0 || value === "*") throw new Error("drive_etag_invalid"); }
 function origin(url: string): void { const parsed = new URL(url); if (parsed.origin !== "https://www.googleapis.com") throw new Error("drive_origin_invalid"); }
@@ -54,7 +67,7 @@ export function createDriveBackupStoreAdapter(input: Readonly<{ environment: Aut
     return response;
   }
   async function discover(): Promise<readonly DriveBackupObject[]> {
-    const query = encodeURIComponent("trashed = false");
+    const query = encodeURIComponent(appPropertiesQuery(properties));
     const response = await request(`${DRIVE_API}/files?q=${query}&spaces=drive&pageSize=${MAX_LIST_RESULTS + 1}&fields=files(id,name,appProperties)`);
     if (!response.ok) throw new Error("drive_list_failed");
     const value = json(await body(response, 64 * 1024));

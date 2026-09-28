@@ -16,7 +16,9 @@ describe("Drive backup store adapter", () => {
     await expect(adapter.readManifest()).resolves.toEqual({ bytes: new TextEncoder().encode("{}"), etag: '"raw-etag"' });
     await adapter.updateManifest("manifest-1", new TextEncoder().encode("{}"), '"raw-etag"');
     expect(fetcher.mock.calls.at(-1)?.[1]?.headers).toEqual(expect.objectContaining({ "If-Match": '"raw-etag"' }));
-    expect(fetcher.mock.calls[0]?.[0]).toContain("pageSize=9");
+    const discoveryUrl = String(fetcher.mock.calls[0]?.[0]);
+    expect(discoveryUrl).toContain("pageSize=9");
+    expect(decodeURIComponent(discoveryUrl)).toContain("appProperties has { key='environment' and value='development-test' }");
   });
 
   it("rejects cross-environment metadata, ambiguous manifests, stars, redirects, and over-limit data", async () => {
