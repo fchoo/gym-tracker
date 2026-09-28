@@ -17,6 +17,7 @@ import {
   PHASE12_SQLITE_FIXTURE_ROW_COUNTS,
   buildPhase12SyntheticSnapshot,
   phase12BenchmarkStartupAction,
+  shouldSerializePhase12MergeSample,
 } from "./phase12BackupBenchmark";
 
 describe("Phase 12 native backup benchmark", () => {
@@ -71,16 +72,22 @@ describe("Phase 12 native backup benchmark", () => {
       .toBeLessThanOrEqual(BACKUP_LIMITS.maxRowsPerTable);
   });
 
+  it("compares full canonical merge bytes at the first and last sample", () => {
+    expect(Array.from({ length: 10 }, (_, index) => index)
+      .filter(shouldSerializePhase12MergeSample)).toEqual([0, 9]);
+  });
+
   it("keeps the maximum fixture valid for indexed merge preflight", async () => {
-    const snapshot = buildPhase12SyntheticSnapshot();
+    const archive = buildPhase12SyntheticSnapshot(2);
+    const local = buildPhase12SyntheticSnapshot(1);
 
     await expect(buildPortableMergePlan({
-      archive: snapshot,
-      local: snapshot,
+      archive,
+      local,
       payloadDigest: async () => "0".repeat(64),
     })).resolves.toEqual(expect.objectContaining({
       operations: expect.any(Array),
-      preview: expect.objectContaining({ duplicates: 1 }),
+      preview: expect.objectContaining({ archiveWon: 1 }),
     }));
   });
 });

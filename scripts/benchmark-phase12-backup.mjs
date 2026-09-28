@@ -54,6 +54,7 @@ export function validatePhase12BackupBenchmark(evidence, manifest) {
   samples(measured.writer_occupancy_ms, expected.writer_occupancy.minimum_samples, expected.writer_occupancy.maximum_p95_ms, "writer_occupancy");
   samples(measured.merge_preflight_ms, expected.merge_preflight.minimum_samples, expected.merge_preflight.maximum_p95_ms, "merge_preflight");
   samples(measured.merge_peak_growth_bytes, expected.merge_preflight.minimum_samples, expected.merge_preflight.maximum_peak_growth_bytes, "merge_peak_growth");
+  samples(measured.merge_serialization_ms, 2, Number.POSITIVE_INFINITY, "merge_serialization");
   if (measured.snapshot_bytes !== expected.merge_preflight.required_snapshot_bytes
     || measured.total_rows !== expected.merge_preflight.required_rows
     || measured.merge_digest_concurrency !== MERGE_DIGEST_CONCURRENCY

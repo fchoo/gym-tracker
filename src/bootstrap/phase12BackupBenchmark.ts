@@ -64,6 +64,7 @@ export type Phase12BackupBenchmarkResult = Readonly<{
     dirty_trigger_ms: readonly number[];
     writer_occupancy_ms: readonly number[];
     merge_preflight_ms: readonly number[];
+    merge_serialization_ms: readonly number[];
     snapshot_bytes: number;
     total_rows: number;
     merge_digest_concurrency: number;
@@ -83,6 +84,10 @@ export function phase12BenchmarkStartupAction(input: Readonly<{
   if (!input.enabled || input.suite !== "phase12") return "disabled";
   if (input.started || input.launchState === "booting") return "wait";
   return input.launchState === "trusted" ? "start" : "fail";
+}
+
+export function shouldSerializePhase12MergeSample(sample: number): boolean {
+  return sample === 0 || sample === PHASE12_MERGE_SAMPLES - 1;
 }
 
 function encodedBytes(value: unknown): number {
@@ -301,6 +306,7 @@ export async function performPhase12BackupBenchmark(): Promise<Phase12BackupBenc
     const archive = buildPhase12SyntheticSnapshot(2);
     const local = buildPhase12SyntheticSnapshot(1);
     const mergePreflightMs: number[] = [];
+    const mergeSerializationMs: number[] = [];
     let canonicalPlan: string | undefined;
     for (let index = 0; index < PHASE12_MERGE_SAMPLES; index += 1) {
       console.log(`${PHASE12_BENCHMARK_PROGRESS_MARKER}${JSON.stringify({ stage: "merge", sample: index })}`);
@@ -314,9 +320,16 @@ export async function performPhase12BackupBenchmark(): Promise<Phase12BackupBenc
         },
       });
       mergePreflightMs.push(performance.now() - started);
-      const serialized = JSON.stringify(plan);
-      canonicalPlan ??= serialized;
-      if (canonicalPlan !== serialized) throw new Error("phase12_merge_output_not_canonical");
+      if (shouldSerializePhase12MergeSample(index)) {
+        const serializationStarted = performance.now();
+        const serialized = JSON.stringify(plan);
+        mergeSerializationMs.push(performance.now() - serializationStarted);
+        canonicalPlan ??= serialized;
+        if (canonicalPlan !== serialized) throw new Error("phase12_merge_output_not_canonical");
+      }
+    }
+    if (canonicalPlan === undefined || mergeSerializationMs.length !== 2) {
+      throw new Error("phase12_merge_output_not_compared");
     }
     return {
       schemaVersion: 1,
@@ -326,6 +339,7 @@ export async function performPhase12BackupBenchmark(): Promise<Phase12BackupBenc
         dirty_trigger_ms: dirtyTriggerMs,
         writer_occupancy_ms: writerOccupancyMs,
         merge_preflight_ms: mergePreflightMs,
+        merge_serialization_ms: mergeSerializationMs,
         snapshot_bytes: encodedBytes(maximumSnapshot),
         total_rows: maximumSnapshot.manifest.totalRows,
         merge_digest_concurrency: MERGE_DIGEST_CONCURRENCY,
