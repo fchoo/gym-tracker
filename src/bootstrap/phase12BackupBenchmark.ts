@@ -3,6 +3,12 @@ import {
 } from "expo-sqlite";
 
 import {
+  BACKUP_LIMITS,
+  LOGICAL_BACKUP_TABLES,
+  type LogicalBackupRow,
+  type LogicalBackupSnapshot,
+} from "../domains/portability/backupContracts";
+import {
   buildPortableMergePlan,
   MERGE_DIGEST_CONCURRENCY,
   type PortableMergePlanSnapshot,
@@ -13,6 +19,7 @@ import {
 import {
   openSqliteKernel,
   type SqliteKernel,
+  type SqliteTransactionExecutor,
 } from "../platform/sqlite";
 import {
   migrateBenchmarkDatabase,
@@ -27,14 +34,27 @@ export const PHASE12_BENCHMARK_RESULT_MARKER =
 export const PHASE12_BENCHMARK_ERROR_MARKER =
   "GYM_TRACKER_PHASE12_BENCHMARK_ERROR:" as const;
 
-export const PHASE12_MAX_SNAPSHOT_BYTES = 24 * 1024 * 1024;
-export const PHASE12_MAX_SNAPSHOT_ROWS = 100_000;
+export const PHASE12_MAX_SNAPSHOT_BYTES = BACKUP_LIMITS.maxPlaintextBytes;
+export const PHASE12_MAX_SNAPSHOT_ROWS = BACKUP_LIMITS.maxRowsTotal;
 export const PHASE12_DIRTY_SAMPLES = 100;
 export const PHASE12_WRITER_SAMPLES = 20;
 export const PHASE12_MERGE_SAMPLES = 10;
 
 const DATABASE_NAME = "gym-tracker-phase12-benchmark.db";
 const OWNER_NAMESPACE = "f".repeat(32);
+const ROWS_PER_TABLE = BACKUP_LIMITS.maxRowsPerTable;
+const SQLITE_APP_SETTING_ROWS = PHASE12_MAX_SNAPSHOT_ROWS
+  - 2
+  - (ROWS_PER_TABLE * 3);
+
+export const PHASE12_SQLITE_FIXTURE_ROW_COUNTS = Object.freeze({
+  portable_owner_identity: 1,
+  app_settings: SQLITE_APP_SETTING_ROWS,
+  workout_sessions: 1,
+  workout_session_exercise_edit_receipts: ROWS_PER_TABLE,
+  workout_session_exercise_reorder_receipts: ROWS_PER_TABLE,
+  history_audit_events: ROWS_PER_TABLE,
+});
 
 export type Phase12BackupBenchmarkResult = Readonly<{
   schemaVersion: 1;
@@ -76,30 +96,59 @@ function portableId(index: number): string {
 /** A schema-valid, deterministic maximum-size fixture used only by dev-test benchmarking. */
 export function buildPhase12SyntheticSnapshot(
   mergeModifiedAtMs = 1,
-): PortableMergePlanSnapshot & Readonly<{ manifest: Readonly<{ totalRows: number }> }> {
-  const sessions = Array.from({ length: PHASE12_MAX_SNAPSHOT_ROWS - 1 }, (_, index) => ({
-    id: `benchmark-session-${index}`,
+): LogicalBackupSnapshot & PortableMergePlanSnapshot {
+  const sessions = Array.from({ length: ROWS_PER_TABLE }, (_, index) => ({
+    id: `s${index.toString(36)}`,
     portable_id: portableId(index + 1),
     merge_modified_at_ms: mergeModifiedAtMs,
-    padding: "",
   }));
+  const sessionExercises = Array.from({ length: ROWS_PER_TABLE }, (_, index) => ({
+    id: `e${index.toString(36)}`,
+    session_id: sessions[index]!.id,
+  }));
+  const sessionSets = Array.from({ length: ROWS_PER_TABLE }, (_, index) => ({
+    id: `t${index.toString(36)}`,
+    session_exercise_id: sessionExercises[index]!.id,
+  }));
+  const settingCount = PHASE12_MAX_SNAPSHOT_ROWS - 1 - (ROWS_PER_TABLE * 3);
+  const settings = Array.from({ length: settingCount }, (_, index) => ({
+    key: `k${index.toString(36).padStart(4, "0")}`,
+    value_version: 1,
+    value_json: JSON.stringify({ padding: "" }),
+    revision: index + 1,
+    updated_at_ms: index + 1,
+  }));
+  const tables = Object.fromEntries(
+    LOGICAL_BACKUP_TABLES.map((table) => [table, [] as LogicalBackupRow[]]),
+  );
+  tables.portable_owner_identity = [{ id: 1, owner_namespace: OWNER_NAMESPACE }];
+  tables.app_settings = settings;
+  tables.workout_sessions = sessions;
+  tables.session_exercises = sessionExercises;
+  tables.session_sets = sessionSets;
   const fixture = {
     version: 2 as const,
+    snapshotId: "phase12-maximum-merge",
+    createdAtMs: 1,
     schemaVersion: 26,
-    manifest: { totalRows: PHASE12_MAX_SNAPSHOT_ROWS },
-    tables: {
-      portable_owner_identity: [{ id: 1, owner_namespace: OWNER_NAMESPACE }],
-      workout_sessions: sessions,
-      session_exercises: [],
-      session_sets: [],
+    manifest: {
+      catalogReferenceCount: 0,
+      rowCounts: Object.fromEntries(
+        LOGICAL_BACKUP_TABLES.map((table) => [table, tables[table]!.length]),
+      ),
+      totalRows: PHASE12_MAX_SNAPSHOT_ROWS,
     },
+    tables,
+    catalogReferences: [],
   };
   const difference = PHASE12_MAX_SNAPSHOT_BYTES - encodedBytes(fixture);
   if (difference < 0) throw new Error("phase12_synthetic_fixture_oversize");
-  const each = Math.floor(difference / sessions.length);
-  const remainder = difference % sessions.length;
-  for (let index = 0; index < sessions.length; index += 1) {
-    sessions[index]!.padding = "x".repeat(each + (index < remainder ? 1 : 0));
+  const each = Math.floor(difference / settings.length);
+  const remainder = difference % settings.length;
+  for (let index = 0; index < settings.length; index += 1) {
+    settings[index]!.value_json = JSON.stringify({
+      padding: "x".repeat(each + (index < remainder ? 1 : 0)),
+    });
   }
   if (encodedBytes(fixture) !== PHASE12_MAX_SNAPSHOT_BYTES) {
     throw new Error("phase12_synthetic_fixture_size_invalid");
@@ -107,53 +156,95 @@ export function buildPhase12SyntheticSnapshot(
   return fixture;
 }
 
+async function writeRows(
+  kernel: SqliteKernel,
+  count: number,
+  write: (transaction: SqliteTransactionExecutor, index: number) => Promise<unknown>,
+): Promise<void> {
+  for (let start = 0; start < count; start += 250) {
+    await kernel.write(async (transaction) => {
+      const end = Math.min(start + 250, count);
+      for (let index = start; index < end; index += 1) {
+        await write(transaction, index);
+      }
+    });
+  }
+}
+
 async function seedMaximumHistory(kernel: SqliteKernel): Promise<void> {
-  const rowCount = PHASE12_MAX_SNAPSHOT_ROWS - 1;
-  const rows = Array.from({ length: rowCount }, (_, index) => ({
-    key: `phase12-benchmark-${index.toString().padStart(6, "0")}`,
-    value: JSON.stringify({ padding: "" }),
-  }));
-  for (let start = 0; start < rows.length; start += 250) {
-    await kernel.write(async (transaction) => {
-      for (const row of rows.slice(start, start + 250)) {
-        await transaction.execute(
-          "INSERT INTO app_settings(key, value_version, value_json, revision, updated_at_ms) VALUES (?, 1, ?, 0, 0)",
-          [row.key, row.value],
-        );
-      }
-    });
+  const totalRows = Object.values(PHASE12_SQLITE_FIXTURE_ROW_COUNTS)
+    .reduce((total, count) => total + count, 0);
+  if (totalRows !== PHASE12_MAX_SNAPSHOT_ROWS
+    || Math.max(...Object.values(PHASE12_SQLITE_FIXTURE_ROW_COUNTS)) > ROWS_PER_TABLE) {
+    throw new Error("phase12_sqlite_fixture_distribution_invalid");
   }
+  await kernel.write((transaction) => transaction.execute(
+    `INSERT INTO workout_sessions
+      (id, plan_id, plan_day_id, source, status, local_date, timezone,
+       started_at_ms, completed_at_ms, revision,
+       creation_timezone_offset_minutes, modified_from_plan,
+       portable_id, merge_modified_at_ms)
+     VALUES ('s', NULL, NULL, 'manual', 'completed', '1970-01-01', 'UTC',
+             0, 0, 0, 0, 0, ?, 0)`,
+    [portableId(1)],
+  ));
+  await writeRows(kernel, SQLITE_APP_SETTING_ROWS, (transaction, index) =>
+    transaction.execute(
+      "INSERT INTO app_settings(key, value_version, value_json, revision, updated_at_ms) VALUES (?, 1, ?, ?, ?)",
+      [
+        `k${index.toString(36).padStart(4, "0")}`,
+        JSON.stringify({ padding: "" }),
+        index + 1,
+        index + 1,
+      ],
+    ));
+  await writeRows(kernel, ROWS_PER_TABLE, (transaction, index) =>
+    transaction.execute(
+      `INSERT INTO history_audit_events
+        (id, session_id, effective_revision, event_type, field_identity,
+         before_json, after_json, occurred_at_ms)
+       VALUES (?, 's', ?, 'restore', 'x', '{}', '{}', ?)`,
+      [`a${index.toString(36).padStart(4, "0")}`, index + 1, index + 1],
+    ));
+  await writeRows(kernel, ROWS_PER_TABLE, (transaction, index) =>
+    transaction.execute(
+      `INSERT INTO workout_session_exercise_edit_receipts
+        (request_id, request_sha256, operation, session_id,
+         subject_session_exercise_id, replacement_session_exercise_id,
+         expected_session_revision, result_session_revision, result_json,
+         committed_at_ms)
+       VALUES (?, ?, 'remove_exercise', 's', 'e', NULL, 0, 1, '{}', ?)`,
+      [`e${index.toString(36).padStart(4, "0")}`, "0".repeat(64), index + 1],
+    ));
+  await writeRows(kernel, ROWS_PER_TABLE, (transaction, index) =>
+    transaction.execute(
+      `INSERT INTO workout_session_exercise_reorder_receipts
+        (request_id, request_sha256, operation, session_id,
+         ordered_session_exercise_ids_json, expected_session_revision,
+         result_session_revision, result_json, committed_at_ms)
+       VALUES (?, ?, 'reorder_exercises', 's', '[]', 0, 1, '{}', ?)`,
+      [`r${index.toString(36).padStart(4, "0")}`, "0".repeat(64), index + 1],
+    ));
   const collector = createLogicalBackupRepository(kernel);
-  // Establish the final revision/timestamp widths before sizing padding. The
-  // subsequent value-only update still exercises the v23 trigger but cannot
-  // change the serialized non-padding shape.
-  for (let start = 0; start < rows.length; start += 250) {
-    await kernel.write(async (transaction) => {
-      for (let offset = 0; offset < Math.min(250, rows.length - start); offset += 1) {
-        const index = start + offset;
-        await transaction.execute(
-          "UPDATE app_settings SET revision = ?, updated_at_ms = ? WHERE key = ?",
-          [index + 1, index + 1, rows[index]!.key],
-        );
-      }
-    });
-  }
   const baseline = await collector.collect({ snapshotId: "phase12-writer-00", createdAtMs: 100 });
   const difference = PHASE12_MAX_SNAPSHOT_BYTES - encodedBytes(baseline);
   if (difference < 0) throw new Error("phase12_sqlite_fixture_oversize");
-  const each = Math.floor(difference / rows.length);
-  const remainder = difference % rows.length;
-  for (let start = 0; start < rows.length; start += 250) {
-    await kernel.write(async (transaction) => {
-      for (let offset = 0; offset < Math.min(250, rows.length - start); offset += 1) {
-        const index = start + offset;
-        await transaction.execute(
-          "UPDATE app_settings SET value_json = ? WHERE key = ?",
-          [JSON.stringify({ padding: "x".repeat(each + (index < remainder ? 1 : 0)) }), rows[index]!.key],
-        );
-      }
-    });
+  const each = Math.floor(difference / SQLITE_APP_SETTING_ROWS);
+  const remainder = difference % SQLITE_APP_SETTING_ROWS;
+  const maximumPaddedValue = JSON.stringify({
+    padding: "x".repeat(each + (remainder > 0 ? 1 : 0)),
+  });
+  if (encodedBytes(maximumPaddedValue) > BACKUP_LIMITS.maxStringBytes) {
+    throw new Error("phase12_sqlite_fixture_padding_invalid");
   }
+  await writeRows(kernel, SQLITE_APP_SETTING_ROWS, (transaction, index) =>
+    transaction.execute(
+      "UPDATE app_settings SET value_json = ? WHERE key = ?",
+      [
+        JSON.stringify({ padding: "x".repeat(each + (index < remainder ? 1 : 0)) }),
+        `k${index.toString(36).padStart(4, "0")}`,
+      ],
+    ));
 }
 
 async function collectMaximumSnapshot(kernel: SqliteKernel, sample: number) {
