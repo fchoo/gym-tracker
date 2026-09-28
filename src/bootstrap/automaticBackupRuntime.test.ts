@@ -85,4 +85,26 @@ describe("automatic backup runtime", () => {
     await expect(runtime.connect()).rejects.toThrow("automatic_backup_unavailable");
     expect(runtime.current()).toMatchObject({ status: "paused", reason: "unavailable" });
   });
+
+  it("returns recovery preparation and refreshes after every typed backup command", async () => {
+    const port = commands();
+    const preparation = { kind: "empty_direct" as const, attemptId: "recovery-attempt" };
+    port.prepareRecovery.mockResolvedValueOnce(preparation);
+    const runtime = createAutomaticBackupRuntime({ read: async () => base(), commands: port });
+    const candidate = { fileId: "candidate", createdAtMs: 1, schemaVersion: 26, sourceDigest: "digest" } as never;
+    const commit = { attemptId: "recovery-attempt", mode: "restore" as const } as never;
+
+    await expect(runtime.prepareRecovery({ candidate })).resolves.toEqual(preparation);
+    await runtime.commitRecovery(commit);
+    await runtime.deferRestore(); await runtime.cancelChecking(); await runtime.checkAgain(); await runtime.continueRestore();
+    await runtime.finishSetup(); await runtime.backupNow(); await runtime.retryBackup(); await runtime.useCellularThisTime();
+    await runtime.setDataUsePolicy("wifi_only"); await runtime.takeOver(); await runtime.disconnect();
+    await runtime.deleteCloudBackup(); await runtime.finishDeletingCloudBackup(); await runtime.startNewCloudBackup();
+
+    expect(port.prepareRecovery).toHaveBeenCalledWith({ candidate });
+    expect(port.commitRecovery).toHaveBeenCalledWith(commit);
+    expect(port.setDataUsePolicy).toHaveBeenCalledWith("wifi_only");
+    expect(port.startNewCloudBackup).toHaveBeenCalledTimes(1);
+    expect(runtime.current().status).toBe("backup_pending");
+  });
 });
