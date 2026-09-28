@@ -81,7 +81,8 @@
     "verify:bootstrap:evidence": "node scripts/verify-bootstrap-native-evidence.mjs",
     "verify:native:evidence": "node scripts/verify-native-evidence.mjs",
     "test:maestro:phase10": "node scripts/run-phase10-maestro.mjs",
-    "test:maestro:phase11": "node scripts/run-phase11-maestro.mjs"
+    "test:maestro:phase11": "node scripts/run-phase11-maestro.mjs",
+    "test:maestro:phase12": "node scripts/run-phase12-maestro.mjs"
   },
   "dependencies": {
     "@expo-google-fonts/ibm-plex-mono": "0.4.1",

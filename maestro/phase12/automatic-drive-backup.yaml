@@ -1,0 +1,28 @@
+appId: com.fchoo.gymtracker.devtest
+name: Phase 12 automatic Drive backup fake-port route proof
+tags:
+  - phase-12
+  - fake-port
+---
+- assertTrue: ${PHASE12_STAGE == 'routes' || PHASE12_STAGE == 'disconnected' || PHASE12_STAGE == 'no-cloud' || PHASE12_STAGE == 'restore-empty' || PHASE12_STAGE == 'merge-adoption' || PHASE12_STAGE == 'previous' || PHASE12_STAGE == 'update-required' || PHASE12_STAGE == 'policy' || PHASE12_STAGE == 'stale-warning' || PHASE12_STAGE == 'takeover' || PHASE12_STAGE == 'disconnect-delete' || PHASE12_STAGE == 'csv-manual'}
+- launchApp:
+    clearState: false
+    stopApp: true
+    permissions:
+      notifications: deny
+- assertVisible: "Today"
+- tapOn: "Settings"
+- scrollUntilVisible:
+    element:
+      id: "more-data-and-recovery"
+    direction: DOWN
+    centerElement: true
+    timeout: 60000
+- tapOn:
+    id: "more-data-and-recovery"
+- assertVisible: "Data and recovery"
+- assertVisible: "Google Drive backup"
+- assertVisible: "Recovery tools"
+- assertVisible: "Automatic backup settings"
+- assertVisible: "Manual encrypted backup"
+- assertVisible: "Export CSV"
