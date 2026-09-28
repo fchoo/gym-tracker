@@ -45,4 +45,20 @@ describe("automatic backup state repository", () => {
       snapshotId: "snapshot", manifestId: "manifest", manifestEtag: "etag",
     })).resolves.toBe(true);
   });
+
+  it("persists a fenced tombstone sweep without confusing it with ordinary pause", async () => {
+    const statements: string[] = [];
+    const repository = createAutomaticBackupStateRepository({
+      queryAll: async () => [],
+      write: async (command: (transaction: SqliteTransactionExecutor) => Promise<unknown>) => command({
+        execute: async (sql: string) => { statements.push(sql); return { changes: 1, lastInsertRowId: 0 }; }, queryAll: async () => [],
+      }), connectionConfiguration: async () => undefined, close: async () => undefined,
+    } as unknown as SqliteKernel);
+    const fence = { environment: "development-test" as const, permissionId: "permission", connectionGeneration: 2 };
+    await expect(repository.beginDeletionSweep(fence)).resolves.toBe(true);
+    await expect(repository.completeDeletionSweep(fence)).resolves.toBe(true);
+    expect(statements.join("\n")).toContain("deletion_progress = 'sweep_pending'");
+    expect(statements.join("\n")).toContain("deletion_progress = 'complete'");
+    expect(statements.join("\n")).toContain("connection_generation = ?");
+  });
 });
