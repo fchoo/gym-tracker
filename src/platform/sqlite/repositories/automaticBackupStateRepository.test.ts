@@ -1,6 +1,7 @@
 import { describe, expect, it } from "@jest/globals";
 import type { SqliteKernel, SqliteTransactionExecutor } from "../sqliteKernel";
 import { createAutomaticBackupStateRepository } from "./automaticBackupStateRepository";
+import { AUTOMATIC_BACKUP_GENERATION_TRIGGER_STATEMENTS, automaticDriveBackupMigration } from "../migrations/0023_automatic_drive_backup";
 
 describe("automatic backup state repository", () => {
   it("persists bounded recovery status, data-use policy, and local-only disconnect", async () => {
@@ -62,5 +63,73 @@ describe("automatic backup state repository", () => {
     expect(statements.join("\n")).toContain("deletion_progress = 'sweep_pending'");
     expect(statements.join("\n")).toContain("deletion_progress = 'complete'");
     expect(statements.join("\n")).toContain("connection_generation = ?");
+  });
+
+  it("accepts only the complete bounded persisted state domain", async () => {
+    const valid = {
+      environment: "production", permission_id: "permission", display_email: "owner@example.com", account_display_label: "…@example.com",
+      connection_generation: 2, writer_epoch: 3, mutation_generation: 6, backed_up_generation: 4,
+      manifest_file_id: "manifest", manifest_etag: "etag", authority_state: "deleted", dirty_since_ms: 7,
+      data_use_policy: "wifi-only", claim_id: "claim", claim_expires_at_ms: 9, status_code: "paused", deletion_progress: "complete",
+    };
+    const make = (rows: unknown[]) => createAutomaticBackupStateRepository({
+      queryAll: async () => rows, write: async () => ({ changes: 1, lastInsertRowId: 0 }), connectionConfiguration: async () => undefined, close: async () => undefined,
+    } as unknown as SqliteKernel);
+    await expect(make([valid]).read()).resolves.toMatchObject({ environment: "production", accountDisplayLabel: "…@example.com", deletionProgress: "complete" });
+    await expect(make([{ ...valid, permission_id: null, display_email: null }]).read()).resolves.toMatchObject({ permissionId: null, displayEmail: null });
+    for (const row of [
+      {}, { ...valid, environment: "other" }, { ...valid, connection_generation: 1.5 }, { ...valid, authority_state: "other" },
+      { ...valid, data_use_policy: "offline" }, { ...valid, status_code: "other" }, { ...valid, deletion_progress: "other" },
+      { ...valid, deletion_progress: "complete", authority_state: "active" }, { ...valid, account_display_label: "raw@example.com" },
+    ]) await expect(make([row]).read()).rejects.toThrow("automatic_backup_state_invalid");
+    await expect(make([]).read()).rejects.toThrow("automatic_backup_state_invalid");
+    await expect(make([valid, valid]).read()).rejects.toThrow("automatic_backup_state_invalid");
+  });
+
+  it("executes every conditional state mutation and propagates missing-row fences", async () => {
+    let changes = 1;
+    const sql: string[] = [];
+    const repository = createAutomaticBackupStateRepository({
+      queryAll: async () => [],
+      write: async (command: (transaction: SqliteTransactionExecutor) => Promise<unknown>) => command({
+        execute: async (statement: string) => { sql.push(statement); return { changes, lastInsertRowId: 0 }; }, queryAll: async () => [],
+      }), connectionConfiguration: async () => undefined, close: async () => undefined,
+    } as unknown as SqliteKernel);
+    const receipt = { environment: "development-test" as const, permissionId: "permission", connectionGeneration: 2, writerEpoch: 3, capturedGeneration: 5, sourceDigest: "a".repeat(64), snapshotId: "snapshot", manifestId: "manifest", manifestEtag: "etag" };
+    await repository.persistAttempt({ ...receipt, candidateId: "candidate", resumableLocation: "https://www.googleapis.com/upload/session", resumableUploadedBytes: 3, nowMs: 1 });
+    await expect(repository.acquireLease({ leaseId: "lease", nowMs: 1, expiresAtMs: 2 })).resolves.toBe(true);
+    await expect(repository.recoverExpiredLease(2)).resolves.toBe(true);
+    await expect(repository.activateWriter({ manifestId: "manifest", manifestEtag: "etag", writerEpoch: 4, permissionId: "permission", connectionGeneration: 2 })).resolves.toBe(true);
+    await expect(repository.markStaleWriter(4)).resolves.toBe(true);
+    await expect(repository.clearExpiredClaim(2)).resolves.toBe(true);
+    expect(sql.join("\n")).toContain("resumable_location");
+    changes = 0;
+    await expect(repository.acknowledge({ environment: "development-test", permissionId: "permission", writerEpoch: 3, capturedGeneration: 5 })).resolves.toBe(false);
+    await expect(repository.acknowledgeReceipt(receipt)).resolves.toBe(false);
+    await expect(repository.acquireLease({ leaseId: "lease", nowMs: 1, expiresAtMs: 2 })).resolves.toBe(false);
+    await expect(repository.recoverExpiredLease(2)).resolves.toBe(false);
+    await expect(repository.activateWriter({ manifestId: "manifest", manifestEtag: "etag", writerEpoch: 4, permissionId: "permission", connectionGeneration: 2 })).resolves.toBe(false);
+    await expect(repository.markStaleWriter(4)).resolves.toBe(false);
+    await expect(repository.clearExpiredClaim(2)).resolves.toBe(false);
+    await expect(repository.persistAttempt({ ...receipt, candidateId: "candidate", nowMs: 1 })).rejects.toThrow("automatic_backup_receipt_missing");
+    await expect(repository.setRecoveryStatus("idle")).rejects.toThrow("automatic_backup_state_missing");
+    await expect(repository.setDataUsePolicy("any-network")).rejects.toThrow("automatic_backup_state_missing");
+    await expect(repository.beginQuarantine({ environment: "development-test", permissionId: "permission", connectionGeneration: 2 })).rejects.toThrow("automatic_backup_state_missing");
+    await expect(repository.disconnectLocal()).rejects.toThrow("automatic_backup_state_missing");
+  });
+
+  it("creates every automatic-backup durable boundary and rejects incomplete schema verification", async () => {
+    const statements: string[] = [];
+    const transaction = {
+      execute: async (sql: string) => { statements.push(sql); return { changes: 1, lastInsertRowId: 0 }; },
+      queryAll: async (sql: string) => sql.includes("automatic_backup_state")
+        ? [{ id: 1, mutation_generation: 3, backed_up_generation: 2 }]
+        : AUTOMATIC_BACKUP_GENERATION_TRIGGER_STATEMENTS.map((_, index) => ({ name: `automatic_backup_generation_${index}` })),
+    };
+    await automaticDriveBackupMigration.up(transaction as SqliteTransactionExecutor);
+    expect(statements.filter((sql) => sql.startsWith("CREATE TRIGGER automatic_backup_generation_")).length).toBe(AUTOMATIC_BACKUP_GENERATION_TRIGGER_STATEMENTS.length);
+    await expect(automaticDriveBackupMigration.verify(transaction as SqliteTransactionExecutor)).resolves.toBeUndefined();
+    await expect(automaticDriveBackupMigration.verify({ ...transaction, queryAll: async () => [] } as unknown as SqliteTransactionExecutor)).rejects.toThrow("automatic_backup_schema_incomplete");
+    await expect(automaticDriveBackupMigration.verify({ ...transaction, queryAll: async (sql: string) => sql.includes("automatic_backup_state") ? [{ id: 1, mutation_generation: 1, backed_up_generation: 2 }] : [] } as unknown as SqliteTransactionExecutor)).rejects.toThrow("automatic_backup_schema_incomplete");
   });
 });

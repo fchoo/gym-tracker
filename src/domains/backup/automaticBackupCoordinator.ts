@@ -199,8 +199,7 @@ export function createAutomaticBackupCoordinator(input: Readonly<{
     recoveryAttempts.delete(request.attemptId);
     await input.state.setRecoveryStatus?.("restoring");
     if (request.kind === "empty_direct") return input.recovery.restore(attempt.snapshot);
-    const merge = attempt.preparation;
-    if (merge.kind !== "merge") throw new Error("automatic_recovery_attempt_invalid");
+    const merge = attempt.preparation as Extract<AutomaticRecoveryPreparation, Readonly<{ kind: "merge" }>>;
     if (merge.adoptionRequired && request.adoptIdentity !== true) throw new Error("automatic_recovery_adoption_required");
     const grant = merge.adoptionRequired ? await input.recovery.freshAdoptionGrant?.() : undefined;
     if (merge.adoptionRequired && (grant === undefined || request.adoptionGrant !== grant)) throw new Error("automatic_recovery_adoption_grant_invalid");
