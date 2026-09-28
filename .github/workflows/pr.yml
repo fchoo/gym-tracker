@@ -92,14 +92,14 @@ jobs:
             'test:coverage',
             'test:sqlite:device',
             'test:maestro:phase1',
-            'test:maestro:phase2',
+            'test:maestro:phase12',
             'benchmark:phase1',
-            'benchmark:phase2',
+            'benchmark:phase12:backup',
             'verify:artifact-roundtrip',
-            'verify:native:phase2',
+            'verify:phase12:evidence',
+            'test:evidence:phase12',
             'test:all',
             'ci:pr',
-            'ci:phase2',
           ];
           const missing = requiredScripts.filter((name) => !packageJson.scripts?.[name]);
           if (missing.length > 0) {
@@ -186,7 +186,7 @@ jobs:
           test -z "$(git ls-files android ios)"
 
   native-and-smoke:
-    name: Build Phase 2 once, native SQLite, Maestro, benchmark
+    name: Build Phase 12 once, native SQLite, Maestro, benchmark
     needs: generated-native
     runs-on: ubuntu-24.04
     timeout-minutes: 120
@@ -230,7 +230,7 @@ jobs:
             echo "KVM unavailable; using the emulator runner's software fallback."
           fi
 
-      - name: Build once, run complete Phase 2 automated producers
+      - name: Build once, run complete Phase 12 automated producers
         id: native_matrix
         continue-on-error: true
         uses: ReactiveCircus/android-emulator-runner@a421e43855164a8197daf9d8d40fe71c6996bb0d # v2.38.0
@@ -251,20 +251,21 @@ jobs:
           emulator-options: -no-snapshot -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none -camera-front none -no-metrics
           script: |
             export GYM_TRACKER_ANDROID_SERIAL=emulator-5554
-            npm run android:devtest:fresh -- --suite phase2
-            npm run test:sqlite:device -- --suite phase2 --manifest artifacts/native/phase2/build.json
-            npm run test:maestro:phase2 -- --manifest artifacts/native/phase2/build.json
-            npm run benchmark:phase2 -- --manifest artifacts/native/phase2/build.json --samples 100 --max-p95-ms 150 --max-js-task-ms 50
-            npm run verify:native:phase2 -- --manifest artifacts/native/phase2/build.json --roundtrip-temp --output artifacts/native/phase2/artifact-roundtrip.json
+            npm run android:devtest:fresh -- --suite phase12
+            npm run test:sqlite:device -- --suite migrations-effects --manifest artifacts/native/phase12/build.json
+            npm run test:sqlite:device -- --suite google-drive-backup --manifest artifacts/native/phase12/build.json
+            npm run test:maestro:phase12 -- --manifest artifacts/native/phase12/build.json
+            npm run benchmark:phase12:backup -- --manifest artifacts/native/phase12/build.json --evidence artifacts/native/phase12/benchmark.json
+            npm run verify:phase12:evidence -- --manifest artifacts/native/phase12/build.json --automated-only
 
       # KVM is unavailable on the hosted runner, so the software emulator can
       # drop the adb device mid-run. One clean cold-boot retry absorbs that
       # transient crash; a genuine failure still fails both attempts and the gate.
-      - name: Reset Phase 2 artifacts before retry
+      - name: Reset Phase 12 artifacts before retry
         if: steps.native_matrix.outcome == 'failure'
-        run: rm -rf artifacts/native/phase2
+        run: rm -rf artifacts/native/phase12
 
-      - name: Retry Phase 2 automated producers on emulator crash
+      - name: Retry Phase 12 automated producers on emulator crash
         if: steps.native_matrix.outcome == 'failure'
         uses: ReactiveCircus/android-emulator-runner@a421e43855164a8197daf9d8d40fe71c6996bb0d # v2.38.0
         env:
@@ -284,23 +285,24 @@ jobs:
           emulator-options: -no-snapshot -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none -camera-front none -no-metrics
           script: |
             export GYM_TRACKER_ANDROID_SERIAL=emulator-5554
-            npm run android:devtest:fresh -- --suite phase2
-            npm run test:sqlite:device -- --suite phase2 --manifest artifacts/native/phase2/build.json
-            npm run test:maestro:phase2 -- --manifest artifacts/native/phase2/build.json
-            npm run benchmark:phase2 -- --manifest artifacts/native/phase2/build.json --samples 100 --max-p95-ms 150 --max-js-task-ms 50
-            npm run verify:native:phase2 -- --manifest artifacts/native/phase2/build.json --roundtrip-temp --output artifacts/native/phase2/artifact-roundtrip.json
+            npm run android:devtest:fresh -- --suite phase12
+            npm run test:sqlite:device -- --suite migrations-effects --manifest artifacts/native/phase12/build.json
+            npm run test:sqlite:device -- --suite google-drive-backup --manifest artifacts/native/phase12/build.json
+            npm run test:maestro:phase12 -- --manifest artifacts/native/phase12/build.json
+            npm run benchmark:phase12:backup -- --manifest artifacts/native/phase12/build.json --evidence artifacts/native/phase12/benchmark.json
+            npm run verify:phase12:evidence -- --manifest artifacts/native/phase12/build.json --automated-only
 
-      - name: Retain complete Phase 2 evidence
+      - name: Retain complete Phase 12 evidence
         if: always()
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
-          name: phase2-evidence
-          path: artifacts/native/phase2
+          name: phase12-evidence
+          path: artifacts/native/phase12
           if-no-files-found: error
           retention-days: 7
 
   artifact-roundtrip:
-    name: Download and verify exact Phase 2 bytes
+    name: Download and verify exact Phase 12 evidence
     needs: native-and-smoke
     runs-on: ubuntu-24.04
     timeout-minutes: 45
@@ -326,17 +328,17 @@ jobs:
           npm ci
           npm run test:coverage -- --runInBand
 
-      - name: Download retained Phase 2 evidence
+      - name: Download retained Phase 12 evidence
         uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
         with:
-          name: phase2-evidence
-          path: artifacts/native/phase2
+          name: phase12-evidence
+          path: artifacts/native/phase12
 
-      - name: Download a second exact Phase 2 copy
+      - name: Download a second exact Phase 12 copy
         uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
         with:
-          name: phase2-evidence
-          path: artifacts/native/phase2-downloaded
+          name: phase12-evidence
+          path: artifacts/native/phase12-downloaded
 
       - name: Enable KVM for Android emulator
         run: |
@@ -361,15 +363,14 @@ jobs:
           disable-linux-hw-accel: auto
           script: |
             export GYM_TRACKER_ANDROID_SERIAL=emulator-5554
-            adb -s emulator-5554 install -r artifacts/native/phase2/gym-tracker-phase2-devtest.apk
-            npm run verify:native:phase2 -- --manifest artifacts/native/phase2/build.json --roundtrip-downloaded-dir artifacts/native/phase2-downloaded --output artifacts/native/phase2/artifact-roundtrip.json
-            npm run verify:native:phase2 -- --manifest artifacts/native/phase2/build.json --automated-only --require-roundtrip
+            adb -s emulator-5554 install -r artifacts/native/phase12/gym-tracker-phase12-devtest.apk
+            npm run verify:phase12:evidence -- --manifest artifacts/native/phase12/build.json --automated-only
 
-      - name: Retain downloaded Phase 2 verification
+      - name: Retain downloaded Phase 12 verification
         if: always()
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
-          name: phase2-evidence-downloaded
-          path: artifacts/native/phase2
+          name: phase12-evidence-downloaded
+          path: artifacts/native/phase12
           if-no-files-found: error
           retention-days: 7

@@ -70,7 +70,7 @@
     "verify:release-candidate": "node scripts/verify-release-candidate-manifest.mjs",
     "verify:release-promotion": "node scripts/verify-phase5-release-gate.mjs",
     "test:all": "npm run test:unit -- --runInBand && npm run test:components -- --runInBand && npm run test:sqlite:host -- --runInBand && npm run test:integration -- --runInBand && npm run test:coverage -- --runInBand",
-    "ci:pr": "npm run typecheck && npm run lint && npm run check:boundaries && npm run test:unit -- --runInBand && npm run test:components -- --runInBand && npm run test:sqlite:host -- --runInBand && npm run test:coverage -- --runInBand && npm run android:devtest:fresh -- --suite phase1 && npm run test:sqlite:device -- --manifest artifacts/native/phase1/build.json && npm run test:maestro:phase1 -- --manifest artifacts/native/phase1/build.json && npm run benchmark:phase1 -- --manifest artifacts/native/phase1/build.json --samples 100 --max-p95-ms 150 --max-js-task-ms 50 && npm run verify:artifact-roundtrip -- artifacts/native/phase1",
+    "ci:pr": "npm run typecheck && npm run lint && npm run check:boundaries && npm run test:unit -- --runInBand && npm run test:components -- --runInBand && npm run test:sqlite:host -- --runInBand && npm run test:integration -- --runInBand && npm run test:coverage -- --runInBand && npm run android:devtest:fresh -- --suite phase12 && npm run test:sqlite:device -- --suite migrations-effects --manifest artifacts/native/phase12/build.json && npm run test:sqlite:device -- --suite google-drive-backup --manifest artifacts/native/phase12/build.json && npm run test:maestro:phase12 -- --manifest artifacts/native/phase12/build.json && npm run benchmark:phase12:backup -- --manifest artifacts/native/phase12/build.json --evidence artifacts/native/phase12/benchmark.json && npm run verify:phase12:evidence -- --manifest artifacts/native/phase12/build.json --automated-only",
     "ci:phase2": "npm run typecheck && npm run lint && npm run check:boundaries && npm run test:unit -- --runInBand && npm run test:components -- --runInBand && npm run test:sqlite:host -- --runInBand && npm run test:integration -- --runInBand && npm run test:coverage -- --runInBand && npm run android:devtest:fresh -- --suite phase2 && npm run test:sqlite:device -- --suite phase2 --manifest artifacts/native/phase2/build.json && npm run test:maestro:phase2 -- --manifest artifacts/native/phase2/build.json && npm run benchmark:phase2 -- --manifest artifacts/native/phase2/build.json --samples 100 --max-p95-ms 150 --max-js-task-ms 50 && npm run verify:native:phase2 -- --manifest artifacts/native/phase2/build.json --roundtrip-temp --output artifacts/native/phase2/artifact-roundtrip.json && npm run verify:native:phase2 -- --manifest artifacts/native/phase2/build.json --automated-only --require-roundtrip",
     "doctor:android": "sh scripts/doctor-android.sh",
     "maestro:install": "sh scripts/install-maestro.sh",
@@ -82,7 +82,11 @@
     "verify:native:evidence": "node scripts/verify-native-evidence.mjs",
     "test:maestro:phase10": "node scripts/run-phase10-maestro.mjs",
     "test:maestro:phase11": "node scripts/run-phase11-maestro.mjs",
-    "test:maestro:phase12": "node scripts/run-phase12-maestro.mjs"
+    "test:maestro:phase12": "node scripts/run-phase12-maestro.mjs",
+    "benchmark:phase12:backup": "node scripts/benchmark-phase12-backup.mjs",
+    "verify:phase12:evidence": "node scripts/verify-phase12-evidence.mjs",
+    "test:evidence:phase12": "node --test scripts/benchmark-phase12-backup.test.mjs scripts/phase12-evidence-scripts.test.mjs scripts/verify-phase12-evidence.test.mjs",
+    "prepare:attended:phase12": "node scripts/prepare-phase12-google-acceptance.mjs"
   },
   "dependencies": {
     "@expo-google-fonts/ibm-plex-mono": "0.4.1",

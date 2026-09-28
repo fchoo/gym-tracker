@@ -201,6 +201,7 @@ if (legacyExpectedCount !== undefined && legacyExpectedCount !== expectedCount) 
   fail(`--assert-all must equal the source-derived ${suite} case count (${expectedCount}).`);
 }
 const resultPath = path.join(path.dirname(manifestPath), 'result.json');
+const suiteResultPath = path.join(path.dirname(manifestPath), `${suite}.json`);
 const temporaryDirectory = await mkdtemp(path.join(tmpdir(), 'gym-native-contracts-'));
 const installedApkCopy = path.join(temporaryDirectory, 'installed.apk');
 
@@ -491,6 +492,7 @@ try {
   const temporaryResult = `${resultPath}.tmp`;
   await writeFile(temporaryResult, `${JSON.stringify(result, null, 2)}\n`);
   await rename(temporaryResult, resultPath);
+  await writeFile(suiteResultPath, `${JSON.stringify(result, null, 2)}\n`);
 
   if (
     result.status !== 'passed'
