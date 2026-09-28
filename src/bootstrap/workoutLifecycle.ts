@@ -42,6 +42,7 @@ import {
   createForegroundRestFeedbackStore,
   type ForegroundRestFeedbackStore,
 } from "../platform/sqlite/foregroundRestFeedbackStore";
+import type { AutomaticBackupScheduler } from "../domains/backup/automaticBackupScheduler";
 
 export type WorkoutLifecycleTrigger =
   | "launch"
@@ -178,6 +179,7 @@ export function createWorkoutLifecycle(input: Readonly<{
   historyProjectionEffectStore?: HistoryProjectionEffectStore;
   foregroundFeedback?: ForegroundRestFeedbackPort;
   foregroundFeedbackStore?: ForegroundRestFeedbackStore;
+  automaticBackupScheduler?: AutomaticBackupScheduler;
 }>) {
   const reconciler = createRestNotificationReconciler({
     repository: input.restRepository,
@@ -441,6 +443,7 @@ export function createWorkoutLifecycle(input: Readonly<{
   return Object.freeze({
     async dispose(): Promise<void> {
       disposed = true;
+      input.automaticBackupScheduler?.cancel();
       projectionDrainRequested = false;
       for (const timer of projectionDrainTimers) {
         clearTimeout(timer);
@@ -453,6 +456,12 @@ export function createWorkoutLifecycle(input: Readonly<{
       trigger: WorkoutLifecycleTrigger,
       options: Readonly<{ foregroundExpiry?: ForegroundRestExpiry }> = {},
     ): Promise<WorkoutLifecycleResult> {
+      // Backup state is dirty-marked by SQLite triggers. This notification is
+      // intentionally one-way: no authoritative runtime command or lifecycle
+      // acknowledgement waits for network I/O.
+      if (trigger === "launch" || trigger === "foreground" || trigger === "post_commit") {
+        input.automaticBackupScheduler?.request(trigger);
+      }
       await foregroundFeedbackStore.prune({ nowMs: input.nowMs() })
         .catch(() => undefined);
       const sessionIds = await input.restRepository.listActiveSessionIds();
@@ -560,9 +569,13 @@ export function createWorkoutLifecycle(input: Readonly<{
       let previous: AppStateStatus = appState.currentState;
       const subscription = appState.addEventListener("change", (next) => {
         const enteringForeground = previous !== "active" && next === "active";
+        const enteringBackground = previous === "active" && next !== "active";
         previous = next;
         if (enteringForeground && !disposed) {
           void this.trigger("foreground").then(onResult, () => undefined);
+        }
+        if (enteringBackground && !disposed) {
+          input.automaticBackupScheduler?.request("background");
         }
       });
       return () => subscription.remove();

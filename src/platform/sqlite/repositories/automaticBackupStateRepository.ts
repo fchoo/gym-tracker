@@ -3,6 +3,10 @@ import type { SqliteKernel } from "../sqliteKernel";
 export type AutomaticBackupState = Readonly<{
   environment: "production" | "development-test"; permissionId: string | null; displayEmail: string | null;
   connectionGeneration: number; writerEpoch: number; mutationGeneration: number; backedUpGeneration: number;
+  manifestId: string | null; manifestEtag: string | null;
+  authorityState: "quarantine" | "active" | "stale_writer" | "deleted";
+  dirtySinceMs: number | null; dataUsePolicy: "any-network" | "wifi-only";
+  claimId: string | null; claimExpiresAtMs: number | null;
 }>;
 
 export type AutomaticBackupReceipt = Readonly<{
@@ -18,10 +22,14 @@ export function createAutomaticBackupStateRepository(kernel: SqliteKernel): Read
   persistAttempt(input: AutomaticBackupReceipt & Readonly<{ candidateId: string; resumableLocation?: string; resumableUploadedBytes?: number; nowMs: number }>): Promise<void>;
   acquireLease(input: Readonly<{ leaseId: string; nowMs: number; expiresAtMs: number }>): Promise<boolean>;
   recoverExpiredLease(nowMs: number): Promise<boolean>;
+  beginQuarantine(input: Readonly<{ environment: AutomaticBackupState["environment"]; permissionId: string; connectionGeneration: number }>): Promise<void>;
+  activateWriter(input: Readonly<{ manifestId: string; manifestEtag: string; writerEpoch: number; permissionId: string; connectionGeneration: number }>): Promise<boolean>;
+  markStaleWriter(writerEpoch: number): Promise<boolean>;
+  clearExpiredClaim(nowMs: number): Promise<boolean>;
 }> {
   return Object.freeze({
     async read() {
-      const rows = await kernel.queryAll<Record<string, unknown>>("SELECT environment, permission_id, display_email, connection_generation, writer_epoch, mutation_generation, backed_up_generation FROM automatic_backup_state WHERE id = 1");
+      const rows = await kernel.queryAll<Record<string, unknown>>("SELECT environment, permission_id, display_email, connection_generation, manifest_file_id, manifest_etag, writer_epoch, authority_state, mutation_generation, backed_up_generation, dirty_since_ms, data_use_policy, claim_id, claim_expires_at_ms FROM automatic_backup_state WHERE id = 1");
       const row = rows[0];
       if (rows.length !== 1 || row === undefined || (row.environment !== "production" && row.environment !== "development-test") || !Number.isSafeInteger(row.connection_generation) || !Number.isSafeInteger(row.writer_epoch) || !Number.isSafeInteger(row.mutation_generation) || !Number.isSafeInteger(row.backed_up_generation)) throw new Error("automatic_backup_state_invalid");
       const environment = row.environment as AutomaticBackupState["environment"];
@@ -29,7 +37,14 @@ export function createAutomaticBackupStateRepository(kernel: SqliteKernel): Read
       const writerEpoch = row.writer_epoch as number;
       const mutationGeneration = row.mutation_generation as number;
       const backedUpGeneration = row.backed_up_generation as number;
-      return Object.freeze({ environment, permissionId: typeof row.permission_id === "string" ? row.permission_id : null, displayEmail: typeof row.display_email === "string" ? row.display_email : null, connectionGeneration, writerEpoch, mutationGeneration, backedUpGeneration });
+      // Older read-only test doubles intentionally expose only the v23 fence
+      // columns. The persisted schema always contains these defaults; retaining
+      // them here keeps the repository boundary backward compatible.
+      const authorityState = row.authority_state ?? "quarantine";
+      const dataUsePolicy = row.data_use_policy ?? "any-network";
+      if (authorityState !== "quarantine" && authorityState !== "active" && authorityState !== "stale_writer" && authorityState !== "deleted") throw new Error("automatic_backup_state_invalid");
+      if (dataUsePolicy !== "any-network" && dataUsePolicy !== "wifi-only") throw new Error("automatic_backup_state_invalid");
+      return Object.freeze({ environment, permissionId: typeof row.permission_id === "string" ? row.permission_id : null, displayEmail: typeof row.display_email === "string" ? row.display_email : null, connectionGeneration, writerEpoch, mutationGeneration, backedUpGeneration, manifestId: typeof row.manifest_file_id === "string" ? row.manifest_file_id : null, manifestEtag: typeof row.manifest_etag === "string" ? row.manifest_etag : null, authorityState, dirtySinceMs: typeof row.dirty_since_ms === "number" ? row.dirty_since_ms : null, dataUsePolicy, claimId: typeof row.claim_id === "string" ? row.claim_id : null, claimExpiresAtMs: typeof row.claim_expires_at_ms === "number" ? row.claim_expires_at_ms : null });
     },
     async acknowledge(input: Readonly<{ environment: AutomaticBackupState["environment"]; permissionId: string; writerEpoch: number; capturedGeneration: number }>) {
       const outcome = await kernel.write((transaction) => transaction.execute(
@@ -82,6 +97,42 @@ export function createAutomaticBackupStateRepository(kernel: SqliteKernel): Read
       const outcome = await kernel.write((transaction) => transaction.execute(
         `UPDATE automatic_backup_receipt_state SET lease_id = NULL, lease_expires_at_ms = NULL
          WHERE id = 1 AND lease_id IS NOT NULL AND lease_expires_at_ms <= ?`, [nowMs],
+      ));
+      return outcome.changes === 1;
+    },
+    async beginQuarantine(input) {
+      await kernel.write(async (transaction) => {
+        const outcome = await transaction.execute(
+          `UPDATE automatic_backup_state SET environment = ?, permission_id = ?, connection_generation = ?,
+             authority_state = 'quarantine', claim_id = NULL, claim_expires_at_ms = NULL
+           WHERE id = 1`,
+          [input.environment, input.permissionId, input.connectionGeneration],
+        );
+        if (outcome.changes !== 1) throw new Error("automatic_backup_state_missing");
+      });
+    },
+    async activateWriter(input) {
+      const outcome = await kernel.write((transaction) => transaction.execute(
+        `UPDATE automatic_backup_state SET manifest_file_id = ?, manifest_etag = ?, writer_epoch = ?,
+           permission_id = ?, connection_generation = ?, authority_state = 'active', claim_id = NULL,
+           claim_expires_at_ms = NULL WHERE id = 1 AND authority_state = 'quarantine'
+             AND permission_id = ? AND connection_generation = ?`,
+        [input.manifestId, input.manifestEtag, input.writerEpoch, input.permissionId,
+          input.connectionGeneration, input.permissionId, input.connectionGeneration],
+      ));
+      return outcome.changes === 1;
+    },
+    async markStaleWriter(writerEpoch) {
+      const outcome = await kernel.write((transaction) => transaction.execute(
+        "UPDATE automatic_backup_state SET authority_state = 'stale_writer' WHERE id = 1 AND writer_epoch = ?",
+        [writerEpoch],
+      ));
+      return outcome.changes === 1;
+    },
+    async clearExpiredClaim(nowMs) {
+      const outcome = await kernel.write((transaction) => transaction.execute(
+        "UPDATE automatic_backup_state SET claim_id = NULL, claim_expires_at_ms = NULL WHERE id = 1 AND claim_id IS NOT NULL AND claim_expires_at_ms <= ?",
+        [nowMs],
       ));
       return outcome.changes === 1;
     },

@@ -90,7 +90,8 @@ export function manifestSupportsRequestedSuite(manifestSuite, requestedSuite) {
   return manifestSuite === requestedSuite
     || ((manifestSuite === 'phase10' || manifestSuite === 'phase11' || manifestSuite === 'phase12')
       && requestedSuite === 'migrations-effects')
-    || (manifestSuite === 'phase11' && requestedSuite === 'portable-merge');
+    || (manifestSuite === 'phase11' && requestedSuite === 'portable-merge')
+    || (manifestSuite === 'phase12' && requestedSuite === 'google-drive-backup');
 }
 
 async function deriveCaseIds(fileName, exportName) {
@@ -128,6 +129,10 @@ const MIGRATIONS_EFFECTS_CASE_IDS = await deriveCaseIds(
 const PORTABLE_MERGE_CASE_IDS = await deriveCaseIds(
   'portableMerge.contract.ts',
   'PORTABLE_MERGE_CONTRACT_CASES',
+);
+const GOOGLE_DRIVE_BACKUP_CASE_IDS = await deriveCaseIds(
+  'googleDriveBackup.contract.ts',
+  'GOOGLE_DRIVE_BACKUP_CONTRACT_CASE_IDS',
 );
 const PHASE2_FTS_CASE_IDS = await deriveCaseIds(
   'phase2Fts.contract.ts',
@@ -177,6 +182,7 @@ const supportedSuiteCases = {
   'sqlite-kernel': SQLITE_KERNEL_CASE_IDS,
   'migrations-effects': MIGRATIONS_EFFECTS_CASE_IDS,
   'portable-merge': PORTABLE_MERGE_CASE_IDS,
+  'google-drive-backup': GOOGLE_DRIVE_BACKUP_CASE_IDS,
   'phase2': PHASE2_AGGREGATE_CASE_IDS,
   'phase2-content': PHASE2_CONTENT_CASE_IDS,
   'phase2-fts': PHASE2_FTS_CASE_IDS,

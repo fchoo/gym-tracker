@@ -341,6 +341,7 @@ import type {
 import {
   createWorkoutLifecycle,
 } from "./workoutLifecycle";
+import type { AutomaticBackupScheduler } from "../domains/backup/automaticBackupScheduler";
 import {
   createOwnedPlanRuntimePort,
   type OwnedPlanRuntimeExerciseOption,
@@ -987,6 +988,9 @@ export type WorkoutAppRuntimeDependencies = Readonly<{
     kernel: SqliteKernel,
   ): ReturnType<typeof createPlansWorkoutRepository>;
   createNotifications(): RestNotificationPort;
+  createAutomaticBackupScheduler?(
+    kernel: SqliteKernel,
+  ): AutomaticBackupScheduler;
   restAlertPreferenceStore?: RestAlertPreferenceStore;
   createLifecycle(
     input: Parameters<typeof createWorkoutLifecycle>[0],
@@ -1036,6 +1040,9 @@ export type WorkoutAppRuntimeAdapters = Readonly<{
     kernel: SqliteKernel,
   ): ReturnType<typeof createPlansWorkoutRepository>;
   createNotifications(): RestNotificationPort;
+  createAutomaticBackupScheduler?(
+    kernel: SqliteKernel,
+  ): AutomaticBackupScheduler;
   restAlertPreferenceStore?: RestAlertPreferenceStore;
   createLifecycle(
     input: Parameters<typeof createWorkoutLifecycle>[0],
@@ -1138,6 +1145,9 @@ export function createWorkoutAppRuntimeDependencies(
       : { loadStarterPlans: adapters.loadStarterPlans }),
     createRepository: adapters.createRepository,
     createNotifications: adapters.createNotifications,
+    ...(adapters.createAutomaticBackupScheduler === undefined
+      ? {}
+      : { createAutomaticBackupScheduler: adapters.createAutomaticBackupScheduler }),
     ...(adapters.restAlertPreferenceStore === undefined
       ? {}
       : { restAlertPreferenceStore: adapters.restAlertPreferenceStore }),
@@ -2103,6 +2113,9 @@ export function WorkoutAppRuntimeProvider({
       historyProjectionEffectStore: createHistoryProjectionEffectStore(kernel),
       notifications,
       nowMs: dependencies.nowMs,
+      ...(dependencies.createAutomaticBackupScheduler === undefined
+        ? {}
+        : { automaticBackupScheduler: dependencies.createAutomaticBackupScheduler(kernel) }),
     });
     const ownedPlans = createOwnedPlanRuntimePort(kernel, {
       nowMs: dependencies.nowMs,
