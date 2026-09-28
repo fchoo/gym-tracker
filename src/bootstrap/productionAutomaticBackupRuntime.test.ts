@@ -12,14 +12,11 @@ const mockState = {
   })),
   setDataUsePolicy: jest.fn(async () => undefined),
 };
-const mockCoordinator = {
-  connect: jest.fn(async () => undefined), deferRecovery: jest.fn(async () => undefined),
-  abortChecking: jest.fn(async () => undefined), checkAgain: jest.fn(async () => undefined),
-  prepareRecovery: jest.fn(async () => ({ kind: "empty_direct" as const, attemptId: "attempt" })),
-  commitRecovery: jest.fn(async () => undefined), disconnect: jest.fn(async () => undefined),
-  finishDeletionSweep: jest.fn(async () => undefined), backup: jest.fn(async () => undefined),
+const mockLocalFacts = {
+  read: jest.fn(async () => ({
+    schemaVersion: 26, ownerNamespace: "local-owner", tables: { workout_sessions: [], portable_owner_identity: [] },
+  })),
 };
-const mockScheduler = { request: jest.fn(async () => undefined) };
 
 jest.mock("expo-constants", () => ({
   __esModule: true,
@@ -38,10 +35,41 @@ jest.mock("../platform/sqlite/repositories/automaticBackupStateRepository", () =
   createAutomaticBackupStateRepository: () => mockState,
 }));
 jest.mock("../domains/backup/automaticBackupCoordinator", () => ({
-  createAutomaticBackupCoordinator: () => mockCoordinator,
+  createAutomaticBackupCoordinator: jest.fn(() => ({
+    connect: jest.fn(async () => undefined), deferRecovery: jest.fn(async () => undefined),
+    abortChecking: jest.fn(async () => undefined), checkAgain: jest.fn(async () => undefined),
+    prepareRecovery: jest.fn(async () => ({ kind: "empty_direct" as const, attemptId: "attempt" })),
+    commitRecovery: jest.fn(async () => undefined), disconnect: jest.fn(async () => undefined),
+    finishDeletionSweep: jest.fn(async () => undefined), backup: jest.fn(async () => undefined),
+  })),
 }));
 jest.mock("../domains/backup/automaticBackupScheduler", () => ({
-  createAutomaticBackupScheduler: () => mockScheduler,
+  createAutomaticBackupScheduler: jest.fn(() => ({ request: jest.fn(async () => undefined) })),
+}));
+jest.mock("../domains/portability/automaticPortability", () => ({
+  createAutomaticPortableRestorePort: jest.fn(() => ({ restore: async () => ({ state: "ready" as const }) })),
+  createAutomaticPortableMergePort: jest.fn(() => ({
+    preflight: async () => ({ token: "merge-token" }),
+    commit: async () => ({ state: "ready" as const }),
+  })),
+}));
+jest.mock("../platform/sqlite/repositories/restorePreflightAdapters", () => ({
+  createSqliteRestoreSchemaPort: () => ({ columnsFor: async () => [] }),
+  createSqliteRestoreRetainedReferencePort: () => ({ hasRetainedIdentity: async () => false }),
+  createSqliteRestoreCandidateProbe: () => ({ validateCandidate: async () => undefined }),
+  createSqliteMergeLocalFactsPort: () => mockLocalFacts,
+}));
+jest.mock("../platform/sqlite/repositories/logicalBackupRepository", () => ({
+  createLogicalBackupRepository: () => ({ collect: async () => ({ version: 2, schemaVersion: 26, tables: {}, catalogReferences: [], manifest: {}, snapshotId: "snapshot", createdAtMs: 1 }) }),
+}));
+jest.mock("../platform/sqlite/repositories/logicalMergeRepository", () => ({
+  createFullPlanLogicalMergeWriter: () => ({ commitFullPlan: async () => ({ state: "ready" as const }) }),
+}));
+jest.mock("../domains/portability/mergePlan", () => ({
+  buildPortableMergePlan: async () => ({}),
+}));
+jest.mock("../platform/sqlite/repositories/restoreReconciliationRepository", () => ({
+  createRestoreReconciliationRepository: () => ({ reconcileAndRebuild: async () => undefined }),
 }));
 
 import { createProductionAutomaticBackupServices } from "./productionAutomaticBackupRuntime";
@@ -79,12 +107,55 @@ describe("production automatic-backup composition", () => {
     await runtime.disconnect(); await expect(runtime.deleteCloudBackup()).rejects.toThrow("automatic_delete_requires_tombstone_confirmation");
     await runtime.finishDeletingCloudBackup(); await runtime.startNewCloudBackup();
 
+    const coordinatorModule = jest.requireMock("../domains/backup/automaticBackupCoordinator") as { createAutomaticBackupCoordinator: jest.Mock };
+    const schedulerModule = jest.requireMock("../domains/backup/automaticBackupScheduler") as { createAutomaticBackupScheduler: jest.Mock };
+    const activeCoordinator = coordinatorModule.createAutomaticBackupCoordinator.mock.results.at(-1)?.value as {
+      prepareRecovery: jest.Mock; commitRecovery: jest.Mock;
+    };
+    const activeScheduler = schedulerModule.createAutomaticBackupScheduler.mock.results.at(-1)?.value as { request: jest.Mock };
     expect(mockState.setDataUsePolicy).toHaveBeenCalledWith("wifi-only");
-    expect(mockCoordinator.prepareRecovery).toHaveBeenCalledWith({ candidate });
-    expect(mockCoordinator.commitRecovery).toHaveBeenCalledWith(recovery);
-    expect(mockScheduler.request).toHaveBeenNthCalledWith(1, "manual");
-    expect(mockScheduler.request).toHaveBeenNthCalledWith(2, "retry");
-    expect(mockScheduler.request).toHaveBeenNthCalledWith(3, "manual");
-    expect(mockScheduler.request).toHaveBeenNthCalledWith(4, "manual");
+    expect(activeCoordinator.prepareRecovery).toHaveBeenCalledWith({ candidate });
+    expect(activeCoordinator.commitRecovery).toHaveBeenCalledWith(recovery);
+    expect(activeScheduler.request).toHaveBeenNthCalledWith(1, "manual");
+    expect(activeScheduler.request).toHaveBeenNthCalledWith(2, "retry");
+    expect(activeScheduler.request).toHaveBeenNthCalledWith(3, "manual");
+    expect(activeScheduler.request).toHaveBeenNthCalledWith(4, "manual");
+  });
+
+  it("binds recovery, merge, capture, and scheduling callbacks to the active local facts", async () => {
+    const kernel = { queryAll: jest.fn(async () => []) } as never;
+    createProductionAutomaticBackupServices(kernel);
+    const portability = jest.requireMock("../domains/portability/automaticPortability") as {
+      createAutomaticPortableRestorePort: jest.Mock;
+      createAutomaticPortableMergePort: jest.Mock;
+    };
+    const restore = portability.createAutomaticPortableRestorePort.mock.calls.at(-1)?.[0] as any;
+    const merge = portability.createAutomaticPortableMergePort.mock.calls.at(-1)?.[0] as any;
+    const coordinator = (jest.requireMock("../domains/backup/automaticBackupCoordinator") as { createAutomaticBackupCoordinator: jest.Mock }).createAutomaticBackupCoordinator.mock.calls.at(-1)?.[0] as any;
+    const scheduler = (jest.requireMock("../domains/backup/automaticBackupScheduler") as { createAutomaticBackupScheduler: jest.Mock }).createAutomaticBackupScheduler.mock.calls.at(-1)?.[0] as any;
+    const remote = { schemaVersion: 26, tables: { portable_owner_identity: [{ owner_namespace: "remote-owner" }] } };
+
+    await expect(restore.localIsEmpty()).resolves.toBe(true);
+    await expect(restore.claimIsCurrent()).resolves.toBe(false);
+    await restore.rebuild();
+    await expect(merge.local()).resolves.toEqual({ version: 2, schemaVersion: 26, tables: mockLocalFacts.read.mock.results[0]?.value === undefined ? {} : expect.anything() });
+    expect(merge.archive(remote as never)).toEqual({ version: 2, schemaVersion: 26, tables: remote.tables });
+    await merge.build({ archive: { version: 2, schemaVersion: 26, tables: {} }, local: { version: 2, schemaVersion: 26, tables: {} } });
+    await merge.fingerprint();
+    const token = merge.issue({ plan: {}, fingerprint: "fingerprint" });
+    expect(merge.consume(token)).toEqual({ plan: {}, fingerprint: "fingerprint" });
+    expect(merge.consume(token)).toBeNull();
+    await merge.commitPlan({ plan: {}, fingerprint: "fingerprint" }); await merge.rebuild();
+    expect(coordinator.isWorkoutActive()).toBe(false); expect(coordinator.validate()).toBe(true);
+    await coordinator.capture();
+    expect(coordinator.validateManifest(new TextEncoder().encode("invalid"))).toBeNull();
+    expect(new TextDecoder().decode(coordinator.buildManifest({ candidateId: "candidate", state: { writerEpoch: 2 }, captured: { sourceDigest: "digest" } }))).toContain("candidate");
+    await expect(coordinator.recovery.parseSnapshot(new TextEncoder().encode("{}"))).rejects.toThrow("automatic_recovery_snapshot_invalid");
+    await expect(coordinator.recovery.localIsEmpty()).resolves.toBe(true);
+    await expect(coordinator.recovery.prepareMerge(remote as never)).resolves.toEqual({ token: "merge-token", ownerSummary: "A different backup identity", adoptionRequired: true });
+    await coordinator.recovery.restore(remote as never); await coordinator.recovery.commitMerge({ token: "merge-token" });
+    await expect(coordinator.recovery.freshAdoptionGrant()).rejects.toThrow("automatic_recovery_reauthentication_cancelled");
+    await expect(scheduler.isWorkoutActive()).resolves.toBe(false); await expect(scheduler.eligible()).resolves.toBe(true);
+    scheduler.queue(() => undefined); await scheduler.run();
   });
 });
