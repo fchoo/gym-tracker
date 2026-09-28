@@ -56,7 +56,7 @@ export function createAutomaticBackupRuntime(input: Readonly<{
   let model = unavailable();
   let disposed = false;
   let generation = 0;
-  let activeCommand: Promise<void> | null = null;
+  let activeCommand: Promise<unknown> | null = null;
   const listeners = new Set<(next: AutomaticBackupViewModel) => void>();
   const emit = () => { for (const listener of listeners) listener(model); };
   const publish = async () => {
@@ -81,8 +81,11 @@ export function createAutomaticBackupRuntime(input: Readonly<{
       return Promise.reject(new Error("automatic_backup_unavailable"));
     }
     if (activeCommand !== null) return activeCommand as Promise<Result>;
-    const command = input.commands[key] as (...values: readonly unknown[]) => Promise<void>;
-    activeCommand = command(...args).then(publish).finally(() => { activeCommand = null; });
+    const command = input.commands[key] as (...values: readonly unknown[]) => Promise<unknown>;
+    activeCommand = command(...args).then(async (result) => {
+      await publish();
+      return result;
+    }).finally(() => { activeCommand = null; });
     return activeCommand as Promise<Result>;
   };
   const unsubscribe = input.subscribeTransitions?.(() => { void publish(); });
