@@ -21,9 +21,6 @@ import {
   phase12BenchmarkStartupAction,
   type Phase12BackupBenchmarkResult,
 } from "../src/bootstrap/phase12BackupBenchmark";
-import {
-  useWorkoutAppRuntime,
-} from "../src/bootstrap/workoutAppRuntime";
 
 const suite = process.env.EXPO_PUBLIC_NATIVE_CONTRACT_SUITE;
 
@@ -34,7 +31,6 @@ type RouteState =
 
 export default function Phase12BenchmarkScreen() {
   const started = useRef(false);
-  const { launchState } = useWorkoutAppRuntime();
   const nativeContractsEnabled =
     Constants.expoConfig?.extra?.nativeContractsEnabled === true;
   const [state, setState] = useState<RouteState>(
@@ -46,7 +42,7 @@ export default function Phase12BenchmarkScreen() {
   useEffect(() => {
     const action = phase12BenchmarkStartupAction({
       enabled: nativeContractsEnabled,
-      launchState,
+      launchState: "trusted",
       started: started.current,
       suite,
     });
@@ -71,7 +67,7 @@ export default function Phase12BenchmarkScreen() {
       console.error(`${PHASE12_BENCHMARK_ERROR_MARKER}${JSON.stringify({ message })}`);
       setState({ status: "failed", errorCode: "phase12_benchmark_failed" });
     });
-  }, [launchState, nativeContractsEnabled]);
+  }, [nativeContractsEnabled]);
 
   if (state.status === "disabled") return <Redirect href="/" />;
   const completed = state.status === "finished" ? state.result : undefined;
