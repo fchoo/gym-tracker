@@ -220,7 +220,15 @@ describe("restore preflight", () => {
       .resolves.toEqual(expect.objectContaining({ outcome: "ready" }));
   });
 
-  it.each([14, 23])("rejects unsupported logical producer schema version %i", async (schemaVersion) => {
+  it("accepts schema 23 with the unchanged canonical graph", async () => {
+    const commands = createRestoreCommands({
+      crypto: cryptoPort(), files: { readSelectedArchiveAtMost: () => archiveFor(snapshot({ version: 1, schemaVersion: 23 })) },
+      kdf, schema, candidateProbe, store: createRestorePreflightStore({ tokenFactory: () => "schema-23" }),
+    });
+    await expect(commands.preflightSecureRestore({ password: "owner-password" })).resolves.toEqual(expect.objectContaining({ outcome: "ready" }));
+  });
+
+  it.each([14, 24])("rejects unsupported logical producer schema version %i", async (schemaVersion) => {
     const commands = createRestoreCommands({
       crypto: cryptoPort(), files: { readSelectedArchiveAtMost: () => archiveFor(snapshot({ version: 1, schemaVersion })) },
       kdf, schema, candidateProbe, store: createRestorePreflightStore({ tokenFactory: () => "unsupported" }),

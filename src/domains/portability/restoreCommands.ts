@@ -144,7 +144,7 @@ function validPassword(value: string): boolean {
   }
 }
 
-export const LOGICAL_BACKUP_SUPPORTED_SCHEMA_VERSIONS = Object.freeze([15, 16, 17, 18, 19, 20, 21, 22] as const);
+export const LOGICAL_BACKUP_SUPPORTED_SCHEMA_VERSIONS = Object.freeze([15, 16, 17, 18, 19, 20, 21, 22, 23] as const);
 
 type LogicalReference = Readonly<{
   childTable: string;

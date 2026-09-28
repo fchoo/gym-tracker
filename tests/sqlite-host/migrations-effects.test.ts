@@ -299,6 +299,7 @@ describe("Plan 01-06 forward migrations and internal recovery", () => {
       20,
       21,
       22,
+      23,
     ]);
     expect(runtimeMigrations.slice(0, 3)).toEqual(migrations);
     expect(initialMigration).toEqual(expect.objectContaining({
@@ -868,8 +869,8 @@ describe("Plan 01-06 forward migrations and internal recovery", () => {
       }).run();
 
       expect(result).toEqual(expect.objectContaining({
-        appliedVersions: [22],
-        currentVersion: 22,
+        appliedVersions: [22, 23],
+        currentVersion: 23,
       }));
       await expect(runtime.kernel.queryAll(
         "SELECT id, owner_namespace FROM portable_owner_identity",
