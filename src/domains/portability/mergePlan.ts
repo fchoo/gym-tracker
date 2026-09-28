@@ -544,14 +544,16 @@ function sessionAggregate(
             ? "request_id"
             : "id";
           const replacement = mappedIdentifier(immutableIds, row[keyColumn]);
-          mapped = Object.freeze({ ...mapped, [keyColumn]: replacement });
+          if (replacement !== mapped[keyColumn]) {
+            mapped = Object.freeze({ ...mapped, [keyColumn]: replacement });
+          }
         }
-        if (mapped.session_id === sessionId) {
+        if (mapped.session_id === sessionId && localSessionId !== sessionId) {
           mapped = Object.freeze({ ...mapped, session_id: localSessionId });
         }
         if (mapped.session_exercise_id !== null && mapped.session_exercise_id !== undefined) {
           const replacement = mappedExercises.ids.get(textId(mapped.session_exercise_id));
-          if (replacement !== undefined) {
+          if (replacement !== undefined && replacement !== mapped.session_exercise_id) {
             mapped = Object.freeze({ ...mapped, session_exercise_id: replacement });
           }
         }
@@ -602,7 +604,9 @@ function sessionAggregate(
           const value = mapped[column];
           if (value === null || value === undefined) continue;
           const replacement = mappedSets.ids.get(textId(value));
-          if (replacement !== undefined) mapped = Object.freeze({ ...mapped, [column]: replacement });
+          if (replacement !== undefined && replacement !== value) {
+            mapped = Object.freeze({ ...mapped, [column]: replacement });
+          }
         }
         return mapped;
       }));
@@ -955,17 +959,22 @@ function mappedRows(
   keyIds?: ReadonlyMap<string, string>,
   occupiedIds?: Set<string>,
 ): Readonly<{ rows: readonly LogicalBackupRow[]; ids: ReadonlyMap<string, string> }> {
-  const occupied = occupiedIds ?? tableOccupiedIds(snapshot, table, keyColumn);
+  const occupied = remapIds
+    ? occupiedIds ?? tableOccupiedIds(snapshot, table, keyColumn)
+    : undefined;
   const ids = new Map<string, string>();
-  for (const [index, row] of [...selected].sort((left, right) =>
-    textId(left[keyColumn]).localeCompare(textId(right[keyColumn]))).entries()) {
+  const ordered = remapIds
+    ? [...selected].sort((left, right) =>
+      textId(left[keyColumn]).localeCompare(textId(right[keyColumn])))
+    : selected;
+  for (const [index, row] of ordered.entries()) {
     const sourceId = textId(row[keyColumn]);
     const suppliedId = keyIds?.get(sourceId);
     if (keyIds !== undefined && suppliedId === undefined) invalid();
-    const localId = suppliedId ?? (remapIds && occupied.has(sourceId)
-      ? remappedChildId(table, portableId, index, occupied)
+    const localId = suppliedId ?? (remapIds && occupied!.has(sourceId)
+      ? remappedChildId(table, portableId, index, occupied!)
       : sourceId);
-    occupied.add(localId);
+    occupied?.add(localId);
     ids.set(sourceId, localId);
   }
   const rows = selected.map((row) => {
@@ -978,12 +987,13 @@ function mappedRows(
         if (optional === true) continue;
         invalid();
       }
-      mapped = Object.freeze({ ...mapped, [column]: replacement });
+      if (replacement !== value) {
+        mapped = Object.freeze({ ...mapped, [column]: replacement });
+      }
     }
-    return Object.freeze({
-      ...mapped,
-      [keyColumn]: ids.get(textId(row[keyColumn]))!,
-    });
+    const mappedId = ids.get(textId(row[keyColumn]))!;
+    if (mapped[keyColumn] === mappedId && Object.isFrozen(mapped)) return mapped;
+    return Object.freeze({ ...mapped, [keyColumn]: mappedId });
   });
   return Object.freeze({ rows: Object.freeze(rows), ids });
 }

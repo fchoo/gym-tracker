@@ -1278,6 +1278,29 @@ describe("portable merge plan", () => {
     })]);
   });
 
+  it("reuses frozen rows when no aggregate identifiers change", () => {
+    const row = Object.freeze({ id: "child", session_id: "session" });
+    const occupiedRows = [{ id: "occupied" }];
+    occupiedRows.map = (() => {
+      throw new Error("unexpected occupied-id scan");
+    }) as typeof occupiedRows.map;
+    const source = snapshot({ id: "session", marker: "source", modifiedAtMs: 1 }, {
+      child_rows: occupiedRows,
+    });
+
+    const mapped = __mergePlanTestOnly.mappedRows(
+      source,
+      "child_rows",
+      [row],
+      [{ column: "session_id", ids: new Map([["session", "session"]]) }],
+      false,
+      sessionPortableId,
+    );
+
+    expect(mapped.rows[0]).toBe(row);
+    expect(mapped.ids).toEqual(new Map([["child", "child"]]));
+  });
+
   it("rejects session aggregate remaps with an unresolved active pointer", () => {
     const archive = snapshot({ id: "archive-session", marker: "archive", modifiedAtMs: 20 }, {
       workout_sessions: [{
