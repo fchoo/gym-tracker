@@ -207,7 +207,7 @@ describe("restore preflight", () => {
     await expect(commands.preflightSecureRestore({ password: "owner-password" })).resolves.toEqual(expect.objectContaining({ outcome: "ready" }));
   });
 
-  it("accepts a schema-22 v2 archive against the live v24 runtime graph", async () => {
+  it("accepts a schema-22 v2 archive as an explicit portable-identity compatibility case", async () => {
     const commands = createRestoreCommands({
       crypto: cryptoPort(), files: { readSelectedArchiveAtMost: () => archiveFor(snapshot({
         version: 2,
@@ -228,7 +228,7 @@ describe("restore preflight", () => {
     await expect(commands.preflightSecureRestore({ password: "owner-password" })).resolves.toEqual(expect.objectContaining({ outcome: "ready" }));
   });
 
-  it("accepts schema 24 while backup bookkeeping remains outside the archive tables", async () => {
+  it("accepts schema 24 as an explicit archived backup-bookkeeping compatibility case", async () => {
     const commands = createRestoreCommands({
       crypto: cryptoPort(), files: { readSelectedArchiveAtMost: () => archiveFor(snapshot({
         version: 2, schemaVersion: 24,
@@ -241,7 +241,20 @@ describe("restore preflight", () => {
     await expect(commands.preflightSecureRestore({ password: "owner-password" })).resolves.toEqual(expect.objectContaining({ outcome: "ready" }));
   });
 
-  it.each([14, 25])("rejects unsupported logical producer schema version %i", async (schemaVersion) => {
+  it.each([25, 26])("accepts additive automatic-backup schema version %i while bookkeeping remains outside the archive tables", async (schemaVersion) => {
+    const commands = createRestoreCommands({
+      crypto: cryptoPort(), files: { readSelectedArchiveAtMost: () => archiveFor(snapshot({
+        version: 2, schemaVersion,
+        tables: { portable_owner_identity: [{ id: 1, owner_namespace: "0123456789abcdef0123456789abcdef" }] },
+      })) },
+      kdf, schema, candidateProbe, store: createRestorePreflightStore({ tokenFactory: () => "schema-" + schemaVersion }),
+    });
+    expect(LOGICAL_BACKUP_TABLES).not.toContain("automatic_backup_state");
+    expect(LOGICAL_BACKUP_TABLES).not.toContain("automatic_backup_receipt_state");
+    await expect(commands.preflightSecureRestore({ password: "owner-password" })).resolves.toEqual(expect.objectContaining({ outcome: "ready" }));
+  });
+
+  it.each([14, 27])("rejects unsupported logical producer schema version %i", async (schemaVersion) => {
     const commands = createRestoreCommands({
       crypto: cryptoPort(), files: { readSelectedArchiveAtMost: () => archiveFor(snapshot({ version: 1, schemaVersion })) },
       kdf, schema, candidateProbe, store: createRestorePreflightStore({ tokenFactory: () => "unsupported" }),

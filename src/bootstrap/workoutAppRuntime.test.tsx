@@ -3261,6 +3261,12 @@ describe("WorkoutAppRuntimeProvider", () => {
       if (sql === "SELECT id, environment FROM automatic_backup_receipt_state") {
         return [{ id: 1, environment: "production" }];
       }
+      if (sql === "SELECT deletion_progress, authority_state FROM automatic_backup_state WHERE id = 1") {
+        return [{ deletion_progress: "none", authority_state: "quarantine" }];
+      }
+      if (sql === "SELECT account_display_label FROM automatic_backup_state WHERE id = 1") {
+        return [{ account_display_label: null }];
+      }
       if (sql.includes("portable_id IS NULL")) {
         return [{ count: 0 }];
       }
