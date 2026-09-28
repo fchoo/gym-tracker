@@ -15,6 +15,14 @@ export type AutomaticBackupReceipt = Readonly<{
   manifestId: string; manifestEtag: string;
 }>;
 
+export type AutomaticBackupRecoveryStatus =
+  | "idle"
+  | "checking"
+  | "restore_pending"
+  | "restoring"
+  | "finishing"
+  | "paused";
+
 export function createAutomaticBackupStateRepository(kernel: SqliteKernel): Readonly<{
   read(): Promise<AutomaticBackupState>;
   acknowledge(input: Readonly<{ environment: AutomaticBackupState["environment"]; permissionId: string; writerEpoch: number; capturedGeneration: number }>): Promise<boolean>;
@@ -26,6 +34,10 @@ export function createAutomaticBackupStateRepository(kernel: SqliteKernel): Read
   activateWriter(input: Readonly<{ manifestId: string; manifestEtag: string; writerEpoch: number; permissionId: string; connectionGeneration: number }>): Promise<boolean>;
   markStaleWriter(writerEpoch: number): Promise<boolean>;
   clearExpiredClaim(nowMs: number): Promise<boolean>;
+  setRecoveryStatus(status: AutomaticBackupRecoveryStatus): Promise<void>;
+  setDataUsePolicy(policy: AutomaticBackupState["dataUsePolicy"]): Promise<void>;
+  /** Clears only this installation's authority; it never calls a Drive delete operation. */
+  disconnectLocal(): Promise<void>;
 }> {
   return Object.freeze({
     async read() {
@@ -135,6 +147,35 @@ export function createAutomaticBackupStateRepository(kernel: SqliteKernel): Read
         [nowMs],
       ));
       return outcome.changes === 1;
+    },
+    async setRecoveryStatus(status) {
+      await kernel.write(async (transaction) => {
+        const outcome = await transaction.execute(
+          "UPDATE automatic_backup_state SET status_code = ? WHERE id = 1",
+          [status],
+        );
+        if (outcome.changes !== 1) throw new Error("automatic_backup_state_missing");
+      });
+    },
+    async setDataUsePolicy(policy) {
+      await kernel.write(async (transaction) => {
+        const outcome = await transaction.execute(
+          "UPDATE automatic_backup_state SET data_use_policy = ? WHERE id = 1",
+          [policy],
+        );
+        if (outcome.changes !== 1) throw new Error("automatic_backup_state_missing");
+      });
+    },
+    async disconnectLocal() {
+      await kernel.write(async (transaction) => {
+        const outcome = await transaction.execute(
+          `UPDATE automatic_backup_state SET permission_id = NULL, display_email = NULL,
+             manifest_file_id = NULL, manifest_etag = NULL, writer_epoch = 0,
+             authority_state = 'quarantine', claim_id = NULL, claim_expires_at_ms = NULL,
+             status_code = 'idle' WHERE id = 1`,
+        );
+        if (outcome.changes !== 1) throw new Error("automatic_backup_state_missing");
+      });
     },
   });
 }
