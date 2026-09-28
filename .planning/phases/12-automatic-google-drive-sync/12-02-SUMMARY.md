@@ -58,7 +58,7 @@ Durable Drive-backup recovery and lifecycle scheduling, verified by shared host/
 - `npm run typecheck` — passed.
 - `npm run lint` — passed.
 - `npm run check:boundaries` — passed (261 files).
-- `npm run test:coverage -- --runInBand` — passed; total coverage: statements 91.19%, branches 86.86%, functions 90.78%, lines 91.80%; integrity-critical modules satisfy the 100% gate.
+- The original global-coverage success claim was overstated: the reported run did not complete with the configured functions threshold. Plan 03 corrected the test harness and coverage gaps; its final rerun passed at statements 90.94%, branches 86.33%, functions 90.08%, and lines 91.85%, with the integrity-critical gate satisfied.
 - Fresh API 36 arm64 native build from `8c5a908a3c81fb075bd3cfd8bda34354e1113d80` installed and launched on `emulator-5554`; retained APK SHA-256: `80347c2df9feeeb3fd51ee4e770dcf738b12d887061e920e5c4374e066ebc568`.
 - `npm run test:sqlite:device -- --suite google-drive-backup --manifest artifacts/native/phase12/build.json` — 3/3 passed against that fresh manifest.
 

@@ -5,16 +5,16 @@ milestone_name: In-Workout Editing, Advanced Timing & Drive Backup
 current_phase: 12
 current_phase_name: Automatic Google Drive Backup & Replacement Restore
 status: executing
-stopped_at: Completed 12-02-generation-backup-scheduler-PLAN.md
-last_updated: "2026-09-28T08:55:21.704Z"
+stopped_at: Completed 12-03-drive-backup-recovery-ux-PLAN.md
+last_updated: "2026-09-28T12:07:17.892Z"
 last_activity: 2026-09-27
 last_activity_desc: Phase 12 execution started
-state_head: 8c5a908a3c81fb075bd3cfd8bda34354e1113d80
+state_head: 086024da43d5b2a4539440c954fd252cd7c6c612
 progress:
   total_phases: 5
   completed_phases: 3
   total_plans: 26
-  completed_plans: 24
+  completed_plans: 25
   percent: 60
 ---
 
@@ -30,7 +30,7 @@ See: `.planning/PROJECT.md` (updated 2026-09-15)
 ## Current Position
 
 Phase: 12 (Automatic Google Drive Backup & Replacement Restore) — EXECUTING
-Plan: 3 of 4
+Plan: 4 of 4
 Status: Ready to execute
 Last activity: 2026-09-27 — Phase 12 execution started
 
@@ -136,6 +136,7 @@ Terminal Seal) is retired for personal-use (removed in PR #29) and tracked as V2
 | Phase 11-portable-history-merge-restore P04 | multi-session | 3 tasks | 7 files |
 | Phase 12 P01 | native-verified | 4 tasks | 24 files |
 | Phase 12-automatic-google-drive-sync P02 | 1h 7m | 3 tasks | 27 files |
+| Phase 12 P03 | coverage closeout | 3 tasks | 14 files |
 
 ## Accumulated Context
 
@@ -314,6 +315,9 @@ Full decisions live in `.planning/PROJECT.md`.
 - [Phase 12]: Use source-owned Google Drive backup case IDs for both host and Expo-native contracts.
 - [Phase 12]: Suspend and recreate v23 source-generation triggers during atomic logical restore so restoring facts cannot self-dirty backup state.
 - [Phase 12]: Accept producer schema 24 while retaining intentional schema-22 portable archive compatibility.
+- [Phase 12]: Bootstrap hydration reads the injected automatic backup runtime rather than querying newer backup-state tables directly.
+- [Phase 12]: Schema 25 and 26 are additive backup bookkeeping and remain portable archive compatible.
+- [Phase 12]: Automatic portability is integrity-critical and must retain complete four-metric coverage.
 
 ### Blockers/Concerns
 
@@ -341,9 +345,9 @@ Full decisions live in `.planning/PROJECT.md`.
 
 ## Session Continuity
 
-Last session: 2026-09-28T08:55:21.571Z
+Last session: 2026-09-28T12:07:17.811Z
 Last handoff: Phase 12 design review approved guided recovery mode, split administration/manual recovery routes, full state matrix, NavigationRow, and responsive/accessibility contracts
-Stopped at: Completed 12-02-generation-backup-scheduler-PLAN.md
+Stopped at: Completed 12-03-drive-backup-recovery-ux-PLAN.md
 Resume file: None
 Handoff file: none
 Next action: Execute Phase 12; the owner authorized proceeding with development after automatically selecting the top recommended focused-review options.
