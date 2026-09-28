@@ -152,6 +152,16 @@ describe("Plan 01-03 test and boundary tooling", () => {
       extra: {
         buildProfile: "development-test",
         nativeContractsEnabled: true,
+        googleOAuth: {
+          projectNumber: "359232211920",
+          webClientId: "359232211920-gqfkasvsr8r5qbmprc6ukh9fofu246r9.apps.googleusercontent.com",
+          androidClientId: "359232211920-q20m2u1e8019eb626rt8alosr0j2262p.apps.googleusercontent.com",
+          packageName: "com.fchoo.gymtracker.devtest",
+          signingCertificate: {
+            sha1: "5E:8F:16:06:2E:A3:CD:2C:4A:0D:54:78:76:BA:A6:F3:8C:AB:F6:25",
+            sha256: "FA:C6:17:45:DC:09:03:78:6F:B9:ED:E6:2A:96:2B:39:9F:73:48:F0:BB:6F:89:9B:83:32:66:75:91:03:3B:9C",
+          },
+        },
       },
     };
     const invalidMessage =

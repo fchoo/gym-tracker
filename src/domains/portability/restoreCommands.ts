@@ -144,7 +144,9 @@ function validPassword(value: string): boolean {
   }
 }
 
-export const LOGICAL_BACKUP_SUPPORTED_SCHEMA_VERSIONS = Object.freeze([15, 16, 17, 18, 19, 20, 21, 22, 23] as const);
+// v23/v24 add automatic-backup bookkeeping only; archives remain the Phase 11
+// portable graph, so both old schema-22 and live schema-24 snapshots restore.
+export const LOGICAL_BACKUP_SUPPORTED_SCHEMA_VERSIONS = Object.freeze([15, 16, 17, 18, 19, 20, 21, 22, 23, 24] as const);
 
 type LogicalReference = Readonly<{
   childTable: string;

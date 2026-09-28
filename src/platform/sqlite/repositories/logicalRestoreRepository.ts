@@ -14,6 +14,9 @@ import {
   PORTABLE_OWNER_IDENTITIES_TRIGGER_STATEMENTS,
 } from "../migrations/0022_portable_owner_identities";
 import {
+  AUTOMATIC_BACKUP_GENERATION_TRIGGER_STATEMENTS,
+} from "../migrations/0023_automatic_drive_backup";
+import {
   OWNED_PLAN_SCHEMA_STATEMENTS,
 } from "../migrations/0009_owned_plans";
 import {
@@ -41,7 +44,8 @@ export type LogicalRestoreRepository = Readonly<{
 }>;
 
 export const LOGICAL_RESTORE_DELETE_TRIGGER_NAMES = Object.freeze([
-  "portable_owner_identity_immutable",
+  // v23 replaces the older immutable trigger with the one-time adoption guard.
+  "portable_owner_identity_adoption_only",
   "portable_owner_identity_no_delete",
   "exercises_portable_id_immutable",
   "plans_portable_id_immutable",
@@ -65,12 +69,25 @@ export const LOGICAL_RESTORE_DELETE_TRIGGER_NAMES = Object.freeze([
   "history_audit_events_immutable_delete",
 ] as const);
 
+/**
+ * v23 generation triggers are intentionally outside the portable graph. A
+ * restore replaces that graph atomically, so they must be suspended with the
+ * existing delete guards or the restore would manufacture dirty generations.
+ */
+export const LOGICAL_RESTORE_BACKUP_TRIGGER_NAMES = Object.freeze(
+  AUTOMATIC_BACKUP_GENERATION_TRIGGER_STATEMENTS.map(triggerName),
+);
+export const LOGICAL_RESTORE_TRIGGER_NAMES = Object.freeze([
+  ...LOGICAL_RESTORE_DELETE_TRIGGER_NAMES,
+  ...LOGICAL_RESTORE_BACKUP_TRIGGER_NAMES,
+] as const);
+
 export type LogicalRestoreFaultStage =
   | "captured_current_ownership"
   | "verified"
   | "state_updated"
-  | `trigger_drop:${typeof LOGICAL_RESTORE_DELETE_TRIGGER_NAMES[number]}`
-  | `trigger_recreate:${typeof LOGICAL_RESTORE_DELETE_TRIGGER_NAMES[number]}`
+  | `trigger_drop:${typeof LOGICAL_RESTORE_TRIGGER_NAMES[number]}`
+  | `trigger_recreate:${typeof LOGICAL_RESTORE_TRIGGER_NAMES[number]}`
   | `delete:${LogicalTableName}`
   | `insert:${LogicalTableName}`;
 
@@ -101,11 +118,12 @@ const TRIGGER_SOURCE_STATEMENTS = Object.freeze([
   ...OWNED_PLAN_SCHEMA_STATEMENTS,
   ...HISTORY_INTEGRITY_SCHEMA_STATEMENTS,
   ...PORTABLE_OWNER_IDENTITIES_TRIGGER_STATEMENTS,
+  ...AUTOMATIC_BACKUP_GENERATION_TRIGGER_STATEMENTS,
 ].filter((statement) => /^CREATE TRIGGER /u.test(statement)));
 
 /** Only delete blockers for facts replaced by this transaction. Insert validators stay active. */
 const RESTORE_TRIGGER_SQL = Object.freeze(new Map(
-  LOGICAL_RESTORE_DELETE_TRIGGER_NAMES.map((name) => [
+  LOGICAL_RESTORE_TRIGGER_NAMES.map((name) => [
     name,
     TRIGGER_SOURCE_STATEMENTS.find((statement) => triggerName(statement) === name)!,
   ] as const),

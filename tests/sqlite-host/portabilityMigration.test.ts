@@ -12,13 +12,14 @@ import type { SqliteTransactionExecutor } from "../../src/platform/sqlite/sqlite
 
 describe("portability restore-state migration", () => {
   it("is the retained additive v16 migration and creates only a singleton non-secret rebuild state", async () => {
-    expect(migrations.at(-7)).toBe(portabilityRestoreStateMigration);
-    expect(migrations.at(-6)).toBe(workoutRemoveReceiptsMigration);
-    expect(migrations.at(-5)).toBe(workoutRemoveReceiptEntityIdsMigration);
-    expect(migrations.at(-4)).toBe(sessionExerciseEditingMigration);
-    expect(migrations.at(-3)).toBe(sessionExerciseEditReceiptsMigration);
-    expect(migrations.at(-2)).toBe(advancedSetTimingMigration);
-    expect(migrations.at(-1)).toBe(portableOwnerIdentitiesMigration);
+    const byVersion = new Map(migrations.map((migration) => [migration.version, migration]));
+    expect(byVersion.get(16)).toBe(portabilityRestoreStateMigration);
+    expect(byVersion.get(17)).toBe(workoutRemoveReceiptsMigration);
+    expect(byVersion.get(18)).toBe(workoutRemoveReceiptEntityIdsMigration);
+    expect(byVersion.get(19)).toBe(sessionExerciseEditingMigration);
+    expect(byVersion.get(20)).toBe(sessionExerciseEditReceiptsMigration);
+    expect(byVersion.get(21)).toBe(advancedSetTimingMigration);
+    expect(byVersion.get(22)).toBe(portableOwnerIdentitiesMigration);
     expect(portabilityRestoreStateMigration).toMatchObject({ version: 16, name: "portability-restore-state", kind: "additive" });
     const statements: string[] = [];
     let queryCount = 0;

@@ -462,6 +462,7 @@ describe("logical restore repository", () => {
     expect(LOGICAL_BACKUP_TABLES).toContain("history_audit_events");
     expect(LOGICAL_BACKUP_TABLES).toContain("session_advanced_timing_states");
     expect(LOGICAL_BACKUP_FORMAT_VERSION).toBe(2);
+    expect(LOGICAL_RESTORE_DELETE_TRIGGER_NAMES).toContain("portable_owner_identity_adoption_only");
     expect(LOGICAL_RESTORE_DELETE_TRIGGER_NAMES).not.toContain("starter_plan_sources_immutable_delete");
     expect(LOGICAL_RESTORE_DELETE_TRIGGER_NAMES).not.toContain("session_sets_target_graph_insert");
     expect(LOGICAL_RESTORE_DELETE_TRIGGER_NAMES).not.toContain("progression_recommendations_actionable_evidence_insert");
