@@ -70,6 +70,11 @@ export {
   M3FilterChip,
   type M3FilterChipProps,
 } from "./M3FilterChip";
+export {
+  NavigationRow,
+  type NavigationRowIcon,
+  type NavigationRowProps,
+} from "./NavigationRow";
 
 type ActionProps = Readonly<{
   label: string;
