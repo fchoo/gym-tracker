@@ -170,7 +170,12 @@ function LatestBackupMetadata({
   );
 }
 
-export default function DataAndRecoveryRoute() {
+/**
+ * The Phase 11 encrypted-file workflow remains deliberately separate from the
+ * Drive recovery hub. Its state, preflight tokens, handles and cleanup all
+ * belong to this mounted route rather than to the root backup runtime.
+ */
+export function ManualEncryptedBackupContent() {
   const runtime = useWorkoutAppRuntime();
   // Phase 11 route tests intentionally supply the pre-Phase-12 runtime shape.
   // Treat that absence as a disconnected projection while preserving manual tools.
@@ -557,26 +562,26 @@ export default function DataAndRecoveryRoute() {
       onRequestBack={() => router.back()}
       primary={
         <>
-          <ScreenHeader backAction={() => router.back()} title="Data and recovery" />
-          <ContentCard>
+          <ScreenHeader backAction={() => router.back()} title="Manual encrypted backup" />
+          {false ? <ContentCard>
             <View style={styles.card}>
               <Text style={[typeScale.sectionTitle as TextStyle, { color: colors.contentCardText }]}>Google Drive backup</Text>
               <Text accessibilityLiveRegion="polite" style={[typeScale.bodyStrong as TextStyle, { color: colors.contentCardText }]}>{automaticBackup.status === "not_connected" ? "Not connected" : automaticBackup.reason === "stale_writer" ? "Backup moved to another phone" : automaticBackup.warning === "changes_not_backed_up_24h" ? "Changes not backed up for 24h" : automaticBackup.status === "backup_pending" ? "Backup pending" : automaticBackup.status === "backing_up" ? "Backing up" : automaticBackup.status === "restore_pending" ? "Restore required" : "Backed up"}</Text>
-              <Text style={[typeScale.secondary as TextStyle, { color: colors.contentCardTextSecondary }]}>{automaticBackup.lastSuccessfulBackupAtMs === null ? "No successful backup yet" : `Last verified backup: ${new Date(automaticBackup.lastSuccessfulBackupAtMs).toISOString()}`}</Text>
+              <Text style={[typeScale.secondary as TextStyle, { color: colors.contentCardTextSecondary }]}>{automaticBackup.lastSuccessfulBackupAtMs === null ? "No successful backup yet" : `Last verified backup: ${new Date(automaticBackup.lastSuccessfulBackupAtMs ?? 0).toISOString()}`}</Text>
               {automaticBackup.primaryAction === "connect" ? <PrimaryAction label="Connect Google Drive" onPress={() => { void runtime.connectAutomaticBackup?.().catch(() => undefined); }} /> : null}
               {automaticBackup.primaryAction === "backup_now" ? <PrimaryAction label="Back up now" onPress={() => { void runtime.requestAutomaticBackupNow?.().catch(() => undefined); }} /> : null}
               {automaticBackup.primaryAction === "retry" ? <PrimaryAction label="Retry" onPress={() => { void runtime.retryAutomaticBackup?.().catch(() => undefined); }} /> : null}
               {automaticBackup.primaryAction === "continue_restore" ? <PrimaryAction label="Continue restore" onPress={() => { void runtime.continueAutomaticRestore?.().catch(() => undefined); }} /> : null}
               {automaticBackup.primaryAction === "check_again" ? <PrimaryAction label="Check again" onPress={() => { void runtime.checkAutomaticBackupAgain?.().catch(() => undefined); }} /> : null}
             </View>
-          </ContentCard>
-          <ContentCard>
+          </ContentCard> : null}
+          {false ? <ContentCard>
             <View style={styles.card}>
               <Text style={[typeScale.sectionTitle as TextStyle, { color: colors.contentCardText }]}>Recovery tools</Text>
               <NavigationRow title="Automatic backup settings" supportingText="Account, connection, and privacy" onPress={() => router.push("/more/automatic-backup-settings")} />
               <NavigationRow title="Manual encrypted backup" supportingText="Password-protected GTBK backup and recovery" onPress={() => router.push("/more/manual-encrypted-backup")} />
             </View>
-          </ContentCard>
+          </ContentCard> : null}
           <ContentCard>
             <View style={styles.card}>
               <Text style={[typeScale.sectionTitle as TextStyle, { color: colors.contentCardText }]}>
@@ -596,7 +601,7 @@ export default function DataAndRecoveryRoute() {
                   </Text>
                   <PrimaryAction
                     label="Share backup"
-                    onPress={() => { void shareBackup(backupState.archive); }}
+                    onPress={() => { void shareBackup((backupState as Extract<BackupViewState, { kind: "ready_to_share" }>).archive); }}
                   />
                 </>
               ) : backupState.kind === "sharing" ? (
@@ -625,7 +630,7 @@ export default function DataAndRecoveryRoute() {
                     Your saved workouts and plans were not changed. Check available storage and try again.
                   </Text>
                   <Text style={[typeScale.secondary as TextStyle, { color: colors.contentCardTextSecondary }]}>
-                    {backupState.correlationCode}
+                    {(backupState as Extract<BackupViewState, { kind: "failed" }>).correlationCode}
                   </Text>
                   <SecondaryAction label="Try again" onPress={retry} />
                 </>
@@ -641,7 +646,7 @@ export default function DataAndRecoveryRoute() {
                     Your saved workouts and plans were not changed. Create a new backup to try again.
                   </Text>
                   <Text style={[typeScale.secondary as TextStyle, { color: colors.contentCardTextSecondary }]}>
-                    {backupState.correlationCode}
+                    {(backupState as Extract<BackupViewState, { kind: "share_failed" }>).correlationCode}
                   </Text>
                   <SecondaryAction label="Create another backup" onPress={retry} />
                 </>
@@ -960,6 +965,65 @@ export default function DataAndRecoveryRoute() {
       }
     />
   );
+}
+
+/**
+ * The everyday route is intentionally small: automatic recovery owns its
+ * durable state in the runtime, while CSV owns its short-lived handle here.
+ * Manual GTBK operations live only on their dedicated route above.
+ */
+export default function DataAndRecoveryRoute() {
+  const runtime = useWorkoutAppRuntime();
+  const { colors } = useAppTheme();
+  const csv = useCsvExportController({
+    create: runtime.createCsvExport,
+    share: runtime.shareCsvExport,
+    discard: runtime.discardCsvExport,
+  });
+  const backup = runtime.automaticBackup ?? {
+    status: "not_connected" as const,
+    reason: null,
+    warning: null,
+    lastSuccessfulBackupAtMs: null,
+    primaryAction: "connect" as const,
+  };
+  const invoke = (command: (() => Promise<void>) | undefined) => {
+    if (command !== undefined) void command().catch(() => undefined);
+  };
+  const status = backup.status === "not_connected" ? "Not connected"
+    : backup.reason === "stale_writer" ? "Backup moved to another phone"
+      : backup.warning === "changes_not_backed_up_24h" ? "Changes not backed up for 24h"
+        : backup.status === "backup_pending" ? "Backup pending"
+          : backup.status === "backing_up" ? "Backing up"
+            : backup.status === "restore_pending" ? "Restore required" : "Backed up";
+  const csvRow = csv.state.kind === "ready" ? {
+    title: "Export CSV", supportingText: "Readable spreadsheet file. Not password-protected.", icon: "download" as const, action: csv.create,
+  } : csv.state.kind === "ready_to_share" ? {
+    title: "Share CSV", supportingText: "Opens the Android share sheet for the prepared CSV", icon: "share" as const, action: csv.share,
+  } : csv.state.kind === "create_failed" || csv.state.kind === "share_failed" ? {
+    title: "Try CSV export again", supportingText: "Your saved data was not changed.", icon: "retry" as const, action: csv.retry,
+  } : {
+    title: csv.state.kind === "preparing" ? "Preparing CSV export" : "Sharing CSV export", supportingText: "", icon: "chevron" as const, action: () => undefined,
+  };
+  return <AdaptiveScreen onRequestBack={() => router.back()} primary={<>
+    <ScreenHeader backAction={() => router.back()} title="Data and recovery" />
+    <ContentCard><View style={styles.card}>
+      <Text style={[typeScale.sectionTitle as TextStyle, { color: colors.contentCardText }]}>Google Drive backup</Text>
+      <Text accessibilityLiveRegion="polite" style={[typeScale.bodyStrong as TextStyle, { color: colors.contentCardText }]}>{status}</Text>
+      <Text style={[typeScale.secondary as TextStyle, { color: colors.contentCardTextSecondary }]}>{backup.lastSuccessfulBackupAtMs === null ? "No successful backup yet" : `Last verified backup: ${new Date(backup.lastSuccessfulBackupAtMs).toISOString()}`}</Text>
+      {backup.primaryAction === "connect" ? <PrimaryAction label="Connect Google Drive" onPress={() => invoke(runtime.connectAutomaticBackup)} /> : null}
+      {backup.primaryAction === "backup_now" ? <PrimaryAction label="Back up now" onPress={() => invoke(runtime.requestAutomaticBackupNow)} /> : null}
+      {backup.primaryAction === "retry" ? <PrimaryAction label="Retry" onPress={() => invoke(runtime.retryAutomaticBackup)} /> : null}
+      {backup.primaryAction === "continue_restore" ? <PrimaryAction label="Continue restore" onPress={() => invoke(runtime.continueAutomaticRestore)} /> : null}
+      {backup.primaryAction === "check_again" ? <PrimaryAction label="Check again" onPress={() => invoke(runtime.checkAutomaticBackupAgain)} /> : null}
+    </View></ContentCard>
+    <ContentCard><View style={styles.card}>
+      <Text style={[typeScale.sectionTitle as TextStyle, { color: colors.contentCardText }]}>Recovery tools</Text>
+      <NavigationRow title="Automatic backup settings" supportingText="Account, connection, and privacy" onPress={() => router.push("/more/automatic-backup-settings")} />
+      <NavigationRow title="Manual encrypted backup" supportingText="Password-protected GTBK backup and recovery" onPress={() => router.push("/more/manual-encrypted-backup")} />
+      <NavigationRow title={csvRow.title} supportingText={csvRow.supportingText} icon={csvRow.icon} busy={csv.state.kind === "preparing" || csv.state.kind === "sharing"} disabled={csv.state.kind === "preparing" || csv.state.kind === "sharing"} {...(csv.state.kind === "ready" ? { accessibilityHint: "Creates a readable spreadsheet file that is not password-protected" } : {})} onPress={csvRow.action} />
+    </View></ContentCard>
+  </>} />;
 }
 
 const styles = StyleSheet.create({

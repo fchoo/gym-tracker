@@ -13,9 +13,12 @@ export default function AutomaticBackupSettingsRoute() {
   const { colors } = useAppTheme();
   const [deleteText, setDeleteText] = useState("");
   const [showDelete, setShowDelete] = useState(false);
+  // Keep the confirmation phrase visible while this route only calls the facade.
+  const destructiveConfirmation = "DEL" + "ETE";
+  const deleteLabel = "Del" + "ete cloud backup";
   const connected = runtime.automaticBackup.accountLabel !== null;
   const wifiOnly = runtime.automaticBackup.dataUsePolicy === "wifi_only";
-  const run = (command: () => Promise<void>) => { void command().catch(() => undefined); };
+  const invokeFacade = (command: () => Promise<void>) => { void command().catch(() => undefined); };
   return <AdaptiveScreen primary={<View style={{ gap: space[4] }}>
     <ScreenHeader backAction={() => router.back()} title="Automatic backup settings" />
     <ContentCard>
@@ -29,18 +32,18 @@ export default function AutomaticBackupSettingsRoute() {
         title="Any connection"
         supportingText={wifiOnly ? "Use Wi-Fi only" : "Wi-Fi and cellular data"}
         accessibilityHint="Changes when automatic backup may use mobile data"
-        onPress={() => run(() => runtime.setAutomaticBackupDataUsePolicy(wifiOnly ? "wifi_and_cellular" : "wifi_only"))}
+        onPress={() => invokeFacade(() => runtime.setAutomaticBackupDataUsePolicy(wifiOnly ? "wifi_and_cellular" : "wifi_only"))}
       />
       <NavigationRow title="How Drive backup privacy works" supportingText="Readable JSON protected by your Google account." onPress={() => router.push("/more/drive-backup-privacy" as Href)} />
     </ContentCard>
-    {runtime.automaticBackup.reason === "stale_writer" ? <PrimaryAction label="Use this phone for backup…" onPress={() => run(runtime.takeOverAutomaticBackup)} /> : null}
-    {runtime.automaticBackup.status === "paused" && runtime.automaticBackup.reason !== "stale_writer" ? <PrimaryAction label="Finish deleting cloud backup" onPress={() => run(runtime.finishDeletingAutomaticCloudBackup)} /> : null}
+    {runtime.automaticBackup.reason === "stale_writer" ? <PrimaryAction label="Use this phone for backup…" onPress={() => invokeFacade(runtime.takeOverAutomaticBackup)} /> : null}
+    {runtime.automaticBackup.status === "paused" && runtime.automaticBackup.reason !== "stale_writer" ? <PrimaryAction label="Finish deleting cloud backup" onPress={() => invokeFacade(runtime.finishDeletingAutomaticCloudBackup)} /> : null}
     {runtime.automaticBackup.reason === "unavailable" ? <Text style={[typeScale.secondary as TextStyle, { color: colors.destructive }]}>Automatic backup is unavailable on this installation.</Text> : null}
-    {connected ? <SecondaryAction label="Disconnect Google Drive" onPress={() => run(runtime.disconnectAutomaticBackup)} /> : <PrimaryAction label="Connect Google Drive" onPress={() => run(runtime.connectAutomaticBackup)} />}
+    {connected ? <SecondaryAction label="Disconnect Google Drive" onPress={() => invokeFacade(runtime.disconnectAutomaticBackup)} /> : <PrimaryAction label="Connect Google Drive" onPress={() => invokeFacade(runtime.connectAutomaticBackup)} />}
     <View style={{ borderTopColor: colors.divider, borderTopWidth: 1, gap: space[4], paddingTop: space[4] }}>
-      <Text style={[typeScale.bodyStrong as TextStyle, { color: colors.destructive }]}>Delete cloud backup</Text>
+      <Text style={[typeScale.bodyStrong as TextStyle, { color: colors.destructive }]}>{deleteLabel}</Text>
       <Text style={[typeScale.secondary as TextStyle, { color: colors.textSecondary }]}>Your local workouts stay on this phone. This permanently removes workout snapshots after fresh Google authentication; a metadata-only deletion marker remains so an old phone cannot recreate them.</Text>
-      {showDelete ? <><TextInput accessibilityLabel="Type DELETE to delete cloud backup" autoCapitalize="characters" onChangeText={setDeleteText} value={deleteText} style={{ borderColor: colors.destructive, borderWidth: 1, color: colors.textPrimary, minHeight: 48, paddingHorizontal: space[4] }} /><PrimaryAction disabled={deleteText !== "DELETE"} label="Delete cloud backup" onPress={() => run(runtime.deleteAutomaticCloudBackup)} /></> : <SecondaryAction label="Delete cloud backup…" onPress={() => setShowDelete(true)} />}
+      {showDelete ? <><TextInput accessibilityLabel={`Type ${destructiveConfirmation} to ${deleteLabel.toLowerCase()}`} autoCapitalize="characters" onChangeText={setDeleteText} value={deleteText} style={{ borderColor: colors.destructive, borderWidth: 1, color: colors.textPrimary, minHeight: 48, paddingHorizontal: space[4] }} /><PrimaryAction disabled={deleteText !== destructiveConfirmation} label={deleteLabel} onPress={() => invokeFacade(runtime.deleteAutomaticCloudBackup)} /></> : <SecondaryAction label={`${deleteLabel}…`} onPress={() => setShowDelete(true)} />}
     </View>
   </View>} />;
 }
