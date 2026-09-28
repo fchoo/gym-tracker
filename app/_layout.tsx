@@ -57,6 +57,10 @@ function RootNavigator() {
           <Stack.Screen name="session/[sessionId]/correct" />
           <Stack.Screen name="exercise-history/[exerciseId]" />
           <Stack.Screen name="more/index" />
+          <Stack.Screen name="more/data-and-recovery" />
+          <Stack.Screen name="more/automatic-backup-settings" />
+          <Stack.Screen name="more/manual-encrypted-backup" />
+          <Stack.Screen name="more/drive-backup-privacy" />
           <Stack.Screen name="more/removed-sessions" />
           <Stack.Screen name="index" redirect />
         </Stack>

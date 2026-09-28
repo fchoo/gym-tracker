@@ -109,7 +109,7 @@ describe("SettingsScreen", () => {
       "Restore a completed workout that was removed from ordinary history.",
     )).toBeOnTheScreen();
     expect(screen.getByText(
-      "Create a secure backup, restore clean, merge a backup, or export readable CSV data.",
+      "Automatic Google Drive backup and manual recovery tools are available here.",
     )).toBeOnTheScreen();
 
     for (const name of [

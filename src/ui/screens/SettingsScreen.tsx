@@ -334,7 +334,7 @@ export function SettingsScreen({
                   { color: colors.contentCardTextSecondary },
                 ]}
               >
-                Create a secure backup, restore clean, merge a backup, or export readable CSV data.
+                Automatic Google Drive backup and manual recovery tools are available here.
               </Text>
               <SecondaryAction
                 label="Data and recovery"
