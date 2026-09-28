@@ -8,6 +8,7 @@ export type AutomaticBackupState = Readonly<{
   dirtySinceMs: number | null; dataUsePolicy: "any-network" | "wifi-only";
   claimId: string | null; claimExpiresAtMs: number | null;
   statusCode: AutomaticBackupRecoveryStatus;
+  deletionProgress: "none" | "sweep_pending" | "complete";
 }>;
 
 export type AutomaticBackupReceipt = Readonly<{
@@ -37,12 +38,14 @@ export function createAutomaticBackupStateRepository(kernel: SqliteKernel): Read
   clearExpiredClaim(nowMs: number): Promise<boolean>;
   setRecoveryStatus(status: AutomaticBackupRecoveryStatus): Promise<void>;
   setDataUsePolicy(policy: AutomaticBackupState["dataUsePolicy"]): Promise<void>;
+  beginDeletionSweep(input: Readonly<{ environment: AutomaticBackupState["environment"]; permissionId: string; connectionGeneration: number }>): Promise<boolean>;
+  completeDeletionSweep(input: Readonly<{ environment: AutomaticBackupState["environment"]; permissionId: string; connectionGeneration: number }>): Promise<boolean>;
   /** Clears only this installation's authority; it never calls a Drive delete operation. */
   disconnectLocal(): Promise<void>;
 }> {
   return Object.freeze({
     async read() {
-      const rows = await kernel.queryAll<Record<string, unknown>>("SELECT environment, permission_id, display_email, connection_generation, manifest_file_id, manifest_etag, writer_epoch, authority_state, mutation_generation, backed_up_generation, dirty_since_ms, data_use_policy, claim_id, claim_expires_at_ms, status_code FROM automatic_backup_state WHERE id = 1");
+      const rows = await kernel.queryAll<Record<string, unknown>>("SELECT environment, permission_id, display_email, connection_generation, manifest_file_id, manifest_etag, writer_epoch, authority_state, mutation_generation, backed_up_generation, dirty_since_ms, data_use_policy, claim_id, claim_expires_at_ms, status_code, deletion_progress FROM automatic_backup_state WHERE id = 1");
       const row = rows[0];
       if (rows.length !== 1 || row === undefined || (row.environment !== "production" && row.environment !== "development-test") || !Number.isSafeInteger(row.connection_generation) || !Number.isSafeInteger(row.writer_epoch) || !Number.isSafeInteger(row.mutation_generation) || !Number.isSafeInteger(row.backed_up_generation)) throw new Error("automatic_backup_state_invalid");
       const environment = row.environment as AutomaticBackupState["environment"];
@@ -59,7 +62,10 @@ export function createAutomaticBackupStateRepository(kernel: SqliteKernel): Read
       if (dataUsePolicy !== "any-network" && dataUsePolicy !== "wifi-only") throw new Error("automatic_backup_state_invalid");
       const statusCode = row.status_code ?? "idle";
       if (statusCode !== "idle" && statusCode !== "checking" && statusCode !== "restore_pending" && statusCode !== "restoring" && statusCode !== "finishing" && statusCode !== "paused") throw new Error("automatic_backup_state_invalid");
-      return Object.freeze({ environment, permissionId: typeof row.permission_id === "string" ? row.permission_id : null, displayEmail: typeof row.display_email === "string" ? row.display_email : null, connectionGeneration, writerEpoch, mutationGeneration, backedUpGeneration, manifestId: typeof row.manifest_file_id === "string" ? row.manifest_file_id : null, manifestEtag: typeof row.manifest_etag === "string" ? row.manifest_etag : null, authorityState, dirtySinceMs: typeof row.dirty_since_ms === "number" ? row.dirty_since_ms : null, dataUsePolicy, claimId: typeof row.claim_id === "string" ? row.claim_id : null, claimExpiresAtMs: typeof row.claim_expires_at_ms === "number" ? row.claim_expires_at_ms : null, statusCode });
+      const deletionProgress = row.deletion_progress ?? "none";
+      if (deletionProgress !== "none" && deletionProgress !== "sweep_pending" && deletionProgress !== "complete") throw new Error("automatic_backup_state_invalid");
+      if (deletionProgress !== "none" && authorityState !== "deleted") throw new Error("automatic_backup_state_invalid");
+      return Object.freeze({ environment, permissionId: typeof row.permission_id === "string" ? row.permission_id : null, displayEmail: typeof row.display_email === "string" ? row.display_email : null, connectionGeneration, writerEpoch, mutationGeneration, backedUpGeneration, manifestId: typeof row.manifest_file_id === "string" ? row.manifest_file_id : null, manifestEtag: typeof row.manifest_etag === "string" ? row.manifest_etag : null, authorityState, dirtySinceMs: typeof row.dirty_since_ms === "number" ? row.dirty_since_ms : null, dataUsePolicy, claimId: typeof row.claim_id === "string" ? row.claim_id : null, claimExpiresAtMs: typeof row.claim_expires_at_ms === "number" ? row.claim_expires_at_ms : null, statusCode, deletionProgress });
     },
     async acknowledge(input: Readonly<{ environment: AutomaticBackupState["environment"]; permissionId: string; writerEpoch: number; capturedGeneration: number }>) {
       const outcome = await kernel.write((transaction) => transaction.execute(
@@ -168,6 +174,23 @@ export function createAutomaticBackupStateRepository(kernel: SqliteKernel): Read
         );
         if (outcome.changes !== 1) throw new Error("automatic_backup_state_missing");
       });
+    },
+    async beginDeletionSweep(input) {
+      const outcome = await kernel.write((transaction) => transaction.execute(
+        `UPDATE automatic_backup_state SET authority_state = 'deleted', deletion_progress = 'sweep_pending', status_code = 'paused'
+         WHERE id = 1 AND environment = ? AND permission_id = ? AND connection_generation = ? AND authority_state <> 'stale_writer'`,
+        [input.environment, input.permissionId, input.connectionGeneration],
+      ));
+      return outcome.changes === 1;
+    },
+    async completeDeletionSweep(input) {
+      const outcome = await kernel.write((transaction) => transaction.execute(
+        `UPDATE automatic_backup_state SET deletion_progress = 'complete', status_code = 'idle'
+         WHERE id = 1 AND environment = ? AND permission_id = ? AND connection_generation = ?
+           AND authority_state = 'deleted' AND deletion_progress = 'sweep_pending'`,
+        [input.environment, input.permissionId, input.connectionGeneration],
+      ));
+      return outcome.changes === 1;
     },
     async disconnectLocal() {
       await kernel.write(async (transaction) => {

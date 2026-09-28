@@ -21,6 +21,7 @@ import { advancedSetTimingMigration } from "./0021_advanced_set_timing";
 import { portableOwnerIdentitiesMigration } from "./0022_portable_owner_identities";
 import { automaticDriveBackupMigration } from "./0023_automatic_drive_backup";
 import { automaticBackupReceiptsMigration } from "./0024_automatic_backup_receipts";
+import { automaticBackupDeletionProgressMigration } from "./0025_automatic_backup_deletion_progress";
 
 export const migrations = Object.freeze([
   initialMigration,
@@ -46,6 +47,7 @@ export const migrations = Object.freeze([
   portableOwnerIdentitiesMigration,
   automaticDriveBackupMigration,
   automaticBackupReceiptsMigration,
+  automaticBackupDeletionProgressMigration,
 ]);
 
 export {
@@ -70,6 +72,7 @@ export {
   portableOwnerIdentitiesMigration,
   automaticDriveBackupMigration,
   automaticBackupReceiptsMigration,
+  automaticBackupDeletionProgressMigration,
   outcomeEffortMigration,
   scheduleActivationMigration,
 };
