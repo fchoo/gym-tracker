@@ -3,6 +3,24 @@ import type { SqliteKernel, SqliteTransactionExecutor } from "../sqliteKernel";
 import { createAutomaticBackupStateRepository } from "./automaticBackupStateRepository";
 
 describe("automatic backup state repository", () => {
+  it("persists bounded recovery status, data-use policy, and local-only disconnect", async () => {
+    const statements: string[] = [];
+    const repository = createAutomaticBackupStateRepository({
+      queryAll: async () => [{ environment: "development-test", permission_id: "permission", display_email: null, connection_generation: 2, writer_epoch: 3, mutation_generation: 6, backed_up_generation: 4 }],
+      write: async (command: (transaction: SqliteTransactionExecutor) => Promise<unknown>) => command({
+        execute: async (sql: string) => { statements.push(sql); return { changes: 1, lastInsertRowId: 0 }; },
+        queryAll: async () => [],
+      }), connectionConfiguration: async () => undefined, close: async () => undefined,
+    } as unknown as SqliteKernel);
+
+    await repository.setRecoveryStatus("restore_pending");
+    await repository.setDataUsePolicy("wifi-only");
+    await repository.disconnectLocal();
+
+    expect(statements.join("\n")).toContain("status_code");
+    expect(statements.join("\n")).toContain("data_use_policy");
+    expect(statements.join("\n")).toContain("permission_id = NULL");
+  });
   it("returns only bounded state and conditionally acknowledges captured generation", async () => {
     const repository = createAutomaticBackupStateRepository({
       queryAll: async () => [{ environment: "development-test", permission_id: "permission", display_email: "…@example.com", connection_generation: 2, writer_epoch: 3, mutation_generation: 5, backed_up_generation: 4 }],
