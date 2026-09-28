@@ -138,7 +138,7 @@ async function seedMaximumHistory(kernel: SqliteKernel): Promise<void> {
       }
     });
   }
-  const baseline = await collector.collect({ snapshotId: "phase12-writer-00", createdAtMs: 0 });
+  const baseline = await collector.collect({ snapshotId: "phase12-writer-00", createdAtMs: 100 });
   const difference = PHASE12_MAX_SNAPSHOT_BYTES - encodedBytes(baseline);
   if (difference < 0) throw new Error("phase12_sqlite_fixture_oversize");
   const each = Math.floor(difference / rows.length);
@@ -159,7 +159,7 @@ async function seedMaximumHistory(kernel: SqliteKernel): Promise<void> {
 async function collectMaximumSnapshot(kernel: SqliteKernel, sample: number) {
   return createLogicalBackupRepository(kernel).collect({
     snapshotId: `phase12-writer-${sample.toString().padStart(2, "0")}`,
-    createdAtMs: sample,
+    createdAtMs: 100 + sample,
   });
 }
 
