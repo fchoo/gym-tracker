@@ -97,14 +97,14 @@ function portableId(index: number): string {
 export function buildPhase12SyntheticSnapshot(
   mergeModifiedAtMs = 1,
 ): LogicalBackupSnapshot & PortableMergePlanSnapshot {
-  const sessions = Array.from({ length: ROWS_PER_TABLE }, (_, index) => ({
-    id: `s${index.toString(36)}`,
-    portable_id: portableId(index + 1),
+  const sessions = [{
+    id: "s",
+    portable_id: portableId(1),
     merge_modified_at_ms: mergeModifiedAtMs,
-  }));
+  }];
   const sessionExercises = Array.from({ length: ROWS_PER_TABLE }, (_, index) => ({
     id: `e${index.toString(36)}`,
-    session_id: sessions[index]!.id,
+    session_id: sessions[0]!.id,
     metric_profile: "load_reps",
     metric_contract_version: 1,
     exercise_metric_generation: 1,
@@ -116,7 +116,16 @@ export function buildPhase12SyntheticSnapshot(
     metric_contract_version: 1,
     exercise_metric_generation: 1,
   }));
-  const settingCount = PHASE12_MAX_SNAPSHOT_ROWS - 1 - (ROWS_PER_TABLE * 3);
+  const auditRows = Array.from({ length: ROWS_PER_TABLE - 1 }, (_, index) => ({
+    id: `a${index.toString(36)}`,
+    session_id: sessions[0]!.id,
+  }));
+  const settingCount = PHASE12_MAX_SNAPSHOT_ROWS
+    - 1
+    - sessions.length
+    - sessionExercises.length
+    - sessionSets.length
+    - auditRows.length;
   const settings = Array.from({ length: settingCount }, (_, index) => ({
     key: `k${index.toString(36).padStart(4, "0")}`,
     value_version: 1,
@@ -132,6 +141,7 @@ export function buildPhase12SyntheticSnapshot(
   tables.workout_sessions = sessions;
   tables.session_exercises = sessionExercises;
   tables.session_sets = sessionSets;
+  tables.history_audit_events = auditRows;
   const fixture = {
     version: 2 as const,
     snapshotId: "phase12-maximum-merge",

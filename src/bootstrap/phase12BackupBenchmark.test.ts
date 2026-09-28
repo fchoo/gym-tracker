@@ -56,6 +56,11 @@ describe("Phase 12 native backup benchmark", () => {
       .toBe(24 * 1024 * 1024);
     expect(Math.max(...Object.values(snapshot.tables).map((rows) => rows.length)))
       .toBeLessThanOrEqual(BACKUP_LIMITS.maxRowsPerTable);
+    expect(snapshot.tables.workout_sessions).toHaveLength(1);
+    expect(snapshot.tables.session_exercises).toHaveLength(BACKUP_LIMITS.maxRowsPerTable);
+    expect(snapshot.tables.session_sets).toHaveLength(BACKUP_LIMITS.maxRowsPerTable);
+    expect(snapshot.tables.history_audit_events)
+      .toHaveLength(BACKUP_LIMITS.maxRowsPerTable - 1);
     expect(() => parseLogicalBackupSnapshot(snapshot)).not.toThrow();
   });
 
@@ -75,7 +80,7 @@ describe("Phase 12 native backup benchmark", () => {
       payloadDigest: async () => "0".repeat(64),
     })).resolves.toEqual(expect.objectContaining({
       operations: expect.any(Array),
-      preview: expect.objectContaining({ duplicates: BACKUP_LIMITS.maxRowsPerTable }),
+      preview: expect.objectContaining({ duplicates: 1 }),
     }));
   });
 });
