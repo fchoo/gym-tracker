@@ -56,6 +56,17 @@ describe("automatic portability", () => {
     expect(rebuild).toHaveBeenCalledTimes(1);
   });
 
+  it("normalizes a completed direct restore to ready", async () => {
+    bypassSnapshotValidation();
+    const port = createAutomaticPortableRestorePort({
+      schema: { columnsFor: async () => [] }, candidateProbe: { validateCandidate: async () => undefined },
+      localIsEmpty: async () => true, claimIsCurrent: async () => true,
+      restore: async () => ({ state: "ready" as never }), rebuild: async () => undefined,
+    });
+
+    await expect(port.restore(snapshot)).resolves.toEqual({ state: "ready" });
+  });
+
   it.each([
     ["a non-empty local installation", async () => false, async () => true, "automatic_restore_requires_merge"],
     ["a stale recovery claim", async () => true, async () => false, "automatic_restore_claim_stale"],
@@ -86,6 +97,19 @@ describe("automatic portability", () => {
     expect(dependencies.issue).toHaveBeenCalledWith({ plan, fingerprint: "local-fingerprint", grant: "fresh-google-auth" });
     expect(dependencies.commitPlan).toHaveBeenCalledWith({ plan, fingerprint: "local-fingerprint" });
     expect(dependencies.rebuild).toHaveBeenCalledTimes(1);
+  });
+
+  it("preflights without a grant and rejects a workout that becomes active before commit", async () => {
+    bypassSnapshotValidation();
+    let active = false;
+    const dependencies = mergeDependencies({ isWorkoutActive: () => active });
+    const port = createAutomaticPortableMergePort(dependencies);
+
+    await port.preflight(snapshot);
+    expect(dependencies.issue).toHaveBeenCalledWith({ plan, fingerprint: "local-fingerprint" });
+    active = true;
+    await expect(port.commit("merge-token")).rejects.toThrow("automatic_merge_workout_active");
+    expect(dependencies.consume).not.toHaveBeenCalled();
   });
 
   it.each([
