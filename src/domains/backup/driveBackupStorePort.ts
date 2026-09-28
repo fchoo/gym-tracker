@@ -6,6 +6,8 @@ export type DriveResumableSession = Readonly<{ location: string; uploadedBytes: 
 export type DriveBackupStorePort = Readonly<{
   environment: AutomaticBackupEnvironment;
   discover(): Promise<readonly DriveBackupObject[]>;
+  /** Bounded app-created, current-environment snapshot discovery for tombstone sweeps only. */
+  discoverSnapshotsForDeletion(): Promise<readonly DriveBackupObject[]>;
   readManifest(): Promise<DriveManifestRead | null>;
   /** Creates only the caller-preallocated manifest identity; 409 is never treated as success. */
   createManifest(candidateId: string, bytes: Uint8Array): Promise<DriveManifestCreate>;
