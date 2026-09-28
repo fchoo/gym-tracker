@@ -10,16 +10,7 @@ tags:
     stopApp: true
     permissions:
       notifications: deny
-- assertVisible: "Today"
-- tapOn: "Settings"
-- scrollUntilVisible:
-    element:
-      id: "more-data-and-recovery"
-    direction: DOWN
-    centerElement: true
-    timeout: 60000
-- tapOn:
-    id: "more-data-and-recovery"
+- openLink: "gymtracker-devtest://more/data-and-recovery"
 - assertVisible: "Data and recovery"
 - assertVisible: "Google Drive backup"
 - assertVisible: "Recovery tools"
