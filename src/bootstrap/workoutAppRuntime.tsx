@@ -343,7 +343,6 @@ import {
 } from "./workoutLifecycle";
 import type { AutomaticBackupScheduler } from "../domains/backup/automaticBackupScheduler";
 import { projectAutomaticBackupPresentation, type AutomaticBackupViewModel } from "../domains/backup/automaticBackupPresentation";
-import { createAutomaticBackupStateRepository } from "../platform/sqlite/repositories/automaticBackupStateRepository";
 import type { AutomaticBackupRuntime } from "./automaticBackupRuntime";
 import { createProductionAutomaticBackupServices } from "./productionAutomaticBackupRuntime";
 import {
@@ -2072,7 +2071,7 @@ export function WorkoutAppRuntimeProvider({
     services: RuntimeServices,
   ): Promise<RuntimeState> => {
     const context = localContext(dependencies.now());
-    const [legacyView, scheduledToday, activation, notificationPermission, latestBackup, automaticBackupState] =
+    const [legacyView, scheduledToday, activation, notificationPermission, latestBackup] =
       await Promise.all([
         services.repository.getTodayView({
           localDate: context.localDate,
@@ -2084,7 +2083,6 @@ export function WorkoutAppRuntimeProvider({
         () => "undetermined" as const,
       ),
       readLatestBackupMetadata(services.kernel),
-      createAutomaticBackupStateRepository(services.kernel).read(),
     ]);
     const preserveWorkoutState = legacyView.state === "active_workout"
       || legacyView.state === "saved_partial";
@@ -2095,22 +2093,14 @@ export function WorkoutAppRuntimeProvider({
         : scheduledToday?.view ?? legacyView,
       planDays: scheduledToday?.planDays ?? activation?.days ?? [],
       latestBackup,
-      automaticBackup: services.automaticBackupRuntime?.current() ?? projectAutomaticBackupPresentation({
-        status: automaticBackupState.permissionId === null ? "not_connected"
-          : automaticBackupState.statusCode === "restore_pending" ? "restore_pending"
-            : automaticBackupState.statusCode === "restoring" ? "restoring"
-              : automaticBackupState.statusCode === "paused" || automaticBackupState.authorityState === "stale_writer" ? "paused"
-                : automaticBackupState.mutationGeneration > automaticBackupState.backedUpGeneration ? "backup_pending" : "idle",
-        accountLabel: automaticBackupState.displayEmail,
-        lastSuccessfulBackupAtMs: null,
-        mutationGeneration: automaticBackupState.mutationGeneration,
-        backedUpGeneration: automaticBackupState.backedUpGeneration,
-        pendingSinceMs: automaticBackupState.dirtySinceMs,
-        nowMs: dependencies.nowMs(),
-        dataUsePolicy: automaticBackupState.dataUsePolicy === "wifi-only" ? "wifi_only" : "wifi_and_cellular",
-        reason: automaticBackupState.authorityState === "stale_writer" ? "stale_writer" : null,
-        progressStage: automaticBackupState.statusCode === "checking" ? "Checking backup" : automaticBackupState.statusCode === "restoring" ? "Restoring on this phone" : automaticBackupState.statusCode === "finishing" ? "Finishing backup setup" : null,
-      }),
+      automaticBackup: services.automaticBackupRuntime?.current()
+        ?? projectAutomaticBackupPresentation({
+          status: "not_connected",
+          mutationGeneration: 0,
+          backedUpGeneration: 0,
+          nowMs: dependencies.nowMs(),
+          reason: "unavailable",
+        }),
       ...(scheduledToday === null
         ? {}
         : { scheduleToday: scheduledToday.scheduleToday }),
