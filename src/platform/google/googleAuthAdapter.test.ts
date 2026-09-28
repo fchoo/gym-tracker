@@ -33,4 +33,43 @@ describe("Google auth adapter", () => {
     const switchedAuth = createGoogleAuthAdapter({ webClientId: clientId, bridge: switched as never, about: async () => ({ user: { permissionId: ++calls === 1 ? "permission-1" : "permission-2" } }) });
     await switchedAuth.connect(); await expect(switchedAuth.accessToken()).rejects.toThrow("google_account_mismatch");
   });
+
+  it("fails closed for malformed configuration, identity, and token responses", async () => {
+    expect(() => createGoogleAuthAdapter({ webClientId: "not-a-client-id", bridge: bridge() as never, about: async () => ({}) }))
+      .toThrow("google_client_id_invalid");
+
+    const missingIdentity = bridge();
+    const malformed = createGoogleAuthAdapter({ webClientId: clientId, bridge: missingIdentity as never, about: async () => ({ user: { emailAddress: "owner@example.com" } }) });
+    await expect(malformed.connect()).rejects.toThrow("google_identity_invalid");
+
+    const missingSignInToken = bridge();
+    missingSignInToken.requestScopes.mockResolvedValue({ accessToken: "" });
+    const noSignInToken = createGoogleAuthAdapter({ webClientId: clientId, bridge: missingSignInToken as never, about: async () => ({ user: { permissionId: "permission" } }) });
+    await expect(noSignInToken.connect()).rejects.toThrow("google_token_missing");
+
+    const missingRefreshToken = bridge();
+    missingRefreshToken.getTokens.mockResolvedValue({ accessToken: "" });
+    const noRefreshToken = createGoogleAuthAdapter({ webClientId: clientId, bridge: missingRefreshToken as never, about: async () => ({ user: { permissionId: "permission" } }) });
+    await noRefreshToken.connect();
+    await expect(noRefreshToken.accessToken()).rejects.toThrow("google_token_missing");
+  });
+
+  it("invalidates an in-flight connection on disconnect and clears its identity", async () => {
+    let resolveAbout: ((value: unknown) => void) | undefined;
+    const native = bridge();
+    const auth = createGoogleAuthAdapter({
+      webClientId: clientId,
+      bridge: native as never,
+      about: async () => new Promise((resolve) => { resolveAbout = resolve; }),
+    });
+
+    const connecting = auth.connect();
+    await Promise.resolve();
+    await auth.disconnect();
+    resolveAbout?.({ user: { permissionId: "permission" } });
+
+    await expect(connecting).rejects.toThrow("google_connection_stale");
+    expect(auth.identity()).toBeNull();
+    expect(native.signOut).toHaveBeenCalledTimes(1);
+  });
 });

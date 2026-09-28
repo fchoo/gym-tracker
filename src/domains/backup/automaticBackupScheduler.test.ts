@@ -68,4 +68,31 @@ describe("automatic backup scheduler", () => {
     await settle();
     expect(errors).toEqual(["manual"]);
   });
+
+  it("allows an eligible background request and drains a request queued while another run finishes", async () => {
+    const queued: Array<() => void> = [];
+    let release: (() => void) | undefined;
+    const calls: string[] = [];
+    const scheduler = createAutomaticBackupScheduler({
+      isWorkoutActive: () => false,
+      eligible: () => true,
+      isBackgroundAllowed: () => true,
+      run: async (reason) => {
+        calls.push(reason);
+        if (reason === "background") await new Promise<void>((resolve) => { release = resolve; });
+      },
+      queue: (work) => { queued.push(work); },
+    });
+
+    scheduler.request("background");
+    queued.shift()?.();
+    await settle();
+    scheduler.request("retry");
+    release?.();
+    await settle();
+    queued.shift()?.();
+    await settle();
+
+    expect(calls).toEqual(["background", "retry"]);
+  });
 });
