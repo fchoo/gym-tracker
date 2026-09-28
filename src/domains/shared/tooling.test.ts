@@ -756,10 +756,10 @@ describe("Plan 01-03 test and boundary tooling", () => {
       "test:sqlite:device",
       "test:integration",
       "test:coverage",
-      "test:maestro:phase2",
-      "benchmark:phase2",
-      "verify:native:phase2",
-      "ci:phase2",
+      "test:maestro:phase12",
+      "benchmark:phase12:backup",
+      "verify:phase12:evidence",
+      "test:evidence:phase12",
       "benchmark:phase1",
       "verify:artifact-roundtrip",
       "test:all",
@@ -791,24 +791,24 @@ describe("Plan 01-03 test and boundary tooling", () => {
       previousIndex = commandIndex;
     }
 
-    const phase2Commands = [
+    const phase12Commands = [
       "npm run verify:cng",
-      "npm run android:devtest:fresh -- --suite phase2",
-      "npm run test:sqlite:device -- --suite phase2",
-      "npm run test:maestro:phase2",
-      "npm run benchmark:phase2",
-      "--roundtrip-temp",
-      "--roundtrip-downloaded-dir",
-      "--automated-only --require-roundtrip",
+      "npm run android:devtest:fresh -- --suite phase12",
+      "npm run test:sqlite:device -- --suite migrations-effects",
+      "npm run test:sqlite:device -- --suite google-drive-backup",
+      "npm run test:maestro:phase12",
+      "npm run benchmark:phase12:backup",
+      "npm run verify:phase12:evidence",
+      "--automated-only",
     ];
     previousIndex = -1;
-    for (const command of phase2Commands) {
+    for (const command of phase12Commands) {
       const commandIndex = workflow.indexOf(command, previousIndex + 1);
       expect(commandIndex).toBeGreaterThan(previousIndex);
       previousIndex = commandIndex;
     }
-    expect(workflow).toContain("name: phase2-evidence");
-    expect(workflow).toContain("name: phase2-evidence-downloaded");
+    expect(workflow).toContain("name: phase12-evidence");
+    expect(workflow).toContain("name: phase12-evidence-downloaded");
   });
 
   it("rejects every prohibited architecture boundary", () => {
