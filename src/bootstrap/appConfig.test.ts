@@ -6,20 +6,30 @@ import {
 
 import createConfig from "../../app.config";
 
+const approvedWebClientId =
+  "359232211920-gqfkasvsr8r5qbmprc6ukh9fofu246r9.apps.googleusercontent.com";
+
 function configForProfile(buildProfile: string | undefined) {
   const previousProfile = process.env.GYM_TRACKER_BUILD_PROFILE;
+  const previousWebClientId = process.env.EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID;
   try {
     if (buildProfile === undefined) {
       delete process.env.GYM_TRACKER_BUILD_PROFILE;
     } else {
       process.env.GYM_TRACKER_BUILD_PROFILE = buildProfile;
     }
+    process.env.EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID = approvedWebClientId;
     return createConfig({ config: {} } as never);
   } finally {
     if (previousProfile === undefined) {
       delete process.env.GYM_TRACKER_BUILD_PROFILE;
     } else {
       process.env.GYM_TRACKER_BUILD_PROFILE = previousProfile;
+    }
+    if (previousWebClientId === undefined) {
+      delete process.env.EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID;
+    } else {
+      process.env.EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID = previousWebClientId;
     }
   }
 }

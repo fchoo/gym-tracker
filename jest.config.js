@@ -29,6 +29,14 @@ module.exports = {
       displayName: "unit",
       preset: "jest-expo",
       testEnvironment: "node",
+      transform: {
+        "^.+\\.(?:[jt]sx?|mjs)$": [
+          "babel-jest",
+          {
+            presets: ["babel-preset-expo"],
+          },
+        ],
+      },
       testMatch: [
         "<rootDir>/src/**/*.test.ts",
         "<rootDir>/src/**/*.test.tsx",
