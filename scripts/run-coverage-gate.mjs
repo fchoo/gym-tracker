@@ -23,6 +23,7 @@ const integrityCriticalFiles = [
   "src/domains/portability/portableIdentity.ts",
   "src/domains/portability/csvExport.ts",
   "src/domains/portability/restoreCommands.ts",
+  "src/domains/portability/automaticPortability.ts",
   "src/domains/library/customExerciseCommands.ts",
   "src/domains/library/search.ts",
   "src/domains/metrics/aggregates.ts",
