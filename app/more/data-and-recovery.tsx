@@ -175,8 +175,8 @@ function LatestBackupMetadata({
 
 /**
  * The Phase 11 encrypted-file workflow remains deliberately separate from the
- * Drive recovery hub. Its state, preflight tokens, handles and cleanup all
- * belong to this mounted route rather than to the root backup runtime.
+ * Drive recovery hub. The UI owns only password entry and focus; the reusable
+ * controller owns Phase 11 preflight tokens, handles, latches, and cleanup.
  */
 export function ManualEncryptedBackupContent() {
   const runtime = useWorkoutAppRuntime();
