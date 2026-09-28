@@ -62,7 +62,9 @@ export function useCsvExportController<Handle>(input: Readonly<{
     }
   }, []);
 
-  const retry = useCallback(() => { void create(); }, [create]);
+  const retry = useCallback(() => {
+    if (!latch.current) setState({ kind: "ready" });
+  }, []);
 
   useEffect(() => () => {
     mounted.current = false;

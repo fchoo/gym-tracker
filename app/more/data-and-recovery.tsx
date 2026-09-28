@@ -23,8 +23,10 @@ import {
   type RuntimeMergePreflightResult,
   type RuntimeRestorePreflightResult,
   type RuntimeSecureBackupArchive,
-  type RuntimeCsvExport,
 } from "../../src/bootstrap/workoutAppRuntime";
+import {
+  useCsvExportController,
+} from "../../src/ui/portability/useCsvExportController";
 import {
   ContentCard,
   IconAction,
@@ -70,14 +72,6 @@ type MergeViewState =
   | Readonly<{ kind: "merged" }>
   | Readonly<{ kind: "rebuild_pending" }>
   | Readonly<{ kind: "failed"; heading: "Backup could not be opened" | "Merge could not be completed"; message: string }>;
-
-type CsvViewState =
-  | Readonly<{ kind: "ready" }>
-  | Readonly<{ kind: "preparing" }>
-  | Readonly<{ kind: "ready_to_share"; handle: RuntimeCsvExport }>
-  | Readonly<{ kind: "sharing" }>
-  | Readonly<{ kind: "create_failed" }>
-  | Readonly<{ kind: "share_failed" }>;
 
 function PasswordField({
   label,
@@ -223,7 +217,6 @@ export default function DataAndRecoveryRoute() {
   const [mergeState, setMergeState] = useState<MergeViewState>({ kind: "ready" });
   const [mergePassword, setMergePassword] = useState("");
   const [mergeConfirmation, setMergeConfirmation] = useState("");
-  const [csvState, setCsvState] = useState<CsvViewState>({ kind: "ready" });
   const reviewHeadingRef = useRef<View>(null);
   const mergeReviewHeadingRef = useRef<View>(null);
   const backupLatch = useRef(false);
@@ -236,8 +229,6 @@ export default function DataAndRecoveryRoute() {
   const mergeLatch = useRef(false);
   const mergeGenerationRef = useRef(0);
   const mergeTokenRef = useRef<string | null>(null);
-  const csvLatch = useRef(false);
-  const csvHandleRef = useRef<RuntimeCsvExport | null>(null);
   const mountedRef = useRef(true);
   const discardBackupRef = useRef(runtime.discardSecureBackup);
   discardBackupRef.current = runtime.discardSecureBackup;
@@ -245,8 +236,11 @@ export default function DataAndRecoveryRoute() {
   invalidateRestoreRef.current = runtime.invalidateSecureRestorePreflight;
   const invalidateMergeRef = useRef(runtime.invalidateSecureMergePreflight);
   invalidateMergeRef.current = runtime.invalidateSecureMergePreflight;
-  const discardCsvRef = useRef(runtime.discardCsvExport);
-  discardCsvRef.current = runtime.discardCsvExport;
+  const csv = useCsvExportController({
+    create: runtime.createCsvExport,
+    share: runtime.shareCsvExport,
+    discard: runtime.discardCsvExport,
+  });
   const passwordValid = passwordState.hasPassword && passwordState.matches;
   const confirmationError = confirmationRef.current.length === 0 || passwordValid
     ? undefined
@@ -537,47 +531,6 @@ export default function DataAndRecoveryRoute() {
     }
   };
 
-  const createCsv = async () => {
-    if (csvLatch.current) return;
-    csvLatch.current = true;
-    setCsvState({ kind: "preparing" });
-    try {
-      const handle = await runtime.createCsvExport();
-      if (!mountedRef.current) {
-        await runtime.discardCsvExport(handle).catch(() => undefined);
-        return;
-      }
-      const previous = csvHandleRef.current;
-      csvHandleRef.current = handle;
-      if (previous !== null) {
-        await runtime.discardCsvExport(previous).catch(() => undefined);
-      }
-      setCsvState({ kind: "ready_to_share", handle });
-    } catch {
-      setCsvState({ kind: "create_failed" });
-    } finally {
-      csvLatch.current = false;
-    }
-  };
-
-  const shareCsv = async (handle: RuntimeCsvExport) => {
-    if (csvLatch.current) return;
-    csvLatch.current = true;
-    if (csvHandleRef.current?.exportId === handle.exportId) {
-      csvHandleRef.current = null;
-    }
-    setCsvState({ kind: "sharing" });
-    try {
-      await runtime.shareCsvExport(handle);
-      setCsvState({ kind: "ready" });
-    } catch {
-      await runtime.discardCsvExport(handle).catch(() => undefined);
-      setCsvState({ kind: "share_failed" });
-    } finally {
-      csvLatch.current = false;
-    }
-  };
-
   useEffect(() => {
     if (restoreState.kind !== "review") return;
     const node = findNodeHandle(reviewHeadingRef.current);
@@ -616,11 +569,6 @@ export default function DataAndRecoveryRoute() {
       mergeTokenRef.current = null;
       if (mergeToken !== null) {
         invalidateMergeRef.current(mergeToken);
-      }
-      const handle = csvHandleRef.current;
-      csvHandleRef.current = null;
-      if (handle !== null) {
-        void discardCsvRef.current(handle).catch(() => undefined);
       }
     };
   }, []);
@@ -983,31 +931,31 @@ export default function DataAndRecoveryRoute() {
               <Text style={[typeScale.secondary as TextStyle, { color: colors.contentCardTextSecondary }]}>
                 It is not password-protected and includes historical, audit, recommendation, and decision data.
               </Text>
-              {csvState.kind === "ready_to_share" ? (
+              {csv.state.kind === "ready_to_share" ? (
                 <>
                   <Text accessibilityLiveRegion="polite" style={[typeScale.bodyStrong as TextStyle, { color: colors.completed }]}>CSV export ready</Text>
-                  <PrimaryAction label="Share CSV" onPress={() => { void shareCsv(csvState.handle); }} />
+                  <PrimaryAction label="Share CSV" onPress={() => { void csv.share(); }} />
                 </>
-              ) : csvState.kind === "create_failed" || csvState.kind === "share_failed" ? (
+              ) : csv.state.kind === "create_failed" || csv.state.kind === "share_failed" ? (
                 <>
                   <Text accessibilityLiveRegion="assertive" style={[typeScale.sectionTitle as TextStyle, { color: colors.destructive }]}>
-                    {csvState.kind === "share_failed" ? "CSV could not be shared" : "CSV export could not be created"}
+                    {csv.state.kind === "share_failed" ? "CSV could not be shared" : "CSV export could not be created"}
                   </Text>
                   <Text style={[typeScale.body as TextStyle, { color: colors.contentCardTextSecondary }]}>Your saved data was not changed.</Text>
-                  <SecondaryAction label="Try CSV export again" onPress={() => setCsvState({ kind: "ready" })} />
+                  <SecondaryAction label="Try CSV export again" onPress={csv.retry} />
                 </>
               ) : (
                 <>
-                  {csvState.kind === "preparing" ? (
+                  {csv.state.kind === "preparing" ? (
                     <Text accessibilityLiveRegion="polite" style={[typeScale.bodyStrong as TextStyle, { color: colors.contentCardText }]}>Preparing CSV export</Text>
-                  ) : csvState.kind === "sharing" ? (
+                  ) : csv.state.kind === "sharing" ? (
                     <Text accessibilityLiveRegion="polite" style={[typeScale.bodyStrong as TextStyle, { color: colors.contentCardText }]}>Sharing CSV export</Text>
                   ) : null}
                   <PrimaryAction
-                    busy={csvState.kind === "preparing"}
-                    disabled={csvState.kind !== "ready"}
+                    busy={csv.state.kind === "preparing"}
+                    disabled={csv.state.kind !== "ready"}
                     label="Export CSV"
-                    onPress={() => { void createCsv(); }}
+                    onPress={() => { void csv.create(); }}
                   />
                 </>
               )}
