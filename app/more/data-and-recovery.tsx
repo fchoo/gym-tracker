@@ -194,25 +194,12 @@ export function ManualEncryptedBackupContent() {
   }>>({ hasPassword: false, matches: false });
   const [passwordVisible, setPasswordVisible] = useState(false);
   const [confirmationVisible, setConfirmationVisible] = useState(false);
-  const [restoreState, setRestoreState] = useState<RestoreViewState>({ kind: "ready" });
   const [restorePassword, setRestorePassword] = useState("");
   const [replaceConfirmation, setReplaceConfirmation] = useState("");
-  const [mergeState, setMergeState] = useState<MergeViewState>({ kind: "ready" });
   const [mergePassword, setMergePassword] = useState("");
   const [mergeConfirmation, setMergeConfirmation] = useState("");
   const reviewHeadingRef = useRef<View>(null);
   const mergeReviewHeadingRef = useRef<View>(null);
-  const restoreLatch = useRef(false);
-  const restoreGenerationRef = useRef(0);
-  const restoreTokenRef = useRef<string | null>(null);
-  const mergeLatch = useRef(false);
-  const mergeGenerationRef = useRef(0);
-  const mergeTokenRef = useRef<string | null>(null);
-  const mountedRef = useRef(true);
-  const invalidateRestoreRef = useRef(runtime.invalidateSecureRestorePreflight);
-  invalidateRestoreRef.current = runtime.invalidateSecureRestorePreflight;
-  const invalidateMergeRef = useRef(runtime.invalidateSecureMergePreflight);
-  invalidateMergeRef.current = runtime.invalidateSecureMergePreflight;
   const csv = useCsvExportController({
     create: runtime.createCsvExport,
     share: runtime.shareCsvExport,
@@ -229,8 +216,12 @@ export function ManualEncryptedBackupContent() {
     commitSecureMerge: runtime.commitSecureMerge,
     invalidateSecureMergePreflight: runtime.invalidateSecureMergePreflight,
     retryRestoreRebuild: runtime.retryRestoreRebuild,
+    onRestoreReview: () => setTimeout(() => reviewHeadingRef.current?.focus(), 0),
+    onMergeReview: () => setTimeout(() => mergeReviewHeadingRef.current?.focus(), 0),
   });
   const backupState = manualBackup.backupState;
+  const restoreState = manualBackup.restoreState;
+  const mergeState = manualBackup.mergeState;
   const passwordValid = passwordState.hasPassword && passwordState.matches;
   const confirmationError = confirmationRef.current.length === 0 || passwordValid
     ? undefined
@@ -267,195 +258,14 @@ export function ManualEncryptedBackupContent() {
   const shareBackup = manualBackup.shareBackup;
   const retry = manualBackup.retryBackup;
 
-  const restoreFailureCopy = (error: unknown): string => {
-    const code = typeof error === "object" && error !== null && "code" in error
-      ? String(error.code) : "";
-    if (code === "restore_archive_unsupported_version") return "This backup format is not supported. Your current saved data was not changed.";
-    if (code === "restore_archive_limit_exceeded") return "This backup is too large to open safely. Your current saved data was not changed.";
-    if (code === "restore_commit_failed") return "Your current saved data was kept.";
-    return "Your current saved data was not changed.";
-  };
-
-  const mergeFailureCopy = (error: unknown): string => {
-    const code = typeof error === "object" && error !== null && "code" in error
-      ? String(error.code) : "";
-    if (code === "merge_archive_requires_v2") return "Use Restore clean for this older backup. Your current saved data was not changed.";
-    if (code === "merge_archive_limit_exceeded") return "This backup is too large to open safely. Your current saved data was not changed.";
-    if (code === "merge_commit_failed") return "Your current saved data was kept.";
-    return "Your current saved data was not changed.";
-  };
-
-  const selectRestore = async () => {
-    if (restoreLatch.current || restorePassword.length === 0) return;
-    restoreLatch.current = true;
-    const generation = restoreGenerationRef.current + 1;
-    restoreGenerationRef.current = generation;
-    const previousToken = restoreTokenRef.current;
-    restoreTokenRef.current = null;
-    if (previousToken !== null) {
-      invalidateRestoreRef.current(previousToken);
-    }
-    const password = restorePassword;
-    setRestorePassword("");
-    setReplaceConfirmation("");
-    setRestoreState({ kind: "opening" });
-    try {
-      const result = await runtime.preflightSecureRestore({ password });
-      if (!mountedRef.current || generation !== restoreGenerationRef.current) {
-        if (result.outcome === "ready") {
-          invalidateRestoreRef.current(result.token);
-        }
-        return;
-      }
-      if (result.outcome === "cancelled") {
-        setRestoreState({ kind: "cancelled" });
-      } else {
-        restoreTokenRef.current = result.token;
-        setRestoreState({ kind: "review", token: result.token, preview: result.preview });
-        setTimeout(() => reviewHeadingRef.current?.focus(), 0);
-      }
-    } catch (error) {
-      if (!mountedRef.current || generation !== restoreGenerationRef.current) return;
-      setRestoreState({ kind: "failed", heading: "Backup could not be opened", message: restoreFailureCopy(error) });
-    } finally {
-      if (generation === restoreGenerationRef.current) {
-        restoreLatch.current = false;
-      }
-    }
-  };
-
-  const commitRestore = async () => {
-    if (restoreState.kind !== "review" || replaceConfirmation !== "REPLACE" || restoreLatch.current) return;
-    restoreLatch.current = true;
-    const token = restoreState.token;
-    restoreTokenRef.current = null;
-    const generation = restoreGenerationRef.current;
-    setReplaceConfirmation("");
-    setRestoreState({ kind: "restoring" });
-    try {
-      const result = await runtime.commitSecureRestore({ token, confirmation: "REPLACE" });
-      if (!mountedRef.current || generation !== restoreGenerationRef.current) return;
-      setRestoreState(result.state === "ready"
-        ? { kind: "restored" }
-        : { kind: "rebuild_pending" });
-    } catch (error) {
-      if (!mountedRef.current || generation !== restoreGenerationRef.current) return;
-      setRestoreState({ kind: "failed", heading: "Restore could not be completed", message: restoreFailureCopy(error) });
-    } finally {
-      if (generation === restoreGenerationRef.current) {
-        restoreLatch.current = false;
-      }
-    }
-  };
-
-  const cancelRestoreReview = () => {
-    if (restoreState.kind !== "review") return;
-    invalidateRestoreRef.current(restoreState.token);
-    restoreTokenRef.current = null;
-    restoreGenerationRef.current += 1;
-    setReplaceConfirmation("");
-    setRestoreState({ kind: "cancelled" });
-  };
-
-  const selectMerge = async () => {
-    if (mergeLatch.current || mergePassword.length === 0) return;
-    mergeLatch.current = true;
-    const generation = mergeGenerationRef.current + 1;
-    mergeGenerationRef.current = generation;
-    const previousToken = mergeTokenRef.current;
-    mergeTokenRef.current = null;
-    if (previousToken !== null) {
-      invalidateMergeRef.current(previousToken);
-    }
-    const password = mergePassword;
-    setMergePassword("");
-    setMergeConfirmation("");
-    setMergeState({ kind: "opening" });
-    try {
-      const result = await runtime.preflightSecureMerge({ password });
-      if (!mountedRef.current || generation !== mergeGenerationRef.current) {
-        if (result.outcome === "ready") {
-          invalidateMergeRef.current(result.token);
-        }
-        return;
-      }
-      if (result.outcome === "cancelled") {
-        setMergeState({ kind: "cancelled" });
-      } else {
-        mergeTokenRef.current = result.token;
-        setMergeState({ kind: "review", token: result.token, preview: result.preview });
-        setTimeout(() => mergeReviewHeadingRef.current?.focus(), 0);
-      }
-    } catch (error) {
-      if (!mountedRef.current || generation !== mergeGenerationRef.current) return;
-      setMergeState({ kind: "failed", heading: "Backup could not be opened", message: mergeFailureCopy(error) });
-    } finally {
-      if (generation === mergeGenerationRef.current) {
-        mergeLatch.current = false;
-      }
-    }
-  };
-
-  const commitMerge = async () => {
-    if (mergeState.kind !== "review" || mergeConfirmation !== "MERGE" || mergeLatch.current) return;
-    mergeLatch.current = true;
-    const token = mergeState.token;
-    mergeTokenRef.current = null;
-    const generation = mergeGenerationRef.current;
-    setMergeConfirmation("");
-    setMergeState({ kind: "merging" });
-    try {
-      const result = await runtime.commitSecureMerge({ token, confirmation: "MERGE" });
-      if (!mountedRef.current || generation !== mergeGenerationRef.current) return;
-      setMergeState(result.state === "ready"
-        ? { kind: "merged" }
-        : { kind: "rebuild_pending" });
-    } catch (error) {
-      if (!mountedRef.current || generation !== mergeGenerationRef.current) return;
-      setMergeState({ kind: "failed", heading: "Merge could not be completed", message: mergeFailureCopy(error) });
-    } finally {
-      if (generation === mergeGenerationRef.current) {
-        mergeLatch.current = false;
-      }
-    }
-  };
-
-  const cancelMergeReview = () => {
-    if (mergeState.kind !== "review") return;
-    invalidateMergeRef.current(mergeState.token);
-    mergeTokenRef.current = null;
-    mergeGenerationRef.current += 1;
-    setMergeConfirmation("");
-    setMergeState({ kind: "cancelled" });
-  };
-
-  const retryMergeRebuild = async () => {
-    if (mergeState.kind !== "rebuild_pending" || mergeLatch.current) return;
-    mergeLatch.current = true;
-    setMergeState({ kind: "merging" });
-    try {
-      const result = await runtime.retryRestoreRebuild();
-      setMergeState(result.state === "ready"
-        ? { kind: "merged" }
-        : { kind: "rebuild_pending" });
-    } finally {
-      mergeLatch.current = false;
-    }
-  };
-
-  const retryRestoreRebuild = async () => {
-    if (restoreState.kind !== "rebuild_pending" || restoreLatch.current) return;
-    restoreLatch.current = true;
-    setRestoreState({ kind: "restoring" });
-    try {
-      const result = await runtime.retryRestoreRebuild();
-      setRestoreState(result.state === "ready"
-        ? { kind: "restored" }
-        : { kind: "rebuild_pending" });
-    } finally {
-      restoreLatch.current = false;
-    }
-  };
+  const selectRestore = () => { const password = restorePassword; setRestorePassword(""); setReplaceConfirmation(""); return manualBackup.preflightRestore(password); };
+  const commitRestore = () => { const confirmation = replaceConfirmation; setReplaceConfirmation(""); return manualBackup.commitRestore(confirmation); };
+  const cancelRestoreReview = () => { setReplaceConfirmation(""); manualBackup.cancelRestore(); };
+  const selectMerge = () => { const password = mergePassword; setMergePassword(""); setMergeConfirmation(""); return manualBackup.preflightMerge(password); };
+  const commitMerge = () => { const confirmation = mergeConfirmation; setMergeConfirmation(""); return manualBackup.commitMerge(confirmation); };
+  const cancelMergeReview = () => { setMergeConfirmation(""); manualBackup.cancelMerge(); };
+  const retryMergeRebuild = manualBackup.retryMergeRebuild;
+  const retryRestoreRebuild = manualBackup.retryRestoreRebuild;
 
   useEffect(() => {
     if (restoreState.kind !== "review") return;
@@ -468,27 +278,6 @@ export function ManualEncryptedBackupContent() {
     const node = findNodeHandle(mergeReviewHeadingRef.current);
     if (node !== null) AccessibilityInfo.setAccessibilityFocus(node);
   }, [mergeState.kind]);
-
-  useEffect(() => {
-    mountedRef.current = true;
-    return () => {
-      mountedRef.current = false;
-      restoreGenerationRef.current += 1;
-      restoreLatch.current = false;
-      const restoreToken = restoreTokenRef.current;
-      restoreTokenRef.current = null;
-      if (restoreToken !== null) {
-        invalidateRestoreRef.current(restoreToken);
-      }
-      mergeGenerationRef.current += 1;
-      mergeLatch.current = false;
-      const mergeToken = mergeTokenRef.current;
-      mergeTokenRef.current = null;
-      if (mergeToken !== null) {
-        invalidateMergeRef.current(mergeToken);
-      }
-    };
-  }, []);
 
   const backupCreatedAt = restoreState.kind === "review"
     ? formatBackupCreatedAt(restoreState.preview.createdAtMs)
