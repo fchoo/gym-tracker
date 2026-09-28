@@ -1,5 +1,7 @@
 import type { ConfigContext, ExpoConfig } from 'expo/config';
 
+import { GOOGLE_OAUTH_REGISTRATIONS, validateGoogleOAuthConfig } from './scripts/google-oauth-config.mjs';
+
 export default ({ config }: ConfigContext): ExpoConfig => {
   const buildProfile =
     process.env.GYM_TRACKER_BUILD_PROFILE ?? 'production';
@@ -10,6 +12,10 @@ export default ({ config }: ConfigContext): ExpoConfig => {
       `Unsupported GYM_TRACKER_BUILD_PROFILE "${buildProfile}". Use development-test or production.`,
     );
   }
+  const googleOAuth = validateGoogleOAuthConfig({
+    buildProfile,
+    webClientId: process.env.EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID,
+  });
 
   return {
     ...config,
@@ -69,6 +75,16 @@ export default ({ config }: ConfigContext): ExpoConfig => {
     extra: {
       buildProfile,
       nativeContractsEnabled: developmentTest,
+      googleOAuth: {
+        projectNumber: GOOGLE_OAUTH_REGISTRATIONS.projectNumber,
+        webClientId: googleOAuth.webClientId,
+        androidClientId: googleOAuth.registration.androidClientId,
+        packageName: googleOAuth.registration.packageName,
+        signingCertificate: {
+          sha1: googleOAuth.registration.sha1,
+          sha256: googleOAuth.registration.sha256,
+        },
+      },
     },
   };
 };
