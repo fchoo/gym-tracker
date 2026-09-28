@@ -445,21 +445,36 @@ function sessionAggregate(
   local: PortableMergePlanSnapshot,
   portableId: string,
   localSessionId: string,
+  indexed?: Readonly<{
+    archiveSessionId: string;
+    index: SessionDigestIndex;
+    occupiedIdsFor(table: string, keyColumn?: string): Set<string>;
+  }>,
 ): PortableMergeAggregate {
-  const sessions = sessionRows(snapshot).filter((row) => row.portable_id === portableId);
-  if (sessions.length !== 1) invalid();
+  const indexedTables = indexed === undefined
+    ? undefined
+    : indexed.index.get(indexed.archiveSessionId);
+  const sessions = indexedTables?.workout_sessions
+    ?? sessionRows(snapshot).filter((row) => row.portable_id === portableId);
+  if (sessions.length !== 1 || sessions[0]?.portable_id !== portableId) invalid();
   const sessionId = textId(sessions[0]!.id);
-  const exercises = rowsFor(snapshot, "session_exercises")
-    .filter((row) => row.session_id === sessionId);
+  if (indexed !== undefined && sessionId !== indexed.archiveSessionId) invalid();
+  const indexedRows = (table: string): readonly LogicalBackupRow[] | undefined =>
+    indexedTables?.[table];
+  const exercises = indexedRows("session_exercises")
+    ?? rowsFor(snapshot, "session_exercises").filter((row) => row.session_id === sessionId);
   const mappedExercises = mappedRows(local, "session_exercises", exercises, [
     { column: "session_id", ids: new Map([[sessionId, localSessionId]]) },
-  ], sessionId !== localSessionId, portableId);
+  ], sessionId !== localSessionId, portableId, "id", undefined,
+  indexed?.occupiedIdsFor("session_exercises"));
   const archiveExerciseIds = new Set(exercises.map((row) => textId(row.id)));
-  const sets = rowsFor(snapshot, "session_sets")
-    .filter((row) => archiveExerciseIds.has(textId(row.session_exercise_id)));
+  const sets = indexedRows("session_sets")
+    ?? rowsFor(snapshot, "session_sets")
+      .filter((row) => archiveExerciseIds.has(textId(row.session_exercise_id)));
   const mappedSets = mappedRows(local, "session_sets", sets, [
     { column: "session_exercise_id", ids: mappedExercises.ids },
-  ], sessionId !== localSessionId, portableId);
+  ], sessionId !== localSessionId, portableId, "id", undefined,
+  indexed?.occupiedIdsFor("session_sets"));
   const archiveSetIds = new Set(sets.map((row) => textId(row.id)));
   const immutableChildren = new Map<string, ReadonlyMap<string, string>>();
   for (const [table, keyColumn] of [
@@ -468,24 +483,36 @@ function sessionAggregate(
     ["workout_session_exercise_edit_receipts", "request_id"],
     ["workout_session_exercise_reorder_receipts", "request_id"],
   ] as const) {
-    const rows = rowsFor(snapshot, table).filter((row) => row.session_id === sessionId);
+    const rows = indexedRows(table)
+      ?? rowsFor(snapshot, table).filter((row) => row.session_id === sessionId);
     const mapped = mappedRows(local, table, rows, [
       { column: "session_id", ids: new Map([[sessionId, localSessionId]]) },
       { column: "completed_set_id", ids: mappedSets.ids, optional: true },
-    ], sessionId !== localSessionId, portableId, keyColumn);
+    ], sessionId !== localSessionId, portableId, keyColumn, undefined,
+    indexed?.occupiedIdsFor(table, keyColumn));
     immutableChildren.set(table, mapped.ids);
   }
   const isKnown = (ids: ReadonlySet<string>, value: unknown): boolean =>
     value !== null && value !== undefined && ids.has(textId(value));
   const tables: Record<string, readonly LogicalBackupRow[]> = {};
   const sessionMap = new Map([[sessionId, localSessionId]]);
-  for (const [table, rows] of Object.entries(snapshot.tables)) {
-    const selected = table === "workout_sessions"
-      ? rows.filter((row) => row.id === sessionId)
-      : rows.filter((row) => row.session_id === sessionId
-        || isKnown(archiveExerciseIds, row.session_exercise_id)
-        || isKnown(archiveSetIds, row.session_set_id)
-        || isKnown(archiveSetIds, row.completed_set_id));
+  const selectedEntries = indexedTables === undefined
+    ? Object.entries(snapshot.tables).map(([table, rows]) => [
+      table,
+      table === "workout_sessions"
+        ? rows.filter((row) => row.id === sessionId)
+        : rows.filter((row) => row.session_id === sessionId
+          || isKnown(archiveExerciseIds, row.session_exercise_id)
+          || isKnown(archiveSetIds, row.session_set_id)
+          || isKnown(archiveSetIds, row.completed_set_id)),
+    ] as const)
+    : Object.keys(snapshot.tables).flatMap((table) => {
+      const rows = indexedTables[table];
+      return rows === undefined ? [] : [[table, rows] as const];
+    });
+  const mappedExerciseRows = new Map(mappedExercises.rows.map((row) => [textId(row.id), row]));
+  const mappedSetRows = new Map(mappedSets.rows.map((row) => [textId(row.id), row]));
+  for (const [table, selected] of selectedEntries) {
     if (selected.length > 0) {
       tables[table] = Object.freeze(selected.map((row) => {
         let mapped: LogicalBackupRow = row;
@@ -503,12 +530,12 @@ function sessionAggregate(
           }
         }
         if (table === "session_exercises") {
-          return mappedExercises.rows.find((candidate) => candidate.session_id === localSessionId
-            && mappedExercises.ids.get(textId(row.id)) === candidate.id)!;
+          return mappedExerciseRows.get(mappedIdentifier(mappedExercises.ids, row.id))
+            ?? invalid();
         }
         if (table === "session_sets") {
-          return mappedSets.rows.find((candidate) =>
-            mappedSets.ids.get(textId(row.id)) === candidate.id)!;
+          return mappedSetRows.get(mappedIdentifier(mappedSets.ids, row.id))
+            ?? invalid();
         }
         const immutableIds = immutableChildren.get(table);
         if (immutableIds !== undefined) {
@@ -926,8 +953,9 @@ function mappedRows(
   portableId: string,
   keyColumn = "id",
   keyIds?: ReadonlyMap<string, string>,
+  occupiedIds?: Set<string>,
 ): Readonly<{ rows: readonly LogicalBackupRow[]; ids: ReadonlyMap<string, string> }> {
-  const occupied = tableOccupiedIds(snapshot, table, keyColumn);
+  const occupied = occupiedIds ?? tableOccupiedIds(snapshot, table, keyColumn);
   const ids = new Map<string, string>();
   for (const [index, row] of [...selected].sort((left, right) =>
     textId(left[keyColumn]).localeCompare(textId(right[keyColumn]))).entries()) {
@@ -1378,10 +1406,29 @@ export async function buildPortableMergePlan(input: Readonly<{
   const sessionMappings = new Map(
     sessionOperations.map((operation) => [operation.archiveId, operation.localId] as const),
   );
+  const occupiedIds = new Map<string, Set<string>>();
+  const occupiedIdsFor = (table: string, keyColumn = "id"): Set<string> => {
+    const key = `${table}:${keyColumn}`;
+    const existing = occupiedIds.get(key);
+    if (existing !== undefined) return existing;
+    const created = tableOccupiedIds(input.local, table, keyColumn);
+    occupiedIds.set(key, created);
+    return created;
+  };
   const aggregates = Object.freeze(operations.flatMap((operation) => {
     if (operation.aggregateClass === "workout_session"
       && (operation.kind === "insert" || operation.kind === "archive_won")) {
-      return [sessionAggregate(input.archive, input.local, operation.portableId, operation.localId)];
+      return [sessionAggregate(
+        input.archive,
+        input.local,
+        operation.portableId,
+        operation.localId,
+        {
+          archiveSessionId: operation.archiveId,
+          index: archiveDigestIndex,
+          occupiedIdsFor,
+        },
+      )];
     }
     if (operation.aggregateClass === "custom_exercise"
       && (operation.kind === "insert" || operation.kind === "keep_both")) {

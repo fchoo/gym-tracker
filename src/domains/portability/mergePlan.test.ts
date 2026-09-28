@@ -85,6 +85,51 @@ describe("portable merge plan", () => {
     expect(operations.every((operation) => operation.kind === "local_won")).toBe(true);
   });
 
+  it("reuses the session index when materializing archive-won aggregates", async () => {
+    let filterCalls = 0;
+    const tracked = <T>(rows: readonly T[]): readonly T[] => {
+      const copy = [...rows];
+      const filter = copy.filter.bind(copy);
+      copy.filter = ((...args: Parameters<typeof copy.filter>) => {
+        filterCalls += 1;
+        return filter(...args);
+      }) as typeof copy.filter;
+      return copy;
+    };
+    const base = snapshot({ id: "archive-session", marker: "archive", modifiedAtMs: 20 }, {
+      session_exercises: [{
+        id: "archive-exercise",
+        session_id: "archive-session",
+        metric_profile: "load_reps",
+        metric_contract_version: 1,
+        exercise_metric_generation: 1,
+      }],
+      session_sets: [{
+        id: "archive-set",
+        session_exercise_id: "archive-exercise",
+        metric_profile: "load_reps",
+        metric_contract_version: 1,
+        exercise_metric_generation: 1,
+      }],
+    });
+    const archive = {
+      ...base,
+      tables: {
+        ...base.tables,
+        workout_sessions: tracked(base.tables.workout_sessions),
+        session_exercises: tracked(base.tables.session_exercises),
+        session_sets: tracked(base.tables.session_sets),
+      },
+    };
+    const local = snapshot({ id: "local-session", marker: "local", modifiedAtMs: 10 });
+
+    await expect(buildPortableMergePlan({ archive, local, payloadDigest }))
+      .resolves.toEqual(expect.objectContaining({
+        aggregates: [expect.objectContaining({ aggregateClass: "workout_session" })],
+      }));
+    expect(filterCalls).toBe(0);
+  });
+
   it("classifies every portable source table before planning a merge", () => {
     expect(Object.keys(PORTABLE_MERGE_TABLE_CLASSES).sort())
       .toEqual([...LOGICAL_BACKUP_TABLES].sort());
