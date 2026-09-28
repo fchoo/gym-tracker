@@ -28,6 +28,9 @@ import {
   useCsvExportController,
 } from "../../src/ui/portability/useCsvExportController";
 import {
+  useManualBackupController,
+} from "../../src/ui/portability/useManualBackupController";
+import {
   BackupPreviewFact,
 } from "../../src/ui/portability/BackupPreviewFacts";
 import {
@@ -191,7 +194,6 @@ export function ManualEncryptedBackupContent() {
   }>>({ hasPassword: false, matches: false });
   const [passwordVisible, setPasswordVisible] = useState(false);
   const [confirmationVisible, setConfirmationVisible] = useState(false);
-  const [backupState, setBackupState] = useState<BackupViewState>({ kind: "ready" });
   const [restoreState, setRestoreState] = useState<RestoreViewState>({ kind: "ready" });
   const [restorePassword, setRestorePassword] = useState("");
   const [replaceConfirmation, setReplaceConfirmation] = useState("");
@@ -200,10 +202,6 @@ export function ManualEncryptedBackupContent() {
   const [mergeConfirmation, setMergeConfirmation] = useState("");
   const reviewHeadingRef = useRef<View>(null);
   const mergeReviewHeadingRef = useRef<View>(null);
-  const backupLatch = useRef(false);
-  const backupGenerationRef = useRef(0);
-  const backupAbortRef = useRef<AbortController | null>(null);
-  const backupHandleRef = useRef<RuntimeSecureBackupArchive | null>(null);
   const restoreLatch = useRef(false);
   const restoreGenerationRef = useRef(0);
   const restoreTokenRef = useRef<string | null>(null);
@@ -211,8 +209,6 @@ export function ManualEncryptedBackupContent() {
   const mergeGenerationRef = useRef(0);
   const mergeTokenRef = useRef<string | null>(null);
   const mountedRef = useRef(true);
-  const discardBackupRef = useRef(runtime.discardSecureBackup);
-  discardBackupRef.current = runtime.discardSecureBackup;
   const invalidateRestoreRef = useRef(runtime.invalidateSecureRestorePreflight);
   invalidateRestoreRef.current = runtime.invalidateSecureRestorePreflight;
   const invalidateMergeRef = useRef(runtime.invalidateSecureMergePreflight);
@@ -222,6 +218,19 @@ export function ManualEncryptedBackupContent() {
     share: runtime.shareCsvExport,
     discard: runtime.discardCsvExport,
   });
+  const manualBackup = useManualBackupController({
+    createSecureBackup: runtime.createSecureBackup,
+    shareSecureBackup: runtime.shareSecureBackup,
+    discardSecureBackup: runtime.discardSecureBackup,
+    preflightSecureRestore: runtime.preflightSecureRestore,
+    commitSecureRestore: runtime.commitSecureRestore,
+    invalidateSecureRestorePreflight: runtime.invalidateSecureRestorePreflight,
+    preflightSecureMerge: runtime.preflightSecureMerge,
+    commitSecureMerge: runtime.commitSecureMerge,
+    invalidateSecureMergePreflight: runtime.invalidateSecureMergePreflight,
+    retryRestoreRebuild: runtime.retryRestoreRebuild,
+  });
+  const backupState = manualBackup.backupState;
   const passwordValid = passwordState.hasPassword && passwordState.matches;
   const confirmationError = confirmationRef.current.length === 0 || passwordValid
     ? undefined
@@ -248,79 +257,15 @@ export function ManualEncryptedBackupContent() {
     });
   };
 
-  const createBackup = async () => {
-    if (!passwordValid || backupLatch.current) {
-      return;
-    }
-    backupLatch.current = true;
-    const generation = backupGenerationRef.current + 1;
-    backupGenerationRef.current = generation;
-    const controller = new AbortController();
-    backupAbortRef.current = controller;
-    setBackupState({ kind: "preparing" });
+  const createBackup = () => {
+    if (!passwordValid) return;
     const password = passwordRef.current;
     resetPasswordFields();
-    try {
-      const archive = await runtime.createSecureBackup({
-        password,
-        signal: controller.signal,
-      });
-      if (!mountedRef.current || generation !== backupGenerationRef.current) {
-        await discardBackupRef.current(archive).catch(() => undefined);
-        return;
-      }
-      const previous = backupHandleRef.current;
-      backupHandleRef.current = archive;
-      if (previous !== null) {
-        await discardBackupRef.current(previous).catch(() => undefined);
-      }
-      setBackupState({ kind: "ready_to_share", archive });
-    } catch {
-      if (!mountedRef.current || generation !== backupGenerationRef.current) return;
-      setBackupState({ kind: "failed", correlationCode: "GT-BACKUP04" });
-    } finally {
-      if (generation === backupGenerationRef.current) {
-        backupAbortRef.current = null;
-        backupLatch.current = false;
-      }
-    }
+    return manualBackup.createBackup(password);
   };
-
-  const cancelBackup = () => {
-    if (backupState.kind !== "preparing") return;
-    backupGenerationRef.current += 1;
-    backupAbortRef.current?.abort();
-    backupAbortRef.current = null;
-    backupLatch.current = false;
-    setBackupState({ kind: "cancelled" });
-  };
-
-  const shareBackup = async (archive: RuntimeSecureBackupArchive) => {
-    if (backupLatch.current) return;
-    backupLatch.current = true;
-    const generation = backupGenerationRef.current + 1;
-    backupGenerationRef.current = generation;
-    if (backupHandleRef.current?.archiveId === archive.archiveId) {
-      backupHandleRef.current = null;
-    }
-    setBackupState({ kind: "sharing" });
-    try {
-      await runtime.shareSecureBackup(archive);
-      if (!mountedRef.current || generation !== backupGenerationRef.current) return;
-      setBackupState({ kind: "ready" });
-    } catch {
-      if (!mountedRef.current || generation !== backupGenerationRef.current) return;
-      setBackupState({ kind: "share_failed", correlationCode: "GT-BACKUP04" });
-    } finally {
-      if (generation === backupGenerationRef.current) {
-        backupLatch.current = false;
-      }
-    }
-  };
-
-  const retry = () => {
-    setBackupState({ kind: "ready" });
-  };
+  const cancelBackup = manualBackup.cancelBackup;
+  const shareBackup = manualBackup.shareBackup;
+  const retry = manualBackup.retryBackup;
 
   const restoreFailureCopy = (error: unknown): string => {
     const code = typeof error === "object" && error !== null && "code" in error
@@ -528,15 +473,6 @@ export function ManualEncryptedBackupContent() {
     mountedRef.current = true;
     return () => {
       mountedRef.current = false;
-      backupGenerationRef.current += 1;
-      backupAbortRef.current?.abort();
-      backupAbortRef.current = null;
-      backupLatch.current = false;
-      const backup = backupHandleRef.current;
-      backupHandleRef.current = null;
-      if (backup !== null) {
-        void discardBackupRef.current(backup).catch(() => undefined);
-      }
       restoreGenerationRef.current += 1;
       restoreLatch.current = false;
       const restoreToken = restoreTokenRef.current;
