@@ -5,16 +5,16 @@ milestone_name: In-Workout Editing, Advanced Timing & Drive Backup
 current_phase: 12
 current_phase_name: Automatic Google Drive Backup & Replacement Restore
 status: executing
-stopped_at: Resuming Phase 12 Plan 12-01 Task 1 after Google OAuth provisioning
-last_updated: "2026-09-28T06:45:18.221Z"
+stopped_at: Completed 12-01-drive-backup-foundation-PLAN.md
+last_updated: "2026-09-28T07:45:15.433Z"
 last_activity: 2026-09-27
 last_activity_desc: Phase 12 execution started
-state_head: dbc9c98af67b510f5264e2159cd2531066adf703
+state_head: 148bf71bd9df42b800e0c39ea0c874122cc95f66
 progress:
   total_phases: 5
   completed_phases: 3
   total_plans: 26
-  completed_plans: 22
+  completed_plans: 23
   percent: 60
 ---
 
@@ -30,8 +30,8 @@ See: `.planning/PROJECT.md` (updated 2026-09-15)
 ## Current Position
 
 Phase: 12 (Automatic Google Drive Backup & Replacement Restore) — EXECUTING
-Plan: 1 of 4
-Status: Executing Phase 12
+Plan: 2 of 4
+Status: Ready to execute
 Last activity: 2026-09-27 — Phase 12 execution started
 
 ## Delivery model
@@ -134,6 +134,7 @@ Terminal Seal) is retired for personal-use (removed in PR #29) and tracked as V2
 | Phase 09-in-workout-exercise-editing P04 | 22 min | 2 tasks | 6 files |
 | Phase 09-in-workout-exercise-editing P05 | 4h 31m | 2 tasks | 10 files |
 | Phase 11-portable-history-merge-restore P04 | multi-session | 3 tasks | 7 files |
+| Phase 12 P01 | native-verified | 4 tasks | 24 files |
 
 ## Accumulated Context
 
@@ -308,6 +309,7 @@ Full decisions live in `.planning/PROJECT.md`.
 - [Phase 09]: Native migrations/effects databases already have unique run IDs. Do not delete them before `openDatabaseAsync`; cleanup after close prevents Expo SQLite's released-shared-object race without weakening isolation.
 - [Phase 09]: Final source-bound evidence is d5976f6: the runner validates all adb work against the manifest serial, full Task 1 successor-range scope and immutable migration 0019, exact v20 and Phase 09 artifact identities, and force-stops the manifest package before each clear-state flow. v20 passed 11/11 and all three Maestro flows passed with automatic device time restored.
 - [Phase 11]: Full-plan secure merge receives a least-privilege writer exposing only `commitFullPlan`; legacy tracer `commit` remains isolated behind its own factory. A validated duplicate/local-won-only plan consumes its token and returns ready without source or rebuild-state mutation. Fresh 4173c72-bound evidence passed the 7/7 evidence gate, migrations-effects 13/13, portable-merge 13/13, and four Maestro flows.
+- [Phase 12]: Android-only Google Sign-In omits the iOS-only Expo plugin while retaining approved Android OAuth registrations.
 
 ### Blockers/Concerns
 
@@ -335,10 +337,10 @@ Full decisions live in `.planning/PROJECT.md`.
 
 ## Session Continuity
 
-Last session: 2026-09-28T06:45:18.117Z
+Last session: 2026-09-28T07:45:15.323Z
 Last handoff: Phase 12 design review approved guided recovery mode, split administration/manual recovery routes, full state matrix, NavigationRow, and responsive/accessibility contracts
-Stopped at: Resuming Phase 12 Plan 12-01 Task 1 after Google OAuth provisioning
-Resume file: .planning/phases/12-automatic-google-drive-sync/12-01-drive-backup-foundation-PLAN.md
+Stopped at: Completed 12-01-drive-backup-foundation-PLAN.md
+Resume file: None
 Handoff file: none
 Next action: Execute Phase 12; the owner authorized proceeding with development after automatically selecting the top recommended focused-review options.
 
