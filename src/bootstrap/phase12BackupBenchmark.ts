@@ -124,6 +124,20 @@ async function seedMaximumHistory(kernel: SqliteKernel): Promise<void> {
     });
   }
   const collector = createLogicalBackupRepository(kernel);
+  // Establish the final revision/timestamp widths before sizing padding. The
+  // subsequent value-only update still exercises the v23 trigger but cannot
+  // change the serialized non-padding shape.
+  for (let start = 0; start < rows.length; start += 250) {
+    await kernel.write(async (transaction) => {
+      for (let offset = 0; offset < Math.min(250, rows.length - start); offset += 1) {
+        const index = start + offset;
+        await transaction.execute(
+          "UPDATE app_settings SET revision = ?, updated_at_ms = ? WHERE key = ?",
+          [index + 1, index + 1, rows[index]!.key],
+        );
+      }
+    });
+  }
   const baseline = await collector.collect({ snapshotId: "phase12-writer-00", createdAtMs: 0 });
   const difference = PHASE12_MAX_SNAPSHOT_BYTES - encodedBytes(baseline);
   if (difference < 0) throw new Error("phase12_sqlite_fixture_oversize");
@@ -134,8 +148,8 @@ async function seedMaximumHistory(kernel: SqliteKernel): Promise<void> {
       for (let offset = 0; offset < Math.min(250, rows.length - start); offset += 1) {
         const index = start + offset;
         await transaction.execute(
-          "UPDATE app_settings SET value_json = ?, revision = revision + 1, updated_at_ms = ? WHERE key = ?",
-          [JSON.stringify({ padding: "x".repeat(each + (index < remainder ? 1 : 0)) }), index + 1, rows[index]!.key],
+          "UPDATE app_settings SET value_json = ? WHERE key = ?",
+          [JSON.stringify({ padding: "x".repeat(each + (index < remainder ? 1 : 0)) }), rows[index]!.key],
         );
       }
     });
@@ -156,15 +170,6 @@ export async function performPhase12BackupBenchmark(): Promise<Phase12BackupBenc
   try {
     await migrateBenchmarkDatabase("phase12", DATABASE_NAME, kernel);
     await seedMaximumHistory(kernel);
-    const dirtyTriggerMs: number[] = [];
-    for (let index = 0; index < PHASE12_DIRTY_SAMPLES; index += 1) {
-      const started = performance.now();
-      await kernel.write((transaction) => transaction.execute(
-        "UPDATE app_settings SET revision = revision + 1, updated_at_ms = ? WHERE key = ?",
-        [index + 1_000_000, "phase12-benchmark-000000"],
-      ));
-      dirtyTriggerMs.push(performance.now() - started);
-    }
     const writerOccupancyMs: number[] = [];
     let maximumSnapshot: Awaited<ReturnType<typeof collectMaximumSnapshot>> | undefined;
     for (let index = 0; index < PHASE12_WRITER_SAMPLES; index += 1) {
@@ -176,6 +181,15 @@ export async function performPhase12BackupBenchmark(): Promise<Phase12BackupBenc
     if (maximumSnapshot === undefined || encodedBytes(maximumSnapshot) !== PHASE12_MAX_SNAPSHOT_BYTES
       || maximumSnapshot.manifest.totalRows !== PHASE12_MAX_SNAPSHOT_ROWS) {
       throw new Error("phase12_sqlite_fixture_size_invalid");
+    }
+    const dirtyTriggerMs: number[] = [];
+    for (let index = 0; index < PHASE12_DIRTY_SAMPLES; index += 1) {
+      const started = performance.now();
+      await kernel.write((transaction) => transaction.execute(
+        "UPDATE app_settings SET revision = revision + 1, updated_at_ms = ? WHERE key = ?",
+        [index + 1_000_000, "phase12-benchmark-000000"],
+      ));
+      dirtyTriggerMs.push(performance.now() - started);
     }
     const archive = buildPhase12SyntheticSnapshot(2);
     const local = buildPhase12SyntheticSnapshot(1);
