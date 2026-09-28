@@ -14,7 +14,7 @@ export type AutomaticBackupViewModel = Readonly<{
   warning: "changes_not_backed_up_24h" | null;
   recoveryPrompt: AutomaticBackupRecoveryPrompt | null;
   progressStage: AutomaticBackupProgressStage | null;
-  reason: "stale_writer" | "update_required" | "restore_required" | null;
+  reason: "stale_writer" | "update_required" | "restore_required" | "unavailable" | null;
   primaryAction: "connect" | "backup_now" | "retry" | "continue_restore" | "check_again" | "finish_setup" | null;
 }>;
 export type AutomaticBackupPresentationInput = Readonly<{
