@@ -20,6 +20,8 @@ function commands(): jest.Mocked<AutomaticBackupRuntimeCommands> {
     cancelChecking: jest.fn(async () => undefined),
     checkAgain: jest.fn(async () => undefined),
     continueRestore: jest.fn(async () => undefined),
+    prepareRecovery: jest.fn(async () => ({ kind: "empty_direct" as const, attemptId: "attempt" })),
+    commitRecovery: jest.fn(async () => undefined),
     finishSetup: jest.fn(async () => undefined),
     backupNow: jest.fn(async () => undefined),
     retryBackup: jest.fn(async () => undefined),

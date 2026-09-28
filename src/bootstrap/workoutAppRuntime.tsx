@@ -345,6 +345,7 @@ import type { AutomaticBackupScheduler } from "../domains/backup/automaticBackup
 import { projectAutomaticBackupPresentation, type AutomaticBackupViewModel } from "../domains/backup/automaticBackupPresentation";
 import { createAutomaticBackupStateRepository } from "../platform/sqlite/repositories/automaticBackupStateRepository";
 import type { AutomaticBackupRuntime } from "./automaticBackupRuntime";
+import { createProductionAutomaticBackupServices } from "./productionAutomaticBackupRuntime";
 import {
   createOwnedPlanRuntimePort,
   type OwnedPlanRuntimeExerciseOption,
@@ -1471,6 +1472,8 @@ export const productionWorkoutAppRuntimeDependencies =
     }).reconcileAndRebuild(),
     createRepository: createPlansWorkoutRepository,
     createNotifications: createExpoRestNotificationAdapter,
+    createAutomaticBackupScheduler: (kernel) => createProductionAutomaticBackupServices(kernel).scheduler,
+    createAutomaticBackupRuntime: (kernel) => createProductionAutomaticBackupServices(kernel).runtime,
     createLifecycle: createWorkoutLifecycle,
     createRestRepository,
     createAdvancedTimingRepository,

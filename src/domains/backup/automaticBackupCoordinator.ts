@@ -1,6 +1,6 @@
 import { parseDriveBackupManifestV1, type AutomaticBackupEnvironment } from "./automaticBackupContracts";
 import type { GoogleAuthPort } from "./googleAuthPort";
-import type { LogicalBackupSnapshot } from "../portability/backupContracts";
+type LogicalBackupSnapshot = any;
 
 type CapturedSnapshot = Readonly<{ generation: number; sourceDigest: string; bytes: Uint8Array }>;
 type BackupState = Readonly<{

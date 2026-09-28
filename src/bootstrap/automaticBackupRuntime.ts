@@ -4,6 +4,7 @@ import {
   type AutomaticBackupDataUsePolicy,
   type AutomaticBackupViewModel,
 } from "../domains/backup/automaticBackupPresentation";
+import type { AutomaticRecoveryCandidate, AutomaticRecoveryCommit, AutomaticRecoveryPreparation } from "../domains/backup/automaticBackupCoordinator";
 
 export type AutomaticBackupRuntimeCommands = Readonly<{
   connect(): Promise<void>;
@@ -11,6 +12,8 @@ export type AutomaticBackupRuntimeCommands = Readonly<{
   cancelChecking(): Promise<void>;
   checkAgain(): Promise<void>;
   continueRestore(): Promise<void>;
+  prepareRecovery(input: Readonly<{ candidate: AutomaticRecoveryCandidate }>): Promise<AutomaticRecoveryPreparation>;
+  commitRecovery(input: AutomaticRecoveryCommit): Promise<void>;
   finishSetup(): Promise<void>;
   backupNow(): Promise<void>;
   retryBackup(): Promise<void>;
@@ -72,15 +75,15 @@ export function createAutomaticBackupRuntime(input: Readonly<{
       }
     }
   };
-  const invoke = (key: keyof AutomaticBackupRuntimeCommands, ...args: readonly unknown[]) => {
+  const invoke = <Result>(key: keyof AutomaticBackupRuntimeCommands, ...args: readonly unknown[]): Promise<Result> => {
     if (input.commands === undefined || disposed) {
       if (!disposed) { model = unavailable(); emit(); }
       return Promise.reject(new Error("automatic_backup_unavailable"));
     }
-    if (activeCommand !== null) return activeCommand;
+    if (activeCommand !== null) return activeCommand as Promise<Result>;
     const command = input.commands[key] as (...values: readonly unknown[]) => Promise<void>;
     activeCommand = command(...args).then(publish).finally(() => { activeCommand = null; });
-    return activeCommand;
+    return activeCommand as Promise<Result>;
   };
   const unsubscribe = input.subscribeTransitions?.(() => { void publish(); });
   const runtime: AutomaticBackupRuntime = {
@@ -89,21 +92,14 @@ export function createAutomaticBackupRuntime(input: Readonly<{
     refresh: publish,
     subscribe(listener) { listeners.add(listener); return () => listeners.delete(listener); },
     dispose() { disposed = true; generation += 1; listeners.clear(); unsubscribe?.(); },
-    connect: () => invoke("connect"),
-    deferRestore: () => invoke("deferRestore"),
-    cancelChecking: () => invoke("cancelChecking"),
-    checkAgain: () => invoke("checkAgain"),
-    continueRestore: () => invoke("continueRestore"),
-    finishSetup: () => invoke("finishSetup"),
-    backupNow: () => invoke("backupNow"),
-    retryBackup: () => invoke("retryBackup"),
-    useCellularThisTime: () => invoke("useCellularThisTime"),
-    setDataUsePolicy: (policy) => invoke("setDataUsePolicy", policy),
-    takeOver: () => invoke("takeOver"),
-    disconnect: () => invoke("disconnect"),
-    deleteCloudBackup: () => invoke("deleteCloudBackup"),
-    finishDeletingCloudBackup: () => invoke("finishDeletingCloudBackup"),
-    startNewCloudBackup: () => invoke("startNewCloudBackup"),
+    connect: () => invoke<void>("connect"),
+    deferRestore: () => invoke<void>("deferRestore"),
+    cancelChecking: () => invoke<void>("cancelChecking"),
+    checkAgain: () => invoke<void>("checkAgain"),
+    continueRestore: () => invoke<void>("continueRestore"),
+    prepareRecovery: (input) => invoke<AutomaticRecoveryPreparation>("prepareRecovery", input),
+    commitRecovery: (input) => invoke<void>("commitRecovery", input),
+    finishSetup: () => invoke<void>("finishSetup"), backupNow: () => invoke<void>("backupNow"), retryBackup: () => invoke<void>("retryBackup"), useCellularThisTime: () => invoke<void>("useCellularThisTime"), setDataUsePolicy: (policy) => invoke<void>("setDataUsePolicy", policy), takeOver: () => invoke<void>("takeOver"), disconnect: () => invoke<void>("disconnect"), deleteCloudBackup: () => invoke<void>("deleteCloudBackup"), finishDeletingCloudBackup: () => invoke<void>("finishDeletingCloudBackup"), startNewCloudBackup: () => invoke<void>("startNewCloudBackup"),
   };
   return Object.freeze(runtime);
 }
