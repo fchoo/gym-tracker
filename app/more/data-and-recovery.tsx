@@ -33,6 +33,7 @@ import {
 import {
   ContentCard,
   IconAction,
+  NavigationRow,
   PrimaryAction,
   ScreenHeader,
   SecondaryAction,
@@ -171,6 +172,9 @@ function LatestBackupMetadata({
 
 export default function DataAndRecoveryRoute() {
   const runtime = useWorkoutAppRuntime();
+  // Phase 11 route tests intentionally supply the pre-Phase-12 runtime shape.
+  // Treat that absence as a disconnected projection while preserving manual tools.
+  const automaticBackup = runtime.automaticBackup ?? { status: "not_connected" as const, reason: null, warning: null, lastSuccessfulBackupAtMs: null, primaryAction: "connect" as const };
   const { colors } = useAppTheme();
   const passwordRef = useRef("");
   const confirmationRef = useRef("");
@@ -554,6 +558,25 @@ export default function DataAndRecoveryRoute() {
       primary={
         <>
           <ScreenHeader backAction={() => router.back()} title="Data and recovery" />
+          <ContentCard>
+            <View style={styles.card}>
+              <Text style={[typeScale.sectionTitle as TextStyle, { color: colors.contentCardText }]}>Google Drive backup</Text>
+              <Text accessibilityLiveRegion="polite" style={[typeScale.bodyStrong as TextStyle, { color: colors.contentCardText }]}>{automaticBackup.status === "not_connected" ? "Not connected" : automaticBackup.reason === "stale_writer" ? "Backup moved to another phone" : automaticBackup.warning === "changes_not_backed_up_24h" ? "Changes not backed up for 24h" : automaticBackup.status === "backup_pending" ? "Backup pending" : automaticBackup.status === "backing_up" ? "Backing up" : automaticBackup.status === "restore_pending" ? "Restore required" : "Backed up"}</Text>
+              <Text style={[typeScale.secondary as TextStyle, { color: colors.contentCardTextSecondary }]}>{automaticBackup.lastSuccessfulBackupAtMs === null ? "No successful backup yet" : `Last verified backup: ${new Date(automaticBackup.lastSuccessfulBackupAtMs).toISOString()}`}</Text>
+              {automaticBackup.primaryAction === "connect" ? <PrimaryAction label="Connect Google Drive" onPress={() => { void runtime.connectAutomaticBackup?.().catch(() => undefined); }} /> : null}
+              {automaticBackup.primaryAction === "backup_now" ? <PrimaryAction label="Back up now" onPress={() => { void runtime.requestAutomaticBackupNow?.().catch(() => undefined); }} /> : null}
+              {automaticBackup.primaryAction === "retry" ? <PrimaryAction label="Retry" onPress={() => { void runtime.retryAutomaticBackup?.().catch(() => undefined); }} /> : null}
+              {automaticBackup.primaryAction === "continue_restore" ? <PrimaryAction label="Continue restore" onPress={() => { void runtime.continueAutomaticRestore?.().catch(() => undefined); }} /> : null}
+              {automaticBackup.primaryAction === "check_again" ? <PrimaryAction label="Check again" onPress={() => { void runtime.checkAutomaticBackupAgain?.().catch(() => undefined); }} /> : null}
+            </View>
+          </ContentCard>
+          <ContentCard>
+            <View style={styles.card}>
+              <Text style={[typeScale.sectionTitle as TextStyle, { color: colors.contentCardText }]}>Recovery tools</Text>
+              <NavigationRow title="Automatic backup settings" supportingText="Account, connection, and privacy" onPress={() => router.push("/more/automatic-backup-settings")} />
+              <NavigationRow title="Manual encrypted backup" supportingText="Password-protected GTBK backup and recovery" onPress={() => router.push("/more/manual-encrypted-backup")} />
+            </View>
+          </ContentCard>
           <ContentCard>
             <View style={styles.card}>
               <Text style={[typeScale.sectionTitle as TextStyle, { color: colors.contentCardText }]}>
