@@ -45,4 +45,27 @@ describe("automatic backup coordinator", () => {
     await expect(coordinator.backup()).resolves.toEqual({ status: "backed_up", generation: 4 });
     expect(events).toEqual(["persist", "upload", "download", "promote", "reread", "acknowledge"]);
   });
+
+  it("re-discovers a durable tombstone namespace until no snapshot remains", async () => {
+    const deleted: string[] = [];
+    let calls = 0;
+    const coordinator = createAutomaticBackupCoordinator({
+      isWorkoutActive: () => false,
+      capture: async () => ({ generation: 1, sourceDigest: "a".repeat(64), bytes: new Uint8Array() }),
+      state: {
+        read: async () => ({ environment: "development-test" as const, permissionId: "permission", connectionGeneration: 3, writerEpoch: 2, mutationGeneration: 0, backedUpGeneration: 0, authorityState: "deleted" as const, deletionProgress: "sweep_pending" as const }),
+        persistAttempt: async () => undefined, acknowledgeReceipt: async () => false,
+        completeDeletionSweep: async () => true,
+      },
+      drive: {
+        createSnapshot: async () => "snapshot", download: async () => new Uint8Array(), updateManifest: async () => "etag", readManifest: async () => null,
+        discoverSnapshotsForDeletion: async () => ++calls === 1 ? [{ fileId: "one" }, { fileId: "two" }] : [],
+        deleteTombstoned: async (fileId) => { deleted.push(fileId); },
+      },
+      validate: () => true, nowMs: () => 1, candidateId: () => "candidate",
+    });
+    await expect(coordinator.finishDeletionSweep()).resolves.toEqual({ status: "complete" });
+    expect(deleted).toEqual(["one", "two"]);
+    expect(calls).toBe(2);
+  });
 });

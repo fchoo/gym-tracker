@@ -7,6 +7,7 @@ type BackupState = Readonly<{
   writerEpoch: number; mutationGeneration: number; backedUpGeneration: number;
   manifestId?: string | null; manifestEtag?: string | null;
   authorityState?: "quarantine" | "active" | "stale_writer" | "deleted";
+  deletionProgress?: "none" | "sweep_pending" | "complete";
 }>;
 type Receipt = Readonly<{
   environment: AutomaticBackupEnvironment; permissionId: string; connectionGeneration: number;
@@ -23,6 +24,8 @@ export type AutomaticBackupCoordinator = Readonly<{
   deferRecovery(): Promise<void>;
   abortChecking(): Promise<void>;
   disconnect(): Promise<void>;
+  /** Re-discovers only the currently authenticated namespace after a tombstone is durable. */
+  finishDeletionSweep(): Promise<Readonly<{ status: "complete" | "partial" | "cancelled" }>>;
   /** Discovery is read-only; no quarantine path can publish or delete Drive data. */
   recover(): Promise<Readonly<{ status: "ready" | "needs_bootstrap" | "quarantined" | "stale_writer" }>>;
 }>;
@@ -46,6 +49,8 @@ export function createAutomaticBackupCoordinator(input: Readonly<{
     markStaleWriter?(writerEpoch: number): Promise<boolean>;
     setRecoveryStatus?(status: "idle" | "checking" | "restore_pending" | "restoring" | "finishing" | "paused"): Promise<void>;
     disconnectLocal?(): Promise<void>;
+    beginDeletionSweep?(value: Readonly<{ environment: AutomaticBackupEnvironment; permissionId: string; connectionGeneration: number }>): Promise<boolean>;
+    completeDeletionSweep?(value: Readonly<{ environment: AutomaticBackupEnvironment; permissionId: string; connectionGeneration: number }>): Promise<boolean>;
   }>;
   drive: Readonly<{
     createSnapshot(candidateId: string, bytes: Uint8Array): Promise<string>;
@@ -55,6 +60,8 @@ export function createAutomaticBackupCoordinator(input: Readonly<{
     discover?(): Promise<readonly unknown[]>;
     createResumableSnapshot?(candidateId: string, bytes: Uint8Array): Promise<Readonly<{ location: string; uploadedBytes: number }>>;
     resumeSnapshot?(session: Readonly<{ location: string; uploadedBytes: number }>, bytes: Uint8Array): Promise<Readonly<{ location: string; uploadedBytes: number }> | string>;
+    discoverSnapshotsForDeletion?(): Promise<readonly Readonly<{ fileId: string }>[]>;
+    deleteTombstoned?(fileId: string): Promise<void>;
   }>;
   validate(bytes: Uint8Array): boolean;
   nowMs(): number;
@@ -130,6 +137,26 @@ export function createAutomaticBackupCoordinator(input: Readonly<{
     const activated = await input.state.activateWriter?.({ manifestId: state.manifestId ?? "automatic-backup-manifest", manifestEtag: manifest.etag, writerEpoch: parsed.writerEpoch, permissionId: state.permissionId, connectionGeneration: state.connectionGeneration });
     return Object.freeze({ status: activated === false ? "quarantined" as const : "ready" as const });
   };
+  const finishDeletionSweep = async (): Promise<Readonly<{ status: "complete" | "partial" | "cancelled" }>> => {
+    const state = await input.state.read();
+    if (state.permissionId === null || state.authorityState !== "deleted") return Object.freeze({ status: "cancelled" as const });
+    const fence = Object.freeze({ environment: state.environment, permissionId: state.permissionId, connectionGeneration: state.connectionGeneration });
+    // A deletion marker is promoted before this method is callable.  Each pass
+    // re-discovers the bounded namespace: cached ids and filenames are never a
+    // deletion authority, and a missed snapshot remains retryable.
+    if (state.deletionProgress !== "sweep_pending" && !(await input.state.beginDeletionSweep?.(fence))) return Object.freeze({ status: "cancelled" as const });
+    if (input.drive.discoverSnapshotsForDeletion === undefined || input.drive.deleteTombstoned === undefined) return Object.freeze({ status: "partial" as const });
+    try {
+      const snapshots = await input.drive.discoverSnapshotsForDeletion();
+      await Promise.all(snapshots.map((snapshot) => input.drive.deleteTombstoned!(snapshot.fileId)));
+      // Repeat list/delete/list: Drive listing is the authority, not the first pass.
+      const remaining = await input.drive.discoverSnapshotsForDeletion();
+      if (remaining.length !== 0) return Object.freeze({ status: "partial" as const });
+      return await input.state.completeDeletionSweep?.(fence) === false
+        ? Object.freeze({ status: "cancelled" as const })
+        : Object.freeze({ status: "complete" as const });
+    } catch { return Object.freeze({ status: "partial" as const }); }
+  };
   return Object.freeze({
     backup() {
       if (running === null) running = run().finally(() => { running = null; });
@@ -146,5 +173,6 @@ export function createAutomaticBackupCoordinator(input: Readonly<{
     async deferRecovery() { ++checkingGeneration; await input.state.setRecoveryStatus?.("restore_pending"); },
     async abortChecking() { ++checkingGeneration; await input.state.setRecoveryStatus?.("restore_pending"); },
     async disconnect() { ++checkingGeneration; await input.auth?.disconnect(); await input.state.disconnectLocal?.(); },
+    finishDeletionSweep,
   });
 }
