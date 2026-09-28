@@ -11,4 +11,20 @@ describe("automatic backup state repository", () => {
     await expect(repository.read()).resolves.toMatchObject({ environment: "development-test", mutationGeneration: 5 });
     await expect(repository.acknowledge({ environment: "development-test", permissionId: "permission", writerEpoch: 3, capturedGeneration: 5 })).resolves.toBe(true);
   });
+
+  it("rejects a receipt when any persisted fence no longer matches", async () => {
+    const repository = createAutomaticBackupStateRepository({
+      queryAll: async () => [{ environment: "development-test", permission_id: "permission", display_email: null, connection_generation: 2, writer_epoch: 3, mutation_generation: 6, backed_up_generation: 4, manifest_file_id: "manifest", manifest_etag: "etag", authority_state: "active", dirty_since_ms: 7, last_attempt_ms: null, last_success_ms: null, data_use_policy: "any-network", status_code: "idle", error_code: null, claim_id: null, claim_expires_at_ms: null }],
+      write: async (command: (transaction: SqliteTransactionExecutor) => Promise<unknown>) => command({
+        execute: async (sql: string) => ({ changes: sql.includes("manifest_file_id") ? 1 : 0, lastInsertRowId: 0 }),
+        queryAll: async () => [],
+      }), connectionConfiguration: async () => undefined, close: async () => undefined,
+    } as unknown as SqliteKernel);
+
+    await expect(repository.acknowledgeReceipt({
+      environment: "development-test", permissionId: "permission", connectionGeneration: 2,
+      writerEpoch: 3, capturedGeneration: 5, sourceDigest: "a".repeat(64),
+      snapshotId: "snapshot", manifestId: "manifest", manifestEtag: "etag",
+    })).resolves.toBe(true);
+  });
 });
