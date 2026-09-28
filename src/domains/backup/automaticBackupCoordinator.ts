@@ -1,5 +1,6 @@
-import type { AutomaticBackupEnvironment } from "./automaticBackupContracts";
+import { parseDriveBackupManifestV1, type AutomaticBackupEnvironment } from "./automaticBackupContracts";
 import type { GoogleAuthPort } from "./googleAuthPort";
+import type { LogicalBackupSnapshot } from "../portability/backupContracts";
 
 type CapturedSnapshot = Readonly<{ generation: number; sourceDigest: string; bytes: Uint8Array }>;
 type BackupState = Readonly<{
@@ -15,6 +16,9 @@ type Receipt = Readonly<{
   manifestId: string; manifestEtag: string;
 }>;
 type BackupResult = Readonly<{ status: "backed_up" | "deferred" | "stale_writer"; generation?: number }>;
+export type AutomaticRecoveryCandidate = "latest" | "previous";
+export type AutomaticRecoveryPreparation = Readonly<{ kind: "empty_direct"; attemptId: string } | { kind: "merge"; attemptId: string; token: string; ownerSummary: string; adoptionRequired: boolean }>;
+export type AutomaticRecoveryCommit = Readonly<{ kind: "empty_direct"; attemptId: string } | { kind: "merge"; attemptId: string; confirmation: "MERGE"; adoptIdentity?: true; adoptionGrant?: string }>;
 
 export type AutomaticBackupCoordinator = Readonly<{
   backup(): Promise<BackupResult>;
@@ -28,6 +32,8 @@ export type AutomaticBackupCoordinator = Readonly<{
   finishDeletionSweep(): Promise<Readonly<{ status: "complete" | "partial" | "cancelled" }>>;
   /** Discovery is read-only; no quarantine path can publish or delete Drive data. */
   recover(): Promise<Readonly<{ status: "ready" | "needs_bootstrap" | "quarantined" | "stale_writer" }>>;
+  prepareRecovery(input: Readonly<{ candidate: AutomaticRecoveryCandidate }>): Promise<AutomaticRecoveryPreparation>;
+  commitRecovery(input: AutomaticRecoveryCommit): Promise<Readonly<{ state: "ready" | "rebuild_pending" }>>;
 }>;
 
 /**
@@ -68,9 +74,18 @@ export function createAutomaticBackupCoordinator(input: Readonly<{
   candidateId(): string;
   validateManifest?(bytes: Uint8Array): Readonly<{ writerEpoch: number }> | null;
   buildManifest?(value: Readonly<{ candidateId: string; state: BackupState; captured: CapturedSnapshot }>): Uint8Array;
+  recovery?: Readonly<{
+    parseSnapshot(bytes: Uint8Array): Promise<LogicalBackupSnapshot>;
+    localIsEmpty(): Promise<boolean>;
+    prepareMerge(snapshot: LogicalBackupSnapshot): Promise<Readonly<{ token: string; ownerSummary: string; adoptionRequired: boolean }>>;
+    restore(snapshot: LogicalBackupSnapshot): Promise<Readonly<{ state: "ready" | "rebuild_pending" }>>;
+    commitMerge(input: Readonly<{ token: string; adoptionGrant?: string }>): Promise<Readonly<{ state: "ready" | "rebuild_pending" }>>;
+    freshAdoptionGrant?(): Promise<string>;
+  }>;
 }>): AutomaticBackupCoordinator {
   let running: Promise<BackupResult> | null = null;
   let checkingGeneration = 0;
+  const recoveryAttempts = new Map<string, Readonly<{ snapshot: LogicalBackupSnapshot; preparation: AutomaticRecoveryPreparation }>>();
   const run = async (): Promise<BackupResult> => {
     if (input.isWorkoutActive()) return Object.freeze({ status: "deferred" as const });
     const state = await input.state.read();
@@ -157,6 +172,40 @@ export function createAutomaticBackupCoordinator(input: Readonly<{
         : Object.freeze({ status: "complete" as const });
     } catch { return Object.freeze({ status: "partial" as const }); }
   };
+  const prepareRecovery = async ({ candidate }: Readonly<{ candidate: AutomaticRecoveryCandidate }>): Promise<AutomaticRecoveryPreparation> => {
+    if (input.recovery === undefined) throw new Error("automatic_recovery_unavailable");
+    const state = await input.state.read();
+    if (state.permissionId === null || state.authorityState !== "quarantine") throw new Error("automatic_recovery_not_quarantined");
+    const rawManifest = await input.drive.readManifest();
+    if (rawManifest === null) throw new Error("automatic_recovery_manifest_missing");
+    const manifest = parseDriveBackupManifestV1(JSON.parse(new TextDecoder().decode(rawManifest.bytes)));
+    if (manifest.kind !== "active" || manifest.writerEpoch < state.writerEpoch) throw new Error("automatic_recovery_manifest_invalid");
+    const descriptor = candidate === "latest" ? manifest.latest : manifest.previous;
+    if (descriptor === null) throw new Error("automatic_recovery_candidate_missing");
+    await input.state.setRecoveryStatus?.("checking");
+    const snapshot = await input.recovery.parseSnapshot(await input.drive.download(descriptor.fileId, 24 * 1024 * 1024));
+    const attemptId = input.candidateId();
+    const preparation = await input.recovery.localIsEmpty()
+      ? Object.freeze({ kind: "empty_direct" as const, attemptId })
+      : Object.freeze({ kind: "merge" as const, attemptId, ...await input.recovery.prepareMerge(snapshot) });
+    recoveryAttempts.set(attemptId, Object.freeze({ snapshot, preparation }));
+    await input.state.setRecoveryStatus?.("restore_pending");
+    return preparation;
+  };
+  const commitRecovery = async (request: AutomaticRecoveryCommit): Promise<Readonly<{ state: "ready" | "rebuild_pending" }>> => {
+    if (input.recovery === undefined) throw new Error("automatic_recovery_unavailable");
+    const attempt = recoveryAttempts.get(request.attemptId);
+    if (attempt === undefined || attempt.preparation.kind !== request.kind) throw new Error("automatic_recovery_attempt_invalid");
+    recoveryAttempts.delete(request.attemptId);
+    await input.state.setRecoveryStatus?.("restoring");
+    if (request.kind === "empty_direct") return input.recovery.restore(attempt.snapshot);
+    const merge = attempt.preparation;
+    if (merge.kind !== "merge") throw new Error("automatic_recovery_attempt_invalid");
+    if (merge.adoptionRequired && request.adoptIdentity !== true) throw new Error("automatic_recovery_adoption_required");
+    const grant = merge.adoptionRequired ? await input.recovery.freshAdoptionGrant?.() : undefined;
+    if (merge.adoptionRequired && (grant === undefined || request.adoptionGrant !== grant)) throw new Error("automatic_recovery_adoption_grant_invalid");
+    return input.recovery.commitMerge({ token: merge.token, ...(grant === undefined ? {} : { adoptionGrant: grant }) });
+  };
   return Object.freeze({
     backup() {
       if (running === null) running = run().finally(() => { running = null; });
@@ -174,5 +223,7 @@ export function createAutomaticBackupCoordinator(input: Readonly<{
     async abortChecking() { ++checkingGeneration; await input.state.setRecoveryStatus?.("restore_pending"); },
     async disconnect() { ++checkingGeneration; await input.auth?.disconnect(); await input.state.disconnectLocal?.(); },
     finishDeletionSweep,
+    prepareRecovery,
+    commitRecovery,
   });
 }
