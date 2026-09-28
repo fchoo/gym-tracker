@@ -10,7 +10,18 @@ tags:
     stopApp: true
     permissions:
       notifications: deny
+- runFlow:
+    when:
+      visible: "Retry opening workout data"
+    commands:
+      - tapOn: "Retry opening workout data"
+- extendedWaitUntil:
+    visible: "Today"
+    timeout: 90000
 - openLink: "gymtracker-devtest:///more/data-and-recovery"
+- extendedWaitUntil:
+    visible: "Data and recovery"
+    timeout: 30000
 - assertVisible: "Data and recovery"
 - assertVisible: "Google Drive backup"
 - assertVisible: "Recovery tools"
