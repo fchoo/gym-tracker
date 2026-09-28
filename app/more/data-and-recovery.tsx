@@ -28,6 +28,9 @@ import {
   useCsvExportController,
 } from "../../src/ui/portability/useCsvExportController";
 import {
+  BackupPreviewFact,
+} from "../../src/ui/portability/BackupPreviewFacts";
+import {
   ContentCard,
   IconAction,
   PrimaryAction,
@@ -129,37 +132,6 @@ function PasswordField({
           {error}
         </Text>
       )}
-    </View>
-  );
-}
-
-function PreviewFact({
-  label,
-  value,
-}: Readonly<{
-  label: string;
-  value: string | number;
-}>) {
-  const { colors } = useAppTheme();
-  return (
-    <View
-      accessible
-      accessibilityLabel={`${label}: ${value}`}
-      accessibilityRole="text"
-      style={styles.previewRow}
-    >
-      <Text style={[typeScale.label as TextStyle, { color: colors.contentCardText }]}>
-        {label}
-      </Text>
-      <Text
-        style={[
-          typeScale.secondary as TextStyle,
-          styles.previewValue,
-          { color: colors.contentCardTextSecondary },
-        ]}
-      >
-        {value}
-      </Text>
     </View>
   );
 }
@@ -759,16 +731,16 @@ export default function DataAndRecoveryRoute() {
                     style={[typeScale.sectionTitle as TextStyle, { color: colors.contentCardText }]}
                   >Review restore clean</Text>
                   <View role="list" style={styles.previewFacts}>
-                    <PreviewFact label="Source format version" value={restoreState.preview.sourceFormatVersion} />
+                    <BackupPreviewFact label="Source format version" value={restoreState.preview.sourceFormatVersion} />
                     {backupCreatedAt === null ? null : (
-                      <PreviewFact label="Backup created" value={backupCreatedAt} />
+                      <BackupPreviewFact label="Backup created" value={backupCreatedAt} />
                     )}
-                    <PreviewFact label="Plans" value={restoreState.preview.replacementCounts.plans ?? 0} />
-                    <PreviewFact label="Custom exercises" value={restoreState.preview.replacementCounts.exercises ?? 0} />
-                    <PreviewFact label="Sessions" value={restoreState.preview.replacementCounts.workout_sessions ?? 0} />
-                    <PreviewFact label="Settings" value={restoreState.preview.replacementCounts.app_settings ?? 0} />
-                    <PreviewFact label="Catalog references available" value={restoreState.preview.references.catalogReferences.available} />
-                    <PreviewFact label="Catalog references unavailable" value={restoreState.preview.references.catalogReferences.unavailable} />
+                    <BackupPreviewFact label="Plans" value={restoreState.preview.replacementCounts.plans ?? 0} />
+                    <BackupPreviewFact label="Custom exercises" value={restoreState.preview.replacementCounts.exercises ?? 0} />
+                    <BackupPreviewFact label="Sessions" value={restoreState.preview.replacementCounts.workout_sessions ?? 0} />
+                    <BackupPreviewFact label="Settings" value={restoreState.preview.replacementCounts.app_settings ?? 0} />
+                    <BackupPreviewFact label="Catalog references available" value={restoreState.preview.references.catalogReferences.available} />
+                    <BackupPreviewFact label="Catalog references unavailable" value={restoreState.preview.references.catalogReferences.unavailable} />
                   </View>
                   <Text style={[typeScale.bodyStrong as TextStyle, { color: colors.destructive }]}>
                     Restoring replaces your current plans, workouts, settings, and saved decisions with this backup. This cannot be undone from this screen.
@@ -874,13 +846,13 @@ export default function DataAndRecoveryRoute() {
                   >Review merge</Text>
                   <Text style={[typeScale.body as TextStyle, { color: colors.contentCardTextSecondary }]}>No changes have been made yet.</Text>
                   <View role="list" style={styles.previewFacts}>
-                    <PreviewFact label="Records inserted" value={mergeState.preview.inserted} />
-                    <PreviewFact label="Duplicates unchanged" value={mergeState.preview.duplicates} />
-                    <PreviewFact label="Archive wins" value={mergeState.preview.archiveWon} />
-                    <PreviewFact label="Local wins" value={mergeState.preview.localWon} />
-                    <PreviewFact label="Kept both" value={mergeState.preview.keptBoth} />
-                    <PreviewFact label="Remapped IDs" value={mergeState.preview.remapped} />
-                    <PreviewFact label="Conflicts" value={mergeState.preview.conflicts} />
+                    <BackupPreviewFact label="Records inserted" value={mergeState.preview.inserted} />
+                    <BackupPreviewFact label="Duplicates unchanged" value={mergeState.preview.duplicates} />
+                    <BackupPreviewFact label="Archive wins" value={mergeState.preview.archiveWon} />
+                    <BackupPreviewFact label="Local wins" value={mergeState.preview.localWon} />
+                    <BackupPreviewFact label="Kept both" value={mergeState.preview.keptBoth} />
+                    <BackupPreviewFact label="Remapped IDs" value={mergeState.preview.remapped} />
+                    <BackupPreviewFact label="Conflicts" value={mergeState.preview.conflicts} />
                   </View>
                   <Text style={[typeScale.body as TextStyle, { color: colors.contentCardTextSecondary }]}>
                     Newer sessions and corrections win. Existing settings stay. Different custom exercises and plans are kept by identity.
@@ -989,15 +961,5 @@ const styles = StyleSheet.create({
   },
   previewFacts: {
     gap: space[1],
-  },
-  previewRow: {
-    alignItems: "flex-start",
-    flexDirection: "row",
-    flexWrap: "wrap",
-    gap: space[1],
-    justifyContent: "space-between",
-  },
-  previewValue: {
-    fontVariant: ["tabular-nums"],
   },
 });
