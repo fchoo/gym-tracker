@@ -67,6 +67,12 @@ import type {
   SqliteTransactionExecutor,
 } from "../platform/sqlite/sqliteKernel";
 import {
+  projectAutomaticBackupPresentation,
+} from "../domains/backup/automaticBackupPresentation";
+import type {
+  AutomaticBackupRuntime,
+} from "./automaticBackupRuntime";
+import {
   PrimaryAction,
 } from "../ui/components";
 import {
@@ -1195,6 +1201,81 @@ describe("WorkoutAppRuntimeProvider", () => {
     mockCommittedHaptic.mockClear();
     mockCueHaptic.mockClear();
     applyWorkoutMutationTestControl("reset_workout_failures");
+  });
+
+  it("keeps legacy runtime dependencies trusted without reading Phase 12 backup state", async () => {
+    const repository = runtimeRepository([noPlanView], [null]);
+    const kernel = {
+      close: jest.fn(async () => undefined),
+      queryAll: jest.fn(async (sql: string) => {
+        if (sql.includes("automatic_backup_state")) {
+          throw new Error("legacy_kernel_has_no_phase12_tables");
+        }
+        return [];
+      }),
+      write: jest.fn(async (command: (transaction: SqliteTransactionExecutor) => Promise<unknown>) =>
+        command({
+          execute: jest.fn(async () => ({ changes: 1, lastInsertRowId: 0 })),
+          queryAll: jest.fn(async () => []),
+        })),
+    } as unknown as SqliteKernel;
+    let captured: ReturnType<typeof useWorkoutAppRuntime> | undefined;
+
+    await render(
+      <RuntimeCaptureHarness
+        dependencies={dependencies(repository, {
+          openKernel: jest.fn(async () => kernel),
+        })}
+        onReady={(runtime) => {
+          captured = runtime;
+        }}
+      />,
+    );
+
+    await waitFor(() => {
+      expect(captured?.launchState).toBe("trusted");
+    });
+    expect(captured?.automaticBackup.status).toBe("not_connected");
+    expect(kernel.queryAll).not.toHaveBeenCalledWith(
+      expect.stringContaining("automatic_backup_state"),
+    );
+  });
+
+  it("hydrates the automatic backup model from the injected runtime", async () => {
+    const repository = runtimeRepository([noPlanView], [null]);
+    const automaticBackup = projectAutomaticBackupPresentation({
+      status: "idle",
+      accountLabel: "backup@example.com",
+      mutationGeneration: 4,
+      backedUpGeneration: 4,
+      nowMs: 1_786_853_600_000,
+    });
+    const runtime = {
+      current: jest.fn(() => automaticBackup),
+      start: jest.fn(async () => undefined),
+      refresh: jest.fn(async () => undefined),
+      subscribe: jest.fn(() => () => undefined),
+      dispose: jest.fn(),
+    } as unknown as AutomaticBackupRuntime;
+    let captured: ReturnType<typeof useWorkoutAppRuntime> | undefined;
+
+    await render(
+      <RuntimeCaptureHarness
+        dependencies={dependencies(repository, {
+          createAutomaticBackupRuntime: () => runtime,
+        })}
+        onReady={(value) => {
+          captured = value;
+        }}
+      />,
+    );
+
+    await waitFor(() => {
+      expect(captured?.launchState).toBe("trusted");
+      expect(captured?.automaticBackup).toEqual(automaticBackup);
+    });
+    expect(runtime.start).toHaveBeenCalledTimes(1);
+    expect(runtime.current).toHaveBeenCalled();
   });
 
   it.each([
