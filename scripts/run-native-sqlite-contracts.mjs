@@ -132,7 +132,7 @@ const PORTABLE_MERGE_CASE_IDS = await deriveCaseIds(
 );
 const GOOGLE_DRIVE_BACKUP_CASE_IDS = await deriveCaseIds(
   'googleDriveBackup.contract.ts',
-  'GOOGLE_DRIVE_BACKUP_CONTRACT_CASE_IDS',
+  'GOOGLE_DRIVE_BACKUP_REQUIRED_CASE_IDS',
 );
 const PHASE2_FTS_CASE_IDS = await deriveCaseIds(
   'phase2Fts.contract.ts',
