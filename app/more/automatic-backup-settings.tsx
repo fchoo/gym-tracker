@@ -13,6 +13,8 @@ export default function AutomaticBackupSettingsRoute() {
   const { colors } = useAppTheme();
   const [deleteText, setDeleteText] = useState("");
   const [showDelete, setShowDelete] = useState(false);
+  const [showDisconnect, setShowDisconnect] = useState(false);
+  const [showStartNew, setShowStartNew] = useState(false);
   // Keep the confirmation phrase visible while this route only calls the facade.
   const destructiveConfirmation = "DEL" + "ETE";
   const deleteLabel = "Del" + "ete cloud backup";
@@ -36,14 +38,27 @@ export default function AutomaticBackupSettingsRoute() {
       />
       <NavigationRow title="How Drive backup privacy works" supportingText="Readable JSON protected by your Google account." onPress={() => router.push("/more/drive-backup-privacy" as Href)} />
     </ContentCard>
-    {runtime.automaticBackup.reason === "stale_writer" ? <PrimaryAction label="Use this phone for backup…" onPress={() => invokeFacade(runtime.takeOverAutomaticBackup)} /> : null}
+    {runtime.automaticBackup.reason === "stale_writer" ? <PrimaryAction accessibilityHint="Checks the current cloud backup before any replacement recovery" label="Use this phone for backup…" onPress={() => invokeFacade(runtime.takeOverAutomaticBackup)} /> : null}
     {runtime.automaticBackup.status === "paused" && runtime.automaticBackup.reason !== "stale_writer" ? <PrimaryAction label="Finish deleting cloud backup" onPress={() => invokeFacade(runtime.finishDeletingAutomaticCloudBackup)} /> : null}
+    {runtime.automaticBackup.reason === "restore_required" && runtime.automaticBackup.accountLabel === null ? <PrimaryAction label="Start a new cloud backup…" onPress={() => setShowStartNew(true)} /> : null}
     {runtime.automaticBackup.reason === "unavailable" ? <Text style={[typeScale.secondary as TextStyle, { color: colors.destructive }]}>Automatic backup is unavailable on this installation.</Text> : null}
-    {connected ? <SecondaryAction label="Disconnect Google Drive" onPress={() => invokeFacade(runtime.disconnectAutomaticBackup)} /> : <PrimaryAction label="Connect Google Drive" onPress={() => invokeFacade(runtime.connectAutomaticBackup)} />}
+    {connected ? <>
+      {showDisconnect ? <View style={{ gap: space[2] }}>
+        <Text accessibilityLiveRegion="polite" style={[typeScale.body as TextStyle, { color: colors.textSecondary }]}>Automatic backup stops on this phone. Local workouts remain, and cloud backups remain in Drive.</Text>
+        <PrimaryAction label="Disconnect Google Drive" onPress={() => invokeFacade(runtime.disconnectAutomaticBackup)} />
+        <SecondaryAction label="Keep Google Drive connected" onPress={() => setShowDisconnect(false)} />
+      </View> : <SecondaryAction label="Disconnect Google Drive" onPress={() => setShowDisconnect(true)} />}
+    </> : <PrimaryAction label="Connect Google Drive" onPress={() => invokeFacade(runtime.connectAutomaticBackup)} />}
     <View style={{ borderTopColor: colors.divider, borderTopWidth: 1, gap: space[4], paddingTop: space[4] }}>
       <Text style={[typeScale.bodyStrong as TextStyle, { color: colors.destructive }]}>{deleteLabel}</Text>
       <Text style={[typeScale.secondary as TextStyle, { color: colors.textSecondary }]}>Your local workouts stay on this phone. This permanently removes workout snapshots after fresh Google authentication; a metadata-only deletion marker remains so an old phone cannot recreate them.</Text>
       {showDelete ? <><TextInput accessibilityLabel={`Type ${destructiveConfirmation} to ${deleteLabel.toLowerCase()}`} autoCapitalize="characters" onChangeText={setDeleteText} value={deleteText} style={{ borderColor: colors.destructive, borderWidth: 1, color: colors.textPrimary, minHeight: 48, paddingHorizontal: space[4] }} /><PrimaryAction disabled={deleteText !== destructiveConfirmation} label={deleteLabel} onPress={() => invokeFacade(runtime.deleteAutomaticCloudBackup)} /></> : <SecondaryAction label={`${deleteLabel}…`} onPress={() => setShowDelete(true)} />}
     </View>
+    {showStartNew ? <ContentCard><View style={{ gap: space[2] }}>
+      <Text accessibilityRole="header" style={[typeScale.sectionTitle as TextStyle, { color: colors.contentCardText }]}>Start a new cloud backup</Text>
+      <Text style={[typeScale.body as TextStyle, { color: colors.contentCardTextSecondary }]}>This confirms that this phone may create a new Drive backup after fresh Google authentication.</Text>
+      <PrimaryAction label="Start a new cloud backup" onPress={() => invokeFacade(runtime.startNewAutomaticCloudBackup)} />
+      <SecondaryAction label="Cancel starting a new cloud backup" onPress={() => setShowStartNew(false)} />
+    </View></ContentCard> : null}
   </View>} />;
 }
