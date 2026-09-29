@@ -62,7 +62,10 @@ describe("Phase 12 native backup benchmark", () => {
     expect(snapshot.tables.session_exercises).toHaveLength(BACKUP_LIMITS.maxRowsPerTable);
     expect(snapshot.tables.session_sets).toHaveLength(BACKUP_LIMITS.maxRowsPerTable);
     expect(snapshot.tables.history_audit_events)
-      .toHaveLength(BACKUP_LIMITS.maxRowsPerTable - 1);
+      .toHaveLength(BACKUP_LIMITS.maxRowsPerTable);
+    expect(snapshot.tables.session_undo_snapshots)
+      .toHaveLength(BACKUP_LIMITS.maxRowsPerTable - 3);
+    expect(snapshot.tables.app_settings).toHaveLength(1);
     expect(() => parseLogicalBackupSnapshot(snapshot)).not.toThrow();
   });
 

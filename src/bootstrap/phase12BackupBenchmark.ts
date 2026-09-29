@@ -127,16 +127,23 @@ export function buildPhase12SyntheticSnapshot(
     metric_contract_version: 1,
     exercise_metric_generation: 1,
   }));
-  const auditRows = Array.from({ length: ROWS_PER_TABLE - 1 }, (_, index) => ({
+  const auditRows = Array.from({ length: ROWS_PER_TABLE }, (_, index) => ({
     id: `a${index.toString(36)}`,
     session_id: sessions[0]!.id,
+    padding: "",
+  }));
+  const undoRows = Array.from({ length: ROWS_PER_TABLE - 3 }, (_, index) => ({
+    id: `u${index.toString(36)}`,
+    session_id: sessions[0]!.id,
+    completed_set_id: sessionSets[0]!.id,
   }));
   const settingCount = PHASE12_MAX_SNAPSHOT_ROWS
     - 1
     - sessions.length
     - sessionExercises.length
     - sessionSets.length
-    - auditRows.length;
+    - auditRows.length
+    - undoRows.length;
   const settings = Array.from({ length: settingCount }, (_, index) => ({
     key: `k${index.toString(36).padStart(4, "0")}`,
     value_version: 1,
@@ -153,6 +160,7 @@ export function buildPhase12SyntheticSnapshot(
   tables.session_exercises = sessionExercises;
   tables.session_sets = sessionSets;
   tables.history_audit_events = auditRows;
+  tables.session_undo_snapshots = undoRows;
   const fixture = {
     version: 2 as const,
     snapshotId: "phase12-maximum-merge",
@@ -170,12 +178,10 @@ export function buildPhase12SyntheticSnapshot(
   };
   const difference = PHASE12_MAX_SNAPSHOT_BYTES - encodedBytes(fixture);
   if (difference < 0) throw new Error("phase12_synthetic_fixture_oversize");
-  const each = Math.floor(difference / settings.length);
-  const remainder = difference % settings.length;
-  for (let index = 0; index < settings.length; index += 1) {
-    settings[index]!.value_json = JSON.stringify({
-      padding: "x".repeat(each + (index < remainder ? 1 : 0)),
-    });
+  const each = Math.floor(difference / auditRows.length);
+  const remainder = difference % auditRows.length;
+  for (let index = 0; index < auditRows.length; index += 1) {
+    auditRows[index]!.padding = "x".repeat(each + (index < remainder ? 1 : 0));
   }
   if (encodedBytes(fixture) !== PHASE12_MAX_SNAPSHOT_BYTES) {
     throw new Error("phase12_synthetic_fixture_size_invalid");
