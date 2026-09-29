@@ -6,6 +6,13 @@ import path from "node:path";
 import { pathToFileURL } from "node:url";
 
 import { validatePhase12BackupBenchmark } from "./benchmark-phase12-backup.mjs";
+import {
+  validatePhase12GoogleAcceptanceRecord,
+  validatePhase12GoogleObservations,
+} from "./record-phase12-google-acceptance.mjs";
+import {
+  validatePhase12GoogleChecklist,
+} from "./prepare-phase12-google-acceptance.mjs";
 import { PHASE12_MAESTRO_STAGES } from "./run-phase12-maestro.mjs";
 
 const ROOT = process.cwd();
@@ -66,31 +73,84 @@ export function validatePhase12AutomatedEvidence({ manifest, migrations, google,
 }
 
 export function parsePhase12VerifierArgs(args) {
-  const options = { manifest: "artifacts/native/phase12/build.json", automatedOnly: false };
+  const options = {
+    manifest: "artifacts/native/phase12/build.json",
+    automatedOnly: false,
+    requireRealGoogle: false,
+    requireEmulatorReplacement: false,
+    requirePhoneAuthScope: false,
+  };
   for (let index = 0; index < args.length; index += 1) {
     const arg = args[index];
     if (arg === "--automated-only") options.automatedOnly = true;
     else if (arg === "--manifest") { const value = args[++index]; if (!value || value.startsWith("--")) throw new Error("phase12_manifest_argument_invalid"); options.manifest = value; }
     else if (arg.startsWith("--manifest=")) options.manifest = arg.slice("--manifest=".length);
-    else if (arg === "--require-real-google" || arg === "--require-emulator-replacement" || arg === "--require-phone-auth-scope") throw new Error("phase12_attended_google_evidence_required");
+    else if (arg === "--require-real-google") options.requireRealGoogle = true;
+    else if (arg === "--require-emulator-replacement") options.requireEmulatorReplacement = true;
+    else if (arg === "--require-phone-auth-scope") options.requirePhoneAuthScope = true;
     else throw new Error(`phase12_unknown_argument:${arg}`);
   }
-  if (!options.automatedOnly || options.manifest !== "artifacts/native/phase12/build.json") throw new Error("phase12_automated_only_manifest_required");
+  const attended = options.requireRealGoogle
+    && options.requireEmulatorReplacement
+    && options.requirePhoneAuthScope;
+  if (options.manifest !== "artifacts/native/phase12/build.json"
+    || options.automatedOnly === attended
+    || (!options.automatedOnly && !attended)) {
+    throw new Error("phase12_evidence_mode_invalid");
+  }
   return options;
 }
 
 export function executePhase12EvidenceVerifier(args = process.argv.slice(2)) {
-  parsePhase12VerifierArgs(args);
+  const options = parsePhase12VerifierArgs(args);
   const directory = path.join(ROOT, "artifacts/native/phase12");
   const manifest = readJson(path.join(directory, "build.json"), "manifest");
-  const result = validatePhase12AutomatedEvidence({
+  const automated = validatePhase12AutomatedEvidence({
     manifest,
     migrations: readJson(path.join(directory, "migrations-effects.json"), "migrations"),
     google: readJson(path.join(directory, "google-drive-backup.json"), "google"),
     maestro: readJson(path.join(directory, "maestro/phase12-evidence.json"), "maestro"),
     benchmark: readJson(path.join(directory, "benchmark.json"), "benchmark"),
   });
-  writeFileSync(path.join(directory, "automated-evidence.json"), `${JSON.stringify(result, null, 2)}\n`);
+  const result = options.automatedOnly
+    ? automated
+    : Object.freeze({
+      ...automated,
+      mode: "final",
+      approval_status: "approved",
+      attended_scope: "real-google-emulator-replacement-and-phone-auth",
+      attended: (() => {
+        const recordPath = path.join(directory, "attended/attended-record.json");
+        const checklistPath = path.join(directory, "attended/checklist.pending.json");
+        const observationsPath = path.join(directory, "attended/observations.json");
+        const record = validatePhase12GoogleAcceptanceRecord(
+          readJson(recordPath, "attended_record"),
+          manifest,
+        );
+        validatePhase12GoogleChecklist(
+          readJson(checklistPath, "attended_checklist"),
+          manifest,
+        );
+        validatePhase12GoogleObservations(
+          readJson(observationsPath, "attended_observations"),
+          manifest,
+        );
+        if (record.checklist_sha256 !== sha256(readFileSync(checklistPath))
+          || record.observations_sha256 !== sha256(readFileSync(observationsPath))) {
+          throw new Error("phase12_attended_supporting_evidence_stale");
+        }
+        noSecrets(record);
+        return Object.freeze({
+          record_sha256: sha256(readFileSync(recordPath)),
+          cases: `${record.cases.length}/${record.cases.length}`,
+          devices: Object.freeze(record.devices.map(({ role }) => role)),
+        });
+      })(),
+    });
+  writeFileSync(
+    path.join(directory, options.automatedOnly ? "automated-evidence.json" : "final-evidence.json"),
+    `${JSON.stringify(result, null, 2)}\n`,
+  );
   return result;
 }
 

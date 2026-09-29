@@ -24,13 +24,14 @@ test("Phase 12 flow recovers only the known retained restore state before the ca
 test("Phase 12 becomes the explicit credential-free PR native producer", () => {
   const packageJson = JSON.parse(readFileSync("package.json", "utf8"));
   const workflow = readFileSync(".github/workflows/pr.yml", "utf8");
-  for (const script of ["test:maestro:phase12", "benchmark:phase12:backup", "verify:phase12:evidence", "test:evidence:phase12"]) assert.equal(typeof packageJson.scripts[script], "string");
+  for (const script of ["test:maestro:phase12", "benchmark:phase12:backup", "verify:phase12:evidence", "test:evidence:phase12", "prepare:attended:phase12", "record:attended:phase12"]) assert.equal(typeof packageJson.scripts[script], "string");
   assert.match(packageJson.scripts["ci:pr"], /--suite phase12/u);
   assert.match(workflow, /Build Phase 12 once/u);
   assert.match(workflow, /--suite migrations-effects --manifest artifacts\/native\/phase12\/build\.json/u);
   assert.match(workflow, /--suite google-drive-backup --manifest artifacts\/native\/phase12\/build\.json/u);
   assert.match(workflow, /verify:phase12:evidence/u);
   assert.doesNotMatch(workflow, /GOOGLE_(?:TOKEN|TEST_ACCOUNT)|access[_-]?token/iu);
+  assert.match(readFileSync("scripts/record-phase12-google-acceptance.mjs", "utf8"), /physical-phone-auth-only/u);
 });
 
 test("Phase 12 native benchmark route is development-test and suite gated", () => {

@@ -18,7 +18,32 @@ test("Phase 12 verifier requires the complete native, Maestro, benchmark, and no
 });
 
 test("Phase 12 CLI never allows an automated run to impersonate attended Google proof", () => {
-  assert.deepEqual(parsePhase12VerifierArgs(["--manifest", "artifacts/native/phase12/build.json", "--automated-only"]), { manifest: "artifacts/native/phase12/build.json", automatedOnly: true });
+  assert.deepEqual(parsePhase12VerifierArgs(["--manifest", "artifacts/native/phase12/build.json", "--automated-only"]), {
+    manifest: "artifacts/native/phase12/build.json",
+    automatedOnly: true,
+    requireRealGoogle: false,
+    requireEmulatorReplacement: false,
+    requirePhoneAuthScope: false,
+  });
+  assert.deepEqual(parsePhase12VerifierArgs([
+    "--manifest", "artifacts/native/phase12/build.json",
+    "--require-real-google",
+    "--require-emulator-replacement",
+    "--require-phone-auth-scope",
+  ]), {
+    manifest: "artifacts/native/phase12/build.json",
+    automatedOnly: false,
+    requireRealGoogle: true,
+    requireEmulatorReplacement: true,
+    requirePhoneAuthScope: true,
+  });
   assert.throws(() => parsePhase12VerifierArgs(["--manifest", "other.json", "--automated-only"]));
   assert.throws(() => parsePhase12VerifierArgs(["--manifest", "artifacts/native/phase12/build.json", "--require-real-google"]));
+  assert.throws(() => parsePhase12VerifierArgs([
+    "--manifest", "artifacts/native/phase12/build.json",
+    "--automated-only",
+    "--require-real-google",
+    "--require-emulator-replacement",
+    "--require-phone-auth-scope",
+  ]));
 });
