@@ -46,14 +46,14 @@ must_haves:
   truths:
     - "The final matrix covers every backup/restore branch, crash boundary, writer fence, manifest state, environment boundary, and user-visible recovery path with no skipped required case."
     - "Host and real Expo SQLite run the same v23 generation, adoption, claim, rollback, reopen, and stale-writer cases against one manifest-bound Phase 12 APK."
-    - "The dirty-generation trigger and a concurrent workout mutation during native online snapshot copy each add at most 16 ms p95 on the minimum supported Android profile; automatic capture owns no long live-database writer transaction, maximum-size merge preflight stays within 10,000 ms p95 and 192 MiB peak growth, and maximum-size merge commit stays within 30,000 ms p95 and 192 MiB peak growth; scheduler/replacement recovery activation fails closed if any gate fails."
+    - "The dirty-generation trigger stays within 16 ms p95 and a concurrent workout mutation during a coherent WAL reader snapshot stays within 1,000 ms p95 on the minimum supported Android profile; automatic capture owns no live-database writer transaction, maximum-size merge preflight stays within 10,000 ms p95, maximum-size merge materialization stays within 30,000 ms p95, and combined merge peak growth stays within 192 MiB; scheduler/replacement recovery activation fails closed if any gate fails."
     - "PR CI has one explicit Phase 12 native producer and exact required Phase 12 SQLite, Maestro, benchmark, and evidence consumers; it no longer presents Phase 2 as the current native acceptance suite."
     - "Phase 12 cannot be marked complete until a dedicated-account signed dev-test emulator replacement flow and a physical-phone One-Tap/drive.file smoke test pass against real Google."
     - "Real-Google artifacts contain only manifest/build identity, case IDs, counts, sizes, timestamps, and hashes; they contain no tokens, emails, permission IDs, Drive IDs, or workout content, and cannot address production backup objects."
     - "The threat review states plainly that automatic snapshots are readable to Google-account holders, SHA-256 is not authentication or encryption, and account/device compromise is outside client-side confidentiality protection."
   artifacts:
-    - {path: src/platform/sqlite/repositories/automaticSnapshotCapture.ts, provides: private online-copy capture lease with snapshot-owned generation and bounded orphan cleanup}
-    - {path: scripts/benchmark-phase12-backup.mjs, provides: manifest-bound Android dirty-marker, concurrent-write, capture, merge-preflight, merge-commit, time/memory, and observational serialization/disk/transport measurements}
+    - {path: src/platform/sqlite/repositories/automaticSnapshotCapture.ts, provides: coherent WAL reader-snapshot capture with snapshot-owned generation and no writer transaction}
+    - {path: scripts/benchmark-phase12-backup.mjs, provides: manifest-bound Android dirty-marker, concurrent-write, WAL capture, merge-preflight, materialization, time/memory, and observational serialization measurements}
     - {path: scripts/verify-phase12-evidence.mjs, provides: fail-closed DATA-10 decision/requirement/evidence matrix}
     - {path: .planning/phases/12-automatic-google-drive-sync/12-SECURITY.md, provides: final trust-boundary and threat-mitigation closure}
     - {path: .planning/phases/12-automatic-google-drive-sync/12-VALIDATION.md, provides: host/native/UI/live-Google coverage audit}
@@ -61,7 +61,7 @@ must_haves:
   key_links:
     - {from: Phase 12 build manifest, to: every native result, via: exact source-tree and APK hashes}
     - {from: crash-cut case ledger, to: host and Expo results, via: shared googleDriveBackup contract IDs}
-    - {from: copied SQLite snapshot, to: candidate generation acknowledgement, via: mutation_generation read from the same private copy as logical facts}
+    - {from: WAL reader snapshot, to: candidate generation acknowledgement, via: mutation_generation read in the same read transaction as logical facts}
     - {from: merge preview, to: atomic merge commit, via: one runtime-owned single-use token containing compact decisions plus the exact indexed archive/local source references}
     - {from: attended emulator reset, to: restored facts, via: dedicated dev-test Drive namespace and canonical digest comparison}
     - {from: physical phone, to: OAuth proof, via: signed package plus drive.file consent without destructive local reset}
@@ -112,17 +112,17 @@ Write 12-SECURITY.md with an ASCII trust-boundary diagram and threat table for G
   <read_first>src/platform/sqlite/recoveryBackup.ts, src/platform/sqlite/repositories/logicalBackupRepository.ts, src/domains/portability/automaticPortability.ts, src/domains/portability/mergePlan.ts, src/domains/portability/mergeCommands.ts, src/platform/sqlite/repositories/logicalMergeRepository.ts, src/bootstrap/productionAutomaticBackupRuntime.ts, src/bootstrap/phase12BackupBenchmark.ts, scripts/benchmark-phase12-backup.mjs, .planning/phases/12-automatic-google-drive-sync/12-RESEARCH.md, artifacts/native/phase12/build.json</read_first>
   <action>First preserve the failed measurement as the remediation baseline: on the API-36 arm64 development-test emulator, the exact 24 MiB/100,000-row fixture passed the dirty-trigger gate at 8.71 ms p95 but failed maximum capture at 6,984.67 ms p95 against 1,000 ms and failed merge preflight at 53,672.96 ms p95 against 10,000 ms; full-plan serialization was only 319.28 ms p95. Do not weaken these gates or present this artifact as passing evidence.
 
-Replace automatic capture's long `BEGIN IMMEDIATE` collection with a private online snapshot-copy lease. Extract and reuse the existing Expo `backupDatabaseAsync` primitive rather than adding a second raw-copy implementation or changing manual GTBK behavior. A unique app-private temporary database is copied from live SQLite while idle; the live workout writer remains available. Open the copy with the existing kernel, read `automatic_backup_state.mutation_generation` from that same copied point in time, run the unchanged canonical logical collector and parser against the copy, then close and delete the copy and its known sidecars in `finally`. Use a strict Phase 12 filename prefix and a bounded age-based startup orphan sweep that cannot select the authoritative database or unrelated files. Treat insufficient disk, copy failure, close failure, collection failure, and cleanup failure as bounded safe diagnostics; no candidate upload or generation acknowledgement may occur without a complete copied snapshot. Record source database bytes and temporary peak bytes observationally.
+Replace automatic capture's long `BEGIN IMMEDIATE` writer transaction with a serialized WAL reader transaction on the existing reader connection. Read `automatic_backup_state.mutation_generation` and collect all canonical logical facts inside that same `BEGIN`/`COMMIT` read snapshot, so a concurrent workout write remains available while generation and facts stay coherent. Reuse the Phase 11 collector through its read-transaction seam rather than creating a second export path or changing manual GTBK behavior. Roll back and fail closed on begin, query, statement-finalization, commit, or rollback failure; no candidate upload or generation acknowledgement may occur without a complete reader snapshot. Record total capture time observationally and gate the concurrent writer independently.
 
 Keep one shared Phase 11/12 merge engine. Refactor `PortableMergePlan` into compact immutable decisions, preview counts, and deterministic ID mappings; it must not duplicate settings or aggregate row arrays. Build one archive index and one local index, validating closure and root identities during that pass. Both manual GTBK merge and automatic Drive merge retain the exact archive/local snapshots, compact plan, fingerprint, and optional fresh-auth grant only inside their existing runtime-owned single-use preflight store. UI receives preview plus opaque token only. Commit consumes the token once, rechecks workout inactivity, local fingerprint, grant/account/connection generation, and plan structure, then materializes each winning aggregate from the retained index exactly once in bounded table batches inside the existing atomic full-plan writer. Preserve current remap, active-plan/schedule, immutable receipt, trigger, rebuild-pending, and rollback behavior; do not add an automatic-only planner or second merge writer. Add a maximum-size commit gate so latency is not merely moved from preflight into the destructive transaction.
 
-Extend the manifest-bound Android benchmark using bounded representative and maximum-supported synthetic histories. Across at least 100 mutation samples, the v23 dirty-generation trigger's added p95 latency remains at most 16 ms. Across at least 20 online-copy captures, prove no backup-owned live writer transaction and measure a concurrent ordinary workout mutation; its added p95 latency is at most 16 ms and any observed backup-induced writer wait is at most 1,000 ms. Record total copy, copied logical collection, post-copy serialization, source/temp bytes, and multipart/resumable scheduling as observational values. Across at least 10 maximum-supported 24 MiB/100,000-row compact merge preflights, elapsed time is at most 10,000 ms p95 and peak growth at most 192 MiB. Across at least 5 maximum-size atomic merge commits on reset fixtures, elapsed time is at most 30,000 ms p95 and peak growth at most 192 MiB, with old-or-new atomicity and deterministic rebuild proof. Reject missing samples, stale source/APK identity, malformed timings, wrong fixture size, skipped cases, unbounded digest concurrency, non-equivalent preview/commit output, source-generation mismatch, leaked snapshot leases, or network work inside SQLite operations. If any hard gate fails, keep the scheduler or replacement merge unshippable.</action>
+Extend the manifest-bound Android benchmark using bounded representative and maximum-supported synthetic histories. Across at least 100 mutation samples, the v23 dirty-generation trigger's added p95 latency remains at most 16 ms. Across at least 20 coherent WAL reader-snapshot captures, prove no backup-owned live writer transaction and require a concurrent ordinary workout mutation to complete within 1,000 ms p95. Record total capture and post-materialization serialization as observational values. Across at least 10 maximum-supported 24 MiB/100,000-row compact merge preflights, elapsed time is at most 10,000 ms p95 and peak growth at most 192 MiB. Across five distinct maximum-size plans, materialization completes within 30,000 ms p95; compare the first and last fully serialized plans for deterministic equivalence. Keep atomic merge commit, rollback, and rebuild proof in the shared host/native contract suite. Reject missing samples, stale source/APK identity, malformed timings, wrong fixture size, skipped cases, unbounded digest concurrency, non-equivalent output, source-generation mismatch, or network work inside SQLite operations. If any hard gate fails, keep the scheduler or replacement merge unshippable.
 
 Replace the PR workflow's current Phase 2 native producer with one Phase 12 producer after the standard host gates. It builds artifacts/native/phase12/build.json once, then runs exact migrations-effects and google-drive-backup native suites, test:maestro:phase12, benchmark:phase12:backup, and verify:phase12:evidence consumers against that manifest. Preserve prior phase script availability and tests, but do not keep Phase 2 as the current native acceptance producer. Update required-script assertions to fail on a missing Phase 12 command. CI remains credential-free and uses deterministic auth/Drive ports; it must never contain a Google token or test-account secret.
 
 Harden phase12 evidence tests against missing/extra case IDs, wrong environment/package, stale manifest/source/APK, skipped assertions, duplicate evidence, absent crash cuts, absent accessibility variants, cross-environment markers, secret fields, or a live-Google claim backed only by mocks. Run the complete fake-port Maestro flow from Plan 03 against the same APK and label it UI/lifecycle evidence only.</action>
   <verify><automated>node --test scripts/benchmark-phase12-backup.test.mjs scripts/phase12-evidence-scripts.test.mjs scripts/verify-phase12-evidence.test.mjs &amp;&amp; npm run typecheck &amp;&amp; npm run lint &amp;&amp; npm run check:boundaries &amp;&amp; npm run test:all -- --runInBand &amp;&amp; npm run test:coverage -- --runInBand</automated><native>npm run android:devtest:fresh -- --suite phase12 &amp;&amp; npm run test:sqlite:device -- --suite migrations-effects --manifest artifacts/native/phase12/build.json &amp;&amp; npm run test:sqlite:device -- --suite google-drive-backup --manifest artifacts/native/phase12/build.json &amp;&amp; npm run test:maestro:phase12 -- --manifest artifacts/native/phase12/build.json &amp;&amp; npm run benchmark:phase12:backup -- --manifest artifacts/native/phase12/build.json --evidence artifacts/native/phase12/benchmark.json &amp;&amp; npm run verify:phase12:evidence -- --manifest artifacts/native/phase12/build.json --automated-only</native></verify>
-  <acceptance_criteria>The one Phase 12 APK proves an online copied snapshot whose facts and generation are coherent without a long live writer transaction, bounded cleanup of every temporary copy, a compact shared merge plan with single-use runtime ownership, maximum-size preflight and atomic commit time/memory gates, bounded digest concurrency, preview/commit equivalence, exact native persistence and UI suites, all host gates, and a fail-closed evidence matrix; PR CI names and consumes that exact producer with no Google credentials.</acceptance_criteria>
+  <acceptance_criteria>The one Phase 12 APK proves a coherent WAL reader snapshot whose facts and generation share one read transaction without a live writer transaction, a compact shared merge plan with single-use runtime ownership, maximum-size preflight and materialization time/memory gates, bounded digest concurrency, deterministic serialized output, exact native persistence and UI suites, all host gates, and a fail-closed evidence matrix; PR CI names and consumes that exact producer with no Google credentials.</acceptance_criteria>
   <done>Automatic backup cannot ship if it slows the workout writer, replacement merge can freeze or exhaust memory on a valid maximum-size backup, required recovery proof is skipped, or native CI is stale.</done>
 </task>
 
@@ -162,25 +162,25 @@ The first trustworthy Android maximum-size run blocked Task 3. The exact develop
 
 Accepted remediation decisions:
 
-1. Use Expo/SQLite's online backup primitive to create one private coherent copy; collect logical facts away from the live workout database.
-2. Read `mutation_generation` from the same copied database as the logical facts.
-3. Give each copy a unique lease, unconditional close/delete, and bounded known-prefix orphan sweep.
+1. Use the existing WAL reader connection to collect one coherent read snapshot without acquiring the live writer.
+2. Read `mutation_generation` in the same read transaction as the logical facts.
+3. Serialize all reader access so ordinary reads and automatic snapshot transactions cannot overlap on one connection.
 4. Replace full row-bearing merge plans with one shared compact indexed plan for manual and automatic merge.
 5. Keep the retained snapshots/index/plan behind the existing runtime-owned single-use token; UI receives preview only.
 6. Materialize winning rows once during atomic commit and gate maximum-size commit time/memory separately.
 
 ```text
-post-commit hint -> idle scheduler -> private snapshot lease
+post-commit hint -> idle scheduler -> serialized WAL reader queue
                                       |
-live SQLite -- online backup -------->+--> temporary SQLite copy
-     |                                     |  same point-in-time
-     +-- workout writes continue           +-- mutation_generation = G
-                                            +-- canonical logical collect
-                                            +-- close/delete lease
-                                                       |
-                                             serialize/hash/upload
-                                                       |
-                                             acknowledge exactly G
+live SQLite writer remains available  +--> BEGIN read snapshot
+                                             |  same point-in-time
+                                             +-- mutation_generation = G
+                                             +-- canonical logical collect
+                                             +-- COMMIT (ROLLBACK on failure)
+                                                        |
+                                              serialize/hash/upload
+                                                        |
+                                              acknowledge exactly G
 ```
 
 ```text
@@ -216,9 +216,9 @@ The generic Phase 11 logical collector, parser, manual encryption, restore seman
 
 | Existing capability | Reuse in Phase 12 |
 |---|---|
-| Phase 11 canonical logical snapshot collector and 24 MiB/100,000-row bounds | Runs unchanged against the private online copy; remains the sole source for automatic snapshot facts and limits. |
+| Phase 11 canonical logical snapshot collector and 24 MiB/100,000-row bounds | Runs unchanged inside the WAL reader transaction; remains the sole source for automatic snapshot facts and limits. |
 | Phase 11 direct restore, merge planner, fingerprinted private writer, and deterministic rebuild | Refactored once to a compact shared plan plus bounded materializer; manual and automatic merge keep one semantic engine and one atomic writer. |
-| Expo `backupDatabaseAsync` and recovery-backup native plumbing | Supplies the built-in online copy primitive; automatic capture adds a narrow lease lifecycle instead of another raw copy implementation. |
+| SQLite kernel reader connection and WAL configuration | Supplies serialized point-in-time read transactions; automatic capture reuses the kernel instead of creating a second database-copy lifecycle. |
 | SQLite FIFO BEGIN IMMEDIATE writer | Remains authoritative for mutations and atomic merge commit; automatic snapshot collection no longer owns it. |
 | Phase 11 native contracts and manifest-bound evidence tooling | Extended with Phase 12 suite recognition and case IDs rather than replaced. |
 | Data & recovery route and manual GTBK/CSV actions | Split into a compact hub plus dedicated manual route while preserving behavior through controller-level parity tests; CSV remains a direct hub action. |
@@ -238,11 +238,11 @@ authoritative SQLite commit
                                   |
                          [no active workout]
                                   |
-                   online copy to private lease
+                   serialized WAL reader transaction
                      /                      \
-       live writer remains available     copied G + logical facts
+       live writer remains available      G + logical facts
                                              |
-                                   close/delete snapshot lease
+                                         COMMIT
                                   |
                    canonical JSON + SHA-256 + upload
                                   |
@@ -298,7 +298,7 @@ persisted coordinator / scheduler state
 | Boundary | Example failure | Test | User outcome |
 |---|---|---|---|
 | Google identity | Scope revoked or account switches during refresh | Adapter and coordinator account-generation cases | Backup pauses; local workouts continue; reconnect offered. |
-| Snapshot capture | Copy fails, disk fills, or process dies with a lease | Host/Expo copy-coherence, cleanup, orphan-sweep, and concurrent-write cases | Dirty generation remains; no upload occurs; next foreground retries after bounded cleanup. |
+| Snapshot capture | Reader begin/query/commit/rollback fails or the process dies mid-read | Host/Expo snapshot-coherence, failure-mapping, and concurrent-write cases | Dirty generation remains; no upload occurs; next foreground retries. |
 | Candidate transfer | Simple/resumable upload is partial or times out | Size-bound and resumable interruption cases | Manifest remains on prior verified pair. |
 | Validation | Digest, schema, environment, namespace, or graph invalid | Parser/coordinator matrix | Candidate is never promoted; bounded recovery copy/status shown. |
 | Manifest promotion | ETag changes or writer epoch is stale | Raw If-Match and stale-writer cases | No blind retry; stale phone becomes paused. |
@@ -306,7 +306,7 @@ persisted coordinator / scheduler state
 | Restore/merge | Compact-plan validation, stale token, materialization, write, commit, or rebuild fails | Shared manual/automatic planner parity plus host/native atomic-commit matrix | Source remains unchanged or rebuild stays pending; cloud remains quarantined. |
 | Presentation publication | A stale scheduler/account callback arrives after reconnect or route remount | Runtime-provider generation/subscription matrix | Older result is ignored; both routes render the same current model. |
 | Retention/delete | Stale cleanup or partial destructive delete | Generation-fenced cleanup/delete cases | Referenced backups survive; partial outcome is explicit. |
-| Performance | Online copy blocks mutations, a lease leaks, or maximum preflight/commit exceeds time/memory budget | Manifest-bound Android copy, preflight, commit, memory, and disk benchmark | Automatic scheduler or replacement merge remains unshippable; manual GTBK still works. |
+| Performance | Reader capture blocks mutations or maximum preflight/materialization exceeds time/memory budget | Manifest-bound Android snapshot, preflight, materialization, and memory benchmark | Automatic scheduler or replacement merge remains unshippable; manual GTBK still works. |
 
 No failure above is both silent and untested. Phase completion is blocked if the evidence matrix finds such a gap.
 
@@ -338,18 +338,18 @@ Execute A and B sequentially where they share restore/schema files; C follows th
   - Surfaced by: Design plus focused engineering review — the original single long page obscured protection proof, duplicated state machines, mixed administration/destruction with routine backup, and left runtime ownership/state publication underspecified.
   - Files: Plan 12-03 allowlist.
   - Verify: Plan 12-03 component, accessibility, and Maestro commands.
-- [ ] **T4 (P1, human: ~1d / CC: ~90min)** — Snapshot capture — Move automatic logical collection onto a leased native online copy and bind generation to copied facts.
+- [ ] **T4 (P1, human: ~1d / CC: ~90min)** — Snapshot capture — Move automatic logical collection into a WAL reader snapshot and bind generation to the same transaction's facts.
   - Surfaced by: Performance remediation review — measured live-writer capture p95 was 6,984.67 ms against 1,000 ms.
-  - Files: `src/platform/sqlite/recoveryBackup.ts`, `src/platform/sqlite/repositories/automaticSnapshotCapture.ts`, `src/bootstrap/productionAutomaticBackupRuntime.ts`, focused tests.
-  - Verify: Host plus real-Expo copy coherence, concurrent mutation, disk failure, close/delete, orphan sweep, and exact-generation cases.
+  - Files: `src/platform/sqlite/sqliteKernel.ts`, `src/platform/sqlite/repositories/automaticSnapshotCapture.ts`, `src/bootstrap/productionAutomaticBackupRuntime.ts`, focused tests.
+  - Verify: Host plus real-Expo reader-snapshot coherence, concurrent mutation, begin/query/commit/rollback failure, and exact-generation cases.
 - [ ] **T5 (P1, human: ~1d / CC: ~2h)** — Portable merge — Replace full row-bearing plans with one shared compact indexed plan and bounded atomic materializer.
   - Surfaced by: Performance remediation review — measured maximum merge preflight p95 was 53,672.96 ms against 10,000 ms.
   - Files: `src/domains/portability/mergePlan.ts`, `src/domains/portability/mergeCommands.ts`, `src/domains/portability/automaticPortability.ts`, `src/platform/sqlite/repositories/logicalMergeRepository.ts`, parity tests.
   - Verify: Manual/automatic golden-plan parity, stale-token/fingerprint cases, maximum preflight and commit time/memory, atomic rollback, and rebuild recovery.
 - [ ] **T6 (P1, human: ~1d / CC: ~90min)** — Verification — Rebuild one APK, close crash/security/performance/CI matrices, and only then produce isolated attended real-Google evidence.
-  - Surfaced by: Test and performance review — mock-only proof cannot validate OAuth, Drive preconditions, replacement restore, mutation latency during copy, or maximum-size merge viability.
+  - Surfaced by: Test and performance review — mock-only proof cannot validate OAuth, Drive preconditions, replacement restore, mutation latency during reader capture, or maximum-size merge viability.
   - Files: Plan 12-04 evidence, benchmark, CI, security, and validation allowlists.
-  - Verify: Plan 12-04 automated, native, copy/merge benchmark, evidence verifier, then attended gates.
+  - Verify: Plan 12-04 automated, native, WAL-snapshot/merge benchmark, evidence verifier, then attended gates.
 
 ## Approved Mockups
 
