@@ -22,7 +22,6 @@ import {
 import {
   openSqliteKernel,
   type SqliteKernel,
-  type SqliteTransactionExecutor,
 } from "../platform/sqlite";
 import {
   migrateBenchmarkDatabase,
@@ -184,21 +183,6 @@ export function buildPhase12SyntheticSnapshot(
   return fixture;
 }
 
-async function writeRows(
-  kernel: SqliteKernel,
-  count: number,
-  write: (transaction: SqliteTransactionExecutor, index: number) => Promise<unknown>,
-): Promise<void> {
-  for (let start = 0; start < count; start += 250) {
-    await kernel.write(async (transaction) => {
-      const end = Math.min(start + 250, count);
-      for (let index = start; index < end; index += 1) {
-        await write(transaction, index);
-      }
-    });
-  }
-}
-
 async function seedMaximumHistory(kernel: SqliteKernel): Promise<void> {
   const totalRows = Object.values(PHASE12_SQLITE_FIXTURE_ROW_COUNTS)
     .reduce((total, count) => total + count, 0);
@@ -206,53 +190,65 @@ async function seedMaximumHistory(kernel: SqliteKernel): Promise<void> {
     || Math.max(...Object.values(PHASE12_SQLITE_FIXTURE_ROW_COUNTS)) > ROWS_PER_TABLE) {
     throw new Error("phase12_sqlite_fixture_distribution_invalid");
   }
-  await kernel.write((transaction) => transaction.execute(
-    `INSERT INTO workout_sessions
-      (id, plan_id, plan_day_id, source, status, local_date, timezone,
-       started_at_ms, completed_at_ms, revision,
-       creation_timezone_offset_minutes, modified_from_plan,
-       portable_id, merge_modified_at_ms)
-     VALUES ('s', NULL, NULL, 'manual', 'completed', '1970-01-01', 'UTC',
-             0, 0, 0, 0, 0, ?, 0)`,
-    [portableId(1)],
-  ));
-  await writeRows(kernel, SQLITE_APP_SETTING_ROWS, (transaction, index) =>
-    transaction.execute(
-      "INSERT INTO app_settings(key, value_version, value_json, revision, updated_at_ms) VALUES (?, 1, ?, ?, ?)",
-      [
-        `k${index.toString(36).padStart(4, "0")}`,
-        JSON.stringify({ padding: "" }),
-        index + 1,
-        index + 1,
-      ],
-    ));
-  await writeRows(kernel, ROWS_PER_TABLE, (transaction, index) =>
-    transaction.execute(
-      `INSERT INTO history_audit_events
-        (id, session_id, effective_revision, event_type, field_identity,
-         before_json, after_json, occurred_at_ms)
-       VALUES (?, 's', ?, 'restore', 'x', '{}', '{}', ?)`,
-      [`a${index.toString(36).padStart(4, "0")}`, index + 1, index + 1],
-    ));
-  await writeRows(kernel, ROWS_PER_TABLE, (transaction, index) =>
-    transaction.execute(
-      `INSERT INTO workout_session_exercise_edit_receipts
-        (request_id, request_sha256, operation, session_id,
-         subject_session_exercise_id, replacement_session_exercise_id,
-         expected_session_revision, result_session_revision, result_json,
-         committed_at_ms)
-       VALUES (?, ?, 'remove_exercise', 's', 'e', NULL, 0, 1, '{}', ?)`,
-      [`e${index.toString(36).padStart(4, "0")}`, "0".repeat(64), index + 1],
-    ));
-  await writeRows(kernel, ROWS_PER_TABLE, (transaction, index) =>
-    transaction.execute(
-      `INSERT INTO workout_session_exercise_reorder_receipts
-        (request_id, request_sha256, operation, session_id,
-         ordered_session_exercise_ids_json, expected_session_revision,
-         result_session_revision, result_json, committed_at_ms)
-       VALUES (?, ?, 'reorder_exercises', 's', '[]', 0, 1, '{}', ?)`,
-      [`r${index.toString(36).padStart(4, "0")}`, "0".repeat(64), index + 1],
-    ));
+  await kernel.write(async (transaction) => {
+    await transaction.execute(
+      `INSERT INTO workout_sessions
+        (id, plan_id, plan_day_id, source, status, local_date, timezone,
+         started_at_ms, completed_at_ms, revision,
+         creation_timezone_offset_minutes, modified_from_plan,
+         portable_id, merge_modified_at_ms)
+       VALUES ('s', NULL, NULL, 'manual', 'completed', '1970-01-01', 'UTC',
+               0, 0, 0, 0, 0, ?, 0)`,
+      [portableId(1)],
+    );
+    await transaction.execute(
+      `WITH RECURSIVE sequence(value) AS (
+         VALUES(0) UNION ALL SELECT value + 1 FROM sequence WHERE value + 1 < ?
+       )
+       INSERT INTO app_settings(key, value_version, value_json, revision, updated_at_ms)
+       SELECT 'k' || printf('%06x', value), 1, '{"padding":""}', value + 1, value + 1
+       FROM sequence`,
+      [SQLITE_APP_SETTING_ROWS],
+    );
+    await transaction.execute(
+      `WITH RECURSIVE sequence(value) AS (
+         VALUES(0) UNION ALL SELECT value + 1 FROM sequence WHERE value + 1 < ?
+       )
+       INSERT INTO history_audit_events
+         (id, session_id, effective_revision, event_type, field_identity,
+          before_json, after_json, occurred_at_ms)
+       SELECT 'a' || printf('%06x', value), 's', value + 1, 'restore', 'x', '{}', '{}', value + 1
+       FROM sequence`,
+      [ROWS_PER_TABLE],
+    );
+    await transaction.execute(
+      `WITH RECURSIVE sequence(value) AS (
+         VALUES(0) UNION ALL SELECT value + 1 FROM sequence WHERE value + 1 < ?
+       )
+       INSERT INTO workout_session_exercise_edit_receipts
+         (request_id, request_sha256, operation, session_id,
+          subject_session_exercise_id, replacement_session_exercise_id,
+          expected_session_revision, result_session_revision, result_json,
+          committed_at_ms)
+       SELECT 'e' || printf('%06x', value), lower(hex(zeroblob(32))),
+              'remove_exercise', 's', 'e', NULL, 0, 1, '{}', value + 1
+       FROM sequence`,
+      [ROWS_PER_TABLE],
+    );
+    await transaction.execute(
+      `WITH RECURSIVE sequence(value) AS (
+         VALUES(0) UNION ALL SELECT value + 1 FROM sequence WHERE value + 1 < ?
+       )
+       INSERT INTO workout_session_exercise_reorder_receipts
+         (request_id, request_sha256, operation, session_id,
+          ordered_session_exercise_ids_json, expected_session_revision,
+          result_session_revision, result_json, committed_at_ms)
+       SELECT 'r' || printf('%06x', value), lower(hex(zeroblob(32))),
+              'reorder_exercises', 's', '[]', 0, 1, '{}', value + 1
+       FROM sequence`,
+      [ROWS_PER_TABLE],
+    );
+  });
   const collector = createLogicalBackupRepository(kernel);
   const baseline = await collector.collect({ snapshotId: "phase12-writer-00", createdAtMs: 100 });
   const difference = PHASE12_MAX_SNAPSHOT_BYTES - encodedBytes(baseline);
@@ -265,20 +261,20 @@ async function seedMaximumHistory(kernel: SqliteKernel): Promise<void> {
   if (encodedBytes(maximumPaddedValue) > BACKUP_LIMITS.maxStringBytes) {
     throw new Error("phase12_sqlite_fixture_padding_invalid");
   }
-  await writeRows(kernel, SQLITE_APP_SETTING_ROWS, (transaction, index) =>
-    transaction.execute(
-      "UPDATE app_settings SET value_json = ? WHERE key = ?",
-      [
-        JSON.stringify({ padding: "x".repeat(each + (index < remainder ? 1 : 0)) }),
-        `k${index.toString(36).padStart(4, "0")}`,
-      ],
-    ));
-}
-
-async function collectMaximumSnapshot(kernel: SqliteKernel, sample: number) {
-  return createLogicalBackupRepository(kernel).collect({
-    snapshotId: `phase12-writer-${sample.toString().padStart(2, "0")}`,
-    createdAtMs: 100 + sample,
+  await kernel.write(async (transaction) => {
+    await transaction.execute(
+      "UPDATE app_settings SET value_json = ?",
+      [JSON.stringify({ padding: "x".repeat(each) })],
+    );
+    if (remainder > 0) {
+      await transaction.execute(
+        "UPDATE app_settings SET value_json = ? WHERE key < ?",
+        [
+          JSON.stringify({ padding: "x".repeat(each + 1) }),
+          `k${remainder.toString(16).padStart(6, "0")}`,
+        ],
+      );
+    }
   });
 }
 
@@ -319,8 +315,9 @@ export async function performPhase12BackupBenchmark(): Promise<Phase12BackupBenc
     await seedMaximumHistory(kernel);
     const writerOccupancyMs: number[] = [];
     const captureTotalMs: number[] = [];
-    let maximumSnapshot: Awaited<ReturnType<typeof collectMaximumSnapshot>> | undefined;
+    let maximumSnapshot: LogicalBackupSnapshot | undefined;
     for (let index = 0; index < PHASE12_WRITER_SAMPLES; index += 1) {
+      console.log(`${PHASE12_BENCHMARK_PROGRESS_MARKER}${JSON.stringify({ stage: "capture", sample: index })}`);
       let signalCopyStarted: (() => void) | undefined;
       const waitForCopyStart = new Promise<void>((resolve) => { signalCopyStarted = resolve; });
       const capture = createProductionAutomaticSnapshotCapture({
