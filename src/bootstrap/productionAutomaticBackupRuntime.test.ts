@@ -17,6 +17,10 @@ const mockLocalFacts = {
     schemaVersion: 26, ownerNamespace: "local-owner", tables: { workout_sessions: [], portable_owner_identity: [] },
   })),
 };
+const mockCapture = jest.fn(async () => ({
+  generation: 7,
+  snapshot: { version: 2, schemaVersion: 26, tables: {}, catalogReferences: [], manifest: {}, snapshotId: "snapshot", createdAtMs: 1 },
+}));
 
 jest.mock("expo-constants", () => ({
   __esModule: true,
@@ -59,8 +63,11 @@ jest.mock("../platform/sqlite/repositories/restorePreflightAdapters", () => ({
   createSqliteRestoreCandidateProbe: () => ({ validateCandidate: async () => undefined }),
   createSqliteMergeLocalFactsPort: () => mockLocalFacts,
 }));
-jest.mock("../platform/sqlite/repositories/logicalBackupRepository", () => ({
-  createLogicalBackupRepository: () => ({ collect: async () => ({ version: 2, schemaVersion: 26, tables: {}, catalogReferences: [], manifest: {}, snapshotId: "snapshot", createdAtMs: 1 }) }),
+jest.mock("../platform/sqlite/repositories/automaticSnapshotCapture", () => ({
+  createProductionAutomaticSnapshotCapture: jest.fn(() => ({
+    capture: mockCapture,
+    sweepOrphans: async () => 0,
+  })),
 }));
 jest.mock("../platform/sqlite/repositories/logicalMergeRepository", () => ({
   createFullPlanLogicalMergeWriter: () => ({ commitFullPlan: async () => ({ state: "ready" as const }) }),
@@ -147,7 +154,8 @@ describe("production automatic-backup composition", () => {
     expect(merge.consume(token)).toBeNull();
     await merge.commitPlan({ plan: {}, fingerprint: "fingerprint" }); await merge.rebuild();
     expect(coordinator.isWorkoutActive()).toBe(false); expect(coordinator.validate()).toBe(true);
-    await coordinator.capture();
+    await expect(coordinator.capture()).resolves.toEqual(expect.objectContaining({ generation: 7 }));
+    expect(mockCapture).toHaveBeenCalledWith(expect.objectContaining({ snapshotId: expect.stringContaining("snapshot-") }));
     expect(coordinator.validateManifest(new TextEncoder().encode("invalid"))).toBeNull();
     expect(new TextDecoder().decode(coordinator.buildManifest({ candidateId: "candidate", state: { writerEpoch: 2 }, captured: { sourceDigest: "digest" } }))).toContain("candidate");
     await expect(coordinator.recovery.parseSnapshot(new TextEncoder().encode("{}"))).rejects.toThrow("automatic_recovery_snapshot_invalid");

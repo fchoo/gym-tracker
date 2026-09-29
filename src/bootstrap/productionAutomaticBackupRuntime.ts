@@ -8,13 +8,13 @@ import { parseLogicalBackupSnapshot, type LogicalBackupSnapshot } from "../domai
 import { buildPortableMergePlan, type PortableMergePlan } from "../domains/portability/mergePlan";
 import { createDriveBackupStoreAdapter } from "../platform/google/driveBackupStoreAdapter";
 import { createFullPlanLogicalMergeWriter } from "../platform/sqlite/repositories/logicalMergeRepository";
-import { createLogicalBackupRepository } from "../platform/sqlite/repositories/logicalBackupRepository";
 import { createLogicalRestoreRepository } from "../platform/sqlite/repositories/logicalRestoreRepository";
 import { createRestoreReconciliationRepository } from "../platform/sqlite/repositories/restoreReconciliationRepository";
 import { createHistoryProjectionRepository } from "../platform/sqlite/repositories/historyProjectionRepository";
 import { createExerciseSearchIndexRepository } from "../platform/sqlite/repositories/exerciseSearchIndexRepository";
 import { createSqliteMergeLocalFactsPort, createSqliteRestoreCandidateProbe, createSqliteRestoreRetainedReferencePort, createSqliteRestoreSchemaPort } from "../platform/sqlite/repositories/restorePreflightAdapters";
 import { createAutomaticBackupStateRepository } from "../platform/sqlite/repositories/automaticBackupStateRepository";
+import { createProductionAutomaticSnapshotCapture } from "../platform/sqlite/repositories/automaticSnapshotCapture";
 import type { SqliteKernel } from "../platform/sqlite";
 import { createAutomaticBackupRuntime, type AutomaticBackupRuntime } from "./automaticBackupRuntime";
 
@@ -52,6 +52,11 @@ export function createProductionAutomaticBackupServices(kernel: SqliteKernel): S
     if (!response.ok) throw new Error("google_identity_lookup_failed"); return response.json();
   } });
   const state = createAutomaticBackupStateRepository(kernel);
+  const snapshotCapture = createProductionAutomaticSnapshotCapture({
+    sourceDatabaseName: "gym-tracker.db",
+    nowMs: () => Date.now(),
+    leaseId: () => id("capture"),
+  });
   const drive = createDriveBackupStoreAdapter({ environment: settings.environment, token: () => auth.accessToken() });
   const reconciliation = createRestoreReconciliationRepository(kernel, { history: createHistoryProjectionRepository(kernel), search: createExerciseSearchIndexRepository(kernel), nowMs: () => Date.now() });
   const restore = createAutomaticPortableRestorePort({
@@ -75,7 +80,7 @@ export function createProductionAutomaticBackupServices(kernel: SqliteKernel): S
   });
   const coordinator = createAutomaticBackupCoordinator({
     isWorkoutActive: () => false, auth, state, drive, nowMs: () => Date.now(), candidateId: () => id("attempt"),
-    capture: async () => { const current = await state.read(); const snapshot = await createLogicalBackupRepository(kernel).collect({ snapshotId: id("snapshot"), createdAtMs: Date.now() }); const encoded = bytes({ header: { version: 1 }, payload: snapshot }); return { generation: current.mutationGeneration, sourceDigest: await digest(new TextDecoder().decode(encoded)), bytes: encoded }; },
+    capture: async () => { const captured = await snapshotCapture.capture({ snapshotId: id("snapshot"), createdAtMs: Date.now() }); const encoded = bytes({ header: { version: 1 }, payload: captured.snapshot }); return { generation: captured.generation, sourceDigest: await digest(new TextDecoder().decode(encoded)), bytes: encoded }; },
     validate: () => true,
     validateManifest: (value) => { try { const parsed = parseDriveBackupManifestV1(JSON.parse(new TextDecoder().decode(value))); return parsed.kind === "active" ? { writerEpoch: parsed.writerEpoch } : null; } catch { return null; } },
     buildManifest: ({ candidateId, state: current, captured }) => bytes({ kind: "active", writer_epoch: current.writerEpoch, latest: { fileId: candidateId, object_sha256: captured.sourceDigest }, previous: null }),
