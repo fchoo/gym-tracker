@@ -53,9 +53,7 @@ export function createProductionAutomaticBackupServices(kernel: SqliteKernel): S
   } });
   const state = createAutomaticBackupStateRepository(kernel);
   const snapshotCapture = createProductionAutomaticSnapshotCapture({
-    sourceDatabaseName: "gym-tracker.db",
-    nowMs: () => Date.now(),
-    leaseId: () => id("capture"),
+    kernel,
   });
   const drive = createDriveBackupStoreAdapter({ environment: settings.environment, token: () => auth.accessToken() });
   const reconciliation = createRestoreReconciliationRepository(kernel, { history: createHistoryProjectionRepository(kernel), search: createExerciseSearchIndexRepository(kernel), nowMs: () => Date.now() });

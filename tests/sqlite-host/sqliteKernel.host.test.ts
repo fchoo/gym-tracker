@@ -772,7 +772,7 @@ describe("serialized writer failure behavior", () => {
   });
 });
 
-describe("shared ten-case SQLite kernel contract", () => {
+  describe("shared eleven-case SQLite kernel contract", () => {
   it("publishes the exact reviewed contract case list", () => {
     const contract = defineSqliteKernelContract();
 
@@ -784,16 +784,17 @@ describe("shared ten-case SQLite kernel contract", () => {
       "fifo-write-serialization",
       "bounded-write-contention",
       "reader-committed-isolation",
+      "reader-snapshot-concurrent-write",
       "rollback-fixture-matrix",
       "commit-latch",
       "duplicate-idempotency",
       "prepared-statement-cleanup",
       "private-boundary",
     ]);
-    expect(contract.cases).toHaveLength(10);
+    expect(contract.cases).toHaveLength(11);
   });
 
-  it("runs all ten cases against the production kernel shape", async () => {
+  it("runs all eleven cases against the production kernel shape", async () => {
     const result = await runSqliteKernelContract({
       async createRuntime(caseId, observer) {
         const directory = mkdtempSync(join(tmpdir(), `gym-contract-${caseId}-`));
@@ -839,11 +840,11 @@ describe("shared ten-case SQLite kernel contract", () => {
       result.cases.filter((contractCase) => contractCase.status === "failed"),
     ).toEqual([]);
     expect(result.status).toBe("passed");
-    expect(result.total).toBe(10);
-    expect(result.passed).toBe(10);
+    expect(result.total).toBe(11);
+    expect(result.passed).toBe(11);
     expect(result.failed).toBe(0);
     expect(result.skipped).toBe(0);
-    expect(result.cases).toHaveLength(10);
+    expect(result.cases).toHaveLength(11);
     expect(result.cases.every((contractCase) => (
       contractCase.status === "passed"
     ))).toBe(true);

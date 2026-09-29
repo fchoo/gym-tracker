@@ -10,7 +10,7 @@ import {
 } from "../../../domains/portability/backupContracts";
 import type {
   SqliteKernel,
-  SqliteTransactionExecutor,
+  SqliteReadTransactionExecutor,
 } from "../sqliteKernel";
 
 type LogicalTableName = keyof typeof LOGICAL_BACKUP_TABLE_DEFINITIONS;
@@ -151,7 +151,7 @@ function mapRow(row: Record<string, unknown>): LogicalBackupRow {
 }
 
 async function collectTables(
-  transaction: SqliteTransactionExecutor,
+  transaction: SqliteReadTransactionExecutor,
 ): Promise<LogicalBackupSnapshot["tables"]> {
   const tables: Record<string, readonly LogicalBackupRow[]> = {};
   for (const table of LOGICAL_BACKUP_TABLES) {
@@ -169,7 +169,7 @@ type CatalogReferenceRow = Readonly<{
 }>;
 
 async function collectCatalogReferences(
-  transaction: SqliteTransactionExecutor,
+  transaction: SqliteReadTransactionExecutor,
 ): Promise<LogicalBackupSnapshot["catalogReferences"]> {
   const rows = await transaction.queryAll<CatalogReferenceRow>(
     "SELECT 'exercise' AS kind, source.source_namespace, COALESCE(source.upstream_id, source.linked_upstream_id) AS upstream_id, source.source_revision FROM exercise_catalog_sources source WHERE source.exercise_id IN (SELECT exercise_id FROM exercise_owner_preferences UNION SELECT exercise_id FROM session_exercises UNION SELECT occurrence.exercise_id FROM plan_day_exercises occurrence JOIN plan_days day ON day.id = occurrence.plan_day_id JOIN plans plan ON plan.id = day.plan_id WHERE plan.origin IN ('custom', 'copied') UNION SELECT occurrence.exercise_id FROM owned_plan_day_exercises occurrence JOIN plan_days day ON day.id = occurrence.plan_day_id JOIN plans plan ON plan.id = day.plan_id WHERE plan.origin IN ('custom', 'copied')) AND COALESCE(source.upstream_id, source.linked_upstream_id) IS NOT NULL UNION SELECT 'plan' AS kind, source.source_namespace, source.template_id AS upstream_id, CAST(source.source_revision AS TEXT) AS source_revision FROM owned_plan_starter_sources source JOIN plans plan ON plan.id = source.plan_id WHERE plan.origin IN ('custom', 'copied') UNION SELECT 'plan' AS kind, request.source_namespace, request.template_id AS upstream_id, CAST(request.source_revision AS TEXT) AS source_revision FROM starter_plan_activation_requests request JOIN plans plan ON plan.id = request.result_plan_id WHERE plan.origin IN ('custom', 'copied') ORDER BY kind, source_namespace, upstream_id, source_revision",
@@ -203,41 +203,47 @@ export function createLogicalBackupRepository(
   return Object.freeze({
     async collect(input) {
       try {
-        return await kernel.write(async (transaction) => {
-          const [schema] = await transaction.queryAll<{ user_version: number }>(
-            "PRAGMA user_version",
-          );
-          if (schema === undefined || !Number.isSafeInteger(schema.user_version)) {
-            throw new LogicalBackupRepositoryError("logical_backup_collection_failed");
-          }
-          const tables = await collectTables(transaction);
-          const catalogReferences = await collectCatalogReferences(transaction);
-          const tablesForVersion = logicalBackupTablesForVersion(
-            LOGICAL_BACKUP_FORMAT_VERSION,
-          );
-          const rowCounts = Object.fromEntries(
-            tablesForVersion.map((table) => [table, tables[table]!.length]),
-          );
-          return parseLogicalBackupSnapshot({
-            version: LOGICAL_BACKUP_FORMAT_VERSION,
-            snapshotId: input.snapshotId,
-            createdAtMs: input.createdAtMs,
-            schemaVersion: schema.user_version,
-            manifest: {
-              catalogReferenceCount: catalogReferences.length,
-              rowCounts,
-              totalRows: Object.values(rowCounts).reduce(
-                (total, count) => total + count,
-                0,
-              ),
-            },
-            tables,
-            catalogReferences,
-          });
-        });
+        return await kernel.write((transaction) =>
+          collectLogicalBackupSnapshot(transaction, input));
       } catch {
         throw new LogicalBackupRepositoryError("logical_backup_collection_failed");
       }
     },
+  });
+}
+
+export async function collectLogicalBackupSnapshot(
+  transaction: SqliteReadTransactionExecutor,
+  input: Readonly<{ snapshotId: string; createdAtMs: number }>,
+): Promise<LogicalBackupSnapshot> {
+  const [schema] = await transaction.queryAll<{ user_version: number }>(
+    "PRAGMA user_version",
+  );
+  if (schema === undefined || !Number.isSafeInteger(schema.user_version)) {
+    throw new LogicalBackupRepositoryError("logical_backup_collection_failed");
+  }
+  const tables = await collectTables(transaction);
+  const catalogReferences = await collectCatalogReferences(transaction);
+  const tablesForVersion = logicalBackupTablesForVersion(
+    LOGICAL_BACKUP_FORMAT_VERSION,
+  );
+  const rowCounts = Object.fromEntries(
+    tablesForVersion.map((table) => [table, tables[table]!.length]),
+  );
+  return parseLogicalBackupSnapshot({
+    version: LOGICAL_BACKUP_FORMAT_VERSION,
+    snapshotId: input.snapshotId,
+    createdAtMs: input.createdAtMs,
+    schemaVersion: schema.user_version,
+    manifest: {
+      catalogReferenceCount: catalogReferences.length,
+      rowCounts,
+      totalRows: Object.values(rowCounts).reduce(
+        (total, count) => total + count,
+        0,
+      ),
+    },
+    tables,
+    catalogReferences,
   });
 }

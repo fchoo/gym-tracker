@@ -321,10 +321,8 @@ export async function performPhase12BackupBenchmark(): Promise<Phase12BackupBenc
       let signalCopyStarted: (() => void) | undefined;
       const waitForCopyStart = new Promise<void>((resolve) => { signalCopyStarted = resolve; });
       const capture = createProductionAutomaticSnapshotCapture({
-        sourceDatabaseName: DATABASE_NAME,
-        nowMs: () => Date.now(),
-        leaseId: () => `benchmark-${index.toString().padStart(2, "0")}`,
-        onCopyStart: () => signalCopyStarted?.(),
+        kernel,
+        onSnapshotStart: () => signalCopyStarted?.(),
       });
       const measured = await measureCopiedSnapshotWithConcurrentMutation({
         capture,

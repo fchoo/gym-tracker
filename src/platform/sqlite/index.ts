@@ -3,6 +3,8 @@ export {
   openSqliteKernel,
   type SqliteKernel,
   type SqliteStatementResult,
+  type SqliteReadTransactionExecutor,
+  type SqliteSnapshotKernel,
   type SqliteTransactionExecutor,
 } from "./sqliteKernel";
 export {
