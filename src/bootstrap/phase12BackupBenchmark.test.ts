@@ -16,8 +16,9 @@ import {
   PHASE12_BENCHMARK_START_MARKER,
   PHASE12_SQLITE_FIXTURE_ROW_COUNTS,
   buildPhase12SyntheticSnapshot,
-  measureCopiedSnapshotWithConcurrentMutation,
+  measureReaderSnapshotWithConcurrentMutation,
   phase12BenchmarkStartupAction,
+  shouldMaterializePhase12MergeSample,
   shouldSerializePhase12MergeSample,
 } from "./phase12BackupBenchmark";
 
@@ -81,7 +82,12 @@ describe("Phase 12 native backup benchmark", () => {
       .filter(shouldSerializePhase12MergeSample)).toEqual([0, 9]);
   });
 
-  it("measures a mutation only after native copy starts and returns copied facts", async () => {
+  it("materializes five distinct merge plans after compact preflight", () => {
+    expect(Array.from({ length: 10 }, (_, index) => index)
+      .filter(shouldMaterializePhase12MergeSample)).toEqual([0, 1, 2, 3, 4]);
+  });
+
+  it("measures a mutation only after the reader snapshot starts", async () => {
     const events: string[] = [];
     let startCopy: (() => void) | undefined;
     const waitForCopyStart = new Promise<void>((resolve) => { startCopy = resolve; });
@@ -98,7 +104,7 @@ describe("Phase 12 native backup benchmark", () => {
       },
     };
 
-    await expect(measureCopiedSnapshotWithConcurrentMutation({
+    await expect(measureReaderSnapshotWithConcurrentMutation({
       capture,
       waitForCopyStart,
       mutate: async () => { events.push("mutate"); },

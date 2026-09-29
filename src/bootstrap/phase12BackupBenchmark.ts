@@ -11,6 +11,7 @@ import {
 import {
   buildPortableMergePlan,
   MERGE_DIGEST_CONCURRENCY,
+  type PortableMergePlan,
   type PortableMergePlanSnapshot,
 } from "../domains/portability/mergePlan";
 import {
@@ -70,6 +71,7 @@ export type Phase12BackupBenchmarkResult = Readonly<{
     writer_occupancy_ms: readonly number[];
     capture_total_ms: readonly number[];
     merge_preflight_ms: readonly number[];
+    merge_materialization_ms: readonly number[];
     merge_serialization_ms: readonly number[];
     snapshot_bytes: number;
     total_rows: number;
@@ -94,6 +96,10 @@ export function phase12BenchmarkStartupAction(input: Readonly<{
 
 export function shouldSerializePhase12MergeSample(sample: number): boolean {
   return sample === 0 || sample === PHASE12_MERGE_SAMPLES - 1;
+}
+
+export function shouldMaterializePhase12MergeSample(sample: number): boolean {
+  return sample < 5;
 }
 
 function encodedBytes(value: unknown): number {
@@ -284,7 +290,7 @@ async function seedMaximumHistory(kernel: SqliteKernel): Promise<void> {
   });
 }
 
-export async function measureCopiedSnapshotWithConcurrentMutation(input: Readonly<{
+export async function measureReaderSnapshotWithConcurrentMutation(input: Readonly<{
   capture: AutomaticSnapshotCapturePort;
   waitForCopyStart: Promise<void>;
   mutate(): Promise<void>;
@@ -330,7 +336,7 @@ export async function performPhase12BackupBenchmark(): Promise<Phase12BackupBenc
         kernel,
         onSnapshotStart: () => signalCopyStarted?.(),
       });
-      const measured = await measureCopiedSnapshotWithConcurrentMutation({
+      const measured = await measureReaderSnapshotWithConcurrentMutation({
         capture,
         waitForCopyStart,
         mutate: () => kernel.write((transaction) => transaction.execute(
@@ -360,8 +366,9 @@ export async function performPhase12BackupBenchmark(): Promise<Phase12BackupBenc
     const archive = buildPhase12SyntheticSnapshot(2);
     const local = buildPhase12SyntheticSnapshot(1);
     const mergePreflightMs: number[] = [];
-    const mergeSerializationMs: number[] = [];
-    let canonicalPlan: string | undefined;
+    const mergePlans: PortableMergePlan[] = [];
+    let firstMergePlan: PortableMergePlan | undefined;
+    let lastMergePlan: PortableMergePlan | undefined;
     for (let index = 0; index < PHASE12_MERGE_SAMPLES; index += 1) {
       console.log(`${PHASE12_BENCHMARK_PROGRESS_MARKER}${JSON.stringify({ stage: "merge", sample: index })}`);
       const started = performance.now();
@@ -374,17 +381,33 @@ export async function performPhase12BackupBenchmark(): Promise<Phase12BackupBenc
         },
       });
       mergePreflightMs.push(performance.now() - started);
-      if (shouldSerializePhase12MergeSample(index)) {
-        const serializationStarted = performance.now();
-        const serialized = JSON.stringify(plan);
-        mergeSerializationMs.push(performance.now() - serializationStarted);
-        canonicalPlan ??= serialized;
-        if (canonicalPlan !== serialized) throw new Error("phase12_merge_output_not_canonical");
-      }
+      if (shouldMaterializePhase12MergeSample(index)) mergePlans.push(plan);
+      firstMergePlan ??= plan;
+      lastMergePlan = plan;
     }
-    if (canonicalPlan === undefined || mergeSerializationMs.length !== 2) {
-      throw new Error("phase12_merge_output_not_compared");
+    if (firstMergePlan === undefined || lastMergePlan === undefined) {
+      throw new Error("phase12_merge_plan_missing");
     }
+    const mergeMaterializationMs = mergePlans.map((plan) => {
+      const started = performance.now();
+      const materializedRows = plan.settings.length + plan.aggregates.reduce(
+        (total, aggregate) => total + Object.values(aggregate.tables).reduce(
+          (rows, tableRows) => rows + tableRows.length,
+          0,
+        ),
+        0,
+      );
+      if (materializedRows <= 0) throw new Error("phase12_merge_materialization_empty");
+      return performance.now() - started;
+    });
+    const mergeSerializationMs: number[] = [];
+    const serializedPlans = [firstMergePlan, lastMergePlan].map((plan) => {
+      const serializationStarted = performance.now();
+      const serialized = JSON.stringify(plan);
+      mergeSerializationMs.push(performance.now() - serializationStarted);
+      return serialized;
+    });
+    if (serializedPlans[0] !== serializedPlans[1]) throw new Error("phase12_merge_output_not_canonical");
     return {
       schemaVersion: 1,
       suite: "phase12",
@@ -394,6 +417,7 @@ export async function performPhase12BackupBenchmark(): Promise<Phase12BackupBenc
         writer_occupancy_ms: writerOccupancyMs,
         capture_total_ms: captureTotalMs,
         merge_preflight_ms: mergePreflightMs,
+        merge_materialization_ms: mergeMaterializationMs,
         merge_serialization_ms: mergeSerializationMs,
         snapshot_bytes: encodedBytes(maximumSnapshot),
         total_rows: maximumSnapshot.manifest.totalRows,

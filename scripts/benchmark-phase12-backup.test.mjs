@@ -21,6 +21,7 @@ test("Phase 12 benchmark fixes the tested writer and maximum merge budgets", () 
     dirty_trigger: { minimum_samples: 100, maximum_p95_ms: 16 },
     writer_occupancy: { minimum_samples: 20, maximum_p95_ms: 1000 },
     merge_preflight: { minimum_samples: 10, maximum_p95_ms: 10_000, maximum_peak_growth_bytes: 192 * 1024 * 1024, required_snapshot_bytes: 24 * 1024 * 1024, required_rows: 100_000 },
+    merge_materialization: { minimum_samples: 5, maximum_p95_ms: 30_000 },
   });
 });
 
@@ -34,6 +35,7 @@ test("Phase 12 benchmark rejects a stale manifest, missing samples, or a false m
     measurements: {
       dirty_trigger_ms: samples(100, 1), writer_occupancy_ms: samples(20, 2), capture_total_ms: samples(20, 20),
       merge_preflight_ms: samples(10, 3), merge_peak_growth_bytes: samples(10, 4),
+      merge_materialization_ms: samples(5, 6),
       merge_serialization_ms: samples(2, 5),
       snapshot_bytes: 24 * 1024 * 1024, total_rows: 100_000,
       merge_digest_concurrency: 4, merge_output_equivalent: true,
@@ -46,4 +48,5 @@ test("Phase 12 benchmark rejects a stale manifest, missing samples, or a false m
   assert.throws(() => validatePhase12BackupBenchmark({ ...evidence, measurements: { ...evidence.measurements, dirty_trigger_ms: [] } }, manifest));
   assert.throws(() => validatePhase12BackupBenchmark({ ...evidence, measurements: { ...evidence.measurements, merge_serialization_ms: [] } }, manifest));
   assert.throws(() => validatePhase12BackupBenchmark({ ...evidence, measurements: { ...evidence.measurements, capture_total_ms: [] } }, manifest));
+  assert.throws(() => validatePhase12BackupBenchmark({ ...evidence, measurements: { ...evidence.measurements, merge_materialization_ms: [] } }, manifest));
 });

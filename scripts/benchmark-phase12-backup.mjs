@@ -29,6 +29,10 @@ export const PHASE12_BACKUP_BENCHMARK_THRESHOLDS = Object.freeze({
     required_snapshot_bytes: 24 * 1024 * 1024,
     required_rows: 100_000,
   }),
+  merge_materialization: Object.freeze({
+    minimum_samples: 5,
+    maximum_p95_ms: 30_000,
+  }),
 });
 
 function p95(values) {
@@ -54,6 +58,7 @@ export function validatePhase12BackupBenchmark(evidence, manifest) {
   samples(measured.writer_occupancy_ms, expected.writer_occupancy.minimum_samples, expected.writer_occupancy.maximum_p95_ms, "writer_occupancy");
   samples(measured.capture_total_ms, expected.writer_occupancy.minimum_samples, Number.POSITIVE_INFINITY, "capture_total");
   samples(measured.merge_preflight_ms, expected.merge_preflight.minimum_samples, expected.merge_preflight.maximum_p95_ms, "merge_preflight");
+  samples(measured.merge_materialization_ms, expected.merge_materialization.minimum_samples, expected.merge_materialization.maximum_p95_ms, "merge_materialization");
   samples(measured.merge_peak_growth_bytes, expected.merge_preflight.minimum_samples, expected.merge_preflight.maximum_peak_growth_bytes, "merge_peak_growth");
   samples(measured.merge_serialization_ms, 2, Number.POSITIVE_INFINITY, "merge_serialization");
   if (measured.snapshot_bytes !== expected.merge_preflight.required_snapshot_bytes
