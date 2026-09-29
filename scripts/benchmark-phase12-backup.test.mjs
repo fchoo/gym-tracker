@@ -32,7 +32,7 @@ test("Phase 12 benchmark rejects a stale manifest, missing samples, or a false m
       apk_sha256: manifest.apk.sha256, package: manifest.package,
     },
     measurements: {
-      dirty_trigger_ms: samples(100, 1), writer_occupancy_ms: samples(20, 2),
+      dirty_trigger_ms: samples(100, 1), writer_occupancy_ms: samples(20, 2), capture_total_ms: samples(20, 20),
       merge_preflight_ms: samples(10, 3), merge_peak_growth_bytes: samples(10, 4),
       merge_serialization_ms: samples(2, 5),
       snapshot_bytes: 24 * 1024 * 1024, total_rows: 100_000,
@@ -45,4 +45,5 @@ test("Phase 12 benchmark rejects a stale manifest, missing samples, or a false m
   assert.throws(() => validatePhase12BackupBenchmark({ ...evidence, manifest: { ...evidence.manifest, apk_sha256: "d".repeat(64) } }, manifest));
   assert.throws(() => validatePhase12BackupBenchmark({ ...evidence, measurements: { ...evidence.measurements, dirty_trigger_ms: [] } }, manifest));
   assert.throws(() => validatePhase12BackupBenchmark({ ...evidence, measurements: { ...evidence.measurements, merge_serialization_ms: [] } }, manifest));
+  assert.throws(() => validatePhase12BackupBenchmark({ ...evidence, measurements: { ...evidence.measurements, capture_total_ms: [] } }, manifest));
 });

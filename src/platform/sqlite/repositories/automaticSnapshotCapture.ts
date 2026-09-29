@@ -158,6 +158,7 @@ export function createProductionAutomaticSnapshotCapture(input: Readonly<{
   sourceDatabaseName: string;
   nowMs(): number;
   leaseId(): string;
+  onCopyStart?(): void;
 }>): AutomaticSnapshotCapturePort {
   const {
     backupDatabaseAsync,
@@ -195,6 +196,7 @@ export function createProductionAutomaticSnapshotCapture(input: Readonly<{
       try {
         source = await openDatabaseAsync(sourceDatabaseName, openOptions);
         destination = await openDatabaseAsync(destinationDatabaseName, openOptions);
+        input.onCopyStart?.();
         await backupDatabaseAsync({
           sourceDatabase: source,
           destDatabase: destination,

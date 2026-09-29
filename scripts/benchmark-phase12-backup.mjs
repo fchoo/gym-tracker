@@ -52,6 +52,7 @@ export function validatePhase12BackupBenchmark(evidence, manifest) {
   const measured = evidence.measurements;
   samples(measured.dirty_trigger_ms, expected.dirty_trigger.minimum_samples, expected.dirty_trigger.maximum_p95_ms, "dirty_trigger");
   samples(measured.writer_occupancy_ms, expected.writer_occupancy.minimum_samples, expected.writer_occupancy.maximum_p95_ms, "writer_occupancy");
+  samples(measured.capture_total_ms, expected.writer_occupancy.minimum_samples, Number.POSITIVE_INFINITY, "capture_total");
   samples(measured.merge_preflight_ms, expected.merge_preflight.minimum_samples, expected.merge_preflight.maximum_p95_ms, "merge_preflight");
   samples(measured.merge_peak_growth_bytes, expected.merge_preflight.minimum_samples, expected.merge_preflight.maximum_peak_growth_bytes, "merge_peak_growth");
   samples(measured.merge_serialization_ms, 2, Number.POSITIVE_INFINITY, "merge_serialization");

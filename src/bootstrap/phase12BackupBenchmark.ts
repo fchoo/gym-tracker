@@ -17,6 +17,10 @@ import {
   createLogicalBackupRepository,
 } from "../platform/sqlite/repositories/logicalBackupRepository";
 import {
+  createProductionAutomaticSnapshotCapture,
+  type AutomaticSnapshotCapturePort,
+} from "../platform/sqlite/repositories/automaticSnapshotCapture";
+import {
   openSqliteKernel,
   type SqliteKernel,
   type SqliteTransactionExecutor,
@@ -63,6 +67,7 @@ export type Phase12BackupBenchmarkResult = Readonly<{
   measurements: Readonly<{
     dirty_trigger_ms: readonly number[];
     writer_occupancy_ms: readonly number[];
+    capture_total_ms: readonly number[];
     merge_preflight_ms: readonly number[];
     merge_serialization_ms: readonly number[];
     snapshot_bytes: number;
@@ -275,6 +280,34 @@ async function collectMaximumSnapshot(kernel: SqliteKernel, sample: number) {
   });
 }
 
+export async function measureCopiedSnapshotWithConcurrentMutation(input: Readonly<{
+  capture: AutomaticSnapshotCapturePort;
+  waitForCopyStart: Promise<void>;
+  mutate(): Promise<void>;
+  now(): number;
+  sample: number;
+}>): Promise<Readonly<{
+  snapshot: Awaited<ReturnType<AutomaticSnapshotCapturePort["capture"]>>["snapshot"];
+  writerOccupancyMs: number;
+  captureTotalMs: number;
+}>> {
+  const captureStarted = input.now();
+  const capturePromise = input.capture.capture({
+    snapshotId: `phase12-writer-${input.sample.toString().padStart(2, "0")}`,
+    createdAtMs: 100 + input.sample,
+  });
+  await input.waitForCopyStart;
+  const writerStarted = input.now();
+  await input.mutate();
+  const writerOccupancyMs = input.now() - writerStarted;
+  const captured = await capturePromise;
+  return Object.freeze({
+    snapshot: captured.snapshot,
+    writerOccupancyMs,
+    captureTotalMs: input.now() - captureStarted,
+  });
+}
+
 export async function performPhase12BackupBenchmark(): Promise<Phase12BackupBenchmarkResult> {
   const startedAt = new Date().toISOString();
   await deleteDatabaseAsync(DATABASE_NAME).catch(() => undefined);
@@ -283,12 +316,30 @@ export async function performPhase12BackupBenchmark(): Promise<Phase12BackupBenc
     await migrateBenchmarkDatabase("phase12", DATABASE_NAME, kernel);
     await seedMaximumHistory(kernel);
     const writerOccupancyMs: number[] = [];
+    const captureTotalMs: number[] = [];
     let maximumSnapshot: Awaited<ReturnType<typeof collectMaximumSnapshot>> | undefined;
     for (let index = 0; index < PHASE12_WRITER_SAMPLES; index += 1) {
-      const started = performance.now();
-      const snapshot = await collectMaximumSnapshot(kernel, index);
-      writerOccupancyMs.push(performance.now() - started);
-      maximumSnapshot ??= snapshot;
+      let signalCopyStarted: (() => void) | undefined;
+      const waitForCopyStart = new Promise<void>((resolve) => { signalCopyStarted = resolve; });
+      const capture = createProductionAutomaticSnapshotCapture({
+        sourceDatabaseName: DATABASE_NAME,
+        nowMs: () => Date.now(),
+        leaseId: () => `benchmark-${index.toString().padStart(2, "0")}`,
+        onCopyStart: () => signalCopyStarted?.(),
+      });
+      const measured = await measureCopiedSnapshotWithConcurrentMutation({
+        capture,
+        waitForCopyStart,
+        mutate: () => kernel.write((transaction) => transaction.execute(
+          "UPDATE app_settings SET value_json = value_json WHERE key = ?",
+          ["k0000"],
+        )).then(() => undefined),
+        now: () => performance.now(),
+        sample: index,
+      });
+      writerOccupancyMs.push(measured.writerOccupancyMs);
+      captureTotalMs.push(measured.captureTotalMs);
+      maximumSnapshot ??= measured.snapshot;
     }
     if (maximumSnapshot === undefined || encodedBytes(maximumSnapshot) !== PHASE12_MAX_SNAPSHOT_BYTES
       || maximumSnapshot.manifest.totalRows !== PHASE12_MAX_SNAPSHOT_ROWS) {
@@ -338,6 +389,7 @@ export async function performPhase12BackupBenchmark(): Promise<Phase12BackupBenc
       measurements: {
         dirty_trigger_ms: dirtyTriggerMs,
         writer_occupancy_ms: writerOccupancyMs,
+        capture_total_ms: captureTotalMs,
         merge_preflight_ms: mergePreflightMs,
         merge_serialization_ms: mergeSerializationMs,
         snapshot_bytes: encodedBytes(maximumSnapshot),

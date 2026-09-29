@@ -16,6 +16,7 @@ import {
   PHASE12_BENCHMARK_START_MARKER,
   PHASE12_SQLITE_FIXTURE_ROW_COUNTS,
   buildPhase12SyntheticSnapshot,
+  measureCopiedSnapshotWithConcurrentMutation,
   phase12BenchmarkStartupAction,
   shouldSerializePhase12MergeSample,
 } from "./phase12BackupBenchmark";
@@ -75,6 +76,37 @@ describe("Phase 12 native backup benchmark", () => {
   it("compares full canonical merge bytes at the first and last sample", () => {
     expect(Array.from({ length: 10 }, (_, index) => index)
       .filter(shouldSerializePhase12MergeSample)).toEqual([0, 9]);
+  });
+
+  it("measures a mutation only after native copy starts and returns copied facts", async () => {
+    const events: string[] = [];
+    let startCopy: (() => void) | undefined;
+    const waitForCopyStart = new Promise<void>((resolve) => { startCopy = resolve; });
+    const times = [0, 5, 8, 20];
+    const copied = buildPhase12SyntheticSnapshot();
+    const capture = {
+      sweepOrphans: async () => 0,
+      capture: async () => {
+        events.push("capture");
+        startCopy?.();
+        await Promise.resolve();
+        events.push("captured");
+        return { generation: 7, snapshot: copied };
+      },
+    };
+
+    await expect(measureCopiedSnapshotWithConcurrentMutation({
+      capture,
+      waitForCopyStart,
+      mutate: async () => { events.push("mutate"); },
+      now: () => times.shift()!,
+      sample: 2,
+    })).resolves.toEqual({
+      snapshot: copied,
+      writerOccupancyMs: 3,
+      captureTotalMs: 20,
+    });
+    expect(events).toEqual(["capture", "captured", "mutate"]);
   });
 
   it("keeps the maximum fixture valid for indexed merge preflight", async () => {
