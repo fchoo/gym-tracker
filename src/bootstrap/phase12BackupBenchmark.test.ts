@@ -81,13 +81,17 @@ describe("Phase 12 native backup benchmark", () => {
     const archive = buildPhase12SyntheticSnapshot(2);
     const local = buildPhase12SyntheticSnapshot(1);
 
-    await expect(buildPortableMergePlan({
+    const plan = await buildPortableMergePlan({
       archive,
       local,
       payloadDigest: async () => "0".repeat(64),
-    })).resolves.toEqual(expect.objectContaining({
-      operations: expect.any(Array),
-      preview: expect.objectContaining({ archiveWon: 1 }),
-    }));
+    });
+
+    expect(Object.getOwnPropertyDescriptor(plan, "aggregates")?.get)
+      .toEqual(expect.any(Function));
+    expect(Object.keys(plan)).toEqual([
+      "operations", "idRemaps", "idMappings", "settings", "aggregates", "preview",
+    ]);
+    expect(plan.preview).toEqual(expect.objectContaining({ archiveWon: 1 }));
   });
 });
