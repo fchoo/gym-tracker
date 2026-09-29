@@ -14,9 +14,9 @@ import { createHistoryProjectionRepository } from "../platform/sqlite/repositori
 import { createExerciseSearchIndexRepository } from "../platform/sqlite/repositories/exerciseSearchIndexRepository";
 import { createSqliteMergeLocalFactsPort, createSqliteRestoreCandidateProbe, createSqliteRestoreRetainedReferencePort, createSqliteRestoreSchemaPort } from "../platform/sqlite/repositories/restorePreflightAdapters";
 import { createAutomaticBackupStateRepository } from "../platform/sqlite/repositories/automaticBackupStateRepository";
-import { createProductionAutomaticSnapshotCapture } from "../platform/sqlite/repositories/automaticSnapshotCapture";
 import type { SqliteKernel } from "../platform/sqlite";
 import { createAutomaticBackupRuntime, type AutomaticBackupRuntime } from "./automaticBackupRuntime";
+import { createProductionAutomaticSnapshotCapture } from "./productionAutomaticSnapshotCapture";
 
 type Services = Readonly<{ runtime: AutomaticBackupRuntime; scheduler: AutomaticBackupScheduler }>;
 const cache = new WeakMap<object, Services>();

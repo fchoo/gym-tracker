@@ -4,12 +4,6 @@ import type {
 import type {
   SqliteKernel,
 } from "../sqliteKernel";
-import {
-  openSqliteKernel,
-} from "../sqliteKernel";
-import {
-  createLogicalBackupRepository,
-} from "./logicalBackupRepository";
 
 export const AUTOMATIC_SNAPSHOT_LEASE_PREFIX =
   "gym-tracker-automatic-snapshot-v1-" as const;
@@ -151,71 +145,5 @@ export function createAutomaticSnapshotCapture(
         }
       }
     },
-  });
-}
-
-export function createProductionAutomaticSnapshotCapture(input: Readonly<{
-  sourceDatabaseName: string;
-  nowMs(): number;
-  leaseId(): string;
-  onCopyStart?(): void;
-}>): AutomaticSnapshotCapturePort {
-  const {
-    backupDatabaseAsync,
-    defaultDatabaseDirectory,
-    openDatabaseAsync,
-  } = require("expo-sqlite") as typeof import("expo-sqlite");
-  const {
-    Directory,
-    File,
-  } = require("expo-file-system") as typeof import("expo-file-system");
-  const openOptions = {
-    useNewConnection: true,
-    finalizeUnusedStatementsBeforeClosing: false,
-  } as const;
-
-  return createAutomaticSnapshotCapture({
-    ...input,
-    async listLeaseFiles() {
-      const directory = new Directory(defaultDatabaseDirectory);
-      return directory.list().map((entry) => ({
-        name: entry.name,
-        modifiedAtMs: "modificationTime" in entry
-          ? entry.modificationTime ?? Number.NaN
-          : Number.NaN,
-      }));
-    },
-    async removeLeaseFile(name) {
-      const file = new File(defaultDatabaseDirectory, name);
-      if (file.exists) file.delete();
-    },
-    async copyDatabase(sourceDatabaseName, destinationDatabaseName) {
-      let source: Awaited<ReturnType<typeof openDatabaseAsync>> | undefined;
-      let destination: Awaited<ReturnType<typeof openDatabaseAsync>> | undefined;
-      let failure: unknown;
-      try {
-        source = await openDatabaseAsync(sourceDatabaseName, openOptions);
-        destination = await openDatabaseAsync(destinationDatabaseName, openOptions);
-        input.onCopyStart?.();
-        await backupDatabaseAsync({
-          sourceDatabase: source,
-          destDatabase: destination,
-        });
-      } catch (error) {
-        failure = error;
-        throw error;
-      } finally {
-        const closeResults = await Promise.allSettled([
-          source?.closeAsync(),
-          destination?.closeAsync(),
-        ].filter((value): value is Promise<void> => value !== undefined));
-        if (failure === undefined && closeResults.some(({ status }) => status === "rejected")) {
-          throw new AutomaticSnapshotCaptureError("automatic_snapshot_capture_failed");
-        }
-      }
-    },
-    openCopiedKernel: openSqliteKernel,
-    collect: (kernel, captureInput) =>
-      createLogicalBackupRepository(kernel).collect(captureInput),
   });
 }

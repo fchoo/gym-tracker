@@ -63,7 +63,7 @@ jest.mock("../platform/sqlite/repositories/restorePreflightAdapters", () => ({
   createSqliteRestoreCandidateProbe: () => ({ validateCandidate: async () => undefined }),
   createSqliteMergeLocalFactsPort: () => mockLocalFacts,
 }));
-jest.mock("../platform/sqlite/repositories/automaticSnapshotCapture", () => ({
+jest.mock("./productionAutomaticSnapshotCapture", () => ({
   createProductionAutomaticSnapshotCapture: jest.fn(() => ({
     capture: mockCapture,
     sweepOrphans: async () => 0,

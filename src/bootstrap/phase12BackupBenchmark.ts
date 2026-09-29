@@ -17,7 +17,6 @@ import {
   createLogicalBackupRepository,
 } from "../platform/sqlite/repositories/logicalBackupRepository";
 import {
-  createProductionAutomaticSnapshotCapture,
   type AutomaticSnapshotCapturePort,
 } from "../platform/sqlite/repositories/automaticSnapshotCapture";
 import {
@@ -28,6 +27,9 @@ import {
 import {
   migrateBenchmarkDatabase,
 } from "./benchmarkRecovery";
+import {
+  createProductionAutomaticSnapshotCapture,
+} from "./productionAutomaticSnapshotCapture";
 
 export const PHASE12_BENCHMARK_START_MARKER =
   "GYM_TRACKER_PHASE12_BENCHMARK_START:" as const;
