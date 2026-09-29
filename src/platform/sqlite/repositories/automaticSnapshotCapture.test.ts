@@ -16,13 +16,14 @@ const snapshot = {
   tables: {},
   catalogReferences: [],
 } as const satisfies LogicalBackupSnapshot;
+const MISSING_GENERATION = Symbol("missing-generation");
 
 function dependencies(
   generation: unknown = 7,
   overrides: Partial<AutomaticSnapshotCaptureDependencies> = {},
 ): AutomaticSnapshotCaptureDependencies {
   const transaction = {
-    queryAll: jest.fn(async () => generation === undefined
+    queryAll: jest.fn(async () => generation === MISSING_GENERATION
       ? []
       : [{ mutation_generation: generation }]),
   };
@@ -71,7 +72,7 @@ describe("automatic snapshot capture", () => {
   });
 
   it.each([
-    ["missing", null],
+    ["missing", MISSING_GENERATION],
     ["negative", -1],
     ["fractional", 1.5],
     ["text", "7"],

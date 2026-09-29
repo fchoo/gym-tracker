@@ -113,6 +113,7 @@ const integrityCriticalFiles = [
   "src/platform/sqlite/repositories/planImpactRepository.ts",
   "src/platform/sqlite/repositories/starterPlanRepository.ts",
   "src/platform/sqlite/repositories/automaticBackupStateRepository.ts",
+  "src/platform/sqlite/repositories/automaticSnapshotCapture.ts",
   "src/platform/sqlite/serializedWriter.ts",
   "src/platform/sqlite/sqliteKernel.ts",
   "src/platform/files/expoBackupFilePort.ts",

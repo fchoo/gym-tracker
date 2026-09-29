@@ -735,6 +735,7 @@ describe("Plan 01-03 test and boundary tooling", () => {
       "src/platform/sqlite/repositories/metricRepository.ts",
       "src/platform/sqlite/repositories/ownedPlanRepository.ts",
       "src/platform/sqlite/repositories/planImpactRepository.ts",
+      "src/platform/sqlite/repositories/automaticSnapshotCapture.ts",
       "src/platform/sqlite/repositories/starterPlanRepository.ts",
       "src/platform/sqlite/serializedWriter.ts",
       "src/platform/sqlite/sqliteKernel.ts",
