@@ -216,7 +216,7 @@ class FakeSqliteConnection implements SqliteConnection {
   async execAsync(sql: string): Promise<void> {
     this.events.push(sql);
     const normalized = sql.trim().toUpperCase();
-    if (normalized === "BEGIN IMMEDIATE" && this.failAt === "begin") {
+    if (normalized.startsWith("BEGIN") && this.failAt === "begin") {
       throw new Error("begin failed");
     }
     if (normalized === "COMMIT") {
@@ -745,6 +745,63 @@ describe("serialized writer failure behavior", () => {
     await expect(closeKernel.close()).rejects.toMatchObject({
       code: "sqlite_query_failed",
     } satisfies Partial<SqliteStorageError>);
+  });
+
+  it("maps every reader-snapshot failure and rolls back once begun", async () => {
+    const beginReader = new FakeSqliteConnection();
+    beginReader.failAt = "begin";
+    const beginKernel = createSqliteKernel({
+      reader: beginReader,
+      writer: new FakeSqliteConnection(),
+    });
+    const unread = jest.fn(async () => "must-not-run");
+    await expect(beginKernel.readSnapshot!(unread)).rejects.toMatchObject({
+      code: "sqlite_query_failed",
+    } satisfies Partial<SqliteStorageError>);
+    expect(unread).not.toHaveBeenCalled();
+    expect(beginReader.events).toEqual(["BEGIN"]);
+
+    const queryReader = new FakeSqliteConnection();
+    const queryKernel = createSqliteKernel({
+      reader: queryReader,
+      writer: new FakeSqliteConnection(),
+    });
+    await expect(queryKernel.readSnapshot!(async () => {
+      throw new Error("query failed");
+    })).rejects.toMatchObject({
+      code: "sqlite_query_failed",
+    } satisfies Partial<SqliteStorageError>);
+    expect(queryReader.events).toEqual(["BEGIN", "ROLLBACK"]);
+
+    const finalizeReader = new FakeSqliteConnection();
+    finalizeReader.failAt = "finalize";
+    const finalizeKernel = createSqliteKernel({
+      reader: finalizeReader,
+      writer: new FakeSqliteConnection(),
+    });
+    await expect(finalizeKernel.readSnapshot!(async (transaction) => (
+      transaction.queryAll("SELECT 1")
+    ))).rejects.toMatchObject({
+      code: "sqlite_statement_finalize_failed",
+    } satisfies Partial<SqliteStorageError>);
+    expect(finalizeReader.events).toContain("ROLLBACK");
+
+    const rollbackReader = new FakeSqliteConnection();
+    rollbackReader.failAt = "rollback";
+    const rollbackKernel = createSqliteKernel({
+      reader: rollbackReader,
+      writer: new FakeSqliteConnection(),
+    });
+    await expect(rollbackKernel.readSnapshot!(async () => {
+      throw new Error("query failed");
+    })).rejects.toMatchObject({
+      code: "sqlite_rollback_failed",
+      cause: {
+        originalError: expect.any(Error),
+        rollbackError: expect.any(Error),
+      },
+    } satisfies Partial<SqliteStorageError>);
+    expect(rollbackReader.events).toEqual(["BEGIN", "ROLLBACK"]);
   });
 
   it("closes owned reader and writer connections sequentially", async () => {

@@ -130,6 +130,34 @@ describe("portable merge plan", () => {
     expect(filterCalls).toBe(0);
   });
 
+  it("reuses occupied child identifiers across aggregate materialization", async () => {
+    const archive = snapshot({ id: "archive-one", marker: "archive", modifiedAtMs: 20 });
+    const withTwoSessions = {
+      ...archive,
+      tables: {
+        ...archive.tables,
+        workout_sessions: [
+          { id: "archive-one", portable_id: "a".repeat(32), merge_modified_at_ms: 20 },
+          { id: "archive-two", portable_id: "b".repeat(32), merge_modified_at_ms: 20 },
+        ],
+      },
+    };
+    const localBase = snapshot({ id: "local", marker: "local", modifiedAtMs: 10 });
+    const local = {
+      ...localBase,
+      tables: { ...localBase.tables, workout_sessions: [] },
+    };
+
+    const plan = await buildPortableMergePlan({
+      archive: withTwoSessions,
+      local,
+      payloadDigest,
+    });
+
+    expect(plan.aggregates).toHaveLength(2);
+    expect(plan.aggregates).toBe(plan.aggregates);
+  });
+
   it("classifies every portable source table before planning a merge", () => {
     expect(Object.keys(PORTABLE_MERGE_TABLE_CLASSES).sort())
       .toEqual([...LOGICAL_BACKUP_TABLES].sort());
@@ -1313,6 +1341,52 @@ describe("portable merge plan", () => {
       .toThrow(new MergePlanError("merge_plan_invalid"));
   });
 
+  it("rejects invalid lazy materialization inputs and indexed session identities", () => {
+    const archive = snapshot({ id: "archive-session", marker: "archive", modifiedAtMs: 20 });
+    const local = snapshot({ id: "local-session", marker: "local", modifiedAtMs: 10 });
+    expect(() => __mergePlanTestOnly.assertSessionMaterializationInputs({
+      ...archive,
+      tables: {
+        ...archive.tables,
+        workout_sessions: [{
+          ...archive.tables.workout_sessions[0]!,
+          active_set_id: "missing-set",
+        }],
+      },
+    })).toThrow(new MergePlanError("merge_plan_invalid"));
+    expect(() => __mergePlanTestOnly.assertSessionMaterializationInputs({
+      ...archive,
+      tables: {
+        ...archive.tables,
+        session_exercises: [{ id: "exercise", session_id: "archive-session" }],
+        workout_session_exercise_edit_receipts: [{
+          request_id: "receipt",
+          session_id: "archive-session",
+          operation: "remove_exercise",
+          subject_session_exercise_id: "exercise",
+          replacement_session_exercise_id: "missing-exercise",
+          result_json: JSON.stringify({
+            sessionId: "archive-session",
+            sessionExerciseId: "exercise",
+          }),
+        }],
+      },
+    })).toThrow(new MergePlanError("merge_plan_invalid"));
+    expect(() => __mergePlanTestOnly.sessionAggregate(
+      archive,
+      local,
+      sessionPortableId,
+      "local-session",
+      {
+        archiveSessionId: "different-session",
+        index: __mergePlanTestOnly.createSessionDigestIndex(archive),
+        occupiedIdsFor: () => new Set(),
+      },
+    )).toThrow(new MergePlanError("merge_plan_invalid"));
+    expect(() => __mergePlanTestOnly.requiredMappedRow(new Map(), "missing"))
+      .toThrow(new MergePlanError("merge_plan_invalid"));
+  });
+
   it("builds root operations for matching identity and physical collisions", () => {
     const archive = snapshot({ id: "archive-session", marker: "archive", modifiedAtMs: 20 }, {
       exercises: [
@@ -1593,6 +1667,34 @@ describe("portable merge plan", () => {
       expect.objectContaining({ id: "mapped-set", session_id: "local-session", session_set_id: "set" }),
       expect.objectContaining({ id: "unmapped-set", session_id: "local-session", session_set_id: "other-set" }),
     ]));
+  });
+
+  it("rewrites optional exercise references after a child identifier collision", () => {
+    const archive = snapshot({ id: "archive-session", marker: "archive", modifiedAtMs: 20 }, {
+      session_exercises: [{ id: "exercise", session_id: "archive-session" }],
+      extension_rows: [{
+        id: "extension",
+        session_id: "archive-session",
+        session_exercise_id: "exercise",
+      }],
+    });
+    const local = snapshot({ id: "local-session", marker: "local", modifiedAtMs: 10 }, {
+      session_exercises: [{ id: "exercise", session_id: "local-session" }],
+    });
+
+    const aggregate = __mergePlanTestOnly.sessionAggregate(
+      archive,
+      local,
+      sessionPortableId,
+      "local-session",
+    );
+
+    expect(aggregate.tables.extension_rows).toEqual([
+      expect.objectContaining({
+        session_id: "local-session",
+        session_exercise_id: expect.not.stringMatching(/^exercise$/u),
+      }),
+    ]);
   });
 
   it("uses a suffix when an already-remapped metric event key also collides", () => {

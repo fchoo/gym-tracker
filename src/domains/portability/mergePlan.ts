@@ -417,6 +417,15 @@ function mappedIdentifier(
   return replacement === undefined ? invalid() : replacement;
 }
 
+function requiredMappedRow(
+  rows: ReadonlyMap<string, LogicalBackupRow>,
+  id: string,
+): LogicalBackupRow {
+  const row = rows.get(id);
+  if (row === undefined) invalid();
+  return row;
+}
+
 function rewriteEditReceiptResult(
   serialized: unknown,
   operation: unknown,
@@ -571,12 +580,16 @@ function sessionAggregate(
           }
         }
         if (table === "session_exercises") {
-          return mappedExerciseRows.get(mappedIdentifier(mappedExercises.ids, row.id))
-            ?? invalid();
+          return requiredMappedRow(
+            mappedExerciseRows,
+            mappedIdentifier(mappedExercises.ids, row.id),
+          );
         }
         if (table === "session_sets") {
-          return mappedSetRows.get(mappedIdentifier(mappedSets.ids, row.id))
-            ?? invalid();
+          return requiredMappedRow(
+            mappedSetRows,
+            mappedIdentifier(mappedSets.ids, row.id),
+          );
         }
         const immutableIds = immutableChildren.get(table);
         if (immutableIds !== undefined) {
@@ -1540,6 +1553,7 @@ export const __mergePlanTestOnly = Object.freeze({
   addCounts,
   assertReferenceClosure,
   assertSessionAggregateClosure,
+  assertSessionMaterializationInputs,
   canonicalValue,
   countFor,
   encodeJson,
@@ -1553,6 +1567,7 @@ export const __mergePlanTestOnly = Object.freeze({
   planAggregate,
   remappedChildId,
   replaceScalar,
+  requiredMappedRow,
   rewriteEditReceiptResult,
   rewriteReorderReceipt,
   rewriteReorderReceiptResult,
