@@ -16,21 +16,30 @@ const activeManifest = (writerEpoch = 2, previous: unknown = null) => new TextEn
 describe("automatic backup coordinator", () => {
   it("connects through One-Tap before persisting restore quarantine and never uploads during discovery", async () => {
     const events: string[] = [];
+    let current: any = { environment: "production" as const, permissionId: "permission", connectionGeneration: 1, writerEpoch: 0, mutationGeneration: 0, backedUpGeneration: 0 };
     const coordinator = createAutomaticBackupCoordinator({
       isWorkoutActive: () => false,
       auth: { connect: async () => ({ permissionId: "permission", displayEmail: "…@example.com" }), disconnect: async () => undefined },
       capture: async () => { events.push("capture"); return { generation: 1, sourceDigest: "a".repeat(64), bytes: new Uint8Array() }; },
       state: {
-        read: async () => ({ environment: "development-test" as const, permissionId: "permission", connectionGeneration: 1, writerEpoch: 0, mutationGeneration: 0, backedUpGeneration: 0 }),
+        read: async () => current,
         persistAttempt: async () => undefined, acknowledgeReceipt: async () => false,
-        beginQuarantine: async () => { events.push("quarantine"); },
+        beginQuarantine: async (value) => {
+          current = { ...current, ...value, authorityState: "quarantine" };
+          events.push(`quarantine:${value.environment}`);
+        },
         setRecoveryStatus: async (status) => { events.push(status); },
       },
-      drive: { createSnapshot: async () => "snapshot", download: async () => new Uint8Array(), updateManifest: async () => "etag", readManifest: async () => null, discover: async () => [] },
+      drive: { environment: "development-test", createSnapshot: async () => "snapshot", download: async () => new Uint8Array(), updateManifest: async () => "etag", readManifest: async () => null, discover: async () => [] },
       validate: () => true, nowMs: () => 1, candidateId: () => "candidate",
     });
     await expect(coordinator.connect()).resolves.toEqual({ status: "needs_bootstrap" });
-    expect(events).toEqual(["quarantine", "checking", "quarantine", "idle"]);
+    expect(events).toEqual([
+      "quarantine:development-test",
+      "checking",
+      "quarantine:development-test",
+      "idle",
+    ]);
   });
 
   it("bootstraps an empty namespace only after a validated candidate round trip", async () => {

@@ -66,6 +66,7 @@ export function createAutomaticBackupCoordinator(input: Readonly<{
     completeDeletionSweep?(value: Readonly<{ environment: AutomaticBackupEnvironment; permissionId: string; connectionGeneration: number }>): Promise<boolean>;
   }>;
   drive: Readonly<{
+    environment?: AutomaticBackupEnvironment;
     allocateFileId?(): Promise<string>;
     createSnapshot(candidateId: string, bytes: Uint8Array): Promise<string>;
     createManifest?(candidateId: string, bytes: Uint8Array): Promise<Readonly<{ fileId: string; etag: string }>>;
@@ -246,7 +247,7 @@ export function createAutomaticBackupCoordinator(input: Readonly<{
     const prior = await input.state.read();
     const permissionId = identity?.permissionId ?? prior.permissionId;
     if (permissionId === null) return Object.freeze({ status: "cancelled" as const });
-    await input.state.beginQuarantine?.({ environment: prior.environment, permissionId, connectionGeneration: prior.connectionGeneration + (identity === undefined ? 0 : 1), ...(identity === undefined ? {} : { accountDisplayLabel: identity.displayEmail }) });
+    await input.state.beginQuarantine?.({ environment: input.drive.environment ?? prior.environment, permissionId, connectionGeneration: prior.connectionGeneration + (identity === undefined ? 0 : 1), ...(identity === undefined ? {} : { accountDisplayLabel: identity.displayEmail }) });
     await input.state.setRecoveryStatus?.("checking");
     const result = await recover();
     if (generation !== checkingGeneration) return Object.freeze({ status: "cancelled" as const });

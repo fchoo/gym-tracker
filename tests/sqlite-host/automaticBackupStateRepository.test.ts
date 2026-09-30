@@ -53,6 +53,8 @@ describe("automatic backup state repository host SQLite", () => {
     const kernel = await open();
     const repository = createAutomaticBackupStateRepository(kernel);
     await repository.beginQuarantine({ environment: "development-test", permissionId: "permission-a", connectionGeneration: 1, accountDisplayLabel: "…@example.com" });
+    await repository.beginQuarantine({ environment: "development-test", permissionId: "permission-a", connectionGeneration: 1 });
+    expect(await repository.read()).toMatchObject({ accountDisplayLabel: "…@example.com" });
     expect(await repository.activateWriter({ manifestId: "manifest", manifestEtag: "etag", writerEpoch: 2, permissionId: "permission-a", connectionGeneration: 1 })).toBe(true);
     await repository.persistAttempt({ environment: "development-test", permissionId: "permission-a", connectionGeneration: 1, writerEpoch: 2, capturedGeneration: 0, sourceDigest: "a".repeat(64), snapshotId: "snapshot", manifestId: "manifest", manifestEtag: "etag", candidateId: "candidate", nowMs: 1 });
     await expect(repository.acknowledgeReceipt({ environment: "development-test", permissionId: "permission-a", connectionGeneration: 1, writerEpoch: 2, capturedGeneration: 0, sourceDigest: "a".repeat(64), snapshotId: "snapshot", manifestId: "manifest", manifestEtag: "next-etag" })).resolves.toBe(true);

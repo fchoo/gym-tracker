@@ -23,6 +23,7 @@ describe("automatic backup state repository", () => {
     expect(statements.join("\n")).toContain("data_use_policy");
     expect(statements.join("\n")).toContain("permission_id = NULL");
     expect(statements.join("\n")).toContain("account_display_label");
+    expect(statements.join("\n")).toContain("COALESCE(?, account_display_label)");
   });
   it("returns only bounded state and conditionally acknowledges captured generation", async () => {
     const repository = createAutomaticBackupStateRepository({

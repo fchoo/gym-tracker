@@ -147,7 +147,8 @@ export function createAutomaticBackupStateRepository(kernel: SqliteKernel): Read
     async beginQuarantine(input) {
       await kernel.write(async (transaction) => {
         const outcome = await transaction.execute(
-          `UPDATE automatic_backup_state SET environment = ?, permission_id = ?, account_display_label = ?, connection_generation = ?,
+          `UPDATE automatic_backup_state SET environment = ?, permission_id = ?,
+             account_display_label = COALESCE(?, account_display_label), connection_generation = ?,
              authority_state = 'quarantine', claim_id = NULL, claim_expires_at_ms = NULL
            WHERE id = 1`,
           [input.environment, input.permissionId, input.accountDisplayLabel ?? null, input.connectionGeneration],
