@@ -3,7 +3,6 @@ package expo.modules.networkclassifier
 import android.content.Context
 import android.net.ConnectivityManager
 import android.net.NetworkCapabilities
-import expo.modules.kotlin.functions.Coroutine
 import expo.modules.kotlin.modules.Module
 import expo.modules.kotlin.modules.ModuleDefinition
 
@@ -49,8 +48,8 @@ private fun currentNetworkClass(context: Context?): String {
 class NetworkClassifierModule : Module() {
   override fun definition() = ModuleDefinition {
     Name("NetworkClassifier")
-    (AsyncFunction("current") Coroutine {
+    AsyncFunction("current") {
       currentNetworkClass(appContext.reactContext)
-    }).runOnQueue(appContext.backgroundCoroutineScope)
+    }
   }
 }
