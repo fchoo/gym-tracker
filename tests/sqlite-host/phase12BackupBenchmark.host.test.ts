@@ -18,6 +18,9 @@ import {
   seedMaximumHistory,
 } from "../../src/bootstrap/phase12BackupBenchmark";
 import {
+  buildPortableMergePlan,
+} from "../../src/domains/portability/mergePlan";
+import {
   configureSqliteConnection,
   type SqliteConnection,
   type SqlitePreparedResult,
@@ -35,6 +38,9 @@ import type {
 import {
   createLogicalBackupRepository,
 } from "../../src/platform/sqlite/repositories/logicalBackupRepository";
+import {
+  createSqliteMergeLocalFactsPort,
+} from "../../src/platform/sqlite/repositories/restorePreflightAdapters";
 import {
   createSqliteKernel,
   type SqliteKernel,
@@ -141,7 +147,15 @@ it("seeds a maximum fixture accepted by the fully migrated schema", async () => 
     snapshotId: "phase12-writer-00",
     createdAtMs: 100,
   });
-  expect(snapshot.manifest.totalRows).toBe(PHASE12_MAX_SNAPSHOT_ROWS);
-  expect(new TextEncoder().encode(JSON.stringify(snapshot)).byteLength)
-    .toBe(PHASE12_MAX_SNAPSHOT_BYTES);
+  expect({
+    rows: snapshot.manifest.totalRows,
+    bytes: new TextEncoder().encode(JSON.stringify(snapshot)).byteLength,
+  }).toEqual({ rows: PHASE12_MAX_SNAPSHOT_ROWS, bytes: PHASE12_MAX_SNAPSHOT_BYTES });
+
+  const live = await createSqliteMergeLocalFactsPort(kernel).read();
+  await expect(buildPortableMergePlan({
+    archive: { version: 2, schemaVersion: live.schemaVersion, tables: live.tables },
+    local: { version: 2, ...live },
+    payloadDigest: async () => "a".repeat(64),
+  })).resolves.toBeDefined();
 }, 120_000);

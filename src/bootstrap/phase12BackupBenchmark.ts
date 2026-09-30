@@ -68,6 +68,9 @@ export function phase12BenchmarkError(error: unknown, sample: number, stage: Log
 }
 const OWNER_NAMESPACE = "f".repeat(32);
 const ROWS_PER_TABLE = BACKUP_LIMITS.maxRowsPerTable;
+const ALIAS_ROWS = 10_000;
+const REORDER_RECEIPT_ROWS = ROWS_PER_TABLE - ALIAS_ROWS;
+export const PHASE12_SQLITE_PRE_PADDING_BYTES = 23_239_960;
 const SQLITE_APP_SETTING_ROWS = PHASE12_MAX_SNAPSHOT_ROWS
   - 5
   - (ROWS_PER_TABLE * 3);
@@ -79,8 +82,9 @@ export const PHASE12_SQLITE_FIXTURE_ROW_COUNTS = Object.freeze({
   session_exercises: 1,
   exercises: 1,
   exercise_library_entries: 1,
+  exercise_aliases: ALIAS_ROWS,
   workout_session_exercise_edit_receipts: ROWS_PER_TABLE,
-  workout_session_exercise_reorder_receipts: ROWS_PER_TABLE,
+  workout_session_exercise_reorder_receipts: REORDER_RECEIPT_ROWS,
   history_audit_events: ROWS_PER_TABLE,
 });
 
@@ -244,6 +248,17 @@ export async function seedMaximumHistory(kernel: SqliteKernel): Promise<void> {
                'load_reps', 1, 1, 'available', 1)`,
     );
     await transaction.execute(
+      `WITH RECURSIVE sequence(value) AS (
+         VALUES(0) UNION ALL SELECT value + 1 FROM sequence WHERE value + 1 < ?
+       )
+       INSERT INTO exercise_aliases
+         (id, exercise_id, ordinal, display_text, normalized_text)
+       SELECT value + 1, 'benchmark-exercise', value,
+              'a' || printf('%06x', value), 'a' || printf('%06x', value)
+       FROM sequence`,
+      [ALIAS_ROWS],
+    );
+    await transaction.execute(
       `INSERT INTO workout_sessions
         (id, plan_id, plan_day_id, source, status, local_date, timezone,
          started_at_ms, completed_at_ms, revision,
@@ -292,7 +307,8 @@ export async function seedMaximumHistory(kernel: SqliteKernel): Promise<void> {
           expected_session_revision, result_session_revision, result_json,
           committed_at_ms)
        SELECT 'e' || printf('%06x', value), lower(hex(zeroblob(32))),
-              'remove_exercise', 's', 'e', NULL, 0, 1, '{}', value + 1
+              'remove_exercise', 's', 'e', NULL, 0, 1,
+              '{"sessionId":"s","sessionExerciseId":"e"}', value + 1
        FROM sequence`,
       [ROWS_PER_TABLE],
     );
@@ -305,14 +321,20 @@ export async function seedMaximumHistory(kernel: SqliteKernel): Promise<void> {
           ordered_session_exercise_ids_json, expected_session_revision,
           result_session_revision, result_json, committed_at_ms)
        SELECT 'r' || printf('%06x', value), lower(hex(zeroblob(32))),
-              'reorder_exercises', 's', '[]', 0, 1, '{}', value + 1
+              'reorder_exercises', 's', '[]', 0, 1,
+              '{"sessionId":"s","orderedSessionExerciseIds":[],"expectedSessionExerciseRevisions":[]}',
+              value + 1
        FROM sequence`,
-      [ROWS_PER_TABLE],
+      [REORDER_RECEIPT_ROWS],
     );
   });
   const collector = createLogicalBackupRepository(kernel);
   const baseline = await collector.collect({ snapshotId: "phase12-writer-00", createdAtMs: 100 });
-  const difference = PHASE12_MAX_SNAPSHOT_BYTES - encodedBytes(baseline);
+  const baselineBytes = encodedBytes(baseline);
+  if (baselineBytes !== PHASE12_SQLITE_PRE_PADDING_BYTES) {
+    throw new Error(`phase12_sqlite_fixture_baseline_invalid:${baselineBytes}`);
+  }
+  const difference = PHASE12_MAX_SNAPSHOT_BYTES - baselineBytes;
   if (difference < 0) throw new Error("phase12_sqlite_fixture_oversize");
   const each = Math.floor(difference / SQLITE_APP_SETTING_ROWS);
   const remainder = difference % SQLITE_APP_SETTING_ROWS;
