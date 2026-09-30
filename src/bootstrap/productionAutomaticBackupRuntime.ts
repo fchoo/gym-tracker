@@ -12,6 +12,7 @@ import { createAutomaticBackupScheduler, type AutomaticBackupScheduler } from ".
 import { createAutomaticPortableMergePort, createAutomaticPortableRestorePort } from "../domains/portability/automaticPortability";
 import { parseLogicalBackupSnapshot, type LogicalBackupRow, type LogicalBackupSnapshot } from "../domains/portability/backupContracts";
 import { buildPortableMergePlan, type PortableMergePlan } from "../domains/portability/mergePlan";
+import type { AutomaticNamespaceAdoptionCommit } from "../domains/portability/mergeCommands";
 import { createDriveBackupStoreAdapter, type DriveFetch } from "../platform/google/driveBackupStoreAdapter";
 import { createFullPlanLogicalMergeWriter } from "../platform/sqlite/repositories/logicalMergeRepository";
 import { createLogicalRestoreRepository } from "../platform/sqlite/repositories/logicalRestoreRepository";
@@ -135,16 +136,26 @@ export function createProductionAutomaticBackupServices(kernel: SqliteKernel): S
     restore: createLogicalRestoreRepository(kernel, { nowMs: () => Date.now() }).restore,
     rebuild: async () => { await reconciliation.reconcileAndRebuild(); },
   });
-  const mergeTokens = new Map<string, Readonly<{ plan: PortableMergePlan; fingerprint: string; grant?: string }>>();
+  const mergeTokens = new Map<string, Readonly<{
+    plan: PortableMergePlan;
+    fingerprint: string;
+    adoption?: Readonly<Pick<AutomaticNamespaceAdoptionCommit, "oldNamespace" | "newNamespace" | "remoteSnapshotSha256">>;
+  }>>();
   const merge = createAutomaticPortableMergePort({
     schema: createSqliteRestoreSchemaPort(kernel), retainedReferences: createSqliteRestoreRetainedReferencePort(kernel), candidateProbe: createSqliteRestoreCandidateProbe(), isWorkoutActive,
     local: async () => { const local = await createSqliteMergeLocalFactsPort(kernel).read(); return { version: 2 as const, schemaVersion: local.schemaVersion, tables: local.tables }; },
     archive: (snapshot) => ({ version: 2 as const, schemaVersion: snapshot.schemaVersion, tables: snapshot.tables }),
     build: ({ archive, local }) => buildPortableMergePlan({ archive, local, payloadDigest: digest }),
     fingerprint: async () => digest(canonicalJson(await createSqliteMergeLocalFactsPort(kernel).read())),
+    snapshotDigest: async (snapshot) => digest(canonicalJson(snapshot)),
+    nowMs: () => Date.now(),
     issue: (value) => { const token = id("automatic-merge"); mergeTokens.set(token, value); return token; },
     consume: (token) => { const value = mergeTokens.get(token) ?? null; mergeTokens.delete(token); return value; },
-    commitPlan: (value) => createFullPlanLogicalMergeWriter(kernel, { sha256: digest }).commitFullPlan({ localFingerprint: value.fingerprint, plan: value.plan }),
+    commitPlan: (value) => createFullPlanLogicalMergeWriter(kernel, { sha256: digest }).commitFullPlan({
+      localFingerprint: value.fingerprint,
+      plan: value.plan,
+      ...(value.adoption === undefined ? {} : { adoption: value.adoption }),
+    }),
     rebuild: async () => { await reconciliation.reconcileAndRebuild(); },
   });
   const coordinator = createAutomaticBackupCoordinator({
@@ -198,12 +209,24 @@ export function createProductionAutomaticBackupServices(kernel: SqliteKernel): S
         const local = await createSqliteMergeLocalFactsPort(kernel).read();
         const remoteOwner = snapshot.tables.portable_owner_identity?.[0]?.owner_namespace;
         const adoptionRequired = typeof remoteOwner === "string" && remoteOwner !== local.ownerNamespace;
-        const prepared = await merge.preflight(snapshot, adoptionRequired ? { token: "fresh-auth-required" } : undefined);
-        return { token: prepared.token, ownerSummary: adoptionRequired ? "A different backup identity" : "This backup identity", adoptionRequired };
+        const prepared = await merge.preflight(snapshot);
+        return { token: prepared.token, ownerSummary: adoptionRequired ? "A different backup identity" : "This backup identity", adoptionRequired: prepared.adoptionRequired };
       },
       restore: (snapshot) => restore.restore(snapshot),
-      commitMerge: ({ token, adoptionGrant }) => merge.commit(token),
-      freshAdoptionGrant: async () => { const identity = await auth.reauthenticate(); if (identity === null) throw new Error("automatic_recovery_reauthentication_cancelled"); return "fresh-auth-required"; },
+      commitMerge: ({ token, adoptionGrant }) => merge.commit(token, adoptionGrant),
+      freshAdoptionGrant: async () => {
+        const identity = await auth.reauthenticate();
+        if (identity === null) throw new Error("automatic_recovery_reauthentication_cancelled");
+        const current = await state.read();
+        if (current.permissionId !== identity.permissionId) throw new Error("automatic_recovery_account_changed");
+        return Object.freeze({
+          receiptId: id("namespace-adoption"),
+          permissionId: identity.permissionId,
+          connectionGeneration: current.connectionGeneration,
+          environment: current.environment,
+          expiresAtMs: Date.now() + 5 * 60 * 1000,
+        });
+      },
     },
   });
   const backupAfterBootstrapDiscovery = async (): Promise<void> => {

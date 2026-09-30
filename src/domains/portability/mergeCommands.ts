@@ -109,7 +109,23 @@ export type FullMergeWriterPort = Readonly<{
   commitFullPlan(input: Readonly<{
     localFingerprint: string;
     plan: PortableMergePlan;
+    adoption?: AutomaticNamespaceAdoptionCommit;
   }>): Promise<Readonly<{ state: "ready" | "rebuild_pending" }>>;
+}>;
+
+export type AutomaticNamespaceAdoptionGrant = Readonly<{
+  receiptId: string;
+  permissionId: string;
+  connectionGeneration: number;
+  environment: "production" | "development-test";
+  expiresAtMs: number;
+}>;
+
+export type AutomaticNamespaceAdoptionCommit = AutomaticNamespaceAdoptionGrant & Readonly<{
+  oldNamespace: string;
+  newNamespace: string;
+  localFingerprint: string;
+  remoteSnapshotSha256: string;
 }>;
 
 export type SecureMergeCommands = Readonly<{

@@ -1,5 +1,6 @@
 import { canonicalJson, parseDriveBackupManifestV1, type AutomaticBackupEnvironment, type DriveBackupManifestV1 } from "./automaticBackupContracts";
 import type { GoogleAuthPort } from "./googleAuthPort";
+import type { AutomaticNamespaceAdoptionGrant } from "../portability/mergeCommands";
 type LogicalBackupSnapshot = any;
 
 type CapturedSnapshot = Readonly<{ generation: number; sourceDigest: string; bytes: Uint8Array }>;
@@ -109,8 +110,8 @@ export function createAutomaticBackupCoordinator(input: Readonly<{
     localIsEmpty(): Promise<boolean>;
     prepareMerge(snapshot: LogicalBackupSnapshot): Promise<Readonly<{ token: string; ownerSummary: string; adoptionRequired: boolean }>>;
     restore(snapshot: LogicalBackupSnapshot): Promise<Readonly<{ state: "ready" | "rebuild_pending" }>>;
-    commitMerge(input: Readonly<{ token: string; adoptionGrant?: string }>): Promise<Readonly<{ state: "ready" | "rebuild_pending" }>>;
-    freshAdoptionGrant?(): Promise<string>;
+    commitMerge(input: Readonly<{ token: string; adoptionGrant?: AutomaticNamespaceAdoptionGrant }>): Promise<Readonly<{ state: "ready" | "rebuild_pending" }>>;
+    freshAdoptionGrant?(): Promise<AutomaticNamespaceAdoptionGrant>;
   }>;
 }>): AutomaticBackupCoordinator {
   let running: Promise<BackupResult> | null = null;
@@ -399,7 +400,8 @@ export function createAutomaticBackupCoordinator(input: Readonly<{
       const merge = attempt.preparation as Extract<AutomaticRecoveryPreparation, Readonly<{ kind: "merge" }>>;
       if (merge.adoptionRequired && request.adoptIdentity !== true) throw new Error("automatic_recovery_adoption_required");
       const grant = merge.adoptionRequired ? await input.recovery.freshAdoptionGrant?.() : undefined;
-      if (merge.adoptionRequired && (grant === undefined || request.adoptionGrant !== grant)) throw new Error("automatic_recovery_adoption_grant_invalid");
+      if (merge.adoptionRequired && grant === undefined) throw new Error("automatic_recovery_adoption_grant_invalid");
+      if (grant !== undefined && request.adoptionGrant !== undefined && request.adoptionGrant !== grant.receiptId) throw new Error("automatic_recovery_adoption_grant_invalid");
       result = await input.recovery.commitMerge({ token: merge.token, ...(grant === undefined ? {} : { adoptionGrant: grant }) });
     }
     await input.state.setRecoveryStatus?.("finishing");

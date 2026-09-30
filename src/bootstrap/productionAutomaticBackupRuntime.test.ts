@@ -90,7 +90,7 @@ jest.mock("../domains/backup/automaticBackupScheduler", () => ({
 jest.mock("../domains/portability/automaticPortability", () => ({
   createAutomaticPortableRestorePort: jest.fn(() => ({ restore: async () => ({ state: "ready" as const }) })),
   createAutomaticPortableMergePort: jest.fn(() => ({
-    preflight: async () => ({ token: "merge-token" }),
+    preflight: async () => ({ token: "merge-token", adoptionRequired: true }),
     commit: async () => ({ state: "ready" as const }),
   })),
 }));
