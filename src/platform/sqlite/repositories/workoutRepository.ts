@@ -1488,6 +1488,33 @@ async function markUnprotectedSetsSkipped(
   );
 }
 
+async function deleteAdvancedTimingForExercise(
+  transaction: SqliteTransactionExecutor,
+  sessionId: string,
+  sessionExerciseId: string,
+): Promise<void> {
+  await transaction.execute(
+    `DELETE FROM session_advanced_timing_states
+     WHERE session_id = ?
+       AND session_set_id IN (
+         SELECT id FROM session_sets WHERE session_exercise_id = ?
+       )`,
+    [sessionId, sessionExerciseId],
+  );
+}
+
+async function deleteAdvancedTimingForSet(
+  transaction: SqliteTransactionExecutor,
+  sessionId: string,
+  sessionSetId: string,
+): Promise<void> {
+  await transaction.execute(
+    `DELETE FROM session_advanced_timing_states
+     WHERE session_id = ? AND session_set_id = ?`,
+    [sessionId, sessionSetId],
+  );
+}
+
 async function finalizeExerciseEdit(
   transaction: SqliteTransactionExecutor,
   input: Readonly<{
@@ -1554,6 +1581,11 @@ async function replaceExercise(
       nowMs: input.occurredAtMs,
       requestId: input.requestId,
     });
+    await deleteAdvancedTimingForExercise(
+      transaction,
+      input.sessionId,
+      input.sessionExerciseId,
+    );
     const disposition = protectedHistory
       ? "skipped_history_preserved" as const
       : "deleted_provisional" as const;
@@ -1650,6 +1682,11 @@ async function removeExercise(
       nowMs: input.occurredAtMs,
       requestId: input.requestId,
     });
+    await deleteAdvancedTimingForExercise(
+      transaction,
+      input.sessionId,
+      input.sessionExerciseId,
+    );
     const disposition = protectedHistory
       ? "skipped_history_preserved" as const
       : "deleted_provisional" as const;
@@ -2093,6 +2130,7 @@ async function removeSet(
       throw new Error("remove_set_session_update_failed");
     }
 
+    await deleteAdvancedTimingForSet(transaction, input.sessionId, set.id);
     const deletion = await transaction.execute(
       `DELETE FROM session_sets
        WHERE id = ? AND revision = ?

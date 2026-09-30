@@ -281,6 +281,32 @@ async function protectedFacts(kernel: SqliteKernel, sessionId: string) {
   return { session, sets, rest, undo, restEffects };
 }
 
+async function startAndStopTiming(
+  fixture: Awaited<ReturnType<typeof setupWorkout>>,
+): Promise<void> {
+  const started = await startAdvancedTiming({
+    repository: fixture.repository,
+    input: {
+      sessionId: fixture.session.id,
+      sessionSetId: fixture.activeSet.id,
+      expectedSessionRevision: fixture.session.revision,
+      expectedAdvancedTimingRevision: 0,
+      nowMs: 10_000,
+      config: perRep,
+    },
+  });
+  await stopAdvancedTiming({
+    repository: fixture.repository,
+    input: {
+      sessionId: fixture.session.id,
+      sessionSetId: fixture.activeSet.id,
+      expectedSessionRevision: fixture.session.revision,
+      expectedAdvancedTimingRevision: started.state.revision,
+      nowMs: 11_000,
+    },
+  });
+}
+
 type ProtectedSetRow = Readonly<{
   id: string;
   session_exercise_id: string;
@@ -937,6 +963,92 @@ describe("advanced timing repository", () => {
        WHERE se.session_id = ? AND ss.id = ?`,
       [session.id, activeSet.id],
     )).resolves.toEqual([{ count: 1, completed: 1 }]);
+  });
+
+  it("removes timing ownership before set, exercise, and replacement deletion", async () => {
+    const removeSetFixture = await setupWorkout();
+    await startAndStopTiming(removeSetFixture);
+    const removeSetWorkout = createWorkoutRepository(removeSetFixture.kernel);
+    await expect(removeSetWorkout.removeWorkingSet?.({
+      requestId: "remove-timed-set",
+      requestSha256: "a".repeat(64),
+      sessionId: removeSetFixture.session.id,
+      setId: removeSetFixture.activeSet.id,
+      expectedSessionRevision: removeSetFixture.session.revision,
+      expectedSetRevision: removeSetFixture.activeSet.revision,
+      removedAtMs: 12_000,
+    })).resolves.toMatchObject({ outcome: "committed" });
+
+    const removeExerciseFixture = await setupWorkout();
+    await startAndStopTiming(removeExerciseFixture);
+    const [removableExercise] = await removeExerciseFixture.kernel.queryAll<{
+      id: string;
+      revision: number;
+    }>(
+      `SELECT se.id, se.revision FROM session_exercises se
+       JOIN session_sets ss ON ss.session_exercise_id = se.id
+       WHERE ss.id = ?`,
+      [removeExerciseFixture.activeSet.id],
+    );
+    const removeExerciseWorkout = createWorkoutRepository(removeExerciseFixture.kernel);
+    await expect(removeExerciseWorkout.removeExercise?.({
+      requestId: "remove-timed-exercise",
+      requestSha256: "b".repeat(64),
+      sessionId: removeExerciseFixture.session.id,
+      sessionExerciseId: removableExercise!.id,
+      expectedSessionRevision: removeExerciseFixture.session.revision,
+      expectedSessionExerciseRevision: removableExercise!.revision,
+      occurredAtMs: 13_000,
+    })).resolves.toMatchObject({
+      outcome: "committed",
+      disposition: "deleted_provisional",
+    });
+
+    const replaceExerciseFixture = await setupWorkout();
+    await startAndStopTiming(replaceExerciseFixture);
+    await replaceExerciseFixture.kernel.write(async (transaction) => {
+      await transaction.execute(
+        `INSERT INTO exercises
+          (id, content_pack_id, origin, source_namespace, upstream_id, name,
+           metric_profile, metric_contract_version, exercise_metric_generation,
+           equipment, default_rest_seconds, revision)
+         VALUES ('replacement-exercise', NULL, 'custom', NULL, NULL,
+                 'Replacement exercise', 'load_reps', 1, 1, 'Barbell', 90, 1)`,
+      );
+      await transaction.execute(
+        `INSERT INTO exercise_library_entries
+          (exercise_id, origin, canonical_name, exercise_type, movement_class,
+           metric_profile, metric_contract_version, exercise_metric_generation,
+           availability, revision)
+         VALUES ('replacement-exercise', 'custom', 'Replacement exercise',
+                 'strength', 'compound', 'load_reps', 1, 1, 'available', 1)`,
+      );
+    });
+    const [replaceableExercise] = await replaceExerciseFixture.kernel.queryAll<{
+      id: string;
+      revision: number;
+    }>(
+      `SELECT se.id, se.revision FROM session_exercises se
+       JOIN session_sets ss ON ss.session_exercise_id = se.id
+       WHERE ss.id = ?`,
+      [replaceExerciseFixture.activeSet.id],
+    );
+    const replaceExerciseWorkout = createWorkoutRepository(replaceExerciseFixture.kernel);
+    await expect(replaceExerciseWorkout.replaceExercise?.({
+      requestId: "replace-timed-exercise",
+      requestSha256: "c".repeat(64),
+      sessionId: replaceExerciseFixture.session.id,
+      sessionExerciseId: replaceableExercise!.id,
+      expectedSessionRevision: replaceExerciseFixture.session.revision,
+      expectedSessionExerciseRevision: replaceableExercise!.revision,
+      occurredAtMs: 14_000,
+      libraryExerciseId: "replacement-exercise",
+      replacementSessionExerciseId: "replacement-session-exercise",
+      replacementSetId: "replacement-session-set",
+    })).resolves.toMatchObject({
+      outcome: "committed",
+      disposition: "deleted_provisional",
+    });
   });
 
   it("updates active-session exercise defaults and set overrides without touching completed or rest facts", async () => {
