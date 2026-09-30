@@ -9,7 +9,7 @@ export type DriveBackupSnapshotHeaderV1 = Readonly<{
 export type DriveBackupSnapshotV1 = Readonly<{
   header: DriveBackupSnapshotHeaderV1; payload: unknown; payload_sha256: string;
 }>;
-export type DriveBackupObjectDescriptorV1 = Readonly<{ fileId: string; object_sha256: string }>;
+export type DriveBackupObjectDescriptorV1 = Readonly<{ fileId: string; object_sha256: string; byteLength?: number }>;
 export type DriveBackupManifestV1 = Readonly<
   | { kind: "active"; writerEpoch: number; latest: DriveBackupObjectDescriptorV1; previous: DriveBackupObjectDescriptorV1 | null }
   | { kind: "deleted"; successorWriterEpoch: number; deletedAtMs: number }
@@ -27,10 +27,63 @@ export function canonicalJson(value: unknown): string {
 }
 function digest(value: unknown): value is string { return typeof value === "string" && /^[a-f0-9]{64}$/u.test(value); }
 function descriptor(value: unknown): value is DriveBackupObjectDescriptorV1 {
-  return plain(value) && Object.keys(value).length === 2 && typeof value.fileId === "string" && value.fileId.length > 0 && digest(value.object_sha256);
+  const keys = plain(value) ? Object.keys(value).sort().join("\0") : "";
+  return plain(value) && (keys === "fileId\0object_sha256" || keys === "byteLength\0fileId\0object_sha256")
+    && typeof value.fileId === "string" && value.fileId.length > 0 && digest(value.object_sha256)
+    && (value.byteLength === undefined || (Number.isSafeInteger(value.byteLength) && (value.byteLength as number) > 0));
 }
 export function createDriveBackupSnapshotV1(input: Readonly<{ header: DriveBackupSnapshotHeaderV1; payload: unknown; sha256(value: string): string }>): DriveBackupSnapshotV1 {
   return Object.freeze({ header: input.header, payload: input.payload, payload_sha256: input.sha256(canonicalJson({ header: input.header, payload: input.payload })) });
+}
+
+const HEADER_KEYS = Object.freeze([
+  "createdAtMs", "environment", "mutationGeneration", "ownerNamespace", "packageIdentity",
+  "protocol", "schemaVersion", "snapshotId", "writerEpoch",
+]);
+
+export type ParsedDriveBackupSnapshotEnvelopeV1 = Readonly<{
+  kind: "current" | "update_required";
+  header: DriveBackupSnapshotHeaderV1;
+  payload?: unknown;
+}>;
+
+export async function parseDriveBackupSnapshotEnvelopeV1(
+  bytes: Uint8Array,
+  input: Readonly<{
+    byteLength: number;
+    objectSha256: string;
+    environment: AutomaticBackupEnvironment;
+    packageIdentity: string;
+    currentSchemaVersion: number;
+    sha256(value: string | Uint8Array): Promise<string>;
+  }>,
+): Promise<ParsedDriveBackupSnapshotEnvelopeV1> {
+  const invalid = (): never => { throw new Error("automatic_recovery_snapshot_invalid"); };
+  if (!Number.isSafeInteger(input.byteLength) || input.byteLength !== bytes.byteLength
+    || !digest(input.objectSha256) || await input.sha256(bytes) !== input.objectSha256) invalid();
+  let decoded: unknown;
+  const text = new TextDecoder("utf-8", { fatal: true }).decode(bytes);
+  try { decoded = JSON.parse(text); } catch { return invalid(); }
+  if (!plain(decoded)) invalid();
+  const envelope = decoded as Record<string, unknown>;
+  if (Object.keys(envelope).sort().join("\0") !== "header\0payload\0payload_sha256"
+    || canonicalJson(envelope) !== text || !digest(envelope.payload_sha256) || !plain(envelope.header)) invalid();
+  const header = envelope.header as Record<string, unknown>;
+  if (Object.keys(header).sort().join("\0") !== HEADER_KEYS.join("\0")
+    || header.protocol !== "drive-backup-v1"
+    || header.environment !== input.environment
+    || header.packageIdentity !== input.packageIdentity
+    || typeof header.snapshotId !== "string" || header.snapshotId.length === 0
+    || typeof header.ownerNamespace !== "string" || !/^[a-f0-9]{32}$/u.test(header.ownerNamespace)
+    || !Number.isSafeInteger(header.writerEpoch) || (header.writerEpoch as number) < 1
+    || !Number.isSafeInteger(header.mutationGeneration) || (header.mutationGeneration as number) < 0
+    || !Number.isSafeInteger(header.createdAtMs) || (header.createdAtMs as number) < 0
+    || !Number.isSafeInteger(header.schemaVersion) || (header.schemaVersion as number) < 1
+    || await input.sha256(canonicalJson({ header, payload: envelope.payload })) !== envelope.payload_sha256) invalid();
+  const typed = header as unknown as DriveBackupSnapshotHeaderV1;
+  return typed.schemaVersion > input.currentSchemaVersion
+    ? Object.freeze({ kind: "update_required" as const, header: typed })
+    : Object.freeze({ kind: "current" as const, header: typed, payload: envelope.payload });
 }
 export function parseDriveBackupManifestV1(value: unknown): DriveBackupManifestV1 {
   if (!plain(value) || new TextEncoder().encode(canonicalJson(value)).byteLength > AUTOMATIC_BACKUP_LIMITS.maxManifestBytes) throw new Error("automatic_backup_manifest_invalid");
