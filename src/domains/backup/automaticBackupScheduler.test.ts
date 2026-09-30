@@ -112,4 +112,52 @@ describe("automatic backup scheduler", () => {
     ineligible.request("retry"); ineligible.cancel(); queued.shift()?.(); await settle();
     expect(calls).toEqual([]);
   });
+
+  it("enforces saved network policy without consuming blocked work", async () => {
+    const queued: Array<() => void> = [];
+    const calls: string[] = [];
+    let network: "wifi" | "cellular_or_metered" | "unavailable" | "unknown" = "cellular_or_metered";
+    const scheduler = createAutomaticBackupScheduler({
+      isWorkoutActive: () => false,
+      networkClass: async () => network,
+      dataUsePolicy: async () => "wifi-only",
+      run: async (reason) => { calls.push(reason); },
+      queue: (work) => { queued.push(work); },
+    });
+
+    scheduler.request("post_commit");
+    queued.shift()?.(); await settle();
+    expect(calls).toEqual([]);
+    network = "wifi";
+    scheduler.request("foreground");
+    queued.shift()?.(); await settle();
+    expect(calls).toEqual(["foreground"]);
+
+    network = "unavailable";
+    scheduler.request("retry");
+    queued.shift()?.(); await settle();
+    expect(calls).toEqual(["foreground"]);
+  });
+
+  it("consumes a cellular override for exactly one manual attempt", async () => {
+    const queued: Array<() => void> = [];
+    const calls: string[] = [];
+    const confirmations: string[] = [];
+    const scheduler = createAutomaticBackupScheduler({
+      isWorkoutActive: () => false,
+      networkClass: async () => "cellular_or_metered",
+      dataUsePolicy: async () => "wifi-only",
+      run: async (reason) => { calls.push(reason); },
+      queue: (work) => { queued.push(work); },
+      onCellularConfirmationRequired: () => { confirmations.push("required"); },
+    });
+
+    scheduler.request("manual"); queued.shift()?.(); await settle();
+    expect(confirmations).toEqual(["required"]);
+    expect(calls).toEqual([]);
+    scheduler.request("manual_cellular"); queued.shift()?.(); await settle();
+    expect(calls).toEqual(["manual_cellular"]);
+    scheduler.request("retry"); queued.shift()?.(); await settle();
+    expect(calls).toEqual(["manual_cellular"]);
+  });
 });
