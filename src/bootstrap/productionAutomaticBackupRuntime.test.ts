@@ -48,6 +48,7 @@ const mockCoordinatorBackup = jest.fn(async () => ({ status: "backed_up" as cons
 const mockCoordinatorCheckAgain = jest.fn<() => Promise<{
   status: "ready" | "needs_bootstrap" | "quarantined";
 }>>(async () => ({ status: "ready" }));
+const mockCoordinatorTakeOver = jest.fn(async () => ({ status: "quarantined" as const }));
 const mockCoordinatorPrepareRecovery = jest.fn<() => Promise<
   | Readonly<{ kind: "empty_direct"; attemptId: string }>
   | Readonly<{ kind: "merge"; attemptId: string; token: string; ownerSummary: string; adoptionRequired: boolean }>
@@ -78,7 +79,7 @@ jest.mock("../platform/sqlite/repositories/automaticBackupStateRepository", () =
 jest.mock("../domains/backup/automaticBackupCoordinator", () => ({
   createAutomaticBackupCoordinator: jest.fn(() => ({
     connect: mockCoordinatorConnect, deferRecovery: mockCoordinatorDeferRecovery,
-    abortChecking: jest.fn(async () => undefined), checkAgain: mockCoordinatorCheckAgain,
+    abortChecking: jest.fn(async () => undefined), checkAgain: mockCoordinatorCheckAgain, takeOver: mockCoordinatorTakeOver,
     prepareRecovery: mockCoordinatorPrepareRecovery,
     commitRecovery: mockCoordinatorCommitRecovery, disconnect: jest.fn(async () => undefined),
     finishDeletionSweep: jest.fn(async () => undefined), backup: mockCoordinatorBackup,
@@ -328,6 +329,7 @@ describe("production automatic-backup composition", () => {
     expect(mockState.setDataUsePolicy).toHaveBeenCalledWith("wifi-only");
     expect(activeCoordinator.prepareRecovery).toHaveBeenCalledWith({ candidate });
     expect(activeCoordinator.commitRecovery).toHaveBeenCalledWith(recovery);
+    expect(mockCoordinatorTakeOver).toHaveBeenCalled();
     expect(mockCoordinatorPrepareRecovery).toHaveBeenCalledWith({ candidate: "latest" });
     expect(mockCoordinatorCommitRecovery).toHaveBeenCalledWith({ kind: "empty_direct", attemptId: "attempt" });
     expect(mockCoordinatorBackup).toHaveBeenCalledTimes(priorBackups + 3);

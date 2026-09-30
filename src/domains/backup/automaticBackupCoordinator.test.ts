@@ -457,11 +457,50 @@ describe("automatic backup coordinator", () => {
     await expect(make(activeState(), async () => null).recover()).resolves.toEqual({ status: "needs_bootstrap" });
     await expect(make(activeState(), async () => null, async () => [{}]).recover()).resolves.toEqual({ status: "quarantined" });
     await expect(make(activeState(), async () => ({ bytes: new Uint8Array([1]), etag: "e" })).recover()).resolves.toEqual({ status: "quarantined" });
-    await expect(make(activeState({ writerEpoch: 3 }), async () => ({ bytes: new Uint8Array([2]), etag: "e" })).recover()).resolves.toEqual({ status: "stale_writer" });
+    await expect(make(activeState({ writerEpoch: 3 }), async () => ({ bytes: new Uint8Array([2]), etag: "e" })).recover()).resolves.toEqual({ status: "quarantined" });
+    const activateHigher = jest.fn(async () => true);
+    await expect(make(activeState(), async () => ({ bytes: new Uint8Array([3]), etag: "e" }), undefined, activateHigher).recover()).resolves.toEqual({ status: "stale_writer" });
+    expect(activateHigher).not.toHaveBeenCalled();
     await expect(make(activeState({ manifestId: undefined }), async () => ({ bytes: new Uint8Array([2]), etag: "e" })).recover()).resolves.toEqual({ status: "quarantined" });
     await expect(make(activeState(), async () => ({ fileId: "other", bytes: new Uint8Array([2]), etag: "e" })).recover()).resolves.toEqual({ status: "quarantined" });
     await expect(make(activeState(), async () => ({ bytes: new Uint8Array([2]), etag: "e" }), undefined, async () => false).recover()).resolves.toEqual({ status: "quarantined" });
     await expect(make(activeState(), async () => ({ bytes: new Uint8Array([2]), etag: "e" }), undefined, async () => true).recover()).resolves.toEqual({ status: "ready" });
+  });
+
+  it("requires explicit fresh-auth takeover before reopening a higher epoch for recovery", async () => {
+    let state = activeState({ authorityState: "stale_writer" });
+    const reauthenticate = jest.fn(async () => ({ permissionId: "permission", displayEmail: "…@example.com" }));
+    const activateWriter = jest.fn(async () => true);
+    const coordinator = createAutomaticBackupCoordinator({
+      isWorkoutActive: () => false,
+      auth: { connect: async () => null, reauthenticate, disconnect: async () => undefined },
+      capture: async () => ({ generation: 1, sourceDigest: "a".repeat(64), bytes: new Uint8Array() }),
+      state: {
+        read: async () => state,
+        persistAttempt: async () => undefined,
+        acknowledgeReceipt: async () => false,
+        beginQuarantine: async (value) => { state = { ...state, ...value, authorityState: "quarantine" }; },
+        activateWriter,
+        markStaleWriter: async () => { state = { ...state, authorityState: "stale_writer" }; return true; },
+        setRecoveryStatus: async () => undefined,
+      },
+      drive: {
+        createSnapshot: async () => "snapshot", download: async () => new Uint8Array(),
+        updateManifest: async () => "etag",
+        readManifest: async () => ({ fileId: "manifest", bytes: activeManifest(3), etag: "remote-etag" }),
+      },
+      validate: () => true,
+      validateManifest: () => ({ writerEpoch: 3 }),
+      nowMs: () => 1,
+      candidateId: () => "candidate",
+    });
+
+    await expect(coordinator.checkAgain()).resolves.toEqual({ status: "stale_writer" });
+    expect(reauthenticate).not.toHaveBeenCalled();
+    expect(activateWriter).not.toHaveBeenCalled();
+    await expect(coordinator.takeOver()).resolves.toEqual({ status: "quarantined" });
+    expect(reauthenticate).toHaveBeenCalledTimes(1);
+    expect(activateWriter).not.toHaveBeenCalled();
   });
 
   it("guards cancellation, deletion, and merge adoption generations", async () => {
