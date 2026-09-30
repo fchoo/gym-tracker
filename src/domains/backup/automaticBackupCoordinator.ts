@@ -29,6 +29,11 @@ type Receipt = Readonly<{
   manifestId: string; manifestEtag: string;
 }>;
 type BackupResult = Readonly<{ status: "backed_up" | "deferred" | "stale_writer"; generation?: number }>;
+type PendingHandover = Readonly<{
+  attemptId: string; environment: AutomaticBackupEnvironment; permissionId: string;
+  connectionGeneration: number; manifestId: string; manifestEtag: string;
+  remoteWriterEpoch: number; snapshotId: string; sourceDigest: string;
+}>;
 export type AutomaticBackupFailureStage =
   | "active_manifest"
   | "snapshot_capture"
@@ -87,6 +92,8 @@ export function createAutomaticBackupCoordinator(input: Readonly<{
     disconnectLocal?(): Promise<void>;
     beginDeletionSweep?(value: Readonly<{ environment: AutomaticBackupEnvironment; permissionId: string; connectionGeneration: number }>): Promise<boolean>;
     completeDeletionSweep?(value: Readonly<{ environment: AutomaticBackupEnvironment; permissionId: string; connectionGeneration: number }>): Promise<boolean>;
+    persistPendingHandover?(value: PendingHandover & Readonly<{ nowMs: number }>): Promise<void>;
+    readPendingHandover?(): Promise<PendingHandover | null>;
   }>;
   drive: Readonly<{
     environment?: AutomaticBackupEnvironment;
@@ -420,42 +427,84 @@ export function createAutomaticBackupCoordinator(input: Readonly<{
       result = await input.recovery.commitMerge({ token: merge.token, ...(grant === undefined ? {} : { adoptionGrant: grant }) });
     }
     await input.state.setRecoveryStatus?.("finishing");
-    const successorWriterEpoch = attempt.claim.manifest.writerEpoch + 1;
+    const latest = attempt.claim.manifest.latest;
+    await input.state.persistPendingHandover?.({
+      attemptId: request.attemptId,
+      environment: current.environment,
+      permissionId: attempt.claim.permissionId,
+      connectionGeneration: attempt.claim.connectionGeneration,
+      manifestId: attempt.claim.manifestId,
+      manifestEtag: attempt.claim.manifestEtag,
+      remoteWriterEpoch: attempt.claim.manifest.writerEpoch,
+      snapshotId: latest.fileId,
+      sourceDigest: latest.object_sha256,
+      nowMs: input.nowMs(),
+    });
+    await claimSuccessor({
+      attemptId: request.attemptId,
+      environment: current.environment,
+      permissionId: attempt.claim.permissionId,
+      connectionGeneration: attempt.claim.connectionGeneration,
+      manifestId: attempt.claim.manifestId,
+      manifestEtag: attempt.claim.manifestEtag,
+      remoteWriterEpoch: attempt.claim.manifest.writerEpoch,
+      snapshotId: latest.fileId,
+      sourceDigest: latest.object_sha256,
+    }, attempt.claim.manifest);
+    return result;
+  };
+  const claimSuccessor = async (
+    pending: PendingHandover,
+    preparedManifest?: Extract<DriveBackupManifestV1, Readonly<{ kind: "active" }>>,
+  ): Promise<void> => {
+    const current = await input.state.read();
+    if (current.permissionId !== pending.permissionId
+      || current.connectionGeneration !== pending.connectionGeneration
+      || current.authorityState !== "quarantine") throw new Error("automatic_recovery_claim_stale");
+    const authoritative = preparedManifest === undefined ? await input.drive.readManifest() : null;
+    if (preparedManifest === undefined && (authoritative === null
+      || (authoritative.fileId !== undefined && authoritative.fileId !== pending.manifestId)
+      || authoritative.etag !== pending.manifestEtag)) throw new Error("automatic_recovery_claim_stale");
+    const manifest = preparedManifest ?? parseDriveBackupManifestV1(JSON.parse(new TextDecoder().decode(authoritative!.bytes)));
+    if (manifest.kind !== "active"
+      || manifest.writerEpoch !== pending.remoteWriterEpoch
+      || manifest.latest.fileId !== pending.snapshotId
+      || manifest.latest.object_sha256 !== pending.sourceDigest) throw new Error("automatic_recovery_claim_stale");
+    const successorWriterEpoch = manifest.writerEpoch + 1;
     if (!Number.isSafeInteger(successorWriterEpoch)) throw new Error("automatic_recovery_claim_invalid");
     const claimedBytes = new TextEncoder().encode(canonicalJson({
       kind: "active",
       writer_epoch: successorWriterEpoch,
-      latest: attempt.claim.manifest.latest,
-      previous: attempt.claim.manifest.previous,
+      latest: manifest.latest,
+      previous: manifest.previous,
     }));
     const claimedEtag = await input.drive.updateManifest(
-      attempt.claim.manifestId,
+      pending.manifestId,
       claimedBytes,
-      attempt.claim.manifestEtag,
+      pending.manifestEtag,
     );
     const reread = await input.drive.readManifest();
     const claimed = reread === null
       ? null
       : parseDriveBackupManifestV1(JSON.parse(new TextDecoder().decode(reread.bytes)));
     if (reread === null
-      || (reread.fileId !== undefined && reread.fileId !== attempt.claim.manifestId)
+      || (reread.fileId !== undefined && reread.fileId !== pending.manifestId)
       || reread.etag !== claimedEtag
       || claimed?.kind !== "active"
       || claimed.writerEpoch !== successorWriterEpoch
       || JSON.stringify([claimed.latest, claimed.previous])
-        !== JSON.stringify([attempt.claim.manifest.latest, attempt.claim.manifest.previous])) {
+        !== JSON.stringify([manifest.latest, manifest.previous])) {
       throw new Error("automatic_recovery_claim_invalid");
     }
     const activated = await input.state.activateWriter?.({
-      manifestId: attempt.claim.manifestId,
+      manifestId: pending.manifestId,
       manifestEtag: claimedEtag,
       writerEpoch: successorWriterEpoch,
-      permissionId: attempt.claim.permissionId,
-      connectionGeneration: attempt.claim.connectionGeneration,
+      permissionId: pending.permissionId,
+      connectionGeneration: pending.connectionGeneration,
     });
     if (activated !== true) throw new Error("automatic_recovery_claim_stale");
     await input.state.setRecoveryStatus?.("idle");
-    return result;
   };
   return Object.freeze({
     backup() {
@@ -472,9 +521,14 @@ export function createAutomaticBackupCoordinator(input: Readonly<{
     checkAgain: () => check(),
     async takeOver() {
       const identity = await input.auth?.reauthenticate?.();
-      return identity === undefined || identity === null
-        ? Object.freeze({ status: "cancelled" as const })
-        : check(identity, true);
+      if (identity === undefined || identity === null) return Object.freeze({ status: "cancelled" as const });
+      const pending = await input.state.readPendingHandover?.();
+      if (pending !== undefined && pending !== null) {
+        if (pending.permissionId !== identity.permissionId) throw new Error("automatic_recovery_claim_stale");
+        await claimSuccessor(pending);
+        return Object.freeze({ status: "ready" as const });
+      }
+      return check(identity, true);
     },
     async deferRecovery() { ++checkingGeneration; await input.state.setRecoveryStatus?.("restore_pending"); },
     async abortChecking() { ++checkingGeneration; await input.state.setRecoveryStatus?.("restore_pending"); },

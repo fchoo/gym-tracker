@@ -505,7 +505,7 @@ describe("automatic backup coordinator", () => {
 
   it("resumes only a durable successor claim after restart", async () => {
     const updates: string[] = [];
-    let manifest = activeManifest(7);
+    let manifest: Uint8Array<ArrayBufferLike> = activeManifest(7);
     let etag = "old-etag";
     const activateWriter = jest.fn(async (value: { writerEpoch: number }) => {
       expect(value.writerEpoch).toBe(8);

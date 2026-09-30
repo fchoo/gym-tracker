@@ -18,6 +18,18 @@ export type AutomaticBackupReceipt = Readonly<{
   manifestId: string; manifestEtag: string;
 }>;
 
+export type AutomaticBackupPendingHandover = Readonly<{
+  attemptId: string;
+  environment: AutomaticBackupState["environment"];
+  permissionId: string;
+  connectionGeneration: number;
+  manifestId: string;
+  manifestEtag: string;
+  remoteWriterEpoch: number;
+  snapshotId: string;
+  sourceDigest: string;
+}>;
+
 export type AutomaticBackupRecoveryStatus =
   | "idle"
   | "checking"
@@ -39,6 +51,8 @@ export function createAutomaticBackupStateRepository(kernel: SqliteKernel): Read
   clearExpiredClaim(nowMs: number): Promise<boolean>;
   setRecoveryStatus(status: AutomaticBackupRecoveryStatus): Promise<void>;
   setDataUsePolicy(policy: AutomaticBackupState["dataUsePolicy"]): Promise<void>;
+  persistPendingHandover(input: AutomaticBackupPendingHandover & Readonly<{ nowMs: number }>): Promise<void>;
+  readPendingHandover(): Promise<AutomaticBackupPendingHandover | null>;
   beginDeletionSweep(input: Readonly<{ environment: AutomaticBackupState["environment"]; permissionId: string; connectionGeneration: number }>): Promise<boolean>;
   completeDeletionSweep(input: Readonly<{ environment: AutomaticBackupState["environment"]; permissionId: string; connectionGeneration: number }>): Promise<boolean>;
   /** Clears only this installation's authority; it never calls a Drive delete operation. */
@@ -197,6 +211,66 @@ export function createAutomaticBackupStateRepository(kernel: SqliteKernel): Read
           [policy],
         );
         if (outcome.changes !== 1) throw new Error("automatic_backup_state_missing");
+      });
+    },
+    async persistPendingHandover(input) {
+      await kernel.write(async (transaction) => {
+        const receipt = await transaction.execute(
+          `UPDATE automatic_backup_receipt_state SET permission_id = ?, environment = ?,
+             connection_generation = ?, writer_epoch = ?, captured_generation = NULL,
+             source_digest = ?, snapshot_id = ?, manifest_file_id = ?, accepted_manifest_etag = NULL,
+             candidate_id = ?, resumable_location = NULL, resumable_uploaded_bytes = 0, updated_at_ms = ?
+           WHERE id = 1`,
+          [input.permissionId, input.environment, input.connectionGeneration,
+            input.remoteWriterEpoch, input.sourceDigest, input.snapshotId,
+            input.manifestId, input.attemptId, input.nowMs],
+        );
+        if (receipt.changes !== 1) throw new Error("automatic_backup_receipt_missing");
+        const state = await transaction.execute(
+          `UPDATE automatic_backup_state SET claim_id = ?, claim_expires_at_ms = NULL,
+             status_code = 'finishing', manifest_file_id = ?, manifest_etag = ?
+           WHERE id = 1 AND environment = ? AND permission_id = ?
+             AND connection_generation = ? AND authority_state = 'quarantine'`,
+          [input.attemptId, input.manifestId, input.manifestEtag, input.environment,
+            input.permissionId, input.connectionGeneration],
+        );
+        if (state.changes !== 1) throw new Error("automatic_backup_state_fence_changed");
+      });
+    },
+    async readPendingHandover() {
+      const rows = await kernel.queryAll<Record<string, unknown>>(
+        `SELECT state.claim_id AS attempt_id, state.environment, state.permission_id,
+           state.connection_generation, receipt.manifest_file_id, state.manifest_etag,
+           receipt.writer_epoch AS remote_writer_epoch, receipt.snapshot_id, receipt.source_digest
+         FROM automatic_backup_state state
+         JOIN automatic_backup_receipt_state receipt ON receipt.id = 1
+           AND receipt.candidate_id = state.claim_id
+         WHERE state.id = 1 AND state.status_code = 'finishing'
+           AND state.authority_state = 'quarantine'`,
+      );
+      if (rows.length === 0) return null;
+      const row = rows[0]!;
+      const valid = rows.length === 1
+        && typeof row.attempt_id === "string" && row.attempt_id.length > 0
+        && (row.environment === "production" || row.environment === "development-test")
+        && typeof row.permission_id === "string" && row.permission_id.length > 0
+        && Number.isSafeInteger(row.connection_generation) && (row.connection_generation as number) >= 0
+        && typeof row.manifest_file_id === "string" && row.manifest_file_id.length > 0
+        && typeof row.manifest_etag === "string" && row.manifest_etag.length > 0
+        && Number.isSafeInteger(row.remote_writer_epoch) && (row.remote_writer_epoch as number) >= 1
+        && typeof row.snapshot_id === "string" && row.snapshot_id.length > 0
+        && typeof row.source_digest === "string" && /^[a-f0-9]{64}$/u.test(row.source_digest);
+      if (!valid) throw new Error("automatic_backup_pending_handover_invalid");
+      return Object.freeze({
+        attemptId: row.attempt_id as string,
+        environment: row.environment as AutomaticBackupState["environment"],
+        permissionId: row.permission_id as string,
+        connectionGeneration: row.connection_generation as number,
+        manifestId: row.manifest_file_id as string,
+        manifestEtag: row.manifest_etag as string,
+        remoteWriterEpoch: row.remote_writer_epoch as number,
+        snapshotId: row.snapshot_id as string,
+        sourceDigest: row.source_digest as string,
       });
     },
     async beginDeletionSweep(input) {
