@@ -90,6 +90,7 @@ export type AutomaticBackupCoordinator = Readonly<{
   recover(): Promise<Readonly<{ status: "ready" | "needs_bootstrap" | "quarantined" | "stale_writer" }>>;
   prepareRecovery(input: Readonly<{ candidate: AutomaticRecoveryCandidate }>): Promise<AutomaticRecoveryPreparation>;
   commitRecovery(input: AutomaticRecoveryCommit): Promise<Readonly<{ state: "ready" | "rebuild_pending" }>>;
+  recoveryPrompt(): Readonly<{ kind: "latest" | "previous" | "update_required"; producedAtMs?: number; previousProducedAtMs?: number }> | null;
 }>;
 
 /**
@@ -151,6 +152,8 @@ export function createAutomaticBackupCoordinator(input: Readonly<{
     restore(snapshot: LogicalBackupSnapshot): Promise<Readonly<{ state: "ready" | "rebuild_pending" }>>;
     commitMerge(input: Readonly<{ token: string; adoptionGrant?: RecoveryAdoptionGrant }>): Promise<Readonly<{ state: "ready" | "rebuild_pending" }>>;
     freshAdoptionGrant?(): Promise<RecoveryAdoptionGrant>;
+    discoverCandidates?(): Promise<readonly RecoverySnapshotCandidate[]>;
+    reconstructManifest?(selection: Extract<RecoveryLineageSelection, { kind: "verified" }>): Promise<void>;
   }>;
 }>): AutomaticBackupCoordinator {
   let running: Promise<BackupResult> | null = null;
@@ -159,6 +162,7 @@ export function createAutomaticBackupCoordinator(input: Readonly<{
     permissionId: string;
     connectionGeneration: number;
   }> | null = null;
+  let currentRecoveryPrompt: ReturnType<AutomaticBackupCoordinator["recoveryPrompt"]> = null;
   const recoveryAttempts = new Map<string, Readonly<{
     snapshot: LogicalBackupSnapshot;
     preparation: AutomaticRecoveryPreparation;
@@ -353,6 +357,21 @@ export function createAutomaticBackupCoordinator(input: Readonly<{
         return Object.freeze({ status: "needs_bootstrap" as const });
       }
       bootstrapFence = null;
+      if (input.recovery?.discoverCandidates !== undefined) {
+        const selection = selectRecoveryLineage(await input.recovery.discoverCandidates());
+        if (selection.kind === "update_required") {
+          currentRecoveryPrompt = Object.freeze({ kind: "update_required" as const });
+          return Object.freeze({ status: "quarantined" as const });
+        }
+        if (selection.kind === "verified" && input.recovery.reconstructManifest !== undefined) {
+          await input.recovery.reconstructManifest(selection);
+          currentRecoveryPrompt = Object.freeze({
+            kind: "latest" as const,
+            producedAtMs: selection.latest.createdAtMs,
+            ...(selection.previous === null ? {} : { previousProducedAtMs: selection.previous.createdAtMs }),
+          });
+        }
+      }
       return Object.freeze({ status: "quarantined" as const });
     }
     bootstrapFence = null;
@@ -560,5 +579,6 @@ export function createAutomaticBackupCoordinator(input: Readonly<{
     finishDeletionSweep,
     prepareRecovery,
     commitRecovery,
+    recoveryPrompt: () => currentRecoveryPrompt,
   });
 }

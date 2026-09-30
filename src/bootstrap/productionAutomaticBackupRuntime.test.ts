@@ -71,6 +71,11 @@ jest.mock("expo-constants", () => ({
   },
 }));
 jest.mock("expo/fetch", () => ({ fetch: jest.fn() }));
+jest.mock("expo-crypto", () => ({
+  CryptoDigestAlgorithm: { SHA256: "SHA-256" },
+  digestStringAsync: async (_algorithm: string, value: string) => require("node:crypto").createHash("sha256").update(value).digest("hex"),
+  randomUUID: () => "00000000-0000-4000-8000-000000000000",
+}));
 
 jest.mock("../platform/google/googleAuthAdapter", () => ({ createGoogleAuthAdapter: mockCreateGoogleAuthAdapter }));
 jest.mock("../platform/sqlite/repositories/automaticBackupStateRepository", () => ({
@@ -370,13 +375,17 @@ describe("production automatic-backup composition", () => {
       writerEpoch: 2,
     });
     expect(captured).toEqual(expect.objectContaining({ generation: 7 }));
+    expect(JSON.parse(new TextDecoder().decode(captured.bytes))).toMatchObject({
+      payload_sha256: expect.stringMatching(/^[a-f0-9]{64}$/u),
+    });
+    await expect(coordinator.recovery.parseSnapshot(captured.bytes)).resolves.toMatchObject({ snapshotId: "snapshot" });
     await expect(coordinator.validate(captured.bytes)).resolves.toBe(true);
     expect(mockCapture).toHaveBeenCalledWith(expect.objectContaining({ snapshotId: expect.stringContaining("snapshot-") }));
     expect(coordinator.validateManifest(new TextEncoder().encode("invalid"))).toBeNull();
     expect(JSON.parse(new TextDecoder().decode(coordinator.buildManifest({
       candidateId: "candidate",
       state: { writerEpoch: 2 },
-      captured: { sourceDigest: "digest" },
+      captured: { sourceDigest: "digest", bytes: new Uint8Array([1]) },
       previous: { fileId: "previous", object_sha256: "b".repeat(64) },
     })))).toMatchObject({
       latest: { fileId: "candidate" },

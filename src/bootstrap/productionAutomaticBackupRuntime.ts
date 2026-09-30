@@ -3,6 +3,7 @@ import { fetch as expoFetch } from "expo/fetch";
 
 import {
   canonicalJson,
+  parseDriveBackupSnapshotEnvelopeV1,
   parseDriveBackupManifestV1,
   type AutomaticBackupEnvironment,
   type DriveBackupSnapshotHeaderV1,
@@ -61,34 +62,24 @@ export function localPortableFactsAreEmpty(
 async function snapshotFromDrive(
   value: Uint8Array,
   environment: AutomaticBackupEnvironment,
+  descriptor?: Readonly<{ byteLength: number; objectSha256: string }>,
 ): Promise<LogicalBackupSnapshot> {
-  const decoded = JSON.parse(new TextDecoder().decode(value)) as {
-    header?: Partial<DriveBackupSnapshotHeaderV1>;
-    payload?: unknown;
-    payload_sha256?: unknown;
-  };
-  if (decoded.header?.protocol !== "drive-backup-v1"
-    || decoded.header.environment !== environment
-    || decoded.header.packageIdentity !== packageIdentity(environment)
-    || typeof decoded.payload_sha256 !== "string") {
-    throw new Error("automatic_recovery_snapshot_invalid");
-  }
-  const snapshot = parseLogicalBackupSnapshot(decoded.payload);
+  const objectSha256 = descriptor?.objectSha256 ?? await digest(new TextDecoder().decode(value));
+  const parsed = await parseDriveBackupSnapshotEnvelopeV1(value, {
+    byteLength: descriptor?.byteLength ?? value.byteLength,
+    objectSha256,
+    environment,
+    packageIdentity: packageIdentity(environment),
+    currentSchemaVersion: 26,
+    sha256: async (input) => digest(typeof input === "string" ? input : new TextDecoder().decode(input)),
+  });
+  if (parsed.kind === "update_required") throw new Error("automatic_recovery_update_required");
+  const snapshot = parseLogicalBackupSnapshot(parsed.payload);
   const ownerNamespace = snapshot.tables.portable_owner_identity?.[0]?.owner_namespace;
-  if (decoded.header.snapshotId !== snapshot.snapshotId
-    || decoded.header.createdAtMs !== snapshot.createdAtMs
-    || decoded.header.schemaVersion !== snapshot.schemaVersion
-    || decoded.header.mutationGeneration === undefined
-    || !Number.isSafeInteger(decoded.header.mutationGeneration)
-    || decoded.header.mutationGeneration < 0
-    || decoded.header.writerEpoch === undefined
-    || !Number.isSafeInteger(decoded.header.writerEpoch)
-    || decoded.header.writerEpoch < 1
-    || decoded.header.ownerNamespace !== ownerNamespace
-    || decoded.payload_sha256 !== await digest(canonicalJson({
-      header: decoded.header,
-      payload: decoded.payload,
-    }))) {
+  if (parsed.header.snapshotId !== snapshot.snapshotId
+    || parsed.header.createdAtMs !== snapshot.createdAtMs
+    || parsed.header.schemaVersion !== snapshot.schemaVersion
+    || parsed.header.ownerNamespace !== ownerNamespace) {
     throw new Error("automatic_recovery_snapshot_invalid");
   }
   return snapshot;
@@ -202,7 +193,7 @@ export function createProductionAutomaticBackupServices(kernel: SqliteKernel): S
           : null;
       } catch { return null; }
     },
-    buildManifest: ({ candidateId, state: current, captured, previous }) => bytes({ kind: "active", writer_epoch: current.writerEpoch, latest: { fileId: candidateId, object_sha256: captured.sourceDigest }, previous }),
+    buildManifest: ({ candidateId, state: current, captured, previous }) => bytes({ kind: "active", writer_epoch: current.writerEpoch, latest: { fileId: candidateId, object_sha256: captured.sourceDigest, byteLength: captured.bytes.byteLength }, previous }),
     recovery: {
       parseSnapshot: (value) => snapshotFromDrive(value, settings.environment),
       localIsEmpty,
@@ -227,6 +218,37 @@ export function createProductionAutomaticBackupServices(kernel: SqliteKernel): S
           environment: current.environment,
           expiresAtMs: Date.now() + 5 * 60 * 1000,
         });
+      },
+      discoverCandidates: async () => {
+        const objects = (await drive.discover()).filter((entry) => entry.appProperties.object_kind === "snapshot");
+        const candidates = [];
+        for (const object of objects) {
+          const value = await drive.download(object.fileId, 24 * 1024 * 1024);
+          const objectSha256 = await digest(new TextDecoder().decode(value));
+          try {
+            const parsed = await parseDriveBackupSnapshotEnvelopeV1(value, {
+              byteLength: value.byteLength, objectSha256, environment: settings.environment,
+              packageIdentity: packageIdentity(settings.environment), currentSchemaVersion: 26,
+              sha256: async (input) => digest(typeof input === "string" ? input : new TextDecoder().decode(input)),
+            });
+            if (parsed.kind === "update_required") {
+              candidates.push({ kind: "update_required" as const, schemaVersion: parsed.header.schemaVersion, fileId: object.fileId });
+            } else {
+              candidates.push({ kind: "current" as const, ownerNamespace: parsed.header.ownerNamespace,
+                writerEpoch: parsed.header.writerEpoch, mutationGeneration: parsed.header.mutationGeneration,
+                createdAtMs: parsed.header.createdAtMs, fileId: object.fileId, objectSha256, byteLength: value.byteLength });
+            }
+          } catch { /* malformed scan candidates remain quarantined */ }
+        }
+        return candidates;
+      },
+      reconstructManifest: async (selection) => {
+        const manifestId = await drive.allocateFileId();
+        await drive.createManifest(manifestId, bytes({
+          kind: "active", writer_epoch: selection.latest.writerEpoch,
+          latest: { fileId: selection.latest.fileId, object_sha256: selection.latest.objectSha256, byteLength: selection.latest.byteLength },
+          previous: selection.previous === null ? null : { fileId: selection.previous.fileId, object_sha256: selection.previous.objectSha256, byteLength: selection.previous.byteLength },
+        }));
       },
     },
   });
@@ -255,7 +277,8 @@ export function createProductionAutomaticBackupServices(kernel: SqliteKernel): S
   });
   const runtime = createAutomaticBackupRuntime({ read: async () => {
     const current = await state.read();
-    return { status: current.permissionId === null ? "not_connected" as const : current.statusCode === "restore_pending" ? "restore_pending" as const : current.statusCode === "restoring" ? "restoring" as const : current.authorityState === "stale_writer" || current.statusCode === "paused" ? "paused" as const : current.mutationGeneration > current.backedUpGeneration ? "backup_pending" as const : "idle" as const, accountLabel: current.accountDisplayLabel, lastSuccessfulBackupAtMs: current.lastSuccessMs, mutationGeneration: current.mutationGeneration, backedUpGeneration: current.backedUpGeneration, pendingSinceMs: current.dirtySinceMs, nowMs: Date.now(), dataUsePolicy: current.dataUsePolicy === "wifi-only" ? "wifi_only" as const : "wifi_and_cellular" as const, reason: current.authorityState === "stale_writer" ? "stale_writer" as const : null };
+    const recoveryPrompt = coordinator.recoveryPrompt?.() ?? null;
+    return { status: current.permissionId === null ? "not_connected" as const : current.statusCode === "restore_pending" ? "restore_pending" as const : current.statusCode === "restoring" ? "restoring" as const : current.authorityState === "stale_writer" || current.statusCode === "paused" ? "paused" as const : current.mutationGeneration > current.backedUpGeneration ? "backup_pending" as const : "idle" as const, accountLabel: current.accountDisplayLabel, lastSuccessfulBackupAtMs: current.lastSuccessMs, mutationGeneration: current.mutationGeneration, backedUpGeneration: current.backedUpGeneration, pendingSinceMs: current.dirtySinceMs, nowMs: Date.now(), dataUsePolicy: current.dataUsePolicy === "wifi-only" ? "wifi_only" as const : "wifi_and_cellular" as const, recoveryPrompt, reason: recoveryPrompt?.kind === "update_required" ? "update_required" as const : current.authorityState === "stale_writer" ? "stale_writer" as const : null };
   }, commands: {
     connect: async () => {
       const result = await coordinator.connect();
