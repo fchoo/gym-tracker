@@ -1,5 +1,5 @@
 import type { AutomaticBackupEnvironment } from "./automaticBackupContracts";
-export type DriveManifestRead = Readonly<{ bytes: Uint8Array; etag: string }>;
+export type DriveManifestRead = Readonly<{ fileId?: string; bytes: Uint8Array; etag: string }>;
 export type DriveManifestCreate = Readonly<{ fileId: string; etag: string }>;
 export type DriveBackupObject = Readonly<{ fileId: string; name: string; appProperties: Readonly<Record<string, string>> }>;
 export type DriveResumableSession = Readonly<{ location: string; uploadedBytes: number }>;

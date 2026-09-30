@@ -51,7 +51,7 @@ describe("Drive backup store adapter", () => {
       return response("{}", { headers: { etag: '"next-etag"' } });
     });
     const adapter = createDriveBackupStoreAdapter({ environment: "development-test", token: async () => "token", fetch: fetcher });
-    await expect(adapter.readManifest()).resolves.toEqual({ bytes: new TextEncoder().encode("{}"), etag: '"raw-etag"' });
+    await expect(adapter.readManifest()).resolves.toEqual({ fileId: "manifest-1", bytes: new TextEncoder().encode("{}"), etag: '"raw-etag"' });
     await adapter.updateManifest("manifest-1", new TextEncoder().encode("{}"), '"raw-etag"');
     expect(fetcher.mock.calls.at(-1)?.[1]?.headers).toEqual(expect.objectContaining({ "If-Match": '"raw-etag"' }));
     expect(fetcher.mock.calls.find(([url]) => String(url).includes("alt=media"))?.[1]?.headers)

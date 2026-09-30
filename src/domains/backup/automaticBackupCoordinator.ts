@@ -1,4 +1,4 @@
-import { parseDriveBackupManifestV1, type AutomaticBackupEnvironment } from "./automaticBackupContracts";
+import { canonicalJson, parseDriveBackupManifestV1, type AutomaticBackupEnvironment, type DriveBackupManifestV1 } from "./automaticBackupContracts";
 import type { GoogleAuthPort } from "./googleAuthPort";
 type LogicalBackupSnapshot = any;
 
@@ -6,6 +6,7 @@ type CapturedSnapshot = Readonly<{ generation: number; sourceDigest: string; byt
 type ActiveManifestSummary = Readonly<{
   writerEpoch: number;
   latest?: Readonly<{ fileId: string; object_sha256: string }>;
+  previous?: Readonly<{ fileId: string; object_sha256: string }> | null;
 }>;
 type BackupState = Readonly<{
   environment: AutomaticBackupEnvironment; permissionId: string | null; connectionGeneration: number;
@@ -85,7 +86,7 @@ export function createAutomaticBackupCoordinator(input: Readonly<{
     createManifest?(candidateId: string, bytes: Uint8Array): Promise<Readonly<{ fileId: string; etag: string }>>;
     download(fileId: string, maxBytes: number): Promise<Uint8Array>;
     updateManifest(manifestId: string, bytes: Uint8Array, etag: string): Promise<string>;
-    readManifest(): Promise<Readonly<{ bytes: Uint8Array; etag: string }> | null>;
+    readManifest(): Promise<Readonly<{ fileId?: string; bytes: Uint8Array; etag: string }> | null>;
     discover?(): Promise<readonly unknown[]>;
     createResumableSnapshot?(candidateId: string, bytes: Uint8Array): Promise<Readonly<{ location: string; uploadedBytes: number }>>;
     resumeSnapshot?(session: Readonly<{ location: string; uploadedBytes: number }>, bytes: Uint8Array): Promise<Readonly<{ location: string; uploadedBytes: number }> | string>;
@@ -118,7 +119,17 @@ export function createAutomaticBackupCoordinator(input: Readonly<{
     permissionId: string;
     connectionGeneration: number;
   }> | null = null;
-  const recoveryAttempts = new Map<string, Readonly<{ snapshot: LogicalBackupSnapshot; preparation: AutomaticRecoveryPreparation }>>();
+  const recoveryAttempts = new Map<string, Readonly<{
+    snapshot: LogicalBackupSnapshot;
+    preparation: AutomaticRecoveryPreparation;
+    claim: Readonly<{
+      manifestId: string;
+      manifestEtag: string;
+      manifest: Extract<DriveBackupManifestV1, Readonly<{ kind: "active" }>>;
+      permissionId: string;
+      connectionGeneration: number;
+    }>;
+  }>>();
   const deferred = (stage: AutomaticBackupFailureStage): BackupResult => {
     input.reportFailure?.(stage);
     return Object.freeze({ status: "deferred" as const });
@@ -308,7 +319,11 @@ export function createAutomaticBackupCoordinator(input: Readonly<{
       await input.state.markStaleWriter?.(state.writerEpoch);
       return Object.freeze({ status: "stale_writer" as const });
     }
-    const activated = await input.state.activateWriter?.({ manifestId: state.manifestId ?? "automatic-backup-manifest", manifestEtag: manifest.etag, writerEpoch: parsed.writerEpoch, permissionId: state.permissionId, connectionGeneration: state.connectionGeneration });
+    if (state.manifestId === null || state.manifestId === undefined
+      || (manifest.fileId !== undefined && manifest.fileId !== state.manifestId)) {
+      return Object.freeze({ status: "quarantined" as const });
+    }
+    const activated = await input.state.activateWriter?.({ manifestId: state.manifestId, manifestEtag: manifest.etag, writerEpoch: parsed.writerEpoch, permissionId: state.permissionId, connectionGeneration: state.connectionGeneration });
     return Object.freeze({ status: activated === false ? "quarantined" as const : "ready" as const });
   };
   const finishDeletionSweep = async (): Promise<Readonly<{ status: "complete" | "partial" | "cancelled" }>> => {
@@ -339,6 +354,8 @@ export function createAutomaticBackupCoordinator(input: Readonly<{
     if (rawManifest === null) throw new Error("automatic_recovery_manifest_missing");
     const manifest = parseDriveBackupManifestV1(JSON.parse(new TextDecoder().decode(rawManifest.bytes)));
     if (manifest.kind !== "active" || manifest.writerEpoch < state.writerEpoch) throw new Error("automatic_recovery_manifest_invalid");
+    const manifestId = rawManifest.fileId ?? state.manifestId;
+    if (manifestId === null || manifestId === undefined) throw new Error("automatic_recovery_manifest_invalid");
     const descriptor = candidate === "latest" ? manifest.latest : manifest.previous;
     if (descriptor === null) throw new Error("automatic_recovery_candidate_missing");
     await input.state.setRecoveryStatus?.("checking");
@@ -347,7 +364,17 @@ export function createAutomaticBackupCoordinator(input: Readonly<{
     const preparation = await input.recovery.localIsEmpty()
       ? Object.freeze({ kind: "empty_direct" as const, attemptId })
       : Object.freeze({ kind: "merge" as const, attemptId, ...await input.recovery.prepareMerge(snapshot) });
-    recoveryAttempts.set(attemptId, Object.freeze({ snapshot, preparation }));
+    recoveryAttempts.set(attemptId, Object.freeze({
+      snapshot,
+      preparation,
+      claim: Object.freeze({
+        manifestId,
+        manifestEtag: rawManifest.etag,
+        manifest,
+        permissionId: state.permissionId,
+        connectionGeneration: state.connectionGeneration,
+      }),
+    }));
     await input.state.setRecoveryStatus?.("restore_pending");
     return preparation;
   };
@@ -356,13 +383,60 @@ export function createAutomaticBackupCoordinator(input: Readonly<{
     const attempt = recoveryAttempts.get(request.attemptId);
     if (attempt === undefined || attempt.preparation.kind !== request.kind) throw new Error("automatic_recovery_attempt_invalid");
     recoveryAttempts.delete(request.attemptId);
+    const current = await input.state.read();
+    if (current.permissionId !== attempt.claim.permissionId
+      || current.connectionGeneration !== attempt.claim.connectionGeneration
+      || current.authorityState !== "quarantine") {
+      throw new Error("automatic_recovery_claim_stale");
+    }
     await input.state.setRecoveryStatus?.("restoring");
-    if (request.kind === "empty_direct") return input.recovery.restore(attempt.snapshot);
-    const merge = attempt.preparation as Extract<AutomaticRecoveryPreparation, Readonly<{ kind: "merge" }>>;
-    if (merge.adoptionRequired && request.adoptIdentity !== true) throw new Error("automatic_recovery_adoption_required");
-    const grant = merge.adoptionRequired ? await input.recovery.freshAdoptionGrant?.() : undefined;
-    if (merge.adoptionRequired && (grant === undefined || request.adoptionGrant !== grant)) throw new Error("automatic_recovery_adoption_grant_invalid");
-    return input.recovery.commitMerge({ token: merge.token, ...(grant === undefined ? {} : { adoptionGrant: grant }) });
+    let result: Readonly<{ state: "ready" | "rebuild_pending" }>;
+    if (request.kind === "empty_direct") {
+      result = await input.recovery.restore(attempt.snapshot);
+    } else {
+      const merge = attempt.preparation as Extract<AutomaticRecoveryPreparation, Readonly<{ kind: "merge" }>>;
+      if (merge.adoptionRequired && request.adoptIdentity !== true) throw new Error("automatic_recovery_adoption_required");
+      const grant = merge.adoptionRequired ? await input.recovery.freshAdoptionGrant?.() : undefined;
+      if (merge.adoptionRequired && (grant === undefined || request.adoptionGrant !== grant)) throw new Error("automatic_recovery_adoption_grant_invalid");
+      result = await input.recovery.commitMerge({ token: merge.token, ...(grant === undefined ? {} : { adoptionGrant: grant }) });
+    }
+    await input.state.setRecoveryStatus?.("finishing");
+    const successorWriterEpoch = attempt.claim.manifest.writerEpoch + 1;
+    if (!Number.isSafeInteger(successorWriterEpoch)) throw new Error("automatic_recovery_claim_invalid");
+    const claimedBytes = new TextEncoder().encode(canonicalJson({
+      kind: "active",
+      writer_epoch: successorWriterEpoch,
+      latest: attempt.claim.manifest.latest,
+      previous: attempt.claim.manifest.previous,
+    }));
+    const claimedEtag = await input.drive.updateManifest(
+      attempt.claim.manifestId,
+      claimedBytes,
+      attempt.claim.manifestEtag,
+    );
+    const reread = await input.drive.readManifest();
+    const claimed = reread === null
+      ? null
+      : parseDriveBackupManifestV1(JSON.parse(new TextDecoder().decode(reread.bytes)));
+    if (reread === null
+      || (reread.fileId !== undefined && reread.fileId !== attempt.claim.manifestId)
+      || reread.etag !== claimedEtag
+      || claimed?.kind !== "active"
+      || claimed.writerEpoch !== successorWriterEpoch
+      || JSON.stringify([claimed.latest, claimed.previous])
+        !== JSON.stringify([attempt.claim.manifest.latest, attempt.claim.manifest.previous])) {
+      throw new Error("automatic_recovery_claim_invalid");
+    }
+    const activated = await input.state.activateWriter?.({
+      manifestId: attempt.claim.manifestId,
+      manifestEtag: claimedEtag,
+      writerEpoch: successorWriterEpoch,
+      permissionId: attempt.claim.permissionId,
+      connectionGeneration: attempt.claim.connectionGeneration,
+    });
+    if (activated !== true) throw new Error("automatic_recovery_claim_stale");
+    await input.state.setRecoveryStatus?.("idle");
+    return result;
   };
   return Object.freeze({
     backup() {

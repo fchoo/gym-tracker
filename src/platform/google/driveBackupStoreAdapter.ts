@@ -181,7 +181,7 @@ export function createDriveBackupStoreAdapter(input: Readonly<{ environment: Aut
     const etag = await readFileEtag(fileId);
     if (etag === null) return null;
     const response = await request(`${DRIVE_API}/files/${encodeURIComponent(fileId)}?alt=media`, { headers: { "If-Match": etag } });
-    if (response.status === 404) return null; if (!response.ok) throw new Error("drive_manifest_read_failed"); return Object.freeze({ bytes: await readBody(response, 16 * 1024), etag });
+    if (response.status === 404) return null; if (!response.ok) throw new Error("drive_manifest_read_failed"); return Object.freeze({ fileId, bytes: await readBody(response, 16 * 1024), etag });
   }
   async function createSnapshot(candidateId: string, payload: Uint8Array): Promise<string> {
     assertId(candidateId); bytes(payload, MULTIPART_LIMIT); const boundary = "gym-tracker-drive-backup-v1";

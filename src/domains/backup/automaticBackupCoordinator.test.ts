@@ -312,19 +312,27 @@ describe("automatic backup coordinator", () => {
   it("binds direct restore and exact merge/adoption commits to one prepared candidate", async () => {
     const restored: string[] = [];
     const snapshot = { version: 2 } as never;
-    const manifest = new TextEncoder().encode(JSON.stringify({
+    let manifest: Uint8Array = new TextEncoder().encode(JSON.stringify({
       kind: "active", writer_epoch: 2,
       latest: { fileId: "latest", object_sha256: "a".repeat(64) }, previous: null,
     }));
+    let manifestEtag = "etag";
+    let state = activeState({ authorityState: "quarantine" as const });
     const coordinator = createAutomaticBackupCoordinator({
       isWorkoutActive: () => false,
       capture: async () => ({ generation: 1, sourceDigest: "a".repeat(64), bytes: new Uint8Array() }),
       state: {
-        read: async () => ({ environment: "development-test" as const, permissionId: "permission", connectionGeneration: 1, writerEpoch: 2, mutationGeneration: 0, backedUpGeneration: 0, authorityState: "quarantine" as const }),
+        read: async () => state,
         persistAttempt: async () => undefined, acknowledgeReceipt: async () => false,
         setRecoveryStatus: async () => undefined,
+        activateWriter: async (value) => { state = { ...state, ...value, authorityState: "active" }; return true; },
       },
-      drive: { createSnapshot: async () => "snapshot", updateManifest: async () => "etag", readManifest: async () => ({ bytes: manifest, etag: "etag" }), download: async () => new Uint8Array() },
+      drive: {
+        createSnapshot: async () => "snapshot",
+        updateManifest: async (_id, value) => { manifest = value; manifestEtag = "next-etag"; return manifestEtag; },
+        readManifest: async () => ({ fileId: "manifest", bytes: manifest, etag: manifestEtag }),
+        download: async () => new Uint8Array(),
+      },
       validate: () => true, nowMs: () => 1, candidateId: () => "attempt",
       recovery: {
         parseSnapshot: async () => snapshot,
@@ -441,7 +449,7 @@ describe("automatic backup coordinator", () => {
   });
 
   it("quarantines every discovery ambiguity and only activates a matching newer writer", async () => {
-    const make = (state: ReturnType<typeof activeState>, readManifest: () => Promise<{ bytes: Uint8Array; etag: string } | null>, discover?: () => Promise<readonly unknown[]>, activateWriter?: () => Promise<boolean>) => createAutomaticBackupCoordinator({
+    const make = (state: ReturnType<typeof activeState>, readManifest: () => Promise<{ fileId?: string; bytes: Uint8Array; etag: string } | null>, discover?: () => Promise<readonly unknown[]>, activateWriter?: () => Promise<boolean>) => createAutomaticBackupCoordinator({
       isWorkoutActive: () => false, capture: async () => ({ generation: 1, sourceDigest: "a".repeat(64), bytes: new Uint8Array() }),
       state: { read: async () => state, persistAttempt: async () => undefined, acknowledgeReceipt: async () => false, beginQuarantine: async () => undefined, ...(activateWriter === undefined ? {} : { activateWriter }), markStaleWriter: async () => true },
       drive: { createSnapshot: async () => "snapshot", download: async () => new Uint8Array(), updateManifest: async () => "etag", readManifest, ...(discover === undefined ? {} : { discover }) }, validate: () => true, validateManifest: (bytes) => bytes[0] === 1 ? null : ({ writerEpoch: bytes[0]! }), nowMs: () => 1, candidateId: () => "candidate",
@@ -450,6 +458,8 @@ describe("automatic backup coordinator", () => {
     await expect(make(activeState(), async () => null, async () => [{}]).recover()).resolves.toEqual({ status: "quarantined" });
     await expect(make(activeState(), async () => ({ bytes: new Uint8Array([1]), etag: "e" })).recover()).resolves.toEqual({ status: "quarantined" });
     await expect(make(activeState({ writerEpoch: 3 }), async () => ({ bytes: new Uint8Array([2]), etag: "e" })).recover()).resolves.toEqual({ status: "stale_writer" });
+    await expect(make(activeState({ manifestId: undefined }), async () => ({ bytes: new Uint8Array([2]), etag: "e" })).recover()).resolves.toEqual({ status: "quarantined" });
+    await expect(make(activeState(), async () => ({ fileId: "other", bytes: new Uint8Array([2]), etag: "e" })).recover()).resolves.toEqual({ status: "quarantined" });
     await expect(make(activeState(), async () => ({ bytes: new Uint8Array([2]), etag: "e" }), undefined, async () => false).recover()).resolves.toEqual({ status: "quarantined" });
     await expect(make(activeState(), async () => ({ bytes: new Uint8Array([2]), etag: "e" }), undefined, async () => true).recover()).resolves.toEqual({ status: "ready" });
   });
@@ -520,11 +530,13 @@ describe("automatic backup coordinator", () => {
   });
 
   it("makes recovery attempts single-use and accepts only a fully authorized merge", async () => {
-    const state = activeState({ authorityState: "quarantine" });
+    let state = activeState({ authorityState: "quarantine" });
+    let manifest: Uint8Array = activeManifest(2);
+    let manifestEtag = "etag";
     const coordinator = createAutomaticBackupCoordinator({
       isWorkoutActive: () => false, capture: async () => ({ generation: 1, sourceDigest: "a".repeat(64), bytes: new Uint8Array() }),
-      state: { read: async () => state, persistAttempt: async () => undefined, acknowledgeReceipt: async () => false, setRecoveryStatus: async () => undefined },
-      drive: { createSnapshot: async () => "snapshot", updateManifest: async () => "etag", readManifest: async () => ({ bytes: activeManifest(2), etag: "etag" }), download: async () => new Uint8Array([1]) },
+      state: { read: async () => state, persistAttempt: async () => undefined, acknowledgeReceipt: async () => false, setRecoveryStatus: async () => undefined, activateWriter: async (value) => { state = { ...state, ...value, authorityState: "active" }; return true; } },
+      drive: { createSnapshot: async () => "snapshot", updateManifest: async (_id, value) => { manifest = value; manifestEtag = "next"; return manifestEtag; }, readManifest: async () => ({ fileId: "manifest", bytes: manifest, etag: manifestEtag }), download: async () => new Uint8Array([1]) },
       validate: () => true, nowMs: () => 1, candidateId: () => Math.random().toString(), recovery: { parseSnapshot: async () => ({}), localIsEmpty: async () => false, prepareMerge: async () => ({ token: "token", ownerSummary: "owner", adoptionRequired: false }), restore: async () => ({ state: "ready" as const }), commitMerge: async () => ({ state: "rebuild_pending" as const }) },
     });
     const attempt = await coordinator.prepareRecovery({ candidate: "latest" });
@@ -541,7 +553,198 @@ describe("automatic backup coordinator", () => {
     await expect(errors({ permissionId: null }, activeManifest(), "latest").prepareRecovery({ candidate: "latest" })).rejects.toThrow("automatic_recovery_not_quarantined");
     await expect(errors({}, null, "latest").prepareRecovery({ candidate: "latest" })).rejects.toThrow("automatic_recovery_manifest_missing");
     await expect(errors({}, new TextEncoder().encode(JSON.stringify({ kind: "deleted", successorWriterEpoch: 1, deletedAtMs: 1 })), "latest").prepareRecovery({ candidate: "latest" })).rejects.toThrow("automatic_recovery_manifest_invalid");
+    await expect(errors({ manifestId: null }, activeManifest(2), "latest").prepareRecovery({ candidate: "latest" })).rejects.toThrow("automatic_recovery_manifest_invalid");
     await expect(errors({}, activeManifest(2), "previous").prepareRecovery({ candidate: "previous" })).rejects.toThrow("automatic_recovery_candidate_missing");
+  });
+
+  it("keeps a replacement install quarantined until direct restore claims a successor epoch", async () => {
+    const events: string[] = [];
+    let current: any = activeState({
+      authorityState: "quarantine",
+      manifestId: null,
+      manifestEtag: null,
+      writerEpoch: 0,
+      mutationGeneration: 4,
+      backedUpGeneration: 0,
+    });
+    let manifestBytes: Uint8Array = activeManifest(2, {
+      fileId: "previous",
+      object_sha256: "b".repeat(64),
+    });
+    let manifestEtag = '"etag-2"';
+    const coordinator = createAutomaticBackupCoordinator({
+      isWorkoutActive: () => false,
+      auth: {
+        connect: async () => ({ permissionId: "permission", displayEmail: "…@example.com" }),
+        disconnect: async () => undefined,
+      },
+      capture: async () => ({ generation: 4, sourceDigest: "a".repeat(64), bytes: new Uint8Array([1]) }),
+      state: {
+        read: async () => current,
+        persistAttempt: async () => undefined,
+        acknowledgeReceipt: async () => false,
+        beginQuarantine: async (value) => {
+          current = { ...current, ...value, authorityState: "quarantine" };
+          events.push("quarantine");
+        },
+        activateWriter: async (value) => {
+          current = { ...current, ...value, authorityState: "active" };
+          events.push(`activate:${value.writerEpoch}`);
+          return true;
+        },
+        setRecoveryStatus: async (status) => {
+          current = { ...current, statusCode: status };
+          events.push(status);
+        },
+      },
+      drive: {
+        createSnapshot: async () => "snapshot",
+        download: async () => new Uint8Array([1]),
+        updateManifest: async (fileId, value, etag) => {
+          expect({ fileId, etag }).toEqual({ fileId: "manifest", etag: '"etag-2"' });
+          expect(JSON.parse(new TextDecoder().decode(value))).toMatchObject({
+            kind: "active",
+            writer_epoch: 3,
+            latest: { fileId: "latest" },
+            previous: { fileId: "previous" },
+          });
+          events.push("claim");
+          manifestBytes = value;
+          manifestEtag = '"etag-3"';
+          return manifestEtag;
+        },
+        readManifest: async () => ({ fileId: "manifest", bytes: manifestBytes, etag: manifestEtag }),
+      },
+      validate: () => true,
+      validateManifest: (value) => {
+        const parsed = JSON.parse(new TextDecoder().decode(value));
+        return { writerEpoch: parsed.writer_epoch, latest: parsed.latest, previous: parsed.previous };
+      },
+      nowMs: () => 1,
+      candidateId: () => "recovery-attempt",
+      recovery: {
+        parseSnapshot: async () => ({}),
+        localIsEmpty: async () => true,
+        prepareMerge: async () => ({ token: "merge", ownerSummary: "owner", adoptionRequired: false }),
+        restore: async () => { events.push("restore"); return { state: "ready" as const }; },
+        commitMerge: async () => ({ state: "ready" as const }),
+      },
+    });
+
+    await expect(coordinator.connect()).resolves.toEqual({ status: "quarantined" });
+    expect(current.authorityState).toBe("quarantine");
+    const prepared = await coordinator.prepareRecovery({ candidate: "latest" });
+    await expect(coordinator.commitRecovery({ kind: "empty_direct", attemptId: prepared.attemptId }))
+      .resolves.toEqual({ state: "ready" });
+    expect(current).toMatchObject({
+      authorityState: "active",
+      manifestId: "manifest",
+      manifestEtag: '"etag-3"',
+      writerEpoch: 3,
+      statusCode: "idle",
+    });
+    expect(events).toEqual([
+      "quarantine", "checking", "quarantine", "restore_pending",
+      "checking", "restore_pending", "restoring", "restore", "finishing", "claim",
+      "activate:3", "idle",
+    ]);
+  });
+
+  it("rejects every stale or invalid replacement writer claim", async () => {
+    const encoded = (value: unknown) => new TextEncoder().encode(JSON.stringify(value));
+    const make = (options: Readonly<{
+      writerEpoch?: number;
+      rereadNull?: boolean;
+      rereadFileId?: string;
+      rereadEtag?: string;
+      rereadBytes?: Uint8Array;
+      activate?: boolean;
+    }> = {}) => {
+      const writerEpoch = options.writerEpoch ?? 2;
+      let state: any = activeState({
+        authorityState: "quarantine",
+        manifestId: null,
+        manifestEtag: null,
+        writerEpoch: 0,
+      });
+      let promoted: Uint8Array = activeManifest(writerEpoch);
+      let reads = 0;
+      const coordinator = createAutomaticBackupCoordinator({
+        isWorkoutActive: () => false,
+        capture: async () => ({ generation: 1, sourceDigest: "a".repeat(64), bytes: new Uint8Array() }),
+        state: {
+          read: async () => state,
+          persistAttempt: async () => undefined,
+          acknowledgeReceipt: async () => false,
+          setRecoveryStatus: async () => undefined,
+          activateWriter: async () => options.activate ?? true,
+        },
+        drive: {
+          createSnapshot: async () => "snapshot",
+          download: async () => new Uint8Array([1]),
+          updateManifest: async (_id, value) => { promoted = value; return "next-etag"; },
+          readManifest: async () => {
+            reads += 1;
+            if (reads > 1 && options.rereadNull === true) return null;
+            return {
+              fileId: reads > 1 ? options.rereadFileId ?? "manifest" : "manifest",
+              bytes: reads > 1 ? options.rereadBytes ?? promoted : activeManifest(writerEpoch),
+              etag: reads > 1 ? options.rereadEtag ?? "next-etag" : "etag",
+            };
+          },
+        },
+        validate: () => true,
+        nowMs: () => 1,
+        candidateId: () => "attempt",
+        recovery: {
+          parseSnapshot: async () => ({}),
+          localIsEmpty: async () => true,
+          prepareMerge: async () => ({ token: "merge", ownerSummary: "owner", adoptionRequired: false }),
+          restore: async () => ({ state: "ready" as const }),
+          commitMerge: async () => ({ state: "ready" as const }),
+        },
+      });
+      return {
+        coordinator,
+        mutateState(value: Record<string, unknown>) { state = { ...state, ...value }; },
+      };
+    };
+
+    for (const stale of [
+      { permissionId: "other" },
+      { connectionGeneration: 2 },
+      { authorityState: "active" },
+    ]) {
+      const fixture = make();
+      const prepared = await fixture.coordinator.prepareRecovery({ candidate: "latest" });
+      fixture.mutateState(stale);
+      await expect(fixture.coordinator.commitRecovery({ kind: "empty_direct", attemptId: prepared.attemptId }))
+        .rejects.toThrow("automatic_recovery_claim_stale");
+    }
+
+    const invalidClaims = [
+      make({ rereadNull: true }),
+      make({ rereadFileId: "other" }),
+      make({ rereadEtag: "wrong" }),
+      make({ rereadBytes: encoded({ kind: "deleted", successorWriterEpoch: 3, deletedAtMs: 1 }) }),
+      make({ rereadBytes: activeManifest(4) }),
+      make({ rereadBytes: encoded({ kind: "active", writer_epoch: 3, latest: { fileId: "other", object_sha256: "a".repeat(64) }, previous: null }) }),
+    ];
+    for (const fixture of invalidClaims) {
+      const prepared = await fixture.coordinator.prepareRecovery({ candidate: "latest" });
+      await expect(fixture.coordinator.commitRecovery({ kind: "empty_direct", attemptId: prepared.attemptId }))
+        .rejects.toThrow("automatic_recovery_claim_invalid");
+    }
+
+    const rejectedActivation = make({ activate: false });
+    const rejectedPreparation = await rejectedActivation.coordinator.prepareRecovery({ candidate: "latest" });
+    await expect(rejectedActivation.coordinator.commitRecovery({ kind: "empty_direct", attemptId: rejectedPreparation.attemptId }))
+      .rejects.toThrow("automatic_recovery_claim_stale");
+
+    const overflow = make({ writerEpoch: Number.MAX_SAFE_INTEGER });
+    const overflowPreparation = await overflow.coordinator.prepareRecovery({ candidate: "latest" });
+    await expect(overflow.coordinator.commitRecovery({ kind: "empty_direct", attemptId: overflowPreparation.attemptId }))
+      .rejects.toThrow("automatic_recovery_claim_invalid");
   });
 
   it("keeps public scheduling methods non-blocking and supports a credential-free recheck", async () => {
@@ -624,13 +827,18 @@ describe("automatic backup coordinator", () => {
     await expect(candidate.backup()).resolves.toEqual({ status: "deferred" });
     await expect(candidate.connect()).resolves.toEqual({ status: "cancelled" });
 
-    const activate = (state: Record<string, unknown>, adoptionRequired: boolean) => createAutomaticBackupCoordinator({
-      isWorkoutActive: () => false, capture: async () => ({ generation: 1, sourceDigest: "a".repeat(64), bytes: new Uint8Array() }),
-      state: { read: async () => activeState({ authorityState: "quarantine", ...state }), persistAttempt: async () => undefined, acknowledgeReceipt: async () => false, beginQuarantine: async () => undefined, activateWriter: async () => true, setRecoveryStatus: async () => undefined },
-      drive: { createSnapshot: async () => "snapshot", updateManifest: async () => "etag", readManifest: async () => ({ bytes: activeManifest(), etag: "etag" }), download: async () => new Uint8Array([1]) },
-      validate: () => true, validateManifest: () => ({ writerEpoch: 2 }), nowMs: () => 1, candidateId: () => "attempt", recovery: { parseSnapshot: async () => ({}), localIsEmpty: async () => false, prepareMerge: async () => ({ token: "token", ownerSummary: "owner", adoptionRequired }), restore: async () => ({ state: "ready" as const }), commitMerge: async () => ({ state: "ready" as const }), ...(adoptionRequired ? { freshAdoptionGrant: async () => "grant" } : {}) },
-    });
-    await expect(activate({ manifestId: null }, false).recover()).resolves.toEqual({ status: "ready" });
+    const activate = (stateOverrides: Record<string, unknown>, adoptionRequired: boolean) => {
+      let state = activeState({ authorityState: "quarantine", ...stateOverrides });
+      let manifest: Uint8Array = activeManifest();
+      let manifestEtag = "etag";
+      return createAutomaticBackupCoordinator({
+        isWorkoutActive: () => false, capture: async () => ({ generation: 1, sourceDigest: "a".repeat(64), bytes: new Uint8Array() }),
+        state: { read: async () => state, persistAttempt: async () => undefined, acknowledgeReceipt: async () => false, beginQuarantine: async () => undefined, activateWriter: async (value) => { state = { ...state, ...value, authorityState: "active" }; return true; }, setRecoveryStatus: async () => undefined },
+        drive: { createSnapshot: async () => "snapshot", updateManifest: async (_id, value) => { manifest = value; manifestEtag = "next"; return manifestEtag; }, readManifest: async () => ({ fileId: "manifest", bytes: manifest, etag: manifestEtag }), download: async () => new Uint8Array([1]) },
+        validate: () => true, validateManifest: (value) => ({ writerEpoch: JSON.parse(new TextDecoder().decode(value)).writer_epoch }), nowMs: () => 1, candidateId: () => "attempt", recovery: { parseSnapshot: async () => ({}), localIsEmpty: async () => false, prepareMerge: async () => ({ token: "token", ownerSummary: "owner", adoptionRequired }), restore: async () => ({ state: "ready" as const }), commitMerge: async () => ({ state: "ready" as const }), ...(adoptionRequired ? { freshAdoptionGrant: async () => "grant" } : {}) },
+      });
+    };
+    await expect(activate({ manifestId: null }, false).recover()).resolves.toEqual({ status: "quarantined" });
     const adopted = activate({}, true); const prepared = await adopted.prepareRecovery({ candidate: "latest" });
     await expect(adopted.commitRecovery({ kind: "merge", attemptId: prepared.attemptId, confirmation: "MERGE", adoptIdentity: true, adoptionGrant: "grant" })).resolves.toEqual({ state: "ready" });
   });

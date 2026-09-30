@@ -48,6 +48,14 @@ const mockCoordinatorBackup = jest.fn(async () => ({ status: "backed_up" as cons
 const mockCoordinatorCheckAgain = jest.fn<() => Promise<{
   status: "ready" | "needs_bootstrap" | "quarantined";
 }>>(async () => ({ status: "ready" }));
+const mockCoordinatorPrepareRecovery = jest.fn<() => Promise<
+  | Readonly<{ kind: "empty_direct"; attemptId: string }>
+  | Readonly<{ kind: "merge"; attemptId: string; token: string; ownerSummary: string; adoptionRequired: boolean }>
+>>(async () => ({
+  kind: "empty_direct" as const,
+  attemptId: "attempt",
+}));
+const mockCoordinatorCommitRecovery = jest.fn(async () => ({ state: "ready" as const }));
 
 jest.mock("expo-constants", () => ({
   __esModule: true,
@@ -70,8 +78,8 @@ jest.mock("../domains/backup/automaticBackupCoordinator", () => ({
   createAutomaticBackupCoordinator: jest.fn(() => ({
     connect: mockCoordinatorConnect, deferRecovery: jest.fn(async () => undefined),
     abortChecking: jest.fn(async () => undefined), checkAgain: mockCoordinatorCheckAgain,
-    prepareRecovery: jest.fn(async () => ({ kind: "empty_direct" as const, attemptId: "attempt" })),
-    commitRecovery: jest.fn(async () => undefined), disconnect: jest.fn(async () => undefined),
+    prepareRecovery: mockCoordinatorPrepareRecovery,
+    commitRecovery: mockCoordinatorCommitRecovery, disconnect: jest.fn(async () => undefined),
     finishDeletionSweep: jest.fn(async () => undefined), backup: mockCoordinatorBackup,
   })),
 }));
@@ -207,6 +215,23 @@ describe("production automatic-backup composition", () => {
     expect(runtime.current().status).toBe("idle");
   });
 
+  it("keeps a non-empty recovery quarantined for an explicit merge review", async () => {
+    const commitsBefore = mockCoordinatorCommitRecovery.mock.calls.length;
+    mockCoordinatorPrepareRecovery.mockResolvedValueOnce({
+      kind: "merge",
+      attemptId: "merge-attempt",
+      token: "merge-token",
+      ownerSummary: "This backup identity",
+      adoptionRequired: false,
+    });
+    const { runtime } = createProductionAutomaticBackupServices({} as never);
+
+    await expect(runtime.continueRestore())
+      .rejects.toThrow("automatic_recovery_review_required");
+
+    expect(mockCoordinatorCommitRecovery).toHaveBeenCalledTimes(commitsBefore);
+  });
+
   it("re-discovers an interrupted first backup before manual retry", async () => {
     const priorBackups = mockCoordinatorBackup.mock.calls.length;
     const priorChecks = mockCoordinatorCheckAgain.mock.calls.length;
@@ -270,7 +295,10 @@ describe("production automatic-backup composition", () => {
     expect(mockState.setDataUsePolicy).toHaveBeenCalledWith("wifi-only");
     expect(activeCoordinator.prepareRecovery).toHaveBeenCalledWith({ candidate });
     expect(activeCoordinator.commitRecovery).toHaveBeenCalledWith(recovery);
+    expect(mockCoordinatorPrepareRecovery).toHaveBeenCalledWith({ candidate: "latest" });
+    expect(mockCoordinatorCommitRecovery).toHaveBeenCalledWith({ kind: "empty_direct", attemptId: "attempt" });
     expect(mockCoordinatorBackup).toHaveBeenCalledTimes(priorBackups + 3);
+    expect(activeScheduler.request).toHaveBeenCalledWith("post_commit");
     expect(activeScheduler.request).toHaveBeenCalledWith("manual");
   });
 

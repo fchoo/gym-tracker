@@ -174,7 +174,7 @@ export function createProductionAutomaticBackupServices(kernel: SqliteKernel): S
       try {
         const parsed = parseDriveBackupManifestV1(JSON.parse(new TextDecoder().decode(value)));
         return parsed.kind === "active"
-          ? { writerEpoch: parsed.writerEpoch, latest: parsed.latest }
+          ? { writerEpoch: parsed.writerEpoch, latest: parsed.latest, previous: parsed.previous }
           : null;
       } catch { return null; }
     },
@@ -223,7 +223,12 @@ export function createProductionAutomaticBackupServices(kernel: SqliteKernel): S
       const result = await coordinator.connect();
       await publishBackupState();
       if (result.status === "needs_bootstrap") await coordinator.backup();
-    }, deferRestore: () => coordinator.deferRecovery(), cancelChecking: () => coordinator.abortChecking(), checkAgain: async () => { await coordinator.checkAgain(); }, continueRestore: async () => undefined, prepareRecovery: (input) => coordinator.prepareRecovery(input), commitRecovery: async (input) => { await coordinator.commitRecovery(input); }, finishSetup: async () => undefined,
+    }, deferRestore: () => coordinator.deferRecovery(), cancelChecking: () => coordinator.abortChecking(), checkAgain: async () => { await coordinator.checkAgain(); }, continueRestore: async () => {
+      const preparation = await coordinator.prepareRecovery({ candidate: "latest" });
+      if (preparation.kind !== "empty_direct") throw new Error("automatic_recovery_review_required");
+      await coordinator.commitRecovery({ kind: "empty_direct", attemptId: preparation.attemptId });
+      scheduler.request("post_commit");
+    }, prepareRecovery: (input) => coordinator.prepareRecovery(input), commitRecovery: async (input) => { await coordinator.commitRecovery(input); }, finishSetup: async () => undefined,
     backupNow: backupAfterBootstrapDiscovery, retryBackup: backupAfterBootstrapDiscovery, useCellularThisTime: backupAfterBootstrapDiscovery, setDataUsePolicy: async (policy) => state.setDataUsePolicy(policy === "wifi_only" ? "wifi-only" : "any-network"), takeOver: async () => coordinator.checkAgain().then(() => undefined), disconnect: () => coordinator.disconnect(),
     deleteCloudBackup: async () => { throw new Error("automatic_delete_requires_tombstone_confirmation"); }, finishDeletingCloudBackup: async () => { await coordinator.finishDeletionSweep(); }, startNewCloudBackup: async () => { await coordinator.checkAgain(); scheduler.request("manual"); },
   } });
