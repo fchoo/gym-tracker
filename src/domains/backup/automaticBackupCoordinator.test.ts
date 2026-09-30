@@ -1,6 +1,6 @@
 import { describe, expect, it, jest } from "@jest/globals";
 
-import { createAutomaticBackupCoordinator } from "./automaticBackupCoordinator";
+import { createAutomaticBackupCoordinator, selectRecoveryLineage } from "./automaticBackupCoordinator";
 
 const activeState = (overrides: Record<string, unknown> = {}) => ({
   environment: "development-test" as const, permissionId: "permission", connectionGeneration: 1,
@@ -14,6 +14,25 @@ const activeManifest = (writerEpoch = 2, previous: unknown = null) => new TextEn
 }));
 
 describe("automatic backup coordinator", () => {
+  it("selects latest and previous only from one verified recovery lineage", () => {
+    const candidate = (ownerNamespace: string, writerEpoch: number, mutationGeneration: number, fileId: string) => ({
+      kind: "current" as const, ownerNamespace, writerEpoch, mutationGeneration,
+      createdAtMs: mutationGeneration, fileId, objectSha256: fileId.padEnd(64, "a").slice(0, 64), byteLength: 100,
+    });
+    expect(selectRecoveryLineage([
+      candidate("a".repeat(32), 3, 4, "four"),
+      candidate("a".repeat(32), 3, 6, "six"),
+      candidate("a".repeat(32), 3, 5, "five"),
+    ])).toMatchObject({
+      kind: "verified", latest: { fileId: "six" }, previous: { fileId: "five" },
+    });
+    expect(selectRecoveryLineage([
+      candidate("a".repeat(32), 3, 4, "one"),
+      candidate("b".repeat(32), 3, 5, "two"),
+    ])).toEqual({ kind: "quarantined" });
+    expect(selectRecoveryLineage([{ kind: "update_required", schemaVersion: 99, fileId: "future" }]))
+      .toEqual({ kind: "update_required" });
+  });
   it("connects through One-Tap before persisting restore quarantine and never uploads during discovery", async () => {
     const events: string[] = [];
     let current: any = { environment: "production" as const, permissionId: "permission", connectionGeneration: 1, writerEpoch: 0, mutationGeneration: 0, backedUpGeneration: 0 };
