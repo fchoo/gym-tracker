@@ -52,11 +52,19 @@ export function createGoogleAuthAdapter(input: Readonly<{ webClientId: string; a
     reauthenticate: current,
     identity: () => connected,
     async accessToken() {
-      if (connected === null) throw new Error("google_not_connected");
-      const token = await bridge.getTokens();
+      const startedAt = generation;
+      let token: Awaited<ReturnType<OneTapBridge["getTokens"]>>;
+      try {
+        token = await bridge.getTokens();
+      } catch (error) {
+        if (connected === null) throw new Error("google_not_connected");
+        throw error;
+      }
       if (typeof token.accessToken !== "string" || token.accessToken.length === 0) throw new Error("google_token_missing");
       const verified = identity(await input.about(token.accessToken));
-      if (verified.permissionId !== connected.permissionId) throw new Error("google_account_mismatch");
+      if (startedAt !== generation) throw new Error("google_connection_stale");
+      if (connected !== null && verified.permissionId !== connected.permissionId) throw new Error("google_account_mismatch");
+      connected = verified;
       return token.accessToken;
     },
     async disconnect() { ++generation; connected = null; await bridge.signOut(); },

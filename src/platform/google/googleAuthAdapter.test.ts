@@ -66,12 +66,53 @@ describe("Google auth adapter", () => {
 
   it("rejects cancellation, unconnected access and account switches", async () => {
     const cancelled = bridge(); cancelled.signIn.mockResolvedValue({ ok: false });
+    cancelled.getTokens.mockRejectedValue(new Error("SIGN_IN_REQUIRED"));
     const auth = createGoogleAuthAdapter({ webClientId: clientId, bridge: cancelled as never, about: async () => ({ user: { permissionId: "permission-1" } }) });
     await expect(auth.connect()).resolves.toBeNull();
     await expect(auth.accessToken()).rejects.toThrow("google_not_connected");
     const switched = bridge(); let calls = 0;
     const switchedAuth = createGoogleAuthAdapter({ webClientId: clientId, bridge: switched as never, about: async () => ({ user: { permissionId: ++calls === 1 ? "permission-1" : "permission-2" } }) });
     await switchedAuth.connect(); await expect(switchedAuth.accessToken()).rejects.toThrow("google_account_mismatch");
+  });
+
+  it("restores a persisted native session before the first token request", async () => {
+    const native = bridge();
+    const auth = createGoogleAuthAdapter({
+      webClientId: clientId,
+      bridge: native as never,
+      about: async () => ({ user: { permissionId: "persisted", emailAddress: "owner@example.com" } }),
+    });
+
+    await expect(auth.accessToken()).resolves.toBe("token");
+    expect(auth.identity()).toEqual({ permissionId: "persisted", displayEmail: "…@example.com" });
+    expect(native.signIn).not.toHaveBeenCalled();
+  });
+
+  it("rejects refresh failures and late verification after disconnect", async () => {
+    const failedRefresh = bridge();
+    const connected = createGoogleAuthAdapter({ webClientId: clientId, bridge: failedRefresh as never, about: async () => ({ user: { permissionId: "permission" } }) });
+    await connected.connect();
+    failedRefresh.getTokens.mockRejectedValue(new Error("refresh_failed"));
+    await expect(connected.accessToken()).rejects.toThrow("refresh_failed");
+
+    let aboutCalls = 0;
+    let resolveRefresh: ((value: unknown) => void) | undefined;
+    const delayedRefresh = bridge();
+    const delayed = createGoogleAuthAdapter({
+      webClientId: clientId,
+      bridge: delayedRefresh as never,
+      about: async () => {
+        aboutCalls += 1;
+        if (aboutCalls === 1) return { user: { permissionId: "permission" } };
+        return new Promise((resolve) => { resolveRefresh = resolve; });
+      },
+    });
+    await delayed.connect();
+    const token = delayed.accessToken();
+    for (let attempt = 0; attempt < 8 && resolveRefresh === undefined; attempt += 1) await Promise.resolve();
+    await delayed.disconnect();
+    resolveRefresh?.({ user: { permissionId: "permission" } });
+    await expect(token).rejects.toThrow("google_connection_stale");
   });
 
   it("fails closed for malformed configuration, identity, and token responses", async () => {
