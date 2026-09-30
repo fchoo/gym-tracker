@@ -21,58 +21,101 @@ tags:
     visible: "Data and recovery"
     timeout: 30000
 - runFlow:
-    when: { true: ${PHASE12_STAGE == 'disconnected'} }
-    commands: [{ assertVisible: "Not connected" }, { assertVisible: "Connect Google Drive" }]
+    when:
+      true: ${PHASE12_STAGE == 'disconnected'}
+    commands:
+      - assertVisible: "Not connected"
+      - assertVisible: "Connect Google Drive"
 - runFlow:
-    when: { true: ${PHASE12_STAGE == 'no_cloud'} }
-    commands: [{ assertVisible: "Ready to start cloud backup" }]
+    when:
+      true: ${PHASE12_STAGE == 'no_cloud'}
+    commands:
+      - assertVisible: "Ready to start cloud backup"
 - runFlow:
-    when: { true: ${PHASE12_STAGE == 'backup_pending'} }
-    commands: [{ assertVisible: "Backup pending" }, { assertVisible: "Retry" }]
+    when:
+      true: ${PHASE12_STAGE == 'backup_pending'}
+    commands:
+      - assertVisible: "Backup pending"
+      - assertVisible: "Retry"
 - runFlow:
-    when: { true: ${PHASE12_STAGE == 'backing_up'} }
-    commands: [{ assertVisible: "Backing up" }]
+    when:
+      true: ${PHASE12_STAGE == 'backing_up'}
+    commands:
+      - assertVisible: "Backing up"
 - runFlow:
-    when: { true: ${PHASE12_STAGE == 'backed_up'} }
-    commands: [{ assertVisible: "Backed up" }, { assertVisible: "Back up now" }]
+    when:
+      true: ${PHASE12_STAGE == 'backed_up'}
+    commands:
+      - assertVisible: "Backed up"
+      - assertVisible: "Back up now"
 - runFlow:
-    when: { true: ${PHASE12_STAGE == 'auth_attention'} }
-    commands: [{ assertVisible: "Sign in again" }]
+    when:
+      true: ${PHASE12_STAGE == 'auth_attention'}
+    commands:
+      - assertVisible: "Sign in again"
 - runFlow:
-    when: { true: ${PHASE12_STAGE == 'checking'} }
-    commands: [{ assertVisible: "Checking backup" }]
+    when:
+      true: ${PHASE12_STAGE == 'checking'}
+    commands:
+      - assertVisible: "Checking backup"
 - runFlow:
-    when: { true: ${PHASE12_STAGE == 'restoring'} }
-    commands: [{ assertVisible: "Restoring on this phone" }]
+    when:
+      true: ${PHASE12_STAGE == 'restoring'}
+    commands:
+      - assertVisible: "Restoring on this phone"
 - runFlow:
-    when: { true: ${PHASE12_STAGE == 'finishing'} }
-    commands: [{ assertVisible: "Finishing backup setup" }]
+    when:
+      true: ${PHASE12_STAGE == 'finishing'}
+    commands:
+      - assertVisible: "Finishing backup setup"
 - runFlow:
-    when: { true: ${PHASE12_STAGE == 'restore_required'} }
-    commands: [{ assertVisible: "Restore required" }, { assertVisible: "Continue restore" }]
+    when:
+      true: ${PHASE12_STAGE == 'restore_required'}
+    commands:
+      - assertVisible: "Restore required"
+      - assertVisible: "Continue restore"
 - runFlow:
-    when: { true: ${PHASE12_STAGE == 'merge_review'} }
-    commands: [{ assertVisible: "Review merge" }]
+    when:
+      true: ${PHASE12_STAGE == 'merge_review'}
+    commands:
+      - assertVisible: "Review merge"
 - runFlow:
-    when: { true: ${PHASE12_STAGE == 'previous_available'} }
-    commands: [{ assertVisible: "previous verified backup is available" }]
+    when:
+      true: ${PHASE12_STAGE == 'previous_available'}
+    commands:
+      - assertVisible: "previous verified backup is available"
 - runFlow:
-    when: { true: ${PHASE12_STAGE == 'update_required'} }
-    commands: [{ assertVisible: "Update required" }, { assertVisible: "Check again" }]
+    when:
+      true: ${PHASE12_STAGE == 'update_required'}
+    commands:
+      - assertVisible: "Update required"
+      - assertVisible: "Check again"
 - runFlow:
-    when: { true: ${PHASE12_STAGE == 'invalid_artifacts'} }
-    commands: [{ assertVisible: "Backup needs attention" }, { assertVisible: "Manual encrypted backup" }]
+    when:
+      true: ${PHASE12_STAGE == 'invalid_artifacts'}
+    commands:
+      - assertVisible: "Backup needs attention"
+      - assertVisible: "Manual encrypted backup"
 - runFlow:
-    when: { true: ${PHASE12_STAGE == 'pending_24h'} }
-    commands: [{ assertVisible: "Changes not backed up for 24h" }, { assertVisible: "Retry" }]
+    when:
+      true: ${PHASE12_STAGE == 'pending_24h'}
+    commands:
+      - assertVisible: "Changes not backed up for 24h"
+      - assertVisible: "Retry"
 - runFlow:
-    when: { true: ${PHASE12_STAGE == 'stale_writer'} }
-    commands: [{ assertVisible: "Backup moved to another phone" }]
+    when:
+      true: ${PHASE12_STAGE == 'stale_writer'}
+    commands:
+      - assertVisible: "Backup moved to another phone"
 - runFlow:
-    when: { true: ${PHASE12_STAGE == 'deleted'} }
-    commands: [{ assertVisible: "Cloud backup deleted" }]
+    when:
+      true: ${PHASE12_STAGE == 'deleted'}
+    commands:
+      - assertVisible: "Cloud backup deleted"
 - runFlow:
-    when: { true: ${PHASE12_STAGE == 'deletion_partial'} }
-    commands: [{ assertVisible: "Deleting cloud backup" }]
+    when:
+      true: ${PHASE12_STAGE == 'deletion_partial'}
+    commands:
+      - assertVisible: "Deleting cloud backup"
 - assertVisible: "Manual encrypted backup"
 - assertVisible: "Export CSV"
