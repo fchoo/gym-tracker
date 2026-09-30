@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 
 import { createHash } from "node:crypto";
+import { execFileSync } from "node:child_process";
 import { existsSync, readFileSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import { pathToFileURL } from "node:url";
@@ -14,6 +15,7 @@ import {
   validatePhase12GoogleChecklist,
 } from "./prepare-phase12-google-acceptance.mjs";
 import { PHASE12_MAESTRO_STAGES } from "./run-phase12-maestro.mjs";
+import { sourceTreeSha256 } from "./source-tree-digest.mjs";
 
 const ROOT = process.cwd();
 const PACKAGE = "com.fchoo.gymtracker.devtest";
@@ -65,11 +67,34 @@ export function validatePhase12AutomatedEvidence({ manifest, migrations, google,
     || !/^[a-f0-9]{64}$/u.test(manifest.source_tree_sha256 ?? "") || !/^[a-f0-9]{64}$/u.test(manifest.apk?.sha256 ?? "")) throw new Error("phase12_manifest_invalid");
   exactIdentity("migrations", migrations, manifest); exactCases("migrations", migrations, PHASE12_MIGRATION_CASE_IDS);
   exactIdentity("google", google, manifest); exactCases("google", google, PHASE12_GOOGLE_CASE_IDS);
-  if (maestro?.schema_version !== 1 || maestro.suite !== "phase12" || maestro.status !== "passed" || !Array.isArray(maestro.stages)
-    || maestro.stages.length !== PHASE12_MAESTRO_STAGES.length || maestro.stages.some((entry, index) => entry?.stage !== PHASE12_MAESTRO_STAGES[index] || !/^[a-f0-9]{64}$/u.test(entry.sha256 ?? ""))) throw new Error("phase12_maestro_evidence_invalid");
+  if (maestro?.schema_version !== 1 || maestro.suite !== "phase12" || maestro.status !== "passed"
+    || maestro.build_manifest !== "artifacts/native/phase12/build.json"
+    || maestro.base_head !== manifest.base_head || maestro.source_tree_sha256 !== manifest.source_tree_sha256
+    || maestro.package !== manifest.package || maestro.apk_sha256 !== manifest.apk.sha256
+    || !Array.isArray(maestro.stages)
+    || maestro.stages.length !== PHASE12_MAESTRO_STAGES.length || maestro.stages.some((entry, index) => entry?.stage !== PHASE12_MAESTRO_STAGES[index]
+      || entry.report !== `artifacts/native/phase12/maestro/${PHASE12_MAESTRO_STAGES[index]}.xml`
+      || !/^[a-f0-9]{64}$/u.test(entry.sha256 ?? ""))) throw new Error("phase12_maestro_evidence_invalid");
   validatePhase12BackupBenchmark(benchmark, manifest);
   noSecrets({ migrations, google, maestro, benchmark });
   return Object.freeze({ schema_version: 1, suite: "phase12", status: "passed", mode: "automated-only", approval_status: "evidence_pending", attended_scope: "excluded", manifest: { base_head: manifest.base_head, source_tree_sha256: manifest.source_tree_sha256, apk_sha256: manifest.apk.sha256, package: manifest.package }, native: { migrations_cases: `${PHASE12_MIGRATION_CASE_IDS.length}/${PHASE12_MIGRATION_CASE_IDS.length}`, google_cases: `${PHASE12_GOOGLE_CASE_IDS.length}/${PHASE12_GOOGLE_CASE_IDS.length}` }, maestro_stages: `${PHASE12_MAESTRO_STAGES.length}/${PHASE12_MAESTRO_STAGES.length}`, benchmark_sha256: sha256(JSON.stringify(benchmark)) });
+}
+
+export function validatePhase12CurrentArtifacts({ manifest, currentHead, currentSourceTreeSha256, apkBytes }) {
+  if (manifest.base_head !== currentHead
+    || manifest.source_tree_sha256 !== currentSourceTreeSha256
+    || sha256(apkBytes) !== manifest.apk?.sha256) {
+    throw new Error("phase12_manifest_stale");
+  }
+}
+
+export function validatePhase12MaestroReports(maestro, readReport) {
+  for (const entry of maestro.stages ?? []) {
+    let bytes;
+    try { bytes = readReport(entry.report); }
+    catch { throw new Error(`phase12_maestro_report_missing:${entry.stage}`); }
+    if (sha256(bytes) !== entry.sha256) throw new Error(`phase12_maestro_report_stale:${entry.stage}`);
+  }
 }
 
 export function parsePhase12VerifierArgs(args) {
@@ -105,11 +130,21 @@ export function executePhase12EvidenceVerifier(args = process.argv.slice(2)) {
   const options = parsePhase12VerifierArgs(args);
   const directory = path.join(ROOT, "artifacts/native/phase12");
   const manifest = readJson(path.join(directory, "build.json"), "manifest");
+  const apkPath = path.resolve(ROOT, manifest.apk?.path ?? "");
+  if (!existsSync(apkPath)) throw new Error("phase12_apk_missing");
+  validatePhase12CurrentArtifacts({
+    manifest,
+    currentHead: execFileSync("git", ["rev-parse", "HEAD"], { cwd: ROOT, encoding: "utf8" }).trim(),
+    currentSourceTreeSha256: sourceTreeSha256(ROOT),
+    apkBytes: readFileSync(apkPath),
+  });
+  const maestro = readJson(path.join(directory, "maestro/phase12-evidence.json"), "maestro");
+  validatePhase12MaestroReports(maestro, (reportPath) => readFileSync(path.resolve(ROOT, reportPath)));
   const automated = validatePhase12AutomatedEvidence({
     manifest,
     migrations: readJson(path.join(directory, "migrations-effects.json"), "migrations"),
     google: readJson(path.join(directory, "google-drive-backup.json"), "google"),
-    maestro: readJson(path.join(directory, "maestro/phase12-evidence.json"), "maestro"),
+    maestro,
     benchmark: readJson(path.join(directory, "benchmark.json"), "benchmark"),
   });
   const result = options.automatedOnly

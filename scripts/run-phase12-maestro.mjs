@@ -39,9 +39,19 @@ export function executePhase12Maestro(args = process.argv.slice(2)) {
     const bytes = readFileSync(report);
     const reportText = bytes.toString("utf8");
     if (!reportText.includes("failures=\"0\"") || /skipped="(?!0")/u.test(reportText)) throw new Error(`invalid Maestro report: ${stage}`);
-    return { stage, sha256: sha256(bytes) };
+    return { stage, report: path.relative(ROOT, report), sha256: sha256(bytes) };
   });
-  const evidence = { schema_version: 1, suite: "phase12", status: "passed", manifest: manifestPath, stages: results };
+  const evidence = {
+    schema_version: 1,
+    suite: "phase12",
+    status: "passed",
+    build_manifest: manifestPath,
+    base_head: manifest.base_head,
+    source_tree_sha256: manifest.source_tree_sha256,
+    package: manifest.package,
+    apk_sha256: manifest.apk.sha256,
+    stages: results,
+  };
   writeFileSync(path.join(reportDirectory, "phase12-evidence.json"), `${JSON.stringify(evidence, null, 2)}\n`);
   return evidence;
 }
