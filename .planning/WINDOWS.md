@@ -2,9 +2,9 @@
 schema_version: 1
 open_count: 0
 waived_count: 0
-fixed_count: 78
-total_count: 78
-last_updated: 2026-09-16T19:18:42.000Z
+fixed_count: 81
+total_count: 81
+last_updated: 2026-09-30T21:54:13.191Z
 ---
 
 # Broken Windows Ledger
@@ -92,7 +92,10 @@ last_updated: 2026-09-16T19:18:42.000Z
 | 75 | 08 | unrun-verify | maestro/phase8/session-overview.yaml |  | Phase 8 Maestro runner unrun: declared development-test manifest artifacts/native/phase2/build.json is absent, so no 200 percent font-scale/device evidence could be captured. | fixed | Manifest-bound Phase 8 runner passed all five flows at HEAD 500701fd1032565b219d82fcfc622ba126e8d8b9 and recorded font_scale applied 2.0/restored true. | 2026-09-15T13:57:36.675Z | 2026-09-16T02:37:08.000Z |
 | 76 | 09 | deviation | src/platform/sqlite/repositories/workoutRepository.ts |  | Plan 09-04 auto-fixed protected-history skip and replay validation branches | fixed |  | 2026-09-16T14:48:41.903Z | 2026-09-16T14:50:59.927Z |
 | 77 | 09 | unrun-verify | maestro/phase9/in-workout-exercise-editing.yaml |  | Plan 09-05 native Maestro evidence unrun: retained phase9 manifest is stale and no adb executable is available for an exact-HEAD build. | fixed |  | 2026-09-16T15:11:14.269Z | 2026-09-16T15:14:27.508Z |
-| 78 | 09 | unrun-verify | maestro/phase9/in-workout-exercise-editing.yaml |  | Plan 09-05 native Maestro evidence unrun: retained phase9 manifest is stale and the flow lacks Replace/Remove, protected-history, retry, and relaunch coverage; build and run an exact-HEAD expanded flow. | fixed | Exact-HEAD `716fb82` manifest-bound Android flow passed Add, injected Replace/Remove retries, protected-history retention, and cold relaunch/resume on emulator-5554 (API 36, arm64-v8a); APK SHA-256 c420c12b14d516d0c863ab1db2c04addaabad2444d3269e541dbf02869a27b61. | 2026-09-16T15:14:39.740Z | 2026-09-16T19:18:42.000Z |
+| 78 | 09 | unrun-verify | maestro/phase9/in-workout-exercise-editing.yaml |  | Plan 09-05 native Maestro evidence unrun: retained phase9 manifest is stale and the flow lacks Replace/Remove, protected-history, retry, and relaunch coverage; build and run an exact-HEAD expanded flow. | fixed | Exact-HEAD 716fb82 manifest-bound Android flow passed Add, injected Replace/Remove retries, protected-history retention, and cold relaunch/resume on emulator-5554 (API 36, arm64-v8a); APK SHA-256 c420c12b14d516d0c863ab1db2c04addaabad2444d3269e541dbf02869a27b61. | 2026-09-16T15:14:39.740Z | 2026-09-16T19:18:42.000Z |
+| 79 | 12 | deviation | src/bootstrap/phase12BackupBenchmark.ts |  | Corrected benchmark fixtures to satisfy migrated schema and production merge-plan contracts | fixed |  | 2026-09-30T21:53:14.951Z | 2026-09-30T21:54:12.887Z |
+| 80 | 12 | deviation | src/platform/sqlite/repositories/logicalMergeRepository.ts |  | Batched maximum full-plan writes and scoped exact verification without weakening validation | fixed |  | 2026-09-30T21:53:15.104Z | 2026-09-30T21:54:13.039Z |
+| 81 | 12 | deviation | scripts/benchmark-phase12-backup.mjs |  | Closed the tenth preflight RSS window before materialization | fixed |  | 2026-09-30T21:53:15.256Z | 2026-09-30T21:54:13.191Z |
 
 ````json
 [
@@ -1031,6 +1034,42 @@ last_updated: 2026-09-16T19:18:42.000Z
     "reason": "Exact-HEAD 716fb82 manifest-bound Android flow passed Add, injected Replace/Remove retries, protected-history retention, and cold relaunch/resume on emulator-5554 (API 36, arm64-v8a); APK SHA-256 c420c12b14d516d0c863ab1db2c04addaabad2444d3269e541dbf02869a27b61.",
     "recorded_at": "2026-09-16T15:14:39.740Z",
     "resolved_at": "2026-09-16T19:18:42.000Z"
+  },
+  {
+    "id": 79,
+    "kind": "deviation",
+    "phase": "12",
+    "file": "src/bootstrap/phase12BackupBenchmark.ts",
+    "line": null,
+    "description": "Corrected benchmark fixtures to satisfy migrated schema and production merge-plan contracts",
+    "status": "fixed",
+    "reason": "",
+    "recorded_at": "2026-09-30T21:53:14.951Z",
+    "resolved_at": "2026-09-30T21:54:12.887Z"
+  },
+  {
+    "id": 80,
+    "kind": "deviation",
+    "phase": "12",
+    "file": "src/platform/sqlite/repositories/logicalMergeRepository.ts",
+    "line": null,
+    "description": "Batched maximum full-plan writes and scoped exact verification without weakening validation",
+    "status": "fixed",
+    "reason": "",
+    "recorded_at": "2026-09-30T21:53:15.104Z",
+    "resolved_at": "2026-09-30T21:54:13.039Z"
+  },
+  {
+    "id": 81,
+    "kind": "deviation",
+    "phase": "12",
+    "file": "scripts/benchmark-phase12-backup.mjs",
+    "line": null,
+    "description": "Closed the tenth preflight RSS window before materialization",
+    "status": "fixed",
+    "reason": "",
+    "recorded_at": "2026-09-30T21:53:15.256Z",
+    "resolved_at": "2026-09-30T21:54:13.191Z"
   }
 ]
 ````
