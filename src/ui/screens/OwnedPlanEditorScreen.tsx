@@ -26,6 +26,9 @@ import type {
   OwnedPlanOccurrenceInput,
 } from "../../domains/plans";
 import {
+  SET_MAX_COUNT,
+} from "../../domains/plans";
+import {
   AdaptiveScreen,
 } from "../layout/AdaptiveScreen";
 import {
@@ -751,6 +754,8 @@ export function OwnedPlanEditorScreen({
     if (
       workingSets === null
       || warmupSets === null
+      || workingSets > SET_MAX_COUNT
+      || warmupSets > SET_MAX_COUNT
       || warmupLoadGrams === null
       || warmupReps === null
       || restSeconds === null
@@ -1563,6 +1568,7 @@ function TargetEditor({
           <SemanticNumberField
             kind="integer"
             label="Warm-up sets"
+            maximum={SET_MAX_COUNT}
             minimum={0}
             onChangeText={(warmupSets) => {
               const count = nonnegativeInteger(warmupSets);
@@ -1570,6 +1576,7 @@ function TargetEditor({
                 ...draft,
                 warmupSets,
                 advancedTimingWarmupOverrides: count === null
+                  || count > SET_MAX_COUNT
                   ? draft.advancedTimingWarmupOverrides
                   : resizeTimingOverrides(
                       draft.advancedTimingWarmupOverrides,
@@ -1587,13 +1594,15 @@ function TargetEditor({
       <SemanticNumberField
         kind="integer"
         label="Working sets"
-        minimum={0}
+        maximum={SET_MAX_COUNT}
+        minimum={1}
         onChangeText={(workingSets) => {
           const count = positiveInteger(workingSets);
           onChange({
             ...draft,
             workingSets,
             advancedTimingWorkingOverrides: count === null
+              || count > SET_MAX_COUNT
               ? draft.advancedTimingWorkingOverrides
               : resizeTimingOverrides(
                   draft.advancedTimingWorkingOverrides,

@@ -74,6 +74,7 @@ export {
   OwnedPlanInputError,
   restoreOwnedPlan,
   saveOwnedPlan,
+  SET_MAX_COUNT,
   type CreateOwnedPlanDraftInput,
   type DuplicateOwnedPlanInput,
   type OwnedPlanDayInput,

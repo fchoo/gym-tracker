@@ -685,6 +685,43 @@ describe("OwnedPlanEditorScreen create and save plan", () => {
     ]);
   });
 
+  it("bounds timing override allocation for warm-up and working-set counts", async () => {
+    await renderEditor();
+
+    await fireEvent.press(
+      await screen.findByRole("button", { name: "Add exercise" }),
+    );
+    await fireEvent.press(
+      screen.getByRole("button", { name: /Barbell Back Squat/u }),
+    );
+
+    const warmups = screen.getByLabelText("Warm-up sets");
+    const working = screen.getByLabelText("Working sets");
+    await fireEvent.changeText(warmups, "100");
+    expect(screen.getByTestId("advanced-timing-warmup-summary-99"))
+      .toBeOnTheScreen();
+    await fireEvent.changeText(warmups, "101");
+    await fireEvent(warmups, "blur");
+    expect(warmups).toHaveProp("accessibilityValue", {
+      text: "Enter a value no greater than 100.",
+    });
+    expect(screen.queryByTestId("advanced-timing-warmup-summary-100"))
+      .not.toBeOnTheScreen();
+    await fireEvent.changeText(warmups, "4294967296");
+
+    await fireEvent.changeText(working, "100");
+    expect(screen.getByTestId("advanced-timing-working-summary-99"))
+      .toBeOnTheScreen();
+    await fireEvent.changeText(working, "101");
+    await fireEvent(working, "blur");
+    expect(working).toHaveProp("accessibilityValue", {
+      text: "Enter a value no greater than 100.",
+    });
+    expect(screen.queryByTestId("advanced-timing-working-summary-100"))
+      .not.toBeOnTheScreen();
+    await fireEvent.changeText(working, "4294967296");
+  });
+
   it("uses shared Search busy and many-result states for the exercise picker", async () => {
     const exerciseLoad = deferred<readonly OwnedPlanEditorExerciseOption[]>();
     await renderEditor({

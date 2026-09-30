@@ -31,7 +31,7 @@ const IDENTIFIER_MAX_CODE_POINTS = 128;
 const NAME_MAX_CODE_POINTS = 120;
 const DAY_MAX_COUNT = 100;
 const OCCURRENCE_MAX_COUNT = 200;
-const SET_MAX_COUNT = 100;
+export const SET_MAX_COUNT = 100;
 const SHA256_PATTERN = /^[a-f0-9]{64}$/u;
 
 export type OwnedPlanWarmupInput = Readonly<{
