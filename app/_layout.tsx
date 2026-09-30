@@ -63,6 +63,7 @@ function RootNavigator() {
           <Stack.Screen name="more/manual-encrypted-backup" />
           <Stack.Screen name="more/drive-backup-privacy" />
           <Stack.Screen name="more/removed-sessions" />
+          <Stack.Screen name="__phase12-google-auth-smoke" />
           <Stack.Screen name="__phase12-google-cleanup" />
           <Stack.Screen name="index" redirect />
         </Stack>
@@ -111,6 +112,17 @@ function Phase12CleanupNavigator() {
   );
 }
 
+function Phase12GoogleAuthSmokeNavigator() {
+  return (
+    <Stack
+      initialRouteName="__phase12-google-auth-smoke"
+      screenOptions={{ animation: "none", headerShown: false }}
+    >
+      <Stack.Screen name="__phase12-google-auth-smoke" />
+    </Stack>
+  );
+}
+
 export default function RootLayout() {
   const [fontsLoaded, fontError] = useFonts(appFonts);
   const pathname = usePathname();
@@ -124,6 +136,9 @@ export default function RootLayout() {
   const phase12CleanupEnabled =
     Constants.expoConfig?.extra?.nativeContractsEnabled === true
     && pathname === "/__phase12-google-cleanup";
+  const phase12GoogleAuthSmokeEnabled =
+    Constants.expoConfig?.extra?.nativeContractsEnabled === true
+    && pathname === "/__phase12-google-auth-smoke";
 
   if (!fontsLoaded && fontError === null) {
     return (
@@ -133,7 +148,7 @@ export default function RootLayout() {
             ? attendedPreviewAppearanceStore
             : phase6GestureSmokeEnabled
               ? phase6GestureSmokeAppearanceStore
-              : phase12CleanupEnabled
+              : phase12CleanupEnabled || phase12GoogleAuthSmokeEnabled
                 ? phase12CleanupAppearanceStore
                 : productionAppearanceStore}
           >
@@ -174,6 +189,18 @@ export default function RootLayout() {
         <SafeAreaProvider>
           <AppearanceProvider store={phase12CleanupAppearanceStore}>
             <Phase12CleanupNavigator />
+          </AppearanceProvider>
+        </SafeAreaProvider>
+      </GestureHandlerRootView>
+    );
+  }
+
+  if (phase12GoogleAuthSmokeEnabled) {
+    return (
+      <GestureHandlerRootView style={styles.root} testID="gesture-handler-root">
+        <SafeAreaProvider>
+          <AppearanceProvider store={phase12CleanupAppearanceStore}>
+            <Phase12GoogleAuthSmokeNavigator />
           </AppearanceProvider>
         </SafeAreaProvider>
       </GestureHandlerRootView>

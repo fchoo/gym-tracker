@@ -240,6 +240,20 @@ describe("RootLayout attended preview isolation", () => {
     expect(mockSqliteStorageConstructed).not.toHaveBeenCalled();
   });
 
+  it("runs the Phase 12 Google auth smoke without production runtime or SQLite", async () => {
+    mockPathname = "/__phase12-google-auth-smoke";
+
+    await render(<RootLayout />);
+
+    expect(screen.getByTestId("root-stack-screen-__phase12-google-auth-smoke"))
+      .toBeOnTheScreen();
+    expect(screen.queryByTestId("workout-runtime-provider"))
+      .not.toBeOnTheScreen();
+    expect(mockRuntimeProviderMounted).not.toHaveBeenCalled();
+    expect(mockProductionAppearanceRead).not.toHaveBeenCalled();
+    expect(mockSqliteStorageConstructed).not.toHaveBeenCalled();
+  });
+
   it("keeps the Phase 6 gesture fixture isolated while fonts are pending", async () => {
     mockFontsLoaded = false;
     mockPathname = "/__phase6-gesture-smoke";
