@@ -87,6 +87,7 @@ export type AutomaticBackupCoordinator = Readonly<{
   /** Re-discovers only the currently authenticated namespace after a tombstone is durable. */
   finishDeletionSweep(): Promise<Readonly<{ status: "complete" | "partial" | "cancelled" }>>;
   deleteCloudBackup(): Promise<Readonly<{ status: "complete" | "partial" | "cancelled" }>>;
+  startNewCloudBackup(): Promise<Readonly<{ status: "ready" | "cancelled" }>>;
   /** Discovery is read-only; no quarantine path can publish or delete Drive data. */
   recover(): Promise<Readonly<{ status: "ready" | "needs_bootstrap" | "quarantined" | "stale_writer" }>>;
   prepareRecovery(input: Readonly<{ candidate: AutomaticRecoveryCandidate }>): Promise<AutomaticRecoveryPreparation>;
@@ -164,6 +165,8 @@ export function createAutomaticBackupCoordinator(input: Readonly<{
   let bootstrapFence: Readonly<{
     permissionId: string;
     connectionGeneration: number;
+    writerEpoch?: number;
+    manifestEtag?: string;
   }> | null = null;
   let currentRecoveryPrompt: ReturnType<AutomaticBackupCoordinator["recoveryPrompt"]> = null;
   const recoverCandidates = async (
@@ -205,7 +208,6 @@ export function createAutomaticBackupCoordinator(input: Readonly<{
     const state = await input.state.read();
     const bootstrapping = state.permissionId !== null
       && state.authorityState === "quarantine"
-      && state.manifestId === null
       && bootstrapFence?.permissionId === state.permissionId
       && bootstrapFence.connectionGeneration === state.connectionGeneration;
     if (state.permissionId === null || (!bootstrapping && state.writerEpoch < 1)
@@ -214,12 +216,11 @@ export function createAutomaticBackupCoordinator(input: Readonly<{
       || state.mutationGeneration <= state.backedUpGeneration) {
       return Object.freeze({ status: "deferred" as const });
     }
-    if (bootstrapping && (input.drive.allocateFileId === undefined
-      || input.drive.createManifest === undefined
-      || input.state.activateWriter === undefined)) {
+    if (bootstrapping && (input.state.activateWriter === undefined
+      || (state.manifestId === null && (input.drive.allocateFileId === undefined || input.drive.createManifest === undefined)))) {
       return Object.freeze({ status: "deferred" as const });
     }
-    const writerEpoch = bootstrapping ? Math.max(1, state.writerEpoch + 1) : state.writerEpoch;
+    const writerEpoch = bootstrapping ? bootstrapFence?.writerEpoch ?? Math.max(1, state.writerEpoch + 1) : state.writerEpoch;
     let previous: ActiveManifestSummary["latest"] | null = null;
     if (!bootstrapping && input.validateManifest !== undefined
       && input.buildManifest !== undefined) {
@@ -295,9 +296,13 @@ export function createAutomaticBackupCoordinator(input: Readonly<{
     let promotedEtag: string;
     try {
       if (bootstrapping) {
-        const created = await input.drive.createManifest!(manifestId, manifestBytes);
-        if (created.fileId !== manifestId) return deferred("manifest_write");
-        promotedEtag = created.etag;
+        if (state.manifestId === null) {
+          const created = await input.drive.createManifest!(manifestId, manifestBytes);
+          if (created.fileId !== manifestId) return deferred("manifest_write");
+          promotedEtag = created.etag;
+        } else {
+          promotedEtag = await input.drive.updateManifest(manifestId, manifestBytes, bootstrapFence?.manifestEtag ?? state.manifestEtag ?? "");
+        }
       } else {
         promotedEtag = await input.drive.updateManifest(manifestId, manifestBytes, receipt.manifestEtag);
       }
@@ -477,6 +482,22 @@ export function createAutomaticBackupCoordinator(input: Readonly<{
     if (began !== true) return Object.freeze({ status: "cancelled" as const });
     return finishDeletionSweep();
   };
+  const startNewCloudBackup = async (): Promise<Readonly<{ status: "ready" | "cancelled" }>> => {
+    const identity = await input.auth?.reauthenticate?.();
+    if (identity === undefined || identity === null) return Object.freeze({ status: "cancelled" as const });
+    const state = await input.state.read();
+    if (state.permissionId !== identity.permissionId || state.authorityState !== "deleted"
+      || state.manifestId === null || state.manifestId === undefined) return Object.freeze({ status: "cancelled" as const });
+    const manifest = await input.drive.readManifest();
+    if (manifest === null || manifest.fileId !== state.manifestId) return Object.freeze({ status: "cancelled" as const });
+    const tombstone = parseDriveBackupManifestV1(JSON.parse(new TextDecoder().decode(manifest.bytes)));
+    if (tombstone.kind !== "deleted") return Object.freeze({ status: "cancelled" as const });
+    const connectionGeneration = state.connectionGeneration + 1;
+    if (!Number.isSafeInteger(connectionGeneration)) return Object.freeze({ status: "cancelled" as const });
+    await input.state.beginQuarantine?.({ environment: state.environment, permissionId: identity.permissionId, connectionGeneration, accountDisplayLabel: identity.displayEmail });
+    bootstrapFence = Object.freeze({ permissionId: identity.permissionId, connectionGeneration, writerEpoch: tombstone.successorWriterEpoch, manifestEtag: manifest.etag });
+    return Object.freeze({ status: "ready" as const });
+  };
   const prepareRecovery = async ({ candidate }: Readonly<{ candidate: AutomaticRecoveryCandidate }>): Promise<AutomaticRecoveryPreparation> => {
     if (input.recovery === undefined) throw new Error("automatic_recovery_unavailable");
     if (await input.isWorkoutActive()) throw new Error("automatic_recovery_workout_active");
@@ -643,6 +664,7 @@ export function createAutomaticBackupCoordinator(input: Readonly<{
     async disconnect() { ++checkingGeneration; bootstrapFence = null; await input.auth?.disconnect(); await input.state.disconnectLocal?.(); },
     finishDeletionSweep,
     deleteCloudBackup,
+    startNewCloudBackup,
     prepareRecovery,
     commitRecovery,
     recoveryPrompt: () => currentRecoveryPrompt,

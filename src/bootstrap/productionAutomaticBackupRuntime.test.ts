@@ -50,6 +50,7 @@ const mockCoordinatorCheckAgain = jest.fn<() => Promise<{
 }>>(async () => ({ status: "ready" }));
 const mockCoordinatorTakeOver = jest.fn(async () => ({ status: "quarantined" as const }));
 const mockCoordinatorDeleteCloudBackup = jest.fn(async () => ({ status: "complete" as const }));
+const mockCoordinatorStartNewCloudBackup = jest.fn(async () => ({ status: "ready" as const }));
 const mockCoordinatorPrepareRecovery = jest.fn<() => Promise<
   | Readonly<{ kind: "empty_direct"; attemptId: string }>
   | Readonly<{ kind: "merge"; attemptId: string; token: string; ownerSummary: string; adoptionRequired: boolean }>
@@ -88,7 +89,7 @@ jest.mock("../domains/backup/automaticBackupCoordinator", () => ({
     abortChecking: jest.fn(async () => undefined), checkAgain: mockCoordinatorCheckAgain, takeOver: mockCoordinatorTakeOver,
     prepareRecovery: mockCoordinatorPrepareRecovery,
     commitRecovery: mockCoordinatorCommitRecovery, disconnect: jest.fn(async () => undefined),
-    deleteCloudBackup: mockCoordinatorDeleteCloudBackup, finishDeletionSweep: jest.fn(async () => undefined), backup: mockCoordinatorBackup,
+    deleteCloudBackup: mockCoordinatorDeleteCloudBackup, startNewCloudBackup: mockCoordinatorStartNewCloudBackup, finishDeletionSweep: jest.fn(async () => undefined), backup: mockCoordinatorBackup,
   })),
 }));
 jest.mock("../domains/backup/automaticBackupScheduler", () => ({

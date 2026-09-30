@@ -472,6 +472,20 @@ describe("automatic backup coordinator", () => {
     });
   });
 
+  it("reopens a deleted tombstone only after fresh auth and a first-backup fence", async () => {
+    const quarantine = jest.fn(async () => undefined);
+    const coordinator = createAutomaticBackupCoordinator({
+      isWorkoutActive: () => false,
+      auth: { connect: async () => null, reauthenticate: async () => ({ permissionId: "permission", displayEmail: null }), disconnect: async () => undefined },
+      capture: async () => ({ generation: 1, sourceDigest: "a".repeat(64), bytes: new Uint8Array([1]) }),
+      state: { read: async () => activeState({ authorityState: "deleted", deletionProgress: "complete" }), persistAttempt: async () => undefined, acknowledgeReceipt: async () => false, beginQuarantine: quarantine },
+      drive: { createSnapshot: async () => "snapshot", download: async () => new Uint8Array([1]), updateManifest: async () => "next", readManifest: async () => ({ fileId: "manifest", bytes: new TextEncoder().encode(JSON.stringify({ kind: "deleted", successorWriterEpoch: 3, deletedAtMs: 1 })), etag: "tombstone-etag" }) },
+      validate: () => true, nowMs: () => 2, candidateId: () => "candidate",
+    });
+    await expect(coordinator.startNewCloudBackup()).resolves.toEqual({ status: "ready" });
+    expect(quarantine).toHaveBeenCalledWith(expect.objectContaining({ connectionGeneration: 2, permissionId: "permission" }));
+  });
+
   it("binds direct restore and exact merge/adoption commits to one prepared candidate", async () => {
     const restored: string[] = [];
     const snapshot = { version: 2 } as never;
