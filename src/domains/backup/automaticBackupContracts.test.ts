@@ -7,6 +7,7 @@ import {
   canonicalJson,
   createDriveBackupSnapshotV1,
   parseDriveBackupManifestV1,
+  parseDriveBackupSnapshotEnvelopeV1,
 } from "./automaticBackupContracts";
 
 const sha256 = (value: string) => createHash("sha256").update(value).digest("hex");
@@ -75,5 +76,40 @@ describe("automatic backup contracts", () => {
       previous: { fileId: "previous", object_sha256: "b".repeat(64) },
     })).toMatchObject({ kind: "active", previous: { fileId: "previous" } });
     expect(parseDriveBackupManifestV1({ kind: "deleted", successorWriterEpoch: 0, deletedAtMs: 0 })).toMatchObject({ kind: "deleted" });
+  });
+
+  it("validates exact canonical snapshot bytes against the complete descriptor", async () => {
+    const snapshot = createDriveBackupSnapshotV1({ header, payload, sha256 });
+    const bytes = new TextEncoder().encode(canonicalJson(snapshot));
+    await expect(parseDriveBackupSnapshotEnvelopeV1(bytes, {
+      byteLength: bytes.byteLength,
+      objectSha256: sha256(new TextDecoder().decode(bytes)),
+      environment: "development-test",
+      packageIdentity: "com.fchoo.gymtracker.devtest",
+      currentSchemaVersion: 23,
+      sha256: async (value) => sha256(typeof value === "string" ? value : new TextDecoder().decode(value)),
+    })).resolves.toMatchObject({ kind: "current", header });
+  });
+
+  it("fails closed on noncanonical, unknown, hash, length, and future-schema bytes", async () => {
+    const snapshot = createDriveBackupSnapshotV1({ header, payload, sha256 });
+    const canonical = canonicalJson(snapshot);
+    const parse = (value: string, overrides: Record<string, unknown> = {}) => parseDriveBackupSnapshotEnvelopeV1(
+      new TextEncoder().encode(value),
+      {
+        byteLength: new TextEncoder().encode(value).byteLength,
+        objectSha256: sha256(value), environment: "development-test",
+        packageIdentity: "com.fchoo.gymtracker.devtest", currentSchemaVersion: 23,
+        sha256: async (input) => sha256(typeof input === "string" ? input : new TextDecoder().decode(input)),
+        ...overrides,
+      },
+    );
+    await expect(parse(` ${canonical}`)).rejects.toThrow("automatic_recovery_snapshot_invalid");
+    await expect(parse(canonical, { byteLength: 1 })).rejects.toThrow("automatic_recovery_snapshot_invalid");
+    await expect(parse(canonical, { objectSha256: "f".repeat(64) })).rejects.toThrow("automatic_recovery_snapshot_invalid");
+    await expect(parse(canonicalJson({ ...snapshot, extra: true }))).rejects.toThrow("automatic_recovery_snapshot_invalid");
+    const futureHeader = { ...header, schemaVersion: 24 };
+    const future = createDriveBackupSnapshotV1({ header: futureHeader, payload, sha256 });
+    await expect(parse(canonicalJson(future))).resolves.toMatchObject({ kind: "update_required", header: futureHeader });
   });
 });
