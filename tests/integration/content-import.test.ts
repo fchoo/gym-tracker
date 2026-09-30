@@ -43,6 +43,9 @@ import {
   contentLibraryMigration,
 } from "../../src/platform/sqlite/migrations/0004_content_library";
 import {
+  migrations as runtimeMigrations,
+} from "../../src/platform/sqlite/migrations";
+import {
   ContentImportError,
   createContentRepository,
   type ContentRepositoryTestObserver,
@@ -137,6 +140,7 @@ afterEach(async () => {
 
 async function createRuntime(
   observer: SqliteKernelTestObserver = {},
+  migrationSet: readonly typeof runtimeMigrations[number][] = migrations,
 ): Promise<SqliteKernel> {
   const directory = mkdtempSync(join(tmpdir(), "gym-content-import-"));
   temporaryDirectories.add(directory);
@@ -160,7 +164,7 @@ async function createRuntime(
   await createMigrationRunner({
     databaseName: "gym-tracker.db",
     kernel,
-    migrations,
+    migrations: migrationSet,
     recoveryBackup: validatedRecoveryBackup(),
   }).run();
   runtimes.push(kernel);
@@ -343,13 +347,20 @@ async function catalogSourceSnapshot(
 
 describe("accepted content import repository", () => {
   it("imports the complete pack atomically and reruns idempotently", async () => {
-    const kernel = await createRuntime();
+    const kernel = await createRuntime({}, runtimeMigrations);
     const catalog = await acceptedCatalog();
     const repository = createContentRepository(kernel);
 
     const first = await repository.importAcceptedCatalog({
       catalog,
       expectedInstalled: null,
+    });
+    await kernel.write(async (transaction) => {
+      await transaction.execute("CREATE TABLE content_projection_update_probe (count INTEGER NOT NULL)");
+      await transaction.execute("INSERT INTO content_projection_update_probe(count) VALUES (0)");
+      await transaction.execute(`CREATE TRIGGER content_projection_update_probe_trigger
+        AFTER UPDATE ON exercises
+        BEGIN UPDATE content_projection_update_probe SET count = count + 1; END`);
     });
     const repeated = await repository.importAcceptedCatalog({ catalog });
 
@@ -374,6 +385,8 @@ describe("accepted content import repository", () => {
       newlyUnavailable: 0,
       invalidationScopes: [],
     });
+    expect(await kernel.queryAll("SELECT count FROM content_projection_update_probe"))
+      .toEqual([{ count: 0 }]);
     expect(await kernel.queryAll(
       `SELECT
          (SELECT COUNT(*) FROM exercise_catalog_sources) AS sources,

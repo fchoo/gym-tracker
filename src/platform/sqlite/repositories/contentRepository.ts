@@ -590,7 +590,14 @@ async function ensureWorkoutExerciseProjection(
            ELSE default_rest_seconds
          END,
          revision = ?
-     WHERE id = ?`,
+     WHERE id = ? AND (
+       source_namespace IS NOT ?
+       OR upstream_id IS NOT ?
+       OR name IS NOT ?
+       OR equipment IS NOT ?
+       OR default_rest_seconds = 0
+       OR revision IS NOT ?
+     )`,
     [
       exercise.source.namespace,
       exercise.source.upstreamId ?? exercise.id,
@@ -599,6 +606,11 @@ async function ensureWorkoutExerciseProjection(
       WORKOUT_EXERCISE_DEFAULT_REST_SECONDS,
       catalog.metadata.revision,
       exercise.id,
+      exercise.source.namespace,
+      exercise.source.upstreamId ?? exercise.id,
+      exercise.canonicalName,
+      workoutProjectionEquipment(exercise),
+      catalog.metadata.revision,
     ],
   );
 }
