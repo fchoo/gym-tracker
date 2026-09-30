@@ -53,7 +53,14 @@ export function createAutomaticBackupStateRepository(kernel: SqliteKernel): Read
   setDataUsePolicy(policy: AutomaticBackupState["dataUsePolicy"]): Promise<void>;
   persistPendingHandover(input: AutomaticBackupPendingHandover & Readonly<{ nowMs: number }>): Promise<void>;
   readPendingHandover(): Promise<AutomaticBackupPendingHandover | null>;
-  beginDeletionSweep(input: Readonly<{ environment: AutomaticBackupState["environment"]; permissionId: string; connectionGeneration: number }>): Promise<boolean>;
+  beginDeletionSweep(input: Readonly<{
+    environment: AutomaticBackupState["environment"];
+    permissionId: string;
+    connectionGeneration: number;
+    manifestId: string;
+    manifestEtag: string;
+    successorWriterEpoch: number;
+  }>): Promise<boolean>;
   completeDeletionSweep(input: Readonly<{ environment: AutomaticBackupState["environment"]; permissionId: string; connectionGeneration: number }>): Promise<boolean>;
   /** Clears only this installation's authority; it never calls a Drive delete operation. */
   disconnectLocal(): Promise<void>;
@@ -275,9 +282,11 @@ export function createAutomaticBackupStateRepository(kernel: SqliteKernel): Read
     },
     async beginDeletionSweep(input) {
       const outcome = await kernel.write((transaction) => transaction.execute(
-        `UPDATE automatic_backup_state SET authority_state = 'deleted', deletion_progress = 'sweep_pending', status_code = 'paused'
+        `UPDATE automatic_backup_state SET authority_state = 'deleted', deletion_progress = 'sweep_pending', status_code = 'paused',
+           manifest_file_id = ?, manifest_etag = ?, writer_epoch = ?
          WHERE id = 1 AND environment = ? AND permission_id = ? AND connection_generation = ? AND authority_state <> 'stale_writer'`,
-        [input.environment, input.permissionId, input.connectionGeneration],
+        [input.manifestId, input.manifestEtag, input.successorWriterEpoch,
+          input.environment, input.permissionId, input.connectionGeneration],
       ));
       return outcome.changes === 1;
     },

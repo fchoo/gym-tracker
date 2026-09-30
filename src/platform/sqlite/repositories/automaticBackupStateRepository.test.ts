@@ -119,10 +119,19 @@ describe("automatic backup state repository", () => {
         execute: async (sql: string) => { statements.push(sql); return { changes: 1, lastInsertRowId: 0 }; }, queryAll: async () => [],
       }), connectionConfiguration: async () => undefined, close: async () => undefined,
     } as unknown as SqliteKernel);
-    const fence = { environment: "development-test" as const, permissionId: "permission", connectionGeneration: 2 };
+    const fence = {
+      environment: "development-test" as const,
+      permissionId: "permission",
+      connectionGeneration: 2,
+      manifestId: "manifest",
+      manifestEtag: "tombstone-etag",
+      successorWriterEpoch: 4,
+    };
     await expect(repository.beginDeletionSweep(fence)).resolves.toBe(true);
     await expect(repository.completeDeletionSweep(fence)).resolves.toBe(true);
     expect(statements.join("\n")).toContain("deletion_progress = 'sweep_pending'");
+    expect(statements.join("\n")).toContain("manifest_file_id = ?");
+    expect(statements.join("\n")).toContain("writer_epoch = ?");
     expect(statements.join("\n")).toContain("deletion_progress = 'complete'");
     expect(statements.join("\n")).toContain("connection_generation = ?");
   });

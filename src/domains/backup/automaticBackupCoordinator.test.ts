@@ -449,7 +449,7 @@ describe("automatic backup coordinator", () => {
       isWorkoutActive: () => false,
       capture: async () => ({ generation: 1, sourceDigest: "a".repeat(64), bytes: new Uint8Array() }),
       state: {
-        read: async () => ({ environment: "development-test" as const, permissionId: "permission", connectionGeneration: 3, writerEpoch: 2, mutationGeneration: 0, backedUpGeneration: 0, authorityState: "deleted" as const, deletionProgress: "sweep_pending" as const }),
+        read: async () => ({ environment: "development-test" as const, permissionId: "permission", connectionGeneration: 3, writerEpoch: 2, mutationGeneration: 0, backedUpGeneration: 0, authorityState: "deleted" as const, deletionProgress: "sweep_pending" as const, manifestId: "manifest", manifestEtag: "tombstone-etag" }),
         persistAttempt: async () => undefined, acknowledgeReceipt: async () => false,
         completeDeletionSweep: async () => true,
       },
@@ -463,6 +463,72 @@ describe("automatic backup coordinator", () => {
     await expect(coordinator.finishDeletionSweep()).resolves.toEqual({ status: "complete" });
     expect(deleted).toEqual(["one", "two"]);
     expect(calls).toBe(2);
+  });
+
+  it("recovers a promoted tombstone without reconstructing readable snapshots", async () => {
+    const beginDeletionSweep = jest.fn(async () => true);
+    const discoverCandidates = jest.fn(async () => [{
+      kind: "current" as const,
+      ownerNamespace: "a".repeat(32),
+      writerEpoch: 2,
+      mutationGeneration: 4,
+      createdAtMs: 1,
+      fileId: "leftover",
+      objectSha256: "a".repeat(64),
+      byteLength: 1,
+    }]);
+    const reconstructManifest = jest.fn(async () => undefined);
+    const coordinator = createAutomaticBackupCoordinator({
+      isWorkoutActive: () => false,
+      capture: async () => ({ generation: 1, sourceDigest: "a".repeat(64), bytes: new Uint8Array() }),
+      state: {
+        read: async () => activeState({ authorityState: "active", manifestEtag: "active-etag" }),
+        persistAttempt: async () => undefined,
+        acknowledgeReceipt: async () => false,
+        beginQuarantine: async () => undefined,
+        beginDeletionSweep,
+      },
+      drive: {
+        createSnapshot: async () => "snapshot",
+        download: async () => new Uint8Array(),
+        updateManifest: async () => "etag",
+        readManifest: async () => ({
+          fileId: "manifest",
+          etag: "tombstone-etag",
+          bytes: new TextEncoder().encode(JSON.stringify({
+            kind: "deleted",
+            successorWriterEpoch: 3,
+            deletedAtMs: 100,
+          })),
+        }),
+        discover: async () => [{ fileId: "leftover" }],
+      },
+      validate: () => true,
+      validateManifest: () => null,
+      nowMs: () => 101,
+      candidateId: () => "candidate",
+      recovery: {
+        parseSnapshot: async () => ({}),
+        localIsEmpty: async () => true,
+        prepareMerge: async () => ({ token: "merge", ownerSummary: "owner", adoptionRequired: false }),
+        restore: async () => ({ state: "ready" as const }),
+        commitMerge: async () => ({ state: "ready" as const }),
+        discoverCandidates,
+        reconstructManifest,
+      },
+    });
+
+    await expect(coordinator.recover()).resolves.toEqual({ status: "quarantined" });
+    expect(beginDeletionSweep).toHaveBeenCalledWith({
+      environment: "development-test",
+      permissionId: "permission",
+      connectionGeneration: 1,
+      manifestId: "manifest",
+      manifestEtag: "tombstone-etag",
+      successorWriterEpoch: 3,
+    });
+    expect(discoverCandidates).not.toHaveBeenCalled();
+    expect(reconstructManifest).not.toHaveBeenCalled();
   });
 
   it("promotes a verified successor tombstone before deleting snapshots", async () => {

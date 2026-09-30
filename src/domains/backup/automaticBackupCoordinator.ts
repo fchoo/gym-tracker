@@ -34,6 +34,14 @@ type PendingHandover = Readonly<{
   connectionGeneration: number; manifestId: string; manifestEtag: string;
   remoteWriterEpoch: number; snapshotId: string; sourceDigest: string;
 }>;
+type DeletionFence = Readonly<{
+  environment: AutomaticBackupEnvironment;
+  permissionId: string;
+  connectionGeneration: number;
+  manifestId: string;
+  manifestEtag: string;
+  successorWriterEpoch: number;
+}>;
 export type RecoverySnapshotCandidate = Readonly<
   | { kind: "update_required"; schemaVersion: number; fileId: string }
   | { kind: "current"; ownerNamespace: string; writerEpoch: number; mutationGeneration: number; createdAtMs: number; fileId: string; objectSha256: string; byteLength: number }
@@ -125,8 +133,8 @@ export function createAutomaticBackupCoordinator(input: Readonly<{
     markStaleWriter?(writerEpoch: number): Promise<boolean>;
     setRecoveryStatus?(status: "idle" | "checking" | "restore_pending" | "restoring" | "finishing" | "paused"): Promise<void>;
     disconnectLocal?(): Promise<void>;
-    beginDeletionSweep?(value: Readonly<{ environment: AutomaticBackupEnvironment; permissionId: string; connectionGeneration: number }>): Promise<boolean>;
-    completeDeletionSweep?(value: Readonly<{ environment: AutomaticBackupEnvironment; permissionId: string; connectionGeneration: number }>): Promise<boolean>;
+    beginDeletionSweep?(value: DeletionFence): Promise<boolean>;
+    completeDeletionSweep?(value: Pick<DeletionFence, "environment" | "permissionId" | "connectionGeneration">): Promise<boolean>;
     persistPendingHandover?(value: PendingHandover & Readonly<{ nowMs: number }>): Promise<void>;
     readPendingHandover?(): Promise<PendingHandover | null>;
   }>;
@@ -411,6 +419,24 @@ export function createAutomaticBackupCoordinator(input: Readonly<{
       return Object.freeze({ status: "quarantined" as const });
     }
     bootstrapFence = null;
+    let authoritativeManifest: DriveBackupManifestV1 | null = null;
+    try {
+      authoritativeManifest = parseDriveBackupManifestV1(JSON.parse(new TextDecoder().decode(manifest.bytes)));
+    } catch { /* Legacy test ports still supply an explicit active-manifest validator. */ }
+    if (authoritativeManifest?.kind === "deleted") {
+      const manifestId = manifest.fileId ?? state.manifestId;
+      if (manifestId === null || manifestId === undefined) return Object.freeze({ status: "quarantined" as const });
+      await input.state.beginDeletionSweep?.({
+        environment: state.environment,
+        permissionId: state.permissionId,
+        connectionGeneration: state.connectionGeneration,
+        manifestId,
+        manifestEtag: manifest.etag,
+        successorWriterEpoch: authoritativeManifest.successorWriterEpoch,
+      });
+      currentRecoveryPrompt = null;
+      return Object.freeze({ status: "quarantined" as const });
+    }
     const parsed = input.validateManifest?.(manifest.bytes);
     if (parsed === null || parsed === undefined) {
       const fileId = manifest.fileId ?? state.manifestId;
@@ -436,7 +462,18 @@ export function createAutomaticBackupCoordinator(input: Readonly<{
   const finishDeletionSweep = async (): Promise<Readonly<{ status: "complete" | "partial" | "cancelled" }>> => {
     const state = await input.state.read();
     if (state.permissionId === null || state.authorityState !== "deleted") return Object.freeze({ status: "cancelled" as const });
-    const fence = Object.freeze({ environment: state.environment, permissionId: state.permissionId, connectionGeneration: state.connectionGeneration });
+    if (state.manifestId === null || state.manifestId === undefined
+      || state.manifestEtag === null || state.manifestEtag === undefined) {
+      return Object.freeze({ status: "cancelled" as const });
+    }
+    const fence = Object.freeze({
+      environment: state.environment,
+      permissionId: state.permissionId,
+      connectionGeneration: state.connectionGeneration,
+      manifestId: state.manifestId,
+      manifestEtag: state.manifestEtag,
+      successorWriterEpoch: state.writerEpoch,
+    });
     // A deletion marker is promoted before this method is callable.  Each pass
     // re-discovers the bounded namespace: cached ids and filenames are never a
     // deletion authority, and a missed snapshot remains retryable.
@@ -487,6 +524,9 @@ export function createAutomaticBackupCoordinator(input: Readonly<{
     const began = await input.state.beginDeletionSweep?.({
       environment: state.environment, permissionId: state.permissionId,
       connectionGeneration: state.connectionGeneration,
+      manifestId: state.manifestId,
+      manifestEtag: promotedEtag,
+      successorWriterEpoch,
     });
     if (began !== true) return Object.freeze({ status: "cancelled" as const });
     return finishDeletionSweep();
