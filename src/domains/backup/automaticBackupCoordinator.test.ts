@@ -412,6 +412,38 @@ describe("automatic backup coordinator", () => {
     expect(calls).toBe(2);
   });
 
+  it("promotes a verified successor tombstone before deleting snapshots", async () => {
+    const events: string[] = [];
+    let manifest = activeManifest(2);
+    let etag = "active-etag";
+    let authorityState: "active" | "deleted" = "active";
+    const coordinator = createAutomaticBackupCoordinator({
+      isWorkoutActive: () => false,
+      auth: { connect: async () => null, reauthenticate: async () => ({ permissionId: "permission", displayEmail: null }), disconnect: async () => undefined },
+      capture: async () => ({ generation: 1, sourceDigest: "a".repeat(64), bytes: new Uint8Array() }),
+      state: {
+        read: async () => activeState({ authorityState, deletionProgress: authorityState === "deleted" ? "sweep_pending" : "none" }),
+        persistAttempt: async () => undefined, acknowledgeReceipt: async () => false,
+        beginDeletionSweep: async () => { authorityState = "deleted"; events.push("tombstone"); return true; },
+        completeDeletionSweep: async () => true,
+      },
+      drive: {
+        createSnapshot: async () => "snapshot", download: async () => new Uint8Array(),
+        updateManifest: async (_id, value, expected) => { expect(expected).toBe("active-etag"); manifest = value; etag = "deleted-etag"; events.push("promote"); return etag; },
+        readManifest: async () => ({ fileId: "manifest", bytes: manifest, etag }),
+        discoverSnapshotsForDeletion: async () => events.includes("delete") ? [] : [{ fileId: "latest" }],
+        deleteTombstoned: async () => { events.push("delete"); },
+      },
+      validate: () => true, nowMs: () => 100, candidateId: () => "candidate",
+    });
+
+    await expect(coordinator.deleteCloudBackup()).resolves.toEqual({ status: "complete" });
+    expect(events).toEqual(["promote", "tombstone", "delete"]);
+    expect(JSON.parse(new TextDecoder().decode(manifest))).toEqual({
+      deletedAtMs: 100, kind: "deleted", successorWriterEpoch: 3,
+    });
+  });
+
   it("binds direct restore and exact merge/adoption commits to one prepared candidate", async () => {
     const restored: string[] = [];
     const snapshot = { version: 2 } as never;
