@@ -417,6 +417,20 @@ describe("automatic backup coordinator", () => {
     expect(trashed).toEqual(["orphan"]);
   });
 
+  it("stops retention before trash when the promoted manifest fence disappears", async () => {
+    let reads = 0;
+    const trash = jest.fn(async () => undefined);
+    const coordinator = createAutomaticBackupCoordinator({
+      isWorkoutActive: () => false,
+      capture: async () => ({ generation: 4, sourceDigest: "a".repeat(64), bytes: new Uint8Array([1]) }),
+      state: { read: async () => activeState(), persistAttempt: async () => undefined, acknowledgeReceipt: async () => true },
+      drive: { createSnapshot: async () => "candidate", download: async () => new Uint8Array([1]), updateManifest: async () => "next-etag", readManifest: async () => ++reads <= 2 ? ({ bytes: new Uint8Array([2]), etag: reads === 1 ? "etag" : "next-etag" }) : null, discoverSnapshotsForRetention: async () => [{ fileId: "orphan", createdAtMs: 0, etag: "orphan-etag" }], trash },
+      validate: () => true, validateManifest: () => ({ writerEpoch: 2, latest: { fileId: "candidate", object_sha256: "a".repeat(64) }, previous: null }), buildManifest: () => new Uint8Array([2]), nowMs: () => 24 * 60 * 60 * 1000, candidateId: () => "candidate",
+    });
+    await expect(coordinator.backup()).resolves.toEqual({ status: "backed_up", generation: 4 });
+    expect(trash).not.toHaveBeenCalled();
+  });
+
   it("re-discovers a durable tombstone namespace until no snapshot remains", async () => {
     const deleted: string[] = [];
     let calls = 0;
@@ -484,6 +498,63 @@ describe("automatic backup coordinator", () => {
     });
     await expect(coordinator.startNewCloudBackup()).resolves.toEqual({ status: "ready" });
     expect(quarantine).toHaveBeenCalledWith(expect.objectContaining({ connectionGeneration: 2, permissionId: "permission" }));
+  });
+
+  it("promotes the first post-deletion snapshot through the retained tombstone identity", async () => {
+    let state: any = activeState({ authorityState: "deleted", deletionProgress: "complete", manifestEtag: "tombstone-etag" });
+    let manifest: Uint8Array<ArrayBufferLike> = new TextEncoder().encode(JSON.stringify({ kind: "deleted", successorWriterEpoch: 3, deletedAtMs: 1 }));
+    let etag = "tombstone-etag";
+    const coordinator = createAutomaticBackupCoordinator({
+      isWorkoutActive: () => false,
+      auth: { connect: async () => null, reauthenticate: async () => ({ permissionId: "permission", displayEmail: null }), disconnect: async () => undefined },
+      capture: async () => ({ generation: 4, sourceDigest: "a".repeat(64), bytes: new Uint8Array([7]) }),
+      state: { read: async () => state, persistAttempt: async () => undefined, acknowledgeReceipt: async () => true, beginQuarantine: async (value) => { state = { ...state, ...value, authorityState: "quarantine" }; }, activateWriter: async (value) => { state = { ...state, ...value, authorityState: "active" }; return true; } },
+      drive: { createSnapshot: async () => "candidate", download: async () => new Uint8Array([7]), updateManifest: async (id, bytes, expected) => { expect(id).toBe("manifest"); expect(expected).toBe("tombstone-etag"); manifest = bytes; etag = "active-etag"; return etag; }, readManifest: async () => ({ fileId: "manifest", bytes: manifest, etag }) },
+      validate: () => true, validateManifest: (bytes) => { const value = JSON.parse(new TextDecoder().decode(bytes)); return value.kind === "active" ? { writerEpoch: value.writer_epoch } : null; }, buildManifest: ({ state: current }) => new TextEncoder().encode(JSON.stringify({ kind: "active", writer_epoch: current.writerEpoch, latest: { fileId: "candidate", object_sha256: "a".repeat(64) }, previous: null })), nowMs: () => 2, candidateId: () => "candidate",
+    });
+    await expect(coordinator.startNewCloudBackup()).resolves.toEqual({ status: "ready" });
+    await expect(coordinator.backup()).resolves.toEqual({ status: "backed_up", generation: 4 });
+    expect(state).toMatchObject({ authorityState: "active", writerEpoch: 3, manifestEtag: "active-etag" });
+  });
+
+  it("fails closed at every deletion and restart authority fence", async () => {
+    const deletion = (options: Record<string, any> = {}) => {
+      let reads = 0;
+      const state = activeState({ manifestEtag: "active-etag", ...options.state });
+      return createAutomaticBackupCoordinator({
+        isWorkoutActive: () => false,
+        auth: { connect: async () => null, reauthenticate: async () => options.identity === null ? null : ({ permissionId: options.permissionId ?? "permission", displayEmail: null }), disconnect: async () => undefined },
+        capture: async () => ({ generation: 1, sourceDigest: "a".repeat(64), bytes: new Uint8Array() }),
+        state: { read: async () => state, persistAttempt: async () => undefined, acknowledgeReceipt: async () => false, beginDeletionSweep: async () => options.begin ?? true },
+        drive: { createSnapshot: async () => "snapshot", download: async () => new Uint8Array(), updateManifest: async () => options.promotedEtag ?? "deleted-etag", readManifest: async () => {
+          reads += 1;
+          if (options.nullAt === reads) return null;
+          if (reads === 1) return { fileId: options.firstId ?? "manifest", bytes: options.firstBytes ?? activeManifest(options.epoch ?? 2), etag: options.firstEtag ?? "active-etag" };
+          return { fileId: options.secondId ?? "manifest", bytes: options.secondBytes ?? new TextEncoder().encode(JSON.stringify({ kind: "deleted", successorWriterEpoch: (options.epoch ?? 2) + 1, deletedAtMs: 1 })), etag: options.secondEtag ?? "deleted-etag" };
+        } }, validate: () => true, nowMs: () => 1, candidateId: () => "candidate",
+      });
+    };
+    for (const coordinator of [
+      deletion({ identity: null }), deletion({ permissionId: "different" }), deletion({ state: { authorityState: "deleted" } }),
+      deletion({ state: { manifestId: null } }), deletion({ nullAt: 1 }), deletion({ firstId: "other" }), deletion({ firstEtag: "other" }),
+      deletion({ firstBytes: new TextEncoder().encode(JSON.stringify({ kind: "deleted", successorWriterEpoch: 2, deletedAtMs: 1 })) }),
+      deletion({ epoch: Number.MAX_SAFE_INTEGER, state: { writerEpoch: Number.MAX_SAFE_INTEGER } }), deletion({ nullAt: 2 }), deletion({ secondId: "other" }), deletion({ secondEtag: "other" }),
+      deletion({ secondBytes: activeManifest(3) }), deletion({ begin: false }),
+    ]) await expect(coordinator.deleteCloudBackup()).resolves.toEqual({ status: "cancelled" });
+
+    const restart = (options: Record<string, any> = {}) => createAutomaticBackupCoordinator({
+      isWorkoutActive: () => false,
+      auth: { connect: async () => null, reauthenticate: async () => options.identity === null ? null : ({ permissionId: options.permissionId ?? "permission", displayEmail: null }), disconnect: async () => undefined },
+      capture: async () => ({ generation: 1, sourceDigest: "a".repeat(64), bytes: new Uint8Array() }),
+      state: { read: async () => activeState({ authorityState: "deleted", connectionGeneration: options.connectionGeneration ?? 1, ...options.state }), persistAttempt: async () => undefined, acknowledgeReceipt: async () => false, beginQuarantine: async () => undefined },
+      drive: { createSnapshot: async () => "snapshot", download: async () => new Uint8Array(), updateManifest: async () => "etag", readManifest: async () => options.manifest === null ? null : ({ fileId: options.fileId ?? "manifest", bytes: options.bytes ?? new TextEncoder().encode(JSON.stringify({ kind: "deleted", successorWriterEpoch: 3, deletedAtMs: 1 })), etag: "etag" }) },
+      validate: () => true, nowMs: () => 1, candidateId: () => "candidate",
+    });
+    for (const coordinator of [
+      restart({ identity: null }), restart({ permissionId: "different" }), restart({ state: { authorityState: "active" } }),
+      restart({ state: { manifestId: null } }), restart({ manifest: null }), restart({ fileId: "other" }),
+      restart({ bytes: activeManifest(2) }), restart({ connectionGeneration: Number.MAX_SAFE_INTEGER }),
+    ]) await expect(coordinator.startNewCloudBackup()).resolves.toEqual({ status: "cancelled" });
   });
 
   it("binds direct restore and exact merge/adoption commits to one prepared candidate", async () => {

@@ -301,7 +301,7 @@ export function createAutomaticBackupCoordinator(input: Readonly<{
           if (created.fileId !== manifestId) return deferred("manifest_write");
           promotedEtag = created.etag;
         } else {
-          promotedEtag = await input.drive.updateManifest(manifestId, manifestBytes, bootstrapFence?.manifestEtag ?? state.manifestEtag ?? "");
+          promotedEtag = await input.drive.updateManifest(manifestId, manifestBytes, bootstrapFence!.manifestEtag!);
         }
       } else {
         promotedEtag = await input.drive.updateManifest(manifestId, manifestBytes, receipt.manifestEtag);

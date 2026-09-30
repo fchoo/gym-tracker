@@ -328,6 +328,35 @@ describe("Drive backup store adapter", () => {
     await expect(adapter.createResumableSnapshot("candidate", new Uint8Array(24 * 1024 * 1024 + 1))).rejects.toThrow("drive_resumable_size_invalid");
   });
 
+  it("discovers only dated retention candidates with readable etags", async () => {
+    const retentionProperties = { gym_tracker_backup: "v1", environment: "development-test", package: "com.fchoo.gymtracker.devtest", object_kind: "snapshot" };
+    const adapter = createDriveBackupStoreAdapter({ environment: "development-test", token: async () => "token", fetch: async (url) => {
+      if (url.includes("files?q=")) return response({ files: [
+        { id: "old", name: "snapshot-old.json", appProperties: { ...retentionProperties, created_at_ms: "1" } },
+        { id: "invalid", name: "snapshot-invalid.json", appProperties: { ...retentionProperties, created_at_ms: "bad" } },
+        { id: "missing", name: "snapshot-missing.json", appProperties: { ...retentionProperties, created_at_ms: "2" } },
+      ] });
+      if (url.includes("drive/v2/files/old")) return response({ id: "old", etag: '"old-etag"' });
+      if (url.includes("drive/v2/files/missing")) return response(null, { status: 404 });
+      return response(null, { status: 500 });
+    } });
+    await expect(adapter.discoverSnapshotsForRetention()).resolves.toEqual([
+      { fileId: "old", createdAtMs: 1, etag: '"old-etag"' },
+    ]);
+  });
+
+  it("adds bounded creation time metadata only for a valid snapshot header", async () => {
+    const bodies: BodyInit[] = [];
+    const adapter = createDriveBackupStoreAdapter({ environment: "development-test", token: async () => "token", fetch: async (_url, init) => {
+      bodies.push(init?.body ?? ""); return response({ id: "candidate" });
+    } });
+    const valid = new TextEncoder().encode(JSON.stringify({ header: { createdAtMs: 123 } }));
+    await adapter.createSnapshot("candidate", valid);
+    expect(new TextDecoder().decode(bodies[0] as Uint8Array)).toContain('"created_at_ms":"123"');
+    await adapter.createSnapshot("candidate", new TextEncoder().encode("{}"));
+    expect(new TextDecoder().decode(bodies[1] as Uint8Array)).not.toContain("created_at_ms");
+  });
+
   it("fails closed for every remaining response branch while preserving valid empty and final responses", async () => {
     const nativeFetch = global.fetch;
     const defaultFetch = jest.fn(async () => response({ files: [] }));
