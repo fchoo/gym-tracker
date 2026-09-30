@@ -35,6 +35,100 @@ type AdvancedTimingRow = Readonly<{
   stopped_at_ms: number | null;
 }>;
 
+function exactKeys(
+  value: Record<string, unknown>,
+  keys: readonly string[],
+): boolean {
+  const actual = Object.keys(value).sort();
+  const expected = [...keys].sort();
+  return actual.length === expected.length
+    && actual.every((key, index) => key === expected[index]);
+}
+
+function validStoredTime(value: unknown): value is number {
+  return typeof value === "number" && Number.isSafeInteger(value) && value >= 0;
+}
+
+export function assertValidAdvancedTimingPersistenceRow(
+  value: Readonly<Record<string, unknown>>,
+): asserts value is AdvancedTimingRow {
+  const status = value.status;
+  const mode = value.mode;
+  if (value.state_version !== 1
+    || !validStoredTime(value.revision)
+    || !["idle", "running", "paused", "stopped"].includes(String(status))) {
+    throw new AdvancedTimingRepositoryError("advanced_timing_state_invalid");
+  }
+  let config: AdvancedTimingConfigV1;
+  let progress: unknown;
+  try {
+    config = parseAdvancedTimingConfig(JSON.parse(String(value.config_json)));
+    progress = JSON.parse(String(value.progress_json));
+  } catch {
+    throw new AdvancedTimingRepositoryError("advanced_timing_state_invalid");
+  }
+  if (typeof progress !== "object" || progress === null || Array.isArray(progress)) {
+    throw new AdvancedTimingRepositoryError("advanced_timing_state_invalid");
+  }
+  const progressObject = progress as Record<string, unknown>;
+  if (status === "idle") {
+    if (value.session_set_id !== null || mode !== null || config.mode !== "off"
+      || !exactKeys(progressObject, [])
+      || value.started_at_ms !== null || value.next_boundary_at_ms !== null
+      || value.remaining_ms !== null || value.stopped_at_ms !== null) {
+      throw new AdvancedTimingRepositoryError("advanced_timing_state_invalid");
+    }
+    return;
+  }
+  if (typeof value.session_set_id !== "string" || value.session_set_id.trim().length === 0
+    || (mode !== "per_rep" && mode !== "cluster") || config.mode !== mode) {
+    throw new AdvancedTimingRepositoryError("advanced_timing_state_invalid");
+  }
+  if (mode === "per_rep") {
+    if (!exactKeys(progressObject, ["nextRepetitionIndex"])
+      || !validStoredTime(progressObject.nextRepetitionIndex)
+      || progressObject.nextRepetitionIndex < 1) {
+      throw new AdvancedTimingRepositoryError("advanced_timing_state_invalid");
+    }
+  } else {
+    if (config.mode !== "cluster") {
+      throw new AdvancedTimingRepositoryError("advanced_timing_state_invalid");
+    }
+    const progressKeys = progressObject.phase === undefined
+      ? ["currentGroupIndex"]
+      : ["currentGroupIndex", "phase"];
+    if (!exactKeys(progressObject, progressKeys)
+      || !validStoredTime(progressObject.currentGroupIndex)
+      || progressObject.currentGroupIndex >= config.groupSizes.length
+      || (progressObject.phase !== undefined
+        && progressObject.phase !== "ready"
+        && progressObject.phase !== "stopped")
+      || (status === "stopped"
+        && progressObject.phase !== "ready"
+        && progressObject.phase !== "stopped")) {
+      throw new AdvancedTimingRepositoryError("advanced_timing_state_invalid");
+    }
+  }
+  const runningTimes = status === "running"
+    && validStoredTime(value.started_at_ms)
+    && validStoredTime(value.next_boundary_at_ms)
+    && value.remaining_ms === null
+    && value.stopped_at_ms === null;
+  const pausedTimes = status === "paused"
+    && value.started_at_ms === null
+    && value.next_boundary_at_ms === null
+    && validStoredTime(value.remaining_ms)
+    && value.stopped_at_ms === null;
+  const stoppedTimes = status === "stopped"
+    && value.started_at_ms === null
+    && value.next_boundary_at_ms === null
+    && value.remaining_ms === null
+    && validStoredTime(value.stopped_at_ms);
+  if (!runningTimes && !pausedTimes && !stoppedTimes) {
+    throw new AdvancedTimingRepositoryError("advanced_timing_state_invalid");
+  }
+}
+
 type SessionRow = Readonly<{
   revision: number;
   active_set_id: string | null;
@@ -168,6 +262,7 @@ function stateFromRow(
       config: Object.freeze({ version: 1, mode: "off" }),
     });
   }
+  assertValidAdvancedTimingPersistenceRow(row);
   let config: AdvancedTimingConfigV1;
   try {
     config = parseAdvancedTimingConfig(JSON.parse(row.config_json));

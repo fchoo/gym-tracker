@@ -131,6 +131,28 @@ export const ADVANCED_SET_TIMING_SCHEMA_STATEMENTS = [
     ") STRICT",
   ].join("\n"),
   "CREATE INDEX session_advanced_timing_states_target_idx ON session_advanced_timing_states(session_set_id)",
+  [
+    "CREATE TRIGGER session_advanced_timing_states_target_session_insert",
+    "BEFORE INSERT ON session_advanced_timing_states",
+    "WHEN NEW.session_set_id IS NOT NULL AND NOT EXISTS (",
+    "  SELECT 1 FROM session_sets ss",
+    "  JOIN session_exercises se ON se.id = ss.session_exercise_id",
+    "  WHERE ss.id = NEW.session_set_id AND se.session_id = NEW.session_id",
+    ") BEGIN",
+    "  SELECT RAISE(ABORT, 'advanced_timing_target_session_mismatch');",
+    "END",
+  ].join("\n"),
+  [
+    "CREATE TRIGGER session_advanced_timing_states_target_session_update",
+    "BEFORE UPDATE OF session_id, session_set_id ON session_advanced_timing_states",
+    "WHEN NEW.session_set_id IS NOT NULL AND NOT EXISTS (",
+    "  SELECT 1 FROM session_sets ss",
+    "  JOIN session_exercises se ON se.id = ss.session_exercise_id",
+    "  WHERE ss.id = NEW.session_set_id AND se.session_id = NEW.session_id",
+    ") BEGIN",
+    "  SELECT RAISE(ABORT, 'advanced_timing_target_session_mismatch');",
+    "END",
+  ].join("\n"),
 ] as const;
 
 const REQUIRED_COLUMNS = new Map([
@@ -172,12 +194,20 @@ export const advancedSetTimingMigration: Migration = Object.freeze({
     const indexes = await transaction.queryAll<{ name: string }>(
       "PRAGMA index_list(session_advanced_timing_states)",
     );
+    const triggers = await transaction.queryAll<{ name: string }>(
+      `SELECT name FROM sqlite_master
+       WHERE type = 'trigger' AND name IN (
+         'session_advanced_timing_states_target_session_insert',
+         'session_advanced_timing_states_target_session_update'
+       )`,
+    );
     if (
       state === undefined
       || foreignKeys.length !== 2
       || !foreignKeys.some(({ table }) => table === "workout_sessions")
       || !foreignKeys.some(({ table }) => table === "session_sets")
       || !indexes.some(({ name }) => name === "session_advanced_timing_states_target_idx")
+      || triggers.length !== 2
     ) throw new Error("advanced_set_timing_schema_incomplete");
   },
 });

@@ -22,6 +22,9 @@ import type {
 import {
   LOGICAL_BACKUP_TABLE_FILTERS,
 } from "./logicalBackupRepository";
+import {
+  assertValidAdvancedTimingPersistenceRow,
+} from "./advancedTimingRepository";
 
 type CandidateTables = Record<string, readonly LogicalBackupRow[]> & {
   session_sets: readonly LogicalBackupRow[];
@@ -208,6 +211,23 @@ export function createSqliteRestoreCandidateProbe(): RestoreCandidateProbePort {
             && exercise.exercise_id === occurrence.exercise_id
             && sameMetric(set, target);
           if (!graphIsValid) candidateFailure();
+        }
+      }
+      for (const timing of tables.session_advanced_timing_states ?? []) {
+        const timingSessionId = timing.session_id;
+        if (typeof timingSessionId !== "string") candidateFailure();
+        try {
+          assertValidAdvancedTimingPersistenceRow(timing);
+        } catch {
+          candidateFailure();
+        }
+        if (timing.session_set_id === null) continue;
+        const set = sessionSets.get(String(timing.session_set_id));
+        const exercise = sessionExercises.get(String(set?.session_exercise_id));
+        if (set === undefined
+          || exercise === undefined
+          || exercise.session_id !== timingSessionId) {
+          candidateFailure();
         }
       }
       for (const recommendation of tables.owned_progression_recommendations) {

@@ -652,6 +652,29 @@ const contractCases: Record<MigrationsEffectsContractCaseId, ContractCase> = {
           && state.session_set_id === "v21-contract-set",
         "advanced_timing_state_not_persisted",
       );
+      let crossSessionTargetRejected = false;
+      try {
+        await kernel.write(async (transaction) => {
+          await transaction.execute(
+            `INSERT INTO workout_sessions
+              (id, plan_id, plan_day_id, source, status, local_date, timezone,
+               started_at_ms, completed_at_ms, revision)
+             VALUES ('v21-other-session', NULL, NULL, 'manual', 'in_progress',
+                     '2026-09-16', 'Asia/Singapore', 2, NULL, 0)`,
+          );
+          await transaction.execute(
+            `UPDATE session_advanced_timing_states
+             SET session_id = 'v21-other-session'
+             WHERE session_id = 'v21-contract-session'`,
+          );
+        });
+      } catch {
+        crossSessionTargetRejected = true;
+      }
+      invariant(
+        crossSessionTargetRejected,
+        "advanced_timing_cross_session_target_accepted",
+      );
       let malformedRejected = false;
       try {
         await kernel.write((transaction) => transaction.execute(

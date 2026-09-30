@@ -12,11 +12,12 @@ import {
 import type { SqliteKernel } from "../sqliteKernel";
 
 type MutableBackupRow = Record<string, any>;
-type FixtureTable = "workout_sessions" | "session_exercises" | "session_sets" | "owned_progression_recommendations" | "progression_recommendations" | "plan_day_exercises";
+type FixtureTable = "workout_sessions" | "session_exercises" | "session_sets" | "session_advanced_timing_states" | "owned_progression_recommendations" | "progression_recommendations" | "plan_day_exercises";
 type MutableTables = Record<string, MutableBackupRow[]> & {
   workout_sessions: MutableBackupRow[];
   session_exercises: MutableBackupRow[];
   session_sets: MutableBackupRow[];
+  session_advanced_timing_states: MutableBackupRow[];
   owned_progression_recommendations: MutableBackupRow[];
   plan_day_exercises: MutableBackupRow[];
   progression_recommendations: MutableBackupRow[];
@@ -101,6 +102,43 @@ function mutateOwnedRecommendation(
 
 function mutableOwnedCandidate(): MutableSnapshot {
   return structuredClone(completeRecommendation()) as unknown as MutableSnapshot;
+}
+
+function timingCandidate(): LogicalBackupSnapshot {
+  return snapshot({
+    workout_sessions: [{ id: "session" }],
+    session_exercises: [{
+      id: "session-exercise",
+      session_id: "session",
+      exercise_id: "exercise",
+    }],
+    session_sets: [{
+      id: "set",
+      session_exercise_id: "session-exercise",
+      source_plan_working_set_target_id: null,
+      source_owned_plan_working_set_target_id: null,
+    }],
+    session_advanced_timing_states: [{
+      session_id: "session",
+      session_set_id: "set",
+      state_version: 1,
+      revision: 3,
+      status: "running",
+      mode: "cluster",
+      config_json: JSON.stringify({
+        version: 1,
+        mode: "cluster",
+        groupSizes: [3, 3],
+        intraRestMs: 20_000,
+        cueChannels: "haptic",
+      }),
+      progress_json: JSON.stringify({ currentGroupIndex: 0 }),
+      started_at_ms: 10_000,
+      next_boundary_at_ms: 30_000,
+      remaining_ms: null,
+      stopped_at_ms: null,
+    }],
+  });
 }
 
 describe("SQLite restore preflight adapters", () => {
@@ -326,6 +364,27 @@ describe("SQLite restore preflight adapters", () => {
       owned_plan_day_exercises: [{ id: "owned-occurrence", exercise_id: "exercise" }],
     });
     await expect(createSqliteRestoreCandidateProbe().validateCandidate(candidate)).resolves.toBeUndefined();
+  });
+
+  it("rejects malformed advanced-timing progress before restore", async () => {
+    const candidate = structuredClone(timingCandidate()) as unknown as MutableSnapshot;
+    firstRow(candidate, "session_advanced_timing_states")
+      .progress_json = JSON.stringify({ currentGroupIndex: 2 });
+
+    await expect(createSqliteRestoreCandidateProbe().validateCandidate(
+      candidate as unknown as LogicalBackupSnapshot,
+    )).rejects.toBeInstanceOf(RestoreCandidateProbeError);
+  });
+
+  it("rejects an advanced-timing target owned by another session", async () => {
+    const candidate = structuredClone(timingCandidate()) as unknown as MutableSnapshot;
+    candidate.tables.workout_sessions.push({ id: "other-session" });
+    firstRow(candidate, "session_advanced_timing_states")
+      .session_id = "other-session";
+
+    await expect(createSqliteRestoreCandidateProbe().validateCandidate(
+      candidate as unknown as LogicalBackupSnapshot,
+    )).rejects.toBeInstanceOf(RestoreCandidateProbeError);
   });
 
   it("checks schema allowlist, canonical SQLite types, and nullability", async () => {
