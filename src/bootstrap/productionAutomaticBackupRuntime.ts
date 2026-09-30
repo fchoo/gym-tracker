@@ -43,14 +43,26 @@ function snapshotFromDrive(value: Uint8Array): LogicalBackupSnapshot {
   return parseLogicalBackupSnapshot(decoded.payload);
 }
 
+export async function fetchGoogleDriveIdentity(
+  token: string,
+  request: typeof fetch = fetch,
+): Promise<unknown> {
+  const response = await request(
+    "https://www.googleapis.com/drive/v3/about?fields=user(permissionId,emailAddress)",
+    { headers: { Authorization: `Bearer ${token}` } },
+  );
+  if (!response.ok) throw new Error("google_identity_lookup_failed");
+  return response.json();
+}
+
 export function createProductionAutomaticBackupServices(kernel: SqliteKernel): Services {
   const previous = cache.get(kernel as object); if (previous !== undefined) return previous;
   const settings = config();
   const { createGoogleAuthAdapter } = require("../platform/google/googleAuthAdapter") as typeof import("../platform/google/googleAuthAdapter");
-  const auth = createGoogleAuthAdapter({ webClientId: settings.webClientId, about: async (token) => {
-    const response = await fetch("https://www.googleapis.com/oauth2/v2/userinfo", { headers: { Authorization: `Bearer ${token}` } });
-    if (!response.ok) throw new Error("google_identity_lookup_failed"); return response.json();
-  } });
+  const auth = createGoogleAuthAdapter({
+    webClientId: settings.webClientId,
+    about: fetchGoogleDriveIdentity,
+  });
   const state = createAutomaticBackupStateRepository(kernel);
   const snapshotCapture = createProductionAutomaticSnapshotCapture({
     kernel,

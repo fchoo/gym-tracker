@@ -79,9 +79,35 @@ jest.mock("../platform/sqlite/repositories/restoreReconciliationRepository", () 
   createRestoreReconciliationRepository: () => ({ reconcileAndRebuild: async () => undefined }),
 }));
 
-import { createProductionAutomaticBackupServices } from "./productionAutomaticBackupRuntime";
+import {
+  createProductionAutomaticBackupServices,
+  fetchGoogleDriveIdentity,
+} from "./productionAutomaticBackupRuntime";
 
 describe("production automatic-backup composition", () => {
+  it("verifies identity through the Drive about permission schema", async () => {
+    const payload = {
+      user: {
+        permissionId: "permission",
+        emailAddress: "owner@example.com",
+      },
+    };
+    const request = jest.fn(async () => ({
+      ok: true,
+      json: async () => payload,
+    } as Response));
+
+    await expect(fetchGoogleDriveIdentity("access-token", request))
+      .resolves.toEqual(payload);
+    expect(request).toHaveBeenCalledWith(
+      "https://www.googleapis.com/drive/v3/about?fields=user(permissionId,emailAddress)",
+      { headers: { Authorization: "Bearer access-token" } },
+    );
+    await expect(fetchGoogleDriveIdentity("access-token", async () => ({
+      ok: false,
+    } as Response))).rejects.toThrow("google_identity_lookup_failed");
+  });
+
   it("constructs one cached Drive-only runtime for the SQLite kernel", () => {
     const kernel = {
       queryAll: jest.fn(async () => []),
