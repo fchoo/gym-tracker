@@ -3400,6 +3400,12 @@ describe("WorkoutAppRuntimeProvider", () => {
       if (sql === "PRAGMA index_list(session_advanced_timing_states)") {
         return [{ name: "session_advanced_timing_states_target_idx" }];
       }
+      if (sql.includes("session_advanced_timing_states_target_session_insert")) {
+        return [
+          { name: "session_advanced_timing_states_target_session_insert" },
+          { name: "session_advanced_timing_states_target_session_update" },
+        ];
+      }
       if (sql.includes("creation_timezone_offset_minutes IS NULL")) {
         return [];
       }

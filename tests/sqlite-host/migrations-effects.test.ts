@@ -1185,6 +1185,7 @@ describe("Plan 01-06 forward migrations and internal recovery", () => {
     "missing_foreign_key",
     "missing_target_foreign_key",
     "missing_index",
+    "missing_trigger",
   ] as const)(
     "fails v21 verification when %s is malformed",
     async (scenario) => {
@@ -1213,6 +1214,12 @@ describe("Plan 01-06 forward migrations and internal recovery", () => {
             return (scenario === "missing_column" && table === "plan_day_exercises"
               ? []
               : columns) as unknown as readonly Row[];
+          }
+          if (sql.includes("session_advanced_timing_states_target_session_insert")) {
+            return (scenario === "missing_trigger" ? [] : [
+              { name: "session_advanced_timing_states_target_session_insert" },
+              { name: "session_advanced_timing_states_target_session_update" },
+            ]) as unknown as readonly Row[];
           }
           if (sql.includes("FROM sqlite_master")) {
             return (scenario === "missing_table" ? [] : [
@@ -1265,6 +1272,12 @@ describe("Plan 01-06 forward migrations and internal recovery", () => {
               ]
             : [{ name: columnsByTable.get(table) }];
           return columns as unknown as readonly Row[];
+        }
+        if (sql.includes("session_advanced_timing_states_target_session_insert")) {
+          return [
+            { name: "session_advanced_timing_states_target_session_insert" },
+            { name: "session_advanced_timing_states_target_session_update" },
+          ] as unknown as readonly Row[];
         }
         if (sql.includes("FROM sqlite_master")) {
           const result = [{ name: "session_advanced_timing_states" }];
