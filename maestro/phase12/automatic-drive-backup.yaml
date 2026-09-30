@@ -8,9 +8,6 @@ tags:
 - launchApp:
     clearState: false
     stopApp: true
-    env:
-      EXPO_PUBLIC_NATIVE_CONTRACT_SUITE: phase12
-      EXPO_PUBLIC_PHASE12_STAGE: ${PHASE12_STAGE}
 - runFlow:
     when:
       visible: "Retry opening workout data"
