@@ -359,7 +359,7 @@ describe("production automatic-backup composition", () => {
     expect(merge.consume(token)).toEqual({ plan: {}, fingerprint: "fingerprint" });
     expect(merge.consume(token)).toBeNull();
     await merge.commitPlan({ plan: {}, fingerprint: "fingerprint" }); await merge.rebuild();
-    expect(coordinator.isWorkoutActive()).toBe(false);
+    await expect(coordinator.isWorkoutActive()).resolves.toBe(false);
     await expect(coordinator.validate(new Uint8Array())).resolves.toBe(false);
     const captured = await coordinator.capture({
       environment: "development-test",

@@ -9,12 +9,14 @@ export type AutomaticPortableRestorePort = Readonly<{
 
 export function createAutomaticPortableRestorePort(input: Readonly<{
   schema: RestoreSchemaPort; retainedReferences?: RestoreRetainedReferencePort; candidateProbe: RestoreCandidateProbePort;
+  isWorkoutActive(): boolean | Promise<boolean>;
   localIsEmpty(): Promise<boolean>; claimIsCurrent(): Promise<boolean>;
   restore(snapshot: LogicalBackupSnapshot): Promise<Readonly<{ state: "rebuild_pending" }>>;
   rebuild(): Promise<void>;
 }>): AutomaticPortableRestorePort {
   return Object.freeze({
     async restore(snapshot) {
+      if (await input.isWorkoutActive()) throw new Error("automatic_restore_workout_active");
       await validateLogicalRestoreSnapshot(snapshot, input.schema, input.retainedReferences);
       await input.candidateProbe.validateCandidate(snapshot);
       if (!await input.localIsEmpty()) throw new Error("automatic_restore_requires_merge");
@@ -34,7 +36,7 @@ export type AutomaticPortableMergePort = Readonly<{
 
 export function createAutomaticPortableMergePort(input: Readonly<{
   schema: RestoreSchemaPort; retainedReferences?: RestoreRetainedReferencePort; candidateProbe: RestoreCandidateProbePort;
-  isWorkoutActive(): boolean; local(): Promise<PortableMergePlanSnapshot>;
+  isWorkoutActive(): boolean | Promise<boolean>; local(): Promise<PortableMergePlanSnapshot>;
   archive(snapshot: LogicalBackupSnapshot): PortableMergePlanSnapshot;
   build(input: Readonly<{ archive: PortableMergePlanSnapshot; local: PortableMergePlanSnapshot }>): Promise<PortableMergePlan>;
   fingerprint(): Promise<string>; issue(value: Readonly<{ plan: PortableMergePlan; fingerprint: string; grant?: string }>): string;
@@ -44,7 +46,7 @@ export function createAutomaticPortableMergePort(input: Readonly<{
 }>): AutomaticPortableMergePort {
   return Object.freeze({
     async preflight(snapshot, grant) {
-      if (input.isWorkoutActive()) throw new Error("automatic_merge_workout_active");
+      if (await input.isWorkoutActive()) throw new Error("automatic_merge_workout_active");
       await validateLogicalRestoreSnapshot(snapshot, input.schema, input.retainedReferences);
       await input.candidateProbe.validateCandidate(snapshot);
       const plan = await input.build({ archive: input.archive(snapshot), local: await input.local() });
@@ -52,7 +54,7 @@ export function createAutomaticPortableMergePort(input: Readonly<{
       return Object.freeze({ token: input.issue(pending) });
     },
     async commit(token) {
-      if (input.isWorkoutActive()) throw new Error("automatic_merge_workout_active");
+      if (await input.isWorkoutActive()) throw new Error("automatic_merge_workout_active");
       const pending = input.consume(token); if (pending === null) throw new Error("automatic_merge_token_invalid");
       const result = await input.commitPlan(pending); await input.rebuild(); return result;
     },

@@ -35,7 +35,7 @@ describe("automatic portability", () => {
 
   it("refuses non-empty or stale-claim direct restore before invoking a writer", async () => {
     const restore = jest.fn(async () => ({ state: "rebuild_pending" as const }));
-    const port = createAutomaticPortableRestorePort({ schema: { columnsFor: async () => [] }, candidateProbe: { validateCandidate: async () => undefined }, localIsEmpty: async () => false, claimIsCurrent: async () => true, restore, rebuild: async () => undefined });
+    const port = createAutomaticPortableRestorePort({ schema: { columnsFor: async () => [] }, candidateProbe: { validateCandidate: async () => undefined }, isWorkoutActive: () => false, localIsEmpty: async () => false, claimIsCurrent: async () => true, restore, rebuild: async () => undefined });
     await expect(port.restore({} as never)).rejects.toThrow("restore_archive_unsupported_version");
     expect(restore).not.toHaveBeenCalled();
   });
@@ -47,6 +47,7 @@ describe("automatic portability", () => {
     const candidateProbe = { validateCandidate: jest.fn(async () => undefined) };
     const port = createAutomaticPortableRestorePort({
       schema: { columnsFor: async () => [] }, candidateProbe,
+      isWorkoutActive: () => false,
       localIsEmpty: async () => true, claimIsCurrent: async () => true, restore, rebuild,
     });
 
@@ -60,6 +61,7 @@ describe("automatic portability", () => {
     bypassSnapshotValidation();
     const port = createAutomaticPortableRestorePort({
       schema: { columnsFor: async () => [] }, candidateProbe: { validateCandidate: async () => undefined },
+      isWorkoutActive: () => false,
       localIsEmpty: async () => true, claimIsCurrent: async () => true,
       restore: async () => ({ state: "ready" as never }), rebuild: async () => undefined,
     });
@@ -75,10 +77,26 @@ describe("automatic portability", () => {
     const restore = jest.fn(async () => ({ state: "rebuild_pending" as const }));
     const port = createAutomaticPortableRestorePort({
       schema: { columnsFor: async () => [] }, candidateProbe: { validateCandidate: async () => undefined },
+      isWorkoutActive: () => false,
       localIsEmpty, claimIsCurrent, restore, rebuild: async () => undefined,
     });
 
     await expect(port.restore(snapshot)).rejects.toThrow(expected);
+    expect(restore).not.toHaveBeenCalled();
+  });
+
+  it("defers direct restore before validation when an interactive workout is active", async () => {
+    const candidateProbe = { validateCandidate: jest.fn(async () => undefined) };
+    const restore = jest.fn(async () => ({ state: "rebuild_pending" as const }));
+    const port = createAutomaticPortableRestorePort({
+      schema: { columnsFor: async () => [] }, candidateProbe,
+      isWorkoutActive: async () => true,
+      localIsEmpty: async () => true, claimIsCurrent: async () => true,
+      restore, rebuild: async () => undefined,
+    });
+
+    await expect(port.restore(snapshot)).rejects.toThrow("automatic_restore_workout_active");
+    expect(candidateProbe.validateCandidate).not.toHaveBeenCalled();
     expect(restore).not.toHaveBeenCalled();
   });
 

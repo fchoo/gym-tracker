@@ -10,7 +10,7 @@ import {
 import { createAutomaticBackupCoordinator } from "../domains/backup/automaticBackupCoordinator";
 import { createAutomaticBackupScheduler, type AutomaticBackupScheduler } from "../domains/backup/automaticBackupScheduler";
 import { createAutomaticPortableMergePort, createAutomaticPortableRestorePort } from "../domains/portability/automaticPortability";
-import { parseLogicalBackupSnapshot, type LogicalBackupSnapshot } from "../domains/portability/backupContracts";
+import { parseLogicalBackupSnapshot, type LogicalBackupRow, type LogicalBackupSnapshot } from "../domains/portability/backupContracts";
 import { buildPortableMergePlan, type PortableMergePlan } from "../domains/portability/mergePlan";
 import { createDriveBackupStoreAdapter, type DriveFetch } from "../platform/google/driveBackupStoreAdapter";
 import { createFullPlanLogicalMergeWriter } from "../platform/sqlite/repositories/logicalMergeRepository";
@@ -47,6 +47,13 @@ function packageIdentity(environment: AutomaticBackupEnvironment): string {
   return environment === "production"
     ? "com.fchoo.gymtracker"
     : "com.fchoo.gymtracker.devtest";
+}
+
+export function localPortableFactsAreEmpty(
+  tables: Readonly<Record<string, readonly LogicalBackupRow[]>>,
+): boolean {
+  return Object.entries(tables).every(([table, rows]) =>
+    table === "portable_owner_identity" || rows.length === 0);
 }
 
 async function snapshotFromDrive(
@@ -116,16 +123,21 @@ export function createProductionAutomaticBackupServices(kernel: SqliteKernel): S
     reportFailure: (stage, status) => console.warn(`[automatic-backup] drive:${stage}:${status ?? "none"}`),
   });
   const reconciliation = createRestoreReconciliationRepository(kernel, { history: createHistoryProjectionRepository(kernel), search: createExerciseSearchIndexRepository(kernel), nowMs: () => Date.now() });
+  const localFacts = createSqliteMergeLocalFactsPort(kernel);
+  const localIsEmpty = async () => localPortableFactsAreEmpty((await localFacts.read()).tables);
+  const isWorkoutActive = async () => (await kernel.queryAll(
+    "SELECT 1 FROM workout_sessions WHERE status = 'in_progress' LIMIT 1",
+  )).length !== 0;
   const restore = createAutomaticPortableRestorePort({
     schema: createSqliteRestoreSchemaPort(kernel), retainedReferences: createSqliteRestoreRetainedReferencePort(kernel), candidateProbe: createSqliteRestoreCandidateProbe(),
-    localIsEmpty: async () => ((await createSqliteMergeLocalFactsPort(kernel).read()).tables.workout_sessions?.length ?? 0) === 0,
+    isWorkoutActive, localIsEmpty,
     claimIsCurrent: async () => (await state.read()).authorityState === "quarantine",
     restore: createLogicalRestoreRepository(kernel, { nowMs: () => Date.now() }).restore,
     rebuild: async () => { await reconciliation.reconcileAndRebuild(); },
   });
   const mergeTokens = new Map<string, Readonly<{ plan: PortableMergePlan; fingerprint: string; grant?: string }>>();
   const merge = createAutomaticPortableMergePort({
-    schema: createSqliteRestoreSchemaPort(kernel), retainedReferences: createSqliteRestoreRetainedReferencePort(kernel), candidateProbe: createSqliteRestoreCandidateProbe(), isWorkoutActive: () => false,
+    schema: createSqliteRestoreSchemaPort(kernel), retainedReferences: createSqliteRestoreRetainedReferencePort(kernel), candidateProbe: createSqliteRestoreCandidateProbe(), isWorkoutActive,
     local: async () => { const local = await createSqliteMergeLocalFactsPort(kernel).read(); return { version: 2 as const, schemaVersion: local.schemaVersion, tables: local.tables }; },
     archive: (snapshot) => ({ version: 2 as const, schemaVersion: snapshot.schemaVersion, tables: snapshot.tables }),
     build: ({ archive, local }) => buildPortableMergePlan({ archive, local, payloadDigest: digest }),
@@ -136,7 +148,7 @@ export function createProductionAutomaticBackupServices(kernel: SqliteKernel): S
     rebuild: async () => { await reconciliation.reconcileAndRebuild(); },
   });
   const coordinator = createAutomaticBackupCoordinator({
-    isWorkoutActive: () => false, auth, state, drive, nowMs: () => Date.now(), candidateId: () => id("attempt"),
+    isWorkoutActive, auth, state, drive, nowMs: () => Date.now(), candidateId: () => id("attempt"),
     reportFailure: (stage) => console.warn(`[automatic-backup] deferred:${stage}`),
     capture: async ({ environment, writerEpoch }) => {
       const captured = await snapshotCapture.capture({ snapshotId: id("snapshot"), createdAtMs: Date.now() });
@@ -181,7 +193,7 @@ export function createProductionAutomaticBackupServices(kernel: SqliteKernel): S
     buildManifest: ({ candidateId, state: current, captured, previous }) => bytes({ kind: "active", writer_epoch: current.writerEpoch, latest: { fileId: candidateId, object_sha256: captured.sourceDigest }, previous }),
     recovery: {
       parseSnapshot: (value) => snapshotFromDrive(value, settings.environment),
-      localIsEmpty: async () => ((await createSqliteMergeLocalFactsPort(kernel).read()).tables.workout_sessions?.length ?? 0) === 0,
+      localIsEmpty,
       prepareMerge: async (snapshot) => {
         const local = await createSqliteMergeLocalFactsPort(kernel).read();
         const remoteOwner = snapshot.tables.portable_owner_identity?.[0]?.owner_namespace;
@@ -204,7 +216,7 @@ export function createProductionAutomaticBackupServices(kernel: SqliteKernel): S
   };
   let publishBackupState = async (): Promise<void> => undefined;
   const scheduler = createAutomaticBackupScheduler({
-    isWorkoutActive: async () => (await kernel.queryAll("SELECT 1 FROM workout_sessions WHERE status = 'in_progress' LIMIT 1")).length !== 0,
+    isWorkoutActive,
     eligible: async () => {
       const current = await state.read();
       return current.authorityState === "active"

@@ -61,7 +61,7 @@ export type AutomaticBackupCoordinator = Readonly<{
  * snapshot collector. No caller awaits this from a workout mutation.
  */
 export function createAutomaticBackupCoordinator(input: Readonly<{
-  isWorkoutActive(): boolean;
+  isWorkoutActive(): boolean | Promise<boolean>;
   auth?: Pick<GoogleAuthPort, "connect" | "disconnect">;
   capture(input: Readonly<{
     environment: AutomaticBackupEnvironment;
@@ -135,7 +135,7 @@ export function createAutomaticBackupCoordinator(input: Readonly<{
     return Object.freeze({ status: "deferred" as const });
   };
   const run = async (): Promise<BackupResult> => {
-    if (input.isWorkoutActive()) return Object.freeze({ status: "deferred" as const });
+    if (await input.isWorkoutActive()) return Object.freeze({ status: "deferred" as const });
     const state = await input.state.read();
     const bootstrapping = state.permissionId !== null
       && state.authorityState === "quarantine"
@@ -348,6 +348,7 @@ export function createAutomaticBackupCoordinator(input: Readonly<{
   };
   const prepareRecovery = async ({ candidate }: Readonly<{ candidate: AutomaticRecoveryCandidate }>): Promise<AutomaticRecoveryPreparation> => {
     if (input.recovery === undefined) throw new Error("automatic_recovery_unavailable");
+    if (await input.isWorkoutActive()) throw new Error("automatic_recovery_workout_active");
     const state = await input.state.read();
     if (state.permissionId === null || state.authorityState !== "quarantine") throw new Error("automatic_recovery_not_quarantined");
     const rawManifest = await input.drive.readManifest();
@@ -380,6 +381,7 @@ export function createAutomaticBackupCoordinator(input: Readonly<{
   };
   const commitRecovery = async (request: AutomaticRecoveryCommit): Promise<Readonly<{ state: "ready" | "rebuild_pending" }>> => {
     if (input.recovery === undefined) throw new Error("automatic_recovery_unavailable");
+    if (await input.isWorkoutActive()) throw new Error("automatic_recovery_workout_active");
     const attempt = recoveryAttempts.get(request.attemptId);
     if (attempt === undefined || attempt.preparation.kind !== request.kind) throw new Error("automatic_recovery_attempt_invalid");
     recoveryAttempts.delete(request.attemptId);
