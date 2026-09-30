@@ -164,7 +164,7 @@ describe("Drive backup store adapter", () => {
         headers: new Headers(),
         arrayBuffer: async () => new Promise<ArrayBuffer>(() => undefined),
         body: { cancel: async () => { throw new Error("locked"); } },
-      }) as Response,
+      }) as unknown as Response,
     });
     await expect(bodyTimeout.discover()).rejects.toThrow("drive_response_timeout");
     expect(bodyFailures).toEqual(["list_invalid"]);
@@ -178,7 +178,7 @@ describe("Drive backup store adapter", () => {
         redirected: false,
         headers: new Headers(),
         arrayBuffer: async () => { throw new Error("body_failed"); },
-      }) as Response,
+      }) as unknown as Response,
     });
     await expect(bodyFailure.discover()).rejects.toThrow("body_failed");
   });
@@ -213,6 +213,25 @@ describe("Drive backup store adapter", () => {
     await expect(adapter.trash("candidate", 2, '"etag"')).resolves.toBeUndefined();
     await expect(adapter.deleteTombstoned("candidate")).resolves.toBeUndefined();
     expect(requests.some(({ init }) => (init.headers as Record<string, string>)["X-Gym-Tracker-Writer-Epoch"] === "2")).toBe(true);
+
+    const fallbackEtag = createDriveBackupStoreAdapter({
+      environment: "development-test",
+      token: async () => "token",
+      fetch: async (url) => url.includes("uploadType=multipart")
+        ? response({ id: "manifest" })
+        : response("{}", { headers: { etag: '"read-etag"' } }),
+    });
+    await expect(fallbackEtag.createManifest("manifest", new Uint8Array([1])))
+      .resolves.toEqual({ fileId: "manifest", etag: '"read-etag"' });
+    const rejectedFallback = createDriveBackupStoreAdapter({
+      environment: "development-test",
+      token: async () => "token",
+      fetch: async (url) => url.includes("uploadType=multipart")
+        ? response({ id: "manifest" })
+        : response(null, { status: 500 }),
+    });
+    await expect(rejectedFallback.createManifest("manifest", new Uint8Array([1])))
+      .rejects.toThrow("drive_manifest_read_failed");
   });
 
   it("rejects invalid conditional mutation and resumable acknowledgements", async () => {
