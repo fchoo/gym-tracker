@@ -165,6 +165,48 @@ describe("production automatic-backup composition", () => {
     expect(mockCoordinatorBackup).toHaveBeenCalledTimes(priorBackups + 1);
   });
 
+  it("publishes the pending first backup after discovery before upload completes", async () => {
+    const disconnected = {
+      permissionId: null, statusCode: "idle", authorityState: "quarantine",
+      manifestId: null, mutationGeneration: 4, backedUpGeneration: 0, dirtySinceMs: 1,
+      dataUsePolicy: "any-network", accountDisplayLabel: null, lastSuccessMs: null,
+    };
+    const pending = {
+      ...disconnected,
+      permissionId: "google-permission",
+      accountDisplayLabel: "Owner",
+    };
+    const complete = {
+      ...pending,
+      authorityState: "active",
+      manifestId: "manifest",
+      backedUpGeneration: 4,
+      lastSuccessMs: 2,
+    };
+    mockState.read
+      .mockResolvedValueOnce(disconnected as never)
+      .mockResolvedValueOnce(pending as never)
+      .mockResolvedValueOnce(complete as never);
+    mockCoordinatorConnect.mockResolvedValueOnce({ status: "needs_bootstrap" });
+    let finishBackup: (() => void) | undefined;
+    mockCoordinatorBackup.mockImplementationOnce(() => new Promise((resolve) => {
+      finishBackup = () => resolve({ status: "backed_up" as const });
+    }));
+    const { runtime } = createProductionAutomaticBackupServices({} as never);
+    const seen: string[] = [];
+    await runtime.start();
+    runtime.subscribe((model) => seen.push(model.status));
+
+    const connecting = runtime.connect();
+    await new Promise<void>((resolve) => setImmediate(resolve));
+
+    expect(finishBackup).toBeDefined();
+    expect(seen).toContain("backup_pending");
+    finishBackup?.();
+    await connecting;
+    expect(runtime.current().status).toBe("idle");
+  });
+
   it("re-discovers an interrupted first backup before manual retry", async () => {
     const priorBackups = mockCoordinatorBackup.mock.calls.length;
     const priorChecks = mockCoordinatorCheckAgain.mock.calls.length;

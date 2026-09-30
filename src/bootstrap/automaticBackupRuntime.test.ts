@@ -80,6 +80,26 @@ describe("automatic backup runtime", () => {
     expect(listener).toHaveBeenCalledTimes(1);
   });
 
+  it("reconciles durable state after a command rejects", async () => {
+    const port = commands();
+    port.connect.mockRejectedValueOnce(new Error("google_connection_failed"));
+    const read = jest.fn(async () => ({
+      ...base(),
+      status: "not_connected" as const,
+      mutationGeneration: 0,
+      backedUpGeneration: 0,
+    }));
+    const runtime = createAutomaticBackupRuntime({ read, commands: port });
+
+    await expect(runtime.connect()).rejects.toThrow("google_connection_failed");
+
+    expect(read).toHaveBeenCalledTimes(1);
+    expect(runtime.current()).toMatchObject({
+      status: "not_connected",
+      primaryAction: "connect",
+    });
+  });
+
   it("fails closed when the production composition omits a command", async () => {
     const runtime = createAutomaticBackupRuntime({ read: async () => base() });
     await expect(runtime.connect()).rejects.toThrow("automatic_backup_unavailable");

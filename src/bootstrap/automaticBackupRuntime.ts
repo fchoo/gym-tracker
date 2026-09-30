@@ -82,10 +82,13 @@ export function createAutomaticBackupRuntime(input: Readonly<{
     }
     if (activeCommand !== null) return activeCommand as Promise<Result>;
     const command = input.commands[key] as (...values: readonly unknown[]) => Promise<unknown>;
-    activeCommand = command(...args).then(async (result) => {
-      await publish();
-      return result;
-    }).finally(() => { activeCommand = null; });
+    activeCommand = (async () => {
+      try {
+        return await command(...args);
+      } finally {
+        await publish();
+      }
+    })().finally(() => { activeCommand = null; });
     return activeCommand as Promise<Result>;
   };
   const unsubscribe = input.subscribeTransitions?.(() => { void publish(); });
