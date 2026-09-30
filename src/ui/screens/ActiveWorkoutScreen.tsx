@@ -1266,6 +1266,9 @@ function PopulatedWorkoutOverview({
       ? `Warm-up W${set.ordinal + 1}`
       : `Working set ${set.ordinal + 1}`;
     const testKey = `${set.kind}-${set.ordinal}`;
+    const timingActionLabel = `Configure ${exercise.name}, ${
+      set.kind === "warmup" ? `warm-up W${set.ordinal + 1}` : `working set ${set.ordinal + 1}`
+    } timing`;
     const editable = set.status === "planned" || set.status === "draft";
     const summary = editable
       ? advancedTimingConfigSummary(set.advancedTimingOverride ?? null, "set")
@@ -1292,12 +1295,12 @@ function PopulatedWorkoutOverview({
               timingConfigBusy
               || commands.updateSessionSetAdvancedTiming === undefined
             }
-            label={`${label} timing`}
+            label={timingActionLabel}
             onPress={() => {
               setTimingConfigFailed(false);
               setTimingConfig({ scope: "set", exercise, set });
             }}
-            testID={`set-timing-action-${testKey}`}
+            testID={`set-timing-action-${exercise.id}-${set.id}`}
           />
         ) : (
           <Text

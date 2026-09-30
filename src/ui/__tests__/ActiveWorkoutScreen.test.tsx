@@ -3316,7 +3316,7 @@ describe("Plan 01-08 ActiveWorkoutScreen", () => {
       .toHaveTextContent("Working set 1 timing · Inherits exercise timing");
 
     await fireEvent.press(screen.getByRole("button", {
-      name: "Working set 1 timing",
+      name: "Configure Back Squat, working set 1 timing",
     }));
     await fireEvent.press(screen.getByRole("button", { name: "Off timing" }));
     await fireEvent.press(screen.getByRole("button", { name: "Save timing" }));
@@ -3394,7 +3394,7 @@ describe("Plan 01-08 ActiveWorkoutScreen", () => {
 
     await act(async () => {
       fireEvent.press(screen.getByRole("button", {
-        name: "Working set 1 timing",
+        name: "Configure Back Squat, working set 1 timing",
       }));
     });
     await waitFor(() => expect(screen.getByRole("button", {
@@ -3494,7 +3494,7 @@ describe("Plan 01-08 ActiveWorkoutScreen", () => {
 
     expect(screen.getByText("Cluster timing")).toBeOnTheScreen();
     await fireEvent.press(screen.getByRole("button", {
-      name: "Working set 1 timing",
+      name: "Configure Back Squat, working set 1 timing",
     }));
     await fireEvent.press(screen.getByRole("button", { name: "Inherit timing" }));
     await fireEvent.press(screen.getByRole("button", { name: "Save timing" }));
@@ -3553,7 +3553,7 @@ describe("Plan 01-08 ActiveWorkoutScreen", () => {
 
     expect(screen.getByTestId("set-timing-readonly-working-0"))
       .toHaveTextContent("Completed sets are read-only. Timing cannot change.");
-    expect(screen.queryByRole("button", { name: "Working set 1 timing" }))
+    expect(screen.queryByRole("button", { name: "Configure Back Squat, working set 1 timing" }))
       .not.toBeOnTheScreen();
     expect(updateSessionSetAdvancedTiming).not.toHaveBeenCalled();
   });
@@ -3579,7 +3579,7 @@ describe("Plan 01-08 ActiveWorkoutScreen", () => {
     });
 
     await fireEvent.press(screen.getByRole("button", {
-      name: "Warm-up W1 timing",
+      name: "Configure Back Squat, warm-up W1 timing",
     }));
     await fireEvent.press(screen.getByRole("button", { name: "Per-rep timing" }));
     await fireEvent.changeText(
@@ -3591,14 +3591,14 @@ describe("Plan 01-08 ActiveWorkoutScreen", () => {
     await waitFor(() => expect(updateSessionSetAdvancedTiming).toHaveBeenCalledTimes(1));
 
     await fireEvent.press(screen.getByRole("button", {
-      name: "Working set 1 timing",
+      name: "Configure Back Squat, working set 1 timing",
     }));
     await fireEvent.press(screen.getByRole("button", { name: "Off timing" }));
     await fireEvent.press(screen.getByRole("button", { name: "Save timing" }));
     await waitFor(() => expect(updateSessionSetAdvancedTiming).toHaveBeenCalledTimes(2));
 
     await fireEvent.press(screen.getByRole("button", {
-      name: "Working set 2 timing",
+      name: "Configure Back Squat, working set 2 timing",
     }));
     await fireEvent.press(screen.getByRole("button", { name: "Cluster timing" }));
     await fireEvent.changeText(
@@ -3656,6 +3656,52 @@ describe("Plan 01-08 ActiveWorkoutScreen", () => {
       .toHaveTextContent("Working set 2 timing · Cluster 2+2 · 15 sec · both");
   });
 
+  it("uniquely identifies the same timing row ordinal across exercises", async () => {
+    const active = overviewView();
+    const futureExercise = {
+      ...active.currentExercise,
+      id: "session-exercise-3",
+      exerciseId: "overhead-press",
+      name: "Overhead Press",
+      ordinal: 2,
+      status: "planned" as const,
+      warmups: active.currentExercise.warmups.map((set) => ({
+        ...set,
+        id: "overhead-warmup-1",
+      })),
+      workingSets: active.currentExercise.workingSets.map((set, index) => ({
+        ...set,
+        id: `overhead-working-${index + 1}`,
+      })),
+    };
+    await renderActive({
+      view: { ...active, exercises: [...active.exercises, futureExercise] },
+      commands: commands({
+        updateSessionSetAdvancedTiming: jest.fn(async () => advancedResult({
+          version: 1,
+          state: "idle",
+          revision: 0,
+          targetSessionSetId: null,
+        }, 2)),
+      }),
+    });
+
+    const benchTiming = screen.getByRole("button", {
+      name: "Configure Bench Press, working set 1 timing",
+    });
+    const overheadTiming = screen.getByRole("button", {
+      name: "Configure Overhead Press, working set 1 timing",
+    });
+    expect(benchTiming).toHaveProp(
+      "testID",
+      "set-timing-action-session-exercise-2-bench-working-1",
+    );
+    expect(overheadTiming).toHaveProp(
+      "testID",
+      "set-timing-action-session-exercise-3-overhead-working-1",
+    );
+  });
+
   it("keeps completed and skipped set timing read-only", async () => {
     const updateSessionSetAdvancedTiming = jest.fn<NonNullable<
       ActiveWorkoutCommands["updateSessionSetAdvancedTiming"]
@@ -3708,15 +3754,15 @@ describe("Plan 01-08 ActiveWorkoutScreen", () => {
       .toHaveTextContent("Warm-up W1 timing · Per-rep every 4 sec · audio");
     expect(screen.getByTestId("set-timing-readonly-warmup-0"))
       .toHaveTextContent("Completed sets are read-only. Timing cannot change.");
-    expect(screen.queryByRole("button", { name: "Warm-up W1 timing" }))
+    expect(screen.queryByRole("button", { name: "Configure Back Squat, warm-up W1 timing" }))
       .not.toBeOnTheScreen();
     expect(screen.getByTestId("set-timing-summary-working-0"))
       .toHaveTextContent("Working set 1 timing · Cluster 2+2 · 15 sec · both");
     expect(screen.getByTestId("set-timing-readonly-working-0"))
       .toHaveTextContent("Skipped sets are read-only. Timing cannot change.");
-    expect(screen.queryByRole("button", { name: "Working set 1 timing" }))
+    expect(screen.queryByRole("button", { name: "Configure Back Squat, working set 1 timing" }))
       .not.toBeOnTheScreen();
-    expect(screen.getByRole("button", { name: "Working set 2 timing" }))
+    expect(screen.getByRole("button", { name: "Configure Back Squat, working set 2 timing" }))
       .toBeOnTheScreen();
     expect(updateSessionSetAdvancedTiming).not.toHaveBeenCalled();
   });
