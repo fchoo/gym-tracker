@@ -4,6 +4,7 @@ import {
   expect,
   it,
 } from "@jest/globals";
+import { createHash } from "node:crypto";
 import { DatabaseSync } from "node:sqlite";
 import {
   mkdtempSync,
@@ -18,6 +19,8 @@ import {
 } from "../../src/domains/content";
 import {
   activateStarterPlan,
+  createOwnedPlanDraft,
+  saveOwnedPlan,
 } from "../../src/domains/plans";
 import {
   beginAdvancedTimingClusterGap,
@@ -54,6 +57,9 @@ import type {
 import {
   createAdvancedTimingRepository,
 } from "../../src/platform/sqlite/repositories/advancedTimingRepository";
+import {
+  createOwnedPlanRepository,
+} from "../../src/platform/sqlite/repositories/ownedPlanRepository";
 import {
   createPlansWorkoutRepository,
 } from "../../src/platform/sqlite/repositories/plansWorkoutRepository";
@@ -149,6 +155,10 @@ const bothCluster = {
   intraRestMs: 15_000,
   cueChannels: "both" as const,
 };
+
+async function sha256(value: string): Promise<string> {
+  return createHash("sha256").update(value).digest("hex");
+}
 
 afterEach(async () => {
   await Promise.all(kernels.splice(0).map((kernel) => kernel.close()));
@@ -313,6 +323,216 @@ async function timingRows(
 }
 
 describe("advanced timing repository", () => {
+  it("round-trips independent warm-up and working-set timing overrides through owned plan and session snapshots", async () => {
+    const kernel = await createKernel();
+    const ownedPlans = createOwnedPlanRepository(kernel);
+    const plans = createPlansWorkoutRepository(kernel);
+    const invalidate = async () => undefined;
+    await kernel.write(async (transaction) => {
+      await transaction.execute(
+        `INSERT INTO exercises
+          (id, content_pack_id, origin, source_namespace, upstream_id, name,
+           metric_profile, metric_contract_version,
+           exercise_metric_generation, equipment, default_rest_seconds,
+           revision)
+         VALUES (?, NULL, 'custom', NULL, NULL, ?, 'load_reps', 1, 1,
+                 'Barbell', 90, 1)`,
+        ["exercise-independent-squat", "Independent Squat"],
+      );
+      await transaction.execute(
+        `INSERT INTO exercise_library_entries
+          (exercise_id, origin, canonical_name, exercise_type, movement_class,
+           metric_profile, metric_contract_version, exercise_metric_generation,
+           availability, revision)
+         VALUES (?, 'custom', ?, 'strength', 'compound', 'load_reps', 1, 1,
+                 'available', 1)`,
+        ["exercise-independent-squat", "Independent Squat"],
+      );
+    });
+    const created = await createOwnedPlanDraft({
+      repository: ownedPlans,
+      invalidate,
+      sha256,
+      input: {
+        requestId: "create-independent-timing-plan",
+        planId: "plan-independent-timing",
+        name: "Independent Timing",
+        dayId: "day-independent-timing",
+        dayName: "Timing Day",
+        createdAtMs: 1_000,
+      },
+    });
+    if (created.outcome === "requires_schedule_impact") {
+      throw new Error("owned_plan_create_unexpected_impact");
+    }
+    const saved = await saveOwnedPlan({
+      repository: ownedPlans,
+      invalidate,
+      sha256,
+      input: {
+        requestId: "save-independent-timing-plan",
+        expectedRevision: created.plan.revision,
+        savedAtMs: 2_000,
+        plan: {
+          id: created.plan.id,
+          name: created.plan.name,
+          days: [{
+            id: created.plan.days[0]!.id,
+            name: created.plan.days[0]!.name,
+            ordinal: 0,
+            occurrences: [{
+              id: "occurrence-independent-squat",
+              exerciseId: "exercise-independent-squat",
+              ordinal: 0,
+              restSeconds: 90,
+              metricIdentity: {
+                profile: "load_reps",
+                contractVersion: 1,
+                exerciseMetricGeneration: 1,
+              },
+              advancedTimingDefault: perRep,
+              warmups: [{
+                id: "warmup-independent-1",
+                ordinal: 0,
+                loadGrams: 10_000,
+                reps: 5,
+                advancedTimingOverride: null,
+              }, {
+                id: "warmup-independent-2",
+                ordinal: 1,
+                loadGrams: 15_000,
+                reps: 3,
+                advancedTimingOverride: { version: 1, mode: "off" },
+              }],
+              targets: [{
+                id: "target-independent-1",
+                ordinal: 0,
+                target: {
+                  profile: "load_reps",
+                  version: 1,
+                  loadGrams: 20_000,
+                  minReps: 8,
+                  maxReps: 12,
+                  incrementGrams: 2_500,
+                  perSide: false,
+                },
+                units: { version: 1, load: "grams", count: "repetitions" },
+                advancedTimingOverride: audioPerRep,
+              }, {
+                id: "target-independent-2",
+                ordinal: 1,
+                target: {
+                  profile: "load_reps",
+                  version: 1,
+                  loadGrams: 20_000,
+                  minReps: 8,
+                  maxReps: 12,
+                  incrementGrams: 2_500,
+                  perSide: false,
+                },
+                units: { version: 1, load: "grams", count: "repetitions" },
+                advancedTimingOverride: bothCluster,
+              }, {
+                id: "target-independent-3",
+                ordinal: 2,
+                target: {
+                  profile: "load_reps",
+                  version: 1,
+                  loadGrams: 20_000,
+                  minReps: 8,
+                  maxReps: 12,
+                  incrementGrams: 2_500,
+                  perSide: false,
+                },
+                units: { version: 1, load: "grams", count: "repetitions" },
+                advancedTimingOverride: null,
+              }],
+              policy: {
+                id: "policy-independent-squat",
+                kind: "manual_hold",
+                policyId: "load_reps.manual_hold.v1",
+                version: 1,
+                rule: {
+                  kind: "manual_hold",
+                  id: "load_reps.manual_hold.v1",
+                  version: 1,
+                },
+              },
+            }],
+          }],
+        },
+      },
+    });
+    if (saved.outcome === "requires_schedule_impact") {
+      throw new Error("owned_plan_save_unexpected_impact");
+    }
+
+    const reloaded = await ownedPlans.read(saved.plan.id);
+    const occurrence = reloaded!.days[0]!.occurrences[0]!;
+    expect(occurrence.warmups.map((row) => row.advancedTimingOverride ?? null))
+      .toEqual([null, { version: 1, mode: "off" }]);
+    expect(occurrence.targets.map((row) => row.advancedTimingOverride ?? null))
+      .toEqual([audioPerRep, bothCluster, null]);
+
+    const session = await startWorkout({
+      repository: plans,
+      request: {
+        mode: "scheduled",
+        planId: saved.plan.id,
+        planDayId: saved.plan.days[0]!.id,
+        localDate: "2026-09-30",
+        timezone: "Asia/Singapore",
+        startedAtMs: 3_000,
+      },
+    });
+    const timingSnapshots = await kernel.queryAll<{
+      set_kind: "warmup" | "working";
+      ordinal: number;
+      advanced_timing_override_json: string | null;
+      advanced_timing_resolved_json: string;
+    }>(
+      `SELECT ss.set_kind, ss.ordinal, ss.advanced_timing_override_json,
+              ss.advanced_timing_resolved_json
+       FROM session_sets ss
+       JOIN session_exercises se ON se.id = ss.session_exercise_id
+       WHERE se.session_id = ?
+       ORDER BY CASE ss.set_kind WHEN 'warmup' THEN 0 ELSE 1 END, ss.ordinal`,
+      [session.id],
+    );
+    expect(timingSnapshots).toEqual([
+      {
+        set_kind: "warmup",
+        ordinal: 0,
+        advanced_timing_override_json: null,
+        advanced_timing_resolved_json: JSON.stringify(perRep),
+      },
+      {
+        set_kind: "warmup",
+        ordinal: 1,
+        advanced_timing_override_json: JSON.stringify({ version: 1, mode: "off" }),
+        advanced_timing_resolved_json: JSON.stringify({ version: 1, mode: "off" }),
+      },
+      {
+        set_kind: "working",
+        ordinal: 0,
+        advanced_timing_override_json: JSON.stringify(audioPerRep),
+        advanced_timing_resolved_json: JSON.stringify(audioPerRep),
+      },
+      {
+        set_kind: "working",
+        ordinal: 1,
+        advanced_timing_override_json: JSON.stringify(bothCluster),
+        advanced_timing_resolved_json: JSON.stringify(bothCluster),
+      },
+      {
+        set_kind: "working",
+        ordinal: 2,
+        advanced_timing_override_json: null,
+        advanced_timing_resolved_json: JSON.stringify(perRep),
+      },
+    ]);
+  });
+
   it("persists only the standalone advanced row across every per-rep transition", async () => {
     const { kernel, session, activeSet, repository } = await setupWorkout();
     const before = await protectedFacts(kernel, session.id);
