@@ -218,7 +218,7 @@ export function buildPhase12SyntheticSnapshot(
   return fixture;
 }
 
-async function seedMaximumHistory(kernel: SqliteKernel): Promise<void> {
+export async function seedMaximumHistory(kernel: SqliteKernel): Promise<void> {
   const totalRows = Object.values(PHASE12_SQLITE_FIXTURE_ROW_COUNTS)
     .reduce((total, count) => total + count, 0);
   if (totalRows !== PHASE12_MAX_SNAPSHOT_ROWS
@@ -259,7 +259,7 @@ async function seedMaximumHistory(kernel: SqliteKernel): Promise<void> {
          display_ordinal, exercise_name, metric_profile, metric_contract_version,
          exercise_metric_generation, advanced_timing_default_json,
          default_rest_seconds, target_revision, status, revision)
-       VALUES ('e', 's', NULL, 'benchmark-exercise', 0, 'manual', 0, 'Benchmark',
+       VALUES ('e', 's', NULL, 'benchmark-exercise', 0, 'added', 0, 'Benchmark',
                'load_reps', 1, 1, '{"version":1,"mode":"off"}', 90, 1, 'completed', 1)`,
     );
     await transaction.execute(
