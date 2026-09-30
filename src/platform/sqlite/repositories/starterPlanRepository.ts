@@ -1,4 +1,5 @@
 import type {
+  AcceptedStarterPack,
   AcceptedScheduleBinding,
   AcceptedStarterOccurrence,
   AcceptedStarterPlanActivation,
@@ -16,6 +17,11 @@ import type {
   SqliteKernel,
   SqliteTransactionExecutor,
 } from "../sqliteKernel";
+
+type AcceptedStarterSourceInput = Pick<
+  AcceptedStarterPlanRepositoryInput,
+  "pack" | "template" | "assetSha256"
+>;
 
 export type StarterPlanRepositoryErrorCode =
   | "starter_active_workout_blocked"
@@ -373,7 +379,7 @@ async function validateExerciseReferences(
 
 async function validateSource(
   transaction: SqliteTransactionExecutor,
-  input: AcceptedStarterPlanRepositoryInput,
+  input: AcceptedStarterSourceInput,
 ): Promise<StarterPlanRepositoryErrorCode | null> {
   const [source] = await transaction.queryAll<{
     asset_sha256: string;
@@ -438,7 +444,7 @@ async function validateUpdateSource(
 
 async function insertSource(
   transaction: SqliteTransactionExecutor,
-  input: AcceptedStarterPlanRepositoryInput,
+  input: AcceptedStarterSourceInput,
 ): Promise<void> {
   await transaction.execute(
     `INSERT INTO starter_plan_sources
@@ -456,6 +462,26 @@ async function insertSource(
       input.pack.acceptedAtMs,
     ],
   );
+}
+
+export async function installAcceptedStarterPlanSources(
+  kernel: SqliteKernel,
+  pack: AcceptedStarterPack,
+): Promise<void> {
+  const accepted = await kernel.write(async (transaction) => {
+    for (const template of pack.templates) {
+      const source = { pack, template, assetSha256: pack.assetSha256 };
+      if (await validateSource(transaction, source) !== null) {
+        return false;
+      }
+    }
+    for (const template of pack.templates) {
+      const source = { pack, template, assetSha256: pack.assetSha256 };
+      await insertSource(transaction, source);
+    }
+    return true;
+  });
+  if (!accepted) throw new StarterPlanRepositoryError("starter_source_conflict");
 }
 
 async function insertOwnedAggregateState(
@@ -1318,11 +1344,7 @@ export function createStarterPlanRepository(
           }
           const acceptedSourceConflict = await validateSource(
             transaction,
-            {
-              ...input,
-              activatedAtMs: input.createdAtMs,
-              copyChoice: null,
-            },
+            input,
           );
           if (acceptedSourceConflict !== null) {
             return {

@@ -302,6 +302,7 @@ import {
 } from "../platform/sqlite/repositories/advancedTimingRepository";
 import {
   createStarterPlanRepository,
+  installAcceptedStarterPlanSources,
 } from "../platform/sqlite/repositories/starterPlanRepository";
 import {
   createWorkoutRepository,
@@ -1003,7 +1004,7 @@ export type WorkoutAppRuntimeDependencies = Readonly<{
     activatedAtMs: number;
   }>): Promise<void>;
   installLibrary?(kernel: SqliteKernel): Promise<ContentUpdateResult | undefined>;
-  loadStarterPlans?(): Promise<StarterPlanRuntimeCatalog>;
+  loadStarterPlans?(kernel: SqliteKernel): Promise<StarterPlanRuntimeCatalog>;
   createRepository(
     kernel: SqliteKernel,
   ): ReturnType<typeof createPlansWorkoutRepository>;
@@ -1056,7 +1057,7 @@ export type WorkoutAppRuntimeAdapters = Readonly<{
     activatedAtMs: number;
   }>): Promise<void>;
   installLibrary?(kernel: SqliteKernel): Promise<ContentUpdateResult | undefined>;
-  loadStarterPlans?(): Promise<StarterPlanRuntimeCatalog>;
+  loadStarterPlans?(kernel: SqliteKernel): Promise<StarterPlanRuntimeCatalog>;
   createRepository(
     kernel: SqliteKernel,
   ): ReturnType<typeof createPlansWorkoutRepository>;
@@ -1368,12 +1369,12 @@ export const productionWorkoutAppRuntimeDependencies =
         .importAcceptedCatalog({ catalog });
       return result.invalidationScopes.length === 0 ? undefined : result;
     },
-    loadStarterPlans: async () => {
+    loadStarterPlans: async (kernel) => {
       const {
         CryptoDigestAlgorithm,
         digestStringAsync,
       } = require("expo-crypto") as typeof import("expo-crypto");
-      return createStarterPlanRuntimeCatalog({
+      const catalog = await createStarterPlanRuntimeCatalog({
         starterPackBytes: `${JSON.stringify(starterPlansAsset, null, 2)}
 `,
         acceptanceBytes: `${JSON.stringify(starterPlansAcceptanceAsset, null, 2)}
@@ -1381,6 +1382,8 @@ export const productionWorkoutAppRuntimeDependencies =
         sha256: (value) =>
           digestStringAsync(CryptoDigestAlgorithm.SHA256, value),
       });
+      await installAcceptedStarterPlanSources(kernel, catalog.pack);
+      return catalog;
     },
     activateInitialStarter: activateInitialAcceptedStarter,
     createBackupCommands: (kernel) => createBackupCommands({
@@ -2309,7 +2312,7 @@ export function WorkoutAppRuntimeProvider({
       }
     }
     try {
-      starterPlansRef.current = await dependencies.loadStarterPlans?.();
+      starterPlansRef.current = await dependencies.loadStarterPlans?.(kernel);
     } catch {
       starterPlansRef.current = undefined;
     }

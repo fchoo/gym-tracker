@@ -79,6 +79,7 @@ import {
 } from "../../src/platform/sqlite/repositories/ownedPlanRepository";
 import {
   createStarterPlanRepository,
+  installAcceptedStarterPlanSources,
   StarterPlanRepositoryError,
   type StarterPlanRepositoryTestObserver,
 } from "../../src/platform/sqlite/repositories/starterPlanRepository";
@@ -428,6 +429,30 @@ function repositoryError(
 }
 
 describe("accepted starter activation repository", () => {
+  it("installs immutable starter sources before activation and rejects conflicting bytes", async () => {
+    const kernel = await createRuntime();
+    const pack = await acceptedPack();
+
+    await installAcceptedStarterPlanSources(kernel, pack);
+    await installAcceptedStarterPlanSources(kernel, pack);
+
+    await expect(kernel.queryAll(
+      "SELECT source_namespace, template_id, source_revision FROM starter_plan_sources ORDER BY template_id",
+    )).resolves.toHaveLength(pack.templates.length);
+
+    const conflicting = await createRuntime();
+    const template = pack.templates[0]!;
+    await conflicting.write((transaction) => transaction.execute(
+      `INSERT INTO starter_plan_sources
+        (source_namespace, template_id, source_revision, asset_sha256,
+         display_name, template_json, accepted_at_ms)
+       VALUES (?, ?, ?, ?, ?, ?, ?)`,
+      [pack.namespace, template.id, template.revision, "f".repeat(64), template.displayName, template.sourceJson, pack.acceptedAtMs],
+    ));
+    await expect(installAcceptedStarterPlanSources(conflicting, pack))
+      .rejects.toThrow("starter_source_conflict");
+  });
+
   it("repairs the workout projection without replacing meaningful rest", async () => {
     const kernel = await createRuntime();
     const catalog = await parseExerciseCatalog({
