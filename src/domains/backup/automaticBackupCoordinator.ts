@@ -410,10 +410,11 @@ export function createAutomaticBackupCoordinator(input: Readonly<{
       return Object.freeze({ status: "quarantined" as const });
     }
     if (parsed.writerEpoch > state.writerEpoch) {
-      await input.state.markStaleWriter?.(state.writerEpoch);
       if (allowHigherEpochRecovery) {
+        currentRecoveryPrompt = Object.freeze({ kind: "latest" as const });
         return Object.freeze({ status: "quarantined" as const });
       }
+      await input.state.markStaleWriter?.(state.writerEpoch);
       return Object.freeze({ status: "stale_writer" as const });
     }
     if (parsed.writerEpoch < state.writerEpoch) return Object.freeze({ status: "quarantined" as const });

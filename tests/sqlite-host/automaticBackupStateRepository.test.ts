@@ -2,6 +2,7 @@ import { afterEach, describe, expect, it } from "@jest/globals";
 import { DatabaseSync } from "node:sqlite";
 
 import { createAutomaticBackupStateRepository } from "../../src/platform/sqlite/repositories/automaticBackupStateRepository";
+import { createAutomaticBackupCoordinator } from "../../src/domains/backup/automaticBackupCoordinator";
 import type { SqliteConnection, SqlitePreparedResult, SqlitePreparedStatement } from "../../src/platform/sqlite/connection";
 import { configureSqliteConnection } from "../../src/platform/sqlite/connection";
 import { createMigrationRunner } from "../../src/platform/sqlite/migrationRunner";
@@ -62,5 +63,74 @@ describe("automatic backup state repository host SQLite", () => {
     await repository.beginQuarantine({ environment: "development-test", permissionId: "permission-b", connectionGeneration: 2, accountDisplayLabel: "…@example.com" });
     await expect(repository.acknowledgeReceipt({ environment: "development-test", permissionId: "permission-a", connectionGeneration: 1, writerEpoch: 2, capturedGeneration: 0, sourceDigest: "a".repeat(64), snapshotId: "snapshot", manifestId: "manifest", manifestEtag: "etag" })).resolves.toBe(false);
     expect(await repository.read()).toMatchObject({ permissionId: "permission-b", authorityState: "quarantine", connectionGeneration: 2 });
+  });
+
+  it("keeps a fresh-auth higher-epoch takeover quarantined for recovery", async () => {
+    const kernel = await open();
+    const repository = createAutomaticBackupStateRepository(kernel);
+    await repository.beginQuarantine({
+      environment: "development-test",
+      permissionId: "permission-a",
+      connectionGeneration: 1,
+    });
+    expect(await repository.activateWriter({
+      manifestId: "manifest",
+      manifestEtag: "local-etag",
+      writerEpoch: 2,
+      permissionId: "permission-a",
+      connectionGeneration: 1,
+    })).toBe(true);
+    expect(await repository.markStaleWriter(2)).toBe(true);
+
+    const manifest = new TextEncoder().encode(JSON.stringify({
+      kind: "active",
+      writer_epoch: 3,
+      latest: { fileId: "latest", object_sha256: "a".repeat(64), byteLength: 1 },
+      previous: null,
+    }));
+    const coordinator = createAutomaticBackupCoordinator({
+      isWorkoutActive: () => false,
+      auth: {
+        connect: async () => null,
+        reauthenticate: async () => ({ permissionId: "permission-a", displayEmail: null }),
+        disconnect: async () => undefined,
+      },
+      capture: async () => ({
+        generation: 0,
+        sourceDigest: "a".repeat(64),
+        bytes: new Uint8Array(),
+      }),
+      state: repository,
+      drive: {
+        createSnapshot: async () => "snapshot",
+        download: async () => new Uint8Array([1]),
+        updateManifest: async () => "next-etag",
+        readManifest: async () => ({ fileId: "manifest", bytes: manifest, etag: "remote-etag" }),
+      },
+      validate: () => true,
+      validateManifest: () => ({
+        writerEpoch: 3,
+        latest: { fileId: "latest", object_sha256: "a".repeat(64) },
+        previous: null,
+      }),
+      nowMs: () => 1,
+      candidateId: () => "attempt",
+      recovery: {
+        parseSnapshot: async () => ({}),
+        localIsEmpty: async () => true,
+        prepareMerge: async () => ({ token: "merge", ownerSummary: "owner", adoptionRequired: false }),
+        restore: async () => ({ state: "ready" as const }),
+        commitMerge: async () => ({ state: "ready" as const }),
+      },
+    });
+
+    await expect(coordinator.takeOver()).resolves.toEqual({ status: "quarantined" });
+    await expect(repository.read()).resolves.toMatchObject({
+      authorityState: "quarantine",
+      writerEpoch: 2,
+      connectionGeneration: 2,
+    });
+    await expect(coordinator.prepareRecovery({ candidate: "latest" }))
+      .resolves.toMatchObject({ kind: "empty_direct" });
   });
 });
