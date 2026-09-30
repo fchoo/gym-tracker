@@ -202,6 +202,7 @@ export function createProductionAutomaticBackupServices(kernel: SqliteKernel): S
     }
     await coordinator.backup();
   };
+  let publishBackupState = async (): Promise<void> => undefined;
   const scheduler = createAutomaticBackupScheduler({
     isWorkoutActive: async () => (await kernel.queryAll("SELECT 1 FROM workout_sessions WHERE status = 'in_progress' LIMIT 1")).length !== 0,
     eligible: async () => {
@@ -209,7 +210,10 @@ export function createProductionAutomaticBackupServices(kernel: SqliteKernel): S
       return current.authorityState === "active"
         || (current.authorityState === "quarantine" && current.manifestId === null);
     },
-    queue: (work) => queueMicrotask(work), run: backupAfterBootstrapDiscovery,
+    queue: (work) => queueMicrotask(work), run: async () => {
+      await backupAfterBootstrapDiscovery();
+      await publishBackupState();
+    },
   });
   const runtime = createAutomaticBackupRuntime({ read: async () => {
     const current = await state.read();
@@ -222,5 +226,6 @@ export function createProductionAutomaticBackupServices(kernel: SqliteKernel): S
     backupNow: backupAfterBootstrapDiscovery, retryBackup: backupAfterBootstrapDiscovery, useCellularThisTime: backupAfterBootstrapDiscovery, setDataUsePolicy: async (policy) => state.setDataUsePolicy(policy === "wifi_only" ? "wifi-only" : "any-network"), takeOver: async () => coordinator.checkAgain().then(() => undefined), disconnect: () => coordinator.disconnect(),
     deleteCloudBackup: async () => { throw new Error("automatic_delete_requires_tombstone_confirmation"); }, finishDeletingCloudBackup: async () => { await coordinator.finishDeletionSweep(); }, startNewCloudBackup: async () => { await coordinator.checkAgain(); scheduler.request("manual"); },
   } });
+  publishBackupState = () => runtime.refresh();
   const services = Object.freeze({ runtime, scheduler }); cache.set(kernel as object, services); return services;
 }

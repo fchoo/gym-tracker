@@ -198,8 +198,10 @@ describe("production automatic-backup composition", () => {
       dataUsePolicy: "any-network", accountDisplayLabel: "Owner",
     });
     mockCoordinatorCheckAgain.mockResolvedValueOnce({ status: "ready" });
+    const readsBeforeScheduler = mockState.read.mock.calls.length;
     await schedulerInput.run();
     expect(mockCoordinatorBackup).toHaveBeenCalledTimes(priorBackups + 2);
+    expect(mockState.read.mock.calls.length).toBe(readsBeforeScheduler + 2);
   });
 
   it("routes every owner command through the production state, coordinator, and scheduler seams", async () => {
