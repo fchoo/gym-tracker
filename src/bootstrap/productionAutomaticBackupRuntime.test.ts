@@ -119,9 +119,24 @@ jest.mock("../platform/sqlite/repositories/restoreReconciliationRepository", () 
 import {
   createProductionAutomaticBackupServices,
   fetchGoogleDriveIdentity,
+  localPortableFactsAreEmpty,
 } from "./productionAutomaticBackupRuntime";
 
 describe("production automatic-backup composition", () => {
+  it("classifies every owner-created logical fact as non-empty", () => {
+    expect(localPortableFactsAreEmpty({
+      portable_owner_identity: [{ id: 1, owner_namespace: "a".repeat(32) }],
+    })).toBe(true);
+    expect(localPortableFactsAreEmpty({
+      portable_owner_identity: [{ id: 1, owner_namespace: "a".repeat(32) }],
+      plans: [{ id: "owner-plan" }],
+    })).toBe(false);
+    expect(localPortableFactsAreEmpty({
+      portable_owner_identity: [{ id: 1, owner_namespace: "a".repeat(32) }],
+      app_settings: [{ key: "units", value_json: '"metric"' }],
+    })).toBe(false);
+  });
+
   it("verifies identity through the Drive about permission schema", async () => {
     const payload = {
       user: {
