@@ -45,10 +45,10 @@ function observations() {
       id,
       status: "passed",
       observed_at: "2026-09-29T00:00:00.000Z",
-      object_count: id === "emulator-latest-previous-rotation" ? 2 : 0,
-      total_bytes: id === "emulator-latest-previous-rotation" ? 1024 : 0,
-      source_digest_sha256: id === "emulator-direct-restore-digest" ? HASH_A : null,
-      result_digest_sha256: id === "emulator-direct-restore-digest" ? HASH_A : null,
+      object_count: id === "emulator-fresh-replacement" ? 1 : 0,
+      total_bytes: id === "emulator-fresh-replacement" ? 1024 : 0,
+      source_digest_sha256: id === "emulator-fresh-replacement" ? HASH_A : null,
+      result_digest_sha256: id === "emulator-fresh-replacement" ? HASH_A : null,
     })),
   };
 }
@@ -88,12 +88,12 @@ test("Phase 12 attended checklist is exact, pending, and manifest bound", () => 
 });
 
 test("Phase 12 attended observations require complete redacted proof", () => {
-  assert.equal(validatePhase12GoogleObservations(observations(), manifest).cases.length, 14);
+  assert.equal(validatePhase12GoogleObservations(observations(), manifest).cases.length, 2);
   const missing = observations();
   missing.cases = missing.cases.slice(1);
   assert.throws(() => validatePhase12GoogleObservations(missing, manifest), /observations_invalid/u);
   const mismatched = observations();
-  mismatched.cases[4] = { ...mismatched.cases[4], result_digest_sha256: HASH_B };
+  mismatched.cases[0] = { ...mismatched.cases[0], result_digest_sha256: HASH_B };
   assert.throws(() => validatePhase12GoogleObservations(mismatched, manifest), /observations_proof_invalid/u);
   const secret = observations();
   secret.access_token = "forbidden";

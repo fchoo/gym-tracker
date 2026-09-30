@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
 import test from "node:test";
 
 import { PHASE12_GOOGLE_CASE_IDS, PHASE12_MIGRATION_CASE_IDS, parsePhase12VerifierArgs, validatePhase12AutomatedEvidence } from "./verify-phase12-evidence.mjs";
@@ -46,4 +47,10 @@ test("Phase 12 CLI never allows an automated run to impersonate attended Google 
     "--require-emulator-replacement",
     "--require-phone-auth-scope",
   ]));
+});
+
+test("Phase 12 final evidence names only the owner-approved live scope", () => {
+  const source = readFileSync("scripts/verify-phase12-evidence.mjs", "utf8");
+  assert.match(source, /fresh-replacement-and-phone-auth-refresh/u);
+  assert.doesNotMatch(source, /real-google-emulator-replacement-and-phone-auth/u);
 });
