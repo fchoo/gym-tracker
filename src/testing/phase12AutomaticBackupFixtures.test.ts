@@ -3,7 +3,7 @@ import { PHASE12_AUTOMATIC_BACKUP_FIXTURES } from "./phase12AutomaticBackupFixtu
 describe("Phase 12 automatic backup fixtures", () => {
   it("contain only bounded synthetic presentation inputs", () => {
     const text = JSON.stringify(PHASE12_AUTOMATIC_BACKUP_FIXTURES);
-    expect(Object.keys(PHASE12_AUTOMATIC_BACKUP_FIXTURES)).toHaveLength(8);
+    expect(Object.keys(PHASE12_AUTOMATIC_BACKUP_FIXTURES)).toHaveLength(18);
     expect(text).not.toMatch(/token|@|drive\.google|com\.fchoo\.gymtracker"/iu);
   });
 });
