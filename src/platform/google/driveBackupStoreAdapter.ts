@@ -38,25 +38,52 @@ async function body(response: Response, limit: number, timeoutMs: number): Promi
   if (length !== null && (!/^\d+$/u.test(length) || Number(length) > limit)) throw new Error("drive_response_too_large");
   let timeout!: ReturnType<typeof setTimeout>;
   let timedOut = false;
-  let buffer: ArrayBuffer;
+  const timeoutFailure = new Promise<never>((_resolve, reject) => {
+    timeout = setTimeout(() => {
+      timedOut = true;
+      void response.body?.cancel("drive_response_timeout").catch(() => undefined);
+      reject(new Error("drive_response_timeout"));
+    }, timeoutMs);
+  });
   try {
-    buffer = await Promise.race([
-      response.arrayBuffer(),
-      new Promise<never>((_resolve, reject) => {
-        timeout = setTimeout(() => {
-          timedOut = true;
-          void response.body?.cancel("drive_response_timeout").catch(() => undefined);
-          reject(new Error("drive_response_timeout"));
-        }, timeoutMs);
-      }),
-    ]);
+    if (response.body != null && typeof response.body.getReader === "function") {
+      const reader = response.body.getReader();
+      const chunks: Uint8Array[] = [];
+      let total = 0;
+      try {
+        while (true) {
+          const result = await Promise.race([reader.read(), timeoutFailure]);
+          if (result.done) break;
+          const chunk = result.value;
+          total += chunk.byteLength;
+          if (total > limit) {
+            await reader.cancel("drive_response_too_large").catch(() => undefined);
+            throw new Error("drive_response_too_large");
+          }
+          chunks.push(chunk);
+        }
+      } finally {
+        reader.releaseLock();
+      }
+      const value = new Uint8Array(total);
+      let offset = 0;
+      for (const chunk of chunks) {
+        value.set(chunk, offset);
+        offset += chunk.byteLength;
+      }
+      return value;
+    }
+    if (length === null) throw new Error("drive_response_length_required");
+    const buffer = await Promise.race([response.arrayBuffer(), timeoutFailure]);
+    const value = new Uint8Array(buffer);
+    bytes(value, limit);
+    return value;
   } catch (error) {
     if (timedOut) throw new Error("drive_response_timeout");
     throw error;
   } finally {
     clearTimeout(timeout);
   }
-  const value = new Uint8Array(buffer); bytes(value, limit); return value;
 }
 function json(responseBytes: Uint8Array): unknown { try { return JSON.parse(new TextDecoder().decode(responseBytes)); } catch { throw new Error("drive_response_invalid"); } }
 function propertiesMatch(value: unknown, expected: Readonly<Record<string, string>>): value is Record<string, string> {

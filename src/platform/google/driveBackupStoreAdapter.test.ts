@@ -168,8 +168,15 @@ describe("Drive backup store adapter", () => {
         status: 200,
         redirected: false,
         headers: new Headers(),
-        arrayBuffer: async () => new Promise<ArrayBuffer>(() => undefined),
-        body: { cancel: async () => { throw new Error("locked"); } },
+        arrayBuffer: async () => { throw new Error("must_not_buffer"); },
+        body: {
+          getReader: () => ({
+            read: async () => new Promise<never>(() => undefined),
+            cancel: async () => undefined,
+            releaseLock: () => undefined,
+          }),
+          cancel: async () => { throw new Error("locked"); },
+        },
       }) as unknown as Response,
     });
     await expect(bodyTimeout.discover()).rejects.toThrow("drive_response_timeout");
@@ -182,11 +189,43 @@ describe("Drive backup store adapter", () => {
         ok: true,
         status: 200,
         redirected: false,
-        headers: new Headers(),
+        headers: new Headers({ "content-length": "1" }),
         arrayBuffer: async () => { throw new Error("body_failed"); },
       }) as unknown as Response,
     });
     await expect(bodyFailure.discover()).rejects.toThrow("body_failed");
+  });
+
+  it("cancels a streamed response as soon as it exceeds the requested byte limit", async () => {
+    let cancelled = false;
+    let reads = 0;
+    const reader = {
+      read: jest.fn(async () => {
+        reads += 1;
+        return reads === 1
+          ? { done: false as const, value: new Uint8Array([1, 2]) }
+          : { done: false as const, value: new Uint8Array([3, 4]) };
+      }),
+      cancel: jest.fn(async () => { cancelled = true; }),
+      releaseLock: jest.fn(),
+    };
+    const streamed = {
+      ok: true,
+      status: 200,
+      redirected: false,
+      headers: new Headers(),
+      body: { getReader: () => reader },
+      arrayBuffer: jest.fn(async () => { throw new Error("must_not_buffer"); }),
+    } as unknown as Response;
+    const adapter = createDriveBackupStoreAdapter({
+      environment: "development-test",
+      token: async () => "token",
+      fetch: async () => streamed,
+    });
+
+    await expect(adapter.download("snapshot", 3)).rejects.toThrow("drive_response_too_large");
+    expect(cancelled).toBe(true);
+    expect(streamed.arrayBuffer).not.toHaveBeenCalled();
   });
 
   it("keeps manifest, resumable, and deletion operations conditionally fenced", async () => {
@@ -404,7 +443,7 @@ describe("Drive backup store adapter", () => {
     await expect(omittedEmpty.discover()).resolves.toEqual([]);
 
     const badListShape = createDriveBackupStoreAdapter({ environment: "development-test", token: async () => "token", fetch: async () => response(null) });
-    await expect(badListShape.discover()).rejects.toThrow("drive_response_invalid");
+    await expect(badListShape.discover()).rejects.toThrow("drive_response_length_required");
     const nonObjectList = createDriveBackupStoreAdapter({ environment: "development-test", token: async () => "token", fetch: async () => response('"not-an-object"') });
     await expect(nonObjectList.discover()).rejects.toThrow("drive_response_invalid");
     const nullFiles = createDriveBackupStoreAdapter({ environment: "development-test", token: async () => "token", fetch: async () => response({ files: null }) });
