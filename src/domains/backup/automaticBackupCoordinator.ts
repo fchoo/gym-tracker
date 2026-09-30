@@ -34,6 +34,30 @@ type PendingHandover = Readonly<{
   connectionGeneration: number; manifestId: string; manifestEtag: string;
   remoteWriterEpoch: number; snapshotId: string; sourceDigest: string;
 }>;
+export type RecoverySnapshotCandidate = Readonly<
+  | { kind: "update_required"; schemaVersion: number; fileId: string }
+  | { kind: "current"; ownerNamespace: string; writerEpoch: number; mutationGeneration: number; createdAtMs: number; fileId: string; objectSha256: string; byteLength: number }
+>;
+export type RecoveryLineageSelection = Readonly<
+  | { kind: "quarantined" | "update_required" }
+  | { kind: "verified"; latest: Extract<RecoverySnapshotCandidate, { kind: "current" }>; previous: Extract<RecoverySnapshotCandidate, { kind: "current" }> | null }
+>;
+
+export function selectRecoveryLineage(
+  candidates: readonly RecoverySnapshotCandidate[],
+): RecoveryLineageSelection {
+  if (candidates.some((candidate) => candidate.kind === "update_required")) {
+    return Object.freeze({ kind: "update_required" as const });
+  }
+  const current = candidates.filter((candidate): candidate is Extract<RecoverySnapshotCandidate, { kind: "current" }> => candidate.kind === "current");
+  if (current.length === 0 || current.length > 8) return Object.freeze({ kind: "quarantined" as const });
+  const lineages = new Set(current.map((candidate) => `${candidate.ownerNamespace}\0${candidate.writerEpoch}`));
+  if (lineages.size !== 1) return Object.freeze({ kind: "quarantined" as const });
+  const sorted = [...current].sort((left, right) => right.mutationGeneration - left.mutationGeneration
+    || right.createdAtMs - left.createdAtMs || left.fileId.localeCompare(right.fileId));
+  if (sorted[1]?.mutationGeneration === sorted[0]?.mutationGeneration) return Object.freeze({ kind: "quarantined" as const });
+  return Object.freeze({ kind: "verified" as const, latest: sorted[0]!, previous: sorted[1] ?? null });
+}
 export type AutomaticBackupFailureStage =
   | "active_manifest"
   | "snapshot_capture"
