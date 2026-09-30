@@ -1936,6 +1936,95 @@ describe("WorkoutAppRuntimeProvider", () => {
     }
   });
 
+  it("continues foreground reconciliation through cluster gaps and later contexts", async () => {
+    const repository = runtimeRepository([activeView, activeView], [activation]);
+    const advanced = runtimeAdvancedTimingRepository();
+    const rest = runtimeRestRepository();
+    const lifecycle = runtimeLifecycle();
+    const notifications = runtimeNotifications("granted");
+    const stopped: AdvancedTimingStateV1 = {
+      version: 1,
+      state: "stopped",
+      mode: "per_rep",
+      revision: 2,
+      targetSessionSetId: "set-stopped",
+      stoppedAtMs: 9_000,
+      nextRepetitionIndex: 2,
+    };
+    const clusterGap: AdvancedTimingStateV1 = {
+      version: 1,
+      state: "cluster_gap_running",
+      mode: "cluster",
+      revision: 3,
+      targetSessionSetId: "set-cluster",
+      cueChannels: "haptic",
+      groupSizes: [3, 3],
+      intraRestMs: 20_000,
+      currentGroupIndex: 0,
+      gapStartedAtMs: 10_000,
+      gapEndsAtMs: 30_000,
+    };
+    const running: AdvancedTimingStateV1 = {
+      version: 1,
+      state: "running",
+      mode: "per_rep",
+      revision: 4,
+      targetSessionSetId: "set-running",
+      cueChannels: "haptic",
+      intervalMs: 1_000,
+      startedAtMs: 10_000,
+      nextBoundaryAtMs: 11_000,
+      nextRepetitionIndex: 1,
+    };
+    advanced.listActiveTimingContexts.mockResolvedValue([
+      { sessionId: "session-stopped", sessionRevision: 1, state: stopped },
+      { sessionId: "session-cluster", sessionRevision: 2, state: clusterGap },
+      { sessionId: "session-running", sessionRevision: 3, state: running },
+    ]);
+    jest.mocked(advanced.reconcileAdvancedTiming).mockImplementation(async (input) => ({
+      state: input.sessionId === "session-cluster" ? clusterGap : running,
+      sessionRevision: input.expectedSessionRevision,
+      invalidationScopes: [["active-workout", input.sessionId], ["today"]],
+      cue: null,
+    }));
+    let onAppStateChange: ((state: AppStateStatus) => void) | undefined;
+    const addEventListener = jest.spyOn(AppState, "addEventListener")
+      .mockImplementation((event, listener) => {
+        if (event === "change") onAppStateChange = listener;
+        return { remove: jest.fn() };
+      });
+    try {
+      await render(
+        <RuntimeCaptureHarness
+          dependencies={dependencies(repository, {
+            createAdvancedTimingRepository: () => advanced,
+            createRestRepository: () => rest,
+            createLifecycle: () => lifecycle,
+            createNotifications: () => notifications,
+            nowMs: () => 20_050,
+          })}
+          onReady={() => undefined}
+        />,
+      );
+      await waitFor(() => expect(onAppStateChange).toBeDefined());
+      jest.mocked(advanced.reconcileAdvancedTiming).mockClear();
+
+      await act(async () => {
+        onAppStateChange?.("background");
+        onAppStateChange?.("active");
+        await Promise.resolve();
+      });
+      await waitFor(() => {
+        expect(advanced.reconcileAdvancedTiming).toHaveBeenCalledTimes(2);
+      });
+      expect(jest.mocked(advanced.reconcileAdvancedTiming).mock.calls.map(
+        ([input]) => input.sessionId,
+      )).toEqual(["session-cluster", "session-running"]);
+    } finally {
+      addEventListener.mockRestore();
+    }
+  });
+
   it("expires one authoritative running rest and proves its foreground feedback claim is consumed", async () => {
     const nowMs = 1_786_853_600_000;
     const endsAtMs = nowMs + 60_000;

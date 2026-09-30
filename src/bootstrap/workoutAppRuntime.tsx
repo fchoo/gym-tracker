@@ -3195,11 +3195,14 @@ export function WorkoutAppRuntimeProvider({
     }
     const nowMs = dependencies.nowMs();
     for (const context of contexts) {
-      if (
-        generation !== generationRef.current
-        || context.state.state !== "running"
-      ) {
+      if (generation !== generationRef.current) {
         return;
+      }
+      if (
+        context.state.state !== "running"
+        && context.state.state !== "cluster_gap_running"
+      ) {
+        continue;
       }
       const result = await reconcileAdvancedTiming({
         repository: services.advancedTimingRepository,
