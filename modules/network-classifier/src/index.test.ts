@@ -3,13 +3,10 @@ import { describe, expect, it, jest } from "@jest/globals";
 import { currentNetworkClass, normalizeNetworkClass } from "./index";
 
 describe("network classifier bridge", () => {
-  it.each([
-    ["wifi", "wifi"],
-    ["cellular_or_metered", "cellular_or_metered"],
-    ["unavailable", "unavailable"],
-    ["unknown", "unknown"],
-  ] as const)("accepts the bounded native value %s", (value, expected) => {
-    expect(normalizeNetworkClass(value)).toBe(expected);
+  it("accepts every bounded native value", () => {
+    for (const value of ["wifi", "cellular_or_metered", "unavailable", "unknown"] as const) {
+      expect(normalizeNetworkClass(value)).toBe(value);
+    }
   });
 
   it("fails closed for malformed native values and bridge errors", async () => {
