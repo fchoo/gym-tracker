@@ -52,6 +52,10 @@ test("Phase 12 benchmark invokes the production atomic merge writer", () => {
   assert.match(source, /mutation\.changes !== 1/u);
   assert.match(source, /"k000000"[\s\S]*?phase12_capture_mutation_missing/u);
   assert.doesNotMatch(source, /const mergePlans: PortableMergePlan\[\]/u);
+  assert.match(source, /stage: "merge_complete"/u);
+  const runner = readFileSync("scripts/benchmark-phase12-backup.mjs", "utf8");
+  assert.match(runner, /progress\.stage === "merge_complete"/u);
+  assert.match(runner, /mergeGrowth\.length !== 10/u);
   assert.match(source, /stage: "materialization"[\s\S]*?event: "started"/u);
   assert.match(source, /stage: "materialization"[\s\S]*?event: "completed"/u);
   assert.match(source, /stage: "materialization_writer"[\s\S]*?writer_stage: stage/u);

@@ -190,8 +190,18 @@ async function waitForNativeResult(adb, manifest) {
       if (!line.includes(PROGRESS_MARKER)) continue;
       const progress = JSON.parse(line.slice(line.indexOf(PROGRESS_MARKER) + PROGRESS_MARKER.length));
       const key = `${progress.stage}:${progress.sample}`;
-      if (seenProgress.has(key) || progress.stage !== "merge") continue;
+      if (seenProgress.has(key)) continue;
       seenProgress.add(key);
+      if (progress.stage === "merge_complete") {
+        if (!activeMerge || mergeGrowth.length !== 9) throw new Error("phase12_benchmark_markers_invalid");
+        const rss = await readRssBytes(adb, manifest.device.serial, manifest.package);
+        if (rss === undefined) throw new Error("phase12_process_memory_unavailable");
+        activeMerge.peak = Math.max(activeMerge.peak, rss);
+        mergeGrowth.push(activeMerge.peak - activeMerge.baseline);
+        activeMerge = undefined;
+        continue;
+      }
+      if (progress.stage !== "merge") continue;
       const rss = await readRssBytes(adb, manifest.device.serial, manifest.package);
       if (rss === undefined) throw new Error("phase12_process_memory_unavailable");
       if (activeMerge) mergeGrowth.push(activeMerge.peak - activeMerge.baseline);
@@ -203,8 +213,9 @@ async function waitForNativeResult(adb, manifest) {
     }
     const result = newestMarker(output, RESULT_MARKER);
     if (result) {
-      if (!started || !activeMerge) throw new Error("phase12_benchmark_markers_missing");
-      mergeGrowth.push(activeMerge.peak - activeMerge.baseline);
+      if (!started || activeMerge !== undefined || mergeGrowth.length !== 10) {
+        throw new Error("phase12_benchmark_markers_missing");
+      }
       return { result, mergeGrowth };
     }
     await new Promise((resolve) => setTimeout(resolve, POLL_INTERVAL_MS));

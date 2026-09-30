@@ -493,6 +493,10 @@ export async function performPhase12BackupBenchmark(): Promise<Phase12BackupBenc
         }
       }
     }
+    console.log(`${PHASE12_BENCHMARK_PROGRESS_MARKER}${JSON.stringify({
+      stage: "merge_complete",
+      sample: PHASE12_MERGE_SAMPLES,
+    })}`);
     if (materializationSampleCount !== 5 || mergeSerializationMs.length !== 2
       || !mergeOutputEquivalent || firstSerializedPlan !== undefined) {
       throw new Error("phase12_merge_plan_missing");
