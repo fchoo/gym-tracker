@@ -9,6 +9,7 @@ import {
   type DriveBackupSnapshotHeaderV1,
 } from "../domains/backup/automaticBackupContracts";
 import { createAutomaticBackupCoordinator } from "../domains/backup/automaticBackupCoordinator";
+import type { AutomaticRecoverySnapshotDescriptor } from "../domains/backup/automaticBackupCoordinator";
 import { createAutomaticBackupScheduler, type AutomaticBackupScheduler } from "../domains/backup/automaticBackupScheduler";
 import { createAutomaticPortableMergePort, createAutomaticPortableRestorePort } from "../domains/portability/automaticPortability";
 import { parseLogicalBackupSnapshot, type LogicalBackupRow, type LogicalBackupSnapshot } from "../domains/portability/backupContracts";
@@ -62,7 +63,7 @@ export function localPortableFactsAreEmpty(
 async function snapshotFromDrive(
   value: Uint8Array,
   environment: AutomaticBackupEnvironment,
-  descriptor?: Readonly<{ byteLength: number; objectSha256: string }>,
+  descriptor?: AutomaticRecoverySnapshotDescriptor,
 ): Promise<LogicalBackupSnapshot> {
   const objectSha256 = descriptor?.objectSha256 ?? await digest(new TextDecoder().decode(value));
   const parsed = await parseDriveBackupSnapshotEnvelopeV1(value, {
@@ -80,6 +81,11 @@ async function snapshotFromDrive(
     || parsed.header.createdAtMs !== snapshot.createdAtMs
     || parsed.header.schemaVersion !== snapshot.schemaVersion
     || parsed.header.ownerNamespace !== ownerNamespace) {
+    throw new Error("automatic_recovery_snapshot_invalid");
+  }
+  if (descriptor !== undefined && (parsed.header.snapshotId !== descriptor.snapshotId
+    || parsed.header.writerEpoch !== descriptor.writerEpoch
+    || parsed.header.mutationGeneration !== descriptor.mutationGeneration)) {
     throw new Error("automatic_recovery_snapshot_invalid");
   }
   return snapshot;
@@ -179,6 +185,7 @@ export function createProductionAutomaticBackupServices(kernel: SqliteKernel): S
         generation: captured.generation,
         sourceDigest: await digest(encodedJson),
         bytes: new TextEncoder().encode(encodedJson),
+        snapshotId: captured.snapshot.snapshotId,
       };
     },
     validate: async (value) => {
@@ -193,9 +200,21 @@ export function createProductionAutomaticBackupServices(kernel: SqliteKernel): S
           : null;
       } catch { return null; }
     },
-    buildManifest: ({ candidateId, state: current, captured, previous }) => bytes({ kind: "active", writer_epoch: current.writerEpoch, latest: { fileId: candidateId, object_sha256: captured.sourceDigest, byteLength: captured.bytes.byteLength }, previous }),
+    buildManifest: ({ candidateId, state: current, captured, previous }) => bytes({
+      kind: "active",
+      writer_epoch: current.writerEpoch,
+      latest: {
+        fileId: candidateId,
+        object_sha256: captured.sourceDigest,
+        byteLength: captured.bytes.byteLength,
+        snapshotId: captured.snapshotId,
+        writerEpoch: current.writerEpoch,
+        mutationGeneration: captured.generation,
+      },
+      previous,
+    }),
     recovery: {
-      parseSnapshot: (value) => snapshotFromDrive(value, settings.environment),
+      parseSnapshot: (value, descriptor) => snapshotFromDrive(value, settings.environment, descriptor),
       localIsEmpty,
       prepareMerge: async (snapshot) => {
         const local = await createSqliteMergeLocalFactsPort(kernel).read();

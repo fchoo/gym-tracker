@@ -8,10 +8,21 @@ const activeState = (overrides: Record<string, unknown> = {}) => ({
   manifestId: "manifest", manifestEtag: "etag", ...overrides,
 });
 
-const activeManifest = (writerEpoch = 2, previous: unknown = null) => new TextEncoder().encode(JSON.stringify({
-  kind: "active", writer_epoch: writerEpoch,
-  latest: { fileId: "latest", object_sha256: "a".repeat(64) }, previous,
-}));
+const activeManifest = (writerEpoch = 2, previous: unknown = null) => {
+  const complete = (value: Record<string, unknown>, fallbackId: string, mutationGeneration: number) => ({
+    byteLength: 1,
+    snapshotId: `snapshot-${fallbackId}`,
+    writerEpoch,
+    mutationGeneration,
+    ...value,
+  });
+  return new TextEncoder().encode(JSON.stringify({
+    kind: "active",
+    writer_epoch: writerEpoch,
+    latest: complete({ fileId: "latest", object_sha256: "a".repeat(64) }, "latest", 4),
+    previous: previous === null ? null : complete(previous as Record<string, unknown>, "previous", 3),
+  }));
+};
 
 describe("automatic backup coordinator", () => {
   it("selects latest and previous only from one verified recovery lineage", () => {
@@ -562,7 +573,11 @@ describe("automatic backup coordinator", () => {
     const snapshot = { version: 2 } as never;
     let manifest: Uint8Array = new TextEncoder().encode(JSON.stringify({
       kind: "active", writer_epoch: 2,
-      latest: { fileId: "latest", object_sha256: "a".repeat(64) }, previous: null,
+      latest: {
+        fileId: "latest", object_sha256: "a".repeat(64), byteLength: 1,
+        snapshotId: "snapshot-latest", writerEpoch: 2, mutationGeneration: 4,
+      },
+      previous: null,
     }));
     let manifestEtag = "etag";
     let state = activeState({ authorityState: "quarantine" as const });
@@ -579,7 +594,7 @@ describe("automatic backup coordinator", () => {
         createSnapshot: async () => "snapshot",
         updateManifest: async (_id, value) => { manifest = value; manifestEtag = "next-etag"; return manifestEtag; },
         readManifest: async () => ({ fileId: "manifest", bytes: manifest, etag: manifestEtag }),
-        download: async () => new Uint8Array(),
+        download: async () => new Uint8Array([1]),
       },
       validate: () => true, nowMs: () => 1, candidateId: () => "attempt",
       recovery: {
@@ -595,6 +610,99 @@ describe("automatic backup coordinator", () => {
     await expect(coordinator.commitRecovery({ kind: "empty_direct", attemptId: "attempt" })).resolves.toEqual({ state: "ready" });
     expect(restored).toEqual(["direct"]);
     await expect(coordinator.commitRecovery({ kind: "empty_direct", attemptId: "attempt" })).rejects.toThrow("automatic_recovery_attempt_invalid");
+  });
+
+  it("binds recovery bytes to the complete selected manifest descriptor", async () => {
+    const descriptor = {
+      fileId: "latest",
+      object_sha256: "a".repeat(64),
+      byteLength: 7,
+      snapshotId: "snapshot-latest",
+      writerEpoch: 3,
+      mutationGeneration: 9,
+    };
+    const parseSnapshot = jest.fn(async (_bytes: Uint8Array, selected: unknown) => {
+      expect(selected).toEqual({
+        fileId: descriptor.fileId,
+        objectSha256: descriptor.object_sha256,
+        byteLength: descriptor.byteLength,
+        snapshotId: descriptor.snapshotId,
+        writerEpoch: descriptor.writerEpoch,
+        mutationGeneration: descriptor.mutationGeneration,
+      });
+      return {};
+    });
+    const download = jest.fn(async () => new Uint8Array(7));
+    const coordinator = createAutomaticBackupCoordinator({
+      isWorkoutActive: () => false,
+      capture: async () => ({ generation: 1, sourceDigest: "a".repeat(64), bytes: new Uint8Array() }),
+      state: {
+        read: async () => activeState({ authorityState: "quarantine", writerEpoch: 2 }),
+        persistAttempt: async () => undefined,
+        acknowledgeReceipt: async () => false,
+      },
+      drive: {
+        createSnapshot: async () => "snapshot",
+        download,
+        updateManifest: async () => "etag",
+        readManifest: async () => ({
+          fileId: "manifest",
+          etag: "etag",
+          bytes: new TextEncoder().encode(JSON.stringify({
+            kind: "active",
+            writer_epoch: 3,
+            latest: descriptor,
+            previous: null,
+          })),
+        }),
+      },
+      validate: () => true,
+      nowMs: () => 1,
+      candidateId: () => "attempt",
+      recovery: {
+        parseSnapshot,
+        localIsEmpty: async () => true,
+        prepareMerge: async () => ({ token: "merge", ownerSummary: "owner", adoptionRequired: false }),
+        restore: async () => ({ state: "ready" as const }),
+        commitMerge: async () => ({ state: "ready" as const }),
+      },
+    });
+
+    await expect(coordinator.prepareRecovery({ candidate: "latest" }))
+      .resolves.toMatchObject({ kind: "empty_direct" });
+    expect(download).toHaveBeenCalledWith("latest", 8);
+    expect(parseSnapshot).toHaveBeenCalledTimes(1);
+
+    const missingLength = createAutomaticBackupCoordinator({
+      isWorkoutActive: () => false,
+      capture: async () => ({ generation: 1, sourceDigest: "a".repeat(64), bytes: new Uint8Array() }),
+      state: {
+        read: async () => activeState({ authorityState: "quarantine" }),
+        persistAttempt: async () => undefined,
+        acknowledgeReceipt: async () => false,
+      },
+      drive: {
+        createSnapshot: async () => "snapshot",
+        download,
+        updateManifest: async () => "etag",
+        readManifest: async () => ({ fileId: "manifest", etag: "etag", bytes: new TextEncoder().encode(JSON.stringify({
+          kind: "active", writer_epoch: 2,
+          latest: { fileId: "latest", object_sha256: "a".repeat(64) }, previous: null,
+        })) }),
+      },
+      validate: () => true,
+      nowMs: () => 1,
+      candidateId: () => "attempt",
+      recovery: {
+        parseSnapshot,
+        localIsEmpty: async () => true,
+        prepareMerge: async () => ({ token: "merge", ownerSummary: "owner", adoptionRequired: false }),
+        restore: async () => ({ state: "ready" as const }),
+        commitMerge: async () => ({ state: "ready" as const }),
+      },
+    });
+    await expect(missingLength.prepareRecovery({ candidate: "latest" }))
+      .rejects.toThrow("automatic_recovery_manifest_invalid");
   });
 
   it("defers every unsafe capture boundary and never acknowledges it", async () => {

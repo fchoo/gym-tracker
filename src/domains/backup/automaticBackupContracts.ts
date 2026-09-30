@@ -9,7 +9,14 @@ export type DriveBackupSnapshotHeaderV1 = Readonly<{
 export type DriveBackupSnapshotV1 = Readonly<{
   header: DriveBackupSnapshotHeaderV1; payload: unknown; payload_sha256: string;
 }>;
-export type DriveBackupObjectDescriptorV1 = Readonly<{ fileId: string; object_sha256: string; byteLength?: number }>;
+export type DriveBackupObjectDescriptorV1 = Readonly<{
+  fileId: string;
+  object_sha256: string;
+  byteLength?: number;
+  snapshotId?: string;
+  writerEpoch?: number;
+  mutationGeneration?: number;
+}>;
 export type DriveBackupManifestV1 = Readonly<
   | { kind: "active"; writerEpoch: number; latest: DriveBackupObjectDescriptorV1; previous: DriveBackupObjectDescriptorV1 | null }
   | { kind: "deleted"; successorWriterEpoch: number; deletedAtMs: number }
@@ -28,9 +35,14 @@ export function canonicalJson(value: unknown): string {
 function digest(value: unknown): value is string { return typeof value === "string" && /^[a-f0-9]{64}$/u.test(value); }
 function descriptor(value: unknown): value is DriveBackupObjectDescriptorV1 {
   const keys = plain(value) ? Object.keys(value).sort().join("\0") : "";
-  return plain(value) && (keys === "fileId\0object_sha256" || keys === "byteLength\0fileId\0object_sha256")
+  const legacy = keys === "fileId\0object_sha256" || keys === "byteLength\0fileId\0object_sha256";
+  const complete = keys === "byteLength\0fileId\0mutationGeneration\0object_sha256\0snapshotId\0writerEpoch";
+  return plain(value) && (legacy || complete)
     && typeof value.fileId === "string" && value.fileId.length > 0 && digest(value.object_sha256)
-    && (value.byteLength === undefined || (Number.isSafeInteger(value.byteLength) && (value.byteLength as number) > 0));
+    && (value.byteLength === undefined || (Number.isSafeInteger(value.byteLength) && (value.byteLength as number) > 0))
+    && (!complete || (typeof value.snapshotId === "string" && value.snapshotId.length > 0
+      && Number.isSafeInteger(value.writerEpoch) && (value.writerEpoch as number) >= 1
+      && Number.isSafeInteger(value.mutationGeneration) && (value.mutationGeneration as number) >= 0));
 }
 export function createDriveBackupSnapshotV1(input: Readonly<{ header: DriveBackupSnapshotHeaderV1; payload: unknown; sha256(value: string): string }>): DriveBackupSnapshotV1 {
   return Object.freeze({ header: input.header, payload: input.payload, payload_sha256: input.sha256(canonicalJson({ header: input.header, payload: input.payload })) });

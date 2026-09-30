@@ -380,20 +380,30 @@ describe("production automatic-backup composition", () => {
     expect(JSON.parse(new TextDecoder().decode(captured.bytes))).toMatchObject({
       payload_sha256: expect.stringMatching(/^[a-f0-9]{64}$/u),
     });
-    await expect(coordinator.recovery.parseSnapshot(captured.bytes)).resolves.toMatchObject({ snapshotId: "snapshot" });
+    await expect(coordinator.recovery.parseSnapshot(captured.bytes, {
+      fileId: "candidate",
+      objectSha256: captured.sourceDigest,
+      byteLength: captured.bytes.byteLength,
+      snapshotId: "snapshot",
+      writerEpoch: 2,
+      mutationGeneration: 7,
+    })).resolves.toMatchObject({ snapshotId: "snapshot" });
     await expect(coordinator.validate(captured.bytes)).resolves.toBe(true);
     expect(mockCapture).toHaveBeenCalledWith(expect.objectContaining({ snapshotId: expect.stringContaining("snapshot-") }));
     expect(coordinator.validateManifest(new TextEncoder().encode("invalid"))).toBeNull();
     expect(JSON.parse(new TextDecoder().decode(coordinator.buildManifest({
       candidateId: "candidate",
       state: { writerEpoch: 2 },
-      captured: { sourceDigest: "digest", bytes: new Uint8Array([1]) },
+      captured: { generation: 7, snapshotId: "snapshot", sourceDigest: "digest", bytes: new Uint8Array([1]) },
       previous: { fileId: "previous", object_sha256: "b".repeat(64) },
     })))).toMatchObject({
       latest: { fileId: "candidate" },
       previous: { fileId: "previous" },
     });
-    await expect(coordinator.recovery.parseSnapshot(new TextEncoder().encode("{}"))).rejects.toThrow("automatic_recovery_snapshot_invalid");
+    await expect(coordinator.recovery.parseSnapshot(new TextEncoder().encode("{}"), {
+      fileId: "candidate", objectSha256: "a".repeat(64), byteLength: 2,
+      snapshotId: "snapshot", writerEpoch: 2, mutationGeneration: 7,
+    })).rejects.toThrow("automatic_recovery_snapshot_invalid");
     await expect(coordinator.recovery.localIsEmpty()).resolves.toBe(true);
     await expect(coordinator.recovery.prepareMerge(remote as never)).resolves.toEqual({ token: "merge-token", ownerSummary: "A different backup identity", adoptionRequired: true });
     await coordinator.recovery.restore(remote as never); await coordinator.recovery.commitMerge({ token: "merge-token" });

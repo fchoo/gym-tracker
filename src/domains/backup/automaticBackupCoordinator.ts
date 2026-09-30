@@ -1,4 +1,4 @@
-import { canonicalJson, parseDriveBackupManifestV1, type AutomaticBackupEnvironment, type DriveBackupManifestV1 } from "./automaticBackupContracts";
+import { canonicalJson, parseDriveBackupManifestV1, type AutomaticBackupEnvironment, type DriveBackupManifestV1, type DriveBackupObjectDescriptorV1 } from "./automaticBackupContracts";
 import type { GoogleAuthPort } from "./googleAuthPort";
 type LogicalBackupSnapshot = any;
 
@@ -10,11 +10,11 @@ type RecoveryAdoptionGrant = Readonly<{
   expiresAtMs: number;
 }>;
 
-type CapturedSnapshot = Readonly<{ generation: number; sourceDigest: string; bytes: Uint8Array }>;
+type CapturedSnapshot = Readonly<{ generation: number; sourceDigest: string; bytes: Uint8Array; snapshotId?: string }>;
 type ActiveManifestSummary = Readonly<{
   writerEpoch: number;
-  latest?: Readonly<{ fileId: string; object_sha256: string }>;
-  previous?: Readonly<{ fileId: string; object_sha256: string }> | null;
+  latest?: DriveBackupObjectDescriptorV1;
+  previous?: DriveBackupObjectDescriptorV1 | null;
 }>;
 type BackupState = Readonly<{
   environment: AutomaticBackupEnvironment; permissionId: string | null; connectionGeneration: number;
@@ -72,6 +72,14 @@ export type AutomaticBackupFailureStage =
   | "manifest_reread"
   | "writer_activation";
 export type AutomaticRecoveryCandidate = "latest" | "previous";
+export type AutomaticRecoverySnapshotDescriptor = Readonly<{
+  fileId: string;
+  objectSha256: string;
+  byteLength: number;
+  snapshotId: string;
+  writerEpoch: number;
+  mutationGeneration: number;
+}>;
 export type AutomaticRecoveryPreparation = Readonly<{ kind: "empty_direct"; attemptId: string } | { kind: "merge"; attemptId: string; token: string; ownerSummary: string; adoptionRequired: boolean }>;
 export type AutomaticRecoveryCommit = Readonly<{ kind: "empty_direct"; attemptId: string } | { kind: "merge"; attemptId: string; confirmation: "MERGE"; adoptIdentity?: true; adoptionGrant?: string }>;
 
@@ -150,7 +158,7 @@ export function createAutomaticBackupCoordinator(input: Readonly<{
   }>): Uint8Array;
   reportFailure?(stage: AutomaticBackupFailureStage): void;
   recovery?: Readonly<{
-    parseSnapshot(bytes: Uint8Array): Promise<LogicalBackupSnapshot>;
+    parseSnapshot(bytes: Uint8Array, descriptor: AutomaticRecoverySnapshotDescriptor): Promise<LogicalBackupSnapshot>;
     localIsEmpty(): Promise<boolean>;
     prepareMerge(snapshot: LogicalBackupSnapshot): Promise<Readonly<{ token: string; ownerSummary: string; adoptionRequired: boolean }>>;
     restore(snapshot: LogicalBackupSnapshot): Promise<Readonly<{ state: "ready" | "rebuild_pending" }>>;
@@ -512,8 +520,22 @@ export function createAutomaticBackupCoordinator(input: Readonly<{
     if (manifestId === null || manifestId === undefined) throw new Error("automatic_recovery_manifest_invalid");
     const descriptor = candidate === "latest" ? manifest.latest : manifest.previous;
     if (descriptor === null) throw new Error("automatic_recovery_candidate_missing");
+    if (descriptor.byteLength === undefined || descriptor.snapshotId === undefined
+      || descriptor.writerEpoch === undefined || descriptor.mutationGeneration === undefined) {
+      throw new Error("automatic_recovery_manifest_invalid");
+    }
+    const selectedDescriptor = Object.freeze({
+      fileId: descriptor.fileId,
+      objectSha256: descriptor.object_sha256,
+      byteLength: descriptor.byteLength,
+      snapshotId: descriptor.snapshotId,
+      writerEpoch: descriptor.writerEpoch,
+      mutationGeneration: descriptor.mutationGeneration,
+    });
     await input.state.setRecoveryStatus?.("checking");
-    const snapshot = await input.recovery.parseSnapshot(await input.drive.download(descriptor.fileId, 24 * 1024 * 1024));
+    const snapshotBytes = await input.drive.download(descriptor.fileId, descriptor.byteLength + 1);
+    if (snapshotBytes.byteLength !== descriptor.byteLength) throw new Error("automatic_recovery_snapshot_invalid");
+    const snapshot = await input.recovery.parseSnapshot(snapshotBytes, selectedDescriptor);
     const attemptId = input.candidateId();
     const preparation = await input.recovery.localIsEmpty()
       ? Object.freeze({ kind: "empty_direct" as const, attemptId })
@@ -622,8 +644,8 @@ export function createAutomaticBackupCoordinator(input: Readonly<{
       || reread.etag !== claimedEtag
       || claimed?.kind !== "active"
       || claimed.writerEpoch !== successorWriterEpoch
-      || JSON.stringify([claimed.latest, claimed.previous])
-        !== JSON.stringify([manifest.latest, manifest.previous])) {
+      || canonicalJson([claimed.latest, claimed.previous])
+        !== canonicalJson([manifest.latest, manifest.previous])) {
       throw new Error("automatic_recovery_claim_invalid");
     }
     const activated = await input.state.activateWriter?.({

@@ -85,7 +85,14 @@ describe("automatic backup state repository host SQLite", () => {
     const manifest = new TextEncoder().encode(JSON.stringify({
       kind: "active",
       writer_epoch: 3,
-      latest: { fileId: "latest", object_sha256: "a".repeat(64), byteLength: 1 },
+      latest: {
+        fileId: "latest",
+        object_sha256: "a".repeat(64),
+        byteLength: 1,
+        snapshotId: "snapshot-latest",
+        writerEpoch: 3,
+        mutationGeneration: 0,
+      },
       previous: null,
     }));
     const coordinator = createAutomaticBackupCoordinator({
