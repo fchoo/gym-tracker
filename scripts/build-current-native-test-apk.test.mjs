@@ -1,0 +1,15 @@
+import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
+import { test } from "node:test";
+
+test("the native test APK build retries launcher resolution after install", () => {
+  const source = readFileSync(
+    new URL("./build-current-native-test-apk.sh", import.meta.url),
+    "utf8",
+  );
+
+  assert.match(
+    source,
+    /while \[ "\$attempts" -lt 15 \][\s\S]*cmd package resolve-activity --brief[\s\S]*sleep 1/u,
+  );
+});

@@ -183,11 +183,20 @@ installed_apk_sha256=$(sh scripts/hash-apk.sh "$installed_apk_copy")
 [ "$installed_apk_sha256" = "$apk_sha256" ] ||
   fail 'installed APK bytes do not match the retained APK.'
 
-launch_component=$(
-  adb -s "$device_serial" shell cmd package resolve-activity --brief "$package_name" |
-    tr -d '\r' |
-    tail -n 1
-)
+launch_component=''
+attempts=0
+while [ "$attempts" -lt 15 ]; do
+  launch_component=$(
+    adb -s "$device_serial" shell cmd package resolve-activity --brief "$package_name" |
+      tr -d '\r' |
+      tail -n 1
+  )
+  case "$launch_component" in
+    "$package_name"/*) break ;;
+  esac
+  attempts=$((attempts + 1))
+  sleep 1
+done
 case "$launch_component" in
   "$package_name"/*) ;;
   *) fail "could not resolve the launcher activity for $package_name." ;;
