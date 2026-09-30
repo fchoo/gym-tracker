@@ -133,6 +133,9 @@ type LoadState = "create" | "loading" | "ready" | "error";
 type ExerciseLoadState = "loading" | "ready" | "error";
 type TargetDraft = Readonly<{
   exercise: OwnedPlanEditorExerciseOption;
+  warmupSets: string;
+  warmupLoadKg: string;
+  warmupReps: string;
   workingSets: string;
   restSeconds: string;
   loadKg: string;
@@ -149,8 +152,13 @@ type TargetDraft = Readonly<{
   workIntervalSeconds: string;
   intervalRestSeconds: string;
   advancedTimingDefault: AdvancedTimingConfigV1 | null;
-  advancedTimingWorkingOverride: AdvancedTimingConfigV1 | null;
+  advancedTimingWarmupOverrides: readonly (AdvancedTimingConfigV1 | null)[];
+  advancedTimingWorkingOverrides: readonly (AdvancedTimingConfigV1 | null)[];
 }>;
+
+type TargetTimingScope =
+  | "exercise"
+  | Readonly<{ kind: "warmup" | "working"; ordinal: number }>;
 
 const PROFILE_LABELS: Readonly<Record<MetricProfile, string>> = {
   load_reps: "Load + reps",
@@ -197,6 +205,9 @@ function initialTargetDraft(
 ): TargetDraft {
   return {
     exercise,
+    warmupSets: "0",
+    warmupLoadKg: "0",
+    warmupReps: "5",
     workingSets: "1",
     restSeconds: String(exercise.defaultRestSeconds ?? 90),
     loadKg: "0",
@@ -213,8 +224,19 @@ function initialTargetDraft(
     workIntervalSeconds: "30",
     intervalRestSeconds: "30",
     advancedTimingDefault: null,
-    advancedTimingWorkingOverride: null,
+    advancedTimingWarmupOverrides: [],
+    advancedTimingWorkingOverrides: [null],
   };
+}
+
+function resizeTimingOverrides(
+  values: readonly (AdvancedTimingConfigV1 | null)[],
+  count: number,
+): readonly (AdvancedTimingConfigV1 | null)[] {
+  return Object.freeze(Array.from(
+    { length: count },
+    (_, ordinal) => values[ordinal] ?? null,
+  ));
 }
 
 function positiveInteger(value: string): number | null {
@@ -721,16 +743,33 @@ export function OwnedPlanEditorScreen({
       return;
     }
     const workingSets = positiveInteger(targetDraft.workingSets);
+    const warmupSets = nonnegativeInteger(targetDraft.warmupSets);
+    const warmupLoadGrams = grams(targetDraft.warmupLoadKg);
+    const warmupReps = positiveInteger(targetDraft.warmupReps);
     const restSeconds = nonnegativeInteger(targetDraft.restSeconds);
     const metric = buildMetricTarget(targetDraft);
-    if (workingSets === null || restSeconds === null || metric === null) {
+    if (
+      workingSets === null
+      || warmupSets === null
+      || warmupLoadGrams === null
+      || warmupReps === null
+      || restSeconds === null
+      || metric === null
+    ) {
       setTargetError(true);
       return;
     }
     const occurrenceId = nextId("owned-plan-occurrence");
     const profile = targetDraft.exercise.metricIdentity.profile;
     const policyId = `${profile}.manual_hold.v1`;
-    const workingOverride = targetDraft.advancedTimingWorkingOverride;
+    const warmupOverrides = resizeTimingOverrides(
+      targetDraft.advancedTimingWarmupOverrides,
+      warmupSets,
+    );
+    const workingOverrides = resizeTimingOverrides(
+      targetDraft.advancedTimingWorkingOverrides,
+      workingSets,
+    );
     const occurrence: OwnedPlanOccurrenceInput = {
       id: occurrenceId,
       exerciseId: targetDraft.exercise.id,
@@ -740,15 +779,19 @@ export function OwnedPlanEditorScreen({
       ...(targetDraft.advancedTimingDefault === null
         ? {}
         : { advancedTimingDefault: targetDraft.advancedTimingDefault }),
-      warmups: [],
+      warmups: Array.from({ length: warmupSets }, (_, ordinal) => ({
+        id: nextId("owned-plan-warmup"),
+        ordinal,
+        loadGrams: warmupLoadGrams,
+        reps: warmupReps,
+        advancedTimingOverride: warmupOverrides[ordinal] ?? null,
+      })),
       targets: Array.from({ length: workingSets }, (_, ordinal) => ({
         id: nextId("owned-plan-target"),
         ordinal,
         target: { ...metric.target },
         units: { ...metric.units },
-        ...(workingOverride === null
-          ? {}
-          : { advancedTimingOverride: workingOverride }),
+        advancedTimingOverride: workingOverrides[ordinal] ?? null,
       })),
       policy: {
         id: nextId("owned-plan-policy"),
@@ -1465,8 +1508,7 @@ function TargetEditor({
 }>) {
   const { colors } = useAppTheme();
   const profile = draft.exercise.metricIdentity.profile;
-  const [timingScope, setTimingScope] =
-    useState<"exercise" | "working" | null>(null);
+  const [timingScope, setTimingScope] = useState<TargetTimingScope | null>(null);
   const textField = (
     key: keyof TargetDraft,
     label: string,
@@ -1516,7 +1558,52 @@ function TargetEditor({
         title={draft.exercise.name}
         tone="card"
       />
-      {integerField("workingSets", "Working sets")}
+      {profile === "load_reps" ? (
+        <>
+          <SemanticNumberField
+            kind="integer"
+            label="Warm-up sets"
+            minimum={0}
+            onChangeText={(warmupSets) => {
+              const count = nonnegativeInteger(warmupSets);
+              onChange({
+                ...draft,
+                warmupSets,
+                advancedTimingWarmupOverrides: count === null
+                  ? draft.advancedTimingWarmupOverrides
+                  : resizeTimingOverrides(
+                      draft.advancedTimingWarmupOverrides,
+                      count,
+                    ),
+              });
+            }}
+            tone="card"
+            value={draft.warmupSets}
+          />
+          {decimalField("warmupLoadKg", "Warm-up load (kg)")}
+          {integerField("warmupReps", "Warm-up reps")}
+        </>
+      ) : null}
+      <SemanticNumberField
+        kind="integer"
+        label="Working sets"
+        minimum={0}
+        onChangeText={(workingSets) => {
+          const count = positiveInteger(workingSets);
+          onChange({
+            ...draft,
+            workingSets,
+            advancedTimingWorkingOverrides: count === null
+              ? draft.advancedTimingWorkingOverrides
+              : resizeTimingOverrides(
+                  draft.advancedTimingWorkingOverrides,
+                  count,
+                ),
+          });
+        }}
+        tone="card"
+        value={draft.workingSets}
+      />
       {profile === "load_reps" || profile === "added_load_reps" ? (
         <>
           {decimalField("loadKg", profile === "load_reps"
@@ -1582,30 +1669,56 @@ function TargetEditor({
               "exercise",
             )}`}
           </Text>
-          <Text
-            style={[
-              typeScale.secondary as TextStyle,
-              { color: colors.contentCardTextSecondary },
-            ]}
-            testID="advanced-timing-working-summary"
-          >
-            {`Working sets · ${advancedTimingConfigSummary(
-              draft.advancedTimingWorkingOverride,
-              "set",
-            )}`}
-          </Text>
         </View>
         <View style={styles.timingActions}>
           <SecondaryAction
             label="Exercise timing"
             onPress={() => setTimingScope("exercise")}
           />
-          <SecondaryAction
-            label="Working set timing"
-            onPress={() => setTimingScope("working")}
-          />
         </View>
       </View>
+      {draft.advancedTimingWarmupOverrides.map((override, ordinal) => (
+        <View key={`warmup-timing-${ordinal}`} style={styles.timingEntry}>
+          <Text
+            style={[
+              typeScale.secondary as TextStyle,
+              { color: colors.contentCardTextSecondary },
+            ]}
+            testID={`advanced-timing-warmup-summary-${ordinal}`}
+          >
+            {`Warm-up W${ordinal + 1} · ${advancedTimingConfigSummary(
+              override,
+              "set",
+            )}`}
+          </Text>
+          <SecondaryAction
+            label={`Warm-up W${ordinal + 1} timing`}
+            onPress={() => setTimingScope({ kind: "warmup", ordinal })}
+            testID={`advanced-timing-warmup-action-${ordinal}`}
+          />
+        </View>
+      ))}
+      {draft.advancedTimingWorkingOverrides.map((override, ordinal) => (
+        <View key={`working-timing-${ordinal}`} style={styles.timingEntry}>
+          <Text
+            style={[
+              typeScale.secondary as TextStyle,
+              { color: colors.contentCardTextSecondary },
+            ]}
+            testID={`advanced-timing-working-summary-${ordinal}`}
+          >
+            {`Working set ${ordinal + 1} · ${advancedTimingConfigSummary(
+              override,
+              "set",
+            )}`}
+          </Text>
+          <SecondaryAction
+            label={`Working set ${ordinal + 1} timing`}
+            onPress={() => setTimingScope({ kind: "working", ordinal })}
+            testID={`advanced-timing-working-action-${ordinal}`}
+          />
+        </View>
+      ))}
       {error ? (
         <InlineNotice
           body="Enter complete valid target values. Your edits are still here."
@@ -1625,16 +1738,26 @@ function TargetEditor({
         scope="exercise"
         visible={timingScope === "exercise"}
       />
-      <AdvancedTimingConfigSheet
-        initialValue={draft.advancedTimingWorkingOverride}
-        onCancel={() => setTimingScope(null)}
-        onSave={(value) => {
-          onChange({ ...draft, advancedTimingWorkingOverride: value });
-          setTimingScope(null);
-        }}
-        scope="set"
-        visible={timingScope === "working"}
-      />
+      {timingScope === null || timingScope === "exercise" ? null : (
+        <AdvancedTimingConfigSheet
+          key={`${timingScope.kind}-${timingScope.ordinal}`}
+          initialValue={(timingScope.kind === "warmup"
+            ? draft.advancedTimingWarmupOverrides
+            : draft.advancedTimingWorkingOverrides)[timingScope.ordinal] ?? null}
+          onCancel={() => setTimingScope(null)}
+          onSave={(value) => {
+            const key = timingScope.kind === "warmup"
+              ? "advancedTimingWarmupOverrides"
+              : "advancedTimingWorkingOverrides";
+            const values = [...draft[key]];
+            values[timingScope.ordinal] = value;
+            onChange({ ...draft, [key]: Object.freeze(values) });
+            setTimingScope(null);
+          }}
+          scope="set"
+          visible
+        />
+      )}
     </View>
   );
 }
@@ -1688,6 +1811,9 @@ const styles = StyleSheet.create({
   timingActions: {
     flexDirection: "row",
     flexWrap: "wrap",
+    gap: space[2],
+  },
+  timingEntry: {
     gap: space[2],
   },
 });
