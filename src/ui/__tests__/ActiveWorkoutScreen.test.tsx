@@ -3656,6 +3656,68 @@ describe("Plan 01-08 ActiveWorkoutScreen", () => {
       .toHaveTextContent("Working set 2 timing · Cluster 2+2 · 15 sec · both");
   });
 
+  it("selects a configured warm-up as the active timing target", async () => {
+    const updateSessionSetAdvancedTiming = jest.fn<NonNullable<
+      ActiveWorkoutCommands["updateSessionSetAdvancedTiming"]
+    >>(async () => advancedResult({
+      version: 1,
+      state: "idle",
+      revision: 0,
+      targetSessionSetId: null,
+    }, 2));
+    const configureAdvancedTiming = jest.fn<NonNullable<
+      ActiveWorkoutCommands["configureAdvancedTiming"]
+    >>(async () => advancedResult({
+      version: 1,
+      state: "idle",
+      revision: 0,
+      targetSessionSetId: null,
+    }, 3));
+    const startAdvancedTiming = jest.fn<NonNullable<
+      ActiveWorkoutCommands["startAdvancedTiming"]
+    >>(async (input) => advancedResult({
+      version: 1,
+      state: "running",
+      mode: "per_rep",
+      revision: 1,
+      targetSessionSetId: input.sessionSetId,
+      cueChannels: "haptic",
+      intervalMs: 3_000,
+      startedAtMs: input.nowMs,
+      nextBoundaryAtMs: input.nowMs + 3_000,
+      nextRepetitionIndex: 1,
+    }, 3));
+    await renderActive({
+      advancedTimingContext: {
+        sessionId: "session-1",
+        sessionRevision: 1,
+        state: { version: 1, state: "idle", revision: 0, targetSessionSetId: null },
+      },
+      commands: commands({
+        configureAdvancedTiming,
+        startAdvancedTiming,
+        updateSessionSetAdvancedTiming,
+      }),
+    });
+
+    await fireEvent.press(screen.getByRole("button", {
+      name: "Configure Back Squat, warm-up W1 timing",
+    }));
+    await fireEvent.press(screen.getByRole("button", { name: "Per-rep timing" }));
+    await fireEvent.press(screen.getByRole("button", { name: "Save timing" }));
+    await fireEvent.press(screen.getByRole("button", {
+      name: "Configure and start per-rep cadence",
+    }));
+
+    await waitFor(() => expect(startAdvancedTiming).toHaveBeenCalledWith(
+      expect.objectContaining({ sessionSetId: "warmup-1" }),
+    ));
+    expect(configureAdvancedTiming).toHaveBeenCalledWith(expect.objectContaining({
+      sessionSetId: "warmup-1",
+      expectedSessionRevision: 2,
+    }));
+  });
+
   it("uniquely identifies the same timing row ordinal across exercises", async () => {
     const active = overviewView();
     const futureExercise = {

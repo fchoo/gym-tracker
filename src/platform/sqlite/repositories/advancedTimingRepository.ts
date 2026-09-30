@@ -131,11 +131,14 @@ export function assertValidAdvancedTimingPersistenceRow(
 
 type SessionRow = Readonly<{
   revision: number;
+  active_session_exercise_id: string | null;
   active_set_id: string | null;
 }>;
 
 type TargetRow = Readonly<{
   status: "planned" | "draft" | "completed" | "skipped";
+  set_kind: "warmup" | "working";
+  session_exercise_id: string;
   advanced_timing_resolved_json: string;
 }>;
 
@@ -544,7 +547,7 @@ async function readSession(
   sessionId: string,
 ): Promise<SessionRow | null> {
   const [row] = await transaction.queryAll<SessionRow>(
-    `SELECT revision, active_set_id
+    `SELECT revision, active_session_exercise_id, active_set_id
      FROM workout_sessions
      WHERE id = ? AND status = 'in_progress'`,
     [sessionId],
@@ -558,7 +561,8 @@ async function readTarget(
   sessionSetId: string,
 ): Promise<TargetRow | null> {
   const [row] = await transaction.queryAll<TargetRow>(
-    `SELECT ss.status, ss.advanced_timing_resolved_json
+    `SELECT ss.status, ss.set_kind, ss.session_exercise_id,
+            ss.advanced_timing_resolved_json
      FROM session_sets ss
      JOIN session_exercises se ON se.id = ss.session_exercise_id
      WHERE ss.id = ? AND se.session_id = ?`,
@@ -623,7 +627,10 @@ async function readMutableTimingContext(
   if (target === null) {
     return { kind: "conflict", code: "advanced_timing_target_not_owned" };
   }
-  if (session.active_set_id !== input.sessionSetId) {
+  const activeTarget = target.set_kind === "working"
+    ? session.active_set_id === input.sessionSetId
+    : session.active_session_exercise_id === target.session_exercise_id;
+  if (!activeTarget) {
     return { kind: "conflict", code: "advanced_timing_target_not_active" };
   }
   if (target.status !== "planned" && target.status !== "draft") {
@@ -898,7 +905,6 @@ async function configure(
        SET advanced_timing_override_json = ?,
            advanced_timing_resolved_json = ?
        WHERE id = ?
-         AND set_kind = 'working'
          AND status IN ('planned', 'draft')
          AND session_exercise_id IN (
            SELECT id FROM session_exercises WHERE session_id = ?

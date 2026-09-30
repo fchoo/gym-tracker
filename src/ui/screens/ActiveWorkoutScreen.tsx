@@ -879,6 +879,8 @@ function PopulatedWorkoutOverview({
   }> | null>(null);
   const [timingConfigBusy, setTimingConfigBusy] = useState(false);
   const [timingConfigFailed, setTimingConfigFailed] = useState(false);
+  const [selectedTimingTargetSetId, setSelectedTimingTargetSetId] =
+    useState<string | null>(null);
   const [latestAdvancedTimingContext, setLatestAdvancedTimingContext] = useState(
     advancedTimingContext ?? null,
   );
@@ -924,6 +926,16 @@ function PopulatedWorkoutOverview({
   const activeSets = activeExercise.workingSets;
   const activeIndex = workingIndex(activeSets, view.activeSetId);
   const activeSet = activeOwner?.set;
+  const persistedTimingTargetId = timingContext?.state.targetSessionSetId ?? null;
+  const selectedTimingOwner = resolveSetOwner(
+    view,
+    persistedTimingTargetId ?? selectedTimingTargetSetId ?? "",
+  );
+  const timingTargetSet = selectedTimingOwner?.exercise.id === activeExercise.id
+    && (selectedTimingOwner.set.status === "planned"
+      || selectedTimingOwner.set.status === "draft")
+    ? selectedTimingOwner.set
+    : activeSet;
   const adaptiveWidth = width === undefined ? {} : { width };
   const activeExerciseIndex = overviewExercises.findIndex(
     ({ id }) => id === view.activeExerciseId,
@@ -1112,7 +1124,7 @@ function PopulatedWorkoutOverview({
 
   const advancedInput = (): AdvancedTimingRevisionInput | null => {
     const context = timingContext;
-    const target = activeSet;
+    const target = timingTargetSet;
     if (context === null || target === undefined) {
       return null;
     }
@@ -1248,6 +1260,9 @@ function PopulatedWorkoutOverview({
           value,
           result.sessionRevision,
         );
+        if (set.kind === "warmup" && target.exercise.id === activeExercise.id) {
+          setSelectedTimingTargetSetId(set.id);
+        }
         scheduleTimingPanelScroll(target.exercise.id, result.sessionRevision);
       }
       setTimingConfig(null);
@@ -2526,10 +2541,9 @@ function PopulatedWorkoutOverview({
                   context={timingContext}
                   cueUnavailable={cueUnavailable}
                   disabled={
-                    activeSet === undefined
-                    || activeSet.kind !== "working"
-                    || activeSet.status === "completed"
-                    || activeSet.status === "skipped"
+                    timingTargetSet === undefined
+                    || timingTargetSet.status === "completed"
+                    || timingTargetSet.status === "skipped"
                     || timingContext === null
                     || commands.configureAdvancedTiming === undefined
                     || commands.startAdvancedTiming === undefined
@@ -2583,10 +2597,10 @@ function PopulatedWorkoutOverview({
                     }
                     return commands.stopAdvancedTiming(input);
                   })}
-                  {...(activeSet?.advancedTimingResolved === undefined
+                  {...(timingTargetSet?.advancedTimingResolved === undefined
                     ? {}
-                    : { resolvedConfig: activeSet.advancedTimingResolved })}
-                  targetSetId={activeSet?.id ?? null}
+                    : { resolvedConfig: timingTargetSet.advancedTimingResolved })}
+                  targetSetId={timingTargetSet?.id ?? null}
                 />
                 </View>
               ) : null}

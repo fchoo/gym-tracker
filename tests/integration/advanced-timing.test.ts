@@ -668,6 +668,93 @@ describe("advanced timing repository", () => {
     )).resolves.toEqual([]);
   });
 
+  it.each([
+    ["per-rep", perRep],
+    ["cluster", cluster],
+  ] as const)("runs and reconstructs %s timing for an active-exercise warm-up", async (_label, config) => {
+    const fixture = await setupWorkout({}, config);
+    const [warmup] = await fixture.kernel.queryAll<{ id: string }>(
+      `SELECT ss.id FROM session_sets ss
+       JOIN session_exercises se ON se.id = ss.session_exercise_id
+       JOIN workout_sessions ws ON ws.active_session_exercise_id = se.id
+       WHERE ws.id = ? AND ss.set_kind = 'warmup'
+         AND ss.status IN ('planned', 'draft')
+       ORDER BY ss.ordinal LIMIT 1`,
+      [fixture.session.id],
+    );
+    if (warmup === undefined) throw new Error("active_warmup_missing");
+
+    const started = await startAdvancedTiming({
+      repository: fixture.repository,
+      input: {
+        sessionId: fixture.session.id,
+        sessionSetId: warmup.id,
+        expectedSessionRevision: fixture.session.revision,
+        expectedAdvancedTimingRevision: 0,
+        nowMs: 10_000,
+        config,
+      },
+    });
+    expect(started.state).toEqual(expect.objectContaining({
+      mode: config.mode,
+      targetSessionSetId: warmup.id,
+    }));
+    const active = config.mode === "cluster"
+      ? await beginAdvancedTimingClusterGap({
+          repository: fixture.repository,
+          input: {
+            sessionId: fixture.session.id,
+            sessionSetId: warmup.id,
+            expectedSessionRevision: fixture.session.revision,
+            expectedAdvancedTimingRevision: started.state.revision,
+            nowMs: 11_000,
+          },
+        })
+      : started;
+    const reconciled = await reconcileAdvancedTiming({
+      repository: fixture.repository,
+      input: {
+        sessionId: fixture.session.id,
+        sessionSetId: warmup.id,
+        expectedSessionRevision: fixture.session.revision,
+        expectedAdvancedTimingRevision: active.state.revision,
+        nowMs: config.mode === "cluster" ? 11_250 : 10_500,
+        foregroundSinceMs: config.mode === "cluster" ? 11_000 : 10_000,
+      },
+    });
+    const paused = await pauseAdvancedTiming({
+      repository: fixture.repository,
+      input: {
+        sessionId: fixture.session.id,
+        sessionSetId: warmup.id,
+        expectedSessionRevision: fixture.session.revision,
+        expectedAdvancedTimingRevision: reconciled.state.revision,
+        nowMs: 11_500,
+      },
+    });
+    expect(paused.state.state).toBe(config.mode === "cluster"
+      ? "cluster_gap_paused"
+      : "paused");
+    await expect(createAdvancedTimingRepository(fixture.kernel)
+      .getAdvancedTimingContext(fixture.session.id)).resolves.toEqual({
+      sessionId: fixture.session.id,
+      sessionRevision: fixture.session.revision,
+      state: paused.state,
+    });
+    await expect(stopAdvancedTiming({
+      repository: fixture.repository,
+      input: {
+        sessionId: fixture.session.id,
+        sessionSetId: warmup.id,
+        expectedSessionRevision: fixture.session.revision,
+        expectedAdvancedTimingRevision: paused.state.revision,
+        nowMs: 12_000,
+      },
+    })).resolves.toEqual(expect.objectContaining({
+      state: expect.objectContaining({ state: "stopped" }),
+    }));
+  });
+
   it("rejects conflicts, inactive or completed targets, and rolls back a failed writer", async () => {
     const { kernel, session, activeSet, otherSetId, repository } = await setupWorkout();
     const input = {
