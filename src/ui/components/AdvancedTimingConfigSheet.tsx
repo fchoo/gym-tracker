@@ -5,7 +5,9 @@ import {
   TimerOff,
 } from "lucide-react-native";
 import React, {
+  useEffect,
   useMemo,
+  useRef,
   useState,
 } from "react";
 import {
@@ -165,6 +167,15 @@ export function AdvancedTimingConfigSheet({
     draftFromValue(initialValue, scope)
   );
   const [error, setError] = useState<string | null>(null);
+  const wasVisible = useRef(visible);
+
+  useEffect(() => {
+    if (visible && !wasVisible.current) {
+      setDraft(draftFromValue(initialValue, scope));
+      setError(null);
+    }
+    wasVisible.current = visible;
+  }, [initialValue, scope, visible]);
   const modes = useMemo<readonly Readonly<{
     label: string;
     mode: DraftMode;

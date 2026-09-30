@@ -326,6 +326,64 @@ describe("AdvancedTimingConfigSheet", () => {
     expect(onSave).not.toHaveBeenCalled();
   });
 
+  it("discards unsaved edits when a mounted sheet is reopened", async () => {
+    const onCancel = jest.fn();
+    const onSave = jest.fn();
+    const store = createMemoryAppearanceStore(null);
+    const initialValue: AdvancedTimingConfigV1 = {
+      version: 1,
+      mode: "per_rep",
+      intervalMs: 5_000,
+      cueChannels: "haptic",
+    };
+    const rendered = await render(
+      <AppearanceProvider reduceMotion={false} store={store}>
+        <AdvancedTimingConfigSheet
+          initialValue={initialValue}
+          onCancel={onCancel}
+          onSave={onSave}
+          scope="exercise"
+          visible
+        />
+      </AppearanceProvider>,
+    );
+
+    await fireEvent.changeText(
+      screen.getByTestId("advanced-timing-config-interval"),
+      "9",
+    );
+    await fireEvent.press(screen.getByRole("button", { name: "Cancel" }));
+    await act(() => {
+      rendered.rerender(
+        <AppearanceProvider reduceMotion={false} store={store}>
+          <AdvancedTimingConfigSheet
+            initialValue={initialValue}
+            onCancel={onCancel}
+            onSave={onSave}
+            scope="exercise"
+            visible={false}
+          />
+        </AppearanceProvider>,
+      );
+    });
+    await act(() => {
+      rendered.rerender(
+        <AppearanceProvider reduceMotion={false} store={store}>
+          <AdvancedTimingConfigSheet
+            initialValue={initialValue}
+            onCancel={onCancel}
+            onSave={onSave}
+            scope="exercise"
+            visible
+          />
+        </AppearanceProvider>,
+      );
+    });
+
+    expect(screen.getByTestId("advanced-timing-config-interval"))
+      .toHaveProp("value", "5");
+  });
+
   it("renders selected controls with dark-theme, non-color-only treatment", async () => {
     await renderSheet({ scope: "exercise" }, "Dark");
 
