@@ -23,7 +23,11 @@ function kernelForRows(
     execute: async () => ({ changes: 1, lastInsertRowId: 0 }),
     queryAll: async <Row extends Record<string, unknown>>(sql: string) => {
       if (sql.includes("FROM workout_sessions")) {
-        return [{ revision: 1, active_set_id: "set-1" }] as unknown as readonly Row[];
+        return [{
+          revision: 1,
+          active_session_exercise_id: "session-exercise-1",
+          active_set_id: "set-1",
+        }] as unknown as readonly Row[];
       }
       if (sql.includes("FROM session_advanced_timing_states")) {
         return [rows] as unknown as readonly Row[];
@@ -31,6 +35,8 @@ function kernelForRows(
       if (sql.includes("FROM session_sets")) {
         return [{
           status: "planned",
+          set_kind: "working",
+          session_exercise_id: "session-exercise-1",
           advanced_timing_resolved_json: perRepJson,
         }] as unknown as readonly Row[];
       }
@@ -69,12 +75,18 @@ function row(
 }
 
 function kernelForTransition(input: Readonly<{
-  session?: Readonly<{ revision: number; active_set_id: string | null }> | null;
+  session?: Readonly<Partial<{
+    revision: number;
+    active_session_exercise_id: string | null;
+    active_set_id: string | null;
+  }>> | null;
   state?: Readonly<Record<string, unknown>> | null;
-  target?: Readonly<{
+  target?: Readonly<Partial<{
     status: "planned" | "draft" | "completed" | "skipped";
+    set_kind: "warmup" | "working";
+    session_exercise_id: string;
     advanced_timing_resolved_json: string;
-  }> | null;
+  }>> | null;
   storedStateError?: Error;
   executeError?: Error;
 }>) {
@@ -91,14 +103,22 @@ function kernelForTransition(input: Readonly<{
       if (sql.includes("FROM workout_sessions")) {
         return input.session === null
           ? [] as readonly Row[]
-          : [input.session ?? { revision: 1, active_set_id: "set-1" }] as unknown as readonly Row[];
+          : [{
+            revision: 1,
+            active_session_exercise_id: "session-exercise-1",
+            active_set_id: "set-1",
+            ...input.session,
+          }] as unknown as readonly Row[];
       }
       if (sql.includes("FROM session_sets")) {
         return input.target === null
           ? [] as readonly Row[]
-          : [input.target ?? {
+          : [{
             status: "planned",
+            set_kind: "working",
+            session_exercise_id: "session-exercise-1",
             advanced_timing_resolved_json: perRepJson,
+            ...input.target,
           }] as unknown as readonly Row[];
       }
       if (sql.includes("FROM session_advanced_timing_states")) {
@@ -524,7 +544,12 @@ describe("advanced timing repository state decoding", () => {
   it("accepts a draft target and maps target and state transition conflicts", async () => {
     const draft = kernelForTransition({
       state: null,
-      target: { status: "draft", advanced_timing_resolved_json: perRepJson },
+      target: {
+        status: "draft",
+        set_kind: "working",
+        session_exercise_id: "session-exercise-1",
+        advanced_timing_resolved_json: perRepJson,
+      },
     });
     await expect(createAdvancedTimingRepository(draft.kernel).startAdvancedTiming({
       sessionId: "session-1",
@@ -539,7 +564,11 @@ describe("advanced timing repository state decoding", () => {
     expect(draft.executeCount()).toBe(1);
 
     const inactive = kernelForTransition({
-      session: { revision: 1, active_set_id: "different-set" },
+      session: {
+        revision: 1,
+        active_session_exercise_id: "session-exercise-1",
+        active_set_id: "different-set",
+      },
     });
     await expect(createAdvancedTimingRepository(inactive.kernel).startAdvancedTiming({
       sessionId: "session-1", sessionSetId: "set-1", expectedSessionRevision: 1,
@@ -548,7 +577,12 @@ describe("advanced timing repository state decoding", () => {
     })).rejects.toThrow("advanced_timing_target_not_active");
 
     const unavailable = kernelForTransition({
-      target: { status: "completed", advanced_timing_resolved_json: perRepJson },
+      target: {
+        status: "completed",
+        set_kind: "working",
+        session_exercise_id: "session-exercise-1",
+        advanced_timing_resolved_json: perRepJson,
+      },
     });
     await expect(createAdvancedTimingRepository(unavailable.kernel).startAdvancedTiming({
       sessionId: "session-1", sessionSetId: "set-1", expectedSessionRevision: 1,
