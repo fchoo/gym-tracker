@@ -34,7 +34,7 @@ requirements-completed: [DATA-10]
 actuals:
   tokens: 15719
   tasks: 3
-  commits: 7
+  commits: 8
 coverage:
   - id: D1
     description: Complete local-shape classification and active-workout recovery deferral.
@@ -100,6 +100,7 @@ Complete recovery routing now distinguishes every owner-created portable fact, b
 2. **Task 2: Bind the one-use authenticated adoption grant** - `5dfb32e` (RED), `faf173c` (GREEN)
 3. **Task 3: Consume adoption and merge atomically** - `83a084c` (RED), `b357e68` (GREEN)
 4. **Integrity branch closeout** - `7cb75fc` (tests)
+5. **Post-summary verification marker** - `4b931db` (empty commit; the verified test bytes were already present in `7cb75fc`)
 
 ## Deviations from Plan
 
@@ -115,7 +116,7 @@ Phase 10 commits interleaved in branch history while this plan executed. All Pha
 
 ## Self-Check: PASSED
 
-- Confirmed all seven Plan 12-05 commits exist in branch history with exactly one required attribution trailer each.
+- Confirmed all eight Plan 12-05 commits, including post-summary marker `4b931db`, exist in branch history with exactly one required attribution trailer each.
 - Confirmed all nine modified source/test files exist.
 - Confirmed no generated files, `.gsd/`, `.planning/debug/`, or `.planning/milestone.lock` were staged.
 
