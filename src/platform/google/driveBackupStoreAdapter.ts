@@ -32,10 +32,30 @@ function assertId(value: string): void { if (!/^[A-Za-z0-9_-]{1,256}$/u.test(val
 function assertEtag(value: string): void { if (value.length === 0 || value === "*") throw new Error("drive_etag_invalid"); }
 function origin(url: string): void { const parsed = new URL(url); if (parsed.origin !== "https://www.googleapis.com") throw new Error("drive_origin_invalid"); }
 function bytes(value: Uint8Array, limit: number): void { if (value.byteLength > limit) throw new Error("drive_response_too_large"); }
-async function body(response: Response, limit: number): Promise<Uint8Array> {
+async function body(response: Response, limit: number, timeoutMs: number): Promise<Uint8Array> {
   const length = response.headers.get("content-length");
   if (length !== null && (!/^\d+$/u.test(length) || Number(length) > limit)) throw new Error("drive_response_too_large");
-  const value = new Uint8Array(await response.arrayBuffer()); bytes(value, limit); return value;
+  let timeout!: ReturnType<typeof setTimeout>;
+  let timedOut = false;
+  let buffer: ArrayBuffer;
+  try {
+    buffer = await Promise.race([
+      response.arrayBuffer(),
+      new Promise<never>((_resolve, reject) => {
+        timeout = setTimeout(() => {
+          timedOut = true;
+          void response.body?.cancel("drive_response_timeout").catch(() => undefined);
+          reject(new Error("drive_response_timeout"));
+        }, timeoutMs);
+      }),
+    ]);
+  } catch (error) {
+    if (timedOut) throw new Error("drive_response_timeout");
+    throw error;
+  } finally {
+    clearTimeout(timeout);
+  }
+  const value = new Uint8Array(buffer); bytes(value, limit); return value;
 }
 function json(responseBytes: Uint8Array): unknown { try { return JSON.parse(new TextDecoder().decode(responseBytes)); } catch { throw new Error("drive_response_invalid"); } }
 function propertiesMatch(value: unknown, expected: Readonly<Record<string, string>>): value is Record<string, string> {
@@ -59,6 +79,7 @@ function multipart(candidateId: string, payload: Uint8Array, properties: Readonl
 export function createDriveBackupStoreAdapter(input: Readonly<{ environment: AutomaticBackupEnvironment; token: DriveToken; fetch?: DriveFetch; requestTimeoutMs?: number; reportFailure?(stage: DriveFailureStage, status?: number): void }>): DriveBackupStorePort {
   const fetcher = input.fetch ?? fetch;
   const requestTimeoutMs = input.requestTimeoutMs ?? REQUEST_TIMEOUT_MS;
+  const readBody = (response: Response, limit: number) => body(response, limit, requestTimeoutMs);
   const properties = namespace(input.environment);
   const snapshotProperties = Object.freeze({ ...properties, object_kind: "snapshot" });
   const manifestProperties = Object.freeze({ ...properties, object_kind: "manifest" });
@@ -103,7 +124,7 @@ export function createDriveBackupStoreAdapter(input: Readonly<{ environment: Aut
       throw new Error("drive_list_failed");
     }
     try {
-      const value = json(await body(response, 64 * 1024));
+      const value = json(await readBody(response, 64 * 1024));
       if (typeof value !== "object" || value === null) throw new Error("drive_response_invalid");
       const files = (value as { files?: unknown }).files;
       if (files !== undefined && !Array.isArray(files)) throw new Error("drive_response_invalid");
@@ -119,7 +140,7 @@ export function createDriveBackupStoreAdapter(input: Readonly<{ environment: Aut
       `${DRIVE_API}/files/generateIds?count=1&space=drive&type=files`,
     );
     if (!response.ok) throw new Error("drive_id_allocation_failed");
-    const value = json(await body(response, 64 * 1024));
+    const value = json(await readBody(response, 64 * 1024));
     const ids = typeof value === "object" && value !== null
       ? (value as { ids?: unknown }).ids
       : undefined;
@@ -136,18 +157,18 @@ export function createDriveBackupStoreAdapter(input: Readonly<{ environment: Aut
   async function download(fileId: string, maxBytes: number): Promise<Uint8Array> {
     assertId(fileId); if (!Number.isSafeInteger(maxBytes) || maxBytes < 1 || maxBytes > MAX_RESPONSE_BYTES) throw new Error("drive_download_limit_invalid");
     const response = await request(`${DRIVE_API}/files/${encodeURIComponent(fileId)}?alt=media`);
-    if (response.status === 404) throw new Error("drive_file_missing"); if (!response.ok) throw new Error("drive_download_failed"); return body(response, maxBytes);
+    if (response.status === 404) throw new Error("drive_file_missing"); if (!response.ok) throw new Error("drive_download_failed"); return readBody(response, maxBytes);
   }
   async function readManifest(): Promise<DriveManifestRead | null> {
     const manifests = (await discover()).filter((entry) => entry.name === "manifest.json");
     if (manifests.length > 1) throw new Error("drive_manifest_ambiguous"); if (manifests.length === 0) return null;
     const fileId = manifests[0]!.fileId; const response = await request(`${DRIVE_API}/files/${encodeURIComponent(fileId)}?alt=media`);
-    if (response.status === 404) return null; if (!response.ok) throw new Error("drive_manifest_read_failed"); return Object.freeze({ bytes: await body(response, 16 * 1024), etag: responseEtag(response) });
+    if (response.status === 404) return null; if (!response.ok) throw new Error("drive_manifest_read_failed"); return Object.freeze({ bytes: await readBody(response, 16 * 1024), etag: responseEtag(response) });
   }
   async function createSnapshot(candidateId: string, payload: Uint8Array): Promise<string> {
     assertId(candidateId); bytes(payload, MULTIPART_LIMIT); const boundary = "gym-tracker-drive-backup-v1";
     const response = await request(`${DRIVE_UPLOAD}/files?uploadType=multipart&fields=id`, { method: "POST", headers: { "Content-Type": `multipart/related; boundary=${boundary}` }, body: multipart(candidateId, payload, snapshotProperties) as unknown as BodyInit });
-    if (!response.ok) throw new Error("drive_snapshot_create_failed"); const result = parseFile({ ...(json(await body(response, 64 * 1024)) as Record<string, unknown>), name: `snapshot-${candidateId}.json`, appProperties: snapshotProperties }, properties); if (result.fileId !== candidateId) throw new Error("drive_candidate_id_changed"); return result.fileId;
+    if (!response.ok) throw new Error("drive_snapshot_create_failed"); const result = parseFile({ ...(json(await readBody(response, 64 * 1024)) as Record<string, unknown>), name: `snapshot-${candidateId}.json`, appProperties: snapshotProperties }, properties); if (result.fileId !== candidateId) throw new Error("drive_candidate_id_changed"); return result.fileId;
   }
   async function createResumableSnapshot(candidateId: string, payload: Uint8Array): Promise<DriveResumableSession> {
     assertId(candidateId); if (payload.byteLength <= MULTIPART_LIMIT || payload.byteLength > 24 * 1024 * 1024) throw new Error("drive_resumable_size_invalid");
@@ -160,7 +181,7 @@ export function createDriveBackupStoreAdapter(input: Readonly<{ environment: Aut
     const remaining = payload.slice(session.uploadedBytes); const end = payload.byteLength - 1;
     const response = await request(session.location, { method: "PUT", headers: { "Content-Type": "application/json", "Content-Length": String(remaining.byteLength), "Content-Range": `bytes ${session.uploadedBytes}-${end}/${payload.byteLength}` }, body: remaining as unknown as BodyInit });
     if (response.status === 308) { const range = response.headers.get("range"); const matched = range?.match(/^bytes=0-(\d+)$/u); if (matched === null || matched === undefined) throw new Error("drive_resumable_range_invalid"); const uploadedBytes = Number(matched[1]) + 1; if (uploadedBytes <= session.uploadedBytes || uploadedBytes > payload.byteLength) throw new Error("drive_resumable_range_invalid"); return Object.freeze({ location: session.location, uploadedBytes }); }
-    if (!response.ok) throw new Error("drive_resumable_upload_failed"); const result = json(await body(response, 64 * 1024)); if (typeof result !== "object" || result === null || typeof (result as { id?: unknown }).id !== "string") throw new Error("drive_metadata_invalid"); assertId((result as { id: string }).id); return (result as { id: string }).id;
+    if (!response.ok) throw new Error("drive_resumable_upload_failed"); const result = json(await readBody(response, 64 * 1024)); if (typeof result !== "object" || result === null || typeof (result as { id?: unknown }).id !== "string") throw new Error("drive_metadata_invalid"); assertId((result as { id: string }).id); return (result as { id: string }).id;
   }
   async function updateManifest(manifestId: string, manifest: Uint8Array, etag: string): Promise<string> {
     assertId(manifestId); bytes(manifest, 16 * 1024); assertEtag(etag); const response = await request(`${DRIVE_UPLOAD}/files/${encodeURIComponent(manifestId)}?uploadType=media`, { method: "PATCH", headers: { "Content-Type": "application/json", "If-Match": etag }, body: manifest as unknown as BodyInit });
@@ -176,7 +197,7 @@ export function createDriveBackupStoreAdapter(input: Readonly<{ environment: Aut
     const response = await request(`${DRIVE_UPLOAD}/files?uploadType=multipart&fields=id`, { method: "POST", headers: { "Content-Type": `multipart/related; boundary=${boundary}` }, body: payload as unknown as BodyInit });
     if (response.status === 409 || response.status === 412) throw new Error("drive_manifest_conflict");
     if (!response.ok) throw new Error("drive_manifest_create_failed");
-    const result = json(await body(response, 64 * 1024));
+    const result = json(await readBody(response, 64 * 1024));
     if (typeof result !== "object" || result === null || typeof (result as { id?: unknown }).id !== "string" || (result as { id: string }).id !== candidateId) throw new Error("drive_manifest_create_invalid");
     return Object.freeze({ fileId: candidateId, etag: responseEtag(response) });
   }

@@ -150,6 +150,37 @@ describe("Drive backup store adapter", () => {
     await Promise.resolve();
     expect(fetchCalled).toBe(false);
     expect(failures).toEqual(["request_timeout:none", "request_failed:none"]);
+
+    const bodyFailures: string[] = [];
+    const bodyTimeout = createDriveBackupStoreAdapter({
+      environment: "development-test",
+      token: async () => "token",
+      requestTimeoutMs: 1,
+      reportFailure: (stage) => { bodyFailures.push(stage); },
+      fetch: async () => ({
+        ok: true,
+        status: 200,
+        redirected: false,
+        headers: new Headers(),
+        arrayBuffer: async () => new Promise<ArrayBuffer>(() => undefined),
+        body: { cancel: async () => { throw new Error("locked"); } },
+      }) as Response,
+    });
+    await expect(bodyTimeout.discover()).rejects.toThrow("drive_response_timeout");
+    expect(bodyFailures).toEqual(["list_invalid"]);
+
+    const bodyFailure = createDriveBackupStoreAdapter({
+      environment: "development-test",
+      token: async () => "token",
+      fetch: async () => ({
+        ok: true,
+        status: 200,
+        redirected: false,
+        headers: new Headers(),
+        arrayBuffer: async () => { throw new Error("body_failed"); },
+      }) as Response,
+    });
+    await expect(bodyFailure.discover()).rejects.toThrow("body_failed");
   });
 
   it("keeps manifest, resumable, and deletion operations conditionally fenced", async () => {
