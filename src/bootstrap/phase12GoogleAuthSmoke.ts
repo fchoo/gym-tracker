@@ -6,6 +6,7 @@ import { fetchGoogleDriveIdentity } from "./productionAutomaticBackupRuntime";
 
 export async function performPhase12GoogleAuthSmoke(webClientId: string): Promise<Readonly<{
   authenticated: true;
+  refreshed: true;
   scope: typeof DRIVE_FILE_SCOPE;
 }>> {
   const auth = createGoogleAuthAdapter({
@@ -14,5 +15,6 @@ export async function performPhase12GoogleAuthSmoke(webClientId: string): Promis
   });
   const identity = await auth.connect();
   if (identity === null) throw new Error("phase12_google_auth_smoke_cancelled");
-  return Object.freeze({ authenticated: true, scope: DRIVE_FILE_SCOPE });
+  await auth.accessToken();
+  return Object.freeze({ authenticated: true, refreshed: true, scope: DRIVE_FILE_SCOPE });
 }
