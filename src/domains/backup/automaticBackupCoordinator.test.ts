@@ -33,6 +33,33 @@ describe("automatic backup coordinator", () => {
     expect(selectRecoveryLineage([{ kind: "update_required", schemaVersion: 99, fileId: "future" }]))
       .toEqual({ kind: "update_required" });
   });
+
+  it("reconstructs a missing manifest only from one verified bounded lineage", async () => {
+    const reconstructed: unknown[] = [];
+    const candidate = {
+      kind: "current" as const, ownerNamespace: "a".repeat(32), writerEpoch: 3,
+      mutationGeneration: 6, createdAtMs: 10, fileId: "latest",
+      objectSha256: "b".repeat(64), byteLength: 100,
+    };
+    const coordinator = createAutomaticBackupCoordinator({
+      isWorkoutActive: () => false,
+      capture: async () => ({ generation: 1, sourceDigest: "a".repeat(64), bytes: new Uint8Array() }),
+      state: { read: async () => activeState({ authorityState: "quarantine", manifestId: null }), persistAttempt: async () => undefined, acknowledgeReceipt: async () => false, beginQuarantine: async () => undefined },
+      drive: { createSnapshot: async () => "snapshot", download: async () => new Uint8Array(), updateManifest: async () => "etag", readManifest: async () => null, discover: async () => [{}] },
+      validate: () => true, nowMs: () => 1, candidateId: () => "candidate",
+      recovery: {
+        parseSnapshot: async () => ({}), localIsEmpty: async () => true,
+        prepareMerge: async () => ({ token: "token", ownerSummary: "owner", adoptionRequired: false }),
+        restore: async () => ({ state: "ready" as const }), commitMerge: async () => ({ state: "ready" as const }),
+        discoverCandidates: async () => [candidate],
+        reconstructManifest: async (selection) => { reconstructed.push(selection); },
+      },
+    });
+
+    await expect(coordinator.recover()).resolves.toEqual({ status: "quarantined" });
+    expect(reconstructed).toEqual([expect.objectContaining({ kind: "verified", latest: candidate })]);
+    expect(coordinator.recoveryPrompt()).toEqual({ kind: "latest", producedAtMs: 10 });
+  });
   it("connects through One-Tap before persisting restore quarantine and never uploads during discovery", async () => {
     const events: string[] = [];
     let current: any = { environment: "production" as const, permissionId: "permission", connectionGeneration: 1, writerEpoch: 0, mutationGeneration: 0, backedUpGeneration: 0 };
