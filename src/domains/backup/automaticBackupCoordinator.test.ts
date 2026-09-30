@@ -389,6 +389,34 @@ describe("automatic backup coordinator", () => {
     expect(events).toEqual(["persist", "upload", "download", "promote", "reread", "acknowledge"]);
   });
 
+  it("trashes only 24-hour orphan candidates while the promoted manifest fence remains current", async () => {
+    const trashed: string[] = [];
+    let reads = 0;
+    const manifest = { writerEpoch: 2, latest: { fileId: "candidate", object_sha256: "a".repeat(64) }, previous: { fileId: "previous", object_sha256: "b".repeat(64) } };
+    const coordinator = createAutomaticBackupCoordinator({
+      isWorkoutActive: () => false,
+      capture: async () => ({ generation: 4, sourceDigest: "a".repeat(64), bytes: new Uint8Array([1]) }),
+      state: { read: async () => activeState(), persistAttempt: async () => undefined, acknowledgeReceipt: async () => true },
+      drive: {
+        createSnapshot: async () => "candidate", download: async () => new Uint8Array([1]),
+        updateManifest: async () => "next-etag",
+        readManifest: async () => { reads += 1; return { bytes: new Uint8Array([2]), etag: reads === 1 ? "etag" : "next-etag" }; },
+        discoverSnapshotsForRetention: async () => [
+          { fileId: "candidate", createdAtMs: 0, etag: "candidate-etag" },
+          { fileId: "previous", createdAtMs: 0, etag: "previous-etag" },
+          { fileId: "young", createdAtMs: 1, etag: "young-etag" },
+          { fileId: "orphan", createdAtMs: 0, etag: "orphan-etag" },
+        ],
+        trash: async (fileId) => { trashed.push(fileId); },
+      },
+      validate: () => true, validateManifest: () => manifest,
+      buildManifest: () => new Uint8Array([2]), nowMs: () => 24 * 60 * 60 * 1000, candidateId: () => "candidate",
+    });
+
+    await expect(coordinator.backup()).resolves.toEqual({ status: "backed_up", generation: 4 });
+    expect(trashed).toEqual(["orphan"]);
+  });
+
   it("re-discovers a durable tombstone namespace until no snapshot remains", async () => {
     const deleted: string[] = [];
     let calls = 0;

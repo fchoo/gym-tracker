@@ -154,6 +154,26 @@ export function createDriveBackupStoreAdapter(input: Readonly<{ environment: Aut
     const entries = await discover();
     return Object.freeze(entries.filter((entry) => entry.appProperties.object_kind === "snapshot"));
   }
+  async function discoverSnapshotsForRetention() {
+    const snapshots = await discoverSnapshotsForDeletion();
+    const candidates = [];
+    for (const snapshot of snapshots) {
+      const createdAtMs = Number(snapshot.appProperties.created_at_ms);
+      if (!Number.isSafeInteger(createdAtMs) || createdAtMs < 0) continue;
+      const etag = await readFileEtag(snapshot.fileId);
+      if (etag !== null) candidates.push(Object.freeze({ fileId: snapshot.fileId, createdAtMs, etag }));
+    }
+    return Object.freeze(candidates);
+  }
+  function snapshotPropertiesFor(payload: Uint8Array): Readonly<Record<string, string>> {
+    try {
+      const decoded = JSON.parse(new TextDecoder().decode(payload)) as { header?: { createdAtMs?: unknown } };
+      const createdAtMs = decoded.header?.createdAtMs;
+      return Number.isSafeInteger(createdAtMs) && (createdAtMs as number) >= 0
+        ? Object.freeze({ ...snapshotProperties, created_at_ms: String(createdAtMs) })
+        : snapshotProperties;
+    } catch { return snapshotProperties; }
+  }
   async function download(fileId: string, maxBytes: number): Promise<Uint8Array> {
     assertId(fileId); if (!Number.isSafeInteger(maxBytes) || maxBytes < 1 || maxBytes > MAX_RESPONSE_BYTES) throw new Error("drive_download_limit_invalid");
     const response = await request(`${DRIVE_API}/files/${encodeURIComponent(fileId)}?alt=media`);
@@ -185,12 +205,13 @@ export function createDriveBackupStoreAdapter(input: Readonly<{ environment: Aut
   }
   async function createSnapshot(candidateId: string, payload: Uint8Array): Promise<string> {
     assertId(candidateId); bytes(payload, MULTIPART_LIMIT); const boundary = "gym-tracker-drive-backup-v1";
-    const response = await request(`${DRIVE_UPLOAD}/files?uploadType=multipart&fields=id`, { method: "POST", headers: { "Content-Type": `multipart/related; boundary=${boundary}` }, body: multipart(candidateId, payload, snapshotProperties) as unknown as BodyInit });
-    if (!response.ok) throw new Error("drive_snapshot_create_failed"); const result = parseFile({ ...(json(await readBody(response, 64 * 1024)) as Record<string, unknown>), name: `snapshot-${candidateId}.json`, appProperties: snapshotProperties }, properties); if (result.fileId !== candidateId) throw new Error("drive_candidate_id_changed"); return result.fileId;
+    const candidateProperties = snapshotPropertiesFor(payload);
+    const response = await request(`${DRIVE_UPLOAD}/files?uploadType=multipart&fields=id`, { method: "POST", headers: { "Content-Type": `multipart/related; boundary=${boundary}` }, body: multipart(candidateId, payload, candidateProperties) as unknown as BodyInit });
+    if (!response.ok) throw new Error("drive_snapshot_create_failed"); const result = parseFile({ ...(json(await readBody(response, 64 * 1024)) as Record<string, unknown>), name: `snapshot-${candidateId}.json`, appProperties: candidateProperties }, properties); if (result.fileId !== candidateId) throw new Error("drive_candidate_id_changed"); return result.fileId;
   }
   async function createResumableSnapshot(candidateId: string, payload: Uint8Array): Promise<DriveResumableSession> {
     assertId(candidateId); if (payload.byteLength <= MULTIPART_LIMIT || payload.byteLength > 24 * 1024 * 1024) throw new Error("drive_resumable_size_invalid");
-    const metadata = JSON.stringify({ id: candidateId, name: `snapshot-${candidateId}.json`, appProperties: snapshotProperties, mimeType: "application/json" });
+    const metadata = JSON.stringify({ id: candidateId, name: `snapshot-${candidateId}.json`, appProperties: snapshotPropertiesFor(payload), mimeType: "application/json" });
     const response = await request(`${DRIVE_UPLOAD}/files?uploadType=resumable&fields=id`, { method: "POST", headers: { "Content-Type": "application/json", "X-Upload-Content-Type": "application/json", "X-Upload-Content-Length": String(payload.byteLength) }, body: metadata });
     if (!response.ok) throw new Error("drive_resumable_create_failed"); const location = response.headers.get("location"); if (location === null) throw new Error("drive_resumable_location_missing"); origin(location); return Object.freeze({ location, uploadedBytes: 0 });
   }
@@ -236,5 +257,5 @@ export function createDriveBackupStoreAdapter(input: Readonly<{ environment: Aut
     assertId(fileId); if (!Number.isSafeInteger(expectedWriterEpoch) || expectedWriterEpoch < 0) throw new Error("drive_writer_epoch_invalid"); assertEtag(etag); const response = await request(`${DRIVE_API}/files/${encodeURIComponent(fileId)}`, { method: "PATCH", headers: { "Content-Type": "application/json", "If-Match": etag, "X-Gym-Tracker-Writer-Epoch": String(expectedWriterEpoch) }, body: JSON.stringify({ trashed: true }) }); if (response.status === 409 || response.status === 412) throw new Error("drive_trash_fenced"); if (!response.ok) throw new Error("drive_trash_failed");
   }
   async function deleteTombstoned(fileId: string): Promise<void> { assertId(fileId); const response = await request(`${DRIVE_API}/files/${encodeURIComponent(fileId)}`, { method: "DELETE" }); if (response.status !== 404 && !response.ok) throw new Error("drive_delete_failed"); }
-  return Object.freeze({ environment: input.environment, allocateFileId, discover, discoverSnapshotsForDeletion, readManifest, createManifest, claimManifest: updateManifest, download, createSnapshot, createResumableSnapshot, resumeSnapshot, updateManifest, trash, deleteTombstoned });
+  return Object.freeze({ environment: input.environment, allocateFileId, discover, discoverSnapshotsForDeletion, discoverSnapshotsForRetention, readManifest, createManifest, claimManifest: updateManifest, download, createSnapshot, createResumableSnapshot, resumeSnapshot, updateManifest, trash, deleteTombstoned });
 }

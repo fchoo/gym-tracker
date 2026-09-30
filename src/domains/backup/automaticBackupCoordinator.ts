@@ -133,6 +133,8 @@ export function createAutomaticBackupCoordinator(input: Readonly<{
     createResumableSnapshot?(candidateId: string, bytes: Uint8Array): Promise<Readonly<{ location: string; uploadedBytes: number }>>;
     resumeSnapshot?(session: Readonly<{ location: string; uploadedBytes: number }>, bytes: Uint8Array): Promise<Readonly<{ location: string; uploadedBytes: number }> | string>;
     discoverSnapshotsForDeletion?(): Promise<readonly Readonly<{ fileId: string }>[]>;
+    discoverSnapshotsForRetention?(): Promise<readonly Readonly<{ fileId: string; createdAtMs: number; etag: string }>[]>;
+    trash?(fileId: string, expectedWriterEpoch: number, etag: string): Promise<void>;
     deleteTombstoned?(fileId: string): Promise<void>;
   }>;
   validate(bytes: Uint8Array): boolean | Promise<boolean>;
@@ -338,6 +340,21 @@ export function createAutomaticBackupCoordinator(input: Readonly<{
       bootstrapFence = null;
     }
     const accepted = await input.state.acknowledgeReceipt({ ...receipt, snapshotId: fileId, manifestEtag: promotedEtag });
+    if (accepted && input.drive.discoverSnapshotsForRetention !== undefined && input.drive.trash !== undefined) {
+      try {
+        const candidates = await input.drive.discoverSnapshotsForRetention();
+        for (const candidate of candidates) {
+          const fence = await input.drive.readManifest();
+          const parsedFence = fence === null ? null : input.validateManifest?.(fence.bytes);
+          if (fence === null || fence.etag !== promotedEtag || parsedFence?.writerEpoch !== writerEpoch) break;
+          const protectedIds = new Set([parsedFence.latest?.fileId, parsedFence.previous?.fileId].filter((value): value is string => typeof value === "string"));
+          if (protectedIds.has(candidate.fileId) || input.nowMs() - candidate.createdAtMs < 24 * 60 * 60 * 1000) continue;
+          await input.drive.trash(candidate.fileId, writerEpoch, candidate.etag);
+        }
+      } catch {
+        // Retention is best-effort and never revokes an accepted backup.
+      }
+    }
     return accepted ? Object.freeze({ status: "backed_up" as const, generation: captured.generation }) : Object.freeze({ status: "stale_writer" as const });
   };
   const check = async (
