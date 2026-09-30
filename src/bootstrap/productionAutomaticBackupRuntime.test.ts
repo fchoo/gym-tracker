@@ -56,6 +56,7 @@ const mockCoordinatorPrepareRecovery = jest.fn<() => Promise<
   attemptId: "attempt",
 }));
 const mockCoordinatorCommitRecovery = jest.fn(async () => ({ state: "ready" as const }));
+const mockCoordinatorDeferRecovery = jest.fn(async () => undefined);
 
 jest.mock("expo-constants", () => ({
   __esModule: true,
@@ -76,7 +77,7 @@ jest.mock("../platform/sqlite/repositories/automaticBackupStateRepository", () =
 }));
 jest.mock("../domains/backup/automaticBackupCoordinator", () => ({
   createAutomaticBackupCoordinator: jest.fn(() => ({
-    connect: mockCoordinatorConnect, deferRecovery: jest.fn(async () => undefined),
+    connect: mockCoordinatorConnect, deferRecovery: mockCoordinatorDeferRecovery,
     abortChecking: jest.fn(async () => undefined), checkAgain: mockCoordinatorCheckAgain,
     prepareRecovery: mockCoordinatorPrepareRecovery,
     commitRecovery: mockCoordinatorCommitRecovery, disconnect: jest.fn(async () => undefined),
@@ -230,6 +231,23 @@ describe("production automatic-backup composition", () => {
       .rejects.toThrow("automatic_recovery_review_required");
 
     expect(mockCoordinatorCommitRecovery).toHaveBeenCalledTimes(commitsBefore);
+  });
+
+  it("returns a failed direct restore to the retryable quarantine state", async () => {
+    mockCoordinatorPrepareRecovery.mockResolvedValueOnce({
+      kind: "empty_direct",
+      attemptId: "failed-attempt",
+    });
+    mockCoordinatorCommitRecovery.mockRejectedValueOnce(new Error("logical_restore_failed"));
+    const deferralsBefore = mockCoordinatorDeferRecovery.mock.calls.length;
+    const warn = jest.spyOn(console, "warn").mockImplementation(() => undefined);
+    const { runtime } = createProductionAutomaticBackupServices({} as never);
+
+    await expect(runtime.continueRestore()).rejects.toThrow("logical_restore_failed");
+
+    expect(mockCoordinatorDeferRecovery).toHaveBeenCalledTimes(deferralsBefore + 1);
+    expect(warn).toHaveBeenCalledWith("[automatic-backup] recovery:logical_restore_failed");
+    warn.mockRestore();
   });
 
   it("re-discovers an interrupted first backup before manual retry", async () => {
