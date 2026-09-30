@@ -125,6 +125,19 @@ describe("Drive backup store adapter", () => {
       fetch: () => { throw new Error("offline"); },
     });
     await expect(immediateFailure.discover()).rejects.toThrow("offline");
+
+    let fetchCalled = false;
+    let resolveToken: ((token: string) => void) | undefined;
+    const tokenTimeout = createDriveBackupStoreAdapter({
+      environment: "development-test",
+      token: async () => new Promise<string>((resolve) => { resolveToken = resolve; }),
+      requestTimeoutMs: 1,
+      fetch: async () => { fetchCalled = true; return response({ files: [] }); },
+    });
+    await expect(tokenTimeout.discover()).rejects.toThrow("drive_request_timeout");
+    resolveToken?.("token");
+    await Promise.resolve();
+    expect(fetchCalled).toBe(false);
   });
 
   it("keeps manifest, resumable, and deletion operations conditionally fenced", async () => {

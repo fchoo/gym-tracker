@@ -1,4 +1,5 @@
 import Constants from "expo-constants";
+import { fetch as expoFetch } from "expo/fetch";
 
 import {
   canonicalJson,
@@ -11,7 +12,7 @@ import { createAutomaticBackupScheduler, type AutomaticBackupScheduler } from ".
 import { createAutomaticPortableMergePort, createAutomaticPortableRestorePort } from "../domains/portability/automaticPortability";
 import { parseLogicalBackupSnapshot, type LogicalBackupSnapshot } from "../domains/portability/backupContracts";
 import { buildPortableMergePlan, type PortableMergePlan } from "../domains/portability/mergePlan";
-import { createDriveBackupStoreAdapter } from "../platform/google/driveBackupStoreAdapter";
+import { createDriveBackupStoreAdapter, type DriveFetch } from "../platform/google/driveBackupStoreAdapter";
 import { createFullPlanLogicalMergeWriter } from "../platform/sqlite/repositories/logicalMergeRepository";
 import { createLogicalRestoreRepository } from "../platform/sqlite/repositories/logicalRestoreRepository";
 import { createRestoreReconciliationRepository } from "../platform/sqlite/repositories/restoreReconciliationRepository";
@@ -108,7 +109,7 @@ export function createProductionAutomaticBackupServices(kernel: SqliteKernel): S
   const snapshotCapture = createProductionAutomaticSnapshotCapture({
     kernel,
   });
-  const drive = createDriveBackupStoreAdapter({ environment: settings.environment, token: () => auth.accessToken() });
+  const drive = createDriveBackupStoreAdapter({ environment: settings.environment, token: () => auth.accessToken(), fetch: expoFetch as DriveFetch });
   const reconciliation = createRestoreReconciliationRepository(kernel, { history: createHistoryProjectionRepository(kernel), search: createExerciseSearchIndexRepository(kernel), nowMs: () => Date.now() });
   const restore = createAutomaticPortableRestorePort({
     schema: createSqliteRestoreSchemaPort(kernel), retainedReferences: createSqliteRestoreRetainedReferencePort(kernel), candidateProbe: createSqliteRestoreCandidateProbe(),

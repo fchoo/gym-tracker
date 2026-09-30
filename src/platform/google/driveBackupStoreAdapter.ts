@@ -62,15 +62,19 @@ export function createDriveBackupStoreAdapter(input: Readonly<{ environment: Aut
   const snapshotProperties = Object.freeze({ ...properties, object_kind: "snapshot" });
   const manifestProperties = Object.freeze({ ...properties, object_kind: "manifest" });
   async function request(url: string, init: RequestInit = {}): Promise<Response> {
-    origin(url); const token = await input.token();
-    if (token.length === 0 || token.length > 16 * 1024) throw new Error("drive_token_invalid");
+    origin(url);
     const controller = new AbortController();
-    let timeout: ReturnType<typeof setTimeout> | undefined;
+    let timeout!: ReturnType<typeof setTimeout>;
     let timedOut = false;
     let response: Response;
     try {
       response = await Promise.race([
-        fetcher(url, { ...init, signal: controller.signal, redirect: "error", headers: { Authorization: `Bearer ${token}`, ...(init.headers ?? {}) } }),
+        (async () => {
+          const token = await input.token();
+          if (token.length === 0 || token.length > 16 * 1024) throw new Error("drive_token_invalid");
+          if (controller.signal.aborted) throw new Error("drive_request_timeout");
+          return fetcher(url, { ...init, signal: controller.signal, redirect: "error", headers: { Authorization: `Bearer ${token}`, ...(init.headers ?? {}) } });
+        })(),
         new Promise<never>((_resolve, reject) => {
           timeout = setTimeout(() => {
             timedOut = true;
@@ -83,7 +87,7 @@ export function createDriveBackupStoreAdapter(input: Readonly<{ environment: Aut
       if (timedOut) throw new Error("drive_request_timeout");
       throw error;
     } finally {
-      if (timeout !== undefined) clearTimeout(timeout);
+      clearTimeout(timeout);
     }
     if (response.status === 401) throw new Error("drive_unauthorized");
     return response;

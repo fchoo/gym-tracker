@@ -60,6 +60,7 @@ jest.mock("expo-constants", () => ({
     },
   },
 }));
+jest.mock("expo/fetch", () => ({ fetch: jest.fn() }));
 
 jest.mock("../platform/google/googleAuthAdapter", () => ({ createGoogleAuthAdapter: mockCreateGoogleAuthAdapter }));
 jest.mock("../platform/sqlite/repositories/automaticBackupStateRepository", () => ({
