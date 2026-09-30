@@ -8,6 +8,7 @@ const mockCreateGoogleAuthAdapter = jest.fn(() => ({
 const mockState = {
   read: jest.fn(async () => ({
     permissionId: "google-permission", statusCode: "idle", authorityState: "active",
+    manifestId: "manifest" as string | null,
     mutationGeneration: 4, backedUpGeneration: 4, dirtySinceMs: null,
     dataUsePolicy: "any-network", accountDisplayLabel: "Owner",
   })),
@@ -44,6 +45,9 @@ const mockCoordinatorConnect = jest.fn<() => Promise<{
   status: "ready" | "needs_bootstrap";
 }>>(async () => ({ status: "ready" }));
 const mockCoordinatorBackup = jest.fn(async () => ({ status: "backed_up" as const }));
+const mockCoordinatorCheckAgain = jest.fn<() => Promise<{
+  status: "ready" | "needs_bootstrap" | "quarantined";
+}>>(async () => ({ status: "ready" }));
 
 jest.mock("expo-constants", () => ({
   __esModule: true,
@@ -64,7 +68,7 @@ jest.mock("../platform/sqlite/repositories/automaticBackupStateRepository", () =
 jest.mock("../domains/backup/automaticBackupCoordinator", () => ({
   createAutomaticBackupCoordinator: jest.fn(() => ({
     connect: mockCoordinatorConnect, deferRecovery: jest.fn(async () => undefined),
-    abortChecking: jest.fn(async () => undefined), checkAgain: jest.fn(async () => undefined),
+    abortChecking: jest.fn(async () => undefined), checkAgain: mockCoordinatorCheckAgain,
     prepareRecovery: jest.fn(async () => ({ kind: "empty_direct" as const, attemptId: "attempt" })),
     commitRecovery: jest.fn(async () => undefined), disconnect: jest.fn(async () => undefined),
     finishDeletionSweep: jest.fn(async () => undefined), backup: mockCoordinatorBackup,
@@ -158,6 +162,43 @@ describe("production automatic-backup composition", () => {
     await runtime.connect();
 
     expect(mockCoordinatorBackup).toHaveBeenCalledTimes(priorBackups + 1);
+  });
+
+  it("re-discovers an interrupted first backup before manual retry", async () => {
+    const priorBackups = mockCoordinatorBackup.mock.calls.length;
+    const priorChecks = mockCoordinatorCheckAgain.mock.calls.length;
+    mockState.read.mockResolvedValueOnce({
+      permissionId: "google-permission", statusCode: "idle", authorityState: "quarantine",
+      manifestId: null, mutationGeneration: 4, backedUpGeneration: 0, dirtySinceMs: null,
+      dataUsePolicy: "any-network", accountDisplayLabel: "Owner",
+    });
+    mockCoordinatorCheckAgain.mockResolvedValueOnce({ status: "needs_bootstrap" });
+    const { runtime } = createProductionAutomaticBackupServices({} as never);
+
+    await runtime.retryBackup();
+
+    expect(mockCoordinatorCheckAgain).toHaveBeenCalledTimes(priorChecks + 1);
+    expect(mockCoordinatorBackup).toHaveBeenCalledTimes(priorBackups + 1);
+
+    mockState.read.mockResolvedValueOnce({
+      permissionId: "google-permission", statusCode: "idle", authorityState: "quarantine",
+      manifestId: null, mutationGeneration: 4, backedUpGeneration: 0, dirtySinceMs: null,
+      dataUsePolicy: "any-network", accountDisplayLabel: "Owner",
+    });
+    mockCoordinatorCheckAgain.mockResolvedValueOnce({ status: "quarantined" });
+    await runtime.backupNow();
+    expect(mockCoordinatorBackup).toHaveBeenCalledTimes(priorBackups + 1);
+
+    const schedulerModule = jest.requireMock("../domains/backup/automaticBackupScheduler") as { createAutomaticBackupScheduler: jest.Mock };
+    const schedulerInput = schedulerModule.createAutomaticBackupScheduler.mock.calls.at(-1)?.[0] as { run(): Promise<void> };
+    mockState.read.mockResolvedValueOnce({
+      permissionId: "google-permission", statusCode: "idle", authorityState: "quarantine",
+      manifestId: null, mutationGeneration: 4, backedUpGeneration: 0, dirtySinceMs: null,
+      dataUsePolicy: "any-network", accountDisplayLabel: "Owner",
+    });
+    mockCoordinatorCheckAgain.mockResolvedValueOnce({ status: "ready" });
+    await schedulerInput.run();
+    expect(mockCoordinatorBackup).toHaveBeenCalledTimes(priorBackups + 2);
   });
 
   it("routes every owner command through the production state, coordinator, and scheduler seams", async () => {

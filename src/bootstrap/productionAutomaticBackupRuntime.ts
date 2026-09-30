@@ -188,6 +188,14 @@ export function createProductionAutomaticBackupServices(kernel: SqliteKernel): S
       freshAdoptionGrant: async () => { const identity = await auth.reauthenticate(); if (identity === null) throw new Error("automatic_recovery_reauthentication_cancelled"); return "fresh-auth-required"; },
     },
   });
+  const backupAfterBootstrapDiscovery = async (): Promise<void> => {
+    const current = await state.read();
+    if (current.permissionId !== null && current.authorityState === "quarantine" && current.manifestId === null) {
+      const recovery = await coordinator.checkAgain();
+      if (recovery.status !== "needs_bootstrap" && recovery.status !== "ready") return;
+    }
+    await coordinator.backup();
+  };
   const scheduler = createAutomaticBackupScheduler({
     isWorkoutActive: async () => (await kernel.queryAll("SELECT 1 FROM workout_sessions WHERE status = 'in_progress' LIMIT 1")).length !== 0,
     eligible: async () => {
@@ -195,7 +203,7 @@ export function createProductionAutomaticBackupServices(kernel: SqliteKernel): S
       return current.authorityState === "active"
         || (current.authorityState === "quarantine" && current.manifestId === null);
     },
-    queue: (work) => queueMicrotask(work), run: async () => { await coordinator.backup(); },
+    queue: (work) => queueMicrotask(work), run: backupAfterBootstrapDiscovery,
   });
   const runtime = createAutomaticBackupRuntime({ read: async () => {
     const current = await state.read();
@@ -205,7 +213,7 @@ export function createProductionAutomaticBackupServices(kernel: SqliteKernel): S
       const result = await coordinator.connect();
       if (result.status === "needs_bootstrap") await coordinator.backup();
     }, deferRestore: () => coordinator.deferRecovery(), cancelChecking: () => coordinator.abortChecking(), checkAgain: async () => { await coordinator.checkAgain(); }, continueRestore: async () => undefined, prepareRecovery: (input) => coordinator.prepareRecovery(input), commitRecovery: async (input) => { await coordinator.commitRecovery(input); }, finishSetup: async () => undefined,
-    backupNow: async () => { await coordinator.backup(); }, retryBackup: async () => { await coordinator.backup(); }, useCellularThisTime: async () => { await coordinator.backup(); }, setDataUsePolicy: async (policy) => state.setDataUsePolicy(policy === "wifi_only" ? "wifi-only" : "any-network"), takeOver: async () => coordinator.checkAgain().then(() => undefined), disconnect: () => coordinator.disconnect(),
+    backupNow: backupAfterBootstrapDiscovery, retryBackup: backupAfterBootstrapDiscovery, useCellularThisTime: backupAfterBootstrapDiscovery, setDataUsePolicy: async (policy) => state.setDataUsePolicy(policy === "wifi_only" ? "wifi-only" : "any-network"), takeOver: async () => coordinator.checkAgain().then(() => undefined), disconnect: () => coordinator.disconnect(),
     deleteCloudBackup: async () => { throw new Error("automatic_delete_requires_tombstone_confirmation"); }, finishDeletingCloudBackup: async () => { await coordinator.finishDeletionSweep(); }, startNewCloudBackup: async () => { await coordinator.checkAgain(); scheduler.request("manual"); },
   } });
   const services = Object.freeze({ runtime, scheduler }); cache.set(kernel as object, services); return services;
