@@ -46,13 +46,16 @@ describe("Drive backup store adapter", () => {
   it("uses isolated metadata and preserves a raw manifest ETag in If-Match", async () => {
     const fetcher = jest.fn(async (url: string, init: RequestInit) => {
       if (url.includes("files?q=")) return response({ files: [{ id: "manifest-1", name: "manifest.json", appProperties: properties }] });
-      if (url.includes("alt=media")) return response("{}", { headers: { etag: '"raw-etag"' } });
+      if (url.includes("fields=id")) return response("{}", { headers: { etag: '"raw-etag"' } });
+      if (url.includes("alt=media")) return response("{}");
       return response("{}", { headers: { etag: '"next-etag"' } });
     });
     const adapter = createDriveBackupStoreAdapter({ environment: "development-test", token: async () => "token", fetch: fetcher });
     await expect(adapter.readManifest()).resolves.toEqual({ bytes: new TextEncoder().encode("{}"), etag: '"raw-etag"' });
     await adapter.updateManifest("manifest-1", new TextEncoder().encode("{}"), '"raw-etag"');
     expect(fetcher.mock.calls.at(-1)?.[1]?.headers).toEqual(expect.objectContaining({ "If-Match": '"raw-etag"' }));
+    expect(fetcher.mock.calls.find(([url]) => String(url).includes("alt=media"))?.[1]?.headers)
+      .toEqual(expect.objectContaining({ "If-Match": '"raw-etag"' }));
     const discoveryUrl = String(fetcher.mock.calls[0]?.[0]);
     expect(discoveryUrl).toContain("pageSize=9");
     expect(decodeURIComponent(discoveryUrl)).toContain("appProperties has { key='environment' and value='development-test' }");
@@ -103,11 +106,14 @@ describe("Drive backup store adapter", () => {
     const oversized = createDriveBackupStoreAdapter({ environment: "development-test", token: async () => "token", fetch: async () => response("{}", { headers: { "content-length": "999999" } }) });
     await expect(oversized.discover()).rejects.toThrow("drive_response_too_large");
 
-    const missingFile = createDriveBackupStoreAdapter({ environment: "development-test", token: async () => "token", fetch: async (url) => url.includes("alt=media") ? response(null, { status: 404 }) : response({ files: [{ id: "manifest", name: "manifest.json", appProperties: properties }] }) });
+    const missingFile = createDriveBackupStoreAdapter({ environment: "development-test", token: async () => "token", fetch: async (url) => url.includes("files?q=") ? response({ files: [{ id: "manifest", name: "manifest.json", appProperties: properties }] }) : response(null, { status: 404 }) });
     await expect(missingFile.download("manifest", 1)).rejects.toThrow("drive_file_missing");
     await expect(missingFile.readManifest()).resolves.toBeNull();
     await expect(missingFile.download("bad/id", 1)).rejects.toThrow("drive_file_id_invalid");
     await expect(missingFile.download("manifest", 0)).rejects.toThrow("drive_download_limit_invalid");
+
+    const missingManifestMedia = createDriveBackupStoreAdapter({ environment: "development-test", token: async () => "token", fetch: async (url) => url.includes("files?q=") ? response({ files: [{ id: "manifest", name: "manifest.json", appProperties: properties }] }) : url.includes("fields=id") ? response("{}", { headers: { etag: '"etag"' } }) : response(null, { status: 404 }) });
+    await expect(missingManifestMedia.readManifest()).resolves.toBeNull();
   });
 
   it("aborts a Drive request at the bounded transport deadline", async () => {

@@ -159,11 +159,21 @@ export function createDriveBackupStoreAdapter(input: Readonly<{ environment: Aut
     const response = await request(`${DRIVE_API}/files/${encodeURIComponent(fileId)}?alt=media`);
     if (response.status === 404) throw new Error("drive_file_missing"); if (!response.ok) throw new Error("drive_download_failed"); return readBody(response, maxBytes);
   }
+  async function readFileEtag(fileId: string): Promise<string | null> {
+    assertId(fileId);
+    const response = await request(`${DRIVE_API}/files/${encodeURIComponent(fileId)}?fields=id`);
+    if (response.status === 404) return null;
+    if (!response.ok) throw new Error("drive_manifest_read_failed");
+    return responseEtag(response);
+  }
   async function readManifest(): Promise<DriveManifestRead | null> {
     const manifests = (await discover()).filter((entry) => entry.name === "manifest.json");
     if (manifests.length > 1) throw new Error("drive_manifest_ambiguous"); if (manifests.length === 0) return null;
-    const fileId = manifests[0]!.fileId; const response = await request(`${DRIVE_API}/files/${encodeURIComponent(fileId)}?alt=media`);
-    if (response.status === 404) return null; if (!response.ok) throw new Error("drive_manifest_read_failed"); return Object.freeze({ bytes: await readBody(response, 16 * 1024), etag: responseEtag(response) });
+    const fileId = manifests[0]!.fileId;
+    const etag = await readFileEtag(fileId);
+    if (etag === null) return null;
+    const response = await request(`${DRIVE_API}/files/${encodeURIComponent(fileId)}?alt=media`, { headers: { "If-Match": etag } });
+    if (response.status === 404) return null; if (!response.ok) throw new Error("drive_manifest_read_failed"); return Object.freeze({ bytes: await readBody(response, 16 * 1024), etag });
   }
   async function createSnapshot(candidateId: string, payload: Uint8Array): Promise<string> {
     assertId(candidateId); bytes(payload, MULTIPART_LIMIT); const boundary = "gym-tracker-drive-backup-v1";
@@ -201,10 +211,9 @@ export function createDriveBackupStoreAdapter(input: Readonly<{ environment: Aut
     if (typeof result !== "object" || result === null || typeof (result as { id?: unknown }).id !== "string" || (result as { id: string }).id !== candidateId) throw new Error("drive_manifest_create_invalid");
     const createdEtag = response.headers.get("etag");
     if (createdEtag !== null && createdEtag !== "*") return Object.freeze({ fileId: candidateId, etag: createdEtag });
-    const reread = await request(`${DRIVE_API}/files/${encodeURIComponent(candidateId)}?alt=media`);
-    if (!reread.ok) throw new Error("drive_manifest_read_failed");
-    await readBody(reread, 16 * 1024);
-    return Object.freeze({ fileId: candidateId, etag: responseEtag(reread) });
+    const rereadEtag = await readFileEtag(candidateId);
+    if (rereadEtag === null) throw new Error("drive_manifest_read_failed");
+    return Object.freeze({ fileId: candidateId, etag: rereadEtag });
   }
   async function trash(fileId: string, expectedWriterEpoch: number, etag: string): Promise<void> {
     assertId(fileId); if (!Number.isSafeInteger(expectedWriterEpoch) || expectedWriterEpoch < 0) throw new Error("drive_writer_epoch_invalid"); assertEtag(etag); const response = await request(`${DRIVE_API}/files/${encodeURIComponent(fileId)}`, { method: "PATCH", headers: { "Content-Type": "application/json", "If-Match": etag, "X-Gym-Tracker-Writer-Epoch": String(expectedWriterEpoch) }, body: JSON.stringify({ trashed: true }) }); if (response.status === 409 || response.status === 412) throw new Error("drive_trash_fenced"); if (!response.ok) throw new Error("drive_trash_failed");
