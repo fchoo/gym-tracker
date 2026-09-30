@@ -22,6 +22,7 @@ function commands(): jest.Mocked<AutomaticBackupRuntimeCommands> {
     continueRestore: jest.fn(async () => undefined),
     prepareRecovery: jest.fn(async () => ({ kind: "empty_direct" as const, attemptId: "attempt" })),
     commitRecovery: jest.fn(async () => undefined),
+    cancelRecovery: jest.fn(async () => undefined),
     finishSetup: jest.fn(async () => undefined),
     backupNow: jest.fn(async () => undefined),
     retryBackup: jest.fn(async () => undefined),
@@ -134,6 +135,7 @@ describe("automatic backup runtime", () => {
 
     await expect(runtime.prepareRecovery({ candidate })).resolves.toEqual(preparation);
     await runtime.commitRecovery(commit);
+    await runtime.cancelRecovery("cancelled-attempt");
     await runtime.deferRestore(); await runtime.cancelChecking(); await runtime.checkAgain(); await runtime.continueRestore();
     await runtime.finishSetup(); await runtime.backupNow(); await runtime.retryBackup(); await runtime.useCellularThisTime();
     await runtime.setDataUsePolicy("wifi_only"); await runtime.takeOver(); await runtime.disconnect();
@@ -141,6 +143,7 @@ describe("automatic backup runtime", () => {
 
     expect(port.prepareRecovery).toHaveBeenCalledWith({ candidate });
     expect(port.commitRecovery).toHaveBeenCalledWith(commit);
+    expect(port.cancelRecovery).toHaveBeenCalledWith("cancelled-attempt");
     expect(port.setDataUsePolicy).toHaveBeenCalledWith("wifi_only");
     expect(port.startNewCloudBackup).toHaveBeenCalledTimes(1);
     expect(runtime.current().status).toBe("backup_pending");

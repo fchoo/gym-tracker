@@ -108,6 +108,7 @@ export type AutomaticBackupCoordinator = Readonly<{
   recover(): Promise<Readonly<{ status: "ready" | "needs_bootstrap" | "quarantined" | "stale_writer" }>>;
   prepareRecovery(input: Readonly<{ candidate: AutomaticRecoveryCandidate }>): Promise<AutomaticRecoveryPreparation>;
   commitRecovery(input: AutomaticRecoveryCommit): Promise<Readonly<{ state: "ready" | "rebuild_pending" }>>;
+  cancelRecovery(attemptId: string): Promise<void>;
   recoveryPrompt(): Readonly<{ kind: "latest" | "previous" | "update_required"; producedAtMs?: number; previousProducedAtMs?: number }> | null;
 }>;
 
@@ -386,6 +387,8 @@ export function createAutomaticBackupCoordinator(input: Readonly<{
     identity?: Readonly<{ permissionId: string; displayEmail: string | null }>,
     allowHigherEpochRecovery = false,
   ) => {
+    recoveryAttempts.clear();
+    currentRecoveryPrompt = null;
     const generation = ++checkingGeneration;
     const prior = await input.state.read();
     const permissionId = identity?.permissionId ?? prior.permissionId;
@@ -753,6 +756,10 @@ export function createAutomaticBackupCoordinator(input: Readonly<{
     startNewCloudBackup,
     prepareRecovery,
     commitRecovery,
+    async cancelRecovery(attemptId) {
+      recoveryAttempts.delete(attemptId);
+      await input.state.setRecoveryStatus?.("restore_pending");
+    },
     recoveryPrompt: () => currentRecoveryPrompt,
   });
 }

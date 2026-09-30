@@ -27,6 +27,7 @@ import {
   type RuntimeSecureBackupArchive,
 } from "../../src/bootstrap/workoutAppRuntime";
 import { phase12BackupFixtureFromNativeContract, phase12BackupFixtureViewModel } from "../../src/bootstrap/phase12BackupTestControls";
+import type { AutomaticRecoveryPreparation } from "../../src/domains/backup/automaticBackupCoordinator";
 import {
   useCsvExportController,
 } from "../../src/ui/portability/useCsvExportController";
@@ -710,6 +711,10 @@ export default function DataAndRecoveryRoute() {
     discard: runtime.discardCsvExport,
   });
   const [showCellularConfirmation, setShowCellularConfirmation] = useState(false);
+  const [automaticRecoveryReview, setAutomaticRecoveryReview] = useState<Extract<
+    AutomaticRecoveryPreparation,
+    { kind: "merge" }
+  > | null>(null);
   const fixture = phase12BackupFixtureFromNativeContract({
     nativeContractsEnabled: Constants.expoConfig?.extra?.nativeContractsEnabled === true,
     buildProfile: Constants.expoConfig?.extra?.buildProfile,
@@ -743,6 +748,23 @@ export default function DataAndRecoveryRoute() {
     if (backup.dataUsePolicy === "wifi_only") { setShowCellularConfirmation(true); return; }
     invoke(runtime.requestAutomaticBackupNow);
   };
+  const prepareAutomaticRecovery = async (candidate: "latest" | "previous") => {
+    try {
+      const preparation = await runtime.prepareAutomaticRecovery({ candidate });
+      if (preparation.kind === "empty_direct") {
+        await runtime.commitAutomaticRecovery(preparation);
+      } else {
+        setAutomaticRecoveryReview(preparation);
+      }
+    } catch {
+      setAutomaticRecoveryReview(null);
+    }
+  };
+  const cancelAutomaticRecovery = async () => {
+    const attemptId = automaticRecoveryReview?.attemptId;
+    setAutomaticRecoveryReview(null);
+    if (attemptId !== undefined) await runtime.cancelAutomaticRecovery(attemptId);
+  };
   const csvRow = csv.state.kind === "ready" ? {
     title: "Export CSV", supportingText: "Readable spreadsheet file. Not password-protected.", icon: "download" as const, action: csv.create,
   } : csv.state.kind === "ready_to_share" ? {
@@ -764,7 +786,17 @@ export default function DataAndRecoveryRoute() {
       {backup.primaryAction === "connect" ? <PrimaryAction label="Connect Google Drive" onPress={() => invoke(runtime.connectAutomaticBackup)} /> : null}
       {backup.primaryAction === "backup_now" ? <PrimaryAction label="Back up now" onPress={backupNow} /> : null}
       {backup.primaryAction === "retry" ? <PrimaryAction label="Retry" onPress={() => invoke(runtime.retryAutomaticBackup)} /> : null}
-      {backup.primaryAction === "continue_restore" ? <PrimaryAction label="Continue restore" onPress={() => invoke(runtime.continueAutomaticRestore)} /> : null}
+      {backup.primaryAction === "continue_restore" && automaticRecoveryReview === null ? <>
+        <PrimaryAction label={backup.recoveryPrompt?.kind === "previous" ? "Use previous backup" : "Use latest backup"} onPress={() => { void prepareAutomaticRecovery(backup.recoveryPrompt?.kind === "previous" ? "previous" : "latest"); }} />
+        {backup.recoveryPrompt?.previousProducedAtMs === undefined || backup.recoveryPrompt.kind === "previous" ? null : <SecondaryAction label="Use previous backup" onPress={() => { void prepareAutomaticRecovery("previous"); }} />}
+      </> : null}
+      {automaticRecoveryReview === null ? null : <View style={styles.card}>
+        <Text accessibilityRole="header" style={[typeScale.sectionTitle as TextStyle, { color: colors.contentCardText }]}>Review cloud merge</Text>
+        <Text style={[typeScale.body as TextStyle, { color: colors.contentCardTextSecondary }]}>{automaticRecoveryReview.ownerSummary}</Text>
+        {automaticRecoveryReview.adoptionRequired ? <Text style={[typeScale.body as TextStyle, { color: colors.contentCardTextSecondary }]}>This also adopts the backup identity on this phone.</Text> : null}
+        <PrimaryAction label="Merge workouts" onPress={() => { void runtime.commitAutomaticRecovery({ kind: "merge", attemptId: automaticRecoveryReview.attemptId, confirmation: "MERGE", ...(automaticRecoveryReview.adoptionRequired ? { adoptIdentity: true as const } : {}) }).then(() => setAutomaticRecoveryReview(null), () => undefined); }} />
+        <SecondaryAction label="Cancel cloud recovery" onPress={() => { void cancelAutomaticRecovery(); }} />
+      </View>}
       {backup.primaryAction === "check_again" ? <PrimaryAction label="Check again" onPress={() => invoke(runtime.checkAutomaticBackupAgain)} /> : null}
       {showCellularConfirmation ? <View style={styles.card}>
         <Text accessibilityLiveRegion="polite" style={[typeScale.body as TextStyle, { color: colors.contentCardTextSecondary }]}>Wi-Fi only is on. Use cellular data for this backup?</Text>

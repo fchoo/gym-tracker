@@ -88,7 +88,7 @@ jest.mock("../domains/backup/automaticBackupCoordinator", () => ({
     connect: mockCoordinatorConnect, deferRecovery: mockCoordinatorDeferRecovery,
     abortChecking: jest.fn(async () => undefined), checkAgain: mockCoordinatorCheckAgain, takeOver: mockCoordinatorTakeOver,
     prepareRecovery: mockCoordinatorPrepareRecovery,
-    commitRecovery: mockCoordinatorCommitRecovery, disconnect: jest.fn(async () => undefined),
+    commitRecovery: mockCoordinatorCommitRecovery, cancelRecovery: jest.fn(async () => undefined), disconnect: jest.fn(async () => undefined),
     deleteCloudBackup: mockCoordinatorDeleteCloudBackup, startNewCloudBackup: mockCoordinatorStartNewCloudBackup, finishDeletionSweep: jest.fn(async () => undefined), backup: mockCoordinatorBackup,
   })),
 }));

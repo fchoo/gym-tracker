@@ -343,6 +343,7 @@ import {
   createWorkoutLifecycle,
 } from "./workoutLifecycle";
 import type { AutomaticBackupScheduler } from "../domains/backup/automaticBackupScheduler";
+import type { AutomaticRecoveryCandidate, AutomaticRecoveryCommit, AutomaticRecoveryPreparation } from "../domains/backup/automaticBackupCoordinator";
 import { projectAutomaticBackupPresentation, type AutomaticBackupViewModel } from "../domains/backup/automaticBackupPresentation";
 import { phase12BackupFixtureFromNativeContract, phase12BackupFixtureViewModel } from "./phase12BackupTestControls";
 import type { AutomaticBackupRuntime } from "./automaticBackupRuntime";
@@ -594,6 +595,9 @@ type RuntimeValue = RuntimeState & Readonly<{
   cancelAutomaticBackupCheck(): Promise<void>;
   checkAutomaticBackupAgain(): Promise<void>;
   continueAutomaticRestore(): Promise<void>;
+  prepareAutomaticRecovery(input: Readonly<{ candidate: AutomaticRecoveryCandidate }>): Promise<AutomaticRecoveryPreparation>;
+  commitAutomaticRecovery(input: AutomaticRecoveryCommit): Promise<void>;
+  cancelAutomaticRecovery(attemptId: string): Promise<void>;
   finishAutomaticBackupSetup(): Promise<void>;
   requestAutomaticBackupNow(): Promise<void>;
   retryAutomaticBackup(): Promise<void>;
@@ -2428,13 +2432,14 @@ export function WorkoutAppRuntimeProvider({
     }
   }, [requireServices, trustedRead]);
 
-  const runAutomaticBackupCommand = useCallback(async (
-    command: (runtime: AutomaticBackupRuntime) => Promise<void>,
-  ) => {
+  const runAutomaticBackupCommand = useCallback(async <Result,>(
+    command: (runtime: AutomaticBackupRuntime) => Promise<Result>,
+  ): Promise<Result> => {
     const runtime = requireServices().automaticBackupRuntime;
     if (runtime === undefined) throw new Error("automatic_backup_unavailable");
-    await command(runtime);
+    const result = await command(runtime);
     setState((current) => ({ ...current, automaticBackup: runtime.current() }));
+    return result;
   }, [requireServices]);
 
   const activatePlan = useCallback(async () => {
@@ -4155,6 +4160,9 @@ export function WorkoutAppRuntimeProvider({
     cancelAutomaticBackupCheck: () => runAutomaticBackupCommand((runtime) => runtime.cancelChecking()),
     checkAutomaticBackupAgain: () => runAutomaticBackupCommand((runtime) => runtime.checkAgain()),
     continueAutomaticRestore: () => runAutomaticBackupCommand((runtime) => runtime.continueRestore()),
+    prepareAutomaticRecovery: (input) => runAutomaticBackupCommand((runtime) => runtime.prepareRecovery(input)),
+    commitAutomaticRecovery: (input) => runAutomaticBackupCommand((runtime) => runtime.commitRecovery(input)),
+    cancelAutomaticRecovery: (attemptId) => runAutomaticBackupCommand((runtime) => runtime.cancelRecovery(attemptId)),
     finishAutomaticBackupSetup: () => runAutomaticBackupCommand((runtime) => runtime.finishSetup()),
     requestAutomaticBackupNow: () => runAutomaticBackupCommand((runtime) => runtime.backupNow()),
     retryAutomaticBackup: () => runAutomaticBackupCommand((runtime) => runtime.retryBackup()),

@@ -329,7 +329,7 @@ export function createProductionAutomaticBackupServices(kernel: SqliteKernel): S
         console.warn(`[automatic-backup] recovery:${error instanceof Error ? error.message : "unknown"}`);
         throw error;
       }
-    }, prepareRecovery: (input) => coordinator.prepareRecovery(input), commitRecovery: async (input) => { await coordinator.commitRecovery(input); }, finishSetup: async () => undefined,
+    }, prepareRecovery: (input) => coordinator.prepareRecovery(input), commitRecovery: async (input) => { await coordinator.commitRecovery(input); }, cancelRecovery: (attemptId) => coordinator.cancelRecovery(attemptId), finishSetup: async () => undefined,
     backupNow: async () => { scheduler.request("manual"); }, retryBackup: async () => { scheduler.request("retry"); }, useCellularThisTime: async () => { scheduler.request("manual_cellular"); }, setDataUsePolicy: async (policy) => state.setDataUsePolicy(policy === "wifi_only" ? "wifi-only" : "any-network"), takeOver: async () => coordinator.takeOver().then(() => undefined), disconnect: () => coordinator.disconnect(),
     deleteCloudBackup: async () => { scheduler.cancel(); await coordinator.deleteCloudBackup(); }, finishDeletingCloudBackup: async () => { await coordinator.finishDeletionSweep(); }, startNewCloudBackup: async () => { const result = await coordinator.startNewCloudBackup(); if (result.status === "ready") scheduler.request("manual"); },
   } });

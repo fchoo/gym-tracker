@@ -14,6 +14,7 @@ export type AutomaticBackupRuntimeCommands = Readonly<{
   continueRestore(): Promise<void>;
   prepareRecovery(input: Readonly<{ candidate: AutomaticRecoveryCandidate }>): Promise<AutomaticRecoveryPreparation>;
   commitRecovery(input: AutomaticRecoveryCommit): Promise<void>;
+  cancelRecovery(attemptId: string): Promise<void>;
   finishSetup(): Promise<void>;
   backupNow(): Promise<void>;
   retryBackup(): Promise<void>;
@@ -116,6 +117,7 @@ export function createAutomaticBackupRuntime(input: Readonly<{
     continueRestore: () => invoke<void>("continueRestore"),
     prepareRecovery: (input) => invoke<AutomaticRecoveryPreparation>("prepareRecovery", input),
     commitRecovery: (input) => invoke<void>("commitRecovery", input),
+    cancelRecovery: (attemptId) => invoke<void>("cancelRecovery", attemptId),
     finishSetup: () => invoke<void>("finishSetup"), backupNow: () => invoke<void>("backupNow"), retryBackup: () => invoke<void>("retryBackup"), useCellularThisTime: () => invoke<void>("useCellularThisTime"), setDataUsePolicy: (policy) => invoke<void>("setDataUsePolicy", policy), takeOver: () => invoke<void>("takeOver"), disconnect: () => invoke<void>("disconnect"), deleteCloudBackup: () => invoke<void>("deleteCloudBackup"), finishDeletingCloudBackup: () => invoke<void>("finishDeletingCloudBackup"), startNewCloudBackup: () => invoke<void>("startNewCloudBackup"),
   };
   return Object.freeze(runtime);

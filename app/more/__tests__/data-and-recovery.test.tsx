@@ -10,11 +10,17 @@ const mockCreateCsvExport = jest.fn<() => Promise<{ exportId: string }>>();
 const mockShareCsvExport = jest.fn<(value: { exportId: string }) => Promise<void>>();
 const mockDiscardCsvExport = jest.fn<(value: { exportId: string }) => Promise<void>>();
 const mockUseCellular = jest.fn<() => Promise<void>>();
+const mockPrepareAutomaticRecovery = jest.fn();
+const mockCommitAutomaticRecovery = jest.fn<() => Promise<void>>();
+const mockCancelAutomaticRecovery = jest.fn<() => Promise<void>>();
 const mockRuntime: any = {
   automaticBackup: { status: "not_connected", reason: null, warning: null, lastSuccessfulBackupAtMs: null, primaryAction: "connect", dataUsePolicy: "wifi_and_cellular", recoveryPrompt: null, progressStage: null },
   connectAutomaticBackup: mockConnect,
   requestAutomaticBackupNow: jest.fn(async () => undefined),
   useAutomaticBackupCellularThisTime: mockUseCellular,
+  prepareAutomaticRecovery: mockPrepareAutomaticRecovery,
+  commitAutomaticRecovery: mockCommitAutomaticRecovery,
+  cancelAutomaticRecovery: mockCancelAutomaticRecovery,
   createCsvExport: mockCreateCsvExport,
   shareCsvExport: mockShareCsvExport,
   discardCsvExport: mockDiscardCsvExport,
@@ -40,7 +46,41 @@ describe("DataAndRecoveryRoute", () => {
     mockDiscardCsvExport.mockResolvedValue(undefined);
     mockUseCellular.mockReset();
     mockUseCellular.mockResolvedValue(undefined);
+    mockPrepareAutomaticRecovery.mockReset();
+    mockPrepareAutomaticRecovery.mockResolvedValue({ kind: "empty_direct", attemptId: "attempt" });
+    mockCommitAutomaticRecovery.mockReset();
+    mockCommitAutomaticRecovery.mockResolvedValue(undefined);
+    mockCancelAutomaticRecovery.mockReset();
+    mockCancelAutomaticRecovery.mockResolvedValue(undefined);
     mockRuntime.automaticBackup = { status: "not_connected", reason: null, warning: null, lastSuccessfulBackupAtMs: null, primaryAction: "connect", dataUsePolicy: "wifi_and_cellular", recoveryPrompt: null, progressStage: null };
+  });
+
+  it("prepares an explicit previous candidate and confirms a reviewed merge", async () => {
+    mockRuntime.automaticBackup = {
+      ...mockRuntime.automaticBackup,
+      status: "restore_pending",
+      primaryAction: "continue_restore",
+      recoveryPrompt: { kind: "latest", producedAtMs: 2, previousProducedAtMs: 1 },
+    };
+    mockPrepareAutomaticRecovery.mockResolvedValueOnce({
+      kind: "merge",
+      attemptId: "merge-attempt",
+      token: "merge-token",
+      ownerSummary: "A different backup identity",
+      adoptionRequired: true,
+    });
+    await render(<AppearanceProvider><DataAndRecoveryRoute /></AppearanceProvider>);
+
+    await fireEvent.press(screen.getByRole("button", { name: "Use previous backup" }));
+    expect(mockPrepareAutomaticRecovery).toHaveBeenCalledWith({ candidate: "previous" });
+    expect(screen.getByRole("header", { name: "Review cloud merge" })).toBeOnTheScreen();
+    await fireEvent.press(screen.getByRole("button", { name: "Merge workouts" }));
+    expect(mockCommitAutomaticRecovery).toHaveBeenCalledWith({
+      kind: "merge",
+      attemptId: "merge-attempt",
+      confirmation: "MERGE",
+      adoptIdentity: true,
+    });
   });
 
   it.each([
