@@ -1,5 +1,9 @@
 import { describe, expect, it, jest } from "@jest/globals";
 
+jest.mock("expo-modules-core", () => ({
+  requireNativeModule: () => ({ current: async () => "wifi" }),
+}));
+
 import { currentNetworkClass, normalizeNetworkClass } from "./index";
 
 describe("network classifier bridge", () => {
@@ -13,5 +17,6 @@ describe("network classifier bridge", () => {
     expect(normalizeNetworkClass("carrier-name")).toBe("unknown");
     await expect(currentNetworkClass({ current: jest.fn(async () => "wifi") })).resolves.toBe("wifi");
     await expect(currentNetworkClass({ current: jest.fn(async () => { throw new Error("permission"); }) })).resolves.toBe("unknown");
+    await expect(currentNetworkClass()).resolves.toBe("wifi");
   });
 });
