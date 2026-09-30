@@ -170,8 +170,8 @@ export function createAutomaticBackupStateRepository(kernel: SqliteKernel): Read
         const outcome = await transaction.execute(
           `UPDATE automatic_backup_state SET environment = ?, permission_id = ?,
              account_display_label = COALESCE(?, account_display_label), connection_generation = ?,
-             authority_state = 'quarantine', claim_id = NULL, claim_expires_at_ms = NULL
-           WHERE id = 1`,
+             authority_state = 'quarantine', deletion_progress = 'none', claim_id = NULL, claim_expires_at_ms = NULL
+           WHERE id = 1 AND (authority_state <> 'deleted' OR deletion_progress = 'complete')`,
           [input.environment, input.permissionId, input.accountDisplayLabel ?? null, input.connectionGeneration],
         );
         if (outcome.changes !== 1) throw new Error("automatic_backup_state_missing");
@@ -305,9 +305,18 @@ export function createAutomaticBackupStateRepository(kernel: SqliteKernel): Read
           `UPDATE automatic_backup_state SET permission_id = NULL, display_email = NULL, account_display_label = NULL,
              manifest_file_id = NULL, manifest_etag = NULL, writer_epoch = 0,
              authority_state = 'quarantine', claim_id = NULL, claim_expires_at_ms = NULL,
-             status_code = 'idle' WHERE id = 1`,
+             status_code = 'idle', deletion_progress = 'none'
+           WHERE id = 1 AND NOT (authority_state = 'deleted' AND deletion_progress = 'sweep_pending')`,
         );
-        if (outcome.changes !== 1) throw new Error("automatic_backup_state_missing");
+        if (outcome.changes !== 1) {
+          const rows = await transaction.queryAll<Record<string, unknown>>(
+            "SELECT authority_state, deletion_progress FROM automatic_backup_state WHERE id = 1",
+          );
+          if (rows[0]?.authority_state === "deleted" && rows[0]?.deletion_progress === "sweep_pending") {
+            throw new Error("automatic_backup_deletion_in_progress");
+          }
+          throw new Error("automatic_backup_state_missing");
+        }
       });
     },
   });

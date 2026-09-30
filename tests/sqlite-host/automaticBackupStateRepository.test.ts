@@ -140,4 +140,51 @@ describe("automatic backup state repository host SQLite", () => {
     await expect(coordinator.prepareRecovery({ candidate: "latest" }))
       .resolves.toMatchObject({ kind: "empty_direct" });
   });
+
+  it("resets completed deletion atomically and blocks disconnect during a pending sweep", async () => {
+    const kernel = await open();
+    const repository = createAutomaticBackupStateRepository(kernel);
+    await repository.beginQuarantine({
+      environment: "development-test",
+      permissionId: "permission-a",
+      connectionGeneration: 1,
+    });
+    expect(await repository.beginDeletionSweep({
+      environment: "development-test",
+      permissionId: "permission-a",
+      connectionGeneration: 1,
+      manifestId: "manifest",
+      manifestEtag: "tombstone-etag",
+      successorWriterEpoch: 2,
+    })).toBe(true);
+    expect(await repository.completeDeletionSweep({
+      environment: "development-test",
+      permissionId: "permission-a",
+      connectionGeneration: 1,
+    })).toBe(true);
+
+    await repository.beginQuarantine({
+      environment: "development-test",
+      permissionId: "permission-a",
+      connectionGeneration: 2,
+    });
+    await expect(repository.read()).resolves.toMatchObject({
+      authorityState: "quarantine",
+      deletionProgress: "none",
+    });
+
+    expect(await repository.beginDeletionSweep({
+      environment: "development-test",
+      permissionId: "permission-a",
+      connectionGeneration: 2,
+      manifestId: "manifest",
+      manifestEtag: "tombstone-etag-2",
+      successorWriterEpoch: 3,
+    })).toBe(true);
+    await expect(repository.disconnectLocal()).rejects.toThrow("sqlite_transaction_failed");
+    await expect(repository.read()).resolves.toMatchObject({
+      authorityState: "deleted",
+      deletionProgress: "sweep_pending",
+    });
+  });
 });
