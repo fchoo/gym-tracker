@@ -160,4 +160,32 @@ describe("automatic backup scheduler", () => {
     scheduler.request("retry"); queued.shift()?.(); await settle();
     expect(calls).toEqual(["manual_cellular"]);
   });
+
+  it("reports admission failures and preserves the request for a later trigger", async () => {
+    const queued: Array<() => void> = [];
+    const errors: string[] = [];
+    const calls: string[] = [];
+    let failAdmission = true;
+    const scheduler = createAutomaticBackupScheduler({
+      isWorkoutActive: async () => {
+        if (failAdmission) throw new Error("sqlite_unavailable");
+        return false;
+      },
+      run: async (reason) => { calls.push(reason); },
+      queue: (work) => { queued.push(work); },
+      onError: (reason) => { errors.push(reason); },
+    });
+
+    scheduler.request("manual");
+    queued.shift()?.();
+    await settle();
+    expect(errors).toEqual(["manual"]);
+    expect(calls).toEqual([]);
+
+    failAdmission = false;
+    scheduler.request("foreground");
+    queued.shift()?.();
+    await settle();
+    expect(calls).toEqual(["manual"]);
+  });
 });

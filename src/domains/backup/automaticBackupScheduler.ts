@@ -23,30 +23,39 @@ export function createAutomaticBackupScheduler(input: Readonly<{
   let pending: AutomaticBackupRequest | null = null;
   const drain = async () => {
     queued = false;
-    if (running || pending === null || await input.isWorkoutActive()) return;
-    if (input.eligible !== undefined && !await input.eligible()) return;
     const reason = pending;
-    if (input.networkClass !== undefined && input.dataUsePolicy !== undefined) {
-      const [network, policy] = await Promise.all([input.networkClass(), input.dataUsePolicy()]);
-      if (network === "unavailable" || network === "unknown") return;
-      if (policy === "wifi-only" && network !== "wifi") {
-        if (reason === "manual") {
-          pending = null;
-          input.onCellularConfirmationRequired?.();
+    if (running || reason === null) return;
+    let admitted = false;
+    try {
+      if (await input.isWorkoutActive()) return;
+      if (input.eligible !== undefined && !await input.eligible()) return;
+      if (input.networkClass !== undefined && input.dataUsePolicy !== undefined) {
+        const [network, policy] = await Promise.all([input.networkClass(), input.dataUsePolicy()]);
+        if (network === "unavailable" || network === "unknown") return;
+        if (policy === "wifi-only" && network !== "wifi") {
+          if (reason === "manual") {
+            pending = null;
+            input.onCellularConfirmationRequired?.();
+          }
+          if (reason !== "manual_cellular") return;
         }
-        if (reason !== "manual_cellular") return;
+      }
+      // A workout may start while the read-only eligibility check is resolving.
+      // Recheck immediately before handing work to any network capture.
+      if (await input.isWorkoutActive()) return;
+      if (reason === "background" && input.isBackgroundAllowed?.() === false) return;
+      pending = null;
+      running = true;
+      admitted = true;
+      await input.run(reason);
+    } catch {
+      input.onError?.(reason);
+    } finally {
+      if (admitted) {
+        running = false;
+        if (pending !== null) schedule();
       }
     }
-    // A workout may start while the read-only eligibility check is resolving.
-    // Recheck immediately before handing work to any network capture.
-    if (await input.isWorkoutActive()) return;
-    if (reason === "background" && input.isBackgroundAllowed?.() === false) return;
-    pending = null;
-    running = true;
-    void input.run(reason).catch(() => { input.onError?.(reason); }).finally(() => {
-      running = false;
-      if (pending !== null) schedule();
-    });
   };
   const schedule = () => {
     if (queued) return;
