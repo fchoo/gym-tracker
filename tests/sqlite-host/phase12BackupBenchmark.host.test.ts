@@ -15,6 +15,7 @@ import { join } from "node:path";
 import {
   PHASE12_MAX_SNAPSHOT_BYTES,
   PHASE12_MAX_SNAPSHOT_ROWS,
+  phase12SqliteVariableLimit,
   seedMaximumHistory,
 } from "../../src/bootstrap/phase12BackupBenchmark";
 import {
@@ -43,6 +44,7 @@ import {
 } from "../../src/platform/sqlite/repositories/logicalBackupRepository";
 import {
   createFullPlanLogicalMergeWriter,
+  LOGICAL_MERGE_BATCH_PARAMETER_LIMIT,
 } from "../../src/platform/sqlite/repositories/logicalMergeRepository";
 import {
   createSqliteMergeLocalFactsPort,
@@ -146,6 +148,9 @@ async function migratedKernel(): Promise<SqliteKernel> {
 
 it("seeds a maximum fixture accepted by the fully migrated schema", async () => {
   const kernel = await migratedKernel();
+
+  await expect(phase12SqliteVariableLimit(kernel))
+    .resolves.toBeGreaterThanOrEqual(LOGICAL_MERGE_BATCH_PARAMETER_LIMIT);
 
   await expect(seedMaximumHistory(kernel)).resolves.toBeUndefined();
 

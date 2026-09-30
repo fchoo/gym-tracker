@@ -22,6 +22,7 @@ test("Phase 12 benchmark fixes the tested writer and maximum merge budgets", () 
     writer_occupancy: { minimum_samples: 20, maximum_p95_ms: 1000 },
     merge_preflight: { minimum_samples: 10, maximum_p95_ms: 10_000, maximum_peak_growth_bytes: 192 * 1024 * 1024, required_snapshot_bytes: 24 * 1024 * 1024, required_rows: 100_000 },
     merge_materialization: { minimum_samples: 5, maximum_p95_ms: 30_000 },
+    sqlite: { minimum_max_variable_number: 4_000 },
   });
 });
 
@@ -39,7 +40,7 @@ test("Phase 12 benchmark rejects a stale manifest, missing samples, or a false m
       merge_serialization_ms: samples(2, 5),
       snapshot_bytes: 24 * 1024 * 1024, total_rows: 100_000,
       merge_digest_concurrency: 4, merge_output_equivalent: true,
-      network_inside_writer: false, skipped: 0,
+      network_inside_writer: false, sqlite_max_variable_number: 32_766, skipped: 0,
     },
   };
   assert.doesNotThrow(() => validatePhase12BackupBenchmark(evidence, manifest));
@@ -49,4 +50,5 @@ test("Phase 12 benchmark rejects a stale manifest, missing samples, or a false m
   assert.throws(() => validatePhase12BackupBenchmark({ ...evidence, measurements: { ...evidence.measurements, merge_serialization_ms: [] } }, manifest));
   assert.throws(() => validatePhase12BackupBenchmark({ ...evidence, measurements: { ...evidence.measurements, capture_total_ms: [] } }, manifest));
   assert.throws(() => validatePhase12BackupBenchmark({ ...evidence, measurements: { ...evidence.measurements, merge_materialization_ms: [] } }, manifest));
+  assert.throws(() => validatePhase12BackupBenchmark({ ...evidence, measurements: { ...evidence.measurements, sqlite_max_variable_number: 999 } }, manifest));
 });

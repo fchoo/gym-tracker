@@ -94,7 +94,7 @@ const CUSTOM_OPERATION_KINDS = new Set(["insert", "duplicate", "keep_both"]);
 const SESSION_OPERATION_KINDS = new Set(["insert", "duplicate", "archive_won", "local_won"]);
 const OWNED_PLAN_OPERATION_KINDS = new Set(["insert", "duplicate", "keep_both"]);
 const ROOT_RECORD_CLASSES = new Set(["custom_exercise", "workout_session", "owned_plan"]);
-const SQLITE_BATCH_PARAMETER_LIMIT = 900;
+export const LOGICAL_MERGE_BATCH_PARAMETER_LIMIT = 4_000;
 
 type FullPlanInsertTable = "app_settings"
   | (typeof FULL_PLAN_CUSTOM_EXERCISE_TABLES)[number]
@@ -570,6 +570,7 @@ function assertFullPlanSlice(plan: PortableMergePlan): void {
 export const __logicalMergeRepositoryTestOnly = Object.freeze({
   aggregateRows,
   aggregateKey,
+  assertExactRows,
   assertCustomExerciseAggregate,
   assertFullPlanSlice,
   assertFullPlanMatchesLocal,
@@ -597,6 +598,7 @@ export const __logicalMergeRepositoryTestOnly = Object.freeze({
   ownedPlanTable,
   plannedRootOperationKey,
   readRowsByPrimaryKey,
+  readSessionAggregate,
   recreateDeleteTriggers,
   sessionAggregatesForFullPlan,
   scalar,
@@ -842,7 +844,7 @@ async function insertRows(
   ))) fail();
   const rowsPerBatch = Math.max(
     1,
-    Math.floor(SQLITE_BATCH_PARAMETER_LIMIT / columns.length),
+    Math.floor(LOGICAL_MERGE_BATCH_PARAMETER_LIMIT / columns.length),
   );
   for (let offset = 0; offset < rows.length; offset += rowsPerBatch) {
     const batch = rows.slice(offset, offset + rowsPerBatch);
@@ -909,6 +911,31 @@ function assertExactExpectedRow(
   }
 }
 
+function assertExactRows(
+  table: MergeInsertTable,
+  expectedRows: readonly LogicalBackupRow[],
+  actualRows: readonly LogicalBackupRow[],
+): void {
+  const expected = new Map<string, LogicalBackupRow>();
+  for (const row of expectedRows) {
+    const key = primaryKeyValue(table, row);
+    if (expected.has(key)) fail();
+    expected.set(key, row);
+  }
+  const actual = new Map<string, LogicalBackupRow>();
+  for (const row of actualRows) {
+    const key = primaryKeyValue(table, row);
+    if (actual.has(key)) fail();
+    actual.set(key, row);
+  }
+  if (actual.size !== expected.size) fail();
+  for (const [key, expectedRow] of expected) {
+    const actualRow = actual.get(key);
+    if (actualRow === undefined) fail();
+    assertExactExpectedRow(expectedRow, actualRow);
+  }
+}
+
 async function readRowsByPrimaryKey(
   transaction: SqliteTransactionExecutor,
   table: MergeInsertTable,
@@ -918,7 +945,7 @@ async function readRowsByPrimaryKey(
   const primaryKey = LOGICAL_BACKUP_TABLE_DEFINITIONS[table].primaryKey;
   const rowsPerBatch = Math.max(
     1,
-    Math.floor(SQLITE_BATCH_PARAMETER_LIMIT / primaryKey.length),
+    Math.floor(LOGICAL_MERGE_BATCH_PARAMETER_LIMIT / primaryKey.length),
   );
   const output = new Map<string, LogicalBackupRow>();
   for (let offset = 0; offset < rows.length; offset += rowsPerBatch) {
@@ -944,19 +971,51 @@ async function verifyRows(
   rows: readonly LogicalBackupRow[],
 ): Promise<void> {
   if (rows.length === 0) return;
-  const expected = new Map<string, LogicalBackupRow>();
-  for (const row of rows) {
-    const key = primaryKeyValue(table, row);
-    if (expected.has(key)) fail();
-    expected.set(key, row);
-  }
   const actual = await readRowsByPrimaryKey(transaction, table, rows);
-  if (actual.size !== expected.size) fail();
-  for (const [key, expectedRow] of expected) {
-    const actualRow = actual.get(key);
-    if (actualRow === undefined) fail();
-    assertExactExpectedRow(expectedRow, actualRow);
+  assertExactRows(table, rows, [...actual.values()]);
+}
+
+async function readSessionAggregate(
+  transaction: SqliteTransactionExecutor,
+  sessionId: string,
+): Promise<Readonly<Record<SessionAggregateTable, readonly LogicalBackupRow[]>>> {
+  const setWhere = "session_exercise_id IN (SELECT id FROM session_exercises WHERE session_id = ?)";
+  const filters = {
+    workout_sessions: ["id = ?", [sessionId]],
+    session_exercises: ["session_id = ?", [sessionId]],
+    session_sets: [setWhere, [sessionId]],
+    session_rest_states: [
+      `session_id = ? OR next_set_id IN (SELECT id FROM session_sets WHERE ${setWhere})`,
+      [sessionId, sessionId],
+    ],
+    session_advanced_timing_states: [
+      `session_id = ? OR session_set_id IN (SELECT id FROM session_sets WHERE ${setWhere})`,
+      [sessionId, sessionId],
+    ],
+    session_undo_snapshots: [
+      `session_id = ? OR completed_set_id IN (SELECT id FROM session_sets WHERE ${setWhere})`,
+      [sessionId, sessionId],
+    ],
+    history_session_overlays: ["session_id = ?", [sessionId]],
+    history_audit_events: ["session_id = ?", [sessionId]],
+    workout_session_exercise_edit_receipts: ["session_id = ?", [sessionId]],
+    workout_session_exercise_reorder_receipts: ["session_id = ?", [sessionId]],
+  } as const satisfies Readonly<Record<SessionAggregateTable, readonly [
+    string,
+    readonly string[],
+  ]>>;
+  const tables: Partial<Record<SessionAggregateTable, readonly LogicalBackupRow[]>> = {};
+  for (const table of SESSION_AGGREGATE_TABLES) {
+    const [where, parameters] = filters[table];
+    tables[table] = await transaction.queryAll<LogicalBackupRow>(
+      `SELECT * FROM ${identifier(table)} WHERE ${where}`,
+      parameters,
+    );
   }
+  return Object.freeze(tables) as Readonly<Record<
+    SessionAggregateTable,
+    readonly LogicalBackupRow[]
+  >>;
 }
 
 async function insertFullPlanTaxonomyTerms(
@@ -1063,16 +1122,11 @@ async function verifyFullPlanSlice(
     const root = aggregate.tables.workout_sessions?.[0];
     if (root?.id !== operation.localId) fail();
     const readStarted = performance.now();
-    const verified = await readSqliteMergeLocalFacts(transaction);
+    const verified = await readSessionAggregate(transaction, operation.localId);
     observeTiming?.("verification_read", performance.now() - readStarted);
     const compareStarted = performance.now();
-    const actual = verified.tables.workout_sessions!.find(
-      (row) => row.id === operation.localId,
-    );
-    if (actual === undefined || actual.portable_id !== operation.portableId
-      || canonicalMergeValue(portableMergeSessionAggregate(verified, actual).tables)
-        !== canonicalMergeValue(aggregate.tables)) {
-      fail();
+    for (const table of SESSION_AGGREGATE_TABLES) {
+      assertExactRows(table, aggregate.tables[table] ?? [], verified[table]);
     }
     observeTiming?.("verification_compare", performance.now() - compareStarted);
   }

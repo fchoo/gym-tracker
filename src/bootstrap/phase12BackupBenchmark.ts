@@ -18,7 +18,10 @@ import { canonicalMergeValue } from "../domains/portability/mergeCommands";
 import {
   createLogicalBackupRepository,
 } from "../platform/sqlite/repositories/logicalBackupRepository";
-import { createFullPlanLogicalMergeWriter } from "../platform/sqlite/repositories/logicalMergeRepository";
+import {
+  createFullPlanLogicalMergeWriter,
+  LOGICAL_MERGE_BATCH_PARAMETER_LIMIT,
+} from "../platform/sqlite/repositories/logicalMergeRepository";
 import type { LogicalMergeFaultStage } from "../platform/sqlite/repositories/logicalMergeRepository";
 import { createSqliteMergeLocalFactsPort } from "../platform/sqlite/repositories/restorePreflightAdapters";
 import {
@@ -104,6 +107,7 @@ export type Phase12BackupBenchmarkResult = Readonly<{
     merge_digest_concurrency: number;
     merge_output_equivalent: true;
     network_inside_writer: false;
+    sqlite_max_variable_number: number;
   }>;
   startedAt: string;
   finishedAt: string;
@@ -126,6 +130,18 @@ export function shouldSerializePhase12MergeSample(sample: number): boolean {
 
 export function shouldMaterializePhase12MergeSample(sample: number): boolean {
   return sample < 5;
+}
+
+export async function phase12SqliteVariableLimit(kernel: SqliteKernel): Promise<number> {
+  const options = await kernel.queryAll<{ compile_options: string }>("PRAGMA compile_options");
+  const value = options.find(({ compile_options }) => (
+    compile_options.startsWith("MAX_VARIABLE_NUMBER=")
+  ))?.compile_options.split("=")[1];
+  const limit = Number(value);
+  if (!Number.isSafeInteger(limit) || limit < LOGICAL_MERGE_BATCH_PARAMETER_LIMIT) {
+    throw new Error("phase12_sqlite_variable_limit_invalid");
+  }
+  return limit;
 }
 
 function encodedBytes(value: unknown): number {
@@ -396,6 +412,7 @@ export async function performPhase12BackupBenchmark(): Promise<Phase12BackupBenc
   const kernel = await openSqliteKernel(databaseName);
   try {
     await migrateBenchmarkDatabase("phase12", databaseName, kernel);
+    const sqliteMaxVariableNumber = await phase12SqliteVariableLimit(kernel);
     await seedMaximumHistory(kernel);
     const writerOccupancyMs: number[] = [];
     const captureTotalMs: number[] = [];
@@ -567,6 +584,7 @@ export async function performPhase12BackupBenchmark(): Promise<Phase12BackupBenc
         merge_digest_concurrency: MERGE_DIGEST_CONCURRENCY,
         merge_output_equivalent: true,
         network_inside_writer: false,
+        sqlite_max_variable_number: sqliteMaxVariableNumber,
       },
       startedAt,
       finishedAt: new Date().toISOString(),

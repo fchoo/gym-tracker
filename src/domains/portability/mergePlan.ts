@@ -168,16 +168,32 @@ function isPlainObject(value: unknown): value is Record<string, unknown> {
   return prototype === Object.prototype || prototype === null;
 }
 
-function canonicalValue(value: unknown): string {
+function canonicalValueWithKeyCache(
+  value: unknown,
+  keyCache: Map<string, readonly string[]>,
+): string {
   if (value === null || typeof value === "boolean"
     || typeof value === "number" || typeof value === "string") {
     return JSON.stringify(value);
   }
-  if (Array.isArray(value)) return `[${value.map(canonicalValue).join(",")}]`;
+  if (Array.isArray(value)) {
+    return `[${value.map((entry) => canonicalValueWithKeyCache(entry, keyCache)).join(",")}]`;
+  }
   if (!isPlainObject(value)) invalid();
-  return `{${Object.keys(value).sort().map((key) => (
-    `${JSON.stringify(key)}:${canonicalValue(value[key])}`
+  const naturalKeys = Object.keys(value);
+  const shape = JSON.stringify(naturalKeys);
+  let keys = keyCache.get(shape);
+  if (keys === undefined) {
+    keys = Object.freeze([...naturalKeys].sort());
+    keyCache.set(shape, keys);
+  }
+  return `{${keys.map((key) => (
+    `${JSON.stringify(key)}:${canonicalValueWithKeyCache(value[key], keyCache)}`
   )).join(",")}}`;
+}
+
+function canonicalValue(value: unknown): string {
+  return canonicalValueWithKeyCache(value, new Map());
 }
 
 function ownerNamespace(snapshot: PortableMergePlanSnapshot): string {

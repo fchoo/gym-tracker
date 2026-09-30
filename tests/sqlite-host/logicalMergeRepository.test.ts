@@ -555,7 +555,7 @@ function fullReadbackTransaction(
       if (sql.includes("PRAGMA foreign_key_check")) return input.foreignKeyRows ?? [];
       const table = Object.keys(LOGICAL_BACKUP_TABLE_DEFINITIONS).find((name) =>
         sql.includes(`FROM \"${name}\"`));
-      if (table === undefined || !sql.includes("ORDER BY")) return [];
+      if (table === undefined) return [];
       return rowsByTable.get(table) ?? [];
     },
   });
@@ -922,7 +922,7 @@ describe("logical merge repository", () => {
         return { changes: parameters.length, lastInsertRowId: 0 };
       },
     });
-    const rows = Array.from({ length: 901 }, (_, index) => ({ id: `row-${index}` }));
+    const rows = Array.from({ length: 4_001 }, (_, index) => ({ id: `row-${index}` }));
 
     await expect(__logicalMergeRepositoryTestOnly.insertRows(
       transaction,
@@ -930,7 +930,7 @@ describe("logical merge repository", () => {
       rows,
     )).resolves.toBeUndefined();
     expect(statements).toHaveLength(2);
-    expect(parameterCounts).toEqual([900, 1]);
+    expect(parameterCounts).toEqual([4_000, 1]);
     expect(statements[0]).toContain('INSERT INTO "workout_sessions" ("id")');
 
     await expect(__logicalMergeRepositoryTestOnly.insertRows(
@@ -956,7 +956,7 @@ describe("logical merge repository", () => {
   });
 
   it("verifies primary-key batches with exact row values", async () => {
-    const rows = Array.from({ length: 901 }, (_, index) => ({
+    const rows = Array.from({ length: 4_001 }, (_, index) => ({
       key: `setting-${index}`,
       value_json: `"${index}"`,
     }));
@@ -973,7 +973,7 @@ describe("logical merge repository", () => {
       "app_settings",
       rows,
     )).resolves.toBeUndefined();
-    expect(reads).toEqual([900, 1]);
+    expect(reads).toEqual([4_000, 1]);
     await expect(__logicalMergeRepositoryTestOnly.verifyRows(
       transactionStub(),
       "app_settings",
@@ -1013,6 +1013,14 @@ describe("logical merge repository", () => {
       "app_settings",
       [{ key: "duplicate", value_json: "{}" }],
     )).rejects.toEqual(expect.objectContaining({ code: "logical_merge_failed" }));
+    expect(() => __logicalMergeRepositoryTestOnly.assertExactRows(
+      "app_settings",
+      [{ key: "duplicate", value_json: "{}" }],
+      [
+        { key: "duplicate", value_json: "{}" },
+        { key: "duplicate", value_json: "{}" },
+      ],
+    )).toThrow(expect.objectContaining({ code: "logical_merge_failed" }));
   });
 
   it("deletes every session child before its root and exposes exact fault stages", async () => {

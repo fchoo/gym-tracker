@@ -33,6 +33,7 @@ export const PHASE12_BACKUP_BENCHMARK_THRESHOLDS = Object.freeze({
     minimum_samples: 5,
     maximum_p95_ms: 30_000,
   }),
+  sqlite: Object.freeze({ minimum_max_variable_number: 4_000 }),
 });
 
 function p95(values) {
@@ -64,7 +65,9 @@ export function validatePhase12BackupBenchmark(evidence, manifest) {
   if (measured.snapshot_bytes !== expected.merge_preflight.required_snapshot_bytes
     || measured.total_rows !== expected.merge_preflight.required_rows
     || measured.merge_digest_concurrency !== MERGE_DIGEST_CONCURRENCY
-    || measured.merge_output_equivalent !== true || measured.network_inside_writer !== false) throw new Error("phase12_benchmark_merge_contract_invalid");
+    || measured.merge_output_equivalent !== true || measured.network_inside_writer !== false
+    || !Number.isSafeInteger(measured.sqlite_max_variable_number)
+    || measured.sqlite_max_variable_number < expected.sqlite.minimum_max_variable_number) throw new Error("phase12_benchmark_merge_contract_invalid");
   return true;
 }
 

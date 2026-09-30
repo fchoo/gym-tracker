@@ -16,6 +16,7 @@ import {
   PHASE12_BENCHMARK_START_MARKER,
   phase12BenchmarkDatabaseName,
   phase12BenchmarkError,
+  phase12SqliteVariableLimit,
   PHASE12_BENCHMARK_EXERCISE_PORTABLE_ID,
   PHASE12_SQLITE_FIXTURE_ROW_COUNTS,
   buildPhase12SyntheticSnapshot,
@@ -26,6 +27,21 @@ import {
 } from "./phase12BackupBenchmark";
 
 describe("Phase 12 native backup benchmark", () => {
+  it("requires the configured batch ceiling from the active SQLite build", async () => {
+    const kernel = (compileOptions: readonly string[]) => ({
+      queryAll: async () => compileOptions.map((compile_options) => ({ compile_options })),
+    }) as never;
+    await expect(phase12SqliteVariableLimit(kernel([
+      "THREADSAFE=1",
+      "MAX_VARIABLE_NUMBER=32766",
+    ]))).resolves.toBe(32_766);
+    await expect(phase12SqliteVariableLimit(kernel([
+      "MAX_VARIABLE_NUMBER=999",
+    ]))).rejects.toThrow("phase12_sqlite_variable_limit_invalid");
+    await expect(phase12SqliteVariableLimit(kernel([])))
+      .rejects.toThrow("phase12_sqlite_variable_limit_invalid");
+  });
+
   it("uses a unique bounded database identity for every evidence run", () => {
     expect(phase12BenchmarkDatabaseName("00000000-0000-4000-8000-000000000001"))
       .toBe("gym-tracker-phase12-benchmark-00000000-0000-4000-8000-000000000001.db");

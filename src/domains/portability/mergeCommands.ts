@@ -196,19 +196,33 @@ function isPlainObject(value: unknown): value is Record<string, unknown> {
   return prototype === Object.prototype || prototype === null;
 }
 
-export function canonicalMergeValue(value: unknown): string {
+function canonicalMergeValueWithKeyCache(
+  value: unknown,
+  keyCache: Map<string, readonly string[]>,
+): string {
   if (value === null || typeof value === "boolean" || typeof value === "number" || typeof value === "string") {
     return JSON.stringify(value);
   }
   if (Array.isArray(value)) {
-    return `[${value.map(canonicalMergeValue).join(",")}]`;
+    return `[${value.map((entry) => canonicalMergeValueWithKeyCache(entry, keyCache)).join(",")}]`;
   }
   if (!isPlainObject(value)) {
     throw new MergeCommandError("merge_local_state_invalid");
   }
-  return `{${Object.keys(value).sort().map((key) => (
-    `${JSON.stringify(key)}:${canonicalMergeValue(value[key])}`
+  const naturalKeys = Object.keys(value);
+  const shape = JSON.stringify(naturalKeys);
+  let keys = keyCache.get(shape);
+  if (keys === undefined) {
+    keys = Object.freeze([...naturalKeys].sort());
+    keyCache.set(shape, keys);
+  }
+  return `{${keys.map((key) => (
+    `${JSON.stringify(key)}:${canonicalMergeValueWithKeyCache(value[key], keyCache)}`
   )).join(",")}}`;
+}
+
+export function canonicalMergeValue(value: unknown): string {
+  return canonicalMergeValueWithKeyCache(value, new Map());
 }
 
 function archiveDigestInput(archive: Uint8Array): string {

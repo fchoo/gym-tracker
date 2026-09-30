@@ -226,6 +226,11 @@ describe("secure merge preflight", () => {
     expect(() => canonicalMergeValue(Symbol("invalid"))).toThrow("merge_local_state_invalid");
     expect(canonicalMergeValue(Object.assign(Object.create(null), { z: 1, a: 2 })))
       .toBe('{"a":2,"z":1}');
+    expect(canonicalMergeValue([
+      { z: 1, a: 2 },
+      { z: 3, a: 4 },
+      { a: 6, z: 5 },
+    ])).toBe('[{"a":2,"z":1},{"a":4,"z":3},{"a":6,"z":5}]');
     const malformed = {
       ...snapshot({ snapshotId: "missing-session-id" }),
       tables: {
