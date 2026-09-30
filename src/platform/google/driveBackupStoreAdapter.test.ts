@@ -92,8 +92,10 @@ describe("Drive backup store adapter", () => {
     const emptyToken = createDriveBackupStoreAdapter({ environment: "development-test", token: async () => "", fetch: async () => response({ files: [] }) });
     await expect(emptyToken.discover()).rejects.toThrow("drive_token_invalid");
 
-    const malformedList = createDriveBackupStoreAdapter({ environment: "development-test", token: async () => "token", fetch: async () => response("not-json") });
+    const failures: string[] = [];
+    const malformedList = createDriveBackupStoreAdapter({ environment: "development-test", token: async () => "token", reportFailure: (stage) => { failures.push(stage); }, fetch: async () => response("not-json") });
     await expect(malformedList.discover()).rejects.toThrow("drive_response_invalid");
+    expect(failures).toEqual(["list_invalid"]);
 
     const tooMany = createDriveBackupStoreAdapter({ environment: "development-test", token: async () => "token", fetch: async () => response({ files: Array.from({ length: 9 }, (_, index) => ({ id: `file-${index}`, name: "snapshot", appProperties: properties })) }) });
     await expect(tooMany.discover()).rejects.toThrow("drive_list_excess");
@@ -257,11 +259,15 @@ describe("Drive backup store adapter", () => {
     const empty = createDriveBackupStoreAdapter({ environment: "development-test", token: async () => "token", fetch: async () => response({ files: [] }) });
     await expect(empty.discover()).resolves.toEqual([]);
     await expect(empty.readManifest()).resolves.toBeNull();
+    const omittedEmpty = createDriveBackupStoreAdapter({ environment: "development-test", token: async () => "token", fetch: async () => response({}) });
+    await expect(omittedEmpty.discover()).resolves.toEqual([]);
 
     const badListShape = createDriveBackupStoreAdapter({ environment: "development-test", token: async () => "token", fetch: async () => response(null) });
     await expect(badListShape.discover()).rejects.toThrow("drive_response_invalid");
     const nonObjectList = createDriveBackupStoreAdapter({ environment: "development-test", token: async () => "token", fetch: async () => response('"not-an-object"') });
     await expect(nonObjectList.discover()).rejects.toThrow("drive_response_invalid");
+    const nullFiles = createDriveBackupStoreAdapter({ environment: "development-test", token: async () => "token", fetch: async () => response({ files: null }) });
+    await expect(nullFiles.discover()).rejects.toThrow("drive_response_invalid");
     const nonObjectEntry = createDriveBackupStoreAdapter({ environment: "development-test", token: async () => "token", fetch: async () => response({ files: [null] }) });
     await expect(nonObjectEntry.discover()).rejects.toThrow("drive_metadata_invalid");
 

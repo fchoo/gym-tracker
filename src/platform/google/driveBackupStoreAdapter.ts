@@ -10,7 +10,7 @@ const REQUEST_TIMEOUT_MS = 60_000;
 
 export type DriveFetch = (url: string, init: RequestInit) => Promise<Response>;
 export type DriveToken = () => Promise<string>;
-export type DriveFailureStage = "request_timeout" | "request_failed" | "list_rejected";
+export type DriveFailureStage = "request_timeout" | "request_failed" | "list_rejected" | "list_invalid";
 
 function namespace(environment: AutomaticBackupEnvironment): Readonly<Record<string, string>> {
   return Object.freeze({ gym_tracker_backup: "v1", environment, package: environment === "production" ? "com.fchoo.gymtracker" : "com.fchoo.gymtracker.devtest" });
@@ -102,10 +102,17 @@ export function createDriveBackupStoreAdapter(input: Readonly<{ environment: Aut
       input.reportFailure?.("list_rejected", response.status);
       throw new Error("drive_list_failed");
     }
-    const value = json(await body(response, 64 * 1024));
-    if (typeof value !== "object" || value === null || !Array.isArray((value as { files?: unknown }).files)) throw new Error("drive_response_invalid");
-    const entries = (value as { files: unknown[] }).files; if (entries.length > MAX_LIST_RESULTS) throw new Error("drive_list_excess");
-    return Object.freeze(entries.map((entry) => parseFile(entry, properties)));
+    try {
+      const value = json(await body(response, 64 * 1024));
+      if (typeof value !== "object" || value === null) throw new Error("drive_response_invalid");
+      const files = (value as { files?: unknown }).files;
+      if (files !== undefined && !Array.isArray(files)) throw new Error("drive_response_invalid");
+      const entries = files ?? []; if (entries.length > MAX_LIST_RESULTS) throw new Error("drive_list_excess");
+      return Object.freeze(entries.map((entry) => parseFile(entry, properties)));
+    } catch (error) {
+      input.reportFailure?.("list_invalid");
+      throw error;
+    }
   }
   async function allocateFileId(): Promise<string> {
     const response = await request(
