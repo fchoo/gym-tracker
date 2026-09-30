@@ -54,4 +54,5 @@ test("Phase 12 benchmark invokes the production atomic merge writer", () => {
   assert.match(source, /stage: "materialization"[\s\S]*?event: "completed"/u);
   assert.match(source, /stage: "materialization_writer"[\s\S]*?writer_stage: stage/u);
   assert.match(source, /stage: "materialization_plan"[\s\S]*?elapsed_ms/u);
+  assert.match(source, /stage: "materialization_timing"[\s\S]*?elapsed_ms/u);
 });

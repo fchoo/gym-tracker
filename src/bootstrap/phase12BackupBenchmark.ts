@@ -479,6 +479,14 @@ export async function performPhase12BackupBenchmark(): Promise<Phase12BackupBenc
           elapsed_ms: performance.now() - materializationStarted,
         })}`);
       },
+      observeTiming: (stage, elapsedMs) => {
+        console.log(`${PHASE12_BENCHMARK_PROGRESS_MARKER}${JSON.stringify({
+          stage: "materialization_timing",
+          sample: materializationSample,
+          writer_stage: stage,
+          elapsed_ms: elapsedMs,
+        })}`);
+      },
     });
     for (let index = 0; index < mergePlans.length; index += 1) {
       materializationSample = index;

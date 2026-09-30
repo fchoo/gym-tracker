@@ -178,9 +178,22 @@ it("seeds a maximum fixture accepted by the fully migrated schema", async () => 
     local: { version: 2, ...live },
     payloadDigest: digest,
   });
-  await expect(createFullPlanLogicalMergeWriter(kernel, { sha256: digest })
+  const timingStages: string[] = [];
+  await expect(createFullPlanLogicalMergeWriter(kernel, {
+    sha256: digest,
+    observeTiming: (stage) => { timingStages.push(stage); },
+  })
     .commitFullPlan({
       localFingerprint: await digest(canonicalMergeValue(live)),
       plan,
     })).resolves.toEqual({ state: "rebuild_pending" });
+  expect(timingStages).toEqual(expect.arrayContaining([
+    "plan_validation",
+    "fingerprint_read",
+    "fingerprint_canonical",
+    "fingerprint_digest",
+    "transaction_plan_validation",
+    "verification_read",
+    "verification_compare",
+  ]));
 }, 120_000);

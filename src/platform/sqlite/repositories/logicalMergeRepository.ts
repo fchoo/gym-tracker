@@ -112,6 +112,15 @@ export type LogicalMergeFaultStage =
   | `full_plan_insert:${FullPlanInsertTable}`
   | `full_plan_verify:${FullPlanInsertTable}`;
 
+export type LogicalMergeTimingStage =
+  | "plan_validation"
+  | "fingerprint_read"
+  | "fingerprint_canonical"
+  | "fingerprint_digest"
+  | "transaction_plan_validation"
+  | "verification_read"
+  | "verification_compare";
+
 export class LogicalMergeRepositoryError extends Error {
   readonly kind = "storage" as const;
   readonly retryable = true;
@@ -1026,6 +1035,7 @@ async function verifyFullPlanSlice(
   transaction: SqliteTransactionExecutor,
   plan: PortableMergePlan,
   faultAfter: ((stage: LogicalMergeFaultStage) => Promise<void>) | undefined,
+  observeTiming?: (stage: LogicalMergeTimingStage, elapsedMs: number) => void,
 ): Promise<void> {
   await verifyRows(transaction, "app_settings", plan.settings);
   await faultAfter?.("full_plan_verify:app_settings");
@@ -1052,7 +1062,10 @@ async function verifyFullPlanSlice(
   for (const { aggregate, operation } of sessionAggregatesForFullPlan(plan)) {
     const root = aggregate.tables.workout_sessions?.[0];
     if (root?.id !== operation.localId) fail();
+    const readStarted = performance.now();
     const verified = await readSqliteMergeLocalFacts(transaction);
+    observeTiming?.("verification_read", performance.now() - readStarted);
+    const compareStarted = performance.now();
     const actual = verified.tables.workout_sessions!.find(
       (row) => row.id === operation.localId,
     );
@@ -1061,6 +1074,7 @@ async function verifyFullPlanSlice(
         !== canonicalMergeValue(aggregate.tables)) {
       fail();
     }
+    observeTiming?.("verification_compare", performance.now() - compareStarted);
   }
   const foreignKeyCheck = await transaction.queryAll<Record<string, unknown>>(
     "PRAGMA foreign_key_check",
@@ -1169,6 +1183,7 @@ function createLogicalMergeRepositoryInternal(
     nowMs?(): number;
     sha256(value: string): Promise<string>;
     faultAfter?(stage: LogicalMergeFaultStage): Promise<void>;
+    observeTiming?(stage: LogicalMergeTimingStage, elapsedMs: number): void;
   }>,
 ): LogicalMergeRepository {
   return Object.freeze({
@@ -1176,13 +1191,27 @@ function createLogicalMergeRepositoryInternal(
       try {
         // This API is intentionally narrower than the planner. It stays
         // private until every aggregate class has a verified write path.
+        const planValidationStarted = performance.now();
         const plan = snapshotFullPlan(fullPlanInput.plan);
         assertFullPlanSlice(plan);
+        input.observeTiming?.("plan_validation", performance.now() - planValidationStarted);
         return await kernel.write(async (transaction) => {
+          const fingerprintReadStarted = performance.now();
           const local = await readSqliteMergeLocalFacts(transaction);
-          const fingerprint = await input.sha256(canonicalMergeValue(local));
+          input.observeTiming?.("fingerprint_read", performance.now() - fingerprintReadStarted);
+          const fingerprintCanonicalStarted = performance.now();
+          const canonicalLocal = canonicalMergeValue(local);
+          input.observeTiming?.("fingerprint_canonical", performance.now() - fingerprintCanonicalStarted);
+          const fingerprintDigestStarted = performance.now();
+          const fingerprint = await input.sha256(canonicalLocal);
+          input.observeTiming?.("fingerprint_digest", performance.now() - fingerprintDigestStarted);
           if (fingerprint !== fullPlanInput.localFingerprint) fail();
+          const transactionPlanValidationStarted = performance.now();
           assertFullPlanSlice(plan);
+          input.observeTiming?.(
+            "transaction_plan_validation",
+            performance.now() - transactionPlanValidationStarted,
+          );
           assertFullPlanMatchesLocal(plan, local);
           await input.faultAfter?.("fingerprint_checked");
           if (fullPlanInput.adoption !== undefined) {
@@ -1230,7 +1259,12 @@ function createLogicalMergeRepositoryInternal(
           for (const { aggregate } of ownedPlanAggregatesForFullPlan(plan)) {
             await insertOwnedPlanAggregate(transaction, aggregate, input.faultAfter);
           }
-          await verifyFullPlanSlice(transaction, plan, input.faultAfter);
+          await verifyFullPlanSlice(
+            transaction,
+            plan,
+            input.faultAfter,
+            input.observeTiming,
+          );
           await input.faultAfter?.("verified");
           await markRebuildPending(transaction, input.nowMs?.() ?? Date.now());
           await input.faultAfter?.("state_updated");
@@ -1330,6 +1364,7 @@ export function createFullPlanLogicalMergeWriter(
     nowMs?(): number;
     sha256(value: string): Promise<string>;
     faultAfter?(stage: LogicalMergeFaultStage): Promise<void>;
+    observeTiming?(stage: LogicalMergeTimingStage, elapsedMs: number): void;
   }>,
 ): FullMergeWriterPort {
   const repository = createLogicalMergeRepositoryInternal(kernel, input);
