@@ -93,7 +93,7 @@ jest.mock("../domains/backup/automaticBackupCoordinator", () => ({
   })),
 }));
 jest.mock("../domains/backup/automaticBackupScheduler", () => ({
-  createAutomaticBackupScheduler: jest.fn(() => ({ request: jest.fn(async () => undefined) })),
+  createAutomaticBackupScheduler: jest.fn(() => ({ request: jest.fn(async () => undefined), cancel: jest.fn() })),
 }));
 jest.mock("../domains/portability/automaticPortability", () => ({
   createAutomaticPortableRestorePort: jest.fn(() => ({ restore: async () => ({ state: "ready" as const }) })),
@@ -332,7 +332,7 @@ describe("production automatic-backup composition", () => {
     const activeCoordinator = coordinatorModule.createAutomaticBackupCoordinator.mock.results.at(-1)?.value as {
       prepareRecovery: jest.Mock; commitRecovery: jest.Mock;
     };
-    const activeScheduler = schedulerModule.createAutomaticBackupScheduler.mock.results.at(-1)?.value as { request: jest.Mock };
+    const activeScheduler = schedulerModule.createAutomaticBackupScheduler.mock.results.at(-1)?.value as { request: jest.Mock; cancel: jest.Mock };
     expect(mockState.setDataUsePolicy).toHaveBeenCalledWith("wifi-only");
     expect(activeCoordinator.prepareRecovery).toHaveBeenCalledWith({ candidate });
     expect(activeCoordinator.commitRecovery).toHaveBeenCalledWith(recovery);
@@ -344,6 +344,7 @@ describe("production automatic-backup composition", () => {
     expect(activeScheduler.request).toHaveBeenCalledWith("manual");
     expect(activeScheduler.request).toHaveBeenCalledWith("retry");
     expect(activeScheduler.request).toHaveBeenCalledWith("manual_cellular");
+    expect(activeScheduler.cancel).toHaveBeenCalledTimes(1);
   });
 
   it("binds recovery, merge, capture, and scheduling callbacks to the active local facts", async () => {

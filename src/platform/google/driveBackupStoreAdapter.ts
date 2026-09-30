@@ -151,8 +151,24 @@ export function createDriveBackupStoreAdapter(input: Readonly<{ environment: Aut
     return ids[0];
   }
   async function discoverSnapshotsForDeletion(): Promise<readonly DriveBackupObject[]> {
-    const entries = await discover();
-    return Object.freeze(entries.filter((entry) => entry.appProperties.object_kind === "snapshot"));
+    const query = encodeURIComponent(appPropertiesQuery(snapshotProperties));
+    const response = await request(`${DRIVE_API}/files?q=${query}&spaces=drive&pageSize=${MAX_LIST_RESULTS}&fields=files(id,name,appProperties)`);
+    if (!response.ok) {
+      input.reportFailure?.("list_rejected", response.status);
+      throw new Error("drive_list_failed");
+    }
+    try {
+      const value = json(await readBody(response, 64 * 1024));
+      if (typeof value !== "object" || value === null) throw new Error("drive_response_invalid");
+      const files = (value as { files?: unknown }).files;
+      if (files !== undefined && !Array.isArray(files)) throw new Error("drive_response_invalid");
+      const entries = files ?? [];
+      if (entries.length > MAX_LIST_RESULTS) throw new Error("drive_list_excess");
+      return Object.freeze(entries.map((entry) => parseFile(entry, snapshotProperties)));
+    } catch (error) {
+      input.reportFailure?.("list_invalid");
+      throw error;
+    }
   }
   async function discoverSnapshotsForRetention() {
     const snapshots = await discoverSnapshotsForDeletion();

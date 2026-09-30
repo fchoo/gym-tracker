@@ -313,10 +313,13 @@ describe("Drive backup store adapter", () => {
     const productionProperties = { gym_tracker_backup: "v1", environment: "production", package: "com.fchoo.gymtracker" };
     const adapter = createDriveBackupStoreAdapter({
       environment: "production", token: async () => "token", fetch: async (url) => {
-        if (url.includes("files?q=")) return response({ files: [
-          { id: "snapshot", name: "snapshot-snapshot.json", appProperties: { ...productionProperties, object_kind: "snapshot" } },
-          { id: "other", name: "other", appProperties: { ...productionProperties, object_kind: "other" } },
-        ] });
+        if (url.includes("files?q=")) {
+          const files = [{ id: "snapshot", name: "snapshot-snapshot.json", appProperties: { ...productionProperties, object_kind: "snapshot" } }];
+          return response({ files: decodeURIComponent(url).includes("object_kind") ? files : [
+            ...files,
+            { id: "other", name: "other", appProperties: { ...productionProperties, object_kind: "other" } },
+          ] });
+        }
         if (url.includes("alt=media")) return response("x".repeat(17 * 1024));
         return response({ id: "candidate" }, { headers: { etag: '"etag"' } });
       },
@@ -326,6 +329,32 @@ describe("Drive backup store adapter", () => {
     await expect(adapter.createSnapshot("candidate", new Uint8Array(5 * 1024 * 1024 + 1))).rejects.toThrow("drive_response_too_large");
     await expect(adapter.createManifest("manifest", new Uint8Array(16 * 1024 + 1))).rejects.toThrow("drive_response_too_large");
     await expect(adapter.createResumableSnapshot("candidate", new Uint8Array(24 * 1024 * 1024 + 1))).rejects.toThrow("drive_resumable_size_invalid");
+  });
+
+  it("lists deletion snapshots in bounded snapshot-only batches", async () => {
+    const deletionProperties = {
+      ...properties,
+      object_kind: "snapshot",
+    };
+    let requestedUrl = "";
+    const adapter = createDriveBackupStoreAdapter({
+      environment: "development-test",
+      token: async () => "token",
+      fetch: async (url) => {
+        requestedUrl = url;
+        return response({
+          files: Array.from({ length: 8 }, (_, index) => ({
+            id: `snapshot-${index}`,
+            name: `snapshot-${index}.json`,
+            appProperties: deletionProperties,
+          })),
+        });
+      },
+    });
+
+    await expect(adapter.discoverSnapshotsForDeletion()).resolves.toHaveLength(8);
+    expect(requestedUrl).toContain("pageSize=8");
+    expect(decodeURIComponent(requestedUrl)).toContain("object_kind' and value='snapshot");
   });
 
   it("discovers only dated retention candidates with readable etags", async () => {

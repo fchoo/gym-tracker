@@ -508,6 +508,8 @@ export function createAutomaticBackupCoordinator(input: Readonly<{
     } catch { return Object.freeze({ status: "partial" as const }); }
   };
   const deleteCloudBackup = async (): Promise<Readonly<{ status: "complete" | "partial" | "cancelled" }>> => {
+    const inFlightBackup = running;
+    if (inFlightBackup !== null) await inFlightBackup.catch(() => undefined);
     const identity = await input.auth?.reauthenticate?.();
     if (identity === undefined || identity === null) return Object.freeze({ status: "cancelled" as const });
     const state = await input.state.read();

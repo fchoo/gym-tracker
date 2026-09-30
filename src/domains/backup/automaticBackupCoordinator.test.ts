@@ -618,6 +618,49 @@ describe("automatic backup coordinator", () => {
     });
   });
 
+  it("joins an in-flight upload before promoting a deletion tombstone", async () => {
+    const events: string[] = [];
+    let releaseUpload: (() => void) | undefined;
+    const coordinator = createAutomaticBackupCoordinator({
+      isWorkoutActive: () => false,
+      auth: {
+        connect: async () => null,
+        reauthenticate: async () => { events.push("reauthenticate"); return null; },
+        disconnect: async () => undefined,
+      },
+      capture: async () => ({ generation: 4, sourceDigest: "a".repeat(64), bytes: new Uint8Array([1]) }),
+      state: {
+        read: async () => activeState(),
+        persistAttempt: async () => undefined,
+        acknowledgeReceipt: async () => false,
+      },
+      drive: {
+        createSnapshot: async () => new Promise<string>((resolve) => {
+          events.push("upload");
+          releaseUpload = () => resolve("snapshot");
+        }),
+        download: async () => { throw new Error("offline"); },
+        updateManifest: async () => "etag",
+        readManifest: async () => ({ fileId: "manifest", bytes: activeManifest(2), etag: "etag" }),
+      },
+      validate: () => true,
+      validateManifest: () => ({ writerEpoch: 2, latest: { fileId: "latest", object_sha256: "a".repeat(64) }, previous: null }),
+      buildManifest: () => activeManifest(2),
+      nowMs: () => 1,
+      candidateId: () => "candidate",
+    });
+
+    const backup = coordinator.backup();
+    for (let attempt = 0; attempt < 8 && releaseUpload === undefined; attempt += 1) await Promise.resolve();
+    const deletion = coordinator.deleteCloudBackup();
+    await Promise.resolve();
+    expect(events).toEqual(["upload"]);
+    releaseUpload?.();
+    await expect(backup).resolves.toEqual({ status: "deferred" });
+    await expect(deletion).resolves.toEqual({ status: "cancelled" });
+    expect(events).toEqual(["upload", "reauthenticate"]);
+  });
+
   it("reopens a deleted tombstone only after fresh auth and a first-backup fence", async () => {
     const quarantine = jest.fn(async () => undefined);
     const coordinator = createAutomaticBackupCoordinator({

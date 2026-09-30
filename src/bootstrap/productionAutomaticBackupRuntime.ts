@@ -275,6 +275,10 @@ export function createProductionAutomaticBackupServices(kernel: SqliteKernel): S
   });
   const backupAfterBootstrapDiscovery = async (): Promise<void> => {
     const current = await state.read();
+    if (current.authorityState === "deleted" && current.deletionProgress === "sweep_pending") {
+      await coordinator.finishDeletionSweep();
+      return;
+    }
     if (current.permissionId !== null && current.authorityState === "quarantine" && current.manifestId === null) {
       const recovery = await coordinator.checkAgain();
       if (recovery.status !== "needs_bootstrap" && recovery.status !== "ready") return;
@@ -288,7 +292,8 @@ export function createProductionAutomaticBackupServices(kernel: SqliteKernel): S
     dataUsePolicy: async () => (await state.read()).dataUsePolicy,
     eligible: async () => {
       const current = await state.read();
-      return current.authorityState === "active"
+      return (current.authorityState === "deleted" && current.deletionProgress === "sweep_pending")
+        || current.authorityState === "active"
         || (current.authorityState === "quarantine" && current.manifestId === null);
     },
     queue: (work) => queueMicrotask(work), run: async () => {
@@ -318,7 +323,7 @@ export function createProductionAutomaticBackupServices(kernel: SqliteKernel): S
       }
     }, prepareRecovery: (input) => coordinator.prepareRecovery(input), commitRecovery: async (input) => { await coordinator.commitRecovery(input); }, finishSetup: async () => undefined,
     backupNow: async () => { scheduler.request("manual"); }, retryBackup: async () => { scheduler.request("retry"); }, useCellularThisTime: async () => { scheduler.request("manual_cellular"); }, setDataUsePolicy: async (policy) => state.setDataUsePolicy(policy === "wifi_only" ? "wifi-only" : "any-network"), takeOver: async () => coordinator.takeOver().then(() => undefined), disconnect: () => coordinator.disconnect(),
-    deleteCloudBackup: async () => { await coordinator.deleteCloudBackup(); }, finishDeletingCloudBackup: async () => { await coordinator.finishDeletionSweep(); }, startNewCloudBackup: async () => { const result = await coordinator.startNewCloudBackup(); if (result.status === "ready") scheduler.request("manual"); },
+    deleteCloudBackup: async () => { scheduler.cancel(); await coordinator.deleteCloudBackup(); }, finishDeletingCloudBackup: async () => { await coordinator.finishDeletionSweep(); }, startNewCloudBackup: async () => { const result = await coordinator.startNewCloudBackup(); if (result.status === "ready") scheduler.request("manual"); },
   } });
   publishBackupState = () => runtime.refresh();
   const services = Object.freeze({ runtime, scheduler }); cache.set(kernel as object, services); return services;
