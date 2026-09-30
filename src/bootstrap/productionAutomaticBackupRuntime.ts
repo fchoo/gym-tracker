@@ -109,7 +109,12 @@ export function createProductionAutomaticBackupServices(kernel: SqliteKernel): S
   const snapshotCapture = createProductionAutomaticSnapshotCapture({
     kernel,
   });
-  const drive = createDriveBackupStoreAdapter({ environment: settings.environment, token: () => auth.accessToken(), fetch: expoFetch as DriveFetch });
+  const drive = createDriveBackupStoreAdapter({
+    environment: settings.environment,
+    token: () => auth.accessToken(),
+    fetch: expoFetch as DriveFetch,
+    reportFailure: (stage, status) => console.warn(`[automatic-backup] drive:${stage}:${status ?? "none"}`),
+  });
   const reconciliation = createRestoreReconciliationRepository(kernel, { history: createHistoryProjectionRepository(kernel), search: createExerciseSearchIndexRepository(kernel), nowMs: () => Date.now() });
   const restore = createAutomaticPortableRestorePort({
     schema: createSqliteRestoreSchemaPort(kernel), retainedReferences: createSqliteRestoreRetainedReferencePort(kernel), candidateProbe: createSqliteRestoreCandidateProbe(),

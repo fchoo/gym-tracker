@@ -104,10 +104,12 @@ describe("Drive backup store adapter", () => {
 
   it("aborts a Drive request at the bounded transport deadline", async () => {
     let aborted = false;
+    const failures: string[] = [];
     const adapter = createDriveBackupStoreAdapter({
       environment: "development-test",
       token: async () => "token",
       requestTimeoutMs: 1,
+      reportFailure: (stage, status) => { failures.push(`${stage}:${status ?? "none"}`); },
       fetch: async (_url, init) => new Promise<Response>((_resolve, reject) => {
         init.signal?.addEventListener("abort", () => {
           aborted = true;
@@ -122,6 +124,7 @@ describe("Drive backup store adapter", () => {
     const immediateFailure = createDriveBackupStoreAdapter({
       environment: "development-test",
       token: async () => "token",
+      reportFailure: (stage, status) => { failures.push(`${stage}:${status ?? "none"}`); },
       fetch: () => { throw new Error("offline"); },
     });
     await expect(immediateFailure.discover()).rejects.toThrow("offline");
@@ -138,6 +141,7 @@ describe("Drive backup store adapter", () => {
     resolveToken?.("token");
     await Promise.resolve();
     expect(fetchCalled).toBe(false);
+    expect(failures).toEqual(["request_timeout:none", "request_failed:none"]);
   });
 
   it("keeps manifest, resumable, and deletion operations conditionally fenced", async () => {
@@ -187,8 +191,10 @@ describe("Drive backup store adapter", () => {
   it("fails closed for every malformed Drive transport and mutation acknowledgement", async () => {
     const tokenTooLarge = createDriveBackupStoreAdapter({ environment: "development-test", token: async () => "x".repeat(16 * 1024 + 1), fetch: async () => response({ files: [] }) });
     await expect(tokenTooLarge.discover()).rejects.toThrow("drive_token_invalid");
-    const listFailed = createDriveBackupStoreAdapter({ environment: "development-test", token: async () => "token", fetch: async () => response(null, { status: 500 }) });
+    const failures: string[] = [];
+    const listFailed = createDriveBackupStoreAdapter({ environment: "development-test", token: async () => "token", reportFailure: (stage, status) => { failures.push(`${stage}:${status ?? "none"}`); }, fetch: async () => response(null, { status: 500 }) });
     await expect(listFailed.discover()).rejects.toThrow("drive_list_failed");
+    expect(failures).toEqual(["list_rejected:500"]);
     const listShape = createDriveBackupStoreAdapter({ environment: "development-test", token: async () => "token", fetch: async () => response({ files: [{}] }) });
     await expect(listShape.discover()).rejects.toThrow("drive_metadata_invalid");
     const badLength = createDriveBackupStoreAdapter({ environment: "development-test", token: async () => "token", fetch: async () => response("{}", { headers: { "content-length": "bad" } }) });

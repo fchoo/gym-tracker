@@ -10,6 +10,7 @@ const REQUEST_TIMEOUT_MS = 60_000;
 
 export type DriveFetch = (url: string, init: RequestInit) => Promise<Response>;
 export type DriveToken = () => Promise<string>;
+export type DriveFailureStage = "request_timeout" | "request_failed" | "list_rejected";
 
 function namespace(environment: AutomaticBackupEnvironment): Readonly<Record<string, string>> {
   return Object.freeze({ gym_tracker_backup: "v1", environment, package: environment === "production" ? "com.fchoo.gymtracker" : "com.fchoo.gymtracker.devtest" });
@@ -55,7 +56,7 @@ function multipart(candidateId: string, payload: Uint8Array, properties: Readonl
   const result = new Uint8Array(prefix.byteLength + payload.byteLength + suffix.byteLength); result.set(prefix); result.set(payload, prefix.byteLength); result.set(suffix, prefix.byteLength + payload.byteLength); return result;
 }
 
-export function createDriveBackupStoreAdapter(input: Readonly<{ environment: AutomaticBackupEnvironment; token: DriveToken; fetch?: DriveFetch; requestTimeoutMs?: number }>): DriveBackupStorePort {
+export function createDriveBackupStoreAdapter(input: Readonly<{ environment: AutomaticBackupEnvironment; token: DriveToken; fetch?: DriveFetch; requestTimeoutMs?: number; reportFailure?(stage: DriveFailureStage, status?: number): void }>): DriveBackupStorePort {
   const fetcher = input.fetch ?? fetch;
   const requestTimeoutMs = input.requestTimeoutMs ?? REQUEST_TIMEOUT_MS;
   const properties = namespace(input.environment);
@@ -84,6 +85,7 @@ export function createDriveBackupStoreAdapter(input: Readonly<{ environment: Aut
         }),
       ]);
     } catch (error) {
+      input.reportFailure?.(timedOut ? "request_timeout" : "request_failed");
       if (timedOut) throw new Error("drive_request_timeout");
       throw error;
     } finally {
@@ -95,7 +97,10 @@ export function createDriveBackupStoreAdapter(input: Readonly<{ environment: Aut
   async function discover(): Promise<readonly DriveBackupObject[]> {
     const query = encodeURIComponent(appPropertiesQuery(properties));
     const response = await request(`${DRIVE_API}/files?q=${query}&spaces=drive&pageSize=${MAX_LIST_RESULTS + 1}&fields=files(id,name,appProperties)`);
-    if (!response.ok) throw new Error("drive_list_failed");
+    if (!response.ok) {
+      input.reportFailure?.("list_rejected", response.status);
+      throw new Error("drive_list_failed");
+    }
     const value = json(await body(response, 64 * 1024));
     if (typeof value !== "object" || value === null || !Array.isArray((value as { files?: unknown }).files)) throw new Error("drive_response_invalid");
     const entries = (value as { files: unknown[] }).files; if (entries.length > MAX_LIST_RESULTS) throw new Error("drive_list_excess");
