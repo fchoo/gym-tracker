@@ -55,6 +55,8 @@ describe("automatic backup state repository host SQLite", () => {
     await repository.beginQuarantine({ environment: "development-test", permissionId: "permission-a", connectionGeneration: 1, accountDisplayLabel: "…@example.com" });
     expect(await repository.activateWriter({ manifestId: "manifest", manifestEtag: "etag", writerEpoch: 2, permissionId: "permission-a", connectionGeneration: 1 })).toBe(true);
     await repository.persistAttempt({ environment: "development-test", permissionId: "permission-a", connectionGeneration: 1, writerEpoch: 2, capturedGeneration: 0, sourceDigest: "a".repeat(64), snapshotId: "snapshot", manifestId: "manifest", manifestEtag: "etag", candidateId: "candidate", nowMs: 1 });
+    await expect(repository.acknowledgeReceipt({ environment: "development-test", permissionId: "permission-a", connectionGeneration: 1, writerEpoch: 2, capturedGeneration: 0, sourceDigest: "a".repeat(64), snapshotId: "snapshot", manifestId: "manifest", manifestEtag: "next-etag" })).resolves.toBe(true);
+    expect(await repository.read()).toMatchObject({ manifestEtag: "next-etag", lastAttemptMs: 1, lastSuccessMs: 1 });
     await repository.beginQuarantine({ environment: "development-test", permissionId: "permission-b", connectionGeneration: 2, accountDisplayLabel: "…@example.com" });
     await expect(repository.acknowledgeReceipt({ environment: "development-test", permissionId: "permission-a", connectionGeneration: 1, writerEpoch: 2, capturedGeneration: 0, sourceDigest: "a".repeat(64), snapshotId: "snapshot", manifestId: "manifest", manifestEtag: "etag" })).resolves.toBe(false);
     expect(await repository.read()).toMatchObject({ permissionId: "permission-b", authorityState: "quarantine", connectionGeneration: 2 });

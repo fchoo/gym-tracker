@@ -5,7 +5,8 @@ export type AutomaticBackupState = Readonly<{
   connectionGeneration: number; writerEpoch: number; mutationGeneration: number; backedUpGeneration: number;
   manifestId: string | null; manifestEtag: string | null;
   authorityState: "quarantine" | "active" | "stale_writer" | "deleted";
-  dirtySinceMs: number | null; dataUsePolicy: "any-network" | "wifi-only";
+  dirtySinceMs: number | null; lastAttemptMs: number | null; lastSuccessMs: number | null;
+  dataUsePolicy: "any-network" | "wifi-only";
   claimId: string | null; claimExpiresAtMs: number | null;
   statusCode: AutomaticBackupRecoveryStatus;
   deletionProgress: "none" | "sweep_pending" | "complete";
@@ -45,7 +46,7 @@ export function createAutomaticBackupStateRepository(kernel: SqliteKernel): Read
 }> {
   return Object.freeze({
     async read() {
-      const rows = await kernel.queryAll<Record<string, unknown>>("SELECT environment, permission_id, display_email, account_display_label, connection_generation, manifest_file_id, manifest_etag, writer_epoch, authority_state, mutation_generation, backed_up_generation, dirty_since_ms, data_use_policy, claim_id, claim_expires_at_ms, status_code, deletion_progress FROM automatic_backup_state WHERE id = 1");
+      const rows = await kernel.queryAll<Record<string, unknown>>("SELECT environment, permission_id, display_email, account_display_label, connection_generation, manifest_file_id, manifest_etag, writer_epoch, authority_state, mutation_generation, backed_up_generation, dirty_since_ms, last_attempt_ms, last_success_ms, data_use_policy, claim_id, claim_expires_at_ms, status_code, deletion_progress FROM automatic_backup_state WHERE id = 1");
       const row = rows[0];
       if (rows.length !== 1 || row === undefined || (row.environment !== "production" && row.environment !== "development-test") || !Number.isSafeInteger(row.connection_generation) || !Number.isSafeInteger(row.writer_epoch) || !Number.isSafeInteger(row.mutation_generation) || !Number.isSafeInteger(row.backed_up_generation)) throw new Error("automatic_backup_state_invalid");
       const environment = row.environment as AutomaticBackupState["environment"];
@@ -67,7 +68,7 @@ export function createAutomaticBackupStateRepository(kernel: SqliteKernel): Read
       if (deletionProgress !== "none" && authorityState !== "deleted") throw new Error("automatic_backup_state_invalid");
       const accountDisplayLabel = typeof row.account_display_label === "string" ? row.account_display_label : null;
       if (accountDisplayLabel !== null && (!/^…@[^@\r\n]{1,315}$/u.test(accountDisplayLabel))) throw new Error("automatic_backup_state_invalid");
-      return Object.freeze({ environment, permissionId: typeof row.permission_id === "string" ? row.permission_id : null, displayEmail: typeof row.display_email === "string" ? row.display_email : null, accountDisplayLabel, connectionGeneration, writerEpoch, mutationGeneration, backedUpGeneration, manifestId: typeof row.manifest_file_id === "string" ? row.manifest_file_id : null, manifestEtag: typeof row.manifest_etag === "string" ? row.manifest_etag : null, authorityState, dirtySinceMs: typeof row.dirty_since_ms === "number" ? row.dirty_since_ms : null, dataUsePolicy, claimId: typeof row.claim_id === "string" ? row.claim_id : null, claimExpiresAtMs: typeof row.claim_expires_at_ms === "number" ? row.claim_expires_at_ms : null, statusCode, deletionProgress });
+      return Object.freeze({ environment, permissionId: typeof row.permission_id === "string" ? row.permission_id : null, displayEmail: typeof row.display_email === "string" ? row.display_email : null, accountDisplayLabel, connectionGeneration, writerEpoch, mutationGeneration, backedUpGeneration, manifestId: typeof row.manifest_file_id === "string" ? row.manifest_file_id : null, manifestEtag: typeof row.manifest_etag === "string" ? row.manifest_etag : null, authorityState, dirtySinceMs: typeof row.dirty_since_ms === "number" ? row.dirty_since_ms : null, lastAttemptMs: typeof row.last_attempt_ms === "number" ? row.last_attempt_ms : null, lastSuccessMs: typeof row.last_success_ms === "number" ? row.last_success_ms : null, dataUsePolicy, claimId: typeof row.claim_id === "string" ? row.claim_id : null, claimExpiresAtMs: typeof row.claim_expires_at_ms === "number" ? row.claim_expires_at_ms : null, statusCode, deletionProgress });
     },
     async acknowledge(input: Readonly<{ environment: AutomaticBackupState["environment"]; permissionId: string; writerEpoch: number; capturedGeneration: number }>) {
       const outcome = await kernel.write((transaction) => transaction.execute(
@@ -78,24 +79,44 @@ export function createAutomaticBackupStateRepository(kernel: SqliteKernel): Read
       return outcome.changes === 1;
     },
     async acknowledgeReceipt(input) {
-      const outcome = await kernel.write((transaction) => transaction.execute(
-        `UPDATE automatic_backup_state SET backed_up_generation = ?, dirty_since_ms = CASE
-           WHEN mutation_generation = ? THEN NULL ELSE dirty_since_ms END, last_success_ms = last_attempt_ms
-         WHERE id = 1 AND environment = ? AND permission_id = ? AND connection_generation = ?
-           AND writer_epoch = ? AND mutation_generation >= ?
-           AND EXISTS (SELECT 1 FROM automatic_backup_receipt_state receipt WHERE receipt.id = 1
-             AND receipt.environment = ? AND receipt.permission_id = ? AND receipt.connection_generation = ?
-             AND receipt.writer_epoch = ? AND receipt.captured_generation = ? AND receipt.source_digest = ?
-             AND receipt.snapshot_id = ? AND receipt.manifest_file_id = ? AND receipt.accepted_manifest_etag = ?)`,
-        [input.capturedGeneration, input.capturedGeneration, input.environment, input.permissionId,
-          input.connectionGeneration, input.writerEpoch, input.capturedGeneration, input.environment,
-          input.permissionId, input.connectionGeneration, input.writerEpoch, input.capturedGeneration,
-          input.sourceDigest, input.snapshotId, input.manifestId, input.manifestEtag],
-      ));
-      return outcome.changes === 1;
+      return kernel.write(async (transaction) => {
+        const receipt = await transaction.execute(
+          `UPDATE automatic_backup_receipt_state SET accepted_manifest_etag = ?
+           WHERE id = 1 AND environment = ? AND permission_id = ? AND connection_generation = ?
+             AND writer_epoch = ? AND captured_generation = ? AND source_digest = ?
+             AND snapshot_id = ? AND manifest_file_id = ?`,
+          [input.manifestEtag, input.environment, input.permissionId,
+            input.connectionGeneration, input.writerEpoch, input.capturedGeneration,
+            input.sourceDigest, input.snapshotId, input.manifestId],
+        );
+        if (receipt.changes !== 1) return false;
+        const outcome = await transaction.execute(
+          `UPDATE automatic_backup_state SET backed_up_generation = ?, dirty_since_ms = CASE
+             WHEN mutation_generation = ? THEN NULL ELSE dirty_since_ms END,
+             last_success_ms = last_attempt_ms, manifest_etag = ?
+           WHERE id = 1 AND environment = ? AND permission_id = ? AND connection_generation = ?
+             AND writer_epoch = ? AND mutation_generation >= ?
+             AND EXISTS (SELECT 1 FROM automatic_backup_receipt_state receipt WHERE receipt.id = 1
+               AND receipt.environment = ? AND receipt.permission_id = ? AND receipt.connection_generation = ?
+               AND receipt.writer_epoch = ? AND receipt.captured_generation = ? AND receipt.source_digest = ?
+               AND receipt.snapshot_id = ? AND receipt.manifest_file_id = ? AND receipt.accepted_manifest_etag = ?)`,
+          [input.capturedGeneration, input.capturedGeneration, input.manifestEtag,
+            input.environment, input.permissionId,
+            input.connectionGeneration, input.writerEpoch, input.capturedGeneration, input.environment,
+            input.permissionId, input.connectionGeneration, input.writerEpoch, input.capturedGeneration,
+            input.sourceDigest, input.snapshotId, input.manifestId, input.manifestEtag],
+        );
+        return outcome.changes === 1;
+      });
     },
     async persistAttempt(input) {
       await kernel.write(async (transaction) => {
+        const state = await transaction.execute(
+          `UPDATE automatic_backup_state SET last_attempt_ms = ?
+           WHERE id = 1 AND environment = ? AND permission_id = ? AND connection_generation = ?`,
+          [input.nowMs, input.environment, input.permissionId, input.connectionGeneration],
+        );
+        if (state.changes !== 1) throw new Error("automatic_backup_state_fence_changed");
         const outcome = await transaction.execute(
           `UPDATE automatic_backup_receipt_state SET permission_id = ?, environment = ?, connection_generation = ?,
              writer_epoch = ?, captured_generation = ?, source_digest = ?, snapshot_id = ?, manifest_file_id = ?,

@@ -1,6 +1,11 @@
 import Constants from "expo-constants";
 
-import { canonicalJson, parseDriveBackupManifestV1 } from "../domains/backup/automaticBackupContracts";
+import {
+  canonicalJson,
+  parseDriveBackupManifestV1,
+  type AutomaticBackupEnvironment,
+  type DriveBackupSnapshotHeaderV1,
+} from "../domains/backup/automaticBackupContracts";
 import { createAutomaticBackupCoordinator } from "../domains/backup/automaticBackupCoordinator";
 import { createAutomaticBackupScheduler, type AutomaticBackupScheduler } from "../domains/backup/automaticBackupScheduler";
 import { createAutomaticPortableMergePort, createAutomaticPortableRestorePort } from "../domains/portability/automaticPortability";
@@ -37,10 +42,46 @@ function id(prefix: string): string {
   return `${prefix}-${randomUUID()}`;
 }
 function bytes(value: unknown): Uint8Array { return new TextEncoder().encode(canonicalJson(value)); }
-function snapshotFromDrive(value: Uint8Array): LogicalBackupSnapshot {
-  const decoded = JSON.parse(new TextDecoder().decode(value)) as { payload?: unknown; payload_sha256?: unknown; header?: unknown };
-  if (typeof decoded.payload_sha256 !== "string" || decoded.header === undefined) throw new Error("automatic_recovery_snapshot_invalid");
-  return parseLogicalBackupSnapshot(decoded.payload);
+function packageIdentity(environment: AutomaticBackupEnvironment): string {
+  return environment === "production"
+    ? "com.fchoo.gymtracker"
+    : "com.fchoo.gymtracker.devtest";
+}
+
+async function snapshotFromDrive(
+  value: Uint8Array,
+  environment: AutomaticBackupEnvironment,
+): Promise<LogicalBackupSnapshot> {
+  const decoded = JSON.parse(new TextDecoder().decode(value)) as {
+    header?: Partial<DriveBackupSnapshotHeaderV1>;
+    payload?: unknown;
+    payload_sha256?: unknown;
+  };
+  if (decoded.header?.protocol !== "drive-backup-v1"
+    || decoded.header.environment !== environment
+    || decoded.header.packageIdentity !== packageIdentity(environment)
+    || typeof decoded.payload_sha256 !== "string") {
+    throw new Error("automatic_recovery_snapshot_invalid");
+  }
+  const snapshot = parseLogicalBackupSnapshot(decoded.payload);
+  const ownerNamespace = snapshot.tables.portable_owner_identity?.[0]?.owner_namespace;
+  if (decoded.header.snapshotId !== snapshot.snapshotId
+    || decoded.header.createdAtMs !== snapshot.createdAtMs
+    || decoded.header.schemaVersion !== snapshot.schemaVersion
+    || decoded.header.mutationGeneration === undefined
+    || !Number.isSafeInteger(decoded.header.mutationGeneration)
+    || decoded.header.mutationGeneration < 0
+    || decoded.header.writerEpoch === undefined
+    || !Number.isSafeInteger(decoded.header.writerEpoch)
+    || decoded.header.writerEpoch < 1
+    || decoded.header.ownerNamespace !== ownerNamespace
+    || decoded.payload_sha256 !== await digest(canonicalJson({
+      header: decoded.header,
+      payload: decoded.payload,
+    }))) {
+    throw new Error("automatic_recovery_snapshot_invalid");
+  }
+  return snapshot;
 }
 
 export async function fetchGoogleDriveIdentity(
@@ -90,12 +131,49 @@ export function createProductionAutomaticBackupServices(kernel: SqliteKernel): S
   });
   const coordinator = createAutomaticBackupCoordinator({
     isWorkoutActive: () => false, auth, state, drive, nowMs: () => Date.now(), candidateId: () => id("attempt"),
-    capture: async () => { const captured = await snapshotCapture.capture({ snapshotId: id("snapshot"), createdAtMs: Date.now() }); const encoded = bytes({ header: { version: 1 }, payload: captured.snapshot }); return { generation: captured.generation, sourceDigest: await digest(new TextDecoder().decode(encoded)), bytes: encoded }; },
-    validate: () => true,
-    validateManifest: (value) => { try { const parsed = parseDriveBackupManifestV1(JSON.parse(new TextDecoder().decode(value))); return parsed.kind === "active" ? { writerEpoch: parsed.writerEpoch } : null; } catch { return null; } },
-    buildManifest: ({ candidateId, state: current, captured }) => bytes({ kind: "active", writer_epoch: current.writerEpoch, latest: { fileId: candidateId, object_sha256: captured.sourceDigest }, previous: null }),
+    capture: async ({ environment, writerEpoch }) => {
+      const captured = await snapshotCapture.capture({ snapshotId: id("snapshot"), createdAtMs: Date.now() });
+      const ownerNamespace = captured.snapshot.tables.portable_owner_identity?.[0]?.owner_namespace;
+      if (typeof ownerNamespace !== "string") throw new Error("automatic_backup_owner_missing");
+      const header: DriveBackupSnapshotHeaderV1 = Object.freeze({
+        protocol: "drive-backup-v1",
+        environment,
+        packageIdentity: packageIdentity(environment),
+        snapshotId: captured.snapshot.snapshotId,
+        ownerNamespace,
+        writerEpoch,
+        mutationGeneration: captured.generation,
+        createdAtMs: captured.snapshot.createdAtMs,
+        schemaVersion: captured.snapshot.schemaVersion,
+      });
+      const payload = captured.snapshot;
+      const envelope = Object.freeze({
+        header,
+        payload,
+        payload_sha256: await digest(canonicalJson({ header, payload })),
+      });
+      const encodedJson = canonicalJson(envelope);
+      return {
+        generation: captured.generation,
+        sourceDigest: await digest(encodedJson),
+        bytes: new TextEncoder().encode(encodedJson),
+      };
+    },
+    validate: async (value) => {
+      try { await snapshotFromDrive(value, settings.environment); return true; }
+      catch { return false; }
+    },
+    validateManifest: (value) => {
+      try {
+        const parsed = parseDriveBackupManifestV1(JSON.parse(new TextDecoder().decode(value)));
+        return parsed.kind === "active"
+          ? { writerEpoch: parsed.writerEpoch, latest: parsed.latest }
+          : null;
+      } catch { return null; }
+    },
+    buildManifest: ({ candidateId, state: current, captured, previous }) => bytes({ kind: "active", writer_epoch: current.writerEpoch, latest: { fileId: candidateId, object_sha256: captured.sourceDigest }, previous }),
     recovery: {
-      parseSnapshot: async (value) => snapshotFromDrive(value),
+      parseSnapshot: (value) => snapshotFromDrive(value, settings.environment),
       localIsEmpty: async () => ((await createSqliteMergeLocalFactsPort(kernel).read()).tables.workout_sessions?.length ?? 0) === 0,
       prepareMerge: async (snapshot) => {
         const local = await createSqliteMergeLocalFactsPort(kernel).read();
@@ -111,15 +189,22 @@ export function createProductionAutomaticBackupServices(kernel: SqliteKernel): S
   });
   const scheduler = createAutomaticBackupScheduler({
     isWorkoutActive: async () => (await kernel.queryAll("SELECT 1 FROM workout_sessions WHERE status = 'in_progress' LIMIT 1")).length !== 0,
-    eligible: async () => (await state.read()).authorityState === "active",
+    eligible: async () => {
+      const current = await state.read();
+      return current.authorityState === "active"
+        || (current.authorityState === "quarantine" && current.manifestId === null);
+    },
     queue: (work) => queueMicrotask(work), run: async () => { await coordinator.backup(); },
   });
   const runtime = createAutomaticBackupRuntime({ read: async () => {
     const current = await state.read();
-    return { status: current.permissionId === null ? "not_connected" as const : current.statusCode === "restore_pending" ? "restore_pending" as const : current.statusCode === "restoring" ? "restoring" as const : current.authorityState === "stale_writer" || current.statusCode === "paused" ? "paused" as const : current.mutationGeneration > current.backedUpGeneration ? "backup_pending" as const : "idle" as const, accountLabel: current.accountDisplayLabel, mutationGeneration: current.mutationGeneration, backedUpGeneration: current.backedUpGeneration, pendingSinceMs: current.dirtySinceMs, nowMs: Date.now(), dataUsePolicy: current.dataUsePolicy === "wifi-only" ? "wifi_only" as const : "wifi_and_cellular" as const, reason: current.authorityState === "stale_writer" ? "stale_writer" as const : null };
+    return { status: current.permissionId === null ? "not_connected" as const : current.statusCode === "restore_pending" ? "restore_pending" as const : current.statusCode === "restoring" ? "restoring" as const : current.authorityState === "stale_writer" || current.statusCode === "paused" ? "paused" as const : current.mutationGeneration > current.backedUpGeneration ? "backup_pending" as const : "idle" as const, accountLabel: current.accountDisplayLabel, lastSuccessfulBackupAtMs: current.lastSuccessMs, mutationGeneration: current.mutationGeneration, backedUpGeneration: current.backedUpGeneration, pendingSinceMs: current.dirtySinceMs, nowMs: Date.now(), dataUsePolicy: current.dataUsePolicy === "wifi-only" ? "wifi_only" as const : "wifi_and_cellular" as const, reason: current.authorityState === "stale_writer" ? "stale_writer" as const : null };
   }, commands: {
-    connect: async () => { await coordinator.connect(); }, deferRestore: () => coordinator.deferRecovery(), cancelChecking: () => coordinator.abortChecking(), checkAgain: async () => { await coordinator.checkAgain(); }, continueRestore: async () => undefined, prepareRecovery: (input) => coordinator.prepareRecovery(input), commitRecovery: async (input) => { await coordinator.commitRecovery(input); }, finishSetup: async () => undefined,
-    backupNow: async () => scheduler.request("manual"), retryBackup: async () => scheduler.request("retry"), useCellularThisTime: async () => scheduler.request("manual"), setDataUsePolicy: async (policy) => state.setDataUsePolicy(policy === "wifi_only" ? "wifi-only" : "any-network"), takeOver: async () => coordinator.checkAgain().then(() => undefined), disconnect: () => coordinator.disconnect(),
+    connect: async () => {
+      const result = await coordinator.connect();
+      if (result.status === "needs_bootstrap") await coordinator.backup();
+    }, deferRestore: () => coordinator.deferRecovery(), cancelChecking: () => coordinator.abortChecking(), checkAgain: async () => { await coordinator.checkAgain(); }, continueRestore: async () => undefined, prepareRecovery: (input) => coordinator.prepareRecovery(input), commitRecovery: async (input) => { await coordinator.commitRecovery(input); }, finishSetup: async () => undefined,
+    backupNow: async () => { await coordinator.backup(); }, retryBackup: async () => { await coordinator.backup(); }, useCellularThisTime: async () => { await coordinator.backup(); }, setDataUsePolicy: async (policy) => state.setDataUsePolicy(policy === "wifi_only" ? "wifi-only" : "any-network"), takeOver: async () => coordinator.checkAgain().then(() => undefined), disconnect: () => coordinator.disconnect(),
     deleteCloudBackup: async () => { throw new Error("automatic_delete_requires_tombstone_confirmation"); }, finishDeletingCloudBackup: async () => { await coordinator.finishDeletionSweep(); }, startNewCloudBackup: async () => { await coordinator.checkAgain(); scheduler.request("manual"); },
   } });
   const services = Object.freeze({ runtime, scheduler }); cache.set(kernel as object, services); return services;

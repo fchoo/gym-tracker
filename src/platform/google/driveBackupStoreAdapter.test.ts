@@ -6,6 +6,43 @@ const properties = { gym_tracker_backup: "v1", environment: "development-test", 
 const response = (body: unknown, init: ResponseInit = {}) => new Response(body === null ? null : typeof body === "string" ? body : JSON.stringify(body), init);
 
 describe("Drive backup store adapter", () => {
+  it("allocates one server-issued id and rejects malformed allocation responses", async () => {
+    const allocated = createDriveBackupStoreAdapter({
+      environment: "development-test",
+      token: async () => "token",
+      fetch: async () => response({ ids: ["server-issued-id"] }),
+    });
+    await expect(allocated.allocateFileId()).resolves.toBe("server-issued-id");
+
+    const rejected = createDriveBackupStoreAdapter({
+      environment: "development-test",
+      token: async () => "token",
+      fetch: async () => response(null, { status: 500 }),
+    });
+    await expect(rejected.allocateFileId()).rejects.toThrow("drive_id_allocation_failed");
+
+    const malformed = createDriveBackupStoreAdapter({
+      environment: "development-test",
+      token: async () => "token",
+      fetch: async () => response({ ids: [] }),
+    });
+    await expect(malformed.allocateFileId()).rejects.toThrow("drive_id_allocation_invalid");
+
+    const nonObject = createDriveBackupStoreAdapter({
+      environment: "development-test",
+      token: async () => "token",
+      fetch: async () => response("null"),
+    });
+    await expect(nonObject.allocateFileId()).rejects.toThrow("drive_id_allocation_invalid");
+
+    const invalidId = createDriveBackupStoreAdapter({
+      environment: "development-test",
+      token: async () => "token",
+      fetch: async () => response({ ids: ["bad/id"] }),
+    });
+    await expect(invalidId.allocateFileId()).rejects.toThrow("drive_file_id_invalid");
+  });
+
   it("uses isolated metadata and preserves a raw manifest ETag in If-Match", async () => {
     const fetcher = jest.fn(async (url: string, init: RequestInit) => {
       if (url.includes("files?q=")) return response({ files: [{ id: "manifest-1", name: "manifest.json", appProperties: properties }] });

@@ -75,6 +75,21 @@ export function createDriveBackupStoreAdapter(input: Readonly<{ environment: Aut
     const entries = (value as { files: unknown[] }).files; if (entries.length > MAX_LIST_RESULTS) throw new Error("drive_list_excess");
     return Object.freeze(entries.map((entry) => parseFile(entry, properties)));
   }
+  async function allocateFileId(): Promise<string> {
+    const response = await request(
+      `${DRIVE_API}/files/generateIds?count=1&space=drive&type=files`,
+    );
+    if (!response.ok) throw new Error("drive_id_allocation_failed");
+    const value = json(await body(response, 64 * 1024));
+    const ids = typeof value === "object" && value !== null
+      ? (value as { ids?: unknown }).ids
+      : undefined;
+    if (!Array.isArray(ids) || ids.length !== 1 || typeof ids[0] !== "string") {
+      throw new Error("drive_id_allocation_invalid");
+    }
+    assertId(ids[0]);
+    return ids[0];
+  }
   async function discoverSnapshotsForDeletion(): Promise<readonly DriveBackupObject[]> {
     const entries = await discover();
     return Object.freeze(entries.filter((entry) => entry.appProperties.object_kind === "snapshot"));
@@ -130,5 +145,5 @@ export function createDriveBackupStoreAdapter(input: Readonly<{ environment: Aut
     assertId(fileId); if (!Number.isSafeInteger(expectedWriterEpoch) || expectedWriterEpoch < 0) throw new Error("drive_writer_epoch_invalid"); assertEtag(etag); const response = await request(`${DRIVE_API}/files/${encodeURIComponent(fileId)}`, { method: "PATCH", headers: { "Content-Type": "application/json", "If-Match": etag, "X-Gym-Tracker-Writer-Epoch": String(expectedWriterEpoch) }, body: JSON.stringify({ trashed: true }) }); if (response.status === 409 || response.status === 412) throw new Error("drive_trash_fenced"); if (!response.ok) throw new Error("drive_trash_failed");
   }
   async function deleteTombstoned(fileId: string): Promise<void> { assertId(fileId); const response = await request(`${DRIVE_API}/files/${encodeURIComponent(fileId)}`, { method: "DELETE" }); if (response.status !== 404 && !response.ok) throw new Error("drive_delete_failed"); }
-  return Object.freeze({ environment: input.environment, discover, discoverSnapshotsForDeletion, readManifest, createManifest, claimManifest: updateManifest, download, createSnapshot, createResumableSnapshot, resumeSnapshot, updateManifest, trash, deleteTombstoned });
+  return Object.freeze({ environment: input.environment, allocateFileId, discover, discoverSnapshotsForDeletion, readManifest, createManifest, claimManifest: updateManifest, download, createSnapshot, createResumableSnapshot, resumeSnapshot, updateManifest, trash, deleteTombstoned });
 }

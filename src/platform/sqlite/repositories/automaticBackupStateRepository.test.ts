@@ -103,6 +103,8 @@ describe("automatic backup state repository", () => {
     await expect(repository.markStaleWriter(4)).resolves.toBe(true);
     await expect(repository.clearExpiredClaim(2)).resolves.toBe(true);
     expect(sql.join("\n")).toContain("resumable_location");
+    expect(sql.join("\n")).toContain("last_attempt_ms");
+    expect(sql.join("\n")).toContain("accepted_manifest_etag = ?");
     changes = 0;
     await expect(repository.acknowledge({ environment: "development-test", permissionId: "permission", writerEpoch: 3, capturedGeneration: 5 })).resolves.toBe(false);
     await expect(repository.acknowledgeReceipt(receipt)).resolves.toBe(false);
@@ -111,11 +113,29 @@ describe("automatic backup state repository", () => {
     await expect(repository.activateWriter({ manifestId: "manifest", manifestEtag: "etag", writerEpoch: 4, permissionId: "permission", connectionGeneration: 2 })).resolves.toBe(false);
     await expect(repository.markStaleWriter(4)).resolves.toBe(false);
     await expect(repository.clearExpiredClaim(2)).resolves.toBe(false);
-    await expect(repository.persistAttempt({ ...receipt, candidateId: "candidate", nowMs: 1 })).rejects.toThrow("automatic_backup_receipt_missing");
+    await expect(repository.persistAttempt({ ...receipt, candidateId: "candidate", nowMs: 1 })).rejects.toThrow("automatic_backup_state_fence_changed");
     await expect(repository.setRecoveryStatus("idle")).rejects.toThrow("automatic_backup_state_missing");
     await expect(repository.setDataUsePolicy("any-network")).rejects.toThrow("automatic_backup_state_missing");
     await expect(repository.beginQuarantine({ environment: "development-test", permissionId: "permission", connectionGeneration: 2 })).rejects.toThrow("automatic_backup_state_missing");
     await expect(repository.disconnectLocal()).rejects.toThrow("automatic_backup_state_missing");
+
+    const missingReceipt = createAutomaticBackupStateRepository({
+      queryAll: async () => [],
+      write: async (command: (transaction: SqliteTransactionExecutor) => Promise<unknown>) => {
+        let call = 0;
+        return command({
+          execute: async () => ({ changes: call++ === 0 ? 1 : 0, lastInsertRowId: 0 }),
+          queryAll: async () => [],
+        });
+      },
+      connectionConfiguration: async () => undefined,
+      close: async () => undefined,
+    } as unknown as SqliteKernel);
+    await expect(missingReceipt.persistAttempt({
+      ...receipt,
+      candidateId: "candidate",
+      nowMs: 1,
+    })).rejects.toThrow("automatic_backup_receipt_missing");
   });
 
   it("creates every automatic-backup durable boundary and rejects incomplete schema verification", async () => {

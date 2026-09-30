@@ -3,6 +3,10 @@ import type { GoogleAuthPort } from "./googleAuthPort";
 type LogicalBackupSnapshot = any;
 
 type CapturedSnapshot = Readonly<{ generation: number; sourceDigest: string; bytes: Uint8Array }>;
+type ActiveManifestSummary = Readonly<{
+  writerEpoch: number;
+  latest?: Readonly<{ fileId: string; object_sha256: string }>;
+}>;
 type BackupState = Readonly<{
   environment: AutomaticBackupEnvironment; permissionId: string | null; connectionGeneration: number;
   writerEpoch: number; mutationGeneration: number; backedUpGeneration: number;
@@ -45,7 +49,10 @@ export type AutomaticBackupCoordinator = Readonly<{
 export function createAutomaticBackupCoordinator(input: Readonly<{
   isWorkoutActive(): boolean;
   auth?: Pick<GoogleAuthPort, "connect" | "disconnect">;
-  capture(): Promise<CapturedSnapshot>;
+  capture(input: Readonly<{
+    environment: AutomaticBackupEnvironment;
+    writerEpoch: number;
+  }>): Promise<CapturedSnapshot>;
   state: Readonly<{
     read(): Promise<BackupState>;
     persistAttempt(input: Receipt & Readonly<{ candidateId: string; nowMs: number }>): Promise<void>;
@@ -59,7 +66,9 @@ export function createAutomaticBackupCoordinator(input: Readonly<{
     completeDeletionSweep?(value: Readonly<{ environment: AutomaticBackupEnvironment; permissionId: string; connectionGeneration: number }>): Promise<boolean>;
   }>;
   drive: Readonly<{
+    allocateFileId?(): Promise<string>;
     createSnapshot(candidateId: string, bytes: Uint8Array): Promise<string>;
+    createManifest?(candidateId: string, bytes: Uint8Array): Promise<Readonly<{ fileId: string; etag: string }>>;
     download(fileId: string, maxBytes: number): Promise<Uint8Array>;
     updateManifest(manifestId: string, bytes: Uint8Array, etag: string): Promise<string>;
     readManifest(): Promise<Readonly<{ bytes: Uint8Array; etag: string }> | null>;
@@ -69,11 +78,16 @@ export function createAutomaticBackupCoordinator(input: Readonly<{
     discoverSnapshotsForDeletion?(): Promise<readonly Readonly<{ fileId: string }>[]>;
     deleteTombstoned?(fileId: string): Promise<void>;
   }>;
-  validate(bytes: Uint8Array): boolean;
+  validate(bytes: Uint8Array): boolean | Promise<boolean>;
   nowMs(): number;
   candidateId(): string;
-  validateManifest?(bytes: Uint8Array): Readonly<{ writerEpoch: number }> | null;
-  buildManifest?(value: Readonly<{ candidateId: string; state: BackupState; captured: CapturedSnapshot }>): Uint8Array;
+  validateManifest?(bytes: Uint8Array): ActiveManifestSummary | null;
+  buildManifest?(value: Readonly<{
+    candidateId: string;
+    state: BackupState;
+    captured: CapturedSnapshot;
+    previous: ActiveManifestSummary["latest"] | null;
+  }>): Uint8Array;
   recovery?: Readonly<{
     parseSnapshot(bytes: Uint8Array): Promise<LogicalBackupSnapshot>;
     localIsEmpty(): Promise<boolean>;
@@ -85,17 +99,75 @@ export function createAutomaticBackupCoordinator(input: Readonly<{
 }>): AutomaticBackupCoordinator {
   let running: Promise<BackupResult> | null = null;
   let checkingGeneration = 0;
+  let bootstrapFence: Readonly<{
+    permissionId: string;
+    connectionGeneration: number;
+  }> | null = null;
   const recoveryAttempts = new Map<string, Readonly<{ snapshot: LogicalBackupSnapshot; preparation: AutomaticRecoveryPreparation }>>();
   const run = async (): Promise<BackupResult> => {
     if (input.isWorkoutActive()) return Object.freeze({ status: "deferred" as const });
     const state = await input.state.read();
-    if (state.permissionId === null || state.writerEpoch < 1 || state.authorityState === "stale_writer" || state.authorityState === "quarantine" || state.mutationGeneration <= state.backedUpGeneration) return Object.freeze({ status: "deferred" as const });
-    const captured = await input.capture();
+    const bootstrapping = state.permissionId !== null
+      && state.authorityState === "quarantine"
+      && state.manifestId === null
+      && bootstrapFence?.permissionId === state.permissionId
+      && bootstrapFence.connectionGeneration === state.connectionGeneration;
+    if (state.permissionId === null || (!bootstrapping && state.writerEpoch < 1)
+      || state.authorityState === "stale_writer"
+      || (state.authorityState === "quarantine" && !bootstrapping)
+      || state.mutationGeneration <= state.backedUpGeneration) {
+      return Object.freeze({ status: "deferred" as const });
+    }
+    if (bootstrapping && (input.drive.allocateFileId === undefined
+      || input.drive.createManifest === undefined
+      || input.state.activateWriter === undefined)) {
+      return Object.freeze({ status: "deferred" as const });
+    }
+    const writerEpoch = bootstrapping ? Math.max(1, state.writerEpoch + 1) : state.writerEpoch;
+    let previous: ActiveManifestSummary["latest"] | null = null;
+    if (!bootstrapping && input.validateManifest !== undefined
+      && input.buildManifest !== undefined) {
+      try {
+        const currentManifest = await input.drive.readManifest();
+        const parsed = currentManifest === null
+          ? null
+          : input.validateManifest(currentManifest.bytes);
+        if (currentManifest === null || currentManifest.etag !== state.manifestEtag
+          || parsed?.writerEpoch !== state.writerEpoch || parsed.latest === undefined) {
+          await input.state.markStaleWriter?.(state.writerEpoch);
+          return Object.freeze({ status: "stale_writer" as const });
+        }
+        previous = parsed.latest;
+      } catch {
+        return Object.freeze({ status: "deferred" as const });
+      }
+    }
+    let captured: CapturedSnapshot;
+    try {
+      captured = await input.capture({
+        environment: state.environment,
+        writerEpoch,
+      });
+    } catch {
+      return Object.freeze({ status: "deferred" as const });
+    }
     if (captured.generation > state.mutationGeneration || captured.generation <= state.backedUpGeneration) return Object.freeze({ status: "deferred" as const });
-    const candidateId = input.candidateId();
-    const manifestId = state.manifestId ?? "automatic-backup-manifest";
-    const receipt: Receipt = Object.freeze({ environment: state.environment, permissionId: state.permissionId, connectionGeneration: state.connectionGeneration, writerEpoch: state.writerEpoch, capturedGeneration: captured.generation, sourceDigest: captured.sourceDigest, snapshotId: candidateId, manifestId, manifestEtag: state.manifestEtag ?? "pending" });
-    await input.state.persistAttempt({ ...receipt, candidateId, nowMs: input.nowMs() });
+    let candidateId: string;
+    let manifestId: string;
+    try {
+      candidateId = await input.drive.allocateFileId?.() ?? input.candidateId();
+      manifestId = state.manifestId
+        ?? (bootstrapping ? await input.drive.allocateFileId!() : "automatic-backup-manifest");
+    } catch {
+      return Object.freeze({ status: "deferred" as const });
+    }
+    const effectiveState = Object.freeze({ ...state, writerEpoch, manifestId });
+    const receipt: Receipt = Object.freeze({ environment: state.environment, permissionId: state.permissionId, connectionGeneration: state.connectionGeneration, writerEpoch, capturedGeneration: captured.generation, sourceDigest: captured.sourceDigest, snapshotId: candidateId, manifestId, manifestEtag: state.manifestEtag ?? "pending" });
+    try {
+      await input.state.persistAttempt({ ...receipt, candidateId, nowMs: input.nowMs() });
+    } catch {
+      return Object.freeze({ status: "deferred" as const });
+    }
     let fileId: string;
     try {
       if (captured.bytes.byteLength > 5 * 1024 * 1024 && input.drive.createResumableSnapshot !== undefined && input.drive.resumeSnapshot !== undefined) {
@@ -105,20 +177,67 @@ export function createAutomaticBackupCoordinator(input: Readonly<{
         fileId = completed;
       } else fileId = await input.drive.createSnapshot(candidateId, captured.bytes);
     } catch { return Object.freeze({ status: "deferred" as const }); }
-    const downloaded = await input.drive.download(fileId, captured.bytes.byteLength);
-    if (!input.validate(downloaded)) return Object.freeze({ status: "deferred" as const });
-    const manifestBytes = input.buildManifest?.({ candidateId: fileId, state, captured }) ?? downloaded;
+    let downloaded: Uint8Array;
+    let downloadedIsValid: boolean;
+    try {
+      downloaded = await input.drive.download(fileId, captured.bytes.byteLength);
+      downloadedIsValid = downloaded.byteLength === captured.bytes.byteLength
+        && !downloaded.some((value, index) => value !== captured.bytes[index])
+        && await input.validate(downloaded);
+    } catch {
+      return Object.freeze({ status: "deferred" as const });
+    }
+    if (!downloadedIsValid) {
+      return Object.freeze({ status: "deferred" as const });
+    }
+    const manifestBytes = input.buildManifest?.({
+      candidateId: fileId,
+      state: effectiveState,
+      captured,
+      previous,
+    }) ?? downloaded;
     let promotedEtag: string;
-    try { promotedEtag = await input.drive.updateManifest(manifestId, manifestBytes, receipt.manifestEtag); }
+    try {
+      if (bootstrapping) {
+        const created = await input.drive.createManifest!(manifestId, manifestBytes);
+        if (created.fileId !== manifestId) return Object.freeze({ status: "deferred" as const });
+        promotedEtag = created.etag;
+      } else {
+        promotedEtag = await input.drive.updateManifest(manifestId, manifestBytes, receipt.manifestEtag);
+      }
+    }
     catch (error) {
       if (error instanceof Error && error.message === "drive_manifest_conflict") {
+        if (bootstrapping) {
+          bootstrapFence = null;
+          return Object.freeze({ status: "deferred" as const });
+        }
         await input.state.markStaleWriter?.(state.writerEpoch);
         return Object.freeze({ status: "stale_writer" as const });
       }
       return Object.freeze({ status: "deferred" as const });
     }
     const reread = await input.drive.readManifest();
-    if (reread === null || reread.etag !== promotedEtag || !(input.validateManifest?.(reread.bytes) ?? input.validate(reread.bytes))) return Object.freeze({ status: "deferred" as const });
+    const validatedManifest = reread === null
+      ? null
+      : input.validateManifest?.(reread.bytes);
+    if (reread === null || reread.etag !== promotedEtag
+      || (input.validateManifest === undefined
+        ? !input.validate(reread.bytes)
+        : validatedManifest?.writerEpoch !== writerEpoch)) {
+      return Object.freeze({ status: "deferred" as const });
+    }
+    if (bootstrapping) {
+      const activated = await input.state.activateWriter!({
+        manifestId,
+        manifestEtag: promotedEtag,
+        writerEpoch,
+        permissionId: state.permissionId,
+        connectionGeneration: state.connectionGeneration,
+      });
+      if (!activated) return Object.freeze({ status: "deferred" as const });
+      bootstrapFence = null;
+    }
     const accepted = await input.state.acknowledgeReceipt({ ...receipt, snapshotId: fileId, manifestEtag: promotedEtag });
     return accepted ? Object.freeze({ status: "backed_up" as const, generation: captured.generation }) : Object.freeze({ status: "stale_writer" as const });
   };
@@ -141,8 +260,17 @@ export function createAutomaticBackupCoordinator(input: Readonly<{
     const manifest = await input.drive.readManifest();
     if (manifest === null) {
       const artifacts = await input.drive.discover?.() ?? [];
-      return Object.freeze({ status: artifacts.length === 0 ? "needs_bootstrap" as const : "quarantined" as const });
+      if (artifacts.length === 0) {
+        bootstrapFence = Object.freeze({
+          permissionId: state.permissionId,
+          connectionGeneration: state.connectionGeneration,
+        });
+        return Object.freeze({ status: "needs_bootstrap" as const });
+      }
+      bootstrapFence = null;
+      return Object.freeze({ status: "quarantined" as const });
     }
+    bootstrapFence = null;
     const parsed = input.validateManifest?.(manifest.bytes);
     if (parsed === null || parsed === undefined) return Object.freeze({ status: "quarantined" as const });
     if (parsed.writerEpoch < state.writerEpoch) {
@@ -220,7 +348,7 @@ export function createAutomaticBackupCoordinator(input: Readonly<{
     checkAgain: () => check(),
     async deferRecovery() { ++checkingGeneration; await input.state.setRecoveryStatus?.("restore_pending"); },
     async abortChecking() { ++checkingGeneration; await input.state.setRecoveryStatus?.("restore_pending"); },
-    async disconnect() { ++checkingGeneration; await input.auth?.disconnect(); await input.state.disconnectLocal?.(); },
+    async disconnect() { ++checkingGeneration; bootstrapFence = null; await input.auth?.disconnect(); await input.state.disconnectLocal?.(); },
     finishDeletionSweep,
     prepareRecovery,
     commitRecovery,

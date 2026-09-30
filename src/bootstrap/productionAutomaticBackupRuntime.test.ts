@@ -1,4 +1,5 @@
 import { describe, expect, it, jest } from "@jest/globals";
+import { LOGICAL_BACKUP_TABLES } from "../domains/portability/backupContracts";
 
 const mockCreateGoogleAuthAdapter = jest.fn(() => ({
   accessToken: () => null,
@@ -19,8 +20,30 @@ const mockLocalFacts = {
 };
 const mockCapture = jest.fn(async () => ({
   generation: 7,
-  snapshot: { version: 2, schemaVersion: 26, tables: {}, catalogReferences: [], manifest: {}, snapshotId: "snapshot", createdAtMs: 1 },
+  snapshot: {
+    version: 2,
+    schemaVersion: 26,
+    tables: {
+      ...Object.fromEntries(LOGICAL_BACKUP_TABLES.map((table) => [table, []])),
+      portable_owner_identity: [{ id: 1, owner_namespace: "a".repeat(32) }],
+    },
+    catalogReferences: [],
+    manifest: {
+      catalogReferenceCount: 0,
+      rowCounts: {
+        ...Object.fromEntries(LOGICAL_BACKUP_TABLES.map((table) => [table, 0])),
+        portable_owner_identity: 1,
+      },
+      totalRows: 1,
+    },
+    snapshotId: "snapshot",
+    createdAtMs: 1,
+  },
 }));
+const mockCoordinatorConnect = jest.fn<() => Promise<{
+  status: "ready" | "needs_bootstrap";
+}>>(async () => ({ status: "ready" }));
+const mockCoordinatorBackup = jest.fn(async () => ({ status: "backed_up" as const }));
 
 jest.mock("expo-constants", () => ({
   __esModule: true,
@@ -40,11 +63,11 @@ jest.mock("../platform/sqlite/repositories/automaticBackupStateRepository", () =
 }));
 jest.mock("../domains/backup/automaticBackupCoordinator", () => ({
   createAutomaticBackupCoordinator: jest.fn(() => ({
-    connect: jest.fn(async () => undefined), deferRecovery: jest.fn(async () => undefined),
+    connect: mockCoordinatorConnect, deferRecovery: jest.fn(async () => undefined),
     abortChecking: jest.fn(async () => undefined), checkAgain: jest.fn(async () => undefined),
     prepareRecovery: jest.fn(async () => ({ kind: "empty_direct" as const, attemptId: "attempt" })),
     commitRecovery: jest.fn(async () => undefined), disconnect: jest.fn(async () => undefined),
-    finishDeletionSweep: jest.fn(async () => undefined), backup: jest.fn(async () => undefined),
+    finishDeletionSweep: jest.fn(async () => undefined), backup: mockCoordinatorBackup,
   })),
 }));
 jest.mock("../domains/backup/automaticBackupScheduler", () => ({
@@ -126,7 +149,19 @@ describe("production automatic-backup composition", () => {
     expect(first.runtime.current()).toMatchObject({ status: "paused", reason: "unavailable" });
   });
 
+  it("publishes the first validated backup after empty-namespace discovery", async () => {
+    const priorBackups = mockCoordinatorBackup.mock.calls.length;
+    mockCoordinatorConnect.mockResolvedValueOnce({ status: "needs_bootstrap" });
+    const kernel = {} as never;
+    const { runtime } = createProductionAutomaticBackupServices(kernel);
+
+    await runtime.connect();
+
+    expect(mockCoordinatorBackup).toHaveBeenCalledTimes(priorBackups + 1);
+  });
+
   it("routes every owner command through the production state, coordinator, and scheduler seams", async () => {
+    const priorBackups = mockCoordinatorBackup.mock.calls.length;
     const kernel = {} as never;
     const { runtime } = createProductionAutomaticBackupServices(kernel);
     const candidate = { fileId: "snapshot", createdAtMs: 1, schemaVersion: 26, sourceDigest: "digest" } as never;
@@ -149,10 +184,8 @@ describe("production automatic-backup composition", () => {
     expect(mockState.setDataUsePolicy).toHaveBeenCalledWith("wifi-only");
     expect(activeCoordinator.prepareRecovery).toHaveBeenCalledWith({ candidate });
     expect(activeCoordinator.commitRecovery).toHaveBeenCalledWith(recovery);
-    expect(activeScheduler.request).toHaveBeenNthCalledWith(1, "manual");
-    expect(activeScheduler.request).toHaveBeenNthCalledWith(2, "retry");
-    expect(activeScheduler.request).toHaveBeenNthCalledWith(3, "manual");
-    expect(activeScheduler.request).toHaveBeenNthCalledWith(4, "manual");
+    expect(mockCoordinatorBackup).toHaveBeenCalledTimes(priorBackups + 3);
+    expect(activeScheduler.request).toHaveBeenCalledWith("manual");
   });
 
   it("binds recovery, merge, capture, and scheduling callbacks to the active local facts", async () => {
@@ -179,11 +212,25 @@ describe("production automatic-backup composition", () => {
     expect(merge.consume(token)).toEqual({ plan: {}, fingerprint: "fingerprint" });
     expect(merge.consume(token)).toBeNull();
     await merge.commitPlan({ plan: {}, fingerprint: "fingerprint" }); await merge.rebuild();
-    expect(coordinator.isWorkoutActive()).toBe(false); expect(coordinator.validate()).toBe(true);
-    await expect(coordinator.capture()).resolves.toEqual(expect.objectContaining({ generation: 7 }));
+    expect(coordinator.isWorkoutActive()).toBe(false);
+    await expect(coordinator.validate(new Uint8Array())).resolves.toBe(false);
+    const captured = await coordinator.capture({
+      environment: "development-test",
+      writerEpoch: 2,
+    });
+    expect(captured).toEqual(expect.objectContaining({ generation: 7 }));
+    await expect(coordinator.validate(captured.bytes)).resolves.toBe(true);
     expect(mockCapture).toHaveBeenCalledWith(expect.objectContaining({ snapshotId: expect.stringContaining("snapshot-") }));
     expect(coordinator.validateManifest(new TextEncoder().encode("invalid"))).toBeNull();
-    expect(new TextDecoder().decode(coordinator.buildManifest({ candidateId: "candidate", state: { writerEpoch: 2 }, captured: { sourceDigest: "digest" } }))).toContain("candidate");
+    expect(JSON.parse(new TextDecoder().decode(coordinator.buildManifest({
+      candidateId: "candidate",
+      state: { writerEpoch: 2 },
+      captured: { sourceDigest: "digest" },
+      previous: { fileId: "previous", object_sha256: "b".repeat(64) },
+    })))).toMatchObject({
+      latest: { fileId: "candidate" },
+      previous: { fileId: "previous" },
+    });
     await expect(coordinator.recovery.parseSnapshot(new TextEncoder().encode("{}"))).rejects.toThrow("automatic_recovery_snapshot_invalid");
     await expect(coordinator.recovery.localIsEmpty()).resolves.toBe(true);
     await expect(coordinator.recovery.prepareMerge(remote as never)).resolves.toEqual({ token: "merge-token", ownerSummary: "A different backup identity", adoptionRequired: true });

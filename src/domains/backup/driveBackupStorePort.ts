@@ -5,6 +5,8 @@ export type DriveBackupObject = Readonly<{ fileId: string; name: string; appProp
 export type DriveResumableSession = Readonly<{ location: string; uploadedBytes: number }>;
 export type DriveBackupStorePort = Readonly<{
   environment: AutomaticBackupEnvironment;
+  /** Reserves one server-issued Drive ID for idempotent create retries. */
+  allocateFileId(): Promise<string>;
   discover(): Promise<readonly DriveBackupObject[]>;
   /** Bounded app-created, current-environment snapshot discovery for tombstone sweeps only. */
   discoverSnapshotsForDeletion(): Promise<readonly DriveBackupObject[]>;
