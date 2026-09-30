@@ -56,7 +56,12 @@ export function createAutomaticBackupRuntime(input: Readonly<{
   let model = unavailable();
   let disposed = false;
   let generation = 0;
-  let activeCommand: Promise<unknown> | null = null;
+  const activeCommands = new Map<keyof AutomaticBackupRuntimeCommands, Promise<unknown>>();
+  const interruptingCommands = new Set<keyof AutomaticBackupRuntimeCommands>([
+    "cancelChecking",
+    "deferRestore",
+    "disconnect",
+  ]);
   const listeners = new Set<(next: AutomaticBackupViewModel) => void>();
   const emit = () => { for (const listener of listeners) listener(model); };
   const publish = async () => {
@@ -80,15 +85,21 @@ export function createAutomaticBackupRuntime(input: Readonly<{
       if (!disposed) { model = unavailable(); emit(); }
       return Promise.reject(new Error("automatic_backup_unavailable"));
     }
-    if (activeCommand !== null) return activeCommand as Promise<Result>;
+    const duplicate = activeCommands.get(key);
+    if (duplicate !== undefined) return duplicate as Promise<Result>;
+    if (activeCommands.size !== 0 && !interruptingCommands.has(key)) {
+      return Promise.reject(new Error("automatic_backup_command_busy"));
+    }
+    if (interruptingCommands.has(key)) generation += 1;
     const command = input.commands[key] as (...values: readonly unknown[]) => Promise<unknown>;
-    activeCommand = (async () => {
+    const activeCommand = (async () => {
       try {
         return await command(...args);
       } finally {
         await publish();
       }
-    })().finally(() => { activeCommand = null; });
+    })().finally(() => { activeCommands.delete(key); });
+    activeCommands.set(key, activeCommand);
     return activeCommand as Promise<Result>;
   };
   const unsubscribe = input.subscribeTransitions?.(() => { void publish(); });

@@ -80,6 +80,24 @@ describe("automatic backup runtime", () => {
     expect(listener).toHaveBeenCalledTimes(1);
   });
 
+  it("runs cancellation immediately and rejects a different command while work is active", async () => {
+    let releaseConnect: (() => void) | undefined;
+    const port = commands();
+    port.connect.mockImplementationOnce(() => new Promise<void>((resolve) => { releaseConnect = resolve; }));
+    const runtime = createAutomaticBackupRuntime({ read: async () => base(), commands: port });
+
+    const connecting = runtime.connect();
+    const duplicate = runtime.connect();
+    await expect(runtime.backupNow()).rejects.toThrow("automatic_backup_command_busy");
+    await expect(runtime.cancelChecking()).resolves.toBeUndefined();
+
+    expect(port.connect).toHaveBeenCalledTimes(1);
+    expect(port.backupNow).not.toHaveBeenCalled();
+    expect(port.cancelChecking).toHaveBeenCalledTimes(1);
+    releaseConnect?.();
+    await Promise.all([connecting, duplicate]);
+  });
+
   it("reconciles durable state after a command rejects", async () => {
     const port = commands();
     port.connect.mockRejectedValueOnce(new Error("google_connection_failed"));
