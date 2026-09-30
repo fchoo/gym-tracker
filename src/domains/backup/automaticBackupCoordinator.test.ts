@@ -414,7 +414,7 @@ describe("automatic backup coordinator", () => {
 
   it("promotes a verified successor tombstone before deleting snapshots", async () => {
     const events: string[] = [];
-    let manifest = activeManifest(2);
+    let manifest: Uint8Array<ArrayBufferLike> = activeManifest(2);
     let etag = "active-etag";
     let authorityState: "active" | "deleted" = "active";
     const coordinator = createAutomaticBackupCoordinator({
@@ -422,7 +422,7 @@ describe("automatic backup coordinator", () => {
       auth: { connect: async () => null, reauthenticate: async () => ({ permissionId: "permission", displayEmail: null }), disconnect: async () => undefined },
       capture: async () => ({ generation: 1, sourceDigest: "a".repeat(64), bytes: new Uint8Array() }),
       state: {
-        read: async () => activeState({ authorityState, deletionProgress: authorityState === "deleted" ? "sweep_pending" : "none" }),
+        read: async () => activeState({ authorityState, manifestEtag: "active-etag", deletionProgress: authorityState === "deleted" ? "sweep_pending" : "none" }),
         persistAttempt: async () => undefined, acknowledgeReceipt: async () => false,
         beginDeletionSweep: async () => { authorityState = "deleted"; events.push("tombstone"); return true; },
         completeDeletionSweep: async () => true,

@@ -49,6 +49,7 @@ const mockCoordinatorCheckAgain = jest.fn<() => Promise<{
   status: "ready" | "needs_bootstrap" | "quarantined";
 }>>(async () => ({ status: "ready" }));
 const mockCoordinatorTakeOver = jest.fn(async () => ({ status: "quarantined" as const }));
+const mockCoordinatorDeleteCloudBackup = jest.fn(async () => ({ status: "complete" as const }));
 const mockCoordinatorPrepareRecovery = jest.fn<() => Promise<
   | Readonly<{ kind: "empty_direct"; attemptId: string }>
   | Readonly<{ kind: "merge"; attemptId: string; token: string; ownerSummary: string; adoptionRequired: boolean }>
@@ -87,7 +88,7 @@ jest.mock("../domains/backup/automaticBackupCoordinator", () => ({
     abortChecking: jest.fn(async () => undefined), checkAgain: mockCoordinatorCheckAgain, takeOver: mockCoordinatorTakeOver,
     prepareRecovery: mockCoordinatorPrepareRecovery,
     commitRecovery: mockCoordinatorCommitRecovery, disconnect: jest.fn(async () => undefined),
-    finishDeletionSweep: jest.fn(async () => undefined), backup: mockCoordinatorBackup,
+    deleteCloudBackup: mockCoordinatorDeleteCloudBackup, finishDeletionSweep: jest.fn(async () => undefined), backup: mockCoordinatorBackup,
   })),
 }));
 jest.mock("../domains/backup/automaticBackupScheduler", () => ({
@@ -322,7 +323,7 @@ describe("production automatic-backup composition", () => {
     await expect(runtime.prepareRecovery({ candidate })).resolves.toEqual({ kind: "empty_direct", attemptId: "attempt" });
     await runtime.commitRecovery(recovery); await runtime.finishSetup(); await runtime.backupNow(); await runtime.retryBackup();
     await runtime.useCellularThisTime(); await runtime.setDataUsePolicy("wifi_only"); await runtime.takeOver();
-    await runtime.disconnect(); await expect(runtime.deleteCloudBackup()).rejects.toThrow("automatic_delete_requires_tombstone_confirmation");
+    await runtime.disconnect(); await runtime.deleteCloudBackup();
     await runtime.finishDeletingCloudBackup(); await runtime.startNewCloudBackup();
 
     const coordinatorModule = jest.requireMock("../domains/backup/automaticBackupCoordinator") as { createAutomaticBackupCoordinator: jest.Mock };

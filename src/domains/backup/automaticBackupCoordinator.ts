@@ -86,6 +86,7 @@ export type AutomaticBackupCoordinator = Readonly<{
   disconnect(): Promise<void>;
   /** Re-discovers only the currently authenticated namespace after a tombstone is durable. */
   finishDeletionSweep(): Promise<Readonly<{ status: "complete" | "partial" | "cancelled" }>>;
+  deleteCloudBackup(): Promise<Readonly<{ status: "complete" | "partial" | "cancelled" }>>;
   /** Discovery is read-only; no quarantine path can publish or delete Drive data. */
   recover(): Promise<Readonly<{ status: "ready" | "needs_bootstrap" | "quarantined" | "stale_writer" }>>;
   prepareRecovery(input: Readonly<{ candidate: AutomaticRecoveryCandidate }>): Promise<AutomaticRecoveryPreparation>;
@@ -421,6 +422,44 @@ export function createAutomaticBackupCoordinator(input: Readonly<{
         : Object.freeze({ status: "complete" as const });
     } catch { return Object.freeze({ status: "partial" as const }); }
   };
+  const deleteCloudBackup = async (): Promise<Readonly<{ status: "complete" | "partial" | "cancelled" }>> => {
+    const identity = await input.auth?.reauthenticate?.();
+    if (identity === undefined || identity === null) return Object.freeze({ status: "cancelled" as const });
+    const state = await input.state.read();
+    if (state.permissionId !== identity.permissionId || state.authorityState !== "active"
+      || state.manifestId === null || state.manifestId === undefined
+      || state.manifestEtag === null || state.manifestEtag === undefined) {
+      return Object.freeze({ status: "cancelled" as const });
+    }
+    const current = await input.drive.readManifest();
+    if (current === null || current.fileId !== state.manifestId || current.etag !== state.manifestEtag) {
+      return Object.freeze({ status: "cancelled" as const });
+    }
+    const manifest = parseDriveBackupManifestV1(JSON.parse(new TextDecoder().decode(current.bytes)));
+    if (manifest.kind !== "active" || manifest.writerEpoch !== state.writerEpoch) {
+      return Object.freeze({ status: "cancelled" as const });
+    }
+    const successorWriterEpoch = manifest.writerEpoch + 1;
+    if (!Number.isSafeInteger(successorWriterEpoch)) return Object.freeze({ status: "cancelled" as const });
+    const tombstone = new TextEncoder().encode(canonicalJson({
+      deletedAtMs: input.nowMs(), kind: "deleted", successorWriterEpoch,
+    }));
+    const promotedEtag = await input.drive.updateManifest(state.manifestId, tombstone, current.etag);
+    const reread = await input.drive.readManifest();
+    if (reread === null || reread.fileId !== state.manifestId || reread.etag !== promotedEtag) {
+      return Object.freeze({ status: "cancelled" as const });
+    }
+    const promoted = parseDriveBackupManifestV1(JSON.parse(new TextDecoder().decode(reread.bytes)));
+    if (promoted.kind !== "deleted" || promoted.successorWriterEpoch !== successorWriterEpoch) {
+      return Object.freeze({ status: "cancelled" as const });
+    }
+    const began = await input.state.beginDeletionSweep?.({
+      environment: state.environment, permissionId: state.permissionId,
+      connectionGeneration: state.connectionGeneration,
+    });
+    if (began !== true) return Object.freeze({ status: "cancelled" as const });
+    return finishDeletionSweep();
+  };
   const prepareRecovery = async ({ candidate }: Readonly<{ candidate: AutomaticRecoveryCandidate }>): Promise<AutomaticRecoveryPreparation> => {
     if (input.recovery === undefined) throw new Error("automatic_recovery_unavailable");
     if (await input.isWorkoutActive()) throw new Error("automatic_recovery_workout_active");
@@ -586,6 +625,7 @@ export function createAutomaticBackupCoordinator(input: Readonly<{
     async abortChecking() { ++checkingGeneration; await input.state.setRecoveryStatus?.("restore_pending"); },
     async disconnect() { ++checkingGeneration; bootstrapFence = null; await input.auth?.disconnect(); await input.state.disconnectLocal?.(); },
     finishDeletionSweep,
+    deleteCloudBackup,
     prepareRecovery,
     commitRecovery,
     recoveryPrompt: () => currentRecoveryPrompt,
