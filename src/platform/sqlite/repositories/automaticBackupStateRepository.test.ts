@@ -58,11 +58,41 @@ describe("automatic backup state repository", () => {
   });
   it("returns only bounded state and conditionally acknowledges captured generation", async () => {
     const repository = createAutomaticBackupStateRepository({
-      queryAll: async () => [{ environment: "development-test", permission_id: "permission", display_email: "…@example.com", connection_generation: 2, writer_epoch: 3, mutation_generation: 5, backed_up_generation: 4 }],
+      queryAll: async () => [{ environment: "development-test", permission_id: "permission", display_email: "…@example.com", connection_generation: 2, writer_epoch: 3, mutation_generation: 5, backed_up_generation: 4, last_attempt_ms: 10, last_success_ms: 11 }],
       write: async (command: (transaction: SqliteTransactionExecutor) => Promise<unknown>) => command({ execute: async () => ({ changes: 1, lastInsertRowId: 0 }), queryAll: async () => [] }), connectionConfiguration: async () => undefined, close: async () => undefined,
     } as unknown as SqliteKernel);
-    await expect(repository.read()).resolves.toMatchObject({ environment: "development-test", mutationGeneration: 5 });
+    await expect(repository.read()).resolves.toMatchObject({ environment: "development-test", mutationGeneration: 5, lastAttemptMs: 10, lastSuccessMs: 11 });
     await expect(repository.acknowledge({ environment: "development-test", permissionId: "permission", writerEpoch: 3, capturedGeneration: 5 })).resolves.toBe(true);
+  });
+
+  it("fails closed for missing, stale, and malformed pending handover state", async () => {
+    const pendingRow = {
+      attempt_id: "attempt", environment: "development-test", permission_id: "permission",
+      connection_generation: 4, manifest_file_id: "manifest", manifest_etag: "etag",
+      remote_writer_epoch: 7, snapshot_id: "snapshot", source_digest: "a".repeat(64),
+    };
+    const repository = (changes: readonly number[], rows: readonly Record<string, unknown>[]) => {
+      let index = 0;
+      return createAutomaticBackupStateRepository({
+        queryAll: async () => rows,
+        write: async (command: (transaction: SqliteTransactionExecutor) => Promise<unknown>) => command({
+          execute: async () => ({ changes: changes[index++] ?? 1, lastInsertRowId: 0 }),
+          queryAll: async () => [],
+        }), connectionConfiguration: async () => undefined, close: async () => undefined,
+      } as unknown as SqliteKernel);
+    };
+    const pending = {
+      attemptId: "attempt", environment: "development-test" as const, permissionId: "permission",
+      connectionGeneration: 4, manifestId: "manifest", manifestEtag: "etag",
+      remoteWriterEpoch: 7, snapshotId: "snapshot", sourceDigest: "a".repeat(64), nowMs: 100,
+    };
+    await expect(repository([0], []).persistPendingHandover(pending))
+      .rejects.toThrow("automatic_backup_receipt_missing");
+    await expect(repository([1, 0], []).persistPendingHandover(pending))
+      .rejects.toThrow("automatic_backup_state_fence_changed");
+    await expect(repository([], []).readPendingHandover()).resolves.toBeNull();
+    await expect(repository([], [{ ...pendingRow, source_digest: "bad" }]).readPendingHandover())
+      .rejects.toThrow("automatic_backup_pending_handover_invalid");
   });
 
   it("rejects a receipt when any persisted fence no longer matches", async () => {

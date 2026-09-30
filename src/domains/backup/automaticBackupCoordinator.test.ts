@@ -543,6 +543,50 @@ describe("automatic backup coordinator", () => {
     expect(activateWriter).toHaveBeenCalledTimes(1);
   });
 
+  it("rejects cancelled, changed, and stale durable handover claims", async () => {
+    const pending = {
+      attemptId: "attempt", environment: "development-test" as const, permissionId: "permission",
+      connectionGeneration: 1, manifestId: "manifest", manifestEtag: "old-etag",
+      remoteWriterEpoch: 7, snapshotId: "latest", sourceDigest: "a".repeat(64),
+    };
+    const make = (options: Readonly<{
+      identity?: { permissionId: string; displayEmail: null } | null;
+      state?: Record<string, unknown>;
+      pending?: typeof pending;
+      manifest?: Uint8Array | null;
+      fileId?: string;
+      etag?: string;
+    }> = {}) => createAutomaticBackupCoordinator({
+      isWorkoutActive: () => false,
+      auth: { connect: async () => null, reauthenticate: async () => options.identity === undefined ? { permissionId: "permission", displayEmail: null } : options.identity, disconnect: async () => undefined },
+      capture: async () => { throw new Error("must_not_capture"); },
+      state: {
+        read: async () => activeState({ authorityState: "quarantine", statusCode: "finishing", ...options.state }),
+        persistAttempt: async () => undefined, acknowledgeReceipt: async () => false,
+        readPendingHandover: async () => options.pending ?? pending,
+        activateWriter: async () => true, setRecoveryStatus: async () => undefined,
+      },
+      drive: {
+        createSnapshot: async () => { throw new Error("must_not_upload"); }, download: async () => new Uint8Array(),
+        updateManifest: async () => "new-etag",
+        readManifest: async () => options.manifest === null ? null : ({
+          fileId: options.fileId ?? "manifest",
+          bytes: options.manifest ?? activeManifest(7),
+          etag: options.etag ?? "old-etag",
+        }),
+      },
+      validate: () => true, nowMs: () => 1, candidateId: () => "unused",
+    });
+
+    await expect(make({ identity: null }).takeOver()).resolves.toEqual({ status: "cancelled" });
+    await expect(make({ pending: { ...pending, permissionId: "different" } }).takeOver())
+      .rejects.toThrow("automatic_recovery_claim_stale");
+    await expect(make({ state: { connectionGeneration: 2 } }).takeOver())
+      .rejects.toThrow("automatic_recovery_claim_stale");
+    await expect(make({ etag: "changed" }).takeOver()).rejects.toThrow("automatic_recovery_claim_stale");
+    await expect(make({ manifest: activeManifest(8) }).takeOver()).rejects.toThrow("automatic_recovery_claim_stale");
+  });
+
   it("guards cancellation, deletion, and merge adoption generations", async () => {
     const events: string[] = [];
     let resolveManifest: (() => void) | undefined;
