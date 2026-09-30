@@ -488,11 +488,11 @@ async function expectRejectedFullPlan(
 }
 
 function transactionStub(input: Readonly<{
-  execute?: (sql: string) => Promise<Readonly<{ changes: number; lastInsertRowId: number }>>;
+  execute?: (sql: string, parameters: readonly (null | number | string | Uint8Array)[]) => Promise<Readonly<{ changes: number; lastInsertRowId: number }>>;
   queryAll?: (sql: string, parameters: readonly (null | number | string | Uint8Array)[]) => Promise<readonly Record<string, unknown>[]>;
 }> = {}): SqliteTransactionExecutor {
   return {
-    execute: async (sql) => input.execute?.(sql) ?? { changes: 1, lastInsertRowId: 0 },
+    execute: async (sql, parameters = []) => input.execute?.(sql, parameters) ?? { changes: 1, lastInsertRowId: 0 },
     queryAll: async <Row extends Record<string, unknown>>(sql: string, parameters = []) =>
       (input.queryAll?.(sql, parameters) ?? []) as readonly Row[],
   };
@@ -519,8 +519,13 @@ function verificationTransaction(plan: PortableMergePlan): SqliteTransactionExec
       if (sql.includes("FROM workout_sessions")) return [];
       const table = Object.keys(LOGICAL_BACKUP_TABLE_DEFINITIONS).find((name) => sql.includes("FROM \"" + name + "\""));
       if (table === undefined) return [];
-      const row = rowsByPrimaryKey.get(table + "@@" + JSON.stringify(parameters));
-      return row === undefined ? [] : [row];
+      const primaryKey = LOGICAL_BACKUP_TABLE_DEFINITIONS[table as keyof typeof LOGICAL_BACKUP_TABLE_DEFINITIONS].primaryKey;
+      const rows: Record<string, unknown>[] = [];
+      for (let offset = 0; offset < parameters.length; offset += primaryKey.length) {
+        const row = rowsByPrimaryKey.get(table + "@@" + JSON.stringify(parameters.slice(offset, offset + primaryKey.length)));
+        if (row !== undefined) rows.push(row);
+      }
+      return rows;
     },
   });
 }
@@ -905,6 +910,109 @@ describe("logical merge repository", () => {
       { workout_sessions: [{ id: "session" }] },
       async () => { throw new Error("fault"); },
     )).rejects.toThrow("fault");
+  });
+
+  it("batches rows under the conservative bind limit and rejects unsafe batches", async () => {
+    const statements: string[] = [];
+    const parameterCounts: number[] = [];
+    const transaction = transactionStub({
+      execute: async (sql, parameters) => {
+        statements.push(sql);
+        parameterCounts.push(parameters.length);
+        return { changes: parameters.length, lastInsertRowId: 0 };
+      },
+    });
+    const rows = Array.from({ length: 901 }, (_, index) => ({ id: `row-${index}` }));
+
+    await expect(__logicalMergeRepositoryTestOnly.insertRows(
+      transaction,
+      "workout_sessions",
+      rows,
+    )).resolves.toBeUndefined();
+    expect(statements).toHaveLength(2);
+    expect(parameterCounts).toEqual([900, 1]);
+    expect(statements[0]).toContain('INSERT INTO "workout_sessions" ("id")');
+
+    await expect(__logicalMergeRepositoryTestOnly.insertRows(
+      transactionStub(),
+      "workout_sessions",
+      [],
+    )).resolves.toBeUndefined();
+    await expect(__logicalMergeRepositoryTestOnly.insertRows(
+      transactionStub(),
+      "workout_sessions",
+      [{}],
+    )).rejects.toEqual(expect.objectContaining({ code: "logical_merge_failed" }));
+    await expect(__logicalMergeRepositoryTestOnly.insertRows(
+      transactionStub(),
+      "workout_sessions",
+      [{ id: "one" }, { id: "two", extra: "unexpected" }],
+    )).rejects.toEqual(expect.objectContaining({ code: "logical_merge_failed" }));
+    await expect(__logicalMergeRepositoryTestOnly.insertRows(
+      transactionStub({ execute: async () => ({ changes: 0, lastInsertRowId: 0 }) }),
+      "workout_sessions",
+      [{ id: "one" }],
+    )).rejects.toEqual(expect.objectContaining({ code: "logical_merge_failed" }));
+  });
+
+  it("verifies primary-key batches with exact row values", async () => {
+    const rows = Array.from({ length: 901 }, (_, index) => ({
+      key: `setting-${index}`,
+      value_json: `"${index}"`,
+    }));
+    const reads: number[] = [];
+    const byKey = new Map(rows.map((row) => [row.key, row]));
+    const transaction = transactionStub({
+      queryAll: async (_sql, parameters) => {
+        reads.push(parameters.length);
+        return parameters.map((key) => byKey.get(String(key))!);
+      },
+    });
+    await expect(__logicalMergeRepositoryTestOnly.verifyRows(
+      transaction,
+      "app_settings",
+      rows,
+    )).resolves.toBeUndefined();
+    expect(reads).toEqual([900, 1]);
+    await expect(__logicalMergeRepositoryTestOnly.verifyRows(
+      transactionStub(),
+      "app_settings",
+      [],
+    )).resolves.toBeUndefined();
+    await expect(__logicalMergeRepositoryTestOnly.verifyRows(
+      transactionStub({ queryAll: async () => [] }),
+      "app_settings",
+      [{ key: "missing", value_json: "{}" }],
+    )).rejects.toEqual(expect.objectContaining({ code: "logical_merge_failed" }));
+    await expect(__logicalMergeRepositoryTestOnly.verifyRows(
+      transactionStub({ queryAll: async () => [{ key: "same", value_json: "wrong" }] }),
+      "app_settings",
+      [{ key: "same", value_json: "right" }],
+    )).rejects.toEqual(expect.objectContaining({ code: "logical_merge_failed" }));
+    await expect(__logicalMergeRepositoryTestOnly.verifyRows(
+      transactionStub({ queryAll: async () => [{ key: "other", value_json: "right" }] }),
+      "app_settings",
+      [{ key: "same", value_json: "right" }],
+    )).rejects.toEqual(expect.objectContaining({ code: "logical_merge_failed" }));
+    await expect(__logicalMergeRepositoryTestOnly.verifyRows(
+      transactionStub(),
+      "app_settings",
+      [{ key: "duplicate" }, { key: "duplicate" }],
+    )).rejects.toEqual(expect.objectContaining({ code: "logical_merge_failed" }));
+
+    await expect(__logicalMergeRepositoryTestOnly.readRowsByPrimaryKey(
+      transactionStub(),
+      "app_settings",
+      [],
+    )).resolves.toEqual(new Map());
+    await expect(__logicalMergeRepositoryTestOnly.readRowsByPrimaryKey(
+      transactionStub({ queryAll: async () => [
+        { key: "duplicate", value_json: "{}" },
+        { key: "duplicate", value_json: "{}" },
+      ] }),
+      "app_settings",
+      [{ key: "duplicate", value_json: "{}" }],
+    )).rejects.toEqual(expect.objectContaining({ code: "logical_merge_failed" }));
   });
 
   it("deletes every session child before its root and exposes exact fault stages", async () => {

@@ -94,6 +94,7 @@ const CUSTOM_OPERATION_KINDS = new Set(["insert", "duplicate", "keep_both"]);
 const SESSION_OPERATION_KINDS = new Set(["insert", "duplicate", "archive_won", "local_won"]);
 const OWNED_PLAN_OPERATION_KINDS = new Set(["insert", "duplicate", "keep_both"]);
 const ROOT_RECORD_CLASSES = new Set(["custom_exercise", "workout_session", "owned_plan"]);
+const SQLITE_BATCH_PARAMETER_LIMIT = 900;
 
 type FullPlanInsertTable = "app_settings"
   | (typeof FULL_PLAN_CUSTOM_EXERCISE_TABLES)[number]
@@ -578,12 +579,15 @@ export const __logicalMergeRepositoryTestOnly = Object.freeze({
   insertFullPlanSessionAggregate,
   insertFullPlanSettings,
   insertFullPlanTaxonomyTerm,
+  insertFullPlanTaxonomyTerms,
   insertOwnedPlanAggregate,
   insertRow,
+  insertRows,
   markRebuildPending,
   ownedPlanAggregatesForFullPlan,
   ownedPlanTable,
   plannedRootOperationKey,
+  readRowsByPrimaryKey,
   recreateDeleteTriggers,
   sessionAggregatesForFullPlan,
   scalar,
@@ -591,6 +595,7 @@ export const __logicalMergeRepositoryTestOnly = Object.freeze({
   textId,
   snapshotFullPlan,
   verifyFullPlanSlice,
+  verifyRows,
 });
 
 function assertFullPlanMatchesLocal(
@@ -813,6 +818,34 @@ async function insertRow(
   if (result.changes !== 1) fail();
 }
 
+type MergeInsertTable = FullPlanInsertTable | SessionAggregateTable;
+
+async function insertRows(
+  transaction: SqliteTransactionExecutor,
+  table: MergeInsertTable,
+  rows: readonly LogicalBackupRow[],
+): Promise<void> {
+  if (rows.length === 0) return;
+  const columns = Object.keys(rows[0]!);
+  if (columns.length === 0 || rows.some((row) => (
+    Object.keys(row).length !== columns.length
+    || columns.some((column) => !hasOwn(row, column))
+  ))) fail();
+  const rowsPerBatch = Math.max(
+    1,
+    Math.floor(SQLITE_BATCH_PARAMETER_LIMIT / columns.length),
+  );
+  for (let offset = 0; offset < rows.length; offset += rowsPerBatch) {
+    const batch = rows.slice(offset, offset + rowsPerBatch);
+    const result = await transaction.execute(
+      `INSERT INTO ${identifier(table)} (${columns.map(identifier).join(", ")})
+       VALUES ${batch.map(() => `(${columns.map(() => "?").join(", ")})`).join(", ")}`,
+      batch.flatMap((row) => columns.map((column) => scalar(row[column]))),
+    );
+    if (result.changes !== batch.length) fail();
+  }
+}
+
 async function insertFullPlanRow(
   transaction: SqliteTransactionExecutor,
   table: FullPlanInsertTable,
@@ -849,15 +882,95 @@ async function insertFullPlanTaxonomyTerm(
   }
 }
 
+function primaryKeyValue(
+  table: MergeInsertTable,
+  row: LogicalBackupRow,
+): string {
+  return JSON.stringify(LOGICAL_BACKUP_TABLE_DEFINITIONS[table].primaryKey.map(
+    (column) => scalar(row[column]),
+  ));
+}
+
+function assertExactExpectedRow(
+  expected: LogicalBackupRow,
+  actual: LogicalBackupRow,
+): void {
+  for (const [column, value] of Object.entries(expected)) {
+    if (!hasOwn(actual, column) || actual[column] !== value) fail();
+  }
+}
+
+async function readRowsByPrimaryKey(
+  transaction: SqliteTransactionExecutor,
+  table: MergeInsertTable,
+  rows: readonly LogicalBackupRow[],
+): Promise<ReadonlyMap<string, LogicalBackupRow>> {
+  if (rows.length === 0) return new Map();
+  const primaryKey = LOGICAL_BACKUP_TABLE_DEFINITIONS[table].primaryKey;
+  const rowsPerBatch = Math.max(
+    1,
+    Math.floor(SQLITE_BATCH_PARAMETER_LIMIT / primaryKey.length),
+  );
+  const output = new Map<string, LogicalBackupRow>();
+  for (let offset = 0; offset < rows.length; offset += rowsPerBatch) {
+    const batch = rows.slice(offset, offset + rowsPerBatch);
+    const actualRows = await transaction.queryAll<LogicalBackupRow>(
+      `SELECT * FROM ${identifier(table)} WHERE ${batch.map(() => (
+        `(${primaryKey.map((column) => `${identifier(column)} = ?`).join(" AND ")})`
+      )).join(" OR ")}`,
+      batch.flatMap((row) => primaryKey.map((column) => scalar(row[column]))),
+    );
+    for (const actual of actualRows) {
+      const key = primaryKeyValue(table, actual);
+      if (output.has(key)) fail();
+      output.set(key, actual);
+    }
+  }
+  return output;
+}
+
+async function verifyRows(
+  transaction: SqliteTransactionExecutor,
+  table: MergeInsertTable,
+  rows: readonly LogicalBackupRow[],
+): Promise<void> {
+  if (rows.length === 0) return;
+  const expected = new Map<string, LogicalBackupRow>();
+  for (const row of rows) {
+    const key = primaryKeyValue(table, row);
+    if (expected.has(key)) fail();
+    expected.set(key, row);
+  }
+  const actual = await readRowsByPrimaryKey(transaction, table, rows);
+  if (actual.size !== expected.size) fail();
+  for (const [key, expectedRow] of expected) {
+    const actualRow = actual.get(key);
+    if (actualRow === undefined) fail();
+    assertExactExpectedRow(expectedRow, actualRow);
+  }
+}
+
+async function insertFullPlanTaxonomyTerms(
+  transaction: SqliteTransactionExecutor,
+  rows: readonly LogicalBackupRow[],
+): Promise<void> {
+  const existing = await readRowsByPrimaryKey(transaction, "taxonomy_terms", rows);
+  const inserts: LogicalBackupRow[] = [];
+  for (const row of rows) {
+    const retained = existing.get(primaryKeyValue("taxonomy_terms", row));
+    if (retained === undefined) inserts.push(row);
+    else assertExactExpectedRow(row, retained);
+  }
+  await insertRows(transaction, "taxonomy_terms", inserts);
+}
+
 async function insertArchiveAggregate(
   transaction: SqliteTransactionExecutor,
   tables: Readonly<Record<string, readonly LogicalBackupRow[]>>,
   faultAfter: ((stage: LogicalMergeFaultStage) => Promise<void>) | undefined,
 ): Promise<void> {
   for (const table of SESSION_AGGREGATE_TABLES) {
-    for (const row of aggregateRows(tables, table)) {
-      await insertRow(transaction, table, row);
-    }
+    await insertRows(transaction, table, aggregateRows(tables, table));
     await faultAfter?.(`insert:${table}`);
   }
 }
@@ -867,9 +980,7 @@ async function insertFullPlanSettings(
   plan: PortableMergePlan,
   faultAfter: ((stage: LogicalMergeFaultStage) => Promise<void>) | undefined,
 ): Promise<void> {
-  for (const row of plan.settings) {
-    await insertFullPlanRow(transaction, "app_settings", row);
-  }
+  await insertRows(transaction, "app_settings", plan.settings);
   await faultAfter?.("full_plan_insert:app_settings");
 }
 
@@ -879,12 +990,11 @@ async function insertCustomExerciseAggregate(
   faultAfter: ((stage: LogicalMergeFaultStage) => Promise<void>) | undefined,
 ): Promise<void> {
   for (const table of FULL_PLAN_CUSTOM_EXERCISE_TABLES) {
-    for (const row of aggregate.tables[table] ?? []) {
-      if (table === "taxonomy_terms") {
-        await insertFullPlanTaxonomyTerm(transaction, row);
-      } else {
-        await insertFullPlanRow(transaction, table, row);
-      }
+    const rows = aggregate.tables[table] ?? [];
+    if (table === "taxonomy_terms") {
+      await insertFullPlanTaxonomyTerms(transaction, rows);
+    } else {
+      await insertRows(transaction, table, rows);
     }
     await faultAfter?.(`full_plan_insert:${table}`);
   }
@@ -896,9 +1006,7 @@ async function insertFullPlanSessionAggregate(
   faultAfter: ((stage: LogicalMergeFaultStage) => Promise<void>) | undefined,
 ): Promise<void> {
   for (const table of SESSION_AGGREGATE_TABLES) {
-    for (const row of aggregate.tables[table] ?? []) {
-      await insertRow(transaction, table, row);
-    }
+    await insertRows(transaction, table, aggregate.tables[table] ?? []);
     await faultAfter?.(`insert:${table}`);
   }
 }
@@ -909,9 +1017,7 @@ async function insertOwnedPlanAggregate(
   faultAfter: ((stage: LogicalMergeFaultStage) => Promise<void>) | undefined,
 ): Promise<void> {
   for (const table of FULL_PLAN_OWNED_PLAN_TABLES) {
-    for (const row of aggregate.tables[table] ?? []) {
-      await insertFullPlanRow(transaction, table, row);
-    }
+    await insertRows(transaction, table, aggregate.tables[table] ?? []);
     await faultAfter?.(`full_plan_insert:${table}`);
   }
 }
@@ -921,21 +1027,7 @@ async function verifyFullPlanSlice(
   plan: PortableMergePlan,
   faultAfter: ((stage: LogicalMergeFaultStage) => Promise<void>) | undefined,
 ): Promise<void> {
-  const verifyRow = async (table: FullPlanInsertTable, row: LogicalBackupRow) => {
-    const primaryKey = LOGICAL_BACKUP_TABLE_DEFINITIONS[table].primaryKey;
-    if (primaryKey.some((column) => !hasOwn(row, column))) fail();
-    const values = primaryKey.map((column) => scalar(row[column]));
-    const actual = await transaction.queryAll<Record<string, unknown>>(
-      `SELECT * FROM ${identifier(table)} WHERE ${primaryKey.map((column) =>
-        `${identifier(column)} = ?`).join(" AND ")}`,
-      values,
-    );
-    if (actual.length !== 1) fail();
-    for (const [column, value] of Object.entries(row)) {
-      if (!hasOwn(actual[0]!, column) || actual[0]![column] !== value) fail();
-    }
-  };
-  for (const setting of plan.settings) await verifyRow("app_settings", setting);
+  await verifyRows(transaction, "app_settings", plan.settings);
   await faultAfter?.("full_plan_verify:app_settings");
   for (const aggregate of plan.aggregates) {
     if (aggregate.aggregateClass !== "custom_exercise") continue;
@@ -945,9 +1037,7 @@ async function verifyFullPlanSlice(
       fail();
     }
     for (const table of FULL_PLAN_CUSTOM_EXERCISE_TABLES) {
-      for (const row of aggregate.tables[table] ?? []) {
-        await verifyRow(table, row);
-      }
+      await verifyRows(transaction, table, aggregate.tables[table] ?? []);
       await faultAfter?.(`full_plan_verify:${table}`);
     }
   }
@@ -955,9 +1045,7 @@ async function verifyFullPlanSlice(
     const root = aggregate.tables.plans?.[0];
     if (root?.id !== operation.localId || root.portable_id !== operation.portableId) fail();
     for (const table of FULL_PLAN_OWNED_PLAN_TABLES) {
-      for (const row of aggregate.tables[table] ?? []) {
-        await verifyRow(table, row);
-      }
+      await verifyRows(transaction, table, aggregate.tables[table] ?? []);
       await faultAfter?.(`full_plan_verify:${table}`);
     }
   }
