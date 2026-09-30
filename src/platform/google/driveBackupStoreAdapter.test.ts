@@ -46,7 +46,7 @@ describe("Drive backup store adapter", () => {
   it("uses isolated metadata and preserves a raw manifest ETag in If-Match", async () => {
     const fetcher = jest.fn(async (url: string, init: RequestInit) => {
       if (url.includes("files?q=")) return response({ files: [{ id: "manifest-1", name: "manifest.json", appProperties: properties }] });
-      if (url.includes("fields=id")) return response("{}", { headers: { etag: '"raw-etag"' } });
+      if (url.includes("drive/v2") && url.includes("fields=id,etag")) return response({ id: "manifest-1", etag: '"raw-etag"' });
       if (url.includes("alt=media")) return response("{}");
       return response("{}", { headers: { etag: '"next-etag"' } });
     });
@@ -112,7 +112,7 @@ describe("Drive backup store adapter", () => {
     await expect(missingFile.download("bad/id", 1)).rejects.toThrow("drive_file_id_invalid");
     await expect(missingFile.download("manifest", 0)).rejects.toThrow("drive_download_limit_invalid");
 
-    const missingManifestMedia = createDriveBackupStoreAdapter({ environment: "development-test", token: async () => "token", fetch: async (url) => url.includes("files?q=") ? response({ files: [{ id: "manifest", name: "manifest.json", appProperties: properties }] }) : url.includes("fields=id") ? response("{}", { headers: { etag: '"etag"' } }) : response(null, { status: 404 }) });
+    const missingManifestMedia = createDriveBackupStoreAdapter({ environment: "development-test", token: async () => "token", fetch: async (url) => url.includes("files?q=") ? response({ files: [{ id: "manifest", name: "manifest.json", appProperties: properties }] }) : url.includes("drive/v2") ? response({ id: "manifest", etag: '"etag"' }) : response(null, { status: 404 }) });
     await expect(missingManifestMedia.readManifest()).resolves.toBeNull();
   });
 
@@ -225,7 +225,7 @@ describe("Drive backup store adapter", () => {
       token: async () => "token",
       fetch: async (url) => url.includes("uploadType=multipart")
         ? response({ id: "manifest" })
-        : response("{}", { headers: { etag: '"read-etag"' } }),
+        : response({ id: "manifest", etag: '"read-etag"' }),
     });
     await expect(fallbackEtag.createManifest("manifest", new Uint8Array([1])))
       .resolves.toEqual({ fileId: "manifest", etag: '"read-etag"' });
@@ -238,6 +238,16 @@ describe("Drive backup store adapter", () => {
     });
     await expect(rejectedFallback.createManifest("manifest", new Uint8Array([1])))
       .rejects.toThrow("drive_manifest_read_failed");
+
+    const missingEtag = createDriveBackupStoreAdapter({
+      environment: "development-test",
+      token: async () => "token",
+      fetch: async (url) => url.includes("uploadType=multipart")
+        ? response({ id: "manifest" })
+        : response({ id: "manifest" }),
+    });
+    await expect(missingEtag.createManifest("manifest", new Uint8Array([1])))
+      .rejects.toThrow("drive_etag_missing");
   });
 
   it("rejects invalid conditional mutation and resumable acknowledgements", async () => {
@@ -245,6 +255,8 @@ describe("Drive backup store adapter", () => {
     await expect(conflict.updateManifest("manifest", new Uint8Array(), '"etag"')).rejects.toThrow("drive_manifest_conflict");
     await expect(conflict.createManifest("manifest", new Uint8Array())).rejects.toThrow("drive_manifest_conflict");
     await expect(conflict.trash("candidate", 0, '"etag"')).rejects.toThrow("drive_trash_fenced");
+    const starResponse = createDriveBackupStoreAdapter({ environment: "development-test", token: async () => "token", fetch: async () => response(null, { headers: { etag: "*" } }) });
+    await expect(starResponse.updateManifest("manifest", new Uint8Array(), '"etag"')).rejects.toThrow("drive_etag_missing");
 
     const badRange = createDriveBackupStoreAdapter({ environment: "development-test", token: async () => "token", fetch: async (url) => url.includes("uploadType=resumable") ? response(null, { headers: { location: "https://www.googleapis.com/upload/session" } }) : response(null, { status: 308, headers: { range: "bytes=0-5242881" } }) });
     const payload = new Uint8Array(5 * 1024 * 1024 + 1);
@@ -338,6 +350,16 @@ describe("Drive backup store adapter", () => {
     });
     await expect(readFailure.readManifest()).rejects.toThrow("drive_manifest_read_failed");
 
+    const mediaReadFailure = createDriveBackupStoreAdapter({
+      environment: "development-test", token: async () => "token",
+      fetch: async (url) => url.includes("files?q=")
+        ? response({ files: [{ id: "manifest", name: "manifest.json", appProperties: properties }] })
+        : url.includes("drive/v2")
+          ? response({ id: "manifest", etag: '"etag"' })
+          : response(null, { status: 500 }),
+    });
+    await expect(mediaReadFailure.readManifest()).rejects.toThrow("drive_manifest_read_failed");
+
     const candidateChanged = createDriveBackupStoreAdapter({ environment: "development-test", token: async () => "token", fetch: async () => response({ id: "other" }) });
     await expect(candidateChanged.createSnapshot("candidate", new Uint8Array([1]))).rejects.toThrow("drive_candidate_id_changed");
     const rejectedCandidate = createDriveBackupStoreAdapter({ environment: "development-test", token: async () => "token", fetch: async () => response(null, { status: 500 }) });
@@ -364,5 +386,14 @@ describe("Drive backup store adapter", () => {
     await expect(badCreate.createManifest("manifest", new Uint8Array([1]))).rejects.toThrow("drive_manifest_create_failed");
     const deleted = createDriveBackupStoreAdapter({ environment: "development-test", token: async () => "token", fetch: async () => response(null, { status: 204 }) });
     await expect(deleted.deleteTombstoned("snapshot")).resolves.toBeUndefined();
+
+    const missingAfterCreate = createDriveBackupStoreAdapter({
+      environment: "development-test", token: async () => "token",
+      fetch: async (url) => url.includes("uploadType=multipart")
+        ? response({ id: "manifest" })
+        : response(null, { status: 404 }),
+    });
+    await expect(missingAfterCreate.createManifest("manifest", new Uint8Array([1])))
+      .rejects.toThrow("drive_manifest_read_failed");
   });
 });

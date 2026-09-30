@@ -2,6 +2,7 @@ import type { AutomaticBackupEnvironment } from "../../domains/backup/automaticB
 import type { DriveBackupObject, DriveBackupStorePort, DriveManifestRead, DriveResumableSession } from "../../domains/backup/driveBackupStorePort";
 
 const DRIVE_API = "https://www.googleapis.com/drive/v3";
+const DRIVE_API_V2 = "https://www.googleapis.com/drive/v2";
 const DRIVE_UPLOAD = "https://www.googleapis.com/upload/drive/v3";
 const MULTIPART_LIMIT = 5 * 1024 * 1024;
 const MAX_LIST_RESULTS = 8;
@@ -161,10 +162,18 @@ export function createDriveBackupStoreAdapter(input: Readonly<{ environment: Aut
   }
   async function readFileEtag(fileId: string): Promise<string | null> {
     assertId(fileId);
-    const response = await request(`${DRIVE_API}/files/${encodeURIComponent(fileId)}?fields=id`);
+    const response = await request(`${DRIVE_API_V2}/files/${encodeURIComponent(fileId)}?fields=id,etag`);
     if (response.status === 404) return null;
     if (!response.ok) throw new Error("drive_manifest_read_failed");
-    return responseEtag(response);
+    const value = json(await readBody(response, 64 * 1024));
+    if (typeof value !== "object" || value === null
+      || (value as { id?: unknown }).id !== fileId
+      || typeof (value as { etag?: unknown }).etag !== "string") {
+      throw new Error("drive_etag_missing");
+    }
+    const etag = (value as { etag: string }).etag;
+    assertEtag(etag);
+    return etag;
   }
   async function readManifest(): Promise<DriveManifestRead | null> {
     const manifests = (await discover()).filter((entry) => entry.name === "manifest.json");
