@@ -25,6 +25,37 @@ describe("automatic backup state repository", () => {
     expect(statements.join("\n")).toContain("account_display_label");
     expect(statements.join("\n")).toContain("COALESCE(?, account_display_label)");
   });
+
+  it("persists and reads one bounded pending handover claim", async () => {
+    const statements: string[] = [];
+    const repository = createAutomaticBackupStateRepository({
+      queryAll: async (sql: string) => sql.includes("automatic_backup_receipt_state")
+        ? [{
+          attempt_id: "attempt", environment: "development-test", permission_id: "permission",
+          connection_generation: 4, manifest_file_id: "manifest", manifest_etag: "etag",
+          remote_writer_epoch: 7, snapshot_id: "snapshot", source_digest: "a".repeat(64),
+        }]
+        : [],
+      write: async (command: (transaction: SqliteTransactionExecutor) => Promise<unknown>) => command({
+        execute: async (sql: string) => { statements.push(sql); return { changes: 1, lastInsertRowId: 0 }; },
+        queryAll: async () => [],
+      }), connectionConfiguration: async () => undefined, close: async () => undefined,
+    } as unknown as SqliteKernel);
+    const pending = {
+      attemptId: "attempt", environment: "development-test" as const, permissionId: "permission",
+      connectionGeneration: 4, manifestId: "manifest", manifestEtag: "etag",
+      remoteWriterEpoch: 7, snapshotId: "snapshot", sourceDigest: "a".repeat(64), nowMs: 100,
+    };
+
+    await repository.persistPendingHandover(pending);
+    await expect(repository.readPendingHandover()).resolves.toEqual({
+      attemptId: "attempt", environment: "development-test", permissionId: "permission",
+      connectionGeneration: 4, manifestId: "manifest", manifestEtag: "etag",
+      remoteWriterEpoch: 7, snapshotId: "snapshot", sourceDigest: "a".repeat(64),
+    });
+    expect(statements.join("\n")).toContain("status_code = 'finishing'");
+    expect(statements.join("\n")).toContain("automatic_backup_receipt_state");
+  });
   it("returns only bounded state and conditionally acknowledges captured generation", async () => {
     const repository = createAutomaticBackupStateRepository({
       queryAll: async () => [{ environment: "development-test", permission_id: "permission", display_email: "…@example.com", connection_generation: 2, writer_epoch: 3, mutation_generation: 5, backed_up_generation: 4 }],

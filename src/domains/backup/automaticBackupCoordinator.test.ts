@@ -503,6 +503,46 @@ describe("automatic backup coordinator", () => {
     expect(activateWriter).not.toHaveBeenCalled();
   });
 
+  it("resumes only a durable successor claim after restart", async () => {
+    const updates: string[] = [];
+    let manifest = activeManifest(7);
+    let etag = "old-etag";
+    const activateWriter = jest.fn(async (value: { writerEpoch: number }) => {
+      expect(value.writerEpoch).toBe(8);
+      return true;
+    });
+    const coordinator = createAutomaticBackupCoordinator({
+      isWorkoutActive: () => false,
+      auth: { connect: async () => null, reauthenticate: async () => ({ permissionId: "permission", displayEmail: null }), disconnect: async () => undefined },
+      capture: async () => { throw new Error("must_not_capture"); },
+      state: {
+        read: async () => activeState({ authorityState: "quarantine", statusCode: "finishing", writerEpoch: 2 }),
+        persistAttempt: async () => undefined, acknowledgeReceipt: async () => false,
+        readPendingHandover: async () => ({
+          attemptId: "attempt", environment: "development-test", permissionId: "permission",
+          connectionGeneration: 1, manifestId: "manifest", manifestEtag: "old-etag",
+          remoteWriterEpoch: 7, snapshotId: "latest", sourceDigest: "a".repeat(64),
+        }),
+        activateWriter,
+        setRecoveryStatus: async () => undefined,
+      },
+      drive: {
+        createSnapshot: async () => { throw new Error("must_not_upload"); },
+        download: async () => { throw new Error("must_not_restore"); },
+        updateManifest: async (_id, bytes, expectedEtag) => {
+          expect(expectedEtag).toBe("old-etag");
+          manifest = bytes; etag = "new-etag"; updates.push("claim"); return etag;
+        },
+        readManifest: async () => ({ fileId: "manifest", bytes: manifest, etag }),
+      },
+      validate: () => true, nowMs: () => 1, candidateId: () => "unused",
+    });
+
+    await expect(coordinator.takeOver()).resolves.toEqual({ status: "ready" });
+    expect(updates).toEqual(["claim"]);
+    expect(activateWriter).toHaveBeenCalledTimes(1);
+  });
+
   it("guards cancellation, deletion, and merge adoption generations", async () => {
     const events: string[] = [];
     let resolveManifest: (() => void) | undefined;
