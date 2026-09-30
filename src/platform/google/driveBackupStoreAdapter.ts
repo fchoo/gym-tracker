@@ -6,6 +6,7 @@ const DRIVE_UPLOAD = "https://www.googleapis.com/upload/drive/v3";
 const MULTIPART_LIMIT = 5 * 1024 * 1024;
 const MAX_LIST_RESULTS = 8;
 const MAX_RESPONSE_BYTES = 24 * 1024 * 1024 + 64 * 1024;
+const REQUEST_TIMEOUT_MS = 60_000;
 
 export type DriveFetch = (url: string, init: RequestInit) => Promise<Response>;
 export type DriveToken = () => Promise<string>;
@@ -54,15 +55,36 @@ function multipart(candidateId: string, payload: Uint8Array, properties: Readonl
   const result = new Uint8Array(prefix.byteLength + payload.byteLength + suffix.byteLength); result.set(prefix); result.set(payload, prefix.byteLength); result.set(suffix, prefix.byteLength + payload.byteLength); return result;
 }
 
-export function createDriveBackupStoreAdapter(input: Readonly<{ environment: AutomaticBackupEnvironment; token: DriveToken; fetch?: DriveFetch }>): DriveBackupStorePort {
+export function createDriveBackupStoreAdapter(input: Readonly<{ environment: AutomaticBackupEnvironment; token: DriveToken; fetch?: DriveFetch; requestTimeoutMs?: number }>): DriveBackupStorePort {
   const fetcher = input.fetch ?? fetch;
+  const requestTimeoutMs = input.requestTimeoutMs ?? REQUEST_TIMEOUT_MS;
   const properties = namespace(input.environment);
   const snapshotProperties = Object.freeze({ ...properties, object_kind: "snapshot" });
   const manifestProperties = Object.freeze({ ...properties, object_kind: "manifest" });
   async function request(url: string, init: RequestInit = {}): Promise<Response> {
     origin(url); const token = await input.token();
     if (token.length === 0 || token.length > 16 * 1024) throw new Error("drive_token_invalid");
-    const response = await fetcher(url, { ...init, redirect: "error", headers: { Authorization: `Bearer ${token}`, ...(init.headers ?? {}) } });
+    const controller = new AbortController();
+    let timeout: ReturnType<typeof setTimeout> | undefined;
+    let timedOut = false;
+    let response: Response;
+    try {
+      response = await Promise.race([
+        fetcher(url, { ...init, signal: controller.signal, redirect: "error", headers: { Authorization: `Bearer ${token}`, ...(init.headers ?? {}) } }),
+        new Promise<never>((_resolve, reject) => {
+          timeout = setTimeout(() => {
+            timedOut = true;
+            controller.abort();
+            reject(new Error("drive_request_timeout"));
+          }, requestTimeoutMs);
+        }),
+      ]);
+    } catch (error) {
+      if (timedOut) throw new Error("drive_request_timeout");
+      throw error;
+    } finally {
+      if (timeout !== undefined) clearTimeout(timeout);
+    }
     if (response.status === 401) throw new Error("drive_unauthorized");
     return response;
   }

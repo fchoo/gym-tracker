@@ -272,7 +272,14 @@ export function createAutomaticBackupCoordinator(input: Readonly<{
     if (permissionId === null) return Object.freeze({ status: "cancelled" as const });
     await input.state.beginQuarantine?.({ environment: input.drive.environment ?? prior.environment, permissionId, connectionGeneration: prior.connectionGeneration + (identity === undefined ? 0 : 1), ...(identity === undefined ? {} : { accountDisplayLabel: identity.displayEmail }) });
     await input.state.setRecoveryStatus?.("checking");
-    const result = await recover();
+    let result: Awaited<ReturnType<typeof recover>>;
+    try {
+      result = await recover();
+    } catch {
+      if (generation !== checkingGeneration) return Object.freeze({ status: "cancelled" as const });
+      await input.state.setRecoveryStatus?.("idle");
+      return Object.freeze({ status: "quarantined" as const });
+    }
     if (generation !== checkingGeneration) return Object.freeze({ status: "cancelled" as const });
     await input.state.setRecoveryStatus?.(result.status === "needs_bootstrap" || result.status === "ready" ? "idle" : "restore_pending");
     return result;

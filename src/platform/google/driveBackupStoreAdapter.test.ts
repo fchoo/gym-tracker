@@ -102,6 +102,31 @@ describe("Drive backup store adapter", () => {
     await expect(missingFile.download("manifest", 0)).rejects.toThrow("drive_download_limit_invalid");
   });
 
+  it("aborts a Drive request at the bounded transport deadline", async () => {
+    let aborted = false;
+    const adapter = createDriveBackupStoreAdapter({
+      environment: "development-test",
+      token: async () => "token",
+      requestTimeoutMs: 1,
+      fetch: async (_url, init) => new Promise<Response>((_resolve, reject) => {
+        init.signal?.addEventListener("abort", () => {
+          aborted = true;
+          reject(new Error("aborted"));
+        });
+      }),
+    });
+
+    await expect(adapter.discover()).rejects.toThrow("drive_request_timeout");
+    expect(aborted).toBe(true);
+
+    const immediateFailure = createDriveBackupStoreAdapter({
+      environment: "development-test",
+      token: async () => "token",
+      fetch: () => { throw new Error("offline"); },
+    });
+    await expect(immediateFailure.discover()).rejects.toThrow("offline");
+  });
+
   it("keeps manifest, resumable, and deletion operations conditionally fenced", async () => {
     const requests: Array<{ url: string; init: RequestInit }> = [];
     let resumableCall = 0;

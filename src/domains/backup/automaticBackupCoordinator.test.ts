@@ -567,6 +567,52 @@ describe("automatic backup coordinator", () => {
     });
     await expect(quarantined.checkAgain()).resolves.toEqual({ status: "quarantined" });
     expect(statuses).toEqual(expect.arrayContaining(["restore_pending"]));
+
+    const discoveryStatuses: string[] = [];
+    const failedDiscovery = createAutomaticBackupCoordinator({
+      isWorkoutActive: () => false,
+      capture: async () => ({ generation: 1, sourceDigest: "a".repeat(64), bytes: new Uint8Array() }),
+      state: {
+        read: async () => activeState({ authorityState: "quarantine" }),
+        persistAttempt: async () => undefined,
+        acknowledgeReceipt: async () => false,
+        beginQuarantine: async () => undefined,
+        setRecoveryStatus: async (value) => { discoveryStatuses.push(value); },
+      },
+      drive: { createSnapshot: async () => "snapshot", download: async () => new Uint8Array(), updateManifest: async () => "etag", readManifest: async () => { throw new Error("offline"); } },
+      validate: () => true,
+      nowMs: () => 1,
+      candidateId: () => "candidate",
+    });
+    await expect(failedDiscovery.checkAgain()).resolves.toEqual({ status: "quarantined" });
+    expect(discoveryStatuses).toEqual(["checking", "idle"]);
+
+    let rejectDiscovery: (() => void) | undefined;
+    const cancelledDiscovery = createAutomaticBackupCoordinator({
+      isWorkoutActive: () => false,
+      capture: async () => ({ generation: 1, sourceDigest: "a".repeat(64), bytes: new Uint8Array() }),
+      state: {
+        read: async () => activeState({ authorityState: "quarantine" }),
+        persistAttempt: async () => undefined,
+        acknowledgeReceipt: async () => false,
+        beginQuarantine: async () => undefined,
+        setRecoveryStatus: async () => undefined,
+      },
+      drive: {
+        createSnapshot: async () => "snapshot",
+        download: async () => new Uint8Array(),
+        updateManifest: async () => "etag",
+        readManifest: async () => new Promise((_resolve, reject) => { rejectDiscovery = () => { reject(new Error("offline")); }; }),
+      },
+      validate: () => true,
+      nowMs: () => 1,
+      candidateId: () => "candidate",
+    });
+    const cancelled = cancelledDiscovery.checkAgain();
+    for (let attempt = 0; attempt < 8 && rejectDiscovery === undefined; attempt += 1) await Promise.resolve();
+    await cancelledDiscovery.abortChecking();
+    rejectDiscovery?.();
+    await expect(cancelled).resolves.toEqual({ status: "cancelled" });
   });
 
   it("covers rejected candidate bytes, anonymous connect, and both recovery activation paths", async () => {
