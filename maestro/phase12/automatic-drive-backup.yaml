@@ -1,15 +1,16 @@
 appId: com.fchoo.gymtracker.devtest
-name: Phase 12 automatic Drive backup fake-port route proof
+name: Phase 12 automatic Drive backup state proof
 tags:
   - phase-12
   - fake-port
 ---
-- assertTrue: ${PHASE12_STAGE == 'routes' || PHASE12_STAGE == 'disconnected' || PHASE12_STAGE == 'no-cloud' || PHASE12_STAGE == 'restore-empty' || PHASE12_STAGE == 'merge-adoption' || PHASE12_STAGE == 'previous' || PHASE12_STAGE == 'update-required' || PHASE12_STAGE == 'policy' || PHASE12_STAGE == 'stale-warning' || PHASE12_STAGE == 'takeover' || PHASE12_STAGE == 'disconnect-delete' || PHASE12_STAGE == 'csv-manual'}
+- assertTrue: ${PHASE12_STAGE == 'disconnected' || PHASE12_STAGE == 'no_cloud' || PHASE12_STAGE == 'backup_pending' || PHASE12_STAGE == 'backing_up' || PHASE12_STAGE == 'backed_up' || PHASE12_STAGE == 'auth_attention' || PHASE12_STAGE == 'checking' || PHASE12_STAGE == 'restoring' || PHASE12_STAGE == 'finishing' || PHASE12_STAGE == 'restore_required' || PHASE12_STAGE == 'merge_review' || PHASE12_STAGE == 'previous_available' || PHASE12_STAGE == 'update_required' || PHASE12_STAGE == 'invalid_artifacts' || PHASE12_STAGE == 'pending_24h' || PHASE12_STAGE == 'stale_writer' || PHASE12_STAGE == 'deleted' || PHASE12_STAGE == 'deletion_partial'}
 - launchApp:
     clearState: false
     stopApp: true
-    permissions:
-      notifications: deny
+    env:
+      EXPO_PUBLIC_NATIVE_CONTRACT_SUITE: phase12
+      EXPO_PUBLIC_PHASE12_STAGE: ${PHASE12_STAGE}
 - runFlow:
     when:
       visible: "Retry opening workout data"
@@ -22,9 +23,59 @@ tags:
 - extendedWaitUntil:
     visible: "Data and recovery"
     timeout: 30000
-- assertVisible: "Data and recovery"
-- assertVisible: "Google Drive backup"
-- assertVisible: "Recovery tools"
-- assertVisible: "Automatic backup settings"
+- runFlow:
+    when: { true: ${PHASE12_STAGE == 'disconnected'} }
+    commands: [{ assertVisible: "Not connected" }, { assertVisible: "Connect Google Drive" }]
+- runFlow:
+    when: { true: ${PHASE12_STAGE == 'no_cloud'} }
+    commands: [{ assertVisible: "Ready to start cloud backup" }]
+- runFlow:
+    when: { true: ${PHASE12_STAGE == 'backup_pending'} }
+    commands: [{ assertVisible: "Backup pending" }, { assertVisible: "Retry" }]
+- runFlow:
+    when: { true: ${PHASE12_STAGE == 'backing_up'} }
+    commands: [{ assertVisible: "Backing up" }]
+- runFlow:
+    when: { true: ${PHASE12_STAGE == 'backed_up'} }
+    commands: [{ assertVisible: "Backed up" }, { assertVisible: "Back up now" }]
+- runFlow:
+    when: { true: ${PHASE12_STAGE == 'auth_attention'} }
+    commands: [{ assertVisible: "Sign in again" }]
+- runFlow:
+    when: { true: ${PHASE12_STAGE == 'checking'} }
+    commands: [{ assertVisible: "Checking backup" }]
+- runFlow:
+    when: { true: ${PHASE12_STAGE == 'restoring'} }
+    commands: [{ assertVisible: "Restoring on this phone" }]
+- runFlow:
+    when: { true: ${PHASE12_STAGE == 'finishing'} }
+    commands: [{ assertVisible: "Finishing backup setup" }]
+- runFlow:
+    when: { true: ${PHASE12_STAGE == 'restore_required'} }
+    commands: [{ assertVisible: "Restore required" }, { assertVisible: "Continue restore" }]
+- runFlow:
+    when: { true: ${PHASE12_STAGE == 'merge_review'} }
+    commands: [{ assertVisible: "Review merge" }]
+- runFlow:
+    when: { true: ${PHASE12_STAGE == 'previous_available'} }
+    commands: [{ assertVisible: "previous verified backup is available" }]
+- runFlow:
+    when: { true: ${PHASE12_STAGE == 'update_required'} }
+    commands: [{ assertVisible: "Update required" }, { assertVisible: "Check again" }]
+- runFlow:
+    when: { true: ${PHASE12_STAGE == 'invalid_artifacts'} }
+    commands: [{ assertVisible: "Backup needs attention" }, { assertVisible: "Manual encrypted backup" }]
+- runFlow:
+    when: { true: ${PHASE12_STAGE == 'pending_24h'} }
+    commands: [{ assertVisible: "Changes not backed up for 24h" }, { assertVisible: "Retry" }]
+- runFlow:
+    when: { true: ${PHASE12_STAGE == 'stale_writer'} }
+    commands: [{ assertVisible: "Backup moved to another phone" }]
+- runFlow:
+    when: { true: ${PHASE12_STAGE == 'deleted'} }
+    commands: [{ assertVisible: "Cloud backup deleted" }]
+- runFlow:
+    when: { true: ${PHASE12_STAGE == 'deletion_partial'} }
+    commands: [{ assertVisible: "Deleting cloud backup" }]
 - assertVisible: "Manual encrypted backup"
 - assertVisible: "Export CSV"

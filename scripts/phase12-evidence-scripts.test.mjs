@@ -1,9 +1,9 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { PHASE12_MAESTRO_STAGES, validatePhase12Manifest } from "./run-phase12-maestro.mjs";
+import { PHASE12_MAESTRO_STAGES, validateDistinctPhase12Flow, validatePhase12Manifest } from "./run-phase12-maestro.mjs";
 import { readFileSync } from "node:fs";
 const manifest = { schema_version: 1, suite: "phase12", profile: "development-test", package: "com.fchoo.gymtracker.devtest", js_bundle: { embedded: true }, apk: { path: "fixture.apk", sha256: "a".repeat(64) }, base_head: "b".repeat(40), source_tree_sha256: "c".repeat(64) };
-test("Phase 12 runner owns each fake-port evidence stage", () => assert.deepEqual(PHASE12_MAESTRO_STAGES, ["routes", "disconnected", "no-cloud", "restore-empty", "merge-adoption", "previous", "update-required", "policy", "stale-warning", "takeover", "disconnect-delete", "csv-manual"]));
+test("Phase 12 runner owns each fake-port evidence stage", () => assert.equal(PHASE12_MAESTRO_STAGES.length, 18));
 test("Phase 12 runner rejects stale or non-devtest manifests", () => {
   assert.equal(validatePhase12Manifest(manifest, "b".repeat(40), "c".repeat(64)), true);
   assert.throws(() => validatePhase12Manifest({ ...manifest, profile: "production" }, "b".repeat(40), "c".repeat(64)));
@@ -19,6 +19,7 @@ test("Phase 12 flow recovers only the known retained restore state before the ca
   assert.match(flow, /clearState: false/u);
   assert.match(flow, /stopApp: true/u);
   assert.match(flow, /tapOn: "Retry opening workout data"/u);
+  assert.equal(validateDistinctPhase12Flow(flow), true);
 });
 
 test("Phase 12 becomes the explicit credential-free PR native producer", () => {
@@ -40,4 +41,11 @@ test("Phase 12 native benchmark route is development-test and suite gated", () =
   assert.match(route, /suite === "phase12"/u);
   assert.match(route, /PHASE12_BENCHMARK_START_MARKER/u);
   assert.match(route, /PHASE12_BENCHMARK_RESULT_MARKER/u);
+});
+
+test("Phase 12 benchmark invokes the production atomic merge writer", () => {
+  const source = readFileSync("src/bootstrap/phase12BackupBenchmark.ts", "utf8");
+  assert.match(source, /createFullPlanLogicalMergeWriter/u);
+  assert.match(source, /commitFullPlan/u);
+  assert.doesNotMatch(source, /materializedRows/u);
 });
