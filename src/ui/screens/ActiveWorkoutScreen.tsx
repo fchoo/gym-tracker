@@ -927,9 +927,14 @@ function PopulatedWorkoutOverview({
   const activeIndex = workingIndex(activeSets, view.activeSetId);
   const activeSet = activeOwner?.set;
   const persistedTimingTargetId = timingContext?.state.targetSessionSetId ?? null;
+  const timingContextLocksTarget = timingContext !== null
+    && timingContext.state.state !== "idle"
+    && timingContext.state.state !== "stopped";
   const selectedTimingOwner = resolveSetOwner(
     view,
-    persistedTimingTargetId ?? selectedTimingTargetSetId ?? "",
+    (timingContextLocksTarget ? persistedTimingTargetId : selectedTimingTargetSetId)
+      ?? persistedTimingTargetId
+      ?? "",
   );
   const timingTargetSet = selectedTimingOwner?.exercise.id === activeExercise.id
     && (selectedTimingOwner.set.status === "planned"
@@ -1260,7 +1265,8 @@ function PopulatedWorkoutOverview({
           value,
           result.sessionRevision,
         );
-        if (set.kind === "warmup" && target.exercise.id === activeExercise.id) {
+        if (target.exercise.id === activeExercise.id
+          && (set.kind === "warmup" || set.id === viewRef.current.activeSetId)) {
           setSelectedTimingTargetSetId(set.id);
         }
         scheduleTimingPanelScroll(target.exercise.id, result.sessionRevision);
