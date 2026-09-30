@@ -279,8 +279,8 @@ describe("production automatic-backup composition", () => {
 
     await runtime.retryBackup();
 
-    expect(mockCoordinatorCheckAgain).toHaveBeenCalledTimes(priorChecks + 1);
-    expect(mockCoordinatorBackup).toHaveBeenCalledTimes(priorBackups + 1);
+    expect(mockCoordinatorCheckAgain).toHaveBeenCalledTimes(priorChecks);
+    expect(mockCoordinatorBackup).toHaveBeenCalledTimes(priorBackups);
 
     mockState.read.mockResolvedValueOnce({
       permissionId: "google-permission", statusCode: "idle", authorityState: "quarantine",
@@ -289,7 +289,7 @@ describe("production automatic-backup composition", () => {
     });
     mockCoordinatorCheckAgain.mockResolvedValueOnce({ status: "quarantined" });
     await runtime.backupNow();
-    expect(mockCoordinatorBackup).toHaveBeenCalledTimes(priorBackups + 1);
+    expect(mockCoordinatorBackup).toHaveBeenCalledTimes(priorBackups);
 
     const schedulerModule = jest.requireMock("../domains/backup/automaticBackupScheduler") as { createAutomaticBackupScheduler: jest.Mock };
     const schedulerInput = schedulerModule.createAutomaticBackupScheduler.mock.calls.at(-1)?.[0] as { run(): Promise<void> };
@@ -301,7 +301,7 @@ describe("production automatic-backup composition", () => {
     mockCoordinatorCheckAgain.mockResolvedValueOnce({ status: "ready" });
     const readsBeforeScheduler = mockState.read.mock.calls.length;
     await schedulerInput.run();
-    expect(mockCoordinatorBackup).toHaveBeenCalledTimes(priorBackups + 2);
+    expect(mockCoordinatorBackup).toHaveBeenCalledTimes(priorBackups + 1);
     expect(mockState.read.mock.calls.length).toBe(readsBeforeScheduler + 2);
   });
 
@@ -332,9 +332,11 @@ describe("production automatic-backup composition", () => {
     expect(mockCoordinatorTakeOver).toHaveBeenCalled();
     expect(mockCoordinatorPrepareRecovery).toHaveBeenCalledWith({ candidate: "latest" });
     expect(mockCoordinatorCommitRecovery).toHaveBeenCalledWith({ kind: "empty_direct", attemptId: "attempt" });
-    expect(mockCoordinatorBackup).toHaveBeenCalledTimes(priorBackups + 3);
+    expect(mockCoordinatorBackup).toHaveBeenCalledTimes(priorBackups);
     expect(activeScheduler.request).toHaveBeenCalledWith("post_commit");
     expect(activeScheduler.request).toHaveBeenCalledWith("manual");
+    expect(activeScheduler.request).toHaveBeenCalledWith("retry");
+    expect(activeScheduler.request).toHaveBeenCalledWith("manual_cellular");
   });
 
   it("binds recovery, merge, capture, and scheduling callbacks to the active local facts", async () => {

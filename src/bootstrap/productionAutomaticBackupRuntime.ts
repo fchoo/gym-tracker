@@ -22,6 +22,7 @@ import { createExerciseSearchIndexRepository } from "../platform/sqlite/reposito
 import { createSqliteMergeLocalFactsPort, createSqliteRestoreCandidateProbe, createSqliteRestoreRetainedReferencePort, createSqliteRestoreSchemaPort } from "../platform/sqlite/repositories/restorePreflightAdapters";
 import { createAutomaticBackupStateRepository } from "../platform/sqlite/repositories/automaticBackupStateRepository";
 import type { SqliteKernel } from "../platform/sqlite";
+import { currentNetworkClass } from "../../modules/network-classifier/src";
 import { createAutomaticBackupRuntime, type AutomaticBackupRuntime } from "./automaticBackupRuntime";
 import { createProductionAutomaticSnapshotCapture } from "./productionAutomaticSnapshotCapture";
 
@@ -240,6 +241,8 @@ export function createProductionAutomaticBackupServices(kernel: SqliteKernel): S
   let publishBackupState = async (): Promise<void> => undefined;
   const scheduler = createAutomaticBackupScheduler({
     isWorkoutActive,
+    networkClass: currentNetworkClass,
+    dataUsePolicy: async () => (await state.read()).dataUsePolicy,
     eligible: async () => {
       const current = await state.read();
       return current.authorityState === "active"
@@ -270,7 +273,7 @@ export function createProductionAutomaticBackupServices(kernel: SqliteKernel): S
         throw error;
       }
     }, prepareRecovery: (input) => coordinator.prepareRecovery(input), commitRecovery: async (input) => { await coordinator.commitRecovery(input); }, finishSetup: async () => undefined,
-    backupNow: backupAfterBootstrapDiscovery, retryBackup: backupAfterBootstrapDiscovery, useCellularThisTime: backupAfterBootstrapDiscovery, setDataUsePolicy: async (policy) => state.setDataUsePolicy(policy === "wifi_only" ? "wifi-only" : "any-network"), takeOver: async () => coordinator.takeOver().then(() => undefined), disconnect: () => coordinator.disconnect(),
+    backupNow: async () => { scheduler.request("manual"); }, retryBackup: async () => { scheduler.request("retry"); }, useCellularThisTime: async () => { scheduler.request("manual_cellular"); }, setDataUsePolicy: async (policy) => state.setDataUsePolicy(policy === "wifi_only" ? "wifi-only" : "any-network"), takeOver: async () => coordinator.takeOver().then(() => undefined), disconnect: () => coordinator.disconnect(),
     deleteCloudBackup: async () => { throw new Error("automatic_delete_requires_tombstone_confirmation"); }, finishDeletingCloudBackup: async () => { await coordinator.finishDeletionSweep(); }, startNewCloudBackup: async () => { await coordinator.checkAgain(); scheduler.request("manual"); },
   } });
   publishBackupState = () => runtime.refresh();

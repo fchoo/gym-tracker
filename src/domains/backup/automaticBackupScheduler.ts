@@ -1,4 +1,5 @@
-export type AutomaticBackupRequest = "launch" | "foreground" | "post_commit" | "manual" | "retry" | "background";
+export type AutomaticBackupRequest = "launch" | "foreground" | "post_commit" | "manual" | "manual_cellular" | "retry" | "background";
+export type AutomaticBackupNetworkClass = "wifi" | "cellular_or_metered" | "unavailable" | "unknown";
 
 export type AutomaticBackupScheduler = Readonly<{
   request(reason: AutomaticBackupRequest): void;
@@ -11,6 +12,9 @@ export function createAutomaticBackupScheduler(input: Readonly<{
   run(reason: AutomaticBackupRequest): Promise<void>;
   queue(work: () => void): void;
   eligible?(): boolean | Promise<boolean>;
+  networkClass?(): AutomaticBackupNetworkClass | Promise<AutomaticBackupNetworkClass>;
+  dataUsePolicy?(): "any-network" | "wifi-only" | Promise<"any-network" | "wifi-only">;
+  onCellularConfirmationRequired?(): void;
   isBackgroundAllowed?(): boolean;
   onError?(reason: AutomaticBackupRequest): void;
 }>): AutomaticBackupScheduler {
@@ -21,10 +25,21 @@ export function createAutomaticBackupScheduler(input: Readonly<{
     queued = false;
     if (running || pending === null || await input.isWorkoutActive()) return;
     if (input.eligible !== undefined && !await input.eligible()) return;
+    const reason = pending;
+    if (input.networkClass !== undefined && input.dataUsePolicy !== undefined) {
+      const [network, policy] = await Promise.all([input.networkClass(), input.dataUsePolicy()]);
+      if (network === "unavailable" || network === "unknown") return;
+      if (policy === "wifi-only" && network !== "wifi") {
+        if (reason === "manual") {
+          pending = null;
+          input.onCellularConfirmationRequired?.();
+        }
+        if (reason !== "manual_cellular") return;
+      }
+    }
     // A workout may start while the read-only eligibility check is resolving.
     // Recheck immediately before handing work to any network capture.
     if (await input.isWorkoutActive()) return;
-    const reason = pending;
     if (reason === "background" && input.isBackgroundAllowed?.() === false) return;
     pending = null;
     running = true;
@@ -40,7 +55,9 @@ export function createAutomaticBackupScheduler(input: Readonly<{
   };
   return Object.freeze({
     request(reason) {
-      if (pending !== "manual" || reason === "manual") pending = reason;
+      const pendingIsManual = pending === "manual" || pending === "manual_cellular";
+      const reasonIsManual = reason === "manual" || reason === "manual_cellular";
+      if (!pendingIsManual || reasonIsManual) pending = reason;
       schedule();
     },
     cancel() { pending = null; },
