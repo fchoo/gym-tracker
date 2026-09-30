@@ -5,16 +5,16 @@ milestone_name: In-Workout Editing, Advanced Timing & Drive Backup
 current_phase: 12
 current_phase_name: Automatic Google Drive Backup & Replacement Restore
 status: executing
-stopped_at: Completed 10-05-independent-set-timing-gap-closure-PLAN.md
-last_updated: "2026-09-30T15:00:00.670Z"
+stopped_at: Completed 12-12-PLAN.md; 12-13 intentionally not executed
+last_updated: "2026-09-30T21:52:31.620Z"
 last_activity: 2026-09-27
 last_activity_desc: Phase 12 execution started
-state_head: 7cb75fc8c352605e4dbccefad405a60c8d0b0dc1
+state_head: 0ee36468e9a29797070e13815d86318c36ca5b55
 progress:
   total_phases: 5
   completed_phases: 3
   total_plans: 36
-  completed_plans: 26
+  completed_plans: 34
   percent: 60
 ---
 
@@ -138,6 +138,8 @@ Terminal Seal) is retired for personal-use (removed in PR #29) and tracked as V2
 | Phase 12-automatic-google-drive-sync P02 | 1h 7m | 3 tasks | 27 files |
 | Phase 12 P03 | coverage closeout | 3 tasks | 14 files |
 | Phase 10 P05 | 24 min | 2 tasks | 5 files |
+| Phase 12 P11 | 5h 27m | 3 tasks | 19 files |
+| Phase 12 P12 | 5h 15m interleaved | 2 tasks | 8 files |
 
 ## Accumulated Context
 
@@ -321,6 +323,9 @@ Full decisions live in `.planning/PROJECT.md`.
 - [Phase 12]: Automatic portability is integrity-critical and must retain complete four-metric coverage.
 - [Phase 10]: Gap closure uses ordinal timing arrays so surviving warm-up and working rows retain their configs while new rows inherit.
 - [Phase 10]: Active completed/skipped rows render effective timing read-only; planned/draft rows reuse the existing revision-checked set timing command.
+- [Phase 12]: Phase 12 Plan 11: Keep production writer and schema validation strict; benchmark fixtures satisfy the migrated schema and production planner.
+- [Phase 12]: Phase 12 Plan 11: Admit 4,000-bind merge batches only after the active SQLite build proves a larger variable limit.
+- [Phase 12]: Phase 12 Plan 12: Limit live Google evidence to fresh replacement and physical-phone auth/refresh; adversarial cases remain deterministic.
 
 ### Blockers/Concerns
 
@@ -348,9 +353,9 @@ Full decisions live in `.planning/PROJECT.md`.
 
 ## Session Continuity
 
-Last session: 2026-09-30T15:00:00.573Z
+Last session: 2026-09-30T21:52:31.457Z
 Last handoff: Phase 12 design review approved guided recovery mode, split administration/manual recovery routes, full state matrix, NavigationRow, and responsive/accessibility contracts
-Stopped at: Completed 10-05-independent-set-timing-gap-closure-PLAN.md
+Stopped at: Completed 12-12-PLAN.md; 12-13 intentionally not executed
 Resume file: None
 Handoff file: none
 Next action: Execute Phase 12; the owner authorized proceeding with development after automatically selecting the top recommended focused-review options.
