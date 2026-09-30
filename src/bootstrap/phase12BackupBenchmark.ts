@@ -463,14 +463,31 @@ export async function performPhase12BackupBenchmark(): Promise<Phase12BackupBenc
     }
     const mergeMaterializationMs: number[] = [];
     let mergeStage: LogicalMergeFaultStage | "writer_start" = "writer_start";
+    let materializationSample = -1;
+    let materializationStarted = 0;
     const mergeWriter = createFullPlanLogicalMergeWriter(kernel, {
       sha256: async (value) => {
         const { CryptoDigestAlgorithm, digestStringAsync } = require("expo-crypto") as typeof import("expo-crypto");
         return digestStringAsync(CryptoDigestAlgorithm.SHA256, value);
       },
-      faultAfter: async (stage) => { mergeStage = stage; },
+      faultAfter: async (stage) => {
+        mergeStage = stage;
+        console.log(`${PHASE12_BENCHMARK_PROGRESS_MARKER}${JSON.stringify({
+          stage: "materialization_writer",
+          sample: materializationSample,
+          writer_stage: stage,
+          elapsed_ms: performance.now() - materializationStarted,
+        })}`);
+      },
     });
     for (let index = 0; index < mergePlans.length; index += 1) {
+      materializationSample = index;
+      const planningStarted = performance.now();
+      console.log(`${PHASE12_BENCHMARK_PROGRESS_MARKER}${JSON.stringify({
+        stage: "materialization_plan",
+        sample: index,
+        event: "started",
+      })}`);
       const live = await createSqliteMergeLocalFactsPort(kernel).read();
       const currentSession = live.tables.workout_sessions?.[0];
       if (currentSession === undefined) throw new Error("phase12_merge_materialization_empty");
@@ -487,8 +504,19 @@ export async function performPhase12BackupBenchmark(): Promise<Phase12BackupBenc
         const { CryptoDigestAlgorithm, digestStringAsync } = require("expo-crypto") as typeof import("expo-crypto");
         return digestStringAsync(CryptoDigestAlgorithm.SHA256, value);
       } });
-      const started = performance.now();
+      console.log(`${PHASE12_BENCHMARK_PROGRESS_MARKER}${JSON.stringify({
+        stage: "materialization_plan",
+        sample: index,
+        event: "completed",
+        elapsed_ms: performance.now() - planningStarted,
+      })}`);
+      materializationStarted = performance.now();
       mergeStage = "writer_start";
+      console.log(`${PHASE12_BENCHMARK_PROGRESS_MARKER}${JSON.stringify({
+        stage: "materialization",
+        sample: index,
+        event: "started",
+      })}`);
       try {
         await mergeWriter.commitFullPlan({
           localFingerprint: await (async () => {
@@ -498,7 +526,14 @@ export async function performPhase12BackupBenchmark(): Promise<Phase12BackupBenc
           plan,
         });
       } catch (error) { throw phase12BenchmarkError(error, index, mergeStage); }
-      mergeMaterializationMs.push(performance.now() - started);
+      const materializationElapsedMs = performance.now() - materializationStarted;
+      mergeMaterializationMs.push(materializationElapsedMs);
+      console.log(`${PHASE12_BENCHMARK_PROGRESS_MARKER}${JSON.stringify({
+        stage: "materialization",
+        sample: index,
+        event: "completed",
+        elapsed_ms: materializationElapsedMs,
+      })}`);
     }
     const mergeSerializationMs: number[] = [];
     const serializedPlans = [firstMergePlan, lastMergePlan].map((plan) => {

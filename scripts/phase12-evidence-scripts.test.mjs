@@ -50,4 +50,8 @@ test("Phase 12 benchmark invokes the production atomic merge writer", () => {
   assert.doesNotMatch(source, /materializedRows/u);
   assert.match(source, /"k000000"/u);
   assert.match(source, /mutation\.changes !== 1/u);
+  assert.match(source, /stage: "materialization"[\s\S]*?event: "started"/u);
+  assert.match(source, /stage: "materialization"[\s\S]*?event: "completed"/u);
+  assert.match(source, /stage: "materialization_writer"[\s\S]*?writer_stage: stage/u);
+  assert.match(source, /stage: "materialization_plan"[\s\S]*?elapsed_ms/u);
 });

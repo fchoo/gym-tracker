@@ -21,6 +21,9 @@ import {
   buildPortableMergePlan,
 } from "../../src/domains/portability/mergePlan";
 import {
+  canonicalMergeValue,
+} from "../../src/domains/portability/mergeCommands";
+import {
   configureSqliteConnection,
   type SqliteConnection,
   type SqlitePreparedResult,
@@ -38,6 +41,9 @@ import type {
 import {
   createLogicalBackupRepository,
 } from "../../src/platform/sqlite/repositories/logicalBackupRepository";
+import {
+  createFullPlanLogicalMergeWriter,
+} from "../../src/platform/sqlite/repositories/logicalMergeRepository";
 import {
   createSqliteMergeLocalFactsPort,
 } from "../../src/platform/sqlite/repositories/restorePreflightAdapters";
@@ -153,9 +159,28 @@ it("seeds a maximum fixture accepted by the fully migrated schema", async () => 
   }).toEqual({ rows: PHASE12_MAX_SNAPSHOT_ROWS, bytes: PHASE12_MAX_SNAPSHOT_BYTES });
 
   const live = await createSqliteMergeLocalFactsPort(kernel).read();
-  await expect(buildPortableMergePlan({
-    archive: { version: 2, schemaVersion: live.schemaVersion, tables: live.tables },
+  const currentSession = live.tables.workout_sessions?.[0];
+  expect(currentSession).toBeDefined();
+  const archive = {
+    version: 2 as const,
+    schemaVersion: live.schemaVersion,
+    tables: {
+      ...live.tables,
+      workout_sessions: [{
+        ...currentSession!,
+        merge_modified_at_ms: Number(currentSession!.merge_modified_at_ms) + 1,
+      }],
+    },
+  };
+  const digest = async (_value: string) => "a".repeat(64);
+  const plan = await buildPortableMergePlan({
+    archive,
     local: { version: 2, ...live },
-    payloadDigest: async () => "a".repeat(64),
-  })).resolves.toBeDefined();
+    payloadDigest: digest,
+  });
+  await expect(createFullPlanLogicalMergeWriter(kernel, { sha256: digest })
+    .commitFullPlan({
+      localFingerprint: await digest(canonicalMergeValue(live)),
+      plan,
+    })).resolves.toEqual({ state: "rebuild_pending" });
 }, 120_000);
