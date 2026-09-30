@@ -468,7 +468,7 @@ describe("automatic backup coordinator", () => {
   });
 
   it("requires explicit fresh-auth takeover before reopening a higher epoch for recovery", async () => {
-    let state = activeState({ authorityState: "stale_writer" });
+    let state: any = activeState({ authorityState: "stale_writer" });
     const reauthenticate = jest.fn(async () => ({ permissionId: "permission", displayEmail: "…@example.com" }));
     const activateWriter = jest.fn(async () => true);
     const coordinator = createAutomaticBackupCoordinator({

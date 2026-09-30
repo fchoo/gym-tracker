@@ -51,6 +51,7 @@ export type AutomaticBackupCoordinator = Readonly<{
   /** The only connection path: One-Tap identity validation then read-only quarantine discovery. */
   connect(): Promise<Readonly<{ status: "ready" | "needs_bootstrap" | "quarantined" | "stale_writer" | "cancelled" }>>;
   checkAgain(): Promise<Readonly<{ status: "ready" | "needs_bootstrap" | "quarantined" | "stale_writer" | "cancelled" }>>;
+  takeOver(): Promise<Readonly<{ status: "ready" | "needs_bootstrap" | "quarantined" | "stale_writer" | "cancelled" }>>;
   deferRecovery(): Promise<void>;
   abortChecking(): Promise<void>;
   disconnect(): Promise<void>;
@@ -70,7 +71,7 @@ export type AutomaticBackupCoordinator = Readonly<{
  */
 export function createAutomaticBackupCoordinator(input: Readonly<{
   isWorkoutActive(): boolean | Promise<boolean>;
-  auth?: Pick<GoogleAuthPort, "connect" | "disconnect">;
+  auth?: Pick<GoogleAuthPort, "connect" | "disconnect"> & Partial<Pick<GoogleAuthPort, "reauthenticate">>;
   capture(input: Readonly<{
     environment: AutomaticBackupEnvironment;
     writerEpoch: number;
@@ -284,7 +285,10 @@ export function createAutomaticBackupCoordinator(input: Readonly<{
     const accepted = await input.state.acknowledgeReceipt({ ...receipt, snapshotId: fileId, manifestEtag: promotedEtag });
     return accepted ? Object.freeze({ status: "backed_up" as const, generation: captured.generation }) : Object.freeze({ status: "stale_writer" as const });
   };
-  const check = async (identity?: Readonly<{ permissionId: string; displayEmail: string | null }>) => {
+  const check = async (
+    identity?: Readonly<{ permissionId: string; displayEmail: string | null }>,
+    allowHigherEpochRecovery = false,
+  ) => {
     const generation = ++checkingGeneration;
     const prior = await input.state.read();
     const permissionId = identity?.permissionId ?? prior.permissionId;
@@ -293,7 +297,7 @@ export function createAutomaticBackupCoordinator(input: Readonly<{
     await input.state.setRecoveryStatus?.("checking");
     let result: Awaited<ReturnType<typeof recover>>;
     try {
-      result = await recover();
+      result = await recover(allowHigherEpochRecovery);
     } catch {
       if (generation !== checkingGeneration) return Object.freeze({ status: "cancelled" as const });
       await input.state.setRecoveryStatus?.("idle");
@@ -303,7 +307,7 @@ export function createAutomaticBackupCoordinator(input: Readonly<{
     await input.state.setRecoveryStatus?.(result.status === "needs_bootstrap" || result.status === "ready" ? "idle" : "restore_pending");
     return result;
   };
-  const recover = async (): Promise<Readonly<{ status: "ready" | "needs_bootstrap" | "quarantined" | "stale_writer" }>> => {
+  const recover = async (allowHigherEpochRecovery = false): Promise<Readonly<{ status: "ready" | "needs_bootstrap" | "quarantined" | "stale_writer" }>> => {
     const state = await input.state.read();
     if (state.permissionId === null) return Object.freeze({ status: "quarantined" as const });
     await input.state.beginQuarantine?.({ environment: state.environment, permissionId: state.permissionId, connectionGeneration: state.connectionGeneration });
@@ -323,10 +327,14 @@ export function createAutomaticBackupCoordinator(input: Readonly<{
     bootstrapFence = null;
     const parsed = input.validateManifest?.(manifest.bytes);
     if (parsed === null || parsed === undefined) return Object.freeze({ status: "quarantined" as const });
-    if (parsed.writerEpoch < state.writerEpoch) {
+    if (parsed.writerEpoch > state.writerEpoch) {
       await input.state.markStaleWriter?.(state.writerEpoch);
+      if (allowHigherEpochRecovery) {
+        return Object.freeze({ status: "quarantined" as const });
+      }
       return Object.freeze({ status: "stale_writer" as const });
     }
+    if (parsed.writerEpoch < state.writerEpoch) return Object.freeze({ status: "quarantined" as const });
     if (state.manifestId === null || state.manifestId === undefined
       || (manifest.fileId !== undefined && manifest.fileId !== state.manifestId)) {
       return Object.freeze({ status: "quarantined" as const });
@@ -454,14 +462,20 @@ export function createAutomaticBackupCoordinator(input: Readonly<{
       if (running === null) running = run().finally(() => { running = null; });
       return running;
     },
-    recover,
+    recover: () => recover(),
     async connect() {
       const identity = await input.auth?.connect();
       return identity === undefined || identity === null
         ? Object.freeze({ status: "cancelled" as const })
-        : check(identity);
+        : check(identity, true);
     },
     checkAgain: () => check(),
+    async takeOver() {
+      const identity = await input.auth?.reauthenticate?.();
+      return identity === undefined || identity === null
+        ? Object.freeze({ status: "cancelled" as const })
+        : check(identity, true);
+    },
     async deferRecovery() { ++checkingGeneration; await input.state.setRecoveryStatus?.("restore_pending"); },
     async abortChecking() { ++checkingGeneration; await input.state.setRecoveryStatus?.("restore_pending"); },
     async disconnect() { ++checkingGeneration; bootstrapFence = null; await input.auth?.disconnect(); await input.state.disconnectLocal?.(); },
