@@ -68,7 +68,6 @@ function parseFile(value: unknown, expected: Readonly<Record<string, string>>): 
   if (typeof entry.id !== "string" || typeof entry.name !== "string" || !propertiesMatch(entry.appProperties, expected)) throw new Error("drive_metadata_invalid");
   assertId(entry.id); return Object.freeze({ fileId: entry.id, name: entry.name, appProperties: Object.freeze({ ...entry.appProperties }) });
 }
-function responseEtag(response: Response): string { const value = response.headers.get("etag"); if (value === null || value === "*") throw new Error("drive_etag_missing"); return value; }
 function multipart(candidateId: string, payload: Uint8Array, properties: Readonly<Record<string, string>>): Uint8Array {
   const boundary = "gym-tracker-drive-backup-v1";
   const metadata = JSON.stringify({ id: candidateId, name: `snapshot-${candidateId}.json`, appProperties: properties, mimeType: "application/json" });
@@ -204,7 +203,16 @@ export function createDriveBackupStoreAdapter(input: Readonly<{ environment: Aut
   }
   async function updateManifest(manifestId: string, manifest: Uint8Array, etag: string): Promise<string> {
     assertId(manifestId); bytes(manifest, 16 * 1024); assertEtag(etag); const response = await request(`${DRIVE_UPLOAD}/files/${encodeURIComponent(manifestId)}?uploadType=media`, { method: "PATCH", headers: { "Content-Type": "application/json", "If-Match": etag }, body: manifest as unknown as BodyInit });
-    if (response.status === 409 || response.status === 412) throw new Error("drive_manifest_conflict"); if (!response.ok) throw new Error("drive_manifest_update_failed"); return responseEtag(response);
+    if (response.status === 409 || response.status === 412) throw new Error("drive_manifest_conflict");
+    if (!response.ok) throw new Error("drive_manifest_update_failed");
+    const updatedEtag = response.headers.get("etag");
+    if (updatedEtag !== null && updatedEtag !== "*") {
+      assertEtag(updatedEtag);
+      return updatedEtag;
+    }
+    const rereadEtag = await readFileEtag(manifestId);
+    if (rereadEtag === null) throw new Error("drive_manifest_read_failed");
+    return rereadEtag;
   }
   async function createManifest(candidateId: string, manifest: Uint8Array): Promise<Readonly<{ fileId: string; etag: string }>> {
     assertId(candidateId); bytes(manifest, 16 * 1024);

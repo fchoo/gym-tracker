@@ -229,6 +229,15 @@ describe("Drive backup store adapter", () => {
     });
     await expect(fallbackEtag.createManifest("manifest", new Uint8Array([1])))
       .resolves.toEqual({ fileId: "manifest", etag: '"read-etag"' });
+    const updateFallbackEtag = createDriveBackupStoreAdapter({
+      environment: "development-test",
+      token: async () => "token",
+      fetch: async (url, init) => url.includes("upload/drive/v3") && init.method === "PATCH"
+        ? response({})
+        : response({ id: "manifest", etag: '"updated-etag"' }),
+    });
+    await expect(updateFallbackEtag.updateManifest("manifest", new Uint8Array([1]), '"etag"'))
+      .resolves.toBe('"updated-etag"');
     const rejectedFallback = createDriveBackupStoreAdapter({
       environment: "development-test",
       token: async () => "token",
@@ -255,8 +264,14 @@ describe("Drive backup store adapter", () => {
     await expect(conflict.updateManifest("manifest", new Uint8Array(), '"etag"')).rejects.toThrow("drive_manifest_conflict");
     await expect(conflict.createManifest("manifest", new Uint8Array())).rejects.toThrow("drive_manifest_conflict");
     await expect(conflict.trash("candidate", 0, '"etag"')).rejects.toThrow("drive_trash_fenced");
-    const starResponse = createDriveBackupStoreAdapter({ environment: "development-test", token: async () => "token", fetch: async () => response(null, { headers: { etag: "*" } }) });
-    await expect(starResponse.updateManifest("manifest", new Uint8Array(), '"etag"')).rejects.toThrow("drive_etag_missing");
+    const starResponse = createDriveBackupStoreAdapter({
+      environment: "development-test",
+      token: async () => "token",
+      fetch: async (url) => url.includes("drive/v2")
+        ? response({ id: "manifest", etag: "*" })
+        : response(null, { headers: { etag: "*" } }),
+    });
+    await expect(starResponse.updateManifest("manifest", new Uint8Array(), '"etag"')).rejects.toThrow("drive_etag_invalid");
 
     const badRange = createDriveBackupStoreAdapter({ environment: "development-test", token: async () => "token", fetch: async (url) => url.includes("uploadType=resumable") ? response(null, { headers: { location: "https://www.googleapis.com/upload/session" } }) : response(null, { status: 308, headers: { range: "bytes=0-5242881" } }) });
     const payload = new Uint8Array(5 * 1024 * 1024 + 1);
@@ -394,6 +409,15 @@ describe("Drive backup store adapter", () => {
         : response(null, { status: 404 }),
     });
     await expect(missingAfterCreate.createManifest("manifest", new Uint8Array([1])))
+      .rejects.toThrow("drive_manifest_read_failed");
+
+    const missingAfterUpdate = createDriveBackupStoreAdapter({
+      environment: "development-test", token: async () => "token",
+      fetch: async (url) => url.includes("drive/v2")
+        ? response(null, { status: 404 })
+        : response({}),
+    });
+    await expect(missingAfterUpdate.updateManifest("manifest", new Uint8Array([1]), '"etag"'))
       .rejects.toThrow("drive_manifest_read_failed");
   });
 });
