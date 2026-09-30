@@ -1,5 +1,7 @@
 import { createAutomaticBackupScheduler } from "../../domains/backup/automaticBackupScheduler";
-import { canonicalJson, createDriveBackupSnapshotV1, parseDriveBackupManifestV1 } from "../../domains/backup/automaticBackupContracts";
+import { canonicalJson, createDriveBackupSnapshotV1, parseDriveBackupManifestV1, parseDriveBackupSnapshotEnvelopeV1 } from "../../domains/backup/automaticBackupContracts";
+import { selectRecoveryLineage } from "../../domains/backup/automaticBackupCoordinator";
+import { BACKUP_LIMITS } from "../../domains/portability/backupContracts";
 
 /** Source-owned registry used by Jest and the packaged Expo fake-port route. */
 /**
@@ -58,7 +60,12 @@ function assertDurableBoundary(writerEpoch: number, previous: boolean): void {
     latest: { fileId: `latest-${writerEpoch}`, object_sha256: "a".repeat(64) },
     previous: previous ? { fileId: `previous-${writerEpoch}`, object_sha256: "b".repeat(64) } : null,
   });
-  if (manifest.kind !== "active" || manifest.writerEpoch !== writerEpoch
+  if (manifest.kind !== "active") throw new Error("durable_boundary_invalid");
+  const selected = selectRecoveryLineage([
+    { kind: "current", ownerNamespace: "a".repeat(32), writerEpoch, mutationGeneration: writerEpoch, createdAtMs: writerEpoch, fileId: manifest.latest.fileId, objectSha256: manifest.latest.object_sha256, byteLength: 1 },
+    ...(previous ? [{ kind: "current" as const, ownerNamespace: "a".repeat(32), writerEpoch, mutationGeneration: writerEpoch - 1, createdAtMs: writerEpoch - 1, fileId: manifest.previous!.fileId, objectSha256: manifest.previous!.object_sha256, byteLength: 1 }] : []),
+  ]);
+  if (manifest.writerEpoch !== writerEpoch || selected.kind !== "verified"
     || (previous && manifest.previous === null)) throw new Error("durable_boundary_invalid");
 }
 
@@ -90,13 +97,13 @@ export async function runGoogleDriveBackupContract(): Promise<GoogleDriveBackupC
       if (new TextEncoder().encode(canonicalJson(manifest)).length >= 16 * 1024) throw new Error("manifest_limit_invalid");
     },
     "snapshot-size-boundaries": () => {
-      if (24 * 1024 * 1024 <= 0) throw new Error("snapshot_limit_invalid");
+      if (BACKUP_LIMITS.maxPlaintextBytes !== 24 * 1024 * 1024) throw new Error("snapshot_limit_invalid");
     },
     "payload-row-string-boundaries": () => {
-      if (100_000 !== 100_000 || 64 * 1024 !== 65_536) throw new Error("payload_limits_invalid");
+      if (BACKUP_LIMITS.maxRowsTotal !== 100_000 || BACKUP_LIMITS.maxStringBytes !== 64 * 1024) throw new Error("payload_limits_invalid");
     },
-    "malformed-and-truncated-payloads": () => {
-      let failed = false; try { JSON.parse("{"); } catch { failed = true; }
+    "malformed-and-truncated-payloads": async () => {
+      let failed = false; try { await parseDriveBackupSnapshotEnvelopeV1(new TextEncoder().encode("{"), { byteLength: 1, objectSha256: "a".repeat(64), environment: "development-test", packageIdentity: "com.fchoo.gymtracker.devtest", currentSchemaVersion: 26, sha256: async () => "a".repeat(64) }); } catch { failed = true; }
       if (!failed) throw new Error("truncated_payload_accepted");
     },
     "cross-environment-and-namespace-rejection": () => {
@@ -125,8 +132,8 @@ export async function runGoogleDriveBackupContract(): Promise<GoogleDriveBackupC
     "crash-writer-epoch-transfer": () => assertDurableBoundary(10, true),
     "crash-cleanup-selection": () => assertDurableBoundary(11, true),
     "recovery-latest-previous-fallback": () => assertDurableBoundary(12, true),
-    "recovery-future-schema-quarantine": () => assertDurableBoundary(13, false),
-    "recovery-ambiguous-lineage-quarantine": () => assertDurableBoundary(14, true),
+    "recovery-future-schema-quarantine": () => { if (selectRecoveryLineage([{ kind: "update_required", schemaVersion: 99, fileId: "future" }]).kind !== "update_required") throw new Error("future_schema_not_quarantined"); },
+    "recovery-ambiguous-lineage-quarantine": () => { if (selectRecoveryLineage([{ kind: "current", ownerNamespace: "a".repeat(32), writerEpoch: 1, mutationGeneration: 1, createdAtMs: 1, fileId: "a", objectSha256: "a".repeat(64), byteLength: 1 }, { kind: "current", ownerNamespace: "b".repeat(32), writerEpoch: 1, mutationGeneration: 1, createdAtMs: 1, fileId: "b", objectSha256: "b".repeat(64), byteLength: 1 }]).kind !== "quarantined") throw new Error("ambiguous_lineage_accepted"); },
     "retention-orphan-grace-and-stale-cleanup": () => assertDurableBoundary(15, true),
     "deletion-tombstone-and-late-upload-sweep": () => assertDurableBoundary(16, false),
   };

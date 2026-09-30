@@ -14,9 +14,12 @@ import {
   type PortableMergePlan,
   type PortableMergePlanSnapshot,
 } from "../domains/portability/mergePlan";
+import { canonicalMergeValue } from "../domains/portability/mergeCommands";
 import {
   createLogicalBackupRepository,
 } from "../platform/sqlite/repositories/logicalBackupRepository";
+import { createFullPlanLogicalMergeWriter } from "../platform/sqlite/repositories/logicalMergeRepository";
+import { createSqliteMergeLocalFactsPort } from "../platform/sqlite/repositories/restorePreflightAdapters";
 import {
   type AutomaticSnapshotCapturePort,
 } from "../platform/sqlite/repositories/automaticSnapshotCapture";
@@ -388,18 +391,40 @@ export async function performPhase12BackupBenchmark(): Promise<Phase12BackupBenc
     if (firstMergePlan === undefined || lastMergePlan === undefined) {
       throw new Error("phase12_merge_plan_missing");
     }
-    const mergeMaterializationMs = mergePlans.map((plan) => {
-      const started = performance.now();
-      const materializedRows = plan.settings.length + plan.aggregates.reduce(
-        (total, aggregate) => total + Object.values(aggregate.tables).reduce(
-          (rows, tableRows) => rows + tableRows.length,
-          0,
-        ),
-        0,
-      );
-      if (materializedRows <= 0) throw new Error("phase12_merge_materialization_empty");
-      return performance.now() - started;
+    const mergeMaterializationMs: number[] = [];
+    const mergeWriter = createFullPlanLogicalMergeWriter(kernel, {
+      sha256: async (value) => {
+        const { CryptoDigestAlgorithm, digestStringAsync } = require("expo-crypto") as typeof import("expo-crypto");
+        return digestStringAsync(CryptoDigestAlgorithm.SHA256, value);
+      },
     });
+    for (let index = 0; index < mergePlans.length; index += 1) {
+      const live = await createSqliteMergeLocalFactsPort(kernel).read();
+      const currentSession = live.tables.workout_sessions?.[0];
+      if (currentSession === undefined) throw new Error("phase12_merge_materialization_empty");
+      const archive = {
+        ...maximumSnapshot,
+        version: 2 as const,
+        tables: {
+          ...maximumSnapshot.tables,
+          portable_owner_identity: [{ id: 1, owner_namespace: live.ownerNamespace }],
+          workout_sessions: [{ ...currentSession, merge_modified_at_ms: Number(currentSession.merge_modified_at_ms) + index + 1 }],
+        },
+      };
+      const plan = await buildPortableMergePlan({ archive, local: { version: 2, ...live }, payloadDigest: async (value) => {
+        const { CryptoDigestAlgorithm, digestStringAsync } = require("expo-crypto") as typeof import("expo-crypto");
+        return digestStringAsync(CryptoDigestAlgorithm.SHA256, value);
+      } });
+      const started = performance.now();
+      await mergeWriter.commitFullPlan({
+        localFingerprint: await (async () => {
+          const { CryptoDigestAlgorithm, digestStringAsync } = require("expo-crypto") as typeof import("expo-crypto");
+          return digestStringAsync(CryptoDigestAlgorithm.SHA256, canonicalMergeValue(live));
+        })(),
+        plan,
+      });
+      mergeMaterializationMs.push(performance.now() - started);
+    }
     const mergeSerializationMs: number[] = [];
     const serializedPlans = [firstMergePlan, lastMergePlan].map((plan) => {
       const serializationStarted = performance.now();

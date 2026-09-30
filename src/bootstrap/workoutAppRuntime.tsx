@@ -1282,7 +1282,7 @@ function phase12NativeFixtureViewModel(): AutomaticBackupViewModel | null {
     nativeContractsEnabled: Constants.expoConfig?.extra?.nativeContractsEnabled === true,
     buildProfile: Constants.expoConfig?.extra?.buildProfile,
     suite: process.env.EXPO_PUBLIC_NATIVE_CONTRACT_SUITE,
-    fixture: process.env.EXPO_PUBLIC_PHASE12_STAGE,
+    fixture: process.env.EXPO_PUBLIC_PHASE12_STAGE ?? process.env.PHASE12_STAGE,
   });
   return fixture === null ? null : phase12BackupFixtureViewModel(fixture);
 }
