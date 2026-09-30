@@ -127,10 +127,16 @@ jest.mock("../platform/sqlite/repositories/restoreReconciliationRepository", () 
 import {
   createProductionAutomaticBackupServices,
   fetchGoogleDriveIdentity,
+  assertAutomaticDriveSnapshotBytes,
   localPortableFactsAreEmpty,
 } from "./productionAutomaticBackupRuntime";
 
 describe("production automatic-backup composition", () => {
+  it("applies the 24 MiB limit to the final encoded Drive object", () => {
+    expect(assertAutomaticDriveSnapshotBytes(new Uint8Array(24 * 1024 * 1024))).toHaveLength(24 * 1024 * 1024);
+    expect(() => assertAutomaticDriveSnapshotBytes(new Uint8Array(24 * 1024 * 1024 + 1)))
+      .toThrow("automatic_backup_snapshot_too_large");
+  });
   it("classifies every owner-created logical fact as non-empty", () => {
     expect(localPortableFactsAreEmpty({
       portable_owner_identity: [{ id: 1, owner_namespace: "a".repeat(32) }],

@@ -1,4 +1,7 @@
-export const AUTOMATIC_BACKUP_LIMITS = Object.freeze({ maxManifestBytes: 16 * 1024 });
+export const AUTOMATIC_BACKUP_LIMITS = Object.freeze({
+  maxManifestBytes: 16 * 1024,
+  maxSnapshotBytes: 24 * 1024 * 1024,
+});
 
 export type AutomaticBackupEnvironment = "production" | "development-test";
 export type DriveBackupSnapshotHeaderV1 = Readonly<{

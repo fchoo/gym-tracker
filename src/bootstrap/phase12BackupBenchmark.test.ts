@@ -16,6 +16,7 @@ import {
   PHASE12_BENCHMARK_START_MARKER,
   phase12BenchmarkDatabaseName,
   phase12BenchmarkError,
+  phase12EncodedDriveObjectBytes,
   phase12SqliteVariableLimit,
   PHASE12_BENCHMARK_EXERCISE_PORTABLE_ID,
   PHASE12_SQLITE_FIXTURE_ROW_COUNTS,
@@ -85,7 +86,7 @@ describe("Phase 12 native backup benchmark", () => {
   it("creates exactly the supported maximum synthetic merge fixture", () => {
     const snapshot = buildPhase12SyntheticSnapshot();
     expect(snapshot.manifest.totalRows).toBe(100_000);
-    expect(new TextEncoder().encode(JSON.stringify(snapshot)).byteLength)
+    expect(phase12EncodedDriveObjectBytes(snapshot))
       .toBe(24 * 1024 * 1024);
     expect(Math.max(...Object.values(snapshot.tables).map((rows) => rows.length)))
       .toBeLessThanOrEqual(BACKUP_LIMITS.maxRowsPerTable);

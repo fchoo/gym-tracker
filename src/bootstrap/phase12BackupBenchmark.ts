@@ -36,6 +36,10 @@ import {
 import {
   createProductionAutomaticSnapshotCapture,
 } from "./productionAutomaticSnapshotCapture";
+import {
+  AUTOMATIC_BACKUP_LIMITS,
+  canonicalJson,
+} from "../domains/backup/automaticBackupContracts";
 
 export const PHASE12_BENCHMARK_START_MARKER =
   "GYM_TRACKER_PHASE12_BENCHMARK_START:" as const;
@@ -46,7 +50,7 @@ export const PHASE12_BENCHMARK_RESULT_MARKER =
 export const PHASE12_BENCHMARK_ERROR_MARKER =
   "GYM_TRACKER_PHASE12_BENCHMARK_ERROR:" as const;
 
-export const PHASE12_MAX_SNAPSHOT_BYTES = BACKUP_LIMITS.maxPlaintextBytes;
+export const PHASE12_MAX_SNAPSHOT_BYTES = AUTOMATIC_BACKUP_LIMITS.maxSnapshotBytes;
 export const PHASE12_MAX_SNAPSHOT_ROWS = BACKUP_LIMITS.maxRowsTotal;
 export const PHASE12_DIRTY_SAMPLES = 100;
 export const PHASE12_WRITER_SAMPLES = 20;
@@ -147,6 +151,25 @@ function encodedBytes(value: unknown): number {
   return new TextEncoder().encode(JSON.stringify(value)).byteLength;
 }
 
+export function phase12EncodedDriveObjectBytes(snapshot: LogicalBackupSnapshot): number {
+  const header = {
+    protocol: "drive-backup-v1",
+    environment: "development-test",
+    packageIdentity: "com.fchoo.gymtracker.devtest",
+    snapshotId: snapshot.snapshotId,
+    ownerNamespace: OWNER_NAMESPACE,
+    writerEpoch: 1,
+    mutationGeneration: 1,
+    createdAtMs: snapshot.createdAtMs,
+    schemaVersion: snapshot.schemaVersion,
+  };
+  return new TextEncoder().encode(canonicalJson({
+    header,
+    payload: snapshot,
+    payload_sha256: "0".repeat(64),
+  })).byteLength;
+}
+
 function portableId(index: number): string {
   return index.toString(16).padStart(32, "0").slice(-32);
 }
@@ -224,14 +247,14 @@ export function buildPhase12SyntheticSnapshot(
     tables,
     catalogReferences: [],
   };
-  const difference = PHASE12_MAX_SNAPSHOT_BYTES - encodedBytes(fixture);
+  const difference = PHASE12_MAX_SNAPSHOT_BYTES - phase12EncodedDriveObjectBytes(fixture);
   if (difference < 0) throw new Error("phase12_synthetic_fixture_oversize");
   const each = Math.floor(difference / auditRows.length);
   const remainder = difference % auditRows.length;
   for (let index = 0; index < auditRows.length; index += 1) {
     auditRows[index]!.padding = "x".repeat(each + (index < remainder ? 1 : 0));
   }
-  if (encodedBytes(fixture) !== PHASE12_MAX_SNAPSHOT_BYTES) {
+  if (phase12EncodedDriveObjectBytes(fixture) !== PHASE12_MAX_SNAPSHOT_BYTES) {
     throw new Error("phase12_synthetic_fixture_size_invalid");
   }
   return fixture;
@@ -349,7 +372,8 @@ export async function seedMaximumHistory(kernel: SqliteKernel): Promise<void> {
   if (baselineBytes !== PHASE12_SQLITE_PRE_PADDING_BYTES) {
     throw new Error(`phase12_sqlite_fixture_baseline_invalid:${baselineBytes}`);
   }
-  const difference = PHASE12_MAX_SNAPSHOT_BYTES - baselineBytes;
+  const difference = PHASE12_MAX_SNAPSHOT_BYTES
+    - phase12EncodedDriveObjectBytes(baseline);
   if (difference < 0) throw new Error("phase12_sqlite_fixture_oversize");
   const each = Math.floor(difference / SQLITE_APP_SETTING_ROWS);
   const remainder = difference % SQLITE_APP_SETTING_ROWS;
@@ -441,7 +465,7 @@ export async function performPhase12BackupBenchmark(): Promise<Phase12BackupBenc
       writerOccupancyMs.push(measured.writerOccupancyMs);
       captureTotalMs.push(measured.captureTotalMs);
       if (snapshotBytes === undefined) {
-        snapshotBytes = encodedBytes(measured.snapshot);
+        snapshotBytes = phase12EncodedDriveObjectBytes(measured.snapshot);
         totalRows = measured.snapshot.manifest.totalRows;
       }
     }

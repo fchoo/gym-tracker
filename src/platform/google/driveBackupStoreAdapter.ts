@@ -1,4 +1,4 @@
-import type { AutomaticBackupEnvironment } from "../../domains/backup/automaticBackupContracts";
+import { AUTOMATIC_BACKUP_LIMITS, type AutomaticBackupEnvironment } from "../../domains/backup/automaticBackupContracts";
 import type { DriveBackupObject, DriveBackupStorePort, DriveManifestRead, DriveResumableSession } from "../../domains/backup/driveBackupStorePort";
 
 const DRIVE_API = "https://www.googleapis.com/drive/v3";
@@ -253,7 +253,7 @@ export function createDriveBackupStoreAdapter(input: Readonly<{ environment: Aut
     if (!response.ok) throw new Error("drive_snapshot_create_failed"); const result = parseFile({ ...(json(await readBody(response, 64 * 1024)) as Record<string, unknown>), name: `snapshot-${candidateId}.json`, appProperties: candidateProperties }, properties); if (result.fileId !== candidateId) throw new Error("drive_candidate_id_changed"); return result.fileId;
   }
   async function createResumableSnapshot(candidateId: string, payload: Uint8Array): Promise<DriveResumableSession> {
-    assertId(candidateId); if (payload.byteLength <= MULTIPART_LIMIT || payload.byteLength > 24 * 1024 * 1024) throw new Error("drive_resumable_size_invalid");
+    assertId(candidateId); if (payload.byteLength <= MULTIPART_LIMIT || payload.byteLength > AUTOMATIC_BACKUP_LIMITS.maxSnapshotBytes) throw new Error("drive_resumable_size_invalid");
     const metadata = JSON.stringify({ id: candidateId, name: `snapshot-${candidateId}.json`, appProperties: snapshotPropertiesFor(payload), mimeType: "application/json" });
     const response = await request(`${DRIVE_UPLOAD}/files?uploadType=resumable&fields=id`, { method: "POST", headers: { "Content-Type": "application/json", "X-Upload-Content-Type": "application/json", "X-Upload-Content-Length": String(payload.byteLength) }, body: metadata });
     if (!response.ok) throw new Error("drive_resumable_create_failed"); const location = response.headers.get("location"); if (location === null) throw new Error("drive_resumable_location_missing"); origin(location); return Object.freeze({ location, uploadedBytes: 0 });

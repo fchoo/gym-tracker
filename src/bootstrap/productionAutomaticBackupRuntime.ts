@@ -3,6 +3,7 @@ import { fetch as expoFetch } from "expo/fetch";
 
 import {
   canonicalJson,
+  AUTOMATIC_BACKUP_LIMITS,
   parseDriveBackupSnapshotEnvelopeV1,
   parseDriveBackupManifestV1,
   type AutomaticBackupEnvironment,
@@ -47,6 +48,12 @@ function id(prefix: string): string {
   return `${prefix}-${randomUUID()}`;
 }
 function bytes(value: unknown): Uint8Array { return new TextEncoder().encode(canonicalJson(value)); }
+export function assertAutomaticDriveSnapshotBytes(value: Uint8Array): Uint8Array {
+  if (value.byteLength > AUTOMATIC_BACKUP_LIMITS.maxSnapshotBytes) {
+    throw new Error("automatic_backup_snapshot_too_large");
+  }
+  return value;
+}
 function packageIdentity(environment: AutomaticBackupEnvironment): string {
   return environment === "production"
     ? "com.fchoo.gymtracker"
@@ -181,10 +188,11 @@ export function createProductionAutomaticBackupServices(kernel: SqliteKernel): S
         payload_sha256: await digest(canonicalJson({ header, payload })),
       });
       const encodedJson = canonicalJson(envelope);
+      const encoded = assertAutomaticDriveSnapshotBytes(new TextEncoder().encode(encodedJson));
       return {
         generation: captured.generation,
         sourceDigest: await digest(encodedJson),
-        bytes: new TextEncoder().encode(encodedJson),
+        bytes: encoded,
         snapshotId: captured.snapshot.snapshotId,
       };
     },
