@@ -21,12 +21,14 @@ import {
 } from "./restoreCommands";
 import type { PasswordKdfPort } from "../../platform/crypto/passwordKdf";
 import { RestoreFilePortError } from "../../platform/files/expoBackupFilePort";
+import prePhase10Schema20V1 from "./fixtures/pre-phase10-schema20-v1.json";
 
 const text = new TextEncoder();
 
 function snapshot(override: Partial<LogicalBackupSnapshot> = {}): LogicalBackupSnapshot {
   const version = override.version ?? 1;
-  const sourceTables = logicalBackupTablesForVersion(version);
+  const schemaVersion = override.schemaVersion ?? (version === 1 ? 16 : 22);
+  const sourceTables = logicalBackupTablesForVersion(version, schemaVersion);
   const emptyTables = Object.fromEntries(sourceTables.map((table) => [table, []])) as LogicalBackupSnapshot["tables"];
   const appSettings = [{ key: "theme", revision: 1, updated_at_ms: 100, value_json: "{\"mode\":\"dark\"}", value_version: 1 }];
   const tables: LogicalBackupSnapshot["tables"] = { ...emptyTables, app_settings: appSettings, ...(override.tables ?? {}) };
@@ -41,7 +43,7 @@ function snapshot(override: Partial<LogicalBackupSnapshot> = {}): LogicalBackupS
     version,
     snapshotId: "backup_01J5AV2QAXM8QQYWD0S8Y4A001",
     createdAtMs: 1_786_853_900_000,
-    schemaVersion: version === 1 ? 16 : 22,
+    schemaVersion,
     manifest,
     ...override,
     tables,
@@ -205,6 +207,24 @@ describe("restore preflight", () => {
       kdf, schema, candidateProbe, store: createRestorePreflightStore({ tokenFactory: () => "schema-" + schemaVersion }),
     });
     await expect(commands.preflightSecureRestore({ password: "owner-password" })).resolves.toEqual(expect.objectContaining({ outcome: "ready" }));
+  });
+
+  it("accepts a frozen pre-Phase-10 v1 archive without the timing table", async () => {
+    const commands = createRestoreCommands({
+      crypto: cryptoPort(),
+      files: {
+        readSelectedArchiveAtMost: () => archiveFor(
+          prePhase10Schema20V1 as LogicalBackupSnapshot,
+        ),
+      },
+      kdf,
+      schema,
+      candidateProbe,
+      store: createRestorePreflightStore({ tokenFactory: () => "schema-20-frozen" }),
+    });
+
+    await expect(commands.preflightSecureRestore({ password: "owner-password" }))
+      .resolves.toEqual(expect.objectContaining({ outcome: "ready" }));
   });
 
   it("accepts a schema-22 v2 archive as an explicit portable-identity compatibility case", async () => {

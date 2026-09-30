@@ -179,7 +179,10 @@ function tupleKey(values: readonly unknown[]): string { return JSON.stringify(va
 function validateDomainInvariants(snapshot: LogicalBackupSnapshot): void {
   const enumValues: ReadonlyArray<readonly [string, string, readonly string[]]> = [["exercises", "origin", ["custom", "copied"]], ["plans", "origin", ["custom", "copied"]], ["workout_sessions", "status", ["in_progress", "completed", "partial", "discarded", "voided", "manual_visit", "zero_sets"]]];
   for (const [table, column, allowed] of enumValues) for (const row of snapshot.tables[table]!) if (row[column] !== undefined && (typeof row[column] !== "string" || !allowed.includes(row[column] as string))) invalid();
-  for (const table of logicalBackupTablesForVersion(snapshot.version)) {
+  for (const table of logicalBackupTablesForVersion(
+    snapshot.version,
+    snapshot.schemaVersion,
+  )) {
     for (const row of snapshot.tables[table]!) {
       for (const [column, value] of Object.entries(row)) {
         if (column.endsWith("_json") && typeof value === "string") {
@@ -200,7 +203,10 @@ async function validateRows(
   retained: RestoreRetainedReferencePort | undefined,
 ): Promise<Readonly<{ internal: number; retained: number }>> {
   if (!(LOGICAL_BACKUP_SUPPORTED_SCHEMA_VERSIONS as readonly number[]).includes(snapshot.schemaVersion)) throw new RestoreCommandError("restore_archive_unsupported_version");
-  const sourceTables = logicalBackupTablesForVersion(snapshot.version);
+  const sourceTables = logicalBackupTablesForVersion(
+    snapshot.version,
+    snapshot.schemaVersion,
+  );
   if (!exactKeys(snapshot.tables, sourceTables)) invalid();
   if (!exactKeys(snapshot.manifest.rowCounts, sourceTables)) invalid();
   if (snapshot.manifest.totalRows !== Object.values(snapshot.manifest.rowCounts).reduce((sum, count) => sum + count, 0)) invalid();
@@ -269,7 +275,7 @@ async function createPreview(snapshot: LogicalBackupSnapshot, availability: Rest
     sourceFormatVersion: snapshot.version,
     createdAtMs: snapshot.createdAtMs,
     replacementCounts: Object.freeze(Object.fromEntries(
-      logicalBackupTablesForVersion(snapshot.version)
+      logicalBackupTablesForVersion(snapshot.version, snapshot.schemaVersion)
         .filter((table) => snapshot.tables[table]!.length > 0)
         .map((table) => [table, snapshot.tables[table]!.length]),
     )),

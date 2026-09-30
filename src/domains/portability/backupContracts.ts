@@ -93,12 +93,20 @@ export const LOGICAL_BACKUP_V1_TABLES = Object.freeze(
   LOGICAL_BACKUP_TABLES.filter((table) => table !== "portable_owner_identity"),
 ) as readonly LogicalBackupTableName[];
 
+export const LOGICAL_BACKUP_PRE_PHASE10_V1_TABLES = Object.freeze(
+  LOGICAL_BACKUP_V1_TABLES.filter(
+    (table) => table !== "session_advanced_timing_states",
+  ),
+) as readonly LogicalBackupTableName[];
+
 export function logicalBackupTablesForVersion(
   version: LogicalBackupFormatVersion,
+  schemaVersion = Number.POSITIVE_INFINITY,
 ): readonly (keyof typeof LOGICAL_BACKUP_TABLE_DEFINITIONS)[] {
-  return version === 1
-    ? LOGICAL_BACKUP_V1_TABLES
-    : LOGICAL_BACKUP_TABLES;
+  if (version !== 1) return LOGICAL_BACKUP_TABLES;
+  return schemaVersion < 21
+    ? LOGICAL_BACKUP_PRE_PHASE10_V1_TABLES
+    : LOGICAL_BACKUP_V1_TABLES;
 }
 
 export type BackupContractErrorCode =
