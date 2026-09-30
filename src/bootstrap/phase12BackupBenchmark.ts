@@ -19,6 +19,7 @@ import {
   createLogicalBackupRepository,
 } from "../platform/sqlite/repositories/logicalBackupRepository";
 import { createFullPlanLogicalMergeWriter } from "../platform/sqlite/repositories/logicalMergeRepository";
+import type { LogicalMergeFaultStage } from "../platform/sqlite/repositories/logicalMergeRepository";
 import { createSqliteMergeLocalFactsPort } from "../platform/sqlite/repositories/restorePreflightAdapters";
 import {
   type AutomaticSnapshotCapturePort,
@@ -54,6 +55,16 @@ const DATABASE_PREFIX = "gym-tracker-phase12-benchmark";
 export function phase12BenchmarkDatabaseName(uuid: string): string {
   if (!/^[a-f0-9-]{36}$/u.test(uuid)) throw new Error("phase12_benchmark_database_identity_invalid");
   return `${DATABASE_PREFIX}-${uuid}.db`;
+}
+
+export function phase12BenchmarkError(error: unknown, sample: number, stage: LogicalMergeFaultStage | "writer_start"): Error {
+  const messages: string[] = [];
+  let current: unknown = error;
+  for (let depth = 0; depth < 4 && current instanceof Error; depth += 1) {
+    messages.push(current.message);
+    current = current.cause;
+  }
+  return new Error(`phase12_merge_commit_failed:${sample}:${stage}:${messages.join(":")}`);
 }
 const OWNER_NAMESPACE = "f".repeat(32);
 const ROWS_PER_TABLE = BACKUP_LIMITS.maxRowsPerTable;
@@ -394,10 +405,11 @@ export async function performPhase12BackupBenchmark(): Promise<Phase12BackupBenc
     const dirtyTriggerMs: number[] = [];
     for (let index = 0; index < PHASE12_DIRTY_SAMPLES; index += 1) {
       const started = performance.now();
-      await kernel.write((transaction) => transaction.execute(
+      const mutation = await kernel.write((transaction) => transaction.execute(
         "UPDATE app_settings SET revision = revision + 1, updated_at_ms = ? WHERE key = ?",
-        [index + 1_000_000, "phase12-benchmark-000000"],
+        [index + 1_000_000, "k000000"],
       ));
+      if (mutation.changes !== 1) throw new Error("phase12_dirty_trigger_mutation_missing");
       dirtyTriggerMs.push(performance.now() - started);
     }
     const archive = buildPhase12SyntheticSnapshot(2);
@@ -426,11 +438,13 @@ export async function performPhase12BackupBenchmark(): Promise<Phase12BackupBenc
       throw new Error("phase12_merge_plan_missing");
     }
     const mergeMaterializationMs: number[] = [];
+    let mergeStage: LogicalMergeFaultStage | "writer_start" = "writer_start";
     const mergeWriter = createFullPlanLogicalMergeWriter(kernel, {
       sha256: async (value) => {
         const { CryptoDigestAlgorithm, digestStringAsync } = require("expo-crypto") as typeof import("expo-crypto");
         return digestStringAsync(CryptoDigestAlgorithm.SHA256, value);
       },
+      faultAfter: async (stage) => { mergeStage = stage; },
     });
     for (let index = 0; index < mergePlans.length; index += 1) {
       const live = await createSqliteMergeLocalFactsPort(kernel).read();
@@ -450,13 +464,16 @@ export async function performPhase12BackupBenchmark(): Promise<Phase12BackupBenc
         return digestStringAsync(CryptoDigestAlgorithm.SHA256, value);
       } });
       const started = performance.now();
-      await mergeWriter.commitFullPlan({
-        localFingerprint: await (async () => {
-          const { CryptoDigestAlgorithm, digestStringAsync } = require("expo-crypto") as typeof import("expo-crypto");
-          return digestStringAsync(CryptoDigestAlgorithm.SHA256, canonicalMergeValue(live));
-        })(),
-        plan,
-      });
+      mergeStage = "writer_start";
+      try {
+        await mergeWriter.commitFullPlan({
+          localFingerprint: await (async () => {
+            const { CryptoDigestAlgorithm, digestStringAsync } = require("expo-crypto") as typeof import("expo-crypto");
+            return digestStringAsync(CryptoDigestAlgorithm.SHA256, canonicalMergeValue(live));
+          })(),
+          plan,
+        });
+      } catch (error) { throw phase12BenchmarkError(error, index, mergeStage); }
       mergeMaterializationMs.push(performance.now() - started);
     }
     const mergeSerializationMs: number[] = [];

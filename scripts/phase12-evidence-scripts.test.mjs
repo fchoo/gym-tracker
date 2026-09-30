@@ -48,4 +48,6 @@ test("Phase 12 benchmark invokes the production atomic merge writer", () => {
   assert.match(source, /createFullPlanLogicalMergeWriter/u);
   assert.match(source, /commitFullPlan/u);
   assert.doesNotMatch(source, /materializedRows/u);
+  assert.match(source, /"k000000"/u);
+  assert.match(source, /mutation\.changes !== 1/u);
 });

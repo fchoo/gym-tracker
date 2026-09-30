@@ -15,6 +15,7 @@ import {
   PHASE12_BENCHMARK_RESULT_MARKER,
   PHASE12_BENCHMARK_START_MARKER,
   phase12BenchmarkDatabaseName,
+  phase12BenchmarkError,
   PHASE12_SQLITE_FIXTURE_ROW_COUNTS,
   buildPhase12SyntheticSnapshot,
   measureReaderSnapshotWithConcurrentMutation,
@@ -28,6 +29,12 @@ describe("Phase 12 native backup benchmark", () => {
     expect(phase12BenchmarkDatabaseName("00000000-0000-4000-8000-000000000001"))
       .toBe("gym-tracker-phase12-benchmark-00000000-0000-4000-8000-000000000001.db");
     expect(() => phase12BenchmarkDatabaseName("../../shared.db")).toThrow("phase12_benchmark_database_identity_invalid");
+  });
+  it("reports the exact native writer sample, stage, and bounded cause chain", () => {
+    const cause = new Error("constraint_failed");
+    const outer = new Error("sqlite_transaction_failed", { cause });
+    expect(phase12BenchmarkError(outer, 2, "insert:session_exercises").message)
+      .toBe("phase12_merge_commit_failed:2:insert:session_exercises:sqlite_transaction_failed:constraint_failed");
   });
   it("fails closed outside the exact development-test Phase 12 benchmark route", () => {
     expect(phase12BenchmarkStartupAction({
