@@ -2999,6 +2999,11 @@ export function createWorkoutRepository(
         if (observation === null || observation.profile !== "load_reps") {
           return null;
         }
+        await deleteAdvancedTimingForSet(
+          transaction,
+          input.sessionId,
+          input.setId,
+        );
         const columns = observationColumns(observation);
         await transaction.execute(
           `UPDATE session_sets
@@ -3052,6 +3057,11 @@ export function createWorkoutRepository(
         if (update.changes !== 1) {
           return null;
         }
+        await deleteAdvancedTimingForSet(
+          transaction,
+          input.sessionId,
+          input.setId,
+        );
         await incrementSessionRevision(transaction, input.sessionId);
         return loadPlannedWorkout(transaction, input.sessionId);
       });
@@ -3089,6 +3099,11 @@ export function createWorkoutRepository(
         ) {
           return null;
         }
+        await deleteAdvancedTimingForSet(
+          transaction,
+          input.sessionId,
+          input.setId,
+        );
         const next = await nextWorkingSet(
           transaction,
           input.sessionId,
@@ -3210,6 +3225,12 @@ export function createWorkoutRepository(
         ) {
           return { kind: "conflict" as const, code: "complete_set_conflict" };
         }
+
+        await deleteAdvancedTimingForSet(
+          transaction,
+          input.sessionId,
+          input.setId,
+        );
 
         const exercises = await transaction.queryAll<ExerciseRow>(
           `SELECT id, exercise_id, ordinal, exercise_name, metric_profile,

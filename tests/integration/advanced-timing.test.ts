@@ -965,6 +965,108 @@ describe("advanced timing repository", () => {
     )).resolves.toEqual([{ count: 1, completed: 1 }]);
   });
 
+  it("retires per-rep timing on completion before timing the next set", async () => {
+    const fixture = await setupWorkout();
+    await startAdvancedTiming({
+      repository: fixture.repository,
+      input: {
+        sessionId: fixture.session.id,
+        sessionSetId: fixture.activeSet.id,
+        expectedSessionRevision: fixture.session.revision,
+        expectedAdvancedTimingRevision: 0,
+        nowMs: 10_000,
+        config: perRep,
+      },
+    });
+    const workout = createWorkoutRepository(fixture.kernel);
+    const activeView = await workout.getActiveWorkout(fixture.session.id);
+    const activeSet = activeView.currentExercise.workingSets.find(
+      ({ id }) => id === fixture.activeSet.id,
+    )!;
+    const completed = await completeSet({
+      repository: workout,
+      haptics: { committed: async () => undefined, cue: async () => undefined },
+      invalidate: async () => undefined,
+      drainEffects: async () => undefined,
+      input: {
+        sessionId: fixture.session.id,
+        setId: activeSet.id,
+        expectedSessionRevision: activeView.revision,
+        expectedSetRevision: activeSet.revision,
+        completionIdempotencyKey: "retire-per-rep-complete",
+        metricIdentity: activeSet.metricIdentity,
+        observation: activeSet.valueSources[0]!.observation,
+        completedAtMs: 11_000,
+      },
+    });
+    await expect(fixture.repository.getAdvancedTimingContext(fixture.session.id))
+      .resolves.toEqual(expect.objectContaining({
+        state: { version: 1, state: "idle", revision: 0, targetSessionSetId: null },
+      }));
+    const nextSetId = completed.view.activeSetId;
+    if (nextSetId === null) throw new Error("next_set_missing");
+    await expect(startAdvancedTiming({
+      repository: fixture.repository,
+      input: {
+        sessionId: fixture.session.id,
+        sessionSetId: nextSetId,
+        expectedSessionRevision: completed.view.revision,
+        expectedAdvancedTimingRevision: 0,
+        nowMs: 12_000,
+        config: perRep,
+      },
+    })).resolves.toEqual(expect.objectContaining({
+      state: expect.objectContaining({ targetSessionSetId: nextSetId }),
+    }));
+  });
+
+  it("retires cluster timing on skip before timing the next set", async () => {
+    const fixture = await setupWorkout({}, cluster);
+    await startAdvancedTiming({
+      repository: fixture.repository,
+      input: {
+        sessionId: fixture.session.id,
+        sessionSetId: fixture.activeSet.id,
+        expectedSessionRevision: fixture.session.revision,
+        expectedAdvancedTimingRevision: 0,
+        nowMs: 10_000,
+        config: cluster,
+      },
+    });
+    const workout = createWorkoutRepository(fixture.kernel);
+    const activeView = await workout.getActiveWorkout(fixture.session.id);
+    const activeSet = activeView.currentExercise.workingSets.find(
+      ({ id }) => id === fixture.activeSet.id,
+    )!;
+    const skipped = await workout.skipWorkingSet({
+      sessionId: fixture.session.id,
+      setId: activeSet.id,
+      expectedSessionRevision: activeView.revision,
+      expectedSetRevision: activeSet.revision,
+      metricIdentity: activeSet.metricIdentity,
+      skippedAtMs: 11_000,
+    });
+    await expect(fixture.repository.getAdvancedTimingContext(fixture.session.id))
+      .resolves.toEqual(expect.objectContaining({
+        state: { version: 1, state: "idle", revision: 0, targetSessionSetId: null },
+      }));
+    const nextSetId = skipped.activeSetId;
+    if (nextSetId === null) throw new Error("next_set_missing");
+    await expect(startAdvancedTiming({
+      repository: fixture.repository,
+      input: {
+        sessionId: fixture.session.id,
+        sessionSetId: nextSetId,
+        expectedSessionRevision: skipped.revision,
+        expectedAdvancedTimingRevision: 0,
+        nowMs: 12_000,
+        config: cluster,
+      },
+    })).resolves.toEqual(expect.objectContaining({
+      state: expect.objectContaining({ targetSessionSetId: nextSetId }),
+    }));
+  });
+
   it("removes timing ownership before set, exercise, and replacement deletion", async () => {
     const removeSetFixture = await setupWorkout();
     await startAndStopTiming(removeSetFixture);
