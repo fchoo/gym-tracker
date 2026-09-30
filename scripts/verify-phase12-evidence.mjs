@@ -118,7 +118,7 @@ export function executePhase12EvidenceVerifier(args = process.argv.slice(2)) {
       ...automated,
       mode: "final",
       approval_status: "approved",
-      attended_scope: "real-google-emulator-replacement-and-phone-auth",
+      attended_scope: "fresh-replacement-and-phone-auth-refresh",
       attended: (() => {
         const recordPath = path.join(directory, "attended/attended-record.json");
         const checklistPath = path.join(directory, "attended/checklist.pending.json");

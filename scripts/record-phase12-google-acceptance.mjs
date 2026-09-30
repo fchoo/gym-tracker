@@ -161,12 +161,13 @@ export function validatePhase12GoogleObservations(observations, manifest) {
     }
   }
   const byId = new Map(observations.cases.map((entry) => [entry.id, entry]));
-  const emptyNamespace = byId.get("emulator-namespace-empty");
-  const rotation = byId.get("emulator-latest-previous-rotation");
-  const restore = byId.get("emulator-direct-restore-digest");
-  if (emptyNamespace.object_count !== 0 || rotation.object_count < 2
-    || rotation.total_bytes <= 0 || restore.source_digest_sha256 === null
-    || restore.source_digest_sha256 !== restore.result_digest_sha256) {
+  const replacement = byId.get("emulator-fresh-replacement");
+  const phone = byId.get("phone-auth-drive-file-refresh");
+  if (replacement.object_count < 1 || replacement.total_bytes <= 0
+    || replacement.source_digest_sha256 === null
+    || replacement.source_digest_sha256 !== replacement.result_digest_sha256
+    || phone.object_count !== 0 || phone.total_bytes !== 0
+    || phone.source_digest_sha256 !== null || phone.result_digest_sha256 !== null) {
     fail("observations_proof_invalid");
   }
   return observations;

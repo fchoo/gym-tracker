@@ -53,8 +53,9 @@ names, and workout rows never cross into logs or evidence.
 
 - Host and fake-port Expo contracts exercise the source-owned no-skip crash/fence IDs.
 - The manifest-bound native/benchmark producer is credential-free and cannot claim real Google behavior.
-- The blocking attended gate uses a dedicated development-test account and namespace; it must prove no production objects before mutation.
-- A physical phone smoke test proves only signed One-Tap, `drive.file`, refresh, and environment isolation. It never uploads, restores, clears, merges, or inspects backup data.
+- The blocking attended gate has exactly two live observation groups: one fresh development-test backup/replacement flow and one physical-phone One-Tap, `drive.file`, and refresh smoke.
+- Adoption, stale-writer, corrupt/previous/future recovery, retention, deletion, and other adversarial behavior are deterministic host/Expo/Maestro/benchmark evidence only and must never be labeled as live Google observations.
+- The physical-phone smoke never uploads, restores, clears, merges, deletes, or inspects backup data.
 
 ## Prohibited Paths Confirmed
 

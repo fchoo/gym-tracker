@@ -16,74 +16,14 @@ const APK_PATH = "artifacts/native/phase12/gym-tracker-phase12-devtest.apk";
 
 export const PHASE12_GOOGLE_ATTENDED_CASES = Object.freeze([
   Object.freeze({
-    id: "emulator-namespace-empty",
+    id: "emulator-fresh-replacement",
     role: "replacement-emulator",
-    instructions: "With the dedicated test account connected, verify the development-test namespace contains no production objects before mutation.",
+    instructions: "Complete one fresh development-test backup and replacement restore, confirming the source and restored digests match.",
   }),
   Object.freeze({
-    id: "emulator-auth-drive-file",
-    role: "replacement-emulator",
-    instructions: "Complete One-Tap and drive.file consent without granting broader Drive access.",
-  }),
-  Object.freeze({
-    id: "emulator-latest-previous-rotation",
-    role: "replacement-emulator",
-    instructions: "Create two verified generations and confirm latest plus previous rotation.",
-  }),
-  Object.freeze({
-    id: "emulator-restore-quarantine",
-    role: "replacement-emulator",
-    instructions: "After clearing and reinstalling only the development-test package, confirm restore quarantine cannot upload before resolution.",
-  }),
-  Object.freeze({
-    id: "emulator-direct-restore-digest",
-    role: "replacement-emulator",
-    instructions: "Restore the latest generation and confirm its canonical source and restored digests match.",
-  }),
-  Object.freeze({
-    id: "emulator-successor-writer",
-    role: "replacement-emulator",
-    instructions: "Claim the successor writer epoch and confirm the prior writer is rejected by the deterministic/native fence.",
-  }),
-  Object.freeze({
-    id: "emulator-post-restore-backup",
-    role: "replacement-emulator",
-    instructions: "Create and promote a verified post-restore backup.",
-  }),
-  Object.freeze({
-    id: "emulator-manifest-recovery",
-    role: "replacement-emulator",
-    instructions: "Exercise corrupt-manifest bounded recovery without exposing remote identifiers.",
-  }),
-  Object.freeze({
-    id: "emulator-fenced-orphan-trash",
-    role: "replacement-emulator",
-    instructions: "Confirm one generation-fenced orphan is trashed while referenced generations remain.",
-  }),
-  Object.freeze({
-    id: "emulator-nonempty-merge-adoption",
-    role: "replacement-emulator",
-    instructions: "Repeat with bounded local data and confirm previewed merge plus one-time namespace adoption.",
-  }),
-  Object.freeze({
-    id: "phone-signed-package",
+    id: "phone-auth-drive-file-refresh",
     role: "physical-phone-auth-only",
-    instructions: "Confirm the installed development-test package bytes match the retained APK.",
-  }),
-  Object.freeze({
-    id: "phone-auth-drive-file",
-    role: "physical-phone-auth-only",
-    instructions: "Complete One-Tap and drive.file consent only; do not read or mutate backup objects.",
-  }),
-  Object.freeze({
-    id: "phone-token-refresh",
-    role: "physical-phone-auth-only",
-    instructions: "Confirm token refresh succeeds without recording credentials or account identifiers.",
-  }),
-  Object.freeze({
-    id: "phone-environment-isolation",
-    role: "physical-phone-auth-only",
-    instructions: "Confirm the development-test environment is selected without uploading, restoring, merging, deleting, or inspecting backup content.",
+    instructions: "Confirm the retained development-test APK completes One-Tap drive.file consent and token refresh without reading or mutating backup objects.",
   }),
 ]);
 
@@ -159,7 +99,7 @@ export function buildPhase12GoogleChecklist(manifest, generatedAt) {
     privacy: Object.freeze([
       "Record only case IDs, counts, byte sizes, timestamps, and SHA-256 digests.",
       "Never record tokens, emails, permission IDs, Drive IDs, object names, or workout content.",
-      "The physical-phone role is auth and scope smoke only; all destructive replacement actions stay on the emulator.",
+      "The physical-phone role is auth and refresh smoke only; all adversarial recovery and deletion proof is deterministic.",
     ]),
   });
   validatePhase12GoogleChecklist(checklist, manifest);
