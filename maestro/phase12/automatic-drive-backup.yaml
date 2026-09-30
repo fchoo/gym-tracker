@@ -83,7 +83,7 @@ tags:
     when:
       true: ${PHASE12_STAGE == 'previous_available'}
     commands:
-      - assertVisible: "previous verified backup is available"
+      - assertVisible: "The latest backup could not be verified. A previous verified backup is available."
 - runFlow:
     when:
       true: ${PHASE12_STAGE == 'update_required'}
