@@ -668,7 +668,7 @@ describe("logical merge repository", () => {
     const { local, plan } = await fullPlanFixture(kernel);
     await kernel.write(async (transaction) => {
       await transaction.execute(
-        "UPDATE automatic_backup_state SET permission_id = 'permission', connection_generation = 4 WHERE id = 1",
+        "UPDATE automatic_backup_state SET permission_id = 'permission', connection_generation = 4, environment = 'development-test' WHERE id = 1",
       );
     });
     const receiptId = "adoption-receipt";
@@ -677,7 +677,7 @@ describe("logical merge repository", () => {
       receiptId,
       permissionId: "permission",
       connectionGeneration: 4,
-      environment: "production" as const,
+      environment: "development-test" as const,
       oldNamespace: local.ownerNamespace,
       newNamespace,
       localFingerprint: await sha256(canonicalMergeValue(local)),

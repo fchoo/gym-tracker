@@ -172,6 +172,55 @@ describe("automatic portability", () => {
     }));
   });
 
+  it("rejects missing digest, unexpected grant, and every stale adoption grant", async () => {
+    bypassSnapshotValidation();
+    const adoption = {
+      oldNamespace: "a".repeat(32),
+      newNamespace: "b".repeat(32),
+      remoteSnapshotSha256: "c".repeat(64),
+    };
+    const grant = {
+      receiptId: "receipt", permissionId: "permission", connectionGeneration: 1,
+      environment: "production" as const, expiresAtMs: 2_000,
+    };
+    const matching = mergeDependencies({
+      nowMs: () => 1_000,
+      consume: jest.fn(() => ({ plan, fingerprint: "local-fingerprint" })),
+    });
+    await expect(createAutomaticPortableMergePort(matching).commit("token", grant))
+      .rejects.toThrow("automatic_merge_adoption_grant_unexpected");
+
+    for (const invalid of [
+      { ...grant, connectionGeneration: -1 },
+      { ...grant, connectionGeneration: 1.5 },
+      { ...grant, expiresAtMs: 1.5 },
+      { ...grant, expiresAtMs: 999 },
+    ]) {
+      const dependencies = mergeDependencies({
+        nowMs: () => 1_000,
+        consume: jest.fn(() => ({ plan, fingerprint: "local-fingerprint", adoption })),
+      });
+      await expect(createAutomaticPortableMergePort(dependencies).commit("token", invalid))
+        .rejects.toThrow("automatic_merge_adoption_grant_invalid");
+      expect(dependencies.commitPlan).not.toHaveBeenCalled();
+    }
+
+    const defaultClock = mergeDependencies({
+      consume: jest.fn(() => ({ plan, fingerprint: "local-fingerprint", adoption })),
+    });
+    await expect(createAutomaticPortableMergePort(defaultClock).commit("token", {
+      ...grant, expiresAtMs: 0,
+    })).rejects.toThrow("automatic_merge_adoption_grant_invalid");
+
+    const remote = { tables: { portable_owner_identity: [{ id: 1, owner_namespace: "b".repeat(32) }] } } as never;
+    const noDigest = mergeDependencies({
+      local: async () => ({ version: 2, schemaVersion: 26, tables: { portable_owner_identity: [{ id: 1, owner_namespace: "a".repeat(32) }] } }),
+      archive: () => ({ version: 2, schemaVersion: 26, tables: { portable_owner_identity: [{ id: 1, owner_namespace: "b".repeat(32) }] } }),
+    });
+    await expect(createAutomaticPortableMergePort(noDigest).preflight(remote))
+      .rejects.toThrow("automatic_merge_snapshot_digest_missing");
+  });
+
   it("preflights without a grant and rejects a workout that becomes active before commit", async () => {
     bypassSnapshotValidation();
     let active = false;
