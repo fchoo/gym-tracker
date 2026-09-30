@@ -477,17 +477,34 @@ export function createAutomaticBackupCoordinator(input: Readonly<{
     // A deletion marker is promoted before this method is callable.  Each pass
     // re-discovers the bounded namespace: cached ids and filenames are never a
     // deletion authority, and a missed snapshot remains retryable.
+    if (state.deletionProgress === "complete") return Object.freeze({ status: "complete" as const });
     if (state.deletionProgress !== "sweep_pending" && !(await input.state.beginDeletionSweep?.(fence))) return Object.freeze({ status: "cancelled" as const });
     if (input.drive.discoverSnapshotsForDeletion === undefined || input.drive.deleteTombstoned === undefined) return Object.freeze({ status: "partial" as const });
     try {
-      const snapshots = await input.drive.discoverSnapshotsForDeletion();
-      await Promise.all(snapshots.map((snapshot) => input.drive.deleteTombstoned!(snapshot.fileId)));
-      // Repeat list/delete/list: Drive listing is the authority, not the first pass.
-      const remaining = await input.drive.discoverSnapshotsForDeletion();
-      if (remaining.length !== 0) return Object.freeze({ status: "partial" as const });
-      return await input.state.completeDeletionSweep?.(fence) === false
-        ? Object.freeze({ status: "cancelled" as const })
-        : Object.freeze({ status: "complete" as const });
+      for (let batch = 0; batch < 8; batch += 1) {
+        const identity = await input.auth?.reauthenticate?.();
+        if (identity === undefined || identity === null || identity.permissionId !== fence.permissionId) {
+          return Object.freeze({ status: "cancelled" as const });
+        }
+        const currentManifest = await input.drive.readManifest();
+        if (currentManifest === null || currentManifest.fileId !== fence.manifestId
+          || currentManifest.etag !== fence.manifestEtag) {
+          return Object.freeze({ status: "cancelled" as const });
+        }
+        const currentTombstone = parseDriveBackupManifestV1(JSON.parse(new TextDecoder().decode(currentManifest.bytes)));
+        if (currentTombstone.kind !== "deleted"
+          || currentTombstone.successorWriterEpoch !== fence.successorWriterEpoch) {
+          return Object.freeze({ status: "cancelled" as const });
+        }
+        const snapshots = await input.drive.discoverSnapshotsForDeletion();
+        if (snapshots.length === 0) {
+          return await input.state.completeDeletionSweep?.(fence) === false
+            ? Object.freeze({ status: "cancelled" as const })
+            : Object.freeze({ status: "complete" as const });
+        }
+        await Promise.all(snapshots.map((snapshot) => input.drive.deleteTombstoned!(snapshot.fileId)));
+      }
+      return Object.freeze({ status: "partial" as const });
     } catch { return Object.freeze({ status: "partial" as const }); }
   };
   const deleteCloudBackup = async (): Promise<Readonly<{ status: "complete" | "partial" | "cancelled" }>> => {

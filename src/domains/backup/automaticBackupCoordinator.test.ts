@@ -111,6 +111,7 @@ describe("automatic backup coordinator", () => {
     };
     const coordinator = createAutomaticBackupCoordinator({
       isWorkoutActive: () => false,
+      auth: { connect: async () => null, reauthenticate: async () => ({ permissionId: "permission", displayEmail: null }), disconnect: async () => undefined },
       capture: async () => ({ generation: 1, sourceDigest: "a".repeat(64), bytes: new Uint8Array() }),
       state: { read: async () => activeState({ authorityState: "quarantine", manifestId: null }), persistAttempt: async () => undefined, acknowledgeReceipt: async () => false, beginQuarantine: async () => undefined },
       drive: { createSnapshot: async () => "snapshot", download: async () => new Uint8Array(), updateManifest: async () => "etag", readManifest: async () => null, discover: async () => [{}] },
@@ -447,6 +448,7 @@ describe("automatic backup coordinator", () => {
     let calls = 0;
     const coordinator = createAutomaticBackupCoordinator({
       isWorkoutActive: () => false,
+      auth: { connect: async () => null, reauthenticate: async () => ({ permissionId: "permission", displayEmail: null }), disconnect: async () => undefined },
       capture: async () => ({ generation: 1, sourceDigest: "a".repeat(64), bytes: new Uint8Array() }),
       state: {
         read: async () => ({ environment: "development-test" as const, permissionId: "permission", connectionGeneration: 3, writerEpoch: 2, mutationGeneration: 0, backedUpGeneration: 0, authorityState: "deleted" as const, deletionProgress: "sweep_pending" as const, manifestId: "manifest", manifestEtag: "tombstone-etag" }),
@@ -454,7 +456,8 @@ describe("automatic backup coordinator", () => {
         completeDeletionSweep: async () => true,
       },
       drive: {
-        createSnapshot: async () => "snapshot", download: async () => new Uint8Array(), updateManifest: async () => "etag", readManifest: async () => null,
+        createSnapshot: async () => "snapshot", download: async () => new Uint8Array(), updateManifest: async () => "etag",
+        readManifest: async () => ({ fileId: "manifest", etag: "tombstone-etag", bytes: new TextEncoder().encode(JSON.stringify({ kind: "deleted", successorWriterEpoch: 2, deletedAtMs: 1 })) }),
         discoverSnapshotsForDeletion: async () => ++calls === 1 ? [{ fileId: "one" }, { fileId: "two" }] : [],
         deleteTombstoned: async (fileId) => { deleted.push(fileId); },
       },
@@ -463,6 +466,56 @@ describe("automatic backup coordinator", () => {
     await expect(coordinator.finishDeletionSweep()).resolves.toEqual({ status: "complete" });
     expect(deleted).toEqual(["one", "two"]);
     expect(calls).toBe(2);
+  });
+
+  it("stops a resumed deletion sweep when a newer writer replaces the tombstone", async () => {
+    let manifestReads = 0;
+    const deleted: string[] = [];
+    const coordinator = createAutomaticBackupCoordinator({
+      isWorkoutActive: () => false,
+      auth: {
+        connect: async () => null,
+        reauthenticate: async () => ({ permissionId: "permission", displayEmail: null }),
+        disconnect: async () => undefined,
+      },
+      capture: async () => ({ generation: 1, sourceDigest: "a".repeat(64), bytes: new Uint8Array() }),
+      state: {
+        read: async () => activeState({
+          authorityState: "deleted",
+          deletionProgress: "sweep_pending",
+          writerEpoch: 3,
+          manifestEtag: "tombstone-etag",
+        }),
+        persistAttempt: async () => undefined,
+        acknowledgeReceipt: async () => false,
+        completeDeletionSweep: async () => true,
+      },
+      drive: {
+        createSnapshot: async () => "snapshot",
+        download: async () => new Uint8Array(),
+        updateManifest: async () => "etag",
+        readManifest: async () => {
+          manifestReads += 1;
+          return manifestReads === 1
+            ? {
+              fileId: "manifest",
+              etag: "tombstone-etag",
+              bytes: new TextEncoder().encode(JSON.stringify({
+                kind: "deleted", successorWriterEpoch: 3, deletedAtMs: 1,
+              })),
+            }
+            : { fileId: "manifest", etag: "new-writer-etag", bytes: activeManifest(4) };
+        },
+        discoverSnapshotsForDeletion: async () => [{ fileId: manifestReads === 1 ? "old-a" : "old-b" }],
+        deleteTombstoned: async (fileId) => { deleted.push(fileId); },
+      },
+      validate: () => true,
+      nowMs: () => 1,
+      candidateId: () => "candidate",
+    });
+
+    await expect(coordinator.finishDeletionSweep()).resolves.toEqual({ status: "cancelled" });
+    expect(deleted).toEqual(["old-a"]);
   });
 
   it("recovers a promoted tombstone without reconstructing readable snapshots", async () => {
@@ -536,14 +589,16 @@ describe("automatic backup coordinator", () => {
     let manifest: Uint8Array<ArrayBufferLike> = activeManifest(2);
     let etag = "active-etag";
     let authorityState: "active" | "deleted" = "active";
+    let writerEpoch = 2;
+    let stateManifestEtag = "active-etag";
     const coordinator = createAutomaticBackupCoordinator({
       isWorkoutActive: () => false,
       auth: { connect: async () => null, reauthenticate: async () => ({ permissionId: "permission", displayEmail: null }), disconnect: async () => undefined },
       capture: async () => ({ generation: 1, sourceDigest: "a".repeat(64), bytes: new Uint8Array() }),
       state: {
-        read: async () => activeState({ authorityState, manifestEtag: "active-etag", deletionProgress: authorityState === "deleted" ? "sweep_pending" : "none" }),
+        read: async () => activeState({ authorityState, writerEpoch, manifestEtag: stateManifestEtag, deletionProgress: authorityState === "deleted" ? "sweep_pending" : "none" }),
         persistAttempt: async () => undefined, acknowledgeReceipt: async () => false,
-        beginDeletionSweep: async () => { authorityState = "deleted"; events.push("tombstone"); return true; },
+        beginDeletionSweep: async (value) => { authorityState = "deleted"; writerEpoch = value.successorWriterEpoch; stateManifestEtag = value.manifestEtag; events.push("tombstone"); return true; },
         completeDeletionSweep: async () => true,
       },
       drive: {
@@ -1075,9 +1130,9 @@ describe("automatic backup coordinator", () => {
       .rejects.toThrow("automatic_recovery_workout_active");
 
     const deletion = (state: Record<string, unknown>, drive: Record<string, unknown>, beginDeletionSweep = async () => true, completeDeletionSweep = async () => true) => createAutomaticBackupCoordinator({
-      isWorkoutActive: () => false, capture: async () => ({ generation: 1, sourceDigest: "a".repeat(64), bytes: new Uint8Array() }),
+      isWorkoutActive: () => false, auth: { connect: async () => null, reauthenticate: async () => ({ permissionId: "permission", displayEmail: null }), disconnect: async () => undefined }, capture: async () => ({ generation: 1, sourceDigest: "a".repeat(64), bytes: new Uint8Array() }),
       state: { read: async () => activeState({ authorityState: "deleted", deletionProgress: "none", ...state }), persistAttempt: async () => undefined, acknowledgeReceipt: async () => false, beginDeletionSweep, completeDeletionSweep },
-      drive: { createSnapshot: async () => "snapshot", download: async () => new Uint8Array(), updateManifest: async () => "etag", readManifest: async () => null, ...drive }, validate: () => true, nowMs: () => 1, candidateId: () => "candidate",
+      drive: { createSnapshot: async () => "snapshot", download: async () => new Uint8Array(), updateManifest: async () => "etag", readManifest: async () => ({ fileId: "manifest", etag: "etag", bytes: new TextEncoder().encode(JSON.stringify({ kind: "deleted", successorWriterEpoch: 2, deletedAtMs: 1 })) }), ...drive }, validate: () => true, nowMs: () => 1, candidateId: () => "candidate",
     });
     await expect(deletion({ authorityState: "active" }, {}).finishDeletionSweep()).resolves.toEqual({ status: "cancelled" });
     await expect(deletion({}, {}, async () => false).finishDeletionSweep()).resolves.toEqual({ status: "cancelled" });
