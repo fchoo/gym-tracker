@@ -403,10 +403,10 @@ export async function performPhase12BackupBenchmark(): Promise<Phase12BackupBenc
       const currentSession = live.tables.workout_sessions?.[0];
       if (currentSession === undefined) throw new Error("phase12_merge_materialization_empty");
       const archive = {
-        ...maximumSnapshot,
         version: 2 as const,
+        schemaVersion: live.schemaVersion,
         tables: {
-          ...maximumSnapshot.tables,
+          ...live.tables,
           portable_owner_identity: [{ id: 1, owner_namespace: live.ownerNamespace }],
           workout_sessions: [{ ...currentSession, merge_modified_at_ms: Number(currentSession.merge_modified_at_ms) + index + 1 }],
         },
