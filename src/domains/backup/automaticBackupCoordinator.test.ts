@@ -130,6 +130,7 @@ describe("automatic backup coordinator", () => {
       allocate?: boolean;
       createdManifestId?: string;
       activate?: boolean;
+      manifestConflict?: boolean;
     }>) => {
       let current: any = activeState({
         authorityState: "quarantine",
@@ -166,6 +167,7 @@ describe("automatic backup coordinator", () => {
           ...(options.allocate === false ? {} : {
             allocateFileId: async () => ids.shift()!,
             createManifest: async (_id: string, value: Uint8Array) => {
+              if (options.manifestConflict === true) throw new Error("drive_manifest_conflict");
               manifest = { bytes: value, etag: '"created-etag"' };
               return {
                 fileId: options.createdManifestId ?? "manifest-server-id",
@@ -198,6 +200,10 @@ describe("automatic backup coordinator", () => {
     const rejectedActivation = make({ activate: false });
     await rejectedActivation.connect();
     await expect(rejectedActivation.backup()).resolves.toEqual({ status: "deferred" });
+
+    const conflictedManifest = make({ manifestConflict: true });
+    await conflictedManifest.connect();
+    await expect(conflictedManifest.backup()).resolves.toEqual({ status: "deferred" });
   });
 
   it("rejects stale or unreadable active manifests before snapshot capture", async () => {
@@ -388,6 +394,40 @@ describe("automatic backup coordinator", () => {
         validate: () => true, nowMs: () => 1, candidateId: () => "candidate",
       });
       await expect(candidate.backup()).resolves.toMatchObject({ status: expected });
+    }
+
+    const boundaryFailure = (failure: "capture" | "allocate" | "persist" | "download") => createAutomaticBackupCoordinator({
+      isWorkoutActive: () => false,
+      capture: async () => {
+        if (failure === "capture") throw new Error("capture");
+        return { generation: 4, sourceDigest: "a".repeat(64), bytes: new Uint8Array([1]) };
+      },
+      state: {
+        read: async () => activeState(),
+        persistAttempt: async () => {
+          if (failure === "persist") throw new Error("persist");
+        },
+        acknowledgeReceipt: async () => true,
+      },
+      drive: {
+        allocateFileId: async () => {
+          if (failure === "allocate") throw new Error("allocate");
+          return "candidate";
+        },
+        createSnapshot: async () => "snapshot",
+        download: async () => {
+          if (failure === "download") throw new Error("download");
+          return new Uint8Array([1]);
+        },
+        updateManifest: async () => "next",
+        readManifest: async () => ({ bytes: new Uint8Array([2]), etag: "next" }),
+      },
+      validate: () => true,
+      nowMs: () => 1,
+      candidateId: () => "candidate",
+    });
+    for (const failure of ["capture", "allocate", "persist", "download"] as const) {
+      await expect(boundaryFailure(failure).backup()).resolves.toEqual({ status: "deferred" });
     }
   });
 
