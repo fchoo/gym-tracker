@@ -548,6 +548,10 @@ export async function performPhase12BackupBenchmark(): Promise<Phase12BackupBenc
         const { CryptoDigestAlgorithm, digestStringAsync } = require("expo-crypto") as typeof import("expo-crypto");
         return digestStringAsync(CryptoDigestAlgorithm.SHA256, value);
       } });
+      const localFingerprint = await (async () => {
+        const { CryptoDigestAlgorithm, digestStringAsync } = require("expo-crypto") as typeof import("expo-crypto");
+        return digestStringAsync(CryptoDigestAlgorithm.SHA256, canonicalMergeValue(live));
+      })();
       console.log(`${PHASE12_BENCHMARK_PROGRESS_MARKER}${JSON.stringify({
         stage: "materialization_plan",
         sample: index,
@@ -563,10 +567,7 @@ export async function performPhase12BackupBenchmark(): Promise<Phase12BackupBenc
       })}`);
       try {
         await mergeWriter.commitFullPlan({
-          localFingerprint: await (async () => {
-            const { CryptoDigestAlgorithm, digestStringAsync } = require("expo-crypto") as typeof import("expo-crypto");
-            return digestStringAsync(CryptoDigestAlgorithm.SHA256, canonicalMergeValue(live));
-          })(),
+          localFingerprint,
           plan,
         });
       } catch (error) { throw phase12BenchmarkError(error, index, mergeStage); }

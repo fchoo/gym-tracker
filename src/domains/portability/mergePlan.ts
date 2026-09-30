@@ -145,6 +145,15 @@ export type PortableMergePlan = Readonly<{
   preview: PortableMergePreview;
 }>;
 
+const PLANNER_ISSUED_PLANS = new WeakSet<object>();
+
+export function isPlannerIssuedPortableMergePlan(
+  value: unknown,
+): value is PortableMergePlan {
+  return typeof value === "object" && value !== null
+    && PLANNER_ISSUED_PLANS.has(value);
+}
+
 export class MergePlanError extends Error {
   readonly kind = "validation" as const;
   readonly retryable = false;
@@ -1558,7 +1567,9 @@ export async function buildPortableMergePlan(input: Readonly<{
       get: materializeAggregates,
     },
   });
-  return Object.freeze(plan);
+  const issuedPlan = Object.freeze(plan);
+  PLANNER_ISSUED_PLANS.add(issuedPlan);
+  return issuedPlan;
 }
 
 /**

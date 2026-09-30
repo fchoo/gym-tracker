@@ -7,6 +7,7 @@ import {
 import {
   __mergePlanTestOnly,
   buildPortableMergePlan,
+  isPlannerIssuedPortableMergePlan,
   MERGE_DIGEST_CONCURRENCY,
   MergePlanError,
   PORTABLE_MERGE_TABLE_CLASSES,
@@ -78,6 +79,9 @@ describe("portable merge plan", () => {
         return value.includes("archive") ? "0".repeat(64) : "f".repeat(64);
       },
     });
+    expect(isPlannerIssuedPortableMergePlan(plan)).toBe(true);
+    expect(isPlannerIssuedPortableMergePlan({ ...plan })).toBe(false);
+    expect(isPlannerIssuedPortableMergePlan(null)).toBe(false);
 
     expect(maxActive).toBeLessThanOrEqual(MERGE_DIGEST_CONCURRENCY * 2);
     const operations = plan.operations.filter((operation) => operation.aggregateClass === "workout_session");

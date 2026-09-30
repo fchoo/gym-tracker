@@ -17,6 +17,9 @@ import type {
   PortableMergePlan,
 } from "../../../domains/portability/mergePlan";
 import {
+  isPlannerIssuedPortableMergePlan,
+} from "../../../domains/portability/mergePlan";
+import {
   isOpaquePortableId,
 } from "../../../domains/portability/portableIdentity";
 import {
@@ -719,7 +722,24 @@ function sessionAggregatesForFullPlan(
 
 function snapshotFullPlan(plan: PortableMergePlan): PortableMergePlan {
   try {
-    return JSON.parse(canonicalMergeValue(plan)) as PortableMergePlan;
+    if (isPlannerIssuedPortableMergePlan(plan)) return plan;
+    const ancestors = new Set<object>();
+    const assertJsonTree = (value: unknown): void => {
+      if (value === null || typeof value === "boolean"
+        || typeof value === "number" || typeof value === "string") return;
+      if (typeof value !== "object") fail();
+      if (ancestors.has(value)) fail();
+      const prototype = Object.getPrototypeOf(value);
+      if (!Array.isArray(value)
+        && prototype !== Object.prototype && prototype !== null) fail();
+      ancestors.add(value);
+      for (const nested of Array.isArray(value) ? value : Object.values(value)) {
+        assertJsonTree(nested);
+      }
+      ancestors.delete(value);
+    };
+    assertJsonTree(plan);
+    return JSON.parse(JSON.stringify(plan) as string) as PortableMergePlan;
   } catch {
     return fail();
   }

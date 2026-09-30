@@ -1681,6 +1681,13 @@ describe("logical merge repository", () => {
       circular: undefined,
       toJSON: () => undefined,
     } as unknown as PortableMergePlan)).toThrow(expect.objectContaining({ code: "logical_merge_failed" }));
+    const cyclic: Record<string, unknown> = {};
+    cyclic.self = cyclic;
+    expect(() => __logicalMergeRepositoryTestOnly.snapshotFullPlan(cyclic as PortableMergePlan))
+      .toThrow(expect.objectContaining({ code: "logical_merge_failed" }));
+    expect(() => __logicalMergeRepositoryTestOnly.snapshotFullPlan({
+      createdAt: new Date(),
+    } as unknown as PortableMergePlan)).toThrow(expect.objectContaining({ code: "logical_merge_failed" }));
     expect(__logicalMergeRepositoryTestOnly.aggregateRows({}, "session_sets")).toEqual([]);
   });
 
