@@ -128,10 +128,35 @@ import {
   createProductionAutomaticBackupServices,
   fetchGoogleDriveIdentity,
   assertAutomaticDriveSnapshotBytes,
+  productionAutomaticBackupPresentationInput,
   localPortableFactsAreEmpty,
 } from "./productionAutomaticBackupRuntime";
 
 describe("production automatic-backup composition", () => {
+  it("projects durable recovery and deletion states into production UI states", () => {
+    const current = {
+      environment: "development-test" as const, permissionId: "permission", displayEmail: null,
+      accountDisplayLabel: "Owner", connectionGeneration: 1, writerEpoch: 2,
+      mutationGeneration: 4, backedUpGeneration: 4, manifestId: "manifest", manifestEtag: "etag",
+      authorityState: "quarantine" as const, dirtySinceMs: null, lastAttemptMs: null,
+      lastSuccessMs: null, dataUsePolicy: "any-network" as const, claimId: null,
+      claimExpiresAtMs: null, statusCode: "checking" as const, deletionProgress: "none" as const,
+    };
+    expect(productionAutomaticBackupPresentationInput(current, { kind: "latest" }, false, 1))
+      .toMatchObject({ status: "restore_pending", progressStage: "Checking backup", reason: null });
+    expect(productionAutomaticBackupPresentationInput({ ...current, statusCode: "finishing" }, { kind: "latest" }, false, 1))
+      .toMatchObject({ status: "restoring", progressStage: "Finishing backup setup" });
+    expect(productionAutomaticBackupPresentationInput({ ...current, statusCode: "restore_pending" }, { kind: "latest" }, true, 1))
+      .toMatchObject({ reason: "merge_review" });
+    expect(productionAutomaticBackupPresentationInput({ ...current, authorityState: "deleted", deletionProgress: "complete", statusCode: "idle" }, null, false, 1))
+      .toMatchObject({ status: "paused", reason: "deleted" });
+    expect(productionAutomaticBackupPresentationInput({ ...current, authorityState: "deleted", deletionProgress: "sweep_pending", statusCode: "paused" }, null, false, 1))
+      .toMatchObject({ status: "paused", reason: "deletion_partial" });
+    expect(productionAutomaticBackupPresentationInput({ ...current, manifestId: null, statusCode: "idle" }, null, false, 1))
+      .toMatchObject({ reason: "no_cloud" });
+    expect(productionAutomaticBackupPresentationInput({ ...current, statusCode: "restore_pending" }, null, false, 1))
+      .toMatchObject({ reason: "invalid_artifacts" });
+  });
   it("applies the 24 MiB limit to the final encoded Drive object", () => {
     expect(assertAutomaticDriveSnapshotBytes(new Uint8Array(24 * 1024 * 1024))).toHaveLength(24 * 1024 * 1024);
     expect(() => assertAutomaticDriveSnapshotBytes(new Uint8Array(24 * 1024 * 1024 + 1)))

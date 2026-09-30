@@ -15,7 +15,7 @@ export type AutomaticBackupViewModel = Readonly<{
   recoveryPrompt: AutomaticBackupRecoveryPrompt | null;
   progressStage: AutomaticBackupProgressStage | null;
   reason: "stale_writer" | "update_required" | "restore_required" | "no_cloud" | "authentication_required" | "merge_review" | "invalid_artifacts" | "deleted" | "deletion_partial" | "unavailable" | null;
-  primaryAction: "connect" | "backup_now" | "retry" | "continue_restore" | "check_again" | "finish_setup" | null;
+  primaryAction: "connect" | "backup_now" | "retry" | "continue_restore" | "cancel_check" | "check_again" | "finish_setup" | null;
 }>;
 export type AutomaticBackupPresentationInput = Readonly<{
   status: AutomaticBackupStatus;
@@ -43,7 +43,9 @@ export function projectAutomaticBackupPresentation(input: AutomaticBackupPresent
   const reason = input.reason ?? (input.status === "restore_pending" ? "restore_required" : null);
   const primaryAction = input.status === "not_connected" ? "connect"
     : reason === "update_required" ? "check_again"
+      : input.progressStage === "Checking backup" ? "cancel_check"
       : input.progressStage === "Finishing backup setup" ? "finish_setup"
+        : reason === "deleted" || reason === "deletion_partial" || reason === "invalid_artifacts" ? null
         : input.status === "restore_pending" ? "continue_restore"
           : input.status === "backup_pending" || input.status === "paused" ? "retry"
             : input.status === "idle" ? "backup_now" : null;

@@ -10,7 +10,7 @@ const mockCreateCsvExport = jest.fn<() => Promise<{ exportId: string }>>();
 const mockShareCsvExport = jest.fn<(value: { exportId: string }) => Promise<void>>();
 const mockDiscardCsvExport = jest.fn<(value: { exportId: string }) => Promise<void>>();
 const mockUseCellular = jest.fn<() => Promise<void>>();
-const mockPrepareAutomaticRecovery = jest.fn();
+const mockPrepareAutomaticRecovery = jest.fn<(input: { candidate: "latest" | "previous" }) => Promise<any>>();
 const mockCommitAutomaticRecovery = jest.fn<() => Promise<void>>();
 const mockCancelAutomaticRecovery = jest.fn<() => Promise<void>>();
 const mockRuntime: any = {

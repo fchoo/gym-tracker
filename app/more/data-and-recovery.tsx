@@ -798,6 +798,9 @@ export default function DataAndRecoveryRoute() {
         <SecondaryAction label="Cancel cloud recovery" onPress={() => { void cancelAutomaticRecovery(); }} />
       </View>}
       {backup.primaryAction === "check_again" ? <PrimaryAction label="Check again" onPress={() => invoke(runtime.checkAutomaticBackupAgain)} /> : null}
+      {backup.primaryAction === "cancel_check" ? <SecondaryAction label="Cancel checking" onPress={() => invoke(runtime.cancelAutomaticBackupCheck)} /> : null}
+      {backup.primaryAction === "finish_setup" ? <PrimaryAction label="Finish backup setup" onPress={() => invoke(runtime.finishAutomaticBackupSetup)} /> : null}
+      {backup.status === "restore_pending" && backup.primaryAction === "continue_restore" ? <SecondaryAction label="Not now" onPress={() => invoke(runtime.deferAutomaticRestore)} /> : null}
       {showCellularConfirmation ? <View style={styles.card}>
         <Text accessibilityLiveRegion="polite" style={[typeScale.body as TextStyle, { color: colors.contentCardTextSecondary }]}>Wi-Fi only is on. Use cellular data for this backup?</Text>
         <PrimaryAction label="Use cellular this time" onPress={() => { setShowCellularConfirmation(false); invoke(runtime.useAutomaticBackupCellularThisTime); }} />

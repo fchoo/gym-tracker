@@ -14,4 +14,12 @@ describe("automatic backup presentation", () => {
     expect(model).toMatchObject({ accountLabel: "Owner account", reason: "update_required", primaryAction: "check_again" });
     expect(JSON.stringify(model)).not.toMatch(/token|etag|writer|manifest/i);
   });
+
+  it("exposes only stage-appropriate recovery and deletion actions", () => {
+    const base = { status: "restore_pending" as const, mutationGeneration: 1, backedUpGeneration: 0, nowMs: 1 };
+    expect(projectAutomaticBackupPresentation({ ...base, progressStage: "Checking backup" }).primaryAction).toBe("cancel_check");
+    expect(projectAutomaticBackupPresentation({ ...base, status: "restoring", progressStage: "Finishing backup setup" }).primaryAction).toBe("finish_setup");
+    expect(projectAutomaticBackupPresentation({ ...base, status: "paused", reason: "deleted" }).primaryAction).toBeNull();
+    expect(projectAutomaticBackupPresentation({ ...base, status: "paused", reason: "deletion_partial" }).primaryAction).toBeNull();
+  });
 });

@@ -39,8 +39,8 @@ export default function AutomaticBackupSettingsRoute() {
       <NavigationRow title="How Drive backup privacy works" supportingText="Readable JSON protected by your Google account." onPress={() => router.push("/more/drive-backup-privacy" as Href)} />
     </ContentCard>
     {runtime.automaticBackup.reason === "stale_writer" ? <PrimaryAction accessibilityHint="Checks the current cloud backup before any replacement recovery" label="Use this phone for backup…" onPress={() => invokeFacade(runtime.takeOverAutomaticBackup)} /> : null}
-    {runtime.automaticBackup.status === "paused" && runtime.automaticBackup.reason !== "stale_writer" ? <PrimaryAction label="Finish deleting cloud backup" onPress={() => invokeFacade(runtime.finishDeletingAutomaticCloudBackup)} /> : null}
-    {runtime.automaticBackup.reason === "restore_required" && runtime.automaticBackup.accountLabel === null ? <PrimaryAction label="Start a new cloud backup…" onPress={() => setShowStartNew(true)} /> : null}
+    {runtime.automaticBackup.reason === "deletion_partial" ? <PrimaryAction label="Finish deleting cloud backup" onPress={() => invokeFacade(runtime.finishDeletingAutomaticCloudBackup)} /> : null}
+    {runtime.automaticBackup.reason === "deleted" ? <PrimaryAction label="Start a new cloud backup…" onPress={() => setShowStartNew(true)} /> : null}
     {runtime.automaticBackup.reason === "unavailable" ? <Text style={[typeScale.secondary as TextStyle, { color: colors.destructive }]}>Automatic backup is unavailable on this installation.</Text> : null}
     {connected ? <>
       {showDisconnect ? <View style={{ gap: space[2] }}>

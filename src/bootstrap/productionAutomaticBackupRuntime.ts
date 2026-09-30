@@ -24,6 +24,7 @@ import { createHistoryProjectionRepository } from "../platform/sqlite/repositori
 import { createExerciseSearchIndexRepository } from "../platform/sqlite/repositories/exerciseSearchIndexRepository";
 import { createSqliteMergeLocalFactsPort, createSqliteRestoreCandidateProbe, createSqliteRestoreRetainedReferencePort, createSqliteRestoreSchemaPort } from "../platform/sqlite/repositories/restorePreflightAdapters";
 import { createAutomaticBackupStateRepository } from "../platform/sqlite/repositories/automaticBackupStateRepository";
+import type { AutomaticBackupState } from "../platform/sqlite/repositories/automaticBackupStateRepository";
 import type { SqliteKernel } from "../platform/sqlite";
 import { currentNetworkClass } from "../../modules/network-classifier/src";
 import { createAutomaticBackupRuntime, type AutomaticBackupRuntime } from "./automaticBackupRuntime";
@@ -53,6 +54,43 @@ export function assertAutomaticDriveSnapshotBytes(value: Uint8Array): Uint8Array
     throw new Error("automatic_backup_snapshot_too_large");
   }
   return value;
+}
+export function productionAutomaticBackupPresentationInput(
+  current: AutomaticBackupState,
+  recoveryPrompt: ReturnType<ReturnType<typeof createAutomaticBackupCoordinator>["recoveryPrompt"]>,
+  mergeReview: boolean,
+  nowMs: number,
+) {
+  const deleted = current.authorityState === "deleted";
+  const progressStage = current.statusCode === "checking" ? "Checking backup" as const
+    : current.statusCode === "restoring" ? "Restoring on this phone" as const
+      : current.statusCode === "finishing" ? "Finishing backup setup" as const : null;
+  const status = current.permissionId === null ? "not_connected" as const
+    : deleted ? "paused" as const
+      : current.statusCode === "checking" || current.statusCode === "restore_pending" ? "restore_pending" as const
+        : current.statusCode === "restoring" || current.statusCode === "finishing" ? "restoring" as const
+          : current.authorityState === "stale_writer" || current.statusCode === "paused" ? "paused" as const
+            : current.mutationGeneration > current.backedUpGeneration ? "backup_pending" as const : "idle" as const;
+  const reason = deleted ? (current.deletionProgress === "complete" ? "deleted" as const : "deletion_partial" as const)
+    : recoveryPrompt?.kind === "update_required" ? "update_required" as const
+      : mergeReview ? "merge_review" as const
+        : current.authorityState === "stale_writer" ? "stale_writer" as const
+          : current.authorityState === "quarantine" && current.manifestId === null ? "no_cloud" as const
+            : current.authorityState === "quarantine" && recoveryPrompt === null ? "invalid_artifacts" as const
+              : current.statusCode === "restore_pending" ? "restore_required" as const : null;
+  return {
+    status,
+    accountLabel: current.accountDisplayLabel,
+    lastSuccessfulBackupAtMs: current.lastSuccessMs,
+    mutationGeneration: current.mutationGeneration,
+    backedUpGeneration: current.backedUpGeneration,
+    pendingSinceMs: current.dirtySinceMs,
+    nowMs,
+    dataUsePolicy: current.dataUsePolicy === "wifi-only" ? "wifi_only" as const : "wifi_and_cellular" as const,
+    recoveryPrompt,
+    progressStage,
+    reason,
+  };
 }
 function packageIdentity(environment: AutomaticBackupEnvironment): string {
   return environment === "production"
@@ -309,10 +347,11 @@ export function createProductionAutomaticBackupServices(kernel: SqliteKernel): S
       await publishBackupState();
     },
   });
+  let recoveryReviewPending = false;
   const runtime = createAutomaticBackupRuntime({ read: async () => {
     const current = await state.read();
     const recoveryPrompt = coordinator.recoveryPrompt?.() ?? null;
-    return { status: current.permissionId === null ? "not_connected" as const : current.statusCode === "restore_pending" ? "restore_pending" as const : current.statusCode === "restoring" ? "restoring" as const : current.authorityState === "stale_writer" || current.statusCode === "paused" ? "paused" as const : current.mutationGeneration > current.backedUpGeneration ? "backup_pending" as const : "idle" as const, accountLabel: current.accountDisplayLabel, lastSuccessfulBackupAtMs: current.lastSuccessMs, mutationGeneration: current.mutationGeneration, backedUpGeneration: current.backedUpGeneration, pendingSinceMs: current.dirtySinceMs, nowMs: Date.now(), dataUsePolicy: current.dataUsePolicy === "wifi-only" ? "wifi_only" as const : "wifi_and_cellular" as const, recoveryPrompt, reason: recoveryPrompt?.kind === "update_required" ? "update_required" as const : current.authorityState === "stale_writer" ? "stale_writer" as const : null };
+    return productionAutomaticBackupPresentationInput(current, recoveryPrompt, recoveryReviewPending, Date.now());
   }, commands: {
     connect: async () => {
       const result = await coordinator.connect();
@@ -329,7 +368,7 @@ export function createProductionAutomaticBackupServices(kernel: SqliteKernel): S
         console.warn(`[automatic-backup] recovery:${error instanceof Error ? error.message : "unknown"}`);
         throw error;
       }
-    }, prepareRecovery: (input) => coordinator.prepareRecovery(input), commitRecovery: async (input) => { await coordinator.commitRecovery(input); }, cancelRecovery: (attemptId) => coordinator.cancelRecovery(attemptId), finishSetup: async () => undefined,
+    }, prepareRecovery: async (input) => { const result = await coordinator.prepareRecovery(input); recoveryReviewPending = result.kind === "merge"; return result; }, commitRecovery: async (input) => { await coordinator.commitRecovery(input); recoveryReviewPending = false; }, cancelRecovery: async (attemptId) => { await coordinator.cancelRecovery(attemptId); recoveryReviewPending = false; }, finishSetup: async () => { await coordinator.takeOver(); },
     backupNow: async () => { scheduler.request("manual"); }, retryBackup: async () => { scheduler.request("retry"); }, useCellularThisTime: async () => { scheduler.request("manual_cellular"); }, setDataUsePolicy: async (policy) => state.setDataUsePolicy(policy === "wifi_only" ? "wifi-only" : "any-network"), takeOver: async () => coordinator.takeOver().then(() => undefined), disconnect: () => coordinator.disconnect(),
     deleteCloudBackup: async () => { scheduler.cancel(); await coordinator.deleteCloudBackup(); }, finishDeletingCloudBackup: async () => { await coordinator.finishDeletionSweep(); }, startNewCloudBackup: async () => { const result = await coordinator.startNewCloudBackup(); if (result.status === "ready") scheduler.request("manual"); },
   } });
