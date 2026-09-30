@@ -3312,10 +3312,12 @@ describe("Plan 01-08 ActiveWorkoutScreen", () => {
       commands: commands({ updateSessionSetAdvancedTiming }),
     });
 
-    expect(screen.getByTestId("working-set-timing-summary-working-1"))
-      .toHaveTextContent("Set timing · Inherits exercise timing");
+    expect(screen.getByTestId("set-timing-summary-working-0"))
+      .toHaveTextContent("Working set 1 timing · Inherits exercise timing");
 
-    await fireEvent.press(screen.getByRole("button", { name: "Set timing" }));
+    await fireEvent.press(screen.getByRole("button", {
+      name: "Working set 1 timing",
+    }));
     await fireEvent.press(screen.getByRole("button", { name: "Off timing" }));
     await fireEvent.press(screen.getByRole("button", { name: "Save timing" }));
 
@@ -3391,7 +3393,9 @@ describe("Plan 01-08 ActiveWorkoutScreen", () => {
     })).not.toBeOnTheScreen());
 
     await act(async () => {
-      fireEvent.press(screen.getByRole("button", { name: "Set timing" }));
+      fireEvent.press(screen.getByRole("button", {
+        name: "Working set 1 timing",
+      }));
     });
     await waitFor(() => expect(screen.getByRole("button", {
       name: "Cluster timing",
@@ -3434,8 +3438,8 @@ describe("Plan 01-08 ActiveWorkoutScreen", () => {
       nowMs: 2_000,
     }));
 
-    expect(screen.getByTestId("working-set-timing-summary-working-1"))
-      .toHaveTextContent("Set timing · Cluster 3+3+3 · 20 sec · both");
+    expect(screen.getByTestId("set-timing-summary-working-0"))
+      .toHaveTextContent("Working set 1 timing · Cluster 3+3+3 · 20 sec · both");
     expect(screen.getByText("Cluster timing")).toBeOnTheScreen();
     expect(screen.getByLabelText("Cluster grouping")).toBeOnTheScreen();
   });
@@ -3489,7 +3493,9 @@ describe("Plan 01-08 ActiveWorkoutScreen", () => {
     });
 
     expect(screen.getByText("Cluster timing")).toBeOnTheScreen();
-    await fireEvent.press(screen.getByRole("button", { name: "Set timing" }));
+    await fireEvent.press(screen.getByRole("button", {
+      name: "Working set 1 timing",
+    }));
     await fireEvent.press(screen.getByRole("button", { name: "Inherit timing" }));
     await fireEvent.press(screen.getByRole("button", { name: "Save timing" }));
 
@@ -3502,8 +3508,8 @@ describe("Plan 01-08 ActiveWorkoutScreen", () => {
       nowMs: 2_000,
     }));
 
-    expect(screen.getByTestId("working-set-timing-summary-working-1"))
-      .toHaveTextContent("Set timing · Inherits exercise timing");
+    expect(screen.getByTestId("set-timing-summary-working-0"))
+      .toHaveTextContent("Working set 1 timing · Inherits exercise timing");
     expect(screen.getByText("Per-rep cadence")).toBeOnTheScreen();
     expect(screen.getByLabelText("Per-rep interval in seconds"))
       .toHaveProp("value", "3");
@@ -3545,10 +3551,173 @@ describe("Plan 01-08 ActiveWorkoutScreen", () => {
       commands: commands({ updateSessionSetAdvancedTiming }),
     });
 
-    expect(screen.getByTestId("working-set-timing-readonly-working-1"))
+    expect(screen.getByTestId("set-timing-readonly-working-0"))
       .toHaveTextContent("Completed sets are read-only. Timing cannot change.");
-    expect(screen.queryByRole("button", { name: "Set timing" }))
+    expect(screen.queryByRole("button", { name: "Working set 1 timing" }))
       .not.toBeOnTheScreen();
+    expect(updateSessionSetAdvancedTiming).not.toHaveBeenCalled();
+  });
+
+  it("configures warm-up and working-set timing independently by row", async () => {
+    let sessionRevision = initialView.revision;
+    const updateSessionSetAdvancedTiming = jest.fn<NonNullable<
+      ActiveWorkoutCommands["updateSessionSetAdvancedTiming"]
+    >>(async () => advancedResult({
+      version: 1,
+      state: "idle",
+      revision: 0,
+      targetSessionSetId: null,
+    }, ++sessionRevision));
+
+    await renderActive({
+      advancedTimingContext: {
+        sessionId: "session-1",
+        sessionRevision: 1,
+        state: { version: 1, state: "idle", revision: 0, targetSessionSetId: null },
+      },
+      commands: commands({ updateSessionSetAdvancedTiming }),
+    });
+
+    await fireEvent.press(screen.getByRole("button", {
+      name: "Warm-up W1 timing",
+    }));
+    await fireEvent.press(screen.getByRole("button", { name: "Per-rep timing" }));
+    await fireEvent.changeText(
+      screen.getByTestId("advanced-timing-config-interval"),
+      "4",
+    );
+    await fireEvent.press(screen.getByTestId("advanced-timing-channel-audio"));
+    await fireEvent.press(screen.getByRole("button", { name: "Save timing" }));
+    await waitFor(() => expect(updateSessionSetAdvancedTiming).toHaveBeenCalledTimes(1));
+
+    await fireEvent.press(screen.getByRole("button", {
+      name: "Working set 1 timing",
+    }));
+    await fireEvent.press(screen.getByRole("button", { name: "Off timing" }));
+    await fireEvent.press(screen.getByRole("button", { name: "Save timing" }));
+    await waitFor(() => expect(updateSessionSetAdvancedTiming).toHaveBeenCalledTimes(2));
+
+    await fireEvent.press(screen.getByRole("button", {
+      name: "Working set 2 timing",
+    }));
+    await fireEvent.press(screen.getByRole("button", { name: "Cluster timing" }));
+    await fireEvent.changeText(
+      screen.getByTestId("advanced-timing-config-cluster-pattern"),
+      "2+2",
+    );
+    await fireEvent.changeText(
+      screen.getByTestId("advanced-timing-config-cluster-rest"),
+      "15",
+    );
+    await fireEvent.press(screen.getByTestId("advanced-timing-channel-both"));
+    await fireEvent.press(screen.getByRole("button", { name: "Save timing" }));
+    await waitFor(() => expect(updateSessionSetAdvancedTiming).toHaveBeenCalledTimes(3));
+
+    expect(updateSessionSetAdvancedTiming).toHaveBeenNthCalledWith(1, {
+      sessionId: "session-1",
+      sessionSetId: "warmup-1",
+      expectedSessionRevision: 1,
+      expectedSetRevision: 1,
+      override: {
+        version: 1,
+        mode: "per_rep",
+        intervalMs: 4_000,
+        cueChannels: "audio",
+      },
+      nowMs: 2_000,
+    });
+    expect(updateSessionSetAdvancedTiming).toHaveBeenNthCalledWith(2, {
+      sessionId: "session-1",
+      sessionSetId: "working-1",
+      expectedSessionRevision: 2,
+      expectedSetRevision: 1,
+      override: { version: 1, mode: "off" },
+      nowMs: 2_000,
+    });
+    expect(updateSessionSetAdvancedTiming).toHaveBeenNthCalledWith(3, {
+      sessionId: "session-1",
+      sessionSetId: "working-2",
+      expectedSessionRevision: 3,
+      expectedSetRevision: 1,
+      override: {
+        version: 1,
+        mode: "cluster",
+        groupSizes: [2, 2],
+        intraRestMs: 15_000,
+        cueChannels: "both",
+      },
+      nowMs: 2_000,
+    });
+    expect(screen.getByTestId("set-timing-summary-warmup-0"))
+      .toHaveTextContent("Warm-up W1 timing · Per-rep every 4 sec · audio");
+    expect(screen.getByTestId("set-timing-summary-working-0"))
+      .toHaveTextContent("Working set 1 timing · Off");
+    expect(screen.getByTestId("set-timing-summary-working-1"))
+      .toHaveTextContent("Working set 2 timing · Cluster 2+2 · 15 sec · both");
+  });
+
+  it("keeps completed and skipped set timing read-only", async () => {
+    const updateSessionSetAdvancedTiming = jest.fn<NonNullable<
+      ActiveWorkoutCommands["updateSessionSetAdvancedTiming"]
+    >>(async () => advancedResult({
+      version: 1,
+      state: "idle",
+      revision: 0,
+      targetSessionSetId: null,
+    }, 2));
+    const readOnlyView: ActiveWorkoutView = {
+      ...initialView,
+      activeSetId: "working-2",
+      currentExercise: {
+        ...initialView.currentExercise,
+        warmups: initialView.currentExercise.warmups.map((set) => ({
+          ...set,
+          status: "completed" as const,
+          completedAtMs: 1_000,
+          advancedTimingResolved: {
+            version: 1,
+            mode: "per_rep" as const,
+            intervalMs: 4_000,
+            cueChannels: "audio" as const,
+          },
+        })),
+        workingSets: initialView.currentExercise.workingSets.map((set, index) =>
+          index === 0
+            ? {
+                ...set,
+                status: "skipped" as const,
+                advancedTimingResolved: {
+                  version: 1,
+                  mode: "cluster" as const,
+                  groupSizes: [2, 2],
+                  intraRestMs: 15_000,
+                  cueChannels: "both" as const,
+                },
+              }
+            : set
+        ),
+      },
+    };
+
+    await renderActive({
+      view: readOnlyView,
+      commands: commands({ updateSessionSetAdvancedTiming }),
+    });
+
+    expect(screen.getByTestId("set-timing-summary-warmup-0"))
+      .toHaveTextContent("Warm-up W1 timing · Per-rep every 4 sec · audio");
+    expect(screen.getByTestId("set-timing-readonly-warmup-0"))
+      .toHaveTextContent("Completed sets are read-only. Timing cannot change.");
+    expect(screen.queryByRole("button", { name: "Warm-up W1 timing" }))
+      .not.toBeOnTheScreen();
+    expect(screen.getByTestId("set-timing-summary-working-0"))
+      .toHaveTextContent("Working set 1 timing · Cluster 2+2 · 15 sec · both");
+    expect(screen.getByTestId("set-timing-readonly-working-0"))
+      .toHaveTextContent("Skipped sets are read-only. Timing cannot change.");
+    expect(screen.queryByRole("button", { name: "Working set 1 timing" }))
+      .not.toBeOnTheScreen();
+    expect(screen.getByRole("button", { name: "Working set 2 timing" }))
+      .toBeOnTheScreen();
     expect(updateSessionSetAdvancedTiming).not.toHaveBeenCalled();
   });
 });

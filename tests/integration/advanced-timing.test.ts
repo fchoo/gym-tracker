@@ -1059,4 +1059,119 @@ describe("advanced timing repository", () => {
       },
     })).rejects.toThrow("advanced_timing_session_revision_conflict");
   });
+
+  it("updates independent warm-up and working-set overrides without touching protected facts", async () => {
+    const { kernel, session, repository } = await setupWorkout();
+    const rows = await kernel.queryAll<{
+      id: string;
+      set_kind: "warmup" | "working";
+      ordinal: number;
+      revision: number;
+      status: "planned" | "draft" | "completed" | "skipped";
+    }>(
+      `SELECT ss.id, ss.set_kind, ss.ordinal, ss.revision, ss.status
+       FROM session_sets ss
+       JOIN session_exercises se ON se.id = ss.session_exercise_id
+       WHERE se.session_id = ?
+       ORDER BY CASE ss.set_kind WHEN 'warmup' THEN 0 ELSE 1 END, ss.ordinal`,
+      [session.id],
+    );
+    const warmup = rows.find(({ set_kind: kind }) => kind === "warmup");
+    const workingRows = rows.filter(({ set_kind: kind }) => kind === "working");
+    const completedWorking = workingRows[2];
+    if (warmup === undefined || workingRows.length < 3 || completedWorking === undefined) {
+      throw new Error("independent_timing_fixture_incomplete");
+    }
+    await kernel.write((transaction) => transaction.execute(
+      `UPDATE session_sets
+       SET status = 'completed', observed_load_grams = target_load_grams,
+           observed_reps = target_min_reps, completed_at_ms = 5_000,
+           revision = revision + 1
+       WHERE id = ?`,
+      [completedWorking.id],
+    ));
+    const before = await protectedFacts(kernel, session.id);
+    const beforeSets = before.sets as readonly Readonly<Record<string, unknown>>[];
+    const completedBefore = beforeSets.find(({ id }) => id === completedWorking.id);
+
+    const updates = [
+      { row: warmup, override: audioPerRep, nowMs: 150_000 },
+      { row: workingRows[0]!, override: bothCluster, nowMs: 151_000 },
+      {
+        row: workingRows[1]!,
+        override: { version: 1 as const, mode: "off" as const },
+        nowMs: 152_000,
+      },
+    ] as const;
+    let expectedSessionRevision = session.revision;
+    for (const update of updates) {
+      const result = await updateSessionSetAdvancedTiming({
+        repository,
+        input: {
+          sessionId: session.id,
+          sessionSetId: update.row.id,
+          expectedSessionRevision,
+          expectedSetRevision: update.row.revision,
+          override: update.override,
+          nowMs: update.nowMs,
+        },
+      });
+      expectedSessionRevision += 1;
+      expect(result.sessionRevision).toBe(expectedSessionRevision);
+    }
+
+    const after = await protectedFacts(kernel, session.id);
+    expect(after.rest).toEqual(before.rest);
+    expect(after.undo).toEqual(before.undo);
+    expect(after.restEffects).toEqual(before.restEffects);
+    expect(after.session).toEqual([{
+      ...before.session[0]!,
+      revision: (before.session[0]!.revision as number) + updates.length,
+      merge_modified_at_ms:
+        (before.session[0]!.merge_modified_at_ms as number) + updates.length,
+    }]);
+
+    const expectedOverrides = new Map(updates.map(({ row, override }) => [
+      row.id,
+      JSON.stringify(override),
+    ]));
+    expect(after.sets).toEqual(beforeSets.map((set) => {
+      const overrideJson = expectedOverrides.get(set.id as string);
+      if (overrideJson === undefined) return set;
+      return {
+        ...set,
+        revision: (set.revision as number) + 1,
+        advanced_timing_override_json: overrideJson,
+        advanced_timing_resolved_json: overrideJson,
+      };
+    }));
+    expect((after.sets as readonly Readonly<Record<string, unknown>>[])
+      .find(({ id }) => id === completedWorking.id)).toEqual(completedBefore);
+
+    const changedRows = await kernel.queryAll<{
+      id: string;
+      set_kind: "warmup" | "working";
+      ordinal: number;
+      revision: number;
+      advanced_timing_override_json: string | null;
+      advanced_timing_resolved_json: string;
+    }>(
+      `SELECT ss.id, ss.set_kind, ss.ordinal, ss.revision,
+              ss.advanced_timing_override_json,
+              ss.advanced_timing_resolved_json
+       FROM session_sets ss
+       JOIN session_exercises se ON se.id = ss.session_exercise_id
+       WHERE se.session_id = ? AND ss.id IN (?, ?, ?)
+       ORDER BY CASE ss.set_kind WHEN 'warmup' THEN 0 ELSE 1 END, ss.ordinal`,
+      [session.id, warmup.id, workingRows[0]!.id, workingRows[1]!.id],
+    );
+    expect(changedRows).toEqual(updates.map(({ row, override }) => ({
+      id: row.id,
+      set_kind: row.set_kind,
+      ordinal: row.ordinal,
+      revision: row.revision + 1,
+      advanced_timing_override_json: JSON.stringify(override),
+      advanced_timing_resolved_json: JSON.stringify(override),
+    })));
+  });
 });
