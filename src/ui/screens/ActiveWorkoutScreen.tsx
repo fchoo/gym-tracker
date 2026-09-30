@@ -1258,6 +1258,62 @@ function PopulatedWorkoutOverview({
     }
   };
 
+  const renderSetTimingControl = (
+    exercise: ActiveWorkoutExercise,
+    set: ActiveWorkoutSet,
+  ) => {
+    const label = set.kind === "warmup"
+      ? `Warm-up W${set.ordinal + 1}`
+      : `Working set ${set.ordinal + 1}`;
+    const testKey = `${set.kind}-${set.ordinal}`;
+    const editable = set.status === "planned" || set.status === "draft";
+    const summary = editable
+      ? advancedTimingConfigSummary(set.advancedTimingOverride ?? null, "set")
+      : advancedTimingConfigSummary(
+          set.advancedTimingResolved
+            ?? set.advancedTimingOverride
+            ?? exercise.advancedTimingDefault,
+          "exercise",
+        );
+    return (
+      <View style={styles.setTimingRow} testID={`set-timing-${testKey}`}>
+        <Text
+          style={[
+            typeScale.secondary as TextStyle,
+            { color: colors.contentCardTextSecondary },
+          ]}
+          testID={`set-timing-summary-${testKey}`}
+        >
+          {`${label} timing · ${summary}`}
+        </Text>
+        {editable ? (
+          <SecondaryAction
+            disabled={
+              timingConfigBusy
+              || commands.updateSessionSetAdvancedTiming === undefined
+            }
+            label={`${label} timing`}
+            onPress={() => {
+              setTimingConfigFailed(false);
+              setTimingConfig({ scope: "set", exercise, set });
+            }}
+            testID={`set-timing-action-${testKey}`}
+          />
+        ) : (
+          <Text
+            style={[
+              typeScale.secondary as TextStyle,
+              { color: colors.contentCardTextSecondary },
+            ]}
+            testID={`set-timing-readonly-${testKey}`}
+          >
+            {`${set.status === "completed" ? "Completed" : "Skipped"} sets are read-only. Timing cannot change.`}
+          </Text>
+        )}
+      </View>
+    );
+  };
+
   const runRest = async (
     command: () => Promise<RestCommandResult>,
   ) => {
@@ -2350,6 +2406,7 @@ function PopulatedWorkoutOverview({
                 />
               )}
               {exercise.warmups.map((set, index) => (
+                <React.Fragment key={set.id}>
                 <SetRow
                   active={false}
                   compact={isMultiExerciseOverview
@@ -2388,6 +2445,8 @@ function PopulatedWorkoutOverview({
                   set={set}
                   tone="card"
                 />
+                {renderSetTimingControl(exercise, set)}
+                </React.Fragment>
               ))}
                 </ContentCard>
             <View
@@ -2529,6 +2588,7 @@ function PopulatedWorkoutOverview({
                 </View>
               ) : null}
               {exercise.workingSets.map((set, index) => (
+                <React.Fragment key={set.id}>
                 <SetRow
                   active={view.activeSetId === set.id}
                   compact={isMultiExerciseOverview
@@ -2586,56 +2646,9 @@ function PopulatedWorkoutOverview({
                     ? { overviewTestID: `overview-${exercise.id}-${set.id}` }
                     : {})}
                 />
+                {renderSetTimingControl(exercise, set)}
+                </React.Fragment>
               ))}
-              {activeSet !== undefined
-                && activeSet.kind === "working"
-                && exercise.workingSets.some(({ id }) => id === activeSet.id)
-                ? (
-                <View
-                  style={styles.setTimingRow}
-                  testID={`working-set-timing-${activeSet.id}`}
-                >
-                  <Text
-                    style={[
-                      typeScale.secondary as TextStyle,
-                      { color: colors.contentCardTextSecondary },
-                    ]}
-                    testID={`working-set-timing-summary-${activeSet.id}`}
-                  >
-                    {`Set timing · ${advancedTimingConfigSummary(
-                      activeSet.advancedTimingOverride ?? null,
-                      "set",
-                    )}`}
-                  </Text>
-                  {activeSet.status === "completed" ? (
-                    <Text
-                      style={[
-                        typeScale.secondary as TextStyle,
-                        { color: colors.contentCardTextSecondary },
-                      ]}
-                      testID={`working-set-timing-readonly-${activeSet.id}`}
-                    >
-                      Completed sets are read-only. Timing cannot change.
-                    </Text>
-                  ) : (
-                    <SecondaryAction
-                      disabled={
-                        timingConfigBusy
-                        || commands.updateSessionSetAdvancedTiming === undefined
-                      }
-                      label="Set timing"
-                      onPress={() => {
-                        setTimingConfigFailed(false);
-                        setTimingConfig({
-                          scope: "set",
-                          exercise,
-                          set: activeSet,
-                        });
-                      }}
-                    />
-                  )}
-                </View>
-              ) : null}
               {saveFailedSetId === null ? null : (
                 <InlineNotice
                   action={
