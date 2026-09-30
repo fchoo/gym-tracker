@@ -13,7 +13,7 @@ test("Phase 12 flow recovers only the known retained restore state before the ca
   const flow = readFileSync("maestro/phase12/automatic-drive-backup.yaml", "utf8");
   const conditional = flow.indexOf('visible: "Retry opening workout data"');
   const trusted = flow.indexOf('visible: "Today"');
-  const link = flow.indexOf('openLink: "gymtracker-devtest:///more/data-and-recovery"');
+  const link = flow.indexOf('openLink: "gymtracker-devtest:///more/data-and-recovery?suite=phase12&phase12Stage=${PHASE12_STAGE}"');
   const route = flow.indexOf('visible: "Data and recovery"');
   assert.ok(conditional >= 0 && trusted > conditional && link > trusted && route > link);
   assert.match(flow, /clearState: false/u);

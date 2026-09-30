@@ -1,6 +1,8 @@
 import {
   router,
+  useLocalSearchParams,
 } from "expo-router";
+import Constants from "expo-constants";
 import React, {
   useEffect,
   useRef,
@@ -24,6 +26,7 @@ import {
   type RuntimeRestorePreflightResult,
   type RuntimeSecureBackupArchive,
 } from "../../src/bootstrap/workoutAppRuntime";
+import { phase12BackupFixtureFromNativeContract, phase12BackupFixtureViewModel } from "../../src/bootstrap/phase12BackupTestControls";
 import {
   useCsvExportController,
 } from "../../src/ui/portability/useCsvExportController";
@@ -699,6 +702,7 @@ export function ManualEncryptedBackupContent() {
  */
 export default function DataAndRecoveryRoute() {
   const runtime = useWorkoutAppRuntime();
+  const parameters = useLocalSearchParams<{ suite?: string; phase12Stage?: string }>();
   const { colors } = useAppTheme();
   const csv = useCsvExportController({
     create: runtime.createCsvExport,
@@ -706,7 +710,13 @@ export default function DataAndRecoveryRoute() {
     discard: runtime.discardCsvExport,
   });
   const [showCellularConfirmation, setShowCellularConfirmation] = useState(false);
-  const backup = runtime.automaticBackup ?? {
+  const fixture = phase12BackupFixtureFromNativeContract({
+    nativeContractsEnabled: Constants.expoConfig?.extra?.nativeContractsEnabled === true,
+    buildProfile: Constants.expoConfig?.extra?.buildProfile,
+    suite: parameters.suite,
+    fixture: parameters.phase12Stage,
+  });
+  const backup = (fixture === null ? runtime.automaticBackup : phase12BackupFixtureViewModel(fixture)) ?? {
     status: "not_connected" as const,
     reason: null,
     warning: null,

@@ -20,7 +20,7 @@ const mockRuntime: any = {
   discardCsvExport: mockDiscardCsvExport,
 };
 
-jest.mock("expo-router", () => ({ router: { back: mockBack, push: jest.fn() } }));
+jest.mock("expo-router", () => ({ router: { back: mockBack, push: jest.fn() }, useLocalSearchParams: () => ({}) }));
 jest.mock("../../../src/bootstrap/workoutAppRuntime", () => ({
   useWorkoutAppRuntime: () => mockRuntime,
 }));
