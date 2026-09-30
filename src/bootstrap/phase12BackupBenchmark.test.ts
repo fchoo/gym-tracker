@@ -16,6 +16,7 @@ import {
   PHASE12_BENCHMARK_START_MARKER,
   phase12BenchmarkDatabaseName,
   phase12BenchmarkError,
+  PHASE12_BENCHMARK_EXERCISE_PORTABLE_ID,
   PHASE12_SQLITE_FIXTURE_ROW_COUNTS,
   buildPhase12SyntheticSnapshot,
   measureReaderSnapshotWithConcurrentMutation,
@@ -84,6 +85,7 @@ describe("Phase 12 native backup benchmark", () => {
   });
 
   it("keeps the native writer fixture inside every canonical row bound", () => {
+    expect(PHASE12_BENCHMARK_EXERCISE_PORTABLE_ID).toMatch(/^[a-f0-9]{32}$/u);
     expect(Object.values(PHASE12_SQLITE_FIXTURE_ROW_COUNTS)
       .reduce((total, count) => total + count, 0)).toBe(BACKUP_LIMITS.maxRowsTotal);
     expect(Math.max(...Object.values(PHASE12_SQLITE_FIXTURE_ROW_COUNTS)))

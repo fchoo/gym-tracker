@@ -131,6 +131,7 @@ function encodedBytes(value: unknown): number {
 function portableId(index: number): string {
   return index.toString(16).padStart(32, "0").slice(-32);
 }
+export const PHASE12_BENCHMARK_EXERCISE_PORTABLE_ID = portableId(2);
 
 /** A schema-valid, deterministic maximum-size fixture used only by dev-test benchmarking. */
 export function buildPhase12SyntheticSnapshot(
@@ -229,9 +230,10 @@ async function seedMaximumHistory(kernel: SqliteKernel): Promise<void> {
       `INSERT INTO exercises
         (id, content_pack_id, origin, source_namespace, upstream_id, name,
          metric_profile, metric_contract_version, exercise_metric_generation,
-         equipment, default_rest_seconds, revision)
+         equipment, default_rest_seconds, revision, portable_id)
        VALUES ('benchmark-exercise', NULL, 'custom', NULL, NULL, 'Benchmark',
-               'load_reps', 1, 1, 'Unspecified', 90, 1)`,
+               'load_reps', 1, 1, 'Unspecified', 90, 1, ?)`,
+      [PHASE12_BENCHMARK_EXERCISE_PORTABLE_ID],
     );
     await transaction.execute(
       `INSERT INTO exercise_library_entries
