@@ -74,11 +74,17 @@ test("Phase 10 runner fails closed for missing matrix items and wrong build iden
 });
 
 test("Phase 10 runner rejects a retained APK whose bytes disagree with the manifest", () => {
+  const sourceIdentity = {
+    baseHead: "b".repeat(40),
+    sourceTreeSha256: "c".repeat(64),
+  };
   const manifest = {
     schema_version: 1,
     profile: "development-test",
     suite: "phase10",
     package: "com.fchoo.gymtracker.devtest",
+    base_head: sourceIdentity.baseHead,
+    source_tree_sha256: sourceIdentity.sourceTreeSha256,
     device: { serial: "emulator-5554" },
     apk: { path: "artifacts/native/phase10/app.apk", sha256: "a".repeat(64) },
   };
@@ -87,12 +93,26 @@ test("Phase 10 runner rejects a retained APK whose bytes disagree with the manif
     manifest,
     "/retained/app.apk",
     "a".repeat(64),
+    sourceIdentity,
   ));
   assert.throws(() => validatePhase10Manifest(
     manifest,
     "/retained/app.apk",
     "b".repeat(64),
+    sourceIdentity,
   ), /APK bytes do not match/u);
+  assert.throws(() => validatePhase10Manifest(
+    manifest,
+    "/retained/app.apk",
+    "a".repeat(64),
+    { ...sourceIdentity, baseHead: "d".repeat(40) },
+  ), /source identity/u);
+  assert.throws(() => validatePhase10Manifest(
+    manifest,
+    "/retained/app.apk",
+    "a".repeat(64),
+    { ...sourceIdentity, sourceTreeSha256: "e".repeat(64) },
+  ), /source identity/u);
 });
 
 test("Phase 10 artifact permits only the packaged migrations-effects contract", async () => {
@@ -133,11 +153,12 @@ test("Phase 10 Maestro flow exercises per-rep and 3+3+3 cluster lifecycle timing
   assert.match(flow, /Configure Back Squat timing/u);
   assert.match(flow, /Exercise timing/u);
   assert.match(flow, /advanced-timing-config-interval/u);
-  assert.match(flow, /Set timing/u);
+  assert.match(flow, /set-timing-action-session_exercise_\.\*-session_target_\.\*_0/u);
+  assert.doesNotMatch(flow, /text: "Set timing"/u);
   assert.match(flow, /advanced-timing-config-cluster-pattern/u);
   assert.match(flow, /Save timing/u);
   const perRepControl = flow.indexOf('assertVisible: "Per-rep cadence"');
-  const setOverride = flow.indexOf('tapOn: "Set timing"');
+  const setOverride = flow.indexOf('id: "set-timing-action-session_exercise_.*-session_target_.*_0"');
   const clusterControl = flow.indexOf('assertVisible: "Cluster timing"');
   assert.ok(perRepControl >= 0 && perRepControl < setOverride);
   assert.ok(setOverride >= 0 && setOverride < clusterControl);
@@ -171,7 +192,7 @@ test("Phase 10 Maestro flow exercises per-rep and 3+3+3 cluster lifecycle timing
   );
   assert.match(
     flow,
-    /tapOn: "Stop per-rep cadence"[\s\S]*?scrollUntilVisible:[\s\S]*?text: "Set timing"/u,
+    /tapOn: "Stop per-rep cadence"[\s\S]*?scrollUntilVisible:[\s\S]*?id: "set-timing-action-session_exercise_\.\*-session_target_\.\*_0"/u,
   );
   assert.doesNotMatch(flow, /visible: "Rep 2"/u);
   assert.match(flow, /Resume per-rep cadence/u);
@@ -236,4 +257,6 @@ test("Phase 10 runner binds retained APK bytes before device installation", asyn
     "validatePhase10Manifest(manifest, apkPath, sha256File(apkPath));",
   ));
   assert.match(runner, /APK bytes do not match the declared Phase 10 manifest/u);
+  assert.match(runner, /sourceTreeSha256/u);
+  assert.match(runner, /manifest source identity does not match/u);
 });

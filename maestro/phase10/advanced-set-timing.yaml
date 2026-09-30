@@ -99,12 +99,14 @@ tags:
 - tapOn: "Stop per-rep cadence"
 - scrollUntilVisible:
     element:
-      text: "Set timing"
+      id: "set-timing-action-session_exercise_.*-session_target_.*_0"
     direction: DOWN
     centerElement: true
     timeout: 30000
-- assertVisible: "Set timing"
-- tapOn: "Set timing"
+- assertVisible:
+    id: "set-timing-action-session_exercise_.*-session_target_.*_0"
+- tapOn:
+    id: "set-timing-action-session_exercise_.*-session_target_.*_0"
 - assertVisible: "Cluster timing"
 - tapOn: "Cluster timing"
 - assertVisible: "Cluster group pattern"

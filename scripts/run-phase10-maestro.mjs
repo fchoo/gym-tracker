@@ -7,6 +7,8 @@ import path from "node:path";
 import process from "node:process";
 import { pathToFileURL } from "node:url";
 
+import { sourceTreeSha256 } from "./source-tree-digest.mjs";
+
 const projectRoot = process.cwd();
 const ADB_FALLBACK = "/opt/homebrew/share/android-commandlinetools/platform-tools/adb";
 
@@ -62,7 +64,15 @@ function sha256File(filePath) {
   return createHash("sha256").update(readFileSync(filePath)).digest("hex");
 }
 
-export function validatePhase10Manifest(manifest, apkPath, apkSha256) {
+export function validatePhase10Manifest(
+  manifest,
+  apkPath,
+  apkSha256,
+  currentSource = {
+    baseHead: command("git", ["rev-parse", "HEAD"]),
+    sourceTreeSha256: sourceTreeSha256(projectRoot),
+  },
+) {
   if (manifest?.schema_version !== 1
     || manifest.profile !== "development-test"
     || manifest.suite !== "phase10"
@@ -70,6 +80,8 @@ export function validatePhase10Manifest(manifest, apkPath, apkSha256) {
     || typeof manifest.device?.serial !== "string"
     || manifest.device.serial.length === 0
     || typeof manifest.apk?.path !== "string"
+    || !/^[a-f0-9]{40}$/u.test(manifest.base_head ?? "")
+    || !/^[a-f0-9]{64}$/u.test(manifest.source_tree_sha256 ?? "")
     || !/^[a-f0-9]{64}$/u.test(manifest.apk?.sha256 ?? "")) {
     fail("manifest is not a Phase 10 development-test APK contract.");
   }
@@ -77,6 +89,10 @@ export function validatePhase10Manifest(manifest, apkPath, apkSha256) {
     || !/^[a-f0-9]{64}$/u.test(apkSha256 ?? "")
     || apkSha256 !== manifest.apk.sha256) {
     fail("APK bytes do not match the declared Phase 10 manifest.");
+  }
+  if (manifest.base_head !== currentSource.baseHead
+    || manifest.source_tree_sha256 !== currentSource.sourceTreeSha256) {
+    fail("manifest source identity does not match the reviewed checkout.");
   }
   return true;
 }
@@ -162,6 +178,8 @@ export function executePhase10Maestro(args = process.argv.slice(2)) {
     suite: "phase10",
     status: "passed",
     build_manifest: path.relative(projectRoot, manifestPath),
+    base_head: manifest.base_head,
+    source_tree_sha256: manifest.source_tree_sha256,
     apk_sha256: manifest.apk.sha256,
     matrix: PHASE10_EVIDENCE_MATRIX,
     flows,
