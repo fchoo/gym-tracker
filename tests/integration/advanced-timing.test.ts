@@ -669,9 +669,9 @@ describe("advanced timing repository", () => {
   });
 
   it.each([
-    ["per-rep", perRep],
-    ["cluster", cluster],
-  ] as const)("runs and reconstructs %s timing for an active-exercise warm-up", async (_label, config) => {
+    { label: "per-rep", config: perRep },
+    { label: "cluster", config: cluster },
+  ])("runs and reconstructs $label timing for an active-exercise warm-up", async ({ config }) => {
     const fixture = await setupWorkout({}, config);
     const [warmup] = await fixture.kernel.queryAll<{ id: string }>(
       `SELECT ss.id FROM session_sets ss
