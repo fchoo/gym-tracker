@@ -663,6 +663,78 @@ function maximalOwnedPlanAggregate() {
 }
 
 describe("logical merge repository", () => {
+  it("adopts one namespace in the same transaction as a full merge", async () => {
+    const kernel = await open("full-plan-adoption");
+    const { local, plan } = await fullPlanFixture(kernel);
+    await kernel.write(async (transaction) => {
+      await transaction.execute(
+        "UPDATE automatic_backup_state SET permission_id = 'permission', connection_generation = 4 WHERE id = 1",
+      );
+    });
+    const receiptId = "adoption-receipt";
+    const newNamespace = "d".repeat(32);
+    const adoption = {
+      receiptId,
+      permissionId: "permission",
+      connectionGeneration: 4,
+      environment: "production" as const,
+      oldNamespace: local.ownerNamespace,
+      newNamespace,
+      localFingerprint: await sha256(canonicalMergeValue(local)),
+      remoteSnapshotSha256: "e".repeat(64),
+      expiresAtMs: Date.now() + 60_000,
+    };
+
+    await expect(createFullPlanLogicalMergeWriter(kernel, { sha256 }).commitFullPlan({
+      localFingerprint: adoption.localFingerprint,
+      plan,
+      adoption,
+    })).resolves.toEqual({ state: "rebuild_pending" });
+
+    await expect(kernel.queryAll("SELECT owner_namespace FROM portable_owner_identity"))
+      .resolves.toEqual([{ owner_namespace: newNamespace }]);
+    await expect(kernel.queryAll("SELECT receipt_id, consumed_at_ms FROM automatic_backup_namespace_adoption"))
+      .resolves.toEqual([{ receipt_id: receiptId, consumed_at_ms: expect.any(Number) }]);
+    await expect(createFullPlanLogicalMergeWriter(kernel, { sha256 }).commitFullPlan({
+      localFingerprint: adoption.localFingerprint,
+      plan,
+      adoption,
+    })).rejects.toEqual(expect.objectContaining({ code: "logical_merge_failed" }));
+  });
+
+  it("rolls namespace adoption and its receipt back with a failed merge", async () => {
+    const kernel = await open("full-plan-adoption-rollback");
+    const { local, plan } = await fullPlanFixture(kernel);
+    await kernel.write(async (transaction) => {
+      await transaction.execute(
+        "UPDATE automatic_backup_state SET permission_id = 'permission' WHERE id = 1",
+      );
+    });
+    const adoption = {
+      receiptId: "rollback-receipt",
+      permissionId: "permission",
+      connectionGeneration: 0,
+      environment: "production" as const,
+      oldNamespace: local.ownerNamespace,
+      newNamespace: "f".repeat(32),
+      localFingerprint: await sha256(canonicalMergeValue(local)),
+      remoteSnapshotSha256: "1".repeat(64),
+      expiresAtMs: Date.now() + 60_000,
+    };
+
+    await expect(createFullPlanLogicalMergeWriter(kernel, {
+      sha256,
+      faultAfter: async (stage) => {
+        if (stage === "adoption_consumed") throw new Error("fault");
+      },
+    }).commitFullPlan({ localFingerprint: adoption.localFingerprint, plan, adoption }))
+      .rejects.toEqual(expect.objectContaining({ code: "logical_merge_failed" }));
+    await expect(kernel.queryAll("SELECT owner_namespace FROM portable_owner_identity"))
+      .resolves.toEqual([{ owner_namespace: local.ownerNamespace }]);
+    await expect(kernel.queryAll("SELECT receipt_id FROM automatic_backup_namespace_adoption"))
+      .resolves.toEqual([]);
+  });
+
   it("accepts matching live local facts for every full-plan operation class", () => {
     const operations: PortableMergePlan["operations"] = [
       { aggregateClass: "app_setting", kind: "insert", key: "new-setting" },
