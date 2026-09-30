@@ -1,5 +1,6 @@
 import {
   canonicalMergeValue,
+  type AutomaticNamespaceAdoptionCommit,
   type FullMergeWriterPort,
   portableMergeArchiveSessionAggregate,
   portableMergeSessionAggregate,
@@ -100,6 +101,7 @@ type FullPlanInsertTable = "app_settings"
 
 export type LogicalMergeFaultStage =
   | "fingerprint_checked"
+  | "adoption_consumed"
   | "verified"
   | "state_updated"
   | `trigger_drop:${typeof MERGE_DELETE_TRIGGER_NAMES[number]}`
@@ -1001,11 +1003,75 @@ async function markRebuildPending(
   if (state.length !== 1 || state[0]?.state !== "rebuild_pending") fail();
 }
 
+async function applyNamespaceAdoption(
+  transaction: SqliteTransactionExecutor,
+  adoption: AutomaticNamespaceAdoptionCommit,
+  nowMs: number,
+): Promise<void> {
+  requireValid(nonEmptyText(adoption.receiptId) && adoption.receiptId.length <= 128);
+  requireValid(nonEmptyText(adoption.permissionId));
+  requireValid(Number.isSafeInteger(adoption.connectionGeneration) && adoption.connectionGeneration >= 0);
+  requireValid(adoption.environment === "production" || adoption.environment === "development-test");
+  requireValid(isOpaquePortableId(adoption.oldNamespace) && isOpaquePortableId(adoption.newNamespace));
+  requireValid(adoption.oldNamespace !== adoption.newNamespace);
+  requireValid(/^[a-f0-9]{64}$/u.test(adoption.localFingerprint));
+  requireValid(/^[a-f0-9]{64}$/u.test(adoption.remoteSnapshotSha256));
+  requireValid(Number.isSafeInteger(adoption.expiresAtMs) && adoption.expiresAtMs >= nowMs);
+  const [state] = await transaction.queryAll<{
+    permission_id: string | null;
+    connection_generation: number;
+    environment: string;
+  }>("SELECT permission_id, connection_generation, environment FROM automatic_backup_state WHERE id = 1");
+  requireValid(state?.permission_id === adoption.permissionId
+    && state.connection_generation === adoption.connectionGeneration
+    && state.environment === adoption.environment);
+  const [owner] = await transaction.queryAll<{ owner_namespace: string }>(
+    "SELECT owner_namespace FROM portable_owner_identity WHERE id = 1",
+  );
+  requireValid(owner?.owner_namespace === adoption.oldNamespace);
+  const inserted = await transaction.execute(
+    `INSERT INTO automatic_backup_namespace_adoption (
+      receipt_id, permission_id, environment, old_namespace, new_namespace,
+      local_fingerprint, remote_snapshot_sha256, expires_at_ms, consumed_at_ms
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, NULL)`,
+    [
+      adoption.receiptId,
+      adoption.permissionId,
+      adoption.environment,
+      adoption.oldNamespace,
+      adoption.newNamespace,
+      adoption.localFingerprint,
+      adoption.remoteSnapshotSha256,
+      adoption.expiresAtMs,
+    ],
+  );
+  requireValid(inserted.changes === 1);
+  const updated = await transaction.execute(
+    "UPDATE portable_owner_identity SET owner_namespace = ? WHERE id = 1 AND owner_namespace = ?",
+    [adoption.newNamespace, adoption.oldNamespace],
+  );
+  requireValid(updated.changes === 1);
+  const consumed = await transaction.execute(
+    "UPDATE automatic_backup_namespace_adoption SET consumed_at_ms = ? WHERE receipt_id = ? AND consumed_at_ms IS NULL",
+    [nowMs, adoption.receiptId],
+  );
+  requireValid(consumed.changes === 1);
+  const generation = await transaction.execute(
+    `UPDATE automatic_backup_state
+     SET mutation_generation = mutation_generation + 1,
+       dirty_since_ms = COALESCE(dirty_since_ms, ?)
+     WHERE id = 1 AND permission_id = ? AND connection_generation = ? AND environment = ?`,
+    [nowMs, adoption.permissionId, adoption.connectionGeneration, adoption.environment],
+  );
+  requireValid(generation.changes === 1);
+}
+
 type LogicalMergeRepository = MergeWriterPort & Readonly<{
   /** Internal integration seam; SecureMergeCommands intentionally does not expose it. */
   commitFullPlan(input: Readonly<{
     localFingerprint: string;
     plan: PortableMergePlan;
+    adoption?: AutomaticNamespaceAdoptionCommit;
   }>): Promise<Readonly<{ state: "ready" | "rebuild_pending" }>>;
 }>;
 
@@ -1031,7 +1097,17 @@ function createLogicalMergeRepositoryInternal(
           assertFullPlanSlice(plan);
           assertFullPlanMatchesLocal(plan, local);
           await input.faultAfter?.("fingerprint_checked");
-          if (plan.settings.length === 0 && plan.aggregates.length === 0) {
+          if (fullPlanInput.adoption !== undefined) {
+            requireValid(fullPlanInput.adoption.localFingerprint === fullPlanInput.localFingerprint);
+            await applyNamespaceAdoption(
+              transaction,
+              fullPlanInput.adoption,
+              input.nowMs?.() ?? Date.now(),
+            );
+            await input.faultAfter?.("adoption_consumed");
+          }
+          if (plan.settings.length === 0 && plan.aggregates.length === 0
+            && fullPlanInput.adoption === undefined) {
             return Object.freeze({ state: "ready" as const });
           }
 

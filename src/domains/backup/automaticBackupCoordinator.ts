@@ -1,7 +1,14 @@
 import { canonicalJson, parseDriveBackupManifestV1, type AutomaticBackupEnvironment, type DriveBackupManifestV1 } from "./automaticBackupContracts";
 import type { GoogleAuthPort } from "./googleAuthPort";
-import type { AutomaticNamespaceAdoptionGrant } from "../portability/mergeCommands";
 type LogicalBackupSnapshot = any;
+
+type RecoveryAdoptionGrant = Readonly<{
+  receiptId: string;
+  permissionId: string;
+  connectionGeneration: number;
+  environment: AutomaticBackupEnvironment;
+  expiresAtMs: number;
+}>;
 
 type CapturedSnapshot = Readonly<{ generation: number; sourceDigest: string; bytes: Uint8Array }>;
 type ActiveManifestSummary = Readonly<{
@@ -110,8 +117,8 @@ export function createAutomaticBackupCoordinator(input: Readonly<{
     localIsEmpty(): Promise<boolean>;
     prepareMerge(snapshot: LogicalBackupSnapshot): Promise<Readonly<{ token: string; ownerSummary: string; adoptionRequired: boolean }>>;
     restore(snapshot: LogicalBackupSnapshot): Promise<Readonly<{ state: "ready" | "rebuild_pending" }>>;
-    commitMerge(input: Readonly<{ token: string; adoptionGrant?: AutomaticNamespaceAdoptionGrant }>): Promise<Readonly<{ state: "ready" | "rebuild_pending" }>>;
-    freshAdoptionGrant?(): Promise<AutomaticNamespaceAdoptionGrant>;
+    commitMerge(input: Readonly<{ token: string; adoptionGrant?: RecoveryAdoptionGrant }>): Promise<Readonly<{ state: "ready" | "rebuild_pending" }>>;
+    freshAdoptionGrant?(): Promise<RecoveryAdoptionGrant>;
   }>;
 }>): AutomaticBackupCoordinator {
   let running: Promise<BackupResult> | null = null;
