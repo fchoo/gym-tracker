@@ -1,8 +1,21 @@
-import { GoogleOneTapSignIn, isSuccessResponse } from "react-native-nitro-google-signin";
+import {
+  GoogleOneTapSignIn,
+  isNoSavedCredentialFoundResponse,
+  isSuccessResponse,
+} from "react-native-nitro-google-signin";
 import { DRIVE_FILE_SCOPE, type GoogleAuthIdentity, type GoogleAuthPort } from "../../domains/backup/googleAuthPort";
 
 type AboutFetcher = (token: string) => Promise<unknown>;
-type OneTapBridge = Pick<typeof GoogleOneTapSignIn, "configure" | "signIn" | "requestScopes" | "getTokens" | "signOut">;
+type OneTapBridge = Pick<
+  typeof GoogleOneTapSignIn,
+  | "configure"
+  | "signIn"
+  | "createAccount"
+  | "presentExplicitSignIn"
+  | "requestScopes"
+  | "getTokens"
+  | "signOut"
+>;
 function identity(value: unknown): GoogleAuthIdentity {
   if (typeof value !== "object" || value === null) throw new Error("google_identity_invalid");
   const user = (value as { user?: unknown }).user;
@@ -18,7 +31,13 @@ export function createGoogleAuthAdapter(input: Readonly<{ webClientId: string; a
   let connected: GoogleAuthIdentity | null = null;
   async function current(): Promise<GoogleAuthIdentity | null> {
     const startedAt = ++generation;
-    const response = await bridge.signIn();
+    let response = await bridge.signIn();
+    if (isNoSavedCredentialFoundResponse(response)) {
+      response = await bridge.createAccount();
+    }
+    if (isNoSavedCredentialFoundResponse(response)) {
+      response = await bridge.presentExplicitSignIn();
+    }
     if (!isSuccessResponse(response)) return null;
     const authorization = await bridge.requestScopes([DRIVE_FILE_SCOPE]);
     const token = authorization.accessToken;

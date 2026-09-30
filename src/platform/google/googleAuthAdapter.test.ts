@@ -3,9 +3,14 @@ import { describe, expect, it, jest } from "@jest/globals";
 jest.mock("react-native-nitro-google-signin", () => ({
   GoogleOneTapSignIn: {
     configure: jest.fn(), signIn: jest.fn(async () => ({ ok: true })),
+    createAccount: jest.fn(async () => ({ ok: true })),
+    presentExplicitSignIn: jest.fn(async () => ({ ok: true })),
     requestScopes: jest.fn(async () => ({ accessToken: "default-token" })),
     getTokens: jest.fn(async () => ({ accessToken: "default-token" })), signOut: jest.fn(async () => undefined),
   },
+  isNoSavedCredentialFoundResponse: (value: unknown) => (
+    (value as { noSaved?: unknown })?.noSaved === true
+  ),
   isSuccessResponse: (value: unknown) => (value as { ok?: unknown })?.ok === true,
 }));
 
@@ -13,7 +18,10 @@ import { createGoogleAuthAdapter } from "./googleAuthAdapter";
 
 const clientId = "359232211920-gqfkasvsr8r5qbmprc6ukh9fofu246r9.apps.googleusercontent.com";
 const bridge = () => ({
-  configure: jest.fn(), signIn: jest.fn(async () => ({ ok: true })),
+  configure: jest.fn(),
+  signIn: jest.fn(async (): Promise<{ ok?: boolean; noSaved?: boolean }> => ({ ok: true })),
+  createAccount: jest.fn(async (): Promise<{ ok?: boolean; noSaved?: boolean }> => ({ ok: true })),
+  presentExplicitSignIn: jest.fn(async (): Promise<{ ok?: boolean; noSaved?: boolean }> => ({ ok: true })),
   requestScopes: jest.fn(async () => ({ accessToken: "token" })),
   getTokens: jest.fn(async () => ({ accessToken: "token" })), signOut: jest.fn(async () => undefined),
 });
@@ -26,6 +34,34 @@ describe("Google auth adapter", () => {
     expect(native.configure).toHaveBeenCalledWith(expect.objectContaining({ offlineAccess: true, scopes: ["https://www.googleapis.com/auth/drive.file"] }));
     await expect(auth.accessToken()).resolves.toBe("token");
     expect(auth.identity()).toEqual({ permissionId: "permission-1", displayEmail: "…@example.com" });
+  });
+
+  it("falls back from authorized credentials to first-time and explicit sign-in", async () => {
+    const firstTime = bridge();
+    firstTime.signIn.mockResolvedValue({ noSaved: true });
+    const firstTimeAuth = createGoogleAuthAdapter({
+      webClientId: clientId,
+      bridge: firstTime as never,
+      about: async () => ({ user: { permissionId: "first-time" } }),
+    });
+    await expect(firstTimeAuth.connect()).resolves.toMatchObject({
+      permissionId: "first-time",
+    });
+    expect(firstTime.createAccount).toHaveBeenCalledTimes(1);
+    expect(firstTime.presentExplicitSignIn).not.toHaveBeenCalled();
+
+    const explicit = bridge();
+    explicit.signIn.mockResolvedValue({ noSaved: true });
+    explicit.createAccount.mockResolvedValue({ noSaved: true });
+    const explicitAuth = createGoogleAuthAdapter({
+      webClientId: clientId,
+      bridge: explicit as never,
+      about: async () => ({ user: { permissionId: "explicit" } }),
+    });
+    await expect(explicitAuth.connect()).resolves.toMatchObject({
+      permissionId: "explicit",
+    });
+    expect(explicit.presentExplicitSignIn).toHaveBeenCalledTimes(1);
   });
 
   it("rejects cancellation, unconnected access and account switches", async () => {
