@@ -64,6 +64,12 @@ describe("Drive backup store adapter", () => {
     const ambiguous = createDriveBackupStoreAdapter({ environment: "development-test", token: async () => "token", fetch: async () => response({ files: [{ id: "one", name: "manifest.json", appProperties: properties }, { id: "two", name: "manifest.json", appProperties: properties }] }) });
     await expect(ambiguous.readManifest()).rejects.toThrow("drive_manifest_ambiguous");
     await expect(ambiguous.updateManifest("one", new Uint8Array(), "*")).rejects.toThrow("drive_etag_invalid");
+    const redirect = createDriveBackupStoreAdapter({ environment: "development-test", token: async () => "token", fetch: async () => response(null, { status: 302, headers: { location: "https://example.invalid" } }) });
+    await expect(redirect.discover()).rejects.toThrow("drive_redirect_rejected");
+    const followedResponse = response({ files: [] });
+    Object.defineProperty(followedResponse, "redirected", { value: true });
+    const followed = createDriveBackupStoreAdapter({ environment: "development-test", token: async () => "token", fetch: async () => followedResponse });
+    await expect(followed.discover()).rejects.toThrow("drive_redirect_rejected");
   });
 
   it("uses multipart at 5 MiB and resumable only above it with acknowledged offsets", async () => {

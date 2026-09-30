@@ -74,7 +74,7 @@ export function createDriveBackupStoreAdapter(input: Readonly<{ environment: Aut
           const token = await input.token();
           if (token.length === 0 || token.length > 16 * 1024) throw new Error("drive_token_invalid");
           if (controller.signal.aborted) throw new Error("drive_request_timeout");
-          return fetcher(url, { ...init, signal: controller.signal, redirect: "error", headers: { Authorization: `Bearer ${token}`, ...(init.headers ?? {}) } });
+          return fetcher(url, { ...init, signal: controller.signal, redirect: "manual", headers: { Authorization: `Bearer ${token}`, ...(init.headers ?? {}) } });
         })(),
         new Promise<never>((_resolve, reject) => {
           timeout = setTimeout(() => {
@@ -91,6 +91,7 @@ export function createDriveBackupStoreAdapter(input: Readonly<{ environment: Aut
     } finally {
       clearTimeout(timeout);
     }
+    if ((response.status >= 300 && response.status < 400 && response.status !== 308) || response.redirected) throw new Error("drive_redirect_rejected");
     if (response.status === 401) throw new Error("drive_unauthorized");
     return response;
   }
