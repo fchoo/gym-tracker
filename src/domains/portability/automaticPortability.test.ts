@@ -105,16 +105,71 @@ describe("automatic portability", () => {
     const dependencies = mergeDependencies();
     const port = createAutomaticPortableMergePort(dependencies);
 
-    await expect(port.preflight(snapshot, { token: "fresh-google-auth" })).resolves.toEqual({ token: "merge-token" });
+    await expect(port.preflight(snapshot)).resolves.toEqual({ token: "merge-token", adoptionRequired: false });
     await expect(port.commit("merge-token")).resolves.toEqual({ state: "ready" });
 
     expect(dependencies.build).toHaveBeenCalledWith({
       archive: { version: 2, schemaVersion: 26, tables: {} },
       local: { version: 2, schemaVersion: 26, tables: {} },
     });
-    expect(dependencies.issue).toHaveBeenCalledWith({ plan, fingerprint: "local-fingerprint", grant: "fresh-google-auth" });
+    expect(dependencies.issue).toHaveBeenCalledWith({ plan, fingerprint: "local-fingerprint" });
     expect(dependencies.commitPlan).toHaveBeenCalledWith({ plan, fingerprint: "local-fingerprint" });
     expect(dependencies.rebuild).toHaveBeenCalledTimes(1);
+  });
+
+  it("binds a namespace adoption to one fresh account and connection context", async () => {
+    bypassSnapshotValidation();
+    const remote = { tables: { portable_owner_identity: [{ id: 1, owner_namespace: "b".repeat(32) }] } } as never;
+    const pending = {
+      plan,
+      fingerprint: "local-fingerprint",
+      adoption: {
+        oldNamespace: "a".repeat(32),
+        newNamespace: "b".repeat(32),
+        remoteSnapshotSha256: "c".repeat(64),
+      },
+    };
+    const dependencies = mergeDependencies({
+      local: jest.fn(async () => ({
+        version: 2 as const,
+        schemaVersion: 26,
+        tables: { portable_owner_identity: [{ id: 1, owner_namespace: "a".repeat(32) }] },
+      })),
+      archive: jest.fn(() => ({
+        version: 2 as const,
+        schemaVersion: 26,
+        tables: { portable_owner_identity: [{ id: 1, owner_namespace: "b".repeat(32) }] },
+      })),
+      snapshotDigest: jest.fn(async () => "c".repeat(64)),
+      nowMs: () => 1_000,
+      issue: jest.fn(() => "adoption-token"),
+      consume: jest.fn(() => pending),
+    });
+    const port = createAutomaticPortableMergePort(dependencies);
+
+    await expect(port.preflight(remote)).resolves.toEqual({ token: "adoption-token", adoptionRequired: true });
+    await expect(port.commit("adoption-token")).rejects.toThrow("automatic_merge_adoption_grant_required");
+
+    const successful = createAutomaticPortableMergePort({
+      ...dependencies,
+      consume: jest.fn(() => pending),
+    });
+    await expect(successful.commit("adoption-token", {
+      receiptId: "receipt",
+      permissionId: "permission",
+      connectionGeneration: 4,
+      environment: "development-test",
+      expiresAtMs: 2_000,
+    })).resolves.toEqual({ state: "ready" });
+    expect(dependencies.commitPlan).toHaveBeenLastCalledWith(expect.objectContaining({
+      adoption: expect.objectContaining({
+        oldNamespace: "a".repeat(32),
+        newNamespace: "b".repeat(32),
+        remoteSnapshotSha256: "c".repeat(64),
+        permissionId: "permission",
+        connectionGeneration: 4,
+      }),
+    }));
   });
 
   it("preflights without a grant and rejects a workout that becomes active before commit", async () => {
