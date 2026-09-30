@@ -344,6 +344,7 @@ import {
 } from "./workoutLifecycle";
 import type { AutomaticBackupScheduler } from "../domains/backup/automaticBackupScheduler";
 import { projectAutomaticBackupPresentation, type AutomaticBackupViewModel } from "../domains/backup/automaticBackupPresentation";
+import { phase12BackupFixtureFromNativeContract, phase12BackupFixtureViewModel } from "./phase12BackupTestControls";
 import type { AutomaticBackupRuntime } from "./automaticBackupRuntime";
 import { createProductionAutomaticBackupServices } from "./productionAutomaticBackupRuntime";
 import {
@@ -1275,6 +1276,17 @@ function phase11NativeFixtureFilesEnabled(): boolean {
     && process.env.EXPO_PUBLIC_NATIVE_CONTRACT_SUITE === "phase11";
 }
 
+function phase12NativeFixtureViewModel(): AutomaticBackupViewModel | null {
+  const { default: Constants } = require("expo-constants") as typeof import("expo-constants");
+  const fixture = phase12BackupFixtureFromNativeContract({
+    nativeContractsEnabled: Constants.expoConfig?.extra?.nativeContractsEnabled === true,
+    buildProfile: Constants.expoConfig?.extra?.buildProfile,
+    suite: process.env.EXPO_PUBLIC_NATIVE_CONTRACT_SUITE,
+    fixture: process.env.EXPO_PUBLIC_PHASE12_STAGE,
+  });
+  return fixture === null ? null : phase12BackupFixtureViewModel(fixture);
+}
+
 export const productionWorkoutAppRuntimeDependencies =
   createWorkoutAppRuntimeDependencies({
     openKernel: openSqliteKernel,
@@ -2096,7 +2108,8 @@ export function WorkoutAppRuntimeProvider({
         : scheduledToday?.view ?? legacyView,
       planDays: scheduledToday?.planDays ?? activation?.days ?? [],
       latestBackup,
-      automaticBackup: services.automaticBackupRuntime?.current()
+      automaticBackup: phase12NativeFixtureViewModel()
+        ?? services.automaticBackupRuntime?.current()
         ?? projectAutomaticBackupPresentation({
           status: "not_connected",
           mutationGeneration: 0,

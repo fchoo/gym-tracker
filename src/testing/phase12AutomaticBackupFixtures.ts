@@ -1,21 +1,16 @@
-import type { AutomaticBackupPresentationInput } from "../domains/backup/automaticBackupPresentation";
-import type { Phase12BackupFixture } from "../bootstrap/phase12BackupTestControls";
+import { phase12BackupFixtureInput, type Phase12BackupFixture } from "../bootstrap/phase12BackupTestControls";
 
-const NOW = 1_790_591_564_000;
-const HOUR = 60 * 60 * 1000;
+export const PHASE12_FIXTURE_IDS = Object.freeze([
+  "disconnected", "no_cloud", "backup_pending", "backing_up", "backed_up", "auth_attention",
+  "checking", "restoring", "finishing", "restore_required", "merge_review", "previous_available",
+  "update_required", "invalid_artifacts", "pending_24h", "stale_writer", "deleted", "deletion_partial",
+] as const satisfies readonly Phase12BackupFixture[]);
 
 /** Bounded synthetic state only; no account, token, Drive ID, or production namespace is present. */
-export const PHASE12_AUTOMATIC_BACKUP_FIXTURES: Readonly<Record<Phase12BackupFixture, AutomaticBackupPresentationInput>> = Object.freeze({
-  disconnected: { status: "not_connected", mutationGeneration: 0, backedUpGeneration: 0, nowMs: NOW },
-  no_cloud: { status: "backup_pending", mutationGeneration: 1, backedUpGeneration: 0, nowMs: NOW },
-  restore_required: { status: "restore_pending", mutationGeneration: 4, backedUpGeneration: 0, nowMs: NOW, recoveryPrompt: { kind: "latest", producedAtMs: NOW - HOUR } },
-  previous_available: { status: "restore_pending", mutationGeneration: 4, backedUpGeneration: 0, nowMs: NOW, recoveryPrompt: { kind: "previous", producedAtMs: NOW - HOUR, previousProducedAtMs: NOW - 2 * HOUR } },
-  update_required: { status: "restore_pending", mutationGeneration: 4, backedUpGeneration: 0, nowMs: NOW, reason: "update_required", recoveryPrompt: { kind: "update_required", producedAtMs: NOW - HOUR } },
-  pending_24h: { status: "backup_pending", mutationGeneration: 4, backedUpGeneration: 2, pendingSinceMs: NOW - 24 * HOUR, lastSuccessfulBackupAtMs: NOW - 25 * HOUR, nowMs: NOW },
-  stale_writer: { status: "paused", mutationGeneration: 4, backedUpGeneration: 2, nowMs: NOW, reason: "stale_writer" },
-  deleted: { status: "paused", mutationGeneration: 0, backedUpGeneration: 0, nowMs: NOW, reason: "restore_required" },
-});
+export const PHASE12_AUTOMATIC_BACKUP_FIXTURES = Object.freeze(Object.fromEntries(
+  PHASE12_FIXTURE_IDS.map((fixture) => [fixture, phase12BackupFixtureInput(fixture)]),
+)) as Readonly<Record<Phase12BackupFixture, ReturnType<typeof phase12BackupFixtureInput>>>;
 
-export function phase12FixtureInput(fixture: Phase12BackupFixture): AutomaticBackupPresentationInput {
-  return PHASE12_AUTOMATIC_BACKUP_FIXTURES[fixture];
+export function phase12FixtureInput(fixture: Phase12BackupFixture) {
+  return phase12BackupFixtureInput(fixture);
 }

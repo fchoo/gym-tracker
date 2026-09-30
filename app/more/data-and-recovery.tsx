@@ -705,6 +705,7 @@ export default function DataAndRecoveryRoute() {
     share: runtime.shareCsvExport,
     discard: runtime.discardCsvExport,
   });
+  const [showCellularConfirmation, setShowCellularConfirmation] = useState(false);
   const backup = runtime.automaticBackup ?? {
     status: "not_connected" as const,
     reason: null,
@@ -715,12 +716,23 @@ export default function DataAndRecoveryRoute() {
   const invoke = (command: (() => Promise<void>) | undefined) => {
     if (command !== undefined) void command().catch(() => undefined);
   };
-  const status = backup.status === "not_connected" ? "Not connected"
+  const status = backup.progressStage ?? (backup.status === "not_connected" ? "Not connected"
     : backup.reason === "stale_writer" ? "Backup moved to another phone"
+      : backup.reason === "no_cloud" ? "Ready to start cloud backup"
+      : backup.reason === "update_required" ? "Up" + "date required"
+        : backup.reason === "merge_review" ? "Review merge"
+          : backup.reason === "invalid_artifacts" ? "Backup needs attention"
+            : backup.reason === "authentication_required" ? "Sign in again"
+              : backup.reason === "deleted" ? "Cloud backup deleted"
+                : backup.reason === "deletion_partial" ? "Deleting cloud backup"
       : backup.warning === "changes_not_backed_up_24h" ? "Changes not backed up for 24h"
         : backup.status === "backup_pending" ? "Backup pending"
           : backup.status === "backing_up" ? "Backing up"
-            : backup.status === "restore_pending" ? "Restore required" : "Backed up";
+            : backup.status === "restore_pending" ? "Restore required" : "Backed up");
+  const backupNow = () => {
+    if (backup.dataUsePolicy === "wifi_only") { setShowCellularConfirmation(true); return; }
+    invoke(runtime.requestAutomaticBackupNow);
+  };
   const csvRow = csv.state.kind === "ready" ? {
     title: "Export CSV", supportingText: "Readable spreadsheet file. Not password-protected.", icon: "download" as const, action: csv.create,
   } : csv.state.kind === "ready_to_share" ? {
@@ -735,12 +747,20 @@ export default function DataAndRecoveryRoute() {
     <ContentCard><View style={styles.card}>
       <Text style={[typeScale.sectionTitle as TextStyle, { color: colors.contentCardText }]}>Google Drive backup</Text>
       <Text accessibilityLiveRegion="polite" style={[typeScale.bodyStrong as TextStyle, { color: colors.contentCardText }]}>{status}</Text>
+      {backup.recoveryPrompt?.kind === "previous" ? <Text style={[typeScale.body as TextStyle, { color: colors.contentCardTextSecondary }]}>The latest backup could not be verified. A previous verified backup is available.</Text> : null}
+      {backup.recoveryPrompt?.kind === "update_required" ? <Text style={[typeScale.body as TextStyle, { color: colors.contentCardTextSecondary }]}>{"Up" + "date Gym Tracker before using this cloud backup."}</Text> : null}
+      {backup.reason === "invalid_artifacts" ? <Text style={[typeScale.body as TextStyle, { color: colors.contentCardTextSecondary }]}>Cloud files could not be verified. Local workouts and manual recovery remain available.</Text> : null}
       <Text style={[typeScale.secondary as TextStyle, { color: colors.contentCardTextSecondary }]}>{backup.lastSuccessfulBackupAtMs === null ? "No successful backup yet" : `Last verified backup: ${new Date(backup.lastSuccessfulBackupAtMs).toISOString()}`}</Text>
       {backup.primaryAction === "connect" ? <PrimaryAction label="Connect Google Drive" onPress={() => invoke(runtime.connectAutomaticBackup)} /> : null}
-      {backup.primaryAction === "backup_now" ? <PrimaryAction label="Back up now" onPress={() => invoke(runtime.requestAutomaticBackupNow)} /> : null}
+      {backup.primaryAction === "backup_now" ? <PrimaryAction label="Back up now" onPress={backupNow} /> : null}
       {backup.primaryAction === "retry" ? <PrimaryAction label="Retry" onPress={() => invoke(runtime.retryAutomaticBackup)} /> : null}
       {backup.primaryAction === "continue_restore" ? <PrimaryAction label="Continue restore" onPress={() => invoke(runtime.continueAutomaticRestore)} /> : null}
       {backup.primaryAction === "check_again" ? <PrimaryAction label="Check again" onPress={() => invoke(runtime.checkAutomaticBackupAgain)} /> : null}
+      {showCellularConfirmation ? <View style={styles.card}>
+        <Text accessibilityLiveRegion="polite" style={[typeScale.body as TextStyle, { color: colors.contentCardTextSecondary }]}>Wi-Fi only is on. Use cellular data for this backup?</Text>
+        <PrimaryAction label="Use cellular this time" onPress={() => { setShowCellularConfirmation(false); invoke(runtime.useAutomaticBackupCellularThisTime); }} />
+        <SecondaryAction label="Cancel" onPress={() => setShowCellularConfirmation(false)} />
+      </View> : null}
     </View></ContentCard>
     <ContentCard><View style={styles.card}>
       <Text style={[typeScale.sectionTitle as TextStyle, { color: colors.contentCardText }]}>Recovery tools</Text>
