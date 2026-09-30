@@ -11,7 +11,6 @@ import {
 import {
   buildPortableMergePlan,
   MERGE_DIGEST_CONCURRENCY,
-  type PortableMergePlan,
   type PortableMergePlanSnapshot,
 } from "../domains/portability/mergePlan";
 import { canonicalMergeValue } from "../domains/portability/mergeCommands";
@@ -416,7 +415,8 @@ export async function performPhase12BackupBenchmark(): Promise<Phase12BackupBenc
     await seedMaximumHistory(kernel);
     const writerOccupancyMs: number[] = [];
     const captureTotalMs: number[] = [];
-    let maximumSnapshot: LogicalBackupSnapshot | undefined;
+    let snapshotBytes: number | undefined;
+    let totalRows: number | undefined;
     for (let index = 0; index < PHASE12_WRITER_SAMPLES; index += 1) {
       console.log(`${PHASE12_BENCHMARK_PROGRESS_MARKER}${JSON.stringify({ stage: "capture", sample: index })}`);
       let signalCopyStarted: (() => void) | undefined;
@@ -428,19 +428,25 @@ export async function performPhase12BackupBenchmark(): Promise<Phase12BackupBenc
       const measured = await measureReaderSnapshotWithConcurrentMutation({
         capture,
         waitForCopyStart,
-        mutate: () => kernel.write((transaction) => transaction.execute(
-          "UPDATE app_settings SET value_json = value_json WHERE key = ?",
-          ["k0000"],
-        )).then(() => undefined),
+        mutate: async () => {
+          const mutation = await kernel.write((transaction) => transaction.execute(
+            "UPDATE app_settings SET value_json = value_json WHERE key = ?",
+            ["k000000"],
+          ));
+          if (mutation.changes !== 1) throw new Error("phase12_capture_mutation_missing");
+        },
         now: () => performance.now(),
         sample: index,
       });
       writerOccupancyMs.push(measured.writerOccupancyMs);
       captureTotalMs.push(measured.captureTotalMs);
-      maximumSnapshot ??= measured.snapshot;
+      if (snapshotBytes === undefined) {
+        snapshotBytes = encodedBytes(measured.snapshot);
+        totalRows = measured.snapshot.manifest.totalRows;
+      }
     }
-    if (maximumSnapshot === undefined || encodedBytes(maximumSnapshot) !== PHASE12_MAX_SNAPSHOT_BYTES
-      || maximumSnapshot.manifest.totalRows !== PHASE12_MAX_SNAPSHOT_ROWS) {
+    if (snapshotBytes !== PHASE12_MAX_SNAPSHOT_BYTES
+      || totalRows !== PHASE12_MAX_SNAPSHOT_ROWS) {
       throw new Error("phase12_sqlite_fixture_size_invalid");
     }
     const dirtyTriggerMs: number[] = [];
@@ -453,29 +459,42 @@ export async function performPhase12BackupBenchmark(): Promise<Phase12BackupBenc
       if (mutation.changes !== 1) throw new Error("phase12_dirty_trigger_mutation_missing");
       dirtyTriggerMs.push(performance.now() - started);
     }
-    const archive = buildPhase12SyntheticSnapshot(2);
-    const local = buildPhase12SyntheticSnapshot(1);
     const mergePreflightMs: number[] = [];
-    const mergePlans: PortableMergePlan[] = [];
-    let firstMergePlan: PortableMergePlan | undefined;
-    let lastMergePlan: PortableMergePlan | undefined;
-    for (let index = 0; index < PHASE12_MERGE_SAMPLES; index += 1) {
-      console.log(`${PHASE12_BENCHMARK_PROGRESS_MARKER}${JSON.stringify({ stage: "merge", sample: index })}`);
-      const started = performance.now();
-      const plan = await buildPortableMergePlan({
-        archive,
-        local,
-        payloadDigest: async (value) => {
-          const { CryptoDigestAlgorithm, digestStringAsync } = require("expo-crypto") as typeof import("expo-crypto");
-          return digestStringAsync(CryptoDigestAlgorithm.SHA256, value);
-        },
-      });
-      mergePreflightMs.push(performance.now() - started);
-      if (shouldMaterializePhase12MergeSample(index)) mergePlans.push(plan);
-      firstMergePlan ??= plan;
-      lastMergePlan = plan;
+    const mergeSerializationMs: number[] = [];
+    let materializationSampleCount = 0;
+    let firstSerializedPlan: string | undefined;
+    let mergeOutputEquivalent = false;
+    {
+      const archive = buildPhase12SyntheticSnapshot(2);
+      const local = buildPhase12SyntheticSnapshot(1);
+      for (let index = 0; index < PHASE12_MERGE_SAMPLES; index += 1) {
+        console.log(`${PHASE12_BENCHMARK_PROGRESS_MARKER}${JSON.stringify({ stage: "merge", sample: index })}`);
+        const started = performance.now();
+        const plan = await buildPortableMergePlan({
+          archive,
+          local,
+          payloadDigest: async (value) => {
+            const { CryptoDigestAlgorithm, digestStringAsync } = require("expo-crypto") as typeof import("expo-crypto");
+            return digestStringAsync(CryptoDigestAlgorithm.SHA256, value);
+          },
+        });
+        mergePreflightMs.push(performance.now() - started);
+        if (shouldMaterializePhase12MergeSample(index)) materializationSampleCount += 1;
+        if (shouldSerializePhase12MergeSample(index)) {
+          const serializationStarted = performance.now();
+          const serialized = JSON.stringify(plan);
+          mergeSerializationMs.push(performance.now() - serializationStarted);
+          if (firstSerializedPlan === undefined) firstSerializedPlan = serialized;
+          else {
+            if (serialized !== firstSerializedPlan) throw new Error("phase12_merge_output_not_canonical");
+            firstSerializedPlan = undefined;
+            mergeOutputEquivalent = true;
+          }
+        }
+      }
     }
-    if (firstMergePlan === undefined || lastMergePlan === undefined) {
+    if (materializationSampleCount !== 5 || mergeSerializationMs.length !== 2
+      || !mergeOutputEquivalent || firstSerializedPlan !== undefined) {
       throw new Error("phase12_merge_plan_missing");
     }
     const mergeMaterializationMs: number[] = [];
@@ -505,7 +524,7 @@ export async function performPhase12BackupBenchmark(): Promise<Phase12BackupBenc
         })}`);
       },
     });
-    for (let index = 0; index < mergePlans.length; index += 1) {
+    for (let index = 0; index < materializationSampleCount; index += 1) {
       materializationSample = index;
       const planningStarted = performance.now();
       console.log(`${PHASE12_BENCHMARK_PROGRESS_MARKER}${JSON.stringify({
@@ -560,14 +579,6 @@ export async function performPhase12BackupBenchmark(): Promise<Phase12BackupBenc
         elapsed_ms: materializationElapsedMs,
       })}`);
     }
-    const mergeSerializationMs: number[] = [];
-    const serializedPlans = [firstMergePlan, lastMergePlan].map((plan) => {
-      const serializationStarted = performance.now();
-      const serialized = JSON.stringify(plan);
-      mergeSerializationMs.push(performance.now() - serializationStarted);
-      return serialized;
-    });
-    if (serializedPlans[0] !== serializedPlans[1]) throw new Error("phase12_merge_output_not_canonical");
     return {
       schemaVersion: 1,
       suite: "phase12",
@@ -579,8 +590,8 @@ export async function performPhase12BackupBenchmark(): Promise<Phase12BackupBenc
         merge_preflight_ms: mergePreflightMs,
         merge_materialization_ms: mergeMaterializationMs,
         merge_serialization_ms: mergeSerializationMs,
-        snapshot_bytes: encodedBytes(maximumSnapshot),
-        total_rows: maximumSnapshot.manifest.totalRows,
+        snapshot_bytes: snapshotBytes,
+        total_rows: totalRows,
         merge_digest_concurrency: MERGE_DIGEST_CONCURRENCY,
         merge_output_equivalent: true,
         network_inside_writer: false,
