@@ -108,8 +108,26 @@ describe("automatic backup contracts", () => {
     await expect(parse(canonical, { byteLength: 1 })).rejects.toThrow("automatic_recovery_snapshot_invalid");
     await expect(parse(canonical, { objectSha256: "f".repeat(64) })).rejects.toThrow("automatic_recovery_snapshot_invalid");
     await expect(parse(canonicalJson({ ...snapshot, extra: true }))).rejects.toThrow("automatic_recovery_snapshot_invalid");
+    await expect(parse("null")).rejects.toThrow("automatic_recovery_snapshot_invalid");
+    await expect(parse("{" )).rejects.toThrow("automatic_recovery_snapshot_invalid");
+    await expect(parse(canonicalJson({ ...snapshot, payload_sha256: "f".repeat(64) })))
+      .rejects.toThrow("automatic_recovery_snapshot_invalid");
     const futureHeader = { ...header, schemaVersion: 24 };
     const future = createDriveBackupSnapshotV1({ header: futureHeader, payload, sha256 });
     await expect(parse(canonicalJson(future))).resolves.toMatchObject({ kind: "update_required", header: futureHeader });
+  });
+
+  it("accepts only an exact optional descriptor byte length", () => {
+    expect(parseDriveBackupManifestV1({
+      kind: "active", writer_epoch: 1,
+      latest: { fileId: "latest", object_sha256: "a".repeat(64), byteLength: 100 }, previous: null,
+    })).toMatchObject({ kind: "active", latest: { byteLength: 100 } });
+    expect(() => parseDriveBackupManifestV1({
+      kind: "active", writer_epoch: 1,
+      latest: { fileId: "latest", object_sha256: "a".repeat(64), byteLength: 0 }, previous: null,
+    })).toThrow("automatic_backup_manifest_invalid");
+    expect(() => parseDriveBackupManifestV1({
+      kind: "active", writer_epoch: 1, latest: null, previous: null,
+    })).toThrow("automatic_backup_manifest_invalid");
   });
 });

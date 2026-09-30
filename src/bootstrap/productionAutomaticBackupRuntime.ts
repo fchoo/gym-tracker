@@ -242,13 +242,15 @@ export function createProductionAutomaticBackupServices(kernel: SqliteKernel): S
         }
         return candidates;
       },
-      reconstructManifest: async (selection) => {
-        const manifestId = await drive.allocateFileId();
-        await drive.createManifest(manifestId, bytes({
+      reconstructManifest: async (selection, existing) => {
+        const manifestId = existing?.fileId ?? await drive.allocateFileId();
+        const manifestBytes = bytes({
           kind: "active", writer_epoch: selection.latest.writerEpoch,
           latest: { fileId: selection.latest.fileId, object_sha256: selection.latest.objectSha256, byteLength: selection.latest.byteLength },
           previous: selection.previous === null ? null : { fileId: selection.previous.fileId, object_sha256: selection.previous.objectSha256, byteLength: selection.previous.byteLength },
-        }));
+        });
+        if (existing === null) await drive.createManifest(manifestId, manifestBytes);
+        else await drive.updateManifest(manifestId, manifestBytes, existing.etag);
       },
     },
   });

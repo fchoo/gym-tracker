@@ -153,7 +153,7 @@ export function createAutomaticBackupCoordinator(input: Readonly<{
     commitMerge(input: Readonly<{ token: string; adoptionGrant?: RecoveryAdoptionGrant }>): Promise<Readonly<{ state: "ready" | "rebuild_pending" }>>;
     freshAdoptionGrant?(): Promise<RecoveryAdoptionGrant>;
     discoverCandidates?(): Promise<readonly RecoverySnapshotCandidate[]>;
-    reconstructManifest?(selection: Extract<RecoveryLineageSelection, { kind: "verified" }>): Promise<void>;
+    reconstructManifest?(selection: Extract<RecoveryLineageSelection, { kind: "verified" }>, existing: Readonly<{ fileId: string; etag: string }> | null): Promise<void>;
   }>;
 }>): AutomaticBackupCoordinator {
   let running: Promise<BackupResult> | null = null;
@@ -163,6 +163,25 @@ export function createAutomaticBackupCoordinator(input: Readonly<{
     connectionGeneration: number;
   }> | null = null;
   let currentRecoveryPrompt: ReturnType<AutomaticBackupCoordinator["recoveryPrompt"]> = null;
+  const recoverCandidates = async (
+    existing: Readonly<{ fileId: string; etag: string }> | null,
+    promptKind: "latest" | "previous",
+  ): Promise<void> => {
+    if (input.recovery?.discoverCandidates === undefined) return;
+    const selection = selectRecoveryLineage(await input.recovery.discoverCandidates());
+    if (selection.kind === "update_required") {
+      currentRecoveryPrompt = Object.freeze({ kind: "update_required" as const });
+      return;
+    }
+    if (selection.kind === "verified" && input.recovery.reconstructManifest !== undefined) {
+      await input.recovery.reconstructManifest(selection, existing);
+      currentRecoveryPrompt = Object.freeze({
+        kind: promptKind,
+        producedAtMs: selection.latest.createdAtMs,
+        ...(selection.previous === null ? {} : { previousProducedAtMs: selection.previous.createdAtMs }),
+      });
+    }
+  };
   const recoveryAttempts = new Map<string, Readonly<{
     snapshot: LogicalBackupSnapshot;
     preparation: AutomaticRecoveryPreparation;
@@ -357,26 +376,16 @@ export function createAutomaticBackupCoordinator(input: Readonly<{
         return Object.freeze({ status: "needs_bootstrap" as const });
       }
       bootstrapFence = null;
-      if (input.recovery?.discoverCandidates !== undefined) {
-        const selection = selectRecoveryLineage(await input.recovery.discoverCandidates());
-        if (selection.kind === "update_required") {
-          currentRecoveryPrompt = Object.freeze({ kind: "update_required" as const });
-          return Object.freeze({ status: "quarantined" as const });
-        }
-        if (selection.kind === "verified" && input.recovery.reconstructManifest !== undefined) {
-          await input.recovery.reconstructManifest(selection);
-          currentRecoveryPrompt = Object.freeze({
-            kind: "latest" as const,
-            producedAtMs: selection.latest.createdAtMs,
-            ...(selection.previous === null ? {} : { previousProducedAtMs: selection.previous.createdAtMs }),
-          });
-        }
-      }
+      await recoverCandidates(null, "latest");
       return Object.freeze({ status: "quarantined" as const });
     }
     bootstrapFence = null;
     const parsed = input.validateManifest?.(manifest.bytes);
-    if (parsed === null || parsed === undefined) return Object.freeze({ status: "quarantined" as const });
+    if (parsed === null || parsed === undefined) {
+      const fileId = manifest.fileId ?? state.manifestId;
+      if (fileId !== null && fileId !== undefined) await recoverCandidates({ fileId, etag: manifest.etag }, "previous");
+      return Object.freeze({ status: "quarantined" as const });
+    }
     if (parsed.writerEpoch > state.writerEpoch) {
       await input.state.markStaleWriter?.(state.writerEpoch);
       if (allowHigherEpochRecovery) {
