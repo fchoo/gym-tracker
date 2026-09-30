@@ -370,6 +370,7 @@ describe("automatic backup coordinator", () => {
 
   it("uses resumable transport only above multipart size and fails closed at every durable cut", async () => {
     const events: string[] = [];
+    const reportedFailures: string[] = [];
     const large = new Uint8Array(5 * 1024 * 1024 + 1);
     let manifestReads = 0;
     const coordinator = createAutomaticBackupCoordinator({
@@ -385,6 +386,7 @@ describe("automatic backup coordinator", () => {
       [{ createSnapshot: async () => { throw new Error("upload"); } }, "deferred"],
       [{ createSnapshot: async () => "snapshot", download: async () => new Uint8Array([1]), updateManifest: async () => { throw new Error("network"); } }, "deferred"],
       [{ createSnapshot: async () => "snapshot", download: async () => new Uint8Array([1]), updateManifest: async () => "next", readManifest: async () => null }, "deferred"],
+      [{ createSnapshot: async () => "snapshot", download: async () => new Uint8Array([1]), updateManifest: async () => "next", readManifest: async () => { throw new Error("read"); } }, "deferred"],
       [{ createSnapshot: async () => "snapshot", download: async () => new Uint8Array([1]), updateManifest: async () => { throw new Error("drive_manifest_conflict"); } }, "stale_writer"],
     ] as const) {
       const candidate = createAutomaticBackupCoordinator({
@@ -425,10 +427,17 @@ describe("automatic backup coordinator", () => {
       validate: () => true,
       nowMs: () => 1,
       candidateId: () => "candidate",
+      reportFailure: (stage) => { reportedFailures.push(`${failure}:${stage}`); },
     });
     for (const failure of ["capture", "allocate", "persist", "download"] as const) {
       await expect(boundaryFailure(failure).backup()).resolves.toEqual({ status: "deferred" });
     }
+    expect(reportedFailures).toEqual([
+      "capture:snapshot_capture",
+      "allocate:file_id_allocation",
+      "persist:attempt_persistence",
+      "download:snapshot_download",
+    ]);
   });
 
   it("quarantines every discovery ambiguity and only activates a matching newer writer", async () => {

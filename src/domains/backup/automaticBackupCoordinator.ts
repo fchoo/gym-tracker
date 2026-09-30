@@ -20,6 +20,19 @@ type Receipt = Readonly<{
   manifestId: string; manifestEtag: string;
 }>;
 type BackupResult = Readonly<{ status: "backed_up" | "deferred" | "stale_writer"; generation?: number }>;
+export type AutomaticBackupFailureStage =
+  | "active_manifest"
+  | "snapshot_capture"
+  | "snapshot_generation"
+  | "file_id_allocation"
+  | "attempt_persistence"
+  | "snapshot_upload"
+  | "snapshot_download"
+  | "snapshot_validation"
+  | "manifest_write"
+  | "manifest_conflict"
+  | "manifest_reread"
+  | "writer_activation";
 export type AutomaticRecoveryCandidate = "latest" | "previous";
 export type AutomaticRecoveryPreparation = Readonly<{ kind: "empty_direct"; attemptId: string } | { kind: "merge"; attemptId: string; token: string; ownerSummary: string; adoptionRequired: boolean }>;
 export type AutomaticRecoveryCommit = Readonly<{ kind: "empty_direct"; attemptId: string } | { kind: "merge"; attemptId: string; confirmation: "MERGE"; adoptIdentity?: true; adoptionGrant?: string }>;
@@ -89,6 +102,7 @@ export function createAutomaticBackupCoordinator(input: Readonly<{
     captured: CapturedSnapshot;
     previous: ActiveManifestSummary["latest"] | null;
   }>): Uint8Array;
+  reportFailure?(stage: AutomaticBackupFailureStage): void;
   recovery?: Readonly<{
     parseSnapshot(bytes: Uint8Array): Promise<LogicalBackupSnapshot>;
     localIsEmpty(): Promise<boolean>;
@@ -105,6 +119,10 @@ export function createAutomaticBackupCoordinator(input: Readonly<{
     connectionGeneration: number;
   }> | null = null;
   const recoveryAttempts = new Map<string, Readonly<{ snapshot: LogicalBackupSnapshot; preparation: AutomaticRecoveryPreparation }>>();
+  const deferred = (stage: AutomaticBackupFailureStage): BackupResult => {
+    input.reportFailure?.(stage);
+    return Object.freeze({ status: "deferred" as const });
+  };
   const run = async (): Promise<BackupResult> => {
     if (input.isWorkoutActive()) return Object.freeze({ status: "deferred" as const });
     const state = await input.state.read();
@@ -140,7 +158,7 @@ export function createAutomaticBackupCoordinator(input: Readonly<{
         }
         previous = parsed.latest;
       } catch {
-        return Object.freeze({ status: "deferred" as const });
+        return deferred("active_manifest");
       }
     }
     let captured: CapturedSnapshot;
@@ -150,9 +168,9 @@ export function createAutomaticBackupCoordinator(input: Readonly<{
         writerEpoch,
       });
     } catch {
-      return Object.freeze({ status: "deferred" as const });
+      return deferred("snapshot_capture");
     }
-    if (captured.generation > state.mutationGeneration || captured.generation <= state.backedUpGeneration) return Object.freeze({ status: "deferred" as const });
+    if (captured.generation > state.mutationGeneration || captured.generation <= state.backedUpGeneration) return deferred("snapshot_generation");
     let candidateId: string;
     let manifestId: string;
     try {
@@ -160,24 +178,24 @@ export function createAutomaticBackupCoordinator(input: Readonly<{
       manifestId = state.manifestId
         ?? (bootstrapping ? await input.drive.allocateFileId!() : "automatic-backup-manifest");
     } catch {
-      return Object.freeze({ status: "deferred" as const });
+      return deferred("file_id_allocation");
     }
     const effectiveState = Object.freeze({ ...state, writerEpoch, manifestId });
     const receipt: Receipt = Object.freeze({ environment: state.environment, permissionId: state.permissionId, connectionGeneration: state.connectionGeneration, writerEpoch, capturedGeneration: captured.generation, sourceDigest: captured.sourceDigest, snapshotId: candidateId, manifestId, manifestEtag: state.manifestEtag ?? "pending" });
     try {
       await input.state.persistAttempt({ ...receipt, candidateId, nowMs: input.nowMs() });
     } catch {
-      return Object.freeze({ status: "deferred" as const });
+      return deferred("attempt_persistence");
     }
     let fileId: string;
     try {
       if (captured.bytes.byteLength > 5 * 1024 * 1024 && input.drive.createResumableSnapshot !== undefined && input.drive.resumeSnapshot !== undefined) {
         const session = await input.drive.createResumableSnapshot(candidateId, captured.bytes);
         const completed = await input.drive.resumeSnapshot(session, captured.bytes);
-        if (typeof completed !== "string") return Object.freeze({ status: "deferred" as const });
+        if (typeof completed !== "string") return deferred("snapshot_upload");
         fileId = completed;
       } else fileId = await input.drive.createSnapshot(candidateId, captured.bytes);
-    } catch { return Object.freeze({ status: "deferred" as const }); }
+    } catch { return deferred("snapshot_upload"); }
     let downloaded: Uint8Array;
     let downloadedIsValid: boolean;
     try {
@@ -186,10 +204,10 @@ export function createAutomaticBackupCoordinator(input: Readonly<{
         && !downloaded.some((value, index) => value !== captured.bytes[index])
         && await input.validate(downloaded);
     } catch {
-      return Object.freeze({ status: "deferred" as const });
+      return deferred("snapshot_download");
     }
     if (!downloadedIsValid) {
-      return Object.freeze({ status: "deferred" as const });
+      return deferred("snapshot_validation");
     }
     const manifestBytes = input.buildManifest?.({
       candidateId: fileId,
@@ -201,7 +219,7 @@ export function createAutomaticBackupCoordinator(input: Readonly<{
     try {
       if (bootstrapping) {
         const created = await input.drive.createManifest!(manifestId, manifestBytes);
-        if (created.fileId !== manifestId) return Object.freeze({ status: "deferred" as const });
+        if (created.fileId !== manifestId) return deferred("manifest_write");
         promotedEtag = created.etag;
       } else {
         promotedEtag = await input.drive.updateManifest(manifestId, manifestBytes, receipt.manifestEtag);
@@ -211,14 +229,19 @@ export function createAutomaticBackupCoordinator(input: Readonly<{
       if (error instanceof Error && error.message === "drive_manifest_conflict") {
         if (bootstrapping) {
           bootstrapFence = null;
-          return Object.freeze({ status: "deferred" as const });
+          return deferred("manifest_conflict");
         }
         await input.state.markStaleWriter?.(state.writerEpoch);
         return Object.freeze({ status: "stale_writer" as const });
       }
-      return Object.freeze({ status: "deferred" as const });
+      return deferred("manifest_write");
     }
-    const reread = await input.drive.readManifest();
+    let reread: Readonly<{ bytes: Uint8Array; etag: string }> | null;
+    try {
+      reread = await input.drive.readManifest();
+    } catch {
+      return deferred("manifest_reread");
+    }
     const validatedManifest = reread === null
       ? null
       : input.validateManifest?.(reread.bytes);
@@ -226,7 +249,7 @@ export function createAutomaticBackupCoordinator(input: Readonly<{
       || (input.validateManifest === undefined
         ? !input.validate(reread.bytes)
         : validatedManifest?.writerEpoch !== writerEpoch)) {
-      return Object.freeze({ status: "deferred" as const });
+      return deferred("manifest_reread");
     }
     if (bootstrapping) {
       const activated = await input.state.activateWriter!({
@@ -236,7 +259,7 @@ export function createAutomaticBackupCoordinator(input: Readonly<{
         permissionId: state.permissionId,
         connectionGeneration: state.connectionGeneration,
       });
-      if (!activated) return Object.freeze({ status: "deferred" as const });
+      if (!activated) return deferred("writer_activation");
       bootstrapFence = null;
     }
     const accepted = await input.state.acknowledgeReceipt({ ...receipt, snapshotId: fileId, manifestEtag: promotedEtag });

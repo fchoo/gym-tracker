@@ -131,6 +131,7 @@ export function createProductionAutomaticBackupServices(kernel: SqliteKernel): S
   });
   const coordinator = createAutomaticBackupCoordinator({
     isWorkoutActive: () => false, auth, state, drive, nowMs: () => Date.now(), candidateId: () => id("attempt"),
+    reportFailure: (stage) => console.warn(`[automatic-backup] deferred:${stage}`),
     capture: async ({ environment, writerEpoch }) => {
       const captured = await snapshotCapture.capture({ snapshotId: id("snapshot"), createdAtMs: Date.now() });
       const ownerNamespace = captured.snapshot.tables.portable_owner_identity?.[0]?.owner_namespace;
