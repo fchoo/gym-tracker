@@ -27,6 +27,7 @@ import {
 
 const attendedPreviewAppearanceStore = createMemoryAppearanceStore();
 const phase6GestureSmokeAppearanceStore = createMemoryAppearanceStore();
+const phase12CleanupAppearanceStore = createMemoryAppearanceStore();
 
 function RootNavigator() {
   const runtime = useWorkoutAppRuntime();
@@ -99,6 +100,17 @@ function Phase6GestureSmokeNavigator() {
   );
 }
 
+function Phase12CleanupNavigator() {
+  return (
+    <Stack
+      initialRouteName="__phase12-google-cleanup"
+      screenOptions={{ animation: "none", headerShown: false }}
+    >
+      <Stack.Screen name="__phase12-google-cleanup" />
+    </Stack>
+  );
+}
+
 export default function RootLayout() {
   const [fontsLoaded, fontError] = useFonts(appFonts);
   const pathname = usePathname();
@@ -109,6 +121,9 @@ export default function RootLayout() {
   const phase6GestureSmokeEnabled =
     Constants.expoConfig?.extra?.nativeContractsEnabled === true
     && pathname === "/__phase6-gesture-smoke";
+  const phase12CleanupEnabled =
+    Constants.expoConfig?.extra?.nativeContractsEnabled === true
+    && pathname === "/__phase12-google-cleanup";
 
   if (!fontsLoaded && fontError === null) {
     return (
@@ -118,7 +133,9 @@ export default function RootLayout() {
             ? attendedPreviewAppearanceStore
             : phase6GestureSmokeEnabled
               ? phase6GestureSmokeAppearanceStore
-            : productionAppearanceStore}
+              : phase12CleanupEnabled
+                ? phase12CleanupAppearanceStore
+                : productionAppearanceStore}
           >
             <AppLoadingShell width={width} />
           </AppearanceProvider>
@@ -145,6 +162,18 @@ export default function RootLayout() {
         <SafeAreaProvider>
           <AppearanceProvider store={phase6GestureSmokeAppearanceStore}>
             <Phase6GestureSmokeNavigator />
+          </AppearanceProvider>
+        </SafeAreaProvider>
+      </GestureHandlerRootView>
+    );
+  }
+
+  if (phase12CleanupEnabled) {
+    return (
+      <GestureHandlerRootView style={styles.root} testID="gesture-handler-root">
+        <SafeAreaProvider>
+          <AppearanceProvider store={phase12CleanupAppearanceStore}>
+            <Phase12CleanupNavigator />
           </AppearanceProvider>
         </SafeAreaProvider>
       </GestureHandlerRootView>
