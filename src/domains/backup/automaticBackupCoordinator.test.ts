@@ -163,7 +163,7 @@ describe("automatic backup coordinator", () => {
       ...activeState({
         authorityState: "quarantine" as const,
         writerEpoch: 0,
-        mutationGeneration: 1,
+        mutationGeneration: 0,
         backedUpGeneration: 0,
         manifestId: null,
         manifestEtag: null,
@@ -178,7 +178,7 @@ describe("automatic backup coordinator", () => {
         disconnect: async () => undefined,
       },
       capture: async () => ({
-        generation: 1,
+        generation: 0,
         sourceDigest: "a".repeat(64),
         bytes: new Uint8Array([7]),
       }),
@@ -231,13 +231,57 @@ describe("automatic backup coordinator", () => {
     await expect(coordinator.connect()).resolves.toEqual({ status: "needs_bootstrap" });
     await expect(coordinator.backup()).resolves.toEqual({
       status: "backed_up",
-      generation: 1,
+      generation: 0,
     });
     expect(events).toEqual([
       "quarantine", "checking", "quarantine", "idle", "persist",
       "snapshot:snapshot-server-id", "manifest:manifest-server-id",
       "activate", "acknowledge",
     ]);
+  });
+
+  it("forces an equal-generation first snapshot after reconnect", async () => {
+    let state: any = activeState({
+      authorityState: "quarantine",
+      writerEpoch: 0,
+      mutationGeneration: 5,
+      backedUpGeneration: 5,
+      manifestId: null,
+      manifestEtag: null,
+    });
+    let manifest: { fileId: string; bytes: Uint8Array; etag: string } | null = null;
+    const ids = ["snapshot", "manifest"];
+    const coordinator = createAutomaticBackupCoordinator({
+      isWorkoutActive: () => false,
+      capture: async () => ({ generation: 5, sourceDigest: "a".repeat(64), bytes: new Uint8Array([1]) }),
+      state: {
+        read: async () => state,
+        persistAttempt: async () => undefined,
+        acknowledgeReceipt: async () => true,
+        beginQuarantine: async (value) => { state = { ...state, ...value, authorityState: "quarantine" }; },
+        activateWriter: async (value) => { state = { ...state, ...value, authorityState: "active" }; return true; },
+      },
+      drive: {
+        allocateFileId: async () => ids.shift()!,
+        createSnapshot: async () => "snapshot",
+        createManifest: async (fileId, value) => {
+          manifest = { fileId, bytes: value, etag: "created-etag" };
+          return { fileId, etag: "created-etag" };
+        },
+        download: async () => new Uint8Array([1]),
+        updateManifest: async () => "etag",
+        readManifest: async () => manifest,
+        discover: async () => [],
+      },
+      validate: () => true,
+      validateManifest: () => ({ writerEpoch: 1 }),
+      buildManifest: () => new Uint8Array([1]),
+      nowMs: () => 1,
+      candidateId: () => "candidate",
+    });
+
+    await expect(coordinator.checkAgain()).resolves.toEqual({ status: "needs_bootstrap" });
+    await expect(coordinator.backup()).resolves.toEqual({ status: "backed_up", generation: 5 });
   });
 
   it("fails closed when bootstrap capabilities or activation are incomplete", async () => {
@@ -676,7 +720,7 @@ describe("automatic backup coordinator", () => {
   });
 
   it("promotes the first post-deletion snapshot through the retained tombstone identity", async () => {
-    let state: any = activeState({ authorityState: "deleted", deletionProgress: "complete", manifestEtag: "tombstone-etag" });
+    let state: any = activeState({ authorityState: "deleted", deletionProgress: "complete", manifestEtag: "tombstone-etag", backedUpGeneration: 4 });
     let manifest: Uint8Array<ArrayBufferLike> = new TextEncoder().encode(JSON.stringify({ kind: "deleted", successorWriterEpoch: 3, deletedAtMs: 1 }));
     let etag = "tombstone-etag";
     const coordinator = createAutomaticBackupCoordinator({

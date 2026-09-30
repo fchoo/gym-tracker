@@ -229,7 +229,7 @@ export function createAutomaticBackupCoordinator(input: Readonly<{
     if (state.permissionId === null || (!bootstrapping && state.writerEpoch < 1)
       || state.authorityState === "stale_writer"
       || (state.authorityState === "quarantine" && !bootstrapping)
-      || state.mutationGeneration <= state.backedUpGeneration) {
+      || (!bootstrapping && state.mutationGeneration <= state.backedUpGeneration)) {
       return Object.freeze({ status: "deferred" as const });
     }
     if (bootstrapping && (input.state.activateWriter === undefined
@@ -264,7 +264,11 @@ export function createAutomaticBackupCoordinator(input: Readonly<{
     } catch {
       return deferred("snapshot_capture");
     }
-    if (captured.generation > state.mutationGeneration || captured.generation <= state.backedUpGeneration) return deferred("snapshot_generation");
+    if (captured.generation > state.mutationGeneration
+      || captured.generation < state.backedUpGeneration
+      || (!bootstrapping && captured.generation === state.backedUpGeneration)) {
+      return deferred("snapshot_generation");
+    }
     let candidateId: string;
     let manifestId: string;
     try {
