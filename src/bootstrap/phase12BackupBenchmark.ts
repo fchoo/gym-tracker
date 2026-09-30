@@ -53,13 +53,16 @@ const DATABASE_NAME = "gym-tracker-phase12-benchmark.db";
 const OWNER_NAMESPACE = "f".repeat(32);
 const ROWS_PER_TABLE = BACKUP_LIMITS.maxRowsPerTable;
 const SQLITE_APP_SETTING_ROWS = PHASE12_MAX_SNAPSHOT_ROWS
-  - 2
+  - 5
   - (ROWS_PER_TABLE * 3);
 
 export const PHASE12_SQLITE_FIXTURE_ROW_COUNTS = Object.freeze({
   portable_owner_identity: 1,
   app_settings: SQLITE_APP_SETTING_ROWS,
   workout_sessions: 1,
+  session_exercises: 1,
+  exercises: 1,
+  exercise_library_entries: 1,
   workout_session_exercise_edit_receipts: ROWS_PER_TABLE,
   workout_session_exercise_reorder_receipts: ROWS_PER_TABLE,
   history_audit_events: ROWS_PER_TABLE,
@@ -207,6 +210,22 @@ async function seedMaximumHistory(kernel: SqliteKernel): Promise<void> {
   }
   await kernel.write(async (transaction) => {
     await transaction.execute(
+      `INSERT INTO exercises
+        (id, content_pack_id, origin, source_namespace, upstream_id, name,
+         metric_profile, metric_contract_version, exercise_metric_generation,
+         equipment, default_rest_seconds, revision)
+       VALUES ('benchmark-exercise', NULL, 'custom', NULL, NULL, 'Benchmark',
+               'load_reps', 1, 1, 'Unspecified', 90, 1)`,
+    );
+    await transaction.execute(
+      `INSERT INTO exercise_library_entries
+        (exercise_id, origin, canonical_name, exercise_type, movement_class,
+         metric_profile, metric_contract_version, exercise_metric_generation,
+         availability, revision)
+       VALUES ('benchmark-exercise', 'custom', 'Benchmark', 'strength', 'compound',
+               'load_reps', 1, 1, 'available', 1)`,
+    );
+    await transaction.execute(
       `INSERT INTO workout_sessions
         (id, plan_id, plan_day_id, source, status, local_date, timezone,
          started_at_ms, completed_at_ms, revision,
@@ -215,6 +234,15 @@ async function seedMaximumHistory(kernel: SqliteKernel): Promise<void> {
        VALUES ('s', NULL, NULL, 'manual', 'completed', '1970-01-01', 'UTC',
                0, 0, 0, 0, 0, ?, 0)`,
       [portableId(1)],
+    );
+    await transaction.execute(
+      `INSERT INTO session_exercises
+        (id, session_id, source_plan_day_exercise_id, exercise_id, ordinal, origin,
+         display_ordinal, exercise_name, metric_profile, metric_contract_version,
+         exercise_metric_generation, advanced_timing_default_json,
+         default_rest_seconds, target_revision, status, revision)
+       VALUES ('e', 's', NULL, 'benchmark-exercise', 0, 'manual', 0, 'Benchmark',
+               'load_reps', 1, 1, '{"version":1,"mode":"off"}', 90, 1, 'completed', 1)`,
     );
     await transaction.execute(
       `WITH RECURSIVE sequence(value) AS (
