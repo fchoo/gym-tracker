@@ -14,6 +14,7 @@ import {
 import {
   PHASE12_BENCHMARK_RESULT_MARKER,
   PHASE12_BENCHMARK_START_MARKER,
+  phase12BenchmarkDatabaseName,
   PHASE12_SQLITE_FIXTURE_ROW_COUNTS,
   buildPhase12SyntheticSnapshot,
   measureReaderSnapshotWithConcurrentMutation,
@@ -23,6 +24,11 @@ import {
 } from "./phase12BackupBenchmark";
 
 describe("Phase 12 native backup benchmark", () => {
+  it("uses a unique bounded database identity for every evidence run", () => {
+    expect(phase12BenchmarkDatabaseName("00000000-0000-4000-8000-000000000001"))
+      .toBe("gym-tracker-phase12-benchmark-00000000-0000-4000-8000-000000000001.db");
+    expect(() => phase12BenchmarkDatabaseName("../../shared.db")).toThrow("phase12_benchmark_database_identity_invalid");
+  });
   it("fails closed outside the exact development-test Phase 12 benchmark route", () => {
     expect(phase12BenchmarkStartupAction({
       enabled: false,

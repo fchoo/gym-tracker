@@ -49,7 +49,12 @@ export const PHASE12_DIRTY_SAMPLES = 100;
 export const PHASE12_WRITER_SAMPLES = 20;
 export const PHASE12_MERGE_SAMPLES = 10;
 
-const DATABASE_NAME = "gym-tracker-phase12-benchmark.db";
+const DATABASE_PREFIX = "gym-tracker-phase12-benchmark";
+
+export function phase12BenchmarkDatabaseName(uuid: string): string {
+  if (!/^[a-f0-9-]{36}$/u.test(uuid)) throw new Error("phase12_benchmark_database_identity_invalid");
+  return `${DATABASE_PREFIX}-${uuid}.db`;
+}
 const OWNER_NAMESPACE = "f".repeat(32);
 const ROWS_PER_TABLE = BACKUP_LIMITS.maxRowsPerTable;
 const SQLITE_APP_SETTING_ROWS = PHASE12_MAX_SNAPSHOT_ROWS
@@ -351,10 +356,11 @@ export async function measureReaderSnapshotWithConcurrentMutation(input: Readonl
 
 export async function performPhase12BackupBenchmark(): Promise<Phase12BackupBenchmarkResult> {
   const startedAt = new Date().toISOString();
-  await deleteDatabaseAsync(DATABASE_NAME).catch(() => undefined);
-  const kernel = await openSqliteKernel(DATABASE_NAME);
+  const { randomUUID } = require("expo-crypto") as typeof import("expo-crypto");
+  const databaseName = phase12BenchmarkDatabaseName(randomUUID());
+  const kernel = await openSqliteKernel(databaseName);
   try {
-    await migrateBenchmarkDatabase("phase12", DATABASE_NAME, kernel);
+    await migrateBenchmarkDatabase("phase12", databaseName, kernel);
     await seedMaximumHistory(kernel);
     const writerOccupancyMs: number[] = [];
     const captureTotalMs: number[] = [];
@@ -483,5 +489,6 @@ export async function performPhase12BackupBenchmark(): Promise<Phase12BackupBenc
     };
   } finally {
     await kernel.close().catch(() => undefined);
+    await deleteDatabaseAsync(databaseName).catch(() => undefined);
   }
 }
