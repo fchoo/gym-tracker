@@ -922,6 +922,7 @@ function exerciseAggregate(
   snapshot: PortableMergePlanSnapshot,
   local: PortableMergePlanSnapshot,
   operation: Extract<PortableMergeOperation, { aggregateClass: "custom_exercise" }>,
+  numericAllocators?: Map<string, { occupied: Set<number>; nextId: number }>,
 ): PortableMergeAggregate {
   const archiveId = operation.archiveId;
   const localId = operation.localId;
@@ -942,21 +943,33 @@ function exerciseAggregate(
   }
   for (const table of ["exercise_aliases", "exercise_search_terms"] as const) {
     const selected = rowsForExercise(table);
-    const occupied = new Set(rowsFor(local, table).map((row) => {
-      const id = row.id;
-      if (typeof id !== "number" || !Number.isSafeInteger(id)) invalid();
-      return id;
-    }));
-    let nextId = Math.max(0, ...occupied) + 1;
+    let allocator = numericAllocators?.get(table);
+    if (allocator === undefined) {
+      const localIds = rowsFor(local, table).map((row) => {
+        const id = row.id;
+        if (typeof id !== "number" || !Number.isSafeInteger(id)) invalid();
+        return id;
+      });
+      const archiveIds = rowsFor(snapshot, table).map((row) => {
+        const id = row.id;
+        if (typeof id !== "number" || !Number.isSafeInteger(id)) invalid();
+        return id;
+      });
+      allocator = { occupied: new Set(localIds), nextId: Math.max(0, ...localIds, ...archiveIds) + 1 };
+      numericAllocators?.set(table, allocator);
+    }
     const rows = selected.map((row) => {
       const id = row.id;
       if (typeof id !== "number" || !Number.isSafeInteger(id)) invalid();
-      if (!occupied.has(id)) {
-        occupied.add(id);
+      if (!allocator!.occupied.has(id)) {
+        allocator!.occupied.add(id);
         return row;
       }
-      occupied.add(nextId);
-      return Object.freeze({ ...row, id: nextId });
+      while (allocator!.occupied.has(allocator!.nextId)) allocator!.nextId += 1;
+      const allocated = allocator!.nextId;
+      allocator!.occupied.add(allocated);
+      allocator!.nextId += 1;
+      return Object.freeze({ ...row, id: allocated });
     });
     if (rows.length > 0) tables[table] = Object.freeze(rows);
   }
@@ -1507,6 +1520,7 @@ export async function buildPortableMergePlan(input: Readonly<{
       sessionOperations.map((operation) => [operation.archiveId, operation.localId] as const),
     );
     const occupiedIds = new Map<string, Set<string>>();
+    const numericChildAllocators = new Map<string, { occupied: Set<number>; nextId: number }>();
     const occupiedIdsFor = (table: string, keyColumn = "id"): Set<string> => {
       const key = `${table}:${keyColumn}`;
       const existing = occupiedIds.get(key);
@@ -1532,7 +1546,7 @@ export async function buildPortableMergePlan(input: Readonly<{
       }
       if (operation.aggregateClass === "custom_exercise"
         && (operation.kind === "insert" || operation.kind === "keep_both")) {
-        return [exerciseAggregate(input.archive, input.local, operation)];
+        return [exerciseAggregate(input.archive, input.local, operation, numericChildAllocators)];
       }
       if (operation.aggregateClass === "owned_plan"
         && (operation.kind === "insert" || operation.kind === "keep_both")) {

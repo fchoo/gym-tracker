@@ -772,6 +772,53 @@ describe("portable merge plan", () => {
       .not.toBe("event-1");
   });
 
+  it("allocates unique custom-exercise child ids across every aggregate collision", async () => {
+    const archive = snapshot({ id: "archive-session", marker: "archive", modifiedAtMs: 20 }, {
+      exercises: [
+        { id: "archive-a", origin: "custom", portable_id: "a".repeat(32) },
+        { id: "archive-b", origin: "custom", portable_id: "b".repeat(32) },
+      ],
+      exercise_aliases: [
+        { id: 1, exercise_id: "archive-a", ordinal: 0 },
+        { id: 2, exercise_id: "archive-a", ordinal: 1 },
+        { id: 3, exercise_id: "archive-b", ordinal: 0 },
+        { id: 4, exercise_id: "archive-b", ordinal: 1 },
+      ],
+      exercise_search_terms: [
+        { id: 1, exercise_id: "archive-a", kind: "canonical", ordinal: 0 },
+        { id: 2, exercise_id: "archive-a", kind: "alias", ordinal: 1 },
+        { id: 3, exercise_id: "archive-b", kind: "canonical", ordinal: 0 },
+        { id: 4, exercise_id: "archive-b", kind: "alias", ordinal: 1 },
+      ],
+    });
+    const local = snapshot({ id: "local-session", marker: "local", modifiedAtMs: 10 }, {
+      exercises: [
+        { id: "local-a", origin: "custom", portable_id: "c".repeat(32) },
+        { id: "local-b", origin: "custom", portable_id: "d".repeat(32) },
+      ],
+      exercise_aliases: [
+        { id: 1, exercise_id: "local-a", ordinal: 0 },
+        { id: 2, exercise_id: "local-b", ordinal: 0 },
+        { id: 3, exercise_id: "local-a", ordinal: 1 },
+        { id: 4, exercise_id: "local-b", ordinal: 1 },
+      ],
+      exercise_search_terms: [
+        { id: 1, exercise_id: "local-a", kind: "canonical", ordinal: 0 },
+        { id: 2, exercise_id: "local-b", kind: "canonical", ordinal: 0 },
+        { id: 3, exercise_id: "local-a", kind: "alias", ordinal: 1 },
+        { id: 4, exercise_id: "local-b", kind: "alias", ordinal: 1 },
+      ],
+    });
+
+    const plan = await buildPortableMergePlan({ archive, local, payloadDigest });
+    const aliases = plan.aggregates.flatMap((aggregate) => aggregate.tables.exercise_aliases ?? []);
+    const terms = plan.aggregates.flatMap((aggregate) => aggregate.tables.exercise_search_terms ?? []);
+
+    expect(aliases.map((row) => row.id)).toEqual([5, 6, 7, 8]);
+    expect(new Set(aliases.map((row) => row.id)).size).toBe(4);
+    expect(terms.map((row) => row.id)).toEqual([5, 6, 7, 8]);
+  });
+
   it("keeps distinct owned plan identities through a physical ID collision", async () => {
     const archive = snapshot(
       { id: "archive-session", marker: "archive", modifiedAtMs: 20 },
