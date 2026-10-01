@@ -321,7 +321,7 @@ describe("restore preflight", () => {
     await expect(commands.preflightSecureRestore({ password: "owner-password" })).resolves.toEqual(expect.objectContaining({ outcome: "ready" }));
   });
 
-  it.each([14, 27])("rejects unsupported logical producer schema version %i", async (schemaVersion) => {
+  it.each([14, 28])("rejects unsupported logical producer schema version %i", async (schemaVersion) => {
     const commands = createRestoreCommands({
       crypto: cryptoPort(), files: { readSelectedArchiveAtMost: () => archiveFor(snapshot({ version: 1, schemaVersion })) },
       kdf, schema, candidateProbe, store: createRestorePreflightStore({ tokenFactory: () => "unsupported" }),

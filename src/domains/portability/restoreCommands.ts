@@ -144,9 +144,9 @@ function validPassword(value: string): boolean {
   }
 }
 
-// v23-v26 add automatic-backup bookkeeping only; archives remain the Phase 11
-// portable graph, so archived schema-22 and current schema-26 snapshots restore.
-export const LOGICAL_BACKUP_SUPPORTED_SCHEMA_VERSIONS = Object.freeze([15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26] as const);
+// v23-v27 add bookkeeping or trigger-only schema changes; archives remain the
+// Phase 11 portable graph, so archived schema-22 and current snapshots restore.
+export const LOGICAL_BACKUP_SUPPORTED_SCHEMA_VERSIONS = Object.freeze([15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27] as const);
 
 type LogicalReference = Readonly<{
   childTable: string;
