@@ -86,7 +86,10 @@ export async function createExpoGoogleDriveBackupContractAdapter(
   const base = await createExpoMigrationsEffectsContractAdapter(`google-drive-backup-${runId}`);
   const verifyRepositoryScenario = async (
     caseId: GoogleDriveBackupContractCaseId,
-    boundary: "quarantine" | "receipt" | "handover" | "deletion",
+    verify: (
+      repository: ReturnType<typeof createAutomaticBackupStateRepository>,
+      fence: Readonly<{ environment: "development-test"; permissionId: string; connectionGeneration: number }>,
+    ) => Promise<number>,
   ): Promise<number> => {
     const runtime = await base.createRuntime(caseId);
     try {
@@ -99,64 +102,48 @@ export async function createExpoGoogleDriveBackupContractAdapter(
       const repository = createAutomaticBackupStateRepository(runtime.kernel);
       const fence = { environment: "development-test" as const, permissionId: "permission", connectionGeneration: 1 };
       await repository.beginQuarantine(fence);
-      if (boundary === "receipt") {
-        await repository.persistAttempt({
-          ...fence, writerEpoch: 1, capturedGeneration: 0, sourceDigest: "a".repeat(64),
-          snapshotId: `snapshot-${caseId}`, manifestId: "manifest", manifestEtag: "etag",
-          candidateId: `candidate-${caseId}`, nowMs: 1,
-        });
-        const pending = await repository.readPendingUpload({ ...fence, writerEpoch: 1 });
-        if (pending?.candidateId !== `candidate-${caseId}`) throw new Error(`google_drive_native_${caseId}_receipt_missing`);
-        return 2;
-      }
-      if (boundary === "handover") {
-        await repository.persistPendingHandover({
-          attemptId: `attempt-${caseId}`, ...fence, manifestId: "manifest", manifestEtag: "etag",
-          remoteWriterEpoch: 2, snapshotId: "snapshot", sourceDigest: "b".repeat(64), nowMs: 1,
-        });
-        if ((await repository.readPendingHandover())?.attemptId !== `attempt-${caseId}`) {
-          throw new Error(`google_drive_native_${caseId}_handover_missing`);
-        }
-        return 2;
-      }
-      if (boundary === "deletion") {
-        if (!await repository.beginDeletionSweep({
-          ...fence, manifestId: "manifest", manifestEtag: "tombstone-etag", successorWriterEpoch: 2,
-        })) throw new Error(`google_drive_native_${caseId}_deletion_missing`);
-        if ((await repository.read()).deletionProgress !== "sweep_pending") throw new Error(`google_drive_native_${caseId}_deletion_missing`);
-        return 2;
-      }
-      const persisted = await repository.read();
-      if (persisted.authorityState !== "quarantine" || persisted.permissionId !== "permission") {
-        throw new Error(`google_drive_native_${caseId}_quarantine_missing`);
-      }
-      return 2;
+      return await verify(repository, fence);
     } finally {
       await runtime.close();
     }
   };
-  const scenario = (caseId: GoogleDriveBackupContractCaseId, boundary: "quarantine" | "receipt" | "handover" | "deletion") =>
-    () => verifyRepositoryScenario(caseId, boundary);
+  const receipt = (caseId: GoogleDriveBackupContractCaseId) => ({
+    environment: "development-test" as const, permissionId: "permission", connectionGeneration: 1,
+    writerEpoch: 1, capturedGeneration: 0, sourceDigest: "a".repeat(64),
+    snapshotId: `snapshot-${caseId}`, manifestId: "manifest", manifestEtag: "etag",
+    candidateId: `candidate-${caseId}`, nowMs: 1,
+  });
+  const handover = (caseId: GoogleDriveBackupContractCaseId) => ({
+    attemptId: `attempt-${caseId}`, environment: "development-test" as const,
+    permissionId: "permission", connectionGeneration: 1, manifestId: "manifest",
+    manifestEtag: "etag", remoteWriterEpoch: 2, snapshotId: "snapshot",
+    sourceDigest: "b".repeat(64), nowMs: 1,
+  });
   return {
     scenarios: Object.freeze({
-      "generation-receipt-fence": scenario("generation-receipt-fence", "receipt"),
-      "quarantine-does-not-publish": scenario("quarantine-does-not-publish", "quarantine"),
-      "multipart-five-mib-boundary": scenario("multipart-five-mib-boundary", "receipt"),
-      "resumable-restart-cancel-fence": scenario("resumable-restart-cancel-fence", "receipt"),
-      "crash-quarantine-persist": scenario("crash-quarantine-persist", "quarantine"),
-      "crash-candidate-upload": scenario("crash-candidate-upload", "receipt"),
-      "crash-round-trip-validation": scenario("crash-round-trip-validation", "receipt"),
-      "crash-manifest-promotion": scenario("crash-manifest-promotion", "receipt"),
-      "crash-manifest-reread": scenario("crash-manifest-reread", "receipt"),
-      "crash-local-acknowledgement": scenario("crash-local-acknowledgement", "receipt"),
-      "crash-direct-restore-commit": scenario("crash-direct-restore-commit", "handover"),
-      "crash-merge-adoption-commit": scenario("crash-merge-adoption-commit", "handover"),
-      "crash-pending-claim": scenario("crash-pending-claim", "handover"),
-      "crash-writer-epoch-transfer": scenario("crash-writer-epoch-transfer", "handover"),
-      "crash-cleanup-selection": scenario("crash-cleanup-selection", "receipt"),
-      "recovery-latest-previous-fallback": scenario("recovery-latest-previous-fallback", "handover"),
-      "retention-orphan-grace-and-stale-cleanup": scenario("retention-orphan-grace-and-stale-cleanup", "receipt"),
-      "deletion-tombstone-and-late-upload-sweep": scenario("deletion-tombstone-and-late-upload-sweep", "deletion"),
+      "generation-receipt-fence": () => verifyRepositoryScenario("generation-receipt-fence", async (repository, fence) => {
+        await repository.activateWriter({ ...fence, manifestId: "manifest", manifestEtag: "etag", writerEpoch: 1 });
+        const value = receipt("generation-receipt-fence"); await repository.persistAttempt(value);
+        if (!await repository.acknowledgeReceipt({ ...value, manifestEtag: "accepted" })) throw new Error("native_generation_receipt_rejected");
+        return 3;
+      }),
+      "quarantine-does-not-publish": () => verifyRepositoryScenario("quarantine-does-not-publish", async (repository) => (await repository.read()).authorityState === "quarantine" ? 1 : 0),
+      "multipart-five-mib-boundary": () => verifyRepositoryScenario("multipart-five-mib-boundary", async (repository, fence) => { await repository.persistAttempt(receipt("multipart-five-mib-boundary")); return (await repository.readPendingUpload({ ...fence, writerEpoch: 1 })) === null ? 0 : 2; }),
+      "resumable-restart-cancel-fence": () => verifyRepositoryScenario("resumable-restart-cancel-fence", async (repository, fence) => { const value = receipt("resumable-restart-cancel-fence"); await repository.persistAttempt(value); await repository.updateResumableUpload({ candidateId: value.candidateId, location: "https://www.googleapis.com/upload/session", uploadedBytes: 1024 }); return (await repository.readPendingUpload({ ...fence, writerEpoch: 1 }))?.resumableUploadedBytes === 1024 ? 3 : 0; }),
+      "crash-quarantine-persist": () => verifyRepositoryScenario("crash-quarantine-persist", async (repository) => (await repository.read()).permissionId === "permission" ? 1 : 0),
+      "crash-candidate-upload": () => verifyRepositoryScenario("crash-candidate-upload", async (repository, fence) => { const value = receipt("crash-candidate-upload"); await repository.persistAttempt(value); return (await repository.readPendingUpload({ ...fence, writerEpoch: 1 }))?.candidateId === value.candidateId ? 2 : 0; }),
+      "crash-round-trip-validation": () => verifyRepositoryScenario("crash-round-trip-validation", async (repository, fence) => { const value = receipt("crash-round-trip-validation"); await repository.persistAttempt(value); const pending = await repository.readPendingUpload({ ...fence, writerEpoch: 1 }); return pending?.sourceDigest === value.sourceDigest ? 2 : 0; }),
+      "crash-manifest-promotion": () => verifyRepositoryScenario("crash-manifest-promotion", async (repository, fence) => await repository.activateWriter({ ...fence, manifestId: "manifest", manifestEtag: "promoted", writerEpoch: 1 }) ? 1 : 0),
+      "crash-manifest-reread": () => verifyRepositoryScenario("crash-manifest-reread", async (repository, fence) => { await repository.activateWriter({ ...fence, manifestId: "manifest", manifestEtag: "promoted", writerEpoch: 1 }); return (await repository.read()).manifestEtag === "promoted" ? 2 : 0; }),
+      "crash-local-acknowledgement": () => verifyRepositoryScenario("crash-local-acknowledgement", async (repository, fence) => { await repository.activateWriter({ ...fence, manifestId: "manifest", manifestEtag: "etag", writerEpoch: 1 }); const value = receipt("crash-local-acknowledgement"); await repository.persistAttempt(value); return await repository.acknowledgeReceipt({ ...value, manifestEtag: "accepted" }) ? 3 : 0; }),
+      "crash-direct-restore-commit": () => verifyRepositoryScenario("crash-direct-restore-commit", async (repository) => { const value = handover("crash-direct-restore-commit"); await repository.persistPendingHandover(value); return (await repository.readPendingHandover())?.attemptId === value.attemptId ? 2 : 0; }),
+      "crash-merge-adoption-commit": () => verifyRepositoryScenario("crash-merge-adoption-commit", async (repository) => { const value = handover("crash-merge-adoption-commit"); await repository.persistPendingHandover(value); return (await repository.read()).statusCode === "finishing" ? 2 : 0; }),
+      "crash-pending-claim": () => verifyRepositoryScenario("crash-pending-claim", async (repository) => { const value = handover("crash-pending-claim"); await repository.persistPendingHandover(value); return (await repository.readPendingHandover()) === null ? 0 : 2; }),
+      "crash-writer-epoch-transfer": () => verifyRepositoryScenario("crash-writer-epoch-transfer", async (repository, fence) => { await repository.activateWriter({ ...fence, manifestId: "manifest", manifestEtag: "etag", writerEpoch: 2 }); return (await repository.read()).writerEpoch === 2 ? 2 : 0; }),
+      "crash-cleanup-selection": () => verifyRepositoryScenario("crash-cleanup-selection", async (repository, fence) => { const value = receipt("crash-cleanup-selection"); await repository.persistAttempt(value); await repository.acquireLease({ leaseId: "cleanup", nowMs: 1, expiresAtMs: 2 }); return await repository.recoverExpiredLease(2) ? 3 : 0; }),
+      "recovery-latest-previous-fallback": () => verifyRepositoryScenario("recovery-latest-previous-fallback", async (repository) => { const value = handover("recovery-latest-previous-fallback"); await repository.persistPendingHandover(value); return (await repository.readPendingHandover())?.snapshotId === "snapshot" ? 2 : 0; }),
+      "retention-orphan-grace-and-stale-cleanup": () => verifyRepositoryScenario("retention-orphan-grace-and-stale-cleanup", async (repository, fence) => { await repository.activateWriter({ ...fence, manifestId: "manifest", manifestEtag: "etag", writerEpoch: 1 }); return await repository.markStaleWriter(1) ? 2 : 0; }),
+      "deletion-tombstone-and-late-upload-sweep": () => verifyRepositoryScenario("deletion-tombstone-and-late-upload-sweep", async (repository, fence) => { if (!await repository.beginDeletionSweep({ ...fence, manifestId: "manifest", manifestEtag: "tombstone", successorWriterEpoch: 2 })) return 0; if (!await repository.completeDeletionSweep(fence)) return 0; return (await repository.read()).deletionProgress === "complete" ? 3 : 0; }),
     }),
     ...(base.cleanup === undefined ? {} : { cleanup: base.cleanup }),
   };
