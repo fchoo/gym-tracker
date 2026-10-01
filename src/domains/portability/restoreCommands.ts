@@ -176,6 +176,36 @@ function exactKeys(value: Record<string, unknown>, expected: readonly string[]):
 
 function tupleKey(values: readonly unknown[]): string { return JSON.stringify(values); }
 
+const OFF_ADVANCED_TIMING_JSON = '{"version":1,"mode":"off"}';
+
+function additiveColumnDefaults(
+  table: string,
+  schemaVersion: number,
+): Readonly<Record<string, string | number | null>> {
+  const defaults: Record<string, string | number | null> = {};
+  if (schemaVersion < 21) {
+    if (["plan_day_exercises", "owned_plan_day_exercises", "session_exercises"].includes(table)) {
+      defaults.advanced_timing_default_json = OFF_ADVANCED_TIMING_JSON;
+    }
+    if (["plan_warmup_sets", "plan_working_set_targets", "owned_plan_warmup_sets", "owned_plan_working_set_targets", "session_sets"].includes(table)) {
+      defaults.advanced_timing_override_json = null;
+    }
+    if (table === "session_sets") {
+      defaults.advanced_timing_resolved_json = OFF_ADVANCED_TIMING_JSON;
+    }
+  }
+  if (schemaVersion < 22) {
+    if (table === "exercises" || table === "plans") {
+      defaults.portable_id = null;
+    }
+    if (table === "workout_sessions") {
+      defaults.portable_id = null;
+      defaults.merge_modified_at_ms = null;
+    }
+  }
+  return Object.freeze(defaults);
+}
+
 function validateDomainInvariants(snapshot: LogicalBackupSnapshot): void {
   const enumValues: ReadonlyArray<readonly [string, string, readonly string[]]> = [["exercises", "origin", ["custom", "copied"]], ["plans", "origin", ["custom", "copied"]], ["workout_sessions", "status", ["in_progress", "completed", "partial", "discarded", "voided", "manual_visit", "zero_sets"]]];
   for (const [table, column, allowed] of enumValues) for (const row of snapshot.tables[table]!) if (row[column] !== undefined && (typeof row[column] !== "string" || !allowed.includes(row[column] as string))) invalid();
@@ -201,7 +231,11 @@ async function validateRows(
   snapshot: LogicalBackupSnapshot,
   schema: RestoreSchemaPort,
   retained: RestoreRetainedReferencePort | undefined,
-): Promise<Readonly<{ internal: number; retained: number }>> {
+): Promise<Readonly<{
+  internal: number;
+  retained: number;
+  snapshot: LogicalBackupSnapshot;
+}>> {
   if (!(LOGICAL_BACKUP_SUPPORTED_SCHEMA_VERSIONS as readonly number[]).includes(snapshot.schemaVersion)) throw new RestoreCommandError("restore_archive_unsupported_version");
   const sourceTables = logicalBackupTablesForVersion(
     snapshot.version,
@@ -211,39 +245,49 @@ async function validateRows(
   if (!exactKeys(snapshot.manifest.rowCounts, sourceTables)) invalid();
   if (snapshot.manifest.totalRows !== Object.values(snapshot.manifest.rowCounts).reduce((sum, count) => sum + count, 0)) invalid();
 
+  const materializedTables: Record<string, readonly LogicalBackupSnapshot["tables"][string][number][]> = {};
   for (const table of sourceTables) {
     const rows = snapshot.tables[table]!;
     if (snapshot.manifest.rowCounts[table] !== rows.length) invalid();
     const columns = await schema.columnsFor(table);
     if (columns.length === 0 || new Set(columns.map(({ name }) => name)).size !== columns.length) invalid();
     const expectedColumns = columns.map(({ name }) => name);
+    const defaults = additiveColumnDefaults(table, snapshot.schemaVersion);
+    const producerColumns = expectedColumns.filter((name) => !(name in defaults));
     const identities = new Set<string>();
-    for (const row of rows) {
+    const materializedRows = rows.map((row) => {
       if (row === null || Array.isArray(row) || typeof row !== "object") invalid();
-      if (!exactKeys(row, expectedColumns)) invalid();
+      if (!exactKeys(row, producerColumns)) invalid();
+      const materialized = Object.freeze({ ...row, ...defaults });
       for (const column of columns) {
-        const value = row[column.name];
+        const value = materialized[column.name];
         if (value === null && !column.notNull) continue;
         if (column.sqliteType === "TEXT" && typeof value === "string") continue;
         if (column.sqliteType === "INTEGER" && typeof value === "number" && Number.isSafeInteger(value)) continue;
         invalid();
       }
       const definition = LOGICAL_BACKUP_TABLE_DEFINITIONS[table as keyof typeof LOGICAL_BACKUP_TABLE_DEFINITIONS];
-      const identity = definition.primaryKey.map((column) => row[column]);
+      const identity = definition.primaryKey.map((column) => materialized[column]);
       if (identity.some((value) => (typeof value !== "string" || value.trim().length === 0) && (typeof value !== "number" || !Number.isSafeInteger(value)))) invalid();
       const key = JSON.stringify(identity);
       if (identities.has(key)) invalid();
       identities.add(key);
-    }
+      return materialized;
+    });
+    materializedTables[table] = Object.freeze(materializedRows);
   }
 
-  validateDomainInvariants(snapshot);
+  const materializedSnapshot = Object.freeze({
+    ...snapshot,
+    tables: Object.freeze(materializedTables),
+  });
+  validateDomainInvariants(materializedSnapshot);
   let internal = 0;
   let retainedCount = 0;
   for (const definition of LOGICAL_BACKUP_REFERENCE_DEFINITIONS) {
-    const childRows = snapshot.tables[definition.childTable];
+    const childRows = materializedSnapshot.tables[definition.childTable];
     if (childRows === undefined || childRows.length === 0) continue;
-    const parentRows = new Set((snapshot.tables[definition.parentTable] ?? []).map((row) => tupleKey(definition.parentColumns.map((column) => row[column]))));
+    const parentRows = new Set((materializedSnapshot.tables[definition.parentTable] ?? []).map((row) => tupleKey(definition.parentColumns.map((column) => row[column]))));
     for (const row of childRows) {
       const values = definition.childColumns.map((column) => row[column]);
       if (values.every((value) => value === null)) continue;
@@ -253,7 +297,7 @@ async function validateRows(
       invalid();
     }
   }
-  return { internal, retained: retainedCount };
+  return { internal, retained: retainedCount, snapshot: materializedSnapshot };
 }
 
 /**
@@ -347,10 +391,11 @@ export function createRestoreCommands(dependencies: RestoreCommandDependencies):
         if (archive === null) return { outcome: "cancelled" } as const;
         if (!(archive instanceof Uint8Array) || archive.byteLength === 0) invalid();
         if (archive.byteLength > BACKUP_LIMITS.maxArchiveBytes) throw new RestoreCommandError("restore_archive_limit_exceeded");
-        const snapshot = await codec.open({ archive, password });
-        const referenceCounts = await validateRows(snapshot, dependencies.schema, dependencies.retainedReferences);
+        const decodedSnapshot = await codec.open({ archive, password });
+        const validation = await validateRows(decodedSnapshot, dependencies.schema, dependencies.retainedReferences);
+        const snapshot = validation.snapshot;
         await dependencies.candidateProbe.validateCandidate(snapshot);
-        const preview = await createPreview(snapshot, dependencies.referenceAvailability, referenceCounts);
+        const preview = await createPreview(snapshot, dependencies.referenceAvailability, validation);
         const token = dependencies.store.issue({ snapshot, preview, digest: preflightDigest(snapshot) });
         return Object.freeze({ outcome: "ready" as const, token, preview });
       } catch (error) {

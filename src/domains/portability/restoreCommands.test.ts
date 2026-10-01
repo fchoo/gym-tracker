@@ -210,21 +210,68 @@ describe("restore preflight", () => {
   });
 
   it("accepts a frozen pre-Phase-10 v1 archive without the timing table", async () => {
+    const fixture = prePhase10Schema20V1 as LogicalBackupSnapshot;
+    const additiveDefaults: Readonly<Record<string, Readonly<Record<string, string | null>>>> = {
+      exercises: { portable_id: null },
+      plans: { portable_id: null },
+      plan_day_exercises: { advanced_timing_default_json: '{"version":1,"mode":"off"}' },
+      plan_warmup_sets: { advanced_timing_override_json: null },
+      plan_working_set_targets: { advanced_timing_override_json: null },
+      session_exercises: { advanced_timing_default_json: '{"version":1,"mode":"off"}' },
+      session_sets: {
+        advanced_timing_override_json: null,
+        advanced_timing_resolved_json: '{"version":1,"mode":"off"}',
+      },
+      workout_sessions: { portable_id: null, merge_modified_at_ms: null },
+    };
+    const frozenSchema = {
+      async columnsFor(table: string) {
+        const first = fixture.tables[table]?.[0];
+        if (first === undefined) return schema.columnsFor(table);
+        const current = { ...first, ...(additiveDefaults[table] ?? {}) };
+        return Object.entries(current).map(([name, value]) => ({
+          name,
+          sqliteType: typeof value === "number" ? "INTEGER" as const : "TEXT" as const,
+          notNull: value !== null,
+        }));
+      },
+    };
+    const validateCandidate = jest.fn(async (snapshot: LogicalBackupSnapshot) => {
+      expect(snapshot.tables.plan_day_exercises![0])
+        .toHaveProperty("advanced_timing_default_json", '{"version":1,"mode":"off"}');
+      expect(snapshot.tables.session_sets).toEqual(expect.arrayContaining([
+        expect.objectContaining({
+          advanced_timing_override_json: null,
+          advanced_timing_resolved_json: '{"version":1,"mode":"off"}',
+        }),
+      ]));
+      expect(snapshot.tables.workout_sessions![0]).toEqual(expect.objectContaining({
+        portable_id: null,
+        merge_modified_at_ms: null,
+      }));
+    });
+    const restore = jest.fn(async () => ({ state: "rebuild_pending" as const }));
     const commands = createRestoreCommands({
       crypto: cryptoPort(),
       files: {
-        readSelectedArchiveAtMost: () => archiveFor(
-          prePhase10Schema20V1 as LogicalBackupSnapshot,
-        ),
+        readSelectedArchiveAtMost: () => archiveFor(fixture),
       },
       kdf,
-      schema,
-      candidateProbe,
+      schema: frozenSchema,
+      candidateProbe: { validateCandidate },
+      restorer: { restore },
       store: createRestorePreflightStore({ tokenFactory: () => "schema-20-frozen" }),
     });
 
-    await expect(commands.preflightSecureRestore({ password: "owner-password" }))
-      .resolves.toEqual(expect.objectContaining({ outcome: "ready" }));
+    const ready = await commands.preflightSecureRestore({ password: "owner-password" });
+    expect(ready).toEqual(expect.objectContaining({ outcome: "ready" }));
+    if (ready.outcome !== "ready") throw new Error("frozen_preflight_not_ready");
+    await expect(commands.commitSecureRestore({
+      token: ready.token,
+      confirmation: "REPLACE",
+    })).resolves.toEqual({ state: "rebuild_pending" });
+    expect(validateCandidate).toHaveBeenCalledTimes(1);
+    expect(restore).toHaveBeenCalledWith(validateCandidate.mock.calls[0]![0]);
   });
 
   it("accepts a schema-22 v2 archive as an explicit portable-identity compatibility case", async () => {
