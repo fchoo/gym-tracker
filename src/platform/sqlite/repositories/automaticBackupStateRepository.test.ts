@@ -99,7 +99,10 @@ describe("automatic backup state repository", () => {
       queryAll: async () => [],
       write: async (command: (transaction: SqliteTransactionExecutor) => Promise<unknown>) => command({
         execute: async () => ({ changes: 0, lastInsertRowId: 0 }),
-        queryAll: async () => [{ authority_state: "deleted", deletion_progress: "sweep_pending" }],
+        queryAll: async <Row extends Record<string, unknown>>() => ([{
+          authority_state: "deleted",
+          deletion_progress: "sweep_pending",
+        }] as unknown as readonly Row[]),
       }),
       connectionConfiguration: async () => undefined,
       close: async () => undefined,
