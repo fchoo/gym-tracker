@@ -1072,6 +1072,126 @@ describe("automatic backup coordinator", () => {
     ]);
   });
 
+  it("fails closed across pending-upload, lease, recovery-size, and deletion fences", async () => {
+    const basicDrive = {
+      createSnapshot: async () => "snapshot",
+      download: async () => new Uint8Array([1]),
+      updateManifest: async () => "next",
+      readManifest: async () => ({ fileId: "manifest", bytes: activeManifest(2), etag: "etag" }),
+    };
+    const makeBackup = (stateOverrides: Record<string, unknown>, stateOverridesPort: Record<string, unknown>, driveOverrides: Record<string, unknown> = {}) => createAutomaticBackupCoordinator({
+      isWorkoutActive: () => false,
+      capture: async ({ snapshotId }) => ({ generation: 4, snapshotId: snapshotId!, sourceDigest: "a".repeat(64), bytes: new Uint8Array(5 * 1024 * 1024 + 1) }),
+      state: { read: async () => activeState(stateOverrides), persistAttempt: async () => undefined, acknowledgeReceipt: async () => true, ...stateOverridesPort },
+      drive: { ...basicDrive, createResumableSnapshot: async () => ({ location: "https://www.googleapis.com/upload/session", uploadedBytes: 0 }), resumeSnapshot: async () => "snapshot", ...driveOverrides },
+      validate: () => true,
+      validateManifest: () => ({ writerEpoch: 2, latest: { fileId: "prior", object_sha256: "b".repeat(64) }, previous: null }),
+      buildManifest: () => activeManifest(2),
+      nowMs: () => 1,
+      candidateId: () => "candidate",
+    });
+    await expect(makeBackup({}, { readPendingUpload: async () => { throw new Error("corrupt"); } }).backup())
+      .resolves.toEqual({ status: "deferred" });
+    await expect(makeBackup({}, { acquireLease: async () => false }).backup())
+      .resolves.toEqual({ status: "deferred" });
+    await expect(makeBackup({}, { updateResumableUpload: async () => false }).backup())
+      .resolves.toEqual({ status: "deferred" });
+    let updates = 0;
+    await expect(makeBackup({}, { updateResumableUpload: async () => { updates += 1; return updates === 1; } }, {
+      resumeSnapshot: async (session: { location: string; uploadedBytes: number }) => ({ ...session, uploadedBytes: session.uploadedBytes + 1 }),
+    }).backup()).resolves.toEqual({ status: "deferred" });
+
+    let captures = 0;
+    const mismatched = makeBackup({}, {
+      readPendingUpload: async () => ({
+        ...activeState(), capturedGeneration: 3, sourceDigest: "b".repeat(64),
+        snapshotId: "old", candidateId: "old", manifestId: "manifest", manifestEtag: "etag",
+        resumableLocation: null, resumableUploadedBytes: 0, updatedAtMs: 1,
+      }),
+    }, {
+      allocateFileId: async () => "candidate",
+      createResumableSnapshot: async () => ({ location: "https://www.googleapis.com/upload/session", uploadedBytes: 0 }),
+      resumeSnapshot: async () => "snapshot",
+    });
+    const originalCapture = (mismatched as unknown as { capture?: unknown }).capture;
+    expect(originalCapture).toBeUndefined();
+    await mismatched.backup();
+
+    const missingTombstoneIdentity = createAutomaticBackupCoordinator({
+      isWorkoutActive: () => false,
+      capture: async () => ({ generation: 1, sourceDigest: "a".repeat(64), bytes: new Uint8Array() }),
+      state: { read: async () => activeState({ authorityState: "active", manifestId: null }), persistAttempt: async () => undefined, acknowledgeReceipt: async () => false, beginQuarantine: async () => undefined },
+      drive: { ...basicDrive, readManifest: async () => ({ bytes: new TextEncoder().encode(JSON.stringify({ kind: "deleted", successorWriterEpoch: 3, deletedAtMs: 1 })), etag: "tombstone" }) },
+      validate: () => true, nowMs: () => 1, candidateId: () => "candidate",
+    });
+    await expect(missingTombstoneIdentity.recover()).resolves.toEqual({ status: "quarantined" });
+
+    const completeDeletion = createAutomaticBackupCoordinator({
+      isWorkoutActive: () => false,
+      capture: async () => ({ generation: 1, sourceDigest: "a".repeat(64), bytes: new Uint8Array() }),
+      state: { read: async () => activeState({ authorityState: "deleted", deletionProgress: "complete" }), persistAttempt: async () => undefined, acknowledgeReceipt: async () => false },
+      drive: basicDrive, validate: () => true, nowMs: () => 1, candidateId: () => "candidate",
+    });
+    await expect(completeDeletion.finishDeletionSweep()).resolves.toEqual({ status: "complete" });
+
+    const shortDownload = createAutomaticBackupCoordinator({
+      isWorkoutActive: () => false,
+      capture: async () => ({ generation: 1, sourceDigest: "a".repeat(64), bytes: new Uint8Array() }),
+      state: { read: async () => activeState({ authorityState: "quarantine" }), persistAttempt: async () => undefined, acknowledgeReceipt: async () => false, setRecoveryStatus: async () => undefined },
+      drive: { ...basicDrive, download: async () => new Uint8Array() },
+      validate: () => true, nowMs: () => 1, candidateId: () => "attempt",
+      recovery: { parseSnapshot: async () => ({}), localIsEmpty: async () => true, prepareMerge: async () => ({ token: "merge", ownerSummary: "owner", adoptionRequired: false }), restore: async () => ({ state: "ready" as const }), commitMerge: async () => ({ state: "ready" as const }) },
+    });
+    await expect(shortDownload.prepareRecovery({ candidate: "latest" })).rejects.toThrow("automatic_recovery_snapshot_invalid");
+    await shortDownload.cancelRecovery("missing-attempt");
+
+    let captureAttempts = 0;
+    const stalePending = createAutomaticBackupCoordinator({
+      isWorkoutActive: () => false,
+      capture: async () => {
+        captureAttempts += 1;
+        if (captureAttempts === 2) throw new Error("recapture_failed");
+        return { generation: 4, sourceDigest: "a".repeat(64), bytes: new Uint8Array([1]) };
+      },
+      state: {
+        read: async () => activeState(), persistAttempt: async () => undefined, acknowledgeReceipt: async () => false,
+        readPendingUpload: async () => ({
+          ...activeState(), capturedGeneration: 3, sourceDigest: "b".repeat(64), snapshotId: "old",
+          candidateId: "old", manifestId: "manifest", manifestEtag: "etag",
+          resumableLocation: null, resumableUploadedBytes: 0, updatedAtMs: 1,
+        }),
+      },
+      drive: basicDrive,
+      validate: () => true,
+      validateManifest: () => ({ writerEpoch: 2, latest: { fileId: "latest", object_sha256: "a".repeat(64) }, previous: null }),
+      buildManifest: () => activeManifest(2), nowMs: () => 1, candidateId: () => "fresh",
+    });
+    await expect(stalePending.backup()).resolves.toEqual({ status: "deferred" });
+
+    const deletionFence = (overrides: Record<string, unknown>, identity: string | null, remoteEpoch = 3) => createAutomaticBackupCoordinator({
+      isWorkoutActive: () => false,
+      auth: { connect: async () => null, reauthenticate: async () => identity === null ? null : ({ permissionId: identity, displayEmail: null }), disconnect: async () => undefined },
+      capture: async () => ({ generation: 1, sourceDigest: "a".repeat(64), bytes: new Uint8Array() }),
+      state: { read: async () => activeState({ authorityState: "deleted", deletionProgress: "sweep_pending", writerEpoch: 3, manifestEtag: "tombstone", ...overrides }), persistAttempt: async () => undefined, acknowledgeReceipt: async () => false },
+      drive: { ...basicDrive, readManifest: async () => ({ fileId: "manifest", etag: "tombstone", bytes: new TextEncoder().encode(JSON.stringify({ kind: "deleted", successorWriterEpoch: remoteEpoch, deletedAtMs: 1 })) }), discoverSnapshotsForDeletion: async () => [], deleteTombstoned: async () => undefined },
+      validate: () => true, nowMs: () => 1, candidateId: () => "candidate",
+    });
+    await expect(deletionFence({ manifestId: null }, "permission").finishDeletionSweep()).resolves.toEqual({ status: "cancelled" });
+    await expect(deletionFence({}, null).finishDeletionSweep()).resolves.toEqual({ status: "cancelled" });
+    await expect(deletionFence({}, "permission", 4).finishDeletionSweep()).resolves.toEqual({ status: "cancelled" });
+
+    const rejectedBackup = createAutomaticBackupCoordinator({
+      isWorkoutActive: async () => { throw new Error("state_failed"); },
+      capture: async () => ({ generation: 1, sourceDigest: "a".repeat(64), bytes: new Uint8Array() }),
+      state: { read: async () => activeState(), persistAttempt: async () => undefined, acknowledgeReceipt: async () => false },
+      drive: basicDrive, validate: () => true, nowMs: () => 1, candidateId: () => "candidate",
+      auth: { connect: async () => null, reauthenticate: async () => null, disconnect: async () => undefined },
+    });
+    const failedUpload = rejectedBackup.backup();
+    await expect(rejectedBackup.deleteCloudBackup()).resolves.toEqual({ status: "cancelled" });
+    await expect(failedUpload).rejects.toThrow("state_failed");
+  });
+
   it("quarantines every discovery ambiguity and only activates a matching newer writer", async () => {
     const make = (state: ReturnType<typeof activeState>, readManifest: () => Promise<{ fileId?: string; bytes: Uint8Array; etag: string } | null>, discover?: () => Promise<readonly unknown[]>, activateWriter?: () => Promise<boolean>) => createAutomaticBackupCoordinator({
       isWorkoutActive: () => false, capture: async () => ({ generation: 1, sourceDigest: "a".repeat(64), bytes: new Uint8Array() }),

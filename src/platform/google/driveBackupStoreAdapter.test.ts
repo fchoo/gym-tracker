@@ -228,6 +228,50 @@ describe("Drive backup store adapter", () => {
     expect(streamed.arrayBuffer).not.toHaveBeenCalled();
   });
 
+  it("covers bounded body fallbacks and malformed deletion batches", async () => {
+    const fallback = createDriveBackupStoreAdapter({
+      environment: "development-test",
+      token: async () => "token",
+      fetch: async () => ({
+        ok: true, status: 200, redirected: false,
+        headers: new Headers({ "content-length": "12" }),
+        body: undefined,
+        arrayBuffer: async () => new TextEncoder().encode(JSON.stringify({ files: [] })).buffer,
+      }) as unknown as Response,
+    });
+    await expect(fallback.discover()).resolves.toEqual([]);
+
+    let cancelAttempted = false;
+    const cancelFailure = createDriveBackupStoreAdapter({
+      environment: "development-test", token: async () => "token",
+      fetch: async () => ({
+        ok: true, status: 200, redirected: false, headers: new Headers(),
+        body: { getReader: () => ({
+          read: async () => ({ done: false as const, value: new Uint8Array([1, 2]) }),
+          cancel: async () => { cancelAttempted = true; throw new Error("locked"); },
+          releaseLock: () => undefined,
+        }) },
+      }) as unknown as Response,
+    });
+    await expect(cancelFailure.download("snapshot", 1)).rejects.toThrow("drive_response_too_large");
+    expect(cancelAttempted).toBe(true);
+
+    const deletion = (body: unknown, status = 200, reportFailure?: (stage: string) => void) => createDriveBackupStoreAdapter({
+      environment: "development-test", token: async () => "token",
+      ...(reportFailure === undefined ? {} : { reportFailure }),
+      fetch: async () => response(body, { status }),
+    }).discoverSnapshotsForDeletion();
+    await expect(deletion(null, 500)).rejects.toThrow("drive_list_failed");
+    await expect(deletion("null")).rejects.toThrow("drive_response_invalid");
+    await expect(deletion({ files: null })).rejects.toThrow("drive_response_invalid");
+    await expect(deletion({})).resolves.toEqual([]);
+    await expect(deletion({ files: Array.from({ length: 9 }, (_, index) => ({ id: `snapshot-${index}`, name: "snapshot", appProperties: { ...properties, object_kind: "snapshot" } })) }))
+      .rejects.toThrow("drive_list_excess");
+    const failures: string[] = [];
+    await expect(deletion("invalid", 200, (stage) => failures.push(stage))).rejects.toThrow();
+    expect(failures).toEqual(["list_invalid"]);
+  });
+
   it("keeps manifest, resumable, and deletion operations conditionally fenced", async () => {
     const requests: Array<{ url: string; init: RequestInit }> = [];
     let resumableCall = 0;

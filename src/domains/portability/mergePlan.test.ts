@@ -1293,6 +1293,30 @@ describe("portable merge plan", () => {
       .toEqual({ id: "other" });
   });
 
+  it("rejects invalid numeric exercise children and skips occupied allocator successors", () => {
+    const operation = {
+      aggregateClass: "custom_exercise" as const,
+      kind: "insert" as const,
+      portableId: "e".repeat(32),
+      archiveId: "exercise",
+      localId: "exercise",
+    };
+    const source = snapshot({ id: "archive-session", marker: "archive", modifiedAtMs: 20 }, {
+      exercises: [{ id: "exercise", origin: "custom", portable_id: "e".repeat(32) }],
+      exercise_aliases: [{ id: 1, exercise_id: "exercise" }],
+    });
+    const allocators = new Map([["exercise_aliases", { occupied: new Set([1, 2]), nextId: 2 }]]);
+    expect(__mergePlanTestOnly.exerciseAggregate(source, snapshot({ id: "local", marker: "local", modifiedAtMs: 1 }), operation, allocators).tables.exercise_aliases)
+      .toEqual([expect.objectContaining({ id: 3 })]);
+    expect(() => __mergePlanTestOnly.exerciseAggregate({
+      ...source,
+      tables: { ...source.tables, exercise_aliases: [{ id: "bad", exercise_id: "exercise" }] },
+    }, snapshot({ id: "local", marker: "local", modifiedAtMs: 1 }), operation, new Map([
+      ["exercise_aliases", { occupied: new Set<number>(), nextId: 1 }],
+    ])))
+      .toThrow(new MergePlanError("merge_plan_invalid"));
+  });
+
   it("maps child references, optional references, and supplied composite identities fail-closed", () => {
     const source = snapshot({ id: "archive-session", marker: "archive", modifiedAtMs: 20 }, {
       child_rows: [{ id: "child", parent_id: "parent", optional_id: "missing" }],

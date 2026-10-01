@@ -82,6 +82,29 @@ describe("automatic backup state repository", () => {
     await expect(repository.releaseLease("lease")).resolves.toBe(true);
     expect(statements.join("\n")).toContain("resumable_uploaded_bytes = ?");
     expect(statements.join("\n")).toContain("lease_id = NULL");
+
+    const pendingRows: Record<string, unknown>[] = [];
+    const reader = createAutomaticBackupStateRepository({
+      queryAll: async () => pendingRows,
+      write: async () => ({ changes: 1, lastInsertRowId: 0 }),
+      connectionConfiguration: async () => undefined,
+      close: async () => undefined,
+    } as unknown as SqliteKernel);
+    await expect(reader.readPendingUpload({ environment: "development-test", permissionId: "permission", connectionGeneration: 4, writerEpoch: 7 })).resolves.toBeNull();
+    pendingRows.push({ ...row, resumable_location: "https://example.invalid/upload" });
+    await expect(reader.readPendingUpload({ environment: "development-test", permissionId: "permission", connectionGeneration: 4, writerEpoch: 7 }))
+      .rejects.toThrow("automatic_backup_pending_upload_invalid");
+
+    const pendingDisconnect = createAutomaticBackupStateRepository({
+      queryAll: async () => [],
+      write: async (command: (transaction: SqliteTransactionExecutor) => Promise<unknown>) => command({
+        execute: async () => ({ changes: 0, lastInsertRowId: 0 }),
+        queryAll: async () => [{ authority_state: "deleted", deletion_progress: "sweep_pending" }],
+      }),
+      connectionConfiguration: async () => undefined,
+      close: async () => undefined,
+    } as unknown as SqliteKernel);
+    await expect(pendingDisconnect.disconnectLocal()).rejects.toThrow("automatic_backup_deletion_in_progress");
   });
   it("returns only bounded state and conditionally acknowledges captured generation", async () => {
     const repository = createAutomaticBackupStateRepository({
