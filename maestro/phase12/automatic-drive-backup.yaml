@@ -73,7 +73,7 @@ tags:
       true: ${PHASE12_STAGE == 'restore_required'}
     commands:
       - assertVisible: "Restore required"
-      - assertVisible: "Continue restore"
+      - assertVisible: "Use latest backup"
 - runFlow:
     when:
       true: ${PHASE12_STAGE == 'merge_review'}
