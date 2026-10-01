@@ -746,9 +746,9 @@ export default function DataAndRecoveryRoute() {
   const backupNow = () => {
     invoke(runtime.requestAutomaticBackupNow);
   };
-  const prepareAutomaticRecovery = async (candidate: "latest" | "previous") => {
+  const reviewAutomaticRecovery = async (candidate: "latest" | "previous") => {
     try {
-      const preparation = await runtime.prepareAutomaticRecovery({ candidate });
+      const preparation = await runtime.reviewAutomaticRecovery({ candidate });
       if (preparation.kind === "empty_direct") {
         await runtime.commitAutomaticRecovery(preparation);
       } else {
@@ -785,8 +785,8 @@ export default function DataAndRecoveryRoute() {
       {backup.primaryAction === "backup_now" ? <PrimaryAction label="Back up now" onPress={backupNow} /> : null}
       {backup.primaryAction === "retry" ? <PrimaryAction label="Retry" onPress={() => invoke(runtime.retryAutomaticBackup)} /> : null}
       {backup.primaryAction === "continue_restore" && automaticRecoveryReview === null ? <>
-        <PrimaryAction label={backup.recoveryPrompt?.kind === "previous" ? "Use previous backup" : "Use latest backup"} onPress={() => { void prepareAutomaticRecovery(backup.recoveryPrompt?.kind === "previous" ? "previous" : "latest"); }} />
-        {backup.recoveryPrompt?.previousProducedAtMs === undefined || backup.recoveryPrompt.kind === "previous" ? null : <SecondaryAction label="Use previous backup" onPress={() => { void prepareAutomaticRecovery("previous"); }} />}
+        <PrimaryAction label={backup.recoveryPrompt?.kind === "previous" ? "Use previous backup" : "Use latest backup"} onPress={() => { void reviewAutomaticRecovery(backup.recoveryPrompt?.kind === "previous" ? "previous" : "latest"); }} />
+        {backup.recoveryPrompt?.previousProducedAtMs === undefined || backup.recoveryPrompt.kind === "previous" ? null : <SecondaryAction label="Use previous backup" onPress={() => { void reviewAutomaticRecovery("previous"); }} />}
       </> : null}
       {automaticRecoveryReview === null ? null : <View style={styles.card}>
         <Text accessibilityRole="header" style={[typeScale.sectionTitle as TextStyle, { color: colors.contentCardText }]}>Review cloud merge</Text>

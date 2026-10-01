@@ -20,7 +20,7 @@ const mockRuntime: any = {
   requestAutomaticBackupNow: mockBackupNow,
   cancelAutomaticBackupCheck: jest.fn(async () => undefined),
   useAutomaticBackupCellularThisTime: mockUseCellular,
-  prepareAutomaticRecovery: mockPrepareAutomaticRecovery,
+  reviewAutomaticRecovery: mockPrepareAutomaticRecovery,
   commitAutomaticRecovery: mockCommitAutomaticRecovery,
   cancelAutomaticRecovery: mockCancelAutomaticRecovery,
   createCsvExport: mockCreateCsvExport,

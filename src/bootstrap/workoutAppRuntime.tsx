@@ -595,7 +595,7 @@ type RuntimeValue = RuntimeState & Readonly<{
   cancelAutomaticBackupCheck(): Promise<void>;
   checkAutomaticBackupAgain(): Promise<void>;
   continueAutomaticRestore(): Promise<void>;
-  prepareAutomaticRecovery(input: Readonly<{ candidate: AutomaticRecoveryCandidate }>): Promise<AutomaticRecoveryPreparation>;
+  reviewAutomaticRecovery(input: Readonly<{ candidate: AutomaticRecoveryCandidate }>): Promise<AutomaticRecoveryPreparation>;
   commitAutomaticRecovery(input: AutomaticRecoveryCommit): Promise<void>;
   cancelAutomaticRecovery(attemptId: string): Promise<void>;
   finishAutomaticBackupSetup(): Promise<void>;
@@ -4160,7 +4160,7 @@ export function WorkoutAppRuntimeProvider({
     cancelAutomaticBackupCheck: () => runAutomaticBackupCommand((runtime) => runtime.cancelChecking()),
     checkAutomaticBackupAgain: () => runAutomaticBackupCommand((runtime) => runtime.checkAgain()),
     continueAutomaticRestore: () => runAutomaticBackupCommand((runtime) => runtime.continueRestore()),
-    prepareAutomaticRecovery: (input) => runAutomaticBackupCommand((runtime) => runtime.prepareRecovery(input)),
+    reviewAutomaticRecovery: (input) => runAutomaticBackupCommand((runtime) => runtime.prepareRecovery(input)),
     commitAutomaticRecovery: (input) => runAutomaticBackupCommand((runtime) => runtime.commitRecovery(input)),
     cancelAutomaticRecovery: (attemptId) => runAutomaticBackupCommand((runtime) => runtime.cancelRecovery(attemptId)),
     finishAutomaticBackupSetup: () => runAutomaticBackupCommand((runtime) => runtime.finishSetup()),
