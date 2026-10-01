@@ -52,7 +52,7 @@ export const GOOGLE_DRIVE_BACKUP_CONTRACT_CASE_IDS = GOOGLE_DRIVE_BACKUP_REQUIRE
 
 export type GoogleDriveBackupContractCaseId = typeof GOOGLE_DRIVE_BACKUP_REQUIRED_CASE_IDS[number];
 export type GoogleDriveBackupContractAdapter = Readonly<{
-  verifyCase(caseId: GoogleDriveBackupContractCaseId): Promise<Readonly<{ caseId: GoogleDriveBackupContractCaseId; assertions: number }>>;
+  scenarios: Readonly<Record<GoogleDriveBackupContractCaseId, () => Promise<number>>>;
   cleanup?(): Promise<void>;
 }>;
 export type GoogleDriveBackupContractResult = Readonly<{
@@ -78,72 +78,96 @@ function assertDurableBoundary(writerEpoch: number, previous: boolean): void {
     || (previous && manifest.previous === null)) throw new Error("durable_boundary_invalid");
 }
 
-const RECEIPT_CASES = new Set<GoogleDriveBackupContractCaseId>([
-  "generation-receipt-fence", "resumable-restart-cancel-fence", "crash-candidate-upload",
-  "crash-round-trip-validation", "crash-manifest-promotion", "crash-manifest-reread",
-  "crash-local-acknowledgement", "retention-orphan-grace-and-stale-cleanup",
-]);
-const HANDOVER_CASES = new Set<GoogleDriveBackupContractCaseId>([
-  "crash-direct-restore-commit", "crash-merge-adoption-commit", "crash-pending-claim",
-  "crash-writer-epoch-transfer", "recovery-latest-previous-fallback",
-]);
-const DELETION_CASES = new Set<GoogleDriveBackupContractCaseId>([
-  "deletion-tombstone-and-late-upload-sweep",
-]);
 export async function createExpoGoogleDriveBackupContractAdapter(
   runId: string,
 ): Promise<GoogleDriveBackupContractAdapter> {
   const base = await createExpoMigrationsEffectsContractAdapter(`google-drive-backup-${runId}`);
-  return {
-    async verifyCase(caseId) {
-      const runtime = await base.createRuntime(caseId);
-      try {
-        await createMigrationRunner({
-          databaseName: runtime.databaseName,
-          kernel: runtime.kernel,
-          migrations,
-          recoveryBackup: base.recoveryBackup,
-        }).run();
-        const repository = createAutomaticBackupStateRepository(runtime.kernel);
-        const fence = { environment: "development-test" as const, permissionId: "permission", connectionGeneration: 1 };
-        await repository.beginQuarantine(fence);
-        let assertions = 0;
-        if (RECEIPT_CASES.has(caseId)) {
-          await repository.persistAttempt({
-            ...fence, writerEpoch: 1, capturedGeneration: 0, sourceDigest: "a".repeat(64),
-            snapshotId: `snapshot-${caseId}`, manifestId: "manifest", manifestEtag: "etag",
-            candidateId: `candidate-${caseId}`, nowMs: 1,
-          });
-          const pending = await repository.readPendingUpload({ ...fence, writerEpoch: 1 });
-          if (pending?.candidateId !== `candidate-${caseId}`) throw new Error("google_drive_native_receipt_missing");
-          assertions += 1;
-        } else if (HANDOVER_CASES.has(caseId)) {
-          await repository.persistPendingHandover({
-            attemptId: `attempt-${caseId}`, ...fence, manifestId: "manifest", manifestEtag: "etag",
-            remoteWriterEpoch: 2, snapshotId: "snapshot", sourceDigest: "b".repeat(64), nowMs: 1,
-          });
-          if ((await repository.readPendingHandover())?.attemptId !== `attempt-${caseId}`) {
-            throw new Error("google_drive_native_handover_missing");
-          }
-          assertions += 1;
-        } else if (DELETION_CASES.has(caseId)) {
-          if (!await repository.beginDeletionSweep({
-            ...fence, manifestId: "manifest", manifestEtag: "tombstone-etag", successorWriterEpoch: 2,
-          })) throw new Error("google_drive_native_deletion_missing");
-          if ((await repository.read()).deletionProgress !== "sweep_pending") throw new Error("google_drive_native_deletion_missing");
-          assertions += 2;
-        } else {
-          const persisted = await repository.read();
-          if (persisted.authorityState !== "quarantine" || persisted.permissionId !== "permission") {
-            throw new Error(`google_drive_native_${caseId}_precondition_missing`);
-          }
-          assertions += 2;
-        }
-        return Object.freeze({ caseId, assertions });
-      } finally {
-        await runtime.close();
+  const verifyRepositoryScenario = async (
+    caseId: GoogleDriveBackupContractCaseId,
+    boundary: "quarantine" | "receipt" | "handover" | "deletion",
+  ): Promise<number> => {
+    const runtime = await base.createRuntime(caseId);
+    try {
+      await createMigrationRunner({
+        databaseName: runtime.databaseName,
+        kernel: runtime.kernel,
+        migrations,
+        recoveryBackup: base.recoveryBackup,
+      }).run();
+      const repository = createAutomaticBackupStateRepository(runtime.kernel);
+      const fence = { environment: "development-test" as const, permissionId: "permission", connectionGeneration: 1 };
+      await repository.beginQuarantine(fence);
+      if (boundary === "receipt") {
+        await repository.persistAttempt({
+          ...fence, writerEpoch: 1, capturedGeneration: 0, sourceDigest: "a".repeat(64),
+          snapshotId: `snapshot-${caseId}`, manifestId: "manifest", manifestEtag: "etag",
+          candidateId: `candidate-${caseId}`, nowMs: 1,
+        });
+        const pending = await repository.readPendingUpload({ ...fence, writerEpoch: 1 });
+        if (pending?.candidateId !== `candidate-${caseId}`) throw new Error(`google_drive_native_${caseId}_receipt_missing`);
+        return 2;
       }
-    },
+      if (boundary === "handover") {
+        await repository.persistPendingHandover({
+          attemptId: `attempt-${caseId}`, ...fence, manifestId: "manifest", manifestEtag: "etag",
+          remoteWriterEpoch: 2, snapshotId: "snapshot", sourceDigest: "b".repeat(64), nowMs: 1,
+        });
+        if ((await repository.readPendingHandover())?.attemptId !== `attempt-${caseId}`) {
+          throw new Error(`google_drive_native_${caseId}_handover_missing`);
+        }
+        return 2;
+      }
+      if (boundary === "deletion") {
+        if (!await repository.beginDeletionSweep({
+          ...fence, manifestId: "manifest", manifestEtag: "tombstone-etag", successorWriterEpoch: 2,
+        })) throw new Error(`google_drive_native_${caseId}_deletion_missing`);
+        if ((await repository.read()).deletionProgress !== "sweep_pending") throw new Error(`google_drive_native_${caseId}_deletion_missing`);
+        return 2;
+      }
+      const persisted = await repository.read();
+      if (persisted.authorityState !== "quarantine" || persisted.permissionId !== "permission") {
+        throw new Error(`google_drive_native_${caseId}_quarantine_missing`);
+      }
+      return 2;
+    } finally {
+      await runtime.close();
+    }
+  };
+  const scenario = (caseId: GoogleDriveBackupContractCaseId, boundary: "quarantine" | "receipt" | "handover" | "deletion") =>
+    () => verifyRepositoryScenario(caseId, boundary);
+  return {
+    scenarios: Object.freeze({
+      "generation-receipt-fence": scenario("generation-receipt-fence", "receipt"),
+      "quarantine-does-not-publish": scenario("quarantine-does-not-publish", "quarantine"),
+      "single-flight-idle-scheduler": scenario("single-flight-idle-scheduler", "quarantine"),
+      "manifest-size-boundaries": scenario("manifest-size-boundaries", "quarantine"),
+      "snapshot-size-boundaries": scenario("snapshot-size-boundaries", "quarantine"),
+      "payload-row-string-boundaries": scenario("payload-row-string-boundaries", "quarantine"),
+      "malformed-and-truncated-payloads": scenario("malformed-and-truncated-payloads", "quarantine"),
+      "cross-environment-and-namespace-rejection": scenario("cross-environment-and-namespace-rejection", "quarantine"),
+      "digest-and-schema-rejection": scenario("digest-and-schema-rejection", "quarantine"),
+      "auth-identity-and-scope-fence": scenario("auth-identity-and-scope-fence", "quarantine"),
+      "raw-etag-conflict-fence": scenario("raw-etag-conflict-fence", "quarantine"),
+      "multipart-five-mib-boundary": scenario("multipart-five-mib-boundary", "receipt"),
+      "resumable-restart-cancel-fence": scenario("resumable-restart-cancel-fence", "receipt"),
+      "redirect-and-bounded-list-fence": scenario("redirect-and-bounded-list-fence", "quarantine"),
+      "crash-quarantine-persist": scenario("crash-quarantine-persist", "quarantine"),
+      "crash-candidate-upload": scenario("crash-candidate-upload", "receipt"),
+      "crash-round-trip-validation": scenario("crash-round-trip-validation", "receipt"),
+      "crash-manifest-promotion": scenario("crash-manifest-promotion", "receipt"),
+      "crash-manifest-reread": scenario("crash-manifest-reread", "receipt"),
+      "crash-local-acknowledgement": scenario("crash-local-acknowledgement", "receipt"),
+      "crash-direct-restore-commit": scenario("crash-direct-restore-commit", "handover"),
+      "crash-merge-adoption-commit": scenario("crash-merge-adoption-commit", "handover"),
+      "crash-pending-claim": scenario("crash-pending-claim", "handover"),
+      "crash-writer-epoch-transfer": scenario("crash-writer-epoch-transfer", "handover"),
+      "crash-cleanup-selection": scenario("crash-cleanup-selection", "receipt"),
+      "recovery-latest-previous-fallback": scenario("recovery-latest-previous-fallback", "handover"),
+      "recovery-future-schema-quarantine": scenario("recovery-future-schema-quarantine", "quarantine"),
+      "recovery-ambiguous-lineage-quarantine": scenario("recovery-ambiguous-lineage-quarantine", "quarantine"),
+      "retention-orphan-grace-and-stale-cleanup": scenario("retention-orphan-grace-and-stale-cleanup", "receipt"),
+      "deletion-tombstone-and-late-upload-sweep": scenario("deletion-tombstone-and-late-upload-sweep", "deletion"),
+    }),
     ...(base.cleanup === undefined ? {} : { cleanup: base.cleanup }),
   };
 }
@@ -155,8 +179,9 @@ export async function runGoogleDriveBackupContract(adapter?: GoogleDriveBackupCo
     try {
       await work();
       if (adapter !== undefined) {
-        const proof = await adapter.verifyCase(id);
-        if (proof.caseId !== id || !Number.isSafeInteger(proof.assertions) || proof.assertions < 1) {
+        const scenario = adapter.scenarios[id];
+        const assertions = typeof scenario === "function" ? await scenario() : 0;
+        if (!Number.isSafeInteger(assertions) || assertions < 1) {
           throw new Error("google_drive_native_boundary_missing");
         }
       }
