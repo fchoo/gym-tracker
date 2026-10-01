@@ -6,6 +6,7 @@ import {
   AUTOMATIC_BACKUP_LIMITS,
   canonicalJson,
   createDriveBackupSnapshotV1,
+  reconstructedDriveManifestBytes,
   parseDriveBackupManifestV1,
   parseDriveBackupSnapshotEnvelopeV1,
 } from "./automaticBackupContracts";
@@ -76,6 +77,21 @@ describe("automatic backup contracts", () => {
       previous: { fileId: "previous", object_sha256: "b".repeat(64) },
     })).toMatchObject({ kind: "active", previous: { fileId: "previous" } });
     expect(parseDriveBackupManifestV1({ kind: "deleted", successorWriterEpoch: 0, deletedAtMs: 0 })).toMatchObject({ kind: "deleted" });
+    const candidate = (suffix: string, mutationGeneration: number) => ({
+      fileId: suffix,
+      objectSha256: suffix.repeat(64).slice(0, 64),
+      byteLength: 100,
+      snapshotId: `snapshot-${suffix}`,
+      writerEpoch: 2,
+      mutationGeneration,
+    });
+    expect(parseDriveBackupManifestV1(JSON.parse(new TextDecoder().decode(
+      reconstructedDriveManifestBytes({ latest: candidate("a", 2), previous: candidate("b", 1) }),
+    )))).toMatchObject({
+      kind: "active",
+      latest: { snapshotId: "snapshot-a", mutationGeneration: 2 },
+      previous: { snapshotId: "snapshot-b", mutationGeneration: 1 },
+    });
   });
 
   it("validates exact canonical snapshot bytes against the complete descriptor", async () => {
