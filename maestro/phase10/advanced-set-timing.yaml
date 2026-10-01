@@ -156,6 +156,12 @@ tags:
     timeout: 90000
 - tapOn: "Resume workout"
 - assertVisible: "WORKOUT OVERVIEW"
+- scrollUntilVisible:
+    element:
+      text: "Cluster timing"
+    direction: UP
+    centerElement: true
+    timeout: 30000
 - assertVisible: "Cluster timing"
 - assertVisible: "^(Cluster 2 of 3|Cluster 3 of 3|Intra-set rest)"
 - assertVisible: "Complete Set 1"
