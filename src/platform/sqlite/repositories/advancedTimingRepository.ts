@@ -49,9 +49,19 @@ function validStoredTime(value: unknown): value is number {
   return typeof value === "number" && Number.isSafeInteger(value) && value >= 0;
 }
 
-export function assertValidAdvancedTimingPersistenceRow(
+type ParsedAdvancedTimingPersistenceRow = Readonly<{
+  row: AdvancedTimingRow;
+  config: AdvancedTimingConfigV1;
+  progress: Readonly<{
+    nextRepetitionIndex?: number;
+    currentGroupIndex?: number;
+    phase?: "ready" | "stopped";
+  }>;
+}>;
+
+export function parseAdvancedTimingPersistenceRow(
   value: Readonly<Record<string, unknown>>,
-): asserts value is AdvancedTimingRow {
+): ParsedAdvancedTimingPersistenceRow {
   const status = value.status;
   const mode = value.mode;
   if (value.state_version !== 1
@@ -78,7 +88,11 @@ export function assertValidAdvancedTimingPersistenceRow(
       || value.remaining_ms !== null || value.stopped_at_ms !== null) {
       throw new AdvancedTimingRepositoryError("advanced_timing_state_invalid");
     }
-    return;
+    return Object.freeze({
+      row: value as AdvancedTimingRow,
+      config,
+      progress: progressObject,
+    });
   }
   if (typeof value.session_set_id !== "string" || value.session_set_id.trim().length === 0
     || (mode !== "per_rep" && mode !== "cluster") || config.mode !== mode) {
@@ -91,15 +105,16 @@ export function assertValidAdvancedTimingPersistenceRow(
       throw new AdvancedTimingRepositoryError("advanced_timing_state_invalid");
     }
   } else {
-    if (config.mode !== "cluster") {
-      throw new AdvancedTimingRepositoryError("advanced_timing_state_invalid");
-    }
+    const clusterConfig = config as Extract<
+      AdvancedTimingConfigV1,
+      { mode: "cluster" }
+    >;
     const progressKeys = progressObject.phase === undefined
       ? ["currentGroupIndex"]
       : ["currentGroupIndex", "phase"];
     if (!exactKeys(progressObject, progressKeys)
       || !validStoredTime(progressObject.currentGroupIndex)
-      || progressObject.currentGroupIndex >= config.groupSizes.length
+      || progressObject.currentGroupIndex >= clusterConfig.groupSizes.length
       || (progressObject.phase !== undefined
         && progressObject.phase !== "ready"
         && progressObject.phase !== "stopped")
@@ -127,6 +142,11 @@ export function assertValidAdvancedTimingPersistenceRow(
   if (!runningTimes && !pausedTimes && !stoppedTimes) {
     throw new AdvancedTimingRepositoryError("advanced_timing_state_invalid");
   }
+  return Object.freeze({
+    row: value as AdvancedTimingRow,
+    config,
+    progress: progressObject as ParsedAdvancedTimingPersistenceRow["progress"],
+  });
 }
 
 type SessionRow = Readonly<{
@@ -211,51 +231,6 @@ function idleState(revision = 0): AdvancedTimingStateV1 {
   });
 }
 
-function safeProgress(row: AdvancedTimingRow): number {
-  try {
-    const value = JSON.parse(row.progress_json) as {
-      nextRepetitionIndex?: unknown;
-    };
-    if (
-      typeof value.nextRepetitionIndex === "number"
-      && Number.isSafeInteger(value.nextRepetitionIndex)
-      && value.nextRepetitionIndex >= 1
-    ) {
-      return value.nextRepetitionIndex;
-    }
-  } catch {}
-  throw new AdvancedTimingRepositoryError("advanced_timing_state_invalid");
-}
-
-function safeClusterProgress(row: AdvancedTimingRow): Readonly<{
-  currentGroupIndex: number;
-  phase: "ready" | "stopped" | null;
-}> {
-  try {
-    const value = JSON.parse(row.progress_json) as {
-      currentGroupIndex?: unknown;
-      phase?: unknown;
-    };
-    if (
-      typeof value.currentGroupIndex === "number"
-      && Number.isSafeInteger(value.currentGroupIndex)
-      && value.currentGroupIndex >= 0
-    ) {
-      if (
-        value.phase === undefined
-        || value.phase === "ready"
-        || value.phase === "stopped"
-      ) {
-        return Object.freeze({
-          currentGroupIndex: value.currentGroupIndex,
-          phase: value.phase ?? null,
-        });
-      }
-    }
-  } catch {}
-  throw new AdvancedTimingRepositoryError("advanced_timing_state_invalid");
-}
-
 function stateFromRow(
   row: AdvancedTimingRow | undefined,
 ): Readonly<{ state: AdvancedTimingStateV1; config: AdvancedTimingConfigV1 }> {
@@ -265,37 +240,16 @@ function stateFromRow(
       config: Object.freeze({ version: 1, mode: "off" }),
     });
   }
-  assertValidAdvancedTimingPersistenceRow(row);
-  let config: AdvancedTimingConfigV1;
-  try {
-    config = parseAdvancedTimingConfig(JSON.parse(row.config_json));
-  } catch {
-    throw new AdvancedTimingRepositoryError("advanced_timing_state_invalid");
-  }
-  if (row.state_version !== 1) {
-    throw new AdvancedTimingRepositoryError("advanced_timing_state_invalid");
-  }
+  const decoded = parseAdvancedTimingPersistenceRow(row);
+  const config = decoded.config;
   if (row.status === "idle") {
-    if (row.session_set_id !== null || row.mode !== null || config.mode !== "off") {
-      throw new AdvancedTimingRepositoryError("advanced_timing_state_invalid");
-    }
     return Object.freeze({ state: idleState(row.revision), config });
   }
-  if (row.status === "expired" || row.session_set_id === null) {
-    throw new AdvancedTimingRepositoryError("advanced_timing_state_invalid");
-  }
-  if (row.mode === "cluster" || config.mode === "cluster") {
-    if (row.mode !== "cluster" || config.mode !== "cluster") {
-      throw new AdvancedTimingRepositoryError("advanced_timing_state_invalid");
-    }
-    const { currentGroupIndex, phase } = safeClusterProgress(row);
-    if (currentGroupIndex >= config.groupSizes.length) {
-      throw new AdvancedTimingRepositoryError("advanced_timing_state_invalid");
-    }
+  const targetSessionSetId = row.session_set_id!;
+  if (row.mode === "cluster" && config.mode === "cluster") {
+    const currentGroupIndex = decoded.progress.currentGroupIndex!;
+    const phase = decoded.progress.phase ?? null;
     if (row.status === "running") {
-      if (row.started_at_ms === null || row.next_boundary_at_ms === null) {
-        throw new AdvancedTimingRepositoryError("advanced_timing_state_invalid");
-      }
       return Object.freeze({
         config,
         state: Object.freeze({
@@ -303,20 +257,17 @@ function stateFromRow(
           state: "cluster_gap_running",
           mode: "cluster",
           revision: row.revision,
-          targetSessionSetId: row.session_set_id,
+          targetSessionSetId,
           cueChannels: config.cueChannels,
           groupSizes: config.groupSizes,
           intraRestMs: config.intraRestMs,
           currentGroupIndex,
-          gapStartedAtMs: row.started_at_ms,
-          gapEndsAtMs: row.next_boundary_at_ms,
+          gapStartedAtMs: row.started_at_ms!,
+          gapEndsAtMs: row.next_boundary_at_ms!,
         }),
       });
     }
     if (row.status === "paused") {
-      if (row.remaining_ms === null) {
-        throw new AdvancedTimingRepositoryError("advanced_timing_state_invalid");
-      }
       return Object.freeze({
         config,
         state: Object.freeze({
@@ -324,108 +275,88 @@ function stateFromRow(
           state: "cluster_gap_paused",
           mode: "cluster",
           revision: row.revision,
-          targetSessionSetId: row.session_set_id,
+          targetSessionSetId,
           cueChannels: config.cueChannels,
           groupSizes: config.groupSizes,
           intraRestMs: config.intraRestMs,
           currentGroupIndex,
-          remainingMs: row.remaining_ms,
+          remainingMs: row.remaining_ms!,
         }),
       });
     }
-    if (row.status === "stopped") {
-      if (row.stopped_at_ms === null) {
-        throw new AdvancedTimingRepositoryError("advanced_timing_state_invalid");
-      }
-      if (phase === "ready") {
-        return Object.freeze({
-          config,
-          state: Object.freeze({
-            version: 1,
-            state: "cluster_ready",
-            mode: "cluster",
-            revision: row.revision,
-            targetSessionSetId: row.session_set_id,
-            cueChannels: config.cueChannels,
-            groupSizes: config.groupSizes,
-            intraRestMs: config.intraRestMs,
-            currentGroupIndex,
-          }),
-        });
-      }
-      if (phase !== "stopped") {
-        throw new AdvancedTimingRepositoryError("advanced_timing_state_invalid");
-      }
+    if (phase === "ready") {
       return Object.freeze({
         config,
         state: Object.freeze({
           version: 1,
-          state: "stopped",
+          state: "cluster_ready",
           mode: "cluster",
           revision: row.revision,
-          targetSessionSetId: row.session_set_id,
-          stoppedAtMs: row.stopped_at_ms,
+          targetSessionSetId,
+          cueChannels: config.cueChannels,
+          groupSizes: config.groupSizes,
+          intraRestMs: config.intraRestMs,
           currentGroupIndex,
         }),
       });
     }
-    throw new AdvancedTimingRepositoryError("advanced_timing_state_invalid");
-  }
-  if (row.mode !== "per_rep" || config.mode !== "per_rep") {
-    throw new AdvancedTimingRepositoryError("advanced_timing_state_invalid");
-  }
-  const nextRepetitionIndex = safeProgress(row);
-  if (row.status === "running") {
-    if (row.started_at_ms === null || row.next_boundary_at_ms === null) {
-      throw new AdvancedTimingRepositoryError("advanced_timing_state_invalid");
-    }
     return Object.freeze({
       config,
+      state: Object.freeze({
+        version: 1,
+        state: "stopped",
+        mode: "cluster",
+        revision: row.revision,
+        targetSessionSetId,
+        stoppedAtMs: row.stopped_at_ms!,
+        currentGroupIndex,
+      }),
+    });
+  }
+  const perRepConfig = config as Extract<AdvancedTimingConfigV1, { mode: "per_rep" }>;
+  const nextRepetitionIndex = decoded.progress.nextRepetitionIndex!;
+  if (row.status === "running") {
+    return Object.freeze({
+      config: perRepConfig,
       state: Object.freeze({
         version: 1,
         state: "running",
         mode: "per_rep",
         revision: row.revision,
-        targetSessionSetId: row.session_set_id,
-        cueChannels: config.cueChannels,
-        intervalMs: config.intervalMs,
-        startedAtMs: row.started_at_ms,
-        nextBoundaryAtMs: row.next_boundary_at_ms,
+        targetSessionSetId,
+        cueChannels: perRepConfig.cueChannels,
+        intervalMs: perRepConfig.intervalMs,
+        startedAtMs: row.started_at_ms!,
+        nextBoundaryAtMs: row.next_boundary_at_ms!,
         nextRepetitionIndex,
       }),
     });
   }
   if (row.status === "paused") {
-    if (row.remaining_ms === null) {
-      throw new AdvancedTimingRepositoryError("advanced_timing_state_invalid");
-    }
     return Object.freeze({
-      config,
+      config: perRepConfig,
       state: Object.freeze({
         version: 1,
         state: "paused",
         mode: "per_rep",
         revision: row.revision,
-        targetSessionSetId: row.session_set_id,
-        cueChannels: config.cueChannels,
-        intervalMs: config.intervalMs,
-        remainingMs: row.remaining_ms,
+        targetSessionSetId,
+        cueChannels: perRepConfig.cueChannels,
+        intervalMs: perRepConfig.intervalMs,
+        remainingMs: row.remaining_ms!,
         nextRepetitionIndex,
       }),
     });
   }
-  if (row.stopped_at_ms === null) {
-    throw new AdvancedTimingRepositoryError("advanced_timing_state_invalid");
-  }
   return Object.freeze({
-    config,
+    config: perRepConfig,
     state: Object.freeze({
       version: 1,
       state: "stopped",
       mode: "per_rep",
       revision: row.revision,
-      targetSessionSetId: row.session_set_id,
-      stoppedAtMs: row.stopped_at_ms,
+      targetSessionSetId,
+      stoppedAtMs: row.stopped_at_ms!,
       nextRepetitionIndex,
     }),
   });

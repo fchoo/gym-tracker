@@ -387,6 +387,53 @@ describe("SQLite restore preflight adapters", () => {
     )).rejects.toBeInstanceOf(RestoreCandidateProbeError);
   });
 
+  it("accepts pre-21 snapshots without a timing table and valid current timing rows", async () => {
+    const prePhase10 = structuredClone(timingCandidate()) as unknown as MutableSnapshot;
+    delete (prePhase10.tables as Partial<MutableTables>)
+      .session_advanced_timing_states;
+    await expect(createSqliteRestoreCandidateProbe().validateCandidate(
+      prePhase10 as unknown as LogicalBackupSnapshot,
+    )).resolves.toBeUndefined();
+
+    await expect(createSqliteRestoreCandidateProbe().validateCandidate(
+      timingCandidate(),
+    )).resolves.toBeUndefined();
+
+    const idle = structuredClone(timingCandidate()) as unknown as MutableSnapshot;
+    Object.assign(firstRow(idle, "session_advanced_timing_states"), {
+      session_set_id: null,
+      status: "idle",
+      mode: null,
+      config_json: JSON.stringify({ version: 1, mode: "off" }),
+      progress_json: "{}",
+      started_at_ms: null,
+      next_boundary_at_ms: null,
+      remaining_ms: null,
+      stopped_at_ms: null,
+    });
+    await expect(createSqliteRestoreCandidateProbe().validateCandidate(
+      idle as unknown as LogicalBackupSnapshot,
+    )).resolves.toBeUndefined();
+  });
+
+  it.each([
+    ["non-string session", (candidate: MutableSnapshot) => {
+      firstRow(candidate, "session_advanced_timing_states").session_id = 1;
+    }],
+    ["missing target set", (candidate: MutableSnapshot) => {
+      candidate.tables.session_sets = [];
+    }],
+    ["missing target exercise", (candidate: MutableSnapshot) => {
+      candidate.tables.session_exercises = [];
+    }],
+  ])("rejects advanced-timing ownership with %s", async (_label, mutate) => {
+    const candidate = structuredClone(timingCandidate()) as unknown as MutableSnapshot;
+    mutate(candidate);
+    await expect(createSqliteRestoreCandidateProbe().validateCandidate(
+      candidate as unknown as LogicalBackupSnapshot,
+    )).rejects.toBeInstanceOf(RestoreCandidateProbeError);
+  });
+
   it("checks schema allowlist, canonical SQLite types, and nullability", async () => {
     const statements: string[] = [];
     const schema = createSqliteRestoreSchemaPort(readKernel([{ name: "id", type: "integer", notnull: 1 }, { name: "note", type: "TEXT", notnull: 0 }], statements));

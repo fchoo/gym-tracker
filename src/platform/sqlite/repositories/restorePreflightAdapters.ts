@@ -23,7 +23,7 @@ import {
   LOGICAL_BACKUP_TABLE_FILTERS,
 } from "./logicalBackupRepository";
 import {
-  assertValidAdvancedTimingPersistenceRow,
+  parseAdvancedTimingPersistenceRow,
 } from "./advancedTimingRepository";
 
 type CandidateTables = Record<string, readonly LogicalBackupRow[]> & {
@@ -217,7 +217,7 @@ export function createSqliteRestoreCandidateProbe(): RestoreCandidateProbePort {
         const timingSessionId = timing.session_id;
         if (typeof timingSessionId !== "string") candidateFailure();
         try {
-          assertValidAdvancedTimingPersistenceRow(timing);
+          parseAdvancedTimingPersistenceRow(timing);
         } catch {
           candidateFailure();
         }
