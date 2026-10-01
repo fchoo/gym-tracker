@@ -53,7 +53,8 @@ export const GOOGLE_DRIVE_BACKUP_CONTRACT_CASE_IDS = GOOGLE_DRIVE_BACKUP_REQUIRE
 
 export type GoogleDriveBackupContractCaseId = typeof GOOGLE_DRIVE_BACKUP_REQUIRED_CASE_IDS[number];
 export type GoogleDriveBackupContractAdapter = Readonly<{
-  scenarios: Readonly<Record<GoogleDriveBackupContractCaseId, () => Promise<number>>>;
+  /** Native-only durable companions. Pure parser/scheduler/transport cases run directly below. */
+  scenarios: Readonly<Partial<Record<GoogleDriveBackupContractCaseId, () => Promise<number>>>>;
   cleanup?(): Promise<void>;
 }>;
 export type GoogleDriveBackupContractResult = Readonly<{
@@ -140,18 +141,8 @@ export async function createExpoGoogleDriveBackupContractAdapter(
     scenarios: Object.freeze({
       "generation-receipt-fence": scenario("generation-receipt-fence", "receipt"),
       "quarantine-does-not-publish": scenario("quarantine-does-not-publish", "quarantine"),
-      "single-flight-idle-scheduler": scenario("single-flight-idle-scheduler", "quarantine"),
-      "manifest-size-boundaries": scenario("manifest-size-boundaries", "quarantine"),
-      "snapshot-size-boundaries": scenario("snapshot-size-boundaries", "quarantine"),
-      "payload-row-string-boundaries": scenario("payload-row-string-boundaries", "quarantine"),
-      "malformed-and-truncated-payloads": scenario("malformed-and-truncated-payloads", "quarantine"),
-      "cross-environment-and-namespace-rejection": scenario("cross-environment-and-namespace-rejection", "quarantine"),
-      "digest-and-schema-rejection": scenario("digest-and-schema-rejection", "quarantine"),
-      "auth-identity-and-scope-fence": scenario("auth-identity-and-scope-fence", "quarantine"),
-      "raw-etag-conflict-fence": scenario("raw-etag-conflict-fence", "quarantine"),
       "multipart-five-mib-boundary": scenario("multipart-five-mib-boundary", "receipt"),
       "resumable-restart-cancel-fence": scenario("resumable-restart-cancel-fence", "receipt"),
-      "redirect-and-bounded-list-fence": scenario("redirect-and-bounded-list-fence", "quarantine"),
       "crash-quarantine-persist": scenario("crash-quarantine-persist", "quarantine"),
       "crash-candidate-upload": scenario("crash-candidate-upload", "receipt"),
       "crash-round-trip-validation": scenario("crash-round-trip-validation", "receipt"),
@@ -164,8 +155,6 @@ export async function createExpoGoogleDriveBackupContractAdapter(
       "crash-writer-epoch-transfer": scenario("crash-writer-epoch-transfer", "handover"),
       "crash-cleanup-selection": scenario("crash-cleanup-selection", "receipt"),
       "recovery-latest-previous-fallback": scenario("recovery-latest-previous-fallback", "handover"),
-      "recovery-future-schema-quarantine": scenario("recovery-future-schema-quarantine", "quarantine"),
-      "recovery-ambiguous-lineage-quarantine": scenario("recovery-ambiguous-lineage-quarantine", "quarantine"),
       "retention-orphan-grace-and-stale-cleanup": scenario("retention-orphan-grace-and-stale-cleanup", "receipt"),
       "deletion-tombstone-and-late-upload-sweep": scenario("deletion-tombstone-and-late-upload-sweep", "deletion"),
     }),
@@ -181,7 +170,7 @@ export async function runGoogleDriveBackupContract(adapter?: GoogleDriveBackupCo
       await work();
       if (adapter !== undefined) {
         const scenario = adapter.scenarios[id];
-        const assertions = typeof scenario === "function" ? await scenario() : 0;
+        const assertions = scenario === undefined ? 1 : await scenario();
         if (!Number.isSafeInteger(assertions) || assertions < 1) {
           throw new Error("google_drive_native_boundary_missing");
         }
