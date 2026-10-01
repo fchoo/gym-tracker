@@ -92,6 +92,7 @@ jest.mock("../domains/backup/automaticBackupCoordinator", () => ({
     prepareRecovery: mockCoordinatorPrepareRecovery,
     commitRecovery: mockCoordinatorCommitRecovery, cancelRecovery: jest.fn(async () => undefined), disconnect: jest.fn(async () => undefined),
     deleteCloudBackup: mockCoordinatorDeleteCloudBackup, startNewCloudBackup: mockCoordinatorStartNewCloudBackup, finishDeletionSweep: jest.fn(async () => undefined), backup: mockCoordinatorBackup,
+    recoveryOutcome: jest.fn(() => "unknown"),
   })),
 }));
 jest.mock("../domains/backup/automaticBackupScheduler", () => ({
@@ -159,9 +160,11 @@ describe("production automatic-backup composition", () => {
       .toMatchObject({ status: "paused", reason: "deleted" });
     expect(productionAutomaticBackupPresentationInput({ ...current, authorityState: "deleted", deletionProgress: "sweep_pending", statusCode: "paused" }, null, false, 1))
       .toMatchObject({ status: "paused", reason: "deletion_partial" });
-    expect(productionAutomaticBackupPresentationInput({ ...current, manifestId: null, statusCode: "idle" }, null, false, 1))
+    expect(productionAutomaticBackupPresentationInput({ ...current, manifestId: null, statusCode: "idle" }, null, false, 1, false, "needs_bootstrap"))
       .toMatchObject({ reason: "no_cloud" });
-    expect(productionAutomaticBackupPresentationInput({ ...current, statusCode: "restore_pending" }, null, false, 1))
+    expect(productionAutomaticBackupPresentationInput({ ...current, manifestId: null, statusCode: "restore_pending" }, { kind: "latest" }, false, 1, false, "restore_required"))
+      .toMatchObject({ reason: "restore_required" });
+    expect(productionAutomaticBackupPresentationInput({ ...current, manifestId: null, statusCode: "restore_pending" }, null, false, 1, false, "invalid_artifacts"))
       .toMatchObject({ reason: "invalid_artifacts" });
   });
   it("applies the 24 MiB limit to the final encoded Drive object", () => {

@@ -70,12 +70,14 @@ describe("automatic backup coordinator", () => {
     const future = make({ kind: "update_required", schemaVersion: 99, fileId: "future" });
     await future.recover();
     expect(future.recoveryPrompt()).toEqual({ kind: "update_required" });
+    expect(future.recoveryOutcome()).toBe("restore_required");
     const prior = make({
       kind: "current", ownerNamespace: "a".repeat(32), writerEpoch: 3, mutationGeneration: 5,
       createdAtMs: 10, snapshotId: "snapshot-prior", fileId: "prior", objectSha256: "b".repeat(64), byteLength: 100,
     }, new Uint8Array([1]));
     await prior.recover();
     expect(prior.recoveryPrompt()).toEqual({ kind: "previous", producedAtMs: 10 });
+    expect(prior.recoveryOutcome()).toBe("restore_required");
     const withPrevious = make([
       { kind: "current", ownerNamespace: "a".repeat(32), writerEpoch: 3, mutationGeneration: 6, createdAtMs: 11, snapshotId: "snapshot-latest", fileId: "latest", objectSha256: "b".repeat(64), byteLength: 100 },
       { kind: "current", ownerNamespace: "a".repeat(32), writerEpoch: 3, mutationGeneration: 5, createdAtMs: 10, snapshotId: "snapshot-prior", fileId: "prior", objectSha256: "c".repeat(64), byteLength: 100 },
@@ -92,6 +94,7 @@ describe("automatic backup coordinator", () => {
       recovery: { parseSnapshot: async () => ({}), localIsEmpty: async () => true, prepareMerge: async () => ({ token: "token", ownerSummary: "owner", adoptionRequired: false }), restore: async () => ({ state: "ready" as const }), commitMerge: async () => ({ state: "ready" as const }), discoverCandidates: async () => [] },
     });
     await expect(stateManifestFallback.recover()).resolves.toEqual({ status: "quarantined" });
+    expect(stateManifestFallback.recoveryOutcome()).toBe("invalid_artifacts");
     const noManifestIdentity = createAutomaticBackupCoordinator({
       isWorkoutActive: () => false,
       capture: async () => ({ generation: 1, sourceDigest: "a".repeat(64), bytes: new Uint8Array() }),
@@ -100,6 +103,7 @@ describe("automatic backup coordinator", () => {
       validate: () => true, validateManifest: () => null, nowMs: () => 1, candidateId: () => "candidate",
     });
     await expect(noManifestIdentity.recover()).resolves.toEqual({ status: "quarantined" });
+    expect(noManifestIdentity.recoveryOutcome()).toBe("invalid_artifacts");
   });
 
   it("reconstructs a missing manifest only from one verified bounded lineage", async () => {
@@ -149,6 +153,7 @@ describe("automatic backup coordinator", () => {
       validate: () => true, nowMs: () => 1, candidateId: () => "candidate",
     });
     await expect(coordinator.connect()).resolves.toEqual({ status: "needs_bootstrap" });
+    expect(coordinator.recoveryOutcome()).toBe("needs_bootstrap");
     expect(events).toEqual([
       "quarantine:development-test",
       "checking",

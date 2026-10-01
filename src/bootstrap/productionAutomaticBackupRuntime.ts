@@ -10,7 +10,7 @@ import {
   type AutomaticBackupEnvironment,
   type DriveBackupSnapshotHeaderV1,
 } from "../domains/backup/automaticBackupContracts";
-import { createAutomaticBackupCoordinator } from "../domains/backup/automaticBackupCoordinator";
+import { createAutomaticBackupCoordinator, type AutomaticBackupDiscoveryOutcome } from "../domains/backup/automaticBackupCoordinator";
 import type { AutomaticRecoverySnapshotDescriptor } from "../domains/backup/automaticBackupCoordinator";
 import { createAutomaticBackupScheduler, type AutomaticBackupScheduler } from "../domains/backup/automaticBackupScheduler";
 import { createAutomaticPortableMergePort, createAutomaticPortableRestorePort } from "../domains/portability/automaticPortability";
@@ -63,6 +63,7 @@ export function productionAutomaticBackupPresentationInput(
   mergeReview: boolean,
   nowMs: number,
   cellularConfirmationRequired = false,
+  discoveryOutcome: AutomaticBackupDiscoveryOutcome = "unknown",
 ) {
   const deleted = current.authorityState === "deleted";
   const progressStage = current.statusCode === "checking" ? "Checking backup" as const
@@ -79,8 +80,9 @@ export function productionAutomaticBackupPresentationInput(
       : mergeReview ? "merge_review" as const
         : cellularConfirmationRequired ? "cellular_confirmation_required" as const
         : current.authorityState === "stale_writer" ? "stale_writer" as const
-          : current.authorityState === "quarantine" && current.manifestId === null ? "no_cloud" as const
-            : current.authorityState === "quarantine" && recoveryPrompt === null ? "invalid_artifacts" as const
+          : discoveryOutcome === "needs_bootstrap" ? "no_cloud" as const
+            : discoveryOutcome === "invalid_artifacts" ? "invalid_artifacts" as const
+              : discoveryOutcome === "restore_required" ? "restore_required" as const
               : current.statusCode === "restore_pending" ? "restore_required" as const : null;
   return {
     status,
@@ -395,7 +397,7 @@ export function createProductionAutomaticBackupServices(kernel: SqliteKernel): S
   const runtime = createAutomaticBackupRuntime({ read: async () => {
     const current = await state.read();
     const recoveryPrompt = coordinator.recoveryPrompt?.() ?? null;
-    return productionAutomaticBackupPresentationInput(current, recoveryPrompt, recoveryReviewPending, Date.now(), cellularConfirmationRequired);
+    return productionAutomaticBackupPresentationInput(current, recoveryPrompt, recoveryReviewPending, Date.now(), cellularConfirmationRequired, coordinator.recoveryOutcome?.() ?? "unknown");
   }, commands: {
     connect: async () => {
       const result = await coordinator.connect();

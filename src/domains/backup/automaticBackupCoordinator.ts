@@ -80,6 +80,7 @@ export type AutomaticBackupFailureStage =
   | "manifest_reread"
   | "writer_activation";
 export type AutomaticRecoveryCandidate = "latest" | "previous";
+export type AutomaticBackupDiscoveryOutcome = "unknown" | "needs_bootstrap" | "restore_required" | "invalid_artifacts" | "deleted" | "ready";
 export type AutomaticRecoverySnapshotDescriptor = Readonly<{
   fileId: string;
   objectSha256: string;
@@ -110,6 +111,7 @@ export type AutomaticBackupCoordinator = Readonly<{
   commitRecovery(input: AutomaticRecoveryCommit): Promise<Readonly<{ state: "ready" | "rebuild_pending" }>>;
   cancelRecovery(attemptId: string): Promise<void>;
   recoveryPrompt(): Readonly<{ kind: "latest" | "previous" | "update_required"; producedAtMs?: number; previousProducedAtMs?: number }> | null;
+  recoveryOutcome(): AutomaticBackupDiscoveryOutcome;
 }>;
 
 /**
@@ -194,6 +196,7 @@ export function createAutomaticBackupCoordinator(input: Readonly<{
     manifestEtag?: string;
   }> | null = null;
   let currentRecoveryPrompt: ReturnType<AutomaticBackupCoordinator["recoveryPrompt"]> = null;
+  let currentRecoveryOutcome: AutomaticBackupDiscoveryOutcome = "unknown";
   const recoverCandidates = async (
     existing: Readonly<{ fileId: string; etag: string }> | null,
     promptKind: "latest" | "previous",
@@ -450,6 +453,7 @@ export function createAutomaticBackupCoordinator(input: Readonly<{
   ) => {
     recoveryAttempts.clear();
     currentRecoveryPrompt = null;
+    currentRecoveryOutcome = "unknown";
     const generation = ++checkingGeneration;
     const prior = await input.state.read();
     const permissionId = identity?.permissionId ?? prior.permissionId;
@@ -480,10 +484,12 @@ export function createAutomaticBackupCoordinator(input: Readonly<{
           permissionId: state.permissionId,
           connectionGeneration: state.connectionGeneration,
         });
+        currentRecoveryOutcome = "needs_bootstrap";
         return Object.freeze({ status: "needs_bootstrap" as const });
       }
       bootstrapFence = null;
       await recoverCandidates(null, "latest");
+      currentRecoveryOutcome = currentRecoveryPrompt === null ? "invalid_artifacts" : "restore_required";
       return Object.freeze({ status: "quarantined" as const });
     }
     bootstrapFence = null;
@@ -503,28 +509,36 @@ export function createAutomaticBackupCoordinator(input: Readonly<{
         successorWriterEpoch: authoritativeManifest.successorWriterEpoch,
       });
       currentRecoveryPrompt = null;
+      currentRecoveryOutcome = "deleted";
       return Object.freeze({ status: "quarantined" as const });
     }
     const parsed = input.validateManifest?.(manifest.bytes);
     if (parsed === null || parsed === undefined) {
       const fileId = manifest.fileId ?? state.manifestId;
       if (fileId !== null && fileId !== undefined) await recoverCandidates({ fileId, etag: manifest.etag }, "previous");
+      currentRecoveryOutcome = currentRecoveryPrompt === null ? "invalid_artifacts" : "restore_required";
       return Object.freeze({ status: "quarantined" as const });
     }
     if (parsed.writerEpoch > state.writerEpoch) {
       if (allowHigherEpochRecovery) {
         currentRecoveryPrompt = Object.freeze({ kind: "latest" as const });
+        currentRecoveryOutcome = "restore_required";
         return Object.freeze({ status: "quarantined" as const });
       }
       await input.state.markStaleWriter?.(state.writerEpoch);
       return Object.freeze({ status: "stale_writer" as const });
     }
-    if (parsed.writerEpoch < state.writerEpoch) return Object.freeze({ status: "quarantined" as const });
+    if (parsed.writerEpoch < state.writerEpoch) {
+      currentRecoveryOutcome = "invalid_artifacts";
+      return Object.freeze({ status: "quarantined" as const });
+    }
     if (state.manifestId === null || state.manifestId === undefined
       || (manifest.fileId !== undefined && manifest.fileId !== state.manifestId)) {
+      currentRecoveryOutcome = "invalid_artifacts";
       return Object.freeze({ status: "quarantined" as const });
     }
     const activated = await input.state.activateWriter?.({ manifestId: state.manifestId, manifestEtag: manifest.etag, writerEpoch: parsed.writerEpoch, permissionId: state.permissionId, connectionGeneration: state.connectionGeneration });
+    currentRecoveryOutcome = activated === false ? "invalid_artifacts" : "ready";
     return Object.freeze({ status: activated === false ? "quarantined" as const : "ready" as const });
   };
   const finishDeletionSweep = async (): Promise<Readonly<{ status: "complete" | "partial" | "cancelled" }>> => {
@@ -832,5 +846,6 @@ export function createAutomaticBackupCoordinator(input: Readonly<{
       await input.state.setRecoveryStatus?.("restore_pending");
     },
     recoveryPrompt: () => currentRecoveryPrompt,
+    recoveryOutcome: () => currentRecoveryOutcome,
   });
 }
