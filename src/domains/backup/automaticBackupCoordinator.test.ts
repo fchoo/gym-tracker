@@ -1012,6 +1012,66 @@ describe("automatic backup coordinator", () => {
     ]);
   });
 
+  it("resumes one persisted upload candidate through every acknowledged offset", async () => {
+    const large = new Uint8Array(5 * 1024 * 1024 + 1);
+    const events: string[] = [];
+    let reads = 0;
+    let resumes = 0;
+    const coordinator = createAutomaticBackupCoordinator({
+      isWorkoutActive: () => false,
+      capture: async ({ snapshotId }) => {
+        expect(snapshotId).toBe("candidate-persisted");
+        return { generation: 4, snapshotId: snapshotId!, sourceDigest: "a".repeat(64), bytes: large };
+      },
+      state: {
+        read: async () => activeState(),
+        persistAttempt: async () => { throw new Error("must_not_replace_attempt"); },
+        acknowledgeReceipt: async () => true,
+        readPendingUpload: async () => ({
+          ...activeState(),
+          capturedGeneration: 4,
+          sourceDigest: "a".repeat(64),
+          snapshotId: "candidate-persisted",
+          candidateId: "candidate-persisted",
+          manifestId: "manifest",
+          manifestEtag: "etag",
+          resumableLocation: "https://www.googleapis.com/upload/session",
+          resumableUploadedBytes: 1,
+          updatedAtMs: 1,
+        }),
+        recoverExpiredLease: async () => { events.push("recover-lease"); return true; },
+        acquireLease: async () => { events.push("acquire-lease"); return true; },
+        updateResumableUpload: async ({ uploadedBytes }) => { events.push(`offset:${uploadedBytes}`); return true; },
+        releaseLease: async () => { events.push("release-lease"); return true; },
+      },
+      drive: {
+        allocateFileId: async () => { throw new Error("must_reuse_candidate"); },
+        createSnapshot: async () => { throw new Error("must_use_resumable"); },
+        createResumableSnapshot: async () => { throw new Error("must_reuse_session"); },
+        resumeSnapshot: async (session) => {
+          events.push(`resume:${session.uploadedBytes}`);
+          resumes += 1;
+          return resumes === 1
+            ? { location: session.location, uploadedBytes: 1024 }
+            : "candidate-persisted";
+        },
+        download: async () => large,
+        updateManifest: async () => "next-etag",
+        readManifest: async () => ({ bytes: activeManifest(2), etag: ++reads === 1 ? "etag" : "next-etag" }),
+      },
+      validate: () => true,
+      validateManifest: () => ({ writerEpoch: 2, latest: { fileId: "previous", object_sha256: "b".repeat(64) }, previous: null }),
+      buildManifest: () => activeManifest(2),
+      nowMs: () => 10,
+      candidateId: () => "lease",
+    });
+
+    await expect(coordinator.backup()).resolves.toEqual({ status: "backed_up", generation: 4 });
+    expect(events).toEqual([
+      "recover-lease", "acquire-lease", "resume:1", "offset:1024", "resume:1024", "release-lease",
+    ]);
+  });
+
   it("quarantines every discovery ambiguity and only activates a matching newer writer", async () => {
     const make = (state: ReturnType<typeof activeState>, readManifest: () => Promise<{ fileId?: string; bytes: Uint8Array; etag: string } | null>, discover?: () => Promise<readonly unknown[]>, activateWriter?: () => Promise<boolean>) => createAutomaticBackupCoordinator({
       isWorkoutActive: () => false, capture: async () => ({ generation: 1, sourceDigest: "a".repeat(64), bytes: new Uint8Array() }),

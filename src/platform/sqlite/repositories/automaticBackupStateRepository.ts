@@ -29,6 +29,12 @@ export type AutomaticBackupPendingHandover = Readonly<{
   snapshotId: string;
   sourceDigest: string;
 }>;
+export type AutomaticBackupPendingUpload = AutomaticBackupReceipt & Readonly<{
+  candidateId: string;
+  resumableLocation: string | null;
+  resumableUploadedBytes: number;
+  updatedAtMs: number;
+}>;
 
 export type AutomaticBackupRecoveryStatus =
   | "idle"
@@ -43,8 +49,11 @@ export function createAutomaticBackupStateRepository(kernel: SqliteKernel): Read
   acknowledge(input: Readonly<{ environment: AutomaticBackupState["environment"]; permissionId: string; writerEpoch: number; capturedGeneration: number }>): Promise<boolean>;
   acknowledgeReceipt(input: AutomaticBackupReceipt): Promise<boolean>;
   persistAttempt(input: AutomaticBackupReceipt & Readonly<{ candidateId: string; resumableLocation?: string; resumableUploadedBytes?: number; nowMs: number }>): Promise<void>;
+  readPendingUpload(input: Readonly<{ environment: AutomaticBackupState["environment"]; permissionId: string; connectionGeneration: number; writerEpoch: number }>): Promise<AutomaticBackupPendingUpload | null>;
+  updateResumableUpload(input: Readonly<{ candidateId: string; location: string; uploadedBytes: number; nowMs: number }>): Promise<boolean>;
   acquireLease(input: Readonly<{ leaseId: string; nowMs: number; expiresAtMs: number }>): Promise<boolean>;
   recoverExpiredLease(nowMs: number): Promise<boolean>;
+  releaseLease(leaseId: string): Promise<boolean>;
   beginQuarantine(input: Readonly<{ environment: AutomaticBackupState["environment"]; permissionId: string; connectionGeneration: number; accountDisplayLabel?: string | null }>): Promise<void>;
   activateWriter(input: Readonly<{ manifestId: string; manifestEtag: string; writerEpoch: number; permissionId: string; connectionGeneration: number }>): Promise<boolean>;
   markStaleWriter(writerEpoch: number): Promise<boolean>;
@@ -102,7 +111,8 @@ export function createAutomaticBackupStateRepository(kernel: SqliteKernel): Read
     async acknowledgeReceipt(input) {
       return kernel.write(async (transaction) => {
         const receipt = await transaction.execute(
-          `UPDATE automatic_backup_receipt_state SET accepted_manifest_etag = ?
+          `UPDATE automatic_backup_receipt_state SET accepted_manifest_etag = ?, candidate_id = NULL,
+             resumable_location = NULL, resumable_uploaded_bytes = 0, lease_id = NULL, lease_expires_at_ms = NULL
            WHERE id = 1 AND environment = ? AND permission_id = ? AND connection_generation = ?
              AND writer_epoch = ? AND captured_generation = ? AND source_digest = ?
              AND snapshot_id = ? AND manifest_file_id = ?`,
@@ -129,6 +139,58 @@ export function createAutomaticBackupStateRepository(kernel: SqliteKernel): Read
         );
         return outcome.changes === 1;
       });
+    },
+    async readPendingUpload(input) {
+      const rows = await kernel.queryAll<Record<string, unknown>>(
+        `SELECT environment, permission_id, connection_generation, writer_epoch,
+           captured_generation, source_digest, snapshot_id, manifest_file_id,
+           accepted_manifest_etag, candidate_id, resumable_location,
+           resumable_uploaded_bytes, updated_at_ms
+         FROM automatic_backup_receipt_state
+         WHERE id = 1 AND environment = ? AND permission_id = ?
+           AND connection_generation = ? AND writer_epoch = ? AND candidate_id IS NOT NULL`,
+        [input.environment, input.permissionId, input.connectionGeneration, input.writerEpoch],
+      );
+      if (rows.length === 0) return null;
+      const row = rows[0]!;
+      const location = row.resumable_location;
+      const valid = rows.length === 1
+        && row.environment === input.environment && row.permission_id === input.permissionId
+        && row.connection_generation === input.connectionGeneration && row.writer_epoch === input.writerEpoch
+        && Number.isSafeInteger(row.captured_generation) && (row.captured_generation as number) >= 0
+        && typeof row.source_digest === "string" && /^[a-f0-9]{64}$/u.test(row.source_digest)
+        && typeof row.snapshot_id === "string" && row.snapshot_id.length > 0
+        && typeof row.manifest_file_id === "string" && row.manifest_file_id.length > 0
+        && typeof row.accepted_manifest_etag === "string" && row.accepted_manifest_etag.length > 0
+        && typeof row.candidate_id === "string" && row.candidate_id.length > 0
+        && (location === null || (typeof location === "string" && location.length <= 2048
+          && new URL(location).origin === "https://www.googleapis.com"))
+        && Number.isSafeInteger(row.resumable_uploaded_bytes) && (row.resumable_uploaded_bytes as number) >= 0
+        && Number.isSafeInteger(row.updated_at_ms) && (row.updated_at_ms as number) >= 0;
+      if (!valid) throw new Error("automatic_backup_pending_upload_invalid");
+      return Object.freeze({
+        environment: row.environment as AutomaticBackupState["environment"],
+        permissionId: row.permission_id as string,
+        connectionGeneration: row.connection_generation as number,
+        writerEpoch: row.writer_epoch as number,
+        capturedGeneration: row.captured_generation as number,
+        sourceDigest: row.source_digest as string,
+        snapshotId: row.snapshot_id as string,
+        manifestId: row.manifest_file_id as string,
+        manifestEtag: row.accepted_manifest_etag as string,
+        candidateId: row.candidate_id as string,
+        resumableLocation: location as string | null,
+        resumableUploadedBytes: row.resumable_uploaded_bytes as number,
+        updatedAtMs: row.updated_at_ms as number,
+      });
+    },
+    async updateResumableUpload(input) {
+      const outcome = await kernel.write((transaction) => transaction.execute(
+        `UPDATE automatic_backup_receipt_state SET resumable_location = ?, resumable_uploaded_bytes = ?, updated_at_ms = ?
+         WHERE id = 1 AND candidate_id = ? AND accepted_manifest_etag IS NOT NULL`,
+        [input.location, input.uploadedBytes, input.nowMs, input.candidateId],
+      ));
+      return outcome.changes === 1;
     },
     async persistAttempt(input) {
       await kernel.write(async (transaction) => {
@@ -162,6 +224,13 @@ export function createAutomaticBackupStateRepository(kernel: SqliteKernel): Read
       const outcome = await kernel.write((transaction) => transaction.execute(
         `UPDATE automatic_backup_receipt_state SET lease_id = NULL, lease_expires_at_ms = NULL
          WHERE id = 1 AND lease_id IS NOT NULL AND lease_expires_at_ms <= ?`, [nowMs],
+      ));
+      return outcome.changes === 1;
+    },
+    async releaseLease(leaseId) {
+      const outcome = await kernel.write((transaction) => transaction.execute(
+        `UPDATE automatic_backup_receipt_state SET lease_id = NULL, lease_expires_at_ms = NULL
+         WHERE id = 1 AND lease_id = ?`, [leaseId],
       ));
       return outcome.changes === 1;
     },

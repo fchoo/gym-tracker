@@ -124,10 +124,16 @@ export function createAutomaticBackupCoordinator(input: Readonly<{
   capture(input: Readonly<{
     environment: AutomaticBackupEnvironment;
     writerEpoch: number;
+    snapshotId?: string;
   }>): Promise<CapturedSnapshot>;
   state: Readonly<{
     read(): Promise<BackupState>;
     persistAttempt(input: Receipt & Readonly<{ candidateId: string; nowMs: number }>): Promise<void>;
+    readPendingUpload?(input: Readonly<{ environment: AutomaticBackupEnvironment; permissionId: string; connectionGeneration: number; writerEpoch: number }>): Promise<Readonly<Receipt & { candidateId: string; resumableLocation: string | null; resumableUploadedBytes: number; updatedAtMs: number }> | null>;
+    updateResumableUpload?(input: Readonly<{ candidateId: string; location: string; uploadedBytes: number; nowMs: number }>): Promise<boolean>;
+    acquireLease?(input: Readonly<{ leaseId: string; nowMs: number; expiresAtMs: number }>): Promise<boolean>;
+    recoverExpiredLease?(nowMs: number): Promise<boolean>;
+    releaseLease?(leaseId: string): Promise<boolean>;
     acknowledgeReceipt(input: Receipt): Promise<boolean>;
     beginQuarantine?(value: Readonly<{ environment: AutomaticBackupEnvironment; permissionId: string; connectionGeneration: number; accountDisplayLabel?: string | null }>): Promise<void>;
     activateWriter?(value: Readonly<{ manifestId: string; manifestEtag: string; writerEpoch: number; permissionId: string; connectionGeneration: number }>): Promise<boolean>;
@@ -256,11 +262,32 @@ export function createAutomaticBackupCoordinator(input: Readonly<{
         return deferred("active_manifest");
       }
     }
+    let pendingUpload: Awaited<ReturnType<NonNullable<typeof input.state.readPendingUpload>>> | null = null;
+    try {
+      pendingUpload = await input.state.readPendingUpload?.({
+        environment: state.environment,
+        permissionId: state.permissionId,
+        connectionGeneration: state.connectionGeneration,
+        writerEpoch,
+      }) ?? null;
+    } catch {
+      return deferred("attempt_persistence");
+    }
+    let candidateId: string;
+    let manifestId: string;
+    try {
+      candidateId = pendingUpload?.candidateId ?? await input.drive.allocateFileId?.() ?? input.candidateId();
+      manifestId = pendingUpload?.manifestId ?? state.manifestId
+        ?? (bootstrapping ? await input.drive.allocateFileId!() : "automatic-backup-manifest");
+    } catch {
+      return deferred("file_id_allocation");
+    }
     let captured: CapturedSnapshot;
     try {
       captured = await input.capture({
         environment: state.environment,
         writerEpoch,
+        snapshotId: candidateId,
       });
     } catch {
       return deferred("snapshot_capture");
@@ -270,29 +297,59 @@ export function createAutomaticBackupCoordinator(input: Readonly<{
       || (!bootstrapping && captured.generation === state.backedUpGeneration)) {
       return deferred("snapshot_generation");
     }
-    let candidateId: string;
-    let manifestId: string;
-    try {
-      candidateId = await input.drive.allocateFileId?.() ?? input.candidateId();
-      manifestId = state.manifestId
-        ?? (bootstrapping ? await input.drive.allocateFileId!() : "automatic-backup-manifest");
-    } catch {
-      return deferred("file_id_allocation");
+    if (pendingUpload !== null && (pendingUpload.capturedGeneration !== captured.generation
+      || pendingUpload.sourceDigest !== captured.sourceDigest || pendingUpload.snapshotId !== candidateId
+      || pendingUpload.manifestId !== manifestId)) {
+      pendingUpload = null;
+      try {
+        candidateId = await input.drive.allocateFileId?.() ?? input.candidateId();
+        captured = await input.capture({ environment: state.environment, writerEpoch, snapshotId: candidateId });
+      } catch {
+        return deferred("snapshot_capture");
+      }
     }
     const effectiveState = Object.freeze({ ...state, writerEpoch, manifestId });
     const receipt: Receipt = Object.freeze({ environment: state.environment, permissionId: state.permissionId, connectionGeneration: state.connectionGeneration, writerEpoch, capturedGeneration: captured.generation, sourceDigest: captured.sourceDigest, snapshotId: candidateId, manifestId, manifestEtag: state.manifestEtag ?? "pending" });
     try {
-      await input.state.persistAttempt({ ...receipt, candidateId, nowMs: input.nowMs() });
+      if (pendingUpload === null) await input.state.persistAttempt({ ...receipt, candidateId, nowMs: input.nowMs() });
     } catch {
       return deferred("attempt_persistence");
     }
     let fileId: string;
     try {
       if (captured.bytes.byteLength > 5 * 1024 * 1024 && input.drive.createResumableSnapshot !== undefined && input.drive.resumeSnapshot !== undefined) {
-        const session = await input.drive.createResumableSnapshot(candidateId, captured.bytes);
-        const completed = await input.drive.resumeSnapshot(session, captured.bytes);
-        if (typeof completed !== "string") return deferred("snapshot_upload");
-        fileId = completed;
+        const nowMs = input.nowMs();
+        await input.state.recoverExpiredLease?.(nowMs);
+        const leaseId = `upload-${input.candidateId()}`;
+        if (input.state.acquireLease !== undefined
+          && !await input.state.acquireLease({ leaseId, nowMs, expiresAtMs: nowMs + 60_000 })) {
+          return deferred("snapshot_upload");
+        }
+        try {
+          let session = pendingUpload?.resumableLocation === null || pendingUpload?.resumableLocation === undefined
+            ? await input.drive.createResumableSnapshot(candidateId, captured.bytes)
+            : { location: pendingUpload.resumableLocation, uploadedBytes: pendingUpload.resumableUploadedBytes };
+          if (pendingUpload?.resumableLocation === null || pendingUpload?.resumableLocation === undefined) {
+            if (await input.state.updateResumableUpload?.({ candidateId, location: session.location, uploadedBytes: session.uploadedBytes, nowMs: input.nowMs() }) === false) {
+              return deferred("snapshot_upload");
+            }
+          }
+          let completed: string | null = null;
+          for (let attempt = 0; attempt < 64 && completed === null; attempt += 1) {
+            const result = await input.drive.resumeSnapshot(session, captured.bytes);
+            if (typeof result === "string") completed = result;
+            else {
+              session = result;
+              if (await input.state.updateResumableUpload?.({ candidateId, location: session.location, uploadedBytes: session.uploadedBytes, nowMs: input.nowMs() }) === false) {
+                return deferred("snapshot_upload");
+              }
+            }
+          }
+          if (completed === null) return deferred("snapshot_upload");
+          fileId = completed;
+        } finally {
+          await input.state.releaseLease?.(leaseId);
+        }
       } else fileId = await input.drive.createSnapshot(candidateId, captured.bytes);
     } catch { return deferred("snapshot_upload"); }
     let downloaded: Uint8Array;

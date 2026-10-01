@@ -206,8 +206,8 @@ export function createProductionAutomaticBackupServices(kernel: SqliteKernel): S
   const coordinator = createAutomaticBackupCoordinator({
     isWorkoutActive, auth, state, drive, nowMs: () => Date.now(), candidateId: () => id("attempt"),
     reportFailure: (stage) => console.warn(`[automatic-backup] deferred:${stage}`),
-    capture: async ({ environment, writerEpoch }) => {
-      const captured = await snapshotCapture.capture({ snapshotId: id("snapshot"), createdAtMs: Date.now() });
+    capture: async ({ environment, writerEpoch, snapshotId }) => {
+      const captured = await snapshotCapture.capture({ snapshotId: snapshotId ?? id("snapshot"), createdAtMs: Date.now() });
       const ownerNamespace = captured.snapshot.tables.portable_owner_identity?.[0]?.owner_namespace;
       if (typeof ownerNamespace !== "string") throw new Error("automatic_backup_owner_missing");
       const header: DriveBackupSnapshotHeaderV1 = Object.freeze({

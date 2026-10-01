@@ -56,6 +56,33 @@ describe("automatic backup state repository", () => {
     expect(statements.join("\n")).toContain("status_code = 'finishing'");
     expect(statements.join("\n")).toContain("automatic_backup_receipt_state");
   });
+
+  it("reads and advances only a fully fenced pending resumable upload", async () => {
+    const statements: string[] = [];
+    const row = {
+      environment: "development-test", permission_id: "permission", connection_generation: 4,
+      writer_epoch: 7, captured_generation: 8, source_digest: "a".repeat(64),
+      snapshot_id: "candidate", manifest_file_id: "manifest", accepted_manifest_etag: "etag",
+      candidate_id: "candidate", resumable_location: "https://www.googleapis.com/upload/session",
+      resumable_uploaded_bytes: 1024, updated_at_ms: 100,
+    };
+    const repository = createAutomaticBackupStateRepository({
+      queryAll: async () => [row],
+      write: async (command: (transaction: SqliteTransactionExecutor) => Promise<unknown>) => command({
+        execute: async (sql: string) => { statements.push(sql); return { changes: 1, lastInsertRowId: 0 }; },
+        queryAll: async () => [],
+      }),
+      connectionConfiguration: async () => undefined,
+      close: async () => undefined,
+    } as unknown as SqliteKernel);
+
+    await expect(repository.readPendingUpload({ environment: "development-test", permissionId: "permission", connectionGeneration: 4, writerEpoch: 7 }))
+      .resolves.toMatchObject({ candidateId: "candidate", resumableUploadedBytes: 1024 });
+    await expect(repository.updateResumableUpload({ candidateId: "candidate", location: row.resumable_location, uploadedBytes: 2048, nowMs: 101 })).resolves.toBe(true);
+    await expect(repository.releaseLease("lease")).resolves.toBe(true);
+    expect(statements.join("\n")).toContain("resumable_uploaded_bytes = ?");
+    expect(statements.join("\n")).toContain("lease_id = NULL");
+  });
   it("returns only bounded state and conditionally acknowledges captured generation", async () => {
     const repository = createAutomaticBackupStateRepository({
       queryAll: async () => [{ environment: "development-test", permission_id: "permission", display_email: "…@example.com", connection_generation: 2, writer_epoch: 3, mutation_generation: 5, backed_up_generation: 4, last_attempt_ms: 10, last_success_ms: 11 }],
