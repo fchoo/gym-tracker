@@ -214,9 +214,9 @@ export function createAutomaticBackupStateRepository(kernel: SqliteKernel): Read
     },
     async acquireLease(input) {
       const outcome = await kernel.write((transaction) => transaction.execute(
-        `UPDATE automatic_backup_receipt_state SET lease_id = ?, lease_expires_at_ms = ?, updated_at_ms = ?
+        `UPDATE automatic_backup_receipt_state SET lease_id = ?, lease_expires_at_ms = ?
          WHERE id = 1 AND (lease_id IS NULL OR lease_expires_at_ms IS NULL OR lease_expires_at_ms <= ?)`,
-        [input.leaseId, input.expiresAtMs, input.nowMs, input.nowMs],
+        [input.leaseId, input.expiresAtMs, input.nowMs],
       ));
       return outcome.changes === 1;
     },

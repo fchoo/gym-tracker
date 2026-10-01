@@ -133,7 +133,7 @@ export function createAutomaticBackupCoordinator(input: Readonly<{
     read(): Promise<BackupState>;
     persistAttempt(input: Receipt & Readonly<{ candidateId: string; nowMs: number }>): Promise<void>;
     readPendingUpload?(input: Readonly<{ environment: AutomaticBackupEnvironment; permissionId: string; connectionGeneration: number; writerEpoch: number }>): Promise<Readonly<Receipt & { candidateId: string; resumableLocation: string | null; resumableUploadedBytes: number; updatedAtMs: number }> | null>;
-    updateResumableUpload?(input: Readonly<{ candidateId: string; location: string; uploadedBytes: number; nowMs: number }>): Promise<boolean>;
+    updateResumableUpload?(input: Readonly<{ candidateId: string; location: string; uploadedBytes: number }>): Promise<boolean>;
     acquireLease?(input: Readonly<{ leaseId: string; nowMs: number; expiresAtMs: number }>): Promise<boolean>;
     recoverExpiredLease?(nowMs: number): Promise<boolean>;
     releaseLease?(leaseId: string): Promise<boolean>;

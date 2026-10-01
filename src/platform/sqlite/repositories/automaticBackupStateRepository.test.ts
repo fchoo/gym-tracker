@@ -229,6 +229,7 @@ describe("automatic backup state repository", () => {
     expect(sql.join("\n")).toContain("resumable_location");
     expect(sql.join("\n")).toContain("last_attempt_ms");
     expect(sql.join("\n")).toContain("accepted_manifest_etag = ?");
+    expect(sql.find((statement) => statement.includes("SET lease_id"))).not.toContain("updated_at_ms");
     changes = 0;
     await expect(repository.acknowledge({ environment: "development-test", permissionId: "permission", writerEpoch: 3, capturedGeneration: 5 })).resolves.toBe(false);
     await expect(repository.acknowledgeReceipt(receipt)).resolves.toBe(false);

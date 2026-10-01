@@ -19,7 +19,7 @@ const mockLocalFacts = {
     schemaVersion: 26, ownerNamespace: "local-owner", tables: { workout_sessions: [], portable_owner_identity: [] },
   })),
 };
-const mockCapture = jest.fn(async () => ({
+const mockCapture = jest.fn(async (input?: Readonly<{ snapshotId?: string; createdAtMs?: number }>) => ({
   generation: 7,
   snapshot: {
     version: 2,
@@ -37,8 +37,8 @@ const mockCapture = jest.fn(async () => ({
       },
       totalRows: 1,
     },
-    snapshotId: "snapshot",
-    createdAtMs: 1,
+    snapshotId: input?.snapshotId ?? "snapshot",
+    createdAtMs: input?.createdAtMs ?? 1,
   },
 }));
 const mockCoordinatorConnect = jest.fn<() => Promise<{
@@ -174,9 +174,9 @@ describe("production automatic-backup composition", () => {
   });
   it("re-encodes a persisted candidate identically across different wall-clock retries", async () => {
     const baseline = await mockCapture();
-    const capturePersisted = async (input: { snapshotId?: string; createdAtMs: number }) => ({
+    const capturePersisted = async (input?: { snapshotId?: string; createdAtMs?: number }) => ({
       ...baseline,
-      snapshot: { ...baseline.snapshot, snapshotId: input.snapshotId!, createdAtMs: input.createdAtMs },
+      snapshot: { ...baseline.snapshot, snapshotId: input?.snapshotId ?? "snapshot", createdAtMs: input?.createdAtMs ?? 1 },
     });
     mockCapture.mockImplementationOnce(capturePersisted).mockImplementationOnce(capturePersisted);
     createProductionAutomaticBackupServices({ queryAll: jest.fn(async () => []) } as never);
@@ -445,10 +445,10 @@ describe("production automatic-backup composition", () => {
       fileId: "candidate",
       objectSha256: captured.sourceDigest,
       byteLength: captured.bytes.byteLength,
-      snapshotId: "snapshot",
+      snapshotId: captured.snapshotId,
       writerEpoch: 2,
       mutationGeneration: 7,
-    })).resolves.toMatchObject({ snapshotId: "snapshot" });
+    })).resolves.toMatchObject({ snapshotId: captured.snapshotId });
     await expect(coordinator.validate(captured.bytes)).resolves.toBe(true);
     expect(mockCapture).toHaveBeenCalledWith(expect.objectContaining({ snapshotId: expect.stringContaining("snapshot-") }));
     await expect(validatedRecoveryCandidateFromDriveObject({
@@ -461,7 +461,7 @@ describe("production automatic-backup composition", () => {
       sha256: async (value) => require("node:crypto").createHash("sha256").update(value).digest("hex"),
     })).resolves.toMatchObject({
       kind: "current",
-      snapshotId: "snapshot",
+      snapshotId: captured.snapshotId,
       mutationGeneration: 7,
       writerEpoch: 2,
     });
