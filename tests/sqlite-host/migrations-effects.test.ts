@@ -77,6 +77,9 @@ import {
 import {
   migrations as runtimeMigrations,
 } from "../../src/platform/sqlite/migrations";
+import {
+  advancedTimingTargetOwnershipMigration,
+} from "../../src/platform/sqlite/migrations/0027_advanced_timing_target_ownership";
 
 const MIGRATIONS_THROUGH_V18 = runtimeMigrations.filter(
   ({ version }) => version <= 18,
@@ -89,6 +92,9 @@ const MIGRATIONS_THROUGH_V20 = runtimeMigrations.filter(
 );
 const MIGRATIONS_THROUGH_V21 = runtimeMigrations.filter(
   ({ version }) => version <= 21,
+);
+const MIGRATIONS_THROUGH_V26 = runtimeMigrations.filter(
+  ({ version }) => version <= 26,
 );
 import {
   createExpoRecoveryBackupPort,
@@ -303,6 +309,7 @@ describe("Plan 01-06 forward migrations and internal recovery", () => {
       24,
       25,
       26,
+      27,
     ]);
     expect(runtimeMigrations.slice(0, 3)).toEqual(migrations);
     expect(initialMigration).toEqual(expect.objectContaining({
@@ -872,8 +879,8 @@ describe("Plan 01-06 forward migrations and internal recovery", () => {
       }).run();
 
       expect(result).toEqual(expect.objectContaining({
-        appliedVersions: [22, 23, 24, 25, 26],
-        currentVersion: 26,
+        appliedVersions: [22, 23, 24, 25, 26, 27],
+        currentVersion: 27,
       }));
       await expect(runtime.kernel.queryAll(
         "SELECT id, owner_namespace FROM portable_owner_identity",
@@ -1003,7 +1010,6 @@ describe("Plan 01-06 forward migrations and internal recovery", () => {
     "invalid_owner",
     "invalid_backfill",
     "missing_index",
-    "missing_trigger",
     "altered_trigger",
   ] as const)(
     "fails v22 verification when %s is malformed",
@@ -1185,7 +1191,6 @@ describe("Plan 01-06 forward migrations and internal recovery", () => {
     "missing_foreign_key",
     "missing_target_foreign_key",
     "missing_index",
-    "missing_trigger",
   ] as const)(
     "fails v21 verification when %s is malformed",
     async (scenario) => {
@@ -1214,12 +1219,6 @@ describe("Plan 01-06 forward migrations and internal recovery", () => {
             return (scenario === "missing_column" && table === "plan_day_exercises"
               ? []
               : columns) as unknown as readonly Row[];
-          }
-          if (sql.includes("session_advanced_timing_states_target_session_insert")) {
-            return (scenario === "missing_trigger" ? [] : [
-              { name: "session_advanced_timing_states_target_session_insert" },
-              { name: "session_advanced_timing_states_target_session_update" },
-            ]) as unknown as readonly Row[];
           }
           if (sql.includes("FROM sqlite_master")) {
             return (scenario === "missing_table" ? [] : [
@@ -1273,12 +1272,6 @@ describe("Plan 01-06 forward migrations and internal recovery", () => {
             : [{ name: columnsByTable.get(table) }];
           return columns as unknown as readonly Row[];
         }
-        if (sql.includes("session_advanced_timing_states_target_session_insert")) {
-          return [
-            { name: "session_advanced_timing_states_target_session_insert" },
-            { name: "session_advanced_timing_states_target_session_update" },
-          ] as unknown as readonly Row[];
-        }
         if (sql.includes("FROM sqlite_master")) {
           const result = [{ name: "session_advanced_timing_states" }];
           return result as unknown as readonly Row[];
@@ -1299,6 +1292,98 @@ describe("Plan 01-06 forward migrations and internal recovery", () => {
 
     await expect(advancedSetTimingMigration.verify(transaction))
       .resolves.toBeUndefined();
+  });
+
+  it("installs advanced-timing ownership triggers when upgrading a real v26 database", async () => {
+    const runtime = await createHostRuntime();
+    try {
+      await createMigrationRunner({
+        databaseName: "gym-tracker.db",
+        kernel: runtime.kernel,
+        migrations: MIGRATIONS_THROUGH_V26,
+        recoveryBackup: validatedBackup(),
+      }).run();
+      await expect(runtime.kernel.queryAll(
+        `SELECT name FROM sqlite_master
+         WHERE type = 'trigger'
+           AND name LIKE 'session_advanced_timing_states_target_session_%'`,
+      )).resolves.toEqual([]);
+
+      const result = await createMigrationRunner({
+        databaseName: "gym-tracker.db",
+        kernel: runtime.kernel,
+        migrations: runtimeMigrations,
+        recoveryBackup: validatedBackup(),
+      }).run();
+      expect(result).toEqual(expect.objectContaining({
+        appliedVersions: [27],
+        currentVersion: 27,
+      }));
+      await expect(advancedTimingTargetOwnershipMigration.verify({
+        execute: async () => ({ changes: 0, lastInsertRowId: 0 }),
+        queryAll: runtime.kernel.queryAll,
+      })).resolves.toBeUndefined();
+
+      await runtime.kernel.write(async (transaction) => {
+        await transaction.execute(
+          `INSERT INTO workout_sessions
+            (id, plan_id, plan_day_id, source, status, local_date, timezone,
+             started_at_ms, completed_at_ms, revision)
+           VALUES ('v27-owner', NULL, NULL, 'manual', 'in_progress',
+                   '2026-10-01', 'Asia/Singapore', 1, NULL, 1)`,
+        );
+        await transaction.execute(
+          `INSERT INTO workout_sessions
+            (id, plan_id, plan_day_id, source, status, local_date, timezone,
+             started_at_ms, completed_at_ms, revision)
+           VALUES ('v27-other', NULL, NULL, 'manual', 'partial',
+                   '2026-10-01', 'Asia/Singapore', 2, 3, 1)`,
+        );
+        await transaction.execute(
+          `INSERT INTO exercises
+            (id, content_pack_id, origin, source_namespace, upstream_id, name,
+             metric_profile, metric_contract_version, exercise_metric_generation,
+             equipment, default_rest_seconds, revision)
+           VALUES ('v27-exercise', NULL, 'custom', NULL, NULL, 'V27 exercise',
+                   'load_reps', 1, 1, 'Barbell', 90, 1)`,
+        );
+        await transaction.execute(
+          `INSERT INTO session_exercises
+            (id, session_id, source_plan_day_exercise_id, exercise_id, ordinal,
+             origin, display_ordinal, exercise_name, metric_profile,
+             metric_contract_version, exercise_metric_generation,
+             advanced_timing_default_json, default_rest_seconds, target_revision,
+             status, revision)
+           VALUES ('v27-session-exercise', 'v27-owner', NULL, 'v27-exercise', 0,
+                   'added', 0, 'V27 exercise', 'load_reps', 1, 1,
+                   '{"version":1,"mode":"off"}', 90, 0, 'active', 1)`,
+        );
+        await transaction.execute(
+          `INSERT INTO session_sets
+            (id, session_exercise_id, set_kind, ordinal,
+             source_plan_working_set_target_id, source_owned_plan_working_set_target_id,
+             advanced_timing_override_json, advanced_timing_resolved_json,
+             target_load_grams, target_min_reps, target_max_reps, target_json,
+             unit_json, rule_type, rule_version, metric_profile,
+             metric_contract_version, exercise_metric_generation, status, revision)
+           VALUES ('v27-set', 'v27-session-exercise', 'working', 0, NULL, NULL,
+                   NULL, '{"version":1,"mode":"per_rep","intervalMs":1000,"cueChannels":"haptic"}',
+                   1000, 1, 1, '{}', '{}', 'load_reps', 1, 'load_reps', 1, 1,
+                   'planned', 1)`,
+        );
+      });
+      await expect(runtime.kernel.write((transaction) => transaction.execute(
+        `INSERT INTO session_advanced_timing_states
+          (session_id, session_set_id, state_version, revision, status, mode,
+           config_json, progress_json, started_at_ms, next_boundary_at_ms,
+           remaining_ms, stopped_at_ms)
+         VALUES ('v27-other', 'v27-set', 1, 1, 'running', 'per_rep',
+                 '{"version":1,"mode":"per_rep","intervalMs":1000,"cueChannels":"haptic"}',
+                 '{"nextRepetitionIndex":1}', 1, 1001, NULL, NULL)`,
+      ))).rejects.toMatchObject({ code: "sqlite_transaction_failed" });
+    } finally {
+      await runtime.close();
+    }
   });
 
   it.each(Array.from({ length: 9 }, (_, statementIndex) => statementIndex))(
