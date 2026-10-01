@@ -23,7 +23,7 @@ const mockCapture = jest.fn(async (input?: Readonly<{ snapshotId?: string; creat
   generation: 7,
   snapshot: {
     version: 2,
-    schemaVersion: 26,
+    schemaVersion: 27,
     tables: {
       ...Object.fromEntries(LOGICAL_BACKUP_TABLES.map((table) => [table, []])),
       portable_owner_identity: [{ id: 1, owner_namespace: "a".repeat(32) }],
@@ -418,13 +418,13 @@ describe("production automatic-backup composition", () => {
     const merge = portability.createAutomaticPortableMergePort.mock.calls.at(-1)?.[0] as any;
     const coordinator = (jest.requireMock("../domains/backup/automaticBackupCoordinator") as { createAutomaticBackupCoordinator: jest.Mock }).createAutomaticBackupCoordinator.mock.calls.at(-1)?.[0] as any;
     const scheduler = (jest.requireMock("../domains/backup/automaticBackupScheduler") as { createAutomaticBackupScheduler: jest.Mock }).createAutomaticBackupScheduler.mock.calls.at(-1)?.[0] as any;
-    const remote = { schemaVersion: 26, tables: { portable_owner_identity: [{ owner_namespace: "remote-owner" }] } };
+    const remote = { schemaVersion: 27, tables: { portable_owner_identity: [{ owner_namespace: "remote-owner" }] } };
 
     await expect(restore.localIsEmpty()).resolves.toBe(true);
     await expect(restore.claimIsCurrent()).resolves.toBe(false);
     await restore.rebuild();
     await expect(merge.local()).resolves.toEqual({ version: 2, schemaVersion: 26, tables: mockLocalFacts.read.mock.results[0]?.value === undefined ? {} : expect.anything() });
-    expect(merge.archive(remote as never)).toEqual({ version: 2, schemaVersion: 26, tables: remote.tables });
+    expect(merge.archive(remote as never)).toEqual({ version: 2, schemaVersion: 27, tables: remote.tables });
     await merge.build({ archive: { version: 2, schemaVersion: 26, tables: {} }, local: { version: 2, schemaVersion: 26, tables: {} } });
     await merge.fingerprint();
     const token = merge.issue({ plan: {}, fingerprint: "fingerprint" });

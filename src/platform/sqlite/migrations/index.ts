@@ -54,6 +54,11 @@ export const migrations = Object.freeze([
   advancedTimingTargetOwnershipMigration,
 ]);
 
+export const CURRENT_SCHEMA_VERSION = migrations.reduce(
+  (current, migration) => Math.max(current, migration.version),
+  0,
+);
+
 export {
   contentLibraryMigration,
   exerciseHistoryIndexMigration,

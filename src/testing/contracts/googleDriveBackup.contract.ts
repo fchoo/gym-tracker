@@ -6,6 +6,7 @@ import { createAutomaticBackupStateRepository } from "../../platform/sqlite/repo
 import { createDriveBackupStoreAdapter } from "../../platform/google/driveBackupStoreAdapter";
 import { createMigrationRunner } from "../../platform/sqlite/migrationRunner";
 import { migrations } from "../../platform/sqlite/migrations";
+import { CURRENT_SCHEMA_VERSION } from "../../platform/sqlite/migrations";
 import { createExpoMigrationsEffectsContractAdapter } from "./migrationsEffects.contract";
 
 /** Source-owned registry used by Jest and the packaged Expo fake-port route. */
@@ -216,7 +217,7 @@ export async function runGoogleDriveBackupContract(adapter?: GoogleDriveBackupCo
       if (BACKUP_LIMITS.maxRowsTotal !== 100_000 || BACKUP_LIMITS.maxStringBytes !== 64 * 1024) throw new Error("payload_limits_invalid");
     },
     "malformed-and-truncated-payloads": async () => {
-      let failed = false; try { await parseDriveBackupSnapshotEnvelopeV1(new TextEncoder().encode("{"), { byteLength: 1, objectSha256: "a".repeat(64), environment: "development-test", packageIdentity: "com.fchoo.gymtracker.devtest", currentSchemaVersion: 26, sha256: async () => "a".repeat(64) }); } catch { failed = true; }
+      let failed = false; try { await parseDriveBackupSnapshotEnvelopeV1(new TextEncoder().encode("{"), { byteLength: 1, objectSha256: "a".repeat(64), environment: "development-test", packageIdentity: "com.fchoo.gymtracker.devtest", currentSchemaVersion: CURRENT_SCHEMA_VERSION, sha256: async () => "a".repeat(64) }); } catch { failed = true; }
       if (!failed) throw new Error("truncated_payload_accepted");
     },
     "cross-environment-and-namespace-rejection": () => {

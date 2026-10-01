@@ -28,6 +28,7 @@ import { createSqliteMergeLocalFactsPort, createSqliteRestoreCandidateProbe, cre
 import { createAutomaticBackupStateRepository } from "../platform/sqlite/repositories/automaticBackupStateRepository";
 import type { AutomaticBackupState } from "../platform/sqlite/repositories/automaticBackupStateRepository";
 import type { SqliteKernel } from "../platform/sqlite";
+import { CURRENT_SCHEMA_VERSION } from "../platform/sqlite/migrations";
 import { currentNetworkClass } from "../../modules/network-classifier/src";
 import { createAutomaticBackupRuntime, type AutomaticBackupRuntime } from "./automaticBackupRuntime";
 import { createProductionAutomaticSnapshotCapture } from "./productionAutomaticSnapshotCapture";
@@ -126,7 +127,7 @@ export async function validatedRecoveryCandidateFromDriveObject(input: Readonly<
     objectSha256,
     environment: input.environment,
     packageIdentity: packageIdentity(input.environment),
-    currentSchemaVersion: 26,
+    currentSchemaVersion: CURRENT_SCHEMA_VERSION,
     sha256: async (value) => input.sha256(typeof value === "string" ? value : new TextDecoder().decode(value)),
   });
   if (parsed.kind === "update_required") {
@@ -166,7 +167,7 @@ async function snapshotFromDrive(
     objectSha256,
     environment,
     packageIdentity: packageIdentity(environment),
-    currentSchemaVersion: 26,
+    currentSchemaVersion: CURRENT_SCHEMA_VERSION,
     sha256: async (input) => digest(typeof input === "string" ? input : new TextDecoder().decode(input)),
   });
   if (parsed.kind === "update_required") throw new Error("automatic_recovery_update_required");
