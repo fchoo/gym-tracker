@@ -710,7 +710,6 @@ export default function DataAndRecoveryRoute() {
     share: runtime.shareCsvExport,
     discard: runtime.discardCsvExport,
   });
-  const [showCellularConfirmation, setShowCellularConfirmation] = useState(false);
   const [automaticRecoveryReview, setAutomaticRecoveryReview] = useState<Extract<
     AutomaticRecoveryPreparation,
     { kind: "merge" }
@@ -745,7 +744,6 @@ export default function DataAndRecoveryRoute() {
           : backup.status === "backing_up" ? "Backing up"
             : backup.status === "restore_pending" ? "Restore required" : "Backed up");
   const backupNow = () => {
-    if (backup.dataUsePolicy === "wifi_only") { setShowCellularConfirmation(true); return; }
     invoke(runtime.requestAutomaticBackupNow);
   };
   const prepareAutomaticRecovery = async (candidate: "latest" | "previous") => {
@@ -801,10 +799,10 @@ export default function DataAndRecoveryRoute() {
       {backup.primaryAction === "cancel_check" ? <SecondaryAction label="Cancel checking" onPress={() => invoke(runtime.cancelAutomaticBackupCheck)} /> : null}
       {backup.primaryAction === "finish_setup" ? <PrimaryAction label="Finish backup setup" onPress={() => invoke(runtime.finishAutomaticBackupSetup)} /> : null}
       {backup.status === "restore_pending" && backup.primaryAction === "continue_restore" ? <SecondaryAction label="Not now" onPress={() => invoke(runtime.deferAutomaticRestore)} /> : null}
-      {showCellularConfirmation ? <View style={styles.card}>
+      {backup.reason === "cellular_confirmation_required" ? <View style={styles.card}>
         <Text accessibilityLiveRegion="polite" style={[typeScale.body as TextStyle, { color: colors.contentCardTextSecondary }]}>Wi-Fi only is on. Use cellular data for this backup?</Text>
-        <PrimaryAction label="Use cellular this time" onPress={() => { setShowCellularConfirmation(false); invoke(runtime.useAutomaticBackupCellularThisTime); }} />
-        <SecondaryAction label="Cancel" onPress={() => setShowCellularConfirmation(false)} />
+        <PrimaryAction label="Use cellular this time" onPress={() => invoke(runtime.useAutomaticBackupCellularThisTime)} />
+        <SecondaryAction label="Cancel" onPress={() => invoke(runtime.cancelAutomaticBackupCheck)} />
       </View> : null}
     </View></ContentCard>
     <ContentCard><View style={styles.card}>

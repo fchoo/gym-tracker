@@ -10,13 +10,15 @@ const mockCreateCsvExport = jest.fn<() => Promise<{ exportId: string }>>();
 const mockShareCsvExport = jest.fn<(value: { exportId: string }) => Promise<void>>();
 const mockDiscardCsvExport = jest.fn<(value: { exportId: string }) => Promise<void>>();
 const mockUseCellular = jest.fn<() => Promise<void>>();
+const mockBackupNow = jest.fn<() => Promise<void>>();
 const mockPrepareAutomaticRecovery = jest.fn<(input: { candidate: "latest" | "previous" }) => Promise<any>>();
 const mockCommitAutomaticRecovery = jest.fn<() => Promise<void>>();
 const mockCancelAutomaticRecovery = jest.fn<() => Promise<void>>();
 const mockRuntime: any = {
   automaticBackup: { status: "not_connected", reason: null, warning: null, lastSuccessfulBackupAtMs: null, primaryAction: "connect", dataUsePolicy: "wifi_and_cellular", recoveryPrompt: null, progressStage: null },
   connectAutomaticBackup: mockConnect,
-  requestAutomaticBackupNow: jest.fn(async () => undefined),
+  requestAutomaticBackupNow: mockBackupNow,
+  cancelAutomaticBackupCheck: jest.fn(async () => undefined),
   useAutomaticBackupCellularThisTime: mockUseCellular,
   prepareAutomaticRecovery: mockPrepareAutomaticRecovery,
   commitAutomaticRecovery: mockCommitAutomaticRecovery,
@@ -46,6 +48,8 @@ describe("DataAndRecoveryRoute", () => {
     mockDiscardCsvExport.mockResolvedValue(undefined);
     mockUseCellular.mockReset();
     mockUseCellular.mockResolvedValue(undefined);
+    mockBackupNow.mockReset();
+    mockBackupNow.mockResolvedValue(undefined);
     mockPrepareAutomaticRecovery.mockReset();
     mockPrepareAutomaticRecovery.mockResolvedValue({ kind: "empty_direct", attemptId: "attempt" });
     mockCommitAutomaticRecovery.mockReset();
@@ -98,10 +102,17 @@ describe("DataAndRecoveryRoute", () => {
     expect(screen.getByRole("button", { name: "Manual encrypted backup" })).toBeOnTheScreen();
   });
 
-  it("requires one-attempt confirmation for a wifi-only manual backup", async () => {
+  it("submits a normal manual request under Wi-Fi-only without guessing the network", async () => {
     mockRuntime.automaticBackup = { ...mockRuntime.automaticBackup, status: "idle", primaryAction: "backup_now", dataUsePolicy: "wifi_only" };
+    const route = await render(<AppearanceProvider><DataAndRecoveryRoute /></AppearanceProvider>);
+    await fireEvent.press(route.getByRole("button", { name: "Back up now" }));
+    expect(mockBackupNow).toHaveBeenCalledTimes(1);
+    expect(route.queryByText(/Use cellular data for this backup/u)).not.toBeOnTheScreen();
+  });
+
+  it("renders cellular confirmation only after the scheduler requests it", async () => {
+    mockRuntime.automaticBackup = { ...mockRuntime.automaticBackup, reason: "cellular_confirmation_required" };
     await render(<AppearanceProvider><DataAndRecoveryRoute /></AppearanceProvider>);
-    await fireEvent.press(screen.getByRole("button", { name: "Back up now" }));
     expect(screen.getByText(/Use cellular data for this backup/u)).toBeOnTheScreen();
     await fireEvent.press(screen.getByRole("button", { name: "Use cellular this time" }));
     expect(mockUseCellular).toHaveBeenCalledTimes(1);
