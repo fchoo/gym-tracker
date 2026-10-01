@@ -4,6 +4,7 @@ import { fetch as expoFetch } from "expo/fetch";
 import {
   canonicalJson,
   AUTOMATIC_BACKUP_LIMITS,
+  reconstructedDriveManifestBytes,
   parseDriveBackupSnapshotEnvelopeV1,
   parseDriveBackupManifestV1,
   type AutomaticBackupEnvironment,
@@ -16,6 +17,7 @@ import { createAutomaticPortableMergePort, createAutomaticPortableRestorePort } 
 import { parseLogicalBackupSnapshot, type LogicalBackupRow, type LogicalBackupSnapshot } from "../domains/portability/backupContracts";
 import { buildPortableMergePlan, type PortableMergePlan } from "../domains/portability/mergePlan";
 import type { AutomaticNamespaceAdoptionCommit } from "../domains/portability/mergeCommands";
+import { validateLogicalRestoreSnapshot } from "../domains/portability/restoreCommands";
 import { createDriveBackupStoreAdapter, type DriveFetch } from "../platform/google/driveBackupStoreAdapter";
 import { createFullPlanLogicalMergeWriter } from "../platform/sqlite/repositories/logicalMergeRepository";
 import { createLogicalRestoreRepository } from "../platform/sqlite/repositories/logicalRestoreRepository";
@@ -107,6 +109,50 @@ export function localPortableFactsAreEmpty(
     table === "portable_owner_identity" || rows.length === 0);
 }
 
+export async function validatedRecoveryCandidateFromDriveObject(input: Readonly<{
+  fileId: string;
+  value: Uint8Array;
+  environment: AutomaticBackupEnvironment;
+  schema: Parameters<typeof validateLogicalRestoreSnapshot>[1];
+  retainedReferences: Parameters<typeof validateLogicalRestoreSnapshot>[2];
+  candidateProbe: { validateCandidate(snapshot: LogicalBackupSnapshot): Promise<void> };
+  sha256(value: string): Promise<string>;
+}>) {
+  const objectSha256 = await input.sha256(new TextDecoder().decode(input.value));
+  const parsed = await parseDriveBackupSnapshotEnvelopeV1(input.value, {
+    byteLength: input.value.byteLength,
+    objectSha256,
+    environment: input.environment,
+    packageIdentity: packageIdentity(input.environment),
+    currentSchemaVersion: 26,
+    sha256: async (value) => input.sha256(typeof value === "string" ? value : new TextDecoder().decode(value)),
+  });
+  if (parsed.kind === "update_required") {
+    return Object.freeze({ kind: "update_required" as const, schemaVersion: parsed.header.schemaVersion, fileId: input.fileId });
+  }
+  const snapshot = parseLogicalBackupSnapshot(parsed.payload);
+  const ownerNamespace = snapshot.tables.portable_owner_identity?.[0]?.owner_namespace;
+  if (parsed.header.snapshotId !== snapshot.snapshotId
+    || parsed.header.createdAtMs !== snapshot.createdAtMs
+    || parsed.header.schemaVersion !== snapshot.schemaVersion
+    || parsed.header.ownerNamespace !== ownerNamespace) {
+    throw new Error("automatic_recovery_snapshot_invalid");
+  }
+  await validateLogicalRestoreSnapshot(snapshot, input.schema, input.retainedReferences);
+  await input.candidateProbe.validateCandidate(snapshot);
+  return Object.freeze({
+    kind: "current" as const,
+    ownerNamespace: parsed.header.ownerNamespace,
+    writerEpoch: parsed.header.writerEpoch,
+    mutationGeneration: parsed.header.mutationGeneration,
+    createdAtMs: parsed.header.createdAtMs,
+    snapshotId: parsed.header.snapshotId,
+    fileId: input.fileId,
+    objectSha256,
+    byteLength: input.value.byteLength,
+  });
+}
+
 async function snapshotFromDrive(
   value: Uint8Array,
   environment: AutomaticBackupEnvironment,
@@ -174,8 +220,11 @@ export function createProductionAutomaticBackupServices(kernel: SqliteKernel): S
   const isWorkoutActive = async () => (await kernel.queryAll(
     "SELECT 1 FROM workout_sessions WHERE status = 'in_progress' LIMIT 1",
   )).length !== 0;
+  const restoreSchema = createSqliteRestoreSchemaPort(kernel);
+  const retainedReferences = createSqliteRestoreRetainedReferencePort(kernel);
+  const candidateProbe = createSqliteRestoreCandidateProbe();
   const restore = createAutomaticPortableRestorePort({
-    schema: createSqliteRestoreSchemaPort(kernel), retainedReferences: createSqliteRestoreRetainedReferencePort(kernel), candidateProbe: createSqliteRestoreCandidateProbe(),
+    schema: restoreSchema, retainedReferences, candidateProbe,
     isWorkoutActive, localIsEmpty,
     claimIsCurrent: async () => (await state.read()).authorityState === "quarantine",
     restore: createLogicalRestoreRepository(kernel, { nowMs: () => Date.now() }).restore,
@@ -187,7 +236,7 @@ export function createProductionAutomaticBackupServices(kernel: SqliteKernel): S
     adoption?: Readonly<Pick<AutomaticNamespaceAdoptionCommit, "oldNamespace" | "newNamespace" | "remoteSnapshotSha256">>;
   }>>();
   const merge = createAutomaticPortableMergePort({
-    schema: createSqliteRestoreSchemaPort(kernel), retainedReferences: createSqliteRestoreRetainedReferencePort(kernel), candidateProbe: createSqliteRestoreCandidateProbe(), isWorkoutActive,
+    schema: restoreSchema, retainedReferences, candidateProbe, isWorkoutActive,
     local: async () => { const local = await createSqliteMergeLocalFactsPort(kernel).read(); return { version: 2 as const, schemaVersion: local.schemaVersion, tables: local.tables }; },
     archive: (snapshot) => ({ version: 2 as const, schemaVersion: snapshot.schemaVersion, tables: snapshot.tables }),
     build: ({ archive, local }) => buildPortableMergePlan({ archive, local, payloadDigest: digest }),
@@ -291,31 +340,18 @@ export function createProductionAutomaticBackupServices(kernel: SqliteKernel): S
         const candidates = [];
         for (const object of objects) {
           const value = await drive.download(object.fileId, 24 * 1024 * 1024);
-          const objectSha256 = await digest(new TextDecoder().decode(value));
           try {
-            const parsed = await parseDriveBackupSnapshotEnvelopeV1(value, {
-              byteLength: value.byteLength, objectSha256, environment: settings.environment,
-              packageIdentity: packageIdentity(settings.environment), currentSchemaVersion: 26,
-              sha256: async (input) => digest(typeof input === "string" ? input : new TextDecoder().decode(input)),
-            });
-            if (parsed.kind === "update_required") {
-              candidates.push({ kind: "update_required" as const, schemaVersion: parsed.header.schemaVersion, fileId: object.fileId });
-            } else {
-              candidates.push({ kind: "current" as const, ownerNamespace: parsed.header.ownerNamespace,
-                writerEpoch: parsed.header.writerEpoch, mutationGeneration: parsed.header.mutationGeneration,
-                createdAtMs: parsed.header.createdAtMs, fileId: object.fileId, objectSha256, byteLength: value.byteLength });
-            }
+            candidates.push(await validatedRecoveryCandidateFromDriveObject({
+              fileId: object.fileId, value, environment: settings.environment,
+              schema: restoreSchema, retainedReferences, candidateProbe, sha256: digest,
+            }));
           } catch { /* malformed scan candidates remain quarantined */ }
         }
         return candidates;
       },
       reconstructManifest: async (selection, existing) => {
         const manifestId = existing?.fileId ?? await drive.allocateFileId();
-        const manifestBytes = bytes({
-          kind: "active", writer_epoch: selection.latest.writerEpoch,
-          latest: { fileId: selection.latest.fileId, object_sha256: selection.latest.objectSha256, byteLength: selection.latest.byteLength },
-          previous: selection.previous === null ? null : { fileId: selection.previous.fileId, object_sha256: selection.previous.objectSha256, byteLength: selection.previous.byteLength },
-        });
+        const manifestBytes = reconstructedDriveManifestBytes(selection);
         if (existing === null) await drive.createManifest(manifestId, manifestBytes);
         else await drive.updateManifest(manifestId, manifestBytes, existing.etag);
       },

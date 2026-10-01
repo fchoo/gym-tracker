@@ -24,6 +24,14 @@ export type DriveBackupManifestV1 = Readonly<
   | { kind: "active"; writerEpoch: number; latest: DriveBackupObjectDescriptorV1; previous: DriveBackupObjectDescriptorV1 | null }
   | { kind: "deleted"; successorWriterEpoch: number; deletedAtMs: number }
 >;
+export type ReconstructedDriveBackupCandidateV1 = Readonly<{
+  fileId: string;
+  objectSha256: string;
+  byteLength: number;
+  snapshotId: string;
+  writerEpoch: number;
+  mutationGeneration: number;
+}>;
 
 function plain(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value)
@@ -34,6 +42,25 @@ export function canonicalJson(value: unknown): string {
   if (Array.isArray(value)) return `[${value.map(canonicalJson).join(",")}]`;
   if (!plain(value)) throw new Error("automatic_backup_contract_invalid");
   return `{${Object.keys(value).sort().map((key) => `${JSON.stringify(key)}:${canonicalJson(value[key])}`).join(",")}}`;
+}
+export function reconstructedDriveManifestBytes(input: Readonly<{
+  latest: ReconstructedDriveBackupCandidateV1;
+  previous: ReconstructedDriveBackupCandidateV1 | null;
+}>): Uint8Array {
+  const descriptor = (candidate: ReconstructedDriveBackupCandidateV1) => ({
+    fileId: candidate.fileId,
+    object_sha256: candidate.objectSha256,
+    byteLength: candidate.byteLength,
+    snapshotId: candidate.snapshotId,
+    writerEpoch: candidate.writerEpoch,
+    mutationGeneration: candidate.mutationGeneration,
+  });
+  return new TextEncoder().encode(canonicalJson({
+    kind: "active",
+    writer_epoch: input.latest.writerEpoch,
+    latest: descriptor(input.latest),
+    previous: input.previous === null ? null : descriptor(input.previous),
+  }));
 }
 function digest(value: unknown): value is string { return typeof value === "string" && /^[a-f0-9]{64}$/u.test(value); }
 function descriptor(value: unknown): value is DriveBackupObjectDescriptorV1 {

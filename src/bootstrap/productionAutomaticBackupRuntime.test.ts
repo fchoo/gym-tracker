@@ -60,6 +60,8 @@ const mockCoordinatorPrepareRecovery = jest.fn<() => Promise<
 }));
 const mockCoordinatorCommitRecovery = jest.fn(async () => ({ state: "ready" as const }));
 const mockCoordinatorDeferRecovery = jest.fn(async () => undefined);
+const mockValidateLogicalRestoreSnapshot = jest.fn<(...args: any[]) => Promise<void>>(async () => undefined);
+const mockValidateCandidate = jest.fn(async () => undefined);
 
 jest.mock("expo-constants", () => ({
   __esModule: true,
@@ -105,8 +107,12 @@ jest.mock("../domains/portability/automaticPortability", () => ({
 jest.mock("../platform/sqlite/repositories/restorePreflightAdapters", () => ({
   createSqliteRestoreSchemaPort: () => ({ columnsFor: async () => [] }),
   createSqliteRestoreRetainedReferencePort: () => ({ hasRetainedIdentity: async () => false }),
-  createSqliteRestoreCandidateProbe: () => ({ validateCandidate: async () => undefined }),
+  createSqliteRestoreCandidateProbe: () => ({ validateCandidate: mockValidateCandidate }),
   createSqliteMergeLocalFactsPort: () => mockLocalFacts,
+}));
+jest.mock("../domains/portability/restoreCommands", () => ({
+  ...(jest.requireActual("../domains/portability/restoreCommands") as object),
+  validateLogicalRestoreSnapshot: (...args: unknown[]) => mockValidateLogicalRestoreSnapshot(...args),
 }));
 jest.mock("./productionAutomaticSnapshotCapture", () => ({
   createProductionAutomaticSnapshotCapture: jest.fn(() => ({
@@ -129,6 +135,7 @@ import {
   fetchGoogleDriveIdentity,
   assertAutomaticDriveSnapshotBytes,
   productionAutomaticBackupPresentationInput,
+  validatedRecoveryCandidateFromDriveObject,
   localPortableFactsAreEmpty,
 } from "./productionAutomaticBackupRuntime";
 
@@ -422,6 +429,22 @@ describe("production automatic-backup composition", () => {
     })).resolves.toMatchObject({ snapshotId: "snapshot" });
     await expect(coordinator.validate(captured.bytes)).resolves.toBe(true);
     expect(mockCapture).toHaveBeenCalledWith(expect.objectContaining({ snapshotId: expect.stringContaining("snapshot-") }));
+    await expect(validatedRecoveryCandidateFromDriveObject({
+      fileId: "candidate",
+      value: captured.bytes,
+      environment: "development-test",
+      schema: {} as never,
+      retainedReferences: {} as never,
+      candidateProbe: { validateCandidate: mockValidateCandidate },
+      sha256: async (value) => require("node:crypto").createHash("sha256").update(value).digest("hex"),
+    })).resolves.toMatchObject({
+      kind: "current",
+      snapshotId: "snapshot",
+      mutationGeneration: 7,
+      writerEpoch: 2,
+    });
+    expect(mockValidateLogicalRestoreSnapshot).toHaveBeenCalled();
+    expect(mockValidateCandidate).toHaveBeenCalled();
     expect(coordinator.validateManifest(new TextEncoder().encode("invalid"))).toBeNull();
     expect(JSON.parse(new TextDecoder().decode(coordinator.buildManifest({
       candidateId: "candidate",

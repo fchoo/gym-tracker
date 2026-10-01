@@ -44,7 +44,7 @@ type DeletionFence = Readonly<{
 }>;
 export type RecoverySnapshotCandidate = Readonly<
   | { kind: "update_required"; schemaVersion: number; fileId: string }
-  | { kind: "current"; ownerNamespace: string; writerEpoch: number; mutationGeneration: number; createdAtMs: number; fileId: string; objectSha256: string; byteLength: number }
+  | { kind: "current"; ownerNamespace: string; writerEpoch: number; mutationGeneration: number; createdAtMs: number; snapshotId: string; fileId: string; objectSha256: string; byteLength: number }
 >;
 export type RecoveryLineageSelection = Readonly<
   | { kind: "quarantined" | "update_required" }

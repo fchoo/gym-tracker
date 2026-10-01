@@ -71,8 +71,8 @@ function assertDurableBoundary(writerEpoch: number, previous: boolean): void {
   });
   if (manifest.kind !== "active") throw new Error("durable_boundary_invalid");
   const selected = selectRecoveryLineage([
-    { kind: "current", ownerNamespace: "a".repeat(32), writerEpoch, mutationGeneration: writerEpoch, createdAtMs: writerEpoch, fileId: manifest.latest.fileId, objectSha256: manifest.latest.object_sha256, byteLength: 1 },
-    ...(previous ? [{ kind: "current" as const, ownerNamespace: "a".repeat(32), writerEpoch, mutationGeneration: writerEpoch - 1, createdAtMs: writerEpoch - 1, fileId: manifest.previous!.fileId, objectSha256: manifest.previous!.object_sha256, byteLength: 1 }] : []),
+    { kind: "current", ownerNamespace: "a".repeat(32), writerEpoch, mutationGeneration: writerEpoch, createdAtMs: writerEpoch, snapshotId: `snapshot-${writerEpoch}`, fileId: manifest.latest.fileId, objectSha256: manifest.latest.object_sha256, byteLength: 1 },
+    ...(previous ? [{ kind: "current" as const, ownerNamespace: "a".repeat(32), writerEpoch, mutationGeneration: writerEpoch - 1, createdAtMs: writerEpoch - 1, snapshotId: `snapshot-${writerEpoch - 1}`, fileId: manifest.previous!.fileId, objectSha256: manifest.previous!.object_sha256, byteLength: 1 }] : []),
   ]);
   if (manifest.writerEpoch !== writerEpoch || selected.kind !== "verified"
     || (previous && manifest.previous === null)) throw new Error("durable_boundary_invalid");
@@ -218,7 +218,7 @@ export async function runGoogleDriveBackupContract(adapter?: GoogleDriveBackupCo
     "crash-cleanup-selection": () => assertDurableBoundary(11, true),
     "recovery-latest-previous-fallback": () => assertDurableBoundary(12, true),
     "recovery-future-schema-quarantine": () => { if (selectRecoveryLineage([{ kind: "update_required", schemaVersion: 99, fileId: "future" }]).kind !== "update_required") throw new Error("future_schema_not_quarantined"); },
-    "recovery-ambiguous-lineage-quarantine": () => { if (selectRecoveryLineage([{ kind: "current", ownerNamespace: "a".repeat(32), writerEpoch: 1, mutationGeneration: 1, createdAtMs: 1, fileId: "a", objectSha256: "a".repeat(64), byteLength: 1 }, { kind: "current", ownerNamespace: "b".repeat(32), writerEpoch: 1, mutationGeneration: 1, createdAtMs: 1, fileId: "b", objectSha256: "b".repeat(64), byteLength: 1 }]).kind !== "quarantined") throw new Error("ambiguous_lineage_accepted"); },
+    "recovery-ambiguous-lineage-quarantine": () => { if (selectRecoveryLineage([{ kind: "current", ownerNamespace: "a".repeat(32), writerEpoch: 1, mutationGeneration: 1, createdAtMs: 1, snapshotId: "snapshot-a", fileId: "a", objectSha256: "a".repeat(64), byteLength: 1 }, { kind: "current", ownerNamespace: "b".repeat(32), writerEpoch: 1, mutationGeneration: 1, createdAtMs: 1, snapshotId: "snapshot-b", fileId: "b", objectSha256: "b".repeat(64), byteLength: 1 }]).kind !== "quarantined") throw new Error("ambiguous_lineage_accepted"); },
     "retention-orphan-grace-and-stale-cleanup": () => assertDurableBoundary(15, true),
     "deletion-tombstone-and-late-upload-sweep": () => assertDurableBoundary(16, false),
   };

@@ -28,7 +28,7 @@ describe("automatic backup coordinator", () => {
   it("selects latest and previous only from one verified recovery lineage", () => {
     const candidate = (ownerNamespace: string, writerEpoch: number, mutationGeneration: number, fileId: string) => ({
       kind: "current" as const, ownerNamespace, writerEpoch, mutationGeneration,
-      createdAtMs: mutationGeneration, fileId, objectSha256: fileId.padEnd(64, "a").slice(0, 64), byteLength: 100,
+      createdAtMs: mutationGeneration, snapshotId: `snapshot-${fileId}`, fileId, objectSha256: fileId.padEnd(64, "a").slice(0, 64), byteLength: 100,
     });
     expect(selectRecoveryLineage([
       candidate("a".repeat(32), 3, 4, "four"),
@@ -72,13 +72,13 @@ describe("automatic backup coordinator", () => {
     expect(future.recoveryPrompt()).toEqual({ kind: "update_required" });
     const prior = make({
       kind: "current", ownerNamespace: "a".repeat(32), writerEpoch: 3, mutationGeneration: 5,
-      createdAtMs: 10, fileId: "prior", objectSha256: "b".repeat(64), byteLength: 100,
+      createdAtMs: 10, snapshotId: "snapshot-prior", fileId: "prior", objectSha256: "b".repeat(64), byteLength: 100,
     }, new Uint8Array([1]));
     await prior.recover();
     expect(prior.recoveryPrompt()).toEqual({ kind: "previous", producedAtMs: 10 });
     const withPrevious = make([
-      { kind: "current", ownerNamespace: "a".repeat(32), writerEpoch: 3, mutationGeneration: 6, createdAtMs: 11, fileId: "latest", objectSha256: "b".repeat(64), byteLength: 100 },
-      { kind: "current", ownerNamespace: "a".repeat(32), writerEpoch: 3, mutationGeneration: 5, createdAtMs: 10, fileId: "prior", objectSha256: "c".repeat(64), byteLength: 100 },
+      { kind: "current", ownerNamespace: "a".repeat(32), writerEpoch: 3, mutationGeneration: 6, createdAtMs: 11, snapshotId: "snapshot-latest", fileId: "latest", objectSha256: "b".repeat(64), byteLength: 100 },
+      { kind: "current", ownerNamespace: "a".repeat(32), writerEpoch: 3, mutationGeneration: 5, createdAtMs: 10, snapshotId: "snapshot-prior", fileId: "prior", objectSha256: "c".repeat(64), byteLength: 100 },
     ]);
     await withPrevious.recover();
     expect(withPrevious.recoveryPrompt()).toEqual({ kind: "latest", producedAtMs: 11, previousProducedAtMs: 10 });
@@ -106,7 +106,7 @@ describe("automatic backup coordinator", () => {
     const reconstructed: unknown[] = [];
     const candidate = {
       kind: "current" as const, ownerNamespace: "a".repeat(32), writerEpoch: 3,
-      mutationGeneration: 6, createdAtMs: 10, fileId: "latest",
+      mutationGeneration: 6, createdAtMs: 10, snapshotId: "snapshot-latest", fileId: "latest",
       objectSha256: "b".repeat(64), byteLength: 100,
     };
     const coordinator = createAutomaticBackupCoordinator({
@@ -570,6 +570,7 @@ describe("automatic backup coordinator", () => {
       writerEpoch: 2,
       mutationGeneration: 4,
       createdAtMs: 1,
+      snapshotId: "snapshot-leftover",
       fileId: "leftover",
       objectSha256: "a".repeat(64),
       byteLength: 1,
