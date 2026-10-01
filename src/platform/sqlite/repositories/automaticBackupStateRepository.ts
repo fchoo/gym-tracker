@@ -50,7 +50,7 @@ export function createAutomaticBackupStateRepository(kernel: SqliteKernel): Read
   acknowledgeReceipt(input: AutomaticBackupReceipt): Promise<boolean>;
   persistAttempt(input: AutomaticBackupReceipt & Readonly<{ candidateId: string; resumableLocation?: string; resumableUploadedBytes?: number; nowMs: number }>): Promise<void>;
   readPendingUpload(input: Readonly<{ environment: AutomaticBackupState["environment"]; permissionId: string; connectionGeneration: number; writerEpoch: number }>): Promise<AutomaticBackupPendingUpload | null>;
-  updateResumableUpload(input: Readonly<{ candidateId: string; location: string; uploadedBytes: number; nowMs: number }>): Promise<boolean>;
+  updateResumableUpload(input: Readonly<{ candidateId: string; location: string; uploadedBytes: number }>): Promise<boolean>;
   acquireLease(input: Readonly<{ leaseId: string; nowMs: number; expiresAtMs: number }>): Promise<boolean>;
   recoverExpiredLease(nowMs: number): Promise<boolean>;
   releaseLease(leaseId: string): Promise<boolean>;
@@ -186,9 +186,9 @@ export function createAutomaticBackupStateRepository(kernel: SqliteKernel): Read
     },
     async updateResumableUpload(input) {
       const outcome = await kernel.write((transaction) => transaction.execute(
-        `UPDATE automatic_backup_receipt_state SET resumable_location = ?, resumable_uploaded_bytes = ?, updated_at_ms = ?
+        `UPDATE automatic_backup_receipt_state SET resumable_location = ?, resumable_uploaded_bytes = ?
          WHERE id = 1 AND candidate_id = ? AND accepted_manifest_etag IS NOT NULL`,
-        [input.location, input.uploadedBytes, input.nowMs, input.candidateId],
+        [input.location, input.uploadedBytes, input.candidateId],
       ));
       return outcome.changes === 1;
     },

@@ -1029,8 +1029,9 @@ describe("automatic backup coordinator", () => {
     let resumes = 0;
     const coordinator = createAutomaticBackupCoordinator({
       isWorkoutActive: () => false,
-      capture: async ({ snapshotId }) => {
+      capture: async ({ snapshotId, createdAtMs }) => {
         expect(snapshotId).toBe("candidate-persisted");
+        expect(createdAtMs).toBe(1);
         return { generation: 4, snapshotId: snapshotId!, sourceDigest: "a".repeat(64), bytes: large };
       },
       state: {

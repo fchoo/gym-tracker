@@ -169,6 +169,24 @@ describe("production automatic-backup composition", () => {
     expect(() => assertAutomaticDriveSnapshotBytes(new Uint8Array(24 * 1024 * 1024 + 1)))
       .toThrow("automatic_backup_snapshot_too_large");
   });
+  it("re-encodes a persisted candidate identically across different wall-clock retries", async () => {
+    const baseline = await mockCapture();
+    const capturePersisted = async (input: { snapshotId?: string; createdAtMs: number }) => ({
+      ...baseline,
+      snapshot: { ...baseline.snapshot, snapshotId: input.snapshotId!, createdAtMs: input.createdAtMs },
+    });
+    mockCapture.mockImplementationOnce(capturePersisted).mockImplementationOnce(capturePersisted);
+    createProductionAutomaticBackupServices({ queryAll: jest.fn(async () => []) } as never);
+    const coordinator = (jest.requireMock("../domains/backup/automaticBackupCoordinator") as { createAutomaticBackupCoordinator: jest.Mock }).createAutomaticBackupCoordinator.mock.calls.at(-1)?.[0] as any;
+
+    const first = await coordinator.capture({ environment: "development-test", writerEpoch: 2, snapshotId: "candidate", createdAtMs: 123 });
+    const second = await coordinator.capture({ environment: "development-test", writerEpoch: 2, snapshotId: "candidate", createdAtMs: 123 });
+
+    expect(second.sourceDigest).toBe(first.sourceDigest);
+    expect(second.bytes).toEqual(first.bytes);
+    expect(mockCapture).toHaveBeenNthCalledWith(mockCapture.mock.calls.length - 1, { snapshotId: "candidate", createdAtMs: 123 });
+    expect(mockCapture).toHaveBeenLastCalledWith({ snapshotId: "candidate", createdAtMs: 123 });
+  });
   it("classifies every owner-created logical fact as non-empty", () => {
     expect(localPortableFactsAreEmpty({
       portable_owner_identity: [{ id: 1, owner_namespace: "a".repeat(32) }],

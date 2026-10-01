@@ -125,6 +125,7 @@ export function createAutomaticBackupCoordinator(input: Readonly<{
     environment: AutomaticBackupEnvironment;
     writerEpoch: number;
     snapshotId?: string;
+    createdAtMs?: number;
   }>): Promise<CapturedSnapshot>;
   state: Readonly<{
     read(): Promise<BackupState>;
@@ -284,11 +285,13 @@ export function createAutomaticBackupCoordinator(input: Readonly<{
       return deferred("file_id_allocation");
     }
     let captured: CapturedSnapshot;
+    const capturedAtMs = pendingUpload?.updatedAtMs ?? input.nowMs();
     try {
       captured = await input.capture({
         environment: state.environment,
         writerEpoch,
         snapshotId: candidateId,
+        createdAtMs: capturedAtMs,
       });
     } catch {
       return deferred("snapshot_capture");
@@ -304,7 +307,7 @@ export function createAutomaticBackupCoordinator(input: Readonly<{
       pendingUpload = null;
       try {
         candidateId = await input.drive.allocateFileId?.() ?? input.candidateId();
-        captured = await input.capture({ environment: state.environment, writerEpoch, snapshotId: candidateId });
+        captured = await input.capture({ environment: state.environment, writerEpoch, snapshotId: candidateId, createdAtMs: input.nowMs() });
       } catch {
         return deferred("snapshot_capture");
       }
@@ -331,7 +334,7 @@ export function createAutomaticBackupCoordinator(input: Readonly<{
             ? await input.drive.createResumableSnapshot(candidateId, captured.bytes)
             : { location: pendingUpload.resumableLocation, uploadedBytes: pendingUpload.resumableUploadedBytes };
           if (pendingUpload?.resumableLocation === null || pendingUpload?.resumableLocation === undefined) {
-            if (await input.state.updateResumableUpload?.({ candidateId, location: session.location, uploadedBytes: session.uploadedBytes, nowMs: input.nowMs() }) === false) {
+            if (await input.state.updateResumableUpload?.({ candidateId, location: session.location, uploadedBytes: session.uploadedBytes }) === false) {
               return deferred("snapshot_upload");
             }
           }
@@ -341,7 +344,7 @@ export function createAutomaticBackupCoordinator(input: Readonly<{
             if (typeof result === "string") completed = result;
             else {
               session = result;
-              if (await input.state.updateResumableUpload?.({ candidateId, location: session.location, uploadedBytes: session.uploadedBytes, nowMs: input.nowMs() }) === false) {
+              if (await input.state.updateResumableUpload?.({ candidateId, location: session.location, uploadedBytes: session.uploadedBytes }) === false) {
                 return deferred("snapshot_upload");
               }
             }

@@ -78,7 +78,7 @@ describe("automatic backup state repository", () => {
 
     await expect(repository.readPendingUpload({ environment: "development-test", permissionId: "permission", connectionGeneration: 4, writerEpoch: 7 }))
       .resolves.toMatchObject({ candidateId: "candidate", resumableUploadedBytes: 1024 });
-    await expect(repository.updateResumableUpload({ candidateId: "candidate", location: row.resumable_location, uploadedBytes: 2048, nowMs: 101 })).resolves.toBe(true);
+    await expect(repository.updateResumableUpload({ candidateId: "candidate", location: row.resumable_location, uploadedBytes: 2048 })).resolves.toBe(true);
     await expect(repository.releaseLease("lease")).resolves.toBe(true);
     expect(statements.join("\n")).toContain("resumable_uploaded_bytes = ?");
     expect(statements.join("\n")).toContain("lease_id = NULL");
