@@ -1010,6 +1010,7 @@ describe("Plan 01-06 forward migrations and internal recovery", () => {
     "invalid_owner",
     "invalid_backfill",
     "missing_index",
+    "missing_trigger",
     "altered_trigger",
   ] as const)(
     "fails v22 verification when %s is malformed",
@@ -1389,9 +1390,9 @@ describe("Plan 01-06 forward migrations and internal recovery", () => {
   it("fails migration 27 verification when either ownership trigger is missing", async () => {
     await expect(advancedTimingTargetOwnershipMigration.verify({
       execute: async () => ({ changes: 0, lastInsertRowId: 0 }),
-      queryAll: async () => [{
+      queryAll: async <Row extends Record<string, unknown>>() => [{
         name: "session_advanced_timing_states_target_session_insert",
-      }],
+      }] as unknown as readonly Row[],
     })).rejects.toThrow("advanced_timing_target_ownership_schema_incomplete");
   });
 
