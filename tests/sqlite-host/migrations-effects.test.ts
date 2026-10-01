@@ -1386,6 +1386,15 @@ describe("Plan 01-06 forward migrations and internal recovery", () => {
     }
   });
 
+  it("fails migration 27 verification when either ownership trigger is missing", async () => {
+    await expect(advancedTimingTargetOwnershipMigration.verify({
+      execute: async () => ({ changes: 0, lastInsertRowId: 0 }),
+      queryAll: async () => [{
+        name: "session_advanced_timing_states_target_session_insert",
+      }],
+    })).rejects.toThrow("advanced_timing_target_ownership_schema_incomplete");
+  });
+
   it.each(Array.from({ length: 9 }, (_, statementIndex) => statementIndex))(
     "rolls back the v20 receipt rebuild when statement %i fails",
     async (statementIndex) => {
