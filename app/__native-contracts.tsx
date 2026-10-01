@@ -84,6 +84,7 @@ import {
 } from "../src/testing/contracts/portableMerge.contract";
 import {
   GOOGLE_DRIVE_BACKUP_CONTRACT_CASE_IDS,
+  createExpoGoogleDriveBackupContractAdapter,
   runGoogleDriveBackupContract as verifyGoogleDriveBackupContract,
 } from "../src/testing/contracts/googleDriveBackup.contract";
 
@@ -493,7 +494,9 @@ export default function NativeSqliteContractsScreen() {
           return;
         }
         if (selectedSuite === "google-drive-backup") {
-          const result = await verifyGoogleDriveBackupContract();
+          const result = await verifyGoogleDriveBackupContract(
+            await createExpoGoogleDriveBackupContractAdapter(runId),
+          );
           console.log(`${RESULT_MARKER}${JSON.stringify(result)}`);
           setState({ status: "finished", result: result as unknown as NativeContractResult });
           return;

@@ -24,4 +24,13 @@ describe("google Drive backup contract", () => {
     expect(result.cases.map((entry) => entry.id)).toEqual(GOOGLE_DRIVE_BACKUP_REQUIRED_CASE_IDS);
     expect(result.skipped).toBe(0);
   });
+
+  it("rejects a native adapter that does not execute the expected durable boundary", async () => {
+    const result = await runGoogleDriveBackupContract({
+      verifyCase: async () => "quarantine",
+    });
+    expect(result.status).toBe("failed");
+    expect(result.failed).toBeGreaterThan(0);
+    expect(result.cases.find(({ id }) => id === "generation-receipt-fence")?.status).toBe("failed");
+  });
 });
