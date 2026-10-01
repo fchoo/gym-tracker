@@ -15,6 +15,7 @@ import { join } from "node:path";
 import {
   PHASE12_MAX_SNAPSHOT_BYTES,
   PHASE12_MAX_SNAPSHOT_ROWS,
+  phase12EncodedDriveObjectBytes,
   phase12SqliteVariableLimit,
   seedMaximumHistory,
 } from "../../src/bootstrap/phase12BackupBenchmark";
@@ -160,7 +161,7 @@ it("seeds a maximum fixture accepted by the fully migrated schema", async () => 
   });
   expect({
     rows: snapshot.manifest.totalRows,
-    bytes: new TextEncoder().encode(JSON.stringify(snapshot)).byteLength,
+    bytes: phase12EncodedDriveObjectBytes(snapshot),
   }).toEqual({ rows: PHASE12_MAX_SNAPSHOT_ROWS, bytes: PHASE12_MAX_SNAPSHOT_BYTES });
 
   const live = await createSqliteMergeLocalFactsPort(kernel).read();
