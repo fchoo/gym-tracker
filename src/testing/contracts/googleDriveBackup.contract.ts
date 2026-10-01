@@ -3,6 +3,7 @@ import { canonicalJson, createDriveBackupSnapshotV1, parseDriveBackupManifestV1,
 import { selectRecoveryLineage } from "../../domains/backup/automaticBackupCoordinator";
 import { BACKUP_LIMITS } from "../../domains/portability/backupContracts";
 import { createAutomaticBackupStateRepository } from "../../platform/sqlite/repositories/automaticBackupStateRepository";
+import { createDriveBackupStoreAdapter } from "../../platform/google/driveBackupStoreAdapter";
 import { createMigrationRunner } from "../../platform/sqlite/migrationRunner";
 import { migrations } from "../../platform/sqlite/migrations";
 import { createExpoMigrationsEffectsContractAdapter } from "./migrationsEffects.contract";
@@ -50,9 +51,8 @@ export const GOOGLE_DRIVE_BACKUP_REQUIRED_CASE_IDS = [
 export const GOOGLE_DRIVE_BACKUP_CONTRACT_CASE_IDS = GOOGLE_DRIVE_BACKUP_REQUIRED_CASE_IDS;
 
 export type GoogleDriveBackupContractCaseId = typeof GOOGLE_DRIVE_BACKUP_REQUIRED_CASE_IDS[number];
-type GoogleDriveNativeBoundary = "quarantine" | "receipt" | "handover" | "deletion";
 export type GoogleDriveBackupContractAdapter = Readonly<{
-  verifyCase(caseId: GoogleDriveBackupContractCaseId): Promise<GoogleDriveNativeBoundary>;
+  verifyCase(caseId: GoogleDriveBackupContractCaseId): Promise<Readonly<{ caseId: GoogleDriveBackupContractCaseId; assertions: number }>>;
   cleanup?(): Promise<void>;
 }>;
 export type GoogleDriveBackupContractResult = Readonly<{
@@ -90,13 +90,6 @@ const HANDOVER_CASES = new Set<GoogleDriveBackupContractCaseId>([
 const DELETION_CASES = new Set<GoogleDriveBackupContractCaseId>([
   "deletion-tombstone-and-late-upload-sweep",
 ]);
-function expectedNativeBoundary(caseId: GoogleDriveBackupContractCaseId): GoogleDriveNativeBoundary {
-  if (RECEIPT_CASES.has(caseId)) return "receipt";
-  if (HANDOVER_CASES.has(caseId)) return "handover";
-  if (DELETION_CASES.has(caseId)) return "deletion";
-  return "quarantine";
-}
-
 export async function createExpoGoogleDriveBackupContractAdapter(
   runId: string,
 ): Promise<GoogleDriveBackupContractAdapter> {
@@ -114,8 +107,8 @@ export async function createExpoGoogleDriveBackupContractAdapter(
         const repository = createAutomaticBackupStateRepository(runtime.kernel);
         const fence = { environment: "development-test" as const, permissionId: "permission", connectionGeneration: 1 };
         await repository.beginQuarantine(fence);
-        const boundary = expectedNativeBoundary(caseId);
-        if (boundary === "receipt") {
+        let assertions = 0;
+        if (RECEIPT_CASES.has(caseId)) {
           await repository.persistAttempt({
             ...fence, writerEpoch: 1, capturedGeneration: 0, sourceDigest: "a".repeat(64),
             snapshotId: `snapshot-${caseId}`, manifestId: "manifest", manifestEtag: "etag",
@@ -123,7 +116,8 @@ export async function createExpoGoogleDriveBackupContractAdapter(
           });
           const pending = await repository.readPendingUpload({ ...fence, writerEpoch: 1 });
           if (pending?.candidateId !== `candidate-${caseId}`) throw new Error("google_drive_native_receipt_missing");
-        } else if (boundary === "handover") {
+          assertions += 1;
+        } else if (HANDOVER_CASES.has(caseId)) {
           await repository.persistPendingHandover({
             attemptId: `attempt-${caseId}`, ...fence, manifestId: "manifest", manifestEtag: "etag",
             remoteWriterEpoch: 2, snapshotId: "snapshot", sourceDigest: "b".repeat(64), nowMs: 1,
@@ -131,15 +125,21 @@ export async function createExpoGoogleDriveBackupContractAdapter(
           if ((await repository.readPendingHandover())?.attemptId !== `attempt-${caseId}`) {
             throw new Error("google_drive_native_handover_missing");
           }
-        } else if (boundary === "deletion") {
+          assertions += 1;
+        } else if (DELETION_CASES.has(caseId)) {
           if (!await repository.beginDeletionSweep({
             ...fence, manifestId: "manifest", manifestEtag: "tombstone-etag", successorWriterEpoch: 2,
           })) throw new Error("google_drive_native_deletion_missing");
           if ((await repository.read()).deletionProgress !== "sweep_pending") throw new Error("google_drive_native_deletion_missing");
-        } else if ((await repository.read()).authorityState !== "quarantine") {
-          throw new Error("google_drive_native_quarantine_missing");
+          assertions += 2;
+        } else {
+          const persisted = await repository.read();
+          if (persisted.authorityState !== "quarantine" || persisted.permissionId !== "permission") {
+            throw new Error(`google_drive_native_${caseId}_precondition_missing`);
+          }
+          assertions += 2;
         }
-        return boundary;
+        return Object.freeze({ caseId, assertions });
       } finally {
         await runtime.close();
       }
@@ -154,8 +154,11 @@ export async function runGoogleDriveBackupContract(adapter?: GoogleDriveBackupCo
     const started = Date.now();
     try {
       await work();
-      if (adapter !== undefined && await adapter.verifyCase(id) !== expectedNativeBoundary(id)) {
-        throw new Error("google_drive_native_boundary_missing");
+      if (adapter !== undefined) {
+        const proof = await adapter.verifyCase(id);
+        if (proof.caseId !== id || !Number.isSafeInteger(proof.assertions) || proof.assertions < 1) {
+          throw new Error("google_drive_native_boundary_missing");
+        }
       }
       cases.push({ id, status: "passed", durationMs: Date.now() - started });
     }
@@ -201,10 +204,38 @@ export async function runGoogleDriveBackupContract(adapter?: GoogleDriveBackupCo
     "auth-identity-and-scope-fence": () => {
       const scope = "https://www.googleapis.com/auth/drive.file"; if (!scope.endsWith("/drive.file")) throw new Error("scope_invalid");
     },
-    "raw-etag-conflict-fence": () => { if (![409, 412].every((status) => status >= 400)) throw new Error("etag_fence_invalid"); },
-    "multipart-five-mib-boundary": () => { if (5 * 1024 * 1024 !== 5_242_880) throw new Error("multipart_boundary_invalid"); },
-    "resumable-restart-cancel-fence": () => { if (!(0 < 1 && 1 <= 1)) throw new Error("resumable_boundary_invalid"); },
-    "redirect-and-bounded-list-fence": () => { if (new URL("https://www.googleapis.com/drive/v3/files").origin !== "https://www.googleapis.com") throw new Error("origin_invalid"); },
+    "raw-etag-conflict-fence": async () => {
+      const store = createDriveBackupStoreAdapter({ environment: "development-test", token: async () => "token", fetch: async () => new Response(null, { status: 412 }) });
+      let rejected = false;
+      try { await store.updateManifest("manifest", new Uint8Array([1]), '"etag"'); } catch (error) { rejected = error instanceof Error && error.message === "drive_manifest_conflict"; }
+      if (!rejected) throw new Error("etag_fence_invalid");
+    },
+    "multipart-five-mib-boundary": async () => {
+      const store = createDriveBackupStoreAdapter({ environment: "development-test", token: async () => "token", fetch: async () => new Response(JSON.stringify({ id: "candidate" })) });
+      await store.createSnapshot("candidate", new Uint8Array(5 * 1024 * 1024));
+      let rejected = false;
+      try { await store.createSnapshot("candidate", new Uint8Array(5 * 1024 * 1024 + 1)); } catch { rejected = true; }
+      if (!rejected) throw new Error("multipart_boundary_invalid");
+    },
+    "resumable-restart-cancel-fence": async () => {
+      let upload = 0;
+      const store = createDriveBackupStoreAdapter({ environment: "development-test", token: async () => "token", fetch: async (url) => {
+        if (url.includes("uploadType=resumable")) return new Response(null, { headers: { location: "https://www.googleapis.com/upload/session" } });
+        upload += 1;
+        return upload === 1 ? new Response(null, { status: 308, headers: { range: "bytes=0-5242880" } }) : new Response(JSON.stringify({ id: "candidate" }));
+      } });
+      const payload = new Uint8Array(5 * 1024 * 1024 + 1);
+      const session = await store.createResumableSnapshot("candidate", payload);
+      const resumed = await store.resumeSnapshot(session, payload);
+      if (typeof resumed === "string" || resumed.uploadedBytes !== payload.byteLength) throw new Error("resumable_boundary_invalid");
+      if (await store.resumeSnapshot(resumed, payload) !== "candidate") throw new Error("resumable_boundary_invalid");
+    },
+    "redirect-and-bounded-list-fence": async () => {
+      const store = createDriveBackupStoreAdapter({ environment: "development-test", token: async () => "token", fetch: async () => new Response(null, { status: 302, headers: { location: "https://example.invalid" } }) });
+      let rejected = false;
+      try { await store.discover(); } catch (error) { rejected = error instanceof Error && error.message === "drive_redirect_rejected"; }
+      if (!rejected) throw new Error("redirect_fence_invalid");
+    },
     "crash-quarantine-persist": () => assertDurableBoundary(1, false),
     "crash-candidate-upload": () => assertDurableBoundary(2, false),
     "crash-round-trip-validation": () => assertDurableBoundary(3, true),

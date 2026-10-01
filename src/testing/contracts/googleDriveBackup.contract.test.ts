@@ -27,7 +27,7 @@ describe("google Drive backup contract", () => {
 
   it("rejects a native adapter that does not execute the expected durable boundary", async () => {
     const result = await runGoogleDriveBackupContract({
-      verifyCase: async () => "quarantine",
+      verifyCase: async (caseId) => ({ caseId, assertions: caseId === "generation-receipt-fence" ? 0 : 1 }),
     });
     expect(result.status).toBe("failed");
     expect(result.failed).toBeGreaterThan(0);
