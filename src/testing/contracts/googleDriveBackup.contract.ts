@@ -213,7 +213,8 @@ export async function runGoogleDriveBackupContract(adapter?: GoogleDriveBackupCo
       if (!rejected) throw new Error("etag_fence_invalid");
     },
     "multipart-five-mib-boundary": async () => {
-      const store = createDriveBackupStoreAdapter({ environment: "development-test", token: async () => "token", fetch: async () => new Response(JSON.stringify({ id: "candidate" })) });
+      const responseBody = JSON.stringify({ id: "candidate" });
+      const store = createDriveBackupStoreAdapter({ environment: "development-test", token: async () => "token", fetch: async () => new Response(responseBody, { headers: { "content-length": String(new TextEncoder().encode(responseBody).byteLength) } }) });
       await store.createSnapshot("candidate", new Uint8Array(5 * 1024 * 1024));
       let rejected = false;
       try { await store.createSnapshot("candidate", new Uint8Array(5 * 1024 * 1024 + 1)); } catch { rejected = true; }
@@ -224,12 +225,14 @@ export async function runGoogleDriveBackupContract(adapter?: GoogleDriveBackupCo
       const store = createDriveBackupStoreAdapter({ environment: "development-test", token: async () => "token", fetch: async (url) => {
         if (url.includes("uploadType=resumable")) return new Response(null, { headers: { location: "https://www.googleapis.com/upload/session" } });
         upload += 1;
-        return upload === 1 ? new Response(null, { status: 308, headers: { range: "bytes=0-5242880" } }) : new Response(JSON.stringify({ id: "candidate" }));
+        if (upload === 1) return new Response(null, { status: 308, headers: { range: "bytes=0-5242879" } });
+        const responseBody = JSON.stringify({ id: "candidate" });
+        return new Response(responseBody, { headers: { "content-length": String(new TextEncoder().encode(responseBody).byteLength) } });
       } });
       const payload = new Uint8Array(5 * 1024 * 1024 + 1);
       const session = await store.createResumableSnapshot("candidate", payload);
       const resumed = await store.resumeSnapshot(session, payload);
-      if (typeof resumed === "string" || resumed.uploadedBytes !== payload.byteLength) throw new Error("resumable_boundary_invalid");
+      if (typeof resumed === "string" || resumed.uploadedBytes !== 5 * 1024 * 1024) throw new Error("resumable_boundary_invalid");
       if (await store.resumeSnapshot(resumed, payload) !== "candidate") throw new Error("resumable_boundary_invalid");
     },
     "redirect-and-bounded-list-fence": async () => {
