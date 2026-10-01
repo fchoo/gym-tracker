@@ -3349,7 +3349,7 @@ describe("Plan 01-08 ActiveWorkoutScreen", () => {
       commands: commands({ updateSessionSetAdvancedTiming }),
     });
 
-    expect(screen.getByTestId("set-timing-summary-working-0"))
+    expect(screen.getByTestId("set-timing-summary-session-exercise-1-working-1"))
       .toHaveTextContent("Working set 1 timing · Inherits exercise timing");
 
     await fireEvent.press(screen.getByRole("button", {
@@ -3475,7 +3475,7 @@ describe("Plan 01-08 ActiveWorkoutScreen", () => {
       nowMs: 2_000,
     }));
 
-    expect(screen.getByTestId("set-timing-summary-working-0"))
+    expect(screen.getByTestId("set-timing-summary-session-exercise-1-working-1"))
       .toHaveTextContent("Working set 1 timing · Cluster 3+3+3 · 20 sec · both");
     expect(screen.getByText("Cluster timing")).toBeOnTheScreen();
     expect(screen.getByLabelText("Cluster grouping")).toBeOnTheScreen();
@@ -3545,7 +3545,7 @@ describe("Plan 01-08 ActiveWorkoutScreen", () => {
       nowMs: 2_000,
     }));
 
-    expect(screen.getByTestId("set-timing-summary-working-0"))
+    expect(screen.getByTestId("set-timing-summary-session-exercise-1-working-1"))
       .toHaveTextContent("Working set 1 timing · Inherits exercise timing");
     expect(screen.getByText("Per-rep cadence")).toBeOnTheScreen();
     expect(screen.getByLabelText("Per-rep interval in seconds"))
@@ -3588,7 +3588,7 @@ describe("Plan 01-08 ActiveWorkoutScreen", () => {
       commands: commands({ updateSessionSetAdvancedTiming }),
     });
 
-    expect(screen.getByTestId("set-timing-readonly-working-0"))
+    expect(screen.getByTestId("set-timing-readonly-session-exercise-1-working-1"))
       .toHaveTextContent("Completed sets are read-only. Timing cannot change.");
     expect(screen.queryByRole("button", { name: "Configure Back Squat, working set 1 timing" }))
       .not.toBeOnTheScreen();
@@ -3685,11 +3685,11 @@ describe("Plan 01-08 ActiveWorkoutScreen", () => {
       },
       nowMs: 2_000,
     });
-    expect(screen.getByTestId("set-timing-summary-warmup-0"))
+    expect(screen.getByTestId("set-timing-summary-session-exercise-1-warmup-1"))
       .toHaveTextContent("Warm-up W1 timing · Per-rep every 4 sec · audio");
-    expect(screen.getByTestId("set-timing-summary-working-0"))
+    expect(screen.getByTestId("set-timing-summary-session-exercise-1-working-1"))
       .toHaveTextContent("Working set 1 timing · Off");
-    expect(screen.getByTestId("set-timing-summary-working-1"))
+    expect(screen.getByTestId("set-timing-summary-session-exercise-1-working-2"))
       .toHaveTextContent("Working set 2 timing · Cluster 2+2 · 15 sec · both");
   });
 
@@ -3756,7 +3756,17 @@ describe("Plan 01-08 ActiveWorkoutScreen", () => {
   });
 
   it("uniquely identifies the same timing row ordinal across exercises", async () => {
-    const active = overviewView();
+    const source = overviewView();
+    const activeExercise = {
+      ...source.currentExercise,
+      workingSets: source.currentExercise.workingSets.map((set, index) =>
+        index === 1 ? { ...set, status: "skipped" as const } : set),
+    };
+    const active = {
+      ...source,
+      currentExercise: activeExercise,
+      exercises: [source.exercises[0]!, activeExercise],
+    };
     const futureExercise = {
       ...active.currentExercise,
       id: "session-exercise-3",
@@ -3771,6 +3781,7 @@ describe("Plan 01-08 ActiveWorkoutScreen", () => {
       workingSets: active.currentExercise.workingSets.map((set, index) => ({
         ...set,
         id: `overhead-working-${index + 1}`,
+        status: index === 1 ? "skipped" as const : "planned" as const,
       })),
     };
     await renderActive({
@@ -3799,6 +3810,19 @@ describe("Plan 01-08 ActiveWorkoutScreen", () => {
       "testID",
       "set-timing-action-session-exercise-3-overhead-working-1",
     );
+    for (const [exerciseId, editableSetId, readonlySetId] of [
+      ["session-exercise-2", "bench-working-1", "bench-working-2"],
+      ["session-exercise-3", "overhead-working-1", "overhead-working-2"],
+    ] as const) {
+      expect(screen.getByTestId(`set-timing-${exerciseId}-${editableSetId}`))
+        .toBeOnTheScreen();
+      expect(screen.getByTestId(
+        `set-timing-summary-${exerciseId}-${editableSetId}`,
+      )).toBeOnTheScreen();
+      expect(screen.getByTestId(
+        `set-timing-readonly-${exerciseId}-${readonlySetId}`,
+      )).toBeOnTheScreen();
+    }
   });
 
   it("keeps completed and skipped set timing read-only", async () => {
@@ -3849,15 +3873,15 @@ describe("Plan 01-08 ActiveWorkoutScreen", () => {
       commands: commands({ updateSessionSetAdvancedTiming }),
     });
 
-    expect(screen.getByTestId("set-timing-summary-warmup-0"))
+    expect(screen.getByTestId("set-timing-summary-session-exercise-1-warmup-1"))
       .toHaveTextContent("Warm-up W1 timing · Per-rep every 4 sec · audio");
-    expect(screen.getByTestId("set-timing-readonly-warmup-0"))
+    expect(screen.getByTestId("set-timing-readonly-session-exercise-1-warmup-1"))
       .toHaveTextContent("Completed sets are read-only. Timing cannot change.");
     expect(screen.queryByRole("button", { name: "Configure Back Squat, warm-up W1 timing" }))
       .not.toBeOnTheScreen();
-    expect(screen.getByTestId("set-timing-summary-working-0"))
+    expect(screen.getByTestId("set-timing-summary-session-exercise-1-working-1"))
       .toHaveTextContent("Working set 1 timing · Cluster 2+2 · 15 sec · both");
-    expect(screen.getByTestId("set-timing-readonly-working-0"))
+    expect(screen.getByTestId("set-timing-readonly-session-exercise-1-working-1"))
       .toHaveTextContent("Skipped sets are read-only. Timing cannot change.");
     expect(screen.queryByRole("button", { name: "Configure Back Squat, working set 1 timing" }))
       .not.toBeOnTheScreen();

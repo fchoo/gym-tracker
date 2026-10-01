@@ -1308,7 +1308,7 @@ function PopulatedWorkoutOverview({
     const label = set.kind === "warmup"
       ? `Warm-up W${set.ordinal + 1}`
       : `Working set ${set.ordinal + 1}`;
-    const testKey = `${set.kind}-${set.ordinal}`;
+    const testKey = `${exercise.id}-${set.id}`;
     const timingActionLabel = `Configure ${exercise.name}, ${
       set.kind === "warmup" ? `warm-up W${set.ordinal + 1}` : `working set ${set.ordinal + 1}`
     } timing`;
