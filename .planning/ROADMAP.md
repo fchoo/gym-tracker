@@ -94,8 +94,8 @@ for phone replacement, not concurrent use across devices.
   2. Replace never rewrites a row: with no completed sets it removes + appends in position; with completed sets it keeps the original as skipped and appends the replacement, preserving all completed history.
   3. Remove hard-deletes only an exercise with zero completed sets; otherwise it is skipped, and progress totals plus history snapshots stay correct and rebuildable either way.
   4. Reorder changes a presentation/display order only; the planned order captured at session start stays immutable and completed-set facts are untouched.
-  5. Every session-exercise/session-set row carries an append-only immutable snapshot (WORK-24); an edited session consumes its scheduled opportunity flagged modified-from-plan with deterministic, non-mutating progression.
-  6. At finish, an edited-from-plan workout offers an explicit "Save these changes to the plan?" choice defaulting to No; Yes applies deltas through the revision-checked owned-plan editor and never alters recorded history.
+  5. Every session-exercise/session-set row carries an append-only immutable snapshot (WORK-24); an edited session consumes its scheduled opportunity flagged modified-from-plan with deterministic, non-mutating progression (WORK-25).
+  6. At finish, an edited-from-plan workout offers an explicit "Save these changes to the plan?" choice defaulting to No; Yes applies deltas through the revision-checked owned-plan editor and never alters recorded history (WORK-27).
 
 **UI hint**: yes
 
