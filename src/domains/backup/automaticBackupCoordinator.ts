@@ -184,6 +184,7 @@ export function createAutomaticBackupCoordinator(input: Readonly<{
   }>;
 }>): AutomaticBackupCoordinator {
   let running: Promise<BackupResult> | null = null;
+  let deleting = false;
   let checkingGeneration = 0;
   let bootstrapFence: Readonly<{
     permissionId: string;
@@ -571,9 +572,7 @@ export function createAutomaticBackupCoordinator(input: Readonly<{
       return Object.freeze({ status: "partial" as const });
     } catch { return Object.freeze({ status: "partial" as const }); }
   };
-  const deleteCloudBackup = async (): Promise<Readonly<{ status: "complete" | "partial" | "cancelled" }>> => {
-    const inFlightBackup = running;
-    if (inFlightBackup !== null) await inFlightBackup.catch(() => undefined);
+  const deleteCloudBackupUnderFence = async (): Promise<Readonly<{ status: "complete" | "partial" | "cancelled" }>> => {
     const identity = await input.auth?.reauthenticate?.();
     if (identity === undefined || identity === null) return Object.freeze({ status: "cancelled" as const });
     const state = await input.state.read();
@@ -613,6 +612,17 @@ export function createAutomaticBackupCoordinator(input: Readonly<{
     });
     if (began !== true) return Object.freeze({ status: "cancelled" as const });
     return finishDeletionSweep();
+  };
+  const deleteCloudBackup = async (): Promise<Readonly<{ status: "complete" | "partial" | "cancelled" }>> => {
+    if (deleting) return Object.freeze({ status: "cancelled" as const });
+    deleting = true;
+    try {
+      const inFlightBackup = running;
+      if (inFlightBackup !== null) await inFlightBackup.catch(() => undefined);
+      return await deleteCloudBackupUnderFence();
+    } finally {
+      deleting = false;
+    }
   };
   const startNewCloudBackup = async (): Promise<Readonly<{ status: "ready" | "cancelled" }>> => {
     const identity = await input.auth?.reauthenticate?.();
@@ -783,6 +793,7 @@ export function createAutomaticBackupCoordinator(input: Readonly<{
   };
   return Object.freeze({
     backup() {
+      if (deleting) return Promise.resolve(Object.freeze({ status: "deferred" as const }));
       if (running === null) running = run().finally(() => { running = null; });
       return running;
     },

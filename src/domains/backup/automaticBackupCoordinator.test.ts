@@ -665,11 +665,15 @@ describe("automatic backup coordinator", () => {
   it("joins an in-flight upload before promoting a deletion tombstone", async () => {
     const events: string[] = [];
     let releaseUpload: (() => void) | undefined;
+    let finishReauthentication: (() => void) | undefined;
     const coordinator = createAutomaticBackupCoordinator({
       isWorkoutActive: () => false,
       auth: {
         connect: async () => null,
-        reauthenticate: async () => { events.push("reauthenticate"); return null; },
+        reauthenticate: async () => new Promise<null>((resolve) => {
+          events.push("reauthenticate");
+          finishReauthentication = () => resolve(null);
+        }),
         disconnect: async () => undefined,
       },
       capture: async () => ({ generation: 4, sourceDigest: "a".repeat(64), bytes: new Uint8Array([1]) }),
@@ -701,6 +705,10 @@ describe("automatic backup coordinator", () => {
     expect(events).toEqual(["upload"]);
     releaseUpload?.();
     await expect(backup).resolves.toEqual({ status: "deferred" });
+    for (let attempt = 0; attempt < 8 && finishReauthentication === undefined; attempt += 1) await Promise.resolve();
+    await expect(coordinator.backup()).resolves.toEqual({ status: "deferred" });
+    expect(events).toEqual(["upload", "reauthenticate"]);
+    finishReauthentication?.();
     await expect(deletion).resolves.toEqual({ status: "cancelled" });
     expect(events).toEqual(["upload", "reauthenticate"]);
   });
