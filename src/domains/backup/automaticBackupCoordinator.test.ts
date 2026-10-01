@@ -706,6 +706,7 @@ describe("automatic backup coordinator", () => {
     releaseUpload?.();
     await expect(backup).resolves.toEqual({ status: "deferred" });
     for (let attempt = 0; attempt < 8 && finishReauthentication === undefined; attempt += 1) await Promise.resolve();
+    await expect(coordinator.deleteCloudBackup()).resolves.toEqual({ status: "cancelled" });
     await expect(coordinator.backup()).resolves.toEqual({ status: "deferred" });
     expect(events).toEqual(["upload", "reauthenticate"]);
     finishReauthentication?.();
