@@ -602,6 +602,7 @@ type RuntimeValue = RuntimeState & Readonly<{
   requestAutomaticBackupNow(): Promise<void>;
   retryAutomaticBackup(): Promise<void>;
   useAutomaticBackupCellularThisTime(): Promise<void>;
+  dismissAutomaticBackupCellularConfirmation(): Promise<void>;
   setAutomaticBackupDataUsePolicy(policy: "wifi_and_cellular" | "wifi_only"): Promise<void>;
   takeOverAutomaticBackup(): Promise<void>;
   disconnectAutomaticBackup(): Promise<void>;
@@ -4167,6 +4168,7 @@ export function WorkoutAppRuntimeProvider({
     requestAutomaticBackupNow: () => runAutomaticBackupCommand((runtime) => runtime.backupNow()),
     retryAutomaticBackup: () => runAutomaticBackupCommand((runtime) => runtime.retryBackup()),
     useAutomaticBackupCellularThisTime: () => runAutomaticBackupCommand((runtime) => runtime.useCellularThisTime()),
+    dismissAutomaticBackupCellularConfirmation: () => runAutomaticBackupCommand((runtime) => runtime.dismissCellularConfirmation()),
     setAutomaticBackupDataUsePolicy: (policy) => runAutomaticBackupCommand((runtime) => runtime.setDataUsePolicy(policy)),
     takeOverAutomaticBackup: () => runAutomaticBackupCommand((runtime) => runtime.takeOver()),
     disconnectAutomaticBackup: () => runAutomaticBackupCommand((runtime) => runtime.disconnect()),

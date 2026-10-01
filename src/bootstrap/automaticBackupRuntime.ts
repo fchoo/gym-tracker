@@ -19,6 +19,7 @@ export type AutomaticBackupRuntimeCommands = Readonly<{
   backupNow(): Promise<void>;
   retryBackup(): Promise<void>;
   useCellularThisTime(): Promise<void>;
+  dismissCellularConfirmation(): Promise<void>;
   setDataUsePolicy(policy: AutomaticBackupDataUsePolicy): Promise<void>;
   takeOver(): Promise<void>;
   disconnect(): Promise<void>;
@@ -61,6 +62,7 @@ export function createAutomaticBackupRuntime(input: Readonly<{
   const interruptingCommands = new Set<keyof AutomaticBackupRuntimeCommands>([
     "cancelChecking",
     "deferRestore",
+    "dismissCellularConfirmation",
     "disconnect",
   ]);
   const listeners = new Set<(next: AutomaticBackupViewModel) => void>();
@@ -119,6 +121,7 @@ export function createAutomaticBackupRuntime(input: Readonly<{
     commitRecovery: (input) => invoke<void>("commitRecovery", input),
     cancelRecovery: (attemptId) => invoke<void>("cancelRecovery", attemptId),
     finishSetup: () => invoke<void>("finishSetup"), backupNow: () => invoke<void>("backupNow"), retryBackup: () => invoke<void>("retryBackup"), useCellularThisTime: () => invoke<void>("useCellularThisTime"), setDataUsePolicy: (policy) => invoke<void>("setDataUsePolicy", policy), takeOver: () => invoke<void>("takeOver"), disconnect: () => invoke<void>("disconnect"), deleteCloudBackup: () => invoke<void>("deleteCloudBackup"), finishDeletingCloudBackup: () => invoke<void>("finishDeletingCloudBackup"), startNewCloudBackup: () => invoke<void>("startNewCloudBackup"),
+    dismissCellularConfirmation: () => invoke<void>("dismissCellularConfirmation"),
   };
   return Object.freeze(runtime);
 }

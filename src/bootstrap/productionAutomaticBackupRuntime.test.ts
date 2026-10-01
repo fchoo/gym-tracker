@@ -362,6 +362,7 @@ describe("production automatic-backup composition", () => {
     await expect(runtime.prepareRecovery({ candidate })).resolves.toEqual({ kind: "empty_direct", attemptId: "attempt" });
     await runtime.commitRecovery(recovery); await runtime.finishSetup(); await runtime.backupNow(); await runtime.retryBackup();
     await runtime.useCellularThisTime(); await runtime.setDataUsePolicy("wifi_only"); await runtime.takeOver();
+    await runtime.dismissCellularConfirmation();
     await runtime.disconnect(); await runtime.deleteCloudBackup();
     await runtime.finishDeletingCloudBackup(); await runtime.startNewCloudBackup();
 

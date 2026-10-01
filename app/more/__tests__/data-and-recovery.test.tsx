@@ -11,6 +11,7 @@ const mockShareCsvExport = jest.fn<(value: { exportId: string }) => Promise<void
 const mockDiscardCsvExport = jest.fn<(value: { exportId: string }) => Promise<void>>();
 const mockUseCellular = jest.fn<() => Promise<void>>();
 const mockBackupNow = jest.fn<() => Promise<void>>();
+const mockDismissCellular = jest.fn<() => Promise<void>>();
 const mockPrepareAutomaticRecovery = jest.fn<(input: { candidate: "latest" | "previous" }) => Promise<any>>();
 const mockCommitAutomaticRecovery = jest.fn<() => Promise<void>>();
 const mockCancelAutomaticRecovery = jest.fn<() => Promise<void>>();
@@ -19,6 +20,7 @@ const mockRuntime: any = {
   connectAutomaticBackup: mockConnect,
   requestAutomaticBackupNow: mockBackupNow,
   cancelAutomaticBackupCheck: jest.fn(async () => undefined),
+  dismissAutomaticBackupCellularConfirmation: mockDismissCellular,
   useAutomaticBackupCellularThisTime: mockUseCellular,
   reviewAutomaticRecovery: mockPrepareAutomaticRecovery,
   commitAutomaticRecovery: mockCommitAutomaticRecovery,
@@ -50,6 +52,8 @@ describe("DataAndRecoveryRoute", () => {
     mockUseCellular.mockResolvedValue(undefined);
     mockBackupNow.mockReset();
     mockBackupNow.mockResolvedValue(undefined);
+    mockDismissCellular.mockReset();
+    mockDismissCellular.mockResolvedValue(undefined);
     mockPrepareAutomaticRecovery.mockReset();
     mockPrepareAutomaticRecovery.mockResolvedValue({ kind: "empty_direct", attemptId: "attempt" });
     mockCommitAutomaticRecovery.mockReset();
@@ -116,6 +120,8 @@ describe("DataAndRecoveryRoute", () => {
     expect(screen.getByText(/Use cellular data for this backup/u)).toBeOnTheScreen();
     await fireEvent.press(screen.getByRole("button", { name: "Use cellular this time" }));
     expect(mockUseCellular).toHaveBeenCalledTimes(1);
+    await fireEvent.press(screen.getByRole("button", { name: "Cancel" }));
+    expect(mockDismissCellular).toHaveBeenCalledTimes(1);
   });
 
   it("keeps automatic proof, manual recovery navigation, and direct CSV action separate", async () => {

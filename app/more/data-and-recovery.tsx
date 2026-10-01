@@ -802,7 +802,7 @@ export default function DataAndRecoveryRoute() {
       {backup.reason === "cellular_confirmation_required" ? <View style={styles.card}>
         <Text accessibilityLiveRegion="polite" style={[typeScale.body as TextStyle, { color: colors.contentCardTextSecondary }]}>Wi-Fi only is on. Use cellular data for this backup?</Text>
         <PrimaryAction label="Use cellular this time" onPress={() => invoke(runtime.useAutomaticBackupCellularThisTime)} />
-        <SecondaryAction label="Cancel" onPress={() => invoke(runtime.cancelAutomaticBackupCheck)} />
+        <SecondaryAction label="Cancel" onPress={() => invoke(runtime.dismissAutomaticBackupCellularConfirmation)} />
       </View> : null}
     </View></ContentCard>
     <ContentCard><View style={styles.card}>
