@@ -953,6 +953,28 @@ function PopulatedWorkoutOverview({
       || (activeExerciseIndex >= 0 && index < activeExerciseIndex));
 
   const applyView = (nextView: ActiveWorkoutView) => {
+    const targetSetId = timingContext?.state.targetSessionSetId ?? null;
+    const target = targetSetId === null
+      ? undefined
+      : resolveSetOwner(nextView, targetSetId)?.set;
+    if (targetSetId !== null
+      && (target === undefined
+        || target.status === "completed"
+        || target.status === "skipped")) {
+      const nextContext = {
+        sessionId,
+        sessionRevision: nextView.revision,
+        state: {
+          version: 1 as const,
+          state: "idle" as const,
+          revision: 0,
+          targetSessionSetId: null,
+        },
+      };
+      setLatestAdvancedTimingContext(nextContext);
+      setSelectedTimingTargetSetId(null);
+      onAdvancedTimingChanged?.(nextContext);
+    }
     viewRef.current = nextView;
     setView(nextView);
   };

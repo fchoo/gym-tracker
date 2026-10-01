@@ -3118,6 +3118,28 @@ describe("Plan 01-08 ActiveWorkoutScreen", () => {
       outcome: "committed",
       view: completedView,
     }));
+    const configureAdvancedTiming = jest.fn<NonNullable<
+      ActiveWorkoutCommands["configureAdvancedTiming"]
+    >>(async () => advancedResult({
+      version: 1,
+      state: "idle",
+      revision: 0,
+      targetSessionSetId: null,
+    }, 3));
+    const startAdvancedTiming = jest.fn<NonNullable<
+      ActiveWorkoutCommands["startAdvancedTiming"]
+    >>(async (input) => advancedResult({
+      version: 1,
+      state: "running",
+      mode: "per_rep",
+      revision: 1,
+      targetSessionSetId: input.sessionSetId,
+      cueChannels: "haptic",
+      intervalMs: 3_000,
+      startedAtMs: input.nowMs,
+      nextBoundaryAtMs: input.nowMs + 3_000,
+      nextRepetitionIndex: 1,
+    }, 3));
     await renderActive({
       advancedTimingContext: {
         sessionId: "session-1",
@@ -3137,6 +3159,8 @@ describe("Plan 01-08 ActiveWorkoutScreen", () => {
       },
       commands: commands({
         completeSet,
+        configureAdvancedTiming,
+        startAdvancedTiming,
         pauseAdvancedTiming: jest.fn(async () => advancedResult({
           version: 1,
           state: "paused",
@@ -3183,6 +3207,19 @@ describe("Plan 01-08 ActiveWorkoutScreen", () => {
         setId: "working-1",
       }),
     ));
+    await fireEvent.press(screen.getByRole("button", {
+      name: "Configure and start per-rep cadence",
+    }));
+    await waitFor(() => expect(configureAdvancedTiming).toHaveBeenCalledWith(
+      expect.objectContaining({
+        sessionSetId: "working-2",
+        expectedSessionRevision: 2,
+        expectedAdvancedTimingRevision: 0,
+      }),
+    ));
+    expect(startAdvancedTiming).toHaveBeenCalledWith(expect.objectContaining({
+      sessionSetId: "working-2",
+    }));
   });
 
   it("configures the active exercise timing default through the session command", async () => {
