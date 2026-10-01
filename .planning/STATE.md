@@ -2,44 +2,42 @@
 gsd_state_version: 1.0
 milestone: v1.1
 milestone_name: In-Workout Editing, Advanced Timing & Drive Backup
-current_phase: 12
-status: completed
+status: Awaiting next milestone
 stopped_at: Phase 12 complete — all phases complete
-last_updated: "2026-10-01T09:19:11.525Z"
+last_updated: "2026-10-01T13:13:34.747Z"
 last_activity: 2026-10-01
-last_activity_desc: Phase 12 complete
-state_head: 0979047410c0127a8129196fda1515929f092736
+last_activity_desc: Milestone v1.1 completed and archived
+state_head: ff4a76732f8a81f70a2cdb7bcc837e0f72e499d6
 progress:
   total_phases: 5
   completed_phases: 5
   total_plans: 36
   completed_plans: 36
   percent: 100
+current_phase: 12
 ---
 
 # Project State
 
 ## Project Reference
 
-See: `.planning/PROJECT.md` (updated 2026-09-15)
+See: `.planning/PROJECT.md` (updated 2026-10-01)
 
 **Core value:** Open today's workout, see trustworthy next targets, complete each working set with one primary action, recover safely from interruption, and understand exactly why the next target is recommended.
-**Current focus:** Phase 12 — Automatic Google Drive Backup & Replacement Restore
+**Current focus:** Planning the next milestone
 
 ## Current Position
 
-Phase: 12
-Plan: Not started
-Status: All phases complete
-Last activity: 2026-10-01 — Phase 12 complete
+Phase: Milestone v1.1 complete
+Plan: —
+Status: Awaiting next milestone
+Last activity: 2026-10-01 — Milestone v1.1 completed and archived
 
 ## Delivery model
 
-v1 ships as a signed personal-use Android APK/AAB built once by `personal-apk.yml`
-(reviewed source gates → signed Gradle build → `apksigner` verification → downloadable
-artifact; run `34746276143`, success). The public-release ceremony (exact-candidate
-attended device matrix, owner-approval token, no-rebuild GitHub Release promotion,
-Terminal Seal) is retired for personal-use (removed in PR #29) and tracked as V2-05.
+v1.1 ships as a signed personal-use Android APK/AAB built with the pinned production
+toolchain, verified with `apksigner`, and installed unchanged on the Samsung SM-S916B.
+The public-release ceremony remains retired for personal use and tracked as V2-05.
 
 ## Performance Metrics
 
@@ -63,7 +61,7 @@ Terminal Seal) is retired for personal-use (removed in PR #29) and tracked as V2
 | 11 | 4 | - | - |
 | 12 | 13 | - | - |
 
-**Recent Trend:** Phase 05 Plan 07 prepares a production-only build-once manifest pipeline, exact Phase 2–5 attended rows, protected owner-supplied evidence workflows, strict source-byte validation, serialized no-rebuild promotion, immutable public-asset proof, and post-promotion Terminal Seal validation. All source code-review and security findings are closed. The source-only gate passes 134 suites and 2,348 tests with 90.94% statements, 85.86% branches, 90.21% functions, and 91.13% lines; all 83 integrity-critical files pass at 100%, and focused Phase 5/release tests pass 29/29. Candidate build/sign/install, Maestro/device execution, attended emulator/phone/assistive/design review, owner approval, promotion, and Terminal Seal remain unexecuted.
+**Recent Trend:** v1.1 completed 5/5 phases and 36/36 plans. Final source verification passed 188 suites and 3,336 tests with 106 integrity-critical files at exact 100% coverage. Phase 12 retained 13/13 migration cases, 30/30 Drive cases, 18/18 Maestro states, a passing maximum-size benchmark, and 2/2 approved attended observations. Cross-phase integration passed 10/10 connections and 5/5 end-to-end flows. The signed production APK was installed unchanged on the Samsung.
 **Per-Plan Metrics:**
 
 | Plan | Duration | Tasks | Files |
@@ -350,19 +348,17 @@ Full decisions live in `.planning/PROJECT.md`.
 |----------|------|--------|-------------|
 | Ecosystem | Wear OS and Health Connect | v2 | Project initialization |
 | Distribution | Public GitHub Release / store promotion with attended device matrix, owner-approval token, no-rebuild digest gate, and Terminal Seal (V2-05) | v2 | 2026-09-14 personal-use reconciliation |
+| Verification override | v1.0 Phase 5 public-release UAT gate | acknowledged after delivery was reframed to signed personal-use APK | 2026-09-14 personal-use reconciliation |
 
 ## Session Continuity
 
-Last session: 2026-09-30T21:52:31.457Z
-Last handoff: Phase 12 design review approved guided recovery mode, split administration/manual recovery routes, full state matrix, NavigationRow, and responsive/accessibility contracts
-Stopped at: Phase 12 complete — all phases complete
+Last session: 2026-10-01T21:13:00+08:00
+Last handoff: v1.1 archived after passing milestone audit and installing the signed production APK on the Samsung
+Stopped at: Milestone v1.1 complete and archived
 Resume file: None
 Handoff file: none
-Next action: Execute Phase 12; the owner authorized proceeding with development after automatically selecting the top recommended focused-review options.
+Next action: Start a new milestone when new requirements are defined.
 
 ## Operator Next Steps
 
-- Review the four Phase 12 plans as one architecture before execution; the approved scope is Google-account-only, single-active-device backup/restore with no backup passphrase or live multi-device reconciliation.
-- Treat the prior 4d467eb engineering review as superseded by the focused post-design recheck covering Plans 12-03 and 12-04: runtime-owned recovery, one observable backup model, controller extraction, route/state evidence, and maximum-size merge performance are the locked amendments.
-- Treat `4173c72` as the final Phase 11 evidence head and `abc6005` as the application behavior head; earlier native manifests are superseded diagnostic history.
-- Keep local SQLite authoritative and preserve Phase 11's manual export/restore/merge fallback throughout Phase 12.
+- Start the next milestone with /gsd-new-milestone

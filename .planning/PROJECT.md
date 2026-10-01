@@ -2,7 +2,7 @@
 
 ## What This Is
 
-Gym Tracker is an Android-first personal workout planner and logger for one owner. It combines a calendar, plan and exercise library, one-tap guided workouts, recoverable rest timing, metric-aware history, and explainable progression recommendations in an offline-first Expo application.
+Gym Tracker is an Android-first personal workout planner and logger for one owner. It combines a calendar, plan and exercise library, one-tap guided workouts, history-safe in-workout editing, advanced set timing, portable encrypted recovery, automatic replacement-phone backup, metric-aware history, and explainable progression recommendations in an offline-first Expo application.
 
 The app should feel like a quiet training instrument. It should be faster and clearer than a spreadsheet or generic tracker without pretending to be a human coach.
 
@@ -10,7 +10,7 @@ The app should feel like a quiet training instrument. It should be faster and cl
 
 Open today's workout, see trustworthy next targets, complete each working set with one primary action, recover safely from interruption, and understand exactly why the next target is recommended.
 
-_Confirmed still correct at v1.0 close: the shipped app delivers exactly this loop; nothing during delivery shifted the core value._
+_Confirmed still correct at v1.1 close: editing, advanced timing, and backup/recovery extend this loop without moving authority away from local SQLite._
 
 ## Requirements
 
@@ -33,16 +33,15 @@ _Confirmed still correct at v1.0 close: the shipped app delivers exactly this lo
 - ✓ Coherent Material 3 UX across Library, Calendar, plan editing, Progress, Today, and navigation — Phase 6 (v1.0)
 - ✓ Post-candidate UX refinement: cleaner nav/Today, consolidated Settings, compact set editor, set/warm-up removal, rest-timer audio, and a distinctive app icon — Phase 7 (v1.0)
 - ✓ Signed personal-use Android APK/AAB delivery built once and sideloaded unchanged — Phase 5 (v1.0)
+- ✓ Scrollable all-exercise workout overview with history-safe add, replace, remove, reorder, schedule semantics, and explicit default-No plan write-back — Phases 8-9 (v1.1)
+- ✓ Per-repetition cadence and cluster-set timing with independent row configuration, lifecycle recovery, and advisory-only cue delivery — Phase 10 (v1.1)
+- ✓ Stable owner-scoped portable identities plus password-encrypted GTBK restore-clean and previewed atomic merge — Phase 11 (v1.1)
+- ✓ Optional single-active-device Google Drive backup with restore quarantine, verified latest/previous snapshots, writer fencing, and replacement recovery — Phase 12 (v1.1)
+- ✓ Signed production APK/AAB built with the pinned toolchain and installed unchanged on the Samsung SM-S916B — v1.1
 
 ### Active
 
-**v1.1 — In-Workout Editing, Advanced Timing & Drive Backup:**
-
-- [x] Land the active workout on a session-overview screen (all exercises + sets scrollable) instead of the first set — WORK-19 (Phase 8).
-- [x] Add / replace / remove / reorder exercises mid-workout without breaking append-only immutable history — WORK-20..WORK-25 (Phase 9).
-- [x] Per-repetition and cluster-set timer modes (advisory, non-authoritative) — WORK-26 (Phase 10; promoted from V2-03).
-- [x] One canonical portable password-encrypted history/backup with merge-into-existing-data — DATA-08/DATA-09 (Phase 11; promoted from V2-04).
-- [ ] WhatsApp-like automatic Google Drive backup for replacement-phone recovery, with optional sign-in, one active writer, and verified latest/previous snapshots — DATA-10 (Phase 12). Automatic Drive JSON is not client-side encrypted; the Google account is its confidentiality boundary.
+No active milestone requirements. The next milestone starts with fresh requirements.
 
 ### Out of Scope
 
@@ -65,6 +64,7 @@ _Confirmed still correct at v1.0 close: the shipped app delivers exactly this lo
 - The visual direction is a card-light precision instrument using Source Sans 3, IBM Plex Mono numerals, semantic colors, and explicit light/dark tokens.
 - The design and engineering plan passed interactive GStack reviews with no unresolved decisions.
 - **v1.0 shipped (2026-09-14)** as a signed personal-use Android APK/AAB via `personal-apk.yml`. All seven phases are verified; 94/94 v1 requirements complete. Latest signed build: workflow run `34746276143`.
+- **v1.1 shipped (2026-10-01)** as a signed personal-use Android APK/AAB installed on the Samsung SM-S916B. All five phases are verified; 12/12 requirements, 10/10 cross-phase connections, and 5/5 end-to-end flows complete. Production APK SHA-256: `19d24eded09eb3b293dd101e915820394f030aefbfb8b2c4d9f98f4c966ead8c`.
 - **Tech stack as shipped:** Expo SDK 57 (CNG), TypeScript strict, Expo Router, Expo SQLite (FTS5), notifications, Bouncy Castle Argon2id + AES-256-GCM backup crypto, Concept G app icon. Coverage on the final PR gate: 141 suites / 2,473 tests, all 83 integrity-critical files at 100%.
 - Approved design references:
   - `~/.gstack/projects/gym_tracker/designs/approved-20260815/core-workout-flow.png`
@@ -84,7 +84,7 @@ _Confirmed still correct at v1.0 close: the shipped app delivers exactly this lo
 - **Security**: Manual GTBK backup archives use integrity protection and password encryption; automatic Drive snapshots are integrity-checked unencrypted JSON protected by Google-account access. Secrets and workout payloads never enter diagnostics.
 - **Performance**: Working-set commit and dock transition p95 is at most 150 ms on the minimum supported Android profile.
 - **Testing**: Integrity-critical domain and application code requires complete branch coverage, real SQLite contract tests, and Android E2E for lifecycle behavior.
-- **Distribution**: Expo CNG generates native projects; GitHub Actions produces private signed candidates promoted unchanged after physical-device digest approval.
+- **Distribution**: Expo CNG generates native projects; signed personal-use APK/AAB bytes are signature-verified and sideloaded unchanged. Public promotion remains deferred under V2-05.
 - **Environment**: The current machine has the pinned Node, Java, Android SDK/adb, API 36 emulator, Maestro, and native verification toolchain. Physical-device availability remains session-dependent.
 
 ## Delivery Milestones
@@ -128,6 +128,10 @@ Add encrypted backup/restore, CSV export, complete adaptive/accessibility verifi
 | Deliver v1 as a signed personal-use APK, retire the public-release ceremony | Single-owner personal use does not need the attended device matrix, owner-approval token, no-rebuild GitHub Release promotion, or Terminal Seal; the device-free `personal-apk.yml` build is the delivery | ✓ Accepted 2026-09-14 (PR #29; tracked as V2-05) |
 | Use Drive as single-active-device backup, not live sync | The owner has one active phone and needs simple replacement recovery; writer fencing and restore quarantine prevent an old or fresh install from replacing the recovery copy | ✓ Accepted 2026-09-26 (DATA-10) |
 | Protect automatic backup with the Google account only | Removes a separate backup passphrase and gives a WhatsApp-like restore flow; automatic JSON is readable to anyone with Drive access, while manual GTBK remains password-encrypted | ✓ Accepted 2026-09-26 (DATA-10) |
+| Use one scrollable workout overview with history-safe session editing | Keeps the workout loop scan-friendly while add/replace/remove/reorder preserve immutable recorded facts | ✓ Validated Phases 8-9 (v1.1) |
+| Keep advanced set timing separate from between-set rest | Per-rep cadence and cluster gaps remain advisory and cannot redefine committed set or rest facts | ✓ Validated Phase 10 (v1.1) |
+| Use stable owner-scoped identities for portable merge | Restore and merge recognize the same personal records without rewriting immutable history | ✓ Validated Phase 11 (v1.1) |
+| Keep manual GTBK and automatic Drive recovery as separate products | Manual GTBK remains password-encrypted and portable; automatic Drive JSON optimizes replacement-phone recovery without a passphrase | ✓ Validated Phases 11-12 (v1.1) |
 
 ## Evolution
 
@@ -147,4 +151,4 @@ This document evolves at phase transitions and milestone boundaries.
 4. Update Context with implementation and verification evidence.
 
 ---
-*Last updated: 2026-09-14 after v1.0 milestone completion (delivered as the signed personal-use APK)*
+*Last updated: 2026-10-01 after v1.1 milestone completion and signed Samsung installation*
