@@ -2,7 +2,7 @@
   "schema_version": "1.0",
   "milestone": "v1.2",
   "date": "2026-10-06",
-  "worktree": "/Users/bytedance/Documents/personal/gym_tracker_v11_design",
+  "worktree": "/Users/bytedance/orca/workspaces/gym_tracker/UX-revamp",
   "status": "planning_only",
   "migration_numbering_note": "0028_multi_active_plan_kinds.ts is the canonical proposed ADR filename; revalidate the migration sequence immediately before implementation.",
   "authority_order": [
@@ -433,7 +433,7 @@
           ]
         },
         {
-          "path": "/Users/bytedance/Documents/personal/gym_tracker_v11_design/.planning/v1.2-OWNER-BRIEF.md"
+          "path": "/Users/bytedance/orca/workspaces/gym_tracker/UX-revamp/.planning/v1.2-OWNER-BRIEF.md"
         }
       ],
       "prototype_selectors": [],
@@ -498,7 +498,7 @@
           ]
         },
         {
-          "path": "/Users/bytedance/Documents/personal/gym_tracker_v11_design/.planning/v1.2-OWNER-BRIEF.md"
+          "path": "/Users/bytedance/orca/workspaces/gym_tracker/UX-revamp/.planning/v1.2-OWNER-BRIEF.md"
         }
       ],
       "prototype_selectors": [],
@@ -554,7 +554,7 @@
       "origin": "required_domain",
       "prototype_refs": [
         {
-          "path": "/Users/bytedance/Documents/personal/gym_tracker_v11_design/.planning/v1.2-OWNER-BRIEF.md"
+          "path": "/Users/bytedance/orca/workspaces/gym_tracker/UX-revamp/.planning/v1.2-OWNER-BRIEF.md"
         }
       ],
       "prototype_selectors": [],
@@ -608,7 +608,7 @@
       "origin": "required_domain",
       "prototype_refs": [
         {
-          "path": "/Users/bytedance/Documents/personal/gym_tracker_v11_design/.planning/v1.2-OWNER-BRIEF.md"
+          "path": "/Users/bytedance/orca/workspaces/gym_tracker/UX-revamp/.planning/v1.2-OWNER-BRIEF.md"
         }
       ],
       "prototype_selectors": [],
@@ -672,7 +672,7 @@
           "line_end": 3723
         },
         {
-          "path": "/Users/bytedance/Documents/personal/gym_tracker_v11_design/.planning/v1.2-OWNER-BRIEF.md"
+          "path": "/Users/bytedance/orca/workspaces/gym_tracker/UX-revamp/.planning/v1.2-OWNER-BRIEF.md"
         }
       ],
       "prototype_selectors": [],
@@ -726,7 +726,7 @@
       "origin": "required_domain",
       "prototype_refs": [
         {
-          "path": "/Users/bytedance/Documents/personal/gym_tracker_v11_design/.planning/v1.2-OWNER-BRIEF.md"
+          "path": "/Users/bytedance/orca/workspaces/gym_tracker/UX-revamp/.planning/v1.2-OWNER-BRIEF.md"
         }
       ],
       "prototype_selectors": [],
@@ -791,7 +791,7 @@
           ]
         },
         {
-          "path": "/Users/bytedance/Documents/personal/gym_tracker_v11_design/.planning/v1.2-OWNER-BRIEF.md"
+          "path": "/Users/bytedance/orca/workspaces/gym_tracker/UX-revamp/.planning/v1.2-OWNER-BRIEF.md"
         }
       ],
       "prototype_selectors": [],
@@ -842,7 +842,7 @@
           "line_end": 1777
         },
         {
-          "path": "/Users/bytedance/Documents/personal/gym_tracker_v11_design/.planning/v1.2-OWNER-BRIEF.md"
+          "path": "/Users/bytedance/orca/workspaces/gym_tracker/UX-revamp/.planning/v1.2-OWNER-BRIEF.md"
         }
       ],
       "prototype_selectors": [],
@@ -888,7 +888,7 @@
           "line_end": 3541
         },
         {
-          "path": "/Users/bytedance/Documents/personal/gym_tracker_v11_design/.planning/v1.2-OWNER-BRIEF.md"
+          "path": "/Users/bytedance/orca/workspaces/gym_tracker/UX-revamp/.planning/v1.2-OWNER-BRIEF.md"
         }
       ],
       "prototype_selectors": [],
@@ -937,7 +937,7 @@
           "line_end": 3704
         },
         {
-          "path": "/Users/bytedance/Documents/personal/gym_tracker_v11_design/.planning/v1.2-OWNER-BRIEF.md"
+          "path": "/Users/bytedance/orca/workspaces/gym_tracker/UX-revamp/.planning/v1.2-OWNER-BRIEF.md"
         }
       ],
       "prototype_selectors": [],
@@ -989,7 +989,7 @@
           ]
         },
         {
-          "path": "/Users/bytedance/Documents/personal/gym_tracker_v11_design/.planning/v1.2-OWNER-BRIEF.md"
+          "path": "/Users/bytedance/orca/workspaces/gym_tracker/UX-revamp/.planning/v1.2-OWNER-BRIEF.md"
         }
       ],
       "prototype_selectors": [],
@@ -1040,7 +1040,7 @@
           "line_end": 3710
         },
         {
-          "path": "/Users/bytedance/Documents/personal/gym_tracker_v11_design/.planning/v1.2-OWNER-BRIEF.md"
+          "path": "/Users/bytedance/orca/workspaces/gym_tracker/UX-revamp/.planning/v1.2-OWNER-BRIEF.md"
         }
       ],
       "prototype_selectors": [],
@@ -1086,7 +1086,7 @@
           "line_end": 3665
         },
         {
-          "path": "/Users/bytedance/Documents/personal/gym_tracker_v11_design/.planning/v1.2-OWNER-BRIEF.md"
+          "path": "/Users/bytedance/orca/workspaces/gym_tracker/UX-revamp/.planning/v1.2-OWNER-BRIEF.md"
         }
       ],
       "prototype_selectors": [],
@@ -1130,7 +1130,7 @@
           "line_end": 3433
         },
         {
-          "path": "/Users/bytedance/Documents/personal/gym_tracker_v11_design/.planning/v1.2-OWNER-BRIEF.md"
+          "path": "/Users/bytedance/orca/workspaces/gym_tracker/UX-revamp/.planning/v1.2-OWNER-BRIEF.md"
         }
       ],
       "prototype_selectors": [],
@@ -1169,7 +1169,7 @@
       "origin": "required_domain",
       "prototype_refs": [
         {
-          "path": "/Users/bytedance/Documents/personal/gym_tracker_v11_design/.planning/v1.2-OWNER-BRIEF.md"
+          "path": "/Users/bytedance/orca/workspaces/gym_tracker/UX-revamp/.planning/v1.2-OWNER-BRIEF.md"
         }
       ],
       "prototype_selectors": [],
@@ -1218,7 +1218,7 @@
       "origin": "required_domain",
       "prototype_refs": [
         {
-          "path": "/Users/bytedance/Documents/personal/gym_tracker_v11_design/.planning/v1.2-OWNER-BRIEF.md"
+          "path": "/Users/bytedance/orca/workspaces/gym_tracker/UX-revamp/.planning/v1.2-OWNER-BRIEF.md"
         }
       ],
       "prototype_selectors": [],
@@ -1274,7 +1274,7 @@
       "origin": "required_domain",
       "prototype_refs": [
         {
-          "path": "/Users/bytedance/Documents/personal/gym_tracker_v11_design/.planning/v1.2-OWNER-BRIEF.md"
+          "path": "/Users/bytedance/orca/workspaces/gym_tracker/UX-revamp/.planning/v1.2-OWNER-BRIEF.md"
         }
       ],
       "prototype_selectors": [],
@@ -1727,7 +1727,7 @@
       "origin": "required_native",
       "prototype_refs": [
         {
-          "path": "/Users/bytedance/Documents/personal/gym_tracker_v11_design/.planning/v1.2-OWNER-BRIEF.md"
+          "path": "/Users/bytedance/orca/workspaces/gym_tracker/UX-revamp/.planning/v1.2-OWNER-BRIEF.md"
         }
       ],
       "prototype_selectors": [],
@@ -1786,7 +1786,7 @@
       "origin": "required_native",
       "prototype_refs": [
         {
-          "path": "/Users/bytedance/Documents/personal/gym_tracker_v11_design/.planning/v1.2-OWNER-BRIEF.md"
+          "path": "/Users/bytedance/orca/workspaces/gym_tracker/UX-revamp/.planning/v1.2-OWNER-BRIEF.md"
         }
       ],
       "prototype_selectors": [],
@@ -1827,7 +1827,7 @@
       "origin": "required_native",
       "prototype_refs": [
         {
-          "path": "/Users/bytedance/Documents/personal/gym_tracker_v11_design/.planning/v1.2-OWNER-BRIEF.md"
+          "path": "/Users/bytedance/orca/workspaces/gym_tracker/UX-revamp/.planning/v1.2-OWNER-BRIEF.md"
         }
       ],
       "prototype_selectors": [],
@@ -1868,7 +1868,7 @@
       "origin": "required_native",
       "prototype_refs": [
         {
-          "path": "/Users/bytedance/Documents/personal/gym_tracker_v11_design/.planning/v1.2-OWNER-BRIEF.md"
+          "path": "/Users/bytedance/orca/workspaces/gym_tracker/UX-revamp/.planning/v1.2-OWNER-BRIEF.md"
         }
       ],
       "prototype_selectors": [],
@@ -1909,7 +1909,7 @@
       "origin": "required_native",
       "prototype_refs": [
         {
-          "path": "/Users/bytedance/Documents/personal/gym_tracker_v11_design/.planning/v1.2-OWNER-BRIEF.md"
+          "path": "/Users/bytedance/orca/workspaces/gym_tracker/UX-revamp/.planning/v1.2-OWNER-BRIEF.md"
         }
       ],
       "prototype_selectors": [],
@@ -1950,7 +1950,7 @@
       "origin": "required_native",
       "prototype_refs": [
         {
-          "path": "/Users/bytedance/Documents/personal/gym_tracker_v11_design/.planning/v1.2-OWNER-BRIEF.md"
+          "path": "/Users/bytedance/orca/workspaces/gym_tracker/UX-revamp/.planning/v1.2-OWNER-BRIEF.md"
         }
       ],
       "prototype_selectors": [],
@@ -1991,7 +1991,7 @@
       "origin": "required_native",
       "prototype_refs": [
         {
-          "path": "/Users/bytedance/Documents/personal/gym_tracker_v11_design/.planning/v1.2-OWNER-BRIEF.md"
+          "path": "/Users/bytedance/orca/workspaces/gym_tracker/UX-revamp/.planning/v1.2-OWNER-BRIEF.md"
         }
       ],
       "prototype_selectors": [],
@@ -2158,7 +2158,7 @@
           "line_end": 2110
         },
         {
-          "path": "/Users/bytedance/Documents/personal/gym_tracker_v11_design/.planning/v1.2-OWNER-BRIEF.md"
+          "path": "/Users/bytedance/orca/workspaces/gym_tracker/UX-revamp/.planning/v1.2-OWNER-BRIEF.md"
         }
       ],
       "prototype_selectors": [
@@ -2205,7 +2205,7 @@
       "origin": "required_native",
       "prototype_refs": [
         {
-          "path": "/Users/bytedance/Documents/personal/gym_tracker_v11_design/.planning/v1.2-OWNER-BRIEF.md"
+          "path": "/Users/bytedance/orca/workspaces/gym_tracker/UX-revamp/.planning/v1.2-OWNER-BRIEF.md"
         }
       ],
       "prototype_selectors": [],
@@ -2244,7 +2244,7 @@
       "origin": "required_native",
       "prototype_refs": [
         {
-          "path": "/Users/bytedance/Documents/personal/gym_tracker_v11_design/.planning/v1.2-OWNER-BRIEF.md"
+          "path": "/Users/bytedance/orca/workspaces/gym_tracker/UX-revamp/.planning/v1.2-OWNER-BRIEF.md"
         }
       ],
       "prototype_selectors": [],
@@ -2795,7 +2795,7 @@
       "origin": "required_native",
       "prototype_refs": [
         {
-          "path": "/Users/bytedance/Documents/personal/gym_tracker_v11_design/.planning/v1.2-OWNER-BRIEF.md"
+          "path": "/Users/bytedance/orca/workspaces/gym_tracker/UX-revamp/.planning/v1.2-OWNER-BRIEF.md"
         }
       ],
       "prototype_selectors": [],
@@ -3000,7 +3000,7 @@
       "origin": "required_native",
       "prototype_refs": [
         {
-          "path": "/Users/bytedance/Documents/personal/gym_tracker_v11_design/.planning/v1.2-OWNER-BRIEF.md"
+          "path": "/Users/bytedance/orca/workspaces/gym_tracker/UX-revamp/.planning/v1.2-OWNER-BRIEF.md"
         }
       ],
       "prototype_selectors": [],
@@ -3202,7 +3202,7 @@
       "origin": "required_native",
       "prototype_refs": [
         {
-          "path": "/Users/bytedance/Documents/personal/gym_tracker_v11_design/.planning/v1.2-OWNER-BRIEF.md"
+          "path": "/Users/bytedance/orca/workspaces/gym_tracker/UX-revamp/.planning/v1.2-OWNER-BRIEF.md"
         }
       ],
       "prototype_selectors": [],
@@ -3716,7 +3716,7 @@
           ]
         },
         {
-          "path": "/Users/bytedance/Documents/personal/gym_tracker_v11_design/.planning/v1.2-OWNER-BRIEF.md"
+          "path": "/Users/bytedance/orca/workspaces/gym_tracker/UX-revamp/.planning/v1.2-OWNER-BRIEF.md"
         }
       ],
       "prototype_selectors": [],
@@ -3755,7 +3755,7 @@
       "origin": "required_native",
       "prototype_refs": [
         {
-          "path": "/Users/bytedance/Documents/personal/gym_tracker_v11_design/.planning/v1.2-OWNER-BRIEF.md"
+          "path": "/Users/bytedance/orca/workspaces/gym_tracker/UX-revamp/.planning/v1.2-OWNER-BRIEF.md"
         }
       ],
       "prototype_selectors": [],
@@ -3794,7 +3794,7 @@
       "origin": "required_native",
       "prototype_refs": [
         {
-          "path": "/Users/bytedance/Documents/personal/gym_tracker_v11_design/.planning/v1.2-OWNER-BRIEF.md"
+          "path": "/Users/bytedance/orca/workspaces/gym_tracker/UX-revamp/.planning/v1.2-OWNER-BRIEF.md"
         }
       ],
       "prototype_selectors": [],
@@ -3838,7 +3838,7 @@
       "origin": "required_native",
       "prototype_refs": [
         {
-          "path": "/Users/bytedance/Documents/personal/gym_tracker_v11_design/.planning/v1.2-OWNER-BRIEF.md"
+          "path": "/Users/bytedance/orca/workspaces/gym_tracker/UX-revamp/.planning/v1.2-OWNER-BRIEF.md"
         }
       ],
       "prototype_selectors": [],
@@ -4266,7 +4266,7 @@
           "line_end": 3286
         },
         {
-          "path": "/Users/bytedance/Documents/personal/gym_tracker_v11_design/.planning/v1.2-OWNER-BRIEF.md"
+          "path": "/Users/bytedance/orca/workspaces/gym_tracker/UX-revamp/.planning/v1.2-OWNER-BRIEF.md"
         }
       ],
       "prototype_selectors": [
@@ -4937,7 +4937,7 @@
       "origin": "required_native",
       "prototype_refs": [
         {
-          "path": "/Users/bytedance/Documents/personal/gym_tracker_v11_design/.planning/v1.2-OWNER-BRIEF.md"
+          "path": "/Users/bytedance/orca/workspaces/gym_tracker/UX-revamp/.planning/v1.2-OWNER-BRIEF.md"
         }
       ],
       "prototype_selectors": [],
@@ -4976,7 +4976,7 @@
       "origin": "required_native",
       "prototype_refs": [
         {
-          "path": "/Users/bytedance/Documents/personal/gym_tracker_v11_design/.planning/v1.2-OWNER-BRIEF.md"
+          "path": "/Users/bytedance/orca/workspaces/gym_tracker/UX-revamp/.planning/v1.2-OWNER-BRIEF.md"
         }
       ],
       "prototype_selectors": [],
@@ -5017,7 +5017,7 @@
       "origin": "required_native",
       "prototype_refs": [
         {
-          "path": "/Users/bytedance/Documents/personal/gym_tracker_v11_design/.planning/v1.2-OWNER-BRIEF.md"
+          "path": "/Users/bytedance/orca/workspaces/gym_tracker/UX-revamp/.planning/v1.2-OWNER-BRIEF.md"
         }
       ],
       "prototype_selectors": [],
@@ -5599,7 +5599,7 @@
       "origin": "required_native",
       "prototype_refs": [
         {
-          "path": "/Users/bytedance/Documents/personal/gym_tracker_v11_design/.planning/v1.2-OWNER-BRIEF.md"
+          "path": "/Users/bytedance/orca/workspaces/gym_tracker/UX-revamp/.planning/v1.2-OWNER-BRIEF.md"
         }
       ],
       "prototype_selectors": [],
@@ -5740,7 +5740,7 @@
       "origin": "required_native",
       "prototype_refs": [
         {
-          "path": "/Users/bytedance/Documents/personal/gym_tracker_v11_design/.planning/v1.2-OWNER-BRIEF.md"
+          "path": "/Users/bytedance/orca/workspaces/gym_tracker/UX-revamp/.planning/v1.2-OWNER-BRIEF.md"
         }
       ],
       "prototype_selectors": [],
@@ -5833,7 +5833,7 @@
       "origin": "required_native",
       "prototype_refs": [
         {
-          "path": "/Users/bytedance/Documents/personal/gym_tracker_v11_design/.planning/v1.2-OWNER-BRIEF.md"
+          "path": "/Users/bytedance/orca/workspaces/gym_tracker/UX-revamp/.planning/v1.2-OWNER-BRIEF.md"
         }
       ],
       "prototype_selectors": [],
@@ -5872,7 +5872,7 @@
       "origin": "required_native",
       "prototype_refs": [
         {
-          "path": "/Users/bytedance/Documents/personal/gym_tracker_v11_design/.planning/v1.2-OWNER-BRIEF.md"
+          "path": "/Users/bytedance/orca/workspaces/gym_tracker/UX-revamp/.planning/v1.2-OWNER-BRIEF.md"
         }
       ],
       "prototype_selectors": [],
@@ -6050,7 +6050,7 @@
       "origin": "required_native",
       "prototype_refs": [
         {
-          "path": "/Users/bytedance/Documents/personal/gym_tracker_v11_design/.planning/v1.2-OWNER-BRIEF.md"
+          "path": "/Users/bytedance/orca/workspaces/gym_tracker/UX-revamp/.planning/v1.2-OWNER-BRIEF.md"
         }
       ],
       "prototype_selectors": [],
@@ -6094,7 +6094,7 @@
       "origin": "required_native",
       "prototype_refs": [
         {
-          "path": "/Users/bytedance/Documents/personal/gym_tracker_v11_design/.planning/v1.2-OWNER-BRIEF.md"
+          "path": "/Users/bytedance/orca/workspaces/gym_tracker/UX-revamp/.planning/v1.2-OWNER-BRIEF.md"
         }
       ],
       "prototype_selectors": [],
@@ -6667,7 +6667,7 @@
           "line_end": 3640
         },
         {
-          "path": "/Users/bytedance/Documents/personal/gym_tracker_v11_design/.planning/v1.2-OWNER-BRIEF.md"
+          "path": "/Users/bytedance/orca/workspaces/gym_tracker/UX-revamp/.planning/v1.2-OWNER-BRIEF.md"
         }
       ],
       "prototype_selectors": [
@@ -6771,7 +6771,7 @@
           "line_end": 3718
         },
         {
-          "path": "/Users/bytedance/Documents/personal/gym_tracker_v11_design/.planning/v1.2-OWNER-BRIEF.md"
+          "path": "/Users/bytedance/orca/workspaces/gym_tracker/UX-revamp/.planning/v1.2-OWNER-BRIEF.md"
         }
       ],
       "prototype_selectors": [
@@ -6926,7 +6926,7 @@
           "line_end": 3699
         },
         {
-          "path": "/Users/bytedance/Documents/personal/gym_tracker_v11_design/.planning/v1.2-OWNER-BRIEF.md"
+          "path": "/Users/bytedance/orca/workspaces/gym_tracker/UX-revamp/.planning/v1.2-OWNER-BRIEF.md"
         }
       ],
       "prototype_selectors": [
@@ -7070,7 +7070,7 @@
           "line_end": 3710
         },
         {
-          "path": "/Users/bytedance/Documents/personal/gym_tracker_v11_design/.planning/v1.2-OWNER-BRIEF.md"
+          "path": "/Users/bytedance/orca/workspaces/gym_tracker/UX-revamp/.planning/v1.2-OWNER-BRIEF.md"
         }
       ],
       "prototype_selectors": [
@@ -7121,7 +7121,7 @@
           "line_end": 3711
         },
         {
-          "path": "/Users/bytedance/Documents/personal/gym_tracker_v11_design/.planning/v1.2-OWNER-BRIEF.md"
+          "path": "/Users/bytedance/orca/workspaces/gym_tracker/UX-revamp/.planning/v1.2-OWNER-BRIEF.md"
         }
       ],
       "prototype_selectors": [
@@ -7172,7 +7172,7 @@
           "line_end": 3702
         },
         {
-          "path": "/Users/bytedance/Documents/personal/gym_tracker_v11_design/.planning/v1.2-OWNER-BRIEF.md"
+          "path": "/Users/bytedance/orca/workspaces/gym_tracker/UX-revamp/.planning/v1.2-OWNER-BRIEF.md"
         }
       ],
       "prototype_selectors": [],
@@ -7413,7 +7413,7 @@
           "line_end": 3710
         },
         {
-          "path": "/Users/bytedance/Documents/personal/gym_tracker_v11_design/.planning/v1.2-OWNER-BRIEF.md"
+          "path": "/Users/bytedance/orca/workspaces/gym_tracker/UX-revamp/.planning/v1.2-OWNER-BRIEF.md"
         }
       ],
       "prototype_selectors": [
@@ -7462,7 +7462,7 @@
           "line_end": 3704
         },
         {
-          "path": "/Users/bytedance/Documents/personal/gym_tracker_v11_design/.planning/v1.2-OWNER-BRIEF.md"
+          "path": "/Users/bytedance/orca/workspaces/gym_tracker/UX-revamp/.planning/v1.2-OWNER-BRIEF.md"
         }
       ],
       "prototype_selectors": [],
@@ -7747,7 +7747,7 @@
           "line_end": 3660
         },
         {
-          "path": "/Users/bytedance/Documents/personal/gym_tracker_v11_design/.planning/v1.2-OWNER-BRIEF.md"
+          "path": "/Users/bytedance/orca/workspaces/gym_tracker/UX-revamp/.planning/v1.2-OWNER-BRIEF.md"
         }
       ],
       "prototype_selectors": [
@@ -7895,7 +7895,7 @@
       "origin": "required_native",
       "prototype_refs": [
         {
-          "path": "/Users/bytedance/Documents/personal/gym_tracker_v11_design/.planning/v1.2-OWNER-BRIEF.md"
+          "path": "/Users/bytedance/orca/workspaces/gym_tracker/UX-revamp/.planning/v1.2-OWNER-BRIEF.md"
         }
       ],
       "prototype_selectors": [],
@@ -7984,7 +7984,7 @@
       "origin": "required_native",
       "prototype_refs": [
         {
-          "path": "/Users/bytedance/Documents/personal/gym_tracker_v11_design/.planning/v1.2-OWNER-BRIEF.md"
+          "path": "/Users/bytedance/orca/workspaces/gym_tracker/UX-revamp/.planning/v1.2-OWNER-BRIEF.md"
         }
       ],
       "prototype_selectors": [],
@@ -8130,7 +8130,7 @@
           "line_end": 3675
         },
         {
-          "path": "/Users/bytedance/Documents/personal/gym_tracker_v11_design/.planning/v1.2-OWNER-BRIEF.md"
+          "path": "/Users/bytedance/orca/workspaces/gym_tracker/UX-revamp/.planning/v1.2-OWNER-BRIEF.md"
         }
       ],
       "prototype_selectors": [
@@ -8236,7 +8236,7 @@
           "line_end": 3678
         },
         {
-          "path": "/Users/bytedance/Documents/personal/gym_tracker_v11_design/.planning/v1.2-OWNER-BRIEF.md"
+          "path": "/Users/bytedance/orca/workspaces/gym_tracker/UX-revamp/.planning/v1.2-OWNER-BRIEF.md"
         }
       ],
       "prototype_selectors": [],
@@ -8462,7 +8462,7 @@
           ]
         },
         {
-          "path": "/Users/bytedance/Documents/personal/gym_tracker_v11_design/.planning/v1.2-OWNER-BRIEF.md"
+          "path": "/Users/bytedance/orca/workspaces/gym_tracker/UX-revamp/.planning/v1.2-OWNER-BRIEF.md"
         }
       ],
       "prototype_selectors": [],
@@ -8510,7 +8510,7 @@
           ]
         },
         {
-          "path": "/Users/bytedance/Documents/personal/gym_tracker_v11_design/.planning/v1.2-OWNER-BRIEF.md"
+          "path": "/Users/bytedance/orca/workspaces/gym_tracker/UX-revamp/.planning/v1.2-OWNER-BRIEF.md"
         }
       ],
       "prototype_selectors": [],
@@ -8558,7 +8558,7 @@
           ]
         },
         {
-          "path": "/Users/bytedance/Documents/personal/gym_tracker_v11_design/.planning/v1.2-OWNER-BRIEF.md"
+          "path": "/Users/bytedance/orca/workspaces/gym_tracker/UX-revamp/.planning/v1.2-OWNER-BRIEF.md"
         }
       ],
       "prototype_selectors": [],
@@ -8606,7 +8606,7 @@
           ]
         },
         {
-          "path": "/Users/bytedance/Documents/personal/gym_tracker_v11_design/.planning/v1.2-OWNER-BRIEF.md"
+          "path": "/Users/bytedance/orca/workspaces/gym_tracker/UX-revamp/.planning/v1.2-OWNER-BRIEF.md"
         }
       ],
       "prototype_selectors": [],
@@ -8659,7 +8659,7 @@
           ]
         },
         {
-          "path": "/Users/bytedance/Documents/personal/gym_tracker_v11_design/.planning/v1.2-OWNER-BRIEF.md"
+          "path": "/Users/bytedance/orca/workspaces/gym_tracker/UX-revamp/.planning/v1.2-OWNER-BRIEF.md"
         }
       ],
       "prototype_selectors": [],
@@ -8709,7 +8709,7 @@
           ]
         },
         {
-          "path": "/Users/bytedance/Documents/personal/gym_tracker_v11_design/.planning/v1.2-OWNER-BRIEF.md"
+          "path": "/Users/bytedance/orca/workspaces/gym_tracker/UX-revamp/.planning/v1.2-OWNER-BRIEF.md"
         }
       ],
       "prototype_selectors": [],
@@ -8757,7 +8757,7 @@
           ]
         },
         {
-          "path": "/Users/bytedance/Documents/personal/gym_tracker_v11_design/.planning/v1.2-OWNER-BRIEF.md"
+          "path": "/Users/bytedance/orca/workspaces/gym_tracker/UX-revamp/.planning/v1.2-OWNER-BRIEF.md"
         }
       ],
       "prototype_selectors": [],
@@ -8805,7 +8805,7 @@
           ]
         },
         {
-          "path": "/Users/bytedance/Documents/personal/gym_tracker_v11_design/.planning/v1.2-OWNER-BRIEF.md"
+          "path": "/Users/bytedance/orca/workspaces/gym_tracker/UX-revamp/.planning/v1.2-OWNER-BRIEF.md"
         }
       ],
       "prototype_selectors": [],
@@ -8853,7 +8853,7 @@
           ]
         },
         {
-          "path": "/Users/bytedance/Documents/personal/gym_tracker_v11_design/.planning/v1.2-OWNER-BRIEF.md"
+          "path": "/Users/bytedance/orca/workspaces/gym_tracker/UX-revamp/.planning/v1.2-OWNER-BRIEF.md"
         }
       ],
       "prototype_selectors": [],
@@ -8903,7 +8903,7 @@
           ]
         },
         {
-          "path": "/Users/bytedance/Documents/personal/gym_tracker_v11_design/.planning/v1.2-OWNER-BRIEF.md"
+          "path": "/Users/bytedance/orca/workspaces/gym_tracker/UX-revamp/.planning/v1.2-OWNER-BRIEF.md"
         }
       ],
       "prototype_selectors": [],
@@ -8951,7 +8951,7 @@
           ]
         },
         {
-          "path": "/Users/bytedance/Documents/personal/gym_tracker_v11_design/.planning/v1.2-OWNER-BRIEF.md"
+          "path": "/Users/bytedance/orca/workspaces/gym_tracker/UX-revamp/.planning/v1.2-OWNER-BRIEF.md"
         }
       ],
       "prototype_selectors": [],
@@ -8999,7 +8999,7 @@
           ]
         },
         {
-          "path": "/Users/bytedance/Documents/personal/gym_tracker_v11_design/.planning/v1.2-OWNER-BRIEF.md"
+          "path": "/Users/bytedance/orca/workspaces/gym_tracker/UX-revamp/.planning/v1.2-OWNER-BRIEF.md"
         }
       ],
       "prototype_selectors": [],
@@ -9047,7 +9047,7 @@
           ]
         },
         {
-          "path": "/Users/bytedance/Documents/personal/gym_tracker_v11_design/.planning/v1.2-OWNER-BRIEF.md"
+          "path": "/Users/bytedance/orca/workspaces/gym_tracker/UX-revamp/.planning/v1.2-OWNER-BRIEF.md"
         }
       ],
       "prototype_selectors": [],

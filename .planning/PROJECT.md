@@ -72,7 +72,9 @@ Older validated UI decisions above describe historical releases, not v1.2 UI
 overrides. The owner brief supersedes the draft's outstanding design questions and
 `approved.json`'s stale awaiting-owner-review metadata for planning only.
 
-**Session boundary:** All edits stay in `gym_tracker_v11_design/.planning/`.
+**Session boundary:** All edits stay in the owner-selected Orca worktree at
+`/Users/bytedance/orca/workspaces/gym_tracker/UX-revamp`, with planning edits
+under `.planning/`.
 No production code, build, release, deployment, or phase execution in this session.
 Any necessary prototype deviation must be separately recorded and owner-approved.
 
