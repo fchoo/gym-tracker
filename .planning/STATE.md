@@ -1,20 +1,16 @@
 ---
 gsd_state_version: 1.0
-milestone: v1.1
-milestone_name: In-Workout Editing, Advanced Timing & Drive Backup
-status: Awaiting next milestone
-stopped_at: Phase 12 complete — all phases complete
-last_updated: "2026-10-01T13:13:34.747Z"
-last_activity: 2026-10-01
-last_activity_desc: Milestone v1.1 completed and archived
-state_head: ff4a76732f8a81f70a2cdb7bcc837e0f72e499d6
+milestone: v1.2
+milestone_name: Prototype Parity, Concurrent Plans & Garmin Import
+status: planning
+last_updated: "2026-10-06T03:11:31.765Z"
+last_activity: 2026-10-06
 progress:
-  total_phases: 5
-  completed_phases: 5
-  total_plans: 36
-  completed_plans: 36
-  percent: 100
-current_phase: 12
+  total_phases: 0
+  completed_phases: 0
+  total_plans: 0
+  completed_plans: 0
+  percent: 0
 ---
 
 # Project State
@@ -28,10 +24,10 @@ See: `.planning/PROJECT.md` (updated 2026-10-01)
 
 ## Current Position
 
-Phase: Milestone v1.1 complete
+Phase: Not started (defining requirements)
 Plan: —
-Status: Awaiting next milestone
-Last activity: 2026-10-01 — Milestone v1.1 completed and archived
+Status: Defining requirements
+Last activity: 2026-10-06 — Milestone v1.2 started
 
 ## Delivery model
 

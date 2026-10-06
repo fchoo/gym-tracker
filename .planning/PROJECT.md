@@ -41,7 +41,40 @@ _Confirmed still correct at v1.1 close: editing, advanced timing, and backup/rec
 
 ### Active
 
-No active milestone requirements. The next milestone starts with fresh requirements.
+v1.2 requirements are being planned in `.planning/REQUIREMENTS.md` against the
+owner-approved Revision 18 prototype and `.planning/v1.2-OWNER-BRIEF.md`.
+Implementation is not authorized until the owner reviews the complete milestone.
+
+## Current Milestone: v1.2 Prototype Parity, Concurrent Plans & Garmin Import
+
+**Goal:** Reproduce the approved prototype's presentation and interactions in the
+production Android app while preserving SQLite, transaction, history, recovery,
+backup, offline, accessibility, and performance contracts.
+
+**Target features:**
+- Concurrent Strength and Running plans with independent authoritative schedules,
+  versioned structured running sessions, explicit collision/matching rules, and
+  compatible backup/merge/recovery.
+- Exactly four roots: Workout, Calendar, Library, Progress; warm editorial Workout,
+  scan-first Active Workout, and shared Light/Dark/System appearances.
+- Full-height Calendar with pointer-tracked months, spatial week/agenda expansion,
+  shared event cells, non-color statuses, and read-only history routes.
+- Neutral Strength/Running creation chooser and persistent structured running plans.
+- Manual original FIT import and an approval-gated Garmin Activity API/PKCE adapter;
+  confirmed matching and idempotency; factual Strength/Running progress.
+- Prototype comparison, real SQLite, Android lifecycle/offline, accessibility,
+  performance, and attended Samsung verification before any later release.
+
+**Planning authority:** `.planning/v1.2-OWNER-BRIEF.md` → latest `approved.json`
+revision → rendered `approved-hybrid.html` → earlier draft → prior planning →
+implementation patterns. Shipped domain guarantees remain authoritative.
+Older validated UI decisions above describe historical releases, not v1.2 UI
+overrides. The owner brief supersedes the draft's outstanding design questions and
+`approved.json`'s stale awaiting-owner-review metadata for planning only.
+
+**Session boundary:** All edits stay in `gym_tracker_v11_design/.planning/`.
+No production code, build, release, deployment, or phase execution in this session.
+Any necessary prototype deviation must be separately recorded and owner-approved.
 
 ### Out of Scope
 
@@ -50,7 +83,10 @@ No active milestone requirements. The next milestone starts with fresh requireme
 - Wear OS — defer until the phone workout loop is proven.
 - Health Connect — defer until the local session model has real usage history.
 - Camera form analysis and generative coaching — outside the trust and complexity boundary.
-- Nutrition, body measurements, and recovery scoring — unrelated to the workout-tracking core.
+- Nutrition, gender, height, and recovery scoring — outside scope. Optional dated
+  bodyweight is in v1.2 solely for relative-strength views, never automatic targets.
+- In-app outdoor/treadmill recording, live GPS tracking, and run recording permissions
+  — Garmin is the recorder; Gym Tracker imports consented activity facts.
 - Exercise media without independently verified licensing and attribution.
 - Screen-reader and switch-scanning assistive technology support — TalkBack and Samsung Universal/Switch Access are not required for this personal-use v1; existing semantic labels remain, while keyboard/D-pad stays release-gated.
 - Public GitHub Release / store promotion ceremony (attended device matrix, owner-approval token, no-rebuild digest gate, Terminal Seal) — retired for personal-use v1 delivery; tracked as V2-05 if public distribution is pursued.
@@ -151,4 +187,4 @@ This document evolves at phase transitions and milestone boundaries.
 4. Update Context with implementation and verification evidence.
 
 ---
-*Last updated: 2026-10-01 after v1.1 milestone completion and signed Samsung installation*
+*Last updated: 2026-10-06 for owner-authorized v1.2 planning; v1.1 delivery history retained.*
