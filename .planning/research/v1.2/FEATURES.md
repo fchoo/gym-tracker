@@ -143,7 +143,7 @@ Origin meanings: `prototype_source` = an entry/handler exists in current source 
 |---|---|---|---|
 | shell.four-roots / SHL-01 | Root shell | Expose exactly Workout, Calendar, Library and Progress in a shared root shell, preserving bottom navigation composition at all target widths. | prototype_source |
 | shell.root-state / SHL-02 | Root navigation | Switch destinations in place with correct selected state, heading focus, deep-route exit and retained destination-specific state. | prototype_source |
-| shell.appearance / SHL-03 | App Settings | Open App Settings from the root header and synchronize Light, Dark and System appearance across roots, active workout and Garmin; persist the choice and react to system changes. | prototype_source |
+| shell.appearance / SHL-03 | App Settings | Open App Settings from the root header and synchronize Light, Dark and System appearance across the four roots, Active Workout, sheets and dialogs; persist the choice and react to system changes. Garmin-specific appearance closure is owned by GAR-16 after its contextual route exists. | prototype_source |
 | shell.tokens / SHL-04 | Shared visual language | Reproduce approved semantic colors, Archivo variable typography, IBM Plex Mono numerical text, spacing, borders and density using bundled native assets and shared tokens. | prototype_source |
 | shell.sheets / SHL-05 | Shared dialogs and sheets | Use contextual bottom sheets with scrim, close/back dismissal, focus entry/trap/restoration and keyboard-safe content, preserving each surface's individual actions. | prototype_source |
 | shell.toasts / SHL-06 | Feedback | Place theme-aware semantic toasts below top bars, clear of the command/rest dock; preserve accessible status announcements. | prototype_source |

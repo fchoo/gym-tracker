@@ -1133,7 +1133,7 @@
       "owning_phase": 14,
       "screen": "App Settings",
       "interaction_state": "appearance",
-      "acceptance_contract": "Open App Settings from the root header and synchronize Light, Dark and System appearance across roots, active workout and Garmin; persist the choice and react to system changes.",
+      "acceptance_contract": "Open App Settings from the root header and synchronize Light, Dark and System appearance across the four roots, Active Workout, sheets and dialogs; persist the choice and react to system changes. Garmin-specific appearance closure is owned by GAR-16 after its contextual route exists.",
       "coverage_class": "prototype_source",
       "production_routes": [
         {

@@ -1452,7 +1452,7 @@
       "phase": 14,
       "screen": "App Settings",
       "interaction_state": "appearance",
-      "requirement": "Open App Settings from the root header and synchronize Light, Dark and System appearance across roots, active workout and Garmin; persist the choice and react to system changes.",
+      "requirement": "Open App Settings from the root header and synchronize Light, Dark and System appearance across the four roots, Active Workout, sheets and dialogs; persist the choice and react to system changes. Garmin-specific appearance closure is owned by GAR-16 after its contextual route exists.",
       "target_key": "settings",
       "domain_dependency": "Shared appearance and navigation state",
       "planned_validation": "src/ui/__tests__/SettingsScreen.test.tsx: choices persisted; OS theme changes while System selected; all screens reflect same choice.",

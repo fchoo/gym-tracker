@@ -92,7 +92,7 @@ These are explicit gates, not reopened prototype questions:
   4. Overlapping occurrences remain separately identifiable; Move run, Move strength, Keep both, workout selection, and activity matching affect only the explicitly selected occurrence and never rewrite history.
   5. Imported activities, matches, goals, and optional bodyweight survive idempotent replay and portability, while workout edits/completion remain offline and are acknowledged only after the exclusive transaction commits.
 
-**Plans**: TBD
+**Plans**: 16 plans
 **Plan flags**: research required; migration and portability plan required; plan check required; review convergence required; cardinality and legacy-timing decisions remain gated
 
 ### Phase 14: Prototype Visual Shell
@@ -111,7 +111,7 @@ These are explicit gates, not reopened prototype questions:
   4. Startup exposes truthful loading, trusted, failure/retry, notification-permission, and continue-without-alerts states without moving authority away from SQLite.
   5. Rest alerts, removed sessions, manual recovery/merge, automatic backup, CSV export, privacy, and their empty/busy/failure/retry states remain reachable through Settings after the shell changes.
 
-**Plans**: TBD
+**Plans**: 12 plans
 **UI hint**: yes
 **Plan flags**: focused research; UI specification required; plan check required; review convergence required; DEV-02 remains unaccepted
 
@@ -131,7 +131,7 @@ These are explicit gates, not reopened prototype questions:
   4. The full-width rest dock, countdown, pause/resume, ±15, skip, device-owned cues, and next-set context recover correctly across backgrounding, process death, and offline restart without completing a set.
   5. Add/replace/delete/reorder, Undo recovery, trend, flat second-based timing, finish/partial/later/discard, completion review, and explicit plan write-back preserve protected history and expose actionable retry states.
 
-**Plans**: TBD
+**Plans**: 13 plans
 **UI hint**: yes
 **Plan flags**: focused legacy-timing research; UI specification required; plan check required; review convergence required; retirement of cadence/cluster playback remains an owner-reviewed proposal
 
@@ -180,7 +180,7 @@ Plans:
   4. The owner can create and edit goals plus Recovery, Long run, Progression, Tempo, Intervals, Hills, and Fartlek sessions with their approved common/type-specific fields, validation, stable identities, deletion, and ordering.
   5. A saved Running plan can remain truly empty or contain multiple stable ordered sessions on the same weekday after reopen; future Move run, Move strength, and Keep both decisions persist only after explicit review and confirmation.
 
-**Plans**: TBD
+**Plans**: 14 plans
 **UI hint**: yes
 **Plan flags**: focused research only; UI specification required; plan check required; review convergence required; no one-session-per-day restriction permitted
 
@@ -200,7 +200,7 @@ Plans:
   4. Outdoor detail shows only available elapsed/moving, distance, pace, route, heart-rate, and lap evidence; treadmill explicitly shows No route; the accessible lap table uses Lap, Time, and Pace with honest missing values.
   5. Matching shows stable candidates and writes only the explicitly selected occurrence after Confirm; Back/Leave unmatched writes nothing. Official consent/sync/revoke cannot be declared complete until real access and the separately reviewed confidential broker pass their activation gates.
 
-**Plans**: TBD
+**Plans**: 14 plans
 **UI hint**: yes
 **Plan flags**: research required; UI specification required; security review required for any official adapter/broker; plan check required; review convergence required; local FIT is unconditional scope
 
@@ -220,7 +220,7 @@ Plans:
   4. Target editing and recommendation review preserve draft values on validation/save failure and persist Keep current or Use target exactly once with revision checks and no fixture-driven reappearance.
   5. Optional dated bodyweight can be added, edited, and explicitly deleted for disclosed relative-load views only; it never collects gender/height, creates a fitness score, or changes workout targets.
 
-**Plans**: TBD
+**Plans**: 10 plans
 **UI hint**: yes
 **Plan flags**: focused metrics research; UI specification required; plan check required; review convergence required
 
@@ -240,7 +240,7 @@ Plans:
   4. Native Calendar drag/threshold/morph behavior and representative launch, root switch, set commit, editor, search, Calendar, Progress, import, backup, and merge workloads meet their reviewed numeric budgets with raw evidence retained.
   5. An attended Samsung review records visual, usability, accessibility, and interaction observations separately from automated proof, and signed personal-use release verification is prepared without treating either as release authorization.
 
-**Plans**: TBD
+**Plans**: 10 plans
 **UI hint**: yes
 **Plan flags**: focused verification research; parity ledger and UI review required; plan check required; review convergence required; depends on all prior phases; DEV-01/02 and external Garmin gates must have explicit final disposition
 
