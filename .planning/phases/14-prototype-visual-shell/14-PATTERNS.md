@@ -25,6 +25,8 @@ only as an unused, explicitly proposed candidate.
 |---|---|---|---|---|---|
 | `assets/fonts/Archivo-VariableFont_wdth,wght.ttf` | config/asset | file-I/O | current local `appFonts` entries in `src/ui/theme/index.ts:22-31` | partial | add official bytes; prove native rendering before broad migration |
 | `assets/fonts/OFL-Archivo.txt` | config/legal asset | file-I/O | `assets/content/third-party/kinetic-place-exercises-db.MIT.txt:1-21` | role-match | add upstream license verbatim |
+| `src/testing/phase14FontProof.ts` | test contract | transform | source-owned native contract ledgers | role-match | encode the 57px/condensed/wght-890/-0.07em oracle, exact strings/wraps, <=1 normalized physical-pixel tolerance and zero crop/overflow |
+| `app/__phase2-attended-preview.tsx` Phase 14 scenario | dev-test route | event-driven | existing native-contract-gated attended preview | exact host | render the proof oracle only under `nativeContractsEnabled`; production remains unreachable |
 | `package.json` | config | batch | current pinned font/runtime dependencies | exact file | remove Source Sans only after all references disappear; add no UI package |
 | `app/_layout.tsx` | provider/route | event-driven | same file, especially `RootLayout` | exact | retain provider/Stack isolation; fix font and preference readiness failure |
 | `app/(tabs)/_layout.tsx` | route | event-driven | same file, `RootTabsLayout` | exact | retain Tabs/history/route keys; replace rail and two-row choices |
@@ -847,7 +849,7 @@ picker's query/selection/mutation state in ActiveWorkoutScreen.
 |---|---|---|---|
 | `app/(tabs)/__tests__/_layout.test.tsx` | same file `:99-168,209-268` | mocked Tabs, Dimensions changes, selected state, D-pad Enter | expect bottom at 360/600/839/840/1024/1280 and 200%; label Workout; no rail/two-row |
 | `src/ui/shell/AppRootShell.test.tsx` | tab-layout test + `foundation.test.tsx:703-1067` | RNTL role/state assertions | root heading focus, current-root reselect no reset, deep-route origin, Settings trigger return, toast host avoidance inputs |
-| `src/ui/__tests__/foundation.test.tsx` | same file `:123-190,265-380` | exact object assertions, System resolution, boundary table | exact Revision 18 tokens, four type sizes/two weights, 3dp focus, one bottom bar |
+| `src/ui/__tests__/foundation.test.tsx` | same file `:123-190,265-380` | exact object assertions, System resolution, boundary table | exact Revision 18 tokens, four type sizes, reusable 400/800 interface weights plus exact 890 condensed editorial oracle, 3dp focus, one bottom bar |
 | `src/ui/components/BottomSheet.test.tsx` | `foundation.test.tsx:1299-1346` + `RestAlertSettingsSheet.test.tsx:23-106` | trigger-ref focus restoration, busy/inert content | heading/safe-action entry, tab containment, Escape/Back/scrim same cancel, no write, IME/scroll semantics |
 | `src/ui/components/SemanticToast.test.tsx` | `foundation.test.tsx:1070-1139` | semantic tone/icon/live-region assertions | polite vs assertive, 150ms/reduced motion, 2400ms noncritical dwell, measured top/dock/IME avoidance, queue order |
 | `app/__tests__/root-layout.test.tsx` | same file `:257-352` | font-gate provider isolation and width plumbing | font error must not mount runtime; preference read failure is bounded; loading nav always bottom |
@@ -1029,7 +1031,7 @@ Back/Escape/scrim/IME safety, root-state retention, and DEV-02 pending status.
 | File / Capability | Role | Data Flow | Closest Partial Pattern | Planner Direction |
 |---|---|---|---|---|
 | `src/ui/components/SemanticToast.tsx` + shell host | component | event-driven | `InlineNotice` semantic tone/live-region behavior | build new queue, measurement, dwell, motion, and avoidance behavior; keep failures inline |
-| Archivo variable-width native proof / font asset contract test | test/config | file-I/O + batch | local `appFonts` loading and content/evidence hash utilities | make the proof the first executable gate; stop typography-dependent work for owner disposition if condensed width cannot be selected |
+| Archivo variable-width native proof / font asset contract test | test/config | file-I/O + batch | local `appFonts` loading and content/evidence hash utilities | author and commit the deterministic 57px/condensed/wght-890/-0.07em harness first; run a separate clean-tree exact-HEAD proof with <=1 normalized physical-pixel metric tolerance and exact wrapping, then stop at a proposed-deviation owner checkpoint if it cannot match |
 
 ## Metadata
 

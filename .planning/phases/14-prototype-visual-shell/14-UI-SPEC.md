@@ -49,7 +49,7 @@ The owner brief overrides the external JSON's stale `revision_status: awaiting_o
 
 ### Owner checkpoint: DEV-02 remains proposed
 
-`DEV-02` is not accepted. The approved Light Strength event-title source value remains `#D97820`. A candidate token named `calendarStrengthTextLightCandidate` may be declared as `#9B470B` for comparison and contrast tests, but it must be unused and clearly marked `PROPOSED — OWNER DECISION REQUIRED`. No plan or executor may alias the production Strength-title token to that candidate, claim the color change is approved, or close CAL-03/VER-04 until the owner records a decision in `v1.2-DEVIATIONS.md`.
+`DEV-02` is not accepted. The approved Light Strength event-title source value remains `#D97820`. A candidate token named `calendarStrengthTextLightCandidate` may be declared as `#9B470B` for comparison and contrast tests, but it must be unused and clearly marked `PROPOSED — OWNER DECISION REQUIRED`. No plan or executor may alias the production Strength-title token to that candidate, claim the color change is approved, or close CAL-03/VER-04 until the owner records a dated decision in `v1.2-DEVIATIONS.md`. The checkpoint persists either `Rejected — retained approved baseline #D97820` or `Accepted — plan revision required`; the accepted branch returns to Phase 14/16/20 planning before any production change.
 
 ---
 
@@ -62,7 +62,7 @@ The owner brief overrides the external JSON's stale `revision_status: awaiting_o
 | Component library | Existing native primitives in `src/ui/components`, `src/ui/layout/AdaptiveScreen.tsx`, and `src/ui/theme`; extend them rather than create a parallel system |
 | Navigation | Expo Router with one four-item bottom tab shell plus stack-owned deep routes |
 | Icon library | Existing `lucide-react-native` 1.31.0; 24dp standard and 20dp inline, 2dp stroke, decorative duplicates hidden from accessibility |
-| Interface font | Bundled `Archivo` variable font; no network font request and no silent system-font substitution after trusted startup |
+| Interface font | Bundled `Archivo` variable font; no network font request and no silent system-font substitution after trusted startup. Editorial source oracle: 57px, condensed stretch, `wght` 890, `letter-spacing: -0.07em`, exact wrap/metrics. |
 | Numeric font | Bundled `IBM Plex Mono`; tabular numerals for dates, times, weights, reps, distance, pace, counts, and confirmation facts |
 | Appearance | Persisted `System`, `Light`, and `Dark`; System follows live OS changes and resolves every root, deep route, sheet, dialog, toast, status bar, and dock together |
 | Visual direction | Warm editorial paper in Light; dark precision instrument in Dark; restrained flat surfaces, strong typographic hierarchy, fine rules, no gradients, glass, nested cards, or decorative dashboards |
@@ -128,23 +128,23 @@ Exceptions: none in the spacing token scale. Prototype CSS measurements such as 
 
 ## Typography
 
-Declare exactly four semantic sizes and two weights. Sizes below are the default-scale native values; Android font scaling remains enabled.
+Declare exactly four semantic sizes, reusable interface weights 400/800, and one component-specific editorial variable-axis value 890. Sizes below are the default-scale native values; Android font scaling remains enabled.
 
 | Role | Family | Size | Weight | Line Height | Usage |
 |---|---|---:|---:|---:|---|
 | Supporting / mono | Archivo or IBM Plex Mono | 14sp | 400 | 20sp | Secondary facts, compact metadata, timestamps, codes |
 | Body / control | Archivo or IBM Plex Mono | 16sp | 400 | 22sp | Body copy, root-nav labels, inputs, status copy, ordinary numerical facts |
 | Heading / action | Archivo | 20sp | 800 | 24sp | Screen/header identity, section emphasis, primary action labels |
-| Editorial display | Archivo variable, condensed width axis | 57sp | 800 | 49sp | Workout root identity only; wrap within the vertical scroll region when width or 200% text cannot hold one line |
+| Editorial display | Archivo variable, condensed width axis | 57sp native target from 57px source | 890 variable axis | 49sp | Workout root identity only; `-0.07em` source letter spacing; wrap within the vertical scroll region when width or 200% text cannot hold one line |
 
 Rules:
 
-- The only font weights are 400 and 800. IBM Plex Mono uses 400 for facts; emphasis remains Archivo 800 rather than adding a third numerical weight.
+- Reusable interface weights are 400 and 800. The editorial display is a component-specific variable-font oracle at `wght` 890 and condensed stretch; it must not be silently rounded to semantic 800. IBM Plex Mono uses 400 for facts.
 - Bundle both families in the application package and load them before the trusted shell. Never depend on Google Fonts network loading.
 - Use IBM Plex Mono only for data-like text: dates, times, counts, weights, reps, distances, paces, percentages, ordinals, and diagnostic/correlation codes. Prose and buttons use Archivo.
 - Body line height is 1.375 (`22/16`). Heading line height is 1.2 (`24/20`). Editorial display line height is 0.86.
 - Required names and actions wrap. Two-line truncation is allowed only for repeated collection-row titles when the full value remains in the accessible name and opening the row reveals it. Never truncate an error, destructive consequence, primary action, confirmation phrase, or recovery instruction.
-- Archivo width/weight-axis behavior and Android glyph metrics require native screenshot comparison; do not emulate condensed display type with horizontal transforms.
+- Archivo width/weight-axis behavior and Android glyph metrics require a clean-tree exact-HEAD native proof. Compare loaded family, density-normalized glyph-run width and line box within 1 physical pixel, exact line count/breakpoints, baseline and zero crop/overflow against Revision 18. Do not emulate condensed display type with horizontal transforms. A mismatch requires a proposed deviation and blocking owner checkpoint before theme migration.
 
 ---
 
@@ -207,13 +207,13 @@ The Light destructive value extends the prototype language for native-only recov
 
 | Primitive / surface | Required contract | Consumers |
 |---|---|---|
-| `AppRootShell` / `AppTabs` | Exactly four ordered destinations; persistent bottom placement; selected icon, label, `tab` state, and orange underline; disabled only while startup authority is unavailable | All roots and contextual Garmin composition |
+| `AppRootShell` / `AppTabs` | Exactly four ordered destinations; persistent bottom placement; selected icon, label, `tab` state, and orange underline; disabled only while startup authority is unavailable | All roots; Phase 18 contextual Garmin consumes the published shell contract |
 | `ScreenHeader` | One semantic heading; optional 48dp Back; contextual actions ordered before Settings; heading receives focus after root/deep-route transitions | Roots, settings, recovery, downstream details |
 | `AdaptiveScreen` | One vertical scroll owner, safe-area-aware insets, dock clearance, retained/restored scroll key; may center/widen content without moving root navigation | Every screen and deep route |
 | `FocusablePressable` | Touch, Enter, Space, D-pad, TalkBack activation through the same command; 48dp target; visible 3dp focus; disabled/busy prevents duplicate activation | All actions and navigation |
-| `BottomSheet` | Bottom anchored, scrim, heading-first focus, modal accessibility isolation/trap, keyboard avoidance, scrollable body, Back/Escape/close/scrim cancel, trigger-focus restoration | Appearance, filters, pickers, history, target/recommendation, conflict, Active/Garmin actions |
+| `BottomSheet` | Bottom anchored, scrim, heading-first focus, modal accessibility isolation/trap, keyboard avoidance, scrollable body, Back/Escape/close/scrim cancel, trigger-focus restoration | Appearance, filters, pickers, history, target/recommendation, conflict and Active actions; Phase 18 Garmin consumes the contract |
 | `ConfirmationDialog` | Consequence-first copy, safe action initially focused, explicit action-specific cancel and confirm labels, no background activation, no write on dismiss | Cloud deletion/disconnect, restore/merge, removed-history restore, later feature confirmations |
-| `SemanticToast` | Theme-aware top placement, 4dp semantic leading bar, 150ms enter/exit, polite/assertive announcement by severity, no source-authority role, no dock overlap | Roots, Active Workout, Garmin, settings/recovery |
+| `SemanticToast` | Theme-aware top placement, 4dp semantic leading bar, 150ms enter/exit, polite/assertive announcement by severity, no source-authority role, no dock overlap | Roots, Active Workout and settings/recovery; Phase 18 Garmin consumes the contract |
 | `EmptyState` | Specific heading, explanation, and next action; preserve surrounding navigation and selected filters/date/context | Removed sessions and all downstream list/media surfaces |
 | `SkeletonBlock` / busy state | Stable geometry, one concise `progressbar`/live announcement for the region, hidden decorative blocks, no fake zero values | Font/database startup, settings, lists, detail/read models |
 | `InlineNotice` | Written heading/body, semantic icon, optional specific recovery action; preserve unaffected content | Error, attention, stale/rebuilding, permission, offline/recovery |
@@ -227,10 +227,10 @@ No feature phase may introduce a screen-local clone of these primitives or a sec
 |---|---|---|
 | SHL-01 | Root Shell and Navigation | Four labels/order, bottom composition at every width, no fifth root/rail |
 | SHL-02 | Root Shell and Navigation; Responsive/focus | Retained destination state, heading focus, deep-route exit and trigger restoration |
-| SHL-03 | Appearance | Persisted Light/Dark/System and live System changes across all surfaces |
+| SHL-03 | Appearance | Persisted Light/Dark/System and live System changes across Phase 14 roots/shared surfaces; GAR-16 / Phase 18 proves observable Garmin adoption |
 | SHL-04 | Design System; Spacing; Typography; Color | Bundled font load plus exact token/component screenshots |
 | SHL-05 | Sheets and Dialogs | Modal isolation, scrim, keyboard avoidance, Back/Escape, focus entry/return |
-| SHL-06 | Toasts | Theme/status announcement and no header/dock/IME overlap |
+| SHL-06 | Toasts | Theme/status announcement and no header/dock/IME overlap for Phase 14 consumers; Phase 18 proves Garmin placement/adoption |
 | SHL-07 | Startup | Loading, trusted, failure/retry, permission, denied and continue states |
 | SHL-08 | Appearance and Rest Alerts | Rest sound/vibration/notification settings remain device-owned and reachable |
 | SHL-09 | Settings Route Contract | Removed sessions and Data and recovery remain reachable from App Settings |
@@ -258,7 +258,7 @@ No feature phase may introduce a screen-local clone of these primitives or a sec
 
 - `App Settings` opens as the approved contextual bottom sheet from the Settings icon in every root header. Appearance is the first section and contains exactly `System`, `Light`, and `Dark` as one radio group. Preserved settings rows may push their existing stack routes; direct navigation to `/more/index` renders the same ordered content as a full route rather than a second settings design.
 - Persist the preference, not merely the resolved color. `System` remains selected while the resolved theme changes live with the OS.
-- One provider owns theme state. Roots, Active Workout, contextual Garmin, all deep routes, sheets/dialogs, toasts, status/navigation bars, loading shells, and recovery states change atomically.
+- One provider owns theme state and publishes the consumer contract. Phase 14 proves roots, existing Active Workout, deep routes, sheets/dialogs, toasts, status/navigation bars, loading shells, and recovery states change atomically; GAR-16 / Phase 18 proves contextual Garmin adoption.
 - On cold start, resolve the persisted preference before revealing trusted content. Do not flash the opposite theme. A font/theme read failure enters the truthful startup failure treatment rather than silently substituting a different design system.
 - Theme changes do not close a sheet, reset a draft, clear root state, restart a query, change a timer deadline, or navigate.
 - The same semantic role has the same meaning in Light and Dark; status is never inverted merely because the palette changes.
@@ -283,7 +283,7 @@ No feature phase may introduce a screen-local clone of these primitives or a sec
 
 ### Toasts and announcements
 
-- Place root toasts below the root header and Active/Garmin toasts below their top bars. Compute from safe-area plus header geometry; never hard-code under a fake status bar.
+- Place root toasts below the root header and Active Workout toasts below its top bar. Compute from safe-area plus header geometry; never hard-code under a fake status bar. The same consumer API supplies Garmin, whose observable placement closes under GAR-16 / Phase 18.
 - Toasts never cover the bottom navigation, Add/Complete command row, rest dock, sheet actions, focused input, or software keyboard.
 - Use 150ms opacity/8dp vertical transition. Under reduced motion, show/hide without translation and without delaying state changes.
 - Success/neutral notices may auto-dismiss after 2400ms. Errors that require action are inline and persistent; a toast may announce them but may not be the only retry route.
@@ -434,9 +434,9 @@ Applicable state considerations resolved: **14 covered, 7 backstop, 1 unresolved
 | keyboard/D-pad | Root nav, tab/radio groups, lists, forms, sheets, deep routes | 🧪 backstop | Hardware-keyboard/D-pad run proves logical order, arrow group movement, Enter/Space parity, visible focus, Back/Escape, no background activation, and trigger restoration. |
 | focus | Root/deep/sheet transition graph | 🧪 backstop | Automated component focus assertions plus native evidence prove heading entry and exact trigger return, including deleted/restored rows and root switching from a deep route. |
 | reduced-motion | Root, sheet, toast, Calendar/downstream transitions | 🧪 backstop | Motion-off evidence proves identical destinations, dates, selections, results, callbacks, and focus without translation, animated scroll, or timing-dependent truth. |
-| theme/System | `SHL-03` plus every downstream surface | ✅ covered | Persist preference separately; live OS changes recolor all mounted surfaces atomically without closing, resetting, or navigating. |
+| theme/System | `SHL-03` Phase 14 consumers; `GAR-16` Garmin closure | ✅ covered | Persist preference separately; live OS changes recolor mounted Phase 14 surfaces atomically without closing, resetting, or navigating. Phase 18 proves the contextual Garmin route consumes the same contract. |
 | retained state | `SHL-02` and downstream root query/filter/date/range/scroll states | ✅ covered | Each root owns its view state; switching and deep-route return restore it. Startup failure/retry and theme changes do not clear it unless source identity invalidates it explicitly. |
-| toast | `SHL-06` plus mutation/import consumers | ✅ covered | Top placement, semantic border/bar, live announcement, 2400ms noncritical dwell, inline persistent recovery for failures, and dock/IME non-overlap are fixed. |
+| toast | `SHL-06` shared contract; later feature consumers | ✅ covered | Top placement, semantic border/bar, live announcement, 2400ms noncritical dwell, inline persistent recovery for failures, and dock/IME non-overlap are fixed. Phase 18 owns observable Garmin placement. |
 | destructive | Cloud delete, restore clean, merge, preserved source-removal entries | ✅ covered | Separate review, source consequences, specific safe/confirm labels, exact phrase where defined, no write on dismiss, and authoritative busy/result states. |
 | color/contrast checkpoint | `CAL-03`, `VER-04`; shared candidate token | ⚠ unresolved | DEV-02 is proposed and owner-unaccepted. Keep `#9B470B` candidate unused; do not claim Light Strength-title contrast closure until the deviation register records owner disposition. |
 
@@ -449,7 +449,7 @@ Applicable state considerations resolved: **14 covered, 7 backstop, 1 unresolved
 | 15 · 36 Workout rows | Consume tokens, fixed bottom nav, top-toast clearance, sheet/focus, long-list/200%-text, and reduced-motion behavior |
 | 16 · 23 Calendar rows | Consume bottom composition, common header/actions/sheets/focus; DEV-01/02 remain owner gates in the deviation register |
 | 17 · 36 Library rows | Consume shared search/form/sheet/error/overflow/focus shell without adding a root |
-| 18 · 16 Garmin rows | Stay contextual; synchronize appearance and bottom composition; reuse truthful loading/error/sheet/toast contracts |
+| 18 · 16 Garmin rows | Consume the Phase 14 appearance/sheet/toast contract; GAR-16 / Phase 18 owns observable Garmin synchronization, placement and native closure |
 | 19 · 18 Progress rows | Preserve sport/range state, factual empty/sparse/loading/error presentation, shared overlays, and no zero fabrication |
 | 20 · 13 verification rows | Capture Light/Dark/System, all required sizes/orientations, 200% text, target bounds, keyboard/focus, reduced motion, and complete parity/deviation evidence |
 
@@ -473,7 +473,7 @@ Package dependencies and bundled fonts remain subject to the repository's normal
 | 1 Copywriting | PASS | Primary, empty, error, retry, safe, confirmation, and destructive labels are action-specific; no generic Submit/OK/Done contract exists |
 | 2 Visuals | PASS | Focal points, shell hierarchy, four-root composition, component geometry, overlays, startup, settings, and cross-state behavior are explicit |
 | 3 Color | PASS | Exact source tokens, 60/30/10 roles, semantic accent reservations, non-color cues, and destructive colors are defined; DEV-02 remains visibly unaccepted rather than silently adopted |
-| 4 Typography | PASS | Exactly four sizes and two weights, with bundled Archivo/IBM Plex Mono roles and line heights, are declared |
+| 4 Typography | PASS | Exactly four sizes, reusable 400/800 interface weights, the exact 890 condensed editorial oracle, and bundled Archivo/IBM Plex Mono roles and line heights are declared |
 | 5 Spacing | PASS | The only reusable spacing values are 4, 8, 16, 24, 32, 48, and 64dp; component geometry is separately constrained |
 | 6 Registry Safety | PASS | Native manual system declared; shadcn and third-party registries are unused |
 

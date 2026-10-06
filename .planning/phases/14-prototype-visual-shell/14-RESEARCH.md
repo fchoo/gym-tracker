@@ -34,7 +34,7 @@ Verbatim constraint source: [VERIFIED: .planning/phases/14-prototype-visual-shel
 |---|---|---|
 | SHL-01 | Expose exactly Workout, Calendar, Library and Progress in a shared root shell, preserving bottom navigation composition at all target widths. | Refactor the existing Expo Router tab layout and AppTabs; remove both rail and two-row branches while retaining the route keys. |
 | SHL-02 | Switch destinations in place with correct selected state, heading focus, deep-route exit and retained destination-specific state. | Keep the mounted tab navigator and existing screen-local state; add a root-heading focus registry and route-origin restoration tests. |
-| SHL-03 | Open App Settings from the root header and synchronize Light, Dark and System appearance across roots, active workout and Garmin; persist the choice and react to system changes. | Reuse AppearanceProvider and the SQLite key, extract one settings-content owner, and surface it as a root sheet plus the existing direct route. |
+| SHL-03 | Open App Settings from the root header and synchronize Light, Dark and System appearance across the four roots, Active Workout, sheets and dialogs; persist the choice and react to system changes. Garmin-specific appearance closure is owned by GAR-16 after its contextual route exists. | Reuse AppearanceProvider and the SQLite key, extract one settings-content owner, and surface it as a root sheet plus the existing direct route. Phase 14 publishes the consumer contract; GAR-16 / Phase 18 owns observable Garmin adoption and native closure. |
 | SHL-04 | Reproduce approved semantic colors, Archivo variable typography, IBM Plex Mono numerical text, spacing, borders and density using bundled native assets and shared tokens. | Replace the current Source Sans/material-neutral token set; vendor Archivo and its OFL notice; run an SDK-57 Android font-axis proof before claiming condensed-display fidelity. |
 | SHL-05 | Use contextual bottom sheets with scrim, close/back dismissal, focus entry/trap/restoration and keyboard-safe content, preserving each surface's individual actions. | Add one shared bottom-sheet frame and migrate existing modal shells without moving their business state machines. |
 | SHL-06 | Place theme-aware semantic toasts below top bars, clear of the command/rest dock; preserve accessible status announcements. | Add one shell-level toast host with measured safe-area/header/dock avoidance; keep actionable failures inline. |
@@ -63,7 +63,7 @@ The safest plan is four implementation waves: (1) prove/package typography and r
 
 The only newly discovered blocker is typography fidelity: official SDK 57 guidance says variable fonts are not supported across all platforms and recommends static instances for full support, while current Expo guidance dates Android/iOS variable-font support to SDK 58 and says useFonts reads only the weight axis. The pinned React Native 0.86 style type exposes fontWeight but not fontStretch. Therefore, a committed Android font-rendering proof must precede broad token migration; failure requires an owner-reviewed deviation or a separately approved stack change, never horizontal text transforms. [CITED: https://github.com/expo/expo/blob/sdk-57/docs/pages/develop/user-interface/fonts.mdx#variable-fonts] [CITED: https://docs.expo.dev/develop/user-interface/fonts/#variable-fonts] [VERIFIED: React Native 0.86 StyleSheetTypes.js inspection] [VERIFIED: .planning/phases/14-prototype-visual-shell/14-UI-SPEC.md:129-147]
 
-**Primary recommendation:** Extend the existing Router/theme/runtime architecture in place, but make the font-axis proof the first executable gate and make shared shell primitives—not individual screens—the only owners of root navigation, App Settings presentation, modal geometry/focus, and transient toasts.
+**Primary recommendation:** Extend the existing Router/theme/runtime architecture in place, but author and commit the font harness before a separate clean-tree exact-HEAD Android proof, and make shared shell primitives—not individual screens—the only owners of root navigation, App Settings presentation, modal geometry/focus, and transient toasts. Phase 14 publishes the appearance/toast consumer contract; GAR-16 in Phase 18 proves Garmin uses it observably.
 
 ## Architectural Responsibility Map
 
@@ -266,7 +266,7 @@ The proposed mapping below is not yet present and must not be treated as proof o
         require("@expo-google-fonts/ibm-plex-mono/400Regular/IBMPlexMono_400Regular.ttf"),
     } as const;
 
-Wave 0 must render representative 400/800 body/header text plus the 57sp condensed display in a development-test APK, record Font.isLoaded or equivalent loading evidence, and compare actual Android glyph width/wrapping against Revision 18. If the width axis cannot be selected on Expo 57/React Native 0.86, stop the typography task and obtain owner disposition for a static extracted face or a stack upgrade. [CITED: https://github.com/expo/expo/blob/sdk-57/docs/pages/develop/user-interface/fonts.mdx#variable-fonts] [CITED: https://docs.expo.dev/develop/user-interface/fonts/#variable-fonts] [VERIFIED: .planning/phases/14-prototype-visual-shell/14-UI-SPEC.md:129-147]
+The deterministic source oracle is the Revision 18 editorial display declaration: 57px, `font-stretch: condensed`, variable `wght` 890, `letter-spacing: -0.07em`, and the approved scale/line-height/wrap behavior. Harness authoring and source tests land in one plan/commit. A later plan starts from that clean exact HEAD, requires a ready Android device, renders the oracle at native font scale 1.0/2.0, and records loaded family, glyph-run width, line box, wrap point, baseline and screenshot overlay. Tolerance is explicit and symmetric: glyph-run width and line-box deltas must be within 1 physical pixel after density normalization, wrap line count/breakpoints must match exactly, and no crop/overflow is allowed. A semantic 800 token is not evidence of the source's 890 axis. If Expo 57/React Native 0.86 cannot reproduce the oracle, add a proposed deviation with measurements and stop at a blocking-human owner checkpoint for a static extracted face or reviewed stack change. [CITED: https://github.com/expo/expo/blob/sdk-57/docs/pages/develop/user-interface/fonts.mdx#variable-fonts] [CITED: https://docs.expo.dev/develop/user-interface/fonts/#variable-fonts] [VERIFIED: .planning/phases/14-prototype-visual-shell/14-UI-SPEC.md:129-147]
 
 ### Anti-Patterns to Avoid
 
@@ -347,7 +347,7 @@ The following values are copied from the approved Phase 14 token map; implementa
 
 Keep the current light destructive extension "#B42318"; the prototype's "#FF8279" is dark-surface-only. Keep production Light Strength text at "#D97820". The candidate "#9B470B" may exist only as "calendarStrengthTextLightCandidate" marked "PROPOSED — OWNER DECISION REQUIRED" and unused until DEV-02 is accepted. [VERIFIED: .planning/phases/14-prototype-visual-shell/14-UI-SPEC.md:189-202]
 
-Typography values are exactly four sizes—"14sp", "16sp", "20sp", "57sp"—and two weights—"400", "800". Line heights are "20sp", "22sp", "24sp", and "49sp" respectively. [VERIFIED: .planning/phases/14-prototype-visual-shell/14-UI-SPEC.md:129-147]
+Typography values are exactly four semantic sizes—"14sp", "16sp", "20sp", "57sp"—with reusable interface weights 400/800 and one component-specific editorial source oracle at variable `wght` 890, condensed stretch and `-0.07em`. Line heights are "20sp", "22sp", "24sp", and "49sp" respectively. [VERIFIED: .planning/phases/14-prototype-visual-shell/14-UI-SPEC.md:129-147]
 
 Spacing values are exactly "4", "8", "16", "24", "32", "48", and "64" dp. Component-specific geometry is not part of that spacing scale. [VERIFIED: .planning/phases/14-prototype-visual-shell/14-UI-SPEC.md:98-125]
 
@@ -367,12 +367,13 @@ All dimensions and behavior are locked. [VERIFIED: .planning/phases/14-prototype
 
 These boundaries are recommendations, not additional product scope.
 
-1. **Wave 0 — dependency restore and font feasibility:** select the pinned Node/npm binaries, run npm ci, add the official Archivo bytes/license in an isolated commit, prove weight/condensed rendering in a development-test APK, and stop for owner disposition if the width axis fails. Do not begin broad visual replacement on an unproven font.
-2. **Wave 1 — theme and startup:** replace appFonts/fontFamilies/typeScale/themes/sizes/motion; make font/preference read failures explicit; keep the runtime SQLite gate and test-production fixture isolation.
-3. **Wave 2 — root shell:** update RootTabsLayout/AppTabs/AppLoadingShell; add common root header/settings entry and route focus coordination; retain each screen's existing query/filter/date/range/scroll state.
-4. **Wave 3 — overlays and toasts:** create the shared modal frame and toast host, then migrate existing wrappers without moving content state machines.
-5. **Wave 4 — settings/recovery preservation:** extract one App Settings content owner, align exact copy/actions, and run the complete SHL-08–13 regression matrix.
-6. **Wave 5 — evidence closure:** run type/boundary/component/full suites, clean CNG twice, build one exact-source dev-test APK, collect native width/theme/font/focus/keyboard/reduced-motion evidence, and validate every shell.* evidence row.
+1. **Wave 0 — font source and harness authoring:** select the pinned Node/npm binaries, restore dependencies, add the official Archivo bytes/license, define the exact 57px/condensed/wght-890/-0.07em oracle and land the tested harness in an isolated atomic commit. Do not run a clean-tree build in the same dirty-source plan.
+2. **Wave 1 — clean-tree font proof:** from the committed Wave 0 exact HEAD and a ready Android device, build/install the development-test APK, capture deterministic metric/wrap/overlay evidence, and stop at a proposed-deviation owner checkpoint if the oracle does not match.
+3. **Wave 2 — theme and startup:** after a passing proof, replace appFonts/fontFamilies/typeScale/themes/sizes/motion, synchronize `DESIGN.md`, make font/preference read failures explicit, and keep the runtime SQLite gate and test-production fixture isolation.
+4. **Wave 3 — root shell:** update RootTabsLayout/AppTabs/AppLoadingShell; add common root header/settings entry and route focus coordination; retain each screen's existing query/filter/date/range/scroll state.
+5. **Wave 4 — overlays and toasts:** create the shared modal frame and toast host, make exported `ConfirmationSheet`/`AppearanceSheet` delegate to it, then migrate audited direct Modal owners without moving content state machines.
+6. **Wave 5 — settings/recovery preservation:** extract one App Settings content owner, align exact copy/actions, and run the complete SHL-08–13 regression matrix.
+7. **Wave 6 — evidence closure:** run type/boundary/component/full suites, clean CNG twice, build one exact-source dev-test APK, collect native width/theme/font/focus/keyboard/reduced-motion evidence, and validate every shell.* evidence row. Garmin-specific appearance/toast observation remains GAR-16 / Phase 18.
 
 ## Common Pitfalls
 
@@ -510,7 +511,7 @@ The literal success copy "Workout restored" is defined in the approved UI contra
 
 | Old/current approach | Phase 14 approach | Impact |
 |---|---|---|
-| Source Sans 3 regular/semibold plus IBM Plex Mono regular/semibold | Bundled Archivo 400/800 plus IBM Plex Mono 400 | One approved editorial hierarchy; no network dependency. [VERIFIED: src/ui/theme/index.ts:15-31] [VERIFIED: .planning/phases/14-prototype-visual-shell/14-UI-SPEC.md:129-147] |
+| Source Sans 3 regular/semibold plus IBM Plex Mono regular/semibold | Bundled Archivo 400/800 interface roles, exact 890 condensed editorial oracle, plus IBM Plex Mono 400 | One approved editorial hierarchy; no network dependency and no silent 890-to-800 substitution. [VERIFIED: src/ui/theme/index.ts:15-31] [VERIFIED: .planning/phases/14-prototype-visual-shell/14-UI-SPEC.md:129-147] |
 | Today root, expanded rail, 200%-text two-row bar | Workout root; one four-cell bottom bar at all widths | Stable mental model and parity with Revision 18. [VERIFIED: app/(tabs)/_layout.tsx:17-49] [VERIFIED: .planning/phases/14-prototype-visual-shell/14-UI-SPEC.md:244-253] |
 | Material-neutral canvas/card palette | Warm paper/dark instrument semantic palette | Shared semantic roles flow to all later feature phases. [VERIFIED: src/ui/theme/index.ts:114-163] [VERIFIED: .planning/phases/14-prototype-visual-shell/14-UI-SPEC.md:151-202] |
 | Multiple screen-local Modal frames | One shared BottomSheet/ConfirmationDialog frame | Consistent Back/Escape/focus/IME/scrim behavior without rewriting content state machines. [VERIFIED: repository Modal inventory, 2026-10-06] |
@@ -529,30 +530,21 @@ The literal success copy "Workout restored" is defined in the approved UI contra
 | # | Claim | Section | Risk if Wrong |
 |---|---|---|---|
 | A1 | Proposed new file boundaries AppRootShell.tsx, BottomSheet.tsx, SemanticToast.tsx and AppSettingsContent.tsx are the smallest maintainable split. [ASSUMED] | Recommended Project Structure | Planner may keep symbols in existing files if it still produces one owner and no parallel system. |
-| A2 | The exact SDK-57 fallback, if Archivo width-axis rendering fails, will be an owner-approved static condensed face rather than an SDK upgrade. [ASSUMED] | Pattern 6 | Either choice changes asset/build scope; execution must stop at the checkpoint instead of choosing silently. |
+| A2 | No SDK-57 fallback is preselected. A measured mismatch creates a proposed deviation and blocking-human choice between a static extracted face and reviewed stack change. [RESOLVED PROTOCOL] | Pattern 6 | Neither branch may execute until the owner decides and affected plans are revised. |
 | A3 | A shell-context coordinator is the best mechanism for settings-sheet origin, toast queue and root-heading focus. [ASSUMED] | Pattern 2 | A navigator listener/ref registry may fit better, but must satisfy the same state/focus tests without duplicating state. |
 | A4 | Appearance preference failures should use a new bounded diagnostic category distinct from the existing migration/storage launch categories. [ASSUMED] | Pattern 5 | The planner must choose the exact typed failure shape without exposing raw errors. |
 | A5 | appFonts should map ArchivoVariable through the shown relative asset require path. [ASSUMED] | Pattern 6 | The final relative import and native family name must be verified after the asset exists. |
-| A6 | The named Wave 0 shell/font/evidence test files are suitable additions. [ASSUMED] | Validation Architecture | The planner may consolidate names, but cannot omit the behaviors or one-to-one evidence mapping. |
+| A6 | The named Plan 14-01 source oracle/harness and Phase 14 shell/evidence test files are suitable additions. [ASSUMED] | Validation Architecture | The executor may consolidate names, but cannot omit the behaviors, clean-tree proof boundary or one-to-one evidence mapping. |
 
 No product behavior, security requirement, retention rule, or performance target in this document depends on an unconfirmed assumption.
 
-## Open Questions
+## Resolved Planning Questions
 
-1. **Can the pinned Expo 57 / React Native 0.86 Android build render the approved Archivo condensed width axis from the variable TTF?**
-   - What we know: SDK 57 guidance says variable fonts are not supported across all platforms; current Expo guidance says full Android/iOS support begins in SDK 58 and useFonts controls only weight. [CITED: https://github.com/expo/expo/blob/sdk-57/docs/pages/develop/user-interface/fonts.mdx#variable-fonts] [CITED: https://docs.expo.dev/develop/user-interface/fonts/#variable-fonts]
-   - What's unclear: actual Android rendering for this specific Archivo file/device and whether the default embedded face satisfies the approved 57sp display.
-   - Recommendation: make this the first implementation checkpoint. If the exact variable source cannot reproduce the condensed title, pause only typography-dependent work and request owner approval for a static extracted face or stack upgrade.
+1. **Archivo condensed rendering — RESOLVED by protocol.** The source oracle is fixed at 57px display size, condensed stretch, variable weight 890, `-0.07em` letter spacing, approved scale/line-height/wrap, <=1 normalized physical-pixel metric tolerance, exact wrap breakpoints and zero crop/overflow. Plan 14-01 authors and commits the harness; Plan 14-02 starts from that clean exact HEAD and performs the device proof. A mismatch writes a proposed deviation with measured artifacts and stops at a blocking-human decision between a static extracted face and a reviewed stack change. It never silently maps the source to weight 800.
 
-2. **DEV-02 remains unresolved by design.**
-   - What we know: production Light Strength title remains "#D97820"; "#9B470B" is only a proposed candidate. [VERIFIED: .planning/phases/14-prototype-visual-shell/14-UI-SPEC.md:50-52,189-202]
-   - What's unclear: owner acceptance of the accessible candidate.
-   - Recommendation: add a checkpoint:human-verify after presenting the measured comparison. Continue unaffected Phase 14 work, but do not use the candidate or close CAL-03/VER-04.
+2. **DEV-02 — RESOLVED by owner checkpoint protocol.** Production remains `#D97820`. Plan 14-11 presents measured evidence at a blocking-human checkpoint. The selected outcome is dated and persisted in `v1.2-DEVIATIONS.md`: `rejected — retained baseline #D97820`, or `accepted — plan revision required`. The accepted branch returns to Phase 14/16/20 planning before any candidate code; silence and auto mode cannot approve `#9B470B`.
 
-3. **Native Phase 14 evidence cannot run in the current shell yet.**
-   - What we know: the exact Node 24.19.0/npm 11.17.0 binaries, Java 17, Android SDK adb/zipalign and Maestro 2.8.0 exist; node_modules is absent and adb reports no connected device. [VERIFIED: environment probe, 2026-10-06]
-   - What's unclear: which emulator/physical device will be allocated during authorized execution.
-   - Recommendation: planner includes dependency restore and device availability preflight before native evidence, with no claim of pass until the exact-source APK is installed.
+3. **Android device availability — RESOLVED as an execution precondition.** A missing ready device blocks the clean-tree font proof and final native evidence tasks, but it does not block research, source planning, harness authoring, component tests or plan validation. No native pass is claimed until the exact-source APK is installed on a ready approved device.
 
 ## Environment Availability
 
@@ -599,7 +591,7 @@ Nyquist validation is enabled, so every implementation task needs an automated c
 |---|---|---|---|---|
 | SHL-01 | Four ordered labels; one bottom composition at all widths/text scales | component + native geometry | Quick shell command; native captures at 360/390/600/840 plus landscape and 200% | ✅ extend foundation.test.tsx and _layout.test.tsx |
 | SHL-02 | Retained root state; heading focus; deep-route and settings-trigger return | component integration + native keyboard/D-pad | Proposed AppRootShell.test.tsx plus root route tests; native focus trace | ❌ Wave 0 |
-| SHL-03 | App Settings sheet/direct route; persisted System/Light/Dark; live OS change | component + store + native | foundation.test.tsx, SettingsScreen.test.tsx, appearancePreferenceStore.test.ts, root-layout.test.tsx | ✅ extend |
+| SHL-03 | App Settings sheet/direct route; persisted System/Light/Dark; live OS change across Phase 14 roots/shared consumers | component + store + native | foundation.test.tsx, SettingsScreen.test.tsx, appearancePreferenceStore.test.ts, root-layout.test.tsx; GAR-16 / Phase 18 owns observable Garmin closure | ✅ extend |
 | SHL-04 | Exact tokens, bundled fonts, type roles, density | unit/source contract + native screenshot | foundation.test.tsx plus proposed font-asset hash/license test; native font metric comparison | ⚠️ asset/test gap |
 | SHL-05 | Shared sheet/dialog, Back/Escape/scrim, trap/return, IME safety | component + native | Proposed BottomSheet.test.tsx; migrate/retain existing modal tests; native keyboard/focus flow | ❌ Wave 0 shared-frame test |
 | SHL-06 | Theme-aware top toast, announcements, no dock/IME overlap | component + native geometry | Proposed SemanticToast.test.tsx; native set/restore/error screenshots | ❌ Wave 0 |
@@ -619,14 +611,14 @@ The current recovery tests already cover source-backed removed-session confirmat
 
 - **Per task commit:** run the narrow component/store/runtime test files changed plus npm run typecheck and npm run check:boundaries.
 - **Per wave merge:** run npm run test:all.
-- **Font/CNG gate:** after the font asset and theme mapping are committed, run npm run verify:cng and one fresh phase14 dev-test APK; record exact asset/source/APK hashes.
+- **Font/CNG gate:** after the font asset/oracle/harness plan is committed, start the next plan from a clean exact HEAD, run npm run verify:cng and one fresh phase14-font-proof dev-test APK, and record exact asset/source/APK hashes before theme mapping.
 - **Phase gate:** full host suite green, CNG green, every shell.* evidence path present and current, and the native shell matrix complete before /gsd-verify-work.
 
-### Wave 0 Gaps
+### Planned Validation Gaps
 
 - [ ] Restore node_modules with the pinned Node/npm toolchain; no tests can run in the current checkout until then. [VERIFIED: environment probe, 2026-10-06]
 - [ ] Add the official Archivo bytes and OFL notice, plus a source/hash contract test. [ASSUMED]
-- [ ] Add the native SDK-57 Archivo weight/width-axis feasibility case before broad typography work. [ASSUMED]
+- [ ] Author and commit the SDK-57 Archivo oracle/harness, then run its clean-tree exact-HEAD native feasibility case before broad typography work. [ASSUMED]
 - [ ] Add AppRootShell/state/focus integration coverage. [ASSUMED]
 - [ ] Add BottomSheet and SemanticToast component coverage. [ASSUMED]
 - [ ] Add a Phase 14 Maestro/evidence runner or the equivalent v1.2 shared runner, with stale/mismatched/skipped evidence rejection and source/APK identity. [ASSUMED]
@@ -634,7 +626,7 @@ The current recovery tests already cover source-backed removed-session confirmat
 
 ### Required Native Evidence
 
-- Light, Dark, System-on-Light and System-on-Dark, including a live OS switch while a root, sheet and deep route stay mounted. [VERIFIED: .planning/verification/v1.2-native-verification-matrix.md:123-134]
+- Light, Dark, System-on-Light and System-on-Dark, including a live OS switch while a Phase 14 root, sheet and deep route stay mounted. Phase 18 GAR-16 separately proves Garmin consumes the published appearance contract. [VERIFIED: .planning/verification/v1.2-native-verification-matrix.md:123-134]
 - 360×800, 390×844, 600×960, 840×1080-equivalent portrait plus corresponding landscape, at font scale 1.0 and 2.0. Root nav stays one bottom row. [VERIFIED: .planning/verification/v1.2-native-verification-matrix.md:123-136]
 - Actual >=48×48dp non-overlapping targets, 3dp visible focus per the Phase 14 UI-SPEC, heading entry, exact trigger restoration, Escape/Back/scrim safety and IME clearance. The older verification matrix mentions 2dp from the shipped design; Phase 14's approved UI-SPEC is the higher-precedence target. [VERIFIED: .planning/phases/14-prototype-visual-shell/14-UI-SPEC.md:118-125,396-402] [VERIFIED: .planning/verification/v1.2-native-verification-matrix.md:136-138]
 - Screenshot/difference evidence against the exact Revision 18 hashes, with platform chrome classified separately and no global percentage masking missing controls. [VERIFIED: .planning/verification/v1.2-native-verification-matrix.md:136-138]
