@@ -1,9 +1,9 @@
 ---
 gsd_state_version: 1.0
 milestone: v1.2
-milestone_name: Outcome
+milestone_name: Prototype Parity, Concurrent Plans & Garmin Import
 current_phase: 13
-current_phase_name: v1.2 phase 1 of 8
+current_phase_name: Multi-Plan & Running Foundation
 status: planning
 stopped_at: v1.2 UI-SPECs approved; generating executable phase plans
 last_updated: "2026-10-06T09:04:05.402Z"
@@ -31,8 +31,8 @@ See: .planning/PROJECT.md (updated 2026-10-06)
 
 Phase: 13 of 20 (v1.2 phase 1 of 8)
 Plan: Not planned
-Status: Roadmap created; ready for phase discussion
-Last activity: 2026-10-06 — Created the v1.2 roadmap with 172/172 requirements mapped across Phases 13-20.
+Status: All phase contexts and UI contracts complete; executable planning in progress
+Last activity: 2026-10-06 — Approved UI-SPECs for Phases 14-20 after checker convergence.
 
 Progress: [░░░░░░░░░░] 0%
 

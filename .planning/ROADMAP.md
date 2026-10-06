@@ -6,7 +6,7 @@
 - **v1.1 In-Workout Editing, Advanced Timing & Drive Backup** — Phases 8-12 (shipped 2026-10-01)
 - **v1.2 Prototype Parity, Concurrent Plans & Garmin Import** — Phases 13-20 (planning; implementation requires later owner authorization)
 
-## v1.2 Outcome
+## Milestone Outcome
 
 Reproduce the owner-approved Revision 18 prototype in the Android application while preserving SQLite authority, commit-gated workout behavior, immutable history, offline operation, recovery, backup/merge, accessibility, and performance. Strength and Running plans coexist through real domain contracts; Garmin supplies imported Running facts rather than an in-app recorder.
 
