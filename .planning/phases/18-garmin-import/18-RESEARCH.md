@@ -269,7 +269,7 @@ The names below are prescriptive new Phase 18 symbols. If Phase 13 has already c
 | `src/domains/activities/importContracts.ts` | `FitImportDraft`, `ImportedActivitySubtype`, `ImportResolution` schemas/types | Strict domain shape, presence flags, SI units, source/time/pace provenance, exhaustive result states. |
 | `src/domains/activities/normalizeFitActivity.ts` | `normalizeFitActivity` | Exactly-one-running-session validation, subtype mapping, lap association/order, optional facts, route segments and output caps. |
 | `src/domains/activities/activityIdentity.ts` | `resolveActivityIdentity` | Pure two-index identity decision matrix; fuzzy similarity can only produce review. |
-| `src/domains/activities/importCommands.ts` | `prepareFitImport`, `confirmFitImportDate`, `acceptActivityRevision`, `addVerifiedSourceReference`, `importSeparateActivity`, `restoreRemovedActivity` | Validate input/request/revisions, stage zero-write review, call one repository transaction, map conflicts safely. |
+| `src/domains/activities/importCommands.ts` | `prepareFitImport`, `confirmFitImportDate`, `acceptActivityRevision`, `addVerifiedSourceReference`, `importSeparateActivity`; consume Phase 13 `restoreRemovedActivity` | Validate input/request/revisions, enforce portability-capacity preflight, stage zero-write review, call one repository transaction, map conflicts safely; do not recreate Phase 13 remove/restore authority. |
 | `src/platform/sqlite/repositories/importedActivityRepository.ts` | `ImportedActivityRepository`, `createImportedActivityRepository` | Read both identity indexes; atomically persist/replay aggregate, payload, child facts, source refs, decisions and receipts; query detail. |
 | `src/domains/running/activityMatchCommands.ts` | `listActivityMatchCandidates`, `confirmActivityMatch`, `unmatchActivity`, `reassignActivityMatch` | Read-only ranking plus explicit revision-checked audited commands. |
 | `src/platform/sqlite/repositories/runningActivityMatchRepository.ts` | `RunningActivityMatchRepository`, `createRunningActivityMatchRepository` | Match-event ledger, current completion overlay, uniqueness, receipt replay, stale/consumed checks. |
@@ -651,32 +651,32 @@ Use the navigation stack for return behavior; never pass a caller-provided URL/h
 | A5 | The SQLite-host repository test will be named `tests/sqlite-host/importedActivityRepository.test.ts` if Phase 13 has not already created an equivalent file. | Validation Architecture | Filename may need alignment with Phase 13; behavior coverage, not this provisional filename, is mandatory. |
 | A6 | The recommended new symbol names in Component Responsibilities will be used unless Phase 13 has already established equivalent names. | Architecture Patterns | Parallel abstractions would fragment the import boundary; reconcile names before implementation. |
 
-## Open Questions
+## Resolved Questions
 
-1. **Can the project accept the official FIT Protocol License for this personal Android use and the required compatibility/performance qualification?**
+1. **RESOLVED BY FAIL-CLOSED GATE — Can the project accept the official FIT Protocol License for this personal Android use and the required compatibility/performance qualification?**
    - What we know: the license is not MIT and contains internal-business-purpose, distribution, confidentiality, and benchmarking restrictions. [CITED: https://github.com/garmin/fit-javascript-sdk/blob/21.217.0/LICENSE.txt]
    - What's unclear: legal applicability to this owner's personal-use APK and whether the required measurements are permitted.
-   - Recommendation: require explicit human/license acceptance before installing or executing the SDK; otherwise stop for a new decoder decision.
+   - Resolution: Plan 18-01 is a blocking-human package/licence/fixture-provenance decision. Acceptance unlocks the exact pin; rejection leaves manifests unchanged and stops for a separately researched decoder decision. No downstream task can infer acceptance.
 
-2. **Does `@garmin/fitsdk` 21.217.0 actually bundle and execute correctly under Expo 57 / RN 0.86 Hermes?**
+2. **RESOLVED BY FAIL-CLOSED GATE — Does `@garmin/fitsdk` 21.217.0 actually bundle and execute correctly under Expo 57 / RN 0.86 Hermes?**
    - What we know: the package is ESM, has no runtime dependency/postinstall, and uses ArrayBuffer/DataView/TextDecoder/BigInt DataView APIs; Expo documents UTF-8 TextDecoder and RN documents bundled Hermes. [CITED: https://github.com/garmin/fit-javascript-sdk/tree/21.217.0] [CITED: https://docs.expo.dev/versions/v57.0.0/sdk/expo/] [CITED: https://reactnative.dev/docs/0.86/hermes]
    - What's unclear: Metro root-package resolution, release bytecode execution, BigInt DataView behavior, bundle impact, maximum-fixture memory/time, and responsiveness.
-   - Recommendation: make the release-mode native smoke a blocking Wave 0 test.
+   - Resolution: Plan 18-02 builds/installs an exact release-Hermes qualification artifact and runs the decoder producer; Plan 18-03 is a blocking-human acceptance of the identity-bound evidence. Missing or failing native evidence blocks Plans 18-04 onward; host-only output cannot substitute.
 
-3. **What exact parser/import limits are safe on the target Android profile?**
+3. **RESOLVED BY FAIL-CLOSED GATE — What exact parser/import limits are safe on the target Android profile?**
    - What we know: every named resource class must be bounded; no measured numeric values are authorized yet. [VERIFIED: .planning/phases/18-garmin-import/18-CONTEXT.md:20-24] [VERIFIED: .planning/architecture/v1.2-garmin-import.md:120-126]
    - What's unclear: representative/max owner file size and safe decode/output/memory ceilings.
-   - Recommendation: generate synthetic/public-license boundary fixtures, measure in release mode, lock constants and negative tests before enabling the picker.
+   - Resolution: Plans 18-02/18-03 generate and accept exact release measurements for every named bound from synthetic/publicly licensed boundary fixtures. Plan 18-04 transcribes only the accepted limit object, and Plan 18-05 applies the existing portability-capacity estimator before either import commit path. No guessed or borrowed limit can enable the picker.
 
-4. **Which additional FIT Running sub-sports should count as explicit Outdoor?**
+4. **RESOLVED BY LOCKED CONSERVATIVE POLICY — Which additional FIT Running sub-sports should count as explicit Outdoor?**
    - What we know: Treadmill, Indoor, Outdoor, and unspecified Running are distinct required outcomes; GPS cannot decide subtype. [VERIFIED: .planning/phases/18-garmin-import/18-UI-SPEC.md:291-305]
    - What's unclear: policy for less common Running sub-sports beyond the core reviewed allowlist.
-   - Recommendation: default them to unspecified Running until fixture-backed owner/domain review expands the allowlist.
+   - Resolution: unreviewed Running sub-sports persist as unspecified Running. Only the fixture-backed approved allowlist maps to Outdoor; GPS presence/absence never changes subtype. Expanding the allowlist requires separate fixture-backed owner/domain review.
 
-5. **Is temporary-only raw FIT retention sufficient?**
+5. **RESOLVED BY LOCKED PRIVACY POLICY — Is temporary-only raw FIT retention sufficient?**
    - What we know: the ADR recommends cleanup after successful normalization/commit and says permanent retention is unresolved. [VERIFIED: .planning/architecture/v1.2-garmin-import.md:93,183-192]
    - What's unclear: whether future forensic replay is worth the privacy and backup-capacity cost.
-   - Recommendation: implement temporary-only raw bytes unless a separate owner/security decision explicitly changes retention.
+   - Resolution: raw FIT bytes are temporary-only and are cleaned after every terminal path/startup recovery. Persist only the exact hash, parser/normalization provenance and all supported normalized source facts. Permanent originals require a separate owner/security/capacity decision and are not an implicit fallback.
 
 ## Environment Availability
 
