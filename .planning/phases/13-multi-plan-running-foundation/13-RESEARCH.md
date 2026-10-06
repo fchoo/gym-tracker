@@ -65,9 +65,9 @@
 
 Phase 13 must ship as one coherent domain/storage release: the schema, active-pair validators, typed query/command ports, workout provenance, Running slots, import/match/bodyweight facts, and complete portability graph have to agree before later UI phases may persist or display the new model. The current database is schema 27, still has global one-active-plan/one-active-schedule indexes, scalar active readers, a start command without schedule provenance, completion that rediscovers the active schedule, a one-opportunity-per-date/source uniqueness rule, and a v2 portability allowlist. [VERIFIED: src/platform/sqlite/migrations/index.ts:21-60; src/platform/sqlite/migrations/0008_schedule_activation.ts:367-477; src/domains/workout/index.ts:21-35; src/bootstrap/scheduleRuntime.tsx:886-943; src/domains/portability/backupContracts.ts:1-110]
 
-The narrow tracer should migrate a synthetic schema-27 Strength database, retain its active/recoverable workout, add an inactive Running plan with two ordered sessions on the same weekday, apply the MAP-01-selected activation policy, materialize two distinct opportunities, start/complete Strength through captured provenance, commit an independent imported activity and explicit match, add bodyweight, then round-trip successor backup, clean restore, and merge while reproducing the same canonical source facts and rebuilt relations. This is the exact cross-cut the phase context asks the planner to lead with. [VERIFIED: .planning/phases/13-multi-plan-running-foundation/13-CONTEXT.md:73-79]
+The narrow production tracer must finish before breadth expansion. It migrates a synthetic schema-27 Strength database, retains its active/recoverable workout, defines the minimum Running readiness contract, adds one inactive Running plan with two ordered sessions on the same weekday, applies the MAP-01-selected activation policy, materializes two distinct opportunities, reads one exact planned-Strength occurrence through `TrainingFoundationRuntimePort.loadPlannedStrengthOccurrence(occurrenceId)` with immutable targets and null-on-stale semantics, then round-trips that source graph through successor backup and clean restore with canonical parity. Import/match/bodyweight breadth and full merge expansion follow only after this slice passes. [VERIFIED: .planning/phases/13-multi-plan-running-foundation/13-CONTEXT.md:73-79]
 
-**Primary recommendation:** Put MAP-01 before any uniqueness DDL, put TIM-01 before deleting/gating any timing entry point, then implement one production-quality migration-to-portability tracer before expanding the seven Running types and downstream query breadth. [VERIFIED: .planning/phases/13-multi-plan-running-foundation/13-CONTEXT.md:33-40]
+**Primary recommendation:** Put MAP-01 before any uniqueness DDL; implement the complete migration/readiness/two-slot/activation/occurrence/detail/recovery/backup-restore tracer with no dependency on later breadth; finalize migration 0028 and all new source-generation triggers once in that tracer plan; then expand the seven Running types, import/removal, matching, bodyweight, projections, and merge. Put TIM-01 before deleting/gating any timing entry point. [VERIFIED: .planning/phases/13-multi-plan-running-foundation/13-CONTEXT.md:33-40]
 
 ## Architectural Responsibility Map
 
@@ -213,8 +213,8 @@ The entry points are typed application commands, the decision points are kind/re
 |---|---|---|
 | Migration registry/recovery | `migrations`, `CURRENT_SCHEMA_VERSION`, `createMigrationRunner`, `createExpoRecoveryBackupPort` [VERIFIED: src/platform/sqlite/migrations/index.ts:28-60; src/platform/sqlite/migrationRunner.ts:201-275; src/platform/sqlite/recoveryBackup.ts:73-125] | Successor migration(s), schema-27 fixture, recovery-copy proof, frozen schema-23 trigger list. |
 | Paired activation | `readActiveSchedulePair`, `activePairMatches`, `activateScheduleTransaction`; starter equivalents [VERIFIED: src/platform/sqlite/repositories/scheduleRepository.ts:799-856,941-1101; src/platform/sqlite/repositories/starterPlanRepository.ts:233-318,1181-1299] | Kind/policy-scoped pair collection, shared invariant validator, complete expected active state. |
-| Running authoring | `createOwnedPlanRuntimePort`, `OwnedPlanRepository`; existing Strength readiness remains separate [VERIFIED: src/bootstrap/ownedPlanRuntime.tsx:46-122; src/platform/sqlite/repositories/ownedPlanRepository.ts:137-224] | Provider-independent `domains/running` schemas/commands and SQLite repository with stable root/revision identities. |
-| Today/Calendar | `ScheduleTodayRead`, `loadToday`, `historyRepository.loadCalendarMonth` [VERIFIED: src/bootstrap/scheduleRuntime.tsx:191-221,576-677; src/platform/sqlite/repositories/historyRepository.ts:760-864] | Coherent multi-context Today snapshot and bounded typed event range query. |
+| Running authoring | `createOwnedPlanRuntimePort`, `OwnedPlanRepository`; existing Strength readiness remains separate [VERIFIED: src/bootstrap/ownedPlanRuntime.tsx:46-122; src/platform/sqlite/repositories/ownedPlanRepository.ts:137-224] | The tracer defines minimum `evaluateRunningReadiness` in `src/domains/running/contracts.ts` before activation consumes it; later breadth extends that same export plus stable roots/revisions. |
+| Today/Calendar | `ScheduleTodayRead`, `loadToday`, `historyRepository.loadCalendarMonth` [VERIFIED: src/bootstrap/scheduleRuntime.tsx:191-221,576-677; src/platform/sqlite/repositories/historyRepository.ts:760-864] | `src/bootstrap/trainingFoundationRuntime.ts` exports `TrainingFoundationRuntimePort.loadPlannedStrengthOccurrence(occurrenceId): Promise<PlannedStrengthOccurrenceDetail | null>`; `src/domains/workout/index.ts` owns the immutable target-bearing result; `plansWorkoutRepository` implements exact query-only provenance/null-on-stale. Breadth adds coherent Today and bounded event ranges. |
 | Workout start/completion | `StartWorkoutRequest`, `plansWorkoutRepository.startWorkout`, `completeScheduledSession`, `finishWorkoutCompleted` [VERIFIED: src/domains/workout/index.ts:9-44; src/platform/sqlite/repositories/plansWorkoutRepository.ts:776-876; src/bootstrap/scheduleRuntime.tsx:886-943; src/bootstrap/workoutAppRuntime.tsx:3973-3983] | Explicit selected occurrence, immutable session schedule link, durable completion receipt/reconciliation. |
 | Import/match | No current imported-activity or Running-match production module was found by repository search. [VERIFIED: `rg` audit over `src`, `app`, and `tests`, 2026-10-06] | Provider-independent normalized contracts, immutable payload revisions/receipts, match ledger, current relation rebuild. |
 | Bodyweight | Existing `bodyweight_reps` metric is not a dated kg history. [VERIFIED: src/domains/metrics/contracts.ts:115-129] | Separate dated measurement source facts, commands, tombstones, and Progress read seam. |
@@ -236,11 +236,14 @@ src/platform/sqlite/repositories/
 ├── bodyweightRepository.ts                  # source facts/tombstones
 └── trainingCalendarRepository.ts             # bounded multi-source event reads
 tests/integration/
+├── multi-plan-foundation-tracer.test.ts      # pre-breadth migration/readiness/slots/detail/recovery/roundtrip proof
 ├── multi-plan-activation.test.ts
 ├── running-foundation.test.ts
 ├── running-activity-match.test.ts
 ├── bodyweight-history.test.ts
 └── multi-plan-portability.test.ts
+src/platform/sqlite/repositories/
+└── progressRepository.test.ts                 # direct Running/goal/bodyweight sparse/freshness/rebuild evidence
 ```
 
 ### Pattern 1: Explicit Selection, Snapshot at Start, Replay by Provenance
@@ -325,6 +328,8 @@ Within one destructive migration transaction:
 6. Add generation triggers for every new authoritative table only after that table exists. Do not add triggers to rebuildable current relations/projections. [VERIFIED: src/platform/sqlite/migrations/0023_automatic_drive_backup.ts:27-36]
 7. Verify table/column shape, full index SQL/predicates from `sqlite_master`, `PRAGMA index_list`, trigger count/SQL, paired activation, stable IDs, unchanged fact digests, `foreign_key_check`, and `integrity_check`; `user_version` commits with the migration. [VERIFIED: src/platform/sqlite/migrationRunner.ts:242-273]
 
+Migration 0028 has one owning tracer plan and is final after this transaction ships: it includes every Phase 13 source table and source-generation trigger. Later tasks may add tests only; a discovered schema defect requires a separately numbered successor migration and must never rewrite 0028.
+
 SQLite `ALTER TABLE ... ADD COLUMN` supports checked columns but `NOT NULL` needs a non-null default; added constraints are tested against existing rows. Use that only for deterministic legacy defaults, not invented Running facts. [CITED: https://sqlite.org/lang_altertable.html]
 
 ### 3. Coherent runtime cutover
@@ -374,6 +379,7 @@ After every new source table has ownership filters and exact primary keys, colle
 - Keep exact source bytes hash and verified external reference as independent identity signals. Exact replays return the existing receipt; same external ID/different hash becomes an immutable revision requiring explicit acceptance; conflicting resolutions never silently coalesce. [VERIFIED: .planning/architecture/v1.2-garmin-import.md:95-115]
 - Import commit writes all source rows plus receipt in one short transaction and never activates/creates a plan or Strength session. Match is a separate confirmation transaction bound to exact accepted payload and exact occurrence/revisions. [VERIFIED: .planning/phases/13-multi-plan-running-foundation/13-CONTEXT.md:27-31]
 - Unmatch/reassign appends events. The rebuildable current relation enforces one current activity per opportunity and one current opportunity per activity; replay cannot overwrite a newer relation. [VERIFIED: .planning/architecture/v1.2-garmin-import.md:147-159]
+- Remove/restore is an explicit revision-fenced activity command. Removal appends a portable tombstone plus an audited current-match invalidation in the same exclusive transaction; restore appends a new event and leaves the activity unmatched until a fresh explicit confirmation. Exact replay is idempotent, stale commands write nothing, and delayed import/restore/merge cannot resurrect an old relation.
 
 ### Bodyweight and Progress seams
 
@@ -549,7 +555,7 @@ The older PROJECT environment statement that adb is installed is stale relative 
 |---|---|
 | Framework | Jest `29.7.0` with unit, components, sqlite-host, and integration projects; native Expo SQLite `migrations-effects` harness [VERIFIED: package.json:23-28,125-132; jest.config.js:26-90] |
 | Config file | `jest.config.js` [VERIFIED: jest.config.js:1-90] |
-| Quick run command | `npm run test:integration -- --runInBand tests/integration/multi-plan-activation.test.ts` [ASSUMED] (future file) |
+| Quick run command | `npm run test:integration -- --runInBand tests/integration/multi-plan-foundation-tracer.test.ts` [ASSUMED] (future file) |
 | Existing regression command | `npm run test:integration -- --runInBand tests/integration/today-schedule-workout.test.ts tests/integration/schedule-commands.test.ts tests/integration/portable-merge.test.ts` [VERIFIED: existing test files and package.json:27] |
 | Full host suite command | `npm run typecheck && npm run lint && npm run test:unit -- --runInBand && npm run test:sqlite:host -- --runInBand && npm run test:integration -- --runInBand && npm run test:coverage -- --runInBand` [VERIFIED: package.json:19-28,72-73] |
 | Native phase gate | `npm run android:devtest:fresh -- --suite phase13 && npm run test:sqlite:device -- --suite migrations-effects --manifest artifacts/native/phase13/build.json` [ASSUMED] (future Phase 13 manifest; existing suite command verified at package.json:26,79) |
@@ -565,8 +571,8 @@ The older PROJECT environment statement that adb is installed is stale relative 
 
 | Req ID | Behavior | Test Type | Automated Command | File Exists? |
 |---|---|---|---|---|
-| DOM-01 | Independent activation under selected cardinality | integration + real SQLite | `npm run test:integration -- --runInBand tests/integration/multi-plan-activation.test.ts` | ❌ Wave 0 |
-| DOM-02 | Create/copy/import/edit remains inactive | integration | `npm run test:integration -- --runInBand tests/integration/multi-plan-activation.test.ts` | ❌ Wave 0; extend existing starter/owned-plan tests |
+| DOM-01 | Independent activation under selected cardinality | integration + real SQLite | `npm run test:integration -- --runInBand tests/integration/multi-plan-foundation-tracer.test.ts tests/integration/multi-plan-activation.test.ts` | ❌ Wave 0 |
+| DOM-02 | Create/copy/import/edit remains inactive | integration | `npm run test:integration -- --runInBand tests/integration/multi-plan-foundation-tracer.test.ts tests/integration/multi-plan-activation.test.ts` | ❌ Wave 0; extend existing starter/owned-plan tests |
 | DOM-03 | Fresh→latest, 27→latest, failure cuts, recovery copy, unchanged facts | sqlite-host + native | `npm run test:sqlite:host -- --runInBand tests/sqlite-host/migrations-effects.test.ts` | ✅ extend |
 | DOM-04 | Independent Weekday/Rotation/timezone/effective dates | unit + integration | `npm run test:integration -- --runInBand tests/integration/schedule-commands.test.ts tests/integration/running-foundation.test.ts` | mixed; new Running file ❌ |
 | DOM-05 | Move run/strength/keep both affects selected future occurrence only | unit + integration | `npm run test:integration -- --runInBand tests/integration/running-foundation.test.ts` | ❌ Wave 0 |
@@ -578,7 +584,7 @@ The older PROJECT environment statement that adb is installed is stale relative 
 | DOM-11 | External/hash order matrix and receipt replay/conflicts | unit + integration | `npm run test:integration -- --runInBand tests/integration/imported-activity-facts.test.ts` | ❌ Wave 0 |
 | DOM-12 | Explicit match, stale/replay, unmatch/reassign, one-to-one relation | integration | `npm run test:integration -- --runInBand tests/integration/running-activity-match.test.ts` | ❌ Wave 0 |
 | DOM-13 | Deterministic Calendar/Progress rebuild and sparse/unavailable states | sqlite-host + unit | `npm run test:sqlite:host -- --runInBand tests/sqlite-host/trainingCalendarRepository.test.ts` | ❌ Wave 0; extend Progress tests |
-| DOM-14 | Dated grams, edit/delete, no target mutation | integration | `npm run test:integration -- --runInBand tests/integration/bodyweight-history.test.ts` | ❌ Wave 0 |
+| DOM-14 | Dated grams, edit/delete, no target mutation | unit + integration | `npm run test:unit -- --runInBand src/platform/sqlite/repositories/progressRepository.test.ts && npm run test:integration -- --runInBand tests/integration/bodyweight-history.test.ts` | ❌ Wave 0 |
 | DOM-15 | v1/v2/successor restore, merge remap/conflict, triggers, rebuild | integration + native | `npm run test:integration -- --runInBand tests/integration/multi-plan-portability.test.ts tests/integration/portable-merge.test.ts` | new file ❌; existing regression ✅ |
 | DOM-16 | Offline exclusive commit and no pre-commit acknowledgment | integration + runtime | `npm run test:integration -- --runInBand tests/integration/today-schedule-workout.test.ts` | ✅ extend |
 | DOM-17 | Snapshots, overlays, tombstones, identities, decisions unchanged | sqlite-host + integration | `npm run test:sqlite:host -- --runInBand tests/sqlite-host/historyRepository.test.ts` | ✅ extend |
@@ -604,8 +610,11 @@ The older PROJECT environment statement that adb is installed is stale relative 
 ### Wave 0 Gaps
 
 - [ ] Restore dependencies with `npm ci`.
+- [ ] Assert Node/npm satisfy `package.json.engines` and fail on lockfile drift before the first RED test.
+- [ ] Add `tests/integration/multi-plan-foundation-tracer.test.ts` before implementation; no breadth plan begins until its legacy migration, minimum readiness, two-slot activation/materialization, exact Strength detail/null-on-stale, active recovery, and backup/restore cases pass.
 - [ ] Add a schema-27 synthetic fixture containing active plan/schedule, completed history, saved partial/in-progress session, timing states, portable IDs, and automatic-backup state.
 - [ ] Add future test files listed in the requirement map; exact names may be adjusted by the planner. [ASSUMED]
+- [ ] Add `src/platform/sqlite/repositories/progressRepository.test.ts` for direct Running/goal/bodyweight sparse/freshness/rebuild coverage.
 - [ ] Extend `src/testing/contracts/migrationsEffects.contract.ts` with fresh→latest and 27→latest Phase 13 cases.
 - [ ] Extend native suite case IDs/build manifest validation for Phase 13.
 - [ ] Restore Android SDK/adb availability before native execution.
