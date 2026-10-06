@@ -1,9 +1,9 @@
 # Phase 16: Calendar Parity - Pattern Map
 
 **Mapped:** 2026-10-06
-**Planned files classified:** 25
-**Live analog coverage:** 25 / 25
-**Unresolved upstream symbols:** Phase 13 typed Calendar range read port; Phase 15 shared Active-shaped read-only presenter
+**Core implementation/evidence roles mapped:** 34
+**Live-or-planned contract coverage:** 34 / 34
+**Execution prerequisites:** Phase 13 typed Calendar range read plus exact `loadPlannedStrengthOccurrence`; Phase 15 shared Active-shaped read-only presenter; Phase 17 Running detail; Phase 18 imported-activity detail and Calendar-origin route registration
 
 ## Pattern Map Scope
 
@@ -17,12 +17,14 @@ The current `CalendarScreen` is a seam, not the visual or data oracle. The plann
 |---|---|---|---|---|
 | `src/domains/scheduling/localDate.ts` | utility | transform | same file: `parseLocalDate`, `addLocalDays`, `weekdayForLocalDate` | exact extension |
 | `src/domains/history/calendar.ts` | utility | transform | same file: pure switch/order helpers | exact role; superseded DTO |
+| `src/ui/calendar/calendarPorts.ts` + test | adapter/test | request-response | `src/bootstrap/customExerciseRuntimeReadPort.ts` | strong narrow-`Pick`/null-on-missing boundary |
 | `src/ui/calendar/calendarTransitionController.ts` | controller | event-driven | `src/domains/advancedTiming/advancedTimingState.ts` | strong role/data-flow match |
 | `src/ui/calendar/CalendarMonthViewport.tsx` | component/worklet | event-driven | `src/ui/components/PlanEditorFields.tsx#PlanEditorReorderableRow` | strong worklet/measurement match |
 | `src/ui/calendar/CalendarWeekRow.tsx` | component | transform + event-driven | `src/ui/screens/CalendarScreen.tsx#CalendarGrid`; `FocusablePressable` | partial; presentation is superseded |
 | `src/ui/calendar/CalendarAgenda.tsx` | component | event-driven | `src/ui/components/NavigationRow.tsx#NavigationRow` | strong single-target row match |
 | `src/ui/screens/CalendarScreen.tsx` | component/controller host | request-response + event-driven | same file; `ExerciseDetailScreen` source-state pattern | exact seam; core replaced |
 | Phase 13 `trainingCalendarRepository.ts` / runtime read-port exports | repository/service | CRUD read + batch | `historyRepository.ts#createHistoryRepository`; `customExerciseRuntimeReadPort.ts` | partial; final upstream symbol absent |
+| Phase 13 `TrainingFoundationRuntimePort.loadPlannedStrengthOccurrence` | service | exact-ID query | `customExerciseRuntimeReadPort.ts#loadExercise` | exact planned contract; implementation prerequisite |
 | `src/ui/calendar/CalendarReadOnlyWorkout.tsx` | component/provider | request-response | `ActiveWorkoutScreen` disclosure hierarchy; `SessionDetailScreen` factual detail | partial; final Phase 15 presenter absent |
 | `src/ui/screens/PlannedWorkoutDetailScreen.tsx` | component | request-response | `ExerciseDetailScreen` load/missing/error states | strong state match |
 | `app/(tabs)/calendar.tsx` | route/provider | request-response | same file; Library route focus lifecycle | exact seam; dispatch replaced |
@@ -34,12 +36,19 @@ The current `CalendarScreen` is a seam, not the visual or data oracle. The plann
 | `src/ui/__tests__/CalendarScreen.test.tsx` | test | request-response + event-driven | same file | exact seam; many assertions superseded |
 | `src/ui/__tests__/PlannedWorkoutDetailScreen.test.tsx` | test | request-response | `WorkoutCompletionScreen.test.tsx`; route test pattern | strong |
 | Phase 13 `tests/sqlite-host/trainingCalendarRepository.test.ts` | test | CRUD read + batch | `tests/sqlite-host/historyRepository.test.ts` | role match; final upstream file absent |
+| `src/bootstrap/phase16CalendarTestControls.ts` + test | dev-test adapter | event-driven | `src/bootstrap/phase12BackupTestControls.ts` | exact production-rejection/fixture-seam pattern |
+| `app/__tests__/calendar-cross-destination-route.test.tsx` | integration test | request-response | Phase 17/18 real route tests | exact cross-route role; waits for real destinations |
 | `maestro/v1.2/calendar.yaml` | test/config | event-driven | `maestro/phase6/gesture-smoke.yaml` | role match only; final-state smoke is insufficient |
 | `scripts/run-v12-maestro.mjs` | utility/test runner | batch + file-I/O | `scripts/run-phase12-maestro.mjs` | exact evidence-envelope match |
+| `.planning/phases/16-calendar-parity/16-REFERENCE-MAP.json` | contract | deterministic mapping | `.planning/design/v1.2-browser-evidence/source-manifest.json` | exact source-identity map |
+| `scripts/compare-v12-calendar.mjs` | utility/test comparator | batch + image/file-I/O | Phase 20 `scripts/compare-v12-visual.mjs` plan contract | exact role; Phase 16 Calendar shard |
+| `scripts/v12-calendar-comparison.test.mjs` | test | adversarial file-I/O | Phase 20 comparison-test contract | exact role; Calendar-only cases |
+| `scripts/fixtures/v12-calendar-{comparison,evidence}/complete.json` | test fixtures | bounded file-I/O | Phase 9/12 evidence test fixtures | exact adversarial positive-control role |
 | `scripts/verify-v12-native-evidence.mjs` | utility/test verifier | batch + file-I/O | `scripts/verify-phase9-v20-native-evidence.mjs` | exact verifier role match |
 | `scripts/v12-evidence-scripts.test.mjs` | test | batch + file-I/O | `scripts/phase9-v20-native-evidence.test.mjs` | exact adversarial-verifier match |
-| `scripts/benchmark-v12-interactions.mjs` | utility/test | batch + streaming samples | `scripts/benchmark-phase3.mjs` | strong envelope; generator must be real |
+| `scripts/benchmark-v12-interactions.mjs` | utility/test | batch + streaming samples | `scripts/benchmark-phase3.mjs` | strong diagnostic envelope; Phase 20 owns release/profile acceptance |
 | `scripts/run-coverage-gate.mjs` | config/test runner | batch | same file integrity-critical list | exact extension |
+| `package.json` Phase 16 scripts | config | batch | existing phase-specific runner/verifier scripts | exact additive script-alias pattern; dependencies unchanged |
 
 ## Pattern Assignments
 
@@ -227,7 +236,7 @@ Preserve one date as one focusable target with selected state, arrow-key civil-d
 </FocusablePressable>
 ```
 
-**Shared focus primitive** (`src/ui/components/index.ts:215-264`): `FocusablePressable` forwards a host `View` ref, supplies Enter/Space activation when no custom key handler is present, and renders the shared 2dp focus outline.
+**Shared focus primitive** (`src/ui/components/index.ts:215-264`): `FocusablePressable` forwards a host `View` ref and supplies Enter/Space activation when no custom key handler is present. Phase 14 replaces the legacy 2dp outline with the approved shared 3dp focus token; Phase 16 consumes that owner rather than defining a private focus width.
 
 Replace the current Sunday labels, fixed 42 cells, glyphs, and `14.285%` layout (`CalendarScreen.tsx:54-56,136-165,283-303,498-513`). One `CalendarWeekRow` and one day/event renderer must be reused in month, selected, and following rows with Monday-first geometry, fixed date/event tracks, up to two titled events plus `+N`, and full untruncated spoken event identity/status/source.
 
@@ -368,7 +377,7 @@ Calendar read-only detail exposes only Back, exercise disclosure, committed/part
 
 Copy the injected exact-ID loader and explicit `loading | ready | empty | error` model (`ExerciseDetailScreen.tsx:95-123,181-222`). Copy the separate skeleton, missing, and retry surfaces (`273-340`), but use exact Phase 16 copy and query-only props.
 
-The planned preview DTO is keyed by durable occurrence identity and carries plan/occurrence targets only. `null` means `Workout preview unavailable`; an exception means load failure/retry. It must not fabricate a session ID, completed set, observation/result, rest effect, or Start action.
+Use the exact Phase 13 contract: `src/domains/workout/index.ts` exports `PlannedStrengthOccurrenceDetail`; `src/bootstrap/trainingFoundationRuntime.ts` exports `TrainingFoundationRuntimePort.loadPlannedStrengthOccurrence(occurrenceId: string): Promise<PlannedStrengthOccurrenceDetail | null>`; and `createPlansWorkoutRepository(...).loadPlannedStrengthOccurrence(occurrenceId)` in `src/platform/sqlite/repositories/plansWorkoutRepository.ts` performs the query-only exact-provenance lookup. The result is deeply immutable and target-bearing; stale/mismatched plan/day/schedule/version/source revision returns `null` with no current-activation fallback. Phase 16 must fail fast if any part is absent. It must not fabricate a session ID, completed set, observation/result, rest effect, or Start action. [PLANNED: .planning/phases/13-multi-plan-running-foundation/13-02-PLAN.md]
 
 Do not copy `ExerciseDetailScreen`'s mutation props/actions (`98-119,224-270,513-618`). The planned preview should be structurally unable to receive them.
 
@@ -385,7 +394,7 @@ Preserve from the Calendar root:
 - Runtime/port injection and device-local civil-date construction (`app/(tabs)/calendar.tsx:13-29`).
 - Screen remains router-free.
 
-Replace direct session dispatch (`calendar.tsx:30-31`) with an exhaustive switch on the Phase 13 destination discriminant. Every push includes durable identity plus Calendar origin/return identity; never inspect title/source/date or coerce occurrence/activity IDs into session IDs.
+Replace direct session dispatch (`calendar.tsx:30-31`) with an exhaustive switch on the Phase 13 destination discriminant. Every push includes durable identity plus Calendar origin/return identity; never inspect title/source/date or coerce occurrence/activity IDs into session IDs. Phase 16 may test this union before downstream phases finish, but the final route wiring and CAL-17/CAL-20 integration evidence must wait for the real Phase 17 Plan 17-08 Running detail and Phase 18 Plans 18-08/18-14 imported-activity detail/Calendar registration. A mocked router call, href assertion, fixture route, or placeholder screen is not completion.
 
 **Route-param normalization and return-focus lifecycle** (`app/library/exercise/[exerciseId].tsx:19-38`):
 
@@ -467,6 +476,12 @@ Copy:
 
 Phase 16 stages must identify each CAL trace/capture and the exact normal/reduced-motion, viewport, theme, orientation, text scale, and input fixture.
 
+### Reference mapping and visual differences
+
+Create `.planning/phases/16-calendar-parity/16-REFERENCE-MAP.json` as the executable Calendar-only mapping from every requirement/state/fixture/configuration to one immutable Revision 18 reference and source-manifest hash. `scripts/compare-v12-calendar.mjs` generates individual reference/native/overlay/absolute-difference/mask files plus a canonical JSON record and hashes for every mapped capture; `scripts/v12-calendar-comparison.test.mjs` rejects missing/duplicate/extra mappings, stale reference hashes, path escapes/symlinks, mismatched configurations, missing constituent images, changed semantics/authority/focus/target geometry, unknown classifications, and unexplained differences. Contact sheets index individual evidence but cannot replace it.
+
+Use the shared v1.2 verdict/classification contract. A documented accepted adaptation uses `accepted_deviation`; a retained oracle with a still-failing accessibility fact requires a separately dated/scoped `accepted_exception`; open or incompletely evidenced DEV-01/DEV-02 rows remain `BLOCKED_OWNER`; unexplained product differences fail. A pixel score never overrides semantic, routing, accessibility, or read-only failures.
+
 ### Adversarial verifier
 
 **Analog:** `scripts/verify-phase9-v20-native-evidence.mjs`
@@ -482,11 +497,11 @@ Copy exact identity comparisons (`47-74`), exact expected-case set/no duplicates
 
 **Verifier test analog:** `scripts/phase9-v20-native-evidence.test.mjs:14-35` builds temporary manifest/result fixtures, accepts one complete exact suite, and rejects missing/mismatched/stale/duplicate/APK evidence. Phase 16 must add malformed timestamps, missing intermediate samples, wrong threshold semantics, mutation digest differences, and incomplete appearance/viewport matrices.
 
-### Performance benchmark
+### Performance diagnostics
 
 **Analog:** `scripts/benchmark-phase3.mjs`
 
-Copy frozen measurement IDs/thresholds (`25-39`), exact manifest identity (`41-52`), exact ledger order (`54-62`), raw-duration/sample/p95 validation (`64-95`), and current source/APK validation (`102-123`). Replace the deferred generator (`144-159`) with real collection for at least 100 representative query samples and 100 complete drag/expand/collapse sequences.
+Copy exact manifest identity (`41-52`), exact ledger order (`54-62`), raw-duration/sample/p95 computation (`64-95`), and current source/APK validation (`102-123`). Replace the deferred generator (`144-159`) with real development-test collection for at least 100 representative query samples and 100 complete drag/expand/collapse sequences. Phase 16 records diagnostics without assigning a release/profile PASS or FAIL against 250ms/16.67ms; Phase 20 Plan 20-08 owns those acceptance verdicts on its immutable release/profile evidence.
 
 ### Maestro is orchestration, not motion proof
 
@@ -555,24 +570,26 @@ Bind all native evidence to exact HEAD/source tree/package/APK/device. Use deter
 | Nested `GestureHandlerRootView` | `PlanEditorFields.tsx:343-429`; phase root already wraps app | reuse app root; only portal-owned trees add a root |
 | `useReducedMotion` startup snapshot alone | not the repo pattern | use `AppearanceProvider` runtime event subscription |
 | Final screenshot/text as motion proof | `maestro/phase6/gesture-smoke.yaml:8-18` | timestamped intermediate geometry/semantic/frame evidence |
-| Deferred benchmark accepted as evidence | `benchmark-phase3.mjs:144-159` | real Phase 16 sampling and raw-result validation |
-| Fake downstream Running/Garmin screens | Phase 17/18 routes absent | test dispatch contract now; keep E2E pending or resolve ownership explicitly |
+| Development-test timing promoted to release acceptance | `benchmark-phase3.mjs:144-159` | collect raw Phase 16 diagnostics; Phase 20 Plan 20-08 owns threshold acceptance |
+| Mocked/fake downstream Running/Garmin completion | Phase 17/18 routes are separate owners | wait for 17-08 and 18-08/18-14, then run the Phase 16 final real-route integration plan |
 
 ## No Analog Found
 
-None. Every planned file has at least a live role/data-flow analog. This does not mean the two required upstream implementation symbols already exist; those dependency gaps are listed below.
+None. Every planned role has a live or accepted plan-contract analog. This does not mean the required Phase 13/15 symbols or Phase 17/18 destinations already exist at Phase 16 execution time; those dependency preflights are listed below.
 
-## Missing Final Upstream Symbols / Dependency Preflight
+## Resolved Cross-Phase Contracts / Dependency Preflight
 
 | Required Symbol | Status | Planner Action |
 |---|---|---|
 | Phase 13 typed event DTO and range read-port/repository export | Not present in live `src/`/`tests/`; only flattened `CalendarMonth` exists | First task resolves the post-Phase-13 live exports and real SQLite test. Stop if absent; do not invent a parallel model. |
-| Phase 15 shared Active-shaped read-only exercise/set presenter | Not present in live `src/`; current `SessionDetailScreen` is not the contracted presenter | Resolve post-Phase-15 export. Reuse through query-only props; duplicate only with documented incompatibility. |
-| Planned Running and Garmin destination screens | Owned by Phases 17/18 and absent now | Implement exhaustive durable dispatch and return token; do not claim destination E2E or create stubs in Phase 16. |
+| `PlannedStrengthOccurrenceDetail` and `TrainingFoundationRuntimePort.loadPlannedStrengthOccurrence(occurrenceId)` | Fixed by Phase 13 Plan 13-02; not present until that plan executes | Preflight the exact signature, deep immutability, target-bearing result and null-on-stale provenance; stop on mismatch. |
+| Phase 15 `WorkoutSessionPresentation` and `WorkoutPresentationModel` | Fixed by Phase 15 Plan 15-01; not present until that plan executes | Preflight exact exports and reuse through query-only props; do not duplicate the presenter. |
+| Phase 17 `app/library/running/[planId].tsx` / `RunningPlanDetailScreen` | Fixed by Phase 17 Plan 17-08; not present until that plan executes | Final Phase 16 integration runs only after `17-08-SUMMARY.md` and real route tests exist. |
+| Phase 18 `app/garmin/activity/[activityId].tsx` / `ImportedActivityDetailScreen` plus Calendar registration | Fixed by Phase 18 Plans 18-08 and 18-14; not present until those plans execute | Final Phase 16 integration runs only after both summaries and real route tests exist; no mocked href completion. |
 
 ## Metadata
 
 **Analog search scope:** `app/`, `src/domains/`, `src/bootstrap/`, `src/platform/sqlite/repositories/`, `src/ui/`, `tests/`, `maestro/`, `scripts/`
-**Primary live analog files read:** 24
+**Primary live/accepted-plan analog files read:** 28
 **Pattern extraction date:** 2026-10-06
-**Source edits:** none; this pattern map is the only written file.
+**Revision note:** Cross-phase route prerequisites, exact Phase 13 occurrence loader, Phase 14 3dp focus, diagnostic performance ownership, and Calendar comparison artifacts reconciled 2026-10-06.

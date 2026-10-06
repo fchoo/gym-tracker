@@ -59,7 +59,7 @@ Archived detail: .planning/milestones/v1.1-ROADMAP.md
 
 - Phase 13 precedes every domain consumer because the shipped singleton plan model cannot safely support the approved screens, schedules, imports, matches, or recovery graph.
 - Phase 14 precedes all feature UI phases so typography, color, four-root navigation, sheets, toasts, appearance, focus, and retained settings behavior are shared rather than reimplemented.
-- Phase 15 precedes Phase 16 because Calendar reuses the Active-shaped workout presentation through a strictly read-only capability boundary.
+- Phase 15 precedes Phase 16 because Calendar reuses the Active-shaped workout presentation through a strictly read-only capability boundary. Phase 16's implementation/final routing closure also waits for Phases 17-18 so real Running-plan and Garmin destinations exist; phase numbers preserve review grouping rather than mandatory execution order.
 - Phase 17 precedes Phase 18 because imported activities can only be matched against persisted, stable Running plans, session revisions, schedule versions, and ordered occurrence identities.
 - Phase 18 precedes Phase 19 so Running progress is computed from actual imported evidence rather than prototype fixtures or inferred values.
 - Phase 20 depends on Phases 13-19 and integrates their evidence; it is not the first phase in which transaction, migration, accessibility, or lifecycle behavior is tested.
@@ -106,7 +106,7 @@ These are explicit gates, not reopened prototype questions:
 **Success Criteria** (what must be TRUE):
 
   1. The owner navigates exactly Workout, Calendar, Library, and Progress through the approved bottom composition at every supported width, with selected state, destination state, deep-route exit, and focus preserved.
-  2. Light, Dark, and System appearance choices persist and stay synchronized across roots, Active Workout, Garmin, sheets, and dialogs using the approved typography, colors, spacing, borders, and density.
+  2. Light, Dark, and System appearance choices persist and stay synchronized across roots, Active Workout, sheets, and dialogs using the approved typography, colors, spacing, borders, and density; GAR-16 owns the same behavior on the later Garmin route.
   3. Contextual sheets, dialogs, and top toasts match the approved hierarchy, remain keyboard-safe, restore focus correctly, announce status accessibly, and never obstruct the workout command/rest dock.
   4. Startup exposes truthful loading, trusted, failure/retry, notification-permission, and continue-without-alerts states without moving authority away from SQLite.
   5. Rest alerts, removed sessions, manual recovery/merge, automatic backup, CSV export, privacy, and their empty/busy/failure/retry states remain reachable through Settings after the shell changes.
@@ -138,7 +138,7 @@ These are explicit gates, not reopened prototype questions:
 ### Phase 16: Calendar Parity
 
 **Goal**: The owner can understand and navigate real Strength and Running intent/history through the approved spatial Calendar, then inspect workout history without Calendar gaining mutation authority.
-**Depends on**: Phase 13, Phase 14, Phase 15
+**Depends on**: Phase 13, Phase 14, Phase 15, Phase 17, Phase 18
 **Directory**: .planning/phases/16-calendar-parity
 **Requirements**: CAL-01, CAL-02, CAL-03, CAL-04, CAL-05, CAL-06, CAL-07, CAL-08, CAL-09, CAL-10, CAL-11, CAL-12, CAL-13, CAL-14, CAL-15, CAL-16, CAL-17, CAL-18, CAL-19, CAL-20, CAL-21, CAL-22, CAL-23
 **Rationale**: Calendar depends on real multi-source events and reuses Phase 15's Active-shaped content, but its own read-only boundary, native gestures, measured row transitions, and return context form a coherent user capability.
@@ -151,7 +151,7 @@ These are explicit gates, not reopened prototype questions:
   4. Each agenda event is one accessible full-width target and routes by real identity: Strength history to read-only Active-shaped detail, planned Strength to occurrence preview, planned Running to its plan, and imported Running to Garmin detail.
   5. Back restores the expanded date/week and trigger focus; loading, empty, stale/error, and retry states never invent sessions, while correction, resume, revision history, and removal remain available only in their separate management contexts.
 
-**Plans**: 6 plans
+**Plans**: 7 plans
 
 Plans:
 - [ ] 16-01-PLAN.md — Preflight upstream capabilities, prove the semantic transition controller, and resolve DEV-01/DEV-02.
@@ -159,7 +159,8 @@ Plans:
 - [ ] 16-03-PLAN.md — Build capability-safe workout history and planned Strength preview while preserving management routes.
 - [ ] 16-04-PLAN.md — Implement UI-thread 1:1 month drag and measured expand/collapse/adjacent motion.
 - [ ] 16-05-PLAN.md — Complete compact agenda routing and Calendar-owned Back/scroll/focus restoration.
-- [ ] 16-06-PLAN.md — Capture native transition/state evidence and enforce query/frame/zero-mutation gates.
+- [ ] 16-06-PLAN.md — Capture diagnostic native geometry and mapped Revision 18 overlay/difference artifacts.
+- [ ] 16-07-PLAN.md — Integrate real Phase 17/18 destinations, seal evidence, and hand performance diagnostics to Phase 20.
 **UI hint**: yes
 **Plan flags**: research required; UI specification required; plan check required; review convergence required; DEV-01 and DEV-02 require owner disposition before affected implementation
 

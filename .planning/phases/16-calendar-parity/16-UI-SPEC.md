@@ -52,6 +52,12 @@ No unexplained difference from the oracle is permitted. Necessary native, access
 - A fifth root, inline Calendar legend, per-day status icons, nested agenda actions, direct adjacent-week teleport, crossfade-only week replacement, or velocity-based month settling.
 - Product implementation, builds, release work, or acceptance of DEV-01/DEV-02 in this specification.
 
+### Cross-phase execution prerequisites
+
+Phase 16 full integration closure runs only after the real downstream destinations exist. Phase 17 Plan 17-08 must provide `app/library/running/[planId].tsx` and `RunningPlanDetailScreen`; Phase 18 Plan 18-08 must provide `app/garmin/activity/[activityId].tsx` and `ImportedActivityDetailScreen`; Phase 18 Plan 18-14 must register the Calendar origin/return contract against that real Garmin route. A mocked router call, asserted href string, placeholder route, or fixture-only destination cannot satisfy CAL-17 or the Calendar Back/focus portion of CAL-20.
+
+The planned Strength path is not deferred: Phase 13 Plan 13-02 provides `TrainingFoundationRuntimePort.loadPlannedStrengthOccurrence(occurrenceId: string): Promise<PlannedStrengthOccurrenceDetail | null>`. Phase 16 must fail fast if that exact query-only loader, its deeply immutable target-bearing result, or its null-on-stale provenance checks are absent.
+
 ## Design System
 
 | Property | Contract | Source / implementation note |
@@ -63,7 +69,7 @@ No unexplained difference from the oracle is permitted. Necessary native, access
 | Interface font | Archivo variable | Phase 14 dependency; bundle locally. No network font fetch and no Source Sans fallback in parity captures. |
 | Numeric font | IBM Plex Mono | Dates, weekday labels, set numbers, previous/target/result values; tabular numerals. |
 | Weights | Regular 400 and emphasis 800 only | The native two-weight contract replaces ad hoc 700/750/850 declarations. Verify Archivo variable metrics against the Revision 18 oracle; any material mismatch enters the deviation register. |
-| Shared primitives | Root header, `IconAction`, focusable pressable, modal bottom sheet, inline notice, skeleton, four-root navigation | Reuse Phase 14 behavior for 48dp targets, 2dp focus, scrim, modal focus, Back, safe areas, and appearance. |
+| Shared primitives | Root header, `IconAction`, focusable pressable, modal bottom sheet, inline notice, skeleton, four-root navigation | Reuse Phase 14 behavior for 48dp targets, 3dp focus with 4dp visual clearance, scrim, modal focus, Back, safe areas, and appearance. |
 
 ## Owner Decision Checkpoints — Open and Non-Defaulting
 
@@ -71,10 +77,12 @@ Neither checkpoint is accepted by this UI-SPEC. The planner must put the checkpo
 
 | ID | Current / oracle behavior | Closest accessibility adaptation | Required owner checkpoint |
 |---|---|---|---|
-| DEV-01 | **Current implementation baseline unless/until owner accepts a change:** the approved Revision 18 oracle uses 18dp horizontal inset and 2dp date-cell gaps (`.app-destination`, H:1092-1096; `.cal-month-panel`, H:1117). At a 360dp content width this produces 44.5625dp-wide date cells, below the non-overlapping 48dp target requirement. The 18dp inset and 2dp gap are nevertheless owner-approved presentation values, not deviations. | **Proposed only:** Calendar-only horizontal inset `min(18, max(0, (safeWidth - 348) / 2))` dp: 6dp at 360 and 18dp at 390. Keep the owner-approved 2dp gaps, 28/36 tracks, event content, row morph geometry, and non-overlapping hit bounds. | Owner chooses **Keep current/oracle 18dp** or **Accept closest 6→18dp adaptation**. Until acceptance is recorded, implement/spec/compare against 18dp; do not select 6dp as the baseline and do not silently enlarge hit areas across neighboring dates. The known 360dp target failure remains visible and pending. |
-| DEV-02 | Light Strength event-title text and border are `#D97820`: measured contrast is 3.03:1 on `#FFFAF0` and 2.56:1 on selected `#DCE9F9`. Dark remains readable. | Light theme only: use `#9B470B` for Strength title text, retaining `#D97820` for border/rail/sport swatch and all status patterns. Measured contrast is 6.12:1 on paper and 5.17:1 on selected fill. Dark remains unchanged. | Owner chooses **Oracle orange title** or **Closest dark-orange title adaptation**. Test complete/partial tint blends before acceptance. |
+| DEV-01 | **Current implementation baseline unless/until owner accepts a change:** the approved Revision 18 oracle uses 18dp horizontal inset and 2dp date-cell gaps (`.app-destination`, H:1092-1096; `.cal-month-panel`, H:1117). At a 360dp content width this produces 44.5625dp-wide date cells, below the non-overlapping 48dp target requirement. The 18dp inset and 2dp gap are nevertheless owner-approved presentation values, not deviations. | **Proposed only:** Calendar-only horizontal inset `min(18, max(0, (safeWidth - 348) / 2))` dp: 6dp at 360 and 18dp at 390. Keep the owner-approved 2dp gaps, 28/36 tracks, event content, row morph geometry, and non-overlapping hit bounds. | Owner chooses **Retain current/oracle 18dp as a dated scoped accepted exception** or **Accept closest 6→18dp adaptation**. Until acceptance is recorded, implement/spec/compare against 18dp and keep the row `BLOCKED_OWNER`; do not select 6dp as the baseline or silently enlarge hit areas. |
+| DEV-02 | Light Strength event-title text and border are `#D97820`: measured contrast is 3.03:1 on `#FFFAF0` and 2.56:1 on selected `#DCE9F9`. Dark remains readable. | Light theme only: use `#9B470B` for Strength title text, retaining `#D97820` for border/rail/sport swatch and all status patterns. Measured contrast is 6.12:1 on paper and 5.17:1 on selected fill. Dark remains unchanged. | Owner chooses **Retain oracle orange title as a dated scoped accepted exception** or **Accept closest dark-orange title adaptation**. Test complete/partial tint blends; until a choice and complete evidence exist the row is `BLOCKED_OWNER`. |
 
 Until each decision is recorded, comparison fixtures must support the current/oracle branch and the proposed adaptation branch, and the affected accessibility acceptance row remains pending. For DEV-01, current/oracle 18dp remains the implementation baseline; for DEV-02, current/oracle `#D97820` remains the implementation baseline. The spec must never describe either proposed adaptation as approved.
+
+An open decision or incomplete chosen-branch evidence is `BLOCKED_OWNER`, never PASS and never an all-pass aggregate. If the owner accepts an adaptation, that exact branch must pass its complete native/reference comparison and accessibility measurements. If the owner retains an oracle value and its known accessibility failure remains, the owner must separately record a dated, scoped accepted exception; otherwise the affected rows and Phase 16 closure remain blocked. An accepted exception is reported as `ACCEPTED_EXCEPTION`, not relabeled PASS.
 
 ## Spacing Scale
 
@@ -119,7 +127,7 @@ These values are local Calendar/component measurements, not additions to `space.
 | 1dp | `.cal-focused-week, .cal-next-week` H:1179; `.cal-agenda-row` H:1198; `.cal-detail-footer` H:1222 | Hairline row/section separators. |
 | 2dp | `.cal-agenda-head` H:1195 | Primary-text divider below the focused agenda heading. |
 | 5dp | `.cal-agenda-row` and `.cal-agenda-edge` H:1198-1200 | Fixed sport-identity rail width; this is structural/color encoding, not a layout-spacing token. |
-| 2dp | Shared native focus contract in `DESIGN.md` | Visible hardware keyboard/D-pad focus outline, independent of selected/today borders. |
+| 3dp | Shared Revision 18 / Phase 14 focus contract | Visible hardware keyboard/D-pad focus outline with 4dp visual clearance, independent of selected/today borders. |
 
 All non-date interactive controls are at least 48×48dp. Day targets are governed only by DEV-01; no overlapping expanded hit slop is allowed. Under the required current/oracle 18dp baseline, the known 360dp day width remains 44.5625dp and therefore keeps the DEV-01 accessibility row open. That known issue does not authorize the 6dp adaptation.
 
@@ -151,7 +159,7 @@ The Calendar uses the Phase 14 Revision 18 semantic palette, not the existing pr
 | Completion semantic | `#166B4C`, background `#DCECDF` | `#72DF92`, background `#14271A` | Read-only committed set checks/progress, not sport identity |
 | Caution semantic | `#8D5D00`, background `#FFF0C2` | `#F0C84B`, background `#2A2410` | Partial/detail caution only when paired with text/shape |
 | Destructive | `#B42318` | `#FF8279` | Separate history-management confirmation only; no destructive Calendar action |
-| Focus ring | 2dp high-contrast blue, shared Phase 14 token | 2dp high-contrast blue, shared Phase 14 token | Hardware keyboard/D-pad focus; not replaced by selected state |
+| Focus ring | 3dp high-contrast blue, shared Phase 14 token | 3dp high-contrast blue, shared Phase 14 token | Hardware keyboard/D-pad focus with 4dp visual clearance; not replaced by selected state |
 
 Accent is reserved for Running identity, Strength identity, selected/today/focus treatment, the selected Calendar bottom-nav underline, and actionable Today/navigation text. Status is never encoded by a second sport-like hue.
 
@@ -289,6 +297,8 @@ Never use spring, bounce, overshoot, scale, crossfade-only week replacement, or 
 
 `Correct workout`, revision history, draft validation, stale-revision conflict and save/retry remain in the deliberate correction route. `Resume workout` and `Remove from history`/confirmation remain reachable from separate management context. Calendar-origin details expose none of those actions, menus, handlers, keyboard commands or accessibility actions.
 
+CAL-17 closes only when the Calendar row activates the real Phase 17 Running detail and real Phase 18 imported-activity detail, those destinations load the same durable identities, and Back restores the Calendar state/focus described below. Unit tests of a destination union or mocked `router.push` are necessary contract tests but are not integration completion.
+
 Back from any Calendar-origin destination restores the prior month, selected date, expanded week, agenda scroll position and triggering agenda-row focus. Back in Calendar first dismisses Calendar key; then closes read-only detail; then collapses focused week; then follows root navigation.
 
 ## Copywriting Contract
@@ -353,7 +363,7 @@ Copy is calm, factual and source-led. Do not use success language before data is
 
 ## Accessibility, Keyboard and Focus
 
-- Every required target is at least 48×48dp and non-overlapping, subject to the unresolved DEV-01 choice for date columns. Pressed, selected and 2dp visible focus states are distinct.
+- Every required target is at least 48×48dp and non-overlapping, subject to the unresolved DEV-01 choice for date columns. Pressed, selected and the shared Revision 18 / Phase 14 3dp visible focus states are distinct.
 - Each date is one focusable button/gridcell with selected state and an accessible label in this order: full local civil date; today; outside month; rest/empty or event count; every full event name, sport, status and source; selected. Visual chips are accessibility-hidden to avoid duplicate announcements.
 - Monday-first weekday labels are visible but not separate focus stops. The Calendar grid itself has a `Calendar month grid` label and the month heading names the current panel.
 - ArrowLeft/ArrowRight move one civil day; ArrowUp/ArrowDown move seven days. Crossing a panel boundary updates month and preserves focus on the destination date. Enter, Space and D-pad center perform the same action as a single tap. Previous, Today and Next provide a complete non-gesture path.
@@ -366,13 +376,15 @@ Copy is calm, factual and source-led. Do not use success language before data is
 
 ## Performance and Evidence Contract
 
-- Calendar month plus selected-date content: p95 ≤250ms over at least 100 representative source-backed samples.
-- Proposed Phase 16 adoption of NV-PERF-09: at 60Hz, UI frame-work p95 ≤16.67ms over at least 100 complete drag/expand/collapse sequences, with raw missed-frame counts, refresh rate and profiler overhead retained. This is a proposed verification gate from the native matrix, not evidence already passed.
+- Phase 16 development-test runs collect diagnostic Calendar month/selected-date timings over at least 100 representative source-backed samples and retain every raw value, fixture identity, device/build identity, and computed p95. Phase 16 does not accept or reject NV-PERF-07 against the 250ms release/profile target.
+- Phase 16 development-test runs collect diagnostic UI frame work over at least 100 complete drag/expand/collapse sequences, retaining every raw frame value, missed-frame count, refresh rate and profiler overhead. The 60Hz p95 ≤16.67ms release/profile acceptance decision belongs exclusively to Phase 20 NV-PERF-09.
 - Verify 1:1 drag at 10%, 24.9%, 25%, and 25.1% in both directions; release below/exactly/above threshold; high-velocity sub-threshold release; retreat below threshold; pointer cancel; vertical/diagonal intent.
 - Verify first/middle/last selected rows, month-boundary adjacent weeks, December↔January, leap February, and four/five/six-row months.
 - Verify normal/reduced motion, runtime motion toggle, rapid repeated taps, reverse during settle, second drag, rotation/background/cancel, and stale callback suppression.
 - Component tests prove roles/copy/routing/controller decisions. Native timestamped geometry/semantic traces and intermediate captures are mandatory for drag and row morph; final screenshots or Jest animation mocks alone do not pass.
-- Compare the identical fixture/theme/viewport against Revision 18 in Light and Dark. Retain reference/native captures plus overlays/differences. Any unexplained difference blocks parity.
+- Map each native capture to one exact Revision 18 reference by requirement/state/fixture/theme/viewport/orientation/font/motion/input identity and source-manifest hash. Generate and retain the individual reference, native, overlay, absolute-difference, mask, and machine-readable comparison record with hashes; contact sheets are indexes only.
+- Classify each non-clean comparison using the shared v1.2 vocabulary and a specific measured explanation/deviation reference. A missing map/capture/artifact/hash, duplicate mapping, stale source identity, or unexplained difference fails closed and blocks parity.
+- Compare the identical fixture/theme/viewport against Revision 18 in Light and Dark. No pixel percentage can excuse changed semantics, route, authority, copy, focus, target geometry, sport/status encoding, or an unaccepted deviation.
 - Run the full appearance/viewport/orientation/font/input matrix from the native verification contract, including System under both OS schemes, 360×800, 390×844, 600×960, 840×1080 equivalents and corresponding landscapes, text 1.0/2.0, touch/keyboard/D-pad.
 - Navigation and detail disclosure must produce zero source mutation commands, set completions, rest effects, correction saves, removals or implicit matches.
 

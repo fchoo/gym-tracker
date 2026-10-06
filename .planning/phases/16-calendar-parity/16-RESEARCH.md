@@ -86,11 +86,11 @@ Calendar correction controls, generic timeline redesign, and automatic activity 
 
 Phase 16 is a coordinated data-contract, interaction-controller, native-motion, routing-authority, and evidence phase—not a reskin of the shipped Calendar. The live `CalendarScreen` is Sunday-first, always renders 42 cells, settles at a fixed 72dp only on gesture end, runs its pan callback on the JS thread, and represents a date as status flags plus selected-day Strength sessions. The locked v1.2 contract instead requires Monday-first four/five/six-row months, distinct same-day typed events, continuous three-panel motion, inclusive 25% preview/settle behavior, measured row morphs, retained last-good query state, and durable destination identities. [VERIFIED: src/ui/screens/CalendarScreen.tsx:49-65,122-145,189-220,365-495] [VERIFIED: src/domains/history/contracts.ts:69-86] [VERIFIED: .planning/phases/16-calendar-parity/16-UI-SPEC.md:175-245]
 
-The planner should structure the phase as five vertical slices: (1) civil-date/event-contract readiness; (2) a pure, exhaustively tested transition controller; (3) UI-thread month drag and measured focus/collapse geometry; (4) compact agenda plus capability-separated read-only destinations and return focus; and (5) native parity/performance/evidence closure. Phase 13's range-query event port and Phase 15's Active-shaped presentation are hard dependencies. The current `CalendarMonth`/`SessionDetailRoute` seams must not be treated as those completed dependencies. [VERIFIED: .planning/ROADMAP.md:138-156] [VERIFIED: .planning/architecture/v1.2-multi-active-plans.md:133-147] [VERIFIED: app/session/[sessionId].tsx:30-125]
+The planner should structure the phase as seven vertical plans: (1) dependency/controller and owner gates; (2) civil-date/event month surface; (3) capability-separated Strength detail/occurrence preview; (4) UI-thread month drag and measured focus/collapse geometry; (5) compact agenda and destination intents; (6) diagnostic native/reference capture; and (7) final integration/verifier work after the real downstream routes exist. Phase 13's range-query event port plus exact planned-Strength loader, Phase 15's Active-shaped presentation, Phase 17 Plan 17-08 Running detail, and Phase 18 Plans 18-08/18-14 imported-activity detail/Calendar registration are hard dependencies. The current `CalendarMonth`/`SessionDetailRoute` seams, mocked href assertions, and fixture destinations must not be treated as those completed dependencies. [VERIFIED: .planning/ROADMAP.md:138-156] [PLANNED: .planning/phases/13-multi-plan-running-foundation/13-02-PLAN.md] [PLANNED: .planning/phases/17-library-running-plans/17-08-PLAN.md] [PLANNED: .planning/phases/18-garmin-import/18-08-PLAN.md] [PLANNED: .planning/phases/18-garmin-import/18-14-PLAN.md]
 
 Two explicit owner gates remain. DEV-01 must precede the final 360dp date-column geometry branch, and DEV-02 must precede the Light Strength-title color branch; the oracle values stay the baseline until the owner records a dated selection. The phase may build controller/data/read-only work around those gates, but cannot silently choose either adaptation. [VERIFIED: .planning/design/v1.2-DEVIATIONS.md:3-16] [VERIFIED: .planning/phases/16-calendar-parity/16-UI-SPEC.md:68-77]
 
-**Primary recommendation:** Consume Phase 13's stable per-event range query, drive one semantic controller from pointer/buttons/keyboard/reduced motion, keep per-frame motion and measurement on the UI thread, and expose Calendar details through query-only capabilities with native intermediate-geometry evidence before declaring parity. [VERIFIED: .planning/architecture/v1.2-multi-active-plans.md:143-147] [VERIFIED: .planning/verification/v1.2-native-verification-matrix.md:73-89]
+**Primary recommendation:** Consume Phase 13's stable per-event range query and exact `loadPlannedStrengthOccurrence`, drive one semantic controller from pointer/buttons/keyboard/reduced motion, keep per-frame motion and measurement on the UI thread, and expose Calendar details through query-only capabilities. Capture development-test geometry/performance as diagnostic evidence, bind native/reference overlays and differences fail-closed, and close CAL-17/CAL-20 only after executing against the real Phase 17/18 destinations. Phase 20 alone owns release/profile performance acceptance. [VERIFIED: .planning/architecture/v1.2-multi-active-plans.md:143-147] [VERIFIED: .planning/verification/v1.2-native-verification-matrix.md:73-89,140-154]
 
 ## Architectural Responsibility Map
 
@@ -103,7 +103,7 @@ Two explicit owner gates remain. DEV-01 must precede the final 360dp date-column
 | Agenda presentation and route dispatch | Browser / Client | Local runtime query port | UI presents one target and selects a destination from the typed event; runtime reads exact durable identity. [VERIFIED: .planning/phases/16-calendar-parity/16-UI-SPEC.md:247-263,279-292] |
 | Read-only historical/occurrence detail | Browser / Client | Database / Storage | Client receives query-only capability; repositories load committed session/occurrence facts. No mutation command is injected in Calendar origin. [VERIFIED: .planning/phases/16-calendar-parity/16-UI-SPEC.md:279-292] |
 | Focus/Back/modal restoration | Browser / Client | Frontend navigation | Calendar owns refs, scroll anchor, invoking event identity, and `useFocusEffect`; route stack only reports focus/Back. [CITED: https://docs.expo.dev/versions/latest/sdk/router/] [VERIFIED: src/ui/components/index.ts:215-264] |
-| Visual/native/performance evidence | Client verification harness | Android tooling | Jest proves decisions and roles; Android traces/screenshots prove hit testing, real geometry, frame work, and motion continuity. [VERIFIED: .planning/verification/v1.2-native-verification-matrix.md:73-89,142-158] |
+| Visual/native diagnostic evidence | Client verification harness | Android tooling | Jest proves decisions and roles; development-test Android traces/screenshots prove hit testing, real geometry and motion continuity, while mapped reference/native overlays/differences expose unexplained drift. Release/profile performance verdicts remain Phase 20-owned. [VERIFIED: .planning/verification/v1.2-native-verification-matrix.md:73-89,138-154] |
 
 ## Project Constraints (from .trae/rules/rules.md)
 
@@ -144,7 +144,7 @@ export type CalendarMonth = Readonly<{
 
 That contract cannot carry multiple independent same-date event identities, sport, full title, source identity, occurrence/import identity, or destination. Phase 16 must consume the Phase 13 typed-event range query described by the architecture contract; it must not add those facts by inferring from status glyphs in `CalendarScreen`. [VERIFIED: .planning/architecture/v1.2-multi-active-plans.md:143-147] [VERIFIED: src/ui/screens/CalendarScreen.tsx:147-175,203-241]
 
-The current repository scans all history rows, then issues a per-session count query before reducing dates to status arrays; this is both the wrong shape and an N+1 performance risk for the Phase 16 combined-event p95 gate. Bind Phase 16 to the Phase 13 range-indexed, batched repository rather than expanding `createHistoryRepository.loadCalendarMonth` in the screen layer. [VERIFIED: src/platform/sqlite/repositories/historyRepository.ts:760-863] [VERIFIED: .planning/research/v1.2/ARCHITECTURE.md:69-70,133-142]
+The current repository scans all history rows, then issues a per-session count query before reducing dates to status arrays; this is both the wrong shape and an N+1 performance risk surfaced by Phase 16 diagnostics and ultimately judged by Phase 20's combined-event performance gate. Bind Phase 16 to the Phase 13 range-indexed, batched repository rather than expanding `createHistoryRepository.loadCalendarMonth` in the screen layer. [VERIFIED: src/platform/sqlite/repositories/historyRepository.ts:760-863] [VERIFIED: .planning/research/v1.2/ARCHITECTURE.md:69-70,133-142]
 
 ### Live implementation gaps
 
@@ -194,7 +194,7 @@ The current repository scans all history rows, then issues a per-session count q
 | Instead of | Could use | Tradeoff / disposition |
 |---|---|---|
 | Pinned Gesture Handler + Reanimated | React Native JS responder / `Animated` | Rejected: the contract requires continuous native pointer tracking, UI-thread frame work, measured morphs, and cancellation evidence. [VERIFIED: .planning/phases/16-calendar-parity/16-UI-SPEC.md:217-245,367-377] |
-| Pure controller + UI-thread shared values | React state on every pointer update | Rejected: per-frame React updates fight the 16.67ms frame-work gate and complicate stale callback suppression. [VERIFIED: .planning/verification/v1.2-native-verification-matrix.md:79-89,154-154] |
+| Pure controller + UI-thread shared values | React state on every pointer update | Rejected: per-frame React updates distort Phase 16 diagnostics, jeopardize Phase 20's 16.67ms release/profile gate, and complicate stale callback suppression. [VERIFIED: .planning/verification/v1.2-native-verification-matrix.md:79-89,154-154] |
 | Phase 13 typed event range query | Extend current status-set `CalendarMonth` | Rejected: status sets flatten independent events and cannot route by occurrence/import identity. [VERIFIED: src/domains/history/contracts.ts:69-86] [VERIFIED: .planning/architecture/v1.2-multi-active-plans.md:143-147] |
 | Capability-separated read-only route | Hide mutation buttons with CSS/conditions while keeping handlers | Rejected: Calendar-origin detail must expose no actions, handlers, keyboard commands, accessibility actions, or mutation ports. [VERIFIED: .planning/phases/16-calendar-parity/16-UI-SPEC.md:279-292] |
 
@@ -268,6 +268,7 @@ src/
 ├── platform/sqlite/repositories/
 │   └── trainingCalendarRepository.ts        # Phase 13 typed range-query dependency
 ├── ui/calendar/
+│   ├── calendarPorts.ts                     # narrow Phase 13/15 read-only aliases
 │   ├── calendarTransitionController.ts      # pure state machine and transition epochs
 │   ├── CalendarMonthViewport.tsx            # UI-thread pager and measured week overlays
 │   ├── CalendarWeekRow.tsx                  # shared month/focused/adjacent row renderer
@@ -281,7 +282,12 @@ tests + evidence/
 ├── src/ui/__tests__/CalendarScreen.test.tsx
 ├── src/ui/__tests__/CalendarTransitions.test.tsx
 ├── src/ui/__tests__/PlannedWorkoutDetailScreen.test.tsx
+├── app/__tests__/calendar-cross-destination-route.test.tsx
+├── src/bootstrap/phase16CalendarTestControls.ts
 ├── maestro/v1.2/calendar.yaml
+├── .planning/phases/16-calendar-parity/16-REFERENCE-MAP.json
+├── scripts/compare-v12-calendar.mjs
+├── scripts/v12-calendar-comparison.test.mjs
 ├── scripts/benchmark-v12-interactions.mjs
 ├── scripts/verify-v12-native-evidence.mjs
 └── scripts/v12-evidence-scripts.test.mjs
@@ -301,7 +307,7 @@ tests + evidence/
 | `CalendarScreen.tsx` | Compose Phase 14 shell, key dialog, query state, controller, agenda, refs, and route callback. | SQL, fake fixture fallback, full-runtime mutation authority, or frame-by-frame React state. |
 | `app/(tabs)/calendar.tsx` | Adapt the query-only runtime port, build exact deep-route href from the event destination, and preserve return identity. | Inspect event titles/dates to guess destination. |
 | `SessionDetailScreen` / shared read-only presenter | Render committed facts and disclosures under an explicit Calendar capability. | Correct, Resume, Remove, edit, complete, reorder, settings, or exercise-history handlers in Calendar mode. |
-| `PlannedWorkoutDetailScreen` | Load exact occurrence identity; show targets and `0 of N sets`; missing/stale state. | Create a workout session, completed set, result, rest effect, or Start action. |
+| `PlannedWorkoutDetailScreen` | Call exact `TrainingFoundationRuntimePort.loadPlannedStrengthOccurrence(occurrenceId)`; render the deeply immutable target-bearing `PlannedStrengthOccurrenceDetail`; show `0 of N sets`; map `null` to missing/stale. | Create a workout session, completed set, result, rest effect, Start action, or current-activation fallback. |
 
 ### Pattern 1: One Semantic Controller, Two Execution Planes
 
@@ -356,7 +362,7 @@ The Calendar adapter must switch on the typed destination supplied by Phase 13, 
 | Imported Running | durable imported activity identity | planned `app/garmin/activity/[activityId].tsx` | query imported facts; Calendar return token |
 | Missing/stale identity | original requested identity | dedicated unavailable state | Back + Calendar refresh only |
 
-The destination table is locked by the UI contract; the concrete planned Running and Garmin destination files belong to Phases 17 and 18 in the canonical parity matrix. Phase 16 must implement and test exact dispatch intent now, but the planner/plan-checker must not falsely claim those later screens already exist. [VERIFIED: .planning/phases/16-calendar-parity/16-UI-SPEC.md:279-292] [VERIFIED: .planning/design/v1.2-prototype-parity-matrix.md:134-140,169-169,196-197]
+The destination table is locked by the UI contract. Phase 17 Plan 17-08 owns the real Running detail route, Phase 18 Plan 18-08 owns the real imported-activity detail route, and Phase 18 Plan 18-14 registers Calendar-origin return behavior. Phase 16 can establish the event union and internal Strength destinations earlier, but CAL-17/CAL-20 integration closure must run later against those real implementations. Mocked router calls, href-only assertions, fixture screens, and placeholders are not completion. [PLANNED: .planning/phases/17-library-running-plans/17-08-PLAN.md] [PLANNED: .planning/phases/18-garmin-import/18-08-PLAN.md] [PLANNED: .planning/phases/18-garmin-import/18-14-PLAN.md]
 
 ### Pattern 6: Compile-Time Read-Only Capability
 
@@ -374,18 +380,28 @@ Calendar Back priority is exact: dismiss key, close read-only detail, collapse f
 
 | Gate | Baseline before decision | Comparison task | Implementation stop |
 |---|---|---|---|
-| DEV-01 | `18dp` horizontal inset and `2dp` gaps; known `44.5625dp` day width at 360dp | Identical source-backed month fixture at 360×800, both themes if relevant: baseline versus `min(18, max(0, (safeWidth - 348) / 2))`; overlay and native non-overlap bounds | Stop before committing the final Calendar date-column inset/acceptance branch. Keep `18dp` until the owner records choice/date. |
-| DEV-02 | Light Strength title `#D97820` | Identical Light complete/partial/planned chips on paper and selected fill: oracle versus title-only `#9B470B`; contrast plus overlay | Stop before committing final Light Strength-title token. Keep `#D97820` until recorded. |
+| DEV-01 | `18dp` horizontal inset and `2dp` gaps; known `44.5625dp` day width at 360dp | Identical source-backed month fixture at 360×800, both themes if relevant: baseline versus `min(18, max(0, (safeWidth - 348) / 2))`; overlay and native non-overlap bounds | Stop before the final branch. Adaptation requires passing evidence; retaining `18dp` requires a dated scoped accepted exception, otherwise `BLOCKED_OWNER`. |
+| DEV-02 | Light Strength title `#D97820` | Identical Light complete/partial/planned chips on paper and selected fill: oracle versus title-only `#9B470B`; contrast plus overlay | Stop before the final branch. Adaptation requires passing evidence; retaining `#D97820` with the measured failure requires a dated scoped accepted exception, otherwise `BLOCKED_OWNER`. |
 
 These quoted baseline/adaptation values are verbatim from the deviation register and remain proposals, not defaults. [VERIFIED: .planning/design/v1.2-DEVIATIONS.md:3-16]
 
-## Performance Architecture
+An open decision or incomplete chosen-branch evidence keeps every affected row `BLOCKED_OWNER`; an aggregate containing such a row cannot be all-pass. An accepted adaptation must pass its complete native/reference comparison and accessibility measurements. If the owner retains the oracle and its known accessibility failure remains, the deviation register must contain a separately dated/scoped accepted exception; absent that exception, closure blocks. `ACCEPTED_EXCEPTION` remains distinct from PASS.
 
-- Query gate: Calendar month plus selected-date content must achieve `p95≤250 ms` over at least `100` representative source-backed samples; sample real multi-plan/import event counts and record raw durations. [VERIFIED: .planning/verification/v1.2-native-verification-matrix.md:152-152]
-- Frame gate: adopt the UI-SPEC's proposed `60 Hz`, `p95≤16.67 ms` UI frame-work gate over at least `100` complete drag/expand/collapse sequences, retaining refresh rate, raw missed-frame counts, and profiler overhead. Jest timing and nominal animation duration do not satisfy it. [VERIFIED: .planning/phases/16-calendar-parity/16-UI-SPEC.md:367-377] [VERIFIED: .planning/verification/v1.2-native-verification-matrix.md:154-154]
+## Diagnostic Performance Architecture
+
+- Query diagnostics: collect at least `100` representative source-backed Calendar month plus selected-date samples with real multi-plan/import counts and every raw duration. Compute p95 and retain the 250ms target as metadata, but Phase 16 development-test evidence does not assign the NV-PERF-07 release/profile verdict. [VERIFIED: .planning/verification/v1.2-native-verification-matrix.md:152-152]
+- Frame diagnostics: collect at least `100` complete drag/expand/collapse sequences with raw frame work, missed frames, refresh rate and profiler overhead. Compute p95 and retain the 60Hz 16.67ms target as metadata, but Phase 20 Plan 20-08 alone assigns NV-PERF-09 acceptance on release/profile evidence. Jest timing and nominal animation duration prove neither gate. [PLANNED: .planning/phases/20-native-acceptance/20-08-PLAN.md]
 - Keep pointer updates, clamping, transform, and measurement on the UI thread. Cross to React/JS only on preview-boundary change, semantic settle/cancel completion, focus, and route/query intent. [CITED: https://docs.swmansion.com/react-native-gesture-handler/docs/2.x/gestures/pan-gesture/] [CITED: https://docs.swmansion.com/react-native-reanimated/docs/advanced/measure/]
 - Query previous/current/next panels as one bounded coherent range or cache adjacent range results; do not re-scan all history or issue one count query per session. [VERIFIED: src/platform/sqlite/repositories/historyRepository.ts:760-863] [VERIFIED: .planning/research/v1.2/ARCHITECTURE.md:69-70,137-142]
-- Use release/dev-test native evidence tied to exact build/source identity. The existing Phase 3 benchmark has a `100` sample, `250ms` p95, `50ms` JS-task checker but explicitly defers generation; reuse the envelope pattern, not its absent evidence. [VERIFIED: scripts/benchmark-phase3.mjs:25-39,64-95,144-159]
+- Use development-test native diagnostics tied to exact build/source identity. The existing Phase 3 benchmark has a `100` sample, `250ms` p95, `50ms` JS-task checker but explicitly defers generation; reuse its raw-sample envelope, not its absent evidence or acceptance authority. Phase 20 reruns release/profile measurements. [VERIFIED: scripts/benchmark-phase3.mjs:25-39,64-95,144-159]
+
+## Native / Reference Comparison Architecture
+
+- `.planning/phases/16-calendar-parity/16-REFERENCE-MAP.json` maps every required Calendar capture to exactly one Revision 18 reference using requirement, state, fixture, theme, measured viewport/orientation/font, motion/input, prototype revision, and source-manifest hash.
+- `scripts/compare-v12-calendar.mjs` generates and hashes individual reference, native, overlay, absolute-difference, mask, and canonical comparison JSON artifacts. It must not rescale/stretch mismatched bounds or use a contact sheet as source evidence.
+- `scripts/v12-calendar-comparison.test.mjs` rejects missing/duplicate/extra mappings, stale hashes, path escapes/symlinks, requested-versus-measured configuration mismatch, missing constituent images, unknown classifications, and semantic/authority/focus/target differences regardless of pixel percentage.
+- Clean comparisons may pass. An accepted adaptation is `accepted_deviation`; a retained oracle with an unresolved accessibility failure is `BLOCKED_OWNER` unless a dated/scoped accepted exception exists, in which case it is `ACCEPTED_EXCEPTION`, never PASS. Every other unexplained product difference fails closed.
+- Phase 20 may ingest these Phase 16 diagnostic artifacts, but it revalidates their bytes and independently owns release/profile visual and performance acceptance.
 
 ## Anti-Patterns to Avoid
 
@@ -490,12 +506,12 @@ These quoted baseline/adaptation values are verbatim from the deviation register
 **Warning signs:** grid unmounts for selection changes; generic global error route; retry changes selection.  
 [VERIFIED: src/ui/screens/CalendarScreen.tsx:382-447] [VERIFIED: .planning/phases/16-calendar-parity/16-UI-SPEC.md:331-350]
 
-### Pitfall 10: Treating future destination routes as already implemented
+### Pitfall 10: Treating downstream destination contracts as integrated routes
 
 **What goes wrong:** CAL-17 tests pass against mocked `router.push`, but planned Running/Garmin taps lead to missing screens in the phase artifact.  
 **Why it happens:** Phase 17/18 route targets are named in the parity matrix but come later in the roadmap.  
-**How to avoid:** Distinguish Phase 16 dispatch-contract proof from downstream destination E2E; plan checker must either adjust phase dependency/ownership or keep the end-to-end row explicitly pending. Never add fake detail screens.  
-**Warning signs:** a stub route is counted as CAL-17 complete or imported fixture facts are presented without Phase 18.  
+**How to avoid:** Make Phase 16 execution depend on Phase 17/18, then reserve CAL-17/CAL-20 closure for a final plan that opens the real `app/library/running/[planId].tsx` and `app/garmin/activity/[activityId].tsx` routes and proves Back/focus with their actual loaders. Never add fake detail screens.
+**Warning signs:** a mocked `router.push`, href assertion, fixture/stub route, or pre-17/18 summary is counted as CAL-17 complete.
 [VERIFIED: .planning/ROADMAP.md:158-196] [VERIFIED: .planning/design/v1.2-prototype-parity-matrix.md:134-140,169-169,196-197]
 
 ## Code Examples
@@ -588,7 +604,7 @@ Expo Router documents `useFocusEffect` for work whenever a route becomes focused
 | Selected-date cards below static month | Measured selected/following week spatial morph with anchored agenda | Matches Revision 18 continuity and adjacent sequence. [VERIFIED: .planning/phases/16-calendar-parity/16-UI-SPEC.md:188-195,235-245] |
 | Direct mutable session route | Query-only Calendar capability plus separate management origin | Prevents Calendar from acquiring correction/resume/remove authority. [VERIFIED: app/(tabs)/calendar.tsx:23-33] [VERIFIED: .planning/phases/16-calendar-parity/16-UI-SPEC.md:279-292] |
 | Reanimated startup reduced-motion hook as common advice | Existing RN `AccessibilityInfo` runtime subscription feeds controller and animation policy | Satisfies runtime toggle and deterministic cancellation. [CITED: https://docs.swmansion.com/react-native-reanimated/docs/device/useReducedMotion/] [VERIFIED: src/ui/theme/index.ts:243-295] |
-| Final screenshot/mocked duration proof | Timestamped intermediate geometry/semantics plus frame trace and exact build identity | Closes actual native gesture, hit, continuity and performance requirements. [VERIFIED: .planning/verification/v1.2-native-verification-matrix.md:73-89,142-158] |
+| Final screenshot/mocked duration proof | Timestamped intermediate geometry/semantics plus frame diagnostics and exact build identity | Closes Phase 16 gesture/hit/continuity claims; Phase 20 independently closes release/profile performance. [VERIFIED: .planning/verification/v1.2-native-verification-matrix.md:73-89,142-158] |
 
 **Deprecated/outdated:**
 
@@ -602,27 +618,26 @@ Expo Router documents `useFocusEffect` for work whenever a route becomes focused
 |---|---|---|---|
 | — | None. Recommendations are grounded in locked Phase 16 artifacts, opened live sources, or cited official documentation. Proposed new internal file boundaries are explicitly recommendations, not claims that files already exist. | — | — |
 
-## Open Questions
+## Resolved Questions and Execution Gates
 
-1. **What exact Phase 13 exported event/read-port symbols will Phase 16 consume?**
-   - What we know: the architecture locks the DTO contents and proposes `trainingCalendarRepository.ts`, but the live checkout still exposes `CalendarMonth` status sets. [VERIFIED: .planning/architecture/v1.2-multi-active-plans.md:133-147] [VERIFIED: src/domains/history/contracts.ts:69-86]
-   - What's unclear: Phase 13 has not yet materialized the final symbol names in this checkout.
-   - Recommendation: make the first Phase 16 task a dependency preflight that reads Phase 13's implemented exports and binds an adapter; if absent, stop as an unmet upstream phase rather than inventing a competing Calendar data model.
+1. **Phase 13 event and planned-Strength contracts — RESOLVED.**
+   - Phase 13 Plan 13-05 owns `TrainingFoundationRuntimePort` and the bounded typed Calendar event range over `trainingCalendarRepository.ts`.
+   - Phase 13 Plan 13-02 owns `PlannedStrengthOccurrenceDetail` in `src/domains/workout/index.ts`, `TrainingFoundationRuntimePort.loadPlannedStrengthOccurrence(occurrenceId: string): Promise<PlannedStrengthOccurrenceDetail | null>` in `src/bootstrap/trainingFoundationRuntime.ts`, and the exact-provenance repository loader in `src/platform/sqlite/repositories/plansWorkoutRepository.ts`.
+   - Phase 16 preflights both exact contracts and stops if the DTO is not deeply immutable/target-bearing or stale provenance does not return `null`; it never invents a competing model or current-activation fallback.
 
-2. **How will CAL-17 close end-to-end before Phase 17/18 destination screens exist?**
-   - What we know: Phase 16 is ordered before Library/Running and Garmin, while CAL-17 names those destinations; the parity matrix marks their files planned. [VERIFIED: .planning/ROADMAP.md:138-196] [VERIFIED: .planning/design/v1.2-prototype-parity-matrix.md:134-140,169-169,196-197]
-   - What's unclear: whether the milestone expects Phase 16 to own minimal destination read screens, to move the requirement's E2E closure later, or to change dependency order.
-   - Recommendation: Phase 16 implements and tests the durable dispatch contract and Calendar return token, but the planner/plan-checker must explicitly resolve ownership before calling CAL-17 fully complete; do not ship fixture/stub destinations.
+2. **CAL-17 downstream destination closure — RESOLVED.**
+   - Phase 17 Plan 17-08 owns `app/library/running/[planId].tsx` and `RunningPlanDetailScreen`.
+   - Phase 18 Plan 18-08 owns `app/garmin/activity/[activityId].tsx` and `ImportedActivityDetailScreen`; Plan 18-14 owns Calendar-origin registration/return integration on the Garmin side.
+   - Phase 16 full integration depends on those real outputs and closes in its final plan. Earlier union/component tests are not CAL-17 completion; mocked hrefs, fixture destinations, and placeholder screens are forbidden.
 
-3. **What exact Phase 15 presenter is reusable for Calendar read-only detail?**
-   - What we know: the Phase 15 contract promises Active-shaped presentation reuse, while the live `SessionDetailScreen` is not that final presenter. [VERIFIED: .planning/phases/15-workout-parity/15-CONTEXT.md:51-61] [VERIFIED: src/ui/screens/SessionDetailScreen.tsx:109-396]
-   - What's unclear: the post-Phase-15 component/symbol boundary is not materialized yet.
-   - Recommendation: preflight Phase 15 exports, consume its row/exercise presenter through a query-only capability, and prohibit a duplicate Calendar-only set renderer unless the plan documents why shared presentation cannot satisfy the contract.
+3. **Phase 15 presenter — RESOLVED.**
+   - Phase 15 Plan 15-01 owns `src/domains/workout/workoutPresentation.ts` (`WorkoutPresentationModel`) and `src/ui/components/WorkoutSessionPresentation.tsx` (command-free presentation/disclosure).
+   - Phase 16 preflights those exact exports and stops rather than duplicating the presenter or passing mutation capabilities.
 
-4. **DEV-01 and DEV-02 owner dispositions remain intentionally open.**
-   - What we know: current/oracle `18dp` and `#D97820` remain baselines; adaptations are proposed only. [VERIFIED: .planning/design/v1.2-DEVIATIONS.md:3-16]
-   - What's unclear: owner selection and date.
-   - Recommendation: include two `checkpoint:decision` tasks before affected implementation, with identical fixtures and recorded deviation updates; continue unaffected work meanwhile.
+4. **DEV-01 and DEV-02 outcome semantics — RESOLVED; owner choices remain pending.**
+   - Open decisions or incomplete chosen-branch evidence yield `BLOCKED_OWNER` and prevent an all-pass result.
+   - An accepted adaptation must pass its full native/reference and accessibility evidence.
+   - A retained oracle with a continuing known failure needs a separately dated/scoped accepted exception; without it closure blocks, and with it the row is `ACCEPTED_EXCEPTION`, not PASS.
 
 ## Environment Availability
 
@@ -667,11 +682,11 @@ No test, build, emulator, device mutation, or native evidence command was run du
 | CAL-07–09 | 1:1 drag; 7dp/1.15 intent; inclusive 25%; no velocity; 240ms exact easing; cancellation/epoch | pure controller + component + native gesture/frame | `CalendarTransitions.test.tsx`; NV-CAL-01–03; 10/24.9/25/25.1 traces both directions | ❌ Wave 0 transition/evidence files |
 | CAL-10–11 | Previous/Next/Today clamp; actual local today; arrows ±1/±7; activation/focus | unit + component + D-pad native | pure/localDate tests + `CalendarScreen.test.tsx` + keyboard/D-pad trace | Current partial; new Today/focus cases missing |
 | CAL-12–15 | expand/collapse/adjacent sequence; measured first/middle/last rows; reduced-motion equivalence/runtime toggle | pure controller + component + native geometry | NV-CAL-04–08; timestamped coordinates/captures; normal/reduced paired ledger | ❌ Wave 0 transition/native flow |
-| CAL-16–17 | one agenda action; exact identity dispatch for every event kind; missing identity | component + route | `CalendarScreen.test.tsx` route matrix and source-order/overflow cases | Current test exists but typed-event route matrix missing |
+| CAL-16–17 | one agenda action; exact identity dispatch for every event kind; real Running/Garmin destination load and Back | component + real cross-route + native | `CalendarScreen.test.tsx` source-order/union cases plus final route tests against Phase 17 Plan 17-08 and Phase 18 Plans 18-08/18-14 outputs | Current test exists; real downstream routes are explicit prerequisites |
 | CAL-18–20 | read-only committed/partial detail; occurrence preview; disclosures; Back restores state/focus/scroll | component + route + native Back | `CalendarTransitions.test.tsx`, `PlannedWorkoutDetailScreen.test.tsx`, shared session detail regressions, Android Back/focus trace | Planned preview files missing; current management test exists |
 | CAL-21 | initial/loading/refresh/zero/rest/stale/error/retry/missing; last-good state; stale response suppression | unit + component + repository | controller/query tests + `CalendarScreen.test.tsx` deferred-promise race cases | Current basic retry exists; retained/race cases missing |
 | CAL-22–23 | correction/resume/remove preserved only in management; Calendar issues zero mutation | component + route + integration + source digest | targeted `WorkoutCompletionScreen.test.tsx`, `SessionCorrectionScreen.test.tsx`, `RemovedSessionsScreen.test.tsx`; native pre/post digest | Existing regressions present; Calendar-origin zero-command tests missing |
-| CAL-01–23 | query latency and UI frame work | native benchmark | ≥100 query samples; ≥100 complete gesture/morph sequences; raw values/missed frames | ❌ planned benchmark/evidence scripts |
+| CAL-01–23 | query latency and UI frame work diagnostics | native diagnostic producer | ≥100 query samples; ≥100 complete gesture/morph sequences; raw values/missed frames/refresh rate/overhead; no Phase 16 acceptance verdict | ❌ planned diagnostic/evidence scripts; Phase 20 Plan 20-08 owns acceptance |
 
 ### Exact Transition and Geometry Matrix
 
@@ -686,16 +701,18 @@ No test, build, emulator, device mutation, or native evidence command was run du
 - **Per task commit:** relevant quick pure/component/repository command; all must run after `npm ci`.
 - **Per wave merge:** `npm run typecheck && npm run lint && npm run check:boundaries && npm run test:unit -- --runInBand && npm run test:components -- --runInBand && npm run test:sqlite:host -- --runInBand && npm run test:integration -- --runInBand`.
 - **Before native evidence:** `npm run test:coverage -- --runInBand` plus evidence-validator tests; exact reviewed source/build manifest.
-- **Phase gate:** full automated suite green; DEV-01/02 recorded; NV-CAL-01–09 passed with intermediate evidence; query/frame budgets passed; no unexplained Revision 18 difference; zero mutation digest; downstream route ownership explicitly resolved.
+- **Phase gate:** full automated suite green; real Phase 17/18 destination journeys pass; NV-CAL-01–09 functional assertions have intermediate evidence; every mapped native/reference/overlay/difference artifact is present and explained; zero mutation digest holds; DEV-01/02 outcome rules are enforced; query/frame diagnostic samples are complete and handed to Phase 20 without a Phase 16 release/profile verdict.
 
 ### Wave 0 Gaps
 
 - [ ] `npm ci` — materialize the checked-in lock before any JS checks; manifests remain unchanged.
-- [ ] Resolve Phase 13's final typed Calendar event/read-port symbols and corresponding real SQLite test file.
-- [ ] Resolve Phase 15's final shared read-only workout presenter symbol.
+- [ ] Resolve and verify Phase 13's typed Calendar range read plus exact `TrainingFoundationRuntimePort.loadPlannedStrengthOccurrence(occurrenceId)` / `PlannedStrengthOccurrenceDetail`; stop if the planned contract or real SQLite tests are absent.
+- [ ] Resolve Phase 15's exact `WorkoutPresentationModel` and `WorkoutSessionPresentation` exports; stop if the presenter accepts mutation capabilities.
+- [ ] Before the final integration plan, require Phase 17 `17-08-SUMMARY.md` and real Running route tests plus Phase 18 `18-08-SUMMARY.md`/`18-14-SUMMARY.md` and real imported-activity/Calendar-origin route tests.
 - [ ] `src/ui/__tests__/CalendarTransitions.test.tsx` — pure/controlled interaction matrix for CAL-07–15 and CAL-20/21; this is a planned path. [VERIFIED: .planning/verification/v1.2-native-verification-matrix.md:34-34]
 - [ ] `src/ui/__tests__/PlannedWorkoutDetailScreen.test.tsx` — occurrence preview/missing identity for CAL-19; this is a planned path. [VERIFIED: .planning/design/v1.2-prototype-parity-matrix.md:136-136]
 - [ ] `maestro/v1.2/calendar.yaml` — native gestures, Back, focus, viewports, reduced motion; this is a planned path. [VERIFIED: .planning/verification/v1.2-native-verification-matrix.md:34-34]
+- [ ] `.planning/phases/16-calendar-parity/16-REFERENCE-MAP.json`, `scripts/compare-v12-calendar.mjs`, and `scripts/v12-calendar-comparison.test.mjs` — exact Revision 18 mapping plus fail-closed individual overlay/difference generation and classification.
 - [ ] `scripts/run-v12-maestro.mjs`, `scripts/verify-v12-native-evidence.mjs`, `scripts/v12-evidence-scripts.test.mjs` — identity-bound evidence envelope and adversarial checker tests; these are planned paths. [VERIFIED: .planning/verification/v1.2-native-verification-matrix.md:34-34]
 - [ ] `scripts/benchmark-v12-interactions.mjs` — raw query/frame samples, refresh rate, missed frames, profiler overhead; this is a planned path. [VERIFIED: .planning/verification/v1.2-native-verification-matrix.md:34-34,152-154]
 - [ ] Add the pure transition controller to `scripts/run-coverage-gate.mjs` if classified integrity-critical; cover every cancellation/epoch/reduced-motion branch at 100%. [VERIFIED: .trae/rules/rules.md:22-23]
@@ -738,6 +755,9 @@ Security enforcement is enabled at ASVS Level 1 and blocks on high severity. [VE
 - `.planning/design/v1.2-browser-evidence/calendar-pointer-evidence.json` — observed pointer/title sequence.
 - `.planning/design/v1.2-prototype-parity-matrix.md:114-140` — exact production targets/tests/evidence.
 - `.planning/verification/v1.2-native-verification-matrix.md:11-34,64-89,142-158` — test architecture, NV-CAL and performance gates.
+- `.planning/phases/13-multi-plan-running-foundation/13-02-PLAN.md` — exact planned-Strength occurrence loader/type contract.
+- `.planning/phases/17-library-running-plans/17-08-PLAN.md` and `.planning/phases/18-garmin-import/18-08-PLAN.md` / `18-14-PLAN.md` — real downstream route ownership and Calendar-origin integration prerequisites.
+- `.planning/phases/20-native-acceptance/20-06-PLAN.md` / `20-08-PLAN.md` — shared visual-comparison contract and release/profile performance acceptance ownership.
 - Opened live sources: `CalendarScreen.tsx`, history contracts/repository, LocalDate, routes/runtime, SessionDetailScreen, theme/focus primitives, current tests and coverage checker.
 
 ### Secondary (MEDIUM confidence)
