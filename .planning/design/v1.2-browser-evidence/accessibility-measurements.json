@@ -1,0 +1,31 @@
+{
+  "calendar_360": {
+    "prototype_day_width_css_px": 44.5625,
+    "horizontal_padding_css_px": 18,
+    "gap_css_px": 2,
+    "required_native_dp": 48,
+    "proposed_native_padding_dp": 6
+  },
+  "contrast": [
+    {
+      "text": "#d97820",
+      "background": "#fffaf0",
+      "ratio": 3.03
+    },
+    {
+      "text": "#d97820",
+      "background": "#dce9f9",
+      "ratio": 2.56
+    },
+    {
+      "text": "#9b470b",
+      "background": "#fffaf0",
+      "ratio": 6.12
+    },
+    {
+      "text": "#9b470b",
+      "background": "#dce9f9",
+      "ratio": 5.17
+    }
+  ]
+}

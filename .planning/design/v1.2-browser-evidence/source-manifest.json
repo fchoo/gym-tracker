@@ -1,0 +1,19 @@
+{
+  "revision": 18,
+  "observed_date": "2026-10-06",
+  "prototype_url": "http://127.0.0.1:8765/approved-hybrid.html",
+  "sources": [
+    {
+      "path": "/Users/bytedance/.gstack/projects/fchoo-gym-tracker/designs/push-inspired-workout-20261001/approved.json",
+      "sha256": "b8e91e3098ec443c9dc283ae8383d1af552d7dc2b83648695a01dcb8a89ff0bf"
+    },
+    {
+      "path": "/Users/bytedance/.gstack/projects/fchoo-gym-tracker/designs/push-inspired-workout-20261001/approved-hybrid.html",
+      "sha256": "b5ddbad88fd465af2fa79475dc0c05efec49e551652f13c5220627730e1d9c96"
+    },
+    {
+      "path": "/Users/bytedance/.gstack/projects/fchoo-gym-tracker/designs/push-inspired-workout-20261001/design-audit-revision18/design-audit-revision18.md",
+      "sha256": "3d121af24fe92907ab035ab49f50473107043bcd9ea126722d5d2132ece7c048"
+    }
+  ]
+}

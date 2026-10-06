@@ -1,0 +1,66 @@
+[
+  {
+    "classes": "cal-month-track",
+    "focused": false,
+    "label": "October 2026",
+    "transform": "matrix(1, 0, 0, 1, -354, 0)",
+    "name": "pointer-down",
+    "dx": 0
+  },
+  {
+    "classes": "cal-month-track dragging",
+    "focused": false,
+    "label": "October 2026",
+    "transform": "matrix(1, 0, 0, 1, -414, 0)",
+    "name": "drag",
+    "dx": -60
+  },
+  {
+    "classes": "cal-month-track dragging",
+    "focused": false,
+    "label": "October 2026",
+    "transform": "matrix(1, 0, 0, 1, -438, 0)",
+    "name": "drag",
+    "dx": -84
+  },
+  {
+    "classes": "cal-month-track dragging",
+    "focused": false,
+    "label": "November 2026",
+    "transform": "matrix(1, 0, 0, 1, -446, 0)",
+    "name": "drag",
+    "dx": -92
+  },
+  {
+    "classes": "cal-month-track dragging",
+    "focused": false,
+    "label": "October 2026",
+    "transform": "matrix(1, 0, 0, 1, -394, 0)",
+    "name": "drag",
+    "dx": -40
+  },
+  {
+    "classes": "cal-month-track",
+    "focused": false,
+    "label": "October 2026",
+    "transform": "matrix(1, 0, 0, 1, -354, 0)",
+    "name": "snap-back",
+    "dx": -40
+  },
+  {
+    "classes": "cal-month-track dragging",
+    "focused": false,
+    "label": "November 2026",
+    "transform": "matrix(1, 0, 0, 1, -454, 0)",
+    "name": "cross-threshold",
+    "dx": -100
+  },
+  {
+    "classes": "cal-month-track",
+    "focused": false,
+    "label": "November 2026",
+    "transform": "matrix(1, 0, 0, 1, -354, 0)",
+    "name": "settled",
+    "dx": -100
+  }
+]
