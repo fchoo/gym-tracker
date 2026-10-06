@@ -56,7 +56,7 @@ Browser evidence proves that the planning oracle was exercised. It does not prov
 - Running best efforts derived only from accepted imported activities at the same distance and time basis.
 - Running history, target editing, recommendation review, Progress settings, and optional bodyweight sheets.
 - Loading, empty, sparse, More data needed, projection rebuild, partial/missing, read error, mutation error, stale revision, retry, zero/one/many, and long-history states.
-- Light, Dark, and System; 200% text; compact/medium/expanded portrait and landscape; keyboard/D-pad; TalkBack; visible focus; reduced motion.
+- Light, Dark, and System; 200% text; compact/medium/expanded portrait and landscape; keyboard/D-pad; semantic names, roles, states, and relationships; visible focus; non-color equivalents; reduced motion.
 
 ### Excluded and prohibited
 
@@ -95,7 +95,7 @@ The repository has no components.json and is Expo/React Native, so the shadcn in
 | AppRootShell / AppTabs | Keep Progress as the fourth and only Progress root; bottom navigation remains bottom at every width and orientation |
 | ScreenHeader | Heading Progress; Body metrics and Settings are supplementary 48dp actions after the heading |
 | AdaptiveScreen | One vertical scroll owner, safe-area insets, retained sport/range/scroll state, bottom-navigation clearance |
-| FocusablePressable | Touch, Enter, Space, D-pad, TalkBack activation use one handler; busy/disabled blocks duplicate commands |
+| FocusablePressable | Touch, Enter, Space, and D-pad activation use one handler; semantic selected/pressed/busy/disabled state remains programmatic and duplicate commands are blocked |
 | BottomSheet | Running history, target, recommendation, Progress settings, and bodyweight surfaces use the shared modal sheet, focus, IME, Back/Escape, scrim, and trigger-return behavior |
 | InlineNotice | Sparse, partial, rebuild, stale, and error states use written heading/body/action; a toast is never the only recovery path |
 | EmptyState / SkeletonBlock | Stable geometry, explicit next step, no placeholder values or zero charts |
@@ -513,7 +513,7 @@ The only destructive action owned by Phase 19 is Delete bodyweight entry. It req
 - Landscape keeps the header and bottom navigation in safe areas and gives root/sheet content one vertical scroll owner. Charts use available width and never force horizontal page scrolling.
 - Long exercise names, target values, source labels, rule versions, and errors wrap. A trailing disclosure owns a separate 48dp column and never overlaps copy.
 
-### Keyboard, D-pad, TalkBack, and focus
+### Keyboard, D-pad, semantic state, and focus
 
 - Focus order follows heading, Body metrics, Settings, sport tabs, ranges, notice, hero facts/chart/data, Evidence, sport sections, then bottom navigation.
 - Root entry focuses Progress. Sport change focuses the selected tab. Range change retains the selected range control. Deep-route Back and every sheet dismissal restore the exact invoking control.
@@ -522,7 +522,7 @@ The only destructive action owned by Phase 19 is Delete bodyweight entry. It req
 - Target/bodyweight validation focuses the first invalid field. Save failures retain focus in the sheet; stale errors focus the notice/recovery action.
 - After bodyweight deletion, focus moves to the next row's Edit bodyweight entry action, the previous row if last, or Add first entry when the list becomes empty.
 - Every icon-only close/settings action has a specific accessible name. Selected, pressed, busy, disabled, expanded, and live-region state is programmatic.
-- Charts never rely on gesture exploration alone. TalkBack reads the visible summary and data equivalent, not hundreds of decorative SVG marks.
+- Charts never rely on gesture exploration alone. They expose the visible summary and complete data equivalent through semantic labels/relationships while decorative SVG marks remain hidden.
 - Focus uses the shared 3dp blue outline in Light and Dark and is never clipped by segmented controls, charts, rows, sheets, or bottom navigation.
 
 ### Motion
@@ -590,7 +590,7 @@ The complete Phase 19 inventory/parity set was reviewed: 18/18 PRO rows, compris
 | PRO-17 | Bodyweight empty/history/delete confirmation | progress.bodyweight-history.json |
 | PRO-18 | Bodyweight editor/validation/persistence | progress.bodyweight-editor.json |
 
-Native acceptance must additionally record Light/Dark/System, 360×800, 390×844, 600×960, 840×1080-equivalent, landscape, 200% text, TalkBack, keyboard/D-pad, focus, and reduced-motion evidence. Browser evidence confirms Revision 18 hierarchy and source reachability only; it is not native proof.
+Native acceptance must additionally record Light/Dark/System, 360×800, 390×844, 600×960, 840×1080-equivalent, landscape, 200% text, semantic names/roles/states, keyboard/D-pad, focus, non-color equivalents, and reduced-motion evidence. Browser evidence confirms Revision 18 hierarchy and source reachability only; it is not native proof.
 
 ---
 

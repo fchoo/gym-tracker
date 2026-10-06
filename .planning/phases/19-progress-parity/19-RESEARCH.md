@@ -422,27 +422,16 @@ The field pattern is copied from the existing plan command boundary; applying it
 
 | # | Claim | Section | Risk if Wrong |
 |---|---|---|---|
-| A1 | When more than one active goal is eligible and no contract-provided priority exists, choose earliest explicit target date, then stable sport/source identity; do not rank cross-sport normalized gaps. [ASSUMED] | Architecture Pattern 1 | Wrong tie-break changes the All hero and focus/source route while all facts remain valid. |
-| A2 | Alternate target pacing rounds each displayed split to the nearest whole second after deriving from the exact committed target seconds and distance. [ASSUMED] | Fixed/target contract | Wrong rounding causes copy/test mismatch even though the 11:00 default remains exact. |
-| A3 | If Phase 13 does not supply a bodyweight basis, use the latest valid dated entry on or before the observation's owner-local date; never use a future measurement. [ASSUMED] | Relative strength | Wrong temporal rule changes historical ratios and evidence copy. |
+| A1 | **RESOLVED — PLAN-SCOPED:** Nearest active goal uses persisted owner/source order when present; remaining ties use earliest explicit target date (unset sorts after set), then lexicographic sport, stable source ID, and target revision. Cross-sport normalized gaps never participate. [PLAN-SCOPED] | Architecture Pattern 1 | Deterministic over persisted facts and stable identities; Phase 13 may later promote an explicit owner order without changing fallback semantics. |
+| A2 | **RESOLVED — PLAN-SCOPED:** Alternate target pacing derives an exact positive rational split from committed target seconds/distance, then rounds to the nearest whole second with an exact half-second rounded upward; values below 0.5 round down. The source target never changes. [PLAN-SCOPED] | Fixed/target contract | Removes runtime-dependent/banker's rounding ambiguity while preserving the locked 11:00 display. |
+| A3 | **RESOLVED — PLAN-SCOPED:** Relative strength first selects the latest eligible owner-local measurement date on or before the observation. For multiple valid revisions on that date, choose greatest committed/effective timestamp, then highest source revision, then stable fact ID; tombstoned/superseded revisions are excluded and future dates never qualify. [PLAN-SCOPED] | Relative strength | Makes same-date corrections deterministic and source-revision-grounded rather than array-order dependent. |
 | A4 | Recommended new symbols/files (`dashboardProjection.ts`, `projectProgressDashboard`, `FactualHistoryChart`, command names) may be renamed to match the final Phase 13/14/17/18 ports without changing boundaries. [ASSUMED] | File/symbol map | Planner could create needless adapters if upstream final names already differ. |
 
-## Open Questions
+## Open Questions — RESOLVED
 
-1. **Nearest active goal tie-break**
-   - What we know: selection must be deterministic, source-backed, and not a composite score. [VERIFIED: `.planning/phases/19-progress-parity/19-UI-SPEC.md:261-268`]
-   - What is unclear: no locked tie-break is stated for multiple goals with equal/no target dates. [VERIFIED: source audit of `19-CONTEXT.md` and `19-UI-SPEC.md`]
-   - Recommendation: use A1 unless the Phase 13 target port supplies an explicit owner order; freeze the rule in a pure projection test before UI work. [ASSUMED]
-
-2. **Relative-strength bodyweight basis**
-   - What we know: every point must disclose its dated basis and the latest bodyweight must not be retroactively applied unless the domain contract says so. [VERIFIED: `.planning/phases/19-progress-parity/19-UI-SPEC.md:338-346`]
-   - What is unclear: Phase 13's final temporal join rule is not implemented in this baseline. [VERIFIED: `.planning/design/v1.2-prototype-parity-matrix.md:50`]
-   - Recommendation: make Phase 13 return the basis per point; use A3 only if that upstream contract remains unspecified. [ASSUMED]
-
-3. **Alternate pacing rounding**
-   - What we know: the default exact display is locked, and alternate guides derive only from explicit owner targets. [VERIFIED: `.planning/phases/19-progress-parity/19-UI-SPEC.md:278-284`]
-   - What is unclear: the rounding rule for non-default seconds is not locked. [VERIFIED: source audit of `19-CONTEXT.md` and `19-UI-SPEC.md`]
-   - Recommendation: use A2 and cover boundary values in pure tests; never infer a new target from pacing. [ASSUMED]
+1. **Nearest active goal tie-break — RESOLVED:** use the A1 persisted-order/date/stable-identity sequence. This is a Phase 19 planning policy, not a new owner preference or cross-sport score.
+2. **Relative-strength bodyweight basis — RESOLVED:** use the A3 at-or-before temporal join and same-date effective-revision ordering. Require the upstream port to return revision/timestamp/fact identity with the selected basis.
+3. **Alternate pacing rounding — RESOLVED:** use the A2 exact half-up whole-second rule and cover values immediately below, at, and above 0.5 seconds. Never infer or persist a new target from pacing.
 
 ## Environment Availability
 
@@ -494,7 +483,7 @@ React Native components
   └─ focus, keyboard semantics, busy/disabled and exact copy
            ↓
 Phase 20 native evidence
-  └─ device dimensions, 200% text, TalkBack, D-pad, landscape, reduced motion, performance
+  └─ device dimensions, 200% text, semantic labels/roles/states, D-pad, landscape, reduced motion, performance
 ```
 
 The phase owns unit/component/SQLite/integration proof now; Phase 20 owns attended/native acceptance and must not substitute for Phase 19's automated integrity tests. [VERIFIED: `.planning/ROADMAP.md:64-65`, `.planning/phases/19-progress-parity/19-UI-SPEC.md:570-593`]
@@ -585,7 +574,7 @@ The current mobile stack should also be checked against OWASP MASVS storage/priv
 
 ### Tertiary (LOW confidence)
 
-- A1–A4 in the Assumptions Log are planner-visible decisions that require upstream contract confirmation before they become locked implementation facts. [ASSUMED]
+- A4 remains a planner-visible naming assumption. A1–A3 are resolved plan-scoped policies with explicit pure-test boundaries; they do not override later owner decisions or a stronger upstream persisted contract. [ASSUMED for A4; PLAN-SCOPED for A1–A3]
 
 ## Metadata
 
