@@ -758,7 +758,7 @@ There is no remote authentication pattern in this local/offline phase. The appli
 | Put SQL in screens or `runningPlanRuntime.tsx` | It creates a second authority and bypasses domain validation/receipts. | Screens → runtime adapter → Phase 13 commands/repository. |
 | Copy fixture sessions on load/error/restore | Prototype examples become false source facts. | Render only committed source rows; empty remains empty. |
 | Copy current Source Sans/old Material theme literals | Phase 17 depends on Phase 14's shared Archivo/IBM Plex Mono semantic system. | Import final shared primitives/tokens; add no Library-private palette or type scale. |
-| Add a new drag-and-drop package or drag-only reorder | It breaks keyboard/D-pad/TalkBack and Reduced Motion contracts. | Reuse `PlanEditorReorderableRow` behavior and provide Move earlier/later. |
+| Add a new drag-and-drop package or drag-only reorder | It breaks keyboard/D-pad, semantic accessibility-action and Reduced Motion contracts. | Reuse `PlanEditorReorderableRow` behavior and provide Move earlier/later. |
 | Surface raw exceptions or payloads in UI/logs | It can leak user-entered plan/benchmark data. | Map to exact safe copy and stable correlation/error codes. |
 
 ## No Exact Analog Found

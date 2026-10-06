@@ -210,7 +210,7 @@ The Light destructive value extends the prototype language for native-only recov
 | `AppRootShell` / `AppTabs` | Exactly four ordered destinations; persistent bottom placement; selected icon, label, `tab` state, and orange underline; disabled only while startup authority is unavailable | All roots; Phase 18 contextual Garmin consumes the published shell contract |
 | `ScreenHeader` | One semantic heading; optional 48dp Back; contextual actions ordered before Settings; heading receives focus after root/deep-route transitions | Roots, settings, recovery, downstream details |
 | `AdaptiveScreen` | One vertical scroll owner, safe-area-aware insets, dock clearance, retained/restored scroll key; may center/widen content without moving root navigation | Every screen and deep route |
-| `FocusablePressable` | Touch, Enter, Space, D-pad, TalkBack activation through the same command; 48dp target; visible 3dp focus; disabled/busy prevents duplicate activation | All actions and navigation |
+| `FocusablePressable` | Touch, Enter, Space, D-pad and semantic accessibility `activate` through the same command; 48dp target; visible 3dp focus; disabled/busy prevents duplicate activation | All actions and navigation |
 | `BottomSheet` | Bottom anchored, scrim, heading-first focus, modal accessibility isolation/trap, keyboard avoidance, scrollable body, Back/Escape/close/scrim cancel, trigger-focus restoration | Appearance, filters, pickers, history, target/recommendation, conflict and Active actions; Phase 18 Garmin consumes the contract |
 | `ConfirmationDialog` | Consequence-first copy, safe action initially focused, explicit action-specific cancel and confirm labels, no background activation, no write on dismiss | Cloud deletion/disconnect, restore/merge, removed-history restore, later feature confirmations |
 | `SemanticToast` | Theme-aware top placement, 4dp semantic leading bar, 150ms enter/exit, polite/assertive announcement by severity, no source-authority role, no dock overlap | Roots, Active Workout and settings/recovery; Phase 18 Garmin consumes the contract |
@@ -393,9 +393,9 @@ Destructive actions in this phase are cloud-backup deletion and any existing sou
 - Landscape keeps header and bottom navigation fixed to safe areas and gives the content or sheet body the single vertical scroll owner. Required actions remain reachable without horizontal scrolling.
 - Long rows wrap supporting text below the title. Trailing icons occupy their own 48dp column; they never overlap copy.
 
-### Keyboard, D-pad, TalkBack, and focus
+### Keyboard, D-pad, semantic accessibility actions, and focus
 
-- Every action supports touch, Enter, Space, accessibility `activate`, D-pad focus, and TalkBack through the same handler. Arrow keys move within radio/tab groups; Enter/Space selects.
+- Every action supports touch, Enter, Space, accessibility `activate`, and D-pad focus through the same handler. Arrow keys move within radio/tab groups; Enter/Space selects. Semantic labels/roles/states remain required; live TalkBack/switch-scanning acceptance is outside this personal-use milestone.
 - Focus is visibly outlined in both themes. Programmatic focus order follows visual/reading order and never enters hidden, inert, disabled, or background content.
 - Root switch focuses the new heading. Deep-route Back restores the exact initiating row/action. Sheet/dialog close restores its trigger. A removed item that no longer exists restores to the nearest stable heading or next row.
 - Sheets/dialogs are modal to accessibility; Back/Escape maps to the same safe dismissal; keyboard appearance does not resize a focused field/action below the visible viewport.

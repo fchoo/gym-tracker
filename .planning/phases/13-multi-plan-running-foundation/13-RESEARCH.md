@@ -655,17 +655,15 @@ Security enforcement is enabled at ASVS level 1. [VERIFIED: .planning/config.jso
 | A2 | Recommended future file/table/type names in this research are accepted as planner-internal names. [ASSUMED] | Future file map / examples | Low architectural risk; exact imports/tasks change. Locked identities and behavior do not. |
 | A3 | The proposed targeted future test commands complete inside the desired quick feedback window. [ASSUMED] | Validation Architecture | Planner may split fixtures/files further after measurement. |
 
-## Open Questions
+## Open Questions (RESOLVED AS EXECUTION GATES)
 
 1. **MAP-01 — active plans within one sport**
    - What we know: Strength and Running must coexist; at-most-one per sport is recommended but unaccepted. [VERIFIED: .planning/phases/13-multi-plan-running-foundation/13-CONTEXT.md:33-35]
-   - What's unclear: whether several same-sport plans may be active simultaneously.
-   - Recommendation: block the first uniqueness/index task and obtain the owner decision with both complete designs; no schema default.
+   - Resolved planning disposition: Plan 13-01 uses a blocking owner checkpoint before the first cardinality-dependent uniqueness/index task and presents both complete designs. No schema default is permitted.
 
 2. **TIM-01 — cadence/cluster runtime retirement**
    - What we know: all configurations/snapshots and set/rest recovery must remain. Runtime authoring/reconciliation/callback/playback retirement is recommended but unaccepted. [VERIFIED: .planning/phases/13-multi-plan-running-foundation/13-CONTEXT.md:33-35]
-   - What's unclear: whether the retirement cutover is accepted after zero-cue/recovery proof.
-   - Recommendation: land preservation tests first, then block runtime removal/gating on an owner checkpoint; if cue isolation cannot be proved, retain compatibility behavior.
+   - Resolved planning disposition: preservation tests land first, then Plan 13-09 blocks runtime removal/gating on a dated owner checkpoint. If cue isolation cannot be proved, compatibility behavior remains and the affected evidence cannot pass.
 
 No additional owner question is required for Phase 13. Garmin transport/broker remains deferred, and exact internal naming/query indexes are explicitly within planner discretion. [VERIFIED: .planning/phases/13-multi-plan-running-foundation/13-CONTEXT.md:38-40,83-88]
 

@@ -373,7 +373,7 @@ The primary CTA is `Create running plan` in create mode and `Save running plan` 
 - Each row shows weekday, workout type, derived summary, and disclosure. Group visually by persisted order, not by an unstable sort of title/type.
 - Persist stable session identity and immutable revision. A weekday change or reorder creates a prospective schedule version; past occurrences and matches keep the earlier session revision.
 - Multiple rows on one weekday are valid. Preserve explicit `slot_ordinal` order across reopen, backup/restore, and list/detail projections. Do not collapse them into a map keyed only by weekday.
-- Pointer drag uses a visible handle and only begins after deliberate press/drag. Keyboard/D-pad and TalkBack expose `Move earlier` and `Move later`; announce `{type} moved to position {N} of {count}`.
+- Pointer drag uses a visible handle and only begins after deliberate press/drag. Keyboard/D-pad and semantic accessibility actions expose `Move earlier` and `Move later`; the semantic announcement is `{type} moved to position {N} of {count}`. Live assistive-service acceptance is not a release gate.
 - While reordering, render the lifted row and insertion marker; auto-scroll within the list. Cancel restores the committed order. Save failure keeps the draft order visibly pending and offers `Retry saving plan`.
 - Delete requires confirmation. On success, focus the next row, previous row, or `Add session` if none remain.
 

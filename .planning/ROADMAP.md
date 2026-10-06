@@ -240,7 +240,7 @@ Plans:
   4. Native Calendar drag/threshold/morph behavior and representative launch, root switch, set commit, editor, search, Calendar, Progress, import, backup, and merge workloads meet their reviewed numeric budgets with raw evidence retained.
   5. An attended Samsung review records visual, usability, accessibility, and interaction observations separately from automated proof, and signed personal-use release verification is prepared without treating either as release authorization.
 
-**Plans**: 10 plans
+**Plans**: 12 plans
 **UI hint**: yes
 **Plan flags**: focused verification research; parity ledger and UI review required; plan check required; review convergence required; depends on all prior phases; DEV-01/02 and external Garmin gates must have explicit final disposition
 
