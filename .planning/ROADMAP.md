@@ -151,7 +151,15 @@ These are explicit gates, not reopened prototype questions:
   4. Each agenda event is one accessible full-width target and routes by real identity: Strength history to read-only Active-shaped detail, planned Strength to occurrence preview, planned Running to its plan, and imported Running to Garmin detail.
   5. Back restores the expanded date/week and trigger focus; loading, empty, stale/error, and retry states never invent sessions, while correction, resume, revision history, and removal remain available only in their separate management contexts.
 
-**Plans**: TBD
+**Plans**: 6 plans
+
+Plans:
+- [ ] 16-01-PLAN.md — Preflight upstream capabilities, prove the semantic transition controller, and resolve DEV-01/DEV-02.
+- [ ] 16-02-PLAN.md — Build the source-backed full-height month grid, Calendar key, encodings, focus, and query states.
+- [ ] 16-03-PLAN.md — Build capability-safe workout history and planned Strength preview while preserving management routes.
+- [ ] 16-04-PLAN.md — Implement UI-thread 1:1 month drag and measured expand/collapse/adjacent motion.
+- [ ] 16-05-PLAN.md — Complete compact agenda routing and Calendar-owned Back/scroll/focus restoration.
+- [ ] 16-06-PLAN.md — Capture native transition/state evidence and enforce query/frame/zero-mutation gates.
 **UI hint**: yes
 **Plan flags**: research required; UI specification required; plan check required; review convergence required; DEV-01 and DEV-02 require owner disposition before affected implementation
 
