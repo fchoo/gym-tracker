@@ -19,7 +19,7 @@
 - **D20-07:** Samsung attended review is acceptance observation in addition to automated proof. No build/release/device action occurs until later owner authorization.
 
 ### Deviation and external gates
-- **D20-08:** DEV-01/02 cannot be marked accepted without owner decision. Garmin sync remains conditional on real access/broker review. Release readiness may be conditional; it must not fabricate closure.
+- **D20-08:** DEV-01/02 cannot be marked accepted without owner decision. Garmin sync remains conditional on real access/broker review. `ACCEPTED_EXCEPTION` is non-PASS and requires a deviation ID, owner decision/date, exact scope/configurations, rationale, and evidence hashes. Release readiness may be `CONDITIONALLY_READY` only under an explicit reviewed policy when every remaining non-PASS row is such a valid exception; it must not fabricate closure.
 
 ### Claude's Discretion
 - Evidence shard organization and synthetic fixture generation, provided privacy-safe source/artifact binding remains fail-closed.
@@ -61,7 +61,7 @@ Plan Phase 20 around one immutable run directory and one source-owned evidence c
 
 Phase 20 must not fix product behavior inline. A discovered product mismatch fails the owning row and routes remediation back to Phase 13–19; Phase 20 may add evidence-only scripts, developer-test fixtures, probes, and validators, but no product-visible route, debug banner, dashboard, copy, token, or control. [VERIFIED: .planning/phases/20-native-acceptance/20-UI-SPEC.md:42-58,474-486]
 
-**Primary recommendation:** Implement a contract-derived, immutable, privacy-safe v1.2 evidence pipeline with separate native shards and a single final validator; preserve `BLOCKED_OWNER` and `CONDITIONAL_EXTERNAL` outcomes, and stop at owner review without building or releasing unless a later explicit authorization exists. [VERIFIED: .planning/phases/20-native-acceptance/20-CONTEXT.md:19-33; .planning/phases/20-native-acceptance/20-UI-SPEC.md:60-73,416-470]
+**Primary recommendation:** Implement a contract-derived, immutable, privacy-safe v1.2 evidence pipeline with separate native shards and a single final validator; preserve `ACCEPTED_EXCEPTION`, `BLOCKED_OWNER`, and `CONDITIONAL_EXTERNAL` as non-PASS outcomes, and stop at owner review without building or releasing unless a later explicit authorization exists. [VERIFIED: .planning/phases/20-native-acceptance/20-CONTEXT.md:19-33; .planning/phases/20-native-acceptance/20-UI-SPEC.md:60-74,416-470]
 
 ## Project Constraints (from .trae/rules/rules.md)
 
@@ -145,7 +145,7 @@ flowchart TD
   F --> G{Gate resolver}
   G -->|DEV-01/02 or TIM-01 open| H[BLOCKED_OWNER]
   G -->|Garmin live access absent| I[CONDITIONAL_EXTERNAL]
-  G -->|Evidence complete| J[PASS / FAIL / REVIEW_REQUIRED / N_A_REVIEWED]
+  G -->|Evidence complete| J[PASS / FAIL / REVIEW_REQUIRED / ACCEPTED_EXCEPTION / N_A_REVIEWED]
   H --> K[final-evidence.json]
   I --> K
   J --> K
@@ -204,7 +204,7 @@ The proposed `scripts/generate-v12-attended-checklist.mjs` filename is a plannin
 | `scripts/build-current-native-test-apk.sh` manifest publisher | Extend carefully | For the v1.2 suite, add signature/certificate identity and privacy-safe hashed device identity while preserving retained-vs-installed byte equality; do not break historical schema-v1 consumers. [VERIFIED: scripts/build-current-native-test-apk.sh:128-169,172-184,213-285] |
 | `scripts/run-v12-maestro.mjs` | Create | Own ordered flow/state/config registries, device setting apply/verify/restore, JUnit/screenshot/semantic/geometry hashes, and shard publication. Follow Phase 10/11 identity patterns, not Phase 12's fake-port-only stage model. [VERIFIED: scripts/run-phase10-maestro.mjs:15-32,67-98,129-192; scripts/run-phase11-maestro.mjs:46-111,627-675] |
 | `scripts/verify-v12-native-evidence.mjs` | Create | Export the canonical verdict/config/artifact registries, parse canonical JSON, enforce safe paths/no symlinks/bounds/hashes, derive the 172 ledger, resolve gates, and write final evidence only from validated shards. [VERIFIED: scripts/create-release-candidate-manifest.mjs:42-171,316-430; .planning/phases/20-native-acceptance/20-UI-SPEC.md:340-350] |
-| `scripts/v12-evidence-scripts.test.mjs` | Create | Test happy path plus missing/duplicate/unknown/out-of-order/skipped IDs, path traversal/symlink swaps, stale hashes, wrong config/device/APK/signature, false-success JUnit, privacy leakage, sample/budget drift, attended substitution, and conditional-gate fraud. [VERIFIED: .planning/verification/v1.2-native-verification-matrix.md:170-177; scripts/verify-phase12-evidence.test.mjs:15-68] |
+| `scripts/v12-evidence-scripts.test.mjs` | Create | Test happy path plus missing/duplicate/unknown/out-of-order/skipped IDs, malformed accepted-exception metadata, accepted exception counted as PASS, path traversal/symlink swaps, stale hashes, wrong config/device/APK/signature, false-success JUnit, privacy leakage, sample/budget drift, attended substitution, and conditional-gate fraud. [VERIFIED: .planning/verification/v1.2-native-verification-matrix.md:170-177; scripts/verify-phase12-evidence.test.mjs:15-68] |
 | `scripts/benchmark-v12-interactions.mjs` | Create | Collect raw release-build samples and deterministic percentiles for all locked budgets; bind fixture/source/APK/device and reject missing/non-finite/negative/cherry-picked samples. [VERIFIED: .planning/verification/v1.2-native-verification-matrix.md:140-162; scripts/benchmark-phase12-backup.mjs:21-71] |
 | `scripts/generate-v12-attended-checklist.mjs` | Create | Recommended filename [ASSUMED]. Reuse Phase 7's canonical JSON, safe PNG set, device/APK byte binding, hashed serial, and forbidden-authority fields, but define new v1.2 rows and never import N4 status. [VERIFIED: scripts/generate-phase7-attended-checklist.mjs:34-59,93-128,131-227] |
 | `scripts/create-release-candidate-manifest.mjs` / `scripts/verify-release-candidate-manifest.mjs` | Reuse later, do not invoke in Phase 20 planning | Provide exact signed-candidate source/toolchain/inner-byte binding after separate build authorization. They do not authorize publication. [VERIFIED: scripts/create-release-candidate-manifest.mjs:22-49,216-313,340-430; scripts/verify-release-candidate-manifest.mjs:33-59] |
@@ -237,7 +237,7 @@ SQLite, Maestro/configuration, Calendar transitions, FIT, performance, compariso
 
 Gate resolution happens after ordinary evidence validation:
 
-- DEV-01/DEV-02 affected rows remain `BLOCKED_OWNER` until a dated decision is recorded and the chosen branch's complete comparison evidence passes. [VERIFIED: .planning/phases/20-native-acceptance/20-UI-SPEC.md:444-456]
+- DEV-01/DEV-02 affected rows remain `BLOCKED_OWNER` until a dated decision and chosen-branch evidence exist. An accepted non-oracle adaptation or retained failing oracle becomes `ACCEPTED_EXCEPTION`, never PASS, and carries deviation ID, owner decision/date, exact scope/configurations, rationale and evidence hashes. [VERIFIED: .planning/phases/20-native-acceptance/20-UI-SPEC.md:444-456]
 - TIM-01 affects exactly `DOM-03`, `DOM-15`, `DOM-17`, `WRK-05`, `WRK-18`, `WRK-21`–`WRK-23`, `WRK-26`, `VER-07`, and `VER-08`; a dated runtime decision without all applicable compatibility fixtures is still `BLOCKED_OWNER`. [VERIFIED: .planning/phases/20-native-acceptance/20-UI-SPEC.md:418-442]
 - Offline FIT/dedupe/match evidence is unconditional. GAR-04–GAR-07 and NV-IMP-11–13 remain `CONDITIONAL_EXTERNAL` without actual Garmin program access, granted delivery/scope contract, real consent, and reviewed confidential-credential topology. [VERIFIED: .planning/phases/20-native-acceptance/20-UI-SPEC.md:458-463]
 - Attended observation never changes automated row verdicts and never closes an owner/external/release gate. [VERIFIED: .planning/phases/20-native-acceptance/20-UI-SPEC.md:465-470]
@@ -268,6 +268,7 @@ Use these values verbatim:
 | `REVIEW_REQUIRED` | “Evidence is complete but a visual delta needs human classification; it is not a pass.” |
 | `BLOCKED_OWNER` | “DEV-01, DEV-02, or TIM-01 affects the row and its required dated owner decision/evidence gate is incomplete. For TIM-01, a decision without the chosen-policy compatibility evidence is still blocked.” |
 | `CONDITIONAL_EXTERNAL` | “Live Garmin API proof is unavailable because actual program access or the reviewed secure topology is absent. Deterministic tests may pass separately but cannot close the live row.” |
+| `ACCEPTED_EXCEPTION` | “A specific owner-reviewed deviation or retained failing oracle is accepted for an exact scope/configuration set with decision/date, rationale, and evidence hashes. It is explicitly non-PASS and counted separately.” |
 | `N_A_REVIEWED` | “The state genuinely cannot apply and the ledger carries a domain reason plus reviewer identity/date. Missing evidence is never N_A_REVIEWED.” |
 
 [VERIFIED: .planning/phases/20-native-acceptance/20-UI-SPEC.md:60-73] Blank, implicit, inherited, or author-supplied aggregate success is invalid.
@@ -290,13 +291,14 @@ The schema should contain these exact responsibility groups:
 Each of the 172 rows must contain:
 
 1. `inventory_id`, `requirement_id`, `owning_phase`, `coverage_class` copied from the machine matrix and checked against its bound SHA-256.
-2. One verdict from the six-value contract.
+2. One verdict from the seven-value contract; `ACCEPTED_EXCEPTION` never increments PASS counts.
 3. Stable fixture/state/capture IDs and applicable configuration IDs.
 4. Evidence references with relative path, SHA-256, size, producer/schema version, and specific case/report/image/trace identity.
 5. Semantic, geometry, interaction, visual-comparison, source-integrity, and privacy gate results applicable to the row.
 6. Conditional gate references and their validated decision/access evidence.
-7. For `N_A_REVIEWED` only: domain reason, reviewer identity, and UTC date.
-8. No mutable narrative “pass” field and no embedded personal source rows.
+7. For `ACCEPTED_EXCEPTION` only: deviation ID, owner decision/date, exact scope/configurations, rationale, and evidence hashes.
+8. For `N_A_REVIEWED` only: domain reason, reviewer identity, and UTC date.
+9. No mutable narrative “pass” field and no embedded personal source rows.
 
 [VERIFIED: .planning/phases/20-native-acceptance/20-UI-SPEC.md:172-182,327-350,354-364] The validator, not the producer, computes the final row verdict.
 
@@ -380,7 +382,7 @@ Reuse the Phase 7 safety pattern: canonical exact-key JSON, hashed serial, exact
 
 - A failed evidence run is immutable and recoverable by starting a new run; never edit a failed run into a pass. [VERIFIED: .planning/phases/20-native-acceptance/20-UI-SPEC.md:285-291,340-350]
 - Before an authorized migration/candidate installation, retain a verified compatible recovery backup and the prior signed APK identity. If migration has not run, reinstalling unchanged prior bytes may be a binary rollback; after a newer schema commits, never assume the older APK can open it. Recovery must use the verified compatible archive/restore flow and last-valid committed schema. [VERIFIED: .planning/research/v1.2/PITFALLS.md:25-37]
-- VER-13 may report conditional readiness and outstanding gates. It must not dispatch `personal-apk.yml`, create/push a tag, install production bytes, promote, publish, or run Terminal Seal. [VERIFIED: .planning/phases/20-native-acceptance/20-CONTEXT.md:26-29,68-71; .planning/verification/v1.2-native-verification-matrix.md:179-186]
+- VER-13 may report `CONDITIONALLY_READY` only under an explicit reviewed policy when all remaining non-PASS rows are valid `ACCEPTED_EXCEPTION`; it still reports each exception separately and never calls it PASS. It must not dispatch `personal-apk.yml`, create/push a tag, install production bytes, promote, publish, or run Terminal Seal. [VERIFIED: .planning/phases/20-native-acceptance/20-CONTEXT.md:26-29,68-71; .planning/verification/v1.2-native-verification-matrix.md:179-186]
 - After all evidence is complete, stop for owner review. A later explicit authorization may invoke the signed personal workflow and candidate-manifest verification; that is a new authority boundary, not an automatic continuation. [VERIFIED: .planning/v1.2-OWNER-BRIEF.md:3-6,20-24; .github/workflows/personal-apk.yml:8-13]
 
 ## Don't Hand-Roll
@@ -402,72 +404,72 @@ Reuse the Phase 7 safety pattern: canonical exact-key JSON, hashed serial, exact
 
 ### Pitfall 1: Old Runner Impersonates v1.2
 
-**What goes wrong:** A Phase 8–12 report is copied under a v1.2 path and appears complete.  
-**Why it happens:** Existing scripts already pass but bind old manifests, paths, state ledgers, and fake ports.  
-**How to avoid:** New v1.2 registries, run identity, source hashes, cases, and negative validator tests.  
+**What goes wrong:** A Phase 8–12 report is copied under a v1.2 path and appears complete.
+**Why it happens:** Existing scripts already pass but bind old manifests, paths, state ledgers, and fake ports.
+**How to avoid:** New v1.2 registries, run identity, source hashes, cases, and negative validator tests.
 **Warning signs:** Phase 8 still expects a Phase 2 manifest; Phase 9 embeds historical phase paths; `test:release-matrix` checks old script presence only. [VERIFIED: .planning/verification/v1.2-native-verification-matrix.md:30-34; .planning/research/v1.2/PITFALLS.md:146-148]
 
 ### Pitfall 2: Declared Configuration Is Not Measured Configuration
 
-**What goes wrong:** Metadata says F200/System Dark/landscape, but Android remained at another setting or was not restored.  
-**Why it happens:** Runners trust requested settings.  
-**How to avoid:** Read back font scale, scheme, bounds, density, orientation, motion, IME, and setting restoration before accepting artifacts.  
+**What goes wrong:** Metadata says F200/System Dark/landscape, but Android remained at another setting or was not restored.
+**Why it happens:** Runners trust requested settings.
+**How to avoid:** Read back font scale, scheme, bounds, density, orientation, motion, IME, and setting restoration before accepting artifacts.
 **Warning signs:** Missing before/after setting hashes or measured content bounds. [VERIFIED: .planning/phases/20-native-acceptance/20-UI-SPEC.md:327-350]
 
 ### Pitfall 3: Screenshot Explosion Without Contract Enumeration
 
-**What goes wrong:** Thousands of files exist but states/configurations are missing or duplicated.  
-**Why it happens:** Filesystem presence replaces a source-owned expected set.  
-**How to avoid:** Derive every expected capture ID from the ordered state registry and applicable 64-config expansion; exact set equality and order are mandatory.  
+**What goes wrong:** Thousands of files exist but states/configurations are missing or duplicated.
+**Why it happens:** Filesystem presence replaces a source-owned expected set.
+**How to avoid:** Derive every expected capture ID from the ordered state registry and applicable 64-config expansion; exact set equality and order are mandatory.
 **Warning signs:** Contact-sheet-only evidence, filenames without manifest rows, or hard-coded totals detached from the registry. [VERIFIED: .planning/phases/20-native-acceptance/20-UI-SPEC.md:170-197]
 
 ### Pitfall 4: Gate Collapse
 
-**What goes wrong:** Affected rows become PASS because deterministic subtests pass while DEV/TIM/Garmin prerequisites remain open.  
-**Why it happens:** Aggregate status ignores conditional sub-assertions.  
-**How to avoid:** Resolve owner/external gates after evidence completeness and preserve row-level `BLOCKED_OWNER` / `CONDITIONAL_EXTERNAL`.  
+**What goes wrong:** Affected rows become PASS because deterministic subtests pass while DEV/TIM/Garmin prerequisites remain open.
+**Why it happens:** Aggregate status ignores conditional sub-assertions.
+**How to avoid:** Resolve owner/external/exception gates after evidence completeness; preserve row-level `BLOCKED_OWNER`, `CONDITIONAL_EXTERNAL`, and non-PASS `ACCEPTED_EXCEPTION` with complete decision/scope/rationale/hash metadata.
 **Warning signs:** `PASS_WITH_NOTES`, “not applicable” without reviewer, or FIT success used as live provider proof. [VERIFIED: .planning/phases/20-native-acceptance/20-UI-SPEC.md:60-73,416-470]
 
 ### Pitfall 5: Raw Device or Personal Data Leaks
 
-**What goes wrong:** Serial, filenames, coordinates, FIT bytes, bodyweight, notifications, or local paths enter JSON/screenshots.  
-**Why it happens:** Current build manifests retain raw device serials and generic secret scanners do not inspect images.  
-**How to avoid:** Split runner-local device selection from shared hashed identity; use synthetic fixtures, safe names, recursive forbidden-key/string scans, exact screenshot sets, and manual privacy review.  
+**What goes wrong:** Serial, filenames, coordinates, FIT bytes, bodyweight, notifications, or local paths enter JSON/screenshots.
+**Why it happens:** Current build manifests retain raw device serials and generic secret scanners do not inspect images.
+**How to avoid:** Split runner-local device selection from shared hashed identity; use synthetic fixtures, safe names, recursive forbidden-key/string scans, exact screenshot sets, and manual privacy review.
 **Warning signs:** `device.serial` in shared v1.2 evidence or arbitrary filenames in capture paths. [VERIFIED: scripts/build-current-native-test-apk.sh:263-269; .planning/phases/20-native-acceptance/20-UI-SPEC.md:354-364]
 
 ### Pitfall 6: SQLite “Rollback” Means an Impossible Downgrade
 
-**What goes wrong:** Plan says reinstall old APK after a new schema commits.  
-**Why it happens:** Per-migration commit and compatibility boundaries are ignored.  
-**How to avoid:** Test failure/reopen at last valid version, recovery backups for non-additive migrations, and compatible archive restore; never promise whole-batch rollback or old-app/new-DB compatibility.  
+**What goes wrong:** Plan says reinstall old APK after a new schema commits.
+**Why it happens:** Per-migration commit and compatibility boundaries are ignored.
+**How to avoid:** Test failure/reopen at last valid version, recovery backups for non-additive migrations, and compatible archive restore; never promise whole-batch rollback or old-app/new-DB compatibility.
 **Warning signs:** “rollback all migrations” or no schema compatibility check. [VERIFIED: .planning/research/v1.2/PITFALLS.md:25-37]
 
 ### Pitfall 7: Performance Proof Uses the Wrong Layer
 
-**What goes wrong:** Fast repository or Jest timings are reported as user-perceived launch/dock/Calendar performance.  
-**Why it happens:** Existing benchmarks measure narrower operations.  
-**How to avoid:** Release-build end-to-end markers, raw frame traces, exact fixture/device identity, and separate host/native results.  
+**What goes wrong:** Fast repository or Jest timings are reported as user-perceived launch/dock/Calendar performance.
+**Why it happens:** Existing benchmarks measure narrower operations.
+**How to avoid:** Release-build end-to-end markers, raw frame traces, exact fixture/device identity, and separate host/native results.
 **Warning signs:** Debugger attached, nominal animation duration, no useful-content marker, or averages instead of p95. [VERIFIED: .planning/research/v1.2/PITFALLS.md:146-147; .planning/verification/v1.2-native-verification-matrix.md:140-162]
 
 ### Pitfall 8: Calendar Final State Hides a Broken Path
 
-**What goes wrong:** Final month/date is correct but title, rows, focus, callback count, or cancellation was wrong mid-transition.  
-**Why it happens:** Independent animations and final screenshots replace one transition authority.  
-**How to avoid:** Timestamped intermediate geometry/semantics and transition generation.  
+**What goes wrong:** Final month/date is correct but title, rows, focus, callback count, or cancellation was wrong mid-transition.
+**Why it happens:** Independent animations and final screenshots replace one transition authority.
+**How to avoid:** Timestamped intermediate geometry/semantics and transition generation.
 **Warning signs:** No 24.9/25/25.1 samples or no recede/cancel trace. [VERIFIED: .planning/research/v1.2/PITFALLS.md:81-93]
 
 ### Pitfall 9: Attended Observation Becomes Approval
 
-**What goes wrong:** A pleasant Samsung review clears automated failures or enables release.  
-**Why it happens:** Old N4 record/release semantics are copied.  
-**How to avoid:** New Phase 20 observation-only schema, forbidden authority keys, and final validator separation.  
+**What goes wrong:** A pleasant Samsung review clears automated failures or enables release.
+**Why it happens:** Old N4 record/release semantics are copied.
+**How to avoid:** New Phase 20 observation-only schema, forbidden authority keys, and final validator separation.
 **Warning signs:** `approval`, `release_authorization`, `promotion`, `tag`, or `terminal_seal` in attended JSON. [VERIFIED: scripts/generate-phase7-attended-checklist.mjs:42-51; .planning/phases/20-native-acceptance/20-UI-SPEC.md:465-470]
 
 ### Pitfall 10: Phase 20 Repairs Product Code
 
-**What goes wrong:** Acceptance tasks mutate UI/domain behavior until evidence passes, obscuring ownership and invalidating the run.  
-**Why it happens:** Verification and remediation are mixed in one immutable run.  
-**How to avoid:** Fail the row, retain the run, route a separate fix to the owning phase, rebuild, and start a new run ID.  
+**What goes wrong:** Acceptance tasks mutate UI/domain behavior until evidence passes, obscuring ownership and invalidating the run.
+**Why it happens:** Verification and remediation are mixed in one immutable run.
+**How to avoid:** Fail the row, retain the run, route a separate fix to the owning phase, rebuild, and start a new run ID.
 **Warning signs:** source digest changes after first artifact or a failed run directory is reused. [VERIFIED: .planning/phases/20-native-acceptance/20-UI-SPEC.md:285-291,327-350]
 
 ## Code Examples
@@ -546,24 +548,20 @@ const validCases = cases.length === expectedCaseIds.length
 | A1 | The new attended-checklist filename and the new exported symbol names should use the exact recommendations above. [ASSUMED] | Recommended Project Structure / Exported Symbols | Low: renaming changes plan references, not the evidence contract, if every consumer changes atomically. |
 | A2 | New package-script aliases and the aggregate native-suite identifier should use the exact proposed names in Validation Architecture. [ASSUMED] | Validation Architecture | Low: names can change before implementation, but runner, workflow, tests, and documentation must remain consistent. |
 
-## Open Questions and Explicit Gates
+## Resolved Planning Treatments for External and Owner Gates
 
-1. **DEV-01 / DEV-02 owner disposition**
+1. **DEV-01 / DEV-02 owner disposition — RESOLVED FOR PLANNING**
    - What we know: both are proposed, zero accepted. [VERIFIED: .planning/design/v1.2-DEVIATIONS.md:1-16]
-   - What's unclear: which branch the owner will accept.
-   - Recommendation: implement comparison fixtures and preserve `BLOCKED_OWNER`; do not default.
-2. **TIM-01 runtime policy**
+   - Planning treatment: implement comparison fixtures and preserve `BLOCKED_OWNER`; after a dated owner choice, any selected deviation or retained failing oracle is non-PASS `ACCEPTED_EXCEPTION` with complete decision/scope/rationale/hash metadata.
+2. **TIM-01 runtime policy — RESOLVED FOR PLANNING**
    - What we know: authoring UI is removed, but legacy facts, set/pointer/rest recovery, foreground reconciliation, queued callback, relaunch, restore, merge, and zero-cue/approved-cue behavior remain gated. [VERIFIED: .planning/phases/20-native-acceptance/20-UI-SPEC.md:418-442]
-   - What's unclear: retain or retire legacy playback.
-   - Recommendation: require dated owner choice plus every `TIM-01-*` fixture before affected rows leave `BLOCKED_OWNER`.
-3. **Garmin live access**
+   - Planning treatment: require a dated owner choice plus every `TIM-01-*` fixture before affected rows leave `BLOCKED_OWNER`; Phase 20 never chooses a default.
+3. **Garmin live access — RESOLVED FOR PLANNING**
    - What we know: official program approval/access and reviewed confidential topology are not established for this project; offline FIT is independent. [VERIFIED: .planning/phases/18-garmin-import/18-CONTEXT.md:26-33]
-   - What's unclear: whether live access will exist at execution.
-   - Recommendation: keep live rows `CONDITIONAL_EXTERNAL` and complete unconditional local evidence.
-4. **Phase 13–19 implementation availability**
+   - Planning treatment: keep live rows `CONDITIONAL_EXTERNAL` and complete unconditional local evidence; no stub can close them.
+4. **Phase 13–19 implementation availability — RESOLVED FOR PLANNING**
    - What we know: Phase 20 depends on all prior phases and currently has no plans or runtime evidence. [VERIFIED: .planning/ROADMAP.md:218-236; .planning/verification/v1.2-native-verification-matrix.md:3-9]
-   - What's unclear: final source-owned case registries and fixture bounds after those phases execute.
-   - Recommendation: make prerequisite contract discovery Wave 0 and fail before building if any owner phase lacks its planned tests/evidence.
+   - Planning treatment: require every terminal Phase 13–19 summary/validation/evidence output before the Phase 20 host gate; any missing upstream contract blocks before freeze/build and is repaired in its owning phase.
 
 ## Environment Availability
 
@@ -625,10 +623,11 @@ The native matrix proposes the underlying exact script files. [VERIFIED: .planni
 
 ### Sampling Rate
 
-- **Per task commit:** `node --test scripts/v12-evidence-scripts.test.mjs` plus the directly affected Jest file; no build/device action.
-- **Per wave merge:** full host suite and all evidence-validator negative tests; no native execution until the owner-authorized native wave.
-- **Native evidence wave:** each shard runs against one immutable run/build identity; failed shards are retained and require a new run after remediation.
-- **Phase gate:** exact 172-row equality, zero unexplained missing/duplicate/unknown/skipped evidence, valid conditional gates, all locked automated rows passing, privacy scan clean, raw samples retained, attended record separate, and owner review reached before any release action. [VERIFIED: .planning/phases/20-native-acceptance/20-UI-SPEC.md:170-182,340-350,465-470]
+- **Tooling commits first:** implement, self-test and commit every contract, probe, flow, runner, manifest extension, shard validator, final validator, attended utility and readiness generator before any native run.
+- **Host/freeze/build gate:** verify every terminal Phase 13–19 output; select exact Node/npm/Java/SDK/NDK/ADB/Maestro/signing tools; register all integrity modules; pass type/lint/boundary/test:all/coverage/evidence self-tests; commit; freeze source; then build one artifact and create one immutable run/build.json. A live mismatch or later source change blocks and requires a new build/run.
+- **Native shard waves:** each independent producer emits observations/gate inputs only against that one run. Re-execute and bind `multi-plan.yaml` and `library-running.yaml` one-to-one. Failed shards are retained and require a new run after remediation.
+- **Attended then final:** run a no-write preseal, pause at the owner-attended Samsung checkpoint, validate the resulting observation record automatically, and only then invoke `sealV12FinalEvidence` once.
+- **Phase gate:** exact 172-row equality, zero unexplained missing/duplicate/unknown/skipped evidence, valid conditional/accepted-exception metadata, separate PASS and exception counts, all locked automated rows passing, privacy scan clean, raw samples retained, attended record separate, and owner review reached before any release action. [VERIFIED: .planning/phases/20-native-acceptance/20-UI-SPEC.md:170-182,340-350,465-470]
 
 ### Wave 0 Gaps
 

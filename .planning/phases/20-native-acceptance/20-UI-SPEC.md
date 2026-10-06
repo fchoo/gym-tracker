@@ -68,9 +68,10 @@ Every row and capture has exactly one verdict. Blank, implicit success, and inhe
 | `REVIEW_REQUIRED` | Evidence is complete but a visual delta needs human classification; it is not a pass. |
 | `BLOCKED_OWNER` | DEV-01, DEV-02, or TIM-01 affects the row and its required dated owner decision/evidence gate is incomplete. For TIM-01, a decision without the chosen-policy compatibility evidence is still blocked. |
 | `CONDITIONAL_EXTERNAL` | Live Garmin API proof is unavailable because actual program access or the reviewed secure topology is absent. Deterministic tests may pass separately but cannot close the live row. |
+| `ACCEPTED_EXCEPTION` | A specific owner-reviewed deviation or retained failing oracle is accepted for an exact scope/configuration set with decision/date, rationale, and evidence hashes. It is explicitly non-PASS and counted separately. |
 | `N_A_REVIEWED` | The state genuinely cannot apply and the ledger carries a domain reason plus reviewer identity/date. Missing evidence is never `N_A_REVIEWED`. |
 
-Release readiness may be conditional. It may not collapse `BLOCKED_OWNER` or `CONDITIONAL_EXTERNAL` to `PASS`. Unaffected sub-assertions may pass independently, but an affected requirement row remains `BLOCKED_OWNER` until its complete gate closes.
+Release readiness may be `CONDITIONALLY_READY` only when an explicit reviewed policy permits it and every remaining non-PASS row is a valid `ACCEPTED_EXCEPTION`. It may not collapse `ACCEPTED_EXCEPTION`, `BLOCKED_OWNER`, `CONDITIONAL_EXTERNAL`, or `REVIEW_REQUIRED` to `PASS`; any `FAIL`, unresolved owner/external gate, or review-required row prevents conditional readiness. Unaffected sub-assertions may pass independently, but an affected requirement row remains `BLOCKED_OWNER` until its complete gate closes.
 
 ---
 
@@ -111,7 +112,7 @@ The GSD template permits exact component-specific geometry exceptions when they 
 | Phase 14 shell | Root header 56dp; four-cell bottom navigation 74dp baseline plus safe area; sheet max 82% keyboard-safe height, 24dp top corners, 1dp border, 68% scrim; toast min 50dp, 12dp radius, 1dp border, 4dp semantic bar; focus 3dp with 4dp clearance; structural rules 1/2/3/4dp by declared role | `14-UI-SPEC.md` → `Component geometry`; Revision 18 shell oracle |
 | Phase 15 Workout | 390×844 reference; root top bar 56dp; day selector 4dp gap and min 56dp items; queue min 60dp with 32dp ordinal; primary action min 64dp with 16dp radius; root nav 72dp plus safe area; Active header 64dp with 48/flexible/48 columns; progress 4dp; exercise header min 80dp with 48/flexible/48/48 columns; set header/row min 40/60dp with 40/flexible/flexible/68 columns; Add min 128dp and dock actions min 56dp; rest context 56dp and four min-48dp controls with 8dp gaps; sheet max 80% with 24dp top radius; editor input/stepper/Save 64/48/56dp | `15-UI-SPEC.md` → `Spacing Scale` / `Control dimensions and source-oracle measurements`; this owning native contract already records the approved Revision 18 translation and is not re-derived here |
 | Phase 16 Calendar spacing | 2dp cell/chip/action gaps and cell horizontal padding; 3dp month-control gap, cell vertical padding, and agenda metadata separation; 10dp root-to-Calendar, agenda-heading/row/summary separation; 14dp read-only detail and Calendar-key inset; 18dp approved Calendar/root-header inset | `16-UI-SPEC.md` → `Owner-approved component-specific spacing exceptions`; Revision 18 `.cal-month-panel` H:1117, `.cal-day` H:1118, `.cal-events` H:1127, `.topbar-actions` H:276, `.cal-month-nav` H:1106, `.app-destination` H:1092–1096, `.cal-agenda-*` H:1195–1213, `.cal-detail-scroll` H:1211, `.cal-readonly-exercise-header` H:1216, `.sheet` H:797–810 |
-| Phase 16 Calendar structure | 1dp reserved cell/rules; 2dp today/status/focus strokes where owned; 5dp agenda sport rail; 28dp date track; 36dp event track; two 17dp event chips | `16-UI-SPEC.md` → `Border, stroke and fixed structural geometry` / `Full-Height Calendar Geometry`; Revision 18 H:1118, H:1122–1133, H:1179, H:1195–1200, H:1222 |
+| Phase 16 Calendar structure | 1dp reserved cell/rules; 2dp today/status strokes where owned; shared focus remains the Phase 14 3dp ring with 3dp exterior offset; 5dp agenda sport rail; 28dp date track; 36dp event track; two 17dp event chips | `16-UI-SPEC.md` → `Border, stroke and fixed structural geometry` / `Full-Height Calendar Geometry`; Revision 18 H:1118, H:1122–1133, H:1179, H:1195–1200, H:1222 |
 | Phase 17 Library/Running | Target 48dp; field/toolbar action min 56dp; deep-route header min 64dp; standard row min 88dp; active-plan row min 120dp; named radii 8/12/16dp; divider 1dp; active-plan edge 4dp; focus 3dp with 3dp exterior offset | `17-UI-SPEC.md` → `Shape and control constants`; these are named component geometry and standard-scale realizations, not additional spacing tokens |
 | Phase 18 Garmin | Header 48dp side slots, 62dp min, 12dp inset; scroll frame 14dp top/18dp horizontal/32dp bottom and 74dp+safe-area clearance; banner 4dp edge, 12dp margin, 10×12dp padding, 58dp min; action grid 8dp gap, 12dp margin, 54dp min, 11dp radius; account 2dp rule, 50dp min, 12dp gap; activity 92dp min/48dp trailing/8dp gap; badge 6dp margin/2×7dp padding/7dp radius; route 165dp/13dp radius; fact and lap cells 10×4dp; HR row 50dp/12dp/4dp; match row 48dp radio/66dp min/8dp gap; FIT control 54dp/12dp/11dp | `18-UI-SPEC.md` → declared component exceptions; Revision 18 `.garmin-*` H:1481–1521 |
 | Phase 19 Progress | 3dp sport/range inner gap; 18dp hero top separation; 13dp segmented radius; 58dp hero header; 70dp source/list row; 142dp chart; 82% sheet cap; 24dp sheet corners; 68% scrim; 3dp focus with 3dp offset | `19-UI-SPEC.md` → `Template-permitted exceptions` / `Progress geometry`; Revision 18 `.pv2-sport-switch,.pv2-range-switch` H:1426, `.pv2-hero` H:1430, focus H:122–126 |
@@ -252,7 +253,7 @@ Run touch, software keyboard, hardware keyboard, and D-pad on every interactive 
 - Back/Escape closes the top sheet/dialog first, cancels uncommitted editing/reorder/gesture safely, then follows the reviewed route contract. It never confirms a destructive or source mutation.
 - Opening a sheet/dialog moves focus to its heading or documented safe first control, traps modal focus, and makes the background inert. Closing restores the exact invoker.
 - Root navigation focuses the new heading. Deep-route return restores the triggering row/action and scroll anchor. If that item no longer exists, focus moves to the documented nearest stable heading, next row, or empty-state CTA.
-- Visible focus is never clipped and is at least 2dp. Use 3dp where the owning Phase 14, 15, 17, or 18 contract requires it; selection is visually distinct from focus.
+- Visible focus is never clipped and uses the shared Phase 14 3dp focus ring with its 3dp exterior offset on every required interactive target; selection remains visually distinct from focus.
 - Drag/reorder has Move earlier/later or Move up/down alternatives. Calendar has Previous/Today/Next plus arrow-key civil-date navigation. No required result is gesture-only.
 
 ### Reduced motion
@@ -289,6 +290,8 @@ All later authorized Phase 20 evidence lives under:
 `artifacts/native/v1.2/<run-id>/`
 
 `<run-id>` is `phase20-<UTC YYYYMMDDTHHMMSSZ>-<source-head-12>`. It is immutable after the first artifact is recorded. Retrying creates a new run ID; it never overwrites a failed run.
+
+All Phase 20 tools, test-only probes, flows and validators are implemented, self-tested and committed before the pinned toolchain/full-host/coverage gate freezes source and builds one exact artifact. Shards then emit observations/gate inputs only. Any source, flow, fixture, contract, tool, APK, signature, installed-byte or identity change after freeze invalidates the run and requires a new build/run. The owner-attended Samsung checkpoint precedes automated attended-record validation and the sole final seal.
 
 Required top-level artifacts:
 
@@ -339,7 +342,7 @@ A planning-only commit after the evidence run is accepted only through an explic
 
 ### Fail-closed validator
 
-The validator rejects missing, duplicate, unknown, skipped, or out-of-order mandatory IDs; unreviewed `N_A_REVIEWED`; stale or altered bytes; path traversal; identity mismatch; empty/failing native results under success metadata; wrong configuration; insufficient samples; or changed thresholds. It also rejects:
+The validator rejects missing, duplicate, unknown, skipped, or out-of-order mandatory IDs; unreviewed `N_A_REVIEWED`; `ACCEPTED_EXCEPTION` without deviation ID, owner decision/date, exact scope/configurations, rationale and evidence hashes; any accepted exception counted as PASS; stale or altered bytes; path traversal; identity mismatch; empty/failing native results under success metadata; wrong configuration; insufficient samples; or changed thresholds. It also rejects:
 
 - A component mock attached as the only native evidence.
 - A Calendar transition row with only a final screenshot.
@@ -391,7 +394,7 @@ Any one of these is an immediate `FAIL` regardless of pixel percentage:
 | Area | Tolerance |
 |---|---|
 | Component/section geometry | ±1dp for rules, borders, rails, and aligned structural edges; ±2dp for text baselines and icon optical bounds after density conversion |
-| Touch/focus | No tolerance below 48×48dp; no overlap; focus ring at least 2dp and exact owning-spec thickness where specified |
+| Touch/focus | No tolerance below 48×48dp; no overlap; shared visible focus is the Phase 14 3dp ring with 3dp exterior offset |
 | Flat semantic colors | Source token must be exact in code; screenshot sample CIEDE2000 ≤2 after excluding antialiased/blended edge pixels |
 | Typography | Exact family, declared size/weight/line height and semantic role; glyph antialiasing may differ, but wrapping/line count at the 390×844 F100 oracle must match unless a recorded native/accessibility deviation says otherwise |
 | Responsive reflow | No fixed pixel match to the 390px prototype; required hierarchy, order, controls, labels, insets, and owning-spec width behavior must hold at each declared configuration |
@@ -409,7 +412,7 @@ No percentage, including zero, can excuse a missing control, changed copy, wrong
 
 ### Triage record
 
-Each non-clean comparison records `difference_id`, requirement/inventory/capture IDs, affected bounds, reference/native/comparison hashes, semantic-gate results, measured deltas, classification, owner/deviation reference if any, reviewer, UTC date, and disposition. Allowed classifications are `antialias_only`, `platform_chrome_masked`, `native_metric_within_tolerance`, `accepted_deviation`, or `product_mismatch`. Any other label fails schema validation.
+Each non-clean comparison records `difference_id`, requirement/inventory/capture IDs, affected bounds, reference/native/comparison hashes, semantic-gate results, measured deltas, classification, owner/deviation reference if any, reviewer, UTC date, and disposition. Allowed classifications are `antialias_only`, `platform_chrome_masked`, `native_metric_within_tolerance`, `accepted_deviation`, or `product_mismatch`. `accepted_deviation` maps to the non-PASS row verdict `ACCEPTED_EXCEPTION` and requires deviation ID, dated owner decision, exact scope/configurations, rationale and all referenced evidence hashes. Any other label or any attempt to count the exception as PASS fails schema validation.
 
 ---
 
@@ -446,14 +449,14 @@ The identity-bound native fixture ledger must enumerate:
 - Current oracle: 18dp horizontal inset, 2dp gaps, 44.5625px day width at 360px.
 - Proposed adaptation: Calendar-only horizontal inset `min(18, max(0, (safeWidth - 348) / 2))` dp, producing 6dp at 360 and 18dp at 390 while preserving 2dp gaps and row/event geometry.
 - Required comparison: identical 360×844 fixture in all four appearance codes at F100 and F200, with hit-bound overlays and non-overlap measurements for both branches.
-- Until the owner records one choice/date in the deviation register, affected CAL/VER rows are `BLOCKED_OWNER`. Neither branch may be described as accepted.
+- Until the owner records one choice/date in the deviation register, affected CAL/VER rows are `BLOCKED_OWNER`. A selected non-oracle adaptation or retained failing oracle is `ACCEPTED_EXCEPTION`, not PASS, and requires the complete exception metadata/evidence envelope.
 
 ### DEV-02 — Light Calendar Strength-title contrast
 
 - Current oracle: `#D97820`, measured 3.03:1 on paper and 2.56:1 on selected blue fill.
 - Proposed Light-only title: `#9B470B`, measured 6.12:1 on paper and 5.17:1 on selected fill; border/rail/swatch remains `#D97820`; Dark is unchanged.
 - Required comparison: identical Light/System→Light complete, partial, planned, selected, and blended-fill fixtures at all four widths and both font scales.
-- Until owner choice/date is recorded, affected CAL-03/VER-04 and visual rows are `BLOCKED_OWNER`. The candidate token remains unused.
+- Until owner choice/date is recorded, affected CAL-03/VER-04 and visual rows are `BLOCKED_OWNER`. A selected candidate or retained failing oracle is `ACCEPTED_EXCEPTION`, not PASS, and requires the complete exception metadata/evidence envelope; the candidate token remains unused until selected.
 
 ### Garmin API acceptance
 
@@ -505,7 +508,7 @@ Applicable state considerations resolved: **8 covered, 9 backstop, 0 unresolved*
 | Light/Dark/System | Every mounted product surface | 🧪 backstop | The 64-configuration expansion and runtime System switch prove theme parity without route/state/focus reset. |
 | landscape/adaptive order | Every root, deep route, sheet, dock and editor | 🧪 backstop | Corresponding landscape captures and semantics trace prove unchanged hierarchy, bottom navigation, reading order, and reachability. |
 | keyboard/D-pad | Navigation, controls, lists, forms, sheets, deep routes | 🧪 backstop | Key-event/focus trace proves logical traversal, activation once, alternate reorder/Calendar paths, Back/Escape, modal isolation, and focus return. |
-| focus | Root/deep/sheet transition graph | 🧪 backstop | Visible-focus captures and automated focus assertions prove ≥2dp rings, owning-spec thickness, heading entry, exact trigger return, and no hidden stops. |
+| focus | Root/deep/sheet transition graph | 🧪 backstop | Visible-focus captures and automated focus assertions prove the shared Phase 14 3dp ring with 3dp exterior offset, heading entry, exact trigger return, and no hidden stops. |
 | reduced motion | Calendar, sheets, route/dock/list transitions | 🧪 backstop | Normal/reduced ordered traces prove identical semantic destinations and callbacks without motion/timing-dependent truth. |
 | legacy timing recovery | Active Workout, relaunch, restore, merge | 🧪 backstop | TIM-01 fixtures prove the owner-selected runtime policy plus zero unintended cues and exact between-set-rest/set/pointer recovery; affected rows remain owner-blocked until decision and evidence. |
 | privacy | Screenshot, logs, FIT and device identity | 🧪 backstop | Synthetic fixtures, hash validation, sensitive-pattern rejection, and manual privacy review must pass before artifacts can be shared. |
@@ -531,7 +534,7 @@ No open UI consideration is silently deferred. DEV-01, DEV-02, TIM-01, and live 
 | VER-10 | Garmin conditional gate; unconditional FIT/dedupe/match states; privacy |
 | VER-11 | Native verification matrix budgets; identity-bound `performance.json`; no screenshot substitution |
 | VER-12 | Samsung attended acceptance kept separate from automated proof |
-| VER-13 | Complete parity/deviation/gap record; unchanged signed-byte identity; later explicit owner release gate |
+| VER-13 | Complete parity/deviation/gap record including separately counted non-PASS accepted exceptions; unchanged signed-byte identity; policy-bound conditional readiness; later explicit owner release gate |
 
 Performance budgets remain exactly those in `20-CONTEXT.md` and the native verification matrix: warm interactive ≤1s, cold no-migration ≤2s, warm root switch p95≤100ms, set+dock p95≤150ms with ordinary JS task ≤50ms, input/rest p95≤50ms, search after debounce p95≤100ms, Calendar p95≤250ms, useful Progress ≤500ms, review-open p95≤200ms, plus the explicit backup/merge and bounded future FIT measurements. Visual smoothness is not inferred from nominal duration or Jest timing.
 

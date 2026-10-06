@@ -273,7 +273,7 @@ Gate resolution occurs after ordinary evidence validation. Producers never suppl
 
 Add cases for:
 
-- Missing, duplicate, unknown, out-of-order, skipped, or false `N_A_REVIEWED` rows.
+- Missing, duplicate, unknown, out-of-order, skipped, false `N_A_REVIEWED`, malformed `ACCEPTED_EXCEPTION`, or accepted-exception-as-PASS rows.
 - Wrong run/source/prototype/fixture/APK/signature/device/config identity.
 - Absolute paths, `..`, backslashes, symlinks, hard links where uniqueness matters, stale bytes, extras, and oversized JSON/XML/PNG/FIT/sample arrays.
 - Empty or failing JUnit under success metadata; contact-sheet-only, mock-only, final-screenshot-only Calendar, and one-scheme System evidence.
@@ -441,14 +441,14 @@ Gate resolution runs only after the ordinary evidence for the row is complete an
 
 | Gate | Affected scope | Required derived outcome while open |
 |---|---|---|
-| `DEV-01` | affected Calendar geometry/accessibility rows, including VER-04 | `BLOCKED_OWNER`; both 360dp branches get complete comparison evidence, neither is called accepted |
-| `DEV-02` | CAL-03/VER-04 and affected Light visual rows | `BLOCKED_OWNER`; current oracle and proposed token remain distinct |
+| `DEV-01` | affected Calendar geometry/accessibility rows, including VER-04 | `BLOCKED_OWNER` while open; after owner decision, a non-oracle adaptation or retained failing oracle is `ACCEPTED_EXCEPTION` with complete metadata and is never PASS |
+| `DEV-02` | CAL-03/VER-04 and affected Light visual rows | `BLOCKED_OWNER` while open; after owner decision, a selected candidate or retained failing oracle is `ACCEPTED_EXCEPTION` with complete metadata and is never PASS |
 | `TIM-01` | `DOM-03`, `DOM-15`, `DOM-17`, `WRK-05`, `WRK-18`, `WRK-21`–`WRK-23`, `WRK-26`, `VER-07`, `VER-08` | `BLOCKED_OWNER` until dated policy plus every applicable `TIM-01-*` compatibility fixture passes |
 | Garmin access | `GAR-04`–`GAR-07`, `NV-IMP-11`–`NV-IMP-13` | `CONDITIONAL_EXTERNAL` without real approved access/topology/consent; local FIT rows remain independently pass/fail |
 | Samsung review | VER-12 observation rows only | observation `passed`/`failed`; never changes automated, owner, external, or release gates |
 | Release authorization | future signed build/install/promotion only | readiness may be conditional; Phase 20 stops for owner review |
 
-Allowed row verdicts are exactly `PASS`, `FAIL`, `REVIEW_REQUIRED`, `BLOCKED_OWNER`, `CONDITIONAL_EXTERNAL`, and `N_A_REVIEWED`. `N_A_REVIEWED` requires a domain reason plus reviewer identity/date; missing evidence is never N/A.
+Allowed row verdicts are exactly `PASS`, `FAIL`, `REVIEW_REQUIRED`, `BLOCKED_OWNER`, `CONDITIONAL_EXTERNAL`, `ACCEPTED_EXCEPTION`, and `N_A_REVIEWED`. `ACCEPTED_EXCEPTION` is non-PASS, counted separately, and requires deviation ID, owner decision/date, exact scope/configurations, rationale, and evidence hashes. `N_A_REVIEWED` requires a domain reason plus reviewer identity/date; missing evidence is never N/A. `CONDITIONALLY_READY` is possible only under an explicit reviewed policy when every remaining non-PASS row is a valid accepted exception.
 
 ### 5. Privacy-Safe Evidence
 
@@ -497,7 +497,7 @@ Phase 20 prepares readiness evidence and stops. It does not modify or dispatch t
 
 ### Gate and Authority
 
-- Converting `BLOCKED_OWNER` or `CONDITIONAL_EXTERNAL` to `PASS`, `PASS_WITH_NOTES`, or an unreviewed N/A.
+- Converting `ACCEPTED_EXCEPTION`, `BLOCKED_OWNER`, or `CONDITIONAL_EXTERNAL` to `PASS`, `PASS_WITH_NOTES`, or an unreviewed N/A; counting an accepted exception in PASS totals.
 - Treating a dated TIM-01 choice without all selected-policy compatibility fixtures as closed.
 - Using deterministic FIT fixtures, a consent mock, or a manual FIT success to close live Garmin rows.
 - Letting Samsung observation, prior N4 evidence, reviewer preference, or automated screenshot success authorize build, install, promotion, release, or Terminal Seal.
@@ -545,11 +545,12 @@ No planned file lacks a role-level analog. The following responsibilities lack a
 
 ## Planner Handoff
 
-1. Wave 0 must confirm all Phase 13–19 source-owned contract registries and fixtures exist. Current planning checkout does not yet contain the proposed multi-plan/Running, Garmin-import, Calendar-transition, chooser, or Running-editor files named by the native matrix.
-2. Build schema/validator tests before runner execution. Add negative tests for identity, paths, privacy, gates, exact-set coverage, reports, screenshots, and thresholds.
-3. Implement producers as independent shards under one immutable run envelope; no producer writes final verdicts.
-4. Run host-only tests during implementation. Native build/device/benchmark/Samsung actions require their later explicit authorization.
-5. Finish with `sealV12FinalEvidence`, preserve conditional outcomes, produce readiness/rollback facts, and stop for owner review. Do not chain into the future release workflow.
+1. Implement, self-test and commit every Phase 20 contract, probe, flow, runner, build-manifest extension, shard validator, final validator, attended utility and readiness generator before native execution. Add negative tests for identity, paths, privacy, gates, accepted exceptions, exact-set coverage, reports, screenshots and thresholds.
+2. Gate every terminal upstream output: `13-14-SUMMARY.md`, `14-11-SUMMARY.md`, `15-13-SUMMARY.md`, `16-07-SUMMARY.md`, `17-14-SUMMARY.md`, `18-12-SUMMARY.md`, `18-13-SUMMARY.md`, `19-10-SUMMARY.md`, their validations and named evidence. Missing output blocks before freeze/build.
+3. Select/read back exact pinned Node/npm/Java/SDK/Build Tools/NDK/ADB/Maestro/signing tools, register every integrity module, pass type/lint/boundary/test:all/coverage/evidence tests, commit, freeze source, build one exact artifact and create one immutable run/build.json. Any later source change requires a new build/run.
+4. Execute independent observation-only shards serially under one device/settings lease. Explicitly create, re-execute and one-to-one bind `multi-plan.yaml` and `library-running.yaml`; no producer writes row or final verdicts.
+5. Run a no-write preseal, then the nonautonomous Samsung `checkpoint:human-verify`, then automated attended-record validation. Only afterward may `sealV12FinalEvidence` write the final ledger/seal once.
+6. Preserve `ACCEPTED_EXCEPTION`, `BLOCKED_OWNER`, `CONDITIONAL_EXTERNAL` and other non-PASS outcomes, produce readiness/rollback facts, and stop for owner review. Do not chain into the future release workflow.
 
 ## Metadata
 

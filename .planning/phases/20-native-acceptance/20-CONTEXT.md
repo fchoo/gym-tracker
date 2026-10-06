@@ -26,7 +26,7 @@ still own component/domain tests; this phase closes cross-phase evidence only.
 - **D20-07:** Samsung attended review is acceptance observation in addition to automated proof. No build/release/device action occurs until later owner authorization.
 
 ### Deviation and external gates
-- **D20-08:** DEV-01/02 cannot be marked accepted without owner decision. Garmin sync remains conditional on real access/broker review. Release readiness may be conditional; it must not fabricate closure.
+- **D20-08:** DEV-01/02 cannot be marked accepted without owner decision. Garmin sync remains conditional on real access/broker review. `ACCEPTED_EXCEPTION` is an explicit non-PASS verdict requiring deviation ID, owner decision/date, exact scope/configurations, rationale, and evidence hashes; it is counted separately from PASS. Release readiness may be `CONDITIONALLY_READY` only under an explicit reviewed policy when every remaining non-PASS row is such a valid exception; it must not fabricate closure.
 
 ### Claude's Discretion
 - Evidence shard organization and synthetic fixture generation, provided privacy-safe source/artifact binding remains fail-closed.
