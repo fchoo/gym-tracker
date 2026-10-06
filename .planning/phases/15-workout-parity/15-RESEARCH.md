@@ -177,6 +177,8 @@ Not applicable: the recommended implementation installs zero external packages a
 
 ## Architecture Patterns
 
+Phase 15 consumes the canonical Phase 14 geometry: root bottom navigation is 74dp plus safe area and shared sheets/dialog content is capped at 82% of available height. No Phase 15 component may diverge from those upstream measurements.
+
 ### System Architecture Diagram
 
 ```text
@@ -285,7 +287,7 @@ Existing file paths above were opened in this session; proposed component paths 
 | `src/ui/components/RestDock.tsx` / `RestDock` | Render full-width durable rest state and all controls. | Remove `expanded`; order all four controls exactly; move Undo to the shared top-toast path. [VERIFIED: src/ui/components/RestDock.tsx:162-198,332-455; .planning/phases/15-workout-parity/15-UI-SPEC.md:429-445] |
 | `src/ui/components/PlanEditorFields.tsx` / `PlanEditorReorderableRow` | Reuse drag preview and Move up/down dispatch if configurable without breaking plan editing. | Current long-press activation is not the Phase 15 8dp contract; isolate the change. [VERIFIED: src/ui/components/PlanEditorFields.tsx:57-75,174-331] |
 | `src/domains/workout/activeWorkout.ts` / `ActiveWorkoutRepository`, request/result types | Preserve all revision, metric identity, receipt, pointer, and result contracts. | Add only narrow preference/rest capabilities and any Phase 13 provenance needed by the read model. [VERIFIED: src/domains/workout/activeWorkout.ts:39-140,142-397] |
-| `src/platform/sqlite/repositories/workoutRepository.ts` / `createWorkoutRepository` | Keep set/edit/reorder/Undo transitions atomic and source-authoritative. | Do not rewrite proven transitions for layout; add bounded commands only for genuinely missing persisted settings. [VERIFIED: src/platform/sqlite/repositories/workoutRepository.ts:1536-1852,2195-2313,3172-3375,3449-3603] |
+| `src/platform/sqlite/repositories/workoutRepository.ts` / `createWorkoutRepository` | Keep set/edit/reorder/Undo transitions atomic and source-authoritative. | Add the missing revision-fenced session-exercise `default_rest_seconds` command; return/reload the authoritative view and never mutate current rest. Do not rewrite proven transitions for layout. [VERIFIED: src/platform/sqlite/repositories/workoutRepository.ts:1536-1852,2195-2313,3172-3375,3449-3603] |
 | `src/bootstrap/workoutAppRuntime.tsx` / `RuntimeValue`, `runWorkoutMutation`, `runRestCommand` | Compose narrow ports, refresh/invalidate after commits, and map failure/recovery. | Split read capabilities from mutations for route consumers; do not expose the full runtime to Phase 16. [VERIFIED: src/bootstrap/workoutAppRuntime.tsx:592-963,3133-3266,3580-3697,3880-4072] |
 | `src/domains/history/metricHistory.ts` / `buildExerciseMetricHistory` | Own compatible grouping and factual history selection. | Add a pure six-session trend projection if needed; presentation must not compare incompatible segments. [VERIFIED: src/domains/history/metricHistory.ts:19-50,63-210] |
 | `src/ui/screens/WorkoutCompletionScreen.tsx` / `WorkoutCompletionScreen` | Render durable complete/partial summary and default-No write-back. | Add source-provided change rows/no-difference state; retain effort as optional and non-blocking. [VERIFIED: src/ui/screens/WorkoutCompletionScreen.tsx:65-126,128-379] |
@@ -300,7 +302,7 @@ Existing file paths above were opened in this session; proposed component paths 
 5. **Deliver Workout root:** consume the Phase 13 selected occurrence object, add the non-mutating five-day preview selector and Running context, then preserve start/resume/start-alternative failure and focus behavior. [VERIFIED: .planning/phases/15-workout-parity/15-UI-SPEC.md:181-223]
 6. **Replace set editing and command dock:** add `WorkoutSetEditorSheet`; render factual rows; Save through existing metric/domain commands; move warm-up/working completion to `WorkoutActionDock`; keep in-flight and retry identities stable. [VERIFIED: .planning/phases/15-workout-parity/15-UI-SPEC.md:252-316,410-427; src/domains/workout/setCommands.ts:120-175,214-247]
 7. **Recompose exercise controls:** add the sole active edge, exact header target order, scoped Add-set menu, separate trend, flat Timing/Replace/Delete menu, two-step delete, and 8dp drag activation while retaining the same Phase 9 command payloads. [VERIFIED: .planning/phases/15-workout-parity/15-UI-SPEC.md:239-248,320-406]
-8. **Flatten rest/settings:** expand `RestDock` permanently; use the existing rest state/commands and OS reconciler; add a typed SQLite-backed preference port for saved rest/increment without changing target JSON or an already-running rest. [VERIFIED: .planning/phases/15-workout-parity/15-UI-SPEC.md:343-445; src/domains/rest/restState.ts:1-29,48-210]
+8. **Flatten rest/settings:** expand `RestDock` permanently; add the revision-fenced session-exercise `default_rest_seconds` command and saved/draft/pending/failure/retry/reload UI; add the typed plan-scoped SQLite preference port. After both ports exist, wire `weightIncrementGrams` to subsequent editor step actions and resolve a later eligible rest from exercise override then plan `defaultRestSeconds`, without changing target JSON or an already-running rest. [VERIFIED: .planning/phases/15-workout-parity/15-UI-SPEC.md:343-445; src/domains/rest/restState.ts:1-29,48-210]
 9. **Close outcomes/completion:** add operation-specific pending/failure/retry states, deferred plan-editor navigation, factual complete/partial composition, and domain-produced write-back difference rows. [VERIFIED: .planning/phases/15-workout-parity/15-UI-SPEC.md:463-575]
 10. **Apply the accepted TIM-01 branch:** if retirement is approved, remove UI authoring and gate every runtime entry/reconciliation/callback while retaining storage and restore parsing; if it is not approved and zero-cue isolation cannot be proved, block Phase 15 cutover and retain the reviewed compatibility path. [VERIFIED: .planning/architecture/v1.2-multi-active-plans.md:151-166]
 11. **Run the full parity gate:** source tests, 100% integrity-critical branch coverage, real SQLite, exact-HEAD Android, process death/offline/notification, visual overlay, accessibility, and performance. Do not reuse v1.1 native artifacts as v1.2 proof. [VERIFIED: .planning/phases/15-workout-parity/15-UI-SPEC.md:643-665,724-773; .planning/research/v1.2/SUMMARY.md:87-93]
@@ -456,6 +458,8 @@ This shape is required by the Calendar rule that history/preview detail expose n
 
 ## Validation Architecture
 
+The final visual verifier pins the full approved.json, approved-hybrid.html, checked-in source-manifest, and six reference PNG SHA-256 values declared in UI-SPEC. Every native visual case must also record full native screenshot, overlay, and difference hashes plus derivation metadata binding the native and reference input hashes; a missing or mismatched link fails closed.
+
 ### Test Framework
 
 | Property | Value |
@@ -518,8 +522,8 @@ These files are the minimum regression set. Tests that encode the superseded inl
 | WRK-23 | deadline/pause/cues recovery | integration + native | `npm run test:integration -- --runInBand tests/integration/rest-lifecycle.test.ts && npm run test:unit -- --runInBand src/bootstrap/workoutLifecycle.test.ts` | ✅ retain; native Wave 0 |
 | WRK-24 | comparable six-session trend/chart/empty | unit + component | `npm run test:unit -- --runInBand src/domains/history/metricHistory.test.ts && npm run test:components -- --runInBand src/ui/__tests__/ExerciseTrendSheet.test.tsx` | ❌ sheet |
 | WRK-25 | exact exercise menu and separate trend | component | ActiveWorkout command | ✅ extend |
-| WRK-26 | immediate flat rest persistence; no advanced UI | unit + integration + component | ActiveWorkout command plus proposed preference tests | ❌ Wave 0 |
-| WRK-27 | saved 1.25/2.5/5 preference without target rewrite | unit + integration + component | proposed preference tests plus ActiveWorkout command | ❌ Wave 0 |
+| WRK-26 | revision-fenced exercise default_rest_seconds, saved plan default, ordered later-rest resolution; no advanced UI or active-rest mutation | unit + SQLite-host + integration + component | ActiveWorkout command, preference, session-exercise editing, rest lifecycle, and settings tests | ❌ Wave 0 |
+| WRK-27 | saved 1.25/2.5/5 preference drives later editor steppers without target rewrite | unit + SQLite-host + integration + component | preference persistence/portability, editor stepper, stale/reload/failure/noninterference tests | ❌ Wave 0 |
 | WRK-28 | deferred real plan editor route | route + component | proposed workout-route/plan-navigation tests | ❌ Wave 0 |
 | WRK-29 | add picker search/loading/error/retry | component + integration | ActiveWorkout command plus session-exercise integration | ✅ extend |
 | WRK-30 | replacement compatibility/history preservation | domain + integration + component | sessionExerciseCommands + session-exercise-editing + ActiveWorkout commands | ✅ extend |
@@ -540,7 +544,7 @@ These files are the minimum regression set. Tests that encode the superseded inl
 
 - [ ] Add a route test for `app/workout/[sessionId].tsx` covering retry, Back context, no mutation on unmount, and exact command capability wiring. [VERIFIED: current test inventory]
 - [ ] Add component tests for the proposed Workout day selector, facts-only session presentation, set editor sheet, action dock, plan settings, and exercise trend sheet. [VERIFIED: current test inventory; .planning/design/v1.2-prototype-parity-matrix.md:77-112]
-- [ ] Add a typed preference/domain/repository suite for flat rest and increment persistence, stale revision, invalid input, retry, reload, backup, restore, merge, and no target/history mutation. [VERIFIED: current source gap; .planning/phases/15-workout-parity/15-UI-SPEC.md:356-385]
+- [ ] Add a typed plan-scoped preference/domain/repository suite plus a revision-fenced session-exercise default_rest_seconds command. Cover saved/draft/pending/failure/retry/reload, stale revision, invalid input, backup/restore/merge, editor weightIncrementGrams wiring, exercise-override then plan-default later-rest creation, and no target/history/set/write-back/active-rest mutation. [VERIFIED: current source gap; .planning/phases/15-workout-parity/15-UI-SPEC.md:356-385]
 - [ ] Add TIM-01/TIM-02/TIM-03 characterization and accepted-branch tests before changing advanced-timing runtime wiring. [VERIFIED: .planning/architecture/v1.2-migration-risks.md:78-80]
 - [ ] Add `scripts/run-phase15-maestro.mjs`, its fail-closed source contract, Phase 15 flows, and a package script; no Phase 15 runner currently exists. [VERIFIED: package.json:29-39,83-90; current filesystem inventory]
 - [ ] Extend or wrap the Phase 1 benchmark to measure the actual Phase 15 rendered dock transition and long-session rendering, retaining the exact `100` / `150 ms` / `50 ms` gates. [VERIFIED: scripts/benchmark-phase1.mjs:23-30,489-580; src/bootstrap/phase1Benchmark.ts:148-194]
@@ -590,24 +594,19 @@ React Native provides `accessibilityState`, `accessibilityActions`/`onAccessibil
 
 | # | Claim | Section | Risk if Wrong |
 |---|-------|---------|---------------|
-| A1 | The narrowest missing storage seam is a versioned SQLite-backed Workout preference port for default rest and weight increment, using the existing settings pattern rather than mutating metric targets. `[ASSUMED]` | Architecture / Safe order | Exact global-versus-plan scope is not stated in Phase 15 context; the planner must bind it to the post-Phase-13 model and obtain owner confirmation if behavior would differ from the approved Plan settings presentation. |
+| A1 | RESOLVED — the plans define a versioned plan-scoped SQLite Workout preference keyed by stable Phase 13 plan identity; it stores `defaultRestSeconds`, `weightIncrementGrams`, and revision without mutating metric targets. | Architecture / Safe order | Resolution is explicit in 15-06; backup/restore/merge remap and independent-plan tests prevent accidental global ownership. |
 
-## Open Questions
+## Resolved Questions
 
-1. **What owns saved Default rest and Weight increment after Phase 13?**
-   - What we know: Phase 15 requires saved values, immediate persistence, no rewrite of current targets, and no change to an already-running rest; the current runtime has no dedicated port. [VERIFIED: .planning/phases/15-workout-parity/15-UI-SPEC.md:343-385; src/bootstrap/workoutAppRuntime.tsx:592-963]
-   - What's unclear: whether the post-Phase-13 contract makes them global owner preferences or plan-scoped preferences. `[ASSUMED]`
-   - Recommendation: use a versioned SQLite-backed preference object and stable plan identity where the Phase 13 model supports it; do not encode the selection by rewriting every `MetricTarget.incrementGrams`. [VERIFIED: src/domains/metrics/contracts.ts:85-105,131-147]
+1. **Preference ownership — RESOLVED**
+   - 15-06 defines a versioned plan-scoped preference object keyed by stable Phase 13 plan identity. It stores `defaultRestSeconds`, `weightIncrementGrams`, and revision in SQLite, participates in backup/clean restore/merge remapping, and never rewrites `MetricTarget.incrementGrams`.
+   - 15-07 performs the ordered integration only after that port exists: saved `weightIncrementGrams` drives subsequent editor step actions; saved `defaultRestSeconds` is the fallback for a later eligible rest after any exercise-specific override. Stale/failure/reload/noninterference and active-rest invariance are explicit tests.
 
-2. **What exact symbols will Phases 13 and 14 export?**
-   - What we know: their locked contracts require typed multi-plan read/command ports and shared tokens/overlays, but both phases are currently unimplemented planning dependencies. [VERIFIED: .planning/STATE.md:30-41,56-63; .planning/phases/13-multi-plan-running-foundation/13-CONTEXT.md:9-35; .planning/phases/14-prototype-visual-shell/14-CONTEXT.md:9-33]
-   - What's unclear: final exported symbol names after their plans execute. [VERIFIED: current filesystem inspection]
-   - Recommendation: Phase 15 plan tasks should name required capabilities and resolve exact import names at execution from the completed dependency summaries; they must not duplicate those layers.
+2. **Upstream Phase 13/14 symbols — RESOLVED BY FAIL-FAST PREFLIGHT**
+   - 15-01 requires completed 13-10 and 14-12 summaries, reads the actual exported symbols, and halts before edits if exact occurrence/start/provenance or AppRootShell/BottomSheet/ConfirmationDialog/SemanticToast/focus/token contracts are absent. Phase 15 does not guess names or duplicate upstream layers.
 
-3. **TIM-01 owner disposition**
-   - What we know: UI authoring is removed, all source bytes/recovery are preserved, and runtime retirement is proposed. [VERIFIED: .planning/phases/15-workout-parity/15-UI-SPEC.md:578-595]
-   - What's unclear: approval to disable hidden authoring/reconciliation/playback. [VERIFIED: .planning/phases/15-workout-parity/15-CONTEXT.md:31-32]
-   - Recommendation: create the explicit checkpoint after characterization tests; block the retirement branch without approval.
+3. **TIM-01 disposition — RESOLVED BY BLOCKING ROUTE**
+   - 15-02 refreshes characterization, then uses a `gate="blocking-human"` decision with exact `retire-playback` or `retain-compatibility` values. Only the recorded retirement choice unlocks the one-way runtime cut; retain-compatibility blocks Phase 15 cutover. Legacy facts and recovery remain preserved in both branches.
 
 ## Environment Availability
 

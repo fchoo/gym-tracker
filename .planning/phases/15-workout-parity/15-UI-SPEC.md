@@ -35,6 +35,10 @@ Evidence baseline:
 | Revision 18 <code>approved.json</code>, SHA-256 <code>b8e91e3098ec443c9dc283ae8383d1af552d7dc2b83648695a01dcb8a89ff0bf</code> | Latest presentation decisions; one active-exercise edge and no current-row stripe |
 | <code>approved-hybrid.html</code>, SHA-256 <code>b5ddbad88fd465af2fa79475dc0c05efec49e551652f13c5220627730e1d9c96</code> | Exact hierarchy, measurements, labels, states, sheets, and Light/Dark color values |
 | <code>design-audit-revision18.md</code>, SHA-256 <code>3d121af24fe92907ab035ab49f50473107043bcd9ea126722d5d2132ece7c048</code> | Confirms the sole 4px exercise edge and removal of the inner current-set marker |
+| Checked-in <code>source-manifest.json</code>, SHA-256 <code>90de9f6040f36dc029b97ad3687d0e3569fd9bc33ad3eaab2cafc649ae1196a4</code> | Pins the three external presentation sources above before visual comparison |
+| Light/Dark Workout-root references, SHA-256 <code>513173987c6b29d370f5428e3226608a795d48cdf5a9c258a8624dd2bed0ad2d</code> / <code>ffd8cf979d3ba679cc744e58a91d30d7bd34cda055fc0bff5ae8c09d886de301</code> | Pinned 390 × 844 root references |
+| Light/Dark Active-overview references, SHA-256 <code>0c40bbb3555550653d89ee517df29c882269cf92d58b95487512e9e6dfde5b18</code> / <code>aa2b56418d8cc13446fdfc0bef8ce6c1c8d7fff5bbad3ff9530c709fe4d9b61f</code> | Pinned 390 × 844 Active references |
+| Light/Dark committed-rest references, SHA-256 <code>09aa4b4bda47451d35be6316b769a03fd70b5736ec4c7842ad1399015f47253b</code> / <code>5d7a7035df19c63feedc0b400453c57c79b9ec3a1f8e51727807b867924bd0d7</code> | Pinned 390 × 844 rest references |
 | Light/Dark browser walk and captures in <code>.planning/design/v1.2-browser-evidence/</code> | Confirms Workout root, active overview, warm-up transitions, full rest dock, menus, and theme parity at the 390 × 844 reference viewport |
 | Prototype inventory and parity matrix | Maps all 36 WRK requirements to routes, components, source selectors, planned checks, and evidence paths |
 | Current native components and shipped tests | Supplies native-only metric, failure, process-death, recovery, completion, and write-back states absent from the illustrative prototype |
@@ -103,7 +107,7 @@ Control dimensions and source-oracle measurements are not spacing tokens:
 | Root content | 16dp horizontal inset; 8dp top inset |
 | Root queue row | Minimum 60dp high; 32dp ordinal column |
 | Root primary action | Minimum 64dp high; 16dp radius; 16dp horizontal padding |
-| Root bottom navigation | 72dp plus bottom safe area; exactly four equal columns |
+| Root bottom navigation | 74dp plus bottom safe area; exactly four equal columns, consuming the canonical Phase 14 shell measurement |
 | Active header | 64dp high; columns 48dp / flexible identity / 48dp |
 | Session progress | 4dp high |
 | Session scroll | 16dp horizontal inset; sufficient bottom padding to clear the maximum dock and safe area |
@@ -111,7 +115,7 @@ Control dimensions and source-oracle measurements are not spacing tokens:
 | Set header / set row | Minimum 40dp / 60dp; row columns 40dp / flexible Previous / flexible Target or Result / 68dp State |
 | Compact action dock | 8dp gap; Add minimum 128dp; both buttons minimum 56dp high |
 | Rest dock | Full width; 56dp context row; four equal controls minimum 48dp high with 8dp gaps |
-| Bottom sheet | Maximum 80% of available height; 24dp top radius; scrolls independently |
+| Bottom sheet | Maximum 82% of available height; 24dp top radius; scrolls independently, consuming the canonical Phase 14 overlay cap |
 | Editor input / stepper / save | 64dp input; 48dp stepper; 56dp Save |
 
 Use native safe-area insets in addition to these measurements. Do not reproduce browser status-bar or camera assets.
@@ -284,7 +288,7 @@ Tap any planned, current, or completed set row to edit. There is no separate vis
 
 ## Metric Editor Contract
 
-All editors are native Phase 14 bottom sheets, keyboard-safe, maximum 80% height, independently scrollable, and focus-trapped. Focus enters the sheet heading, then fields, then Save; dismissal restores the row. Direct numeric inputs show fixed units, reject negative values, and never encode one metric as another.
+All editors are native Phase 14 bottom sheets, keyboard-safe, maximum 82% height, independently scrollable, and focus-trapped. Focus enters the sheet heading, then fields, then Save; dismissal restores the row. Direct numeric inputs show fixed units, reject negative values, and never encode one metric as another.
 
 Editor heading:
 
@@ -313,6 +317,8 @@ Save:
 
 Where shipped facts exist, the editor may expose source choices in this order: <code>Recommended</code>, <code>Last workout</code>, <code>Plan default</code>. Choosing one updates the draft only; Save remains mandatory.
 
+Load/assistance steppers read the authoritative plan preference <code>weightIncrementGrams</code> after the preference port loads. A pending, failed, stale, or reloading preference never substitutes a draft as saved: keep the last authoritative increment, expose the setting failure/retry in Plan settings, and continue to validate the edited set through the metric command. A successful preference change affects subsequent editor step actions only; it never rewrites the editor's current draft, current/committed set facts, targets, or history.
+
 Direct entry and steppers are both required for load/reps/timed fields. At 200% text, two-column fields stack to one column and the software keyboard must not cover the active field or Save action.
 
 ---
@@ -332,7 +338,7 @@ No other set kind appears. The action remains scoped to the invoking exercise. A
 
 The exercise overflow contains only:
 
-1. <code>Timing</code>: one flat <code>Between-set rest</code> nonnegative number with explicit <code>sec</code>; step 15 seconds; persists immediately through the real command.
+1. <code>Timing</code>: one flat exercise-specific <code>Between-set rest</code> nonnegative number with explicit <code>sec</code>; step 15 seconds; persists through the revision-fenced session-exercise <code>default_rest_seconds</code> command.
 2. <code>Replace exercise</code>.
 3. <code>Delete exercise</code>.
 
@@ -355,7 +361,7 @@ Changing the increment changes the entry preference only; it does not rewrite cu
 
 #### Between-set rest persistence states
 
-The exercise <code>Between-set rest</code> and plan <code>Default rest</code> controls use the same state model. The field always distinguishes the authoritative saved value from the editable draft.
+The exercise <code>Between-set rest</code> and plan <code>Default rest</code> controls use the same state model. The field always distinguishes the authoritative saved value from the editable draft. Exercise writes carry session ID, session-exercise ID, expected session revision, expected session-exercise revision, and a stable retry identity; successful acknowledgement applies the returned/reloaded authoritative exercise value. Stale, unknown, or committed-refresh outcomes reload the latest session before offering another command.
 
 | State | Visible contract | Accessibility and value preservation |
 |---|---|---|
@@ -367,7 +373,7 @@ The exercise <code>Between-set rest</code> and plan <code>Default rest</code> co
 | Plan save failed | Heading <code>Default rest was not saved</code>; body <code>Your saved default rest is still {saved seconds} sec. The entered {draft seconds} sec is still here.</code> | Keep the draft in the input and expose <code>Retry saving default rest</code>; dismissal restores the saved value |
 | Retry pending | Retain <code>{draft seconds}</code> and show <code>Saving rest…</code> again | Reuse the same bounded request identity; success enters Saved, repeat failure returns to the matching failure state without replacing the authoritative value |
 
-Changing a default never changes an already-running/paused rest. A recovered dock continues from its persisted deadline or paused remainder; the new default applies only when the domain starts a later eligible rest.
+Changing either default never changes an already-running/paused rest. A recovered dock continues from its persisted deadline or paused remainder. When the domain later creates an eligible working-set rest, it resolves the current exercise <code>default_rest_seconds</code> override first and otherwise the authoritative plan preference <code>defaultRestSeconds</code>, then persists the resulting deadline/revision before UI or device feedback.
 
 #### Weight-increment persistence states
 
@@ -383,6 +389,8 @@ The visible choices remain exactly <code>1.25</code>, <code>2.5</code>, and <cod
 | Retry pending | Draft remains selected and status returns to <code>Saving weight increment…</code> | Reuse the same bounded request identity; success enters Saved, repeat failure retains both saved and draft values |
 
 These controls never rewrite plan targets, active set values, committed results, or history. A failure never presents the draft as saved.
+
+After the preference write commits and reloads, <code>weightIncrementGrams</code> drives subsequent load/assistance editor step actions. After <code>defaultRestSeconds</code> commits and reloads, it is the fallback for a later eligible rest creation when no exercise-specific default exists. Stale/failure/retry paths retain the last authoritative values, and neither preference mutates an already-running rest.
 
 ### Exercise picker
 
@@ -551,7 +559,7 @@ Only rows whose authoritative current and proposed targets differ are listed. Do
 
 Overflow contract:
 
-- The preview body scrolls within the shared 80%-maximum sheet; the heading and action footer remain reachable without horizontal scrolling.
+- The preview body scrolls within the shared 82%-maximum sheet; the heading and action footer remain reachable without horizontal scrolling.
 - At 200% text and on narrow/landscape viewports, each row stacks in order Exercise → Current plan → Proposed → Unit.
 - Long exercise names wrap fully; numeric value and unit remain together.
 - A long preview renders every changed row; it does not summarize hidden differences as “and more.”
@@ -651,6 +659,10 @@ Voice is factual, calm, local-first, and commit-aware. Never use praise, shame, 
 - Landscape retains the sticky header and dock, gives remaining height to the one session scroll owner, and keeps the current row plus primary dock action reachable. Sheets use available width/height without becoming a two-pane dashboard.
 
 Native acceptance must cover every row below. Each row is exercised in Light and Dark, plus System resolving once to each appearance; at 100% and 200% text; with touch and keyboard/D-pad; and with standard and reduced motion. The 390 × 844 row also receives the Revision 18 overlay comparison.
+
+Accessibility acceptance is machine-gated on the native semantic tree, exact labels/roles/states/actions, focus order/restoration, target geometry, keyboard/D-pad activation, and reduced-motion behavior. A live TalkBack run may be captured as supplementary owner evidence but is not a mandatory automated acceptance dependency.
+
+For every 390 × 844 fidelity case, the final verifier recomputes the pinned approved JSON, approved HTML, source-manifest, and selected reference SHA-256 values, then requires full SHA-256 values for the native screenshot, generated overlay, and generated difference image. Overlay/difference metadata must bind both the pinned reference hash and native screenshot hash; absent, stale, or mismatched links fail acceptance.
 
 | Viewport | Class / orientation | Required evidence |
 |---|---|---|
@@ -761,7 +773,7 @@ Applicable state considerations resolved: 37 covered, 9 backstop, 0 unresolved.
 | zero-one-many | Picker/trend sessions | ✅ covered | Zero has exact empty copy; one/many remain scrollable and single-select/comparable. |
 | overflow | Full active list | ✅ covered | One vertical scroll owner plus measured dock clearance; no nested horizontal list. |
 | overflow | Sheets and keyboard | ✅ covered | Max-height scroll plus keyboard avoidance keeps heading, fields, and Save reachable. |
-| overflow | Long plan-change preview | 🧪 backstop | All change rows remain in the 80%-maximum vertical sheet; actions stay reachable and rows stack at 200%/landscape without horizontal scroll. |
+| overflow | Long plan-change preview | 🧪 backstop | All change rows remain in the 82%-maximum vertical sheet; actions stay reachable and rows stack at 200%/landscape without horizontal scroll. |
 | overflow | Rest and action controls | 🧪 backstop | Native visual tests at 360dp, landscape, and 200% verify wrap without lost controls or horizontal scrolling. |
 | overflow | Reorder | ✅ covered | Drag plus Move up/down; first/last bounds; cancel never commits. |
 | long-text | Plan/day and exercise names | 🧪 backstop | Standard scale uses two-line exercise names; 200% relaxes clamp and visual tests verify no action collision. |
@@ -832,7 +844,7 @@ All 36 parity rows remain <code>pending_implementation</code>; this draft specif
 | 2. Visuals | PASS | Workout/Active composition, one-edge hierarchy, warm-ups, row/dock/rest states, saved-versus-draft settings, plan-change rows, exact icon labels, and the seven-viewport matrix are explicit. |
 | 3. Color | PASS | 60/30/10 allocation and Light/Dark semantic tokens are exact; accent reservations, state meanings, and contrast gate are explicit. |
 | 4. Typography | PASS | Four semantic sizes and two logical weights are declared; Archivo/IBM Plex Mono roles and isolated numerical measurements are explicit. |
-| 5. Spacing | PASS | Multiples-of-4 scale, one 80%-maximum sheet contract, 48dp targets, safe-area, 200%, landscape, keyboard rules, and the full viewport matrix are explicit. |
+| 5. Spacing | PASS | Multiples-of-4 scale, the canonical 74dp navigation and 82%-maximum sheet contracts, 48dp targets, safe-area, 200%, landscape, keyboard rules, and the full viewport matrix are explicit. |
 | 6. Registry safety | PASS | Native component system only; shadcn and third-party registries are not applicable. |
 
 Self-check does not approve implementation. <code>TIM-01</code> remains a separate owner checkpoint.
