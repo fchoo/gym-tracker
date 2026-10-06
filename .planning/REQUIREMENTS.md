@@ -223,6 +223,10 @@ Exactly four roots: **Workout, Calendar, Library, Progress**. Preserve SQLite au
 
 ## Traceability
 
+Roadmap validation completed 2026-10-06. The Phase column uses the sequential
+phase IDs from `.planning/ROADMAP.md`; every v1.2 requirement appears exactly
+once and remains Pending until its owning phase is implemented and verified.
+
 | Requirement | Phase | Inventory ID | Status |
 |---|---:|---|---|
 | DOM-01 | 13 | domain.multi-active | Pending |
@@ -417,5 +421,5 @@ Exactly four roots: **Workout, Calendar, Library, Progress**. Preserve SQLite au
 - Existing deep routes and required native failure/recovery states are explicit requirements even when absent from the prototype.
 - Native fidelity, accessible alternatives, transaction correctness and migration evidence remain pending implementation.
 
-*Researched and authored 2026-10-06. No implementation or native execution performed by this research task.*
+*Researched, roadmapped and traceability-validated 2026-10-06. No implementation, build, native execution, release or deployment was performed.*
 

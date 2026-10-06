@@ -3,10 +3,10 @@ gsd_state_version: 1.0
 milestone: v1.2
 milestone_name: Prototype Parity, Concurrent Plans & Garmin Import
 status: planning
-last_updated: "2026-10-06T03:11:31.765Z"
+last_updated: "2026-10-06T08:07:48Z"
 last_activity: 2026-10-06
 progress:
-  total_phases: 0
+  total_phases: 8
   completed_phases: 0
   total_plans: 0
   completed_plans: 0
@@ -17,344 +17,70 @@ progress:
 
 ## Project Reference
 
-See: `.planning/PROJECT.md` (updated 2026-10-01)
+See: .planning/PROJECT.md (updated 2026-10-06)
 
 **Core value:** Open today's workout, see trustworthy next targets, complete each working set with one primary action, recover safely from interruption, and understand exactly why the next target is recommended.
-**Current focus:** Planning the next milestone
+**Current focus:** Phase 13 — Multi-Plan & Running Foundation planning.
 
 ## Current Position
 
-Phase: Not started (defining requirements)
-Plan: —
-Status: Defining requirements
-Last activity: 2026-10-06 — Milestone v1.2 started
+Phase: 13 of 20 (v1.2 phase 1 of 8)
+Plan: Not planned
+Status: Roadmap created; ready for phase discussion
+Last activity: 2026-10-06 — Created the v1.2 roadmap with 172/172 requirements mapped across Phases 13-20.
 
-## Delivery model
+Progress: [░░░░░░░░░░] 0%
 
-v1.1 ships as a signed personal-use Android APK/AAB built with the pinned production
-toolchain, verified with `apksigner`, and installed unchanged on the Samsung SM-S916B.
-The public-release ceremony remains retired for personal use and tracked as V2-05.
+## Delivery Model and Planning Gate
+
+Gym Tracker remains a signed personal-use Android APK/AAB with SQLite-authoritative offline workouts. v1.2 is planning-only in the current session: discuss every phase, create UI specifications for UI-heavy phases, create executable plans, run plan checks and review convergence, then stop for owner review before implementation, builds, device mutation, release, or deployment.
 
 ## Performance Metrics
 
-**Velocity:**
+**Completed history:**
 
-- Total live plans completed: 64
-- Average duration: 1h 54m
-- Total execution time: 113h 45m
+- Milestones shipped: 2 (v1.0 and v1.1)
+- Phases completed: 12
+- Plans completed: 119 (83 in v1.0; 36 in v1.1)
+- v1.2 phases: 8 planned; plan counts TBD
 
-**By Phase:**
-
-| Phase | Plans | Total | Avg/Plan |
-|-------|-------|-------|----------|
-| 1. Trustworthy Workout Loop | 10/10 | 25h 45m | 2h 35m |
-| 2. Owned Library and Planning | 34/34 live complete; 02-35 superseded by 05-07 | 87h 38m | 2h 35m |
-| 3. Calendar and History Integrity | 5/5 implementation-verified; release evidence in 05-07 | 8h 25m | 1h 41m |
-| 4. Overall Progress and Complete Progression | 8/8 implementation-verified; release evidence in 05-07 | source-only closeout | — |
-| 5. Recovery, Distribution, and Release | 7/7 source-preparation complete; exact-candidate attended gate pending | — | — |
-| 08 | 4 | - | - |
-| 09 | 10 | - | - |
-| 11 | 4 | - | - |
-| 12 | 13 | - | - |
-
-**Recent Trend:** v1.1 completed 5/5 phases and 36/36 plans. Final source verification passed 188 suites and 3,336 tests with 106 integrity-critical files at exact 100% coverage. Phase 12 retained 13/13 migration cases, 30/30 Drive cases, 18/18 Maestro states, a passing maximum-size benchmark, and 2/2 approved attended observations. Cross-phase integration passed 10/10 connections and 5/5 end-to-end flows. The signed production APK was installed unchanged on the Samsung.
-**Per-Plan Metrics:**
-
-| Plan | Duration | Tasks | Files |
-|------|----------|-------|-------|
-| Phase 01 P01 | 64m | 3 tasks | 26 files |
-| Phase 01 P02 | 27m | 2 tasks | 14 files |
-| Phase 01 P03 | 19m | 2 tasks | 19 files |
-| Phase 01 P04 | 72m | 2 tasks | 12 files |
-| Phase 01 P06 | 50m | 2 tasks | 17 files |
-| Phase 01 P05 | 66 min | 1 tasks | 21 files |
-| Phase 01 P07 | 49 min | 2 tasks | 24 files |
-| Phase 01 P08 | 44 min | 2 tasks | 25 files |
-| Phase 01 P09 | 89 min | 2 tasks | 28 files |
-| Phase 01 P10 | 17h 45m | 3 tasks | 99 files |
-| Phase 02 P02 | 26 min | 2 tasks | 7 files |
-| Phase 02 P03 | 18 min | 2 tasks | 6 files |
-| Phase 02 P01 | 32 min | 3 tasks | 11 files |
-| Phase 02 P04 | 38 min | 2 tasks | 9 files |
-| Phase 02 P05 | 9h 48m | 3 tasks | 22 files |
-| Phase 02 P06 | 64 min | 3 tasks | 10 files |
-| Phase 02 P07 | 40 min | 3 tasks | 9 files |
-| Phase 02 P08 | 54 min | 2 tasks | 12 files |
-| Phase 02 P09 | 26m | 2 tasks | 5 files |
-| Phase 02 P13 | 53 min | 2 tasks | 5 files |
-| Phase 02 P11 | 42 min | 2 tasks | 13 files |
-| Phase 02 P10 | 43 min | 3 tasks | 19 files |
-| Phase 02 P16 | 1h 55m | 2 tasks | 4 files |
-| Phase 02 P12 | 50 min | 2 tasks | 6 files |
-| Phase 02 P14 | 62 min | 2 tasks | 19 files |
-| Phase 02 P15 | 38 min | 2 tasks | 15 files |
-| Phase 02 P17 | 65 min | 3 tasks | 15 files |
-| Phase 02 P18 | 73 min | 3 tasks | 20 files |
-| Phase 02 P19 | 73 min | 2 tasks | 20 files |
-| Phase 02 P20 | 27 min | 3 tasks | 11 files |
-| Phase 02 P21 | 24h 56m elapsed | 3 tasks | 49 commits |
-| Phase 02 P22 | 9 min | 2 tasks | 6 files |
-| Phase 02 P23 | 17min | 3 tasks | 9 files |
-| Phase 02 P25 | 19min | 3 tasks | 7 files |
-| Phase 02-owned-library-and-planning P27 | 25min | 3 tasks | 8 files |
-| Phase 02-owned-library-and-planning P30 | 12min | 3 tasks | 13 files |
-| Phase 02-owned-library-and-planning P24 | 17min | 3 tasks | 12 files |
-| Phase 02-owned-library-and-planning P26 | 20m | 3 tasks | 15 files |
-| Phase 02-owned-library-and-planning P28 | 32m | 3 tasks | 9 files |
-| Phase 02 P29 | 7min | 2 tasks | 4 files |
-| Phase 02 P31 | 130 min | 3 tasks | 26 files |
-| Phase 02 P32 | 5 min | 2 tasks | 5 files |
-| Phase 02 P33 | 17h | 3 tasks | 69 files |
-| Phase 02 P34 | 18h 27m | 3 tasks | 9 files |
-| Phase 03 P01 | 1h 30m | 3 tasks | 19 files |
-| Phase 03 P02 | 1h 10m | 2 tasks | 15 files |
-| Phase 03 P03 | 1h 45m | 3 tasks | 16 files |
-| Phase 03 P04 | 1h 30m | 3 tasks | 18 files |
-| Phase 03 P05 | 2h 30m | 3 tasks | 37 files |
-| Phase 04 P01–P07 | 04-07 automated source complete | 7 plans | Phase 4 progress/recommendation/evidence/source-traceability files |
-| Phase 05 P01 | automated source complete | 2 tasks | logical snapshot/GTBK/AES-GCM contract files |
-| Phase 05 P02 | automated source complete | 2 tasks | candidate manifest, workflows, and no-rebuild promotion files |
-| Phase 05 P03 | automated source complete | 2 tasks | logical SQLite collector, encrypted archive/share lifecycle, and Data and recovery tracer |
-| Phase 04-overall-progress-and-complete-progression P07 | 17m | 2 tasks | 8 files |
-| Phase 04-overall-progress-and-complete-progression P08 | 22m | 2 tasks | 7 files |
-| Phase 05 P04 | 3h 17m | 2 tasks | 18 files |
-| Phase 05 P05 | 13m | 2 tasks | 9 files |
-| Phase 05 P06 | 50m | 2 tasks | 10 files |
-| Phase 05 P07 | 99m | 2 tasks | 37 files |
-| Phase 08-session-overview-navigation P01 | 1h 15m | 2 tasks | 7 files |
-| Phase 08-session-overview-navigation P02 | 14min | 2 tasks | 4 files |
-| Phase 08-session-overview-navigation P03 | 13min | 2 tasks | 12 files |
-| Phase 08 P04 | 25min | 2 tasks | 17 files |
-| Phase 09-in-workout-exercise-editing P04 | 22 min | 2 tasks | 6 files |
-| Phase 09-in-workout-exercise-editing P05 | 4h 31m | 2 tasks | 10 files |
-| Phase 11-portable-history-merge-restore P04 | multi-session | 3 tasks | 7 files |
-| Phase 12 P01 | native-verified | 4 tasks | 24 files |
-| Phase 12-automatic-google-drive-sync P02 | 1h 7m | 3 tasks | 27 files |
-| Phase 12 P03 | coverage closeout | 3 tasks | 14 files |
-| Phase 10 P05 | 24 min | 2 tasks | 5 files |
-| Phase 12 P11 | 5h 27m | 3 tasks | 19 files |
-| Phase 12 P12 | 5h 15m interleaved | 2 tasks | 8 files |
+**Recent trend:** v1.1 closed with 5/5 phases and 36/36 plans complete, all integrity-critical files at 100% coverage, cross-phase integration passing, and the signed APK installed unchanged on the Samsung SM-S916B.
 
 ## Accumulated Context
 
 ### Decisions
 
-Full decisions live in `.planning/PROJECT.md`.
+- Phase 13 owns all shared domain invariants and precedes every domain consumer; Phase 14 owns shared presentation and precedes every feature UI phase.
+- Phase 15 precedes Calendar read-only Active-shaped detail reuse; Phase 17 precedes Garmin matching; Phase 18 precedes factual Running progress; Phase 20 depends on Phases 13-19.
+- One Running plan supports multiple stable, ordered session slots on the same weekday; a one-session-per-day constraint is prohibited.
+- Manual original-file FIT import is unconditional v1.2 scope. Official Garmin connectivity remains conditional on access and a separately reviewed confidential broker.
+- SQLite facts, exclusive commit acknowledgment, immutable history, offline workouts, deterministic rebuilds, and complete backup/restore/merge coverage remain non-negotiable.
+- Revision 18 is the presentation oracle; necessary deviations require an explicit register entry and owner acceptance.
 
-- The five reviewed delivery milestones are the fixed top-level phase structure.
-- SQLite source facts are authoritative; notifications, FTS, projections, recommendations, and UI caches are derivatives.
-- Phase 1 must prove a private configured SQLite writer with FIFO serialization and explicit `BEGIN IMMEDIATE`; direct reliance on `withExclusiveTransactionAsync()` is not accepted.
-- Accessibility, adaptive layout, CI, migrations, tests, diagnostics, backup seams, and release identity start in Phase 1 and remain continuous gates.
-- Signed candidates are built once, approved by digest on a physical device, and promoted unchanged.
-- App-owned Argon2id uses direct Expo typed parameters because the optimized mixed-binary record boundary failed before native execution.
-- Phase 5 may use Bouncy Castle 1.85.2 provisionally; Plan 01-10 still owns the ten-sample physical-device calibration.
-- Timed holds use explicit duration targets and manual-hold policies; they are never encoded as repetitions or load progression.
-- Runtime launch generations are monotonic; stale open, migration, or query completions close their kernels and cannot replace current services.
-- Set completion correctness is FIFO plus expected revisions plus a conditional incomplete-set update; UI busy state is not the duplicate defense.
-- Session targets snapshot exact source target IDs and equipment increments; post-commit derivative failure never negates a saved set.
-- Undo restores serialized prior set, exercise, active pointer, and rest state only while `nowMs < undoUntilMs`.
-- Rest persists timestamps or paused remaining duration, and Android notification state is repaired from SQLite through the stable `rest:<sessionId>` request identity.
-- Expo notification permission `status` is authoritative; denied or failed scheduling remains non-authoritative and retryable.
-- Active set values and Complete/Skip are inline within each shared SetRow; Retry appears directly below the set list. The retired editor/action dock is not part of the accepted product contract.
-- Exact Phase 1 APK evidence remains bound to implementation HEAD `4e3e521`; later planning, tests, and coverage-tooling commits were independently verified as artifact-neutral.
-- The coverage gate preserves global thresholds and independently enforces 100% statements, branches, functions, and lines for 28 explicitly enumerated integrity-critical modules.
-- [Phase 05]: Logical export is fail-closed at the table boundary: every source table needs an explicit ownership predicate, catalog authority is reference-only, cache paths stay private behind opaque handles, and owned password/key/plaintext/archive bytes are wiped or deleted on every lifecycle exit.
-- [Phase 02]: Metric identity is exactly (profile, contractVersion, exerciseMetricGeneration); generalized consumers never key by profile alone.
-- [Phase 02]: Legacy load_reps contract 1 remains loadGrams/reps and timed_hold contract 1 remains durationSeconds; millisecond timed holds are explicit contract 2.
-- [Phase 02]: Intervals contract 1 uses the literal plan-authored rounds_then_work comparator and immutable protocol dimensions.
-- [Phase 02]: Fixed-distance, fixed-time, and interval aggregates reject mixed protocol populations even when called outside the exposure filter.
-- [Phase 02]: Presentation rounding uses decimal formatting so valid maximum safe integers are not corrupted by multiply-divide precision loss.
-- [Phase 02]: LocalDate supports years 0001 through 9999 and uses civil calendar ordinals rather than parsing date-only strings as instants.
-- [Phase 02]: Stored timezone text is validated and preserved exactly; only instant conversion uses Intl.DateTimeFormat(...).formatToParts.
-- [Phase 02]: Rotation advancement consumes the current opportunity only for scheduled completion, Skip, Advance, or explicit Advance rotation after this workout intent.
-- [Phase 02]: Weekday Skip and missed outcomes consume only the dated opportunity; recurring bindings remain unchanged by pure transitions.
-- [Phase 02]: A detected device-timezone choice is recorded once per detected zone and applies prospectively from an explicit LocalDate.
-- [Phase 02]: The accepted catalog is bound to source commit 1783421f145e546fa168c591a0e4d11cae6f23df and exact overlay, pack, manifest, report, and MIT license SHA-256 values.
-- [Phase 02]: All ten Phase 1 gym-tracker.original IDs remain visible; six exact semantic candidates are explicitly linked and four ambiguous originals remain preserved without substitution.
-- [Phase 02]: Generated catalog artifacts retain pending_owner_acceptance provenance; only the separate accepted record conveys owner authority for those unchanged bytes.
-- [Phase 02]: The initial D-50/D-51 diff contains 310 additions, six links, 599 exclusions, and no deletion or newly unavailable transition.
-- [Phase 02]: Migration 0004 adds an authoritative Library source graph beside released Phase 1 workout tables; later metric widening remains forward-only.
-- [Phase 02]: Runtime content import accepts only exact owner-approved catalog and manifest hashes, then writes bundled rows in one serialized transaction.
-- [Phase 02]: Missing accepted bundled rows become Unavailable without deleting identity, attribution, plan references, or historical snapshots.
-- [Phase 02]: Normalized search-term uniqueness is per exercise; accepted bundled parsing still rejects catalog-wide collisions.
-- [Phase 02]: Plan 02-11 remains the sole final runtime migration-manifest owner; 0004 is direct-imported only in focused tests until then.
-- [Phase 02]: The owner accepted exactly six starter templates bound to asset SHA-256 8c1fbd0f6a114e5c5f9fa7ae2c4edf8f32d46890397b7488e65c768bea4126f4 and review SHA-256 f339971327ef613a476b2aa6b784043bbd82929894ef6edb4129151eaffa2f21.
-- [Phase 02]: Gym Body-Part Split follows D-55 exactly: Monday Chest, Tuesday Back, Wednesday Shoulders, Thursday Legs, Friday Arms, with four load_reps exercises per day and no substitutions.
-- [Phase 02]: The first five starter templates remain byte-identical to the final pre-amendment candidate at 2d2df33; the sixth template is additive.
-- [Phase 02]: Starter candidate files retain pending_owner_acceptance provenance; only starter-plans-acceptance.json conveys owner authority for the unchanged approved bytes.
-- [Phase 02]: Migration 0005 remains direct-imported only; Plan 02-11 owns runtime migration manifest registration.
-- [Phase 02]: Exercise search FTS parity is measured against shadow docsize stable IDs, not external-content passthrough reads.
-- [Phase 02]: One- and two-code-point search uses bounded relational matching; three or more normalized code points use prepared quoted trigram MATCH.
-- [Phase 02]: FTS repair runs rebuild plus parity and source-aware integrity-check inside one private serialized write transaction.
-- [Phase 02]: Phase 2 FTS contract databases disable Expo automatic unused-statement close cleanup while retaining explicit statement finalization.
-- [Phase 02]: D-34 through D-39 is an owner-approved one-way future-only metric migration bound to registry SHA-256 ea8cca49791400150c41f32511d88ce79e7191b70d81c437494b93726b1e3037.
-- [Phase 02]: Migration 0006 preserves released JSON and timed-hold seconds while assigning deterministic complete legacy identity and remains outside the runtime manifest until Plan 02-11.
-- [Phase 02]: Custom profile migration requires exact target and policy occurrence sets, expected revisions, no active workout use, exact idempotent request replay, and a fresh generation baseline.
-- [Phase 02]: Migration 0008 is an additive direct successor of retained version 6 with version 7 intentionally unused; Plan 02-11 remains the sole runtime manifest owner.
-- [Phase 02]: Accepted starter activation consumes only exact owner-approved asset and acceptance bytes, then binds template revision, schedule preview, and copy choice into confirmation and canonical request identities.
-- [Phase 02]: Occurrence-level metric overrides live in the authoritative owned Phase 2 graph with immutable source maps instead of mutating bundled exercise identities.
-- [Phase 02]: Existing starter copies require explicit create_another or reactivate_existing intent; reactivation preserves the plan and appends an immutable effective schedule version.
-- [Phase 02]: Retained legacy schedules are bridged into migration 0008, and a legacy active plan without a schedule is explicitly deactivated on the first valid accepted activation.
-- [Phase 02]: D-11 search rank comes only from authoritative normalized canonical and alias rows; FTS/BM25, Favorite, Recent, and candidate precision never affect order.
-- [Phase 02]: D-10 visibility defaults to available non-hidden non-archived rows, while explicit visibility values OR within the group and AND across every non-empty filter group.
-- [Phase 02]: Recent is the ten latest unique exercises with completed working sets in completed or partial sessions; warm-ups, drafts, and non-final sessions do not count.
-- [Phase 02]: Search cursors bind normalization, query, canonical filters, read-only catalog fingerprint, exact rank tuple, and stable exercise ID; drift returns typed restart.
-- [Phase 02]: Search reads never write source rows and expose only bounded diagnostic codes, counts, versions, strategies, and duration.
-- [Phase 02]: New custom exercises require a complete registered metric identity; no profile is inferred and absent progression is explicit manual Hold.
-- [Phase 02]: Likely custom duplicates require normalized-name equality, the same metric profile/version, overlapping equipment, stable ID order, and exact create_anyway acknowledgement.
-- [Phase 02]: Bundled exercise authority permits Favorite/hide preferences and fresh custom copies only; copied identities have no source namespace, upstream ID, catalog-source row, or transferred history.
-- [Phase 02]: Custom archive/restore changes owner preference state only and binds exercise, preference, plan, day, occurrence, and preview revisions before commit.
-- [Phase 02]: Migration 0009 is additive and the final runtime manifest registers released versions 1, 2, 3, 4, 5, 6, 8, and 9 with validated recovery before destructive 0006.
-- [Phase 02]: Owned-plan requests persist canonical SHA-256 receipts in SQLite; exact retries return already_committed and changed request identity conflicts.
-- [Phase 02]: Post-draft graph identity topology changes return requires_schedule_impact; ordinary values and reorders retain IDs and save atomically without permanent deletion.
-- [Phase 02]: Owned-plan duplication creates fresh graph IDs and an inactive cloned schedule while active schedules and in-progress workout snapshots remain unchanged.
-- [Phase 02]: Active workout commands carry and verify complete immutable metric identity: profile, contract version, and exercise metric generation.
-- [Phase 02]: Exact completed-set replay requires matching idempotency key, observation JSON bytes, and complete metric identity.
-- [Phase 02]: Fixed distance, fixed time, and interval protocol dimensions remain immutable labelled targets; only actual measurements are editable.
-- [Phase 02]: Retained Phase 1 schema and JSON bytes use explicit compatibility adapters while complete-identity rows remain strict registry contracts.
-- [Phase 02]: All nine profiles use one shared inline SetRow; profile-specific routes, modals, ValueEditorSheet, and WorkoutActionDock remain absent.
-- [Phase 02]: Schedule command request identity and committed replay results live in immutable schedule-event payloads as one receipt authority.
-- [Phase 02]: Rotation pointer state is reconstructed from immutable versions plus later pointer events; historical versions are never updated in place.
-- [Phase 02]: Pending and consumed date overrides take precedence over recurring Weekday or Rotation intent for their LocalDate.
-- [Phase 02]: Following device timezone appends a complete prospective version; keeping current timezone records only the explicit decision event.
-- [Phase 02]: Scheduled completion advances only after the committed session matches plan, plan day, scheduled source, and start LocalDate.
-- [Phase 02]: Only the selected Plans or Exercises section is persisted; Library query filters selection and scroll remain process-local.
-- [Phase 02]: Library section writes are idempotent for the same committed value and reject different stale revisions inside the serialized transaction.
-- [Phase 02]: Library presents catalog and starter facts only after their owner-accepted hash boundaries validate exact reviewed bytes.
-- [Phase 02]: Favorites and Recent use independent authoritative reads and never derive from the first All Exercises page or alter search relevance.
-- [Phase 02]: D-50 is created only from a committed changed ContentUpdateResult; update failure preserves the previous trusted Library.
-- [Phase 02]: Starter discovery and detail render only exact owner-accepted starter revision 2 facts through a typed runtime catalog.
-- [Phase 02]: Starter activation requires explicit copy choice and confirmation-bound date, mode, bindings, and current revisions before one transaction commits.
-- [Phase 02]: Template updates create a fresh inactive accepted copy with an idempotent duplicate receipt; the current plan, schedule, and workout remain unchanged.
-- [Phase 02]: Retained Phase 1 Full Body Foundation copies are mapped read-only as source revision 1 for comparison without rewriting legacy rows.
-- [Phase 02]: Owned editor reads and commands share the trusted base runtime kernel through a typed port; routes and UI never import SQL or platform modules.
-- [Phase 02]: Schedule and Activate eligibility follows only committed graphStatus; local target/day edits remain unschedulable until Save plan commits.
-- [Phase 02]: Dirty leave uses exact Save changes, Discard, and Keep editing across visible and hardware Back; native gesture-pop is disabled.
-- [Phase 02]: requires_schedule_impact preserves draft/source facts and defers structural schedule execution to Plan 02-18.
-- [Phase 02]: Ordinary Create custom exercise starts blank, while Create custom copy carries a distinct prepopulated origin and creates nothing until Save exercise.
-- [Phase 02]: Ordinary custom exercise edit keeps metric identity read-only; profile changes use the explicit D-34 future-target migration flow.
-- [Phase 02]: Custom detail and migration reads stay behind bounded trusted runtime capabilities; routes and screens import no SQLite or repository modules.
-- [Phase 02]: D-34 replacement and policy sets cover retained plan_* and final owned_plan_* graphs before any source write commits.
-- [Phase 02]: Installed custom-exercise Maestro is public-semantic and authored-only in Plan 02-17; unchanged-APK execution remains Plan 02-21 scope.
-- [Phase 02]: D-32 removal retires owned day rows outside the current days_per_week ordinal window and appends one prospective schedule version without rewriting history.
-- [Phase 02]: Plan-impact previews bind complete plan schedule override candidate occurrence target warm-up policy and revision facts before one serialized transaction.
-- [Phase 02]: D-52 compatibility is exact profile contractVersion and exerciseMetricGeneration equality; no comparability inference or history migration occurs.
-- [Phase 02]: D-53 replacement preserves occurrence and child identities and changes only explicitly selected future exercise references.
-- [Phase 02]: Today reads active owned schedules through one typed runtime port; legacy Today remains only the fallback and still owns active or saved-partial workout precedence.
-- [Phase 02]: Schedule editor and Today routes contain no SQL; complete drafts, expected revisions, preview tokens, explicit actions, and authoritative readback cross the trusted runtime boundary.
-- [Phase 02]: A scheduled workout advances Rotation only after the workout completion transaction commits and the persisted session matches plan, day, source, and start LocalDate.
-- [Phase 02]: Training under an effective override may advance Rotation only through explicit Train anyway intent; ordinary Repeat, Skip, and Advance remain blocked by override precedence.
-- [Phase 02]: Schedule Maestro remains public-semantic; exact midnight and DST execution stays in real SQLite integration and Plan 02-20 native schedule contracts.
-- [Phase 02]: The aggregate phase2 suite contains exactly the six Plan 02-20 modules and 29 unique source-owned cases; the existing eight-case phase2-fts prerequisite remains separate.
-- [Phase 02]: Every Plan 02-20 native case uses a fresh database and production parser, migration, domain, or repository path; contract-local seeds create authoritative source rows.
-- [Phase 02]: Phase 2 native route and runner totals derive from exported IDs and unsupported suite names fail closed instead of receiving a generic fallback count.
-- [Phase 02]: Plan 02-11 remains the sole final migration-manifest writer; Plan 02-20 consumes exact versions 1,2,3,4,5,6,8,9 read-only.
-- [Phase 02]: The retained pre-remediation APK/evidence is diagnostic only after physical review added D-56 through D-67; Plan 02-34 must build one new exact-HEAD candidate and regenerate every automated artifact.
-- [Phase 02]: Plans 02-22 through 02-34 cover the real expanded rail, semantic date/time/number controls, app-wide grey/black cards, current-schema add/copy repair, unlimited active-session completed-set editing, sticky Today's-plan workout UI, compact rest controls, configurable tone/haptic alerts, and source-derived automated evidence. Historical Plan 02-35 is superseded by 05-07.
-- [Phase 02]: Expo SQLite benchmark and successful recovery-validation kernels remain process-scoped with explicit strong references; the host force-stops the benchmark app after result, error, or timeout.
-- [Phase 02]: Phase 2 benchmark evidence preserves every duration sample through bounded versioned indexed logcat chunks that fail closed on missing, duplicate, malformed, or stale records.
-- [Phase 05]: Plan 05-07 is the sole owner of the one exact-candidate Phase 2–5 attended checklist, literal owner approval, no-rebuild promotion proof, and terminal-seal handoff. No earlier phase may create or imply that evidence.
-- [Phase 02]: Expanded root navigation derives navigator tabBarPosition left from the same 840dp classification as the rail visual treatment.
-- [Phase 02]: Route-component test selection escapes Expo Router parenthesized directory names before passing them to Jest.
-- [Phase 02]: Calendar selection stays a private civil LocalDate draft until Confirm date; Cancel date never mutates its owner draft.
-- [Phase 02]: Calendar navigation and bounds use validated LocalDate strings only, preserving stored schedule timezone and DST semantics.
-- [Phase 02]: Content cards are a separate semantic role from generic surfaces, so field, sheet, navigation, dialog, and notice treatment stays unchanged.
-- [Phase 02]: Library status remains textual plus a semantic border, and favorite controls use content-card foregrounds to avoid color-only or low-contrast state.
-- [Phase 02]: Inserted workout sets persist the exact profile, contract version, and exercise metric generation from their authoritative source snapshot.
-- [Phase 02]: Completed-working-set correction is active-session-only, revision-checked, and never alters later progress, active pointer, rest state, or immutable snapshots.
-- [Phase 02]: Runtime mutation results include committedSetId for Plan 02-28 focus/reveal and expose bounded retryability metadata while preserving typed rejections.
-- [Phase 02-owned-library-and-planning]: Rest alerts use immutable v2 Android channels per sound/vibration combination; a channel mismatch is repaired as a derived notification projection while SQLite rest facts remain authoritative. — Android channel sound and importance settings are immutable, so four deterministic v2 IDs preserve independent preference control without mutating workout truth.
-- [Phase 02]: TimeDurationField confirms canonical seconds before caller-owned conversion; SemanticNumberField provides only numeric affordances and retains screen/domain validation authority.
-- [Phase 02]: Active duration autosave receives its confirmed canonical value directly, preserving profile-specific seconds and milliseconds observations.
-- [Phase ?]: Content cards are an app-wide semantic role; card-contained content must use card-safe foreground, border, focus, and state tokens in every appearance.
-- [Phase ?]: Fields, live set rows, sheets, dialogs, navigation, transient notices, recommendation actions, and docks retain their dedicated semantic surfaces rather than becoming nested cards.
-- [Phase ?]: Plan 02-26 changes visual containment only; Plans 02-28 and 02-29 retain workout-action, sticky identity, Today's-plan, and RestDock behavior ownership.
-- [Phase ?]: Workout-plan review is structurally presentation-only because its UI receives no mutation port.
-- [Phase ?]: Committed set identity drives row reveal, scroll restoration, and focus; completed-set correction stays active-session-only through Plan 02-27 revisions.
-- [Phase ?]: RestDock presentation is locally collapsible while remaining time and paused/running semantics continue to derive from authoritative RestStateV1.
-- [Phase ?]: Skip renders directly from the committed idle rest result, with a synchronous in-flight guard preventing rapid duplicate rest commands.
-- [Phase 04]: Progress source IDs come only from current effective-history facts in the selected civil-date window; no second analytics authority was introduced.
-- [Phase 04]: Non-load outcomes are deterministic Session Detail projections from raw/effective SQLite history; no mutable recommendation authority was introduced.
-- [Phase 04]: Effective non-load outcomes resolve policy identity through retained raw target links and fail closed on voided or unresolved history.
-- [Phase 05]: Restore reconciliation retains local catalog authority; archive bundled rows never replace approved local content.
-- [Phase 05]: Restore acknowledgement requires parity-proven ready state; interrupted FTS or history recovery remains explicitly rebuild_pending and retryable.
-- [Phase 05]: Clean-install parity is proven with controlled host SQLite; native and device clean-install evidence is consolidated in Plan 05-07.
-- [Phase 05]: CSV v1 uses fixed record-type rows with canonical atomic metric, audit, and recommendation context.
-- [Phase 05]: CSV export reads one serialized query-only SQLite snapshot; overlays wholly replace raw effective rows and sharing uses an opaque bounded cache handle.
-- [Phase 05]: The canonical release manifest is the sole candidate identity and includes production source/package/version, workflow run/repository, APK/AAB, and inner bundle/config hashes.
-- [Phase 05]: Every machine producer remains automated-only/evidence_pending and binds one installed production package/device plus recomputed manifest and raw-report hashes.
-- [Phase 05]: Attended approval requires every exact row passed with nonblank evidence, immutable attachment bytes, exact candidate devices, and literal lowercase CLI token approved.
-- [Phase 05]: Promotion selects successful candidate and attended runs, checks out the candidate commit, rejects reuse/existing tags, and publishes only after public hashes match.
-- [Phase 05]: Protected human evidence upload proves candidate workflow, commit, environment, and artifact provenance before executing candidate source; all staged files stay under a configured evidence root and fixed runner-temp directory.
-- [Phase 05]: Promotion is repository-serialized and completes before Terminal Seal; immutable public-asset promotion proof is an input to the sole final non-mutating verifier command.
-- [Phase 08]: Active workouts render a single ordered overview; stable set IDs resolve command ownership while mutation contracts remain unchanged.
-- [Phase 08]: Derive overview collapse from authoritative status/model order and keep user disclosure overrides keyed by stable IDs.
-- [Phase 08]: Scroll only after a committed changed active-set result, using revision-keyed measured requests and reduced-motion policy.
-- [Phase 08]: Phase 08 Plan 03: one discriminated session route and overview shell replace the focused/review workout navigation model.
-- [Phase 08]: Phase 08 Plan 03: Phase 9 exercise creation remains a disabled explanatory affordance; zero-set and discard keep existing revision-checked commands.
-- [Phase 08]: Phase 8 native evidence uses one manifest-bound runner that restores Android font scale and fails closed without restoration.
-- [Phase 08]: Full Jest and coverage gates pass after overview presentation contracts and archived v1.0 Phase 2 evidence paths were reconciled; the exact-HEAD five-flow native gate also passes with 200% font scale restored.
-- [Phase 09]: Replace and Remove persist all replay-critical request facts in the v20 scalar edit receipt; the expected exercise revision is carried inside canonical result_json because the shipped receipt schema has no separate column.
-- [Phase 09]: A completed or undo-referenced exercise is never deleted: remaining mutable child rows are skipped, the original stays skipped, and Replace appends a fresh added-origin snapshot.
-- [Phase 09]: Replace and Remove never write the separate reorder receipt authority; pointer selection follows display_ordinal with stable ordinal and ID fallback.
-- [Phase 09]: The overview applies Replace/Remove only from authoritative committed or refreshed views; native retry identity is bounded by a canonical request SHA-256.
-- [Phase 09]: Protected Remove renders `Skipped` before the added-origin label, retains the completed set observation, and cold relaunch returns to Today before an explicit resume reopens the persisted overview.
-- [Phase 09]: Only completed working sets whose immutable target reference belongs to the selected planned occurrence scope may influence recommendations or non-load outcomes; added/replacement null-lineage work is ignored without mutating snapshots or targets.
-- [Phase 09]: A retry of completed scheduled-session consumption reads the existing consumed opportunity first, avoiding an idempotency-hash conflict after the schedule revision advances.
-- [Phase 09]: `SessionDetail.modifiedFromPlan` is required and read from `workout_sessions.modified_from_plan`; existing native completion and detail summaries render literal `Modified from plan` plus an accessibility-hidden Pencil icon.
-- [Phase 09]: Completion write-back eligibility is recomputed from the post-commit canonical aggregate preview; Keep/dismiss/Back are pure no-write transitions, while explicit Save alone invokes the revision-bound aggregate writer.
-- [Phase 09]: Phase 09 planned write-back native evidence serializes clear-state flows, verifies adb root, pins a Friday scheduled fixture, tolerates cold startup, and restores the prior device time configuration; the final 09-09 manifest is bound to HEAD `339cd5c`.
-- [Phase 09]: Android may rotate the ephemeral `/data/app` package path on each reinstall. Phase 09 evidence therefore validates the installed APK by pulled SHA-256 plus package/device identity; it verifies v20 before installing the distinct Phase 09 APK and records that ordered result in the final ledger.
-- [Phase 09]: Native migrations/effects databases already have unique run IDs. Do not delete them before `openDatabaseAsync`; cleanup after close prevents Expo SQLite's released-shared-object race without weakening isolation.
-- [Phase 09]: Final source-bound evidence is d5976f6: the runner validates all adb work against the manifest serial, full Task 1 successor-range scope and immutable migration 0019, exact v20 and Phase 09 artifact identities, and force-stops the manifest package before each clear-state flow. v20 passed 11/11 and all three Maestro flows passed with automatic device time restored.
-- [Phase 11]: Full-plan secure merge receives a least-privilege writer exposing only `commitFullPlan`; legacy tracer `commit` remains isolated behind its own factory. A validated duplicate/local-won-only plan consumes its token and returns ready without source or rebuild-state mutation. Fresh 4173c72-bound evidence passed the 7/7 evidence gate, migrations-effects 13/13, portable-merge 13/13, and four Maestro flows.
-- [Phase 12]: Android-only Google Sign-In omits the iOS-only Expo plugin while retaining approved Android OAuth registrations.
-- [Phase 12]: Use source-owned Google Drive backup case IDs for both host and Expo-native contracts.
-- [Phase 12]: Suspend and recreate v23 source-generation triggers during atomic logical restore so restoring facts cannot self-dirty backup state.
-- [Phase 12]: Accept producer schema 24 while retaining intentional schema-22 portable archive compatibility.
-- [Phase 12]: Bootstrap hydration reads the injected automatic backup runtime rather than querying newer backup-state tables directly.
-- [Phase 12]: Schema 25 and 26 are additive backup bookkeeping and remain portable archive compatible.
-- [Phase 12]: Automatic portability is integrity-critical and must retain complete four-metric coverage.
-- [Phase 10]: Gap closure uses ordinal timing arrays so surviving warm-up and working rows retain their configs while new rows inherit.
-- [Phase 10]: Active completed/skipped rows render effective timing read-only; planned/draft rows reuse the existing revision-checked set timing command.
-- [Phase 12]: Phase 12 Plan 11: Keep production writer and schema validation strict; benchmark fixtures satisfy the migrated schema and production planner.
-- [Phase 12]: Phase 12 Plan 11: Admit 4,000-bind merge batches only after the active SQLite build proves a larger variable limit.
-- [Phase 12]: Phase 12 Plan 12: Limit live Google evidence to fresh replacement and physical-phone auth/refresh; adversarial cases remain deterministic.
+### Pending Todos
+
+- Discuss all eight phases and create UI-SPECs for Phases 14-20 before executable planning.
+- Create and converge executable plans with the exact roadmap directories and requirement ownership.
 
 ### Blockers/Concerns
 
-- Official Expo/React Native transitive audit advisories remain for security review; incompatible forced downgrades are not accepted.
-- The original 600+ commit development history remains private because it
-  contains corporate author metadata and machine-specific paths. A verified
-  private bundle is retained locally; public `main` contains only the sanitized
-  source snapshot and release handoff.
-
-- The dedicated `release-evidence` runner is intentionally offline until the
-  attended evidence-upload step. It must never service pull-request jobs.
-
-### Roadmap Evolution
-
-- Phase 6 added: Material 3 UX remediation added from the whole-app UX audit.
-- Phase 7 added: Post-candidate UX refinement (nav, settings IA, workout density, plan editing, set removal, rest audio, app icon).
-- Delivery model changed (2026-09-14): v1 delivered as the signed personal-use APK via `personal-apk.yml`; the public-release ceremony (exact-candidate attended matrix, owner-approval token, no-rebuild GitHub Release promotion, Terminal Seal) retired in PR #29 and tracked as V2-05.
+- **MAP-01:** At most one active plan per sport is proposed but not owner-accepted; Phase 13 must not hard-code the cardinality before decision.
+- **Garmin access:** GAR-04–07 require actual program access/current contracts and separate confidential-broker review; local FIT must remain usable regardless.
+- **Legacy timing:** Preserve cadence/cluster facts and recovery; authoring/playback retirement remains a proposal pending owner review and proof.
+- **DEV-01/DEV-02:** Calendar touch geometry and Light-theme Strength text changes are proposed, not accepted.
+- **Owner-review stop:** No phase execution, application edit, build, device mutation, release, or deployment is authorized by this roadmap.
 
 ## Deferred Items
 
-| Category | Item | Status | Deferred At |
-|----------|------|--------|-------------|
-| Ecosystem | Wear OS and Health Connect | v2 | Project initialization |
-| Distribution | Public GitHub Release / store promotion with attended device matrix, owner-approval token, no-rebuild digest gate, and Terminal Seal (V2-05) | v2 | 2026-09-14 personal-use reconciliation |
-| Verification override | v1.0 Phase 5 public-release UAT gate | acknowledged after delivery was reframed to signed personal-use APK | 2026-09-14 personal-use reconciliation |
+| Category | Item | Status | Deferred At | Milestone |
+|---|---|---|---|---|
+| Ecosystem | Wear OS | v2 | Project initialization | v1.0 |
+| Ecosystem | Health Connect import/export | v2 | Project initialization | v1.0 |
+| Distribution | Public GitHub Release or store promotion ceremony (V2-05) | v2 | Personal-use reconciliation | v1.0 |
 
 ## Session Continuity
 
-Last session: 2026-10-01T21:13:00+08:00
-Last handoff: v1.1 archived after passing milestone audit and installing the signed production APK on the Samsung
-Stopped at: Milestone v1.1 complete and archived
+Last session: 2026-10-06
+Stopped at: v1.2 roadmap created; requirements mapped; no implementation started
 Resume file: None
-Handoff file: none
-Next action: Start a new milestone when new requirements are defined.
-
-## Operator Next Steps
-
-- Start the next milestone with /gsd-new-milestone
+Next action: Continue planning with /gsd-discuss-phase 13; retain the owner-review stop before any execution.
