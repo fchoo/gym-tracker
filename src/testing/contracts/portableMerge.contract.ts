@@ -57,6 +57,7 @@ export const PORTABLE_MERGE_CONTRACT_CASES = [
   "portable-merge-verification-rollback",
   "portable-merge-commit-rollback",
   "portable-merge-deterministic-derivative-parity",
+  "portable-merge-phase13-source-generation-once",
 ] as const;
 
 export type PortableMergeContractCaseId =
@@ -265,6 +266,16 @@ async function seedSettings(
   });
 }
 
+async function seedPhase13SourceGraph(kernel: SqliteKernel): Promise<void> {
+  await kernel.write(async (transaction) => {
+    await transaction.execute("INSERT INTO imported_activities (id, source, source_activity_id, started_at_ms, aggregate_json, imported_at_ms) VALUES ('archive-import', 'garmin', 'archive-external', 1, '{}', 2)");
+    await transaction.execute("INSERT INTO imported_activity_identities (activity_id, source_kind, account_namespace, external_activity_id, aggregate_revision, accepted_normalized_sha256, removal_state) VALUES ('archive-import', 'garmin_connect_account', 'portable-owner', 'archive-external', 1, ?, 'active')", ["a".repeat(64)]);
+    await transaction.execute("INSERT INTO imported_activity_events (id, activity_id, aggregate_revision, event_type, payload_json, created_at_ms) VALUES ('archive-import-event', 'archive-import', 1, 'imported', '{}', 2)");
+    await transaction.execute("INSERT INTO bodyweight_entries (id, owner_id, current_revision, lifecycle, created_at_ms) VALUES ('archive-weight', 'portable-owner', 1, 'active', 1)");
+    await transaction.execute("INSERT INTO bodyweight_entry_events (id, entry_id, owner_id, revision, event_id, operation, local_date, timezone, grams, occurred_at_ms) VALUES ('archive-weight-event', 'archive-weight', 'portable-owner', 1, 'archive-weight-event-id', 'create', '2026-10-07', 'Asia/Singapore', 70000, 2)");
+  });
+}
+
 async function snapshot(kernel: SqliteKernel, snapshotId: string) {
   return createLogicalBackupRepository(kernel).collect({
     createdAtMs: 1,
@@ -372,6 +383,7 @@ async function seedMixedSourceFacts(
     id: "archive-plan", portableId: "c".repeat(32), dayId: "archive-day", name: "Same plan name",
   });
   await seedSettings(archiveKernel, { appearance: "dark", units: "metric" });
+  await seedPhase13SourceGraph(archiveKernel);
 
   await seedSession(localKernel, {
     id: "local-session", portableId: "a".repeat(32), modifiedAtMs: 10,
@@ -416,7 +428,7 @@ const contractCases: Record<PortableMergeContractCaseId, ContractCase> = {
       invariant(result.state === "rebuild_pending", "portable_merge_pending_missing");
       invariant(input.plan.preview.archiveWon === 1
         && input.plan.preview.localWon === 1
-        && input.plan.preview.inserted === 3, "portable_merge_mixed_preview_invalid");
+        && input.plan.preview.inserted === 4, "portable_merge_mixed_preview_invalid");
       const [session, settings, exercises, plans] = await Promise.all([
         local.kernel.queryAll<{ id: string; merge_modified_at_ms: number }>(
           "SELECT id, merge_modified_at_ms FROM workout_sessions",
@@ -445,6 +457,13 @@ const contractCases: Record<PortableMergeContractCaseId, ContractCase> = {
         { id: "archive-plan" },
         { id: "local-plan" },
       ]), "portable_merge_plan_keep_both_missing");
+      const [imported, weightEvents] = await Promise.all([
+        local.kernel.queryAll<{ id: string }>("SELECT id FROM imported_activities"),
+        local.kernel.queryAll<{ entry_id: string }>("SELECT entry_id FROM bodyweight_entry_events"),
+      ]);
+      invariant(imported.length === 1 && imported[0]?.id === "archive-import"
+        && weightEvents.length === 1 && weightEvents[0]?.entry_id === "archive-weight",
+      "portable_merge_phase13_source_graph_missing");
     });
   },
 
@@ -703,6 +722,22 @@ const contractCases: Record<PortableMergeContractCaseId, ContractCase> = {
         && secondResult.outcome === "already_ready" && secondResult.state === "ready",
       "portable_merge_derivative_rebuild_state_invalid");
       invariant(first === second, "portable_merge_derivative_parity_changed");
+    });
+  },
+
+  async "portable-merge-phase13-source-generation-once"(adapter, caseId) {
+    await withRuntimes(adapter, caseId, async (archive, local) => {
+      await seedPhase13SourceGraph(archive.kernel);
+      const input = await plannedFullMerge(adapter, archive.kernel, local.kernel);
+      const [before] = await local.kernel.queryAll<{ mutation_generation: number }>(
+        "SELECT mutation_generation FROM automatic_backup_state WHERE id = 1",
+      );
+      await commitFullPlan(adapter, local.kernel, input);
+      const [after] = await local.kernel.queryAll<{ mutation_generation: number }>(
+        "SELECT mutation_generation FROM automatic_backup_state WHERE id = 1",
+      );
+      invariant(after?.mutation_generation === (before?.mutation_generation ?? -1) + 1,
+        "portable_merge_phase13_source_generation_not_once");
     });
   },
 };

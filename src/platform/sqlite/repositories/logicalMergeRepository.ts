@@ -92,16 +92,37 @@ const FULL_PLAN_OWNED_PLAN_TABLES = Object.freeze([
   "owned_progression_recommendations",
 ] as const satisfies readonly LogicalBackupTableName[]);
 
+/** Authoritative Phase 13 source graph; current-match projections are rebuilt. */
+const FULL_PLAN_SOURCE_GRAPH_TABLES = Object.freeze([
+  "imported_activities", "imported_activity_identities",
+  "imported_activity_payloads", "imported_activity_references",
+  "imported_activity_laps", "imported_activity_chunks",
+  "imported_activity_receipts", "imported_activity_removal_events",
+  "imported_activity_events", "imported_activity_match_invalidations",
+  "bodyweight_revisions", "bodyweight_entries", "bodyweight_tombstones",
+  "bodyweight_entry_events", "bodyweight_command_receipts",
+  "running_match_events", "running_activity_match_events",
+  "running_activity_match_receipts",
+] as const satisfies readonly LogicalBackupTableName[]);
+
+const SOURCE_GRAPH_BACKUP_TRIGGER_NAMES = Object.freeze(
+  FULL_PLAN_SOURCE_GRAPH_TABLES.flatMap((table) => ["insert", "update", "delete"].map(
+    (operation) => `automatic_backup_generation_${table}_${operation}`,
+  )),
+);
+
 const OWNED_ORIGINS = new Set(["custom", "copied"]);
 const CUSTOM_OPERATION_KINDS = new Set(["insert", "duplicate", "keep_both"]);
 const SESSION_OPERATION_KINDS = new Set(["insert", "duplicate", "archive_won", "local_won"]);
 const OWNED_PLAN_OPERATION_KINDS = new Set(["insert", "duplicate", "keep_both"]);
-const ROOT_RECORD_CLASSES = new Set(["custom_exercise", "workout_session", "owned_plan"]);
+const SOURCE_GRAPH_OPERATION_KINDS = new Set(["insert", "duplicate", "conflict"]);
+const ROOT_RECORD_CLASSES = new Set(["custom_exercise", "workout_session", "owned_plan", "source_graph"]);
 export const LOGICAL_MERGE_BATCH_PARAMETER_LIMIT = 4_000;
 
 type FullPlanInsertTable = "app_settings"
   | (typeof FULL_PLAN_CUSTOM_EXERCISE_TABLES)[number]
-  | (typeof FULL_PLAN_OWNED_PLAN_TABLES)[number];
+  | (typeof FULL_PLAN_OWNED_PLAN_TABLES)[number]
+  | (typeof FULL_PLAN_SOURCE_GRAPH_TABLES)[number];
 
 export type LogicalMergeFaultStage =
   | "fingerprint_checked"
@@ -160,6 +181,10 @@ function fullPlanTable(value: string): value is (typeof FULL_PLAN_CUSTOM_EXERCIS
 
 function ownedPlanTable(value: string): value is (typeof FULL_PLAN_OWNED_PLAN_TABLES)[number] {
   return (FULL_PLAN_OWNED_PLAN_TABLES as readonly string[]).includes(value);
+}
+
+function sourceGraphTable(value: string): value is (typeof FULL_PLAN_SOURCE_GRAPH_TABLES)[number] {
+  return (FULL_PLAN_SOURCE_GRAPH_TABLES as readonly string[]).includes(value);
 }
 
 function nonEmptyText(value: unknown): value is string {
@@ -430,6 +455,33 @@ function assertOwnedPlanAggregate(
   }
 }
 
+function assertSourceGraphAggregate(
+  aggregate: PortableMergeAggregate,
+  operation: Extract<PortableMergePlan["operations"][number], {
+    aggregateClass: "source_graph";
+  }>,
+): void {
+  requireValid(operation.kind === "insert");
+  requireValid(aggregate.portableId === operation.portableId);
+  requireValid(aggregate.tables.running_current_matches === undefined);
+  const imported = aggregate.tables.imported_activities ?? [];
+  const identities = aggregate.tables.imported_activity_identities ?? [];
+  requireValid(imported.length === 0 || identities.length === imported.length);
+  const activityIds = new Set(imported.map((row) => textId(row.id)));
+  for (const row of identities) requireValid(activityIds.has(textId(row.activity_id)));
+  const bodyweightEntries = new Set((aggregate.tables.bodyweight_entries ?? [])
+    .map((row) => textId(row.id)));
+  for (const row of aggregate.tables.bodyweight_entry_events ?? []) {
+    requireValid(bodyweightEntries.has(textId(row.entry_id)));
+  }
+  for (const row of aggregate.tables.bodyweight_command_receipts ?? []) {
+    requireValid(bodyweightEntries.has(textId(row.entry_id)));
+  }
+  for (const table of Object.keys(aggregate.tables)) {
+    requireValid(sourceGraphTable(table));
+  }
+}
+
 function assertFullPlanSlice(plan: PortableMergePlan): void {
   requireValid(plan.operations.length > 0);
   const settingInserts = new Set<string>();
@@ -442,6 +494,9 @@ function assertFullPlanSlice(plan: PortableMergePlan): void {
   }>>();
   const ownedPlanWrites = new Map<string, Extract<PortableMergePlan["operations"][number], {
     aggregateClass: "owned_plan";
+  }>>();
+  const sourceGraphWrites = new Map<string, Extract<PortableMergePlan["operations"][number], {
+    aggregateClass: "source_graph";
   }>>();
   for (const operation of plan.operations) {
     if (operation.aggregateClass === "app_setting") {
@@ -483,6 +538,15 @@ function assertFullPlanSlice(plan: PortableMergePlan): void {
       ownedPlanWrites.set(operation.portableId, operation);
       continue;
     }
+    if (operation.aggregateClass === "source_graph") {
+      requireValid(SOURCE_GRAPH_OPERATION_KINDS.has(operation.kind));
+      requireValid(nonEmptyText(operation.portableId));
+      requireValid(operation.archiveId === "phase13-source-graph"
+        && operation.localId === "phase13-source-graph");
+      requireValid(!sourceGraphWrites.has(operation.portableId));
+      sourceGraphWrites.set(operation.portableId, operation);
+      continue;
+    }
     fail();
   }
 
@@ -517,6 +581,10 @@ function assertFullPlanSlice(plan: PortableMergePlan): void {
       const admittedOperation = operation!;
       requireValid(admittedOperation.kind === "insert" || admittedOperation.kind === "keep_both");
       assertOwnedPlanAggregate(aggregate, admittedOperation);
+    } else if (aggregate.aggregateClass === "source_graph") {
+      const operation = sourceGraphWrites.get(aggregate.portableId);
+      requireValid(operation !== undefined);
+      assertSourceGraphAggregate(aggregate, operation!);
     } else {
       fail();
     }
@@ -533,6 +601,12 @@ function assertFullPlanSlice(plan: PortableMergePlan): void {
   for (const operation of ownedPlanWrites.values()) {
     const hasAggregate = aggregates.has(`owned_plan\u0000${operation.portableId}`);
     requireValid(hasAggregate === aggregateRequired(operation.kind));
+  }
+  for (const operation of sourceGraphWrites.values()) {
+    const hasAggregate = aggregates.has(`source_graph\u0000${operation.portableId}`);
+    requireValid(hasAggregate === (operation.kind === "insert"));
+    // A conflict is preview-only and must never reach a writer transaction.
+    requireValid(operation.kind !== "conflict");
   }
   const admittedOperationsByPair = new Map(
     [...customWrites.values(), ...sessionWrites.values(), ...ownedPlanWrites.values()].map((operation) => [
@@ -720,6 +794,13 @@ function sessionAggregatesForFullPlan(
   }));
 }
 
+function sourceGraphAggregatesForFullPlan(
+  plan: PortableMergePlan,
+): readonly PortableMergeAggregate[] {
+  return Object.freeze(plan.aggregates.filter((aggregate) =>
+    aggregate.aggregateClass === "source_graph"));
+}
+
 function snapshotFullPlan(plan: PortableMergePlan): PortableMergePlan {
   try {
     if (isPlannerIssuedPortableMergePlan(plan)) return plan;
@@ -795,6 +876,41 @@ async function recreateDeleteTriggers(
   }
   const recreated = await captureDeleteTriggers(transaction);
   if ([...triggers].some(([name, sql]) => recreated.get(name) !== sql)) fail();
+}
+
+async function captureSourceGraphBackupTriggers(
+  transaction: SqliteTransactionExecutor,
+): Promise<ReadonlyMap<string, string>> {
+  const placeholders = SOURCE_GRAPH_BACKUP_TRIGGER_NAMES.map(() => "?").join(", ");
+  const rows = await transaction.queryAll<{ name: string; sql: string }>(
+    `SELECT name, sql FROM sqlite_master WHERE type = 'trigger' AND name IN (${placeholders}) ORDER BY name`,
+    SOURCE_GRAPH_BACKUP_TRIGGER_NAMES,
+  );
+  if (rows.length !== SOURCE_GRAPH_BACKUP_TRIGGER_NAMES.length
+    || rows.some((row) => row.sql.trim().length === 0)) fail();
+  return new Map(rows.map(({ name, sql }) => [name, sql]));
+}
+
+async function withSingleSourceGraphGeneration(
+  transaction: SqliteTransactionExecutor,
+  nowMs: number,
+  write: () => Promise<void>,
+): Promise<void> {
+  const triggers = await captureSourceGraphBackupTriggers(transaction);
+  for (const name of SOURCE_GRAPH_BACKUP_TRIGGER_NAMES) await transaction.execute(`DROP TRIGGER ${identifier(name)}`);
+  await write();
+  for (const name of SOURCE_GRAPH_BACKUP_TRIGGER_NAMES) {
+    const statement = triggers.get(name);
+    if (statement === undefined) fail();
+    await transaction.execute(statement);
+  }
+  const recreated = await captureSourceGraphBackupTriggers(transaction);
+  if ([...triggers].some(([name, sql]) => recreated.get(name) !== sql)) fail();
+  const updated = await transaction.execute(
+    "UPDATE automatic_backup_state SET mutation_generation = mutation_generation + 1, dirty_since_ms = COALESCE(dirty_since_ms, ?) WHERE id = 1",
+    [nowMs],
+  );
+  requireValid(updated.changes === 1);
 }
 
 async function assertNoExternalSessionReferences(
@@ -1110,6 +1226,17 @@ async function insertOwnedPlanAggregate(
   }
 }
 
+async function insertSourceGraphAggregate(
+  transaction: SqliteTransactionExecutor,
+  aggregate: PortableMergeAggregate,
+  faultAfter: ((stage: LogicalMergeFaultStage) => Promise<void>) | undefined,
+): Promise<void> {
+  for (const table of FULL_PLAN_SOURCE_GRAPH_TABLES) {
+    await insertRows(transaction, table, aggregate.tables[table] ?? []);
+    await faultAfter?.(`full_plan_insert:${table}`);
+  }
+}
+
 async function verifyFullPlanSlice(
   transaction: SqliteTransactionExecutor,
   plan: PortableMergePlan,
@@ -1134,6 +1261,12 @@ async function verifyFullPlanSlice(
     const root = aggregate.tables.plans?.[0];
     if (root?.id !== operation.localId || root.portable_id !== operation.portableId) fail();
     for (const table of FULL_PLAN_OWNED_PLAN_TABLES) {
+      await verifyRows(transaction, table, aggregate.tables[table] ?? []);
+      await faultAfter?.(`full_plan_verify:${table}`);
+    }
+  }
+  for (const aggregate of sourceGraphAggregatesForFullPlan(plan)) {
+    for (const table of FULL_PLAN_SOURCE_GRAPH_TABLES) {
       await verifyRows(transaction, table, aggregate.tables[table] ?? []);
       await faultAfter?.(`full_plan_verify:${table}`);
     }
@@ -1332,6 +1465,18 @@ function createLogicalMergeRepositoryInternal(
           }
           for (const { aggregate } of ownedPlanAggregatesForFullPlan(plan)) {
             await insertOwnedPlanAggregate(transaction, aggregate, input.faultAfter);
+          }
+          const sourceGraphs = sourceGraphAggregatesForFullPlan(plan);
+          if (sourceGraphs.length > 0) {
+            await withSingleSourceGraphGeneration(
+              transaction,
+              input.nowMs?.() ?? Date.now(),
+              async () => {
+                for (const aggregate of sourceGraphs) {
+                  await insertSourceGraphAggregate(transaction, aggregate, input.faultAfter);
+                }
+              },
+            );
           }
           await verifyFullPlanSlice(
             transaction,
