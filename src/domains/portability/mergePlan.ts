@@ -1140,8 +1140,11 @@ function planAggregate(
   const tables: Record<string, readonly LogicalBackupRow[]> = {};
   const root = rowsFor(snapshot, "plans").filter((row) => row.id === archivePlanId);
   if (root.length !== 1) invalid();
+  const planKind = root[0]!.plan_kind;
   const activeLocalPlanExists = rowsFor(local, "plans").some(
-    (row) => row.is_active === 1,
+    (row) => row.is_active === 1 && (
+      typeof planKind !== "string" || row.plan_kind === planKind
+    ),
   );
   const importedRoot = Object.freeze({
     ...root[0]!,
@@ -1192,7 +1195,9 @@ function planAggregate(
     { column: "plan_id", ids: planMap },
   ], operation.kind === "keep_both", operation.portableId);
   const activeLocalScheduleExists = rowsFor(local, "owned_plan_schedules")
-    .some((row) => row.lifecycle === "active");
+    .some((row) => row.lifecycle === "active" && (
+      typeof planKind !== "string" || row.plan_kind === planKind
+    ));
   const normalizedOwnedSchedules = mappedOwnedSchedules.rows.map((row) =>
     row.lifecycle === "active" && activeLocalScheduleExists
       ? Object.freeze({
