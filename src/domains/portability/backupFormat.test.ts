@@ -124,6 +124,21 @@ describe("GTBK backup envelope", () => {
     await expect(createBackupEnvelopeCodec(cryptoPort()).open({ archive, password }))
       .resolves.toEqual(v2);
   });
+  it("round-trips the v3 successor envelope with its portable identity", async () => {
+    const v3: LogicalBackupSnapshot = {
+      ...snapshot,
+      version: 3,
+      schemaVersion: 28,
+      manifest: { catalogReferenceCount: 0, rowCounts: { portable_owner_identity: 1 }, totalRows: 1 },
+      tables: { portable_owner_identity: [{ id: 1, owner_namespace: "0123456789abcdef0123456789abcdef" }] },
+    };
+    const archive = await createBackupEnvelopeCodec(cryptoPort()).seal({
+      snapshot: v3, password, salt, nonce,
+    });
+    expect(archive[4]).toBe(3);
+    await expect(createBackupEnvelopeCodec(cryptoPort()).open({ archive, password }))
+      .resolves.toEqual(v3);
+  });
   it("emits deterministic canonical header bytes that are authenticated as AAD", async () => {
     const codec = createBackupEnvelopeCodec(cryptoPort());
 
@@ -151,7 +166,7 @@ describe("GTBK backup envelope", () => {
 
   it.each([
     ["the magic", (archive: Uint8Array) => { archive[0] = (archive[0] ?? 0) ^ 1; }],
-    ["the format version", (archive: Uint8Array) => { archive[4] = 3; }],
+    ["the format version", (archive: Uint8Array) => { archive[4] = 4; }],
     ["one canonical header byte", (archive: Uint8Array) => { archive[9] = (archive[9] ?? 0) ^ 1; }],
     ["one ciphertext byte", (archive: Uint8Array) => { const index = archive.length - 17; archive[index] = (archive[index] ?? 0) ^ 1; }],
     ["the authentication tag", (archive: Uint8Array) => { const index = archive.length - 1; archive[index] = (archive[index] ?? 0) ^ 1; }],

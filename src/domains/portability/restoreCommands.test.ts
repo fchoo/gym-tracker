@@ -321,6 +321,32 @@ describe("restore preflight", () => {
     await expect(commands.preflightSecureRestore({ password: "owner-password" })).resolves.toEqual(expect.objectContaining({ outcome: "ready" }));
   });
 
+  it("accepts the v3 successor graph only at schema 28", async () => {
+    const commands = createRestoreCommands({
+      crypto: cryptoPort(), files: { readSelectedArchiveAtMost: () => archiveFor(snapshot({
+        version: 3,
+        schemaVersion: 28,
+        tables: { portable_owner_identity: [{ id: 1, owner_namespace: "0123456789abcdef0123456789abcdef" }] },
+      })) },
+      kdf, schema, candidateProbe, store: createRestorePreflightStore({ tokenFactory: () => "schema-28-v3" }),
+    });
+    await expect(commands.preflightSecureRestore({ password: "owner-password" }))
+      .resolves.toEqual(expect.objectContaining({ outcome: "ready" }));
+  });
+
+  it("rejects a v3 graph claiming a pre-successor schema", async () => {
+    const commands = createRestoreCommands({
+      crypto: cryptoPort(), files: { readSelectedArchiveAtMost: () => archiveFor(snapshot({
+        version: 3,
+        schemaVersion: 27,
+        tables: { portable_owner_identity: [{ id: 1, owner_namespace: "0123456789abcdef0123456789abcdef" }] },
+      })) },
+      kdf, schema, candidateProbe, store: createRestorePreflightStore({ tokenFactory: () => "schema-27-v3" }),
+    });
+    await expect(commands.preflightSecureRestore({ password: "owner-password" }))
+      .rejects.toEqual(expect.objectContaining({ code: "restore_archive_unsupported_version" }));
+  });
+
   it.each([14, 28])("rejects unsupported logical producer schema version %i", async (schemaVersion) => {
     const commands = createRestoreCommands({
       crypto: cryptoPort(), files: { readSelectedArchiveAtMost: () => archiveFor(snapshot({ version: 1, schemaVersion })) },
