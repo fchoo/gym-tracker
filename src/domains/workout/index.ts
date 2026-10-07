@@ -43,6 +43,23 @@ export type StartedWorkout = Readonly<{
   revision: number;
 }>;
 
+export type PlannedStrengthOccurrenceDetail = Readonly<{
+  occurrenceId: string;
+  planId: string;
+  planDayId: string;
+  scheduleId: string;
+  scheduleVersionId: string;
+  localDate: string;
+  timezone: string;
+  sourceRevisions: Readonly<{ plan: number; day: number; schedule: number }>;
+  exercises: readonly Readonly<{
+    id: string;
+    exerciseId: string;
+    ordinal: number;
+    targets: readonly Readonly<{ id: string; ordinal: number; targetJson: string; unitJson: string }> [];
+  }>[];
+}>;
+
 export type TodayHistory = Readonly<{
   summary: string;
   change: string | null;
