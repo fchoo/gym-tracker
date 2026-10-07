@@ -898,6 +898,12 @@ function rootOperations(
     archivePortableIds.add(portableId);
     const existing = localByPortableId.get(portableId);
     if (existing !== undefined) {
+      // Portable identity is owner-scoped, but a plan's sport is immutable
+      // source meaning. Treat a changed kind as an unresolved preview
+      // conflict instead of silently deduplicating incompatible aggregates.
+      if (input.table === "plans" && existing.plan_kind !== root.plan_kind) {
+        invalid();
+      }
       const localId = textId(existing.id);
       operations.push(Object.freeze({
         aggregateClass: input.aggregateClass,
