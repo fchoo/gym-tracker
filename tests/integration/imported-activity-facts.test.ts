@@ -1,8 +1,26 @@
-import { describe, expect, it } from "@jest/globals";
+import { createHash } from "node:crypto";
+import { afterEach, describe, expect, it } from "@jest/globals";
+import { DatabaseSync, type SQLInputValue } from "node:sqlite";
+import { mkdtempSync, readFileSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { canonicalJson } from "../../src/domains/activities/importContracts";
+import { confirmGarminImportDate, prepareGarminImport } from "../../src/domains/activities/importCommands";
+import { type SqliteConnection, type SqlitePreparedResult, type SqlitePreparedStatement, configureSqliteConnection } from "../../src/platform/sqlite/connection";
+import { createMigrationRunner } from "../../src/platform/sqlite/migrationRunner";
+import { migrations } from "../../src/platform/sqlite/migrations";
+import { createImportedActivityRepository } from "../../src/platform/sqlite/repositories/importedActivityRepository";
+import { createSqliteKernel, type SqliteKernel } from "../../src/platform/sqlite/sqliteKernel";
+
+class Result<Row extends Record<string, unknown>> implements SqlitePreparedResult<Row> { constructor(readonly changes: number, readonly lastInsertRowId: number, private readonly rows: readonly Row[]) {} async getAllAsync() { return this.rows; } }
+class Statement implements SqlitePreparedStatement { constructor(private readonly statement: ReturnType<DatabaseSync["prepare"]>) {} async executeAsync<Row extends Record<string, unknown>>(parameters: readonly SQLInputValue[] = []): Promise<SqlitePreparedResult<Row>> { if (this.statement.columns().length > 0) return new Result(0, 0, this.statement.all(...parameters) as Row[]); const result = this.statement.run(...parameters); return new Result(Number(result.changes), Number(result.lastInsertRowid), []); } async finalizeAsync() {} }
+class Connection implements SqliteConnection { constructor(private readonly db: DatabaseSync) {} async execAsync(sql: string) { this.db.exec(sql); } async prepareAsync(sql: string) { return new Statement(this.db.prepare(sql)); } async isInTransactionAsync() { return this.db.isTransaction; } async closeAsync() { this.db.close(); } }
+
+const directories = new Set<string>(); const kernels: SqliteKernel[] = [];
+afterEach(async () => { await Promise.all(kernels.splice(0).map((kernel) => kernel.close())); for (const directory of directories) rmSync(directory, { recursive: true, force: true }); directories.clear(); });
+async function runtime() { const directory = mkdtempSync(join(tmpdir(), "gym-imported-activity-")); directories.add(directory); const path = join(directory, "gym.db"); const fixture = new DatabaseSync(path); fixture.exec(readFileSync(join(__dirname, "../migrations/fixtures/v6-metric-profiles.sql"), "utf8")); fixture.close(); const writer = new Connection(new DatabaseSync(path)); const reader = new Connection(new DatabaseSync(path)); await configureSqliteConnection(writer, { enableWal: true }); await configureSqliteConnection(reader, { enableWal: false }); const kernel = createSqliteKernel({ writer, reader }); kernels.push(kernel); await createMigrationRunner({ databaseName: path, kernel, migrations, recoveryBackup: { async createAndValidate(request) { return { backupId: "test", databaseName: request.databaseName, fromVersion: request.fromVersion, toVersion: request.toVersion, validated: true as const }; } } }).run(); return { kernel, repository: createImportedActivityRepository(kernel) }; }
+function staged() { const normalized = { version: 1 as const, started_at_ms: 1_700_000_000_000, sport: "running" as const, subtype: "outdoor", distance_meters: 5000, elapsed_ms: 1_500_000, laps: [] }; return prepareGarminImport({ version: 1 as const, source_kind: "garmin_connect_account" as const, account_namespace: "owner-a", external_activity_id: "42", normalization_version: 1, normalized_json_sha256: createHash("sha256").update(canonicalJson({ normalization_version: 1, normalized })).digest("hex"), raw_component_sha256: { activity: "a".repeat(64), splits: "b".repeat(64), details: "c".repeat(64) }, sample_fidelity: "source_summary" as const, normalized }); }
 
 describe("imported activity facts", () => {
-  it("reserves real-SQLite atomic import, replay, conflict, and no-plan-side-effect coverage", () => {
-    // The implementation test is intentionally added before the repository exists.
-    expect("imported activity repository").toBe("implemented activity repository");
-  });
+  it("commits source evidence exactly once without plan or session side effects", async () => { const { kernel, repository } = await runtime(); const before = await kernel.queryAll<{ plans: number; sessions: number }>("SELECT (SELECT count(*) FROM plans) AS plans, (SELECT count(*) FROM workout_sessions) AS sessions"); const input = { requestId: "request-1", requestSha256: "d".repeat(64), activityId: "activity-local-1", expectedAggregateRevision: 0, confirmedLocalDate: "2026-10-07", staged: staged() }; await expect(confirmGarminImportDate(repository, input)).resolves.toEqual({ kind: "imported", activityId: "activity-local-1", aggregateRevision: 1 }); await expect(confirmGarminImportDate(repository, input)).resolves.toEqual({ kind: "replayed", activityId: "activity-local-1", aggregateRevision: 1 }); await expect(kernel.queryAll<{ plans: number; sessions: number }>("SELECT (SELECT count(*) FROM plans) AS plans, (SELECT count(*) FROM workout_sessions) AS sessions")).resolves.toEqual(before); await expect(kernel.queryAll<{ count: number }>("SELECT count(*) AS count FROM imported_activity_payloads")).resolves.toEqual([{ count: 1 }]); });
 });
