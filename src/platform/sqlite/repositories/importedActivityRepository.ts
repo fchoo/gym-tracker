@@ -1,4 +1,5 @@
 import type { ConfirmGarminImportInput, GarminImportResult } from "../../../domains/activities/importCommands";
+import type { GarminActivityLifecycleInput } from "../../../domains/activities/importCommands";
 import { classifyGarminActivityIdentity } from "../../../domains/activities/activityIdentity";
 import type { SqliteKernel } from "../sqliteKernel";
 
@@ -6,6 +7,21 @@ type Receipt = Readonly<{ request_sha256: string; activity_id: string }>;
 
 export function createImportedActivityRepository(kernel: SqliteKernel) {
   return Object.freeze({
+    async changeGarminActivityLifecycle(input: GarminActivityLifecycleInput): Promise<GarminImportResult> {
+      return kernel.write(async (transaction) => {
+        const [receipt] = await transaction.queryAll<Receipt>("SELECT request_sha256, activity_id FROM imported_activity_receipts WHERE id = ?", [input.requestId]);
+        if (receipt !== undefined) return receipt.request_sha256 === input.requestSha256 ? Object.freeze({ kind: input.operation === "remove" ? "removed" : "replayed", activityId: receipt.activity_id, aggregateRevision: input.expectedAggregateRevision }) : Object.freeze({ kind: "conflict", activityId: input.activityId, aggregateRevision: input.expectedAggregateRevision });
+        const [identity] = await transaction.queryAll<{ aggregate_revision: number }>("SELECT aggregate_revision FROM imported_activity_identities WHERE activity_id = ?", [input.activityId]);
+        if (identity === undefined || identity.aggregate_revision !== input.expectedAggregateRevision) return Object.freeze({ kind: "conflict", activityId: input.activityId, aggregateRevision: identity?.aggregate_revision ?? 0 });
+        const [latest] = await transaction.queryAll<{ event_type: "imported" | "removed" | "restored" }>("SELECT event_type FROM imported_activity_events WHERE activity_id = ? ORDER BY created_at_ms DESC, id DESC LIMIT 1", [input.activityId]);
+        if ((input.operation === "remove" && latest?.event_type === "removed") || (input.operation === "restore" && latest?.event_type !== "removed")) return Object.freeze({ kind: input.operation === "remove" ? "removed" : "conflict", activityId: input.activityId, aggregateRevision: identity.aggregate_revision });
+        const eventType = input.operation === "remove" ? "removed" : "restored";
+        await transaction.execute("INSERT INTO imported_activity_events(id, activity_id, aggregate_revision, event_type, payload_json, created_at_ms) VALUES (?, ?, ?, ?, ?, ?)", [`${input.requestId}:event`, input.activityId, identity.aggregate_revision, eventType, JSON.stringify({ reason: input.reason }), input.occurredAtMs]);
+        if (input.operation === "remove") { await transaction.execute("INSERT INTO imported_activity_removal_events(id, activity_id, removed_at_ms, reason) VALUES (?, ?, ?, ?)", [`${input.requestId}:removal`, input.activityId, input.occurredAtMs, input.reason]); await transaction.execute("INSERT INTO imported_activity_match_invalidations(id, activity_id, aggregate_revision, reason, created_at_ms) VALUES (?, ?, ?, 'activity_removed', ?)", [`${input.requestId}:invalidate`, input.activityId, identity.aggregate_revision, input.occurredAtMs]); }
+        await transaction.execute("INSERT INTO imported_activity_receipts(id, activity_id, request_sha256, committed_at_ms) VALUES (?, ?, ?, ?)", [input.requestId, input.activityId, input.requestSha256, input.occurredAtMs]);
+        return Object.freeze({ kind: input.operation === "remove" ? "removed" : "replayed", activityId: input.activityId, aggregateRevision: identity.aggregate_revision });
+      });
+    },
     async confirmGarminImport(input: ConfirmGarminImportInput): Promise<GarminImportResult> {
       return kernel.write(async (transaction) => {
         const [receipt] = await transaction.queryAll<Receipt>("SELECT request_sha256, activity_id FROM imported_activity_receipts WHERE id = ?", [input.requestId]);

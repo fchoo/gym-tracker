@@ -2,7 +2,7 @@ import { createHash } from "node:crypto";
 import { describe, expect, it, jest } from "@jest/globals";
 
 import { canonicalJson } from "./importContracts";
-import { confirmGarminImportDate, prepareGarminImport } from "./importCommands";
+import { changeGarminActivityLifecycle, confirmGarminImportDate, prepareGarminImport } from "./importCommands";
 
 const normalized = { version: 1 as const, started_at_ms: 1_700_000_000_000, sport: "running" as const, subtype: "outdoor", distance_meters: 5000, elapsed_ms: 1_500_000, laps: [] };
 const envelope = { version: 1 as const, source_kind: "garmin_connect_account" as const, account_namespace: "owner-a", external_activity_id: "42", normalization_version: 1, normalized_json_sha256: createHash("sha256").update(canonicalJson({ normalization_version: 1, normalized })).digest("hex"), raw_component_sha256: { activity: "a".repeat(64), splits: "b".repeat(64), details: "c".repeat(64) }, sample_fidelity: "source_summary" as const, normalized };
@@ -17,5 +17,9 @@ describe("Garmin import commands", () => {
 
   it("rejects a digest mismatch before the writer", () => {
     expect(() => prepareGarminImport({ ...envelope, normalized_json_sha256: "0".repeat(64) })).toThrow("garmin_digest_invalid");
+  });
+  it("requires explicit revision-fenced owner removal or restoration", async () => {
+    const repository = { changeGarminActivityLifecycle: jest.fn(async () => ({ kind: "removed" as const, activityId: "local-1", aggregateRevision: 1 })) };
+    await expect(changeGarminActivityLifecycle(repository, { operation: "remove", requestId: "remove-1", requestSha256: "e".repeat(64), activityId: "local-1", expectedAggregateRevision: 1, occurredAtMs: 1, reason: "owner_request" })).resolves.toMatchObject({ kind: "removed" });
   });
 });
