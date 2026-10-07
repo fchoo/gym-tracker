@@ -19,6 +19,7 @@ import {
 import {
   LOGICAL_BACKUP_FORMAT_VERSION,
   LOGICAL_BACKUP_TABLES,
+  logicalBackupTablesForVersion,
   type LogicalBackupSnapshot,
 } from "../../src/domains/portability/backupContracts";
 import {
@@ -438,8 +439,8 @@ describe("logical restore repository", () => {
     const stages: readonly LogicalRestoreFaultStage[] = [
       "captured_current_ownership",
       ...LOGICAL_RESTORE_DELETE_TRIGGER_NAMES.map((name) => `trigger_drop:${name}` as const),
-      ...LOGICAL_BACKUP_TABLES.map((table) => `delete:${table}` as LogicalRestoreFaultStage),
-      ...LOGICAL_BACKUP_TABLES.map((table) => `insert:${table}` as LogicalRestoreFaultStage),
+      ...logicalBackupTablesForVersion(LOGICAL_BACKUP_FORMAT_VERSION).map((table) => `delete:${table}` as LogicalRestoreFaultStage),
+      ...logicalBackupTablesForVersion(LOGICAL_BACKUP_FORMAT_VERSION).map((table) => `insert:${table}` as LogicalRestoreFaultStage),
       ...LOGICAL_RESTORE_DELETE_TRIGGER_NAMES.map((name) => `trigger_recreate:${name}` as const),
       "verified",
       "state_updated",
@@ -464,7 +465,7 @@ describe("logical restore repository", () => {
     expect(LOGICAL_BACKUP_TABLES).toContain("bodyweight_entries");
     expect(LOGICAL_BACKUP_TABLES).toContain("bodyweight_entry_events");
     expect(LOGICAL_BACKUP_TABLES).toContain("bodyweight_command_receipts");
-    expect(LOGICAL_BACKUP_FORMAT_VERSION).toBe(5);
+    expect(LOGICAL_BACKUP_FORMAT_VERSION).toBe(6);
     expect(LOGICAL_RESTORE_DELETE_TRIGGER_NAMES).toContain("portable_owner_identity_adoption_only");
     expect(LOGICAL_RESTORE_DELETE_TRIGGER_NAMES).not.toContain("starter_plan_sources_immutable_delete");
     expect(LOGICAL_RESTORE_DELETE_TRIGGER_NAMES).not.toContain("session_sets_target_graph_insert");
