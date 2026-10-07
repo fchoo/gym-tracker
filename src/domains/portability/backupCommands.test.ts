@@ -36,7 +36,7 @@ function snapshot(): LogicalBackupSnapshot {
     version: LOGICAL_BACKUP_FORMAT_VERSION,
     snapshotId: "snapshot",
     createdAtMs: 1,
-    schemaVersion: 15,
+    schemaVersion: 28,
     manifest: {
       catalogReferenceCount: 0,
       rowCounts: Object.fromEntries(LOGICAL_BACKUP_TABLES.map((table) => [

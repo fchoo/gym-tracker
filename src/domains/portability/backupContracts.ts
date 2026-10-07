@@ -176,7 +176,7 @@ export const LOGICAL_BACKUP_SCHEMA_23_TABLES = Object.freeze([
 ] as const satisfies readonly LogicalBackupTableName[]);
 
 export const LOGICAL_BACKUP_V1_TABLES = Object.freeze(
-  LOGICAL_BACKUP_TABLES.filter((table) => table !== "portable_owner_identity"),
+  LOGICAL_BACKUP_V2_TABLES.filter((table) => table !== "portable_owner_identity"),
 ) as readonly LogicalBackupTableName[];
 
 export const LOGICAL_BACKUP_PRE_PHASE10_V1_TABLES = Object.freeze(
@@ -551,7 +551,7 @@ export function parseLogicalBackupSnapshot(
     input.catalogReferences,
     version,
   );
-  if (version === 2) {
+  if (version >= 2) {
     assertV2PortableOwnerIdentity(input.tables);
     assertV2RootIdentities(input.tables);
   } else if (Object.prototype.hasOwnProperty.call(input.tables, "portable_owner_identity")) {

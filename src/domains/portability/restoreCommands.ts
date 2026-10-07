@@ -236,7 +236,15 @@ async function validateRows(
   retained: number;
   snapshot: LogicalBackupSnapshot;
 }>> {
-  if (!(LOGICAL_BACKUP_SUPPORTED_SCHEMA_VERSIONS as readonly number[]).includes(snapshot.schemaVersion)) throw new RestoreCommandError("restore_archive_unsupported_version");
+  const schemaVersionSupported = (
+    LOGICAL_BACKUP_SUPPORTED_SCHEMA_VERSIONS as readonly number[]
+  ).includes(snapshot.schemaVersion);
+  const formatMatchesSchema = snapshot.version === 3
+    ? snapshot.schemaVersion === 28
+    : snapshot.schemaVersion < 28;
+  if (!schemaVersionSupported || !formatMatchesSchema) {
+    throw new RestoreCommandError("restore_archive_unsupported_version");
+  }
   const sourceTables = logicalBackupTablesForVersion(
     snapshot.version,
     snapshot.schemaVersion,

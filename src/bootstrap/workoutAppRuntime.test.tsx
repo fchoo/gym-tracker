@@ -95,6 +95,9 @@ import {
   AUTOMATIC_BACKUP_GENERATION_TRIGGER_STATEMENTS,
 } from "../platform/sqlite/migrations/0023_automatic_drive_backup";
 import {
+  MULTI_PLAN_RUNNING_FOUNDATION_TABLES,
+} from "../platform/sqlite/migrations/0028_multi_plan_running_foundation";
+import {
   AppearanceProvider,
 } from "../ui/theme";
 
@@ -3355,6 +3358,15 @@ describe("WorkoutAppRuntimeProvider", () => {
       }
       if (sql === "SELECT account_display_label FROM automatic_backup_state WHERE id = 1") {
         return [{ account_display_label: null }];
+      }
+      if (sql.startsWith("SELECT name FROM sqlite_master WHERE type = 'table' AND name IN (")) {
+        return MULTI_PLAN_RUNNING_FOUNDATION_TABLES.map((name) => ({ name }));
+      }
+      if (sql === "SELECT name FROM sqlite_master WHERE type = 'index' AND name IN ('one_active_owned_plan_per_sport', 'one_active_owned_schedule_per_sport')") {
+        return [
+          { name: "one_active_owned_plan_per_sport" },
+          { name: "one_active_owned_schedule_per_sport" },
+        ];
       }
       if (sql.includes("portable_id IS NULL")) {
         return [{ count: 0 }];
