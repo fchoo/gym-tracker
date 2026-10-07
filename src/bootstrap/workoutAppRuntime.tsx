@@ -3647,6 +3647,7 @@ export function WorkoutAppRuntimeProvider({
       }));
       throw error;
     }
+    reconcileAfterCommit(services);
     workoutRefreshGenerationRef.current += 1;
     try {
       setState(await trustedRead(services));
@@ -3663,7 +3664,7 @@ export function WorkoutAppRuntimeProvider({
     return committedSetId === undefined
       ? view
       : Object.freeze({ ...view, committedSetId });
-  }, [requireServices, trustedRead]);
+  }, [reconcileAfterCommit, requireServices, trustedRead]);
 
   const runWorkoutRemoval = useCallback(async (
     input: RemoveWarmupInput | RemoveWorkingSetInput,

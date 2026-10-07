@@ -62,6 +62,7 @@ export type SqliteSnapshotKernel = SqliteKernel & Readonly<{
 export type SqliteStorageErrorCode =
   | "sqlite_begin_failed"
   | "sqlite_commit_failed"
+  | "sqlite_acknowledgment_failed"
   | "sqlite_query_failed"
   | "sqlite_rollback_failed"
   | "sqlite_statement_finalize_failed"
@@ -77,7 +78,8 @@ export class SqliteStorageError extends Error {
   ) {
     super(code);
     this.name = "SqliteStorageError";
-    this.retryable = code === "sqlite_begin_failed";
+    this.retryable = code === "sqlite_begin_failed"
+      || code === "sqlite_acknowledgment_failed";
   }
 }
 
@@ -88,6 +90,7 @@ type SqliteKernelConnections = Readonly<{
 
 export type SqliteKernelTestObserver = Readonly<{
   beforeCommit?(): Promise<void>;
+  afterCommit?(): Promise<void>;
 }>;
 
 export type SqliteKernelTestRuntime = Readonly<{
@@ -111,6 +114,7 @@ function storageError(error: unknown): SqliteStorageError {
   const codeByStage = {
     begin: "sqlite_begin_failed",
     commit: "sqlite_commit_failed",
+    acknowledgment: "sqlite_acknowledgment_failed",
     rollback: "sqlite_rollback_failed",
     statement: "sqlite_statement_finalize_failed",
     transaction: "sqlite_transaction_failed",
@@ -143,6 +147,7 @@ export function createSqliteKernel(
   const serializedWriter = new SerializedWriteExecutor(
     connections.writer,
     observer.beforeCommit,
+    observer.afterCommit,
   );
   const transactionExecutor = createBoundExecutor(connections.writer);
   const readTransactionExecutor = createBoundExecutor(connections.reader);

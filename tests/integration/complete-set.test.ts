@@ -1299,4 +1299,52 @@ describe("Plan 02-27 completed working-set correction", () => {
       "SELECT COUNT(*) AS count FROM pending_effects",
     )).toEqual([{ count: 1 }]);
   });
+
+  it("recovers one durable correction after post-commit acknowledgment loss", async () => {
+    let loseAcknowledgment = false;
+    const { kernel, repository, session, completed } =
+      await completedWorkingSetFixture({
+        afterCommit: async () => {
+          if (loseAcknowledgment) {
+            loseAcknowledgment = false;
+            throw new Error("injected_correction_acknowledgment_loss");
+          }
+        },
+      });
+    const first = completed.currentExercise.workingSets[0]!;
+    const input = correctionInput({ sessionId: session.id, view: completed, set: first });
+    const protectedBefore = {
+      activeSetId: completed.activeSetId,
+      activeExerciseId: completed.activeExerciseId,
+      rest: completed.rest,
+      later: completed.currentExercise.workingSets.slice(1),
+    };
+
+    loseAcknowledgment = true;
+    await expect(reviseCompletedSet({ repository, input })).rejects.toMatchObject({
+      code: "sqlite_acknowledgment_failed",
+    });
+
+    const relaunchedRepository = createWorkoutRepository(kernel);
+    const recovered = await reviseCompletedSet({
+      repository: relaunchedRepository,
+      input,
+    });
+    expect(recovered).toEqual(expect.objectContaining({
+      activeSetId: protectedBefore.activeSetId,
+      activeExerciseId: protectedBefore.activeExerciseId,
+      rest: protectedBefore.rest,
+    }));
+    expect(recovered.currentExercise.workingSets.slice(1)).toEqual(protectedBefore.later);
+    expect(recovered.currentExercise.workingSets[0]?.observation).toEqual(
+      expect.objectContaining({ loadGrams: 62_500, reps: 7 }),
+    );
+    expect(await kernel.queryAll(
+      "SELECT request_id FROM workout_completed_set_correction_receipts",
+    )).toEqual([{ request_id: input.correctionIdempotencyKey }]);
+    expect(await kernel.queryAll(
+      "SELECT id FROM history_audit_events WHERE session_id = ? AND event_type = 'correction'",
+      [session.id],
+    )).toEqual([{ id: `completed-set-correction:${input.correctionIdempotencyKey}` }]);
+  });
 });
