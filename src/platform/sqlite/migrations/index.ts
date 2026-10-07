@@ -31,6 +31,7 @@ import { bodyweightSourceHistoryMigration } from "./0031_bodyweight_source_histo
 import { strengthOccurrenceProvenanceMigration } from "./0032_strength_occurrence_provenance";
 import { completedSetCorrectionReceiptsMigration } from "./0033_completed_set_correction_receipts";
 import { runningActivityMatchLedgerMigration } from "./0034_running_activity_match_ledger";
+import { importedActivityLifecycleStateMigration } from "./0035_imported_activity_lifecycle_state";
 
 export const migrations = Object.freeze([
   initialMigration,
@@ -66,6 +67,7 @@ export const migrations = Object.freeze([
   strengthOccurrenceProvenanceMigration,
   completedSetCorrectionReceiptsMigration,
   runningActivityMatchLedgerMigration,
+  importedActivityLifecycleStateMigration,
 ]);
 
 export const CURRENT_SCHEMA_VERSION = migrations.reduce(
@@ -105,6 +107,7 @@ export {
   strengthOccurrenceProvenanceMigration,
   completedSetCorrectionReceiptsMigration,
   runningActivityMatchLedgerMigration,
+  importedActivityLifecycleStateMigration,
   outcomeEffortMigration,
   scheduleActivationMigration,
 };

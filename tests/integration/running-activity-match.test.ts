@@ -27,7 +27,7 @@ async function seed(kernel: SqliteKernel) {
   await plans.createInactiveMinimum({ planId: "running-plan", planName: "Running", anchorDayId: "running-anchor", scheduleId: "running-schedule", scheduleVersionId: "running-version", scheduleBindingId: "running-binding", createdAtMs: 1000, effectiveLocalDate: "2026-10-05", timezone: "Asia/Singapore", recoveryRevisionId: "running-session-v1", slots: [{ id: "running-slot", weekday: "Monday", ordinal: 0, sessionRevisionId: "running-session-v1" }] });
   await plans.activateMinimum({ planId: "running-plan", scheduleId: "running-schedule", expectedPlanRevision: 1, expectedScheduleRevision: 1, activatedAtMs: 2000 });
   await plans.materializeOccurrences({ planId: "running-plan", scheduleId: "running-schedule", scheduleVersionId: "running-version", localDate: "2026-10-05", timezone: "Asia/Singapore", createdAtMs: 3000, occurrenceIds: ["running-opportunity"] });
-  await kernel.write(async (transaction) => { await transaction.execute("INSERT INTO imported_activities(id, source, source_activity_id, started_at_ms, aggregate_json, imported_at_ms) VALUES ('activity-1', 'garmin_connect_account:owner', 'external-1', 1, '{}', 1)"); await transaction.execute("INSERT INTO imported_activity_identities(activity_id, source_kind, account_namespace, external_activity_id, aggregate_revision, accepted_normalized_sha256, removal_state) VALUES ('activity-1', 'garmin_connect_account', 'owner', 'external-1', 1, ?, 'active')", ["a".repeat(64)]); });
+  await kernel.write(async (transaction) => { await transaction.execute("INSERT INTO imported_activities(id, source, source_activity_id, started_at_ms, aggregate_json, imported_at_ms) VALUES ('activity-1', 'garmin_connect_account:owner', 'external-1', 1, '{}', 1)"); await transaction.execute("INSERT INTO imported_activity_identities(activity_id, source_kind, account_namespace, external_activity_id, aggregate_revision, accepted_normalized_sha256, removal_state) VALUES ('activity-1', 'garmin_connect_account', 'owner', 'external-1', 1, ?, 'active')", ["a".repeat(64)]); await transaction.execute("INSERT INTO imported_activity_events(id, activity_id, aggregate_revision, event_type, payload_json, created_at_ms) VALUES ('activity-1:import', 'activity-1', 1, 'imported', '{}', 1)"); await transaction.execute("INSERT INTO imported_activity_current_lifecycle(activity_id, aggregate_revision, removal_state, lifecycle_event_id) VALUES ('activity-1', 1, 'active', 'activity-1:import')"); });
 }
 
 describe("Running activity matching", () => {
@@ -49,5 +49,16 @@ describe("Running activity matching", () => {
     await expect(kernel.queryAll<{ count: number }>("SELECT count(*) AS count FROM running_activity_current_matches")).resolves.toEqual([{ count: 1 }]);
     await expect(kernel.queryAll<{ count: number }>("SELECT count(*) AS count FROM running_activity_match_events")).resolves.toEqual([{ count: 1 }]);
     await expect(confirmRunningActivityMatch(repository, { ...input, requestId: "old-match", requestSha256: "d".repeat(64), expectedRelationRevision: 0 })).resolves.toMatchObject({ kind: "conflict" });
+  });
+
+  it("removes a current match atomically and leaves a restored activity unmatched", async () => {
+    const kernel = await runtime(); await seed(kernel); const matches = createRunningActivityMatchRepository(kernel); const imported = createImportedActivityRepository(kernel);
+    const match = { requestId: "match-remove", requestSha256: "e".repeat(64), action: "match" as const, activityId: "activity-1", expectedActivityRevision: 1, opportunityId: "running-opportunity", expectedOpportunityRevision: 1, expectedRelationRevision: 0, scheduleId: "running-schedule", scheduleVersionId: "running-version", slotId: "running-slot", sessionRevisionId: "running-session-v1", occurredAtMs: 4000 };
+    await expect(confirmRunningActivityMatch(matches, match)).resolves.toMatchObject({ kind: "matched" });
+    await expect(imported.changeGarminActivityLifecycle({ operation: "remove", requestId: "remove-1", requestSha256: "f".repeat(64), activityId: "activity-1", expectedAggregateRevision: 1, occurredAtMs: 5000, reason: "owner_remove" })).resolves.toMatchObject({ kind: "removed" });
+    await expect(kernel.queryAll<{ count: number }>("SELECT count(*) AS count FROM running_activity_current_matches")).resolves.toEqual([{ count: 0 }]);
+    await expect(kernel.queryAll<{ action: string }>("SELECT action FROM running_activity_match_events ORDER BY created_at_ms, id")).resolves.toEqual([{ action: "matched" }, { action: "invalidated" }]);
+    await expect(imported.changeGarminActivityLifecycle({ operation: "restore", requestId: "restore-1", requestSha256: "1".repeat(64), activityId: "activity-1", expectedAggregateRevision: 1, occurredAtMs: 6000, reason: "owner_restore" })).resolves.toMatchObject({ kind: "replayed" });
+    await expect(kernel.queryAll<{ count: number }>("SELECT count(*) AS count FROM running_activity_current_matches")).resolves.toEqual([{ count: 0 }]);
   });
 });

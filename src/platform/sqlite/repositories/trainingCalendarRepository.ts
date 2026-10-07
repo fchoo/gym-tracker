@@ -70,8 +70,8 @@ async function queryRange(
     reader.queryAll<ImportedRow>(
       `SELECT activity.id, activity.started_at_ms, activity.aggregate_json
          FROM imported_activities activity
-         JOIN imported_activity_identities identity ON identity.activity_id = activity.id
-        WHERE identity.removal_state = 'active'
+         JOIN imported_activity_current_lifecycle lifecycle ON lifecycle.activity_id = activity.id
+        WHERE lifecycle.removal_state = 'active'
           AND json_extract(activity.aggregate_json, '$.confirmed_local_date') >= ?
           AND json_extract(activity.aggregate_json, '$.confirmed_local_date') < ?
         ORDER BY json_extract(activity.aggregate_json, '$.confirmed_local_date'), activity.started_at_ms, activity.id`, [input.start, input.end],
