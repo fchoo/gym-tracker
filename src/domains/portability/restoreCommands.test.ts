@@ -18,6 +18,7 @@ import {
   createRestorePreflightStore,
   RestoreCommandError,
   RestoreCandidateProbeError,
+  validateLogicalRestoreSnapshot,
 } from "./restoreCommands";
 import type { PasswordKdfPort } from "../../platform/crypto/passwordKdf";
 import { RestoreFilePortError } from "../../platform/files/expoBackupFilePort";
@@ -384,6 +385,91 @@ describe("restore preflight", () => {
     });
     await expect(commands.preflightSecureRestore({ password: "owner-password" }))
       .resolves.toEqual(expect.objectContaining({ outcome: "ready" }));
+  });
+
+  describe("v6 active plan and schedule topology", () => {
+    const plan = (id: string, kind: "strength" | "running", isActive = 1) => ({
+      id,
+      content_pack_id: null,
+      is_active: isActive,
+      plan_kind: kind,
+    });
+    const scheduleRow = (id: string, planId: string, kind: string) => ({
+      id,
+      plan_id: planId,
+      lifecycle: "active",
+      plan_kind: kind,
+    });
+    const topologySchema = {
+      async columnsFor(table: string) {
+        if (table === "plans") return [
+          { name: "id", sqliteType: "TEXT" as const, notNull: true },
+          { name: "content_pack_id", sqliteType: "TEXT" as const, notNull: false },
+          { name: "is_active", sqliteType: "INTEGER" as const, notNull: true },
+          { name: "plan_kind", sqliteType: "TEXT" as const, notNull: true },
+        ];
+        if (table === "owned_plan_schedules") return [
+          { name: "id", sqliteType: "TEXT" as const, notNull: true },
+          { name: "plan_id", sqliteType: "TEXT" as const, notNull: true },
+          { name: "lifecycle", sqliteType: "TEXT" as const, notNull: true },
+          { name: "plan_kind", sqliteType: "TEXT" as const, notNull: true },
+        ];
+        return schema.columnsFor(table);
+      },
+    };
+    const successor = (tables: LogicalBackupSnapshot["tables"]) => snapshot({
+      version: 6,
+      schemaVersion: 35,
+      tables,
+    });
+
+    it("accepts one matched active plan and schedule per sport through the shared validator", async () => {
+      await expect(validateLogicalRestoreSnapshot(successor({
+        plans: [plan("strength-plan", "strength"), plan("running-plan", "running")],
+        owned_plan_schedules: [
+          scheduleRow("strength-schedule", "strength-plan", "strength"),
+          scheduleRow("running-schedule", "running-plan", "running"),
+        ],
+      }), topologySchema, undefined)).resolves.toBeUndefined();
+    });
+
+    it.each([
+      ["invalid plan kind", {
+        plans: [{ ...plan("strength-plan", "strength"), plan_kind: "cycling" }],
+        owned_plan_schedules: [],
+      }],
+      ["duplicate active plan kind", {
+        plans: [plan("strength-a", "strength"), plan("strength-b", "strength")],
+        owned_plan_schedules: [],
+      }],
+      ["missing schedule plan", {
+        plans: [plan("strength-plan", "strength")],
+        owned_plan_schedules: [scheduleRow("strength-schedule", "missing", "strength")],
+      }],
+      ["inactive schedule plan", {
+        plans: [plan("strength-plan", "strength"), plan("inactive-plan", "running", 0)],
+        owned_plan_schedules: [scheduleRow("running-schedule", "inactive-plan", "running")],
+      }],
+      ["mismatched schedule kind", {
+        plans: [plan("strength-plan", "strength")],
+        owned_plan_schedules: [scheduleRow("strength-schedule", "strength-plan", "running")],
+      }],
+      ["duplicate schedule kind", {
+        plans: [plan("strength-plan", "strength")],
+        owned_plan_schedules: [
+          scheduleRow("strength-a", "strength-plan", "strength"),
+          scheduleRow("strength-b", "strength-plan", "strength"),
+        ],
+      }],
+      ["missing active schedule kind", {
+        plans: [plan("strength-plan", "strength")],
+        owned_plan_schedules: [],
+      }],
+    ])("rejects %s", async (_label, tables) => {
+      await expect(validateLogicalRestoreSnapshot(
+        successor(tables), topologySchema, undefined,
+      )).rejects.toEqual(expect.objectContaining({ code: "restore_archive_invalid" }));
+    });
   });
 
   it("rejects a v5 graph claiming a pre-bodyweight schema", async () => {

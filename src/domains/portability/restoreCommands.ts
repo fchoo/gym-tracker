@@ -238,15 +238,15 @@ function validateDomainInvariants(snapshot: LogicalBackupSnapshot): void {
       kinds.add(row.plan_kind);
     }
     const plansById = new Map(snapshot.tables.plans!.map((row) => [row.id, row]));
-    const schedules = snapshot.tables.owned_plan_schedules ?? [];
+    const schedules = snapshot.tables.owned_plan_schedules!;
     const activeSchedules = schedules.filter((row) => row.lifecycle === "active");
     const scheduleKinds = new Set<string>();
     for (const row of activeSchedules) {
       const plan = plansById.get(row.plan_id);
-      if (plan === undefined || plan.is_active !== 1 || plan.plan_kind !== row.plan_kind
-        || (row.plan_kind !== "strength" && row.plan_kind !== "running")
-        || scheduleKinds.has(row.plan_kind)) invalid();
-      scheduleKinds.add(row.plan_kind);
+      const planKind = row.plan_kind as string;
+      if (plan === undefined || plan.is_active !== 1 || plan.plan_kind !== planKind
+        || scheduleKinds.has(planKind)) invalid();
+      scheduleKinds.add(planKind);
     }
     if (scheduleKinds.size !== kinds.size) invalid();
   } else if (activePlans.length > 1) invalid();
