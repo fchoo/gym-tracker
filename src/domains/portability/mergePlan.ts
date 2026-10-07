@@ -95,6 +95,12 @@ export const PORTABLE_MERGE_TABLE_CLASSES = Object.freeze({
   running_current_matches: "workout_session",
   bodyweight_revisions: "workout_session",
   bodyweight_tombstones: "workout_session",
+  // Bodyweight is an independent append-only source aggregate.  It stays in
+  // the source-history class until the merger's aggregate planner receives
+  // dedicated owner-scoped reconciliation in its consumer phase.
+  bodyweight_entries: "workout_session",
+  bodyweight_entry_events: "workout_session",
+  bodyweight_command_receipts: "workout_session",
 } satisfies Readonly<Record<LogicalBackupTableName, PortableMergeTableClass>>);
 
 export type PortableMergePlanSnapshot = Readonly<{

@@ -1,10 +1,9 @@
 import { createHash } from "node:crypto";
 
-import { parseLocalDate } from "../scheduling/localDate";
-
 const IDENTIFIER = /^[A-Za-z0-9._:-]{1,128}$/u;
 const SHA256 = /^[a-f0-9]{64}$/u;
 const MAX_GRAMS = 1_000_000;
+const LOCAL_DATE = /^(\d{4})-(\d{2})-(\d{2})$/u;
 
 export type BodyweightOperation = "create" | "edit" | "delete" | "restore";
 export type BodyweightLifecycle = "active" | "deleted";
@@ -80,6 +79,18 @@ function validTimezone(value: string): boolean {
   }
 }
 
+function validLocalDate(value: string): boolean {
+  const match = LOCAL_DATE.exec(value);
+  if (match === null) return false;
+  const year = Number(match[1]);
+  const month = Number(match[2]);
+  const day = Number(match[3]);
+  const candidate = new Date(Date.UTC(year, month - 1, day));
+  return candidate.getUTCFullYear() === year
+    && candidate.getUTCMonth() === month - 1
+    && candidate.getUTCDate() === day;
+}
+
 function measurementRequired(input: BodyweightCommand): boolean {
   return input.operation === "create" || input.operation === "edit" || input.operation === "restore";
 }
@@ -100,9 +111,7 @@ export function validateBodyweightCommand(input: BodyweightCommand): void {
     if (typeof localDate !== "string" || typeof timezone !== "string" || typeof grams !== "number" || !Number.isSafeInteger(grams) || grams < 1 || grams > MAX_GRAMS) {
       throw new BodyweightCommandError("bodyweight_command_measurement_invalid");
     }
-    try {
-      parseLocalDate(localDate);
-    } catch {
+    if (!validLocalDate(localDate)) {
       throw new BodyweightCommandError("bodyweight_command_measurement_invalid");
     }
     if (!validTimezone(timezone)) throw new BodyweightCommandError("bodyweight_command_measurement_invalid");

@@ -1,0 +1,62 @@
+import { afterEach, describe, expect, it } from "@jest/globals";
+import { DatabaseSync, type SQLInputValue } from "node:sqlite";
+import { mkdtempSync, readFileSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+
+import { canonicalBodyweightRequestHash, type BodyweightCommand } from "../../src/domains/bodyweight/contracts";
+import { createMigrationRunner } from "../../src/platform/sqlite/migrationRunner";
+import { migrations } from "../../src/platform/sqlite/migrations";
+import { createBodyweightRepository } from "../../src/platform/sqlite/repositories/bodyweightRepository";
+import { type SqliteConnection, type SqlitePreparedResult, type SqlitePreparedStatement, configureSqliteConnection } from "../../src/platform/sqlite/connection";
+import { createSqliteKernel, type SqliteKernel } from "../../src/platform/sqlite/sqliteKernel";
+
+class Result<Row extends Record<string, unknown>> implements SqlitePreparedResult<Row> { constructor(readonly changes: number, readonly lastInsertRowId: number, private readonly rows: readonly Row[]) {} async getAllAsync() { return this.rows; } }
+class Statement implements SqlitePreparedStatement { constructor(private readonly statement: ReturnType<DatabaseSync["prepare"]>) {} async executeAsync<Row extends Record<string, unknown>>(parameters: readonly SQLInputValue[] = []): Promise<SqlitePreparedResult<Row>> { if (this.statement.columns().length > 0) return new Result(0, 0, this.statement.all(...parameters) as Row[]); const result = this.statement.run(...parameters); return new Result(Number(result.changes), Number(result.lastInsertRowid), []); } async finalizeAsync() {} }
+class Connection implements SqliteConnection { constructor(private readonly db: DatabaseSync) {} async execAsync(sql: string) { this.db.exec(sql); } async prepareAsync(sql: string) { return new Statement(this.db.prepare(sql)); } async isInTransactionAsync() { return this.db.isTransaction; } async closeAsync() { this.db.close(); } }
+
+const directories = new Set<string>();
+const kernels = new Set<SqliteKernel>();
+afterEach(async () => { await Promise.all([...kernels].map((kernel) => kernel.close())); kernels.clear(); for (const directory of directories) rmSync(directory, { recursive: true, force: true }); directories.clear(); });
+
+async function runtime(path?: string) {
+  const databasePath = path ?? join(mkdtempSync(join(tmpdir(), "gym-bodyweight-")), "gym.db");
+  if (path === undefined) { directories.add(join(databasePath, "..")); const db = new DatabaseSync(databasePath); db.exec(readFileSync(join(__dirname, "../migrations/fixtures/v6-metric-profiles.sql"), "utf8")); db.close(); }
+  const writer = new Connection(new DatabaseSync(databasePath)); const reader = new Connection(new DatabaseSync(databasePath));
+  await configureSqliteConnection(writer, { enableWal: true }); await configureSqliteConnection(reader, { enableWal: false });
+  const kernel = createSqliteKernel({ writer, reader }); kernels.add(kernel);
+  await createMigrationRunner({ databaseName: databasePath, kernel, migrations, recoveryBackup: { async createAndValidate(request) { return { backupId: "test", databaseName: request.databaseName, fromVersion: request.fromVersion, toVersion: request.toVersion, validated: true as const }; } } }).run();
+  return { databasePath, kernel, repository: createBodyweightRepository(kernel) };
+}
+
+function command(overrides: Partial<BodyweightCommand> = {}): BodyweightCommand {
+  const value = { operation: "create" as const, requestId: "bodyweight-request-1", entryId: "bodyweight-entry-1", ownerId: "owner-1", expectedRevision: 0, revisionId: "bodyweight-revision-1", eventId: "bodyweight-event-1", occurredAtMs: 1_790_000_000_000, localDate: "2026-10-07", timezone: "Asia/Singapore", grams: 72_500, ...overrides };
+  const { requestSha256, ...request } = value;
+  return { ...request, requestSha256: requestSha256 ?? canonicalBodyweightRequestHash(request) };
+}
+
+async function protectedDigest(kernel: SqliteKernel) {
+  return kernel.queryAll<{ plans: number; sessions: number; sets: number; recommendations: number }>("SELECT (SELECT count(*) FROM plans) AS plans, (SELECT count(*) FROM workout_sessions) AS sessions, (SELECT count(*) FROM session_sets) AS sets, (SELECT count(*) FROM progression_recommendations) AS recommendations");
+}
+
+describe("bodyweight source history", () => {
+  it("commits correction events and exact receipts without protected-graph writes", async () => {
+    const { kernel, repository } = await runtime(); const before = await protectedDigest(kernel);
+    const created = await repository.commit(command());
+    const edited = await repository.commit(command({ operation: "edit", requestId: "bodyweight-request-2", expectedRevision: 1, revisionId: "bodyweight-revision-2", eventId: "bodyweight-event-2", grams: 71_900 }));
+    const deleted = await repository.commit(command({ operation: "delete", requestId: "bodyweight-request-3", expectedRevision: 2, revisionId: "bodyweight-revision-3", eventId: "bodyweight-event-3", localDate: undefined, timezone: undefined, grams: undefined }));
+    const restored = await repository.commit(command({ operation: "restore", requestId: "bodyweight-request-4", expectedRevision: 3, revisionId: "bodyweight-revision-4", eventId: "bodyweight-event-4", grams: 72_100 }));
+    expect([created.kind, edited.kind, deleted.kind, restored.kind]).toEqual(["created", "edited", "deleted", "restored"]);
+    expect(await protectedDigest(kernel)).toEqual(before);
+    await expect(kernel.queryAll<{ count: number }>("SELECT count(*) AS count FROM bodyweight_entry_events")).resolves.toEqual([{ count: 4 }]);
+  });
+
+  it("returns an exact receipt after restart and fences stale or changed requests", async () => {
+    const first = await runtime(); const created = await first.repository.commit(command());
+    await first.kernel.close(); kernels.delete(first.kernel);
+    const reopened = await runtime(first.databasePath);
+    await expect(reopened.repository.commit(command())).resolves.toEqual(created);
+    await expect(reopened.repository.commit(command({ requestSha256: "0".repeat(64) }))).rejects.toThrow("bodyweight_command_hash_invalid");
+    await expect(reopened.repository.commit(command({ operation: "edit", requestId: "bodyweight-request-stale", expectedRevision: 0, revisionId: "bodyweight-revision-stale", eventId: "bodyweight-event-stale" }))).resolves.toMatchObject({ kind: "conflict", conflictCode: "stale_revision" });
+  });
+});

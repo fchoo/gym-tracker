@@ -290,7 +290,7 @@ describe("Plan 01-06 forward migrations and internal recovery", () => {
       }).run();
 
       expect(multiPlanRunningFoundationMigration.version).toBe(28);
-      expect(result.currentVersion).toBe(28);
+      expect(result.currentVersion).toBe(31);
       await expect(runtime.kernel.queryAll<{ name: string }>(
         `SELECT name FROM sqlite_master WHERE type = 'table'
          AND name IN ('running_plans', 'running_session_slots',
@@ -474,7 +474,10 @@ describe("Plan 01-06 forward migrations and internal recovery", () => {
       25,
       26,
       27,
-      28,
+        28,
+        29,
+        30,
+        31,
     ]);
     expect(runtimeMigrations.slice(0, 3)).toEqual(migrations);
     expect(initialMigration).toEqual(expect.objectContaining({
@@ -1044,8 +1047,8 @@ describe("Plan 01-06 forward migrations and internal recovery", () => {
       }).run();
 
       expect(result).toEqual(expect.objectContaining({
-        appliedVersions: [22, 23, 24, 25, 26, 27, 28],
-        currentVersion: 28,
+        appliedVersions: [22, 23, 24, 25, 26, 27, 28, 29, 30, 31],
+        currentVersion: 31,
       }));
       await expect(runtime.kernel.queryAll(
         "SELECT id, owner_namespace FROM portable_owner_identity",
@@ -1482,8 +1485,8 @@ describe("Plan 01-06 forward migrations and internal recovery", () => {
         recoveryBackup: validatedBackup(),
       }).run();
       expect(result).toEqual(expect.objectContaining({
-        appliedVersions: [27, 28],
-        currentVersion: 28,
+        appliedVersions: [27, 28, 29, 30, 31],
+        currentVersion: 31,
       }));
       await expect(advancedTimingTargetOwnershipMigration.verify({
         execute: async () => ({ changes: 0, lastInsertRowId: 0 }),

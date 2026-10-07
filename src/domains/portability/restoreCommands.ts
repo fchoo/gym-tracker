@@ -146,7 +146,7 @@ function validPassword(value: string): boolean {
 
 // v23-v27 add bookkeeping or trigger-only schema changes; archives remain the
 // Phase 11 portable graph, so archived schema-22 and current snapshots restore.
-export const LOGICAL_BACKUP_SUPPORTED_SCHEMA_VERSIONS = Object.freeze([15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28] as const);
+export const LOGICAL_BACKUP_SUPPORTED_SCHEMA_VERSIONS = Object.freeze([15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31] as const);
 
 type LogicalReference = Readonly<{
   childTable: string;
@@ -166,7 +166,7 @@ export const LOGICAL_BACKUP_REFERENCE_DEFINITIONS = Object.freeze([
   ["running_opportunities", ["plan_id"], "running_plans", ["plan_id"]], ["running_opportunities", ["schedule_id"], "owned_plan_schedules", ["id"]], ["running_opportunities", ["schedule_version_id"], "owned_plan_schedule_versions", ["id"]], ["running_opportunities", ["slot_id"], "running_session_slots", ["id"]], ["running_opportunities", ["session_revision_id"], "running_session_revisions", ["id"]],
   ["workout_provenance", ["workout_session_id"], "workout_sessions", ["id"]], ["workout_provenance", ["plan_id"], "plans", ["id"], true], ["workout_provenance", ["plan_day_id"], "plan_days", ["id"], true], ["workout_provenance", ["schedule_id"], "owned_plan_schedules", ["id"]], ["workout_provenance", ["schedule_version_id"], "owned_plan_schedule_versions", ["id"]], ["workout_provenance", ["opportunity_id"], "running_opportunities", ["id"]], ["workout_receipts", ["workout_session_id"], "workout_sessions", ["id"]],
   ["imported_activity_payloads", ["activity_id"], "imported_activities", ["id"]], ["imported_activity_references", ["activity_id"], "imported_activities", ["id"]], ["imported_activity_laps", ["activity_id"], "imported_activities", ["id"]], ["imported_activity_chunks", ["activity_id"], "imported_activities", ["id"]], ["imported_activity_receipts", ["activity_id"], "imported_activities", ["id"]], ["imported_activity_removal_events", ["activity_id"], "imported_activities", ["id"]],
-  ["running_match_events", ["activity_id"], "imported_activities", ["id"]], ["running_match_events", ["opportunity_id"], "running_opportunities", ["id"]], ["running_current_matches", ["opportunity_id"], "running_opportunities", ["id"]], ["running_current_matches", ["activity_id"], "imported_activities", ["id"]], ["running_current_matches", ["event_id"], "running_match_events", ["id"]], ["bodyweight_tombstones", ["bodyweight_revision_id"], "bodyweight_revisions", ["id"]],
+  ["running_match_events", ["activity_id"], "imported_activities", ["id"]], ["running_match_events", ["opportunity_id"], "running_opportunities", ["id"]], ["running_current_matches", ["opportunity_id"], "running_opportunities", ["id"]], ["running_current_matches", ["activity_id"], "imported_activities", ["id"]], ["running_current_matches", ["event_id"], "running_match_events", ["id"]], ["bodyweight_tombstones", ["bodyweight_revision_id"], "bodyweight_revisions", ["id"]], ["bodyweight_entry_events", ["entry_id"], "bodyweight_entries", ["id"]], ["bodyweight_command_receipts", ["entry_id"], "bodyweight_entries", ["id"]],
 ] .map(([childTable, childColumns, parentTable, parentColumns, allowRetained]) => Object.freeze({ childTable, childColumns, parentTable, parentColumns, ...(allowRetained === true ? { allowRetained: true } : {}) })) as readonly LogicalReference[]);
 
 function invalid(): never {

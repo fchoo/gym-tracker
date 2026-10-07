@@ -461,7 +461,10 @@ describe("logical restore repository", () => {
   it("keeps the complete logical table registry under restore coverage", () => {
     expect(LOGICAL_BACKUP_TABLES).toContain("history_audit_events");
     expect(LOGICAL_BACKUP_TABLES).toContain("session_advanced_timing_states");
-    expect(LOGICAL_BACKUP_FORMAT_VERSION).toBe(3);
+    expect(LOGICAL_BACKUP_TABLES).toContain("bodyweight_entries");
+    expect(LOGICAL_BACKUP_TABLES).toContain("bodyweight_entry_events");
+    expect(LOGICAL_BACKUP_TABLES).toContain("bodyweight_command_receipts");
+    expect(LOGICAL_BACKUP_FORMAT_VERSION).toBe(5);
     expect(LOGICAL_RESTORE_DELETE_TRIGGER_NAMES).toContain("portable_owner_identity_adoption_only");
     expect(LOGICAL_RESTORE_DELETE_TRIGGER_NAMES).not.toContain("starter_plan_sources_immutable_delete");
     expect(LOGICAL_RESTORE_DELETE_TRIGGER_NAMES).not.toContain("session_sets_target_graph_insert");

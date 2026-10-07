@@ -143,6 +143,9 @@ export const LOGICAL_BACKUP_TABLE_FILTERS = Object.freeze({
   running_current_matches: "1",
   bodyweight_revisions: "1",
   bodyweight_tombstones: "1",
+  bodyweight_entries: "1",
+  bodyweight_entry_events: "1",
+  bodyweight_command_receipts: "1",
 } satisfies Readonly<Record<LogicalTableName, string>>);
 
 function whereClause(table: LogicalTableName): string {
