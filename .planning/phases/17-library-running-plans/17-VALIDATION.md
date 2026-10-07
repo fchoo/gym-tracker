@@ -229,7 +229,7 @@ None. All Phase 17 behavior is automation-addressable. The milestone-wide owner-
 | RESEARCH | R17-11 | Privacy-safe diagnostics/evidence | 01-14 | COVERED | Codes/counts/hashes only. |
 | RESEARCH | R17-12 | Complete branch coverage for integrity-critical sources | 13 | COVERED | Existing coverage gate. |
 
-Excluded by source contract and not gaps: Running rotation, plan recommendations, Garmin workout push, automatic activation, FIT transport/detail, official Garmin broker/connectivity, in-app run recording, gender/height, coaching/medical judgment, and any Phase 14 DEV-02 color decision.
+Excluded by source contract and not gaps: Running rotation, plan recommendations, Garmin workout push, automatic activation, Garmin authentication/JSON transport/detail, in-app run recording, gender/height, coaching/medical judgment, and Phase 14's already-approved DEV-02 implementation evidence.
 
 The installed decision-coverage checker parses only D-NN identifiers and therefore reports the source's D17-NN format as a parse mismatch. The explicit D17-01 through D17-08 rows above are the authoritative coverage audit; this planner does not renumber or rewrite the approved CONTEXT.md.
 

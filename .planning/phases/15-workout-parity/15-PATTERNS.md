@@ -20,10 +20,10 @@ post-Phase-13 occurrence/start symbols and the actual Phase 14 `BottomSheet`,
 their completed summaries before editing Phase 15. Do not recreate those
 dependencies locally if they are still absent.
 
-`TIM-01` is a decision checkpoint, not an implementation assumption. The UI
-must hide cadence/cluster authoring, but runtime reconciliation/playback may be
-disabled only after characterization and explicit owner approval. No Phase 15
-path may delete or rewrite schema-21/27 timing facts.
+`TIM-01` is approved as `retire-playback` with no compatibility mode. Validate
+the dated owner record and characterize every seam before removing authoring,
+runtime reconciliation/playback, and callbacks. No Phase 15 path may delete or
+rewrite ordinary workout/history/rest facts or required schema-21/27 readers.
 
 ## File Classification
 
@@ -33,7 +33,7 @@ path may delete or rewrite schema-21/27 timing facts.
 | `src/ui/screens/TodayScreen.tsx` | component | request-response + event-driven | same file, `TodayScreen` factual branches | exact file | recompose as Workout; retain loading/error/no-plan/rest/active/partial truth |
 | `src/ui/components/WorkoutDaySelector.tsx` (proposed) | component | event-driven + transform | `PlanDaySwitcher` selected-state semantics only | partial | new read-only five-day selector; no reorder or schedule mutation props |
 | `src/ui/components/WorkoutStartSheet.tsx` | component | event-driven | same file | exact file | migrate to Phase 14 sheet frame; preserve explicit scheduled/alternate/empty split and focus return |
-| `app/workout/[sessionId].tsx` | route/controller | request-response + event-driven | same file, `ActiveWorkoutRoute` | exact file | add retry/root context/Undo/trend/settings wiring; TIM-01 gates removal of timing capabilities |
+| `app/workout/[sessionId].tsx` | route/controller | request-response + event-driven | same file, `ActiveWorkoutRoute` | exact file | add retry/root context/Undo/trend/settings wiring; apply approved TIM-01 removal after automatic record validation |
 | `src/ui/screens/ActiveWorkoutScreen.tsx` | controller/component | event-driven + request-response | same file, `PopulatedWorkoutOverview` | exact file | keep active-only orchestration and authoritative-view application; delegate extracted presentation/sheets/docks |
 | `src/ui/components/WorkoutSessionPresentation.tsx` (proposed) | component | transform + event-driven | `ActiveWorkoutScreen` exercise disclosure plus `SessionDetail` facts | composite | immutable facts/disclosure only; no runtime import or mutation capabilities |
 | `src/ui/components/WorkoutSetFactsRow.tsx` (proposed) | component | transform | `SetRow` formatters/compact row plus `SessionDetailScreen` read-only rows | composite | render W/01 ordinals, Previous, Target/Result, and textual state; controller wraps editable rows |
@@ -49,7 +49,7 @@ path may delete or rewrite schema-21/27 timing facts.
 | `src/domains/workout/workoutPreferences.ts` (conditional proposed) | model/service | CRUD | `createLibrarySectionPreferencePort` contract in `workoutAppRuntime.tsx` | role-match | define versioned default-rest/increment value plus expected revision after Phase 13 settles ownership |
 | `src/platform/sqlite/repositories/workoutPreferenceRepository.ts` (conditional proposed) | store/repository | CRUD | `createLibrarySectionPreferencePort` over `app_settings` | role-match | use one serialized SQLite transaction and conditional revision update; no KV-store authority |
 | `src/platform/sqlite/repositories/workoutRepository.ts` | repository | CRUD + event-driven | same file, complete/edit/reorder/Undo transactions | exact file | add only missing revision-checked exercise-rest persistence; preserve current active rest and proven transactions |
-| `src/bootstrap/workoutAppRuntime.tsx` | provider/service | event-driven + request-response | same file, `runWorkoutMutation`, `runRestCommand`, outcome and Undo adapters | exact file | expose narrow active/read ports; preserve post-commit refresh/reconciliation; gate timing only via TIM-01 |
+| `src/bootstrap/workoutAppRuntime.tsx` | provider/service | event-driven + request-response | same file, `runWorkoutMutation`, `runRestCommand`, outcome and Undo adapters | exact file | expose narrow active/read ports; preserve post-commit refresh/reconciliation; remove retired timing through the approved TIM-01 branch |
 | `src/domains/history/metricHistory.ts` | utility/service | transform | same file, `buildExerciseMetricHistory` | exact file | add a pure six-session projection only if the current segments cannot directly supply Recent/Best/Change |
 | `src/domains/plans/planImpactCommands.ts` | service/model | transform + request-response | same file, session write-back canonicalization/token/apply | exact file | extend preview with factual current/proposed rows and explicit units; keep token binding |
 | `app/completion/[sessionId].tsx` | route/controller | request-response | same file, `WorkoutCompletionRoute` | exact file | keep durable detail first, retry summary separately, and default-No write-back routing |
@@ -62,7 +62,7 @@ path may delete or rewrite schema-21/27 timing facts.
 | `src/ui/__tests__/{ActiveWorkoutScreen,RestDock,WorkoutCompletionScreen}.test.tsx` | test | event-driven | same files | exact | rewrite superseded presentation assertions while retaining transaction/recovery assertions |
 | `src/domains/workout/{setCommands,sessionExerciseCommands,outcomes}.test.ts` + integration suites | test | CRUD + event-driven | same files | exact | retain full command-envelope, rollback, replay, pointer/rest, history, and outcome coverage |
 | `src/domains/workout/workoutPreferences.test.ts` + `tests/sqlite-host/workout-preferences.test.ts` (conditional proposed) | test | CRUD | library preference runtime tests plus logical backup/restore/merge tests | role-match | invalid/read/write/stale/reload/backup/restore/merge/no-target-rewrite matrix |
-| TIM-01 characterization across `src/domains/advancedTiming/*.test.ts`, `src/bootstrap/workoutAppRuntime.test.tsx`, and restore/merge tests | test | event-driven + file-I/O | same tests | exact retained behavior | snapshot every state and recovery entry before the decision checkpoint; accepted branch must prove zero hidden cues |
+| TIM-01 characterization across `src/domains/advancedTiming/*.test.ts`, `src/bootstrap/workoutAppRuntime.test.tsx`, and restore/merge tests | test | event-driven + file-I/O | same tests | exact retained behavior | snapshot every state/recovery entry, validate the approved record, and prove zero hidden cues before closure |
 | `scripts/run-phase15-maestro.mjs`, `scripts/verify-phase15-evidence.mjs`, `scripts/phase15-evidence-scripts.test.mjs` (proposed) | test/tooling | batch + file-I/O | Phase 12 runner/verifier/self-test | role-match | exact HEAD/source/APK/installed-byte binding; one-to-one Phase 15 case registry; reject missing/skipped/stale evidence |
 | `maestro/phase15/*.yaml` (proposed) | test | event-driven | Phase 9 workout flows and Phase 10 relaunch flow | role-match | new native flows with Phase 15 labels, failures, process death, accessibility, viewport/theme matrix, and TIM disposition |
 | `src/bootstrap/phase15WorkoutBenchmark.ts`, `app/__phase15-benchmark.tsx`, `scripts/benchmark-phase15-workout.mjs` and tests (proposed or equivalent wrapper) | test/tooling | batch + event-driven | Phase 1 benchmark route/domain/runner | role-match | measure rendered dock transition and representative long session; retain 100 samples, p95 150ms, JS task 50ms |
@@ -767,7 +767,7 @@ delegation. Preserve `PARTIAL_CONFIRMATION`, `ZERO_SET_CONFIRMATION`, and
 `DISCARD_CONFIRMATION`; “Finish workout later” is navigation from an unchanged
 durable in-progress session, not a completion mutation.
 
-### TIM-01 legacy cadence/cluster compatibility
+### TIM-01 cadence/cluster retirement and retained facts
 
 **Stored format to preserve**
 (`src/domains/advancedTiming/advancedTimingConfig.ts:8-28`):
@@ -792,7 +792,7 @@ and `session_advanced_timing_states`
 patterns: do not drop columns/tables/triggers, rewrite old JSON, or coerce old
 facts to `off`.
 
-**Runtime cut points if and only if approved:**
+**Approved TIM-01 runtime cut points:**
 
 - route loading/wiring: `app/workout/[sessionId].tsx:51-95,145-188`;
 - public runtime capabilities: `workoutAppRuntime.tsx:919-956`;
@@ -808,8 +808,9 @@ and byte-for-byte restore of a persisted per-rep snapshot
 (`tests/sqlite-host/logicalRestoreRepository.test.ts:240-289`). Add queued
 callback, relaunch, automatic replacement, merge, and independent rest-cue cases.
 
-If owner approval is absent, retain the reviewed compatibility path and block
-cutover. Hiding `AdvancedTimingIndicator`/`AdvancedTimingConfigSheet` alone is
+TIM-01 approval is present. If zero-playback isolation cannot be proved, block
+cutover and fix the defect; do not retain a compatibility mode or reopen the
+decision. Hiding `AdvancedTimingIndicator`/`AdvancedTimingConfigSheet` alone is
 not a safe retirement.
 
 ## Test Pattern Assignments

@@ -15,9 +15,9 @@ label, expanded rail, 200%-text two-row navigation, duplicated modal frames,
 silent appearance-storage failure, and lack of a shared toast host.
 
 Do not edit domain migrations, repository semantics, backup formats,
-transaction ordering, or feature-owned Phase 15-19 content. DEV-02 is still
-unaccepted: production Light Strength remains `#D97820`; `#9B470B` may exist
-only as an unused, explicitly proposed candidate.
+transaction ordering, or feature-owned Phase 15-19 content. DEV-02 is approved:
+Light Strength title uses `#9B470B`; `#D97820` remains the required
+border/rail/swatch color.
 
 ## File Classification
 
@@ -960,7 +960,7 @@ rejection of failures/skips
 `scripts/verify-phase12-evidence.mjs:40-98`). Phase 14 must map exactly the
 13 `shell.*` IDs and add native cases for Light/Dark/System live change,
 360/390/600/840 plus landscape, 200% text, 48dp targets, 3dp focus,
-Back/Escape/scrim/IME safety, root-state retention, and DEV-02 pending status.
+Back/Escape/scrim/IME safety, root-state retention, and DEV-02 native evidence against its accepted values.
 
 ## Shared Patterns
 

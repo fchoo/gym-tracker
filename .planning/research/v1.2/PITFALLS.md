@@ -44,9 +44,9 @@
 
 **Consequences:** Lost running plans, lost imported activities, duplicate imports after recovery, broken matching edges, or stale snapshots presented as current.
 
-**Prevention:** Treat portability as part of domain completion. Extend the canonical logical graph with bounded running sessions, import provenance/dedup identities, confirmed matching edges and any owner goals/bodyweight that are retained source facts. Decide raw FIT/route retention versus canonical data explicitly. Include new identities and foreign-key edges in merge remapping. Add dirty-generation triggers for new source tables; never copy OAuth tokens, temporary previews, Drive writer metadata or rebuildable projections into portable facts. Retain strict old-format handling and safe future-version quarantine.
+**Prevention:** Treat portability as part of domain completion. Extend the canonical logical graph with bounded running sessions, Garmin account JSON provenance/dedup identities, confirmed matching edges and any owner goals/bodyweight that are retained source facts. Retain canonical supported source facts and hashes without copying encrypted Garmin session tokens, temporary previews, Drive writer metadata or rebuildable projections into portable facts. Include new identities and foreign-key edges in merge remapping. Add dirty-generation triggers for new source tables; retain strict old-format handling and safe future-version quarantine.
 
-**Detection:** Mixed Strength/Running/FIT/confirmed-match fixture round-trips through encrypted GTBK and automatic Drive logical snapshots; compare canonical identities, relationships and rebuilt projections. Mutate only a new Running/import table and verify durable generation advances in the same transaction. Repeat import after restore/merge and assert no new activity or match.
+**Detection:** Mixed Strength/Running/Garmin-JSON/confirmed-match fixtures round-trip through encrypted GTBK and automatic Drive logical snapshots; compare canonical identities, relationships and rebuilt projections. Mutate only a new Running/import table and verify durable generation advances in the same transaction. Repeat sync after restore/merge and assert no new activity or match.
 
 **Evidence / confidence:** MEDIUM: `src/domains/portability/backupContracts.ts:7`, `src/platform/sqlite/migrations/0023_automatic_drive_backup.ts:35`, `logicalBackupRepository.ts`, `logicalRestoreRepository.ts`, `logicalMergeRepository.ts`, `restoreReconciliationRepository.ts`. Existing caps: 32 MiB GTBK archive, 24 MiB plaintext, 100,000 total rows, 25,000/table, 64 KiB/string, nesting depth 16. New facts must fit reviewed limits or trigger an explicit contract revision.
 
@@ -72,11 +72,11 @@
 
 **Consequences:** Existing sessions become unreadable, restore changes historical meaning, or an old cadence runs unexpectedly through an invisible control.
 
-**Prevention:** Separate the new presentation contract from compatibility. New UI uses explicit `sec` and no per-rep cadence, rest-between-reps, nested Advanced Timing screen, or plan-owned sound/haptics. The phase plan must define deterministic recovery of a legacy active timing session and how retained timing facts are represented without rewriting them. Preserve v27 ownership, independent between-set rest and advisory-only feedback. If exact legacy behavior needs a native deviation, record the precise case for owner review instead of quietly reviving removed controls.
+**Prevention:** Apply the settled TIM-01 retirement. New UI uses explicit `sec` and no per-rep cadence, rest-between-reps, nested Advanced Timing screen, or plan-owned sound/haptics. Deterministic recovery preserves ordinary set/pointer/rest facts and dormant historical bytes without interpreting or replaying cadence/cluster state. Preserve v27 ownership and independent between-set rest. A failed zero-cue proof blocks implementation for a defect fix; it never authorizes a compatibility mode or reopens the product choice.
 
 **Detection:** Upgrade/restore fixtures containing warm-up and working overrides, running/paused/expired legacy timing, and cross-session invalid targets. Reopen without new plan authoring controls; rest/complete/undo remain usable, no missed cue is replayed, and protected snapshots remain equal.
 
-**Evidence / confidence:** MEDIUM: owner brief; Phase 10 verification; `tests/integration/advanced-timing.test.ts`; migration 27. Requires a phase-specific compatibility decision.
+**Evidence / confidence:** MEDIUM: owner brief; approved TIM-01 record; Phase 10 verification; `tests/integration/advanced-timing.test.ts`; migration 27. Requires implementation proof, not another decision.
 
 ### P-06: Treating Calendar as several independent animations
 
@@ -92,31 +92,31 @@
 
 **Evidence / confidence:** MEDIUM: owner brief; prototype `approved-hybrid.html` around `enterCalendarFocus`, `switchExpandedCalendarWeek` and 25% drag checks (lines 3098–3101, 3261–3279 at research time). This is the highest UI-specific research flag.
 
-### P-07: Treating Garmin approval as available infrastructure
+### P-07: Treating the embedded Garmin account client as proven before native evidence
 
-**What goes wrong:** The roadmap assumes personal-project Activity API access, a mobile-embedded secret, immediate historical backfill or a direct polling contract that has not been granted.
+**What goes wrong:** The roadmap treats the pinned Python/Chaquopy stack as production-ready before proving packaged importability, authenticated reads, MFA, refresh/cold restart, rate limits and account-specific failures on the signed ARM64 app.
 
-**Why it happens:** Public marketing pages describe access after approval but do not establish this project's registration, scopes, server contract or credential custody.
+**Why it happens:** Source and wheel compatibility establish feasibility, but cannot prove Garmin endpoint behavior, account challenges, Android native packaging or long-lived session recovery.
 
-**Consequences:** A completed UI cannot import real data, or unofficial credential scraping replaces the consented integration.
+**Consequences:** A completed UI cannot sync real data, credentials or tokens leak into logs/backups, or failures are mistaken for a product decision and trigger an unreviewed fallback.
 
-**Prevention:** Keep Garmin Connect Activity API + OAuth2 PKCE as the intended path with an explicit external approval dependency. Deliver manual original-file/FIT import as the personal-use fallback. Reuse one import boundary and deterministic fixtures for both. Do not implement unofficial Connect login/scraping or store credentials in plans. Consent denial, expiry, revoke, network failure and unavailable integration must preserve offline workout use.
+**Prevention:** Use only the selected narrow embedded adapter: Python 3.13, Chaquopy 17.0 and pinned python-garminconnect 0.3.17. Keep login/MFA foreground-only, restore encrypted injected session tokens outside logical backups, allowlist summary/activity/splits/detail calls, bound payloads/retries, and keep secrets plus private activity fields out of diagnostics. No partner API/broker, desktop bridge or FIT fallback is a milestone branch.
 
-**Detection:** No approval-dependent acceptance item can be marked passed from a stub. Manual import must complete the documented personal-use journey independently. Live API evidence is conditional on actual approval, configuration and consent; missing access remains a clearly named external gap.
+**Detection:** Phase 18 must prove an installed ARM64 package, real account login/MFA/read, encrypted refresh after cold restart, logout, 403 and 429 handling. Synthetic fixtures close deterministic parsing only; missing live proof is NOT_RUN or REVIEW_REQUIRED and observed failure is FAIL.
 
-**Evidence / confidence:** MEDIUM: Garmin Activity API and program FAQ official pages; official OAuth2 PKCE specification. Access for this project remains unverified.
+**Evidence / confidence:** MEDIUM: pinned python-garminconnect source, Chaquopy compatibility, Android curl_cffi wheel, open issue #444 and the focused mobile feasibility record. Real account/native behavior remains implementation evidence.
 
 ### P-08: Deduplication and schedule matching are conflated
 
-**What goes wrong:** A second copy of a FIT file creates another activity; an API record plus the same manual file creates two activities; an import auto-completes a suggested running session.
+**What goes wrong:** A repeated or reordered JSON page creates another activity; a changed response silently overwrites a prior source revision; or a sync auto-completes a suggested running session.
 
 **Why it happens:** Name/date matching is used as identity, bytes are trusted without a receipt, or the suggestion UI writes its radio selection without explicit confirmation.
 
 **Consequences:** Duplicate distance/history, incorrect progression and consumed planned opportunities. A crash between activity insert and receipt insert creates a repeat-import hole.
 
-**Prevention:** Make provider/account-scoped external activity identity and FIT/content hash first-class dedup signals with defined collision/conflict handling. Commit activity/provenance/receipt atomically. Keep matching a separate revision-checked, idempotent owner command; importing never creates or activates a plan. Repeated identical imports are no-ops; same external ID with different content is an explicit conflict/update decision, not silent duplicate insertion. Preserve provenance when manual and API paths converge. Imported treadmill activities deliberately have no route; absent HR/laps/GPS stays absent.
+**Prevention:** Make account namespace, external activity ID, normalization version, normalized JSON SHA-256 and raw component hashes first-class dedup/revision signals. Commit activity/provenance/receipt atomically. Keep matching a separate revision-checked, idempotent owner command; syncing never creates or activates a plan. Repeated identical sync is a no-op; the same external ID with changed canonical content stages an explicit source revision rather than silently overwriting. Treadmill activities deliberately have no route; absent HR/laps/GPS stays absent.
 
-**Detection:** `NV-IMP-*` tests cover repeats, reordered deliveries, concurrent imports, restart around every commit cut, same ID/different hash, same hash/different filename, manual-to-API convergence, timezone ambiguity and multiple same-day candidates. Matching cancel/retry/repeat/stale cases verify opportunity consumption occurs only after one explicit successful command.
+**Detection:** `NV-IMP-*` tests cover repeats, reordered pages, concurrent sync, restart around every commit cut, same ID/different digest, component-hash drift, timezone ambiguity and multiple same-day candidates. Matching cancel/retry/repeat/stale cases verify opportunity consumption occurs only after one explicit successful command.
 
 **Evidence / confidence:** MEDIUM: owner brief; existing revision/receipt and portable identity patterns. New Garmin identity/conflict rules require ADR and future tests; no implementation exists yet.
 
@@ -143,7 +143,7 @@
 | P-12 | Progress mixes incomparable units or invents goals | Compare discipline/profile-compatible evidence. Warm-ups and imported lap metrics never become strength volume. Keep 2.4 km target 11:00 / 4:35 per km / 1:50 per 400 m / 0:55 per 200 m; 10 km and Half Marathon stay unset. Sparse evidence has no fabricated trend. | MEDIUM |
 | P-13 | Component mocks are called native accessibility proof | RNTL verifies role/name/state/activation; native renders prove 200% nonlinear scaling, focus, keyboard occlusion, target bounds and rotation. Add screenshot/interaction coverage at every required theme/size/state. | MEDIUM |
 | P-14 | Small visual rows create undersized or overlapping touch targets | Actual native hit regions remain at least 48×48dp. Use semantic labels and non-color status. Calendar seven-column compact layout at 200% needs measured design work; any unavoidable fidelity change belongs in the deviation register. | MEDIUM |
-| P-15 | Old benchmark scripts are treated as complete product performance proof | Retain stricter original interaction budgets; measure new root/calendar/editor/FIT paths. Phase 5's 3 s launch script does not establish 1 s warm / 2 s cold interactive targets. Measure native release builds, frame times and actual feedback. | MEDIUM |
+| P-15 | Old benchmark scripts are treated as complete product performance proof | Retain stricter original interaction budgets; measure new root/calendar/editor/embedded-Garmin paths. Phase 5's 3 s launch script does not establish 1 s warm / 2 s cold interactive targets. Measure native release builds, frame times and actual feedback. | MEDIUM |
 | P-16 | Old phase runners silently provide incomplete coverage | Phase 8 expects a Phase 2 manifest; Phase 9 embeds historical planning paths; release-matrix checks presence of old script names. Adapt explicit v1.2 ledgers/fixtures and validators instead of relabelling old reports. Derive required IDs from reviewed source contracts and reject missing/duplicate/skipped cases. | MEDIUM |
 | P-17 | Passing v1.1 or Samsung observations are relabelled v1.2 proof | Record source/APK/manifest/device/fixture identity for new evidence. Samsung review is attended acceptance observation, separate from automated proof and release authorization. Historical reports remain historical. | MEDIUM |
 
@@ -165,13 +165,13 @@
 | Workout/Active | P-04, P-05, P-19 | Commit-bound row/dock parity, independent W/working ordinals, final collapse, protected history, legacy timing recovery, process death. |
 | Calendar/animation | P-06, P-09, P-14 | Intermediate drag/morph evidence, transition cancellation, reduced-motion state sequence, exact route and read-only capabilities. High research need. |
 | Library/creation/Running | P-10, P-11, P-21 | Every chooser entry, create/activate split, seven typed editors and restart persistence, all retained deep routes. |
-| Progress/Garmin | P-07, P-08, P-12 | Manual FIT end-to-end, corruption/bounds/idempotency/matching receipts, provenance, truthful goals, conditional approved API evidence. High research need. |
+| Progress/Garmin | P-07, P-08, P-12 | Embedded-client packaging/auth/read/restart, bounded JSON, idempotency/matching receipts, provenance and truthful goals. High implementation-proof need. |
 | Native verification and future release | P-13, P-15, P-16, P-17 | New source-bound evidence ledger, all prototype states/configurations, numeric budgets, attended observations separated, unchanged signed bytes when later authorized. |
 
 ## Research Gaps and Evidence Limits
 
-- The exact legacy timing compatibility behavior and same-discipline activation/matching conflict policies need explicit phase/ADR decisions; presentation approval alone does not resolve them.
-- Garmin developer access, granted delivery/backfill contract, client registration and credential custody are not verified for this project. Do not invent them.
+- MAP-01 and TIM-01 are settled. Remaining same-date collision, merge and matching behavior follows the executable ADR/plans; evidence gaps do not reopen those decisions.
+- Real-account Garmin login/MFA/read/refresh behavior and the packaged ARM64 dependency chain remain unverified implementation evidence. A failure is a technical blocker, not permission to activate a different transport.
 - Direct Expo SQLite documentation fetch returned HTTP 403; no external API assertion relies on that failed lookup. The application's private `BEGIN IMMEDIATE` writer is directly inspectable and is the relevant authority to preserve.
 - Current Phase 12 source has bounded thresholds; historical verification and an earlier summary report different materialization timings. Use the executable thresholds and later raw identity-bound samples, not selected historical headline values.
 - `DESIGN.md` and original design source establish interaction budgets, but several need new user-perceived measurement instrumentation. Proposed Calendar frame gates are identified as new in the native matrix.
@@ -187,4 +187,4 @@ All local paths are relative to the designated planning worktree unless absolute
 - `/Users/bytedance/.gstack/projects/fchoo-gym-tracker/designs/push-inspired-workout-20261001/approved-hybrid.html`; `design-audit-revision18/design-audit-revision18.md` in that directory. Interactive prototype review is supplied by the parallel UI research stream; this report read source/audit evidence only.
 - [React Native performance](https://reactnative.dev/docs/performance), updated 2026-08-12; retrieved 2026-10-06: release-build measurement and 16.67 ms frame interval at 60 Hz. MEDIUM, cross-checked against native benchmark/source constraints.
 - [Android accessibility](https://developer.android.com/guide/topics/ui/accessibility/apps), retrieved 2026-10-06: 48dp target guidance; [Android 14 font scaling](https://developer.android.com/about/versions/14/features), updated 2026-10-01: native nonlinear scaling and 200% testing. MEDIUM, cross-checked with owner/design requirements.
-- [Garmin Activity API](https://developer.garmin.com/gc-developer-program/activity-api/), [Program FAQ](https://developer.garmin.com/gc-developer-program/program-faq/), [OAuth2 PKCE specification](https://developerportal.garmin.com/sites/default/files/OAuth2PKCE_1.pdf), retrieved 2026-10-06. MEDIUM for the public program description; project approval remains unverified.
+- `.planning/research/v1.2/GARMIN-MOBILE-FEASIBILITY.md` and its pinned python-garminconnect, Chaquopy and curl_cffi sources; real account/native behavior remains pending implementation evidence.

@@ -2,7 +2,7 @@
 
 **Researched:** 2026-10-06
 **Domain:** Expo/React Native workout presentation over SQLite-authoritative workout, rest, history, and recovery contracts
-**Confidence:** HIGH for repository architecture and current gaps; MEDIUM for external framework guidance; TIM-01 remains owner-gated
+**Confidence:** HIGH for repository architecture and current gaps; MEDIUM for external framework guidance; TIM-01 is approved and remains implementation-proof gated
 
 <user_constraints>
 ## User Constraints (from CONTEXT.md)
@@ -24,8 +24,8 @@ Source: [VERIFIED: .planning/phases/15-workout-parity/15-CONTEXT.md:18-32]
 - **D15-08:** Exercise menu contains only flat between-set rest (`sec`), replace, delete. Trend stays separate. No cadence, rest-between-reps, nested Advanced Timing, or plan cue settings.
 - **D15-09:** Preserve add/replace/delete, corrections, Undo recovery, finish complete/partial/later, discard, completion evidence, and explicit default-No plan write-back.
 
-#### Owner-review checkpoint
-- **TIM-01:** Retain legacy cadence/cluster facts and resume set/pointer/rest state. Disabling hidden authoring/reconciliation/playback is proposed and must be checkpointed with tests before removal.
+#### Final owner decision
+- **TIM-01:** Approved `retire-playback` with no compatibility mode. Retain ordinary workout/history facts and resume set/pointer/rest state while removing hidden authoring/reconciliation/callback/playback paths after characterization.
 
 ### Claude's Discretion
 
@@ -93,7 +93,7 @@ The current presentation materially differs from the approved contract: the root
 
 The highest-risk work is not visual styling. It is preserving exact plan/schedule selection across the Phase 13 multi-plan contract, keeping every set/outcome acknowledgement behind the SQLite commit boundary, preserving all schema-21/27 timing bytes, and ensuring Phase 16 receives a facts-only presentation seam with no workout mutation capabilities. [VERIFIED: .planning/architecture/v1.2-multi-active-plans.md:30-41,131-166; .planning/phases/16-calendar-parity/16-UI-SPEC.md:279-292,354-377]
 
-**Primary recommendation:** use a strangler refactor: freeze/characterize the shipped commands first; extract facts-only Workout presentation; then replace root, editor, dock, rest, menus, and completion incrementally; gate all legacy timing runtime removal at TIM-01; finish with source, real-SQLite, native recovery, visual, accessibility, and performance evidence. [VERIFIED: .planning/phases/15-workout-parity/15-UI-SPEC.md:225-248,252-370,410-595,643-773]
+**Primary recommendation:** use a strangler refactor: freeze/characterize the shipped commands first; automatically validate the approved TIM-01 record; remove every legacy timing runtime path; extract facts-only Workout presentation; then replace root, editor, dock, rest, menus, and completion incrementally; finish with source, real-SQLite, native recovery, visual, accessibility, and performance evidence. [VERIFIED: .planning/v1.2-OWNER-DECISIONS.md; .planning/phases/15-workout-parity/15-UI-SPEC.md:225-248,252-370,410-595,643-773]
 
 ## Architectural Responsibility Map
 
@@ -106,7 +106,7 @@ The highest-risk work is not visual styling. It is preserving exact plan/schedul
 | Session exercise add/replace/delete/reorder | Domain/application | Database/storage | Existing bounded commands and separate immutable receipts own mutations; UI owns only intent and feedback. [VERIFIED: src/domains/workout/sessionExerciseCommands.ts:13-172; src/platform/sqlite/repositories/workoutRepository.ts:1536-1852] |
 | Completion and plan write-back | Domain/application | Database/storage | Completion is durable before summary/write-back; plan apply is a separate preview/revision-bound operation. [VERIFIED: src/domains/workout/finishWorkout.ts:61-182; src/bootstrap/workoutAppRuntime.tsx:3949-4057] |
 | Phase 16 historical/planned workout detail | Mobile client UI | Read-only domain ports | Calendar-origin details may disclose facts only and must receive no mutation, rest-effect, correction, removal, or resume capability. [VERIFIED: .planning/phases/16-calendar-parity/16-UI-SPEC.md:259-263,279-292,367-377] |
-| Legacy cadence/cluster retirement | Application/runtime | Database/storage | UI removal is locked, but runtime playback/reconciliation retirement is owner-gated; stored facts remain intact. [VERIFIED: .planning/phases/15-workout-parity/15-UI-SPEC.md:578-595; .planning/architecture/v1.2-multi-active-plans.md:151-166] |
+| Legacy cadence/cluster retirement | Application/runtime | Database/storage | TIM-01 removes authoring, runtime playback/reconciliation, and queued callbacks without a compatibility mode; ordinary workout/history/rest facts and portability readers remain intact. [VERIFIED: .planning/v1.2-OWNER-DECISIONS.md; .planning/phases/15-workout-parity/15-UI-SPEC.md:578-595] |
 
 ## Project Constraints (from .trae/rules/rules.md)
 
@@ -279,7 +279,7 @@ Existing file paths above were opened in this session; proposed component paths 
 | `app/(tabs)/index.tsx` / `TodayRoute` | Adapt Phase 13 Today/occurrence data into Workout-root props and route exact start/resume/context actions. | Preserve route ownership; change the start call only after Phase 13 provides explicit identity. [VERIFIED: app/(tabs)/index.tsx:18-140; .planning/architecture/v1.2-multi-active-plans.md:131-141] |
 | `src/ui/screens/TodayScreen.tsx` / `TodayScreen` | Render the approved Workout root ordering and truthful states. | Preserve factual branches; replace visual hierarchy and add selected preview state. [VERIFIED: src/ui/screens/TodayScreen.tsx:350-542; .planning/phases/15-workout-parity/15-UI-SPEC.md:179-223] |
 | `src/ui/components/PlanDaySwitcher.tsx` / `PlanDaySwitcher` | Remain plan-editor reorder UI. | Do not silently change its semantics for Workout preview. Introduce a separate selector or a clearly typed read-only variant. [VERIFIED: src/ui/components/PlanDaySwitcher.tsx:27-93; src/ui/screens/OwnedPlanEditorScreen.tsx:1269] |
-| `app/workout/[sessionId].tsx` / `ActiveWorkoutRoute` | Load/retry authoritative workout, wire narrow active commands, pass root/plan return context. | Remove advanced-timing wiring only after TIM-01; add Undo/trend/settings capabilities explicitly. [VERIFIED: app/workout/[sessionId].tsx:43-95,109-207] |
+| `app/workout/[sessionId].tsx` / `ActiveWorkoutRoute` | Load/retry authoritative workout, wire narrow active commands, pass root/plan return context. | Automatically validate the approved TIM-01 record, remove advanced-timing wiring, and add Undo/trend/settings capabilities explicitly. [VERIFIED: app/workout/[sessionId].tsx:43-95,109-207] |
 | `src/ui/screens/ActiveWorkoutScreen.tsx` / `ActiveWorkoutScreen` | Own active-only orchestration and authoritative view application. | Preserve stable-ID state and command handlers; extract facts rendering and break up independent sheets/docks. [VERIFIED: src/ui/screens/ActiveWorkoutScreen.tsx:119-339,477-554,797-980] |
 | `src/ui/components/SetRow.tsx` / `SetRow`, `observationForSet`, `formatObservation` | Present row facts and format all metric observations. | Preserve exported formatters; remove inline persistence and embedded Complete from the row. [VERIFIED: src/ui/components/SetRow.tsx:40-278,402-468,681-727,1091-1234] |
 | `src/ui/components/SemanticNumberField.tsx` / `SemanticNumberField` | Direct numeric input with canonical draft owned by caller. | Reuse; domain validation still decides Save. [VERIFIED: src/ui/components/SemanticNumberField.tsx:19-84,85-169] |
@@ -297,14 +297,14 @@ Existing file paths above were opened in this session; proposed component paths 
 
 1. **Prerequisite gate:** verify Phase 13's exact typed multi-plan Today/start/provenance ports and Phase 14's shared tokens, `BottomSheet`, `ConfirmationDialog`, `SemanticToast`, focus, and root-shell exports exist. Stop rather than reconstruct either dependency inside Phase 15. [VERIFIED: .planning/phases/13-multi-plan-running-foundation/13-CONTEXT.md:9-35,58-79; .planning/phases/14-prototype-visual-shell/14-CONTEXT.md:9-33,49-58]
 2. **Characterize before extraction:** add/retain tests for every current metric, complete/replay/failure branch, rest transition, reorder receipt, outcome, write-back, and process-death path. This establishes a behavioral safety net before changing the 3,275-line active screen. [VERIFIED: current source line count; jest.config.js:26-90; .planning/milestones/v1.1-phases/08-session-overview-navigation/08-VERIFICATION.md:82-109; .planning/milestones/v1.1-phases/09-in-workout-exercise-editing/09-VERIFICATION.md:53-66; .planning/milestones/v1.1-phases/10-advanced-set-timing/10-VERIFICATION.md:89-140]
-3. **TIM-01 pre-checkpoint proof:** add retirement characterization for every advanced state, foreground subscription, queued callback, relaunch, manual restore, automatic replacement, and new snapshot/set path. Present the checkpoint before deleting/gating runtime behavior. [VERIFIED: .planning/architecture/v1.2-migration-risks.md:57-80; .planning/phases/15-workout-parity/15-UI-SPEC.md:578-595]
+3. **TIM-01 pre-cut proof:** add retirement characterization for every advanced state, foreground subscription, queued callback, relaunch, manual restore, automatic replacement, and new snapshot/set path. Validate the approved owner record before removing runtime behavior. [VERIFIED: .planning/architecture/v1.2-migration-risks.md:57-80; .planning/v1.2-OWNER-DECISIONS.md]
 4. **Extract facts-only presentation with no visual change:** introduce `WorkoutSessionPresentation`/`WorkoutSetFactsRow` (recommended names), adapt current Active data to it, and prove no command or persistence calls occur from presentation-only rendering/disclosure. This is the Phase 16 seam. [VERIFIED: .planning/phases/16-calendar-parity/16-UI-SPEC.md:259-263,279-292,354-377]
 5. **Deliver Workout root:** consume the Phase 13 selected occurrence object, add the non-mutating five-day preview selector and Running context, then preserve start/resume/start-alternative failure and focus behavior. [VERIFIED: .planning/phases/15-workout-parity/15-UI-SPEC.md:181-223]
 6. **Replace set editing and command dock:** add `WorkoutSetEditorSheet`; render factual rows; Save through existing metric/domain commands; move warm-up/working completion to `WorkoutActionDock`; keep in-flight and retry identities stable. [VERIFIED: .planning/phases/15-workout-parity/15-UI-SPEC.md:252-316,410-427; src/domains/workout/setCommands.ts:120-175,214-247]
 7. **Recompose exercise controls:** add the sole active edge, exact header target order, scoped Add-set menu, separate trend, flat Timing/Replace/Delete menu, two-step delete, and 8dp drag activation while retaining the same Phase 9 command payloads. [VERIFIED: .planning/phases/15-workout-parity/15-UI-SPEC.md:239-248,320-406]
 8. **Flatten rest/settings:** expand `RestDock` permanently; add the revision-fenced session-exercise `default_rest_seconds` command and saved/draft/pending/failure/retry/reload UI; add the typed plan-scoped SQLite preference port. After both ports exist, wire `weightIncrementGrams` to subsequent editor step actions and resolve a later eligible rest from exercise override then plan `defaultRestSeconds`, without changing target JSON or an already-running rest. [VERIFIED: .planning/phases/15-workout-parity/15-UI-SPEC.md:343-445; src/domains/rest/restState.ts:1-29,48-210]
 9. **Close outcomes/completion:** add operation-specific pending/failure/retry states, deferred plan-editor navigation, factual complete/partial composition, and domain-produced write-back difference rows. [VERIFIED: .planning/phases/15-workout-parity/15-UI-SPEC.md:463-575]
-10. **Apply the accepted TIM-01 branch:** if retirement is approved, remove UI authoring and gate every runtime entry/reconciliation/callback while retaining storage and restore parsing; if it is not approved and zero-cue isolation cannot be proved, block Phase 15 cutover and retain the reviewed compatibility path. [VERIFIED: .planning/architecture/v1.2-multi-active-plans.md:151-166]
+10. **Apply approved TIM-01 retirement:** remove UI authoring and every runtime entry/reconciliation/callback/playback path while retaining source-fact/history/restore parsing and ordinary set/pointer/rest integrity. A failed zero-cue case blocks release and requires a fix; it does not create a compatibility branch. [VERIFIED: .planning/v1.2-OWNER-DECISIONS.md]
 11. **Run the full parity gate:** source tests, 100% integrity-critical branch coverage, real SQLite, exact-HEAD Android, process death/offline/notification, visual overlay, accessibility, and performance. Do not reuse v1.1 native artifacts as v1.2 proof. [VERIFIED: .planning/phases/15-workout-parity/15-UI-SPEC.md:643-665,724-773; .planning/research/v1.2/SUMMARY.md:87-93]
 
 ## Phase 16 Read-Only Reuse Seam
@@ -343,19 +343,19 @@ Test the boundary structurally: the Phase 16 presentation fixture must render wi
 | Secrets/env vars | Scoped source search found no workout/rest/timing secret or production environment-variable contract; the matching environment references are development/native fixture selectors. [VERIFIED: scoped repository search] | No secret migration. Keep diagnostics aggregate/code-only and never log workout values or owner notes. [VERIFIED: /Users/bytedance/.gstack/projects/gym_tracker/bytedance-pre-git-design-20260815-132500.md:1278-1282; .planning/architecture/v1.2-migration-risks.md:98-100] |
 | Build artifacts / installed packages | No `artifacts/native` files and no `node_modules` directory are present in this worktree; prior Phase 8–10 evidence is historical and cannot prove Phase 15. [VERIFIED: filesystem/environment probe; .planning/phases/15-workout-parity/15-UI-SPEC.md:38-42,814] | Install exact lockfile dependencies before source tests, then build one fresh Phase 15 release development-test APK and bind native evidence to its source digest and installed bytes. Do not modify or treat archived evidence as current. [VERIFIED: package.json:6-9,72-90; scripts/build-current-native-test-apk.sh:129-172] |
 
-## TIM-01 Decision Checkpoint
+## TIM-01 Approved Retirement Gate
 
-The planner must create `checkpoint:decision` after characterization tests and before any deletion/gating of advanced-timing runtime code. The decision must present exactly two safe paths: **approve retirement** (recommended in the ADR) or **retain the reviewed legacy recovery path and block Phase 15 cutover until it is compatible with the no-authoring UI**. Silence is not approval. [VERIFIED: .planning/phases/15-workout-parity/15-CONTEXT.md:31-32; .planning/phases/15-workout-parity/15-UI-SPEC.md:578-595; .planning/architecture/v1.2-multi-active-plans.md:151-166]
+The planner must characterize every stored/runtime seam, then automatically validate the dated owner record before removing advanced-timing runtime code. TIM-01 is approved as `retire-playback` with `legacy_playback_compatibility=false`; no human checkpoint or alternate runtime branch remains. [VERIFIED: .planning/v1.2-OWNER-DECISIONS.md; .planning/v1.2-owner-decisions.json]
 
-Before the checkpoint, tests must snapshot and compare all legacy timing data and exercise every quoted state value: `"idle"`, `"running"`, `"paused"`, `"stopped"`, `"expired"`, `"cluster_ready"`, `"cluster_gap_running"`, `"cluster_gap_paused"`; they must also prove between-set rest remains independent. [VERIFIED: src/domains/advancedTiming/advancedTimingState.ts:6-89; src/domains/rest/restState.ts:1-29]
+Before the cut, tests snapshot and compare all legacy timing data and exercise every quoted state value: `"idle"`, `"running"`, `"paused"`, `"stopped"`, `"expired"`, `"cluster_ready"`, `"cluster_gap_running"`, `"cluster_gap_paused"`; they also prove between-set rest remains independent. [VERIFIED: src/domains/advancedTiming/advancedTimingState.ts:6-89; src/domains/rest/restState.ts:1-29]
 
-If retirement is approved:
+The approved retirement requires:
 
 - Remove `AdvancedTimingIndicator` and `AdvancedTimingConfigSheet` from Workout/plan authoring surfaces, but do not delete schema columns/tables or rewrite old JSON. [VERIFIED: .planning/architecture/v1.2-multi-active-plans.md:155-164]
 - Gate `getAdvancedTimingContext`, all configure/start/gap/pause/resume/reconcile/stop commands, the foreground subscription, and queued callbacks; new session/set snapshots resolve to the exact off value `{"version":1,"mode":"off"}` while old source values remain readable. [VERIFIED: app/workout/[sessionId].tsx:51-95,145-188; src/bootstrap/workoutAppRuntime.tsx:919-948,2348-2380,3192-3370; src/domains/advancedTiming/advancedTimingConfig.ts:8-28]
 - Prove zero cadence/cluster cues after foreground, queued callback, relaunch, manual restore, automatic replacement, and merge while supported rest sound/haptic and rest recovery remain correct. [VERIFIED: .planning/architecture/v1.2-migration-risks.md:78-80]
 
-If retirement is not approved, do not destroy facts or silently leave hidden playback. Retain the old recovery path and treat the Phase 15 release gate as blocked until the owner accepts an explicit compatibility presentation. [VERIFIED: .planning/architecture/v1.2-multi-active-plans.md:164-166]
+If any zero-cue or recovery assertion fails, block release and fix the implementation while preserving source facts. Failure does not authorize a compatibility playback mode. [VERIFIED: .planning/v1.2-OWNER-DECISIONS.md; .planning/architecture/v1.2-multi-active-plans.md:164-172]
 
 ## Common Pitfalls
 
@@ -573,7 +573,7 @@ Security enforcement is enabled at ASVS level `1`. [VERIFIED: .planning/config.j
 | Calendar-origin detail gains workout commands | Elevation of privilege | Facts-only component boundary with no mutation capability; route tests assert zero command calls. [VERIFIED: .planning/phases/16-calendar-parity/16-UI-SPEC.md:279-292,354-377] |
 | Raw SQL or malformed metric input reaches storage | Tampering | Screens call typed domain ports; repository uses bound parameters; strict Zod schemas reject extra/invalid fields. [VERIFIED: src/platform/sqlite/sqliteKernel.ts:22-31,124-176; src/domains/metrics/contracts.ts:27-39,85-255] |
 | Stale OS notification survives source change | Spoofing | Stable session identifier, payload rest revision/deadline, list/cancel/reconcile after every relevant commit and launch. [VERIFIED: src/platform/notifications/restNotificationReconciler.ts:68-199; src/platform/notifications/expoRestNotificationAdapter.ts:89-139] |
-| Hidden legacy timing emits an invisible cue | Spoofing / Denial of service | TIM-01 gated runtime capability cut plus queued/foreground/relaunch/restore tests; preserve rest cues separately. [VERIFIED: .planning/architecture/v1.2-migration-risks.md:40,78-80] |
+| Hidden legacy timing emits an invisible cue | Spoofing / Denial of service | Approved TIM-01 runtime capability cut plus queued/foreground/relaunch/restore tests; preserve rest cues separately. [VERIFIED: .planning/architecture/v1.2-migration-risks.md:40,78-80] |
 | Sensitive workout values leak through diagnostics/evidence | Information disclosure | Emit codes, versions, counts, hashes, and scoped IDs only; no workout payloads, notes, or set values. [VERIFIED: .planning/architecture/v1.2-migration-risks.md:98-100] |
 
 React Native provides `accessibilityState`, `accessibilityActions`/`onAccessibilityAction`, Android `accessibilityLiveRegion`, and reduce-motion APIs; use the Phase 14 wrappers so touch, keyboard, D-pad, and assistive activation share handlers. [CITED: https://reactnative.dev/docs/accessibility] [CITED: https://reactnative.dev/docs/accessibilityinfo]
@@ -584,7 +584,7 @@ React Native provides `accessibilityState`, `accessibilityActions`/`onAccessibil
 |------------------------|-------------------|--------------|--------|
 | Inline expanded set editor with blur persistence and per-row Complete | Facts row opens shared explicit-Save editor; Complete moves to compact dock | Revision 18 parity contract | Removes accidental writes and restores one dominant action. [VERIFIED: src/ui/components/SetRow.tsx:681-752,1091-1234; .planning/phases/15-workout-parity/15-UI-SPEC.md:252-316,410-427] |
 | Collapsible rest with hidden controls and optional dock Undo | Full-width rest with four always-visible ordered controls; Undo is transient top feedback | Revision 18 parity contract | Keeps recovery action visible without adding a fifth persistent control. [VERIFIED: src/ui/components/RestDock.tsx:332-455; .planning/phases/15-workout-parity/15-UI-SPEC.md:429-445] |
-| Phase 10 per-rep/cluster authoring and playback | Hidden authoring; runtime retirement only after TIM-01; stored data retained | v1.2 owner decision, pending checkpoint | Avoids destructive migration and invisible-cue regressions. [VERIFIED: .planning/architecture/v1.2-multi-active-plans.md:149-166] |
+| Phase 10 per-rep/cluster authoring and playback | Authoring/runtime playback removed after automatic owner-record validation; stored source data retained | TIM-01 approved 2026-10-07 | Avoids destructive migration and invisible-cue regressions. [VERIFIED: .planning/v1.2-OWNER-DECISIONS.md] |
 | Separate Active and mutation-capable session-detail presentations | Shared facts-only Workout presentation plus active-only commands | Phase 15 → Phase 16 dependency | Calendar can render Active-shaped history without gaining mutation authority. [VERIFIED: .planning/phases/16-calendar-parity/16-CONTEXT.md:28-30,50-59] |
 | Singleton `TodayView`/start API | Phase 13 exact selected occurrence identity | Phase 13 dependency | Prevents cross-plan day/session mismatch. [VERIFIED: src/domains/workout/index.ts:60-104; .planning/architecture/v1.2-migration-risks.md:21-23] |
 
@@ -605,8 +605,8 @@ React Native provides `accessibilityState`, `accessibilityActions`/`onAccessibil
 2. **Upstream Phase 13/14 symbols — RESOLVED BY FAIL-FAST PREFLIGHT**
    - 15-01 requires completed 13-10 and 14-12 summaries, reads the actual exported symbols, and halts before edits if exact occurrence/start/provenance or AppRootShell/BottomSheet/ConfirmationDialog/SemanticToast/focus/token contracts are absent. Phase 15 does not guess names or duplicate upstream layers.
 
-3. **TIM-01 disposition — RESOLVED BY BLOCKING ROUTE**
-   - 15-02 refreshes characterization, then uses a `gate="blocking-human"` decision with exact `retire-playback` or `retain-compatibility` values. Only the recorded retirement choice unlocks the one-way runtime cut; retain-compatibility blocks Phase 15 cutover. Legacy facts and recovery remain preserved in both branches.
+3. **TIM-01 disposition — APPROVED RETIREMENT**
+   - 15-02 refreshes characterization, validates `retire-playback` plus `legacy_playback_compatibility=false` from the dated owner record, and removes authoring/runtime playback/reconciliation/callback paths. Legacy source facts remain readable for portability while ordinary workout/history/rest recovery remains exact.
 
 ## Environment Availability
 

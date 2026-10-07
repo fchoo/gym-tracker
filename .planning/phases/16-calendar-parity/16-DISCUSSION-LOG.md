@@ -13,5 +13,5 @@
 | Adjacent date | Collapse only; collapse-select-expand | Full sequence |
 | History | Calendar mutations; read-only detail with separate management | Read-only |
 
-**Unresolved:** DEV-01/DEV-02 remain pending owner review.
+**Resolved 2026-10-07:** DEV-01 is adaptive 6dp at 360 and 18dp at 390 with 2dp gaps; DEV-02 is Light title `#9B470B` with `#D97820` sport roles. Native geometry/contrast proof remains pending implementation.
 **Deferred:** automatic matching and correction controls in Calendar.

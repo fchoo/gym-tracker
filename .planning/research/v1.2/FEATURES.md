@@ -1,7 +1,7 @@
 # Feature Landscape: Gym Tracker v1.2
 
 **Domain:** Offline-first Android strength training, concurrent Running plans and imported Garmin activity history
-**Researched:** 2026-10-06
+**Researched:** 2026-10-06; reconciled to final owner transport 2026-10-07
 **Scope:** Source inventory and production-route mapping for planning only. No browser was launched by this researcher; the orchestrator independently verifies rendered behavior.
 **Evidence:** Direct inspection of approved revision 18, prototype source, owner brief, current route files and UI components. GSD's generic confidence seam returns LOW for provider=local even with --verified because local is not a registered research provider; this is a tooling/provenance limitation, not proof of runtime behavior. Source findings below are testable hypotheses until independently rendered/native-verified. No external ecosystem claims or current API capabilities are asserted here.
 
@@ -9,7 +9,15 @@
 
 Build the domain foundation first, then shared presentation and Workout, Calendar and Library, then actual Garmin import/detail before Progress. The prototype is a presentation oracle with simulated persistence. Its side-by-side phones, arbitrary dates, hard-coded activity values, timeout commits and toast-only mutations must not become production data logic. Use the approved composition over existing Material/card/rail defaults, while keeping the shipped SQLite, history, recovery and portability contracts.
 
-The inventory is exhaustive at the screen/route/interaction/state level for this source pass: **172 requirement-bearing entries**, plus **8 excluded/superseded branches**, **170 static control records**, **48 dynamic action occurrences** and **83 token/motion source lines**. [REQUIREMENTS.md](../../REQUIREMENTS.md) gives atomic phase ownership. The machine inventory and parity matrix use the same stable IDs; no count includes decorative status-bar assets as product features.
+The final transport is not an open research choice: bundle Python 3.13 through
+Chaquopy 17.0 with `python-garminconnect` 0.3.17 pinned to commit
+`218e72ca5459e014435fc2d94fd18bd601fa0c14` in the standalone ARM64 APK, and
+consume activity summary/splits/detail JSON through a typed allowlisted adapter.
+Official/partner access, a broker, desktop/Drive transport, FIT decoding/manual
+FIT, runtime AI agents and a Hermes change are outside this milestone. Native
+proof is implementation evidence, not another product decision.
+
+The inventory is exhaustive at the screen/route/interaction/state level for this source pass: **172 requirement-bearing entries**, plus **9 excluded/superseded branches** (including the prototype FIT controls superseded by the final transport), **170 static control records**, **48 dynamic action occurrences** and **83 token/motion source lines**. [REQUIREMENTS.md](../../REQUIREMENTS.md) gives atomic phase ownership. The machine inventory and parity matrix use the same stable IDs; no count includes decorative status-bar assets as product features.
 
 ## Authority and source conflicts
 
@@ -34,7 +42,7 @@ The owner-approved engineering invariants retain authority over every prototype 
 | C-08 | Hidden Calendar selected-day UI includes Resume/Start/View actions; shipped session detail includes correction/removal/resume. | Calendar-origin detail is strictly read-only, including partial/planned Strength. Preserve deliberate management/correction routes outside that context. |
 | C-09 | Old Create plan immediately assumes Strength; running editor returns ACTIVE FUTURE fixture after a create toast. | All create paths open neutral chooser and actual saved plan remains inactive until explicit activation. |
 | C-10 | Legacy hidden Progress has consistency-first summary, three-session recommendation evidence and old exercise sheets; pv2 is the reachable view. | Use All/Strength/Running latest/best/target/goal presentation and current pv2 evidence. Do not ship hidden fixture claims; real facts determine evidence and preserved history remains available. |
-| C-11 | Prototype uses setTimeout completion, localStorage, fixture FIT parsing, toast-only saves, boolean matching and hard-coded goals/dates. | Carry presentation intent to real commands/read models. SQLite, transaction, validation, identity, recovery and selected-candidate integrity outrank illustrative prototype data mechanics. |
+| C-11 | Prototype uses setTimeout completion, localStorage, fixture FIT parsing, toast-only saves, boolean matching and hard-coded goals/dates. | Carry presentation intent to real commands/read models. FIT controls are superseded source history; production uses the selected embedded JSON client. SQLite, transaction, validation, identity, recovery and selected-candidate integrity outrank illustrative prototype data mechanics. |
 | C-12 | Prototype App Settings omits data/recovery; older docs mention previous fonts and styles. | Preserve shipped deep data/history routes, use current prototype Archivo/IBM Plex Mono and semantic tokens, and extend the approved language to native-only states. |
 | C-13 | Revision 2 requires accessible Move up/down; active prototype only has pointer grip handling and treats pointercancel like pointerup. Plan editor Move up/Add exercise have no action handlers. | Implement intended accessible reorder and actual editor actions through existing domain commands; pointer cancellation must not persist a move. Record source gaps without copying them. |
 | C-14 | Running-session loader ignores persisted empty arrays, type editors have free text, and plan create/save does not persist entered goal fields into its detail fixture. | Keep real empty session lists, typed validation and persistent goals/session identity. Preserve common fields where compatible; provide native error recovery. |
@@ -46,10 +54,10 @@ The owner-approved engineering invariants retain authority over every prototype 
 | Four roots and consistent Light/Dark/System | Owner-approved whole-app presentation | Medium | 14 |
 | Immediate Workout identity, Start/Resume and full session preview | Gym-floor orientation and offline workout trust | High | 15 |
 | Set-row editing and commit-gated completion/rest | Critical workout loop; preserve all nine metrics | High | 15 |
-| Real multi-active plan ownership and independent schedules | Concurrent Strength/Running cannot be a UI-only fiction | High | 13 |
+| One active plan per sport with independent schedules | Concurrent Strength/Running cannot be a UI-only fiction; schema/repository constraints enforce zero-or-one per sport | High | 13 |
 | Shared month/focused Calendar with correct event facts | All schedules and source activities must agree | High | 16 |
 | Complete Library creation/edit/activation routes | Existing ownership and future-target semantics remain usable | High | 17 |
-| Original-file/FIT imports and confirmed activity matching | Personal-use fallback and source-integrity boundary | High | 18 |
+| Embedded Garmin account JSON sync and confirmed activity matching | Selected standalone transport and source-integrity boundary | High | 18 |
 | Honest comparable progress, sparse/empty/error states | No invented performance claims | High | 19 |
 | Deep recovery, backup, corrections and migration | Shipped capabilities must survive overhaul | High | 13–17 |
 | Real native fidelity/accessibility/performance evidence | Browser source does not prove Android acceptance | High | 20 |
@@ -69,7 +77,8 @@ The owner-approved engineering invariants retain authority over every prototype 
 
 | Do not build | Reason | Use instead |
 |---|---|---|
-| In-app live outdoor/treadmill run recorder | Superseded by revision 9 and owner lock | Garmin records; actual FIT/approved API imports |
+| In-app live outdoor/treadmill run recorder | Superseded by revision 9 and owner lock | Garmin records; the embedded client syncs validated activity JSON |
+| Official/partner API, broker, desktop/Drive transport, FIT decoder or manual FIT fallback | Superseded by the final embedded-client selection | Use the pinned Android Python/Chaquopy client; a proof failure becomes a reported blocker, not an automatic fallback |
 | Profile/Garmin/Running fifth root | Violates four-root contract | Contextual plan/sync/detail routes |
 | Cadence, rest-between-reps, nested Advanced Timing UI | Explicitly removed presentation | Flat between-set rest with sec units |
 | Plan-owned sound/haptic choices | Device/system ownership | Settings/rest-alert controls |
@@ -115,11 +124,11 @@ The owner-approved engineering invariants retain authority over every prototype 
 
 Origin meanings: `prototype_source` = an entry/handler exists in current source (rendered verification is separate); `prototype_present_unwired` = visible intent lacks real behavior; `required_native` = preserved or owner-required state not fully demonstrated; `required_domain` = prerequisite rather than a screen. Every row below has one owning phase. Concrete routes/components and test plans are in the machine inventory/parity matrix.
 
-### Phase 13: Multi-active, running and import domain foundation
+### Phase 13: One-per-sport plan, running and import domain foundation
 
 | Inventory / requirement | Screen | Interaction or state contract | Origin |
 |---|---|---|---|
-| domain.multi-active / DOM-01 | Plan activation | Support multiple active owned Strength and Running plans with independent schedules; migrate the shipped one-active-plan assumptions without bypassing repository rules. | required_domain |
+| domain.multi-active / DOM-01 | Plan activation | Support zero or one active owned Strength plan and zero or one active owned Running plan concurrently with independent schedules; migrate and constrain the shipped singleton assumptions in the real schema/repositories. | required_domain |
 | domain.activation-separate / DOM-02 | Plan creation | Persist new plan structure in an inactive state; creation, import, duplication and editing must not activate it implicitly. | required_domain |
 | domain.migrate-existing / DOM-03 | Existing installations | Migrate existing plans, sessions and schedules transactionally while preserving identifiers, workout recovery state and authoritative completed history. | required_domain |
 | domain.schedule-independent / DOM-04 | Scheduling | Resolve each plan's dates and rotation independently with explicit timezone/effective-date ownership; aggregate all eligible occurrences for Workout and Calendar. | required_domain |
@@ -128,10 +137,10 @@ Origin meanings: `prototype_source` = an entry/handler exists in current source 
 | domain.running-structure / DOM-07 | Structured Running | Persist Recovery, Long run, Progression, Tempo, Intervals, Hills and Fartlek sessions with common and contextual steps, order and stable identities. | required_domain |
 | domain.running-targets / DOM-08 | Running goal facts | Persist distance, optional owner-selected time/date, benchmark provenance and available training days; keep 10 km and Half Marathon times unset until explicitly chosen. | required_domain |
 | domain.advisory-intensity / DOM-09 | Running advisory targets | Preserve pace, heart-rate-zone and RPE targets as advisory session fields without guaranteeing an outcome or collecting gender or height. | required_domain |
-| domain.import-source-facts / DOM-10 | Imported activities | Persist activity source, external ID, content hash, timestamps, sport subtype, distance, elapsed/moving time, available HR, route and lap facts as source evidence. | required_domain |
-| domain.import-idempotency / DOM-11 | Import duplicate handling | Deduplicate repeat sync and manual import using external Garmin activity identity and content hash, including FIT-to-API and API-to-FIT order. | required_domain |
+| domain.import-source-facts / DOM-10 | Imported activities | Persist owner/account namespace + `garmin_connect_account` + external activity ID, canonical normalized-JSON digest excluding fetch/attempt time, raw response component hashes/provenance, timestamps/timezone evidence, sport/subtype, independent elapsed/timer/moving time bases, distance, available HR/route/laps and sampling metadata; leave `fit_sha256` absent without original FIT. | required_domain |
+| domain.import-idempotency / DOM-11 | Import duplicate handling | Deduplicate repeat, interrupted, reordered and restored JSON sync by account-scoped source identity plus canonical digest; stage changed revisions and never coalesce histories by date/title/distance alone. | required_domain |
 | domain.matching-confirmed / DOM-12 | Activity matching | Require explicit owner confirmation of the selected scheduled occurrence before creating a durable activity match; import alone never completes or activates a plan. | required_domain |
-| domain.rebuildable-projections / DOM-13 | Calendar and Progress facts | Build Calendar aggregation and comparable Running best-effort/goal views from durable facts with replayable projections and truthful missing/sparse states. | required_domain |
+| domain.rebuildable-projections / DOM-13 | Calendar and Progress facts | Build Calendar aggregation and comparable Running effort/goal views from durable accepted facts; only eligible source summary/lap evidence can support exact-distance efforts, while sampled chart/polyline data remains non-authoritative and missing evidence stays sparse. | required_domain |
 | domain.bodyweight-facts / DOM-14 | Bodyweight history | Persist optional dated bodyweight entries, edits and deletions for relative-strength views only; entries never alter workout targets. | required_domain |
 | domain.backup-merge / DOM-15 | Data portability | Extend backup, restore and merge to all multi-plan, Running, imported-activity, match, goal and bodyweight facts and identities without duplicate creation. | required_domain |
 | domain.offline-transaction / DOM-16 | Workout source authority | Keep workouts fully offline and acknowledge edits/completion only after exclusive transactions commit; notifications and UI feedback follow durable results. | required_domain |
@@ -265,19 +274,19 @@ Origin meanings: `prototype_source` = an entry/handler exists in current source 
 | library.running-session-lifecycle / LIB-35 | Running session lifecycle | Persist session addition, edit, deletion and order; preserve a truly empty saved session list and provide error/retry without restoring fixture defaults. | required_native |
 | library.running-conflict / LIB-36 | Running / schedule conflict | Offer Move run, Move strength and Keep both with actual future-date choices, explicit confirmation and persisted outcomes. | prototype_source |
 
-### Phase 18: Garmin sync, FIT and activity detail
+### Phase 18: Standalone Garmin account sync and activity detail
 
 | Inventory / requirement | Screen | Interaction or state contract | Origin |
 |---|---|---|---|
 | garmin.entry / GAR-01 | Garmin contextual route | Open Garmin contextually from Workout, Running plan or imported Calendar activity, preserving only the four app roots. | prototype_source |
 | garmin.header / GAR-02 | Garmin header | Keep Garmin Sync on one line in a stable three-column header with appearance flush right and an inert back placeholder at Garmin's root. | prototype_source |
-| garmin.not-connected / GAR-03 | Garmin disconnected | Show Garmin not connected with Connect Garmin and Import FIT fallback, making available operations truthful when API access is unavailable. | prototype_source |
-| garmin.consent / GAR-04 | Garmin connection | Implement consented authorization through an approved Garmin Activity API integration with OAuth2 PKCE and cancel/error/denied/expired/revoked recovery; do not ship simulated consent as real. | required_native |
-| garmin.connected / GAR-05 | Garmin connected account | Show connection/consented-access/last-sync facts, activity list and durable dedupe receipt status with Sync now, Import FIT and Revoke. | prototype_source |
-| garmin.sync-states / GAR-06 | Garmin sync | Show busy Syncing Garmin activities, successful import/no-duplicates feedback, and Sync could not complete with Try again/Import FIT while previous facts remain. | prototype_source |
-| garmin.revoke / GAR-07 | Garmin revocation | Revoke/disconnect activity access without deleting imported history; reflect the real provider result and permit later reconnection. | prototype_source |
-| garmin.fit-import / GAR-08 | FIT import | Use a native original-file picker and actual FIT parsing/preview, supporting personal use without Garmin program approval. | required_native |
-| garmin.fit-errors / GAR-09 | FIT error/recovery | Handle unsupported, malformed, oversized, truncated and duplicate files, cancelled selection and interrupted import without partial source facts or lost prior activities. | required_native |
+| garmin.not-connected / GAR-03 | Garmin disconnected | Show Garmin not connected with Connect Garmin and retained imported-history access; expose honest offline, unavailable and sign-in-needed states without partner-approval or FIT-fallback actions. | prototype_source |
+| garmin.consent / GAR-04 | Garmin account authentication | Use the bundled native/Python client for foreground credentials/MFA, cancel/error/expired-session recovery and verified reads; persist refreshed DI tokens with Keystore-backed app-private encryption and exclude secrets from logs/backups. | required_native |
+| garmin.connected / GAR-05 | Garmin connected account | Show verified account connection, last successful sync, imported activities and durable dedupe status with Sync now and Disconnect Garmin; operate standalone without separately installed Python, a development server or runtime agent. | prototype_source |
+| garmin.sync-states / GAR-06 | Garmin sync | Show bounded busy, new/unchanged/partial-failure, offline, 403/429 and sign-in-needed states while preserving prior facts; never claim success from a fixture or failed read. | prototype_source |
+| garmin.revoke / GAR-07 | Garmin disconnect | Invalidate in-flight generations and clear local encrypted session state without deleting imported history; never claim server-side revocation without a supported verified operation. | prototype_source |
+| garmin.json-sync / GAR-08 | Garmin JSON sync | Read paginated Running summaries plus per-activity summary/splits/detail JSON through a typed allowlisted native bridge, validate sampling/timezone provenance, capacity-check and commit atomically/idempotently. | required_native |
+| garmin.sync-recovery / GAR-09 | Garmin sync recovery | Handle malformed/oversized/truncated JSON, missing channels, unsupported sport, duplicates, changed revisions, ambiguous timezone and cancelled/interrupted sync with no partial facts or lost history. | required_native |
 | garmin.activity-outdoor / GAR-10 | Outdoor activity detail | Show imported outdoor elapsed/moving time, distance/pace facts, optional route and spaced Average heart rate label/value when present. | prototype_source |
 | garmin.activity-treadmill / GAR-11 | Treadmill activity detail | Show No route for treadmill activity plus distance/time/pace/laps and available source facts; never invent a route. | prototype_source |
 | garmin.laps / GAR-12 | Garmin lap table | Display Lap, Time and Pace columns from imported lap semantics with accessible row/column labels and honest missing values. | prototype_source |
@@ -322,7 +331,7 @@ Origin meanings: `prototype_source` = an entry/handler exists in current source 
 | verification.sqlite-migration / VER-07 | Migration and portability acceptance | Run real SQLite migration, backup/restore/merge, idempotency and historical-revision tests with old and new multi-plan databases. | required_native |
 | verification.offline-recovery / VER-08 | Offline and process death | Verify offline strength workouts and process-death recovery at start/edit/commit/rest/finish/import/match boundaries, distinguishing committed and uncommitted work. | required_native |
 | verification.calendar-gestures / VER-09 | Calendar native gestures | Verify native 1:1 drag, 25% title/settle boundary, short-fast snap-back, vertical intent, expand/collapse/adjacent-week continuity and cancel. | required_native |
-| verification.garmin-import / VER-10 | Garmin acceptance | Verify actual FIT imports, transport-order duplicate suppression, optional source facts and explicit selected-candidate matching; gate API acceptance on real approval/access. | required_native |
+| verification.garmin-import / VER-10 | Garmin acceptance | Verify standalone ARM64 Python/native packaging, real account login/MFA/read, encrypted token refresh/cold restart/logout, JSON fidelity, idempotent sync and explicit matching; partner approval/FIT decoding is not a prerequisite. | required_native |
 | verification.performance / VER-11 | Performance gates | Preserve or improve existing p95 interaction and launch budgets with the full calendar, large histories, long active sessions and representative import loads. | required_native |
 | verification.physical-review / VER-12 | Attended Android review | Record owner-attended Samsung visual/usability/accessibility acceptance in addition to automated evidence. | required_native |
 | verification.release-readiness / VER-13 | Release readiness | Prepare signed personal-use Android release verification, recovery/rollback evidence and a complete parity/deviation review before any later release authorization. | required_native |
@@ -343,19 +352,19 @@ Origin meanings: `prototype_source` = an entry/handler exists in current source 
 | Settings/data | app/more/index.tsx; data-and-recovery.tsx; automatic-backup-settings.tsx; manual-encrypted-backup.tsx; drive-backup-privacy.tsx; removed-sessions.tsx | Preserve reachable deep capabilities absent in appearance-only prototype |
 | Planned Strength | No existing session for an unstarted occurrence | Proposed app/calendar/plan/[occurrenceId].tsx; never invent session ID |
 | Running plans | No current running-specific route files | Proposed app/library/running/create.tsx; [planId].tsx; [planId]/edit.tsx; [planId]/session/[sessionId].tsx |
-| Garmin imports | No current Garmin route files | Proposed app/garmin/index.tsx; import.tsx; activity/[activityId].tsx; match/[activityId].tsx |
+| Garmin account sync | No current Garmin route/module files | Proposed app/garmin/index.tsx; activity/[activityId].tsx; match/[activityId].tsx; modules/garmin-connect/; src/platform/garmin/ |
 
 Proposed filenames are integration targets, not created product files. Exact additions may be aligned by the architecture plan while preserving the inventory IDs and requirement ownership. Diagnostic routes beginning app/__ remain engineering harnesses, not consumer navigation.
 
 ## Feature dependencies and phase ordering
 
 ```text
-13 multi-plan + Running + import identities + backup migration
+13 one-per-sport Strength/Running + import identities + backup migration
   -> 14 shared shell/tokens/settings
   -> 15 source-backed Workout/Active/completion
   -> 16 aggregated Calendar/read-only history
   -> 17 Library chooser/editors/structured Running
-  -> 18 real Garmin/FIT ingestion and confirmed matching
+  -> 18 embedded Garmin JSON sync and confirmed matching
   -> 19 Progress driven by imported facts
   -> 20 native fidelity/accessibility/performance/recovery acceptance
 ```
@@ -371,7 +380,7 @@ Presentation work can be decomposed by surface after domain/read-model contracts
 - Old Library detail sheet handlers are intercepted by the later capture-phase deep router. Hidden Progress sheets and hidden Calendar selected-day controls are not current product paths.
 - Deep plan save/duplicate/activation and some favorite/archive actions only toast or alter a fixture object; real commands must persist and update lists.
 - The Running loader restores defaults after an empty saved array; final-session deletion must stay empty in production.
-- FIT input loads a fixture without parsing bytes. Matching stores only a boolean and ignores the selected candidate. Those source mechanics are explicitly superseded by real parsing/identity/confirmation requirements.
+- The prototype FIT input loads a fixture without parsing bytes. That control is superseded source history, while matching's boolean-only behavior is replaced by selected-candidate identity and confirmation. Production sync uses the pinned embedded client's validated JSON envelope.
 - Prototype review-state toggles expose sparse/empty/loading/error demonstrations; native states must arise from actual read/transport conditions.
 - The last prototype keydown handler refers to Calendar symbols from a separate IIFE; source scope suggests an Escape defect. Orchestrator browser observations decide the rendered evidence; no prototype file is changed here.
 - Bodyweight 20–400kg bounds and specific font/animation units are source evidence requiring native validation, not medical recommendations.

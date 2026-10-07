@@ -8,7 +8,7 @@
 
 Integrate and verify the completed v1.2 system across native fidelity,
 accessibility, SQLite migration/portability, lifecycle/offline recovery, Calendar
-gestures, FIT import, performance, and attended Samsung acceptance. Earlier phases
+gestures, self-contained Garmin account sync, performance, and attended Samsung acceptance. Earlier phases
 still own component/domain tests; this phase closes cross-phase evidence only.
 
 </domain>
@@ -17,16 +17,16 @@ still own component/domain tests; this phase closes cross-phase evidence only.
 ## Implementation Decisions
 
 ### Evidence contract
-- **D20-01:** Every one of the 172 parity-matrix rows receives source-bound automated/native evidence or an explicit approved external/manual gate; no inherited v1.1 evidence impersonates v1.2 proof.
+- **D20-01:** Every one of the 172 parity-matrix rows receives source-bound automated/native evidence, plus attended evidence only where the requirement explicitly calls for it; no inherited v1.1 evidence, unexecuted technical path, or fixture-only result impersonates v1.2 proof.
 - **D20-02:** Screenshot matrix covers Light/Dark/System; 360×800, 390×844, 600×960, 840×1080-equivalent; portrait/landscape; default/200% text; all material states.
 - **D20-03:** Verify >=48dp, non-color state, labels, keyboard/D-pad, visible focus, Back/Escape, focus restoration, reduced motion, and adaptive reading order.
-- **D20-04:** Real SQLite tests cover fresh/legacy migration, rollback/retry, backup/restore/merge, process death, offline workout, import/match idempotency, and immutable history.
+- **D20-04:** Real SQLite tests cover fresh/legacy migration, rollback/retry, backup/restore/merge, process death, offline workout, Garmin JSON sync/match idempotency, and immutable history.
 - **D20-05:** Calendar evidence captures intermediate 1:1 drag, both sides of 25%, recede/cancel, short-fast snap-back, expand/collapse/adjacent sequence, and reduced motion.
-- **D20-06:** Preserve stricter product budgets: warm interactive <=1s, cold no-migration <=2s, root switch p95 <=100ms, input/rest <=50ms, search-after-debounce <=100ms, Calendar <=250ms, useful Progress <=500ms, review-open <=200ms, set+dock <=150ms, plus bounded FIT parse/memory evidence.
+- **D20-06:** Preserve stricter product budgets: warm interactive <=1s, cold no-migration <=2s, root switch p95 <=100ms, input/rest <=50ms, search-after-debounce <=100ms, Calendar <=250ms, useful Progress <=500ms, review-open <=200ms, set+dock <=150ms, plus bounded Garmin JSON sync/normalization memory evidence.
 - **D20-07:** Samsung attended review is acceptance observation in addition to automated proof. No build/release/device action occurs until later owner authorization.
 
-### Deviation and external gates
-- **D20-08:** DEV-01/02 cannot be marked accepted without owner decision. Garmin sync remains conditional on real access/broker review. `ACCEPTED_EXCEPTION` is an explicit non-PASS verdict requiring deviation ID, owner decision/date, exact scope/configurations, rationale, and evidence hashes; it is counted separately from PASS. Release readiness may be `CONDITIONALLY_READY` only under an explicit reviewed policy when every remaining non-PASS row is such a valid exception; it must not fabricate closure.
+### Settled baselines and evidence verdicts
+- **D20-08:** MAP-01, TIM-01, DEV-01, DEV-02, and the bundled Android Python/Chaquopy Garmin transport are settled baselines. Their rows may PASS once the selected behavior is implemented and proved. Missing technical proof remains NOT_RUN or REVIEW_REQUIRED; observed mismatch/failure is FAIL, never a missing-owner state. `ACCEPTED_EXCEPTION` is reserved for a later explicit owner-approved deviation and remains non-PASS with deviation ID, owner decision/date, exact scope/configurations, rationale, and evidence hashes. Release readiness may be `CONDITIONALLY_READY` only under an explicit reviewed policy when every remaining non-PASS row is such a valid exception; it must not fabricate closure.
 
 ### Claude's Discretion
 - Evidence shard organization and synthetic fixture generation, provided privacy-safe source/artifact binding remains fail-closed.
@@ -40,6 +40,7 @@ still own component/domain tests; this phase closes cross-phase evidence only.
 - `.planning/design/v1.2-prototype-parity-matrix.json` — 172-row coverage ledger.
 - `.planning/design/v1.2-DEVIATIONS.md` — pending/accepted difference truth.
 - `.planning/v1.2-OWNER-BRIEF.md` — completion and stop gates.
+- `.planning/v1.2-OWNER-DECISIONS.md` — final MAP/TIM/DEV and self-contained Garmin transport selections.
 - `.planning/research/v1.2/PITFALLS.md` — evidence failure modes.
 - Existing Phase 8-12 native evidence runners/manifests — patterns only; new evidence identity required.
 

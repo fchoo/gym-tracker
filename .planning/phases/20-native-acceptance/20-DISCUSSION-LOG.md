@@ -13,5 +13,5 @@
 | Device | Samsung instead of automation; Samsung in addition | In addition |
 | Release | Reuse v1.1 evidence; new source/artifact-bound evidence | New evidence |
 
-**Unresolved gates:** deviations and conditional Garmin access remain visible; no fabricated pass.
+**Settled baselines:** MAP-01, TIM-01, DEV-01, DEV-02, and self-contained Android Garmin sync are required. Missing or failing technical evidence remains NOT_RUN, REVIEW_REQUIRED, or FAIL; no fabricated pass.
 **Deferred:** public release ceremony and deployment.

@@ -1,7 +1,7 @@
 # Phase 20: Native Acceptance - Research
 
 **Researched:** 2026-10-06
-**Domain:** Source-bound Android native acceptance, evidence integrity, SQLite/recovery, FIT, Calendar gesture, performance, and attended Samsung observation
+**Domain:** Source-bound Android native acceptance, evidence integrity, SQLite/recovery, standalone Garmin JSON sync, Calendar gesture, performance, and attended Samsung observation
 **Confidence:** MEDIUM — locked contracts and current repository tooling were inspected directly; no app build, test, emulator, device, import, signing, or release action was run.
 
 <user_constraints>
@@ -10,16 +10,16 @@
 ### Locked Decisions
 
 ### Evidence contract
-- **D20-01:** Every one of the 172 parity-matrix rows receives source-bound automated/native evidence or an explicit approved external/manual gate; no inherited v1.1 evidence impersonates v1.2 proof.
+- **D20-01:** Every one of the 172 parity-matrix rows receives source-bound automated/native evidence, plus attended evidence only where the requirement explicitly calls for it; no inherited v1.1 evidence, unexecuted technical path, or fixture-only result impersonates v1.2 proof.
 - **D20-02:** Screenshot matrix covers Light/Dark/System; 360×800, 390×844, 600×960, 840×1080-equivalent; portrait/landscape; default/200% text; all material states.
 - **D20-03:** Verify >=48dp, non-color state, labels, keyboard/D-pad, visible focus, Back/Escape, focus restoration, reduced motion, and adaptive reading order.
-- **D20-04:** Real SQLite tests cover fresh/legacy migration, rollback/retry, backup/restore/merge, process death, offline workout, import/match idempotency, and immutable history.
+- **D20-04:** Real SQLite tests cover fresh/legacy migration, rollback/retry, backup/restore/merge, process death, offline workout, Garmin JSON sync/match idempotency, and immutable history.
 - **D20-05:** Calendar evidence captures intermediate 1:1 drag, both sides of 25%, recede/cancel, short-fast snap-back, expand/collapse/adjacent sequence, and reduced motion.
-- **D20-06:** Preserve stricter product budgets: warm interactive <=1s, cold no-migration <=2s, root switch p95 <=100ms, input/rest <=50ms, search-after-debounce <=100ms, Calendar <=250ms, useful Progress <=500ms, review-open <=200ms, set+dock <=150ms, plus bounded FIT parse/memory evidence.
+- **D20-06:** Preserve stricter product budgets: warm interactive <=1s, cold no-migration <=2s, root switch p95 <=100ms, input/rest <=50ms, search-after-debounce <=100ms, Calendar <=250ms, useful Progress <=500ms, review-open <=200ms, set+dock <=150ms, plus bounded Garmin JSON sync/normalization memory evidence.
 - **D20-07:** Samsung attended review is acceptance observation in addition to automated proof. No build/release/device action occurs until later owner authorization.
 
-### Deviation and external gates
-- **D20-08:** DEV-01/02 cannot be marked accepted without owner decision. Garmin sync remains conditional on real access/broker review. `ACCEPTED_EXCEPTION` is non-PASS and requires a deviation ID, owner decision/date, exact scope/configurations, rationale, and evidence hashes. Release readiness may be `CONDITIONALLY_READY` only under an explicit reviewed policy when every remaining non-PASS row is such a valid exception; it must not fabricate closure.
+### Settled baselines and evidence verdicts
+- **D20-08:** MAP-01, TIM-01, DEV-01, DEV-02, and the bundled Android Python/Chaquopy Garmin transport are settled required baselines. They may PASS after successful implementation evidence; missing proof is NOT_RUN or REVIEW_REQUIRED and observed failure is FAIL. `ACCEPTED_EXCEPTION` is reserved for a later explicit deviation, remains non-PASS, and requires a deviation ID, owner decision/date, exact scope/configurations, rationale, and evidence hashes. Release readiness may be `CONDITIONALLY_READY` only under an explicit reviewed policy when every remaining non-PASS row is such a valid exception.
 
 ### Claude's Discretion
 - Evidence shard organization and synthetic fixture generation, provided privacy-safe source/artifact binding remains fail-closed.
@@ -45,8 +45,8 @@ Public release ceremony/Terminal Seal, store distribution, Wear OS, Health Conne
 | VER-07 | Run real SQLite migration, backup/restore/merge, idempotency and historical-revision tests with old and new multi-plan databases. | Extend the existing source-derived native contract runner with the completed Phase 13–19 contract registries and preserve real Expo SQLite plus host/integration backstops. |
 | VER-08 | Verify offline strength workouts and process-death recovery at start/edit/commit/rest/finish/import/match boundaries, distinguishing committed and uncommitted work. | Use lifecycle-cut fixtures before transaction, during transaction, after commit/before render, and after acknowledgement; compare canonical source digests and receipt replay. |
 | VER-09 | Verify native 1:1 drag, 25% title/settle boundary, short-fast snap-back, vertical intent, expand/collapse/adjacent-week continuity and cancel. | Emit timestamped geometry/semantic samples at 10%, 24.9%, 25%, and 25.1%, plus ordered expand/collapse/adjacent and cancellation traces. |
-| VER-10 | Verify actual FIT imports, transport-order duplicate suppression, optional source facts and explicit selected-candidate matching; gate API acceptance on real approval/access. | Use bounded synthetic FIT fixtures through the real file/parser/SQLite path; keep live Garmin rows conditional and prohibit stubs from closing them. |
-| VER-11 | Preserve or improve existing p95 interaction and launch budgets with the full calendar, large histories, long active sessions and representative import loads. | Add release-build user-perceived instrumentation, raw samples, exact fixture bounds, deterministic p95, and FIT parse/memory budgets chosen from measured maximum fixtures. |
+| VER-10 | Verify the self-contained ARM64 APK's Python/native packaging, real account login/MFA/read, encrypted session restart/logout, JSON fidelity, 403/429 handling, idempotent sync and explicit selected-candidate matching. | Use canonical synthetic JSON fixtures for deterministic cases and an attended real-account run for login/MFA/read/restart; missing proof is NOT_RUN or REVIEW_REQUIRED, never an owner block. |
+| VER-11 | Preserve or improve existing p95 interaction and launch budgets with the full calendar, large histories, long active sessions and representative import loads. | Add release-build user-perceived instrumentation, raw samples, exact fixture bounds, deterministic p95, and Garmin JSON sync/normalization time/memory budgets fixed before the final run. |
 | VER-12 | Record owner-attended Samsung visual/usability/accessibility acceptance in addition to automated evidence. | Create a new observation-only checklist bound to source/APK/signature/installed bytes and immutable per-row PNG hashes; never reuse N4 or confer release authority. |
 | VER-13 | Prepare signed personal-use Android release verification, recovery/rollback evidence and a complete parity/deviation review before any later release authorization. | Reuse the exact-byte candidate manifest/signature patterns only after explicit build authority; produce readiness/rollback evidence and stop before workflow dispatch, tagging, installation, promotion, or release. |
 </phase_requirements>
@@ -61,7 +61,7 @@ Plan Phase 20 around one immutable run directory and one source-owned evidence c
 
 Phase 20 must not fix product behavior inline. A discovered product mismatch fails the owning row and routes remediation back to Phase 13–19; Phase 20 may add evidence-only scripts, developer-test fixtures, probes, and validators, but no product-visible route, debug banner, dashboard, copy, token, or control. [VERIFIED: .planning/phases/20-native-acceptance/20-UI-SPEC.md:42-58,474-486]
 
-**Primary recommendation:** Implement a contract-derived, immutable, privacy-safe v1.2 evidence pipeline with separate native shards and a single final validator; preserve `ACCEPTED_EXCEPTION`, `BLOCKED_OWNER`, and `CONDITIONAL_EXTERNAL` as non-PASS outcomes, and stop at owner review without building or releasing unless a later explicit authorization exists. [VERIFIED: .planning/phases/20-native-acceptance/20-CONTEXT.md:19-33; .planning/phases/20-native-acceptance/20-UI-SPEC.md:60-74,416-470]
+**Primary recommendation:** Implement a contract-derived, immutable, privacy-safe v1.2 evidence pipeline with separate native shards and a single final validator; treat settled MAP/TIM/DEV/Garmin choices as required baselines, preserve NOT_RUN/FAIL/REVIEW_REQUIRED and explicit ACCEPTED_EXCEPTION as non-PASS outcomes, and stop at owner review without building or releasing unless a later explicit authorization exists. [VERIFIED: .planning/v1.2-OWNER-DECISIONS.md; .planning/phases/20-native-acceptance/20-CONTEXT.md:19-33]
 
 ## Project Constraints (from .trae/rules/rules.md)
 
@@ -83,7 +83,7 @@ Phase 20 must not fix product behavior inline. A discovered product mismatch fai
 | Visual/accessibility capture | Android client | Developer/CI tooling | Native geometry, font scaling, semantics, focus, IME, motion, and OS appearance must be observed on Android and sealed by the runner. [VERIFIED: .planning/phases/20-native-acceptance/20-UI-SPEC.md:184-197,235-279] |
 | SQLite migration/portability | Database/Storage | Android client | Real Expo SQLite and production repositories own authoritative facts; UI mocks cannot substitute. [VERIFIED: .planning/verification/v1.2-native-verification-matrix.md:20-23,38-49] |
 | Offline/process-death recovery | Android client | Database/Storage | Lifecycle cuts happen in the client, while correctness is decided by committed source facts, receipts, pointers, rest, and imported/match identities. [VERIFIED: .planning/REQUIREMENTS.md:203-204] |
-| FIT import/dedupe/matching | Android client | Database/Storage | The Android file/parser path supplies bytes; one exclusive source transaction owns facts/receipts and explicit match decisions. [VERIFIED: .planning/phases/18-garmin-import/18-UI-SPEC.md:244-287,389-445] |
+| Garmin account sync/dedupe/matching | Android client/native bridge | Database/Storage | Bundled Python/Chaquopy supplies allowlisted activity JSON; one exclusive source transaction owns canonical facts/receipts and explicit match decisions. [VERIFIED: .planning/v1.2-OWNER-DECISIONS.md] |
 | Calendar gesture evidence | Android client | Developer/CI tooling | UI-thread geometry and semantic transitions are native; the runner records timestamped samples and rejects final-screen-only proof. [VERIFIED: .planning/phases/20-native-acceptance/20-UI-SPEC.md:267-279,340-350] |
 | Performance evidence | Android client | Developer/CI tooling | User-perceived markers and frame work originate in release builds; the runner owns samples, p95, fixture identity, and budgets. [VERIFIED: .planning/verification/v1.2-native-verification-matrix.md:140-162] |
 | Samsung attended observation | Physical device/Owner | Developer/CI tooling | The owner supplies observation, while tooling binds model/hashed identity/APK/signature/image hashes and prevents it from replacing automation. [VERIFIED: .planning/phases/20-native-acceptance/20-UI-SPEC.md:465-470] |
@@ -115,7 +115,7 @@ Phase 20 must not fix product behavior inline. A discovered product mismatch fai
 | Instead of | Rejected Alternative | Tradeoff |
 |------------|----------------------|----------|
 | New v1.2 runner and validator | Rename/repoint Phase 8–12 runners | Rejected because current runners expect phase-specific manifests, paths, ledgers, and fake-port stages; presence of an old script is not new coverage. [VERIFIED: .planning/verification/v1.2-native-verification-matrix.md:30-34; .planning/research/v1.2/PITFALLS.md:146-148] |
-| Contract-derived ledger | Hand-maintained pass spreadsheet | Rejected because exact set equality, duplicate detection, hashes, and conditional gates must be machine-enforced. [VERIFIED: .planning/design/v1.2-prototype-parity-matrix.md:258-260; .planning/phases/20-native-acceptance/20-UI-SPEC.md:170-182,340-350] |
+| Contract-derived ledger | Hand-maintained pass spreadsheet | Rejected because exact set equality, duplicate detection, hashes, and evidence-state rules must be machine-enforced. [VERIFIED: .planning/design/v1.2-prototype-parity-matrix.md:258-260; .planning/phases/20-native-acceptance/20-UI-SPEC.md:170-182,340-350] |
 | Real native evidence | Component mocks or browser captures | Rejected because mocks do not prove Android geometry/motion/font scaling/SQLite, and browser evidence is only the comparison source. [VERIFIED: .planning/phases/20-native-acceptance/20-UI-SPEC.md:199-212,340-349] |
 | Separate attended observation | Attended pass as final proof | Rejected because observation cannot fill automated-integrity rows or authorize release. [VERIFIED: .planning/phases/20-native-acceptance/20-UI-SPEC.md:465-470] |
 
@@ -132,7 +132,7 @@ flowchart TD
   C --> D1[SQLite + portability contracts]
   C --> D2[Maestro state/config/accessibility journeys]
   C --> D3[Calendar geometry/semantic traces]
-  C --> D4[FIT/dedupe/match journeys]
+  C --> D4[Garmin packaging/auth/read/dedupe/match journeys]
   C --> D5[Release-build performance samples]
   C --> D6[Samsung observation-only checklist]
   D1 --> E[Hash-addressed evidence shards]
@@ -142,10 +142,10 @@ flowchart TD
   D5 --> E
   D6 --> E
   E --> F[Fail-closed v1.2 validator]
-  F --> G{Gate resolver}
-  G -->|DEV-01/02 or TIM-01 open| H[BLOCKED_OWNER]
-  G -->|Garmin live access absent| I[CONDITIONAL_EXTERNAL]
-  G -->|Evidence complete| J[PASS / FAIL / REVIEW_REQUIRED / ACCEPTED_EXCEPTION / N_A_REVIEWED]
+  F --> G{Evidence-state resolver}
+  G -->|Not executed| H[NOT_RUN]
+  G -->|Incomplete technical proof| I[REVIEW_REQUIRED]
+  G -->|Evidence complete| J[PASS / FAIL / ACCEPTED_EXCEPTION / N_A_REVIEWED]
   H --> K[final-evidence.json]
   I --> K
   J --> K
@@ -164,7 +164,7 @@ scripts/
 ├── run-v12-maestro.mjs                 # immutable run + UI/config/lifecycle shard producer
 ├── verify-v12-native-evidence.mjs      # schema, ledger, gate, privacy, hash, and final seal
 ├── v12-evidence-scripts.test.mjs       # adversarial validator/runner contract tests
-├── benchmark-v12-interactions.mjs      # launch/interaction/frame/FIT performance producer
+├── benchmark-v12-interactions.mjs      # launch/interaction/frame/Garmin performance producer
 └── generate-v12-attended-checklist.mjs # observation-only Samsung prepare/record/verify pattern
 maestro/v1.2/
 ├── multi-plan.yaml
@@ -204,7 +204,7 @@ The proposed `scripts/generate-v12-attended-checklist.mjs` filename is a plannin
 | `scripts/build-current-native-test-apk.sh` manifest publisher | Extend carefully | For the v1.2 suite, add signature/certificate identity and privacy-safe hashed device identity while preserving retained-vs-installed byte equality; do not break historical schema-v1 consumers. [VERIFIED: scripts/build-current-native-test-apk.sh:128-169,172-184,213-285] |
 | `scripts/run-v12-maestro.mjs` | Create | Own ordered flow/state/config registries, device setting apply/verify/restore, JUnit/screenshot/semantic/geometry hashes, and shard publication. Follow Phase 10/11 identity patterns, not Phase 12's fake-port-only stage model. [VERIFIED: scripts/run-phase10-maestro.mjs:15-32,67-98,129-192; scripts/run-phase11-maestro.mjs:46-111,627-675] |
 | `scripts/verify-v12-native-evidence.mjs` | Create | Export the canonical verdict/config/artifact registries, parse canonical JSON, enforce safe paths/no symlinks/bounds/hashes, derive the 172 ledger, resolve gates, and write final evidence only from validated shards. [VERIFIED: scripts/create-release-candidate-manifest.mjs:42-171,316-430; .planning/phases/20-native-acceptance/20-UI-SPEC.md:340-350] |
-| `scripts/v12-evidence-scripts.test.mjs` | Create | Test happy path plus missing/duplicate/unknown/out-of-order/skipped IDs, malformed accepted-exception metadata, accepted exception counted as PASS, path traversal/symlink swaps, stale hashes, wrong config/device/APK/signature, false-success JUnit, privacy leakage, sample/budget drift, attended substitution, and conditional-gate fraud. [VERIFIED: .planning/verification/v1.2-native-verification-matrix.md:170-177; scripts/verify-phase12-evidence.test.mjs:15-68] |
+| `scripts/v12-evidence-scripts.test.mjs` | Create | Test happy path plus missing/duplicate/unknown/out-of-order/skipped IDs, malformed accepted-exception metadata, accepted exception counted as PASS, path traversal/symlink swaps, stale hashes, wrong config/device/APK/signature, false-success JUnit, privacy leakage, sample/budget drift, attended substitution, and settled-baseline misclassification. [VERIFIED: .planning/verification/v1.2-native-verification-matrix.md:170-177; scripts/verify-phase12-evidence.test.mjs:15-68] |
 | `scripts/benchmark-v12-interactions.mjs` | Create | Collect raw release-build samples and deterministic percentiles for all locked budgets; bind fixture/source/APK/device and reject missing/non-finite/negative/cherry-picked samples. [VERIFIED: .planning/verification/v1.2-native-verification-matrix.md:140-162; scripts/benchmark-phase12-backup.mjs:21-71] |
 | `scripts/generate-v12-attended-checklist.mjs` | Create | Recommended filename [ASSUMED]. Reuse Phase 7's canonical JSON, safe PNG set, device/APK byte binding, hashed serial, and forbidden-authority fields, but define new v1.2 rows and never import N4 status. [VERIFIED: scripts/generate-phase7-attended-checklist.mjs:34-59,93-128,131-227] |
 | `scripts/create-release-candidate-manifest.mjs` / `scripts/verify-release-candidate-manifest.mjs` | Reuse later, do not invoke in Phase 20 planning | Provide exact signed-candidate source/toolchain/inner-byte binding after separate build authorization. They do not authorize publication. [VERIFIED: scripts/create-release-candidate-manifest.mjs:22-49,216-313,340-430; scripts/verify-release-candidate-manifest.mjs:33-59] |
@@ -231,16 +231,16 @@ The run ID is exactly `phase20-<UTC YYYYMMDDTHHMMSSZ>-<source-head-12>` and a re
 
 ### Pattern 3: Shard Producers, One Final Seal
 
-SQLite, Maestro/configuration, Calendar transitions, FIT, performance, comparison, and attended observation each produce canonical immutable shards. `verify-v12-native-evidence.mjs` must be the only component that emits `final-evidence.json`, and it derives final counts/verdicts after re-reading and rehashing every referenced byte. A producer may never write a row's final verdict. [VERIFIED: .planning/verification/v1.2-native-verification-matrix.md:164-177; scripts/verify-phase12-evidence.mjs:64-98,129-189]
+SQLite, Maestro/configuration, Calendar transitions, Garmin, performance, comparison, and attended observation each produce canonical immutable shards. `verify-v12-native-evidence.mjs` must be the only component that emits `final-evidence.json`, and it derives final counts/verdicts after re-reading and rehashing every referenced byte. A producer may never write a row's final verdict. [VERIFIED: .planning/verification/v1.2-native-verification-matrix.md:164-177; scripts/verify-phase12-evidence.mjs:64-98,129-189]
 
-### Pattern 4: Conditional Gate Resolver
+### Pattern 4: Evidence-State Resolver
 
 Gate resolution happens after ordinary evidence validation:
 
-- DEV-01/DEV-02 affected rows remain `BLOCKED_OWNER` until a dated decision and chosen-branch evidence exist. An accepted non-oracle adaptation or retained failing oracle becomes `ACCEPTED_EXCEPTION`, never PASS, and carries deviation ID, owner decision/date, exact scope/configurations, rationale and evidence hashes. [VERIFIED: .planning/phases/20-native-acceptance/20-UI-SPEC.md:444-456]
-- TIM-01 affects exactly `DOM-03`, `DOM-15`, `DOM-17`, `WRK-05`, `WRK-18`, `WRK-21`–`WRK-23`, `WRK-26`, `VER-07`, and `VER-08`; a dated runtime decision without all applicable compatibility fixtures is still `BLOCKED_OWNER`. [VERIFIED: .planning/phases/20-native-acceptance/20-UI-SPEC.md:418-442]
-- Offline FIT/dedupe/match evidence is unconditional. GAR-04–GAR-07 and NV-IMP-11–13 remain `CONDITIONAL_EXTERNAL` without actual Garmin program access, granted delivery/scope contract, real consent, and reviewed confidential-credential topology. [VERIFIED: .planning/phases/20-native-acceptance/20-UI-SPEC.md:458-463]
-- Attended observation never changes automated row verdicts and never closes an owner/external/release gate. [VERIFIED: .planning/phases/20-native-acceptance/20-UI-SPEC.md:465-470]
+- DEV-01/DEV-02 affected rows test the accepted geometry/color baselines and may PASS when native evidence succeeds; missing proof is NOT_RUN or REVIEW_REQUIRED and mismatch is FAIL. A later explicit deviation remains non-PASS `ACCEPTED_EXCEPTION`. [VERIFIED: .planning/v1.2-OWNER-DECISIONS.md]
+- TIM-01 affects exactly `DOM-03`, `DOM-15`, `DOM-17`, `WRK-05`, `WRK-18`, `WRK-21`–`WRK-23`, `WRK-26`, `VER-07`, and `VER-08`; all applicable retirement fixtures must prove zero cadence/cluster playback plus preserved history, set/pointer and between-set-rest behavior. [VERIFIED: .planning/v1.2-OWNER-DECISIONS.md]
+- GAR-04–GAR-09 and VER-10 test the selected bundled Python/Chaquopy JSON route. Deterministic fixtures cover parsing/dedupe/revision/matching; an attended owner-account run covers login/MFA/read/restart/logout and 403/429 without exposing secrets. [VERIFIED: .planning/v1.2-OWNER-DECISIONS.md]
+- Attended observation never changes automated row verdicts and never closes technical or release evidence. [VERIFIED: .planning/phases/20-native-acceptance/20-UI-SPEC.md:465-470]
 
 ### Pattern 5: Diagnostic Artifact versus Future Candidate
 
@@ -253,7 +253,7 @@ Use a fixture-enabled development-test release-variant APK for exhaustive determ
 - **Trust requested device settings:** measure applied density/content bounds/font/orientation/scheme/motion and prove restoration. [VERIFIED: .planning/phases/20-native-acceptance/20-UI-SPEC.md:327-336,340-350]
 - **Let pixel percentage override semantics:** a missing control, wrong copy, mutation, focus, status, or unaccepted deviation is a failure regardless of pixel score. [VERIFIED: .planning/phases/20-native-acceptance/20-UI-SPEC.md:377-408]
 - **Overwrite failed runs:** retain them and create a fresh run ID. [VERIFIED: .planning/phases/20-native-acceptance/20-UI-SPEC.md:285-291,340-350]
-- **Use production owner data:** fixtures, logs, paths, FIT bytes, coordinates, serials, names, bodyweight, and history must remain synthetic or hashed. [VERIFIED: .planning/phases/20-native-acceptance/20-UI-SPEC.md:354-364]
+- **Use production owner data:** fixtures, logs, paths, provider payloads, coordinates, serials, names, bodyweight, and history must remain synthetic or hashed; real-account proof records only bounded outcomes and hashes. [VERIFIED: .planning/phases/20-native-acceptance/20-UI-SPEC.md:354-364]
 
 ## Evidence Manifest and Schema
 
@@ -263,11 +263,10 @@ Use these values verbatim:
 
 | Value | Verbatim contract |
 |-------|-------------------|
+| `NOT_RUN` | “Required implementation or native evidence has not run yet; this is pending technical work.” |
 | `PASS` | “Required automated/native evidence exists, identity validates, all semantic gates pass, and every visual difference is within this contract or an accepted deviation.” |
 | `FAIL` | “A required behavior, control, state, identity, measurement, or comparison does not meet the contract.” |
 | `REVIEW_REQUIRED` | “Evidence is complete but a visual delta needs human classification; it is not a pass.” |
-| `BLOCKED_OWNER` | “DEV-01, DEV-02, or TIM-01 affects the row and its required dated owner decision/evidence gate is incomplete. For TIM-01, a decision without the chosen-policy compatibility evidence is still blocked.” |
-| `CONDITIONAL_EXTERNAL` | “Live Garmin API proof is unavailable because actual program access or the reviewed secure topology is absent. Deterministic tests may pass separately but cannot close the live row.” |
 | `ACCEPTED_EXCEPTION` | “A specific owner-reviewed deviation or retained failing oracle is accepted for an exact scope/configuration set with decision/date, rationale, and evidence hashes. It is explicitly non-PASS and counted separately.” |
 | `N_A_REVIEWED` | “The state genuinely cannot apply and the ledger carries a domain reason plus reviewer identity/date. Missing evidence is never N_A_REVIEWED.” |
 
@@ -295,7 +294,7 @@ Each of the 172 rows must contain:
 3. Stable fixture/state/capture IDs and applicable configuration IDs.
 4. Evidence references with relative path, SHA-256, size, producer/schema version, and specific case/report/image/trace identity.
 5. Semantic, geometry, interaction, visual-comparison, source-integrity, and privacy gate results applicable to the row.
-6. Conditional gate references and their validated decision/access evidence.
+6. Evidence-state references and their validated implementation/measurement evidence.
 7. For `ACCEPTED_EXCEPTION` only: deviation ID, owner decision/date, exact scope/configurations, rationale, and evidence hashes.
 8. For `N_A_REVIEWED` only: domain reason, reviewer identity, and UTC date.
 9. No mutable narrative “pass” field and no embedded personal source rows.
@@ -304,7 +303,7 @@ Each of the 172 rows must contain:
 
 ### 107 Ordered States and 64 Configurations
 
-The browser walk is 214 entries: the same 107 ordered state occurrences in Light and Dark. Duplicate names such as Progress settings and FIT import remain distinct sequence occurrences. [VERIFIED: .planning/design/v1.2-browser-evidence/serial-walk.json opened and counted 2026-10-06; .planning/phases/20-native-acceptance/20-UI-SPEC.md:199-212]
+The browser walk is 214 entries: the same 107 ordered state occurrences in Light and Dark. Duplicate names such as Progress settings and Garmin sync remain distinct sequence occurrences. [VERIFIED: .planning/design/v1.2-browser-evidence/serial-walk.json opened and counted 2026-10-06; .planning/phases/20-native-acceptance/20-UI-SPEC.md:199-212]
 
 The allowed configuration codes are quoted verbatim:
 
@@ -330,14 +329,14 @@ Semantic gates have zero tolerance. Geometry/color diagnostics may use the docum
 1. Preflight all completed Phase 13–19 contract sources and reject the run if any planned native contract registry is missing. Phase 20 consumes those cases; it does not recreate their business logic. [VERIFIED: .planning/ROADMAP.md:220-224]
 2. Run current kernel, migration/effects, multi-plan/Running, portability/merge, Drive-backup, Garmin-import/dedupe/match, and history-revision suites through real Expo SQLite with source-derived ordered IDs, zero skips, exact counts, and per-case duration/result. [VERIFIED: .planning/verification/v1.2-native-verification-matrix.md:55-71]
 3. Cover fresh, schema-27, and supported legacy fixtures; failure before statement, verification, integrity, commit, and recovery-backup stages; reopen at the actual last committed schema. Do not promise whole-batch rollback or old-app downgrade. [VERIFIED: .planning/research/v1.2/PITFALLS.md:25-37]
-4. Round-trip mixed Strength/Running/FIT/match/goal/bodyweight facts through backup, clean restore, merge, repeated no-op merge, derivative rebuild, and dirty-generation triggers. [VERIFIED: .planning/research/v1.2/PITFALLS.md:39-51]
+4. Round-trip mixed Strength/Running/Garmin JSON/match/goal/bodyweight facts through backup, clean restore, merge, repeated no-op merge, derivative rebuild, and dirty-generation triggers. [VERIFIED: .planning/research/v1.2/PITFALLS.md:39-51]
 5. Lifecycle cuts must distinguish before transaction, after source commit/before UI acknowledgement, and after acknowledgement. Compare canonical fact/receipt/pointer/rest digests after relaunch and retry. [VERIFIED: .planning/REQUIREMENTS.md:203-204; .planning/research/v1.2/PITFALLS.md:53-65]
 
-### FIT Import, Dedupe, and Match
+### Garmin JSON Sync, Dedupe, and Match
 
-Use deterministic synthetic original `.fit` files with canonical SHA-256 and expected summaries. Cover valid outdoor/treadmill/indoor/unspecified running; missing GPS/HR/laps; malformed/truncated/CRC/oversize/unsupported; ambiguous timezone confirmation; low storage/commit failure; exact replay; manual/API order; external-ID/hash conflicts; changed source revision; removed activity; multiple/stale/consumed candidates; cancel; explicit alternate selection; process death before and after commit. [VERIFIED: .planning/phases/18-garmin-import/18-UI-SPEC.md:244-287,291-305,389-477; .planning/verification/v1.2-native-verification-matrix.md:67-69]
+Use deterministic synthetic activity summary/splits/detail JSON with canonical component hashes and expected normalized facts. Cover valid outdoor/treadmill/indoor/unspecified running; missing GPS/HR/laps; malformed/truncated/oversized/unsupported payloads; ambiguous timezone; low storage/commit failure; exact replay; page reorder/retry; external-ID/content-digest conflicts; changed source revision; removed activity; multiple/stale/consumed candidates; cancel; explicit alternate selection; and process death before and after commit. The real-account path separately proves foreground login/MFA, authenticated reads, encrypted refreshed-session restart, logout, offline/expired-session/403/429 recovery, and bounded retries. [VERIFIED: .planning/v1.2-OWNER-DECISIONS.md]
 
-Never store raw FIT bytes, filenames, coordinates, account subjects, tokens, serials, or personal activities in evidence. Store only synthetic fixture IDs, fixture SHA-256, aggregate counts, expected/actual bounded facts, and diagnostic codes. [VERIFIED: .planning/phases/20-native-acceptance/20-UI-SPEC.md:354-364]
+Never store raw Garmin responses, credentials, account subjects, tokens, coordinates, serials, or personal activities in shared evidence. Store only synthetic fixture IDs, fixture/component SHA-256 values, aggregate counts, expected/actual bounded facts, and diagnostic codes. [VERIFIED: .planning/phases/20-native-acceptance/20-UI-SPEC.md:354-364]
 
 ### Calendar Transition Runner
 
@@ -360,7 +359,7 @@ Maestro drives the journey, but a test-only native geometry/semantic probe must 
 | NV-PERF-09 | 60Hz frame target 16.67ms; proposed UI frame-work p95≤16.67ms across at least 100 complete Calendar sequences, retaining missed frames, refresh rate, and profiler overhead. |
 | NV-PERF-10..13 | Preserve dirty-trigger, writer-occupancy, merge-preflight/memory, and merge-materialization thresholds from the existing Phase 12 executable checker. |
 
-[VERIFIED: .planning/verification/v1.2-native-verification-matrix.md:140-162] FIT parse/import time and peak-memory limits are not pre-existing budgets; measure reviewed maximum bounded fixtures first, then lock explicit thresholds before a final pass. [VERIFIED: .planning/verification/v1.2-native-verification-matrix.md:160]
+[VERIFIED: .planning/verification/v1.2-native-verification-matrix.md:140-162] Garmin JSON page/detail normalization time and peak-memory limits are not pre-existing budgets; Phase 18 fixes explicit thresholds from bounded fixtures before the Phase 20 final run. [VERIFIED: .planning/v1.2-OWNER-DECISIONS.md]
 
 Calculate p95 exactly as the current implementation:
 
@@ -426,13 +425,13 @@ Reuse the Phase 7 safety pattern: canonical exact-key JSON, hashed serial, exact
 ### Pitfall 4: Gate Collapse
 
 **What goes wrong:** Affected rows become PASS because deterministic subtests pass while DEV/TIM/Garmin prerequisites remain open.
-**Why it happens:** Aggregate status ignores conditional sub-assertions.
-**How to avoid:** Resolve owner/external/exception gates after evidence completeness; preserve row-level `BLOCKED_OWNER`, `CONDITIONAL_EXTERNAL`, and non-PASS `ACCEPTED_EXCEPTION` with complete decision/scope/rationale/hash metadata.
-**Warning signs:** `PASS_WITH_NOTES`, “not applicable” without reviewer, or FIT success used as live provider proof. [VERIFIED: .planning/phases/20-native-acceptance/20-UI-SPEC.md:60-73,416-470]
+**Why it happens:** Aggregate status ignores pending or failing sub-assertions.
+**How to avoid:** Resolve technical evidence states after completeness checks; preserve row-level `NOT_RUN`, `FAIL`, `REVIEW_REQUIRED`, and non-PASS `ACCEPTED_EXCEPTION` with complete decision/scope/rationale/hash metadata.
+**Warning signs:** `PASS_WITH_NOTES`, “not applicable” without reviewer, or fixture-only JSON success used as real-account proof. [VERIFIED: .planning/phases/20-native-acceptance/20-UI-SPEC.md:60-73,416-470]
 
 ### Pitfall 5: Raw Device or Personal Data Leaks
 
-**What goes wrong:** Serial, filenames, coordinates, FIT bytes, bodyweight, notifications, or local paths enter JSON/screenshots.
+**What goes wrong:** Serial, credentials, tokens, raw provider payloads, coordinates, bodyweight, notifications, or local paths enter JSON/screenshots.
 **Why it happens:** Current build manifests retain raw device serials and generic secret scanners do not inspect images.
 **How to avoid:** Split runner-local device selection from shared hashed identity; use synthetic fixtures, safe names, recursive forbidden-key/string scans, exact screenshot sets, and manual privacy review.
 **Warning signs:** `device.serial` in shared v1.2 evidence or arbitrary filenames in capture paths. [VERIFIED: scripts/build-current-native-test-apk.sh:263-269; .planning/phases/20-native-acceptance/20-UI-SPEC.md:354-364]
@@ -548,17 +547,17 @@ const validCases = cases.length === expectedCaseIds.length
 | A1 | The new attended-checklist filename and the new exported symbol names should use the exact recommendations above. [ASSUMED] | Recommended Project Structure / Exported Symbols | Low: renaming changes plan references, not the evidence contract, if every consumer changes atomically. |
 | A2 | New package-script aliases and the aggregate native-suite identifier should use the exact proposed names in Validation Architecture. [ASSUMED] | Validation Architecture | Low: names can change before implementation, but runner, workflow, tests, and documentation must remain consistent. |
 
-## Resolved Planning Treatments for External and Owner Gates
+## Resolved Planning Baselines and Technical Evidence
 
-1. **DEV-01 / DEV-02 owner disposition — RESOLVED FOR PLANNING**
-   - What we know: both are proposed, zero accepted. [VERIFIED: .planning/design/v1.2-DEVIATIONS.md:1-16]
-   - Planning treatment: implement comparison fixtures and preserve `BLOCKED_OWNER`; after a dated owner choice, any selected deviation or retained failing oracle is non-PASS `ACCEPTED_EXCEPTION` with complete decision/scope/rationale/hash metadata.
-2. **TIM-01 runtime policy — RESOLVED FOR PLANNING**
-   - What we know: authoring UI is removed, but legacy facts, set/pointer/rest recovery, foreground reconciliation, queued callback, relaunch, restore, merge, and zero-cue/approved-cue behavior remain gated. [VERIFIED: .planning/phases/20-native-acceptance/20-UI-SPEC.md:418-442]
-   - Planning treatment: require a dated owner choice plus every `TIM-01-*` fixture before affected rows leave `BLOCKED_OWNER`; Phase 20 never chooses a default.
-3. **Garmin live access — RESOLVED FOR PLANNING**
-   - What we know: official program approval/access and reviewed confidential topology are not established for this project; offline FIT is independent. [VERIFIED: .planning/phases/18-garmin-import/18-CONTEXT.md:26-33]
-   - Planning treatment: keep live rows `CONDITIONAL_EXTERNAL` and complete unconditional local evidence; no stub can close them.
+1. **DEV-01 / DEV-02 — ACCEPTED BASELINES**
+   - What we know: the owner selected adaptive 6–18dp Calendar padding and Light title `#9B470B`. [VERIFIED: .planning/v1.2-OWNER-DECISIONS.md]
+   - Planning treatment: implement and compare the selected branches directly. Successful evidence may PASS; absent proof is NOT_RUN or REVIEW_REQUIRED and mismatch is FAIL.
+2. **TIM-01 — ACCEPTED RETIREMENT**
+   - What we know: cadence/cluster authoring, playback, callbacks and foreground reconciliation are retired without a compatibility mode; historical facts and ordinary between-set rest remain protected. [VERIFIED: .planning/v1.2-OWNER-DECISIONS.md]
+   - Planning treatment: run every `TIM-01-*` retirement/recovery fixture and require zero cues plus exact history/set/pointer/rest recovery.
+3. **Garmin transport — SELECTED STANDALONE ANDROID PATH**
+   - What we know: the owner selected bundled Python 3.13/Chaquopy 17.0 with pinned `python-garminconnect`, an allowlisted native bridge and activity JSON; there is no alternate transport gate. [VERIFIED: .planning/v1.2-OWNER-DECISIONS.md]
+   - Planning treatment: deterministic JSON fixtures cover parsing/dedupe/revision/matching, while an attended real-account run covers login/MFA/read/restart/logout and 403/429. Missing proof remains NOT_RUN or REVIEW_REQUIRED; failure is FAIL.
 4. **Phase 13–19 implementation availability — RESOLVED FOR PLANNING**
    - What we know: Phase 20 depends on all prior phases and currently has no plans or runtime evidence. [VERIFIED: .planning/ROADMAP.md:218-236; .planning/verification/v1.2-native-verification-matrix.md:3-9]
    - Planning treatment: require every terminal Phase 13–19 summary/validation/evidence output before the Phase 20 host gate; any missing upstream contract blocks before freeze/build and is repaired in its owning phase.
@@ -576,16 +575,16 @@ No builds, tests, emulator/device queries, or device mutations were run; this is
 | Maestro | Native UI journeys | Available | 2.8.0 | — [VERIFIED: environment probe 2026-10-06; .github/workflows/pr.yml:20] |
 | apksigner / zipalign | APK signature/alignment identity | Available at pinned SDK path; not on PATH | Build Tools 36.0.0 | Resolve from pinned Android SDK path. [VERIFIED: environment probe 2026-10-06; scripts/build-current-native-test-apk.sh:159-162] |
 | Android emulator / physical Samsung | Native and attended execution | Not probed by instruction | — | Planner must place explicit later authorization/preflight before any build/device action. [VERIFIED: .planning/phases/20-native-acceptance/20-CONTEXT.md:26-29] |
-| Garmin program access | Live provider rows | Unverified/conditional | — | Complete local FIT evidence; preserve `CONDITIONAL_EXTERNAL` for live rows. [VERIFIED: .planning/phases/20-native-acceptance/20-UI-SPEC.md:458-463] |
+| Owner Garmin account interaction | Login/MFA/read/restart acceptance | Required during later attended native run | Credentials and MFA remain owner-entered and never persisted in evidence | Run the selected standalone client; record only privacy-safe outcomes/hashes. [VERIFIED: .planning/v1.2-OWNER-DECISIONS.md] |
 
 **Missing dependencies with no fallback:**
 
 - Exact pinned active Node/npm/Java must be selected before later execution; do not run evidence under the currently active versions. [VERIFIED: environment probe 2026-10-06]
 - Final Samsung observation requires later owner-authorized access to the declared physical device and exact installed artifact. [VERIFIED: .planning/phases/20-native-acceptance/20-UI-SPEC.md:465-470]
 
-**Missing dependencies with fallback:**
+**Technical proof still pending:**
 
-- Live Garmin access may remain absent; offline original-FIT import/dedupe/match is the required independent fallback, while live rows remain conditional. [VERIFIED: .planning/phases/20-native-acceptance/20-UI-SPEC.md:458-463]
+- The selected standalone Garmin route has no alternate transport fallback. Until the later authorized owner-account run proves login/MFA/read/restart/logout and 403/429 behavior, affected rows remain NOT_RUN or REVIEW_REQUIRED. [VERIFIED: .planning/v1.2-OWNER-DECISIONS.md]
 
 ## Validation Architecture
 
@@ -597,7 +596,7 @@ No builds, tests, emulator/device queries, or device mutations were run; this is
 | Config file | `jest.config.js`; four projects: `unit`, `components`, `sqlite-host`, `integration`. [VERIFIED: jest.config.js:26-89] |
 | Quick run command | `node --test scripts/v12-evidence-scripts.test.mjs` — Wave 0 addition. [VERIFIED: .planning/verification/v1.2-native-verification-matrix.md:34] |
 | Full host suite command | `npm run typecheck && npm run lint && npm run check:boundaries && npm run test:all && npm run test:evidence:v12` — the first four commands exist; the final alias is proposed [ASSUMED]. [VERIFIED: package.json:19-28,72] |
-| Final native gate | Later-authorized v1.2 build → native SQLite suites → v1.2 Maestro/config matrix → Calendar/FIT/recovery → release-build benchmarks → validator → attended observation → validator final mode. [VERIFIED: .planning/verification/v1.2-native-verification-matrix.md:179-186] |
+| Final native gate | Later-authorized v1.2 build → native SQLite suites → v1.2 Maestro/config matrix → Calendar/Garmin/recovery → release-build benchmarks → validator → attended observation → validator final mode. [VERIFIED: .planning/verification/v1.2-native-verification-matrix.md:179-186] |
 
 ### Phase Requirements → Test Map
 
@@ -614,8 +613,8 @@ The new npm aliases and `v1.2-acceptance` aggregate suite identifier in this tab
 | VER-07 | Migration/backup/restore/merge/history | Host + real device SQLite | `npm run test:sqlite:device -- --suite v1.2-acceptance --manifest <run>/build.json` | ❌ Wave 0 aggregate; current runner exists |
 | VER-08 | Offline/process death at mutation boundaries | Integration + native lifecycle | `npm run test:maestro:v12 -- --shard recovery` | ❌ Wave 0 |
 | VER-09 | Calendar 1:1/25%/morph/cancel | Unit/controller + native trace | `npm run test:maestro:v12 -- --shard calendar` | ❌ Wave 0 |
-| VER-10 | Actual synthetic FIT/dedupe/match; conditional live API | Integration + native SQLite/Maestro | `npm run test:maestro:v12 -- --shard garmin-progress` | ❌ Wave 0 |
-| VER-11 | Locked budgets and bounded FIT measurements | Native release benchmark + validator | `npm run benchmark:v12:interactions -- --manifest <run>/build.json` | ❌ Wave 0 |
+| VER-10 | Bundled Python/Chaquopy; real login/MFA/read/restart/logout; JSON fidelity/403/429/dedupe/match | Integration + native SQLite/Maestro + attended real account | `npm run test:maestro:v12 -- --shard garmin-progress` | ❌ Wave 0 |
+| VER-11 | Locked budgets and bounded Garmin sync measurements | Native release benchmark + validator | `npm run benchmark:v12:interactions -- --manifest <run>/build.json` | ❌ Wave 0 |
 | VER-12 | Samsung observation-only record | Schema/identity + attended | `npm run verify:attended:v12 -- --run <run>` | ❌ Wave 0 |
 | VER-13 | Candidate/readiness/rollback and release stop | Contract + human gate | `npm run verify:v12:evidence -- --run <run> --mode readiness` | ❌ Wave 0 |
 
@@ -627,7 +626,7 @@ The native matrix proposes the underlying exact script files. [VERIFIED: .planni
 - **Host/freeze/build gate:** verify every terminal Phase 13–19 output; select exact Node/npm/Java/SDK/NDK/ADB/Maestro/signing tools; register all integrity modules; pass type/lint/boundary/test:all/coverage/evidence self-tests; commit; freeze source; then build one artifact and create one immutable run/build.json. A live mismatch or later source change blocks and requires a new build/run.
 - **Native shard waves:** each independent producer emits observations/gate inputs only against that one run. Re-execute and bind `multi-plan.yaml` and `library-running.yaml` one-to-one. Failed shards are retained and require a new run after remediation.
 - **Attended then final:** run a no-write preseal, pause at the owner-attended Samsung checkpoint, validate the resulting observation record automatically, and only then invoke `sealV12FinalEvidence` once.
-- **Phase gate:** exact 172-row equality, zero unexplained missing/duplicate/unknown/skipped evidence, valid conditional/accepted-exception metadata, separate PASS and exception counts, all locked automated rows passing, privacy scan clean, raw samples retained, attended record separate, and owner review reached before any release action. [VERIFIED: .planning/phases/20-native-acceptance/20-UI-SPEC.md:170-182,340-350,465-470]
+- **Phase gate:** exact 172-row equality, zero unexplained missing/duplicate/unknown/skipped evidence, valid accepted-exception metadata, separate PASS and exception counts, all required automated rows passing, privacy scan clean, raw samples retained, attended record separate, and owner review reached before any release action. [VERIFIED: .planning/phases/20-native-acceptance/20-UI-SPEC.md:170-182,340-350,465-470]
 
 ### Wave 0 Gaps
 
@@ -650,9 +649,9 @@ Security enforcement is enabled at ASVS Level 1 and blocks on high severity. [VE
 
 | ASVS Category | Applies | Standard Control |
 |---------------|---------|-----------------|
-| V2 Authentication | No product authentication added | Phase 20 must not invent Garmin or release credentials; live access remains conditional. [VERIFIED: .planning/phases/20-native-acceptance/20-UI-SPEC.md:458-463] |
-| V3 Session Management | No user session added | Provider tokens/subjects are excluded from evidence and no consent stub may claim live closure. [VERIFIED: .planning/phases/20-native-acceptance/20-UI-SPEC.md:354-364,458-463] |
-| V4 Access Control | Yes — authority separation | Automated, attended, owner-decision, external-provider, and release authorities remain separate; observation cannot promote or release. [VERIFIED: scripts/generate-phase7-attended-checklist.mjs:42-51; .planning/phases/20-native-acceptance/20-UI-SPEC.md:465-470] |
+| V2 Authentication | Garmin foreground account login/MFA | Phase 20 verifies the selected flow without inventing credentials; secrets remain owner-entered and absent from artifacts. [VERIFIED: .planning/v1.2-OWNER-DECISIONS.md] |
+| V3 Session Management | Garmin encrypted refreshed-session state | Verify Keystore-backed persistence outside backups, cold restart, rotation and logout; raw tokens/subjects never enter evidence. [VERIFIED: .planning/v1.2-OWNER-DECISIONS.md] |
+| V4 Access Control | Yes — authority separation | Automated and attended evidence plus later release authorization remain separate; observation cannot promote or release. [VERIFIED: scripts/generate-phase7-attended-checklist.mjs:42-51; .planning/phases/20-native-acceptance/20-UI-SPEC.md:465-470] |
 | V5 Input Validation | Yes | Exact-key canonical JSON; bounded strings/files/counts; safe relative paths; no symlinks; exact ordered IDs; JUnit/result parse validation; reject unknown fields and path traversal. [VERIFIED: scripts/create-release-candidate-manifest.mjs:55-100,110-171,340-430] |
 | V6 Cryptography | Yes | Node SHA-256 for source/fixture/artifact/report/image hashes; `apksigner` certificate/signature verification; never implement custom crypto. [VERIFIED: scripts/source-tree-digest.mjs:23-39; .github/workflows/personal-apk.yml:91-94] |
 
@@ -663,9 +662,9 @@ Security enforcement is enabled at ASVS Level 1 and blocks on high severity. [VE
 | Artifact/report/image substitution | Tampering | Re-read bytes, verify SHA-256/size, exact source/APK/device/config identity, and canonical manifests at final seal. [VERIFIED: scripts/verify-phase12-evidence.mjs:83-98,129-189] |
 | Path traversal, absolute path, symlink swap | Tampering/Elevation | Resolve inside real run root, forbid `..`/absolute/backslash, use no-follow/realpath, exact file sets, bounded files. [VERIFIED: scripts/create-release-candidate-manifest.mjs:76-171; scripts/generate-phase7-attended-checklist.mjs:131-195] |
 | False PASS over empty/failing/skipped results | Spoofing/Repudiation | Ordered source-derived IDs, expected count, zero skipped/failed, positive test count, raw JUnit hash, final derived verdict only. [VERIFIED: scripts/run-native-sqlite-contracts.mjs:288-326; .planning/phases/20-native-acceptance/20-UI-SPEC.md:340-350] |
-| Personal FIT/workout/device disclosure | Information Disclosure | Synthetic fixtures, hashed device ID, aggregate diagnostics, forbidden key/string scan, private raw quarantine and recapture. [VERIFIED: .planning/phases/20-native-acceptance/20-UI-SPEC.md:354-364] |
-| Oversized artifact/XML/JSON/FIT denial | Denial of Service | Enforce input byte/count/depth/sample bounds before parsing; keep heavy work cancelable before mutation and yielding. [VERIFIED: scripts/create-release-candidate-manifest.mjs:47-49,96-100,134-171; .planning/verification/v1.2-native-verification-matrix.md:160] |
-| Attended or stub evidence escalates authority | Elevation/Spoofing | Forbidden authority keys; separate observation schema; conditional gate resolver; no stub live-provider closure. [VERIFIED: scripts/generate-phase7-attended-checklist.mjs:42-51; .planning/phases/20-native-acceptance/20-UI-SPEC.md:458-470] |
+| Personal Garmin/workout/device disclosure | Information Disclosure | Synthetic fixtures, hashed device ID, aggregate diagnostics, forbidden key/string scan, private raw quarantine and recapture. [VERIFIED: .planning/phases/20-native-acceptance/20-UI-SPEC.md:354-364] |
+| Oversized artifact/XML/JSON denial | Denial of Service | Enforce input byte/count/depth/sample bounds before parsing; keep heavy work cancelable before mutation and yielding. [VERIFIED: scripts/create-release-candidate-manifest.mjs:47-49,96-100,134-171; .planning/verification/v1.2-native-verification-matrix.md:160] |
+| Attended or fixture evidence escalates authority | Elevation/Spoofing | Forbidden authority keys, separate observation schema, and required real-account cases; no fixture-only closure. [VERIFIED: scripts/generate-phase7-attended-checklist.mjs:42-51; .planning/phases/20-native-acceptance/20-UI-SPEC.md:458-470] |
 | Shell injection through manifest paths/IDs | Elevation/Tampering | Use `execFile/spawn` argument arrays; validate simple IDs/paths before execution; never interpolate untrusted manifest values into a shell command. [VERIFIED: scripts/create-release-candidate-manifest.mjs:76-100,134-171; scripts/run-phase10-maestro.mjs:55-64,154-175] |
 
 ## Sources
@@ -676,7 +675,7 @@ Security enforcement is enabled at ASVS Level 1 and blocks on high severity. [VE
 - `.planning/phases/20-native-acceptance/20-UI-SPEC.md` — verdicts, 172 ledger, 107 states, 64 configurations, state packs, identity, privacy, gates, comparison, traceability.
 - `.planning/design/v1.2-prototype-parity-matrix.json` and `.md` — exact 172-row source ledger and planned evidence mapping.
 - `.planning/verification/v1.2-native-verification-matrix.md` — current tooling, native suites, Calendar traces, Running variants, full configuration matrix, numeric budgets, negative cases, owner stop.
-- Phase 13–19 `CONTEXT.md` and Phase 14–19 `UI-SPEC.md` — owning product/domain contracts and conditional gates.
+- `.planning/v1.2-OWNER-DECISIONS.md` plus Phase 13–19 `CONTEXT.md` and Phase 14–19 `UI-SPEC.md` — owning product/domain contracts and settled cross-phase baselines.
 - Current scripts and workflows named throughout — source digest, build manifest, native SQLite runner, Maestro runners, validators, benchmark, attended checker, candidate manifest, personal build workflow.
 
 ### Secondary (MEDIUM confidence)
@@ -684,7 +683,7 @@ Security enforcement is enabled at ASVS Level 1 and blocks on high severity. [VE
 - [Android accessibility](https://developer.android.com/guide/topics/ui/accessibility/apps) — at least 48dp touch targets. [CITED: developer.android.com/guide/topics/ui/accessibility/apps]
 - [Android 14 features](https://developer.android.com/about/versions/14/features) — nonlinear font scaling up to 200%. [CITED: developer.android.com/about/versions/14/features]
 - [React Native performance](https://reactnative.dev/docs/performance) — release-build measurement and 60Hz frame interval; the project defines its own stricter budgets. [CITED: reactnative.dev/docs/performance]
-- [Garmin Activity API](https://developer.garmin.com/gc-developer-program/activity-api/) and [Program FAQ](https://developer.garmin.com/gc-developer-program/program-faq/) — consent/sync, approval, evaluation access, OAuth 2.0; project access remains unknown. [CITED: developer.garmin.com/gc-developer-program/activity-api/]
+- `python-garminconnect` 0.3.17 at pinned commit `218e72ca5459e014435fc2d94fd18bd601fa0c14` and Chaquopy 17.0 — selected self-contained Android transport inputs recorded in `.planning/v1.2-OWNER-DECISIONS.md`.
 
 ### Tertiary (LOW confidence)
 
@@ -695,9 +694,9 @@ Security enforcement is enabled at ASVS Level 1 and blocks on high severity. [VE
 **Confidence breakdown:**
 
 - Standard stack: HIGH — exact repository pins and workflow toolchain were opened; active local version drift was probed.
-- Architecture: HIGH for locked evidence/gate/identity boundaries; MEDIUM for final internal file decomposition, which is within Claude's discretion and may be refined by the planner without changing contracts.
-- Pitfalls: HIGH for repository-specific failure modes and current runner limitations; MEDIUM for external provider availability.
-- Runtime results: LOW/not claimed — no v1.2 implementation, test, build, emulator, device, FIT, benchmark, signing, or release action was run.
+- Architecture: HIGH for locked evidence/identity boundaries and the selected transport; MEDIUM for final internal file decomposition, which is within Claude's discretion and may be refined by the planner without changing contracts.
+- Pitfalls: HIGH for repository-specific failure modes and current runner limitations; MEDIUM for unexecuted real-account behavior.
+- Runtime results: LOW/not claimed — no v1.2 implementation, test, build, emulator, device, Garmin account read, benchmark, signing, or release action was run.
 
 **Research date:** 2026-10-06
 **Valid until:** 2026-10-13 or any Phase 13–19 implementation/contract change, whichever comes first.

@@ -25,10 +25,10 @@ The source list below is derived from `20-CONTEXT.md`, `20-UI-SPEC.md`, `20-RESE
 | `scripts/benchmark-v12-interactions.mjs` | create | service / benchmark | streaming, batch, file-I/O | `scripts/benchmark-phase12-backup.mjs` | exact role-match |
 | `scripts/generate-v12-attended-checklist.mjs` | create | utility / validator | file-I/O, request-response | `scripts/generate-phase7-attended-checklist.mjs` | exact role-match |
 | `maestro/v1.2/multi-plan.yaml` | create | test | request-response, event-driven | `maestro/phase2/schedule-cross-profile.yaml` | role + flow match |
-| `maestro/v1.2/workout.yaml` | create | test | request-response, event-driven | `maestro/lifecycle/rest-recovery.yaml`; TIM-01 compatibility only from `maestro/phase10/advanced-set-timing.yaml` | composite role-match |
+| `maestro/v1.2/workout.yaml` | create | test | request-response, event-driven | `maestro/lifecycle/rest-recovery.yaml`; retired-timing recovery shape from `maestro/phase10/advanced-set-timing.yaml` | composite role-match |
 | `maestro/v1.2/calendar.yaml` | create | test | streaming, event-driven | `maestro/phase6/calendar-date-reorder.yaml` | role-match; native trace still new |
 | `maestro/v1.2/library-running.yaml` | create | test | CRUD, request-response | `maestro/phase2/owned-plan-editor.yaml` | role-match |
-| `maestro/v1.2/garmin-progress.yaml` | create | test | file-I/O, CRUD, request-response | `maestro/phase6/progress-library.yaml` | partial; no live Garmin analog |
+| `maestro/v1.2/garmin-progress.yaml` | create | test | network, bridge, CRUD, request-response | `maestro/phase6/progress-library.yaml` | partial; no bundled Python/native Garmin analog |
 | `maestro/v1.2/recovery.yaml` | create | test | file-I/O, event-driven | `maestro/phase11/portable-merge.yaml` plus `maestro/lifecycle/rest-recovery.yaml` | composite role-match |
 | `maestro/v1.2/accessibility.yaml` | create | test | request-response, event-driven | `maestro/phase6/navigation-accessibility.yaml` | exact role-match |
 
@@ -261,7 +261,7 @@ if (details === undefined || !details.isFile() || details.isSymbolicLink()) {
 
 Require canonical JSON bytes, realpath containment, no symlinks, bounded byte/count/depth/sample sizes, exact expected file sets, and re-hashing at seal time. `final-evidence.json` is written only after all referenced bytes are re-read and validated, following `executePhase12EvidenceVerifier` at `scripts/verify-phase12-evidence.mjs:129-189`.
 
-Gate resolution occurs after ordinary evidence validation. Producers never supply final verdicts. See **Conditional Gate Pattern** below.
+Evidence-state resolution occurs after ordinary evidence validation. Producers never supply final verdicts. See **Settled Baseline and Evidence-State Pattern** below.
 
 ---
 
@@ -275,10 +275,10 @@ Add cases for:
 
 - Missing, duplicate, unknown, out-of-order, skipped, false `N_A_REVIEWED`, malformed `ACCEPTED_EXCEPTION`, or accepted-exception-as-PASS rows.
 - Wrong run/source/prototype/fixture/APK/signature/device/config identity.
-- Absolute paths, `..`, backslashes, symlinks, hard links where uniqueness matters, stale bytes, extras, and oversized JSON/XML/PNG/FIT/sample arrays.
+- Absolute paths, `..`, backslashes, symlinks, hard links where uniqueness matters, stale bytes, extras, and oversized JSON/XML/PNG/sample arrays.
 - Empty or failing JUnit under success metadata; contact-sheet-only, mock-only, final-screenshot-only Calendar, and one-scheme System evidence.
-- Invalid verdict values, producer-authored row verdicts, DEV/TIM gate collapse, live-Garmin stub closure, attended substitution, and release-authority fields.
-- Raw serial, local path, filename, name/email/token/account subject, FIT bytes/coordinates/route, bodyweight, notification, or workout-row leakage.
+- Invalid verdict values, producer-authored row verdicts, settled-baseline misclassification, fixture-only Garmin closure, attended substitution, and release-authority fields.
+- Raw serial, local path, filename, name/email/credential/token/account subject, provider payload/coordinates/route, bodyweight, notification, or workout-row leakage.
 - Budget/sample/fixture-bound drift and non-finite or negative samples.
 
 Copy benchmark contract tests from `scripts/benchmark-phase12-backup.test.mjs:18-54`; every threshold and minimum sample count should be asserted literally.
@@ -311,7 +311,7 @@ function samples(values, expected, limit, label) {
 }
 ```
 
-Export `V12_PERFORMANCE_BUDGETS`, `validateV12PerformanceEvidence`, and `executeV12InteractionBenchmark`. Keep raw samples and exact fixture bounds. Warm/cold launch, root switch, set+dock, input/rest, search-after-debounce, Calendar, useful Progress, and review-open budgets are fixed by D20-06. Retain Phase 12's dirty/writer/merge thresholds. FIT parse/import time and peak memory require measured bounded fixtures and an explicitly locked threshold before a final pass; do not silently borrow the merge budget.
+Export `V12_PERFORMANCE_BUDGETS`, `validateV12PerformanceEvidence`, and `executeV12InteractionBenchmark`. Keep raw samples and exact fixture bounds. Warm/cold launch, root switch, set+dock, input/rest, search-after-debounce, Calendar, useful Progress, and review-open budgets are fixed by D20-06. Retain Phase 12's dirty/writer/merge thresholds. Garmin JSON page/detail sync and normalization time plus peak memory require bounded fixtures and an independently fixed Phase 18 threshold before the final pass; do not silently borrow the merge budget.
 
 Use monotonic, release-build user-perceived markers. Do not report repository/Jest timings as UI performance, average p95s, drop cold samples, or infer frame smoothness from animation duration. Publish with temp-file then rename as at `scripts/benchmark-phase12-backup.mjs:226-252`.
 
@@ -339,7 +339,7 @@ Recommended exports are `V12_ATTENDED_ROWS`, `buildV12AttendedChecklist`, `valid
 
 Copy the exact model/package/installed-byte binding and hashed serial pattern from `readPhase7SamsungDevice` at lines 93-112. Copy canonical exact-key JSON and `mode: "observation-only"` from lines 115-128. Copy safe realpath/no-symlink/exact-PNG-set/unique-hash validation from lines 131-205.
 
-Define fresh Phase 20 rows for legibility, one-handed dock reach, Calendar drag/morph feel, focus/keyboard, 200% reflow, Light/Dark/System, and device-owned sound/haptic presentation. Do not import `PHASE7_N4_ROWS`, old statuses, old images, or old approval semantics. `passed`/`failed` here is an observation status only; automated failures and conditional gates remain unchanged.
+Define fresh Phase 20 rows for legibility, one-handed dock reach, Calendar drag/morph feel, focus/keyboard, 200% reflow, Light/Dark/System, and device-owned sound/haptic presentation. Do not import `PHASE7_N4_ROWS`, old statuses, old images, or old approval semantics. `passed`/`failed` here is an observation status only; automated technical verdicts remain unchanged.
 
 ---
 
@@ -355,7 +355,7 @@ Do not use hard-coded coordinates for ordinary controls; the existing flow uses 
 
 ### `maestro/v1.2/workout.yaml` (test, event-driven) — create
 
-**Analogs:** `maestro/lifecycle/rest-recovery.yaml` and, only for retained legacy compatibility, `maestro/phase10/advanced-set-timing.yaml`.
+**Analogs:** `maestro/lifecycle/rest-recovery.yaml` and, only for historical recovery shape, `maestro/phase10/advanced-set-timing.yaml`.
 
 Copy orientation/draft preservation, post-commit rest, stop/relaunch, paused-rest recovery, and retry-safe continuation from `maestro/lifecycle/rest-recovery.yaml:29-142`. The legacy timing flow at `maestro/phase10/advanced-set-timing.yaml:147-171` is useful only as a recovery-shape analog. Its cadence/cluster authoring UI is removed by the approved v1.2 contract and must not be resurrected.
 
@@ -385,9 +385,9 @@ Copy label/ID-based form interaction, explicit keyboard hiding, bounded scrollin
 
 **Closest partial analog:** `maestro/phase6/progress-library.yaml`.
 
-Copy persisted source generation, relaunch, route traversal, source-backed Progress assertions, semantic search controls, and named screenshot checkpoints from `maestro/phase6/progress-library.yaml:97-166`. No current flow covers real FIT file picking/parsing/dedupe/matching or approved Garmin consent.
+Copy persisted source generation, relaunch, route traversal, source-backed Progress assertions, semantic search controls, and named screenshot checkpoints from `maestro/phase6/progress-library.yaml:97-166`. No current flow covers bundled Python/Chaquopy packaging, real Garmin login/MFA/read/restart/logout, JSON dedupe/matching, or 403/429 behavior.
 
-Use deterministic synthetic original FIT files with hashes and expected summaries. Keep offline FIT/import/dedupe/match unconditional. Keep live Garmin rows `CONDITIONAL_EXTERNAL` unless actual program access, granted scope/delivery contract, real consent, and reviewed confidential-credential topology all exist. A fixture-only visual state must be tagged `fixture_only` and cannot close live behavior.
+Use deterministic synthetic activity summary/splits/detail JSON with component hashes and expected normalized facts for repeatable parsing, bounds, dedupe, revision and matching checks. Separately drive the owner-attended real-account login/MFA/read/restart/logout path without persisting credentials or raw personal responses in shared evidence. A fixture-only visual state must be tagged `fixture_only` and cannot close real-account behavior.
 
 ---
 
@@ -431,31 +431,31 @@ Derive expected IDs from bound source, freeze them, reject duplicates, and compa
 ### 3. Shard Producers and One Final Seal
 
 **Source:** `scripts/verify-phase12-evidence.mjs:64-98,129-189`  
-**Apply to:** SQLite, Maestro, Calendar, FIT, performance, visual comparison, semantics, geometry, and Samsung evidence.
+**Apply to:** SQLite, Maestro, Calendar, Garmin, performance, visual comparison, semantics, geometry, and Samsung evidence.
 
 Producers report observations, counts, samples, and hashes. Only `sealV12FinalEvidence` derives the row and aggregate verdicts and writes `final-evidence.json`. Use temporary-file + rename or exclusive fresh creation; never partially publish success.
 
-### 4. Conditional Gate Pattern
+### 4. Settled Baseline and Evidence-State Pattern
 
-Gate resolution runs only after the ordinary evidence for the row is complete and valid.
+Verdict resolution runs only after ordinary evidence for the row is checked. The owner has already selected MAP-01, TIM-01, DEV-01, DEV-02, and the standalone Garmin transport; Phase 20 measures those choices rather than reopening them.
 
-| Gate | Affected scope | Required derived outcome while open |
+| Baseline | Affected scope | Required derived outcome |
 |---|---|---|
-| `DEV-01` | affected Calendar geometry/accessibility rows, including VER-04 | `BLOCKED_OWNER` while open; after owner decision, a non-oracle adaptation or retained failing oracle is `ACCEPTED_EXCEPTION` with complete metadata and is never PASS |
-| `DEV-02` | CAL-03/VER-04 and affected Light visual rows | `BLOCKED_OWNER` while open; after owner decision, a selected candidate or retained failing oracle is `ACCEPTED_EXCEPTION` with complete metadata and is never PASS |
-| `TIM-01` | `DOM-03`, `DOM-15`, `DOM-17`, `WRK-05`, `WRK-18`, `WRK-21`–`WRK-23`, `WRK-26`, `VER-07`, `VER-08` | `BLOCKED_OWNER` until dated policy plus every applicable `TIM-01-*` compatibility fixture passes |
-| Garmin access | `GAR-04`–`GAR-07`, `NV-IMP-11`–`NV-IMP-13` | `CONDITIONAL_EXTERNAL` without real approved access/topology/consent; local FIT rows remain independently pass/fail |
-| Samsung review | VER-12 observation rows only | observation `passed`/`failed`; never changes automated, owner, external, or release gates |
+| `DEV-01` | affected Calendar geometry/accessibility rows, including VER-04 | PASS after adaptive 6–18dp geometry/hit-target evidence succeeds; otherwise NOT_RUN/REVIEW_REQUIRED/FAIL |
+| `DEV-02` | CAL-03/VER-04 and affected Light visual rows | PASS after `#9B470B` native contrast/visual evidence succeeds; otherwise NOT_RUN/REVIEW_REQUIRED/FAIL |
+| `TIM-01` | `DOM-03`, `DOM-15`, `DOM-17`, `WRK-05`, `WRK-18`, `WRK-21`–`WRK-23`, `WRK-26`, `VER-07`, `VER-08` | PASS only after every applicable retirement fixture proves zero cadence/cluster playback and preserved history/rest/set/pointer behavior |
+| Garmin standalone | `GAR-04`–`GAR-09`, VER-10 | PASS only after packaging plus deterministic JSON cases and required real-account login/MFA/read/restart/logout/403/429 evidence succeed |
+| Samsung review | VER-12 observation rows only | observation `passed`/`failed`; never changes automated or release authority |
 | Release authorization | future signed build/install/promotion only | readiness may be conditional; Phase 20 stops for owner review |
 
-Allowed row verdicts are exactly `PASS`, `FAIL`, `REVIEW_REQUIRED`, `BLOCKED_OWNER`, `CONDITIONAL_EXTERNAL`, `ACCEPTED_EXCEPTION`, and `N_A_REVIEWED`. `ACCEPTED_EXCEPTION` is non-PASS, counted separately, and requires deviation ID, owner decision/date, exact scope/configurations, rationale, and evidence hashes. `N_A_REVIEWED` requires a domain reason plus reviewer identity/date; missing evidence is never N/A. `CONDITIONALLY_READY` is possible only under an explicit reviewed policy when every remaining non-PASS row is a valid accepted exception.
+Allowed row verdicts are exactly `NOT_RUN`, `PASS`, `FAIL`, `REVIEW_REQUIRED`, `ACCEPTED_EXCEPTION`, and `N_A_REVIEWED`. `ACCEPTED_EXCEPTION` is non-PASS, counted separately, and requires deviation ID, owner decision/date, exact scope/configurations, rationale, and evidence hashes. `N_A_REVIEWED` requires a domain reason plus reviewer identity/date; missing evidence is never N/A. `CONDITIONALLY_READY` is possible only under an explicit reviewed policy when every remaining non-PASS row is a valid accepted exception.
 
 ### 5. Privacy-Safe Evidence
 
 **Sources:** `scripts/generate-phase7-attended-checklist.mjs:42-76,131-205`, `scripts/verify-phase12-evidence.mjs:55-62`  
-**Apply to:** all JSON, logs, screenshots, FIT fixtures, device records, and error messages.
+**Apply to:** all JSON, logs, screenshots, Garmin fixtures, device records, and error messages.
 
-Use deterministic synthetic names, activities, routes, history, bodyweight, notifications, and FIT bytes. Evidence may contain stable synthetic IDs, hashes, bounded counts, and diagnostic codes. It must not contain names, emails, account subjects, tokens, raw activity IDs, serials, local paths, filenames derived from personal input, FIT bytes, coordinates/routes, bodyweight, notification contents, or workout rows.
+Use deterministic synthetic names, activities, routes, history, bodyweight, notifications, and Garmin JSON. Evidence may contain stable synthetic IDs, hashes, bounded counts, and diagnostic codes. It must not contain names, emails, account subjects, credentials, tokens, raw activity IDs, serials, local paths, filenames derived from personal input, raw provider payloads, coordinates/routes, bodyweight, notification contents, or workout rows.
 
 Prevent sensitive pixels at fixture/device setup. If private pixels appear, quarantine the raw capture outside the repository, record a privacy failure, and recapture. Blur/crop/redaction cannot convert a private capture into canonical pass evidence.
 
@@ -497,9 +497,9 @@ Phase 20 prepares readiness evidence and stops. It does not modify or dispatch t
 
 ### Gate and Authority
 
-- Converting `ACCEPTED_EXCEPTION`, `BLOCKED_OWNER`, or `CONDITIONAL_EXTERNAL` to `PASS`, `PASS_WITH_NOTES`, or an unreviewed N/A; counting an accepted exception in PASS totals.
-- Treating a dated TIM-01 choice without all selected-policy compatibility fixtures as closed.
-- Using deterministic FIT fixtures, a consent mock, or a manual FIT success to close live Garmin rows.
+- Converting `ACCEPTED_EXCEPTION`, `NOT_RUN`, or `REVIEW_REQUIRED` to `PASS`, `PASS_WITH_NOTES`, or an unreviewed N/A; counting an accepted exception in PASS totals.
+- Reopening MAP-01/TIM-01/DEV-01/DEV-02 or relabelling missing technical evidence as an owner block.
+- Using deterministic JSON fixtures or a login mock to close required real-account Garmin rows.
 - Letting Samsung observation, prior N4 evidence, reviewer preference, or automated screenshot success authorize build, install, promotion, release, or Terminal Seal.
 - Adding approval/promotion/tag/release fields to attended evidence.
 
@@ -513,7 +513,7 @@ Phase 20 prepares readiness evidence and stops. It does not modify or dispatch t
 
 ### Privacy and Filesystem Safety
 
-- Emitting raw serials, local/private paths, tokens, account subjects, raw FIT names/bytes, coordinates/routes, bodyweight, notification text, or workout rows in shared artifacts or logs.
+- Emitting raw serials, local/private paths, credentials, tokens, account subjects, raw provider payloads, coordinates/routes, bodyweight, notification text, or workout rows in shared artifacts or logs.
 - Using free-form paths, accepting absolute/parent/backslash traversal, following symlinks, or ignoring unexpected files.
 - Treating blur, crop, or redaction as proof that a private original is canonical evidence.
 - Shell-interpolating IDs or paths from manifests; use argument arrays after validation.
@@ -538,10 +538,10 @@ No planned file lacks a role-level analog. The following responsibilities lack a
 
 | Target responsibility | Closest partial source | Planner instruction |
 |---|---|---|
-| 172-row contract-derived ledger plus six-verdict gate resolver in `verify-v12-native-evidence.mjs` | Phase 12 exact-case validator | Implement from the bound matrix/UI contract; do not reduce to all-pass counts |
+| 172-row contract-derived ledger plus six-verdict evidence-state resolver in `verify-v12-native-evidence.mjs` | Phase 12 exact-case validator | Implement from the bound matrix/UI contract; do not reduce to all-pass counts |
 | 64-configuration native visual comparison with semantic/geometry/color triage | Phase 6 exact screenshot set/hash validator | Add new comparison schemas/tool version/masks/dispositions; `pngjs` is diagnostic only |
 | Calendar timestamped intermediate geometry/semantic trace | Phase 6 held-drag hierarchy/screenshot probe | Add a test-only native probe; Maestro final-state evidence cannot close VER-09 |
-| Live Garmin provider acceptance inside `garmin-progress.yaml` | no live provider implementation/evidence exists | Preserve `CONDITIONAL_EXTERNAL`; do not invent a broker, credentials, consent, or stub pass |
+| Standalone Garmin acceptance inside `garmin-progress.yaml` | no bundled Python/native real-account evidence exists | Prove the selected packaging/auth/read/restart path; do not invent credentials or accept a stub/fixture-only pass |
 
 ## Planner Handoff
 
@@ -550,7 +550,7 @@ No planned file lacks a role-level analog. The following responsibilities lack a
 3. Select/read back exact pinned Node/npm/Java/SDK/Build Tools/NDK/ADB/Maestro/signing tools, register every integrity module, pass type/lint/boundary/test:all/coverage/evidence tests, commit, freeze source, build one exact artifact and create one immutable run/build.json. Any later source change requires a new build/run.
 4. Execute independent observation-only shards serially under one device/settings lease. Explicitly create, re-execute and one-to-one bind `multi-plan.yaml` and `library-running.yaml`; no producer writes row or final verdicts.
 5. Run a no-write preseal, then the nonautonomous Samsung `checkpoint:human-verify`, then automated attended-record validation. Only afterward may `sealV12FinalEvidence` write the final ledger/seal once.
-6. Preserve `ACCEPTED_EXCEPTION`, `BLOCKED_OWNER`, `CONDITIONAL_EXTERNAL` and other non-PASS outcomes, produce readiness/rollback facts, and stop for owner review. Do not chain into the future release workflow.
+6. Preserve `NOT_RUN`, `FAIL`, `REVIEW_REQUIRED`, `ACCEPTED_EXCEPTION` and other non-PASS outcomes, produce readiness/rollback facts, and stop for owner review. Do not chain into the future release workflow.
 
 ## Metadata
 

@@ -7,7 +7,7 @@ shadcn_initialized: false
 preset: none
 created: 2026-10-06
 presentation_oracle: approved.json revision 18 and approved-hybrid.html
-legacy_timing_playback: pending_owner_checkpoint_TIM-01
+legacy_timing_playback: approved_retire_playback_no_compatibility
 ---
 
 # Phase 15 — Workout Parity UI Design Contract
@@ -56,7 +56,7 @@ Included:
 
 Excluded:
 
-- Calendar month/focus work, Running authoring, FIT parsing, Garmin transport, and Progress analytics.
+- Calendar month/focus work, Running authoring, Garmin authentication/JSON transport, and Progress analytics.
 - Any in-app Running recorder.
 - Any new progression algorithm or automatically accepted target.
 - Any product-code, build, release, deployment, or external prototype edit in this planning phase.
@@ -583,9 +583,9 @@ Finishing never silently modifies future targets. Closing the prompt and <code>K
 
 ---
 
-## Legacy Cadence / Cluster Owner Checkpoint
+## Legacy Cadence / Cluster Retirement
 
-<code>TIM-01</code> is unresolved and blocks any runtime playback retirement decision.
+<code>TIM-01</code> is approved as <code>retire-playback</code> with no compatibility mode.
 
 Locked now:
 
@@ -594,13 +594,13 @@ Locked now:
 - Do not delete, rewrite, normalize, or present old timing facts as off merely because the authoring UI is hidden.
 - Flat between-set rest with explicit <code>sec</code> is a different supported feature and remains visible.
 
-Pending owner checkpoint before implementation may disable hidden authoring, foreground reconciliation, queued callbacks, and playback. Until that checkpoint is accepted, plans must not claim that playback retirement is approved.
+Implementation removes hidden authoring, runtime commands, foreground reconciliation, queued callbacks, and playback. The dated owner record is checked automatically before the cut; no product choice remains.
 
-If the owner approves the proposed retirement policy, the compatibility notice is exactly:
+The retirement notice is exactly:
 
 <code>Repetition and cluster cues are no longer available. Saved sets and between-set rest are preserved.</code>
 
-If zero-cue behavior cannot be proven across foreground, queued callback, relaunch, restore, and merge while rest recovery still works, block cutover and retain the old recovery path. Do not ship a UI-only retirement.
+If zero-cue behavior cannot be proven across foreground, queued callback, relaunch, restore, and merge while rest recovery still works, block release and fix the technical defect. Do not restore playback as a compatibility mode and do not ship a UI-only retirement.
 
 ---
 
@@ -782,7 +782,7 @@ Applicable state considerations resolved: 37 covered, 9 backstop, 0 unresolved.
 | long-text | Completion/error copy | 🧪 backstop | Completion, partial, retry, and write-back sheets scroll and retain full text/focus order. |
 | overflow | Light/Dark/System parity | 🧪 backstop | Native screenshots at all target widths verify the same hierarchy and semantic states. |
 | populated | Process-death recovery | 🧪 backstop | Native relaunch evidence verifies exact session/pointer/rest/values and no duplicate command. |
-| populated | Legacy timing compatibility | 🧪 backstop | TIM-01 proof must cover foreground, queued callback, relaunch, restore, and merge before any playback retirement. |
+| populated | Retired timing recovery safety | 🧪 backstop | TIM-01 proof must cover zero playback across foreground, queued callback, relaunch, restore, and merge while ordinary set/pointer/rest recovery remains exact. |
 
 ---
 
@@ -847,7 +847,7 @@ All 36 parity rows remain <code>pending_implementation</code>; this draft specif
 | 5. Spacing | PASS | Multiples-of-4 scale, the canonical 74dp navigation and 82%-maximum sheet contracts, 48dp targets, safe-area, 200%, landscape, keyboard rules, and the full viewport matrix are explicit. |
 | 6. Registry safety | PASS | Native component system only; shadcn and third-party registries are not applicable. |
 
-Self-check does not approve implementation. <code>TIM-01</code> remains a separate owner checkpoint.
+Self-check does not prove implementation. <code>TIM-01</code> is approved and still requires the automatic owner-record plus zero-cue/recovery gates.
 
 ---
 
@@ -860,4 +860,4 @@ Self-check does not approve implementation. <code>TIM-01</code> remains a separa
 - [x] Dimension 5 Spacing: PASS
 - [x] Dimension 6 Registry Safety: PASS
 
-**Approval:** approved by gsd-ui-checker; explicit owner and external gates remain open where documented.
+**Approval:** approved by gsd-ui-checker; no settled owner decision remains open. Automatic owner-record validation and required native/runtime evidence remain implementation gates.

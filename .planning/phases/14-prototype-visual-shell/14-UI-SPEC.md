@@ -42,14 +42,14 @@ The owner brief overrides the external JSON's stale `revision_status: awaiting_o
 ### Excluded
 
 - Feature-owned layouts and business interactions for Workout/Active Workout (Phase 15), Calendar geometry/gestures (Phase 16), Library/Running authoring (Phase 17), Garmin import/detail (Phase 18), and Progress evidence (Phase 19).
-- Domain migrations, concurrent-plan policy, FIT parsing, and source-fact writes (Phase 13 and later owners).
+- Domain migrations, per-sport activation policy, Garmin transport/normalization, and source-fact writes (Phase 13 and later owners).
 - Profile, Running, or Garmin as a root; in-app run recording; cadence/rest-between-reps; plan-owned sound/haptics; generic Material substitutions.
 - Prototype review chrome, fake status bar, fixture dates/data, `Reset demo`, preview-error controls, `localStorage`, and simulated delays.
-- DEV-01 Calendar geometry, which belongs to Phase 16. DEV-02 is surfaced below only as an unaccepted shared-token checkpoint.
+- DEV-01 Calendar geometry belongs to Phase 16. DEV-02's approved shared title/sport-role tokens are surfaced below with their separate native evidence gate.
 
-### Owner checkpoint: DEV-02 remains proposed
+### Approved DEV-02 token roles
 
-`DEV-02` is not accepted. The approved Light Strength event-title source value remains `#D97820`. A candidate token named `calendarStrengthTextLightCandidate` may be declared as `#9B470B` for comparison and contrast tests, but it must be unused and clearly marked `PROPOSED — OWNER DECISION REQUIRED`. No plan or executor may alias the production Strength-title token to that candidate, claim the color change is approved, or close CAL-03/VER-04 until the owner records a dated decision in `v1.2-DEVIATIONS.md`. The checkpoint persists either `Rejected — retained approved baseline #D97820` or `Accepted — plan revision required`; the accepted branch returns to Phase 14/16/20 planning before any production change.
+`DEV-02` is approved as `accessible-9b470b` on 2026-10-07. The production Light Strength event-title token is `#9B470B`; `#D97820` remains the Strength border, rail, and swatch; Dark remains unchanged. Plans validate the owner record automatically and keep CAL-03/VER-04 technically open until complete native blended-fill and contrast evidence passes.
 
 ---
 
@@ -188,7 +188,7 @@ Orange and blue are separate semantic channels, not two decorative accents: oran
 | `toastAccent` | `#166B4C` | `#72DF92` | Success toast leading bar; substitute the matching semantic state token for warning/error |
 | `dangerSource` | `#FF8279` | `#FF8279` | Exact prototype source value; usable on dark surfaces only |
 | `shadow` | `0 28 76 rgba(30,24,16,0.20)` | `0 28 76 rgba(0,0,0,0.45)` | Prototype review depth; native elevation/shadow must match perceived result without creating nested elevation |
-| `calendarStrengthTextLightCandidate` | `#9B470B` | not applicable | `PROPOSED — OWNER DECISION REQUIRED`; unused until DEV-02 is accepted |
+| `calendarStrengthTextLight` | `#9B470B` | not applicable | Approved DEV-02 Light Strength event-title text; border/rail/swatch continue to use `orange` |
 
 The Light destructive value extends the prototype language for native-only recovery states; the prototype does not provide a Light `danger` override. It reuses the shipped accessible native value rather than the prototype's dark-oriented `#FF8279` as Light text.
 
@@ -199,7 +199,7 @@ The Light destructive value extends the prototype language for native-only recov
 - Green is reserved for committed completion/success. Yellow is reserved for current/rest/attention. Red is reserved for destructive/error.
 - Selected, complete, partial, planned, warning, error, and destructive states always add text, an icon, a border/pattern, or programmatic state. No state is color-only.
 - Disabled controls retain readable copy and a disabled state; do not use opacity alone.
-- Normal text must meet 4.5:1 and large text/non-text UI 3:1. DEV-02 remains the sole recorded pending color deviation and may not be silently resolved in tokens.
+- Normal text must meet 4.5:1 and large text/non-text UI 3:1. DEV-02 is approved, but its exact blended-fill/native contrast evidence must pass independently.
 
 ---
 
@@ -413,7 +413,7 @@ Destructive actions in this phase are cloud-backup deletion and any existing sou
 
 The complete `v1.2-prototype-parity-matrix.json` was reviewed: **172/172 rows** = 17 Phase 13 domain inputs, 13 Phase 14 shell-owned rows, and 142 Phase 15–20 consumers/verification rows. Coverage classes are 104 `prototype_source`, 2 `prototype_present_unwired`, 49 `required_native`, and 17 `required_domain`. Phase 14 resolves the common visual/state container for every row; feature-owned copy and source semantics remain with their owning phase.
 
-Applicable state considerations resolved: **14 covered, 7 backstop, 1 unresolved checkpoint**. The unresolved row is deliberately DEV-02; it is not an implementation assumption.
+Applicable state considerations resolved: **15 covered, 7 backstop, 0 unresolved checkpoints**. DEV-02 is an approved value with a separate implementation-evidence gate.
 
 | Category | Element(s) / matrix scope | Status | Resolution / Reason |
 |---|---|---|---|
@@ -438,7 +438,7 @@ Applicable state considerations resolved: **14 covered, 7 backstop, 1 unresolved
 | retained state | `SHL-02` and downstream root query/filter/date/range/scroll states | ✅ covered | Each root owns its view state; switching and deep-route return restore it. Startup failure/retry and theme changes do not clear it unless source identity invalidates it explicitly. |
 | toast | `SHL-06` shared contract; later feature consumers | ✅ covered | Top placement, semantic border/bar, live announcement, 2400ms noncritical dwell, inline persistent recovery for failures, and dock/IME non-overlap are fixed. Phase 18 owns observable Garmin placement. |
 | destructive | Cloud delete, restore clean, merge, preserved source-removal entries | ✅ covered | Separate review, source consequences, specific safe/confirm labels, exact phrase where defined, no write on dismiss, and authoritative busy/result states. |
-| color/contrast checkpoint | `CAL-03`, `VER-04`; shared candidate token | ⚠ unresolved | DEV-02 is proposed and owner-unaccepted. Keep `#9B470B` candidate unused; do not claim Light Strength-title contrast closure until the deviation register records owner disposition. |
+| color/contrast evidence | `CAL-03`, `VER-04`; shared approved token | ✅ approved / evidence pending | Use `#9B470B` for Light Strength titles and `#D97820` for sport borders/rails/swatches; do not claim contrast closure until native blended-fill evidence passes. |
 
 ### Phase-by-phase matrix consumption
 
@@ -447,7 +447,7 @@ Applicable state considerations resolved: **14 covered, 7 backstop, 1 unresolved
 | 13 · 17 domain rows | Render only typed authoritative states; source absence/failure is not a fixture or zero value |
 | 14 · 13 shell rows | Implement every contract in this document, including preserved startup/settings/recovery paths |
 | 15 · 36 Workout rows | Consume tokens, fixed bottom nav, top-toast clearance, sheet/focus, long-list/200%-text, and reduced-motion behavior |
-| 16 · 23 Calendar rows | Consume bottom composition, common header/actions/sheets/focus; DEV-01/02 remain owner gates in the deviation register |
+| 16 · 23 Calendar rows | Consume bottom composition, common header/actions/sheets/focus; DEV-01/02 are accepted baselines whose native evidence remains mandatory |
 | 17 · 36 Library rows | Consume shared search/form/sheet/error/overflow/focus shell without adding a root |
 | 18 · 16 Garmin rows | Consume the Phase 14 appearance/sheet/toast contract; GAR-16 / Phase 18 owns observable Garmin synchronization, placement and native closure |
 | 19 · 18 Progress rows | Preserve sport/range state, factual empty/sparse/loading/error presentation, shared overlays, and no zero fabrication |
@@ -472,7 +472,7 @@ Package dependencies and bundled fonts remain subject to the repository's normal
 |---|---|---|
 | 1 Copywriting | PASS | Primary, empty, error, retry, safe, confirmation, and destructive labels are action-specific; no generic Submit/OK/Done contract exists |
 | 2 Visuals | PASS | Focal points, shell hierarchy, four-root composition, component geometry, overlays, startup, settings, and cross-state behavior are explicit |
-| 3 Color | PASS | Exact source tokens, 60/30/10 roles, semantic accent reservations, non-color cues, and destructive colors are defined; DEV-02 remains visibly unaccepted rather than silently adopted |
+| 3 Color | PASS | Exact source tokens, 60/30/10 roles, semantic accent reservations, non-color cues, destructive colors, and approved DEV-02 role separation are defined; native proof remains explicit |
 | 4 Typography | PASS | Exactly four sizes, reusable 400/800 interface weights, the exact 890 condensed editorial oracle, and bundled Archivo/IBM Plex Mono roles and line heights are declared |
 | 5 Spacing | PASS | The only reusable spacing values are 4, 8, 16, 24, 32, 48, and 64dp; component geometry is separately constrained |
 | 6 Registry Safety | PASS | Native manual system declared; shadcn and third-party registries are unused |
@@ -486,4 +486,4 @@ Package dependencies and bundled fonts remain subject to the repository's normal
 - [x] Dimension 5 Spacing: PASS
 - [x] Dimension 6 Registry Safety: PASS
 
-**Approval:** approved by gsd-ui-checker; explicit owner and external gates remain open where documented.
+**Approval:** approved by gsd-ui-checker; no settled owner decision remains open. Native implementation evidence and any future newly proposed deviation retain their documented gates.

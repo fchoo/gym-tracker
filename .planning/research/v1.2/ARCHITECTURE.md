@@ -4,13 +4,13 @@
 **Researched:** 2026-10-06  
 **Code baseline:** `703b9d21a900dcadbcd4138c3691256174667bf1`; SQLite schema 27.  
 **Confidence:** MEDIUM, returned by the configured confidence seam for cross-checked web search.  
-**Status:** Research complete; architecture and policy proposals await owner review. No implementation performed.
+**Status:** Research complete and reconciled to the 2026-10-07 owner decisions. No implementation performed.
 
 ## Recommendation
 
 Extend the shipped SQLite domain with explicit immutable plan types and independent schedule selection. Reuse the existing schedule engine and source/derived-state boundaries. Keep one recoverable in-progress Strength workout, and store imported Running activities separately from the Strength set/session graph. A match between an import and a scheduled run is an audited owner-confirmed relation, not a new workout or a guessed completion.
 
-**Proposed cardinality:** zero or one active plan per sport, so Strength and Running can be active together. The owner brief and revision-18 prototype require concurrency but do not explicitly prohibit multiple same-sport plans. That policy is awaiting the owner's answer; do not describe it as approved.
+**Approved cardinality:** zero or one active plan per sport, so Strength and Running can be active together while same-sport activation remains unique. MAP-01 is closed and must not be reopened during implementation.
 
 The domain foundation must precede the new root, Calendar, Library, and Progress presentation. This is not a label change: two SQLite unique indexes, multiple repository/runtime singleton readers, restore validation and merge normalization enforce the shipped single-plan rule.
 
@@ -97,7 +97,7 @@ Strength start validates this selection in the transaction and snapshots provena
 
 ### Immutable planned intent, imported facts and confirmed relationships
 
-Running edits append structured day revisions; schedule-version bindings preserve past intended workouts. Garmin/FIT imports preserve independent activity facts. Owner confirmation binds exact activity revision and exact opportunity/version/day revision. An auditable unmatch affects the relation, not either source. Date/title similarity only suggests a candidate.
+Running edits append structured day revisions; schedule-version bindings preserve past intended workouts. Garmin account JSON sync preserves independent activity facts through `GarminSourceEnvelope`. Owner confirmation binds exact activity revision and exact opportunity/version/day revision. An auditable unmatch affects the relation, not either source. Date/title similarity only suggests a candidate.
 
 ### Restore and merge as an end-to-end graph
 
@@ -105,7 +105,7 @@ New columns require explicit legacy materialization defaults because the parser 
 
 ### Retire advisory timing without deleting historical configuration
 
-Phase 10 cadence/cluster playback is explicitly advisory and stored separately from between-set rest. Preserve all old snapshots/configuration as dormant legacy data; retire authoring and gate every playback/foreground/queued-callback path. New sessions resolve advanced timing off. Existing sessions retain sets, pointers and between-set rest recovery, with a concise compatibility notice when needed. Do not force completion or discard unless implementation cannot prove safe cue isolation; then block cutover for a reviewed compatibility path. The companion ADR identifies exact runtime seams and the risk document adds TIM-01–03 verification.
+Phase 10 cadence/cluster playback is explicitly advisory and stored separately from between-set rest. Preserve old snapshot bytes as dormant historical data; retire authoring and remove every playback/foreground/queued-callback path. New sessions resolve advanced timing off. Existing sessions retain sets, pointers and between-set rest recovery without interpreting or resuming cadence/cluster state. If implementation cannot prove safe cue isolation, block cutover and fix the defect; do not add a compatibility mode or reopen TIM-01. The companion ADR identifies exact runtime seams and the risk document adds TIM-01–03 verification.
 
 ## Anti-patterns to avoid
 
@@ -136,15 +136,15 @@ This is a single-owner local app; user-count scaling tables are misleading. Rele
 
 | Concern | Ordinary personal history | Long history / imports | Required guard |
 |---|---|---|---|
-| Active schedule lookup | Up to two under proposed limit | Same bounded cardinality | Read one coherent snapshot; reject ambiguity. |
+| Active schedule lookup | Up to two under the approved one-per-sport limit | Same bounded cardinality | Read one coherent snapshot; reject ambiguity. |
 | Calendar | Visible month plus adjacent weeks | Avoid scanning/counting all sessions | Range-indexed, batched summaries with correction overlays. |
 | Imported samples | Summary/laps and bounded chunks | Existing archive size/count limits apply | Garmin ADR payload bounds; no unbounded per-sample table growth. |
 | Writer contention | Set commits remain highest-priority user path | Parse imports before short write transaction | Preserve shipped 150 ms p95 working-set commit/dock budget. |
 | Backup/rebuild | Full canonical source graph | Explicit size and duration fixtures | Restore gate stays closed until all new derivatives rebuild. |
 
-## Open owner decisions
+## Settled owner decisions and implementation evidence
 
-MAP-01 cardinality is the only schema-defining unresolved choice: one active plan per sport versus several same-sport plans. Other proposed defaults needing review are Strength/recovery primary Today behavior, Weekday-only Running and single daily slot, per-sport local-wins activation on merge, one-to-one confirmed Running fulfillment, and retaining the existing activation-during-workout restriction. The exact questions and impact are in the companion ADR.
+MAP-01 fixes zero or one active plan per sport, and TIM-01 removes cadence/cluster runtime behavior without a compatibility mode. Running supports multiple stable ordered sessions on the same weekday. Collision, merge, one-to-one confirmed fulfillment, and activation-during-workout behavior follow the companion ADR and executable phase plans. No product question remains; unresolved native, migration, or account proof is implementation evidence.
 
 ## Sources and research method
 

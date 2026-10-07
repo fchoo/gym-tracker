@@ -11,7 +11,7 @@
 | Running structure | One generic blob; typed session revisions and ordered slots | Typed stable sessions; same-day slots allowed |
 | Import relation | Convert to workout; independent aggregate plus confirmed match | Independent aggregate |
 | Portability | Additive SQL only; versioned graph and trigger migration | Complete versioned graph |
-| Legacy timing | Delete; keep playback; retain facts and gate playback retirement | Retain facts; owner-review gate |
+| Legacy timing | Delete facts; retain playback; retire playback while preserving facts/rest | Approved TIM-01 retirement; automatic record gate |
 
-**Unresolved owner decision:** MAP-01 active-plan cardinality remains an execution checkpoint.
-**Deferred:** Official Garmin transport and broker.
+**Resolved 2026-10-07:** MAP-01 is approved as exactly zero or one active plan per sport; execution validates the owner record automatically.
+**Phase boundary:** Phase 13 creates `GarminSourceEnvelope` and durable import commands; Phase 18 supplies bundled Garmin JSON transport.

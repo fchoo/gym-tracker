@@ -50,19 +50,22 @@ Implementation is not authorized until the owner reviews the complete milestone.
 **Latest owner decisions:** `.planning/v1.2-OWNER-DECISIONS.md` records one active
 plan per sport, complete cadence/cluster playback retirement without a playback
 compatibility mode, and accepted Calendar deviations DEV-01/DEV-02. The app runs
-standalone with bundled code and no runtime AI agents. Official Garmin program
-access is unavailable; the owner requested `python-garminconnect` phone-versus-
-desktop feasibility research before any FIT decoder decision. See
-`.planning/research/v1.2/GARMIN-MOBILE-FEASIBILITY.md`. The existing execution
-plans require focused reconciliation before execution; previous pending-gate
-wording must not reopen those four approved choices.
+standalone with bundled code and no runtime AI agents. The selected Garmin
+transport is Android-embedded Python 3.13 through Chaquopy 17.0 with pinned
+`python-garminconnect` 0.3.17 commit
+`218e72ca5459e014435fc2d94fd18bd601fa0c14`, ARM64 summary/splits/detail JSON.
+There is no Garmin program access, partner API/broker, desktop/Drive transport,
+manual FIT or FIT-decoder prerequisite, runtime-agent requirement, or Hermes
+change in this milestone. Technical proof remains implementation evidence, not a
+product question. See `.planning/research/v1.2/GARMIN-MOBILE-FEASIBILITY.md`.
 
 **Goal:** Reproduce the approved prototype's presentation and interactions in the
 production Android app while preserving SQLite, transaction, history, recovery,
 backup, offline, accessibility, and performance contracts.
 
 **Target features:**
-- Concurrent Strength and Running plans with independent authoritative schedules,
+- Exactly zero or one active Strength plan and zero or one active Running plan,
+  with independent authoritative schedules,
   versioned structured running sessions, explicit collision/matching rules, and
   compatible backup/merge/recovery.
 - Exactly four roots: Workout, Calendar, Library, Progress; warm editorial Workout,
@@ -70,7 +73,8 @@ backup, offline, accessibility, and performance contracts.
 - Full-height Calendar with pointer-tracked months, spatial week/agenda expansion,
   shared event cells, non-color statuses, and read-only history routes.
 - Neutral Strength/Running creation chooser and persistent structured running plans.
-- Manual original FIT import and an approval-gated Garmin Activity API/PKCE adapter;
+- Standalone ARM64 Garmin account sync through the pinned embedded client, with
+  foreground login/MFA, encrypted session recovery, bounded validated JSON,
   confirmed matching and idempotency; factual Strength/Running progress.
 - Prototype comparison, real SQLite, Android lifecycle/offline, accessibility,
   performance, and attended Samsung verification before any later release.
@@ -180,6 +184,9 @@ Add encrypted backup/restore, CSV export, complete adaptive/accessibility verifi
 | Keep advanced set timing separate from between-set rest | Per-rep cadence and cluster gaps remain advisory and cannot redefine committed set or rest facts | ✓ Validated Phase 10 (v1.1) |
 | Use stable owner-scoped identities for portable merge | Restore and merge recognize the same personal records without rewriting immutable history | ✓ Validated Phase 11 (v1.1) |
 | Keep manual GTBK and automatic Drive recovery as separate products | Manual GTBK remains password-encrypted and portable; automatic Drive JSON optimizes replacement-phone recovery without a passphrase | ✓ Validated Phases 11-12 (v1.1) |
+| Limit active plans to one per sport | Strength and Running may coexist, while per-sport uniqueness keeps schedule selection, restore and merge deterministic | ✓ Owner-approved MAP-01 for v1.2 |
+| Retire cadence/cluster runtime behavior | Remove cadence/cluster authoring, callbacks, reconciliation and playback without compatibility mode; preserve ordinary history and between-set rest | ✓ Owner-approved TIM-01 for v1.2 |
+| Embed the pinned Garmin account client in the APK | A standalone ARM64 app can read the owner's activity summary/splits/detail JSON without Garmin program access, a broker, desktop bridge, FIT prerequisite or runtime agent | ✓ Owner-selected v1.2 transport; native proof pending implementation |
 
 ## Evolution
 

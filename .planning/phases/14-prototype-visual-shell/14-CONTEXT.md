@@ -26,8 +26,8 @@ Garmin, and Progress content belongs to later phases.
 - **D14-05:** App Settings visibly starts with Appearance while retaining routes for rest alerts, removed sessions, data/recovery, Drive backup, CSV, privacy, and their existing recovery states.
 - **D14-06:** SQLite trust/loading/failure and notification-permission/continue-without-alerts startup behavior remains factual; visual caches are rebuildable.
 
-### Owner-review checkpoint
-- **DEV-02:** The measured Light Calendar Strength-title color adjustment is proposed, not accepted. Shared token work may expose a specific accessible text token but must not treat the color change as approved.
+### Final owner decision
+- **DEV-02:** Approved `accessible-9b470b`: Light Calendar Strength event-title text is `#9B470B`; Strength borders, rails, and swatches remain `#D97820`, and the Dark treatment remains unchanged. Native blended-fill and contrast proof remains an implementation verification gate, not an owner checkpoint.
 
 ### Claude's Discretion
 - Internal token/component naming and the smallest refactor that avoids parallel visual systems.
@@ -39,7 +39,7 @@ Garmin, and Progress content belongs to later phases.
 
 - `.planning/v1.2-OWNER-BRIEF.md` — root/appearance/accessibility contracts.
 - `.planning/design/v1.2-SOURCE-PRECEDENCE.md` — resolved visual conflicts.
-- `.planning/design/v1.2-DEVIATIONS.md` — pending deviations.
+- `.planning/design/v1.2-DEVIATIONS.md` — approved deviations and implementation-verification status.
 - `.planning/design/v1.2-prototype-inventory.json` — controls/tokens/routes.
 - `.planning/design/v1.2-browser-evidence/serial-walk.json` — Light/Dark route observations.
 - External `approved-hybrid.html` CSS and Revision 18 `approved.json` — presentation oracle.

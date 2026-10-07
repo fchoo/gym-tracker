@@ -21,7 +21,7 @@ source_approval_sha256: b8e91e3098ec443c9dc283ae8383d1af552d7dc2b83648695a01dcb8
 
 Apply sources in this order:
 
-1. .planning/v1.2-OWNER-BRIEF.md and the locked D19-01 through D19-07 decisions in 19-CONTEXT.md.
+1. .planning/v1.2-OWNER-BRIEF.md, `.planning/v1.2-OWNER-DECISIONS.md`, and the locked D19-01 through D19-07 decisions in 19-CONTEXT.md.
 2. .planning/design/v1.2-SOURCE-PRECEDENCE.md.
 3. Revision 18 approved.json latest-first, then the rendered approved-hybrid.html at the hashes in frontmatter.
 4. REQUIREMENTS.md PRO-01 through PRO-18, the Phase 19 ROADMAP success criteria, and the Phase 19 rows in the prototype inventory/parity matrix.
@@ -53,7 +53,7 @@ Browser evidence proves that the planning oracle was exercised. It does not prov
 - Exactly 4 weeks, 12 weeks, and All time ranges.
 - Source-backed Latest, Best, Target, Gap, goal line, Evidence, and Next target/planned-next context.
 - Factual Strength progress and the existing Exercise history deep route.
-- Running best efforts derived only from accepted imported activities at the same distance and time basis.
+- Running best efforts derived only from accepted canonical Garmin activity facts at the same distance and time basis, with source-reported summary/lap evidence sufficient for the claimed exact effort.
 - Running history, target editing, recommendation review, Progress settings, and optional bodyweight sheets.
 - Loading, empty, sparse, More data needed, projection rebuild, partial/missing, read error, mutation error, stale revision, retry, zero/one/many, and long-history states.
 - Light, Dark, and System; 200% text; compact/medium/expanded portrait and landscape; keyboard/D-pad; semantic names, roles, states, and relationships; visible focus; non-color equivalents; reduced motion.
@@ -277,12 +277,12 @@ If any pair is not comparable, do not calculate the pair or its Gap. Show the av
 
 ### Running
 
-- Begin with the persistent evidence notice: Running facts and best efforts come from accepted imported Garmin activities or owner-imported FIT files. Matching never completes a scheduled workout without confirmation.
-- The primary 2.4 km hero uses only accepted imported activities with a valid same-distance effort and documented elapsed-time basis. Unmatched accepted activities may contribute factual history but never imply plan adherence.
+- Begin with the persistent evidence notice: Running facts and best efforts come from accepted imported Garmin activities. Matching never completes a scheduled workout without confirmation.
+- The primary 2.4 km hero uses only accepted imported activities whose source-reported summary or lap facts establish the exact distance and documented elapsed-time basis. Sampled/downsampled chart points cannot establish an arbitrary-distance effort. Unmatched accepted activities may contribute factual history but never imply plan adherence.
 - Show Latest, Best, Target, written Gap, separate goal line, Evidence, derived pacing, Running goals, Best efforts, and source-backed Next target/planned-next content.
 - The default 2.4 km target is fixed at 11:00. Its exact derived display is Pace 4:35/km, 400 m 1:50, and 200 m 0:55.
 - 10 km and Half Marathon Target remain unset until an owner edit commits. Their rows say Set target or Target unset. An absent effort says No effort recorded. Neither target nor effort plots as zero.
-- Best efforts are grouped by exact distance and documented time basis. Each row shows imported effort count, Best or No effort, and opens Running history. Mixed distances, scheduled intent, unmatched estimates, invalid/removed imports, and unaccepted source revisions are excluded.
+- Best efforts are grouped by exact distance and documented time basis. Each row shows imported effort count, Best or No effort, and opens Running history. Mixed distances, scheduled intent, unmatched estimates, sampled chart-derived candidates, invalid/removed imports, and unaccepted source revisions are excluded; insufficient exact/source evidence displays Unavailable or More data needed.
 - Imported source correction/revision changes invalidate/rebuild affected projections. While rebuilding, suppress final values rather than showing an old result as current.
 
 ---
@@ -421,7 +421,7 @@ Sport and range controls, Progress heading, supplementary actions, and bottom na
 | Ready | Full source-backed hero, chart, Evidence, details, and eligible Next target/planned-next content | All values come from one current projection/source revision set |
 | Overall empty | No progress history yet / Completed Strength history and accepted Running efforts will appear here after you train or import an activity. / Refresh progress | No chart, Gap, direction, or default effort |
 | Strength empty | No comparable Strength history yet / Complete comparable working sets to establish personal history. / Refresh progress | Persisted targets may be listed as Target with no Latest/Best; no zero point |
-| Running empty | No imported running efforts yet / Goals can remain saved, but no zero chart or direction is shown until a Garmin or FIT activity is imported. | Show persisted goal rows; omit best-effort chart/direction |
+| Running empty | No imported running efforts yet / Goals can remain saved, but no zero chart or direction is shown until a Garmin activity is imported. | Show persisted goal rows; omit best-effort chart/direction |
 | Sparse: one fact | More data needed / One comparable result is not enough to call a trend. | One labelled point only; show Latest=Best if true; no directional line or fabricated history |
 | Sparse: target only | Target saved / Complete or import a comparable result to calculate Best and Gap. | Show Target and Target unset/missing facts; no goal-to-zero line |
 | Missing target | Target unset and Set target | Existing factual efforts remain visible; no goal line or Gap |
@@ -466,8 +466,8 @@ Dynamic placeholders are factual values read from the current source revision. T
 | Unset goals | Set target; Target unset; No effort recorded |
 | Sparse | More data needed; One comparable result is not enough to call a trend. |
 | No score explanation | Direction is based only on comparable completed personal history. No readiness or composite score is produced. |
-| Running evidence notice | Running facts and best efforts come from accepted imported Garmin activities or owner-imported FIT files. Matching never completes a scheduled workout without confirmation. |
-| Running empty | No imported running efforts yet; Goals can remain saved, but no zero chart or direction is shown until a Garmin or FIT activity is imported. |
+| Running evidence notice | Running facts and best efforts come from accepted imported Garmin activities. Exact-distance efforts require sufficient source-reported summary/lap evidence; sampled charts are not evidence. Matching never completes a scheduled workout without confirmation. |
+| Running empty | No imported running efforts yet; Goals can remain saved, but no zero chart or direction is shown until a Garmin activity is imported. |
 | Overall empty | No progress history yet; Completed Strength history and accepted Running efforts will appear here after you train or import an activity.; Refresh progress |
 | Strength empty | No comparable Strength history yet; Complete comparable working sets to establish personal history.; Refresh progress |
 | Loading | Loading progress |
@@ -625,4 +625,4 @@ No new chart/UI package is authorized. Existing native SVG and repository compon
 - [x] Dimension 5 Spacing: PASS
 - [x] Dimension 6 Registry Safety: PASS
 
-**Approval:** approved by gsd-ui-checker; explicit owner and external gates remain open where documented.
+**Approval:** approved by gsd-ui-checker; settled MAP/TIM/DEV and self-contained Garmin choices remain subject to implementation evidence, not further product approval.

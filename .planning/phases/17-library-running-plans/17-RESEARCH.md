@@ -97,7 +97,7 @@ The current live implementation is valuable and should be evolved in place: it a
 | Same-weekday ordered Running slots | Database / Storage | Browser / Client | The Phase 13 design owns `weekday` plus `slot_ordinal`; UI renders and reorders the stable ordered projection. [VERIFIED: .planning/architecture/v1.2-multi-active-plans.md:51-61] |
 | Prospective schedule edit and collision resolution | Browser / Client (domain/runtime) | Database / Storage | UI selects and confirms; one domain command revalidates both reviewed schedule revisions and commits atomically. [VERIFIED: .planning/phases/17-library-running-plans/17-UI-SPEC.md:440-459; .planning/architecture/v1.2-multi-active-plans.md:112-129] |
 | Backup/restore/merge/rebuild | Database / Storage | Browser / Client | Running source tables join the existing logical graph; rebuildable projections stay derived. [VERIFIED: src/domains/portability/backupContracts.ts:26-110; .planning/architecture/v1.2-multi-active-plans.md:186-195] |
-| Garmin/FIT transport | — | — | Explicitly outside Phase 17. [VERIFIED: .planning/phases/17-library-running-plans/17-CONTEXT.md:9-11,67-70] |
+| Garmin authentication/JSON transport | — | — | Explicitly outside Phase 17; Phase 18 supplies GarminSourceEnvelope values to the Phase 13 boundary. |
 
 ## Project Constraints (from .trae/rules/rules.md)
 
@@ -116,7 +116,7 @@ The current live implementation is valuable and should be evolved in place: it a
 
 Phase 13 and Phase 14 are not optional conveniences. The project state says v1.2 is planning-only with zero completed phases and zero plans; Phase 17's roadmap entry depends on Phase 13 and Phase 14. [VERIFIED: .planning/STATE.md:1-35; .planning/ROADMAP.md:158-176]
 
-The Phase 13 ADR explicitly marks its schema names as proposed, and the current migration registry ends at `advancedTimingTargetOwnershipMigration` with `CURRENT_SCHEMA_VERSION` derived from that array. Therefore Phase 17 Plan 01 must inspect the implemented Phase 13 types and migrations after Phase 13 lands, then bind to those real symbols; it must fail closed if they are absent rather than creating a parallel Running store. [VERIFIED: .planning/architecture/v1.2-multi-active-plans.md:43-65; src/platform/sqlite/migrations/index.ts:21-60]
+The Phase 13 ADR fixes MAP-01 while internal schema names remain implementation proposals, and the current migration registry ends at `advancedTimingTargetOwnershipMigration` with `CURRENT_SCHEMA_VERSION` derived from that array. Therefore Phase 17 Plan 01 must inspect the implemented Phase 13 types and migrations after Phase 13 lands, then bind to those real symbols; it must fail closed if they are absent rather than creating a parallel Running store. [VERIFIED: .planning/architecture/v1.2-multi-active-plans.md:43-65; src/platform/sqlite/migrations/index.ts:21-60]
 
 The Phase 17 UI contract requires Phase 14's Archivo/IBM Plex Mono editorial system, while the current theme still quotes `"SourceSans3_400Regular"`, `"SourceSans3_600SemiBold"`, `"IBMPlexMono_400Regular"`, and `"IBMPlexMono_600SemiBold"`. Phase 17 must consume the final Phase 14 tokens and must not patch a Library-only theme. [VERIFIED: src/ui/theme/index.ts:15-31; .planning/phases/17-library-running-plans/17-UI-SPEC.md:29-50]
 
@@ -210,7 +210,7 @@ Phase 17 RunningPlanRuntimePort adapter
                                      route/detail/toast success
 ```
 
-This flow matches the existing command/repository boundary and the proposed sport-aware activation flow. [VERIFIED: src/domains/plans/ownedPlanCommands.ts:420-495; src/platform/sqlite/repositories/ownedPlanRepository.ts:2107-2172; .planning/architecture/v1.2-multi-active-plans.md:112-129]
+This flow matches the existing command/repository boundary and approved per-sport activation flow. [VERIFIED: src/domains/plans/ownedPlanCommands.ts:420-495; src/platform/sqlite/repositories/ownedPlanRepository.ts:2107-2172; .planning/architecture/v1.2-multi-active-plans.md:112-129]
 
 ### Recommended Project Structure
 
@@ -743,7 +743,7 @@ OWASP documents authentication, session management, access control, validation, 
 - `.planning/phases/17-library-running-plans/17-UI-SPEC.md` — approved route, copy, field, state, accessibility, and validation contract.
 - `.planning/REQUIREMENTS.md` and `.planning/ROADMAP.md` — LIB-01–36 ownership, dependencies, success criteria.
 - `.planning/design/v1.2-prototype-inventory.json` and `.planning/design/v1.2-prototype-parity-matrix.md` — exact inventory IDs, target files, tests, evidence.
-- `.planning/architecture/v1.2-multi-active-plans.md` — Phase 13 proposed identity/revision/schedule/portability architecture.
+- `.planning/architecture/v1.2-multi-active-plans.md` — Phase 13 approved per-sport cardinality plus planned identity/revision/schedule/portability architecture.
 - Live route, runtime, repository, migration, portability, UI, and test files cited inline — inspected in this session.
 
 ### Secondary (MEDIUM confidence)

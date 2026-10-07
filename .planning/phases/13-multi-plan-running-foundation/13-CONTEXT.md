@@ -1,7 +1,7 @@
 # Phase 13: Multi-Plan & Running Foundation - Context
 
 **Gathered:** 2026-10-06
-**Status:** Ready for planning; owner-review checkpoints remain explicit
+**Status:** Ready for execution planning; owner decisions finalized 2026-10-07
 
 <domain>
 ## Phase Boundary
@@ -30,10 +30,10 @@ for later UI phases; it does not build the prototype screens or provider transpo
 - **D13-09:** Imported activities remain immutable independent aggregates. Import never creates/activates a plan or creates Strength workout sessions.
 - **D13-10:** One imported activity can fulfill one selected Running opportunity only after explicit owner confirmation; unmatch/reassign appends audited events.
 
-### Owner-review checkpoints
-- **MAP-01:** At-most-one active plan per sport is the recommended partial-index policy, but remains unaccepted. The first irreversible constraint task must be a decision checkpoint and show the alternative multi-plan selection/index design.
-- **TIM-01:** Preserve all legacy cadence/cluster configs and snapshots. Retiring authoring, reconciliation, queued callbacks, and playback while keeping set/rest recovery is recommended but remains owner-review gated.
-- **GAR-ARCH:** Phase 13 builds provider-independent import/match facts. It does not introduce a hosted broker.
+### Final owner decisions
+- **MAP-01:** Approved `one-per-sport`: enforce exactly zero or one active Strength plan and zero or one active Running plan, each with its own schedule and collision handling. Multiple ordered Running session slots on one weekday remain valid; arbitrary multiple active plans within one sport are not allowed.
+- **TIM-01:** Approved `retire-playback` with no legacy compatibility mode: remove cadence/cluster authoring, runtime commands, playback, foreground reconciliation, and queued callbacks. Preserve ordinary workout/history facts, dormant source records required for portability, committed/draft sets, the active pointer, and independent between-set rest integrity.
+- **GAR-ARCH:** Phase 13 owns the durable imported-activity and match boundary consumed by Phase 18. The only Garmin adapter input is Phase 18's typed `GarminSourceEnvelope` from `src/domains/activities/garminActivitySourcePort.ts`; Phase 13 does not define another transport or infer source identity from filenames, dates, distances, or normalized totals.
 
 ### Claude's Discretion
 - Exact migration file split and internal type names after checking current schema 27.
@@ -46,7 +46,7 @@ for later UI phases; it does not build the prototype screens or provider transpo
 
 - `.planning/v1.2-OWNER-BRIEF.md` — locked product/domain boundary.
 - `.planning/REQUIREMENTS.md` — DOM-01 through DOM-17.
-- `.planning/architecture/v1.2-multi-active-plans.md` — singleton map, schema proposal, timing compatibility.
+- `.planning/architecture/v1.2-multi-active-plans.md` — singleton map, approved per-sport schema, and timing retirement.
 - `.planning/architecture/v1.2-garmin-import.md` — import identities and match ledger.
 - `.planning/architecture/v1.2-migration-risks.md` — migration/portability failure matrix.
 - `.planning/research/v1.2/SUMMARY.md` — phase order and risks.
@@ -66,7 +66,7 @@ for later UI phases; it does not build the prototype screens or provider transpo
 
 ### Integration Points
 - Schema 27 migration registry and `0023_automatic_drive_backup.ts`.
-- Calendar/Workout typed read models, future FIT import port, Progress rebuilds.
+- Calendar/Workout typed read models, the Phase 18 `GarminSourceEnvelope` adapter port, and Progress rebuilds.
 
 </code_context>
 
@@ -84,7 +84,7 @@ the existing active workout resumes unchanged.
 ## Deferred Ideas
 
 - Running Rotation scheduling and cumulative multi-activity fulfillment.
-- Official Garmin transport/broker implementation belongs to Phase 18 and a separate security review.
+- Garmin transport, authentication, bounded JSON retrieval, and `GarminSourceEnvelope` construction belong to Phase 18.
 
 </deferred>
 

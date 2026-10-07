@@ -1,7 +1,7 @@
 {
   "schema_version": "1.0",
   "milestone": "v1.2",
-  "status": "baseline_pending_owner_amendment_reconciliation",
+  "status": "reconciled_final_owner_transport_pending_implementation",
   "inventory": ".planning/design/v1.2-prototype-inventory.json",
   "requirements": ".planning/REQUIREMENTS.md",
   "source_snapshot": {
@@ -12,7 +12,7 @@
   },
   "counts": {
     "requirement_entries": 172,
-    "excluded_entries": 8,
+    "excluded_entries": 9,
     "static_controls": 170,
     "dynamic_action_occurrences": 48,
     "phase_requirements": {
@@ -31,7 +31,8 @@
     "prototype_source means source path inspected; separate browser evidence must verify reachability.",
     "required_native identifies preserved or owner-required behavior absent/incomplete in the demo.",
     "New target paths are proposed, not created product files.",
-    "DEV-01/02 are pending proposals; latest deviation register governs.",
+    "DEV-01/02 are accepted owner decisions; native verification remains pending implementation.",
+    "Prototype FIT controls map to excluded.garmin-fit-controls and are not executable milestone scope.",
     "Native and release evidence is pending implementation; no test pass implied."
   ],
   "rows": [
@@ -41,7 +42,7 @@
       "owning_phase": 13,
       "screen": "Plan activation",
       "interaction_state": "multi-active",
-      "acceptance_contract": "Support multiple active owned Strength and Running plans with independent schedules; migrate the shipped one-active-plan assumptions without bypassing repository rules.",
+      "acceptance_contract": "Support at most one active owned Strength plan and at most one active owned Running plan concurrently, with independent schedules; enforce per-sport uniqueness through the real repository/schema migration.",
       "coverage_class": "required_domain",
       "production_routes": [],
       "production_components": [
@@ -75,7 +76,7 @@
       "planned_tests": [
         "src/testing/contracts/v1_2MultiPlanMigration.contract.test.ts"
       ],
-      "planned_check": "Real SQLite migration fixtures: two plans remain active; activation of one does not deactivate an unrelated plan.",
+      "planned_check": "Real SQLite migration fixtures: one Strength and one Running plan remain active together; activating a second plan of either sport deterministically replaces or rejects per the locked contract without affecting the other sport.",
       "planned_evidence": ".planning/phases/13-multi-plan-running-foundation/evidence/domain.multi-active.json",
       "prototype": {
         "source_refs": [
@@ -568,7 +569,7 @@
       "owning_phase": 13,
       "screen": "Imported activities",
       "interaction_state": "import-source-facts",
-      "acceptance_contract": "Persist activity source, external ID, content hash, timestamps, sport subtype, distance, elapsed/moving time, available HR, route and lap facts as source evidence.",
+      "acceptance_contract": "Persist account-scoped Garmin external identity, versioned normalized JSON content digest, raw response provenance/hashes, timestamps, sport subtype, independent time bases, distance, and available HR/route/laps; retain sampling metadata and leave fit_sha256 absent without an original FIT.",
       "coverage_class": "required_domain",
       "production_routes": [],
       "production_components": [
@@ -587,7 +588,7 @@
       "planned_tests": [
         "src/testing/contracts/importedActivities.contract.test.ts"
       ],
-      "planned_check": "SQLite/FIT fixtures: optional missing HR/route preserved; treadmill never gains an invented route.",
+      "planned_check": "SQLite JSON fixtures: exact source envelope round-trips; optional missing HR/route stays absent; treadmill gains no invented route; fit_sha256 remains absent without original bytes.",
       "planned_evidence": ".planning/phases/13-multi-plan-running-foundation/evidence/domain.import-source-facts.json",
       "prototype": {
         "source_refs": [
@@ -622,7 +623,7 @@
       "owning_phase": 13,
       "screen": "Import duplicate handling",
       "interaction_state": "import-idempotency",
-      "acceptance_contract": "Deduplicate repeat sync and manual import using external Garmin activity identity and content hash, including FIT-to-API and API-to-FIT order.",
+      "acceptance_contract": "Deduplicate repeat, interrupted, reordered and restored JSON sync using account-scoped external Garmin identity and canonical content digest; exclude fetch timestamps from content identity, stage changed source revisions, and never resurrect removed activities automatically.",
       "coverage_class": "required_domain",
       "production_routes": [],
       "production_components": [
@@ -641,7 +642,7 @@
       "planned_tests": [
         "src/testing/contracts/importedActivities.contract.test.ts"
       ],
-      "planned_check": "Real SQLite: identical, repeated, reversed transport and concurrent imports yield one activity; conflict evidence retained.",
+      "planned_check": "Real SQLite: identical, repeated, interrupted, reordered and restored JSON deliveries yield one activity; same-ID changed content stages a revision and cross-account/date-title-distance lookalikes remain distinct.",
       "planned_evidence": ".planning/phases/13-multi-plan-running-foundation/evidence/domain.import-idempotency.json",
       "prototype": {
         "source_refs": [
@@ -731,7 +732,7 @@
       "owning_phase": 13,
       "screen": "Calendar and Progress facts",
       "interaction_state": "rebuildable-projections",
-      "acceptance_contract": "Build Calendar aggregation and comparable Running best-effort/goal views from durable facts with replayable projections and truthful missing/sparse states.",
+      "acceptance_contract": "Build Calendar aggregation and comparable Running effort/goal views from durable accepted facts with replayable projections; only eligible source-reported summary/lap evidence supports exact-distance efforts, while downsampled chart data produces no invented effort and missing evidence stays sparse.",
       "coverage_class": "required_domain",
       "production_routes": [],
       "production_components": [
@@ -750,7 +751,7 @@
       "planned_tests": [
         "src/testing/contracts/importedActivities.contract.test.ts"
       ],
-      "planned_check": "Domain: rebuild produces identical totals; no zero data or mixed-distance/elapsed-moving trend.",
+      "planned_check": "Domain: rebuild produces identical totals; no zero data, mixed time basis or arbitrary-distance effort derived from sampled chart/polyline points.",
       "planned_evidence": ".planning/phases/13-multi-plan-running-foundation/evidence/domain.rebuildable-projections.json",
       "prototype": {
         "source_refs": [
@@ -3905,7 +3906,7 @@
       "deviation_refs": [
         {
           "id": "DEV-02",
-          "status": "proposed_owner_decision_pending"
+          "status": "accepted_pending_native_verification"
         }
       ],
       "evidence_status": "pending_implementation",
@@ -3972,7 +3973,7 @@
       "deviation_refs": [
         {
           "id": "DEV-01",
-          "status": "proposed_owner_decision_pending"
+          "status": "accepted_pending_native_verification"
         }
       ],
       "evidence_status": "pending_implementation",
@@ -6861,7 +6862,7 @@
       "owning_phase": 18,
       "screen": "Garmin contextual route",
       "interaction_state": "entry",
-      "acceptance_contract": "Open Garmin contextually from Workout, Running plan or imported Calendar activity, preserving only the four app roots.",
+      "acceptance_contract": "Open Garmin contextually from Workout and Running plan and publish a real Calendar-origin activity-detail route contract; CAL-17/20 own final Calendar entry/return integration after this destination exists. Preserve exactly four app roots.",
       "coverage_class": "prototype_source",
       "production_routes": [
         {
@@ -6974,7 +6975,7 @@
       "owning_phase": 18,
       "screen": "Garmin disconnected",
       "interaction_state": "not-connected",
-      "acceptance_contract": "Show Garmin not connected with Connect Garmin and Import FIT fallback, making available operations truthful when API access is unavailable.",
+      "acceptance_contract": "Show Garmin not connected with Connect Garmin and retained imported-history access; show honest offline, unavailable and sign-in-needed states without fake partner-approval or FIT-fallback actions.",
       "coverage_class": "prototype_source",
       "production_routes": [
         {
@@ -6994,7 +6995,7 @@
       "planned_tests": [
         "src/ui/__tests__/GarminSyncScreen.test.tsx"
       ],
-      "planned_check": "GarminSyncScreen tests: approved/unavailable provider capability states and offline FIT fallback.",
+      "planned_check": "GarminSyncScreen tests: disconnected, offline, unavailable and sign-in-needed states retain history and expose no superseded transport action.",
       "planned_evidence": ".planning/phases/18-garmin-import/evidence/garmin.not-connected.json",
       "prototype": {
         "source_refs": [
@@ -7028,7 +7029,7 @@
       "owning_phase": 18,
       "screen": "Garmin connection",
       "interaction_state": "consent",
-      "acceptance_contract": "Implement consented authorization through an approved Garmin Activity API integration with OAuth2 PKCE and cancel/error/denied/expired/revoked recovery; do not ship simulated consent as real.",
+      "acceptance_contract": "Sign in to the owner's account through the bundled native/Python client with foreground credentials/MFA, cancel/error/expired-session recovery and verified authenticated reads; persist refreshed tokens in Keystore-backed private encryption and never log or back them up.",
       "coverage_class": "required_native",
       "production_routes": [
         {
@@ -7044,11 +7045,11 @@
           "surface_role": "screen"
         }
       ],
-      "domain_dependency": "Reviewed Garmin provider capability and credential boundary",
+      "domain_dependency": "Pinned embedded client, allowlisted native bridge and encrypted DI-token store",
       "planned_tests": [
         "src/ui/__tests__/GarminSyncScreen.test.tsx"
       ],
-      "planned_check": "Garmin connection adapter contract and UI tests: verifier/state lifecycle, cancellation, expired consent and truthful connection result.",
+      "planned_check": "Native/client and UI tests: foreground login/MFA, cancellation, real authenticated read, encrypted refresh persistence, expired-session cold restart and secret-free logs/backups.",
       "planned_evidence": ".planning/phases/18-garmin-import/evidence/garmin.consent.json",
       "prototype": {
         "source_refs": [
@@ -7079,7 +7080,7 @@
       "owning_phase": 18,
       "screen": "Garmin connected account",
       "interaction_state": "connected",
-      "acceptance_contract": "Show connection/consented-access/last-sync facts, activity list and durable dedupe receipt status with Sync now, Import FIT and Revoke.",
+      "acceptance_contract": "Show verified account connection, last successful sync, imported activities and durable dedupe status with Sync now and Disconnect Garmin; packaging runs standalone without AI agents, Python installed separately, or a development server.",
       "coverage_class": "prototype_source",
       "production_routes": [
         {
@@ -7099,7 +7100,7 @@
       "planned_tests": [
         "src/ui/__tests__/GarminSyncScreen.test.tsx"
       ],
-      "planned_check": "GarminSyncScreen tests: connected state reads durable facts, optional empty list and last-sync error.",
+      "planned_check": "GarminSyncScreen and release-package tests: connected state reads durable facts, optional empty list and last-sync error; APK runs without Metro, separately installed Python or AI tooling.",
       "planned_evidence": ".planning/phases/18-garmin-import/evidence/garmin.connected.json",
       "prototype": {
         "source_refs": [
@@ -7131,7 +7132,7 @@
       "owning_phase": 18,
       "screen": "Garmin sync",
       "interaction_state": "sync-states",
-      "acceptance_contract": "Show busy Syncing Garmin activities, successful import/no-duplicates feedback, and Sync could not complete with Try again/Import FIT while previous facts remain.",
+      "acceptance_contract": "Execute bounded foreground sync with clear busy, new/unchanged/partial-failure, offline, 403/429 and sign-in-needed results; preserve prior facts, bound retries, and do not claim success from a fixture or failed data read.",
       "coverage_class": "prototype_source",
       "production_routes": [
         {
@@ -7151,7 +7152,7 @@
       "planned_tests": [
         "src/ui/__tests__/GarminSyncScreen.test.tsx"
       ],
-      "planned_check": "GarminSyncScreen tests: busy duplicate request suppression, real error, retry and no data loss.",
+      "planned_check": "GarminSyncScreen and adapter tests: serialized request, bounded retry, offline/403/429/sign-in-needed/partial results, truthful success and no prior-data loss.",
       "planned_evidence": ".planning/phases/18-garmin-import/evidence/garmin.sync-states.json",
       "prototype": {
         "source_refs": [
@@ -7184,7 +7185,7 @@
       "owning_phase": 18,
       "screen": "Garmin revocation",
       "interaction_state": "revoke",
-      "acceptance_contract": "Revoke/disconnect activity access without deleting imported history; reflect the real provider result and permit later reconnection.",
+      "acceptance_contract": "Disconnect locally by invalidating in-flight generations and clearing credentials/session state without deleting imported history; prevent late network results from writing, allow later reconnection, and never claim server-side revocation without a supported verified operation.",
       "coverage_class": "prototype_source",
       "production_routes": [
         {
@@ -7204,7 +7205,7 @@
       "planned_tests": [
         "src/ui/__tests__/GarminSyncScreen.test.tsx"
       ],
-      "planned_check": "GarminSyncScreen tests and adapter contract: revoke success/failure, imported facts retained.",
+      "planned_check": "GarminSyncScreen and adapter tests: disconnect clears encrypted session state, fences late results, retains imported facts and permits later foreground sign-in.",
       "planned_evidence": ".planning/phases/18-garmin-import/evidence/garmin.revoke.json",
       "prototype": {
         "source_refs": [
@@ -7229,33 +7230,39 @@
       "owner_acceptance_status": "pending_after_implementation"
     },
     {
-      "inventory_id": "garmin.fit-import",
+      "inventory_id": "garmin.json-sync",
       "requirement_id": "GAR-08",
       "owning_phase": 18,
-      "screen": "FIT import",
-      "interaction_state": "fit-import",
-      "acceptance_contract": "Use a native original-file picker and actual FIT parsing/preview, supporting personal use without Garmin program approval.",
+      "screen": "Garmin JSON sync",
+      "interaction_state": "json-sync",
+      "acceptance_contract": "Read paginated Running summaries plus per-activity summary/splits/detail JSON through a typed allowlisted native bridge, validate and normalize it with explicit sampling/timezone provenance, and capacity-check before one atomic idempotent SQLite import.",
       "coverage_class": "required_native",
-      "production_routes": [
-        {
-          "path": "app/garmin/import.tsx",
-          "status": "proposed",
-          "surface_role": "route"
-        }
-      ],
+      "production_routes": [],
       "production_components": [
         {
-          "path": "src/ui/screens/ActivityImportScreen.tsx",
+          "path": "modules/garmin-connect/",
           "status": "proposed",
-          "surface_role": "screen"
+          "surface_role": "native_module"
+        },
+        {
+          "path": "src/platform/garmin/garminConnectAdapter.ts",
+          "status": "proposed",
+          "surface_role": "platform_adapter"
+        },
+        {
+          "path": "src/domains/activities/importCommands.ts",
+          "status": "proposed",
+          "surface_role": "domain_or_shared"
         }
       ],
-      "domain_dependency": "Durable imported activities, receipts and match commands",
+      "domain_dependency": "Pinned embedded client, exact source envelope and durable imported-activity transaction",
       "planned_tests": [
-        "src/ui/__tests__/ActivityImportScreen.test.tsx"
+        "modules/garmin-connect/android/src/test/java/expo/modules/garminconnect/GarminConnectModuleTest.kt",
+        "src/platform/garmin/garminConnectAdapter.test.ts",
+        "tests/integration/garmin-sync.test.ts"
       ],
-      "planned_check": "ActivityImportScreen tests and FIT adapter contracts: picker cancel, outdoor/treadmill valid files and durable preview→commit.",
-      "planned_evidence": ".planning/phases/18-garmin-import/evidence/garmin.fit-import.json",
+      "planned_check": "Native bridge plus SQLite tests: paged summaries and allowlisted activity/splits/detail JSON validate, capacity-check, normalize and commit once; attempt/fetch times do not alter content identity.",
+      "planned_evidence": ".planning/phases/18-garmin-import/evidence/garmin.json-sync.json",
       "prototype": {
         "source_refs": [
           {
@@ -7277,7 +7284,7 @@
           "[data-garmin-action='preview-fit-outdoor']",
           "[data-garmin-action='preview-fit-treadmill']"
         ],
-        "source_note": "H:3702; H:3711",
+        "source_note": "Superseded FIT controls H:3702; H:3711; final owner transport selection",
         "approval_revision": 18
       },
       "source_conflict_ids": [
@@ -7289,33 +7296,38 @@
       "owner_acceptance_status": "pending_after_implementation"
     },
     {
-      "inventory_id": "garmin.fit-errors",
+      "inventory_id": "garmin.sync-recovery",
       "requirement_id": "GAR-09",
       "owning_phase": 18,
-      "screen": "FIT error/recovery",
-      "interaction_state": "fit-errors",
-      "acceptance_contract": "Handle unsupported, malformed, oversized, truncated and duplicate files, cancelled selection and interrupted import without partial source facts or lost prior activities.",
+      "screen": "Garmin sync recovery",
+      "interaction_state": "sync-recovery",
+      "acceptance_contract": "Handle malformed/oversized/truncated JSON, missing channels, unsupported sport, duplicates, changed source revisions, ambiguous timezone and cancelled/interrupted sync with complete recovery paths and no partial facts or lost history.",
       "coverage_class": "required_native",
-      "production_routes": [
-        {
-          "path": "app/garmin/import.tsx",
-          "status": "proposed",
-          "surface_role": "route"
-        }
-      ],
+      "production_routes": [],
       "production_components": [
         {
-          "path": "src/ui/screens/ActivityImportScreen.tsx",
+          "path": "modules/garmin-connect/",
           "status": "proposed",
-          "surface_role": "screen"
+          "surface_role": "native_module"
+        },
+        {
+          "path": "src/platform/garmin/garminConnectAdapter.ts",
+          "status": "proposed",
+          "surface_role": "platform_adapter"
+        },
+        {
+          "path": "src/domains/activities/importCommands.ts",
+          "status": "proposed",
+          "surface_role": "domain_or_shared"
         }
       ],
-      "domain_dependency": "Durable imported activities, receipts and match commands",
+      "domain_dependency": "Bounded native transport, staged revisions and durable import receipts",
       "planned_tests": [
-        "src/ui/__tests__/ActivityImportScreen.test.tsx"
+        "src/platform/garmin/garminConnectAdapter.test.ts",
+        "tests/integration/garmin-sync.test.ts"
       ],
-      "planned_check": "FIT fixture tests and real SQLite transaction failure: no partial import; retry/dedupe after process death.",
-      "planned_evidence": ".planning/phases/18-garmin-import/evidence/garmin.fit-errors.json",
+      "planned_check": "Native bridge and real SQLite failure tests: malformed/oversized/truncated JSON, missing channels, unsupported sport, changed revision, ambiguous timezone, cancellation and process death preserve prior facts with no partial commit.",
+      "planned_evidence": ".planning/phases/18-garmin-import/evidence/garmin.sync-recovery.json",
       "prototype": {
         "source_refs": [
           {
@@ -7328,10 +7340,12 @@
           }
         ],
         "selectors": [],
-        "source_note": "owner; H:3702",
+        "source_note": "Superseded FIT control H:3702; final owner transport selection",
         "approval_revision": 18
       },
-      "source_conflict_ids": [],
+      "source_conflict_ids": [
+        "C-11"
+      ],
       "deviation_refs": [],
       "evidence_status": "pending_implementation",
       "owner_acceptance_status": "pending_after_implementation"
@@ -8877,7 +8891,7 @@
       "deviation_refs": [
         {
           "id": "DEV-01",
-          "status": "proposed_owner_decision_pending"
+          "status": "accepted_pending_native_verification"
         }
       ],
       "evidence_status": "pending_implementation",
@@ -9148,7 +9162,7 @@
       "owning_phase": 20,
       "screen": "Garmin acceptance",
       "interaction_state": "garmin-import",
-      "acceptance_contract": "Verify actual FIT imports, transport-order duplicate suppression, optional source facts and explicit selected-candidate matching; gate API acceptance on real approval/access.",
+      "acceptance_contract": "Verify a self-contained ARM64 APK's Python/native packaging, real account login/MFA/read, encrypted token refresh/cold restart/logout, JSON fidelity, idempotent sync and explicit matching; synthetic tests alone cannot close live account/network evidence, and partner approval/FIT decoding is not a prerequisite.",
       "coverage_class": "required_native",
       "production_routes": [],
       "production_components": [
@@ -9170,7 +9184,7 @@
       ],
       "domain_dependency": "All implemented phases and preserved v1.1 contracts",
       "planned_tests": [],
-      "planned_check": "Sanitized FIT fixture results, SQLite receipt evidence and approved-provider contract checks.",
+      "planned_check": "Pinned package/ABI evidence, sanitized JSON fixtures, live account login/MFA/read/restart evidence, SQLite receipts, bounded failure results and standalone release APK proof.",
       "planned_evidence": ".planning/phases/20-native-acceptance/evidence/verification.garmin-import.json",
       "prototype": {
         "source_refs": [
@@ -9398,6 +9412,15 @@
       "classification": "superseded_removed",
       "reason": "Explicitly removed by latest owner and approval revisions.",
       "resolution_id": "C-07"
+    },
+    {
+      "id": "excluded.garmin-fit-controls",
+      "screen": "Garmin prototype import controls",
+      "interaction_state": "Import FIT / file picker / outdoor and treadmill preview",
+      "prototype_reference": "H:3701-3706; H:3711",
+      "classification": "superseded_removed",
+      "reason": "The final owner selection replaces prototype FIT controls with the pinned standalone embedded-client JSON transport.",
+      "resolution_id": "C-11"
     },
     {
       "id": "excluded.velocity-settle",
@@ -9794,32 +9817,27 @@
       "source_line": 3701,
       "attribute": "data-garmin-action",
       "value": "import",
-      "classification": "dynamic_control",
-      "requirement_ids": [
-        "GAR-08"
-      ]
+      "classification": "superseded_transport_control",
+      "requirement_ids": [],
+      "excluded_id": "excluded.garmin-fit-controls"
     },
     {
       "source_dynamic_id": "source-dynamic-038",
       "source_line": 3702,
       "attribute": "data-garmin-action",
       "value": "preview-fit-outdoor",
-      "classification": "prototype_state_control_not_product",
-      "requirement_ids": [
-        "GAR-08",
-        "GAR-10"
-      ]
+      "classification": "superseded_transport_control",
+      "requirement_ids": [],
+      "excluded_id": "excluded.garmin-fit-controls"
     },
     {
       "source_dynamic_id": "source-dynamic-039",
       "source_line": 3702,
       "attribute": "data-garmin-action",
       "value": "preview-fit-treadmill",
-      "classification": "prototype_state_control_not_product",
-      "requirement_ids": [
-        "GAR-08",
-        "GAR-11"
-      ]
+      "classification": "superseded_transport_control",
+      "requirement_ids": [],
+      "excluded_id": "excluded.garmin-fit-controls"
     },
     {
       "source_dynamic_id": "source-dynamic-040",
@@ -9867,10 +9885,9 @@
       "source_line": 3705,
       "attribute": "data-garmin-action",
       "value": "import",
-      "classification": "dynamic_control",
-      "requirement_ids": [
-        "GAR-08"
-      ]
+      "classification": "superseded_transport_control",
+      "requirement_ids": [],
+      "excluded_id": "excluded.garmin-fit-controls"
     },
     {
       "source_dynamic_id": "source-dynamic-045",
@@ -9887,10 +9904,9 @@
       "source_line": 3706,
       "attribute": "data-garmin-action",
       "value": "import",
-      "classification": "dynamic_control",
-      "requirement_ids": [
-        "GAR-08"
-      ]
+      "classification": "superseded_transport_control",
+      "requirement_ids": [],
+      "excluded_id": "excluded.garmin-fit-controls"
     },
     {
       "source_dynamic_id": "source-dynamic-047",

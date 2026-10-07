@@ -8,7 +8,7 @@
 
 Reproduce the approved Workout root, Active Workout, completion, recovery, and
 their preserved deep actions on Phase 13 facts and Phase 14 presentation. No
-Calendar month work, Running authoring, FIT parsing, or Progress analytics.
+Calendar month work, Running authoring, Garmin transport, or Progress analytics.
 
 </domain>
 
@@ -28,8 +28,8 @@ Calendar month work, Running authoring, FIT parsing, or Progress analytics.
 - **D15-08:** Exercise menu contains only flat between-set rest (`sec`), replace, delete. Trend stays separate. No cadence, rest-between-reps, nested Advanced Timing, or plan cue settings.
 - **D15-09:** Preserve add/replace/delete, corrections, Undo recovery, finish complete/partial/later, discard, completion evidence, and explicit default-No plan write-back.
 
-### Owner-review checkpoint
-- **TIM-01:** Retain legacy cadence/cluster facts and resume set/pointer/rest state. Disabling hidden authoring/reconciliation/playback is proposed and must be checkpointed with tests before removal.
+### Final owner decision
+- **TIM-01:** Approved `retire-playback` with no compatibility mode. Remove cadence/cluster authoring, playback, runtime commands, foreground reconciliation, and queued callbacks. Preserve ordinary workout/history facts, readable legacy source records required for portability, committed/draft sets, active pointer, and between-set rest recovery. Tests prove the cutover; they do not reopen the decision.
 
 ### Claude's Discretion
 - Internal component boundaries when existing primitives own the same behavior.
@@ -43,7 +43,7 @@ Calendar month work, Running authoring, FIT parsing, or Progress analytics.
 - `.planning/REQUIREMENTS.md` — WRK-01 through WRK-36.
 - `.planning/design/v1.2-prototype-parity-matrix.md` — every route/state mapping.
 - `.planning/design/v1.2-SOURCE-PRECEDENCE.md` — Revision 18 indicator/timing decisions.
-- `.planning/architecture/v1.2-multi-active-plans.md` § Legacy cadence/cluster compatibility.
+- `.planning/architecture/v1.2-multi-active-plans.md` § Cadence/cluster retirement and retained-fact boundary.
 - Prototype selectors/screens in `.planning/design/v1.2-prototype-inventory.json`.
 
 </canonical_refs>

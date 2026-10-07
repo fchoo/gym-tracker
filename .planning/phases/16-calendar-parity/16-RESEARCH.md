@@ -31,9 +31,9 @@ presentation. Calendar never gains correction or workout mutation authority.
 - **D16-07:** Agenda rows are one compact full-width target with no nested actions. Planned Strength opens an occurrence preview; Strength history opens read-only Active-shaped detail; planned Running opens plan detail; imported Running opens Garmin detail.
 - **D16-08:** Correction, resume, revision history, and removal remain separate management contexts. Back restores the expanded Calendar state and trigger focus.
 
-### Owner-review checkpoints
-- **DEV-01:** 360dp side-padding adaptation for non-overlapping 48dp date targets remains proposed.
-- **DEV-02:** Light Strength-title contrast adjustment remains proposed. Plans must include comparison/checkpoint rather than assume approval.
+### Final owner decisions
+- **DEV-01:** Approved adaptive inset: 6dp at 360, 18dp at 390, with 2dp cell gaps; native target geometry remains to be proved.
+- **DEV-02:** Approved Light Strength title `#9B470B`, retaining `#D97820` for border/rail/swatch and the Dark treatment; native blended-fill contrast remains to be proved.
 
 ### Claude's Discretion
 
@@ -55,7 +55,7 @@ Calendar correction controls, generic timeline redesign, and automatic activity 
 |---|---|---|
 | CAL-01 | Fill the area above bottom navigation with a Monday-first month grid and persistent Previous, month title, Today and Next controls. | Civil-month helpers, full-height layout ownership, variable four/five/six-week geometry, and target file map. |
 | CAL-02 | Place the info action immediately left of App Settings and show Activity and Status groups in a Calendar key sheet, with no inline legend. | Reuse of the Phase 14 header/modal/focus contract and explicit dialog verification. |
-| CAL-03 | Use orange Strength and blue Running, solid/tinted Complete, dotted half-filled Partial and transparent dashed Planned, with neutral status samples. | Shared event renderer, non-color semantic labels, Light/Dark comparison, and DEV-02 gate. |
+| CAL-03 | Use orange Strength and blue Running, solid/tinted Complete, dotted half-filled Partial and transparent dashed Planned, with neutral status samples. | Shared event renderer, non-color semantic labels, Light/Dark comparison, and approved DEV-02 evidence gate. |
 | CAL-04 | Use shared month/focused date/event cells with 28px date and 36px event tracks, stable effective 4px top inset and measured row-height continuity. | One `CalendarDayCell`/`CalendarWeekRow` presentation and native measured-geometry evidence. |
 | CAL-05 | Show up to two compact titled events per date in selected and adjacent weeks, preserving full names/statuses in day accessibility labels. | Typed event arrays, two-chip visual capacity, overflow semantics, and accessibility tests. |
 | CAL-06 | Distinguish selected date, today, outside-month dates, rest day and empty dates without changing event status semantics. | Civil-date state composition and event/status semantic separation. |
@@ -86,9 +86,9 @@ Calendar correction controls, generic timeline redesign, and automatic activity 
 
 Phase 16 is a coordinated data-contract, interaction-controller, native-motion, routing-authority, and evidence phase—not a reskin of the shipped Calendar. The live `CalendarScreen` is Sunday-first, always renders 42 cells, settles at a fixed 72dp only on gesture end, runs its pan callback on the JS thread, and represents a date as status flags plus selected-day Strength sessions. The locked v1.2 contract instead requires Monday-first four/five/six-row months, distinct same-day typed events, continuous three-panel motion, inclusive 25% preview/settle behavior, measured row morphs, retained last-good query state, and durable destination identities. [VERIFIED: src/ui/screens/CalendarScreen.tsx:49-65,122-145,189-220,365-495] [VERIFIED: src/domains/history/contracts.ts:69-86] [VERIFIED: .planning/phases/16-calendar-parity/16-UI-SPEC.md:175-245]
 
-The planner should structure the phase as seven vertical plans: (1) dependency/controller and owner gates; (2) civil-date/event month surface; (3) capability-separated Strength detail/occurrence preview; (4) UI-thread month drag and measured focus/collapse geometry; (5) compact agenda and destination intents; (6) diagnostic native/reference capture; and (7) final integration/verifier work after the real downstream routes exist. Phase 13's range-query event port plus exact planned-Strength loader, Phase 15's Active-shaped presentation, Phase 17 Plan 17-08 Running detail, and Phase 18 Plans 18-08/18-14 imported-activity detail/Calendar registration are hard dependencies. The current `CalendarMonth`/`SessionDetailRoute` seams, mocked href assertions, and fixture destinations must not be treated as those completed dependencies. [VERIFIED: .planning/ROADMAP.md:138-156] [PLANNED: .planning/phases/13-multi-plan-running-foundation/13-02-PLAN.md] [PLANNED: .planning/phases/17-library-running-plans/17-08-PLAN.md] [PLANNED: .planning/phases/18-garmin-import/18-08-PLAN.md] [PLANNED: .planning/phases/18-garmin-import/18-14-PLAN.md]
+The planner should structure the phase as seven vertical plans: (1) dependency/controller plus automatic owner-record validation; (2) civil-date/event month surface; (3) capability-separated Strength detail/occurrence preview; (4) UI-thread month drag and measured focus/collapse geometry; (5) compact agenda and destination intents; (6) diagnostic native/reference capture; and (7) final integration/verifier work after the real downstream routes exist. Phase 13's range-query event port plus exact planned-Strength loader, Phase 15's Active-shaped presentation, Phase 17 Plan 17-08 Running detail, and Phase 18 imported-activity detail/Calendar registration are hard dependencies. The current `CalendarMonth`/`SessionDetailRoute` seams, mocked href assertions, and fixture destinations must not be treated as those completed dependencies. [VERIFIED: .planning/ROADMAP.md:138-156]
 
-Two explicit owner gates remain. DEV-01 must precede the final 360dp date-column geometry branch, and DEV-02 must precede the Light Strength-title color branch; the oracle values stay the baseline until the owner records a dated selection. The phase may build controller/data/read-only work around those gates, but cannot silently choose either adaptation. [VERIFIED: .planning/design/v1.2-DEVIATIONS.md:3-16] [VERIFIED: .planning/phases/16-calendar-parity/16-UI-SPEC.md:68-77]
+DEV-01 and DEV-02 are approved and must be validated automatically before affected code: adaptive 6-to-18dp inset with 2dp gaps, and Light Strength title `#9B470B` with `#D97820` sport identity. Missing native geometry/contrast evidence remains technical work and cannot be summarized as PASS. [VERIFIED: .planning/v1.2-OWNER-DECISIONS.md]
 
 **Primary recommendation:** Consume Phase 13's stable per-event range query and exact `loadPlannedStrengthOccurrence`, drive one semantic controller from pointer/buttons/keyboard/reduced motion, keep per-frame motion and measurement on the UI thread, and expose Calendar details through query-only capabilities. Capture development-test geometry/performance as diagnostic evidence, bind native/reference overlays and differences fail-closed, and close CAL-17/CAL-20 only after executing against the real Phase 17/18 destinations. Phase 20 alone owns release/profile performance acceptance. [VERIFIED: .planning/architecture/v1.2-multi-active-plans.md:143-147] [VERIFIED: .planning/verification/v1.2-native-verification-matrix.md:73-89,140-154]
 
@@ -376,16 +376,14 @@ Store visible month, selected date, focused/month mode, agenda scroll offset, an
 
 Calendar Back priority is exact: dismiss key, close read-only detail, collapse focused week, then root navigation. Modal dismiss returns Info focus; direct expansion focuses Collapse; adjacent re-expansion focuses the new date; collapse returns selected month-cell focus. [VERIFIED: .planning/phases/16-calendar-parity/16-UI-SPEC.md:290-292,354-365]
 
-## DEV-01 / DEV-02 Checkpoint Architecture
+## DEV-01 / DEV-02 Approved Evidence Architecture
 
-| Gate | Baseline before decision | Comparison task | Implementation stop |
+| Gate | Superseded oracle | Approved implementation | Closure gate |
 |---|---|---|---|
-| DEV-01 | `18dp` horizontal inset and `2dp` gaps; known `44.5625dp` day width at 360dp | Identical source-backed month fixture at 360×800, both themes if relevant: baseline versus `min(18, max(0, (safeWidth - 348) / 2))`; overlay and native non-overlap bounds | Stop before the final branch. Adaptation requires passing evidence; retaining `18dp` requires a dated scoped accepted exception, otherwise `BLOCKED_OWNER`. |
-| DEV-02 | Light Strength title `#D97820` | Identical Light complete/partial/planned chips on paper and selected fill: oracle versus title-only `#9B470B`; contrast plus overlay | Stop before the final branch. Adaptation requires passing evidence; retaining `#D97820` with the measured failure requires a dated scoped accepted exception, otherwise `BLOCKED_OWNER`. |
+| DEV-01 | `18dp` horizontal inset at 360 with known `44.5625dp` day width | `min(18, max(0, (safeWidth - 348) / 2))` dp, 6dp at 360 and 18dp at 390, 2dp gaps | Complete source-bound 360/390 native non-overlap/accessibility evidence must pass. |
+| DEV-02 | Light Strength title `#D97820` with known contrast failure | Light title `#9B470B`; `#D97820` border/rail/swatch; Dark unchanged | Complete Light planned/partial/complete blended-fill native contrast evidence must pass. |
 
-These quoted baseline/adaptation values are verbatim from the deviation register and remain proposals, not defaults. [VERIFIED: .planning/design/v1.2-DEVIATIONS.md:3-16]
-
-An open decision or incomplete chosen-branch evidence keeps every affected row `BLOCKED_OWNER`; an aggregate containing such a row cannot be all-pass. An accepted adaptation must pass its complete native/reference comparison and accessibility measurements. If the owner retains the oracle and its known accessibility failure remains, the deviation register must contain a separately dated/scoped accepted exception; absent that exception, closure blocks. `ACCEPTED_EXCEPTION` remains distinct from PASS.
+These approved values are verbatim from the owner record and are the only implementation defaults. Incomplete chosen-branch evidence is `REVIEW_REQUIRED` or `FAIL`; an aggregate containing such a row cannot be all-pass. Approval never substitutes for native/reference comparison and accessibility measurements.
 
 ## Diagnostic Performance Architecture
 
@@ -400,7 +398,7 @@ An open decision or incomplete chosen-branch evidence keeps every affected row `
 - `.planning/phases/16-calendar-parity/16-REFERENCE-MAP.json` maps every required Calendar capture to exactly one Revision 18 reference using requirement, state, fixture, theme, measured viewport/orientation/font, motion/input, prototype revision, and source-manifest hash.
 - `scripts/compare-v12-calendar.mjs` generates and hashes individual reference, native, overlay, absolute-difference, mask, and canonical comparison JSON artifacts. It must not rescale/stretch mismatched bounds or use a contact sheet as source evidence.
 - `scripts/v12-calendar-comparison.test.mjs` rejects missing/duplicate/extra mappings, stale hashes, path escapes/symlinks, requested-versus-measured configuration mismatch, missing constituent images, unknown classifications, and semantic/authority/focus/target differences regardless of pixel percentage.
-- Clean comparisons may pass. An accepted adaptation is `accepted_deviation`; a retained oracle with an unresolved accessibility failure is `BLOCKED_OWNER` unless a dated/scoped accepted exception exists, in which case it is `ACCEPTED_EXCEPTION`, never PASS. Every other unexplained product difference fails closed.
+- Clean comparisons may pass. The two dated approved adaptations are `accepted_deviation` only after their exact evidence passes; incomplete evidence is `REVIEW_REQUIRED` and failed evidence is `FAIL`. Every unexplained product difference fails closed.
 - Phase 20 may ingest these Phase 16 diagnostic artifacts, but it revalidates their bytes and independently owns release/profile visual and performance acceptance.
 
 ## Anti-Patterns to Avoid
@@ -634,10 +632,10 @@ Expo Router documents `useFocusEffect` for work whenever a route becomes focused
    - Phase 15 Plan 15-01 owns `src/domains/workout/workoutPresentation.ts` (`WorkoutPresentationModel`) and `src/ui/components/WorkoutSessionPresentation.tsx` (command-free presentation/disclosure).
    - Phase 16 preflights those exact exports and stops rather than duplicating the presenter or passing mutation capabilities.
 
-4. **DEV-01 and DEV-02 outcome semantics — RESOLVED; owner choices remain pending.**
-   - Open decisions or incomplete chosen-branch evidence yield `BLOCKED_OWNER` and prevent an all-pass result.
-   - An accepted adaptation must pass its full native/reference and accessibility evidence.
-   - A retained oracle with a continuing known failure needs a separately dated/scoped accepted exception; without it closure blocks, and with it the row is `ACCEPTED_EXCEPTION`, not PASS.
+4. **DEV-01 and DEV-02 outcome semantics — APPROVED; technical evidence remains pending.**
+   - Automatic gates validate both dated owner selections before affected implementation.
+   - Each approved adaptation must pass its full native/reference and accessibility evidence.
+   - Incomplete or failed evidence prevents an all-pass result; no oracle exception branch remains.
 
 ## Environment Availability
 
@@ -716,7 +714,7 @@ No test, build, emulator, device mutation, or native evidence command was run du
 - [ ] `scripts/run-v12-maestro.mjs`, `scripts/verify-v12-native-evidence.mjs`, `scripts/v12-evidence-scripts.test.mjs` — identity-bound evidence envelope and adversarial checker tests; these are planned paths. [VERIFIED: .planning/verification/v1.2-native-verification-matrix.md:34-34]
 - [ ] `scripts/benchmark-v12-interactions.mjs` — raw query/frame samples, refresh rate, missed frames, profiler overhead; this is a planned path. [VERIFIED: .planning/verification/v1.2-native-verification-matrix.md:34-34,152-154]
 - [ ] Add the pure transition controller to `scripts/run-coverage-gate.mjs` if classified integrity-critical; cover every cancellation/epoch/reduced-motion branch at 100%. [VERIFIED: .trae/rules/rules.md:22-23]
-- [ ] Add two owner-checkpoint comparison fixtures/evidence rows for DEV-01 and DEV-02 before affected styles.
+- [ ] Add two approved-deviation comparison fixtures/evidence rows for DEV-01 and DEV-02 before closure.
 
 ## Security Domain
 
@@ -747,11 +745,11 @@ Security enforcement is enabled at ASVS Level 1 and blocks on high severity. [VE
 
 ### Primary (HIGH confidence)
 
-- `.planning/phases/16-calendar-parity/16-CONTEXT.md` — locked decisions, scope and checkpoints.
+- `.planning/phases/16-calendar-parity/16-CONTEXT.md` — locked decisions, scope and automatic owner-record gates.
 - `.planning/phases/16-calendar-parity/16-UI-SPEC.md` — approved geometry, state, copy, motion, focus, performance and evidence contract.
 - `.planning/REQUIREMENTS.md:90-114` and `.planning/ROADMAP.md:138-156` — CAL-01..23, goal, dependencies and success criteria.
 - `.planning/v1.2-OWNER-BRIEF.md:88-104` — owner Calendar oracle.
-- `.planning/design/v1.2-SOURCE-PRECEDENCE.md` and `v1.2-DEVIATIONS.md` — resolved conflicts and open DEV-01/02.
+- `.planning/design/v1.2-SOURCE-PRECEDENCE.md`, `v1.2-DEVIATIONS.md`, and `.planning/v1.2-OWNER-DECISIONS.md` — resolved conflicts, approved DEV-01/02 values, and evidence status.
 - `.planning/design/v1.2-browser-evidence/calendar-pointer-evidence.json` — observed pointer/title sequence.
 - `.planning/design/v1.2-prototype-parity-matrix.md:114-140` — exact production targets/tests/evidence.
 - `.planning/verification/v1.2-native-verification-matrix.md:11-34,64-89,142-158` — test architecture, NV-CAL and performance gates.

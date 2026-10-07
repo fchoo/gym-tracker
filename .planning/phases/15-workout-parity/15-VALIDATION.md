@@ -18,7 +18,7 @@ Phase 15 passes only when all of the following are true:
 1. Phase 13 and Phase 14 execution summaries required by 15-01 exist and their verification gates passed. Phase 15 must consume their exact selected-occurrence, shell, token, overlay, toast, focus, and settings contracts rather than recreate them.
 2. 15-01 proves a real Phase 13 occurrence from Workout through Active/recovery and exports a command-free facts presenter that Phase 16 can consume without constructing any mutation capability.
 3. All Workout-root and overlay consumers use the canonical Phase 14 74dp bottom navigation plus safe area and 82% available-height sheet cap; no Phase 15-local geometry variant exists.
-4. TIM-01 characterization passes and the owner records exactly retire-playback or retain-compatibility at the blocking-human checkpoint. retain-compatibility blocks Phase 15 cutover; silence, auto-advance, or prototype appearance cannot close the gate.
+4. TIM-01 characterization passes; the executor validates approved `retire-playback` plus `legacy_playback_compatibility=false` from the dated owner record; every authoring/runtime/reconciliation/callback/playback path is absent while ordinary workout/history/rest recovery remains exact.
 5. Every implementation task's focused test passes, followed by npm run typecheck, npm run lint, npm run check:boundaries, npm run test:all -- --runInBand, and npm run test:coverage -- --runInBand under Node 24.19.0/npm 11.17.0.
 6. Every changed integrity-critical domain/repository/runtime module has complete branch coverage. Presentation-only geometry is covered by component and native evidence without weakening the integrity gate.
 7. npm run verify:cng passes from a clean tracked tree; one fresh Phase 15 dev-test APK is built and retained; its manifest binds HEAD, source digest, package, APK hash, installed bytes, device/API/ABI, and evidence reports.
@@ -35,8 +35,8 @@ Phase 15 passes only when all of the following are true:
 | 15-01-01 | Exact Phase 13 occurrence start/resume/read retry/Back | root route component tests plus today-schedule integration | process-death selected-occurrence journey | WRK-01,05,08 / root-identity, start-resume, active-back |
 | 15-01-02 | Immutable facts presenter, one list, sole edge, row states | WorkoutSessionPresentation plus Active component tests | Active overview Light/Dark/long-list capture | WRK-07,09-11 / active-layout, disclosure, active-indicator, set-states |
 | 15-01-03 | Phase 16 command-free reuse boundary | presenter structural tests plus check:boundaries | read-only fixture semantic trace with zero command calls | cross-phase / readonly-presentation |
-| 15-02-01 | Legacy timing byte/state/callback/recovery characterization | advanced timing unit/runtime, today integration, restore/merge SQLite tests | TIM evidence matrix bound to source hash | WRK-23,26 / timing-compatibility |
-| 15-02-02 | Owner TIM-01 choice | exact decision record parser plus human review | owner disposition/evidence hash in verifier | TIM-01 / timing-policy |
+| 15-02-01 | Legacy timing byte/state/callback/recovery characterization | advanced timing unit/runtime, today integration, restore/merge SQLite tests | TIM evidence matrix bound to source hash | WRK-23,26 / timing-retirement |
+| 15-02-02 | Approved TIM-01 record | exact owner-record parser plus evidence-hash validation | approved disposition/evidence hash in verifier | TIM-01 / timing-policy |
 | 15-02-03 | Approved zero-hidden-playback branch with rest intact | runtime/timing/today/rest tests | foreground, queued callback, relaunch, restore, merge and rest-cue traces | WRK-23,25,26 / timing-retirement |
 | 15-03-01 | Approved scheduled Workout root and exact Start/Resume | Today/index component tests | scheduled root and recovered root captures | WRK-01,02,05 / root-identity, day-switch, start-resume |
 | 15-03-02 | Rest/no-plan/start alternatives/Running context/failures | Today/start-sheet/index component tests | root-state and contextual-navigation journey | WRK-03,04,06 / scheduled-rest-empty, start-alternate, context-running |
@@ -112,7 +112,7 @@ Phase 15 passes only when all of the following are true:
 Cross-cutting evidence IDs required by the verifier:
 
 - workout.readonly-presentation — Phase 16 adapter renders facts with zero mutation capabilities/calls.
-- workout.timing-policy — fresh TIM-01 characterization, exact owner choice, selected branch, retained source digests.
+- workout.timing-policy — fresh TIM-01 characterization, exact approved owner record, complete retirement, retained source digests.
 - workout.accessibility — 48dp, native semantic-tree labels/roles/states/actions, focus order/return, 200% text, keyboard/D-pad, and reduced motion; live TalkBack is optional supplementary evidence.
 - workout.appearance — Light/Dark/System and Revision 18 390x844 native overlay results.
 - workout.offline-recovery — root/Active/rest/edit/outcome/completion process-death and offline lifecycle.
@@ -221,7 +221,7 @@ No same-wave plans share a files_modified path. Every later plan that shares Act
 | CONTEXT | D15-07 | Final-commit collapse; dock-safe toast; accessible reorder | 15-05,08 | COVERED | Stable-ID source transitions. |
 | CONTEXT | D15-08 | Exact flat menu; no cadence/nested timing/cue UI | 15-02,04,07,09 | COVERED | Runtime cut remains separately gated. |
 | CONTEXT | D15-09 | Preserve edits/recovery/outcomes/completion/default-No write-back | 15-08,10 | COVERED | Existing domain/storage owners retained. |
-| CONTEXT | TIM-01 | Preserve timing facts/recovery; owner-gate hidden runtime retirement | 15-02,11 | COVERED | blocking-human; retain option blocks cutover. |
+| CONTEXT | TIM-01 | Retire authoring/runtime playback with no compatibility mode; preserve ordinary workout/history/rest integrity | 15-02,11 | COVERED | Automatic owner-record gate plus zero-cue/recovery evidence. |
 
 ### Research features and constraints
 
@@ -242,7 +242,7 @@ No same-wave plans share a files_modified path. Every later plan that shares Act
 | RESEARCH | R15-13 | Actual rendered performance gates and long-session measurement | 15-13 | COVERED | 100 samples, p95/JS thresholds, final exact-APK gate. |
 | RESEARCH | R15-14 | No package addition/upgrade | all | COVERED | No install task exists. |
 
-Deferred/excluded items are not gaps: Calendar month/focus belongs to Phase 16; Running authoring to Phase 17; FIT/provider transport to Phase 18; Progress analytics to Phase 19; in-app run recording, cadence/per-rep authoring, nested timing, and new progression logic are explicitly out of scope. Legacy timing facts/recovery are retained rather than deferred.
+Deferred/excluded items are not gaps: Calendar month/focus belongs to Phase 16; Running authoring to Phase 17; Garmin authentication/JSON transport to Phase 18; Progress analytics to Phase 19; in-app run recording, cadence/per-rep authoring, nested timing, and new progression logic are explicitly out of scope. Ordinary workout/history/rest integrity remains required while playback is retired.
 
 ## Pre-mortem controls
 
@@ -251,7 +251,7 @@ Deferred/excluded items are not gaps: Calendar month/focus belongs to Phase 16; 
 | Selected day starts whichever plan later appears active | 15-01 route/integration tracer | Carry complete Phase 13 occurrence envelope and test a plan switch before commit. |
 | UI claims set/outcome success before SQLite commit | held-commit tests in 15-05/10 | Apply only authoritative result/view; effects only for committed. |
 | Explicit editor still writes on blur/dismiss | 15-04 editor/row tests | Sheet-local draft; Save is sole command boundary. |
-| Hidden timing callbacks emit cues after UI removal | 15-02 characterization before blocking-human gate | Enumerate every runtime cut point; zero-cue lifecycle proof; retain option blocks cutover. |
+| Hidden timing callbacks emit cues after UI removal | 15-02 characterization before approved retirement | Enumerate every runtime cut point; zero-cue lifecycle proof; any failure blocks release and requires a fix. |
 | Calendar gains mutation authority through reuse | 15-01 structural boundary test | Command-free presenter props/imports and zero-command fixture. |
 | Preferences corrupt targets or active rest | 15-06 canonical pre/post digests | Separate versioned plan preference row and strict non-interference tests. |
 | Protected history is deleted or reorder changes current identity | 15-08 integration suite | Retain receipt/disposition/exact membership and canonical source digests. |
@@ -277,4 +277,4 @@ After implementation authorization and all plan summaries exist, the executor ru
 
 No implementation, test, build, emulator/device mutation, evidence capture, release, deployment, or commit is authorized by this validation document. Those commands run only after the milestone owner authorizes execution.
 
-**Approval:** pending Phase 13/14 execution, TIM-01 blocking-human disposition, Phase 15 implementation, and fresh native verification.
+**Approval:** TIM-01 is finalized; Phase 13/14 execution, Phase 15 implementation, and fresh native verification remain pending.

@@ -15,8 +15,8 @@
 - **D14-05:** App Settings visibly starts with Appearance while retaining routes for rest alerts, removed sessions, data/recovery, Drive backup, CSV, privacy, and their existing recovery states.
 - **D14-06:** SQLite trust/loading/failure and notification-permission/continue-without-alerts startup behavior remains factual; visual caches are rebuildable.
 
-### Owner-review checkpoint
-- **DEV-02:** The measured Light Calendar Strength-title color adjustment is proposed, not accepted. Shared token work may expose a specific accessible text token but must not treat the color change as approved.
+### Final owner decision
+- **DEV-02:** Approved Light Calendar Strength title `#9B470B`, retaining `#D97820` for border/rail/swatch and the Dark treatment. Shared tokens implement those roles; native blended-fill contrast remains a technical evidence gate.
 
 ### Claude's Discretion
 - Internal token/component naming and the smallest refactor that avoids parallel visual systems.
@@ -266,7 +266,7 @@ The proposed mapping below is not yet present and must not be treated as proof o
         require("@expo-google-fonts/ibm-plex-mono/400Regular/IBMPlexMono_400Regular.ttf"),
     } as const;
 
-The deterministic source oracle is the Revision 18 editorial display declaration: 57px, `font-stretch: condensed`, variable `wght` 890, `letter-spacing: -0.07em`, and the approved scale/line-height/wrap behavior. Harness authoring and source tests land in one plan/commit. A later plan starts from that clean exact HEAD, requires a ready Android device, renders the oracle at native font scale 1.0/2.0, and records loaded family, glyph-run width, line box, wrap point, baseline and screenshot overlay. Tolerance is explicit and symmetric: glyph-run width and line-box deltas must be within 1 physical pixel after density normalization, wrap line count/breakpoints must match exactly, and no crop/overflow is allowed. A semantic 800 token is not evidence of the source's 890 axis. If Expo 57/React Native 0.86 cannot reproduce the oracle, add a proposed deviation with measurements and stop at a blocking-human owner checkpoint for a static extracted face or reviewed stack change. [CITED: https://github.com/expo/expo/blob/sdk-57/docs/pages/develop/user-interface/fonts.mdx#variable-fonts] [CITED: https://docs.expo.dev/develop/user-interface/fonts/#variable-fonts] [VERIFIED: .planning/phases/14-prototype-visual-shell/14-UI-SPEC.md:129-147]
+The deterministic source oracle is the Revision 18 editorial display declaration: 57px, `font-stretch: condensed`, variable `wght` 890, `letter-spacing: -0.07em`, and the approved scale/line-height/wrap behavior. Harness authoring and source tests land in one plan/commit. A later plan starts from that clean exact HEAD, requires a ready Android device, renders the oracle at native font scale 1.0/2.0, and records loaded family, glyph-run width, line box, wrap point, baseline and screenshot overlay. Tolerance is explicit and symmetric: glyph-run width and line-box deltas must be within 1 physical pixel after density normalization, wrap line count/breakpoints must match exactly, and no crop/overflow is allowed. A semantic 800 token is not evidence of the source's 890 axis. If Expo 57/React Native 0.86 cannot reproduce the oracle, record a measured technical blocker and stop before broad theme migration; do not invent a font branch. [CITED: https://github.com/expo/expo/blob/sdk-57/docs/pages/develop/user-interface/fonts.mdx#variable-fonts] [CITED: https://docs.expo.dev/develop/user-interface/fonts/#variable-fonts]
 
 ### Anti-Patterns to Avoid
 
@@ -288,7 +288,7 @@ The deterministic source oracle is the Revision 18 editorial display declaration
 | Keyboard avoidance | Fixed keyboard offsets per screen | Shared KeyboardAvoidingView plus scroll-to-focused-field behavior | Native keyboard frames and orientation vary. [CITED: https://reactnative.dev/docs/0.86/keyboardavoidingview] |
 | Settings and recovery workflows | New simplified Settings state machines | Existing SettingsScreen, RemovedSessionsScreen, Data/Recovery routes and portability controllers | Existing tests cover durable state, cancellation, retry, stale tokens and rebuild-pending behavior. [VERIFIED: app/more/__tests__/data-and-recovery.test.tsx:40-135] [VERIFIED: app/more/__tests__/manual-encrypted-backup.test.tsx:335-811] |
 | Backup cryptography | UI encryption/password logic | Existing backup/restore/merge commands and platform crypto | Phase 14 is presentation-only and must preserve the authenticated archive boundary. [VERIFIED: src/domains/portability/restoreCommands.ts:412-438] [VERIFIED: src/domains/portability/mergeCommands.ts:518-530] |
-| Font condensation | scale transforms or remote Google Fonts | Bundled Archivo source plus native proof; owner checkpoint on failure | Transforms falsify metrics and the workout display must wrap correctly at 200%. [VERIFIED: .planning/phases/14-prototype-visual-shell/14-UI-SPEC.md:129-147] |
+| Font condensation | scale transforms or remote Google Fonts | Bundled Archivo source plus native proof; measured technical halt on failure | Transforms falsify metrics and the workout display must wrap correctly at 200%. |
 
 **Key insight:** Nearly every required behavior already has an owner. Phase 14 succeeds by consolidating presentation and adding missing focus/toast/startup truth, not by duplicating navigation, settings, persistence or recovery logic.
 
@@ -345,7 +345,7 @@ The following values are copied from the approved Phase 14 token map; implementa
 | toastBg / toastBorder / toastText | #FFFAF0 / #CEC6B8 / #0D0C0A | #202020 / #3D423E / #F7F7F2 |
 | destructive | #B42318 | #FF8279 |
 
-Keep the current light destructive extension "#B42318"; the prototype's "#FF8279" is dark-surface-only. Keep production Light Strength text at "#D97820". The candidate "#9B470B" may exist only as "calendarStrengthTextLightCandidate" marked "PROPOSED — OWNER DECISION REQUIRED" and unused until DEV-02 is accepted. [VERIFIED: .planning/phases/14-prototype-visual-shell/14-UI-SPEC.md:189-202]
+Keep the current light destructive extension "#B42318"; the prototype's "#FF8279" is dark-surface-only. Per approved DEV-02, production Light Strength title text is "#9B470B" through `calendarStrengthTextLight`; borders, rails, and sport swatches remain "#D97820", and Dark is unchanged. [VERIFIED: .planning/v1.2-OWNER-DECISIONS.md; .planning/phases/14-prototype-visual-shell/14-UI-SPEC.md:189-202]
 
 Typography values are exactly four semantic sizes—"14sp", "16sp", "20sp", "57sp"—with reusable interface weights 400/800 and one component-specific editorial source oracle at variable `wght` 890, condensed stretch and `-0.07em`. Line heights are "20sp", "22sp", "24sp", and "49sp" respectively. [VERIFIED: .planning/phases/14-prototype-visual-shell/14-UI-SPEC.md:129-147]
 
@@ -368,7 +368,7 @@ All dimensions and behavior are locked. [VERIFIED: .planning/phases/14-prototype
 These boundaries are recommendations, not additional product scope.
 
 1. **Wave 0 — font source and harness authoring:** select the pinned Node/npm binaries, restore dependencies, add the official Archivo bytes/license, define the exact 57px/condensed/wght-890/-0.07em oracle and land the tested harness in an isolated atomic commit. Do not run a clean-tree build in the same dirty-source plan.
-2. **Wave 1 — clean-tree font proof:** from the committed Wave 0 exact HEAD and a ready Android device, build/install the development-test APK, capture deterministic metric/wrap/overlay evidence, and stop at a proposed-deviation owner checkpoint if the oracle does not match.
+2. **Wave 1 — clean-tree font proof:** from the committed Wave 0 exact HEAD and a ready Android device, build/install the development-test APK, capture deterministic metric/wrap/overlay evidence, and stop with a measured technical blocker if the oracle does not match.
 3. **Wave 2 — theme and startup:** after a passing proof, replace appFonts/fontFamilies/typeScale/themes/sizes/motion, synchronize `DESIGN.md`, make font/preference read failures explicit, and keep the runtime SQLite gate and test-production fixture isolation.
 4. **Wave 3 — root shell:** update RootTabsLayout/AppTabs/AppLoadingShell; add common root header/settings entry and route focus coordination; retain each screen's existing query/filter/date/range/scroll state.
 5. **Wave 4 — overlays and toasts:** create the shared modal frame and toast host, make exported `ConfirmationSheet`/`AppearanceSheet` delegate to it, then migrate audited direct Modal owners without moving content state machines.
@@ -454,12 +454,12 @@ These boundaries are recommendations, not additional product scope.
 **How to avoid:** use Node 24.19.0/npm 11.17.0, install dependencies, commit the implementation atomically, then run CNG/build/evidence.  
 **Warning signs:** default Node 26 is used, node_modules is absent, or adb has no ready device.
 
-### Pitfall 12: Accidentally approving DEV-02
+### Pitfall 12: Misapplying approved DEV-02 roles
 
-**What goes wrong:** Light Strength title changes to #9B470B and CAL-03/VER-04 are reported complete without owner approval.  
-**Why it happens:** the candidate is in the shared-token design and can be mistaken for an accepted replacement.  
-**How to avoid:** keep production at #D97820; if the candidate is declared, assert it is unused and label the evidence/checkpoint pending. [VERIFIED: .planning/phases/14-prototype-visual-shell/14-UI-SPEC.md:50-52,189-202]  
-**Warning signs:** calendarStrengthTextLightCandidate is referenced by a production style.
+**What goes wrong:** `#9B470B` replaces every Strength orange role, or approval is reported as native contrast proof.
+**Why it happens:** title and sport-identity roles are collapsed into one token.
+**How to avoid:** use `#9B470B` only for Light Strength title text, retain `#D97820` for border/rail/swatch, keep Dark unchanged, and require native blended-fill evidence before closure. [VERIFIED: .planning/v1.2-OWNER-DECISIONS.md]
+**Warning signs:** a shared orange token is globally changed or DEV-02 closes without evidence hashes.
 
 ## Code Examples
 
@@ -530,7 +530,7 @@ The literal success copy "Workout restored" is defined in the approved UI contra
 | # | Claim | Section | Risk if Wrong |
 |---|---|---|---|
 | A1 | Proposed new file boundaries AppRootShell.tsx, BottomSheet.tsx, SemanticToast.tsx and AppSettingsContent.tsx are the smallest maintainable split. [ASSUMED] | Recommended Project Structure | Planner may keep symbols in existing files if it still produces one owner and no parallel system. |
-| A2 | No SDK-57 fallback is preselected. A measured mismatch creates a proposed deviation and blocking-human choice between a static extracted face and reviewed stack change. [RESOLVED PROTOCOL] | Pattern 6 | Neither branch may execute until the owner decides and affected plans are revised. |
+| A2 | No SDK-57 fallback is preselected. A measured mismatch is a technical blocker; no alternate font branch is authorized by this plan. [RESOLVED PROTOCOL] | Pattern 6 | Execution halts before broad theme migration and reports the exact evidence. |
 | A3 | A shell-context coordinator is the best mechanism for settings-sheet origin, toast queue and root-heading focus. [ASSUMED] | Pattern 2 | A navigator listener/ref registry may fit better, but must satisfy the same state/focus tests without duplicating state. |
 | A4 | Appearance preference failures should use a new bounded diagnostic category distinct from the existing migration/storage launch categories. [ASSUMED] | Pattern 5 | The planner must choose the exact typed failure shape without exposing raw errors. |
 | A5 | appFonts should map ArchivoVariable through the shown relative asset require path. [ASSUMED] | Pattern 6 | The final relative import and native family name must be verified after the asset exists. |
@@ -540,9 +540,9 @@ No product behavior, security requirement, retention rule, or performance target
 
 ## Resolved Planning Questions
 
-1. **Archivo condensed rendering — RESOLVED by protocol.** The source oracle is fixed at 57px display size, condensed stretch, variable weight 890, `-0.07em` letter spacing, approved scale/line-height/wrap, <=1 normalized physical-pixel metric tolerance, exact wrap breakpoints and zero crop/overflow. Plan 14-01 authors and commits the harness; Plan 14-02 starts from that clean exact HEAD and performs the device proof. A mismatch writes a proposed deviation with measured artifacts and stops at a blocking-human decision between a static extracted face and a reviewed stack change. It never silently maps the source to weight 800.
+1. **Archivo condensed rendering — RESOLVED by protocol.** The source oracle is fixed at 57px display size, condensed stretch, variable weight 890, `-0.07em` letter spacing, approved scale/line-height/wrap, <=1 normalized physical-pixel metric tolerance, exact wrap breakpoints and zero crop/overflow. Plan 14-01 authors and commits the harness; Plan 14-02 starts from that clean exact HEAD and performs the device proof. A mismatch writes a measured technical blocker and stops before broad theme migration. It never silently maps the source to weight 800.
 
-2. **DEV-02 — RESOLVED by owner checkpoint protocol.** Production remains `#D97820`. Plan 14-11 presents measured evidence at a blocking-human checkpoint. The selected outcome is dated and persisted in `v1.2-DEVIATIONS.md`: `rejected — retained baseline #D97820`, or `accepted — plan revision required`. The accepted branch returns to Phase 14/16/20 planning before any candidate code; silence and auto mode cannot approve `#9B470B`.
+2. **DEV-02 — APPROVED 2026-10-07.** Production Light Strength title is `#9B470B`; border/rail/swatch remains `#D97820`; Dark is unchanged. Plan 14-11 validates the owner record automatically and binds native blended-fill evidence to the deviation register without asking again.
 
 3. **Android device availability — RESOLVED as an execution precondition.** A missing ready device blocks the clean-tree font proof and final native evidence tasks, but it does not block research, source planning, harness authoring, component tests or plan validation. No native pass is claimed until the exact-source APK is installed on a ready approved device.
 
@@ -631,7 +631,7 @@ The current recovery tests already cover source-backed removed-session confirmat
 - Actual >=48×48dp non-overlapping targets, 3dp visible focus per the Phase 14 UI-SPEC, heading entry, exact trigger restoration, Escape/Back/scrim safety and IME clearance. The older verification matrix mentions 2dp from the shipped design; Phase 14's approved UI-SPEC is the higher-precedence target. [VERIFIED: .planning/phases/14-prototype-visual-shell/14-UI-SPEC.md:118-125,396-402] [VERIFIED: .planning/verification/v1.2-native-verification-matrix.md:136-138]
 - Screenshot/difference evidence against the exact Revision 18 hashes, with platform chrome classified separately and no global percentage masking missing controls. [VERIFIED: .planning/verification/v1.2-native-verification-matrix.md:136-138]
 - Settings/recovery route journey and source-state assertions showing no operation, preference, preflight token or committed fact changed merely because the shell/theme changed. [VERIFIED: .planning/phases/14-prototype-visual-shell/14-UI-SPEC.md:309-355]
-- DEV-02 evidence remains marked pending; do not use a screenshot with the candidate color as production acceptance. [VERIFIED: .planning/design/v1.2-DEVIATIONS.md:1-22]
+- DEV-02 approval is final, while native blended-fill evidence remains pending until exact source-bound measurements pass. [VERIFIED: .planning/v1.2-OWNER-DECISIONS.md]
 
 ## Security Domain
 
@@ -670,7 +670,7 @@ Security enforcement is enabled at ASVS Level 1. The current OWASP ASVS 5.0 cate
 - .planning/phases/14-prototype-visual-shell/14-CONTEXT.md — locked decisions, discretion and deferred scope.
 - .planning/phases/14-prototype-visual-shell/14-UI-SPEC.md — approved tokens, geometry, typography, navigation, overlay, startup, settings, copy and acceptance contract.
 - .planning/v1.2-OWNER-BRIEF.md — owner authority, worktree and delivery boundaries.
-- .planning/design/v1.2-SOURCE-PRECEDENCE.md and v1.2-DEVIATIONS.md — conflict resolution and DEV-02 status.
+- .planning/design/v1.2-SOURCE-PRECEDENCE.md, v1.2-DEVIATIONS.md, and .planning/v1.2-OWNER-DECISIONS.md — conflict resolution, approved DEV-02 roles, and evidence status.
 - .planning/design/v1.2-prototype-parity-matrix.md and machine JSON inventory — all 13 Phase 14 ownership/evidence rows.
 - Live sources opened in this session: app/_layout.tsx; app/(tabs)/_layout.tsx; app/(tabs) root routes; app/more routes; src/ui/theme/index.ts; src/ui/layout/AdaptiveScreen.tsx; src/ui/components/index.ts; NavigationRow.tsx; RootScreens.tsx; SettingsScreen.tsx; RemovedSessionsScreen.tsx; workoutAppRuntime.tsx; launchCoordinator.ts; preference stores; portability controllers and confirmation-domain sources.
 - Live tests opened in this session: foundation.test.tsx; root-layout.test.tsx; _layout.test.tsx; SettingsScreen.test.tsx; RestAlertSettingsSheet.test.tsx; RemovedSessionsScreen.test.tsx; app/more route tests; useCsvExportController.test.tsx; useManualBackupController.test.tsx; workoutAppRuntime.test.tsx.
@@ -709,4 +709,4 @@ Security enforcement is enabled at ASVS Level 1. The current OWASP ASVS 5.0 cate
 - Native evidence availability: HIGH — required matrix/tooling is documented and local tools were probed; no ADB device is currently attached.
 
 **Research date:** 2026-10-06  
-**Valid until:** 2026-11-05 for the pinned stack and locked Phase 14 contract; re-check immediately if Expo/React Native versions or DEV-02 status changes.
+**Valid until:** 2026-11-05 for the pinned stack and locked Phase 14 contract; re-check immediately if Expo/React Native versions change.

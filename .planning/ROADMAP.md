@@ -44,12 +44,12 @@ Archived detail: .planning/milestones/v1.1-ROADMAP.md
 
 ### v1.2 Prototype Parity, Concurrent Plans & Garmin Import — PLANNED
 
-- [ ] **Phase 13: Multi-Plan & Running Foundation** - Establish authoritative concurrent-plan, Running-session, import, matching, portability, and history contracts.
+- [ ] **Phase 13: One-per-Sport Plan & Running Foundation** - Establish authoritative zero/one-per-sport activation, Running-session, import, matching, portability, and history contracts.
 - [ ] **Phase 14: Prototype Visual Shell** - Establish the approved four-root visual, navigation, appearance, overlay, startup, and settings system.
 - [ ] **Phase 15: Workout Parity** - Deliver the approved Workout and Active Workout experience without weakening offline or commit-gated behavior.
 - [ ] **Phase 16: Calendar Parity** - Deliver the full-height interactive Calendar and read-only historical detail flow using the Phase 15 presentation contract.
 - [ ] **Phase 17: Library & Running Plans** - Deliver complete Library parity plus persistent structured Running-plan creation, editing, scheduling, and collision decisions.
-- [ ] **Phase 18: Garmin Import** - Deliver usable local FIT import, factual activity detail, deduplication, and confirmed matching; keep official sync conditional.
+- [ ] **Phase 18: Garmin Account Sync** - Deliver the selected standalone ARM64 embedded-client sync, factual activity detail, deduplication, recovery, and confirmed matching.
 - [ ] **Phase 19: Progress Parity** - Deliver factual Strength and Running progress, goals, recommendations, and optional bodyweight views from durable evidence.
 - [ ] **Phase 20: Native Acceptance** - Demonstrate cross-phase native fidelity, accessibility, recovery, integrity, and performance before later release authorization.
 
@@ -60,25 +60,26 @@ Archived detail: .planning/milestones/v1.1-ROADMAP.md
 - Phase 13 precedes every domain consumer because the shipped singleton plan model cannot safely support the approved screens, schedules, imports, matches, or recovery graph.
 - Phase 14 precedes all feature UI phases so typography, color, four-root navigation, sheets, toasts, appearance, focus, and retained settings behavior are shared rather than reimplemented.
 - Phase 15 precedes Phase 16 because Calendar reuses the Active-shaped workout presentation through a strictly read-only capability boundary. Phase 16's implementation/final routing closure also waits for Phases 17-18 so real Running-plan and Garmin destinations exist; phase numbers preserve review grouping rather than mandatory execution order.
-- Phase 17 precedes Phase 18 because imported activities can only be matched against persisted, stable Running plans, session revisions, schedule versions, and ordered occurrence identities.
+- Phase 17 follows Phase 15 so Library restyling consumes the completed TIM-01 authoring cut and cannot reintroduce retired plan-editor controls; it then precedes Phase 18 because imported activities can only be matched against persisted, stable Running plans, session revisions, schedule versions, and ordered occurrence identities.
 - Phase 18 precedes Phase 19 so Running progress is computed from actual imported evidence rather than prototype fixtures or inferred values.
 - Phase 20 depends on Phases 13-19 and integrates their evidence; it is not the first phase in which transaction, migration, accessibility, or lifecycle behavior is tested.
 
-## Owner Decisions and Remaining Transport Review
+## Final Owner Decisions and Transport Selection
 
 The 2026-10-07 owner amendment in `.planning/v1.2-OWNER-DECISIONS.md`
-supersedes the prior open-decision text throughout the phase details below.
-The phase structure is retained as a planning baseline while transport is reviewed.
+supersedes prior open-decision and transport-comparison text. There are 0 pending
+product decisions. Native proof remains implementation evidence and cannot
+silently select a different transport.
 
 1. **MAP-01 approved:** One active plan per sport. Do not re-ask the cardinality question.
-2. **Garmin research:** No program access. Evaluate bundled python-garminconnect versus an optional desktop/Drive bridge; inspect JSON activity data before FIT decoder selection. The unofficial transport has not been selected or validated for production.
+2. **Garmin transport selected:** Bundle Python 3.13 through Chaquopy 17.0 with pinned python-garminconnect 0.3.17 commit `218e72ca5459e014435fc2d94fd18bd601fa0c14`; use ARM64 activity summary/splits/detail JSON. No program access, partner API/broker, desktop/Drive bridge, FIT decoder/manual FIT prerequisite, runtime AI agent, or Hermes change belongs to this milestone.
 3. **TIM-01 approved:** Retire cadence/cluster authoring, reconciliation, callbacks and playback; no legacy playback compatibility mode. Ordinary workout history and between-set rest still require preservation.
 4. **DEV-01/DEV-02 approved:** Use adaptive narrow Calendar padding and Light title `#9B470B`; verify the chosen behavior during implementation without reopening owner approval.
 5. **Running same-day sessions:** This is settled scope, not a gate: one Running plan supports multiple stable, ordered session slots on the same weekday. No phase may introduce a silent one-session-per-day restriction.
 
 ## Phase Details
 
-### Phase 13: Multi-Plan & Running Foundation
+### Phase 13: One-per-Sport Plan & Running Foundation
 
 **Goal**: The owner can safely keep Strength and Running plans, structured Running sessions, imported activity evidence, and historical data in one authoritative, recoverable local model.
 **Depends on**: Phase 12 (shipped v1.1 recovery and automatic-backup foundation)
@@ -88,14 +89,14 @@ The phase structure is retained as a planning baseline while transport is review
 **Canonical refs**: [Owner brief](v1.2-OWNER-BRIEF.md); [requirements](REQUIREMENTS.md); [research synthesis](research/v1.2/SUMMARY.md); [multi-plan ADR](architecture/v1.2-multi-active-plans.md); [migration risks](architecture/v1.2-migration-risks.md); [Garmin import ADR](architecture/v1.2-garmin-import.md)
 **Success Criteria** (what must be TRUE):
 
-  1. The owner can keep independent Strength and Running schedules active together, and changing or consuming one schedule does not silently change the other; the final same-sport cardinality follows an explicit owner decision.
+  1. The owner can keep zero or one active Strength plan and zero or one active Running plan together; changing or consuming one schedule does not silently change the other, and repository/schema constraints enforce per-sport uniqueness.
   2. New, copied, imported, or edited plans remain inactive until the owner explicitly activates them, while upgraded v1.1 plans, recoverable workouts, completed history, revisions, and stable identities remain intact.
   3. A Running plan can persist all seven approved session types, advisory pace/HR-zone/RPE targets, and multiple stable ordered session slots on the same weekday across restart, backup, restore, and merge.
   4. Overlapping occurrences remain separately identifiable; Move run, Move strength, Keep both, workout selection, and activity matching affect only the explicitly selected occurrence and never rewrite history.
   5. Imported activities, matches, goals, and optional bodyweight survive idempotent replay and portability, while workout edits/completion remain offline and are acknowledged only after the exclusive transaction commits.
 
 **Plans**: 16 plans
-**Plan flags**: research required; migration and portability plan required; plan check required; review convergence required; cardinality and legacy-timing decisions remain gated
+**Plan flags**: research required; migration and portability plan required; plan check required; fresh review convergence required; MAP-01 and TIM-01 are locked, not checkpoints
 
 ### Phase 14: Prototype Visual Shell
 
@@ -115,7 +116,7 @@ The phase structure is retained as a planning baseline while transport is review
 
 **Plans**: 12 plans
 **UI hint**: yes
-**Plan flags**: focused research; UI specification required; plan check required; review convergence required; DEV-02 remains unaccepted
+**Plan flags**: focused research; UI specification required; plan check required; fresh review convergence required; DEV-02 is accepted with native verification pending implementation
 
 ### Phase 15: Workout Parity
 
@@ -124,7 +125,7 @@ The phase structure is retained as a planning baseline while transport is review
 **Directory**: .planning/phases/15-workout-parity
 **Requirements**: WRK-01, WRK-02, WRK-03, WRK-04, WRK-05, WRK-06, WRK-07, WRK-08, WRK-09, WRK-10, WRK-11, WRK-12, WRK-13, WRK-14, WRK-15, WRK-16, WRK-17, WRK-18, WRK-19, WRK-20, WRK-21, WRK-22, WRK-23, WRK-24, WRK-25, WRK-26, WRK-27, WRK-28, WRK-29, WRK-30, WRK-31, WRK-32, WRK-33, WRK-34, WRK-35, WRK-36
 **Rationale**: The offline workout loop is the product's critical path and must reach parity on top of stable multi-plan contracts before Calendar safely reuses its presentation for history.
-**Canonical refs**: [Owner brief](v1.2-OWNER-BRIEF.md); Revision 18 approved.json and approved-hybrid.html; [source precedence](design/v1.2-SOURCE-PRECEDENCE.md); [research synthesis](research/v1.2/SUMMARY.md); [multi-plan ADR legacy timing proposal](architecture/v1.2-multi-active-plans.md)
+**Canonical refs**: [Owner brief](v1.2-OWNER-BRIEF.md); Revision 18 approved.json and approved-hybrid.html; [source precedence](design/v1.2-SOURCE-PRECEDENCE.md); [research synthesis](research/v1.2/SUMMARY.md); [multi-plan ADR timing-retirement contract](architecture/v1.2-multi-active-plans.md)
 **Success Criteria** (what must be TRUE):
 
   1. Workout immediately shows the selected real plan/day identity, summary, full exercise preview, truthful scheduled/rest/no-plan state, and Start or exact Resume action; changing a preview never advances a schedule.
@@ -135,7 +136,7 @@ The phase structure is retained as a planning baseline while transport is review
 
 **Plans**: 13 plans
 **UI hint**: yes
-**Plan flags**: focused legacy-timing research; UI specification required; plan check required; review convergence required; retirement of cadence/cluster playback remains an owner-reviewed proposal
+**Plan flags**: focused legacy-timing cutover proof; UI specification required; plan check required; fresh review convergence required; TIM-01 retirement is locked with no compatibility mode
 
 ### Phase 16: Calendar Parity
 
@@ -156,7 +157,7 @@ The phase structure is retained as a planning baseline while transport is review
 **Plans**: 7 plans
 
 Plans:
-- [ ] 16-01-PLAN.md — Preflight upstream capabilities, prove the semantic transition controller, and resolve DEV-01/DEV-02.
+- [ ] 16-01-PLAN.md — Preflight upstream capabilities, prove the semantic transition controller, and implement accepted DEV-01/DEV-02 contracts.
 - [ ] 16-02-PLAN.md — Build the source-backed full-height month grid, Calendar key, encodings, focus, and query states.
 - [ ] 16-03-PLAN.md — Build capability-safe workout history and planned Strength preview while preserving management routes.
 - [ ] 16-04-PLAN.md — Implement UI-thread 1:1 month drag and measured expand/collapse/adjacent motion.
@@ -164,15 +165,15 @@ Plans:
 - [ ] 16-06-PLAN.md — Capture diagnostic native geometry and mapped Revision 18 overlay/difference artifacts.
 - [ ] 16-07-PLAN.md — Integrate real Phase 17/18 destinations, seal evidence, and hand performance diagnostics to Phase 20.
 **UI hint**: yes
-**Plan flags**: research required; UI specification required; plan check required; review convergence required; DEV-01 and DEV-02 require owner disposition before affected implementation
+**Plan flags**: research required; UI specification required; plan check required; fresh review convergence required; DEV-01 and DEV-02 are accepted with native evidence pending
 
 ### Phase 17: Library & Running Plans
 
 **Goal**: The owner can browse and maintain the complete plan/exercise library and create, edit, schedule, and explicitly activate persistent structured Running plans.
-**Depends on**: Phase 13, Phase 14
+**Depends on**: Phase 13, Phase 14, Phase 15
 **Directory**: .planning/phases/17-library-running-plans
 **Requirements**: LIB-01, LIB-02, LIB-03, LIB-04, LIB-05, LIB-06, LIB-07, LIB-08, LIB-09, LIB-10, LIB-11, LIB-12, LIB-13, LIB-14, LIB-15, LIB-16, LIB-17, LIB-18, LIB-19, LIB-20, LIB-21, LIB-22, LIB-23, LIB-24, LIB-25, LIB-26, LIB-27, LIB-28, LIB-29, LIB-30, LIB-31, LIB-32, LIB-33, LIB-34, LIB-35, LIB-36
-**Rationale**: Authoring must consume Phase 13's durable identities and Phase 14's shared controls; completing it before Garmin ensures every match candidate refers to a real versioned Running plan and occurrence.
+**Rationale**: Authoring consumes Phase 13's durable identities, Phase 14's shared controls, and Phase 15's completed timing-authoring retirement; completing it before Garmin ensures every match candidate refers to a real versioned Running plan and occurrence without reintroducing cadence/cluster controls.
 **Canonical refs**: [Owner brief](v1.2-OWNER-BRIEF.md); Revision 18 approved.json and approved-hybrid.html; [source precedence](design/v1.2-SOURCE-PRECEDENCE.md); [research synthesis](research/v1.2/SUMMARY.md); [multi-plan ADR](architecture/v1.2-multi-active-plans.md)
 **Success Criteria** (what must be TRUE):
 
@@ -186,25 +187,25 @@ Plans:
 **UI hint**: yes
 **Plan flags**: focused research only; UI specification required; plan check required; review convergence required; no one-session-per-day restriction permitted
 
-### Phase 18: Garmin Import
+### Phase 18: Garmin Account Sync
 
-**Goal**: The owner can import real Garmin FIT activity evidence locally, inspect truthful outdoor or treadmill details, and explicitly match one activity to one scheduled Running occurrence; official sync appears only when its external security prerequisites are met.
+**Goal**: The owner can sign in to Garmin from a standalone ARM64 Android app, sync validated activity summary/splits/detail JSON, inspect truthful outdoor or treadmill details, and explicitly match one activity to one scheduled Running occurrence.
 **Depends on**: Phase 13, Phase 14, Phase 17
 **Directory**: .planning/phases/18-garmin-import
 **Requirements**: GAR-01, GAR-02, GAR-03, GAR-04, GAR-05, GAR-06, GAR-07, GAR-08, GAR-09, GAR-10, GAR-11, GAR-12, GAR-13, GAR-14, GAR-15, GAR-16
-**Rationale**: A provider-independent local FIT journey supplies factual Running evidence and validates idempotency/matching without pretending Garmin program access exists; Progress must wait for those facts.
+**Rationale**: The owner selected a pinned embedded Python client that needs no Garmin program access, partner broker, desktop bridge, manual FIT path or runtime agent. Phase 18 must prove packaging, authenticated reads, secure session recovery, bounded JSON normalization and idempotent writes before Progress consumes those facts.
 **Canonical refs**: [Owner brief](v1.2-OWNER-BRIEF.md); Revision 18 approved.json and approved-hybrid.html; [research synthesis](research/v1.2/SUMMARY.md); [Garmin import ADR](architecture/v1.2-garmin-import.md); [migration risks](architecture/v1.2-migration-risks.md); [native verification matrix](verification/v1.2-native-verification-matrix.md)
 **Success Criteria** (what must be TRUE):
 
   1. Garmin opens contextually from Workout, a Running plan, or an imported Calendar activity while the app retains exactly four roots and synchronized Light/Dark/System appearance.
-  2. The owner can select and import an actual supported original FIT file locally; cancel, malformed/truncated/oversized/unsupported input, interruption, and retry never create partial facts or disturb existing activities.
-  3. Repeated manual/API delivery resolves through external identity plus exact-content hash, producing one durable activity/receipt across both transport orders while conflicting revisions require explicit review.
+  2. The bundled Python 3.13/Chaquopy 17.0 module pins python-garminconnect 0.3.17 commit `218e72ca5459e014435fc2d94fd18bd601fa0c14`, exposes only login/MFA/logout and paged Running summary/activity/splits/detail reads, and runs blocking work off the UI thread without a Python subprocess, local server, on-device pip or downloaded scripts.
+  3. Credentials and MFA remain foreground interactions; encrypted DI tokens stay outside logical backups and diagnostics. Fresh and expired sessions recover truthfully across cold restart, while disconnect invalidates in-flight work and preserves imported history.
   4. Outdoor detail shows only available elapsed/moving, distance, pace, route, heart-rate, and lap evidence; treadmill explicitly shows No route; the accessible lap table uses Lap, Time, and Pace with honest missing values.
-  5. Matching shows stable candidates and writes only the explicitly selected occurrence after Confirm; Back/Leave unmatched writes nothing. Official consent/sync/revoke cannot be declared complete until real access and the separately reviewed confidential broker pass their activation gates.
+  5. Matching shows stable candidates and writes only the explicitly selected occurrence after Confirm; Back/Leave unmatched writes nothing. Real account packaging/login/MFA/read/restart proof is required implementation evidence, not a product-decision or alternate-transport gate.
 
 **Plans**: 14 plans
 **UI hint**: yes
-**Plan flags**: research required; UI specification required; security review required for any official adapter/broker; plan check required; review convergence required; local FIT is unconditional scope
+**Plan flags**: research complete; UI specification required; embedded-client security review required; plan check required; fresh review convergence required; no alternate transport fallback
 
 ### Phase 19: Progress Parity
 
@@ -238,28 +239,28 @@ Plans:
 
   1. Every inventory route, interaction, state, and requirement has source-bound native evidence or a reviewed N/A reason, with no unmapped parity row and no unexplained deviation from Revision 18.
   2. The complete app is usable in Light, Dark, and System at all required portrait/landscape sizes, 200% text, minimum 48dp targets, keyboard/D-pad, visible focus, Back/Escape, and reduced motion without losing required actions or changing the four-root composition.
-  3. Real SQLite upgrade, restore, merge, historical-revision, offline workout, process-death, FIT dedupe, and explicit matching journeys preserve committed facts and distinguish committed from uncommitted work.
+  3. Real SQLite upgrade, restore, merge, historical-revision, offline workout, process-death, Garmin JSON dedupe, encrypted session restart, and explicit matching journeys preserve committed facts and distinguish committed from uncommitted work.
   4. Native Calendar drag/threshold/morph behavior and representative launch, root switch, set commit, editor, search, Calendar, Progress, import, backup, and merge workloads meet their reviewed numeric budgets with raw evidence retained.
   5. An attended Samsung review records visual, usability, accessibility, and interaction observations separately from automated proof, and signed personal-use release verification is prepared without treating either as release authorization.
 
 **Plans**: 12 plans
 **UI hint**: yes
-**Plan flags**: focused verification research; parity ledger and UI review required; plan check required; review convergence required; depends on all prior phases; DEV-01/02 and external Garmin gates must have explicit final disposition
+**Plan flags**: focused verification research; parity ledger and UI review required; plan check required; fresh review convergence required; depends on all prior phases; DEV-01/02 are accepted and Garmin native proof remains pending implementation
 
 ## Progress
 
-**Execution order:** 13 → 14 → 15 → 16 → 17 → 18 → 19 → 20. Dependencies above are the authoritative minimum; no implementation starts until the owner approves the completed planning set.
+**Execution DAG:** 13 → 14 → 15 → 17 → 18 → {16,19} → 20. Dependencies above are authoritative; no implementation starts until the owner approves the completed planning set.
 
 | Phase | Directory | Plans Complete | Status | Completed |
 |---|---|---:|---|---|
-| 13. Multi-Plan & Running Foundation | 13-multi-plan-running-foundation | 0/TBD | Not started | - |
-| 14. Prototype Visual Shell | 14-prototype-visual-shell | 0/TBD | Not started | - |
-| 15. Workout Parity | 15-workout-parity | 0/TBD | Not started | - |
-| 16. Calendar Parity | 16-calendar-parity | 0/TBD | Not started | - |
-| 17. Library & Running Plans | 17-library-running-plans | 0/TBD | Not started | - |
-| 18. Garmin Import | 18-garmin-import | 0/TBD | Not started | - |
-| 19. Progress Parity | 19-progress-parity | 0/TBD | Not started | - |
-| 20. Native Acceptance | 20-native-acceptance | 0/TBD | Not started | - |
+| 13. One-per-Sport Plan & Running Foundation | 13-multi-plan-running-foundation | 0/16 | Not started | - |
+| 14. Prototype Visual Shell | 14-prototype-visual-shell | 0/12 | Not started | - |
+| 15. Workout Parity | 15-workout-parity | 0/13 | Not started | - |
+| 16. Calendar Parity | 16-calendar-parity | 0/7 | Not started | - |
+| 17. Library & Running Plans | 17-library-running-plans | 0/14 | Not started | - |
+| 18. Garmin Account Sync | 18-garmin-import | 0/14 | Not started | - |
+| 19. Progress Parity | 19-progress-parity | 0/10 | Not started | - |
+| 20. Native Acceptance | 20-native-acceptance | 0/12 | Not started | - |
 
 ## Backlog
 

@@ -93,7 +93,7 @@ None. All Phase 19 product behavior and automated native implementation evidence
 | REQ | PRO-01 | All/Strength/Running and 4w/12w/all-time semantics/retention/keyboard | 03,09,10 | COVERED | Root controls, integration, native evidence. |
 | REQ | PRO-02 | Nearest factual goal, facts, goal line, active/planned context | 01,02,03,10 | COVERED | Deterministic tie-break and single-snapshot source. |
 | REQ | PRO-03 | Strength goal/status/review/exercise rows | 01,02,03,09,10 | COVERED | Effective comparable history only. |
-| REQ | PRO-04 | Running facts/goals/best/pacing from imports | 01,02,03,09,10 | COVERED | Accepted exact-distance/time-basis evidence. |
+| REQ | PRO-04 | Running facts/goals/best/pacing from imports | 01,02,03,04,09,10 | COVERED | Canonical accepted Garmin facts; exact efforts require source-reported summary/lap evidence, never sampled chart inference. |
 | REQ | PRO-05 | Fixed 2.4 km target/splits and explicit-only changes | 01,03,10 | COVERED | Integer 660-second rule and target command. |
 | REQ | PRO-06 | Unset 10 km/Half and no-zero missing effort | 01,03,10 | COVERED | Null target and absence remain distinct. |
 | REQ | PRO-07 | Ready/sparse/empty/loading honesty | 01,02,03,10 | COVERED | Typed states and native matrix. |
@@ -112,7 +112,7 @@ None. All Phase 19 product behavior and automated native implementation evidence
 | CONTEXT | D19-02 | Comparable Latest/Best/Target/Gap/goal/evidence/next only | 01,02,03,04,05 | COVERED | Pure domain comparability and evidence surfaces. |
 | CONTEXT | D19-03 | Honest loading/empty/sparse/rebuild/error; no zero | 01,02,03,04,09,10 | COVERED | Source/read/UI/native state matrix. |
 | CONTEXT | D19-04 | Exact 2.4 km and unset 10 km/Half | 01,03,06,10 | COVERED | Fixed source rule + explicit editor. |
-| CONTEXT | D19-05 | Running best only from accepted imports | 01,02,03,04,10 | COVERED | Accepted payload revision and source links. |
+| CONTEXT | D19-05 | Running best only from accepted imports with sufficient exact/source evidence | 01,02,03,04,10 | COVERED | Source-reported summary/lap facts qualify; sampled/downsampled charts yield Unavailable or More data needed. |
 | CONTEXT | D19-06 | Evidence/revision fenced explicit recommendation | 07,09,10 | COVERED | Keep/Use receipt and no-write dismissal. |
 | CONTEXT | D19-07 | Optional dated bodyweight, disclosed Relative only | 01,05,08,09,10 | COVERED | At-or-before basis and protected target digests. |
 | RESEARCH | R19-01 | Fail-closed Phase 13/17/18 typed port preflight | 01 | COVERED | Compile-time/behavioral upstream contract. |

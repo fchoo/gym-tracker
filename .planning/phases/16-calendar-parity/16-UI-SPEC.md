@@ -50,7 +50,7 @@ No unexplained difference from the oracle is permitted. Necessary native, access
 - Correct workout, revision history editing, Resume workout, Remove from history, or any other source mutation from a Calendar-origin detail.
 - Automatic activity matching, automatic completion, invented sessions/results, or implicit plan activation.
 - A fifth root, inline Calendar legend, per-day status icons, nested agenda actions, direct adjacent-week teleport, crossfade-only week replacement, or velocity-based month settling.
-- Product implementation, builds, release work, or acceptance of DEV-01/DEV-02 in this specification.
+- Product implementation, builds, release work, or claims that DEV-01/DEV-02 native evidence has passed.
 
 ### Cross-phase execution prerequisites
 
@@ -71,18 +71,16 @@ The planned Strength path is not deferred: Phase 13 Plan 13-02 provides `Trainin
 | Weights | Regular 400 and emphasis 800 only | The native two-weight contract replaces ad hoc 700/750/850 declarations. Verify Archivo variable metrics against the Revision 18 oracle; any material mismatch enters the deviation register. |
 | Shared primitives | Root header, `IconAction`, focusable pressable, modal bottom sheet, inline notice, skeleton, four-root navigation | Reuse Phase 14 behavior for 48dp targets, 3dp focus with 4dp visual clearance, scrim, modal focus, Back, safe areas, and appearance. |
 
-## Owner Decision Checkpoints — Open and Non-Defaulting
+## Approved DEV-01 / DEV-02 Contract
 
-Neither checkpoint is accepted by this UI-SPEC. The planner must put the checkpoint before affected implementation, present the two options with an identical fixture/theme/viewport comparison, record the owner's selection and date in `.planning/design/v1.2-DEVIATIONS.md`, and only then implement that branch. Unaffected work may continue.
+The owner accepted both adaptations on 2026-10-07. Executors validate `.planning/v1.2-OWNER-DECISIONS.md` and `.planning/v1.2-owner-decisions.json`, record the approved values in `.planning/design/v1.2-DEVIATIONS.md`, and implement only these branches. Native comparison and accessibility evidence remain required technical gates.
 
-| ID | Current / oracle behavior | Closest accessibility adaptation | Required owner checkpoint |
+| ID | Superseded oracle behavior | Approved behavior | Implementation evidence gate |
 |---|---|---|---|
-| DEV-01 | **Current implementation baseline unless/until owner accepts a change:** the approved Revision 18 oracle uses 18dp horizontal inset and 2dp date-cell gaps (`.app-destination`, H:1092-1096; `.cal-month-panel`, H:1117). At a 360dp content width this produces 44.5625dp-wide date cells, below the non-overlapping 48dp target requirement. The 18dp inset and 2dp gap are nevertheless owner-approved presentation values, not deviations. | **Proposed only:** Calendar-only horizontal inset `min(18, max(0, (safeWidth - 348) / 2))` dp: 6dp at 360 and 18dp at 390. Keep the owner-approved 2dp gaps, 28/36 tracks, event content, row morph geometry, and non-overlapping hit bounds. | Owner chooses **Retain current/oracle 18dp as a dated scoped accepted exception** or **Accept closest 6→18dp adaptation**. Until acceptance is recorded, implement/spec/compare against 18dp and keep the row `BLOCKED_OWNER`; do not select 6dp as the baseline or silently enlarge hit areas. |
-| DEV-02 | Light Strength event-title text and border are `#D97820`: measured contrast is 3.03:1 on `#FFFAF0` and 2.56:1 on selected `#DCE9F9`. Dark remains readable. | Light theme only: use `#9B470B` for Strength title text, retaining `#D97820` for border/rail/sport swatch and all status patterns. Measured contrast is 6.12:1 on paper and 5.17:1 on selected fill. Dark remains unchanged. | Owner chooses **Retain oracle orange title as a dated scoped accepted exception** or **Accept closest dark-orange title adaptation**. Test complete/partial tint blends; until a choice and complete evidence exist the row is `BLOCKED_OWNER`. |
+| DEV-01 | Revision 18 uses 18dp horizontal inset and 2dp date-cell gaps; at 360dp this produces 44.5625dp date cells. | `min(18, max(0, (safeWidth - 348) / 2))` dp: 6dp at 360 and 18dp at 390, with 2dp gaps and unchanged 28/36 tracks, content, row morph geometry, and non-overlapping hit bounds. | Prove 360/390 geometry, 48dp non-overlap, Light/Dark, text scaling, and native/reference identity. Missing/failing evidence blocks closure as technical work. |
+| DEV-02 | Revision 18 uses `#D97820` for Light Strength title and border, with measured title contrast failures on paper/selected fill. | Light Strength title `#9B470B`; retain `#D97820` for border/rail/sport swatch and all status patterns; Dark unchanged. | Prove complete/partial/planned blended fills and role separation in native/reference evidence. Missing/failing evidence blocks closure as technical work. |
 
-Until each decision is recorded, comparison fixtures must support the current/oracle branch and the proposed adaptation branch, and the affected accessibility acceptance row remains pending. For DEV-01, current/oracle 18dp remains the implementation baseline; for DEV-02, current/oracle `#D97820` remains the implementation baseline. The spec must never describe either proposed adaptation as approved.
-
-An open decision or incomplete chosen-branch evidence is `BLOCKED_OWNER`, never PASS and never an all-pass aggregate. If the owner accepts an adaptation, that exact branch must pass its complete native/reference comparison and accessibility measurements. If the owner retains an oracle value and its known accessibility failure remains, the owner must separately record a dated, scoped accepted exception; otherwise the affected rows and Phase 16 closure remain blocked. An accepted exception is reported as `ACCEPTED_EXCEPTION`, not relabeled PASS.
+Comparison fixtures must implement and measure the approved branches. Incomplete chosen-branch evidence is `REVIEW_REQUIRED` or `FAIL`, never PASS and never an all-pass aggregate. Approval is not technical proof: the exact branch must pass its complete native/reference comparison and accessibility measurements before closure.
 
 ## Spacing Scale
 
@@ -113,9 +111,9 @@ The template permits declared component-specific exceptions. The reusable layout
 | 10dp | `.cal-agenda-head` H:1195; `.cal-agenda-row` H:1198; `.cal-detail-summary` H:1213 | Agenda heading gap; agenda content-column gap and vertical padding; read-only summary gap | Keeps agenda rows compact, separates the sport rail from text, and preserves date/total summary balance. |
 | 14dp | `.cal-detail-scroll` H:1211; `.cal-readonly-exercise-header` H:1216 | Read-only detail horizontal inset and exercise-header leading inset | Aligns read-only exercise/set facts with the Active-shaped detail hierarchy without introducing a card-within-card offset. |
 | 14dp | Shared `.sheet` H:797-810 | Calendar key sheet horizontal content padding | Aligns heading, explanatory copy and Activity/Status groups with the approved modal sheet composition. |
-| 18dp | `.app-destination` H:1092-1096; shared `.topbar` H:268-274 | Calendar left/right content inset and root-header left/right inset | This is the exact owner-approved Revision 18 composition and remains the Phase 16 baseline at every width unless DEV-01 is explicitly accepted. |
+| 18dp | `.app-destination` H:1092-1096; shared `.topbar` H:268-274 | Root-header inset and approved Calendar maximum inset at 390dp+ | DEV-01 replaces the Calendar's fixed 18dp narrow-width behavior with the approved adaptive formula. |
 
-These values are local Calendar/component measurements, not additions to `space.*`. In particular, **18dp is the baseline**. DEV-01's adaptive 6dp value exists only as a pending comparison proposal; it must not appear in production styles, implementation acceptance criteria, or default test fixtures before owner acceptance.
+These values are local Calendar/component measurements, not additions to `space.*`. Calendar uses the approved DEV-01 adaptive inset: 6dp at 360, 18dp at 390 and above, with 2dp cell gaps. Default fixtures and acceptance criteria use that formula.
 
 ### Border, stroke and fixed structural geometry — not spacing
 
@@ -129,7 +127,7 @@ These values are local Calendar/component measurements, not additions to `space.
 | 5dp | `.cal-agenda-row` and `.cal-agenda-edge` H:1198-1200 | Fixed sport-identity rail width; this is structural/color encoding, not a layout-spacing token. |
 | 3dp | Shared Revision 18 / Phase 14 focus contract | Visible hardware keyboard/D-pad focus outline with 4dp visual clearance, independent of selected/today borders. |
 
-All non-date interactive controls are at least 48×48dp. Day targets are governed only by DEV-01; no overlapping expanded hit slop is allowed. Under the required current/oracle 18dp baseline, the known 360dp day width remains 44.5625dp and therefore keeps the DEV-01 accessibility row open. That known issue does not authorize the 6dp adaptation.
+All non-date interactive controls are at least 48×48dp. Day targets use the approved DEV-01 adaptive inset; no overlapping expanded hit slop is allowed. At 360dp, 6dp side padding plus 2dp gaps must produce seven non-overlapping 48dp targets; at 390dp, the inset is 18dp.
 
 ## Typography
 
@@ -186,7 +184,7 @@ Calendar key status swatches are neutral primary-text color: solid/tinted Comple
 
 1. Keep the shared 57dp root header above the Calendar. Header order is route heading, flexible spacer, 48dp Info, then 48dp App Settings with the owner-approved 2dp component gap listed above. Info is visible only on Calendar and is immediately left of Settings.
 2. Keep the shared four-root bottom navigation fixed and safe-area aware. Calendar content ends immediately above it; never introduce a rail at expanded width without an accepted deviation.
-3. Calendar content uses the current/oracle 10dp top and 18dp left/right component padding (`.app-destination`, H:1092-1096), then forms a column filling all remaining height: 52dp month navigation, 34dp Monday-first weekday header, then a clipped month viewport with `flex: 1`. The 18dp inset remains exact at 360dp and every other width unless DEV-01 is accepted.
+3. Calendar content uses the source 10dp top padding and approved adaptive left/right padding `min(18, max(0, (safeWidth - 348) / 2))` dp, producing 6dp at 360 and 18dp at 390, then forms a column filling all remaining height: 52dp month navigation, 34dp Monday-first weekday header, then a clipped month viewport with `flex: 1`.
 4. Month navigation columns are `48dp / minmax(0,1fr) / 76dp / 48dp` with the owner-approved 3dp component gap listed above. Order and visible labels are Previous icon, `{Month YYYY}`, `Today`, Next icon. All four remain visible in month and focused modes.
 5. Render only the number of complete Monday-first weeks required by the month: four, five, or six. Every row takes an equal share of the remaining viewport with a normal-motion minimum of 70dp when height allows. Adjacent dates complete the first/last week.
 6. The track contains previous/current/next panels, each one viewport wide. Only the current panel is interactive/accessible; preview panels are clipped, inert and hidden from accessibility.
@@ -363,7 +361,7 @@ Copy is calm, factual and source-led. Do not use success language before data is
 
 ## Accessibility, Keyboard and Focus
 
-- Every required target is at least 48×48dp and non-overlapping, subject to the unresolved DEV-01 choice for date columns. Pressed, selected and the shared Revision 18 / Phase 14 3dp visible focus states are distinct.
+- Every required target is at least 48×48dp and non-overlapping under the approved DEV-01 adaptive inset. Pressed, selected and the shared Revision 18 / Phase 14 3dp visible focus states are distinct.
 - Each date is one focusable button/gridcell with selected state and an accessible label in this order: full local civil date; today; outside month; rest/empty or event count; every full event name, sport, status and source; selected. Visual chips are accessibility-hidden to avoid duplicate announcements.
 - Monday-first weekday labels are visible but not separate focus stops. The Calendar grid itself has a `Calendar month grid` label and the month heading names the current panel.
 - ArrowLeft/ArrowRight move one civil day; ArrowUp/ArrowDown move seven days. Crossing a panel boundary updates month and preserves focus on the destination date. Enter, Space and D-pad center perform the same action as a single tap. Previous, Today and Next provide a complete non-gesture path.
@@ -384,7 +382,7 @@ Copy is calm, factual and source-led. Do not use success language before data is
 - Component tests prove roles/copy/routing/controller decisions. Native timestamped geometry/semantic traces and intermediate captures are mandatory for drag and row morph; final screenshots or Jest animation mocks alone do not pass.
 - Map each native capture to one exact Revision 18 reference by requirement/state/fixture/theme/viewport/orientation/font/motion/input identity and source-manifest hash. Generate and retain the individual reference, native, overlay, absolute-difference, mask, and machine-readable comparison record with hashes; contact sheets are indexes only.
 - Classify each non-clean comparison using the shared v1.2 vocabulary and a specific measured explanation/deviation reference. A missing map/capture/artifact/hash, duplicate mapping, stale source identity, or unexplained difference fails closed and blocks parity.
-- Compare the identical fixture/theme/viewport against Revision 18 in Light and Dark. No pixel percentage can excuse changed semantics, route, authority, copy, focus, target geometry, sport/status encoding, or an unaccepted deviation.
+- Compare the identical fixture/theme/viewport against Revision 18 in Light and Dark while applying the two dated approved deviations. No pixel percentage can excuse changed semantics, route, authority, copy, focus, target geometry, sport/status encoding, or any unexplained difference.
 - Run the full appearance/viewport/orientation/font/input matrix from the native verification contract, including System under both OS schemes, 360×800, 390×844, 600×960, 840×1080 equivalents and corresponding landscapes, text 1.0/2.0, touch/keyboard/D-pad.
 - Navigation and detail disclosure must produce zero source mutation commands, set completions, rest effects, correction saves, removals or implicit matches.
 
@@ -439,14 +437,14 @@ Open-domain considerations are also resolved: local/offline query errors are sou
 
 ## Six-Dimension Researcher Self-Check
 
-This is a pre-checker self-assessment; it does not upgrade frontmatter from `draft` and does not accept DEV-01/DEV-02.
+This is a pre-checker self-assessment; it does not upgrade frontmatter from `draft` or claim that DEV-01/DEV-02 native evidence has passed.
 
 - [x] **Dimension 1 — Copywriting: PASS.** CTA, key, loading, empty, rest, error/retry, read-only, missing-detail and separate destructive-management copy are exact and actionable.
 - [x] **Dimension 2 — Visuals: PASS.** Full-height month/focused geometry, 28/36 tracks, two-event capacity, dialog, agenda, detail, Light/Dark, wide/landscape/200% behavior and all intermediate motion states are prescriptive.
-- [x] **Dimension 3 — Color: PASS with owner checkpoints open.** 60/30/10 roles, exact palette, sport/status separation and non-color semantics are declared; DEV-02 is explicitly not accepted.
+- [x] **Dimension 3 — Color: PASS for specification.** 60/30/10 roles, exact palette, sport/status separation and non-color semantics are declared; approved DEV-02 still requires native blended-fill proof.
 - [x] **Dimension 4 — Typography: PASS.** Exactly four sizes, two weights, line heights, bundled families, tabular numerals, long-text and 200% behavior are declared.
-- [x] **Dimension 5 — Spacing: PASS with owner checkpoint open.** The seven-value 4dp scale is separate from the owner-approved, source-referenced 2/3/10/14/18dp Calendar exceptions and from border/stroke geometry. The exact 18dp oracle inset remains the baseline; only DEV-01's adaptive 6dp alternative is proposed and unaccepted.
+- [x] **Dimension 5 — Spacing: PASS for specification.** The seven-value 4dp scale is separate from the source-referenced 2/3/10/14/18dp Calendar values and border/stroke geometry. DEV-01's approved adaptive inset is 6dp at 360 and 18dp at 390 with 2dp gaps.
 - [x] **Dimension 6 — Registry Safety: PASS.** No shadcn or third-party registry blocks; only inspected, pinned native packages and repository components are permitted.
 
-**Researcher verdict:** Ready for `gsd-ui-checker`. Final approval remains pending checker verification and the two recorded owner decisions before their affected implementation work.
+**Researcher verdict:** Ready for `gsd-ui-checker`. Product decisions are final; checker and native technical verification remain pending.
 

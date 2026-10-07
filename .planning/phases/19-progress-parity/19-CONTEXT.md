@@ -20,7 +20,7 @@ second analytics authority or readiness/composite scores.
 - **D19-02:** Show Latest, Best, Target, Gap, goal-line history, Evidence and Next target only when comparable durable facts exist.
 - **D19-03:** Honest states include loading, empty, sparse, More data needed, rebuild pending, and error/retry. Missing values never plot as zero.
 - **D19-04:** The 2.4 km goal stays 11:00 (4:35/km, 1:50/400m, 0:55/200m). 10 km and Half Marathon targets remain unset until owner entry.
-- **D19-05:** Running best efforts come from accepted imported activities. No fixture, schedule intent, or unmatched estimate becomes performance evidence.
+- **D19-05:** Running best efforts come from Phase 18's canonical accepted Garmin activity facts. An exact-distance effort is eligible only when source-reported summary or lap evidence establishes that exact distance with a documented time basis; sampled/downsampled chart points never support an arbitrary-distance best effort. Insufficient evidence yields Unavailable or More data needed. No fixture, schedule intent, or unmatched estimate becomes performance evidence.
 - **D19-06:** Recommendations retain evidence/revision fencing and explicit Keep current/Use target. No silent target mutation.
 - **D19-07:** Optional dated bodyweight enables relative-strength views only, discloses its measurement basis, and never changes targets.
 
@@ -36,6 +36,7 @@ second analytics authority or readiness/composite scores.
 - `.planning/REQUIREMENTS.md` — PRO-01 through PRO-18.
 - `.planning/design/v1.2-prototype-parity-matrix.md` — screens/states/evidence.
 - `.planning/architecture/v1.2-garmin-import.md` — accepted imported facts.
+- `.planning/v1.2-OWNER-DECISIONS.md` — final self-contained Android Garmin transport and JSON evidence boundary.
 - `.planning/milestones/v1.1-phases/04-overall-progress-and-complete-progression/04-VERIFICATION.md` if present — shipped factual Progress boundary.
 
 </canonical_refs>

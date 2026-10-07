@@ -1,13 +1,14 @@
 # Requirements: Gym Tracker v1.2
 
-**Owner amendment (2026-10-07):** MAP-01, TIM-01, DEV-01 and DEV-02 are approved
-in `.planning/v1.2-OWNER-DECISIONS.md`. Standalone operation has no runtime AI
-agents. Garmin transport requirements remain the prior baseline pending focused
-revision after the requested unofficial-client feasibility review; do not treat
-FIT-first or partner-only access as settled, or reopen the four approved choices.
+**Final owner decisions (2026-10-07):** MAP-01, TIM-01, DEV-01 and DEV-02 are
+approved in `.planning/v1.2-OWNER-DECISIONS.md`. Garmin sync uses bundled
+python-garminconnect inside the standalone Android APK, reading activity JSON.
+No runtime AI agents, desktop bridge, partner-program access, broker or FIT
+decoder is required by this milestone. Native proof and data fidelity remain
+implementation checks. No product decision remains open.
 
 **Milestone:** PUSH-inspired UI/UX overhaul with multi-plan Running and imported activity foundations
-**Status:** Planning for owner review; implementation is not authorized in this session.
+**Status:** Final planning contract; all feature checkboxes remain unexecuted. This turn finalizes plans only.
 **Baseline:** Owner planning contract, approved.json revision 18 latest-first, approved-hybrid.html source SHA-256 `b5ddbad88fd465af2fa79475dc0c05efec49e551652f13c5220627730e1d9c96`.
 
 ## Contract and traceability
@@ -18,9 +19,9 @@ Exactly four roots: **Workout, Calendar, Library, Progress**. Preserve SQLite au
 
 ## v1.2 Requirements
 
-### Phase 13: Multi-active, running and import domain foundation
+### Phase 13: One-per-sport plan, running and import domain foundation
 
-- [ ] **DOM-01**: Support multiple active owned Strength and Running plans with independent schedules; migrate the shipped one-active-plan assumptions without bypassing repository rules.
+- [ ] **DOM-01**: Support at most one active owned Strength plan and at most one active owned Running plan concurrently, with independent schedules; enforce per-sport uniqueness through the real repository/schema migration.
 - [ ] **DOM-02**: Persist new plan structure in an inactive state; creation, import, duplication and editing must not activate it implicitly.
 - [ ] **DOM-03**: Migrate existing plans, sessions and schedules transactionally while preserving identifiers, workout recovery state and authoritative completed history.
 - [ ] **DOM-04**: Resolve each plan's dates and rotation independently with explicit timezone/effective-date ownership; aggregate all eligible occurrences for Workout and Calendar.
@@ -29,10 +30,10 @@ Exactly four roots: **Workout, Calendar, Library, Progress**. Preserve SQLite au
 - [ ] **DOM-07**: Persist Recovery, Long run, Progression, Tempo, Intervals, Hills and Fartlek sessions with common and contextual steps, order and stable identities.
 - [ ] **DOM-08**: Persist distance, optional owner-selected time/date, benchmark provenance and available training days; keep 10 km and Half Marathon times unset until explicitly chosen.
 - [ ] **DOM-09**: Preserve pace, heart-rate-zone and RPE targets as advisory session fields without guaranteeing an outcome or collecting gender or height.
-- [ ] **DOM-10**: Persist activity source, external ID, content hash, timestamps, sport subtype, distance, elapsed/moving time, available HR, route and lap facts as source evidence.
-- [ ] **DOM-11**: Deduplicate repeat sync and manual import using external Garmin activity identity and content hash, including FIT-to-API and API-to-FIT order.
+- [ ] **DOM-10**: Persist account-scoped Garmin external identity, versioned normalized JSON content digest, raw response provenance/hashes, timestamps, sport subtype, independent time bases, distance, and available HR/route/laps; retain sampling metadata and leave fit_sha256 absent without an original FIT.
+- [ ] **DOM-11**: Deduplicate repeat, interrupted, reordered and restored JSON sync using account-scoped external Garmin identity and canonical content digest; exclude fetch timestamps from content identity, stage changed source revisions, and never resurrect removed activities automatically.
 - [ ] **DOM-12**: Require explicit owner confirmation of the selected scheduled occurrence before creating a durable activity match; import alone never completes or activates a plan.
-- [ ] **DOM-13**: Build Calendar aggregation and comparable Running best-effort/goal views from durable facts with replayable projections and truthful missing/sparse states.
+- [ ] **DOM-13**: Build Calendar aggregation and comparable Running effort/goal views from durable accepted facts with replayable projections; only eligible source-reported summary/lap evidence supports exact-distance efforts, while downsampled chart data produces no invented effort and missing evidence stays sparse.
 - [ ] **DOM-14**: Persist optional dated bodyweight entries, edits and deletions for relative-strength views only; entries never alter workout targets.
 - [ ] **DOM-15**: Extend backup, restore and merge to all multi-plan, Running, imported-activity, match, goal and bodyweight facts and identities without duplicate creation.
 - [ ] **DOM-16**: Keep workouts fully offline and acknowledge edits/completion only after exclusive transactions commit; notifications and UI feedback follow durable results.
@@ -158,17 +159,17 @@ Exactly four roots: **Workout, Calendar, Library, Progress**. Preserve SQLite au
 - [ ] **LIB-35**: Persist session addition, edit, deletion and order; preserve a truly empty saved session list and provide error/retry without restoring fixture defaults.
 - [ ] **LIB-36**: Offer Move run, Move strength and Keep both with actual future-date choices, explicit confirmation and persisted outcomes.
 
-### Phase 18: Garmin sync, FIT and activity detail
+### Phase 18: Standalone Garmin account sync and activity detail
 
-- [ ] **GAR-01**: Open Garmin contextually from Workout, Running plan or imported Calendar activity, preserving only the four app roots.
+- [ ] **GAR-01**: Open Garmin contextually from Workout and Running plan and publish a real Calendar-origin activity-detail route contract; CAL-17/20 own final Calendar entry/return integration after this destination exists. Preserve exactly four app roots.
 - [ ] **GAR-02**: Keep Garmin Sync on one line in a stable three-column header with appearance flush right and an inert back placeholder at Garmin's root.
-- [ ] **GAR-03**: Show Garmin not connected with Connect Garmin and Import FIT fallback, making available operations truthful when API access is unavailable.
-- [ ] **GAR-04**: Implement consented authorization through an approved Garmin Activity API integration with OAuth2 PKCE and cancel/error/denied/expired/revoked recovery; do not ship simulated consent as real.
-- [ ] **GAR-05**: Show connection/consented-access/last-sync facts, activity list and durable dedupe receipt status with Sync now, Import FIT and Revoke.
-- [ ] **GAR-06**: Show busy Syncing Garmin activities, successful import/no-duplicates feedback, and Sync could not complete with Try again/Import FIT while previous facts remain.
-- [ ] **GAR-07**: Revoke/disconnect activity access without deleting imported history; reflect the real provider result and permit later reconnection.
-- [ ] **GAR-08**: Use a native original-file picker and actual FIT parsing/preview, supporting personal use without Garmin program approval.
-- [ ] **GAR-09**: Handle unsupported, malformed, oversized, truncated and duplicate files, cancelled selection and interrupted import without partial source facts or lost prior activities.
+- [ ] **GAR-03**: Show Garmin not connected with Connect Garmin and retained imported-history access; show honest offline, unavailable and sign-in-needed states without fake partner-approval or FIT-fallback actions.
+- [ ] **GAR-04**: Sign in to the owner's account through the bundled native/Python client with foreground credentials/MFA, cancel/error/expired-session recovery and verified authenticated reads; persist refreshed tokens in Keystore-backed private encryption and never log or back them up.
+- [ ] **GAR-05**: Show verified account connection, last successful sync, imported activities and durable dedupe status with Sync now and Disconnect Garmin; packaging runs standalone without AI agents, Python installed separately, or a development server.
+- [ ] **GAR-06**: Execute bounded foreground sync with clear busy, new/unchanged/partial-failure, offline, 403/429 and sign-in-needed results; preserve prior facts, bound retries, and do not claim success from a fixture or failed data read.
+- [ ] **GAR-07**: Disconnect locally by invalidating in-flight generations and clearing credentials/session state without deleting imported history; prevent late network results from writing, allow later reconnection, and never claim server-side revocation without a supported verified operation.
+- [ ] **GAR-08**: Read paginated Running summaries plus per-activity summary/splits/detail JSON through a typed allowlisted native bridge, validate and normalize it with explicit sampling/timezone provenance, and capacity-check before one atomic idempotent SQLite import.
+- [ ] **GAR-09**: Handle malformed/oversized/truncated JSON, missing channels, unsupported sport, duplicates, changed source revisions, ambiguous timezone and cancelled/interrupted sync with complete recovery paths and no partial facts or lost history.
 - [ ] **GAR-10**: Show imported outdoor elapsed/moving time, distance/pace facts, optional route and spaced Average heart rate label/value when present.
 - [ ] **GAR-11**: Show No route for treadmill activity plus distance/time/pace/laps and available source facts; never invent a route.
 - [ ] **GAR-12**: Display Lap, Time and Pace columns from imported lap semantics with accessible row/column labels and honest missing values.
@@ -209,7 +210,7 @@ Exactly four roots: **Workout, Calendar, Library, Progress**. Preserve SQLite au
 - [ ] **VER-07**: Run real SQLite migration, backup/restore/merge, idempotency and historical-revision tests with old and new multi-plan databases.
 - [ ] **VER-08**: Verify offline strength workouts and process-death recovery at start/edit/commit/rest/finish/import/match boundaries, distinguishing committed and uncommitted work.
 - [ ] **VER-09**: Verify native 1:1 drag, 25% title/settle boundary, short-fast snap-back, vertical intent, expand/collapse/adjacent-week continuity and cancel.
-- [ ] **VER-10**: Verify actual FIT imports, transport-order duplicate suppression, optional source facts and explicit selected-candidate matching; gate API acceptance on real approval/access.
+- [ ] **VER-10**: Verify a self-contained ARM64 APK's Python/native packaging, real account login/MFA/read, encrypted token refresh/cold restart/logout, JSON fidelity, idempotent sync and explicit matching; synthetic tests alone cannot close live account/network evidence, and partner approval/FIT decoding is not a prerequisite.
 - [ ] **VER-11**: Preserve or improve existing p95 interaction and launch budgets with the full calendar, large histories, long active sessions and representative import loads.
 - [ ] **VER-12**: Record owner-attended Samsung visual/usability/accessibility acceptance in addition to automated evidence.
 - [ ] **VER-13**: Prepare signed personal-use Android release verification, recovery/rollback evidence and a complete parity/deviation review before any later release authorization.
@@ -218,6 +219,8 @@ Exactly four roots: **Workout, Calendar, Library, Progress**. Preserve SQLite au
 
 | Capability | Reason |
 |---|---|
+| Partner Activity API/broker, desktop-to-Drive bridge, FIT decoder and manual FIT import | Owner selected on-phone account JSON sync; these are deferred alternatives rather than milestone gates. |
+| Runtime LLMs/agents, downloaded Python scripts, local sync web server or development terminal | Standalone APK uses bundled ordinary code through a typed native bridge. |
 | In-app outdoor or treadmill recording, live GPS, run pause/finish | Owner and revision 9 make Garmin the recorder. |
 | Extra Profile, Running or Garmin root destination | Exactly four approved roots. |
 | Cadence, rest-between-reps, nested Advanced Timing UI, plan-owned sound/haptics | Removed by latest owner/approval contract; preserve source facts. |
@@ -367,8 +370,8 @@ once and remains Pending until its owning phase is implemented and verified.
 | GAR-05 | 18 | garmin.connected | Pending |
 | GAR-06 | 18 | garmin.sync-states | Pending |
 | GAR-07 | 18 | garmin.revoke | Pending |
-| GAR-08 | 18 | garmin.fit-import | Pending |
-| GAR-09 | 18 | garmin.fit-errors | Pending |
+| GAR-08 | 18 | garmin.json-sync | Pending |
+| GAR-09 | 18 | garmin.sync-recovery | Pending |
 | GAR-10 | 18 | garmin.activity-outdoor | Pending |
 | GAR-11 | 18 | garmin.activity-treadmill | Pending |
 | GAR-12 | 18 | garmin.laps | Pending |

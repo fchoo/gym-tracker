@@ -23,10 +23,10 @@
 - **D13-09:** Imported activities remain immutable independent aggregates. Import never creates/activates a plan or creates Strength workout sessions.
 - **D13-10:** One imported activity can fulfill one selected Running opportunity only after explicit owner confirmation; unmatch/reassign appends audited events.
 
-### Owner-review checkpoints
-- **MAP-01:** At-most-one active plan per sport is the recommended partial-index policy, but remains unaccepted. The first irreversible constraint task must be a decision checkpoint and show the alternative multi-plan selection/index design.
-- **TIM-01:** Preserve all legacy cadence/cluster configs and snapshots. Retiring authoring, reconciliation, queued callbacks, and playback while keeping set/rest recovery is recommended but remains owner-review gated.
-- **GAR-ARCH:** Phase 13 builds provider-independent import/match facts. It does not introduce a hosted broker.
+### Final owner decisions and shared boundary
+- **MAP-01:** Approved `one-per-sport`: zero or one active Strength plan and zero or one active Running plan, with independent schedules and same-sport-only replacement.
+- **TIM-01:** Approved `retire-playback` with no compatibility mode: remove authoring/runtime playback/reconciliation/callbacks while preserving ordinary workout/history/rest integrity and required portability readers.
+- **GAR-ARCH:** Phase 13 creates the shared `GarminSourceEnvelope`/`GarminActivitySourcePort` type boundary; Phase 18 supplies envelope values from bundled Garmin JSON transport. No second source type or transport boundary exists in this milestone.
 
 ### Claude's Discretion
 - Exact migration file split and internal type names after checking current schema 27.
@@ -34,7 +34,7 @@
 
 ### Deferred Ideas (OUT OF SCOPE)
 - Running Rotation scheduling and cumulative multi-activity fulfillment.
-- Official Garmin transport/broker implementation belongs to Phase 18 and a separate security review.
+- Garmin transport/authentication/JSON normalization belongs to Phase 18; Phase 13 owns only the shared typed envelope and durable import/match commands.
 </user_constraints>
 
 <phase_requirements>
@@ -42,7 +42,7 @@
 
 | ID | Description | Research Support |
 |---|---|---|
-| DOM-01 | Support multiple active owned Strength and Running plans with independent schedules; migrate the shipped one-active-plan assumptions without bypassing repository rules. | MAP-01 gate, singleton inventory, paired activation validator, and coordinated repository/runtime cutover. [VERIFIED: .planning/REQUIREMENTS.md:17; src/platform/sqlite/migrations/0008_schedule_activation.ts:472-477] |
+| DOM-01 | Support at most one active owned Strength plan and at most one active owned Running plan with independent schedules; migrate the shipped one-active-plan assumptions without bypassing repository rules. | Approved MAP-01 record gate, singleton inventory, paired activation validator, and coordinated repository/runtime cutover. [VERIFIED: .planning/REQUIREMENTS.md; .planning/v1.2-OWNER-DECISIONS.md] |
 | DOM-02 | Persist new plan structure in an inactive state; creation, import, duplication and editing must not activate it implicitly. | Reuse the shipped inactive-copy result and separate activation command. [VERIFIED: .planning/REQUIREMENTS.md:18; src/platform/sqlite/repositories/starterPlanRepository.ts:1128-1154,1360-1379] |
 | DOM-03 | Migrate existing plans, sessions and schedules transactionally while preserving identifiers, workout recovery state and authoritative completed history. | Destructive migration with validated recovery copy, deterministic `strength` backfill, canonical fact digests, and failure injection. [VERIFIED: .planning/REQUIREMENTS.md:19; src/platform/sqlite/migrationRunner.ts:201-273] |
 | DOM-04 | Resolve each plan's dates and rotation independently with explicit timezone/effective-date ownership; aggregate all eligible occurrences for Workout and Calendar. | Reuse plan-scoped schedule versions, pass explicit schedule identity to every command, and add a range-based typed event query. [VERIFIED: .planning/REQUIREMENTS.md:20; src/platform/sqlite/migrations/0008_schedule_activation.ts:274-331] |
@@ -51,8 +51,8 @@
 | DOM-07 | Persist Recovery, Long run, Progression, Tempo, Intervals, Hills and Fartlek sessions with common and contextual steps, order and stable identities. | Stable Running session roots plus immutable revisions and version-bound ordered slots. [VERIFIED: .planning/REQUIREMENTS.md:23; .planning/phases/13-multi-plan-running-foundation/13-CONTEXT.md:27-30] |
 | DOM-08 | Persist distance, optional owner-selected time/date, benchmark provenance and available training days; keep 10 km and Half Marathon times unset until explicitly chosen. | Running profile/goal source facts with nullable owner values and provenance; no zero/default fabrication. [VERIFIED: .planning/REQUIREMENTS.md:24] |
 | DOM-09 | Preserve pace, heart-rate-zone and RPE targets as advisory session fields without guaranteeing an outcome or collecting gender or height. | Strict discriminated Running target schemas; source facts never mutate workout targets. [VERIFIED: .planning/REQUIREMENTS.md:25] |
-| DOM-10 | Persist activity source, external ID, content hash, timestamps, sport subtype, distance, elapsed/moving time, available HR, route and lap facts as source evidence. | Provider-independent immutable activity/payload aggregates; Phase 18 supplies bytes/transport. [VERIFIED: .planning/REQUIREMENTS.md:26; .planning/architecture/v1.2-garmin-import.md:77-93] |
-| DOM-11 | Deduplicate repeat sync and manual import using external Garmin activity identity and content hash, including FIT-to-API and API-to-FIT order. | Separate verified external-reference and exact-byte-hash indexes with receipt replay and conflict outcomes. [VERIFIED: .planning/REQUIREMENTS.md:27; .planning/architecture/v1.2-garmin-import.md:95-115] |
+| DOM-10 | Persist activity source, external ID, content hash, timestamps, sport subtype, distance, elapsed/moving time, available HR, route and lap facts as source evidence. | Exact GarminSourceEnvelope plus immutable activity/payload aggregates; Phase 18 supplies normalized JSON and component hashes. [VERIFIED: .planning/REQUIREMENTS.md; .planning/v1.2-OWNER-DECISIONS.md] |
+| DOM-11 | Deduplicate repeat/interrupted/reordered/restored Garmin JSON sync using account-scoped external identity and canonical normalized JSON digest. | `GarminSourceEnvelope`, separate external-identity/content-digest fields, receipt replay, immutable revisions, and no-resurrection outcomes. [VERIFIED: .planning/REQUIREMENTS.md; .planning/v1.2-OWNER-DECISIONS.md] |
 | DOM-12 | Require explicit owner confirmation of the selected scheduled occurrence before creating a durable activity match; import alone never completes or activates a plan. | Match/unmatch/reassign event ledger plus rebuildable one-to-one current relation. [VERIFIED: .planning/REQUIREMENTS.md:28; .planning/architecture/v1.2-garmin-import.md:147-159] |
 | DOM-13 | Build Calendar aggregation and comparable Running best-effort/goal views from durable facts with replayable projections and truthful missing/sparse states. | Source-fact query ports and deterministic projection freshness/rebuild semantics. [VERIFIED: .planning/REQUIREMENTS.md:29; src/platform/sqlite/repositories/progressRepository.ts:320-396] |
 | DOM-14 | Persist optional dated bodyweight entries, edits and deletions for relative-strength views only; entries never alter workout targets. | Separate measurement aggregate; do not reuse the exercise metric profile named `bodyweight_reps`. [VERIFIED: .planning/REQUIREMENTS.md:30; src/domains/metrics/contracts.ts:5-25,115-129] |
@@ -65,9 +65,9 @@
 
 Phase 13 must ship as one coherent domain/storage release: the schema, active-pair validators, typed query/command ports, workout provenance, Running slots, import/match/bodyweight facts, and complete portability graph have to agree before later UI phases may persist or display the new model. The current database is schema 27, still has global one-active-plan/one-active-schedule indexes, scalar active readers, a start command without schedule provenance, completion that rediscovers the active schedule, a one-opportunity-per-date/source uniqueness rule, and a v2 portability allowlist. [VERIFIED: src/platform/sqlite/migrations/index.ts:21-60; src/platform/sqlite/migrations/0008_schedule_activation.ts:367-477; src/domains/workout/index.ts:21-35; src/bootstrap/scheduleRuntime.tsx:886-943; src/domains/portability/backupContracts.ts:1-110]
 
-The narrow production tracer must finish before breadth expansion. It migrates a synthetic schema-27 Strength database, retains its active/recoverable workout, defines the minimum Running readiness contract, adds one inactive Running plan with two ordered sessions on the same weekday, applies the MAP-01-selected activation policy, materializes two distinct opportunities, reads one exact planned-Strength occurrence through `TrainingFoundationRuntimePort.loadPlannedStrengthOccurrence(occurrenceId)` with immutable targets and null-on-stale semantics, then round-trips that source graph through successor backup and clean restore with canonical parity. Import/match/bodyweight breadth and full merge expansion follow only after this slice passes. [VERIFIED: .planning/phases/13-multi-plan-running-foundation/13-CONTEXT.md:73-79]
+The narrow production tracer must finish before breadth expansion. It migrates a synthetic schema-27 Strength database, retains its active/recoverable workout, defines the minimum Running readiness contract, adds one inactive Running plan with two ordered sessions on the same weekday, applies approved MAP-01 per-sport activation, materializes two distinct opportunities, reads one exact planned-Strength occurrence through `TrainingFoundationRuntimePort.loadPlannedStrengthOccurrence(occurrenceId)` with immutable targets and null-on-stale semantics, then round-trips that source graph through successor backup and clean restore with canonical parity. Import/match/bodyweight breadth and full merge expansion follow only after this slice passes.
 
-**Primary recommendation:** Put MAP-01 before any uniqueness DDL; implement the complete migration/readiness/two-slot/activation/occurrence/detail/recovery/backup-restore tracer with no dependency on later breadth; finalize migration 0028 and all new source-generation triggers once in that tracer plan; then expand the seven Running types, import/removal, matching, bodyweight, projections, and merge. Put TIM-01 before deleting/gating any timing entry point. [VERIFIED: .planning/phases/13-multi-plan-running-foundation/13-CONTEXT.md:33-40]
+**Primary recommendation:** Validate approved MAP-01 before any uniqueness DDL; implement the complete migration/readiness/two-slot/activation/occurrence/detail/recovery/backup-restore tracer; finalize migration 0028 and all new source-generation triggers once; then expand the seven Running types, the shared GarminSourceEnvelope import/removal path, matching, bodyweight, projections, and merge. Characterize timing before applying approved TIM-01 retirement.
 
 ## Architectural Responsibility Map
 
@@ -80,7 +80,7 @@ The narrow production tracer must finish before breadth expansion. It migrates a
 | Imported activity facts and matching | Domain / Application | Database / Storage | Provider adapters deliver normalized input; independent immutable source aggregates and audited match events own durable semantics. [VERIFIED: .planning/phases/13-multi-plan-running-foundation/13-CONTEXT.md:27-31] |
 | Bodyweight source facts | Domain / Application | Database / Storage | Dated measurement commands own validation; Progress consumes facts without changing targets. [VERIFIED: .planning/REQUIREMENTS.md:30] |
 | Backup/restore/merge | Portability domain | Database / Storage | Versioned parsers, identity maps, graph closure, one writer transaction, and deterministic rebuild form one boundary. [VERIFIED: src/domains/portability/restoreCommands.ts:147-165,230-300; src/platform/sqlite/repositories/logicalRestoreRepository.ts:376-438] |
-| Provider transport and product screens | Out of Phase 13 | Phase 18 / later UI | Phase 13 exposes ports and facts only; broker/transport is explicitly deferred. [VERIFIED: .planning/phases/13-multi-plan-running-foundation/13-CONTEXT.md:33-36,83-88] |
+| Garmin transport and product screens | Out of Phase 13 | Phase 18 / later UI | Phase 13 defines the narrow source port/envelope and durable commands; Phase 18 supplies bundled JSON transport and UI. |
 
 ## Project Constraints (from .trae/rules/rules.md)
 
@@ -127,12 +127,12 @@ The narrow production tracer must finish before breadth expansion. It migrates a
 | `workoutAppRuntime.tsx` completion | Workout outcome commits first, then schedule completion runs separately and errors are swallowed with `.catch(() => null)`. [VERIFIED: src/bootstrap/workoutAppRuntime.tsx:3949-3983] | Preserve workout commit truth, but make durable schedule-reconciliation provenance/receipt explicit so retry cannot be lost or redirected. |
 | Legacy Today | `getTodayView()` and `getActivation()` use copied-plan `LIMIT 1`. [VERIFIED: src/platform/sqlite/repositories/plansWorkoutRepository.ts:1366-1384,1538-1572] | Remove from production Today or explicitly constrain to a verified Strength compatibility path that rejects ambiguity. |
 | Calendar history | Month loading scans all sessions, performs a count query per session, filters missed opportunities through current active schedules, and collapses into date states. [VERIFIED: src/platform/sqlite/repositories/historyRepository.ts:760-864] | Add range-indexed batched typed events with stable source IDs; historical facts must not depend on current activation. |
-| Portability | Restore validation rejects more than one active plan; merge demotes archive activation if any local plan/schedule is active. [VERIFIED: src/domains/portability/restoreCommands.ts:209-228; src/domains/portability/mergePlan.ts:1093-1172] | Validate/resolve the projected whole graph under MAP-01-selected cardinality, by sport/policy, before commit. |
+| Portability | Restore validation rejects more than one active plan; merge demotes archive activation if any local plan/schedule is active. [VERIFIED: src/domains/portability/restoreCommands.ts:209-228; src/domains/portability/mergePlan.ts:1093-1172] | Validate/resolve the projected whole graph under approved one-per-sport cardinality before commit. |
 | Backup generation | Migration 23 imports live `LOGICAL_BACKUP_TABLES` and creates triggers from it. [VERIFIED: src/platform/sqlite/migrations/0023_automatic_drive_backup.ts:1-36,44-58] | Freeze the historical list used by migration 23; successor migrations create triggers only after new tables exist. |
 
 ## Standard Stack
 
-No new runtime package is needed for Phase 13. Use the installed/locked stack and postpone FIT decoding/OAuth packages to Phase 18. [VERIFIED: package.json:92-132; .planning/phases/13-multi-plan-running-foundation/13-CONTEXT.md:33-36]
+No new runtime package is needed for Phase 13. Use the installed/locked stack; bundled Python/Chaquopy and Garmin authentication belong to Phase 18. [VERIFIED: package.json:92-132; .planning/v1.2-OWNER-DECISIONS.md]
 
 ### Core
 
@@ -169,7 +169,7 @@ npm ci
 
 ## Package Legitimacy Audit
 
-Not applicable: Phase 13 installs no external package. The existing lockfile stack is retained, and FIT/OAuth packages remain out of scope until Phase 18. Therefore the package-legitimacy gate is not triggered. [VERIFIED: .planning/phases/13-multi-plan-running-foundation/13-CONTEXT.md:33-36,83-88]
+Not applicable: Phase 13 installs no external package. The existing lockfile stack is retained, and Phase 18 owns the audited Python/Chaquopy packages. Therefore the package-legitimacy gate is not triggered.
 
 ## Architecture Patterns
 
@@ -216,7 +216,7 @@ The entry points are typed application commands, the decision points are kind/re
 | Running authoring | `createOwnedPlanRuntimePort`, `OwnedPlanRepository`; existing Strength readiness remains separate [VERIFIED: src/bootstrap/ownedPlanRuntime.tsx:46-122; src/platform/sqlite/repositories/ownedPlanRepository.ts:137-224] | The tracer defines minimum `evaluateRunningReadiness` in `src/domains/running/contracts.ts` before activation consumes it; later breadth extends that same export plus stable roots/revisions. |
 | Today/Calendar | `ScheduleTodayRead`, `loadToday`, `historyRepository.loadCalendarMonth` [VERIFIED: src/bootstrap/scheduleRuntime.tsx:191-221,576-677; src/platform/sqlite/repositories/historyRepository.ts:760-864] | `src/bootstrap/trainingFoundationRuntime.ts` exports `TrainingFoundationRuntimePort.loadPlannedStrengthOccurrence(occurrenceId): Promise<PlannedStrengthOccurrenceDetail | null>`; `src/domains/workout/index.ts` owns the immutable target-bearing result; `plansWorkoutRepository` implements exact query-only provenance/null-on-stale. Breadth adds coherent Today and bounded event ranges. |
 | Workout start/completion | `StartWorkoutRequest`, `plansWorkoutRepository.startWorkout`, `completeScheduledSession`, `finishWorkoutCompleted` [VERIFIED: src/domains/workout/index.ts:9-44; src/platform/sqlite/repositories/plansWorkoutRepository.ts:776-876; src/bootstrap/scheduleRuntime.tsx:886-943; src/bootstrap/workoutAppRuntime.tsx:3973-3983] | Explicit selected occurrence, immutable session schedule link, durable completion receipt/reconciliation. |
-| Import/match | No current imported-activity or Running-match production module was found by repository search. [VERIFIED: `rg` audit over `src`, `app`, and `tests`, 2026-10-06] | Provider-independent normalized contracts, immutable payload revisions/receipts, match ledger, current relation rebuild. |
+| Import/match | No current imported-activity or Running-match production module was found by repository search. [VERIFIED: `rg` audit over `src`, `app`, and `tests`, 2026-10-06] | Shared GarminSourceEnvelope, immutable normalized JSON revisions/component hashes/receipts, match ledger, current relation rebuild. |
 | Bodyweight | Existing `bodyweight_reps` metric is not a dated kg history. [VERIFIED: src/domains/metrics/contracts.ts:115-129] | Separate dated measurement source facts, commands, tombstones, and Progress read seam. |
 | Progress | `createProgressRepository` gates on projection freshness before reading projections. [VERIFIED: src/platform/sqlite/repositories/progressRepository.ts:320-396] | Add Running/bodyweight source/query ports without making UI caches authoritative. |
 | Portability | `backupContracts`, `restoreCommands`, `mergePlan`, `logicalBackupRepository`, `logicalRestoreRepository`, `logicalMergeRepository` [VERIFIED: src/domains/portability/backupContracts.ts:1-110; src/domains/portability/restoreCommands.ts:147-300; src/platform/sqlite/repositories/logicalRestoreRepository.ts:376-438; src/platform/sqlite/repositories/logicalMergeRepository.ts:1264-1352] | Version-specific graph registry, new filters/refs/remaps/conflicts/triggers/rebuilds, old-reader compatibility. |
@@ -308,7 +308,7 @@ The values `"strength" | "running"` are quoted verbatim from the locked plan-kin
 ### 0. Decision and drift preflight
 
 1. Re-read `CURRENT_SCHEMA_VERSION`; if it is no longer 27, renumber and update every fixture/allowlist rather than editing a shipped migration. [VERIFIED: src/platform/sqlite/migrations/index.ts:28-60]
-2. Stop at **MAP-01** before defining same-sport uniqueness/indexes. Present both designs: (A) at most one active pair per sport with per-kind partial indexes; (B) multiple same-sport actives with no per-kind unique index and explicit ordered selection/cardinality in every query/command/merge preview. [VERIFIED: .planning/phases/13-multi-plan-running-foundation/13-CONTEXT.md:33-35]
+2. Validate **MAP-01** from the owner record before defining same-sport uniqueness/indexes. Implement only at most one active pair per sport with per-kind partial indexes; reject duplicate active pairs within either sport.
 3. Inspect the retained schema-27 fixture for one active pair, pair agreement, valid owned roots, schedule uniqueness, one in-progress session, FK/integrity health, and timing ownership. Abort on corruption; do not pick a winner. [VERIFIED: .planning/architecture/v1.2-migration-risks.md:42-53]
 4. Create and validate the recovery database because a non-additive migration triggers `RecoveryBackupPort`; retain it through one healthy post-upgrade startup. [VERIFIED: src/platform/sqlite/migrationRunner.ts:220-240; src/platform/sqlite/recoveryBackup.ts:73-125]
 
@@ -352,7 +352,7 @@ After every new source table has ownership filters and exact primary keys, colle
 ### 6. Merge sequence
 
 1. Preflight the complete projected result, not each plan independently. Same portable plan with conflicting kind is a conflict. Apply owner-scoped activity/bodyweight identities and match closure before preview. [VERIFIED: .planning/architecture/v1.2-multi-active-plans.md:186-195]
-2. Resolve active candidates once under MAP-01-selected policy. The current `planAggregate()` global `activeLocalPlanExists`/`activeLocalScheduleExists` demotion must be replaced. [VERIFIED: src/domains/portability/mergePlan.ts:1093-1172]
+2. Resolve active candidates once under approved MAP-01 one-per-sport policy. The current `planAggregate()` global `activeLocalPlanExists`/`activeLocalScheduleExists` demotion must be replaced. [VERIFIED: src/domains/portability/mergePlan.ts:1093-1172]
 3. Bind preview to local fingerprint/revisions; any intervening plan/activation/import/bodyweight mutation invalidates it.
 4. Commit settings and all accepted/remapped aggregates in one exclusive transaction, verify graph/FK/canonical slice, and mark `rebuild_pending`; no-op duplicate/local-won plans return ready only after fingerprint validation. [VERIFIED: src/platform/sqlite/repositories/logicalMergeRepository.ts:1264-1352]
 5. Rebuild before readiness; automatic-backup generation must advance for the committed new source graph, never because a derivative rebuild ran.
@@ -375,8 +375,8 @@ After every new source table has ownership filters and exact primary keys, colle
 
 ### Imported activity and match seams
 
-- Phase 13 accepts validated provider-independent normalized drafts; it does not select files, decode FIT, hold credentials, call Garmin, or host a broker. [VERIFIED: .planning/phases/13-multi-plan-running-foundation/13-CONTEXT.md:33-36,83-88]
-- Keep exact source bytes hash and verified external reference as independent identity signals. Exact replays return the existing receipt; same external ID/different hash becomes an immutable revision requiring explicit acceptance; conflicting resolutions never silently coalesce. [VERIFIED: .planning/architecture/v1.2-garmin-import.md:95-115]
+- Phase 13 defines and accepts validated `GarminSourceEnvelope` values; it does not hold credentials, call Garmin, run Python, or implement transport. Phase 18 constructs the envelope from allowlisted activity/splits/details JSON.
+- Keep account-scoped Garmin external identity, canonical normalized JSON digest, and raw activity/splits/details component hashes as distinct fields. Exact replays return the existing receipt; same identity/different canonical digest becomes an immutable revision requiring explicit acceptance; conflicts never silently coalesce. [VERIFIED: .planning/v1.2-OWNER-DECISIONS.md]
 - Import commit writes all source rows plus receipt in one short transaction and never activates/creates a plan or Strength session. Match is a separate confirmation transaction bound to exact accepted payload and exact occurrence/revisions. [VERIFIED: .planning/phases/13-multi-plan-running-foundation/13-CONTEXT.md:27-31]
 - Unmatch/reassign appends events. The rebuildable current relation enforces one current activity per opportunity and one current opportunity per activity; replay cannot overwrite a newer relation. [VERIFIED: .planning/architecture/v1.2-garmin-import.md:147-159]
 - Remove/restore is an explicit revision-fenced activity command. Removal appends a portable tombstone plus an audited current-match invalidation in the same exclusive transaction; restore appends a new event and leaves the activity unmatched until a fresh explicit confirmation. Exact replay is idempotent, stale commands write nothing, and delayed import/restore/merge cannot resurrect an old relation.
@@ -408,15 +408,15 @@ After every new source table has ownership filters and exact primary keys, colle
 | Stored data | The production database name is `gym-tracker.db`; installed v1.1 databases may contain schema-27 plans, schedules, active/partial workouts, history, timing, identities, and backup state. [VERIFIED: src/bootstrap/workoutAppRuntime.tsx:399-403; src/platform/sqlite/migrations/index.ts:21-60] | **Data migration**, not only code edits. Use synthetic schema-27 fixtures and the validated recovery-copy path; do not inspect/mutate a live phone DB during planning. |
 | Live service config | Google Drive can hold v2/schema-27 immutable snapshots and a manifest, but Drive auth/manifest topology does not need a manual config migration for Phase 13. [VERIFIED: .planning/milestones/v1.1-phases/12-automatic-google-drive-sync/12-CONTEXT.md:39-70,95-109] | **Code/contract extension:** next local source mutation produces a successor snapshot; retain v1/v2 restore and latest/previous recovery. Do not patch provider state or credentials. |
 | OS-registered state | No OS registration is part of the multi-plan domain migration. Android notification/rest behavior remains keyed to the one active Strength session. [VERIFIED: .planning/phases/13-multi-plan-running-foundation/13-CONTEXT.md:19-25] | None for registrations; rebuild the native test APK for migration/process-death evidence later. |
-| Secrets/env vars | Phase 13 introduces no Garmin credential, broker secret, OAuth token, or provider environment variable. Google authorization remains adapter-owned and excluded from logical backups. [VERIFIED: .planning/phases/13-multi-plan-running-foundation/13-CONTEXT.md:33-36,83-88; .planning/milestones/v1.1-phases/12-automatic-google-drive-sync/12-CONTEXT.md:161-174] | None. Preserve secret exclusion and diagnostics redaction. |
+| Secrets/env vars | Phase 13 introduces no Garmin credential, token, or provider environment variable. Authentication remains Phase 18 adapter-owned and excluded from logical backups. | None. Preserve secret exclusion and diagnostics redaction. |
 | Build artifacts / installed packages | `node_modules` and `adb` are unavailable in this worktree/PATH; Node, npm, Java, sqlite3, and Maestro are available. [VERIFIED: environment audit 2026-10-06] | Run `npm ci` before host tests; restore the pinned Android SDK/adb path before native `migrations-effects`. An old installed APK must not be used as a downgrade after new-schema writes. |
 
 ## Common Pitfalls
 
-### Pitfall 1: MAP-01 leaks into DDL before approval
+### Pitfall 1: MAP-01 DDL diverges from the approved record
 **What goes wrong:** A per-kind unique index silently locks one same-sport plan.
-**How to avoid:** Make the first irreversible constraint task a decision checkpoint, with both index/selection/merge designs.
-**Warning sign:** Migration SQL contains `one_active_*_per_kind` before MAP-01 evidence. [VERIFIED: .planning/phases/13-multi-plan-running-foundation/13-CONTEXT.md:33-35]
+**How to avoid:** Automatically validate the approved one-per-sport owner record before the first irreversible constraint task, then implement only its index/selection/merge design.
+**Warning sign:** Migration SQL permits two active rows of the same sport or lacks owner-record validation before `one_active_*_per_kind` creation.
 
 ### Pitfall 2: Only the two global indexes change
 **What goes wrong:** scalar readers, global deactivation, `LIMIT 1`, restore validation, and merge normalization still pick/reject/demote the wrong plan.
@@ -520,12 +520,12 @@ The existing restore writer already returns the verbatim state `"rebuild_pending
 
 | Old / shipped approach | Phase 13 approach | Impact |
 |---|---|---|
-| One global active plan/schedule pair | Cardinality selected at MAP-01 with explicit sport/policy-scoped pairs | Strength and Running can coexist without hidden deactivation. [VERIFIED: src/platform/sqlite/migrations/0008_schedule_activation.ts:472-477; .planning/phases/13-multi-plan-running-foundation/13-CONTEXT.md:19-25] |
+| One global active plan/schedule pair | Approved MAP-01 zero-or-one pair per sport | Strength and Running can coexist without hidden deactivation or arbitrary same-sport multiplicity. |
 | Scalar Today and `startPlanDay(dayId, mode)` | Coherent multi-context read + exact selected occurrence | Stops mixed plan/day and stale-version starts. [VERIFIED: src/bootstrap/scheduleRuntime.tsx:210-221; src/bootstrap/workoutAppRuntime.tsx:950-953] |
 | Completion discovers active schedule | Completion replays captured session provenance | Plan switches cannot redirect historical completion. [VERIFIED: src/bootstrap/scheduleRuntime.tsx:886-943] |
 | Date states and current-lifecycle missed filter | Stable typed multi-source events | Several same-day events and inactive-plan history remain addressable. [VERIFIED: src/platform/sqlite/repositories/historyRepository.ts:760-864] |
 | v2 global portability graph | Exact versioned graphs with successor source facts | Old archives remain readable while new facts are complete. [VERIFIED: src/domains/portability/backupContracts.ts:1-110] |
-| Advanced timing fully active | Facts preserved; retirement requires TIM-01 and zero-cue proof | Avoids destructive migration and invisible playback. [VERIFIED: .planning/phases/13-multi-plan-running-foundation/13-CONTEXT.md:33-35] |
+| Advanced timing fully active | TIM-01 removes authoring/runtime playback/reconciliation/callbacks; ordinary facts/history/rest remain exact | Avoids destructive migration and invisible playback. |
 
 **Deprecated/outdated for new production use:** copied-plan `LIMIT 1` Today/activation selectors, scalar `activeSchedule()` mutations, completion-by-current-activation, date-only event identity, and a portability registry that assumes every supported format has the latest table set. [VERIFIED: src/platform/sqlite/repositories/plansWorkoutRepository.ts:1366-1384,1538-1572; src/bootstrap/scheduleRuntime.tsx:481-499,886-943; src/domains/portability/backupContracts.ts:88-110]
 
@@ -560,12 +560,12 @@ The older PROJECT environment statement that adb is installed is stale relative 
 | Full host suite command | `npm run typecheck && npm run lint && npm run test:unit -- --runInBand && npm run test:sqlite:host -- --runInBand && npm run test:integration -- --runInBand && npm run test:coverage -- --runInBand` [VERIFIED: package.json:19-28,72-73] |
 | Native phase gate | `npm run android:devtest:fresh -- --suite phase13 && npm run test:sqlite:device -- --suite migrations-effects --manifest artifacts/native/phase13/build.json` [ASSUMED] (future Phase 13 manifest; existing suite command verified at package.json:26,79) |
 
-### Owner Decision Checkpoints
+### Settled Decision Record Gates
 
 | Checkpoint | Must occur before | Evidence shown | Plan behavior |
 |---|---|---|---|
-| MAP-01 | Any replacement active-plan/schedule uniqueness DDL or merge cardinality implementation | Side-by-side schema/index, selection, Today, activation, and merge designs for one-per-sport versus multiple-same-sport | Blocking `checkpoint:decision`; no default may be encoded before acceptance. [VERIFIED: .planning/phases/13-multi-plan-running-foundation/13-CONTEXT.md:33-35] |
-| TIM-01 | Removing/gating authoring, runtime commands, foreground reconciliation, queued callbacks, or playback | Legacy state matrix for `idle/running/paused/stopped/expired`, zero-cue evidence, unchanged config/snapshot bytes, recovered set pointer and between-set rest | Blocking `checkpoint:decision`; preservation tests land before any cutover. [VERIFIED: src/platform/sqlite/migrations/0021_advanced_set_timing.ts:93-130; .planning/phases/13-multi-plan-running-foundation/13-CONTEXT.md:33-35] |
+| MAP-01 | Replacement active-plan/schedule uniqueness DDL or merge cardinality implementation | Validate approved `one-per-sport`; test per-kind indexes, bounded reads, same-sport replacement, restore/merge and independent schedules | Automatic owner-record gate before DDL; no alternative cardinality branch. |
+| TIM-01 | Removing authoring, runtime commands, foreground reconciliation, queued callbacks, and playback | Validate approved `retire-playback`; run legacy state, zero-cue, unchanged source-fact, pointer and between-set-rest matrices | Automatic owner-record gate; preservation tests land before cutover. |
 
 ### Phase Requirements → Test Map
 
@@ -596,7 +596,7 @@ The older PROJECT environment statement that adb is installed is stale relative 
 - Strength + Running active; replace one sport; the other schedule revision, pointer, overrides, and opportunities remain identical. [VERIFIED: .planning/architecture/v1.2-migration-risks.md:67-73]
 - Two Running slots on one weekday/date plus Strength; each retains identity across restart, backup, clean restore, and merge.
 - Start from a selected occurrence; crash before/after commit; switch plan; complete/retry exactly once against original provenance. [VERIFIED: .planning/architecture/v1.2-migration-risks.md:74-80]
-- Import without a plan; both FIT→API and API→FIT identity order; stale match; unmatch/reassign; removed source cannot resurrect. [VERIFIED: .planning/architecture/v1.2-migration-risks.md:84-87]
+- Import without a plan; repeat/changed/reordered/restored GarminSourceEnvelope delivery; stale match; unmatch/reassign; removed source cannot resurrect.
 - New source-only mutations advance automatic generation; derivative rebuild alone does not. [VERIFIED: .planning/architecture/v1.2-migration-risks.md:88-94]
 - TIM-01 state/callback/relaunch/restore matrix preserves bytes, set pointer, drafts, and between-set rest with zero unapproved cue retirement behavior. [VERIFIED: .planning/architecture/v1.2-migration-risks.md:78-80]
 
@@ -628,7 +628,7 @@ Security enforcement is enabled at ASVS level 1. [VERIFIED: .planning/config.jso
 
 | ASVS Category | Applies | Standard Control |
 |---|---:|---|
-| V2 Authentication | No for Phase 13 | No new account/provider authentication; Garmin broker is Phase 18. Existing Google auth remains outside logical facts. [VERIFIED: .planning/phases/13-multi-plan-running-foundation/13-CONTEXT.md:33-36,83-88] |
+| V2 Authentication | No for Phase 13 | No new account/provider authentication; bundled Garmin authentication is Phase 18. Existing Google auth remains outside logical facts. |
 | V3 Session Management | No for Phase 13 | No web/user session is introduced. Stable workout/session IDs are domain identities, not authentication sessions. [VERIFIED: .planning/phases/13-multi-plan-running-foundation/13-CONTEXT.md:6-14,33-36] |
 | V4 Access Control | Yes | Capability-oriented typed ports; screens/adapters receive no SQL/private writer; owner namespace scopes portable identities. [VERIFIED: src/platform/sqlite/sqliteKernel.ts:38-60; src/platform/sqlite/repositories/logicalMergeRepository.ts:1430-1446] |
 | V5 Input Validation | Yes | Strict schemas, bounded values/chunks, exact-key archive parsing, prepared SQL parameters, expected revisions, and fail-closed unsupported versions. [VERIFIED: src/domains/portability/backupContracts.ts:168-243,396-473; src/platform/sqlite/connection.ts:94-139] |
@@ -655,17 +655,17 @@ Security enforcement is enabled at ASVS level 1. [VERIFIED: .planning/config.jso
 | A2 | Recommended future file/table/type names in this research are accepted as planner-internal names. [ASSUMED] | Future file map / examples | Low architectural risk; exact imports/tasks change. Locked identities and behavior do not. |
 | A3 | The proposed targeted future test commands complete inside the desired quick feedback window. [ASSUMED] | Validation Architecture | Planner may split fixtures/files further after measurement. |
 
-## Open Questions (RESOLVED AS EXECUTION GATES)
+## Settled Decisions (AUTOMATIC RECORD GATES)
 
-1. **MAP-01 — active plans within one sport**
-   - What we know: Strength and Running must coexist; at-most-one per sport is recommended but unaccepted. [VERIFIED: .planning/phases/13-multi-plan-running-foundation/13-CONTEXT.md:33-35]
-   - Resolved planning disposition: Plan 13-01 uses a blocking owner checkpoint before the first cardinality-dependent uniqueness/index task and presents both complete designs. No schema default is permitted.
+1. **MAP-01 — active plans within one sport — APPROVED**
+   - Exactly zero or one active Strength plan and zero or one active Running plan; schedules and collisions are independent, while arbitrary same-sport multiplicity is rejected.
+   - Execution disposition: Plan 13-01 automatically validates the dated owner record before the first cardinality-dependent uniqueness/index task. No alternate schema branch or owner checkpoint remains.
 
-2. **TIM-01 — cadence/cluster runtime retirement**
-   - What we know: all configurations/snapshots and set/rest recovery must remain. Runtime authoring/reconciliation/callback/playback retirement is recommended but unaccepted. [VERIFIED: .planning/phases/13-multi-plan-running-foundation/13-CONTEXT.md:33-35]
-   - Resolved planning disposition: preservation tests land first, then Plan 13-09 blocks runtime removal/gating on a dated owner checkpoint. If cue isolation cannot be proved, compatibility behavior remains and the affected evidence cannot pass.
+2. **TIM-01 — cadence/cluster runtime retirement — APPROVED**
+   - Remove authoring/reconciliation/callback/playback without a compatibility mode; preserve ordinary workout/history facts, portability readers, committed/draft sets, active pointer, and between-set rest.
+   - Execution disposition: preservation tests land first, then Plan 13-09 automatically validates the dated owner record before runtime removal. If cue isolation cannot be proved, implementation blocks for a defect fix; compatibility playback is not retained and the decision is not reopened.
 
-No additional owner question is required for Phase 13. Garmin transport/broker remains deferred, and exact internal naming/query indexes are explicitly within planner discretion. [VERIFIED: .planning/phases/13-multi-plan-running-foundation/13-CONTEXT.md:38-40,83-88]
+No owner question is required for Phase 13. Phase 18 owns Garmin transport and supplies the shared envelope; exact internal query indexes remain within planner discretion.
 
 ## Sources
 
@@ -694,11 +694,11 @@ No additional owner question is required for Phase 13. Garmin transport/broker r
 **Confidence breakdown:**
 - Standard stack: HIGH — exact project versions/scripts were opened and registry existence/publish metadata was checked; no package addition is proposed.
 - Architecture baseline: HIGH — schema 27, indexes, tables, runtime call paths, and portability code were opened directly at HEAD `917b924d618a003a38aa895092f9caed79ebe36e`.
-- Future architecture: MEDIUM — grounded in locked context and ADRs but not implemented; MAP-01/TIM-01 remain owner gates.
+- Future architecture: MEDIUM — grounded in locked context and ADRs but not implemented; MAP-01/TIM-01 are finalized and automatically validated.
 - Pitfalls: HIGH for identified current seams, MEDIUM for unimplemented mitigations.
 - Validation: HIGH for existing harness/commands, MEDIUM for future file names and unmeasured quick-run duration.
 
 **Research method:** Required research-plan seam used the existing architecture question file; provider `websearch` was classified `MEDIUM` only after official-source cross-check. Cache entries were not retained in the worktree because the assigned output scope permits only this RESEARCH.md. The project graph was absent, so direct source inspection was used. No app code, build, device mutation, test execution, commit, or user question occurred.
 
 **Research date:** 2026-10-06
-**Valid until:** 2026-11-05, or immediately invalid if the migration registry, Phase 13 context, MAP-01, or TIM-01 changes.
+**Valid until:** 2026-11-05, or immediately invalid if the migration registry or approved owner record changes.

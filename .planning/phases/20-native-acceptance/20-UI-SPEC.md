@@ -11,12 +11,12 @@ prototype_html_sha256: b5ddbad88fd465af2fa79475dc0c05efec49e551652f13c5220627730
 prototype_approval_sha256: b8e91e3098ec443c9dc283ae8383d1af552d7dc2b83648695a01dcb8a89ff0bf
 parity_rows: 172
 browser_walk_states: 107
-owner_gates_open:
+settled_baselines:
+  - MAP-01
+  - TIM-01
   - DEV-01
   - DEV-02
-  - TIM-01
-external_gates_open:
-  - Garmin Activity API access and reviewed credential topology
+  - self-contained-android-garmin-json
 ---
 
 # Phase 20 — Native Acceptance UI Design Contract
@@ -29,8 +29,8 @@ external_gates_open:
 
 Apply sources in this order:
 
-1. `.planning/v1.2-OWNER-BRIEF.md` and locked decisions D20-01 through D20-08 in `20-CONTEXT.md`.
-2. `.planning/design/v1.2-DEVIATIONS.md`; an owner decision recorded here is the only authority that may accept DEV-01 or DEV-02. Phase 15's dated owner checkpoint is the only authority that may resolve TIM-01 runtime playback policy.
+1. `.planning/v1.2-OWNER-BRIEF.md`, `.planning/v1.2-OWNER-DECISIONS.md`, and locked decisions D20-01 through D20-08 in `20-CONTEXT.md`.
+2. `.planning/design/v1.2-DEVIATIONS.md` for future explicit deviations only; MAP-01, TIM-01, DEV-01 and DEV-02 are already settled required baselines.
 3. Revision 18 `approved.json`, then rendered `approved-hybrid.html`, at the hashes in frontmatter.
 4. `.planning/REQUIREMENTS.md` (`VER-01`–`VER-13`) and `.planning/design/v1.2-prototype-parity-matrix.json` (172 rows).
 5. `.planning/verification/v1.2-native-verification-matrix.md` and `.planning/research/v1.2/PITFALLS.md`.
@@ -47,13 +47,13 @@ Phase 20 is an acceptance layer, not a normalization layer. It cannot rewrite a 
 - Light, Dark, and System acceptance; System rendered under OS Light and OS Dark and switched while mounted.
 - `360×800`, `390×844`, `600×960`, and `840×1080` dp-equivalent portrait plus corresponding landscape.
 - Native font scale 1.0 and 2.0, ≥48×48dp non-overlapping targets, non-color state, labels, adaptive reading order, software/hardware keyboard, D-pad, visible focus, Back/Escape, focus restoration, and reduced motion.
-- Screenshot, overlay, difference, semantic-tree, geometry, gesture, performance, SQLite, lifecycle, FIT, and attended-observation artifacts with fail-closed identity.
-- Exact triage rules for visual differences, open deviations, external Garmin access, and Samsung observation.
+- Screenshot, overlay, difference, semantic-tree, geometry, gesture, performance, SQLite, lifecycle, Garmin JSON sync, and attended-observation artifacts with fail-closed identity.
+- Exact triage rules for visual differences, technical evidence status, future explicit deviations, and Samsung observation.
 
 ### Excluded
 
 - Any new product UI, route, evidence dashboard, debug menu, copy, animation, theme token, or component.
-- Product code edits, builds, emulator/device mutations, live imports, release, deployment, or owner-gate decisions during specification work.
+- Product code edits, builds, emulator/device mutations, live sync, release, deployment, or new product decisions during specification work.
 - Reusing a v1.1 pass, old screenshot, old APK, old Samsung observation, component mock, or prototype browser capture as v1.2 native proof.
 - Public release ceremony, store distribution, Wear OS, Health Connect, or Terminal Seal.
 
@@ -63,15 +63,14 @@ Every row and capture has exactly one verdict. Blank, implicit success, and inhe
 
 | Verdict | Meaning |
 |---|---|
+| `NOT_RUN` | Required implementation or native evidence has not run yet. It is pending work, not an owner decision block and not a pass. |
 | `PASS` | Required automated/native evidence exists, identity validates, all semantic gates pass, and every visual difference is within this contract or an accepted deviation. |
 | `FAIL` | A required behavior, control, state, identity, measurement, or comparison does not meet the contract. |
-| `REVIEW_REQUIRED` | Evidence is complete but a visual delta needs human classification; it is not a pass. |
-| `BLOCKED_OWNER` | DEV-01, DEV-02, or TIM-01 affects the row and its required dated owner decision/evidence gate is incomplete. For TIM-01, a decision without the chosen-policy compatibility evidence is still blocked. |
-| `CONDITIONAL_EXTERNAL` | Live Garmin API proof is unavailable because actual program access or the reviewed secure topology is absent. Deterministic tests may pass separately but cannot close the live row. |
+| `REVIEW_REQUIRED` | Evidence is incomplete for a technical conclusion or a visual delta needs human classification; it is not a pass. |
 | `ACCEPTED_EXCEPTION` | A specific owner-reviewed deviation or retained failing oracle is accepted for an exact scope/configuration set with decision/date, rationale, and evidence hashes. It is explicitly non-PASS and counted separately. |
 | `N_A_REVIEWED` | The state genuinely cannot apply and the ledger carries a domain reason plus reviewer identity/date. Missing evidence is never `N_A_REVIEWED`. |
 
-Release readiness may be `CONDITIONALLY_READY` only when an explicit reviewed policy permits it and every remaining non-PASS row is a valid `ACCEPTED_EXCEPTION`. It may not collapse `ACCEPTED_EXCEPTION`, `BLOCKED_OWNER`, `CONDITIONAL_EXTERNAL`, or `REVIEW_REQUIRED` to `PASS`; any `FAIL`, unresolved owner/external gate, or review-required row prevents conditional readiness. Unaffected sub-assertions may pass independently, but an affected requirement row remains `BLOCKED_OWNER` until its complete gate closes.
+Release readiness may be `CONDITIONALLY_READY` only when an explicit reviewed policy permits it and every remaining non-PASS row is a valid `ACCEPTED_EXCEPTION`. It may not collapse `ACCEPTED_EXCEPTION`, `NOT_RUN`, or `REVIEW_REQUIRED` to `PASS`; any `NOT_RUN`, `FAIL`, or `REVIEW_REQUIRED` row prevents conditional readiness. MAP-01, TIM-01, DEV-01, DEV-02, and the selected self-contained Garmin transport can PASS once their required implementation evidence succeeds.
 
 ---
 
@@ -114,7 +113,7 @@ The GSD template permits exact component-specific geometry exceptions when they 
 | Phase 16 Calendar spacing | 2dp cell/chip/action gaps and cell horizontal padding; 3dp month-control gap, cell vertical padding, and agenda metadata separation; 10dp root-to-Calendar, agenda-heading/row/summary separation; 14dp read-only detail and Calendar-key inset; 18dp approved Calendar/root-header inset | `16-UI-SPEC.md` → `Owner-approved component-specific spacing exceptions`; Revision 18 `.cal-month-panel` H:1117, `.cal-day` H:1118, `.cal-events` H:1127, `.topbar-actions` H:276, `.cal-month-nav` H:1106, `.app-destination` H:1092–1096, `.cal-agenda-*` H:1195–1213, `.cal-detail-scroll` H:1211, `.cal-readonly-exercise-header` H:1216, `.sheet` H:797–810 |
 | Phase 16 Calendar structure | 1dp reserved cell/rules; 2dp today/status strokes where owned; shared focus remains the Phase 14 3dp ring with 3dp exterior offset; 5dp agenda sport rail; 28dp date track; 36dp event track; two 17dp event chips | `16-UI-SPEC.md` → `Border, stroke and fixed structural geometry` / `Full-Height Calendar Geometry`; Revision 18 H:1118, H:1122–1133, H:1179, H:1195–1200, H:1222 |
 | Phase 17 Library/Running | Target 48dp; field/toolbar action min 56dp; deep-route header min 64dp; standard row min 88dp; active-plan row min 120dp; named radii 8/12/16dp; divider 1dp; active-plan edge 4dp; focus 3dp with 3dp exterior offset | `17-UI-SPEC.md` → `Shape and control constants`; these are named component geometry and standard-scale realizations, not additional spacing tokens |
-| Phase 18 Garmin | Header 48dp side slots, 62dp min, 12dp inset; scroll frame 14dp top/18dp horizontal/32dp bottom and 74dp+safe-area clearance; banner 4dp edge, 12dp margin, 10×12dp padding, 58dp min; action grid 8dp gap, 12dp margin, 54dp min, 11dp radius; account 2dp rule, 50dp min, 12dp gap; activity 92dp min/48dp trailing/8dp gap; badge 6dp margin/2×7dp padding/7dp radius; route 165dp/13dp radius; fact and lap cells 10×4dp; HR row 50dp/12dp/4dp; match row 48dp radio/66dp min/8dp gap; FIT control 54dp/12dp/11dp | `18-UI-SPEC.md` → declared component exceptions; Revision 18 `.garmin-*` H:1481–1521 |
+| Phase 18 Garmin | Header 48dp side slots, 62dp min, 12dp inset; scroll frame 14dp top/18dp horizontal/32dp bottom and 74dp+safe-area clearance; banner 4dp edge, 12dp margin, 10×12dp padding, 58dp min; action grid 8dp gap, 12dp margin, 54dp min, 11dp radius; account 2dp rule, 50dp min, 12dp gap; activity 92dp min/48dp trailing/8dp gap; badge 6dp margin/2×7dp padding/7dp radius; route 165dp/13dp radius; fact and lap cells 10×4dp; HR row 50dp/12dp/4dp; match row 48dp radio/66dp min/8dp gap; Garmin action control 54dp/12dp/11dp | `18-UI-SPEC.md` → declared component exceptions; Revision 18 `.garmin-*` H:1481–1521 |
 | Phase 19 Progress | 3dp sport/range inner gap; 18dp hero top separation; 13dp segmented radius; 58dp hero header; 70dp source/list row; 142dp chart; 82% sheet cap; 24dp sheet corners; 68% scrim; 3dp focus with 3dp offset | `19-UI-SPEC.md` → `Template-permitted exceptions` / `Progress geometry`; Revision 18 `.pv2-sport-switch,.pv2-range-switch` H:1426, `.pv2-hero` H:1430, focus H:122–126 |
 
 Phase 17 declares no nonstandard reusable spacing token; it uses the standard scale plus the named component geometry above. Every required target remains at least 48×48dp, non-overlapping, reachable at 200% text and in landscape.
@@ -199,7 +198,7 @@ Static captures use normal motion and touch unless the row is also in the motion
 
 ### Revision 18 browser-walk baseline — 107 ordered states
 
-The IDs below are stable. Capture them with identical frozen fixture/date/locale/timezone and preserve the order. `BW-086`, `BW-088`, and `BW-090` deliberately repeat Progress settings between source-state changes; `BW-099` and `BW-103` deliberately repeat FIT import before different detail paths.
+The IDs below are stable. Capture them with identical frozen fixture/date/locale/timezone and preserve the order. `BW-086`, `BW-088`, and `BW-090` deliberately repeat Progress settings between source-state changes; `BW-099` and `BW-103` deliberately repeat Garmin sync before different detail paths.
 
 | Range | Required IDs in order |
 |---|---|
@@ -208,9 +207,9 @@ The IDs below are stable. Capture them with identical frozen fixture/date/locale
 | `BW-022`–`BW-033` | `calendar-month`; `calendar-key`; `calendar-next`; `calendar-previous`; `calendar-agenda-2026-10-07`; `calendar-planned-strength-detail`; `calendar-agenda-2026-10-04`; `calendar-agenda-2026-10-09`; `calendar-agenda-2026-10-10`; `calendar-agenda-2026-10-05`; `calendar-adjacent-week`; `calendar-collapsed` |
 | `BW-034`–`BW-060` | `library-plans`; `plan-filters`; `library-actions`; `library-plan-foundation`; `strength-editor`; `schedule-editor`; `archive-confirmation`; `library-plan-strength`; `library-plan-beginner`; `starter-activation-preview`; `library-plan-home`; `library-plan-running-2k`; `running-editor`; `running-session-recovery`; `running-session-long`; `running-session-progression`; `running-session-tempo`; `running-session-intervals`; `running-session-hills`; `running-session-fartlek`; `plan-type-chooser`; `create-strength`; `create-running`; `library-exercises`; `exercise-back-squat`; `exercise-tempo-goblet`; `custom-exercise-create` |
 | `BW-061`–`BW-091` | `progress-all`; `progress-all-4w`; `progress-all-12w`; `progress-all-all`; `progress-strength`; `progress-strength-4w`; `progress-strength-12w`; `progress-strength-all`; `progress-running`; `progress-running-4w`; `progress-running-12w`; `progress-running-all`; `strength-detail-squat`; `strength-detail-bench`; `strength-detail-plank`; `progress-recommendation`; `running-effort-2.4`; `running-target-2.4`; `running-effort-10`; `running-target-10`; `running-effort-hm`; `running-target-hm`; `bodyweight-history`; `progress-settings`; `progress-running-empty`; `progress-settings`; `progress-running-sparse`; `progress-settings`; `progress-running-loading`; `progress-settings`; `progress-running-ready` |
-| `BW-092`–`BW-107` | `garmin-disconnected`; `garmin-consent`; `garmin-connected`; `garmin-syncing`; `garmin-synced`; `garmin-idempotent`; `garmin-error`; `garmin-file-import`; `garmin-outdoor`; `garmin-match-outdoor`; `garmin-confirmed-outdoor`; `garmin-file-import`; `garmin-treadmill`; `garmin-match-treadmill`; `garmin-confirmed-treadmill`; `garmin-revoked` |
+| `BW-092`–`BW-107` | `garmin-disconnected`; `garmin-login`; `garmin-mfa`; `garmin-connected`; `garmin-syncing`; `garmin-synced`; `garmin-idempotent`; `garmin-error`; `garmin-outdoor`; `garmin-match-outdoor`; `garmin-confirmed-outdoor`; `garmin-treadmill`; `garmin-match-treadmill`; `garmin-confirmed-treadmill`; `garmin-session-expired`; `garmin-logged-out` |
 
-Browser evidence already contains a 214-entry Light/Dark serial walk and selected 390×844 captures. It is the comparison source, not a native pass. Conditional Garmin states may be rendered by a deterministic native fixture for visual acceptance, tagged `fixture_only`; only real approved-provider evidence can close their live behavior.
+Browser evidence already contains a 214-entry Light/Dark serial walk and selected 390×844 captures. It is the comparison source, not a native pass. Garmin states may be rendered by deterministic native fixtures for visual acceptance and tagged `fixture_only`; required real-account login/MFA/read/restart behavior still needs owner-entered authentication during a controlled native evidence run on the unchanged artifact.
 
 ### Required native-only state packs
 
@@ -220,12 +219,12 @@ Every named state below gets a fixture ID. If an owning UI-SPEC names a more spe
 |---|---|
 | `NS-SHELL` | Font/SQLite startup loading; trusted shell; startup failure/retry; notification permission; continue without alerts; Appearance System/Light/Dark; rest-alert loading/saved/save-failure/permission-denied; Removed sessions empty/load-failure/restore-review/restoring/restore-failure/restored; automatic-backup statuses and recovery; CSV preparing/sharing/cancel/error/retry; manual backup, restore-clean, merge, confirmation, progress, failure/retry, and rebuild-pending states. |
 | `NS-WORKOUT-ROOT` | Cold/warm loading; no active plan; no activity; rest day; scheduled Strength; Running only; concurrent Strength/Running; same-date collision; alternative-day preview; active Resume; saved-partial Resume; read error/retry; start pending/failure/retry; offline start/resume. |
-| `NS-ACTIVE` | Restoring; empty session; zero sets; warm-up/working planned/current/saving/completed/skipped; all nine metric profiles; long exercise/set list; add/replace/delete/timing/reorder/trend; failed commit with retained values; contextual Undo; paused/running/adjusted/expired/skipped rest; final-exercise post-commit collapse; finish complete/partial/later/discard; process reconstruction; completion summary and plan write-back success/failure/retry. Include every TIM-01 fixture: active legacy playback, foreground reconciliation, queued callback, relaunch, restore, merge, zero-cue, and exact between-set-rest/committed-set/active-pointer recovery. TIM-01 fixtures are owner-blocked until the dated runtime decision and chosen-policy evidence both exist. |
+| `NS-ACTIVE` | Restoring; empty session; zero sets; warm-up/working planned/current/saving/completed/skipped; all nine metric profiles; long exercise/set list; add/replace/delete/timing/reorder/trend; failed commit with retained values; contextual Undo; paused/running/adjusted/expired/skipped rest; final-exercise post-commit collapse; finish complete/partial/later/discard; process reconstruction; completion summary and plan write-back success/failure/retry. Include every TIM-01 fixture: active legacy playback, foreground reconciliation, queued callback, relaunch, restore, merge, zero-cue, and exact between-set-rest/committed-set/active-pointer recovery. TIM-01 is a settled baseline; missing or failing technical evidence is NOT_RUN, REVIEW_REQUIRED, or FAIL and never reopens the owner decision. |
 | `NS-READONLY-STRENGTH` | Loading; completed; partial; missing/removed; fetch error/retry; planned preview; zero/one/many exercises/sets; disclosure collapsed/expanded; no active mutation affordance. |
 | `NS-CALENDAR` | Loading; last-good refresh; zero-event month; 4/5/6-row months; zero/one/two/many events per day; all Strength/Running × Complete/Partial/Planned combinations; selected/today/outside/rest; month/focused modes; Calendar key; read-only/planned/imported routes; query error with retained selection; every intermediate/cancelled/interrupted transition state in the Calendar matrix. |
 | `NS-LIBRARY` | Loading; true-empty Plans; empty filtered result; Plans/Exercises remembered states; owned active/inactive; starter/built-in/custom/unavailable; chooser Strength/Running; all create entry points; failed query/create/activation; form validation; dirty draft; pending/stale/failed save; delete confirmation; restart; replacement/day-removal impact; explicit activation and collision review. |
 | `NS-RUNNING` | New draft; zero sessions; populated weekly plan; Recovery, Long run, Progression, Tempo continuous/repeats, Intervals, Hills, Fartlek structured/unstructured; add/edit/delete/reorder; invalid unit/value; keyboard-covered-field recovery; failed/stale/double save; restart; active/inactive detail; target set/unset. |
-| `NS-GARMIN` | Capability loading; approval needed; disconnected; consent/cancel/deny/return/expiry; connected zero/populated; syncing/imported/no-new/error; revoke review/pending/success/failure; picker initial/cancel; FIT reading/preview/importing; malformed/truncated/CRC/oversize/unsupported/low-storage/duplicate/revision/process-death; outdoor route/HR optional; treadmill no route; missing laps/HR/GPS; unmatched/matched; candidate loading/zero/one/many/stale/consumed; match confirm/cancel/failure. |
+| `NS-GARMIN` | Bundled-runtime loading/failure; disconnected; login/MFA/cancel/error; connected zero/populated; syncing/imported/no-new/offline/expired-session/403/429; restart with refreshed encrypted session; logout pending/success/failure; malformed/truncated/oversized/unsupported JSON; low-storage/duplicate/revision/process-death; outdoor route/HR optional; treadmill no route; missing laps/HR/GPS; exact-effort unavailable when source evidence is insufficient; unmatched/matched; candidate loading/zero/one/many/stale/consumed; match confirm/cancel/failure. |
 | `NS-PROGRESS` | Loading; All/Strength/Running; 4 weeks/12 weeks/All time; latest/best/target/gap/goal-line/evidence/next-target; 2.4 km fixed target; 10 km/Half Marathon unset; sparse/empty/more-data-needed/ready; failure retaining scope; rebuilding projection; history sheet; exercise history loading/error/empty; Load/Relative with and without valid bodyweight; target edit/validation/failure; recommendation keep/use/stale/failure; bodyweight empty/history/add/edit/delete-confirmation. |
 | `NS-SETTINGS-RECOVERY` | Never-backed-up; all automatic-backup statuses; cloud recovery/quarantine/previous/future schema/stale writer/partial deletion/new backup; encrypted export and clean/merge preflight; exact confirmation; cancel; progress; committed source plus rebuild pending; source failure/retry. |
 
@@ -240,7 +239,7 @@ No pack may be reduced by sampling. A state that is impossible after implementat
 - Record native content bounds, density, safe-area insets, IME bounds, and every required hit rectangle in dp. Every target is ≥48×48dp and adjacent targets do not overlap. A visually small child may sit within a 48dp owner only when the owner does not cross a neighboring target.
 - Run actual Android font scale 2.0. Required actions, labels, status text, numbers/units, errors, consequences, bottom-nav labels, sheet controls, and confirmation phrases remain present and reachable. No horizontal text scroll is introduced.
 - At 600dp and 840dp, preserve the four-item bottom navigation; no automatic rail or fifth root. Layout may center/widen only where the owning UI-SPEC permits it.
-- In landscape, header/navigation/dock/IME clearances remain correct; the content or sheet body owns vertical scroll. Rotate during active input, rest, Calendar focus, Running editor draft, FIT review, and Progress selection. Preserve values, date, anchor, route, selection, and focus.
+- In landscape, header/navigation/dock/IME clearances remain correct; the content or sheet body owns vertical scroll. Rotate during active input, rest, Calendar focus, Running editor draft, Garmin account/activity review, and Progress selection. Preserve values, date, anchor, route, selection, and focus.
 - State never depends on color alone. Capture accessible name, role, checked/selected/expanded/busy/disabled/current state, collection position, and live announcement where applicable.
 - Adaptive reading order follows the visible hierarchy at every width. Multi-column reflow remains left-to-right then top-to-bottom unless the owning contract states otherwise.
 
@@ -349,7 +348,7 @@ The validator rejects missing, duplicate, unknown, skipped, or out-of-order mand
 - A System case that never renders both OS schemes and switches while mounted.
 - A screenshot whose declared size/density/font/orientation does not match measured content bounds.
 - An attended observation used to fill an automated-integrity row.
-- A stub used to claim approved Garmin API behavior.
+- A stub or fixture-only result used to claim real-account Garmin login/MFA/read/restart behavior.
 - A failed run that was overwritten or renamed as a passing run.
 
 ---
@@ -358,13 +357,13 @@ The validator rejects missing, duplicate, unknown, skipped, or out-of-order mand
 
 Committed/shared evidence uses deterministic synthetic fixtures only.
 
-- No real name, email, account subject, plan/exercise text identifying the owner, notification content, token, credential, raw external activity ID, device serial, local path, FIT filename, personal FIT bytes, GPS coordinates, route, bodyweight, or workout history may appear.
+- No real name, email, account subject, plan/exercise text identifying the owner, notification content, token, credential, raw external activity ID, device serial, local path, raw Garmin JSON, GPS coordinates, route, bodyweight, or workout history may appear.
 - Use synthetic route geometry and synthetic activities while preserving the same visual complexity. Treadmill remains route-free.
 - Device identifiers are one-way hashed with run-scoped metadata; raw serials stay outside the artifact.
 - Disable or clear notification previews and unrelated system overlays before capture. System bars may remain only when they contain generic time/connectivity state and their pixels are classified as platform chrome.
 - Prefer preventing sensitive pixels at the fixture/device layer. Redaction is not a fidelity technique and cannot turn a private raw capture into canonical comparison evidence.
 - If unavoidable private content appears, quarantine the raw file outside the repository, record only a privacy incident/failure in the run, and recapture with synthetic data. Do not commit a blurred or cropped substitute as a pass.
-- Logs and JSON use aggregate counts, stable synthetic IDs, hashes, and bounded diagnostic codes; they never dump rows, FIT payloads, coordinates, or filenames.
+- Logs and JSON use aggregate counts, stable synthetic IDs, hashes, and bounded diagnostic codes; they never dump rows, provider payloads, coordinates, or filenames.
 
 ---
 
@@ -416,13 +415,13 @@ Each non-clean comparison records `difference_id`, requirement/inventory/capture
 
 ---
 
-## Conditional Gates
+## Settled Baselines and Evidence Gates
 
-### TIM-01 — legacy cadence / cluster runtime policy
+### TIM-01 — retired cadence / cluster playback
 
-TIM-01 is unresolved. The approved UI contract already removes cadence, per-rep pacing, rest-between-reps, cluster-gap, nested Advanced Timing, and plan-owned sound/haptic **authoring UI**. That visual decision does not silently authorize retirement of legacy runtime playback, foreground reconciliation, or queued callbacks.
+TIM-01 selects complete retirement of cadence/cluster authoring, playback, callbacks, and foreground reconciliation with no compatibility mode. Ordinary historical snapshots, committed sets, active exercise/set pointer, backup/restore/merge fidelity, and independent between-set rest remain required.
 
-Locked regardless of the eventual runtime choice:
+Locked implementation baseline:
 
 - Preserve schema-21/27 configuration, resolved snapshots, timing state rows, target ownership, backup/restore parsing, committed sets, active exercise/set pointer, plan/schedule provenance, and independent between-set rest.
 - Never delete, rewrite, normalize, or present retained timing facts as off merely because authoring controls are hidden.
@@ -433,43 +432,43 @@ The identity-bound native fixture ledger must enumerate:
 
 | Fixture ID | Required proof |
 |---|---|
-| `TIM-01-ACTIVE-PLAYBACK` | Open a migrated active session carrying a legacy cadence/cluster snapshot. Exercise the owner-selected playback policy without exposing removed authoring UI, rewriting the snapshot, or affecting a different set/session. |
-| `TIM-01-FOREGROUND-RECONCILIATION` | Background then foreground during legacy active playback and during between-set rest. Reconciliation follows the chosen policy exactly once and preserves committed set, active pointer, rest deadline/paused remainder, and plan/session provenance. |
-| `TIM-01-QUEUED-CALLBACK` | Queue a legacy callback, cross background/foreground and set boundaries, then resolve/cancel it according to the chosen policy. No stale, duplicate, cross-set, or post-retirement cue may fire. |
+| `TIM-01-ACTIVE-PLAYBACK` | Open a migrated active session carrying a historical timing snapshot. Prove no repetition/cluster playback starts, no removed authoring UI appears, the snapshot remains intact, and another set/session is unaffected. |
+| `TIM-01-FOREGROUND-RECONCILIATION` | Background then foreground across a historical timing boundary and during between-set rest. No repetition/cluster reconciliation or cue occurs; committed set, active pointer, rest deadline/paused remainder, and plan/session provenance remain exact. |
+| `TIM-01-QUEUED-CALLBACK` | Seed a historical queued repetition/cluster callback, cross background/foreground and set boundaries, and prove it is cancelled/ignored with no stale, duplicate, cross-set, or post-retirement cue. |
 | `TIM-01-RELAUNCH` | Kill/relaunch before and after a timing boundary. Reopen the same session, committed set facts, active exercise/set pointer, and independent between-set rest without duplicate completion or cue replay. |
-| `TIM-01-RESTORE` | Restore a compatible archive containing schema-21/27 timing facts and an active/recoverable session. Facts remain byte/meaning equivalent; set, pointer, and rest recovery match the chosen policy. |
+| `TIM-01-RESTORE` | Restore a compatible archive containing schema-21/27 timing facts and an active/recoverable session. Facts remain byte/meaning equivalent; set, pointer, and rest recover while repetition/cluster playback remains retired. |
 | `TIM-01-MERGE` | Merge divergent archives containing retained timing snapshots/state. Stable identities and ownership remain correct; merge neither reactivates retired cues nor discards retained facts; set/pointer/rest remain coherent. |
-| `TIM-01-ZERO-CUE` | If retirement is approved, prove zero repetition/cluster cues across active playback, foreground, queued callback, relaunch, restore, and merge while ordinary between-set rest remains functional. If retention is chosen, prove only the owner-approved cues occur. |
+| `TIM-01-ZERO-CUE` | Prove zero repetition/cluster cues across active playback, foreground, queued callback, relaunch, restore, and merge while ordinary between-set rest remains functional. |
 | `TIM-01-REST-SET-POINTER` | Across every fixture above, assert exact committed-set digest, active exercise/set pointer, rest status/deadline/paused remainder, labels, controls, and post-recovery command idempotency. |
 
-`DOM-03`, `DOM-15`, `DOM-17`, `WRK-05`, `WRK-18`, `WRK-21`–`WRK-23`, `WRK-26`, `VER-07`, and `VER-08` carry TIM-01 compatibility assertions. Their unaffected assertions may be reported separately, but the affected row verdict remains `BLOCKED_OWNER` until a dated owner runtime decision and all applicable `TIM-01-*` evidence pass. If zero-cue behavior cannot be proven while between-set rest/set/pointer recovery remains exact, block cutover and retain the prior recovery path; do not ship a UI-only retirement.
+`DOM-03`, `DOM-15`, `DOM-17`, `WRK-05`, `WRK-18`, `WRK-21`–`WRK-23`, `WRK-26`, `VER-07`, and `VER-08` carry TIM-01 retirement assertions. They PASS only when all applicable `TIM-01-*` evidence proves zero cadence/cluster playback while preserved history, between-set rest, set and pointer recovery remain exact. Before execution they are NOT_RUN; incomplete proof is REVIEW_REQUIRED and observed regression is FAIL.
 
 ### DEV-01 — Calendar 360dp target geometry
 
 - Current oracle: 18dp horizontal inset, 2dp gaps, 44.5625px day width at 360px.
-- Proposed adaptation: Calendar-only horizontal inset `min(18, max(0, (safeWidth - 348) / 2))` dp, producing 6dp at 360 and 18dp at 390 while preserving 2dp gaps and row/event geometry.
-- Required comparison: identical 360×844 fixture in all four appearance codes at F100 and F200, with hit-bound overlays and non-overlap measurements for both branches.
-- Until the owner records one choice/date in the deviation register, affected CAL/VER rows are `BLOCKED_OWNER`. A selected non-oracle adaptation or retained failing oracle is `ACCEPTED_EXCEPTION`, not PASS, and requires the complete exception metadata/evidence envelope.
+- Required baseline: Calendar-only horizontal inset `min(18, max(0, (safeWidth - 348) / 2))` dp, producing 6dp at 360 and 18dp at 390 while preserving 2dp gaps and row/event geometry.
+- Required comparison: identical 360×844 fixture in all four appearance codes at F100 and F200, with hit-bound overlays and non-overlap measurements for the selected baseline.
+- Affected CAL/VER rows may PASS when native evidence proves the selected geometry. Missing evidence is NOT_RUN or REVIEW_REQUIRED; mismatch is FAIL.
 
 ### DEV-02 — Light Calendar Strength-title contrast
 
 - Current oracle: `#D97820`, measured 3.03:1 on paper and 2.56:1 on selected blue fill.
-- Proposed Light-only title: `#9B470B`, measured 6.12:1 on paper and 5.17:1 on selected fill; border/rail/swatch remains `#D97820`; Dark is unchanged.
+- Required Light-only title: `#9B470B`, measured 6.12:1 on paper and 5.17:1 on selected fill; border/rail/swatch remains `#D97820`; Dark is unchanged.
 - Required comparison: identical Light/System→Light complete, partial, planned, selected, and blended-fill fixtures at all four widths and both font scales.
-- Until owner choice/date is recorded, affected CAL-03/VER-04 and visual rows are `BLOCKED_OWNER`. A selected candidate or retained failing oracle is `ACCEPTED_EXCEPTION`, not PASS, and requires the complete exception metadata/evidence envelope; the candidate token remains unused until selected.
+- Affected CAL-03/VER-04 and visual rows may PASS when native evidence proves the selected token and contrast. Missing evidence is NOT_RUN or REVIEW_REQUIRED; mismatch is FAIL.
 
-### Garmin API acceptance
+### Garmin standalone acceptance
 
-- Offline original-FIT import, deterministic parser faults, dedupe, source revision, local detail, and explicit matching are unconditional and must pass independently.
-- GAR-04–GAR-07 and NV-IMP-11–13 require actual Garmin program access, the granted delivery/scope contract, real consent, and a separately reviewed confidential-credential topology.
-- When those prerequisites are absent, live rows are `CONDITIONAL_EXTERNAL`, not failed product UI and not a stub pass. Deterministic fixture screenshots may prove visual rendering only.
-- No unofficial login/scraping, embedded confidential secret, invented broker, simulated production consent, or manual FIT result may be used as provider closure.
+- The selected implementation is bundled Python 3.13/Chaquopy 17.0 with pinned `python-garminconnect` and an allowlisted Kotlin/native bridge inside the ARM64 APK. There is no alternate transport or external program-access gate.
+- VER-10 covers packaging, foreground credential/MFA interaction, authenticated activity summary/splits/detail JSON reads, encrypted refreshed-session cold restart, logout, bounded sync, offline/expired-session/403/429 recovery, canonical JSON fidelity/dedupe, and explicit matching.
+- Synthetic JSON fixtures prove deterministic parsing, limits, dedupe, revision and matching. They cannot replace the owner-attended real-account login/MFA/read/restart cases; until those run, the affected rows are NOT_RUN or REVIEW_REQUIRED, and observed failures are FAIL.
+- The bridge must not expose arbitrary eval or method/URL forwarding, and no credential, token, raw personal payload, account identifier, route, or device serial may enter shared evidence.
 
 ### Samsung attended acceptance
 
 - Later owner-authorized Samsung review is additional observation for legibility, one-handed dock reach, drag/morph feel, focus/keyboard, 200% reflow, Light/Dark/System, and device-owned audible/haptic presentation.
 - Store it only in `attended-observations.json`, bound to the same source/APK/signature/installed-byte identity and per-row capture hashes.
-- Previous N4 evidence remains historical and observation-only. It cannot fill v1.2 automated rows, prove SQLite integrity, approve DEV-01/02, resolve TIM-01, close Garmin access, authorize release, or promote bytes.
+- Previous N4 evidence remains historical and observation-only. It cannot fill v1.2 automated rows, prove SQLite integrity, replace DEV/TIM/Garmin technical evidence, authorize release, or promote bytes.
 - Automated failures stay failed even when the attended reviewer likes the experience. Automated passes do not replace attended observations where VER-12 requires them.
 
 ---
@@ -504,17 +503,17 @@ Applicable state considerations resolved: **8 covered, 9 backstop, 0 unresolved*
 | overflow | Long lists, sheets, docks, tables, charts, landscape | ✅ covered | One vertical owner, nav/dock/IME clearance, wrapping/reflow, virtualized many-row cases, and no required horizontal-only content are verified. |
 | zero-one-many | Exercises, sets, events, plans, sessions, activities, laps, candidates, evidence rows | ✅ covered | Each collection gets zero, one, and many fixtures with plural-safe copy, stable identity/order, and complete semantics. |
 | long-text | Names, errors, confirmations, units, nav, target/recommendation evidence | ✅ covered | F200 and adversarial long strings prove full accessible values, growing controls, bounded visual ellipsis only where explicitly allowed, and no collision. |
-| 48dp/non-overlap | All required controls | 🧪 backstop | Native bounds report plus screenshots at all sizes/orientations/font scales must prove ≥48dp and no overlap; DEV-01 remains blocked until owner disposition. |
+| 48dp/non-overlap | All required controls | 🧪 backstop | Native bounds report plus screenshots at all sizes/orientations/font scales must prove ≥48dp and no overlap, including the accepted DEV-01 geometry. |
 | Light/Dark/System | Every mounted product surface | 🧪 backstop | The 64-configuration expansion and runtime System switch prove theme parity without route/state/focus reset. |
 | landscape/adaptive order | Every root, deep route, sheet, dock and editor | 🧪 backstop | Corresponding landscape captures and semantics trace prove unchanged hierarchy, bottom navigation, reading order, and reachability. |
 | keyboard/D-pad | Navigation, controls, lists, forms, sheets, deep routes | 🧪 backstop | Key-event/focus trace proves logical traversal, activation once, alternate reorder/Calendar paths, Back/Escape, modal isolation, and focus return. |
 | focus | Root/deep/sheet transition graph | 🧪 backstop | Visible-focus captures and automated focus assertions prove the shared Phase 14 3dp ring with 3dp exterior offset, heading entry, exact trigger return, and no hidden stops. |
 | reduced motion | Calendar, sheets, route/dock/list transitions | 🧪 backstop | Normal/reduced ordered traces prove identical semantic destinations and callbacks without motion/timing-dependent truth. |
-| legacy timing recovery | Active Workout, relaunch, restore, merge | 🧪 backstop | TIM-01 fixtures prove the owner-selected runtime policy plus zero unintended cues and exact between-set-rest/set/pointer recovery; affected rows remain owner-blocked until decision and evidence. |
-| privacy | Screenshot, logs, FIT and device identity | 🧪 backstop | Synthetic fixtures, hash validation, sensitive-pattern rejection, and manual privacy review must pass before artifacts can be shared. |
+| retired timing recovery | Active Workout, relaunch, restore, merge | 🧪 backstop | TIM-01 fixtures prove zero cadence/cluster playback and exact preserved history/between-set-rest/set/pointer recovery. |
+| privacy | Screenshot, logs, Garmin JSON and device identity | 🧪 backstop | Synthetic fixtures, hash validation, sensitive-pattern rejection, and manual privacy review must pass before artifacts can be shared. |
 | comparison tolerance | Every screenshot state | 🧪 backstop | Reference/native/overlay/difference artifacts plus zero-tolerance semantic gates and bounded geometry/color triage produce an explicit disposition. |
 
-No open UI consideration is silently deferred. DEV-01, DEV-02, TIM-01, and live Garmin access are explicit conditional gates rather than unresolved assumptions.
+No open UI consideration is silently deferred. DEV-01, DEV-02, TIM-01, and the standalone Garmin architecture are settled baselines whose implementation evidence is still NOT RUN.
 
 ---
 
@@ -529,14 +528,14 @@ No open UI consideration is silently deferred. DEV-01, DEV-02, TIM-01, and live 
 | VER-05 | Keyboard, D-pad, focus, Back/Escape, modal isolation and restoration |
 | VER-06 | Reduced-motion matrix and Calendar semantic checkpoints |
 | VER-07 | 17 domain-row real SQLite evidence; identity envelope; fail-closed validator |
-| VER-08 | Native-only lifecycle packs; exact source/APK identity; process reconstruction; all `TIM-01-*` active-playback/foreground/queued/relaunch/restore/merge/zero-cue/rest-set-pointer fixtures; affected acceptance remains `BLOCKED_OWNER` until decision and evidence |
+| VER-08 | Native-only lifecycle packs; exact source/APK identity; process reconstruction; all `TIM-01-*` retirement/foreground/queued/relaunch/restore/merge/zero-cue/rest-set-pointer fixtures |
 | VER-09 | Calendar gesture checkpoints and zero-tolerance semantic decisions |
-| VER-10 | Garmin conditional gate; unconditional FIT/dedupe/match states; privacy |
+| VER-10 | Standalone ARM64 Python/Chaquopy packaging; real login/MFA/read/restart/logout; 403/429; JSON fidelity/dedupe/match; privacy |
 | VER-11 | Native verification matrix budgets; identity-bound `performance.json`; no screenshot substitution |
 | VER-12 | Samsung attended acceptance kept separate from automated proof |
 | VER-13 | Complete parity/deviation/gap record including separately counted non-PASS accepted exceptions; unchanged signed-byte identity; policy-bound conditional readiness; later explicit owner release gate |
 
-Performance budgets remain exactly those in `20-CONTEXT.md` and the native verification matrix: warm interactive ≤1s, cold no-migration ≤2s, warm root switch p95≤100ms, set+dock p95≤150ms with ordinary JS task ≤50ms, input/rest p95≤50ms, search after debounce p95≤100ms, Calendar p95≤250ms, useful Progress ≤500ms, review-open p95≤200ms, plus the explicit backup/merge and bounded future FIT measurements. Visual smoothness is not inferred from nominal duration or Jest timing.
+Performance budgets remain exactly those in `20-CONTEXT.md` and the native verification matrix: warm interactive ≤1s, cold no-migration ≤2s, warm root switch p95≤100ms, set+dock p95≤150ms with ordinary JS task ≤50ms, input/rest p95≤50ms, search after debounce p95≤100ms, Calendar p95≤250ms, useful Progress ≤500ms, review-open p95≤200ms, plus the explicit backup/merge and bounded Garmin JSON sync/normalization measurements. Visual smoothness is not inferred from nominal duration or Jest timing.
 
 ---
 
@@ -555,7 +554,7 @@ Phase 20 adds no dependency. Existing pinned native packages remain governed by 
 |---|---|---|
 | 1. Copywriting | PASS | No verification UI or new product copy is introduced; all product failure/retry/destructive copy is delegated explicitly to the owning Phase 14–19 contract. |
 | 2. Visuals | PASS | The 107-state oracle baseline, native-only state packs including TIM-01, 64 configurations, interaction checkpoints, identity, privacy, and comparison dispositions are prescriptive without rewriting owner-approved UI. |
-| 3. Color | PASS | Shared 60/30/10 roles and exact semantic values are declared; non-color state is mandatory; DEV-02 remains visibly owner-blocked. |
+| 3. Color | PASS | Shared 60/30/10 roles and exact semantic values are declared; non-color state is mandatory; DEV-02 is an accepted baseline whose implementation still requires native contrast evidence. |
 | 4. Typography | PASS | Exactly four cross-phase semantic roles and two logical weights are declared; Phase 15/16/18/19 numeric oracle realizations are explicitly mapped as source fixtures, not extra tokens or a fifth role. Native 200% scaling, wrapping, units, and font identity remain exact. |
 | 5. Spacing | PASS | Only 4/8/16/24/32/48/64 are reusable tokens. Exact owner-approved Phase 14–19 component fixtures are source-cited and non-reusable; ≥48dp, viewports, landscape, safe areas, IME, and tolerances are explicit; DEV-01 remains the only proposed spacing adaptation. |
 | 6. Registry safety | PASS | Repository-native system only; no shadcn, third-party registry block, or new dependency. |
@@ -571,4 +570,4 @@ Self-check does not upgrade frontmatter status, accept DEV-01/02, resolve TIM-01
 - [x] Dimension 5 Spacing: PASS
 - [x] Dimension 6 Registry Safety: PASS
 
-**Approval:** approved by gsd-ui-checker; explicit owner and external gates remain open where documented.
+**Approval:** approved by gsd-ui-checker; MAP/TIM/DEV and standalone Garmin choices are settled, while implementation evidence remains NOT RUN.

@@ -192,7 +192,7 @@ Back/Escape returns one route level, preserves committed Library state, and rest
 ### Plans view
 
 1. Render `Active Plans`, `My Plans`, and `Starter Plans` in that order; omit a group only when its filtered result count is zero.
-2. Active Strength and Running plans coexist and remain separately labeled. Each shows frequency/equipment and its real next scheduled item.
+2. At most one active Strength plan and at most one active Running plan coexist and remain separately labeled. Each shows frequency/equipment and its real next scheduled item; a duplicate active row within one sport is a source error, not additional UI cardinality.
 3. Search placeholder is `Search plans`. Search covers plan name, schedule, equipment, and sport/source identity.
 4. Plan filters are `Plan source` (`All`, `My plans`, `Starter`) and `Days per week` (`Any` plus actual stored counts). A Running identity must not be lost merely because the prototype's old fixture used a separate `running` kind.
 5. Clearing filters keeps the search query and announces `Filters cleared. Search preserved.` Clearing search keeps filters.

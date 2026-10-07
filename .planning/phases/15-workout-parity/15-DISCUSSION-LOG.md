@@ -13,5 +13,5 @@
 | Timing | Nested cadence/cluster; flat seconds-only rest | Flat supported rest |
 | Dock | Separate action bars; compact Add/Complete and full Rest | Prototype dock |
 
-**Unresolved:** legacy timing playback retirement remains owner-review gated.
+**Closed:** TIM-01 retires legacy timing playback without a compatibility mode; implementation must prove zero playback while preserving ordinary workout/history and between-set-rest integrity.
 **Deferred:** Running recording and new progression logic.

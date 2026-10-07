@@ -8,7 +8,7 @@
 
 Deliver Plans/Exercises Library parity, preserve all shipped deep routes, and add
 inactive Strength/Running creation plus persistent structured Running plan/session
-authoring, schedules, activation, and collision choices. No FIT transport/detail.
+authoring, schedules, activation, and collision choices. No Garmin transport/detail.
 
 </domain>
 
@@ -26,6 +26,7 @@ authoring, schedules, activation, and collision choices. No FIT transport/detail
 - **D17-06:** Sessions have stable identities; add/edit/delete/reorder persist locally. Deleting the final session produces a true empty plan and never restores defaults.
 - **D17-07:** Multiple ordered sessions on one weekday are valid and survive reopen/backup. Future edits create prospective revisions without changing past occurrences.
 - **D17-08:** Move run, Move strength, Keep both are explicit schedule decisions; no coaching/medical judgment is inferred.
+- **MAP-01:** Activation enforces exactly zero or one active Strength plan and zero or one active Running plan. Replacing one sport never deactivates or rewrites the other sport, and multiple same-day Running session slots do not change this per-sport cardinality.
 
 ### Claude's Discretion
 - Exact form decomposition and validation helpers, provided the prototype copy and state coverage remain traceable.

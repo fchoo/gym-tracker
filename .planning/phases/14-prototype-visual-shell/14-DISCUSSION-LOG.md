@@ -12,5 +12,5 @@
 | Settings | Appearance-only replacement; appearance plus preserved deep routes | Preserve shipped capabilities |
 | Overlays | Generic modals; contextual sheets/dialogs with focus restoration | Prototype hierarchy |
 
-**Unresolved:** DEV-02 remains pending owner review.
+**Resolved 2026-10-07:** DEV-02 is approved as Light Strength title `#9B470B` with `#D97820` border/rail/swatch and unchanged Dark; native proof remains pending implementation.
 **Deferred:** Feature-specific content.

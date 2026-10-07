@@ -9,12 +9,77 @@
     "DEV-01": {"status": "approved", "selection": "adaptive-6-to-18dp", "verification_status": "pending_implementation"},
     "DEV-02": {"status": "approved", "selection": "accessible-9b470b", "verification_status": "pending_implementation"}
   },
+  "product_decisions_pending": 0,
+  "active_plan_cardinality": {
+    "strength": "zero_or_one",
+    "running": "zero_or_one"
+  },
+  "retired_timing_scope": [
+    "cadence_authoring",
+    "cluster_authoring",
+    "cadence_callbacks",
+    "cluster_callbacks",
+    "cadence_reconciliation",
+    "cluster_reconciliation",
+    "cadence_playback",
+    "cluster_playback"
+  ],
+  "preserved_timing_scope": [
+    "ordinary_workout_history",
+    "between_set_rest"
+  ],
   "runtime_ai_agents": false,
   "standalone_installed_app": true,
   "specific_javascript_engine_required_by_owner": false,
   "garmin_program_access": false,
   "unofficial_garmin_client_research_authorized": true,
-  "garmin_transport_selection": "under_review",
-  "fit_decoder_selection": "deferred_until_transport_and_data_fidelity_decision",
+  "garmin_transport_selection": "embedded_python_android",
+  "garmin_transport_approved_for_planning": true,
+  "garmin_transport_stack": {
+    "client": "python-garminconnect",
+    "client_version": "0.3.17",
+    "client_commit": "218e72ca5459e014435fc2d94fd18bd601fa0c14",
+    "embedding": "Chaquopy 17.0",
+    "python": "3.13",
+    "android_abi": "arm64-v8a",
+    "data_path": "activity_summary_splits_detail_json"
+  },
+  "garmin_module": "modules/garmin-connect/",
+  "garmin_typescript_adapter": "src/platform/garmin/",
+  "garmin_source_envelope": {
+    "source_identity": [
+      "owner_account_namespace",
+      "garmin_connect_account",
+      "external_activity_id"
+    ],
+    "payload_identity": "versioned_canonical_normalized_json_digest_excluding_attempt_and_fetch_times",
+    "provenance": [
+      "raw_response_component_hashes",
+      "source_method",
+      "fetch_generation"
+    ],
+    "facts": [
+      "timestamps_and_timezone_evidence",
+      "sport_and_subtype",
+      "elapsed_timer_and_moving_time_bases",
+      "distance",
+      "available_heart_rate",
+      "available_route",
+      "source_laps",
+      "sampling_metadata"
+    ],
+    "fit_sha256": "absent_without_original_fit",
+    "forbidden_cross_source_match": "date_title_or_distance_alone"
+  },
+  "desktop_bridge_in_milestone": false,
+  "garmin_partner_api_in_milestone": false,
+  "garmin_broker_in_milestone": false,
+  "manual_fit_import_in_milestone": false,
+  "runtime_ai_agent_in_milestone": false,
+  "hermes_change_in_milestone": false,
+  "fit_decoder_selection": "deferred_not_a_milestone_prerequisite",
+  "technical_proof_classification": "implementation_evidence_not_product_question",
+  "product_decisions_open": [],
+  "planning_finalization_requested": true,
   "implementation_authorized": false
 }

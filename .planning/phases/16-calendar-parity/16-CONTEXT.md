@@ -29,9 +29,9 @@ presentation. Calendar never gains correction or workout mutation authority.
 - **D16-07:** Agenda rows are one compact full-width target with no nested actions. Planned Strength opens an occurrence preview; Strength history opens read-only Active-shaped detail; planned Running opens plan detail; imported Running opens Garmin detail.
 - **D16-08:** Correction, resume, revision history, and removal remain separate management contexts. Back restores the expanded Calendar state and trigger focus.
 
-### Owner-review checkpoints
-- **DEV-01:** 360dp side-padding adaptation for non-overlapping 48dp date targets remains proposed.
-- **DEV-02:** Light Strength-title contrast adjustment remains proposed. Plans must include comparison/checkpoint rather than assume approval.
+### Final owner decisions
+- **DEV-01:** Approved `adaptive-6-to-18dp`: Calendar horizontal padding is `min(18, max(0, (safeWidth - 348) / 2))` dp, producing 6dp at 360 and 18dp at 390, with 2dp cell gaps. Native geometry/accessibility proof remains an implementation gate.
+- **DEV-02:** Approved `accessible-9b470b`: Light Strength event-title text is `#9B470B`; border/rail/swatch stays `#D97820`, and Dark remains unchanged. Native blended-fill/contrast proof remains an implementation gate.
 
 </decisions>
 
@@ -40,7 +40,7 @@ presentation. Calendar never gains correction or workout mutation authority.
 
 - `.planning/v1.2-OWNER-BRIEF.md` — exact Calendar sequence and states.
 - `.planning/design/v1.2-SOURCE-PRECEDENCE.md` — threshold/legend/transition precedence.
-- `.planning/design/v1.2-DEVIATIONS.md` — DEV-01/02.
+- `.planning/design/v1.2-DEVIATIONS.md` — approved DEV-01/02 values and technical verification status.
 - `.planning/design/v1.2-browser-evidence/calendar-pointer-evidence.json` — observed 1:1 and 25% title behavior.
 - `.planning/verification/v1.2-native-verification-matrix.md` — NV-CAL evidence.
 - `.planning/design/v1.2-prototype-parity-matrix.md` — route/state mappings.

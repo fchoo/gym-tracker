@@ -480,7 +480,7 @@ Phase 16 stages must identify each CAL trace/capture and the exact normal/reduce
 
 Create `.planning/phases/16-calendar-parity/16-REFERENCE-MAP.json` as the executable Calendar-only mapping from every requirement/state/fixture/configuration to one immutable Revision 18 reference and source-manifest hash. `scripts/compare-v12-calendar.mjs` generates individual reference/native/overlay/absolute-difference/mask files plus a canonical JSON record and hashes for every mapped capture; `scripts/v12-calendar-comparison.test.mjs` rejects missing/duplicate/extra mappings, stale reference hashes, path escapes/symlinks, mismatched configurations, missing constituent images, changed semantics/authority/focus/target geometry, unknown classifications, and unexplained differences. Contact sheets index individual evidence but cannot replace it.
 
-Use the shared v1.2 verdict/classification contract. A documented accepted adaptation uses `accepted_deviation`; a retained oracle with a still-failing accessibility fact requires a separately dated/scoped `accepted_exception`; open or incompletely evidenced DEV-01/DEV-02 rows remain `BLOCKED_OWNER`; unexplained product differences fail. A pixel score never overrides semantic, routing, accessibility, or read-only failures.
+Use the shared v1.2 verdict/classification contract. DEV-01/DEV-02 are dated approved adaptations: incomplete evidence remains `REVIEW_REQUIRED`, failed evidence is `FAIL`, and only complete passing evidence uses `accepted_deviation`. A pixel score never overrides semantic, routing, accessibility, or read-only failures.
 
 ### Adversarial verifier
 

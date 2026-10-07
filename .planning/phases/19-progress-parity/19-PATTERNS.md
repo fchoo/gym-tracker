@@ -274,7 +274,7 @@ export async function loadEffectiveHistoryProjectionSessions(
 Imported Running evidence should follow this authority shape: the final Phase
 18 adapter returns accepted current payload facts and provenance; corrected or
 removed revisions replace/suppress old facts. Progress consumes that typed port
-and never reads FIT files, API payload JSON, route samples, or provider secrets.
+and never reads provider payload JSON, route/chart samples, or credentials.
 
 **Fail-closed evidence parsing pattern** —
 `src/platform/sqlite/repositories/progressRepository.ts:240-317`:
@@ -886,7 +886,7 @@ These are not Phase 19-owned substitutes to build:
 | final `src/domains/running/` target/goal contracts | model/service | CRUD/transform | `ownedPlanCommands.ts`; `aggregates.ts` | consume Phase 13/17 final names and semantics |
 | `runningPlanRepository.ts` | service | CRUD/request-response | `ownedPlanRepository.ts` receipt pattern | wait for upstream typed port; no Progress table |
 | final `src/domains/activities/` accepted-effort types | model/service | file-I/O/event-driven/transform | effective-history types | consume Phase 13/18 accepted payload revision model |
-| `importedActivityRepository.ts` | service | file-I/O/CRUD/event-driven | `historyRepository.ts` overlay precedence | wait for upstream; Progress never parses FIT/provider payloads |
+| `importedActivityRepository.ts` | service | file-I/O/CRUD/event-driven | `historyRepository.ts` overlay precedence | wait for upstream; Progress consumes canonical accepted facts and never parses provider payloads/chart samples |
 | `bodyweightRepository.ts` | service | CRUD | owned-plan command/receipt pattern | wait for Phase 13; preserve target isolation |
 | Phase 14 `BottomSheet` / `SemanticToast` | component/provider | event-driven | `RestAlertSettingsSheet.tsx` focus behavior | consume shared primitive once landed; do not fork it |
 | `FactualHistoryChart.tsx` SVG rendering | component | transform | `ProgressTrend.tsx` data equivalence only | implement from UI-SPEC + installed SVG; no live renderer to copy |

@@ -19,7 +19,7 @@ Phase 14 passes only when all of the following are true:
 3. `npm run verify:cng` passes from a clean tracked tree, then one fresh `phase14` dev-test APK is built and retained.
 4. The Phase 14 runner completes the owner-requested Light/Dark/System, width, orientation, 200% text, motion, keyboard/D-pad/focus, startup, settings, and recovery matrix against that exact APK.
 5. `node scripts/verify-phase14-evidence.mjs --manifest artifacts/native/phase14/build.json --all` validates all 13 canonical evidence files with no missing, duplicate, skipped, failed, stale, privacy-unsafe, or unmapped row.
-6. Production Light Calendar Strength remains `#D97820`; `DEV-02` remains pending until the blocking-human checkpoint records an owner decision. `#9B470B` cannot satisfy Phase 14 acceptance.
+6. DEV-02 is approved: production Light Calendar Strength titles use `#9B470B`, border/rail/swatch stays `#D97820`, Dark is unchanged, and complete native blended-fill evidence is required before acceptance.
 7. A missing ready Android device blocks only 14-02-T1 and 14-10 native evidence execution; it does not invalidate source research, harness authoring, component planning, or this validation contract.
 8. Every implementation task is committed atomically under `.trae/rules/rules.md`, and every commit message ends with `Co-authored-by: TRAE CLI <noreply@users.noreply.github.com>`.
 
@@ -30,7 +30,7 @@ Phase 14 passes only when all of the following are true:
 | 14-01-T1 | Official Archivo/OFL/hash plus deterministic 57px/condensed/wght-890/-0.07em oracle | `npm run test:unit -- --runInBand src/testing/phase14FontProof.test.ts` | Source/oracle only; no native claim in this task | SHL-04 / font harness prerequisite |
 | 14-01-T2 | Production-isolated attended-preview font harness and fail-closed runner | attended-preview component test + runner self-test | Harness is committed before build; production profile cannot reach it | SHL-04 / font harness prerequisite |
 | 14-02-T1 | Clean-tree exact-HEAD Android font proof with <=1 normalized physical-pixel tolerance and exact wrapping | runner self-test then existing-artifact verifier | Fresh `phase14-font-proof` manifest/APK, family/metric/wrap/baseline/overlay captures; mismatch creates proposed deviation + owner checkpoint | SHL-04 / `font-axis-proof.json` |
-| 14-02-T2 | Exact tokens, proven editorial 890 oracle, DESIGN.md sync, live System, bounded preference persistence, baseline #D97820 | Store unit + foundation component tests | Light/Dark/System live switch on mounted Phase 14 root/sheet/deep route; token screenshot/metrics | SHL-03, SHL-04 / `shell.appearance`, `shell.tokens` |
+| 14-02-T2 | Exact tokens, proven editorial 890 oracle, DESIGN.md sync, live System, bounded preference persistence, approved DEV-02 roles | Store unit + foundation component tests | Light/Dark/System live switch on mounted Phase 14 root/sheet/deep route; token screenshot/metrics | SHL-03, SHL-04 / `shell.appearance`, `shell.tokens` |
 | 14-02-T3 | Fonts/preference/SQLite loading/trusted/failure/retry and notification permission states | Root layout + RootFailureState component tests; existing runtime launch regressions | Cold launch, injected font/source failure, retry, permission undecided/denied, Continue without alerts | SHL-07 / `shell.launch` |
 | 14-03-T1 | Four ordered roots in one bottom composition; selected state; root state retention/focus | `_layout.test.tsx` + `AppRootShell.test.tsx` width/state table | 360/390/600/840 portrait/landscape, 200% text, root-switch journey and state readback | SHL-01, SHL-02 / `shell.four-roots`, `shell.root-state` |
 | 14-03-T2 | Deep-route trigger/heading focus and AdaptiveScreen scroll/safe-area ownership | NavigationRow + foundation + AppRootShell tests | D-pad/Back/deep route traces, exact trigger return, stable fallback, one scroll owner | SHL-02 / `shell.root-state` |
@@ -53,8 +53,8 @@ Phase 14 passes only when all of the following are true:
 | 14-10-T1 | Native roots/state/appearance/tokens | Phase verifier scoped to four IDs | Individual screenshots/differences, font metrics, target/focus bounds, state trace | SHL-01–04 / first four `shell.*` |
 | 14-10-T2 | Native sheets/toasts/launch/rest/deep routes | Phase verifier scoped to five IDs | Input/focus/IME/motion/startup/settings journey and no-write digests | SHL-05–09 / middle five `shell.*` |
 | 14-10-T3 | Native removed/data/cloud/manual recovery | Full phase verifier `--all` | Deterministic recovery states, exact confirmation, cleanup and authoritative result digests | SHL-10–13 / last four `shell.*` |
-| 14-11-T1 | DEV-02 remains a real owner decision, not auto-approved | Verifier requires pending/accepted register state and baseline production token | Owner reviews measured baseline/candidate artifacts after unaffected Phase 14 evidence | SHL-04 / checkpoint |
-| 14-11-T2 | Persist dated DEV-02 outcome and route accepted candidate back to planning | Deviation-row status/date grep | Rejected records retained #D97820; accepted records plan-revision-required and stops before code | SHL-04 / deviation disposition |
+| 14-11-T1 | DEV-02 approved value is validated, not inferred | Verifier requires approved owner record, exact token roles, and separate evidence state | Automatic record check plus measured native artifacts | SHL-04 / decision record |
+| 14-11-T2 | Reconcile native evidence with approved DEV-02 roles | Deviation-row status/date/token/evidence gate | Approval remains fixed; missing/failing native evidence remains technical work and cannot pass | SHL-04 / deviation evidence |
 | 14-12-T1 | Library sheets preserve query/filter/selection/scroll/draft state | LibraryScreen component regression | Native Library sheet open/theme/close/Back focus journey | SHL-05 / `shell.sheets` |
 | 14-12-T2 | Completion confirmation preserves exact consequence and one-shot source command | WorkoutCompletionScreen component regression | Native cancel/confirm/busy/failure source digest and focus return | SHL-05 / `shell.sheets` |
 
@@ -88,7 +88,7 @@ Phase 14 passes only when all of the following are true:
 | 6 | 14-07, 14-08 | Removed-history files versus backup/recovery route/controller files | none |
 | 7 | 14-09 | Requires all implementation surfaces before freezing evidence ledger/flows | one plan |
 | 8 | 14-10 | Executes the completed harness against the completed shell | one plan |
-| 9 | 14-11 | Owner reviews DEV-02 after unaffected baseline evidence, then the dated outcome is persisted | checkpoint plus decision record |
+| 9 | 14-11 | Validate approved DEV-02, persist exact roles, and reconcile native evidence | automatic decision-record gate |
 
 ## Cohesion rationale for large manifests
 
@@ -123,7 +123,7 @@ Every task remains at five files or fewer. The following plans reach ten or more
 | REQ | SHL-01 | Exactly four bottom roots at all widths | 14-03, 14-09, 14-10 | COVERED | No rail, two-row branch or fifth root. |
 | REQ | SHL-02 | In-place root switching, selection, focus, deep exit, retained state | 14-03, 14-10 | COVERED | State remains screen-owned. |
 | REQ | SHL-03 | App Settings plus persisted live System/Light/Dark across Phase 14 consumers | 14-02, 14-06, 14-10 | COVERED | One provider/content owner; GAR-16 / Phase 18 closes Garmin adoption. |
-| REQ | SHL-04 | Exact tokens, Archivo, IBM Plex Mono, spacing/borders/density | 14-01, 14-02, 14-09, 14-10, 14-11 | COVERED | Harness commits first, clean-tree Android proof follows, DESIGN.md and package manifest are reconciled, DEV-02 remains gated. |
+| REQ | SHL-04 | Exact tokens, Archivo, IBM Plex Mono, spacing/borders/density | 14-01, 14-02, 14-09, 14-10, 14-11 | COVERED | Harness commits first, clean-tree Android proof follows, DESIGN.md and package manifest are reconciled, DEV-02 evidence remains gated. |
 | REQ | SHL-05 | Focus/keyboard-safe contextual sheets/dialogs | 14-04, 14-05, 14-10 | COVERED | Existing content state machines retained. |
 | REQ | SHL-06 | Theme-aware accessible top toasts clear of docks | 14-04, 14-10 | COVERED | Shared consumer contract and Phase 14 root/Active evidence; Garmin observation belongs to Phase 18. |
 | REQ | SHL-07 | Loading/trusted/failure/retry/notification startup | 14-02, 14-10 | COVERED | Existing SQLite trust remains gate. |
@@ -139,7 +139,7 @@ Every task remains at five files or fewer. The following plans reach ten or more
 | CONTEXT | D14-04 | Shared focus-safe overlays and dock-safe toasts | 14-04, 14-05, 14-12 | COVERED | No parallel frame/host. |
 | CONTEXT | D14-05 | Appearance-first Settings plus all shipped recovery | 14-06, 14-07, 14-08 | COVERED | Prototype omission does not remove native routes. |
 | CONTEXT | D14-06 | Factual SQLite/font startup and notification flow | 14-02 | COVERED | Visual cache stays rebuildable. |
-| CONTEXT | DEV-02 | Candidate #9B470B is unaccepted; baseline #D97820 | 14-01, 14-02, 14-09, 14-10, 14-11 | COVERED | Blocking-human decision; no production candidate use. |
+| CONTEXT | DEV-02 | Approved #9B470B Light title with #D97820 sport roles | 14-01, 14-02, 14-09, 14-10, 14-11 | COVERED | Automatic owner-record validation plus native blended-fill evidence. |
 | RESEARCH | R14-01 | Commit deterministic Archivo harness, then prove exact HEAD on Android before theme migration | 14-01, 14-02 | COVERED | Device absence blocks proof execution, not source planning. |
 | RESEARCH | R14-02 | No new UI/font npm package; official bytes/OFL/hash | 14-01, 14-02 | COVERED | Existing packages retained except obsolete Source Sans removal. |
 | RESEARCH | R14-03 | Extend existing Expo Tabs, theme and runtime in place | 14-02, 14-03 | COVERED | No second router/provider/bootstrap. |
@@ -162,11 +162,11 @@ The installed decision-coverage query currently rejects the source's `D14-XX` id
 
 | Likely failure | Earliest detector | Planned mitigation |
 |---|---|---|
-| Archivo loads but does not render the condensed axis | 14-02-T1 clean-tree Android metric/wrap/screenshot gate | Stop before 14-02-T2, write the measured proposed deviation, and require the blocking-human static-face versus stack-change decision. |
+| Archivo loads but does not render the condensed axis | 14-02-T1 clean-tree Android metric/wrap/screenshot gate | Stop before 14-02-T2 and report the measured technical blocker; do not choose an unplanned font branch. |
 | Old rail/two-row/private modal variants survive | 14-03 width table; legacy-modal owners in 14-04/14-05/14-06/14-12; 14-09 source audit | Delete rail/two-row/private sheet-dialog ownership, make ConfirmationSheet/AppearanceSheet delegate to the shared frame, and reject surviving direct legacy Modal owners before native evidence. |
 | Settings redesign drops recovery states or falsely reports success | existing route/controller regressions in 14-06–08 | Extract one content owner and preserve controllers/exact confirmation/authoritative reload. |
 | Native evidence is stale, incomplete or privacy-unsafe | verifier mutation tests in 14-09 | Bind all identities, one-to-one IDs, and recursive sensitive-data rejection. |
-| DEV-02 is accidentally implemented | token/component/verifier checks from 14-02 onward | Baseline #D97820 plus unused candidate assertion and blocking-human 14-11 checkpoint. |
+| DEV-02 roles are conflated or closed without evidence | token/component/verifier checks from 14-02 onward | #9B470B title-only assertion, #D97820 sport-role assertion, unchanged Dark, and automatic 14-11 approval/evidence gate. |
 
 ## Final validation command sequence
 

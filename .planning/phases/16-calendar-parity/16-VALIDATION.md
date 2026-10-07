@@ -12,7 +12,7 @@ manual_only: 2
 
 # Phase 16 — Validation Strategy
 
-> Execution-time Nyquist contract for Calendar parity and its read-only authority boundary. No test, build, native run, owner decision, or evidence claim in this document was completed during planning.
+> Execution-time Nyquist contract for Calendar parity and its read-only authority boundary. DEV-01/DEV-02 are approved in the owner record; no implementation test, build, native run, or evidence claim in this document was completed during planning.
 
 ## Test Infrastructure
 
@@ -32,7 +32,7 @@ manual_only: 2
 ## Sampling Rate
 
 - **After every task commit:** Run the exact task `<automated>` command.
-- **After Wave 1:** Confirm the Phase 13/15 compile-time dependency preflight, 100% integrity-critical controller coverage, and both owner decisions recorded in `16-01-SUMMARY.md`.
+- **After Wave 1:** Confirm the Phase 13/15 compile-time dependency preflight, 100% integrity-critical controller coverage, and both approved owner values validated in `16-01-SUMMARY.md`.
 - **After Wave 2:** Run month/civil/event and read-only route suites independently; plans 16-02 and 16-03 have no file overlap.
 - **After Waves 3–4:** Run Calendar transition, root-route, history-detail, planned-preview, correction, and removed-session regressions together.
 - **Before native collection:** Run full host/type/lint/boundary coverage and bind one fresh development-test APK/source manifest.
@@ -44,8 +44,8 @@ manual_only: 2
 | Task ID | Plan | Wave | Requirements | Threat Ref | Secure Behavior | Test Type | Automated Command | File Exists | Status |
 |---|---:|---:|---|---|---|---|---|---|---|
 | 16-01-01 | 01 | 1 | CAL-07, CAL-08, CAL-09, CAL-15 | T-16-01-01..03 | Exact narrow upstream ports; current-epoch transitions only | component + coverage | `npm run test:components -- --runInBand src/ui/calendar/calendarPorts.test.ts src/ui/__tests__/CalendarTransitions.test.tsx && npm run test:coverage -- --runInBand` | ❌ W0 | ⬜ pending |
-| 16-01-02 | 01 | 1 | CAL-01 trace | T-16-01-02 | DEV-01 choice is explicit before inset implementation | artifact + checkpoint | Owner selects one reviewed option; `16-01-SUMMARY.md` records choice/date | existing comparison ✅; decision ❌ | ⬜ pending |
-| 16-01-03 | 01 | 1 | CAL-03 trace | T-16-01-02 | DEV-02 choice is explicit before title-color implementation | artifact + checkpoint | Owner selects one reviewed option; `16-01-SUMMARY.md` records choice/date | existing measurements ✅; decision ❌ | ⬜ pending |
+| 16-01-02 | 01 | 1 | CAL-01 trace | T-16-01-02 | DEV-01 approved value is validated before inset implementation | artifact + automated record gate | Owner JSON says `adaptive-6-to-18dp`; summary records choice/date | approval ✅; native evidence ⬜ | ⬜ pending |
+| 16-01-03 | 01 | 1 | CAL-03 trace | T-16-01-02 | DEV-02 approved value is validated before title-color implementation | artifact + automated record gate | Owner JSON says `accessible-9b470b`; summary records choice/date | approval ✅; native evidence ⬜ | ⬜ pending |
 | 16-02-01 | 02 | 2 | CAL-01, CAL-03, CAL-04, CAL-05 | T-16-02-01..03 | Real typed event reaches query-only root; owner branch recorded | component | `npm run test:components -- --runInBand src/ui/__tests__/CalendarScreen.test.tsx` | ✅ extend/new component | ⬜ pending |
 | 16-02-02 | 02 | 2 | CAL-01, CAL-04, CAL-05, CAL-06, CAL-10 | T-16-02-02 | Civil bounds and event identities never flatten or drift | unit | `npm run test:unit -- --runInBand src/domains/scheduling/localDate.test.ts src/domains/history/calendar.test.ts` | ✅ extend | ⬜ pending |
 | 16-02-03 | 02 | 2 | CAL-01..06, CAL-10, CAL-11, CAL-21 | T-16-02-01..04 | Last-good generation guard; no invented data or mutation | component | `npm run test:components -- --runInBand src/ui/__tests__/CalendarScreen.test.tsx` | ✅ extend | ⬜ pending |
@@ -72,7 +72,7 @@ manual_only: 2
 - [ ] Confirm Phase 15 Plan 15-01 exports `WorkoutSessionPresentation`, immutable `WorkoutPresentationModel`, and disclosure-only props with no mutation capability. If absent, stop instead of duplicating an Active-shaped presenter.
 - [ ] Confirm Phase 14 exports the Revision 18 shared root header, Info/Settings actions, modal sheet, focusable pressable, notice, skeleton, bottom navigation, appearance/reduced-motion values, Archivo/IBM Plex Mono, and semantic tokens.
 - [ ] Create RED-first scaffolds in their owning tasks: `calendarPorts.test.ts`, `CalendarTransitions.test.tsx`, route/detail and real cross-destination tests, planned preview tests, Phase 16 test controls, Maestro flow, `16-REFERENCE-MAP.json`, comparison/verifier adversarial tests, and diagnostic sampling cases.
-- [ ] Record explicit owner selections for DEV-01 and DEV-02 in `16-01-SUMMARY.md`; Plan 16-02 records the dated dispositions in `v1.2-DEVIATIONS.md`. Open/incomplete rows remain `BLOCKED_OWNER`; accepted adaptations must pass; retained failing oracle values require a separately dated/scoped accepted exception or block.
+- [ ] Validate DEV-01/DEV-02 from the owner records into `16-01-SUMMARY.md`; Plan 16-02 records the dated approvals in `v1.2-DEVIATIONS.md`. Incomplete evidence remains `REVIEW_REQUIRED`; failed evidence is `FAIL`; only complete passing evidence closes the approved adaptations.
 - [ ] Restore Java 17, Android SDK/adb, Maestro 2.8.0, and one development-test emulator/device before Plan 16-06. Native absence cannot be replaced by Jest animation mocks or final screenshots.
 - [ ] Before Plan 16-07, require real Phase 17 `17-08-SUMMARY.md` plus `app/library/running/[planId].tsx`/route tests, and real Phase 18 `18-08-SUMMARY.md`/`18-14-SUMMARY.md` plus `app/garmin/activity/[activityId].tsx`/Calendar-origin route tests. Mocked hrefs and fixture destinations cannot satisfy the precondition.
 
@@ -80,10 +80,10 @@ manual_only: 2
 
 | Behavior | Requirement | Why Manual | Test Instructions |
 |---|---|---|---|
-| DEV-01 360dp inset disposition | CAL-01 trace | The owner must choose a dated scoped oracle exception versus the closest non-overlapping 48dp adaptation. | Compare the identical 360×800 fixture and measurements; choose exactly `oracle-18dp-accepted-exception` or `adaptive-6-to-18dp`; record selection/date before Plan 16-02. |
-| DEV-02 Light Strength title disposition | CAL-03 trace | The owner must choose a dated scoped oracle exception versus the contrast-safe title-only adaptation. | Compare identical Light complete/partial/planned chips on paper/selected fill; choose exactly `oracle-d97820-accepted-exception` or `accessible-9b470b`; record selection/date before Plan 16-02. |
+| DEV-01 approved 360dp inset | CAL-01 trace | Validate `adaptive-6-to-18dp` from the dated owner record. | Compare identical 360/390 fixtures and prove 6dp/18dp padding, 2dp gaps, and non-overlapping 48dp targets. |
+| DEV-02 approved Light Strength title | CAL-03 trace | Validate `accessible-9b470b` from the dated owner record. | Compare identical Light complete/partial/planned chips and prove #9B470B title contrast with #D97820 sport-role retention. |
 
-All resulting behavior remains machine-measured. Pending decisions or incomplete selected-branch evidence yield `BLOCKED_OWNER` and prevent an all-pass result. An accepted adaptation must pass its full comparison/accessibility evidence. Retaining an oracle value with a continuing known failure requires a separately dated/scoped accepted exception; otherwise closure blocks, and even an accepted exception is reported as `ACCEPTED_EXCEPTION`, not PASS. These checkpoints choose values; they do not substitute for tests or native evidence.
+All resulting behavior remains machine-measured. Incomplete approved-branch evidence yields `REVIEW_REQUIRED` and failed evidence yields `FAIL`; both prevent an all-pass result. Approval does not substitute for tests or native evidence.
 
 ## Multi-Source Coverage Audit
 
@@ -92,7 +92,7 @@ All resulting behavior remains machine-measured. Pending decisions or incomplete
 | GOAL | — | Understand/navigate real Strength and Running intent/history through the approved spatial Calendar and inspect history without Calendar mutation authority | 02–07 | COVERED | Month, motion, detail, diagnostic comparison and real cross-destination closure form one dependency chain. |
 | REQ | CAL-01 | Full-height Monday-first month and persistent controls | 02, 06 | COVERED | Exact geometry plus native matrix. |
 | REQ | CAL-02 | Info-before-Settings Calendar key; no inline legend | 02, 06 | COVERED | Shared Phase 14 modal/focus contract. |
-| REQ | CAL-03 | Sport colors separate from complete/partial/planned patterns | 02, 06, 07 | COVERED | DEV-02 choice/evidence outcome is explicit and cannot default to PASS. |
+| REQ | CAL-03 | Sport colors separate from complete/partial/planned patterns | 02, 06, 07 | COVERED | DEV-02 approved value/evidence outcome is explicit and cannot default to PASS. |
 | REQ | CAL-04 | Shared 28/36 date-event tracks and measured continuity | 02, 04, 06 | COVERED | Shared row and native coordinates. |
 | REQ | CAL-05 | Two titled visual events plus complete semantic list | 02, 06 | COVERED | Identity/order retained. |
 | REQ | CAL-06 | Selected/today/outside/rest/empty semantics | 02, 06 | COVERED | Component and native matrices. |
@@ -114,15 +114,15 @@ All resulting behavior remains machine-measured. Pending decisions or incomplete
 | REQ | CAL-22 | Correction/revision/save-retry remains management-only | 03, 05, 07 | COVERED | Existing management regressions plus real-route Calendar negative tests. |
 | REQ | CAL-23 | Resume/removal remains management-only | 03, 05, 07 | COVERED | Explicit capability branches and real-route zero-command trace. |
 | CONTEXT | D16-01 | Full-height Monday month, Info before Settings, key dialog | 02 | COVERED | Exact shared shell composition. |
-| CONTEXT | D16-02 | Orange/blue sport and pattern/text status separation | 02, 06, 07 | COVERED | Selected DEV-02 branch and its verdict retain sport/status independence. |
+| CONTEXT | D16-02 | Orange/blue sport and pattern/text status separation | 02, 06, 07 | COVERED | Approved DEV-02 roles and verdict retain sport/status independence. |
 | CONTEXT | D16-03 | Shared fixed tracks/titles/semantics/measured height | 02, 04 | COVERED | One renderer and measured overlays. |
 | CONTEXT | D16-04 | 1:1, exact 25%, reversal/cancel, fast snap-back, vertical intent | 01, 04, 06 | COVERED | Controller, worklet, native proof. |
 | CONTEXT | D16-05 | Exact month timing and measured expand/collapse | 01, 04, 06 | COVERED | Timed commands and geometry traces. |
 | CONTEXT | D16-06 | Ordered adjacent selection and reduced equivalence | 01, 04, 06 | COVERED | Same semantic controller. |
 | CONTEXT | D16-07 | Compact agenda and destination table | 03, 05, 07 | COVERED | Exact route union plus real Strength/Running/Garmin destination loads. |
 | CONTEXT | D16-08 | Management separation and Back restoration | 03, 05, 07 | COVERED | Structural capability split plus real-route focus/source evidence. |
-| CONTEXT | DEV-01 | 18dp baseline versus proposed 6→18dp adaptation | 01, 02, 06, 07 | COVERED | BLOCKED_OWNER/accepted-deviation/accepted-exception rules are fail-closed. |
-| CONTEXT | DEV-02 | #D97820 baseline versus proposed #9B470B Light title | 01, 02, 06, 07 | COVERED | BLOCKED_OWNER/accepted-deviation/accepted-exception rules are fail-closed. |
+| CONTEXT | DEV-01 | Approved 6→18dp adaptive inset with 2dp gaps | 01, 02, 06, 07 | COVERED | Automated approval gate plus fail-closed geometry evidence. |
+| CONTEXT | DEV-02 | Approved #9B470B Light title with #D97820 sport roles | 01, 02, 06, 07 | COVERED | Automated approval gate plus fail-closed blended-fill evidence. |
 | RESEARCH | R16-01 | Consume Phase 13 bounded typed event port; no N+1/status collapse | 01, 02 | COVERED | Hard dependency preflight and real port adapter. |
 | RESEARCH | R16-02 | Pure semantic controller and monotonic epochs | 01, 04 | COVERED | Integrity-critical coverage. |
 | RESEARCH | R16-03 | Manual 7dp/1.15 intent and UI-thread 1:1 worklet | 04, 06 | COVERED | Native scroll/gesture evidence. |
@@ -144,7 +144,7 @@ All resulting behavior remains machine-measured. Pending decisions or incomplete
 
 | Wave | Plans | Independence / Gate |
 |---:|---|---|
-| 1 | 16-01 | Hard-preflights Phase 13 range/occurrence and Phase 15 presenter exports, proves semantic controller, then pauses for DEV-01 and DEV-02. |
+| 1 | 16-01 | Hard-preflights Phase 13 range/occurrence and Phase 15 presenter exports, proves semantic controller, then validates approved DEV-01 and DEV-02 records. |
 | 2 | 16-02, 16-03 | Month/source-state files and detail/preview files are disjoint; both consume the completed dependency/gate summary. |
 | 3 | 16-04 | Integrates controller and month surface into native motion/morph. |
 | 4 | 16-05 | Integrates agenda and internal Strength destinations while preserving external destination identities without claiming href completion. |
@@ -157,8 +157,8 @@ No same-wave plan shares a `files_modified` path. Cross-phase dependencies are e
 
 | Door | Rating | Gate / Recovery |
 |---|---|---|
-| DEV-01 inset choice | reversible | Blocking owner decision before styles; open/incomplete is BLOCKED_OWNER, accepted adaptation must pass, and retained failing oracle needs dated accepted exception or blocks. |
-| DEV-02 title color choice | reversible | Blocking owner decision before styles; open/incomplete is BLOCKED_OWNER, accepted adaptation must pass, and retained failing oracle needs dated accepted exception or blocks. |
+| DEV-01 approved inset | reversible | Automatic owner-record gate before styles; incomplete/failing geometry evidence blocks closure. |
+| DEV-02 approved title color | reversible | Automatic owner-record gate before styles; incomplete/failing blended-fill evidence blocks closure. |
 | Phase 13 event/Phase 15 presenter consumption | costly | Upstream shared contract; narrow through `calendarPorts.ts`, fail at compile time, and never fork the model/presenter. |
 | Phase 17/18 real route integration | costly | Final plan hard-preflights exact summaries/files/loaders and runs real routes; no placeholder or mocked href can substitute. |
 | Transition controller/worklet split | reversible | Stable semantic event/command interface isolates native execution changes. |
@@ -167,15 +167,15 @@ No same-wave plan shares a `files_modified` path. Cross-phase dependencies are e
 
 ## Validation Sign-Off
 
-- [ ] All 21 task IDs have an automated gate or one of the two explicit blocking owner decisions.
-- [ ] Every CAL requirement, D16 decision, DEV checkpoint, and in-scope research constraint maps to a plan.
+- [ ] All 21 task IDs have an automated gate; DEV-01/DEV-02 use owner-record assertions rather than checkpoints.
+- [ ] Every CAL requirement, D16 decision, approved DEV value, and in-scope research constraint maps to a plan.
 - [ ] Phase 13 range/occurrence ports, Phase 14 shell, Phase 15 facts-only presenter, Phase 17 Running route, and Phase 18 Garmin route/registration preconditions pass before their consuming tasks.
 - [ ] New behavior tests are RED before production edits and focused commands stay below the 60-second feedback target.
 - [ ] `calendarTransitionController.ts` reaches 100% statements/branches/functions/lines.
 - [ ] No same-wave file overlap, no package additions, no SQL in screens, and no Calendar mutation capability exist.
 - [ ] NV-CAL-01..09 functional/geometry assertions, exact appearance/viewport/text/input matrix, mapped individual comparison artifacts, source digest, and privacy checks validate against one manifest.
 - [ ] Phase 16 query/frame outputs contain complete raw diagnostics and computed p95 but no NV-PERF-07/NV-PERF-09 acceptance verdict; Phase 20 Plan 20-08 owns those gates.
-- [ ] Pending/incomplete DEV rows remain BLOCKED_OWNER; accepted adaptations pass complete evidence; retained failing oracle values have a dated scoped ACCEPTED_EXCEPTION or block; none is represented as PASS.
+- [ ] Incomplete DEV evidence remains REVIEW_REQUIRED; failed evidence remains FAIL; only complete passing evidence closes the approved adaptations.
 - [ ] `nyquist_compliant: true` and `wave_0_complete: true` are set only after the execution-time validation audit.
 
-**Approval:** pending execution and owner decisions DEV-01/DEV-02
+**Approval:** DEV-01/DEV-02 finalized; execution and native technical verification pending

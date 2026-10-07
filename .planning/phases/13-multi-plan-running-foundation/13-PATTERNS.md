@@ -61,7 +61,7 @@ Names below follow the Phase 13 research recommendations. Exact internal names m
 | `src/domains/workout/index.ts` | model / request-response | Replace scalar `StartWorkoutRequest` with selected occurrence provenance and expected revisions. Keep empty-workout variant separate. | Existing discriminated request + repository port, lines 21-35 and 96-104. |
 | `src/platform/sqlite/repositories/plansWorkoutRepository.ts` | repository / CRUD | Validate ownership and exact schedule selection inside the writer; insert immutable session schedule link and start receipt atomically. Remove/contain `LIMIT 1` compatibility reads. | `startWorkout`, lines 776-876; anti-pattern lines 1366-1384 and 1538-1547. |
 | `src/bootstrap/scheduleRuntime.tsx` | provider / request-response | Return coherent multi-context Today and complete by captured session link/receipt, never parameterless current activation. | Existing command facade; current completion seam cited in Phase 13 research at lines 886-943. |
-| `src/bootstrap/workoutAppRuntime.tsx` | provider / request-response | Pass the selected occurrence intact and retain global recovered Strength session authority. TIM-01 gates any timing retirement. | Existing start/lifecycle coordinator, not a new source of domain selection. |
+| `src/bootstrap/workoutAppRuntime.tsx` | provider / request-response | Pass the selected occurrence intact, retain global recovered Strength session authority, and apply the approved TIM-01 timing retirement after automatic record validation. | Existing start/lifecycle coordinator, not a new source of domain selection. |
 | `src/platform/sqlite/repositories/historyRepository.ts` | repository / batch | Retain effective Strength history but stop current-lifecycle filtering/date-state collapse; delegate unified event ranges to the new repository. | `loadCalendarMonth`, lines 760-864. |
 | `src/platform/sqlite/repositories/progressRepository.ts` | repository / transform | Consume new Running/bodyweight facts behind freshness/rebuild gates; never make projections authoritative. | Existing unavailable-when-stale pattern cited in research at lines 320-396. |
 | `src/domains/portability/backupContracts.ts` | config / batch | Add an exact successor format graph; keep v1/v2 definitions unchanged and explicit. | `LOGICAL_BACKUP_TABLE_DEFINITIONS`, `logicalBackupTablesForVersion`, exact-key parser. |
@@ -75,7 +75,7 @@ Names below follow the Phase 13 research recommendations. Exact internal names m
 | `tests/sqlite-host/migrations-effects.test.ts` | test / batch | Add schema-27 fixture upgrade, exact index/trigger SQL, failure injection, recovery copy, FK/integrity, and migration-23 freeze proof. | Existing large migration harness; locate with contract case IDs before targeted edits. |
 | `tests/integration/today-schedule-workout.test.ts` | test / request-response | Add selected-occurrence mismatch/staleness, plan switch before completion retry, one global recovered Strength session. | Start→complete→retry scenarios, lines 1165-1365. |
 | `tests/integration/portable-merge.test.ts` | test / batch | Add full successor graph clean restore/merge/relaunch and derivative parity. | Preflight token, `rebuild_pending`, relaunch/reconcile, lines 202-330. |
-| `tests/sqlite-host/schedule-activation.test.ts` | test / batch | Replace singleton-only assertions with the accepted per-sport or multi-same-sport cardinality matrix while retaining immutable consumed facts. | Existing constraint and immutable event proof, lines 557-642. |
+| `tests/sqlite-host/schedule-activation.test.ts` | test / batch | Replace singleton-only assertions with the approved zero-or-one active pair per sport matrix while retaining immutable consumed facts. | Existing constraint and immutable event proof, lines 557-642. |
 
 ## Pattern Assignments
 
@@ -133,7 +133,7 @@ export const portableOwnerIdentitiesMigration: Migration = Object.freeze({
 For Phase 13, use `kind: "destructive"` because global activation constraints are replaced even though source facts are retained. Verify:
 
 - deterministic `strength` backfill without title/metric inference;
-- exact active index predicates chosen only after MAP-01;
+- exact active index predicates fixed by approved MAP-01 and applied only after automatic record validation;
 - plan/schedule kind agreement and paired activation;
 - immutable stable roots/revisions/receipts/events/tombstones;
 - slot-aware Running uniqueness;
@@ -273,7 +273,7 @@ export function createOwnedPlanRuntimePort(
 }
 ```
 
-Later screens and Phase 18 adapters receive only these ports. They must not import SQLite repositories or construct SQL. Keep provider/file decoding out of Phase 13 import contracts; Phase 13 begins at a validated provider-independent normalized draft.
+Later screens and the Phase 18 adapter receive only these ports. They must not import SQLite repositories or construct SQL. Phase 13 defines `GarminSourceEnvelope` and begins at that validated envelope; Phase 18 owns Garmin authentication, network reads, and JSON normalization.
 
 ### 6. Receipt-Fenced Repository Transaction
 
@@ -457,10 +457,10 @@ export async function runMigrationsEffectsContract(adapter) {
 | Fresh DB → latest | `migrations-effects` shared contract + host/native harness | Migration 23 never references future tables; successor schema/index/trigger SQL is exact. |
 | Schema 27 → latest | new synthetic fixture + same contract | IDs, completed history, recoverable workout, timing bytes, portable identities, opportunities, and backup state unchanged except deterministic `strength` backfill. |
 | Constraint failure cuts | migration contract | Statement/verify/integrity/commit failures leave a valid old or fully new version; validated recovery artifact exists for destructive work. |
-| Independent activation | `multi-plan-activation.test.ts` | Other sport's revision, pointer, overrides, opportunities, and receipts are identical after activation/replacement. MAP-01 determines same-sport expectations. |
+| Independent activation | `multi-plan-activation.test.ts` | Other sport's revision, pointer, overrides, opportunities, and receipts are identical after activation/replacement. Approved MAP-01 defines same-sport expectations. |
 | Same-weekday slots | `running-foundation.test.ts` | Two Running slots on one date remain distinct across restart, move/keep-both decisions, and schedule edits. |
 | Start/complete provenance | extend `today-schedule-workout.test.ts` | Mismatched/stale selection writes nothing; plan switch before retry cannot redirect completion; replay consumes original opportunity once. |
-| Import identity matrix | `imported-activity-facts.test.ts` | FIT→API and API→FIT convergence, exact replay, changed hash review, split identity conflict, no plan/session side effects. |
+| GarminSourceEnvelope identity matrix | `imported-activity-facts.test.ts` | Account-scoped exact replay, changed canonical digest revision, component-hash provenance conflict, no-resurrection, and no plan/session side effects. |
 | Match ledger | `running-activity-match.test.ts` | Explicit confirmation, exact revisions, one-to-one current relation, append-only unmatch/reassign, stale replay rejection. |
 | Bodyweight | `bodyweight-history.test.ts` | Dated grams/edit/delete/tombstone round-trip; no workout target mutation. |
 | Successor portability | `multi-plan-portability.test.ts` + portable merge contract | v1/v2 readable; successor facts complete; remaps/closure/conflicts correct; trigger restoration; `rebuild_pending` → deterministic `ready`. |
@@ -518,7 +518,7 @@ These are not gaps to paper over with the nearest Strength table.
 
 ## Anti-Patterns to Reject in Plans and Reviews
 
-1. **Encoding MAP-01 before its checkpoint.** No per-kind/same-sport unique DDL until the owner chooses one-per-sport or multi-same-sport selection/index behavior.
+1. **Encoding MAP-01 inconsistently.** Validate approved `one-per-sport` before DDL, then enforce zero or one active pair for each sport; do not retain an arbitrary same-sport branch.
 2. **Editing an applied migration's outcome.** Preserve historical migration semantics. Use the actual next version and test fresh plus schema-27 upgrades.
 3. **Changing only the two global indexes.** Scalar readers, global deactivation, `LIMIT 1`, restore invariants, merge normalization, Today, and completion must cut over coherently.
 4. **Date-only identity.** `UNIQUE(schedule_id, local_date, source)` cannot represent same-day Running slots; titles/timestamps are not identity.
@@ -530,7 +530,7 @@ These are not gaps to paper over with the nearest Strength table.
 10. **Bodyweight conflation.** Do not reuse `bodyweight_reps`, workout targets, or session observations for dated mass.
 11. **UI/provider SQL.** Screens and Phase 18 adapters consume typed ports only.
 12. **Calendar N+1 and date-state collapse.** Batch counts and emit stable event rows; do not query every session separately or return only status sets.
-13. **Timing UI-only retirement.** TIM-01 gates removal/gating of authoring, reconciliation, queued callbacks, and playback; all legacy timing facts and set/rest recovery remain intact.
+13. **Timing UI-only retirement.** Approved TIM-01 requires removal of authoring, reconciliation, queued callbacks, and playback; all ordinary history plus set/pointer/rest recovery remain intact while dormant historical bytes are not interpreted.
 14. **Personal-data fixtures/diagnostics.** Tests use synthetic facts; evidence never commits owner routes, HR, workout rows, filenames, or account subjects.
 
 ## No Semantic Analog Found
@@ -551,4 +551,4 @@ The planner should use the Phase 13 research/ADRs for these semantics while copy
 **Analog search scope:** `src/domains`, `src/platform/sqlite`, `src/bootstrap`, `src/testing/contracts`, `tests/integration`, `tests/sqlite-host`, `tests/migrations/fixtures`  
 **Primary analog families inspected:** migrations 0008/0022/0023; starter/workout/history/portability repositories; metric/schedule/workout contracts; migration/merge/integration harnesses  
 **Pattern extraction date:** 2026-10-06  
-**Owner gates preserved:** MAP-01 before active-cardinality DDL; TIM-01 before timing runtime retirement; Garmin provider transport remains Phase 18.
+**Settled-record gates preserved:** Automatically validate MAP-01 before active-cardinality DDL and TIM-01 before timing runtime retirement; Garmin transport remains Phase 18.
