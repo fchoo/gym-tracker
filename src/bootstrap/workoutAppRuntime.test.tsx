@@ -4051,9 +4051,39 @@ describe("WorkoutAppRuntimeProvider", () => {
       [null, activation, activation, activation],
     );
     const activateInitialStarter = jest.fn(async () => undefined);
+    let scheduleReads = 0;
+    const schedule = {
+      ...runtimeScheduleAdapter(),
+      loadToday: jest.fn(async () => {
+        scheduleReads += 1;
+        if (scheduleReads === 1) return null;
+        return {
+          planDays: activation.days,
+          scheduleToday: {} as never,
+          view: scheduledView,
+          selectedStrengthOccurrence: {
+            kind: "strength" as const,
+            opportunityId: "opportunity-1",
+            planId: "plan-copy",
+            planDayId: "day-a",
+            scheduleId: "schedule-1",
+            scheduleVersionId: "schedule-version-1",
+            localDate: "2026-08-17",
+            timeZone: "Asia/Singapore",
+            sourceRevisions: {
+              plan: 1,
+              day: 1,
+              schedule: 1,
+              opportunity: 1,
+            },
+          },
+        };
+      }),
+    } as ScheduleRuntimeAdapter;
     const runtimeDependencies = dependencies(repository, {
       loadStarterPlans: jest.fn(async () => ({}) as never),
       activateInitialStarter,
+      createScheduleRuntime: () => schedule,
     });
 
     await render(
