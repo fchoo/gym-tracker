@@ -1,11 +1,9 @@
 import {
+  OFF_ADVANCED_TIMING_CONFIG,
   parseAdvancedTimingConfig,
   type AdvancedTimingConfigV1,
 } from "./advancedTimingConfig";
-import type {
-  AdvancedTimingCue,
-  AdvancedTimingStateV1,
-} from "./advancedTimingState";
+import type { AdvancedTimingStateV1 } from "./advancedTimingState";
 
 export type AdvancedTimingCommandResult = Readonly<{
   state: AdvancedTimingStateV1;
@@ -65,6 +63,17 @@ export interface AdvancedTimingRepository {
   stopAdvancedTiming(input: AdvancedTimingRevisionInput): Promise<AdvancedTimingCommandResult>;
 }
 
+/**
+ * TIM-01 intentionally makes persisted cadence/cluster settings inert.  The
+ * parser still owns historical readability; this boundary owns the policy that
+ * no new runtime snapshot may inherit an advisory playback mode.
+ */
+export function retireAdvancedTiming(
+  _config: AdvancedTimingConfigV1,
+): typeof OFF_ADVANCED_TIMING_CONFIG {
+  return OFF_ADVANCED_TIMING_CONFIG;
+}
+
 export class AdvancedTimingCommandError extends Error {
   readonly kind = "conflict" as const;
   readonly retryable = false;
@@ -121,15 +130,28 @@ function validateSessionSetInput(
   ) throw new AdvancedTimingCommandError();
 }
 
+function retiredResult(input: AdvancedTimingRevisionInput): AdvancedTimingCommandResult {
+  return Object.freeze({
+    state: Object.freeze({
+      version: 1,
+      state: "idle",
+      revision: input.expectedAdvancedTimingRevision,
+      targetSessionSetId: null,
+    }),
+    sessionRevision: input.expectedSessionRevision,
+    invalidationScopes: [["active-workout", input.sessionId], ["today"]],
+  });
+}
+
 export async function updateSessionExerciseAdvancedTiming(input: Readonly<{
   repository: AdvancedTimingRepository;
   input: UpdateSessionExerciseAdvancedTimingInput;
 }>): Promise<AdvancedTimingCommandResult> {
   validateSessionExerciseInput(input.input);
-  const config = parseAdvancedTimingConfig(input.input.config);
+  parseAdvancedTimingConfig(input.input.config);
   return input.repository.updateSessionExerciseAdvancedTiming({
     ...input.input,
-    config,
+    config: retireAdvancedTiming(input.input.config),
   });
 }
 
@@ -138,12 +160,10 @@ export async function updateSessionSetAdvancedTiming(input: Readonly<{
   input: UpdateSessionSetAdvancedTimingInput;
 }>): Promise<AdvancedTimingCommandResult> {
   validateSessionSetInput(input.input);
-  const override = input.input.override === null
-    ? null
-    : parseAdvancedTimingConfig(input.input.override);
+  if (input.input.override !== null) parseAdvancedTimingConfig(input.input.override);
   return input.repository.updateSessionSetAdvancedTiming({
     ...input.input,
-    override,
+    override: null,
   });
 }
 
@@ -152,9 +172,8 @@ export async function startAdvancedTiming(input: Readonly<{
   input: AdvancedTimingRevisionInput & Readonly<{ config: AdvancedTimingConfigV1 }>;
 }>): Promise<AdvancedTimingCommandResult> {
   validate(input.input);
-  const config = parseAdvancedTimingConfig(input.input.config);
-  if (config.mode === "off") throw new AdvancedTimingCommandError();
-  return input.repository.startAdvancedTiming({ ...input.input, config });
+  parseAdvancedTimingConfig(input.input.config);
+  return retiredResult(input.input);
 }
 
 export async function configureAdvancedTiming(input: Readonly<{
@@ -162,8 +181,11 @@ export async function configureAdvancedTiming(input: Readonly<{
   input: AdvancedTimingRevisionInput & Readonly<{ config: AdvancedTimingConfigV1 }>;
 }>): Promise<AdvancedTimingCommandResult> {
   validate(input.input);
-  const config = parseAdvancedTimingConfig(input.input.config);
-  return input.repository.configureAdvancedTiming({ ...input.input, config });
+  parseAdvancedTimingConfig(input.input.config);
+  return input.repository.configureAdvancedTiming({
+    ...input.input,
+    config: retireAdvancedTiming(input.input.config),
+  });
 }
 
 export function pauseAdvancedTiming(input: Readonly<{
@@ -171,7 +193,7 @@ export function pauseAdvancedTiming(input: Readonly<{
   input: AdvancedTimingRevisionInput;
 }>): Promise<AdvancedTimingCommandResult> {
   validate(input.input);
-  return input.repository.pauseAdvancedTiming(input.input);
+  return Promise.resolve(retiredResult(input.input));
 }
 
 export function beginAdvancedTimingClusterGap(input: Readonly<{
@@ -179,7 +201,7 @@ export function beginAdvancedTimingClusterGap(input: Readonly<{
   input: AdvancedTimingRevisionInput;
 }>): Promise<AdvancedTimingCommandResult> {
   validate(input.input);
-  return input.repository.beginAdvancedTimingClusterGap(input.input);
+  return Promise.resolve(retiredResult(input.input));
 }
 
 export function skipAdvancedTimingClusterGap(input: Readonly<{
@@ -187,7 +209,7 @@ export function skipAdvancedTimingClusterGap(input: Readonly<{
   input: AdvancedTimingRevisionInput;
 }>): Promise<AdvancedTimingCommandResult> {
   validate(input.input);
-  return input.repository.skipAdvancedTimingClusterGap(input.input);
+  return Promise.resolve(retiredResult(input.input));
 }
 
 export function resumeAdvancedTiming(input: Readonly<{
@@ -195,18 +217,18 @@ export function resumeAdvancedTiming(input: Readonly<{
   input: AdvancedTimingRevisionInput;
 }>): Promise<AdvancedTimingCommandResult> {
   validate(input.input);
-  return input.repository.resumeAdvancedTiming(input.input);
+  return Promise.resolve(retiredResult(input.input));
 }
 
 export function reconcileAdvancedTiming(input: Readonly<{
   repository: AdvancedTimingRepository;
   input: AdvancedTimingRevisionInput & Readonly<{ foregroundSinceMs: number }>;
-}>): Promise<AdvancedTimingCommandResult & Readonly<{ cue: AdvancedTimingCue | null }>> {
+}>): Promise<AdvancedTimingCommandResult & Readonly<{ cue: null }>> {
   validate(input.input);
   if (!validTime(input.input.foregroundSinceMs) || input.input.foregroundSinceMs > input.input.nowMs) {
     throw new AdvancedTimingCommandError();
   }
-  return input.repository.reconcileAdvancedTiming(input.input);
+  return Promise.resolve(Object.freeze({ ...retiredResult(input.input), cue: null }));
 }
 
 export function stopAdvancedTiming(input: Readonly<{
@@ -214,5 +236,5 @@ export function stopAdvancedTiming(input: Readonly<{
   input: AdvancedTimingRevisionInput;
 }>): Promise<AdvancedTimingCommandResult> {
   validate(input.input);
-  return input.repository.stopAdvancedTiming(input.input);
+  return Promise.resolve(retiredResult(input.input));
 }

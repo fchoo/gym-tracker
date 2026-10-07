@@ -2060,7 +2060,7 @@ export function WorkoutAppRuntimeProvider({
 }>) {
   const servicesRef = useRef<RuntimeServices | null>(null);
   const foregroundUnsubscribeRef = useRef<(() => void) | null>(null);
-  const advancedForegroundUnsubscribeRef = useRef<(() => void) | null>(null);
+  const automaticBackupForegroundUnsubscribeRef = useRef<(() => void) | null>(null);
   const automaticBackupUnsubscribeRef = useRef<(() => void) | null>(null);
   const generationRef = useRef(0);
   const workoutRefreshGenerationRef = useRef(0);
@@ -2076,8 +2076,8 @@ export function WorkoutAppRuntimeProvider({
   const closeServices = useCallback(async () => {
     foregroundUnsubscribeRef.current?.();
     foregroundUnsubscribeRef.current = null;
-    advancedForegroundUnsubscribeRef.current?.();
-    advancedForegroundUnsubscribeRef.current = null;
+    automaticBackupForegroundUnsubscribeRef.current?.();
+    automaticBackupForegroundUnsubscribeRef.current = null;
     automaticBackupUnsubscribeRef.current?.();
     automaticBackupUnsubscribeRef.current = null;
     const services = servicesRef.current;
@@ -2366,18 +2366,16 @@ export function WorkoutAppRuntimeProvider({
       const appState = (require("react-native") as typeof import("react-native"))
         .AppState;
       let priorAppState = appState.currentState;
-      const advancedSubscription = appState.addEventListener("change", (next) => {
+      const automaticBackupSubscription = appState.addEventListener("change", (next) => {
         const enteringForeground = priorAppState !== "active" && next === "active";
         priorAppState = next;
         if (enteringForeground && generation === generationRef.current) {
-          void reconcileAdvancedTimingAfterForeground(services, generation);
           void services.automaticBackupRuntime?.refresh();
         }
       });
-      advancedForegroundUnsubscribeRef.current = () => {
-        advancedSubscription?.remove();
+      automaticBackupForegroundUnsubscribeRef.current = () => {
+        automaticBackupSubscription?.remove();
       };
-      await reconcileAdvancedTimingAfterForeground(services, generation);
       const next = await trustedRead(services);
       if (generation !== generationRef.current) {
         await lifecycle.dispose().catch(() => undefined);
@@ -3207,51 +3205,6 @@ export function WorkoutAppRuntimeProvider({
     });
   }, [reconcileAfterCommit, requireServices, trustedRead]);
 
-  const reconcileAdvancedTimingAfterForeground = useCallback(async (
-    services: RuntimeServices,
-    generation: number,
-  ) => {
-    const contexts = await services.advancedTimingRepository
-      .listActiveTimingContexts()
-      .catch(() => []);
-    if (contexts.length === 0) {
-      return;
-    }
-    const nowMs = dependencies.nowMs();
-    for (const context of contexts) {
-      if (generation !== generationRef.current) {
-        return;
-      }
-      if (
-        context.state.state !== "running"
-        && context.state.state !== "cluster_gap_running"
-      ) {
-        continue;
-      }
-      const result = await reconcileAdvancedTiming({
-        repository: services.advancedTimingRepository,
-        input: {
-          sessionId: context.sessionId,
-          sessionSetId: context.state.targetSessionSetId,
-          expectedSessionRevision: context.sessionRevision,
-          expectedAdvancedTimingRevision: context.state.revision,
-          nowMs,
-          foregroundSinceMs: nowMs,
-        },
-      }).catch(() => undefined);
-      if (result !== undefined) {
-        await emitAdvancedTimingCueBeforeRefresh(result);
-      }
-    }
-    if (generation === generationRef.current) {
-      workoutRefreshGenerationRef.current += 1;
-      setState((current) => ({
-        ...current,
-        workoutRefreshGeneration: workoutRefreshGenerationRef.current,
-      }));
-    }
-  }, [dependencies, emitAdvancedTimingCue]);
-
   const runAdvancedTimingCommand = useCallback(async (
     command: (
       repository: ReturnType<typeof createAdvancedTimingRepository>,
@@ -3259,10 +3212,6 @@ export function WorkoutAppRuntimeProvider({
   ): Promise<AdvancedTimingCommandResult> => {
     const services = requireServices();
     const result = await command(services.advancedTimingRepository);
-    await reconcileAdvancedTimingAfterForeground(
-      services,
-      generationRef.current,
-    );
     try {
       const next = await trustedRead(services);
       setState((current) => ({
@@ -3281,7 +3230,7 @@ export function WorkoutAppRuntimeProvider({
       }));
     }
     return result;
-  }, [reconcileAdvancedTimingAfterForeground, requireServices, trustedRead]);
+  }, [requireServices, trustedRead]);
 
   const configureRuntimeAdvancedTiming = useCallback((
     input: AdvancedTimingRevisionInput & Readonly<{

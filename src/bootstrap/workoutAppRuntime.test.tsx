@@ -1540,7 +1540,7 @@ describe("WorkoutAppRuntimeProvider", () => {
     });
   });
 
-  it("runs advanced timing through its separate repository without rest effects or permission work", async () => {
+  it("retires cadence runtime commands without rest effects or permission work", async () => {
     const repository = runtimeRepository([activeView, activeView, activeView], [activation]);
     const advanced = runtimeAdvancedTimingRepository();
     const rest = runtimeRestRepository();
@@ -1625,17 +1625,22 @@ describe("WorkoutAppRuntimeProvider", () => {
         },
       });
     });
-    expect(result).toEqual(expect.objectContaining({ state: running }));
+    expect(result).toEqual(expect.objectContaining({ state: {
+      version: 1,
+      state: "idle",
+      revision: 0,
+      targetSessionSetId: null,
+    } }));
 
     expect(advanced.configureAdvancedTiming).toHaveBeenCalledTimes(1);
-    expect(advanced.startAdvancedTiming).toHaveBeenCalledTimes(1);
-    expect(advanced.listActiveTimingContexts).toHaveBeenCalled();
+    expect(advanced.startAdvancedTiming).not.toHaveBeenCalled();
+    expect(advanced.listActiveTimingContexts).not.toHaveBeenCalled();
     expect(rest.listActiveSessionIds).not.toHaveBeenCalled();
     expect(lifecycle.trigger).not.toHaveBeenCalled();
     expect(notifications.requestPermission).not.toHaveBeenCalled();
   });
 
-  it("contains advisory advanced timing cue failures after committed reconcile", async () => {
+  it("returns zero cues for retired timing reconciliation", async () => {
     const repository = runtimeRepository([activeView, activeView], [activation]);
     const advanced = runtimeAdvancedTimingRepository();
     const rest = runtimeRestRepository();
@@ -1702,20 +1707,16 @@ describe("WorkoutAppRuntimeProvider", () => {
       });
       await Promise.resolve();
     });
-    expect(result).toEqual(expect.objectContaining({
-      cue: { repetitionIndex: 10, boundaryAtMs: 20_000 },
-    }));
+    expect(result).toEqual(expect.objectContaining({ cue: null }));
 
-    expect(mockCueHaptic).toHaveBeenCalledTimes(1);
+    expect(mockCueHaptic).not.toHaveBeenCalled();
     expect(rest.listActiveSessionIds).not.toHaveBeenCalled();
     expect(lifecycle.trigger).not.toHaveBeenCalled();
     expect(notifications.requestPermission).not.toHaveBeenCalled();
-    await waitFor(() => {
-      expect(captured?.advancedTimingCueFailed).toBe(true);
-    });
+    expect(captured?.advancedTimingCueFailed).toBeUndefined();
   });
 
-  it("plays audio-only advanced timing cues without haptics or rest side effects", async () => {
+  it("does not play audio-only cues after TIM-01 retirement", async () => {
     const repository = runtimeRepository([activeView, activeView], [activation]);
     const advanced = runtimeAdvancedTimingRepository();
     const rest = runtimeRestRepository();
@@ -1780,7 +1781,7 @@ describe("WorkoutAppRuntimeProvider", () => {
       });
     });
 
-    expect(countdownCue.playShortCue).toHaveBeenCalledTimes(1);
+    expect(countdownCue.playShortCue).not.toHaveBeenCalled();
     expect(countdownCue.playLongCue).not.toHaveBeenCalled();
     expect(mockCueHaptic).not.toHaveBeenCalled();
     expect(rest.listActiveSessionIds).not.toHaveBeenCalled();
@@ -1788,7 +1789,7 @@ describe("WorkoutAppRuntimeProvider", () => {
     expect(notifications.requestPermission).not.toHaveBeenCalled();
   });
 
-  it("keeps both-channel cue delivery independent when both channels fail", async () => {
+  it("does not dispatch cluster cues after TIM-01 retirement", async () => {
     const repository = runtimeRepository([activeView, activeView], [activation]);
     const advanced = runtimeAdvancedTimingRepository();
     const rest = runtimeRestRepository();
@@ -1848,18 +1849,16 @@ describe("WorkoutAppRuntimeProvider", () => {
       await Promise.resolve();
     });
 
-    expect(mockCueHaptic).toHaveBeenCalledTimes(1);
-    expect(countdownCue.playLongCue).toHaveBeenCalledTimes(1);
+    expect(mockCueHaptic).not.toHaveBeenCalled();
+    expect(countdownCue.playLongCue).not.toHaveBeenCalled();
     expect(countdownCue.playShortCue).not.toHaveBeenCalled();
     expect(rest.listActiveSessionIds).not.toHaveBeenCalled();
     expect(lifecycle.trigger).not.toHaveBeenCalled();
     expect(notifications.requestPermission).not.toHaveBeenCalled();
-    await waitFor(() => {
-      expect(captured?.advancedTimingCueFailed).toBe(true);
-    });
+    expect(captured?.advancedTimingCueFailed).toBeUndefined();
   });
 
-  it("reconciles advanced timing on foreground without entering the rest lifecycle", async () => {
+  it("does not reconcile legacy advanced timing on foreground", async () => {
     const repository = runtimeRepository([activeView, activeView], [activation]);
     const advanced = runtimeAdvancedTimingRepository();
     const rest = runtimeRestRepository();
@@ -1931,16 +1930,7 @@ describe("WorkoutAppRuntimeProvider", () => {
         onAppStateChange?.("active");
         await Promise.resolve();
       });
-      await waitFor(() => {
-        expect(advanced.reconcileAdvancedTiming).toHaveBeenCalledWith({
-          sessionId: "session-1",
-          sessionSetId: "set-1",
-          expectedSessionRevision: 1,
-          expectedAdvancedTimingRevision: 3,
-          nowMs: 20_050,
-          foregroundSinceMs: 20_050,
-        });
-      });
+      expect(advanced.reconcileAdvancedTiming).not.toHaveBeenCalled();
       expect(rest.listActiveSessionIds).not.toHaveBeenCalled();
       expect(lifecycle.trigger).not.toHaveBeenCalled();
       expect(notifications.requestPermission).not.toHaveBeenCalled();
@@ -2002,7 +1992,7 @@ describe("WorkoutAppRuntimeProvider", () => {
     }
   });
 
-  it("continues foreground reconciliation through cluster gaps and later contexts", async () => {
+  it("does not replay any legacy timing contexts after foreground", async () => {
     const repository = runtimeRepository([activeView, activeView], [activation]);
     const advanced = runtimeAdvancedTimingRepository();
     const rest = runtimeRestRepository();
@@ -2080,12 +2070,7 @@ describe("WorkoutAppRuntimeProvider", () => {
         onAppStateChange?.("active");
         await Promise.resolve();
       });
-      await waitFor(() => {
-        expect(advanced.reconcileAdvancedTiming).toHaveBeenCalledTimes(2);
-      });
-      expect(jest.mocked(advanced.reconcileAdvancedTiming).mock.calls.map(
-        ([input]) => input.sessionId,
-      )).toEqual(["session-cluster", "session-running"]);
+      expect(advanced.reconcileAdvancedTiming).not.toHaveBeenCalled();
     } finally {
       addEventListener.mockRestore();
     }
