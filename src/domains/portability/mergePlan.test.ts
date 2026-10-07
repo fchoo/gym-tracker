@@ -1920,6 +1920,18 @@ describe("portable merge plan", () => {
     expect(aggregate.tables.owned_plan_schedules).toEqual([expect.objectContaining({ lifecycle: "active", plan_kind: "running" })]);
   });
 
+  it("fails closed when a shared plan identity changes sport", async () => {
+    const archive = snapshot({ id: "archive-session", marker: "archive", modifiedAtMs: 20 }, {
+      plans: [{ id: "archive-plan", origin: "custom", portable_id: "c".repeat(32), plan_kind: "running" }],
+    });
+    const local = snapshot({ id: "local-session", marker: "local", modifiedAtMs: 10 }, {
+      plans: [{ id: "local-plan", origin: "custom", portable_id: "c".repeat(32), plan_kind: "strength" }],
+    });
+
+    await expect(buildPortableMergePlan({ archive, local, payloadDigest: async () => "0".repeat(64) }))
+      .rejects.toEqual(new MergePlanError("merge_plan_invalid"));
+  });
+
   it.each([
     ["a mutation request whose source selects this plan but result cannot map", {
       owned_plan_mutation_requests: [{ request_id: "mutation", source_plan_id: "archive-plan", result_plan_id: "other-plan" }],
