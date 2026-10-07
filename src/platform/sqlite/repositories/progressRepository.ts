@@ -89,11 +89,56 @@ type RecommendationReviewRow = Readonly<{
   created_at_ms: number;
 }>;
 
+type RunningActivityFactRow = Readonly<{
+  id: string;
+  started_at_ms: number;
+  aggregate_json: string;
+  opportunity_id: string | null;
+}>;
+
+type RunningGoalFactRow = Readonly<{
+  id: string;
+  plan_id: string;
+  revision: number;
+  goal_json: string;
+}>;
+
+type BodyweightFactRow = Readonly<{
+  id: string;
+  owner_id: string;
+  current_revision: number;
+  local_date: string;
+  timezone: string;
+  grams: number;
+}>;
+
+type SourceAvailability = "available" | "unavailable";
+
+export type ProgressSourceFacts = Readonly<{
+  running: Readonly<{
+    kind: SourceAvailability;
+    activityKind: SourceAvailability;
+    goalKind: SourceAvailability;
+    activities: readonly Readonly<{
+      id: string; startedAtMs: number; localDate: string; opportunityId: string | null;
+      distanceMeters: number; durationMs: number;
+    }>[];
+    goals: readonly Readonly<{ id: string; planId: string; revision: number; goalJson: string; }>[];
+  }>;
+  bodyweight: Readonly<{
+    kind: SourceAvailability;
+    entries: readonly Readonly<{
+      id: string; ownerId: string; revision: number; localDate: string; timezone: string; grams: number;
+    }>[];
+  }>;
+}>;
+
 export type ProgressRepositoryRead = Readonly<{
   period: ProgressPeriod;
   freshness: ProgressProjectionFreshness;
   projection: ProgressPeriodProjection | null;
   diagnostic?: ProgressProjectionDiagnostic;
+  sourceFacts?: ProgressSourceFacts;
 }>;
 
 export type ProgressRepository = Readonly<{
@@ -221,6 +266,56 @@ function parseJsonRecord(value: string): Record<string, unknown> | null {
   } catch {
     return null;
   }
+}
+
+function positiveSafeInteger(value: unknown): value is number {
+  return typeof value === "number" && Number.isSafeInteger(value) && value > 0;
+}
+
+async function loadSourceFacts(kernel: SqliteKernel): Promise<ProgressSourceFacts> {
+  const [activityRows, goalRows, bodyweightRows] = await Promise.all([
+    kernel.queryAll<RunningActivityFactRow>(
+      `SELECT activity.id, activity.started_at_ms, activity.aggregate_json, match.opportunity_id
+         FROM imported_activities activity
+         JOIN imported_activity_current_lifecycle lifecycle ON lifecycle.activity_id = activity.id
+         LEFT JOIN running_activity_current_matches match ON match.activity_id = activity.id
+        WHERE lifecycle.removal_state = 'active'
+        ORDER BY activity.started_at_ms, activity.id`,
+    ),
+    kernel.queryAll<RunningGoalFactRow>(
+      `SELECT id, plan_id, revision, goal_json FROM running_goals ORDER BY plan_id, revision, id`,
+    ),
+    kernel.queryAll<BodyweightFactRow>(
+      `SELECT entry.id, entry.owner_id, entry.current_revision, measurement.local_date, measurement.timezone, measurement.grams
+         FROM bodyweight_entries entry
+         JOIN bodyweight_entry_events measurement ON measurement.entry_id = entry.id
+          AND measurement.revision = entry.current_revision
+        WHERE entry.lifecycle = 'active' AND measurement.local_date IS NOT NULL
+        ORDER BY measurement.local_date DESC, entry.id`,
+    ),
+  ]);
+  const activities = activityRows.flatMap((row) => {
+    const aggregate = parseJsonRecord(row.aggregate_json);
+    const normalized = aggregate?.normalized !== null && typeof aggregate?.normalized === "object" && !Array.isArray(aggregate.normalized)
+      ? aggregate.normalized as Record<string, unknown> : null;
+    const localDate = stringValue(aggregate, "confirmed_local_date");
+    const distanceMeters = normalized?.distance_meters;
+    const durationMs = normalized?.duration_ms;
+    if (localDate === null || !positiveSafeInteger(distanceMeters) || !positiveSafeInteger(durationMs)) return [];
+    return [Object.freeze({ id: row.id, startedAtMs: row.started_at_ms, localDate, opportunityId: row.opportunity_id, distanceMeters, durationMs })];
+  });
+  const goals = goalRows.flatMap((row) => {
+    const goal = parseJsonRecord(row.goal_json);
+    return stringValue(goal, "planId") === row.plan_id ? [Object.freeze({ id: row.id, planId: row.plan_id, revision: row.revision, goalJson: row.goal_json })] : [];
+  });
+  const entries = bodyweightRows.flatMap((row) => positiveSafeInteger(row.grams)
+    ? [Object.freeze({ id: row.id, ownerId: row.owner_id, revision: row.current_revision, localDate: row.local_date, timezone: row.timezone, grams: row.grams })] : []);
+  const activityKind: SourceAvailability = activities.length === 0 ? "unavailable" : "available";
+  const goalKind: SourceAvailability = goals.length === 0 ? "unavailable" : "available";
+  return Object.freeze({
+    running: Object.freeze({ kind: activityKind === "available" || goalKind === "available" ? "available" : "unavailable", activityKind, goalKind, activities: Object.freeze(activities), goals: Object.freeze(goals) }),
+    bodyweight: Object.freeze({ kind: entries.length === 0 ? "unavailable" : "available", entries: Object.freeze(entries) }),
+  });
 }
 
 function stringValue(
@@ -403,6 +498,7 @@ export function createProgressRepository(
         legacyRecommendationRows,
         ownedRecommendationRows,
         sourceSessions,
+        sourceFacts,
       ] = await Promise.all([
         kernel.queryAll<PeriodInputRow>(
           `SELECT local_date, completed_exercises, planned_exercises,
@@ -459,6 +555,7 @@ export function createProgressRepository(
            ORDER BY recommendation.created_at_ms DESC, recommendation.id`,
         ),
         loadEffectiveHistoryProjectionSessions(kernel),
+        loadSourceFacts(kernel),
       ]);
       const recommendations = [
         ...legacyRecommendationRows,
@@ -475,6 +572,7 @@ export function createProgressRepository(
       return Object.freeze({
         period: input.period,
         freshness: "current",
+        sourceFacts,
         projection: withToSortedCompatibility(() => projectProgressPeriod({
           period: input.period,
           nowLocalDate: input.nowLocalDate,

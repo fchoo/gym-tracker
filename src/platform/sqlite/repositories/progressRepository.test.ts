@@ -24,7 +24,7 @@ describe("progress repository factual source reads", () => {
     const kernel = { queryAll } as unknown as SqliteKernel;
 
     const result = await createProgressRepository(kernel).load({
-      period: "week",
+      period: "4_weeks",
       nowLocalDate: "2026-11-02",
     });
 
