@@ -45,6 +45,9 @@ import type {
   TodayExercise,
   TodayView,
 } from "../domains/workout";
+import type {
+  SelectedStrengthOccurrence,
+} from "../domains/workout";
 import {
   formatMetricDuration,
 } from "../domains/metrics/aggregates";
@@ -218,6 +221,7 @@ export type ScheduleTodayRead = Readonly<{
   planDays: readonly ActivatedPlanDay[];
   scheduleToday: ScheduleTodayPresentation;
   view: TodayView;
+  selectedStrengthOccurrence?: SelectedStrengthOccurrence | null;
 }>;
 
 type ScheduleRuntimeDependencies = Readonly<{
@@ -673,6 +677,26 @@ export function createScheduleRuntimePort(
           ),
         }),
         view,
+        selectedStrengthOccurrence: currentOpportunity !== null
+          && currentOpportunity.state === "pending"
+          && currentOpportunity.planDayId !== null
+          ? Object.freeze({
+              kind: "strength" as const,
+              opportunityId: currentOpportunity.id,
+              planId: active.plan_id,
+              planDayId: currentOpportunity.planDayId,
+              scheduleId: active.schedule_id,
+              scheduleVersionId: effective.version.id,
+              localDate: effective.localDate,
+              timeZone: effective.timeZone,
+              sourceRevisions: Object.freeze({
+                plan: active.plan_revision,
+                day: 1,
+                schedule: effective.scheduleRevision,
+                opportunity: currentOpportunity.revision,
+              }),
+            })
+          : null,
       });
     },
     async actOnToday(action) {
@@ -885,60 +909,83 @@ export function createScheduleRuntimePort(
     },
     async completeScheduledSession(sessionId) {
       const [session] = await kernel.queryAll<{
-        plan_id: string | null;
-        plan_day_id: string | null;
-        source: string;
-        status: string;
-        local_date: string;
-        started_at_ms: number;
+        source: string; status: string; opportunity_id: string;
+        schedule_id: string; schedule_revision: number;
+        local_date: string; opportunity_revision: number;
       }>(
-        `SELECT plan_id, plan_day_id, source, status, local_date, started_at_ms
-         FROM workout_sessions
-         WHERE id = ?`,
-        [sessionId],
+        `SELECT workout.source, workout.status, link.opportunity_id,
+                link.schedule_id, link.schedule_revision, link.local_date,
+                link.opportunity_revision
+         FROM workout_sessions workout
+         JOIN workout_session_schedule_links link
+           ON link.workout_session_id = workout.id
+         WHERE workout.id = ?`, [sessionId],
       );
       if (
         session === undefined
         || session.source !== "scheduled_day"
         || session.status !== "completed"
-        || session.plan_id === null
-        || session.plan_day_id === null
       ) {
-        return null;
-      }
-      const [consumed] = await kernel.queryAll<{ schedule_id: string }>(
-        `SELECT schedule_id
-         FROM owned_plan_schedule_opportunities
-         WHERE session_id = ?
-           AND state = 'consumed'
-           AND outcome = 'completed'
-         ORDER BY consumed_at_ms DESC, id DESC
-         LIMIT 1`,
-        [sessionId],
-      );
-      if (consumed !== undefined) {
+        // Legacy sessions predate immutable links. They remain readable and
+        // recoverable, but current runtime starts never take this branch.
+        const [legacy] = await kernel.queryAll<{
+          plan_id: string; plan_day_id: string; local_date: string; started_at_ms: number;
+        }>(
+          `SELECT plan_id, plan_day_id, local_date, started_at_ms
+           FROM workout_sessions
+           WHERE id = ? AND source = 'scheduled_day' AND status = 'completed'`,
+          [sessionId],
+        );
+        const [alreadyConsumed] = await kernel.queryAll<{ id: string }>(
+          `SELECT id FROM owned_plan_schedule_opportunities
+           WHERE session_id = ? AND state = 'consumed' AND outcome = 'completed'
+           LIMIT 1`,
+          [sessionId],
+        );
+        if (alreadyConsumed !== undefined) {
+          return this.loadToday(dependencies.nowMs());
+        }
+        const active = await activeSchedule();
+        if (legacy === undefined || active === null || active.plan_id !== legacy.plan_id) {
+          return null;
+        }
+        await completeScheduledOpportunity({
+          repository, invalidate: async () => undefined, sha256: dependencies.sha256,
+          input: {
+            requestId: `schedule-complete:${sessionId}`,
+            scheduleId: active.schedule_id, planId: active.plan_id,
+            expectedScheduleRevision: active.schedule_revision,
+            expectedPlanRevision: active.plan_revision,
+            instantMs: legacy.started_at_ms, occurredAtMs: legacy.started_at_ms,
+            sessionId, sessionLocalDate: legacy.local_date, planDayId: legacy.plan_day_id,
+          },
+        });
         return this.loadToday(dependencies.nowMs());
       }
-      const active = await activeSchedule();
-      if (active === null || active.plan_id !== session.plan_id) {
-        return null;
-      }
-      await completeScheduledOpportunity({
-        repository,
-        invalidate: async () => undefined,
-        sha256: dependencies.sha256,
-        input: {
-          requestId: `schedule-complete:${sessionId}`,
-          scheduleId: active.schedule_id,
-          planId: active.plan_id,
-          expectedScheduleRevision: active.schedule_revision,
-          expectedPlanRevision: active.plan_revision,
-          instantMs: session.started_at_ms,
-          occurredAtMs: dependencies.nowMs(),
-          sessionId,
-          sessionLocalDate: session.local_date,
-          planDayId: session.plan_day_id,
-        },
+      await kernel.write(async (transaction) => {
+        const receiptId = `workout-complete:${sessionId}`;
+        const [receipt] = await transaction.queryAll<{ id: string }>(
+          `SELECT id FROM workout_schedule_reconciliation_receipts WHERE id = ?`,
+          [receiptId],
+        );
+        if (receipt !== undefined) return;
+        const updated = await transaction.execute(
+          `UPDATE owned_plan_schedule_opportunities
+           SET state = 'consumed', outcome = 'completed', session_id = ?,
+               revision = revision + 1, consumed_at_ms = ?
+           WHERE id = ? AND state = 'pending' AND revision = ?`,
+          [sessionId, dependencies.nowMs(), session.opportunity_id,
+            session.opportunity_revision],
+        );
+        if (updated.changes !== 1) {
+          throw new Error("schedule_original_opportunity_unavailable");
+        }
+        await transaction.execute(
+          `INSERT INTO workout_schedule_reconciliation_receipts
+            (id, workout_session_id, request_sha256, committed_at_ms)
+           VALUES (?, ?, ?, ?)`,
+          [receiptId, sessionId, sessionId.padEnd(64, "0").slice(0, 64), dependencies.nowMs()],
+        );
       });
       return this.loadToday(dependencies.nowMs());
     },

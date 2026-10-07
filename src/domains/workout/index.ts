@@ -5,9 +5,6 @@ import type {
 import type {
   MetricProfile,
 } from "../metrics";
-import type {
-  StrengthOccurrenceContext,
-} from "../scheduling/activePlanSelection";
 
 export type WorkoutStartMode =
   | "scheduled"
@@ -20,6 +17,23 @@ export type WorkoutSessionSource =
   | "alternate_day"
   | "rest_day"
   | "empty";
+
+export type SelectedStrengthOccurrence = Readonly<{
+  kind: "strength";
+  opportunityId: string;
+  planId: string;
+  planDayId: string;
+  scheduleId: string;
+  scheduleVersionId: string;
+  localDate: string;
+  timeZone: string;
+  sourceRevisions: Readonly<{
+    plan: number;
+    day: number;
+    schedule: number;
+    opportunity: number;
+  }>;
+}>;
 
 export type StartWorkoutRequest =
   | Readonly<{
@@ -34,7 +48,7 @@ export type StartWorkoutRequest =
        * legacy optional shape deliberately remains attribution-free so old
        * interrupted sessions are never guessed onto a later activation.
        */
-      selectedOccurrence?: StrengthOccurrenceContext;
+      selectedOccurrence?: SelectedStrengthOccurrence;
       commandIdentity?: string;
     }>
   | Readonly<{

@@ -2487,6 +2487,17 @@ export function WorkoutAppRuntimeProvider({
       if (planId === undefined) {
         throw new Error("active_plan_missing");
       }
+      if (mode === "scheduled") {
+        const selected = scheduledToday?.selectedStrengthOccurrence;
+        if (
+          selected === null
+          || selected === undefined
+          || selected.planId !== planId
+          || selected.planDayId !== dayId
+        ) {
+          throw new Error("selected_strength_occurrence_unavailable");
+        }
+      }
       const session = await startWorkout({
         repository: services.repository,
         request: {
@@ -2496,6 +2507,13 @@ export function WorkoutAppRuntimeProvider({
           localDate,
           timezone,
           startedAtMs: dependencies.nowMs(),
+          ...(mode === "scheduled"
+            ? {
+                selectedOccurrence: scheduledToday!.selectedStrengthOccurrence!,
+                commandIdentity: dependencies.nowMs().toString(16)
+                  .padStart(64, "0"),
+              }
+            : {}),
         },
       });
       setState(await trustedRead(services));
