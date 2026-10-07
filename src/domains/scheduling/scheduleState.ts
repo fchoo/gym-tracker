@@ -195,6 +195,163 @@ export type RunningOpportunityTransition = Readonly<{
   }>[];
 }>;
 
+/** A normalized occurrence identity used at the Strength/Running collision
+ * boundary.  It intentionally carries the schedule version, local civil date,
+ * timezone and revision rather than inferring any of those from current plan
+ * activation. */
+export type CollisionScheduleOccurrenceV1 = Readonly<{
+  id: string;
+  scheduleId: string;
+  scheduleVersionId: string;
+  planId: string;
+  slotId: string;
+  localDate: LocalDate;
+  timeZone: StoredTimeZone;
+  revision: number;
+  state: "planned" | "advanced" | "skipped" | "missed" | "overridden";
+}>;
+
+export type ScheduleCollisionDecision = "move_running" | "move_strength" | "keep_both";
+
+export type ScheduleCollisionDecisionCommand = Readonly<{
+  id: string;
+  decision: ScheduleCollisionDecision;
+  occurredAtMs: number;
+  strength: CollisionScheduleOccurrenceV1;
+  running: CollisionScheduleOccurrenceV1;
+  prospectiveLocalDate: LocalDate | null;
+}>;
+
+export type ScheduleCollisionDecisionEventV1 = Readonly<{
+  version: 1;
+  id: string;
+  type: "schedule_collision_decided";
+  decision: ScheduleCollisionDecision;
+  occurredAtMs: number;
+  strengthOpportunityId: string;
+  strengthScheduleId: string;
+  strengthScheduleVersionId: string;
+  strengthExpectedRevision: number;
+  runningOpportunityId: string;
+  runningScheduleId: string;
+  runningScheduleVersionId: string;
+  runningSlotId: string;
+  runningExpectedRevision: number;
+}>;
+
+export type ProspectiveCollisionIntentV1 = Readonly<{
+  version: 1;
+  selected: "strength" | "running";
+  sourceOpportunityId: string;
+  sourceScheduleId: string;
+  sourceScheduleVersionId: string;
+  expectedRevision: number;
+  localDate: LocalDate;
+  timeZone: StoredTimeZone;
+}>;
+
+function assertCollisionOccurrence(value: CollisionScheduleOccurrenceV1): void {
+  assertNonEmptyIdentifier(value.id);
+  assertNonEmptyIdentifier(value.scheduleId);
+  assertNonEmptyIdentifier(value.scheduleVersionId);
+  assertNonEmptyIdentifier(value.planId);
+  assertNonEmptyIdentifier(value.slotId);
+  if (!Number.isSafeInteger(value.revision) || value.revision < 1) {
+    throw new ScheduleTransitionError("schedule_revision_conflict");
+  }
+}
+
+/** Appends a decision and, when requested, a prospective move intent.  Neither
+ * the selected nor the unselected source occurrence is rewritten here; the
+ * writer can later materialize the prospective intent under the exact identity
+ * captured in this event. */
+export function appendScheduleCollisionDecision(input: ScheduleCollisionDecisionCommand): Readonly<{
+  event: ScheduleCollisionDecisionEventV1;
+  prospectiveIntent: ProspectiveCollisionIntentV1 | null;
+}> {
+  assertNonEmptyIdentifier(input.id);
+  assertCollisionOccurrence(input.strength);
+  assertCollisionOccurrence(input.running);
+  if (!Number.isSafeInteger(input.occurredAtMs) || input.occurredAtMs < 0) {
+    throw new ScheduleTransitionError("schedule_time_invalid");
+  }
+  if (
+    (input.decision === "keep_both" && input.prospectiveLocalDate !== null)
+    || (input.decision !== "keep_both" && input.prospectiveLocalDate === null)
+  ) {
+    throw new ScheduleTransitionError("schedule_collision_intent_invalid");
+  }
+  const event = Object.freeze({
+    version: 1 as const,
+    id: input.id,
+    type: "schedule_collision_decided" as const,
+    decision: input.decision,
+    occurredAtMs: input.occurredAtMs,
+    strengthOpportunityId: input.strength.id,
+    strengthScheduleId: input.strength.scheduleId,
+    strengthScheduleVersionId: input.strength.scheduleVersionId,
+    strengthExpectedRevision: input.strength.revision,
+    runningOpportunityId: input.running.id,
+    runningScheduleId: input.running.scheduleId,
+    runningScheduleVersionId: input.running.scheduleVersionId,
+    runningSlotId: input.running.slotId,
+    runningExpectedRevision: input.running.revision,
+  });
+  if (input.decision === "keep_both") {
+    return Object.freeze({ event, prospectiveIntent: null });
+  }
+  const selected = input.decision === "move_strength" ? "strength" : "running";
+  const occurrence = selected === "strength" ? input.strength : input.running;
+  return Object.freeze({
+    event,
+    prospectiveIntent: Object.freeze({
+      version: 1 as const,
+      selected,
+      sourceOpportunityId: occurrence.id,
+      sourceScheduleId: occurrence.scheduleId,
+      sourceScheduleVersionId: occurrence.scheduleVersionId,
+      expectedRevision: occurrence.revision,
+      localDate: input.prospectiveLocalDate!,
+      timeZone: occurrence.timeZone,
+    }),
+  });
+}
+
+/** Applies a transition to one selected schedule snapshot only.  This pure
+ * boundary makes it impossible for an operation chosen for one sport to alter
+ * the other sport's pointer, revision, occurrence or timezone. */
+export function transitionSelectedSchedule(input: Readonly<{
+  schedules: Readonly<{
+    strength: CollisionScheduleOccurrenceV1;
+    running: CollisionScheduleOccurrenceV1;
+  }>;
+  selected: "strength" | "running";
+  expectedRevision: number;
+  nextState: CollisionScheduleOccurrenceV1["state"];
+}>): Readonly<{
+  next: Readonly<{
+    strength: CollisionScheduleOccurrenceV1;
+    running: CollisionScheduleOccurrenceV1;
+  }>;
+}> {
+  const selected = input.schedules[input.selected];
+  assertCollisionOccurrence(selected);
+  assertExpectedRevision(selected.revision, input.expectedRevision);
+  if (selected.state !== "planned") {
+    throw new ScheduleTransitionError("schedule_opportunity_consumed");
+  }
+  const advanced = Object.freeze({
+    ...selected,
+    revision: selected.revision + 1,
+    state: input.nextState,
+  });
+  return Object.freeze({
+    next: Object.freeze(input.selected === "strength"
+      ? { strength: advanced, running: input.schedules.running }
+      : { strength: input.schedules.strength, running: advanced }),
+  });
+}
+
 export function transitionRunningOpportunity(input: Readonly<{
   current: RunningOpportunityStateV1;
   expectedRevision: number;

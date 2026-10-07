@@ -36,11 +36,14 @@ describe("Phase 13 independent schedule collision semantics", () => {
     state: "planned" as const,
   });
 
-  it.each([
-    ["move_running", "running"],
-    ["move_strength", "strength"],
-    ["keep_both", "none"],
-  ] as const)("appends %s only for the exact selected future occurrence", (decision, selected) => {
+  it.each<Readonly<{
+    decision: "move_running" | "move_strength" | "keep_both";
+    selected: "running" | "strength" | "none";
+  }>>([
+    { decision: "move_running", selected: "running" },
+    { decision: "move_strength", selected: "strength" },
+    { decision: "keep_both", selected: "none" },
+  ])("appends $decision only for the exact selected future occurrence", ({ decision, selected }) => {
     const command = createCollisionDecisionCommand({
       id: `collision-${decision}`,
       decision,
@@ -57,7 +60,7 @@ describe("Phase 13 independent schedule collision semantics", () => {
       strengthOpportunityId: strength.id,
       runningOpportunityId: running.id,
     });
-    expect(result.prospectiveIntent?.selected).toBe(selected);
+    expect(result.prospectiveIntent?.selected ?? "none").toBe(selected);
     expect(result.prospectiveIntent?.localDate ?? null).toBe(
       selected === "none" ? null : "2026-11-08",
     );
