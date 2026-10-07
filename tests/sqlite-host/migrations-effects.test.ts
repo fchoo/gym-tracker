@@ -14,6 +14,7 @@ import {
   readFileSync,
   rmSync,
 } from "node:fs";
+import { createHash } from "node:crypto";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
@@ -199,7 +200,9 @@ afterEach(() => {
   temporaryDirectories.clear();
 });
 
-function fixture(name: "v0-empty.sql" | "v1-phase1.sql"): string {
+function fixture(
+  name: "v0-empty.sql" | "v1-phase1.sql" | "v27-multi-plan-baseline.sql",
+): string {
   return readFileSync(
     join(__dirname, "../migrations/fixtures", name),
     "utf8",
@@ -332,6 +335,69 @@ describe("Plan 01-06 forward migrations and internal recovery", () => {
     );
     expect(AUTOMATIC_BACKUP_GENERATION_TRIGGER_STATEMENTS.join("\n"))
       .not.toContain("portable_owner_identity");
+  });
+
+  it("migrates a fresh v0 database through schema 27 with only schema-23 backup triggers", async () => {
+    const runtime = await createHostRuntime();
+    try {
+      const result = await createMigrationRunner({
+        databaseName: "gym-tracker.db",
+        kernel: runtime.kernel,
+        migrations: runtimeMigrations,
+        recoveryBackup: validatedBackup(),
+      }).run();
+      const triggerNames = await runtime.kernel.queryAll<{ name: string }>(
+        `SELECT name FROM sqlite_master
+         WHERE type = 'trigger' AND name LIKE 'automatic_backup_generation_%'
+         ORDER BY name`,
+      );
+
+      expect(result.currentVersion).toBe(27);
+      expect(await userVersion(runtime.kernel)).toBe(27);
+      expect(triggerNames.map(({ name }) => name)).toEqual(
+        AUTOMATIC_BACKUP_GENERATION_TRIGGER_STATEMENTS.map((statement) =>
+          /CREATE TRIGGER ([a-z0-9_]+)/iu.exec(statement)?.[1],
+        ).sort(),
+      );
+    } finally {
+      await runtime.close();
+    }
+  });
+
+  it("characterizes deterministic protected facts in the synthetic schema-27 baseline", async () => {
+    const runtime = await createHostRuntime(fixture("v27-multi-plan-baseline.sql"));
+    const digest = async (sql: string) => createHash("sha256")
+      .update(JSON.stringify(await runtime.kernel.queryAll(sql)))
+      .digest("hex");
+    try {
+      await expect(runtime.kernel.queryAll("PRAGMA foreign_key_check")).resolves.toEqual([]);
+      await expect(runtime.kernel.queryAll("PRAGMA integrity_check"))
+        .resolves.toEqual([{ integrity_check: "ok" }]);
+      await expect(userVersion(runtime.kernel)).resolves.toBe(27);
+      await expect(runtime.kernel.queryAll<{ status: string }>(
+        "SELECT status FROM session_advanced_timing_states ORDER BY status",
+      )).resolves.toEqual([
+        { status: "expired" }, { status: "gap" }, { status: "paused" },
+        { status: "ready" }, { status: "running" }, { status: "stopped" },
+      ]);
+      await expect(Promise.all([
+        digest("SELECT id, status, revision, portable_id FROM workout_sessions ORDER BY id"),
+        digest("SELECT type, name, sql FROM sqlite_master WHERE name NOT LIKE 'sqlite_%' ORDER BY type, name"),
+        digest("SELECT name, sql FROM sqlite_master WHERE type = 'trigger' ORDER BY name"),
+        digest("PRAGMA foreign_key_check"),
+        digest("PRAGMA integrity_check"),
+        digest("PRAGMA user_version"),
+      ])).resolves.toEqual([
+        "f2d786d62501375751ba2e4aa3dce5bd39771eb2ba59f795ba51557485d05083",
+        "1db69a674c019a25e36f1886e70ce475adb92d7d640a4416ae0654322341095d",
+        "d0395be78328386757d1b170d99e159c7659115d2b12630e0ba23c5ea94acf4a",
+        "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+        "e44991bd2fd5f1d12155c8b64148202f5e1a517c669657525dbe5cde7671ef64",
+        "2e8b95e23bff9dd2917eab83b2bee5cd1be99b3b208e8017821988676654320f",
+      ]);
+    } finally {
+      await runtime.close();
+    }
   });
 
   it("retains the released manifest prefix while allowing later additive migrations", () => {
@@ -2935,6 +3001,7 @@ describe("Plan 01-06 native migration suite selection", () => {
   it("keeps a dedicated migration suite without changing the kernel ten-case contract", () => {
     expect(MIGRATIONS_EFFECTS_CONTRACT_CASES).toEqual([
       "migration-empty-v0",
+      "migration-fresh-v27-schema23-registry",
       "migration-retained-v1",
       "migration-statement-rollback",
       "migration-verify-rollback",

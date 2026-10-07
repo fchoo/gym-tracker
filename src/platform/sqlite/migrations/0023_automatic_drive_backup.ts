@@ -1,4 +1,4 @@
-import { LOGICAL_BACKUP_TABLES } from "../../../domains/portability/backupContracts";
+import { LOGICAL_BACKUP_SCHEMA_23_TABLES } from "../../../domains/portability/backupContracts";
 import type { Migration } from "../migrationRunner";
 import type { SqliteTransactionExecutor } from "../sqliteKernel";
 
@@ -32,7 +32,7 @@ function trigger(table: string, operation: "INSERT" | "UPDATE" | "DELETE"): stri
       WHERE id = 1; END`;
 }
 export const AUTOMATIC_BACKUP_GENERATION_TRIGGER_STATEMENTS = Object.freeze(
-  LOGICAL_BACKUP_TABLES.filter((table) => table !== "portable_owner_identity").flatMap((table) => [trigger(table, "INSERT"), trigger(table, "UPDATE"), trigger(table, "DELETE")]),
+  LOGICAL_BACKUP_SCHEMA_23_TABLES.flatMap((table) => [trigger(table, "INSERT"), trigger(table, "UPDATE"), trigger(table, "DELETE")]),
 );
 const ADOPTION_TRIGGER = `CREATE TRIGGER portable_owner_identity_adoption_only
   BEFORE UPDATE OF owner_namespace ON portable_owner_identity FOR EACH ROW

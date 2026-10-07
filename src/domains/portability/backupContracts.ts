@@ -89,6 +89,60 @@ export const LOGICAL_BACKUP_TABLES = Object.freeze(
   Object.keys(LOGICAL_BACKUP_TABLE_DEFINITIONS).sort(),
 ) as readonly LogicalBackupTableName[];
 
+/**
+ * Migration 23 was shipped before the Phase 13 source graph existed. Its
+ * generation triggers must keep addressing this exact schema-23 table set on
+ * a fresh install, rather than observing the latest logical-backup registry.
+ */
+export const LOGICAL_BACKUP_SCHEMA_23_TABLES = Object.freeze([
+  "app_settings",
+  "exercise_aliases",
+  "exercise_library_entries",
+  "exercise_metric_baselines",
+  "exercise_owner_preferences",
+  "exercise_search_terms",
+  "exercise_taxonomy",
+  "exercises",
+  "history_audit_events",
+  "history_session_overlays",
+  "metric_profile_migration_events",
+  "owned_plan_aggregate_states",
+  "owned_plan_day_exercises",
+  "owned_plan_day_sources",
+  "owned_plan_mutation_requests",
+  "owned_plan_occurrence_sources",
+  "owned_plan_progression_policies",
+  "owned_plan_schedule_bindings",
+  "owned_plan_schedule_events",
+  "owned_plan_schedule_opportunities",
+  "owned_plan_schedule_overrides",
+  "owned_plan_schedule_versions",
+  "owned_plan_schedules",
+  "owned_plan_starter_sources",
+  "owned_plan_warmup_sets",
+  "owned_plan_working_set_targets",
+  "owned_progression_recommendations",
+  "plan_day_exercises",
+  "plan_days",
+  "plan_schedule_bindings",
+  "plan_schedules",
+  "plan_warmup_sets",
+  "plan_working_set_targets",
+  "plans",
+  "progression_policies",
+  "progression_recommendations",
+  "session_advanced_timing_states",
+  "session_exercises",
+  "session_rest_states",
+  "session_sets",
+  "session_undo_snapshots",
+  "starter_plan_activation_requests",
+  "taxonomy_terms",
+  "workout_session_exercise_edit_receipts",
+  "workout_session_exercise_reorder_receipts",
+  "workout_sessions",
+] as const satisfies readonly LogicalBackupTableName[]);
+
 export const LOGICAL_BACKUP_V1_TABLES = Object.freeze(
   LOGICAL_BACKUP_TABLES.filter((table) => table !== "portable_owner_identity"),
 ) as readonly LogicalBackupTableName[];

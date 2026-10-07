@@ -16,6 +16,9 @@ import {
 } from "../../platform/sqlite/migrations/0001_initial";
 import { migrations as runtimeMigrations } from "../../platform/sqlite/migrations";
 import {
+  LOGICAL_BACKUP_SCHEMA_23_TABLES,
+} from "../../domains/portability/backupContracts";
+import {
   createExpoRecoveryBackupPort,
 } from "../../platform/sqlite/recoveryBackup";
 import {
@@ -28,6 +31,7 @@ export const MIGRATIONS_EFFECTS_CONTRACT_VERSION = 1 as const;
 
 export const MIGRATIONS_EFFECTS_CONTRACT_CASES = [
   "migration-empty-v0",
+  "migration-fresh-v27-schema23-registry",
   "migration-retained-v1",
   "migration-statement-rollback",
   "migration-verify-rollback",
@@ -209,6 +213,26 @@ const contractCases: Record<MigrationsEffectsContractCaseId, ContractCase> = {
       invariant(
         await tableCount(kernel) >= 18,
         "empty_v0_schema_incomplete",
+      );
+    });
+  },
+
+  async "migration-fresh-v27-schema23-registry"(adapter, caseId) {
+    await withFreshRuntime(adapter, caseId, async ({ databaseName, kernel }) => {
+      const result = await createMigrationRunner({
+        databaseName,
+        kernel,
+        migrations: runtimeMigrations,
+        recoveryBackup: adapter.recoveryBackup,
+      }).run();
+      const triggers = await kernel.queryAll<{ name: string }>(
+        `SELECT name FROM sqlite_master
+         WHERE type = 'trigger' AND name LIKE 'automatic_backup_generation_%'`,
+      );
+      invariant(result.currentVersion === 27, "fresh_v27_version_not_committed");
+      invariant(
+        triggers.length === LOGICAL_BACKUP_SCHEMA_23_TABLES.length * 3,
+        "schema23_backup_trigger_registry_changed",
       );
     });
   },
