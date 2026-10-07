@@ -1900,6 +1900,26 @@ describe("portable merge plan", () => {
     expect(aggregate.tables.starter_plan_activation_requests).toHaveLength(1);
   });
 
+  it("keeps an imported active Running pair when the local active pair is Strength", () => {
+    const archive = snapshot({ id: "archive-session", marker: "archive", modifiedAtMs: 20 }, {
+      plans: [{ id: "archive-running", origin: "custom", portable_id: "c".repeat(32), plan_kind: "running", is_active: 1 }],
+      owned_plan_schedules: [{ id: "archive-schedule", plan_id: "archive-running", plan_kind: "running", lifecycle: "active", activated_at_ms: 4 }],
+    });
+    const local = snapshot({ id: "local-session", marker: "local", modifiedAtMs: 10 }, {
+      plans: [{ id: "local-strength", origin: "custom", portable_id: "d".repeat(32), plan_kind: "strength", is_active: 1 }],
+      owned_plan_schedules: [{ id: "local-schedule", plan_id: "local-strength", plan_kind: "strength", lifecycle: "active" }],
+    });
+
+    const aggregate = __mergePlanTestOnly.planAggregate(
+      archive, local,
+      { aggregateClass: "owned_plan", kind: "insert", portableId: "c".repeat(32), archiveId: "archive-running", localId: "archive-running" },
+      new Map(), new Map([["archive-running", "archive-running"]]), new Map(),
+    );
+
+    expect(aggregate.tables.plans).toEqual([expect.objectContaining({ is_active: 1, plan_kind: "running" })]);
+    expect(aggregate.tables.owned_plan_schedules).toEqual([expect.objectContaining({ lifecycle: "active", plan_kind: "running" })]);
+  });
+
   it.each([
     ["a mutation request whose source selects this plan but result cannot map", {
       owned_plan_mutation_requests: [{ request_id: "mutation", source_plan_id: "archive-plan", result_plan_id: "other-plan" }],
