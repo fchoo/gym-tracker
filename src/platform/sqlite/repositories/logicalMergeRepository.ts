@@ -647,6 +647,7 @@ function assertFullPlanSlice(plan: PortableMergePlan): void {
 export const __logicalMergeRepositoryTestOnly = Object.freeze({
   aggregateRows,
   aggregateKey,
+  assertSourceGraphAggregate,
   assertExactRows,
   assertCustomExerciseAggregate,
   assertFullPlanSlice,
@@ -655,6 +656,7 @@ export const __logicalMergeRepositoryTestOnly = Object.freeze({
   assertOwnedPlanAggregate,
   assertSessionAggregate,
   captureDeleteTriggers,
+  captureSourceGraphBackupTriggers,
   dropDeleteTriggers,
   deleteLocalAggregate,
   fail,
@@ -670,6 +672,7 @@ export const __logicalMergeRepositoryTestOnly = Object.freeze({
   insertOwnedPlanAggregate,
   insertRow,
   insertRows,
+  insertSourceGraphAggregate,
   markRebuildPending,
   ownedPlanAggregatesForFullPlan,
   ownedPlanTable,
@@ -684,6 +687,7 @@ export const __logicalMergeRepositoryTestOnly = Object.freeze({
   snapshotFullPlan,
   verifyFullPlanSlice,
   verifyRows,
+  withSingleSourceGraphGeneration,
 });
 
 function assertFullPlanMatchesLocal(

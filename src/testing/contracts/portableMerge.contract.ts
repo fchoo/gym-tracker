@@ -339,10 +339,11 @@ async function commitFullPlan(
   input: FullPlanInput,
   options: Readonly<{
     faultAfter?: (stage: LogicalMergeFaultStage) => Promise<void>;
+    omitNowMs?: boolean;
   }> = {},
 ): Promise<Readonly<{ state: "ready" | "rebuild_pending" }>> {
   return createFullPlanLogicalMergeWriter(kernel, {
-    nowMs: () => 99,
+    ...(options.omitNowMs === true ? {} : { nowMs: () => 99 }),
     sha256: adapter.sha256,
     ...(options.faultAfter === undefined ? {} : { faultAfter: options.faultAfter }),
   }).commitFullPlan({
@@ -732,7 +733,7 @@ const contractCases: Record<PortableMergeContractCaseId, ContractCase> = {
       const [before] = await local.kernel.queryAll<{ mutation_generation: number }>(
         "SELECT mutation_generation FROM automatic_backup_state WHERE id = 1",
       );
-      await commitFullPlan(adapter, local.kernel, input);
+      await commitFullPlan(adapter, local.kernel, input, { omitNowMs: true });
       const [after] = await local.kernel.queryAll<{ mutation_generation: number }>(
         "SELECT mutation_generation FROM automatic_backup_state WHERE id = 1",
       );

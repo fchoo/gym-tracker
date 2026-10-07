@@ -834,6 +834,70 @@ describe("logical merge repository", () => {
     })).not.toThrow();
   });
 
+  it("validates source-graph aggregate closure and rejects malformed roots", () => {
+    const operation = {
+      aggregateClass: "source_graph" as const,
+      kind: "insert" as const,
+      portableId: "a".repeat(32),
+      archiveId: "phase13-source-graph" as const,
+      localId: "phase13-source-graph" as const,
+    };
+    const empty = {
+      aggregateClass: "source_graph" as const,
+      portableId: operation.portableId,
+      tables: {},
+    };
+    expect(() => __logicalMergeRepositoryTestOnly.assertSourceGraphAggregate(empty, operation))
+      .not.toThrow();
+
+    const invalidTables = [
+      { imported_activities: [{ id: "activity" }] },
+      { imported_activity_identities: [{ activity_id: "missing" }] },
+      { bodyweight_entry_events: [{ entry_id: "missing" }] },
+      { bodyweight_command_receipts: [{ entry_id: "missing" }] },
+      { running_current_matches: [] },
+      { app_settings: [] },
+    ];
+    for (const tables of invalidTables) {
+      expect(() => __logicalMergeRepositoryTestOnly.assertSourceGraphAggregate({
+        ...empty,
+        tables,
+      }, operation)).toThrow(expect.objectContaining({ code: "logical_merge_failed" }));
+    }
+
+    expect(() => __logicalMergeRepositoryTestOnly.assertSourceGraphAggregate({
+      ...empty,
+      tables: {
+        imported_activities: [{ id: "activity" }],
+        imported_activity_identities: [{ activity_id: "activity" }],
+        bodyweight_entries: [{ id: "weight" }],
+        bodyweight_entry_events: [{ entry_id: "weight" }],
+        bodyweight_command_receipts: [{ entry_id: "weight" }],
+      },
+    }, operation)).not.toThrow();
+  });
+
+  it("verifies omitted source-graph tables as exact empty rows", async () => {
+    const operation = {
+      aggregateClass: "source_graph" as const,
+      kind: "insert" as const,
+      portableId: "a".repeat(32),
+      archiveId: "phase13-source-graph" as const,
+      localId: "phase13-source-graph" as const,
+    };
+    const plan: PortableMergePlan = {
+      ...operationPlan([operation]),
+      aggregates: [{
+        aggregateClass: "source_graph",
+        portableId: operation.portableId,
+        tables: {},
+      }],
+    };
+    await expect(__logicalMergeRepositoryTestOnly.verifyFullPlanSlice(
+      verificationTransaction(plan), plan, undefined,
+    )).resolves.toBeUndefined();
+  });
+
   it("rejects direct full-plan and live-local routing fallthroughs", () => {
     expect(() => __logicalMergeRepositoryTestOnly.assertFullPlanSlice({
       ...operationPlan([{ aggregateClass: "unknown", kind: "insert" } as never]),
@@ -910,6 +974,64 @@ describe("logical merge repository", () => {
       { workout_sessions: [{ id: "session" }] },
       async () => { throw new Error("fault"); },
     )).rejects.toThrow("fault");
+  });
+
+  it("fails closed when source-graph backup triggers are missing, blank, renamed, or changed", async () => {
+    const triggerRows = (parameters: readonly (null | number | string | Uint8Array)[]) =>
+      parameters.map((name) => ({
+        name: String(name),
+        sql: `CREATE TRIGGER ${String(name)} AFTER INSERT ON app_settings BEGIN SELECT 1; END`,
+      }));
+    const valid = transactionStub({
+      queryAll: async (_sql, parameters) => triggerRows(parameters),
+    });
+    await expect(__logicalMergeRepositoryTestOnly.withSingleSourceGraphGeneration(
+      valid, 1, async () => undefined,
+    )).resolves.toBeUndefined();
+
+    const missing = transactionStub({
+      queryAll: async (_sql, parameters) => triggerRows(parameters).slice(1),
+    });
+    await expect(__logicalMergeRepositoryTestOnly.captureSourceGraphBackupTriggers(missing))
+      .rejects.toEqual(expect.objectContaining({ code: "logical_merge_failed" }));
+
+    const blank = transactionStub({
+      queryAll: async (_sql, parameters) => triggerRows(parameters).map((row, index) =>
+        index === 0 ? { ...row, sql: "" } : row),
+    });
+    await expect(__logicalMergeRepositoryTestOnly.captureSourceGraphBackupTriggers(blank))
+      .rejects.toEqual(expect.objectContaining({ code: "logical_merge_failed" }));
+
+    const renamed = transactionStub({
+      queryAll: async (_sql, parameters) => triggerRows(parameters).map((row, index) =>
+        index === 0 ? { ...row, name: "unexpected-trigger" } : row),
+    });
+    await expect(__logicalMergeRepositoryTestOnly.withSingleSourceGraphGeneration(
+      renamed, 1, async () => undefined,
+    )).rejects.toEqual(expect.objectContaining({ code: "logical_merge_failed" }));
+
+    let reads = 0;
+    const changed = transactionStub({
+      queryAll: async (_sql, parameters) => {
+        reads += 1;
+        return triggerRows(parameters).map((row, index) =>
+          reads === 2 && index === 0 ? { ...row, sql: `${row.sql} ` } : row);
+      },
+    });
+    await expect(__logicalMergeRepositoryTestOnly.withSingleSourceGraphGeneration(
+      changed, 1, async () => undefined,
+    )).rejects.toEqual(expect.objectContaining({ code: "logical_merge_failed" }));
+  });
+
+  it("inserts an empty source graph through every table hook", async () => {
+    const stages: string[] = [];
+    await __logicalMergeRepositoryTestOnly.insertSourceGraphAggregate(
+      transactionStub(),
+      { aggregateClass: "source_graph", portableId: "a".repeat(32), tables: {} },
+      async (stage) => { stages.push(stage); },
+    );
+    expect(stages.length).toBeGreaterThan(0);
+    expect(stages.every((stage) => stage.startsWith("full_plan_insert:"))).toBe(true);
   });
 
   it("batches rows under the conservative bind limit and rejects unsafe batches", async () => {

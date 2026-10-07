@@ -1531,15 +1531,22 @@ function mappedGraphRows(
   const result: Record<string, readonly LogicalBackupRow[]> = {};
   for (const table of PHASE13_SOURCE_GRAPH_TABLES) {
     const definition = LOGICAL_BACKUP_TABLE_DEFINITIONS[table];
-    if (definition.primaryKey.length !== 1) invalid();
     const keyColumn = definition.primaryKey[0]!;
     const occupied = tableOccupiedIds(local, table, keyColumn);
     const ids = new Map<string, string>();
     for (const [index, row] of rowsFor(archive, table).entries()) {
       const sourceId = textId(row[keyColumn]);
-      const localId = occupied.has(sourceId)
+      const primaryReference = LOGICAL_BACKUP_REFERENCE_DEFINITIONS.find((reference) =>
+        reference.childTable === table
+        && reference.childColumns.length === 1
+        && reference.childColumns[0] === keyColumn
+        && reference.parentColumns.length === 1);
+      const parentMappedId = primaryReference === undefined
+        ? undefined
+        : maps.get(primaryReference.parentTable)?.get(sourceId);
+      const localId = parentMappedId ?? (occupied.has(sourceId)
         ? remappedChildId(table, ownerNamespace(archive), index, occupied)
-        : sourceId;
+        : sourceId);
       occupied.add(localId);
       ids.set(sourceId, localId);
     }
@@ -1595,8 +1602,7 @@ async function sourceGraphPlan(
   let tables: Readonly<Record<string, readonly LogicalBackupRow[]>>;
   try {
     tables = mappedGraphRows(archive, local);
-  } catch (error) {
-    if (!(error instanceof MergePlanError)) throw error;
+  } catch {
     return Object.freeze({
       operation: Object.freeze({ ...operation, kind: "conflict" as const }),
     });
@@ -1760,8 +1766,7 @@ export async function buildPortableMergePlan(input: Readonly<{
         )];
       }
       if (operation.aggregateClass === "source_graph" && operation.kind === "insert") {
-        if (sourceGraph.aggregate === undefined) invalid();
-        return [sourceGraph.aggregate];
+        return [sourceGraph.aggregate!];
       }
       return [];
     }));
@@ -1824,6 +1829,10 @@ export const __mergePlanTestOnly = Object.freeze({
   sessionOperation,
   mapWithConcurrency,
   sessionRows,
+  mappedGraphRows,
+  sourceGraphPlan,
+  sourceGraphRows,
+  sourceIdentityKey,
   settingPlan,
   tableOccupiedIds,
   textId,

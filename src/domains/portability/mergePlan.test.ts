@@ -1953,6 +1953,76 @@ describe("portable merge plan", () => {
     expect(graph?.tables.running_current_matches).toBeUndefined();
   });
 
+  it("plans duplicate and conflict outcomes for shared source identities", async () => {
+    const shared = {
+      imported_activities: [{ id: "activity", source: "garmin", source_activity_id: "external-1" }],
+      imported_activity_identities: [{ activity_id: "activity", source_kind: "garmin_connect_account", account_namespace: "owner-a", external_activity_id: "external-1" }],
+    };
+    const exact = snapshot({ id: "session", marker: "same", modifiedAtMs: 1 }, shared);
+    const duplicate = await buildPortableMergePlan({ archive: exact, local: exact, payloadDigest });
+    expect(duplicate.operations).toContainEqual(expect.objectContaining({
+      aggregateClass: "source_graph", kind: "duplicate",
+    }));
+    expect(duplicate.aggregates.some(({ aggregateClass }) => aggregateClass === "source_graph")).toBe(false);
+
+    const archive = snapshot({ id: "archive", marker: "archive", modifiedAtMs: 2 }, shared);
+    const local = snapshot({ id: "local", marker: "local", modifiedAtMs: 1 }, {
+      ...shared,
+      imported_activities: [{ id: "different-activity", source: "garmin", source_activity_id: "external-1" }],
+      imported_activity_identities: [{ activity_id: "different-activity", source_kind: "garmin_connect_account", account_namespace: "owner-a", external_activity_id: "external-1" }],
+    });
+    const conflict = await buildPortableMergePlan({ archive, local, payloadDigest });
+    expect(conflict.operations).toContainEqual(expect.objectContaining({
+      aggregateClass: "source_graph", kind: "conflict",
+    }));
+  });
+
+  it("remaps colliding source roots and their child references deterministically", async () => {
+    const archive = snapshot({ id: "archive", marker: "archive", modifiedAtMs: 2 }, {
+      imported_activities: [{ id: "activity", source: "garmin", source_activity_id: "external-1" }],
+      imported_activity_identities: [{ activity_id: "activity", source_kind: "garmin_connect_account", account_namespace: "owner-a", external_activity_id: "external-1" }],
+      imported_activity_events: [{ id: "event", activity_id: "activity", aggregate_revision: 1 }],
+    });
+    const local = snapshot({ id: "local", marker: "local", modifiedAtMs: 1 }, {
+      imported_activities: [{ id: "activity", source: "garmin", source_activity_id: "other" }],
+      imported_activity_events: [{ id: "event", activity_id: "activity", aggregate_revision: 1 }],
+    });
+    const plan = await buildPortableMergePlan({ archive, local, payloadDigest });
+    const graph = plan.aggregates.find(({ aggregateClass }) => aggregateClass === "source_graph")!;
+    const mappedActivityId = graph.tables.imported_activities![0]!.id;
+    expect(mappedActivityId).not.toBe("activity");
+    expect(graph.tables.imported_activity_identities![0]!.activity_id).toBe(mappedActivityId);
+    expect(graph.tables.imported_activity_events![0]!.activity_id).toBe(mappedActivityId);
+    expect(graph.tables.imported_activity_events![0]!.id).not.toBe("event");
+  });
+
+  it("covers legacy source identities, nullable graph references, and invalid digests", async () => {
+    expect(__mergePlanTestOnly.sourceIdentityKey({
+      source: "garmin",
+      source_activity_id: "legacy-activity",
+    })).toBe("legacy:garmin:legacy-activity");
+
+    const archive = snapshot({ id: "archive", marker: "archive", modifiedAtMs: 2 }, {
+      running_activity_match_events: [{
+        id: "match-event",
+        activity_id: "activity",
+        opportunity_id: "opportunity",
+        prior_opportunity_id: null,
+      }],
+    });
+    const local = snapshot({ id: "local", marker: "local", modifiedAtMs: 1 });
+    expect(__mergePlanTestOnly.mappedGraphRows(archive, local).running_activity_match_events)
+      .toEqual([expect.objectContaining({ prior_opportunity_id: null })]);
+
+    await expect(buildPortableMergePlan({
+      archive: snapshot({ id: "archive", marker: "archive", modifiedAtMs: 2 }, {
+        bodyweight_entries: [{ id: "weight" }],
+      }),
+      local,
+      payloadDigest: async () => "invalid-digest",
+    })).rejects.toEqual(new MergePlanError("merge_plan_invalid"));
+  });
+
   it.each([
     ["a mutation request whose source selects this plan but result cannot map", {
       owned_plan_mutation_requests: [{ request_id: "mutation", source_plan_id: "archive-plan", result_plan_id: "other-plan" }],
