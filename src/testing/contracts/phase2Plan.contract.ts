@@ -1578,10 +1578,7 @@ const contractCases: Record<Phase2PlanContractCaseId, ContractCase> = {
         [sessionId],
       ),
     ]);
-    const replayRejected = await rejectsWithCode(
-      () => reviseCompletedSet({ repository, input: correction }),
-      "revise_completed_set_conflict",
-    );
+    const replayed = await reviseCompletedSet({ repository, input: correction });
     const stateAfterReplay = await Promise.all([
       repository.getActiveWorkout(sessionId),
       readContractSet(kernel, first.id),
@@ -1606,7 +1603,8 @@ const contractCases: Record<Phase2PlanContractCaseId, ContractCase> = {
       ),
     ]);
     invariant(
-      replayRejected && sameJson(stateAfterReplay, stateAfterCorrection),
+      sameJson(replayed, corrected)
+      && sameJson(stateAfterReplay, stateAfterCorrection),
       "phase2_plan_completed_set_revision_replay_invalid",
     );
   },
