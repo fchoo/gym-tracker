@@ -581,6 +581,122 @@ describe("advanced timing repository state decoding", () => {
     }));
   });
 
+  it("characterizes every retained internal timing transition", async () => {
+    const base = {
+      sessionId: "session-1",
+      sessionSetId: "set-1",
+      expectedSessionRevision: 1,
+      expectedAdvancedTimingRevision: 2,
+      nowMs: 10_000,
+    };
+    const clusterReady = kernelForTransition({
+      state: row({
+        mode: "cluster", config_json: clusterJson,
+        progress_json: '{"currentGroupIndex":0,"phase":"ready"}',
+        status: "stopped", started_at_ms: null, next_boundary_at_ms: null,
+        stopped_at_ms: 0,
+      }),
+      target: { status: "draft", advanced_timing_resolved_json: clusterJson },
+    });
+    await expect(createAdvancedTimingRepository(clusterReady.kernel)
+      .beginAdvancedTimingClusterGap(base)).resolves.toEqual(expect.objectContaining({
+      state: expect.objectContaining({ state: "cluster_gap_running" }),
+    }));
+
+    const clusterRunning = kernelForTransition({
+      state: row({
+        mode: "cluster", config_json: clusterJson,
+        progress_json: '{"currentGroupIndex":0}',
+        status: "running", started_at_ms: 9_000, next_boundary_at_ms: 11_000,
+      }),
+      target: { status: "draft", advanced_timing_resolved_json: clusterJson },
+    });
+    await expect(createAdvancedTimingRepository(clusterRunning.kernel)
+      .pauseAdvancedTiming(base)).resolves.toEqual(expect.objectContaining({
+      state: expect.objectContaining({ state: "cluster_gap_paused" }),
+    }));
+    await expect(createAdvancedTimingRepository(clusterRunning.kernel)
+      .skipAdvancedTimingClusterGap(base)).resolves.toEqual(expect.objectContaining({
+      state: expect.objectContaining({ state: "cluster_ready" }),
+    }));
+
+    const perRepRunning = kernelForTransition({ state: row() });
+    await expect(createAdvancedTimingRepository(perRepRunning.kernel)
+      .pauseAdvancedTiming(base)).resolves.toEqual(expect.objectContaining({
+      state: expect.objectContaining({ state: "paused" }),
+    }));
+
+    const perRepPaused = kernelForTransition({
+      state: row({
+        status: "paused", started_at_ms: null, next_boundary_at_ms: null,
+        remaining_ms: 500,
+      }),
+    });
+    await expect(createAdvancedTimingRepository(perRepPaused.kernel)
+      .resumeAdvancedTiming(base)).resolves.toEqual(expect.objectContaining({
+      state: expect.objectContaining({ state: "running" }),
+    }));
+
+    await expect(createAdvancedTimingRepository(perRepRunning.kernel)
+      .stopAdvancedTiming(base)).resolves.toEqual(expect.objectContaining({
+      state: expect.objectContaining({ state: "stopped" }),
+    }));
+
+    const warmup = kernelForTransition({
+      state: null,
+      target: {
+        status: "draft",
+        set_kind: "warmup",
+        session_exercise_id: "session-exercise-1",
+        advanced_timing_resolved_json: perRepJson,
+      },
+    });
+    await expect(createAdvancedTimingRepository(warmup.kernel).startAdvancedTiming({
+      ...base,
+      expectedAdvancedTimingRevision: 0,
+      config: { version: 1, mode: "per_rep", intervalMs: 1_000, cueChannels: "haptic" },
+    })).resolves.toEqual(expect.objectContaining({
+      state: expect.objectContaining({ state: "running" }),
+    }));
+
+    await expect(createAdvancedTimingRepository(perRepRunning.kernel)
+      .pauseAdvancedTiming({ ...base, expectedAdvancedTimingRevision: 3 }))
+      .rejects.toThrow("advanced_timing_revision_conflict");
+
+    await expect(createAdvancedTimingRepository(perRepRunning.kernel)
+      .reconcileAdvancedTiming({
+        ...base,
+        nowMs: 2_500,
+        foregroundSinceMs: 1_500,
+      })).resolves.toEqual(expect.objectContaining({
+      state: expect.objectContaining({ state: "running", revision: 3 }),
+    }));
+
+    const setConfig = kernelForConfigUpdate({ state: null });
+    await expect(createAdvancedTimingRepository(setConfig.kernel)
+      .updateSessionSetAdvancedTiming({
+        sessionId: "session-1",
+        sessionSetId: "set-1",
+        expectedSessionRevision: 1,
+        expectedSetRevision: 2,
+        override: null,
+        nowMs: 1_000,
+      })).resolves.toEqual(expect.objectContaining({
+      state: expect.objectContaining({ state: "idle" }),
+    }));
+    await expect(createAdvancedTimingRepository(setConfig.kernel)
+      .updateSessionSetAdvancedTiming({
+        sessionId: "session-1",
+        sessionSetId: "set-1",
+        expectedSessionRevision: 1,
+        expectedSetRevision: 2,
+        override: { version: 1, mode: "per_rep", intervalMs: 1_000, cueChannels: "haptic" },
+        nowMs: 1_000,
+      })).resolves.toEqual(expect.objectContaining({
+      state: expect.objectContaining({ state: "idle" }),
+    }));
+  });
+
   it("maps shared context conflicts while configuring timing", async () => {
     const { kernel, executeCount } = kernelForTransition({ session: null });
     await expect(createAdvancedTimingRepository(kernel).configureAdvancedTiming({
