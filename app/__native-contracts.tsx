@@ -83,6 +83,11 @@ import {
   type PortableMergeContractResult,
 } from "../src/testing/contracts/portableMerge.contract";
 import {
+  MULTI_PLAN_RUNNING_CONTRACT_CASES,
+  runMultiPlanRunningContract as verifyMultiPlanRunningContract,
+  type MultiPlanRunningContractResult,
+} from "../src/testing/contracts/multiPlanRunning.contract";
+import {
   GOOGLE_DRIVE_BACKUP_CONTRACT_CASE_IDS,
   createExpoGoogleDriveBackupContractAdapter,
   runGoogleDriveBackupContract as verifyGoogleDriveBackupContract,
@@ -119,6 +124,7 @@ const defaultSuite = configuredSuite === "phase10" || configuredSuite === "phase
   || configuredSuite === "phase2-search"
   || configuredSuite === "phase2-starter"
   || configuredSuite === "portable-merge"
+  || configuredSuite === "multi-plan-running"
   || configuredSuite === "google-drive-backup"
   ? configuredSuite
   : "sqlite-kernel";
@@ -144,6 +150,7 @@ function expectedCaseCountFor(suite: typeof defaultSuite): number {
   "phase2-search": PHASE2_SEARCH_CASE_IDS.length,
   "phase2-starter": PHASE2_STARTER_CASE_IDS.length,
   "portable-merge": PORTABLE_MERGE_CONTRACT_CASES.length,
+  "multi-plan-running": MULTI_PLAN_RUNNING_CONTRACT_CASES.length,
   "google-drive-backup": GOOGLE_DRIVE_BACKUP_CONTRACT_CASE_IDS.length,
   "sqlite-kernel": 10,
   }[suite];
@@ -180,7 +187,8 @@ type NativeContractResult =
   | Phase2StarterContractResult
   | SqliteKernelContractResult
   | MigrationsEffectsContractResult
-  | PortableMergeContractResult;
+  | PortableMergeContractResult
+  | MultiPlanRunningContractResult;
 
 type RouteState =
   | Readonly<{ status: "disabled" | "running" }>
@@ -493,6 +501,12 @@ export default function NativeSqliteContractsScreen() {
           setState({ status: "finished", result });
           return;
         }
+        if (selectedSuite === "multi-plan-running") {
+          const result = await verifyMultiPlanRunningContract(runId);
+          console.log(`${RESULT_MARKER}${JSON.stringify(result)}`);
+          setState({ status: "finished", result });
+          return;
+        }
         if (selectedSuite === "google-drive-backup") {
           const result = await verifyGoogleDriveBackupContract(
             await createExpoGoogleDriveBackupContractAdapter(runId),
@@ -546,6 +560,8 @@ export default function NativeSqliteContractsScreen() {
       ? `Running migrations/effects preflight and ${expectedCaseCount} SQLite integrity contracts…`
       : selectedSuite === "portable-merge"
       ? `Running ${expectedCaseCount} portable merge SQLite contracts…`
+      : selectedSuite === "multi-plan-running"
+      ? `Running ${expectedCaseCount} Phase 13 lifecycle SQLite contracts…`
       : selectedSuite === "google-drive-backup"
       ? `Running ${expectedCaseCount} Google Drive fake-port contracts…`
       : "Running 10 SQLite integrity contracts…"
@@ -575,6 +591,8 @@ export default function NativeSqliteContractsScreen() {
           ? "Migrations & Effects Contracts"
           : selectedSuite === "portable-merge"
           ? "Portable Merge Contracts"
+          : selectedSuite === "multi-plan-running"
+          ? "Phase 13 Lifecycle Contracts"
           : selectedSuite === "google-drive-backup"
           ? "Google Drive Backup Contracts"
           : "SQLite Kernel Contracts"}
