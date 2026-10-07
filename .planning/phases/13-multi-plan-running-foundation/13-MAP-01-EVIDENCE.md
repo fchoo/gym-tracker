@@ -80,3 +80,10 @@ not whichever plan happens to be active later.
 
 Approval is complete. Evidence not listed as executed above is pending
 verification and must not reopen the `one-per-sport` owner decision.
+
+## Validation carried forward
+
+Validated against `.planning/v1.2-owner-decisions.json` on 2026-10-07:
+`decisions["MAP-01"].status` is `approved` and its exact selection is
+`one-per-sport`. Plan 13-02 may proceed only with that approved per-sport
+contract; no local artifact may substitute a different cardinality default.
