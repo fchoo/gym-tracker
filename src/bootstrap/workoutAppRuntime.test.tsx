@@ -1489,6 +1489,19 @@ describe("WorkoutAppRuntimeProvider", () => {
         state: "baseline",
         window: { start: "2026-07-28", end: "2026-08-24" },
       }),
+      sourceFacts: {
+        running: {
+          kind: "unavailable",
+          activityKind: "unavailable",
+          activities: [],
+          goalKind: "unavailable",
+          goals: [],
+        },
+        bodyweight: {
+          kind: "unavailable",
+          entries: [],
+        },
+      },
     });
     expect((kernel as unknown as { queryAll: jest.Mock }).queryAll)
       .toHaveBeenCalled();
