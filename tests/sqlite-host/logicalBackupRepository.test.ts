@@ -15,6 +15,7 @@ import { join } from "node:path";
 import {
   LOGICAL_BACKUP_TABLES,
   LOGICAL_BACKUP_FORMAT_VERSION,
+  logicalBackupTablesForVersion,
   type LogicalBackupSnapshot,
 } from "../../src/domains/portability/backupContracts";
 import {
@@ -240,7 +241,7 @@ describe("logical backup repository", () => {
     const snapshot = await collect(await open());
 
     expect(snapshot.tables).toEqual(expect.objectContaining(
-      Object.fromEntries(LOGICAL_BACKUP_TABLES
+      Object.fromEntries(logicalBackupTablesForVersion(LOGICAL_BACKUP_FORMAT_VERSION)
         .filter((table) => table !== "portable_owner_identity")
         .map((table) => [table, []])),
     ));
@@ -252,7 +253,7 @@ describe("logical backup repository", () => {
     ]);
     expect(snapshot.manifest).toEqual({
       catalogReferenceCount: 0,
-      rowCounts: expect.objectContaining(Object.fromEntries(LOGICAL_BACKUP_TABLES
+      rowCounts: expect.objectContaining(Object.fromEntries(logicalBackupTablesForVersion(LOGICAL_BACKUP_FORMAT_VERSION)
         .filter((table) => table !== "portable_owner_identity")
         .map((table) => [table, 0]))),
       totalRows: 1,
@@ -301,7 +302,9 @@ describe("logical backup repository", () => {
       remaining_ms: null,
       stopped_at_ms: 200,
     }]);
-    expect(Object.keys(first.tables).sort()).toEqual([...LOGICAL_BACKUP_TABLES]);
+    expect(Object.keys(first.tables).sort()).toEqual(
+      [...logicalBackupTablesForVersion(LOGICAL_BACKUP_FORMAT_VERSION)],
+    );
     expect(first.manifest.totalRows).toBe(
       Object.values(first.manifest.rowCounts).reduce((total, count) => total + count, 0),
     );

@@ -2,7 +2,6 @@ import {
   LOGICAL_BACKUP_FORMAT_VERSION,
   logicalBackupTablesForVersion,
   LOGICAL_BACKUP_TABLE_DEFINITIONS,
-  LOGICAL_BACKUP_TABLES,
   parseLogicalBackupSnapshot,
   type LogicalBackupRow,
   type LogicalBackupSnapshot,
@@ -132,6 +131,9 @@ export const LOGICAL_BACKUP_TABLE_FILTERS = Object.freeze({
   running_opportunities: "EXISTS (SELECT 1 FROM running_plans root JOIN plans plan ON plan.id = root.plan_id WHERE root.plan_id = running_opportunities.plan_id AND plan.origin IN ('custom', 'copied'))",
   workout_provenance: "1",
   workout_receipts: "1",
+  workout_session_schedule_links: "1",
+  workout_schedule_reconciliation_receipts: "1",
+  workout_completed_set_correction_receipts: "1",
   imported_activities: "1",
   imported_activity_payloads: "1",
   imported_activity_references: "1",
@@ -139,8 +141,13 @@ export const LOGICAL_BACKUP_TABLE_FILTERS = Object.freeze({
   imported_activity_chunks: "1",
   imported_activity_receipts: "1",
   imported_activity_removal_events: "1",
+  imported_activity_identities: "1",
+  imported_activity_events: "1",
+  imported_activity_match_invalidations: "1",
   running_match_events: "1",
   running_current_matches: "1",
+  running_activity_match_events: "1",
+  running_activity_match_receipts: "1",
   bodyweight_revisions: "1",
   bodyweight_tombstones: "1",
   bodyweight_entries: "1",
@@ -178,10 +185,11 @@ function mapRow(row: Record<string, unknown>): LogicalBackupRow {
 
 async function collectTables(
   transaction: SqliteReadTransactionExecutor,
+  tablesForVersion: readonly LogicalTableName[],
 ): Promise<LogicalBackupSnapshot["tables"]> {
   const tables: Record<string, readonly LogicalBackupRow[]> = {};
-  for (const table of LOGICAL_BACKUP_TABLES) {
-    const rows = await transaction.queryAll(tableQuery(table as LogicalTableName));
+  for (const table of tablesForVersion) {
+    const rows = await transaction.queryAll(tableQuery(table));
     tables[table] = Object.freeze(rows.map(mapRow));
   }
   return Object.freeze(tables);
@@ -248,11 +256,11 @@ export async function collectLogicalBackupSnapshot(
   if (schema === undefined || !Number.isSafeInteger(schema.user_version)) {
     throw new LogicalBackupRepositoryError("logical_backup_collection_failed");
   }
-  const tables = await collectTables(transaction);
-  const catalogReferences = await collectCatalogReferences(transaction);
   const tablesForVersion = logicalBackupTablesForVersion(
     LOGICAL_BACKUP_FORMAT_VERSION,
   );
+  const tables = await collectTables(transaction, tablesForVersion);
+  const catalogReferences = await collectCatalogReferences(transaction);
   const rowCounts = Object.fromEntries(
     tablesForVersion.map((table) => [table, tables[table]!.length]),
   );

@@ -1,7 +1,7 @@
 /** Version 3 is the Phase 13 successor graph.  Versions 1 and 2 stay frozen. */
-/** Version 5 adds the stable bodyweight aggregate without changing v1-v4. */
-export const LOGICAL_BACKUP_FORMAT_VERSION = 5 as const;
-export const LOGICAL_BACKUP_ACCEPTED_FORMAT_VERSIONS = Object.freeze([1, 2, 3, 4, 5] as const);
+/** Version 6 carries the complete schema-35 Phase 13 source graph. */
+export const LOGICAL_BACKUP_FORMAT_VERSION = 6 as const;
+export const LOGICAL_BACKUP_ACCEPTED_FORMAT_VERSIONS = Object.freeze([1, 2, 3, 4, 5, 6] as const);
 
 export type LogicalBackupFormatVersion =
   (typeof LOGICAL_BACKUP_ACCEPTED_FORMAT_VERSIONS)[number];
@@ -94,6 +94,9 @@ export const LOGICAL_BACKUP_TABLE_DEFINITIONS = Object.freeze({
   running_opportunities: { primaryKey: ["id"] },
   workout_provenance: { primaryKey: ["workout_session_id"] },
   workout_receipts: { primaryKey: ["id"] },
+  workout_session_schedule_links: { primaryKey: ["workout_session_id"] },
+  workout_schedule_reconciliation_receipts: { primaryKey: ["id"] },
+  workout_completed_set_correction_receipts: { primaryKey: ["request_id"] },
   imported_activities: { primaryKey: ["id"] },
   imported_activity_payloads: { primaryKey: ["id"] },
   imported_activity_references: { primaryKey: ["id"] },
@@ -101,8 +104,13 @@ export const LOGICAL_BACKUP_TABLE_DEFINITIONS = Object.freeze({
   imported_activity_chunks: { primaryKey: ["id"] },
   imported_activity_receipts: { primaryKey: ["id"] },
   imported_activity_removal_events: { primaryKey: ["id"] },
+  imported_activity_identities: { primaryKey: ["activity_id"] },
+  imported_activity_events: { primaryKey: ["id"] },
+  imported_activity_match_invalidations: { primaryKey: ["id"] },
   running_match_events: { primaryKey: ["id"] },
   running_current_matches: { primaryKey: ["opportunity_id"] },
+  running_activity_match_events: { primaryKey: ["id"] },
+  running_activity_match_receipts: { primaryKey: ["request_id"] },
   bodyweight_revisions: { primaryKey: ["id"] },
   bodyweight_tombstones: { primaryKey: ["id"] },
   bodyweight_entries: { primaryKey: ["id"] },
@@ -130,6 +138,10 @@ export const LOGICAL_BACKUP_V2_TABLES = Object.freeze(
     "running_session_roots", "running_session_slot_roots",
     "running_session_slot_revisions", "running_plan_receipts", "running_plan_events",
     "bodyweight_entries", "bodyweight_entry_events", "bodyweight_command_receipts",
+    "imported_activity_identities", "imported_activity_events",
+    "imported_activity_match_invalidations", "workout_session_schedule_links",
+    "workout_schedule_reconciliation_receipts", "workout_completed_set_correction_receipts",
+    "running_activity_match_events", "running_activity_match_receipts",
   ].includes(table)),
 ) as readonly LogicalBackupTableName[];
 
@@ -139,6 +151,10 @@ export const LOGICAL_BACKUP_V3_TABLES = Object.freeze(
     "running_session_roots", "running_session_slot_roots",
     "running_session_slot_revisions", "running_plan_receipts", "running_plan_events",
     "bodyweight_entries", "bodyweight_entry_events", "bodyweight_command_receipts",
+    "imported_activity_identities", "imported_activity_events",
+    "imported_activity_match_invalidations", "workout_session_schedule_links",
+    "workout_schedule_reconciliation_receipts", "workout_completed_set_correction_receipts",
+    "running_activity_match_events", "running_activity_match_receipts",
   ].includes(table)),
 ) as readonly LogicalBackupTableName[];
 
@@ -146,7 +162,26 @@ export const LOGICAL_BACKUP_V3_TABLES = Object.freeze(
 export const LOGICAL_BACKUP_V4_TABLES = Object.freeze(
   LOGICAL_BACKUP_TABLES.filter((table) => ![
     "bodyweight_entries", "bodyweight_entry_events", "bodyweight_command_receipts",
+    "imported_activity_identities", "imported_activity_events",
+    "imported_activity_match_invalidations", "workout_session_schedule_links",
+    "workout_schedule_reconciliation_receipts", "workout_completed_set_correction_receipts",
+    "running_activity_match_events", "running_activity_match_receipts",
   ].includes(table)),
+) as readonly LogicalBackupTableName[];
+
+/** v5 is frozen at schema 31, before the remaining Phase 13 source successors. */
+export const LOGICAL_BACKUP_V5_TABLES = Object.freeze(
+  LOGICAL_BACKUP_TABLES.filter((table) => ![
+    "imported_activity_identities", "imported_activity_events",
+    "imported_activity_match_invalidations", "workout_session_schedule_links",
+    "workout_schedule_reconciliation_receipts", "workout_completed_set_correction_receipts",
+    "running_activity_match_events", "running_activity_match_receipts",
+  ].includes(table)),
+) as readonly LogicalBackupTableName[];
+
+/** v6 excludes mutable projections which deterministic reconciliation rebuilds. */
+export const LOGICAL_BACKUP_V6_TABLES = Object.freeze(
+  LOGICAL_BACKUP_TABLES.filter((table) => table !== "running_current_matches"),
 ) as readonly LogicalBackupTableName[];
 
 /**
@@ -217,7 +252,8 @@ export function logicalBackupTablesForVersion(
   version: LogicalBackupFormatVersion,
   schemaVersion = Number.POSITIVE_INFINITY,
 ): readonly (keyof typeof LOGICAL_BACKUP_TABLE_DEFINITIONS)[] {
-  if (version === 5) return LOGICAL_BACKUP_TABLES;
+  if (version === 6) return LOGICAL_BACKUP_V6_TABLES;
+  if (version === 5) return LOGICAL_BACKUP_V5_TABLES;
   if (version === 4) return LOGICAL_BACKUP_V4_TABLES;
   if (version === 3) return LOGICAL_BACKUP_V3_TABLES;
   if (version === 2) return LOGICAL_BACKUP_V2_TABLES;
