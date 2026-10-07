@@ -127,6 +127,9 @@ export const LOGICAL_BACKUP_V2_TABLES = Object.freeze(
     "imported_activity_chunks", "imported_activity_receipts",
     "imported_activity_removal_events", "running_match_events",
     "running_current_matches", "bodyweight_revisions", "bodyweight_tombstones",
+    "running_session_roots", "running_session_slot_roots",
+    "running_session_slot_revisions", "running_plan_receipts", "running_plan_events",
+    "bodyweight_entries", "bodyweight_entry_events", "bodyweight_command_receipts",
   ].includes(table)),
 ) as readonly LogicalBackupTableName[];
 
@@ -135,6 +138,7 @@ export const LOGICAL_BACKUP_V3_TABLES = Object.freeze(
   LOGICAL_BACKUP_TABLES.filter((table) => ![
     "running_session_roots", "running_session_slot_roots",
     "running_session_slot_revisions", "running_plan_receipts", "running_plan_events",
+    "bodyweight_entries", "bodyweight_entry_events", "bodyweight_command_receipts",
   ].includes(table)),
 ) as readonly LogicalBackupTableName[];
 

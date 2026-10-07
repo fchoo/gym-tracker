@@ -244,9 +244,13 @@ async function validateRows(
   const schemaVersionSupported = (
     LOGICAL_BACKUP_SUPPORTED_SCHEMA_VERSIONS as readonly number[]
   ).includes(snapshot.schemaVersion);
-  const formatMatchesSchema = snapshot.version === 3
-    ? snapshot.schemaVersion === 28
-    : snapshot.schemaVersion < 28;
+  const formatMatchesSchema = snapshot.version === 5
+    ? snapshot.schemaVersion === 31
+    : snapshot.version === 4
+      ? snapshot.schemaVersion === 29 || snapshot.schemaVersion === 30
+      : snapshot.version === 3
+        ? snapshot.schemaVersion === 28
+        : snapshot.schemaVersion < 28;
   if (!schemaVersionSupported || !formatMatchesSchema) {
     throw new RestoreCommandError("restore_archive_unsupported_version");
   }

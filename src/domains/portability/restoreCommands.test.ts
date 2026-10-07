@@ -347,6 +347,45 @@ describe("restore preflight", () => {
       .rejects.toEqual(expect.objectContaining({ code: "restore_archive_unsupported_version" }));
   });
 
+  it.each([29, 30])("accepts the frozen v4 graph at schema %i", async (schemaVersion) => {
+    const commands = createRestoreCommands({
+      crypto: cryptoPort(), files: { readSelectedArchiveAtMost: () => archiveFor(snapshot({
+        version: 4,
+        schemaVersion,
+        tables: { portable_owner_identity: [{ id: 1, owner_namespace: "0123456789abcdef0123456789abcdef" }] },
+      })) },
+      kdf, schema, candidateProbe, store: createRestorePreflightStore({ tokenFactory: () => `schema-${schemaVersion}-v4` }),
+    });
+    await expect(commands.preflightSecureRestore({ password: "owner-password" }))
+      .resolves.toEqual(expect.objectContaining({ outcome: "ready" }));
+  });
+
+  it("accepts the v5 bodyweight graph only at schema 31", async () => {
+    const commands = createRestoreCommands({
+      crypto: cryptoPort(), files: { readSelectedArchiveAtMost: () => archiveFor(snapshot({
+        version: 5,
+        schemaVersion: 31,
+        tables: { portable_owner_identity: [{ id: 1, owner_namespace: "0123456789abcdef0123456789abcdef" }] },
+      })) },
+      kdf, schema, candidateProbe, store: createRestorePreflightStore({ tokenFactory: () => "schema-31-v5" }),
+    });
+    await expect(commands.preflightSecureRestore({ password: "owner-password" }))
+      .resolves.toEqual(expect.objectContaining({ outcome: "ready" }));
+  });
+
+  it("rejects a v5 graph claiming a pre-bodyweight schema", async () => {
+    const commands = createRestoreCommands({
+      crypto: cryptoPort(), files: { readSelectedArchiveAtMost: () => archiveFor(snapshot({
+        version: 5,
+        schemaVersion: 30,
+        tables: { portable_owner_identity: [{ id: 1, owner_namespace: "0123456789abcdef0123456789abcdef" }] },
+      })) },
+      kdf, schema, candidateProbe, store: createRestorePreflightStore({ tokenFactory: () => "schema-30-v5" }),
+    });
+    await expect(commands.preflightSecureRestore({ password: "owner-password" }))
+      .rejects.toEqual(expect.objectContaining({ code: "restore_archive_unsupported_version" }));
+  });
+
   it.each([14, 28])("rejects unsupported logical producer schema version %i", async (schemaVersion) => {
     const commands = createRestoreCommands({
       crypto: cryptoPort(), files: { readSelectedArchiveAtMost: () => archiveFor(snapshot({ version: 1, schemaVersion })) },
