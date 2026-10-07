@@ -1936,6 +1936,59 @@ describe("WorkoutAppRuntimeProvider", () => {
     }
   });
 
+  it("characterizes a queued foreground callback that resolves after unmount without touching timing or rest", async () => {
+    const repository = runtimeRepository([activeView, activeView], [activation]);
+    const advanced = runtimeAdvancedTimingRepository();
+    const rest = runtimeRestRepository();
+    type TimingContext = Readonly<{
+      sessionId: string;
+      sessionRevision: number;
+      state: AdvancedTimingStateV1;
+    }>;
+    let resolveContexts: ((contexts: readonly TimingContext[]) => void) | undefined;
+    const pendingContexts = new Promise<readonly TimingContext[]>((resolve) => {
+      resolveContexts = resolve;
+    });
+    advanced.listActiveTimingContexts.mockReturnValueOnce(pendingContexts);
+    const running: AdvancedTimingStateV1 = {
+      version: 1,
+      state: "running",
+      mode: "per_rep",
+      revision: 3,
+      targetSessionSetId: "set-1",
+      cueChannels: "haptic",
+      intervalMs: 1_000,
+      startedAtMs: 10_000,
+      nextBoundaryAtMs: 11_000,
+      nextRepetitionIndex: 1,
+    };
+    const subscription = { remove: jest.fn() };
+    const addEventListener = jest.spyOn(AppState, "addEventListener")
+      .mockImplementation(() => subscription);
+    try {
+      const rendered = await render(
+        <RuntimeCaptureHarness
+          dependencies={dependencies(repository, {
+            createAdvancedTimingRepository: () => advanced,
+            createRestRepository: () => rest,
+            nowMs: () => 20_050,
+          })}
+          onReady={() => undefined}
+        />,
+      );
+      await rendered.unmount();
+      resolveContexts?.([{ sessionId: "session-1", sessionRevision: 1, state: running }]);
+      await Promise.resolve();
+
+      expect(subscription.remove).toHaveBeenCalledTimes(1);
+      expect(advanced.reconcileAdvancedTiming).not.toHaveBeenCalled();
+      expect(mockCueHaptic).not.toHaveBeenCalled();
+      expect(rest.listActiveSessionIds).not.toHaveBeenCalled();
+    } finally {
+      addEventListener.mockRestore();
+    }
+  });
+
   it("continues foreground reconciliation through cluster gaps and later contexts", async () => {
     const repository = runtimeRepository([activeView, activeView], [activation]);
     const advanced = runtimeAdvancedTimingRepository();
