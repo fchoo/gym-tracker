@@ -8,6 +8,7 @@ import { canonicalBodyweightRequestHash, type BodyweightCommand } from "../../sr
 import { createMigrationRunner } from "../../src/platform/sqlite/migrationRunner";
 import { migrations } from "../../src/platform/sqlite/migrations";
 import { createBodyweightRepository } from "../../src/platform/sqlite/repositories/bodyweightRepository";
+import { createProgressRepository } from "../../src/platform/sqlite/repositories/progressRepository";
 import { type SqliteConnection, type SqlitePreparedResult, type SqlitePreparedStatement, configureSqliteConnection } from "../../src/platform/sqlite/connection";
 import { createSqliteKernel, type SqliteKernel } from "../../src/platform/sqlite/sqliteKernel";
 
@@ -58,5 +59,29 @@ describe("bodyweight source history", () => {
     await expect(reopened.repository.commit(command())).resolves.toEqual(created);
     await expect(reopened.repository.commit(command({ requestSha256: "0".repeat(64) }))).rejects.toThrow("bodyweight_command_hash_invalid");
     await expect(reopened.repository.commit(command({ operation: "edit", requestId: "bodyweight-request-stale", expectedRevision: 0, revisionId: "bodyweight-revision-stale", eventId: "bodyweight-event-stale" }))).resolves.toMatchObject({ kind: "conflict", conflictCode: "stale_revision" });
+  });
+
+  it("exposes only current dated bodyweight facts through Progress without changing protected or backup state", async () => {
+    const { kernel, repository } = await runtime();
+    const beforeProtected = await protectedDigest(kernel);
+    const [beforeBackup] = await kernel.queryAll<{ mutation_generation: number }>("SELECT mutation_generation FROM automatic_backup_state WHERE id = 1");
+    const progress = createProgressRepository(kernel);
+    await repository.commit(command());
+    const [afterCommitBackup] = await kernel.queryAll<{ mutation_generation: number }>("SELECT mutation_generation FROM automatic_backup_state WHERE id = 1");
+
+    const first = await progress.load({ period: "4_weeks", nowLocalDate: "2026-10-08" });
+    const second = await progress.load({ period: "4_weeks", nowLocalDate: "2026-10-08" });
+    expect(first.sourceFacts).toEqual(second.sourceFacts);
+    expect(first.sourceFacts?.bodyweight).toMatchObject({ kind: "available", entries: [{ id: "bodyweight-entry-1", grams: 72_500, localDate: "2026-10-07" }] });
+    const [afterReadBackup] = await kernel.queryAll<{ mutation_generation: number }>("SELECT mutation_generation FROM automatic_backup_state WHERE id = 1");
+    expect(afterReadBackup?.mutation_generation).toBe(afterCommitBackup?.mutation_generation);
+
+    await repository.commit(command({ operation: "delete", requestId: "bodyweight-request-progress-delete", expectedRevision: 1, revisionId: "bodyweight-revision-progress-delete", eventId: "bodyweight-event-progress-delete", localDate: undefined, timezone: undefined, grams: undefined }));
+    const [afterDeleteBackup] = await kernel.queryAll<{ mutation_generation: number }>("SELECT mutation_generation FROM automatic_backup_state WHERE id = 1");
+    await expect(progress.load({ period: "4_weeks", nowLocalDate: "2026-10-08" })).resolves.toMatchObject({ sourceFacts: { bodyweight: { kind: "unavailable", entries: [] } } });
+    const [afterBackup] = await kernel.queryAll<{ mutation_generation: number }>("SELECT mutation_generation FROM automatic_backup_state WHERE id = 1");
+    expect(await protectedDigest(kernel)).toEqual(beforeProtected);
+    expect(afterBackup?.mutation_generation).toBeGreaterThan(beforeBackup!.mutation_generation);
+    expect(afterBackup?.mutation_generation).toBe(afterDeleteBackup?.mutation_generation);
   });
 });
