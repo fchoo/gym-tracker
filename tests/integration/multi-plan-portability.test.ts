@@ -29,6 +29,7 @@ describe("multi-plan portability successor boundary", () => {
     ]));
     expect(v6).not.toEqual(expect.arrayContaining([
       "running_current_matches",
+      "running_activity_current_matches",
       "imported_activity_current_lifecycle",
     ]));
   });

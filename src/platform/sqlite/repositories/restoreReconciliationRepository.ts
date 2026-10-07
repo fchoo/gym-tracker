@@ -33,6 +33,14 @@ export type RestoreReconciliationRepository = Readonly<{
   reconcileAndRebuild(): Promise<RestoreReconciliationResult>;
 }>;
 
+/** Test-only seam for proving that every post-restore boundary fails closed. */
+export type RestoreReconciliationFaultStage =
+  | "phase13_current_relations"
+  | "history_seed"
+  | "search"
+  | "history"
+  | "parity";
+
 type RestoreStateRow = Readonly<{
   state: RestoreState;
   updated_at_ms: number;
@@ -438,6 +446,7 @@ export function createRestoreReconciliationRepository(
     history: HistoryProjectionRepository;
     search: ExerciseSearchIndexRepository;
     nowMs(): number;
+    faultAfter?: (stage: RestoreReconciliationFaultStage) => Promise<void>;
   }>,
 ): RestoreReconciliationRepository {
   return Object.freeze({
@@ -458,14 +467,19 @@ export function createRestoreReconciliationRepository(
         // reader. The remaining sequence preserves the established history
         // ordering and does not expose a ready restore before all parity holds.
         await rebuildPhase13CurrentRelations(kernel);
+        await input.faultAfter?.("phase13_current_relations");
         const sessions = await reseedHistoryDerivatives(kernel, input.nowMs());
+        await input.faultAfter?.("history_seed");
         await input.search.rebuildSearchIndex();
+        await input.faultAfter?.("search");
         await input.history.rebuildAll({ nowMs: input.nowMs() });
+        await input.faultAfter?.("history");
         const [searchParity, historyExact, phase13Exact] = await Promise.all([
           input.search.verifyParity(),
           historyParityIsExact(kernel, input.history, sessions),
           phase13CurrentRelationsParityIsExact(kernel),
         ]);
+        await input.faultAfter?.("parity");
         if (!searchParity.exact || !historyExact || !phase13Exact
           || !await markReady(kernel, state.updated_at_ms, input.nowMs())) {
           throw new Error("portability_rebuild_parity_incomplete");
