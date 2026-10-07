@@ -8,20 +8,8 @@ import {
   LOGICAL_BACKUP_REFERENCE_DEFINITIONS,
 } from "../../../domains/portability/restoreCommands";
 import {
-  HISTORY_INTEGRITY_SCHEMA_STATEMENTS,
-} from "../migrations/0013_history_integrity";
-import {
-  PORTABLE_OWNER_IDENTITIES_TRIGGER_STATEMENTS,
-} from "../migrations/0022_portable_owner_identities";
-import {
   AUTOMATIC_BACKUP_GENERATION_TRIGGER_STATEMENTS,
 } from "../migrations/0023_automatic_drive_backup";
-import {
-  OWNED_PLAN_SCHEMA_STATEMENTS,
-} from "../migrations/0009_owned_plans";
-import {
-  SCHEDULE_ACTIVATION_SCHEMA_STATEMENTS,
-} from "../migrations/0008_schedule_activation";
 import {
   LOGICAL_BACKUP_TABLE_FILTERS,
 } from "./logicalBackupRepository";
@@ -67,6 +55,32 @@ export const LOGICAL_RESTORE_DELETE_TRIGGER_NAMES = Object.freeze([
   "owned_plan_targets_no_permanent_delete",
   "owned_plan_policies_no_permanent_delete",
   "history_audit_events_immutable_delete",
+  "running_session_revisions_immutable_delete",
+  "running_session_slots_immutable_delete",
+  "running_opportunities_immutable_delete",
+  "imported_activities_immutable_delete",
+  "imported_activity_payloads_immutable_delete",
+  "imported_activity_references_immutable_delete",
+  "imported_activity_laps_immutable_delete",
+  "imported_activity_chunks_immutable_delete",
+  "imported_activity_receipts_immutable_delete",
+  "imported_activity_removal_events_immutable_delete",
+  "running_match_events_immutable_delete",
+  "bodyweight_revisions_immutable_delete",
+  "bodyweight_tombstones_immutable_delete",
+  "running_session_slot_roots_immutable_delete",
+  "running_session_slot_revisions_immutable_delete",
+  "running_plan_events_immutable_delete",
+  "imported_activity_identities_immutable_delete",
+  "imported_activity_events_immutable_delete",
+  "imported_activity_match_invalidations_immutable_delete",
+  "bodyweight_entry_events_immutable_delete",
+  "bodyweight_command_receipts_immutable_delete",
+  "workout_session_schedule_links_immutable_delete",
+  "workout_schedule_reconciliation_receipts_immutable_delete",
+  "workout_completed_set_correction_receipts_immutable_delete",
+  "running_activity_match_events_immutable_delete",
+  "running_activity_match_receipts_immutable_delete",
 ] as const);
 
 /**
@@ -75,7 +89,26 @@ export const LOGICAL_RESTORE_DELETE_TRIGGER_NAMES = Object.freeze([
  * existing delete guards or the restore would manufacture dirty generations.
  */
 export const LOGICAL_RESTORE_BACKUP_TRIGGER_NAMES = Object.freeze(
-  AUTOMATIC_BACKUP_GENERATION_TRIGGER_STATEMENTS.map(triggerName),
+  [
+    ...AUTOMATIC_BACKUP_GENERATION_TRIGGER_STATEMENTS.map(triggerName),
+    ...[
+      "running_plans", "running_session_revisions", "running_goals", "running_session_slots",
+      "running_opportunities", "workout_provenance", "workout_receipts", "imported_activities",
+      "imported_activity_payloads", "imported_activity_references", "imported_activity_laps",
+      "imported_activity_chunks", "imported_activity_receipts", "imported_activity_removal_events",
+      "running_match_events", "running_current_matches", "bodyweight_revisions", "bodyweight_tombstones",
+      "running_session_roots", "running_session_slot_roots", "running_session_slot_revisions",
+      "running_plan_receipts", "running_plan_events", "imported_activity_identities",
+      "imported_activity_events", "imported_activity_match_invalidations", "bodyweight_entries",
+      "bodyweight_entry_events", "bodyweight_command_receipts", "workout_session_schedule_links",
+      "workout_schedule_reconciliation_receipts", "running_activity_match_events",
+      "running_activity_match_receipts",
+    ].flatMap((table) => ["insert", "update", "delete"].map(
+      (operation) => `automatic_backup_generation_${table}_${operation}`,
+    )),
+    "automatic_backup_generation_imported_activity_current_lifecycle_insert",
+    "automatic_backup_generation_imported_activity_current_lifecycle_update",
+  ],
 );
 export const LOGICAL_RESTORE_TRIGGER_NAMES = Object.freeze([
   ...LOGICAL_RESTORE_DELETE_TRIGGER_NAMES,
@@ -113,21 +146,8 @@ function triggerName(statement: string): string {
   return /^CREATE TRIGGER\s+([a-z0-9_]+)/u.exec(statement.trim())![1]!;
 }
 
-const TRIGGER_SOURCE_STATEMENTS = Object.freeze([
-  ...SCHEDULE_ACTIVATION_SCHEMA_STATEMENTS,
-  ...OWNED_PLAN_SCHEMA_STATEMENTS,
-  ...HISTORY_INTEGRITY_SCHEMA_STATEMENTS,
-  ...PORTABLE_OWNER_IDENTITIES_TRIGGER_STATEMENTS,
-  ...AUTOMATIC_BACKUP_GENERATION_TRIGGER_STATEMENTS,
-].filter((statement) => /^CREATE TRIGGER /u.test(statement)));
-
 /** Only delete blockers for facts replaced by this transaction. Insert validators stay active. */
-const RESTORE_TRIGGER_SQL = Object.freeze(new Map(
-  LOGICAL_RESTORE_TRIGGER_NAMES.map((name) => [
-    name,
-    TRIGGER_SOURCE_STATEMENTS.find((statement) => triggerName(statement) === name)!,
-  ] as const),
-));
+const RESTORE_TRIGGER_NAMES = new Set(LOGICAL_RESTORE_TRIGGER_NAMES);
 
 function sourceDependencies(): ReadonlyMap<string, ReadonlySet<string>> {
   const tables = new Set(LOGICAL_BACKUP_TABLES);
@@ -197,7 +217,7 @@ function sameValues(
 async function capturedRestoreTriggers(
   transaction: SqliteTransactionExecutor,
 ): Promise<ReadonlyMap<string, string>> {
-  const names = [...RESTORE_TRIGGER_SQL.keys()];
+  const names = [...RESTORE_TRIGGER_NAMES];
   const placeholders = names.map(() => "?").join(", ");
   const rows = await transaction.queryAll<{ name: string; sql: string }>(
     `SELECT name, sql FROM sqlite_master
@@ -288,6 +308,14 @@ async function deleteCurrentSources(
       )`);
     await fault?.("delete:taxonomy_terms");
   }
+}
+
+/** These tables are derived from immutable event ledgers and must never survive a clean source replacement. */
+async function clearRebuildablePhase13Projections(
+  transaction: SqliteTransactionExecutor,
+): Promise<void> {
+  await transaction.execute("DELETE FROM running_activity_current_matches");
+  await transaction.execute("DELETE FROM imported_activity_current_lifecycle");
 }
 
 async function insertTaxonomyTerms(
@@ -394,6 +422,7 @@ export function createLogicalRestoreRepository(
           await input.faultAfter?.("captured_current_ownership");
           const triggers = await capturedRestoreTriggers(transaction);
           await dropRestoreTriggers(transaction, triggers, input.faultAfter);
+          await clearRebuildablePhase13Projections(transaction);
           await deleteCurrentSources(transaction, snapshotTables, input.faultAfter);
           await insertSnapshot(transaction, snapshot, input.faultAfter);
           await recreateRestoreTriggers(transaction, triggers, input.faultAfter);

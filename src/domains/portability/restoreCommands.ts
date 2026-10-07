@@ -146,7 +146,7 @@ function validPassword(value: string): boolean {
 
 // v23-v27 add bookkeeping or trigger-only schema changes; archives remain the
 // Phase 11 portable graph, so archived schema-22 and current snapshots restore.
-export const LOGICAL_BACKUP_SUPPORTED_SCHEMA_VERSIONS = Object.freeze([15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31] as const);
+export const LOGICAL_BACKUP_SUPPORTED_SCHEMA_VERSIONS = Object.freeze([15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 35] as const);
 
 type LogicalReference = Readonly<{
   childTable: string;
@@ -165,8 +165,11 @@ export const LOGICAL_BACKUP_REFERENCE_DEFINITIONS = Object.freeze([
   ["running_plans", ["plan_id"], "plans", ["id"]], ["running_session_revisions", ["plan_id"], "running_plans", ["plan_id"]], ["running_session_roots", ["plan_id"], "running_plans", ["plan_id"]], ["running_session_slot_roots", ["plan_id"], "running_plans", ["plan_id"]], ["running_session_slot_revisions", ["slot_root_id"], "running_session_slot_roots", ["id"]], ["running_session_slot_revisions", ["session_root_id"], "running_session_roots", ["id"]], ["running_session_slot_revisions", ["session_revision_id"], "running_session_revisions", ["id"]], ["running_plan_receipts", ["plan_id"], "running_plans", ["plan_id"]], ["running_plan_events", ["plan_id"], "running_plans", ["plan_id"]], ["running_goals", ["plan_id"], "running_plans", ["plan_id"]], ["running_session_slots", ["plan_id"], "running_plans", ["plan_id"]], ["running_session_slots", ["session_revision_id"], "running_session_revisions", ["id"]],
   ["running_opportunities", ["plan_id"], "running_plans", ["plan_id"]], ["running_opportunities", ["schedule_id"], "owned_plan_schedules", ["id"]], ["running_opportunities", ["schedule_version_id"], "owned_plan_schedule_versions", ["id"]], ["running_opportunities", ["slot_id"], "running_session_slots", ["id"]], ["running_opportunities", ["session_revision_id"], "running_session_revisions", ["id"]],
   ["workout_provenance", ["workout_session_id"], "workout_sessions", ["id"]], ["workout_provenance", ["plan_id"], "plans", ["id"], true], ["workout_provenance", ["plan_day_id"], "plan_days", ["id"], true], ["workout_provenance", ["schedule_id"], "owned_plan_schedules", ["id"]], ["workout_provenance", ["schedule_version_id"], "owned_plan_schedule_versions", ["id"]], ["workout_provenance", ["opportunity_id"], "running_opportunities", ["id"]], ["workout_receipts", ["workout_session_id"], "workout_sessions", ["id"]],
+  ["workout_session_schedule_links", ["workout_session_id"], "workout_sessions", ["id"]], ["workout_session_schedule_links", ["opportunity_id"], "owned_plan_schedule_opportunities", ["id"]], ["workout_session_schedule_links", ["plan_id"], "plans", ["id"]], ["workout_session_schedule_links", ["plan_day_id"], "plan_days", ["id"]], ["workout_session_schedule_links", ["schedule_id"], "owned_plan_schedules", ["id"]], ["workout_session_schedule_links", ["schedule_version_id"], "owned_plan_schedule_versions", ["id"]], ["workout_schedule_reconciliation_receipts", ["workout_session_id"], "workout_sessions", ["id"]], ["workout_completed_set_correction_receipts", ["session_id"], "workout_sessions", ["id"]], ["workout_completed_set_correction_receipts", ["set_id"], "session_sets", ["id"]],
   ["imported_activity_payloads", ["activity_id"], "imported_activities", ["id"]], ["imported_activity_references", ["activity_id"], "imported_activities", ["id"]], ["imported_activity_laps", ["activity_id"], "imported_activities", ["id"]], ["imported_activity_chunks", ["activity_id"], "imported_activities", ["id"]], ["imported_activity_receipts", ["activity_id"], "imported_activities", ["id"]], ["imported_activity_removal_events", ["activity_id"], "imported_activities", ["id"]],
+  ["imported_activity_identities", ["activity_id"], "imported_activities", ["id"]], ["imported_activity_events", ["activity_id"], "imported_activities", ["id"]], ["imported_activity_match_invalidations", ["activity_id"], "imported_activities", ["id"]],
   ["running_match_events", ["activity_id"], "imported_activities", ["id"]], ["running_match_events", ["opportunity_id"], "running_opportunities", ["id"]], ["running_current_matches", ["opportunity_id"], "running_opportunities", ["id"]], ["running_current_matches", ["activity_id"], "imported_activities", ["id"]], ["running_current_matches", ["event_id"], "running_match_events", ["id"]], ["bodyweight_tombstones", ["bodyweight_revision_id"], "bodyweight_revisions", ["id"]], ["bodyweight_entry_events", ["entry_id"], "bodyweight_entries", ["id"]], ["bodyweight_command_receipts", ["entry_id"], "bodyweight_entries", ["id"]],
+  ["running_activity_match_events", ["activity_id"], "imported_activities", ["id"]], ["running_activity_match_events", ["opportunity_id"], "running_opportunities", ["id"]], ["running_activity_match_events", ["prior_opportunity_id"], "running_opportunities", ["id"]], ["running_activity_match_receipts", ["activity_id"], "imported_activities", ["id"]], ["running_activity_match_receipts", ["opportunity_id"], "running_opportunities", ["id"]],
 ] .map(([childTable, childColumns, parentTable, parentColumns, allowRetained]) => Object.freeze({ childTable, childColumns, parentTable, parentColumns, ...(allowRetained === true ? { allowRetained: true } : {}) })) as readonly LogicalReference[]);
 
 function invalid(): never {
@@ -226,10 +229,28 @@ function validateDomainInvariants(snapshot: LogicalBackupSnapshot): void {
       }
     }
   }
-  for (const [table, column] of [["plans", "is_active"], ["workout_sessions", "status"]] as const) {
-    const active = snapshot.tables[table]!.filter((row) => table === "plans" ? row[column] === 1 : row[column] === "in_progress");
-    if (active.length > 1) invalid();
-  }
+  const activePlans = snapshot.tables.plans!.filter((row) => row.is_active === 1);
+  if (snapshot.version >= 3) {
+    const kinds = new Set<string>();
+    for (const row of activePlans) {
+      if (row.plan_kind !== "strength" && row.plan_kind !== "running") invalid();
+      if (kinds.has(row.plan_kind)) invalid();
+      kinds.add(row.plan_kind);
+    }
+    const plansById = new Map(snapshot.tables.plans!.map((row) => [row.id, row]));
+    const schedules = snapshot.tables.owned_plan_schedules ?? [];
+    const activeSchedules = schedules.filter((row) => row.lifecycle === "active");
+    const scheduleKinds = new Set<string>();
+    for (const row of activeSchedules) {
+      const plan = plansById.get(row.plan_id);
+      if (plan === undefined || plan.is_active !== 1 || plan.plan_kind !== row.plan_kind
+        || (row.plan_kind !== "strength" && row.plan_kind !== "running")
+        || scheduleKinds.has(row.plan_kind)) invalid();
+      scheduleKinds.add(row.plan_kind);
+    }
+    if (scheduleKinds.size !== kinds.size) invalid();
+  } else if (activePlans.length > 1) invalid();
+  if (snapshot.tables.workout_sessions!.filter((row) => row.status === "in_progress").length > 1) invalid();
 }
 
 async function validateRows(
@@ -244,8 +265,10 @@ async function validateRows(
   const schemaVersionSupported = (
     LOGICAL_BACKUP_SUPPORTED_SCHEMA_VERSIONS as readonly number[]
   ).includes(snapshot.schemaVersion);
-  const formatMatchesSchema = snapshot.version === 5
-    ? snapshot.schemaVersion === 31
+  const formatMatchesSchema = snapshot.version === 6
+    ? snapshot.schemaVersion === 35
+    : snapshot.version === 5
+      ? snapshot.schemaVersion === 31
     : snapshot.version === 4
       ? snapshot.schemaVersion === 29 || snapshot.schemaVersion === 30
       : snapshot.version === 3
