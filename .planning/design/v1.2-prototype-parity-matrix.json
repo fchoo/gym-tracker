@@ -1,7 +1,7 @@
 {
   "schema_version": "1.0",
   "milestone": "v1.2",
-  "status": "planning_only",
+  "status": "baseline_pending_owner_amendment_reconciliation",
   "inventory": ".planning/design/v1.2-prototype-inventory.json",
   "requirements": ".planning/REQUIREMENTS.md",
   "source_snapshot": {

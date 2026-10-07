@@ -1,0 +1,20 @@
+{
+  "schema_version": 1,
+  "milestone": "v1.2",
+  "recorded_at": "2026-10-07",
+  "source": "direct_owner_reply",
+  "decisions": {
+    "MAP-01": {"status": "approved", "selection": "one-per-sport"},
+    "TIM-01": {"status": "approved", "selection": "retire-playback", "legacy_playback_compatibility": false},
+    "DEV-01": {"status": "approved", "selection": "adaptive-6-to-18dp", "verification_status": "pending_implementation"},
+    "DEV-02": {"status": "approved", "selection": "accessible-9b470b", "verification_status": "pending_implementation"}
+  },
+  "runtime_ai_agents": false,
+  "standalone_installed_app": true,
+  "specific_javascript_engine_required_by_owner": false,
+  "garmin_program_access": false,
+  "unofficial_garmin_client_research_authorized": true,
+  "garmin_transport_selection": "under_review",
+  "fit_decoder_selection": "deferred_until_transport_and_data_fidelity_decision",
+  "implementation_authorized": false
+}

@@ -64,14 +64,16 @@ Archived detail: .planning/milestones/v1.1-ROADMAP.md
 - Phase 18 precedes Phase 19 so Running progress is computed from actual imported evidence rather than prototype fixtures or inferred values.
 - Phase 20 depends on Phases 13-19 and integrates their evidence; it is not the first phase in which transaction, migration, accessibility, or lifecycle behavior is tested.
 
-## Pending Gates
+## Owner Decisions and Remaining Transport Review
 
-These are explicit gates, not reopened prototype questions:
+The 2026-10-07 owner amendment in `.planning/v1.2-OWNER-DECISIONS.md`
+supersedes the prior open-decision text throughout the phase details below.
+The phase structure is retained as a planning baseline while transport is reviewed.
 
-1. **Active-plan cardinality:** Concurrent Strength and Running are required, but the proposed limit of at most one active plan per sport is not accepted. Phase 13 must not encode that limit until the owner decides it.
-2. **Garmin access and broker:** Manual original-file FIT import must be a usable local journey. Official Garmin sync remains conditional on actual program access, current partner contracts, and a separately reviewed confidential-broker design; GAR-04–07 cannot be closed by mocks or FIT success.
-3. **Legacy timing:** Preserve all shipped cadence/cluster configuration, snapshots, set pointers, and recovery facts. Retiring authoring and advisory playback/callbacks is a proposal that requires owner review and proof that between-set rest and legacy session recovery remain correct.
-4. **Accessibility deviations:** DEV-01 and DEV-02 remain proposed and unaccepted. Calendar plans must stop before adopting either changed padding/touch geometry or Light-theme Strength text color.
+1. **MAP-01 approved:** One active plan per sport. Do not re-ask the cardinality question.
+2. **Garmin research:** No program access. Evaluate bundled python-garminconnect versus an optional desktop/Drive bridge; inspect JSON activity data before FIT decoder selection. The unofficial transport has not been selected or validated for production.
+3. **TIM-01 approved:** Retire cadence/cluster authoring, reconciliation, callbacks and playback; no legacy playback compatibility mode. Ordinary workout history and between-set rest still require preservation.
+4. **DEV-01/DEV-02 approved:** Use adaptive narrow Calendar padding and Light title `#9B470B`; verify the chosen behavior during implementation without reopening owner approval.
 5. **Running same-day sessions:** This is settled scope, not a gate: one Running plan supports multiple stable, ordered session slots on the same weekday. No phase may introduce a silent one-session-per-day restriction.
 
 ## Phase Details

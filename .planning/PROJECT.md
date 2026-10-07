@@ -47,6 +47,16 @@ Implementation is not authorized until the owner reviews the complete milestone.
 
 ## Current Milestone: v1.2 Prototype Parity, Concurrent Plans & Garmin Import
 
+**Latest owner decisions:** `.planning/v1.2-OWNER-DECISIONS.md` records one active
+plan per sport, complete cadence/cluster playback retirement without a playback
+compatibility mode, and accepted Calendar deviations DEV-01/DEV-02. The app runs
+standalone with bundled code and no runtime AI agents. Official Garmin program
+access is unavailable; the owner requested `python-garminconnect` phone-versus-
+desktop feasibility research before any FIT decoder decision. See
+`.planning/research/v1.2/GARMIN-MOBILE-FEASIBILITY.md`. The existing execution
+plans require focused reconciliation before execution; previous pending-gate
+wording must not reopen those four approved choices.
+
 **Goal:** Reproduce the approved prototype's presentation and interactions in the
 production Android app while preserving SQLite, transaction, history, recovery,
 backup, offline, accessibility, and performance contracts.

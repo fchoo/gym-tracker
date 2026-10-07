@@ -1,5 +1,11 @@
 # Requirements: Gym Tracker v1.2
 
+**Owner amendment (2026-10-07):** MAP-01, TIM-01, DEV-01 and DEV-02 are approved
+in `.planning/v1.2-OWNER-DECISIONS.md`. Standalone operation has no runtime AI
+agents. Garmin transport requirements remain the prior baseline pending focused
+revision after the requested unofficial-client feasibility review; do not treat
+FIT-first or partner-only access as settled, or reopen the four approved choices.
+
 **Milestone:** PUSH-inspired UI/UX overhaul with multi-plan Running and imported activity foundations
 **Status:** Planning for owner review; implementation is not authorized in this session.
 **Baseline:** Owner planning contract, approved.json revision 18 latest-first, approved-hybrid.html source SHA-256 `b5ddbad88fd465af2fa79475dc0c05efec49e551652f13c5220627730e1d9c96`.

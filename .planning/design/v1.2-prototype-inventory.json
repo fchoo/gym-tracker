@@ -3,9 +3,10 @@
   "milestone": "v1.2",
   "date": "2026-10-06",
   "worktree": "/Users/bytedance/orca/workspaces/gym_tracker/UX-revamp",
-  "status": "planning_only",
+  "status": "baseline_pending_owner_amendment_reconciliation",
   "migration_numbering_note": "0028_multi_active_plan_kinds.ts is the canonical proposed ADR filename; revalidate the migration sequence immediately before implementation.",
   "authority_order": [
+    ".planning/v1.2-OWNER-DECISIONS.md",
     ".planning/v1.2-OWNER-BRIEF.md",
     ".planning/design/v1.2-SOURCE-PRECEDENCE.md",
     "approved.json latest-first",
@@ -9310,7 +9311,7 @@
     }
   ],
   "deviation_register": ".planning/design/v1.2-DEVIATIONS.md",
-  "deviation_status_note": "DEV-01/DEV-02 proposed; latest register/owner decision governs. Inventory does not approve them.",
+  "deviation_status_note": "DEV-01 and DEV-02 approved by direct owner reply 2026-10-07; native verification remains pending. The owner amendment supersedes previous pending gate text.",
   "source_excerpt_boundary": {
     "start": "DATA_7c9f3a6e_START",
     "end": "DATA_7c9f3a6e_END",
