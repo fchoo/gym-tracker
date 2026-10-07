@@ -344,6 +344,40 @@ function repositoryWithFault(
   });
 }
 
+function withTriggerCaptureMutation(
+  kernel: SqliteKernel,
+  targetCall: number,
+  mutate: (rows: readonly Readonly<{ name: string; sql: string }>[]) =>
+    readonly Readonly<{ name: string; sql: string }>[],
+): SqliteKernel {
+  return {
+    queryAll: kernel.queryAll.bind(kernel),
+    close: kernel.close.bind(kernel),
+    write: async <Result>(
+      command: (transaction: SqliteTransactionExecutor) => Promise<Result>,
+    ) => kernel.write(async (transaction) => {
+      let captureCalls = 0;
+      const wrapped: SqliteTransactionExecutor = {
+        execute: transaction.execute.bind(transaction),
+        async queryAll<Row extends Record<string, unknown>>(
+          sql: string,
+          parameters: readonly (null | number | string | Uint8Array)[] = [],
+        ) {
+          const rows = await transaction.queryAll<Row>(sql, parameters);
+          if (sql.includes("SELECT name, sql FROM sqlite_master")) {
+            captureCalls += 1;
+            if (captureCalls === targetCall) {
+              return mutate(rows as unknown as readonly Readonly<{ name: string; sql: string }>[]) as unknown as readonly Row[];
+            }
+          }
+          return rows;
+        },
+      };
+      return command(wrapped);
+    }),
+  } as SqliteKernel;
+}
+
 function fakeTransactionExecutor(
   onExecute?: (sql: string) => SqliteStatementResult,
 ): SqliteTransactionExecutor {
@@ -475,6 +509,28 @@ describe("restore reconciliation repository", () => {
     )).resolves.toEqual([{
       opportunity_id: "restored-running-opportunity", activity_id: "restored-activity", relation_revision: 1,
     }]);
+  });
+
+  const triggerCaptureCases: ReadonlyArray<readonly [
+    string,
+    number,
+    (rows: readonly Readonly<{ name: string; sql: string }>[]) =>
+      readonly Readonly<{ name: string; sql: string }>[],
+  ]> = [
+    ["missing lifecycle trigger", 1, (rows: readonly Readonly<{ name: string; sql: string }>[]) => rows.slice(1)],
+    ["blank lifecycle trigger SQL", 1, (rows: readonly Readonly<{ name: string; sql: string }>[]) => rows.map((row, index) => index === 0 ? { ...row, sql: "" } : row)],
+    ["changed restored lifecycle trigger", 2, (rows: readonly Readonly<{ name: string; sql: string }>[]) => rows.map((row, index) => index === 0 ? { ...row, sql: `${row.sql} ` } : row)],
+  ];
+  it.each(triggerCaptureCases)("keeps rebuild pending for %s", async (_label, targetCall, mutate) => {
+    const kernel = await open();
+    await seedRestoredSource(kernel);
+    await seedRestoredActivityLifecycle(kernel);
+    const wrapped = withTriggerCaptureMutation(kernel, targetCall, mutate);
+
+    await expect(repository(wrapped).reconcileAndRebuild()).resolves.toMatchObject({
+      outcome: "retryable_failure",
+      state: "rebuild_pending",
+    });
   });
 
   it("rebuilds identical Phase 13 derivatives twice without duplicating facts or advancing backup generation", async () => {
