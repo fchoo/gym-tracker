@@ -23,7 +23,7 @@ Exactly four roots: **Workout, Calendar, Library, Progress**. Preserve SQLite au
 
 - [ ] **DOM-01**: Support at most one active owned Strength plan and at most one active owned Running plan concurrently, with independent schedules; enforce per-sport uniqueness through the real repository/schema migration.
 - [ ] **DOM-02**: Persist new plan structure in an inactive state; creation, import, duplication and editing must not activate it implicitly.
-- [ ] **DOM-03**: Migrate existing plans, sessions and schedules transactionally while preserving identifiers, workout recovery state and authoritative completed history.
+- [x] **DOM-03**: Migrate existing plans, sessions and schedules transactionally while preserving identifiers, workout recovery state and authoritative completed history.
 - [ ] **DOM-04**: Resolve each plan's dates and rotation independently with explicit timezone/effective-date ownership; aggregate all eligible occurrences for Workout and Calendar.
 - [ ] **DOM-05**: Represent overlapping plan occurrences and apply explicit Move run, Move strength or Keep both decisions without rewriting historical facts.
 - [ ] **DOM-06**: Choose the intended scheduled occurrence when several plans are active and preserve the existing single recovered in-progress workout authority.
@@ -35,7 +35,7 @@ Exactly four roots: **Workout, Calendar, Library, Progress**. Preserve SQLite au
 - [ ] **DOM-12**: Require explicit owner confirmation of the selected scheduled occurrence before creating a durable activity match; import alone never completes or activates a plan.
 - [ ] **DOM-13**: Build Calendar aggregation and comparable Running effort/goal views from durable accepted facts with replayable projections; only eligible source-reported summary/lap evidence supports exact-distance efforts, while downsampled chart data produces no invented effort and missing evidence stays sparse.
 - [ ] **DOM-14**: Persist optional dated bodyweight entries, edits and deletions for relative-strength views only; entries never alter workout targets.
-- [ ] **DOM-15**: Extend backup, restore and merge to all multi-plan, Running, imported-activity, match, goal and bodyweight facts and identities without duplicate creation.
+- [x] **DOM-15**: Extend backup, restore and merge to all multi-plan, Running, imported-activity, match, goal and bodyweight facts and identities without duplicate creation.
 - [ ] **DOM-16**: Keep workouts fully offline and acknowledge edits/completion only after exclusive transactions commit; notifications and UI feedback follow durable results.
 - [ ] **DOM-17**: Preserve correction revisions, remove/restore tombstones, metric identities, original snapshots and explicit recommendation acceptance across the new multi-plan model.
 
@@ -240,7 +240,7 @@ once and remains Pending until its owning phase is implemented and verified.
 |---|---:|---|---|
 | DOM-01 | 13 | domain.multi-active | Pending |
 | DOM-02 | 13 | domain.activation-separate | Pending |
-| DOM-03 | 13 | domain.migrate-existing | Pending |
+| DOM-03 | 13 | domain.migrate-existing | Complete |
 | DOM-04 | 13 | domain.schedule-independent | Pending |
 | DOM-05 | 13 | domain.schedule-collision | Pending |
 | DOM-06 | 13 | domain.workout-selection | Pending |
@@ -252,7 +252,7 @@ once and remains Pending until its owning phase is implemented and verified.
 | DOM-12 | 13 | domain.matching-confirmed | Pending |
 | DOM-13 | 13 | domain.rebuildable-projections | Pending |
 | DOM-14 | 13 | domain.bodyweight-facts | Pending |
-| DOM-15 | 13 | domain.backup-merge | Pending |
+| DOM-15 | 13 | domain.backup-merge | Complete |
 | DOM-16 | 13 | domain.offline-transaction | Pending |
 | DOM-17 | 13 | domain.history-integrity | Pending |
 | SHL-01 | 14 | shell.four-roots | Pending |
@@ -431,4 +431,3 @@ once and remains Pending until its owning phase is implemented and verified.
 - Native fidelity, accessible alternatives, transaction correctness and migration evidence remain pending implementation.
 
 *Researched, roadmapped and traceability-validated 2026-10-06. No implementation, build, native execution, release or deployment was performed.*
-

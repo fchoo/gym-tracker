@@ -95,7 +95,25 @@ silently select a different transport.
   4. Overlapping occurrences remain separately identifiable; Move run, Move strength, Keep both, workout selection, and activity matching affect only the explicitly selected occurrence and never rewrite history.
   5. Imported activities, matches, goals, and optional bodyweight survive idempotent replay and portability, while workout edits/completion remain offline and are acknowledged only after the exclusive transaction commits.
 
-**Plans**: 16 plans
+**Plans**: 1/16 plans executed
+
+- [x] 13-01-PLAN.md
+- [ ] 13-02-PLAN.md
+- [ ] 13-03-PLAN.md
+- [ ] 13-04-PLAN.md
+- [ ] 13-05-PLAN.md
+- [ ] 13-06-PLAN.md
+- [ ] 13-07-PLAN.md
+- [ ] 13-08-PLAN.md
+- [ ] 13-09-PLAN.md
+- [ ] 13-10-PLAN.md
+- [ ] 13-11-PLAN.md
+- [ ] 13-12-PLAN.md
+- [ ] 13-13-PLAN.md
+- [ ] 13-14-PLAN.md
+- [ ] 13-15-PLAN.md
+- [ ] 13-16-PLAN.md
+
 **Plan flags**: research required; migration and portability plan required; plan check required; fresh review convergence required; MAP-01 and TIM-01 are locked, not checkpoints
 
 ### Phase 14: Prototype Visual Shell
@@ -157,6 +175,7 @@ silently select a different transport.
 **Plans**: 7 plans
 
 Plans:
+
 - [ ] 16-01-PLAN.md — Preflight upstream capabilities, prove the semantic transition controller, and implement accepted DEV-01/DEV-02 contracts.
 - [ ] 16-02-PLAN.md — Build the source-backed full-height month grid, Calendar key, encodings, focus, and query states.
 - [ ] 16-03-PLAN.md — Build capability-safe workout history and planned Strength preview while preserving management routes.
@@ -164,6 +183,7 @@ Plans:
 - [ ] 16-05-PLAN.md — Complete compact agenda routing and Calendar-owned Back/scroll/focus restoration.
 - [ ] 16-06-PLAN.md — Capture diagnostic native geometry and mapped Revision 18 overlay/difference artifacts.
 - [ ] 16-07-PLAN.md — Integrate real Phase 17/18 destinations, seal evidence, and hand performance diagnostics to Phase 20.
+
 **UI hint**: yes
 **Plan flags**: research required; UI specification required; plan check required; fresh review convergence required; DEV-01 and DEV-02 are accepted with native evidence pending
 
@@ -253,7 +273,7 @@ Plans:
 
 | Phase | Directory | Plans Complete | Status | Completed |
 |---|---|---:|---|---|
-| 13. One-per-Sport Plan & Running Foundation | 13-multi-plan-running-foundation | 0/16 | Not started | - |
+| 13. One-per-Sport Plan & Running Foundation | 13-multi-plan-running-foundation | 1/16 | In Progress|  |
 | 14. Prototype Visual Shell | 14-prototype-visual-shell | 0/12 | Not started | - |
 | 15. Workout Parity | 15-workout-parity | 0/13 | Not started | - |
 | 16. Calendar Parity | 16-calendar-parity | 0/7 | Not started | - |

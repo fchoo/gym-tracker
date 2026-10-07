@@ -1,19 +1,20 @@
 ---
 gsd_state_version: 1.0
 milestone: v1.2
-milestone_name: Prototype Parity, Concurrent Plans & Garmin Account Sync — PLANNED
+milestone_name: Prototype Parity, Concurrent Plans & Garmin Import — PLANNED
 current_phase: 13
 current_phase_name: One-per-Sport Plan & Running Foundation
-status: planning_ready_for_owner_review
-stopped_at: Final owner decisions and embedded Garmin transport reconciled; current-file convergence passed; awaiting owner review
-last_updated: "2026-10-07"
+status: executing
+stopped_at: Completed 13-01-PLAN.md
+last_updated: "2026-10-07T07:57:36.509Z"
 last_activity: 2026-10-07
-last_activity_desc: Reconciled 0 pending product decisions and the selected pinned embedded Garmin JSON-sync transport; final review converged with 0 HIGH and 0 actionable findings.
+last_activity_desc: Phase 13 execution started
+state_head: f60427f50d948eed0cb7ab9139ce9245010528b0
 progress:
   total_phases: 8
   completed_phases: 0
   total_plans: 98
-  completed_plans: 0
+  completed_plans: 1
   percent: 0
 ---
 
@@ -24,14 +25,14 @@ progress:
 See: .planning/PROJECT.md (updated 2026-10-06)
 
 **Core value:** Open today's workout, see trustworthy next targets, complete each working set with one primary action, recover safely from interruption, and understand exactly why the next target is recommended.
-**Current focus:** Owner review of the fully reconciled and converged planning set; implementation remains unauthorized.
+**Current focus:** Phase 13 — One-per-Sport Plan & Running Foundation
 
 ## Current Position
 
-Phase: 13 of 20 (v1.2 phase 1 of 8)
-Plan: 98-plan set retained; transport-focused revision recorded
-Status: Ready for owner review; final current-file convergence passed; implementation not authorized
-Last activity: 2026-10-07 — Selected and reconciled the pinned Android-embedded python-garminconnect JSON transport.
+Phase: 13 (One-per-Sport Plan & Running Foundation) — EXECUTING
+Plan: 2 of 16
+Status: Ready to execute
+Last activity: 2026-10-07 — Phase 13 execution started
 
 Progress: [░░░░░░░░░░] 0%
 
@@ -49,6 +50,11 @@ Gym Tracker remains a signed personal-use Android APK/AAB with SQLite-authoritat
 - v1.2 phases: 8 planned; 98 baseline plans retained for focused revision; 0 executed
 
 **Recent trend:** v1.1 closed with 5/5 phases and 36/36 plans complete, all integrity-critical files at 100% coverage, cross-phase integration passing, and the signed APK installed unchanged on the Samsung SM-S916B.
+**Per-Plan Metrics:**
+
+| Plan | Duration | Tasks | Files |
+|------|----------|-------|-------|
+| Phase 13 P01 | 5 min | 3 tasks | 6 files |
 
 ## Accumulated Context
 
@@ -64,6 +70,8 @@ Gym Tracker remains a signed personal-use Android APK/AAB with SQLite-authoritat
 - Runtime is a standalone installed app with no dynamic AI agents or development server. Hermes is an embedded JS engine, not an agent; no engine switch is requested.
 - SQLite facts, exclusive commit acknowledgment, immutable history, offline workouts, deterministic rebuilds, and complete backup/restore/merge coverage remain non-negotiable.
 - Revision 18 is the presentation oracle; necessary deviations require an explicit register entry and owner acceptance.
+- [Phase 13]: Migration 23 consumes a frozen schema-23 trigger registry, never the mutable latest backup graph.
+- [Phase 13]: MAP-01 is approved one-per-sport as recorded 2026-10-07; implementation proof remains pending.
 
 ### Pending Owner Review
 
@@ -88,7 +96,7 @@ Gym Tracker remains a signed personal-use Android APK/AAB with SQLite-authoritat
 
 ## Session Continuity
 
-Last session: 2026-10-07
-Stopped at: Final decisions and selected transport reconciled; final current-file convergence passed
-Resume file: .planning/V1.2-PLAN-REVIEW.md
+Last session: 2026-10-07T07:57:36.487Z
+Stopped at: Completed 13-01-PLAN.md
+Resume file: None
 Next action: Present the complete planning set for owner review; after explicit approval, run `/gsd-execute-phase 13`.
