@@ -1,9 +1,22 @@
 # TIM-01 Retirement Characterization Evidence
 
-**Recorded:** 2026-10-07  
-**Decision status:** approved  
-**Selection:** retire-playback  
+**Recorded:** 2026-10-07
+**Decision status:** approved
+**Selection:** retire-playback
 **Legacy playback compatibility:** false
+
+## Owner record validation
+
+Validated against `.planning/v1.2-owner-decisions.json` on 2026-10-07:
+
+| Field | Exact recorded value |
+| --- | --- |
+| `decisions.TIM-01.status` | `approved` |
+| `decisions.TIM-01.selection` | `retire-playback` |
+| `decisions.TIM-01.legacy_playback_compatibility` | `false` |
+
+The dated owner record is authoritative. Remaining cases below are technical
+verification work only and do not reopen the approved retirement decision.
 
 ## Approved retirement contract
 
