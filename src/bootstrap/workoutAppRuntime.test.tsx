@@ -3415,6 +3415,9 @@ describe("WorkoutAppRuntimeProvider", () => {
       if (sql.startsWith("SELECT name FROM sqlite_master WHERE type = 'table' AND name IN (")) {
         return parameters.map((name) => ({ name }));
       }
+      if (sql === "SELECT name FROM sqlite_master WHERE type = 'table' AND name = ?") {
+        return parameters.map((name) => ({ name }));
+      }
       if (sql === "SELECT name FROM sqlite_master WHERE type = 'index' AND name IN ('one_active_owned_plan_per_sport', 'one_active_owned_schedule_per_sport')") {
         return [
           { name: "one_active_owned_plan_per_sport" },

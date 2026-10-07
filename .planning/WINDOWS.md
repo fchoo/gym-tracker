@@ -1,10 +1,10 @@
 ---
 schema_version: 1
-open_count: 1
+open_count: 0
 waived_count: 0
-fixed_count: 81
+fixed_count: 82
 total_count: 82
-last_updated: 2026-10-07T12:36:56.865Z
+last_updated: 2026-10-07T12:40:28.048Z
 ---
 
 # Broken Windows Ledger
@@ -96,7 +96,7 @@ last_updated: 2026-10-07T12:36:56.865Z
 | 79 | 12 | deviation | src/bootstrap/phase12BackupBenchmark.ts |  | Corrected benchmark fixtures to satisfy migrated schema and production merge-plan contracts | fixed |  | 2026-09-30T21:53:14.951Z | 2026-09-30T21:54:12.887Z |
 | 80 | 12 | deviation | src/platform/sqlite/repositories/logicalMergeRepository.ts |  | Batched maximum full-plan writes and scoped exact verification without weakening validation | fixed |  | 2026-09-30T21:53:15.104Z | 2026-09-30T21:54:13.039Z |
 | 81 | 12 | deviation | scripts/benchmark-phase12-backup.mjs |  | Closed the tenth preflight RSS window before materialization | fixed |  | 2026-09-30T21:53:15.256Z | 2026-09-30T21:54:13.191Z |
-| 82 | 13 | unrun-verify | src/bootstrap/workoutAppRuntime.test.tsx |  | Full runtime test file has unrelated fake-kernel migration_verify_failed; focused timing cases pass. | open |  | 2026-10-07T12:36:56.865Z |  |
+| 82 | 13 | unrun-verify | src/bootstrap/workoutAppRuntime.test.tsx |  | Full runtime test file has unrelated fake-kernel migration_verify_failed; focused timing cases pass. | fixed |  | 2026-10-07T12:36:56.865Z | 2026-10-07T12:40:28.048Z |
 
 ````json
 [
@@ -1079,10 +1079,10 @@ last_updated: 2026-10-07T12:36:56.865Z
     "file": "src/bootstrap/workoutAppRuntime.test.tsx",
     "line": null,
     "description": "Full runtime test file has unrelated fake-kernel migration_verify_failed; focused timing cases pass.",
-    "status": "open",
+    "status": "fixed",
     "reason": "",
     "recorded_at": "2026-10-07T12:36:56.865Z",
-    "resolved_at": null
+    "resolved_at": "2026-10-07T12:40:28.048Z"
   }
 ]
 ````
