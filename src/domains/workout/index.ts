@@ -5,6 +5,9 @@ import type {
 import type {
   MetricProfile,
 } from "../metrics";
+import type {
+  StrengthOccurrenceContext,
+} from "../scheduling/activePlanSelection";
 
 export type WorkoutStartMode =
   | "scheduled"
@@ -26,6 +29,13 @@ export type StartWorkoutRequest =
       localDate: string;
       timezone: string;
       startedAtMs: number;
+      /**
+       * Required by the current Schedule runtime for scheduled Strength.  The
+       * legacy optional shape deliberately remains attribution-free so old
+       * interrupted sessions are never guessed onto a later activation.
+       */
+      selectedOccurrence?: StrengthOccurrenceContext;
+      commandIdentity?: string;
     }>
   | Readonly<{
       mode: "empty";

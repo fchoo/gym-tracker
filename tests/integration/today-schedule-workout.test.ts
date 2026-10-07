@@ -369,6 +369,72 @@ async function insertValidCustomOwnedPlan(
 }
 
 describe("Today schedule workout integration", () => {
+  it("starts only from the captured Strength opportunity and stores immutable provenance", async () => {
+    const runtime = await setupRuntime();
+    const instantMs = Date.UTC(2026, 7, 17, 4);
+    runtime.setNow(instantMs);
+    const today = await runtime.schedule.loadToday(instantMs);
+    if (today === null || today.view.state !== "scheduled") {
+      throw new Error("selected_strength_opportunity_missing");
+    }
+    const [version] = await runtime.kernel.queryAll<{
+      id: string;
+      day_revision: number;
+    }>(
+      `SELECT version.id, day.revision AS day_revision
+       FROM owned_plan_schedule_versions version
+       JOIN owned_plan_schedule_bindings binding
+         ON binding.schedule_version_id = version.id
+       JOIN plan_days day ON day.id = binding.plan_day_id
+       WHERE version.schedule_id = ? AND binding.plan_day_id = ?`,
+      [today.scheduleId, today.view.dayId],
+    );
+    if (version === undefined) throw new Error("selected_strength_version_missing");
+    const session = await startWorkout({
+      repository: createPlansWorkoutRepository(runtime.kernel),
+      request: {
+        mode: "scheduled",
+        planId: today.planId,
+        planDayId: today.view.dayId,
+        localDate: today.localDate,
+        timezone: today.timeZone,
+        startedAtMs: instantMs,
+        commandIdentity: "a".repeat(64),
+        selectedOccurrence: {
+          kind: "strength",
+          opportunityId: `schedule-opportunity:${today.scheduleId}:${today.localDate}:weekday`,
+          planId: today.planId,
+          planDayId: today.view.dayId,
+          scheduleId: today.scheduleId,
+          scheduleVersionId: version.id,
+          localDate: today.localDate,
+          timeZone: today.timeZone,
+          sourceRevisions: {
+            plan: today.planRevision,
+            day: version.day_revision,
+            schedule: today.scheduleRevision,
+            opportunity: 1,
+          },
+        },
+      },
+    });
+    await expect(runtime.kernel.queryAll(
+      `SELECT opportunity_id, plan_id, plan_day_id, schedule_id
+       FROM workout_session_schedule_links WHERE workout_session_id = ?`,
+      [session.id],
+    )).resolves.toEqual([{
+      opportunity_id: `schedule-opportunity:${today.scheduleId}:${today.localDate}:weekday`,
+      plan_id: today.planId,
+      plan_day_id: today.view.dayId,
+      schedule_id: today.scheduleId,
+    }]);
+    await expect(runtime.kernel.queryAll(
+      `SELECT workout_session_id FROM workout_schedule_reconciliation_receipts
+       WHERE workout_session_id = ?`,
+      [session.id],
+    )).resolves.toEqual([{ workout_session_id: session.id }]);
+  });
+
   it("projects corrected partial card facts from its active overlay after a cold reopen", async () => {
     const runtime = await setupRuntime();
     const plans = createPlansWorkoutRepository(runtime.kernel);

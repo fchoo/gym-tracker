@@ -849,6 +849,95 @@ export function createPlansWorkoutRepository(
       request: StartWorkoutRequest,
     ): Promise<StartedWorkout> {
       return kernel.write(async (transaction) => {
+        const selected = request.mode === "scheduled"
+          ? request.selectedOccurrence
+          : undefined;
+        if (request.mode === "scheduled" && selected !== undefined) {
+          await transaction.execute(
+            `INSERT OR IGNORE INTO owned_plan_schedule_opportunities
+              (id, schedule_id, schedule_version_id, local_date, source,
+               plan_day_id, state, outcome, session_id, revision, consumed_at_ms)
+             SELECT ?, schedule.id, version.id, ?, 'weekday', binding.plan_day_id,
+                    'pending', NULL, NULL, 1, NULL
+             FROM owned_plan_schedules schedule
+             JOIN owned_plan_schedule_versions version
+               ON version.id = ? AND version.schedule_id = schedule.id
+             JOIN owned_plan_schedule_bindings binding
+               ON binding.schedule_version_id = version.id
+             WHERE schedule.id = ?
+               AND schedule.plan_id = ?
+               AND binding.plan_day_id = ?
+               AND version.mode = 'weekday'
+             LIMIT 1`,
+            [
+              selected.opportunityId, selected.localDate,
+              selected.scheduleVersionId, selected.scheduleId,
+              selected.planId, selected.planDayId,
+            ],
+          );
+          const [current] = await transaction.queryAll<{
+            opportunity_id: string;
+            plan_id: string;
+            plan_day_id: string;
+            schedule_id: string;
+            schedule_version_id: string;
+            local_date: string;
+            timezone: string;
+            plan_revision: number;
+            day_revision: number;
+            schedule_revision: number;
+            opportunity_revision: number;
+          }>(
+            `SELECT opportunity.id AS opportunity_id,
+                    plan.id AS plan_id, day.id AS plan_day_id,
+                    schedule.id AS schedule_id, version.id AS schedule_version_id,
+                    opportunity.local_date, version.timezone,
+                    plan.revision AS plan_revision, day.revision AS day_revision,
+                    schedule.revision AS schedule_revision,
+                    opportunity.revision AS opportunity_revision
+             FROM owned_plan_schedule_opportunities opportunity
+             JOIN owned_plan_schedules schedule ON schedule.id = opportunity.schedule_id
+             JOIN owned_plan_schedule_versions version
+               ON version.id = opportunity.schedule_version_id
+              AND version.schedule_id = schedule.id
+             JOIN plans plan ON plan.id = schedule.plan_id
+             JOIN plan_days day ON day.id = opportunity.plan_day_id
+              AND day.plan_id = plan.id
+             WHERE opportunity.id = ?
+               AND opportunity.state = 'pending'
+               AND schedule.lifecycle = 'active'
+               AND plan.is_active = 1
+               AND plan.plan_kind = 'strength'
+               AND schedule.plan_kind = 'strength'`,
+            [selected.opportunityId],
+          );
+          if (
+            current === undefined
+            || current.opportunity_id !== selected.opportunityId
+            || current.plan_id !== selected.planId
+            || current.plan_day_id !== selected.planDayId
+            || current.schedule_id !== selected.scheduleId
+            || current.schedule_version_id !== selected.scheduleVersionId
+            || current.local_date !== selected.localDate
+            || current.timezone !== selected.timeZone
+            || current.plan_revision !== selected.sourceRevisions.plan
+            || current.day_revision !== selected.sourceRevisions.day
+            || current.schedule_revision !== selected.sourceRevisions.schedule
+            || current.opportunity_revision !== selected.sourceRevisions.opportunity
+            || request.planId !== selected.planId
+            || request.planDayId !== selected.planDayId
+            || request.localDate !== selected.localDate
+            || request.timezone !== selected.timeZone
+          ) {
+            throw new Error("workout_selected_occurrence_stale");
+          }
+        }
+        const active = await transaction.queryAll<{ id: string }>(
+          `SELECT id FROM workout_sessions WHERE status = 'in_progress' LIMIT 2`,
+        );
+        if (active.length > 0) {
+          throw new Error("workout_in_progress_exists");
+        }
         const completeIdentity = await supportsCompleteMetricIdentity(
           transaction,
         );
@@ -905,6 +994,37 @@ export function createPlansWorkoutRepository(
             ),
           ],
         );
+        if (request.mode === "scheduled" && selected !== undefined) {
+          await transaction.execute(
+            `INSERT INTO workout_session_schedule_links
+              (workout_session_id, opportunity_id, plan_id, plan_day_id,
+               schedule_id, schedule_version_id, local_date, timezone,
+               plan_revision, day_revision, schedule_revision,
+               opportunity_revision, created_at_ms)
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+            [
+              sessionId, selected.opportunityId, selected.planId,
+              selected.planDayId, selected.scheduleId,
+              selected.scheduleVersionId, selected.localDate, selected.timeZone,
+              selected.sourceRevisions.plan, selected.sourceRevisions.day,
+              selected.sourceRevisions.schedule,
+              selected.sourceRevisions.opportunity, request.startedAtMs,
+            ],
+          );
+          if (request.commandIdentity !== undefined) {
+            await transaction.execute(
+              `INSERT INTO workout_schedule_reconciliation_receipts
+                (id, workout_session_id, request_sha256, committed_at_ms)
+               VALUES (?, ?, ?, ?)`,
+              [
+                `workout-start:${request.commandIdentity}`,
+                sessionId,
+                request.commandIdentity,
+                request.startedAtMs,
+              ],
+            );
+          }
+        }
 
         if (request.mode !== "empty") {
           const exercises = await transaction.queryAll<{
