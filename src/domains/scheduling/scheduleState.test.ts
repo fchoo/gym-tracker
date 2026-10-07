@@ -11,6 +11,7 @@ import {
 import {
   FOLLOW_DEVICE_TIMEZONE_LABEL,
   KEEP_CURRENT_TIMEZONE_LABEL,
+  appendScheduleCollisionDecision,
   consumeDateOverride,
   resolveWeekdayPlanDay,
   transitionDateOverride,
@@ -18,6 +19,8 @@ import {
   transitionTimeZoneChoice,
   transitionWeekdayOpportunity,
   transitionRunningOpportunity,
+  transitionSelectedSchedule,
+  type CollisionScheduleOccurrenceV1,
   type PendingScheduleOpportunityV1,
   type RotationScheduleStateV1,
   type ScheduleDateOverrideV1,
@@ -28,6 +31,70 @@ import { parseStoredTimeZone } from "./timeZone";
 const monday = parseLocalDate("2026-08-17");
 const tuesday = parseLocalDate("2026-08-18");
 const wednesday = parseLocalDate("2026-08-19");
+
+const strengthCollision: CollisionScheduleOccurrenceV1 = {
+  id: "strength-opportunity",
+  scheduleId: "strength-schedule",
+  scheduleVersionId: "strength-version",
+  planId: "strength-plan",
+  slotId: "strength-slot",
+  localDate: monday,
+  timeZone: parseStoredTimeZone("Asia/Singapore"),
+  revision: 1,
+  state: "planned",
+};
+const runningCollision: CollisionScheduleOccurrenceV1 = {
+  ...strengthCollision,
+  id: "running-opportunity",
+  scheduleId: "running-schedule",
+  scheduleVersionId: "running-version",
+  planId: "running-plan",
+  slotId: "running-slot",
+};
+
+describe("Phase 13 collision transitions", () => {
+  const command = {
+    id: "collision-decision",
+    decision: "keep_both" as const,
+    occurredAtMs: 1,
+    strength: strengthCollision,
+    running: runningCollision,
+    prospectiveLocalDate: null,
+  };
+
+  it("keeps both schedules without a move intent", () => {
+    expect(appendScheduleCollisionDecision(command).prospectiveIntent).toBeNull();
+  });
+
+  it.each([
+    [{ ...command, strength: { ...strengthCollision, revision: 0 } }, "schedule_revision_conflict"],
+    [{ ...command, occurredAtMs: -1 }, "schedule_time_invalid"],
+    [{ ...command, prospectiveLocalDate: tuesday }, "schedule_collision_intent_invalid"],
+    [{ ...command, decision: "move_running" as const }, "schedule_collision_intent_invalid"],
+  ])("rejects an invalid collision transition", (input, code) => {
+    expect(() => appendScheduleCollisionDecision(input)).toThrow(code);
+  });
+
+  it("advances only the selected Running schedule", () => {
+    const result = transitionSelectedSchedule({
+      schedules: { strength: strengthCollision, running: runningCollision },
+      selected: "running",
+      expectedRevision: 1,
+      nextState: "skipped",
+    });
+    expect(result.next.strength).toBe(strengthCollision);
+    expect(result.next.running).toMatchObject({ state: "skipped", revision: 2 });
+  });
+
+  it("rejects an already consumed selected schedule", () => {
+    expect(() => transitionSelectedSchedule({
+      schedules: { strength: { ...strengthCollision, state: "skipped" }, running: runningCollision },
+      selected: "strength",
+      expectedRevision: 1,
+      nextState: "missed",
+    })).toThrow("schedule_opportunity_consumed");
+  });
+});
 
 function pendingOpportunity(
   overrides: Partial<PendingScheduleOpportunityV1> = {},
