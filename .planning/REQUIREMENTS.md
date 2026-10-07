@@ -21,13 +21,13 @@ Exactly four roots: **Workout, Calendar, Library, Progress**. Preserve SQLite au
 
 ### Phase 13: One-per-sport plan, running and import domain foundation
 
-- [ ] **DOM-01**: Support at most one active owned Strength plan and at most one active owned Running plan concurrently, with independent schedules; enforce per-sport uniqueness through the real repository/schema migration.
-- [ ] **DOM-02**: Persist new plan structure in an inactive state; creation, import, duplication and editing must not activate it implicitly.
+- [x] **DOM-01**: Support at most one active owned Strength plan and at most one active owned Running plan concurrently, with independent schedules; enforce per-sport uniqueness through the real repository/schema migration.
+- [x] **DOM-02**: Persist new plan structure in an inactive state; creation, import, duplication and editing must not activate it implicitly.
 - [x] **DOM-03**: Migrate existing plans, sessions and schedules transactionally while preserving identifiers, workout recovery state and authoritative completed history.
-- [ ] **DOM-04**: Resolve each plan's dates and rotation independently with explicit timezone/effective-date ownership; aggregate all eligible occurrences for Workout and Calendar.
+- [x] **DOM-04**: Resolve each plan's dates and rotation independently with explicit timezone/effective-date ownership; aggregate all eligible occurrences for Workout and Calendar.
 - [ ] **DOM-05**: Represent overlapping plan occurrences and apply explicit Move run, Move strength or Keep both decisions without rewriting historical facts.
-- [ ] **DOM-06**: Choose the intended scheduled occurrence when several plans are active and preserve the existing single recovered in-progress workout authority.
-- [ ] **DOM-07**: Persist Recovery, Long run, Progression, Tempo, Intervals, Hills and Fartlek sessions with common and contextual steps, order and stable identities.
+- [x] **DOM-06**: Choose the intended scheduled occurrence when several plans are active and preserve the existing single recovered in-progress workout authority.
+- [x] **DOM-07**: Persist Recovery, Long run, Progression, Tempo, Intervals, Hills and Fartlek sessions with common and contextual steps, order and stable identities.
 - [ ] **DOM-08**: Persist distance, optional owner-selected time/date, benchmark provenance and available training days; keep 10 km and Half Marathon times unset until explicitly chosen.
 - [ ] **DOM-09**: Preserve pace, heart-rate-zone and RPE targets as advisory session fields without guaranteeing an outcome or collecting gender or height.
 - [ ] **DOM-10**: Persist account-scoped Garmin external identity, versioned normalized JSON content digest, raw response provenance/hashes, timestamps, sport subtype, independent time bases, distance, and available HR/route/laps; retain sampling metadata and leave fit_sha256 absent without an original FIT.
@@ -37,7 +37,7 @@ Exactly four roots: **Workout, Calendar, Library, Progress**. Preserve SQLite au
 - [ ] **DOM-14**: Persist optional dated bodyweight entries, edits and deletions for relative-strength views only; entries never alter workout targets.
 - [x] **DOM-15**: Extend backup, restore and merge to all multi-plan, Running, imported-activity, match, goal and bodyweight facts and identities without duplicate creation.
 - [ ] **DOM-16**: Keep workouts fully offline and acknowledge edits/completion only after exclusive transactions commit; notifications and UI feedback follow durable results.
-- [ ] **DOM-17**: Preserve correction revisions, remove/restore tombstones, metric identities, original snapshots and explicit recommendation acceptance across the new multi-plan model.
+- [x] **DOM-17**: Preserve correction revisions, remove/restore tombstones, metric identities, original snapshots and explicit recommendation acceptance across the new multi-plan model.
 
 ### Phase 14: Shared visual system, root shell and settings
 
@@ -238,13 +238,13 @@ once and remains Pending until its owning phase is implemented and verified.
 
 | Requirement | Phase | Inventory ID | Status |
 |---|---:|---|---|
-| DOM-01 | 13 | domain.multi-active | Pending |
-| DOM-02 | 13 | domain.activation-separate | Pending |
+| DOM-01 | 13 | domain.multi-active | Complete |
+| DOM-02 | 13 | domain.activation-separate | Complete |
 | DOM-03 | 13 | domain.migrate-existing | Complete |
-| DOM-04 | 13 | domain.schedule-independent | Pending |
+| DOM-04 | 13 | domain.schedule-independent | Complete |
 | DOM-05 | 13 | domain.schedule-collision | Pending |
-| DOM-06 | 13 | domain.workout-selection | Pending |
-| DOM-07 | 13 | domain.running-structure | Pending |
+| DOM-06 | 13 | domain.workout-selection | Complete |
+| DOM-07 | 13 | domain.running-structure | Complete |
 | DOM-08 | 13 | domain.running-targets | Pending |
 | DOM-09 | 13 | domain.advisory-intensity | Pending |
 | DOM-10 | 13 | domain.import-source-facts | Pending |
@@ -254,7 +254,7 @@ once and remains Pending until its owning phase is implemented and verified.
 | DOM-14 | 13 | domain.bodyweight-facts | Pending |
 | DOM-15 | 13 | domain.backup-merge | Complete |
 | DOM-16 | 13 | domain.offline-transaction | Pending |
-| DOM-17 | 13 | domain.history-integrity | Pending |
+| DOM-17 | 13 | domain.history-integrity | Complete |
 | SHL-01 | 14 | shell.four-roots | Pending |
 | SHL-02 | 14 | shell.root-state | Pending |
 | SHL-03 | 14 | shell.appearance | Pending |

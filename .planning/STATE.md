@@ -5,16 +5,16 @@ milestone_name: Prototype Parity, Concurrent Plans & Garmin Import — PLANNED
 current_phase: 13
 current_phase_name: One-per-Sport Plan & Running Foundation
 status: executing
-stopped_at: Completed 13-01-PLAN.md
-last_updated: "2026-10-07T07:57:36.509Z"
+stopped_at: Completed 13-02-PLAN.md
+last_updated: "2026-10-07T08:41:11.995Z"
 last_activity: 2026-10-07
 last_activity_desc: Phase 13 execution started
-state_head: f60427f50d948eed0cb7ab9139ce9245010528b0
+state_head: 91875a955bf03eec08ada655e8b2bfd70fb36487
 progress:
   total_phases: 8
   completed_phases: 0
   total_plans: 98
-  completed_plans: 1
+  completed_plans: 2
   percent: 0
 ---
 
@@ -30,7 +30,7 @@ See: .planning/PROJECT.md (updated 2026-10-06)
 ## Current Position
 
 Phase: 13 (One-per-Sport Plan & Running Foundation) — EXECUTING
-Plan: 2 of 16
+Plan: 3 of 16
 Status: Ready to execute
 Last activity: 2026-10-07 — Phase 13 execution started
 
@@ -55,6 +55,7 @@ Gym Tracker remains a signed personal-use Android APK/AAB with SQLite-authoritat
 | Plan | Duration | Tasks | Files |
 |------|----------|-------|-------|
 | Phase 13 P01 | 5 min | 3 tasks | 6 files |
+| Phase 13 P02 | 43min | 3 tasks | 15 files |
 
 ## Accumulated Context
 
@@ -72,6 +73,8 @@ Gym Tracker remains a signed personal-use Android APK/AAB with SQLite-authoritat
 - Revision 18 is the presentation oracle; necessary deviations require an explicit register entry and owner acceptance.
 - [Phase 13]: Migration 23 consumes a frozen schema-23 trigger registry, never the mutable latest backup graph.
 - [Phase 13]: MAP-01 is approved one-per-sport as recorded 2026-10-07; implementation proof remains pending.
+- [Phase 13]: MAP-01 active plan/schedule pairs are asserted per sport under the exclusive writer transaction.
+- [Phase 13]: Running opportunity identity is schedule-version plus stable slot plus local date/timezone, never date-only.
 
 ### Pending Owner Review
 
@@ -96,7 +99,7 @@ Gym Tracker remains a signed personal-use Android APK/AAB with SQLite-authoritat
 
 ## Session Continuity
 
-Last session: 2026-10-07T07:57:36.487Z
-Stopped at: Completed 13-01-PLAN.md
+Last session: 2026-10-07T08:41:11.978Z
+Stopped at: Completed 13-02-PLAN.md
 Resume file: None
 Next action: Present the complete planning set for owner review; after explicit approval, run `/gsd-execute-phase 13`.

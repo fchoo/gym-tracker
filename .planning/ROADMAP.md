@@ -95,10 +95,10 @@ silently select a different transport.
   4. Overlapping occurrences remain separately identifiable; Move run, Move strength, Keep both, workout selection, and activity matching affect only the explicitly selected occurrence and never rewrite history.
   5. Imported activities, matches, goals, and optional bodyweight survive idempotent replay and portability, while workout edits/completion remain offline and are acknowledged only after the exclusive transaction commits.
 
-**Plans**: 1/16 plans executed
+**Plans**: 2/16 plans executed
 
 - [x] 13-01-PLAN.md
-- [ ] 13-02-PLAN.md
+- [x] 13-02-PLAN.md
 - [ ] 13-03-PLAN.md
 - [ ] 13-04-PLAN.md
 - [ ] 13-05-PLAN.md
@@ -273,7 +273,7 @@ Plans:
 
 | Phase | Directory | Plans Complete | Status | Completed |
 |---|---|---:|---|---|
-| 13. One-per-Sport Plan & Running Foundation | 13-multi-plan-running-foundation | 1/16 | In Progress|  |
+| 13. One-per-Sport Plan & Running Foundation | 13-multi-plan-running-foundation | 2/16 | In Progress|  |
 | 14. Prototype Visual Shell | 14-prototype-visual-shell | 0/12 | Not started | - |
 | 15. Workout Parity | 15-workout-parity | 0/13 | Not started | - |
 | 16. Calendar Parity | 16-calendar-parity | 0/7 | Not started | - |
