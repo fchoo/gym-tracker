@@ -61,6 +61,9 @@ const MIGRATIONS_THROUGH_V21 = runtimeMigrations.filter(
 const MIGRATIONS_THROUGH_V22 = runtimeMigrations.filter(
   ({ version }) => version <= 22,
 );
+const MIGRATIONS_THROUGH_V27 = runtimeMigrations.filter(
+  ({ version }) => version <= 27,
+);
 
 export type MigrationsEffectsContractCaseId =
   (typeof MIGRATIONS_EFFECTS_CONTRACT_CASES)[number];
@@ -222,7 +225,7 @@ const contractCases: Record<MigrationsEffectsContractCaseId, ContractCase> = {
       const result = await createMigrationRunner({
         databaseName,
         kernel,
-        migrations: runtimeMigrations,
+        migrations: MIGRATIONS_THROUGH_V27,
         recoveryBackup: adapter.recoveryBackup,
       }).run();
       const triggers = await kernel.queryAll<{ name: string }>(

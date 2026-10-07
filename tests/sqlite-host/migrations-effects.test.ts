@@ -85,6 +85,9 @@ import {
 import {
   advancedTimingTargetOwnershipMigration,
 } from "../../src/platform/sqlite/migrations/0027_advanced_timing_target_ownership";
+import {
+  multiPlanRunningFoundationMigration,
+} from "../../src/platform/sqlite/migrations/0028_multi_plan_running_foundation";
 
 const MIGRATIONS_THROUGH_V18 = runtimeMigrations.filter(
   ({ version }) => version <= 18,
@@ -276,6 +279,36 @@ const requiredTables = [
 ] as const;
 
 describe("Plan 01-06 forward migrations and internal recovery", () => {
+  it("upgrades the schema-27 protected baseline to the complete Phase 13 source graph", async () => {
+    const runtime = await createHostRuntime(fixture("v27-multi-plan-baseline.sql"));
+    try {
+      const result = await createMigrationRunner({
+        databaseName: "gym-tracker.db",
+        kernel: runtime.kernel,
+        migrations: runtimeMigrations,
+        recoveryBackup: validatedBackup(),
+      }).run();
+
+      expect(multiPlanRunningFoundationMigration.version).toBe(28);
+      expect(result.currentVersion).toBe(28);
+      await expect(runtime.kernel.queryAll<{ name: string }>(
+        `SELECT name FROM sqlite_master WHERE type = 'table'
+         AND name IN ('running_plans', 'running_session_slots',
+           'imported_activities', 'running_match_events') ORDER BY name`,
+      )).resolves.toEqual([
+        { name: "imported_activities" },
+        { name: "running_match_events" },
+        { name: "running_plans" },
+        { name: "running_session_slots" },
+      ]);
+      await expect(runtime.kernel.queryAll<{ plan_kind: string }>(
+        "SELECT plan_kind FROM plans ORDER BY id",
+      )).resolves.toEqual([{ plan_kind: "strength" }]);
+    } finally {
+      await runtime.close();
+    }
+  });
+
   it("keeps migration 23 bound to its frozen schema-23 backup source tables", () => {
     const schema23Tables = Reflect.get(
       backupContracts,
@@ -343,7 +376,7 @@ describe("Plan 01-06 forward migrations and internal recovery", () => {
       const result = await createMigrationRunner({
         databaseName: "gym-tracker.db",
         kernel: runtime.kernel,
-        migrations: runtimeMigrations,
+        migrations: runtimeMigrations.filter(({ version }) => version <= 27),
         recoveryBackup: validatedBackup(),
       }).run();
       const triggerNames = await runtime.kernel.queryAll<{ name: string }>(
@@ -441,6 +474,7 @@ describe("Plan 01-06 forward migrations and internal recovery", () => {
       25,
       26,
       27,
+      28,
     ]);
     expect(runtimeMigrations.slice(0, 3)).toEqual(migrations);
     expect(initialMigration).toEqual(expect.objectContaining({
@@ -1010,8 +1044,8 @@ describe("Plan 01-06 forward migrations and internal recovery", () => {
       }).run();
 
       expect(result).toEqual(expect.objectContaining({
-        appliedVersions: [22, 23, 24, 25, 26, 27],
-        currentVersion: 27,
+        appliedVersions: [22, 23, 24, 25, 26, 27, 28],
+        currentVersion: 28,
       }));
       await expect(runtime.kernel.queryAll(
         "SELECT id, owner_namespace FROM portable_owner_identity",
@@ -1448,8 +1482,8 @@ describe("Plan 01-06 forward migrations and internal recovery", () => {
         recoveryBackup: validatedBackup(),
       }).run();
       expect(result).toEqual(expect.objectContaining({
-        appliedVersions: [27],
-        currentVersion: 27,
+        appliedVersions: [27, 28],
+        currentVersion: 28,
       }));
       await expect(advancedTimingTargetOwnershipMigration.verify({
         execute: async () => ({ changes: 0, lastInsertRowId: 0 }),

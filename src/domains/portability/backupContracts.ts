@@ -1,5 +1,6 @@
-export const LOGICAL_BACKUP_FORMAT_VERSION = 2 as const;
-export const LOGICAL_BACKUP_ACCEPTED_FORMAT_VERSIONS = Object.freeze([1, 2] as const);
+/** Version 3 is the Phase 13 successor graph.  Versions 1 and 2 stay frozen. */
+export const LOGICAL_BACKUP_FORMAT_VERSION = 3 as const;
+export const LOGICAL_BACKUP_ACCEPTED_FORMAT_VERSIONS = Object.freeze([1, 2, 3] as const);
 
 export type LogicalBackupFormatVersion =
   (typeof LOGICAL_BACKUP_ACCEPTED_FORMAT_VERSIONS)[number];
@@ -80,6 +81,24 @@ export const LOGICAL_BACKUP_TABLE_DEFINITIONS = Object.freeze({
   history_session_overlays: { primaryKey: ["session_id"] },
   history_audit_events: { primaryKey: ["id"] },
   owned_progression_recommendations: { primaryKey: ["id"] },
+  running_plans: { primaryKey: ["plan_id"] },
+  running_session_revisions: { primaryKey: ["id"] },
+  running_goals: { primaryKey: ["id"] },
+  running_session_slots: { primaryKey: ["id"] },
+  running_opportunities: { primaryKey: ["id"] },
+  workout_provenance: { primaryKey: ["workout_session_id"] },
+  workout_receipts: { primaryKey: ["id"] },
+  imported_activities: { primaryKey: ["id"] },
+  imported_activity_payloads: { primaryKey: ["id"] },
+  imported_activity_references: { primaryKey: ["id"] },
+  imported_activity_laps: { primaryKey: ["id"] },
+  imported_activity_chunks: { primaryKey: ["id"] },
+  imported_activity_receipts: { primaryKey: ["id"] },
+  imported_activity_removal_events: { primaryKey: ["id"] },
+  running_match_events: { primaryKey: ["id"] },
+  running_current_matches: { primaryKey: ["opportunity_id"] },
+  bodyweight_revisions: { primaryKey: ["id"] },
+  bodyweight_tombstones: { primaryKey: ["id"] },
 } satisfies Readonly<Record<string, LogicalTableDefinition>>);
 
 export type LogicalBackupTableName =
@@ -87,6 +106,19 @@ export type LogicalBackupTableName =
 
 export const LOGICAL_BACKUP_TABLES = Object.freeze(
   Object.keys(LOGICAL_BACKUP_TABLE_DEFINITIONS).sort(),
+) as readonly LogicalBackupTableName[];
+
+/** The historical v2 graph must never grow when successor source tables land. */
+export const LOGICAL_BACKUP_V2_TABLES = Object.freeze(
+  LOGICAL_BACKUP_TABLES.filter((table) => ![
+    "running_plans", "running_session_revisions", "running_goals",
+    "running_session_slots", "running_opportunities", "workout_provenance",
+    "workout_receipts", "imported_activities", "imported_activity_payloads",
+    "imported_activity_references", "imported_activity_laps",
+    "imported_activity_chunks", "imported_activity_receipts",
+    "imported_activity_removal_events", "running_match_events",
+    "running_current_matches", "bodyweight_revisions", "bodyweight_tombstones",
+  ].includes(table)),
 ) as readonly LogicalBackupTableName[];
 
 /**
@@ -157,7 +189,8 @@ export function logicalBackupTablesForVersion(
   version: LogicalBackupFormatVersion,
   schemaVersion = Number.POSITIVE_INFINITY,
 ): readonly (keyof typeof LOGICAL_BACKUP_TABLE_DEFINITIONS)[] {
-  if (version !== 1) return LOGICAL_BACKUP_TABLES;
+  if (version === 3) return LOGICAL_BACKUP_TABLES;
+  if (version === 2) return LOGICAL_BACKUP_V2_TABLES;
   return schemaVersion < 21
     ? LOGICAL_BACKUP_PRE_PHASE10_V1_TABLES
     : LOGICAL_BACKUP_V1_TABLES;
