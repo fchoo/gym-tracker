@@ -18,6 +18,10 @@ import {
   type BackupEnvelopeCryptoPort,
 } from "../../src/domains/portability/backupFormat";
 import {
+  LOGICAL_BACKUP_V2_TABLES,
+  type LogicalBackupSnapshot,
+} from "../../src/domains/portability/backupContracts";
+import {
   createMergeCommands,
   createMergePreflightStore,
 } from "../../src/domains/portability/mergeCommands";
@@ -191,6 +195,34 @@ function crypto(): BackupEnvelopeCryptoPort {
 const sha256 = async (value: string): Promise<string> =>
   createHash("sha256").update(value).digest("hex");
 
+function legacyV2Archive(
+  snapshot: LogicalBackupSnapshot,
+  ownerNamespace: string,
+): LogicalBackupSnapshot {
+  const tables = Object.freeze(Object.fromEntries(
+    LOGICAL_BACKUP_V2_TABLES.map((table) => [
+      table,
+      table === "portable_owner_identity"
+        ? [{ id: 1, owner_namespace: ownerNamespace }]
+        : snapshot.tables[table] ?? [],
+    ]),
+  ));
+  const rowCounts = Object.freeze(Object.fromEntries(
+    LOGICAL_BACKUP_V2_TABLES.map((table) => [table, tables[table]!.length]),
+  ));
+  return Object.freeze({
+    ...snapshot,
+    version: 2,
+    schemaVersion: 27,
+    tables,
+    manifest: Object.freeze({
+      catalogReferenceCount: snapshot.catalogReferences.length,
+      rowCounts,
+      totalRows: Object.values(rowCounts).reduce((total, count) => total + count, 0),
+    }),
+  });
+}
+
 function reconciliation(kernel: SqliteKernel) {
   return createRestoreReconciliationRepository(kernel, {
     history: createHistoryProjectionRepository(kernel),
@@ -215,13 +247,7 @@ describe("portable merge integration", () => {
     });
     const localFacts = await createSqliteMergeLocalFactsPort(localRuntime.kernel).read();
     const bytes = await createBackupEnvelopeCodec(crypto()).seal({
-      snapshot: {
-        ...archive,
-        tables: {
-          ...archive.tables,
-          portable_owner_identity: [{ id: 1, owner_namespace: localFacts.ownerNamespace }],
-        },
-      },
+      snapshot: legacyV2Archive(archive, localFacts.ownerNamespace),
       password: new TextEncoder().encode("owner-password"),
       salt: new Uint8Array(16).fill(1),
       nonce: new Uint8Array(12).fill(2),
@@ -271,13 +297,7 @@ describe("portable merge integration", () => {
       id: "local-session", portableId: "a".repeat(32), modifiedAtMs: 10,
     });
     const localFacts = await createSqliteMergeLocalFactsPort(localRuntime.kernel).read();
-    const portableArchive = {
-      ...archive,
-      tables: {
-        ...archive.tables,
-        portable_owner_identity: [{ id: 1, owner_namespace: localFacts.ownerNamespace }],
-      },
-    };
+    const portableArchive = legacyV2Archive(archive, localFacts.ownerNamespace);
     const bytes = await createBackupEnvelopeCodec(crypto()).seal({
       snapshot: portableArchive,
       password: new TextEncoder().encode("owner-password"),

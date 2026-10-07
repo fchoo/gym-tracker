@@ -2566,7 +2566,7 @@ describe("accepted starter activation repository", () => {
   it("fails closed on inconsistent active plan and schedule topology", async () => {
     const kernel = await createRuntime();
     await kernel.write(async (transaction) => {
-      await transaction.execute("DROP INDEX one_active_owned_plan");
+      await transaction.execute("DROP INDEX one_active_owned_plan_per_sport");
       await transaction.execute(
         `INSERT INTO plans
           (id, content_pack_id, origin, source_namespace, upstream_id, name,
