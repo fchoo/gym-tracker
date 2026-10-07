@@ -17,6 +17,7 @@ import {
   transitionRotation,
   transitionTimeZoneChoice,
   transitionWeekdayOpportunity,
+  transitionRunningOpportunity,
   type PendingScheduleOpportunityV1,
   type RotationScheduleStateV1,
   type ScheduleDateOverrideV1,
@@ -70,6 +71,16 @@ function timeZoneState(
 }
 
 describe("Plan 02-03 Rotation schedule transitions", () => {
+  it("keeps same-day Running slots independently addressable", () => {
+    const first = {
+      version: 1 as const, id: "running-opportunity-a", planId: "running-plan", scheduleId: "running-schedule", scheduleVersionId: "running-v1", slotId: "slot-a", sessionRevisionId: "session-a-v1", localDate: monday, timeZone: parseStoredTimeZone("America/New_York"), revision: 1, state: "planned" as const,
+    };
+    const second = { ...first, id: "running-opportunity-b", slotId: "slot-b", sessionRevisionId: "session-b-v1" };
+    const result = transitionRunningOpportunity({ current: first, expectedRevision: 1, action: { type: "skip" } });
+    expect(result.next).toMatchObject({ id: "running-opportunity-a", slotId: "slot-a", state: "skipped", revision: 2 });
+    expect(second).toMatchObject({ state: "planned", slotId: "slot-b" });
+    expect(result.events[0]).toMatchObject({ scheduleVersionId: "running-v1", sessionRevisionId: "session-a-v1", timeZone: "America/New_York" });
+  });
   it.each([
     {
       id: "D-42 scheduled completion advances",

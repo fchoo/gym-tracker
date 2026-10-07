@@ -161,6 +161,56 @@ export type WeekdayOpportunityTransitionResult = Readonly<{
   events: readonly WeekdayOpportunityEvent[];
 }>;
 
+/** Running occurrences are deliberately separate from Strength's plan-day
+ * transition: the stable slot and immutable session revision are part of the
+ * identity, so same-day slots can never alias. */
+export type RunningOpportunityStateV1 = Readonly<{
+  version: 1;
+  id: string;
+  planId: string;
+  scheduleId: string;
+  scheduleVersionId: string;
+  slotId: string;
+  sessionRevisionId: string;
+  localDate: LocalDate;
+  timeZone: StoredTimeZone;
+  revision: number;
+  state: "planned" | "skipped" | "missed" | "overridden";
+}>;
+
+export type RunningOpportunityAction = Readonly<{ type: "skip" | "miss" }>
+  | Readonly<{ type: "override"; replacementOpportunityId: string }>;
+
+export type RunningOpportunityTransition = Readonly<{
+  next: RunningOpportunityStateV1;
+  events: readonly Readonly<{
+    type: "running_skipped" | "running_missed" | "running_overridden";
+    opportunityId: string;
+    scheduleId: string;
+    scheduleVersionId: string;
+    slotId: string;
+    sessionRevisionId: string;
+    localDate: LocalDate;
+    timeZone: StoredTimeZone;
+  }>[];
+}>;
+
+export function transitionRunningOpportunity(input: Readonly<{
+  current: RunningOpportunityStateV1;
+  expectedRevision: number;
+  action: RunningOpportunityAction;
+}>): RunningOpportunityTransition {
+  assertExpectedRevision(input.current.revision, input.expectedRevision);
+  if (input.current.state !== "planned") throw new ScheduleTransitionError("schedule_opportunity_consumed");
+  if (input.action.type === "override") assertNonEmptyIdentifier(input.action.replacementOpportunityId);
+  const state = input.action.type === "skip" ? "skipped" : input.action.type === "miss" ? "missed" : "overridden";
+  const type = input.action.type === "skip" ? "running_skipped" : input.action.type === "miss" ? "running_missed" : "running_overridden";
+  return Object.freeze({
+    next: Object.freeze({ ...input.current, state, revision: input.current.revision + 1 }),
+    events: Object.freeze([Object.freeze({ type, opportunityId: input.current.id, scheduleId: input.current.scheduleId, scheduleVersionId: input.current.scheduleVersionId, slotId: input.current.slotId, sessionRevisionId: input.current.sessionRevisionId, localDate: input.current.localDate, timeZone: input.current.timeZone })]),
+  });
+}
+
 export type ScheduleOverrideSelection =
   | Readonly<{
       kind: "plan_day";
