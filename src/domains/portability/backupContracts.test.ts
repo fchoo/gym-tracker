@@ -295,7 +295,7 @@ describe("logical backup contract", () => {
   });
 
   it.each([
-    ["an unsupported snapshot version", snapshot({ version: 6 })],
+    ["an unsupported snapshot version", snapshot({ version: 7 })],
     ["an unknown root field", snapshot({ rawDatabasePath: "/private/data.db" })],
     ["an unknown table", snapshot({
       tables: { sqlite_master: [] },
