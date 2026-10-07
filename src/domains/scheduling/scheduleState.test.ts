@@ -82,6 +82,28 @@ describe("Plan 02-03 Rotation schedule transitions", () => {
     expect(result.events[0]).toMatchObject({ scheduleVersionId: "running-v1", sessionRevisionId: "session-a-v1", timeZone: "America/New_York" });
   });
   it.each([
+    [{ type: "miss" } as const, "missed", "running_missed"],
+    [{ type: "override", replacementOpportunityId: "running-opportunity-replacement" } as const, "overridden", "running_overridden"],
+  ])("records every non-skip Running transition", (action, state, eventType) => {
+    const current = {
+      version: 1 as const, id: "running-opportunity-a", planId: "running-plan", scheduleId: "running-schedule", scheduleVersionId: "running-v1", slotId: "slot-a", sessionRevisionId: "session-a-v1", localDate: monday, timeZone: parseStoredTimeZone("America/New_York"), revision: 1, state: "planned" as const,
+    };
+    const result = transitionRunningOpportunity({ current, expectedRevision: 1, action });
+    expect(result.next).toMatchObject({ state, revision: 2 });
+    expect(result.events[0]).toMatchObject({ type: eventType });
+  });
+  it("rejects consumed Running opportunities and blank override identities", () => {
+    const current = {
+      version: 1 as const, id: "running-opportunity-a", planId: "running-plan", scheduleId: "running-schedule", scheduleVersionId: "running-v1", slotId: "slot-a", sessionRevisionId: "session-a-v1", localDate: monday, timeZone: parseStoredTimeZone("America/New_York"), revision: 1, state: "planned" as const,
+    };
+    expect(() => transitionRunningOpportunity({
+      current: { ...current, state: "skipped" }, expectedRevision: 1, action: { type: "skip" },
+    })).toThrow("schedule_opportunity_consumed");
+    expect(() => transitionRunningOpportunity({
+      current, expectedRevision: 1, action: { type: "override", replacementOpportunityId: "" },
+    })).toThrow("schedule_identifier_invalid");
+  });
+  it.each([
     {
       id: "D-42 scheduled completion advances",
       action: {
