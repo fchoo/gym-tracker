@@ -1,6 +1,6 @@
 /** Version 3 is the Phase 13 successor graph.  Versions 1 and 2 stay frozen. */
-export const LOGICAL_BACKUP_FORMAT_VERSION = 3 as const;
-export const LOGICAL_BACKUP_ACCEPTED_FORMAT_VERSIONS = Object.freeze([1, 2, 3] as const);
+export const LOGICAL_BACKUP_FORMAT_VERSION = 4 as const;
+export const LOGICAL_BACKUP_ACCEPTED_FORMAT_VERSIONS = Object.freeze([1, 2, 3, 4] as const);
 
 export type LogicalBackupFormatVersion =
   (typeof LOGICAL_BACKUP_ACCEPTED_FORMAT_VERSIONS)[number];
@@ -83,6 +83,11 @@ export const LOGICAL_BACKUP_TABLE_DEFINITIONS = Object.freeze({
   owned_progression_recommendations: { primaryKey: ["id"] },
   running_plans: { primaryKey: ["plan_id"] },
   running_session_revisions: { primaryKey: ["id"] },
+  running_session_roots: { primaryKey: ["id"] },
+  running_session_slot_roots: { primaryKey: ["id"] },
+  running_session_slot_revisions: { primaryKey: ["id"] },
+  running_plan_receipts: { primaryKey: ["request_id"] },
+  running_plan_events: { primaryKey: ["id"] },
   running_goals: { primaryKey: ["id"] },
   running_session_slots: { primaryKey: ["id"] },
   running_opportunities: { primaryKey: ["id"] },
@@ -118,6 +123,14 @@ export const LOGICAL_BACKUP_V2_TABLES = Object.freeze(
     "imported_activity_chunks", "imported_activity_receipts",
     "imported_activity_removal_events", "running_match_events",
     "running_current_matches", "bodyweight_revisions", "bodyweight_tombstones",
+  ].includes(table)),
+) as readonly LogicalBackupTableName[];
+
+/** Schema 29 stable-root data is a v4 successor only; v1-v3 stay frozen. */
+export const LOGICAL_BACKUP_V3_TABLES = Object.freeze(
+  LOGICAL_BACKUP_TABLES.filter((table) => ![
+    "running_session_roots", "running_session_slot_roots",
+    "running_session_slot_revisions", "running_plan_receipts", "running_plan_events",
   ].includes(table)),
 ) as readonly LogicalBackupTableName[];
 
@@ -189,7 +202,8 @@ export function logicalBackupTablesForVersion(
   version: LogicalBackupFormatVersion,
   schemaVersion = Number.POSITIVE_INFINITY,
 ): readonly (keyof typeof LOGICAL_BACKUP_TABLE_DEFINITIONS)[] {
-  if (version === 3) return LOGICAL_BACKUP_TABLES;
+  if (version === 4) return LOGICAL_BACKUP_TABLES;
+  if (version === 3) return LOGICAL_BACKUP_V3_TABLES;
   if (version === 2) return LOGICAL_BACKUP_V2_TABLES;
   return schemaVersion < 21
     ? LOGICAL_BACKUP_PRE_PHASE10_V1_TABLES

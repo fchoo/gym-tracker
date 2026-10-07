@@ -120,5 +120,11 @@ describe("minimum Running activation and ordered occurrences", () => {
     await expect(kernel.queryAll<{ id: string; slot_id: string }>("SELECT id, slot_id FROM running_opportunities ORDER BY slot_id")).resolves.toEqual([
       { id: "running-opportunity-0", slot_id: "running-slot-0" }, { id: "running-opportunity-1", slot_id: "running-slot-1" },
     ]);
+    await expect(kernel.queryAll<{ id: string; current_revision: number }>("SELECT id, current_revision FROM running_session_roots")).resolves.toEqual([
+      { id: "running-recovery-v1:root", current_revision: 1 },
+    ]);
+    await expect(kernel.queryAll<{ id: string; ordinal: number }>("SELECT id, ordinal FROM running_session_slot_revisions ORDER BY ordinal")).resolves.toEqual([
+      { id: "running-slot-0:revision:1", ordinal: 0 }, { id: "running-slot-1:revision:1", ordinal: 1 },
+    ]);
   });
 });

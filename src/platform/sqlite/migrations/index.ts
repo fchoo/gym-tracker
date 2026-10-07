@@ -25,6 +25,7 @@ import { automaticBackupDeletionProgressMigration } from "./0025_automatic_backu
 import { automaticBackupAccountLabelMigration } from "./0026_automatic_backup_account_label";
 import { advancedTimingTargetOwnershipMigration } from "./0027_advanced_timing_target_ownership";
 import { multiPlanRunningFoundationMigration } from "./0028_multi_plan_running_foundation";
+import { runningSessionRootsMigration } from "./0029_running_session_roots";
 
 export const migrations = Object.freeze([
   initialMigration,
@@ -54,6 +55,7 @@ export const migrations = Object.freeze([
   automaticBackupAccountLabelMigration,
   advancedTimingTargetOwnershipMigration,
   multiPlanRunningFoundationMigration,
+  runningSessionRootsMigration,
 ]);
 
 export const CURRENT_SCHEMA_VERSION = migrations.reduce(
@@ -87,6 +89,7 @@ export {
   automaticBackupAccountLabelMigration,
   advancedTimingTargetOwnershipMigration,
   multiPlanRunningFoundationMigration,
+  runningSessionRootsMigration,
   outcomeEffortMigration,
   scheduleActivationMigration,
 };

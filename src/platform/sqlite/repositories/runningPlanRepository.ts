@@ -2,6 +2,17 @@ import type { SqliteKernel } from "../sqliteKernel";
 import { evaluateRunningReadiness, type RunningReadiness } from "../../../domains/running/contracts";
 import { parseLocalDate, weekdayForLocalDate } from "../../../domains/scheduling/localDate";
 import { createScheduleRepository } from "./scheduleRepository";
+import type { SaveRunningSourceGraphInput } from "../../../domains/running/commands";
+
+export type RunningPlanReceipt = Readonly<{
+  requestId: string;
+  requestSha256: string;
+  operation: "create" | "edit" | "copy";
+  planId: string;
+  expectedPlanRevision: number;
+  result: Readonly<Record<string, unknown>>;
+  committedAtMs: number;
+}>;
 
 export type RunningSlotInput = Readonly<{ id: string; weekday: "Monday" | "Tuesday" | "Wednesday" | "Thursday" | "Friday" | "Saturday" | "Sunday"; ordinal: number; sessionRevisionId: string }>;
 export type RunningOpportunity = Readonly<{
@@ -28,6 +39,98 @@ export type CreateInactiveMinimumRunningPlanInput = Readonly<{
 
 export function createRunningPlanRepository(kernel: SqliteKernel) {
   return Object.freeze({
+    async saveSourceGraph(input: SaveRunningSourceGraphInput): Promise<Readonly<Record<string, unknown>>> {
+      return kernel.write(async (transaction) => {
+        const [receipt] = await transaction.queryAll<{
+          request_sha256: string;
+          operation: string;
+          plan_id: string;
+          expected_plan_revision: number;
+          result_json: string;
+        }>(
+          `SELECT request_sha256, operation, plan_id, expected_plan_revision, result_json
+           FROM running_plan_receipts WHERE request_id = ?`,
+          [input.requestId],
+        );
+        if (receipt !== undefined) {
+          if (receipt.request_sha256 !== input.requestSha256 || receipt.operation !== input.operation || receipt.plan_id !== input.planId || receipt.expected_plan_revision !== input.expectedPlanRevision) {
+            throw new Error("running_plan_receipt_conflict");
+          }
+          return Object.freeze(JSON.parse(receipt.result_json) as Record<string, unknown>);
+        }
+        const [plan] = await transaction.queryAll<{ revision: number; plan_kind: string; is_active: number }>(
+          "SELECT revision, plan_kind, is_active FROM plans WHERE id = ?",
+          [input.planId],
+        );
+        if (plan === undefined || plan.plan_kind !== "running" || plan.revision !== input.expectedPlanRevision) {
+          throw new Error("running_plan_revision_conflict");
+        }
+        for (const session of input.sessions) {
+          const [root] = await transaction.queryAll<{ current_revision: number }>(
+            "SELECT current_revision FROM running_session_roots WHERE id = ?", [session.rootId],
+          );
+          if (root === undefined) {
+            await transaction.execute(
+              "INSERT INTO running_session_roots(id, plan_id, session_kind, current_revision, created_at_ms) VALUES (?, ?, ?, ?, ?)",
+              [session.rootId, input.planId, session.sessionKind, session.revision, session.createdAtMs],
+            );
+          } else if (session.revision <= root.current_revision) {
+            throw new Error("running_session_revision_conflict");
+          } else {
+            await transaction.execute(
+              "UPDATE running_session_roots SET current_revision = ? WHERE id = ? AND current_revision = ?",
+              [session.revision, session.rootId, root.current_revision],
+            );
+          }
+          await transaction.execute(
+            `INSERT INTO running_session_revisions
+              (id, plan_id, session_kind, revision, definition_json, created_at_ms)
+             VALUES (?, ?, ?, ?, ?, ?)`,
+            [session.id, input.planId, session.sessionKind, session.revision, JSON.stringify(session), session.createdAtMs],
+          );
+        }
+        for (const slot of input.slots) {
+          const [root] = await transaction.queryAll<{ id: string }>(
+            "SELECT id FROM running_session_slot_roots WHERE id = ?", [slot.rootId],
+          );
+          if (root === undefined) {
+            await transaction.execute(
+              "INSERT INTO running_session_slot_roots(id, plan_id, weekday, created_at_ms) VALUES (?, ?, ?, ?)",
+              [slot.rootId, input.planId, slot.weekday, input.createdAtMs],
+            );
+          }
+          await transaction.execute(
+            `INSERT INTO running_session_slot_revisions
+              (id, slot_root_id, revision, ordinal, session_root_id, session_revision_id, created_at_ms)
+             VALUES (?, ?, ?, ?, ?, ?, ?)`,
+            [slot.id, slot.rootId, slot.revision, slot.ordinal, slot.sessionRootId, slot.sessionRevisionId, input.createdAtMs],
+          );
+        }
+        await transaction.execute(
+          "INSERT INTO running_goals(id, plan_id, goal_json, revision, created_at_ms) VALUES (?, ?, ?, ?, ?)",
+          [input.goal.id, input.planId, JSON.stringify(input.goal), input.goal.revision, input.goal.createdAtMs],
+        );
+        const nextRevision = plan.revision + 1;
+        const result = Object.freeze({ planId: input.planId, planRevision: nextRevision, active: false, sessionRootIds: input.sessions.map((session) => session.rootId), slotRootIds: input.slots.map((slot) => slot.rootId) });
+        const changed = await transaction.execute(
+          "UPDATE plans SET revision = revision + 1, is_active = 0 WHERE id = ? AND revision = ?",
+          [input.planId, input.expectedPlanRevision],
+        );
+        if (changed.changes !== 1) throw new Error("running_plan_revision_conflict");
+        await transaction.execute(
+          `INSERT INTO running_plan_events(id, plan_id, event_type, payload_json, created_at_ms)
+           VALUES (?, ?, ?, ?, ?)`,
+          [`${input.requestId}:event`, input.planId, input.operation === "create" ? "created" : input.operation === "copy" ? "copied" : "revised", JSON.stringify(result), input.createdAtMs],
+        );
+        await transaction.execute(
+          `INSERT INTO running_plan_receipts
+            (request_id, request_sha256, operation, plan_id, expected_plan_revision, result_json, committed_at_ms)
+           VALUES (?, ?, ?, ?, ?, ?, ?)`,
+          [input.requestId, input.requestSha256, input.operation, input.planId, input.expectedPlanRevision, JSON.stringify(result), input.createdAtMs],
+        );
+        return result;
+      });
+    },
     async readiness(planId: string): Promise<RunningReadiness> {
       const [revision, slots] = await Promise.all([
         kernel.queryAll<{ count: number }>("SELECT COUNT(*) AS count FROM running_session_revisions WHERE plan_id = ? AND session_kind = 'recovery'", [planId]),
@@ -54,7 +157,24 @@ export function createRunningPlanRepository(kernel: SqliteKernel) {
         );
         await transaction.execute("INSERT INTO running_plans(plan_id, status, revision, created_at_ms) VALUES (?, 'ready', 1, ?)", [input.planId, input.createdAtMs]);
         await transaction.execute("INSERT INTO running_session_revisions(id, plan_id, session_kind, revision, definition_json, created_at_ms) VALUES (?, ?, 'recovery', 1, '{}', ?)", [input.recoveryRevisionId, input.planId, input.createdAtMs]);
+        const recoveryRootId = `${input.recoveryRevisionId}:root`;
+        await transaction.execute(
+          "INSERT INTO running_session_roots(id, plan_id, session_kind, current_revision, created_at_ms) VALUES (?, ?, 'recovery', 1, ?)",
+          [recoveryRootId, input.planId, input.createdAtMs],
+        );
         for (const slot of input.slots) await transaction.execute("INSERT INTO running_session_slots(id, plan_id, weekday, ordinal, session_revision_id, revision) VALUES (?, ?, ?, ?, ?, 1)", [slot.id, input.planId, slot.weekday, slot.ordinal, slot.sessionRevisionId]);
+        for (const slot of input.slots) {
+          await transaction.execute(
+            "INSERT INTO running_session_slot_roots(id, plan_id, weekday, created_at_ms) VALUES (?, ?, ?, ?)",
+            [slot.id, input.planId, slot.weekday, input.createdAtMs],
+          );
+          await transaction.execute(
+            `INSERT INTO running_session_slot_revisions
+              (id, slot_root_id, revision, ordinal, session_root_id, session_revision_id, created_at_ms)
+             VALUES (?, ?, 1, ?, ?, ?, ?)`,
+            [`${slot.id}:revision:1`, slot.id, slot.ordinal, recoveryRootId, slot.sessionRevisionId, input.createdAtMs],
+          );
+        }
         await transaction.execute(
           `INSERT INTO owned_plan_schedules
             (id, plan_id, lifecycle, revision, activated_at_ms, deactivated_at_ms, plan_kind)
