@@ -22,7 +22,9 @@ function command(overrides: Partial<BodyweightCommand> = {}): BodyweightCommand 
     timezone: "Asia/Singapore",
     grams: 72_500,
   };
-  return { ...value, requestSha256: canonicalBodyweightRequestHash(value), ...overrides };
+  const merged = { ...value, ...overrides };
+  const { requestSha256, ...request } = merged;
+  return { ...request, requestSha256: requestSha256 ?? canonicalBodyweightRequestHash(request) };
 }
 
 const active: BodyweightEntryState = Object.freeze({
