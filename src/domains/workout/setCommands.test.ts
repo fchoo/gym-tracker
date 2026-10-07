@@ -550,4 +550,27 @@ describe("Plan 02-27 completed working-set correction", () => {
     })).rejects.toThrow("invalid_correction_idempotency_key");
     expect(port.reviseCompletedSet).not.toHaveBeenCalled();
   });
+
+  it.each([
+    ["session", { sessionId: " session-1" }],
+    ["set", { setId: "" }],
+    ["session revision", { expectedSessionRevision: -1 }],
+    ["set revision", { expectedSetRevision: 1.5 }],
+    ["revision time", { revisedAtMs: -1 }],
+  ])("rejects an invalid correction %s before forwarding", async (_name, patch) => {
+    const port = repository();
+    const input = correctionInput({
+      version: 1,
+      profile: "load_reps",
+      loadGrams: 62_500,
+      reps: 8,
+      source: "manual",
+    });
+
+    await expect(reviseCompletedSet({
+      repository: port,
+      input: { ...input, ...patch },
+    })).rejects.toThrow("invalid_completed_set_correction");
+    expect(port.reviseCompletedSet).not.toHaveBeenCalled();
+  });
 });

@@ -1,3 +1,5 @@
+import { createHash } from "node:crypto";
+
 import type {
   ActiveWorkoutExercise,
   ActiveWorkoutRepository,
@@ -18,6 +20,7 @@ import type {
   ReorderExerciseRevision,
   ReorderExercisesInput,
   ReorderExercisesResult,
+  ReviseCompletedSetInput,
   SetObservation,
   SetTarget,
   SetValueSource,
@@ -124,6 +127,16 @@ type RemoveReceiptRow = Readonly<{
   result_session_revision: number;
   result_json: string;
   committed_at_ms: number;
+}>;
+
+type CompletedSetCorrectionReceiptRow = Readonly<{
+  request_sha256: string;
+  session_id: string;
+  set_id: string;
+  expected_session_revision: number;
+  expected_set_revision: number;
+  result_session_revision: number;
+  result_set_revision: number;
 }>;
 
 type SessionExerciseEditReceiptRow = Readonly<{
@@ -497,6 +510,37 @@ function sameMetricIdentity(
   return left.profile === right.profile
     && left.contractVersion === right.contractVersion
     && left.exerciseMetricGeneration === right.exerciseMetricGeneration;
+}
+
+function correctionRequestHash(
+  input: ReviseCompletedSetInput,
+  immutableTargetJson: string,
+): string {
+  return createHash("sha256").update(JSON.stringify({
+    operation: "revise_completed_set",
+    sessionId: input.sessionId,
+    setId: input.setId,
+    expectedSessionRevision: input.expectedSessionRevision,
+    expectedSetRevision: input.expectedSetRevision,
+    metricIdentity: input.metricIdentity,
+    immutableTargetJson,
+    observation: input.observation,
+    revisedAtMs: input.revisedAtMs,
+  })).digest("hex");
+}
+
+function correctionReceiptMatches(
+  receipt: CompletedSetCorrectionReceiptRow,
+  input: ReviseCompletedSetInput,
+  requestSha256: string,
+): boolean {
+  return receipt.request_sha256 === requestSha256
+    && receipt.session_id === input.sessionId
+    && receipt.set_id === input.setId
+    && receipt.expected_session_revision === input.expectedSessionRevision
+    && receipt.expected_set_revision === input.expectedSetRevision
+    && receipt.result_session_revision === input.expectedSessionRevision + 1
+    && receipt.result_set_revision === input.expectedSetRevision + 1;
 }
 
 async function supportsCompleteMetricIdentity(
@@ -3376,7 +3420,18 @@ export function createWorkoutRepository(
     },
 
     async reviseCompletedSet(input) {
-      const result = await kernel.write(async (transaction) => {
+      const result = await kernel.write(async (transaction): Promise<
+        | Readonly<{ kind: "committed" }>
+        | Readonly<{ kind: "replay" }>
+        | null
+      > => {
+        const [receipt] = await transaction.queryAll<CompletedSetCorrectionReceiptRow>(
+          `SELECT request_sha256, session_id, set_id, expected_session_revision,
+                  expected_set_revision, result_session_revision, result_set_revision
+           FROM workout_completed_set_correction_receipts
+           WHERE request_id = ?`,
+          [input.correctionIdempotencyKey],
+        );
         const rows = await completionRows(
           transaction,
           input.sessionId,
@@ -3386,6 +3441,12 @@ export function createWorkoutRepository(
           return null;
         }
         const { session, set } = rows;
+        const requestSha256 = correctionRequestHash(input, set.target_json);
+        if (receipt !== undefined) {
+          return correctionReceiptMatches(receipt, input, requestSha256)
+            ? { kind: "replay" }
+            : null;
+        }
         const identity: MetricIdentity = {
           profile: set.exercise_metric_profile,
           contractVersion: set.exercise_metric_contract_version ?? 1,
@@ -3438,12 +3499,57 @@ export function createWorkoutRepository(
         if (sessionUpdate.changes !== 1) {
           throw new Error("revise_completed_set_session_update_failed");
         }
-        return loadPlannedWorkout(transaction, input.sessionId);
+        await transaction.execute(
+          `INSERT INTO history_audit_events
+            (id, session_id, effective_revision, event_type, field_identity,
+             before_json, after_json, occurred_at_ms)
+           VALUES (?, ?, ?, 'correction', ?, ?, ?, ?)`,
+          [
+            `completed-set-correction:${input.correctionIdempotencyKey}`,
+            input.sessionId,
+            input.expectedSessionRevision + 1,
+            `session_sets:${input.setId}`,
+            JSON.stringify({
+              setId: input.setId,
+              metricIdentity: identity,
+              targetJson: set.target_json,
+              observationJson: set.observed_json,
+              revision: input.expectedSetRevision,
+            }),
+            JSON.stringify({
+              setId: input.setId,
+              metricIdentity: identity,
+              targetJson: set.target_json,
+              observationJson: observation.json,
+              revision: input.expectedSetRevision + 1,
+            }),
+            input.revisedAtMs,
+          ],
+        );
+        await transaction.execute(
+          `INSERT INTO workout_completed_set_correction_receipts
+            (request_id, request_sha256, session_id, set_id,
+             expected_session_revision, expected_set_revision,
+             result_session_revision, result_set_revision, committed_at_ms)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+          [
+            input.correctionIdempotencyKey,
+            requestSha256,
+            input.sessionId,
+            input.setId,
+            input.expectedSessionRevision,
+            input.expectedSetRevision,
+            input.expectedSessionRevision + 1,
+            input.expectedSetRevision + 1,
+            input.revisedAtMs,
+          ],
+        );
+        return { kind: "committed" };
       });
       if (result === null) {
         throw new WorkoutCommandConflictError("revise_completed_set_conflict");
       }
-      return result;
+      return loadPlannedWorkout(kernel, input.sessionId);
     },
 
     async undoCompletedSet(input) {

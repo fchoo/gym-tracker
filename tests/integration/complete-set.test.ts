@@ -1161,7 +1161,7 @@ describe("Plan 02-27 completed working-set correction", () => {
     )).toEqual(beforeSnapshots);
   });
 
-  it("rejects stale correction replay without changing the committed correction", async () => {
+  it("replays the exact committed correction but conflicts when the request changes", async () => {
     const { repository, session, completed } = await completedWorkingSetFixture();
     const first = completed.currentExercise.workingSets[0]!;
     const input = correctionInput({
@@ -1171,8 +1171,21 @@ describe("Plan 02-27 completed working-set correction", () => {
     });
 
     const corrected = await reviseCompletedSet({ repository, input });
-    await expect(reviseCompletedSet({ repository, input })).rejects
-      .toMatchObject({ code: "revise_completed_set_conflict" });
+    await expect(reviseCompletedSet({ repository, input })).resolves
+      .toEqual(corrected);
+    await expect(reviseCompletedSet({
+      repository,
+      input: {
+        ...input,
+        observation: {
+          version: 1,
+          profile: "load_reps",
+          loadGrams: 65_000,
+          reps: 6,
+          source: "manual",
+        },
+      },
+    })).rejects.toMatchObject({ code: "revise_completed_set_conflict" });
     await expect(repository.getActiveWorkout(session.id)).resolves
       .toEqual(corrected);
   });
