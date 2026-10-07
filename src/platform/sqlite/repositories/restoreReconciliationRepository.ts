@@ -18,6 +18,7 @@ import type {
 } from "./historyProjectionRepository";
 import type {
   SqliteKernel,
+  SqliteTransactionExecutor,
 } from "../sqliteKernel";
 
 type RestoreState = "ready" | "rebuild_pending";
@@ -42,6 +43,25 @@ type SubjectRow = Readonly<{
   revision: number;
   applied_revision: number | null;
 }>;
+
+type ImportedLifecycleRow = Readonly<{
+  activity_id: string;
+  aggregate_revision: number;
+  removal_state: "active" | "removed";
+  lifecycle_event_id: string;
+}>;
+
+type RunningCurrentMatchRow = Readonly<{
+  opportunity_id: string;
+  activity_id: string;
+  relation_revision: number;
+  event_id: string;
+}>;
+
+const PHASE_13_LIFECYCLE_TRIGGER_NAMES = Object.freeze([
+  "automatic_backup_generation_imported_activity_current_lifecycle_insert",
+  "automatic_backup_generation_imported_activity_current_lifecycle_update",
+] as const);
 
 const ALL_PERIOD_SUBJECT_ID = 'history-subject/v1:["period","all"]';
 
@@ -263,6 +283,136 @@ async function historyParityIsExact(
     && revisions.every(({ revision, applied_revision }) => applied_revision === revision);
 }
 
+/**
+ * These state tables deliberately stay out of the portable source archive.  A
+ * source restore clears them; rebuilding them must not manufacture a backup
+ * generation, otherwise a retry of the same restore would dirty Drive state.
+ */
+async function capturePhase13LifecycleTriggers(
+  transaction: SqliteTransactionExecutor,
+): Promise<ReadonlyMap<string, string>> {
+  const rows = await transaction.queryAll<{ name: string; sql: string }>(
+    `SELECT name, sql FROM sqlite_master
+     WHERE type = 'trigger' AND name IN (?, ?)
+     ORDER BY name`,
+    PHASE_13_LIFECYCLE_TRIGGER_NAMES,
+  );
+  if (rows.length !== PHASE_13_LIFECYCLE_TRIGGER_NAMES.length
+    || rows.some(({ sql }) => sql.trim().length === 0)) {
+    throw new Error("phase13_lifecycle_generation_trigger_invalid");
+  }
+  return new Map(rows.map(({ name, sql }) => [name, sql]));
+}
+
+async function phase13ProjectionSupport(kernel: SqliteKernel): Promise<boolean> {
+  const rows = await kernel.queryAll<{ name: string }>(
+    `SELECT name FROM sqlite_master
+     WHERE type = 'table'
+       AND name IN ('imported_activity_identities', 'imported_activity_events',
+                    'imported_activity_current_lifecycle',
+                    'running_activity_match_events', 'running_activity_current_matches')`,
+  );
+  return rows.length === 5;
+}
+
+async function expectedImportedLifecycleRows(
+  executor: Pick<SqliteTransactionExecutor, "queryAll">,
+): Promise<readonly ImportedLifecycleRow[]> {
+  return executor.queryAll<ImportedLifecycleRow>(
+    `SELECT identity.activity_id, identity.aggregate_revision,
+            CASE latest.event_type WHEN 'removed' THEN 'removed' ELSE 'active' END AS removal_state,
+            latest.id AS lifecycle_event_id
+       FROM imported_activity_identities identity
+       JOIN imported_activity_events latest ON latest.activity_id = identity.activity_id
+      WHERE latest.id = (
+        SELECT event.id FROM imported_activity_events event
+         WHERE event.activity_id = identity.activity_id
+         ORDER BY event.created_at_ms DESC, event.id DESC LIMIT 1
+      )
+        AND latest.aggregate_revision = identity.aggregate_revision
+      ORDER BY identity.activity_id`,
+  );
+}
+
+async function expectedRunningCurrentMatchRows(
+  executor: Pick<SqliteTransactionExecutor, "queryAll">,
+): Promise<readonly RunningCurrentMatchRow[]> {
+  return executor.queryAll<RunningCurrentMatchRow>(
+    `SELECT latest.opportunity_id, latest.activity_id, latest.relation_revision,
+            latest.id AS event_id
+       FROM running_activity_match_events latest
+       JOIN imported_activity_identities identity ON identity.activity_id = latest.activity_id
+       JOIN imported_activity_events lifecycle ON lifecycle.activity_id = identity.activity_id
+      WHERE latest.id = (
+        SELECT event.id FROM running_activity_match_events event
+         WHERE event.activity_id = latest.activity_id
+         ORDER BY event.relation_revision DESC, event.created_at_ms DESC, event.id DESC LIMIT 1
+      )
+        AND lifecycle.id = (
+          SELECT event.id FROM imported_activity_events event
+           WHERE event.activity_id = identity.activity_id
+           ORDER BY event.created_at_ms DESC, event.id DESC LIMIT 1
+        )
+        AND lifecycle.aggregate_revision = identity.aggregate_revision
+        AND lifecycle.event_type IN ('imported', 'restored')
+        AND latest.action IN ('matched', 'reassigned')
+      ORDER BY latest.opportunity_id, latest.activity_id`,
+  );
+}
+
+async function rebuildPhase13CurrentRelations(kernel: SqliteKernel): Promise<void> {
+  if (!await phase13ProjectionSupport(kernel)) return;
+  await kernel.write(async (transaction) => {
+    const [triggers, lifecycleRows, matchRows] = await Promise.all([
+      capturePhase13LifecycleTriggers(transaction),
+      expectedImportedLifecycleRows(transaction),
+      expectedRunningCurrentMatchRows(transaction),
+    ]);
+    for (const name of triggers.keys()) await transaction.execute(`DROP TRIGGER ${name}`);
+    await transaction.execute("DELETE FROM running_activity_current_matches");
+    await transaction.execute("DELETE FROM imported_activity_current_lifecycle");
+    for (const row of lifecycleRows) {
+      await transaction.execute(
+        `INSERT INTO imported_activity_current_lifecycle
+          (activity_id, aggregate_revision, removal_state, lifecycle_event_id)
+         VALUES (?, ?, ?, ?)`,
+        [row.activity_id, row.aggregate_revision, row.removal_state, row.lifecycle_event_id],
+      );
+    }
+    for (const row of matchRows) {
+      await transaction.execute(
+        `INSERT INTO running_activity_current_matches
+          (opportunity_id, activity_id, relation_revision, event_id)
+         VALUES (?, ?, ?, ?)`,
+        [row.opportunity_id, row.activity_id, row.relation_revision, row.event_id],
+      );
+    }
+    for (const statement of triggers.values()) await transaction.execute(statement);
+    const restored = await capturePhase13LifecycleTriggers(transaction);
+    if ([...triggers].some(([name, sql]) => restored.get(name) !== sql)) {
+      throw new Error("phase13_lifecycle_generation_trigger_restore_invalid");
+    }
+  });
+}
+
+async function phase13CurrentRelationsParityIsExact(kernel: SqliteKernel): Promise<boolean> {
+  if (!await phase13ProjectionSupport(kernel)) return true;
+  const [expectedLifecycle, expectedMatches, actualLifecycle, actualMatches] = await Promise.all([
+    expectedImportedLifecycleRows(kernel),
+    expectedRunningCurrentMatchRows(kernel),
+    kernel.queryAll<ImportedLifecycleRow>(
+      `SELECT activity_id, aggregate_revision, removal_state, lifecycle_event_id
+       FROM imported_activity_current_lifecycle ORDER BY activity_id`,
+    ),
+    kernel.queryAll<RunningCurrentMatchRow>(
+      `SELECT opportunity_id, activity_id, relation_revision, event_id
+       FROM running_activity_current_matches ORDER BY opportunity_id, activity_id`,
+    ),
+  ]);
+  return JSON.stringify(actualLifecycle) === JSON.stringify(expectedLifecycle)
+    && JSON.stringify(actualMatches) === JSON.stringify(expectedMatches);
+}
+
 async function markReady(
   kernel: SqliteKernel,
   pendingUpdatedAtMs: number,
@@ -304,14 +454,19 @@ export function createRestoreReconciliationRepository(
           });
         }
 
+        // Current Running relations precede every dependent Calendar/Progress
+        // reader. The remaining sequence preserves the established history
+        // ordering and does not expose a ready restore before all parity holds.
+        await rebuildPhase13CurrentRelations(kernel);
         const sessions = await reseedHistoryDerivatives(kernel, input.nowMs());
         await input.search.rebuildSearchIndex();
         await input.history.rebuildAll({ nowMs: input.nowMs() });
-        const [searchParity, historyExact] = await Promise.all([
+        const [searchParity, historyExact, phase13Exact] = await Promise.all([
           input.search.verifyParity(),
           historyParityIsExact(kernel, input.history, sessions),
+          phase13CurrentRelationsParityIsExact(kernel),
         ]);
-        if (!searchParity.exact || !historyExact
+        if (!searchParity.exact || !historyExact || !phase13Exact
           || !await markReady(kernel, state.updated_at_ms, input.nowMs())) {
           throw new Error("portability_rebuild_parity_incomplete");
         }
