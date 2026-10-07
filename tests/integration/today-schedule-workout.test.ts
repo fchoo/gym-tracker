@@ -1478,4 +1478,86 @@ describe("Today schedule workout integration", () => {
       )
     )).toBe(true);
   });
+
+  it("characterizes dormant legacy timing bytes alongside selected-occurrence recovery after relaunch", async () => {
+    const runtime = await setupRuntime();
+    const session = await startWorkout({
+      repository: createPlansWorkoutRepository(runtime.kernel),
+      request: {
+        mode: "scheduled",
+        planId: "plan-copy",
+        planDayId: "plan-day-copy",
+        localDate: "2026-08-17",
+        timezone: "Asia/Singapore",
+        startedAtMs: 1_786_853_600_000,
+      },
+    });
+    const [target] = await runtime.kernel.queryAll<{ id: string }>(
+      `SELECT id FROM session_sets
+       WHERE session_exercise_id IN (
+         SELECT id FROM session_exercises WHERE session_id = ?
+       ) ORDER BY ordinal LIMIT 1`,
+      [session.id],
+    );
+    if (target === undefined) throw new Error("timing_characterization_target_missing");
+    const configJson = '{"version":1,"mode":"cluster","groupSizes":[3,3],"intraRestMs":20000,"cueChannels":"haptic"}';
+    const progressJson = '{"currentGroupIndex":1}';
+    await runtime.kernel.write(async (transaction) => {
+      await transaction.execute(
+        "UPDATE session_sets SET advanced_timing_resolved_json = ? WHERE id = ?",
+        [configJson, target.id],
+      );
+      await transaction.execute(
+        `INSERT INTO session_advanced_timing_states
+          (session_id, session_set_id, state_version, revision, status, mode,
+           config_json, progress_json, started_at_ms, next_boundary_at_ms,
+           remaining_ms, stopped_at_ms)
+         VALUES (?, ?, 1, 7, 'paused', 'cluster', ?, ?, NULL, NULL, 15_000, NULL)`,
+        [session.id, target.id, configJson, progressJson],
+      );
+      await transaction.execute(
+        `INSERT INTO session_rest_states
+          (session_id, state_version, status, started_at_ms, ends_at_ms,
+           remaining_ms, expired_at_ms, next_set_id, revision)
+         VALUES (?, 1, 'paused', NULL, NULL, 45_000, NULL, ?, 9)`,
+        [session.id, target.id],
+      );
+    });
+    const expected = await runtime.kernel.queryAll<{
+      config_json: string;
+      progress_json: string;
+      active_session_exercise_id: string | null;
+      active_set_id: string | null;
+      remaining_ms: number | null;
+      schedule_version_id: string;
+    }>(
+      `SELECT ats.config_json, ats.progress_json, ws.active_session_exercise_id,
+              ws.active_set_id, rest.remaining_ms, link.schedule_version_id
+       FROM workout_sessions ws
+       JOIN session_advanced_timing_states ats ON ats.session_id = ws.id
+       JOIN session_rest_states rest ON rest.session_id = ws.id
+       JOIN workout_session_schedule_links link ON link.workout_session_id = ws.id
+       WHERE ws.id = ?`,
+      [session.id],
+    );
+
+    await runtime.kernel.close();
+    kernels.delete(runtime.kernel);
+    const writer = new NodeSqliteConnection(new DatabaseSync(runtime.databasePath));
+    const reader = new NodeSqliteConnection(new DatabaseSync(runtime.databasePath));
+    await configureSqliteConnection(writer, { enableWal: true });
+    await configureSqliteConnection(reader, { enableWal: false });
+    const reopened = createSqliteKernel({ reader, writer });
+    kernels.add(reopened);
+    await expect(reopened.queryAll(
+      `SELECT ats.config_json, ats.progress_json, ws.active_session_exercise_id,
+              ws.active_set_id, rest.remaining_ms, link.schedule_version_id
+       FROM workout_sessions ws
+       JOIN session_advanced_timing_states ats ON ats.session_id = ws.id
+       JOIN session_rest_states rest ON rest.session_id = ws.id
+       JOIN workout_session_schedule_links link ON link.workout_session_id = ws.id
+       WHERE ws.id = ?`,
+      [session.id],
+    )).resolves.toEqual(expected);
+  });
 });

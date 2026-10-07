@@ -348,6 +348,34 @@ describe("advanced timing repository state decoding", () => {
     }));
   });
 
+  it("characterizes retained persistence bytes for every readable legacy state", async () => {
+    const readableRows = [
+      row({ session_set_id: null, status: "idle", mode: null, config_json: offJson,
+        progress_json: "{}", started_at_ms: null, next_boundary_at_ms: null }),
+      row({ status: "paused", started_at_ms: null, next_boundary_at_ms: null, remaining_ms: 500 }),
+      row({ status: "stopped", started_at_ms: null, next_boundary_at_ms: null, stopped_at_ms: 3_000 }),
+      row({ mode: "cluster", config_json: clusterJson, progress_json: '{"currentGroupIndex":0}' }),
+      row({ mode: "cluster", config_json: clusterJson, progress_json: '{"currentGroupIndex":0}',
+        status: "paused", started_at_ms: null, next_boundary_at_ms: null, remaining_ms: 500 }),
+      row({ mode: "cluster", config_json: clusterJson, progress_json: '{"currentGroupIndex":1,"phase":"ready"}',
+        status: "stopped", started_at_ms: null, next_boundary_at_ms: null, stopped_at_ms: 0 }),
+      row({ mode: "cluster", config_json: clusterJson, progress_json: '{"currentGroupIndex":1,"phase":"stopped"}',
+        status: "stopped", started_at_ms: null, next_boundary_at_ms: null, stopped_at_ms: 9_000 }),
+    ];
+
+    for (const persisted of readableRows) {
+      const originalBytes = JSON.stringify(persisted);
+      const context = await createAdvancedTimingRepository(kernelForRows(persisted))
+        .getAdvancedTimingContext("session-1");
+      expect(context).not.toBeNull();
+      expect(JSON.stringify(persisted)).toBe(originalBytes);
+    }
+
+    await expect(createAdvancedTimingRepository(kernelForRows(
+      row({ status: "expired", stopped_at_ms: 3_000 }),
+    )).getAdvancedTimingContext("session-1")).rejects.toThrow("advanced_timing_state_invalid");
+  });
+
   it("returns null for an inactive or absent session and filters inactive contexts", async () => {
     const inactiveKernel: SqliteKernel = {
       ...kernelForRows(row()),

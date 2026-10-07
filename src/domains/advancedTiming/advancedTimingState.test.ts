@@ -463,6 +463,44 @@ describe("AdvancedTimingStateV1", () => {
       nowMs: Number.POSITIVE_INFINITY,
     })).toThrow("advanced_timing_time_invalid");
   });
+
+  it("characterizes every legacy cadence and cluster state as an exact round-trippable fact", () => {
+    const running = startAdvancedTimingState({
+      current: idle,
+      config: perRep,
+      sessionSetId: "legacy-set",
+      nowMs: 10_000,
+    });
+    const clusterReady = startAdvancedTimingState({
+      current: idle,
+      config: cluster,
+      sessionSetId: "legacy-set",
+      nowMs: 10_000,
+    });
+    const clusterGap = beginClusterGapState(clusterReady, 20_000);
+    const states: readonly AdvancedTimingStateV1[] = [
+      idle,
+      running,
+      pauseAdvancedTimingState(running, 10_500),
+      stopAdvancedTimingState(running, 10_750),
+      clusterReady,
+      clusterGap,
+      pauseAdvancedTimingState(clusterGap, 20_500),
+      stopAdvancedTimingState(clusterGap, 20_750),
+    ];
+
+    for (const state of states) {
+      const serialized = JSON.stringify(state);
+      const recovered = JSON.parse(serialized) as AdvancedTimingStateV1;
+      expect(recovered).toEqual(state);
+      expect(JSON.stringify(recovered)).toBe(serialized);
+    }
+
+    expect(states.map((state) => state.state)).toEqual([
+      "idle", "running", "paused", "stopped", "cluster_ready",
+      "cluster_gap_running", "cluster_gap_paused", "stopped",
+    ]);
+  });
 });
 import {
   describe,

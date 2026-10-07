@@ -214,5 +214,43 @@ describe("advanced timing command boundary", () => {
     })).toThrow("advanced_timing_command_invalid");
     expect(port.pauseAdvancedTiming).not.toHaveBeenCalled();
   });
+
+  it("characterizes every mutable legacy entry point as revision-fenced and input-preserving", async () => {
+    const port = repository();
+    const revision = Object.freeze({
+      sessionId: "session-legacy",
+      sessionSetId: "set-legacy",
+      expectedSessionRevision: 4,
+      expectedAdvancedTimingRevision: 2,
+      nowMs: 10_000,
+    });
+    const config = Object.freeze({
+      version: 1 as const,
+      mode: "cluster" as const,
+      groupSizes: [3, 3] as const,
+      intraRestMs: 20_000,
+      cueChannels: "haptic" as const,
+    });
+    const before = JSON.stringify({ revision, config });
+
+    await configureAdvancedTiming({ repository: port, input: { ...revision, config } });
+    await startAdvancedTiming({ repository: port, input: { ...revision, config } });
+    await beginAdvancedTimingClusterGap({ repository: port, input: revision });
+    await skipAdvancedTimingClusterGap({ repository: port, input: revision });
+    await pauseAdvancedTiming({ repository: port, input: revision });
+    await resumeAdvancedTiming({ repository: port, input: revision });
+    await reconcileAdvancedTiming({ repository: port, input: { ...revision, foregroundSinceMs: 9_500 } });
+    await stopAdvancedTiming({ repository: port, input: revision });
+
+    expect(JSON.stringify({ revision, config })).toBe(before);
+    expect(port.configureAdvancedTiming).toHaveBeenCalledWith({ ...revision, config });
+    expect(port.startAdvancedTiming).toHaveBeenCalledWith({ ...revision, config });
+    expect(port.beginAdvancedTimingClusterGap).toHaveBeenCalledWith(revision);
+    expect(port.skipAdvancedTimingClusterGap).toHaveBeenCalledWith(revision);
+    expect(port.pauseAdvancedTiming).toHaveBeenCalledWith(revision);
+    expect(port.resumeAdvancedTiming).toHaveBeenCalledWith(revision);
+    expect(port.reconcileAdvancedTiming).toHaveBeenCalledWith({ ...revision, foregroundSinceMs: 9_500 });
+    expect(port.stopAdvancedTiming).toHaveBeenCalledWith(revision);
+  });
 });
 
