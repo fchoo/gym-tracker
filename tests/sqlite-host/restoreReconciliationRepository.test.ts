@@ -199,6 +199,33 @@ async function seedRestoredSource(kernel: SqliteKernel): Promise<void> {
   });
 }
 
+async function seedRestoredActivityLifecycle(kernel: SqliteKernel): Promise<void> {
+  await kernel.write(async (transaction) => {
+    await transaction.execute(
+      `INSERT INTO imported_activities
+        (id, source, source_activity_id, started_at_ms, aggregate_json, imported_at_ms)
+       VALUES ('restored-activity', 'garmin_connect_account:owner', 'external-restored',
+               1724428800000, '{"confirmed_local_date":"2026-08-24"}', 1)`,
+    );
+    await transaction.execute(
+      `INSERT INTO imported_activity_identities
+        (activity_id, source_kind, account_namespace, external_activity_id,
+         aggregate_revision, accepted_normalized_sha256, removal_state)
+       VALUES ('restored-activity', 'garmin_connect_account', 'owner',
+               'external-restored', 1, ?, 'active')`,
+      ["a".repeat(64)],
+    );
+    await transaction.execute(
+      `INSERT INTO imported_activity_events
+        (id, activity_id, aggregate_revision, event_type, payload_json, created_at_ms)
+       VALUES ('restored-activity:import', 'restored-activity', 1, 'imported', '{}', 1)`,
+    );
+    // Restore deliberately clears this rebuildable relation. Its source event
+    // and durable identity remain authoritative.
+    await transaction.execute("DELETE FROM imported_activity_current_lifecycle");
+  });
+}
+
 async function sourceFacts(kernel: SqliteKernel): Promise<unknown> {
   const [exercises, sessions, sets] = await Promise.all([
     kernel.queryAll("SELECT id, origin, name FROM exercises ORDER BY id"),
@@ -331,6 +358,32 @@ function loadRepsObservation(loadGrams: number, reps: number): string {
 }
 
 describe("restore reconciliation repository", () => {
+  it("rebuilds Phase 13 current lifecycle from immutable source without advancing backup generation", async () => {
+    const kernel = await open();
+    await seedRestoredSource(kernel);
+    await seedRestoredActivityLifecycle(kernel);
+    const [before] = await kernel.queryAll<{ mutation_generation: number }>(
+      "SELECT mutation_generation FROM automatic_backup_state WHERE id = 1",
+    );
+
+    await expect(repository(kernel).reconcileAndRebuild()).resolves.toMatchObject({
+      outcome: "rebuilt",
+      state: "ready",
+    });
+    await expect(kernel.queryAll(
+      `SELECT activity_id, aggregate_revision, removal_state, lifecycle_event_id
+       FROM imported_activity_current_lifecycle`,
+    )).resolves.toEqual([{
+      activity_id: "restored-activity",
+      aggregate_revision: 1,
+      removal_state: "active",
+      lifecycle_event_id: "restored-activity:import",
+    }]);
+    await expect(kernel.queryAll<{ mutation_generation: number }>(
+      "SELECT mutation_generation FROM automatic_backup_state WHERE id = 1",
+    )).resolves.toEqual([before!]);
+  });
+
   it("rebuilds local FTS and all history/progress/recommendation derivatives from committed source facts", async () => {
     const kernel = await open();
     await seedRestoredSource(kernel);
