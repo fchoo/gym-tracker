@@ -3,7 +3,10 @@ import {
   parseAdvancedTimingConfig,
   type AdvancedTimingConfigV1,
 } from "./advancedTimingConfig";
-import type { AdvancedTimingStateV1 } from "./advancedTimingState";
+import type {
+  AdvancedTimingCue,
+  AdvancedTimingStateV1,
+} from "./advancedTimingState";
 
 export type AdvancedTimingCommandResult = Readonly<{
   state: AdvancedTimingStateV1;
@@ -139,7 +142,7 @@ function retiredResult(input: AdvancedTimingRevisionInput): AdvancedTimingComman
       targetSessionSetId: null,
     }),
     sessionRevision: input.expectedSessionRevision,
-    invalidationScopes: [["active-workout", input.sessionId], ["today"]],
+    invalidationScopes: [["active-workout", input.sessionId], ["today"]] as const,
   });
 }
 

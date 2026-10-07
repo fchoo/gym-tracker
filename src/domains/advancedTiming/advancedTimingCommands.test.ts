@@ -20,8 +20,7 @@ describe("TIM-01 advanced timing retirement boundary", () => {
       version: 1,
       mode: "cluster",
       groupSizes: [2, 2],
-      intraClusterRestMs: 1_000,
-      interClusterRestMs: 2_000,
+      intraRestMs: 1_000,
       cueChannels: "haptic",
     })).toEqual({ version: 1, mode: "off" });
     expect(retireAdvancedTiming({ version: 1, mode: "off" })).toEqual({
