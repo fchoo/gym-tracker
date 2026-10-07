@@ -7,6 +7,7 @@ import {
 import {
   BACKUP_LIMITS,
   BackupContractError,
+  LOGICAL_BACKUP_FORMAT_VERSION,
   LOGICAL_BACKUP_TABLES,
   logicalBackupTablesForVersion,
   parseLogicalBackupSnapshot,
@@ -71,6 +72,25 @@ describe("logical backup contract", () => {
     expect(LOGICAL_BACKUP_TABLES).not.toContain("history_projection_period_inputs");
     expect(LOGICAL_BACKUP_TABLES).not.toContain("pending_effects");
     expect(LOGICAL_BACKUP_TABLES).not.toContain("sqlite_master");
+  });
+
+  it("freezes v1-v5 while the schema-35 successor carries every durable Phase 13 fact", () => {
+    expect(LOGICAL_BACKUP_FORMAT_VERSION).toBe(6);
+    expect(logicalBackupTablesForVersion(5)).not.toContain("imported_activity_identities");
+    expect(logicalBackupTablesForVersion(5)).not.toContain("running_activity_match_events");
+    expect(logicalBackupTablesForVersion(5)).not.toContain("workout_session_schedule_links");
+    expect(logicalBackupTablesForVersion(6)).toEqual(expect.arrayContaining([
+      "imported_activity_identities",
+      "imported_activity_events",
+      "imported_activity_match_invalidations",
+      "workout_session_schedule_links",
+      "workout_schedule_reconciliation_receipts",
+      "workout_completed_set_correction_receipts",
+      "running_activity_match_events",
+      "running_activity_match_receipts",
+    ]));
+    expect(logicalBackupTablesForVersion(6)).not.toContain("running_activity_current_matches");
+    expect(logicalBackupTablesForVersion(6)).not.toContain("imported_activity_current_lifecycle");
   });
 
   it("parses a bounded versioned user-owned snapshot", () => {
