@@ -77,6 +77,10 @@ import {
 import {
   migrations as runtimeMigrations,
 } from "../../src/platform/sqlite/migrations";
+import * as backupContracts from "../../src/domains/portability/backupContracts";
+import {
+  AUTOMATIC_BACKUP_GENERATION_TRIGGER_STATEMENTS,
+} from "../../src/platform/sqlite/migrations/0023_automatic_drive_backup";
 import {
   advancedTimingTargetOwnershipMigration,
 } from "../../src/platform/sqlite/migrations/0027_advanced_timing_target_ownership";
@@ -269,6 +273,67 @@ const requiredTables = [
 ] as const;
 
 describe("Plan 01-06 forward migrations and internal recovery", () => {
+  it("keeps migration 23 bound to its frozen schema-23 backup source tables", () => {
+    const schema23Tables = Reflect.get(
+      backupContracts,
+      "LOGICAL_BACKUP_SCHEMA_23_TABLES",
+    ) as readonly string[] | undefined;
+
+    expect(schema23Tables).toEqual([
+      "app_settings",
+      "exercise_aliases",
+      "exercise_library_entries",
+      "exercise_metric_baselines",
+      "exercise_owner_preferences",
+      "exercise_search_terms",
+      "exercise_taxonomy",
+      "exercises",
+      "history_audit_events",
+      "history_session_overlays",
+      "metric_profile_migration_events",
+      "owned_plan_aggregate_states",
+      "owned_plan_day_exercises",
+      "owned_plan_day_sources",
+      "owned_plan_mutation_requests",
+      "owned_plan_occurrence_sources",
+      "owned_plan_progression_policies",
+      "owned_plan_schedule_bindings",
+      "owned_plan_schedule_events",
+      "owned_plan_schedule_opportunities",
+      "owned_plan_schedule_overrides",
+      "owned_plan_schedule_versions",
+      "owned_plan_schedules",
+      "owned_plan_starter_sources",
+      "owned_plan_warmup_sets",
+      "owned_plan_working_set_targets",
+      "owned_progression_recommendations",
+      "plan_day_exercises",
+      "plan_days",
+      "plan_schedule_bindings",
+      "plan_schedules",
+      "plan_warmup_sets",
+      "plan_working_set_targets",
+      "plans",
+      "progression_policies",
+      "progression_recommendations",
+      "session_advanced_timing_states",
+      "session_exercises",
+      "session_rest_states",
+      "session_sets",
+      "session_undo_snapshots",
+      "starter_plan_activation_requests",
+      "taxonomy_terms",
+      "workout_session_exercise_edit_receipts",
+      "workout_session_exercise_reorder_receipts",
+      "workout_sessions",
+    ]);
+    expect(AUTOMATIC_BACKUP_GENERATION_TRIGGER_STATEMENTS).toHaveLength(
+      schema23Tables!.length * 3,
+    );
+    expect(AUTOMATIC_BACKUP_GENERATION_TRIGGER_STATEMENTS.join("\n"))
+      .not.toContain("portable_owner_identity");
+  });
+
   it("retains the released manifest prefix while allowing later additive migrations", () => {
     expect(runtimeMigrations.slice(0, 11).map(({ version }) => version)).toEqual([
       1,
