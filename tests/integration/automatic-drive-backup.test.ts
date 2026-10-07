@@ -2,8 +2,34 @@ import { describe, expect, it, jest } from "@jest/globals";
 
 import { createAutomaticBackupCoordinator } from "../../src/domains/backup/automaticBackupCoordinator";
 import { reconstructedDriveManifestBytes } from "../../src/domains/backup/automaticBackupContracts";
+import { MULTI_PLAN_RUNNING_FOUNDATION_TABLES } from "../../src/platform/sqlite/migrations/0028_multi_plan_running_foundation";
+import { IMPORTED_ACTIVITY_EVIDENCE_TABLES } from "../../src/platform/sqlite/migrations/0030_imported_activity_evidence";
+import { BODYWEIGHT_SOURCE_HISTORY_TABLES } from "../../src/platform/sqlite/migrations/0031_bodyweight_source_history";
+import { RUNNING_ACTIVITY_MATCH_LEDGER_TABLES } from "../../src/platform/sqlite/migrations/0034_running_activity_match_ledger";
 
 describe("automatic Drive backup integration", () => {
+  it("keeps every Phase 13 authoritative source family in the trigger-owning migrations while excluding rebuilt current relations", () => {
+    expect(MULTI_PLAN_RUNNING_FOUNDATION_TABLES).toEqual(expect.arrayContaining([
+      "imported_activities", "imported_activity_payloads", "imported_activity_removal_events",
+      "running_match_events", "bodyweight_revisions", "bodyweight_tombstones",
+    ]));
+    expect(IMPORTED_ACTIVITY_EVIDENCE_TABLES).toEqual(expect.arrayContaining([
+      "imported_activity_identities", "imported_activity_events", "imported_activity_match_invalidations",
+    ]));
+    expect(BODYWEIGHT_SOURCE_HISTORY_TABLES).toEqual([
+      "bodyweight_entries", "bodyweight_entry_events", "bodyweight_command_receipts",
+    ]);
+    expect(RUNNING_ACTIVITY_MATCH_LEDGER_TABLES).toEqual(expect.arrayContaining([
+      "running_activity_match_events", "running_activity_match_receipts",
+    ]));
+    expect(RUNNING_ACTIVITY_MATCH_LEDGER_TABLES).toContain("running_activity_current_matches");
+    expect([
+      ...MULTI_PLAN_RUNNING_FOUNDATION_TABLES,
+      ...IMPORTED_ACTIVITY_EVIDENCE_TABLES,
+      ...BODYWEIGHT_SOURCE_HISTORY_TABLES,
+    ]).not.toContain("running_activity_current_matches");
+  });
+
   it("reconstructs complete descriptors that remain usable for recovery", async () => {
     const candidate = {
       kind: "current" as const,
