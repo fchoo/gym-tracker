@@ -1932,6 +1932,27 @@ describe("portable merge plan", () => {
       .rejects.toEqual(new MergePlanError("merge_plan_invalid"));
   });
 
+  it("plans a complete owner-scoped Phase 13 source graph without serialising rebuild-only current matches", async () => {
+    const archive = snapshot({ id: "archive-session", marker: "archive", modifiedAtMs: 20 }, {
+      imported_activities: [{ id: "activity", source: "garmin", source_activity_id: "external-1" }],
+      imported_activity_identities: [{ activity_id: "activity", source_kind: "garmin_connect_account", account_namespace: "owner-a", external_activity_id: "external-1" }],
+      imported_activity_events: [{ id: "activity-event", activity_id: "activity", aggregate_revision: 1 }],
+      bodyweight_entries: [{ id: "weight", owner_id: "owner-a", current_revision: 1, lifecycle: "active", created_at_ms: 1 }],
+      bodyweight_entry_events: [{ id: "weight-event", entry_id: "weight", owner_id: "owner-a", revision: 1, event_id: "event-1", operation: "create", local_date: "2026-10-07", timezone: "Asia/Singapore", grams: 70000, occurred_at_ms: 1 }],
+    });
+    const local = snapshot({ id: "local-session", marker: "local", modifiedAtMs: 10 });
+
+    const plan = await buildPortableMergePlan({ archive, local, payloadDigest });
+    const graph = plan.aggregates.find((aggregate) => aggregate.aggregateClass === "source_graph");
+
+    expect(plan.operations).toContainEqual(expect.objectContaining({
+      aggregateClass: "source_graph", kind: "insert", portableId: ownerNamespace,
+    }));
+    expect(graph?.tables.imported_activity_events).toHaveLength(1);
+    expect(graph?.tables.bodyweight_entry_events).toHaveLength(1);
+    expect(graph?.tables.running_current_matches).toBeUndefined();
+  });
+
   it.each([
     ["a mutation request whose source selects this plan but result cannot map", {
       owned_plan_mutation_requests: [{ request_id: "mutation", source_plan_id: "archive-plan", result_plan_id: "other-plan" }],

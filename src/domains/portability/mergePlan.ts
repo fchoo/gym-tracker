@@ -7,6 +7,9 @@ import type {
   LogicalBackupTableName,
 } from "./backupContracts";
 import {
+  LOGICAL_BACKUP_TABLE_DEFINITIONS,
+} from "./backupContracts";
+import {
   LOGICAL_BACKUP_REFERENCE_DEFINITIONS,
 } from "./restoreCommands";
 
@@ -17,7 +20,8 @@ export type PortableMergeTableClass =
   | "app_setting"
   | "custom_exercise"
   | "owned_plan"
-  | "workout_session";
+  | "workout_session"
+  | "source_graph";
 
 /**
  * Every persisted v2 source table belongs to exactly one merge aggregate
@@ -87,28 +91,25 @@ export const PORTABLE_MERGE_TABLE_CLASSES = Object.freeze({
   workout_session_schedule_links: "workout_session",
   workout_schedule_reconciliation_receipts: "workout_session",
   workout_completed_set_correction_receipts: "workout_session",
-  imported_activities: "workout_session",
-  imported_activity_payloads: "workout_session",
-  imported_activity_references: "workout_session",
-  imported_activity_laps: "workout_session",
-  imported_activity_chunks: "workout_session",
-  imported_activity_receipts: "workout_session",
-  imported_activity_removal_events: "workout_session",
-  imported_activity_identities: "workout_session",
-  imported_activity_events: "workout_session",
-  imported_activity_match_invalidations: "workout_session",
-  running_match_events: "workout_session",
-  running_current_matches: "workout_session",
-  running_activity_match_events: "workout_session",
-  running_activity_match_receipts: "workout_session",
-  bodyweight_revisions: "workout_session",
-  bodyweight_tombstones: "workout_session",
-  // Bodyweight is an independent append-only source aggregate.  It stays in
-  // the source-history class until the merger's aggregate planner receives
-  // dedicated owner-scoped reconciliation in its consumer phase.
-  bodyweight_entries: "workout_session",
-  bodyweight_entry_events: "workout_session",
-  bodyweight_command_receipts: "workout_session",
+  imported_activities: "source_graph",
+  imported_activity_payloads: "source_graph",
+  imported_activity_references: "source_graph",
+  imported_activity_laps: "source_graph",
+  imported_activity_chunks: "source_graph",
+  imported_activity_receipts: "source_graph",
+  imported_activity_removal_events: "source_graph",
+  imported_activity_identities: "source_graph",
+  imported_activity_events: "source_graph",
+  imported_activity_match_invalidations: "source_graph",
+  running_match_events: "source_graph",
+  running_current_matches: "source_graph",
+  running_activity_match_events: "source_graph",
+  running_activity_match_receipts: "source_graph",
+  bodyweight_revisions: "source_graph",
+  bodyweight_tombstones: "source_graph",
+  bodyweight_entries: "source_graph",
+  bodyweight_entry_events: "source_graph",
+  bodyweight_command_receipts: "source_graph",
 } satisfies Readonly<Record<LogicalBackupTableName, PortableMergeTableClass>>);
 
 export type PortableMergePlanSnapshot = Readonly<{
@@ -153,22 +154,30 @@ export type PortableMergeOperation =
     portableId: string;
     archiveId: string;
     localId: string;
+  }>
+  | Readonly<{
+    /** Complete owner-scoped imported-activity/match/bodyweight source graph. */
+    aggregateClass: "source_graph";
+    kind: "insert" | "duplicate" | "conflict";
+    portableId: string;
+    archiveId: "phase13-source-graph";
+    localId: "phase13-source-graph";
   }>;
 
 export type PortableMergeIdRemap = Readonly<{
-  recordClass: "workout_session" | "custom_exercise" | "owned_plan";
+  recordClass: "workout_session" | "custom_exercise" | "owned_plan" | "source_graph";
   archiveId: string;
   localId: string;
 }>;
 
 export type PortableMergeIdMapping = Readonly<{
-  recordClass: "workout_session" | "custom_exercise" | "owned_plan";
+  recordClass: "workout_session" | "custom_exercise" | "owned_plan" | "source_graph";
   archiveId: string;
   localId: string;
 }>;
 
 export type PortableMergeAggregate = Readonly<{
-  aggregateClass: "workout_session" | "custom_exercise" | "owned_plan";
+  aggregateClass: "workout_session" | "custom_exercise" | "owned_plan" | "source_graph";
   portableId: string;
   tables: Readonly<Record<string, readonly LogicalBackupRow[]>>;
 }>;
@@ -1465,6 +1474,143 @@ function operationKey(operation: PortableMergeOperation): string {
     : operation.aggregateClass + ":" + operation.portableId;
 }
 
+/**
+ * These are the authoritative Phase 13 facts.  Current match rows are a
+ * rebuildable projection and deliberately never cross the archive boundary.
+ * The order is the FK insertion order for an empty local database.
+ */
+const PHASE13_SOURCE_GRAPH_TABLES = Object.freeze([
+  "imported_activities", "imported_activity_identities",
+  "imported_activity_payloads", "imported_activity_references",
+  "imported_activity_laps", "imported_activity_chunks",
+  "imported_activity_receipts", "imported_activity_removal_events",
+  "imported_activity_events", "imported_activity_match_invalidations",
+  "bodyweight_revisions", "bodyweight_entries", "bodyweight_tombstones",
+  "bodyweight_entry_events", "bodyweight_command_receipts",
+  "running_match_events", "running_activity_match_events",
+  "running_activity_match_receipts",
+] as const satisfies readonly LogicalBackupTableName[]);
+
+function sourceGraphRows(snapshot: PortableMergePlanSnapshot): Readonly<Record<string, readonly LogicalBackupRow[]>> {
+  return Object.freeze(Object.fromEntries(PHASE13_SOURCE_GRAPH_TABLES.map((table) => [
+    table, rowsFor(snapshot, table),
+  ])));
+}
+
+function sourceIdentityKey(row: LogicalBackupRow): string {
+  if (typeof row.source_kind === "string" && typeof row.account_namespace === "string"
+    && typeof row.external_activity_id === "string") {
+    return `v6:${row.source_kind}:${row.account_namespace}:${row.external_activity_id}`;
+  }
+  return "legacy:" + textId(row.source) + ":" + textId(row.source_activity_id);
+}
+
+function sourceGraphHasRows(snapshot: PortableMergePlanSnapshot): boolean {
+  return PHASE13_SOURCE_GRAPH_TABLES.some((table) => rowsFor(snapshot, table).length > 0);
+}
+
+function mappedGraphRows(
+  archive: PortableMergePlanSnapshot,
+  local: PortableMergePlanSnapshot,
+): Readonly<Record<string, readonly LogicalBackupRow[]>> {
+  const archiveIdentities = new Map(rowsFor(archive, "imported_activity_identities").map((row) => [
+    sourceIdentityKey(row), textId(row.activity_id),
+  ]));
+  const localIdentities = new Map(rowsFor(local, "imported_activity_identities").map((row) => [
+    sourceIdentityKey(row), textId(row.activity_id),
+  ]));
+  for (const [key, archiveActivityId] of archiveIdentities) {
+    const localActivityId = localIdentities.get(key);
+    // A shared external identity is only safe when the whole graph is exactly
+    // identical (handled by sourceGraphPlan).  A partial overwrite would alter
+    // immutable accepted payloads or current match history.
+    if (localActivityId !== undefined && localActivityId !== archiveActivityId) invalid();
+  }
+
+  const maps = new Map<string, Map<string, string>>();
+  const result: Record<string, readonly LogicalBackupRow[]> = {};
+  for (const table of PHASE13_SOURCE_GRAPH_TABLES) {
+    const definition = LOGICAL_BACKUP_TABLE_DEFINITIONS[table];
+    if (definition.primaryKey.length !== 1) invalid();
+    const keyColumn = definition.primaryKey[0]!;
+    const occupied = tableOccupiedIds(local, table, keyColumn);
+    const ids = new Map<string, string>();
+    for (const [index, row] of rowsFor(archive, table).entries()) {
+      const sourceId = textId(row[keyColumn]);
+      const localId = occupied.has(sourceId)
+        ? remappedChildId(table, ownerNamespace(archive), index, occupied)
+        : sourceId;
+      occupied.add(localId);
+      ids.set(sourceId, localId);
+    }
+    maps.set(table, ids);
+  }
+  for (const table of PHASE13_SOURCE_GRAPH_TABLES) {
+    const definition = LOGICAL_BACKUP_TABLE_DEFINITIONS[table];
+    const keyColumn = definition.primaryKey[0]!;
+    result[table] = Object.freeze(rowsFor(archive, table).map((row) => {
+      let mapped: LogicalBackupRow = row;
+      for (const reference of LOGICAL_BACKUP_REFERENCE_DEFINITIONS) {
+        if (reference.childTable !== table || reference.childColumns.length !== 1
+          || reference.parentColumns.length !== 1) continue;
+        const value = mapped[reference.childColumns[0]!];
+        if (value === null || value === undefined) continue;
+        const replacement = maps.get(reference.parentTable)?.get(textId(value));
+        if (replacement !== undefined && replacement !== value) {
+          mapped = Object.freeze({ ...mapped, [reference.childColumns[0]!]: replacement });
+        }
+      }
+      const mappedId = maps.get(table)!.get(textId(row[keyColumn]))!;
+      return Object.freeze({ ...mapped, [keyColumn]: mappedId });
+    }));
+  }
+  return Object.freeze(result);
+}
+
+async function sourceGraphPlan(
+  archive: PortableMergePlanSnapshot,
+  local: PortableMergePlanSnapshot,
+  payloadDigest: (value: string) => Promise<string>,
+): Promise<Readonly<{ operation?: Extract<PortableMergeOperation, { aggregateClass: "source_graph" }>; aggregate?: PortableMergeAggregate }>> {
+  if (!sourceGraphHasRows(archive)) return Object.freeze({});
+  const archiveRows = sourceGraphRows(archive);
+  const localRows = sourceGraphRows(local);
+  const archiveCanonical = canonicalValue(archiveRows);
+  const localCanonical = canonicalValue(localRows);
+  // Digesting binds the preview for callers that persist it, but equality
+  // itself must not depend on a test/runtime digest implementation.
+  const [archiveDigest, localDigest] = await Promise.all([
+    payloadDigest(archiveCanonical), payloadDigest(localCanonical),
+  ]);
+  if (!/^[a-f0-9]{64}$/u.test(archiveDigest) || !/^[a-f0-9]{64}$/u.test(localDigest)) invalid();
+  const operation = Object.freeze({
+    aggregateClass: "source_graph" as const,
+    kind: archiveCanonical === localCanonical ? "duplicate" as const
+      : "insert" as const,
+    portableId: ownerNamespace(archive),
+    archiveId: "phase13-source-graph" as const,
+    localId: "phase13-source-graph" as const,
+  });
+  if (operation.kind === "duplicate") return Object.freeze({ operation });
+  let tables: Readonly<Record<string, readonly LogicalBackupRow[]>>;
+  try {
+    tables = mappedGraphRows(archive, local);
+  } catch (error) {
+    if (!(error instanceof MergePlanError)) throw error;
+    return Object.freeze({
+      operation: Object.freeze({ ...operation, kind: "conflict" as const }),
+    });
+  }
+  return Object.freeze({
+    operation,
+    aggregate: Object.freeze({
+      aggregateClass: "source_graph" as const,
+      portableId: operation.portableId,
+      tables,
+    }),
+  });
+}
+
 export async function buildPortableMergePlan(input: Readonly<{
   archive: PortableMergePlanSnapshot;
   local: PortableMergePlanSnapshot;
@@ -1515,11 +1661,17 @@ export async function buildPortableMergePlan(input: Readonly<{
     aggregateClass: "owned_plan",
     table: "plans",
   });
+  const sourceGraph = await sourceGraphPlan(
+    input.archive,
+    input.local,
+    input.payloadDigest,
+  );
   const operations: readonly PortableMergeOperation[] = Object.freeze([
     ...sessionOperations,
     ...settings.operations,
     ...exercises.operations,
     ...plans.operations,
+    ...(sourceGraph.operation === undefined ? [] : [sourceGraph.operation]),
   ].sort((left, right) => operationKey(left).localeCompare(operationKey(right))));
   const sessionRemaps = sessionOperations
     .filter((operation): operation is Extract<PortableMergeOperation, {
@@ -1606,6 +1758,10 @@ export async function buildPortableMergePlan(input: Readonly<{
           planMappings,
           sessionMappings,
         )];
+      }
+      if (operation.aggregateClass === "source_graph" && operation.kind === "insert") {
+        if (sourceGraph.aggregate === undefined) invalid();
+        return [sourceGraph.aggregate];
       }
       return [];
     }));
