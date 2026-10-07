@@ -5,7 +5,7 @@ import type { SqliteKernel } from "../../src/platform/sqlite/sqliteKernel";
 
 describe("training calendar repository", () => {
   it("returns bounded, separately addressable source events without mutating source facts", async () => {
-    const queryAll = jest.fn(async (sql: string) => {
+    const queryAll = jest.fn(async (sql: string, _parameters?: readonly unknown[]) => {
       if (sql.includes("owned_plan_schedule_opportunities")) return [{
         id: "strength-occurrence", schedule_id: "strength-schedule", schedule_version_id: "strength-v1",
         plan_id: "strength-plan", local_date: "2026-11-01", timezone: "America/New_York",
