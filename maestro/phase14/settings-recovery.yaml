@@ -55,6 +55,9 @@ tags:
       true: ${PHASE14_STAGE == 'phase14-data-recovery'}
     commands:
       - assertVisible: "Manual encrypted backup"
+      - scrollUntilVisible:
+          element:
+            text: "Restore backup"
       - assertVisible: "Restore backup"
 - runFlow:
     when:
