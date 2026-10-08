@@ -94,10 +94,10 @@ describe("SettingsScreen", () => {
     const appearanceStore = createMemoryAppearanceStore();
     await renderScreen(createProps(), appearanceStore);
 
-    expect(screen.getByRole("header", { name: "Settings" }))
+    expect(screen.getByRole("header", { name: "App Settings" }))
       .toBeOnTheScreen();
     const expectedHeadings = [
-      "Settings",
+      "App Settings",
       "Appearance",
       "Rest alerts",
       "History and data",

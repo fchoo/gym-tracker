@@ -76,17 +76,18 @@ export type SettingsScreenProps = Readonly<{
   width?: number;
 }>;
 
-export function SettingsScreen({
+export type AppSettingsContentProps = Omit<SettingsScreenProps, "onBack" | "width">;
+
+/** Router-independent settings sections. Presentation owners supply navigation chrome. */
+export function AppSettingsContent({
   preferences,
   restAlertPreferencesLoading,
   notificationPermission,
-  onBack,
   onChangeRestAlertPreferences,
   onOpenNotificationSettings,
   onOpenRemovedSessions,
   onOpenDataAndRecovery,
-  width,
-}: SettingsScreenProps) {
+}: AppSettingsContentProps) {
   const { appearance, colors, setAppearance } = useAppTheme();
   const latestPreferencesRef = useRef(preferences);
   const latestExternalPreferencesRef = useRef(preferences);
@@ -96,7 +97,6 @@ export function SettingsScreen({
   const writeQueueRef = useRef<Promise<void>>(Promise.resolve());
   const [optimisticPreferences, setOptimisticPreferences] = useState(preferences);
   const [saveFailed, setSaveFailed] = useState(false);
-  const adaptiveWidth = width === undefined ? {} : { width };
 
   useEffect(() => {
     if (samePreferences(latestExternalPreferencesRef.current, preferences)) {
@@ -161,14 +161,19 @@ export function SettingsScreen({
   }
 
   return (
-    <AdaptiveScreen
-      {...adaptiveWidth}
-      primary={
-        <>
-          <ScreenHeader backAction={onBack} title="Settings" />
+    <>
           <ContentCard>
             <View style={styles.section}>
               <SectionHeader title="Appearance" tone="card" />
+              <Text
+                style={[
+                  typeScale.body as TextStyle,
+                  { color: colors.contentCardTextSecondary },
+                ]}
+              >
+                Appearance applies to all four destinations, Active Workout, Garmin,
+                sheets, dialogs, and recovery routes.
+              </Text>
               <View
                 accessibilityLabel="Appearance"
                 accessibilityRole="radiogroup"
@@ -343,8 +348,26 @@ export function SettingsScreen({
               />
             </View>
           </ContentCard>
+    </>
+  );
+}
+
+/** Full-route wrapper for direct/deep-link settings navigation. */
+export function SettingsScreen({
+  onBack,
+  width,
+  ...contentProps
+}: SettingsScreenProps) {
+  const adaptiveWidth = width === undefined ? {} : { width };
+  return (
+    <AdaptiveScreen
+      {...adaptiveWidth}
+      primary={(
+        <>
+          <ScreenHeader backAction={onBack} title="App Settings" />
+          <AppSettingsContent {...contentProps} />
         </>
-      }
+      )}
     />
   );
 }

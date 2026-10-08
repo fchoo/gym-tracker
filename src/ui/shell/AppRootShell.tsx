@@ -2,6 +2,7 @@ import React from "react";
 import { View } from "react-native";
 
 import { IconAction } from "../components";
+import { BottomSheet } from "../components/BottomSheet";
 import { SemanticToastProvider } from "../components/SemanticToast";
 
 export type RootRouteKey = "index" | "calendar" | "library" | "progress";
@@ -19,6 +20,8 @@ type AppRootShellProps = Readonly<{
   headingRefs?: Partial<Record<RootRouteKey, React.RefObject<FocusTarget | null>>>;
   origin?: RootOrigin;
   onOpenSettings?: () => void;
+  settingsContent?: React.ReactNode;
+  settingsTriggerRef?: React.RefObject<FocusTarget | null>;
   toastTopAvoidance?: number;
   toastBottomAvoidance?: number;
 }>;
@@ -30,9 +33,12 @@ export function AppRootShell({
   headingRefs,
   origin,
   onOpenSettings,
+  settingsContent,
+  settingsTriggerRef,
   toastTopAvoidance,
   toastBottomAvoidance,
 }: AppRootShellProps) {
+  const [settingsVisible, setSettingsVisible] = React.useState(false);
   React.useLayoutEffect(() => {
     const originTrigger = origin !== undefined && origin.root === activeRoot
       ? origin.trigger?.current
@@ -54,14 +60,31 @@ export function AppRootShell({
     >
       <View style={{ flex: 1 }} testID="app-root-shell">
         {children}
-        {onOpenSettings === undefined ? null : (
+        {onOpenSettings === undefined && settingsContent === undefined ? null : (
           <View accessibilityLabel="Root contextual actions">
             <IconAction
               accessibilityLabel="Open App Settings"
               icon="settings"
-              onPress={onOpenSettings}
+              onPress={() => {
+                if (settingsContent !== undefined) {
+                  setSettingsVisible(true);
+                  return;
+                }
+                onOpenSettings?.();
+              }}
             />
           </View>
+        )}
+        {settingsContent === undefined ? null : (
+          <BottomSheet
+            cancelLabel="Close App Settings"
+            heading="App Settings"
+            onCancel={() => setSettingsVisible(false)}
+            restoreFocusRef={settingsTriggerRef}
+            visible={settingsVisible}
+          >
+            {settingsContent}
+          </BottomSheet>
         )}
       </View>
     </SemanticToastProvider>

@@ -73,10 +73,9 @@ describe("AppRootShell", () => {
           settingsContent={(
             <AppSettingsContent
               notificationPermission="granted"
-              onBack={jest.fn()}
-              onChangeRestAlertPreferences={jest.fn()}
+              onChangeRestAlertPreferences={() => undefined}
               onOpenDataAndRecovery={jest.fn()}
-              onOpenNotificationSettings={jest.fn()}
+              onOpenNotificationSettings={() => undefined}
               onOpenRemovedSessions={jest.fn()}
               preferences={{ soundEnabled: true, vibrationEnabled: true }}
               restAlertPreferencesLoading={false}
@@ -93,7 +92,7 @@ describe("AppRootShell", () => {
     expect(screen.getByRole("header", { name: "App Settings" })).toBeOnTheScreen();
     expect(screen.getByText("Appearance applies to all four destinations, Active Workout, Garmin, sheets, dialogs, and recovery routes.")).toBeOnTheScreen();
 
-    await fireEvent.press(screen.getByRole("button", { name: "Close app settings" }));
+    await fireEvent.press(screen.getByRole("button", { name: "Close App Settings" }));
     expect(trigger.current.focus).toHaveBeenCalledTimes(1);
   });
 
