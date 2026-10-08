@@ -5,16 +5,16 @@ milestone_name: Prototype Parity, Concurrent Plans & Garmin Import — PLANNED
 current_phase: 14
 current_phase_name: Prototype Visual Shell
 status: executing
-stopped_at: Completed 14-07-PLAN.md
-last_updated: "2026-10-08T19:35:57.966Z"
+stopped_at: Completed 14-08-PLAN.md
+last_updated: "2026-10-08T19:48:30.573Z"
 last_activity: 2026-10-08
 last_activity_desc: Phase 14 execution started
-state_head: ab6018a178c67a325e0b6076d1f98ce56ed76a34
+state_head: fba4180d7d94d16a333fee8c93c91bb6eb0a66ba
 progress:
   total_phases: 8
   completed_phases: 1
   total_plans: 98
-  completed_plans: 24
+  completed_plans: 25
   percent: 13
 ---
 
@@ -30,7 +30,7 @@ See: .planning/PROJECT.md (updated 2026-10-06)
 ## Current Position
 
 Phase: 14 (Prototype Visual Shell) — EXECUTING
-Plan: 8 of 12
+Plan: 9 of 12
 Status: Ready to execute
 Last activity: 2026-10-08 — Phase 14 execution started
 
@@ -64,6 +64,7 @@ Gym Tracker remains a signed personal-use Android APK/AAB with SQLite-authoritat
 | Phase 14 P06 | 34m | 2 tasks | 9 files |
 | Phase 14 P12 | 7m | 2 tasks | 5 files |
 | Phase 14 P07 | 5m | 2 tasks | 4 files |
+| Phase 14 P08 | 8m | 3 tasks | 7 files |
 
 ## Accumulated Context
 
@@ -98,6 +99,8 @@ Gym Tracker remains a signed personal-use Android APK/AAB with SQLite-authoritat
 - [Phase 14]: Workout completion confirmation remains source-authoritative; ConfirmationDialog only presents consequences and blocks both actions while submission is busy.
 - [Phase 14]: Removed-session success is presentation-only and occurs after the runtime refresh callback plus authoritative list reload.
 - [Phase 14]: Removed-session restore keeps identity and effective revision visible; focus returns to its surviving trigger or the screen heading.
+- [Phase 14]: Phase 14: Backup routes project controller/facade results; opaque file handles, tokens, latches and source mutations stay below presentation.
+- [Phase 14]: Phase 14: ConfirmationDialog accepts caller-owned review content and disabled gates while exact DELETE, REPLACE and MERGE checks remain route/controller-owned.
 
 ### Pending Owner Review
 
@@ -122,7 +125,7 @@ Gym Tracker remains a signed personal-use Android APK/AAB with SQLite-authoritat
 
 ## Session Continuity
 
-Last session: 2026-10-08T19:35:57.919Z
-Stopped at: Completed 14-07-PLAN.md
+Last session: 2026-10-08T19:48:30.514Z
+Stopped at: Completed 14-08-PLAN.md
 Resume file: None
 Next action: Present the complete planning set for owner review; after explicit approval, run `/gsd-execute-phase 13`.
