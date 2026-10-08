@@ -65,7 +65,8 @@ tags:
       - assertVisible: "Restore clean"
       - tapOn: "Restore password"
       - inputText: "phase14-cancel-only"
-      - tapOn: "Restore clean"
+      - tapOn:
+          id: "restore-clean-action"
       - extendedWaitUntil:
           visible: "No backup was selected"
           timeout: 30000
