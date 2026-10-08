@@ -12,7 +12,7 @@ tags:
     permissions:
       notifications: deny
 - extendedWaitUntil:
-    visible: "Today"
+    visible: "Workout"
     timeout: 90000
 - runFlow:
     when:
@@ -30,12 +30,12 @@ tags:
     when:
       true: ${PHASE14_STAGE == 'phase14-toasts'}
     commands:
-      - assertVisible: "Today"
+      - assertVisible: "Workout"
 - runFlow:
     when:
       true: ${PHASE14_STAGE == 'phase14-launch'}
     commands:
-      - assertVisible: "Today"
+      - assertVisible: "Workout"
       - assertVisible: "Calendar"
       - assertVisible: "Library"
       - assertVisible: "Progress"

@@ -12,21 +12,21 @@ tags:
     permissions:
       notifications: deny
 - extendedWaitUntil:
-    visible: "Today"
+    visible: "Workout"
     timeout: 90000
 - runFlow:
     when:
       true: ${PHASE14_STAGE == 'phase14-four-roots'}
     commands:
-      - assertVisible: "Today"
+      - assertVisible: "Workout"
       - tapOn: "Calendar"
       - assertVisible: "Calendar"
       - tapOn: "Library"
       - assertVisible: "Library"
       - tapOn: "Progress"
       - assertVisible: "Progress"
-      - tapOn: "Today"
-      - assertVisible: "Today"
+      - tapOn: "Workout"
+      - assertVisible: "Workout"
 - runFlow:
     when:
       true: ${PHASE14_STAGE == 'phase14-root-state'}
@@ -34,7 +34,7 @@ tags:
       - tapOn: "Library"
       - assertVisible: "Library"
       - pressKey: BACK
-      - assertVisible: "Today"
+      - assertVisible: "Workout"
 - runFlow:
     when:
       true: ${PHASE14_STAGE == 'phase14-appearance'}
