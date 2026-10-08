@@ -91,7 +91,10 @@ export function manifestSupportsRequestedSuite(manifestSuite, requestedSuite) {
     || ((manifestSuite === 'phase10' || manifestSuite === 'phase11' || manifestSuite === 'phase12')
       && requestedSuite === 'migrations-effects')
     || (manifestSuite === 'phase11' && requestedSuite === 'portable-merge')
-    || (manifestSuite === 'phase13' && requestedSuite === 'multi-plan-running')
+    || (manifestSuite === 'phase13'
+      && (requestedSuite === 'migrations-effects'
+        || requestedSuite === 'portable-merge'
+        || requestedSuite === 'multi-plan-running'))
     || (manifestSuite === 'phase12' && requestedSuite === 'google-drive-backup');
 }
 

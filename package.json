@@ -86,8 +86,10 @@
     "benchmark:phase12:backup": "node scripts/benchmark-phase12-backup.mjs",
     "verify:phase12:evidence": "node scripts/verify-phase12-evidence.mjs",
     "test:evidence:phase12": "node --test scripts/benchmark-phase12-backup.test.mjs scripts/phase12-evidence-scripts.test.mjs scripts/prepare-phase12-google-acceptance.test.mjs scripts/verify-phase12-evidence.test.mjs",
+    "test:evidence:phase13": "node --test scripts/verify-phase13-evidence.test.mjs",
     "prepare:attended:phase12": "node scripts/prepare-phase12-google-acceptance.mjs",
-    "record:attended:phase12": "node scripts/record-phase12-google-acceptance.mjs"
+    "record:attended:phase12": "node scripts/record-phase12-google-acceptance.mjs",
+    "verify:phase13:evidence": "node scripts/verify-phase13-evidence.mjs"
   },
   "dependencies": {
     "@expo-google-fonts/ibm-plex-mono": "0.4.1",

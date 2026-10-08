@@ -73,6 +73,7 @@ const integrityCriticalFiles = [
   "src/domains/workout/startWorkout.ts",
   "src/domains/workout/undoCompletedSet.ts",
   "src/platform/crypto/candidateKdfDescriptor.ts",
+  "src/platform/crypto/runtimeSha256.ts",
   "src/platform/crypto/aesGcmArchivePort.ts",
   "src/platform/crypto/passwordKdf.ts",
   "src/platform/notifications/expoForegroundRestFeedbackAdapter.ts",

@@ -261,6 +261,7 @@ const manifest = {
     succeeded: true,
   },
   device: {
+    role: 'automated-test-device',
     serial: process.env.DEVICE_SERIAL,
     api: Number(process.env.DEVICE_API),
     abi: process.env.DEVICE_ABI,

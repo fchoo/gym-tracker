@@ -1,5 +1,3 @@
-import { createHash } from "node:crypto";
-
 import type {
   ActiveWorkoutExercise,
   ActiveWorkoutRepository,
@@ -45,6 +43,9 @@ import {
 import {
   enqueuePendingEffect,
 } from "../effects/effectStore";
+import {
+  runtimeSha256,
+} from "../../crypto/runtimeSha256";
 import type {
   SqliteKernel,
   SqliteTransactionExecutor,
@@ -512,11 +513,11 @@ function sameMetricIdentity(
     && left.exerciseMetricGeneration === right.exerciseMetricGeneration;
 }
 
-function correctionRequestHash(
+async function correctionRequestHash(
   input: ReviseCompletedSetInput,
   immutableTargetJson: string,
-): string {
-  return createHash("sha256").update(JSON.stringify({
+): Promise<string> {
+  return runtimeSha256(JSON.stringify({
     operation: "revise_completed_set",
     sessionId: input.sessionId,
     setId: input.setId,
@@ -526,7 +527,7 @@ function correctionRequestHash(
     immutableTargetJson,
     observation: input.observation,
     revisedAtMs: input.revisedAtMs,
-  })).digest("hex");
+  }));
 }
 
 function correctionReceiptMatches(
@@ -3441,7 +3442,10 @@ export function createWorkoutRepository(
           return null;
         }
         const { session, set } = rows;
-        const requestSha256 = correctionRequestHash(input, set.target_json);
+        const requestSha256 = await correctionRequestHash(
+          input,
+          set.target_json,
+        );
         if (receipt !== undefined) {
           return correctionReceiptMatches(receipt, input, requestSha256)
             ? { kind: "replay" }

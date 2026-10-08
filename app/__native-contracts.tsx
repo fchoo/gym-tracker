@@ -112,7 +112,9 @@ const PHASE2_AGGREGATE_CASE_IDS = [
   ...PHASE2_CASE_IDS,
 ] as const;
 const configuredSuite = process.env.EXPO_PUBLIC_NATIVE_CONTRACT_SUITE;
-const defaultSuite = configuredSuite === "phase10" || configuredSuite === "phase11" || configuredSuite === "phase12"
+const defaultSuite = configuredSuite === "phase13"
+  ? "multi-plan-running"
+  : configuredSuite === "phase10" || configuredSuite === "phase11" || configuredSuite === "phase12"
   ? "migrations-effects"
   : configuredSuite === "migrations-effects"
   || configuredSuite === "phase2"
@@ -129,11 +131,19 @@ const defaultSuite = configuredSuite === "phase10" || configuredSuite === "phase
   ? configuredSuite
   : "sqlite-kernel";
 
-function requestedPortableMergeSuite(
+function requestedPackagedSuite(
   value: string | string[] | undefined,
-): "portable-merge" | "google-drive-backup" | undefined {
+): "migrations-effects" | "portable-merge" | "multi-plan-running" | "google-drive-backup" | undefined {
   const candidate = Array.isArray(value) ? value[0] : value;
   if (configuredSuite === "phase11" && candidate === "portable-merge") return "portable-merge";
+  if (
+    configuredSuite === "phase13"
+    && (candidate === "migrations-effects"
+      || candidate === "portable-merge"
+      || candidate === "multi-plan-running")
+  ) {
+    return candidate;
+  }
   return configuredSuite === "phase12" && candidate === "google-drive-backup"
     ? "google-drive-backup" : undefined;
 }
@@ -376,7 +386,7 @@ export default function NativeSqliteContractsScreen() {
     suite?: string | string[];
   }>();
   const runId = boundedRunId(parameters.runId);
-  const selectedSuite = requestedPortableMergeSuite(parameters.suite)
+  const selectedSuite = requestedPackagedSuite(parameters.suite)
     ?? defaultSuite;
   const expectedCaseCount = expectedCaseCountFor(selectedSuite);
   const started = useRef(false);
