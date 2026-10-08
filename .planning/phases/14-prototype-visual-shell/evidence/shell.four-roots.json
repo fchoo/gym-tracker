@@ -3,25 +3,25 @@
   "suite": "phase14",
   "status": "passed",
   "build_manifest": "artifacts/native/phase14/build.json",
-  "base_head": "891c4ec7e4611aeab02fd6381ff76a1904687746",
-  "source_tree_sha256": "763db0429271b3a5f312b29b133f767d9d61c6ff6b0dc56d1b4043b9119ec6b2",
+  "base_head": "9103f89365bf60d1cc02c0e9b87b7ca3076e3a7b",
+  "source_tree_sha256": "72bc2e46cdbc77da7849ec11ed2f5168b101de80b3457c8558514d5424c21ed6",
   "package": "com.fchoo.gymtracker.devtest",
   "profile": "development-test",
   "device_identity_sha256": "96dcf303d772667590457dc76c2cd5ee828515c31e2af1b9fee5b3f440b204f9",
   "apk": {
     "path": "artifacts/native/phase14/gym-tracker-phase14-devtest.apk",
-    "sha256": "23e487ae3080881a7f44c3b66a2598eb98add5b0e2e110e76ad5e4f9aa0b4b3a",
+    "sha256": "f575048f86f56ccaa8c9b831c0bf97e565c4b4c4e2fee2b71e241636a62bf1a5",
     "size_bytes": 131736928,
     "page_alignment_kib": 16,
     "page_alignment_verified": true,
-    "installed_sha256": "23e487ae3080881a7f44c3b66a2598eb98add5b0e2e110e76ad5e4f9aa0b4b3a",
+    "installed_sha256": "f575048f86f56ccaa8c9b831c0bf97e565c4b4c4e2fee2b71e241636a62bf1a5",
     "matches_retained_apk": true
   },
   "stage": {
     "stage": "phase14-four-roots",
     "status": "passed",
     "report": "artifacts/native/phase14/maestro/phase14-four-roots.xml",
-    "report_sha256": "3edc1cf4d0d4517c7b6ddbdbf45a29fffb61ca2475bdfa83cc601ac966840a97"
+    "report_sha256": "0f24ee8de8ae60402b58b48c3326766afee0e4d3e789ceb72a17d45d33b7bda0"
   },
   "evidence": {
     "id": "shell.four-roots",
@@ -29,11 +29,11 @@
     "requirement": "SHL-01",
     "path": ".planning/phases/14-prototype-visual-shell/evidence/shell.four-roots.json",
     "report": "artifacts/native/phase14/maestro/phase14-four-roots.xml",
-    "report_sha256": "3edc1cf4d0d4517c7b6ddbdbf45a29fffb61ca2475bdfa83cc601ac966840a97",
+    "report_sha256": "0f24ee8de8ae60402b58b48c3326766afee0e4d3e789ceb72a17d45d33b7bda0",
     "screenshot": "artifacts/native/phase14/screenshots/shell.four-roots.png",
-    "screenshot_sha256": "e3610510f197757f4a5c5f6771ffbbcf804de737c0f62d304f84d44ded8da34c",
+    "screenshot_sha256": "d0b5409b3a78bd198d4254bc6f890741a70605fe02c3fedfac01c4cee2d80559",
     "component_verdict": "passed",
     "native_verdict": "passed",
-    "source_state_sha256": "763db0429271b3a5f312b29b133f767d9d61c6ff6b0dc56d1b4043b9119ec6b2"
+    "source_state_sha256": "72bc2e46cdbc77da7849ec11ed2f5168b101de80b3457c8558514d5424c21ed6"
   }
 }
