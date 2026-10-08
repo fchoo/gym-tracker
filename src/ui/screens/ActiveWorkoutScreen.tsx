@@ -94,6 +94,7 @@ import {
   advancedTimingConfigSummary,
   type AdvancedTimingConfigScope,
 } from "../components/AdvancedTimingConfigSheet";
+import { BottomSheet } from "../components/BottomSheet";
 import {
   RestDock,
 } from "../components/RestDock";
@@ -890,6 +891,7 @@ function PopulatedWorkoutOverview({
   const [replacementExerciseId, setReplacementExerciseId] =
     useState<string | null>(null);
   const exerciseAddSearchRef = useRef<M3SearchFieldHandle>(null);
+  const exerciseAddTriggerRef = useRef<View>(null);
   const replacementSearchRef = useRef<M3SearchFieldHandle>(null);
   const moreActionRef = useRef<View>(null);
   const moreFirstActionRef = useRef<View>(null);
@@ -1888,6 +1890,12 @@ function PopulatedWorkoutOverview({
     }
   };
 
+  const closeExerciseAddPicker = () => {
+    setExerciseAddPickerVisible(false);
+    setExerciseAddSelectedId(null);
+    setExerciseAddQuery("");
+  };
+
   const submitExerciseAdd = async () => {
     if (exerciseAddBusy || selectedExerciseToAdd === undefined) {
       return;
@@ -1919,9 +1927,7 @@ function PopulatedWorkoutOverview({
       if (result === undefined) {
         throw new Error("add_exercise_unavailable");
       }
-      setExerciseAddPickerVisible(false);
-      setExerciseAddSelectedId(null);
-      setExerciseAddQuery("");
+      closeExerciseAddPicker();
     } catch {
       setExerciseAddFailed(true);
     } finally {
@@ -2757,6 +2763,7 @@ function PopulatedWorkoutOverview({
                   setExerciseAddFailed(false);
                   setExerciseAddPickerVisible(true);
                 }}
+                ref={exerciseAddTriggerRef}
                 testID="active-workout-add-exercise"
               />
             )}
@@ -2881,90 +2888,73 @@ function PopulatedWorkoutOverview({
           </ScrollView>
         </View>
       </Modal>
-      <Modal
-        animationType={reduceMotion ? "none" : "fade"}
-        onRequestClose={() => {
-          setExerciseAddPickerVisible(false);
-          setExerciseAddSelectedId(null);
-          setExerciseAddQuery("");
-        }}
-        transparent
+      <BottomSheet
+        contentStyle={styles.moreSheetContent}
+        heading="Choose exercise"
+        onCancel={closeExerciseAddPicker}
+        restoreFocusRef={exerciseAddTriggerRef}
+        scrollTestID="active-workout-add-exercise-picker-content"
         visible={exerciseAddPickerVisible}
       >
-        <KeyboardAvoidingView
-          behavior="padding"
-          style={styles.modalBackdrop}
-          testID="active-workout-add-exercise-picker-keyboard-layout"
-        >
-          <ScrollView
-            accessibilityViewIsModal
-            contentContainerStyle={styles.moreSheetContent}
-            keyboardShouldPersistTaps="handled"
-            style={[styles.moreSheet, { backgroundColor: colors.surface }]}
-            testID="active-workout-add-exercise-picker-content"
+        {selectedExerciseToAdd === undefined ? null : (
+          <PrimaryAction
+            busy={exerciseAddBusy}
+            label={`Add ${selectedExerciseToAdd.name}`}
+            onPress={() => {
+              void submitExerciseAdd();
+            }}
+          />
+        )}
+        <M3SearchField
+          label="Search exercises"
+          onChangeText={setExerciseAddQuery}
+          resultCount={exerciseAddCandidates.length}
+          ref={exerciseAddSearchRef}
+          state={exerciseAddCandidates.length === 0 ? "empty" : "results"}
+          value={exerciseAddQuery}
+        />
+        {exerciseAddCandidates.map((candidate) => (
+          <FocusablePressable
+            accessibilityLabel={`${candidate.name}. Add exercise`}
+            accessibilityRole="button"
+            key={candidate.id}
+            onPress={() => {
+              setExerciseAddSelectedId(candidate.id);
+              exerciseAddSearchRef.current?.blur();
+              Keyboard.dismiss();
+            }}
+            testID={`add-exercise-option-${candidate.id}`}
+            style={[
+              styles.exerciseOption,
+              {
+                backgroundColor: exerciseAddSelectedId === candidate.id
+                  ? colors.contentCardSelected
+                  : colors.surface,
+                borderColor: exerciseAddSelectedId === candidate.id
+                  ? colors.action
+                  : colors.divider,
+              },
+            ]}
           >
-            <SectionHeader title="Choose exercise" />
-            {selectedExerciseToAdd === undefined ? null : (
-              <PrimaryAction
-                busy={exerciseAddBusy}
-                label={`Add ${selectedExerciseToAdd.name}`}
-                onPress={() => {
-                  void submitExerciseAdd();
-                }}
-              />
-            )}
-            <M3SearchField
-              label="Search exercises"
-              onChangeText={setExerciseAddQuery}
-              resultCount={exerciseAddCandidates.length}
-              ref={exerciseAddSearchRef}
-              state={exerciseAddCandidates.length === 0 ? "empty" : "results"}
-              value={exerciseAddQuery}
-            />
-            {exerciseAddCandidates.map((candidate) => (
-              <FocusablePressable
-                accessibilityLabel={`${candidate.name}. Add exercise`}
-                accessibilityRole="button"
-                key={candidate.id}
-                onPress={() => {
-                  setExerciseAddSelectedId(candidate.id);
-                  exerciseAddSearchRef.current?.blur();
-                  Keyboard.dismiss();
-                }}
-                testID={`add-exercise-option-${candidate.id}`}
-                style={[
-                  styles.exerciseOption,
-                  {
-                    backgroundColor: exerciseAddSelectedId === candidate.id
-                      ? colors.contentCardSelected
-                      : colors.surface,
-                    borderColor: exerciseAddSelectedId === candidate.id
-                      ? colors.action
-                      : colors.divider,
-                  },
-                ]}
-              >
-                <Text style={[typeScale.bodyStrong as TextStyle, { color: colors.textPrimary }]}>
-                  {candidate.name}
-                </Text>
-                {exerciseAddSelectedId === candidate.id ? (
-                  <Text style={[typeScale.secondary as TextStyle, { color: colors.textSecondary }]}>
-                    Selected
-                  </Text>
-                ) : null}
-              </FocusablePressable>
-            ))}
-            {exerciseAddFailed ? (
-              <InlineNotice
-                action={<SecondaryAction label="Retry adding exercise" onPress={() => { void submitExerciseAdd(); }} />}
-                body="Your workout was not changed. Try again from the latest workout."
-                heading="Exercise was not added"
-                tone="error"
-              />
+            <Text style={[typeScale.bodyStrong as TextStyle, { color: colors.textPrimary }]}>
+              {candidate.name}
+            </Text>
+            {exerciseAddSelectedId === candidate.id ? (
+              <Text style={[typeScale.secondary as TextStyle, { color: colors.textSecondary }]}>
+                Selected
+              </Text>
             ) : null}
-          </ScrollView>
-        </KeyboardAvoidingView>
-      </Modal>
+          </FocusablePressable>
+        ))}
+        {exerciseAddFailed ? (
+          <InlineNotice
+            action={<SecondaryAction label="Retry adding exercise" onPress={() => { void submitExerciseAdd(); }} />}
+            body="Your workout was not changed. Try again from the latest workout."
+            heading="Exercise was not added"
+            tone="error"
+          />
+        ) : null}
+      </BottomSheet>
       <Modal
         animationType={reduceMotion ? "none" : "fade"}
         onRequestClose={() => {
