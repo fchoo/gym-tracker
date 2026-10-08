@@ -128,6 +128,9 @@ jest.mock("../../src/ui/screens/RootScreens", () => {
     }: Readonly<{ children: React.ReactNode }>) => (
       <View testID="startup-readiness-gate">{children}</View>
     ),
+    RootFailureState: ({ failure }: Readonly<{ failure: { category: string } }>) => (
+      <View testID={`root-failure-${failure.category}`} />
+    ),
   };
 });
 
@@ -315,6 +318,33 @@ describe("RootLayout attended preview isolation", () => {
     expect(mockProductionAppearanceWrite).toHaveBeenCalledWith("Dark");
     expect(mockPreviewAppearanceRead).not.toHaveBeenCalled();
     expect(mockPreviewAppearanceWrite).not.toHaveBeenCalled();
+  });
+
+  it("does not mount the trusted runtime when the bundled font fails", async () => {
+    mockNativeContractsEnabled = false;
+    mockPathname = "/";
+    mockFontsLoaded = false;
+    mockFontError = new Error("asset font failure /private/secret.ttf");
+
+    await render(<RootLayout />);
+
+    expect(screen.getByTestId("root-failure-font")).toBeOnTheScreen();
+    expect(screen.queryByTestId("workout-runtime-provider")).not.toBeOnTheScreen();
+    expect(mockRuntimeProviderMounted).not.toHaveBeenCalled();
+  });
+
+  it("does not mount the trusted runtime when the appearance read is unavailable", async () => {
+    mockNativeContractsEnabled = false;
+    mockPathname = "/";
+    mockProductionAppearanceRead.mockImplementation(() => {
+      throw new Error("sqlite unavailable /private/gym-tracker-preferences.db");
+    });
+
+    await render(<RootLayout />);
+
+    expect(screen.getByTestId("root-failure-appearance")).toBeOnTheScreen();
+    expect(screen.queryByTestId("workout-runtime-provider")).not.toBeOnTheScreen();
+    expect(mockRuntimeProviderMounted).not.toHaveBeenCalled();
   });
 
   it("keeps production runtime initialization for other devtest routes", async () => {
