@@ -7,6 +7,9 @@ tags:
 - launchApp:
     clearState: false
     stopApp: true
+- extendedWaitUntil:
+    visible: "Native bootstrap ready."
+    timeout: 30000
 - openLink: "gymtracker-devtest://__phase2-attended-preview?scenario=phase14-font-axis"
 - extendedWaitUntil:
     visible:
