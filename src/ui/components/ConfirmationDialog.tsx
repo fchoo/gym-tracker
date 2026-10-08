@@ -50,7 +50,13 @@ function ConfirmationDialogActions({
 
   return (
     <>
-      <SecondaryAction label={cancelLabel} onPress={cancelSheet ?? onCancel} ref={cancelRef} />
+      <SecondaryAction
+        busy={busy}
+        disabled={busy}
+        label={cancelLabel}
+        onPress={cancelSheet ?? onCancel}
+        ref={cancelRef}
+      />
       {alternateLabel === undefined || onAlternate === undefined ? null : (
         <SecondaryAction destructive={destructive} label={alternateLabel} onPress={onAlternate} />
       )}

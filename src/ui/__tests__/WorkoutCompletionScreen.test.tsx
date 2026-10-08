@@ -220,7 +220,7 @@ describe("Plan 01-10 completion and detail", () => {
     const keepAction = screen.getByRole("button", {
       name: "Keep plan as-is",
     });
-    expect(keepAction).toHaveStyle({ minHeight: 56 });
+    expect(keepAction).toHaveStyle({ minHeight: 48 });
     expect(keepAction).toHaveProp(
       "accessibilityState",
       expect.objectContaining({ disabled: false }),
@@ -229,7 +229,7 @@ describe("Plan 01-10 completion and detail", () => {
     expect(keep).toHaveBeenCalledTimes(1);
     expect(apply).not.toHaveBeenCalled();
     await fireEvent(
-      screen.getByTestId("workout-plan-write-back-sheet"),
+      screen.getByTestId("bottom-sheet-modal"),
       "requestClose",
     );
     expect(keep).toHaveBeenCalledTimes(2);

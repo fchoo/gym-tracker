@@ -3,8 +3,6 @@ import {
   Pencil,
 } from "lucide-react-native";
 import {
-  Modal,
-  ScrollView,
   StyleSheet,
   Text,
   View,
@@ -28,6 +26,7 @@ import {
   SecondaryAction,
   SectionHeader,
 } from "../components";
+import { ConfirmationDialog } from "../components/ConfirmationDialog";
 import {
   RecommendationSurface,
 } from "../components/RecommendationSurface";
@@ -35,7 +34,6 @@ import {
   AdaptiveScreen,
 } from "../layout/AdaptiveScreen";
 import {
-  radius,
   space,
   typeScale,
   useAppTheme,
@@ -118,12 +116,6 @@ export function WorkoutCompletionScreen({
   const writeBackPreview = planWriteBack.state === "applying"
     ? planWriteBack.preview
     : writeBackChoice?.preview ?? null;
-
-  React.useEffect(() => {
-    if (writeBackChoice !== null) {
-      keepPlanAsIsRef.current?.focus();
-    }
-  }, [writeBackChoice]);
 
   return (
     <>
@@ -315,68 +307,34 @@ export function WorkoutCompletionScreen({
         </>
       }
       />
-      <Modal
-      animationType="fade"
-      onRequestClose={() => {
-        if (writeBackChoice !== null) {
-          onKeepPlanAsIs(writeBackChoice);
-        }
-      }}
-      transparent
-      visible={writeBackVisible}
-    >
-      <View style={styles.modalBackdrop}>
-        <ScrollView
-          accessibilityViewIsModal
-          contentContainerStyle={styles.writeBackSheetContent}
-          keyboardShouldPersistTaps="handled"
-          style={[styles.writeBackSheet, { backgroundColor: colors.surface }]}
-          testID="workout-plan-write-back-sheet"
-        >
-          <SectionHeader
-            title={writeBackFailed
-              ? "Changes were not saved to the plan"
-              : "Save these changes to the plan?"}
-          />
-          <Text
-            style={[
-              typeScale.body as TextStyle,
-              { color: colors.textSecondary },
-            ]}
-          >
-            {writeBackFailed
-              ? "Your completed workout is safe. Try again or keep the plan as-is."
-              : writeBackPreview === null
-                ? "Saving these changes to the plan."
-                : `You changed this workout from its plan. Save these changes to ${writeBackPreview.planName} · ${writeBackPreview.dayName}?`}
-          </Text>
-          <View style={styles.writeBackActions}>
-            <PrimaryAction
-              busy={writeBackBusy}
-              label="Keep plan as-is"
-              onPress={() => {
-                if (writeBackChoice !== null) {
-                  onKeepPlanAsIs(writeBackChoice);
-                }
-              }}
-              ref={keepPlanAsIsRef}
-            />
-            <SecondaryAction
-              busy={writeBackBusy}
-              disabled={writeBackChoice === null}
-              label={writeBackFailed
-                ? "Retry saving changes"
-                : "Save changes to plan"}
-              onPress={() => {
-                if (writeBackChoice !== null) {
-                  onApplyPlanWriteBack(writeBackChoice);
-                }
-              }}
-            />
-          </View>
-        </ScrollView>
-      </View>
-      </Modal>
+      <ConfirmationDialog
+        body={writeBackFailed
+          ? "Your completed workout is safe. Try again or keep the plan as-is."
+          : writeBackPreview === null
+            ? "Saving these changes to the plan."
+            : `You changed this workout from its plan. Save these changes to ${writeBackPreview.planName} · ${writeBackPreview.dayName}?`}
+        cancelLabel="Keep plan as-is"
+        confirmBusy={writeBackBusy}
+        confirmLabel={writeBackFailed
+          ? "Retry saving changes"
+          : "Save changes to plan"}
+        heading={writeBackFailed
+          ? "Changes were not saved to the plan"
+          : "Save these changes to the plan?"}
+        initialFocusRef={keepPlanAsIsRef}
+        onCancel={() => {
+          if (writeBackChoice !== null) {
+            onKeepPlanAsIs(writeBackChoice);
+          }
+        }}
+        onConfirm={() => {
+          if (writeBackChoice !== null) {
+            onApplyPlanWriteBack(writeBackChoice);
+          }
+        }}
+        scrollTestID="workout-plan-write-back-sheet"
+        visible={writeBackVisible}
+      />
     </>
   );
 }
@@ -404,28 +362,11 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     gap: space[1],
   },
-  modalBackdrop: {
-    backgroundColor: "rgba(0, 0, 0, 0.48)",
-    flex: 1,
-    justifyContent: "flex-end",
-  },
   result: {
     gap: space[2],
     padding: space[4],
   },
   section: {
     gap: space[4],
-  },
-  writeBackActions: {
-    gap: space[2],
-  },
-  writeBackSheet: {
-    borderTopLeftRadius: radius.emphasized,
-    borderTopRightRadius: radius.emphasized,
-    maxHeight: "90%",
-  },
-  writeBackSheetContent: {
-    gap: space[4],
-    padding: space[6],
   },
 });
