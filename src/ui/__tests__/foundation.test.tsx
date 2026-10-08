@@ -54,6 +54,7 @@ import {
   motion,
   radius,
   resolveColorScheme,
+  sizes,
   space,
   themes,
   typeScale,
@@ -121,7 +122,7 @@ function contrastRatio(foreground: string, background: string): number {
 }
 
 describe("Plan 01-02 UI foundation", () => {
-  it("encodes the approved spacing, radius, type, color, and motion tokens", () => {
+  it("encodes the proven Archivo visual system and semantic token contract", () => {
     expect(space).toEqual({
       1: 4,
       2: 8,
@@ -152,6 +153,7 @@ describe("Plan 01-02 UI foundation", () => {
           fontFamily: fontFamilies.interfaceSemiBold,
           fontSize: 28,
           lineHeight: 34,
+          fontWeight: "800",
         }),
         body: expect.objectContaining({
           fontFamily: fontFamilies.interfaceRegular,
@@ -162,28 +164,43 @@ describe("Plan 01-02 UI foundation", () => {
     );
     expect(themes.light).toEqual(
       expect.objectContaining({
-        canvas: "#F1F3F4",
-        contentCard: "#FFFFFF",
-        contentCardText: "#202124",
-        contentCardTextSecondary: "#5F6368",
-        action: "#155EEF",
-        completed: "#1F7A4D",
-        timerAttention: "#B54708",
+        paper: "#FFFAF0",
+        bone: "#F4F0E6",
+        ink: "#0D0C0A",
+        orange: "#D97820",
+        blue: "#195FAE",
+        calendarStrengthTextLight: "#9B470B",
+        canvas: "#FFFAF0",
+        action: "#195FAE",
+        completed: "#166B4C",
+        timerAttention: "#8D5D00",
         destructive: "#B42318",
       }),
     );
     expect(themes.dark).toEqual(
       expect.objectContaining({
-        canvas: "#202124",
-        contentCard: "#121212",
-        contentCardText: "#E8EAED",
-        contentCardTextSecondary: "#BDC1C6",
-        action: "#70A0FF",
-        completed: "#56C88A",
-        timerAttention: "#FFB45C",
-        destructive: "#FF746A",
+        paper: "#080808",
+        bone: "#151515",
+        ink: "#F7F7F2",
+        orange: "#D97820",
+        blue: "#71AAFF",
+        canvas: "#080808",
+        action: "#71AAFF",
+        completed: "#72DF92",
+        timerAttention: "#F0C84B",
+        destructive: "#FF8279",
       }),
     );
+    expect(fontFamilies.interfaceRegular).toBe("ArchivoVariable");
+    expect(typeScale.editorialWorkoutTitle).toEqual({
+      fontFamily: "ArchivoVariable",
+      fontSize: 57,
+      lineHeight: 49,
+      fontWeight: "890",
+      fontStretch: "condensed",
+      letterSpacing: -0.07,
+    });
+    expect(sizes.focusRing).toBe(3);
     expect(motion.standard.positionTransitions).toBe(true);
     expect(motion.reduced.positionTransitions).toBe(false);
     expect(motion.reduced.scaleTransitions).toBe(false);
@@ -292,6 +309,27 @@ describe("Plan 01-02 UI foundation", () => {
 
     await fireEvent.press(screen.getByRole("radio", { name: "System" }));
     expect(store.read()).toBeNull();
+  });
+
+  it("keeps the last authoritative preference when a durable write fails", async () => {
+    jest.spyOn(Appearance, "getColorScheme").mockReturnValue("dark");
+    const store = {
+      read: () => ({ status: "ready" as const, value: null }),
+      write: jest.fn(() => ({ status: "failed" as const })),
+    };
+
+    await render(
+      <AppearanceProvider store={store}>
+        <ThemeProbe />
+        <AppearanceSheet visible onClose={jest.fn()} />
+      </AppearanceProvider>,
+    );
+
+    await fireEvent.press(screen.getByRole("radio", { name: "Light" }));
+
+    expect(store.write).toHaveBeenCalledWith("Light");
+    expect(screen.getByTestId("appearance-mode")).toHaveTextContent("System");
+    expect(screen.getByTestId("resolved-scheme")).toHaveTextContent("dark");
   });
 
   it("treats a malformed injected appearance preference as selected System", async () => {
