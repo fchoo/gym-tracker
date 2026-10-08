@@ -81,6 +81,8 @@ export function BottomSheet({
   };
   const depth = React.useContext(BottomSheetDepthContext);
   const headingRef = useRef<View>(null);
+  const wasVisibleRef = useRef(false);
+  const focusRestoredRef = useRef(false);
   const translation = useRef(new Animated.Value(reduceMotion ? 0 : 8)).current;
   const resolvedCancelLabel = useMemo(
     () => closeLabelFor(heading, cancelLabel),
@@ -119,10 +121,38 @@ export function BottomSheet({
     return () => animation.stop();
   }, [consequenceMode, initialFocusRef, reduceMotion, translation, visible]);
 
+  const restoreFocus = React.useCallback(() => {
+    const restoreTarget = restoreFocusRef?.current;
+    restoreTarget?.focus?.();
+    let restoreNode: number | null = null;
+    try {
+      restoreNode = findNodeHandle(restoreTarget as never);
+    } catch {
+      // A caller-owned focus seam may expose only focus(); it is still valid.
+    }
+    AccessibilityInfo.setAccessibilityFocus(restoreNode ?? 0);
+  }, [restoreFocusRef]);
+
+  useEffect(() => {
+    if (visible) {
+      wasVisibleRef.current = true;
+      focusRestoredRef.current = false;
+      return;
+    }
+    if (!wasVisibleRef.current) {
+      return;
+    }
+    wasVisibleRef.current = false;
+    if (!focusRestoredRef.current) {
+      restoreFocus();
+    }
+  }, [restoreFocus, visible]);
+
   const cancel = React.useCallback(() => {
     onCancel();
-    restoreFocusRef?.current?.focus?.();
-  }, [onCancel, restoreFocusRef]);
+    restoreFocus();
+    focusRestoredRef.current = true;
+  }, [onCancel, restoreFocus]);
 
   const containTraversal = React.useCallback((event: NativeSyntheticEvent<{
     key?: string;
@@ -200,7 +230,9 @@ export function BottomSheet({
                 </View>
                 <ScrollView
                   contentContainerStyle={[styles.content, contentStyle]}
+                  horizontal={false}
                   keyboardShouldPersistTaps="handled"
+                  showsVerticalScrollIndicator
                   style={styles.scroll}
                   testID={scrollTestID ?? "bottom-sheet-scroll"}
                 >

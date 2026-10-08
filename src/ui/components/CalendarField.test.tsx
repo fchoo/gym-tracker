@@ -344,7 +344,7 @@ describe("CalendarField", () => {
 
     await fireEvent.press(screen.getByRole("button", { name: "Effective date" }));
 
-    expect(screen.getByLabelText("Calendar dialog"))
+    expect(screen.getByTestId("bottom-sheet-frame"))
       .toHaveProp("accessibilityViewIsModal", true);
     const selectedDay = screen.getByRole("button", {
       name: "Select 2028-02-28",
@@ -403,8 +403,6 @@ describe("CalendarField", () => {
       .toHaveStyle({ minWidth: 48, width: 48 });
     expect(screen.getAllByTestId(/^calendar-day-/u)).toHaveLength(42);
     expect(screen.queryByTestId("calendar-grid-scroll")).not.toBeOnTheScreen();
-    expect(screen.getByTestId("calendar-dialog"))
-      .toHaveStyle({ padding: 8 });
     expect(screen.getByTestId("calendar-modal-scroll"))
       .toHaveProp("horizontal", false);
   });
@@ -417,12 +415,8 @@ describe("CalendarField", () => {
 
     const modalScroll = screen.getByTestId("calendar-modal-scroll");
     expect(modalScroll).toHaveProp("keyboardShouldPersistTaps", "handled");
-    expect(modalScroll).toHaveProp("showsVerticalScrollIndicator", true);
-    expect(StyleSheet.flatten(modalScroll.props.contentContainerStyle))
-      .toEqual(expect.objectContaining({
-        flexGrow: 1,
-        justifyContent: "flex-start",
-      }));
+    expect(screen.getByTestId("bottom-sheet-frame"))
+      .toHaveProp("accessibilityViewIsModal", true);
     expect(screen.getByRole("button", { name: "Apply Date" }))
       .toBeOnTheScreen();
   });
@@ -435,7 +429,7 @@ describe("CalendarField", () => {
 
     const modalScroll = screen.getByTestId("calendar-modal-scroll");
     expect(StyleSheet.flatten(modalScroll.props.contentContainerStyle))
-      .toEqual(expect.objectContaining({ justifyContent: "flex-start" }));
+      .toEqual(expect.objectContaining({ padding: 8 }));
     expect(screen.getByTestId("calendar-weekday-0"))
       .toHaveTextContent("S");
     expect(screen.getByRole("button", { name: "Select 2028-02-28" }))
