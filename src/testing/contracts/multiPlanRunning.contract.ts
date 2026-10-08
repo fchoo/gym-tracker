@@ -1,26 +1,45 @@
-import { classifyGarminActivityIdentity } from "../../domains/activities/activityIdentity";
-import { changeGarminActivityLifecycle } from "../../domains/activities/importCommands";
+import fullBodyFoundationAsset from "../../../assets/content/full-body-foundation.v1.json";
+import {
+  changeGarminActivityLifecycle,
+  confirmGarminImportDate,
+  type PreparedGarminImport,
+} from "../../domains/activities/importCommands";
 import {
   canonicalBodyweightRequestHash,
-  transitionBodyweight,
 } from "../../domains/bodyweight/contracts";
-import { LOGICAL_BACKUP_TABLE_DEFINITIONS } from "../../domains/portability/backupContracts";
-import { PORTABLE_MERGE_TABLE_CLASSES } from "../../domains/portability/mergePlan";
 import {
-  retireAdvancedTiming,
+  updateSessionSetAdvancedTiming,
 } from "../../domains/advancedTiming/advancedTimingCommands";
 import {
-  evaluateRunningReadiness,
-  parseRunningSessionRevision,
-} from "../../domains/running/contracts";
+  parseFullBodyFoundation,
+} from "../../domains/content";
+import { activateStarterPlan } from "../../domains/plans";
 import { confirmRunningActivityMatch } from "../../domains/running/activityMatchCommands";
+import { startWorkout } from "../../domains/workout/startWorkout";
+import { completeSet } from "../../domains/workout/setCommands";
+import { parseLocalDate } from "../../domains/scheduling/localDate";
+import { parseStoredTimeZone } from "../../domains/scheduling/timeZone";
 import { createMigrationRunner } from "../../platform/sqlite/migrationRunner";
 import { migrations } from "../../platform/sqlite/migrations";
 import type { RecoveryBackupPort } from "../../platform/sqlite/recoveryBackup";
+import { createAdvancedTimingRepository } from "../../platform/sqlite/repositories/advancedTimingRepository";
+import { createBodyweightRepository } from "../../platform/sqlite/repositories/bodyweightRepository";
+import { createImportedActivityRepository } from "../../platform/sqlite/repositories/importedActivityRepository";
+import { createLogicalBackupRepository } from "../../platform/sqlite/repositories/logicalBackupRepository";
+import { createLogicalRestoreRepository } from "../../platform/sqlite/repositories/logicalRestoreRepository";
+import { createPlansWorkoutRepository } from "../../platform/sqlite/repositories/plansWorkoutRepository";
+import { createRunningActivityMatchRepository } from "../../platform/sqlite/repositories/runningActivityMatchRepository";
+import { createRunningPlanRepository } from "../../platform/sqlite/repositories/runningPlanRepository";
+import { createScheduleRepository } from "../../platform/sqlite/repositories/scheduleRepository";
+import { createWorkoutRepository } from "../../platform/sqlite/repositories/workoutRepository";
 import type { SqliteKernel } from "../../platform/sqlite/sqliteKernel";
 import {
   createExpoMigrationsEffectsContractAdapter,
 } from "./migrationsEffects.contract";
+import {
+  createExpoPortableMergeContractAdapter,
+  runPortableMergeContract,
+} from "./portableMerge.contract";
 
 /** Source-owned, privacy-safe Phase 13 evidence identities. */
 export const MULTI_PLAN_RUNNING_CONTRACT_CASES = [
@@ -95,124 +114,356 @@ async function withFreshExpoRuntime(
   }
 }
 
-async function assertTables(
+const SHA256 = "a".repeat(64);
+
+type RunningFixture = Readonly<{
+  planId: string;
+  scheduleId: string;
+  scheduleVersionId: string;
+  slotId: string;
+  sessionRevisionId: string;
+  opportunityId: string;
+}>;
+
+async function seedRunningFixture(
   kernel: SqliteKernel,
-  tables: readonly string[],
-): Promise<void> {
-  const rows = await kernel.queryAll<{ name: string }>(
-    `SELECT name FROM sqlite_master
-     WHERE type = 'table' AND name IN (${tables.map(() => "?").join(",")})`,
-    tables,
+  prefix: string,
+): Promise<RunningFixture> {
+  const fixture: RunningFixture = {
+    planId: `${prefix}-running-plan`,
+    scheduleId: `${prefix}-running-schedule`,
+    scheduleVersionId: `${prefix}-running-version`,
+    slotId: `${prefix}-running-slot`,
+    sessionRevisionId: `${prefix}-running-recovery-v1`,
+    opportunityId: `${prefix}-running-opportunity`,
+  };
+  const plans = createRunningPlanRepository(kernel);
+  await plans.createInactiveMinimum({
+    planId: fixture.planId,
+    planName: "Native Running fixture",
+    anchorDayId: `${prefix}-running-day`,
+    scheduleId: fixture.scheduleId,
+    scheduleVersionId: fixture.scheduleVersionId,
+    scheduleBindingId: `${prefix}-running-binding`,
+    createdAtMs: 1_786_853_600_000,
+    effectiveLocalDate: "2026-08-17",
+    timezone: "Asia/Singapore",
+    recoveryRevisionId: fixture.sessionRevisionId,
+    slots: [{
+      id: fixture.slotId,
+      weekday: "Monday",
+      ordinal: 0,
+      sessionRevisionId: fixture.sessionRevisionId,
+    }],
+  });
+  await plans.activateMinimum({
+    planId: fixture.planId,
+    scheduleId: fixture.scheduleId,
+    expectedPlanRevision: 1,
+    expectedScheduleRevision: 1,
+    activatedAtMs: 1_786_853_601_000,
+  });
+  const occurrences = await plans.materializeOccurrences({
+    planId: fixture.planId,
+    scheduleId: fixture.scheduleId,
+    scheduleVersionId: fixture.scheduleVersionId,
+    localDate: "2026-08-17",
+    timezone: "Asia/Singapore",
+    createdAtMs: 1_786_853_602_000,
+    occurrenceIds: [fixture.opportunityId],
+  });
+  invariant(
+    occurrences.length === 1 && occurrences[0]?.slotId === fixture.slotId,
+    "phase13_running_occurrence_missing",
   );
-  invariant(rows.length === tables.length, "phase13_native_schema_incomplete");
+  return fixture;
 }
 
-const SHA256 = "a".repeat(64);
+async function seedStrengthActivationFixture(
+  kernel: SqliteKernel,
+  prefix: string,
+): Promise<void> {
+  const planId = `${prefix}-strength-plan`;
+  const dayId = `${prefix}-strength-day`;
+  await kernel.write(async (transaction) => {
+    await transaction.execute(
+      `INSERT INTO plans
+        (id, content_pack_id, origin, source_namespace, upstream_id, name,
+         days_per_week, audience, goal, estimate_minutes, attribution,
+         is_active, revision, plan_kind)
+       VALUES (?, NULL, 'custom', NULL, NULL, 'Native Strength fixture',
+               1, 'Personal', 'Strength', 30, 'Owner', 0, 1, 'strength')`,
+      [planId],
+    );
+    await transaction.execute(
+      "INSERT INTO plan_days(id, plan_id, ordinal, name, revision) VALUES (?, ?, 0, 'Day', 1)",
+      [dayId, planId],
+    );
+    await transaction.execute(
+      `INSERT INTO exercises
+        (id, content_pack_id, origin, source_namespace, upstream_id, name,
+         metric_profile, metric_contract_version, exercise_metric_generation,
+         equipment, default_rest_seconds, revision)
+       VALUES ('native-strength-exercise', NULL, 'custom', NULL, NULL,
+               'Native Strength exercise', 'load_reps', 1, 1,
+               'Unspecified', 60, 1)`,
+    );
+    await transaction.execute(
+      `INSERT INTO owned_plan_aggregate_states
+        (plan_id, lifecycle, graph_status, missing_requirement_code,
+         missing_requirement, created_at_ms, updated_at_ms, archived_at_ms)
+       VALUES (?, 'ready', 'valid', NULL, NULL, 1, 1, NULL)`,
+      [planId],
+    );
+    await transaction.execute(
+      `INSERT INTO owned_plan_day_exercises
+        (id, plan_day_id, exercise_id, ordinal, between_exercise_rest_seconds,
+         metric_profile, metric_contract_version, exercise_metric_generation, revision)
+       VALUES (?, ?, 'native-strength-exercise', 0, 60, 'load_reps', 1, 1, 1)`,
+      [`${prefix}-strength-occurrence`, dayId],
+    );
+    await transaction.execute(
+      `INSERT INTO owned_plan_working_set_targets
+        (id, plan_day_exercise_id, ordinal, target_json, unit_json,
+         metric_profile, metric_contract_version, exercise_metric_generation, revision)
+       VALUES (?, ?, 0,
+         '{"version":1,"profile":"load_reps","loadGrams":30000,"minReps":8,"maxReps":10,"incrementGrams":2500,"perSide":false}',
+         '{"version":1,"load":"grams","count":"repetitions"}',
+         'load_reps', 1, 1, 1)`,
+      [`${prefix}-strength-target`, `${prefix}-strength-occurrence`],
+    );
+    await transaction.execute(
+      `INSERT INTO owned_plan_progression_policies
+        (id, plan_day_exercise_id, policy_kind, policy_id, policy_version,
+         rule_json, metric_profile, metric_contract_version,
+         exercise_metric_generation, status, revision)
+       VALUES (?, ?, 'manual_hold', 'native-manual-hold', 1,
+         '{"kind":"manual_hold","id":"native-manual-hold","version":1}',
+         'load_reps', 1, 1, 'active', 1)`,
+      [`${prefix}-strength-policy`, `${prefix}-strength-occurrence`],
+    );
+  });
+  const result = await createScheduleRepository(kernel).activateSchedule({
+    operation: "activate_schedule",
+    requestId: `${prefix}-strength-activate`,
+    requestSha256: SHA256,
+    planId,
+    expectedPlanRevision: 1,
+    expectedActivePair: { kind: "none" },
+    targetSchedule: { kind: "absent", scheduleId: `${prefix}-strength-schedule` },
+    todayLocalDate: parseLocalDate("2026-08-17"),
+    activatedAtMs: 1_786_853_603_000,
+    next: {
+      effectiveLocalDate: parseLocalDate("2026-08-17"),
+      mode: "weekday",
+      timeZone: parseStoredTimeZone("Asia/Singapore"),
+      bindings: [{ ordinal: 0, weekIndex: 0, weekday: "Monday", planDayId: dayId }],
+    },
+    confirmationToken: `${prefix}-strength-confirmation`,
+    versionId: `${prefix}-strength-version`,
+    bindingIds: [`${prefix}-strength-binding`],
+  });
+  invariant(result.planId === planId, "phase13_map01_activation_failed");
+}
+
+function stagedGarminImport(prefix: string): PreparedGarminImport {
+  const normalized = {
+    version: 1 as const,
+    started_at_ms: 1_786_853_604_000,
+    sport: "running" as const,
+    subtype: "outdoor",
+    distance_meters: 5_000,
+    elapsed_ms: 1_500_000,
+    laps: [],
+  };
+  return Object.freeze({
+    envelope: Object.freeze({
+      version: 1 as const,
+      source_kind: "garmin_connect_account" as const,
+      account_namespace: `${prefix}-account`,
+      external_activity_id: `${prefix}-external`,
+      normalization_version: 1,
+      normalized_json_sha256: SHA256,
+      raw_component_sha256: { activity: SHA256, splits: SHA256, details: SHA256 },
+      sample_fidelity: "source_summary" as const,
+      normalized,
+    }),
+    canonical_payload_json: JSON.stringify({ normalization_version: 1, normalized }),
+  });
+}
+
+async function importGarminActivity(
+  kernel: SqliteKernel,
+  prefix: string,
+): Promise<string> {
+  const repository = createImportedActivityRepository(kernel);
+  const activityId = `${prefix}-activity`;
+  const input = {
+    requestId: `${prefix}-import`,
+    requestSha256: SHA256,
+    activityId,
+    expectedAggregateRevision: 0,
+    confirmedLocalDate: "2026-08-17",
+    staged: stagedGarminImport(prefix),
+  };
+  const first = await confirmGarminImportDate(repository, input);
+  const replay = await confirmGarminImportDate(repository, input);
+  invariant(
+    first.kind === "imported" && replay.kind === "replayed",
+    "phase13_import_replay_invalid",
+  );
+  return activityId;
+}
+
+async function setupActiveWorkout(kernel: SqliteKernel) {
+  const plans = createPlansWorkoutRepository(kernel);
+  const activation = await activateStarterPlan({
+    fixture: parseFullBodyFoundation(fullBodyFoundationAsset),
+    repository: plans,
+    activatedAtMs: 1_786_853_600_000,
+    startLocalDate: "2026-08-17",
+    timezone: "Asia/Singapore",
+  });
+  const session = await startWorkout({
+    repository: plans,
+    request: {
+      mode: "scheduled",
+      planId: activation.plan.id,
+      planDayId: activation.days[0]!.id,
+      localDate: "2026-08-17",
+      timezone: "Asia/Singapore",
+      startedAtMs: 1_786_853_600_000,
+    },
+  });
+  const workout = createWorkoutRepository(kernel);
+  const view = await workout.getActiveWorkout(session.id);
+  return { session, workout, view };
+}
 
 const caseAssertions: Record<
   MultiPlanRunningContractCaseId,
   (kernel: SqliteKernel) => Promise<void>
 > = {
   async "phase13-migration-failure-cuts"(kernel) {
-    await assertTables(kernel, ["running_plans", "imported_activities", "bodyweight_entries"]);
     const [row] = await kernel.queryAll<{ user_version: number }>("PRAGMA user_version");
     invariant(row?.user_version === migrations.at(-1)?.version, "phase13_migration_version_invalid");
   },
   async "phase13-map01-activation"(kernel) {
-    const indexes = await kernel.queryAll<{ name: string }>(
-      `SELECT name FROM sqlite_master WHERE type = 'index'
-       AND name IN ('one_active_owned_plan_per_sport', 'one_active_owned_schedule_per_sport')`,
+    const running = await seedRunningFixture(kernel, "map01");
+    await seedStrengthActivationFixture(kernel, "map01");
+    const pairs = await kernel.queryAll<{ plan_kind: string; plan_id: string }>(
+      "SELECT plan_kind, id AS plan_id FROM plans WHERE is_active = 1 ORDER BY plan_kind",
     );
-    invariant(indexes.length === 2, "phase13_map01_cardinality_index_missing");
-    await assertTables(kernel, ["plans", "owned_plan_schedules"]);
+    invariant(
+      pairs.length === 2 && pairs[0]?.plan_kind === "running"
+        && pairs[0]?.plan_id === running.planId && pairs[1]?.plan_kind === "strength",
+      "phase13_map01_sport_pairs_invalid",
+    );
   },
   async "phase13-running-two-slots"(kernel) {
-    const revision = parseRunningSessionRevision({
-      version: 1, id: "revision", rootId: "root", planId: "plan", revision: 1,
-      createdAtMs: 0, sessionKind: "recovery", contextual: {},
-      phases: [{ ordinal: 0, kind: "warm_up", steps: [{ ordinal: 0, kind: "duration", durationMs: 1_000 }] }],
+    const first = await seedRunningFixture(kernel, "slots");
+    const plans = createRunningPlanRepository(kernel);
+    await plans.createInactiveMinimum({
+      planId: "slots-second-plan", planName: "Two slots", anchorDayId: "slots-second-day",
+      scheduleId: "slots-second-schedule", scheduleVersionId: "slots-second-version",
+      scheduleBindingId: "slots-second-binding", createdAtMs: 1, effectiveLocalDate: "2026-08-17",
+      timezone: "Asia/Singapore", recoveryRevisionId: "slots-second-recovery",
+      slots: [
+        { id: "slots-second-a", weekday: "Monday", ordinal: 0, sessionRevisionId: "slots-second-recovery" },
+        { id: "slots-second-b", weekday: "Monday", ordinal: 1, sessionRevisionId: "slots-second-recovery" },
+      ],
     });
-    invariant(revision.sessionKind === "recovery", "phase13_running_root_invalid");
-    invariant(evaluateRunningReadiness({ hasRecoveryRevision: true, slotCount: 2 }).ready, "phase13_running_slots_invalid");
-    await assertTables(kernel, ["running_session_roots", "running_session_slots", "running_opportunities"]);
+    invariant(first.opportunityId.length > 0 && (await plans.readiness("slots-second-plan")).ready, "phase13_running_slots_invalid");
   },
   async "phase13-strength-completion-retry"(kernel) {
-    await assertTables(kernel, ["workout_provenance", "workout_receipts", "workout_completed_set_correction_receipts"]);
-    const count = await kernel.queryAll<{ count: number }>(
-      "SELECT COUNT(*) AS count FROM workout_receipts",
-    );
-    invariant(count[0]?.count === 0, "phase13_strength_retry_fixture_dirty");
+    const { session, workout, view } = await setupActiveWorkout(kernel);
+    const set = view.currentExercise.workingSets[0]!;
+    const input = { sessionId: session.id, setId: set.id, expectedSessionRevision: view.revision,
+      expectedSetRevision: set.revision, completionIdempotencyKey: "phase13-native-complete",
+      metricIdentity: set.metricIdentity, observation: { version: 1 as const, profile: "load_reps" as const,
+        loadGrams: 60_000, reps: 8, source: "plan_default" as const }, completedAtMs: 1_786_853_605_000 };
+    const first = await completeSet({ repository: workout, haptics: { committed: async () => undefined, cue: async () => undefined }, invalidate: async () => undefined, drainEffects: async () => undefined, input });
+    const replay = await completeSet({ repository: workout, haptics: { committed: async () => undefined, cue: async () => undefined }, invalidate: async () => undefined, drainEffects: async () => undefined, input });
+    invariant(first.outcome === "committed" && replay.outcome === "already_completed", "phase13_strength_retry_invalid");
   },
   async "phase13-import-normalized-identity"(kernel) {
-    const identity = { source_kind: "garmin_connect_account" as const, account_namespace: "account", external_activity_id: "activity" };
-    invariant(
-      classifyGarminActivityIdentity({ identity, normalized_json_sha256: SHA256, removed: false }).kind === "new",
-      "phase13_import_identity_new_invalid",
+    const activityId = await importGarminActivity(kernel, "identity");
+    const rows = await kernel.queryAll<{ activity_id: string; removal_state: string }>(
+      "SELECT activity_id, removal_state FROM imported_activity_identities WHERE activity_id = ?", [activityId],
     );
-    invariant(
-      classifyGarminActivityIdentity({ identity, existing: { ...identity, accepted_digest: SHA256 }, normalized_json_sha256: SHA256, removed: false }).kind === "duplicate",
-      "phase13_import_identity_duplicate_invalid",
-    );
-    await assertTables(kernel, ["imported_activities", "imported_activity_payloads", "imported_activity_identities"]);
+    invariant(rows.length === 1 && rows[0]?.removal_state === "active", "phase13_import_identity_invalid");
   },
   async "phase13-import-remove-restore"(kernel) {
-    const result = await changeGarminActivityLifecycle({
-      async changeGarminActivityLifecycle(input) {
-        return { kind: input.operation === "remove" ? "removed" : "imported", activityId: input.activityId, aggregateRevision: input.expectedAggregateRevision + 1 };
-      },
-    }, { operation: "remove", requestId: "remove", requestSha256: SHA256, activityId: "activity", expectedAggregateRevision: 1, occurredAtMs: 1, reason: "owner_request" });
-    invariant(result.kind === "removed" && result.aggregateRevision === 2, "phase13_remove_restore_invalid");
-    await assertTables(kernel, ["imported_activity_events", "imported_activity_removal_events", "imported_activity_match_invalidations"]);
+    const activityId = await importGarminActivity(kernel, "lifecycle");
+    const repository = createImportedActivityRepository(kernel);
+    const remove = { operation: "remove" as const, requestId: "lifecycle-remove", requestSha256: SHA256, activityId, expectedAggregateRevision: 1, occurredAtMs: 2, reason: "owner_request" };
+    const removed = await changeGarminActivityLifecycle(repository, remove);
+    const replay = await changeGarminActivityLifecycle(repository, remove);
+    const restored = await changeGarminActivityLifecycle(repository, { ...remove, operation: "restore", requestId: "lifecycle-restore", occurredAtMs: 3 });
+    invariant(removed.kind === "removed" && replay.kind === "removed" && restored.kind === "replayed", "phase13_remove_restore_invalid");
   },
   async "phase13-match-invalidation"(kernel) {
-    const result = await confirmRunningActivityMatch({
-      async confirm(input) {
-        return { kind: "matched", activityId: input.activityId, opportunityId: input.opportunityId, relationRevision: input.expectedRelationRevision + 1 };
-      },
-    }, { requestId: "match", requestSha256: SHA256, action: "match", activityId: "activity", expectedActivityRevision: 1, opportunityId: "opportunity", expectedOpportunityRevision: 1, expectedRelationRevision: 0, scheduleId: "schedule", scheduleVersionId: "version", slotId: "slot", sessionRevisionId: "session", occurredAtMs: 1 });
-    invariant(result.kind === "matched" && result.relationRevision === 1, "phase13_match_invalid_invalid");
-    await assertTables(kernel, ["running_activity_match_events", "running_activity_match_receipts", "running_current_matches"]);
+    const running = await seedRunningFixture(kernel, "match");
+    const activityId = await importGarminActivity(kernel, "match");
+    const repository = createRunningActivityMatchRepository(kernel);
+    const input = { requestId: "match-command", requestSha256: SHA256, action: "match" as const, activityId,
+      expectedActivityRevision: 1, opportunityId: running.opportunityId, expectedOpportunityRevision: 1,
+      expectedRelationRevision: 0, scheduleId: running.scheduleId, scheduleVersionId: running.scheduleVersionId,
+      slotId: running.slotId, sessionRevisionId: running.sessionRevisionId, occurredAtMs: 4 };
+    const matched = await confirmRunningActivityMatch(repository, input);
+    const replay = await confirmRunningActivityMatch(repository, input);
+    invariant(matched.kind === "matched" && replay.kind === "replayed", "phase13_match_replay_invalid");
   },
   async "phase13-stale-replay-no-resurrection"(kernel) {
-    const identity = { source_kind: "garmin_connect_account" as const, account_namespace: "account", external_activity_id: "activity" };
-    invariant(
-      classifyGarminActivityIdentity({ identity, existing: { ...identity, accepted_digest: SHA256 }, normalized_json_sha256: SHA256, removed: true }).kind === "removed",
-      "phase13_removed_activity_resurrected",
-    );
-    await assertTables(kernel, ["imported_activity_receipts", "imported_activity_events", "running_activity_match_receipts"]);
+    const activityId = await importGarminActivity(kernel, "stale");
+    const repository = createImportedActivityRepository(kernel);
+    await changeGarminActivityLifecycle(repository, { operation: "remove", requestId: "stale-remove", requestSha256: SHA256, activityId, expectedAggregateRevision: 1, occurredAtMs: 2, reason: "owner_request" });
+    const stale = await confirmGarminImportDate(repository, { requestId: "stale-import", requestSha256: SHA256, activityId: "stale-other", expectedAggregateRevision: 0, confirmedLocalDate: "2026-08-17", staged: stagedGarminImport("stale") });
+    invariant(stale.kind === "removed" && stale.activityId === activityId, "phase13_stale_replay_resurrected");
   },
   async "phase13-bodyweight-correction-delete"(kernel) {
-    const create = { operation: "create" as const, requestId: "create", entryId: "entry", ownerId: "owner", expectedRevision: 0, revisionId: "r1", eventId: "e1", occurredAtMs: 1, localDate: "2026-10-08", timezone: "Asia/Singapore", grams: 75_000 };
-    const created = transitionBodyweight(undefined, { ...create, requestSha256: canonicalBodyweightRequestHash(create) });
-    invariant(created.kind === "created" && created.entry !== undefined, "phase13_bodyweight_create_invalid");
-    const deletion = { operation: "delete" as const, requestId: "delete", entryId: "entry", ownerId: "owner", expectedRevision: 1, revisionId: "r2", eventId: "e2", occurredAtMs: 2 };
-    const deleted = transitionBodyweight(created.entry, { ...deletion, requestSha256: canonicalBodyweightRequestHash(deletion) });
-    invariant(deleted.kind === "deleted" && deleted.entry?.lifecycle === "deleted", "phase13_bodyweight_delete_invalid");
-    await assertTables(kernel, ["bodyweight_entries", "bodyweight_entry_events", "bodyweight_command_receipts"]);
+    const repository = createBodyweightRepository(kernel);
+    const create = { operation: "create" as const, requestId: "bodyweight-create", entryId: "bodyweight-entry", ownerId: "owner", expectedRevision: 0, revisionId: "bodyweight-r1", eventId: "bodyweight-e1", occurredAtMs: 1, localDate: "2026-08-17", timezone: "Asia/Singapore", grams: 75_000 };
+    const created = await repository.commit({ ...create, requestSha256: canonicalBodyweightRequestHash(create) });
+    const deleted = await repository.commit({ operation: "delete", requestId: "bodyweight-delete", requestSha256: SHA256, entryId: create.entryId, ownerId: create.ownerId, expectedRevision: 1, revisionId: "bodyweight-r2", eventId: "bodyweight-e2", occurredAtMs: 2 });
+    const replay = await repository.commit({ operation: "delete", requestId: "bodyweight-delete", requestSha256: SHA256, entryId: create.entryId, ownerId: create.ownerId, expectedRevision: 1, revisionId: "bodyweight-r2", eventId: "bodyweight-e2", occurredAtMs: 2 });
+    invariant(created.kind === "created" && deleted.kind === "deleted" && replay.kind === "deleted" && (await repository.history(create.ownerId))[0]?.lifecycle === "deleted", "phase13_bodyweight_history_invalid");
   },
   async "phase13-backup-clean-restore"(kernel) {
-    invariant("imported_activities" in LOGICAL_BACKUP_TABLE_DEFINITIONS, "phase13_backup_source_graph_missing");
-    invariant("bodyweight_entries" in LOGICAL_BACKUP_TABLE_DEFINITIONS, "phase13_backup_bodyweight_missing");
-    await assertTables(kernel, ["automatic_backup_state", "imported_activities", "bodyweight_entries"]);
+    const bodyweight = createBodyweightRepository(kernel);
+    const command = { operation: "create" as const, requestId: "backup-bodyweight-create", entryId: "backup-bodyweight-entry", ownerId: "backup-owner", expectedRevision: 0, revisionId: "backup-bodyweight-r1", eventId: "backup-bodyweight-e1", occurredAtMs: 5, localDate: "2026-08-17", timezone: "Asia/Singapore", grams: 75_000 };
+    await bodyweight.commit({ ...command, requestSha256: canonicalBodyweightRequestHash(command) });
+    const snapshot = await createLogicalBackupRepository(kernel).collect({ snapshotId: "phase13-native-backup", createdAtMs: 5 });
+    const restored = await createLogicalRestoreRepository(kernel).restore(snapshot);
+    const history = await bodyweight.history(command.ownerId);
+    invariant(restored.state === "rebuild_pending" && history[0]?.entryId === command.entryId, "phase13_backup_restore_invalid");
   },
   async "phase13-merge-rebuild"(kernel) {
-    invariant(PORTABLE_MERGE_TABLE_CLASSES.imported_activities === "source_graph", "phase13_merge_import_class_invalid");
-    invariant(PORTABLE_MERGE_TABLE_CLASSES.bodyweight_entries === "source_graph", "phase13_merge_bodyweight_class_invalid");
-    await assertTables(kernel, ["running_current_matches", "imported_activity_events", "bodyweight_entry_events"]);
+    void kernel;
+    const result = await runPortableMergeContract(await createExpoPortableMergeContractAdapter("phase13-merge-rebuild"));
+    invariant(result.status === "passed" && result.failed === 0, "phase13_merge_rebuild_invalid");
   },
   async "phase13-source-generation-neutrality"(kernel) {
-    const [state] = await kernel.queryAll<{ mutation_generation: number }>(
+    const [before] = await kernel.queryAll<{ mutation_generation: number }>(
       "SELECT mutation_generation FROM automatic_backup_state WHERE id = 1",
     );
-    invariant(Number.isSafeInteger(state?.mutation_generation), "phase13_source_generation_missing");
-    await assertTables(kernel, ["automatic_backup_state", "running_match_events", "imported_activity_match_invalidations"]);
+    await importGarminActivity(kernel, "generation");
+    const [after] = await kernel.queryAll<{ mutation_generation: number }>(
+      "SELECT mutation_generation FROM automatic_backup_state WHERE id = 1",
+    );
+    invariant((after?.mutation_generation ?? 0) > (before?.mutation_generation ?? 0), "phase13_source_generation_missing");
   },
   async "phase13-tim01-retirement"(kernel) {
-    invariant(
-      retireAdvancedTiming({ version: 1, mode: "per_rep", intervalMs: 1_000, cueChannels: "audio" }).mode === "off",
-      "phase13_tim01_retirement_invalid",
+    const { session, view } = await setupActiveWorkout(kernel);
+    const set = view.currentExercise.workingSets[0]!;
+    await updateSessionSetAdvancedTiming({ repository: createAdvancedTimingRepository(kernel), input: {
+      sessionId: session.id, sessionSetId: set.id, expectedSessionRevision: view.revision,
+      expectedSetRevision: set.revision, override: { version: 1, mode: "per_rep", intervalMs: 1_000, cueChannels: "audio" }, nowMs: 6,
+    } });
+    const [row] = await kernel.queryAll<{ advanced_timing_override_json: string | null; advanced_timing_resolved_json: string }>(
+      "SELECT advanced_timing_override_json, advanced_timing_resolved_json FROM session_sets WHERE id = ?", [set.id],
     );
-    await assertTables(kernel, ["session_advanced_timing_states", "session_sets", "session_rest_states"]);
+    invariant(row?.advanced_timing_override_json === null && row.advanced_timing_resolved_json === '{"version":1,"mode":"off"}', "phase13_tim01_retirement_invalid");
   },
 };
 
