@@ -46,6 +46,7 @@ test("Phase 14 Maestro flows encode all shell stages and stay native-only", () =
   const dataRecovery = settingsRecovery.slice(dataRecoveryStart, dataRecoveryEnd);
   assert.match(dataRecovery, /tapOn: "Manual encrypted backup"/u);
   assert.match(dataRecovery, /inputText: "phase14-cancel-only"/u);
+  assert.match(dataRecovery, /hideKeyboard/u);
   assert.match(dataRecovery, /id: "restore-clean-action"/u);
   assert.match(dataRecovery, /visible: "No backup was selected"/u);
 });

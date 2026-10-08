@@ -65,6 +65,10 @@ tags:
       - assertVisible: "Restore clean"
       - tapOn: "Restore password"
       - inputText: "phase14-cancel-only"
+      - hideKeyboard
+      - scrollUntilVisible:
+          element:
+            id: "restore-clean-action"
       - tapOn:
           id: "restore-clean-action"
       - extendedWaitUntil:
