@@ -11,6 +11,10 @@ import {
   StartupReadinessGate,
 } from "../src/ui/screens/RootScreens";
 import {
+  RootFailureState,
+  type RootLaunchFailure,
+} from "../src/ui/screens/RootFailureState";
+import {
   productionWorkoutAppRuntimeDependencies,
   useWorkoutAppRuntime,
   WorkoutAppRuntimeProvider,
@@ -123,6 +127,30 @@ function Phase12GoogleAuthSmokeNavigator() {
   );
 }
 
+function PreRuntimeFailure({
+  category,
+}: Readonly<{ category: Extract<RootLaunchFailure["category"], "appearance" | "font"> }>) {
+  const correlationCode = category === "font" ? "GT-FONT01" : "GT-APPEAR01";
+
+  return (
+    <GestureHandlerRootView style={styles.root} testID="gesture-handler-root">
+      <SafeAreaProvider>
+        <AppearanceProvider store={createMemoryAppearanceStore()}>
+          <RootFailureState
+            failure={{
+              category,
+              code: `${category}_startup_failed`,
+              correlationCode,
+              retryable: true,
+            }}
+            onRetry={() => undefined}
+          />
+        </AppearanceProvider>
+      </SafeAreaProvider>
+    </GestureHandlerRootView>
+  );
+}
+
 export default function RootLayout() {
   const [fontsLoaded, fontError] = useFonts(appFonts);
   const nativeContractsEnabled =
@@ -140,6 +168,28 @@ export default function RootLayout() {
     nativeContractsEnabled && pathname === "/__phase12-google-cleanup";
   const phase12GoogleAuthSmokeEnabled =
     nativeContractsEnabled && pathname === "/__phase12-google-auth-smoke";
+
+  const isolatedNativeRoute = attendedPreviewEnabled
+    || phase6GestureSmokeEnabled
+    || phase12CleanupEnabled
+    || phase12GoogleAuthSmokeEnabled;
+  const appearanceRead = !isolatedNativeRoute && fontsLoaded && fontError === null
+    ? productionAppearanceStore.read()
+    : null;
+
+  if (!isolatedNativeRoute && !fontsLoaded && fontError !== null) {
+    return <PreRuntimeFailure category="font" />;
+  }
+
+  if (
+    !isolatedNativeRoute
+    && typeof appearanceRead === "object"
+    && appearanceRead !== null
+    && "status" in appearanceRead
+    && appearanceRead.status === "failed"
+  ) {
+    return <PreRuntimeFailure category="appearance" />;
+  }
 
   if (!fontsLoaded && fontError === null) {
     return (

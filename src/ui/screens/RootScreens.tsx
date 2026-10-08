@@ -26,7 +26,6 @@ import {
 } from "./TodayScreen";
 import {
   AdaptiveScreen,
-  classifyWidth,
 } from "../layout/AdaptiveScreen";
 import { space } from "../theme";
 
@@ -167,15 +166,14 @@ const loadingRoutes = [
 export function AppLoadingShell({
   width = 599,
 }: Readonly<{ width?: number }>) {
-  const expanded = classifyWidth(width) === "expanded";
-
   return (
-    <View
-      style={[
-        styles.loadingShell,
-        expanded && styles.loadingShellExpanded,
-      ]}
-    >
+    <View style={styles.loadingShell}>
+      <View
+        accessible
+        accessibilityLabel="Opening workout data"
+        accessibilityRole="progressbar"
+        accessibilityState={{ busy: true }}
+      />
       <View style={styles.loadingContent}>
         <TodayScreen launchState="booting" />
       </View>
@@ -185,7 +183,7 @@ export function AppLoadingShell({
           emit: () => ({ defaultPrevented: false }),
           navigate: () => undefined,
         }}
-        position={expanded ? "rail" : "bottom"}
+        position="bottom"
         state={{ index: 0, routes: loadingRoutes }}
       />
     </View>
@@ -291,9 +289,6 @@ export function ActiveWorkoutLoadingScreen({
 const styles = StyleSheet.create({
   loadingShell: {
     flex: 1,
-  },
-  loadingShellExpanded: {
-    flexDirection: "row-reverse",
   },
   loadingContent: {
     flex: 1,

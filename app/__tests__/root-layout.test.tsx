@@ -134,6 +134,15 @@ jest.mock("../../src/ui/screens/RootScreens", () => {
   };
 });
 
+jest.mock("../../src/ui/screens/RootFailureState", () => {
+  const { View } = require("react-native") as typeof import("react-native");
+  return {
+    RootFailureState: ({ failure }: Readonly<{ failure: { category: string } }>) => (
+      <View testID={`root-failure-${failure.category}`} />
+    ),
+  };
+});
+
 jest.mock("../../src/ui/theme", () => {
   const { Pressable, View } =
     require("react-native") as typeof import("react-native");
@@ -181,7 +190,8 @@ describe("RootLayout attended preview isolation", () => {
     mockPathname = "/__phase2-attended-preview";
     mockRuntimeProviderMounted.mockClear();
     mockUseFonts.mockClear();
-    mockProductionAppearanceRead.mockClear();
+    mockProductionAppearanceRead.mockReset();
+    mockProductionAppearanceRead.mockReturnValue(null);
     mockProductionAppearanceWrite.mockClear();
     mockPreviewAppearanceRead.mockClear();
     mockPreviewAppearanceWrite.mockClear();
@@ -309,7 +319,7 @@ describe("RootLayout attended preview isolation", () => {
     expect(screen.getByTestId("gesture-handler-root"))
       .toContainElement(screen.getByTestId("workout-runtime-provider"));
     expect(mockRuntimeProviderMounted).toHaveBeenCalledTimes(1);
-    expect(mockProductionAppearanceRead).toHaveBeenCalledTimes(1);
+    expect(mockProductionAppearanceRead).toHaveBeenCalledTimes(2);
     expect(mockSqliteStorageConstructed)
       .toHaveBeenCalledWith("gym-tracker-preferences.db");
     await fireEvent.press(screen.getByRole("button", {
