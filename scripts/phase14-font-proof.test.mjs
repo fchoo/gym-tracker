@@ -108,10 +108,12 @@ test("font proof rejects stale source, APK, package/profile, fabricated pass rep
   }
 });
 
-test("font proof fixes the canonical report path and cold-start flow waits before and after deep linking", () => {
+test("font proof fixes the canonical report path and deep-links before waiting for the proof route", () => {
   assert.equal(CANONICAL_REPORT, ".planning/phases/14-prototype-visual-shell/evidence/font-axis-proof.json");
   const flow = readFileSync(new URL("../maestro/phase14/font-axis.yaml", import.meta.url), "utf8");
-  assert.match(flow, /launchApp:[\s\S]*extendedWaitUntil:[\s\S]*phase2-attended-preview-unknown[\s\S]*openLink:[\s\S]*extendedWaitUntil:[\s\S]*phase14-font-proof-root/u);
+  assert.match(flow, /launchApp:[\s\S]*openLink:[\s\S]*extendedWaitUntil:[\s\S]*phase14-font-proof-root/u);
+  const beforeDeepLink = flow.slice(0, flow.indexOf("openLink:"));
+  assert.doesNotMatch(beforeDeepLink, /phase2-attended-preview-unknown/u);
   assert.match(flow, /gymtracker-devtest:\/\/__phase2-attended-preview/u);
   assert.doesNotMatch(flow, /gymtracker-devtest:\/\/\//u);
 });

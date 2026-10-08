@@ -7,10 +7,6 @@ tags:
 - launchApp:
     clearState: false
     stopApp: true
-- extendedWaitUntil:
-    visible:
-      id: "phase2-attended-preview-unknown"
-    timeout: 30000
 - openLink: "gymtracker-devtest://__phase2-attended-preview?scenario=phase14-font-axis"
 - extendedWaitUntil:
     visible:
