@@ -96,6 +96,37 @@ describe("AppRootShell", () => {
     expect(trigger.current.focus).toHaveBeenCalledTimes(1);
   });
 
+  it("dismisses root App Settings before a retained deep-route callback runs", async () => {
+    const openRemovedSessions = jest.fn();
+    await render(
+      <AppearanceProvider>
+        <AppRootShell
+          activeRoot="index"
+          settingsContent={(closeSettings) => (
+            <AppSettingsContent
+              notificationPermission="granted"
+              onChangeRestAlertPreferences={() => undefined}
+              onNavigate={closeSettings}
+              onOpenDataAndRecovery={() => undefined}
+              onOpenNotificationSettings={() => undefined}
+              onOpenRemovedSessions={openRemovedSessions}
+              preferences={{ soundEnabled: true, vibrationEnabled: true }}
+              restAlertPreferencesLoading={false}
+            />
+          )}
+        >
+          <View />
+        </AppRootShell>
+      </AppearanceProvider>,
+    );
+
+    await fireEvent.press(screen.getByRole("button", { name: "Open App Settings" }));
+    await fireEvent.press(screen.getByRole("button", { name: "Removed sessions" }));
+    expect(openRemovedSessions).toHaveBeenCalledTimes(1);
+    expect(screen.queryByRole("header", { name: "App Settings" }))
+      .not.toBeOnTheScreen();
+  });
+
   it("restores the exact originating trigger and falls back to the root heading", async () => {
     const trigger = { current: { focus: jest.fn() } };
     const heading = { current: { focus: jest.fn() } };
