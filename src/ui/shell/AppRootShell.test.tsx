@@ -3,6 +3,7 @@ import { describe, expect, it, jest } from "@jest/globals";
 import React from "react";
 import { Text, View } from "react-native";
 
+import { AppSettingsContent } from "../screens/SettingsScreen";
 import { AppearanceProvider } from "../theme";
 import { useSemanticToast } from "../components/SemanticToast";
 import { AppRootShell } from "./AppRootShell";
@@ -61,6 +62,39 @@ describe("AppRootShell", () => {
 
     await fireEvent.press(screen.getByRole("button", { name: "Open App Settings" }));
     expect(onOpenSettings).toHaveBeenCalledTimes(1);
+  });
+
+  it("opens one App Settings sheet and restores the exact shell trigger on close", async () => {
+    const trigger = { current: { focus: jest.fn() } };
+    await render(
+      <AppearanceProvider>
+        <AppRootShell
+          activeRoot="index"
+          settingsContent={(
+            <AppSettingsContent
+              notificationPermission="granted"
+              onBack={jest.fn()}
+              onChangeRestAlertPreferences={jest.fn()}
+              onOpenDataAndRecovery={jest.fn()}
+              onOpenNotificationSettings={jest.fn()}
+              onOpenRemovedSessions={jest.fn()}
+              preferences={{ soundEnabled: true, vibrationEnabled: true }}
+              restAlertPreferencesLoading={false}
+            />
+          )}
+          settingsTriggerRef={trigger}
+        >
+          <View />
+        </AppRootShell>
+      </AppearanceProvider>,
+    );
+
+    await fireEvent.press(screen.getByRole("button", { name: "Open App Settings" }));
+    expect(screen.getByRole("header", { name: "App Settings" })).toBeOnTheScreen();
+    expect(screen.getByText("Appearance applies to all four destinations, Active Workout, Garmin, sheets, dialogs, and recovery routes.")).toBeOnTheScreen();
+
+    await fireEvent.press(screen.getByRole("button", { name: "Close app settings" }));
+    expect(trigger.current.focus).toHaveBeenCalledTimes(1);
   });
 
   it("restores the exact originating trigger and falls back to the root heading", async () => {

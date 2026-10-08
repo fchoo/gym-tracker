@@ -14,6 +14,7 @@ import {
 import React from "react";
 
 import {
+  AppSettingsContent,
   SettingsScreen,
   type SettingsScreenProps,
 } from "../screens/SettingsScreen";
@@ -63,6 +64,30 @@ function renderScreen(
 describe("SettingsScreen", () => {
   beforeEach(() => {
     jest.clearAllMocks();
+  });
+
+  it("shares the App Settings content tree between its route wrapper and sheet host", async () => {
+    const props = createProps();
+    await render(
+      <AppearanceProvider>
+        <AppSettingsContent {...props} />
+      </AppearanceProvider>,
+    );
+
+    expect(screen.getByText(
+      "Appearance applies to all four destinations, Active Workout, Garmin, sheets, dialogs, and recovery routes.",
+    )).toBeOnTheScreen();
+    const headings = screen.getAllByRole("header").map((node) => (
+      node.props.accessibilityLabel ?? node.props.children
+    ));
+    expect(headings).toEqual([
+      "Appearance",
+      "Rest alerts",
+      "History and data",
+      "Data and recovery",
+    ]);
+    expect(screen.queryByRole("button", { name: "Go back" }))
+      .not.toBeOnTheScreen();
   });
 
   it("renders the locked hierarchy with persisted top-level appearance radios and accessible rows", async () => {
