@@ -76,8 +76,60 @@ describe("RemovedSessionsScreen", () => {
     });
 
     expect(screen.getByTestId("removed-sessions-skeleton")).toBeOnTheScreen();
+    expect(screen.getByTestId("removed-sessions-skeleton")).toHaveProp(
+      "accessibilityElementsHidden",
+      true,
+    );
+    expect(screen.getByRole("progressbar", { name: "Loading removed sessions" }))
+      .toBeOnTheScreen();
     resolve?.([]);
     expect(await screen.findByText("No removed sessions")).toBeOnTheScreen();
+  });
+
+  it("uses exact empty and retry copy while preserving unchanged saved-workout facts", async () => {
+    const loadRemovedSessions = jest
+      .fn<Promise<readonly RemovedHistorySession[]>, []>()
+      .mockRejectedValueOnce(new Error("read unavailable"))
+      .mockResolvedValueOnce([]);
+    const props = await renderScreen({ loadRemovedSessions });
+
+    expect(await screen.findByText("Removed sessions could not be loaded"))
+      .toBeOnTheScreen();
+    expect(screen.getByText(
+      "Your saved workouts were not changed. Retry loading removed sessions.",
+    )).toBeOnTheScreen();
+    await fireEvent.press(screen.getByRole("button", {
+      name: "Retry loading removed sessions",
+    }));
+    expect(await screen.findByText("No removed sessions")).toBeOnTheScreen();
+    expect(screen.getByRole("button", { name: "Return to App Settings" }))
+      .toBeOnTheScreen();
+    expect(loadRemovedSessions).toHaveBeenCalledTimes(2);
+    expect(props.onBack).not.toHaveBeenCalled();
+  });
+
+  it("renders zero, one, and many source rows in stable removed-time order with full restore labels", async () => {
+    const newerSession: RemovedHistorySession = {
+      ...removedSession,
+      id: "newer-session",
+      sourceLabel: "Newer manual visit",
+      planName: null,
+      dayName: null,
+      removedAtMs: removedSession.removedAtMs + 1,
+    };
+    await renderScreen({ loadRemovedSessions: jest.fn(async () => [removedSession, newerSession]) });
+
+    expect(await screen.findByText("Newer manual visit")).toBeOnTheScreen();
+    const rows = screen.getAllByTestId(/removed-session-/u);
+    expect(rows.map((row) => row.props.testID)).toEqual([
+      "removed-session-newer-session",
+      "removed-session-removed-session",
+    ]);
+    expect(screen.getByRole("button", { name: "Restore Newer manual visit" }))
+      .toBeOnTheScreen();
+    expect(screen.getByRole("button", {
+      name: "Restore Full Body Foundation · Full Body A",
+    })).toBeOnTheScreen();
   });
 
   it("shows source-backed retained context and waits for explicit restore confirmation", async () => {
