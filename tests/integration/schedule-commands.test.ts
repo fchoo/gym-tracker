@@ -2475,6 +2475,154 @@ describe("schedule repository edge contracts", () => {
     ))).resolves.toBe("schedule_reference_invalid");
   });
 
+  it("keeps an active Running pair intact while Strength activates and mutates its schedule", async () => {
+    const kernel = await createModernRuntime();
+    await kernel.write(async (transaction) => {
+      await transaction.execute(
+        "UPDATE plans SET revision = 8 WHERE id = 'plan-copy'",
+      );
+      await transaction.execute(
+        "UPDATE plans SET revision = 2 WHERE id = 'plan-hold'",
+      );
+      await transaction.execute(
+        `INSERT INTO owned_plan_schedules
+          (id, plan_id, lifecycle, revision, activated_at_ms,
+           deactivated_at_ms, plan_kind)
+         VALUES (
+           'schedule-copy', 'plan-copy', 'active', 7, 1, NULL, 'strength'
+         )`,
+      );
+      await transaction.execute(
+        `INSERT INTO owned_plan_day_exercises
+          (id, plan_day_id, exercise_id, ordinal,
+           between_exercise_rest_seconds, metric_profile,
+           metric_contract_version, exercise_metric_generation, revision)
+         VALUES (
+           'running-first-strength-occurrence', 'plan-day-hold',
+           'exercise-plank', 0, 60, 'timed_hold', 1, 1, 1
+         )`,
+      );
+      await transaction.execute(
+        `INSERT INTO owned_plan_working_set_targets
+          (id, plan_day_exercise_id, ordinal, target_json, unit_json,
+           metric_profile, metric_contract_version,
+           exercise_metric_generation, revision)
+         VALUES (
+           'running-first-strength-target',
+           'running-first-strength-occurrence', 0,
+           '{"version":1,"profile":"timed_hold","durationSeconds":30,"sets":3}',
+           '{"version":1,"time":"seconds"}', 'timed_hold', 1, 1, 1
+         )`,
+      );
+      await transaction.execute(
+        `INSERT INTO owned_plan_progression_policies
+          (id, plan_day_exercise_id, policy_kind, policy_id, policy_version,
+           rule_json, metric_profile, metric_contract_version,
+           exercise_metric_generation, status, revision)
+         VALUES (
+           'running-first-strength-policy',
+           'running-first-strength-occurrence', 'manual_hold',
+           'manual-hold-v1', 1,
+           '{"kind":"manual_hold","id":"manual-hold-v1","version":1}',
+           'timed_hold', 1, 1, 'active', 1
+         )`,
+      );
+      await transaction.execute(
+        `INSERT INTO plans
+          (id, content_pack_id, origin, source_namespace, upstream_id, name,
+           days_per_week, audience, goal, estimate_minutes, attribution,
+           is_active, revision, plan_kind)
+         VALUES (
+           'running-first', NULL, 'custom', NULL, NULL, 'Running First',
+           1, 'Personal', 'Running', 30, 'Owner', 1, 1, 'running'
+         )`,
+      );
+      await transaction.execute(
+        `INSERT INTO running_plans
+          (plan_id, status, revision, created_at_ms)
+         VALUES ('running-first', 'ready', 1, 1)`,
+      );
+      await transaction.execute(
+        `INSERT INTO owned_plan_schedules
+          (id, plan_id, lifecycle, revision, activated_at_ms,
+           deactivated_at_ms, plan_kind)
+         VALUES (
+           'running-first-schedule', 'running-first', 'active', 1, 1,
+           NULL, 'running'
+         )`,
+      );
+    });
+
+    const repository = createScheduleRepository(kernel);
+    await expect(repository.activateSchedule(baseActivateRepositoryInput({
+      requestId: "activate-strength-after-running",
+    }))).resolves.toMatchObject({
+      planId: "plan-hold",
+      scheduleId: "schedule-hold",
+    });
+
+    const strength = await repository.readTimeZoneState({
+      scheduleId: "schedule-hold",
+    });
+    expect(strength).not.toBeNull();
+    await expect(repository.saveVersion({
+      operation: "save_schedule_version",
+      requestId: "mutate-strength-after-running",
+      requestSha256: "b".repeat(64),
+      scheduleId: "schedule-hold",
+      planId: "plan-hold",
+      expectedScheduleRevision: 1,
+      expectedPlanRevision: 3,
+      todayLocalDate: parseLocalDate("2026-08-18"),
+      savedAtMs: commandTime + 1,
+      before: strength!.version,
+      next: {
+        effectiveLocalDate: parseLocalDate("2026-08-19"),
+        mode: "weekday",
+        timeZone: parseStoredTimeZone("Asia/Singapore"),
+        bindings: [{
+          ordinal: 0,
+          weekIndex: 0,
+          weekday: "Monday",
+          planDayId: "plan-day-hold",
+        }],
+      },
+      confirmationToken: "strength-after-running",
+      versionId: "strength-after-running-version",
+      bindingIds: ["strength-after-running-binding"],
+    })).resolves.toMatchObject({
+      scheduleId: "schedule-hold",
+      scheduleRevision: 2,
+      planRevision: 4,
+    });
+
+    await expect(kernel.queryAll(
+      `SELECT plan.id, plan.plan_kind, plan.is_active,
+              schedule.id AS schedule_id, schedule.lifecycle, schedule.revision
+       FROM plans plan
+       JOIN owned_plan_schedules schedule ON schedule.plan_id = plan.id
+       WHERE plan.id IN ('plan-hold', 'running-first')
+       ORDER BY plan.plan_kind`,
+    )).resolves.toEqual([
+      {
+        id: "running-first",
+        plan_kind: "running",
+        is_active: 1,
+        schedule_id: "running-first-schedule",
+        lifecycle: "active",
+        revision: 1,
+      },
+      {
+        id: "plan-hold",
+        plan_kind: "strength",
+        is_active: 1,
+        schedule_id: "schedule-hold",
+        lifecycle: "active",
+        revision: 2,
+      },
+    ]);
+  });
+
   it("guards Running activation and translates failed SQLite readback paths", async () => {
     const prepareRunningPlan = async (kernel: SqliteKernel) => {
       await kernel.write(async (transaction) => {

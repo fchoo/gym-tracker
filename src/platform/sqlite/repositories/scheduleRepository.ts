@@ -410,6 +410,7 @@ type ActivePlanPairRow = Readonly<{
 type ScheduleActivationPlanRow = Readonly<{
   plan_id: string;
   plan_revision: number;
+  plan_kind: "strength" | "running";
   plan_origin: "bundled" | "custom" | "copied";
   plan_is_active: number;
   plan_lifecycle: "draft" | "ready" | "archived" | null;
@@ -817,6 +818,7 @@ async function saveVersionTransaction(
 
 async function readActiveSchedulePair(
   transaction: SqliteTransactionExecutor,
+  planKind: "strength" | "running",
 ): Promise<ActiveSchedulePairRow | null> {
   const activePlans = await transaction.queryAll<ActiveSchedulePairRow>(
     `SELECT plan.id AS plan_id,
@@ -827,8 +829,9 @@ async function readActiveSchedulePair(
      LEFT JOIN owned_plan_schedules schedule
        ON schedule.plan_id = plan.id
       AND schedule.lifecycle = 'active'
-     WHERE plan.is_active = 1
+     WHERE plan.is_active = 1 AND plan.plan_kind = ?
      ORDER BY plan.id`,
+    [planKind],
   );
   const activeSchedules = await transaction.queryAll<{
     schedule_id: string;
@@ -837,8 +840,9 @@ async function readActiveSchedulePair(
   }>(
     `SELECT id AS schedule_id, revision AS schedule_revision, plan_id
      FROM owned_plan_schedules
-     WHERE lifecycle = 'active'
+     WHERE lifecycle = 'active' AND plan_kind = ?
      ORDER BY id`,
+    [planKind],
   );
   if (activePlans.length > 1 || activeSchedules.length > 1) {
     throw new ScheduleRepositoryError("schedule_active_state_invalid");
@@ -1021,6 +1025,7 @@ async function readScheduleActivationPlan(
   const [row] = await transaction.queryAll<ScheduleActivationPlanRow>(
     `SELECT plan.id AS plan_id,
             plan.revision AS plan_revision,
+            plan.plan_kind AS plan_kind,
             plan.origin AS plan_origin,
             plan.is_active AS plan_is_active,
             state.lifecycle AS plan_lifecycle,
@@ -1097,19 +1102,10 @@ async function activateScheduleTransaction(
       input.requestSha256,
     ) as ActivateOwnedPlanScheduleResult;
   }
-  const active = await readActiveSchedulePair(transaction);
-  if (!activePairMatches(
-    active,
-    input.expectedActivePair,
-  )) {
-    throw new ScheduleRepositoryError("schedule_active_revision_conflict");
-  }
-  if (await hasActiveWorkout(transaction)) {
-    throw new ScheduleRepositoryError("schedule_active_workout_blocked");
-  }
   const target = await readScheduleActivationPlan(transaction, input.planId);
   if (
     target === null
+    || target.plan_kind !== "strength"
     || target.plan_origin === "bundled"
     || target.plan_is_active !== 0
     || target.plan_lifecycle !== "ready"
@@ -1126,6 +1122,16 @@ async function activateScheduleTransaction(
     || !await hasValidPlanTargetFacts(transaction, input.planId)
   ) {
     throw new ScheduleRepositoryError("schedule_reference_invalid");
+  }
+  const active = await readActiveSchedulePair(transaction, target.plan_kind);
+  if (!activePairMatches(
+    active,
+    input.expectedActivePair,
+  )) {
+    throw new ScheduleRepositoryError("schedule_active_revision_conflict");
+  }
+  if (await hasActiveWorkout(transaction)) {
+    throw new ScheduleRepositoryError("schedule_active_workout_blocked");
   }
   const scheduleId = input.targetSchedule.scheduleId;
   const before = input.targetSchedule.kind === "inactive"
@@ -1223,7 +1229,7 @@ async function activateScheduleTransaction(
   if (targetPlanUpdate.changes !== 1) {
     throw new ScheduleRepositoryError("schedule_plan_revision_conflict");
   }
-  const activated = await readActiveSchedulePair(transaction);
+  const activated = await readActiveSchedulePair(transaction, target.plan_kind);
   if (
     activated?.plan_id !== input.planId
     || activated.plan_revision !== input.expectedPlanRevision + 1
