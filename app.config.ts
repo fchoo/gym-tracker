@@ -75,6 +75,9 @@ export default ({ config }: ConfigContext): ExpoConfig => {
     extra: {
       buildProfile,
       nativeContractsEnabled: developmentTest,
+      nativeContractSuite: developmentTest
+        ? process.env.EXPO_PUBLIC_NATIVE_CONTRACT_SUITE ?? null
+        : null,
       googleOAuth: {
         projectNumber: GOOGLE_OAUTH_REGISTRATIONS.projectNumber,
         webClientId: googleOAuth.webClientId,

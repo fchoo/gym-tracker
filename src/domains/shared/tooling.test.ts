@@ -152,6 +152,7 @@ describe("Plan 01-03 test and boundary tooling", () => {
       extra: {
         buildProfile: "development-test",
         nativeContractsEnabled: true,
+        nativeContractSuite: "phase14-font-proof",
         googleOAuth: {
           projectNumber: "359232211920",
           webClientId: "359232211920-gqfkasvsr8r5qbmprc6ukh9fofu246r9.apps.googleusercontent.com",
@@ -190,6 +191,7 @@ describe("Plan 01-03 test and boundary tooling", () => {
               FAKE_UNZIP_ENTRIES:
                 "assets/index.android.bundle\nassets/app.config\n",
               FAKE_UNZIP_PAYLOAD: payload,
+              EXPO_PUBLIC_NATIVE_CONTRACT_SUITE: "phase14-font-proof",
               FAKE_UNZIP_EXTRACT_STATUS: statuses.extract ?? "0",
               FAKE_UNZIP_LIST_STATUS: statuses.list ?? "0",
               PATH: `${directory}:${process.env.PATH ?? ""}`,
@@ -222,6 +224,7 @@ describe("Plan 01-03 test and boundary tooling", () => {
             ...process.env,
             FAKE_UNZIP_ENTRIES: entries,
             FAKE_UNZIP_PAYLOAD: JSON.stringify(validConfig),
+            EXPO_PUBLIC_NATIVE_CONTRACT_SUITE: "phase14-font-proof",
             PATH: `${directory}:${process.env.PATH ?? ""}`,
           },
         })).toEqual(expect.objectContaining({

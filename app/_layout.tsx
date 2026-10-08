@@ -127,8 +127,9 @@ export default function RootLayout() {
   const [fontsLoaded, fontError] = useFonts(appFonts);
   const nativeContractsEnabled =
     Constants.expoConfig?.extra?.nativeContractsEnabled === true;
+  const nativeContractSuite = Constants.expoConfig?.extra?.nativeContractSuite;
   const phase14FontProofEnabled = nativeContractsEnabled
-    && process.env.EXPO_PUBLIC_NATIVE_CONTRACT_SUITE === "phase14-font-proof";
+    && nativeContractSuite === "phase14-font-proof";
   const pathname = usePathname();
   const { width } = useWindowDimensions();
   const attendedPreviewEnabled = phase14FontProofEnabled

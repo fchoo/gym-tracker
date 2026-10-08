@@ -1,13 +1,13 @@
 import { fireEvent, render, screen } from "@testing-library/react-native";
-import { afterAll, beforeEach, describe, expect, it, jest } from "@jest/globals";
+import { beforeEach, describe, expect, it, jest } from "@jest/globals";
 import { Dimensions } from "react-native";
 import React from "react";
 
 let mockFontsLoaded = true;
 let mockFontError: Error | null = null;
 let mockNativeContractsEnabled = true;
+let mockNativeContractSuite: string | null = null;
 let mockPathname = "/__phase2-attended-preview";
-const originalNativeContractSuite = process.env.EXPO_PUBLIC_NATIVE_CONTRACT_SUITE;
 const mockRuntimeProviderMounted = jest.fn();
 const mockProductionAppearanceRead = jest.fn(() => null);
 const mockProductionAppearanceWrite = jest.fn();
@@ -26,6 +26,9 @@ jest.mock("expo-constants", () => ({
       extra: {
         get nativeContractsEnabled() {
           return mockNativeContractsEnabled;
+        },
+        get nativeContractSuite() {
+          return mockNativeContractSuite;
         },
       },
     },
@@ -171,8 +174,8 @@ describe("RootLayout attended preview isolation", () => {
     mockFontsLoaded = true;
     mockFontError = null;
     mockNativeContractsEnabled = true;
+    mockNativeContractSuite = null;
     mockPathname = "/__phase2-attended-preview";
-    delete process.env.EXPO_PUBLIC_NATIVE_CONTRACT_SUITE;
     mockRuntimeProviderMounted.mockClear();
     mockUseFonts.mockClear();
     mockProductionAppearanceRead.mockClear();
@@ -184,14 +187,6 @@ describe("RootLayout attended preview isolation", () => {
       screen: { fontScale: 1, height: 900, scale: 1, width: 599 },
       window: { fontScale: 1, height: 900, scale: 1, width: 599 },
     });
-  });
-
-  afterAll(() => {
-    if (originalNativeContractSuite === undefined) {
-      delete process.env.EXPO_PUBLIC_NATIVE_CONTRACT_SUITE;
-    } else {
-      process.env.EXPO_PUBLIC_NATIVE_CONTRACT_SUITE = originalNativeContractSuite;
-    }
   });
 
   it("does not initialize the production runtime for the devtest attended preview", async () => {
@@ -219,7 +214,7 @@ describe("RootLayout attended preview isolation", () => {
 
   it("isolates the Phase 14 font proof before a cold deep link resolves", async () => {
     mockPathname = "/";
-    process.env.EXPO_PUBLIC_NATIVE_CONTRACT_SUITE = "phase14-font-proof";
+    mockNativeContractSuite = "phase14-font-proof";
 
     await render(<RootLayout />);
 

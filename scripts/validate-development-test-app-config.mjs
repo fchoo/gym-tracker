@@ -6,6 +6,7 @@ import { GOOGLE_OAUTH_REGISTRATIONS } from "./google-oauth-config.mjs";
 
 const invalidMessage =
   "validate-development-test-app-config: invalid development-test app config.\n";
+const expectedNativeContractSuite = process.env.EXPO_PUBLIC_NATIVE_CONTRACT_SUITE;
 
 const rejectConfig = () => {
   process.stderr.write(invalidMessage);
@@ -54,6 +55,9 @@ if (
   || Array.isArray(config)
   || config.extra?.buildProfile !== "development-test"
   || config.extra?.nativeContractsEnabled !== true
+  || typeof expectedNativeContractSuite !== "string"
+  || expectedNativeContractSuite.length === 0
+  || config.extra?.nativeContractSuite !== expectedNativeContractSuite
   || config.scheme !== "gymtracker-devtest"
   || config.android?.package !== "com.fchoo.gymtracker.devtest"
   || config.extra?.googleOAuth?.projectNumber !== GOOGLE_OAUTH_REGISTRATIONS.projectNumber
