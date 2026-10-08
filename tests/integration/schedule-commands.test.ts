@@ -52,12 +52,6 @@ import {
 import { createMigrationRunner } from "../../src/platform/sqlite/migrationRunner";
 import { migrations } from "../../src/platform/sqlite/migrations";
 import {
-  scheduleActivationMigration,
-} from "../../src/platform/sqlite/migrations/0008_schedule_activation";
-import {
-  ownedPlansMigration,
-} from "../../src/platform/sqlite/migrations/0009_owned_plans";
-import {
   createScheduleRepository,
   ScheduleRepositoryError,
   type ApplyScheduleOpportunityRepositoryInput,
@@ -186,7 +180,21 @@ async function createRuntime(): Promise<SqliteKernel> {
   await createMigrationRunner({
     databaseName: "gym-tracker.db",
     kernel,
-    migrations: [scheduleActivationMigration, ownedPlansMigration],
+    // The schedule repository is exercised against the current schema.
+    // Phase 13 activation is sport-scoped and therefore requires plan_kind,
+    // which is intentionally absent from the legacy v6 fixture itself.
+    migrations,
+    recoveryBackup: {
+      async createAndValidate(request) {
+        return {
+          backupId: `schedule-coverage-${request.toVersion}`,
+          databaseName: request.databaseName,
+          fromVersion: request.fromVersion,
+          toVersion: request.toVersion,
+          validated: true as const,
+        };
+      },
+    },
   }).run();
   await kernel.write(async (transaction) => {
     await transaction.execute(
@@ -2780,9 +2788,17 @@ describe("schedule repository edge contracts", () => {
   it("fails closed for malformed Strength active pairs and unacknowledged writes", async () => {
     const multipleActive = await createRuntime();
     await multipleActive.write(async (transaction) => {
-      await transaction.execute("DROP INDEX one_active_owned_plan");
+      await transaction.execute("DROP INDEX one_active_owned_plan_per_sport");
       await transaction.execute(
-        "UPDATE plans SET is_active = 1 WHERE id = 'plan-hold'",
+        `INSERT INTO plans
+          (id, content_pack_id, origin, source_namespace, upstream_id, name,
+           days_per_week, audience, goal, estimate_minutes, attribution,
+           is_active, revision, plan_kind)
+         VALUES (
+           'plan-duplicate-active', NULL, 'custom', NULL, NULL,
+           'Duplicate active Strength plan', 1, 'Personal', 'Strength', 30,
+           'Owner', 1, 1, 'strength'
+         )`,
       );
     });
     await expect(repositoryErrorCode(() => createScheduleRepository(multipleActive)
@@ -2798,9 +2814,20 @@ describe("schedule repository edge contracts", () => {
          WHERE id = 'schedule-copy'`,
       );
       await transaction.execute(
+        `INSERT INTO plans
+          (id, content_pack_id, origin, source_namespace, upstream_id, name,
+           days_per_week, audience, goal, estimate_minutes, attribution,
+           is_active, revision, plan_kind)
+         VALUES (
+           'plan-stray-schedule', NULL, 'custom', NULL, NULL,
+           'Stray Strength schedule owner', 1, 'Personal', 'Strength', 30,
+           'Owner', 0, 1, 'strength'
+         )`,
+      );
+      await transaction.execute(
         `INSERT INTO owned_plan_schedules
           (id, plan_id, lifecycle, revision, activated_at_ms, deactivated_at_ms)
-         VALUES ('schedule-hold', 'plan-hold', 'active', 1, 1, NULL)`,
+         VALUES ('schedule-stray', 'plan-stray-schedule', 'active', 1, 1, NULL)`,
       );
     });
     await expect(repositoryErrorCode(() => createScheduleRepository(mismatchedActive)
