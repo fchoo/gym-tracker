@@ -1365,7 +1365,7 @@ describe("Plan 01-02 shared component vocabulary", () => {
     );
 
     expect(screen.getByTestId("confirmation-sheet-content")).toHaveStyle({
-      maxHeight: "90%",
+      maxHeight: "82%",
     });
     await fireEvent.press(
       screen.getByRole("button", { name: "Keep training" }),
