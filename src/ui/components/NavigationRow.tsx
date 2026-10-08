@@ -1,5 +1,5 @@
 import { ChevronRight, Download, RotateCcw, Share2 } from "lucide-react-native";
-import React, { useState } from "react";
+import React, { forwardRef, useState } from "react";
 import { Pressable, StyleSheet, Text, View, type TextStyle } from "react-native";
 
 import { sizes, space, typeScale, useAppTheme } from "../theme";
@@ -17,7 +17,7 @@ export type NavigationRowProps = Readonly<{
 }>;
 
 /** A render-only full-row destination/action; its owner retains all workflow state. */
-export function NavigationRow({
+export const NavigationRow = forwardRef<View, NavigationRowProps>(function NavigationRow({
   title,
   supportingText,
   accessibilityHint,
@@ -25,7 +25,7 @@ export function NavigationRow({
   busy = false,
   disabled = false,
   onPress,
-}: NavigationRowProps) {
+}, ref) {
   const { colors } = useAppTheme();
   const [focused, setFocused] = useState(false);
   const inactive = disabled || busy;
@@ -43,6 +43,7 @@ export function NavigationRow({
         if (!inactive && (event.nativeEvent.key === "Enter" || event.nativeEvent.key === " ")) onPress();
       } } as unknown as object)}
       onPress={onPress}
+      ref={ref}
       style={({ pressed }) => [
         styles.row,
         { borderColor: focused ? colors.focusRing : colors.divider, backgroundColor: pressed ? colors.surfaceSubtle : "transparent", opacity: inactive ? 0.62 : 1 },
@@ -55,7 +56,7 @@ export function NavigationRow({
       <Icon accessible={false} color={colors.textSecondary} size={sizes.inlineIcon} />
     </Pressable>
   );
-}
+});
 
 const styles = StyleSheet.create({
   row: { alignItems: "center", borderBottomWidth: StyleSheet.hairlineWidth, flexDirection: "row", gap: space[2], minHeight: 48, paddingVertical: space[2] },
