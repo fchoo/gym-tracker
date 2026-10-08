@@ -241,6 +241,10 @@ import {
   type BackupArchiveHandle,
 } from "../platform/files/expoBackupFilePort";
 import {
+  createPhase14RecoveryFixtureRestoreFilePort,
+  phase14RecoveryFixtureFromNativeContract,
+} from "../testing/phase14RecoveryFixture";
+import {
   createProductionExpoCsvFilePort,
   type CsvExportHandle,
   type CsvFilePort,
@@ -1281,6 +1285,17 @@ function phase11NativeFixtureFilesEnabled(): boolean {
     && process.env.EXPO_PUBLIC_NATIVE_CONTRACT_SUITE === "phase11";
 }
 
+function phase14NativeRecoveryFixtureEnabled(): boolean {
+  const {
+    default: Constants,
+  } = require("expo-constants") as typeof import("expo-constants");
+  return phase14RecoveryFixtureFromNativeContract({
+    nativeContractsEnabled: Constants.expoConfig?.extra?.nativeContractsEnabled === true,
+    buildProfile: Constants.expoConfig?.extra?.buildProfile,
+    suite: Constants.expoConfig?.extra?.nativeContractSuite,
+  }) !== null;
+}
+
 function phase12NativeFixtureViewModel(): AutomaticBackupViewModel | null {
   const { default: Constants } = require("expo-constants") as typeof import("expo-constants");
   const fixture = phase12BackupFixtureFromNativeContract({
@@ -1425,7 +1440,9 @@ export const productionWorkoutAppRuntimeDependencies =
     createCsvExportRepository,
     createCsvFiles: createProductionExpoCsvFilePort,
     createRestoreCommands: (kernel) => {
-      const files = phase11NativeFixtureFilesEnabled()
+      const files = phase14NativeRecoveryFixtureEnabled()
+        ? createPhase14RecoveryFixtureRestoreFilePort()
+        : phase11NativeFixtureFilesEnabled()
         ? createPhase11FixtureRestoreFilePort()
         : createProductionExpoRestoreFilePort();
       return createRestoreCommands({
