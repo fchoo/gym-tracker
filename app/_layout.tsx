@@ -1,6 +1,6 @@
 import Constants from "expo-constants";
 import { useFonts } from "expo-font";
-import { Stack, usePathname } from "expo-router";
+import { Slot, Stack, usePathname } from "expo-router";
 import { StatusBar } from "expo-status-bar";
 import { StyleSheet, useWindowDimensions } from "react-native";
 import { GestureHandlerRootView } from "react-native-gesture-handler";
@@ -70,20 +70,6 @@ function RootNavigator() {
         <StatusBar style={colorScheme === "dark" ? "light" : "dark"} />
       </>
     </StartupReadinessGate>
-  );
-}
-
-function AttendedPreviewNavigator() {
-  return (
-    <Stack
-      initialRouteName="__phase2-attended-preview"
-      screenOptions={{
-        animation: "none",
-        headerShown: false,
-      }}
-    >
-      <Stack.Screen name="__phase2-attended-preview" />
-    </Stack>
   );
 }
 
@@ -164,7 +150,7 @@ export default function RootLayout() {
       <GestureHandlerRootView style={styles.root} testID="gesture-handler-root">
         <SafeAreaProvider>
           <AppearanceProvider store={attendedPreviewAppearanceStore}>
-            <AttendedPreviewNavigator />
+            <Slot />
           </AppearanceProvider>
         </SafeAreaProvider>
       </GestureHandlerRootView>

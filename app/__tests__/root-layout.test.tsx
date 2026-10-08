@@ -50,6 +50,7 @@ jest.mock("expo-router", () => {
 
   return {
     Stack,
+    Slot: () => <View testID="preview-route-slot" />,
     usePathname: () => mockPathname,
   };
 });
@@ -189,7 +190,7 @@ describe("RootLayout attended preview isolation", () => {
 
     expect(screen.getByTestId("safe-area-provider")).toBeOnTheScreen();
     expect(screen.getByTestId("appearance-provider")).toBeOnTheScreen();
-    expect(screen.getByTestId("root-stack-screen-__phase2-attended-preview"))
+    expect(screen.getByTestId("preview-route-slot"))
       .toBeOnTheScreen();
     expect(screen.queryByTestId("workout-runtime-provider"))
       .not.toBeOnTheScreen();
