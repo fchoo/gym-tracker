@@ -20,6 +20,10 @@ export const fontFamilies = {
 } as const;
 
 export const appFonts = {
+  // Proof-only mapping. Phase 14-02 must establish native variable-axis fidelity
+  // before any production typography adopts this family.
+  ArchivoVariable:
+    require("../../../assets/fonts/Archivo-VariableFont_wdth,wght.ttf"),
   SourceSans3_400Regular:
     require("@expo-google-fonts/source-sans-3/400Regular/SourceSans3_400Regular.ttf"),
   SourceSans3_600SemiBold:

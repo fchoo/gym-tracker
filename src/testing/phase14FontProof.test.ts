@@ -1,6 +1,7 @@
 import { createHash } from "node:crypto";
 import { readFileSync } from "node:fs";
 import path from "node:path";
+import { describe, expect, it } from "@jest/globals";
 
 import {
   PHASE14_FONT_PROOF,
@@ -41,8 +42,8 @@ describe("Phase 14 Revision 18 font oracle", () => {
       sourceText: "Today’s workout",
     });
     expect(PHASE14_FONT_PROOF.cases).toEqual([
-      expect.objectContaining({ fontScale: 1, viewport: { width: 360, height: 800 } }),
-      expect.objectContaining({ fontScale: 2, viewport: { width: 360, height: 800 } }),
+      expect.objectContaining({ fontScale: 1, viewport: { width: 390, height: 844 } }),
+      expect.objectContaining({ fontScale: 2, viewport: { width: 390, height: 844 } }),
     ]);
   });
 
@@ -67,12 +68,13 @@ describe("Phase 14 Revision 18 font oracle", () => {
       cases: proof,
     })).not.toThrow();
 
+    const firstProof = proof[0]!;
     expect(() => validatePhase14FontProofReport({
       sourceTreeSha256: "a".repeat(64),
       apkSha256: "b".repeat(64),
       packageName: "com.fchoo.gymtracker.devtest",
       profile: "development-test",
-      cases: [{ ...proof[0], glyphRunWidthPx: proof[0].glyphRunWidthPx + 2 }, ...proof.slice(1)],
+      cases: [{ ...firstProof, glyphRunWidthPx: firstProof.glyphRunWidthPx + 2 }, ...proof.slice(1)],
     })).toThrow("phase14_font_glyph_width_out_of_tolerance");
   });
 });
