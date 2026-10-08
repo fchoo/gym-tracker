@@ -418,6 +418,17 @@ describe("ManualEncryptedBackupContent", () => {
     expect(await screen.findByText("Backup restored. Search and progress are ready.")).toBeOnTheScreen();
   });
 
+  it("presents restore review in the shared confirmation frame without moving its token authority", async () => {
+    await renderRoute();
+    await fireEvent.changeText(screen.getByLabelText("Restore password"), "password");
+    await fireEvent.press(screen.getByRole("button", { name: "Restore clean" }));
+
+    expect(await screen.findByTestId("bottom-sheet-modal")).toBeOnTheScreen();
+    expect(screen.getByRole("header", { name: "Review restore clean" })).toBeOnTheScreen();
+    expect(screen.getByRole("button", { name: "Cancel restore clean" })).toBeOnTheScreen();
+    expect(mockCommitSecureRestore).not.toHaveBeenCalled();
+  });
+
   it("cancels restore clean review and invalidates the active restore token", async () => {
     await renderRoute();
     await fireEvent.changeText(screen.getByLabelText("Restore password"), "password");
