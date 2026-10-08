@@ -27,6 +27,7 @@ import {
   workoutView,
 } from "../../src/testing/phase2AttendedPreviewFixtures";
 import { AppearanceProvider } from "../../src/ui/theme";
+import { PHASE14_FONT_PROOF } from "../../src/testing/phase14FontProof";
 
 let mockNativeContractsEnabled = true;
 let mockParameters: {
@@ -108,6 +109,26 @@ describe("Phase2AttendedPreviewRoute", () => {
       .toHaveProp("accessibilityLabel", "Redirect to /");
     expect(screen.queryByText("root-nav-loading"))
       .not.toBeOnTheScreen();
+  });
+
+  it("exposes the Phase 14 font oracle only in a native-contract build", async () => {
+    mockParameters = { scenario: "phase14-font-axis" };
+
+    await renderRoute();
+
+    expect(screen.getByTestId("phase14-font-proof-root")).toBeOnTheScreen();
+    expect(screen.getByTestId("phase14-font-proof-title")).toHaveTextContent(
+      PHASE14_FONT_PROOF.oracle.sourceText,
+    );
+    expect(screen.getByTestId("phase14-font-proof-family"))
+      .toHaveTextContent("ArchivoVariable");
+    expect(screen.getByTestId("phase14-font-proof-measurement-light-390-scale-1"))
+      .toBeOnTheScreen();
+
+    mockNativeContractsEnabled = false;
+    await renderRoute();
+    expect(screen.getByTestId("phase2-attended-preview-redirect"))
+      .toHaveProp("accessibilityLabel", "Redirect to /");
   });
 
   it.each<[string, { scenario?: string | string[]; variant?: string | string[] }]>([
