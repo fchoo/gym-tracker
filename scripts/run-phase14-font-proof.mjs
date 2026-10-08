@@ -84,7 +84,7 @@ function observationFromHierarchy(xml) {
 function waitForProof(serial, attempts = 30) {
   for (let attempt = 0; attempt < attempts; attempt += 1) {
     const xml = adb(serial, "exec-out", "uiautomator", "dump", "/dev/tty");
-    if (xml.includes("phase14-font-proof-root") && xml.includes("phase14-font-proof-observation")) return observationFromHierarchy(xml);
+    if (xml.includes("phase14-font-proof-root") && xml.includes("phase14-font-proof-observation") && xmlAttribute(xml, "phase14-font-proof-observation", "text")) return observationFromHierarchy(xml);
   }
   throw new Error("phase14_font_proof_route_timeout");
 }

@@ -115,6 +115,11 @@ test("font proof fixes the canonical report path and cold-start flow waits befor
   assert.doesNotMatch(flow, /gymtracker-devtest:\/\/\//u);
 });
 
+test("font proof waits for the populated observation rather than only its root", () => {
+  const runner = readFileSync(new URL("./run-phase14-font-proof.mjs", import.meta.url), "utf8");
+  assert.match(runner, /phase14-font-proof-root[\s\S]*phase14-font-proof-observation[\s\S]*xmlAttribute\(xml, "phase14-font-proof-observation", "text"\)/u);
+});
+
 test("font proof restores the original font scale when observation fails", () => {
   const calls = [];
   assert.throws(() => withRestoredFontScale((...args) => {
