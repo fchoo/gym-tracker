@@ -21,6 +21,12 @@ export function validatePhase14Manifest(manifest, currentHead, currentSource) {
   return true;
 }
 
+function hasEvidenceOnlyHeadAdvance(manifest, currentHead) {
+  if (manifest.base_head === currentHead) return false;
+  const changed = command("git", ["diff", "--name-only", manifest.base_head, currentHead]).split("\n").filter(Boolean);
+  return changed.length > 0 && changed.every((file) => file.startsWith(".planning/phases/14-prototype-visual-shell/evidence/"));
+}
+
 export function validateDistinctPhase14Flows(flows) {
   const body = Object.values(flows ?? {}).join("\n");
   for (const stage of PHASE14_MAESTRO_STAGES) if (!body.includes(`PHASE14_STAGE == '${stage}'`)) throw new Error(`phase14_maestro_stage_missing:${stage}`);
@@ -49,7 +55,7 @@ export function executePhase14Maestro(args = process.argv.slice(2)) {
   const manifest = JSON.parse(readFileSync(manifestPath, "utf8"));
   const currentHead = command("git", ["rev-parse", "HEAD"]);
   const currentSource = command("node", ["scripts/source-tree-digest.mjs", "--assert-no-untracked"]);
-  validatePhase14Manifest(manifest, currentHead, currentSource);
+  validatePhase14Manifest(manifest, hasEvidenceOnlyHeadAdvance(manifest, currentHead) ? manifest.base_head : currentHead, currentSource);
   const flowBodies = Object.fromEntries([...new Set(PHASE14_SHELL_EVIDENCE_CASES.map(({ flow }) => flow))].map((flow) => [flow, readFileSync(path.join(ROOT, "maestro/phase14", `${flow}.yaml`), "utf8")]));
   validateDistinctPhase14Flows(flowBodies);
   const apkPath = path.resolve(ROOT, manifest.apk.path);
