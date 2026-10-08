@@ -55,4 +55,42 @@ describe("AppRootShell", () => {
     await fireEvent.press(screen.getByRole("button", { name: "Open App Settings" }));
     expect(onOpenSettings).toHaveBeenCalledTimes(1);
   });
+
+  it("restores the exact originating trigger and falls back to the root heading", async () => {
+    const trigger = { current: { focus: jest.fn() } };
+    const heading = { current: { focus: jest.fn() } };
+    const { rerender } = await render(
+      <AppearanceProvider>
+        <AppRootShell activeRoot="library" headingRefs={{ library: heading }}>
+          <View />
+        </AppRootShell>
+      </AppearanceProvider>,
+    );
+
+    await act(async () => {
+      rerender(
+        <AppearanceProvider>
+          <AppRootShell
+            activeRoot="library"
+            headingRefs={{ library: heading }}
+            origin={{ root: "library", trigger }}
+          >
+            <View />
+          </AppRootShell>
+        </AppearanceProvider>,
+      );
+    });
+    expect(trigger.current.focus).toHaveBeenCalledTimes(1);
+
+    await act(async () => {
+      rerender(
+        <AppearanceProvider>
+          <AppRootShell activeRoot="library" headingRefs={{ library: heading }} origin={{ root: "library" }}>
+            <View />
+          </AppRootShell>
+        </AppearanceProvider>,
+      );
+    });
+    expect(heading.current.focus).toHaveBeenCalledTimes(2);
+  });
 });
