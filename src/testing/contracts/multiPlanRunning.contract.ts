@@ -221,6 +221,11 @@ async function runMigrationFailureCuts(
 }
 
 const SHA256 = "a".repeat(64);
+const PHASE13_NATIVE_EVENT_TIME_MS = 1_786_853_700_000;
+
+function requestHash(requestId: string): Promise<string> {
+  return runtimeSha256(`phase13-native-request:${requestId}`);
+}
 
 type RunningFixture = Readonly<{
   planId: string;
@@ -352,7 +357,7 @@ async function seedStrengthActivationFixture(
   const result = await createScheduleRepository(kernel).activateSchedule({
     operation: "activate_schedule",
     requestId: `${prefix}-strength-activate`,
-    requestSha256: SHA256,
+    requestSha256: await requestHash(`${prefix}-strength-activate`),
     planId,
     expectedPlanRevision: 1,
     expectedActivePair: { kind: "none" },
@@ -406,7 +411,7 @@ async function importGarminActivity(
   const activityId = `${prefix}-activity`;
   const input = {
     requestId: `${prefix}-import`,
-    requestSha256: SHA256,
+    requestSha256: await requestHash(`${prefix}-import`),
     activityId,
     expectedAggregateRevision: 0,
     confirmedLocalDate: "2026-08-17",
@@ -542,10 +547,25 @@ const caseAssertions: Record<
   async "phase13-import-remove-restore"(kernel) {
     const activityId = await importGarminActivity(kernel, "lifecycle");
     const repository = createImportedActivityRepository(kernel);
-    const remove = { operation: "remove" as const, requestId: "lifecycle-remove", requestSha256: SHA256, activityId, expectedAggregateRevision: 1, occurredAtMs: 2, reason: "owner_request" };
+    const remove = {
+      operation: "remove" as const,
+      requestId: "lifecycle-remove",
+      requestSha256: await requestHash("lifecycle-remove"),
+      activityId,
+      expectedAggregateRevision: 1,
+      occurredAtMs: PHASE13_NATIVE_EVENT_TIME_MS,
+      reason: "owner_request",
+    };
     const removed = await changeGarminActivityLifecycle(repository, remove);
     const replay = await changeGarminActivityLifecycle(repository, remove);
-    const restored = await changeGarminActivityLifecycle(repository, { ...remove, operation: "restore", requestId: "lifecycle-restore", occurredAtMs: 3 });
+    const restoreRequestSha256 = await requestHash("lifecycle-restore");
+    const restored = await changeGarminActivityLifecycle(repository, {
+      ...remove,
+      operation: "restore",
+      requestId: "lifecycle-restore",
+      requestSha256: restoreRequestSha256,
+      occurredAtMs: PHASE13_NATIVE_EVENT_TIME_MS + 1,
+    });
     const [lifecycle, events, receipts] = await Promise.all([
       kernel.queryAll<{ removal_state: string }>(
         "SELECT removal_state FROM imported_activity_current_lifecycle WHERE activity_id = ?",
@@ -568,7 +588,9 @@ const caseAssertions: Record<
         && events.length === 2 && events[0]?.event_type === "removed" && events[1]?.event_type === "restored"
         && receipts.length === 3
         && new Set(receipts.map(({ id }) => id)).size === 3
-        && receipts.every(({ request_sha256 }) => request_sha256 === SHA256),
+        && new Set(receipts.map(({ request_sha256 }) => request_sha256)).size === 3
+        && receipts.some(({ request_sha256 }) => request_sha256 === remove.requestSha256)
+        && receipts.some(({ request_sha256 }) => request_sha256 === restoreRequestSha256),
       "phase13_remove_restore_durable_facts_invalid",
     );
   },
@@ -576,16 +598,17 @@ const caseAssertions: Record<
     const running = await seedRunningFixture(kernel, "match");
     const activityId = await importGarminActivity(kernel, "match");
     const repository = createRunningActivityMatchRepository(kernel);
-    const input = { requestId: "match-command", requestSha256: SHA256, action: "match" as const, activityId,
+    const input = { requestId: "match-command", requestSha256: await requestHash("match-command"), action: "match" as const, activityId,
       expectedActivityRevision: 1, opportunityId: running.opportunityId, expectedOpportunityRevision: 1,
       expectedRelationRevision: 0, scheduleId: running.scheduleId, scheduleVersionId: running.scheduleVersionId,
-      slotId: running.slotId, sessionRevisionId: running.sessionRevisionId, occurredAtMs: 4 };
+      slotId: running.slotId, sessionRevisionId: running.sessionRevisionId,
+      occurredAtMs: PHASE13_NATIVE_EVENT_TIME_MS - 1 };
     const matched = await confirmRunningActivityMatch(repository, input);
     const replay = await confirmRunningActivityMatch(repository, input);
     const activities = createImportedActivityRepository(kernel);
     const removal = await changeGarminActivityLifecycle(activities, {
-      operation: "remove", requestId: "match-remove", requestSha256: SHA256,
-      activityId, expectedAggregateRevision: 1, occurredAtMs: 5, reason: "owner_request",
+      operation: "remove", requestId: "match-remove", requestSha256: await requestHash("match-remove"),
+      activityId, expectedAggregateRevision: 1, occurredAtMs: PHASE13_NATIVE_EVENT_TIME_MS, reason: "owner_request",
     });
     const [currentAfterRemoval, invalidatedEvents, invalidations, removalReceipts] = await Promise.all([
       kernel.queryAll<{ activity_id: string }>(
@@ -602,14 +625,17 @@ const caseAssertions: Record<
       ),
     ]);
     const restored = await changeGarminActivityLifecycle(activities, {
-      operation: "restore", requestId: "match-restore", requestSha256: SHA256,
-      activityId, expectedAggregateRevision: 1, occurredAtMs: 6, reason: "owner_request",
+      operation: "restore", requestId: "match-restore", requestSha256: await requestHash("match-restore"),
+      activityId, expectedAggregateRevision: 1, occurredAtMs: PHASE13_NATIVE_EVENT_TIME_MS + 1, reason: "owner_request",
     });
     const unmatchedAfterRestore = await kernel.queryAll<{ activity_id: string }>(
       "SELECT activity_id FROM running_activity_current_matches WHERE activity_id = ?", [activityId],
     );
     const rematched = await confirmRunningActivityMatch(repository, {
-      ...input, requestId: "match-command-after-restore", occurredAtMs: 7,
+      ...input,
+      requestId: "match-command-after-restore",
+      requestSha256: await requestHash("match-command-after-restore"),
+      occurredAtMs: PHASE13_NATIVE_EVENT_TIME_MS + 2,
     });
     invariant(
       matched.kind === "matched" && replay.kind === "replayed" && removal.kind === "removed"
@@ -623,8 +649,8 @@ const caseAssertions: Record<
   async "phase13-stale-replay-no-resurrection"(kernel) {
     const activityId = await importGarminActivity(kernel, "stale");
     const repository = createImportedActivityRepository(kernel);
-    await changeGarminActivityLifecycle(repository, { operation: "remove", requestId: "stale-remove", requestSha256: SHA256, activityId, expectedAggregateRevision: 1, occurredAtMs: 2, reason: "owner_request" });
-    const stale = await confirmGarminImportDate(repository, { requestId: "stale-import", requestSha256: SHA256, activityId: "stale-other", expectedAggregateRevision: 0, confirmedLocalDate: "2026-08-17", staged: stagedGarminImport("stale") });
+    await changeGarminActivityLifecycle(repository, { operation: "remove", requestId: "stale-remove", requestSha256: await requestHash("stale-remove"), activityId, expectedAggregateRevision: 1, occurredAtMs: PHASE13_NATIVE_EVENT_TIME_MS, reason: "owner_request" });
+    const stale = await confirmGarminImportDate(repository, { requestId: "stale-import", requestSha256: await requestHash("stale-import"), activityId: "stale-other", expectedAggregateRevision: 0, confirmedLocalDate: "2026-08-17", staged: stagedGarminImport("stale") });
     invariant(stale.kind === "removed" && stale.activityId === activityId, "phase13_stale_replay_resurrected");
   },
   async "phase13-bodyweight-correction-delete"(kernel) {
@@ -634,8 +660,13 @@ const caseAssertions: Record<
       ...create,
       requestSha256: await runtimeSha256(canonicalBodyweightRequestPayload(create)),
     });
-    const deleted = await repository.commit({ operation: "delete", requestId: "bodyweight-delete", requestSha256: SHA256, entryId: create.entryId, ownerId: create.ownerId, expectedRevision: 1, revisionId: "bodyweight-r2", eventId: "bodyweight-e2", occurredAtMs: 2 });
-    const replay = await repository.commit({ operation: "delete", requestId: "bodyweight-delete", requestSha256: SHA256, entryId: create.entryId, ownerId: create.ownerId, expectedRevision: 1, revisionId: "bodyweight-r2", eventId: "bodyweight-e2", occurredAtMs: 2 });
+    const deleteCommand = { operation: "delete" as const, requestId: "bodyweight-delete", entryId: create.entryId, ownerId: create.ownerId, expectedRevision: 1, revisionId: "bodyweight-r2", eventId: "bodyweight-e2", occurredAtMs: 2 };
+    const deleteInput = {
+      ...deleteCommand,
+      requestSha256: await runtimeSha256(canonicalBodyweightRequestPayload(deleteCommand)),
+    };
+    const deleted = await repository.commit(deleteInput);
+    const replay = await repository.commit(deleteInput);
     invariant(created.kind === "created" && deleted.kind === "deleted" && replay.kind === "deleted" && (await repository.history(create.ownerId))[0]?.lifecycle === "deleted", "phase13_bodyweight_history_invalid");
   },
   async "phase13-backup-clean-restore"(kernel) {
@@ -654,10 +685,11 @@ const caseAssertions: Record<
     const running = await seedRunningFixture(kernel, "backup-projection");
     const activityId = await importGarminActivity(kernel, "backup-projection");
     await confirmRunningActivityMatch(createRunningActivityMatchRepository(kernel), {
-      requestId: "backup-projection-match", requestSha256: SHA256, action: "match", activityId,
+      requestId: "backup-projection-match", requestSha256: await requestHash("backup-projection-match"), action: "match", activityId,
       expectedActivityRevision: 1, opportunityId: running.opportunityId, expectedOpportunityRevision: 1,
       expectedRelationRevision: 0, scheduleId: running.scheduleId, scheduleVersionId: running.scheduleVersionId,
-      slotId: running.slotId, sessionRevisionId: running.sessionRevisionId, occurredAtMs: 7,
+      slotId: running.slotId, sessionRevisionId: running.sessionRevisionId,
+      occurredAtMs: PHASE13_NATIVE_EVENT_TIME_MS,
     });
     const restored = await createLogicalRestoreRepository(kernel, { nowMs: () => 8 }).restore(snapshot);
     const restoredSnapshot = await createLogicalBackupRepository(kernel).collect({ snapshotId: "phase13-native-backup-restored", createdAtMs: 9 });
