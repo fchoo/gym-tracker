@@ -98,7 +98,7 @@ jest.mock("../../../src/bootstrap/workoutAppRuntime", () => ({
 
 describe("RootTabsLayout adaptive navigator placement", () => {
   const destinationLabels = [
-    "Today",
+    "Workout",
     "Calendar",
     "Library",
     "Progress",
@@ -155,7 +155,7 @@ describe("RootTabsLayout adaptive navigator placement", () => {
       expect(
         rendered.getAllByRole("tab").map((tab) => tab.props.accessibilityLabel),
       ).toEqual(destinationLabels);
-      expect(rendered.getByRole("tab", { name: "Today" })).toBeSelected();
+      expect(rendered.getByRole("tab", { name: "Workout" })).toBeSelected();
       expect(rendered.getByTestId("root-tab-scene")).toHaveStyle({
         flex: 1,
         height: "100%",
@@ -165,7 +165,7 @@ describe("RootTabsLayout adaptive navigator placement", () => {
     },
   );
 
-  it("uses a two-row bottom bar only when 200% text cannot fit full labels", async () => {
+  it("keeps one bottom row with full labels at 200% text", async () => {
     setRenderedDimensions(360, 2);
     const rendered = await render(
       <AppearanceProvider>
@@ -176,11 +176,11 @@ describe("RootTabsLayout adaptive navigator placement", () => {
     const navigation = rendered.getByTestId("root-navigation-bottom");
     expect(navigation).toHaveProp(
       "accessibilityLabel",
-      "Root navigation bottom two rows",
+      "Root navigation bottom",
     );
     expect(navigation).toHaveStyle({
       flexDirection: "row",
-      flexWrap: "wrap",
+      flexWrap: undefined,
     });
     expect(
       rendered.getAllByRole("tab").map((tab) => tab.props.accessibilityLabel),
@@ -189,19 +189,10 @@ describe("RootTabsLayout adaptive navigator placement", () => {
       expect(rendered.getByRole("tab", { name: label })).toHaveStyle({
         minHeight: 64,
         minWidth: 48,
-        width: "50%",
       });
     }
 
-    await act(async () => {
-      setRenderedDimensions(360, 1);
-    });
-
-    expect(navigation).toHaveProp("accessibilityLabel", "Root navigation bottom");
-    expect(navigation).toHaveStyle({
-      flexDirection: "row",
-      flexWrap: undefined,
-    });
+    expect(rendered.queryByTestId("root-navigation-rail")).not.toBeOnTheScreen();
   });
 
   it("keeps one accessible route state through live resize and D-pad activation", async () => {
@@ -222,6 +213,11 @@ describe("RootTabsLayout adaptive navigator placement", () => {
     await act(async () => {
       mockSelectedRouteIndex = 2;
       setRenderedWidth(840);
+      rendered.rerender(
+        <AppearanceProvider>
+          <RootTabsLayout />
+        </AppearanceProvider>,
+      );
     });
 
     expect(rendered.getByTestId("root-tabs")).toHaveProp(

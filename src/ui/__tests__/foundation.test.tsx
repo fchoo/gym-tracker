@@ -759,7 +759,7 @@ describe("Plan 01-02 route shell", () => {
     { key: "progress-key", name: "progress" },
   ] as const;
 
-  it("renders Today, Calendar, Library, and Progress as visible tabs in locked order", async () => {
+  it("renders Workout, Calendar, Library, and Progress as visible tabs in locked order", async () => {
     await render(
       <AppearanceProvider>
         <AppTabs
@@ -774,14 +774,14 @@ describe("Plan 01-02 route shell", () => {
 
     const tabs = screen.getAllByRole("tab");
     expect(tabs.map((tab) => tab.props.accessibilityLabel)).toEqual([
-      "Today",
+      "Workout",
       "Calendar",
       "Library",
       "Progress",
     ]);
-    const today = screen.getByRole("tab", { name: "Today" });
+    const today = screen.getByRole("tab", { name: "Workout" });
     expect(today).toBeSelected();
-    for (const label of ["Today", "Calendar", "Library", "Progress"]) {
+    for (const label of ["Workout", "Calendar", "Library", "Progress"]) {
       expect(screen.getByText(label)).toBeOnTheScreen();
     }
     expect(screen.getByText("Library")).toHaveStyle({
@@ -790,7 +790,7 @@ describe("Plan 01-02 route shell", () => {
       paddingHorizontal: 4,
     });
     // The active tab is indicated by icon/label colour only; no box outline.
-    expect(screen.getByText("Today")).toHaveStyle({
+    expect(screen.getByText("Workout")).toHaveStyle({
       color: themes.light.action,
     });
     expect(today)
@@ -802,12 +802,11 @@ describe("Plan 01-02 route shell", () => {
     expect(today).toHaveStyle({ outlineWidth: 3 });
   });
 
-  it("reflows four complete root destinations into two accessible rows for 200% text", async () => {
+  it("keeps four complete root destinations in one bottom composition at 200% text", async () => {
     const navigate = jest.fn();
     await render(
       <AppearanceProvider>
         <AppTabs
-          compactLayout="two-row"
           navigation={{
             emit: () => ({ defaultPrevented: false }),
             navigate,
@@ -818,21 +817,20 @@ describe("Plan 01-02 route shell", () => {
     );
 
     const rootNavigation = screen.getByLabelText(
-      "Root navigation bottom two rows",
+      "Root navigation bottom",
     );
     expect(rootNavigation).toHaveStyle({
-      flexWrap: "wrap",
+      flexWrap: undefined,
     });
     expect(screen.getAllByRole("tab").map((tab) => tab.props.accessibilityLabel))
-      .toEqual(["Today", "Calendar", "Library", "Progress"]);
+      .toEqual(["Workout", "Calendar", "Library", "Progress"]);
     expect(screen.getByRole("tab", { name: "Library" })).toBeSelected();
 
-    for (const label of ["Today", "Calendar", "Library", "Progress"]) {
+    for (const label of ["Workout", "Calendar", "Library", "Progress"]) {
       const tab = screen.getByRole("tab", { name: label });
       expect(tab).toHaveStyle({
         minHeight: 64,
         minWidth: 48,
-        width: "50%",
       });
       expect(screen.getByText(label).props.numberOfLines).toBeUndefined();
     }
@@ -1229,7 +1227,6 @@ describe("Plan 01-02 shared component vocabulary", () => {
         />
         <AppTabs
           navigation={{ emit, navigate }}
-          position="rail"
           state={{ index: 0, routes }}
         />
       </AppearanceProvider>,
@@ -1247,7 +1244,7 @@ describe("Plan 01-02 shared component vocabulary", () => {
         name: /Bench Press\. Next target 42\.5 kg × 8/,
       }),
     );
-    await fireEvent.press(screen.getByRole("tab", { name: "Today" }));
+    await fireEvent.press(screen.getByRole("tab", { name: "Workout" }));
     await fireEvent.press(screen.getByRole("tab", { name: "Calendar" }));
 
     expect(cancel).toHaveBeenCalledTimes(1);
