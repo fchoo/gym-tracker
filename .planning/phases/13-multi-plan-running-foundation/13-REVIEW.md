@@ -1,6 +1,6 @@
 ---
 phase: 13-multi-plan-running-foundation
-reviewed: 2026-10-08T07:59:17Z
+reviewed: 2026-10-08T10:35:55Z
 depth: standard
 files_reviewed: 113
 files_reviewed_list:
@@ -127,16 +127,18 @@ status: clean
 
 # Phase 13: Code Review Report
 
-**Reviewed:** 2026-10-08T07:59:17Z
+**Reviewed:** 2026-10-08T10:35:55Z
 **Depth:** standard
 **Files Reviewed:** 113
 **Status:** clean
 
 ## Summary
 
-Re-review covered the supplied 111-file manifest plus the committed-tree digest implementation and test, including final remediation commit `1287668`. The native migration statement cut now uses the exact `{ phase: "after", statementIndex: 0 }` trigger. The migration runner invokes that hook only after it executes the initial `CREATE TABLE`; the contract closes the runtime, reopens the same Expo SQLite database, then proves both `PRAGMA user_version = 0` and zero user tables. The existing verify and pre-commit cuts use the same close/reopen durable-state assertion. The earlier two-slot, remove/replay/restore, match invalidation/rematch, clean restore/fault rollback, schedule migration compatibility, and source/APK binding remediations remain correct on direct review.
+Re-review covered the supplied 111-file manifest plus `scripts/source-tree-digest.mjs` and its test at standard depth. The asynchronous Garmin boundary is production-callable: `prepareGarminImport` accepts a promise-returning hash, every in-scope caller awaits it, and the native contract passes `runtimeSha256` to validate a real canonical payload. Its tamper probe changes `distance_meters`, receives `garmin_digest_invalid`, and proves the import-payload count does not change before any repository write. The bodyweight validation-before-write, unique lifecycle receipt/timestamp, MAP fixture/library-parent, host MAP seam, and migration failure-cut fixes remain correct on direct review and regression execution.
 
-Verification passed: `npx jest --runInBand src/testing/contracts/multiPlanRunning.contract.test.ts tests/integration/schedule-commands.test.ts tests/sqlite-host/migrations-effects.test.ts` (3 suites, 246 tests); `npm run typecheck`; `npm run lint`; and `node --test scripts/source-tree-digest.test.mjs scripts/verify-phase13-evidence.test.mjs` (8 tests). The retained native manifest still targets an older commit and the source-digest guard continues to reject the pre-existing untracked `coverage-*` artifacts, so no stale APK was accepted as evidence for the reviewed source.
+The coverage exclusion is restricted to root generated `coverage` or `coverage-*` directories; the regression test keeps `coverage-example.ts` as a blocking untracked source file. The source/APK binding remains fail-closed and now validates current commit `69340bdb7ab3cea0ed5516043347531c834ccbdc`, source digest `7037f6f15ef062458d010e88422f0ab5071e9575a38064926e354f446c489bc4`, schema version 35, and retained/installed APK SHA-256 `aebbfdf16b5b0b3488fbb5b9c4540adaa2cd57f016f9282df498ae362ad0553e`.
+
+Verification passed: the full host gate (209 suites, 3539 tests) including the coverage gate for 131 integrity-critical files at 100%; `node --test scripts/source-tree-digest.test.mjs scripts/verify-phase13-evidence.test.mjs` (9 tests); `npm run typecheck`; and `npm run lint`. The native evidence validator and retained result files agree on schema 35 and migrations effects 14/14, portable merge 14/14, and multi-plan running 13/13 for the current source/APK/device binding. The installed APK was read from the declared device path and independently hashed to the retained APK SHA.
 
 ## Narrative Findings (AI reviewer)
 
@@ -144,6 +146,6 @@ No BLOCKER or WARNING remains in the reviewed scope.
 
 ---
 
-_Reviewed: 2026-10-08T07:59:17Z_
+_Reviewed: 2026-10-08T10:35:55Z_
 _Reviewer: Claude (gsd-code-reviewer)_
 _Depth: standard_
