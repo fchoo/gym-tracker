@@ -20,6 +20,7 @@ import { completeSet } from "../../domains/workout/setCommands";
 import { parseLocalDate } from "../../domains/scheduling/localDate";
 import { parseStoredTimeZone } from "../../domains/scheduling/timeZone";
 import { createMigrationRunner } from "../../platform/sqlite/migrationRunner";
+import type { Migration } from "../../platform/sqlite/migrationRunner";
 import { migrations } from "../../platform/sqlite/migrations";
 import type { RecoveryBackupPort } from "../../platform/sqlite/recoveryBackup";
 import { createAdvancedTimingRepository } from "../../platform/sqlite/repositories/advancedTimingRepository";
@@ -32,7 +33,7 @@ import { createRunningActivityMatchRepository } from "../../platform/sqlite/repo
 import { createRunningPlanRepository } from "../../platform/sqlite/repositories/runningPlanRepository";
 import { createScheduleRepository } from "../../platform/sqlite/repositories/scheduleRepository";
 import { createWorkoutRepository } from "../../platform/sqlite/repositories/workoutRepository";
-import type { SqliteKernel } from "../../platform/sqlite/sqliteKernel";
+import type { SqliteKernel, SqliteKernelTestObserver } from "../../platform/sqlite/sqliteKernel";
 import {
   createExpoMigrationsEffectsContractAdapter,
 } from "./migrationsEffects.contract";
@@ -73,7 +74,7 @@ type ExpoRuntime = Readonly<{
 }>;
 
 type ExpoMigrationsAdapter = Readonly<{
-  createRuntime(databaseKey: string): Promise<ExpoRuntime>;
+  createRuntime(databaseKey: string, observer?: SqliteKernelTestObserver): Promise<ExpoRuntime>;
   recoveryBackup: RecoveryBackupPort;
   cleanup?(): Promise<void>;
 }>;
@@ -112,6 +113,91 @@ async function withFreshExpoRuntime(
   } finally {
     await runtime.close();
   }
+}
+
+async function failedMigrationState(kernel: SqliteKernel): Promise<Readonly<{
+  version: number;
+  userTables: number;
+}>> {
+  const [version, tables] = await Promise.all([
+    kernel.queryAll<{ user_version: number }>("PRAGMA user_version"),
+    kernel.queryAll<{ count: number }>(
+      "SELECT COUNT(*) AS count FROM sqlite_master WHERE type = 'table' AND name NOT LIKE 'sqlite_%'",
+    ),
+  ]);
+  return Object.freeze({ version: version[0]?.user_version ?? -1, userTables: tables[0]?.count ?? -1 });
+}
+
+const verifyFailureMigration: Migration = Object.freeze({
+  version: 1,
+  name: "phase13-native-verify-failure",
+  kind: "additive",
+  async up(transaction) {
+    await transaction.execute("CREATE TABLE phase13_verify_failure (id TEXT PRIMARY KEY NOT NULL) STRICT");
+  },
+  async verify() {
+    throw new Error("phase13_verify_failure");
+  },
+});
+
+const commitFailureMigration: Migration = Object.freeze({
+  version: 1,
+  name: "phase13-native-commit-failure",
+  kind: "additive",
+  async up(transaction) {
+    await transaction.execute("CREATE TABLE phase13_commit_failure (id TEXT PRIMARY KEY NOT NULL) STRICT");
+  },
+  async verify() {},
+});
+
+async function assertMigrationFailureCut(
+  adapter: ExpoMigrationsAdapter,
+  databaseKey: string,
+  action: (runtime: ExpoRuntime) => Promise<void>,
+  observer: SqliteKernelTestObserver = {},
+): Promise<void> {
+  const runtime = await adapter.createRuntime(databaseKey, observer);
+  try {
+    let failed = false;
+    try {
+      await action(runtime);
+    } catch {
+      failed = true;
+    }
+    const state = await failedMigrationState(runtime.kernel);
+    invariant(failed, "phase13_migration_failure_not_observed");
+    invariant(state.version === 0 && state.userTables === 0, "phase13_migration_rollback_invalid");
+  } finally {
+    await runtime.close();
+  }
+}
+
+async function runMigrationFailureCuts(
+  adapter: ExpoMigrationsAdapter,
+  caseId: string,
+): Promise<void> {
+  await assertMigrationFailureCut(adapter, `${caseId}-statement`, async (runtime) => {
+    await createMigrationRunner({
+      databaseName: runtime.databaseName,
+      kernel: runtime.kernel,
+      migrations: [migrations[0]!],
+      failureInjector(event) {
+        if (event.phase === "before" && event.statementIndex === 0) {
+          throw new Error("phase13_statement_failure");
+        }
+      },
+    }).run();
+  });
+  await assertMigrationFailureCut(adapter, `${caseId}-verify`, async (runtime) => {
+    await createMigrationRunner({ databaseName: runtime.databaseName, kernel: runtime.kernel, migrations: [verifyFailureMigration] }).run();
+  });
+  await assertMigrationFailureCut(adapter, `${caseId}-commit`, async (runtime) => {
+    await createMigrationRunner({ databaseName: runtime.databaseName, kernel: runtime.kernel, migrations: [commitFailureMigration] }).run();
+  }, {
+    async beforeCommit() {
+      throw new Error("phase13_commit_failure");
+    },
+  });
 }
 
 const SHA256 = "a".repeat(64);
@@ -361,7 +447,6 @@ const caseAssertions: Record<
     );
   },
   async "phase13-running-two-slots"(kernel) {
-    const first = await seedRunningFixture(kernel, "slots");
     const plans = createRunningPlanRepository(kernel);
     await plans.createInactiveMinimum({
       planId: "slots-second-plan", planName: "Two slots", anchorDayId: "slots-second-day",
@@ -373,7 +458,48 @@ const caseAssertions: Record<
         { id: "slots-second-b", weekday: "Monday", ordinal: 1, sessionRevisionId: "slots-second-recovery" },
       ],
     });
-    invariant(first.opportunityId.length > 0 && (await plans.readiness("slots-second-plan")).ready, "phase13_running_slots_invalid");
+    await plans.activateMinimum({
+      planId: "slots-second-plan",
+      scheduleId: "slots-second-schedule",
+      expectedPlanRevision: 1,
+      expectedScheduleRevision: 1,
+      activatedAtMs: 2,
+    });
+    const opportunities = await plans.materializeOccurrences({
+      planId: "slots-second-plan",
+      scheduleId: "slots-second-schedule",
+      scheduleVersionId: "slots-second-version",
+      localDate: "2026-08-17",
+      timezone: "Asia/Singapore",
+      createdAtMs: 3,
+      occurrenceIds: ["slots-second-opportunity-a", "slots-second-opportunity-b"],
+    });
+    const [storedOpportunities, revisions] = await Promise.all([
+      kernel.queryAll<{ id: string; slot_id: string }>(
+        "SELECT id, slot_id FROM running_opportunities WHERE plan_id = ? ORDER BY id",
+        ["slots-second-plan"],
+      ),
+      kernel.queryAll<{ id: string; ordinal: number; slot_root_id: string }>(
+        `SELECT revision.id, revision.ordinal, revision.slot_root_id
+         FROM running_session_slot_revisions revision
+         JOIN running_session_slot_roots root ON root.id = revision.slot_root_id
+         WHERE root.plan_id = ? AND revision.revision = 1
+         ORDER BY revision.ordinal`,
+        ["slots-second-plan"],
+      ),
+    ]);
+    invariant(
+      opportunities.length === 2
+        && opportunities.map(({ id }) => id).join(",") === "slots-second-opportunity-a,slots-second-opportunity-b"
+        && opportunities[0]?.ordinal === 0 && opportunities[1]?.ordinal === 1
+        && new Set(opportunities.map(({ slotId }) => slotId)).size === 2
+        && storedOpportunities.length === 2
+        && new Set(storedOpportunities.map(({ id }) => id)).size === 2
+        && new Set(storedOpportunities.map(({ slot_id }) => slot_id)).size === 2
+        && revisions.length === 2 && revisions[0]?.ordinal === 0 && revisions[1]?.ordinal === 1
+        && new Set(revisions.map(({ slot_root_id }) => slot_root_id)).size === 2,
+      "phase13_running_two_slot_durable_facts_invalid",
+    );
   },
   async "phase13-strength-completion-retry"(kernel) {
     const { session, workout, view } = await setupActiveWorkout(kernel);
@@ -400,7 +526,31 @@ const caseAssertions: Record<
     const removed = await changeGarminActivityLifecycle(repository, remove);
     const replay = await changeGarminActivityLifecycle(repository, remove);
     const restored = await changeGarminActivityLifecycle(repository, { ...remove, operation: "restore", requestId: "lifecycle-restore", occurredAtMs: 3 });
-    invariant(removed.kind === "removed" && replay.kind === "removed" && restored.kind === "replayed", "phase13_remove_restore_invalid");
+    const [lifecycle, events, receipts] = await Promise.all([
+      kernel.queryAll<{ removal_state: string }>(
+        "SELECT removal_state FROM imported_activity_current_lifecycle WHERE activity_id = ?",
+        [activityId],
+      ),
+      kernel.queryAll<{ event_type: string }>(
+        `SELECT event_type FROM imported_activity_events
+         WHERE activity_id = ? AND event_type IN ('removed', 'restored')
+         ORDER BY created_at_ms, id`,
+        [activityId],
+      ),
+      kernel.queryAll<{ id: string; request_sha256: string }>(
+        "SELECT id, request_sha256 FROM imported_activity_receipts WHERE activity_id = ? ORDER BY id",
+        [activityId],
+      ),
+    ]);
+    invariant(
+      removed.kind === "removed" && replay.kind === "removed" && restored.kind === "replayed"
+        && lifecycle[0]?.removal_state === "active"
+        && events.length === 2 && events[0]?.event_type === "removed" && events[1]?.event_type === "restored"
+        && receipts.length === 3
+        && new Set(receipts.map(({ id }) => id)).size === 3
+        && receipts.every(({ request_sha256 }) => request_sha256 === SHA256),
+      "phase13_remove_restore_durable_facts_invalid",
+    );
   },
   async "phase13-match-invalidation"(kernel) {
     const running = await seedRunningFixture(kernel, "match");
@@ -412,7 +562,43 @@ const caseAssertions: Record<
       slotId: running.slotId, sessionRevisionId: running.sessionRevisionId, occurredAtMs: 4 };
     const matched = await confirmRunningActivityMatch(repository, input);
     const replay = await confirmRunningActivityMatch(repository, input);
-    invariant(matched.kind === "matched" && replay.kind === "replayed", "phase13_match_replay_invalid");
+    const activities = createImportedActivityRepository(kernel);
+    const removal = await changeGarminActivityLifecycle(activities, {
+      operation: "remove", requestId: "match-remove", requestSha256: SHA256,
+      activityId, expectedAggregateRevision: 1, occurredAtMs: 5, reason: "owner_request",
+    });
+    const [currentAfterRemoval, invalidatedEvents, invalidations, removalReceipts] = await Promise.all([
+      kernel.queryAll<{ activity_id: string }>(
+        "SELECT activity_id FROM running_activity_current_matches WHERE activity_id = ?", [activityId],
+      ),
+      kernel.queryAll<{ action: string }>(
+        "SELECT action FROM running_activity_match_events WHERE activity_id = ? AND action = 'invalidated'", [activityId],
+      ),
+      kernel.queryAll<{ id: string }>(
+        "SELECT id FROM imported_activity_match_invalidations WHERE activity_id = ?", [activityId],
+      ),
+      kernel.queryAll<{ id: string }>(
+        "SELECT id FROM imported_activity_receipts WHERE id = 'match-remove' AND activity_id = ?", [activityId],
+      ),
+    ]);
+    const restored = await changeGarminActivityLifecycle(activities, {
+      operation: "restore", requestId: "match-restore", requestSha256: SHA256,
+      activityId, expectedAggregateRevision: 1, occurredAtMs: 6, reason: "owner_request",
+    });
+    const unmatchedAfterRestore = await kernel.queryAll<{ activity_id: string }>(
+      "SELECT activity_id FROM running_activity_current_matches WHERE activity_id = ?", [activityId],
+    );
+    const rematched = await confirmRunningActivityMatch(repository, {
+      ...input, requestId: "match-command-after-restore", occurredAtMs: 7,
+    });
+    invariant(
+      matched.kind === "matched" && replay.kind === "replayed" && removal.kind === "removed"
+        && currentAfterRemoval.length === 0 && invalidatedEvents.length === 1
+        && invalidations.length === 1 && removalReceipts.length === 1
+        && restored.kind === "replayed" && unmatchedAfterRestore.length === 0
+        && rematched.kind === "matched",
+      "phase13_match_invalidation_durable_facts_invalid",
+    );
   },
   async "phase13-stale-replay-no-resurrection"(kernel) {
     const activityId = await importGarminActivity(kernel, "stale");
@@ -434,9 +620,54 @@ const caseAssertions: Record<
     const command = { operation: "create" as const, requestId: "backup-bodyweight-create", entryId: "backup-bodyweight-entry", ownerId: "backup-owner", expectedRevision: 0, revisionId: "backup-bodyweight-r1", eventId: "backup-bodyweight-e1", occurredAtMs: 5, localDate: "2026-08-17", timezone: "Asia/Singapore", grams: 75_000 };
     await bodyweight.commit({ ...command, requestSha256: canonicalBodyweightRequestHash(command) });
     const snapshot = await createLogicalBackupRepository(kernel).collect({ snapshotId: "phase13-native-backup", createdAtMs: 5 });
-    const restored = await createLogicalRestoreRepository(kernel).restore(snapshot);
-    const history = await bodyweight.history(command.ownerId);
-    invariant(restored.state === "rebuild_pending" && history[0]?.entryId === command.entryId, "phase13_backup_restore_invalid");
+    const divergent = { operation: "create" as const, requestId: "backup-bodyweight-divergent", entryId: "backup-bodyweight-divergent", ownerId: "backup-owner", expectedRevision: 0, revisionId: "backup-bodyweight-r2", eventId: "backup-bodyweight-e2", occurredAtMs: 6, localDate: "2026-08-18", timezone: "Asia/Singapore", grams: 76_000 };
+    await bodyweight.commit({ ...divergent, requestSha256: canonicalBodyweightRequestHash(divergent) });
+    const running = await seedRunningFixture(kernel, "backup-projection");
+    const activityId = await importGarminActivity(kernel, "backup-projection");
+    await confirmRunningActivityMatch(createRunningActivityMatchRepository(kernel), {
+      requestId: "backup-projection-match", requestSha256: SHA256, action: "match", activityId,
+      expectedActivityRevision: 1, opportunityId: running.opportunityId, expectedOpportunityRevision: 1,
+      expectedRelationRevision: 0, scheduleId: running.scheduleId, scheduleVersionId: running.scheduleVersionId,
+      slotId: running.slotId, sessionRevisionId: running.sessionRevisionId, occurredAtMs: 7,
+    });
+    const restored = await createLogicalRestoreRepository(kernel, { nowMs: () => 8 }).restore(snapshot);
+    const restoredSnapshot = await createLogicalBackupRepository(kernel).collect({ snapshotId: "phase13-native-backup-restored", createdAtMs: 9 });
+    const [history, divergentRows, projections, graph] = await Promise.all([
+      bodyweight.history(command.ownerId),
+      kernel.queryAll<{ id: string }>("SELECT id FROM bodyweight_entries WHERE id = ?", [divergent.entryId]),
+      kernel.queryAll<{ activity_id: string }>("SELECT activity_id FROM running_activity_current_matches"),
+      kernel.queryAll<{ entries: number; events: number; receipts: number }>(
+        `SELECT
+           (SELECT COUNT(*) FROM bodyweight_entries WHERE id = ?) AS entries,
+           (SELECT COUNT(*) FROM bodyweight_entry_events WHERE entry_id = ?) AS events,
+           (SELECT COUNT(*) FROM bodyweight_command_receipts WHERE entry_id = ?) AS receipts`,
+        [command.entryId, command.entryId, command.entryId],
+      ),
+    ]);
+    const fault = { operation: "create" as const, requestId: "backup-bodyweight-fault", entryId: "backup-bodyweight-fault", ownerId: "backup-owner", expectedRevision: 0, revisionId: "backup-bodyweight-r3", eventId: "backup-bodyweight-e3", occurredAtMs: 10, localDate: "2026-08-19", timezone: "Asia/Singapore", grams: 77_000 };
+    await bodyweight.commit({ ...fault, requestSha256: canonicalBodyweightRequestHash(fault) });
+    const priorToFault = await createLogicalBackupRepository(kernel).collect({ snapshotId: "phase13-native-fault-prior", createdAtMs: 10 });
+    let faultObserved = false;
+    try {
+      await createLogicalRestoreRepository(kernel, {
+        nowMs: () => 11,
+        async faultAfter(stage) {
+          if (stage === "verified") throw new Error("phase13_restore_fault");
+        },
+      }).restore(snapshot);
+    } catch {
+      faultObserved = true;
+    }
+    const afterFault = await createLogicalBackupRepository(kernel).collect({ snapshotId: "phase13-native-fault-after", createdAtMs: 11 });
+    invariant(
+      restored.state === "rebuild_pending"
+        && JSON.stringify(restoredSnapshot.tables) === JSON.stringify(snapshot.tables)
+        && history.length === 1 && history[0]?.entryId === command.entryId
+        && divergentRows.length === 0 && projections.length === 0
+        && graph[0]?.entries === 1 && graph[0]?.events === 1 && graph[0]?.receipts === 1
+        && faultObserved && JSON.stringify(afterFault.tables) === JSON.stringify(priorToFault.tables),
+      "phase13_backup_restore_replacement_invalid",
+    );
   },
   async "phase13-merge-rebuild"(kernel) {
     void kernel;
@@ -475,7 +706,9 @@ export async function createExpoMultiPlanRunningContractAdapter(
   );
   const adapter: MultiPlanRunningContractAdapter = {
     runCase: (caseId: MultiPlanRunningContractCaseId) =>
-      withFreshExpoRuntime(base, caseId, caseAssertions[caseId]),
+      caseId === "phase13-migration-failure-cuts"
+        ? runMigrationFailureCuts(base, caseId)
+        : withFreshExpoRuntime(base, caseId, caseAssertions[caseId]),
     ...(base.cleanup === undefined ? {} : { cleanup: base.cleanup }),
   };
   return Object.freeze(adapter);
