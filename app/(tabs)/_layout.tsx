@@ -5,7 +5,6 @@ import {
   AppTabs,
   rootNavigationUsesTwoRows,
 } from "../../src/ui/components";
-import { classifyWidth } from "../../src/ui/layout/AdaptiveScreen";
 import {
   rootBackBehavior,
 } from "../../src/ui/screens/RootScreens";
@@ -18,8 +17,7 @@ export default function RootTabsLayout() {
   const { fontScale, width } = useWindowDimensions();
   const { launchState } = useWorkoutAppRuntime();
   const { colors } = useAppTheme();
-  const expanded = classifyWidth(width) === "expanded";
-  const tabBarPosition = expanded ? "left" : "bottom";
+  const tabBarPosition = "bottom";
   const compactLayout = rootNavigationUsesTwoRows(width, fontScale)
     ? "two-row"
     : "single-row";
@@ -38,7 +36,7 @@ export default function RootTabsLayout() {
           compactLayout={compactLayout}
           disabled={launchState !== "trusted"}
           navigation={props.navigation}
-          position={expanded ? "rail" : "bottom"}
+          position="bottom"
           state={props.state}
         />
       )}

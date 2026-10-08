@@ -39,6 +39,7 @@ import {
 import {
   AppearanceProvider,
   createMemoryAppearanceStore,
+  sizes,
   themes,
 } from "../theme";
 
@@ -462,7 +463,7 @@ describe("Plan 01-08 ActiveWorkoutScreen", () => {
     await fireEvent(collapsed, "focus");
     expect(collapsed).toHaveStyle({
       outlineColor: themes.light.focusRing,
-      outlineWidth: 2,
+      outlineWidth: sizes.focusRing,
     });
     await fireEvent(collapsed, "keyDown", { nativeEvent: { key: "Enter" } });
     expect(screen.getByRole("button", {
@@ -655,7 +656,7 @@ describe("Plan 01-08 ActiveWorkoutScreen", () => {
     expect(screen.getByTestId("exercise-divider-session-exercise-2"))
       .toHaveStyle({
         backgroundColor: themes.light.divider,
-        height: 2,
+        height: sizes.focusRing,
       });
     expect(actions).toHaveStyle({
       position: "absolute",
@@ -1125,7 +1126,7 @@ describe("Plan 01-08 ActiveWorkoutScreen", () => {
       screen.getByRole("button", { name: "More workout actions" }),
     );
     expect(screen.getByTestId("workout-actions-sheet-content"))
-      .not.toHaveStyle({ backgroundColor: themes.light.contentCard });
+      .toHaveStyle({ backgroundColor: themes.light.surface });
   });
 
   it.each(["Light", "Dark"] as const)(
@@ -1177,8 +1178,8 @@ describe("Plan 01-08 ActiveWorkoutScreen", () => {
     );
     await fireEvent(loadInput, "focus");
     expect(loadInput).toHaveStyle({
-      outlineColor: "#155EEF",
-      outlineWidth: 2,
+      outlineColor: themes.light.focusRing,
+      outlineWidth: sizes.focusRing,
     });
     await fireEvent(loadInput, "blur");
     expect(loadInput).toHaveStyle({ outlineWidth: 0 });

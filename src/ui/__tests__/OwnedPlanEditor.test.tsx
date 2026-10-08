@@ -260,10 +260,12 @@ describe("OwnedPlanEditorScreen create and save plan", () => {
         borderWidth: 0.5,
       });
     }
-    expect(screen.getByLabelText("Plan name"))
-      .not.toHaveStyle({ backgroundColor: themes.light.contentCard });
+    expect(screen.getByLabelText("Plan name")).toHaveStyle({
+      backgroundColor: themes.light.surface,
+      borderColor: themes.light.divider,
+    });
     expect(screen.getByRole("button", { name: "Save Plan Changes" }))
-      .not.toHaveStyle({ backgroundColor: themes.light.contentCard });
+      .toHaveStyle({ backgroundColor: themes.light.action });
   });
 
   it("creates one named inactive Draft and opens its empty first day", async () => {

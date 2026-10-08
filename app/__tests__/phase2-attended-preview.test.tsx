@@ -326,9 +326,9 @@ describe("Phase2AttendedPreviewRoute", () => {
 
   it.each<[number, number, number, string]>([
     [839, 420, 1, "root-navigation-bottom"],
-    [840, 420, 1, "root-navigation-rail"],
+    [840, 420, 1, "root-navigation-bottom"],
     [839, 420, 2, "root-navigation-bottom"],
-    [840, 420, 2, "root-navigation-rail"],
+    [840, 420, 2, "root-navigation-bottom"],
   ])(
     "selects %sdp structure at %sdp landscape height and fontScale %s",
     async (width, height, fontScale, navigationTestId) => {

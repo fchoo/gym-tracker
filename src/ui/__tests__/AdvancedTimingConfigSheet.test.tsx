@@ -26,6 +26,7 @@ import {
 import {
   AppearanceProvider,
   createMemoryAppearanceStore,
+  sizes,
   themes,
 } from "../theme";
 
@@ -140,7 +141,7 @@ describe("AdvancedTimingConfigSheet", () => {
 
     const perRep = screen.getByRole("button", { name: "Per-rep timing" });
     await fireEvent(perRep, "focus");
-    expect(perRep).toHaveStyle({ outlineWidth: 2 });
+    expect(perRep).toHaveStyle({ outlineWidth: sizes.focusRing });
     await fireEvent(perRep, "keyDown", { nativeEvent: { key: "Enter" } });
     expect(perRep).toHaveProp("accessibilityState",
       expect.objectContaining({ selected: true }));

@@ -35,6 +35,7 @@ import {
 import {
   AppearanceProvider,
   createMemoryAppearanceStore,
+  sizes,
   themes,
 } from "../theme";
 
@@ -1136,7 +1137,7 @@ describe("LibraryScreen exercise browse", () => {
 
     const filter = screen.getByRole("checkbox", { name: "Filters" });
     await fireEvent(filter, "focus");
-    expect(filter).toHaveStyle({ outlineWidth: 2 });
+    expect(filter).toHaveStyle({ outlineWidth: sizes.focusRing });
     await fireEvent(filter, "keyDown", {
       nativeEvent: { key: " " },
     });

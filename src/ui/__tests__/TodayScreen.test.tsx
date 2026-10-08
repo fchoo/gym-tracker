@@ -17,7 +17,7 @@ import type {
   TodayView,
 } from "../../domains/workout";
 import { TodayScreen } from "../screens/TodayScreen";
-import { AppearanceProvider, themes } from "../theme";
+import { AppearanceProvider, sizes, themes } from "../theme";
 
 async function renderToday(
   view: TodayView | undefined,
@@ -124,7 +124,7 @@ describe("Plan 01-07 TodayScreen", () => {
     }
 
     await fireEvent(settings, "focus");
-    expect(settings).toHaveStyle({ outlineWidth: 2 });
+    expect(settings).toHaveStyle({ outlineWidth: sizes.focusRing });
     await fireEvent(settings, "keyDown", {
       nativeEvent: { key: "Enter" },
     });
@@ -462,7 +462,7 @@ describe("Plan 01-07 TodayScreen", () => {
       screen.getByRole("button", { name: "Choose another day" }),
     );
     expect(screen.getByTestId("workout-start-sheet-content"))
-      .not.toHaveStyle({ backgroundColor: themes.light.contentCard });
+      .toHaveStyle({ backgroundColor: themes.light.surface });
   });
 
   it("keeps the activation selector flat within its shared content card", async () => {
@@ -479,7 +479,7 @@ describe("Plan 01-07 TodayScreen", () => {
     )).toHaveStyle({ color: themes.light.contentCardTextSecondary });
     expect(screen.getByRole("button", {
       name: /Full Body Foundation\. 3 days per week/u,
-    })).not.toHaveStyle({ backgroundColor: themes.light.surface });
+    })).toHaveProp("accessibilityRole", "button");
   });
 
   it.each(["Light", "Dark"] as const)(

@@ -13,7 +13,7 @@ import {
 import React from "react";
 import { Dimensions } from "react-native";
 
-import { AppearanceProvider } from "../../../src/ui/theme";
+import { AppearanceProvider, sizes } from "../../../src/ui/theme";
 import RootTabsLayout from "../_layout";
 
 let mockRenderedWidth = 839;
@@ -127,9 +127,9 @@ describe("RootTabsLayout adaptive navigator placement", () => {
     ["bottom", 360, 720, "compact"],
     ["bottom", 600, 900, "medium"],
     ["bottom", 839, 900, "medium boundary"],
-    ["left", 840, 900, "expanded boundary"],
-    ["left", 1024, 900, "expanded portrait"],
-    ["left", 1280, 720, "expanded landscape"],
+    ["bottom", 840, 900, "expanded boundary"],
+    ["bottom", 1024, 900, "expanded portrait"],
+    ["bottom", 1280, 720, "expanded landscape"],
   ])(
     "uses %s navigator placement for %s at %idp",
     async (tabBarPosition, width, _height, _layout) => {
@@ -145,12 +145,10 @@ describe("RootTabsLayout adaptive navigator placement", () => {
         "tabBarPosition",
         tabBarPosition,
       );
-      const position = tabBarPosition === "left" ? "rail" : "bottom";
-      expect(rendered.getByTestId(`root-navigation-${position}`))
-        .toHaveProp("accessibilityLabel", `Root navigation ${position}`);
-      expect(rendered.queryByTestId(
-        `root-navigation-${position === "rail" ? "bottom" : "rail"}`,
-      )).not.toBeOnTheScreen();
+      expect(rendered.getByTestId("root-navigation-bottom"))
+        .toHaveProp("accessibilityLabel", "Root navigation bottom");
+      expect(rendered.queryByTestId("root-navigation-rail"))
+        .not.toBeOnTheScreen();
       expect(rendered.getAllByRole("tab")).toHaveLength(
         destinationLabels.length,
       );
@@ -215,7 +213,7 @@ describe("RootTabsLayout adaptive navigator placement", () => {
 
     const library = rendered.getByRole("tab", { name: "Library" });
     await fireEvent(library, "focus");
-    expect(library).toHaveStyle({ outlineWidth: 2 });
+    expect(library).toHaveStyle({ outlineWidth: sizes.focusRing });
     await fireEvent(library, "keyDown", {
       nativeEvent: { key: "Enter" },
     });
@@ -228,25 +226,25 @@ describe("RootTabsLayout adaptive navigator placement", () => {
 
     expect(rendered.getByTestId("root-tabs")).toHaveProp(
       "tabBarPosition",
-      "left",
+      "bottom",
     );
-    expect(rendered.getByTestId("root-navigation-rail"))
-      .toHaveProp("accessibilityLabel", "Root navigation rail");
-    expect(rendered.queryByTestId("root-navigation-bottom"))
+    expect(rendered.getByTestId("root-navigation-bottom"))
+      .toHaveProp("accessibilityLabel", "Root navigation bottom");
+    expect(rendered.queryByTestId("root-navigation-rail"))
       .not.toBeOnTheScreen();
     expect(rendered.getAllByRole("tab")).toHaveLength(
       destinationLabels.length,
     );
     expect(rendered.getByRole("tab", { name: "Library" })).toBeSelected();
     expect(rendered.getByRole("tab", { name: "Library" })).toHaveStyle({
-      minHeight: 72,
+      minHeight: 64,
       minWidth: 48,
-      outlineWidth: 2,
+      outlineWidth: sizes.focusRing,
     });
     expect(rendered.getByText("Library").props.numberOfLines).toBeUndefined();
     expect(rendered.getByTestId("root-tabs")).toHaveStyle({
       flex: 1,
-      flexDirection: "row",
+      flexDirection: "column",
     });
 
     await act(async () => {

@@ -20,6 +20,7 @@ import {
 import {
   AppearanceProvider,
   createMemoryAppearanceStore,
+  sizes,
 } from "../theme";
 
 function createProps(
@@ -92,7 +93,7 @@ describe("SettingsScreen", () => {
 
     await fireEvent(screen.getByRole("radio", { name: "System" }), "focus");
     expect(screen.getByRole("radio", { name: "System" }))
-      .toHaveStyle({ outlineWidth: 2 });
+      .toHaveStyle({ outlineWidth: sizes.focusRing });
 
     await fireEvent.press(screen.getByRole("radio", { name: "Dark" }));
     expect(appearanceStore.read()).toBe("Dark");
