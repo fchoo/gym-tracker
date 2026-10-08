@@ -1,0 +1,57 @@
+appId: com.fchoo.gymtracker.devtest
+name: Phase 14 settings and recovery no-write proof
+tags:
+  - phase-14
+  - native-only
+  - development-test
+---
+- assertTrue: ${PHASE14_STAGE == 'phase14-rest-alerts' || PHASE14_STAGE == 'phase14-settings-deep-links' || PHASE14_STAGE == 'phase14-removed-sessions' || PHASE14_STAGE == 'phase14-data-recovery' || PHASE14_STAGE == 'phase14-automatic-backup' || PHASE14_STAGE == 'phase14-manual-backup'}
+- launchApp:
+    clearState: false
+    stopApp: true
+    permissions:
+      notifications: deny
+- extendedWaitUntil:
+    visible: "Today"
+    timeout: 90000
+- openLink: "gymtracker-devtest:///more/data-and-recovery?suite=phase14&phase14Stage=${PHASE14_STAGE}"
+- extendedWaitUntil:
+    visible: "Data and recovery"
+    timeout: 30000
+- runFlow:
+    when:
+      true: ${PHASE14_STAGE == 'phase14-rest-alerts'}
+    commands:
+      - pressKey: BACK
+      - assertVisible: "Settings"
+      - assertVisible: "Rest alerts"
+- runFlow:
+    when:
+      true: ${PHASE14_STAGE == 'phase14-settings-deep-links'}
+    commands:
+      - assertVisible: "Data and recovery"
+      - pressKey: BACK
+      - assertVisible: "Settings"
+- runFlow:
+    when:
+      true: ${PHASE14_STAGE == 'phase14-removed-sessions'}
+    commands:
+      - pressKey: BACK
+      - assertVisible: "Settings"
+      - assertVisible: "Removed sessions"
+- runFlow:
+    when:
+      true: ${PHASE14_STAGE == 'phase14-data-recovery'}
+    commands:
+      - assertVisible: "Create secure backup"
+      - assertVisible: "Restore backup"
+- runFlow:
+    when:
+      true: ${PHASE14_STAGE == 'phase14-automatic-backup'}
+    commands:
+      - assertVisible: "Automatic backup"
+- runFlow:
+    when:
+      true: ${PHASE14_STAGE == 'phase14-manual-backup'}
+    commands:
+      - assertVisible: "Manual encrypted backup"

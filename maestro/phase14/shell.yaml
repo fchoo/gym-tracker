@@ -1,0 +1,54 @@
+appId: com.fchoo.gymtracker.devtest
+name: Phase 14 shell roots, theme, and startup proof
+tags:
+  - phase-14
+  - native-only
+  - development-test
+---
+- assertTrue: ${PHASE14_STAGE == 'phase14-four-roots' || PHASE14_STAGE == 'phase14-root-state' || PHASE14_STAGE == 'phase14-appearance' || PHASE14_STAGE == 'phase14-tokens'}
+- launchApp:
+    clearState: false
+    stopApp: true
+    permissions:
+      notifications: deny
+- extendedWaitUntil:
+    visible: "Today"
+    timeout: 90000
+- runFlow:
+    when:
+      true: ${PHASE14_STAGE == 'phase14-four-roots'}
+    commands:
+      - assertVisible: "Today"
+      - tapOn: "Calendar"
+      - assertVisible: "Calendar"
+      - tapOn: "Library"
+      - assertVisible: "Library"
+      - tapOn: "Progress"
+      - assertVisible: "Progress"
+      - tapOn: "Today"
+      - assertVisible: "Today"
+- runFlow:
+    when:
+      true: ${PHASE14_STAGE == 'phase14-root-state'}
+    commands:
+      - tapOn: "Library"
+      - assertVisible: "Library"
+      - pressKey: BACK
+      - assertVisible: "Today"
+- runFlow:
+    when:
+      true: ${PHASE14_STAGE == 'phase14-appearance'}
+    commands:
+      - openLink: "gymtracker-devtest:///more?phase14Stage=${PHASE14_STAGE}"
+      - extendedWaitUntil:
+          visible: "Settings"
+          timeout: 30000
+      - assertVisible: "Appearance"
+- runFlow:
+    when:
+      true: ${PHASE14_STAGE == 'phase14-tokens'}
+    commands:
+      - assertVisible: "Today"
+      - assertVisible: "Calendar"
+      - assertVisible: "Library"
+      - assertVisible: "Progress"

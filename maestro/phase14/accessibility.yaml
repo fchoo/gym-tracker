@@ -1,0 +1,41 @@
+appId: com.fchoo.gymtracker.devtest
+name: Phase 14 accessibility, sheets, toast, and startup proof
+tags:
+  - phase-14
+  - native-only
+  - development-test
+---
+- assertTrue: ${PHASE14_STAGE == 'phase14-sheets' || PHASE14_STAGE == 'phase14-toasts' || PHASE14_STAGE == 'phase14-launch'}
+- launchApp:
+    clearState: false
+    stopApp: true
+    permissions:
+      notifications: deny
+- extendedWaitUntil:
+    visible: "Today"
+    timeout: 90000
+- runFlow:
+    when:
+      true: ${PHASE14_STAGE == 'phase14-sheets'}
+    commands:
+      - openLink: "gymtracker-devtest:///more?phase14Stage=${PHASE14_STAGE}"
+      - extendedWaitUntil:
+          visible: "Settings"
+          timeout: 30000
+      - tapOn: "Appearance"
+      - assertVisible: "Appearance"
+      - pressKey: BACK
+      - assertVisible: "Settings"
+- runFlow:
+    when:
+      true: ${PHASE14_STAGE == 'phase14-toasts'}
+    commands:
+      - assertVisible: "Today"
+- runFlow:
+    when:
+      true: ${PHASE14_STAGE == 'phase14-launch'}
+    commands:
+      - assertVisible: "Today"
+      - assertVisible: "Calendar"
+      - assertVisible: "Library"
+      - assertVisible: "Progress"
