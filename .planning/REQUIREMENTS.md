@@ -44,7 +44,7 @@ Exactly four roots: **Workout, Calendar, Library, Progress**. Preserve SQLite au
 - [ ] **SHL-01**: Expose exactly Workout, Calendar, Library and Progress in a shared root shell, preserving bottom navigation composition at all target widths.
 - [ ] **SHL-02**: Switch destinations in place with correct selected state, heading focus, deep-route exit and retained destination-specific state.
 - [ ] **SHL-03**: Open App Settings from the root header and synchronize Light, Dark and System appearance across the four roots, Active Workout, sheets and dialogs; persist the choice and react to system changes. Garmin-specific appearance closure is owned by GAR-16 after its contextual route exists.
-- [ ] **SHL-04**: Reproduce approved semantic colors, Archivo variable typography, IBM Plex Mono numerical text, spacing, borders and density using bundled native assets and shared tokens.
+- [x] **SHL-04**: Reproduce approved semantic colors, Archivo variable typography, IBM Plex Mono numerical text, spacing, borders and density using bundled native assets and shared tokens.
 - [ ] **SHL-05**: Use contextual bottom sheets with scrim, close/back dismissal, focus entry/trap/restoration and keyboard-safe content, preserving each surface's individual actions.
 - [ ] **SHL-06**: Place theme-aware semantic toasts below top bars, clear of the command/rest dock; preserve accessible status announcements.
 - [ ] **SHL-07**: Preserve loading, trusted, failure/retry and notification-permission/continue-without-alerts startup states in the new visual shell.
@@ -258,7 +258,7 @@ once and remains Pending until its owning phase is implemented and verified.
 | SHL-01 | 14 | shell.four-roots | Pending |
 | SHL-02 | 14 | shell.root-state | Pending |
 | SHL-03 | 14 | shell.appearance | Pending |
-| SHL-04 | 14 | shell.tokens | Pending |
+| SHL-04 | 14 | shell.tokens | Complete |
 | SHL-05 | 14 | shell.sheets | Pending |
 | SHL-06 | 14 | shell.toasts | Pending |
 | SHL-07 | 14 | shell.launch | Pending |
