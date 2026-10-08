@@ -5,16 +5,16 @@ milestone_name: Prototype Parity, Concurrent Plans & Garmin Import — PLANNED
 current_phase: 14
 current_phase_name: Prototype Visual Shell
 status: executing
-stopped_at: Completed 14-06-PLAN.md
-last_updated: "2026-10-08T19:04:27.146Z"
+stopped_at: Completed 14-12-PLAN.md; Plans 14-07 through 14-11 remain incomplete
+last_updated: "2026-10-08T19:14:49.232Z"
 last_activity: 2026-10-08
 last_activity_desc: Phase 14 execution started
-state_head: 91a1ed8f621c97a4f28bc2407ca5b77fab43db05
+state_head: 9714b5078f42d3d22c0cc57a84918329c975f429
 progress:
   total_phases: 8
   completed_phases: 1
   total_plans: 98
-  completed_plans: 22
+  completed_plans: 23
   percent: 13
 ---
 
@@ -62,6 +62,7 @@ Gym Tracker remains a signed personal-use Android APK/AAB with SQLite-authoritat
 | Phase 14 P04 | 7m | 3 tasks | 10 files |
 | Phase 14-prototype-visual-shell P05 | 9m | 3 tasks | 9 files |
 | Phase 14 P06 | 34m | 2 tasks | 9 files |
+| Phase 14 P12 | 7m | 2 tasks | 5 files |
 
 ## Accumulated Context
 
@@ -92,6 +93,8 @@ Gym Tracker remains a signed personal-use Android APK/AAB with SQLite-authoritat
 - [Phase 14]: Consumers retain drafts, validation, busy latches, and mutation authority; ConfirmationDialog preserves d5071087 sequential confirmation behavior.
 - [Phase 14]: AppSettingsContent owns ordered settings presentation while sheet and route hosts retain navigation and focus authority.
 - [Phase 14]: RestAlertSettingsSheet keeps serialized optimistic writes/readback rollback while BottomSheet owns presentation and dismissal.
+- [Phase 14]: Library overlay consumers retain screen-owned query, filter, selection, scroll, and draft state while BottomSheet owns presentation and safe dismissal.
+- [Phase 14]: Workout completion confirmation remains source-authoritative; ConfirmationDialog only presents consequences and blocks both actions while submission is busy.
 
 ### Pending Owner Review
 
@@ -116,7 +119,7 @@ Gym Tracker remains a signed personal-use Android APK/AAB with SQLite-authoritat
 
 ## Session Continuity
 
-Last session: 2026-10-08T19:04:27.102Z
-Stopped at: Completed 14-06-PLAN.md
-Resume file: None
+Last session: 2026-10-08T19:14:49.186Z
+Stopped at: Completed 14-12-PLAN.md; Plans 14-07 through 14-11 remain incomplete
+Resume file: .planning/phases/14-prototype-visual-shell/14-07-PLAN.md
 Next action: Present the complete planning set for owner review; after explicit approval, run `/gsd-execute-phase 13`.
