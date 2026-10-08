@@ -20,6 +20,19 @@ import AutomaticBackupSettingsRoute from "../automatic-backup-settings";
 
 describe("AutomaticBackupSettingsRoute", () => {
   beforeEach(() => { for (const value of Object.values(mockRuntime)) if (typeof value === "function") { value.mockReset(); value.mockResolvedValue(undefined); } });
+  it("uses the shared cloud-delete confirmation frame and keeps DELETE exact", async () => {
+    await render(<AppearanceProvider><AutomaticBackupSettingsRoute /></AppearanceProvider>);
+
+    await fireEvent.press(screen.getByRole("button", { name: "Delete cloud backup…" }));
+
+    expect(await screen.findByRole("header", { name: "Delete cloud backup" })).toBeOnTheScreen();
+    expect(screen.getByRole("button", { name: "Keep cloud backup" })).toBeOnTheScreen();
+    const confirm = screen.getByRole("button", { name: "Delete cloud backup" });
+    expect(confirm).toBeDisabled();
+    await fireEvent.changeText(screen.getByLabelText("Type DELETE to delete cloud backup"), "DELETE");
+    expect(confirm).not.toBeDisabled();
+  });
+
   it("keeps policy, disconnect, and typed deletion distinct", async () => {
     await render(<AppearanceProvider><AutomaticBackupSettingsRoute /></AppearanceProvider>);
     expect(screen.getByText("owner@example.com")).toBeOnTheScreen();
