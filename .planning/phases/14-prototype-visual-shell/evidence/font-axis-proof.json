@@ -1,0 +1,151 @@
+{
+  "schema_version": 2,
+  "suite": "phase14-font-proof",
+  "status": "passed",
+  "source_tree_sha256": "cb68106600a08c56635a3df4919d3a23f1eb54c178e7bacb3181042e84099a69",
+  "apk_sha256": "7e125fc9ffcdb2592639240cfff978b97c4ea463fb3f77da886b552a2398e88c",
+  "package": "com.fchoo.gymtracker.devtest",
+  "profile": "development-test",
+  "proof_source_sha256": "f0eddbba430379d8161d5b5f68805783dab7d527a2914260602b0eec026f9f28",
+  "font_scale_restored": true,
+  "revision18": {
+    "approved_html_sha256": "b5ddbad88fd465af2fa79475dc0c05efec49e551652f13c5220627730e1d9c96",
+    "approved_json_sha256": "b8e91e3098ec443c9dc283ae8383d1af552d7dc2b83648695a01dcb8a89ff0bf"
+  },
+  "overlay_review": {
+    "status": "passed",
+    "screenshot_sha256": "1d1042ba8e8f0621ccd0ec67212f9c961c1bc39ba739dd07392b1db9e259c8a4",
+    "reviewed_screenshot_sha256": {
+      "scale_1": "1d1042ba8e8f0621ccd0ec67212f9c961c1bc39ba739dd07392b1db9e259c8a4",
+      "scale_2": "0077c878a6cfadef75b2e62695b8c2241336e893eaf0d933c1bc7906270de0dd"
+    },
+    "approved_html_sha256": "b5ddbad88fd465af2fa79475dc0c05efec49e551652f13c5220627730e1d9c96",
+    "approved_json_sha256": "b8e91e3098ec443c9dc283ae8383d1af552d7dc2b83648695a01dcb8a89ff0bf"
+  },
+  "cases": [
+    {
+      "id": "light-390-scale-1",
+      "status": "passed",
+      "font_scale": 1,
+      "display_density": 2.625,
+      "screenshot_sha256": "1d1042ba8e8f0621ccd0ec67212f9c961c1bc39ba739dd07392b1db9e259c8a4",
+      "family": "ArchivoVariable",
+      "family_loaded": true,
+      "style": {
+        "font_family": "ArchivoVariable",
+        "font_size_px": 57,
+        "font_stretch": "condensed",
+        "font_weight": 890,
+        "letter_spacing_em": -0.07,
+        "line_height_px": 49
+      },
+      "lines": [
+        "Today’s",
+        "workout"
+      ],
+      "metrics": {
+        "available_width_px": 302.8571472167969,
+        "block_width_px": 188.6849822998047,
+        "block_height_px": 98.28571319580078,
+        "line_advances_px": [
+          187.77981567382812,
+          188.6849822998047
+        ],
+        "line_heights_px": [
+          49.14285659790039,
+          49.14285659790039
+        ],
+        "line_baselines_px": [
+          {
+            "ascender_px": 43.80952453613281,
+            "descender_px": 5.333333492279053,
+            "y_px": 0,
+            "height_px": 49.14285659790039,
+            "baseline_offset_px": 43.80952453613281
+          },
+          {
+            "ascender_px": 43.80952453613281,
+            "descender_px": 5.333333492279053,
+            "y_px": 49.14285659790039,
+            "height_px": 49.14285659790039,
+            "baseline_offset_px": 92.9523811340332
+          }
+        ],
+        "text_bounds": {
+          "x": 0,
+          "y": 0,
+          "width": 303.23809814453125,
+          "height": 98.28571319580078
+        },
+        "container_bounds": {
+          "x": 0,
+          "y": 0,
+          "width": 302.8571472167969,
+          "height": 98.28571319580078
+        }
+      }
+    },
+    {
+      "id": "light-390-scale-2",
+      "status": "passed",
+      "font_scale": 2,
+      "display_density": 2.625,
+      "screenshot_sha256": "0077c878a6cfadef75b2e62695b8c2241336e893eaf0d933c1bc7906270de0dd",
+      "family": "ArchivoVariable",
+      "family_loaded": true,
+      "style": {
+        "font_family": "ArchivoVariable",
+        "font_size_px": 57,
+        "font_stretch": "condensed",
+        "font_weight": 890,
+        "letter_spacing_em": -0.07,
+        "line_height_px": 49
+      },
+      "lines": [
+        "Today’s",
+        "workout"
+      ],
+      "metrics": {
+        "available_width_px": 302.8571472167969,
+        "block_width_px": 183.1720733642578,
+        "block_height_px": 109.71428680419922,
+        "line_advances_px": [
+          178.54177856445312,
+          183.1720733642578
+        ],
+        "line_heights_px": [
+          54.85714340209961,
+          54.85714340209961
+        ],
+        "line_baselines_px": [
+          {
+            "ascender_px": 48.380950927734375,
+            "descender_px": 6.476190567016602,
+            "y_px": 0,
+            "height_px": 54.85714340209961,
+            "baseline_offset_px": 48.380950927734375
+          },
+          {
+            "ascender_px": 48.380950927734375,
+            "descender_px": 6.476190567016602,
+            "y_px": 54.85714340209961,
+            "height_px": 54.85714340209961,
+            "baseline_offset_px": 103.23809432983398
+          }
+        ],
+        "text_bounds": {
+          "x": 0,
+          "y": 0,
+          "width": 303.23809814453125,
+          "height": 109.71429443359375
+        },
+        "container_bounds": {
+          "x": 0,
+          "y": 0,
+          "width": 302.8571472167969,
+          "height": 109.71429443359375
+        }
+      }
+    }
+  ]
+}
