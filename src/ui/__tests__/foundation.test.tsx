@@ -1387,6 +1387,7 @@ describe("Plan 01-02 shared component vocabulary", () => {
         />
       </AppearanceProvider>,
     );
+    expect(screen.getByTestId("bottom-sheet-frame")).toBeOnTheScreen();
     await fireEvent.press(screen.getByRole("button", { name: "Cancel" }));
     expect(close).toHaveBeenCalledTimes(1);
     expect(focus).toHaveBeenCalledTimes(2);
