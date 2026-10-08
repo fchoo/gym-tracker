@@ -943,16 +943,15 @@ describe("Plan 01-02 route shell", () => {
     }
   });
 
-  it("uses the expanded loading-shell rail contract", async () => {
+  it("keeps the expanded loading shell on the all-width bottom-navigation contract", async () => {
     await render(
       <AppearanceProvider>
         <AppLoadingShell width={840} />
       </AppearanceProvider>,
     );
 
-    expect(screen.getByLabelText("Root navigation rail")).toHaveStyle({
-      width: 112,
-    });
+    expect(screen.getByLabelText("Root navigation bottom")).toBeOnTheScreen();
+    expect(screen.queryByLabelText("Root navigation rail")).not.toBeOnTheScreen();
   });
 
   it("announces all root destinations as unavailable while launch is untrusted", async () => {
