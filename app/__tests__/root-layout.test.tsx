@@ -1,5 +1,5 @@
 import { fireEvent, render, screen } from "@testing-library/react-native";
-import { beforeEach, describe, expect, it, jest } from "@jest/globals";
+import { afterAll, beforeEach, describe, expect, it, jest } from "@jest/globals";
 import { Dimensions } from "react-native";
 import React from "react";
 
@@ -7,6 +7,7 @@ let mockFontsLoaded = true;
 let mockFontError: Error | null = null;
 let mockNativeContractsEnabled = true;
 let mockPathname = "/__phase2-attended-preview";
+const originalNativeContractSuite = process.env.EXPO_PUBLIC_NATIVE_CONTRACT_SUITE;
 const mockRuntimeProviderMounted = jest.fn();
 const mockProductionAppearanceRead = jest.fn(() => null);
 const mockProductionAppearanceWrite = jest.fn();
@@ -50,7 +51,6 @@ jest.mock("expo-router", () => {
 
   return {
     Stack,
-    Slot: () => <View testID="preview-route-slot" />,
     usePathname: () => mockPathname,
   };
 });
@@ -172,6 +172,7 @@ describe("RootLayout attended preview isolation", () => {
     mockFontError = null;
     mockNativeContractsEnabled = true;
     mockPathname = "/__phase2-attended-preview";
+    delete process.env.EXPO_PUBLIC_NATIVE_CONTRACT_SUITE;
     mockRuntimeProviderMounted.mockClear();
     mockUseFonts.mockClear();
     mockProductionAppearanceRead.mockClear();
@@ -185,12 +186,20 @@ describe("RootLayout attended preview isolation", () => {
     });
   });
 
+  afterAll(() => {
+    if (originalNativeContractSuite === undefined) {
+      delete process.env.EXPO_PUBLIC_NATIVE_CONTRACT_SUITE;
+    } else {
+      process.env.EXPO_PUBLIC_NATIVE_CONTRACT_SUITE = originalNativeContractSuite;
+    }
+  });
+
   it("does not initialize the production runtime for the devtest attended preview", async () => {
     await render(<RootLayout />);
 
     expect(screen.getByTestId("safe-area-provider")).toBeOnTheScreen();
     expect(screen.getByTestId("appearance-provider")).toBeOnTheScreen();
-    expect(screen.getByTestId("preview-route-slot"))
+    expect(screen.getByTestId("root-stack-screen-__phase2-attended-preview"))
       .toBeOnTheScreen();
     expect(screen.queryByTestId("workout-runtime-provider"))
       .not.toBeOnTheScreen();
@@ -205,6 +214,24 @@ describe("RootLayout attended preview isolation", () => {
     }));
     expect(mockPreviewAppearanceWrite).toHaveBeenCalledWith("Dark");
     expect(mockProductionAppearanceWrite).not.toHaveBeenCalled();
+    expect(mockSqliteStorageConstructed).not.toHaveBeenCalled();
+  });
+
+  it("isolates the Phase 14 font proof before a cold deep link resolves", async () => {
+    mockPathname = "/";
+    process.env.EXPO_PUBLIC_NATIVE_CONTRACT_SUITE = "phase14-font-proof";
+
+    await render(<RootLayout />);
+
+    expect(screen.getByTestId("root-stack-screen-__phase2-attended-preview"))
+      .toBeOnTheScreen();
+    expect(screen.queryByTestId("workout-runtime-provider"))
+      .not.toBeOnTheScreen();
+    expect(screen.queryByTestId("startup-readiness-gate"))
+      .not.toBeOnTheScreen();
+    expect(mockRuntimeProviderMounted).not.toHaveBeenCalled();
+    expect(mockPreviewAppearanceRead).toHaveBeenCalledTimes(1);
+    expect(mockProductionAppearanceRead).not.toHaveBeenCalled();
     expect(mockSqliteStorageConstructed).not.toHaveBeenCalled();
   });
 

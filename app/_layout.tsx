@@ -1,6 +1,6 @@
 import Constants from "expo-constants";
 import { useFonts } from "expo-font";
-import { Slot, Stack, usePathname } from "expo-router";
+import { Stack, usePathname } from "expo-router";
 import { StatusBar } from "expo-status-bar";
 import { StyleSheet, useWindowDimensions } from "react-native";
 import { GestureHandlerRootView } from "react-native-gesture-handler";
@@ -73,6 +73,20 @@ function RootNavigator() {
   );
 }
 
+function AttendedPreviewNavigator() {
+  return (
+    <Stack
+      initialRouteName="__phase2-attended-preview"
+      screenOptions={{
+        animation: "none",
+        headerShown: false,
+      }}
+    >
+      <Stack.Screen name="__phase2-attended-preview" />
+    </Stack>
+  );
+}
+
 function Phase6GestureSmokeNavigator() {
   return (
     <Stack
@@ -111,20 +125,20 @@ function Phase12GoogleAuthSmokeNavigator() {
 
 export default function RootLayout() {
   const [fontsLoaded, fontError] = useFonts(appFonts);
+  const nativeContractsEnabled =
+    Constants.expoConfig?.extra?.nativeContractsEnabled === true;
+  const phase14FontProofEnabled = nativeContractsEnabled
+    && process.env.EXPO_PUBLIC_NATIVE_CONTRACT_SUITE === "phase14-font-proof";
   const pathname = usePathname();
   const { width } = useWindowDimensions();
-  const attendedPreviewEnabled =
-    Constants.expoConfig?.extra?.nativeContractsEnabled === true
-    && pathname === "/__phase2-attended-preview";
+  const attendedPreviewEnabled = phase14FontProofEnabled
+    || nativeContractsEnabled && pathname === "/__phase2-attended-preview";
   const phase6GestureSmokeEnabled =
-    Constants.expoConfig?.extra?.nativeContractsEnabled === true
-    && pathname === "/__phase6-gesture-smoke";
+    nativeContractsEnabled && pathname === "/__phase6-gesture-smoke";
   const phase12CleanupEnabled =
-    Constants.expoConfig?.extra?.nativeContractsEnabled === true
-    && pathname === "/__phase12-google-cleanup";
+    nativeContractsEnabled && pathname === "/__phase12-google-cleanup";
   const phase12GoogleAuthSmokeEnabled =
-    Constants.expoConfig?.extra?.nativeContractsEnabled === true
-    && pathname === "/__phase12-google-auth-smoke";
+    nativeContractsEnabled && pathname === "/__phase12-google-auth-smoke";
 
   if (!fontsLoaded && fontError === null) {
     return (
@@ -150,7 +164,7 @@ export default function RootLayout() {
       <GestureHandlerRootView style={styles.root} testID="gesture-handler-root">
         <SafeAreaProvider>
           <AppearanceProvider store={attendedPreviewAppearanceStore}>
-            <Slot />
+            <AttendedPreviewNavigator />
           </AppearanceProvider>
         </SafeAreaProvider>
       </GestureHandlerRootView>
