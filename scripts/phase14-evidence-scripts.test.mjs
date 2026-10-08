@@ -17,7 +17,9 @@ import {
   validatePhase14Evidence,
   validatePhase14Privacy,
   validatePhase14SourceInventory,
+  parsePhase14VerifierArgs,
 } from "./verify-phase14-evidence.mjs";
+import { parsePhase14RunnerArgs } from "./run-phase14-maestro.mjs";
 
 const sha256 = (value) => createHash("sha256").update(value).digest("hex");
 const expectedIds = [
@@ -126,4 +128,11 @@ test("Phase 14 rejects privacy hazards, legacy modal owners, and a DEV-02 closur
   }), /phase14_legacy_modal_owner/u);
   assert.doesNotThrow(() => validatePhase14Dev02({ owner_record: "accessible-9b470b", status: "approved", title_hex: "#9B470B", sport_hex: "#D97820", native_blended_fill: { status: "passed", report_sha256: "a".repeat(64) } }));
   assert.throws(() => validatePhase14Dev02({ owner_record: "accessible-9b470b", status: "approved", title_hex: "#9B470B", sport_hex: "#D97820", native_blended_fill: { status: "pending" } }), /phase14_dev02_native_evidence_invalid/u);
+});
+
+test("Phase 14 runner and verifier accept exact canonical subsets and reject ambiguous selection", () => {
+  assert.deepEqual(parsePhase14RunnerArgs(["--manifest", "artifacts/native/phase14/build.json", "--ids", "shell.four-roots,shell.tokens"]), { manifest: "artifacts/native/phase14/build.json", ids: ["shell.four-roots", "shell.tokens"] });
+  assert.throws(() => parsePhase14RunnerArgs(["--manifest", "artifacts/native/phase14/build.json", "--ids", "shell.tokens,shell.tokens"]), /phase14_runner_arguments_invalid/u);
+  assert.deepEqual(parsePhase14VerifierArgs(["--manifest", "artifacts/native/phase14/build.json", "--ids", "shell.four-roots,shell.tokens"]), { manifest: "artifacts/native/phase14/build.json", all: false, ids: ["shell.four-roots", "shell.tokens"] });
+  assert.throws(() => parsePhase14VerifierArgs(["--manifest", "artifacts/native/phase14/build.json", "--all", "--ids", "shell.tokens"]), /phase14_verifier_arguments_invalid/u);
 });

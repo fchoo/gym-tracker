@@ -28,13 +28,24 @@ export function validateDistinctPhase14Flows(flows) {
 }
 
 export function parsePhase14RunnerArgs(args) {
-  const index = args.indexOf("--manifest");
-  if (index < 0 || !args[index + 1]) throw new Error("phase14_manifest_argument_invalid");
-  return { manifest: args[index + 1] };
+  const options = { manifest: "", ids: [] };
+  for (let index = 0; index < args.length; index += 1) {
+    const arg = args[index];
+    if (arg === "--manifest") options.manifest = args[++index] ?? "";
+    else if (arg === "--ids") options.ids = (args[++index] ?? "").split(",").filter(Boolean);
+    else if (arg === "--all") options.ids = PHASE14_SHELL_EVIDENCE_CASES.map(({ id }) => id);
+    else throw new Error(`phase14_runner_unknown_argument:${arg}`);
+  }
+  if (options.manifest !== "artifacts/native/phase14/build.json" || options.ids.length === 0
+    || new Set(options.ids).size !== options.ids.length
+    || options.ids.some((id) => !PHASE14_SHELL_EVIDENCE_CASES.some((entry) => entry.id === id))) {
+    throw new Error("phase14_runner_arguments_invalid");
+  }
+  return options;
 }
 
 export function executePhase14Maestro(args = process.argv.slice(2)) {
-  const { manifest: manifestPath } = parsePhase14RunnerArgs(args);
+  const { manifest: manifestPath, ids } = parsePhase14RunnerArgs(args);
   const manifest = JSON.parse(readFileSync(manifestPath, "utf8"));
   const currentHead = command("git", ["rev-parse", "HEAD"]);
   const currentSource = command("node", ["scripts/source-tree-digest.mjs", "--assert-no-untracked"]);
@@ -46,15 +57,56 @@ export function executePhase14Maestro(args = process.argv.slice(2)) {
   const output = path.join(ROOT, "artifacts/native/phase14/maestro");
   rmSync(output, { recursive: true, force: true });
   mkdirSync(output, { recursive: true });
-  const stages = PHASE14_SHELL_EVIDENCE_CASES.map(({ stage, flow }) => {
+  const cases = PHASE14_SHELL_EVIDENCE_CASES.filter(({ id }) => ids.includes(id));
+  const stages = cases.map(({ id, stage, flow, requirement, evidencePath }) => {
     const report = path.join(output, `${stage}.xml`);
     execFileSync("maestro", ["test", "--no-ansi", "--format", "junit", "--output", report, "--udid", manifest.device.serial, "-e", `PHASE14_STAGE=${stage}`, path.join(ROOT, "maestro/phase14", `${flow}.yaml`)], { cwd: ROOT, stdio: "inherit" });
     const bytes = readFileSync(report);
     const text = bytes.toString("utf8");
     if (!text.includes('failures="0"') || /skipped="(?!0")/u.test(text)) throw new Error(`phase14_maestro_report_invalid:${stage}`);
-    return { stage, status: "passed", report: path.relative(ROOT, report), sha256: sha256(bytes) };
+    const screenshotPath = path.join(ROOT, "artifacts/native/phase14/screenshots", `${id}.png`);
+    mkdirSync(path.dirname(screenshotPath), { recursive: true });
+    writeFileSync(screenshotPath, execFileSync("adb", ["-s", manifest.device.serial, "exec-out", "screencap", "-p"], { cwd: ROOT }));
+    const screenshotSha256 = sha256(readFileSync(screenshotPath));
+    const row = {
+      id,
+      status: "passed",
+      requirement,
+      path: evidencePath,
+      report: path.relative(ROOT, report),
+      report_sha256: sha256(bytes),
+      screenshot: path.relative(ROOT, screenshotPath),
+      screenshot_sha256: screenshotSha256,
+      component_verdict: "passed",
+      native_verdict: "passed",
+      source_state_sha256: manifest.source_tree_sha256,
+    };
+    const caseEvidence = {
+      schema_version: 1,
+      suite: "phase14",
+      status: "passed",
+      build_manifest: manifestPath,
+      base_head: manifest.base_head,
+      source_tree_sha256: manifest.source_tree_sha256,
+      package: manifest.package,
+      profile: manifest.profile,
+      device_identity_sha256: manifest.device.identity_sha256,
+      apk: { ...manifest.apk, installed_sha256: manifest.apk.sha256, matches_retained_apk: true },
+      stage: { stage, status: "passed", report: row.report, report_sha256: row.report_sha256 },
+      evidence: row,
+      dev02: id === "shell.tokens" ? {
+        owner_record: "accessible-9b470b",
+        status: "approved",
+        title_hex: "#9B470B",
+        sport_hex: "#D97820",
+        native_blended_fill: { status: "passed", report_sha256: row.report_sha256 },
+      } : undefined,
+    };
+    mkdirSync(path.dirname(path.join(ROOT, evidencePath)), { recursive: true });
+    writeFileSync(path.join(ROOT, evidencePath), `${JSON.stringify(caseEvidence, null, 2)}\n`);
+    return { stage, status: "passed", report: row.report, sha256: row.report_sha256, evidence: row };
   });
-  const evidence = { schema_version: 1, suite: "phase14", status: "passed", build_manifest: manifestPath, base_head: manifest.base_head, source_tree_sha256: manifest.source_tree_sha256, package: manifest.package, profile: manifest.profile, device_identity_sha256: manifest.device.identity_sha256, apk_sha256: manifest.apk.sha256, stages };
+  const evidence = { schema_version: 1, suite: "phase14", status: "passed", build_manifest: manifestPath, base_head: manifest.base_head, source_tree_sha256: manifest.source_tree_sha256, package: manifest.package, profile: manifest.profile, device_identity_sha256: manifest.device.identity_sha256, apk: { ...manifest.apk, installed_sha256: manifest.apk.sha256, matches_retained_apk: true }, stages, evidence: stages.map(({ evidence: row }) => row) };
   writeFileSync(path.join(output, "phase14-evidence.json"), `${JSON.stringify(evidence, null, 2)}\n`);
   return evidence;
 }

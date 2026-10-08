@@ -209,6 +209,7 @@ device_api=$(adb -s "$device_serial" shell getprop ro.build.version.sdk | tr -d 
 device_abi=$(adb -s "$device_serial" shell getprop ro.product.cpu.abi | tr -d '\r')
 device_model=$(adb -s "$device_serial" shell getprop ro.product.model | tr -d '\r')
 android_release=$(adb -s "$device_serial" shell getprop ro.build.version.release | tr -d '\r')
+device_identity_sha256=$(adb -s "$device_serial" shell getprop | shasum -a 256 | awk '{ print $1 }')
 build_finished_at=$(date -u '+%Y-%m-%dT%H:%M:%SZ')
 
 BUILD_MANIFEST="$build_manifest" \
@@ -224,6 +225,7 @@ BUILD_MANIFEST="$build_manifest" \
   DEVICE_ABI="$device_abi" \
   DEVICE_MODEL="$device_model" \
   ANDROID_RELEASE="$android_release" \
+  DEVICE_IDENTITY_SHA256="$device_identity_sha256" \
   INSTALLED_APK_PATH="$installed_apk_path" \
   INSTALLED_APK_SHA256="$installed_apk_sha256" \
   LAUNCH_COMPONENT="$launch_component" \
@@ -268,6 +270,7 @@ const manifest = {
     abi: process.env.DEVICE_ABI,
     model: process.env.DEVICE_MODEL,
     android_release: process.env.ANDROID_RELEASE,
+    identity_sha256: process.env.DEVICE_IDENTITY_SHA256,
   },
   toolchain: {
     node: '24.19.0',
