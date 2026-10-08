@@ -311,6 +311,16 @@ async function seedStrengthActivationFixture(
       [dayId, planId],
     );
     await transaction.execute(
+      `INSERT INTO exercise_library_entries
+        (exercise_id, origin, canonical_name, exercise_type, movement_class,
+         metric_profile, metric_contract_version, exercise_metric_generation,
+         availability, revision)
+       VALUES (
+         'native-strength-exercise', 'custom', 'Native Strength exercise',
+         'strength', 'compound', 'load_reps', 1, 1, 'available', 1
+       )`,
+    );
+    await transaction.execute(
       `INSERT INTO exercises
         (id, content_pack_id, origin, source_namespace, upstream_id, name,
          metric_profile, metric_contract_version, exercise_metric_generation,
@@ -460,6 +470,26 @@ const caseAssertions: Record<
     invariant(row?.user_version === migrations.at(-1)?.version, "phase13_migration_version_invalid");
   },
   async "phase13-map01-activation"(kernel) {
+    await kernel.write(async (transaction) => {
+      await transaction.execute(
+        `UPDATE workout_sessions
+         SET status = 'completed',
+             completed_at_ms = COALESCE(completed_at_ms, started_at_ms),
+             active_session_exercise_id = NULL,
+             active_set_id = NULL
+         WHERE status = 'in_progress'`,
+      );
+      await transaction.execute(
+        "UPDATE plans SET is_active = 0 WHERE plan_kind = 'strength' AND is_active = 1",
+      );
+      await transaction.execute(
+        `UPDATE owned_plan_schedules
+         SET lifecycle = 'inactive',
+             deactivated_at_ms = COALESCE(deactivated_at_ms, ?)
+         WHERE plan_kind = 'strength' AND lifecycle = 'active'`,
+        [PHASE13_NATIVE_EVENT_TIME_MS - 2],
+      );
+    });
     const running = await seedRunningFixture(kernel, "map01");
     await seedStrengthActivationFixture(kernel, "map01");
     const pairs = await kernel.queryAll<{ plan_kind: string; plan_id: string }>(
@@ -762,6 +792,13 @@ const caseAssertions: Record<
   },
 };
 
+export function runMultiPlanRunningContractCase(
+  caseId: MultiPlanRunningContractCaseId,
+  kernel: SqliteKernel,
+): Promise<void> {
+  return caseAssertions[caseId](kernel);
+}
+
 export async function createExpoMultiPlanRunningContractAdapter(
   runId: string,
 ): Promise<MultiPlanRunningContractAdapter> {
@@ -772,7 +809,11 @@ export async function createExpoMultiPlanRunningContractAdapter(
     runCase: (caseId: MultiPlanRunningContractCaseId) =>
       caseId === "phase13-migration-failure-cuts"
         ? runMigrationFailureCuts(base, caseId)
-        : withFreshExpoRuntime(base, caseId, caseAssertions[caseId]),
+        : withFreshExpoRuntime(
+            base,
+            caseId,
+            (kernel) => runMultiPlanRunningContractCase(caseId, kernel),
+          ),
     ...(base.cleanup === undefined ? {} : { cleanup: base.cleanup }),
   };
   return Object.freeze(adapter);

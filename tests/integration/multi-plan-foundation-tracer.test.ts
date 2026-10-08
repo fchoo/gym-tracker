@@ -16,6 +16,7 @@ import { migrations } from "../../src/platform/sqlite/migrations";
 import { createRunningPlanRepository } from "../../src/platform/sqlite/repositories/runningPlanRepository";
 import type { SaveRunningSourceGraphInput } from "../../src/domains/running/commands";
 import { createSqliteKernel, type SqliteKernel } from "../../src/platform/sqlite/sqliteKernel";
+import { runMultiPlanRunningContractCase } from "../../src/testing/contracts/multiPlanRunning.contract";
 
 class NodePreparedResult<Row extends Record<string, unknown>> implements SqlitePreparedResult<Row> {
   constructor(readonly changes: number, readonly lastInsertRowId: number, private readonly rows: readonly Row[]) {}
@@ -127,6 +128,13 @@ describe("minimum Running activation and ordered occurrences", () => {
     await expect(kernel.queryAll<{ id: string; ordinal: number }>("SELECT id, ordinal FROM running_session_slot_revisions ORDER BY ordinal")).resolves.toEqual([
       { id: "running-slot-0:revision:1", ordinal: 0 }, { id: "running-slot-1:revision:1", ordinal: 1 },
     ]);
+  });
+
+  it("executes the native MAP-01 activation case against host SQLite", async () => {
+    const kernel = await migratedKernel();
+    await expect(
+      runMultiPlanRunningContractCase("phase13-map01-activation", kernel),
+    ).resolves.toBeUndefined();
   });
 
   it("persists and exactly replays a revision-fenced Running source graph", async () => {
