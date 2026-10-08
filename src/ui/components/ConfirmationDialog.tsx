@@ -12,6 +12,7 @@ type ConfirmationDialogActionsProps = Readonly<{
   cancelLabel: string;
   cancelRef: React.RefObject<View | null>;
   confirmBusy: boolean;
+  confirmDisabled: boolean;
   confirmLabel: string;
   confirmTestID?: string | undefined;
   destructive: boolean;
@@ -26,6 +27,7 @@ function ConfirmationDialogActions({
   cancelLabel,
   cancelRef,
   confirmBusy,
+  confirmDisabled,
   confirmLabel,
   confirmTestID,
   destructive,
@@ -37,13 +39,14 @@ function ConfirmationDialogActions({
   const cancelSheet = useBottomSheetCancel();
   const [submitting, setSubmitting] = useState(false);
   const busy = confirmBusy || submitting;
+  const confirmActionDisabled = busy || confirmDisabled;
 
   useEffect(() => {
     if (!visible || !confirmBusy) setSubmitting(false);
   }, [confirmBusy, confirmLabel, visible]);
 
   const confirm = () => {
-    if (busy) return;
+    if (confirmActionDisabled) return;
     setSubmitting(true);
     onConfirm();
   };
@@ -62,6 +65,7 @@ function ConfirmationDialogActions({
       )}
       <SecondaryAction
         busy={busy}
+        disabled={confirmActionDisabled}
         destructive={destructive}
         label={confirmLabel}
         onPress={confirm}
@@ -79,6 +83,7 @@ export type ConfirmationDialogProps = Readonly<{
   confirmLabel: string;
   confirmTestID?: string | undefined;
   confirmBusy?: boolean;
+  confirmDisabled?: boolean;
   alternateLabel?: string | undefined;
   destructive?: boolean;
   onCancel: () => void;
@@ -87,6 +92,7 @@ export type ConfirmationDialogProps = Readonly<{
   initialFocusRef?: React.RefObject<FocusTarget | null> | undefined;
   restoreFocusRef?: React.RefObject<FocusTarget | null> | undefined;
   scrollTestID?: string | undefined;
+  children?: React.ReactNode;
 }>;
 
 /** A consequential BottomSheet with caller-owned command state and idempotency. */
@@ -98,6 +104,7 @@ export function ConfirmationDialog({
   confirmLabel,
   confirmTestID,
   confirmBusy = false,
+  confirmDisabled = false,
   alternateLabel,
   destructive = false,
   onCancel,
@@ -106,6 +113,7 @@ export function ConfirmationDialog({
   initialFocusRef,
   restoreFocusRef,
   scrollTestID,
+  children,
 }: ConfirmationDialogProps) {
   const { colors } = useAppTheme();
   const cancelRef = useRef<View>(null);
@@ -123,11 +131,13 @@ export function ConfirmationDialog({
       <Text style={[typeScale.body as TextStyle, { color: colors.textSecondary }]}>
         {body}
       </Text>
+      {children}
       <ConfirmationDialogActions
         alternateLabel={alternateLabel}
         cancelLabel={cancelLabel}
         cancelRef={cancelRef}
         confirmBusy={confirmBusy}
+        confirmDisabled={confirmDisabled}
         confirmLabel={confirmLabel}
         confirmTestID={confirmTestID}
         destructive={destructive}

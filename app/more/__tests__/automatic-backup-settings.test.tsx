@@ -40,7 +40,9 @@ describe("AutomaticBackupSettingsRoute", () => {
     expect(mockRuntime.setAutomaticBackupDataUsePolicy).toHaveBeenCalledWith("wifi_and_cellular");
     await fireEvent.press(screen.getByRole("button", { name: "Disconnect Google Drive" }));
     expect(screen.getByText(/cloud backups remain in Drive/u)).toBeOnTheScreen();
-    await fireEvent.press(screen.getByRole("button", { name: "Disconnect Google Drive" }));
+    const confirmDisconnect = screen.getAllByRole("button", { name: "Disconnect Google Drive" })[1];
+    if (confirmDisconnect === undefined) throw new Error("Disconnect confirmation is missing");
+    await fireEvent.press(confirmDisconnect);
     expect(mockRuntime.disconnectAutomaticBackup).toHaveBeenCalledTimes(1);
     await fireEvent.press(screen.getByRole("button", { name: "Delete cloud backup…" }));
     const confirmation = screen.getByLabelText("Type DELETE to delete cloud backup");
