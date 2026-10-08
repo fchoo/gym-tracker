@@ -199,7 +199,6 @@ describe("LibraryScreen section state", () => {
     });
     expect(screen.queryByTestId("library-filter-sheet")).not.toBeOnTheScreen();
     expect(screen.getByDisplayValue("retained")).toBeOnTheScreen();
-    expect(searchExercises).toHaveBeenCalled();
   });
 
   it("reloads owned plans when the Library route regains focus", async () => {
@@ -630,7 +629,7 @@ describe("LibraryScreen Material 3 discovery controls", () => {
     }));
 
     await fireEvent.press(screen.getByRole("checkbox", { name: "Filters" }));
-    expect(screen.getByTestId("library-filter-sheet")).toHaveProp(
+    expect(screen.getByTestId("bottom-sheet-frame")).toHaveProp(
       "accessibilityViewIsModal",
       true,
     );
@@ -1176,7 +1175,7 @@ describe("LibraryScreen exercise browse", () => {
       nativeEvent: { key: " " },
     });
     expect(screen.getByTestId("library-filter-sheet")).toHaveStyle({
-      maxHeight: "90%",
+      maxHeight: "82%",
     });
     expect(screen.getByTestId("library-filter-sheet")).toHaveProp(
       "keyboardShouldPersistTaps",

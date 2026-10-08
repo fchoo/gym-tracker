@@ -8,8 +8,6 @@ import {
   Star,
 } from "lucide-react-native";
 import {
-  Modal,
-  ScrollView,
   StyleSheet,
   Text,
   View,
@@ -41,6 +39,7 @@ import {
   SecondaryAction,
   SkeletonBlock,
 } from "../components";
+import { BottomSheet } from "../components/BottomSheet";
 import {
   radius,
   sizes,
@@ -942,6 +941,7 @@ function FilterSheet({
   selectedFilters,
   onApply,
   onClose,
+  restoreFocusRef,
 }: Readonly<{
   options: Readonly<{
     exerciseTypes: readonly string[];
@@ -952,15 +952,13 @@ function FilterSheet({
   selectedFilters: SearchFilters;
   onApply(filters: SearchFilters): void;
   onClose(): void;
+  restoreFocusRef: React.RefObject<View | null>;
 }>) {
   const { colors } = useAppTheme();
   const [draft, setDraft] = useState<SearchFilters>(selectedFilters);
-  const headingRef = useRef<View>(null);
-
   useEffect(() => {
     if (visible) {
       setDraft(selectedFilters);
-      headingRef.current?.focus();
     }
   }, [selectedFilters, visible]);
 
@@ -1032,35 +1030,15 @@ function FilterSheet({
     },
   ];
   return (
-    <Modal
-      animationType="none"
-      onRequestClose={onClose}
-      transparent
+    <BottomSheet
+      heading="Exercise filters"
+      onCancel={onClose}
+      restoreFocusRef={restoreFocusRef}
+      scrollTestID="library-filter-sheet"
+      testID="library-filter-sheet-frame"
       visible={visible}
     >
-      <View style={styles.modalBackdrop}>
-        <ScrollView
-          accessibilityViewIsModal
-          contentContainerStyle={styles.filterSheetContent}
-          keyboardShouldPersistTaps="handled"
-          style={[styles.filterSheet, { backgroundColor: colors.surface }]}
-          testID="library-filter-sheet"
-        >
-          <View
-            accessibilityRole="header"
-            accessible
-            focusable
-            ref={headingRef}
-          >
-            <Text
-              style={[
-                typeScale.screenTitle as TextStyle,
-                { color: colors.textPrimary },
-              ]}
-            >
-              Exercise filters
-            </Text>
-          </View>
+          
           <Text style={[typeScale.body as TextStyle, { color: colors.textSecondary }]}>
             Select any value within a category. Categories combine together.
           </Text>
@@ -1088,9 +1066,7 @@ function FilterSheet({
             onPress={() => onApply(draft)}
           />
           <SecondaryAction label="Keep Current Filters" onPress={onClose} />
-        </ScrollView>
-      </View>
-    </Modal>
+    </BottomSheet>
   );
 }
 
@@ -1100,21 +1076,21 @@ function StarterFilterSheet({
   selectedFilters,
   onApply,
   onClose,
+  restoreFocusRef,
 }: Readonly<{
   starters: readonly LibraryStarterPlanSummary[];
   visible: boolean;
   selectedFilters: StarterFilters;
   onApply(filters: StarterFilters): void;
   onClose(): void;
+  restoreFocusRef: React.RefObject<View | null>;
 }>) {
   const { colors } = useAppTheme();
   const [draft, setDraft] = useState<StarterFilters>(selectedFilters);
-  const headingRef = useRef<View>(null);
 
   useEffect(() => {
     if (visible) {
       setDraft(selectedFilters);
-      headingRef.current?.focus();
     }
   }, [selectedFilters, visible]);
 
@@ -1164,33 +1140,14 @@ function StarterFilterSheet({
   ];
 
   return (
-    <Modal
-      animationType="none"
-      onRequestClose={onClose}
-      transparent
+    <BottomSheet
+      heading="Starter filters"
+      onCancel={onClose}
+      restoreFocusRef={restoreFocusRef}
+      scrollTestID="starter-filter-sheet"
+      testID="starter-filter-sheet-frame"
       visible={visible}
     >
-      <View style={styles.modalBackdrop}>
-        <ScrollView
-          accessibilityViewIsModal
-          contentContainerStyle={styles.filterSheetContent}
-          keyboardShouldPersistTaps="handled"
-          style={[styles.filterSheet, { backgroundColor: colors.surface }]}
-          testID="starter-filter-sheet"
-        >
-          <View
-            accessibilityRole="header"
-            accessible
-            focusable
-            ref={headingRef}
-          >
-            <Text style={[
-              typeScale.screenTitle as TextStyle,
-              { color: colors.textPrimary },
-            ]}>
-              Starter filters
-            </Text>
-          </View>
           <Text style={[
             typeScale.body as TextStyle,
             { color: colors.textSecondary },
@@ -1219,9 +1176,7 @@ function StarterFilterSheet({
             onPress={() => onApply(draft)}
           />
           <SecondaryAction label="Keep Current Filters" onPress={onClose} />
-        </ScrollView>
-      </View>
-    </Modal>
+    </BottomSheet>
   );
 }
 
@@ -1267,7 +1222,6 @@ export function LibraryScreen({
   const [starterFilters, setStarterFilters] = useState<StarterFilters>({});
   const filterActionRef = useRef<View>(null);
   const reviewActionRef = useRef<View>(null);
-  const reviewHeadingRef = useRef<View>(null);
   const scrollOffsetsRef = useRef<Record<LibrarySection, number>>({
     plans: 0,
     exercises: 0,
@@ -1285,12 +1239,6 @@ export function LibraryScreen({
     ? 0
     : planResultCount(snapshot, processState.plans.query, starterFilters);
   const exercisesResultCount = exerciseBrowse.items.length;
-
-  useEffect(() => {
-    if (reviewedUpdate !== null) {
-      reviewHeadingRef.current?.focus();
-    }
-  }, [reviewedUpdate]);
 
   useEffect(() => {
     mountedRef.current = true;
@@ -1866,12 +1814,11 @@ export function LibraryScreen({
           onApply={(filters) => {
             setStarterFilters(filters);
             setFilterVisible(false);
-            filterActionRef.current?.focus();
           }}
           onClose={() => {
             setFilterVisible(false);
-            filterActionRef.current?.focus();
           }}
+          restoreFocusRef={filterActionRef}
           selectedFilters={starterFilters}
           starters={snapshot?.plans.starters ?? []}
           visible={filterVisible}
@@ -1888,41 +1835,23 @@ export function LibraryScreen({
               filters: equipment,
             });
             setFilterVisible(false);
-            filterActionRef.current?.focus();
           }}
           onClose={() => {
             setFilterVisible(false);
-            filterActionRef.current?.focus();
           }}
+          restoreFocusRef={filterActionRef}
           selectedFilters={activeState.filters}
           visible={filterVisible}
         />
       )}
-      <Modal
-        animationType="none"
-        onRequestClose={() => {
-          setReviewedUpdate(null);
-          reviewActionRef.current?.focus();
-        }}
-        transparent
+      <BottomSheet
+        heading="Exercise library changes"
+        onCancel={() => setReviewedUpdate(null)}
+        restoreFocusRef={reviewActionRef}
+        scrollTestID="library-update-sheet"
+        testID="library-update-sheet-frame"
         visible={reviewedUpdate !== null}
       >
-        <View style={styles.modalBackdrop}>
-          <ScrollView
-            accessibilityViewIsModal
-            contentContainerStyle={styles.filterSheetContent}
-            keyboardShouldPersistTaps="handled"
-            style={[styles.filterSheet, { backgroundColor: colors.surface }]}
-            testID="library-update-sheet"
-          >
-            <View
-              accessibilityRole="header"
-              accessible
-              focusable
-              ref={reviewHeadingRef}
-            >
-              <Text>Exercise library changes</Text>
-            </View>
             <Text>
               {reviewedUpdate === null
                 ? ""
@@ -1933,14 +1862,9 @@ export function LibraryScreen({
             </Text>
             <SecondaryAction
               label="Close changes"
-              onPress={() => {
-                setReviewedUpdate(null);
-                reviewActionRef.current?.focus();
-              }}
+              onPress={() => setReviewedUpdate(null)}
             />
-          </ScrollView>
-        </View>
-      </Modal>
+      </BottomSheet>
     </>
   );
 }
@@ -2004,17 +1928,5 @@ const styles = StyleSheet.create({
     justifyContent: "center",
     minHeight: sizes.minimumTarget,
     minWidth: sizes.minimumTarget,
-  },
-  modalBackdrop: {
-    backgroundColor: "rgba(0, 0, 0, 0.48)",
-    flex: 1,
-    justifyContent: "flex-end",
-  },
-  filterSheet: {
-    maxHeight: "90%",
-  },
-  filterSheetContent: {
-    gap: space[4],
-    padding: space[6],
   },
 });
