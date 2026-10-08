@@ -168,6 +168,40 @@ async function renderLibrary(
 }
 
 describe("LibraryScreen section state", () => {
+  it("keeps Library context while a shared filter sheet is opened, themed, and safely dismissed", async () => {
+    const searchExercises = jest.fn(async () => ({
+      state: "page" as const,
+      items: [exercise({ canonicalName: "Retained exercise" })],
+      nextCursor: null,
+    }));
+    const { rendered, props } = await renderLibrary({
+      loadLibrary: jest.fn(async () => snapshot("exercises")),
+      searchExercises,
+    });
+
+    const search = await screen.findByLabelText("Search exercises");
+    await fireEvent.changeText(search, "retained");
+    await fireEvent.press(screen.getByRole("checkbox", { name: "Filters" }));
+
+    expect(screen.getByTestId("bottom-sheet-frame")).toBeOnTheScreen();
+    expect(screen.getByTestId("library-filter-sheet"))
+      .toHaveProp("keyboardShouldPersistTaps", "handled");
+
+    await rendered.rerender(
+      <AppearanceProvider store={{ read: () => "Dark", write: () => undefined }}>
+        <LibraryScreen {...props} />
+      </AppearanceProvider>,
+    );
+
+    expect(screen.getByDisplayValue("retained")).toBeOnTheScreen();
+    await fireEvent(screen.getByTestId("bottom-sheet-frame"), "keyDown", {
+      nativeEvent: { key: "Escape", preventDefault: jest.fn() },
+    });
+    expect(screen.queryByTestId("library-filter-sheet")).not.toBeOnTheScreen();
+    expect(screen.getByDisplayValue("retained")).toBeOnTheScreen();
+    expect(searchExercises).toHaveBeenCalled();
+  });
+
   it("reloads owned plans when the Library route regains focus", async () => {
     const loadLibrary = jest.fn(async () => snapshot());
     const refreshLibrary = jest.fn<() => Promise<LibraryBrowseSnapshot>>()
