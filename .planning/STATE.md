@@ -5,16 +5,16 @@ milestone_name: Prototype Parity, Concurrent Plans & Garmin Import — PLANNED
 current_phase: 14
 current_phase_name: Prototype Visual Shell
 status: executing
-stopped_at: Completed 14-01-PLAN.md
-last_updated: "2026-10-08T14:13:18.039Z"
+stopped_at: Completed 14-02-PLAN.md
+last_updated: "2026-10-08T17:27:29.452Z"
 last_activity: 2026-10-08
 last_activity_desc: Phase 14 execution started
-state_head: a75e8e3d44ea703f5fee9eb6031a93e9ca1d748b
+state_head: 42ba0539f6631bdf408462ab57d527201e1b2a6a
 progress:
   total_phases: 8
   completed_phases: 1
   total_plans: 98
-  completed_plans: 17
+  completed_plans: 18
   percent: 13
 ---
 
@@ -30,7 +30,7 @@ See: .planning/PROJECT.md (updated 2026-10-06)
 ## Current Position
 
 Phase: 14 (Prototype Visual Shell) — EXECUTING
-Plan: 2 of 12
+Plan: 3 of 12
 Status: Ready to execute
 Last activity: 2026-10-08 — Phase 14 execution started
 
@@ -57,6 +57,7 @@ Gym Tracker remains a signed personal-use Android APK/AAB with SQLite-authoritat
 | Phase 13 P01 | 5 min | 3 tasks | 6 files |
 | Phase 13 P02 | 43min | 3 tasks | 15 files |
 | Phase 14 P01 | 9m | 2 tasks | 10 files |
+| Phase 14 P02 | 9m | 3 tasks | 12 files |
 
 ## Accumulated Context
 
@@ -78,6 +79,9 @@ Gym Tracker remains a signed personal-use Android APK/AAB with SQLite-authoritat
 - [Phase 13]: Running opportunity identity is schedule-version plus stable slot plus local date/timezone, never date-only.
 - [Phase 14]: ArchivoVariable remains proof-only until Plan 14-02 records a clean-tree Android font-axis verdict.
 - [Phase 14]: Phase 14 font proof binds source tree, APK, package/profile, source registry, cases, and screenshot overlays before accepting evidence.
+- [Phase 14]: Revision 18 font approval is sealed to ddced4d8, the supplied source/APK hashes, and both reviewed scale overlays.
+- [Phase 14]: Appearance preserves System as null and retains the last authoritative value when a SQLite write fails.
+- [Phase 14]: Loading keeps all four roots disabled at the bottom; font and appearance failures stop before trusted runtime mounting.
 
 ### Pending Owner Review
 
@@ -102,7 +106,7 @@ Gym Tracker remains a signed personal-use Android APK/AAB with SQLite-authoritat
 
 ## Session Continuity
 
-Last session: 2026-10-08T14:13:17.916Z
-Stopped at: Completed 14-01-PLAN.md
+Last session: 2026-10-08T17:27:29.411Z
+Stopped at: Completed 14-02-PLAN.md
 Resume file: None
 Next action: Present the complete planning set for owner review; after explicit approval, run `/gsd-execute-phase 13`.

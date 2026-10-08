@@ -2,9 +2,9 @@
 schema_version: 1
 open_count: 0
 waived_count: 0
-fixed_count: 82
-total_count: 82
-last_updated: 2026-10-07T12:40:28.048Z
+fixed_count: 83
+total_count: 83
+last_updated: 2026-10-08T17:28:17.795Z
 ---
 
 # Broken Windows Ledger
@@ -97,6 +97,7 @@ last_updated: 2026-10-07T12:40:28.048Z
 | 80 | 12 | deviation | src/platform/sqlite/repositories/logicalMergeRepository.ts |  | Batched maximum full-plan writes and scoped exact verification without weakening validation | fixed |  | 2026-09-30T21:53:15.104Z | 2026-09-30T21:54:13.039Z |
 | 81 | 12 | deviation | scripts/benchmark-phase12-backup.mjs |  | Closed the tenth preflight RSS window before materialization | fixed |  | 2026-09-30T21:53:15.256Z | 2026-09-30T21:54:13.191Z |
 | 82 | 13 | unrun-verify | src/bootstrap/workoutAppRuntime.test.tsx |  | Full runtime test file has unrelated fake-kernel migration_verify_failed; focused timing cases pass. | fixed |  | 2026-10-07T12:36:56.865Z | 2026-10-07T12:40:28.048Z |
+| 83 | 14 | deviation | src/ui/__tests__/foundation.test.tsx |  | Replaced stale expanded loading-rail assertion with the all-width bottom-navigation contract | fixed |  | 2026-10-08T17:27:28.512Z | 2026-10-08T17:28:17.795Z |
 
 ````json
 [
@@ -1083,6 +1084,18 @@ last_updated: 2026-10-07T12:40:28.048Z
     "reason": "",
     "recorded_at": "2026-10-07T12:36:56.865Z",
     "resolved_at": "2026-10-07T12:40:28.048Z"
+  },
+  {
+    "id": 83,
+    "kind": "deviation",
+    "phase": "14",
+    "file": "src/ui/__tests__/foundation.test.tsx",
+    "line": null,
+    "description": "Replaced stale expanded loading-rail assertion with the all-width bottom-navigation contract",
+    "status": "fixed",
+    "reason": "",
+    "recorded_at": "2026-10-08T17:27:28.512Z",
+    "resolved_at": "2026-10-08T17:28:17.795Z"
   }
 ]
 ````
