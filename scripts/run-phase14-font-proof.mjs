@@ -71,10 +71,19 @@ export function validatePhase14FontProofArtifacts({ manifest, report, currentHea
 }
 
 function adb(serial, ...args) { return execFileSync("adb", ["-s", serial, ...args], { encoding: "utf8" }); }
-function xmlAttribute(xml, id, attribute) {
+export function xmlAttribute(xml, id, attribute) {
   const node = xml.match(new RegExp(`<[^>]+resource-id="[^"]*${id}"[^>]*>`, "u"))?.[0];
-  const value = node?.match(new RegExp(`${attribute}="([^"]*)"`, "u"))?.[1];
-  return value?.replace(/&quot;/gu, "\"").replace(/&amp;/gu, "&");
+  const match = node?.match(new RegExp(
+    `${attribute}=(?:"([^"]*)"|'([^']*)')`,
+    "u",
+  ));
+  const value = match?.[1] ?? match?.[2];
+  return value
+    ?.replace(/&quot;/gu, "\"")
+    .replace(/&apos;/gu, "'")
+    .replace(/&lt;/gu, "<")
+    .replace(/&gt;/gu, ">")
+    .replace(/&amp;/gu, "&");
 }
 function observationFromHierarchy(xml) {
   const raw = xmlAttribute(xml, "phase14-font-proof-observation", "text");

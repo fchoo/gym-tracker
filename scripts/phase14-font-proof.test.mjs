@@ -11,6 +11,7 @@ import {
   withRestoredFontScale,
   validatePhase14FontProofArtifacts,
   validatePhase14FontProofManifest,
+  xmlAttribute,
 } from "./run-phase14-font-proof.mjs";
 
 const hash = (value) => createHash("sha256").update(value).digest("hex");
@@ -119,6 +120,20 @@ test("font proof waits for the populated observation rather than only its root",
   const runner = readFileSync(new URL("./run-phase14-font-proof.mjs", import.meta.url), "utf8");
   assert.match(runner, /phase14-font-proof-root[\s\S]*phase14-font-proof-observation[\s\S]*xmlAttribute\(xml, "phase14-font-proof-observation", "text"\)/u);
   assert.match(runner, /if \(xml\.includes[\s\S]*wait\(1000\);/u);
+});
+
+test("font proof reads Android hierarchy JSON from single- or double-quoted attributes", () => {
+  const singleQuoted = '<node text=\'{&quot;family&quot;:&quot;ArchivoVariable&quot;}\' resource-id="phase14-font-proof-observation" />';
+  const doubleQuoted = '<node text="{&quot;family&quot;:&quot;ArchivoVariable&quot;}" resource-id="phase14-font-proof-observation" />';
+
+  assert.equal(
+    xmlAttribute(singleQuoted, "phase14-font-proof-observation", "text"),
+    '{"family":"ArchivoVariable"}',
+  );
+  assert.equal(
+    xmlAttribute(doubleQuoted, "phase14-font-proof-observation", "text"),
+    '{"family":"ArchivoVariable"}',
+  );
 });
 
 test("font proof restores the original font scale when observation fails", () => {
