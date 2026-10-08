@@ -131,7 +131,7 @@ describe("Plan 01-03 test and boundary tooling", () => {
     ).toHaveLength(2);
     expect(
       buildScript.match(/EXPO_PUBLIC_NATIVE_CONTRACT_SUITE="\$suite"/gu),
-    ).toHaveLength(2);
+    ).toHaveLength(3);
     expect(configValidator).toContain("assets/app.config");
     expect(buildScript).toContain(
       "scripts/validate-development-test-app-config.mjs",
