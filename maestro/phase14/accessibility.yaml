@@ -25,7 +25,7 @@ tags:
       - tapOn: "Appearance"
       - assertVisible: "Appearance"
       - pressKey: BACK
-      - assertVisible: "App Settings"
+      - assertVisible: "Workout"
 - runFlow:
     when:
       true: ${PHASE14_STAGE == 'phase14-toasts'}
