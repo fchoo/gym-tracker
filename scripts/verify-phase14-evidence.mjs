@@ -1,6 +1,7 @@
 import { createHash } from "node:crypto";
 import { execFileSync } from "node:child_process";
-import { existsSync, readFileSync, writeFileSync } from "node:fs";
+import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
 import path from "node:path";
 
 import { PHASE14_SHELL_EVIDENCE_CASES } from "../src/testing/contracts/phase14Shell.contract.ts";
@@ -11,6 +12,17 @@ const ROOT = process.cwd();
 const sha256 = (value) => createHash("sha256").update(value).digest("hex");
 const hash = /^[a-f0-9]{64}$/u;
 const expectedIds = PHASE14_SHELL_EVIDENCE_CASES.map(({ id }) => id);
+
+function readInstalledApkBytes(serial, installedPath) {
+  const temporaryDirectory = mkdtempSync(path.join(tmpdir(), "phase14-evidence-"));
+  const localApkPath = path.join(temporaryDirectory, "installed.apk");
+  try {
+    execFileSync("adb", ["-s", serial, "pull", installedPath, localApkPath], { cwd: ROOT, stdio: "ignore" });
+    return readFileSync(localApkPath);
+  } finally {
+    rmSync(temporaryDirectory, { recursive: true, force: true });
+  }
+}
 
 export function validatePhase14Privacy(value, pathName = "evidence") {
   if (typeof value === "string" && /(?:^\/|\\\\|\bselect\b|\binsert\b|\bupdate\b|\bdelete\b|access[_-]?token|refresh[_-]?token|password|archive[_-]?bytes|@[a-z0-9.-]+\.[a-z]{2,})/iu.test(value)) throw new Error("phase14_privacy_invalid");
@@ -80,7 +92,7 @@ export function executePhase14EvidenceVerifier(args = process.argv.slice(2)) {
   const apkPath = path.resolve(ROOT, manifest.apk.path);
   if (!existsSync(apkPath)) throw new Error("phase14_apk_missing");
   const installedPath = execFileSync("adb", ["-s", manifest.device.serial, "shell", "pm", "path", manifest.package], { cwd: ROOT, encoding: "utf8" }).trim().replace(/^package:/u, "");
-  const installedApkBytes = execFileSync("adb", ["-s", manifest.device.serial, "exec-out", "cat", installedPath], { cwd: ROOT });
+  const installedApkBytes = readInstalledApkBytes(manifest.device.serial, installedPath);
   const deviceIdentitySha256 = sha256(execFileSync("adb", ["-s", manifest.device.serial, "shell", "getprop"], { cwd: ROOT, encoding: "utf8" }));
   validatePhase14CurrentArtifacts({ manifest, currentHead: execFileSync("git", ["rev-parse", "HEAD"], { cwd: ROOT, encoding: "utf8" }).trim(), currentSourceTreeSha256: sourceTreeSha256(ROOT), apkBytes: readFileSync(apkPath), installedApkSha256: sha256(installedApkBytes), deviceIdentitySha256 });
   const ids = options.all ? expectedIds : options.ids;
