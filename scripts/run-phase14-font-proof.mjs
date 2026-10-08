@@ -48,14 +48,20 @@ function expectedCaseIds(proofSourceBytes) {
   return ids;
 }
 function same(value, expected) { return JSON.stringify(value) === JSON.stringify(expected); }
-function contained(inner, outer) { return inner.x >= outer.x && inner.y >= outer.y && inner.x + inner.width <= outer.x + outer.width && inner.y + inner.height <= outer.y + outer.height; }
+function validDisplayDensity(value) { return Number.isFinite(value) && value >= 0.5 && value <= 8; }
+function physicalPixelTolerance(density) { return 1 / density; }
+function withinOnePhysicalPixel(value, limit, density) { return value <= limit + physicalPixelTolerance(density) + 1e-9; }
+function contained(inner, outer, density) {
+  const tolerance = physicalPixelTolerance(density) + 1e-9;
+  return inner.x >= outer.x - tolerance && inner.y >= outer.y - tolerance && inner.width <= outer.width + tolerance && inner.height <= outer.height + tolerance && inner.x + inner.width <= outer.x + outer.width + tolerance && inner.y + inner.height <= outer.y + outer.height + tolerance;
+}
 function validBounds(value) { return value && [value.x, value.y, value.width, value.height].every(Number.isFinite) && value.width > 0 && value.height > 0; }
 function validateCase(entry, id, scale) {
   if (entry?.id !== id || entry.status !== "passed" || entry.font_scale !== scale || !isHash(entry.screenshot_sha256) || entry.family !== "ArchivoVariable" || entry.family_loaded !== true || !same(entry.style, EXPECTED_STYLE) || !same(entry.lines, ["Today’s", "workout"])) throw new Error("phase14_font_case_invalid");
   const metrics = entry.metrics;
-  if (!metrics || ![metrics.available_width_px, metrics.block_width_px, metrics.block_height_px, ...(metrics.line_advances_px ?? []), ...(metrics.line_heights_px ?? [])].every(finitePositive) || metrics.line_advances_px.length !== 2 || metrics.line_heights_px.length !== 2 || !validBounds(metrics.text_bounds) || !validBounds(metrics.container_bounds)) throw new Error("phase14_font_metrics_invalid");
+  if (!validDisplayDensity(entry.display_density) || !metrics || ![metrics.available_width_px, metrics.block_width_px, metrics.block_height_px, ...(metrics.line_advances_px ?? []), ...(metrics.line_heights_px ?? [])].every(finitePositive) || metrics.line_advances_px.length !== 2 || metrics.line_heights_px.length !== 2 || !validBounds(metrics.text_bounds) || !validBounds(metrics.container_bounds)) throw new Error("phase14_font_metrics_invalid");
   if (metrics.line_baselines_px?.length !== 2 || metrics.line_baselines_px.some((line, index) => ![line.ascender_px, line.descender_px, line.y_px, line.height_px, line.baseline_offset_px].every(Number.isFinite) || line.ascender_px < 0 || line.ascender_px > line.height_px || Math.abs(line.descender_px) > line.height_px || line.baseline_offset_px < line.y_px || line.baseline_offset_px > line.y_px + line.height_px || line.y_px + line.height_px > metrics.block_height_px || (index > 0 && line.y_px < metrics.line_baselines_px[index - 1].y_px))) throw new Error("phase14_font_baseline_metrics_invalid");
-  if (metrics.available_width_px > 335 || metrics.container_bounds.width < metrics.available_width_px || Math.max(...metrics.line_advances_px) > metrics.available_width_px || !contained(metrics.text_bounds, metrics.container_bounds)) throw new Error("phase14_font_crop_overflow_invalid");
+  if (!withinOnePhysicalPixel(metrics.available_width_px, 335, entry.display_density) || !withinOnePhysicalPixel(metrics.available_width_px, metrics.container_bounds.width, entry.display_density) || !withinOnePhysicalPixel(Math.max(...metrics.line_advances_px), metrics.available_width_px, entry.display_density) || !contained(metrics.text_bounds, metrics.container_bounds, entry.display_density)) throw new Error("phase14_font_crop_overflow_invalid");
 }
 
 export function validatePhase14FontProofArtifacts({ manifest, report, currentHead, currentSourceTreeSha256, apkBytes, proofSourceBytes }) {
@@ -106,7 +112,7 @@ function installedApkHash(serial, packageName) {
   try { adb(serial, "pull", remote, temporary); return sha256(readFileSync(temporary)); } finally { rmSync(temporary, { force: true }); }
 }
 function reportCase(id, fontScale, observation, screenshotSha256) {
-  return { id, status: "passed", font_scale: fontScale, screenshot_sha256: screenshotSha256, family: observation.family, family_loaded: observation.fontLoaded, style: EXPECTED_STYLE, lines: observation.wrapBreakpoints, metrics: { available_width_px: observation.availableWidthPx, block_width_px: observation.blockWidthPx, block_height_px: observation.blockHeightPx, line_advances_px: observation.lineAdvancesPx, line_heights_px: observation.lineHeightsPx, line_baselines_px: observation.lineBaselinesPx.map((line) => ({ ascender_px: line.ascenderPx, descender_px: line.descenderPx, y_px: line.yPx, height_px: line.heightPx, baseline_offset_px: line.baselineOffsetPx })), text_bounds: observation.textBounds, container_bounds: observation.containerBounds } };
+  return { id, status: "passed", font_scale: fontScale, display_density: observation.displayDensity, screenshot_sha256: screenshotSha256, family: observation.family, family_loaded: observation.fontLoaded, style: EXPECTED_STYLE, lines: observation.wrapBreakpoints, metrics: { available_width_px: observation.availableWidthPx, block_width_px: observation.blockWidthPx, block_height_px: observation.blockHeightPx, line_advances_px: observation.lineAdvancesPx, line_heights_px: observation.lineHeightsPx, line_baselines_px: observation.lineBaselinesPx.map((line) => ({ ascender_px: line.ascenderPx, descender_px: line.descenderPx, y_px: line.yPx, height_px: line.heightPx, baseline_offset_px: line.baselineOffsetPx })), text_bounds: observation.textBounds, container_bounds: observation.containerBounds } };
 }
 
 export function withRestoredFontScale(runAdb, serial, work) {

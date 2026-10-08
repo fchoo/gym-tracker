@@ -128,6 +128,8 @@ describe("Phase2AttendedPreviewRoute", () => {
       .toBeOnTheScreen();
     expect(screen.getByTestId("phase14-font-proof-observation"))
       .toHaveTextContent(/"lineAdvancesPx"/u);
+    expect(screen.getByTestId("phase14-font-proof-observation"))
+      .toHaveTextContent(/"displayDensity"/u);
     expect(screen.getByTestId("phase14-font-proof-title-container"))
       .toBeOnTheScreen();
     expect(screen.getByTestId("phase14-font-proof-overlay-inputs"))

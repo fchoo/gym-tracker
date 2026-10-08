@@ -14,6 +14,7 @@ import React, {
 import {
   StyleSheet,
   Text,
+  PixelRatio,
   type LayoutChangeEvent,
   type TextLayoutEvent,
   type TextStyle,
@@ -195,6 +196,7 @@ const phase14TitleStyle = {
 
 function Phase14FontProofPreview() {
   const { fontScale } = useWindowDimensions();
+  const displayDensity = PixelRatio.get();
   const fontLoaded = (() => {
     try {
       return Font.isLoaded(PHASE14_FONT_PROOF.oracle.fontFamily);
@@ -221,7 +223,13 @@ function Phase14FontProofPreview() {
   }));
   const captureContainerLayout = useCallback((event: LayoutChangeEvent) => {
     const layout = event.nativeEvent.layout;
-    setLayoutObservation((current) => ({ ...current, availableWidthPx: layout.width, containerBounds: layout }));
+    setLayoutObservation((current) => ({
+      ...current,
+      availableWidthPx: layout.width,
+      // Text onLayout coordinates are local to this container, so retain the
+      // container dimensions in that same coordinate space for containment.
+      containerBounds: { x: 0, y: 0, width: layout.width, height: layout.height },
+    }));
   }, []);
   const captureTitleLayout = useCallback((event: LayoutChangeEvent) => {
     const layout = event.nativeEvent.layout;
@@ -281,6 +289,7 @@ function Phase14FontProofPreview() {
           family: PHASE14_FONT_PROOF.oracle.fontFamily,
           fontLoaded,
           fontScale,
+          displayDensity,
         })}
       </Text>
       <Text testID="phase14-font-proof-overlay-inputs">

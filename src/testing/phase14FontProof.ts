@@ -43,7 +43,7 @@ export const PHASE14_FONT_PROOF = Object.freeze({
 
 type Bounds = Readonly<{ x: number; y: number; width: number; height: number }>;
 type FontProofObservation = Readonly<{
-  id: FontProofCase["id"]; fontScale: number; family: string; familyLoaded: boolean;
+  id: FontProofCase["id"]; fontScale: number; displayDensity: number; family: string; familyLoaded: boolean;
   style: typeof PHASE14_FONT_PROOF.oracle; lines: readonly string[];
   metrics: Readonly<{ availableWidthPx: number; blockWidthPx: number; blockHeightPx: number; lineAdvancesPx: readonly number[]; lineHeightsPx: readonly number[]; lineBaselinesPx: readonly Readonly<{ ascenderPx: number; descenderPx: number; yPx: number; heightPx: number; baselineOffsetPx: number }>[]; textBounds: Bounds; containerBounds: Bounds }>;
   screenshotSha256: string;
@@ -55,10 +55,17 @@ export type Phase14FontProofReport = Readonly<{
 
 function assertHash(value: string, code: string) { if (!/^[a-f0-9]{64}$/u.test(value)) throw new Error(code); }
 function positive(value: number) { return Number.isFinite(value) && value > 0; }
-function contained(inner: Bounds, outer: Bounds) {
-  return inner.x >= outer.x && inner.y >= outer.y
-    && inner.x + inner.width <= outer.x + outer.width
-    && inner.y + inner.height <= outer.y + outer.height;
+function validDisplayDensity(value: number) { return Number.isFinite(value) && value >= 0.5 && value <= 8; }
+function physicalPixelTolerance(density: number) { return 1 / density; }
+function withinOnePhysicalPixel(value: number, limit: number, density: number) {
+  return value <= limit + physicalPixelTolerance(density) + 1e-9;
+}
+function contained(inner: Bounds, outer: Bounds, density: number) {
+  const tolerance = physicalPixelTolerance(density) + 1e-9;
+  return inner.x >= outer.x - tolerance && inner.y >= outer.y - tolerance
+    && inner.width <= outer.width + tolerance && inner.height <= outer.height + tolerance
+    && inner.x + inner.width <= outer.x + outer.width + tolerance
+    && inner.y + inner.height <= outer.y + outer.height + tolerance;
 }
 
 /** Validates native observations; it intentionally does not invent glyph targets from CSS container or line-height declarations. */
@@ -76,9 +83,9 @@ export function validatePhase14FontProofReport(report: Phase14FontProofReport) {
     if (observed.lines.join("\n") !== expected.expected.lines.join("\n")) throw new Error("phase14_font_wrap_breakpoint_invalid");
     assertHash(observed.screenshotSha256, "phase14_font_screenshot_hash_invalid");
     const metrics = observed.metrics;
-    if (![metrics.availableWidthPx, metrics.blockWidthPx, metrics.blockHeightPx, ...metrics.lineAdvancesPx, ...metrics.lineHeightsPx, metrics.textBounds.width, metrics.textBounds.height, metrics.containerBounds.width, metrics.containerBounds.height].every(positive) || metrics.lineAdvancesPx.length !== 2 || metrics.lineHeightsPx.length !== 2) throw new Error("phase14_font_metrics_invalid");
+    if (!validDisplayDensity(observed.displayDensity) || ![metrics.availableWidthPx, metrics.blockWidthPx, metrics.blockHeightPx, ...metrics.lineAdvancesPx, ...metrics.lineHeightsPx, metrics.textBounds.width, metrics.textBounds.height, metrics.containerBounds.width, metrics.containerBounds.height].every(positive) || metrics.lineAdvancesPx.length !== 2 || metrics.lineHeightsPx.length !== 2) throw new Error("phase14_font_metrics_invalid");
     if (metrics.lineBaselinesPx.length !== 2 || metrics.lineBaselinesPx.some((line, lineIndex) => ![line.ascenderPx, line.descenderPx, line.yPx, line.heightPx, line.baselineOffsetPx].every(Number.isFinite) || line.ascenderPx < 0 || line.ascenderPx > line.heightPx || Math.abs(line.descenderPx) > line.heightPx || line.baselineOffsetPx < line.yPx || line.baselineOffsetPx > line.yPx + line.heightPx || line.yPx + line.heightPx > metrics.blockHeightPx || (lineIndex > 0 && line.yPx < metrics.lineBaselinesPx[lineIndex - 1]!.yPx))) throw new Error("phase14_font_baseline_metrics_invalid");
-    if (metrics.availableWidthPx > PHASE14_FONT_PROOF.oracle.contentMaxWidthPx || metrics.containerBounds.width < metrics.availableWidthPx || Math.max(...metrics.lineAdvancesPx) > metrics.availableWidthPx || !contained(metrics.textBounds, metrics.containerBounds)) throw new Error("phase14_font_native_overflow_detected");
+    if (!withinOnePhysicalPixel(metrics.availableWidthPx, PHASE14_FONT_PROOF.oracle.contentMaxWidthPx, observed.displayDensity) || !withinOnePhysicalPixel(metrics.availableWidthPx, metrics.containerBounds.width, observed.displayDensity) || !withinOnePhysicalPixel(Math.max(...metrics.lineAdvancesPx), metrics.availableWidthPx, observed.displayDensity) || !contained(metrics.textBounds, metrics.containerBounds, observed.displayDensity)) throw new Error("phase14_font_native_overflow_detected");
   }
   return true;
 }

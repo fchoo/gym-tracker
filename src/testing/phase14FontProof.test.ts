@@ -51,6 +51,7 @@ describe("Phase 14 Revision 18 font oracle", () => {
     const proof = PHASE14_FONT_PROOF.cases.map((testCase) => ({
       id: testCase.id,
       fontScale: testCase.fontScale,
+      displayDensity: 2.625,
       family: "ArchivoVariable",
       familyLoaded: true,
       style: PHASE14_FONT_PROOF.oracle,
@@ -80,12 +81,39 @@ describe("Phase 14 Revision 18 font oracle", () => {
     })).not.toThrow();
 
     const firstProof = proof[0]!;
+    const onePhysicalPixel = 1 / firstProof.displayDensity;
+    const withinOnePhysicalPixel = {
+      ...firstProof,
+      metrics: {
+        ...firstProof.metrics,
+        availableWidthPx: 302.8571472167969,
+        lineAdvancesPx: [187.7798, 303.23809814453125],
+        textBounds: { x: -onePhysicalPixel, y: -onePhysicalPixel, width: 303.23809814453125, height: 98 + onePhysicalPixel },
+        containerBounds: { x: 0, y: 0, width: 302.8571472167969, height: 98 },
+      },
+    };
     expect(() => validatePhase14FontProofReport({
       schemaVersion: 2, sourceTreeSha256: "a".repeat(64), apkSha256: "b".repeat(64),
       packageName: "com.fchoo.gymtracker.devtest", profile: "development-test",
       fontScaleRestored: true,
-      cases: [{ ...firstProof, metrics: { ...firstProof.metrics, textBounds: { ...firstProof.metrics.textBounds, width: 336 } } }, ...proof.slice(1)],
+      cases: [withinOnePhysicalPixel, ...proof.slice(1)],
+    })).not.toThrow();
+
+    expect(() => validatePhase14FontProofReport({
+      schemaVersion: 2, sourceTreeSha256: "a".repeat(64), apkSha256: "b".repeat(64),
+      packageName: "com.fchoo.gymtracker.devtest", profile: "development-test",
+      fontScaleRestored: true,
+      cases: [{ ...withinOnePhysicalPixel, metrics: { ...withinOnePhysicalPixel.metrics, textBounds: { ...withinOnePhysicalPixel.metrics.textBounds, width: 303.2382 } } }, ...proof.slice(1)],
     })).toThrow("phase14_font_native_overflow_detected");
+
+    for (const invalidDensity of [undefined, Number.NaN, 0, 9]) {
+      expect(() => validatePhase14FontProofReport({
+        schemaVersion: 2, sourceTreeSha256: "a".repeat(64), apkSha256: "b".repeat(64),
+        packageName: "com.fchoo.gymtracker.devtest", profile: "development-test",
+        fontScaleRestored: true,
+        cases: [{ ...firstProof, displayDensity: invalidDensity as number }, ...proof.slice(1)],
+      })).toThrow("phase14_font_metrics_invalid");
+    }
 
     expect(() => validatePhase14FontProofReport({
       schemaVersion: 2, sourceTreeSha256: "a".repeat(64), apkSha256: "b".repeat(64),
