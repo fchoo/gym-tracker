@@ -57,8 +57,8 @@ tags:
       - assertVisible: "Manual encrypted backup"
       - scrollUntilVisible:
           element:
-            text: "Restore backup"
-      - assertVisible: "Restore backup"
+            text: "Restore clean"
+      - assertVisible: "Restore clean"
 - runFlow:
     when:
       true: ${PHASE14_STAGE == 'phase14-automatic-backup'}
