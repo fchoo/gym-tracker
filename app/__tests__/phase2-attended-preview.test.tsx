@@ -121,9 +121,15 @@ describe("Phase2AttendedPreviewRoute", () => {
       PHASE14_FONT_PROOF.oracle.sourceText,
     );
     expect(screen.getByTestId("phase14-font-proof-family"))
-      .toHaveTextContent("ArchivoVariable");
-    expect(screen.getByTestId("phase14-font-proof-measurement-light-390-scale-1"))
+      .toHaveTextContent(/ArchivoVariable/u);
+    expect(screen.getByTestId("phase14-font-proof-measurement-light-390-scale-1", {
+      includeHiddenElements: true,
+    }))
       .toBeOnTheScreen();
+    expect(screen.getByTestId("phase14-font-proof-observation"))
+      .toHaveTextContent(/"crop":"requires-screenshot-overlay"/u);
+    expect(screen.getByTestId("phase14-font-proof-overlay-inputs"))
+      .toHaveTextContent(/wght 890/u);
 
     mockNativeContractsEnabled = false;
     await renderRoute();

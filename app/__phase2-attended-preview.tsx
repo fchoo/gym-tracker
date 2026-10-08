@@ -1,4 +1,5 @@
 import Constants from "expo-constants";
+import * as Font from "expo-font";
 import {
   Redirect,
   useLocalSearchParams,
@@ -13,6 +14,8 @@ import React, {
 import {
   StyleSheet,
   Text,
+  type TextLayoutEvent,
+  type TextStyle,
   useWindowDimensions,
   View,
 } from "react-native";
@@ -36,6 +39,7 @@ import {
   type Phase2SetMutationPreviewVariant,
   type Phase2TodayPlanPreviewVariant,
 } from "../src/testing/phase2AttendedPreviewFixtures";
+import { PHASE14_FONT_PROOF } from "../src/testing/phase14FontProof";
 import {
   AppearanceSheet,
   CalendarField,
@@ -172,6 +176,91 @@ function UnknownPreview() {
           </>
         )}
       />
+    </View>
+  );
+}
+
+// React Native 0.86's TextStyle omits the variable-axis 890 value. Keep the
+// exact source value in this proof-only harness instead of silently rounding it.
+const phase14TitleStyle = {
+  fontFamily: PHASE14_FONT_PROOF.oracle.fontFamily,
+  fontSize: PHASE14_FONT_PROOF.oracle.fontSizePx,
+  fontStretch: PHASE14_FONT_PROOF.oracle.fontStretch,
+  fontWeight: `${PHASE14_FONT_PROOF.oracle.fontWeight}`,
+  letterSpacing: PHASE14_FONT_PROOF.oracle.fontSizePx
+    * PHASE14_FONT_PROOF.oracle.letterSpacingEm,
+  lineHeight: PHASE14_FONT_PROOF.oracle.lineHeightPx,
+} as unknown as TextStyle;
+
+function Phase14FontProofPreview() {
+  const { fontScale } = useWindowDimensions();
+  const fontLoaded = (() => {
+    try {
+      return Font.isLoaded(PHASE14_FONT_PROOF.oracle.fontFamily);
+    } catch {
+      return false;
+    }
+  })();
+  const [layoutObservation, setLayoutObservation] = useState(() => ({
+    glyphRunWidthPx: null as number | null,
+    lineBoxHeightPx: null as number | null,
+    baselineClass: "unmeasured",
+    wrapBreakpoints: [] as readonly string[],
+    overflow: "unmeasured",
+    crop: "requires-screenshot-overlay",
+  }));
+  const captureTextLayout = useCallback((event: TextLayoutEvent) => {
+    const lines = event.nativeEvent.lines;
+    const next = {
+      glyphRunWidthPx: Math.max(0, ...lines.map((line) => line.width)),
+      lineBoxHeightPx: lines.reduce((height, line) => height + line.height, 0),
+      baselineClass: lines.every((line) => line.ascender > 0 && line.descender < 0)
+        ? "alphabetic"
+        : "unclassified",
+      wrapBreakpoints: lines.map((line) => line.text.trim()),
+      overflow: lines.some((line) =>
+        line.width > PHASE14_FONT_PROOF.oracle.contentMaxWidthPx,
+      ) ? "detected" : "none",
+      crop: "requires-screenshot-overlay",
+    };
+    setLayoutObservation((current) =>
+      JSON.stringify(current) === JSON.stringify(next) ? current : next,
+    );
+  }, []);
+  return (
+    <View style={styles.phase14Proof} testID="phase14-font-proof-root">
+      <Text style={styles.phase14ProofLabel}>Development Test · Phase 14</Text>
+      <Text testID="phase14-font-proof-family">
+        {`${PHASE14_FONT_PROOF.oracle.fontFamily} ${fontLoaded ? "loaded" : "pending"}`}
+      </Text>
+      <Text
+        accessibilityLabel="Phase 14 font axis oracle title"
+        onTextLayout={captureTextLayout}
+        style={phase14TitleStyle}
+        testID="phase14-font-proof-title"
+      >
+        {PHASE14_FONT_PROOF.oracle.sourceText}
+      </Text>
+      {PHASE14_FONT_PROOF.cases.map((proofCase) => (
+        <View
+          accessibilityElementsHidden
+          importantForAccessibility="no-hide-descendants"
+          key={proofCase.id}
+          pointerEvents="none"
+          testID={`phase14-font-proof-measurement-${proofCase.id}`}
+        />
+      ))}
+      <Text testID="phase14-font-proof-observation">
+        {JSON.stringify({
+          ...layoutObservation,
+          family: PHASE14_FONT_PROOF.oracle.fontFamily,
+          fontLoaded,
+          fontScale,
+        })}
+      </Text>
+      <Text testID="phase14-font-proof-overlay-inputs">
+        {`Revision 18 · 57px · condensed · wght 890 · -0.07em · ${PHASE14_FONT_PROOF.oracle.approvedHtmlSha256}`}
+      </Text>
     </View>
   );
 }
@@ -481,6 +570,10 @@ export default function Phase2AttendedPreviewRoute() {
   if (!enabled) {
     return <Redirect href="/" />;
   }
+  if (parameters.scenario === "phase14-font-axis"
+    && parameters.variant === undefined) {
+    return <Phase14FontProofPreview />;
+  }
   if (route === null) {
     return <UnknownPreview />;
   }
@@ -505,5 +598,13 @@ const styles = StyleSheet.create({
   },
   preview: {
     flex: 1,
+  },
+  phase14Proof: {
+    flex: 1,
+    maxWidth: PHASE14_FONT_PROOF.oracle.contentMaxWidthPx,
+    padding: 16,
+  },
+  phase14ProofLabel: {
+    marginBottom: 16,
   },
 });

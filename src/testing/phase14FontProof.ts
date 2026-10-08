@@ -1,8 +1,12 @@
 export const PHASE14_FONT_PROOF_PACKAGE = "com.fchoo.gymtracker.devtest";
 export const PHASE14_FONT_PROOF_PROFILE = "development-test";
+export const PHASE14_FONT_PROOF_CASE_IDS = [
+  "light-390-scale-1",
+  "light-390-scale-2",
+] as const;
 
 type FontProofCase = Readonly<{
-  id: "light-390-scale-1" | "light-390-scale-2";
+  id: (typeof PHASE14_FONT_PROOF_CASE_IDS)[number];
   fontScale: 1 | 2;
   viewport: Readonly<{ width: 390; height: 844 }>;
   theme: "light";
@@ -42,7 +46,7 @@ export const PHASE14_FONT_PROOF = Object.freeze({
   tolerance: Object.freeze({ normalizedPhysicalPixels: 1 }),
   cases: Object.freeze([
     Object.freeze({
-      id: "light-390-scale-1",
+      id: PHASE14_FONT_PROOF_CASE_IDS[0],
       fontScale: 1,
       viewport: Object.freeze({ width: 390, height: 844 }),
       theme: "light",
@@ -57,7 +61,7 @@ export const PHASE14_FONT_PROOF = Object.freeze({
       }),
     }),
     Object.freeze({
-      id: "light-390-scale-2",
+      id: PHASE14_FONT_PROOF_CASE_IDS[1],
       fontScale: 2,
       viewport: Object.freeze({ width: 390, height: 844 }),
       theme: "light",

@@ -15,7 +15,13 @@ const hash = (value) => createHash("sha256").update(value).digest("hex");
 const sourceTreeSha256 = "a".repeat(64);
 const apkBytes = Buffer.from("phase14-font-proof-apk");
 const apkSha256 = hash(apkBytes);
-const proofSource = "export const PHASE14_FONT_PROOF = Object.freeze({});\n";
+const proofSource = [
+  "export const PHASE14_FONT_PROOF_CASE_IDS = [",
+  '  "light-390-scale-1",',
+  '  "light-390-scale-2",',
+  "];",
+  "",
+].join("\n");
 
 function fixture() {
   const directory = mkdtempSync(path.join(os.tmpdir(), "phase14-font-proof-"));
@@ -27,6 +33,7 @@ function fixture() {
     schema_version: 1,
     suite: "phase14-font-proof",
     profile: "development-test",
+    js_bundle: { embedded: true },
     package: "com.fchoo.gymtracker.devtest",
     base_head: "b".repeat(40),
     source_tree_sha256: sourceTreeSha256,

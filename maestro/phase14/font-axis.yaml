@@ -1,0 +1,13 @@
+appId: com.fchoo.gymtracker.devtest
+name: Phase 14 Archivo source oracle capture
+tags:
+  - phase-14
+  - font-axis
+---
+- launchApp:
+    clearState: false
+    stopApp: true
+- openLink: "gymtracker-devtest:///__phase2-attended-preview?scenario=phase14-font-axis"
+- assertVisible: "Development Test · Phase 14"
+- assertVisible: "Today’s workout"
+- takeScreenshot: "phase14-font-axis-${PHASE14_FONT_SCALE}"
