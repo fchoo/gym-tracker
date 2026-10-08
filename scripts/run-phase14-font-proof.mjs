@@ -81,10 +81,12 @@ function observationFromHierarchy(xml) {
   if (!raw) throw new Error("phase14_font_observation_missing");
   try { return JSON.parse(raw); } catch { throw new Error("phase14_font_observation_invalid"); }
 }
+function wait(milliseconds) { Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, milliseconds); }
 function waitForProof(serial, attempts = 30) {
   for (let attempt = 0; attempt < attempts; attempt += 1) {
     const xml = adb(serial, "exec-out", "uiautomator", "dump", "/dev/tty");
     if (xml.includes("phase14-font-proof-root") && xml.includes("phase14-font-proof-observation") && xmlAttribute(xml, "phase14-font-proof-observation", "text")) return observationFromHierarchy(xml);
+    wait(1000);
   }
   throw new Error("phase14_font_proof_route_timeout");
 }
