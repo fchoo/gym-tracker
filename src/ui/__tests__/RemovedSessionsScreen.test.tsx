@@ -25,6 +25,9 @@ import {
 import {
   AppearanceProvider,
 } from "../theme";
+import {
+  SemanticToastProvider,
+} from "../components/SemanticToast";
 
 const removedSession: RemovedHistorySession = {
   id: "removed-session",
@@ -54,7 +57,9 @@ async function renderScreen(overrides: Partial<Props> = {}) {
 
   await render(
     <AppearanceProvider>
-      <RemovedSessionsScreen {...props} />
+      <SemanticToastProvider>
+        <RemovedSessionsScreen {...props} />
+      </SemanticToastProvider>
     </AppearanceProvider>,
   );
   return props;
@@ -88,6 +93,11 @@ describe("RemovedSessionsScreen", () => {
     }));
     expect(screen.getByRole("header", { name: "Restore this workout?" }))
       .toBeOnTheScreen();
+    expect(screen.getByText(
+      "This returns the workout to ordinary Calendar, history, records, and recommendations after the saved restore commits.",
+    )).toBeOnTheScreen();
+    expect(screen.getByRole("button", { name: "Keep session removed" }))
+      .toBeOnTheScreen();
     expect(props.restoreSession).not.toHaveBeenCalled();
 
     await fireEvent.press(screen.getByRole("button", {
@@ -99,6 +109,47 @@ describe("RemovedSessionsScreen", () => {
       confirmation: RESTORE_HISTORY_CONFIRMATION,
     }));
     await waitFor(() => expect(props.onRestored).toHaveBeenCalledWith("removed-session"));
+  });
+
+  it("keeps the selected identity visible while busy and announces success only after callback and reload", async () => {
+    let resolveRestore: (() => void) | undefined;
+    let resolveCallback: (() => void) | undefined;
+    let loadCount = 0;
+    const props = await renderScreen({
+      loadRemovedSessions: jest.fn(async () => {
+        loadCount += 1;
+        if (loadCount === 1) return [removedSession];
+        return [];
+      }),
+      onRestored: jest.fn(() => new Promise<void>((resolve) => {
+        resolveCallback = resolve;
+      })),
+      restoreSession: jest.fn(() => new Promise((resolve) => {
+        resolveRestore = () => resolve({ effectiveRevision: 4, lifecycle: "active" as const });
+      })),
+    });
+    await screen.findByText("Full Body Foundation · Full Body A");
+
+    await fireEvent.press(screen.getByRole("button", {
+      name: "Restore Full Body Foundation · Full Body A",
+    }));
+    await fireEvent.press(screen.getByRole("button", { name: "Restore workout" }));
+
+    expect(screen.getByRole("header", { name: "Restore this workout?" }))
+      .toBeOnTheScreen();
+    expect(screen.getByText("Full Body Foundation · Full Body A"))
+      .toBeOnTheScreen();
+    expect(screen.getByRole("button", { name: "Restore workout" }))
+      .toHaveProp("accessibilityState", expect.objectContaining({ busy: true }));
+    expect(screen.queryByText("Workout restored")).not.toBeOnTheScreen();
+
+    resolveRestore?.();
+    await waitFor(() => expect(props.onRestored).toHaveBeenCalledWith("removed-session"));
+    expect(screen.queryByText("Workout restored")).not.toBeOnTheScreen();
+    resolveCallback?.();
+
+    expect(await screen.findByText("Workout restored")).toBeOnTheScreen();
+    expect(screen.queryByText("Full Body Foundation · Full Body A")).not.toBeOnTheScreen();
   });
 
   it("keeps the retained card visible after a restore failure and offers a retry-safe outcome", async () => {
