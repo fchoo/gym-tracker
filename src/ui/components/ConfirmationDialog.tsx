@@ -40,7 +40,7 @@ function ConfirmationDialogActions({
 
   useEffect(() => {
     if (!visible || !confirmBusy) setSubmitting(false);
-  }, [confirmBusy, visible]);
+  }, [confirmBusy, confirmLabel, visible]);
 
   const confirm = () => {
     if (busy) return;
