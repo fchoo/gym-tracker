@@ -55,10 +55,20 @@ tags:
       true: ${PHASE14_STAGE == 'phase14-data-recovery'}
     commands:
       - assertVisible: "Manual encrypted backup"
+      - tapOn: "Manual encrypted backup"
+      - extendedWaitUntil:
+          visible: "Manual encrypted backup"
+          timeout: 30000
       - scrollUntilVisible:
           element:
             text: "Restore clean"
       - assertVisible: "Restore clean"
+      - tapOn: "Restore password"
+      - inputText: "phase14-cancel-only"
+      - tapOn: "Restore clean"
+      - extendedWaitUntil:
+          visible: "No backup was selected"
+          timeout: 30000
 - runFlow:
     when:
       true: ${PHASE14_STAGE == 'phase14-automatic-backup'}
