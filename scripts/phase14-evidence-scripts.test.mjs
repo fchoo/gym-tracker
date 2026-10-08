@@ -18,6 +18,7 @@ import {
   validatePhase14Privacy,
   validatePhase14SourceInventory,
   parsePhase14VerifierArgs,
+  stableDeviceIdentitySha256,
 } from "./verify-phase14-evidence.mjs";
 import { parsePhase14RunnerArgs } from "./run-phase14-maestro.mjs";
 
@@ -89,6 +90,8 @@ test("Phase 14 ledger owns every exact shell ID once with one requirement, stage
 });
 
 test("Phase 14 rejects stale source/APK/package/profile/device identity and invalid native stages", () => {
+  assert.equal(stableDeviceIdentitySha256(["fingerprint", "abi", "model", "36", "16"]), stableDeviceIdentitySha256(["fingerprint", "abi", "model", "36", "16"]));
+  assert.notEqual(stableDeviceIdentitySha256(["fingerprint", "abi", "model", "36", "16"]), stableDeviceIdentitySha256(["fingerprint", "abi", "model", "35", "16"]));
   assert.doesNotThrow(() => validatePhase14Manifest(manifest, manifest.base_head, manifest.source_tree_sha256));
   assert.throws(() => validatePhase14Manifest({ ...manifest, package: "com.fchoo.gymtracker" }, manifest.base_head, manifest.source_tree_sha256), /phase14_manifest_invalid/u);
   assert.throws(() => validatePhase14Manifest(manifest, "f".repeat(40), manifest.source_tree_sha256), /phase14_manifest_stale/u);

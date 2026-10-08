@@ -12,6 +12,17 @@ const ROOT = process.cwd();
 const sha256 = (value) => createHash("sha256").update(value).digest("hex");
 const hash = /^[a-f0-9]{64}$/u;
 const expectedIds = PHASE14_SHELL_EVIDENCE_CASES.map(({ id }) => id);
+const DEVICE_IDENTITY_PROPERTIES = Object.freeze([
+  "ro.build.fingerprint",
+  "ro.product.cpu.abi",
+  "ro.product.model",
+  "ro.build.version.sdk",
+  "ro.build.version.release",
+]);
+
+export function stableDeviceIdentitySha256(values) {
+  return sha256(`${values.join("\n")}\n`);
+}
 
 function readInstalledApkBytes(serial, installedPath) {
   const temporaryDirectory = mkdtempSync(path.join(tmpdir(), "phase14-evidence-"));
@@ -22,6 +33,11 @@ function readInstalledApkBytes(serial, installedPath) {
   } finally {
     rmSync(temporaryDirectory, { recursive: true, force: true });
   }
+}
+
+function readStableDeviceIdentitySha256(serial) {
+  const values = DEVICE_IDENTITY_PROPERTIES.map((property) => execFileSync("adb", ["-s", serial, "shell", "getprop", property], { cwd: ROOT, encoding: "utf8" }).trim());
+  return stableDeviceIdentitySha256(values);
 }
 
 export function validatePhase14Privacy(value, pathName = "evidence") {
@@ -93,7 +109,7 @@ export function executePhase14EvidenceVerifier(args = process.argv.slice(2)) {
   if (!existsSync(apkPath)) throw new Error("phase14_apk_missing");
   const installedPath = execFileSync("adb", ["-s", manifest.device.serial, "shell", "pm", "path", manifest.package], { cwd: ROOT, encoding: "utf8" }).trim().replace(/^package:/u, "");
   const installedApkBytes = readInstalledApkBytes(manifest.device.serial, installedPath);
-  const deviceIdentitySha256 = sha256(execFileSync("adb", ["-s", manifest.device.serial, "shell", "getprop"], { cwd: ROOT, encoding: "utf8" }));
+  const deviceIdentitySha256 = readStableDeviceIdentitySha256(manifest.device.serial);
   validatePhase14CurrentArtifacts({ manifest, currentHead: execFileSync("git", ["rev-parse", "HEAD"], { cwd: ROOT, encoding: "utf8" }).trim(), currentSourceTreeSha256: sourceTreeSha256(ROOT), apkBytes: readFileSync(apkPath), installedApkSha256: sha256(installedApkBytes), deviceIdentitySha256 });
   const ids = options.all ? expectedIds : options.ids;
   const evidence = JSON.parse(readFileSync(path.join(directory, "maestro/phase14-evidence.json"), "utf8"));
