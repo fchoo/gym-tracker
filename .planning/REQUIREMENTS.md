@@ -50,7 +50,7 @@ Exactly four roots: **Workout, Calendar, Library, Progress**. Preserve SQLite au
 - [x] **SHL-07**: Preserve loading, trusted, failure/retry and notification-permission/continue-without-alerts startup states in the new visual shell.
 - [x] **SHL-08**: Keep Rest sound, Rest vibration and notification settings reachable under device settings, outside plan timing.
 - [x] **SHL-09**: Keep Removed sessions and Data and recovery reachable from Settings even though the prototype's App Settings only demonstrates appearance.
-- [ ] **SHL-10**: Preserve loading, empty, error/retry, restore confirmation, busy/failure and successful restoration of removed history.
+- [x] **SHL-10**: Preserve loading, empty, error/retry, restore confirmation, busy/failure and successful restoration of removed history.
 - [ ] **SHL-11**: Preserve automatic-backup status/recovery and CSV export, preparing/sharing/cancel/error/retry states with accessible navigation into backup settings.
 - [ ] **SHL-12**: Preserve Google connection/disconnection confirmation, network preference, stale-writer takeover, partial deletion recovery, new-backup confirmation and privacy route.
 - [ ] **SHL-13**: Preserve encrypted export plus restore/merge preflight, exact confirmation, cancel, progress, failure/retry and rebuild-pending recovery flows.
@@ -264,7 +264,7 @@ once and remains Pending until its owning phase is implemented and verified.
 | SHL-07 | 14 | shell.launch | Complete |
 | SHL-08 | 14 | shell.rest-alerts | Complete |
 | SHL-09 | 14 | shell.settings-deep-links | Complete |
-| SHL-10 | 14 | shell.removed-sessions | Pending |
+| SHL-10 | 14 | shell.removed-sessions | Complete |
 | SHL-11 | 14 | shell.data-recovery | Pending |
 | SHL-12 | 14 | shell.automatic-backup | Pending |
 | SHL-13 | 14 | shell.manual-backup | Pending |

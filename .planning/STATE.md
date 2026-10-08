@@ -5,16 +5,16 @@ milestone_name: Prototype Parity, Concurrent Plans & Garmin Import — PLANNED
 current_phase: 14
 current_phase_name: Prototype Visual Shell
 status: executing
-stopped_at: Completed 14-12-PLAN.md; Plans 14-07 through 14-11 remain incomplete
-last_updated: "2026-10-08T19:14:49.232Z"
+stopped_at: Completed 14-07-PLAN.md
+last_updated: "2026-10-08T19:35:57.966Z"
 last_activity: 2026-10-08
 last_activity_desc: Phase 14 execution started
-state_head: 9714b5078f42d3d22c0cc57a84918329c975f429
+state_head: ab6018a178c67a325e0b6076d1f98ce56ed76a34
 progress:
   total_phases: 8
   completed_phases: 1
   total_plans: 98
-  completed_plans: 23
+  completed_plans: 24
   percent: 13
 ---
 
@@ -30,7 +30,7 @@ See: .planning/PROJECT.md (updated 2026-10-06)
 ## Current Position
 
 Phase: 14 (Prototype Visual Shell) — EXECUTING
-Plan: 7 of 12
+Plan: 8 of 12
 Status: Ready to execute
 Last activity: 2026-10-08 — Phase 14 execution started
 
@@ -63,6 +63,7 @@ Gym Tracker remains a signed personal-use Android APK/AAB with SQLite-authoritat
 | Phase 14-prototype-visual-shell P05 | 9m | 3 tasks | 9 files |
 | Phase 14 P06 | 34m | 2 tasks | 9 files |
 | Phase 14 P12 | 7m | 2 tasks | 5 files |
+| Phase 14 P07 | 5m | 2 tasks | 4 files |
 
 ## Accumulated Context
 
@@ -95,6 +96,8 @@ Gym Tracker remains a signed personal-use Android APK/AAB with SQLite-authoritat
 - [Phase 14]: RestAlertSettingsSheet keeps serialized optimistic writes/readback rollback while BottomSheet owns presentation and dismissal.
 - [Phase 14]: Library overlay consumers retain screen-owned query, filter, selection, scroll, and draft state while BottomSheet owns presentation and safe dismissal.
 - [Phase 14]: Workout completion confirmation remains source-authoritative; ConfirmationDialog only presents consequences and blocks both actions while submission is busy.
+- [Phase 14]: Removed-session success is presentation-only and occurs after the runtime refresh callback plus authoritative list reload.
+- [Phase 14]: Removed-session restore keeps identity and effective revision visible; focus returns to its surviving trigger or the screen heading.
 
 ### Pending Owner Review
 
@@ -119,7 +122,7 @@ Gym Tracker remains a signed personal-use Android APK/AAB with SQLite-authoritat
 
 ## Session Continuity
 
-Last session: 2026-10-08T19:14:49.186Z
-Stopped at: Completed 14-12-PLAN.md; Plans 14-07 through 14-11 remain incomplete
-Resume file: .planning/phases/14-prototype-visual-shell/14-07-PLAN.md
+Last session: 2026-10-08T19:35:57.919Z
+Stopped at: Completed 14-07-PLAN.md
+Resume file: None
 Next action: Present the complete planning set for owner review; after explicit approval, run `/gsd-execute-phase 13`.
