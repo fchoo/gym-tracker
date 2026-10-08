@@ -1,13 +1,34 @@
 import { describe, expect, it, jest } from "@jest/globals";
+import { createHash } from "node:crypto";
 
 import {
   BodyweightCommandError,
-  canonicalBodyweightRequestHash,
-  transitionBodyweight,
+  canonicalBodyweightRequestPayload,
+  transitionBodyweight as transitionBodyweightWithExpectedHash,
   type BodyweightCommand,
   type BodyweightEntryState,
 } from "./contracts";
 import { commitBodyweightCommand } from "./commands";
+
+function sha256(value: string): string {
+  return createHash("sha256").update(value).digest("hex");
+}
+
+function canonicalBodyweightRequestHash(value: unknown): string {
+  return sha256(canonicalBodyweightRequestPayload(value));
+}
+
+function transitionBodyweight(
+  current: BodyweightEntryState | undefined,
+  input: BodyweightCommand,
+) {
+  const { requestSha256: _requestSha256, ...request } = input;
+  return transitionBodyweightWithExpectedHash(
+    current,
+    input,
+    canonicalBodyweightRequestHash(request),
+  );
+}
 
 function command(overrides: Partial<BodyweightCommand> = {}): BodyweightCommand {
   const value = {
@@ -99,8 +120,8 @@ describe("dated bodyweight source facts", () => {
 
   it("validates before delegating and returns the committed transition unchanged", async () => {
     const repository = { commit: jest.fn(async (input: BodyweightCommand) => transitionBodyweight(undefined, input)) };
-    await expect(commitBodyweightCommand(repository, command())).resolves.toMatchObject({ kind: "created" });
-    await expect(commitBodyweightCommand(repository, command({ grams: 0 }))).rejects.toThrow(BodyweightCommandError);
+    await expect(commitBodyweightCommand(repository, command(), async (value) => sha256(value))).resolves.toMatchObject({ kind: "created" });
+    await expect(commitBodyweightCommand(repository, command({ grams: 0 }), async (value) => sha256(value))).rejects.toThrow(BodyweightCommandError);
     expect(repository.commit).toHaveBeenCalledTimes(1);
   });
 

@@ -1,5 +1,3 @@
-import { createHash } from "node:crypto";
-
 const IDENTIFIER = /^[A-Za-z0-9._:-]{1,128}$/u;
 const SHA256 = /^[a-f0-9]{64}$/u;
 const MAX_GRAMS = 1_000_000;
@@ -66,8 +64,8 @@ function stableJson(value: unknown): string {
   return JSON.stringify(value);
 }
 
-export function canonicalBodyweightRequestHash(value: unknown): string {
-  return createHash("sha256").update(stableJson(value)).digest("hex");
+export function canonicalBodyweightRequestPayload(value: unknown): string {
+  return stableJson(value);
 }
 
 function validTimezone(value: string): boolean {
@@ -95,12 +93,14 @@ function measurementRequired(input: BodyweightCommand): boolean {
   return input.operation === "create" || input.operation === "edit" || input.operation === "restore";
 }
 
-export function validateBodyweightCommand(input: BodyweightCommand): void {
+export function validateBodyweightCommand(
+  input: BodyweightCommand,
+  expectedRequestSha256: string,
+): void {
   if (!IDENTIFIER.test(input.requestId) || !IDENTIFIER.test(input.entryId) || !IDENTIFIER.test(input.ownerId) || !IDENTIFIER.test(input.revisionId) || !IDENTIFIER.test(input.eventId)) {
     throw new BodyweightCommandError("bodyweight_command_identity_invalid");
   }
-  const { requestSha256: _requestSha256, ...request } = input;
-  if (!SHA256.test(input.requestSha256) || canonicalBodyweightRequestHash(request) !== input.requestSha256) {
+  if (!SHA256.test(input.requestSha256) || expectedRequestSha256 !== input.requestSha256) {
     throw new BodyweightCommandError("bodyweight_command_hash_invalid");
   }
   if (!Number.isSafeInteger(input.expectedRevision) || input.expectedRevision < 0 || !Number.isSafeInteger(input.occurredAtMs) || input.occurredAtMs < 0) {
@@ -134,8 +134,12 @@ function nextEntry(input: BodyweightCommand, lifecycle: BodyweightLifecycle, rev
   });
 }
 
-export function transitionBodyweight(current: BodyweightEntryState | undefined, input: BodyweightCommand): BodyweightTransition {
-  validateBodyweightCommand(input);
+export function transitionBodyweight(
+  current: BodyweightEntryState | undefined,
+  input: BodyweightCommand,
+  expectedRequestSha256: string,
+): BodyweightTransition {
+  validateBodyweightCommand(input, expectedRequestSha256);
   if (input.operation === "create") {
     if (current !== undefined) return Object.freeze({ kind: "conflict", entry: current, conflictCode: "entry_exists" });
     if (input.expectedRevision !== 0) return Object.freeze({ kind: "conflict", entry: current, conflictCode: "stale_revision" });

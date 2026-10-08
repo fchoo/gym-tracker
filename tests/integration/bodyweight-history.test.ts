@@ -1,10 +1,11 @@
 import { afterEach, describe, expect, it } from "@jest/globals";
+import { createHash } from "node:crypto";
 import { DatabaseSync, type SQLInputValue } from "node:sqlite";
 import { mkdtempSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
-import { canonicalBodyweightRequestHash, type BodyweightCommand } from "../../src/domains/bodyweight/contracts";
+import { canonicalBodyweightRequestPayload, type BodyweightCommand } from "../../src/domains/bodyweight/contracts";
 import { createMigrationRunner } from "../../src/platform/sqlite/migrationRunner";
 import { migrations } from "../../src/platform/sqlite/migrations";
 import { createBodyweightRepository } from "../../src/platform/sqlite/repositories/bodyweightRepository";
@@ -33,7 +34,11 @@ async function runtime(path?: string) {
 function command(overrides: Partial<BodyweightCommand> = {}): BodyweightCommand {
   const value = { operation: "create" as const, requestId: "bodyweight-request-1", entryId: "bodyweight-entry-1", ownerId: "owner-1", expectedRevision: 0, revisionId: "bodyweight-revision-1", eventId: "bodyweight-event-1", occurredAtMs: 1_790_000_000_000, localDate: "2026-10-07", timezone: "Asia/Singapore", grams: 72_500, ...overrides };
   const { requestSha256, ...request } = value;
-  return { ...request, requestSha256: requestSha256 ?? canonicalBodyweightRequestHash(request) };
+  return {
+    ...request,
+    requestSha256: requestSha256
+      ?? createHash("sha256").update(canonicalBodyweightRequestPayload(request)).digest("hex"),
+  };
 }
 
 async function protectedDigest(kernel: SqliteKernel) {

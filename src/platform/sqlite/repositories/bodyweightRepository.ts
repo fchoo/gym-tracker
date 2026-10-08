@@ -1,10 +1,12 @@
 import {
+  canonicalBodyweightRequestPayload,
   transitionBodyweight,
   validateBodyweightCommand,
   type BodyweightCommand,
   type BodyweightEntryState,
   type BodyweightTransition,
 } from "../../../domains/bodyweight/contracts";
+import { runtimeSha256 } from "../../crypto/runtimeSha256";
 import type { SqliteKernel, SqliteTransactionExecutor } from "../sqliteKernel";
 
 type EntryRow = Readonly<{
@@ -75,7 +77,11 @@ async function loadCurrent(
 export function createBodyweightRepository(kernel: SqliteKernel) {
   return Object.freeze({
     async commit(input: BodyweightCommand): Promise<BodyweightTransition> {
-      validateBodyweightCommand(input);
+      const { requestSha256: _requestSha256, ...request } = input;
+      const expectedRequestSha256 = await runtimeSha256(
+        canonicalBodyweightRequestPayload(request),
+      );
+      validateBodyweightCommand(input, expectedRequestSha256);
       return kernel.write(async (transaction) => {
         const [receipt] = await transaction.queryAll<ReceiptRow>(
           "SELECT request_sha256, result_json FROM bodyweight_command_receipts WHERE request_id = ?",
@@ -96,7 +102,7 @@ export function createBodyweightRepository(kernel: SqliteKernel) {
           return Object.freeze({ kind: "conflict", entry: undefined, conflictCode: "entry_exists" });
         }
         const current = await loadCurrent(transaction, input.entryId, input.ownerId);
-        const transition = transitionBodyweight(current, input);
+        const transition = transitionBodyweight(current, input, expectedRequestSha256);
         if (transition.kind === "conflict" || transition.entry === undefined) return transition;
 
         const next = transition.entry;

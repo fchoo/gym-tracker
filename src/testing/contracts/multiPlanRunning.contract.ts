@@ -5,7 +5,7 @@ import {
   type PreparedGarminImport,
 } from "../../domains/activities/importCommands";
 import {
-  canonicalBodyweightRequestHash,
+  canonicalBodyweightRequestPayload,
 } from "../../domains/bodyweight/contracts";
 import {
   updateSessionSetAdvancedTiming,
@@ -23,6 +23,7 @@ import { createMigrationRunner } from "../../platform/sqlite/migrationRunner";
 import type { Migration } from "../../platform/sqlite/migrationRunner";
 import { migrations } from "../../platform/sqlite/migrations";
 import type { RecoveryBackupPort } from "../../platform/sqlite/recoveryBackup";
+import { runtimeSha256 } from "../../platform/crypto/runtimeSha256";
 import { createAdvancedTimingRepository } from "../../platform/sqlite/repositories/advancedTimingRepository";
 import { createBodyweightRepository } from "../../platform/sqlite/repositories/bodyweightRepository";
 import { createImportedActivityRepository } from "../../platform/sqlite/repositories/importedActivityRepository";
@@ -629,7 +630,10 @@ const caseAssertions: Record<
   async "phase13-bodyweight-correction-delete"(kernel) {
     const repository = createBodyweightRepository(kernel);
     const create = { operation: "create" as const, requestId: "bodyweight-create", entryId: "bodyweight-entry", ownerId: "owner", expectedRevision: 0, revisionId: "bodyweight-r1", eventId: "bodyweight-e1", occurredAtMs: 1, localDate: "2026-08-17", timezone: "Asia/Singapore", grams: 75_000 };
-    const created = await repository.commit({ ...create, requestSha256: canonicalBodyweightRequestHash(create) });
+    const created = await repository.commit({
+      ...create,
+      requestSha256: await runtimeSha256(canonicalBodyweightRequestPayload(create)),
+    });
     const deleted = await repository.commit({ operation: "delete", requestId: "bodyweight-delete", requestSha256: SHA256, entryId: create.entryId, ownerId: create.ownerId, expectedRevision: 1, revisionId: "bodyweight-r2", eventId: "bodyweight-e2", occurredAtMs: 2 });
     const replay = await repository.commit({ operation: "delete", requestId: "bodyweight-delete", requestSha256: SHA256, entryId: create.entryId, ownerId: create.ownerId, expectedRevision: 1, revisionId: "bodyweight-r2", eventId: "bodyweight-e2", occurredAtMs: 2 });
     invariant(created.kind === "created" && deleted.kind === "deleted" && replay.kind === "deleted" && (await repository.history(create.ownerId))[0]?.lifecycle === "deleted", "phase13_bodyweight_history_invalid");
@@ -637,10 +641,16 @@ const caseAssertions: Record<
   async "phase13-backup-clean-restore"(kernel) {
     const bodyweight = createBodyweightRepository(kernel);
     const command = { operation: "create" as const, requestId: "backup-bodyweight-create", entryId: "backup-bodyweight-entry", ownerId: "backup-owner", expectedRevision: 0, revisionId: "backup-bodyweight-r1", eventId: "backup-bodyweight-e1", occurredAtMs: 5, localDate: "2026-08-17", timezone: "Asia/Singapore", grams: 75_000 };
-    await bodyweight.commit({ ...command, requestSha256: canonicalBodyweightRequestHash(command) });
+    await bodyweight.commit({
+      ...command,
+      requestSha256: await runtimeSha256(canonicalBodyweightRequestPayload(command)),
+    });
     const snapshot = await createLogicalBackupRepository(kernel).collect({ snapshotId: "phase13-native-backup", createdAtMs: 5 });
     const divergent = { operation: "create" as const, requestId: "backup-bodyweight-divergent", entryId: "backup-bodyweight-divergent", ownerId: "backup-owner", expectedRevision: 0, revisionId: "backup-bodyweight-r2", eventId: "backup-bodyweight-e2", occurredAtMs: 6, localDate: "2026-08-18", timezone: "Asia/Singapore", grams: 76_000 };
-    await bodyweight.commit({ ...divergent, requestSha256: canonicalBodyweightRequestHash(divergent) });
+    await bodyweight.commit({
+      ...divergent,
+      requestSha256: await runtimeSha256(canonicalBodyweightRequestPayload(divergent)),
+    });
     const running = await seedRunningFixture(kernel, "backup-projection");
     const activityId = await importGarminActivity(kernel, "backup-projection");
     await confirmRunningActivityMatch(createRunningActivityMatchRepository(kernel), {
@@ -664,7 +674,10 @@ const caseAssertions: Record<
       ),
     ]);
     const fault = { operation: "create" as const, requestId: "backup-bodyweight-fault", entryId: "backup-bodyweight-fault", ownerId: "backup-owner", expectedRevision: 0, revisionId: "backup-bodyweight-r3", eventId: "backup-bodyweight-e3", occurredAtMs: 10, localDate: "2026-08-19", timezone: "Asia/Singapore", grams: 77_000 };
-    await bodyweight.commit({ ...fault, requestSha256: canonicalBodyweightRequestHash(fault) });
+    await bodyweight.commit({
+      ...fault,
+      requestSha256: await runtimeSha256(canonicalBodyweightRequestPayload(fault)),
+    });
     const priorToFault = await createLogicalBackupRepository(kernel).collect({ snapshotId: "phase13-native-fault-prior", createdAtMs: 10 });
     let faultObserved = false;
     try {

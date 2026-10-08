@@ -1,5 +1,3 @@
-import { createHash } from "node:crypto";
-
 import type { GarminSourceEnvelope } from "./garminActivitySourcePort";
 import { canonicalJson, GarminImportBoundaryError, parseGarminSourceEnvelope } from "./importContracts";
 
@@ -10,10 +8,13 @@ export type ImportedActivityCommandRepository = Readonly<{ confirmGarminImport(i
 export type ImportedActivityLifecycleRepository = Readonly<{ changeGarminActivityLifecycle(input: GarminActivityLifecycleInput): Promise<GarminImportResult> }>;
 export type GarminActivityLifecycleInput = Readonly<{ operation: "remove" | "restore"; requestId: string; requestSha256: string; activityId: string; expectedAggregateRevision: number; occurredAtMs: number; reason: string }>;
 
-export function prepareGarminImport(envelope: GarminSourceEnvelope): PreparedGarminImport {
+export function prepareGarminImport(
+  envelope: GarminSourceEnvelope,
+  sha256: (canonicalPayload: string) => string,
+): PreparedGarminImport {
   const parsed = parseGarminSourceEnvelope(envelope) as GarminSourceEnvelope;
   const canonical_payload_json = canonicalJson({ normalization_version: parsed.normalization_version, normalized: parsed.normalized });
-  const digest = createHash("sha256").update(canonical_payload_json).digest("hex");
+  const digest = sha256(canonical_payload_json);
   if (digest !== parsed.normalized_json_sha256) throw new GarminImportBoundaryError("garmin_digest_invalid");
   return Object.freeze({ envelope: parsed, canonical_payload_json });
 }
