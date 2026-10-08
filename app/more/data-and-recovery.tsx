@@ -45,6 +45,7 @@ import {
   ScreenHeader,
   SecondaryAction,
 } from "../../src/ui/components";
+import { ConfirmationDialog } from "../../src/ui/components/ConfirmationDialog";
 import {
   AdaptiveScreen,
 } from "../../src/ui/layout/AdaptiveScreen";
@@ -478,47 +479,7 @@ export function ManualEncryptedBackupContent() {
               {restoreState.kind === "opening" ? (
                 <Text accessibilityLiveRegion="polite" style={[typeScale.bodyStrong as TextStyle, { color: colors.contentCardText }]}>Opening backup</Text>
               ) : null}
-              {restoreState.kind === "review" ? (
-                <>
-                  <Text
-                    accessibilityRole="header"
-                    accessibilityLabel="Review restore clean"
-                    nativeID="restore-review-heading"
-                    ref={reviewHeadingRef as never}
-                    style={[typeScale.sectionTitle as TextStyle, { color: colors.contentCardText }]}
-                  >Review restore clean</Text>
-                  <View role="list" style={styles.previewFacts}>
-                    <BackupPreviewFact label="Source format version" value={restoreState.preview.sourceFormatVersion} />
-                    {backupCreatedAt === null ? null : (
-                      <BackupPreviewFact label="Backup created" value={backupCreatedAt} />
-                    )}
-                    <BackupPreviewFact label="Plans" value={restoreState.preview.replacementCounts.plans ?? 0} />
-                    <BackupPreviewFact label="Custom exercises" value={restoreState.preview.replacementCounts.exercises ?? 0} />
-                    <BackupPreviewFact label="Sessions" value={restoreState.preview.replacementCounts.workout_sessions ?? 0} />
-                    <BackupPreviewFact label="Settings" value={restoreState.preview.replacementCounts.app_settings ?? 0} />
-                    <BackupPreviewFact label="Catalog references available" value={restoreState.preview.references.catalogReferences.available} />
-                    <BackupPreviewFact label="Catalog references unavailable" value={restoreState.preview.references.catalogReferences.unavailable} />
-                  </View>
-                  <Text style={[typeScale.bodyStrong as TextStyle, { color: colors.destructive }]}>
-                    Restoring replaces your current plans, workouts, settings, and saved decisions with this backup. This cannot be undone from this screen.
-                  </Text>
-                  <Text style={[typeScale.label as TextStyle, { color: colors.contentCardText }]}>Type REPLACE to continue</Text>
-                  <TextInput
-                    accessibilityLabel="Type REPLACE to continue"
-                    autoCapitalize="characters"
-                    onChangeText={setReplaceConfirmation}
-                    style={[typeScale.body as TextStyle, styles.input, { backgroundColor: colors.surface, borderColor: colors.destructive, color: colors.textPrimary }]}
-                  />
-                  <PrimaryAction
-                    accessibilityHint={replaceConfirmation === "REPLACE" ? "Ready to restore the reviewed backup" : "Enter the exact phrase REPLACE to enable restore"}
-                    disabled={replaceConfirmation !== "REPLACE"}
-                    label="Restore backup"
-                    onPress={() => { void commitRestore(); }}
-                    testID="restore-backup-action"
-                  />
-                  <SecondaryAction label="Cancel restore clean" onPress={cancelRestoreReview} testID="restore-cancel-action" />
-                </>
-              ) : null}
+              {restoreState.kind === "review" ? null : null}
               {restoreState.kind === "restoring" ? (
                 <Text accessibilityLiveRegion="polite" style={[typeScale.bodyStrong as TextStyle, { color: colors.contentCardText }]}>Restoring backup</Text>
               ) : null}
@@ -592,45 +553,7 @@ export function ManualEncryptedBackupContent() {
               {mergeState.kind === "opening" ? (
                 <Text accessibilityLiveRegion="polite" style={[typeScale.bodyStrong as TextStyle, { color: colors.contentCardText }]}>Opening backup for merge</Text>
               ) : null}
-              {mergeState.kind === "review" ? (
-                <>
-                  <Text
-                    accessibilityRole="header"
-                    accessibilityLabel="Review merge"
-                    nativeID="merge-review-heading"
-                    ref={mergeReviewHeadingRef as never}
-                    style={[typeScale.sectionTitle as TextStyle, { color: colors.contentCardText }]}
-                  >Review merge</Text>
-                  <Text style={[typeScale.body as TextStyle, { color: colors.contentCardTextSecondary }]}>No changes have been made yet.</Text>
-                  <View role="list" style={styles.previewFacts}>
-                    <BackupPreviewFact label="Records inserted" value={mergeState.preview.inserted} />
-                    <BackupPreviewFact label="Duplicates unchanged" value={mergeState.preview.duplicates} />
-                    <BackupPreviewFact label="Archive wins" value={mergeState.preview.archiveWon} />
-                    <BackupPreviewFact label="Local wins" value={mergeState.preview.localWon} />
-                    <BackupPreviewFact label="Kept both" value={mergeState.preview.keptBoth} />
-                    <BackupPreviewFact label="Remapped IDs" value={mergeState.preview.remapped} />
-                    <BackupPreviewFact label="Conflicts" value={mergeState.preview.conflicts} />
-                  </View>
-                  <Text style={[typeScale.body as TextStyle, { color: colors.contentCardTextSecondary }]}>
-                    Newer sessions and corrections win. Existing settings stay. Different custom exercises and plans are kept by identity.
-                  </Text>
-                  <Text style={[typeScale.label as TextStyle, { color: colors.contentCardText }]}>Type MERGE to continue</Text>
-                  <TextInput
-                    accessibilityLabel="Type MERGE to continue"
-                    autoCapitalize="characters"
-                    onChangeText={setMergeConfirmation}
-                    style={[typeScale.body as TextStyle, styles.input, { backgroundColor: colors.surface, borderColor: colors.destructive, color: colors.textPrimary }]}
-                  />
-                  <PrimaryAction
-                    accessibilityHint={mergeConfirmation === "MERGE" ? "Ready to merge the reviewed backup" : "Enter the exact phrase MERGE to enable merge"}
-                    disabled={mergeConfirmation !== "MERGE"}
-                    label="Merge backup"
-                    onPress={() => { void commitMerge(); }}
-                    testID="merge-backup-action"
-                  />
-                  <SecondaryAction label="Cancel merge" onPress={cancelMergeReview} testID="merge-cancel-action" />
-                </>
-              ) : null}
+              {mergeState.kind === "review" ? null : null}
               {mergeState.kind === "merging" ? (
                 <Text accessibilityLiveRegion="polite" style={[typeScale.bodyStrong as TextStyle, { color: colors.contentCardText }]}>Merging backup</Text>
               ) : null}
@@ -690,6 +613,59 @@ export function ManualEncryptedBackupContent() {
               )}
             </View>
           </ContentCard>
+          <ConfirmationDialog
+            body="Restoring replaces your current plans, workouts, settings, and saved decisions with this backup. This cannot be undone from this screen."
+            cancelLabel="Cancel restore clean"
+            confirmDisabled={replaceConfirmation !== "REPLACE"}
+            confirmLabel="Restore backup"
+            confirmTestID="restore-backup-action"
+            destructive
+            heading="Review restore clean"
+            onCancel={cancelRestoreReview}
+            onConfirm={() => { void commitRestore(); }}
+            visible={restoreState.kind === "review"}
+          >
+            {restoreState.kind !== "review" ? null : <>
+              <View role="list" style={styles.previewFacts}>
+                <BackupPreviewFact label="Source format version" value={restoreState.preview.sourceFormatVersion} />
+                {backupCreatedAt === null ? null : <BackupPreviewFact label="Backup created" value={backupCreatedAt} />}
+                <BackupPreviewFact label="Plans" value={restoreState.preview.replacementCounts.plans ?? 0} />
+                <BackupPreviewFact label="Custom exercises" value={restoreState.preview.replacementCounts.exercises ?? 0} />
+                <BackupPreviewFact label="Sessions" value={restoreState.preview.replacementCounts.workout_sessions ?? 0} />
+                <BackupPreviewFact label="Settings" value={restoreState.preview.replacementCounts.app_settings ?? 0} />
+                <BackupPreviewFact label="Catalog references available" value={restoreState.preview.references.catalogReferences.available} />
+                <BackupPreviewFact label="Catalog references unavailable" value={restoreState.preview.references.catalogReferences.unavailable} />
+              </View>
+              <Text style={[typeScale.label as TextStyle, { color: colors.contentCardText }]}>Type REPLACE to continue</Text>
+              <TextInput accessibilityLabel="Type REPLACE to continue" autoCapitalize="characters" onChangeText={setReplaceConfirmation} style={[typeScale.body as TextStyle, styles.input, { backgroundColor: colors.surface, borderColor: colors.destructive, color: colors.textPrimary }]} />
+            </>}
+          </ConfirmationDialog>
+          <ConfirmationDialog
+            body="No changes have been made yet."
+            cancelLabel="Cancel merge"
+            confirmDisabled={mergeConfirmation !== "MERGE"}
+            confirmLabel="Merge backup"
+            confirmTestID="merge-backup-action"
+            heading="Review merge"
+            onCancel={cancelMergeReview}
+            onConfirm={() => { void commitMerge(); }}
+            visible={mergeState.kind === "review"}
+          >
+            {mergeState.kind !== "review" ? null : <>
+              <View role="list" style={styles.previewFacts}>
+                <BackupPreviewFact label="Records inserted" value={mergeState.preview.inserted} />
+                <BackupPreviewFact label="Duplicates unchanged" value={mergeState.preview.duplicates} />
+                <BackupPreviewFact label="Archive wins" value={mergeState.preview.archiveWon} />
+                <BackupPreviewFact label="Local wins" value={mergeState.preview.localWon} />
+                <BackupPreviewFact label="Kept both" value={mergeState.preview.keptBoth} />
+                <BackupPreviewFact label="Remapped IDs" value={mergeState.preview.remapped} />
+                <BackupPreviewFact label="Conflicts" value={mergeState.preview.conflicts} />
+              </View>
+              <Text style={[typeScale.body as TextStyle, { color: colors.contentCardTextSecondary }]}>Newer sessions and corrections win. Existing settings stay. Different custom exercises and plans are kept by identity.</Text>
+              <Text style={[typeScale.label as TextStyle, { color: colors.contentCardText }]}>Type MERGE to continue</Text>
+              <TextInput accessibilityLabel="Type MERGE to continue" autoCapitalize="characters" onChangeText={setMergeConfirmation} style={[typeScale.body as TextStyle, styles.input, { backgroundColor: colors.surface, borderColor: colors.destructive, color: colors.textPrimary }]} />
+            </>}
+          </ConfirmationDialog>
         </>
       }
     />
