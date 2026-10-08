@@ -48,7 +48,7 @@ tags:
     when:
       true: ${PHASE14_STAGE == 'phase14-tokens'}
     commands:
-      - assertVisible: "Today"
+      - assertVisible: "Workout"
       - assertVisible: "Calendar"
       - assertVisible: "Library"
       - assertVisible: "Progress"
