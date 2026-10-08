@@ -4,7 +4,14 @@ import React from "react";
 import { Text, View } from "react-native";
 
 import { AppearanceProvider } from "../theme";
+import { useSemanticToast } from "../components/SemanticToast";
 import { AppRootShell } from "./AppRootShell";
+
+function ShellToastTrigger() {
+  const { enqueue } = useSemanticToast();
+  React.useEffect(() => enqueue({ message: "Workout saved" }), [enqueue]);
+  return null;
+}
 
 describe("AppRootShell", () => {
   it("keeps mounted root content in place and focuses the selected root heading", async () => {
@@ -92,5 +99,20 @@ describe("AppRootShell", () => {
       );
     });
     expect(heading.current.focus).toHaveBeenCalledTimes(2);
+  });
+
+  it("mounts one measured shell-level toast host", async () => {
+    await render(
+      <AppearanceProvider>
+        <AppRootShell toastBottomAvoidance={74} toastTopAvoidance={56}>
+          <ShellToastTrigger />
+        </AppRootShell>
+      </AppearanceProvider>,
+    );
+
+    expect(screen.getByTestId("semantic-toast")).toHaveStyle({
+      bottom: 90,
+      top: 72,
+    });
   });
 });
