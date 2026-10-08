@@ -16,8 +16,8 @@ export default function RemovedSessionsRoute() {
     <RemovedSessionsScreen
       loadRemovedSessions={runtime.listRemovedHistorySessions}
       onBack={() => router.back()}
-      onRestored={() => {
-        void runtime.refresh();
+      onRestored={async () => {
+        await runtime.refresh();
       }}
       restoreSession={runtime.restoreHistorySession}
     />

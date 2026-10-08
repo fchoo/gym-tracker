@@ -29,6 +29,9 @@ import {
   SkeletonBlock,
 } from "../components";
 import {
+  useSemanticToast,
+} from "../components/SemanticToast";
+import {
   AdaptiveScreen,
 } from "../layout/AdaptiveScreen";
 import {
@@ -45,7 +48,7 @@ export type RemovedSessionsScreenProps = Readonly<{
     input: Omit<RestoreHistorySessionInput, "nowMs">,
   ): Promise<HistoryLifecycleResult>;
   onBack(): void;
-  onRestored(sessionId: string): void;
+  onRestored(sessionId: string): Promise<void>;
   width?: number;
 }>;
 
@@ -80,6 +83,7 @@ export function RemovedSessionsScreen({
   width,
 }: RemovedSessionsScreenProps) {
   const { colors } = useAppTheme();
+  const { enqueue } = useSemanticToast();
   const [state, setState] = useState<LoadState>("loading");
   const [sessions, setSessions] = useState<readonly RemovedHistorySession[]>([]);
   const [selected, setSelected] = useState<RemovedHistorySession | null>(null);
@@ -88,14 +92,16 @@ export function RemovedSessionsScreen({
   const restoreRef = useRef<View>(null);
   const adaptiveWidth = width === undefined ? {} : { width };
 
-  const load = useCallback(async () => {
+  const load = useCallback(async (): Promise<boolean> => {
     setState("loading");
     setRestoreFailed(false);
     try {
       setSessions(await loadRemovedSessions());
       setState("ready");
+      return true;
     } catch {
       setState("error");
+      return false;
     }
   }, [loadRemovedSessions]);
 
@@ -112,22 +118,29 @@ export function RemovedSessionsScreen({
     if (selected === null || restoring) {
       return;
     }
+    const selectedSession = selected;
     setRestoring(true);
     setRestoreFailed(false);
-    void restoreSession({
-      sessionId: selected.id,
-      expectedEffectiveRevision: selected.effectiveRevision,
-      confirmation: RESTORE_HISTORY_CONFIRMATION,
-    }).then(() => {
-      const restoredId = selected.id;
-      dismissConfirmation();
-      onRestored(restoredId);
-      return load();
-    }).catch(() => {
-      setRestoreFailed(true);
-    }).finally(() => {
-      setRestoring(false);
-    });
+    void (async () => {
+      try {
+        await restoreSession({
+          sessionId: selectedSession.id,
+          expectedEffectiveRevision: selectedSession.effectiveRevision,
+          confirmation: RESTORE_HISTORY_CONFIRMATION,
+        });
+        await onRestored(selectedSession.id);
+        if (!await load()) {
+          setRestoreFailed(true);
+          return;
+        }
+        dismissConfirmation();
+        enqueue({ message: "Workout restored" });
+      } catch {
+        setRestoreFailed(true);
+      } finally {
+        setRestoring(false);
+      }
+    })();
   };
 
   let content: React.ReactNode;
@@ -152,7 +165,7 @@ export function RemovedSessionsScreen({
       <EmptyState
         body="Workouts removed from history stay here until you restore them."
         heading="No removed sessions"
-        primaryAction={<PrimaryAction label="Go back" onPress={onBack} />}
+        primaryAction={<PrimaryAction label="Return to App Settings" onPress={onBack} />}
       />
     );
   } else {
@@ -213,8 +226,10 @@ export function RemovedSessionsScreen({
       <ConfirmationSheet
         body={restoreFailed
           ? "Restore failed. The workout remains removed. Try restore again when ready."
-          : "This returns the workout to ordinary Calendar, history, records, and recommendations after the saved restore commits."}
-        cancelLabel="Cancel"
+          : selected === null
+            ? ""
+            : `${retainedLabel(selected)} (revision ${selected.effectiveRevision}) returns to ordinary Calendar, history, records, and recommendations after the saved restore commits.`}
+        cancelLabel="Keep session removed"
         confirmBusy={restoring}
         confirmLabel="Restore workout"
         destructive={false}

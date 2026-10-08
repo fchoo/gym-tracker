@@ -13,6 +13,7 @@ import {
 import React from "react";
 
 import type {
+  HistoryLifecycleResult,
   RemovedHistorySession,
 } from "../../domains/history";
 import {
@@ -47,7 +48,7 @@ async function renderScreen(overrides: Partial<Props> = {}) {
   const props = {
     loadRemovedSessions: jest.fn(async () => [removedSession]),
     onBack: jest.fn(),
-    onRestored: jest.fn(),
+    onRestored: jest.fn(async (_sessionId: string): Promise<void> => undefined),
     restoreSession: jest.fn(async () => ({
       effectiveRevision: 4,
       lifecycle: "active" as const,
@@ -94,7 +95,7 @@ describe("RemovedSessionsScreen", () => {
     expect(screen.getByRole("header", { name: "Restore this workout?" }))
       .toBeOnTheScreen();
     expect(screen.getByText(
-      "This returns the workout to ordinary Calendar, history, records, and recommendations after the saved restore commits.",
+      "Full Body Foundation · Full Body A (revision 3) returns to ordinary Calendar, history, records, and recommendations after the saved restore commits.",
     )).toBeOnTheScreen();
     expect(screen.getByRole("button", { name: "Keep session removed" }))
       .toBeOnTheScreen();
@@ -124,7 +125,7 @@ describe("RemovedSessionsScreen", () => {
       onRestored: jest.fn(() => new Promise<void>((resolve) => {
         resolveCallback = resolve;
       })),
-      restoreSession: jest.fn(() => new Promise((resolve) => {
+      restoreSession: jest.fn(() => new Promise<HistoryLifecycleResult>((resolve) => {
         resolveRestore = () => resolve({ effectiveRevision: 4, lifecycle: "active" as const });
       })),
     });
