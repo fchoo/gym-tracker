@@ -2,8 +2,10 @@ import fullBodyFoundationAsset from "../../../assets/content/full-body-foundatio
 import {
   changeGarminActivityLifecycle,
   confirmGarminImportDate,
+  prepareGarminImport,
   type PreparedGarminImport,
 } from "../../domains/activities/importCommands";
+import { canonicalJson } from "../../domains/activities/importContracts";
 import {
   canonicalBodyweightRequestPayload,
 } from "../../domains/bodyweight/contracts";
@@ -387,7 +389,7 @@ async function seedStrengthActivationFixture(
   invariant(result.planId === planId, "phase13_map01_activation_failed");
 }
 
-function stagedGarminImport(prefix: string): PreparedGarminImport {
+async function garminSourceEnvelope(prefix: string) {
   const normalized = {
     version: 1 as const,
     started_at_ms: 1_786_853_604_000,
@@ -398,19 +400,53 @@ function stagedGarminImport(prefix: string): PreparedGarminImport {
     laps: [],
   };
   return Object.freeze({
-    envelope: Object.freeze({
-      version: 1 as const,
-      source_kind: "garmin_connect_account" as const,
-      account_namespace: `${prefix}-account`,
-      external_activity_id: `${prefix}-external`,
-      normalization_version: 1,
-      normalized_json_sha256: SHA256,
-      raw_component_sha256: { activity: SHA256, splits: SHA256, details: SHA256 },
-      sample_fidelity: "source_summary" as const,
-      normalized,
-    }),
-    canonical_payload_json: JSON.stringify({ normalization_version: 1, normalized }),
+    version: 1 as const,
+    source_kind: "garmin_connect_account" as const,
+    account_namespace: `${prefix}-account`,
+    external_activity_id: `${prefix}-external`,
+    normalization_version: 1,
+    normalized_json_sha256: await runtimeSha256(canonicalJson({ normalization_version: 1, normalized })),
+    raw_component_sha256: { activity: SHA256, splits: SHA256, details: SHA256 },
+    sample_fidelity: "source_summary" as const,
+    normalized,
   });
+}
+
+async function stagedGarminImport(prefix: string): Promise<PreparedGarminImport> {
+  const staged = await prepareGarminImport(
+    await garminSourceEnvelope(prefix),
+    runtimeSha256,
+  );
+  return staged;
+}
+
+async function assertGarminDigestBoundaryBeforeWrite(
+  kernel: SqliteKernel,
+  prefix: string,
+): Promise<void> {
+  const envelope = await garminSourceEnvelope(`${prefix}-digest`);
+  const [before] = await kernel.queryAll<{ count: number }>(
+    "SELECT COUNT(*) AS count FROM imported_activity_payloads",
+  );
+  let errorCode = "";
+  try {
+    await prepareGarminImport({
+      ...envelope,
+      normalized: {
+        ...envelope.normalized,
+        distance_meters: envelope.normalized.distance_meters + 1,
+      },
+    }, runtimeSha256);
+  } catch (error) {
+    errorCode = error instanceof Error ? error.message : "";
+  }
+  const [after] = await kernel.queryAll<{ count: number }>(
+    "SELECT COUNT(*) AS count FROM imported_activity_payloads",
+  );
+  invariant(
+    errorCode === "garmin_digest_invalid" && before?.count === after?.count,
+    "phase13_garmin_digest_boundary_invalid",
+  );
 }
 
 async function importGarminActivity(
@@ -419,13 +455,14 @@ async function importGarminActivity(
 ): Promise<string> {
   const repository = createImportedActivityRepository(kernel);
   const activityId = `${prefix}-activity`;
+  await assertGarminDigestBoundaryBeforeWrite(kernel, prefix);
   const input = {
     requestId: `${prefix}-import`,
     requestSha256: await requestHash(`${prefix}-import`),
     activityId,
     expectedAggregateRevision: 0,
     confirmedLocalDate: "2026-08-17",
-    staged: stagedGarminImport(prefix),
+    staged: await stagedGarminImport(prefix),
   };
   const first = await confirmGarminImportDate(repository, input);
   const replay = await confirmGarminImportDate(repository, input);
@@ -680,7 +717,7 @@ const caseAssertions: Record<
     const activityId = await importGarminActivity(kernel, "stale");
     const repository = createImportedActivityRepository(kernel);
     await changeGarminActivityLifecycle(repository, { operation: "remove", requestId: "stale-remove", requestSha256: await requestHash("stale-remove"), activityId, expectedAggregateRevision: 1, occurredAtMs: PHASE13_NATIVE_EVENT_TIME_MS, reason: "owner_request" });
-    const stale = await confirmGarminImportDate(repository, { requestId: "stale-import", requestSha256: await requestHash("stale-import"), activityId: "stale-other", expectedAggregateRevision: 0, confirmedLocalDate: "2026-08-17", staged: stagedGarminImport("stale") });
+    const stale = await confirmGarminImportDate(repository, { requestId: "stale-import", requestSha256: await requestHash("stale-import"), activityId: "stale-other", expectedAggregateRevision: 0, confirmedLocalDate: "2026-08-17", staged: await stagedGarminImport("stale") });
     invariant(stale.kind === "removed" && stale.activityId === activityId, "phase13_stale_replay_resurrected");
   },
   async "phase13-bodyweight-correction-delete"(kernel) {

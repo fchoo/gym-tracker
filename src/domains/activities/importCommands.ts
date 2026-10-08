@@ -2,19 +2,20 @@ import type { GarminSourceEnvelope } from "./garminActivitySourcePort";
 import { canonicalJson, GarminImportBoundaryError, parseGarminSourceEnvelope } from "./importContracts";
 
 export type PreparedGarminImport = Readonly<{ envelope: GarminSourceEnvelope; canonical_payload_json: string }>;
+export type GarminSha256 = (canonicalPayload: string) => Promise<string>;
 export type GarminImportResult = Readonly<{ kind: "imported" | "replayed" | "revision_review" | "removed" | "conflict"; activityId: string; aggregateRevision: number }>;
 export type ConfirmGarminImportInput = Readonly<{ requestId: string; requestSha256: string; activityId: string; expectedAggregateRevision: number; confirmedLocalDate: string; staged: PreparedGarminImport }>;
 export type ImportedActivityCommandRepository = Readonly<{ confirmGarminImport(input: ConfirmGarminImportInput): Promise<GarminImportResult> }>;
 export type ImportedActivityLifecycleRepository = Readonly<{ changeGarminActivityLifecycle(input: GarminActivityLifecycleInput): Promise<GarminImportResult> }>;
 export type GarminActivityLifecycleInput = Readonly<{ operation: "remove" | "restore"; requestId: string; requestSha256: string; activityId: string; expectedAggregateRevision: number; occurredAtMs: number; reason: string }>;
 
-export function prepareGarminImport(
+export async function prepareGarminImport(
   envelope: GarminSourceEnvelope,
-  sha256: (canonicalPayload: string) => string,
-): PreparedGarminImport {
+  sha256: GarminSha256,
+): Promise<PreparedGarminImport> {
   const parsed = parseGarminSourceEnvelope(envelope) as GarminSourceEnvelope;
   const canonical_payload_json = canonicalJson({ normalization_version: parsed.normalization_version, normalized: parsed.normalized });
-  const digest = sha256(canonical_payload_json);
+  const digest = await sha256(canonical_payload_json);
   if (digest !== parsed.normalized_json_sha256) throw new GarminImportBoundaryError("garmin_digest_invalid");
   return Object.freeze({ envelope: parsed, canonical_payload_json });
 }
