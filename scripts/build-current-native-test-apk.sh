@@ -152,7 +152,8 @@ generated_apk="$project_root/android/app/build/outputs/apk/release/app-release.a
 [ -f "$generated_apk" ] ||
   fail "Gradle did not produce $generated_apk."
 # Validates assets/index.android.bundle, assets/app.config, and dev-test identity.
-if ! "$project_root/scripts/validate-development-test-app-config.mjs" "$generated_apk"; then
+if ! EXPO_PUBLIC_NATIVE_CONTRACT_SUITE="$suite" \
+  "$project_root/scripts/validate-development-test-app-config.mjs" "$generated_apk"; then
   fail 'embedded development-test config is invalid.'
 fi
 
