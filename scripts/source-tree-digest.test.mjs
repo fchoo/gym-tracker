@@ -7,6 +7,7 @@ import test from "node:test";
 
 import {
   assertCleanCommittedTree,
+  sourceTreeUntrackedPaths,
   sourceTreeSha256AtHead,
 } from "./source-tree-digest.mjs";
 
@@ -46,6 +47,36 @@ test("hashes the committed native tree and rejects dirty implementation source",
     writeFileSync(path.join(root, "artifacts", "generated.txt"), "generated\n");
     writeFileSync(path.join(root, ".gsd", "session.json"), "local\n");
     assert.doesNotThrow(() => assertCleanCommittedTree(secondHead, root));
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test("ignores generated coverage directories without ignoring similarly named source files", () => {
+  const root = mkdtempSync(path.join(tmpdir(), "gym-source-tree-coverage-"));
+  try {
+    git(root, "init", "--quiet");
+    git(root, "config", "user.email", "test@example.invalid");
+    git(root, "config", "user.name", "Source Digest Test");
+    writeFileSync(path.join(root, "app.ts"), "export const source = 1;\n");
+    git(root, "add", "app.ts");
+    git(root, "commit", "--quiet", "-m", "initial");
+    const head = git(root, "rev-parse", "HEAD");
+
+    mkdirSync(path.join(root, "coverage-example"), { recursive: true });
+    writeFileSync(
+      path.join(root, "coverage-example", "coverage-summary.json"),
+      "{}\n",
+    );
+    assert.deepEqual(sourceTreeUntrackedPaths(root), []);
+    assert.doesNotThrow(() => assertCleanCommittedTree(head, root));
+
+    writeFileSync(path.join(root, "coverage-example.ts"), "export const realSource = true;\n");
+    assert.deepEqual(sourceTreeUntrackedPaths(root), ["coverage-example.ts"]);
+    assert.throws(
+      () => assertCleanCommittedTree(head, root),
+      /coverage-example\.ts/u,
+    );
   } finally {
     rmSync(root, { recursive: true, force: true });
   }

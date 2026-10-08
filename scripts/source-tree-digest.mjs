@@ -14,7 +14,7 @@ import process from "node:process";
 import { pathToFileURL } from "node:url";
 
 const excludedSourcePath =
-  /^(?:node_modules|artifacts|\.planning|\.gsd|\.expo|\.gradle|\.kotlin|\.cache|coverage|dist|web-build)(?:\/|$)|^modules\/[^/]+\/android\/build(?:\/|$)|(?:^|\/)\.metro-health-check|\.tsbuildinfo$/;
+  /^(?:node_modules|artifacts|\.planning|\.gsd|\.expo|\.gradle|\.kotlin|\.cache|coverage(?:-[^/.]+)?|dist|web-build)(?:\/|$)|^modules\/[^/]+\/android\/build(?:\/|$)|(?:^|\/)\.metro-health-check|\.tsbuildinfo$/;
 
 function normalizedFileMode(mode) {
   return (mode & 0o111) === 0 ? "644" : "755";
