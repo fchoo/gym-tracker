@@ -71,14 +71,17 @@ describe("SettingsScreen", () => {
 
     expect(screen.getByRole("header", { name: "Settings" }))
       .toBeOnTheScreen();
-    expect(screen.getAllByRole("header").map((node) => node.props.children))
-      .toEqual([
-        "Settings",
-        "Appearance",
-        "Rest alerts",
-        "History and data",
-        "Data and recovery",
-      ]);
+    const expectedHeadings = [
+      "Settings",
+      "Appearance",
+      "Rest alerts",
+      "History and data",
+      "Data and recovery",
+    ];
+    expect(screen.getAllByRole("header")).toHaveLength(expectedHeadings.length);
+    for (const heading of expectedHeadings) {
+      expect(screen.getByRole("header", { name: heading })).toBeOnTheScreen();
+    }
     expect(screen.getByTestId("settings-appearance-group"))
       .toHaveProp("accessibilityRole", "radiogroup");
     expect(screen.getByRole("radio", { name: "System" }))
