@@ -73,9 +73,6 @@ if ! mkdir "$native_build_lock" 2>/dev/null; then
 fi
 native_build_lock_acquired=1
 
-[ -z "$(git status --porcelain --untracked-files=no)" ] ||
-  fail 'tracked worktree must be clean before the exact-HEAD native build.'
-
 if [ -z "${JAVA_HOME:-}" ] && [ -x /usr/libexec/java_home ]; then
   JAVA_HOME=$(/usr/libexec/java_home -v 17 2>/dev/null || true)
 fi
@@ -126,7 +123,8 @@ else
 fi
 
 base_head=$(git rev-parse HEAD)
-source_tree_sha256=$(node scripts/source-tree-digest.mjs --assert-no-untracked)
+source_tree_sha256=$(node scripts/source-tree-digest.mjs \
+  --head "$base_head" --assert-clean)
 [ "${#base_head}" -eq 40 ] || fail 'base_head is not a full Git SHA.'
 [ "${#source_tree_sha256}" -eq 64 ] ||
   fail 'could not compute the current source-tree digest.'

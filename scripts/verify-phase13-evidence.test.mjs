@@ -174,6 +174,7 @@ test("rejects current source, retained APK, and installed APK drift", () => {
     manifest,
     currentHead: HEAD,
     currentSourceTreeSha256: SOURCE_SHA256,
+    isCleanCommittedTree: true,
     retainedApkBytes: APK_BYTES,
     installedApkBytes: APK_BYTES,
     installedPackagePath: manifest.installed_apk.device_path,
@@ -182,6 +183,7 @@ test("rejects current source, retained APK, and installed APK drift", () => {
   for (const overrides of [
     { currentHead: "0".repeat(40) },
     { currentSourceTreeSha256: "0".repeat(64) },
+    { isCleanCommittedTree: false },
     { retainedApkBytes: Buffer.from("stale") },
     { installedApkBytes: Buffer.from("stale") },
     { installedPackagePath: "/data/app/other/base.apk" },

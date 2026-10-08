@@ -14,7 +14,7 @@ import process from "node:process";
 import { pathToFileURL } from "node:url";
 
 const excludedSourcePath =
-  /^(?:android|ios|node_modules|artifacts|\.planning|\.gsd|\.expo|\.gradle|\.kotlin|\.cache|coverage|dist|web-build)(?:\/|$)|^modules\/[^/]+\/android\/build(?:\/|$)|(?:^|\/)\.metro-health-check|\.tsbuildinfo$/;
+  /^(?:node_modules|artifacts|\.planning|\.gsd|\.expo|\.gradle|\.kotlin|\.cache|coverage|dist|web-build)(?:\/|$)|^modules\/[^/]+\/android\/build(?:\/|$)|(?:^|\/)\.metro-health-check|\.tsbuildinfo$/;
 
 function normalizedFileMode(mode) {
   return (mode & 0o111) === 0 ? "644" : "755";
@@ -107,9 +107,7 @@ export function sourceTreeSha256AtHead(head, root = process.cwd()) {
     .filter(({ type, filePath }) =>
       type === "blob" && !excludedSourcePath.test(filePath)
     );
-  const trackedPaths = new Set(entries.map(({ filePath }) => filePath));
-  return digestFiles([
-    ...entries.map(({ rawMode, hash, filePath }) => ({
+  return digestFiles(entries.map(({ rawMode, hash, filePath }) => ({
       filePath,
       type: rawMode === "120000" ? "symlink" : "file",
       mode: rawMode === "100755" ? "755" : rawMode === "120000" ? "000" : "644",
@@ -118,17 +116,38 @@ export function sourceTreeSha256AtHead(head, root = process.cwd()) {
         ["cat-file", "blob", hash],
         { cwd: root, maxBuffer: 64 * 1024 * 1024 },
       ),
-    })),
-    ...sourceTreeUntrackedPaths(root)
-      .filter((filePath) => !trackedPaths.has(filePath))
-      .map((filePath) => currentFile(root, filePath)),
-  ]);
+    })));
+}
+
+export function assertCleanCommittedTree(head, root = process.cwd()) {
+  const currentHead = execFileSync(
+    "git",
+    ["rev-parse", "HEAD"],
+    { cwd: root, encoding: "utf8" },
+  ).trim();
+  if (head !== currentHead) {
+    throw new Error("source digest head does not match the checked-out commit.");
+  }
+  const status = execFileSync(
+    "git",
+    ["status", "--porcelain", "--untracked-files=all"],
+    { cwd: root, encoding: "utf8", maxBuffer: 16 * 1024 * 1024 },
+  ).split(/\r?\n/u).filter(Boolean).map((line) => line.slice(3));
+  const sourceChanges = status.filter((filePath) =>
+    !excludedSourcePath.test(filePath)
+  );
+  if (sourceChanges.length > 0) {
+    throw new Error(
+      `dirty implementation tree prevents an exact source digest: ${sourceChanges.join(", ")}`,
+    );
+  }
 }
 
 async function executeMain() {
   const args = process.argv.slice(2);
   let head;
   let assertNoUntracked = false;
+  let assertClean = false;
   for (let index = 0; index < args.length; index += 1) {
     const argument = args[index];
     if (argument === "--head") {
@@ -138,6 +157,8 @@ async function executeMain() {
       head = argument.slice("--head=".length);
     } else if (argument === "--assert-no-untracked") {
       assertNoUntracked = true;
+    } else if (argument === "--assert-clean") {
+      assertClean = true;
     } else {
       throw new Error(`unknown argument: ${argument}`);
     }
@@ -147,6 +168,12 @@ async function executeMain() {
     throw new Error(
       `untracked implementation files prevent an exact source digest: ${untracked.join(", ")}`,
     );
+  }
+  if (assertClean) {
+    if (head === undefined) {
+      throw new Error("--assert-clean requires --head.");
+    }
+    assertCleanCommittedTree(head);
   }
   process.stdout.write(head === undefined
     ? sourceTreeSha256()

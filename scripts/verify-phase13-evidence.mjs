@@ -12,7 +12,10 @@ import path from "node:path";
 import process from "node:process";
 import { pathToFileURL } from "node:url";
 
-import { sourceTreeSha256 } from "./source-tree-digest.mjs";
+import {
+  assertCleanCommittedTree,
+  sourceTreeSha256AtHead,
+} from "./source-tree-digest.mjs";
 
 const ROOT = process.cwd();
 const PHASE13_MANIFEST = "artifacts/native/phase13/build.json";
@@ -300,12 +303,15 @@ export function validatePhase13CurrentArtifacts({
   manifest,
   currentHead,
   currentSourceTreeSha256,
+  isCleanCommittedTree,
   retainedApkBytes,
   installedApkBytes,
   installedPackagePath,
   liveDevice = manifest.device,
 }) {
   if (
+    isCleanCommittedTree !== true
+    ||
     manifest.base_head !== currentHead
     || manifest.source_tree_sha256 !== currentSourceTreeSha256
     || sha256(retainedApkBytes) !== manifest.apk?.sha256
@@ -409,13 +415,19 @@ export function executePhase13EvidenceVerifier(args = process.argv.slice(2)) {
     ["-s", manifest.device.serial, "exec-out", "cat", installedPackagePath],
     { cwd: ROOT, maxBuffer: 512 * 1024 * 1024 },
   );
+  const currentHead = execFileSync("git", ["rev-parse", "HEAD"], {
+    cwd: ROOT,
+    encoding: "utf8",
+  }).trim();
+  assertCleanCommittedTree(manifest.base_head, ROOT);
   validatePhase13CurrentArtifacts({
     manifest,
-    currentHead: execFileSync("git", ["rev-parse", "HEAD"], {
-      cwd: ROOT,
-      encoding: "utf8",
-    }).trim(),
-    currentSourceTreeSha256: sourceTreeSha256(ROOT),
+    currentHead,
+    currentSourceTreeSha256: sourceTreeSha256AtHead(
+      manifest.base_head,
+      ROOT,
+    ),
+    isCleanCommittedTree: true,
     retainedApkBytes: readFileSync(apkPath),
     installedApkBytes,
     installedPackagePath,
