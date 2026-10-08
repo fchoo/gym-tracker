@@ -5,16 +5,16 @@ milestone_name: Prototype Parity, Concurrent Plans & Garmin Import — PLANNED
 current_phase: 14
 current_phase_name: Prototype Visual Shell
 status: executing
-stopped_at: Completed 14-03-PLAN.md
-last_updated: "2026-10-08T18:02:44.968Z"
+stopped_at: Completed 14-04-PLAN.md
+last_updated: "2026-10-08T18:29:58.682Z"
 last_activity: 2026-10-08
 last_activity_desc: Phase 14 execution started
-state_head: 797230a7a12f51740b539fc1eb9708efac7985b6
+state_head: b7e8ec4bfff9c9efffbbdc1cb504cc108c7123fc
 progress:
   total_phases: 8
   completed_phases: 1
   total_plans: 98
-  completed_plans: 19
+  completed_plans: 20
   percent: 13
 ---
 
@@ -30,7 +30,7 @@ See: .planning/PROJECT.md (updated 2026-10-06)
 ## Current Position
 
 Phase: 14 (Prototype Visual Shell) — EXECUTING
-Plan: 4 of 12
+Plan: 5 of 12
 Status: Ready to execute
 Last activity: 2026-10-08 — Phase 14 execution started
 
@@ -59,6 +59,7 @@ Gym Tracker remains a signed personal-use Android APK/AAB with SQLite-authoritat
 | Phase 14 P01 | 9m | 2 tasks | 10 files |
 | Phase 14 P02 | 9m | 3 tasks | 12 files |
 | Phase 14 P03 | 42m | 2 tasks | 10 files |
+| Phase 14 P04 | 7m | 3 tasks | 10 files |
 
 ## Accumulated Context
 
@@ -83,6 +84,8 @@ Gym Tracker remains a signed personal-use Android APK/AAB with SQLite-authoritat
 - [Phase 14]: Revision 18 font approval is sealed to ddced4d8, the supplied source/APK hashes, and both reviewed scale overlays.
 - [Phase 14]: Appearance preserves System as null and retains the last authoritative value when a SQLite write fails.
 - [Phase 14]: Loading keeps all four roots disabled at the bottom; font and appearance failures stop before trusted runtime mounting.
+- [Phase 14]: BottomSheet owns cancellation, focus restoration, modal isolation, and IME-safe geometry; consumers retain draft and mutation state.
+- [Phase 14]: SemanticToast accepts only bounded presentation events and never receives workflow authority callbacks.
 
 ### Pending Owner Review
 
@@ -107,7 +110,7 @@ Gym Tracker remains a signed personal-use Android APK/AAB with SQLite-authoritat
 
 ## Session Continuity
 
-Last session: 2026-10-08T18:02:44.924Z
-Stopped at: Completed 14-03-PLAN.md
+Last session: 2026-10-08T18:29:58.639Z
+Stopped at: Completed 14-04-PLAN.md
 Resume file: None
 Next action: Present the complete planning set for owner review; after explicit approval, run `/gsd-execute-phase 13`.

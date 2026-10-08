@@ -45,8 +45,8 @@ Exactly four roots: **Workout, Calendar, Library, Progress**. Preserve SQLite au
 - [x] **SHL-02**: Switch destinations in place with correct selected state, heading focus, deep-route exit and retained destination-specific state.
 - [x] **SHL-03**: Open App Settings from the root header and synchronize Light, Dark and System appearance across the four roots, Active Workout, sheets and dialogs; persist the choice and react to system changes. Garmin-specific appearance closure is owned by GAR-16 after its contextual route exists.
 - [x] **SHL-04**: Reproduce approved semantic colors, Archivo variable typography, IBM Plex Mono numerical text, spacing, borders and density using bundled native assets and shared tokens.
-- [ ] **SHL-05**: Use contextual bottom sheets with scrim, close/back dismissal, focus entry/trap/restoration and keyboard-safe content, preserving each surface's individual actions.
-- [ ] **SHL-06**: Place theme-aware semantic toasts below top bars, clear of the command/rest dock; preserve accessible status announcements.
+- [x] **SHL-05**: Use contextual bottom sheets with scrim, close/back dismissal, focus entry/trap/restoration and keyboard-safe content, preserving each surface's individual actions.
+- [x] **SHL-06**: Place theme-aware semantic toasts below top bars, clear of the command/rest dock; preserve accessible status announcements.
 - [x] **SHL-07**: Preserve loading, trusted, failure/retry and notification-permission/continue-without-alerts startup states in the new visual shell.
 - [ ] **SHL-08**: Keep Rest sound, Rest vibration and notification settings reachable under device settings, outside plan timing.
 - [ ] **SHL-09**: Keep Removed sessions and Data and recovery reachable from Settings even though the prototype's App Settings only demonstrates appearance.
@@ -259,8 +259,8 @@ once and remains Pending until its owning phase is implemented and verified.
 | SHL-02 | 14 | shell.root-state | Complete |
 | SHL-03 | 14 | shell.appearance | Complete |
 | SHL-04 | 14 | shell.tokens | Complete |
-| SHL-05 | 14 | shell.sheets | Pending |
-| SHL-06 | 14 | shell.toasts | Pending |
+| SHL-05 | 14 | shell.sheets | Complete |
+| SHL-06 | 14 | shell.toasts | Complete |
 | SHL-07 | 14 | shell.launch | Complete |
 | SHL-08 | 14 | shell.rest-alerts | Pending |
 | SHL-09 | 14 | shell.settings-deep-links | Pending |
