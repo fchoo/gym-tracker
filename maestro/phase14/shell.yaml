@@ -39,9 +39,9 @@ tags:
     when:
       true: ${PHASE14_STAGE == 'phase14-appearance'}
     commands:
-      - openLink: "gymtracker-devtest:///more?phase14Stage=${PHASE14_STAGE}"
+      - tapOn: "Open App Settings"
       - extendedWaitUntil:
-          visible: "Settings"
+          visible: "App Settings"
           timeout: 30000
       - assertVisible: "Appearance"
 - runFlow:
