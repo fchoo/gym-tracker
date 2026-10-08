@@ -12,7 +12,7 @@ tags:
     permissions:
       notifications: deny
 - extendedWaitUntil:
-    visible: "Today"
+    visible: "Workout"
     timeout: 90000
 - openLink: "gymtracker-devtest:///more/data-and-recovery?suite=phase14&phase14Stage=${PHASE14_STAGE}"
 - extendedWaitUntil:
@@ -23,7 +23,7 @@ tags:
       true: ${PHASE14_STAGE == 'phase14-rest-alerts'}
     commands:
       - pressKey: BACK
-      - assertVisible: "Settings"
+      - assertVisible: "App Settings"
       - assertVisible: "Rest alerts"
 - runFlow:
     when:
@@ -31,13 +31,13 @@ tags:
     commands:
       - assertVisible: "Data and recovery"
       - pressKey: BACK
-      - assertVisible: "Settings"
+      - assertVisible: "App Settings"
 - runFlow:
     when:
       true: ${PHASE14_STAGE == 'phase14-removed-sessions'}
     commands:
       - pressKey: BACK
-      - assertVisible: "Settings"
+      - assertVisible: "App Settings"
       - assertVisible: "Removed sessions"
 - runFlow:
     when:
