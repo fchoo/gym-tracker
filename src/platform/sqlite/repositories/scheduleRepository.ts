@@ -1158,22 +1158,20 @@ async function activateScheduleTransaction(
     if (planUpdate.changes !== 1) {
       throw new ScheduleRepositoryError("schedule_active_revision_conflict");
     }
-    if (active.schedule_id !== null) {
-      const scheduleUpdate = await transaction.execute(
-        `UPDATE owned_plan_schedules
-         SET lifecycle = 'inactive',
-             revision = revision + 1,
-             deactivated_at_ms = ?
-         WHERE id = ? AND revision = ? AND lifecycle = 'active'`,
-        [
-          input.activatedAtMs,
-          active.schedule_id,
-          active.schedule_revision,
-        ],
-      );
-      if (scheduleUpdate.changes !== 1) {
-        throw new ScheduleRepositoryError("schedule_active_revision_conflict");
-      }
+    const scheduleUpdate = await transaction.execute(
+      `UPDATE owned_plan_schedules
+       SET lifecycle = 'inactive',
+           revision = revision + 1,
+           deactivated_at_ms = ?
+       WHERE id = ? AND revision = ? AND lifecycle = 'active'`,
+      [
+        input.activatedAtMs,
+        active.schedule_id as string,
+        active.schedule_revision,
+      ],
+    );
+    if (scheduleUpdate.changes !== 1) {
+      throw new ScheduleRepositoryError("schedule_active_revision_conflict");
     }
   }
   const scheduleRevision = input.targetSchedule.kind === "absent"
@@ -1197,9 +1195,7 @@ async function activateScheduleTransaction(
       [
         input.activatedAtMs,
         scheduleId,
-        input.targetSchedule.kind === "inactive"
-          ? input.targetSchedule.scheduleRevision
-          : -1,
+        (input.targetSchedule as { scheduleRevision: number }).scheduleRevision,
       ],
     );
     if (scheduleUpdate.changes !== 1) {

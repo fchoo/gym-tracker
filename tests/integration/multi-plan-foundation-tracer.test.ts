@@ -14,6 +14,7 @@ import {
 import { createMigrationRunner } from "../../src/platform/sqlite/migrationRunner";
 import { migrations } from "../../src/platform/sqlite/migrations";
 import { createRunningPlanRepository } from "../../src/platform/sqlite/repositories/runningPlanRepository";
+import type { SaveRunningSourceGraphInput } from "../../src/domains/running/commands";
 import { createSqliteKernel, type SqliteKernel } from "../../src/platform/sqlite/sqliteKernel";
 
 class NodePreparedResult<Row extends Record<string, unknown>> implements SqlitePreparedResult<Row> {
@@ -126,5 +127,69 @@ describe("minimum Running activation and ordered occurrences", () => {
     await expect(kernel.queryAll<{ id: string; ordinal: number }>("SELECT id, ordinal FROM running_session_slot_revisions ORDER BY ordinal")).resolves.toEqual([
       { id: "running-slot-0:revision:1", ordinal: 0 }, { id: "running-slot-1:revision:1", ordinal: 1 },
     ]);
+  });
+
+  it("persists and exactly replays a revision-fenced Running source graph", async () => {
+    const kernel = await migratedKernel();
+    const repository = createRunningPlanRepository(kernel);
+    await repository.createInactiveMinimum({
+      planId: "graph-running", planName: "Running graph", anchorDayId: "graph-anchor",
+      scheduleId: "graph-schedule", scheduleVersionId: "graph-version", scheduleBindingId: "graph-binding",
+      createdAtMs: 1_000, effectiveLocalDate: "2026-10-05", timezone: "Asia/Singapore", recoveryRevisionId: "graph-recovery-v1",
+      slots: [{ id: "graph-slot", weekday: "Monday", ordinal: 0, sessionRevisionId: "graph-recovery-v1" }],
+    });
+    const input = {
+      requestId: "graph-save-1", requestSha256: "a".repeat(64), operation: "edit" as const,
+      planId: "graph-running", expectedPlanRevision: 1, createdAtMs: 2_000,
+      goal: { version: 1 as const, id: "graph-goal-1", planId: "graph-running", revision: 1, goalDistanceMeters: 5_000, trainingDays: ["Monday" as const], createdAtMs: 2_000 },
+      sessions: [{ version: 1 as const, id: "graph-recovery-v2", rootId: "graph-recovery-v1:root", planId: "graph-running", sessionKind: "recovery" as const, revision: 2, createdAtMs: 2_000, phases: [{ ordinal: 0, kind: "work" as const, steps: [{ ordinal: 0, kind: "duration" as const, durationMs: 1_000 }] }], contextual: {} }],
+      slots: [{ id: "graph-slot-revision-2", rootId: "graph-slot", weekday: "Monday" as const, revision: 2, ordinal: 0, sessionRootId: "graph-recovery-v1:root", sessionRevisionId: "graph-recovery-v2" }],
+    };
+    await expect(repository.saveSourceGraph(input)).resolves.toMatchObject({ planId: "graph-running", planRevision: 2, active: false });
+    await expect(repository.saveSourceGraph(input)).resolves.toMatchObject({ planId: "graph-running", planRevision: 2 });
+    await expect(repository.saveSourceGraph({ ...input, requestSha256: "b".repeat(64) })).rejects.toThrow("sqlite_transaction_failed");
+    await expect(repository.saveSourceGraph({ ...input, requestId: "graph-stale", requestSha256: "c".repeat(64), expectedPlanRevision: 1 })).rejects.toThrow("sqlite_transaction_failed");
+    await expect(repository.readiness("graph-running")).resolves.toEqual({ ready: true, reason: "ready" });
+  });
+
+  it("fails closed when minimum graph readiness, activation, or occurrence identity is stale", async () => {
+    const kernel = await migratedKernel();
+    const repository = createRunningPlanRepository(kernel);
+    await expect(repository.readiness("missing-running")).resolves.toEqual({ ready: false, reason: "missing_recovery" });
+    await expect(repository.createInactiveMinimum({ planId: "unready-running", planName: "Unready", anchorDayId: "unready-anchor", scheduleId: "unready-schedule", scheduleVersionId: "unready-version", scheduleBindingId: "unready-binding", createdAtMs: 1, effectiveLocalDate: "2026-10-05", timezone: "Asia/Singapore", recoveryRevisionId: "unready-recovery", slots: [] })).rejects.toThrow("running_plan_not_ready");
+    await repository.createInactiveMinimum({ planId: "fenced-running", planName: "Fenced", anchorDayId: "fenced-anchor", scheduleId: "fenced-schedule", scheduleVersionId: "fenced-version", scheduleBindingId: "fenced-binding", createdAtMs: 1, effectiveLocalDate: "2026-10-05", timezone: "Asia/Singapore", recoveryRevisionId: "fenced-recovery", slots: [{ id: "fenced-slot", weekday: "Monday", ordinal: 0, sessionRevisionId: "fenced-recovery" }] });
+    await expect(repository.materializeOccurrences({ planId: "fenced-running", scheduleId: "fenced-schedule", scheduleVersionId: "fenced-version", localDate: "2026-10-05", timezone: "Asia/Singapore", createdAtMs: 2, occurrenceIds: ["fenced-opportunity"] })).rejects.toThrow("sqlite_transaction_failed");
+    await kernel.write((transaction) => transaction.execute("UPDATE workout_sessions SET status = 'completed', completed_at_ms = COALESCE(completed_at_ms, started_at_ms), active_session_exercise_id = NULL, active_set_id = NULL WHERE status = 'in_progress'"));
+    await kernel.write((transaction) => transaction.execute("INSERT INTO owned_plan_schedules (id, plan_id, lifecycle, revision, activated_at_ms, deactivated_at_ms, plan_kind) VALUES ('fenced-strength-schedule', 'plan-copy', 'active', 1, 1, NULL, 'strength')"));
+    await repository.activateMinimum({ planId: "fenced-running", scheduleId: "fenced-schedule", expectedPlanRevision: 1, expectedScheduleRevision: 1, activatedAtMs: 2 });
+    await expect(repository.materializeOccurrences({ planId: "fenced-running", scheduleId: "fenced-schedule", scheduleVersionId: "fenced-version", localDate: "2026-10-05", timezone: "Asia/Singapore", createdAtMs: 3, occurrenceIds: [] })).rejects.toThrow("sqlite_transaction_failed");
+  });
+
+  it("persists new roots and create/copy provenance while rejecting stale source revisions", async () => {
+    const kernel = await migratedKernel();
+    const repository = createRunningPlanRepository(kernel);
+    const createMinimum = async (planId: string) => repository.createInactiveMinimum({ planId, planName: planId, anchorDayId: `${planId}-anchor`, scheduleId: `${planId}-schedule`, scheduleVersionId: `${planId}-version`, scheduleBindingId: `${planId}-binding`, createdAtMs: 1, effectiveLocalDate: "2026-10-05", timezone: "Asia/Singapore", recoveryRevisionId: `${planId}-recovery`, slots: [{ id: `${planId}-slot`, weekday: "Monday", ordinal: 0, sessionRevisionId: `${planId}-recovery` }] });
+    const sourceGraph = (planId: string, operation: "create" | "copy", requestId: string): SaveRunningSourceGraphInput => ({ requestId, requestSha256: "d".repeat(64), operation, planId, expectedPlanRevision: 1, createdAtMs: 2, goal: { version: 1, id: `${planId}-goal`, planId, revision: 1, goalDistanceMeters: 5_000, trainingDays: ["Monday"], createdAtMs: 2 }, sessions: [{ version: 1, id: `${planId}-long-v1`, rootId: `${planId}-long-root`, planId, sessionKind: "long_run", revision: 1, createdAtMs: 2, phases: [{ ordinal: 0, kind: "work", steps: [{ ordinal: 0, kind: "duration", durationMs: 1_000 }] }], contextual: {} }], slots: [{ id: `${planId}-long-slot-v1`, rootId: `${planId}-long-slot-root`, weekday: "Monday", revision: 1, ordinal: 1, sessionRootId: `${planId}-long-root`, sessionRevisionId: `${planId}-long-v1` }] });
+    await createMinimum("create-running");
+    await expect(repository.saveSourceGraph(sourceGraph("create-running", "create", "create-graph"))).resolves.toMatchObject({ planRevision: 2 });
+    await createMinimum("copy-running");
+    await expect(repository.saveSourceGraph(sourceGraph("copy-running", "copy", "copy-graph"))).resolves.toMatchObject({ planRevision: 2 });
+    const stale = sourceGraph("copy-running", "copy", "copy-stale");
+    await expect(repository.saveSourceGraph({ ...stale, expectedPlanRevision: 2 })).rejects.toThrow("sqlite_transaction_failed");
+  });
+
+  it("fails closed on an unacknowledged revision update and malformed readiness readback", async () => {
+    const sourceGraph = (planId: string): SaveRunningSourceGraphInput => ({ requestId: "unacknowledged", requestSha256: "e".repeat(64), operation: "edit", planId, expectedPlanRevision: 1, createdAtMs: 2, goal: { version: 1, id: `${planId}-goal`, planId, revision: 1, goalDistanceMeters: 5_000, trainingDays: ["Monday"], createdAtMs: 2 }, sessions: [], slots: [] });
+    let sourceGraphQueries = 0;
+    const updateWithoutAck = {
+      write: async (callback: (transaction: { queryAll: (sql: string) => Promise<readonly unknown[]>; execute: (sql: string) => Promise<{ changes: number }> }) => Promise<unknown>) => callback({
+        queryAll: async () => sourceGraphQueries++ === 0 ? [] : [{ revision: 1, plan_kind: "running", is_active: 0 }],
+        execute: async () => ({ changes: 0 }),
+      }),
+      queryAll: async () => [],
+    } as unknown as SqliteKernel;
+    await expect(createRunningPlanRepository(updateWithoutAck).saveSourceGraph(sourceGraph("unacknowledged-running"))).rejects.toThrow("running_plan_revision_conflict");
+    const malformedReadback = { queryAll: async () => [] } as unknown as SqliteKernel;
+    await expect(createRunningPlanRepository(malformedReadback).readiness("missing")).resolves.toEqual({ ready: false, reason: "missing_recovery" });
   });
 });

@@ -32,7 +32,11 @@ export function createRunningActivityMatchRepository(kernel: SqliteKernel) {
             ? result("replayed", receipt.activity_id, receipt.opportunity_id, receipt.relation_revision)
             : result("conflict", input.activityId, input.opportunityId, input.expectedRelationRevision);
         }
-        const [activity] = await transaction.queryAll<ActivityRow>("SELECT aggregate_revision, removal_state FROM imported_activity_identities WHERE activity_id = ?", [input.activityId]);
+        const [activity] = await transaction.queryAll<ActivityRow>(`SELECT identity.aggregate_revision,
+          COALESCE(lifecycle.removal_state, identity.removal_state) AS removal_state
+          FROM imported_activity_identities identity
+          LEFT JOIN imported_activity_current_lifecycle lifecycle ON lifecycle.activity_id = identity.activity_id
+          WHERE identity.activity_id = ?`, [input.activityId]);
         const [opportunity] = await transaction.queryAll<OpportunityRow>("SELECT plan_id, schedule_id, schedule_version_id, slot_id, session_revision_id, state FROM running_opportunities WHERE id = ?", [input.opportunityId]);
         if (activity === undefined || opportunity === undefined || activity.aggregate_revision !== input.expectedActivityRevision || activity.removal_state !== "active" || opportunity.state !== "planned" || opportunity.schedule_id !== input.scheduleId || opportunity.schedule_version_id !== input.scheduleVersionId || opportunity.slot_id !== input.slotId || opportunity.session_revision_id !== input.sessionRevisionId) {
           return result("conflict", input.activityId, input.opportunityId, input.expectedRelationRevision);

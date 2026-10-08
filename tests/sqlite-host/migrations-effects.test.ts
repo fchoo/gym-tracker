@@ -88,6 +88,13 @@ import {
 import {
   multiPlanRunningFoundationMigration,
 } from "../../src/platform/sqlite/migrations/0028_multi_plan_running_foundation";
+import { runningSessionRootsMigration } from "../../src/platform/sqlite/migrations/0029_running_session_roots";
+import { importedActivityEvidenceMigration } from "../../src/platform/sqlite/migrations/0030_imported_activity_evidence";
+import { bodyweightSourceHistoryMigration } from "../../src/platform/sqlite/migrations/0031_bodyweight_source_history";
+import { strengthOccurrenceProvenanceMigration } from "../../src/platform/sqlite/migrations/0032_strength_occurrence_provenance";
+import { completedSetCorrectionReceiptsMigration } from "../../src/platform/sqlite/migrations/0033_completed_set_correction_receipts";
+import { runningActivityMatchLedgerMigration } from "../../src/platform/sqlite/migrations/0034_running_activity_match_ledger";
+import { importedActivityLifecycleStateMigration } from "../../src/platform/sqlite/migrations/0035_imported_activity_lifecycle_state";
 
 const MIGRATIONS_THROUGH_V18 = runtimeMigrations.filter(
   ({ version }) => version <= 18,
@@ -3624,4 +3631,55 @@ describe("Plan 01-06 trusted launch coordinator", () => {
       expect(events).toEqual(precedingEvents);
     },
   );
+});
+
+describe("Phase 13 schema contracts", () => {
+  const phase13Migrations: readonly [Migration, string, string][] = [
+    [multiPlanRunningFoundationMigration, "running_plans", "multi_plan_running_foundation_schema_incomplete"],
+    [runningSessionRootsMigration, "running_session_roots", "running_session_roots_schema_incomplete"],
+    [importedActivityEvidenceMigration, "imported_activity_identities", "imported_activity_evidence_schema_incomplete"],
+    [bodyweightSourceHistoryMigration, "bodyweight_entries", "bodyweight_source_history_schema_incomplete"],
+    [strengthOccurrenceProvenanceMigration, "workout_session_schedule_links", "strength_occurrence_provenance_schema_incomplete"],
+    [completedSetCorrectionReceiptsMigration, "workout_completed_set_correction_receipts", "completed_set_correction_receipts_schema_incomplete"],
+    [runningActivityMatchLedgerMigration, "running_activity_match_events", "running_activity_match_ledger_schema_incomplete"],
+    [importedActivityLifecycleStateMigration, "imported_activity_current_lifecycle", "imported_activity_lifecycle_state_schema_incomplete"],
+  ];
+
+  it.each(phase13Migrations)("installs %s and fails closed when its registry is incomplete", async (migration, omittedTable, error) => {
+    const runtime = await createHostRuntime();
+    try {
+      await createMigrationRunner({
+        databaseName: "gym-tracker.db",
+        kernel: runtime.kernel,
+        migrations: runtimeMigrations,
+        recoveryBackup: validatedBackup(),
+      }).run();
+      await runtime.kernel.write(async (transaction) => {
+        await expect(migration.verify(transaction)).resolves.toBeUndefined();
+        await transaction.execute(`DROP TABLE ${omittedTable}`);
+        await expect(migration.verify(transaction)).rejects.toThrow(error);
+      });
+    } finally {
+      await runtime.close();
+    }
+  });
+
+  it("requires both per-sport uniqueness indexes in schema 28", async () => {
+    const runtime = await createHostRuntime();
+    try {
+      await createMigrationRunner({
+        databaseName: "gym-tracker.db",
+        kernel: runtime.kernel,
+        migrations: runtimeMigrations,
+        recoveryBackup: validatedBackup(),
+      }).run();
+      await runtime.kernel.write(async (transaction) => {
+        await transaction.execute("DROP INDEX one_active_owned_schedule_per_sport");
+        await expect(multiPlanRunningFoundationMigration.verify(transaction))
+          .rejects.toThrow("multi_plan_running_foundation_schema_incomplete");
+      });
+    } finally {
+      await runtime.close();
+    }
+  });
 });

@@ -83,4 +83,31 @@ describe("training calendar repository", () => {
     expect(first.events.filter(({ id }) => id === "running-slot-a")).toHaveLength(0);
     expect(first.events).toHaveLength(2);
   });
+
+  it("uses snapshot reads, rejects inverted bounds, and refuses malformed imported dates", async () => {
+    const queryAll = jest.fn(async (sql: string) => {
+      if (sql.includes("owned_plan_schedule_opportunities")) return [];
+      if (sql.includes("running_opportunities")) return [];
+      return [{
+        id: "malformed-import", started_at_ms: 1,
+        aggregate_json: "not-json", opportunity_id: "missing-opportunity",
+      }, {
+        id: "non-date-import", started_at_ms: 2,
+        aggregate_json: JSON.stringify({ confirmed_local_date: 3 }), opportunity_id: null,
+      }];
+    });
+    const readSnapshot = jest.fn(async (read: (reader: { queryAll: typeof queryAll }) => Promise<unknown>) => read({ queryAll }));
+    const kernel = { queryAll, readSnapshot } as unknown as SqliteKernel;
+    const repository = createTrainingCalendarRepository(kernel);
+
+    await expect(repository.loadRange({
+      startLocalDate: "2026-11-02",
+      endLocalDateExclusive: "2026-11-01",
+    })).rejects.toThrow("training_calendar_range_invalid");
+    await expect(repository.loadRange({
+      startLocalDate: "2026-11-01",
+      endLocalDateExclusive: "2026-11-02",
+    })).resolves.toEqual({ events: [] });
+    expect(readSnapshot).toHaveBeenCalledTimes(1);
+  });
 });

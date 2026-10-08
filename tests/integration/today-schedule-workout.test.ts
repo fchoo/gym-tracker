@@ -433,6 +433,101 @@ describe("Today schedule workout integration", () => {
        WHERE workout_session_id = ?`,
       [session.id],
     )).resolves.toEqual([{ workout_session_id: session.id }]);
+
+    await expect(startWorkout({
+      repository: createPlansWorkoutRepository(runtime.kernel),
+      request: {
+        mode: "scheduled",
+        planId: today.planId,
+        planDayId: today.view.dayId,
+        localDate: today.localDate,
+        timezone: today.timeZone,
+        startedAtMs: instantMs + 1,
+        selectedOccurrence: {
+          kind: "strength",
+          opportunityId: `schedule-opportunity:${today.scheduleId}:${today.localDate}:weekday`,
+          planId: today.planId,
+          planDayId: today.view.dayId,
+          scheduleId: today.scheduleId,
+          scheduleVersionId: "stale-schedule-version",
+          localDate: today.localDate,
+          timeZone: today.timeZone,
+          sourceRevisions: {
+            plan: today.planRevision,
+            day: version.day_revision,
+            schedule: today.scheduleRevision,
+            opportunity: 1,
+          },
+        },
+      },
+    })).rejects.toThrow("sqlite_transaction_failed");
+    await expect(startWorkout({
+      repository: createPlansWorkoutRepository(runtime.kernel),
+      request: {
+        mode: "scheduled",
+        planId: today.planId,
+        planDayId: today.view.dayId,
+        localDate: today.localDate,
+        timezone: today.timeZone,
+        startedAtMs: instantMs + 2,
+        selectedOccurrence: {
+          kind: "strength",
+          opportunityId: `schedule-opportunity:${today.scheduleId}:${today.localDate}:weekday`,
+          planId: today.planId,
+          planDayId: today.view.dayId,
+          scheduleId: today.scheduleId,
+          scheduleVersionId: version.id,
+          localDate: today.localDate,
+          timeZone: today.timeZone,
+          sourceRevisions: {
+            plan: today.planRevision,
+            day: version.day_revision,
+            schedule: today.scheduleRevision,
+            opportunity: 1,
+          },
+        },
+      },
+    })).rejects.toThrow("sqlite_transaction_failed");
+  });
+
+  it("starts a captured Strength opportunity without inventing a reconciliation receipt", async () => {
+    const runtime = await setupRuntime();
+    const instantMs = Date.UTC(2026, 7, 17, 4);
+    runtime.setNow(instantMs);
+    const today = await runtime.schedule.loadToday(instantMs);
+    if (today === null || today.view.state !== "scheduled") {
+      throw new Error("unreceipted_strength_opportunity_missing");
+    }
+    const [version] = await runtime.kernel.queryAll<{ id: string; day_revision: number }>(
+      `SELECT version.id, day.revision AS day_revision
+       FROM owned_plan_schedule_versions version
+       JOIN owned_plan_schedule_bindings binding
+         ON binding.schedule_version_id = version.id
+       JOIN plan_days day ON day.id = binding.plan_day_id
+       WHERE version.schedule_id = ? AND binding.plan_day_id = ?`,
+      [today.scheduleId, today.view.dayId],
+    );
+    if (version === undefined) throw new Error("unreceipted_strength_version_missing");
+    const session = await startWorkout({
+      repository: createPlansWorkoutRepository(runtime.kernel),
+      request: {
+        mode: "scheduled", planId: today.planId, planDayId: today.view.dayId,
+        localDate: today.localDate, timezone: today.timeZone, startedAtMs: instantMs,
+        selectedOccurrence: {
+          kind: "strength",
+          opportunityId: `schedule-opportunity:${today.scheduleId}:${today.localDate}:weekday`,
+          planId: today.planId, planDayId: today.view.dayId,
+          scheduleId: today.scheduleId, scheduleVersionId: version.id,
+          localDate: today.localDate, timeZone: today.timeZone,
+          sourceRevisions: { plan: today.planRevision, day: version.day_revision, schedule: today.scheduleRevision, opportunity: 1 },
+        },
+      },
+    });
+    await expect(runtime.kernel.queryAll(
+      `SELECT workout_session_id FROM workout_schedule_reconciliation_receipts
+       WHERE workout_session_id = ?`,
+      [session.id],
+    )).resolves.toEqual([]);
   });
 
   it("projects corrected partial card facts from its active overlay after a cold reopen", async () => {
@@ -576,6 +671,22 @@ describe("Today schedule workout integration", () => {
       throw new Error("corrected_partial_missing_from_today");
     }
 
+    await reopened.write((transaction) => transaction.execute(
+      `UPDATE workout_sessions
+       SET active_session_exercise_id = NULL, active_set_id = NULL
+       WHERE id = ?`,
+      [session.id],
+    ));
+    await expect(createPlansWorkoutRepository(reopened).getTodayView({
+      localDate: "2026-08-17",
+      weekday: 1,
+    })).resolves.toMatchObject({
+      state: "saved_partial",
+      sessionId: session.id,
+      exerciseName: null,
+      setLabel: null,
+    });
+
     await expect(resumePartialWorkout({
       repository: createWorkoutOutcomeRepository(reopened),
       input: {
@@ -587,6 +698,36 @@ describe("Today schedule workout integration", () => {
       sessionId: session.id,
       sessionRevision: partial.detail.revision + 1,
       status: "in_progress",
+    });
+  });
+
+  it("labels a saved partial's persisted warm-up cursor", async () => {
+    const runtime = await setupRuntime();
+    const plans = createPlansWorkoutRepository(runtime.kernel);
+    const session = await startWorkout({
+      repository: plans,
+      request: {
+        mode: "scheduled", planId: "plan-copy", planDayId: "plan-day-copy",
+        localDate: "2026-08-17", timezone: "Asia/Singapore",
+        startedAtMs: 1_786_853_600_000,
+      },
+    });
+    await runtime.kernel.write((transaction) => transaction.execute(
+      `UPDATE session_sets SET set_kind = 'warmup'
+       WHERE id = (SELECT active_set_id FROM workout_sessions WHERE id = ?)`,
+      [session.id],
+    ));
+    await finishPartial({
+      repository: createWorkoutOutcomeRepository(runtime.kernel),
+      input: {
+        sessionId: session.id, expectedSessionRevision: session.revision,
+        confirmation: "save_partial_workout", endedAtMs: 1_786_853_700_000,
+      },
+    });
+    await expect(plans.getTodayView({
+      localDate: "2026-08-17", weekday: 1,
+    })).resolves.toMatchObject({
+      state: "saved_partial", sessionId: session.id, setLabel: "Warm-up 1",
     });
   });
 
@@ -856,6 +997,103 @@ describe("Today schedule workout integration", () => {
         recommendationStatus: "pending",
       }],
     });
+  });
+
+  it("reads a pending owned Strength occurrence with immutable provenance and fails closed for malformed graph readback", async () => {
+    const runtime = await setupRuntime();
+    const plans = createPlansWorkoutRepository(runtime.kernel);
+    const [ownedSchedule] = await runtime.kernel.queryAll<{
+      id: string;
+      revision: number;
+    }>(
+      "SELECT id, revision FROM owned_plan_schedules WHERE plan_id = 'plan-copy' AND plan_kind = 'strength'",
+    );
+    if (ownedSchedule === undefined) {
+      throw new Error("planned_strength_owned_schedule_missing");
+    }
+    await runtime.kernel.write(async (transaction) => {
+      await transaction.execute(
+        `INSERT INTO owned_plan_schedule_versions
+          (id, schedule_id, version_number, effective_local_date, mode,
+           timezone, rotation_pointer, created_at_ms)
+         VALUES ('owned-schedule-version-copy', ?, 3, '2026-08-17',
+                 'weekday', 'Asia/Singapore', NULL, 1)`,
+        [ownedSchedule.id],
+      );
+      await transaction.execute(
+        `INSERT INTO owned_plan_schedule_bindings
+          (id, schedule_version_id, mode, ordinal, week_index, weekday,
+           plan_day_id)
+         VALUES ('owned-schedule-binding-copy', 'owned-schedule-version-copy',
+                 'weekday', 0, 0, 'Monday', 'plan-day-copy')`,
+      );
+      await transaction.execute(
+        `INSERT INTO owned_plan_schedule_opportunities
+          (id, schedule_id, schedule_version_id, local_date, source,
+           plan_day_id, state, outcome, session_id, revision, consumed_at_ms)
+         VALUES ('planned-strength-occurrence', ?,
+                 'owned-schedule-version-copy', '2026-08-17', 'weekday',
+                 'plan-day-copy', 'pending', NULL, NULL, 4, NULL)`,
+        [ownedSchedule.id],
+      );
+      await transaction.execute(
+        `INSERT INTO plan_days (id, plan_id, ordinal, name, revision)
+         VALUES ('plan-day-readback-no-target', 'plan-copy', 9,
+                 'Readback no target', 1),
+                ('plan-day-readback-empty', 'plan-copy', 10,
+                 'Readback empty', 1)`,
+      );
+      await transaction.execute(
+        `INSERT INTO owned_plan_day_exercises
+          (id, plan_day_id, exercise_id, ordinal,
+           between_exercise_rest_seconds, metric_profile,
+           metric_contract_version, exercise_metric_generation, revision)
+         VALUES ('owned-readback-no-target', 'plan-day-readback-no-target',
+                 'exercise-squat', 0, 120, 'load_reps', 1, 1, 1)`,
+      );
+      await transaction.execute(
+        `INSERT INTO owned_plan_schedule_opportunities
+          (id, schedule_id, schedule_version_id, local_date, source,
+           plan_day_id, state, outcome, session_id, revision, consumed_at_ms)
+         VALUES ('planned-strength-no-target', ?,
+                 'owned-schedule-version-copy', '2026-08-18', 'weekday',
+                 'plan-day-readback-no-target', 'pending', NULL, NULL, 1, NULL),
+                ('planned-strength-empty', ?,
+                 'owned-schedule-version-copy', '2026-08-19', 'weekday',
+                 'plan-day-readback-empty', 'pending', NULL, NULL, 1, NULL)`,
+        [ownedSchedule.id, ownedSchedule.id],
+      );
+    });
+
+    await expect(plans.loadPlannedStrengthOccurrence?.(
+      'missing-strength-occurrence',
+    )).resolves.toBeNull();
+    await expect(plans.loadPlannedStrengthOccurrence?.(
+      'planned-strength-occurrence',
+    )).resolves.toEqual(expect.objectContaining({
+      occurrenceId: 'planned-strength-occurrence',
+      planId: 'plan-copy',
+      planDayId: 'plan-day-copy',
+      scheduleId: ownedSchedule.id,
+      scheduleVersionId: 'owned-schedule-version-copy',
+      localDate: '2026-08-17',
+      timezone: 'Asia/Singapore',
+      sourceRevisions: { plan: 8, day: 2, schedule: ownedSchedule.revision },
+      exercises: [expect.objectContaining({
+        id: 'owned-day-exercise-squat-a', exerciseId: 'exercise-squat',
+        ordinal: 0,
+        targets: [expect.objectContaining({
+          id: 'owned-working-target-a', ordinal: 0,
+        })],
+      })],
+    }));
+
+    await expect(plans.loadPlannedStrengthOccurrence?.(
+      'planned-strength-no-target',
+    )).resolves.toBeNull();
+    await expect(plans.loadPlannedStrengthOccurrence?.(
+      'planned-strength-empty',
+    )).resolves.toBeNull();
   });
 
   it("activates a valid unscheduled owned plan through Save schedule and projects Today", async () => {

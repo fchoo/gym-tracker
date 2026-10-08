@@ -36,4 +36,37 @@ describe("Running source graph commands", () => {
       { id: "slot-revision-2", rootId: "slot-root-2", weekday: "Monday", revision: 1, ordinal: 0, sessionRootId: "root-1", sessionRevisionId: "revision-1" },
     ] }))).rejects.toThrow(RunningCommandError);
   });
+
+  it("rejects invalid command fences, source graph identities, and slot ordering", async () => {
+    const repository = { saveSourceGraph: jest.fn(async () => ({})) };
+    const valid = input();
+    await expect(saveRunningSourceGraph(repository, input({ requestId: "", requestSha256: "0".repeat(64) }))).rejects.toThrow("running_command_identity_invalid");
+    await expect(saveRunningSourceGraph(repository, input({ requestSha256: "A".repeat(64) }))).rejects.toThrow("running_command_hash_invalid");
+    await expect(saveRunningSourceGraph(repository, input({ expectedPlanRevision: -1 }))).rejects.toThrow("running_command_revision_invalid");
+    await expect(saveRunningSourceGraph(repository, {
+      ...valid,
+      goal: {
+        version: 1,
+        id: "goal-1",
+        planId: "other-plan",
+        revision: 1,
+        goalDistanceMeters: 5000,
+        trainingDays: ["Monday"],
+        createdAtMs: 1,
+      },
+    })).rejects.toThrow("running_command_identity_invalid");
+    await expect(saveRunningSourceGraph(repository, {
+      ...valid,
+      sessions: valid.sessions.map((session) => ({ ...session, planId: "other-plan" })),
+    })).rejects.toThrow("running_command_identity_invalid");
+    await expect(saveRunningSourceGraph(repository, {
+      ...valid,
+      slots: valid.slots.map((slot) => ({ ...slot, rootId: "slot-root-1", sessionRootId: "missing" })),
+    })).rejects.toThrow("running_command_identity_invalid");
+    await expect(saveRunningSourceGraph(repository, {
+      ...valid,
+      slots: valid.slots.map((slot) => ({ ...slot, revision: 0 })),
+    })).rejects.toThrow("running_command_order_invalid");
+    expect(repository.saveSourceGraph).not.toHaveBeenCalled();
+  });
 });

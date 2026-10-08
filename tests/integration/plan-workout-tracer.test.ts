@@ -529,6 +529,111 @@ describe("Plan 01-07 starter activation", () => {
       activated.days,
     );
   });
+
+  it("rebuilds a migrated retained load target when its legacy payload is empty", async () => {
+    const kernel = await createRuntime();
+    const repository = createPlansWorkoutRepository(kernel);
+    const activation = await activateStarterPlan({
+      fixture: parseFullBodyFoundation(fixture),
+      repository,
+      activatedAtMs: 1_786_853_600_000,
+      startLocalDate: "2026-08-17",
+      timezone: "Asia/Singapore",
+    });
+    const [target] = await kernel.queryAll<{ id: string }>(
+      `SELECT target.id
+       FROM plan_working_set_targets target
+       JOIN plan_day_exercises exercise
+         ON exercise.id = target.plan_day_exercise_id
+       WHERE exercise.plan_day_id = ? AND exercise.metric_profile = 'load_reps'
+       ORDER BY target.ordinal
+       LIMIT 1`,
+      [activation.days[0]!.id],
+    );
+    if (target === undefined) {
+      throw new Error("migrated_retained_target_missing");
+    }
+    await kernel.write((transaction) => transaction.execute(
+      "UPDATE plan_working_set_targets SET target_json = '{}' WHERE id = ?",
+      [target.id],
+    ));
+
+    const started = await startWorkout({
+      repository,
+      request: {
+        mode: "scheduled",
+        planId: activation.plan.id,
+        planDayId: activation.days[0]!.id,
+        localDate: "2026-08-18",
+        timezone: "Asia/Singapore",
+        startedAtMs: 1_786_940_000_001,
+      },
+    });
+    const [snapshot] = await kernel.queryAll<{ target_json: string }>(
+      `SELECT sets.target_json
+       FROM session_sets sets
+       JOIN session_exercises exercise ON exercise.id = sets.session_exercise_id
+       WHERE exercise.session_id = ? AND sets.set_kind = 'working'
+       ORDER BY exercise.ordinal, sets.ordinal
+       LIMIT 1`,
+      [started.id],
+    );
+    expect(JSON.parse(snapshot!.target_json)).toEqual(expect.objectContaining({
+      version: 1,
+      profile: "load_reps",
+      perSide: false,
+    }));
+  });
+
+  it("retains an empty migrated timed-hold target when it lacks reconstructable duration", async () => {
+    const kernel = await createRuntime();
+    const repository = createPlansWorkoutRepository(kernel);
+    const activation = await activateStarterPlan({
+      fixture: parseFullBodyFoundation(fixture),
+      repository,
+      activatedAtMs: 1_786_853_600_000,
+      startLocalDate: "2026-08-17",
+      timezone: "Asia/Singapore",
+    });
+    const [target] = await kernel.queryAll<{ id: string }>(
+      `SELECT target.id
+       FROM plan_working_set_targets target
+       JOIN plan_day_exercises exercise
+         ON exercise.id = target.plan_day_exercise_id
+       WHERE exercise.plan_day_id = ? AND exercise.metric_profile = 'timed_hold'
+       ORDER BY target.ordinal
+       LIMIT 1`,
+      [activation.days[0]!.id],
+    );
+    if (target === undefined) {
+      throw new Error("migrated_retained_timed_hold_target_missing");
+    }
+    await kernel.write((transaction) => transaction.execute(
+      "UPDATE plan_working_set_targets SET target_json = '{}' WHERE id = ?",
+      [target.id],
+    ));
+
+    const started = await startWorkout({
+      repository,
+      request: {
+        mode: "scheduled",
+        planId: activation.plan.id,
+        planDayId: activation.days[0]!.id,
+        localDate: "2026-08-18",
+        timezone: "Asia/Singapore",
+        startedAtMs: 1_786_940_000_002,
+      },
+    });
+    await expect(kernel.queryAll<{ target_json: string }>(
+      `SELECT sets.target_json
+       FROM session_sets sets
+       JOIN session_exercises exercise ON exercise.id = sets.session_exercise_id
+       WHERE exercise.session_id = ? AND exercise.metric_profile = 'timed_hold'
+         AND sets.set_kind = 'working'
+         AND sets.source_plan_working_set_target_id = ?`,
+      [started.id, target.id],
+    )).resolves.toEqual([{ target_json: "{}" }]);
+  });
 });
 
 describe("Plan 01-07 workout starts", () => {
@@ -1173,6 +1278,30 @@ describe("Plan 01-07 Today read model", () => {
       state: "active_workout",
       setLabel: "Working set 1",
       restStatus: "idle",
+    }));
+    await plannedKernel.write(async (transaction) => {
+      const [warmup] = await transaction.queryAll<{ id: string }>(
+        `SELECT ss.id
+         FROM session_sets ss
+         JOIN session_exercises se ON se.id = ss.session_exercise_id
+         WHERE se.session_id = ? AND se.ordinal = 0
+           AND ss.set_kind = 'warmup'
+         ORDER BY ss.ordinal
+         LIMIT 1`,
+        [planned.id],
+      );
+      if (warmup === undefined) throw new Error("active_warmup_missing");
+      await transaction.execute(
+        "UPDATE workout_sessions SET active_set_id = ? WHERE id = ?",
+        [warmup.id, planned.id],
+      );
+    });
+    await expect(plannedRepository.getTodayView({
+      localDate: "2026-08-17",
+      weekday: 1,
+    })).resolves.toEqual(expect.objectContaining({
+      state: "active_workout",
+      setLabel: "Warm-up 1",
     }));
   });
 

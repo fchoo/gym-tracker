@@ -43,28 +43,6 @@ const WEEKDAY_NUMBER = {
   Friday: 5,
 } as const;
 
-async function supportsCompleteMetricIdentity(
-  executor: Pick<SqliteKernel, "queryAll"> | SqliteTransactionExecutor,
-): Promise<boolean> {
-  const columns = await executor.queryAll<{ name: string }>(
-    "PRAGMA table_info(session_exercises)",
-  );
-  const names = new Set(columns.map(({ name }) => name));
-  return names.has("metric_contract_version")
-    && names.has("exercise_metric_generation");
-}
-
-async function supportsOwnedTargetSnapshots(
-  executor: Pick<SqliteKernel, "queryAll"> | SqliteTransactionExecutor,
-): Promise<boolean> {
-  const columns = await executor.queryAll<{ name: string }>(
-    "PRAGMA table_info(session_sets)",
-  );
-  return columns.some(({ name }) =>
-    name === "source_owned_plan_working_set_target_id"
-  );
-}
-
 async function supportsAdvancedTimingSnapshots(
   executor: Pick<SqliteKernel, "queryAll"> | SqliteTransactionExecutor,
 ): Promise<boolean> {
@@ -94,21 +72,13 @@ async function hasOwnedWorkoutGraph(
   executor: Pick<SqliteKernel, "queryAll"> | SqliteTransactionExecutor,
   planDayId: string,
 ): Promise<boolean> {
-  const [table] = await executor.queryAll<{ count: number }>(
-    `SELECT COUNT(*) AS count
-     FROM sqlite_master
-     WHERE type = 'table' AND name = 'owned_plan_day_exercises'`,
-  );
-  if ((table?.count ?? 0) === 0) {
-    return false;
-  }
   const [row] = await executor.queryAll<{ count: number }>(
     `SELECT COUNT(*) AS count
      FROM owned_plan_day_exercises
      WHERE plan_day_id = ?`,
     [planDayId],
   );
-  return (row?.count ?? 0) > 0;
+  return row!.count > 0;
 }
 
 function safeToken(value: string): string {
@@ -175,7 +145,6 @@ async function insertPlanGraph(
     planId: string;
     origin: "bundled" | "copied";
     active: boolean;
-    completeMetricIdentity: boolean;
   }>,
 ): Promise<readonly ActivatedPlanDay[]> {
   const { fixture, planId, origin } = input;
@@ -228,55 +197,32 @@ async function insertPlanGraph(
         dayId,
         String(exerciseOrdinal),
       );
-      if (input.completeMetricIdentity) {
-        await transaction.execute(
-          `INSERT INTO plan_day_exercises
-            (id, plan_day_id, exercise_id, ordinal,
-             between_exercise_rest_seconds, metric_profile,
-             metric_contract_version, exercise_metric_generation, revision)
-           VALUES (?, ?, ?, ?, ?, ?, 1, 1, ?)
-           ON CONFLICT(id) DO UPDATE SET
-             exercise_id = excluded.exercise_id,
-             ordinal = excluded.ordinal,
-             between_exercise_rest_seconds =
-               excluded.between_exercise_rest_seconds,
-             metric_profile = excluded.metric_profile,
-             metric_contract_version = excluded.metric_contract_version,
-             exercise_metric_generation =
-               excluded.exercise_metric_generation,
-             revision = excluded.revision`,
-          [
-            dayExerciseId,
-            dayId,
-            exercise.exerciseId,
-            exerciseOrdinal,
-            exercise.restSeconds,
-            exercise.metricProfile,
-            1,
-          ],
-        );
-      } else {
-        await transaction.execute(
-          `INSERT INTO plan_day_exercises
-            (id, plan_day_id, exercise_id, ordinal,
-             between_exercise_rest_seconds, revision)
-           VALUES (?, ?, ?, ?, ?, ?)
-           ON CONFLICT(id) DO UPDATE SET
-             exercise_id = excluded.exercise_id,
-             ordinal = excluded.ordinal,
-             between_exercise_rest_seconds =
-               excluded.between_exercise_rest_seconds,
-             revision = excluded.revision`,
-          [
-            dayExerciseId,
-            dayId,
-            exercise.exerciseId,
-            exerciseOrdinal,
-            exercise.restSeconds,
-            1,
-          ],
-        );
-      }
+      await transaction.execute(
+        `INSERT INTO plan_day_exercises
+          (id, plan_day_id, exercise_id, ordinal,
+           between_exercise_rest_seconds, metric_profile,
+           metric_contract_version, exercise_metric_generation, revision)
+         VALUES (?, ?, ?, ?, ?, ?, 1, 1, ?)
+         ON CONFLICT(id) DO UPDATE SET
+           exercise_id = excluded.exercise_id,
+           ordinal = excluded.ordinal,
+           between_exercise_rest_seconds =
+             excluded.between_exercise_rest_seconds,
+           metric_profile = excluded.metric_profile,
+           metric_contract_version = excluded.metric_contract_version,
+           exercise_metric_generation =
+             excluded.exercise_metric_generation,
+           revision = excluded.revision`,
+        [
+          dayExerciseId,
+          dayId,
+          exercise.exerciseId,
+          exerciseOrdinal,
+          exercise.restSeconds,
+          exercise.metricProfile,
+          1,
+        ],
+      );
       for (const [warmupOrdinal, warmup] of exercise.warmups.entries()) {
         await transaction.execute(
           `INSERT INTO plan_warmup_sets
@@ -316,42 +262,25 @@ async function insertPlanGraph(
           targetJson(exercise),
           unitJson(exercise),
         ] as const;
-        if (input.completeMetricIdentity) {
-          await transaction.execute(
-            `INSERT INTO plan_working_set_targets
-              (id, plan_day_exercise_id, ordinal, load_grams, min_reps,
-               max_reps, target_json, unit_json, metric_profile,
-               metric_contract_version, exercise_metric_generation, revision)
-             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 1, 1, ?)
-             ON CONFLICT(id) DO UPDATE SET
-               load_grams = excluded.load_grams,
-               min_reps = excluded.min_reps,
-               max_reps = excluded.max_reps,
-               target_json = excluded.target_json,
-               unit_json = excluded.unit_json,
-               metric_profile = excluded.metric_profile,
-               metric_contract_version = excluded.metric_contract_version,
-               exercise_metric_generation =
-                 excluded.exercise_metric_generation,
-               revision = excluded.revision`,
-            [...parameters, exercise.metricProfile, 1],
-          );
-        } else {
-          await transaction.execute(
-            `INSERT INTO plan_working_set_targets
-              (id, plan_day_exercise_id, ordinal, load_grams, min_reps,
-               max_reps, target_json, unit_json, revision)
-             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-             ON CONFLICT(id) DO UPDATE SET
-               load_grams = excluded.load_grams,
-               min_reps = excluded.min_reps,
-               max_reps = excluded.max_reps,
-               target_json = excluded.target_json,
-               unit_json = excluded.unit_json,
-               revision = excluded.revision`,
-            [...parameters, 1],
-          );
-        }
+        await transaction.execute(
+          `INSERT INTO plan_working_set_targets
+            (id, plan_day_exercise_id, ordinal, load_grams, min_reps,
+             max_reps, target_json, unit_json, metric_profile,
+             metric_contract_version, exercise_metric_generation, revision)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 1, 1, ?)
+           ON CONFLICT(id) DO UPDATE SET
+             load_grams = excluded.load_grams,
+             min_reps = excluded.min_reps,
+             max_reps = excluded.max_reps,
+             target_json = excluded.target_json,
+             unit_json = excluded.unit_json,
+             metric_profile = excluded.metric_profile,
+             metric_contract_version = excluded.metric_contract_version,
+             exercise_metric_generation =
+               excluded.exercise_metric_generation,
+             revision = excluded.revision`,
+          [...parameters, exercise.metricProfile, 1],
+        );
       }
       const policyParameters = [
         copiedId("policy", dayExerciseId, exercise.policy.kind),
@@ -360,38 +289,23 @@ async function insertPlanGraph(
         exercise.policy.version,
         policyRuleJson(exercise),
       ] as const;
-      if (input.completeMetricIdentity) {
-        await transaction.execute(
-          `INSERT INTO progression_policies
-            (id, plan_day_exercise_id, policy_type, policy_version,
-             rule_json, metric_profile, metric_contract_version,
-             exercise_metric_generation, revision)
-           VALUES (?, ?, ?, ?, ?, ?, 1, 1, ?)
-           ON CONFLICT(id) DO UPDATE SET
-             policy_type = excluded.policy_type,
-             policy_version = excluded.policy_version,
-             rule_json = excluded.rule_json,
-             metric_profile = excluded.metric_profile,
-             metric_contract_version = excluded.metric_contract_version,
-             exercise_metric_generation =
-               excluded.exercise_metric_generation,
-             revision = excluded.revision`,
-          [...policyParameters, exercise.metricProfile, 1],
-        );
-      } else {
-        await transaction.execute(
-          `INSERT INTO progression_policies
-            (id, plan_day_exercise_id, policy_type, policy_version,
-             rule_json, revision)
-           VALUES (?, ?, ?, ?, ?, ?)
-           ON CONFLICT(id) DO UPDATE SET
-             policy_type = excluded.policy_type,
-             policy_version = excluded.policy_version,
-             rule_json = excluded.rule_json,
-             revision = excluded.revision`,
-          [...policyParameters, 1],
-        );
-      }
+      await transaction.execute(
+        `INSERT INTO progression_policies
+          (id, plan_day_exercise_id, policy_type, policy_version,
+           rule_json, metric_profile, metric_contract_version,
+           exercise_metric_generation, revision)
+         VALUES (?, ?, ?, ?, ?, ?, 1, 1, ?)
+         ON CONFLICT(id) DO UPDATE SET
+           policy_type = excluded.policy_type,
+           policy_version = excluded.policy_version,
+           rule_json = excluded.rule_json,
+           metric_profile = excluded.metric_profile,
+           metric_contract_version = excluded.metric_contract_version,
+           exercise_metric_generation =
+             excluded.exercise_metric_generation,
+           revision = excluded.revision`,
+        [...policyParameters, exercise.metricProfile, 1],
+      );
     }
   }
   return days;
@@ -401,7 +315,6 @@ async function importBundledContent(
   transaction: SqliteTransactionExecutor,
   fixture: FullBodyFoundation,
   installedAtMs: number,
-  completeMetricIdentity: boolean,
 ): Promise<void> {
   await transaction.execute(
     `INSERT INTO content_packs
@@ -430,46 +343,29 @@ async function importBundledContent(
       exercise.restSeconds,
       fixture.metadata.sourceRevision,
     ] as const;
-    if (completeMetricIdentity) {
-      await transaction.execute(
-        `INSERT INTO exercises
-          (id, content_pack_id, origin, source_namespace, upstream_id, name,
-           metric_profile, metric_contract_version,
-           exercise_metric_generation, equipment, default_rest_seconds,
-           revision)
-         VALUES (?, ?, 'bundled', ?, ?, ?, ?, 1, 1, ?, ?, ?)
-         ON CONFLICT(id) DO UPDATE SET
-           name = excluded.name,
-           metric_profile = excluded.metric_profile,
-           metric_contract_version = excluded.metric_contract_version,
-           exercise_metric_generation = excluded.exercise_metric_generation,
-           equipment = excluded.equipment,
-           default_rest_seconds = excluded.default_rest_seconds,
-           revision = excluded.revision`,
-        parameters,
-      );
-    } else {
-      await transaction.execute(
-        `INSERT INTO exercises
-          (id, content_pack_id, origin, source_namespace, upstream_id, name,
-           metric_profile, equipment, default_rest_seconds, revision)
-         VALUES (?, ?, 'bundled', ?, ?, ?, ?, ?, ?, ?)
-         ON CONFLICT(id) DO UPDATE SET
-           name = excluded.name,
-           metric_profile = excluded.metric_profile,
-           equipment = excluded.equipment,
-           default_rest_seconds = excluded.default_rest_seconds,
-           revision = excluded.revision`,
-        parameters,
-      );
-    }
+    await transaction.execute(
+      `INSERT INTO exercises
+        (id, content_pack_id, origin, source_namespace, upstream_id, name,
+         metric_profile, metric_contract_version,
+         exercise_metric_generation, equipment, default_rest_seconds,
+         revision)
+       VALUES (?, ?, 'bundled', ?, ?, ?, ?, 1, 1, ?, ?, ?)
+       ON CONFLICT(id) DO UPDATE SET
+         name = excluded.name,
+         metric_profile = excluded.metric_profile,
+         metric_contract_version = excluded.metric_contract_version,
+         exercise_metric_generation = excluded.exercise_metric_generation,
+         equipment = excluded.equipment,
+         default_rest_seconds = excluded.default_rest_seconds,
+         revision = excluded.revision`,
+      parameters,
+    );
   }
   await insertPlanGraph(transaction, {
     fixture,
     planId: BUNDLED_PLAN_ID,
     origin: "bundled",
     active: false,
-    completeMetricIdentity,
   });
 }
 
@@ -749,14 +645,10 @@ export function createPlansWorkoutRepository(
       input: Parameters<PlansRepository["activateStarterPlan"]>[0],
     ): Promise<StarterActivation> {
       return kernel.write(async (transaction) => {
-        const completeMetricIdentity = await supportsCompleteMetricIdentity(
-          transaction,
-        );
         await importBundledContent(
           transaction,
           input.fixture,
           input.activatedAtMs,
-          completeMetricIdentity,
         );
         const existing = await existingActivation(
           transaction,
@@ -773,7 +665,6 @@ export function createPlansWorkoutRepository(
           planId,
           origin: "copied",
           active: true,
-          completeMetricIdentity,
         });
         const scheduleId = `schedule_${input.activatedAtMs}`;
         await transaction.execute(
@@ -938,12 +829,6 @@ export function createPlansWorkoutRepository(
         if (active.length > 0) {
           throw new Error("workout_in_progress_exists");
         }
-        const completeIdentity = await supportsCompleteMetricIdentity(
-          transaction,
-        );
-        const ownedTargetSnapshots = await supportsOwnedTargetSnapshots(
-          transaction,
-        );
         const advancedTimingSnapshots = await supportsAdvancedTimingSnapshots(
           transaction,
         );
@@ -1033,8 +918,8 @@ export function createPlansWorkoutRepository(
             ordinal: number;
             exercise_name: string;
             metric_profile: MetricProfile;
-            metric_contract_version?: number;
-            exercise_metric_generation?: number;
+            metric_contract_version: number;
+            exercise_metric_generation: number;
             default_rest_seconds: number;
             increment_grams: number;
             advanced_timing_default_json?: string;
@@ -1042,11 +927,8 @@ export function createPlansWorkoutRepository(
             `SELECT de.id AS day_exercise_id, de.exercise_id, de.ordinal,
                     ${ownedGraph ? "e.canonical_name" : "e.name"}
                       AS exercise_name,
-                    ${completeIdentity
-                      ? `de.metric_profile,
-                         de.metric_contract_version,
-                         de.exercise_metric_generation,`
-                      : "e.metric_profile,"}
+                    de.metric_profile, de.metric_contract_version,
+                    de.exercise_metric_generation,
                     ${ownedGraph
                       ? "de.between_exercise_rest_seconds"
                       : "e.default_rest_seconds"} AS default_rest_seconds,
@@ -1092,55 +974,34 @@ export function createPlansWorkoutRepository(
               `INSERT INTO session_exercises
                 (id, session_id, source_plan_day_exercise_id, exercise_id,
                  ordinal, display_ordinal, exercise_name, metric_profile,
-                 ${completeIdentity
-                   ? `metric_contract_version,
-                      exercise_metric_generation,`
-                   : ""}
+                 metric_contract_version, exercise_metric_generation,
                  ${advancedTimingSnapshots
                    ? "advanced_timing_default_json,"
                    : ""}
                  default_rest_seconds, target_revision, status, revision)
                VALUES (?, ?, ?, ?, ?, ?, ?, ?,
-                       ${completeIdentity ? "?, ?," : ""}
+                       ?, ?,
                        ${advancedTimingSnapshots ? "?," : ""}
                        ?, ?, ?, ?)`,
-              completeIdentity
-                ? [
-                    sessionExerciseId,
-                    sessionId,
-                    ownedGraph ? null : exercise.day_exercise_id,
-                    exercise.exercise_id,
-                    exercise.ordinal,
-                    exercise.ordinal,
-                    exercise.exercise_name,
-                    exercise.metric_profile,
-                    exercise.metric_contract_version!,
-                    exercise.exercise_metric_generation!,
-                    ...(advancedTimingSnapshots
-                      ? [advancedTimingDefaultJson!]
-                      : []),
-                    exercise.default_rest_seconds,
-                    targetRevision.revision,
-                    exercise.ordinal === 0 ? "active" : "planned",
-                    1,
-                  ]
-                : [
-                    sessionExerciseId,
-                    sessionId,
-                    ownedGraph ? null : exercise.day_exercise_id,
-                    exercise.exercise_id,
-                    exercise.ordinal,
-                    exercise.ordinal,
-                    exercise.exercise_name,
-                    exercise.metric_profile,
-                    ...(advancedTimingSnapshots
-                      ? [advancedTimingDefaultJson!]
-                      : []),
-                    exercise.default_rest_seconds,
-                    targetRevision.revision,
-                    exercise.ordinal === 0 ? "active" : "planned",
-                    1,
-                  ],
+              [
+                sessionExerciseId,
+                sessionId,
+                ownedGraph ? null : exercise.day_exercise_id,
+                exercise.exercise_id,
+                exercise.ordinal,
+                exercise.ordinal,
+                exercise.exercise_name,
+                exercise.metric_profile,
+                exercise.metric_contract_version,
+                exercise.exercise_metric_generation,
+                ...(advancedTimingSnapshots
+                  ? [advancedTimingDefaultJson!]
+                  : []),
+                exercise.default_rest_seconds,
+                targetRevision.revision,
+                exercise.ordinal === 0 ? "active" : "planned",
+                1,
+              ],
             );
             const warmups = await transaction.queryAll<{
               ordinal: number;
@@ -1178,26 +1039,22 @@ export function createPlansWorkoutRepository(
                 `INSERT INTO session_sets
                   (id, session_exercise_id, set_kind, ordinal,
                    source_plan_working_set_target_id,
-                   ${ownedTargetSnapshots
-                     ? "source_owned_plan_working_set_target_id,"
-                     : ""}
+                   source_owned_plan_working_set_target_id,
                    ${advancedTimingSnapshots
                      ? "advanced_timing_override_json, advanced_timing_resolved_json,"
                      : ""}
                    target_load_grams, target_min_reps, target_max_reps,
                    target_json, unit_json, rule_type, rule_version,
-                   ${completeIdentity
-                     ? `metric_profile, metric_contract_version,
-                        exercise_metric_generation,`
-                     : ""}
+                   metric_profile, metric_contract_version,
+                   exercise_metric_generation,
                    observed_load_grams, observed_reps, status,
                    draft_updated_at_ms, completed_at_ms,
                    completion_idempotency_key, revision)
                  VALUES (?, ?, 'warmup', ?, NULL,
-                         ${ownedTargetSnapshots ? "NULL," : ""}
+                         NULL,
                          ${advancedTimingSnapshots ? "?, ?," : ""}
                          ?, ?, ?, ?, ?, 'load_reps', 1,
-                         ${completeIdentity ? "'load_reps', 1, ?," : ""}
+                         'load_reps', 1, ?,
                          NULL, NULL, 'planned', NULL, NULL, NULL, 1)`,
                 [
                   copiedId("session_warmup", sessionExerciseId, String(warmup.ordinal)),
@@ -1223,9 +1080,7 @@ export function createPlansWorkoutRepository(
                     load: "grams",
                     count: "repetitions",
                   }),
-                  ...(completeIdentity
-                    ? [exercise.exercise_metric_generation!]
-                    : []),
+                  exercise.exercise_metric_generation,
                 ],
               );
             }
@@ -1239,9 +1094,9 @@ export function createPlansWorkoutRepository(
               unit_json: string;
               policy_type: MetricProfile | "manual_hold";
               policy_version: number;
-              metric_profile?: MetricProfile;
-              metric_contract_version?: number;
-              exercise_metric_generation?: number;
+              metric_profile: MetricProfile;
+              metric_contract_version: number;
+              exercise_metric_generation: number;
               advanced_timing_override_json?: string | null;
             }>(
               `SELECT t.id, t.ordinal,
@@ -1273,22 +1128,16 @@ export function createPlansWorkoutRepository(
                            END`
                         : "p.policy_type"} AS policy_type,
                       p.policy_version
-                      ${completeIdentity
-                        ? `, t.metric_profile, t.metric_contract_version,
-                           t.exercise_metric_generation`
-                        : ""}
+                      , t.metric_profile, t.metric_contract_version,
+                        t.exercise_metric_generation
                FROM ${targetTable} t
                JOIN ${policyTable} p
                  ON p.plan_day_exercise_id = t.plan_day_exercise_id
                WHERE t.plan_day_exercise_id = ?
-                 ${completeIdentity
-                   ? `AND p.status = 'active'
-                      AND p.metric_profile = t.metric_profile
-                      AND p.metric_contract_version =
-                        t.metric_contract_version
-                      AND p.exercise_metric_generation =
-                        t.exercise_metric_generation`
-                   : ""}
+                 AND p.status = 'active'
+                 AND p.metric_profile = t.metric_profile
+                 AND p.metric_contract_version = t.metric_contract_version
+                 AND p.exercise_metric_generation = t.exercise_metric_generation
                ORDER BY t.ordinal`,
               [exercise.day_exercise_id],
             );
@@ -1310,35 +1159,29 @@ export function createPlansWorkoutRepository(
                 `INSERT INTO session_sets
                   (id, session_exercise_id, set_kind, ordinal,
                    source_plan_working_set_target_id,
-                   ${ownedTargetSnapshots
-                     ? "source_owned_plan_working_set_target_id,"
-                     : ""}
+                   source_owned_plan_working_set_target_id,
                    ${advancedTimingSnapshots
                      ? "advanced_timing_override_json, advanced_timing_resolved_json,"
                      : ""}
                    target_load_grams, target_min_reps, target_max_reps,
                    target_json, unit_json, rule_type, rule_version,
-                   ${completeIdentity
-                     ? `metric_profile, metric_contract_version,
-                        exercise_metric_generation,`
-                     : ""}
+                   metric_profile, metric_contract_version,
+                   exercise_metric_generation,
                    observed_load_grams, observed_reps, status,
                    draft_updated_at_ms, completed_at_ms,
                    completion_idempotency_key, revision)
                  VALUES (?, ?, 'working', ?, ?,
-                         ${ownedTargetSnapshots ? "?," : ""}
+                         ?,
                          ${advancedTimingSnapshots ? "?, ?," : ""}
                          ?, ?, ?, ?, ?, ?, ?,
-                         ${completeIdentity ? "?, ?, ?," : ""}
+                         ?, ?, ?,
                          NULL, NULL, 'planned', NULL, NULL, NULL, 1)`,
                 [
                   copiedId("session_target", sessionExerciseId, String(target.ordinal)),
                   sessionExerciseId,
                   target.ordinal,
                   ownedGraph ? null : target.id,
-                  ...(ownedTargetSnapshots
-                    ? [ownedGraph ? target.id : null]
-                    : []),
+                  ownedGraph ? target.id : null,
                   ...(advancedTimingSnapshots
                     ? [advancedTimingOverrideJson!, advancedTimingResolvedJson!]
                     : []),
@@ -1346,8 +1189,7 @@ export function createPlansWorkoutRepository(
                   target.min_reps,
                   target.max_reps,
                   workoutTargetJson({
-                    metricProfile: target.metric_profile
-                      ?? exercise.metric_profile,
+                    metricProfile: target.metric_profile,
                     targetJson: target.target_json,
                     loadGrams: target.load_grams,
                     minReps: target.min_reps,
@@ -1357,13 +1199,9 @@ export function createPlansWorkoutRepository(
                   target.unit_json,
                   target.policy_type,
                   target.policy_version,
-                  ...(completeIdentity
-                    ? [
-                        target.metric_profile!,
-                        target.metric_contract_version!,
-                        target.exercise_metric_generation!,
-                      ]
-                    : []),
+                  target.metric_profile,
+                  target.metric_contract_version,
+                  target.exercise_metric_generation,
                 ],
               );
             }
@@ -1659,8 +1497,6 @@ export function createPlansWorkoutRepository(
         kernel,
         binding.plan_day_id,
       );
-      const ownedRecommendations = ownedGraph
-        && await supportsOwnedTargetSnapshots(kernel);
       const occurrenceTable = ownedGraph
         ? "owned_plan_day_exercises"
         : "plan_day_exercises";
@@ -1668,17 +1504,13 @@ export function createPlansWorkoutRepository(
         ? "owned_plan_working_set_targets"
         : "plan_working_set_targets";
       const recommendationJoin = ownedGraph
-        ? ownedRecommendations
-          ? `LEFT JOIN owned_progression_recommendations r
+        ? `LEFT JOIN owned_progression_recommendations r
                ON r.owned_plan_working_set_target_id = t.id
               AND r.status = 'pending'`
-          : ""
         : `LEFT JOIN progression_recommendations r
              ON r.plan_working_set_target_id = t.id
             AND r.status = 'pending'`;
-      const recommendationCount = ownedGraph && !ownedRecommendations
-        ? "0"
-        : "COUNT(r.id)";
+      const recommendationCount = "COUNT(r.id)";
       const rows = await kernel.queryAll<{
         exercise_id: string;
         exercise_name: string;

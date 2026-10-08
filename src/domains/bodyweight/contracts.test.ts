@@ -1,4 +1,4 @@
-import { describe, expect, it } from "@jest/globals";
+import { describe, expect, it, jest } from "@jest/globals";
 
 import {
   BodyweightCommandError,
@@ -7,6 +7,7 @@ import {
   type BodyweightCommand,
   type BodyweightEntryState,
 } from "./contracts";
+import { commitBodyweightCommand } from "./commands";
 
 function command(overrides: Partial<BodyweightCommand> = {}): BodyweightCommand {
   const value = {
@@ -82,5 +83,32 @@ describe("dated bodyweight source facts", () => {
     ["restore an active entry", active, command({ operation: "restore", expectedRevision: 1, revisionId: "bodyweight-revision-2", eventId: "bodyweight-event-2" })],
   ])("returns a typed conflict for %s", (_label, current, value) => {
     expect(transitionBodyweight(current, value)).toMatchObject({ kind: "conflict", entry: current });
+  });
+
+  it("rejects every malformed mutation boundary and retains the current fact", () => {
+    const deleted: BodyweightEntryState = { ...active, revision: 2, lifecycle: "deleted" };
+    const noMeasurementDelete = command({ operation: "delete", expectedRevision: 2, revisionId: "r2", eventId: "e2", localDate: undefined, timezone: undefined, grams: undefined });
+    expect(() => transitionBodyweight(undefined, command({ operation: "edit", expectedRevision: 0, localDate: undefined, timezone: undefined, grams: undefined }))).toThrow("bodyweight_command_measurement_invalid");
+    expect(() => transitionBodyweight(undefined, command({ requestId: "not allowed spaces" }))).toThrow("bodyweight_command_identity_invalid");
+    expect(() => transitionBodyweight(undefined, command({ expectedRevision: -1 }))).toThrow("bodyweight_command_revision_invalid");
+    expect(() => transitionBodyweight(undefined, command({ operation: "delete", localDate: "2026-10-07" }))).toThrow("bodyweight_command_measurement_invalid");
+    expect(transitionBodyweight(active, command({ operation: "edit", ownerId: "other", expectedRevision: 1 }))).toMatchObject({ kind: "conflict", conflictCode: "stale_revision" });
+    expect(transitionBodyweight(deleted, command({ operation: "edit", expectedRevision: 2 }))).toMatchObject({ kind: "conflict", conflictCode: "lifecycle_conflict" });
+    expect(transitionBodyweight(deleted, noMeasurementDelete)).toMatchObject({ kind: "conflict", conflictCode: "lifecycle_conflict" });
+  });
+
+  it("validates before delegating and returns the committed transition unchanged", async () => {
+    const repository = { commit: jest.fn(async (input: BodyweightCommand) => transitionBodyweight(undefined, input)) };
+    await expect(commitBodyweightCommand(repository, command())).resolves.toMatchObject({ kind: "created" });
+    await expect(commitBodyweightCommand(repository, command({ grams: 0 }))).rejects.toThrow(BodyweightCommandError);
+    expect(repository.commit).toHaveBeenCalledTimes(1);
+  });
+
+  it("covers canonical nested values plus every create and missing-entry conflict", () => {
+    expect(canonicalBodyweightRequestHash({ z: [2, { b: 1, a: null }], a: true })).toBe(canonicalBodyweightRequestHash({ a: true, z: [2, { a: null, b: 1 }] }));
+    expect(() => transitionBodyweight(undefined, command({ localDate: "not-a-date" }))).toThrow("bodyweight_command_measurement_invalid");
+    expect(transitionBodyweight(active, command({ operation: "create", expectedRevision: 0 }))).toMatchObject({ kind: "conflict", conflictCode: "entry_exists" });
+    expect(transitionBodyweight(undefined, command({ operation: "create", expectedRevision: 1 }))).toMatchObject({ kind: "conflict", conflictCode: "stale_revision" });
+    expect(transitionBodyweight(undefined, command({ operation: "delete", expectedRevision: 1, localDate: undefined, timezone: undefined, grams: undefined }))).toMatchObject({ kind: "conflict", conflictCode: "entry_missing" });
   });
 });

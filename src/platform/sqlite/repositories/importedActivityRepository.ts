@@ -37,13 +37,21 @@ export function createImportedActivityRepository(kernel: SqliteKernel) {
         const [receipt] = await transaction.queryAll<Receipt>("SELECT request_sha256, activity_id FROM imported_activity_receipts WHERE id = ?", [input.requestId]);
         if (receipt !== undefined) {
           if (receipt.request_sha256 !== input.requestSha256) return Object.freeze({ kind: "conflict", activityId: input.activityId, aggregateRevision: input.expectedAggregateRevision });
-          const [replayed] = await transaction.queryAll<{ aggregate_revision: number; removal_state: "active" | "removed" }>("SELECT aggregate_revision, removal_state FROM imported_activity_identities WHERE activity_id = ?", [receipt.activity_id]);
+          const [replayed] = await transaction.queryAll<{ aggregate_revision: number; removal_state: "active" | "removed" }>(`SELECT identity.aggregate_revision,
+            COALESCE(lifecycle.removal_state, identity.removal_state) AS removal_state
+            FROM imported_activity_identities identity
+            LEFT JOIN imported_activity_current_lifecycle lifecycle ON lifecycle.activity_id = identity.activity_id
+            WHERE identity.activity_id = ?`, [receipt.activity_id]);
           if (replayed === undefined) throw new Error("imported_activity_receipt_orphaned");
           return Object.freeze({ kind: replayed.removal_state === "removed" ? "removed" : "replayed", activityId: receipt.activity_id, aggregateRevision: replayed.aggregate_revision });
         }
         const envelope = input.staged.envelope;
         const [existing] = await transaction.queryAll<{ activity_id: string; aggregate_revision: number; accepted_normalized_sha256: string; removal_state: "active" | "removed" }>(
-          "SELECT activity_id, aggregate_revision, accepted_normalized_sha256, removal_state FROM imported_activity_identities WHERE source_kind = ? AND account_namespace = ? AND external_activity_id = ?",
+          `SELECT identity.activity_id, identity.aggregate_revision, identity.accepted_normalized_sha256,
+                  COALESCE(lifecycle.removal_state, identity.removal_state) AS removal_state
+             FROM imported_activity_identities identity
+             LEFT JOIN imported_activity_current_lifecycle lifecycle ON lifecycle.activity_id = identity.activity_id
+            WHERE identity.source_kind = ? AND identity.account_namespace = ? AND identity.external_activity_id = ?`,
           [envelope.source_kind, envelope.account_namespace, envelope.external_activity_id],
         );
         const identityInput = existing === undefined

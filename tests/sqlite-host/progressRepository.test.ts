@@ -416,6 +416,7 @@ async function insertRecommendation(
   kernel: SqliteKernel,
   input: Readonly<{
     id: string;
+    targetId?: string;
     evidenceVersion?: number;
     evidenceJson?: string;
     ruleType?: string;
@@ -429,13 +430,14 @@ async function insertRecommendation(
        evidence_version, evidence_json, current_target_json, proposed_target_json,
        metric_profile, metric_contract_version, exercise_metric_generation,
        status, source_revision, target_revision, created_at_ms, decided_at_ms)
-     VALUES (?, 'review-exercise', 'review-target', ?, 1, ?, ?, ?, ?,
+     VALUES (?, 'review-exercise', ?, ?, 1, ?, ?, ?, ?,
              'load_reps', 1, 1, ?, 1, 1, 10, ?)`,
     [
       input.id,
+      input.targetId ?? "review-target",
       input.ruleType ?? "load_reps",
       input.evidenceVersion ?? 2,
-      input.evidenceJson ?? actionableEvidence({ targetId: "review-target" }),
+      input.evidenceJson ?? actionableEvidence({ targetId: input.targetId ?? "review-target" }),
       target,
       proposedTarget,
       input.status ?? "pending",
@@ -808,6 +810,112 @@ describe("progress repository", () => {
         })],
       },
     });
+  });
+
+  it("rejects malformed or unbound evidence while sorting only independently validated reviews", async () => {
+    const kernel = await open();
+    await seedCurrentProjection(kernel);
+    await seedRecommendationGraph(kernel);
+    await kernel.write(async (transaction) => {
+      await transaction.execute(
+        `INSERT INTO exercises
+          (id, content_pack_id, origin, source_namespace, upstream_id, name,
+           metric_profile, metric_contract_version, exercise_metric_generation,
+           equipment, default_rest_seconds, revision)
+         VALUES ('review-exercise-second', NULL, 'custom', NULL, NULL,
+                 'Review exercise', 'load_reps', 1, 1, 'Barbell', 90, 1)`,
+      );
+      await transaction.execute(
+        `INSERT INTO plan_day_exercises
+          (id, plan_day_id, exercise_id, ordinal, between_exercise_rest_seconds,
+           metric_profile, metric_contract_version, exercise_metric_generation, revision)
+         VALUES ('review-occurrence-second', 'review-day', 'review-exercise-second', 1,
+                 90, 'load_reps', 1, 1, 1)`,
+      );
+      await transaction.execute(
+        `INSERT INTO plan_working_set_targets
+          (id, plan_day_exercise_id, ordinal, load_grams, min_reps, max_reps,
+           target_json, unit_json, metric_profile, metric_contract_version,
+           exercise_metric_generation, revision)
+         VALUES ('review-target-second', 'review-occurrence-second', 0,
+                 40000, 8, 10, ?,
+                 '{"version":1,"load":"grams","count":"repetitions"}',
+                 'load_reps', 1, 1, 1)`,
+        [target],
+      );
+    });
+    await insertRecommendation(kernel, { id: "review-zebra" });
+    await insertRecommendation(kernel, {
+      id: "review-alpha",
+      targetId: "review-target-second",
+    });
+    await insertRecommendation(kernel, {
+      id: "review-historical-unbound",
+      status: "accepted",
+      decidedAtMs: 11,
+      evidenceJson: JSON.stringify({
+        ...JSON.parse(actionableEvidence({ targetId: "review-target" })),
+        revisions: { source: 1, target: "not-a-revision" },
+      }),
+    });
+
+    const result = await createProgressRepository(kernel).load({
+      period: "all_time",
+      nowLocalDate: "2026-08-24",
+    });
+
+    expect(result.projection?.recommendations.map(({ id }) => id)).toEqual([
+      "review-alpha",
+      "review-zebra",
+    ]);
+    expect(result.projection?.attention.map(({ id }) => id)).toEqual([
+      "review-alpha",
+      "review-zebra",
+    ]);
+  });
+
+  it("keeps source facts unavailable when persisted imported data is structurally unusable", async () => {
+    const kernel = await open();
+    await kernel.write(async (transaction) => {
+      await transaction.execute(
+        `INSERT INTO imported_activities
+          (id, source, source_activity_id, started_at_ms, aggregate_json, imported_at_ms)
+         VALUES ('malformed-progress-activity', 'test', 'malformed', 1, '[]', 1)`,
+      );
+      await transaction.execute(
+        `INSERT INTO imported_activity_identities
+          (activity_id, source_kind, account_namespace, external_activity_id,
+           aggregate_revision, accepted_normalized_sha256, removal_state)
+         VALUES ('malformed-progress-activity', 'garmin_connect_account', 'test',
+                 'malformed', 1, ?, 'active')`,
+        ["a".repeat(64)],
+      );
+      await transaction.execute(
+        `INSERT INTO imported_activity_events
+          (id, activity_id, aggregate_revision, event_type, payload_json, created_at_ms)
+         VALUES ('malformed-progress-event', 'malformed-progress-activity', 1,
+                 'imported', '{}', 1)`,
+      );
+      await transaction.execute(
+        `INSERT INTO imported_activity_current_lifecycle
+          (activity_id, aggregate_revision, removal_state, lifecycle_event_id)
+         VALUES ('malformed-progress-activity', 1, 'active', 'malformed-progress-event')`,
+      );
+    });
+
+    const result = await createProgressRepository(kernel).load({
+      period: "4_weeks",
+      nowLocalDate: "2026-08-24",
+    });
+
+    expect(result.sourceFacts).toEqual(expect.objectContaining({
+      running: expect.objectContaining({
+        kind: "unavailable",
+        activityKind: "unavailable",
+        activities: [],
+      }),
+      bodyweight: { kind: "unavailable", entries: [] },
+    }));
   });
 
   it("treats a database with no history subjects as an explicit baseline rather than unavailable analytics", async () => {

@@ -3,6 +3,10 @@ import { describe, expect, it, jest } from "@jest/globals";
 import { createProgressRepository } from "./progressRepository";
 import type { SqliteKernel } from "../sqliteKernel";
 
+jest.mock("./historyRepository", () => ({
+  loadEffectiveHistoryProjectionSessions: jest.fn(async () => []),
+}));
+
 describe("progress repository factual source reads", () => {
   it("returns source-linked Running, goal, and current bodyweight facts without inventing zeroes", async () => {
     const queryAll = jest.fn(async (sql: string) => {
@@ -43,5 +47,79 @@ describe("progress repository factual source reads", () => {
       },
     });
     expect(queryAll.mock.calls.filter(([sql]) => /INSERT|UPDATE|DELETE/u.test(sql as string))).toHaveLength(0);
+  });
+
+  it("fails closed for malformed legacy source/evidence payloads and an exposure without an effective history set", async () => {
+    const queryAll = jest.fn(async (sql: string) => {
+      if (sql.includes("FROM history_projection_comparable_exposures")) return [{
+        exercise_id: "missing-exercise", identity_key: "load_reps:1:1",
+        comparator_key: "identity", session_id: "missing-session",
+        local_date: "2026-11-01", set_id: "missing-set", set_ordinal: 0,
+        completed_at_ms: 1, target_json: "{}", observation_json: "{}",
+      }];
+      if (sql.includes("FROM imported_activities activity")) return [{
+        id: "legacy-malformed", started_at_ms: 1, aggregate_json: "not-json",
+        opportunity_id: null,
+      }];
+      if (sql.includes("FROM progression_recommendations recommendation")) return [{
+        id: "legacy-malformed-evidence", exercise_id: "exercise", exercise_name: "Exercise",
+        status: "pending", evidence_json: JSON.stringify({
+          rule: { id: "load_reps.double_progression.v1" },
+          revisions: { target: 1 }, reason: "reason", confidence: "high",
+        }), current_target_json: "not-json", proposed_target_json: "{}",
+        target_id: "target", evidence_version: 2, rule_type: "load_reps",
+        rule_version: 1, metric_profile: "load_reps", metric_contract_version: 1,
+        exercise_metric_generation: 1, source_revision: 1, target_revision: 1,
+        created_at_ms: 1,
+      }];
+      return [];
+    });
+    const kernel = { queryAll } as unknown as SqliteKernel;
+
+    await expect(createProgressRepository(kernel).load({
+      period: "4_weeks",
+      nowLocalDate: "2026-11-02",
+    })).rejects.toThrow("progress_effective_exercise_name_unavailable");
+
+    const withoutExposure = jest.fn(async (sql: string) =>
+      sql.includes("FROM history_projection_comparable_exposures") ? [] : await queryAll(sql)
+    );
+    const result = await createProgressRepository({ queryAll: withoutExposure } as unknown as SqliteKernel).load({
+      period: "4_weeks",
+      nowLocalDate: "2026-11-02",
+    });
+    expect(result.sourceFacts?.running).toMatchObject({
+      kind: "unavailable", activityKind: "unavailable", activities: [],
+    });
+    expect(result.projection?.recommendations).toEqual([]);
+  });
+
+  it("does not expose a persisted Running goal whose owner plan differs from its evidence", async () => {
+    const queryAll = jest.fn(async (sql: string) => {
+      if (sql.includes("FROM running_goals")) return [{
+        id: "goal-unbound", plan_id: "plan-owned", revision: 1,
+        goal_json: JSON.stringify({
+          version: 1,
+          id: "goal-unbound",
+          planId: "different-plan",
+          revision: 1,
+          goalDistanceMeters: 5_000,
+          trainingDays: ["Monday"],
+          createdAtMs: 1,
+        }),
+      }];
+      return [];
+    });
+
+    const result = await createProgressRepository({ queryAll } as unknown as SqliteKernel).load({
+      period: "4_weeks",
+      nowLocalDate: "2026-11-02",
+    });
+
+    expect(result.sourceFacts?.running).toEqual(expect.objectContaining({
+      kind: "unavailable",
+      goalKind: "unavailable",
+      goals: [],
+    }));
   });
 });

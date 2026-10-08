@@ -6,6 +6,7 @@ import {
 
 import {
   RunningBoundaryError,
+  evaluateRunningReadiness,
   parseRunningGoal,
   parseRunningSessionRevision,
 } from "./contracts";
@@ -78,5 +79,15 @@ describe("Running source contracts", () => {
       contextual: { format: "continuous", durationMs: 600_000 },
       advisoryTarget: { heartRateZone: 6 },
     })).toThrow(RunningBoundaryError);
+  });
+
+  test("rejects duplicate phase and step ordinals while covering every goal and readiness outcome", () => {
+    expect(() => parseRunningSessionRevision({ ...base, sessionKind: "recovery", contextual: {}, phases: [{ ...base.phases[0] }, { ...base.phases[0] }] })).toThrow(RunningBoundaryError);
+    expect(() => parseRunningSessionRevision({ ...base, sessionKind: "recovery", contextual: {}, phases: [{ ...base.phases[0], steps: [{ ...base.phases[0].steps[0] }, { ...base.phases[0].steps[0] }] }] })).toThrow(RunningBoundaryError);
+    expect(() => parseRunningGoal({ version: 1, id: "goal-1", planId: "plan-running", revision: 1, goalDistanceMeters: 5000, trainingDays: ["Monday", "Monday"], createdAtMs: 1 })).toThrow(RunningBoundaryError);
+    expect(() => parseRunningGoal({ version: 1, id: "goal-1", planId: "plan-running", revision: 1, goalDistanceMeters: 5000, trainingDays: ["Monday"], createdAtMs: -1 })).toThrow(RunningBoundaryError);
+    expect(evaluateRunningReadiness({ hasRecoveryRevision: false, slotCount: 1 })).toEqual({ ready: false, reason: "missing_recovery" });
+    expect(evaluateRunningReadiness({ hasRecoveryRevision: true, slotCount: 0 })).toEqual({ ready: false, reason: "missing_slots" });
+    expect(evaluateRunningReadiness({ hasRecoveryRevision: true, slotCount: 1 })).toEqual({ ready: true, reason: "ready" });
   });
 });

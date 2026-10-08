@@ -203,9 +203,7 @@ export function createRunningPlanRepository(kernel: SqliteKernel) {
       expectedScheduleRevision: number;
       activatedAtMs: number;
     }>): Promise<void> {
-      const activateRunningSchedule = createScheduleRepository(kernel).activateRunningSchedule;
-      if (activateRunningSchedule === undefined) throw new Error("running_schedule_activation_unavailable");
-      await activateRunningSchedule(input);
+      await createScheduleRepository(kernel).activateRunningSchedule!(input);
     },
     async materializeOccurrences(input: Readonly<{
       planId: string;

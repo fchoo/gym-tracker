@@ -61,6 +61,57 @@ describe("bodyweight source history", () => {
     await expect(reopened.repository.commit(command({ operation: "edit", requestId: "bodyweight-request-stale", expectedRevision: 0, revisionId: "bodyweight-revision-stale", eventId: "bodyweight-event-stale" }))).resolves.toMatchObject({ kind: "conflict", conflictCode: "stale_revision" });
   });
 
+  it("retains owner isolation, replay conflicts, and current history across lifecycle transitions", async () => {
+    const { repository } = await runtime();
+    const created = await repository.commit(command());
+    await expect(repository.commit(command({ requestId: "bodyweight-request-conflict", eventId: "bodyweight-event-conflict" }))).resolves.toMatchObject({ kind: "conflict", conflictCode: "entry_exists" });
+    await expect(repository.commit(command({ requestId: "bodyweight-request-owner", ownerId: "owner-2", eventId: "bodyweight-event-owner" }))).resolves.toMatchObject({ kind: "conflict", conflictCode: "entry_exists" });
+    await expect(repository.history("owner-1")).resolves.toEqual([created.entry]);
+    await repository.commit(command({ operation: "delete", requestId: "bodyweight-request-history-delete", expectedRevision: 1, revisionId: "bodyweight-revision-history-delete", eventId: "bodyweight-event-history-delete", localDate: undefined, timezone: undefined, grams: undefined }));
+    await expect(repository.history("owner-1")).resolves.toEqual([expect.objectContaining({ lifecycle: "deleted", revision: 2 })]);
+    await expect(repository.history("other-owner")).resolves.toEqual([]);
+  });
+
+  it("fails closed for corrupt receipts, missing current facts, lost updates, and unreadable post-write state", async () => {
+    const { kernel, repository } = await runtime();
+    const corruptReceipt = command({ requestId: "bodyweight-corrupt-receipt" });
+    await repository.commit(corruptReceipt);
+    await kernel.write(async (transaction) => {
+      await transaction.execute("DROP TRIGGER bodyweight_command_receipts_immutable_update");
+      await transaction.execute(
+      "UPDATE bodyweight_command_receipts SET result_json = ? WHERE request_id = ?",
+      ["{}", "bodyweight-corrupt-receipt"],
+      );
+    });
+    await expect(repository.commit(corruptReceipt)).rejects.toThrow("sqlite_transaction_failed");
+    await kernel.write((transaction) => transaction.execute(
+      "UPDATE bodyweight_command_receipts SET request_sha256 = ? WHERE request_id = ?",
+      ["b".repeat(64), "bodyweight-corrupt-receipt"],
+    ));
+    await expect(repository.commit(corruptReceipt)).resolves.toMatchObject({ kind: "conflict" });
+
+    await repository.commit(command({ requestId: "bodyweight-current", entryId: "bodyweight-current-entry", revisionId: "bodyweight-current-revision", eventId: "bodyweight-current-event" }));
+    await kernel.write(async (transaction) => {
+      await transaction.execute("DROP TRIGGER bodyweight_entry_events_immutable_delete");
+      await transaction.execute("DELETE FROM bodyweight_entry_events WHERE id = ?", ["bodyweight-current-revision"]);
+    });
+    await expect(repository.history("owner-1")).rejects.toThrow("bodyweight_entry_measurement_missing");
+
+    const missingRevision = await runtime();
+    await missingRevision.repository.commit(command({ requestId: "bodyweight-revision", entryId: "bodyweight-revision-entry", revisionId: "bodyweight-revision-present", eventId: "bodyweight-event-present" }));
+    await missingRevision.kernel.write((transaction) => transaction.execute("UPDATE bodyweight_entries SET current_revision = 99 WHERE id = ?", ["bodyweight-revision-entry"]));
+    await expect(missingRevision.repository.history("owner-1")).rejects.toThrow("bodyweight_entry_revision_missing");
+
+    const fenced = await runtime();
+    await fenced.repository.commit(command({ requestId: "bodyweight-fenced", entryId: "bodyweight-fenced-entry", revisionId: "bodyweight-fenced-revision", eventId: "bodyweight-fenced-event" }));
+    await fenced.kernel.write((transaction) => transaction.execute("CREATE TRIGGER reject_bodyweight_revision BEFORE UPDATE ON bodyweight_entries BEGIN SELECT RAISE(IGNORE); END"));
+    await expect(fenced.repository.commit(command({ operation: "edit", requestId: "bodyweight-lost-update", entryId: "bodyweight-fenced-entry", expectedRevision: 1, revisionId: "bodyweight-lost-update-revision", eventId: "bodyweight-lost-update-event", grams: 72_400 }))).rejects.toThrow("sqlite_transaction_failed");
+
+    const unreadable = await runtime();
+    await unreadable.kernel.write((transaction) => transaction.execute("CREATE TRIGGER corrupt_bodyweight_readback AFTER INSERT ON bodyweight_entry_events BEGIN UPDATE bodyweight_entries SET lifecycle = 'deleted' WHERE id = NEW.entry_id; END"));
+    await expect(unreadable.repository.commit(command({ requestId: "bodyweight-unreadable", entryId: "bodyweight-unreadable-entry", revisionId: "bodyweight-unreadable-revision", eventId: "bodyweight-unreadable-event" }))).rejects.toThrow("sqlite_transaction_failed");
+  });
+
   it("exposes only current dated bodyweight facts through Progress without changing protected or backup state", async () => {
     const { kernel, repository } = await runtime();
     const beforeProtected = await protectedDigest(kernel);
@@ -83,5 +134,43 @@ describe("bodyweight source history", () => {
     expect(await protectedDigest(kernel)).toEqual(beforeProtected);
     expect(afterBackup?.mutation_generation).toBeGreaterThan(beforeBackup!.mutation_generation);
     expect(afterBackup?.mutation_generation).toBe(afterDeleteBackup?.mutation_generation);
+  });
+
+  it("fails closed over malformed and non-positive source facts without mutating SQLite", async () => {
+    const { kernel, repository } = await runtime();
+    const progress = createProgressRepository(kernel);
+    await repository.commit(command({
+      requestId: "bodyweight-progress-invalid",
+      entryId: "bodyweight-progress-invalid-entry",
+      revisionId: "bodyweight-progress-invalid-revision",
+      eventId: "bodyweight-progress-invalid-event",
+    }));
+    const before = await protectedDigest(kernel);
+
+    await kernel.write(async (transaction) => {
+      await transaction.execute("DROP TRIGGER bodyweight_entry_events_immutable_update");
+      await transaction.execute("PRAGMA ignore_check_constraints = ON");
+      await transaction.execute(
+        "UPDATE bodyweight_entry_events SET grams = 0 WHERE entry_id = ? AND revision = 1",
+        ["bodyweight-progress-invalid-entry"],
+      );
+      await transaction.execute("PRAGMA ignore_check_constraints = OFF");
+    });
+
+    await expect(progress.load({
+      period: "4_weeks",
+      nowLocalDate: "2026-10-08",
+    })).resolves.toMatchObject({
+      freshness: "current",
+      sourceFacts: {
+        bodyweight: { kind: "unavailable", entries: [] },
+        running: {
+          kind: "unavailable",
+          activityKind: "unavailable",
+          goalKind: "unavailable",
+        },
+      },
+    });
+    expect(await protectedDigest(kernel)).toEqual(before);
   });
 });

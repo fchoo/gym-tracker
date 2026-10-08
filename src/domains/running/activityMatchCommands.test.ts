@@ -1,4 +1,4 @@
-import { describe, expect, it } from "@jest/globals";
+import { describe, expect, it, jest } from "@jest/globals";
 
 import {
   confirmRunningActivityMatch,
@@ -40,5 +40,21 @@ describe("Running activity match commands", () => {
   it("rejects a confirmation that omits the expected relation revision", async () => {
     const repository: RunningActivityMatchRepository = { confirm: async () => ({ kind: "conflict", activityId: "activity-1", opportunityId: "opportunity-1", relationRevision: 0 }) };
     await expect(confirmRunningActivityMatch(repository, { ...input, expectedRelationRevision: -1 })).rejects.toThrow("running_activity_match_invalid");
+  });
+
+  it("requires action-specific prior identity and rejects every malformed fence", async () => {
+    const repository: RunningActivityMatchRepository = {
+      confirm: jest.fn(async () => ({
+        kind: "conflict" as const,
+        activityId: "activity-1",
+        opportunityId: "opportunity-1",
+        relationRevision: 0,
+      })),
+    };
+    await expect(confirmRunningActivityMatch(repository, { ...input, action: "match", expectedCurrentOpportunityId: "old-opportunity" })).rejects.toThrow("running_activity_match_invalid");
+    await expect(confirmRunningActivityMatch(repository, { ...input, action: "unmatch" })).rejects.toThrow("running_activity_match_invalid");
+    await expect(confirmRunningActivityMatch(repository, { ...input, action: "reassign", expectedCurrentOpportunityId: "bad id" })).rejects.toThrow("running_activity_match_invalid");
+    await expect(confirmRunningActivityMatch(repository, { ...input, requestSha256: "A".repeat(64), expectedActivityRevision: 0 })).rejects.toThrow("running_activity_match_invalid");
+    await expect(confirmRunningActivityMatch(repository, { ...input, action: "unmatch", expectedCurrentOpportunityId: "old-opportunity" })).resolves.toMatchObject({ kind: "conflict" });
   });
 });

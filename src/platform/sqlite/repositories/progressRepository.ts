@@ -195,7 +195,8 @@ function diagnosticForSubjects(input: Readonly<{
   for (const subjectId of input.subjectIds) {
     if (subjectId === ALL_PERIOD_SUBJECT_ID) {
       affectedSubjects.add("all_period");
-    } else if (input.metricSubjectIds.has(subjectId)) {
+    }
+    if (input.metricSubjectIds.has(subjectId)) {
       affectedSubjects.add("exercise_metric");
     }
   }
