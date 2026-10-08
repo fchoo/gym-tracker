@@ -1038,7 +1038,6 @@ function FilterSheet({
       testID="library-filter-sheet-frame"
       visible={visible}
     >
-          
           <Text style={[typeScale.body as TextStyle, { color: colors.textSecondary }]}>
             Select any value within a category. Categories combine together.
           </Text>
