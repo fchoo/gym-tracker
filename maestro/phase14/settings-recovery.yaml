@@ -46,6 +46,9 @@ tags:
       - extendedWaitUntil:
           visible: "App Settings"
           timeout: 30000
+      - scrollUntilVisible:
+          element:
+            text: "Removed sessions"
       - assertVisible: "Removed sessions"
 - runFlow:
     when:
