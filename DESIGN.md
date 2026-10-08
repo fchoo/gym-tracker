@@ -6,8 +6,8 @@ This file is the repository-wide implementation source for the design system est
 
 - Build a quiet, high-contrast precision instrument.
 - Lead with the next action, then evidence, then explanation.
-- Use a neutral grey continuous canvas and editorial sections. Prefer headings, spacing, and hairline dividers to containers outside content cards.
-- Use bounded surfaces only for decisions, recoverable failures, destructive confirmation, and independently scannable content items. Content cards are flat, high-contrast surfaces and never nest: white over the neutral-grey light canvas, near-black over the graphite dark canvas.
+- Use a warm editorial paper canvas in Light and a dark precision-instrument canvas in Dark. Prefer headings, spacing, and fine rules to containers outside bounded decision/recovery surfaces.
+- Use bounded surfaces only for decisions, recoverable failures, destructive confirmation, and independently scannable content items. Content cards are flat, semantic surfaces and never nest.
 - Do not use gradients, decorative pills, nested cards, fake metrics, decorative blobs, emoji decoration, ornamental icon circles, generic wellness language, or global fitness/readiness scores.
 - Keep one dominant action per section.
 
@@ -17,21 +17,22 @@ Bundle and render only these approved weights:
 
 | Role | Family | Weight |
 |---|---|---:|
-| Interface regular | Source Sans 3 | 400 |
-| Interface emphasis | Source Sans 3 | 600 |
+| Interface regular | Archivo variable | 400 |
+| Interface emphasis | Archivo variable | 800 |
 | Numeric regular | IBM Plex Mono | 400 |
-| Numeric emphasis | IBM Plex Mono | 600 |
+| Numeric emphasis | IBM Plex Mono | 400 tabular |
 
 | Token | Family | Size / Line Height | Weight | Usage |
 |---|---|---:|---:|---|
-| `displayTimer` | IBM Plex Mono | `52 / 56sp` | 600 | Active rest countdown |
-| `targetValue` | IBM Plex Mono | `28 / 34sp` | 600 | Current target and prominent numeric result |
-| `screenTitle` | Source Sans 3 | `28 / 34sp` | 600 | Route title |
-| `sectionTitle` | Source Sans 3 | `16 / 22sp` | 600 | Editorial section heading |
-| `body` | Source Sans 3 | `16 / 22sp` | 400 | Primary content and instructions |
-| `bodyStrong` | Source Sans 3 | `16 / 22sp` | 600 | Exercise names, actions, and key values |
-| `secondary` | Source Sans 3 | `14 / 20sp` | 400 | Supporting evidence only |
-| `label` | Source Sans 3 | `14 / 20sp` | 600 | Short uppercase or compact labels |
+| `displayTimer` | IBM Plex Mono | `52 / 56sp` | 800 | Active rest countdown |
+| `targetValue` | IBM Plex Mono | `28 / 34sp` | 800 | Current target and prominent numeric result |
+| `screenTitle` | Archivo variable | `28 / 34sp` | 800 | Route title |
+| `sectionTitle` | Archivo variable | `16 / 22sp` | 800 | Editorial section heading |
+| `body` | Archivo variable | `16 / 22sp` | 400 | Primary content and instructions |
+| `bodyStrong` | Archivo variable | `16 / 22sp` | 800 | Exercise names, actions, and key values |
+| `secondary` | Archivo variable | `14 / 20sp` | 400 | Supporting evidence only |
+| `label` | Archivo variable | `14 / 20sp` | 800 | Short uppercase or compact labels |
+| `editorialWorkoutTitle` | Archivo variable | `57px / 49px` | 890 condensed | Workout identity only; `-0.07em` tracking and the exact `Today’s` / `workout` proof wrap |
 
 Numeric values use tabular numerals. Body copy is never smaller than `16sp`. Required instructions and the only expression of status never use `secondary`. Exercise names wrap to two lines before truncation.
 
@@ -69,33 +70,27 @@ Accent is reserved for actions, selected navigation, selected segmented state, a
 
 | Token | Light | Dark | Usage |
 |---|---|---|---|
-| `canvas` | `#F1F3F4` | `#202124` | Continuous neutral-grey root background, inspired by Gmail's restrained canvas hierarchy |
-| `contentCard` | `#FFFFFF` | `#121212` | Flat independently scannable content item; white in light appearance and near-black in dark appearance; never nest cards |
-| `contentCardText` | `#202124` | `#E8EAED` | High-contrast primary copy on content cards |
-| `contentCardTextSecondary` | `#5F6368` | `#BDC1C6` | High-contrast supporting copy on content cards |
-| `surface` | `#F8F9FA` | `#171B1E` | Dock, sheet, input, or bounded control surface; kept distinct from white light-mode content cards |
-| `surfaceSubtle` | `#E8EAED` | `#20262A` | Pressed inputs, skeletons, and segmented controls |
-| `textPrimary` | `#171A1C` | `#F4F6F7` | Primary text |
-| `textSecondary` | `#5D656B` | `#AEB7BD` | Supporting text |
-| `divider` | `#C9CED2` | `#394146` | Hairlines and borders |
-| `action` | `#155EEF` | `#70A0FF` | Primary action and selected navigation |
-| `actionPressed` | `#004EEB` | `#8DB3FF` | Pressed primary action |
-| `onAction` | `#FFFFFF` | `#071225` | Content on the action color |
-| `completed` | `#1F7A4D` | `#56C88A` | Committed completion only |
-| `timerAttention` | `#B54708` | `#FFB45C` | Timer attention and caution |
-| `destructive` | `#B42318` | `#FF746A` | Error or destructive action |
-| `errorSurface` | `#FEE4E2` | `#3A1C1B` | Save/database failure |
-| `focusRing` | `#155EEF` | `#9CBFFF` | External-input focus |
+| `paper` / `canvas` | `#FFFAF0` | `#080808` | Continuous root and bottom-navigation ground |
+| `bone` | `#F4F0E6` | `#151515` | Secondary surface and pressed/disabled layer |
+| `surface` | `#F0EADF` | `#151515` | Cards, rows, controls, and sheets |
+| `raised` | `#FFFAF0` | `#202020` | Raised dialog or sheet surface |
+| `ink` / `textPrimary` | `#0D0C0A` | `#F7F7F2` | Primary copy |
+| `quiet` / `textSecondary` | `#655F56` | `#AAA9A2` | Supporting copy |
+| `line` / `divider` | `#CEC6B8` | `#333330` | Hairlines and borders |
+| `orange` | `#D97820` | `#D97820` | Workout emphasis and Strength border, rail, and swatch |
+| `blue` / `action` / `focusRing` | `#195FAE` | `#71AAFF` | Focus, selection, links, and Running identity |
+| `green` / `completed` | `#166B4C` | `#72DF92` | Committed completion only |
+| `yellow` / `timerAttention` | `#8D5D00` | `#F0C84B` | Attention only |
+| `destructive` | `#B42318` | `#FF8279` | Error or destructive action |
+| `calendarStrengthTextLight` | `#9B470B` | n/a | Approved Light Strength title; the `orange` sport treatment stays `#D97820` |
 
 Pair semantic color with text plus an icon, shape, or state label. Normal text meets WCAG AA `4.5:1`; large text and controls meet at least `3:1`. Disabled controls retain readable labels and expose disabled semantics.
 
-### Content Card Adoption Inventory
+### Semantic Surface Adoption Inventory
 
-The neutral grey canvas is the default for independently scannable content.
-Content cards invert with appearance: white cards lift from the light canvas,
-while near-black cards lift from the graphite dark canvas. Form fields, sheets,
-navigation chrome, dialogs, and transient notices remain on their existing
-semantic surfaces; they are not content cards.
+Paper is the Light root ground and near-black is the Dark root ground. Forms,
+sheets, navigation chrome, dialogs, and transient notices use their shared
+semantic surfaces; they are not screen-local card systems.
 
 | Surface | Card status | Plan owner |
 |---|---|---|
@@ -114,9 +109,9 @@ semantic surfaces; they are not content cards.
 - Selecting `System` clears the explicit override.
 - Appearance changes do not own navigation or workout state, so route, focus, values, scroll anchor, and rest state remain outside the theme provider.
 
-### Phase 1 Persistence Seam
+### Appearance Persistence Seam
 
-`AppearanceProvider` accepts an injected `AppearanceStore`. Plan 01-02 provides a narrow process-memory implementation that persists an explicit override across provider remounts without introducing `AsyncStorage`. It is intentionally not durable across process death. The authoritative SQLite settings repository replaces this adapter in the later persistence plan without changing the provider or selector contract.
+`AppearanceProvider` accepts an injected `AppearanceStore`. Production storage is the bounded SQLite preference seam keyed by `gym_tracker.appearance_preference.v1`; it preserves `System` as null, reports typed read/write failures, and retains the last authoritative preference when a write fails. `System` remains selected while live OS changes update the resolved scheme without remounting children.
 
 ## Iconography
 
@@ -145,7 +140,7 @@ Never use spring bounce or scale. Reduced motion removes position, spring, bounc
 |---|---:|---|---|
 | Compact | `< 600dp` | Bottom navigation | Single column; `16dp` inset |
 | Medium | `600–839dp` | Bottom navigation | Main plus optional context; `24dp` inset/gap |
-| Expanded | `≥ 840dp` | Rail permitted | Two-pane roots; `32dp` inset/gap |
+| Expanded | `≥ 840dp` | Bottom navigation at every width | Two-pane content only; `32dp` inset/gap |
 
 Active work and its adjacent set-row actions remain in one primary region. Medium and expanded Active Workout centers that region within `720dp`; RestDock and final Finish never move to a distant side pane. At large text, optional secondary context moves below primary content when two panes cannot preserve reading order and target size.
 
@@ -169,7 +164,7 @@ Active work and its adjacent set-row actions remain in one primary region. Mediu
 - Every control is reachable by touch, keyboard, and D-pad.
 - Enter and Space invoke the same action path as touch.
 - No required action is swipe-only, long-press-only, drag-only, or dependent on color.
-- Visible focus uses a minimum `2dp` `focusRing`.
+- Visible focus uses a minimum `3dp` `focusRing`.
 - Sheets move focus to their heading, trap modal accessibility, and restore focus to the invoking control when dismissed.
 - Skeletons and decorative content are hidden.
 - State changes use polite announcements; timer ticks do not.
@@ -210,7 +205,7 @@ outlined `ChevronRight`; direct CSV export uses `Download`, share-ready uses `Sh
 and retry uses `RotateCcw`. Action mode may expose bounded busy, success, or retry state. It
 grows vertically at large text, keeps a minimum 48dp target, exposes one exact accessible
 label/hint, hides decorative trailing icons from accessibility, and uses the shared
-pressed, disabled, and 2dp focus treatments. It is not a content card and must not be
+pressed, disabled, and 3dp focus treatments. It is not a content card and must not be
 recreated as route-local pressable styling.
 
 ## Voice

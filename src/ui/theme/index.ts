@@ -13,10 +13,10 @@ import {
 } from "react-native";
 
 export const fontFamilies = {
-  interfaceRegular: "SourceSans3_400Regular",
-  interfaceSemiBold: "SourceSans3_600SemiBold",
+  interfaceRegular: "ArchivoVariable",
+  interfaceSemiBold: "ArchivoVariable",
   numericRegular: "IBMPlexMono_400Regular",
-  numericSemiBold: "IBMPlexMono_600SemiBold",
+  numericSemiBold: "IBMPlexMono_400Regular",
 } as const;
 
 export const appFonts = {
@@ -24,14 +24,8 @@ export const appFonts = {
   // before any production typography adopts this family.
   ArchivoVariable:
     require("../../../assets/fonts/Archivo-VariableFont_wdth,wght.ttf"),
-  SourceSans3_400Regular:
-    require("@expo-google-fonts/source-sans-3/400Regular/SourceSans3_400Regular.ttf"),
-  SourceSans3_600SemiBold:
-    require("@expo-google-fonts/source-sans-3/600SemiBold/SourceSans3_600SemiBold.ttf"),
   IBMPlexMono_400Regular:
     require("@expo-google-fonts/ibm-plex-mono/400Regular/IBMPlexMono_400Regular.ttf"),
-  IBMPlexMono_600SemiBold:
-    require("@expo-google-fonts/ibm-plex-mono/600SemiBold/IBMPlexMono_600SemiBold.ttf"),
 } as const;
 
 export const space = {
@@ -59,7 +53,7 @@ export const sizes = {
   readableDetailWidth: 960,
   icon: 24,
   inlineIcon: 20,
-  focusRing: 2,
+  focusRing: 3,
 } as const;
 
 export const typeScale = {
@@ -67,27 +61,27 @@ export const typeScale = {
     fontFamily: fontFamilies.numericSemiBold,
     fontSize: 52,
     lineHeight: 56,
-    fontWeight: "600",
+    fontWeight: "800",
     fontVariant: ["tabular-nums"],
   },
   targetValue: {
     fontFamily: fontFamilies.numericSemiBold,
     fontSize: 28,
     lineHeight: 34,
-    fontWeight: "600",
+    fontWeight: "800",
     fontVariant: ["tabular-nums"],
   },
   screenTitle: {
     fontFamily: fontFamilies.interfaceSemiBold,
     fontSize: 28,
     lineHeight: 34,
-    fontWeight: "600",
+    fontWeight: "800",
   },
   sectionTitle: {
     fontFamily: fontFamilies.interfaceSemiBold,
     fontSize: 16,
     lineHeight: 22,
-    fontWeight: "600",
+    fontWeight: "800",
   },
   body: {
     fontFamily: fontFamilies.interfaceRegular,
@@ -111,58 +105,39 @@ export const typeScale = {
     fontFamily: fontFamilies.interfaceSemiBold,
     fontSize: 14,
     lineHeight: 20,
-    fontWeight: "600",
+    fontWeight: "800",
+  },
+  editorialWorkoutTitle: {
+    fontFamily: fontFamilies.interfaceSemiBold,
+    fontSize: 57,
+    lineHeight: 49,
+    fontWeight: "890",
+    fontStretch: "condensed",
+    letterSpacing: -0.07,
   },
 };
 
 export const themes = {
   light: {
-    canvas: "#F1F3F4",
-    contentCard: "#FFFFFF",
-    contentCardBorder: "#DADCE0",
-    contentCardDisabled: "#E8EAED",
-    contentCardPressed: "#F8F9FA",
-    contentCardSelected: "#E8F0FE",
-    contentCardStatusCompleted: "#7BE0AA",
-    contentCardText: "#202124",
-    contentCardTextSecondary: "#5F6368",
-    surface: "#F8F9FA",
-    surfaceSubtle: "#E8EAED",
-    textPrimary: "#171A1C",
-    textSecondary: "#5D656B",
-    divider: "#C9CED2",
-    action: "#155EEF",
-    actionPressed: "#004EEB",
-    onAction: "#FFFFFF",
-    completed: "#1F7A4D",
-    timerAttention: "#B54708",
+    paper: "#FFFAF0", bone: "#F4F0E6", ink: "#0D0C0A", quiet: "#655F56", clay: "#D8C3AB",
+    surface: "#F0EADF", raised: "#FFFAF0", line: "#CEC6B8", lightLine: "#CEC6B8", dark: "#FFFAF0",
+    text: "#0D0C0A", muted: "#655F56", orange: "#D97820", orangeDark: "#281306",
+    green: "#166B4C", greenBg: "#DCECDF", yellow: "#8D5D00", yellowBg: "#FFF0C2",
+    blue: "#195FAE", blueBg: "#DCE9F9", toastBg: "#FFFAF0", toastBorder: "#CEC6B8", toastText: "#0D0C0A", toastAccent: "#166B4C",
+    dangerSource: "#FF8279", calendarStrengthTextLight: "#9B470B",
+    canvas: "#FFFAF0", contentCard: "#F0EADF", contentCardBorder: "#CEC6B8", contentCardDisabled: "#F4F0E6", contentCardPressed: "#F4F0E6", contentCardSelected: "#DCE9F9", contentCardStatusCompleted: "#166B4C", contentCardText: "#0D0C0A", contentCardTextSecondary: "#655F56", surfaceSubtle: "#F4F0E6", textPrimary: "#0D0C0A", textSecondary: "#655F56", divider: "#CEC6B8", action: "#195FAE", actionPressed: "#195FAE", onAction: "#FFFAF0", completed: "#166B4C", timerAttention: "#8D5D00",
     destructive: "#B42318",
     errorSurface: "#FEE4E2",
-    focusRing: "#155EEF",
+    focusRing: "#195FAE",
   },
   dark: {
-    canvas: "#202124",
-    contentCard: "#121212",
-    contentCardBorder: "#3C4043",
-    contentCardDisabled: "#1F2326",
-    contentCardPressed: "#1A1D1F",
-    contentCardSelected: "#263238",
-    contentCardStatusCompleted: "#84E6B1",
-    contentCardText: "#E8EAED",
-    contentCardTextSecondary: "#BDC1C6",
-    surface: "#171B1E",
-    surfaceSubtle: "#20262A",
-    textPrimary: "#F4F6F7",
-    textSecondary: "#AEB7BD",
-    divider: "#394146",
-    action: "#70A0FF",
-    actionPressed: "#8DB3FF",
-    onAction: "#071225",
-    completed: "#56C88A",
-    timerAttention: "#FFB45C",
-    destructive: "#FF746A",
-    errorSurface: "#3A1C1B",
-    focusRing: "#9CBFFF",
+    paper: "#080808", bone: "#151515", ink: "#F7F7F2", quiet: "#AAA9A2", clay: "#6D665C",
+    surface: "#151515", raised: "#202020", line: "#333330", lightLine: "#333330", dark: "#080808",
+    text: "#F7F7F2", muted: "#AAA9A2", orange: "#D97820", orangeDark: "#281306",
+    green: "#72DF92", greenBg: "#14271A", yellow: "#F0C84B", yellowBg: "#2A2410",
+    blue: "#71AAFF", blueBg: "#14243B", toastBg: "#202020", toastBorder: "#3D423E", toastText: "#F7F7F2", toastAccent: "#72DF92",
+    dangerSource: "#FF8279", calendarStrengthTextLight: "#D97820",
+    canvas: "#080808", contentCard: "#151515", contentCardBorder: "#333330", contentCardDisabled: "#151515", contentCardPressed: "#202020", contentCardSelected: "#14243B", contentCardStatusCompleted: "#72DF92", contentCardText: "#F7F7F2", contentCardTextSecondary: "#AAA9A2", surfaceSubtle: "#151515", textPrimary: "#F7F7F2", textSecondary: "#AAA9A2", divider: "#333330", action: "#71AAFF", actionPressed: "#71AAFF", onAction: "#080808", completed: "#72DF92", timerAttention: "#F0C84B", destructive: "#FF8279", errorSurface: "#2A2410", focusRing: "#71AAFF",
   },
 } as const;
 
@@ -190,7 +165,7 @@ export type ResolvedColorScheme = "light" | "dark";
 
 export interface AppearanceStore {
   read(): unknown;
-  write(value: "Light" | "Dark" | null): void;
+  write(value: "Light" | "Dark" | null): unknown;
 }
 
 export function createMemoryAppearanceStore(
@@ -210,6 +185,24 @@ const processAppearanceStore = createMemoryAppearanceStore();
 
 function parseAppearancePreference(value: unknown): AppearancePreference {
   return value === "Light" || value === "Dark" ? value : "System";
+}
+
+function appearanceValueFromReadResult(value: unknown): unknown {
+  if (
+    typeof value === "object"
+    && value !== null
+    && "status" in value
+    && value.status === "ready"
+    && "value" in value
+  ) {
+    return value.value;
+  }
+
+  return value;
+}
+
+function appearanceWriteSucceeded(value: unknown): boolean {
+  return !(typeof value === "object" && value !== null && "status" in value && value.status === "failed");
 }
 
 export function resolveColorScheme(
@@ -250,7 +243,7 @@ export function AppearanceProvider({
   store = processAppearanceStore,
 }: AppearanceProviderProps) {
   const [appearance, setAppearanceState] = useState<AppearancePreference>(() =>
-    parseAppearancePreference(store.read()),
+    parseAppearancePreference(appearanceValueFromReadResult(store.read())),
   );
   const [systemScheme, setSystemScheme] = useState<
     ColorSchemeName | null | undefined
@@ -276,9 +269,12 @@ export function AppearanceProvider({
   const setAppearance = useCallback(
     (preference: AppearancePreference) => {
       const validatedPreference = parseAppearancePreference(preference);
-      store.write(
+      const writeResult = store.write(
         validatedPreference === "System" ? null : validatedPreference,
       );
+      if (!appearanceWriteSucceeded(writeResult)) {
+        return;
+      }
       setAppearanceState(validatedPreference);
     },
     [store],

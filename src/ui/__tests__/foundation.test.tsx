@@ -4,6 +4,7 @@ import {
   render,
   screen,
 } from "@testing-library/react-native";
+import { readFileSync } from "node:fs";
 import {
   describe,
   expect,
@@ -206,7 +207,7 @@ describe("Plan 01-02 UI foundation", () => {
     expect(motion.reduced.scaleTransitions).toBe(false);
   });
 
-  it("inverts content cards across Gmail-like neutral light and dark canvases", () => {
+  it("keeps semantic cards readable on the warm Light and precision Dark canvases", () => {
     for (const colors of [themes.light, themes.dark]) {
       expect(colors).toEqual(
         expect.objectContaining({
@@ -224,10 +225,10 @@ describe("Plan 01-02 UI foundation", () => {
       expect(colors.canvas).not.toBe(colors.contentCard);
     }
 
-    expect(themes.light.contentCard).toBe("#FFFFFF");
-    expect(themes.light.contentCardText).toBe("#202124");
-    expect(themes.dark.contentCard).toBe("#121212");
-    expect(themes.dark.contentCardText).toBe("#E8EAED");
+    expect(themes.light.contentCard).toBe("#F0EADF");
+    expect(themes.light.contentCardText).toBe("#0D0C0A");
+    expect(themes.dark.contentCard).toBe("#151515");
+    expect(themes.dark.contentCardText).toBe("#F7F7F2");
   });
 
   it("renders a flat ContentCard and right-edge ActionCluster without allowing card nesting", async () => {
@@ -250,7 +251,7 @@ describe("Plan 01-02 UI foundation", () => {
       backgroundColor: themes.light.contentCardSelected,
       borderColor: themes.light.contentCardStatusCompleted,
       outlineColor: themes.light.focusRing,
-      outlineWidth: 2,
+      outlineWidth: 3,
     });
     expect(screen.getByTestId("disabled-content-card")).toHaveStyle({
       backgroundColor: themes.light.contentCardDisabled,
@@ -330,6 +331,18 @@ describe("Plan 01-02 UI foundation", () => {
     expect(store.write).toHaveBeenCalledWith("Light");
     expect(screen.getByTestId("appearance-mode")).toHaveTextContent("System");
     expect(screen.getByTestId("resolved-scheme")).toHaveTextContent("dark");
+  });
+
+  it("keeps DESIGN.md aligned with the proven typography, focus, and bottom-navigation contracts", () => {
+    const design = readFileSync("DESIGN.md", "utf8");
+
+    expect(design).toContain("Archivo variable");
+    expect(design).toContain("57px");
+    expect(design).toContain("890");
+    expect(design).toContain("-0.07em");
+    expect(design).toContain("3dp");
+    expect(design).toContain("Bottom navigation at every width");
+    expect(design).not.toContain("Rail permitted");
   });
 
   it("treats a malformed injected appearance preference as selected System", async () => {
@@ -786,7 +799,7 @@ describe("Plan 01-02 route shell", () => {
       .not.toHaveStyle({ borderWidth: 2 });
 
     await fireEvent(today, "focus");
-    expect(today).toHaveStyle({ outlineWidth: 2 });
+    expect(today).toHaveStyle({ outlineWidth: 3 });
   });
 
   it("reflows four complete root destinations into two accessible rows for 200% text", async () => {
@@ -826,7 +839,7 @@ describe("Plan 01-02 route shell", () => {
 
     const progress = screen.getByRole("tab", { name: "Progress" });
     await fireEvent(progress, "focus");
-    expect(progress).toHaveStyle({ outlineWidth: 2 });
+    expect(progress).toHaveStyle({ outlineWidth: 3 });
     await fireEvent(progress, "keyDown", {
       nativeEvent: { key: "Enter" },
     });
@@ -1317,7 +1330,7 @@ describe("Plan 01-02 shared component vocabulary", () => {
     await fireEvent(primary, "focus");
     expect(primary).toHaveStyle({
       outlineColor: themes.light.focusRing,
-      outlineWidth: 2,
+      outlineWidth: 3,
     });
     await fireEvent(primary, "blur");
     expect(primary).toHaveStyle({ outlineWidth: 0 });
