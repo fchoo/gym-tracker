@@ -51,9 +51,10 @@ function same(value, expected) { return JSON.stringify(value) === JSON.stringify
 function contained(inner, outer) { return inner.x >= outer.x && inner.y >= outer.y && inner.x + inner.width <= outer.x + outer.width && inner.y + inner.height <= outer.y + outer.height; }
 function validBounds(value) { return value && [value.x, value.y, value.width, value.height].every(Number.isFinite) && value.width > 0 && value.height > 0; }
 function validateCase(entry, id, scale) {
-  if (entry?.id !== id || entry.status !== "passed" || entry.font_scale !== scale || !isHash(entry.screenshot_sha256) || entry.family !== "ArchivoVariable" || entry.family_loaded !== true || !same(entry.style, EXPECTED_STYLE) || !same(entry.lines, ["Today’s", "workout"]) || entry.baseline_class !== "alphabetic") throw new Error("phase14_font_case_invalid");
+  if (entry?.id !== id || entry.status !== "passed" || entry.font_scale !== scale || !isHash(entry.screenshot_sha256) || entry.family !== "ArchivoVariable" || entry.family_loaded !== true || !same(entry.style, EXPECTED_STYLE) || !same(entry.lines, ["Today’s", "workout"])) throw new Error("phase14_font_case_invalid");
   const metrics = entry.metrics;
   if (!metrics || ![metrics.available_width_px, metrics.block_width_px, metrics.block_height_px, ...(metrics.line_advances_px ?? []), ...(metrics.line_heights_px ?? [])].every(finitePositive) || metrics.line_advances_px.length !== 2 || metrics.line_heights_px.length !== 2 || !validBounds(metrics.text_bounds) || !validBounds(metrics.container_bounds)) throw new Error("phase14_font_metrics_invalid");
+  if (metrics.line_baselines_px?.length !== 2 || metrics.line_baselines_px.some((line, index) => ![line.ascender_px, line.descender_px, line.y_px, line.height_px, line.baseline_offset_px].every(Number.isFinite) || line.ascender_px < 0 || line.ascender_px > line.height_px || Math.abs(line.descender_px) > line.height_px || line.baseline_offset_px < line.y_px || line.baseline_offset_px > line.y_px + line.height_px || line.y_px + line.height_px > metrics.block_height_px || (index > 0 && line.y_px < metrics.line_baselines_px[index - 1].y_px))) throw new Error("phase14_font_baseline_metrics_invalid");
   if (metrics.available_width_px > 335 || metrics.container_bounds.width < metrics.available_width_px || Math.max(...metrics.line_advances_px) > metrics.available_width_px || !contained(metrics.text_bounds, metrics.container_bounds)) throw new Error("phase14_font_crop_overflow_invalid");
 }
 
@@ -94,12 +95,18 @@ function installedApkHash(serial, packageName) {
   try { adb(serial, "pull", remote, temporary); return sha256(readFileSync(temporary)); } finally { rmSync(temporary, { force: true }); }
 }
 function reportCase(id, fontScale, observation, screenshotSha256) {
-  return { id, status: "passed", font_scale: fontScale, screenshot_sha256: screenshotSha256, family: observation.family, family_loaded: observation.fontLoaded, style: EXPECTED_STYLE, lines: observation.wrapBreakpoints, baseline_class: observation.baselineClass, metrics: { available_width_px: observation.availableWidthPx, block_width_px: observation.blockWidthPx, block_height_px: observation.blockHeightPx, line_advances_px: observation.lineAdvancesPx, line_heights_px: observation.lineHeightsPx, text_bounds: observation.textBounds, container_bounds: observation.containerBounds } };
+  return { id, status: "passed", font_scale: fontScale, screenshot_sha256: screenshotSha256, family: observation.family, family_loaded: observation.fontLoaded, style: EXPECTED_STYLE, lines: observation.wrapBreakpoints, metrics: { available_width_px: observation.availableWidthPx, block_width_px: observation.blockWidthPx, block_height_px: observation.blockHeightPx, line_advances_px: observation.lineAdvancesPx, line_heights_px: observation.lineHeightsPx, line_baselines_px: observation.lineBaselinesPx.map((line) => ({ ascender_px: line.ascenderPx, descender_px: line.descenderPx, y_px: line.yPx, height_px: line.heightPx, baseline_offset_px: line.baselineOffsetPx })), text_bounds: observation.textBounds, container_bounds: observation.containerBounds } };
 }
 
 export function withRestoredFontScale(runAdb, serial, work) {
   const originalScale = runAdb(serial, "shell", "settings", "get", "system", "font_scale").trim();
-  try { return work(originalScale); } finally { runAdb(serial, "shell", "settings", "put", "system", "font_scale", originalScale); }
+  let value;
+  try {
+    value = work(originalScale);
+  } finally {
+    runAdb(serial, "shell", "settings", "put", "system", "font_scale", originalScale);
+  }
+  return { value, fontScaleRestored: true };
 }
 
 /** Captures only the proof route's fixed-string JSON and restores font scale even when capture fails. */
@@ -111,7 +118,7 @@ export function capturePhase14FontProof({ manifest, root = ROOT, serial = proces
   const sourceDigest = sourceTreeSha256(root);
   const apkPath = path.resolve(root, manifest.apk.path);
   if (!existsSync(apkPath) || manifest.base_head !== currentHead || manifest.source_tree_sha256 !== sourceDigest || sha256(readFileSync(apkPath)) !== manifest.apk.sha256 || installedApkHash(serial, manifest.package) !== manifest.apk.sha256) throw new Error("phase14_font_capture_identity_invalid");
-  return withRestoredFontScale(runAdb, serial, () => {
+  const restoration = withRestoredFontScale(runAdb, serial, () => {
     const cases = [1, 2].map((fontScale) => {
       runAdb(serial, "shell", "settings", "put", "system", "font_scale", String(fontScale));
       runAdb(serial, "shell", "am", "force-stop", manifest.package);
@@ -122,9 +129,10 @@ export function capturePhase14FontProof({ manifest, root = ROOT, serial = proces
       mkdirSync(path.dirname(screenshotPath), { recursive: true }); writeFileSync(screenshotPath, screenshot);
       return reportCase(`light-390-scale-${fontScale}`, fontScale, observation, sha256(screenshot));
     });
-    const report = { schema_version: 2, suite: EXPECTED_SUITE, status: "captured_pending_overlay_review", source_tree_sha256: sourceDigest, apk_sha256: manifest.apk.sha256, package: manifest.package, profile: manifest.profile, proof_source_sha256: sha256(readFileSync(path.join(root, PROOF_SOURCE))), font_scale_restored: true, revision18: REVISION18, overlay_review: { status: "pending", screenshot_sha256: cases[0].screenshot_sha256, ...REVISION18 }, cases };
-    return report;
+    return cases;
   });
+  const cases = restoration.value;
+  return { schema_version: 2, suite: EXPECTED_SUITE, status: "captured_pending_overlay_review", source_tree_sha256: sourceDigest, apk_sha256: manifest.apk.sha256, package: manifest.package, profile: manifest.profile, proof_source_sha256: sha256(readFileSync(path.join(root, PROOF_SOURCE))), font_scale_restored: restoration.fontScaleRestored, revision18: REVISION18, overlay_review: { status: "pending", screenshot_sha256: cases[0].screenshot_sha256, ...REVISION18 }, cases };
 }
 
 export function executePhase14FontProof(args = process.argv.slice(2)) {

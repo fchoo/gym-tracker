@@ -208,9 +208,15 @@ function Phase14FontProofPreview() {
     blockHeightPx: null as number | null,
     lineAdvancesPx: [] as readonly number[],
     lineHeightsPx: [] as readonly number[],
+    lineBaselinesPx: [] as readonly {
+      ascenderPx: number;
+      descenderPx: number;
+      yPx: number;
+      heightPx: number;
+      baselineOffsetPx: number;
+    }[],
     textBounds: null as { x: number; y: number; width: number; height: number } | null,
     containerBounds: null as { x: number; y: number; width: number; height: number } | null,
-    baselineClass: "unmeasured",
     wrapBreakpoints: [] as readonly string[],
   }));
   const captureContainerLayout = useCallback((event: LayoutChangeEvent) => {
@@ -228,9 +234,13 @@ function Phase14FontProofPreview() {
       blockHeightPx: lines.reduce((height, line) => height + line.height, 0),
       lineAdvancesPx: lines.map((line) => line.width),
       lineHeightsPx: lines.map((line) => line.height),
-      baselineClass: lines.every((line) => line.ascender > 0 && line.descender < 0)
-        ? "alphabetic"
-        : "unclassified",
+      lineBaselinesPx: lines.map((line) => ({
+        ascenderPx: line.ascender,
+        descenderPx: line.descender,
+        yPx: line.y,
+        heightPx: line.height,
+        baselineOffsetPx: line.y + line.ascender,
+      })),
       wrapBreakpoints: lines.map((line) => line.text.trim()),
     };
     setLayoutObservation((current) => ({ ...current, ...next }));

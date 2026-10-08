@@ -54,8 +54,8 @@ function fixture() {
     revision18: { approved_html_sha256: "b5ddbad88fd465af2fa79475dc0c05efec49e551652f13c5220627730e1d9c96", approved_json_sha256: "b8e91e3098ec443c9dc283ae8383d1af552d7dc2b83648695a01dcb8a89ff0bf" },
     overlay_review: { status: "passed", screenshot_sha256: "c".repeat(64), approved_html_sha256: "b5ddbad88fd465af2fa79475dc0c05efec49e551652f13c5220627730e1d9c96", approved_json_sha256: "b8e91e3098ec443c9dc283ae8383d1af552d7dc2b83648695a01dcb8a89ff0bf" },
     cases: [
-      { id: "light-390-scale-1", status: "passed", font_scale: 1, screenshot_sha256: "c".repeat(64), family: "ArchivoVariable", family_loaded: true, style: { font_family: "ArchivoVariable", font_size_px: 57, font_stretch: "condensed", font_weight: 890, letter_spacing_em: -0.07, line_height_px: 49 }, lines: ["Today’s", "workout"], baseline_class: "alphabetic", metrics: { available_width_px: 335, block_width_px: 224, block_height_px: 98, line_advances_px: [191, 224], line_heights_px: [49, 49], text_bounds: { x: 0, y: 0, width: 224, height: 98 }, container_bounds: { x: 0, y: 0, width: 335, height: 98 } } },
-      { id: "light-390-scale-2", status: "passed", font_scale: 2, screenshot_sha256: "d".repeat(64), family: "ArchivoVariable", family_loaded: true, style: { font_family: "ArchivoVariable", font_size_px: 57, font_stretch: "condensed", font_weight: 890, letter_spacing_em: -0.07, line_height_px: 49 }, lines: ["Today’s", "workout"], baseline_class: "alphabetic", metrics: { available_width_px: 335, block_width_px: 224, block_height_px: 196, line_advances_px: [191, 224], line_heights_px: [98, 98], text_bounds: { x: 0, y: 0, width: 224, height: 196 }, container_bounds: { x: 0, y: 0, width: 335, height: 196 } } },
+      { id: "light-390-scale-1", status: "passed", font_scale: 1, screenshot_sha256: "c".repeat(64), family: "ArchivoVariable", family_loaded: true, style: { font_family: "ArchivoVariable", font_size_px: 57, font_stretch: "condensed", font_weight: 890, letter_spacing_em: -0.07, line_height_px: 49 }, lines: ["Today’s", "workout"], metrics: { available_width_px: 335, block_width_px: 224, block_height_px: 98, line_advances_px: [191, 224], line_heights_px: [49, 49], line_baselines_px: [{ ascender_px: 37, descender_px: 8, y_px: 0, height_px: 49, baseline_offset_px: 37 }, { ascender_px: 37, descender_px: 8, y_px: 49, height_px: 49, baseline_offset_px: 86 }], text_bounds: { x: 0, y: 0, width: 224, height: 98 }, container_bounds: { x: 0, y: 0, width: 335, height: 98 } } },
+      { id: "light-390-scale-2", status: "passed", font_scale: 2, screenshot_sha256: "d".repeat(64), family: "ArchivoVariable", family_loaded: true, style: { font_family: "ArchivoVariable", font_size_px: 57, font_stretch: "condensed", font_weight: 890, letter_spacing_em: -0.07, line_height_px: 49 }, lines: ["Today’s", "workout"], metrics: { available_width_px: 335, block_width_px: 224, block_height_px: 196, line_advances_px: [191, 224], line_heights_px: [98, 98], line_baselines_px: [{ ascender_px: 74, descender_px: 16, y_px: 0, height_px: 98, baseline_offset_px: 74 }, { ascender_px: 74, descender_px: 16, y_px: 98, height_px: 98, baseline_offset_px: 172 }], text_bounds: { x: 0, y: 0, width: 224, height: 196 }, container_bounds: { x: 0, y: 0, width: 335, height: 196 } } },
     ],
   };
   writeFileSync(report, `${JSON.stringify(evidence)}\n`);
@@ -121,6 +121,21 @@ test("font proof restores the original font scale when observation fails", () =>
     calls.push(args.join(" "));
     return args.at(-1) === "font_scale" ? "1.3\n" : "";
   }, "emulator-5554", () => { throw new Error("observation failed"); }), /observation failed/u);
+  assert.equal(calls.at(-1), "emulator-5554 shell settings put system font_scale 1.3");
+});
+
+test("font proof reports restored scale only after the restore command succeeds", () => {
+  const calls = [];
+  const success = withRestoredFontScale((...args) => {
+    calls.push(args.join(" "));
+    return args.at(-1) === "font_scale" ? "1.3\n" : "";
+  }, "emulator-5554", () => "captured");
+  assert.deepEqual(success, { value: "captured", fontScaleRestored: true });
+  assert.throws(() => withRestoredFontScale((...args) => {
+    calls.push(args.join(" "));
+    if (args.includes("put")) throw new Error("restore failed");
+    return "1.3\n";
+  }, "emulator-5554", () => "captured"), /restore failed/u);
   assert.equal(calls.at(-1), "emulator-5554 shell settings put system font_scale 1.3");
 });
 

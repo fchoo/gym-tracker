@@ -44,8 +44,8 @@ export const PHASE14_FONT_PROOF = Object.freeze({
 type Bounds = Readonly<{ x: number; y: number; width: number; height: number }>;
 type FontProofObservation = Readonly<{
   id: FontProofCase["id"]; fontScale: number; family: string; familyLoaded: boolean;
-  style: typeof PHASE14_FONT_PROOF.oracle; baselineClass: string; lines: readonly string[];
-  metrics: Readonly<{ availableWidthPx: number; blockWidthPx: number; blockHeightPx: number; lineAdvancesPx: readonly number[]; lineHeightsPx: readonly number[]; textBounds: Bounds; containerBounds: Bounds }>;
+  style: typeof PHASE14_FONT_PROOF.oracle; lines: readonly string[];
+  metrics: Readonly<{ availableWidthPx: number; blockWidthPx: number; blockHeightPx: number; lineAdvancesPx: readonly number[]; lineHeightsPx: readonly number[]; lineBaselinesPx: readonly Readonly<{ ascenderPx: number; descenderPx: number; yPx: number; heightPx: number; baselineOffsetPx: number }>[]; textBounds: Bounds; containerBounds: Bounds }>;
   screenshotSha256: string;
 }>;
 export type Phase14FontProofReport = Readonly<{
@@ -73,10 +73,11 @@ export function validatePhase14FontProofReport(report: Phase14FontProofReport) {
     if (observed?.id !== expected.id || observed.fontScale !== expected.fontScale) throw new Error("phase14_font_case_order_invalid");
     if (observed.family !== PHASE14_FONT_PROOF.oracle.fontFamily || !observed.familyLoaded) throw new Error("phase14_font_family_invalid");
     if (JSON.stringify(observed.style) !== JSON.stringify(PHASE14_FONT_PROOF.oracle)) throw new Error("phase14_font_style_inputs_invalid");
-    if (observed.baselineClass !== "alphabetic" || observed.lines.join("\n") !== expected.expected.lines.join("\n")) throw new Error("phase14_font_wrap_breakpoint_invalid");
+    if (observed.lines.join("\n") !== expected.expected.lines.join("\n")) throw new Error("phase14_font_wrap_breakpoint_invalid");
     assertHash(observed.screenshotSha256, "phase14_font_screenshot_hash_invalid");
     const metrics = observed.metrics;
     if (![metrics.availableWidthPx, metrics.blockWidthPx, metrics.blockHeightPx, ...metrics.lineAdvancesPx, ...metrics.lineHeightsPx, metrics.textBounds.width, metrics.textBounds.height, metrics.containerBounds.width, metrics.containerBounds.height].every(positive) || metrics.lineAdvancesPx.length !== 2 || metrics.lineHeightsPx.length !== 2) throw new Error("phase14_font_metrics_invalid");
+    if (metrics.lineBaselinesPx.length !== 2 || metrics.lineBaselinesPx.some((line, lineIndex) => ![line.ascenderPx, line.descenderPx, line.yPx, line.heightPx, line.baselineOffsetPx].every(Number.isFinite) || line.ascenderPx < 0 || line.ascenderPx > line.heightPx || Math.abs(line.descenderPx) > line.heightPx || line.baselineOffsetPx < line.yPx || line.baselineOffsetPx > line.yPx + line.heightPx || line.yPx + line.heightPx > metrics.blockHeightPx || (lineIndex > 0 && line.yPx < metrics.lineBaselinesPx[lineIndex - 1]!.yPx))) throw new Error("phase14_font_baseline_metrics_invalid");
     if (metrics.availableWidthPx > PHASE14_FONT_PROOF.oracle.contentMaxWidthPx || metrics.containerBounds.width < metrics.availableWidthPx || Math.max(...metrics.lineAdvancesPx) > metrics.availableWidthPx || !contained(metrics.textBounds, metrics.containerBounds)) throw new Error("phase14_font_native_overflow_detected");
   }
   return true;

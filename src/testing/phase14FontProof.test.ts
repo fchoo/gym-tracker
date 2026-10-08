@@ -54,7 +54,6 @@ describe("Phase 14 Revision 18 font oracle", () => {
       family: "ArchivoVariable",
       familyLoaded: true,
       style: PHASE14_FONT_PROOF.oracle,
-      baselineClass: "alphabetic",
       lines: testCase.expected.lines,
       metrics: {
         availableWidthPx: 335,
@@ -62,6 +61,10 @@ describe("Phase 14 Revision 18 font oracle", () => {
         blockHeightPx: 98,
         lineAdvancesPx: [191, 224],
         lineHeightsPx: [49, 49],
+        lineBaselinesPx: [
+          { ascenderPx: 37, descenderPx: 8, yPx: 0, heightPx: 49, baselineOffsetPx: 37 },
+          { ascenderPx: 37, descenderPx: 8, yPx: 49, heightPx: 49, baselineOffsetPx: 86 },
+        ],
         textBounds: { x: 0, y: 0, width: 224, height: 98 },
         containerBounds: { x: 0, y: 0, width: 335, height: 98 },
       },
@@ -83,5 +86,12 @@ describe("Phase 14 Revision 18 font oracle", () => {
       fontScaleRestored: true,
       cases: [{ ...firstProof, metrics: { ...firstProof.metrics, textBounds: { ...firstProof.metrics.textBounds, width: 336 } } }, ...proof.slice(1)],
     })).toThrow("phase14_font_native_overflow_detected");
+
+    expect(() => validatePhase14FontProofReport({
+      schemaVersion: 2, sourceTreeSha256: "a".repeat(64), apkSha256: "b".repeat(64),
+      packageName: "com.fchoo.gymtracker.devtest", profile: "development-test",
+      fontScaleRestored: true,
+      cases: [{ ...firstProof, metrics: { ...firstProof.metrics, lineBaselinesPx: [{ ...firstProof.metrics.lineBaselinesPx[0]!, baselineOffsetPx: 50 }, firstProof.metrics.lineBaselinesPx[1]! ] } }, ...proof.slice(1)],
+    })).toThrow("phase14_font_baseline_metrics_invalid");
   });
 });
