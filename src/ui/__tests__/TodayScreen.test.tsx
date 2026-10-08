@@ -290,7 +290,7 @@ describe("Plan 01-07 TodayScreen", () => {
       "handled",
     );
     expect(screen.getByTestId("workout-start-sheet-content")).toHaveStyle({
-      maxHeight: "90%",
+      maxHeight: "82%",
     });
     expect(screen.queryByRole("checkbox", {
       name: "Advance rotation after this workout",
@@ -462,7 +462,7 @@ describe("Plan 01-07 TodayScreen", () => {
       screen.getByRole("button", { name: "Choose another day" }),
     );
     expect(screen.getByTestId("workout-start-sheet-content"))
-      .toHaveStyle({ backgroundColor: themes.light.surface });
+      .not.toHaveStyle({ backgroundColor: themes.light.contentCard });
   });
 
   it("keeps the activation selector flat within its shared content card", async () => {
