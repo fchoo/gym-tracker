@@ -1,6 +1,7 @@
 import { describe, expect, it } from "@jest/globals";
 import {
   MULTI_PLAN_RUNNING_CONTRACT_CASES,
+  PHASE13_STATEMENT_FAILURE_CUT,
   runMultiPlanRunningContract,
 } from "./multiPlanRunning.contract";
 
@@ -22,6 +23,10 @@ describe("multi-plan Running lifecycle contract", () => {
       "phase13-tim01-retirement",
     ]);
     expect(new Set(MULTI_PLAN_RUNNING_CONTRACT_CASES).size).toBe(MULTI_PLAN_RUNNING_CONTRACT_CASES.length);
+  });
+
+  it("injects the migration statement failure after the first schema write", () => {
+    expect(PHASE13_STATEMENT_FAILURE_CUT).toEqual({ phase: "after", statementIndex: 0 });
   });
 
   it("dispatches every native lifecycle case independently and preserves only its own failure", async () => {

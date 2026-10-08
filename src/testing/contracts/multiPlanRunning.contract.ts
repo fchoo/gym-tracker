@@ -54,6 +54,16 @@ export const MULTI_PLAN_RUNNING_CONTRACT_CASES = [
 export type MultiPlanRunningContractCaseId =
   (typeof MULTI_PLAN_RUNNING_CONTRACT_CASES)[number];
 
+/**
+ * Fail immediately after the first initial-schema statement. That statement
+ * creates a user table, making this a rollback-after-write cut rather than an
+ * untouched-database abort.
+ */
+export const PHASE13_STATEMENT_FAILURE_CUT = Object.freeze({
+  phase: "after" as const,
+  statementIndex: 0,
+});
+
 export type MultiPlanRunningContractAdapter = Readonly<{
   runCase(caseId: MultiPlanRunningContractCaseId): Promise<void>;
   cleanup?(): Promise<void>;
@@ -157,18 +167,24 @@ async function assertMigrationFailureCut(
   observer: SqliteKernelTestObserver = {},
 ): Promise<void> {
   const runtime = await adapter.createRuntime(databaseKey, observer);
+  let failed = false;
   try {
-    let failed = false;
     try {
       await action(runtime);
     } catch {
       failed = true;
     }
-    const state = await failedMigrationState(runtime.kernel);
+  } finally {
+    await runtime.close();
+  }
+
+  const reopenedRuntime = await adapter.createRuntime(databaseKey);
+  try {
+    const state = await failedMigrationState(reopenedRuntime.kernel);
     invariant(failed, "phase13_migration_failure_not_observed");
     invariant(state.version === 0 && state.userTables === 0, "phase13_migration_rollback_invalid");
   } finally {
-    await runtime.close();
+    await reopenedRuntime.close();
   }
 }
 
@@ -182,8 +198,11 @@ async function runMigrationFailureCuts(
       kernel: runtime.kernel,
       migrations: [migrations[0]!],
       failureInjector(event) {
-        if (event.phase === "before" && event.statementIndex === 0) {
-          throw new Error("phase13_statement_failure");
+        if (
+          event.phase === PHASE13_STATEMENT_FAILURE_CUT.phase
+          && event.statementIndex === PHASE13_STATEMENT_FAILURE_CUT.statementIndex
+        ) {
+          throw new Error("phase13_statement_failure_after_write");
         }
       },
     }).run();
