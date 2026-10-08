@@ -78,7 +78,11 @@ tags:
     when:
       true: ${PHASE14_STAGE == 'phase14-automatic-backup'}
     commands:
-      - assertVisible: "Automatic backup"
+      - assertVisible: "Automatic backup settings"
+      - tapOn: "Automatic backup settings"
+      - extendedWaitUntil:
+          visible: "Automatic backup settings"
+          timeout: 30000
 - runFlow:
     when:
       true: ${PHASE14_STAGE == 'phase14-manual-backup'}
