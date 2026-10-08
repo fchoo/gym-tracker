@@ -2,6 +2,7 @@ import React from "react";
 import { View } from "react-native";
 
 import { IconAction } from "../components";
+import { SemanticToastProvider } from "../components/SemanticToast";
 
 export type RootRouteKey = "index" | "calendar" | "library" | "progress";
 
@@ -18,6 +19,8 @@ type AppRootShellProps = Readonly<{
   headingRefs?: Partial<Record<RootRouteKey, React.RefObject<FocusTarget | null>>>;
   origin?: RootOrigin;
   onOpenSettings?: () => void;
+  toastTopAvoidance?: number;
+  toastBottomAvoidance?: number;
 }>;
 
 /** Coordinates root focus and header-origin seams without owning route or screen state. */
@@ -27,6 +30,8 @@ export function AppRootShell({
   headingRefs,
   origin,
   onOpenSettings,
+  toastTopAvoidance,
+  toastBottomAvoidance,
 }: AppRootShellProps) {
   React.useLayoutEffect(() => {
     const originTrigger = origin !== undefined && origin.root === activeRoot
@@ -43,17 +48,22 @@ export function AppRootShell({
   }, [activeRoot, headingRefs, origin]);
 
   return (
-    <View style={{ flex: 1 }} testID="app-root-shell">
-      {children}
-      {onOpenSettings === undefined ? null : (
-        <View accessibilityLabel="Root contextual actions">
-          <IconAction
-            accessibilityLabel="Open App Settings"
-            icon="settings"
-            onPress={onOpenSettings}
-          />
-        </View>
-      )}
-    </View>
+    <SemanticToastProvider
+      bottomAvoidance={toastBottomAvoidance}
+      topAvoidance={toastTopAvoidance}
+    >
+      <View style={{ flex: 1 }} testID="app-root-shell">
+        {children}
+        {onOpenSettings === undefined ? null : (
+          <View accessibilityLabel="Root contextual actions">
+            <IconAction
+              accessibilityLabel="Open App Settings"
+              icon="settings"
+              onPress={onOpenSettings}
+            />
+          </View>
+        )}
+      </View>
+    </SemanticToastProvider>
   );
 }
