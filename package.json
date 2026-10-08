@@ -83,6 +83,7 @@
     "test:maestro:phase10": "node scripts/run-phase10-maestro.mjs",
     "test:maestro:phase11": "node scripts/run-phase11-maestro.mjs",
     "test:maestro:phase12": "node scripts/run-phase12-maestro.mjs",
+    "test:maestro:phase14": "node scripts/run-phase14-maestro.mjs",
     "benchmark:phase12:backup": "node scripts/benchmark-phase12-backup.mjs",
     "verify:phase12:evidence": "node scripts/verify-phase12-evidence.mjs",
     "test:evidence:phase12": "node --test scripts/benchmark-phase12-backup.test.mjs scripts/phase12-evidence-scripts.test.mjs scripts/prepare-phase12-google-acceptance.test.mjs scripts/verify-phase12-evidence.test.mjs",
@@ -90,10 +91,11 @@
     "prepare:attended:phase12": "node scripts/prepare-phase12-google-acceptance.mjs",
     "record:attended:phase12": "node scripts/record-phase12-google-acceptance.mjs",
     "verify:phase13:evidence": "node scripts/verify-phase13-evidence.mjs"
+    ,"verify:phase14:evidence": "node scripts/verify-phase14-evidence.mjs"
+    ,"test:evidence:phase14": "node --test scripts/phase14-font-proof.test.mjs scripts/phase14-evidence-scripts.test.mjs scripts/phase14-native-matrix.test.mjs"
   },
   "dependencies": {
     "@expo-google-fonts/ibm-plex-mono": "0.4.1",
-    "@expo-google-fonts/source-sans-3": "0.4.1",
     "@tanstack/react-query": "5.101.4",
     "expo": "~57.0.25",
     "expo-asset": "~57.0.18",
