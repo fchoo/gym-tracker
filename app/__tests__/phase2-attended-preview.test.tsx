@@ -127,7 +127,9 @@ describe("Phase2AttendedPreviewRoute", () => {
     }))
       .toBeOnTheScreen();
     expect(screen.getByTestId("phase14-font-proof-observation"))
-      .toHaveTextContent(/"crop":"requires-screenshot-overlay"/u);
+      .toHaveTextContent(/"lineAdvancesPx"/u);
+    expect(screen.getByTestId("phase14-font-proof-title-container"))
+      .toBeOnTheScreen();
     expect(screen.getByTestId("phase14-font-proof-overlay-inputs"))
       .toHaveTextContent(/wght 890/u);
 

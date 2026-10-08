@@ -6,7 +6,9 @@ import path from "node:path";
 import test from "node:test";
 
 import {
+  CANONICAL_REPORT,
   parsePhase14FontProofArgs,
+  withRestoredFontScale,
   validatePhase14FontProofArtifacts,
   validatePhase14FontProofManifest,
 } from "./run-phase14-font-proof.mjs";
@@ -37,10 +39,10 @@ function fixture() {
     package: "com.fchoo.gymtracker.devtest",
     base_head: "b".repeat(40),
     source_tree_sha256: sourceTreeSha256,
-    apk: { path: apk, sha256: apkSha256 },
+    apk: { path: "artifacts/native/phase14-font-proof/gym-tracker-phase14-font-proof-devtest.apk", sha256: apkSha256 },
   };
   const evidence = {
-    schema_version: 1,
+    schema_version: 2,
     suite: "phase14-font-proof",
     status: "passed",
     source_tree_sha256: sourceTreeSha256,
@@ -48,19 +50,26 @@ function fixture() {
     package: "com.fchoo.gymtracker.devtest",
     profile: "development-test",
     proof_source_sha256: hash(proofSource),
+    font_scale_restored: true,
+    revision18: { approved_html_sha256: "b5ddbad88fd465af2fa79475dc0c05efec49e551652f13c5220627730e1d9c96", approved_json_sha256: "b8e91e3098ec443c9dc283ae8383d1af552d7dc2b83648695a01dcb8a89ff0bf" },
+    overlay_review: { status: "passed", screenshot_sha256: "c".repeat(64), approved_html_sha256: "b5ddbad88fd465af2fa79475dc0c05efec49e551652f13c5220627730e1d9c96", approved_json_sha256: "b8e91e3098ec443c9dc283ae8383d1af552d7dc2b83648695a01dcb8a89ff0bf" },
     cases: [
-      { id: "light-390-scale-1", status: "passed", screenshot_overlay_sha256: "c".repeat(64) },
-      { id: "light-390-scale-2", status: "passed", screenshot_overlay_sha256: "d".repeat(64) },
+      { id: "light-390-scale-1", status: "passed", font_scale: 1, screenshot_sha256: "c".repeat(64), family: "ArchivoVariable", family_loaded: true, style: { font_family: "ArchivoVariable", font_size_px: 57, font_stretch: "condensed", font_weight: 890, letter_spacing_em: -0.07, line_height_px: 49 }, lines: ["Today’s", "workout"], baseline_class: "alphabetic", metrics: { available_width_px: 335, block_width_px: 224, block_height_px: 98, line_advances_px: [191, 224], line_heights_px: [49, 49], text_bounds: { x: 0, y: 0, width: 224, height: 98 }, container_bounds: { x: 0, y: 0, width: 335, height: 98 } } },
+      { id: "light-390-scale-2", status: "passed", font_scale: 2, screenshot_sha256: "d".repeat(64), family: "ArchivoVariable", family_loaded: true, style: { font_family: "ArchivoVariable", font_size_px: 57, font_stretch: "condensed", font_weight: 890, letter_spacing_em: -0.07, line_height_px: 49 }, lines: ["Today’s", "workout"], baseline_class: "alphabetic", metrics: { available_width_px: 335, block_width_px: 224, block_height_px: 196, line_advances_px: [191, 224], line_heights_px: [98, 98], text_bounds: { x: 0, y: 0, width: 224, height: 196 }, container_bounds: { x: 0, y: 0, width: 335, height: 196 } } },
     ],
   };
   writeFileSync(report, `${JSON.stringify(evidence)}\n`);
   return { apk, directory, evidence, manifest, report };
 }
 
-test("font proof rejects stale source, APK, package/profile and skipped cases", () => {
+test("font proof rejects stale source, APK, package/profile, fabricated pass reports and skipped cases", () => {
   const value = fixture();
   try {
     assert.equal(validatePhase14FontProofManifest(value.manifest), true);
+    assert.throws(() => validatePhase14FontProofManifest({
+      ...value.manifest,
+      apk: { ...value.manifest.apk, path: "../outside-proof.apk" },
+    }), /phase14_font_manifest_invalid/u);
     assert.doesNotThrow(() => validatePhase14FontProofArtifacts({
       manifest: value.manifest,
       report: value.evidence,
@@ -85,9 +94,34 @@ test("font proof rejects stale source, APK, package/profile and skipped cases", 
       apkBytes: readFileSync(value.apk),
       proofSourceBytes: readFileSync(path.join(value.directory, "phase14FontProof.ts")),
     }), /phase14_font_case_invalid/u);
+    assert.throws(() => validatePhase14FontProofArtifacts({
+      manifest: value.manifest,
+      report: { ...value.evidence, overlay_review: { ...value.evidence.overlay_review, status: "pending" } },
+      currentHead: value.manifest.base_head,
+      currentSourceTreeSha256: sourceTreeSha256,
+      apkBytes: readFileSync(value.apk),
+      proofSourceBytes: readFileSync(path.join(value.directory, "phase14FontProof.ts")),
+    }), /phase14_font_overlay_review_invalid/u);
   } finally {
     rmSync(value.directory, { recursive: true, force: true });
   }
+});
+
+test("font proof fixes the canonical report path and cold-start flow waits before and after deep linking", () => {
+  assert.equal(CANONICAL_REPORT, ".planning/phases/14-prototype-visual-shell/evidence/font-axis-proof.json");
+  const flow = readFileSync(new URL("../maestro/phase14/font-axis.yaml", import.meta.url), "utf8");
+  assert.match(flow, /launchApp:[\s\S]*assertVisible:[\s\S]*Today[\s\S]*openLink:[\s\S]*extendedWaitUntil:[\s\S]*phase14-font-proof-root/u);
+  assert.match(flow, /gymtracker-devtest:\/\/__phase2-attended-preview/u);
+  assert.doesNotMatch(flow, /gymtracker-devtest:\/\/\//u);
+});
+
+test("font proof restores the original font scale when observation fails", () => {
+  const calls = [];
+  assert.throws(() => withRestoredFontScale((...args) => {
+    calls.push(args.join(" "));
+    return args.at(-1) === "font_scale" ? "1.3\n" : "";
+  }, "emulator-5554", () => { throw new Error("observation failed"); }), /observation failed/u);
+  assert.equal(calls.at(-1), "emulator-5554 shell settings put system font_scale 1.3");
 });
 
 test("font proof CLI only accepts an explicit manifest and existing-report mode", () => {
@@ -96,6 +130,7 @@ test("font proof CLI only accepts an explicit manifest and existing-report mode"
   ]), {
     manifest: "artifacts/native/phase14-font-proof/build.json",
     verifyExisting: true,
+    capture: false,
   });
   assert.throws(() => parsePhase14FontProofArgs([]), /phase14_font_manifest_argument_invalid/u);
   assert.throws(() => parsePhase14FontProofArgs([

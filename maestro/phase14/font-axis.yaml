@@ -7,7 +7,12 @@ tags:
 - launchApp:
     clearState: false
     stopApp: true
-- openLink: "gymtracker-devtest:///__phase2-attended-preview?scenario=phase14-font-axis"
-- assertVisible: "Development Test · Phase 14"
-- assertVisible: "Today’s workout"
+- assertVisible: "Today"
+- openLink: "gymtracker-devtest://__phase2-attended-preview?scenario=phase14-font-axis"
+- extendedWaitUntil:
+    visible:
+      id: "phase14-font-proof-root"
+    timeout: 30000
+- assertVisible:
+    id: "phase14-font-proof-observation"
 - takeScreenshot: "phase14-font-axis-${PHASE14_FONT_SCALE}"

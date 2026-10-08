@@ -14,6 +14,7 @@ import React, {
 import {
   StyleSheet,
   Text,
+  type LayoutChangeEvent,
   type TextLayoutEvent,
   type TextStyle,
   useWindowDimensions,
@@ -202,30 +203,37 @@ function Phase14FontProofPreview() {
     }
   })();
   const [layoutObservation, setLayoutObservation] = useState(() => ({
-    glyphRunWidthPx: null as number | null,
-    lineBoxHeightPx: null as number | null,
+    availableWidthPx: null as number | null,
+    blockWidthPx: null as number | null,
+    blockHeightPx: null as number | null,
+    lineAdvancesPx: [] as readonly number[],
+    lineHeightsPx: [] as readonly number[],
+    textBounds: null as { x: number; y: number; width: number; height: number } | null,
+    containerBounds: null as { x: number; y: number; width: number; height: number } | null,
     baselineClass: "unmeasured",
     wrapBreakpoints: [] as readonly string[],
-    overflow: "unmeasured",
-    crop: "requires-screenshot-overlay",
   }));
+  const captureContainerLayout = useCallback((event: LayoutChangeEvent) => {
+    const layout = event.nativeEvent.layout;
+    setLayoutObservation((current) => ({ ...current, availableWidthPx: layout.width, containerBounds: layout }));
+  }, []);
+  const captureTitleLayout = useCallback((event: LayoutChangeEvent) => {
+    const layout = event.nativeEvent.layout;
+    setLayoutObservation((current) => ({ ...current, textBounds: layout }));
+  }, []);
   const captureTextLayout = useCallback((event: TextLayoutEvent) => {
     const lines = event.nativeEvent.lines;
     const next = {
-      glyphRunWidthPx: Math.max(0, ...lines.map((line) => line.width)),
-      lineBoxHeightPx: lines.reduce((height, line) => height + line.height, 0),
+      blockWidthPx: Math.max(0, ...lines.map((line) => line.width)),
+      blockHeightPx: lines.reduce((height, line) => height + line.height, 0),
+      lineAdvancesPx: lines.map((line) => line.width),
+      lineHeightsPx: lines.map((line) => line.height),
       baselineClass: lines.every((line) => line.ascender > 0 && line.descender < 0)
         ? "alphabetic"
         : "unclassified",
       wrapBreakpoints: lines.map((line) => line.text.trim()),
-      overflow: lines.some((line) =>
-        line.width > PHASE14_FONT_PROOF.oracle.contentMaxWidthPx,
-      ) ? "detected" : "none",
-      crop: "requires-screenshot-overlay",
     };
-    setLayoutObservation((current) =>
-      JSON.stringify(current) === JSON.stringify(next) ? current : next,
-    );
+    setLayoutObservation((current) => ({ ...current, ...next }));
   }, []);
   return (
     <View style={styles.phase14Proof} testID="phase14-font-proof-root">
@@ -233,14 +241,21 @@ function Phase14FontProofPreview() {
       <Text testID="phase14-font-proof-family">
         {`${PHASE14_FONT_PROOF.oracle.fontFamily} ${fontLoaded ? "loaded" : "pending"}`}
       </Text>
+      <View
+        onLayout={captureContainerLayout}
+        style={{ maxWidth: PHASE14_FONT_PROOF.oracle.contentMaxWidthPx }}
+        testID="phase14-font-proof-title-container"
+      >
       <Text
         accessibilityLabel="Phase 14 font axis oracle title"
         onTextLayout={captureTextLayout}
+        onLayout={captureTitleLayout}
         style={phase14TitleStyle}
         testID="phase14-font-proof-title"
       >
         {PHASE14_FONT_PROOF.oracle.sourceText}
       </Text>
+      </View>
       {PHASE14_FONT_PROOF.cases.map((proofCase) => (
         <View
           accessibilityElementsHidden

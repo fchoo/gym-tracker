@@ -47,34 +47,41 @@ describe("Phase 14 Revision 18 font oracle", () => {
     ]);
   });
 
-  it("accepts only one-physical-pixel geometry deltas with exact wraps and no crop", () => {
+  it("requires measured per-line and native-bound geometry instead of treating CSS constraints as glyph metrics", () => {
     const proof = PHASE14_FONT_PROOF.cases.map((testCase) => ({
       id: testCase.id,
+      fontScale: testCase.fontScale,
       family: "ArchivoVariable",
-      glyphRunWidthPx: testCase.expected.glyphRunWidthPx,
-      lineBoxHeightPx: testCase.expected.lineBoxHeightPx,
-      baselineClass: testCase.expected.baselineClass,
+      familyLoaded: true,
+      style: PHASE14_FONT_PROOF.oracle,
+      baselineClass: "alphabetic",
       lines: testCase.expected.lines,
-      cropped: false,
-      overflowed: false,
-      screenshotOverlay: "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      metrics: {
+        availableWidthPx: 335,
+        blockWidthPx: 224,
+        blockHeightPx: 98,
+        lineAdvancesPx: [191, 224],
+        lineHeightsPx: [49, 49],
+        textBounds: { x: 0, y: 0, width: 224, height: 98 },
+        containerBounds: { x: 0, y: 0, width: 335, height: 98 },
+      },
+      screenshotSha256: "a".repeat(64),
     }));
 
     expect(() => validatePhase14FontProofReport({
-      sourceTreeSha256: "a".repeat(64),
-      apkSha256: "b".repeat(64),
-      packageName: "com.fchoo.gymtracker.devtest",
-      profile: "development-test",
+      schemaVersion: 2,
+      sourceTreeSha256: "a".repeat(64), apkSha256: "b".repeat(64),
+      packageName: "com.fchoo.gymtracker.devtest", profile: "development-test",
+      fontScaleRestored: true,
       cases: proof,
     })).not.toThrow();
 
     const firstProof = proof[0]!;
     expect(() => validatePhase14FontProofReport({
-      sourceTreeSha256: "a".repeat(64),
-      apkSha256: "b".repeat(64),
-      packageName: "com.fchoo.gymtracker.devtest",
-      profile: "development-test",
-      cases: [{ ...firstProof, glyphRunWidthPx: firstProof.glyphRunWidthPx + 2 }, ...proof.slice(1)],
-    })).toThrow("phase14_font_glyph_width_out_of_tolerance");
+      schemaVersion: 2, sourceTreeSha256: "a".repeat(64), apkSha256: "b".repeat(64),
+      packageName: "com.fchoo.gymtracker.devtest", profile: "development-test",
+      fontScaleRestored: true,
+      cases: [{ ...firstProof, metrics: { ...firstProof.metrics, textBounds: { ...firstProof.metrics.textBounds, width: 336 } } }, ...proof.slice(1)],
+    })).toThrow("phase14_font_native_overflow_detected");
   });
 });
