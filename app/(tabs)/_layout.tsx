@@ -22,7 +22,11 @@ const DEFAULT_REST_ALERT_PREFERENCES: RestAlertPreferences = Object.freeze({
   vibrationEnabled: true,
 });
 
-function RootSettingsContent() {
+function RootSettingsContent({
+  onNavigate,
+}: Readonly<{
+  onNavigate: () => void;
+}>) {
   const runtime = useWorkoutAppRuntime();
   const [preferences, setPreferences] = useState<RestAlertPreferences>(
     DEFAULT_REST_ALERT_PREFERENCES,
@@ -68,6 +72,7 @@ function RootSettingsContent() {
         return result;
       }}
       onOpenDataAndRecovery={() => router.push("/more/data-and-recovery" as Href)}
+      onNavigate={onNavigate}
       onOpenNotificationSettings={runtime.openRestNotificationSettings}
       onOpenRemovedSessions={() => router.push("/more/removed-sessions" as Href)}
       preferences={preferences}
@@ -81,7 +86,9 @@ export default function RootTabsLayout() {
   const { colors } = useAppTheme();
   const tabBarPosition = "bottom";
   return (
-    <AppRootShell settingsContent={<RootSettingsContent />}>
+    <AppRootShell settingsContent={(closeSettings) => (
+      <RootSettingsContent onNavigate={closeSettings} />
+    )}>
       <Tabs
       backBehavior={rootBackBehavior}
       initialRouteName="index"

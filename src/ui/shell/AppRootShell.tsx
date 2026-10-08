@@ -20,7 +20,7 @@ type AppRootShellProps = Readonly<{
   headingRefs?: Partial<Record<RootRouteKey, React.RefObject<FocusTarget | null>>>;
   origin?: RootOrigin;
   onOpenSettings?: () => void;
-  settingsContent?: React.ReactNode;
+  settingsContent?: React.ReactNode | ((closeSettings: () => void) => React.ReactNode);
   settingsTriggerRef?: React.RefObject<FocusTarget | null>;
   toastTopAvoidance?: number;
   toastBottomAvoidance?: number;
@@ -39,6 +39,10 @@ export function AppRootShell({
   toastBottomAvoidance,
 }: AppRootShellProps) {
   const [settingsVisible, setSettingsVisible] = React.useState(false);
+  const closeSettings = React.useCallback(() => setSettingsVisible(false), []);
+  const resolvedSettingsContent = typeof settingsContent === "function"
+    ? settingsContent(closeSettings)
+    : settingsContent;
   React.useLayoutEffect(() => {
     const originTrigger = origin !== undefined && origin.root === activeRoot
       ? origin.trigger?.current
@@ -79,11 +83,11 @@ export function AppRootShell({
           <BottomSheet
             cancelLabel="Close App Settings"
             heading="App Settings"
-            onCancel={() => setSettingsVisible(false)}
+            onCancel={closeSettings}
             restoreFocusRef={settingsTriggerRef}
             visible={settingsVisible}
           >
-            {settingsContent}
+            {resolvedSettingsContent}
           </BottomSheet>
         )}
       </View>

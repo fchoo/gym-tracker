@@ -76,7 +76,10 @@ export type SettingsScreenProps = Readonly<{
   width?: number;
 }>;
 
-export type AppSettingsContentProps = Omit<SettingsScreenProps, "onBack" | "width">;
+export type AppSettingsContentProps = Omit<SettingsScreenProps, "onBack" | "width"> & Readonly<{
+  /** Called by a sheet host before a callback changes the route. */
+  onNavigate?: () => void;
+}>;
 
 /** Router-independent settings sections. Presentation owners supply navigation chrome. */
 export function AppSettingsContent({
@@ -87,6 +90,7 @@ export function AppSettingsContent({
   onOpenNotificationSettings,
   onOpenRemovedSessions,
   onOpenDataAndRecovery,
+  onNavigate,
 }: AppSettingsContentProps) {
   const { appearance, colors, setAppearance } = useAppTheme();
   const latestPreferencesRef = useRef(preferences);
@@ -325,7 +329,10 @@ export function AppSettingsContent({
               </Text>
               <SecondaryAction
                 label="Removed sessions"
-                onPress={onOpenRemovedSessions}
+                onPress={() => {
+                  onNavigate?.();
+                  onOpenRemovedSessions();
+                }}
               />
             </View>
           </ContentCard>
@@ -343,7 +350,10 @@ export function AppSettingsContent({
               </Text>
               <SecondaryAction
                 label="Data and recovery"
-                onPress={onOpenDataAndRecovery}
+                onPress={() => {
+                  onNavigate?.();
+                  onOpenDataAndRecovery();
+                }}
                 testID="more-data-and-recovery"
               />
             </View>

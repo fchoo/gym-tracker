@@ -27,6 +27,7 @@ export type BottomSheetProps = Readonly<{
   heading: string;
   children?: React.ReactNode;
   onCancel: () => void;
+  cancelDisabled?: boolean;
   cancelLabel?: string | undefined;
   consequenceMode?: boolean;
   initialFocusRef?: React.RefObject<FocusTarget | null> | undefined;
@@ -64,6 +65,7 @@ export function BottomSheet({
   heading,
   children,
   onCancel,
+  cancelDisabled = false,
   cancelLabel,
   consequenceMode = false,
   initialFocusRef,
@@ -149,10 +151,13 @@ export function BottomSheet({
   }, [restoreFocus, visible]);
 
   const cancel = React.useCallback(() => {
+    if (cancelDisabled) {
+      return;
+    }
     onCancel();
     restoreFocus();
     focusRestoredRef.current = true;
-  }, [onCancel, restoreFocus]);
+  }, [cancelDisabled, onCancel, restoreFocus]);
 
   const containTraversal = React.useCallback((event: NativeSyntheticEvent<{
     key?: string;
@@ -224,6 +229,7 @@ export function BottomSheet({
                   </View>
                   <IconAction
                     accessibilityLabel={resolvedCancelLabel}
+                    disabled={cancelDisabled}
                     icon="clear"
                     onPress={cancel}
                   />
