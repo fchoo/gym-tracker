@@ -1,18 +1,22 @@
 ---
 phase: 13
 slug: multi-plan-running-foundation
-status: draft
-nyquist_compliant: false
-wave_0_complete: false
+status: validated
+nyquist_compliant: true
+wave_0_complete: true
 created: 2026-10-06
 requirements: [DOM-01, DOM-02, DOM-03, DOM-04, DOM-05, DOM-06, DOM-07, DOM-08, DOM-09, DOM-10, DOM-11, DOM-12, DOM-13, DOM-14, DOM-15, DOM-16, DOM-17]
 automated_gaps: 0
-manual_only: 2
+manual_only: 0
+validated: 2026-10-08
+implementation_head: 69340bdb7ab3cea0ed5516043347531c834ccbdc
+docs_only_descendant: 560916141b3a5e0ea124c979fb67afb851de06d2
+implementation_source_tree_sha256: 7037f6f15ef062458d010e88422f0ab5071e9575a38064926e354f446c489bc4
 ---
 
 # Phase 13 — Validation Strategy
 
-> Execution-time Nyquist contract. Planning created commands and case ownership only; no product test, build, device mutation, or release was run.
+> Execution-time Nyquist contract, executed and reconciled on 2026-10-08. Product behavior, retained native evidence, and owner records are verified; release, deployment, and attended-device approval remain outside this automated audit.
 
 ## Test Infrastructure
 
@@ -38,60 +42,60 @@ manual_only: 2
 
 | Task ID | Plan | Wave | Requirement | Threat Ref | Test Type | Automated Command | File State | Status |
 |---|---:|---:|---|---|---|---|---|---|
-| 13-01-01 | 01 | 1 | DOM-03, DOM-15 | T-13-01-01/03 | sqlite-host | `npm run test:sqlite:host -- --runInBand tests/sqlite-host/migrations-effects.test.ts` | fixture ❌ W0; harness ✅ | ⬜ |
-| 13-01-02 | 01 | 1 | DOM-01 trace | T-13-01-02 | artifact contract | `node -e "const fs=require('fs');const p='.planning/phases/13-multi-plan-running-foundation/13-MAP-01-EVIDENCE.md';const s=fs.readFileSync(p,'utf8');for(const x of ['one-per-sport','one_active_owned_plan','one_active_owned_schedule','restore','merge','rollback'])if(!s.includes(x))throw new Error(x)"` | ❌ W0 | ⬜ |
-| 13-01-03 | 01 | 1 | DOM-01 trace | T-13-01-02 | artifact + owner-record validation | `node -e "const d=JSON.parse(require('fs').readFileSync('.planning/v1.2-owner-decisions.json','utf8')).decisions['MAP-01'];if(d.status!=='approved'||d.selection!=='one-per-sport')throw Error('MAP-01')"` | approval ✅; evidence ❌ W0 | ⬜ |
-| 13-02-01 | 02 | 2 | DOM-01/02/03/15 | T-13-02-01/04 | shared host/native migration contract | `npm run test:sqlite:host -- --runInBand tests/sqlite-host/migrations-effects.test.ts && npm run typecheck` | ✅ extend | ⬜ |
-| 13-02-02 | 02 | 2 | DOM-01/02/04/07 | T-13-02-02 | tracer integration | `npm run test:integration -- --runInBand tests/integration/multi-plan-foundation-tracer.test.ts -t "minimum Running activation and ordered occurrences"` | ❌ W0 | ⬜ |
-| 13-02-03 | 02 | 2 | DOM-03/06/15/17 | T-13-02-03/04 | tracer integration | `npm run test:integration -- --runInBand tests/integration/multi-plan-foundation-tracer.test.ts` | ❌ W0 | ⬜ |
-| 13-03-01 | 03 | 3 | DOM-07/08/09 | T-13-03-01/03 | unit + type | `npm run test:unit -- --runInBand src/domains/running/contracts.test.ts && npm run typecheck` | ❌ W0 | ⬜ |
-| 13-03-02 | 03 | 3 | DOM-07/08 | T-13-03-01/02 | unit + integration | `npm run test:unit -- --runInBand src/domains/running/commands.test.ts && npm run test:integration -- --runInBand tests/integration/running-foundation.test.ts` | ❌ W0 | ⬜ |
-| 13-03-03 | 03 | 3 | DOM-04/07 | T-13-03-01 | unit + integration | `npm run test:unit -- --runInBand src/domains/scheduling/scheduleState.test.ts src/domains/running/contracts.test.ts && npm run test:integration -- --runInBand tests/integration/running-foundation.test.ts tests/integration/schedule-commands.test.ts` | mixed | ⬜ |
-| 13-04-01 | 04 | 3 | DOM-10/11 | T-13-04-01/04 | unit + type | `npm run test:unit -- --runInBand src/domains/activities/garminActivitySourcePort.test.ts src/domains/activities/activityIdentity.test.ts && npm run typecheck` | ❌ W0 | ⬜ |
-| 13-04-02 | 04 | 3 | DOM-10/11 | T-13-04-01/02 | unit + integration | `npm run test:unit -- --runInBand src/domains/activities/importCommands.test.ts && npm run test:integration -- --runInBand tests/integration/imported-activity-facts.test.ts` | ❌ W0 | ⬜ |
-| 13-04-03 | 04 | 3 | DOM-17 | T-13-04-02 | unit + integration | `npm run test:unit -- --runInBand src/domains/activities/importCommands.test.ts && npm run test:integration -- --runInBand tests/integration/imported-activity-facts.test.ts` | ❌ W0 | ⬜ |
-| 13-11-01 | 11 | 3 | DOM-14/17 | T-13-11-01 | unit + type | `npm run test:unit -- --runInBand src/domains/bodyweight/contracts.test.ts && npm run typecheck` | ❌ W0 | ⬜ |
-| 13-11-02 | 11 | 3 | DOM-14/17 | T-13-11-01/02 | integration | `npm run test:integration -- --runInBand tests/integration/bodyweight-history.test.ts` | ❌ W0 | ⬜ |
-| 13-05-01 | 05 | 4 | DOM-06/16 | T-13-05-01 | unit + integration | `npm run test:unit -- --runInBand src/domains/scheduling/activePlanSelection.test.ts && npm run test:integration -- --runInBand tests/integration/today-schedule-workout.test.ts` | mixed | ⬜ |
-| 13-05-02 | 05 | 4 | DOM-04/06/16 | T-13-05-01/02 | integration + type | `npm run test:integration -- --runInBand tests/integration/today-schedule-workout.test.ts tests/integration/schedule-commands.test.ts tests/integration/multi-plan-activation.test.ts && npm run typecheck` | activation test ❌ W0 | ⬜ |
-| 13-09-01 | 09 | 7 | DOM-03/17 | T-13-09-01/02 | unit + integration | `npm run test:unit -- --runInBand src/domains/advancedTiming/advancedTimingState.test.ts src/domains/advancedTiming/advancedTimingCommands.test.ts src/platform/sqlite/repositories/advancedTimingRepository.test.ts && npm run test:integration -- --runInBand tests/integration/today-schedule-workout.test.ts` | ✅ extend | ⬜ |
-| 13-09-02 | 09 | 7 | DOM-16/17 | T-13-09-02 | unit + artifact | `npm run test:unit -- --runInBand src/bootstrap/workoutAppRuntime.test.tsx && node -e "const s=require('fs').readFileSync('.planning/phases/13-multi-plan-running-foundation/13-TIM-01-EVIDENCE.md','utf8');for(const x of ['foreground','queued callback','relaunch','restore','merge','between-set rest','retire-playback'])if(!s.includes(x))throw new Error(x)"` | evidence ❌ W0 | ⬜ |
-| 13-09-03 | 09 | 7 | DOM-16 trace | T-13-09-03 | artifact + owner-record validation | `node -e "const d=JSON.parse(require('fs').readFileSync('.planning/v1.2-owner-decisions.json','utf8')).decisions['TIM-01'];if(d.status!=='approved'||d.selection!=='retire-playback'||d.legacy_playback_compatibility!==false)throw Error('TIM-01')"` | approval ✅; evidence ❌ W0 | ⬜ |
-| 13-12-01 | 12 | 5 | DOM-04/05 | T-13-12-01 | unit + integration | `npm run test:unit -- --runInBand src/domains/scheduling/scheduleState.test.ts && npm run test:integration -- --runInBand tests/integration/running-foundation.test.ts tests/integration/schedule-commands.test.ts` | mixed | ⬜ |
-| 13-12-02 | 12 | 5 | DOM-13 | T-13-12-02/03 | sqlite-host + type | `npm run test:sqlite:host -- --runInBand tests/sqlite-host/trainingCalendarRepository.test.ts tests/sqlite-host/historyRepository.test.ts && npm run typecheck` | calendar ❌ W0 | ⬜ |
-| 13-06-01 | 06 | 6 | DOM-12 | T-13-06-01/02 | unit + integration | `npm run test:unit -- --runInBand src/domains/running/activityMatchCommands.test.ts && npm run test:integration -- --runInBand tests/integration/running-activity-match.test.ts tests/integration/running-foundation.test.ts` | ❌ W0 | ⬜ |
-| 13-06-02 | 06 | 6 | DOM-17 | T-13-06-01/03 | integration | `npm run test:integration -- --runInBand tests/integration/imported-activity-facts.test.ts tests/integration/running-activity-match.test.ts` | ❌ W0 | ⬜ |
-| 13-16-01 | 16 | 6 | DOM-16/17 | T-13-16-01 | unit + integration | `npm run test:unit -- --runInBand src/domains/workout/setCommands.test.ts && npm run test:integration -- --runInBand tests/integration/complete-set.test.ts` | ✅ extend | ⬜ |
-| 13-16-02 | 16 | 6 | DOM-16/17 | T-13-16-02 | unit + integration | `npm run test:unit -- --runInBand src/bootstrap/workoutAppRuntime.test.tsx && npm run test:integration -- --runInBand tests/integration/complete-set.test.ts tests/integration/today-schedule-workout.test.ts` | ✅ extend | ⬜ |
-| 13-15-01 | 15 | 7 | DOM-13 | T-13-15-01/03 | sqlite-host | `npm run test:sqlite:host -- --runInBand tests/sqlite-host/trainingCalendarRepository.test.ts` | ❌ W0 | ⬜ |
-| 13-15-02 | 15 | 7 | DOM-13/14 | T-13-15-02/03 | unit + integration | `npm run test:unit -- --runInBand src/platform/sqlite/repositories/progressRepository.test.ts && npm run test:integration -- --runInBand tests/integration/bodyweight-history.test.ts` | progress test ❌ W0 | ⬜ |
-| 13-07-01 | 07 | 8 | DOM-15/17 | T-13-07-01/03 | unit + sqlite-host | `npm run test:unit -- --runInBand src/domains/portability/backupContracts.test.ts && npm run test:sqlite:host -- --runInBand tests/sqlite-host/logicalBackupRepository.test.ts` | ✅ extend | ⬜ |
-| 13-07-02 | 07 | 8 | DOM-15/17 | T-13-07-01/02 | unit + sqlite-host + integration | `npm run test:unit -- --runInBand src/domains/portability/restoreCommands.test.ts && npm run test:sqlite:host -- --runInBand tests/sqlite-host/logicalRestoreRepository.test.ts && npm run test:integration -- --runInBand tests/integration/multi-plan-portability.test.ts` | portability ❌ W0 | ⬜ |
-| 13-13-01 | 13 | 9 | DOM-13/15/17 | T-13-13-01 | sqlite-host | `npm run test:sqlite:host -- --runInBand tests/sqlite-host/restoreReconciliationRepository.test.ts` | ✅ extend | ⬜ |
-| 13-13-02 | 13 | 9 | DOM-13/15/17 | T-13-13-02 | sqlite-host + integration | `npm run test:sqlite:host -- --runInBand tests/sqlite-host/restoreReconciliationRepository.test.ts && npm run test:integration -- --runInBand tests/integration/multi-plan-portability.test.ts` | mixed | ⬜ |
-| 13-08-01 | 08 | 10 | DOM-15/17 | T-13-08-01/04 | unit | `npm run test:unit -- --runInBand src/domains/portability/mergePlan.test.ts src/testing/contracts/portableMerge.contract.test.ts` | ✅ extend | ⬜ |
-| 13-08-02 | 08 | 10 | DOM-15/17 | T-13-08-02/03 | sqlite-host + integration | `npm run test:sqlite:host -- --runInBand tests/sqlite-host/logicalMergeRepository.test.ts tests/sqlite-host/restoreReconciliationRepository.test.ts && npm run test:integration -- --runInBand tests/integration/portable-merge.test.ts tests/integration/multi-plan-portability.test.ts` | mixed | ⬜ |
-| 13-08-03 | 08 | 10 | DOM-15 | T-13-08-03 | integration | `npm run test:integration -- --runInBand tests/integration/automatic-drive-backup.test.ts tests/integration/multi-plan-portability.test.ts` | mixed | ⬜ |
-| 13-10-01 | 10 | 11 | DOM-03/16/17 | T-13-10-01 | unit + integration | `npm run test:unit -- --runInBand src/domains/advancedTiming/advancedTimingCommands.test.ts src/platform/sqlite/repositories/advancedTimingRepository.test.ts src/bootstrap/workoutAppRuntime.test.tsx && npm run test:integration -- --runInBand tests/integration/today-schedule-workout.test.ts tests/integration/multi-plan-portability.test.ts` | mixed | ⬜ |
-| 13-10-02 | 10 | 11 | DOM-03/15/16/17 | T-13-10-02/03 | unit + type/boundary | `npm run test:unit -- --runInBand src/testing/contracts/multiPlanRunning.contract.test.ts && npm run typecheck && npm run lint` | ❌ W0 | ⬜ |
-| 13-14-01 | 14 | 12 | DOM-01/03/15/16/17 | T-13-14-01/02 | integration + coverage | `npm run test:integration -- --runInBand tests/integration/multi-plan-lifecycle.test.ts && npm run test:coverage -- --runInBand` | lifecycle ❌ W0 | ⬜ |
-| 13-14-02 | 14 | 12 | DOM-01..17 trace | T-13-14-01/02/03 | full host + native | `npm run typecheck && npm run lint && npm run test:all -- --runInBand && npm run test:evidence:phase13` | ❌ W0 | ⬜ |
+| 13-01-01 | 01 | 1 | DOM-03, DOM-15 | T-13-01-01/03 | sqlite-host | `npm run test:sqlite:host -- --runInBand tests/sqlite-host/migrations-effects.test.ts` | verified | green |
+| 13-01-02 | 01 | 1 | DOM-01 trace | T-13-01-02 | artifact contract | MAP-01 evidence-content check | verified | green |
+| 13-01-03 | 01 | 1 | DOM-01 trace | T-13-01-02 | artifact + owner-record validation | MAP-01 owner-record check | verified | green |
+| 13-02-01 | 02 | 2 | DOM-01/02/03/15 | T-13-02-01/04 | shared host/native migration contract | migrations host + native 14/14 | verified | green |
+| 13-02-02 | 02 | 2 | DOM-01/02/04/07 | T-13-02-02 | tracer integration | `tests/integration/multi-plan-foundation-tracer.test.ts` | verified | green |
+| 13-02-03 | 02 | 2 | DOM-03/06/15/17 | T-13-02-03/04 | tracer integration | `tests/integration/multi-plan-foundation-tracer.test.ts` | verified | green |
+| 13-03-01 | 03 | 3 | DOM-07/08/09 | T-13-03-01/03 | unit + type | Running contracts + typecheck | verified | green |
+| 13-03-02 | 03 | 3 | DOM-07/08 | T-13-03-01/02 | unit + integration | Running commands/foundation tests | verified | green |
+| 13-03-03 | 03 | 3 | DOM-04/07 | T-13-03-01 | unit + integration | schedule-state/running integration tests | verified | green |
+| 13-04-01 | 04 | 3 | DOM-10/11 | T-13-04-01/04 | unit + type | Garmin identity/port tests + typecheck | verified | green |
+| 13-04-02 | 04 | 3 | DOM-10/11 | T-13-04-01/02 | unit + integration | import-command/activity-facts tests | verified | green |
+| 13-04-03 | 04 | 3 | DOM-17 | T-13-04-02 | unit + integration | import-command/activity-facts tests | verified | green |
+| 13-11-01 | 11 | 3 | DOM-14/17 | T-13-11-01 | unit + type | bodyweight contracts + typecheck | verified | green |
+| 13-11-02 | 11 | 3 | DOM-14/17 | T-13-11-01/02 | integration | `tests/integration/bodyweight-history.test.ts` | verified | green |
+| 13-05-01 | 05 | 4 | DOM-06/16 | T-13-05-01 | unit + integration | selected occurrence + Today tests | verified | green |
+| 13-05-02 | 05 | 4 | DOM-04/06/16 | T-13-05-01/02 | integration + type | Today/schedule commands/foundation tracer + typecheck | verified; stale removed path replaced | green |
+| 13-09-01 | 09 | 7 | DOM-03/17 | T-13-09-01/02 | unit + integration | timing state/commands/repository + Today tests | verified | green |
+| 13-09-02 | 09 | 7 | DOM-16/17 | T-13-09-02 | unit + artifact | runtime timing tests + TIM evidence | verified | green |
+| 13-09-03 | 09 | 7 | DOM-16 trace | T-13-09-03 | artifact + owner-record validation | TIM-01 owner-record check | verified | green |
+| 13-12-01 | 12 | 5 | DOM-04/05 | T-13-12-01 | unit + integration | schedule-state/running/schedule-command tests | verified | green |
+| 13-12-02 | 12 | 5 | DOM-13 | T-13-12-02/03 | sqlite-host + type | Calendar/history host tests + typecheck | verified | green |
+| 13-06-01 | 06 | 6 | DOM-12 | T-13-06-01/02 | unit + integration | match-command/running-match tests | verified | green |
+| 13-06-02 | 06 | 6 | DOM-17 | T-13-06-01/03 | integration | activity-facts/running-match tests | verified | green |
+| 13-16-01 | 16 | 6 | DOM-16/17 | T-13-16-01 | unit + integration | set-command/complete-set tests | verified | green |
+| 13-16-02 | 16 | 6 | DOM-16/17 | T-13-16-02 | unit + integration | runtime/complete-set/Today tests | verified | green |
+| 13-15-01 | 15 | 7 | DOM-13 | T-13-15-01/03 | sqlite-host | Calendar host tests | verified | green |
+| 13-15-02 | 15 | 7 | DOM-13/14 | T-13-15-02/03 | unit + integration | progress/bodyweight tests | verified | green |
+| 13-07-01 | 07 | 8 | DOM-15/17 | T-13-07-01/03 | unit + sqlite-host | backup-contract/host tests | verified | green |
+| 13-07-02 | 07 | 8 | DOM-15/17 | T-13-07-01/02 | unit + sqlite-host + integration | restore/portability tests | verified | green |
+| 13-13-01 | 13 | 9 | DOM-13/15/17 | T-13-13-01 | sqlite-host | reconciliation host tests | verified | green |
+| 13-13-02 | 13 | 9 | DOM-13/15/17 | T-13-13-02 | sqlite-host + integration | reconciliation/portability tests | verified | green |
+| 13-08-01 | 08 | 10 | DOM-15/17 | T-13-08-01/04 | unit | merge-plan/portable-contract tests | verified | green |
+| 13-08-02 | 08 | 10 | DOM-15/17 | T-13-08-02/03 | sqlite-host + integration | merge/reconciliation/portability tests | verified | green |
+| 13-08-03 | 08 | 10 | DOM-15 | T-13-08-03 | integration | automatic-backup/portability tests | verified | green |
+| 13-10-01 | 10 | 11 | DOM-03/16/17 | T-13-10-01 | unit + integration | timing/runtime/Today/portability tests | verified | green |
+| 13-10-02 | 10 | 11 | DOM-03/15/16/17 | T-13-10-02/03 | unit + type/boundary | multi-plan contract + typecheck + lint | verified | green |
+| 13-14-01 | 14 | 12 | DOM-01/03/15/16/17 | T-13-14-01/02 | integration + coverage | lifecycle test + sealed 131-file 100% coverage | verified | green |
+| 13-14-02 | 14 | 12 | DOM-01..17 trace | T-13-14-01/02/03 | full host + native | exact manifest/native result evidence + verifier tests | verified | green |
 
 ## Wave 0 Requirements
 
-- [ ] Before Task 13-01-01, assert `package-lock.json` exists, Node/npm satisfy `package.json.engines`, and run `npm ci`; fail on lockfile drift. This environment step installs no new package.
-- [ ] Restore Android SDK/`adb` before Plan 13-14; host mocks cannot substitute for real Expo SQLite.
-- [ ] Create RED-first `tests/integration/multi-plan-foundation-tracer.test.ts`; no breadth plan starts until the full tracer passes.
-- [ ] Create the new Running/activity/bodyweight/match/Calendar/portability/lifecycle tests named by their owning tasks before production edits.
-- [ ] Create `src/platform/sqlite/repositories/progressRepository.test.ts` before modifying `progressRepository.ts`.
-- [ ] Generate `13-MAP-01-EVIDENCE.md` and `13-TIM-01-EVIDENCE.md`; validate both against the dated owner records before affected implementation.
+- [x] `package-lock.json`, engine, and `npm ci` preflight completed without lockfile drift (13-01 summary).
+- [x] Android/`adb` device evidence is retained in the sealed automated manifest; host mocks did not substitute for the three native suites.
+- [x] RED-first `tests/integration/multi-plan-foundation-tracer.test.ts` exists and its focused behavioral cases passed.
+- [x] Running/activity/bodyweight/match/Calendar/portability/lifecycle test owners exist and passed in the grouped task-map audit.
+- [x] `src/platform/sqlite/repositories/progressRepository.test.ts` exists and passed in the unit group.
+- [x] `13-MAP-01-EVIDENCE.md` and `13-TIM-01-EVIDENCE.md` passed automated owner-record and content verification.
 
-## Manual-Only Verifications
+## Owner-Record Verifications
 
-| Behavior | Requirement | Why Manual | Test Instructions |
-|---|---|---|---|
-| MAP-01 cardinality | DOM-01 | Approved zero-or-one active plan per sport | Validate `one-per-sport` from owner JSON; record source/date/evidence status in `13-01-SUMMARY.md` before Plan 13-02. |
-| TIM-01 runtime policy | DOM-16, DOM-17 | Approved complete playback retirement | Validate `retire-playback` and compatibility=false; record source/date/evidence status in `13-09-SUMMARY.md` before Plan 13-10. |
+| Behavior | Requirement | Automated verification |
+|---|---|---|
+| MAP-01 cardinality | DOM-01 | Owner JSON requires `approved` + `one-per-sport`; MAP evidence contains the migration/restore/merge contract. |
+| TIM-01 runtime policy | DOM-16, DOM-17 | Owner JSON requires `approved` + `retire-playback` + `legacy_playback_compatibility=false`; TIM evidence covers all recorded seams. |
 
 Every approved policy and its product behavior has an automated owner-record or implementation gate; no product choice remains manual.
 
@@ -181,15 +185,41 @@ Wave 1 is a reversible environment/history preflight plus the mandatory one-way 
 
 ## Validation Sign-Off
 
-- [ ] All 38 task IDs have automated checks; the two owner decisions additionally have blocking human checks.
-- [ ] Every plan reads `.trae/rules/rules.md` and carries the exact commit trailer.
-- [ ] Wave 0 `npm ci`/engine/lockfile precondition is complete before the first RED test.
-- [ ] The complete production tracer passes before wave 3 breadth begins.
-- [ ] Migration 0028 is modified only in Plan 13-02; later DDL uses a successor migration.
-- [ ] Every DOM/D13 item maps to a primary plan or explicit shared trace.
-- [ ] No same-wave `files_modified` overlap and every task touches at most five files.
-- [ ] No watch mode; focused feedback is below 60 seconds after measurement.
-- [ ] Full host, complete branch coverage, real Expo SQLite, and exact-artifact privacy gates pass.
-- [ ] Set `nyquist_compliant: true` and `wave_0_complete: true` only after execution audit.
+- [x] All 38 task IDs have automated checks; MAP-01 and TIM-01 are validated automated owner-record artifacts.
+- [x] Every plan reads `.trae/rules/rules.md` and carries the exact commit trailer.
+- [x] Wave 0 `npm ci`/engine/lockfile precondition completed before the first RED test.
+- [x] The complete production tracer passed before wave 3 breadth.
+- [x] Migration 0028 is modified only in Plan 13-02; later DDL uses successor migrations.
+- [x] Every DOM/D13 item maps to a primary plan or explicit shared trace.
+- [x] No same-wave `files_modified` overlap and every task touches at most five files.
+- [x] No watch mode; the focused Nyquist groups completed in 7s (unit), 16s (integration), and host evidence remains sealed.
+- [x] Full host, complete branch coverage, real Expo SQLite, and exact-artifact privacy gates passed at the sealed implementation revision.
+- [x] Execution audit completed before setting `nyquist_compliant: true` and `wave_0_complete: true`.
 
-**Approval:** MAP-01/TIM-01 finalized; execution and technical evidence pending
+## Nyquist Execution Audit — 2026-10-08
+
+### Scope reconciliation
+
+- **Implementation evidence revision:** `69340bdb7ab3cea0ed5516043347531c834ccbdc`.
+- **Checked-out documentation descendant:** `560916141b3a5e0ea124c979fb67afb851de06d2`; its only delta from the implementation revision is `13-REVIEW.md` and `13-REVIEW-FIX.md`.
+- **Both implementation trees digest to:** `7037f6f15ef062458d010e88422f0ab5071e9575a38064926e354f446c489bc4` after excluding planning/evidence and generated coverage paths. The sealed APK and installed APK both hash to `aebbfdf16b5b0b3488fbb5b9c4540adaa2cd57f016f9282df498ae362ad0553e`.
+
+### Executed behavioral evidence
+
+| Check | Actual result |
+|---|---|
+| Task-map unit group (19 named suites) | 19/19 suites, 537/537 tests passed. |
+| Task-map integration group (12 named suites) | 12/12 suites, 123/123 tests passed. |
+| Task-map sqlite-host group | Passed in the grouped focused command; includes migrations, Calendar/history, backup/restore/reconciliation, and merge repositories. |
+| Typecheck and boundary lint | Passed; lint checked 313 files. |
+| Source-digest/verifier tests | 9/9 passed, including dirty-source rejection and generated-coverage exclusion without ignoring source-like files. |
+| Owner records and MAP/TIM evidence artifacts | Passed: MAP-01 `approved`/`one-per-sport`; TIM-01 `approved`/`retire-playback`/no legacy compatibility. |
+| Retained native evidence | migrations-effects 14/14, portable-merge 14/14, multi-plan-running 13/13; all with zero failed/skipped cases, schema 35, exact source/APK/installed hashes, and privacy-validated aggregate results. |
+
+The raw `verify:phase13:evidence` CLI deliberately rejects a docs-only descendant because it requires `HEAD === manifest.base_head`. That exact raw-HEAD behavior is covered by the passing verifier tests. It is not an implementation/APK mismatch here: the required implementation digest is identical at the base evidence revision and the checked-out descendant, and the descendant changes only review documents.
+
+### Mapping correction
+
+`tests/integration/multi-plan-activation.test.ts` was a stale map path, not a missing behavior test. Its concurrent per-sport activation and selected-identity behavior are executed by `multi-plan-foundation-tracer.test.ts`, `schedule-commands.test.ts`, and `today-schedule-workout.test.ts`; Task 13-05-02 now names that real coverage.
+
+**Approval:** all 38 task rows and DOM-01 through DOM-17 are validated; zero automated gaps remain.
