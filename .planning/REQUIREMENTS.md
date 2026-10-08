@@ -25,18 +25,18 @@ Exactly four roots: **Workout, Calendar, Library, Progress**. Preserve SQLite au
 - [x] **DOM-02**: Persist new plan structure in an inactive state; creation, import, duplication and editing must not activate it implicitly.
 - [x] **DOM-03**: Migrate existing plans, sessions and schedules transactionally while preserving identifiers, workout recovery state and authoritative completed history.
 - [x] **DOM-04**: Resolve each plan's dates and rotation independently with explicit timezone/effective-date ownership; aggregate all eligible occurrences for Workout and Calendar.
-- [ ] **DOM-05**: Represent overlapping plan occurrences and apply explicit Move run, Move strength or Keep both decisions without rewriting historical facts.
+- [x] **DOM-05**: Represent overlapping plan occurrences and apply explicit Move run, Move strength or Keep both decisions without rewriting historical facts.
 - [x] **DOM-06**: Choose the intended scheduled occurrence when several plans are active and preserve the existing single recovered in-progress workout authority.
 - [x] **DOM-07**: Persist Recovery, Long run, Progression, Tempo, Intervals, Hills and Fartlek sessions with common and contextual steps, order and stable identities.
-- [ ] **DOM-08**: Persist distance, optional owner-selected time/date, benchmark provenance and available training days; keep 10 km and Half Marathon times unset until explicitly chosen.
-- [ ] **DOM-09**: Preserve pace, heart-rate-zone and RPE targets as advisory session fields without guaranteeing an outcome or collecting gender or height.
-- [ ] **DOM-10**: Persist account-scoped Garmin external identity, versioned normalized JSON content digest, raw response provenance/hashes, timestamps, sport subtype, independent time bases, distance, and available HR/route/laps; retain sampling metadata and leave fit_sha256 absent without an original FIT.
-- [ ] **DOM-11**: Deduplicate repeat, interrupted, reordered and restored JSON sync using account-scoped external Garmin identity and canonical content digest; exclude fetch timestamps from content identity, stage changed source revisions, and never resurrect removed activities automatically.
-- [ ] **DOM-12**: Require explicit owner confirmation of the selected scheduled occurrence before creating a durable activity match; import alone never completes or activates a plan.
-- [ ] **DOM-13**: Build Calendar aggregation and comparable Running effort/goal views from durable accepted facts with replayable projections; only eligible source-reported summary/lap evidence supports exact-distance efforts, while downsampled chart data produces no invented effort and missing evidence stays sparse.
-- [ ] **DOM-14**: Persist optional dated bodyweight entries, edits and deletions for relative-strength views only; entries never alter workout targets.
+- [x] **DOM-08**: Persist distance, optional owner-selected time/date, benchmark provenance and available training days; keep 10 km and Half Marathon times unset until explicitly chosen.
+- [x] **DOM-09**: Preserve pace, heart-rate-zone and RPE targets as advisory session fields without guaranteeing an outcome or collecting gender or height.
+- [x] **DOM-10**: Persist account-scoped Garmin external identity, versioned normalized JSON content digest, raw response provenance/hashes, timestamps, sport subtype, independent time bases, distance, and available HR/route/laps; retain sampling metadata and leave fit_sha256 absent without an original FIT.
+- [x] **DOM-11**: Deduplicate repeat, interrupted, reordered and restored JSON sync using account-scoped external Garmin identity and canonical content digest; exclude fetch timestamps from content identity, stage changed source revisions, and never resurrect removed activities automatically.
+- [x] **DOM-12**: Require explicit owner confirmation of the selected scheduled occurrence before creating a durable activity match; import alone never completes or activates a plan.
+- [x] **DOM-13**: Build Calendar aggregation and comparable Running effort/goal views from durable accepted facts with replayable projections; only eligible source-reported summary/lap evidence supports exact-distance efforts, while downsampled chart data produces no invented effort and missing evidence stays sparse.
+- [x] **DOM-14**: Persist optional dated bodyweight entries, edits and deletions for relative-strength views only; entries never alter workout targets.
 - [x] **DOM-15**: Extend backup, restore and merge to all multi-plan, Running, imported-activity, match, goal and bodyweight facts and identities without duplicate creation.
-- [ ] **DOM-16**: Keep workouts fully offline and acknowledge edits/completion only after exclusive transactions commit; notifications and UI feedback follow durable results.
+- [x] **DOM-16**: Keep workouts fully offline and acknowledge edits/completion only after exclusive transactions commit; notifications and UI feedback follow durable results.
 - [x] **DOM-17**: Preserve correction revisions, remove/restore tombstones, metric identities, original snapshots and explicit recommendation acceptance across the new multi-plan model.
 
 ### Phase 14: Shared visual system, root shell and settings
@@ -242,18 +242,18 @@ once and remains Pending until its owning phase is implemented and verified.
 | DOM-02 | 13 | domain.activation-separate | Complete |
 | DOM-03 | 13 | domain.migrate-existing | Complete |
 | DOM-04 | 13 | domain.schedule-independent | Complete |
-| DOM-05 | 13 | domain.schedule-collision | Pending |
+| DOM-05 | 13 | domain.schedule-collision | Complete |
 | DOM-06 | 13 | domain.workout-selection | Complete |
 | DOM-07 | 13 | domain.running-structure | Complete |
-| DOM-08 | 13 | domain.running-targets | Pending |
-| DOM-09 | 13 | domain.advisory-intensity | Pending |
-| DOM-10 | 13 | domain.import-source-facts | Pending |
-| DOM-11 | 13 | domain.import-idempotency | Pending |
-| DOM-12 | 13 | domain.matching-confirmed | Pending |
-| DOM-13 | 13 | domain.rebuildable-projections | Pending |
-| DOM-14 | 13 | domain.bodyweight-facts | Pending |
+| DOM-08 | 13 | domain.running-targets | Complete |
+| DOM-09 | 13 | domain.advisory-intensity | Complete |
+| DOM-10 | 13 | domain.import-source-facts | Complete |
+| DOM-11 | 13 | domain.import-idempotency | Complete |
+| DOM-12 | 13 | domain.matching-confirmed | Complete |
+| DOM-13 | 13 | domain.rebuildable-projections | Complete |
+| DOM-14 | 13 | domain.bodyweight-facts | Complete |
 | DOM-15 | 13 | domain.backup-merge | Complete |
-| DOM-16 | 13 | domain.offline-transaction | Pending |
+| DOM-16 | 13 | domain.offline-transaction | Complete |
 | DOM-17 | 13 | domain.history-integrity | Complete |
 | SHL-01 | 14 | shell.four-roots | Pending |
 | SHL-02 | 14 | shell.root-state | Pending |

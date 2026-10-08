@@ -44,7 +44,7 @@ Archived detail: .planning/milestones/v1.1-ROADMAP.md
 
 ### v1.2 Prototype Parity, Concurrent Plans & Garmin Import — PLANNED
 
-- [ ] **Phase 13: One-per-Sport Plan & Running Foundation** - Establish authoritative zero/one-per-sport activation, Running-session, import, matching, portability, and history contracts.
+- [x] **Phase 13: One-per-Sport Plan & Running Foundation** - Establish authoritative zero/one-per-sport activation, Running-session, import, matching, portability, and history contracts. (completed 2026-10-08)
 - [ ] **Phase 14: Prototype Visual Shell** - Establish the approved four-root visual, navigation, appearance, overlay, startup, and settings system.
 - [ ] **Phase 15: Workout Parity** - Deliver the approved Workout and Active Workout experience without weakening offline or commit-gated behavior.
 - [ ] **Phase 16: Calendar Parity** - Deliver the full-height interactive Calendar and read-only historical detail flow using the Phase 15 presentation contract.
@@ -110,7 +110,7 @@ silently select a different transport.
 - [x] 13-11-PLAN.md
 - [x] 13-12-PLAN.md
 - [x] 13-13-PLAN.md
-- [ ] 13-14-PLAN.md
+- [x] 13-14-PLAN.md
 - [x] 13-15-PLAN.md
 - [x] 13-16-PLAN.md
 
@@ -273,7 +273,7 @@ Plans:
 
 | Phase | Directory | Plans Complete | Status | Completed |
 |---|---|---:|---|---|
-| 13. One-per-Sport Plan & Running Foundation | 13-multi-plan-running-foundation | 15/16 | In Progress|  |
+| 13. One-per-Sport Plan & Running Foundation | 13-multi-plan-running-foundation | 16/16 | Complete    | 2026-10-08 |
 | 14. Prototype Visual Shell | 14-prototype-visual-shell | 0/12 | Not started | - |
 | 15. Workout Parity | 15-workout-parity | 0/13 | Not started | - |
 | 16. Calendar Parity | 16-calendar-parity | 0/7 | Not started | - |
