@@ -41,8 +41,8 @@ Exactly four roots: **Workout, Calendar, Library, Progress**. Preserve SQLite au
 
 ### Phase 14: Shared visual system, root shell and settings
 
-- [ ] **SHL-01**: Expose exactly Workout, Calendar, Library and Progress in a shared root shell, preserving bottom navigation composition at all target widths.
-- [ ] **SHL-02**: Switch destinations in place with correct selected state, heading focus, deep-route exit and retained destination-specific state.
+- [x] **SHL-01**: Expose exactly Workout, Calendar, Library and Progress in a shared root shell, preserving bottom navigation composition at all target widths.
+- [x] **SHL-02**: Switch destinations in place with correct selected state, heading focus, deep-route exit and retained destination-specific state.
 - [x] **SHL-03**: Open App Settings from the root header and synchronize Light, Dark and System appearance across the four roots, Active Workout, sheets and dialogs; persist the choice and react to system changes. Garmin-specific appearance closure is owned by GAR-16 after its contextual route exists.
 - [x] **SHL-04**: Reproduce approved semantic colors, Archivo variable typography, IBM Plex Mono numerical text, spacing, borders and density using bundled native assets and shared tokens.
 - [ ] **SHL-05**: Use contextual bottom sheets with scrim, close/back dismissal, focus entry/trap/restoration and keyboard-safe content, preserving each surface's individual actions.
@@ -255,8 +255,8 @@ once and remains Pending until its owning phase is implemented and verified.
 | DOM-15 | 13 | domain.backup-merge | Complete |
 | DOM-16 | 13 | domain.offline-transaction | Complete |
 | DOM-17 | 13 | domain.history-integrity | Complete |
-| SHL-01 | 14 | shell.four-roots | Pending |
-| SHL-02 | 14 | shell.root-state | Pending |
+| SHL-01 | 14 | shell.four-roots | Complete |
+| SHL-02 | 14 | shell.root-state | Complete |
 | SHL-03 | 14 | shell.appearance | Complete |
 | SHL-04 | 14 | shell.tokens | Complete |
 | SHL-05 | 14 | shell.sheets | Pending |
