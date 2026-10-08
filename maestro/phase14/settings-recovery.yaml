@@ -23,7 +23,7 @@ tags:
       true: ${PHASE14_STAGE == 'phase14-rest-alerts'}
     commands:
       - pressKey: BACK
-      - assertVisible: "App Settings"
+      - assertVisible: "Workout"
       - assertVisible: "Rest alerts"
 - runFlow:
     when:
@@ -31,13 +31,13 @@ tags:
     commands:
       - assertVisible: "Data and recovery"
       - pressKey: BACK
-      - assertVisible: "App Settings"
+      - assertVisible: "Workout"
 - runFlow:
     when:
       true: ${PHASE14_STAGE == 'phase14-removed-sessions'}
     commands:
       - pressKey: BACK
-      - assertVisible: "App Settings"
+      - assertVisible: "Workout"
       - assertVisible: "Removed sessions"
 - runFlow:
     when:
