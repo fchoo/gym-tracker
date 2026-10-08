@@ -19,12 +19,14 @@ export function useCsvExportController<Handle>(input: Readonly<{
   const latch = useRef(false);
   const generation = useRef(0);
   const handle = useRef<Handle | null>(null);
+  const operation = useRef<"create" | "share" | null>(null);
   const inputRef = useRef(input);
   inputRef.current = input;
 
   const create = useCallback(async () => {
     if (latch.current) return;
     latch.current = true;
+    operation.current = "create";
     const currentGeneration = ++generation.current;
     setState({ kind: "preparing" });
     try {
@@ -40,13 +42,17 @@ export function useCsvExportController<Handle>(input: Readonly<{
     } catch {
       if (mounted.current && currentGeneration === generation.current) setState({ kind: "create_failed" });
     } finally {
-      if (currentGeneration === generation.current) latch.current = false;
+      if (currentGeneration === generation.current) {
+        latch.current = false;
+        operation.current = null;
+      }
     }
   }, []);
 
   const share = useCallback(async () => {
     if (latch.current || handle.current === null) return;
     latch.current = true;
+    operation.current = "share";
     const currentGeneration = ++generation.current;
     const currentHandle = handle.current;
     handle.current = null;
@@ -58,7 +64,10 @@ export function useCsvExportController<Handle>(input: Readonly<{
       await inputRef.current.discard(currentHandle).catch(() => undefined);
       if (mounted.current && currentGeneration === generation.current) setState({ kind: "share_failed" });
     } finally {
-      if (currentGeneration === generation.current) latch.current = false;
+      if (currentGeneration === generation.current) {
+        latch.current = false;
+        operation.current = null;
+      }
     }
   }, []);
 
@@ -66,14 +75,26 @@ export function useCsvExportController<Handle>(input: Readonly<{
     if (!latch.current) setState({ kind: "ready" });
   }, []);
 
+  const cancel = useCallback(() => {
+    if (operation.current === "share") return;
+    generation.current += 1;
+    latch.current = false;
+    operation.current = null;
+    const pending = handle.current;
+    handle.current = null;
+    if (pending !== null) void inputRef.current.discard(pending).catch(() => undefined);
+    if (mounted.current) setState({ kind: "ready" });
+  }, []);
+
   useEffect(() => () => {
     mounted.current = false;
     generation.current += 1;
     latch.current = false;
+    operation.current = null;
     const pending = handle.current;
     handle.current = null;
     if (pending !== null) void inputRef.current.discard(pending).catch(() => undefined);
   }, []);
 
-  return { state, create, share, retry } as const;
+  return { state, create, share, retry, cancel } as const;
 }
