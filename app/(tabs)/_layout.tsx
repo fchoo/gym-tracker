@@ -3,8 +3,8 @@ import { useWindowDimensions } from "react-native";
 
 import {
   AppTabs,
-  rootNavigationUsesTwoRows,
 } from "../../src/ui/components";
+import { AppRootShell } from "../../src/ui/shell/AppRootShell";
 import {
   rootBackBehavior,
 } from "../../src/ui/screens/RootScreens";
@@ -14,16 +14,12 @@ import {
 import { useAppTheme } from "../../src/ui/theme";
 
 export default function RootTabsLayout() {
-  const { fontScale, width } = useWindowDimensions();
   const { launchState } = useWorkoutAppRuntime();
   const { colors } = useAppTheme();
   const tabBarPosition = "bottom";
-  const compactLayout = rootNavigationUsesTwoRows(width, fontScale)
-    ? "two-row"
-    : "single-row";
-
   return (
-    <Tabs
+    <AppRootShell>
+      <Tabs
       backBehavior={rootBackBehavior}
       initialRouteName="index"
       screenOptions={{
@@ -33,18 +29,17 @@ export default function RootTabsLayout() {
       }}
       tabBar={(props) => (
         <AppTabs
-          compactLayout={compactLayout}
           disabled={launchState !== "trusted"}
           navigation={props.navigation}
-          position="bottom"
           state={props.state}
         />
       )}
     >
-      <Tabs.Screen name="index" options={{ title: "Today" }} />
+      <Tabs.Screen name="index" options={{ title: "Workout" }} />
       <Tabs.Screen name="calendar" options={{ title: "Calendar" }} />
       <Tabs.Screen name="library" options={{ title: "Library" }} />
       <Tabs.Screen name="progress" options={{ title: "Progress" }} />
-    </Tabs>
+      </Tabs>
+    </AppRootShell>
   );
 }

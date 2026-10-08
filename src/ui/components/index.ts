@@ -478,17 +478,19 @@ export const IconAction = forwardRef<
   );
 });
 
-export function ScreenHeader({
-  title,
-  eyebrow,
-  action,
-  backAction,
-}: Readonly<{
+export const ScreenHeader = forwardRef<View, Readonly<{
   title: string;
   eyebrow?: string;
   action?: React.ReactNode;
+  actions?: readonly React.ReactNode[];
   backAction?: () => void;
-}>) {
+}>>(function ScreenHeader({
+  title,
+  eyebrow,
+  action,
+  actions,
+  backAction,
+}, ref) {
   const { colors } = useAppTheme();
   const copy = [
     eyebrow === undefined
@@ -505,16 +507,24 @@ export function ScreenHeader({
           eyebrow,
         ),
     h(
-      Text,
+      View,
       {
+        accessibilityLabel: title,
         accessibilityRole: "header",
+        accessible: true,
         key: "title",
-        style: [
-          typeScale.screenTitle as TextStyle,
-          { color: colors.textPrimary },
-        ],
+        ref,
       },
-      title,
+      h(
+        Text,
+        {
+          style: [
+            typeScale.screenTitle as TextStyle,
+            { color: colors.textPrimary },
+          ],
+        },
+        title,
+      ),
     ),
   ];
 
@@ -529,11 +539,11 @@ export function ScreenHeader({
           onPress: backAction,
         }),
     h(View, { style: styles.headerCopy }, ...copy),
-    action === undefined
+    action === undefined && actions === undefined
       ? null
-      : h(View, { style: styles.headerAction }, action),
+      : h(View, { style: styles.headerAction }, ...(actions ?? [action])),
   );
-}
+});
 
 export function SectionHeader({
   title,
@@ -1044,7 +1054,7 @@ export function AppearanceSheet({
 }
 
 export const rootDestinations = [
-  { name: "index", label: "Today", icon: Dumbbell },
+  { name: "index", label: "Workout", icon: Dumbbell },
   { name: "calendar", label: "Calendar", icon: CalendarDays },
   { name: "library", label: "Library", icon: LibraryBig },
   {
@@ -1055,17 +1065,10 @@ export const rootDestinations = [
 ] as const;
 
 export function rootNavigationUsesTwoRows(
-  width: number,
-  fontScale: number,
+  _width: number,
+  _fontScale: number,
 ): boolean {
-  const effectiveFontScale = Number.isFinite(fontScale) && fontScale > 0
-    ? fontScale
-    : 1;
-  const minimumTabWidth = Math.max(
-    sizes.minimumTarget,
-    56 * effectiveFontScale + space[2],
-  );
-  return width < rootDestinations.length * minimumTabWidth;
+  return false;
 }
 
 type AppTabsProps = Readonly<{
@@ -1082,20 +1085,14 @@ type AppTabsProps = Readonly<{
     navigate(name: string): void;
   };
   disabled?: boolean;
-  compactLayout?: "single-row" | "two-row";
-  position?: "bottom" | "rail";
 }>;
 
 export function AppTabs({
   state,
   navigation,
   disabled = false,
-  compactLayout = "single-row",
-  position = "bottom",
 }: AppTabsProps) {
   const { colors } = useAppTheme();
-  const twoRowBottomLayout =
-    position === "bottom" && compactLayout === "two-row";
   const tabs = rootDestinations.map((destination) => {
     const route = state.routes.find(
       (candidate) => candidate.name === destination.name,
@@ -1132,8 +1129,6 @@ export function AppTabs({
         onPress: navigate,
         style: ({ pressed }: { pressed: boolean }) => [
           styles.appTab,
-          position === "rail" && styles.appTabRail,
-            twoRowBottomLayout && styles.appTabTwoRows,
           {
             backgroundColor: pressed ? colors.surfaceSubtle : "transparent",
             opacity: disabled ? 0.62 : 1,
@@ -1164,24 +1159,14 @@ export function AppTabs({
   return h(
     View,
     {
-      accessibilityLabel: position === "rail"
-        ? "Root navigation rail"
-        : twoRowBottomLayout
-          ? "Root navigation bottom two rows"
-          : "Root navigation bottom",
+      accessibilityLabel: "Root navigation bottom",
       accessibilityRole: "tablist",
       style: [
         styles.appTabs,
-        position === "rail"
-          ? styles.appTabsRail
-          : twoRowBottomLayout
-            ? styles.appTabsBottomTwoRows
-            : styles.appTabsBottom,
+        styles.appTabsBottom,
         { backgroundColor: colors.surface, borderColor: colors.divider },
       ],
-      testID: position === "rail"
-        ? "root-navigation-rail"
-        : "root-navigation-bottom",
+      testID: "root-navigation-bottom",
     },
     ...tabs,
   );

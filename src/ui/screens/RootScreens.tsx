@@ -183,7 +183,6 @@ export function AppLoadingShell({
           emit: () => ({ defaultPrevented: false }),
           navigate: () => undefined,
         }}
-        position="bottom"
         state={{ index: 0, routes: loadingRoutes }}
       />
     </View>
