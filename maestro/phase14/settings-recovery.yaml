@@ -54,7 +54,7 @@ tags:
     when:
       true: ${PHASE14_STAGE == 'phase14-data-recovery'}
     commands:
-      - assertVisible: "Create secure backup"
+      - assertVisible: "Manual encrypted backup"
       - assertVisible: "Restore backup"
 - runFlow:
     when:
