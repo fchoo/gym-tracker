@@ -132,13 +132,13 @@ silently select a different transport.
   4. Startup exposes truthful loading, trusted, failure/retry, notification-permission, and continue-without-alerts states without moving authority away from SQLite.
   5. Rest alerts, removed sessions, manual recovery/merge, automatic backup, CSV export, privacy, and their empty/busy/failure/retry states remain reachable through Settings after the shell changes.
 
-**Plans**: 4/12 plans executed
+**Plans**: 5/12 plans executed
 
 - [x] 14-01-PLAN.md
 - [x] 14-02-PLAN.md
 - [x] 14-03-PLAN.md
 - [x] 14-04-PLAN.md
-- [ ] 14-05-PLAN.md
+- [x] 14-05-PLAN.md
 - [ ] 14-06-PLAN.md
 - [ ] 14-07-PLAN.md
 - [ ] 14-08-PLAN.md
@@ -288,7 +288,7 @@ Plans:
 | Phase | Directory | Plans Complete | Status | Completed |
 |---|---|---:|---|---|
 | 13. One-per-Sport Plan & Running Foundation | 13-multi-plan-running-foundation | 16/16 | Complete    | 2026-10-08 |
-| 14. Prototype Visual Shell | 14-prototype-visual-shell | 4/12 | In Progress|  |
+| 14. Prototype Visual Shell | 14-prototype-visual-shell | 5/12 | In Progress|  |
 | 15. Workout Parity | 15-workout-parity | 0/13 | Not started | - |
 | 16. Calendar Parity | 16-calendar-parity | 0/7 | Not started | - |
 | 17. Library & Running Plans | 17-library-running-plans | 0/14 | Not started | - |
