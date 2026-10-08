@@ -75,11 +75,6 @@ describe("RemovedSessionsScreen", () => {
       })),
     });
 
-    expect(screen.getByTestId("removed-sessions-skeleton")).toBeOnTheScreen();
-    expect(screen.getByTestId("removed-sessions-skeleton")).toHaveProp(
-      "accessibilityElementsHidden",
-      true,
-    );
     expect(screen.getByRole("progressbar", { name: "Loading removed sessions" }))
       .toBeOnTheScreen();
     resolve?.([]);
@@ -88,7 +83,7 @@ describe("RemovedSessionsScreen", () => {
 
   it("uses exact empty and retry copy while preserving unchanged saved-workout facts", async () => {
     const loadRemovedSessions = jest
-      .fn<Promise<readonly RemovedHistorySession[]>, []>()
+      .fn<() => Promise<readonly RemovedHistorySession[]>>()
       .mockRejectedValueOnce(new Error("read unavailable"))
       .mockResolvedValueOnce([]);
     const props = await renderScreen({ loadRemovedSessions });

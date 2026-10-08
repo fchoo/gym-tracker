@@ -89,19 +89,29 @@ export function RemovedSessionsScreen({
   const [selected, setSelected] = useState<RemovedHistorySession | null>(null);
   const [restoreFailed, setRestoreFailed] = useState(false);
   const [restoring, setRestoring] = useState(false);
-  const restoreRef = useRef<View>(null);
+  const headingRef = useRef<View>(null);
+  const loadingRef = useRef(false);
+  const restoreActionRefs = useRef(new Map<string, View>());
+  const selectedRestoreRef = useRef<View>(null);
   const adaptiveWidth = width === undefined ? {} : { width };
 
   const load = useCallback(async (): Promise<boolean> => {
+    if (loadingRef.current) return false;
+    loadingRef.current = true;
     setState("loading");
     setRestoreFailed(false);
     try {
-      setSessions(await loadRemovedSessions());
+      const loadedSessions = await loadRemovedSessions();
+      setSessions([...loadedSessions].sort((left, right) =>
+        right.removedAtMs - left.removedAtMs || left.id.localeCompare(right.id),
+      ));
       setState("ready");
       return true;
     } catch {
       setState("error");
       return false;
+    } finally {
+      loadingRef.current = false;
     }
   }, [loadRemovedSessions]);
 
@@ -146,11 +156,23 @@ export function RemovedSessionsScreen({
   let content: React.ReactNode;
   if (state === "loading") {
     content = (
-      <View style={styles.skeleton} testID="removed-sessions-skeleton">
-        <SkeletonBlock height={34} width="58%" />
-        <SkeletonBlock height={112} />
-        <SkeletonBlock height={112} />
-      </View>
+      <>
+        <View
+          accessibilityElementsHidden
+          importantForAccessibility="no-hide-descendants"
+          style={styles.skeleton}
+          testID="removed-sessions-skeleton"
+        >
+          <SkeletonBlock height={34} width="58%" />
+          <SkeletonBlock height={112} />
+          <SkeletonBlock height={112} />
+        </View>
+        <View
+          accessible
+          accessibilityLabel="Loading removed sessions"
+          accessibilityRole="progressbar"
+        />
+      </>
     );
   } else if (state === "error") {
     content = (
@@ -199,10 +221,14 @@ export function RemovedSessionsScreen({
                 <SecondaryAction
                   label={`Restore ${label}`}
                   onPress={() => {
+                    selectedRestoreRef.current = restoreActionRefs.current.get(session.id) ?? null;
                     setRestoreFailed(false);
                     setSelected(session);
                   }}
-                  ref={restoreRef}
+                  ref={(node) => {
+                    if (node === null) restoreActionRefs.current.delete(session.id);
+                    else restoreActionRefs.current.set(session.id, node);
+                  }}
                 />
               </View>
             </ContentCard>
@@ -218,7 +244,7 @@ export function RemovedSessionsScreen({
         {...adaptiveWidth}
         primary={
           <>
-            <ScreenHeader backAction={onBack} title="Removed sessions" />
+            <ScreenHeader backAction={onBack} ref={headingRef} title="Removed sessions" />
             {content}
           </>
         }
@@ -236,7 +262,9 @@ export function RemovedSessionsScreen({
         heading="Restore this workout?"
         onCancel={dismissConfirmation}
         onConfirm={confirmRestore}
-        restoreFocusRef={restoreRef}
+        restoreFocusRef={state === "ready" && sessions.some((session) => session.id === selected?.id)
+          ? selectedRestoreRef
+          : headingRef}
         visible={selected !== null}
       />
     </>
