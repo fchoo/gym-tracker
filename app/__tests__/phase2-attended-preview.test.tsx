@@ -346,7 +346,7 @@ describe("Phase2AttendedPreviewRoute", () => {
           ? "root-navigation-rail"
           : "root-navigation-bottom",
       )).not.toBeOnTheScreen();
-      expect(screen.getByRole("tab", { name: "Today" }))
+      expect(screen.getByRole("tab", { name: "Workout" }))
         .toHaveProp("accessibilityState", expect.objectContaining({
           disabled: true,
         }));
