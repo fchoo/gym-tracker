@@ -134,7 +134,9 @@ mkdir -p "$artifact_directory"
 build_started_at=$(date -u '+%Y-%m-%dT%H:%M:%SZ')
 
 rm -rf "$project_root/android" "$project_root/ios"
-GYM_TRACKER_BUILD_PROFILE=development-test CI=1 \
+GYM_TRACKER_BUILD_PROFILE=development-test \
+EXPO_PUBLIC_NATIVE_CONTRACT_SUITE="$suite" \
+CI=1 \
   npx expo prebuild --clean --platform android --no-install
 node scripts/assert-generated-android.mjs "$project_root/android"
 
