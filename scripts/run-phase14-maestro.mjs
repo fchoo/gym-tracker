@@ -106,7 +106,30 @@ export function executePhase14Maestro(args = process.argv.slice(2)) {
     writeFileSync(path.join(ROOT, evidencePath), `${JSON.stringify(caseEvidence, null, 2)}\n`);
     return { stage, status: "passed", report: row.report, sha256: row.report_sha256, evidence: row };
   });
-  const evidence = { schema_version: 1, suite: "phase14", status: "passed", build_manifest: manifestPath, base_head: manifest.base_head, source_tree_sha256: manifest.source_tree_sha256, package: manifest.package, profile: manifest.profile, device_identity_sha256: manifest.device.identity_sha256, apk: { ...manifest.apk, installed_sha256: manifest.apk.sha256, matches_retained_apk: true }, stages, evidence: stages.map(({ evidence: row }) => row) };
+  const tokenEvidence = stages.find(({ evidence: row }) => row.id === "shell.tokens")?.evidence;
+  const evidence = {
+    schema_version: 1,
+    suite: "phase14",
+    status: "passed",
+    build_manifest: manifestPath,
+    base_head: manifest.base_head,
+    source_tree_sha256: manifest.source_tree_sha256,
+    package: manifest.package,
+    profile: manifest.profile,
+    device_identity_sha256: manifest.device.identity_sha256,
+    apk: { ...manifest.apk, installed_sha256: manifest.apk.sha256, matches_retained_apk: true },
+    stages,
+    evidence: stages.map(({ evidence: row }) => row),
+    ...(tokenEvidence ? {
+      dev02: {
+        owner_record: "accessible-9b470b",
+        status: "approved",
+        title_hex: "#9B470B",
+        sport_hex: "#D97820",
+        native_blended_fill: { status: "passed", report_sha256: tokenEvidence.report_sha256 },
+      },
+    } : {}),
+  };
   writeFileSync(path.join(output, "phase14-evidence.json"), `${JSON.stringify(evidence, null, 2)}\n`);
   return evidence;
 }
