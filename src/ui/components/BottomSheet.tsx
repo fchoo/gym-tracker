@@ -15,7 +15,7 @@ import {
   type NativeSyntheticEvent,
   type ViewStyle,
 } from "react-native";
-import { useSafeAreaInsets } from "react-native-safe-area-context";
+import { SafeAreaInsetsContext } from "react-native-safe-area-context";
 
 import { IconAction } from "./index";
 import { radius, space, typeScale, useAppTheme } from "../theme";
@@ -25,17 +25,21 @@ type FocusTarget = Readonly<{ focus?: () => void }>;
 export type BottomSheetProps = Readonly<{
   visible: boolean;
   heading: string;
-  children: React.ReactNode;
+  children?: React.ReactNode;
   onCancel: () => void;
-  cancelLabel?: string;
+  cancelLabel?: string | undefined;
   consequenceMode?: boolean;
-  initialFocusRef?: React.RefObject<FocusTarget | null>;
-  restoreFocusRef?: React.RefObject<FocusTarget | null>;
-  testID?: string;
-  contentStyle?: ViewStyle;
+  initialFocusRef?: React.RefObject<FocusTarget | null> | undefined;
+  restoreFocusRef?: React.RefObject<FocusTarget | null> | undefined;
+  testID?: string | undefined;
+  scrollTestID?: string | undefined;
+  contentStyle?: ViewStyle | undefined;
 }>;
 
 const BottomSheetDepthContext = React.createContext(0);
+const BottomSheetCancellationContext = React.createContext<(() => void) | undefined>(
+  undefined,
+);
 const TraversalBoundary = View as unknown as React.ComponentType<
   React.ComponentProps<typeof View> & Readonly<{
     onKeyDown?: (event: NativeSyntheticEvent<{ key?: string; preventDefault?: () => void }>) => void;
@@ -44,6 +48,11 @@ const TraversalBoundary = View as unknown as React.ComponentType<
 
 function closeLabelFor(heading: string, cancelLabel?: string): string {
   return cancelLabel ?? `Close ${heading.toLocaleLowerCase()}`;
+}
+
+/** Lets sheet content invoke the frame-owned no-write cancellation path. */
+export function useBottomSheetCancel(): (() => void) | undefined {
+  return React.useContext(BottomSheetCancellationContext);
 }
 
 /**
@@ -60,10 +69,16 @@ export function BottomSheet({
   initialFocusRef,
   restoreFocusRef,
   testID,
+  scrollTestID,
   contentStyle,
 }: BottomSheetProps) {
   const { colors, reduceMotion } = useAppTheme();
-  const insets = useSafeAreaInsets();
+  const insets = React.useContext(SafeAreaInsetsContext) ?? {
+    bottom: 0,
+    left: 0,
+    right: 0,
+    top: 0,
+  };
   const depth = React.useContext(BottomSheetDepthContext);
   const headingRef = useRef<View>(null);
   const translation = useRef(new Animated.Value(reduceMotion ? 0 : 8)).current;
@@ -126,7 +141,8 @@ export function BottomSheet({
 
   return (
     <BottomSheetDepthContext.Provider value={depth + 1}>
-      <Modal
+      <BottomSheetCancellationContext.Provider value={cancel}>
+        <Modal
         animationType="none"
         onRequestClose={cancel}
         testID="bottom-sheet-modal"
@@ -186,7 +202,7 @@ export function BottomSheet({
                   contentContainerStyle={[styles.content, contentStyle]}
                   keyboardShouldPersistTaps="handled"
                   style={styles.scroll}
-                  testID="bottom-sheet-scroll"
+                  testID={scrollTestID ?? "bottom-sheet-scroll"}
                 >
                   {children}
                 </ScrollView>
@@ -194,7 +210,8 @@ export function BottomSheet({
             </Animated.View>
           </KeyboardAvoidingView>
         </View>
-      </Modal>
+        </Modal>
+      </BottomSheetCancellationContext.Provider>
     </BottomSheetDepthContext.Provider>
   );
 }

@@ -23,14 +23,10 @@ import {
 import React, {
   Children,
   forwardRef,
-  useEffect,
-  useRef,
   useState,
 } from "react";
 import {
-  Modal,
   Pressable,
-  ScrollView,
   StyleSheet,
   Text,
   View,
@@ -48,6 +44,8 @@ import {
   typeScale,
   useAppTheme,
 } from "../theme";
+import { BottomSheet } from "./BottomSheet";
+import { ConfirmationDialog } from "./ConfirmationDialog";
 
 export {
   ImpactPreview,
@@ -851,91 +849,22 @@ export function ConfirmationSheet({
   onAlternate?: () => void;
   restoreFocusRef?: React.RefObject<View | null>;
 }>) {
-  const { colors, reduceMotion } = useAppTheme();
-  const cancelRef = useRef<View>(null);
-
-  useEffect(() => {
-    if (visible) {
-      cancelRef.current?.focus();
-    }
-  }, [visible]);
-
-  function cancel() {
-    onCancel();
-    restoreFocusRef?.current?.focus();
-  }
-
-  return h(
-    Modal,
-    {
-      animationType: reduceMotion ? "none" : "fade",
-      onRequestClose: cancel,
-      transparent: true,
-      visible,
-    },
-    h(
-      View,
-      { accessibilityViewIsModal: true, style: styles.modalBackdrop },
-        h(
-          ScrollView,
-          {
-            contentContainerStyle: styles.sheetContent,
-            keyboardShouldPersistTaps: "handled",
-            style: [
-              styles.sheet,
-              { backgroundColor: colors.surface },
-            ],
-            testID: "confirmation-sheet-content",
-          },
-        h(
-          View,
-          {
-            accessibilityRole: "header",
-            accessible: true,
-          },
-          h(
-            Text,
-            {
-              style: [
-                typeScale.screenTitle as TextStyle,
-                { color: colors.textPrimary },
-              ],
-            },
-            heading,
-          ),
-        ),
-        h(
-          Text,
-          {
-            style: [
-              typeScale.body as TextStyle,
-              { color: colors.textSecondary },
-            ],
-          },
-          body,
-        ),
-        h(SecondaryAction, {
-          label: cancelLabel,
-          onPress: cancel,
-          ref: cancelRef,
-        }),
-        alternateLabel === undefined || onAlternate === undefined
-          ? null
-          : h(SecondaryAction, {
-              destructive,
-              label: alternateLabel,
-              onPress: onAlternate,
-            }),
-        h(SecondaryAction, {
-          busy: confirmBusy,
-          destructive,
-          label: confirmLabel,
-          onPress: onConfirm,
-          ...(confirmTestID === undefined ? {} : { testID: confirmTestID }),
-        }),
-      ),
-    ),
-  );
+  return h(ConfirmationDialog, {
+    alternateLabel,
+    body,
+    cancelLabel,
+    confirmBusy,
+    confirmLabel,
+    confirmTestID,
+    destructive,
+    heading,
+    onAlternate,
+    onCancel,
+    onConfirm,
+    restoreFocusRef,
+    scrollTestID: "confirmation-sheet-content",
+    visible,
+  });
 }
 
 const appearanceOptions: readonly AppearancePreference[] = [
@@ -954,13 +883,6 @@ export function AppearanceSheet({
   restoreFocusRef?: React.RefObject<View | null>;
 }>) {
   const { appearance, colors, setAppearance } = useAppTheme();
-  const headingRef = useRef<View>(null);
-
-  useEffect(() => {
-    if (visible) {
-      headingRef.current?.focus();
-    }
-  }, [visible]);
 
   function close() {
     onClose();
@@ -968,88 +890,54 @@ export function AppearanceSheet({
   }
 
   return h(
-    Modal,
+    BottomSheet,
     {
-      animationType: "fade",
-      onRequestClose: close,
-      transparent: true,
+      heading: "Appearance",
+      onCancel: close,
+      restoreFocusRef,
+      scrollTestID: "appearance-sheet-content",
       visible,
     },
     h(
       View,
-      { accessibilityViewIsModal: true, style: styles.modalBackdrop },
-      h(
-          ScrollView,
-          {
-            contentContainerStyle: styles.sheetContent,
-            keyboardShouldPersistTaps: "handled",
-            style: [
-              styles.sheet,
-              { backgroundColor: colors.surface },
-            ],
-            testID: "appearance-sheet-content",
-          },
+      { accessibilityRole: "radiogroup", style: styles.radioGroup },
+      ...appearanceOptions.map((option) =>
         h(
-          View,
+          FocusablePressable,
           {
-            accessibilityRole: "header",
-            accessible: true,
+            accessibilityLabel: option,
+            accessibilityRole: "radio",
+            accessibilityState: { selected: appearance === option },
             focusable: true,
-            ref: headingRef,
+            key: option,
+            ...keyboardActivationProps(false, () => setAppearance(option)),
+            onPress: () => setAppearance(option),
+            style: [
+              styles.radioOption,
+              {
+                borderColor:
+                  appearance === option ? colors.action : colors.divider,
+              },
+            ],
           },
+          iconElement(
+            appearance === option ? Check : Circle,
+            appearance === option ? colors.action : colors.textSecondary,
+          ),
           h(
             Text,
             {
               style: [
-                typeScale.screenTitle as TextStyle,
+                typeScale.body as TextStyle,
                 { color: colors.textPrimary },
               ],
             },
-            "Appearance",
+            option,
           ),
         ),
-        h(
-          View,
-          { accessibilityRole: "radiogroup", style: styles.radioGroup },
-          ...appearanceOptions.map((option) =>
-            h(
-              FocusablePressable,
-              {
-                accessibilityLabel: option,
-                accessibilityRole: "radio",
-                accessibilityState: { selected: appearance === option },
-                focusable: true,
-                key: option,
-                ...keyboardActivationProps(false, () => setAppearance(option)),
-                onPress: () => setAppearance(option),
-                style: [
-                  styles.radioOption,
-                  {
-                    borderColor:
-                      appearance === option ? colors.action : colors.divider,
-                  },
-                ],
-              },
-              iconElement(
-                appearance === option ? Check : Circle,
-                appearance === option ? colors.action : colors.textSecondary,
-              ),
-              h(
-                Text,
-                {
-                  style: [
-                    typeScale.body as TextStyle,
-                    { color: colors.textPrimary },
-                  ],
-                },
-                option,
-              ),
-            ),
-          ),
-        ),
-        h(SecondaryAction, { label: "Close appearance", onPress: close }),
       ),
     ),
+    h(SecondaryAction, { label: "Close appearance", onPress: close }),
   );
 }
 
@@ -1399,20 +1287,6 @@ const styles = StyleSheet.create({
   },
   skeleton: {
     borderRadius: radius.standard,
-  },
-  modalBackdrop: {
-    backgroundColor: "rgba(0, 0, 0, 0.48)",
-    flex: 1,
-    justifyContent: "flex-end",
-  },
-  sheet: {
-    borderTopLeftRadius: radius.emphasized,
-    borderTopRightRadius: radius.emphasized,
-    maxHeight: "90%",
-  },
-  sheetContent: {
-    gap: space[4],
-    padding: space[6],
   },
   radioGroup: {
     gap: space[2],
