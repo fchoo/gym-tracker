@@ -818,9 +818,8 @@ describe("Plan 01-08 ActiveWorkoutScreen", () => {
     }));
     await fireEvent.press(screen.getByRole("button", { name: "Replace exercise" }));
     expect(screen.getByRole("header", { name: "Choose exercise" })).toBeOnTheScreen();
-    expect(screen.getByTestId(
-      "replace-exercise-picker-keyboard-layout",
-    )).toBeOnTheScreen();
+    expect(screen.getByTestId("bottom-sheet-frame")).toBeOnTheScreen();
+    expect(screen.getByTestId("replace-exercise-picker-content")).toBeOnTheScreen();
     expect(screen.getByLabelText("Search exercises")).toBeOnTheScreen();
     expect(screen.getByTestId("replace-exercise-option-barbell-row"))
       .toBeOnTheScreen();
@@ -1125,8 +1124,8 @@ describe("Plan 01-08 ActiveWorkoutScreen", () => {
     await fireEvent.press(
       screen.getByRole("button", { name: "More workout actions" }),
     );
-    expect(screen.getByTestId("workout-actions-sheet-content"))
-      .toHaveStyle({ backgroundColor: themes.light.surface });
+    expect(screen.getByTestId("bottom-sheet-frame"))
+      .toHaveProp("accessibilityViewIsModal", true);
   });
 
   it.each(["Light", "Dark"] as const)(
@@ -2285,7 +2284,7 @@ describe("Plan 01-08 ActiveWorkoutScreen", () => {
     );
 
     const sheet = screen.getByTestId("workout-actions-sheet-content");
-    expect(sheet).toHaveStyle({ maxHeight: "90%" });
+    expect(sheet).toHaveStyle({ maxHeight: "82%" });
     expect(sheet.props.style).not.toEqual(expect.arrayContaining([
       expect.objectContaining({ height: expect.anything() }),
     ]));

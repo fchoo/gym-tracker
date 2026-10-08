@@ -18,8 +18,6 @@ import {
 
 import {
   Keyboard,
-  KeyboardAvoidingView,
-  Modal,
   ScrollView,
   StyleSheet,
   Text,
@@ -1737,6 +1735,14 @@ function PopulatedWorkoutOverview({
     setReplacementPickerForId(exerciseId);
   };
 
+  const closeReplacementPicker = () => {
+    const exerciseId = replacementPickerForId;
+    setReplacementPickerForId(null);
+    if (exerciseId !== null) {
+      exerciseActionRefs.current.get(exerciseId)?.focus();
+    }
+  };
+
   const submitExerciseEdit = async (candidate: ExerciseEditCandidate) => {
     if (exerciseEditBusy) {
       return;
@@ -2771,24 +2777,14 @@ function PopulatedWorkoutOverview({
         }
         testID="active-workout"
       />
-      <Modal
-        animationType="fade"
-        onRequestClose={closeMoreActions}
-        transparent
+      <BottomSheet
+        contentStyle={styles.moreSheetContent}
+        heading="More workout actions"
+        onCancel={() => setMoreVisible(false)}
+        restoreFocusRef={moreActionRef}
+        scrollTestID="workout-actions-sheet-content"
         visible={moreVisible}
       >
-        <View style={styles.modalBackdrop}>
-          <ScrollView
-            accessibilityViewIsModal
-            contentContainerStyle={styles.moreSheetContent}
-            keyboardShouldPersistTaps="handled"
-            style={[
-              styles.moreSheet,
-              { backgroundColor: colors.surface },
-            ]}
-            testID="workout-actions-sheet-content"
-          >
-            <SectionHeader title="More workout actions" />
             {view.activeSetId === null ? (
               <PrimaryAction
                 busy={outcomeBusy}
@@ -2825,24 +2821,14 @@ function PopulatedWorkoutOverview({
                 setOutcomeConfirmation("discard");
               }}
             />
-          </ScrollView>
-        </View>
-      </Modal>
-      <Modal
-        animationType={reduceMotion ? "none" : "fade"}
-        onRequestClose={closeExerciseActions}
-        transparent
+      </BottomSheet>
+      <BottomSheet
+        contentStyle={styles.moreSheetContent}
+        heading="Exercise actions"
+        onCancel={closeExerciseActions}
+        scrollTestID="exercise-actions-sheet-content"
         visible={exerciseActionsVisibleForId !== null}
       >
-        <View style={styles.modalBackdrop}>
-          <ScrollView
-            accessibilityViewIsModal
-            contentContainerStyle={styles.moreSheetContent}
-            keyboardShouldPersistTaps="handled"
-            style={[styles.moreSheet, { backgroundColor: colors.surface }]}
-            testID="exercise-actions-sheet-content"
-          >
-            <SectionHeader title="Exercise actions" />
             {exerciseActionsVisibleForId === null ? null : (
               <SecondaryAction
                 label="Configure timing"
@@ -2885,9 +2871,7 @@ function PopulatedWorkoutOverview({
                 }}
               />
             )}
-          </ScrollView>
-        </View>
-      </Modal>
+      </BottomSheet>
       <BottomSheet
         contentStyle={styles.moreSheetContent}
         heading="Choose exercise"
@@ -2955,30 +2939,13 @@ function PopulatedWorkoutOverview({
           />
         ) : null}
       </BottomSheet>
-      <Modal
-        animationType={reduceMotion ? "none" : "fade"}
-        onRequestClose={() => {
-          setReplacementPickerForId(null);
-          if (replacementPickerForId !== null) {
-            exerciseActionRefs.current.get(replacementPickerForId)?.focus();
-          }
-        }}
-        transparent
+      <BottomSheet
+        contentStyle={styles.moreSheetContent}
+        heading="Choose exercise"
+        onCancel={closeReplacementPicker}
+        scrollTestID="replace-exercise-picker-content"
         visible={replacementPickerForId !== null}
       >
-        <KeyboardAvoidingView
-          behavior="padding"
-          style={styles.modalBackdrop}
-          testID="replace-exercise-picker-keyboard-layout"
-        >
-          <ScrollView
-            accessibilityViewIsModal
-            contentContainerStyle={styles.moreSheetContent}
-            keyboardShouldPersistTaps="handled"
-            style={[styles.moreSheet, { backgroundColor: colors.surface }]}
-            testID="replace-exercise-picker-content"
-          >
-            <SectionHeader title="Choose exercise" />
             {replacementPickerForId === null || replacementExerciseId === null ? null : (
               <PrimaryAction
                 busy={exerciseEditBusy}
@@ -3042,9 +3009,7 @@ function PopulatedWorkoutOverview({
                 ) : null}
               </FocusablePressable>
             ))}
-          </ScrollView>
-        </KeyboardAvoidingView>
-      </Modal>
+      </BottomSheet>
       <ConfirmationSheet
         body={confirmationCopy.body}
         cancelLabel={confirmationCopy.cancelLabel}
@@ -3241,16 +3206,6 @@ const styles = StyleSheet.create({
   },
   headerActions: {
     gap: space[1],
-  },
-  modalBackdrop: {
-    backgroundColor: "rgba(0, 0, 0, 0.48)",
-    flex: 1,
-    justifyContent: "flex-end",
-  },
-  moreSheet: {
-    borderTopLeftRadius: radius.emphasized,
-    borderTopRightRadius: radius.emphasized,
-    maxHeight: "90%",
   },
   moreSheetContent: {
     gap: space[4],
