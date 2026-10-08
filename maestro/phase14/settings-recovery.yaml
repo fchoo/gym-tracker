@@ -42,6 +42,10 @@ tags:
     commands:
       - pressKey: BACK
       - assertVisible: "Workout"
+      - tapOn: "Open App Settings"
+      - extendedWaitUntil:
+          visible: "App Settings"
+          timeout: 30000
       - assertVisible: "Removed sessions"
 - runFlow:
     when:
