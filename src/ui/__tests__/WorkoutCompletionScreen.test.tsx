@@ -179,6 +179,25 @@ async function renderCompletion(
 }
 
 describe("Plan 01-10 completion and detail", () => {
+  it("uses the shared safe-action frame without duplicating the source command", async () => {
+    const apply = jest.fn();
+    const keep = jest.fn();
+    await renderCompletion({
+      planWriteBack: { state: "awaiting_choice", preview: writeBackPreview },
+      onApplyPlanWriteBack: apply,
+      onKeepPlanAsIs: keep,
+    });
+
+    expect(screen.getByTestId("bottom-sheet-frame")).toBeOnTheScreen();
+    expect(screen.getByRole("button", { name: "Keep plan as-is" }))
+      .toBeOnTheScreen();
+    expect(screen.getByRole("button", { name: "Save changes to plan" }))
+      .toBeOnTheScreen();
+    await fireEvent(screen.getByTestId("bottom-sheet-modal"), "requestClose");
+    expect(keep).toHaveBeenCalledTimes(1);
+    expect(apply).not.toHaveBeenCalled();
+  });
+
   it("renders the exact default-No plan write-back sheet and keeps the plan inert until Save is chosen", async () => {
     const keep = jest.fn();
     const apply = jest.fn();
