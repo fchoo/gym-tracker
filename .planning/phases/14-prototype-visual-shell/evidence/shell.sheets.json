@@ -3,18 +3,18 @@
   "suite": "phase14",
   "status": "passed",
   "build_manifest": "artifacts/native/phase14/build.json",
-  "base_head": "103053b8f5e6c03aa088a3f0a8f175e3b9d001c8",
-  "source_tree_sha256": "dce7d0c87227836ea2af7710a3bbd9f2c980e1c95156a2d51261c5ac1ea70042",
+  "base_head": "01b75c6914c7163b88f9273f8d1bdc71664c409b",
+  "source_tree_sha256": "54514a268dba236df31ad54ef5c8ffd7cebe3e73cf42a19892e012262cf2fdc2",
   "package": "com.fchoo.gymtracker.devtest",
   "profile": "development-test",
   "device_identity_sha256": "96dcf303d772667590457dc76c2cd5ee828515c31e2af1b9fee5b3f440b204f9",
   "apk": {
     "path": "artifacts/native/phase14/gym-tracker-phase14-devtest.apk",
-    "sha256": "a8acf57648e1194077732f607f1f7162d79a8ac92ce6c87e0dcf0bc6f0d785fe",
-    "size_bytes": 131758356,
+    "sha256": "5ecbab8f506978122c485143f78153f42ec2e9075538d2d2047ef01928561982",
+    "size_bytes": 131760068,
     "page_alignment_kib": 16,
     "page_alignment_verified": true,
-    "installed_sha256": "a8acf57648e1194077732f607f1f7162d79a8ac92ce6c87e0dcf0bc6f0d785fe",
+    "installed_sha256": "5ecbab8f506978122c485143f78153f42ec2e9075538d2d2047ef01928561982",
     "matches_retained_apk": true
   },
   "matrix": {
@@ -470,7 +470,7 @@
     "stage": "phase14-sheets",
     "status": "passed",
     "report": "artifacts/native/phase14/maestro/shell-sheets-tablet-600-landscape-scale-2.xml",
-    "report_sha256": "bff652c33a05be5bf61c898ac73287134ddfff146dd7810e1fdb4dc44cc9bcbb",
+    "report_sha256": "8ff945858aa49373c33095c99d65f7964b8d8b5933b594b68d4f2fd3b519ef60",
     "matrix_cells": [
       {
         "id": "shell-sheets-tablet-600-landscape-scale-2",
@@ -492,13 +492,13 @@
           "dpad"
         ],
         "report": "artifacts/native/phase14/maestro/shell-sheets-tablet-600-landscape-scale-2.xml",
-        "report_sha256": "bff652c33a05be5bf61c898ac73287134ddfff146dd7810e1fdb4dc44cc9bcbb",
+        "report_sha256": "8ff945858aa49373c33095c99d65f7964b8d8b5933b594b68d4f2fd3b519ef60",
         "screenshot": "artifacts/native/phase14/screenshots/shell-sheets-tablet-600-landscape-scale-2.png",
-        "screenshot_sha256": "9de785686ff98cf3303fc26a1579c479ce56efd3f65207cfc37c853f6715fd34",
+        "screenshot_sha256": "292f4ed39890e00e5f19a43fc529ed6712ef0db19b859cb10eb256c40569e57f",
         "semantic_tree": "artifacts/native/phase14/semantic/shell-sheets-tablet-600-landscape-scale-2.xml",
-        "semantic_tree_sha256": "330b4e1558fc8dec35ef58e2159a19e3bb7f691e58c9deb6f14ae452a46f17b5",
+        "semantic_tree_sha256": "b1951889e5e1f4bb3e5538c32a851d8cebb367bbf557c16f9176f0bdb87495c3",
         "focus_key_trace": "artifacts/native/phase14/traces/shell-sheets-tablet-600-landscape-scale-2.json",
-        "focus_key_trace_sha256": "18e4a5a67334bdc29be5f7aee155bc36459084654b78ccb37720dfc348108c09",
+        "focus_key_trace_sha256": "d834e66f7fad8c726f48d3e7c1178467729d1a896d3aa6e0b47786e136d28e9c",
         "target_window_bounds": {
           "requested_viewport": {
             "width": 600,
@@ -512,8 +512,8 @@
           "night_mode": "Night mode: no"
         },
         "difference_overlay": "artifacts/native/phase14/overlays/shell-sheets-tablet-600-landscape-scale-2.json",
-        "difference_overlay_sha256": "339e451bb899c3acd88a6ea29cf37cd04befec05a615149a04d4fafc67525d33",
-        "source_state_sha256": "dce7d0c87227836ea2af7710a3bbd9f2c980e1c95156a2d51261c5ac1ea70042",
+        "difference_overlay_sha256": "ccf3a974e8fab9e1be6494fd8d4ba00693174c7f0e0037a60ba16395f824fb50",
+        "source_state_sha256": "54514a268dba236df31ad54ef5c8ffd7cebe3e73cf42a19892e012262cf2fdc2",
         "summary": {
           "tests": 1,
           "failures": 0,
@@ -529,12 +529,12 @@
     "requirement": "SHL-05",
     "path": ".planning/phases/14-prototype-visual-shell/evidence/shell.sheets.json",
     "report": "artifacts/native/phase14/maestro/shell-sheets-tablet-600-landscape-scale-2.xml",
-    "report_sha256": "bff652c33a05be5bf61c898ac73287134ddfff146dd7810e1fdb4dc44cc9bcbb",
+    "report_sha256": "8ff945858aa49373c33095c99d65f7964b8d8b5933b594b68d4f2fd3b519ef60",
     "screenshot": "artifacts/native/phase14/screenshots/shell-sheets-tablet-600-landscape-scale-2.png",
-    "screenshot_sha256": "9de785686ff98cf3303fc26a1579c479ce56efd3f65207cfc37c853f6715fd34",
+    "screenshot_sha256": "292f4ed39890e00e5f19a43fc529ed6712ef0db19b859cb10eb256c40569e57f",
     "component_verdict": "passed",
     "native_verdict": "passed",
-    "source_state_sha256": "dce7d0c87227836ea2af7710a3bbd9f2c980e1c95156a2d51261c5ac1ea70042",
+    "source_state_sha256": "54514a268dba236df31ad54ef5c8ffd7cebe3e73cf42a19892e012262cf2fdc2",
     "matrix_cells": [
       {
         "id": "shell-sheets-tablet-600-landscape-scale-2",
@@ -556,13 +556,13 @@
           "dpad"
         ],
         "report": "artifacts/native/phase14/maestro/shell-sheets-tablet-600-landscape-scale-2.xml",
-        "report_sha256": "bff652c33a05be5bf61c898ac73287134ddfff146dd7810e1fdb4dc44cc9bcbb",
+        "report_sha256": "8ff945858aa49373c33095c99d65f7964b8d8b5933b594b68d4f2fd3b519ef60",
         "screenshot": "artifacts/native/phase14/screenshots/shell-sheets-tablet-600-landscape-scale-2.png",
-        "screenshot_sha256": "9de785686ff98cf3303fc26a1579c479ce56efd3f65207cfc37c853f6715fd34",
+        "screenshot_sha256": "292f4ed39890e00e5f19a43fc529ed6712ef0db19b859cb10eb256c40569e57f",
         "semantic_tree": "artifacts/native/phase14/semantic/shell-sheets-tablet-600-landscape-scale-2.xml",
-        "semantic_tree_sha256": "330b4e1558fc8dec35ef58e2159a19e3bb7f691e58c9deb6f14ae452a46f17b5",
+        "semantic_tree_sha256": "b1951889e5e1f4bb3e5538c32a851d8cebb367bbf557c16f9176f0bdb87495c3",
         "focus_key_trace": "artifacts/native/phase14/traces/shell-sheets-tablet-600-landscape-scale-2.json",
-        "focus_key_trace_sha256": "18e4a5a67334bdc29be5f7aee155bc36459084654b78ccb37720dfc348108c09",
+        "focus_key_trace_sha256": "d834e66f7fad8c726f48d3e7c1178467729d1a896d3aa6e0b47786e136d28e9c",
         "target_window_bounds": {
           "requested_viewport": {
             "width": 600,
@@ -576,8 +576,8 @@
           "night_mode": "Night mode: no"
         },
         "difference_overlay": "artifacts/native/phase14/overlays/shell-sheets-tablet-600-landscape-scale-2.json",
-        "difference_overlay_sha256": "339e451bb899c3acd88a6ea29cf37cd04befec05a615149a04d4fafc67525d33",
-        "source_state_sha256": "dce7d0c87227836ea2af7710a3bbd9f2c980e1c95156a2d51261c5ac1ea70042",
+        "difference_overlay_sha256": "ccf3a974e8fab9e1be6494fd8d4ba00693174c7f0e0037a60ba16395f824fb50",
+        "source_state_sha256": "54514a268dba236df31ad54ef5c8ffd7cebe3e73cf42a19892e012262cf2fdc2",
         "summary": {
           "tests": 1,
           "failures": 0,

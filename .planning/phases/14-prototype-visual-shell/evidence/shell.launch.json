@@ -3,18 +3,18 @@
   "suite": "phase14",
   "status": "passed",
   "build_manifest": "artifacts/native/phase14/build.json",
-  "base_head": "103053b8f5e6c03aa088a3f0a8f175e3b9d001c8",
-  "source_tree_sha256": "dce7d0c87227836ea2af7710a3bbd9f2c980e1c95156a2d51261c5ac1ea70042",
+  "base_head": "01b75c6914c7163b88f9273f8d1bdc71664c409b",
+  "source_tree_sha256": "54514a268dba236df31ad54ef5c8ffd7cebe3e73cf42a19892e012262cf2fdc2",
   "package": "com.fchoo.gymtracker.devtest",
   "profile": "development-test",
   "device_identity_sha256": "96dcf303d772667590457dc76c2cd5ee828515c31e2af1b9fee5b3f440b204f9",
   "apk": {
     "path": "artifacts/native/phase14/gym-tracker-phase14-devtest.apk",
-    "sha256": "a8acf57648e1194077732f607f1f7162d79a8ac92ce6c87e0dcf0bc6f0d785fe",
-    "size_bytes": 131758356,
+    "sha256": "5ecbab8f506978122c485143f78153f42ec2e9075538d2d2047ef01928561982",
+    "size_bytes": 131760068,
     "page_alignment_kib": 16,
     "page_alignment_verified": true,
-    "installed_sha256": "a8acf57648e1194077732f607f1f7162d79a8ac92ce6c87e0dcf0bc6f0d785fe",
+    "installed_sha256": "5ecbab8f506978122c485143f78153f42ec2e9075538d2d2047ef01928561982",
     "matches_retained_apk": true
   },
   "matrix": {
@@ -470,7 +470,7 @@
     "stage": "phase14-launch",
     "status": "passed",
     "report": "artifacts/native/phase14/maestro/shell-launch-phone-360-portrait-scale-2.xml",
-    "report_sha256": "a79becbd87f670d957a83c6f2ff89f979e6f67a73a305496418e14d73f13e3ff",
+    "report_sha256": "500bacc7b968f137b3e36ee7d0353dbff42d83c2e49140c940dd9bb95c0212f3",
     "matrix_cells": [
       {
         "id": "shell-launch-phone-360-portrait-scale-2",
@@ -489,13 +489,13 @@
           "back"
         ],
         "report": "artifacts/native/phase14/maestro/shell-launch-phone-360-portrait-scale-2.xml",
-        "report_sha256": "a79becbd87f670d957a83c6f2ff89f979e6f67a73a305496418e14d73f13e3ff",
+        "report_sha256": "500bacc7b968f137b3e36ee7d0353dbff42d83c2e49140c940dd9bb95c0212f3",
         "screenshot": "artifacts/native/phase14/screenshots/shell-launch-phone-360-portrait-scale-2.png",
-        "screenshot_sha256": "73d82543a750ff345aac8245bc87ab3138fda0a03e90872f1aabf06f19689608",
+        "screenshot_sha256": "b10fe498537644f4c38f849bd0b83f263af59554c8975ae4964938d2527fc8cc",
         "semantic_tree": "artifacts/native/phase14/semantic/shell-launch-phone-360-portrait-scale-2.xml",
-        "semantic_tree_sha256": "08361e2580ea6c60802bc39364f9e0edf0bfe67fca0ebea1625153b70f7b5e85",
+        "semantic_tree_sha256": "69af317b2da2d9fcf314351f6d578b996a20d5afa070a9e23d48f688795fe345",
         "focus_key_trace": "artifacts/native/phase14/traces/shell-launch-phone-360-portrait-scale-2.json",
-        "focus_key_trace_sha256": "93ce13966219f04708ab0b3902f534542ad4db3a78928fe1bb128385d81baf80",
+        "focus_key_trace_sha256": "568ff6ad856f2e66464859197354ce91aa2db6e53eeeac49c1925489d0b7a1e9",
         "target_window_bounds": {
           "requested_viewport": {
             "width": 360,
@@ -509,8 +509,8 @@
           "night_mode": "Night mode: no"
         },
         "difference_overlay": "artifacts/native/phase14/overlays/shell-launch-phone-360-portrait-scale-2.json",
-        "difference_overlay_sha256": "1b028b55344e0a8e5de0aa0db85d4b9186ff583c306f7ea140af1d18df287a2a",
-        "source_state_sha256": "dce7d0c87227836ea2af7710a3bbd9f2c980e1c95156a2d51261c5ac1ea70042",
+        "difference_overlay_sha256": "e215be7f23853438ff3c769d64ad0d1b52939bfd406ade97dd4036382a85e847",
+        "source_state_sha256": "54514a268dba236df31ad54ef5c8ffd7cebe3e73cf42a19892e012262cf2fdc2",
         "summary": {
           "tests": 1,
           "failures": 0,
@@ -526,12 +526,12 @@
     "requirement": "SHL-07",
     "path": ".planning/phases/14-prototype-visual-shell/evidence/shell.launch.json",
     "report": "artifacts/native/phase14/maestro/shell-launch-phone-360-portrait-scale-2.xml",
-    "report_sha256": "a79becbd87f670d957a83c6f2ff89f979e6f67a73a305496418e14d73f13e3ff",
+    "report_sha256": "500bacc7b968f137b3e36ee7d0353dbff42d83c2e49140c940dd9bb95c0212f3",
     "screenshot": "artifacts/native/phase14/screenshots/shell-launch-phone-360-portrait-scale-2.png",
-    "screenshot_sha256": "73d82543a750ff345aac8245bc87ab3138fda0a03e90872f1aabf06f19689608",
+    "screenshot_sha256": "b10fe498537644f4c38f849bd0b83f263af59554c8975ae4964938d2527fc8cc",
     "component_verdict": "passed",
     "native_verdict": "passed",
-    "source_state_sha256": "dce7d0c87227836ea2af7710a3bbd9f2c980e1c95156a2d51261c5ac1ea70042",
+    "source_state_sha256": "54514a268dba236df31ad54ef5c8ffd7cebe3e73cf42a19892e012262cf2fdc2",
     "matrix_cells": [
       {
         "id": "shell-launch-phone-360-portrait-scale-2",
@@ -550,13 +550,13 @@
           "back"
         ],
         "report": "artifacts/native/phase14/maestro/shell-launch-phone-360-portrait-scale-2.xml",
-        "report_sha256": "a79becbd87f670d957a83c6f2ff89f979e6f67a73a305496418e14d73f13e3ff",
+        "report_sha256": "500bacc7b968f137b3e36ee7d0353dbff42d83c2e49140c940dd9bb95c0212f3",
         "screenshot": "artifacts/native/phase14/screenshots/shell-launch-phone-360-portrait-scale-2.png",
-        "screenshot_sha256": "73d82543a750ff345aac8245bc87ab3138fda0a03e90872f1aabf06f19689608",
+        "screenshot_sha256": "b10fe498537644f4c38f849bd0b83f263af59554c8975ae4964938d2527fc8cc",
         "semantic_tree": "artifacts/native/phase14/semantic/shell-launch-phone-360-portrait-scale-2.xml",
-        "semantic_tree_sha256": "08361e2580ea6c60802bc39364f9e0edf0bfe67fca0ebea1625153b70f7b5e85",
+        "semantic_tree_sha256": "69af317b2da2d9fcf314351f6d578b996a20d5afa070a9e23d48f688795fe345",
         "focus_key_trace": "artifacts/native/phase14/traces/shell-launch-phone-360-portrait-scale-2.json",
-        "focus_key_trace_sha256": "93ce13966219f04708ab0b3902f534542ad4db3a78928fe1bb128385d81baf80",
+        "focus_key_trace_sha256": "568ff6ad856f2e66464859197354ce91aa2db6e53eeeac49c1925489d0b7a1e9",
         "target_window_bounds": {
           "requested_viewport": {
             "width": 360,
@@ -570,8 +570,8 @@
           "night_mode": "Night mode: no"
         },
         "difference_overlay": "artifacts/native/phase14/overlays/shell-launch-phone-360-portrait-scale-2.json",
-        "difference_overlay_sha256": "1b028b55344e0a8e5de0aa0db85d4b9186ff583c306f7ea140af1d18df287a2a",
-        "source_state_sha256": "dce7d0c87227836ea2af7710a3bbd9f2c980e1c95156a2d51261c5ac1ea70042",
+        "difference_overlay_sha256": "e215be7f23853438ff3c769d64ad0d1b52939bfd406ade97dd4036382a85e847",
+        "source_state_sha256": "54514a268dba236df31ad54ef5c8ffd7cebe3e73cf42a19892e012262cf2fdc2",
         "summary": {
           "tests": 1,
           "failures": 0,

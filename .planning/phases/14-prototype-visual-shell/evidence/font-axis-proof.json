@@ -2,11 +2,11 @@
   "schema_version": 2,
   "suite": "phase14-font-proof",
   "status": "passed",
-  "source_tree_sha256": "dce7d0c87227836ea2af7710a3bbd9f2c980e1c95156a2d51261c5ac1ea70042",
-  "apk_sha256": "1b9bd38942721a1d83fda3485193b7dd16b24aceb90f880c994f1eb51118d046",
+  "source_tree_sha256": "54514a268dba236df31ad54ef5c8ffd7cebe3e73cf42a19892e012262cf2fdc2",
+  "apk_sha256": "62c0090ac7b922d8a2421142ae17400180d785095e34728b40b36f7633f6b741",
   "package": "com.fchoo.gymtracker.devtest",
   "profile": "development-test",
-  "proof_source_sha256": "f0eddbba430379d8161d5b5f68805783dab7d527a2914260602b0eec026f9f28",
+  "proof_source_sha256": "d9abb37f32587e8a79aff04f97592118e0e264d9240152b27889f5093231c67d",
   "font_scale_restored": true,
   "revision18": {
     "approved_html_sha256": "b5ddbad88fd465af2fa79475dc0c05efec49e551652f13c5220627730e1d9c96",
@@ -14,7 +14,7 @@
   },
   "overlay_review": {
     "status": "passed",
-    "screenshot_sha256": "33f1f5d95cce97870e12fad4589e4f8afa921d80e3196c252105f66cd809444c",
+    "screenshot_sha256": "b48a92c8cd63a137d4362512394104d1d2a4e167020089a58a1f64cf6ef8cc34",
     "approved_html_sha256": "b5ddbad88fd465af2fa79475dc0c05efec49e551652f13c5220627730e1d9c96",
     "approved_json_sha256": "b8e91e3098ec443c9dc283ae8383d1af552d7dc2b83648695a01dcb8a89ff0bf"
   },
@@ -24,7 +24,7 @@
       "status": "passed",
       "font_scale": 1,
       "display_density": 2.625,
-      "screenshot_sha256": "33f1f5d95cce97870e12fad4589e4f8afa921d80e3196c252105f66cd809444c",
+      "screenshot_sha256": "b48a92c8cd63a137d4362512394104d1d2a4e167020089a58a1f64cf6ef8cc34",
       "family": "ArchivoVariable",
       "family_loaded": true,
       "style": {
@@ -36,19 +36,16 @@
         "line_height_px": 49
       },
       "lines": [
-        "Today’s",
-        "workout"
+        "Workout"
       ],
       "metrics": {
         "available_width_px": 302.8571472167969,
-        "block_width_px": 188.6849822998047,
-        "block_height_px": 98.28571319580078,
+        "block_width_px": 197.02725219726562,
+        "block_height_px": 49.14285659790039,
         "line_advances_px": [
-          187.77981567382812,
-          188.6849822998047
+          197.02725219726562
         ],
         "line_heights_px": [
-          49.14285659790039,
           49.14285659790039
         ],
         "line_baselines_px": [
@@ -58,26 +55,19 @@
             "y_px": 0,
             "height_px": 49.14285659790039,
             "baseline_offset_px": 43.80952453613281
-          },
-          {
-            "ascender_px": 43.80952453613281,
-            "descender_px": 5.333333492279053,
-            "y_px": 49.14285659790039,
-            "height_px": 49.14285659790039,
-            "baseline_offset_px": 92.9523811340332
           }
         ],
         "text_bounds": {
           "x": 0,
           "y": 0,
           "width": 303.23809814453125,
-          "height": 98.28571319580078
+          "height": 49.142860412597656
         },
         "container_bounds": {
           "x": 0,
           "y": 0,
           "width": 302.8571472167969,
-          "height": 98.28571319580078
+          "height": 49.142860412597656
         }
       }
     },
@@ -86,7 +76,7 @@
       "status": "passed",
       "font_scale": 2,
       "display_density": 2.625,
-      "screenshot_sha256": "e468250ecfb3aeeffc3de4f404af7a73fb79c2e6c5c6809bc55d93c1710b9c4c",
+      "screenshot_sha256": "546d72b0507ba8debe85bdd48436a6a0c34c1a029226fc1ea2e4201eab62b171",
       "family": "ArchivoVariable",
       "family_loaded": true,
       "style": {
@@ -98,19 +88,16 @@
         "line_height_px": 49
       },
       "lines": [
-        "Today’s",
-        "workout"
+        "Workout"
       ],
       "metrics": {
         "available_width_px": 302.8571472167969,
-        "block_width_px": 183.1720733642578,
-        "block_height_px": 109.71428680419922,
+        "block_width_px": 192.23904418945312,
+        "block_height_px": 54.85714340209961,
         "line_advances_px": [
-          178.54177856445312,
-          183.1720733642578
+          192.23904418945312
         ],
         "line_heights_px": [
-          54.85714340209961,
           54.85714340209961
         ],
         "line_baselines_px": [
@@ -120,26 +107,19 @@
             "y_px": 0,
             "height_px": 54.85714340209961,
             "baseline_offset_px": 48.380950927734375
-          },
-          {
-            "ascender_px": 48.380950927734375,
-            "descender_px": 6.476190567016602,
-            "y_px": 54.85714340209961,
-            "height_px": 54.85714340209961,
-            "baseline_offset_px": 103.23809432983398
           }
         ],
         "text_bounds": {
           "x": 0,
           "y": 0,
           "width": 303.23809814453125,
-          "height": 109.71429443359375
+          "height": 54.857147216796875
         },
         "container_bounds": {
           "x": 0,
           "y": 0,
           "width": 302.8571472167969,
-          "height": 109.71429443359375
+          "height": 54.857147216796875
         }
       }
     }

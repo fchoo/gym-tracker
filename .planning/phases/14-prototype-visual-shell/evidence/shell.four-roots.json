@@ -3,18 +3,18 @@
   "suite": "phase14",
   "status": "passed",
   "build_manifest": "artifacts/native/phase14/build.json",
-  "base_head": "103053b8f5e6c03aa088a3f0a8f175e3b9d001c8",
-  "source_tree_sha256": "dce7d0c87227836ea2af7710a3bbd9f2c980e1c95156a2d51261c5ac1ea70042",
+  "base_head": "01b75c6914c7163b88f9273f8d1bdc71664c409b",
+  "source_tree_sha256": "54514a268dba236df31ad54ef5c8ffd7cebe3e73cf42a19892e012262cf2fdc2",
   "package": "com.fchoo.gymtracker.devtest",
   "profile": "development-test",
   "device_identity_sha256": "96dcf303d772667590457dc76c2cd5ee828515c31e2af1b9fee5b3f440b204f9",
   "apk": {
     "path": "artifacts/native/phase14/gym-tracker-phase14-devtest.apk",
-    "sha256": "a8acf57648e1194077732f607f1f7162d79a8ac92ce6c87e0dcf0bc6f0d785fe",
-    "size_bytes": 131758356,
+    "sha256": "5ecbab8f506978122c485143f78153f42ec2e9075538d2d2047ef01928561982",
+    "size_bytes": 131760068,
     "page_alignment_kib": 16,
     "page_alignment_verified": true,
-    "installed_sha256": "a8acf57648e1194077732f607f1f7162d79a8ac92ce6c87e0dcf0bc6f0d785fe",
+    "installed_sha256": "5ecbab8f506978122c485143f78153f42ec2e9075538d2d2047ef01928561982",
     "matches_retained_apk": true
   },
   "matrix": {
@@ -470,7 +470,7 @@
     "stage": "phase14-four-roots",
     "status": "passed",
     "report": "artifacts/native/phase14/maestro/shell-four-roots-phone-360-portrait-scale-2.xml",
-    "report_sha256": "fb6bb3d16c035e7c963060c3d3786c13ce593dc1d8aef82ad992d4a948447e4c",
+    "report_sha256": "65e35ff68d0dc3b0369e143ce75e6d3fd11450d6d3eddc8862296c42698c9c8d",
     "matrix_cells": [
       {
         "id": "shell-four-roots-phone-360-portrait-scale-2",
@@ -490,13 +490,13 @@
           "dpad"
         ],
         "report": "artifacts/native/phase14/maestro/shell-four-roots-phone-360-portrait-scale-2.xml",
-        "report_sha256": "fb6bb3d16c035e7c963060c3d3786c13ce593dc1d8aef82ad992d4a948447e4c",
+        "report_sha256": "65e35ff68d0dc3b0369e143ce75e6d3fd11450d6d3eddc8862296c42698c9c8d",
         "screenshot": "artifacts/native/phase14/screenshots/shell-four-roots-phone-360-portrait-scale-2.png",
-        "screenshot_sha256": "c45430481d59d7fda5b1cb375f67fceaa3352586a36cfb885c163723ec804bcc",
+        "screenshot_sha256": "464859e55c7d296e4fb45925b0c6447e57838a7cf0471c0ef6fdcdac114c053c",
         "semantic_tree": "artifacts/native/phase14/semantic/shell-four-roots-phone-360-portrait-scale-2.xml",
-        "semantic_tree_sha256": "b82d695cefee32d2c26def7ff0be72891a5f43a3de21b33abefd3bf9a8c77be3",
+        "semantic_tree_sha256": "140b36ac830e268ceb94be67eb243a8e25e4f9d4e5493b57df5eee4af4bb58cb",
         "focus_key_trace": "artifacts/native/phase14/traces/shell-four-roots-phone-360-portrait-scale-2.json",
-        "focus_key_trace_sha256": "c442b6a86d91aba237ab7304ea5e9664941b4a7c90746719d52320212cf40090",
+        "focus_key_trace_sha256": "25101c286e3e43093bd34386fc6f032996e46b20876e6f5582149397bd8c19e3",
         "target_window_bounds": {
           "requested_viewport": {
             "width": 360,
@@ -510,8 +510,8 @@
           "night_mode": "Night mode: no"
         },
         "difference_overlay": "artifacts/native/phase14/overlays/shell-four-roots-phone-360-portrait-scale-2.json",
-        "difference_overlay_sha256": "dd692cccfc23409a54f8be1942e4c1834b8831b59f09e44b176d4e8d47ae2c41",
-        "source_state_sha256": "dce7d0c87227836ea2af7710a3bbd9f2c980e1c95156a2d51261c5ac1ea70042",
+        "difference_overlay_sha256": "b704dd51d4aa279417f47199f55a9ceba5a201b4d3c9d5cf1ef99e6e77c9a5ac",
+        "source_state_sha256": "54514a268dba236df31ad54ef5c8ffd7cebe3e73cf42a19892e012262cf2fdc2",
         "summary": {
           "tests": 1,
           "failures": 0,
@@ -537,13 +537,13 @@
           "dpad"
         ],
         "report": "artifacts/native/phase14/maestro/shell-four-roots-tablet-840-landscape-scale-1.xml",
-        "report_sha256": "064ee58a106c7b2d7a4d84a72048a0b2070799dcdd46f7fbc51b88f7574826a8",
+        "report_sha256": "473defe49bbbf702cdfe5f3a0c4222c92f7d6fff774d74b18151ea9f6f748e5d",
         "screenshot": "artifacts/native/phase14/screenshots/shell-four-roots-tablet-840-landscape-scale-1.png",
-        "screenshot_sha256": "016d2c3d573d6ee38c6a077bef7fc1e03e91b064fa4e05b8dd40ed834d94d345",
+        "screenshot_sha256": "425621f6a107986fb7770c6b661bd3d5490a1d1af6e2ec94367f9d354eee5040",
         "semantic_tree": "artifacts/native/phase14/semantic/shell-four-roots-tablet-840-landscape-scale-1.xml",
-        "semantic_tree_sha256": "a24b7d33e624da61de30c1941896ebef6091bf6704ada54e852de167001b7358",
+        "semantic_tree_sha256": "3a6ec66d5f7ab335f0ae66456d1ede87b2bc1531efd98317e55bc18f23cc78bd",
         "focus_key_trace": "artifacts/native/phase14/traces/shell-four-roots-tablet-840-landscape-scale-1.json",
-        "focus_key_trace_sha256": "d86127bfe4d0226e128dd49b6a3519f4d50d0b745ead1b2a91e3949824e84caf",
+        "focus_key_trace_sha256": "a047bb47594dd19cfafb7fa1e845b417ae264bedb2539871bec826ea6ad583bc",
         "target_window_bounds": {
           "requested_viewport": {
             "width": 840,
@@ -557,8 +557,8 @@
           "night_mode": "Night mode: no"
         },
         "difference_overlay": "artifacts/native/phase14/overlays/shell-four-roots-tablet-840-landscape-scale-1.json",
-        "difference_overlay_sha256": "4555af4c78c2d7457047e7d41d71e6a9e9bf47455689414c4629aafe123f1978",
-        "source_state_sha256": "dce7d0c87227836ea2af7710a3bbd9f2c980e1c95156a2d51261c5ac1ea70042",
+        "difference_overlay_sha256": "572962d813dfb4e23fe2334ca088fc30c4e47f1f772c99d16ed8976252fafd92",
+        "source_state_sha256": "54514a268dba236df31ad54ef5c8ffd7cebe3e73cf42a19892e012262cf2fdc2",
         "summary": {
           "tests": 1,
           "failures": 0,
@@ -574,12 +574,12 @@
     "requirement": "SHL-01",
     "path": ".planning/phases/14-prototype-visual-shell/evidence/shell.four-roots.json",
     "report": "artifacts/native/phase14/maestro/shell-four-roots-phone-360-portrait-scale-2.xml",
-    "report_sha256": "fb6bb3d16c035e7c963060c3d3786c13ce593dc1d8aef82ad992d4a948447e4c",
+    "report_sha256": "65e35ff68d0dc3b0369e143ce75e6d3fd11450d6d3eddc8862296c42698c9c8d",
     "screenshot": "artifacts/native/phase14/screenshots/shell-four-roots-phone-360-portrait-scale-2.png",
-    "screenshot_sha256": "c45430481d59d7fda5b1cb375f67fceaa3352586a36cfb885c163723ec804bcc",
+    "screenshot_sha256": "464859e55c7d296e4fb45925b0c6447e57838a7cf0471c0ef6fdcdac114c053c",
     "component_verdict": "passed",
     "native_verdict": "passed",
-    "source_state_sha256": "dce7d0c87227836ea2af7710a3bbd9f2c980e1c95156a2d51261c5ac1ea70042",
+    "source_state_sha256": "54514a268dba236df31ad54ef5c8ffd7cebe3e73cf42a19892e012262cf2fdc2",
     "matrix_cells": [
       {
         "id": "shell-four-roots-phone-360-portrait-scale-2",
@@ -599,13 +599,13 @@
           "dpad"
         ],
         "report": "artifacts/native/phase14/maestro/shell-four-roots-phone-360-portrait-scale-2.xml",
-        "report_sha256": "fb6bb3d16c035e7c963060c3d3786c13ce593dc1d8aef82ad992d4a948447e4c",
+        "report_sha256": "65e35ff68d0dc3b0369e143ce75e6d3fd11450d6d3eddc8862296c42698c9c8d",
         "screenshot": "artifacts/native/phase14/screenshots/shell-four-roots-phone-360-portrait-scale-2.png",
-        "screenshot_sha256": "c45430481d59d7fda5b1cb375f67fceaa3352586a36cfb885c163723ec804bcc",
+        "screenshot_sha256": "464859e55c7d296e4fb45925b0c6447e57838a7cf0471c0ef6fdcdac114c053c",
         "semantic_tree": "artifacts/native/phase14/semantic/shell-four-roots-phone-360-portrait-scale-2.xml",
-        "semantic_tree_sha256": "b82d695cefee32d2c26def7ff0be72891a5f43a3de21b33abefd3bf9a8c77be3",
+        "semantic_tree_sha256": "140b36ac830e268ceb94be67eb243a8e25e4f9d4e5493b57df5eee4af4bb58cb",
         "focus_key_trace": "artifacts/native/phase14/traces/shell-four-roots-phone-360-portrait-scale-2.json",
-        "focus_key_trace_sha256": "c442b6a86d91aba237ab7304ea5e9664941b4a7c90746719d52320212cf40090",
+        "focus_key_trace_sha256": "25101c286e3e43093bd34386fc6f032996e46b20876e6f5582149397bd8c19e3",
         "target_window_bounds": {
           "requested_viewport": {
             "width": 360,
@@ -619,8 +619,8 @@
           "night_mode": "Night mode: no"
         },
         "difference_overlay": "artifacts/native/phase14/overlays/shell-four-roots-phone-360-portrait-scale-2.json",
-        "difference_overlay_sha256": "dd692cccfc23409a54f8be1942e4c1834b8831b59f09e44b176d4e8d47ae2c41",
-        "source_state_sha256": "dce7d0c87227836ea2af7710a3bbd9f2c980e1c95156a2d51261c5ac1ea70042",
+        "difference_overlay_sha256": "b704dd51d4aa279417f47199f55a9ceba5a201b4d3c9d5cf1ef99e6e77c9a5ac",
+        "source_state_sha256": "54514a268dba236df31ad54ef5c8ffd7cebe3e73cf42a19892e012262cf2fdc2",
         "summary": {
           "tests": 1,
           "failures": 0,
@@ -646,13 +646,13 @@
           "dpad"
         ],
         "report": "artifacts/native/phase14/maestro/shell-four-roots-tablet-840-landscape-scale-1.xml",
-        "report_sha256": "064ee58a106c7b2d7a4d84a72048a0b2070799dcdd46f7fbc51b88f7574826a8",
+        "report_sha256": "473defe49bbbf702cdfe5f3a0c4222c92f7d6fff774d74b18151ea9f6f748e5d",
         "screenshot": "artifacts/native/phase14/screenshots/shell-four-roots-tablet-840-landscape-scale-1.png",
-        "screenshot_sha256": "016d2c3d573d6ee38c6a077bef7fc1e03e91b064fa4e05b8dd40ed834d94d345",
+        "screenshot_sha256": "425621f6a107986fb7770c6b661bd3d5490a1d1af6e2ec94367f9d354eee5040",
         "semantic_tree": "artifacts/native/phase14/semantic/shell-four-roots-tablet-840-landscape-scale-1.xml",
-        "semantic_tree_sha256": "a24b7d33e624da61de30c1941896ebef6091bf6704ada54e852de167001b7358",
+        "semantic_tree_sha256": "3a6ec66d5f7ab335f0ae66456d1ede87b2bc1531efd98317e55bc18f23cc78bd",
         "focus_key_trace": "artifacts/native/phase14/traces/shell-four-roots-tablet-840-landscape-scale-1.json",
-        "focus_key_trace_sha256": "d86127bfe4d0226e128dd49b6a3519f4d50d0b745ead1b2a91e3949824e84caf",
+        "focus_key_trace_sha256": "a047bb47594dd19cfafb7fa1e845b417ae264bedb2539871bec826ea6ad583bc",
         "target_window_bounds": {
           "requested_viewport": {
             "width": 840,
@@ -666,8 +666,8 @@
           "night_mode": "Night mode: no"
         },
         "difference_overlay": "artifacts/native/phase14/overlays/shell-four-roots-tablet-840-landscape-scale-1.json",
-        "difference_overlay_sha256": "4555af4c78c2d7457047e7d41d71e6a9e9bf47455689414c4629aafe123f1978",
-        "source_state_sha256": "dce7d0c87227836ea2af7710a3bbd9f2c980e1c95156a2d51261c5ac1ea70042",
+        "difference_overlay_sha256": "572962d813dfb4e23fe2334ca088fc30c4e47f1f772c99d16ed8976252fafd92",
+        "source_state_sha256": "54514a268dba236df31ad54ef5c8ffd7cebe3e73cf42a19892e012262cf2fdc2",
         "summary": {
           "tests": 1,
           "failures": 0,
