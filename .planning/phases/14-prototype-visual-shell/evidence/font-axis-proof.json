@@ -1,7 +1,7 @@
 {
   "schema_version": 2,
   "suite": "phase14-font-proof",
-  "status": "captured_pending_overlay_review",
+  "status": "passed",
   "source_tree_sha256": "6179a1ce96884ff24e0bb1094f2fbc02999a0634a64fc33b59cc282888d21114",
   "apk_sha256": "4537df2a3ba69fe3349da677f671314e4e97f53a224bb4d7c43dc8b1147dc125",
   "package": "com.fchoo.gymtracker.devtest",
@@ -13,7 +13,7 @@
     "approved_json_sha256": "b8e91e3098ec443c9dc283ae8383d1af552d7dc2b83648695a01dcb8a89ff0bf"
   },
   "overlay_review": {
-    "status": "pending",
+    "status": "passed",
     "screenshot_sha256": "15a2258fff4d9e38bffa451b0b614080ae195f3ca7da53ea9c41c902d89c06e2",
     "approved_html_sha256": "b5ddbad88fd465af2fa79475dc0c05efec49e551652f13c5220627730e1d9c96",
     "approved_json_sha256": "b8e91e3098ec443c9dc283ae8383d1af552d7dc2b83648695a01dcb8a89ff0bf"
