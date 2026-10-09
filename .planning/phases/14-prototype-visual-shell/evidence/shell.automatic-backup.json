@@ -3,25 +3,25 @@
   "suite": "phase14",
   "status": "passed",
   "build_manifest": "artifacts/native/phase14/build.json",
-  "base_head": "8b3bb21d2a1bddcea248c73ba411dbe97ddbfe66",
-  "source_tree_sha256": "c26a1f3feec981d7a95c618e5bab4986563328bf21e54a2114362ecd3be41050",
+  "base_head": "a5faec9a1af3a12681b6f4a260d990c47c90839e",
+  "source_tree_sha256": "c240c155f50c4db6744132b8466833f1874d65a0e12687b31d7d34d8afe85c43",
   "package": "com.fchoo.gymtracker.devtest",
   "profile": "development-test",
   "device_identity_sha256": "96dcf303d772667590457dc76c2cd5ee828515c31e2af1b9fee5b3f440b204f9",
   "apk": {
     "path": "artifacts/native/phase14/gym-tracker-phase14-devtest.apk",
-    "sha256": "2a6f6e2c0c125566be5c6ba1d2c8fa8311f876489d35650decd60c5d7c8e7ccd",
-    "size_bytes": 131748404,
+    "sha256": "03527bbb7886a2db55328bc0de50ae8e19792a3bbc613e5dab65f69ed32cb64f",
+    "size_bytes": 131748516,
     "page_alignment_kib": 16,
     "page_alignment_verified": true,
-    "installed_sha256": "2a6f6e2c0c125566be5c6ba1d2c8fa8311f876489d35650decd60c5d7c8e7ccd",
+    "installed_sha256": "03527bbb7886a2db55328bc0de50ae8e19792a3bbc613e5dab65f69ed32cb64f",
     "matches_retained_apk": true
   },
   "stage": {
     "stage": "phase14-automatic-backup",
     "status": "passed",
     "report": "artifacts/native/phase14/maestro/phase14-automatic-backup.xml",
-    "report_sha256": "a8a2b27fca5f6ddb74ad873dfee8572ef2e4f7a6f4147ae498f300c9aff048ad"
+    "report_sha256": "bc2a3c4837810053fda57b2869e3a10750ca8d113bbb06798f3dd7cda29000f1"
   },
   "evidence": {
     "id": "shell.automatic-backup",
@@ -29,11 +29,11 @@
     "requirement": "SHL-12",
     "path": ".planning/phases/14-prototype-visual-shell/evidence/shell.automatic-backup.json",
     "report": "artifacts/native/phase14/maestro/phase14-automatic-backup.xml",
-    "report_sha256": "a8a2b27fca5f6ddb74ad873dfee8572ef2e4f7a6f4147ae498f300c9aff048ad",
+    "report_sha256": "bc2a3c4837810053fda57b2869e3a10750ca8d113bbb06798f3dd7cda29000f1",
     "screenshot": "artifacts/native/phase14/screenshots/shell.automatic-backup.png",
-    "screenshot_sha256": "e9cbb8f38d3e3e6b653e7368b0c9148c8173bdbcd5a3fd8a03b6d0d4311f70fe",
+    "screenshot_sha256": "c0fd1a8d19abd42118cdbf61310c5e3de8d02b3194d2c57aade93447f32ed76c",
     "component_verdict": "passed",
     "native_verdict": "passed",
-    "source_state_sha256": "c26a1f3feec981d7a95c618e5bab4986563328bf21e54a2114362ecd3be41050"
+    "source_state_sha256": "c240c155f50c4db6744132b8466833f1874d65a0e12687b31d7d34d8afe85c43"
   }
 }
