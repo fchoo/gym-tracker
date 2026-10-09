@@ -126,19 +126,36 @@ export function validateDistinctPhase14Flows(flows) {
 }
 
 export function parsePhase14RunnerArgs(args) {
-  const options = { manifest: "", ids: [] };
+  const options = { manifest: "", ids: [], cell: null, mode: null };
+  let selectionCount = 0;
   for (let index = 0; index < args.length; index += 1) {
     const arg = args[index];
     if (arg === "--manifest") options.manifest = args[++index] ?? "";
-    else if (arg === "--ids") options.ids = (args[++index] ?? "").split(",").filter(Boolean);
-    else if (arg === "--all") options.ids = PHASE14_SHELL_EVIDENCE_CASES.map(({ id }) => id);
+    else if (arg === "--ids") {
+      selectionCount += 1;
+      options.mode = "ids";
+      options.ids = (args[++index] ?? "").split(",").filter(Boolean);
+    } else if (arg === "--all") {
+      selectionCount += 1;
+      options.mode = "all";
+      options.ids = PHASE14_SHELL_EVIDENCE_CASES.map(({ id }) => id);
+    } else if (arg === "--cell") {
+      selectionCount += 1;
+      options.mode = "cell-smoke";
+      options.cell = args[++index] ?? "";
+      const cell = PHASE14_NATIVE_MATRIX.cells.find(({ id }) => id === options.cell);
+      options.ids = cell === undefined ? [] : [cell.caseId];
+    }
     else throw new Error(`phase14_runner_unknown_argument:${arg}`);
   }
   if (
     options.manifest !== `${ARTIFACT_ROOT}/build.json`
+    || selectionCount !== 1
     || options.ids.length === 0
     || new Set(options.ids).size !== options.ids.length
     || options.ids.some((id) => shellCaseById[id] === undefined)
+    || (options.mode === "cell-smoke"
+      && !PHASE14_NATIVE_MATRIX.cells.some(({ id }) => id === options.cell))
   ) {
     throw new Error("phase14_runner_arguments_invalid");
   }
@@ -276,31 +293,76 @@ function focusedNode(xmlBytes) {
   return xmlAttribute(node, "content-desc") || xmlAttribute(node, "text") || xmlAttribute(node, "resource-id") || "focused-node";
 }
 
-function captureRuntimeStateDigest(adbPath, serial, packageName) {
-  const digest = adb(
-    adbPath, serial, "shell", "run-as", packageName, "sh", "-c",
-    "find databases -type f -print | sort | xargs cat | sha256sum | cut -d' ' -f1",
+export function parsePhase14SourceStateProof(output) {
+  const match = output.match(
+    /PHASE14_SOURCE_STATE_PROOF digest_sha256=([a-f0-9]{64}) table_count=(\d+) row_count=(\d+) schema_version=(\d+)(?=$|["<])/u,
   );
-  const fileCount = Number(adb(
-    adbPath, serial, "shell", "run-as", packageName, "sh", "-c",
-    "find databases -type f | wc -l",
-  ));
-  const byteCount = Number(adb(
-    adbPath, serial, "shell", "run-as", packageName, "sh", "-c",
-    "find databases -type f -exec wc -c {} ';' | awk '{sum += $1} END {print sum}'",
-  ));
-  if (!/^[a-f0-9]{64}$/u.test(digest) || !Number.isInteger(fileCount) || fileCount < 1 || !Number.isInteger(byteCount) || byteCount < 1) {
+  const tableCount = Number(match?.[2]);
+  const rowCount = Number(match?.[3]);
+  const schemaVersion = Number(match?.[4]);
+  if (
+    match === null
+    || !Number.isSafeInteger(tableCount)
+    || tableCount < 1
+    || !Number.isSafeInteger(rowCount)
+    || rowCount < 0
+    || !Number.isSafeInteger(schemaVersion)
+    || schemaVersion < 1
+  ) {
     throw new Error("phase14_runtime_state_capture_invalid");
   }
   return Object.freeze({
-    schema_version: 1,
-    producer: "phase14-run-as-runtime-digest/v1",
-    authority: "installed-app-sqlite-files",
-    digest_sha256: digest,
-    file_count: fileCount,
-    byte_count: byteCount,
+    proof_schema_version: 1,
+    producer: "phase14-app-canonical-logical-source-digest/v1",
+    authority: "development-test-app-canonical-logical-sqlite-source",
+    digest_sha256: match[1],
+    table_count: tableCount,
+    row_count: rowCount,
+    schema_version: schemaVersion,
     contains_raw_rows: false,
   });
+}
+
+function captureRuntimeSourceStateProof(adbPath, serial, packageName) {
+  const remotePath = "/sdcard/phase14-source-state-proof.xml";
+  adb(adbPath, serial, "shell", "am", "force-stop", packageName);
+  try {
+    adb(
+      adbPath,
+      serial,
+      "shell",
+      "am",
+      "start",
+      "-W",
+      "-a",
+      "android.intent.action.VIEW",
+      "-d",
+      "gymtracker-devtest://__phase14-source-state-proof",
+      "-p",
+      packageName,
+    );
+    for (let attempt = 0; attempt < 40; attempt += 1) {
+      try {
+        adb(adbPath, serial, "shell", "uiautomator", "dump", remotePath);
+        const xml = execFileSync(
+          adbPath,
+          ["-s", serial, "exec-out", "cat", remotePath],
+          { cwd: ROOT, encoding: "utf8" },
+        );
+        return parsePhase14SourceStateProof(xml);
+      } catch (error) {
+        if (error?.message === "phase14_runtime_state_capture_invalid") {
+          adb(adbPath, serial, "shell", "sleep", "0.25");
+          continue;
+        }
+        if (attempt === 39) throw error;
+        adb(adbPath, serial, "shell", "sleep", "0.25");
+      }
+    }
+    throw new Error("phase14_runtime_state_capture_invalid");
+  } finally {
+    adb(adbPath, serial, "shell", "am", "force-stop", packageName);
+  }
 }
 
 function executeObservedAction(adbPath, serial, cell, action, traceDirectory, order, prepare) {
@@ -472,7 +534,7 @@ function buildDev02() {
 
 export function executePhase14Maestro(args = process.argv.slice(2)) {
   validatePhase14NativeMatrix(PHASE14_NATIVE_MATRIX);
-  const { manifest: manifestPath, ids } = parsePhase14RunnerArgs(args);
+  const { manifest: manifestPath, ids, cell: requestedCell, mode } = parsePhase14RunnerArgs(args);
   const manifest = JSON.parse(readFileSync(manifestPath, "utf8"));
   const currentSource = sourceTreeSha256(ROOT);
   validatePhase14ReplayableManifest(manifest, currentSource);
@@ -482,7 +544,9 @@ export function executePhase14Maestro(args = process.argv.slice(2)) {
 
   const serial = resolvePhase14DeviceSerial();
   const adbPath = resolveAdb();
-  const outputDirectory = path.join(ROOT, ARTIFACT_ROOT);
+  const outputDirectory = mode === "cell-smoke"
+    ? path.join(ROOT, ARTIFACT_ROOT, "smoke", requestedCell)
+    : path.join(ROOT, ARTIFACT_ROOT);
   const maestroDirectory = path.join(outputDirectory, "maestro");
   rmSync(maestroDirectory, { recursive: true, force: true });
   for (const name of ["maestro", "screenshots", "semantic", "traces", "comparison", "components", "runtime-state"]) {
@@ -491,7 +555,10 @@ export function executePhase14Maestro(args = process.argv.slice(2)) {
 
   const componentEvidence = runComponentEvidence(ids, outputDirectory);
   const componentById = new Map(componentEvidence.cases.map((entry) => [entry.id, entry]));
-  const cells = phase14MatrixCellsForIds(ids);
+  const finalCells = phase14MatrixCellsForIds(ids);
+  const cells = requestedCell === null
+    ? finalCells
+    : finalCells.filter(({ id }) => id === requestedCell);
   const byCaseId = new Map(ids.map((id) => [id, []]));
 
   for (const cell of cells) {
@@ -507,7 +574,7 @@ export function executePhase14Maestro(args = process.argv.slice(2)) {
         adb(adbPath, serial, "shell", "am", "force-stop", manifest.package);
       }
       const runtimePre = cell.runtimeStatePolicy === "no-write"
-        ? captureRuntimeStateDigest(adbPath, serial, manifest.package)
+        ? captureRuntimeSourceStateProof(adbPath, serial, manifest.package)
         : null;
       const flowPath = path.join(ROOT, "maestro/phase14", `${cell.flow}.yaml`);
       const reportPath = path.join(maestroDirectory, `${cell.id}.xml`);
@@ -548,7 +615,7 @@ export function executePhase14Maestro(args = process.argv.slice(2)) {
       const runtimeState = cell.runtimeStatePolicy === "no-write"
         ? (() => {
             adb(adbPath, serial, "shell", "am", "force-stop", manifest.package);
-            const pair = { pre: runtimePre, post: captureRuntimeStateDigest(adbPath, serial, manifest.package) };
+            const pair = { pre: runtimePre, post: captureRuntimeSourceStateProof(adbPath, serial, manifest.package) };
             validatePhase14RuntimeStatePair(pair);
             const artifact = writeJson(path.join(outputDirectory, "runtime-state", `${cell.id}.json`), pair);
             return Object.freeze({ verdict: "PASS", ...artifact, ...pair });
@@ -628,8 +695,8 @@ export function executePhase14Maestro(args = process.argv.slice(2)) {
   });
   const dev02 = ids.includes("shell.tokens") ? buildDev02() : undefined;
   const evidence = {
-    schema_version: 2,
-    producer: "phase14-native-observation/v2",
+    schema_version: 3,
+    producer: "phase14-native-observation/v3",
     suite: "phase14",
     verdict: rows.every(({ verdict }) => verdict === "PASS") ? "PASS" : (rows.some(({ verdict }) => verdict === "FAIL") ? "FAIL" : "REVIEW_REQUIRED"),
     build_manifest: manifestPath,
@@ -640,16 +707,38 @@ export function executePhase14Maestro(args = process.argv.slice(2)) {
     device_identity_sha256: manifest.device.identity_sha256,
     apk: { ...manifest.apk, installed_sha256: manifest.apk.sha256, matches_retained_apk: true },
     matrix: PHASE14_NATIVE_MATRIX,
+    coverage: Object.freeze({
+      mode,
+      complete: mode !== "cell-smoke",
+      requested_ids: ids,
+      requested_cell: requestedCell,
+      expected_cell_count: cells.length,
+      observed_cell_count: rows.flatMap(({ matrix_cells: matrixCells }) => matrixCells).length,
+    }),
     component_evidence: componentEvidence,
     evidence: rows,
     matrix_cells: rows.flatMap(({ matrix_cells: matrixCells }) => matrixCells),
     ...(dev02 === undefined ? {} : { dev02 }),
   };
   writeJson(path.join(maestroDirectory, "phase14-evidence.json"), evidence);
-  for (const row of rows) {
-    const record = { ...evidence, evidence: [row], matrix_cells: row.matrix_cells };
-    delete record.component_evidence;
-    writeJson(path.join(ROOT, row.path), record);
+  if (mode !== "cell-smoke") {
+    for (const row of rows) {
+      const record = {
+        ...evidence,
+        coverage: {
+          mode: "ids",
+          complete: true,
+          requested_ids: [row.id],
+          requested_cell: null,
+          expected_cell_count: row.matrix_cells.length,
+          observed_cell_count: row.matrix_cells.length,
+        },
+        evidence: [row],
+        matrix_cells: row.matrix_cells,
+      };
+      delete record.component_evidence;
+      writeJson(path.join(ROOT, row.path), record);
+    }
   }
   return evidence;
 }

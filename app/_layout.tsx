@@ -146,6 +146,7 @@ function RootNavigator() {
           <Stack.Screen name="more/manual-encrypted-backup" />
           <Stack.Screen name="more/drive-backup-privacy" />
           <Stack.Screen name="more/removed-sessions" />
+          <Stack.Screen name="__phase14-source-state-proof" />
           <Stack.Screen name="__phase14-toast-proof" />
           <Stack.Screen name="__phase12-google-auth-smoke" />
           <Stack.Screen name="__phase12-google-cleanup" />

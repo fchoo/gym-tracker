@@ -21,6 +21,7 @@ test("Phase 14 matrix covers every requested theme, OS switch, viewport, orienta
 });
 
 test("Phase 14 owns the complete 64-configuration Cartesian product for every shell state", () => {
+  assert.equal(PHASE14_NATIVE_MATRIX.cells.length, 874);
   const baseCells = PHASE14_NATIVE_MATRIX.cells.filter(({ variant }) => variant === "base");
   assert.equal(baseCells.length, 13 * 64);
   for (const state of PHASE14_NATIVE_MATRIX.states) {
@@ -53,7 +54,7 @@ test("Phase 14 matrix requires fixed-data bounds, keyboard/focus, reduced-motion
   assert.equal(PHASE14_NATIVE_MATRIX.minTargetDp, 48);
   assert.equal(PHASE14_NATIVE_MATRIX.focusRingDp, 3);
   assert.equal(PHASE14_NATIVE_MATRIX.capture.semanticTree, "pre-and-post-each-action");
-  assert.equal(PHASE14_NATIVE_MATRIX.capture.runtimeStateDigest, "installed-app-sqlite-files");
+  assert.equal(PHASE14_NATIVE_MATRIX.capture.runtimeStateDigest, "development-test-app-canonical-logical-sqlite-source");
   assert.equal(PHASE14_NATIVE_MATRIX.capture.visualComparison, "pngjs-7.0.0");
   assert.deepEqual(PHASE14_NATIVE_MATRIX.input, ["dpad", "enter", "space", "back", "escape", "scrim", "ime-clearance"]);
   assert.deepEqual(PHASE14_NATIVE_MATRIX.motion, ["normal", "reduced-motion-equivalence"]);
@@ -93,7 +94,8 @@ test("Phase 14 Maestro flows encode all shell stages and stay native-only", () =
   const runner = readFileSync("scripts/run-phase14-maestro.mjs", "utf8");
   assert.match(runner, /runComponentEvidence\(ids, outputDirectory\)/u);
   assert.match(runner, /executeObservedAction/u);
-  assert.match(runner, /captureRuntimeStateDigest/u);
+  assert.match(runner, /captureRuntimeSourceStateProof/u);
+  assert.doesNotMatch(runner, /run-as/u);
   assert.match(runner, /comparePhase14PngBytes/u);
   assert.match(runner, /finally \{[\s\S]*?force-stop[\s\S]*?restoreCellDeviceState/u);
 });

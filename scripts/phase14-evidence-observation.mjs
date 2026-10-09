@@ -144,15 +144,28 @@ export function validatePhase14FocusTrace(trace, expectedActionIds) {
 }
 
 function validateRuntimeDigest(digest) {
+  const keys = Object.keys(digest ?? {}).sort();
   if (
-    digest?.schema_version !== 1
-    || digest.producer !== "phase14-run-as-runtime-digest/v1"
-    || digest.authority !== "installed-app-sqlite-files"
+    JSON.stringify(keys) !== JSON.stringify([
+      "authority",
+      "contains_raw_rows",
+      "digest_sha256",
+      "producer",
+      "proof_schema_version",
+      "row_count",
+      "schema_version",
+      "table_count",
+    ])
+    || digest?.proof_schema_version !== 1
+    || digest.producer !== "phase14-app-canonical-logical-source-digest/v1"
+    || digest.authority !== "development-test-app-canonical-logical-sqlite-source"
     || !HASH.test(digest.digest_sha256 ?? "")
-    || !Number.isInteger(digest.file_count)
-    || digest.file_count < 1
-    || !Number.isInteger(digest.byte_count)
-    || digest.byte_count < 1
+    || !Number.isInteger(digest.table_count)
+    || digest.table_count < 1
+    || !Number.isInteger(digest.row_count)
+    || digest.row_count < 0
+    || !Number.isInteger(digest.schema_version)
+    || digest.schema_version < 1
     || digest.contains_raw_rows !== false
     || Object.hasOwn(digest, "source_tree_sha256")
     || Object.hasOwn(digest, "rows")
@@ -167,8 +180,9 @@ export function validatePhase14RuntimeStatePair(pair) {
   validateRuntimeDigest(pair?.post);
   if (
     pair.pre.digest_sha256 !== pair.post.digest_sha256
-    || pair.pre.file_count !== pair.post.file_count
-    || pair.pre.byte_count !== pair.post.byte_count
+    || pair.pre.table_count !== pair.post.table_count
+    || pair.pre.row_count !== pair.post.row_count
+    || pair.pre.schema_version !== pair.post.schema_version
   ) {
     throw new Error("phase14_runtime_state_changed");
   }

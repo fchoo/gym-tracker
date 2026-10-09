@@ -96,18 +96,26 @@ test("Phase 14 focus traces require ordered observed pre/post trees, focus, time
 
 test("Phase 14 no-write state proof accepts aggregate runtime digests and rejects source-tree substitution", () => {
   const digest = {
-    schema_version: 1,
-    producer: "phase14-run-as-runtime-digest/v1",
-    authority: "installed-app-sqlite-files",
+    proof_schema_version: 1,
+    producer: "phase14-app-canonical-logical-source-digest/v1",
+    authority: "development-test-app-canonical-logical-sqlite-source",
     digest_sha256: "c".repeat(64),
-    file_count: 3,
-    byte_count: 4096,
+    table_count: 48,
+    row_count: 321,
+    schema_version: 30,
     contains_raw_rows: false,
   };
   assert.doesNotThrow(() => validatePhase14RuntimeStatePair({ pre: digest, post: digest }));
   assert.throws(
     () => validatePhase14RuntimeStatePair({
       pre: { ...digest, authority: "source-tree" },
+      post: digest,
+    }),
+    /phase14_runtime_state_invalid/u,
+  );
+  assert.throws(
+    () => validatePhase14RuntimeStatePair({
+      pre: { ...digest, row_sample: "private" },
       post: digest,
     }),
     /phase14_runtime_state_invalid/u,

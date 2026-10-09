@@ -353,6 +353,10 @@ import { phase12BackupFixtureFromNativeContract, phase12BackupFixtureViewModel }
 import type { AutomaticBackupRuntime } from "./automaticBackupRuntime";
 import { createProductionAutomaticBackupServices } from "./productionAutomaticBackupRuntime";
 import {
+  collectPhase14SourceStateProof as collectPhase14SourceStateProofFromKernel,
+  type Phase14SourceStateProof,
+} from "./phase14SourceStateProof";
+import {
   createOwnedPlanRuntimePort,
   type OwnedPlanRuntimeExerciseOption,
 } from "./ownedPlanRuntime";
@@ -594,6 +598,7 @@ function sameRestAlertPreferences(
 }
 
 type RuntimeValue = RuntimeState & Readonly<{
+  collectPhase14SourceStateProof(): Promise<Phase14SourceStateProof>;
   connectAutomaticBackup(): Promise<void>;
   deferAutomaticRestore(): Promise<void>;
   cancelAutomaticBackupCheck(): Promise<void>;
@@ -4139,6 +4144,20 @@ export function WorkoutAppRuntimeProvider({
     beginAdvancedTimingClusterGap: beginRuntimeAdvancedTimingClusterGap,
     completeSet: completeWorkoutSet,
     completeWarmup: completeWorkoutWarmup,
+    collectPhase14SourceStateProof: () => {
+      if (!phase14NativeRecoveryFixtureEnabled()) {
+        return Promise.reject(new Error("phase14_source_state_proof_unavailable"));
+      }
+      const {
+        CryptoDigestAlgorithm,
+        digestStringAsync,
+      } = require("expo-crypto") as typeof import("expo-crypto");
+      return collectPhase14SourceStateProofFromKernel({
+        kernel: requireServices().kernel,
+        sha256: (value) =>
+          digestStringAsync(CryptoDigestAlgorithm.SHA256, value),
+      });
+    },
     createSecureBackup: (input) =>
       requireServices().backupCommands.createSecureBackup(input),
     connectAutomaticBackup: () => runAutomaticBackupCommand((runtime) => runtime.connect()),

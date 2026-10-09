@@ -13,6 +13,7 @@ import { PHASE14_SHELL_CASE_IDS, PHASE14_SHELL_EVIDENCE_CASES } from "../src/tes
 import { ingestPhase14JestReport } from "./phase14-evidence-observation.mjs";
 import { PHASE14_NATIVE_MATRIX, phase14MatrixCellsForIds } from "./phase14-native-matrix.mjs";
 import {
+  parsePhase14SourceStateProof,
   parsePhase14RunnerArgs,
   resolvePhase14DeviceSerial,
   validateDistinctPhase14Flows,
@@ -139,12 +140,13 @@ function validBundle() {
       Buffer.from(`${JSON.stringify(trace, null, 2)}\n`),
     );
     const digest = {
-      schema_version: 1,
-      producer: "phase14-run-as-runtime-digest/v1",
-      authority: "installed-app-sqlite-files",
+      proof_schema_version: 1,
+      producer: "phase14-app-canonical-logical-source-digest/v1",
+      authority: "development-test-app-canonical-logical-sqlite-source",
       digest_sha256: "e".repeat(64),
-      file_count: 3,
-      byte_count: 4096,
+      table_count: 48,
+      row_count: 321,
+      schema_version: 30,
       contains_raw_rows: false,
     };
     const pair = { pre: digest, post: digest };
@@ -241,8 +243,8 @@ function validBundle() {
   return {
     artifacts,
     evidence: {
-      schema_version: 2,
-      producer: "phase14-native-observation/v2",
+      schema_version: 3,
+      producer: "phase14-native-observation/v3",
       suite: "phase14",
       verdict: "PASS",
       build_manifest: "artifacts/native/phase14/build.json",
@@ -253,6 +255,14 @@ function validBundle() {
       device_identity_sha256: manifest.device.identity_sha256,
       apk: { ...manifest.apk, installed_sha256: manifest.apk.sha256, matches_retained_apk: true },
       matrix: PHASE14_NATIVE_MATRIX,
+      coverage: {
+        mode: "ids",
+        complete: true,
+        requested_ids: [selectedId],
+        requested_cell: null,
+        expected_cell_count: matrixCells.length,
+        observed_cell_count: matrixCells.length,
+      },
       component_evidence: componentEvidence,
       evidence: [row],
       matrix_cells: matrixCells,
@@ -307,9 +317,30 @@ test("Phase 14 validates manifest, current APK/device identity, and unambiguous 
     installedApkSha256: current.apk.sha256,
     deviceIdentitySha256: current.device.identity_sha256,
   }));
-  assert.deepEqual(parsePhase14RunnerArgs(["--manifest", "artifacts/native/phase14/build.json", "--ids", selectedId]), { manifest: "artifacts/native/phase14/build.json", ids: [selectedId] });
+  assert.deepEqual(parsePhase14RunnerArgs(["--manifest", "artifacts/native/phase14/build.json", "--ids", selectedId]), { manifest: "artifacts/native/phase14/build.json", ids: [selectedId], cell: null, mode: "ids" });
+  const exactCell = PHASE14_NATIVE_MATRIX.cells.find(({ caseId }) => caseId === selectedId).id;
+  assert.deepEqual(parsePhase14RunnerArgs(["--manifest", "artifacts/native/phase14/build.json", "--cell", exactCell]), { manifest: "artifacts/native/phase14/build.json", ids: [selectedId], cell: exactCell, mode: "cell-smoke" });
+  assert.throws(() => parsePhase14RunnerArgs(["--manifest", "artifacts/native/phase14/build.json", "--cell", selectedId]), /phase14_runner_arguments_invalid/u);
   assert.deepEqual(parsePhase14VerifierArgs(["--manifest", "artifacts/native/phase14/build.json", "--ids", selectedId]), { manifest: "artifacts/native/phase14/build.json", all: false, ids: [selectedId] });
   assert.throws(() => parsePhase14VerifierArgs(["--all", "--ids", selectedId]), /phase14_verifier_arguments_invalid/u);
+});
+
+test("Phase 14 parses only the bounded app-side logical source proof", () => {
+  const semantic = `PHASE14_SOURCE_STATE_PROOF digest_sha256=${"f".repeat(64)} table_count=48 row_count=321 schema_version=30`;
+  assert.deepEqual(parsePhase14SourceStateProof(semantic), {
+    proof_schema_version: 1,
+    producer: "phase14-app-canonical-logical-source-digest/v1",
+    authority: "development-test-app-canonical-logical-sqlite-source",
+    digest_sha256: "f".repeat(64),
+    table_count: 48,
+    row_count: 321,
+    schema_version: 30,
+    contains_raw_rows: false,
+  });
+  assert.throws(
+    () => parsePhase14SourceStateProof(`${semantic} raw_rows=private`),
+    /phase14_runtime_state_capture_invalid/u,
+  );
 });
 
 test("Phase 14 accepts a complete observation-derived subset and rejects incomplete Cartesian coverage", () => {
@@ -320,6 +351,26 @@ test("Phase 14 accepts a complete observation-derived subset and rejects incompl
   assert.throws(
     () => validatePhase14Evidence(bundle.evidence, manifest, [selectedId], { readArtifact: reader(bundle.artifacts) }),
     /phase14_evidence_mapping_invalid|phase14_matrix_cells_invalid/u,
+  );
+});
+
+test("Phase 14 verifier rejects one-cell smoke evidence even when that cell passed", () => {
+  const bundle = validBundle();
+  const [cell] = bundle.evidence.matrix_cells;
+  bundle.evidence.evidence[0].matrix_cells = [cell];
+  bundle.evidence.matrix_cells = [cell];
+  bundle.evidence.coverage = {
+    mode: "cell-smoke",
+    complete: false,
+    requested_ids: [selectedId],
+    requested_cell: cell.id,
+    expected_cell_count: 1,
+    observed_cell_count: 1,
+  };
+
+  assert.throws(
+    () => validatePhase14Evidence(bundle.evidence, manifest, [selectedId], { readArtifact: reader(bundle.artifacts) }),
+    /phase14_evidence_coverage_invalid/u,
   );
 });
 

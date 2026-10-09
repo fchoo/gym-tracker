@@ -345,8 +345,8 @@ export function validatePhase14Evidence(evidence, manifest, ids = expectedIds, o
   validatePhase14NativeMatrix(PHASE14_NATIVE_MATRIX);
   const readArtifact = options.readArtifact ?? defaultArtifactReader;
   if (
-    evidence?.schema_version !== 2
-    || evidence.producer !== "phase14-native-observation/v2"
+    evidence?.schema_version !== 3
+    || evidence.producer !== "phase14-native-observation/v3"
     || evidence.suite !== "phase14"
     || !["PASS", "FAIL", "REVIEW_REQUIRED"].includes(evidence.verdict)
     || evidence.build_manifest !== `${ARTIFACT_ROOT}build.json`
@@ -364,6 +364,17 @@ export function validatePhase14Evidence(evidence, manifest, ids = expectedIds, o
   }
   const contracts = PHASE14_SHELL_EVIDENCE_CASES.filter(({ id }) => ids.includes(id));
   const expectedCells = phase14MatrixCellsForIds(ids);
+  const expectedCoverageMode = options.coverageMode ?? "ids";
+  if (
+    evidence.coverage?.mode !== expectedCoverageMode
+    || evidence.coverage.complete !== true
+    || !same(evidence.coverage.requested_ids, ids)
+    || evidence.coverage.requested_cell !== null
+    || evidence.coverage.expected_cell_count !== expectedCells.length
+    || evidence.coverage.observed_cell_count !== expectedCells.length
+  ) {
+    throw new Error("phase14_evidence_coverage_invalid");
+  }
   if (!Array.isArray(evidence.evidence) || evidence.evidence.length !== contracts.length) throw new Error("phase14_evidence_mapping_invalid");
   if (!Array.isArray(evidence.matrix_cells) || evidence.matrix_cells.length !== expectedCells.length) throw new Error("phase14_matrix_cells_invalid");
 
@@ -465,9 +476,11 @@ export function executePhase14EvidenceVerifier(args = process.argv.slice(2)) {
   const ids = options.all ? expectedIds : options.ids;
   const evidencePath = path.join(ROOT, ARTIFACT_ROOT, "maestro/phase14-evidence.json");
   const evidence = JSON.parse(readFileSync(evidencePath, "utf8"));
-  validatePhase14Evidence(evidence, manifest, ids);
+  validatePhase14Evidence(evidence, manifest, ids, {
+    coverageMode: options.all ? "all" : "ids",
+  });
   const result = {
-    schema_version: 2,
+    schema_version: 3,
     suite: "phase14",
     verdict: evidence.verdict,
     ids,

@@ -138,7 +138,7 @@ export const PHASE14_EXECUTABLE_MATRIX_CELLS = Object.freeze([
 ]);
 
 export const PHASE14_NATIVE_MATRIX = Object.freeze({
-  schemaVersion: 2,
+  schemaVersion: 3,
   suite: "phase14",
   package: "com.fchoo.gymtracker.devtest",
   profile: "development-test",
@@ -155,7 +155,7 @@ export const PHASE14_NATIVE_MATRIX = Object.freeze({
     semanticTree: "pre-and-post-each-action",
     focusKeyTrace: "observed-adb",
     targetWindowBounds: true,
-    runtimeStateDigest: "installed-app-sqlite-files",
+    runtimeStateDigest: "development-test-app-canonical-logical-sqlite-source",
     screenshot: true,
     visualComparison: "pngjs-7.0.0",
     referenceNativeOverlayDifferenceMask: true,
@@ -207,7 +207,7 @@ function validateState(state) {
 
 export function validatePhase14NativeMatrix(matrix) {
   if (
-    matrix?.schemaVersion !== 2
+    matrix?.schemaVersion !== 3
     || matrix.suite !== "phase14"
     || matrix.package !== "com.fchoo.gymtracker.devtest"
     || matrix.profile !== "development-test"
@@ -223,7 +223,7 @@ export function validatePhase14NativeMatrix(matrix) {
     || !same(matrix.input, REQUIRED_INPUT)
     || matrix.capture?.semanticTree !== "pre-and-post-each-action"
     || matrix.capture?.focusKeyTrace !== "observed-adb"
-    || matrix.capture?.runtimeStateDigest !== "installed-app-sqlite-files"
+    || matrix.capture?.runtimeStateDigest !== "development-test-app-canonical-logical-sqlite-source"
     || matrix.capture?.visualComparison !== "pngjs-7.0.0"
     || matrix.capture?.referenceNativeOverlayDifferenceMask !== true
   ) {
