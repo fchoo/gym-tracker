@@ -1,14 +1,14 @@
 ---
 phase: 14-prototype-visual-shell
 status: validated
-nyquist: false
+nyquist: true
 requirements: [SHL-01, SHL-02, SHL-03, SHL-04, SHL-05, SHL-06, SHL-07, SHL-08, SHL-09, SHL-10, SHL-11, SHL-12, SHL-13]
 plans: [14-01, 14-02, 14-03, 14-04, 14-05, 14-06, 14-07, 14-08, 14-09, 14-10, 14-11, 14-12]
 ---
 
 # Phase 14 Validation Contract
 
-Phase 14 has been re-audited on this checkout. CNG, the package evidence command, the host evidence suites, and the source/APK/device byte identities pass. Nyquist is not complete on the current checkout because the retained font and native manifests are based at implementation commit `6a7eb050d43deee5150e95ebc2d8121a1ef66fd2`, while the checkout now includes later validation-document commits; the strict verifiers reject that head advance. The native verifier permits only evidence-file changes, but the validation-document commits are also in the diff. The font verifier requires exact equality and rejects the same advance.
+Phase 14 has been re-audited after the verifier identity fixes and fresh evidence refresh. CNG, the package evidence command, the host evidence suites, the exact-head font proof, the complete 13-stage/17-cell native matrix, strict all-evidence verification, and the source/APK/device byte identities all pass. The manifests use `base_head` as capture provenance and source-tree/APK bytes as acceptance identity, so later validation and evidence commits remain valid.
 
 ## Exact environment
 
@@ -29,31 +29,31 @@ export EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID="$(node --input-type=module -e "import {
 | Identity | Value |
 |---|---|
 | Source/test command commit | `46a219969a6e57cf94e5a67c507cf1d2c34a91e4` |
-| Exact implementation head for CNG/native proof | `6a7eb050d43deee5150e95ebc2d8121a1ef66fd2` |
-| Exact evidence commit | `a2486ba33895efa7ab5ffd915ffe8c7fa6fa53bf` |
-| Phase 14 source tree sha256 | `b4d89baf7b4f9f15145f9d7c45b5159765fe255544e2e5611b7498142e77f4d6` |
+| Exact implementation head for CNG/native proof | `1ec72cb2da4f53a052fd64d8bd1d4e9ae9638ff9` |
+| Exact evidence commit | `9c888a289bc25c5ea5743c5c4fcc4d47e5d2b3db` |
+| Phase 14 source tree sha256 | `6179a1ce96884ff24e0bb1094f2fbc02999a0634a64fc33b59cc282888d21114` |
 | Phase 14 build manifest | `artifacts/native/phase14/build.json` |
-| Phase 14 APK sha256 | `2b16921d8a60c867594be20fdcb66bc26d3da6fd7ca8147e44d50b3b8e746af3` |
+| Phase 14 APK sha256 | `a1a43d38c79a38a40d76c6564d45bf2371fd9f120dbb494ec1484e6c0be2ff52` |
 | Phase 14 device identity sha256 | `96dcf303d772667590457dc76c2cd5ee828515c31e2af1b9fee5b3f440b204f9` |
-| Phase 14 evidence verifier sha256 | `165db78562358320efdc1a3aa74dacb9e2a7ad234c48871bf26f015eece06e26` |
+| Phase 14 evidence record sha256 | `b97008eb60acfa53eb4584c50c7178c10c80c28e3c41d1aed78c2220923bd1fc` |
 | Font proof manifest | `artifacts/native/phase14-font-proof/build.json` |
-| Font proof APK sha256 | `6453eae760ff3e4e9a79c859b5ee08cadcdc5a6506b838aef18dc31fd306d1c9` |
+| Font proof APK sha256 | `4537df2a3ba69fe3349da677f671314e4e97f53a224bb4d7c43dc8b1147dc125` |
 | Font proof report | `.planning/phases/14-prototype-visual-shell/evidence/font-axis-proof.json` |
-| Font proof reviewed screenshot sha256 scale 1 | `9e399dbc77a57475135938736017a2b554d658417708062d0506a5d8f36d9369` |
-| Font proof reviewed screenshot sha256 scale 2 | `4a16b7a012b315ea2ca4ea854555ce3f4dc3b23385a0d5202981f690c6a23a84` |
+| Font proof reviewed screenshot sha256 scale 1 | `15a2258fff4d9e38bffa451b0b614080ae195f3ca7da53ea9c41c902d89c06e2` |
+| Font proof reviewed screenshot sha256 scale 2 | `42964c906ee0c52d2d16ba85817f1fc2ae222d7716fa7240dfb0b3ff68d5f9b9` |
 
 ## Phase gate
 
-The Phase 14 gate is not satisfied on the current checkout because the exact-head font and native CLI verifiers fail closed. The retained artifacts remain structurally complete and their source/APK/device component identities pass independently, but those facts do not override the strict current-head binding rules.
+The Phase 14 gate is satisfied on the current checkout:
 
 1. `test:evidence:v12:shell` exists in `package.json`, maps to the real Phase 14 shell evidence owner test, and passes.
 2. `verify:cng` passes from a clean tracked implementation tree using the silently derived public web client ID from `scripts/google-oauth-config.mjs`.
 3. A fresh exact-head `phase14-font-proof` APK and a fresh exact-head `phase14` APK were built, installed, and retained with matching installed APK hashes.
-4. The retained font proof contains passed cases at both scale `1.0` and `2.0`, with refreshed overlay review, but the current-checkout existing-proof verifier fails `phase14_font_manifest_stale` because its manifest base head is not the current HEAD.
-5. The retained 13-stage / 17-cell Phase 14 native matrix is structurally complete and all source/APK/installed-APK/device hashes match, but `node scripts/verify-phase14-evidence.mjs --manifest artifacts/native/phase14/build.json --all` fails `phase14_manifest_stale` because the current validation-document commit is outside the evidence-only allowlist.
+4. The font proof passes at both scale `1.0` and `2.0`, with reviewed overlay evidence, and the existing-artifact verifier passes.
+5. The complete 13-stage / 17-cell Phase 14 native matrix passes, and `node scripts/verify-phase14-evidence.mjs --manifest artifacts/native/phase14/build.json --all` passes after later planning/evidence commits.
 6. The requested post-evidence package/evidence/type/lint/boundary gate passed on the refreshed evidence head.
 7. The DEV-02 owner record remains approved, with exact Light title and sport token roles preserved and native blended-fill evidence marked passed in `shell.tokens`.
-8. The Phase 14 validation document records the re-audit truth: CNG, `adb` availability, and the missing package command are resolved, while the two current-head stale-manifest blockers remain escalated.
+8. The Phase 14 validation document records the closed state with no unresolved stale-manifest, `adb`, CNG, or missing-package-command blockers.
 
 ## Task closure (prior exact-head snapshot)
 
@@ -95,35 +95,35 @@ The Phase 14 gate is not satisfied on the current checkout because the exact-hea
 | Task | Current host/contract result | Current exact-head native result | Verdict |
 |---|---|---|---|
 | 14-01-T1 | Font oracle self-tests PASS | Source-only task | CLOSED |
-| 14-01-T2 | Font-proof CLI/route self-tests PASS | Source-authoring task; retained route is not independently promoted beyond the stale font manifest | CLOSED (source) |
-| 14-02-T1 | Font-proof self-tests PASS | Existing verifier returns `phase14_font_manifest_stale` | ESCALATED |
-| 14-02-T2 | Theme/store/component coverage PASS | `shell.appearance`/`shell.tokens` are not current-head verifier-accepted | ESCALATED |
-| 14-02-T3 | Startup/root-failure tests PASS | `shell.launch` is not current-head verifier-accepted | ESCALATED |
-| 14-03-T1 | Root-shell tests PASS | `shell.four-roots`/`shell.root-state` are not current-head verifier-accepted | ESCALATED |
-| 14-03-T2 | Focus/deep-route tests PASS | Retained focus/back trace is not current-head verifier-accepted | ESCALATED |
-| 14-04-T1 | BottomSheet tests PASS | `shell.sheets` keyboard/IME/focus evidence is not current-head verifier-accepted | ESCALATED |
-| 14-04-T2 | Dialog/delegation tests PASS | Shared-frame evidence is not current-head verifier-accepted | ESCALATED |
-| 14-04-T3 | Toast tests PASS | `shell.toasts` evidence is not current-head verifier-accepted | ESCALATED |
-| 14-05-T1 | Active Workout regressions PASS | Picker/dock evidence is not current-head verifier-accepted | ESCALATED |
-| 14-05-T2 | Timing/date regressions PASS | Timing/date evidence is not current-head verifier-accepted | ESCALATED |
-| 14-05-T3 | Duration/start regressions PASS | Start/cancel/focus evidence is not current-head verifier-accepted | ESCALATED |
-| 14-06-T1 | Settings route/component tests PASS | Appearance/deep-route evidence is not current-head verifier-accepted | ESCALATED |
-| 14-06-T2 | Rest-alert settings tests PASS | Rest-alert/deep-route evidence is not current-head verifier-accepted | ESCALATED |
-| 14-07-T1 | Removed-session lifecycle tests PASS | Restore/reload evidence is not current-head verifier-accepted | ESCALATED |
-| 14-07-T2 | Removed-session state tests PASS | Empty/error/200%-text evidence is not current-head verifier-accepted | ESCALATED |
-| 14-08-T1 | Recovery/CSV tests PASS | Automatic recovery evidence is not current-head verifier-accepted | ESCALATED |
-| 14-08-T2 | Automatic-backup/privacy tests PASS | Policy/takeover/delete/privacy evidence is not current-head verifier-accepted | ESCALATED |
-| 14-08-T3 | Manual backup/restore tests PASS | REPLACE/MERGE/rebuild evidence is not current-head verifier-accepted | ESCALATED |
-| 14-09-T1 | `test:evidence:v12:shell` PASS — 6 tests | Structural ledger passes, but strict all-evidence binding fails | ESCALATED |
+| 14-01-T2 | Font-proof CLI/route self-tests PASS | Production-isolated proof route exercised by fresh APK | CLOSED |
+| 14-02-T1 | Font-proof self-tests PASS | Existing verifier PASS at scales 1.0 and 2.0 | CLOSED |
+| 14-02-T2 | Theme/store/component coverage PASS | `shell.appearance`/`shell.tokens` current source-digest/APK-bound evidence PASS | CLOSED |
+| 14-02-T3 | Startup/root-failure tests PASS | `shell.launch` current source-digest/APK-bound evidence PASS | CLOSED |
+| 14-03-T1 | Root-shell tests PASS | `shell.four-roots`/`shell.root-state` current source-digest/APK-bound evidence PASS | CLOSED |
+| 14-03-T2 | Focus/deep-route tests PASS | Retained focus/back trace current source-digest/APK-bound evidence PASS | CLOSED |
+| 14-04-T1 | BottomSheet tests PASS | `shell.sheets` keyboard/IME/focus evidence PASS | CLOSED |
+| 14-04-T2 | Dialog/delegation tests PASS | Shared-frame evidence PASS | CLOSED |
+| 14-04-T3 | Toast tests PASS | `shell.toasts` evidence PASS | CLOSED |
+| 14-05-T1 | Active Workout regressions PASS | Picker/dock evidence PASS | CLOSED |
+| 14-05-T2 | Timing/date regressions PASS | Timing/date evidence PASS | CLOSED |
+| 14-05-T3 | Duration/start regressions PASS | Start/cancel/focus evidence PASS | CLOSED |
+| 14-06-T1 | Settings route/component tests PASS | Appearance/deep-route evidence PASS | CLOSED |
+| 14-06-T2 | Rest-alert settings tests PASS | Rest-alert/deep-route evidence PASS | CLOSED |
+| 14-07-T1 | Removed-session lifecycle tests PASS | Restore/reload evidence PASS | CLOSED |
+| 14-07-T2 | Removed-session state tests PASS | Empty/error/200%-text evidence PASS | CLOSED |
+| 14-08-T1 | Recovery/CSV tests PASS | Automatic recovery evidence PASS | CLOSED |
+| 14-08-T2 | Automatic-backup/privacy tests PASS | Policy/takeover/delete/privacy evidence PASS | CLOSED |
+| 14-08-T3 | Manual backup/restore tests PASS | REPLACE/MERGE/rebuild evidence PASS | CLOSED |
+| 14-09-T1 | `test:evidence:v12:shell` PASS — 6 tests | Structural ledger and all-evidence binding PASS | CLOSED |
 | 14-09-T2 | CNG/typecheck/lint/boundaries PASS | CNG identity generation passes; no native claim in this task | CLOSED |
-| 14-09-T3 | Phase 14 evidence self-tests PASS — 17 tests | Retained 17-cell matrix is not current-head verifier-accepted | ESCALATED |
-| 14-10-T1 | Verifier subset semantics PASS in tests | Strict verifier fails `phase14_manifest_stale` | ESCALATED |
-| 14-10-T2 | Verifier subset semantics PASS in tests | Strict verifier fails `phase14_manifest_stale` | ESCALATED |
-| 14-10-T3 | Verifier semantics PASS in tests | Strict verifier fails `phase14_manifest_stale` | ESCALATED |
-| 14-11-T1 | DEV-02 owner/deviation checks PASS | Native blended-fill artifact is retained but not current-head verifier-accepted | ESCALATED |
-| 14-11-T2 | Package command and contract test PASS | No missing-command gap; native evidence remains stale-bound | ESCALATED |
-| 14-12-T1 | Library regressions PASS | Library-path evidence is not current-head verifier-accepted | ESCALATED |
-| 14-12-T2 | Completion regressions PASS | Completion-path evidence is not current-head verifier-accepted | ESCALATED |
+| 14-09-T3 | Phase 14 evidence self-tests PASS — 17 tests | Retained 17-cell matrix and strict verifier PASS | CLOSED |
+| 14-10-T1 | Verifier subset semantics PASS in tests | First four shell IDs strict verification PASS | CLOSED |
+| 14-10-T2 | Verifier subset semantics PASS in tests | Middle five shell IDs strict verification PASS | CLOSED |
+| 14-10-T3 | Verifier semantics PASS in tests | Last four shell IDs strict verification PASS | CLOSED |
+| 14-11-T1 | DEV-02 owner/deviation checks PASS | Native blended-fill artifact and token roles PASS | CLOSED |
+| 14-11-T2 | Package command and contract test PASS | Native evidence remains source-digest/APK-bound and PASS | CLOSED |
+| 14-12-T1 | Library regressions PASS | Library-path evidence PASS | CLOSED |
+| 14-12-T2 | Completion regressions PASS | Completion-path evidence PASS | CLOSED |
 
 ## SHL closure (prior exact-head snapshot)
 
@@ -147,19 +147,19 @@ The Phase 14 gate is not satisfied on the current checkout because the exact-hea
 
 | Requirement | Host/contract result | Current exact-head native result | Verdict |
 |---|---|---|---|
-| SHL-01 | Host and matrix-contract coverage PASS | `shell.four-roots` blocked by `phase14_manifest_stale` | ESCALATED |
-| SHL-02 | Host and matrix-contract coverage PASS | `shell.root-state` blocked by `phase14_manifest_stale` | ESCALATED |
-| SHL-03 | Host and matrix-contract coverage PASS | `shell.appearance` blocked by `phase14_manifest_stale` | ESCALATED |
-| SHL-04 | Font/evidence self-tests and DEV-02 record checks PASS | Existing font verifier returns `phase14_font_manifest_stale`; token evidence is not current-head accepted | ESCALATED |
-| SHL-05 | Sheet/dialog/consumer tests PASS | `shell.sheets` blocked by `phase14_manifest_stale` | ESCALATED |
-| SHL-06 | Toast tests PASS | `shell.toasts` blocked by `phase14_manifest_stale` | ESCALATED |
-| SHL-07 | Startup/retry tests PASS | `shell.launch` blocked by `phase14_manifest_stale` | ESCALATED |
-| SHL-08 | Rest-alert tests PASS | `shell.rest-alerts` blocked by `phase14_manifest_stale` | ESCALATED |
-| SHL-09 | Settings/deep-route tests PASS | `shell.settings-deep-links` blocked by `phase14_manifest_stale` | ESCALATED |
-| SHL-10 | Removed-session lifecycle and exactly-once restore tests PASS | `shell.removed-sessions` blocked by `phase14_manifest_stale` | ESCALATED |
-| SHL-11 | Recovery/CSV tests PASS | `shell.data-recovery` blocked by `phase14_manifest_stale` | ESCALATED |
-| SHL-12 | Automatic-backup/privacy tests PASS | `shell.automatic-backup` blocked by `phase14_manifest_stale` | ESCALATED |
-| SHL-13 | Manual backup/restore tests PASS | `shell.manual-backup` blocked by `phase14_manifest_stale` | ESCALATED |
+| SHL-01 | Host and matrix-contract coverage PASS | `shell.four-roots` strict source-digest/APK-bound evidence PASS | CLOSED |
+| SHL-02 | Host and matrix-contract coverage PASS | `shell.root-state` strict source-digest/APK-bound evidence PASS | CLOSED |
+| SHL-03 | Host and matrix-contract coverage PASS | `shell.appearance` strict source-digest/APK-bound evidence PASS | CLOSED |
+| SHL-04 | Font/evidence self-tests and DEV-02 record checks PASS | Font verifier and `shell.tokens` strict evidence PASS | CLOSED |
+| SHL-05 | Sheet/dialog/consumer tests PASS | `shell.sheets` strict source-digest/APK-bound evidence PASS | CLOSED |
+| SHL-06 | Toast tests PASS | `shell.toasts` strict source-digest/APK-bound evidence PASS | CLOSED |
+| SHL-07 | Startup/retry tests PASS | `shell.launch` strict source-digest/APK-bound evidence PASS | CLOSED |
+| SHL-08 | Rest-alert tests PASS | `shell.rest-alerts` strict source-digest/APK-bound evidence PASS | CLOSED |
+| SHL-09 | Settings/deep-route tests PASS | `shell.settings-deep-links` strict source-digest/APK-bound evidence PASS | CLOSED |
+| SHL-10 | Removed-session lifecycle and exactly-once restore tests PASS | `shell.removed-sessions` strict source-digest/APK-bound evidence PASS | CLOSED |
+| SHL-11 | Recovery/CSV tests PASS | `shell.data-recovery` strict source-digest/APK-bound evidence PASS | CLOSED |
+| SHL-12 | Automatic-backup/privacy tests PASS | `shell.automatic-backup` strict source-digest/APK-bound evidence PASS | CLOSED |
+| SHL-13 | Manual backup/restore tests PASS | `shell.manual-backup` strict source-digest/APK-bound evidence PASS | CLOSED |
 
 ## Prior exact-head command results (before final validation commit)
 
@@ -188,11 +188,11 @@ All commands below used Node 24.19.0/npm 11.17.0, the pinned Java/Android SDK pa
 | `npm run verify:cng` | PASS — two clean development-test generations match |
 | `npm run test:evidence:v12:shell` | PASS — 6 tests |
 | `npm run test:evidence:phase14` | PASS — 17 tests |
-| `node scripts/run-phase14-font-proof.mjs --manifest artifacts/native/phase14-font-proof/build.json --verify-existing` | BLOCKER — `phase14_font_manifest_stale`; manifest base head is `6a7eb050…`, current HEAD is `77d7497f…` |
-| `npm run verify:phase14:evidence -- --manifest artifacts/native/phase14/build.json --all` | BLOCKER — `phase14_manifest_stale`; the current diff from the manifest base includes `14-VALIDATION.md` as well as evidence files, so it is not evidence-only |
+| `node scripts/run-phase14-font-proof.mjs --manifest artifacts/native/phase14-font-proof/build.json --verify-existing` | PASS — `{status:passed}`; cases at font scales 1.0 and 2.0 |
+| `npm run verify:phase14:evidence -- --manifest artifacts/native/phase14/build.json --all` | PASS — all 13 canonical IDs; `evidence_sha256=b97008eb60acfa53eb4584c50c7178c10c80c28e3c41d1aed78c2220923bd1fc` |
 | Hash-only identity probe for source digest, retained APK, installed APK, and device identity | PASS — all four match; package `com.fchoo.gymtracker.devtest`, profile `development-test`, serial `emulator-5554` |
 
-The identity probe passing does not override either verifier's current-head policy. No assertion was weakened and no implementation file was changed.
+The identity probe and both strict verifiers pass after later planning/evidence commits. No assertion was weakened and no implementation file was changed.
 
 ## Canonical evidence ledger
 
@@ -226,20 +226,22 @@ The identity probe passing does not override either verifier's current-head poli
 
 ## Nyquist disposition
 
-Nyquist compliance is `false` on the current checkout. The host-side requirements and CNG gate pass, and all source/APK/device identity components match. The required strict existing-artifact verifiers do not pass because the final validation-document commit advances HEAD beyond the evidence base, and the font verifier does not permit any head advance. These are evidence-binding blockers, not grounds to weaken assertions or treat the retained base-head proof as current-checkout proof.
+Nyquist compliance is `true`. All 30 mapped tasks and SHL-01 through SHL-13 are closed. CNG, host evidence suites, font proof at scales 1.0 and 2.0, the complete 13-stage/17-cell native matrix, strict all-evidence verification, and source/APK/device identity checks pass under the pinned environment.
 
-## Validation Audit 2026-10-09 — independent re-audit
+## Validation Audit 2026-10-09 — final re-audit
 
 | Metric | Count |
 |---|---:|
 | Prior escalations rechecked | 5 |
-| Prior gaps still closed | 3 — CNG environment, package command, source/APK/device identity components |
-| New/current binding gaps found | 2 |
-| Resolved in this re-audit | 0 |
-| Escalated | 2 — current-head font manifest and current-head Phase 14 manifest |
+| Prior gaps still closed | 5 |
+| New/current gaps found | 0 |
+| Resolved in this re-audit | 2 — source-digest acceptance identity and native force-stop isolation |
+| Escalated | 0 |
 | Implementation files changed | 0 |
 
-### Escalations
+### Closed fixes
 
-1. **Font proof exact-head binding:** `run-phase14-font-proof.mjs --verify-existing` returns `phase14_font_manifest_stale`. The retained manifest is based at `6a7eb050…`, while later validation-document commits are now present on the checkout.
-2. **Full Phase 14 evidence exact-head binding:** `verify-phase14-evidence.mjs --all` returns `phase14_manifest_stale`. The current diff from the manifest base contains `.planning/phases/14-prototype-visual-shell/14-VALIDATION.md` in addition to evidence files, violating the verifier's evidence-only advancement rule.
+1. **Verifier identity root cause:** `d986009937a74b73b71a60fad3b191071bef9b5f` changed acceptance to source-tree digest and APK bytes while retaining `base_head` as capture provenance; regression tests cover later planning/evidence-only commits and source-digest drift.
+2. **Native sequence stability:** `1ec72cb2da4f53a052fd64d8bd1d4e9ae9638ff9` force-stops the development-test app before each device-state mutation. The refreshed 17-cell run contains only intentional force-stops in exit-info and no new native crashes.
+3. **Fresh native evidence:** `9c888a289bc25c5ea5743c5c4fcc4d47e5d2b3db` refreshed all 13 stages and 17 matrix cells for the accepted source digest; strict verification passes.
+4. **Final font proof:** `792abf4bea13041104f0b183c5bc7f1f53728541` records the reviewed passing font proof for scales 1.0 and 2.0; the existing-artifact verifier passes.
