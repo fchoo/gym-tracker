@@ -46,6 +46,7 @@ type RestoreStage =
   | "runtime-refresh-pending"
   | "removed-list-reload-pending"
   | "success";
+type CommittedRestoreStage = Exclude<RestoreStage, "command-pending" | "success">;
 type FocusRef = React.RefObject<View | null>;
 
 export type RemovedSessionsScreenProps = Readonly<{
@@ -88,6 +89,29 @@ export function restoreFocusRefForRemovedSession(
   return selectedRestoreRef.current === null ? headingRef : selectedRestoreRef;
 }
 
+function isCommittedRestoreStage(stage: RestoreStage | null): stage is CommittedRestoreStage {
+  return stage === "runtime-refresh-pending" || stage === "removed-list-reload-pending";
+}
+
+function staleRestoreCopy(stage: CommittedRestoreStage): string {
+  return stage === "runtime-refresh-pending"
+    ? "Already restored. Retry refresh to update the app and clear this stale row."
+    : "Already restored. Retry loading removed sessions to clear this stale row.";
+}
+
+function restoreActionLabelFor(
+  label: string,
+  stage: CommittedRestoreStage | null,
+): string {
+  if (stage === "runtime-refresh-pending") {
+    return `Review restored ${label}`;
+  }
+  if (stage === "removed-list-reload-pending") {
+    return `Retry loading removed ${label}`;
+  }
+  return `Restore ${label}`;
+}
+
 export function RemovedSessionsScreen({
   loadRemovedSessions,
   restoreSession,
@@ -102,6 +126,9 @@ export function RemovedSessionsScreen({
   const [selected, setSelected] = useState<RemovedHistorySession | null>(null);
   const [restoreFailed, setRestoreFailed] = useState(false);
   const [restoreStage, setRestoreStage] = useState<RestoreStage | null>(null);
+  const [committedRestoreStages, setCommittedRestoreStages] = useState<
+    Partial<Record<string, CommittedRestoreStage>>
+  >({});
   const [restoring, setRestoring] = useState(false);
   const headingRef = useRef<View>(null);
   const loadingRef = useRef(false);
@@ -137,11 +164,27 @@ export function RemovedSessionsScreen({
     if (restoreStage !== "success") {
       return;
     }
-    dismissConfirmation();
+    if (selected !== null) {
+      setCommittedRestoreStages((current) => {
+        if (current[selected.id] === undefined) {
+          return current;
+        }
+        const next = { ...current };
+        delete next[selected.id];
+        return next;
+      });
+    }
+    dismissConfirmation(false);
     enqueue({ message: "Workout restored" });
-  }, [enqueue, restoreStage]);
+  }, [enqueue, restoreStage, selected]);
 
-  const dismissConfirmation = () => {
+  const dismissConfirmation = (preserveCommittedStage = true) => {
+    if (preserveCommittedStage && selected !== null && isCommittedRestoreStage(restoreStage)) {
+      setCommittedRestoreStages((current) => ({
+        ...current,
+        [selected.id]: restoreStage,
+      }));
+    }
     setSelected(null);
     setRestoreFailed(false);
     setRestoreStage(null);
@@ -176,6 +219,14 @@ export function RemovedSessionsScreen({
           setRestoring(false);
           return;
         }
+        setCommittedRestoreStages((current) => {
+          if (current[selectedSession.id] === undefined) {
+            return current;
+          }
+          const next = { ...current };
+          delete next[selectedSession.id];
+          return next;
+        });
         if (!reloadedSessions.some((session) => session.id === selectedSession.id)) {
           restoreFocusRef.current = headingRef.current;
         }
@@ -233,6 +284,7 @@ export function RemovedSessionsScreen({
       <View style={styles.list}>
         {sessions.map((session) => {
           const label = retainedLabel(session);
+          const committedStage = committedRestoreStages[session.id] ?? null;
           return (
             <ContentCard key={session.id} testID={`removed-session-${session.id}`}>
               <View style={styles.cardContent}>
@@ -256,12 +308,19 @@ export function RemovedSessionsScreen({
                 >
                   {removedText(session)}
                 </Text>
+                {committedStage === null ? null : (
+                  <Text
+                    style={[typeScale.secondary as TextStyle, { color: colors.contentCardTextSecondary }]}
+                  >
+                    {staleRestoreCopy(committedStage)}
+                  </Text>
+                )}
                 <SecondaryAction
-                  label={`Restore ${label}`}
+                  label={restoreActionLabelFor(label, committedStage)}
                   onPress={() => {
                     restoreFocusRef.current = restoreActionRefs.current.get(session.id) ?? null;
                     setRestoreFailed(false);
-                    setRestoreStage("command-pending");
+                    setRestoreStage(committedStage ?? "command-pending");
                     setSelected(session);
                   }}
                   ref={(node) => {

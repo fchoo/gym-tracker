@@ -308,6 +308,45 @@ describe("RemovedSessionsScreen", () => {
     expect(props.loadRemovedSessions).toHaveBeenCalledTimes(2);
   });
 
+  it("preserves committed stale-row state across dismissal and reentry without reissuing restore", async () => {
+    const onRestored = jest
+      .fn<(sessionId: string) => Promise<void>>()
+      .mockRejectedValueOnce(new Error("runtime refresh unavailable"))
+      .mockResolvedValueOnce(undefined);
+    const props = await renderScreen({
+      loadRemovedSessions: jest
+        .fn<() => Promise<readonly RemovedHistorySession[]>>()
+        .mockResolvedValue([removedSession]),
+      onRestored,
+    });
+    await screen.findByText("Full Body Foundation · Full Body A");
+
+    await fireEvent.press(screen.getByRole("button", {
+      name: "Restore Full Body Foundation · Full Body A",
+    }));
+    await fireEvent.press(screen.getByRole("button", { name: "Restore workout" }));
+
+    expect(await screen.findByText(
+      "The workout was restored, but the app could not refresh. Retry refresh to update the app.",
+    )).toBeOnTheScreen();
+    await fireEvent.press(screen.getByRole("button", { name: "Keep session removed" }));
+
+    expect(screen.queryByRole("header", { name: "Restore this workout?" }))
+      .not.toBeOnTheScreen();
+    expect(screen.getByText(
+      "Already restored. Retry refresh to update the app and clear this stale row.",
+    )).toBeOnTheScreen();
+    await fireEvent.press(screen.getByRole("button", {
+      name: "Review restored Full Body Foundation · Full Body A",
+    }));
+    expect(await screen.findByRole("button", { name: "Retry refresh" }))
+      .toBeOnTheScreen();
+
+    await fireEvent.press(screen.getByRole("button", { name: "Retry refresh" }));
+    expect(props.restoreSession).toHaveBeenCalledTimes(1);
+    expect(onRestored).toHaveBeenCalledTimes(2);
+  });
+
   it("moves eventual-success focus to the stable screen heading after the restored row disappears", async () => {
     const props = await renderScreen({
       loadRemovedSessions: jest
