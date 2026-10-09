@@ -3,18 +3,18 @@
   "suite": "phase14",
   "status": "passed",
   "build_manifest": "artifacts/native/phase14/build.json",
-  "base_head": "f059f06ab7a9ecc96e5ca6401f92a6719f02e374",
-  "source_tree_sha256": "770afa08a9e84b158cdbed3f53e4ae3e2940f357af148785693579babbfa0f5d",
+  "base_head": "d7282f29062796eccad20c6ecf960fdefa30a036",
+  "source_tree_sha256": "490a02edff3edeb7a441380b1dffe7913f8d7fa108a4ce431f7c9cc99de94ce4",
   "package": "com.fchoo.gymtracker.devtest",
   "profile": "development-test",
   "device_identity_sha256": "96dcf303d772667590457dc76c2cd5ee828515c31e2af1b9fee5b3f440b204f9",
   "apk": {
     "path": "artifacts/native/phase14/gym-tracker-phase14-devtest.apk",
-    "sha256": "5d6d8f9cc9f55b879bc7262b898a5de8287e312f5e3f38ee1d1fd81a844b9366",
-    "size_bytes": 131760068,
+    "sha256": "6133c26be9385799aa93039e338c152c654b9fec5e0fb2f27dda6422bddeb485",
+    "size_bytes": 131760120,
     "page_alignment_kib": 16,
     "page_alignment_verified": true,
-    "installed_sha256": "5d6d8f9cc9f55b879bc7262b898a5de8287e312f5e3f38ee1d1fd81a844b9366",
+    "installed_sha256": "6133c26be9385799aa93039e338c152c654b9fec5e0fb2f27dda6422bddeb485",
     "matches_retained_apk": true
   },
   "matrix": {
@@ -470,7 +470,7 @@
     "stage": "phase14-launch",
     "status": "passed",
     "report": "artifacts/native/phase14/maestro/shell-launch-phone-360-portrait-scale-2.xml",
-    "report_sha256": "32a56d99b2e6e75a6748209222227c4039f6acb648e2b2abd318c74acdf15d66",
+    "report_sha256": "1c1ecb44b909fa703785aa7f075dcb0c59f5fb926ddc80a3ac9ba8c12aca7611",
     "matrix_cells": [
       {
         "id": "shell-launch-phone-360-portrait-scale-2",
@@ -489,13 +489,13 @@
           "back"
         ],
         "report": "artifacts/native/phase14/maestro/shell-launch-phone-360-portrait-scale-2.xml",
-        "report_sha256": "32a56d99b2e6e75a6748209222227c4039f6acb648e2b2abd318c74acdf15d66",
+        "report_sha256": "1c1ecb44b909fa703785aa7f075dcb0c59f5fb926ddc80a3ac9ba8c12aca7611",
         "screenshot": "artifacts/native/phase14/screenshots/shell-launch-phone-360-portrait-scale-2.png",
-        "screenshot_sha256": "bcd994b62162b1c7b8101e89724bc5b89507856ca14b20c22653031fcd741eb5",
+        "screenshot_sha256": "a2d38c8597dabafadda8c22ca489cd6b1fd1f417900ba00b392e2f0afa1ec21b",
         "semantic_tree": "artifacts/native/phase14/semantic/shell-launch-phone-360-portrait-scale-2.xml",
         "semantic_tree_sha256": "b4f05e5b8809dfb4371bdd0616318c0fa9dd70c66d11c557c81dbc42232749e8",
         "focus_key_trace": "artifacts/native/phase14/traces/shell-launch-phone-360-portrait-scale-2.json",
-        "focus_key_trace_sha256": "ad8bc66e6a498f1480124e6034aa0c214339519f78aaecbaffc35582ed484fcc",
+        "focus_key_trace_sha256": "3460c77d1f43a07e86d274a0ce00b66805f61f29fbb34b27e82c2fc63d376567",
         "target_window_bounds": {
           "requested_viewport": {
             "width": 360,
@@ -509,8 +509,8 @@
           "night_mode": "Night mode: no"
         },
         "difference_overlay": "artifacts/native/phase14/overlays/shell-launch-phone-360-portrait-scale-2.json",
-        "difference_overlay_sha256": "96e9e6e41ab7959b0df9ef0168bfa5e372c76a6c614d0c51977e2f372d78374e",
-        "source_state_sha256": "770afa08a9e84b158cdbed3f53e4ae3e2940f357af148785693579babbfa0f5d",
+        "difference_overlay_sha256": "3373965ded0cff93eebdede047b27a2a630800531d3674652dcffb7fbbf6bd76",
+        "source_state_sha256": "490a02edff3edeb7a441380b1dffe7913f8d7fa108a4ce431f7c9cc99de94ce4",
         "summary": {
           "tests": 1,
           "failures": 0,
@@ -526,12 +526,12 @@
     "requirement": "SHL-07",
     "path": ".planning/phases/14-prototype-visual-shell/evidence/shell.launch.json",
     "report": "artifacts/native/phase14/maestro/shell-launch-phone-360-portrait-scale-2.xml",
-    "report_sha256": "32a56d99b2e6e75a6748209222227c4039f6acb648e2b2abd318c74acdf15d66",
+    "report_sha256": "1c1ecb44b909fa703785aa7f075dcb0c59f5fb926ddc80a3ac9ba8c12aca7611",
     "screenshot": "artifacts/native/phase14/screenshots/shell-launch-phone-360-portrait-scale-2.png",
-    "screenshot_sha256": "bcd994b62162b1c7b8101e89724bc5b89507856ca14b20c22653031fcd741eb5",
+    "screenshot_sha256": "a2d38c8597dabafadda8c22ca489cd6b1fd1f417900ba00b392e2f0afa1ec21b",
     "component_verdict": "passed",
     "native_verdict": "passed",
-    "source_state_sha256": "770afa08a9e84b158cdbed3f53e4ae3e2940f357af148785693579babbfa0f5d",
+    "source_state_sha256": "490a02edff3edeb7a441380b1dffe7913f8d7fa108a4ce431f7c9cc99de94ce4",
     "matrix_cells": [
       {
         "id": "shell-launch-phone-360-portrait-scale-2",
@@ -550,13 +550,13 @@
           "back"
         ],
         "report": "artifacts/native/phase14/maestro/shell-launch-phone-360-portrait-scale-2.xml",
-        "report_sha256": "32a56d99b2e6e75a6748209222227c4039f6acb648e2b2abd318c74acdf15d66",
+        "report_sha256": "1c1ecb44b909fa703785aa7f075dcb0c59f5fb926ddc80a3ac9ba8c12aca7611",
         "screenshot": "artifacts/native/phase14/screenshots/shell-launch-phone-360-portrait-scale-2.png",
-        "screenshot_sha256": "bcd994b62162b1c7b8101e89724bc5b89507856ca14b20c22653031fcd741eb5",
+        "screenshot_sha256": "a2d38c8597dabafadda8c22ca489cd6b1fd1f417900ba00b392e2f0afa1ec21b",
         "semantic_tree": "artifacts/native/phase14/semantic/shell-launch-phone-360-portrait-scale-2.xml",
         "semantic_tree_sha256": "b4f05e5b8809dfb4371bdd0616318c0fa9dd70c66d11c557c81dbc42232749e8",
         "focus_key_trace": "artifacts/native/phase14/traces/shell-launch-phone-360-portrait-scale-2.json",
-        "focus_key_trace_sha256": "ad8bc66e6a498f1480124e6034aa0c214339519f78aaecbaffc35582ed484fcc",
+        "focus_key_trace_sha256": "3460c77d1f43a07e86d274a0ce00b66805f61f29fbb34b27e82c2fc63d376567",
         "target_window_bounds": {
           "requested_viewport": {
             "width": 360,
@@ -570,8 +570,8 @@
           "night_mode": "Night mode: no"
         },
         "difference_overlay": "artifacts/native/phase14/overlays/shell-launch-phone-360-portrait-scale-2.json",
-        "difference_overlay_sha256": "96e9e6e41ab7959b0df9ef0168bfa5e372c76a6c614d0c51977e2f372d78374e",
-        "source_state_sha256": "770afa08a9e84b158cdbed3f53e4ae3e2940f357af148785693579babbfa0f5d",
+        "difference_overlay_sha256": "3373965ded0cff93eebdede047b27a2a630800531d3674652dcffb7fbbf6bd76",
+        "source_state_sha256": "490a02edff3edeb7a441380b1dffe7913f8d7fa108a4ce431f7c9cc99de94ce4",
         "summary": {
           "tests": 1,
           "failures": 0,

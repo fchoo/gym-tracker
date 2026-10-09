@@ -3,18 +3,18 @@
   "suite": "phase14",
   "status": "passed",
   "build_manifest": "artifacts/native/phase14/build.json",
-  "base_head": "f059f06ab7a9ecc96e5ca6401f92a6719f02e374",
-  "source_tree_sha256": "770afa08a9e84b158cdbed3f53e4ae3e2940f357af148785693579babbfa0f5d",
+  "base_head": "d7282f29062796eccad20c6ecf960fdefa30a036",
+  "source_tree_sha256": "490a02edff3edeb7a441380b1dffe7913f8d7fa108a4ce431f7c9cc99de94ce4",
   "package": "com.fchoo.gymtracker.devtest",
   "profile": "development-test",
   "device_identity_sha256": "96dcf303d772667590457dc76c2cd5ee828515c31e2af1b9fee5b3f440b204f9",
   "apk": {
     "path": "artifacts/native/phase14/gym-tracker-phase14-devtest.apk",
-    "sha256": "5d6d8f9cc9f55b879bc7262b898a5de8287e312f5e3f38ee1d1fd81a844b9366",
-    "size_bytes": 131760068,
+    "sha256": "6133c26be9385799aa93039e338c152c654b9fec5e0fb2f27dda6422bddeb485",
+    "size_bytes": 131760120,
     "page_alignment_kib": 16,
     "page_alignment_verified": true,
-    "installed_sha256": "5d6d8f9cc9f55b879bc7262b898a5de8287e312f5e3f38ee1d1fd81a844b9366",
+    "installed_sha256": "6133c26be9385799aa93039e338c152c654b9fec5e0fb2f27dda6422bddeb485",
     "matches_retained_apk": true
   },
   "matrix": {
@@ -470,7 +470,7 @@
     "stage": "phase14-four-roots",
     "status": "passed",
     "report": "artifacts/native/phase14/maestro/shell-four-roots-phone-360-portrait-scale-2.xml",
-    "report_sha256": "67c77cb61f1c287be3ffc6fc989386da09e3b63f162a4dd9a6cb4501dd064274",
+    "report_sha256": "3cf018b2905bced3148bd951f9de32d17d23fae27683e4c69c1e099aea2d821c",
     "matrix_cells": [
       {
         "id": "shell-four-roots-phone-360-portrait-scale-2",
@@ -490,13 +490,13 @@
           "dpad"
         ],
         "report": "artifacts/native/phase14/maestro/shell-four-roots-phone-360-portrait-scale-2.xml",
-        "report_sha256": "67c77cb61f1c287be3ffc6fc989386da09e3b63f162a4dd9a6cb4501dd064274",
+        "report_sha256": "3cf018b2905bced3148bd951f9de32d17d23fae27683e4c69c1e099aea2d821c",
         "screenshot": "artifacts/native/phase14/screenshots/shell-four-roots-phone-360-portrait-scale-2.png",
-        "screenshot_sha256": "49a0155f7ed4f4f5ec5176b707fef9ffd62798bc2456acea7d1d7fa119616b2a",
+        "screenshot_sha256": "723b1e6fda237206c6c93598bb0e6a9b6153719691950c675796d2abb4cc70b7",
         "semantic_tree": "artifacts/native/phase14/semantic/shell-four-roots-phone-360-portrait-scale-2.xml",
         "semantic_tree_sha256": "08ba09ebcac6e33583378354166ad5d4ee37149f09f5db0d601388055f87da50",
         "focus_key_trace": "artifacts/native/phase14/traces/shell-four-roots-phone-360-portrait-scale-2.json",
-        "focus_key_trace_sha256": "ee5fb33a35e1db1ea69b10c94f2a7f143181b185f8af638cc61275af590b99a4",
+        "focus_key_trace_sha256": "7b9a5779c754f5eb841fe9e2e241e3087f96ffdf70597b48c1d4819415078960",
         "target_window_bounds": {
           "requested_viewport": {
             "width": 360,
@@ -510,8 +510,8 @@
           "night_mode": "Night mode: no"
         },
         "difference_overlay": "artifacts/native/phase14/overlays/shell-four-roots-phone-360-portrait-scale-2.json",
-        "difference_overlay_sha256": "f95986cef338add7e1d0f58b8de7991c248da9042f810cfa8761b82605af106e",
-        "source_state_sha256": "770afa08a9e84b158cdbed3f53e4ae3e2940f357af148785693579babbfa0f5d",
+        "difference_overlay_sha256": "d750e247d491dd125a08800e3d2276397fa7560c862a127e08facfcd021c7b31",
+        "source_state_sha256": "490a02edff3edeb7a441380b1dffe7913f8d7fa108a4ce431f7c9cc99de94ce4",
         "summary": {
           "tests": 1,
           "failures": 0,
@@ -537,13 +537,13 @@
           "dpad"
         ],
         "report": "artifacts/native/phase14/maestro/shell-four-roots-tablet-840-landscape-scale-1.xml",
-        "report_sha256": "78fa41ae847d14cf9027c2df83987f66a47afa88ba37c0c3378ac7516d015111",
+        "report_sha256": "365be0991f83fcd8af2afb56a346dafb4818e3e854465ed83ff41bade5b26819",
         "screenshot": "artifacts/native/phase14/screenshots/shell-four-roots-tablet-840-landscape-scale-1.png",
-        "screenshot_sha256": "9f30092428554abfa74e6385e4bf9708e406176e1b1c41bde2bde0cee1429b73",
+        "screenshot_sha256": "f813e4820863309d18d093014bf929810c193ea873fb01410b99b37384a8a561",
         "semantic_tree": "artifacts/native/phase14/semantic/shell-four-roots-tablet-840-landscape-scale-1.xml",
         "semantic_tree_sha256": "7fffd7be79b2a84c8e36b7aaf7cbc2b301e6ce4c9672e393d6e7dc30443c729d",
         "focus_key_trace": "artifacts/native/phase14/traces/shell-four-roots-tablet-840-landscape-scale-1.json",
-        "focus_key_trace_sha256": "41ae2abd3d0ab81b667ea00af1f6825aa2bf50b9c1d3a03e2cfda422b9867870",
+        "focus_key_trace_sha256": "bcbf34a8770afe58ad0750045271db2b72d96640df6c146db11ee97960332031",
         "target_window_bounds": {
           "requested_viewport": {
             "width": 840,
@@ -557,8 +557,8 @@
           "night_mode": "Night mode: no"
         },
         "difference_overlay": "artifacts/native/phase14/overlays/shell-four-roots-tablet-840-landscape-scale-1.json",
-        "difference_overlay_sha256": "05b733b4b454d52fdcbbfd27dc162a86554a6443e66500bbdfbcb8dcfd864255",
-        "source_state_sha256": "770afa08a9e84b158cdbed3f53e4ae3e2940f357af148785693579babbfa0f5d",
+        "difference_overlay_sha256": "1ef4374e6666236a15a12cd90ebff6cafb9fcad55ed45506a91e1840c7f697a8",
+        "source_state_sha256": "490a02edff3edeb7a441380b1dffe7913f8d7fa108a4ce431f7c9cc99de94ce4",
         "summary": {
           "tests": 1,
           "failures": 0,
@@ -574,12 +574,12 @@
     "requirement": "SHL-01",
     "path": ".planning/phases/14-prototype-visual-shell/evidence/shell.four-roots.json",
     "report": "artifacts/native/phase14/maestro/shell-four-roots-phone-360-portrait-scale-2.xml",
-    "report_sha256": "67c77cb61f1c287be3ffc6fc989386da09e3b63f162a4dd9a6cb4501dd064274",
+    "report_sha256": "3cf018b2905bced3148bd951f9de32d17d23fae27683e4c69c1e099aea2d821c",
     "screenshot": "artifacts/native/phase14/screenshots/shell-four-roots-phone-360-portrait-scale-2.png",
-    "screenshot_sha256": "49a0155f7ed4f4f5ec5176b707fef9ffd62798bc2456acea7d1d7fa119616b2a",
+    "screenshot_sha256": "723b1e6fda237206c6c93598bb0e6a9b6153719691950c675796d2abb4cc70b7",
     "component_verdict": "passed",
     "native_verdict": "passed",
-    "source_state_sha256": "770afa08a9e84b158cdbed3f53e4ae3e2940f357af148785693579babbfa0f5d",
+    "source_state_sha256": "490a02edff3edeb7a441380b1dffe7913f8d7fa108a4ce431f7c9cc99de94ce4",
     "matrix_cells": [
       {
         "id": "shell-four-roots-phone-360-portrait-scale-2",
@@ -599,13 +599,13 @@
           "dpad"
         ],
         "report": "artifacts/native/phase14/maestro/shell-four-roots-phone-360-portrait-scale-2.xml",
-        "report_sha256": "67c77cb61f1c287be3ffc6fc989386da09e3b63f162a4dd9a6cb4501dd064274",
+        "report_sha256": "3cf018b2905bced3148bd951f9de32d17d23fae27683e4c69c1e099aea2d821c",
         "screenshot": "artifacts/native/phase14/screenshots/shell-four-roots-phone-360-portrait-scale-2.png",
-        "screenshot_sha256": "49a0155f7ed4f4f5ec5176b707fef9ffd62798bc2456acea7d1d7fa119616b2a",
+        "screenshot_sha256": "723b1e6fda237206c6c93598bb0e6a9b6153719691950c675796d2abb4cc70b7",
         "semantic_tree": "artifacts/native/phase14/semantic/shell-four-roots-phone-360-portrait-scale-2.xml",
         "semantic_tree_sha256": "08ba09ebcac6e33583378354166ad5d4ee37149f09f5db0d601388055f87da50",
         "focus_key_trace": "artifacts/native/phase14/traces/shell-four-roots-phone-360-portrait-scale-2.json",
-        "focus_key_trace_sha256": "ee5fb33a35e1db1ea69b10c94f2a7f143181b185f8af638cc61275af590b99a4",
+        "focus_key_trace_sha256": "7b9a5779c754f5eb841fe9e2e241e3087f96ffdf70597b48c1d4819415078960",
         "target_window_bounds": {
           "requested_viewport": {
             "width": 360,
@@ -619,8 +619,8 @@
           "night_mode": "Night mode: no"
         },
         "difference_overlay": "artifacts/native/phase14/overlays/shell-four-roots-phone-360-portrait-scale-2.json",
-        "difference_overlay_sha256": "f95986cef338add7e1d0f58b8de7991c248da9042f810cfa8761b82605af106e",
-        "source_state_sha256": "770afa08a9e84b158cdbed3f53e4ae3e2940f357af148785693579babbfa0f5d",
+        "difference_overlay_sha256": "d750e247d491dd125a08800e3d2276397fa7560c862a127e08facfcd021c7b31",
+        "source_state_sha256": "490a02edff3edeb7a441380b1dffe7913f8d7fa108a4ce431f7c9cc99de94ce4",
         "summary": {
           "tests": 1,
           "failures": 0,
@@ -646,13 +646,13 @@
           "dpad"
         ],
         "report": "artifacts/native/phase14/maestro/shell-four-roots-tablet-840-landscape-scale-1.xml",
-        "report_sha256": "78fa41ae847d14cf9027c2df83987f66a47afa88ba37c0c3378ac7516d015111",
+        "report_sha256": "365be0991f83fcd8af2afb56a346dafb4818e3e854465ed83ff41bade5b26819",
         "screenshot": "artifacts/native/phase14/screenshots/shell-four-roots-tablet-840-landscape-scale-1.png",
-        "screenshot_sha256": "9f30092428554abfa74e6385e4bf9708e406176e1b1c41bde2bde0cee1429b73",
+        "screenshot_sha256": "f813e4820863309d18d093014bf929810c193ea873fb01410b99b37384a8a561",
         "semantic_tree": "artifacts/native/phase14/semantic/shell-four-roots-tablet-840-landscape-scale-1.xml",
         "semantic_tree_sha256": "7fffd7be79b2a84c8e36b7aaf7cbc2b301e6ce4c9672e393d6e7dc30443c729d",
         "focus_key_trace": "artifacts/native/phase14/traces/shell-four-roots-tablet-840-landscape-scale-1.json",
-        "focus_key_trace_sha256": "41ae2abd3d0ab81b667ea00af1f6825aa2bf50b9c1d3a03e2cfda422b9867870",
+        "focus_key_trace_sha256": "bcbf34a8770afe58ad0750045271db2b72d96640df6c146db11ee97960332031",
         "target_window_bounds": {
           "requested_viewport": {
             "width": 840,
@@ -666,8 +666,8 @@
           "night_mode": "Night mode: no"
         },
         "difference_overlay": "artifacts/native/phase14/overlays/shell-four-roots-tablet-840-landscape-scale-1.json",
-        "difference_overlay_sha256": "05b733b4b454d52fdcbbfd27dc162a86554a6443e66500bbdfbcb8dcfd864255",
-        "source_state_sha256": "770afa08a9e84b158cdbed3f53e4ae3e2940f357af148785693579babbfa0f5d",
+        "difference_overlay_sha256": "1ef4374e6666236a15a12cd90ebff6cafb9fcad55ed45506a91e1840c7f697a8",
+        "source_state_sha256": "490a02edff3edeb7a441380b1dffe7913f8d7fa108a4ce431f7c9cc99de94ce4",
         "summary": {
           "tests": 1,
           "failures": 0,
