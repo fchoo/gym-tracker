@@ -1,3 +1,4 @@
+import React from "react";
 import Constants from "expo-constants";
 import { useFonts } from "expo-font";
 import { Stack, usePathname } from "expo-router";
@@ -129,7 +130,11 @@ function Phase12GoogleAuthSmokeNavigator() {
 
 function PreRuntimeFailure({
   category,
-}: Readonly<{ category: Extract<RootLaunchFailure["category"], "appearance" | "font"> }>) {
+  onRetry,
+}: Readonly<{
+  category: Extract<RootLaunchFailure["category"], "appearance" | "font">;
+  onRetry: () => void;
+}>) {
   const correlationCode = category === "font" ? "GT-FONT01" : "GT-APPEAR01";
 
   return (
@@ -143,7 +148,7 @@ function PreRuntimeFailure({
               correlationCode,
               retryable: true,
             }}
-            onRetry={() => undefined}
+            onRetry={onRetry}
           />
         </AppearanceProvider>
       </SafeAreaProvider>
@@ -152,6 +157,24 @@ function PreRuntimeFailure({
 }
 
 export default function RootLayout() {
+  const [preRuntimeRetryGeneration, setPreRuntimeRetryGeneration] = React.useState(0);
+  const retryPreRuntime = React.useCallback(() => {
+    setPreRuntimeRetryGeneration((current) => current + 1);
+  }, []);
+
+  return (
+    <RootLayoutAttempt
+      key={preRuntimeRetryGeneration}
+      onRetryPreRuntime={retryPreRuntime}
+    />
+  );
+}
+
+function RootLayoutAttempt({
+  onRetryPreRuntime,
+}: Readonly<{
+  onRetryPreRuntime: () => void;
+}>) {
   const [fontsLoaded, fontError] = useFonts(appFonts);
   const nativeContractsEnabled =
     Constants.expoConfig?.extra?.nativeContractsEnabled === true;
@@ -178,7 +201,7 @@ export default function RootLayout() {
     : null;
 
   if (!isolatedNativeRoute && !fontsLoaded && fontError !== null) {
-    return <PreRuntimeFailure category="font" />;
+    return <PreRuntimeFailure category="font" onRetry={onRetryPreRuntime} />;
   }
 
   if (
@@ -188,7 +211,7 @@ export default function RootLayout() {
     && "status" in appearanceRead
     && appearanceRead.status === "failed"
   ) {
-    return <PreRuntimeFailure category="appearance" />;
+    return <PreRuntimeFailure category="appearance" onRetry={onRetryPreRuntime} />;
   }
 
   if (!fontsLoaded && fontError === null) {

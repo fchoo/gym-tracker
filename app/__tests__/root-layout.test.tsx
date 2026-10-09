@@ -1,4 +1,9 @@
-import { fireEvent, render, screen } from "@testing-library/react-native";
+import {
+  fireEvent,
+  render,
+  screen,
+  waitFor,
+} from "@testing-library/react-native";
 import { beforeEach, describe, expect, it, jest } from "@jest/globals";
 import { Dimensions } from "react-native";
 import React from "react";
@@ -135,10 +140,24 @@ jest.mock("../../src/ui/screens/RootScreens", () => {
 });
 
 jest.mock("../../src/ui/screens/RootFailureState", () => {
-  const { View } = require("react-native") as typeof import("react-native");
+  const { Pressable, View } =
+    require("react-native") as typeof import("react-native");
   return {
-    RootFailureState: ({ failure }: Readonly<{ failure: { category: string } }>) => (
-      <View testID={`root-failure-${failure.category}`} />
+    RootFailureState: ({
+      failure,
+      onRetry,
+    }: Readonly<{
+      failure: { category: string };
+      onRetry: () => void;
+    }>) => (
+      <View testID={`root-failure-${failure.category}`}>
+        <Pressable
+          accessibilityLabel="Retry opening workout data"
+          accessibilityRole="button"
+          onPress={onRetry}
+          testID={`root-failure-retry-${failure.category}`}
+        />
+      </View>
     ),
   };
 });
@@ -330,7 +349,7 @@ describe("RootLayout attended preview isolation", () => {
     expect(mockPreviewAppearanceWrite).not.toHaveBeenCalled();
   });
 
-  it("does not mount the trusted runtime when the bundled font fails", async () => {
+  it("retries the trusted runtime after a pre-runtime bundled font failure", async () => {
     mockNativeContractsEnabled = false;
     mockPathname = "/";
     mockFontsLoaded = false;
@@ -341,9 +360,22 @@ describe("RootLayout attended preview isolation", () => {
     expect(screen.getByTestId("root-failure-font")).toBeOnTheScreen();
     expect(screen.queryByTestId("workout-runtime-provider")).not.toBeOnTheScreen();
     expect(mockRuntimeProviderMounted).not.toHaveBeenCalled();
+    expect(mockUseFonts).toHaveBeenCalledTimes(1);
+
+    mockFontsLoaded = true;
+    mockFontError = null;
+
+    fireEvent.press(screen.getByTestId("root-failure-retry-font"));
+
+    await waitFor(() => {
+      expect(screen.getByTestId("workout-runtime-provider")).toBeOnTheScreen();
+    });
+    expect(screen.queryByTestId("root-failure-font")).not.toBeOnTheScreen();
+    expect(mockRuntimeProviderMounted).toHaveBeenCalledTimes(1);
+    expect(mockUseFonts).toHaveBeenCalledTimes(2);
   });
 
-  it("does not mount the trusted runtime when the appearance read is unavailable", async () => {
+  it("retries the trusted runtime after a pre-runtime appearance read failure", async () => {
     mockNativeContractsEnabled = false;
     mockPathname = "/";
     mockProductionAppearanceRead.mockImplementation(() => {
@@ -355,6 +387,17 @@ describe("RootLayout attended preview isolation", () => {
     expect(screen.getByTestId("root-failure-appearance")).toBeOnTheScreen();
     expect(screen.queryByTestId("workout-runtime-provider")).not.toBeOnTheScreen();
     expect(mockRuntimeProviderMounted).not.toHaveBeenCalled();
+
+    mockProductionAppearanceRead.mockReset();
+    mockProductionAppearanceRead.mockReturnValue(null);
+
+    fireEvent.press(screen.getByTestId("root-failure-retry-appearance"));
+
+    await waitFor(() => {
+      expect(screen.getByTestId("workout-runtime-provider")).toBeOnTheScreen();
+    });
+    expect(screen.queryByTestId("root-failure-appearance")).not.toBeOnTheScreen();
+    expect(mockRuntimeProviderMounted).toHaveBeenCalledTimes(1);
   });
 
   it("keeps production runtime initialization for other devtest routes", async () => {
