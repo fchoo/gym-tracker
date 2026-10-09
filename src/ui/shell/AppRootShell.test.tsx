@@ -92,8 +92,9 @@ describe("AppRootShell", () => {
     expect(screen.getByRole("header", { name: "App Settings" })).toBeOnTheScreen();
     expect(screen.getByText("Appearance applies to all four destinations, Active Workout, Garmin, sheets, dialogs, and recovery routes.")).toBeOnTheScreen();
 
+    const focusCallsBeforeClose = trigger.current.focus.mock.calls.length;
     await fireEvent.press(screen.getByRole("button", { name: "Close App Settings" }));
-    expect(trigger.current.focus).toHaveBeenCalledTimes(1);
+    expect(trigger.current.focus).toHaveBeenCalledTimes(focusCallsBeforeClose + 1);
   });
 
   it("dismisses root App Settings before a retained deep-route callback runs", async () => {

@@ -76,7 +76,7 @@ export function AppRootShell({
                 }
                 onOpenSettings?.();
               }}
-              ref={settingsTriggerRef}
+              ref={settingsTriggerRef as React.Ref<View>}
             />
           </View>
         )}
