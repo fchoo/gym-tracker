@@ -82,8 +82,11 @@ export function SemanticToastProvider({
       {children}
       {current === undefined ? null : (
         <Animated.View
+          accessibilityLabel={current.message}
           accessibilityLiveRegion={current.severity === "error" ? "assertive" : "polite"}
           accessibilityRole="alert"
+          accessible
+          importantForAccessibility="yes"
           style={[
             styles.toast,
             {

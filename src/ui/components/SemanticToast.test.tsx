@@ -33,6 +33,11 @@ describe("SemanticToast", () => {
       "accessibilityLiveRegion",
       "polite",
     );
+    expect(screen.getByTestId("semantic-toast")).toHaveProp(
+      "accessibilityLabel",
+      "Workout saved",
+    );
+    expect(screen.getByTestId("semantic-toast")).toHaveProp("accessible", true);
     expect(screen.getAllByText("Workout saved")).toHaveLength(1);
   });
 
