@@ -90,6 +90,10 @@ test("Phase 14 action contracts are state-specific and exact", () => {
         assert.equal(action.pre.focus.allowNull, false);
         assert.equal(typeof action.pre.focus.equals, "string");
       }
+      if (action.focusAcquisition !== undefined) {
+        assert.equal(action.focusAcquisition.strategy, "key-sequence-until");
+        assert.ok(action.focusAcquisition.keyCodes.length > 0);
+      }
     }
   }
 

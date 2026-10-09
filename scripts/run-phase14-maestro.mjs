@@ -372,7 +372,9 @@ function acquireExactFocus(adbPath, serial, packageName, action) {
       imeVisible: isImeVisible(adbPath, serial),
     };
     if (phase14FocusAcquisitionSatisfied(snapshot, action, runtimeState)) return;
-    adb(adbPath, serial, "shell", "input", "keyevent", String(acquisition.keyCode));
+    const keyCodes = acquisition.keyCodes;
+    const keyCode = keyCodes[attempt % keyCodes.length];
+    adb(adbPath, serial, "shell", "input", "keyevent", String(keyCode));
     adb(adbPath, serial, "shell", "sleep", String(action.poll.intervalMs / 1_000));
   }
   throw new Error(`phase14_focus_acquisition_failed:${action.id}`);

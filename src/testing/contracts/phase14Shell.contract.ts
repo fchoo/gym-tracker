@@ -43,6 +43,7 @@ function action(input: Readonly<{
   pre: ReturnType<typeof predicate>;
   post: ReturnType<typeof predicate>;
   focusTarget?: string;
+  focusKeyCodes?: readonly number[];
 }>) {
   return {
     id: input.id,
@@ -51,7 +52,12 @@ function action(input: Readonly<{
     command: input.command,
     preparation: { stage: input.stage, action: input.id },
     ...(input.focusTarget === undefined ? {} : {
-      focusAcquisition: { strategy: "tab-until", keyCode: 61, target: input.focusTarget, maxAttempts: 12 },
+      focusAcquisition: {
+        strategy: "key-sequence-until",
+        keyCodes: input.focusKeyCodes ?? [61],
+        target: input.focusTarget,
+        maxAttempts: 24,
+      },
     }),
     pre: input.pre,
     post: input.post,
@@ -102,9 +108,9 @@ export const PHASE14_SHELL_EVIDENCE_CASES = [
     evidencePath: `${PHASE14_SHELL_EVIDENCE_DIRECTORY}/shell.four-roots.json`,
     state: { id: "four-roots", dataPolicy: "installed-user-data-preserved", captureState: "workout-root", capture: predicate({ visible: ["Workout"], nodes: [{ label: "Workout", selected: true }], focus: { allowNull: true } }) },
     actions: [
-      action({ id: "root-dpad-workout-to-calendar", stage: fourRootsStage, input: "DPAD_RIGHT", transport: "adb-keyevent", command: { keyCode: 22 }, focusTarget: "Workout", pre: predicate({ visible: ["Workout"], nodes: [{ label: "Workout", selected: true, focused: true }], focus: { equals: "Workout", allowNull: false } }), post: predicate({ nodes: [{ label: "Workout", selected: true }, { label: "Calendar", selected: false, focused: true }], focus: { equals: "Calendar", allowNull: false } }) }),
-      action({ id: "root-enter-calendar", stage: fourRootsStage, input: "ENTER", transport: "adb-keyevent", command: { keyCode: 66 }, focusTarget: "Calendar", pre: predicate({ visible: ["Workout"], nodes: [{ label: "Workout", selected: true }, { label: "Calendar", selected: false, focused: true }], focus: { equals: "Calendar", allowNull: false } }), post: predicate({ visible: ["Calendar", "Calendar month grid"], nodes: [{ label: "Calendar", selected: true }], focus: { equals: "Calendar", allowNull: false } }) }),
-      action({ id: "root-space-library", stage: fourRootsStage, input: "SPACE", transport: "adb-keyevent", command: { keyCode: 62 }, focusTarget: "Library", pre: predicate({ visible: ["Workout"], nodes: [{ label: "Workout", selected: true }, { label: "Library", selected: false, focused: true }], focus: { equals: "Library", allowNull: false } }), post: predicate({ visible: ["Library", "Library section"], nodes: [{ label: "Library", selected: true }], focus: { equals: "Library", allowNull: false } }) }),
+      action({ id: "root-dpad-workout-to-calendar", stage: fourRootsStage, input: "DPAD_RIGHT", transport: "adb-keyevent", command: { keyCode: 22 }, focusTarget: "Workout", focusKeyCodes: [61, 61, 20, 21], pre: predicate({ visible: ["Workout"], nodes: [{ label: "Workout", selected: true, focused: true }], focus: { equals: "Workout", allowNull: false } }), post: predicate({ nodes: [{ label: "Workout", selected: true }, { label: "Calendar", selected: false, focused: true }], focus: { equals: "Calendar", allowNull: false } }) }),
+      action({ id: "root-enter-calendar", stage: fourRootsStage, input: "ENTER", transport: "adb-keyevent", command: { keyCode: 66 }, focusTarget: "Calendar", focusKeyCodes: [61, 61, 20], pre: predicate({ visible: ["Workout"], nodes: [{ label: "Workout", selected: true }, { label: "Calendar", selected: false, focused: true }], focus: { equals: "Calendar", allowNull: false } }), post: predicate({ visible: ["Calendar", "Calendar month grid"], nodes: [{ label: "Calendar", selected: true }], focus: { equals: "Calendar", allowNull: false } }) }),
+      action({ id: "root-space-library", stage: fourRootsStage, input: "SPACE", transport: "adb-keyevent", command: { keyCode: 62 }, focusTarget: "Library", focusKeyCodes: [61, 61, 20, 22], pre: predicate({ visible: ["Workout"], nodes: [{ label: "Workout", selected: true }, { label: "Library", selected: false, focused: true }], focus: { equals: "Library", allowNull: false } }), post: predicate({ visible: ["Library", "Library section"], nodes: [{ label: "Library", selected: true }], focus: { equals: "Library", allowNull: false } }) }),
     ],
     checkpoints: ["Workout", "Calendar", "Library", "Progress"],
     postconditions: ["one-bottom-navigation", "root-switches-in-place", "required-actions-reachable"],
