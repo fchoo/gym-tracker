@@ -25,10 +25,13 @@ import React, {
   forwardRef,
   useCallback,
   useEffect,
+  useImperativeHandle,
   useRef,
   useState,
 } from "react";
 import {
+  AccessibilityInfo,
+  findNodeHandle,
   Pressable,
   StyleSheet,
   Text,
@@ -232,6 +235,7 @@ export const FocusablePressable = forwardRef<View, FocusablePressableProps>(
   ) {
     const { colors } = useAppTheme();
     const [focused, setFocused] = useState(false);
+    const [preferredFocus, setPreferredFocus] = useState(false);
     const focusRegistration = useBottomSheetFocusRegistration();
     const internalRef = useRef<View | null>(null);
     const isDisabled = disabled === true;
@@ -245,6 +249,21 @@ export const FocusablePressable = forwardRef<View, FocusablePressableProps>(
           )
       : { onKeyDown };
     const registrationRef = internalRef as BottomSheetFocusableRef;
+
+    useImperativeHandle(ref, () => ({
+      focus: () => {
+        setPreferredFocus(true);
+        internalRef.current?.setNativeProps?.({ hasTVPreferredFocus: true });
+        internalRef.current?.focus?.();
+        const node = findNodeHandle(internalRef.current);
+        if (typeof node === "number" && node > 0) {
+          AccessibilityInfo.setAccessibilityFocus(node);
+        }
+      },
+      setNativeProps: (nativeProps: Readonly<Record<string, unknown>>) => {
+        internalRef.current?.setNativeProps?.(nativeProps);
+      },
+    }) as unknown as View, []);
 
     useEffect(() => {
       if (focusRegistration === null || !participatesInFocusTrap) {
@@ -267,6 +286,7 @@ export const FocusablePressable = forwardRef<View, FocusablePressableProps>(
     return h(Pressable, {
       ...props,
       disabled: isDisabled,
+      hasTVPreferredFocus: preferredFocus,
       ...keyboardProps,
       onBlur: (event: Parameters<NonNullable<PressableProps["onBlur"]>>[0]) => {
         setFocused(false);
@@ -274,6 +294,7 @@ export const FocusablePressable = forwardRef<View, FocusablePressableProps>(
       },
       onFocus: (event: Parameters<NonNullable<PressableProps["onFocus"]>>[0]) => {
         setFocused(true);
+        setPreferredFocus(false);
         if (focusRegistration !== null && participatesInFocusTrap) {
           focusRegistration.onFocus(registrationRef);
         }

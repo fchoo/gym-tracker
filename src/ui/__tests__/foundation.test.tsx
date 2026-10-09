@@ -3,6 +3,7 @@ import {
   fireEvent,
   render,
   screen,
+  waitFor,
 } from "@testing-library/react-native";
 import { readFileSync } from "node:fs";
 import {
@@ -1459,6 +1460,22 @@ describe("Plan 01-02 shared component vocabulary", () => {
     expect(activate).toHaveBeenCalledTimes(2);
   });
 
+  it("turns an imperative focus request into a native Android focus request", async () => {
+    const ref = React.createRef<View>();
+    await render(
+      <AppearanceProvider>
+        <PrimaryAction ref={ref} label="Restore focus target" onPress={jest.fn()} />
+      </AppearanceProvider>,
+    );
+
+    await act(() => ref.current?.focus());
+    const target = screen.getByRole("button", { name: "Restore focus target" });
+    expect(target).toHaveProp("hasTVPreferredFocus", true);
+
+    await fireEvent(target, "focus");
+    expect(target).toHaveProp("hasTVPreferredFocus", false);
+  });
+
   it("restores invoking focus when modal sheets are cancelled", async () => {
     const focus = jest.fn();
     const restoreFocusRef = {
@@ -1487,7 +1504,7 @@ describe("Plan 01-02 shared component vocabulary", () => {
       screen.getByRole("button", { name: "Keep training" }),
     );
     expect(cancel).toHaveBeenCalledTimes(1);
-    expect(focus).toHaveBeenCalledTimes(1);
+    await waitFor(() => expect(focus).toHaveBeenCalledTimes(1));
     await confirmation.unmount();
 
     const close = jest.fn();
@@ -1506,7 +1523,7 @@ describe("Plan 01-02 shared component vocabulary", () => {
     expect(screen.getByTestId("bottom-sheet-frame")).toBeOnTheScreen();
     await fireEvent.press(screen.getByRole("button", { name: "Cancel" }));
     expect(close).toHaveBeenCalledTimes(1);
-    expect(focus).toHaveBeenCalledTimes(2);
+    await waitFor(() => expect(focus).toHaveBeenCalledTimes(2));
   });
 
   it("keeps later workout controls out of the Phase 1 foundation vocabulary", () => {
