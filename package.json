@@ -92,6 +92,7 @@
     "record:attended:phase12": "node scripts/record-phase12-google-acceptance.mjs",
     "verify:phase13:evidence": "node scripts/verify-phase13-evidence.mjs"
     ,"verify:phase14:evidence": "node scripts/verify-phase14-evidence.mjs"
+    ,"test:evidence:v12:shell": "node --test scripts/phase14-evidence-scripts.test.mjs"
     ,"test:evidence:phase14": "node --test scripts/phase14-font-proof.test.mjs scripts/phase14-evidence-scripts.test.mjs scripts/phase14-native-matrix.test.mjs"
   },
   "dependencies": {

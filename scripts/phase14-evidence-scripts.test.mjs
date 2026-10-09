@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import { createHash } from "node:crypto";
+import { readFileSync } from "node:fs";
 import test from "node:test";
 
 import {
@@ -677,6 +678,27 @@ test("Phase 14 binds every screenshot byte in both row and matrix-cell evidence"
       { readArtifact: readArtifactFrom(matrixScreenshotForged.artifacts) },
     ),
     /phase14_screenshot_stale/u,
+  );
+});
+
+test("Phase 14 package commands stay bound to the shell evidence owners", () => {
+  const packageJson = JSON.parse(readFileSync("package.json", "utf8"));
+
+  assert.equal(
+    packageJson.scripts["test:evidence:v12:shell"],
+    "node --test scripts/phase14-evidence-scripts.test.mjs",
+  );
+  assert.equal(
+    packageJson.scripts["verify:phase14:evidence"],
+    "node scripts/verify-phase14-evidence.mjs",
+  );
+  assert.equal(
+    packageJson.scripts["test:maestro:phase14"],
+    "node scripts/run-phase14-maestro.mjs",
+  );
+  assert.match(
+    packageJson.scripts["test:evidence:phase14"],
+    /scripts\/phase14-evidence-scripts\.test\.mjs/u,
   );
 });
 
