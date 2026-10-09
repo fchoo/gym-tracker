@@ -255,7 +255,12 @@ export const FocusablePressable = forwardRef<View, FocusablePressableProps>(
         setPreferredFocus(true);
         internalRef.current?.setNativeProps?.({ hasTVPreferredFocus: true });
         internalRef.current?.focus?.();
-        const node = findNodeHandle(internalRef.current);
+        let node: number | null = null;
+        try {
+          node = findNodeHandle(internalRef.current);
+        } catch {
+          // Host renderers and caller-owned focus seams may not expose a native handle.
+        }
         if (typeof node === "number" && node > 0) {
           AccessibilityInfo.setAccessibilityFocus(node);
         }

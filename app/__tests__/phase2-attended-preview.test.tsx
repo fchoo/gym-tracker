@@ -264,9 +264,10 @@ describe("Phase2AttendedPreviewRoute", () => {
     );
     expect(screen.queryByRole("header", { name: "Rest alerts" }))
       .not.toBeOnTheScreen();
-    expect(screen.getByTestId("alert-settings-focus-restored-2", {
-      includeHiddenElements: true,
-    })).toBeOnTheScreen();
+    await waitFor(() => expect(screen.getByTestId(
+      "alert-settings-focus-restored-2",
+      { includeHiddenElements: true },
+    )).toBeOnTheScreen());
 
     await fireEvent.press(launcher);
     await fireEvent.press(screen.getByRole("button", { name: "Appearance" }));

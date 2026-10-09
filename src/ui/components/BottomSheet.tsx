@@ -93,6 +93,7 @@ export function BottomSheet({
   const currentFocusedRef = useRef<BottomSheetFocusableRef | null>(null);
   const wasVisibleRef = useRef(false);
   const focusRestoredRef = useRef(false);
+  const focusRestoreTimeoutsRef = useRef<Set<ReturnType<typeof setTimeout>>>(new Set());
   const translation = useRef(new Animated.Value(reduceMotion ? 0 : 8)).current;
   const resolvedCancelLabel = useMemo(
     () => closeLabelFor(heading, cancelLabel),
@@ -167,6 +168,13 @@ export function BottomSheet({
     };
   }, []);
 
+  useEffect(() => () => {
+    for (const timeout of focusRestoreTimeoutsRef.current) {
+      clearTimeout(timeout);
+    }
+    focusRestoreTimeoutsRef.current.clear();
+  }, []);
+
   const moveFocus = React.useCallback((direction: "next" | "previous") => {
     const entries = registeredFocusablesRef.current.filter(
       (entry) => typeof entry.current?.focus === "function",
@@ -216,12 +224,14 @@ export function BottomSheet({
     // Android can move focus to the newly exposed heading while the Modal is
     // still being removed. Restore after that native transition settles so
     // the invoking control remains the final keyboard/accessibility target.
-    setTimeout(() => {
+    const timeout = setTimeout(() => {
+      focusRestoreTimeoutsRef.current.delete(timeout);
       restoreFocus();
       if (restoreFocusNativeID !== undefined) {
         void requestNativeFocus?.(restoreFocusNativeID);
       }
     }, 250);
+    focusRestoreTimeoutsRef.current.add(timeout);
   }, [cancelDisabled, onCancel, requestNativeFocus, restoreFocus, restoreFocusNativeID]);
 
   const containTraversal = React.useCallback((event: NativeSyntheticEvent<{

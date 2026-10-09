@@ -225,6 +225,28 @@ describe("BottomSheet", () => {
     expect(focus).toHaveBeenCalledTimes(1);
   });
 
+  it("cancels pending focus restoration when its owner unmounts", async () => {
+    const rendered = await render(
+      <SheetTestProviders>
+        <BottomSheet
+          heading="Edit filters"
+          onCancel={jest.fn()}
+          requestNativeFocus={mockRequestAndroidViewFocus}
+          restoreFocusNativeID="root-settings-trigger-library"
+          visible
+        >
+          <Text>Draft stays private</Text>
+        </BottomSheet>
+      </SheetTestProviders>,
+    );
+
+    await fireEvent.press(screen.getByRole("button", { name: "Close edit filters" }));
+    await rendered.unmount();
+    await new Promise((resolve) => setTimeout(resolve, 300));
+
+    expect(mockRequestAndroidViewFocus).not.toHaveBeenCalled();
+  });
+
   it("registers focusable actions with the sheet trap and reports the focused control", async () => {
     const register = jest.fn<(ref: unknown) => () => void>(() => jest.fn());
     const onFocus = jest.fn<(ref: unknown) => void>();
