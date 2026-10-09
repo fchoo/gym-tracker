@@ -18,6 +18,10 @@ import {
 import { SafeAreaInsetsContext } from "react-native-safe-area-context";
 
 import { IconAction } from "./index";
+import {
+  BottomSheetFocusContext,
+  type BottomSheetFocusableRef,
+} from "./bottomSheetFocus";
 import { radius, space, typeScale, useAppTheme } from "../theme";
 
 type FocusTarget = Readonly<{ focus?: () => void }>;
@@ -83,6 +87,8 @@ export function BottomSheet({
   };
   const depth = React.useContext(BottomSheetDepthContext);
   const headingRef = useRef<View>(null);
+  const registeredFocusablesRef = useRef<BottomSheetFocusableRef[]>([]);
+  const currentFocusedRef = useRef<BottomSheetFocusableRef | null>(null);
   const wasVisibleRef = useRef(false);
   const focusRestoredRef = useRef(false);
   const translation = useRef(new Animated.Value(reduceMotion ? 0 : 8)).current;
@@ -137,10 +143,50 @@ export function BottomSheet({
     }
   }, [restoreFocusRef]);
 
+  const registerFocusable = React.useCallback((ref: BottomSheetFocusableRef) => {
+    registeredFocusablesRef.current = [
+      ...registeredFocusablesRef.current.filter((entry) => entry !== ref),
+      ref,
+    ];
+    return () => {
+      registeredFocusablesRef.current = registeredFocusablesRef.current.filter(
+        (entry) => entry !== ref,
+      );
+      if (currentFocusedRef.current === ref) {
+        currentFocusedRef.current = null;
+      }
+    };
+  }, []);
+
+  const moveFocus = React.useCallback((direction: "next" | "previous") => {
+    const entries = registeredFocusablesRef.current.filter(
+      (entry) => typeof entry.current?.focus === "function",
+    );
+    if (entries.length === 0) {
+      return false;
+    }
+    const currentIndex = currentFocusedRef.current === null
+      ? -1
+      : entries.findIndex((entry) => entry === currentFocusedRef.current);
+    const nextIndex = currentIndex === -1
+      ? direction === "next"
+        ? 0
+        : entries.length - 1
+      : (currentIndex + (direction === "next" ? 1 : -1) + entries.length) % entries.length;
+    const nextEntry = entries[nextIndex];
+    if (nextEntry === undefined) {
+      return false;
+    }
+    currentFocusedRef.current = nextEntry;
+    nextEntry.current?.focus?.();
+    return true;
+  }, []);
+
   useEffect(() => {
     if (visible) {
       wasVisibleRef.current = true;
       focusRestoredRef.current = false;
+      currentFocusedRef.current = null;
       return;
     }
     if (!wasVisibleRef.current) {
@@ -163,6 +209,7 @@ export function BottomSheet({
 
   const containTraversal = React.useCallback((event: NativeSyntheticEvent<{
     key?: string;
+    shiftKey?: boolean;
     preventDefault?: () => void;
   }>) => {
     const key = event.nativeEvent.key;
@@ -171,86 +218,105 @@ export function BottomSheet({
       cancel();
       return;
     }
-    if (key === "Tab" || key?.startsWith("Arrow") === true) {
+    const direction = key === "Tab"
+      ? event.nativeEvent.shiftKey === true
+        ? "previous"
+        : "next"
+      : key === "ArrowUp" || key === "ArrowLeft"
+        ? "previous"
+        : key === "ArrowDown" || key === "ArrowRight"
+          ? "next"
+          : null;
+    if (direction !== null && moveFocus(direction)) {
       event.nativeEvent.preventDefault?.();
     }
-  }, [cancel]);
+  }, [cancel, moveFocus]);
 
   return (
     <BottomSheetDepthContext.Provider value={depth + 1}>
       <BottomSheetCancellationContext.Provider value={cancel}>
-        <Modal
-        animationType="none"
-        onRequestClose={cancel}
-        testID="bottom-sheet-modal"
-        transparent
-        visible={visible}
-      >
-        <View style={styles.backdrop} testID={testID ?? "bottom-sheet-backdrop"}>
-          <Pressable
-            accessibilityElementsHidden
-            accessibilityLabel="Dismiss sheet"
-            accessibilityRole="button"
-            importantForAccessibility="no-hide-descendants"
-            onPress={cancel}
-            style={StyleSheet.absoluteFill}
-            testID="bottom-sheet-scrim"
-          />
-          <KeyboardAvoidingView
-            behavior={Platform.select({ android: "height", default: "padding" })}
-            style={styles.keyboardAvoider}
+        <BottomSheetFocusContext.Provider
+          value={{
+            moveFocus,
+            onFocus: (ref) => {
+              currentFocusedRef.current = ref;
+            },
+            register: registerFocusable,
+          }}
+        >
+          <Modal
+            animationType="none"
+            onRequestClose={cancel}
+            testID="bottom-sheet-modal"
+            transparent
+            visible={visible}
           >
-            <Animated.View
-              style={[
-                styles.frame,
-                {
-                  backgroundColor: colors.raised,
-                  borderColor: colors.line,
-                  paddingBottom: insets.bottom,
-                  transform: [{ translateY: translation }],
-                },
-              ]}
-            >
-              <TraversalBoundary
-                accessibilityViewIsModal
-                importantForAccessibility="yes"
-                onKeyDown={containTraversal as never}
-                testID="bottom-sheet-frame"
+            <View style={styles.backdrop} testID={testID ?? "bottom-sheet-backdrop"}>
+              <Pressable
+                accessibilityElementsHidden
+                accessibilityLabel="Dismiss sheet"
+                accessibilityRole="button"
+                importantForAccessibility="no-hide-descendants"
+                onPress={cancel}
+                style={StyleSheet.absoluteFill}
+                testID="bottom-sheet-scrim"
+              />
+              <KeyboardAvoidingView
+                behavior={Platform.select({ android: "height", default: "padding" })}
+                style={styles.keyboardAvoider}
               >
-                <View style={styles.header}>
-                  <View
-                    accessible
-                    accessibilityLabel={heading}
-                    accessibilityRole="header"
-                    focusable
-                    ref={headingRef}
-                  >
-                    <Text style={[typeScale.screenTitle as TextStyle, { color: colors.textPrimary }]}>
-                      {heading}
-                    </Text>
-                  </View>
-                  <IconAction
-                    accessibilityLabel={resolvedCancelLabel}
-                    disabled={cancelDisabled}
-                    icon="clear"
-                    onPress={cancel}
-                  />
-                </View>
-                <ScrollView
-                  contentContainerStyle={[styles.content, contentStyle]}
-                  horizontal={false}
-                  keyboardShouldPersistTaps="handled"
-                  showsVerticalScrollIndicator
-                  style={styles.scroll}
-                  testID={scrollTestID ?? "bottom-sheet-scroll"}
+                <Animated.View
+                  style={[
+                    styles.frame,
+                    {
+                      backgroundColor: colors.raised,
+                      borderColor: colors.line,
+                      paddingBottom: insets.bottom,
+                      transform: [{ translateY: translation }],
+                    },
+                  ]}
                 >
-                  {children}
-                </ScrollView>
-              </TraversalBoundary>
-            </Animated.View>
-          </KeyboardAvoidingView>
-        </View>
-        </Modal>
+                  <TraversalBoundary
+                    accessibilityViewIsModal
+                    importantForAccessibility="yes"
+                    onKeyDown={containTraversal as never}
+                    testID="bottom-sheet-frame"
+                  >
+                    <View style={styles.header}>
+                      <View
+                        accessible
+                        accessibilityLabel={heading}
+                        accessibilityRole="header"
+                        focusable
+                        ref={headingRef}
+                      >
+                        <Text style={[typeScale.screenTitle as TextStyle, { color: colors.textPrimary }]}>
+                          {heading}
+                        </Text>
+                      </View>
+                      <IconAction
+                        accessibilityLabel={resolvedCancelLabel}
+                        disabled={cancelDisabled}
+                        icon="clear"
+                        onPress={cancel}
+                      />
+                    </View>
+                    <ScrollView
+                      contentContainerStyle={[styles.content, contentStyle]}
+                      horizontal={false}
+                      keyboardShouldPersistTaps="handled"
+                      showsVerticalScrollIndicator
+                      style={styles.scroll}
+                      testID={scrollTestID ?? "bottom-sheet-scroll"}
+                    >
+                      {children}
+                    </ScrollView>
+                  </TraversalBoundary>
+                </Animated.View>
+              </KeyboardAvoidingView>
+            </View>
+          </Modal>
+        </BottomSheetFocusContext.Provider>
       </BottomSheetCancellationContext.Provider>
     </BottomSheetDepthContext.Provider>
   );

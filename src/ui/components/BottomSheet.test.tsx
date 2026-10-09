@@ -9,6 +9,11 @@ import { AccessibilityInfo, Dimensions, Text, View } from "react-native";
 import { SafeAreaProvider } from "react-native-safe-area-context";
 
 import { BottomSheet } from "./BottomSheet";
+import {
+  BottomSheetFocusContext,
+  useBottomSheetFocusRegistration,
+} from "./bottomSheetFocus";
+import { FocusablePressable } from "./index";
 import { AppearanceProvider } from "../theme";
 
 function SheetTestProviders({ children }: Readonly<{ children: React.ReactNode }>) {
@@ -19,6 +24,41 @@ function SheetTestProviders({ children }: Readonly<{ children: React.ReactNode }
     }}>
       <AppearanceProvider>{children}</AppearanceProvider>
     </SafeAreaProvider>
+  );
+}
+
+function FocusTrapProbe({
+  firstFocus,
+  secondFocus,
+  thirdFocus,
+}: Readonly<{
+  firstFocus: jest.Mock;
+  secondFocus: jest.Mock;
+  thirdFocus: jest.Mock;
+}>) {
+  const registration = useBottomSheetFocusRegistration();
+  const refs = React.useMemo(() => [
+    { current: { focus: firstFocus } },
+    { current: { focus: secondFocus } },
+    { current: { focus: thirdFocus } },
+  ], [firstFocus, secondFocus, thirdFocus]);
+
+  React.useEffect(() => {
+    if (registration === null) {
+      return;
+    }
+    const cleanups = refs.map((ref) => registration.register(ref));
+    return () => {
+      cleanups.forEach((cleanup) => cleanup());
+    };
+  }, [refs, registration]);
+
+  return (
+    <>
+      <Text testID="focus-probe-1">First action</Text>
+      <Text testID="focus-probe-2">Second action</Text>
+      <Text testID="focus-probe-3">Third action</Text>
+    </>
   );
 }
 
@@ -121,6 +161,36 @@ describe("BottomSheet", () => {
     expect(setAccessibilityFocus).not.toHaveBeenCalledWith(0);
   });
 
+  it("registers focusable actions with the sheet trap and reports the focused control", async () => {
+    const register = jest.fn<(ref: unknown) => () => void>(() => jest.fn());
+    const onFocus = jest.fn<(ref: unknown) => void>();
+    const moveFocus = jest.fn<(direction: "next" | "previous") => boolean>(() => true);
+
+    await render(
+      <SheetTestProviders>
+        <BottomSheetFocusContext.Provider value={{ moveFocus, onFocus, register }}>
+          <FocusablePressable
+            accessibilityLabel="Dismiss"
+            accessibilityRole="button"
+            focusable
+            onPress={jest.fn()}
+          >
+            <Text>Dismiss</Text>
+          </FocusablePressable>
+        </BottomSheetFocusContext.Provider>
+      </SheetTestProviders>,
+    );
+
+    const dismissAction = screen.getByRole("button", { name: "Dismiss" });
+    await fireEvent(dismissAction, "focus");
+
+    expect(register).toHaveBeenCalledTimes(1);
+    expect(onFocus).toHaveBeenCalledTimes(1);
+    const [registeredRef] = register.mock.calls[0] ?? [undefined];
+    const [focusedRef] = onFocus.mock.calls[0] ?? [undefined];
+    expect(focusedRef).toBe(registeredRef);
+  });
+
   it("keeps traversal inside the modal frame and preserves reachable keyboard-safe geometry", async () => {
     Dimensions.set({
       screen: { fontScale: 2, height: 480, scale: 1, width: 900 },
@@ -154,5 +224,46 @@ describe("BottomSheet", () => {
       nativeEvent: { key: "Tab", preventDefault: jest.fn() },
     });
     expect(cancel).not.toHaveBeenCalled();
+  });
+
+  it("wraps keyboard and D-pad traversal across every registered action without escaping the sheet", async () => {
+    const firstFocus = jest.fn();
+    const secondFocus = jest.fn();
+    const thirdFocus = jest.fn();
+
+    await render(
+      <SheetTestProviders>
+        <BottomSheet heading="Keyboard safe" onCancel={jest.fn()} visible>
+          <FocusTrapProbe
+            firstFocus={firstFocus}
+            secondFocus={secondFocus}
+            thirdFocus={thirdFocus}
+          />
+        </BottomSheet>
+      </SheetTestProviders>,
+    );
+
+    await fireEvent(screen.getByTestId("bottom-sheet-frame"), "keyDown", {
+      nativeEvent: { key: "Tab", preventDefault: jest.fn() },
+    });
+    await fireEvent(screen.getByTestId("bottom-sheet-frame"), "keyDown", {
+      nativeEvent: { key: "ArrowRight", preventDefault: jest.fn() },
+    });
+    await fireEvent(screen.getByTestId("bottom-sheet-frame"), "keyDown", {
+      nativeEvent: { key: "Tab", preventDefault: jest.fn() },
+    });
+    await fireEvent(screen.getByTestId("bottom-sheet-frame"), "keyDown", {
+      nativeEvent: { key: "Tab", preventDefault: jest.fn() },
+    });
+    await fireEvent(screen.getByTestId("bottom-sheet-frame"), "keyDown", {
+      nativeEvent: { key: "ArrowLeft", preventDefault: jest.fn() },
+    });
+    await fireEvent(screen.getByTestId("bottom-sheet-frame"), "keyDown", {
+      nativeEvent: { key: "Tab", preventDefault: jest.fn(), shiftKey: true },
+    });
+
+    expect(firstFocus).toHaveBeenCalledTimes(2);
+    expect(secondFocus).toHaveBeenCalledTimes(2);
+    expect(thirdFocus).toHaveBeenCalledTimes(1);
   });
 });

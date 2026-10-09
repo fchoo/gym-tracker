@@ -23,6 +23,9 @@ import {
 import React, {
   Children,
   forwardRef,
+  useCallback,
+  useEffect,
+  useRef,
   useState,
 } from "react";
 import {
@@ -44,6 +47,10 @@ import {
   typeScale,
   useAppTheme,
 } from "../theme";
+import {
+  useBottomSheetFocusRegistration,
+  type BottomSheetFocusableRef,
+} from "./bottomSheetFocus";
 import { BottomSheet } from "./BottomSheet";
 import { ConfirmationDialog } from "./ConfirmationDialog";
 
@@ -225,7 +232,10 @@ export const FocusablePressable = forwardRef<View, FocusablePressableProps>(
   ) {
     const { colors } = useAppTheme();
     const [focused, setFocused] = useState(false);
+    const focusRegistration = useBottomSheetFocusRegistration();
+    const internalRef = useRef<View | null>(null);
     const isDisabled = disabled === true;
+    const participatesInFocusTrap = props.focusable !== false && !isDisabled;
     const keyboardProps = onKeyDown === undefined
       ? onPress === null || onPress === undefined
         ? {}
@@ -234,6 +244,25 @@ export const FocusablePressable = forwardRef<View, FocusablePressableProps>(
             () => (onPress as unknown as () => void)(),
           )
       : { onKeyDown };
+    const registrationRef = internalRef as BottomSheetFocusableRef;
+
+    useEffect(() => {
+      if (focusRegistration === null || !participatesInFocusTrap) {
+        return;
+      }
+      return focusRegistration.register(registrationRef);
+    }, [focusRegistration, participatesInFocusTrap, registrationRef]);
+
+    const setPressableRef = useCallback((node: View | null) => {
+      internalRef.current = node;
+      if (typeof ref === "function") {
+        ref(node);
+        return;
+      }
+      if (ref !== null) {
+        ref.current = node;
+      }
+    }, [ref]);
 
     return h(Pressable, {
       ...props,
@@ -245,10 +274,13 @@ export const FocusablePressable = forwardRef<View, FocusablePressableProps>(
       },
       onFocus: (event: Parameters<NonNullable<PressableProps["onFocus"]>>[0]) => {
         setFocused(true);
+        if (focusRegistration !== null && participatesInFocusTrap) {
+          focusRegistration.onFocus(registrationRef);
+        }
         onFocus?.(event);
       },
       onPress,
-      ref,
+      ref: setPressableRef,
       style: (state: PressableStateCallbackType) => [
         typeof style === "function" ? style(state) : style,
         {
