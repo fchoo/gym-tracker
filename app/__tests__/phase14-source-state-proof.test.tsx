@@ -1,4 +1,4 @@
-import { render, screen } from "@testing-library/react-native";
+import { act, render, screen } from "@testing-library/react-native";
 import { beforeEach, describe, expect, it, jest } from "@jest/globals";
 import React from "react";
 
@@ -71,7 +71,9 @@ describe("Phase14SourceStateProofRoute", () => {
     expect(mockCollectPhase14SourceStateProof).not.toHaveBeenCalled();
 
     mockLaunchState = "trusted";
-    rendered.rerender(<Phase14SourceStateProofRoute />);
+    await act(async () => {
+      rendered.rerender(<Phase14SourceStateProofRoute />);
+    });
 
     expect(await screen.findByText(
       `PHASE14_SOURCE_STATE_PROOF digest_sha256=${"a".repeat(64)} table_count=48 row_count=321 schema_version=30`,
