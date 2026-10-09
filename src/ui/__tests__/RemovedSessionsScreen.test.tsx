@@ -209,6 +209,37 @@ describe("RemovedSessionsScreen", () => {
     expect(screen.queryByText("Full Body Foundation · Full Body A")).not.toBeOnTheScreen();
   });
 
+  it("submits restore once when confirm is pressed repeatedly before the command resolves", async () => {
+    let resolveRestore: ((result: HistoryLifecycleResult) => void) | undefined;
+    const restoreSession = jest.fn(
+      () => new Promise<HistoryLifecycleResult>((resolve) => {
+        resolveRestore = resolve;
+      }),
+    );
+    const props = await renderScreen({
+      restoreSession,
+      onRestored: jest.fn(async () => undefined),
+      loadRemovedSessions: jest.fn()
+        .mockResolvedValueOnce([removedSession])
+        .mockResolvedValueOnce([]),
+    });
+    await screen.findByText("Full Body Foundation · Full Body A");
+
+    await fireEvent.press(screen.getByRole("button", {
+      name: "Restore Full Body Foundation · Full Body A",
+    }));
+    const confirm = screen.getByRole("button", { name: "Restore workout" });
+    await fireEvent.press(confirm);
+    await fireEvent.press(confirm);
+
+    expect(restoreSession).toHaveBeenCalledTimes(1);
+    expect(screen.getByRole("button", { name: "Restore workout" }))
+      .toHaveProp("accessibilityState", expect.objectContaining({ busy: true }));
+
+    resolveRestore?.({ effectiveRevision: 4, lifecycle: "active" });
+    expect(await screen.findByText("Workout restored")).toBeOnTheScreen();
+  });
+
   it("retains the initiating Restore target after success clears the selected session", () => {
     const restoreControl = { current: {} as never };
     const heading = { current: {} as never };

@@ -634,6 +634,52 @@ test("Phase 14 rejects privacy hazards, legacy modal owners, and a DEV-02 closur
   );
 });
 
+test("Phase 14 binds every screenshot byte in both row and matrix-cell evidence", () => {
+  const screenshotIds = ["shell.four-roots", "shell.tokens"];
+  const rowScreenshotMissing = approveDev02(validEvidence(screenshotIds));
+  const firstRow = rowScreenshotMissing.evidence.evidence[0];
+  rowScreenshotMissing.artifacts.delete(firstRow.screenshot);
+  assert.throws(
+    () => validatePhase14Evidence(
+      rowScreenshotMissing.evidence,
+      manifest,
+      screenshotIds,
+      { readArtifact: readArtifactFrom(rowScreenshotMissing.artifacts) },
+    ),
+    /phase14_screenshot_stale/u,
+  );
+
+  const matrixScreenshotMissing = approveDev02(validEvidence(screenshotIds));
+  const matrixCells = matrixScreenshotMissing.evidence.evidence[0].matrix_cells;
+  const secondCell = matrixCells[1];
+  matrixScreenshotMissing.artifacts.delete(secondCell.screenshot);
+  assert.throws(
+    () => validatePhase14Evidence(
+      matrixScreenshotMissing.evidence,
+      manifest,
+      screenshotIds,
+      { readArtifact: readArtifactFrom(matrixScreenshotMissing.artifacts) },
+    ),
+    /phase14_screenshot_stale/u,
+  );
+
+  const matrixScreenshotForged = approveDev02(validEvidence(screenshotIds));
+  const forgedCell = matrixScreenshotForged.evidence.evidence[0].matrix_cells[1];
+  matrixScreenshotForged.artifacts.set(
+    forgedCell.screenshot,
+    Buffer.from("forged screenshot bytes"),
+  );
+  assert.throws(
+    () => validatePhase14Evidence(
+      matrixScreenshotForged.evidence,
+      manifest,
+      screenshotIds,
+      { readArtifact: readArtifactFrom(matrixScreenshotForged.artifacts) },
+    ),
+    /phase14_screenshot_stale/u,
+  );
+});
+
 test("Phase 14 runner and verifier accept exact canonical subsets and reject ambiguous selection", () => {
   assert.deepEqual(
     parsePhase14RunnerArgs([
