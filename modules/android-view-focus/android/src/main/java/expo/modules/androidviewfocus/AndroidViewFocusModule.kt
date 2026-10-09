@@ -1,9 +1,21 @@
 package expo.modules.androidviewfocus
 
-import com.facebook.react.uimanager.util.ReactFindViewUtil
+import android.view.View
+import android.view.ViewGroup
 import expo.modules.kotlin.Promise
 import expo.modules.kotlin.modules.Module
 import expo.modules.kotlin.modules.ModuleDefinition
+
+private fun findNativeId(root: View, nativeId: String, tagKey: Int): View? {
+  if (root.getTag(tagKey) == nativeId) return root
+  if (root is ViewGroup) {
+    for (index in 0 until root.childCount) {
+      val match = findNativeId(root.getChildAt(index), nativeId, tagKey)
+      if (match != null) return match
+    }
+  }
+  return null
+}
 
 class AndroidViewFocusModule : Module() {
   override fun definition() = ModuleDefinition {
@@ -24,8 +36,23 @@ class AndroidViewFocusModule : Module() {
         activity.runOnUiThread {
           val focused = try {
             val root = activity.window?.decorView
-            val target = root?.let { ReactFindViewUtil.findView(it, nativeId) }
-            target?.requestFocus() == true
+            val tagKey = activity.resources.getIdentifier(
+              "view_tag_native_id",
+              "id",
+              activity.packageName,
+            )
+            val target = if (root == null || tagKey == 0) {
+              null
+            } else {
+              findNativeId(root, nativeId, tagKey)
+            }
+            if (target == null) {
+              false
+            } else {
+              target.isFocusable = true
+              target.isFocusableInTouchMode = true
+              target.requestFocus()
+            }
           } catch (_: RuntimeException) {
             false
           }
