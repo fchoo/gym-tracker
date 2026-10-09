@@ -12,6 +12,7 @@ import {
   phase14MatrixCellsForIds,
 } from "./phase14-native-matrix.mjs";
 import {
+  resolvePhase14DeviceSerial,
   validateDistinctPhase14Flows,
   validatePhase14Manifest,
   validatePhase14ReplayableManifest,
@@ -51,12 +52,10 @@ const manifest = Object.freeze({
     page_alignment_verified: true,
   },
   installed_apk: {
-    device_path: "/data/app/base.apk",
     sha256: "d".repeat(64),
     matches_retained_apk: true,
   },
   device: {
-    serial: "emulator-5554",
     api: 36,
     abi: "arm64-v8a",
     model: "sdk_gphone64_arm64",
@@ -309,6 +308,28 @@ test("Phase 14 rejects stale source/APK/package/profile/device identity and inva
   assert.throws(
     () => validatePhase14Manifest(manifest, "f".repeat(40), manifest.source_tree_sha256),
     /phase14_manifest_stale/u,
+  );
+  assert.throws(
+    () => validatePhase14Manifest({
+      ...manifest,
+      installed_apk: { ...manifest.installed_apk, device_path: "/data/app/base.apk" },
+    }, manifest.base_head, manifest.source_tree_sha256),
+    /phase14_manifest_invalid/u,
+  );
+  assert.throws(
+    () => validatePhase14Manifest({
+      ...manifest,
+      device: { ...manifest.device, serial: "emulator-5554" },
+    }, manifest.base_head, manifest.source_tree_sha256),
+    /phase14_manifest_invalid/u,
+  );
+  assert.equal(
+    resolvePhase14DeviceSerial({ GYM_TRACKER_ANDROID_SERIAL: "emulator-5554" }),
+    "emulator-5554",
+  );
+  assert.throws(
+    () => resolvePhase14DeviceSerial({}),
+    /phase14_device_missing/u,
   );
   assert.doesNotThrow(() =>
     validatePhase14ReplayableManifest(manifest, manifest.source_tree_sha256));

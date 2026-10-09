@@ -243,7 +243,7 @@ BUILD_MANIFEST="$build_manifest" \
   node <<'NODE'
 import { renameSync, writeFileSync } from 'node:fs';
 
-const privacyBoundedManifest = process.env.SUITE === 'phase14-font-proof';
+const privacyBoundedManifest = /^phase14(?:-|$)/u.test(process.env.SUITE ?? '');
 const manifest = {
   schema_version: 1,
   suite: process.env.SUITE,

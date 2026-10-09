@@ -73,6 +73,8 @@ export function validatePhase14Manifest(manifest, currentHead, currentSource) {
     || manifest.installed_apk?.sha256 !== manifest.apk?.sha256
     || manifest.installed_apk?.matches_retained_apk !== true
     || !/^[a-f0-9]{64}$/u.test(manifest.device?.identity_sha256 ?? "")
+    || Object.hasOwn(manifest.installed_apk, "device_path")
+    || Object.hasOwn(manifest.device, "serial")
   ) {
     throw new Error("phase14_manifest_invalid");
   }
@@ -83,6 +85,14 @@ export function validatePhase14Manifest(manifest, currentHead, currentSource) {
     throw new Error("phase14_manifest_stale");
   }
   return true;
+}
+
+export function resolvePhase14DeviceSerial(environment = process.env) {
+  const serial = environment.GYM_TRACKER_ANDROID_SERIAL;
+  if (typeof serial !== "string" || !/^[A-Za-z0-9._:-]+$/u.test(serial)) {
+    throw new Error("phase14_device_missing");
+  }
+  return serial;
 }
 
 export function validatePhase14ReplayableManifest(manifest, currentSource) {
@@ -378,6 +388,7 @@ function runMaestroCell({
   flowPath,
   manifest,
   reportPath,
+  serial,
 }) {
   const baseArgs = [
     "test",
@@ -387,7 +398,7 @@ function runMaestroCell({
     "--output",
     reportPath,
     "--udid",
-    manifest.device.serial,
+    serial,
     "-e",
     `PHASE14_STAGE=${cell.stage}`,
     "-e",
@@ -407,7 +418,7 @@ function runMaestroCell({
     "(sleep 2; ",
     shQuote(adbPath),
     " -s ",
-    shQuote(manifest.device.serial),
+    shQuote(serial),
     " shell cmd uimode night ",
     nightAfter,
     " >/dev/null 2>&1) & maestro ",
@@ -429,6 +440,7 @@ export function executePhase14Maestro(args = process.argv.slice(2)) {
   validatePhase14NativeMatrix(PHASE14_NATIVE_MATRIX);
   const { manifest: manifestPath, ids } = parsePhase14RunnerArgs(args);
   const manifest = JSON.parse(readFileSync(manifestPath, "utf8"));
+  const serial = resolvePhase14DeviceSerial();
   const currentSource = sourceTreeSha256(ROOT);
   validatePhase14ReplayableManifest(manifest, currentSource);
   ensureFlowBodies();
@@ -456,8 +468,8 @@ export function executePhase14Maestro(args = process.argv.slice(2)) {
   for (const cell of cells) {
     // Device-configuration changes can crash a live React Native process on
     // the emulator. Isolate each matrix cell before mutating device state.
-    adb(adbPath, manifest.device.serial, "shell", "am", "force-stop", manifest.package);
-    const applied = applyCellDeviceState(adbPath, manifest.device.serial, cell);
+    adb(adbPath, serial, "shell", "am", "force-stop", manifest.package);
+    const applied = applyCellDeviceState(adbPath, serial, cell);
     try {
       const flowPath = path.join(ROOT, "maestro/phase14", `${cell.flow}.yaml`);
       const reportPath = path.join(output, `${cell.id}.xml`);
@@ -472,23 +484,24 @@ export function executePhase14Maestro(args = process.argv.slice(2)) {
         flowPath,
         manifest,
         reportPath,
+        serial,
       });
       const reportBytes = readFileSync(reportPath);
       const reportText = reportBytes.toString("utf8");
       const summary = reportSummary(reportText, cell.id);
       const screenshotSha256 = captureScreenshot(
         adbPath,
-        manifest.device.serial,
+        serial,
         screenshotPath,
       );
       const semanticTreeSha256 = captureSemanticTree(
         adbPath,
-        manifest.device.serial,
+        serial,
         semanticPath,
       );
       const targetWindowBounds = captureWindowBounds(
         adbPath,
-        manifest.device.serial,
+        serial,
         cell,
       );
       const focusTraceSha256 = writeJsonArtifact(tracePath, {
@@ -537,8 +550,8 @@ export function executePhase14Maestro(args = process.argv.slice(2)) {
     } finally {
       // State restoration can also fault a live surface, so tear down again
       // before resetting viewport/font/orientation between matrix cells.
-      adb(adbPath, manifest.device.serial, "shell", "am", "force-stop", manifest.package);
-      restoreCellDeviceState(adbPath, manifest.device.serial, applied);
+      adb(adbPath, serial, "shell", "am", "force-stop", manifest.package);
+      restoreCellDeviceState(adbPath, serial, applied);
     }
   }
 

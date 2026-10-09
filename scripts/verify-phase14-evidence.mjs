@@ -16,7 +16,10 @@ import {
   phase14MatrixCellsForIds,
   validatePhase14NativeMatrix,
 } from "./phase14-native-matrix.mjs";
-import { validatePhase14Manifest } from "./run-phase14-maestro.mjs";
+import {
+  resolvePhase14DeviceSerial,
+  validatePhase14Manifest,
+} from "./run-phase14-maestro.mjs";
 import { sourceTreeSha256 } from "./source-tree-digest.mjs";
 
 const ROOT = process.cwd();
@@ -527,15 +530,16 @@ export function executePhase14EvidenceVerifier(args = process.argv.slice(2)) {
   const options = parsePhase14VerifierArgs(args);
   const directory = path.join(ROOT, "artifacts/native/phase14");
   const manifest = JSON.parse(readFileSync(path.join(directory, "build.json"), "utf8"));
+  const serial = resolvePhase14DeviceSerial();
   const apkPath = path.resolve(ROOT, manifest.apk.path);
   if (!existsSync(apkPath)) throw new Error("phase14_apk_missing");
   const installedPath = execFileSync(
     "adb",
-    ["-s", manifest.device.serial, "shell", "pm", "path", manifest.package],
+    ["-s", serial, "shell", "pm", "path", manifest.package],
     { cwd: ROOT, encoding: "utf8" },
   ).trim().replace(/^package:/u, "");
-  const installedApkBytes = readInstalledApkBytes(manifest.device.serial, installedPath);
-  const deviceIdentitySha256 = readStableDeviceIdentitySha256(manifest.device.serial);
+  const installedApkBytes = readInstalledApkBytes(serial, installedPath);
+  const deviceIdentitySha256 = readStableDeviceIdentitySha256(serial);
   validatePhase14CurrentArtifacts({
     manifest,
     currentHead: execFileSync("git", ["rev-parse", "HEAD"], { cwd: ROOT, encoding: "utf8" }).trim(),

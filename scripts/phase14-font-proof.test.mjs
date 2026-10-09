@@ -247,7 +247,7 @@ test("font proof build manifest omits raw device locators", () => {
 
   assert.match(
     builder,
-    /const privacyBoundedManifest = process\.env\.SUITE === 'phase14-font-proof';/u,
+    /const privacyBoundedManifest = \/\^phase14/u,
   );
   assert.match(
     builder,

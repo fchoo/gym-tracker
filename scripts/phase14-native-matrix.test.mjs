@@ -65,10 +65,10 @@ test("Phase 14 Maestro flows encode all shell stages and stay native-only", () =
   const runner = readFileSync("scripts/run-phase14-maestro.mjs", "utf8");
   assert.match(
     runner,
-    /adb\(adbPath, manifest\.device\.serial, "shell", "am", "force-stop", manifest\.package\);\s*const applied = applyCellDeviceState/u,
+    /adb\(adbPath, serial, "shell", "am", "force-stop", manifest\.package\);\s*const applied = applyCellDeviceState/u,
   );
   assert.match(
     runner,
-    /finally \{\s*\/\/ State restoration can also fault a live surface[\s\S]*?adb\(adbPath, manifest\.device\.serial, "shell", "am", "force-stop", manifest\.package\);\s*restoreCellDeviceState/u,
+    /finally \{\s*\/\/ State restoration can also fault a live surface[\s\S]*?adb\(adbPath, serial, "shell", "am", "force-stop", manifest\.package\);\s*restoreCellDeviceState/u,
   );
 });
