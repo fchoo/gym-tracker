@@ -3,18 +3,18 @@
   "suite": "phase14",
   "status": "passed",
   "build_manifest": "artifacts/native/phase14/build.json",
-  "base_head": "e7bcdfdc7ef43252a99695de1715bcb193b58c46",
-  "source_tree_sha256": "56f58daec2ba04d11f38659c0dd41cb50b89b217345309405c722f6c09dd6f9b",
+  "base_head": "103053b8f5e6c03aa088a3f0a8f175e3b9d001c8",
+  "source_tree_sha256": "dce7d0c87227836ea2af7710a3bbd9f2c980e1c95156a2d51261c5ac1ea70042",
   "package": "com.fchoo.gymtracker.devtest",
   "profile": "development-test",
   "device_identity_sha256": "96dcf303d772667590457dc76c2cd5ee828515c31e2af1b9fee5b3f440b204f9",
   "apk": {
     "path": "artifacts/native/phase14/gym-tracker-phase14-devtest.apk",
-    "sha256": "d71213e3fc21b541937315e7404a1b7ee78a58ee2414c7a36dab342a9e639d26",
+    "sha256": "a8acf57648e1194077732f607f1f7162d79a8ac92ce6c87e0dcf0bc6f0d785fe",
     "size_bytes": 131758356,
     "page_alignment_kib": 16,
     "page_alignment_verified": true,
-    "installed_sha256": "d71213e3fc21b541937315e7404a1b7ee78a58ee2414c7a36dab342a9e639d26",
+    "installed_sha256": "a8acf57648e1194077732f607f1f7162d79a8ac92ce6c87e0dcf0bc6f0d785fe",
     "matches_retained_apk": true
   },
   "matrix": {
@@ -470,7 +470,7 @@
     "stage": "phase14-sheets",
     "status": "passed",
     "report": "artifacts/native/phase14/maestro/shell-sheets-tablet-600-landscape-scale-2.xml",
-    "report_sha256": "b92924a1cc80bd1860ea5ad50f42a4b18956f1b05fd3267cab4ba44a11732c78",
+    "report_sha256": "11f1cac25a425fbad1d7221fc180b0c482d32890b884f3861980e972b246713f",
     "matrix_cells": [
       {
         "id": "shell-sheets-tablet-600-landscape-scale-2",
@@ -492,13 +492,13 @@
           "dpad"
         ],
         "report": "artifacts/native/phase14/maestro/shell-sheets-tablet-600-landscape-scale-2.xml",
-        "report_sha256": "b92924a1cc80bd1860ea5ad50f42a4b18956f1b05fd3267cab4ba44a11732c78",
+        "report_sha256": "11f1cac25a425fbad1d7221fc180b0c482d32890b884f3861980e972b246713f",
         "screenshot": "artifacts/native/phase14/screenshots/shell-sheets-tablet-600-landscape-scale-2.png",
-        "screenshot_sha256": "373d947829cd92a29b65f2892edf54397d7faea442658022922ca5309a63747b",
+        "screenshot_sha256": "ce53d5fbd38b60f8125af7f24f93b97b406c79298d27e09eefd44b8ee69a9562",
         "semantic_tree": "artifacts/native/phase14/semantic/shell-sheets-tablet-600-landscape-scale-2.xml",
         "semantic_tree_sha256": "330b4e1558fc8dec35ef58e2159a19e3bb7f691e58c9deb6f14ae452a46f17b5",
         "focus_key_trace": "artifacts/native/phase14/traces/shell-sheets-tablet-600-landscape-scale-2.json",
-        "focus_key_trace_sha256": "4166699fd6211090a5dcf33f1c18fe585a751702bf0f9ba06ffb60cb729142ad",
+        "focus_key_trace_sha256": "1c117765a855857b72bf9b07a457dc1f6e315511c33b1cc5311d2be1a1c3f62c",
         "target_window_bounds": {
           "requested_viewport": {
             "width": 600,
@@ -512,8 +512,8 @@
           "night_mode": "Night mode: no"
         },
         "difference_overlay": "artifacts/native/phase14/overlays/shell-sheets-tablet-600-landscape-scale-2.json",
-        "difference_overlay_sha256": "6613d41ebae80a812cb394a05e5a407a7fd50b27aa6c324a11cf193a1b1adc28",
-        "source_state_sha256": "56f58daec2ba04d11f38659c0dd41cb50b89b217345309405c722f6c09dd6f9b",
+        "difference_overlay_sha256": "935b5b70a8d7dfa46a5340508981c16a80d6fca3db68238dad2f4c401c85f437",
+        "source_state_sha256": "dce7d0c87227836ea2af7710a3bbd9f2c980e1c95156a2d51261c5ac1ea70042",
         "summary": {
           "tests": 1,
           "failures": 0,
@@ -529,12 +529,12 @@
     "requirement": "SHL-05",
     "path": ".planning/phases/14-prototype-visual-shell/evidence/shell.sheets.json",
     "report": "artifacts/native/phase14/maestro/shell-sheets-tablet-600-landscape-scale-2.xml",
-    "report_sha256": "b92924a1cc80bd1860ea5ad50f42a4b18956f1b05fd3267cab4ba44a11732c78",
+    "report_sha256": "11f1cac25a425fbad1d7221fc180b0c482d32890b884f3861980e972b246713f",
     "screenshot": "artifacts/native/phase14/screenshots/shell-sheets-tablet-600-landscape-scale-2.png",
-    "screenshot_sha256": "373d947829cd92a29b65f2892edf54397d7faea442658022922ca5309a63747b",
+    "screenshot_sha256": "ce53d5fbd38b60f8125af7f24f93b97b406c79298d27e09eefd44b8ee69a9562",
     "component_verdict": "passed",
     "native_verdict": "passed",
-    "source_state_sha256": "56f58daec2ba04d11f38659c0dd41cb50b89b217345309405c722f6c09dd6f9b",
+    "source_state_sha256": "dce7d0c87227836ea2af7710a3bbd9f2c980e1c95156a2d51261c5ac1ea70042",
     "matrix_cells": [
       {
         "id": "shell-sheets-tablet-600-landscape-scale-2",
@@ -556,13 +556,13 @@
           "dpad"
         ],
         "report": "artifacts/native/phase14/maestro/shell-sheets-tablet-600-landscape-scale-2.xml",
-        "report_sha256": "b92924a1cc80bd1860ea5ad50f42a4b18956f1b05fd3267cab4ba44a11732c78",
+        "report_sha256": "11f1cac25a425fbad1d7221fc180b0c482d32890b884f3861980e972b246713f",
         "screenshot": "artifacts/native/phase14/screenshots/shell-sheets-tablet-600-landscape-scale-2.png",
-        "screenshot_sha256": "373d947829cd92a29b65f2892edf54397d7faea442658022922ca5309a63747b",
+        "screenshot_sha256": "ce53d5fbd38b60f8125af7f24f93b97b406c79298d27e09eefd44b8ee69a9562",
         "semantic_tree": "artifacts/native/phase14/semantic/shell-sheets-tablet-600-landscape-scale-2.xml",
         "semantic_tree_sha256": "330b4e1558fc8dec35ef58e2159a19e3bb7f691e58c9deb6f14ae452a46f17b5",
         "focus_key_trace": "artifacts/native/phase14/traces/shell-sheets-tablet-600-landscape-scale-2.json",
-        "focus_key_trace_sha256": "4166699fd6211090a5dcf33f1c18fe585a751702bf0f9ba06ffb60cb729142ad",
+        "focus_key_trace_sha256": "1c117765a855857b72bf9b07a457dc1f6e315511c33b1cc5311d2be1a1c3f62c",
         "target_window_bounds": {
           "requested_viewport": {
             "width": 600,
@@ -576,8 +576,8 @@
           "night_mode": "Night mode: no"
         },
         "difference_overlay": "artifacts/native/phase14/overlays/shell-sheets-tablet-600-landscape-scale-2.json",
-        "difference_overlay_sha256": "6613d41ebae80a812cb394a05e5a407a7fd50b27aa6c324a11cf193a1b1adc28",
-        "source_state_sha256": "56f58daec2ba04d11f38659c0dd41cb50b89b217345309405c722f6c09dd6f9b",
+        "difference_overlay_sha256": "935b5b70a8d7dfa46a5340508981c16a80d6fca3db68238dad2f4c401c85f437",
+        "source_state_sha256": "dce7d0c87227836ea2af7710a3bbd9f2c980e1c95156a2d51261c5ac1ea70042",
         "summary": {
           "tests": 1,
           "failures": 0,
