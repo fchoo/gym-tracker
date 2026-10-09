@@ -3,18 +3,18 @@
   "suite": "phase14",
   "status": "passed",
   "build_manifest": "artifacts/native/phase14/build.json",
-  "base_head": "ef0d9d9b8621d5fda838c11f87e75138b72b97cc",
-  "source_tree_sha256": "9d60a92d2fa758648fd6715260d46e75ac770b8adcfa21ce95ca537a9ecd671c",
+  "base_head": "1ee8a4aeeefffaa33b0c58cf63d91f00e4e18c7a",
+  "source_tree_sha256": "627ba5c0f25a4319b5505123b6b1ce0008ddcd2ba8fb5d41380d8397be06e579",
   "package": "com.fchoo.gymtracker.devtest",
   "profile": "development-test",
   "device_identity_sha256": "96dcf303d772667590457dc76c2cd5ee828515c31e2af1b9fee5b3f440b204f9",
   "apk": {
     "path": "artifacts/native/phase14/gym-tracker-phase14-devtest.apk",
-    "sha256": "a364b5a49e8518e5cdf9f2effb0ec302ad8239a78a504235bbafd04709fd64b2",
+    "sha256": "f075f66780805a872aba16ea5c7d8ddc37c50d844538b06d120b41f55d890917",
     "size_bytes": 131758360,
     "page_alignment_kib": 16,
     "page_alignment_verified": true,
-    "installed_sha256": "a364b5a49e8518e5cdf9f2effb0ec302ad8239a78a504235bbafd04709fd64b2",
+    "installed_sha256": "f075f66780805a872aba16ea5c7d8ddc37c50d844538b06d120b41f55d890917",
     "matches_retained_apk": true
   },
   "matrix": {
@@ -470,7 +470,7 @@
     "stage": "phase14-automatic-backup",
     "status": "passed",
     "report": "artifacts/native/phase14/maestro/shell-automatic-backup-tablet-600-portrait-scale-1.xml",
-    "report_sha256": "cbd2fc58f49372e0eaff3c435c97ed44e52f1fa1470f2f551607fefa8d9cee87",
+    "report_sha256": "58029388e9d303443bf83bd58f57bac79b8a38e69bbc80821c63075ed4c84200",
     "matrix_cells": [
       {
         "id": "shell-automatic-backup-tablet-600-portrait-scale-1",
@@ -490,13 +490,13 @@
           "back"
         ],
         "report": "artifacts/native/phase14/maestro/shell-automatic-backup-tablet-600-portrait-scale-1.xml",
-        "report_sha256": "cbd2fc58f49372e0eaff3c435c97ed44e52f1fa1470f2f551607fefa8d9cee87",
+        "report_sha256": "58029388e9d303443bf83bd58f57bac79b8a38e69bbc80821c63075ed4c84200",
         "screenshot": "artifacts/native/phase14/screenshots/shell-automatic-backup-tablet-600-portrait-scale-1.png",
-        "screenshot_sha256": "69c615bd31aed34bcbcfaccdbf080d265ebc1d64fcd803528b7f71ce9240902e",
+        "screenshot_sha256": "e4e85c8497e2fed6258f917142f2a336bba33f5e8ddda11cf27fd275a50809be",
         "semantic_tree": "artifacts/native/phase14/semantic/shell-automatic-backup-tablet-600-portrait-scale-1.xml",
         "semantic_tree_sha256": "921903f49855ca4e3e7330867b2733e4c272ce8dc81ca9f1d530411577e5f03a",
         "focus_key_trace": "artifacts/native/phase14/traces/shell-automatic-backup-tablet-600-portrait-scale-1.json",
-        "focus_key_trace_sha256": "deedc69fb485f343f61fb49fd4b5685f66dbdd7985503e8abe9cb8cd334ad6dc",
+        "focus_key_trace_sha256": "4b51f726d47b6f46c698fa0469257426b74a5cedb333abfb13af27aa3aba9f8d",
         "target_window_bounds": {
           "requested_viewport": {
             "width": 600,
@@ -510,8 +510,8 @@
           "night_mode": "Night mode: no"
         },
         "difference_overlay": "artifacts/native/phase14/overlays/shell-automatic-backup-tablet-600-portrait-scale-1.json",
-        "difference_overlay_sha256": "0e5451fd162898144bde327a61e832fe1a74b178cc76e32ddb06efee15284fb7",
-        "source_state_sha256": "9d60a92d2fa758648fd6715260d46e75ac770b8adcfa21ce95ca537a9ecd671c",
+        "difference_overlay_sha256": "1976125a7971120d1f8a7c6bb31f65ba2bca024f606ebcb6d68cb88887de7a44",
+        "source_state_sha256": "627ba5c0f25a4319b5505123b6b1ce0008ddcd2ba8fb5d41380d8397be06e579",
         "summary": {
           "tests": 1,
           "failures": 0,
@@ -527,12 +527,12 @@
     "requirement": "SHL-12",
     "path": ".planning/phases/14-prototype-visual-shell/evidence/shell.automatic-backup.json",
     "report": "artifacts/native/phase14/maestro/shell-automatic-backup-tablet-600-portrait-scale-1.xml",
-    "report_sha256": "cbd2fc58f49372e0eaff3c435c97ed44e52f1fa1470f2f551607fefa8d9cee87",
+    "report_sha256": "58029388e9d303443bf83bd58f57bac79b8a38e69bbc80821c63075ed4c84200",
     "screenshot": "artifacts/native/phase14/screenshots/shell-automatic-backup-tablet-600-portrait-scale-1.png",
-    "screenshot_sha256": "69c615bd31aed34bcbcfaccdbf080d265ebc1d64fcd803528b7f71ce9240902e",
+    "screenshot_sha256": "e4e85c8497e2fed6258f917142f2a336bba33f5e8ddda11cf27fd275a50809be",
     "component_verdict": "passed",
     "native_verdict": "passed",
-    "source_state_sha256": "9d60a92d2fa758648fd6715260d46e75ac770b8adcfa21ce95ca537a9ecd671c",
+    "source_state_sha256": "627ba5c0f25a4319b5505123b6b1ce0008ddcd2ba8fb5d41380d8397be06e579",
     "matrix_cells": [
       {
         "id": "shell-automatic-backup-tablet-600-portrait-scale-1",
@@ -552,13 +552,13 @@
           "back"
         ],
         "report": "artifacts/native/phase14/maestro/shell-automatic-backup-tablet-600-portrait-scale-1.xml",
-        "report_sha256": "cbd2fc58f49372e0eaff3c435c97ed44e52f1fa1470f2f551607fefa8d9cee87",
+        "report_sha256": "58029388e9d303443bf83bd58f57bac79b8a38e69bbc80821c63075ed4c84200",
         "screenshot": "artifacts/native/phase14/screenshots/shell-automatic-backup-tablet-600-portrait-scale-1.png",
-        "screenshot_sha256": "69c615bd31aed34bcbcfaccdbf080d265ebc1d64fcd803528b7f71ce9240902e",
+        "screenshot_sha256": "e4e85c8497e2fed6258f917142f2a336bba33f5e8ddda11cf27fd275a50809be",
         "semantic_tree": "artifacts/native/phase14/semantic/shell-automatic-backup-tablet-600-portrait-scale-1.xml",
         "semantic_tree_sha256": "921903f49855ca4e3e7330867b2733e4c272ce8dc81ca9f1d530411577e5f03a",
         "focus_key_trace": "artifacts/native/phase14/traces/shell-automatic-backup-tablet-600-portrait-scale-1.json",
-        "focus_key_trace_sha256": "deedc69fb485f343f61fb49fd4b5685f66dbdd7985503e8abe9cb8cd334ad6dc",
+        "focus_key_trace_sha256": "4b51f726d47b6f46c698fa0469257426b74a5cedb333abfb13af27aa3aba9f8d",
         "target_window_bounds": {
           "requested_viewport": {
             "width": 600,
@@ -572,8 +572,8 @@
           "night_mode": "Night mode: no"
         },
         "difference_overlay": "artifacts/native/phase14/overlays/shell-automatic-backup-tablet-600-portrait-scale-1.json",
-        "difference_overlay_sha256": "0e5451fd162898144bde327a61e832fe1a74b178cc76e32ddb06efee15284fb7",
-        "source_state_sha256": "9d60a92d2fa758648fd6715260d46e75ac770b8adcfa21ce95ca537a9ecd671c",
+        "difference_overlay_sha256": "1976125a7971120d1f8a7c6bb31f65ba2bca024f606ebcb6d68cb88887de7a44",
+        "source_state_sha256": "627ba5c0f25a4319b5505123b6b1ce0008ddcd2ba8fb5d41380d8397be06e579",
         "summary": {
           "tests": 1,
           "failures": 0,
