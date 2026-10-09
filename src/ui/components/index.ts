@@ -952,13 +952,6 @@ export const rootDestinations = [
   },
 ] as const;
 
-export function rootNavigationUsesTwoRows(
-  _width: number,
-  _fontScale: number,
-): boolean {
-  return false;
-}
-
 type AppTabsProps = Readonly<{
   state: {
     index: number;
@@ -1307,14 +1300,6 @@ const styles = StyleSheet.create({
   appTabsBottom: {
     flexDirection: "row",
   },
-  appTabsBottomTwoRows: {
-    flexDirection: "row",
-    flexWrap: "wrap",
-  },
-  appTabsRail: {
-    alignSelf: "stretch",
-    width: 112,
-  },
   appTab: {
     alignItems: "center",
     flex: 1,
@@ -1324,14 +1309,6 @@ const styles = StyleSheet.create({
     minWidth: sizes.minimumTarget,
     paddingHorizontal: space[1],
     paddingVertical: space[2],
-  },
-  appTabRail: {
-    flex: 0,
-    minHeight: 72,
-  },
-  appTabTwoRows: {
-    flex: 0,
-    width: "50%",
   },
   appTabLabel: {
     lineHeight: 22,
