@@ -47,7 +47,13 @@ function ConfirmationDialogActions({
         ref={cancelRef}
       />
       {alternateLabel === undefined || onAlternate === undefined ? null : (
-        <SecondaryAction destructive={destructive} label={alternateLabel} onPress={onAlternate} />
+        <SecondaryAction
+          busy={busy}
+          disabled={busy}
+          destructive={destructive}
+          label={alternateLabel}
+          onPress={onAlternate}
+        />
       )}
       <SecondaryAction
         busy={busy}
