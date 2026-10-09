@@ -163,12 +163,15 @@ describe("RemovedSessionsScreen", () => {
   it("keeps the selected identity visible while busy and announces success only after callback and reload", async () => {
     let resolveRestore: (() => void) | undefined;
     let resolveCallback: (() => void) | undefined;
+    let resolveReload: ((value: readonly RemovedHistorySession[]) => void) | undefined;
     let loadCount = 0;
     const props = await renderScreen({
       loadRemovedSessions: jest.fn(async () => {
         loadCount += 1;
         if (loadCount === 1) return [removedSession];
-        return [];
+        return new Promise<readonly RemovedHistorySession[]>((resolve) => {
+          resolveReload = resolve;
+        });
       }),
       onRestored: jest.fn(() => new Promise<void>((resolve) => {
         resolveCallback = resolve;
@@ -197,6 +200,11 @@ describe("RemovedSessionsScreen", () => {
     expect(screen.queryByText("Workout restored")).not.toBeOnTheScreen();
     resolveCallback?.();
 
+    await waitFor(() => expect(props.loadRemovedSessions).toHaveBeenCalledTimes(2));
+    expect(screen.getByRole("header", { name: "Restore this workout?" }))
+      .toBeOnTheScreen();
+    expect(screen.queryByText("Workout restored")).not.toBeOnTheScreen();
+    resolveReload?.([]);
     expect(await screen.findByText("Workout restored")).toBeOnTheScreen();
     expect(screen.queryByText("Full Body Foundation · Full Body A")).not.toBeOnTheScreen();
   });
@@ -229,5 +237,35 @@ describe("RemovedSessionsScreen", () => {
     expect(screen.getByText("Full Body Foundation · Full Body A"))
       .toBeOnTheScreen();
     expect(props.onRestored).not.toHaveBeenCalled();
+  });
+
+  it("keeps the confirmation open after a post-restore reload failure and retries only the reload", async () => {
+    const loadRemovedSessions = jest
+      .fn<() => Promise<readonly RemovedHistorySession[]>>()
+      .mockResolvedValueOnce([removedSession])
+      .mockRejectedValueOnce(new Error("post-restore read unavailable"))
+      .mockResolvedValueOnce([]);
+    const props = await renderScreen({ loadRemovedSessions });
+    await screen.findByText("Full Body Foundation · Full Body A");
+
+    await fireEvent.press(screen.getByRole("button", {
+      name: "Restore Full Body Foundation · Full Body A",
+    }));
+    await fireEvent.press(screen.getByRole("button", { name: "Restore workout" }));
+
+    expect(await screen.findByText(
+      "Restore failed. The workout remains removed. Try restore again when ready.",
+    )).toBeOnTheScreen();
+    expect(screen.getByRole("header", { name: "Restore this workout?" }))
+      .toBeOnTheScreen();
+    expect(screen.queryByText("Workout restored")).not.toBeOnTheScreen();
+    expect(props.restoreSession).toHaveBeenCalledTimes(1);
+    expect(props.onRestored).toHaveBeenCalledTimes(1);
+
+    await fireEvent.press(screen.getByRole("button", { name: "Restore workout" }));
+    expect(await screen.findByText("Workout restored")).toBeOnTheScreen();
+    expect(loadRemovedSessions).toHaveBeenCalledTimes(3);
+    expect(props.restoreSession).toHaveBeenCalledTimes(1);
+    expect(props.onRestored).toHaveBeenCalledTimes(1);
   });
 });

@@ -96,7 +96,7 @@ export function RemovedSessionsScreen({
   const [sessions, setSessions] = useState<readonly RemovedHistorySession[]>([]);
   const [selected, setSelected] = useState<RemovedHistorySession | null>(null);
   const [restoreFailed, setRestoreFailed] = useState(false);
-  const [reloadAfterRestore, setReloadAfterRestore] = useState(false);
+  const [restoreAwaitingReload, setRestoreAwaitingReload] = useState(false);
   const [restoring, setRestoring] = useState(false);
   const headingRef = useRef<View>(null);
   const loadingRef = useRef(false);
@@ -128,15 +128,10 @@ export function RemovedSessionsScreen({
     void load();
   }, [load]);
 
-  useEffect(() => {
-    if (!reloadAfterRestore) return;
-    setReloadAfterRestore(false);
-    void load();
-  }, [load, reloadAfterRestore]);
-
   const dismissConfirmation = () => {
     setSelected(null);
     setRestoreFailed(false);
+    setRestoreAwaitingReload(false);
   };
 
   const confirmRestore = () => {
@@ -148,15 +143,21 @@ export function RemovedSessionsScreen({
     setRestoreFailed(false);
     void (async () => {
       try {
-        await restoreSession({
-          sessionId: selectedSession.id,
-          expectedEffectiveRevision: selectedSession.effectiveRevision,
-          confirmation: RESTORE_HISTORY_CONFIRMATION,
-        });
-        await onRestored(selectedSession.id);
+        if (!restoreAwaitingReload) {
+          await restoreSession({
+            sessionId: selectedSession.id,
+            expectedEffectiveRevision: selectedSession.effectiveRevision,
+            confirmation: RESTORE_HISTORY_CONFIRMATION,
+          });
+          await onRestored(selectedSession.id);
+          setRestoreAwaitingReload(true);
+        }
+        if (!await load()) {
+          setRestoreFailed(true);
+          return;
+        }
         dismissConfirmation();
         enqueue({ message: "Workout restored" });
-        setReloadAfterRestore(true);
       } catch {
         setRestoreFailed(true);
       } finally {
