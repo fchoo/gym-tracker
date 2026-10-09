@@ -45,6 +45,7 @@ import {
   typeScale,
   useAppTheme,
 } from "../theme";
+import type { RootFocusTarget } from "../shell/rootFocus";
 
 const MONTH_NAMES = [
   "January", "February", "March", "April", "May", "June",
@@ -74,6 +75,7 @@ type CalendarScreenProps = Readonly<{
   onOpenSession(sessionId: string): void;
   today?: string;
   width?: number;
+  headingRef?: React.RefObject<RootFocusTarget | null>;
 }>;
 
 function monthStart(value: LocalDate): LocalDate {
@@ -368,6 +370,7 @@ export function CalendarScreen({
   onOpenSession,
   today = initialDate,
   width,
+  headingRef,
 }: CalendarScreenProps) {
   const { colors } = useAppTheme();
   const parsedInitial = parseLocalDate(initialDate);
@@ -419,7 +422,12 @@ export function CalendarScreen({
         {...adaptiveWidth}
         primary={
           <>
-            <ScreenHeader title="Calendar could not be loaded" />
+            <ScreenHeader
+              {...(headingRef === undefined
+                ? {}
+                : { ref: headingRef as React.Ref<View> })}
+              title="Calendar could not be loaded"
+            />
             <Text style={[typeScale.body as TextStyle, { color: colors.textSecondary }]}>
               Your workout history was not changed. Try loading Calendar again.
             </Text>
@@ -436,7 +444,12 @@ export function CalendarScreen({
         {...adaptiveWidth}
         primary={
           <>
-            <ScreenHeader title="Calendar" />
+            <ScreenHeader
+              {...(headingRef === undefined
+                ? {}
+                : { ref: headingRef as React.Ref<View> })}
+              title="Calendar"
+            />
             <SkeletonBlock height={42} width="72%" />
             <SkeletonBlock height={300} />
             <SkeletonBlock height={136} />
@@ -450,7 +463,12 @@ export function CalendarScreen({
   const followingMonth = nextMonth(snapshot.month, 1);
   const primary = (
     <>
-      <ScreenHeader title="Calendar" />
+      <ScreenHeader
+        {...(headingRef === undefined
+          ? {}
+          : { ref: headingRef as React.Ref<View> })}
+        title="Calendar"
+      />
       <View style={styles.monthHeader}>
         <IconAction
           accessibilityLabel={previousMonth === null

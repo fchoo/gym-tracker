@@ -131,9 +131,15 @@ describe("AppRootShell", () => {
   it("restores the exact originating trigger and falls back to the root heading", async () => {
     const trigger = { current: { focus: jest.fn() } };
     const heading = { current: { focus: jest.fn() } };
+    const consumeOrigin = jest.fn();
     const { rerender } = await render(
       <AppearanceProvider>
-        <AppRootShell activeRoot="library" headingRefs={{ library: heading }}>
+        <AppRootShell
+          activeRoot="library"
+          currentPath="/more/removed-sessions"
+          headingRefs={{ library: heading }}
+          onConsumeOrigin={consumeOrigin}
+        >
           <View />
         </AppRootShell>
       </AppearanceProvider>,
@@ -144,8 +150,10 @@ describe("AppRootShell", () => {
         <AppearanceProvider>
           <AppRootShell
             activeRoot="library"
+            currentPath="/library"
             headingRefs={{ library: heading }}
             origin={{ root: "library", trigger }}
+            onConsumeOrigin={consumeOrigin}
           >
             <View />
           </AppRootShell>
@@ -153,17 +161,40 @@ describe("AppRootShell", () => {
       );
     });
     expect(trigger.current.focus).toHaveBeenCalledTimes(1);
+    expect(consumeOrigin).toHaveBeenCalledTimes(1);
 
     await act(async () => {
       rerender(
         <AppearanceProvider>
-          <AppRootShell activeRoot="library" headingRefs={{ library: heading }} origin={{ root: "library" }}>
+          <AppRootShell
+            activeRoot="library"
+            currentPath="/more/data-and-recovery"
+            headingRefs={{ library: heading }}
+            onConsumeOrigin={consumeOrigin}
+          >
             <View />
           </AppRootShell>
         </AppearanceProvider>,
       );
     });
-    expect(heading.current.focus).toHaveBeenCalledTimes(2);
+
+    await act(async () => {
+      rerender(
+        <AppearanceProvider>
+          <AppRootShell
+            activeRoot="library"
+            currentPath="/library"
+            headingRefs={{ library: heading }}
+            origin={{ root: "library" }}
+            onConsumeOrigin={consumeOrigin}
+          >
+            <View />
+          </AppRootShell>
+        </AppearanceProvider>,
+      );
+    });
+    expect(heading.current.focus).toHaveBeenCalledTimes(1);
+    expect(consumeOrigin).toHaveBeenCalledTimes(2);
   });
 
   it("mounts one measured shell-level toast host", async () => {

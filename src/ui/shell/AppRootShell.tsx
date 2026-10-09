@@ -4,24 +4,22 @@ import { View } from "react-native";
 import { IconAction } from "../components";
 import { BottomSheet } from "../components/BottomSheet";
 import { SemanticToastProvider } from "../components/SemanticToast";
-
-export type RootRouteKey = "index" | "calendar" | "library" | "progress";
-
-type FocusTarget = Readonly<{ focus?: () => void }>;
-
-export type RootOrigin = Readonly<{
-  root: RootRouteKey;
-  trigger?: React.RefObject<FocusTarget | null>;
-}>;
+import {
+  type RootFocusTarget,
+  type RootOrigin,
+  type RootRouteKey,
+} from "./rootFocus";
 
 type AppRootShellProps = Readonly<{
   children: React.ReactNode;
   activeRoot?: RootRouteKey;
-  headingRefs?: Partial<Record<RootRouteKey, React.RefObject<FocusTarget | null>>>;
+  currentPath?: string;
+  headingRefs?: Partial<Record<RootRouteKey, React.RefObject<RootFocusTarget | null>>>;
   origin?: RootOrigin;
+  onConsumeOrigin?: () => void;
   onOpenSettings?: () => void;
   settingsContent?: React.ReactNode | ((closeSettings: () => void) => React.ReactNode);
-  settingsTriggerRef?: React.RefObject<FocusTarget | null>;
+  settingsTriggerRef?: React.RefObject<RootFocusTarget | null>;
   toastTopAvoidance?: number;
   toastBottomAvoidance?: number;
 }>;
@@ -30,8 +28,10 @@ type AppRootShellProps = Readonly<{
 export function AppRootShell({
   children,
   activeRoot,
+  currentPath,
   headingRefs,
   origin,
+  onConsumeOrigin,
   onOpenSettings,
   settingsContent,
   settingsTriggerRef,
@@ -39,23 +39,38 @@ export function AppRootShell({
   toastBottomAvoidance,
 }: AppRootShellProps) {
   const [settingsVisible, setSettingsVisible] = React.useState(false);
+  const previousActiveRootRef = React.useRef<RootRouteKey | undefined>(activeRoot);
+  const previousPathRef = React.useRef(currentPath);
   const closeSettings = React.useCallback(() => setSettingsVisible(false), []);
   const resolvedSettingsContent = typeof settingsContent === "function"
     ? settingsContent(closeSettings)
     : settingsContent;
+
   React.useLayoutEffect(() => {
-    const originTrigger = origin !== undefined && origin.root === activeRoot
-      ? origin.trigger?.current
-      : undefined;
-    if (originTrigger?.focus !== undefined) {
-      originTrigger.focus();
-      return;
+    const rootChanged = previousActiveRootRef.current !== activeRoot;
+    const pathChanged = previousPathRef.current !== currentPath;
+
+    if (activeRoot !== undefined) {
+      const originTrigger = origin !== undefined && origin.root === activeRoot
+        ? origin.trigger?.current
+        : undefined;
+      if (pathChanged && origin?.root === activeRoot) {
+        if (originTrigger?.focus !== undefined) {
+          originTrigger.focus();
+        } else {
+          headingRefs?.[activeRoot]?.current?.focus?.();
+        }
+        onConsumeOrigin?.();
+      } else if (pathChanged && origin !== undefined && origin.root !== activeRoot) {
+        onConsumeOrigin?.();
+      } else if (rootChanged) {
+        headingRefs?.[activeRoot]?.current?.focus?.();
+      }
     }
-    if (activeRoot === undefined) {
-      return;
-    }
-    headingRefs?.[activeRoot]?.current?.focus?.();
-  }, [activeRoot, headingRefs, origin]);
+
+    previousActiveRootRef.current = activeRoot;
+    previousPathRef.current = currentPath;
+  }, [activeRoot, currentPath, headingRefs, onConsumeOrigin, origin]);
 
   return (
     <SemanticToastProvider

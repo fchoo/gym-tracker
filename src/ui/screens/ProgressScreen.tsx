@@ -53,6 +53,7 @@ import {
   typeScale,
   useAppTheme,
 } from "../theme";
+import type { RootFocusTarget } from "../shell/rootFocus";
 
 type ProgressSnapshot = Readonly<{
   period: ProgressPeriod;
@@ -76,6 +77,7 @@ export type ProgressScreenProps = Readonly<{
   onAcceptRecommendation?(recommendationId: string): Promise<unknown>;
   onKeepCurrentTarget?(recommendationId: string): Promise<unknown>;
   width?: number;
+  headingRef?: React.RefObject<RootFocusTarget | null>;
 }>;
 
 const PERIODS: readonly Readonly<{
@@ -643,6 +645,7 @@ export function ProgressScreen({
   onAcceptRecommendation,
   onKeepCurrentTarget,
   width,
+  headingRef,
 }: ProgressScreenProps) {
   const [period, setPeriod] = useState<ProgressPeriod>("4_weeks");
   const [snapshot, setSnapshot] = useState<ProgressSnapshot | null>(null);
@@ -681,7 +684,12 @@ export function ProgressScreen({
 
   const header = (
     <>
-      <ScreenHeader title="Progress" />
+      <ScreenHeader
+        {...(headingRef === undefined
+          ? {}
+          : { ref: headingRef as React.Ref<View> })}
+        title="Progress"
+      />
       <PeriodControls onChange={setPeriod} selected={period} />
       {recommendationDecisionNotice === null ? null : (
         <View accessibilityRole="alert">

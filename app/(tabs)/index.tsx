@@ -14,8 +14,10 @@ import type {
   ProgressRecommendationReview,
 } from "../../src/domains/progress";
 import { TodayScreen } from "../../src/ui/screens/TodayScreen";
+import { useRootHeadingRef } from "../../src/ui/shell/rootFocus";
 
 export default function TodayRoute() {
+  const headingRef = useRootHeadingRef("index");
   const runtime = useWorkoutAppRuntime();
   const {
     launchState,
@@ -137,6 +139,7 @@ export default function TodayRoute() {
       chooseScheduleTimeZone={(choice) => {
         void runtime.chooseTimeZone(choice).then(() => runtime.refresh());
       }}
+      headingRef={headingRef}
     />
   );
 }

@@ -12,6 +12,7 @@ import {
   Switch,
   Text,
   View,
+  type View as ViewHandle,
   type TextStyle,
 } from "react-native";
 
@@ -79,6 +80,8 @@ export type SettingsScreenProps = Readonly<{
 export type AppSettingsContentProps = Omit<SettingsScreenProps, "onBack" | "width"> & Readonly<{
   /** Called by a sheet host before a callback changes the route. */
   onNavigate?: () => void;
+  removedSessionsTriggerRef?: React.RefObject<ViewHandle | null>;
+  dataAndRecoveryTriggerRef?: React.RefObject<ViewHandle | null>;
 }>;
 
 /** Router-independent settings sections. Presentation owners supply navigation chrome. */
@@ -91,6 +94,8 @@ export function AppSettingsContent({
   onOpenRemovedSessions,
   onOpenDataAndRecovery,
   onNavigate,
+  removedSessionsTriggerRef,
+  dataAndRecoveryTriggerRef,
 }: AppSettingsContentProps) {
   const { appearance, colors, setAppearance } = useAppTheme();
   const latestPreferencesRef = useRef(preferences);
@@ -333,6 +338,7 @@ export function AppSettingsContent({
                   onNavigate?.();
                   onOpenRemovedSessions();
                 }}
+                ref={removedSessionsTriggerRef}
               />
             </View>
           </ContentCard>
@@ -349,6 +355,7 @@ export function AppSettingsContent({
                 Automatic Google Drive backup and manual recovery tools are available here.
               </Text>
               <SecondaryAction
+                ref={dataAndRecoveryTriggerRef}
                 label="Data and recovery"
                 onPress={() => {
                   onNavigate?.();

@@ -43,6 +43,7 @@ import {
 import { WorkoutStartSheet } from "../components/WorkoutStartSheet";
 import { AdaptiveScreen } from "../layout/AdaptiveScreen";
 import { RootFailureState } from "./RootFailureState";
+import type { RootFocusTarget } from "../shell/rootFocus";
 import {
   space,
   typeScale,
@@ -77,6 +78,7 @@ export type TodayScreenProps = Readonly<{
   ) => void | Promise<void>;
   onOpenSettings?: () => void;
   onRetry?: () => void;
+  headingRef?: React.RefObject<RootFocusTarget | null>;
 }>;
 
 function TodaySkeleton() {
@@ -364,6 +366,7 @@ export function TodayScreen({
   chooseScheduleTimeZone = noOp,
   onOpenSettings = noOp,
   onRetry = noOp,
+  headingRef,
 }: TodayScreenProps) {
   const [activationPreview, setActivationPreview] = useState(false);
   const trusted = launchState === "trusted";
@@ -464,6 +467,9 @@ export function TodayScreen({
         primary={
           <>
             <ScreenHeader
+              {...(headingRef === undefined
+                ? {}
+                : { ref: headingRef as React.Ref<View> })}
               action={
                 <IconAction
                   accessibilityHint={trusted

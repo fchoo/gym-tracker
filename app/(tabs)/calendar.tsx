@@ -9,8 +9,10 @@ import {
 import {
   CalendarScreen,
 } from "../../src/ui/screens/CalendarScreen";
+import { useRootHeadingRef } from "../../src/ui/shell/rootFocus";
 
 export default function CalendarRoute() {
+  const headingRef = useRootHeadingRef("calendar");
   const runtime = useWorkoutAppRuntime();
   const now = new Date();
   const initialDate = [
@@ -30,6 +32,7 @@ export default function CalendarRoute() {
       onOpenSession={(sessionId) =>
         router.push(("/session/" + sessionId) as Href)}
       today={initialDate}
+      headingRef={headingRef}
     />
   );
 }

@@ -18,8 +18,10 @@ import {
 import {
   LibraryScreen,
 } from "../../src/ui/screens/LibraryScreen";
+import { useRootHeadingRef } from "../../src/ui/shell/rootFocus";
 
 export default function LibraryRoute() {
+  const headingRef = useRootHeadingRef("library");
   const runtime = useWorkoutAppRuntime();
   const [refreshGeneration, setRefreshGeneration] = useState(0);
   const hasFocused = useRef(false);
@@ -59,6 +61,7 @@ export default function LibraryRoute() {
       searchExercises={runtime.searchLibraryExercises}
       setExerciseFavorite={runtime.setLibraryExerciseFavorite}
       setSection={runtime.setLibrarySection}
+      headingRef={headingRef}
     />
   );
 }

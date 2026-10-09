@@ -9,8 +9,10 @@ import {
 import {
   ProgressScreen,
 } from "../../src/ui/screens/ProgressScreen";
+import { useRootHeadingRef } from "../../src/ui/shell/rootFocus";
 
 export default function ProgressRoute() {
+  const headingRef = useRootHeadingRef("progress");
   const runtime = useWorkoutAppRuntime();
   const now = new Date();
   const nowLocalDate = [
@@ -37,6 +39,7 @@ export default function ProgressRoute() {
         await runtime.refresh();
         return result;
       }}
+      headingRef={headingRef}
     />
   );
 }

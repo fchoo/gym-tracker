@@ -1,7 +1,6 @@
-import { Tabs } from "expo-router";
+import { Tabs, usePathname, useRouter, type Href } from "expo-router";
 import { View } from "react-native";
 import React, { useEffect, useRef, useState } from "react";
-import { router, type Href } from "expo-router";
 
 import {
   AppTabs,
@@ -16,6 +15,11 @@ import {
 } from "../../src/bootstrap/workoutAppRuntime";
 import type { RestAlertPreferences } from "../../src/domains/rest";
 import { useAppTheme } from "../../src/ui/theme";
+import {
+  RootHeadingRefsProvider,
+  type RootOrigin,
+  type RootRouteKey,
+} from "../../src/ui/shell/rootFocus";
 
 const DEFAULT_REST_ALERT_PREFERENCES: RestAlertPreferences = Object.freeze({
   soundEnabled: true,
@@ -24,9 +28,16 @@ const DEFAULT_REST_ALERT_PREFERENCES: RestAlertPreferences = Object.freeze({
 
 function RootSettingsContent({
   onNavigate,
+  onRegisterOrigin,
+  removedSessionsTriggerRef,
+  dataAndRecoveryTriggerRef,
 }: Readonly<{
   onNavigate: () => void;
+  onRegisterOrigin: (trigger: React.RefObject<View | null>) => void;
+  removedSessionsTriggerRef: React.RefObject<View | null>;
+  dataAndRecoveryTriggerRef: React.RefObject<View | null>;
 }>) {
+  const router = useRouter();
   const runtime = useWorkoutAppRuntime();
   const [preferences, setPreferences] = useState<RestAlertPreferences>(
     DEFAULT_REST_ALERT_PREFERENCES,
@@ -71,49 +82,108 @@ function RootSettingsContent({
         setPreferences(result.preferences);
         return result;
       }}
-      onOpenDataAndRecovery={() => router.push("/more/data-and-recovery" as Href)}
+      dataAndRecoveryTriggerRef={dataAndRecoveryTriggerRef}
+      onOpenDataAndRecovery={() => {
+        onRegisterOrigin(dataAndRecoveryTriggerRef);
+        router.push("/more/data-and-recovery" as Href);
+      }}
       onNavigate={onNavigate}
       onOpenNotificationSettings={runtime.openRestNotificationSettings}
-      onOpenRemovedSessions={() => router.push("/more/removed-sessions" as Href)}
+      onOpenRemovedSessions={() => {
+        onRegisterOrigin(removedSessionsTriggerRef);
+        router.push("/more/removed-sessions" as Href);
+      }}
       preferences={preferences}
+      removedSessionsTriggerRef={removedSessionsTriggerRef}
       restAlertPreferencesLoading={loading}
     />
   );
 }
 
+function rootFromPathname(pathname: string): RootRouteKey | undefined {
+  if (pathname === "/" || pathname === "/index") {
+    return "index";
+  }
+  if (pathname.startsWith("/calendar")) {
+    return "calendar";
+  }
+  if (pathname.startsWith("/library")) {
+    return "library";
+  }
+  if (pathname.startsWith("/progress")) {
+    return "progress";
+  }
+  return undefined;
+}
+
 export default function RootTabsLayout() {
   const { launchState } = useWorkoutAppRuntime();
   const { colors } = useAppTheme();
+  const pathname = usePathname();
   const settingsTriggerRef = useRef<View>(null);
+  const removedSessionsTriggerRef = useRef<View>(null);
+  const dataAndRecoveryTriggerRef = useRef<View>(null);
+  const headingRefs = useRef({
+    index: React.createRef<View>(),
+    calendar: React.createRef<View>(),
+    library: React.createRef<View>(),
+    progress: React.createRef<View>(),
+  }).current;
+  const [origin, setOrigin] = useState<RootOrigin | undefined>(undefined);
+  const activeRoot = rootFromPathname(pathname);
+  const lastRootRef = useRef<RootRouteKey>("index");
+  if (activeRoot !== undefined) {
+    lastRootRef.current = activeRoot;
+  }
   const tabBarPosition = "bottom";
+
+  const registerOrigin = React.useCallback((trigger: React.RefObject<View | null>) => {
+    setOrigin({
+      root: lastRootRef.current,
+      trigger,
+    });
+  }, []);
+
   return (
-    <AppRootShell
-      settingsContent={(closeSettings) => (
-        <RootSettingsContent onNavigate={closeSettings} />
-      )}
-      settingsTriggerRef={settingsTriggerRef}
-    >
-      <Tabs
-      backBehavior={rootBackBehavior}
-      initialRouteName="index"
-      screenOptions={{
-        headerShown: false,
-        sceneStyle: { backgroundColor: colors.canvas },
-        tabBarPosition,
-      }}
-      tabBar={(props) => (
-        <AppTabs
-          disabled={launchState !== "trusted"}
-          navigation={props.navigation}
-          state={props.state}
-        />
-      )}
-    >
-      <Tabs.Screen name="index" options={{ title: "Workout" }} />
-      <Tabs.Screen name="calendar" options={{ title: "Calendar" }} />
-      <Tabs.Screen name="library" options={{ title: "Library" }} />
-      <Tabs.Screen name="progress" options={{ title: "Progress" }} />
-      </Tabs>
-    </AppRootShell>
+    <RootHeadingRefsProvider headingRefs={headingRefs}>
+      <AppRootShell
+        currentPath={pathname}
+        headingRefs={headingRefs}
+        onConsumeOrigin={() => setOrigin(undefined)}
+        settingsContent={(closeSettings) => (
+          <RootSettingsContent
+            dataAndRecoveryTriggerRef={dataAndRecoveryTriggerRef}
+            onNavigate={closeSettings}
+            onRegisterOrigin={registerOrigin}
+            removedSessionsTriggerRef={removedSessionsTriggerRef}
+          />
+        )}
+        settingsTriggerRef={settingsTriggerRef}
+        {...(activeRoot === undefined ? {} : { activeRoot })}
+        {...(origin === undefined ? {} : { origin })}
+      >
+        <Tabs
+          backBehavior={rootBackBehavior}
+          initialRouteName="index"
+          screenOptions={{
+            headerShown: false,
+            sceneStyle: { backgroundColor: colors.canvas },
+            tabBarPosition,
+          }}
+          tabBar={(props) => (
+            <AppTabs
+              disabled={launchState !== "trusted"}
+              navigation={props.navigation}
+              state={props.state}
+            />
+          )}
+        >
+          <Tabs.Screen name="index" options={{ title: "Workout" }} />
+          <Tabs.Screen name="calendar" options={{ title: "Calendar" }} />
+          <Tabs.Screen name="library" options={{ title: "Library" }} />
+          <Tabs.Screen name="progress" options={{ title: "Progress" }} />
+        </Tabs>
+      </AppRootShell>
+    </RootHeadingRefsProvider>
   );
 }

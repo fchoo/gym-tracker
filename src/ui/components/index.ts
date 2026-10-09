@@ -542,6 +542,7 @@ export const ScreenHeader = forwardRef<View, Readonly<{
         accessibilityLabel: title,
         accessibilityRole: "header",
         accessible: true,
+        focusable: true,
         key: "title",
         ref,
       },

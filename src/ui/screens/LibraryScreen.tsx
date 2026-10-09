@@ -47,6 +47,7 @@ import {
   typeScale,
   useAppTheme,
 } from "../theme";
+import type { RootFocusTarget } from "../shell/rootFocus";
 
 export type LibrarySection = "plans" | "exercises";
 
@@ -173,6 +174,7 @@ type LibraryScreenProps = Readonly<{
     expectedRevision: number,
   ): Promise<LibrarySectionPreference>;
   width?: number;
+  headingRef?: React.RefObject<RootFocusTarget | null>;
 }>;
 
 type ExerciseBrowseState = Readonly<{
@@ -1197,6 +1199,7 @@ export function LibraryScreen({
   setExerciseFavorite,
   setSection,
   width,
+  headingRef,
 }: LibraryScreenProps) {
   const [snapshot, setSnapshot] = useState<LibraryBrowseSnapshot | null>(null);
   const [loadFailed, setLoadFailed] = useState(false);
@@ -1590,7 +1593,13 @@ export function LibraryScreen({
       <AdaptiveScreen
         primary={
           <>
-            <ScreenHeader action={headerAction} title="Library" />
+            <ScreenHeader
+              {...(headingRef === undefined
+                ? {}
+                : { ref: headingRef as React.Ref<View> })}
+              action={headerAction}
+              title="Library"
+            />
             <SegmentedControl
               busySection={busySection}
               onSelect={selectSection}
