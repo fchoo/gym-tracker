@@ -7,7 +7,12 @@ export type SemanticToastSeverity = "success" | "progress" | "error";
 export type SemanticToastEvent = Readonly<{
   message: string;
   severity?: SemanticToastSeverity;
+  durationMs?: number;
 }>;
+
+export type SemanticToastMountChange =
+  Readonly<{ mounted: false }>
+  | Readonly<{ mounted: true; event: SemanticToastEvent }>;
 
 type ToastContextValue = Readonly<{ enqueue: (event: SemanticToastEvent) => void }>;
 const ToastContext = createContext<ToastContextValue | undefined>(undefined);
@@ -28,19 +33,27 @@ export function SemanticToastProvider({
   children,
   topAvoidance = 0,
   bottomAvoidance: _bottomAvoidance = 0,
+  onToastMountChange,
 }: Readonly<{
   children: React.ReactNode;
   topAvoidance?: number | undefined;
   bottomAvoidance?: number | undefined;
+  onToastMountChange?: ((change: SemanticToastMountChange) => void) | undefined;
 }>) {
   const { colors, reduceMotion } = useAppTheme();
   const [queue, setQueue] = useState<readonly SemanticToastEvent[]>([]);
   const current = queue[0];
   const opacity = useRef(new Animated.Value(1)).current;
   const translateY = useRef(new Animated.Value(0)).current;
+  const mountedToastMessageRef = useRef<string | null>(null);
 
   const enqueue = useCallback((event: SemanticToastEvent) => {
-    const normalized = { message: event.message.trim(), severity: event.severity ?? "success" } as const;
+    const normalizedDurationMs = normalizeToastDurationMs(event.durationMs);
+    const normalized: SemanticToastEvent = {
+      message: event.message.trim(),
+      severity: event.severity ?? "success",
+      ...(normalizedDurationMs === undefined ? {} : { durationMs: normalizedDurationMs }),
+    };
     if (!isBoundedUserMessage(normalized.message)) return;
     setQueue((currentQueue) => currentQueue.some((item) => item.message === normalized.message)
       ? currentQueue
@@ -65,9 +78,31 @@ export function SemanticToastProvider({
 
   useEffect(() => {
     if (current === undefined || current.severity === "error") return;
-    const timeout = setTimeout(dismiss, 2400);
+    const timeout = setTimeout(dismiss, current.durationMs ?? DEFAULT_TOAST_DURATION_MS);
     return () => clearTimeout(timeout);
   }, [current, dismiss]);
+
+  useEffect(() => {
+    if (current === undefined) {
+      if (mountedToastMessageRef.current !== null) {
+        mountedToastMessageRef.current = null;
+        onToastMountChange?.({ mounted: false });
+      }
+      return;
+    }
+
+    if (mountedToastMessageRef.current !== current.message) {
+      mountedToastMessageRef.current = null;
+    }
+  }, [current, onToastMountChange]);
+
+  const handleToastLayout = useCallback(() => {
+    if (current === undefined || mountedToastMessageRef.current === current.message) {
+      return;
+    }
+    mountedToastMessageRef.current = current.message;
+    onToastMountChange?.({ event: current, mounted: true });
+  }, [current, onToastMountChange]);
 
   const value = useMemo(() => ({ enqueue }), [enqueue]);
   const accent = current?.severity === "error"
@@ -87,6 +122,7 @@ export function SemanticToastProvider({
           accessibilityRole="alert"
           accessible
           importantForAccessibility="yes"
+          onLayout={handleToastLayout}
           style={[
             styles.toast,
             {
@@ -107,6 +143,17 @@ export function SemanticToastProvider({
       )}
     </ToastContext.Provider>
   );
+}
+
+const DEFAULT_TOAST_DURATION_MS = 2400;
+
+function normalizeToastDurationMs(durationMs: number | undefined): number | undefined {
+  if (durationMs === undefined || !Number.isFinite(durationMs)) {
+    return undefined;
+  }
+
+  const rounded = Math.round(durationMs);
+  return rounded >= 1000 && rounded <= 10_000 ? rounded : undefined;
 }
 
 const styles = StyleSheet.create({

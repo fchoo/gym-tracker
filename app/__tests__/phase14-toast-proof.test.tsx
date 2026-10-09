@@ -1,4 +1,4 @@
-import { fireEvent, render, screen } from "@testing-library/react-native";
+import { act, fireEvent, render, screen } from "@testing-library/react-native";
 import { beforeEach, describe, expect, it, jest } from "@jest/globals";
 import React from "react";
 
@@ -42,7 +42,7 @@ describe("Phase14ToastProofRoute", () => {
     mockNativeContractSuite = "phase14";
   });
 
-  it("shows a real toast host and keeps the background control interactive during the dwell", async () => {
+  it("shows a real toast host, reports when the toast mounts, and keeps the background control interactive during the dwell", async () => {
     await render(
       <AppearanceProvider>
         <Phase14ToastProofRoute />
@@ -52,7 +52,16 @@ describe("Phase14ToastProofRoute", () => {
     expect(await screen.findByText("Toast proof active")).toBeOnTheScreen();
     expect(screen.getByRole("header", { name: "Phase 14 toast proof" }))
       .toBeOnTheScreen();
+    expect(screen.getByText("Waiting for toast host")).toBeOnTheScreen();
     expect(screen.getByText("Background control idle")).toBeOnTheScreen();
+
+    await act(async () => {
+      screen.getByTestId("semantic-toast").props.onLayout({
+        nativeEvent: { layout: { height: 52, width: 240, x: 0, y: 72 } },
+      });
+    });
+
+    expect(screen.getByText("Toast host mounted")).toBeOnTheScreen();
 
     await fireEvent.press(screen.getByRole("button", { name: "Tap background control" }));
 

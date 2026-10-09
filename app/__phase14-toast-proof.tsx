@@ -17,6 +17,7 @@ import {
 
 const TOAST_TOP_AVOIDANCE = 56;
 const TOAST_BOTTOM_AVOIDANCE = 74;
+const PROOF_TOAST_DURATION_MS = 6000;
 
 function phase14ToastProofEnabled(): boolean {
   const extra = Constants.expoConfig?.extra;
@@ -25,7 +26,7 @@ function phase14ToastProofEnabled(): boolean {
     && extra?.nativeContractSuite === "phase14";
 }
 
-function ToastProofContent() {
+function ToastProofContent({ toastMounted }: Readonly<{ toastMounted: boolean }>) {
   const { colors } = useAppTheme();
   const { enqueue } = useSemanticToast();
   const [backgroundActivated, setBackgroundActivated] = React.useState(false);
@@ -37,6 +38,7 @@ function ToastProofContent() {
     }
     startedRef.current = true;
     enqueue({
+      durationMs: PROOF_TOAST_DURATION_MS,
       message: "Toast proof active",
       severity: "progress",
     });
@@ -54,6 +56,12 @@ function ToastProofContent() {
         Tap the background control while the toast remains visible. The state
         change must land without dismissing the toast or opening any other
         surface.
+      </Text>
+      <Text
+        accessibilityLiveRegion="polite"
+        style={[styles.mountStatus, { color: colors.textPrimary }]}
+      >
+        {toastMounted ? "Toast host mounted" : "Waiting for toast host"}
       </Text>
       <View style={styles.spacer} />
       <Pressable
@@ -85,16 +93,21 @@ function ToastProofContent() {
 }
 
 export default function Phase14ToastProofRoute() {
+  const [toastMounted, setToastMounted] = React.useState(false);
+
   if (!phase14ToastProofEnabled()) {
     return <Redirect href="/" />;
   }
 
   return (
     <AppRootShell
+      onToastMountChange={(change) => {
+        setToastMounted(change.mounted && change.event.message === "Toast proof active");
+      }}
       toastBottomAvoidance={TOAST_BOTTOM_AVOIDANCE}
       toastTopAvoidance={TOAST_TOP_AVOIDANCE}
     >
-      <ToastProofContent />
+      <ToastProofContent toastMounted={toastMounted} />
     </AppRootShell>
   );
 }
@@ -114,6 +127,12 @@ const styles = StyleSheet.create({
     fontSize: 16,
     lineHeight: 24,
     marginTop: 12,
+  },
+  mountStatus: {
+    fontSize: 14,
+    fontWeight: "600",
+    lineHeight: 20,
+    marginTop: space[2],
   },
   spacer: {
     flex: 1,

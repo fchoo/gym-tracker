@@ -35,11 +35,16 @@ tags:
           visible: "Phase 14 toast proof"
           timeout: 30000
       - extendedWaitUntil:
-          visible: "Toast proof active"
+          visible: "Toast host mounted"
+          timeout: 30000
+      - extendedWaitUntil:
+          visible:
+            id: "semantic-toast"
           timeout: 30000
       - tapOn: "Tap background control"
       - assertVisible: "Background control activated"
-      - assertVisible: "Toast proof active"
+      - assertVisible:
+          id: "semantic-toast"
 - runFlow:
     when:
       true: ${PHASE14_STAGE == 'phase14-launch'}

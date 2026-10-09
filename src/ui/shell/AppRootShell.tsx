@@ -3,7 +3,10 @@ import { View } from "react-native";
 
 import { IconAction } from "../components";
 import { BottomSheet } from "../components/BottomSheet";
-import { SemanticToastProvider } from "../components/SemanticToast";
+import {
+  SemanticToastProvider,
+  type SemanticToastMountChange,
+} from "../components/SemanticToast";
 import {
   type RootFocusTarget,
   type RootOrigin,
@@ -22,6 +25,7 @@ type AppRootShellProps = Readonly<{
   settingsTriggerRef?: React.RefObject<RootFocusTarget | null>;
   toastTopAvoidance?: number;
   toastBottomAvoidance?: number;
+  onToastMountChange?: ((change: SemanticToastMountChange) => void) | undefined;
 }>;
 
 /** Coordinates root focus and header-origin seams without owning route or screen state. */
@@ -37,6 +41,7 @@ export function AppRootShell({
   settingsTriggerRef,
   toastTopAvoidance,
   toastBottomAvoidance,
+  onToastMountChange,
 }: AppRootShellProps) {
   const [settingsVisible, setSettingsVisible] = React.useState(false);
   const previousActiveRootRef = React.useRef<RootRouteKey | undefined>(activeRoot);
@@ -75,6 +80,7 @@ export function AppRootShell({
   return (
     <SemanticToastProvider
       bottomAvoidance={toastBottomAvoidance}
+      onToastMountChange={onToastMountChange}
       topAvoidance={toastTopAvoidance}
     >
       <View style={{ flex: 1 }} testID="app-root-shell">
