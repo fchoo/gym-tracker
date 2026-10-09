@@ -1,14 +1,14 @@
 ---
 phase: 14-prototype-visual-shell
-status: planned
-nyquist: true
+status: validated
+nyquist: false
 requirements: [SHL-01, SHL-02, SHL-03, SHL-04, SHL-05, SHL-06, SHL-07, SHL-08, SHL-09, SHL-10, SHL-11, SHL-12, SHL-13]
 plans: [14-01, 14-02, 14-03, 14-04, 14-05, 14-06, 14-07, 14-08, 14-09, 14-10, 14-11, 14-12]
 ---
 
 # Phase 14 Validation Contract
 
-This is the executable validation map for Phase 14. It maps every real plan task to a narrow automated check, the later native evidence backstop, and one or more canonical `shell.*` artifacts. It does not claim any implementation or evidence has run.
+This is the executable validation map and audit record for Phase 14. It maps every real plan task to a narrow automated check, the native evidence backstop, and one or more canonical `shell.*` artifacts. The audit below records executed results; `status: validated` means this artifact was audited, not that the Phase 14 gate passed. Nyquist remains false because current-checkout native identity and CNG verification are unresolved.
 
 ## Phase gate
 
@@ -57,6 +57,103 @@ Phase 14 passes only when all of the following are true:
 | 14-11-T2 | Reconcile native evidence with approved DEV-02 roles | Deviation-row status/date/token/evidence gate | Approval remains fixed; missing/failing native evidence remains technical work and cannot pass | SHL-04 / deviation evidence |
 | 14-12-T1 | Library sheets preserve query/filter/selection/scroll/draft state | LibraryScreen component regression | Native Library sheet open/theme/close/Back focus journey | SHL-05 / `shell.sheets` |
 | 14-12-T2 | Completion confirmation preserves exact consequence and one-shot source command | WorkoutCompletionScreen component regression | Native cancel/confirm/busy/failure source digest and focus return | SHL-05 / `shell.sheets` |
+
+## Audit result: every mapped task
+
+The host-side task checks were executed against Node 24.19.0/npm 11.17.0 with `NODE_OPTIONS=--max-old-space-size=8192`. `GREEN (host)` means the behavioral unit/component/integration proof ran and passed. `NATIVE ESCALATED` means the required native backstop was not accepted as current-checkout proof. The native-only 14-10 tasks are escalated directly.
+
+| Task | Automated result | Native/manual result | Finding |
+|---|---|---|---|
+| 14-01-T1 | GREEN (host) | Source-only by contract | FILLED |
+| 14-01-T2 | GREEN (host) | Source-only by contract | FILLED |
+| 14-02-T1 | GREEN self-tests; retained font verifier failed `phase14_font_manifest_stale` | Exact-HEAD Android font proof not accepted | ESCALATED — BLOCKER |
+| 14-02-T2 | GREEN (host) | Live theme/token native evidence not current-head verified | ESCALATED — BLOCKER |
+| 14-02-T3 | GREEN (host) | Cold launch/failure/retry native evidence not current-head verified | ESCALATED — BLOCKER |
+| 14-03-T1 | GREEN (host) | Width/orientation/200% native matrix not current-head verified | ESCALATED — BLOCKER |
+| 14-03-T2 | GREEN (host) | D-pad/Back/deep-route native trace not current-head verified | ESCALATED — BLOCKER |
+| 14-04-T1 | GREEN (host) | Native keyboard/D-pad/focus-trap evidence not current-head verified | ESCALATED — BLOCKER |
+| 14-04-T2 | GREEN (host) | Native shared-dialog delegation evidence not current-head verified | ESCALATED — BLOCKER |
+| 14-04-T3 | GREEN (host) | Native compact-toast placement/announcement evidence not current-head verified | ESCALATED — BLOCKER |
+| 14-05-T1 | GREEN (host) | Native picker/dock/busy evidence not current-head verified | ESCALATED — BLOCKER |
+| 14-05-T2 | GREEN (host) | Native timing/date sheet evidence not current-head verified | ESCALATED — BLOCKER |
+| 14-05-T3 | GREEN (host) | Native duration/start sheet evidence not current-head verified | ESCALATED — BLOCKER |
+| 14-06-T1 | GREEN (host) | Native settings live-theme/deep-route evidence not current-head verified | ESCALATED — BLOCKER |
+| 14-06-T2 | GREEN (host) | Native rest-alert rollback/permission evidence not current-head verified | ESCALATED — BLOCKER |
+| 14-07-T1 | GREEN (host), including rapid duplicate-confirm restore test | Native restore/reload/source-digest evidence not current-head verified | ESCALATED — BLOCKER |
+| 14-07-T2 | GREEN (host) | Native empty/error/200%/focus-return evidence not current-head verified | ESCALATED — BLOCKER |
+| 14-08-T1 | GREEN (host/integration) | Native automatic-status/CSV cleanup evidence not current-head verified | ESCALATED — BLOCKER |
+| 14-08-T2 | GREEN (host) | Native Google policy/takeover/delete/privacy evidence not current-head verified | ESCALATED — BLOCKER |
+| 14-08-T3 | GREEN (host/integration) | Native REPLACE/MERGE/rebuild/source-digest evidence not current-head verified | ESCALATED — BLOCKER |
+| 14-09-T1 | GREEN — 16 evidence self-tests | Retained evidence is structurally complete but current identity is unverified | ESCALATED — BLOCKER |
+| 14-09-T2 | GREEN — typecheck/lint/boundary/full test gates | Fresh CNG/package proof blocked by missing OAuth environment | ESCALATED — BLOCKER |
+| 14-09-T3 | GREEN — native matrix self-tests | Native matrix execution/verifier not current-head verified | ESCALATED — BLOCKER |
+| 14-10-T1 | Not a host substitute for native proof | Verifier rerun failed `spawnSync adb ENOENT` | ESCALATED — BLOCKER |
+| 14-10-T2 | Not a host substitute for native proof | Verifier rerun failed `spawnSync adb ENOENT` | ESCALATED — BLOCKER |
+| 14-10-T3 | Not a host substitute for native proof | Verifier rerun failed `spawnSync adb ENOENT` | ESCALATED — BLOCKER |
+| 14-11-T1 | GREEN — owner/deviation record checks | Native blended-fill proof remains open | ESCALATED — BLOCKER |
+| 14-11-T2 | WARNING — plan command is absent; equivalent owner-record checks pass | Native DEV-02 reconciliation remains open | ESCALATED — BLOCKER |
+| 14-12-T1 | GREEN (host) | Native Library sheet/focus evidence not current-head verified | ESCALATED — BLOCKER |
+| 14-12-T2 | GREEN (host) | Native completion busy/failure/focus evidence not current-head verified | ESCALATED — BLOCKER |
+
+## Audit result: SHL-01 through SHL-13
+
+All 13 requirements have executable host-side behavioral coverage in the mapped component/unit/integration suites and the full test gate. Their native claims remain escalated together because the evidence contract binds every report, screenshot, semantic tree, focus trace, overlay, source digest, APK, installed APK, package/profile, and device identity to the current checkout. The retained evidence was inspected offline as 13 stages, 13 evidence rows, and 17 matrix cells with 17 references per required artifact class; that structural result does not replace the failed current-checkout CLI verification.
+
+| Requirement | Automated behavioral coverage | Native/manual-only coverage | Verdict |
+|---|---|---|---|
+| SHL-01 | GREEN — full component gate plus native-matrix self-test | Four-root geometry/width/orientation screenshots and semantic tree | ESCALATED |
+| SHL-02 | GREEN — root/deep-route/focus component coverage plus native-matrix self-test | D-pad/Back/deep-route focus and retained-state trace | ESCALATED |
+| SHL-03 | GREEN — appearance store/foundation/settings coverage | Live System/Light/Dark mounted-route screenshots | ESCALATED |
+| SHL-04 | GREEN — font oracle/token/evidence self-tests; owner roles checked | Android font metrics/wrap/overlay and DEV-02 blended-fill proof | ESCALATED |
+| SHL-05 | GREEN — BottomSheet/dialog/sheet-consumer regressions | Keyboard/D-pad/IME/focus-trap geometry and return trace | ESCALATED |
+| SHL-06 | GREEN — SemanticToast/root-shell regressions | Compact top-toast avoidance and native announcement/motion evidence | ESCALATED |
+| SHL-07 | GREEN — startup/root-failure/retry regressions | Pre-runtime retry, notification, and cold-launch native trace | ESCALATED |
+| SHL-08 | GREEN — rest-alert settings and rollback regressions | Native permission/write-failure recovery evidence | ESCALATED |
+| SHL-09 | GREEN — settings route/deep-link regressions | Native Back/focus return from required settings routes | ESCALATED |
+| SHL-10 | GREEN — removed-session lifecycle plus exactly-once restore race | Native loading/empty/error/success/reload/source-digest journey | ESCALATED |
+| SHL-11 | GREEN — automatic recovery/CSV controller and integration coverage | Native status/CSV/share/cancel/failure/cleanup evidence | ESCALATED |
+| SHL-12 | GREEN — automatic backup/privacy route coverage | Native policy/disconnect/delete/takeover/partial/privacy evidence | ESCALATED |
+| SHL-13 | GREEN — encrypted backup/restore/merge integration coverage | Native exact confirmation/busy/failure/ready/rebuild evidence | ESCALATED |
+
+## Executed commands and results
+
+| Command | Result |
+|---|---|
+| `NODE_OPTIONS=--max-old-space-size=8192 npm run typecheck` | PASS |
+| `NODE_OPTIONS=--max-old-space-size=8192 npm run lint` | PASS; boundary check covered 323 files |
+| `NODE_OPTIONS=--max-old-space-size=8192 npm run check:boundaries` | PASS; 323 files |
+| `NODE_OPTIONS=--max-old-space-size=8192 npm run test:all` | PASS — 113 unit suites/1,959 tests; 52 component suites/653 tests; 25 SQLite-host suites/563 tests; 27 integration suites/420 tests; coverage gate 217 suites/3,595 tests |
+| `NODE_OPTIONS=--max-old-space-size=8192 npm run test:components -- --runInBand` with the 24 mapped Phase 14 component paths | PASS — 24 suites/389 tests |
+| `NODE_OPTIONS=--max-old-space-size=8192 npm run test:unit -- --runInBand` with the 4 mapped Phase 14 unit paths | PASS — 4 suites/10 tests |
+| `NODE_OPTIONS=--max-old-space-size=8192 npm run test:integration -- --runInBand` with the 2 mapped Phase 14 integration paths | PASS — 2 suites/5 tests |
+| `NODE_OPTIONS=--max-old-space-size=8192 node --test scripts/phase14-font-proof.test.mjs scripts/phase14-evidence-scripts.test.mjs scripts/phase14-native-matrix.test.mjs` | PASS — 16 tests; includes missing/forged screenshot-byte rejection |
+| `NODE_OPTIONS=--max-old-space-size=8192 npm run test:evidence:phase14` | PASS — 16 tests |
+| `NODE_OPTIONS=--max-old-space-size=8192 npm run check:boundaries` | PASS — 323 files |
+| `NODE_OPTIONS=--max-old-space-size=8192 npm run verify:cng` | BLOCKER — `EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID must be configured` |
+| `NODE_OPTIONS=--max-old-space-size=8192 node scripts/run-phase14-font-proof.mjs --manifest artifacts/native/phase14-font-proof/build.json --verify-existing` | BLOCKER — `phase14_font_manifest_stale` |
+| `NODE_OPTIONS=--max-old-space-size=8192 npm run verify:phase14:evidence -- --manifest artifacts/native/phase14/build.json --all` | BLOCKER — current rerun cannot spawn `adb` (`spawnSync adb ENOENT`); a prior verifier attempt also identified `phase14_manifest_stale` against the retained base head |
+| `NODE_OPTIONS=--max-old-space-size=8192 npm run test:evidence:v12:shell` | WARNING — plan 14-11 names a package script that is absent; direct DEV-02 owner/deviation marker checks pass |
+
+## Gaps found, resolved, and escalated
+
+| Gap | Action/result | Classification |
+|---|---|---|
+| Rapid repeated `Restore workout` confirmation could submit more than once before resolution | Added a behavioral race test in `src/ui/__tests__/RemovedSessionsScreen.test.tsx`; passed and observed one `restoreSession` call plus busy state | FILLED |
+| Screenshot byte binding was not explicitly tested for both evidence rows and matrix cells | Added missing and forged screenshot-byte tests in `scripts/phase14-evidence-scripts.test.mjs`; passed with `phase14_screenshot_stale` rejection | FILLED |
+| Retained font proof is bound to an older source head | Existing-artifact verifier fails `phase14_font_manifest_stale`; implementation is read-only | ESCALATED — BLOCKER |
+| Retained Phase 14 native evidence is not verifiable from this checkout/device environment | Current verifier fails at `adb` spawn; prior run detected stale manifest binding; no evidence or implementation weakening permitted | ESCALATED — BLOCKER |
+| CNG reproducibility cannot run without the configured Google web client ID | `verify:cng` fails closed; no credential was invented or printed | ESCALATED — BLOCKER |
+| Plan 14-11's named `test:evidence:v12:shell` automation command is not present in `package.json` | Direct owner/deviation checks were run; native evidence still remains required | WARNING / ESCALATED native blocker |
+
+## Manual-only and intentional boundaries
+
+- Native screenshots, geometry, focus traces, semantic trees, overlay bounds, APK identity, and visual/font overlay review are native/manual-only evidence classes; retained artifacts are not promoted to current-checkout PASS while identity verification is blocked.
+- Phase 14 intentionally does not claim live TalkBack or switch-scanning acceptance; its required keyboard, D-pad, accessibility-action, semantic, IME, and focus-trap checks are represented by the native matrix contract and still require a valid current native run.
+- GAR-16 Garmin observation remains outside Phase 14 and is owned by Phase 18; this is an intentional scope boundary, not an SHL gap.
+
+## Nyquist disposition
+
+Nyquist compliance is `false`. Every mapped task and SHL requirement has been audited, and the host behavioral gaps found by this audit are filled. The phase cannot be called Nyquist-compliant because the required current-checkout CNG/native identity gates are blocked and the DEV-02 blended-fill/font native proof has not been freshly accepted. No implementation files were changed.
 
 ## Canonical evidence ledger
 
@@ -120,19 +217,19 @@ Every task remains at five files or fewer. The following plans reach ten or more
 | SOURCE | ID | Feature / constraint | Plan(s) | Status | Notes |
 |---|---|---|---|---|---|
 | GOAL | — | One coherent Revision 18 visual/navigation system across roots, deep routes, settings, recovery and appearance | 14-01..14-10 | COVERED | 14-11 preserves the open visual deviation decision. |
-| REQ | SHL-01 | Exactly four bottom roots at all widths | 14-03, 14-09, 14-10 | COVERED | No rail, two-row branch or fifth root. |
-| REQ | SHL-02 | In-place root switching, selection, focus, deep exit, retained state | 14-03, 14-10 | COVERED | State remains screen-owned. |
-| REQ | SHL-03 | App Settings plus persisted live System/Light/Dark across Phase 14 consumers | 14-02, 14-06, 14-10 | COVERED | One provider/content owner; GAR-16 / Phase 18 closes Garmin adoption. |
-| REQ | SHL-04 | Exact tokens, Archivo, IBM Plex Mono, spacing/borders/density | 14-01, 14-02, 14-09, 14-10, 14-11 | COVERED | Harness commits first, clean-tree Android proof follows, DESIGN.md and package manifest are reconciled, DEV-02 evidence remains gated. |
-| REQ | SHL-05 | Focus/keyboard-safe contextual sheets/dialogs | 14-04, 14-05, 14-10 | COVERED | Existing content state machines retained. |
-| REQ | SHL-06 | Theme-aware accessible top toasts clear of docks | 14-04, 14-10 | COVERED | Shared consumer contract and Phase 14 root/Active evidence; Garmin observation belongs to Phase 18. |
-| REQ | SHL-07 | Loading/trusted/failure/retry/notification startup | 14-02, 14-10 | COVERED | Existing SQLite trust remains gate. |
-| REQ | SHL-08 | Device Rest sound/vibration/notification settings | 14-04, 14-06, 14-10 | COVERED | Outside plan timing. |
-| REQ | SHL-09 | Removed sessions and Data/recovery reachable | 14-06, 14-10 | COVERED | Same settings content from sheet/route. |
-| REQ | SHL-10 | Complete removed-history state/restore lifecycle | 14-07, 14-10 | COVERED | Reload-before-toast. |
-| REQ | SHL-11 | Automatic status/recovery and CSV states | 14-08, 14-10 | COVERED | Existing controller/facade. |
-| REQ | SHL-12 | Google connection/policy/takeover/deletion/new/privacy | 14-08, 14-10 | COVERED | Exact DELETE retained. |
-| REQ | SHL-13 | Encrypted export, restore/merge, retry/rebuild | 14-08, 14-10 | COVERED | Exact REPLACE/MERGE and tokens retained. |
+| REQ | SHL-01 | Exactly four bottom roots at all widths | 14-03, 14-09, 14-10 | HOST GREEN / NATIVE ESCALATED | No rail, two-row branch or fifth root; current native identity gate is unresolved. |
+| REQ | SHL-02 | In-place root switching, selection, focus, deep exit, retained state | 14-03, 14-10 | HOST GREEN / NATIVE ESCALATED | State remains screen-owned; current native focus trace is unresolved. |
+| REQ | SHL-03 | App Settings plus persisted live System/Light/Dark across Phase 14 consumers | 14-02, 14-06, 14-10 | HOST GREEN / NATIVE ESCALATED | One provider/content owner; live mounted-route native proof is unresolved. |
+| REQ | SHL-04 | Exact tokens, Archivo, IBM Plex Mono, spacing/borders/density | 14-01, 14-02, 14-09, 14-10, 14-11 | HOST GREEN / NATIVE ESCALATED | Font manifest is stale and DEV-02 blended-fill proof remains pending. |
+| REQ | SHL-05 | Focus/keyboard-safe contextual sheets/dialogs | 14-04, 14-05, 14-10 | HOST GREEN / NATIVE ESCALATED | Existing content state machines retained; native focus/IME proof is unresolved. |
+| REQ | SHL-06 | Theme-aware accessible top toasts clear of docks | 14-04, 14-10 | HOST GREEN / NATIVE ESCALATED | Shared consumer contract passes; native avoidance evidence is unresolved. |
+| REQ | SHL-07 | Loading/trusted/failure/retry/notification startup | 14-02, 14-10 | HOST GREEN / NATIVE ESCALATED | Existing SQLite trust remains gate; native cold/retry proof is unresolved. |
+| REQ | SHL-08 | Device Rest sound/vibration/notification settings | 14-04, 14-06, 14-10 | HOST GREEN / NATIVE ESCALATED | Host rollback behavior passes; native permission/write proof is unresolved. |
+| REQ | SHL-09 | Removed sessions and Data/recovery reachable | 14-06, 14-10 | HOST GREEN / NATIVE ESCALATED | Same settings content from sheet/route; native Back/focus proof is unresolved. |
+| REQ | SHL-10 | Complete removed-history state/restore lifecycle | 14-07, 14-10 | HOST GREEN / NATIVE ESCALATED | Reload-before-toast and exactly-once host behavior pass; native journey is unresolved. |
+| REQ | SHL-11 | Automatic status/recovery and CSV states | 14-08, 14-10 | HOST GREEN / NATIVE ESCALATED | Existing controller/facade passes; native lifecycle/cleanup proof is unresolved. |
+| REQ | SHL-12 | Google connection/policy/takeover/deletion/new/privacy | 14-08, 14-10 | HOST GREEN / NATIVE ESCALATED | Exact DELETE retained; native privacy/takeover proof is unresolved. |
+| REQ | SHL-13 | Encrypted export, restore/merge, retry/rebuild | 14-08, 14-10 | HOST GREEN / NATIVE ESCALATED | Exact REPLACE/MERGE and tokens pass host tests; native rebuild proof is unresolved. |
 | CONTEXT | D14-01 | Exact Workout/Calendar/Library/Progress bottom shell | 14-03 | COVERED | Cited in task actions. |
 | CONTEXT | D14-02 | Bundled Archivo/IBM Plex and exact tokens/System | 14-01, 14-02 | COVERED | Android proof precedes broad migration. |
 | CONTEXT | D14-03 | Root state and deep-route/focus restoration | 14-03 | COVERED | Shell owns coordination, screens own view state. |
