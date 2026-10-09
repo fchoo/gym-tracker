@@ -535,6 +535,9 @@ export function executePhase14Maestro(args = process.argv.slice(2)) {
         summary,
       }));
     } finally {
+      // State restoration can also fault a live surface, so tear down again
+      // before resetting viewport/font/orientation between matrix cells.
+      adb(adbPath, manifest.device.serial, "shell", "am", "force-stop", manifest.package);
       restoreCellDeviceState(adbPath, manifest.device.serial, applied);
     }
   }

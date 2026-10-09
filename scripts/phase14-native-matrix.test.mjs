@@ -67,4 +67,8 @@ test("Phase 14 Maestro flows encode all shell stages and stay native-only", () =
     runner,
     /adb\(adbPath, manifest\.device\.serial, "shell", "am", "force-stop", manifest\.package\);\s*const applied = applyCellDeviceState/u,
   );
+  assert.match(
+    runner,
+    /finally \{\s*\/\/ State restoration can also fault a live surface[\s\S]*?adb\(adbPath, manifest\.device\.serial, "shell", "am", "force-stop", manifest\.package\);\s*restoreCellDeviceState/u,
+  );
 });
