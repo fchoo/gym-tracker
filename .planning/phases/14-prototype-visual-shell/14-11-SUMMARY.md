@@ -94,7 +94,7 @@ status: complete
 
 ## Deviations from Plan
 
-None - the plan executed as scoped. The plan's named `npm run test:evidence:v12:shell` command is absent from the current package scripts; the repository's current equivalent, `npm run test:evidence:phase14`, passed. A live `verify:phase14:evidence` rerun could not start because `adb` is unavailable in this workspace; no native claim was refreshed or weakened, and the retained fresh artifacts were validated through the same fail-closed evidence functions offline.
+None - the plan executed as scoped. The plan's named `npm run test:evidence:v12:shell` command is absent from current package scripts; the repository's current equivalent, `npm run test:evidence:phase14`, passed again during orchestration (15/15). Plan 14-10 had already passed the live exact-identity `verify:phase14:evidence -- --all` gate after its final evidence commit, so no later documentation-only commit was allowed to impersonate a new native identity or weaken that retained proof.
 
 ## Known Stubs
 

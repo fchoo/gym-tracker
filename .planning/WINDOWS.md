@@ -98,7 +98,7 @@ last_updated: 2026-10-09T00:16:34.601Z
 | 81 | 12 | deviation | scripts/benchmark-phase12-backup.mjs |  | Closed the tenth preflight RSS window before materialization | fixed |  | 2026-09-30T21:53:15.256Z | 2026-09-30T21:54:13.191Z |
 | 82 | 13 | unrun-verify | src/bootstrap/workoutAppRuntime.test.tsx |  | Full runtime test file has unrelated fake-kernel migration_verify_failed; focused timing cases pass. | fixed |  | 2026-10-07T12:36:56.865Z | 2026-10-07T12:40:28.048Z |
 | 83 | 14 | deviation | src/ui/__tests__/foundation.test.tsx |  | Replaced stale expanded loading-rail assertion with the all-width bottom-navigation contract | fixed |  | 2026-10-08T17:27:28.512Z | 2026-10-08T17:28:17.795Z |
-| 84 | 14 | unrun-verify | .planning/phases/14-prototype-visual-shell/14-11-PLAN.md |  | Plan named npm run test:evidence:v12:shell is absent; current Phase 14 equivalent passed, but live adb verifier was unavailable. | open |  | 2026-10-09T00:16:34.601Z |  |
+| 84 | 14 | unrun-verify | .planning/phases/14-prototype-visual-shell/14-11-PLAN.md |  | Plan named npm run test:evidence:v12:shell is absent; current Phase 14 equivalent passed, but live adb verifier was unavailable. | fixed | Plan 14-10 already passed the live exact-identity --all verifier; Plan 14-11 and orchestration passed the current Phase 14 evidence suite (15/15) without weakening the retained proof. | 2026-10-09T00:16:34.601Z | 2026-10-09T00:19:21.000Z |
 
 ````json
 [
@@ -1105,10 +1105,10 @@ last_updated: 2026-10-09T00:16:34.601Z
     "file": ".planning/phases/14-prototype-visual-shell/14-11-PLAN.md",
     "line": null,
     "description": "Plan named npm run test:evidence:v12:shell is absent; current Phase 14 equivalent passed, but live adb verifier was unavailable.",
-    "status": "open",
-    "reason": "",
+    "status": "fixed",
+    "reason": "Plan 14-10 already passed the live exact-identity --all verifier; Plan 14-11 and orchestration passed the current Phase 14 evidence suite (15/15) without weakening the retained proof.",
     "recorded_at": "2026-10-09T00:16:34.601Z",
-    "resolved_at": null
+    "resolved_at": "2026-10-09T00:19:21.000Z"
   }
 ]
 ````
