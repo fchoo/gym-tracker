@@ -162,6 +162,35 @@ describe("BottomSheet", () => {
     expect(setAccessibilityFocus).not.toHaveBeenCalledWith(0);
   });
 
+  it("requests Android native focus before clearing the one-shot preference", async () => {
+    const setNativeProps = jest.fn();
+    const restoreFocusRef = {
+      current: { focus: jest.fn(), setNativeProps } as unknown as View,
+    };
+
+    await render(
+      <SheetTestProviders>
+        <BottomSheet
+          heading="Edit filters"
+          onCancel={jest.fn()}
+          restoreFocusRef={restoreFocusRef}
+          visible
+        >
+          <Text>Draft stays private</Text>
+        </BottomSheet>
+      </SheetTestProviders>,
+    );
+
+    await fireEvent.press(screen.getByRole("button", { name: "Close edit filters" }));
+
+    await waitFor(() => expect(setNativeProps).toHaveBeenCalledWith({
+      hasTVPreferredFocus: true,
+    }));
+    await waitFor(() => expect(setNativeProps).toHaveBeenLastCalledWith({
+      hasTVPreferredFocus: false,
+    }));
+  });
+
   it("registers focusable actions with the sheet trap and reports the focused control", async () => {
     const register = jest.fn<(ref: unknown) => () => void>(() => jest.fn());
     const onFocus = jest.fn<(ref: unknown) => void>();

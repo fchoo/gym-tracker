@@ -24,7 +24,10 @@ import {
 } from "./bottomSheetFocus";
 import { radius, space, typeScale, useAppTheme } from "../theme";
 
-type FocusTarget = Readonly<{ focus?: () => void }>;
+type FocusTarget = Readonly<{
+  focus?: () => void;
+  setNativeProps?: (props: Readonly<{ hasTVPreferredFocus: boolean }>) => void;
+}>;
 
 export type BottomSheetProps = Readonly<{
   visible: boolean;
@@ -131,6 +134,10 @@ export function BottomSheet({
 
   const restoreFocus = React.useCallback(() => {
     const restoreTarget = restoreFocusRef?.current;
+    // React Native's imperative View focus command can be feature-gated on
+    // Android. Toggling the native preferred-focus prop calls requestFocus()
+    // directly, then resetting it avoids stealing focus on a later remount.
+    restoreTarget?.setNativeProps?.({ hasTVPreferredFocus: true });
     restoreTarget?.focus?.();
     let restoreNode: number | null = null;
     try {
@@ -141,6 +148,9 @@ export function BottomSheet({
     if (typeof restoreNode === "number" && restoreNode > 0) {
       AccessibilityInfo.setAccessibilityFocus(restoreNode);
     }
+    requestAnimationFrame(() => {
+      restoreTarget?.setNativeProps?.({ hasTVPreferredFocus: false });
+    });
   }, [restoreFocusRef]);
 
   const registerFocusable = React.useCallback((ref: BottomSheetFocusableRef) => {
