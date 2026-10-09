@@ -13,7 +13,13 @@ import {
 import React from "react";
 import { Dimensions } from "react-native";
 
-import { AppearanceProvider, sizes } from "../../../src/ui/theme";
+import {
+  AppearanceProvider,
+  createMemoryAppearanceStore,
+  sizes,
+  themes,
+  type ThemeColors,
+} from "../../../src/ui/theme";
 import RootTabsLayout from "../_layout";
 
 let mockRenderedWidth = 839;
@@ -451,6 +457,55 @@ describe("RootTabsLayout adaptive navigator placement", () => {
         width: "100%",
       });
       await rendered.unmount();
+    },
+  );
+
+  it.each([
+    ["Light", themes.light],
+    ["Dark", themes.dark],
+  ] as Array<["Light" | "Dark", ThemeColors]>)(
+    "integrates the authoritative %s paper-nav selection treatment",
+    async (appearance, colors) => {
+      mockSelectedRouteIndex = 1;
+      const rendered = await render(
+        <AppearanceProvider store={createMemoryAppearanceStore(appearance)}>
+          <RootTabsLayout />
+        </AppearanceProvider>,
+      );
+
+      const selected = rendered.getByRole("tab", { name: "Calendar" });
+      expect(rendered.getByTestId("root-navigation-bottom")).toHaveStyle({
+        backgroundColor: colors.paper,
+        borderColor: colors.line,
+      });
+      expect(selected).toBeSelected();
+      expect(rendered.getByTestId("root-tab-label-calendar")).toHaveStyle({
+        borderBottomColor: colors.orange,
+        borderBottomWidth: 3,
+        color: colors.ink,
+        fontSize: 16,
+        fontWeight: "400",
+        lineHeight: 22,
+      });
+      expect(
+        selected.queryAll((node) => node.type === "RNSVGSvgView")[0]?.props.stroke,
+      ).toBe(colors.ink);
+      expect(rendered.getByTestId("root-tab-label-index")).toHaveStyle({
+        borderBottomColor: "transparent",
+        borderBottomWidth: 3,
+        color: colors.quiet,
+      });
+      expect(
+        rendered.getByRole("tab", { name: "Workout" })
+          .queryAll((node) => node.type === "RNSVGSvgView")[0]?.props.stroke,
+      ).toBe(colors.quiet);
+
+      await fireEvent(selected, "focus");
+      expect(selected).toHaveStyle({
+        outlineColor: colors.blue,
+        outlineWidth: sizes.focusRing,
+      });
+      expect(selected).toBeSelected();
     },
   );
 

@@ -13,7 +13,8 @@ This file is the repository-wide implementation source for the design system est
 
 ## Typography
 
-Bundle and render only these approved weights:
+Bundle and render only these approved weights. IBM Plex Mono has one packaged
+400 face; numeric text must not request synthetic 800:
 
 | Role | Family | Weight |
 |---|---|---:|
@@ -22,16 +23,18 @@ Bundle and render only these approved weights:
 | Numeric regular | IBM Plex Mono | 400 |
 | Numeric emphasis | IBM Plex Mono | 400 tabular |
 
+The reusable semantic hierarchy is `14 / 20sp` supporting, `16 / 22sp`
+body/control, and `20 / 24sp` heading/action. Component-specific display sizes
+are not general semantic roles.
+
 | Token | Family | Size / Line Height | Weight | Usage |
 |---|---|---:|---:|---|
-| `displayTimer` | IBM Plex Mono | `52 / 56sp` | 800 | Active rest countdown |
-| `targetValue` | IBM Plex Mono | `28 / 34sp` | 800 | Current target and prominent numeric result |
-| `screenTitle` | Archivo variable | `28 / 34sp` | 800 | Route title |
-| `sectionTitle` | Archivo variable | `16 / 22sp` | 800 | Editorial section heading |
+| `secondary` / `label` | Archivo variable | `14 / 20sp` | 400 | Supporting evidence and compact metadata |
 | `body` | Archivo variable | `16 / 22sp` | 400 | Primary content and instructions |
-| `bodyStrong` | Archivo variable | `16 / 22sp` | 800 | Exercise names, actions, and key values |
-| `secondary` | Archivo variable | `14 / 20sp` | 400 | Supporting evidence only |
-| `label` | Archivo variable | `14 / 20sp` | 800 | Short uppercase or compact labels |
+| `bodyStrong` | Archivo variable | `16 / 22sp` | 800 | Emphasized body content and key values |
+| `screenTitle` / `sectionTitle` | Archivo variable | `20 / 24sp` | 800 | Heading and action hierarchy |
+| `targetValue` | IBM Plex Mono | `20 / 24sp` | 400 tabular | Prominent numeric fact on the heading-size tier; never synthetic bold |
+| `displayTimer` | IBM Plex Mono | `30 / 41sp` | 400 tabular | RestDock-only countdown, tied to Revision 18 `.rest-clock { font-size: 30px }` rather than a reusable display role |
 | `editorialWorkoutTitle` | Archivo variable | `57px / 49px` | 890 condensed | Workout identity only; `-0.07em` tracking and the exact `Today’s` / `workout` proof wrap |
 
 Numeric values use tabular numerals. Body copy is never smaller than `16sp`. Required instructions and the only expression of status never use `secondary`. Exercise names wrap to two lines before truncation.
@@ -66,7 +69,9 @@ Control dimensions are not spacing exceptions:
 
 ## Color
 
-Accent is reserved for actions, selected navigation, selected segmented state, and focus. It is not decoration.
+Accent is reserved for actions, selected-choice treatment, the root-selection
+underline, and focus. It is not decoration. Root selection uses ink for its icon
+and label plus orange for its underline; blue remains the separate focus channel.
 
 | Token | Light | Dark | Usage |
 |---|---|---|---|
@@ -77,8 +82,8 @@ Accent is reserved for actions, selected navigation, selected segmented state, a
 | `ink` / `textPrimary` | `#0D0C0A` | `#F7F7F2` | Primary copy |
 | `quiet` / `textSecondary` | `#655F56` | `#AAA9A2` | Supporting copy |
 | `line` / `divider` | `#CEC6B8` | `#333330` | Hairlines and borders |
-| `orange` | `#D97820` | `#D97820` | Workout emphasis and Strength border, rail, and swatch |
-| `blue` / `action` / `focusRing` | `#195FAE` | `#71AAFF` | Focus, selection, links, and Running identity |
+| `orange` | `#D97820` | `#D97820` | Workout emphasis, selected-root underline, and Strength border, rail, and swatch |
+| `blue` / `action` / `focusRing` | `#195FAE` | `#71AAFF` | Focus, selected choices, links, and Running identity; never the selected-root icon or label |
 | `green` / `completed` | `#166B4C` | `#72DF92` | Committed completion only |
 | `yellow` / `timerAttention` | `#8D5D00` | `#F0C84B` | Attention only |
 | `destructive` | `#B42318` | `#FF8279` | Error or destructive action |
@@ -112,6 +117,17 @@ semantic surfaces; they are not screen-local card systems.
 ### Appearance Persistence Seam
 
 `AppearanceProvider` accepts an injected `AppearanceStore`. Production storage is the bounded SQLite preference seam keyed by `gym_tracker.appearance_preference.v1`; it preserves `System` as null, reports typed read/write failures, and retains the last authoritative preference when a write fails. `System` remains selected while live OS changes update the resolved scheme without remounting children.
+
+## Root Navigation
+
+- `AppTabs` stays one four-item bottom composition at every width on the theme's
+  `paper` surface with a `line` top rule.
+- Every root label uses the `16 / 22sp`, weight-400 body/control role.
+- The selected root keeps its programmatic `tab` selected state, paints both icon
+  and label with `ink`, and adds a `3dp` orange underline beneath the label.
+- Unselected root icons and labels use `quiet`.
+- Keyboard and D-pad focus remains an independent `3dp` blue outline; focus does
+  not replace or recolor the orange selection underline.
 
 ## Iconography
 

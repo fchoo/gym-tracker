@@ -323,7 +323,7 @@ function actionText(label: string, color: string) {
     Text,
     {
       style: [
-        typeScale.bodyStrong as TextStyle,
+        typeScale.sectionTitle as TextStyle,
         styles.actionLabel,
         { color },
       ],
@@ -1051,19 +1051,21 @@ export function AppTabs({
       },
       iconElement(
         destination.icon,
-        selected ? colors.action : colors.textSecondary,
+        selected ? colors.ink : colors.quiet,
       ),
       h(
         Text,
         {
           style: [
-            typeScale.label as TextStyle,
+            typeScale.body as TextStyle,
             styles.appTabLabel,
             {
-              color: selected ? colors.action : colors.textSecondary,
+              borderBottomColor: selected ? colors.orange : "transparent",
+              color: selected ? colors.ink : colors.quiet,
               textAlign: "center",
             },
           ],
+          testID: `root-tab-label-${destination.name}`,
         },
         destination.label,
       ),
@@ -1078,7 +1080,7 @@ export function AppTabs({
       style: [
         styles.appTabs,
         styles.appTabsBottom,
-        { backgroundColor: colors.surface, borderColor: colors.divider },
+        { backgroundColor: colors.paper, borderColor: colors.line },
       ],
       testID: "root-navigation-bottom",
     },
@@ -1328,7 +1330,7 @@ const styles = StyleSheet.create({
     paddingVertical: space[2],
   },
   appTabs: {
-    borderWidth: StyleSheet.hairlineWidth,
+    borderTopWidth: StyleSheet.hairlineWidth,
   },
   appTabsBottom: {
     flexDirection: "row",
@@ -1344,7 +1346,7 @@ const styles = StyleSheet.create({
     paddingVertical: space[2],
   },
   appTabLabel: {
-    lineHeight: 22,
+    borderBottomWidth: 3,
     paddingBottom: 2,
     paddingHorizontal: space[1],
   },

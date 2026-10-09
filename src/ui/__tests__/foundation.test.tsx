@@ -59,6 +59,7 @@ import {
   space,
   themes,
   typeScale,
+  type ThemeColors,
   useAppTheme,
 } from "../theme";
 import {
@@ -139,31 +140,70 @@ describe("Plan 01-02 UI foundation", () => {
       emphasized: 12,
       full: 999,
     });
+    expect(fontFamilies).toEqual({
+      interfaceRegular: "ArchivoVariable",
+      interfaceEmphasis: "ArchivoVariable",
+      numericRegular: "IBMPlexMono_400Regular",
+    });
     expect(typeScale).toEqual(
       expect.objectContaining({
-        displayTimer: expect.objectContaining({
-          fontFamily: fontFamilies.numericSemiBold,
-          fontSize: 52,
-          lineHeight: 56,
-        }),
-        targetValue: expect.objectContaining({
-          fontFamily: fontFamilies.numericSemiBold,
-          fontSize: 28,
-          lineHeight: 34,
-        }),
-        screenTitle: expect.objectContaining({
-          fontFamily: fontFamilies.interfaceSemiBold,
-          fontSize: 28,
-          lineHeight: 34,
+        displayTimer: {
+          fontFamily: fontFamilies.numericRegular,
+          fontSize: 30,
+          lineHeight: 41,
+          fontWeight: "400",
+          fontVariant: ["tabular-nums"],
+        },
+        targetValue: {
+          fontFamily: fontFamilies.numericRegular,
+          fontSize: 20,
+          lineHeight: 24,
+          fontWeight: "400",
+          fontVariant: ["tabular-nums"],
+        },
+        screenTitle: {
+          fontFamily: fontFamilies.interfaceEmphasis,
+          fontSize: 20,
+          lineHeight: 24,
           fontWeight: "800",
-        }),
-        body: expect.objectContaining({
+        },
+        sectionTitle: {
+          fontFamily: fontFamilies.interfaceEmphasis,
+          fontSize: 20,
+          lineHeight: 24,
+          fontWeight: "800",
+        },
+        body: {
           fontFamily: fontFamilies.interfaceRegular,
           fontSize: 16,
           lineHeight: 22,
-        }),
+          fontWeight: "400",
+        },
+        bodyStrong: {
+          fontFamily: fontFamilies.interfaceEmphasis,
+          fontSize: 16,
+          lineHeight: 22,
+          fontWeight: "800",
+        },
+        secondary: {
+          fontFamily: fontFamilies.interfaceRegular,
+          fontSize: 14,
+          lineHeight: 20,
+          fontWeight: "400",
+        },
+        label: {
+          fontFamily: fontFamilies.interfaceRegular,
+          fontSize: 14,
+          lineHeight: 20,
+          fontWeight: "400",
+        },
       }),
     );
+    for (const scale of Object.values(typeScale)) {
+      if (scale.fontFamily === fontFamilies.numericRegular) {
+        expect(scale.fontWeight).toBe("400");
+      }
+    }
     expect(themes.light).toEqual(
       expect.objectContaining({
         paper: "#FFFAF0",
@@ -193,7 +233,6 @@ describe("Plan 01-02 UI foundation", () => {
         destructive: "#FF8279",
       }),
     );
-    expect(fontFamilies.interfaceRegular).toBe("ArchivoVariable");
     expect(typeScale.editorialWorkoutTitle).toEqual({
       fontFamily: "ArchivoVariable",
       fontSize: 57,
@@ -792,18 +831,92 @@ describe("Plan 01-02 route shell", () => {
       paddingBottom: 2,
       paddingHorizontal: 4,
     });
-    // The active tab is indicated by icon/label colour only; no box outline.
-    expect(screen.getByText("Workout")).toHaveStyle({
-      color: themes.light.action,
+    expect(screen.getByTestId("root-navigation-bottom")).toHaveStyle({
+      backgroundColor: themes.light.paper,
+      borderColor: themes.light.line,
     });
-    expect(today)
-      .toHaveStyle({ borderWidth: undefined });
-    expect(today)
-      .not.toHaveStyle({ borderWidth: 2 });
+    expect(screen.getByText("Workout")).toHaveStyle({
+      borderBottomColor: themes.light.orange,
+      borderBottomWidth: 3,
+      color: themes.light.ink,
+      fontSize: 16,
+      fontWeight: "400",
+      lineHeight: 22,
+    });
+    expect(
+      today.queryAll((node) => node.type === "RNSVGSvgView")[0]?.props.stroke,
+    ).toBe(themes.light.ink);
+    expect(screen.getByText("Calendar")).toHaveStyle({
+      borderBottomColor: "transparent",
+      borderBottomWidth: 3,
+      color: themes.light.quiet,
+    });
+    expect(
+      screen.getByRole("tab", { name: "Calendar" })
+        .queryAll((node) => node.type === "RNSVGSvgView")[0]?.props.stroke,
+    ).toBe(themes.light.quiet);
 
     await fireEvent(today, "focus");
-    expect(today).toHaveStyle({ outlineWidth: 3 });
+    expect(today).toHaveStyle({
+      outlineColor: themes.light.blue,
+      outlineWidth: 3,
+    });
   });
+
+  it.each([
+    ["Light", themes.light],
+    ["Dark", themes.dark],
+  ] as Array<["Light" | "Dark", ThemeColors]>)(
+    "keeps %s root selection on ink and orange while focus stays blue",
+    async (appearance, colors) => {
+      await render(
+        <AppearanceProvider store={createMemoryAppearanceStore(appearance)}>
+          <AppTabs
+            navigation={{
+              emit: () => ({ defaultPrevented: false }),
+              navigate: jest.fn(),
+            }}
+            state={{ index: 2, routes }}
+          />
+        </AppearanceProvider>,
+      );
+
+      const navigation = screen.getByTestId("root-navigation-bottom");
+      const selected = screen.getByRole("tab", { name: "Library" });
+      const unselected = screen.getByRole("tab", { name: "Workout" });
+
+      expect(navigation).toHaveStyle({
+        backgroundColor: colors.paper,
+        borderColor: colors.line,
+      });
+      expect(selected).toBeSelected();
+      expect(unselected).not.toBeSelected();
+      expect(screen.getByTestId("root-tab-label-library")).toHaveStyle({
+        borderBottomColor: colors.orange,
+        borderBottomWidth: 3,
+        color: colors.ink,
+      });
+      expect(
+        selected.queryAll((node) => node.type === "RNSVGSvgView")[0]?.props.stroke,
+      ).toBe(colors.ink);
+      expect(screen.getByTestId("root-tab-label-index")).toHaveStyle({
+        borderBottomColor: "transparent",
+        borderBottomWidth: 3,
+        color: colors.quiet,
+      });
+      expect(
+        unselected.queryAll((node) => node.type === "RNSVGSvgView")[0]?.props.stroke,
+      ).toBe(colors.quiet);
+
+      await fireEvent(selected, "focus");
+      expect(selected).toHaveStyle({
+        outlineColor: colors.blue,
+        outlineWidth: 3,
+      });
+      expect(screen.getByTestId("root-tab-label-library"))
+        .toHaveStyle({ borderBottomColor: colors.orange });
+    },
+  );
 
   it("keeps four complete root destinations in one bottom composition at 200% text", async () => {
     const navigate = jest.fn();

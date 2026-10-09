@@ -16,9 +16,8 @@ import { PHASE14_FONT_PROOF } from "../../testing/phase14FontProof";
 
 export const fontFamilies = {
   interfaceRegular: "ArchivoVariable",
-  interfaceSemiBold: "ArchivoVariable",
+  interfaceEmphasis: "ArchivoVariable",
   numericRegular: "IBMPlexMono_400Regular",
-  numericSemiBold: "IBMPlexMono_400Regular",
 } as const;
 
 export const appFonts = {
@@ -63,30 +62,32 @@ const revision18EditorialWorkoutTitleLetterSpacing =
   * PHASE14_FONT_PROOF.oracle.letterSpacingEm;
 
 export const typeScale = {
+  // Revision 18's `.rest-clock` is the sole non-editorial numeric display
+  // exception: 30px IBM Plex Mono with the inherited 1.35 line-height.
   displayTimer: {
-    fontFamily: fontFamilies.numericSemiBold,
-    fontSize: 52,
-    lineHeight: 56,
-    fontWeight: "800",
+    fontFamily: fontFamilies.numericRegular,
+    fontSize: 30,
+    lineHeight: 41,
+    fontWeight: "400",
     fontVariant: ["tabular-nums"],
   },
   targetValue: {
-    fontFamily: fontFamilies.numericSemiBold,
-    fontSize: 28,
-    lineHeight: 34,
-    fontWeight: "800",
+    fontFamily: fontFamilies.numericRegular,
+    fontSize: 20,
+    lineHeight: 24,
+    fontWeight: "400",
     fontVariant: ["tabular-nums"],
   },
   screenTitle: {
-    fontFamily: fontFamilies.interfaceSemiBold,
-    fontSize: 28,
-    lineHeight: 34,
+    fontFamily: fontFamilies.interfaceEmphasis,
+    fontSize: 20,
+    lineHeight: 24,
     fontWeight: "800",
   },
   sectionTitle: {
-    fontFamily: fontFamilies.interfaceSemiBold,
-    fontSize: 16,
-    lineHeight: 22,
+    fontFamily: fontFamilies.interfaceEmphasis,
+    fontSize: 20,
+    lineHeight: 24,
     fontWeight: "800",
   },
   body: {
@@ -96,10 +97,10 @@ export const typeScale = {
     fontWeight: "400",
   },
   bodyStrong: {
-    fontFamily: fontFamilies.interfaceSemiBold,
+    fontFamily: fontFamilies.interfaceEmphasis,
     fontSize: 16,
     lineHeight: 22,
-    fontWeight: "600",
+    fontWeight: "800",
   },
   secondary: {
     fontFamily: fontFamilies.interfaceRegular,
@@ -108,13 +109,13 @@ export const typeScale = {
     fontWeight: "400",
   },
   label: {
-    fontFamily: fontFamilies.interfaceSemiBold,
+    fontFamily: fontFamilies.interfaceRegular,
     fontSize: 14,
     lineHeight: 20,
-    fontWeight: "800",
+    fontWeight: "400",
   },
   editorialWorkoutTitle: {
-    fontFamily: fontFamilies.interfaceSemiBold,
+    fontFamily: fontFamilies.interfaceEmphasis,
     fontSize: 57,
     lineHeight: 49,
     fontWeight: "890",
