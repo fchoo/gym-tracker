@@ -2,6 +2,7 @@ import {
   fireEvent,
   render,
   screen,
+  waitFor,
 } from "@testing-library/react-native";
 import { beforeEach, describe, expect, it, jest } from "@jest/globals";
 import React from "react";
@@ -132,7 +133,7 @@ describe("BottomSheet", () => {
     );
 
     expect(cancel).toHaveBeenCalledTimes(4);
-    expect(focus).toHaveBeenCalledTimes(4);
+    await waitFor(() => expect(focus).toHaveBeenCalledTimes(4));
     await rendered.unmount();
   });
 
@@ -157,7 +158,7 @@ describe("BottomSheet", () => {
 
     await fireEvent.press(screen.getByRole("button", { name: "Close edit filters" }));
 
-    expect(restoreFocusRef.current.focus).toHaveBeenCalledTimes(1);
+    await waitFor(() => expect(restoreFocusRef.current.focus).toHaveBeenCalledTimes(1));
     expect(setAccessibilityFocus).not.toHaveBeenCalledWith(0);
   });
 

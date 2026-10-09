@@ -1,4 +1,4 @@
-import { act, fireEvent, render, screen } from "@testing-library/react-native";
+import { act, fireEvent, render, screen, waitFor } from "@testing-library/react-native";
 import { describe, expect, it, jest } from "@jest/globals";
 import React from "react";
 import {
@@ -124,7 +124,8 @@ describe("AppRootShell", () => {
 
     const focusCallsBeforeClose = trigger.current.focus.mock.calls.length;
     await fireEvent.press(screen.getByRole("button", { name: "Close App Settings" }));
-    expect(trigger.current.focus).toHaveBeenCalledTimes(focusCallsBeforeClose + 1);
+    await waitFor(() => expect(trigger.current.focus)
+      .toHaveBeenCalledTimes(focusCallsBeforeClose + 1));
   });
 
   it("dismisses root App Settings before a retained deep-route callback runs", async () => {
