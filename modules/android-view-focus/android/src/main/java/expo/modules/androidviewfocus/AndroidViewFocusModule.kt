@@ -2,6 +2,7 @@ package expo.modules.androidviewfocus
 
 import android.view.View
 import android.view.ViewGroup
+import android.util.Log
 import expo.modules.kotlin.Promise
 import expo.modules.kotlin.modules.Module
 import expo.modules.kotlin.modules.ModuleDefinition
@@ -45,28 +46,40 @@ class AndroidViewFocusModule : Module() {
 
       try {
         activity.runOnUiThread {
-          val focused = try {
-            val root = activity.window?.decorView
-            val tagKey = activity.resources.getIdentifier(
-              "view_tag_native_id",
-              "id",
-              activity.packageName,
-            )
-            val target = if (root == null) null else {
-              val byNativeId = if (tagKey == 0) null else findNativeId(root, nativeId, tagKey)
-              byNativeId ?: findVisibleContentDescription(root, "Open App Settings")
+          val root = activity.window?.decorView
+          val tagKey = activity.resources.getIdentifier(
+            "view_tag_native_id",
+            "id",
+            activity.packageName,
+          )
+          var attempts = 0
+          val focusAttempt = object : Runnable {
+            override fun run() {
+              attempts += 1
+              val focused = try {
+                val target = if (root == null) null else {
+                  val byNativeId = if (tagKey == 0) null else findNativeId(root, nativeId, tagKey)
+                  byNativeId ?: findVisibleContentDescription(root, "Open App Settings")
+                }
+                if (target == null) {
+                  false
+                } else {
+                  target.isFocusable = true
+                  target.isFocusableInTouchMode = true
+                  target.requestFocusFromTouch() || target.requestFocus()
+                }
+              } catch (_: RuntimeException) {
+                false
+              }
+              if (focused || attempts >= 10 || root == null) {
+                Log.i("AndroidViewFocus", "requestFocus completed focused=$focused attempts=$attempts")
+                promise.resolve(focused)
+              } else {
+                root.postDelayed(this, 100)
+              }
             }
-            if (target == null) {
-              false
-            } else {
-              target.isFocusable = true
-              target.isFocusableInTouchMode = true
-              target.requestFocusFromTouch() || target.requestFocus()
-            }
-          } catch (_: RuntimeException) {
-            false
           }
-          promise.resolve(focused)
+          root?.post(focusAttempt) ?: promise.resolve(false)
         }
       } catch (_: RuntimeException) {
         promise.resolve(false)
