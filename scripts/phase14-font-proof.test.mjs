@@ -58,8 +58,8 @@ function fixture() {
     revision18: { approved_html_sha256: "b5ddbad88fd465af2fa79475dc0c05efec49e551652f13c5220627730e1d9c96", approved_json_sha256: "b8e91e3098ec443c9dc283ae8383d1af552d7dc2b83648695a01dcb8a89ff0bf" },
     overlay_review: { status: "passed", screenshot_sha256: "c".repeat(64), approved_html_sha256: "b5ddbad88fd465af2fa79475dc0c05efec49e551652f13c5220627730e1d9c96", approved_json_sha256: "b8e91e3098ec443c9dc283ae8383d1af552d7dc2b83648695a01dcb8a89ff0bf" },
     cases: [
-      { id: "light-390-scale-1", status: "passed", font_scale: 1, display_density: 2.625, screenshot_sha256: "c".repeat(64), family: "ArchivoVariable", family_loaded: true, style: { font_family: "ArchivoVariable", font_size_px: 57, font_stretch: "condensed", font_weight: 890, letter_spacing_em: -0.07, line_height_px: 49 }, lines: ["Today’s", "workout"], metrics: { available_width_px: 335, block_width_px: 224, block_height_px: 98, line_advances_px: [191, 224], line_heights_px: [49, 49], line_baselines_px: [{ ascender_px: 37, descender_px: 8, y_px: 0, height_px: 49, baseline_offset_px: 37 }, { ascender_px: 37, descender_px: 8, y_px: 49, height_px: 49, baseline_offset_px: 86 }], text_bounds: { x: 0, y: 0, width: 224, height: 98 }, container_bounds: { x: 0, y: 0, width: 335, height: 98 } } },
-      { id: "light-390-scale-2", status: "passed", font_scale: 2, display_density: 2.625, screenshot_sha256: "d".repeat(64), family: "ArchivoVariable", family_loaded: true, style: { font_family: "ArchivoVariable", font_size_px: 57, font_stretch: "condensed", font_weight: 890, letter_spacing_em: -0.07, line_height_px: 49 }, lines: ["Today’s", "workout"], metrics: { available_width_px: 335, block_width_px: 224, block_height_px: 196, line_advances_px: [191, 224], line_heights_px: [98, 98], line_baselines_px: [{ ascender_px: 74, descender_px: 16, y_px: 0, height_px: 98, baseline_offset_px: 74 }, { ascender_px: 74, descender_px: 16, y_px: 98, height_px: 98, baseline_offset_px: 172 }], text_bounds: { x: 0, y: 0, width: 224, height: 196 }, container_bounds: { x: 0, y: 0, width: 335, height: 196 } } },
+      { id: "light-390-scale-1", status: "passed", font_scale: 1, display_density: 2.625, screenshot_sha256: "c".repeat(64), family: "ArchivoVariable", family_loaded: true, style: { font_family: "ArchivoVariable", font_size_px: 57, font_stretch: "condensed", font_weight: 890, letter_spacing_em: -0.07, line_height_px: 49 }, lines: ["Workout"], metrics: { available_width_px: 335, block_width_px: 224, block_height_px: 49, line_advances_px: [191], line_heights_px: [49], line_baselines_px: [{ ascender_px: 37, descender_px: 8, y_px: 0, height_px: 49, baseline_offset_px: 37 }], text_bounds: { x: 0, y: 0, width: 224, height: 49 }, container_bounds: { x: 0, y: 0, width: 335, height: 49 } } },
+      { id: "light-390-scale-2", status: "passed", font_scale: 2, display_density: 2.625, screenshot_sha256: "d".repeat(64), family: "ArchivoVariable", family_loaded: true, style: { font_family: "ArchivoVariable", font_size_px: 57, font_stretch: "condensed", font_weight: 890, letter_spacing_em: -0.07, line_height_px: 49 }, lines: ["Workout"], metrics: { available_width_px: 335, block_width_px: 224, block_height_px: 98, line_advances_px: [191], line_heights_px: [98], line_baselines_px: [{ ascender_px: 74, descender_px: 16, y_px: 0, height_px: 98, baseline_offset_px: 74 }], text_bounds: { x: 0, y: 0, width: 224, height: 98 }, container_bounds: { x: 0, y: 0, width: 335, height: 98 } } },
     ],
   };
   writeFileSync(report, `${JSON.stringify(evidence)}\n`);
@@ -164,9 +164,9 @@ test("font proof allows no more than one density-normalized physical pixel", () 
       metrics: {
         ...first.metrics,
         available_width_px: 302.8571472167969,
-        line_advances_px: [191, 303.23809814453125],
-        text_bounds: { x: -(1 / first.display_density), y: -(1 / first.display_density), width: 303.23809814453125, height: 98 + (1 / first.display_density) },
-        container_bounds: { x: 0, y: 0, width: 302.8571472167969, height: 98 },
+        line_advances_px: [303.23809814453125],
+        text_bounds: { x: -(1 / first.display_density), y: -(1 / first.display_density), width: 303.23809814453125, height: 49 + (1 / first.display_density) },
+        container_bounds: { x: 0, y: 0, width: 302.8571472167969, height: 49 },
       },
     };
     assert.doesNotThrow(() => validatePhase14FontProofArtifacts({

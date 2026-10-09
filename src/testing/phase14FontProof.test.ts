@@ -39,7 +39,7 @@ describe("Phase 14 Revision 18 font oracle", () => {
       fontWeight: 890,
       letterSpacingEm: -0.07,
       lineHeightPx: 49,
-      sourceText: "Today’s workout",
+      sourceText: "Workout",
     });
     expect(PHASE14_FONT_PROOF.cases).toEqual([
       expect.objectContaining({ fontScale: 1, viewport: { width: 390, height: 844 } }),
@@ -59,15 +59,14 @@ describe("Phase 14 Revision 18 font oracle", () => {
       metrics: {
         availableWidthPx: 335,
         blockWidthPx: 224,
-        blockHeightPx: 98,
-        lineAdvancesPx: [191, 224],
-        lineHeightsPx: [49, 49],
+        blockHeightPx: 49,
+        lineAdvancesPx: [191],
+        lineHeightsPx: [49],
         lineBaselinesPx: [
           { ascenderPx: 37, descenderPx: 8, yPx: 0, heightPx: 49, baselineOffsetPx: 37 },
-          { ascenderPx: 37, descenderPx: 8, yPx: 49, heightPx: 49, baselineOffsetPx: 86 },
         ],
-        textBounds: { x: 0, y: 0, width: 224, height: 98 },
-        containerBounds: { x: 0, y: 0, width: 335, height: 98 },
+        textBounds: { x: 0, y: 0, width: 224, height: 49 },
+        containerBounds: { x: 0, y: 0, width: 335, height: 49 },
       },
       screenshotSha256: "a".repeat(64),
     }));
@@ -87,9 +86,9 @@ describe("Phase 14 Revision 18 font oracle", () => {
       metrics: {
         ...firstProof.metrics,
         availableWidthPx: 302.8571472167969,
-        lineAdvancesPx: [187.7798, 303.23809814453125],
-        textBounds: { x: -onePhysicalPixel, y: -onePhysicalPixel, width: 303.23809814453125, height: 98 + onePhysicalPixel },
-        containerBounds: { x: 0, y: 0, width: 302.8571472167969, height: 98 },
+        lineAdvancesPx: [303.23809814453125],
+        textBounds: { x: -onePhysicalPixel, y: -onePhysicalPixel, width: 303.23809814453125, height: 49 + onePhysicalPixel },
+        containerBounds: { x: 0, y: 0, width: 302.8571472167969, height: 49 },
       },
     };
     expect(() => validatePhase14FontProofReport({
@@ -119,7 +118,7 @@ describe("Phase 14 Revision 18 font oracle", () => {
       schemaVersion: 2, sourceTreeSha256: "a".repeat(64), apkSha256: "b".repeat(64),
       packageName: "com.fchoo.gymtracker.devtest", profile: "development-test",
       fontScaleRestored: true,
-      cases: [{ ...firstProof, metrics: { ...firstProof.metrics, lineBaselinesPx: [{ ...firstProof.metrics.lineBaselinesPx[0]!, baselineOffsetPx: 50 }, firstProof.metrics.lineBaselinesPx[1]! ] } }, ...proof.slice(1)],
+      cases: [{ ...firstProof, metrics: { ...firstProof.metrics, lineBaselinesPx: [{ ...firstProof.metrics.lineBaselinesPx[0]!, baselineOffsetPx: 50 }] } }, ...proof.slice(1)],
     })).toThrow("phase14_font_baseline_metrics_invalid");
   });
 });

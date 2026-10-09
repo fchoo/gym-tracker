@@ -120,6 +120,7 @@ describe("Phase2AttendedPreviewRoute", () => {
     expect(screen.getByTestId("phase14-font-proof-title")).toHaveTextContent(
       PHASE14_FONT_PROOF.oracle.sourceText,
     );
+    expect(screen.queryByText("Today’s workout")).not.toBeOnTheScreen();
     expect(screen.getByTestId("phase14-font-proof-family"))
       .toHaveTextContent(/ArchivoVariable/u);
     expect(screen.getByTestId("phase14-font-proof-measurement-light-390-scale-1", {

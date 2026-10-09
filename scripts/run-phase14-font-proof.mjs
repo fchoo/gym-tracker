@@ -7,6 +7,7 @@ import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
+import { PHASE14_FONT_PROOF } from "../src/testing/phase14FontProof.ts";
 import { assertCleanCommittedTree, sourceTreeSha256 } from "./source-tree-digest.mjs";
 
 const ROOT = process.cwd();
@@ -63,11 +64,12 @@ function contained(inner, outer, density) {
   return inner.x >= outer.x - tolerance && inner.y >= outer.y - tolerance && inner.width <= outer.width + tolerance && inner.height <= outer.height + tolerance && inner.x + inner.width <= outer.x + outer.width + tolerance && inner.y + inner.height <= outer.y + outer.height + tolerance;
 }
 function validBounds(value) { return value && [value.x, value.y, value.width, value.height].every(Number.isFinite) && value.width > 0 && value.height > 0; }
-function validateCase(entry, id, scale) {
-  if (entry?.id !== id || entry.status !== "passed" || entry.font_scale !== scale || !isHash(entry.screenshot_sha256) || entry.family !== "ArchivoVariable" || entry.family_loaded !== true || !same(entry.style, EXPECTED_STYLE) || !same(entry.lines, ["Today’s", "workout"])) throw new Error("phase14_font_case_invalid");
+function validateCase(entry, expectedCase) {
+  const expectedLineCount = expectedCase.expected.lines.length;
+  if (entry?.id !== expectedCase.id || entry.status !== "passed" || entry.font_scale !== expectedCase.fontScale || !isHash(entry.screenshot_sha256) || entry.family !== "ArchivoVariable" || entry.family_loaded !== true || !same(entry.style, EXPECTED_STYLE) || !same(entry.lines, expectedCase.expected.lines)) throw new Error("phase14_font_case_invalid");
   const metrics = entry.metrics;
-  if (!validDisplayDensity(entry.display_density) || !metrics || ![metrics.available_width_px, metrics.block_width_px, metrics.block_height_px, ...(metrics.line_advances_px ?? []), ...(metrics.line_heights_px ?? [])].every(finitePositive) || metrics.line_advances_px.length !== 2 || metrics.line_heights_px.length !== 2 || !validBounds(metrics.text_bounds) || !validBounds(metrics.container_bounds)) throw new Error("phase14_font_metrics_invalid");
-  if (metrics.line_baselines_px?.length !== 2 || metrics.line_baselines_px.some((line, index) => ![line.ascender_px, line.descender_px, line.y_px, line.height_px, line.baseline_offset_px].every(Number.isFinite) || line.ascender_px < 0 || line.ascender_px > line.height_px || Math.abs(line.descender_px) > line.height_px || line.baseline_offset_px < line.y_px || line.baseline_offset_px > line.y_px + line.height_px || line.y_px + line.height_px > metrics.block_height_px || (index > 0 && line.y_px < metrics.line_baselines_px[index - 1].y_px))) throw new Error("phase14_font_baseline_metrics_invalid");
+  if (!validDisplayDensity(entry.display_density) || !metrics || ![metrics.available_width_px, metrics.block_width_px, metrics.block_height_px, ...(metrics.line_advances_px ?? []), ...(metrics.line_heights_px ?? [])].every(finitePositive) || metrics.line_advances_px.length !== expectedLineCount || metrics.line_heights_px.length !== expectedLineCount || !validBounds(metrics.text_bounds) || !validBounds(metrics.container_bounds)) throw new Error("phase14_font_metrics_invalid");
+  if (metrics.line_baselines_px?.length !== expectedLineCount || metrics.line_baselines_px.some((line, index) => ![line.ascender_px, line.descender_px, line.y_px, line.height_px, line.baseline_offset_px].every(Number.isFinite) || line.ascender_px < 0 || line.ascender_px > line.height_px || Math.abs(line.descender_px) > line.height_px || line.baseline_offset_px < line.y_px || line.baseline_offset_px > line.y_px + line.height_px || line.y_px + line.height_px > metrics.block_height_px || (index > 0 && line.y_px < metrics.line_baselines_px[index - 1].y_px))) throw new Error("phase14_font_baseline_metrics_invalid");
   if (!withinOnePhysicalPixel(metrics.available_width_px, 335, entry.display_density) || !withinOnePhysicalPixel(metrics.available_width_px, metrics.container_bounds.width, entry.display_density) || !withinOnePhysicalPixel(Math.max(...metrics.line_advances_px), metrics.available_width_px, entry.display_density) || !contained(metrics.text_bounds, metrics.container_bounds, entry.display_density)) throw new Error("phase14_font_crop_overflow_invalid");
 }
 
@@ -80,7 +82,7 @@ export function validatePhase14FontProofArtifacts({ manifest, report, currentSou
   if (deviceIdentitySha256 !== manifest.device.identity_sha256) throw new Error("phase14_font_device_identity_stale");
   if (report?.schema_version !== 2 || report.suite !== EXPECTED_SUITE || report.status !== "passed" || report.source_tree_sha256 !== manifest.source_tree_sha256 || report.apk_sha256 !== manifest.apk.sha256 || report.package !== manifest.package || report.profile !== manifest.profile || report.proof_source_sha256 !== sha256(proofSourceBytes) || report.font_scale_restored !== true || !same(report.revision18, REVISION18) || !Array.isArray(report.cases)) throw new Error("phase14_font_report_identity_invalid");
   const ids = expectedCaseIds(proofSourceBytes);
-  report.cases.forEach((entry, index) => validateCase(entry, ids[index], index === 0 ? 1 : 2));
+  report.cases.forEach((entry, index) => validateCase(entry, PHASE14_FONT_PROOF.cases[index]));
   if (report.cases.length !== ids.length) throw new Error("phase14_font_case_invalid");
   const review = report.overlay_review;
   if (review?.status !== "passed" || !isHash(review.screenshot_sha256) || review.screenshot_sha256 !== report.cases[0]?.screenshot_sha256 || !same({ approved_html_sha256: review.approved_html_sha256, approved_json_sha256: review.approved_json_sha256 }, REVISION18)) throw new Error("phase14_font_overlay_review_invalid");
