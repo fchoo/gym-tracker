@@ -148,3 +148,16 @@ test("Phase 14 Maestro flows encode all shell stages and stay native-only", () =
   assert.match(runner, /comparePhase14PngBytes/u);
   assert.match(runner, /finally \{[\s\S]*?force-stop[\s\S]*?restoreCellDeviceState/u);
 });
+
+test("Phase 14 locks and verifies exact display geometry before native capture", () => {
+  const runner = readFileSync("scripts/run-phase14-maestro.mjs", "utf8");
+  assert.match(runner, /fixed-to-user-rotation/u);
+  assert.match(runner, /user-rotation[\s\S]*?lock/u);
+  assert.match(runner, /function waitForExactDisplayGeometry/u);
+  assert.match(runner, /applyCellDeviceState[\s\S]*?waitForExactDisplayGeometry/u);
+  assert.match(runner, /restoreCellDeviceState[\s\S]*?fixedToUserRotation/u);
+  assert.match(
+    runner,
+    /const applied = Object\.freeze\(\{ original: readDeviceState\(adbPath, serial\) \}\);[\s\S]*?try \{[\s\S]*?applyCellDeviceState\(adbPath, serial, cell\)[\s\S]*?finally \{[\s\S]*?restoreCellDeviceState\(adbPath, serial, applied\)/u,
+  );
+});

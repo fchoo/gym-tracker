@@ -10,6 +10,8 @@ import {
 } from "node:fs";
 import path from "node:path";
 
+import { PNG } from "pngjs";
+
 import { PHASE14_SHELL_EVIDENCE_CASES } from "../src/testing/contracts/phase14Shell.contract.ts";
 import {
   computePhase14ScrimTap,
@@ -213,13 +215,58 @@ function parseNightMode(output) {
   return "auto";
 }
 
+function parseUserRotationState(output) {
+  const match = output.match(/^(free|lock)(?:\s+([0-3]))?$/u);
+  if (match === null) throw new Error("phase14_user_rotation_state_invalid");
+  return Object.freeze({ mode: match[1], rotation: match[2] ?? null });
+}
+
+function parseFixedToUserRotation(output) {
+  if (!["enabled", "disabled", "default", "enabled_if_no_auto_rotation"].includes(output)) {
+    throw new Error("phase14_fixed_user_rotation_state_invalid");
+  }
+  return output;
+}
+
+function expectedDisplayGeometry(cell) {
+  return cell.orientation === "landscape"
+    ? Object.freeze({ width: cell.viewport.height, height: cell.viewport.width })
+    : Object.freeze({ width: cell.viewport.width, height: cell.viewport.height });
+}
+
+function waitForExactDisplayGeometry(adbPath, serial, cell) {
+  const expected = expectedDisplayGeometry(cell);
+  let last = null;
+  for (let attempt = 1; attempt <= 40; attempt += 1) {
+    try {
+      const bytes = execFileSync(
+        adbPath,
+        ["-s", serial, "exec-out", "screencap", "-p"],
+        { cwd: ROOT },
+      );
+      const image = PNG.sync.read(bytes);
+      last = Object.freeze({ width: image.width, height: image.height });
+      if (last.width === expected.width && last.height === expected.height) return;
+    } catch {
+      last = null;
+    }
+    if (attempt < 40) adb(adbPath, serial, "shell", "sleep", "0.25");
+  }
+  const observed = last === null ? "unreadable" : `${last.width}x${last.height}`;
+  throw new Error(`phase14_display_geometry_timeout:${expected.width}x${expected.height}:${observed}`);
+}
+
 function readDeviceState(adbPath, serial) {
   return Object.freeze({
     wmSizeOverride: parseOverride(adb(adbPath, serial, "shell", "wm", "size"), "size"),
     wmDensityOverride: parseOverride(adb(adbPath, serial, "shell", "wm", "density"), "density"),
+    fixedToUserRotation: parseFixedToUserRotation(
+      adb(adbPath, serial, "shell", "wm", "fixed-to-user-rotation"),
+    ),
+    userRotationState: parseUserRotationState(
+      adb(adbPath, serial, "shell", "wm", "user-rotation"),
+    ),
     fontScale: adb(adbPath, serial, "shell", "settings", "get", "system", "font_scale") || "1.0",
-    accelerometerRotation: adb(adbPath, serial, "shell", "settings", "get", "system", "accelerometer_rotation") || "1",
-    userRotation: adb(adbPath, serial, "shell", "settings", "get", "system", "user_rotation") || "0",
     animatorDurationScale: adb(adbPath, serial, "shell", "settings", "get", "global", "animator_duration_scale") || "1",
     transitionAnimationScale: adb(adbPath, serial, "shell", "settings", "get", "global", "transition_animation_scale") || "1",
     windowAnimationScale: adb(adbPath, serial, "shell", "settings", "get", "global", "window_animation_scale") || "1",
@@ -232,18 +279,17 @@ function setNightMode(adbPath, serial, scheme) {
 }
 
 function applyCellDeviceState(adbPath, serial, cell) {
-  const original = readDeviceState(adbPath, serial);
+  adb(adbPath, serial, "shell", "wm", "fixed-to-user-rotation", "enabled");
+  adb(adbPath, serial, "shell", "wm", "user-rotation", "lock", cell.orientation === "landscape" ? "1" : "0");
   adb(adbPath, serial, "shell", "wm", "density", "160");
   adb(adbPath, serial, "shell", "wm", "size", `${cell.viewport.width}x${cell.viewport.height}`);
   adb(adbPath, serial, "shell", "settings", "put", "system", "font_scale", String(cell.fontScale));
-  adb(adbPath, serial, "shell", "settings", "put", "system", "accelerometer_rotation", "0");
-  adb(adbPath, serial, "shell", "settings", "put", "system", "user_rotation", cell.orientation === "landscape" ? "1" : "0");
   const animationScale = cell.reducedMotion ? "0" : "1";
   for (const key of ["animator_duration_scale", "transition_animation_scale", "window_animation_scale"]) {
     adb(adbPath, serial, "shell", "settings", "put", "global", key, animationScale);
   }
   setNightMode(adbPath, serial, cell.osScheme);
-  return Object.freeze({ original });
+  waitForExactDisplayGeometry(adbPath, serial, cell);
 }
 
 function restoreCellDeviceState(adbPath, serial, applied) {
@@ -251,8 +297,12 @@ function restoreCellDeviceState(adbPath, serial, applied) {
   adb(adbPath, serial, "shell", "wm", "size", state.wmSizeOverride ?? "reset");
   adb(adbPath, serial, "shell", "wm", "density", state.wmDensityOverride ?? "reset");
   adb(adbPath, serial, "shell", "settings", "put", "system", "font_scale", state.fontScale);
-  adb(adbPath, serial, "shell", "settings", "put", "system", "accelerometer_rotation", state.accelerometerRotation);
-  adb(adbPath, serial, "shell", "settings", "put", "system", "user_rotation", state.userRotation);
+  if (state.userRotationState.mode === "free") {
+    adb(adbPath, serial, "shell", "wm", "user-rotation", "free");
+  } else {
+    adb(adbPath, serial, "shell", "wm", "user-rotation", "lock", state.userRotationState.rotation ?? "0");
+  }
+  adb(adbPath, serial, "shell", "wm", "fixed-to-user-rotation", state.fixedToUserRotation);
   adb(adbPath, serial, "shell", "settings", "put", "global", "animator_duration_scale", state.animatorDurationScale);
   adb(adbPath, serial, "shell", "settings", "put", "global", "transition_animation_scale", state.transitionAnimationScale);
   adb(adbPath, serial, "shell", "settings", "put", "global", "window_animation_scale", state.windowAnimationScale);
@@ -721,9 +771,10 @@ export function executePhase14Maestro(args = process.argv.slice(2)) {
     }
     const cellCapturedStartedAt = new Date().toISOString();
     adb(adbPath, serial, "shell", "am", "force-stop", manifest.package);
-    const applied = applyCellDeviceState(adbPath, serial, cell);
+    const applied = Object.freeze({ original: readDeviceState(adbPath, serial) });
     let completedCheckpoint;
     try {
+      applyCellDeviceState(adbPath, serial, cell);
       const flowPath = path.join(ROOT, "maestro/phase14", `${cell.flow}.yaml`);
       const reportPath = path.join(maestroDirectory, `${cell.id}.xml`);
       runMaestroCell({ cell, flowPath, reportPath, serial });
