@@ -336,7 +336,7 @@ describe("CalendarField", () => {
       }));
   });
 
-  it("exposes keyboard navigation, modal semantics, 48dp targets, and focus restoration", async () => {
+  it("exposes keyboard navigation, modal semantics, and 48dp targets without invalid focus fallback", async () => {
     const setAccessibilityFocus = jest.fn();
     jest.spyOn(AccessibilityInfo, "setAccessibilityFocus")
       .mockImplementation(setAccessibilityFocus);
@@ -369,7 +369,8 @@ describe("CalendarField", () => {
       "keyDown", { nativeEvent: { key: "Enter" } });
 
     expect(onChange).toHaveBeenCalledWith("2028-02-29");
-    expect(setAccessibilityFocus).toHaveBeenCalled();
+    expect(screen.queryByRole("header", { name: "Select date" })).not.toBeOnTheScreen();
+    expect(setAccessibilityFocus).not.toHaveBeenCalledWith(0);
     expect(calendarFieldMonthDirectionForHorizontalSwipe(-96)).toBe(1);
     expect(calendarFieldMonthDirectionForHorizontalSwipe(96)).toBe(-1);
     expect(calendarFieldMonthDirectionForHorizontalSwipe(24)).toBeNull();
