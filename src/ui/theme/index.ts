@@ -12,6 +12,8 @@ import {
   type ColorSchemeName,
 } from "react-native";
 
+import { PHASE14_FONT_PROOF } from "../../testing/phase14FontProof";
+
 export const fontFamilies = {
   interfaceRegular: "ArchivoVariable",
   interfaceSemiBold: "ArchivoVariable",
@@ -55,6 +57,10 @@ export const sizes = {
   inlineIcon: 20,
   focusRing: 3,
 } as const;
+
+const revision18EditorialWorkoutTitleLetterSpacing =
+  PHASE14_FONT_PROOF.oracle.fontSizePx
+  * PHASE14_FONT_PROOF.oracle.letterSpacingEm;
 
 export const typeScale = {
   displayTimer: {
@@ -113,7 +119,7 @@ export const typeScale = {
     lineHeight: 49,
     fontWeight: "890",
     fontStretch: "condensed",
-    letterSpacing: -0.07,
+    letterSpacing: revision18EditorialWorkoutTitleLetterSpacing,
   },
 };
 

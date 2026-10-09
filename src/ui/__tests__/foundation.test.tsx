@@ -71,6 +71,7 @@ import {
   rootBackBehavior,
   useLaunchState,
 } from "../screens/RootScreens";
+import { PHASE14_FONT_PROOF } from "../../testing/phase14FontProof";
 
 function ThemeProbe() {
   const theme = useAppTheme();
@@ -199,7 +200,9 @@ describe("Plan 01-02 UI foundation", () => {
       lineHeight: 49,
       fontWeight: "890",
       fontStretch: "condensed",
-      letterSpacing: -0.07,
+      letterSpacing:
+        PHASE14_FONT_PROOF.oracle.fontSizePx
+        * PHASE14_FONT_PROOF.oracle.letterSpacingEm,
     });
     expect(sizes.focusRing).toBe(3);
     expect(motion.standard.positionTransitions).toBe(true);
