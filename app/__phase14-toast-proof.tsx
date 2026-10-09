@@ -51,8 +51,9 @@ function ToastProofContent() {
         Phase 14 toast proof
       </Text>
       <Text style={[styles.body, { color: colors.textSecondary }]}>
-        Tap the background control while the toast remains visible. The update
-        must land without dismissing the toast or opening any other surface.
+        Tap the background control while the toast remains visible. The state
+        change must land without dismissing the toast or opening any other
+        surface.
       </Text>
       <View style={styles.spacer} />
       <Pressable
