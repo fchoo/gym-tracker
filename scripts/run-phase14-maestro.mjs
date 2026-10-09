@@ -307,8 +307,11 @@ function captureScreenshot(adbPath, serial, outputPath) {
 }
 
 function isPackageForeground(adbPath, serial, packageName) {
-  const output = adb(adbPath, serial, "shell", "dumpsys", "window", "windows");
-  const focusLines = output.split("\n").filter((line) => /mCurrentFocus|mFocusedApp/u.test(line));
+  const windowOutput = adb(adbPath, serial, "shell", "dumpsys", "window", "windows");
+  const activityOutput = adb(adbPath, serial, "shell", "dumpsys", "activity", "activities");
+  const focusLines = `${windowOutput}\n${activityOutput}`
+    .split("\n")
+    .filter((line) => /mCurrentFocus|mFocusedApp|topResumedActivity|ResumedActivity/u.test(line));
   return focusLines.some((line) => line.includes(`${packageName}/`));
 }
 
