@@ -27,7 +27,7 @@ export function useSemanticToast(): ToastContextValue {
 export function SemanticToastProvider({
   children,
   topAvoidance = 0,
-  bottomAvoidance = 0,
+  bottomAvoidance: _bottomAvoidance = 0,
 }: Readonly<{
   children: React.ReactNode;
   topAvoidance?: number | undefined;
@@ -75,6 +75,7 @@ export function SemanticToastProvider({
     : current?.severity === "progress"
       ? colors.timerAttention
       : colors.toastAccent;
+  const topAnchor = topAvoidance + space[4];
 
   return (
     <ToastContext.Provider value={value}>
@@ -88,9 +89,8 @@ export function SemanticToastProvider({
             {
               backgroundColor: colors.toastBg,
               borderColor: colors.toastBorder,
-              bottom: bottomAvoidance + space[4],
               opacity,
-              top: topAvoidance + space[4],
+              top: topAnchor,
               transform: [{ translateY }],
             },
           ]}

@@ -1,6 +1,7 @@
 import { act, render, screen } from "@testing-library/react-native";
 import { describe, expect, it, jest } from "@jest/globals";
 import React from "react";
+import { StyleSheet } from "react-native";
 
 import { SemanticToastProvider, useSemanticToast } from "./SemanticToast";
 import { AppearanceProvider } from "../theme";
@@ -52,7 +53,7 @@ describe("SemanticToast", () => {
     expect(screen.queryByText(/token=secret/u)).toBeNull();
   });
 
-  it("uses the exact geometry and non-authoritative 2400ms dwell", async () => {
+  it("anchors the toast from the top slot and keeps dwell non-authoritative", async () => {
     jest.useFakeTimers();
     await render(
       <AppearanceProvider>
@@ -62,12 +63,13 @@ describe("SemanticToast", () => {
       </AppearanceProvider>,
     );
 
-    expect(screen.getByTestId("semantic-toast")).toHaveStyle({
+    const toastStyle = StyleSheet.flatten(screen.getByTestId("semantic-toast").props.style);
+    expect(toastStyle).toMatchObject({
       borderRadius: 12,
-      bottom: 90,
       minHeight: 50,
       top: 72,
     });
+    expect(toastStyle.bottom).toBeUndefined();
     await act(() => jest.advanceTimersByTime(2400));
     expect(screen.queryByText("Workout saved")).toBeNull();
     jest.useRealTimers();

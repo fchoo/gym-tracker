@@ -1,7 +1,7 @@
 import { act, fireEvent, render, screen } from "@testing-library/react-native";
 import { describe, expect, it, jest } from "@jest/globals";
 import React from "react";
-import { Text, View } from "react-native";
+import { StyleSheet, Text, View } from "react-native";
 
 import { AppSettingsContent } from "../screens/SettingsScreen";
 import { AppearanceProvider } from "../theme";
@@ -206,9 +206,8 @@ describe("AppRootShell", () => {
       </AppearanceProvider>,
     );
 
-    expect(screen.getByTestId("semantic-toast")).toHaveStyle({
-      bottom: 90,
-      top: 72,
-    });
+    const toastStyle = StyleSheet.flatten(screen.getByTestId("semantic-toast").props.style);
+    expect(toastStyle).toMatchObject({ top: 72 });
+    expect(toastStyle.bottom).toBeUndefined();
   });
 });

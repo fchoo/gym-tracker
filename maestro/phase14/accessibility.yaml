@@ -30,7 +30,16 @@ tags:
     when:
       true: ${PHASE14_STAGE == 'phase14-toasts'}
     commands:
-      - assertVisible: "Workout"
+      - openLink: "gymtracker-devtest://__phase14-toast-proof"
+      - extendedWaitUntil:
+          visible: "Phase 14 toast proof"
+          timeout: 30000
+      - extendedWaitUntil:
+          visible: "Toast proof active"
+          timeout: 30000
+      - tapOn: "Tap background control"
+      - assertVisible: "Background control activated"
+      - assertVisible: "Toast proof active"
 - runFlow:
     when:
       true: ${PHASE14_STAGE == 'phase14-launch'}

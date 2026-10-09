@@ -54,4 +54,11 @@ test("Phase 14 Maestro flows encode all shell stages and stay native-only", () =
   const automaticBackup = settingsRecovery.slice(automaticBackupStart, automaticBackupEnd);
   assert.match(automaticBackup, /tapOn: "Automatic backup settings"/u);
   assert.match(automaticBackup, /visible: "Automatic backup settings"/u);
+  const accessibility = readFileSync("maestro/phase14/accessibility.yaml", "utf8");
+  const toastStart = accessibility.indexOf("true: ${PHASE14_STAGE == 'phase14-toasts'}");
+  const toastEnd = accessibility.indexOf("- runFlow:", toastStart + 1);
+  const toastFlow = accessibility.slice(toastStart, toastEnd);
+  assert.match(toastFlow, /openLink: "gymtracker-devtest:\/\/__phase14-toast-proof"/u);
+  assert.match(toastFlow, /tapOn: "Tap background control"/u);
+  assert.match(toastFlow, /assertVisible: "Background control activated"/u);
 });
