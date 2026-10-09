@@ -205,6 +205,8 @@ export function ManualEncryptedBackupContent() {
   const [mergeConfirmation, setMergeConfirmation] = useState("");
   const reviewHeadingRef = useRef<View>(null);
   const mergeReviewHeadingRef = useRef<View>(null);
+  const restoreCleanActionRef = useRef<View>(null);
+  const mergeBackupActionRef = useRef<View>(null);
   const csv = useCsvExportController({
     create: runtime.createCsvExport,
     share: runtime.shareCsvExport,
@@ -448,6 +450,7 @@ export function ManualEncryptedBackupContent() {
                     disabled={restorePassword.length === 0}
                     label="Restore clean"
                     onPress={() => { void selectRestore(); }}
+                    ref={restoreCleanActionRef}
                     testID="restore-clean-action"
                   />
                   {restoreState.kind === "cancelled" ? (
@@ -522,6 +525,7 @@ export function ManualEncryptedBackupContent() {
                     disabled={mergePassword.length === 0}
                     label="Import / merge backup"
                     onPress={() => { void selectMerge(); }}
+                    ref={mergeBackupActionRef}
                     testID="merge-open-action"
                   />
                   {mergeState.kind === "cancelled" ? (
@@ -623,6 +627,7 @@ export function ManualEncryptedBackupContent() {
             heading="Review restore clean"
             onCancel={cancelRestoreReview}
             onConfirm={() => { void commitRestore(); }}
+            restoreFocusRef={restoreCleanActionRef}
             visible={restoreState.kind === "review"}
           >
             {restoreState.kind !== "review" ? null : <>
@@ -649,6 +654,7 @@ export function ManualEncryptedBackupContent() {
             heading="Review merge"
             onCancel={cancelMergeReview}
             onConfirm={() => { void commitMerge(); }}
+            restoreFocusRef={mergeBackupActionRef}
             visible={mergeState.kind === "review"}
           >
             {mergeState.kind !== "review" ? null : <>
