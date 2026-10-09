@@ -17,6 +17,13 @@ const EXPECTED_SUITE = "phase14-font-proof";
 const EXPECTED_PACKAGE = "com.fchoo.gymtracker.devtest";
 const EXPECTED_PROFILE = "development-test";
 const PROOF_SOURCE = "src/testing/phase14FontProof.ts";
+const DEVICE_IDENTITY_PROPERTIES = Object.freeze([
+  "ro.build.fingerprint",
+  "ro.product.cpu.abi",
+  "ro.product.model",
+  "ro.build.version.sdk",
+  "ro.build.version.release",
+]);
 const REVISION18 = Object.freeze({ approved_html_sha256: "b5ddbad88fd465af2fa79475dc0c05efec49e551652f13c5220627730e1d9c96", approved_json_sha256: "b8e91e3098ec443c9dc283ae8383d1af552d7dc2b83648695a01dcb8a89ff0bf" });
 const EXPECTED_STYLE = Object.freeze({ font_family: "ArchivoVariable", font_size_px: 57, font_stretch: "condensed", font_weight: 890, letter_spacing_em: -0.07, line_height_px: 49 });
 const sha256 = (value) => createHash("sha256").update(value).digest("hex");
@@ -38,7 +45,7 @@ export function parsePhase14FontProofArgs(args = process.argv.slice(2)) {
 }
 
 export function validatePhase14FontProofManifest(manifest) {
-  if (manifest?.schema_version !== 1 || manifest.suite !== EXPECTED_SUITE || manifest.profile !== EXPECTED_PROFILE || manifest.package !== EXPECTED_PACKAGE || manifest.js_bundle?.embedded !== true || !isHash(manifest.base_head, 40) || !isHash(manifest.source_tree_sha256) || typeof manifest.apk?.path !== "string" || !manifest.apk.path.startsWith(`${SUPPORT_DIRECTORY}/`) || manifest.apk.path.includes("..") || !isHash(manifest.apk?.sha256)) throw new Error("phase14_font_manifest_invalid");
+  if (manifest?.schema_version !== 1 || manifest.suite !== EXPECTED_SUITE || manifest.profile !== EXPECTED_PROFILE || manifest.package !== EXPECTED_PACKAGE || manifest.js_bundle?.embedded !== true || !isHash(manifest.base_head, 40) || !isHash(manifest.source_tree_sha256) || typeof manifest.apk?.path !== "string" || !manifest.apk.path.startsWith(`${SUPPORT_DIRECTORY}/`) || manifest.apk.path.includes("..") || !isHash(manifest.apk?.sha256) || !isHash(manifest.installed_apk?.sha256) || manifest.installed_apk.matches_retained_apk !== true || !isHash(manifest.device?.identity_sha256) || Object.hasOwn(manifest.installed_apk, "device_path") || Object.hasOwn(manifest.device, "serial")) throw new Error("phase14_font_manifest_invalid");
   return true;
 }
 
@@ -64,11 +71,13 @@ function validateCase(entry, id, scale) {
   if (!withinOnePhysicalPixel(metrics.available_width_px, 335, entry.display_density) || !withinOnePhysicalPixel(metrics.available_width_px, metrics.container_bounds.width, entry.display_density) || !withinOnePhysicalPixel(Math.max(...metrics.line_advances_px), metrics.available_width_px, entry.display_density) || !contained(metrics.text_bounds, metrics.container_bounds, entry.display_density)) throw new Error("phase14_font_crop_overflow_invalid");
 }
 
-export function validatePhase14FontProofArtifacts({ manifest, report, currentSourceTreeSha256, apkBytes, proofSourceBytes }) {
+export function validatePhase14FontProofArtifacts({ manifest, report, currentSourceTreeSha256, apkBytes, proofSourceBytes, installedApkSha256, deviceIdentitySha256 }) {
   validatePhase14FontProofManifest(manifest);
   // base_head records capture provenance; the source digest is the acceptance
   // identity so later planning-only commits do not invalidate native proof.
   if (manifest.source_tree_sha256 !== currentSourceTreeSha256 || sha256(apkBytes) !== manifest.apk.sha256) throw new Error("phase14_font_manifest_stale");
+  if (manifest.installed_apk.sha256 !== manifest.apk.sha256 || installedApkSha256 !== manifest.installed_apk.sha256) throw new Error("phase14_font_installed_apk_stale");
+  if (deviceIdentitySha256 !== manifest.device.identity_sha256) throw new Error("phase14_font_device_identity_stale");
   if (report?.schema_version !== 2 || report.suite !== EXPECTED_SUITE || report.status !== "passed" || report.source_tree_sha256 !== manifest.source_tree_sha256 || report.apk_sha256 !== manifest.apk.sha256 || report.package !== manifest.package || report.profile !== manifest.profile || report.proof_source_sha256 !== sha256(proofSourceBytes) || report.font_scale_restored !== true || !same(report.revision18, REVISION18) || !Array.isArray(report.cases)) throw new Error("phase14_font_report_identity_invalid");
   const ids = expectedCaseIds(proofSourceBytes);
   report.cases.forEach((entry, index) => validateCase(entry, ids[index], index === 0 ? 1 : 2));
@@ -113,6 +122,10 @@ function installedApkHash(serial, packageName) {
   const temporary = path.join(os.tmpdir(), `phase14-font-proof-${process.pid}.apk`);
   try { adb(serial, "pull", remote, temporary); return sha256(readFileSync(temporary)); } finally { rmSync(temporary, { force: true }); }
 }
+function currentDeviceIdentitySha256(serial) {
+  return sha256(`${DEVICE_IDENTITY_PROPERTIES.map((property) =>
+    adb(serial, "shell", "getprop", property).trim()).join("\n")}\n`);
+}
 function reportCase(id, fontScale, observation, screenshotSha256) {
   return { id, status: "passed", font_scale: fontScale, display_density: observation.displayDensity, screenshot_sha256: screenshotSha256, family: observation.family, family_loaded: observation.fontLoaded, style: EXPECTED_STYLE, lines: observation.wrapBreakpoints, metrics: { available_width_px: observation.availableWidthPx, block_width_px: observation.blockWidthPx, block_height_px: observation.blockHeightPx, line_advances_px: observation.lineAdvancesPx, line_heights_px: observation.lineHeightsPx, line_baselines_px: observation.lineBaselinesPx.map((line) => ({ ascender_px: line.ascenderPx, descender_px: line.descenderPx, y_px: line.yPx, height_px: line.heightPx, baseline_offset_px: line.baselineOffsetPx })), text_bounds: observation.textBounds, container_bounds: observation.containerBounds } };
 }
@@ -136,7 +149,7 @@ export function capturePhase14FontProof({ manifest, root = ROOT, serial = proces
   assertCleanCommittedTree(currentHead, root);
   const sourceDigest = sourceTreeSha256(root);
   const apkPath = path.resolve(root, manifest.apk.path);
-  if (!existsSync(apkPath) || manifest.base_head !== currentHead || manifest.source_tree_sha256 !== sourceDigest || sha256(readFileSync(apkPath)) !== manifest.apk.sha256 || installedApkHash(serial, manifest.package) !== manifest.apk.sha256) throw new Error("phase14_font_capture_identity_invalid");
+  if (!existsSync(apkPath) || manifest.base_head !== currentHead || manifest.source_tree_sha256 !== sourceDigest || sha256(readFileSync(apkPath)) !== manifest.apk.sha256 || installedApkHash(serial, manifest.package) !== manifest.apk.sha256 || currentDeviceIdentitySha256(serial) !== manifest.device.identity_sha256) throw new Error("phase14_font_capture_identity_invalid");
   const restoration = withRestoredFontScale(runAdb, serial, () => {
     const cases = [1, 2].map((fontScale) => {
       runAdb(serial, "shell", "settings", "put", "system", "font_scale", String(fontScale));
@@ -165,7 +178,9 @@ export function executePhase14FontProof(args = process.argv.slice(2)) {
   }
   const reportPath = path.join(ROOT, CANONICAL_REPORT); const apkPath = path.resolve(ROOT, manifest.apk?.path ?? "");
   if (!existsSync(apkPath) || !existsSync(reportPath)) throw new Error("phase14_font_evidence_missing");
-  validatePhase14FontProofArtifacts({ manifest, report: JSON.parse(readFileSync(reportPath, "utf8")), currentHead: execFileSync("git", ["rev-parse", "HEAD"], { cwd: ROOT, encoding: "utf8" }).trim(), currentSourceTreeSha256: sourceTreeSha256(ROOT), apkBytes: readFileSync(apkPath), proofSourceBytes: readFileSync(path.join(ROOT, PROOF_SOURCE)) });
+  const serial = process.env.GYM_TRACKER_ANDROID_SERIAL;
+  if (!serial) throw new Error("phase14_font_device_missing");
+  validatePhase14FontProofArtifacts({ manifest, report: JSON.parse(readFileSync(reportPath, "utf8")), currentHead: execFileSync("git", ["rev-parse", "HEAD"], { cwd: ROOT, encoding: "utf8" }).trim(), currentSourceTreeSha256: sourceTreeSha256(ROOT), apkBytes: readFileSync(apkPath), proofSourceBytes: readFileSync(path.join(ROOT, PROOF_SOURCE)), installedApkSha256: installedApkHash(serial, manifest.package), deviceIdentitySha256: currentDeviceIdentitySha256(serial) });
   return { status: "passed", report: CANONICAL_REPORT };
 }
 

@@ -18,6 +18,7 @@ const hash = (value) => createHash("sha256").update(value).digest("hex");
 const sourceTreeSha256 = "a".repeat(64);
 const apkBytes = Buffer.from("phase14-font-proof-apk");
 const apkSha256 = hash(apkBytes);
+const deviceIdentitySha256 = "d".repeat(64);
 const proofSource = [
   "export const PHASE14_FONT_PROOF_CASE_IDS = [",
   '  "light-390-scale-1",',
@@ -41,6 +42,8 @@ function fixture() {
     base_head: "b".repeat(40),
     source_tree_sha256: sourceTreeSha256,
     apk: { path: "artifacts/native/phase14-font-proof/gym-tracker-phase14-font-proof-devtest.apk", sha256: apkSha256 },
+    installed_apk: { sha256: apkSha256, matches_retained_apk: true },
+    device: { identity_sha256: deviceIdentitySha256 },
   };
   const evidence = {
     schema_version: 2,
@@ -71,6 +74,14 @@ test("font proof rejects stale source, APK, package/profile, fabricated pass rep
       ...value.manifest,
       apk: { ...value.manifest.apk, path: "../outside-proof.apk" },
     }), /phase14_font_manifest_invalid/u);
+    assert.throws(() => validatePhase14FontProofManifest({
+      ...value.manifest,
+      installed_apk: undefined,
+    }), /phase14_font_manifest_invalid/u);
+    assert.throws(() => validatePhase14FontProofManifest({
+      ...value.manifest,
+      device: undefined,
+    }), /phase14_font_manifest_invalid/u);
     assert.doesNotThrow(() => validatePhase14FontProofArtifacts({
       manifest: value.manifest,
       report: value.evidence,
@@ -78,6 +89,8 @@ test("font proof rejects stale source, APK, package/profile, fabricated pass rep
       currentSourceTreeSha256: sourceTreeSha256,
       apkBytes: readFileSync(value.apk),
       proofSourceBytes: readFileSync(path.join(value.directory, "phase14FontProof.ts")),
+      installedApkSha256: apkSha256,
+      deviceIdentitySha256,
     }));
     assert.doesNotThrow(() => validatePhase14FontProofArtifacts({
       manifest: value.manifest,
@@ -86,6 +99,8 @@ test("font proof rejects stale source, APK, package/profile, fabricated pass rep
       currentSourceTreeSha256: sourceTreeSha256,
       apkBytes: readFileSync(value.apk),
       proofSourceBytes: readFileSync(path.join(value.directory, "phase14FontProof.ts")),
+      installedApkSha256: apkSha256,
+      deviceIdentitySha256,
     }));
     assert.throws(() => validatePhase14FontProofArtifacts({
       manifest: value.manifest,
@@ -94,7 +109,27 @@ test("font proof rejects stale source, APK, package/profile, fabricated pass rep
       currentSourceTreeSha256: "f".repeat(64),
       apkBytes: readFileSync(value.apk),
       proofSourceBytes: readFileSync(path.join(value.directory, "phase14FontProof.ts")),
+      installedApkSha256: apkSha256,
+      deviceIdentitySha256,
     }), /phase14_font_manifest_stale/u);
+    assert.throws(() => validatePhase14FontProofArtifacts({
+      manifest: value.manifest,
+      report: value.evidence,
+      currentSourceTreeSha256: sourceTreeSha256,
+      apkBytes: readFileSync(value.apk),
+      proofSourceBytes: readFileSync(path.join(value.directory, "phase14FontProof.ts")),
+      installedApkSha256: "e".repeat(64),
+      deviceIdentitySha256,
+    }), /phase14_font_installed_apk_stale/u);
+    assert.throws(() => validatePhase14FontProofArtifacts({
+      manifest: value.manifest,
+      report: value.evidence,
+      currentSourceTreeSha256: sourceTreeSha256,
+      apkBytes: readFileSync(value.apk),
+      proofSourceBytes: readFileSync(path.join(value.directory, "phase14FontProof.ts")),
+      installedApkSha256: apkSha256,
+      deviceIdentitySha256: "e".repeat(64),
+    }), /phase14_font_device_identity_stale/u);
     assert.throws(() => validatePhase14FontProofArtifacts({
       manifest: value.manifest,
       report: { ...value.evidence, cases: [{ ...value.evidence.cases[0], status: "skipped" }, value.evidence.cases[1] ] },
@@ -102,6 +137,8 @@ test("font proof rejects stale source, APK, package/profile, fabricated pass rep
       currentSourceTreeSha256: sourceTreeSha256,
       apkBytes: readFileSync(value.apk),
       proofSourceBytes: readFileSync(path.join(value.directory, "phase14FontProof.ts")),
+      installedApkSha256: apkSha256,
+      deviceIdentitySha256,
     }), /phase14_font_case_invalid/u);
     assert.throws(() => validatePhase14FontProofArtifacts({
       manifest: value.manifest,
@@ -110,6 +147,8 @@ test("font proof rejects stale source, APK, package/profile, fabricated pass rep
       currentSourceTreeSha256: sourceTreeSha256,
       apkBytes: readFileSync(value.apk),
       proofSourceBytes: readFileSync(path.join(value.directory, "phase14FontProof.ts")),
+      installedApkSha256: apkSha256,
+      deviceIdentitySha256,
     }), /phase14_font_overlay_review_invalid/u);
   } finally {
     rmSync(value.directory, { recursive: true, force: true });
@@ -131,14 +170,14 @@ test("font proof allows no more than one density-normalized physical pixel", () 
       },
     };
     assert.doesNotThrow(() => validatePhase14FontProofArtifacts({
-      manifest: value.manifest, report: { ...value.evidence, cases: [withinOnePhysicalPixel, value.evidence.cases[1]] }, currentHead: value.manifest.base_head, currentSourceTreeSha256: sourceTreeSha256, apkBytes: readFileSync(value.apk), proofSourceBytes: readFileSync(path.join(value.directory, "phase14FontProof.ts")),
+      manifest: value.manifest, report: { ...value.evidence, cases: [withinOnePhysicalPixel, value.evidence.cases[1]] }, currentHead: value.manifest.base_head, currentSourceTreeSha256: sourceTreeSha256, apkBytes: readFileSync(value.apk), proofSourceBytes: readFileSync(path.join(value.directory, "phase14FontProof.ts")), installedApkSha256: apkSha256, deviceIdentitySha256,
     }));
     assert.throws(() => validatePhase14FontProofArtifacts({
-      manifest: value.manifest, report: { ...value.evidence, cases: [{ ...withinOnePhysicalPixel, metrics: { ...withinOnePhysicalPixel.metrics, text_bounds: { ...withinOnePhysicalPixel.metrics.text_bounds, width: 303.2382 } }, }, value.evidence.cases[1]] }, currentHead: value.manifest.base_head, currentSourceTreeSha256: sourceTreeSha256, apkBytes: readFileSync(value.apk), proofSourceBytes: readFileSync(path.join(value.directory, "phase14FontProof.ts")),
+      manifest: value.manifest, report: { ...value.evidence, cases: [{ ...withinOnePhysicalPixel, metrics: { ...withinOnePhysicalPixel.metrics, text_bounds: { ...withinOnePhysicalPixel.metrics.text_bounds, width: 303.2382 } }, }, value.evidence.cases[1]] }, currentHead: value.manifest.base_head, currentSourceTreeSha256: sourceTreeSha256, apkBytes: readFileSync(value.apk), proofSourceBytes: readFileSync(path.join(value.directory, "phase14FontProof.ts")), installedApkSha256: apkSha256, deviceIdentitySha256,
     }), /phase14_font_crop_overflow_invalid/u);
     for (const invalidDensity of [undefined, Number.NaN, 0, 9]) {
       assert.throws(() => validatePhase14FontProofArtifacts({
-        manifest: value.manifest, report: { ...value.evidence, cases: [{ ...first, display_density: invalidDensity }, value.evidence.cases[1]] }, currentHead: value.manifest.base_head, currentSourceTreeSha256: sourceTreeSha256, apkBytes: readFileSync(value.apk), proofSourceBytes: readFileSync(path.join(value.directory, "phase14FontProof.ts")),
+        manifest: value.manifest, report: { ...value.evidence, cases: [{ ...first, display_density: invalidDensity }, value.evidence.cases[1]] }, currentHead: value.manifest.base_head, currentSourceTreeSha256: sourceTreeSha256, apkBytes: readFileSync(value.apk), proofSourceBytes: readFileSync(path.join(value.directory, "phase14FontProof.ts")), installedApkSha256: apkSha256, deviceIdentitySha256,
       }), /phase14_font_metrics_invalid/u);
     }
   } finally {
