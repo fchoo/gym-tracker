@@ -254,18 +254,89 @@ describe("RemovedSessionsScreen", () => {
     await fireEvent.press(screen.getByRole("button", { name: "Restore workout" }));
 
     expect(await screen.findByText(
-      "Restore failed. The workout remains removed. Try restore again when ready.",
+      "The workout was restored, but removed sessions could not be reloaded. Retry loading removed sessions.",
     )).toBeOnTheScreen();
     expect(screen.getByRole("header", { name: "Restore this workout?" }))
+      .toBeOnTheScreen();
+    expect(screen.getAllByRole("button", { name: "Retry loading removed sessions" }).at(-1))
       .toBeOnTheScreen();
     expect(screen.queryByText("Workout restored")).not.toBeOnTheScreen();
     expect(props.restoreSession).toHaveBeenCalledTimes(1);
     expect(props.onRestored).toHaveBeenCalledTimes(1);
 
-    await fireEvent.press(screen.getByRole("button", { name: "Restore workout" }));
+    await fireEvent.press(screen.getAllByRole("button", {
+      name: "Retry loading removed sessions",
+    }).at(-1)!);
     expect(await screen.findByText("Workout restored")).toBeOnTheScreen();
     expect(loadRemovedSessions).toHaveBeenCalledTimes(3);
     expect(props.restoreSession).toHaveBeenCalledTimes(1);
     expect(props.onRestored).toHaveBeenCalledTimes(1);
+  });
+
+  it("retries only the runtime refresh after the restore command has committed", async () => {
+    const onRestored = jest
+      .fn<(sessionId: string) => Promise<void>>()
+      .mockRejectedValueOnce(new Error("runtime refresh unavailable"))
+      .mockResolvedValueOnce(undefined);
+    const props = await renderScreen({
+      loadRemovedSessions: jest
+        .fn<() => Promise<readonly RemovedHistorySession[]>>()
+        .mockResolvedValueOnce([removedSession])
+        .mockResolvedValueOnce([]),
+      onRestored,
+    });
+    await screen.findByText("Full Body Foundation · Full Body A");
+
+    await fireEvent.press(screen.getByRole("button", {
+      name: "Restore Full Body Foundation · Full Body A",
+    }));
+    expect(screen.getByRole("button", { name: "Restore workout" })).toBeOnTheScreen();
+    await fireEvent.press(screen.getByRole("button", { name: "Restore workout" }));
+
+    expect(await screen.findByText(
+      "The workout was restored, but the app could not refresh. Retry refresh to update the app.",
+    )).toBeOnTheScreen();
+    expect(screen.getByRole("button", { name: "Retry refresh" })).toBeOnTheScreen();
+    expect(screen.queryByText("Workout restored")).not.toBeOnTheScreen();
+    expect(props.restoreSession).toHaveBeenCalledTimes(1);
+    expect(onRestored).toHaveBeenCalledTimes(1);
+
+    await fireEvent.press(screen.getByRole("button", { name: "Retry refresh" }));
+    expect(await screen.findByText("Workout restored")).toBeOnTheScreen();
+    expect(props.restoreSession).toHaveBeenCalledTimes(1);
+    expect(onRestored).toHaveBeenCalledTimes(2);
+    expect(props.loadRemovedSessions).toHaveBeenCalledTimes(2);
+  });
+
+  it("moves eventual-success focus to the stable screen heading after the restored row disappears", async () => {
+    const props = await renderScreen({
+      loadRemovedSessions: jest
+        .fn<() => Promise<readonly RemovedHistorySession[]>>()
+        .mockResolvedValueOnce([removedSession])
+        .mockResolvedValueOnce([]),
+    });
+    await screen.findByText("Full Body Foundation · Full Body A");
+
+    await fireEvent.press(screen.getByRole("button", {
+      name: "Restore Full Body Foundation · Full Body A",
+    }));
+    await fireEvent.press(screen.getByRole("button", { name: "Restore workout" }));
+
+    expect(await screen.findByText("Workout restored")).toBeOnTheScreen();
+    expect(screen.queryByText("Full Body Foundation · Full Body A")).not.toBeOnTheScreen();
+    expect(screen.getByRole("header", { name: "Removed sessions" })).toBeOnTheScreen();
+    expect(props.restoreSession).toHaveBeenCalledTimes(1);
+  });
+
+  it("uses the stable heading focus target when eventual success removes the initiating row", () => {
+    const headingFocus = jest.fn();
+    const stableHeading = { current: { focus: headingFocus } as never };
+    const restoreFocus = { current: stableHeading.current };
+
+    const target = restoreFocusRefForRemovedSession(restoreFocus, stableHeading);
+    target.current?.focus?.();
+
+    expect(target).toBe(restoreFocus);
+    expect(headingFocus).toHaveBeenCalledTimes(1);
   });
 });
