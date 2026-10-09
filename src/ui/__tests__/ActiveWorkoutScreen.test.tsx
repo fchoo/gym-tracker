@@ -2681,12 +2681,10 @@ describe("Plan 01-08 ActiveWorkoutScreen", () => {
       onAdvancedTimingChanged,
     });
 
-    await act(async () => {
-      fireEvent.changeText(
-        screen.getByTestId("advanced-timing-interval-seconds"),
-        "4",
-      );
-    });
+    await fireEvent.changeText(
+      screen.getByTestId("advanced-timing-interval-seconds"),
+      "4",
+    );
     await fireEvent.press(screen.getByRole("button", {
       name: "Configure and start per-rep cadence",
     }));
@@ -3399,29 +3397,21 @@ describe("Plan 01-08 ActiveWorkoutScreen", () => {
       }),
     });
 
-    await act(async () => {
-      fireEvent.press(screen.getByRole("button", {
-        name: "Configure Back Squat timing",
-      }));
-    });
+    await fireEvent.press(screen.getByRole("button", {
+      name: "Configure Back Squat timing",
+    }));
     await waitFor(() => expect(screen.getByRole("button", {
       name: "Per-rep timing",
     })).toBeOnTheScreen());
-    await act(async () => {
-      fireEvent.press(screen.getByRole("button", { name: "Per-rep timing" }));
-    });
+    await fireEvent.press(screen.getByRole("button", { name: "Per-rep timing" }));
     await waitFor(() => expect(screen.getByTestId(
       "advanced-timing-config-interval",
     )).toBeOnTheScreen());
-    await act(async () => {
-      fireEvent.changeText(
-        screen.getByTestId("advanced-timing-config-interval"),
-        "3",
-      );
-    });
-    await act(async () => {
-      fireEvent.press(screen.getByRole("button", { name: "Save timing" }));
-    });
+    await fireEvent.changeText(
+      screen.getByTestId("advanced-timing-config-interval"),
+      "3",
+    );
+    await fireEvent.press(screen.getByRole("button", { name: "Save timing" }));
 
     await waitFor(() => expect(updateSessionExerciseAdvancedTiming)
       .toHaveBeenCalledTimes(1));
@@ -3429,36 +3419,26 @@ describe("Plan 01-08 ActiveWorkoutScreen", () => {
       name: "Per-rep timing",
     })).not.toBeOnTheScreen());
 
-    await act(async () => {
-      fireEvent.press(screen.getByRole("button", {
-        name: "Configure Back Squat, working set 1 timing",
-      }));
-    });
+    await fireEvent.press(screen.getByRole("button", {
+      name: "Configure Back Squat, working set 1 timing",
+    }));
     await waitFor(() => expect(screen.getByRole("button", {
       name: "Cluster timing",
     })).toBeOnTheScreen());
-    await act(async () => {
-      fireEvent.press(screen.getByRole("button", { name: "Cluster timing" }));
-    });
+    await fireEvent.press(screen.getByRole("button", { name: "Cluster timing" }));
     await waitFor(() => expect(screen.getByTestId(
       "advanced-timing-config-cluster-pattern",
     )).toBeOnTheScreen());
-    await act(async () => {
-      fireEvent.changeText(
-        screen.getByTestId("advanced-timing-config-cluster-pattern"),
-        "3+3+3",
-      );
-      fireEvent.changeText(
-        screen.getByTestId("advanced-timing-config-cluster-rest"),
-        "20",
-      );
-    });
-    await act(async () => {
-      fireEvent.press(screen.getByRole("button", { name: "both cues" }));
-    });
-    await act(async () => {
-      fireEvent.press(screen.getByRole("button", { name: "Save timing" }));
-    });
+    await fireEvent.changeText(
+      screen.getByTestId("advanced-timing-config-cluster-pattern"),
+      "3+3+3",
+    );
+    await fireEvent.changeText(
+      screen.getByTestId("advanced-timing-config-cluster-rest"),
+      "20",
+    );
+    await fireEvent.press(screen.getByRole("button", { name: "both cues" }));
+    await fireEvent.press(screen.getByRole("button", { name: "Save timing" }));
 
     await waitFor(() => expect(updateSessionSetAdvancedTiming).toHaveBeenCalledWith({
       sessionId: "session-1",

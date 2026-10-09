@@ -32,7 +32,10 @@ describe("useCsvExportController", () => {
       await Promise.resolve();
     });
     await route.unmount();
-    await act(async () => { resolveExport?.({ exportId: "late" }); });
+    await act(async () => {
+      resolveExport?.({ exportId: "late" });
+      await Promise.resolve();
+    });
 
     expect(discard).toHaveBeenCalledWith({ exportId: "late" });
   });
@@ -51,7 +54,7 @@ describe("useCsvExportController", () => {
     });
     expect(route.getByTestId("state").children).toEqual(["ready_to_share"]);
 
-    await act(async () => { fireEvent.press(route.getByTestId("cancel")); });
+    await fireEvent.press(route.getByTestId("cancel"));
 
     expect(discard).toHaveBeenCalledWith({ exportId: "prepared-csv" });
     expect(route.getByTestId("state").children).toEqual(["ready"]);

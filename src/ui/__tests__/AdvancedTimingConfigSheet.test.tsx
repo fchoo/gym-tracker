@@ -172,12 +172,10 @@ describe("AdvancedTimingConfigSheet", () => {
     const { onSave } = await renderSheet({ scope: "exercise" });
 
     await fireEvent.press(screen.getByRole("button", { name: "Per-rep timing" }));
-    await act(async () => {
-      fireEvent.changeText(
-        screen.getByTestId("advanced-timing-config-interval"),
-        "4",
-      );
-    });
+    await fireEvent.changeText(
+      screen.getByTestId("advanced-timing-config-interval"),
+      "4",
+    );
     await fireEvent.press(screen.getByRole("button", { name: "audio cues" }));
     await fireEvent.press(screen.getByRole("button", { name: "Save timing" }));
 
@@ -193,16 +191,14 @@ describe("AdvancedTimingConfigSheet", () => {
     const { onSave } = await renderSheet({ scope: "exercise" });
 
     await fireEvent.press(screen.getByRole("button", { name: "Cluster timing" }));
-    await act(async () => {
-      fireEvent.changeText(
-        screen.getByTestId("advanced-timing-config-cluster-pattern"),
-        "3+3+3",
-      );
-      fireEvent.changeText(
-        screen.getByTestId("advanced-timing-config-cluster-rest"),
-        "20",
-      );
-    });
+    await fireEvent.changeText(
+      screen.getByTestId("advanced-timing-config-cluster-pattern"),
+      "3+3+3",
+    );
+    await fireEvent.changeText(
+      screen.getByTestId("advanced-timing-config-cluster-rest"),
+      "20",
+    );
     await fireEvent.press(screen.getByRole("button", { name: "both cues" }));
     await fireEvent.press(screen.getByRole("button", { name: "Save timing" }));
 
@@ -219,12 +215,10 @@ describe("AdvancedTimingConfigSheet", () => {
     const { onSave } = await renderSheet({ scope: "exercise" });
 
     await fireEvent.press(screen.getByRole("button", { name: "Per-rep timing" }));
-    await act(async () => {
-      fireEvent.changeText(
-        screen.getByTestId("advanced-timing-config-interval"),
-        "0",
-      );
-    });
+    await fireEvent.changeText(
+      screen.getByTestId("advanced-timing-config-interval"),
+      "0",
+    );
     await fireEvent.press(screen.getByRole("button", { name: "Save timing" }));
 
     expect(onSave).not.toHaveBeenCalled();
@@ -240,16 +234,14 @@ describe("AdvancedTimingConfigSheet", () => {
     const { onSave } = await renderSheet({ scope: "exercise" });
 
     await fireEvent.press(screen.getByRole("button", { name: "Cluster timing" }));
-    await act(async () => {
-      fireEvent.changeText(
-        screen.getByTestId("advanced-timing-config-cluster-pattern"),
-        "9",
-      );
-      fireEvent.changeText(
-        screen.getByTestId("advanced-timing-config-cluster-rest"),
-        "20",
-      );
-    });
+    await fireEvent.changeText(
+      screen.getByTestId("advanced-timing-config-cluster-pattern"),
+      "9",
+    );
+    await fireEvent.changeText(
+      screen.getByTestId("advanced-timing-config-cluster-rest"),
+      "20",
+    );
     await fireEvent.press(screen.getByRole("button", { name: "Save timing" }));
 
     expect(onSave).not.toHaveBeenCalled();
@@ -263,16 +255,14 @@ describe("AdvancedTimingConfigSheet", () => {
     const { onSave } = await renderSheet({ scope: "exercise" });
 
     await fireEvent.press(screen.getByRole("button", { name: "Cluster timing" }));
-    await act(async () => {
-      fireEvent.changeText(
-        screen.getByTestId("advanced-timing-config-cluster-pattern"),
-        "3+3+3",
-      );
-      fireEvent.changeText(
-        screen.getByTestId("advanced-timing-config-cluster-rest"),
-        "0",
-      );
-    });
+    await fireEvent.changeText(
+      screen.getByTestId("advanced-timing-config-cluster-pattern"),
+      "3+3+3",
+    );
+    await fireEvent.changeText(
+      screen.getByTestId("advanced-timing-config-cluster-rest"),
+      "0",
+    );
     await fireEvent.press(screen.getByRole("button", { name: "Save timing" }));
 
     expect(onSave).not.toHaveBeenCalled();
@@ -411,16 +401,14 @@ describe("AdvancedTimingConfigSheet", () => {
     const { onSave } = await renderSheet({ scope: "exercise" });
 
     await fireEvent.press(screen.getByRole("button", { name: "Cluster timing" }));
-    await act(async () => {
-      fireEvent.changeText(
-        screen.getByTestId("advanced-timing-config-cluster-pattern"),
-        "5+5",
-      );
-      fireEvent.changeText(
-        screen.getByTestId("advanced-timing-config-cluster-rest"),
-        "30",
-      );
-    });
+    await fireEvent.changeText(
+      screen.getByTestId("advanced-timing-config-cluster-pattern"),
+      "5+5",
+    );
+    await fireEvent.changeText(
+      screen.getByTestId("advanced-timing-config-cluster-rest"),
+      "30",
+    );
     await fireEvent.press(screen.getByRole("button", { name: "Save timing" }));
 
     expect(onSave).toHaveBeenCalledWith({

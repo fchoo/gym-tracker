@@ -206,12 +206,10 @@ describe("AdvancedTimingIndicator", () => {
     expect(rendered.getByRole("button", { name: "Configure and start per-rep cadence" }))
       .toHaveStyle({ minHeight: 48, minWidth: 48 });
 
-    await act(async () => {
-      fireEvent.changeText(
-        rendered.getByTestId("advanced-timing-interval-seconds"),
-        "4",
-      );
-    });
+    await fireEvent.changeText(
+      rendered.getByTestId("advanced-timing-interval-seconds"),
+      "4",
+    );
     await fireEvent.press(rendered.getByRole("button", {
       name: "Configure and start per-rep cadence",
     }));
@@ -236,16 +234,14 @@ describe("AdvancedTimingIndicator", () => {
     expect(rendered.getByRole("button", { name: "Configure and start cluster timing" }))
       .toHaveStyle({ minHeight: 48, minWidth: 48 });
 
-    await act(async () => {
-      fireEvent.changeText(
-        rendered.getByTestId("advanced-timing-cluster-pattern"),
-        "3+3+3",
-      );
-      fireEvent.changeText(
-        rendered.getByTestId("advanced-timing-cluster-gap-seconds"),
-        "20",
-      );
-    });
+    await fireEvent.changeText(
+      rendered.getByTestId("advanced-timing-cluster-pattern"),
+      "3+3+3",
+    );
+    await fireEvent.changeText(
+      rendered.getByTestId("advanced-timing-cluster-gap-seconds"),
+      "20",
+    );
     await fireEvent.press(rendered.getByRole("button", {
       name: "Configure and start cluster timing",
     }));
@@ -263,9 +259,10 @@ describe("AdvancedTimingIndicator", () => {
     const { props, rendered } = await renderIndicator();
 
     await fireEvent.press(rendered.getByRole("button", { name: "Select cluster timing" }));
-    await act(async () => {
-      fireEvent.changeText(rendered.getByTestId("advanced-timing-cluster-pattern"), "9");
-    });
+    await fireEvent.changeText(
+      rendered.getByTestId("advanced-timing-cluster-pattern"),
+      "9",
+    );
     await fireEvent.press(rendered.getByRole("button", {
       name: "Configure and start cluster timing",
     }));
@@ -347,9 +344,10 @@ describe("AdvancedTimingIndicator", () => {
   it("validates interval bounds without invoking timing commands", async () => {
     const { props, rendered } = await renderIndicator();
 
-    await act(async () => {
-      fireEvent.changeText(rendered.getByTestId("advanced-timing-interval-seconds"), "0");
-    });
+    await fireEvent.changeText(
+      rendered.getByTestId("advanced-timing-interval-seconds"),
+      "0",
+    );
     await fireEvent.press(rendered.getByRole("button", {
       name: "Configure and start per-rep cadence",
     }));

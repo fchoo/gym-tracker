@@ -239,6 +239,7 @@ describe("ManualEncryptedBackupContent", () => {
 
     await act(async () => {
       resolveShare?.();
+      await Promise.resolve();
     });
   });
 
@@ -288,6 +289,7 @@ describe("ManualEncryptedBackupContent", () => {
         createdAtMs: 1_789_977_000_000,
         displayName: "late-backup.gtbk",
       });
+      await Promise.resolve();
     });
 
     await waitFor(() => expect(mockDiscardSecureBackup).toHaveBeenCalledWith(expect.objectContaining({
@@ -363,6 +365,7 @@ describe("ManualEncryptedBackupContent", () => {
           references: { internalSnapshotReferences: 0, requiredLocalBundled: { available: 0, unavailable: 0 }, catalogReferences: { available: 0, unavailable: 0 } },
         },
       });
+      await Promise.resolve();
     });
 
     await waitFor(() => expect(mockInvalidateSecureRestorePreflight)
@@ -414,6 +417,7 @@ describe("ManualEncryptedBackupContent", () => {
     expect(mockCommitSecureRestore).toHaveBeenCalledWith({ token: "opaque-token", confirmation: "REPLACE" });
     await act(async () => {
       resolveCommit?.({ state: "ready" });
+      await Promise.resolve();
     });
     expect(await screen.findByText("Backup restored. Search and progress are ready.")).toBeOnTheScreen();
   });
@@ -557,6 +561,7 @@ describe("ManualEncryptedBackupContent", () => {
           conflicts: 0,
         },
       });
+      await Promise.resolve();
     });
 
     await waitFor(() => expect(mockInvalidateSecureMergePreflight)
@@ -596,6 +601,7 @@ describe("ManualEncryptedBackupContent", () => {
     expect(mockCommitSecureMerge).toHaveBeenCalledWith({ token: "merge-token", confirmation: "MERGE" });
     await act(async () => {
       resolveCommit?.({ state: "ready" });
+      await Promise.resolve();
     });
     expect(await screen.findByText("Merge complete. Search and progress are ready.")).toBeOnTheScreen();
   });
@@ -727,6 +733,7 @@ describe("ManualEncryptedBackupContent", () => {
 
     await act(async () => {
       resolveCreate?.({ exportId: "csv-v1" });
+      await Promise.resolve();
     });
     expect(await screen.findByText("CSV export ready")).toBeOnTheScreen();
 
@@ -739,6 +746,7 @@ describe("ManualEncryptedBackupContent", () => {
     expect(mockShareCsvExport).toHaveBeenCalledWith({ exportId: "csv-v1" });
     await act(async () => {
       resolveShare?.();
+      await Promise.resolve();
     });
     await waitFor(() => expect(screen.queryByText("CSV export ready"))
       .not.toBeOnTheScreen());
@@ -765,6 +773,7 @@ describe("ManualEncryptedBackupContent", () => {
     await fireEvent.press(screen.getByRole("button", { name: "Export CSV" }));
     await act(async () => {
       resolveCreate?.({ exportId: "csv-v1" });
+      await Promise.resolve();
     });
     await screen.findByText("CSV export ready");
     await fireEvent.press(screen.getByRole("button", { name: "Share CSV" }));
@@ -783,6 +792,7 @@ describe("ManualEncryptedBackupContent", () => {
     await fireEvent.press(screen.getByRole("button", { name: "Export CSV" }));
     await act(async () => {
       resolveCreate?.({ exportId: "csv-v1" });
+      await Promise.resolve();
     });
     await screen.findByText("CSV export ready");
 
@@ -802,8 +812,11 @@ describe("ManualEncryptedBackupContent", () => {
     const route = await renderRoute();
     await fireEvent.press(screen.getByRole("button", { name: "Export CSV" }));
 
-    route.unmount();
-    resolveCreate?.({ exportId: "csv-v1-late" } as RuntimeCsvExport);
+    await act(async () => {
+      route.unmount();
+      resolveCreate?.({ exportId: "csv-v1-late" } as RuntimeCsvExport);
+      await Promise.resolve();
+    });
 
     await waitFor(() => expect(mockDiscardCsvExport).toHaveBeenCalledWith({
       exportId: "csv-v1-late",
@@ -814,9 +827,10 @@ describe("ManualEncryptedBackupContent", () => {
     let resolveCreate: ((value: RuntimeCsvExport) => void) | undefined;
     mockCreateCsvExport.mockImplementationOnce(() => new Promise((resolve) => { resolveCreate = resolve; }));
     const route = await renderRoute();
-    await fireEvent.press(screen.getByRole("button", { name: "Export CSV" }));
+    await fireEvent.press(await screen.findByRole("button", { name: "Export CSV" }));
     await act(async () => {
       resolveCreate?.({ exportId: "csv-v1" });
+      await Promise.resolve();
     });
     await screen.findByText("CSV export ready");
     await fireEvent.press(screen.getByRole("button", { name: "Share CSV" }));
