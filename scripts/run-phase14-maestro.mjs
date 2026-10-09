@@ -465,6 +465,9 @@ export function executePhase14Maestro(args = process.argv.slice(2)) {
   const byCaseId = new Map(ids.map((id) => [id, []]));
 
   for (const cell of cells) {
+    // Device-configuration changes can crash a live React Native process on
+    // the emulator. Isolate each matrix cell before mutating device state.
+    adb(adbPath, manifest.device.serial, "shell", "am", "force-stop", manifest.package);
     const applied = applyCellDeviceState(adbPath, manifest.device.serial, cell);
     try {
       const flowPath = path.join(ROOT, "maestro/phase14", `${cell.flow}.yaml`);

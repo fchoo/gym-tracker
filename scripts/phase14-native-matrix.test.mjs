@@ -61,4 +61,10 @@ test("Phase 14 Maestro flows encode all shell stages and stay native-only", () =
   assert.match(toastFlow, /openLink: "gymtracker-devtest:\/\/__phase14-toast-proof"/u);
   assert.match(toastFlow, /tapOn: "Tap background control"/u);
   assert.match(toastFlow, /assertVisible: "Background control activated"/u);
+
+  const runner = readFileSync("scripts/run-phase14-maestro.mjs", "utf8");
+  assert.match(
+    runner,
+    /adb\(adbPath, manifest\.device\.serial, "shell", "am", "force-stop", manifest\.package\);\s*const applied = applyCellDeviceState/u,
+  );
 });
