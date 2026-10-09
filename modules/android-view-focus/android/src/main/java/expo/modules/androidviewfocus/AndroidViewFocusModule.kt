@@ -7,10 +7,21 @@ import expo.modules.kotlin.modules.Module
 import expo.modules.kotlin.modules.ModuleDefinition
 
 private fun findNativeId(root: View, nativeId: String, tagKey: Int): View? {
-  if (root.getTag(tagKey) == nativeId) return root
+  if (root.isShown && root.getTag(tagKey) == nativeId) return root
   if (root is ViewGroup) {
     for (index in 0 until root.childCount) {
       val match = findNativeId(root.getChildAt(index), nativeId, tagKey)
+      if (match != null) return match
+    }
+  }
+  return null
+}
+
+private fun findVisibleContentDescription(root: View, label: String): View? {
+  if (root.isShown && root.contentDescription?.toString() == label) return root
+  if (root is ViewGroup) {
+    for (index in 0 until root.childCount) {
+      val match = findVisibleContentDescription(root.getChildAt(index), label)
       if (match != null) return match
     }
   }
@@ -41,17 +52,16 @@ class AndroidViewFocusModule : Module() {
               "id",
               activity.packageName,
             )
-            val target = if (root == null || tagKey == 0) {
-              null
-            } else {
-              findNativeId(root, nativeId, tagKey)
+            val target = if (root == null) null else {
+              val byNativeId = if (tagKey == 0) null else findNativeId(root, nativeId, tagKey)
+              byNativeId ?: findVisibleContentDescription(root, "Open App Settings")
             }
             if (target == null) {
               false
             } else {
               target.isFocusable = true
               target.isFocusableInTouchMode = true
-              target.requestFocus()
+              target.requestFocusFromTouch() || target.requestFocus()
             }
           } catch (_: RuntimeException) {
             false
