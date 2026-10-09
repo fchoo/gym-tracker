@@ -14,6 +14,7 @@ import {
 import {
   validateDistinctPhase14Flows,
   validatePhase14Manifest,
+  validatePhase14ReplayableManifest,
 } from "./run-phase14-maestro.mjs";
 import {
   parsePhase14VerifierArgs,
@@ -307,6 +308,12 @@ test("Phase 14 rejects stale source/APK/package/profile/device identity and inva
   );
   assert.throws(
     () => validatePhase14Manifest(manifest, "f".repeat(40), manifest.source_tree_sha256),
+    /phase14_manifest_stale/u,
+  );
+  assert.doesNotThrow(() =>
+    validatePhase14ReplayableManifest(manifest, manifest.source_tree_sha256));
+  assert.throws(
+    () => validatePhase14ReplayableManifest(manifest, "f".repeat(64)),
     /phase14_manifest_stale/u,
   );
 

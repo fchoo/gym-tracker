@@ -85,16 +85,10 @@ export function validatePhase14Manifest(manifest, currentHead, currentSource) {
   return true;
 }
 
-function hasEvidenceOnlyHeadAdvance(manifest, currentHead) {
-  if (manifest.base_head === currentHead) return false;
-  const changed = command("git", ["diff", "--name-only", manifest.base_head, currentHead])
-    .split("\n")
-    .filter(Boolean);
-  return (
-    changed.length > 0
-    && changed.every((file) =>
-      file.startsWith(".planning/phases/14-prototype-visual-shell/evidence/"))
-  );
+export function validatePhase14ReplayableManifest(manifest, currentSource) {
+  // base_head is capture provenance. Replayability follows the same content
+  // identity used by the verifier so later planning/evidence commits are safe.
+  return validatePhase14Manifest(manifest, manifest.base_head, currentSource);
 }
 
 export function validateDistinctPhase14Flows(flows) {
@@ -435,13 +429,8 @@ export function executePhase14Maestro(args = process.argv.slice(2)) {
   validatePhase14NativeMatrix(PHASE14_NATIVE_MATRIX);
   const { manifest: manifestPath, ids } = parsePhase14RunnerArgs(args);
   const manifest = JSON.parse(readFileSync(manifestPath, "utf8"));
-  const currentHead = command("git", ["rev-parse", "HEAD"]);
   const currentSource = sourceTreeSha256(ROOT);
-  validatePhase14Manifest(
-    manifest,
-    hasEvidenceOnlyHeadAdvance(manifest, currentHead) ? manifest.base_head : currentHead,
-    currentSource,
-  );
+  validatePhase14ReplayableManifest(manifest, currentSource);
   ensureFlowBodies();
   const apkPath = path.resolve(ROOT, manifest.apk.path);
   if (!existsSync(apkPath) || sha256(readFileSync(apkPath)) !== manifest.apk.sha256) {
