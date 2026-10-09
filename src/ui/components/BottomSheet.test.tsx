@@ -5,7 +5,7 @@ import {
 } from "@testing-library/react-native";
 import { beforeEach, describe, expect, it, jest } from "@jest/globals";
 import React from "react";
-import { Dimensions, Text, View } from "react-native";
+import { AccessibilityInfo, Dimensions, Text, View } from "react-native";
 import { SafeAreaProvider } from "react-native-safe-area-context";
 
 import { BottomSheet } from "./BottomSheet";
@@ -94,6 +94,31 @@ describe("BottomSheet", () => {
     expect(cancel).toHaveBeenCalledTimes(4);
     expect(focus).toHaveBeenCalledTimes(4);
     await rendered.unmount();
+  });
+
+  it("does not force accessibility focus to node 0 when the restore target has no native handle", async () => {
+    const setAccessibilityFocus = jest.fn();
+    jest.spyOn(AccessibilityInfo, "setAccessibilityFocus")
+      .mockImplementation(setAccessibilityFocus);
+    const restoreFocusRef = { current: { focus: jest.fn() } as unknown as View };
+
+    await render(
+      <SheetTestProviders>
+        <BottomSheet
+          heading="Edit filters"
+          onCancel={jest.fn()}
+          restoreFocusRef={restoreFocusRef}
+          visible
+        >
+          <Text>Draft stays private</Text>
+        </BottomSheet>
+      </SheetTestProviders>,
+    );
+
+    await fireEvent.press(screen.getByRole("button", { name: "Close edit filters" }));
+
+    expect(restoreFocusRef.current.focus).toHaveBeenCalledTimes(1);
+    expect(setAccessibilityFocus).not.toHaveBeenCalledWith(0);
   });
 
   it("keeps traversal inside the modal frame and preserves reachable keyboard-safe geometry", async () => {

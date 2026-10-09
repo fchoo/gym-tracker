@@ -132,7 +132,9 @@ export function BottomSheet({
     } catch {
       // A caller-owned focus seam may expose only focus(); it is still valid.
     }
-    AccessibilityInfo.setAccessibilityFocus(restoreNode ?? 0);
+    if (typeof restoreNode === "number" && restoreNode > 0) {
+      AccessibilityInfo.setAccessibilityFocus(restoreNode);
+    }
   }, [restoreFocusRef]);
 
   useEffect(() => {
