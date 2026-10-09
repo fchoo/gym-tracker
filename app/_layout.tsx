@@ -3,9 +3,17 @@ import Constants from "expo-constants";
 import { useFonts } from "expo-font";
 import { Stack, usePathname } from "expo-router";
 import { StatusBar } from "expo-status-bar";
-import { StyleSheet, useWindowDimensions } from "react-native";
+import {
+  Keyboard,
+  StyleSheet,
+  useWindowDimensions,
+  type KeyboardEvent,
+} from "react-native";
 import { GestureHandlerRootView } from "react-native-gesture-handler";
-import { SafeAreaProvider } from "react-native-safe-area-context";
+import {
+  SafeAreaProvider,
+  useSafeAreaInsets,
+} from "react-native-safe-area-context";
 
 import {
   AppLoadingShell,
@@ -29,10 +37,80 @@ import {
   createMemoryAppearanceStore,
   useAppTheme,
 } from "../src/ui/theme";
+import {
+  SemanticToastProvider,
+} from "../src/ui/components/SemanticToast";
 
 const attendedPreviewAppearanceStore = createMemoryAppearanceStore();
 const phase6GestureSmokeAppearanceStore = createMemoryAppearanceStore();
 const phase12CleanupAppearanceStore = createMemoryAppearanceStore();
+const APPROVED_ROOT_HEADER_HEIGHT = 56;
+const APPROVED_ROOT_NAVIGATION_HEIGHT = 74;
+
+type KeyboardFrame = KeyboardEvent["endCoordinates"];
+
+function keyboardBottomOverlap(
+  frame: KeyboardFrame | undefined,
+  viewportHeight: number,
+): number {
+  if (frame === undefined || !Number.isFinite(viewportHeight) || viewportHeight <= 0) {
+    return 0;
+  }
+  if (Number.isFinite(frame.screenY)) {
+    return Math.min(viewportHeight, Math.max(0, viewportHeight - frame.screenY));
+  }
+  return Math.min(viewportHeight, Math.max(0, frame.height));
+}
+
+export function ProductionToastBoundary({
+  children,
+  dockAvoidance = 0,
+}: Readonly<{
+  children: React.ReactNode;
+  dockAvoidance?: number;
+}>) {
+  const insets = useSafeAreaInsets();
+  const { height } = useWindowDimensions();
+  const [keyboardFrame, setKeyboardFrame] = React.useState<KeyboardFrame | undefined>(
+    () => typeof Keyboard.metrics === "function" ? Keyboard.metrics() : undefined,
+  );
+
+  React.useEffect(() => {
+    const showSubscription = Keyboard.addListener(
+      "keyboardDidShow",
+      (event) => setKeyboardFrame(event.endCoordinates),
+    );
+    const frameSubscription = Keyboard.addListener(
+      "keyboardDidChangeFrame",
+      (event) => setKeyboardFrame(event.endCoordinates),
+    );
+    const hideSubscription = Keyboard.addListener(
+      "keyboardDidHide",
+      () => setKeyboardFrame(undefined),
+    );
+    return () => {
+      showSubscription.remove();
+      frameSubscription.remove();
+      hideSubscription.remove();
+    };
+  }, []);
+
+  const topAvoidance = Math.max(0, insets.top) + APPROVED_ROOT_HEADER_HEIGHT;
+  const bottomAvoidance = Math.max(
+    Math.max(0, insets.bottom) + APPROVED_ROOT_NAVIGATION_HEIGHT,
+    keyboardBottomOverlap(keyboardFrame, height),
+    Math.max(0, dockAvoidance),
+  );
+
+  return (
+    <SemanticToastProvider
+      bottomAvoidance={bottomAvoidance}
+      topAvoidance={topAvoidance}
+    >
+      {children}
+    </SemanticToastProvider>
+  );
+}
 
 function RootNavigator() {
   const runtime = useWorkoutAppRuntime();
@@ -289,7 +367,9 @@ function RootLayoutAttempt({
           <WorkoutAppRuntimeProvider
             dependencies={productionWorkoutAppRuntimeDependencies}
           >
-            <RootNavigator />
+            <ProductionToastBoundary>
+              <RootNavigator />
+            </ProductionToastBoundary>
           </WorkoutAppRuntimeProvider>
         </AppearanceProvider>
       </SafeAreaProvider>

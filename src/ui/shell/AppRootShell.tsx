@@ -3,10 +3,6 @@ import { View } from "react-native";
 
 import { BottomSheet } from "../components/BottomSheet";
 import {
-  SemanticToastProvider,
-  type SemanticToastMountChange,
-} from "../components/SemanticToast";
-import {
   type RootFocusTarget,
   type RootOrigin,
   type RootRouteKey,
@@ -22,9 +18,6 @@ type AppRootShellProps = Readonly<{
   onOpenSettings?: () => void;
   settingsContent?: React.ReactNode | ((closeSettings: () => void) => React.ReactNode);
   settingsTriggerRef?: React.RefObject<RootFocusTarget | null>;
-  toastTopAvoidance?: number;
-  toastBottomAvoidance?: number;
-  onToastMountChange?: ((change: SemanticToastMountChange) => void) | undefined;
 }>;
 
 type RootSettingsControllerValue = Readonly<{
@@ -58,9 +51,6 @@ export function AppRootShell({
   onOpenSettings,
   settingsContent,
   settingsTriggerRef,
-  toastTopAvoidance,
-  toastBottomAvoidance,
-  onToastMountChange,
 }: AppRootShellProps) {
   const [settingsVisible, setSettingsVisible] = React.useState(false);
   const [activeSettingsTriggerRef, setActiveSettingsTriggerRef] = React.useState<
@@ -122,27 +112,21 @@ export function AppRootShell({
   }, [activeRoot, currentPath, headingRefs, onConsumeOrigin, origin]);
 
   return (
-    <SemanticToastProvider
-      bottomAvoidance={toastBottomAvoidance}
-      onToastMountChange={onToastMountChange}
-      topAvoidance={toastTopAvoidance}
-    >
-      <RootSettingsControllerContext.Provider value={rootSettingsController}>
-        <View style={{ flex: 1 }} testID="app-root-shell">
-          {children}
-          {settingsContent === undefined ? null : (
-            <BottomSheet
-              cancelLabel="Close App Settings"
-              heading="App Settings"
-              onCancel={closeSettings}
-              restoreFocusRef={activeSettingsTriggerRef}
-              visible={settingsVisible}
-            >
-              {resolvedSettingsContent}
-            </BottomSheet>
-          )}
-        </View>
-      </RootSettingsControllerContext.Provider>
-    </SemanticToastProvider>
+    <RootSettingsControllerContext.Provider value={rootSettingsController}>
+      <View style={{ flex: 1 }} testID="app-root-shell">
+        {children}
+        {settingsContent === undefined ? null : (
+          <BottomSheet
+            cancelLabel="Close App Settings"
+            heading="App Settings"
+            onCancel={closeSettings}
+            restoreFocusRef={activeSettingsTriggerRef}
+            visible={settingsVisible}
+          >
+            {resolvedSettingsContent}
+          </BottomSheet>
+        )}
+      </View>
+    </RootSettingsControllerContext.Provider>
   );
 }

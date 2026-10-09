@@ -1,11 +1,12 @@
 import {
+  act,
   fireEvent,
   render,
   screen,
   waitFor,
 } from "@testing-library/react-native";
-import { beforeEach, describe, expect, it, jest } from "@jest/globals";
-import { Dimensions } from "react-native";
+import { afterEach, beforeEach, describe, expect, it, jest } from "@jest/globals";
+import { Dimensions, Keyboard, StyleSheet } from "react-native";
 import React from "react";
 
 let mockFontsLoaded = true;
@@ -13,6 +14,7 @@ let mockFontError: Error | null = null;
 let mockNativeContractsEnabled = true;
 let mockNativeContractSuite: string | null = null;
 let mockPathname = "/__phase2-attended-preview";
+let mockSafeAreaInsets = { bottom: 0, left: 0, right: 0, top: 0 };
 const mockRuntimeProviderMounted = jest.fn();
 const mockProductionAppearanceRead = jest.fn(() => null);
 const mockProductionAppearanceWrite = jest.fn();
@@ -74,6 +76,7 @@ jest.mock("react-native-safe-area-context", () => {
     SafeAreaProvider: ({ children }: Readonly<{ children: React.ReactNode }>) => (
       <View testID="safe-area-provider">{children}</View>
     ),
+    useSafeAreaInsets: () => mockSafeAreaInsets,
   };
 });
 
@@ -194,19 +197,37 @@ jest.mock("../../src/ui/theme", () => {
       );
     },
     appFonts: { Interface: 1 },
-    useAppTheme: () => ({ colorScheme: "dark" }),
+    space: { 2: 8, 4: 16 },
+    typeScale: { body: {} },
+    useAppTheme: () => ({
+      colorScheme: "dark",
+      colors: {
+        destructive: "#ff0000",
+        timerAttention: "#ffff00",
+        toastAccent: "#00ff00",
+        toastBg: "#000000",
+        toastBorder: "#333333",
+        toastText: "#ffffff",
+      },
+      reduceMotion: true,
+    }),
   };
 });
 
-import RootLayout from "../_layout";
+import RootLayout, { ProductionToastBoundary } from "../_layout";
 
 describe("RootLayout attended preview isolation", () => {
+  afterEach(() => {
+    jest.restoreAllMocks();
+  });
+
   beforeEach(() => {
     mockFontsLoaded = true;
     mockFontError = null;
     mockNativeContractsEnabled = true;
     mockNativeContractSuite = null;
     mockPathname = "/__phase2-attended-preview";
+    mockSafeAreaInsets = { bottom: 0, left: 0, right: 0, top: 0 };
     mockRuntimeProviderMounted.mockClear();
     mockUseFonts.mockClear();
     mockProductionAppearanceRead.mockReset();
@@ -410,6 +431,63 @@ describe("RootLayout attended preview isolation", () => {
     expect(screen.getByTestId("startup-readiness-gate"))
       .toBeOnTheScreen();
     expect(mockRuntimeProviderMounted).toHaveBeenCalledTimes(1);
+  });
+
+  it("mounts one production toast corridor using safe-area, shell, and keyboard bounds", async () => {
+    mockNativeContractsEnabled = false;
+    mockPathname = "/more/removed-sessions";
+    mockSafeAreaInsets = { bottom: 20, left: 0, right: 0, top: 24 };
+    const listeners = new Map<string, (event?: unknown) => void>();
+    jest.spyOn(Keyboard, "metrics").mockReturnValue(undefined);
+    jest.spyOn(Keyboard, "addListener").mockImplementation((event, listener) => {
+      listeners.set(event, listener as (event?: unknown) => void);
+      return { remove: jest.fn() } as never;
+    });
+
+    await render(<RootLayout />);
+
+    expect(screen.getAllByTestId("semantic-toast-host")).toHaveLength(1);
+    expect(StyleSheet.flatten(screen.getByTestId("semantic-toast-host").props.style))
+      .toMatchObject({ bottom: 110, top: 96 });
+
+    await act(async () => {
+      listeners.get("keyboardDidShow")?.({
+        duration: 0,
+        easing: "keyboard",
+        endCoordinates: {
+          height: 400,
+          screenX: 0,
+          screenY: 500,
+          width: 599,
+        },
+      });
+    });
+
+    expect(StyleSheet.flatten(screen.getByTestId("semantic-toast-host").props.style))
+      .toMatchObject({ bottom: 416, top: 96 });
+
+    await act(async () => {
+      listeners.get("keyboardDidHide")?.();
+    });
+    expect(StyleSheet.flatten(screen.getByTestId("semantic-toast-host").props.style))
+      .toMatchObject({ bottom: 110, top: 96 });
+  });
+
+  it("retains a root seam for a taller downstream command dock", async () => {
+    mockSafeAreaInsets = { bottom: 20, left: 0, right: 0, top: 24 };
+    jest.spyOn(Keyboard, "metrics").mockReturnValue(undefined);
+    jest.spyOn(Keyboard, "addListener").mockReturnValue({
+      remove: jest.fn(),
+    } as never);
+
+    await render(
+      <ProductionToastBoundary dockAvoidance={160}>
+        <React.Fragment />
+      </ProductionToastBoundary>,
+    );
+
+    expect(StyleSheet.flatten(screen.getByTestId("semantic-toast-host").props.style))
+      .toMatchObject({ bottom: 176, top: 96 });
   });
 
   it("keeps the exact preview on its memory store while fonts are pending", async () => {

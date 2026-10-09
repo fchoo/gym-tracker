@@ -14,7 +14,10 @@ export type SemanticToastMountChange =
   Readonly<{ mounted: false }>
   | Readonly<{ mounted: true; event: SemanticToastEvent }>;
 
-type ToastContextValue = Readonly<{ enqueue: (event: SemanticToastEvent) => void }>;
+type ToastContextValue = Readonly<{
+  enqueue: (event: SemanticToastEvent) => void;
+  mountedEvent: SemanticToastEvent | undefined;
+}>;
 const ToastContext = createContext<ToastContextValue | undefined>(undefined);
 
 function isBoundedUserMessage(message: string): boolean {
@@ -32,7 +35,7 @@ export function useSemanticToast(): ToastContextValue {
 export function SemanticToastProvider({
   children,
   topAvoidance = 0,
-  bottomAvoidance: _bottomAvoidance = 0,
+  bottomAvoidance = 0,
   onToastMountChange,
 }: Readonly<{
   children: React.ReactNode;
@@ -46,6 +49,7 @@ export function SemanticToastProvider({
   const opacity = useRef(new Animated.Value(1)).current;
   const translateY = useRef(new Animated.Value(0)).current;
   const mountedToastMessageRef = useRef<string | null>(null);
+  const [mountedEvent, setMountedEvent] = useState<SemanticToastEvent | undefined>();
 
   const enqueue = useCallback((event: SemanticToastEvent) => {
     const normalizedDurationMs = normalizeToastDurationMs(event.durationMs);
@@ -86,6 +90,7 @@ export function SemanticToastProvider({
     if (current === undefined) {
       if (mountedToastMessageRef.current !== null) {
         mountedToastMessageRef.current = null;
+        setMountedEvent(undefined);
         onToastMountChange?.({ mounted: false });
       }
       return;
@@ -93,6 +98,7 @@ export function SemanticToastProvider({
 
     if (mountedToastMessageRef.current !== current.message) {
       mountedToastMessageRef.current = null;
+      setMountedEvent(undefined);
     }
   }, [current, onToastMountChange]);
 
@@ -101,47 +107,73 @@ export function SemanticToastProvider({
       return;
     }
     mountedToastMessageRef.current = current.message;
+    setMountedEvent(current);
     onToastMountChange?.({ event: current, mounted: true });
   }, [current, onToastMountChange]);
 
-  const value = useMemo(() => ({ enqueue }), [enqueue]);
+  const value = useMemo(() => ({ enqueue, mountedEvent }), [enqueue, mountedEvent]);
   const accent = current?.severity === "error"
     ? colors.destructive
     : current?.severity === "progress"
       ? colors.timerAttention
       : colors.toastAccent;
-  const topAnchor = topAvoidance + space[4];
+  const topAnchor = Math.max(0, topAvoidance) + space[4];
+  const bottomAnchor = Math.max(0, bottomAvoidance) + space[4];
 
   return (
     <ToastContext.Provider value={value}>
       {children}
-      {current === undefined ? null : (
-        <Animated.View
-          accessibilityLabel={current.message}
-          accessibilityLiveRegion={current.severity === "error" ? "assertive" : "polite"}
-          accessibilityRole="alert"
-          accessible
-          importantForAccessibility="yes"
-          onLayout={handleToastLayout}
-          style={[
-            styles.toast,
-            {
-              backgroundColor: colors.toastBg,
-              borderColor: colors.toastBorder,
-              opacity,
-              top: topAnchor,
-              transform: [{ translateY }],
-            },
-          ]}
-          testID="semantic-toast"
-        >
-          <View style={[styles.accent, { backgroundColor: accent }]} />
-          <Text style={[typeScale.body as TextStyle, styles.copy, { color: colors.toastText }]}>
-            {current.message}
-          </Text>
-        </Animated.View>
-      )}
+      <View
+        pointerEvents="box-none"
+        style={[
+          styles.host,
+          { bottom: bottomAnchor, top: topAnchor },
+        ]}
+        testID="semantic-toast-host"
+      >
+        {current === undefined ? null : (
+          <Animated.View
+            accessibilityLabel={current.message}
+            accessibilityLiveRegion={current.severity === "error" ? "assertive" : "polite"}
+            accessibilityRole="alert"
+            accessible
+            importantForAccessibility="yes"
+            onLayout={handleToastLayout}
+            pointerEvents="none"
+            style={[
+              styles.toast,
+              {
+                backgroundColor: colors.toastBg,
+                borderColor: colors.toastBorder,
+                opacity,
+                transform: [{ translateY }],
+              },
+            ]}
+            testID="semantic-toast"
+          >
+            <View style={[styles.accent, { backgroundColor: accent }]} />
+            <Text style={[typeScale.body as TextStyle, styles.copy, { color: colors.toastText }]}>
+              {current.message}
+            </Text>
+          </Animated.View>
+        )}
+      </View>
     </ToastContext.Provider>
+  );
+}
+
+export function SemanticToastBoundary({
+  children,
+  ...providerProps
+}: React.ComponentProps<typeof SemanticToastProvider>) {
+  const existingContext = useContext(ToastContext);
+  if (existingContext !== undefined) {
+    return <>{children}</>;
+  }
+  return (
+    <SemanticToastProvider {...providerProps}>
+      {children}
+    </SemanticToastProvider>
   );
 }
 
@@ -157,16 +189,18 @@ function normalizeToastDurationMs(durationMs: number | undefined): number | unde
 }
 
 const styles = StyleSheet.create({
+  host: {
+    left: space[4],
+    position: "absolute",
+    right: space[4],
+  },
   toast: {
     borderRadius: 12,
     borderWidth: 1,
     flexDirection: "row",
-    left: space[4],
     minHeight: 50,
     overflow: "hidden",
     paddingRight: space[4],
-    position: "absolute",
-    right: space[4],
   },
   accent: { width: 4 },
   copy: { alignSelf: "center", flex: 1, paddingLeft: 12, paddingVertical: space[2] },

@@ -10,7 +10,10 @@ import {
 
 import { AppSettingsContent } from "../screens/SettingsScreen";
 import { AppearanceProvider } from "../theme";
-import { useSemanticToast } from "../components/SemanticToast";
+import {
+  SemanticToastProvider,
+  useSemanticToast,
+} from "../components/SemanticToast";
 import {
   AppRootShell,
   useRootSettingsController,
@@ -263,17 +266,21 @@ describe("AppRootShell", () => {
     expect(consumeOrigin).toHaveBeenCalledTimes(1);
   });
 
-  it("mounts one measured shell-level toast host", async () => {
+  it("uses the one root-owned toast host without creating a shell-local queue", async () => {
     await render(
       <AppearanceProvider>
-        <AppRootShell toastBottomAvoidance={74} toastTopAvoidance={56}>
-          <ShellToastTrigger />
-        </AppRootShell>
+        <SemanticToastProvider bottomAvoidance={74} topAvoidance={56}>
+          <AppRootShell>
+            <ShellToastTrigger />
+          </AppRootShell>
+        </SemanticToastProvider>
       </AppearanceProvider>,
     );
 
-    const toastStyle = StyleSheet.flatten(screen.getByTestId("semantic-toast").props.style);
-    expect(toastStyle).toMatchObject({ top: 72 });
-    expect(toastStyle.bottom).toBeUndefined();
+    expect(screen.getAllByTestId("semantic-toast-host")).toHaveLength(1);
+    const hostStyle = StyleSheet.flatten(
+      screen.getByTestId("semantic-toast-host").props.style,
+    );
+    expect(hostStyle).toMatchObject({ bottom: 90, top: 72 });
   });
 });

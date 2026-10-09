@@ -8,7 +8,10 @@ import {
   View,
 } from "react-native";
 
-import { useSemanticToast } from "../src/ui/components/SemanticToast";
+import {
+  SemanticToastBoundary,
+  useSemanticToast,
+} from "../src/ui/components/SemanticToast";
 import { AppRootShell } from "../src/ui/shell/AppRootShell";
 import {
   space,
@@ -26,11 +29,12 @@ function phase14ToastProofEnabled(): boolean {
     && extra?.nativeContractSuite === "phase14";
 }
 
-function ToastProofContent({ toastMounted }: Readonly<{ toastMounted: boolean }>) {
+function ToastProofContent() {
   const { colors } = useAppTheme();
-  const { enqueue } = useSemanticToast();
+  const { enqueue, mountedEvent } = useSemanticToast();
   const [backgroundActivated, setBackgroundActivated] = React.useState(false);
   const startedRef = React.useRef(false);
+  const toastMounted = mountedEvent?.message === "Toast proof active";
 
   React.useEffect(() => {
     if (startedRef.current) {
@@ -93,22 +97,19 @@ function ToastProofContent({ toastMounted }: Readonly<{ toastMounted: boolean }>
 }
 
 export default function Phase14ToastProofRoute() {
-  const [toastMounted, setToastMounted] = React.useState(false);
-
   if (!phase14ToastProofEnabled()) {
     return <Redirect href="/" />;
   }
 
   return (
-    <AppRootShell
-      onToastMountChange={(change) => {
-        setToastMounted(change.mounted && change.event.message === "Toast proof active");
-      }}
-      toastBottomAvoidance={TOAST_BOTTOM_AVOIDANCE}
-      toastTopAvoidance={TOAST_TOP_AVOIDANCE}
+    <SemanticToastBoundary
+      bottomAvoidance={TOAST_BOTTOM_AVOIDANCE}
+      topAvoidance={TOAST_TOP_AVOIDANCE}
     >
-      <ToastProofContent toastMounted={toastMounted} />
-    </AppRootShell>
+      <AppRootShell>
+        <ToastProofContent />
+      </AppRootShell>
+    </SemanticToastBoundary>
   );
 }
 
