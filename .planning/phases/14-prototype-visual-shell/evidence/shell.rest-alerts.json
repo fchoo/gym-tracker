@@ -470,7 +470,7 @@
     "stage": "phase14-rest-alerts",
     "status": "passed",
     "report": "artifacts/native/phase14/maestro/shell-rest-alerts-phone-390-portrait-scale-1.xml",
-    "report_sha256": "015336151122c45833f0c4973288883dcaea9eb0532622ac7cf5645edcf4128b",
+    "report_sha256": "7aec4e447956e89f77a60ff9af4305a49d596bea6703321f56dd010a6c83c23b",
     "matrix_cells": [
       {
         "id": "shell-rest-alerts-phone-390-portrait-scale-1",
@@ -490,13 +490,13 @@
           "dpad"
         ],
         "report": "artifacts/native/phase14/maestro/shell-rest-alerts-phone-390-portrait-scale-1.xml",
-        "report_sha256": "015336151122c45833f0c4973288883dcaea9eb0532622ac7cf5645edcf4128b",
+        "report_sha256": "7aec4e447956e89f77a60ff9af4305a49d596bea6703321f56dd010a6c83c23b",
         "screenshot": "artifacts/native/phase14/screenshots/shell-rest-alerts-phone-390-portrait-scale-1.png",
-        "screenshot_sha256": "da4cac7638bb20d0bdc836c67d4f1072474921eeadfc3ca980face630dc63f76",
+        "screenshot_sha256": "e9469c5f77cd8597f8515ef0a52726e040632d5d81d7bac5e3e924911d2be664",
         "semantic_tree": "artifacts/native/phase14/semantic/shell-rest-alerts-phone-390-portrait-scale-1.xml",
         "semantic_tree_sha256": "82e82eb4bdc3618a1066843ba21db8c57dac9e376f63efffb361feae583dbe93",
         "focus_key_trace": "artifacts/native/phase14/traces/shell-rest-alerts-phone-390-portrait-scale-1.json",
-        "focus_key_trace_sha256": "755b6e48e991e9c751297fc42cb30edc1d815cf4bee7472461265467763d9d1d",
+        "focus_key_trace_sha256": "ad75be1641364840fd0af0544da8431e9b4066cbb657c9f8159c204cc1f4a847",
         "target_window_bounds": {
           "requested_viewport": {
             "width": 390,
@@ -510,7 +510,7 @@
           "night_mode": "Night mode: no"
         },
         "difference_overlay": "artifacts/native/phase14/overlays/shell-rest-alerts-phone-390-portrait-scale-1.json",
-        "difference_overlay_sha256": "0537d6dde7d5a576cd687bc3738d6f13f65e7b9490637a25448fb6c01930b4d6",
+        "difference_overlay_sha256": "bf430854f81aac36c71ae9220a8fc5a469f2dd3a15e75d0013207706af4079a2",
         "source_state_sha256": "dce7d0c87227836ea2af7710a3bbd9f2c980e1c95156a2d51261c5ac1ea70042",
         "summary": {
           "tests": 1,
@@ -527,9 +527,9 @@
     "requirement": "SHL-08",
     "path": ".planning/phases/14-prototype-visual-shell/evidence/shell.rest-alerts.json",
     "report": "artifacts/native/phase14/maestro/shell-rest-alerts-phone-390-portrait-scale-1.xml",
-    "report_sha256": "015336151122c45833f0c4973288883dcaea9eb0532622ac7cf5645edcf4128b",
+    "report_sha256": "7aec4e447956e89f77a60ff9af4305a49d596bea6703321f56dd010a6c83c23b",
     "screenshot": "artifacts/native/phase14/screenshots/shell-rest-alerts-phone-390-portrait-scale-1.png",
-    "screenshot_sha256": "da4cac7638bb20d0bdc836c67d4f1072474921eeadfc3ca980face630dc63f76",
+    "screenshot_sha256": "e9469c5f77cd8597f8515ef0a52726e040632d5d81d7bac5e3e924911d2be664",
     "component_verdict": "passed",
     "native_verdict": "passed",
     "source_state_sha256": "dce7d0c87227836ea2af7710a3bbd9f2c980e1c95156a2d51261c5ac1ea70042",
@@ -552,13 +552,13 @@
           "dpad"
         ],
         "report": "artifacts/native/phase14/maestro/shell-rest-alerts-phone-390-portrait-scale-1.xml",
-        "report_sha256": "015336151122c45833f0c4973288883dcaea9eb0532622ac7cf5645edcf4128b",
+        "report_sha256": "7aec4e447956e89f77a60ff9af4305a49d596bea6703321f56dd010a6c83c23b",
         "screenshot": "artifacts/native/phase14/screenshots/shell-rest-alerts-phone-390-portrait-scale-1.png",
-        "screenshot_sha256": "da4cac7638bb20d0bdc836c67d4f1072474921eeadfc3ca980face630dc63f76",
+        "screenshot_sha256": "e9469c5f77cd8597f8515ef0a52726e040632d5d81d7bac5e3e924911d2be664",
         "semantic_tree": "artifacts/native/phase14/semantic/shell-rest-alerts-phone-390-portrait-scale-1.xml",
         "semantic_tree_sha256": "82e82eb4bdc3618a1066843ba21db8c57dac9e376f63efffb361feae583dbe93",
         "focus_key_trace": "artifacts/native/phase14/traces/shell-rest-alerts-phone-390-portrait-scale-1.json",
-        "focus_key_trace_sha256": "755b6e48e991e9c751297fc42cb30edc1d815cf4bee7472461265467763d9d1d",
+        "focus_key_trace_sha256": "ad75be1641364840fd0af0544da8431e9b4066cbb657c9f8159c204cc1f4a847",
         "target_window_bounds": {
           "requested_viewport": {
             "width": 390,
@@ -572,7 +572,7 @@
           "night_mode": "Night mode: no"
         },
         "difference_overlay": "artifacts/native/phase14/overlays/shell-rest-alerts-phone-390-portrait-scale-1.json",
-        "difference_overlay_sha256": "0537d6dde7d5a576cd687bc3738d6f13f65e7b9490637a25448fb6c01930b4d6",
+        "difference_overlay_sha256": "bf430854f81aac36c71ae9220a8fc5a469f2dd3a15e75d0013207706af4079a2",
         "source_state_sha256": "dce7d0c87227836ea2af7710a3bbd9f2c980e1c95156a2d51261c5ac1ea70042",
         "summary": {
           "tests": 1,

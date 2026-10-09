@@ -470,7 +470,7 @@
     "stage": "phase14-tokens",
     "status": "passed",
     "report": "artifacts/native/phase14/maestro/shell-tokens-tablet-600-portrait-scale-1.xml",
-    "report_sha256": "211229e8751b22ec02ba88b96667cfd03c6800b973d6da2d682908fe67fd4cf8",
+    "report_sha256": "af706f67b256c78167cd2f711077f30ba22cab5241d041c4a4c33880a20c46d8",
     "matrix_cells": [
       {
         "id": "shell-tokens-tablet-600-portrait-scale-1",
@@ -489,13 +489,13 @@
           "heading-focus"
         ],
         "report": "artifacts/native/phase14/maestro/shell-tokens-tablet-600-portrait-scale-1.xml",
-        "report_sha256": "211229e8751b22ec02ba88b96667cfd03c6800b973d6da2d682908fe67fd4cf8",
+        "report_sha256": "af706f67b256c78167cd2f711077f30ba22cab5241d041c4a4c33880a20c46d8",
         "screenshot": "artifacts/native/phase14/screenshots/shell-tokens-tablet-600-portrait-scale-1.png",
-        "screenshot_sha256": "6a71de54e0471f6eb716b9674ca359c625cbf0f1061904e2b50e15f5635f6b72",
+        "screenshot_sha256": "c584218c6c1c06a9699eb6bfb92a1dbd2bb3bea5792423f001ab93070c97a96e",
         "semantic_tree": "artifacts/native/phase14/semantic/shell-tokens-tablet-600-portrait-scale-1.xml",
         "semantic_tree_sha256": "3fc3b7b63655bb16dbeb76712d903c94bff45191f41362d6f0265e6119622fb7",
         "focus_key_trace": "artifacts/native/phase14/traces/shell-tokens-tablet-600-portrait-scale-1.json",
-        "focus_key_trace_sha256": "d7c36727f3a94d05434ddc564c521c40b97a8dcf0acbc2d22395ef4b3931777a",
+        "focus_key_trace_sha256": "96cd7e9beef946c1c0c5a3171938b8bc1e19481f0cb29705ad3eb4a86518df47",
         "target_window_bounds": {
           "requested_viewport": {
             "width": 600,
@@ -509,7 +509,7 @@
           "night_mode": "Night mode: yes"
         },
         "difference_overlay": "artifacts/native/phase14/overlays/shell-tokens-tablet-600-portrait-scale-1.json",
-        "difference_overlay_sha256": "3fae5a68962189f6a034c07b8d320499a1447ee1d79b3b3d4a04943e2dc9ba41",
+        "difference_overlay_sha256": "f83372f7aa735bff7f91726c815da9b872db6ac9002d7e17d0b2afe6985a9814",
         "source_state_sha256": "dce7d0c87227836ea2af7710a3bbd9f2c980e1c95156a2d51261c5ac1ea70042",
         "summary": {
           "tests": 1,
@@ -526,9 +526,9 @@
     "requirement": "SHL-04",
     "path": ".planning/phases/14-prototype-visual-shell/evidence/shell.tokens.json",
     "report": "artifacts/native/phase14/maestro/shell-tokens-tablet-600-portrait-scale-1.xml",
-    "report_sha256": "211229e8751b22ec02ba88b96667cfd03c6800b973d6da2d682908fe67fd4cf8",
+    "report_sha256": "af706f67b256c78167cd2f711077f30ba22cab5241d041c4a4c33880a20c46d8",
     "screenshot": "artifacts/native/phase14/screenshots/shell-tokens-tablet-600-portrait-scale-1.png",
-    "screenshot_sha256": "6a71de54e0471f6eb716b9674ca359c625cbf0f1061904e2b50e15f5635f6b72",
+    "screenshot_sha256": "c584218c6c1c06a9699eb6bfb92a1dbd2bb3bea5792423f001ab93070c97a96e",
     "component_verdict": "passed",
     "native_verdict": "passed",
     "source_state_sha256": "dce7d0c87227836ea2af7710a3bbd9f2c980e1c95156a2d51261c5ac1ea70042",
@@ -550,13 +550,13 @@
           "heading-focus"
         ],
         "report": "artifacts/native/phase14/maestro/shell-tokens-tablet-600-portrait-scale-1.xml",
-        "report_sha256": "211229e8751b22ec02ba88b96667cfd03c6800b973d6da2d682908fe67fd4cf8",
+        "report_sha256": "af706f67b256c78167cd2f711077f30ba22cab5241d041c4a4c33880a20c46d8",
         "screenshot": "artifacts/native/phase14/screenshots/shell-tokens-tablet-600-portrait-scale-1.png",
-        "screenshot_sha256": "6a71de54e0471f6eb716b9674ca359c625cbf0f1061904e2b50e15f5635f6b72",
+        "screenshot_sha256": "c584218c6c1c06a9699eb6bfb92a1dbd2bb3bea5792423f001ab93070c97a96e",
         "semantic_tree": "artifacts/native/phase14/semantic/shell-tokens-tablet-600-portrait-scale-1.xml",
         "semantic_tree_sha256": "3fc3b7b63655bb16dbeb76712d903c94bff45191f41362d6f0265e6119622fb7",
         "focus_key_trace": "artifacts/native/phase14/traces/shell-tokens-tablet-600-portrait-scale-1.json",
-        "focus_key_trace_sha256": "d7c36727f3a94d05434ddc564c521c40b97a8dcf0acbc2d22395ef4b3931777a",
+        "focus_key_trace_sha256": "96cd7e9beef946c1c0c5a3171938b8bc1e19481f0cb29705ad3eb4a86518df47",
         "target_window_bounds": {
           "requested_viewport": {
             "width": 600,
@@ -570,7 +570,7 @@
           "night_mode": "Night mode: yes"
         },
         "difference_overlay": "artifacts/native/phase14/overlays/shell-tokens-tablet-600-portrait-scale-1.json",
-        "difference_overlay_sha256": "3fae5a68962189f6a034c07b8d320499a1447ee1d79b3b3d4a04943e2dc9ba41",
+        "difference_overlay_sha256": "f83372f7aa735bff7f91726c815da9b872db6ac9002d7e17d0b2afe6985a9814",
         "source_state_sha256": "dce7d0c87227836ea2af7710a3bbd9f2c980e1c95156a2d51261c5ac1ea70042",
         "summary": {
           "tests": 1,
@@ -588,7 +588,7 @@
     "sport_hex": "#D97820",
     "native_blended_fill": {
       "status": "passed",
-      "report_sha256": "211229e8751b22ec02ba88b96667cfd03c6800b973d6da2d682908fe67fd4cf8"
+      "report_sha256": "af706f67b256c78167cd2f711077f30ba22cab5241d041c4a4c33880a20c46d8"
     }
   }
 }
