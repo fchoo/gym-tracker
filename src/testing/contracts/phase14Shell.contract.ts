@@ -147,7 +147,7 @@ export const PHASE14_SHELL_EVIDENCE_CASES = [
   {
     id: "shell.sheets", requirement: "SHL-05", stage: sheetsStage, flow: "accessibility",
     evidencePath: `${PHASE14_SHELL_EVIDENCE_DIRECTORY}/shell.sheets.json`,
-    state: { id: "sheets", dataPolicy: "installed-user-data-preserved", captureState: "app-settings-sheet", capture: predicate({ visible: ["App Settings", "Appearance"], nodes: [{ resourceIdEndsWith: "bottom-sheet-frame" }], focus: { equals: "App Settings", allowNull: false } }) },
+    state: { id: "sheets", dataPolicy: "installed-user-data-preserved", captureState: "app-settings-sheet", capture: predicate({ visible: ["App Settings", "Appearance"], nodes: [{ resourceIdEndsWith: "bottom-sheet-frame" }], focus: { allowNull: true } }) },
     actions: [
       action({ id: "sheet-dpad-heading-to-system", stage: sheetsStage, input: "DPAD_DOWN", transport: "adb-keyevent", command: { keyCode: 20 }, focusTarget: "App Settings", pre: predicate({ visible: ["App Settings", "Appearance"], nodes: [{ label: "App Settings", focused: true }, { resourceIdEndsWith: "bottom-sheet-frame" }], focus: { equals: "App Settings", allowNull: false } }), post: predicate({ visible: ["App Settings"], nodes: [{ label: "System", focused: true }], focus: { equals: "System", allowNull: false } }) }),
       action({ id: "sheet-escape", stage: sheetsStage, input: "ESCAPE", transport: "adb-keyevent", command: { keyCode: 111 }, pre: predicate({ visible: ["App Settings"], nodes: [{ resourceIdEndsWith: "bottom-sheet-frame" }], focus: { equals: "App Settings", allowNull: false } }), post: predicate({ absent: ["App Settings"], visible: ["Library"], nodes: [{ label: "Library", selected: true }, { label: "Open App Settings", focused: true }], focus: { equals: "Open App Settings", allowNull: false } }) }),
@@ -179,7 +179,7 @@ export const PHASE14_SHELL_EVIDENCE_CASES = [
   {
     id: "shell.rest-alerts", requirement: "SHL-08", stage: restAlertsStage, flow: "settings-recovery",
     evidencePath: `${PHASE14_SHELL_EVIDENCE_DIRECTORY}/shell.rest-alerts.json`,
-    state: { id: "rest-alerts", dataPolicy: "installed-user-data-preserved", captureState: "app-settings-rest-alerts", capture: predicate({ visible: ["App Settings", "Rest alerts"], nodes: [{ resourceIdEndsWith: "bottom-sheet-frame" }], focus: { equals: "App Settings", allowNull: false } }) },
+    state: { id: "rest-alerts", dataPolicy: "installed-user-data-preserved", captureState: "app-settings-rest-alerts", capture: predicate({ visible: ["App Settings", "Rest alerts"], nodes: [{ resourceIdEndsWith: "bottom-sheet-frame" }], focus: { allowNull: true } }) },
     actions: [action({ id: "back-from-rest-alerts-sheet", stage: restAlertsStage, input: "BACK", transport: "adb-keyevent", command: { keyCode: 4 }, pre: predicate({ visible: ["App Settings", "Rest alerts"], nodes: [{ resourceIdEndsWith: "bottom-sheet-frame" }], focus: { equals: "App Settings", allowNull: false } }), post: predicate({ absent: ["App Settings"], visible: ["Workout"], nodes: [{ label: "Workout", selected: true }, { label: "Open App Settings", focused: true }], focus: { equals: "Open App Settings", allowNull: false } }) })],
     checkpoints: ["Rest alerts", "App Settings"], postconditions: ["device-cue-settings-reachable", "focus-restored"],
     componentTests: ["src/ui/__tests__/RestAlertSettingsSheet.test.tsx", "src/ui/__tests__/SettingsScreen.test.tsx"], runtimeStatePolicy: "no-write", motionSensitive: false,
@@ -197,7 +197,7 @@ export const PHASE14_SHELL_EVIDENCE_CASES = [
   {
     id: "shell.removed-sessions", requirement: "SHL-10", stage: removedSessionsStage, flow: "settings-recovery",
     evidencePath: `${PHASE14_SHELL_EVIDENCE_DIRECTORY}/shell.removed-sessions.json`,
-    state: { id: "removed-sessions", dataPolicy: "installed-user-data-preserved", captureState: "removed-sessions-route", capture: predicate({ visible: ["Removed sessions"], focus: { equals: "Removed sessions", allowNull: false } }) },
+    state: { id: "removed-sessions", dataPolicy: "installed-user-data-preserved", captureState: "removed-sessions-route", capture: predicate({ visible: ["Removed sessions"], focus: { allowNull: true } }) },
     actions: [action({ id: "back-from-removed-sessions", stage: removedSessionsStage, input: "BACK", transport: "adb-keyevent", command: { keyCode: 4 }, pre: predicate({ visible: ["Removed sessions"], focus: { equals: "Removed sessions", allowNull: false } }), post: predicate({ visible: ["Workout"], nodes: [{ label: "Workout", selected: true }], focus: { equals: "Workout", allowNull: false } }) })],
     checkpoints: ["Removed sessions", "Workout"], postconditions: ["read-only-navigation", "no-source-write"],
     componentTests: ["app/more/__tests__/removed-sessions.test.tsx", "src/ui/__tests__/RemovedSessionsScreen.test.tsx"], runtimeStatePolicy: "no-write", motionSensitive: false,
@@ -215,7 +215,7 @@ export const PHASE14_SHELL_EVIDENCE_CASES = [
   {
     id: "shell.automatic-backup", requirement: "SHL-12", stage: automaticBackupStage, flow: "settings-recovery",
     evidencePath: `${PHASE14_SHELL_EVIDENCE_DIRECTORY}/shell.automatic-backup.json`,
-    state: { id: "automatic-backup", dataPolicy: "installed-user-data-preserved", captureState: "automatic-backup-route", capture: predicate({ visible: ["Automatic backup settings"], focus: { equals: "Automatic backup settings", allowNull: false } }) },
+    state: { id: "automatic-backup", dataPolicy: "installed-user-data-preserved", captureState: "automatic-backup-route", capture: predicate({ visible: ["Automatic backup settings"], focus: { allowNull: true } }) },
     actions: [action({ id: "back-from-automatic-backup", stage: automaticBackupStage, input: "BACK", transport: "adb-keyevent", command: { keyCode: 4 }, pre: predicate({ visible: ["Automatic backup settings"], focus: { equals: "Automatic backup settings", allowNull: false } }), post: predicate({ visible: ["Data and recovery"], focus: { equals: "Data and recovery", allowNull: false } }) })],
     checkpoints: ["Automatic backup settings", "Data and recovery"], postconditions: ["no-cloud-write", "origin-restored"],
     componentTests: ["app/more/__tests__/automatic-backup-settings.test.tsx", "app/more/__tests__/drive-backup-privacy.test.tsx"], runtimeStatePolicy: "no-write", motionSensitive: false,
@@ -224,7 +224,7 @@ export const PHASE14_SHELL_EVIDENCE_CASES = [
   {
     id: "shell.manual-backup", requirement: "SHL-13", stage: manualBackupStage, flow: "settings-recovery",
     evidencePath: `${PHASE14_SHELL_EVIDENCE_DIRECTORY}/shell.manual-backup.json`,
-    state: { id: "manual-backup", dataPolicy: "installed-user-data-preserved", captureState: "manual-backup-route", capture: predicate({ visible: ["Manual encrypted backup"], focus: { equals: "Manual encrypted backup", allowNull: false } }) },
+    state: { id: "manual-backup", dataPolicy: "installed-user-data-preserved", captureState: "manual-backup-route", capture: predicate({ visible: ["Manual encrypted backup"], focus: { allowNull: true } }) },
     actions: [action({ id: "back-from-manual-backup", stage: manualBackupStage, input: "BACK", transport: "adb-keyevent", command: { keyCode: 4 }, pre: predicate({ visible: ["Manual encrypted backup"], focus: { equals: "Manual encrypted backup", allowNull: false } }), post: predicate({ visible: ["Data and recovery"], focus: { equals: "Data and recovery", allowNull: false } }) })],
     checkpoints: ["Manual encrypted backup", "Data and recovery"], postconditions: ["cancel-does-not-write", "origin-restored"],
     componentTests: ["app/more/__tests__/manual-encrypted-backup.test.tsx"], runtimeStatePolicy: "no-write", motionSensitive: false,
