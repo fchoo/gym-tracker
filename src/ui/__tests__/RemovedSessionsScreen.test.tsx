@@ -219,7 +219,8 @@ describe("RemovedSessionsScreen", () => {
     const props = await renderScreen({
       restoreSession,
       onRestored: jest.fn(async () => undefined),
-      loadRemovedSessions: jest.fn()
+      loadRemovedSessions: jest
+        .fn<() => Promise<readonly RemovedHistorySession[]>>()
         .mockResolvedValueOnce([removedSession])
         .mockResolvedValueOnce([]),
     });
