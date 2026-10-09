@@ -3,18 +3,18 @@
   "suite": "phase14",
   "status": "passed",
   "build_manifest": "artifacts/native/phase14/build.json",
-  "base_head": "01b75c6914c7163b88f9273f8d1bdc71664c409b",
-  "source_tree_sha256": "54514a268dba236df31ad54ef5c8ffd7cebe3e73cf42a19892e012262cf2fdc2",
+  "base_head": "f059f06ab7a9ecc96e5ca6401f92a6719f02e374",
+  "source_tree_sha256": "770afa08a9e84b158cdbed3f53e4ae3e2940f357af148785693579babbfa0f5d",
   "package": "com.fchoo.gymtracker.devtest",
   "profile": "development-test",
   "device_identity_sha256": "96dcf303d772667590457dc76c2cd5ee828515c31e2af1b9fee5b3f440b204f9",
   "apk": {
     "path": "artifacts/native/phase14/gym-tracker-phase14-devtest.apk",
-    "sha256": "5ecbab8f506978122c485143f78153f42ec2e9075538d2d2047ef01928561982",
+    "sha256": "5d6d8f9cc9f55b879bc7262b898a5de8287e312f5e3f38ee1d1fd81a844b9366",
     "size_bytes": 131760068,
     "page_alignment_kib": 16,
     "page_alignment_verified": true,
-    "installed_sha256": "5ecbab8f506978122c485143f78153f42ec2e9075538d2d2047ef01928561982",
+    "installed_sha256": "5d6d8f9cc9f55b879bc7262b898a5de8287e312f5e3f38ee1d1fd81a844b9366",
     "matches_retained_apk": true
   },
   "matrix": {
@@ -470,7 +470,7 @@
     "stage": "phase14-manual-backup",
     "status": "passed",
     "report": "artifacts/native/phase14/maestro/shell-manual-backup-tablet-840-portrait-scale-2.xml",
-    "report_sha256": "d30b7b52e015ee6ed51bf0f19e009ad9341c39ca6229d259617a0889d78b7d20",
+    "report_sha256": "29cd94ad4475002f3c75f6416105392ad1d0fb6e3aae2cd6498f2b4c0e4db84f",
     "matrix_cells": [
       {
         "id": "shell-manual-backup-tablet-840-portrait-scale-2",
@@ -490,13 +490,13 @@
           "back"
         ],
         "report": "artifacts/native/phase14/maestro/shell-manual-backup-tablet-840-portrait-scale-2.xml",
-        "report_sha256": "d30b7b52e015ee6ed51bf0f19e009ad9341c39ca6229d259617a0889d78b7d20",
+        "report_sha256": "29cd94ad4475002f3c75f6416105392ad1d0fb6e3aae2cd6498f2b4c0e4db84f",
         "screenshot": "artifacts/native/phase14/screenshots/shell-manual-backup-tablet-840-portrait-scale-2.png",
-        "screenshot_sha256": "0ecc0e87e35a152d222fe5ffe7a408c517abf00bfbda86b7fb860bbd121c5ab0",
+        "screenshot_sha256": "996aaacfde01c346e3965d037c917b54ad1de7889deb976e26bd3cc73c0ed6d7",
         "semantic_tree": "artifacts/native/phase14/semantic/shell-manual-backup-tablet-840-portrait-scale-2.xml",
         "semantic_tree_sha256": "bc31b7f298a88e7f83ad4e50c7951b382a7b54c95d2e6a0cec3d75801c807368",
         "focus_key_trace": "artifacts/native/phase14/traces/shell-manual-backup-tablet-840-portrait-scale-2.json",
-        "focus_key_trace_sha256": "9bd19ff11210bfae5c2889af3fe3340848ea2495f67c044246429409ddc9f977",
+        "focus_key_trace_sha256": "ee6b30e3adbd1c7ff8f117ab78ee7102b318d246f98964defc7801b32233558b",
         "target_window_bounds": {
           "requested_viewport": {
             "width": 840,
@@ -510,8 +510,8 @@
           "night_mode": "Night mode: yes"
         },
         "difference_overlay": "artifacts/native/phase14/overlays/shell-manual-backup-tablet-840-portrait-scale-2.json",
-        "difference_overlay_sha256": "eff48f7a61cad03e2248f0acc1f467e0c73073b840d69bd001d5df25d612a2d5",
-        "source_state_sha256": "54514a268dba236df31ad54ef5c8ffd7cebe3e73cf42a19892e012262cf2fdc2",
+        "difference_overlay_sha256": "3e62c63fbcc054fb7e1fd8bd5f884aa91f332ecd77fcd522c0162da0a14e5882",
+        "source_state_sha256": "770afa08a9e84b158cdbed3f53e4ae3e2940f357af148785693579babbfa0f5d",
         "summary": {
           "tests": 1,
           "failures": 0,
@@ -527,12 +527,12 @@
     "requirement": "SHL-13",
     "path": ".planning/phases/14-prototype-visual-shell/evidence/shell.manual-backup.json",
     "report": "artifacts/native/phase14/maestro/shell-manual-backup-tablet-840-portrait-scale-2.xml",
-    "report_sha256": "d30b7b52e015ee6ed51bf0f19e009ad9341c39ca6229d259617a0889d78b7d20",
+    "report_sha256": "29cd94ad4475002f3c75f6416105392ad1d0fb6e3aae2cd6498f2b4c0e4db84f",
     "screenshot": "artifacts/native/phase14/screenshots/shell-manual-backup-tablet-840-portrait-scale-2.png",
-    "screenshot_sha256": "0ecc0e87e35a152d222fe5ffe7a408c517abf00bfbda86b7fb860bbd121c5ab0",
+    "screenshot_sha256": "996aaacfde01c346e3965d037c917b54ad1de7889deb976e26bd3cc73c0ed6d7",
     "component_verdict": "passed",
     "native_verdict": "passed",
-    "source_state_sha256": "54514a268dba236df31ad54ef5c8ffd7cebe3e73cf42a19892e012262cf2fdc2",
+    "source_state_sha256": "770afa08a9e84b158cdbed3f53e4ae3e2940f357af148785693579babbfa0f5d",
     "matrix_cells": [
       {
         "id": "shell-manual-backup-tablet-840-portrait-scale-2",
@@ -552,13 +552,13 @@
           "back"
         ],
         "report": "artifacts/native/phase14/maestro/shell-manual-backup-tablet-840-portrait-scale-2.xml",
-        "report_sha256": "d30b7b52e015ee6ed51bf0f19e009ad9341c39ca6229d259617a0889d78b7d20",
+        "report_sha256": "29cd94ad4475002f3c75f6416105392ad1d0fb6e3aae2cd6498f2b4c0e4db84f",
         "screenshot": "artifacts/native/phase14/screenshots/shell-manual-backup-tablet-840-portrait-scale-2.png",
-        "screenshot_sha256": "0ecc0e87e35a152d222fe5ffe7a408c517abf00bfbda86b7fb860bbd121c5ab0",
+        "screenshot_sha256": "996aaacfde01c346e3965d037c917b54ad1de7889deb976e26bd3cc73c0ed6d7",
         "semantic_tree": "artifacts/native/phase14/semantic/shell-manual-backup-tablet-840-portrait-scale-2.xml",
         "semantic_tree_sha256": "bc31b7f298a88e7f83ad4e50c7951b382a7b54c95d2e6a0cec3d75801c807368",
         "focus_key_trace": "artifacts/native/phase14/traces/shell-manual-backup-tablet-840-portrait-scale-2.json",
-        "focus_key_trace_sha256": "9bd19ff11210bfae5c2889af3fe3340848ea2495f67c044246429409ddc9f977",
+        "focus_key_trace_sha256": "ee6b30e3adbd1c7ff8f117ab78ee7102b318d246f98964defc7801b32233558b",
         "target_window_bounds": {
           "requested_viewport": {
             "width": 840,
@@ -572,8 +572,8 @@
           "night_mode": "Night mode: yes"
         },
         "difference_overlay": "artifacts/native/phase14/overlays/shell-manual-backup-tablet-840-portrait-scale-2.json",
-        "difference_overlay_sha256": "eff48f7a61cad03e2248f0acc1f467e0c73073b840d69bd001d5df25d612a2d5",
-        "source_state_sha256": "54514a268dba236df31ad54ef5c8ffd7cebe3e73cf42a19892e012262cf2fdc2",
+        "difference_overlay_sha256": "3e62c63fbcc054fb7e1fd8bd5f884aa91f332ecd77fcd522c0162da0a14e5882",
+        "source_state_sha256": "770afa08a9e84b158cdbed3f53e4ae3e2940f357af148785693579babbfa0f5d",
         "summary": {
           "tests": 1,
           "failures": 0,

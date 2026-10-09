@@ -3,18 +3,18 @@
   "suite": "phase14",
   "status": "passed",
   "build_manifest": "artifacts/native/phase14/build.json",
-  "base_head": "01b75c6914c7163b88f9273f8d1bdc71664c409b",
-  "source_tree_sha256": "54514a268dba236df31ad54ef5c8ffd7cebe3e73cf42a19892e012262cf2fdc2",
+  "base_head": "f059f06ab7a9ecc96e5ca6401f92a6719f02e374",
+  "source_tree_sha256": "770afa08a9e84b158cdbed3f53e4ae3e2940f357af148785693579babbfa0f5d",
   "package": "com.fchoo.gymtracker.devtest",
   "profile": "development-test",
   "device_identity_sha256": "96dcf303d772667590457dc76c2cd5ee828515c31e2af1b9fee5b3f440b204f9",
   "apk": {
     "path": "artifacts/native/phase14/gym-tracker-phase14-devtest.apk",
-    "sha256": "5ecbab8f506978122c485143f78153f42ec2e9075538d2d2047ef01928561982",
+    "sha256": "5d6d8f9cc9f55b879bc7262b898a5de8287e312f5e3f38ee1d1fd81a844b9366",
     "size_bytes": 131760068,
     "page_alignment_kib": 16,
     "page_alignment_verified": true,
-    "installed_sha256": "5ecbab8f506978122c485143f78153f42ec2e9075538d2d2047ef01928561982",
+    "installed_sha256": "5d6d8f9cc9f55b879bc7262b898a5de8287e312f5e3f38ee1d1fd81a844b9366",
     "matches_retained_apk": true
   },
   "matrix": {
@@ -470,7 +470,7 @@
     "stage": "phase14-data-recovery",
     "status": "passed",
     "report": "artifacts/native/phase14/maestro/shell-data-recovery-tablet-840-landscape-scale-1.xml",
-    "report_sha256": "afcd1799a1452df80e985e5e3ff663b5f7c82fa9bd50e86981f2ee7e8eca6714",
+    "report_sha256": "2b8dcdfbf5b0cc5c96abe4f56b303a696f4d002a0df9e3565e12cf86806583ba",
     "matrix_cells": [
       {
         "id": "shell-data-recovery-tablet-840-landscape-scale-1",
@@ -490,13 +490,13 @@
           "back"
         ],
         "report": "artifacts/native/phase14/maestro/shell-data-recovery-tablet-840-landscape-scale-1.xml",
-        "report_sha256": "afcd1799a1452df80e985e5e3ff663b5f7c82fa9bd50e86981f2ee7e8eca6714",
+        "report_sha256": "2b8dcdfbf5b0cc5c96abe4f56b303a696f4d002a0df9e3565e12cf86806583ba",
         "screenshot": "artifacts/native/phase14/screenshots/shell-data-recovery-tablet-840-landscape-scale-1.png",
-        "screenshot_sha256": "b77295429199937f394af4ce0fec5b90abcb47b45bf0de2e23214fe74291bbc1",
+        "screenshot_sha256": "c1435f161e66e1a24f349cce2ed98186a20cafdc4c90384cc372d41224604d04",
         "semantic_tree": "artifacts/native/phase14/semantic/shell-data-recovery-tablet-840-landscape-scale-1.xml",
         "semantic_tree_sha256": "f9d29d2968f12e1e16728b341728dcf620c3662a44080e7b8cdf068c0c34491d",
         "focus_key_trace": "artifacts/native/phase14/traces/shell-data-recovery-tablet-840-landscape-scale-1.json",
-        "focus_key_trace_sha256": "f240f4dd83e8d0e3b14e1e4ee7b3750b0f7fe12d9a0a356652c2fd22e2847784",
+        "focus_key_trace_sha256": "bdba18ac22cb5063fcf1a5c13d10d4e13100cfe6d12139549bc922b1d32ba088",
         "target_window_bounds": {
           "requested_viewport": {
             "width": 840,
@@ -510,8 +510,8 @@
           "night_mode": "Night mode: no"
         },
         "difference_overlay": "artifacts/native/phase14/overlays/shell-data-recovery-tablet-840-landscape-scale-1.json",
-        "difference_overlay_sha256": "cee5fa9aa8190683a9e31476517f576211a2a43078a9f1edac5178da1516f690",
-        "source_state_sha256": "54514a268dba236df31ad54ef5c8ffd7cebe3e73cf42a19892e012262cf2fdc2",
+        "difference_overlay_sha256": "d8d4748328fe022dacfff22cfc28ff74ec34387083f1be625adbcde4693c50f4",
+        "source_state_sha256": "770afa08a9e84b158cdbed3f53e4ae3e2940f357af148785693579babbfa0f5d",
         "summary": {
           "tests": 1,
           "failures": 0,
@@ -527,12 +527,12 @@
     "requirement": "SHL-11",
     "path": ".planning/phases/14-prototype-visual-shell/evidence/shell.data-recovery.json",
     "report": "artifacts/native/phase14/maestro/shell-data-recovery-tablet-840-landscape-scale-1.xml",
-    "report_sha256": "afcd1799a1452df80e985e5e3ff663b5f7c82fa9bd50e86981f2ee7e8eca6714",
+    "report_sha256": "2b8dcdfbf5b0cc5c96abe4f56b303a696f4d002a0df9e3565e12cf86806583ba",
     "screenshot": "artifacts/native/phase14/screenshots/shell-data-recovery-tablet-840-landscape-scale-1.png",
-    "screenshot_sha256": "b77295429199937f394af4ce0fec5b90abcb47b45bf0de2e23214fe74291bbc1",
+    "screenshot_sha256": "c1435f161e66e1a24f349cce2ed98186a20cafdc4c90384cc372d41224604d04",
     "component_verdict": "passed",
     "native_verdict": "passed",
-    "source_state_sha256": "54514a268dba236df31ad54ef5c8ffd7cebe3e73cf42a19892e012262cf2fdc2",
+    "source_state_sha256": "770afa08a9e84b158cdbed3f53e4ae3e2940f357af148785693579babbfa0f5d",
     "matrix_cells": [
       {
         "id": "shell-data-recovery-tablet-840-landscape-scale-1",
@@ -552,13 +552,13 @@
           "back"
         ],
         "report": "artifacts/native/phase14/maestro/shell-data-recovery-tablet-840-landscape-scale-1.xml",
-        "report_sha256": "afcd1799a1452df80e985e5e3ff663b5f7c82fa9bd50e86981f2ee7e8eca6714",
+        "report_sha256": "2b8dcdfbf5b0cc5c96abe4f56b303a696f4d002a0df9e3565e12cf86806583ba",
         "screenshot": "artifacts/native/phase14/screenshots/shell-data-recovery-tablet-840-landscape-scale-1.png",
-        "screenshot_sha256": "b77295429199937f394af4ce0fec5b90abcb47b45bf0de2e23214fe74291bbc1",
+        "screenshot_sha256": "c1435f161e66e1a24f349cce2ed98186a20cafdc4c90384cc372d41224604d04",
         "semantic_tree": "artifacts/native/phase14/semantic/shell-data-recovery-tablet-840-landscape-scale-1.xml",
         "semantic_tree_sha256": "f9d29d2968f12e1e16728b341728dcf620c3662a44080e7b8cdf068c0c34491d",
         "focus_key_trace": "artifacts/native/phase14/traces/shell-data-recovery-tablet-840-landscape-scale-1.json",
-        "focus_key_trace_sha256": "f240f4dd83e8d0e3b14e1e4ee7b3750b0f7fe12d9a0a356652c2fd22e2847784",
+        "focus_key_trace_sha256": "bdba18ac22cb5063fcf1a5c13d10d4e13100cfe6d12139549bc922b1d32ba088",
         "target_window_bounds": {
           "requested_viewport": {
             "width": 840,
@@ -572,8 +572,8 @@
           "night_mode": "Night mode: no"
         },
         "difference_overlay": "artifacts/native/phase14/overlays/shell-data-recovery-tablet-840-landscape-scale-1.json",
-        "difference_overlay_sha256": "cee5fa9aa8190683a9e31476517f576211a2a43078a9f1edac5178da1516f690",
-        "source_state_sha256": "54514a268dba236df31ad54ef5c8ffd7cebe3e73cf42a19892e012262cf2fdc2",
+        "difference_overlay_sha256": "d8d4748328fe022dacfff22cfc28ff74ec34387083f1be625adbcde4693c50f4",
+        "source_state_sha256": "770afa08a9e84b158cdbed3f53e4ae3e2940f357af148785693579babbfa0f5d",
         "summary": {
           "tests": 1,
           "failures": 0,

@@ -2,8 +2,8 @@
   "schema_version": 2,
   "suite": "phase14-font-proof",
   "status": "passed",
-  "source_tree_sha256": "54514a268dba236df31ad54ef5c8ffd7cebe3e73cf42a19892e012262cf2fdc2",
-  "apk_sha256": "62c0090ac7b922d8a2421142ae17400180d785095e34728b40b36f7633f6b741",
+  "source_tree_sha256": "770afa08a9e84b158cdbed3f53e4ae3e2940f357af148785693579babbfa0f5d",
+  "apk_sha256": "85ab62633a19643f3fd1acc536ee25bc39ef13f4d532de707f7872808d3cf77d",
   "package": "com.fchoo.gymtracker.devtest",
   "profile": "development-test",
   "proof_source_sha256": "d9abb37f32587e8a79aff04f97592118e0e264d9240152b27889f5093231c67d",
@@ -14,7 +14,7 @@
   },
   "overlay_review": {
     "status": "passed",
-    "screenshot_sha256": "b48a92c8cd63a137d4362512394104d1d2a4e167020089a58a1f64cf6ef8cc34",
+    "screenshot_sha256": "c8b3c899e23cd295cefdc54b1ee353132b107043e9edce08052c7c2069894d98",
     "approved_html_sha256": "b5ddbad88fd465af2fa79475dc0c05efec49e551652f13c5220627730e1d9c96",
     "approved_json_sha256": "b8e91e3098ec443c9dc283ae8383d1af552d7dc2b83648695a01dcb8a89ff0bf"
   },
@@ -24,7 +24,7 @@
       "status": "passed",
       "font_scale": 1,
       "display_density": 2.625,
-      "screenshot_sha256": "b48a92c8cd63a137d4362512394104d1d2a4e167020089a58a1f64cf6ef8cc34",
+      "screenshot_sha256": "c8b3c899e23cd295cefdc54b1ee353132b107043e9edce08052c7c2069894d98",
       "family": "ArchivoVariable",
       "family_loaded": true,
       "style": {
@@ -76,7 +76,7 @@
       "status": "passed",
       "font_scale": 2,
       "display_density": 2.625,
-      "screenshot_sha256": "546d72b0507ba8debe85bdd48436a6a0c34c1a029226fc1ea2e4201eab62b171",
+      "screenshot_sha256": "d8d44aa71560a81e2732f7389dddeb9236fff1ab74c9fef98e29f8e3eeba47c4",
       "family": "ArchivoVariable",
       "family_loaded": true,
       "style": {
