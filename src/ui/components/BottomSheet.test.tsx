@@ -133,12 +133,13 @@ describe("BottomSheet", () => {
     await fireEvent(screen.getByTestId("bottom-sheet-frame"), "keyDown", {
       nativeEvent: { key: "Escape", preventDefault: jest.fn() },
     });
+    await fireEvent(screen.getByTestId("bottom-sheet-frame"), "escape");
     await fireEvent.press(
       screen.getByLabelText("Dismiss sheet", { includeHiddenElements: true }),
     );
 
-    expect(cancel).toHaveBeenCalledTimes(4);
-    await waitFor(() => expect(focus).toHaveBeenCalledTimes(4));
+    expect(cancel).toHaveBeenCalledTimes(5);
+    await waitFor(() => expect(focus).toHaveBeenCalledTimes(5));
     await rendered.unmount();
   });
 

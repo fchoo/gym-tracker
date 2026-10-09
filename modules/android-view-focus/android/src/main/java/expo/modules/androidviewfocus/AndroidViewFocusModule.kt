@@ -1,11 +1,33 @@
 package expo.modules.androidviewfocus
 
+import android.annotation.SuppressLint
+import android.content.Context
+import android.view.KeyEvent
 import android.view.View
 import android.view.ViewGroup
 import android.util.Log
+import expo.modules.kotlin.AppContext
 import expo.modules.kotlin.Promise
 import expo.modules.kotlin.modules.Module
 import expo.modules.kotlin.modules.ModuleDefinition
+import expo.modules.kotlin.viewevent.EventDispatcher
+import expo.modules.kotlin.views.ExpoView
+
+@SuppressLint("ViewConstructor")
+class AndroidEscapeBoundaryView(context: Context, appContext: AppContext) :
+  ExpoView(context, appContext) {
+  private val onEscape by EventDispatcher<Unit>()
+
+  override fun dispatchKeyEvent(event: KeyEvent): Boolean {
+    if (event.keyCode == KeyEvent.KEYCODE_ESCAPE) {
+      if (event.action == KeyEvent.ACTION_UP) {
+        onEscape(Unit)
+      }
+      return true
+    }
+    return super.dispatchKeyEvent(event)
+  }
+}
 
 private fun findNativeId(root: View, nativeId: String, tagKey: Int): View? {
   if (root.isShown && root.getTag(tagKey) == nativeId) return root
@@ -32,6 +54,10 @@ private fun findVisibleContentDescription(root: View, label: String): View? {
 class AndroidViewFocusModule : Module() {
   override fun definition() = ModuleDefinition {
     Name("AndroidViewFocus")
+
+    View(AndroidEscapeBoundaryView::class) {
+      Events("onEscape")
+    }
 
     AsyncFunction("requestFocus") { nativeId: String, promise: Promise ->
       if (nativeId.isBlank()) {

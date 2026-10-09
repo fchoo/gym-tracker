@@ -22,6 +22,7 @@ import {
   BottomSheetFocusContext,
   type BottomSheetFocusableRef,
 } from "./bottomSheetFocus";
+import { AndroidEscapeBoundary } from "./AndroidEscapeBoundary";
 import { radius, space, typeScale, useAppTheme } from "../theme";
 
 type FocusTarget = Readonly<{
@@ -50,12 +51,6 @@ const BottomSheetDepthContext = React.createContext(0);
 const BottomSheetCancellationContext = React.createContext<(() => void) | undefined>(
   undefined,
 );
-const TraversalBoundary = View as unknown as React.ComponentType<
-  React.ComponentProps<typeof View> & Readonly<{
-    onKeyDown?: (event: NativeSyntheticEvent<{ key?: string; preventDefault?: () => void }>) => void;
-  }>
->;
-
 function closeLabelFor(heading: string, cancelLabel?: string): string {
   return cancelLabel ?? `Close ${heading.toLocaleLowerCase()}`;
 }
@@ -298,9 +293,10 @@ export function BottomSheet({
                     },
                   ]}
                 >
-                  <TraversalBoundary
+                  <AndroidEscapeBoundary
                     accessibilityViewIsModal
                     importantForAccessibility="yes"
+                    onEscape={cancel}
                     onKeyDown={containTraversal as never}
                     testID="bottom-sheet-frame"
                   >
@@ -333,7 +329,7 @@ export function BottomSheet({
                     >
                       {children}
                     </ScrollView>
-                  </TraversalBoundary>
+                  </AndroidEscapeBoundary>
                 </Animated.View>
               </KeyboardAvoidingView>
             </View>
