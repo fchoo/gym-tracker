@@ -123,6 +123,34 @@ function validateReportBinding(reportPath, expectedSha256, readArtifact) {
   });
 }
 
+function validateArtifactBinding(
+  relativePath,
+  expectedSha256,
+  {
+    prefix,
+    suffix,
+    invalidCode,
+    missingCode,
+    hashCode,
+    readArtifact,
+  },
+) {
+  const normalized = normalizeRelativeArtifactPath(
+    relativePath,
+    prefix,
+    suffix,
+    invalidCode,
+  );
+  const bytes = readArtifactBytes(normalized, readArtifact, missingCode);
+  if (sha256(bytes) !== expectedSha256) {
+    throw new Error(hashCode);
+  }
+  return Object.freeze({
+    path: normalized,
+    sha256: expectedSha256,
+  });
+}
+
 function validateMatrixCellArtifacts(cell, manifest, expectedCell, readArtifact) {
   if (
     typeof cell?.id !== "string"
@@ -152,31 +180,55 @@ function validateMatrixCellArtifacts(cell, manifest, expectedCell, readArtifact)
   ) {
     throw new Error("phase14_matrix_cells_invalid");
   }
+  const screenshot = validateArtifactBinding(cell.screenshot, cell.screenshot_sha256, {
+    prefix: SCREENSHOT_PREFIX,
+    suffix: ".png",
+    invalidCode: "phase14_matrix_cells_invalid",
+    missingCode: "phase14_screenshot_stale",
+    hashCode: "phase14_screenshot_stale",
+    readArtifact,
+  });
+  const semanticTree = validateArtifactBinding(
+    cell.semantic_tree,
+    cell.semantic_tree_sha256,
+    {
+      prefix: SEMANTIC_PREFIX,
+      suffix: ".xml",
+      invalidCode: "phase14_matrix_cells_invalid",
+      missingCode: "phase14_semantic_tree_missing",
+      hashCode: "phase14_semantic_tree_hash_invalid",
+      readArtifact,
+    },
+  );
+  const focusKeyTrace = validateArtifactBinding(
+    cell.focus_key_trace,
+    cell.focus_key_trace_sha256,
+    {
+      prefix: TRACE_PREFIX,
+      suffix: ".json",
+      invalidCode: "phase14_matrix_cells_invalid",
+      missingCode: "phase14_focus_trace_missing",
+      hashCode: "phase14_focus_trace_hash_invalid",
+      readArtifact,
+    },
+  );
+  const differenceOverlay = validateArtifactBinding(
+    cell.difference_overlay,
+    cell.difference_overlay_sha256,
+    {
+      prefix: OVERLAY_PREFIX,
+      suffix: ".json",
+      invalidCode: "phase14_matrix_cells_invalid",
+      missingCode: "phase14_overlay_missing",
+      hashCode: "phase14_overlay_hash_invalid",
+      readArtifact,
+    },
+  );
   if (
-    normalizeRelativeArtifactPath(
-      cell.screenshot,
-      SCREENSHOT_PREFIX,
-      ".png",
-      "phase14_matrix_cells_invalid",
-    ) !== cell.screenshot
-    || normalizeRelativeArtifactPath(
-      cell.semantic_tree,
-      SEMANTIC_PREFIX,
-      ".xml",
-      "phase14_matrix_cells_invalid",
-    ) !== cell.semantic_tree
-    || normalizeRelativeArtifactPath(
-      cell.focus_key_trace,
-      TRACE_PREFIX,
-      ".json",
-      "phase14_matrix_cells_invalid",
-    ) !== cell.focus_key_trace
-    || normalizeRelativeArtifactPath(
-      cell.difference_overlay,
-      OVERLAY_PREFIX,
-      ".json",
-      "phase14_matrix_cells_invalid",
-    ) !== cell.difference_overlay
+    cell.screenshot !== screenshot.path
+    || cell.semantic_tree !== semanticTree.path
+    || cell.focus_key_trace !== focusKeyTrace.path
+    || cell.difference_overlay !== differenceOverlay.path
   ) {
     throw new Error("phase14_matrix_cells_invalid");
   }
@@ -389,6 +441,17 @@ export function validatePhase14Evidence(
     const rowReport = validateReportBinding(row.report, row.report_sha256, readArtifact);
     if (row.report !== rowReport.path) {
       throw new Error("phase14_report_path_invalid");
+    }
+    const rowScreenshot = validateArtifactBinding(row.screenshot, row.screenshot_sha256, {
+      prefix: SCREENSHOT_PREFIX,
+      suffix: ".png",
+      invalidCode: "phase14_screenshot_stale",
+      missingCode: "phase14_screenshot_stale",
+      hashCode: "phase14_screenshot_stale",
+      readArtifact,
+    });
+    if (row.screenshot !== rowScreenshot.path) {
+      throw new Error("phase14_screenshot_stale");
     }
 
     if (

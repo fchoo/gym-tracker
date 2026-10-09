@@ -124,6 +124,14 @@ function matrixCellRecord(expectedCell, reportSha256) {
   };
 }
 
+function storedArtifact(map, relativePath, bytes = Buffer.from(`artifact:${relativePath}\n`)) {
+  map.set(relativePath, bytes);
+  return Object.freeze({
+    path: relativePath,
+    sha256: sha256(bytes),
+  });
+}
+
 function reportMapFor(ids = expectedIds) {
   const selectedCells = phase14MatrixCellsForIds(ids);
   const map = new Map();
@@ -149,13 +157,43 @@ function readArtifactFrom(map) {
 function validEvidence(ids = expectedIds) {
   const selectedCases = PHASE14_SHELL_EVIDENCE_CASES.filter(({ id }) => ids.includes(id));
   const selectedCells = phase14MatrixCellsForIds(ids);
-  const reports = reportMapFor(ids);
+  const artifacts = reportMapFor(ids);
   const cellsByCaseId = new Map(
     ids.map((id) => [id, selectedCells
       .filter((cell) => cell.caseId === id)
       .map((cell) => {
-        const report = reports.get(`artifacts/native/phase14/maestro/${cell.id}.xml`);
-        return matrixCellRecord(cell, sha256(report));
+        const report = storedArtifact(
+          artifacts,
+          `artifacts/native/phase14/maestro/${cell.id}.xml`,
+          passingReportXml(cell.id),
+        );
+        const screenshot = storedArtifact(
+          artifacts,
+          `artifacts/native/phase14/screenshots/${cell.id}.png`,
+        );
+        const semanticTree = storedArtifact(
+          artifacts,
+          `artifacts/native/phase14/semantic/${cell.id}.xml`,
+        );
+        const focusKeyTrace = storedArtifact(
+          artifacts,
+          `artifacts/native/phase14/traces/${cell.id}.json`,
+        );
+        const differenceOverlay = storedArtifact(
+          artifacts,
+          `artifacts/native/phase14/overlays/${cell.id}.json`,
+        );
+        return {
+          ...matrixCellRecord(cell, report.sha256),
+          screenshot: screenshot.path,
+          screenshot_sha256: screenshot.sha256,
+          semantic_tree: semanticTree.path,
+          semantic_tree_sha256: semanticTree.sha256,
+          focus_key_trace: focusKeyTrace.path,
+          focus_key_trace_sha256: focusKeyTrace.sha256,
+          difference_overlay: differenceOverlay.path,
+          difference_overlay_sha256: differenceOverlay.sha256,
+        };
       })]),
   );
 
@@ -194,8 +232,8 @@ function validEvidence(ids = expectedIds) {
         path: evidencePath,
         report: matrixCells[0].report,
         report_sha256: matrixCells[0].report_sha256,
-        screenshot: `artifacts/native/phase14/screenshots/${id}.png`,
-        screenshot_sha256: "f".repeat(64),
+        screenshot: matrixCells[0].screenshot,
+        screenshot_sha256: matrixCells[0].screenshot_sha256,
         component_verdict: "passed",
         native_verdict: "passed",
         source_state_sha256: manifest.source_tree_sha256,
@@ -217,8 +255,15 @@ function validEvidence(ids = expectedIds) {
 
   return {
     evidence,
-    reports,
+    artifacts,
   };
+}
+
+function approveDev02(bundle) {
+  bundle.evidence.dev02.status = "approved";
+  bundle.evidence.dev02.native_blended_fill.report_sha256 =
+    bundle.evidence.evidence.find(({ id }) => id === "shell.tokens").report_sha256;
+  return bundle;
 }
 
 test("Phase 14 ledger owns every exact shell ID once with one requirement, stage, and canonical evidence path", () => {
@@ -297,26 +342,23 @@ test("Phase 14 rejects stale source/APK/package/profile/device identity and inva
       pending.evidence,
       manifest,
       expectedIds,
-      { readArtifact: readArtifactFrom(pending.reports) },
+      { readArtifact: readArtifactFrom(pending.artifacts) },
     ),
     /phase14_dev02_pending/u,
   );
-  const closed = validEvidence();
-  closed.evidence.dev02.status = "approved";
-  closed.evidence.dev02.native_blended_fill.report_sha256 =
-    closed.evidence.evidence.find(({ id }) => id === "shell.tokens").report_sha256;
+  const closed = approveDev02(validEvidence());
   assert.doesNotThrow(() => validatePhase14Evidence(
     closed.evidence,
     manifest,
     expectedIds,
-    { readArtifact: readArtifactFrom(closed.reports) },
+    { readArtifact: readArtifactFrom(closed.artifacts) },
   ));
   assert.throws(
     () => validatePhase14Evidence(
       { ...closed.evidence, stages: [...closed.evidence.stages, closed.evidence.stages[0]] },
       manifest,
       expectedIds,
-      { readArtifact: readArtifactFrom(closed.reports) },
+      { readArtifact: readArtifactFrom(closed.artifacts) },
     ),
     /phase14_stages_invalid/u,
   );
@@ -325,7 +367,7 @@ test("Phase 14 rejects stale source/APK/package/profile/device identity and inva
       { ...closed.evidence, evidence: closed.evidence.evidence.slice(1) },
       manifest,
       expectedIds,
-      { readArtifact: readArtifactFrom(closed.reports) },
+      { readArtifact: readArtifactFrom(closed.artifacts) },
     ),
     /phase14_evidence_mapping_invalid/u,
   );
@@ -334,31 +376,25 @@ test("Phase 14 rejects stale source/APK/package/profile/device identity and inva
       { ...closed.evidence, matrix_cells: closed.evidence.matrix_cells.slice(1) },
       manifest,
       expectedIds,
-      { readArtifact: readArtifactFrom(closed.reports) },
+      { readArtifact: readArtifactFrom(closed.artifacts) },
     ),
     /phase14_matrix_cells_invalid/u,
   );
 
-  const missingReport = validEvidence();
-  missingReport.evidence.dev02.status = "approved";
-  missingReport.evidence.dev02.native_blended_fill.report_sha256 =
-    missingReport.evidence.evidence.find(({ id }) => id === "shell.tokens").report_sha256;
-  missingReport.reports.delete(missingReport.evidence.evidence[0].report);
+  const missingReport = approveDev02(validEvidence());
+  missingReport.artifacts.delete(missingReport.evidence.evidence[0].report);
   assert.throws(
     () => validatePhase14Evidence(
       missingReport.evidence,
       manifest,
       expectedIds,
-      { readArtifact: readArtifactFrom(missingReport.reports) },
+      { readArtifact: readArtifactFrom(missingReport.artifacts) },
     ),
     /phase14_report_missing/u,
   );
 
-  const mutatedReport = validEvidence();
-  mutatedReport.evidence.dev02.status = "approved";
-  mutatedReport.evidence.dev02.native_blended_fill.report_sha256 =
-    mutatedReport.evidence.evidence.find(({ id }) => id === "shell.tokens").report_sha256;
-  mutatedReport.reports.set(
+  const mutatedReport = approveDev02(validEvidence());
+  mutatedReport.artifacts.set(
     mutatedReport.evidence.evidence[0].report,
     Buffer.from("mutated report"),
   );
@@ -367,36 +403,30 @@ test("Phase 14 rejects stale source/APK/package/profile/device identity and inva
       mutatedReport.evidence,
       manifest,
       expectedIds,
-      { readArtifact: readArtifactFrom(mutatedReport.reports) },
+      { readArtifact: readArtifactFrom(mutatedReport.artifacts) },
     ),
     /phase14_report_content_invalid|phase14_report_hash_invalid/u,
   );
 
-  const failingReport = validEvidence();
-  failingReport.evidence.dev02.status = "approved";
-  failingReport.evidence.dev02.native_blended_fill.report_sha256 =
-    failingReport.evidence.evidence.find(({ id }) => id === "shell.tokens").report_sha256;
+  const failingReport = approveDev02(validEvidence());
   const failingBytes = failingReportXml();
   const failingSha = sha256(failingBytes);
   const firstRow = failingReport.evidence.evidence[0];
   firstRow.report_sha256 = failingSha;
   firstRow.matrix_cells[0].report_sha256 = failingSha;
   failingReport.evidence.stages[0].report_sha256 = failingSha;
-  failingReport.reports.set(firstRow.report, failingBytes);
+  failingReport.artifacts.set(firstRow.report, failingBytes);
   assert.throws(
     () => validatePhase14Evidence(
       failingReport.evidence,
       manifest,
       expectedIds,
-      { readArtifact: readArtifactFrom(failingReport.reports) },
+      { readArtifact: readArtifactFrom(failingReport.artifacts) },
     ),
     /phase14_report_content_invalid/u,
   );
 
-  const pathEscape = validEvidence();
-  pathEscape.evidence.dev02.status = "approved";
-  pathEscape.evidence.dev02.native_blended_fill.report_sha256 =
-    pathEscape.evidence.evidence.find(({ id }) => id === "shell.tokens").report_sha256;
+  const pathEscape = approveDev02(validEvidence());
   pathEscape.evidence.evidence[0].report = "../missing.xml";
   pathEscape.evidence.stages[0].report = "../missing.xml";
   pathEscape.evidence.evidence[0].matrix_cells[0].report = "../missing.xml";
@@ -405,45 +435,36 @@ test("Phase 14 rejects stale source/APK/package/profile/device identity and inva
       pathEscape.evidence,
       manifest,
       expectedIds,
-      { readArtifact: readArtifactFrom(pathEscape.reports) },
+      { readArtifact: readArtifactFrom(pathEscape.artifacts) },
     ),
     /phase14_report_path_invalid|phase14_stage_report_mismatch/u,
   );
 
-  const sourceDigestMismatch = validEvidence();
-  sourceDigestMismatch.evidence.dev02.status = "approved";
-  sourceDigestMismatch.evidence.dev02.native_blended_fill.report_sha256 =
-    sourceDigestMismatch.evidence.evidence.find(({ id }) => id === "shell.tokens").report_sha256;
+  const sourceDigestMismatch = approveDev02(validEvidence());
   sourceDigestMismatch.evidence.evidence[0].source_state_sha256 = "9".repeat(64);
   assert.throws(
     () => validatePhase14Evidence(
       sourceDigestMismatch.evidence,
       manifest,
       expectedIds,
-      { readArtifact: readArtifactFrom(sourceDigestMismatch.reports) },
+      { readArtifact: readArtifactFrom(sourceDigestMismatch.artifacts) },
     ),
     /phase14_evidence_mapping_invalid/u,
   );
 
-  const stageHashMismatch = validEvidence();
-  stageHashMismatch.evidence.dev02.status = "approved";
-  stageHashMismatch.evidence.dev02.native_blended_fill.report_sha256 =
-    stageHashMismatch.evidence.evidence.find(({ id }) => id === "shell.tokens").report_sha256;
+  const stageHashMismatch = approveDev02(validEvidence());
   stageHashMismatch.evidence.stages[0].report_sha256 = "0".repeat(64);
   assert.throws(
     () => validatePhase14Evidence(
       stageHashMismatch.evidence,
       manifest,
       expectedIds,
-      { readArtifact: readArtifactFrom(stageHashMismatch.reports) },
+      { readArtifact: readArtifactFrom(stageHashMismatch.artifacts) },
     ),
     /phase14_stage_report_mismatch/u,
   );
 
-  const rowMatrixMismatch = validEvidence();
-  rowMatrixMismatch.evidence.dev02.status = "approved";
-  rowMatrixMismatch.evidence.dev02.native_blended_fill.report_sha256 =
-    rowMatrixMismatch.evidence.evidence.find(({ id }) => id === "shell.tokens").report_sha256;
+  const rowMatrixMismatch = approveDev02(validEvidence());
   rowMatrixMismatch.evidence.evidence[0].matrix_cells = [];
   rowMatrixMismatch.evidence.stages[0].matrix_cells = [];
   assert.throws(
@@ -451,7 +472,106 @@ test("Phase 14 rejects stale source/APK/package/profile/device identity and inva
       rowMatrixMismatch.evidence,
       manifest,
       expectedIds,
-      { readArtifact: readArtifactFrom(rowMatrixMismatch.reports) },
+      { readArtifact: readArtifactFrom(rowMatrixMismatch.artifacts) },
+    ),
+    /phase14_matrix_cells_invalid/u,
+  );
+
+  const missingSemanticTree = approveDev02(validEvidence());
+  missingSemanticTree.artifacts.delete(
+    missingSemanticTree.evidence.evidence[0].matrix_cells[0].semantic_tree,
+  );
+  assert.throws(
+    () => validatePhase14Evidence(
+      missingSemanticTree.evidence,
+      manifest,
+      expectedIds,
+      { readArtifact: readArtifactFrom(missingSemanticTree.artifacts) },
+    ),
+    /phase14_semantic_tree_missing/u,
+  );
+
+  const forgedSemanticTree = approveDev02(validEvidence());
+  forgedSemanticTree.artifacts.set(
+    forgedSemanticTree.evidence.evidence[0].matrix_cells[0].semantic_tree,
+    Buffer.from("forged semantic tree"),
+  );
+  assert.throws(
+    () => validatePhase14Evidence(
+      forgedSemanticTree.evidence,
+      manifest,
+      expectedIds,
+      { readArtifact: readArtifactFrom(forgedSemanticTree.artifacts) },
+    ),
+    /phase14_semantic_tree_hash_invalid/u,
+  );
+
+  const missingFocusTrace = approveDev02(validEvidence());
+  missingFocusTrace.artifacts.delete(
+    missingFocusTrace.evidence.evidence[0].matrix_cells[0].focus_key_trace,
+  );
+  assert.throws(
+    () => validatePhase14Evidence(
+      missingFocusTrace.evidence,
+      manifest,
+      expectedIds,
+      { readArtifact: readArtifactFrom(missingFocusTrace.artifacts) },
+    ),
+    /phase14_focus_trace_missing/u,
+  );
+
+  const forgedFocusTrace = approveDev02(validEvidence());
+  forgedFocusTrace.artifacts.set(
+    forgedFocusTrace.evidence.evidence[0].matrix_cells[0].focus_key_trace,
+    Buffer.from("{\"forged\":true}\n"),
+  );
+  assert.throws(
+    () => validatePhase14Evidence(
+      forgedFocusTrace.evidence,
+      manifest,
+      expectedIds,
+      { readArtifact: readArtifactFrom(forgedFocusTrace.artifacts) },
+    ),
+    /phase14_focus_trace_hash_invalid/u,
+  );
+
+  const missingOverlay = approveDev02(validEvidence());
+  missingOverlay.artifacts.delete(
+    missingOverlay.evidence.evidence[0].matrix_cells[0].difference_overlay,
+  );
+  assert.throws(
+    () => validatePhase14Evidence(
+      missingOverlay.evidence,
+      manifest,
+      expectedIds,
+      { readArtifact: readArtifactFrom(missingOverlay.artifacts) },
+    ),
+    /phase14_overlay_missing/u,
+  );
+
+  const forgedOverlay = approveDev02(validEvidence());
+  forgedOverlay.artifacts.set(
+    forgedOverlay.evidence.evidence[0].matrix_cells[0].difference_overlay,
+    Buffer.from("{\"forged\":true}\n"),
+  );
+  assert.throws(
+    () => validatePhase14Evidence(
+      forgedOverlay.evidence,
+      manifest,
+      expectedIds,
+      { readArtifact: readArtifactFrom(forgedOverlay.artifacts) },
+    ),
+    /phase14_overlay_hash_invalid/u,
+  );
+
+  const semanticPathEscape = approveDev02(validEvidence());
+  semanticPathEscape.evidence.evidence[0].matrix_cells[0].semantic_tree = "../missing.xml";
+  assert.throws(
+    () => validatePhase14Evidence(
+      semanticPathEscape.evidence,
+      manifest,
+      expectedIds,
+      { readArtifact: readArtifactFrom(semanticPathEscape.artifacts) },
     ),
     /phase14_matrix_cells_invalid/u,
   );
