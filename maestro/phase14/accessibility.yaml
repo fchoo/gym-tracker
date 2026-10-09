@@ -16,6 +16,10 @@ tags:
     timeout: 90000
 - runFlow:
     when:
+      true: ${PHASE14_THEME_PRESELECTED != 'true'}
+    file: select-theme.yaml
+- runFlow:
+    when:
       true: ${PHASE14_STAGE == 'phase14-sheets'}
     commands:
       - tapOn: "Library"
@@ -26,8 +30,7 @@ tags:
           timeout: 30000
       - tapOn: "Appearance"
       - assertVisible: "Appearance"
-      - pressKey: BACK
-      - assertVisible: "Library"
+      - assertVisible: ${PHASE14_THEME_OPTION}
 - runFlow:
     when:
       true: ${PHASE14_STAGE == 'phase14-toasts'}

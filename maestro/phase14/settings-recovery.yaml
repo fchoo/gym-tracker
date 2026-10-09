@@ -14,6 +14,10 @@ tags:
 - extendedWaitUntil:
     visible: "Workout"
     timeout: 90000
+- runFlow:
+    when:
+      true: ${PHASE14_THEME_PRESELECTED != 'true'}
+    file: select-theme.yaml
 - openLink: "gymtracker-devtest:///more/data-and-recovery?suite=phase14&phase14Stage=${PHASE14_STAGE}"
 - extendedWaitUntil:
     visible: "Data and recovery"
@@ -65,15 +69,19 @@ tags:
       - assertVisible: "Restore clean"
       - tapOn: "Restore password"
       - inputText: "phase14-cancel-only"
-      - hideKeyboard
-      - scrollUntilVisible:
-          element:
-            id: "restore-clean-action"
-      - tapOn:
-          id: "restore-clean-action"
-      - extendedWaitUntil:
-          visible: "No backup was selected"
-          timeout: 30000
+      - runFlow:
+          when:
+            true: ${PHASE14_ACTION != 'ime-clearance'}
+          commands:
+            - hideKeyboard
+            - scrollUntilVisible:
+                element:
+                  id: "restore-clean-action"
+            - tapOn:
+                id: "restore-clean-action"
+            - extendedWaitUntil:
+                visible: "No backup was selected"
+                timeout: 30000
 - runFlow:
     when:
       true: ${PHASE14_STAGE == 'phase14-automatic-backup'}

@@ -16,6 +16,10 @@ tags:
     timeout: 90000
 - runFlow:
     when:
+      true: ${PHASE14_THEME_PRESELECTED != 'true'}
+    file: select-theme.yaml
+- runFlow:
+    when:
       true: ${PHASE14_STAGE == 'phase14-four-roots'}
     commands:
       - assertVisible: "Workout"

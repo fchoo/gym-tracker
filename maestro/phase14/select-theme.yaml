@@ -1,0 +1,25 @@
+appId: com.fchoo.gymtracker.devtest
+name: Phase 14 explicit appearance selection
+tags:
+  - phase-14
+  - native-only
+---
+- launchApp:
+    clearState: false
+    stopApp: true
+    permissions:
+      notifications: deny
+- extendedWaitUntil:
+    visible: "Workout"
+    timeout: 90000
+- tapOn: "Open App Settings"
+- extendedWaitUntil:
+    visible: "App Settings"
+    timeout: 30000
+- assertVisible: "Appearance"
+- tapOn: ${PHASE14_THEME_OPTION}
+- assertVisible: ${PHASE14_THEME_OPTION}
+- pressKey: BACK
+- extendedWaitUntil:
+    visible: "Workout"
+    timeout: 30000
