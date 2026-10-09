@@ -8,7 +8,7 @@ plans: [14-01, 14-02, 14-03, 14-04, 14-05, 14-06, 14-07, 14-08, 14-09, 14-10, 14
 
 # Phase 14 Validation Contract
 
-Phase 14 is validated on the exact implementation head `f059f06ab7a9ecc96e5ca6401f92a6719f02e374` with the final synchronized canonical native evidence committed separately at `f12c41e75e9f602657e2dd974cbc7d08e852a28a`. This validation reflects the final source refresh that redacts native review device locators while preserving manifest-bound APK and device identity verification. The retained manifests use `base_head` as capture provenance and source-tree/APK/device hashes as acceptance identity, so the evidence remains valid across the later evidence/docs commit in this refresh.
+Phase 14 is validated on the exact implementation head `d7282f29062796eccad20c6ecf960fdefa30a036` (`fix(14): focus destination root after deep route`) with the final synchronized canonical native evidence committed separately at `e0038e00020540b6143438a2100fba38d28cd4c4`. This validation reflects the final source refresh that redacts native review device locators while preserving manifest-bound APK and device identity verification. The retained manifests use `base_head` as capture provenance and source-tree/APK/device hashes as acceptance identity, so the evidence remains valid across the later evidence/docs commit in this refresh.
 
 ## Exact environment
 
@@ -28,49 +28,51 @@ export EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID="$(node --input-type=module -e "import {
 
 | Identity | Value |
 |---|---|
-| Exact implementation head for native proof | `f059f06ab7a9ecc96e5ca6401f92a6719f02e374` |
-| Canonical evidence commit | `f12c41e75e9f602657e2dd974cbc7d08e852a28a` |
-| Phase 14 source tree sha256 | `770afa08a9e84b158cdbed3f53e4ae3e2940f357af148785693579babbfa0f5d` |
+| Exact implementation head for native proof | `d7282f29062796eccad20c6ecf960fdefa30a036` |
+| Canonical evidence commit | `e0038e00020540b6143438a2100fba38d28cd4c4` |
+| Phase 14 source tree sha256 | `490a02edff3edeb7a441380b1dffe7913f8d7fa108a4ce431f7c9cc99de94ce4` |
 | Phase 14 build manifest | `artifacts/native/phase14/build.json` |
-| Phase 14 APK sha256 | `5d6d8f9cc9f55b879bc7262b898a5de8287e312f5e3f38ee1d1fd81a844b9366` |
+| Phase 14 APK sha256 | `6133c26be9385799aa93039e338c152c654b9fec5e0fb2f27dda6422bddeb485` |
 | Phase 14 device identity sha256 | `96dcf303d772667590457dc76c2cd5ee828515c31e2af1b9fee5b3f440b204f9` |
-| Strict Phase 14 evidence sha256 | `c424fce63980a2f4041ebb7f5f579bc21fafb8035689a581d6bc36262fde4b88` |
-| Verified evidence file sha256 | `4cb466972ebd9c4dea31e40b8c06e96e4607c84d6d9f13143d6fde03d6acfd22` |
+| Strict Phase 14 evidence sha256 | `26e313fc3fd5b76c169cef61ef3646578f02f9487a3c1c00d183d62db65ca882` |
+| Phase 14 evidence ledger sha256 | `a341c15abf1f20c9ef1236b4329a7b0091e1442116611fc7d0ea4912ec64b4d2` |
+| Verified evidence file sha256 | `c1340958b6c9d37e13c6ce40671a7cd0ad51d7ccdbacd0c099972007703e180a` |
 | Font proof manifest | `artifacts/native/phase14-font-proof/build.json` |
-| Font proof APK sha256 | `85ab62633a19643f3fd1acc536ee25bc39ef13f4d532de707f7872808d3cf77d` |
+| Font proof APK sha256 | `439742f54062e2e8fbee0b311fffd0c6e00f32cf25b3031a330929d1dc72f37a` |
 | Font proof report | `.planning/phases/14-prototype-visual-shell/evidence/font-axis-proof.json` |
-| Font proof report sha256 | `d09233790ffb2e696496f2ea5f992dd9f34cd4cfc1abddd273c4329e1ff0f3d1` |
-| Font proof screenshot sha256 scale 1.0 | `c8b3c899e23cd295cefdc54b1ee353132b107043e9edce08052c7c2069894d98` |
-| Font proof screenshot sha256 scale 2.0 | `d8d44aa71560a81e2732f7389dddeb9236fff1ab74c9fef98e29f8e3eeba47c4` |
+| Font proof report sha256 | `8b39c2f1b51876ffa1af5e69c72864003077ef87f8b8aeb2db4bd391f5d0bfe5` |
+| Font proof screenshot sha256 scale 1.0 | `7001e2223abc582a17e65f463f86f6259eb0ba0612a9c84370221bd0679db2d9` |
+| Font proof screenshot sha256 scale 2.0 | `16e4ce7b67c5ca15fb581f98479b12d721890316177ed9b5097a8c7a85d192cd` |
 | Refresh evidence count | `13` stages / `17` matrix cells / `13` evidence rows / `14` canonical evidence JSONs |
 | Evidence test count | `18` |
 
 ## Final results
 
-1. The current source delta already has a recorded full `npm run test:all` pass at implementation head `f059f06ab7a9ecc96e5ca6401f92a6719f02e374`: `217` suites passed and `3596` tests passed. Per the refresh instructions, that full suite was recorded but not rerun because the implementation source did not change during this evidence refresh.
-2. `npm run verify:cng` passed under the pinned environment using the silently derived public Google web client ID from `scripts/google-oauth-config.mjs`.
-3. The fresh retained `phase14-font-proof` and `phase14` manifests both match the exact implementation head and confirm the required privacy shape: `device.serial` is omitted, `installed_apk.device_path` is omitted, `installed_apk.sha256` is present, `installed_apk.matches_retained_apk` is `true`, and `device.identity_sha256` is present.
-4. The font capture passed visual review against the approved Revision 18 oracle at both scale `1.0` and scale `2.0`. `.planning/phases/14-prototype-visual-shell/evidence/font-axis-proof.json` records `status: passed`, `overlay_review.status: passed`, and both case records as `passed`.
-5. The retained font-proof APK was installed live with `adb install -r`, then `node scripts/run-phase14-font-proof.mjs --manifest artifacts/native/phase14-font-proof/build.json --verify-existing` passed against the installed artifact.
-6. The retained `phase14` APK was then reinstalled and used for the full native refresh. `node scripts/run-phase14-maestro.mjs --manifest artifacts/native/phase14/build.json --all` passed all 13 stages and all 17 matrix cells.
-7. `node scripts/verify-phase14-evidence.mjs --manifest artifacts/native/phase14/build.json --all` passed with `evidence_sha256=c424fce63980a2f4041ebb7f5f579bc21fafb8035689a581d6bc36262fde4b88`.
-8. The refreshed evidence ledger records `13` passing stages, `17` passing matrix cells, and `13` passing canonical shell rows, while the evidence refresh itself is sealed by `14` canonical JSON files including the font proof report.
-9. The source tree digest, retained APK hash, installed APK hash, and device identity all match across both retained manifests and the refreshed evidence ledger.
-10. The post-rerun scoped crash audit returned `MATCH_COUNT=0`. No new `APP CRASH(NATIVE)`, `abort message`, `FATAL EXCEPTION`, or `Fatal signal` signatures were found during the refreshed Phase 14 matrix window on this implementation head.
-11. The requested live install ordering is preserved in this evidence cycle: font-proof install and live verification completed first, then the retained `phase14` APK was restored and used for the full exact-head matrix and strict verifier.
+1. The current source delta already has a recorded full `npm run test:all` pass at implementation head `d7282f29062796eccad20c6ecf960fdefa30a036`: `218` suites passed and `3601` tests passed. Per the refresh instructions, that full suite was recorded but not rerun because the implementation source did not change during this evidence refresh.
+2. This exact implementation head includes the final focus regression fix `fix(14): focus destination root after deep route` (`d7282f29062796eccad20c6ecf960fdefa30a036`), which is the source line validated by the refreshed native evidence set.
+3. `npm run verify:cng` passed under the pinned environment using the silently derived public Google web client ID from `scripts/google-oauth-config.mjs`.
+4. The fresh retained `phase14-font-proof` and `phase14` manifests both match the exact implementation head and confirm the required privacy shape: `device.serial` is omitted, `installed_apk.device_path` is omitted, `installed_apk.sha256` is present, `installed_apk.matches_retained_apk` is `true`, and `device.identity_sha256` is present.
+5. The font capture passed visual review against the approved Revision 18 oracle at both scale `1.0` and scale `2.0`. `.planning/phases/14-prototype-visual-shell/evidence/font-axis-proof.json` records `status: passed`, `overlay_review.status: passed`, and both case records as `passed`.
+6. The retained font-proof APK was installed live with `adb install -r`, then `node scripts/run-phase14-font-proof.mjs --manifest artifacts/native/phase14-font-proof/build.json --verify-existing` passed against the installed artifact.
+7. The retained `phase14` APK was then reinstalled and used for the full native refresh. `node scripts/run-phase14-maestro.mjs --manifest artifacts/native/phase14/build.json --all` passed all 13 stages and all 17 matrix cells.
+8. `node scripts/verify-phase14-evidence.mjs --manifest artifacts/native/phase14/build.json --all` passed with `evidence_sha256=26e313fc3fd5b76c169cef61ef3646578f02f9487a3c1c00d183d62db65ca882`.
+9. The refreshed evidence ledger records `13` passing stages, `17` passing matrix cells, and `13` passing canonical shell rows, while the evidence refresh itself is sealed by `14` canonical JSON files including the font proof report.
+10. The source tree digest, retained APK hash, installed APK hash, and device identity all match across both retained manifests and the refreshed evidence ledger.
+11. The post-rerun scoped crash audit returned `MATCH_COUNT=0`. No new `APP CRASH(NATIVE)`, `abort message`, `FATAL EXCEPTION`, or `Fatal signal` signatures were found during the refreshed Phase 14 matrix window on this implementation head.
+12. The requested live install ordering is preserved in this evidence cycle: font-proof install and live verification completed first, then the retained `phase14` APK was restored and used for the full exact-head matrix and strict verifier.
 
 ## Command results
 
 | Command | Result |
 |---|---|
-| Recorded current `npm run test:all` result | PASS — `217` suites / `3596` tests / source unchanged, not rerun in this refresh |
+| Recorded current `npm run test:all` result | PASS — `218` suites / `3601` tests / source unchanged, not rerun in this refresh |
 | `npm run verify:cng` | PASS |
 | `npm run android:devtest:fresh -- --suite phase14-font-proof` | PASS |
 | `node scripts/run-phase14-font-proof.mjs --manifest artifacts/native/phase14-font-proof/build.json --capture` | PASS |
 | `node scripts/run-phase14-font-proof.mjs --manifest artifacts/native/phase14-font-proof/build.json --verify-existing` | PASS |
 | `npm run android:devtest:fresh -- --suite phase14` | PASS |
 | `node scripts/run-phase14-maestro.mjs --manifest artifacts/native/phase14/build.json --all` | PASS — 13 stages / 17 matrix cells |
-| `node scripts/verify-phase14-evidence.mjs --manifest artifacts/native/phase14/build.json --all` | PASS — `evidence_sha256=c424fce63980a2f4041ebb7f5f579bc21fafb8035689a581d6bc36262fde4b88` |
+| `node scripts/verify-phase14-evidence.mjs --manifest artifacts/native/phase14/build.json --all` | PASS — `evidence_sha256=26e313fc3fd5b76c169cef61ef3646578f02f9487a3c1c00d183d62db65ca882` |
 
 ## Canonical evidence ledger
 
