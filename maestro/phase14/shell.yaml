@@ -44,6 +44,27 @@ tags:
           visible: "App Settings"
           timeout: 30000
       - assertVisible: "Appearance"
+      - runFlow:
+          when:
+            true: ${PHASE14_THEME_OPTION == 'Light'}
+          commands:
+            - tapOn: "Light"
+            - assertVisible: "Light"
+      - runFlow:
+          when:
+            true: ${PHASE14_THEME_OPTION == 'Dark'}
+          commands:
+            - tapOn: "Dark"
+            - assertVisible: "Dark"
+      - runFlow:
+          when:
+            true: ${PHASE14_THEME_OPTION == 'System'}
+          commands:
+            - tapOn: "System"
+            - assertVisible: "System"
+      - extendedWaitUntil:
+          visible: "Appearance"
+          timeout: 30000
 - runFlow:
     when:
       true: ${PHASE14_STAGE == 'phase14-tokens'}
