@@ -8,7 +8,7 @@ plans: [14-01, 14-02, 14-03, 14-04, 14-05, 14-06, 14-07, 14-08, 14-09, 14-10, 14
 
 # Phase 14 Validation Contract
 
-Phase 14 has been re-audited on this checkout. CNG, the package evidence command, the host evidence suites, and the source/APK/device byte identities pass. Nyquist is not complete on the current checkout because the retained font and native manifests are based at implementation commit `6a7eb050d43deee5150e95ebc2d8121a1ef66fd2`, while the current checkout is `77d7497f6c143de720dde70f628d0925968d699c`; the strict verifiers reject that head advance. The native verifier permits only evidence-file changes, but the validation-document commit is also in the diff. The font verifier requires exact equality and rejects the same advance.
+Phase 14 has been re-audited on this checkout. CNG, the package evidence command, the host evidence suites, and the source/APK/device byte identities pass. Nyquist is not complete on the current checkout because the retained font and native manifests are based at implementation commit `6a7eb050d43deee5150e95ebc2d8121a1ef66fd2`, while the checkout now includes later validation-document commits; the strict verifiers reject that head advance. The native verifier permits only evidence-file changes, but the validation-document commits are also in the diff. The font verifier requires exact equality and rejects the same advance.
 
 ## Exact environment
 
@@ -241,5 +241,5 @@ Nyquist compliance is `false` on the current checkout. The host-side requirement
 
 ### Escalations
 
-1. **Font proof exact-head binding:** `run-phase14-font-proof.mjs --verify-existing` returns `phase14_font_manifest_stale`. The retained manifest is based at `6a7eb050…`, while current HEAD is `77d7497f…`.
+1. **Font proof exact-head binding:** `run-phase14-font-proof.mjs --verify-existing` returns `phase14_font_manifest_stale`. The retained manifest is based at `6a7eb050…`, while later validation-document commits are now present on the checkout.
 2. **Full Phase 14 evidence exact-head binding:** `verify-phase14-evidence.mjs --all` returns `phase14_manifest_stale`. The current diff from the manifest base contains `.planning/phases/14-prototype-visual-shell/14-VALIDATION.md` in addition to evidence files, violating the verifier's evidence-only advancement rule.
