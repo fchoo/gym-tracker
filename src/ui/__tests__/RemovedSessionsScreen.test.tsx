@@ -22,6 +22,7 @@ import {
 } from "../../domains/history";
 import {
   RemovedSessionsScreen,
+  restoreFocusRefForRemovedSession,
 } from "../screens/RemovedSessionsScreen";
 import {
   AppearanceProvider,
@@ -198,6 +199,13 @@ describe("RemovedSessionsScreen", () => {
 
     expect(await screen.findByText("Workout restored")).toBeOnTheScreen();
     expect(screen.queryByText("Full Body Foundation · Full Body A")).not.toBeOnTheScreen();
+  });
+
+  it("retains the initiating Restore target after success clears the selected session", () => {
+    const restoreControl = { current: {} as never };
+    const heading = { current: {} as never };
+
+    expect(restoreFocusRefForRemovedSession(restoreControl, heading)).toBe(restoreControl);
   });
 
   it("keeps the retained card visible after a restore failure and offers a retry-safe outcome", async () => {

@@ -41,6 +41,7 @@ import {
 } from "../theme";
 
 type LoadState = "loading" | "ready" | "error";
+type FocusRef = React.RefObject<View | null>;
 
 export type RemovedSessionsScreenProps = Readonly<{
   loadRemovedSessions(): Promise<readonly RemovedHistorySession[]>;
@@ -75,6 +76,13 @@ function removedText(session: RemovedHistorySession): string {
   }
 }
 
+export function restoreFocusRefForRemovedSession(
+  selectedRestoreRef: FocusRef,
+  headingRef: FocusRef,
+): FocusRef {
+  return selectedRestoreRef.current === null ? headingRef : selectedRestoreRef;
+}
+
 export function RemovedSessionsScreen({
   loadRemovedSessions,
   restoreSession,
@@ -88,6 +96,7 @@ export function RemovedSessionsScreen({
   const [sessions, setSessions] = useState<readonly RemovedHistorySession[]>([]);
   const [selected, setSelected] = useState<RemovedHistorySession | null>(null);
   const [restoreFailed, setRestoreFailed] = useState(false);
+  const [reloadAfterRestore, setReloadAfterRestore] = useState(false);
   const [restoring, setRestoring] = useState(false);
   const headingRef = useRef<View>(null);
   const loadingRef = useRef(false);
@@ -119,6 +128,12 @@ export function RemovedSessionsScreen({
     void load();
   }, [load]);
 
+  useEffect(() => {
+    if (!reloadAfterRestore) return;
+    setReloadAfterRestore(false);
+    void load();
+  }, [load, reloadAfterRestore]);
+
   const dismissConfirmation = () => {
     setSelected(null);
     setRestoreFailed(false);
@@ -139,12 +154,9 @@ export function RemovedSessionsScreen({
           confirmation: RESTORE_HISTORY_CONFIRMATION,
         });
         await onRestored(selectedSession.id);
-        if (!await load()) {
-          setRestoreFailed(true);
-          return;
-        }
         dismissConfirmation();
         enqueue({ message: "Workout restored" });
+        setReloadAfterRestore(true);
       } catch {
         setRestoreFailed(true);
       } finally {
@@ -262,9 +274,7 @@ export function RemovedSessionsScreen({
         heading="Restore this workout?"
         onCancel={dismissConfirmation}
         onConfirm={confirmRestore}
-        restoreFocusRef={state === "ready" && sessions.some((session) => session.id === selected?.id)
-          ? selectedRestoreRef
-          : headingRef}
+        restoreFocusRef={restoreFocusRefForRemovedSession(selectedRestoreRef, headingRef)}
         visible={selected !== null}
       />
     </>
