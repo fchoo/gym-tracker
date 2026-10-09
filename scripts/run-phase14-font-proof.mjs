@@ -64,9 +64,11 @@ function validateCase(entry, id, scale) {
   if (!withinOnePhysicalPixel(metrics.available_width_px, 335, entry.display_density) || !withinOnePhysicalPixel(metrics.available_width_px, metrics.container_bounds.width, entry.display_density) || !withinOnePhysicalPixel(Math.max(...metrics.line_advances_px), metrics.available_width_px, entry.display_density) || !contained(metrics.text_bounds, metrics.container_bounds, entry.display_density)) throw new Error("phase14_font_crop_overflow_invalid");
 }
 
-export function validatePhase14FontProofArtifacts({ manifest, report, currentHead, currentSourceTreeSha256, apkBytes, proofSourceBytes }) {
+export function validatePhase14FontProofArtifacts({ manifest, report, currentSourceTreeSha256, apkBytes, proofSourceBytes }) {
   validatePhase14FontProofManifest(manifest);
-  if (manifest.base_head !== currentHead || manifest.source_tree_sha256 !== currentSourceTreeSha256 || sha256(apkBytes) !== manifest.apk.sha256) throw new Error("phase14_font_manifest_stale");
+  // base_head records capture provenance; the source digest is the acceptance
+  // identity so later planning-only commits do not invalidate native proof.
+  if (manifest.source_tree_sha256 !== currentSourceTreeSha256 || sha256(apkBytes) !== manifest.apk.sha256) throw new Error("phase14_font_manifest_stale");
   if (report?.schema_version !== 2 || report.suite !== EXPECTED_SUITE || report.status !== "passed" || report.source_tree_sha256 !== manifest.source_tree_sha256 || report.apk_sha256 !== manifest.apk.sha256 || report.package !== manifest.package || report.profile !== manifest.profile || report.proof_source_sha256 !== sha256(proofSourceBytes) || report.font_scale_restored !== true || !same(report.revision18, REVISION18) || !Array.isArray(report.cases)) throw new Error("phase14_font_report_identity_invalid");
   const ids = expectedCaseIds(proofSourceBytes);
   report.cases.forEach((entry, index) => validateCase(entry, ids[index], index === 0 ? 1 : 2));

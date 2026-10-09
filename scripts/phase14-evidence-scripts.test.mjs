@@ -325,6 +325,26 @@ test("Phase 14 rejects stale source/APK/package/profile/device identity and inva
       installedApkSha256: current.apk.sha256,
       deviceIdentitySha256: current.device.identity_sha256,
     }));
+  assert.doesNotThrow(() =>
+    validatePhase14CurrentArtifacts({
+      manifest: current,
+      currentHead: "f".repeat(40),
+      currentSourceTreeSha256: current.source_tree_sha256,
+      apkBytes: bytes,
+      installedApkSha256: current.apk.sha256,
+      deviceIdentitySha256: current.device.identity_sha256,
+    }));
+  assert.throws(
+    () => validatePhase14CurrentArtifacts({
+      manifest: current,
+      currentHead: "f".repeat(40),
+      currentSourceTreeSha256: "0".repeat(64),
+      apkBytes: bytes,
+      installedApkSha256: current.apk.sha256,
+      deviceIdentitySha256: current.device.identity_sha256,
+    }),
+    /phase14_manifest_stale/u,
+  );
   assert.throws(
     () => validatePhase14CurrentArtifacts({
       manifest: current,

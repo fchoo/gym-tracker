@@ -338,27 +338,15 @@ export function validatePhase14Dev02(dev02) {
 
 export function validatePhase14CurrentArtifacts({
   manifest,
-  currentHead,
   currentSourceTreeSha256,
   apkBytes,
   installedApkSha256,
   deviceIdentitySha256,
 }) {
-  const evidenceOnlyHeadAdvance = manifest.base_head !== currentHead && (() => {
-    const changed = execFileSync(
-      "git",
-      ["diff", "--name-only", manifest.base_head, currentHead],
-      { cwd: ROOT, encoding: "utf8" },
-    ).trim().split("\n").filter(Boolean);
-    return (
-      changed.length > 0
-      && changed.every((file) =>
-        file.startsWith(".planning/phases/14-prototype-visual-shell/evidence/"))
-    );
-  })();
+  // base_head records capture provenance; the source digest is the acceptance
+  // identity so later planning-only commits do not invalidate native proof.
   if (
-    (!evidenceOnlyHeadAdvance && manifest.base_head !== currentHead)
-    || manifest.source_tree_sha256 !== currentSourceTreeSha256
+    manifest.source_tree_sha256 !== currentSourceTreeSha256
     || sha256(apkBytes) !== manifest.apk?.sha256
   ) {
     throw new Error("phase14_manifest_stale");

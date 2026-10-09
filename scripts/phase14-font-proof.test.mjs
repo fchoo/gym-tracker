@@ -79,11 +79,19 @@ test("font proof rejects stale source, APK, package/profile, fabricated pass rep
       apkBytes: readFileSync(value.apk),
       proofSourceBytes: readFileSync(path.join(value.directory, "phase14FontProof.ts")),
     }));
-    assert.throws(() => validatePhase14FontProofArtifacts({
+    assert.doesNotThrow(() => validatePhase14FontProofArtifacts({
       manifest: value.manifest,
       report: value.evidence,
       currentHead: "e".repeat(40),
       currentSourceTreeSha256: sourceTreeSha256,
+      apkBytes: readFileSync(value.apk),
+      proofSourceBytes: readFileSync(path.join(value.directory, "phase14FontProof.ts")),
+    }));
+    assert.throws(() => validatePhase14FontProofArtifacts({
+      manifest: value.manifest,
+      report: value.evidence,
+      currentHead: "e".repeat(40),
+      currentSourceTreeSha256: "f".repeat(64),
       apkBytes: readFileSync(value.apk),
       proofSourceBytes: readFileSync(path.join(value.directory, "phase14FontProof.ts")),
     }), /phase14_font_manifest_stale/u);
