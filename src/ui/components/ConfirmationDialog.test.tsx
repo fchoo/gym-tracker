@@ -61,4 +61,23 @@ describe("ConfirmationDialog", () => {
     await fireEvent.press(confirm);
     expect(onConfirm).not.toHaveBeenCalled();
   });
+
+  it("keeps a busy destructive command modal through every cancellation ingress", async () => {
+    const { onCancel } = await renderDialog({ confirmBusy: true });
+
+    await fireEvent(
+      screen.getByTestId("bottom-sheet-modal"),
+      "requestClose",
+    );
+    await fireEvent(screen.getByTestId("bottom-sheet-frame"), "keyDown", {
+      nativeEvent: { key: "Escape", preventDefault: jest.fn() },
+    });
+    await fireEvent.press(
+      screen.getByLabelText("Dismiss sheet", { includeHiddenElements: true }),
+    );
+    await fireEvent.press(screen.getByRole("button", { name: "Close remove workout" }));
+
+    expect(onCancel).not.toHaveBeenCalled();
+    expect(screen.getByRole("header", { name: "Remove workout" })).toBeOnTheScreen();
+  });
 });

@@ -11,7 +11,7 @@ type ConfirmationDialogActionsProps = Readonly<{
   alternateLabel?: string | undefined;
   cancelLabel: string;
   cancelRef: React.RefObject<View | null>;
-  confirmBusy: boolean;
+  busy: boolean;
   confirmDisabled: boolean;
   confirmLabel: string;
   confirmTestID?: string | undefined;
@@ -19,14 +19,13 @@ type ConfirmationDialogActionsProps = Readonly<{
   onAlternate?: (() => void) | undefined;
   onCancel: () => void;
   onConfirm: () => void;
-  visible: boolean;
 }>;
 
 function ConfirmationDialogActions({
   alternateLabel,
   cancelLabel,
   cancelRef,
-  confirmBusy,
+  busy,
   confirmDisabled,
   confirmLabel,
   confirmTestID,
@@ -34,22 +33,9 @@ function ConfirmationDialogActions({
   onAlternate,
   onCancel,
   onConfirm,
-  visible,
 }: ConfirmationDialogActionsProps) {
   const cancelSheet = useBottomSheetCancel();
-  const [submitting, setSubmitting] = useState(false);
-  const busy = confirmBusy || submitting;
   const confirmActionDisabled = busy || confirmDisabled;
-
-  useEffect(() => {
-    if (!visible || !confirmBusy) setSubmitting(false);
-  }, [confirmBusy, confirmLabel, visible]);
-
-  const confirm = () => {
-    if (confirmActionDisabled) return;
-    setSubmitting(true);
-    onConfirm();
-  };
 
   return (
     <>
@@ -68,7 +54,7 @@ function ConfirmationDialogActions({
         disabled={confirmActionDisabled}
         destructive={destructive}
         label={confirmLabel}
-        onPress={confirm}
+        onPress={onConfirm}
         {...(confirmTestID === undefined ? {} : { testID: confirmTestID })}
       />
     </>
@@ -117,9 +103,22 @@ export function ConfirmationDialog({
 }: ConfirmationDialogProps) {
   const { colors } = useAppTheme();
   const cancelRef = useRef<View>(null);
+  const [submitting, setSubmitting] = useState(false);
+  const busy = confirmBusy || submitting;
+
+  useEffect(() => {
+    if (!visible || !confirmBusy) setSubmitting(false);
+  }, [confirmBusy, visible]);
+
+  const confirm = () => {
+    if (busy || confirmDisabled) return;
+    setSubmitting(true);
+    onConfirm();
+  };
 
   return (
     <BottomSheet
+      cancelDisabled={busy}
       consequenceMode
       heading={heading}
       initialFocusRef={initialFocusRef ?? cancelRef}
@@ -136,15 +135,14 @@ export function ConfirmationDialog({
         alternateLabel={alternateLabel}
         cancelLabel={cancelLabel}
         cancelRef={cancelRef}
-        confirmBusy={confirmBusy}
+        busy={busy}
         confirmDisabled={confirmDisabled}
         confirmLabel={confirmLabel}
         confirmTestID={confirmTestID}
         destructive={destructive}
         onAlternate={onAlternate}
         onCancel={onCancel}
-        onConfirm={onConfirm}
-        visible={visible}
+        onConfirm={confirm}
       />
     </BottomSheet>
   );
