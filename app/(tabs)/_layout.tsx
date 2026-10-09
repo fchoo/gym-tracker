@@ -1,5 +1,5 @@
 import { Tabs } from "expo-router";
-import { useWindowDimensions } from "react-native";
+import { View } from "react-native";
 import React, { useEffect, useRef, useState } from "react";
 import { router, type Href } from "expo-router";
 
@@ -84,11 +84,15 @@ function RootSettingsContent({
 export default function RootTabsLayout() {
   const { launchState } = useWorkoutAppRuntime();
   const { colors } = useAppTheme();
+  const settingsTriggerRef = useRef<View>(null);
   const tabBarPosition = "bottom";
   return (
-    <AppRootShell settingsContent={(closeSettings) => (
-      <RootSettingsContent onNavigate={closeSettings} />
-    )}>
+    <AppRootShell
+      settingsContent={(closeSettings) => (
+        <RootSettingsContent onNavigate={closeSettings} />
+      )}
+      settingsTriggerRef={settingsTriggerRef}
+    >
       <Tabs
       backBehavior={rootBackBehavior}
       initialRouteName="index"

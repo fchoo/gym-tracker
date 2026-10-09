@@ -260,4 +260,17 @@ describe("RootTabsLayout adaptive navigator placement", () => {
     );
     expect(rendered.getByRole("tab", { name: "Library" })).toBeSelected();
   });
+
+  it("keeps the production settings trigger wired through its open and close flow", async () => {
+    const rendered = await render(
+      <AppearanceProvider>
+        <RootTabsLayout />
+      </AppearanceProvider>,
+    );
+    await fireEvent.press(rendered.getByRole("button", { name: "Open App Settings" }));
+    expect(rendered.getByRole("header", { name: "App Settings" })).toBeOnTheScreen();
+    await fireEvent.press(rendered.getByRole("button", { name: "Close App Settings" }));
+
+    expect(rendered.queryByRole("header", { name: "App Settings" })).toBeNull();
+  });
 });

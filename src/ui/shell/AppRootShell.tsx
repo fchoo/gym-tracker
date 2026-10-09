@@ -76,6 +76,7 @@ export function AppRootShell({
                 }
                 onOpenSettings?.();
               }}
+              ref={settingsTriggerRef}
             />
           </View>
         )}
