@@ -32,10 +32,16 @@ describe("useManualBackupController", () => {
     const input = base();
     input.createSecureBackup.mockImplementationOnce(() => new Promise((done) => { resolve = done; }));
     const view = await render(<Harness {...input} />);
-    await act(async () => { fireEvent.press(view.getByTestId("create")); await Promise.resolve(); });
+    await act(async () => {
+      fireEvent.press(view.getByTestId("create"));
+      await Promise.resolve();
+    });
     expect(view.getByTestId("backup").children).toEqual(["preparing"]);
-    fireEvent.press(view.getByTestId("cancel"));
-    await act(async () => { resolve?.({ archiveId: "late", createdAtMs: 1, displayName: "late.gtbk" }); });
+    await fireEvent.press(view.getByTestId("cancel"));
+    await act(async () => {
+      resolve?.({ archiveId: "late", createdAtMs: 1, displayName: "late.gtbk" });
+      await Promise.resolve();
+    });
     expect(input.discardSecureBackup).toHaveBeenCalledWith(expect.objectContaining({ archiveId: "late" }));
     expect(view.getByTestId("backup").children).toEqual(["cancelled"]);
   });
