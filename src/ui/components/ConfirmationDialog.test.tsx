@@ -1,4 +1,4 @@
-import { fireEvent, render, screen } from "@testing-library/react-native";
+import { fireEvent, render, screen, waitFor } from "@testing-library/react-native";
 import { describe, expect, it, jest } from "@jest/globals";
 import React from "react";
 import { Text, View } from "react-native";
@@ -86,7 +86,7 @@ describe("ConfirmationDialog", () => {
     await fireEvent.press(screen.getByRole("button", { name: "Keep workout" }));
     expect(onCancel).toHaveBeenCalledTimes(1);
     expect(onConfirm).not.toHaveBeenCalled();
-    expect(restoreFocus).toHaveBeenCalledTimes(1);
+    await waitFor(() => expect(restoreFocus).toHaveBeenCalledTimes(1));
   });
 
   it("prevents duplicate submit while busy", async () => {
