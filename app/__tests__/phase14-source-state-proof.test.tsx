@@ -7,15 +7,13 @@ import Phase14SourceStateProofRoute from "../__phase14-source-state-proof";
 let mockBuildProfile = "development-test";
 let mockNativeContractsEnabled = true;
 let mockNativeContractSuite = "phase14";
+let mockLaunchState = "trusted";
 const mockCollectPhase14SourceStateProof = jest.fn(async () => ({
   digest_sha256: "a".repeat(64),
   table_count: 48,
   row_count: 321,
   schema_version: 30,
 }));
-const mockRuntime = Object.freeze({
-  collectPhase14SourceStateProof: mockCollectPhase14SourceStateProof,
-});
 
 jest.mock("expo-constants", () => ({
   __esModule: true,
@@ -44,7 +42,10 @@ jest.mock("expo-router", () => ({
 }));
 
 jest.mock("../../src/bootstrap/workoutAppRuntime", () => ({
-  useWorkoutAppRuntime: () => mockRuntime,
+  useWorkoutAppRuntime: () => ({
+    collectPhase14SourceStateProof: mockCollectPhase14SourceStateProof,
+    launchState: mockLaunchState,
+  }),
 }));
 
 describe("Phase14SourceStateProofRoute", () => {
@@ -52,6 +53,7 @@ describe("Phase14SourceStateProofRoute", () => {
     mockBuildProfile = "development-test";
     mockNativeContractsEnabled = true;
     mockNativeContractSuite = "phase14";
+    mockLaunchState = "trusted";
     mockCollectPhase14SourceStateProof.mockReset();
     mockCollectPhase14SourceStateProof.mockResolvedValue({
       digest_sha256: "a".repeat(64),
@@ -59,6 +61,22 @@ describe("Phase14SourceStateProofRoute", () => {
       row_count: 321,
       schema_version: 30,
     });
+  });
+
+  it("waits for the runtime to become trusted before collecting", async () => {
+    mockLaunchState = "booting";
+    const rendered = await render(<Phase14SourceStateProofRoute />);
+
+    expect(screen.getByText("PHASE14_SOURCE_STATE_PROOF_PENDING")).toBeOnTheScreen();
+    expect(mockCollectPhase14SourceStateProof).not.toHaveBeenCalled();
+
+    mockLaunchState = "trusted";
+    rendered.rerender(<Phase14SourceStateProofRoute />);
+
+    expect(await screen.findByText(
+      `PHASE14_SOURCE_STATE_PROOF digest_sha256=${"a".repeat(64)} table_count=48 row_count=321 schema_version=30`,
+    )).toBeOnTheScreen();
+    expect(mockCollectPhase14SourceStateProof).toHaveBeenCalledTimes(1);
   });
 
   it("renders only the bounded aggregate semantic proof for the exact development-test suite", async () => {

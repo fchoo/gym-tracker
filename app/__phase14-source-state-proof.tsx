@@ -20,6 +20,7 @@ function SourceStateProofContent() {
   const startedRef = React.useRef(false);
 
   React.useEffect(() => {
+    if (runtime.launchState !== "trusted") return;
     if (startedRef.current) return;
     startedRef.current = true;
     let active = true;
