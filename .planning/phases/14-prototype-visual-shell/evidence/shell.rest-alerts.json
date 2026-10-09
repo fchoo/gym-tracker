@@ -3,37 +3,584 @@
   "suite": "phase14",
   "status": "passed",
   "build_manifest": "artifacts/native/phase14/build.json",
-  "base_head": "ef329f2a3f23eb999d819aa16255c64e48a9dfd0",
-  "source_tree_sha256": "2cd4177084070b984abab7814897f35902d963ff4ea1e9a6ee04a08a7d9662b2",
+  "base_head": "ef0d9d9b8621d5fda838c11f87e75138b72b97cc",
+  "source_tree_sha256": "9d60a92d2fa758648fd6715260d46e75ac770b8adcfa21ce95ca537a9ecd671c",
   "package": "com.fchoo.gymtracker.devtest",
   "profile": "development-test",
   "device_identity_sha256": "96dcf303d772667590457dc76c2cd5ee828515c31e2af1b9fee5b3f440b204f9",
   "apk": {
     "path": "artifacts/native/phase14/gym-tracker-phase14-devtest.apk",
-    "sha256": "edf9bdd8da663f74f6985479778d248b022db71499dc7c0985b63f14a1e1418a",
-    "size_bytes": 131739812,
+    "sha256": "a364b5a49e8518e5cdf9f2effb0ec302ad8239a78a504235bbafd04709fd64b2",
+    "size_bytes": 131758360,
     "page_alignment_kib": 16,
     "page_alignment_verified": true,
-    "installed_sha256": "edf9bdd8da663f74f6985479778d248b022db71499dc7c0985b63f14a1e1418a",
+    "installed_sha256": "a364b5a49e8518e5cdf9f2effb0ec302ad8239a78a504235bbafd04709fd64b2",
     "matches_retained_apk": true
+  },
+  "matrix": {
+    "suite": "phase14",
+    "package": "com.fchoo.gymtracker.devtest",
+    "profile": "development-test",
+    "themes": [
+      "light",
+      "dark",
+      "system-on-light",
+      "system-on-dark"
+    ],
+    "liveOsSwitch": true,
+    "explicitThemeInvariant": true,
+    "viewports": [
+      {
+        "width": 360,
+        "height": 800
+      },
+      {
+        "width": 390,
+        "height": 844
+      },
+      {
+        "width": 600,
+        "height": 960
+      },
+      {
+        "width": 840,
+        "height": 1080
+      }
+    ],
+    "orientations": [
+      "portrait",
+      "landscape"
+    ],
+    "fontScales": [
+      1,
+      2
+    ],
+    "minTargetDp": 48,
+    "focusRingDp": 3,
+    "capture": {
+      "semanticTree": true,
+      "focusKeyTrace": true,
+      "targetWindowBounds": true,
+      "sourceStateDigest": true,
+      "screenshot": true,
+      "differenceOverlay": "revision-18",
+      "contactSheetsAreIndexOnly": true,
+      "platformChromeSeparate": true,
+      "unexplainedDifferenceFails": true
+    },
+    "input": [
+      "heading-focus",
+      "trigger-focus",
+      "back",
+      "escape",
+      "scrim",
+      "ime-clearance",
+      "dpad"
+    ],
+    "motion": [
+      "reduced-motion-equivalence"
+    ],
+    "startup": [
+      "factual-loading",
+      "notification-permission",
+      "continue-without-alerts"
+    ],
+    "recovery": [
+      "development-test-fixtures",
+      "no-write-navigation"
+    ],
+    "stages": [
+      {
+        "stage": "phase14-four-roots",
+        "flow": "shell"
+      },
+      {
+        "stage": "phase14-root-state",
+        "flow": "shell"
+      },
+      {
+        "stage": "phase14-appearance",
+        "flow": "shell"
+      },
+      {
+        "stage": "phase14-tokens",
+        "flow": "shell"
+      },
+      {
+        "stage": "phase14-sheets",
+        "flow": "accessibility"
+      },
+      {
+        "stage": "phase14-toasts",
+        "flow": "accessibility"
+      },
+      {
+        "stage": "phase14-launch",
+        "flow": "accessibility"
+      },
+      {
+        "stage": "phase14-rest-alerts",
+        "flow": "settings-recovery"
+      },
+      {
+        "stage": "phase14-settings-deep-links",
+        "flow": "settings-recovery"
+      },
+      {
+        "stage": "phase14-removed-sessions",
+        "flow": "settings-recovery"
+      },
+      {
+        "stage": "phase14-data-recovery",
+        "flow": "settings-recovery"
+      },
+      {
+        "stage": "phase14-automatic-backup",
+        "flow": "settings-recovery"
+      },
+      {
+        "stage": "phase14-manual-backup",
+        "flow": "settings-recovery"
+      }
+    ],
+    "cells": [
+      {
+        "id": "shell-four-roots-phone-360-portrait-scale-2",
+        "caseId": "shell.four-roots",
+        "stage": "phase14-four-roots",
+        "flow": "shell",
+        "theme": "light",
+        "viewport": {
+          "width": 360,
+          "height": 800
+        },
+        "orientation": "portrait",
+        "fontScale": 2,
+        "reducedMotion": false,
+        "liveOsSwitch": false,
+        "expectedInputs": [
+          "heading-focus",
+          "dpad"
+        ]
+      },
+      {
+        "id": "shell-four-roots-tablet-840-landscape-scale-1",
+        "caseId": "shell.four-roots",
+        "stage": "phase14-four-roots",
+        "flow": "shell",
+        "theme": "dark",
+        "viewport": {
+          "width": 840,
+          "height": 1080
+        },
+        "orientation": "landscape",
+        "fontScale": 1,
+        "reducedMotion": false,
+        "liveOsSwitch": false,
+        "expectedInputs": [
+          "heading-focus",
+          "dpad"
+        ]
+      },
+      {
+        "id": "shell-root-state-phone-390-portrait-scale-1",
+        "caseId": "shell.root-state",
+        "stage": "phase14-root-state",
+        "flow": "shell",
+        "theme": "dark",
+        "viewport": {
+          "width": 390,
+          "height": 844
+        },
+        "orientation": "portrait",
+        "fontScale": 1,
+        "reducedMotion": false,
+        "liveOsSwitch": false,
+        "expectedInputs": [
+          "trigger-focus",
+          "back",
+          "dpad"
+        ]
+      },
+      {
+        "id": "shell-appearance-light-390-portrait-scale-1",
+        "caseId": "shell.appearance",
+        "stage": "phase14-appearance",
+        "flow": "shell",
+        "theme": "light",
+        "viewport": {
+          "width": 390,
+          "height": 844
+        },
+        "orientation": "portrait",
+        "fontScale": 1,
+        "reducedMotion": false,
+        "liveOsSwitch": false,
+        "expectedInputs": [
+          "trigger-focus"
+        ]
+      },
+      {
+        "id": "shell-appearance-dark-390-portrait-scale-1",
+        "caseId": "shell.appearance",
+        "stage": "phase14-appearance",
+        "flow": "shell",
+        "theme": "dark",
+        "viewport": {
+          "width": 390,
+          "height": 844
+        },
+        "orientation": "portrait",
+        "fontScale": 1,
+        "reducedMotion": false,
+        "liveOsSwitch": false,
+        "expectedInputs": [
+          "trigger-focus"
+        ]
+      },
+      {
+        "id": "shell-appearance-system-light-live-switch",
+        "caseId": "shell.appearance",
+        "stage": "phase14-appearance",
+        "flow": "shell",
+        "theme": "system-on-light",
+        "viewport": {
+          "width": 390,
+          "height": 844
+        },
+        "orientation": "portrait",
+        "fontScale": 1,
+        "reducedMotion": false,
+        "liveOsSwitch": true,
+        "systemNightAfter": true,
+        "expectedInputs": [
+          "trigger-focus"
+        ]
+      },
+      {
+        "id": "shell-appearance-system-dark-390-portrait-scale-1",
+        "caseId": "shell.appearance",
+        "stage": "phase14-appearance",
+        "flow": "shell",
+        "theme": "system-on-dark",
+        "viewport": {
+          "width": 390,
+          "height": 844
+        },
+        "orientation": "portrait",
+        "fontScale": 1,
+        "reducedMotion": false,
+        "liveOsSwitch": false,
+        "expectedInputs": [
+          "trigger-focus"
+        ]
+      },
+      {
+        "id": "shell-tokens-tablet-600-portrait-scale-1",
+        "caseId": "shell.tokens",
+        "stage": "phase14-tokens",
+        "flow": "shell",
+        "theme": "system-on-dark",
+        "viewport": {
+          "width": 600,
+          "height": 960
+        },
+        "orientation": "portrait",
+        "fontScale": 1,
+        "reducedMotion": false,
+        "liveOsSwitch": false,
+        "expectedInputs": [
+          "heading-focus"
+        ]
+      },
+      {
+        "id": "shell-sheets-tablet-600-landscape-scale-2",
+        "caseId": "shell.sheets",
+        "stage": "phase14-sheets",
+        "flow": "accessibility",
+        "theme": "light",
+        "viewport": {
+          "width": 600,
+          "height": 960
+        },
+        "orientation": "landscape",
+        "fontScale": 2,
+        "reducedMotion": false,
+        "liveOsSwitch": false,
+        "expectedInputs": [
+          "escape",
+          "scrim",
+          "ime-clearance",
+          "dpad"
+        ]
+      },
+      {
+        "id": "shell-toasts-phone-390-portrait-scale-1-reduced-motion",
+        "caseId": "shell.toasts",
+        "stage": "phase14-toasts",
+        "flow": "accessibility",
+        "theme": "dark",
+        "viewport": {
+          "width": 390,
+          "height": 844
+        },
+        "orientation": "portrait",
+        "fontScale": 1,
+        "reducedMotion": true,
+        "liveOsSwitch": false,
+        "expectedInputs": [
+          "trigger-focus"
+        ]
+      },
+      {
+        "id": "shell-launch-phone-360-portrait-scale-2",
+        "caseId": "shell.launch",
+        "stage": "phase14-launch",
+        "flow": "accessibility",
+        "theme": "system-on-light",
+        "viewport": {
+          "width": 360,
+          "height": 800
+        },
+        "orientation": "portrait",
+        "fontScale": 2,
+        "reducedMotion": false,
+        "liveOsSwitch": false,
+        "expectedInputs": [
+          "back"
+        ]
+      },
+      {
+        "id": "shell-rest-alerts-phone-390-portrait-scale-1",
+        "caseId": "shell.rest-alerts",
+        "stage": "phase14-rest-alerts",
+        "flow": "settings-recovery",
+        "theme": "dark",
+        "viewport": {
+          "width": 390,
+          "height": 844
+        },
+        "orientation": "portrait",
+        "fontScale": 1,
+        "reducedMotion": false,
+        "liveOsSwitch": false,
+        "expectedInputs": [
+          "back",
+          "dpad"
+        ]
+      },
+      {
+        "id": "shell-settings-deep-links-tablet-600-portrait-scale-2",
+        "caseId": "shell.settings-deep-links",
+        "stage": "phase14-settings-deep-links",
+        "flow": "settings-recovery",
+        "theme": "light",
+        "viewport": {
+          "width": 600,
+          "height": 960
+        },
+        "orientation": "portrait",
+        "fontScale": 2,
+        "reducedMotion": false,
+        "liveOsSwitch": false,
+        "expectedInputs": [
+          "back",
+          "trigger-focus"
+        ]
+      },
+      {
+        "id": "shell-removed-sessions-phone-390-portrait-scale-2",
+        "caseId": "shell.removed-sessions",
+        "stage": "phase14-removed-sessions",
+        "flow": "settings-recovery",
+        "theme": "dark",
+        "viewport": {
+          "width": 390,
+          "height": 844
+        },
+        "orientation": "portrait",
+        "fontScale": 2,
+        "reducedMotion": false,
+        "liveOsSwitch": false,
+        "expectedInputs": [
+          "trigger-focus",
+          "back"
+        ]
+      },
+      {
+        "id": "shell-data-recovery-tablet-840-landscape-scale-1",
+        "caseId": "shell.data-recovery",
+        "stage": "phase14-data-recovery",
+        "flow": "settings-recovery",
+        "theme": "light",
+        "viewport": {
+          "width": 840,
+          "height": 1080
+        },
+        "orientation": "landscape",
+        "fontScale": 1,
+        "reducedMotion": false,
+        "liveOsSwitch": false,
+        "expectedInputs": [
+          "ime-clearance",
+          "back"
+        ]
+      },
+      {
+        "id": "shell-automatic-backup-tablet-600-portrait-scale-1",
+        "caseId": "shell.automatic-backup",
+        "stage": "phase14-automatic-backup",
+        "flow": "settings-recovery",
+        "theme": "system-on-light",
+        "viewport": {
+          "width": 600,
+          "height": 960
+        },
+        "orientation": "portrait",
+        "fontScale": 1,
+        "reducedMotion": false,
+        "liveOsSwitch": false,
+        "expectedInputs": [
+          "trigger-focus",
+          "back"
+        ]
+      },
+      {
+        "id": "shell-manual-backup-tablet-840-portrait-scale-2",
+        "caseId": "shell.manual-backup",
+        "stage": "phase14-manual-backup",
+        "flow": "settings-recovery",
+        "theme": "system-on-dark",
+        "viewport": {
+          "width": 840,
+          "height": 1080
+        },
+        "orientation": "portrait",
+        "fontScale": 2,
+        "reducedMotion": false,
+        "liveOsSwitch": false,
+        "expectedInputs": [
+          "ime-clearance",
+          "back"
+        ]
+      }
+    ]
   },
   "stage": {
     "stage": "phase14-rest-alerts",
     "status": "passed",
-    "report": "artifacts/native/phase14/maestro/phase14-rest-alerts.xml",
-    "report_sha256": "064c1281586cf0893ae1b65f5badd5ba369e86ea68dc66c741a3ac371af1d935"
+    "report": "artifacts/native/phase14/maestro/shell-rest-alerts-phone-390-portrait-scale-1.xml",
+    "report_sha256": "5d32c5e9f4bfebd52d0eb21afc97337e704312d011542a836547f4ccc757f9c4",
+    "matrix_cells": [
+      {
+        "id": "shell-rest-alerts-phone-390-portrait-scale-1",
+        "case_id": "shell.rest-alerts",
+        "stage": "phase14-rest-alerts",
+        "theme": "dark",
+        "viewport": {
+          "width": 390,
+          "height": 844
+        },
+        "orientation": "portrait",
+        "font_scale": 1,
+        "reduced_motion": false,
+        "live_os_switch": false,
+        "expected_inputs": [
+          "back",
+          "dpad"
+        ],
+        "report": "artifacts/native/phase14/maestro/shell-rest-alerts-phone-390-portrait-scale-1.xml",
+        "report_sha256": "5d32c5e9f4bfebd52d0eb21afc97337e704312d011542a836547f4ccc757f9c4",
+        "screenshot": "artifacts/native/phase14/screenshots/shell-rest-alerts-phone-390-portrait-scale-1.png",
+        "screenshot_sha256": "ce547f5dc72ca8e22548ec0d451f33d8ddfeb30b38d7305dd1e0a8a72820ec6d",
+        "semantic_tree": "artifacts/native/phase14/semantic/shell-rest-alerts-phone-390-portrait-scale-1.xml",
+        "semantic_tree_sha256": "82e82eb4bdc3618a1066843ba21db8c57dac9e376f63efffb361feae583dbe93",
+        "focus_key_trace": "artifacts/native/phase14/traces/shell-rest-alerts-phone-390-portrait-scale-1.json",
+        "focus_key_trace_sha256": "391c9b1aeb57ebea0861d9e8f6cb4673e9b74f7d854f221da8305018388b5edf",
+        "target_window_bounds": {
+          "requested_viewport": {
+            "width": 390,
+            "height": 844
+          },
+          "requested_orientation": "portrait",
+          "requested_font_scale": 1,
+          "wm_size": "Physical size: 1080x2400\nOverride size: 390x844",
+          "wm_density": "Physical density: 420\nOverride density: 160",
+          "font_scale": "1",
+          "night_mode": "Night mode: no"
+        },
+        "difference_overlay": "artifacts/native/phase14/overlays/shell-rest-alerts-phone-390-portrait-scale-1.json",
+        "difference_overlay_sha256": "4fc5da6ebb96f16a5fa1251a45674941401acfdb618ce2a0f72bfcb32ade50d8",
+        "source_state_sha256": "9d60a92d2fa758648fd6715260d46e75ac770b8adcfa21ce95ca537a9ecd671c",
+        "summary": {
+          "tests": 1,
+          "failures": 0,
+          "errors": 0,
+          "skipped": 0
+        }
+      }
+    ]
   },
   "evidence": {
     "id": "shell.rest-alerts",
     "status": "passed",
     "requirement": "SHL-08",
     "path": ".planning/phases/14-prototype-visual-shell/evidence/shell.rest-alerts.json",
-    "report": "artifacts/native/phase14/maestro/phase14-rest-alerts.xml",
-    "report_sha256": "064c1281586cf0893ae1b65f5badd5ba369e86ea68dc66c741a3ac371af1d935",
-    "screenshot": "artifacts/native/phase14/screenshots/shell.rest-alerts.png",
-    "screenshot_sha256": "ab1c5ddacebce2b22c34037dec482da1e188bb9ef98966ab08181df069ef6574",
+    "report": "artifacts/native/phase14/maestro/shell-rest-alerts-phone-390-portrait-scale-1.xml",
+    "report_sha256": "5d32c5e9f4bfebd52d0eb21afc97337e704312d011542a836547f4ccc757f9c4",
+    "screenshot": "artifacts/native/phase14/screenshots/shell-rest-alerts-phone-390-portrait-scale-1.png",
+    "screenshot_sha256": "ce547f5dc72ca8e22548ec0d451f33d8ddfeb30b38d7305dd1e0a8a72820ec6d",
     "component_verdict": "passed",
     "native_verdict": "passed",
-    "source_state_sha256": "2cd4177084070b984abab7814897f35902d963ff4ea1e9a6ee04a08a7d9662b2"
+    "source_state_sha256": "9d60a92d2fa758648fd6715260d46e75ac770b8adcfa21ce95ca537a9ecd671c",
+    "matrix_cells": [
+      {
+        "id": "shell-rest-alerts-phone-390-portrait-scale-1",
+        "case_id": "shell.rest-alerts",
+        "stage": "phase14-rest-alerts",
+        "theme": "dark",
+        "viewport": {
+          "width": 390,
+          "height": 844
+        },
+        "orientation": "portrait",
+        "font_scale": 1,
+        "reduced_motion": false,
+        "live_os_switch": false,
+        "expected_inputs": [
+          "back",
+          "dpad"
+        ],
+        "report": "artifacts/native/phase14/maestro/shell-rest-alerts-phone-390-portrait-scale-1.xml",
+        "report_sha256": "5d32c5e9f4bfebd52d0eb21afc97337e704312d011542a836547f4ccc757f9c4",
+        "screenshot": "artifacts/native/phase14/screenshots/shell-rest-alerts-phone-390-portrait-scale-1.png",
+        "screenshot_sha256": "ce547f5dc72ca8e22548ec0d451f33d8ddfeb30b38d7305dd1e0a8a72820ec6d",
+        "semantic_tree": "artifacts/native/phase14/semantic/shell-rest-alerts-phone-390-portrait-scale-1.xml",
+        "semantic_tree_sha256": "82e82eb4bdc3618a1066843ba21db8c57dac9e376f63efffb361feae583dbe93",
+        "focus_key_trace": "artifacts/native/phase14/traces/shell-rest-alerts-phone-390-portrait-scale-1.json",
+        "focus_key_trace_sha256": "391c9b1aeb57ebea0861d9e8f6cb4673e9b74f7d854f221da8305018388b5edf",
+        "target_window_bounds": {
+          "requested_viewport": {
+            "width": 390,
+            "height": 844
+          },
+          "requested_orientation": "portrait",
+          "requested_font_scale": 1,
+          "wm_size": "Physical size: 1080x2400\nOverride size: 390x844",
+          "wm_density": "Physical density: 420\nOverride density: 160",
+          "font_scale": "1",
+          "night_mode": "Night mode: no"
+        },
+        "difference_overlay": "artifacts/native/phase14/overlays/shell-rest-alerts-phone-390-portrait-scale-1.json",
+        "difference_overlay_sha256": "4fc5da6ebb96f16a5fa1251a45674941401acfdb618ce2a0f72bfcb32ade50d8",
+        "source_state_sha256": "9d60a92d2fa758648fd6715260d46e75ac770b8adcfa21ce95ca537a9ecd671c",
+        "summary": {
+          "tests": 1,
+          "failures": 0,
+          "errors": 0,
+          "skipped": 0
+        }
+      }
+    ]
   }
 }
