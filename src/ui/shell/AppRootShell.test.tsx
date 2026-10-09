@@ -224,6 +224,45 @@ describe("AppRootShell", () => {
     expect(consumeOrigin).toHaveBeenCalledTimes(2);
   });
 
+  it("focuses the destination heading when leaving a deep route for another root", async () => {
+    const trigger = { current: { focus: jest.fn() } };
+    const libraryHeading = { current: { focus: jest.fn() } };
+    const progressHeading = { current: { focus: jest.fn() } };
+    const consumeOrigin = jest.fn();
+    const { rerender } = await render(
+      <AppearanceProvider>
+        <AppRootShell
+          activeRoot="library"
+          currentPath="/more/removed-sessions"
+          headingRefs={{ library: libraryHeading, progress: progressHeading }}
+          onConsumeOrigin={consumeOrigin}
+        >
+          <View />
+        </AppRootShell>
+      </AppearanceProvider>,
+    );
+
+    await act(async () => {
+      rerender(
+        <AppearanceProvider>
+          <AppRootShell
+            activeRoot="progress"
+            currentPath="/progress"
+            headingRefs={{ library: libraryHeading, progress: progressHeading }}
+            origin={{ root: "library", trigger }}
+            onConsumeOrigin={consumeOrigin}
+          >
+            <View />
+          </AppRootShell>
+        </AppearanceProvider>,
+      );
+    });
+
+    expect(trigger.current.focus).not.toHaveBeenCalled();
+    expect(progressHeading.current.focus).toHaveBeenCalledTimes(1);
+    expect(consumeOrigin).toHaveBeenCalledTimes(1);
+  });
+
   it("mounts one measured shell-level toast host", async () => {
     await render(
       <AppearanceProvider>

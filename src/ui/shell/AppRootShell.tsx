@@ -110,6 +110,7 @@ export function AppRootShell({
         }
         onConsumeOrigin?.();
       } else if (pathChanged && origin !== undefined && origin.root !== activeRoot) {
+        headingRefs?.[activeRoot]?.current?.focus?.();
         onConsumeOrigin?.();
       } else if (rootChanged) {
         headingRefs?.[activeRoot]?.current?.focus?.();
