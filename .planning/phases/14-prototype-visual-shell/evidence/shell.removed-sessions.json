@@ -3,18 +3,18 @@
   "suite": "phase14",
   "status": "passed",
   "build_manifest": "artifacts/native/phase14/build.json",
-  "base_head": "46a219969a6e57cf94e5a67c507cf1d2c34a91e4",
-  "source_tree_sha256": "74842bc4fc4a7cafc2f2b0738600e32ef78152783360cb4f176c4fe2bd3fb5f5",
+  "base_head": "6a7eb050d43deee5150e95ebc2d8121a1ef66fd2",
+  "source_tree_sha256": "b4d89baf7b4f9f15145f9d7c45b5159765fe255544e2e5611b7498142e77f4d6",
   "package": "com.fchoo.gymtracker.devtest",
   "profile": "development-test",
   "device_identity_sha256": "96dcf303d772667590457dc76c2cd5ee828515c31e2af1b9fee5b3f440b204f9",
   "apk": {
     "path": "artifacts/native/phase14/gym-tracker-phase14-devtest.apk",
-    "sha256": "319a4a2ab72710fc9dbd4da9ab961c112850509bfc057b4cd3ae72133ed644cd",
+    "sha256": "2b16921d8a60c867594be20fdcb66bc26d3da6fd7ca8147e44d50b3b8e746af3",
     "size_bytes": 131758360,
     "page_alignment_kib": 16,
     "page_alignment_verified": true,
-    "installed_sha256": "319a4a2ab72710fc9dbd4da9ab961c112850509bfc057b4cd3ae72133ed644cd",
+    "installed_sha256": "2b16921d8a60c867594be20fdcb66bc26d3da6fd7ca8147e44d50b3b8e746af3",
     "matches_retained_apk": true
   },
   "matrix": {
@@ -470,7 +470,7 @@
     "stage": "phase14-removed-sessions",
     "status": "passed",
     "report": "artifacts/native/phase14/maestro/shell-removed-sessions-phone-390-portrait-scale-2.xml",
-    "report_sha256": "396d307b7129b5a1b190b13f6d2314dbf8a9c0839a82ca006f1571e7750db52f",
+    "report_sha256": "8f888cfbe6ddb6ca1648367a818940f3a86246783f56b8a32759d77973caed22",
     "matrix_cells": [
       {
         "id": "shell-removed-sessions-phone-390-portrait-scale-2",
@@ -490,13 +490,13 @@
           "back"
         ],
         "report": "artifacts/native/phase14/maestro/shell-removed-sessions-phone-390-portrait-scale-2.xml",
-        "report_sha256": "396d307b7129b5a1b190b13f6d2314dbf8a9c0839a82ca006f1571e7750db52f",
+        "report_sha256": "8f888cfbe6ddb6ca1648367a818940f3a86246783f56b8a32759d77973caed22",
         "screenshot": "artifacts/native/phase14/screenshots/shell-removed-sessions-phone-390-portrait-scale-2.png",
-        "screenshot_sha256": "b6282858d90e168061b5155b6b51a36cb28e8b7b6676e36fb4169c8c23aae525",
+        "screenshot_sha256": "f135422768ac5b122352c9cf05ee6d6f92a9412e0417228905bf3f1763190726",
         "semantic_tree": "artifacts/native/phase14/semantic/shell-removed-sessions-phone-390-portrait-scale-2.xml",
-        "semantic_tree_sha256": "e33b1e53876f5313df5f483dceb075b0f7cddb4a16627ea631afc2c22630826f",
+        "semantic_tree_sha256": "dffeaca2bd68c56edb2480cdb2fc5772967ae3d5f69d6eb6e8ec985a3a95e425",
         "focus_key_trace": "artifacts/native/phase14/traces/shell-removed-sessions-phone-390-portrait-scale-2.json",
-        "focus_key_trace_sha256": "b3b683351f13a48a666022924eb1626bdfe62e60cb1c962964bac4b89106892b",
+        "focus_key_trace_sha256": "4e300d0c0cb80cf35a4ad894f627d271e22b57e7bb741694e34aed4030da4358",
         "target_window_bounds": {
           "requested_viewport": {
             "width": 390,
@@ -510,8 +510,8 @@
           "night_mode": "Night mode: no"
         },
         "difference_overlay": "artifacts/native/phase14/overlays/shell-removed-sessions-phone-390-portrait-scale-2.json",
-        "difference_overlay_sha256": "9e2289a740ddbac30a22cc42cb84359acc5e4d957d4d1871a79715774abb8ddf",
-        "source_state_sha256": "74842bc4fc4a7cafc2f2b0738600e32ef78152783360cb4f176c4fe2bd3fb5f5",
+        "difference_overlay_sha256": "688a70d651ef5c2b82d2b35f6ec2653ef5da1ed5c3eb5a5de3c4a94b4225cddf",
+        "source_state_sha256": "b4d89baf7b4f9f15145f9d7c45b5159765fe255544e2e5611b7498142e77f4d6",
         "summary": {
           "tests": 1,
           "failures": 0,
@@ -527,12 +527,12 @@
     "requirement": "SHL-10",
     "path": ".planning/phases/14-prototype-visual-shell/evidence/shell.removed-sessions.json",
     "report": "artifacts/native/phase14/maestro/shell-removed-sessions-phone-390-portrait-scale-2.xml",
-    "report_sha256": "396d307b7129b5a1b190b13f6d2314dbf8a9c0839a82ca006f1571e7750db52f",
+    "report_sha256": "8f888cfbe6ddb6ca1648367a818940f3a86246783f56b8a32759d77973caed22",
     "screenshot": "artifacts/native/phase14/screenshots/shell-removed-sessions-phone-390-portrait-scale-2.png",
-    "screenshot_sha256": "b6282858d90e168061b5155b6b51a36cb28e8b7b6676e36fb4169c8c23aae525",
+    "screenshot_sha256": "f135422768ac5b122352c9cf05ee6d6f92a9412e0417228905bf3f1763190726",
     "component_verdict": "passed",
     "native_verdict": "passed",
-    "source_state_sha256": "74842bc4fc4a7cafc2f2b0738600e32ef78152783360cb4f176c4fe2bd3fb5f5",
+    "source_state_sha256": "b4d89baf7b4f9f15145f9d7c45b5159765fe255544e2e5611b7498142e77f4d6",
     "matrix_cells": [
       {
         "id": "shell-removed-sessions-phone-390-portrait-scale-2",
@@ -552,13 +552,13 @@
           "back"
         ],
         "report": "artifacts/native/phase14/maestro/shell-removed-sessions-phone-390-portrait-scale-2.xml",
-        "report_sha256": "396d307b7129b5a1b190b13f6d2314dbf8a9c0839a82ca006f1571e7750db52f",
+        "report_sha256": "8f888cfbe6ddb6ca1648367a818940f3a86246783f56b8a32759d77973caed22",
         "screenshot": "artifacts/native/phase14/screenshots/shell-removed-sessions-phone-390-portrait-scale-2.png",
-        "screenshot_sha256": "b6282858d90e168061b5155b6b51a36cb28e8b7b6676e36fb4169c8c23aae525",
+        "screenshot_sha256": "f135422768ac5b122352c9cf05ee6d6f92a9412e0417228905bf3f1763190726",
         "semantic_tree": "artifacts/native/phase14/semantic/shell-removed-sessions-phone-390-portrait-scale-2.xml",
-        "semantic_tree_sha256": "e33b1e53876f5313df5f483dceb075b0f7cddb4a16627ea631afc2c22630826f",
+        "semantic_tree_sha256": "dffeaca2bd68c56edb2480cdb2fc5772967ae3d5f69d6eb6e8ec985a3a95e425",
         "focus_key_trace": "artifacts/native/phase14/traces/shell-removed-sessions-phone-390-portrait-scale-2.json",
-        "focus_key_trace_sha256": "b3b683351f13a48a666022924eb1626bdfe62e60cb1c962964bac4b89106892b",
+        "focus_key_trace_sha256": "4e300d0c0cb80cf35a4ad894f627d271e22b57e7bb741694e34aed4030da4358",
         "target_window_bounds": {
           "requested_viewport": {
             "width": 390,
@@ -572,8 +572,8 @@
           "night_mode": "Night mode: no"
         },
         "difference_overlay": "artifacts/native/phase14/overlays/shell-removed-sessions-phone-390-portrait-scale-2.json",
-        "difference_overlay_sha256": "9e2289a740ddbac30a22cc42cb84359acc5e4d957d4d1871a79715774abb8ddf",
-        "source_state_sha256": "74842bc4fc4a7cafc2f2b0738600e32ef78152783360cb4f176c4fe2bd3fb5f5",
+        "difference_overlay_sha256": "688a70d651ef5c2b82d2b35f6ec2653ef5da1ed5c3eb5a5de3c4a94b4225cddf",
+        "source_state_sha256": "b4d89baf7b4f9f15145f9d7c45b5159765fe255544e2e5611b7498142e77f4d6",
         "summary": {
           "tests": 1,
           "failures": 0,

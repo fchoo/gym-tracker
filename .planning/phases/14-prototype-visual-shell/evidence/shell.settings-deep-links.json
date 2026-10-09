@@ -3,18 +3,18 @@
   "suite": "phase14",
   "status": "passed",
   "build_manifest": "artifacts/native/phase14/build.json",
-  "base_head": "46a219969a6e57cf94e5a67c507cf1d2c34a91e4",
-  "source_tree_sha256": "74842bc4fc4a7cafc2f2b0738600e32ef78152783360cb4f176c4fe2bd3fb5f5",
+  "base_head": "6a7eb050d43deee5150e95ebc2d8121a1ef66fd2",
+  "source_tree_sha256": "b4d89baf7b4f9f15145f9d7c45b5159765fe255544e2e5611b7498142e77f4d6",
   "package": "com.fchoo.gymtracker.devtest",
   "profile": "development-test",
   "device_identity_sha256": "96dcf303d772667590457dc76c2cd5ee828515c31e2af1b9fee5b3f440b204f9",
   "apk": {
     "path": "artifacts/native/phase14/gym-tracker-phase14-devtest.apk",
-    "sha256": "319a4a2ab72710fc9dbd4da9ab961c112850509bfc057b4cd3ae72133ed644cd",
+    "sha256": "2b16921d8a60c867594be20fdcb66bc26d3da6fd7ca8147e44d50b3b8e746af3",
     "size_bytes": 131758360,
     "page_alignment_kib": 16,
     "page_alignment_verified": true,
-    "installed_sha256": "319a4a2ab72710fc9dbd4da9ab961c112850509bfc057b4cd3ae72133ed644cd",
+    "installed_sha256": "2b16921d8a60c867594be20fdcb66bc26d3da6fd7ca8147e44d50b3b8e746af3",
     "matches_retained_apk": true
   },
   "matrix": {
@@ -470,7 +470,7 @@
     "stage": "phase14-settings-deep-links",
     "status": "passed",
     "report": "artifacts/native/phase14/maestro/shell-settings-deep-links-tablet-600-portrait-scale-2.xml",
-    "report_sha256": "251bd5110ad802c143d509f74bb0303a3b180e2b94866fce810176cb8fb01662",
+    "report_sha256": "019e0590dcd2610bd7e6f31c4248e742cb34d44649fd7a67eeeac03f4f05eb30",
     "matrix_cells": [
       {
         "id": "shell-settings-deep-links-tablet-600-portrait-scale-2",
@@ -490,13 +490,13 @@
           "trigger-focus"
         ],
         "report": "artifacts/native/phase14/maestro/shell-settings-deep-links-tablet-600-portrait-scale-2.xml",
-        "report_sha256": "251bd5110ad802c143d509f74bb0303a3b180e2b94866fce810176cb8fb01662",
+        "report_sha256": "019e0590dcd2610bd7e6f31c4248e742cb34d44649fd7a67eeeac03f4f05eb30",
         "screenshot": "artifacts/native/phase14/screenshots/shell-settings-deep-links-tablet-600-portrait-scale-2.png",
-        "screenshot_sha256": "c887eb29c7b1b2c4c6c4951b2f172de679b155ac99ddce6c404d0b84a749a3a9",
+        "screenshot_sha256": "b3276352e6bab18f806c67650bd612f0302bbb8c85081d1dce1646a4a3199904",
         "semantic_tree": "artifacts/native/phase14/semantic/shell-settings-deep-links-tablet-600-portrait-scale-2.xml",
         "semantic_tree_sha256": "fca27361f4095acafdd51f0d7fc26632f1af658b1bd0a0131961f1d1e7c69fec",
         "focus_key_trace": "artifacts/native/phase14/traces/shell-settings-deep-links-tablet-600-portrait-scale-2.json",
-        "focus_key_trace_sha256": "b56565fb9e1aa867a77d82769b6f36c9e13e4a2097d68926f14b4edd38d44a79",
+        "focus_key_trace_sha256": "5f3fb4e961fc16cd8b85c35b8609d7f6ff649951ae644435594279e4887d98f6",
         "target_window_bounds": {
           "requested_viewport": {
             "width": 600,
@@ -510,8 +510,8 @@
           "night_mode": "Night mode: no"
         },
         "difference_overlay": "artifacts/native/phase14/overlays/shell-settings-deep-links-tablet-600-portrait-scale-2.json",
-        "difference_overlay_sha256": "ad0ad03f72d720bdef2ce6552def8da06344a17b55e6f522ac0faa3c7a21f621",
-        "source_state_sha256": "74842bc4fc4a7cafc2f2b0738600e32ef78152783360cb4f176c4fe2bd3fb5f5",
+        "difference_overlay_sha256": "e11c64382181f5e10fba123d85cd87f2a31fa65b2eb0afb4fadd315ea9cdea09",
+        "source_state_sha256": "b4d89baf7b4f9f15145f9d7c45b5159765fe255544e2e5611b7498142e77f4d6",
         "summary": {
           "tests": 1,
           "failures": 0,
@@ -527,12 +527,12 @@
     "requirement": "SHL-09",
     "path": ".planning/phases/14-prototype-visual-shell/evidence/shell.settings-deep-links.json",
     "report": "artifacts/native/phase14/maestro/shell-settings-deep-links-tablet-600-portrait-scale-2.xml",
-    "report_sha256": "251bd5110ad802c143d509f74bb0303a3b180e2b94866fce810176cb8fb01662",
+    "report_sha256": "019e0590dcd2610bd7e6f31c4248e742cb34d44649fd7a67eeeac03f4f05eb30",
     "screenshot": "artifacts/native/phase14/screenshots/shell-settings-deep-links-tablet-600-portrait-scale-2.png",
-    "screenshot_sha256": "c887eb29c7b1b2c4c6c4951b2f172de679b155ac99ddce6c404d0b84a749a3a9",
+    "screenshot_sha256": "b3276352e6bab18f806c67650bd612f0302bbb8c85081d1dce1646a4a3199904",
     "component_verdict": "passed",
     "native_verdict": "passed",
-    "source_state_sha256": "74842bc4fc4a7cafc2f2b0738600e32ef78152783360cb4f176c4fe2bd3fb5f5",
+    "source_state_sha256": "b4d89baf7b4f9f15145f9d7c45b5159765fe255544e2e5611b7498142e77f4d6",
     "matrix_cells": [
       {
         "id": "shell-settings-deep-links-tablet-600-portrait-scale-2",
@@ -552,13 +552,13 @@
           "trigger-focus"
         ],
         "report": "artifacts/native/phase14/maestro/shell-settings-deep-links-tablet-600-portrait-scale-2.xml",
-        "report_sha256": "251bd5110ad802c143d509f74bb0303a3b180e2b94866fce810176cb8fb01662",
+        "report_sha256": "019e0590dcd2610bd7e6f31c4248e742cb34d44649fd7a67eeeac03f4f05eb30",
         "screenshot": "artifacts/native/phase14/screenshots/shell-settings-deep-links-tablet-600-portrait-scale-2.png",
-        "screenshot_sha256": "c887eb29c7b1b2c4c6c4951b2f172de679b155ac99ddce6c404d0b84a749a3a9",
+        "screenshot_sha256": "b3276352e6bab18f806c67650bd612f0302bbb8c85081d1dce1646a4a3199904",
         "semantic_tree": "artifacts/native/phase14/semantic/shell-settings-deep-links-tablet-600-portrait-scale-2.xml",
         "semantic_tree_sha256": "fca27361f4095acafdd51f0d7fc26632f1af658b1bd0a0131961f1d1e7c69fec",
         "focus_key_trace": "artifacts/native/phase14/traces/shell-settings-deep-links-tablet-600-portrait-scale-2.json",
-        "focus_key_trace_sha256": "b56565fb9e1aa867a77d82769b6f36c9e13e4a2097d68926f14b4edd38d44a79",
+        "focus_key_trace_sha256": "5f3fb4e961fc16cd8b85c35b8609d7f6ff649951ae644435594279e4887d98f6",
         "target_window_bounds": {
           "requested_viewport": {
             "width": 600,
@@ -572,8 +572,8 @@
           "night_mode": "Night mode: no"
         },
         "difference_overlay": "artifacts/native/phase14/overlays/shell-settings-deep-links-tablet-600-portrait-scale-2.json",
-        "difference_overlay_sha256": "ad0ad03f72d720bdef2ce6552def8da06344a17b55e6f522ac0faa3c7a21f621",
-        "source_state_sha256": "74842bc4fc4a7cafc2f2b0738600e32ef78152783360cb4f176c4fe2bd3fb5f5",
+        "difference_overlay_sha256": "e11c64382181f5e10fba123d85cd87f2a31fa65b2eb0afb4fadd315ea9cdea09",
+        "source_state_sha256": "b4d89baf7b4f9f15145f9d7c45b5159765fe255544e2e5611b7498142e77f4d6",
         "summary": {
           "tests": 1,
           "failures": 0,

@@ -2,8 +2,8 @@
   "schema_version": 2,
   "suite": "phase14-font-proof",
   "status": "passed",
-  "source_tree_sha256": "74842bc4fc4a7cafc2f2b0738600e32ef78152783360cb4f176c4fe2bd3fb5f5",
-  "apk_sha256": "8e92c3ac67172d4211ea3cd52315136bcaab8a0aae9323670fa45a69533f541c",
+  "source_tree_sha256": "b4d89baf7b4f9f15145f9d7c45b5159765fe255544e2e5611b7498142e77f4d6",
+  "apk_sha256": "6453eae760ff3e4e9a79c859b5ee08cadcdc5a6506b838aef18dc31fd306d1c9",
   "package": "com.fchoo.gymtracker.devtest",
   "profile": "development-test",
   "proof_source_sha256": "f0eddbba430379d8161d5b5f68805783dab7d527a2914260602b0eec026f9f28",
@@ -14,13 +14,13 @@
   },
   "overlay_review": {
     "status": "passed",
-    "screenshot_sha256": "ac865dbdc5af2dc07531d668e58d0e3e5165e6fd39b39bece944533e737b3c6b",
-    "reviewed_screenshot_sha256": {
-      "scale_1": "ac865dbdc5af2dc07531d668e58d0e3e5165e6fd39b39bece944533e737b3c6b",
-      "scale_2": "c2f9094da5a0d65fd01d2488f0402fe08e8e0ebc4fb861a6f5815e9971d98339"
-    },
+    "screenshot_sha256": "9e399dbc77a57475135938736017a2b554d658417708062d0506a5d8f36d9369",
     "approved_html_sha256": "b5ddbad88fd465af2fa79475dc0c05efec49e551652f13c5220627730e1d9c96",
-    "approved_json_sha256": "b8e91e3098ec443c9dc283ae8383d1af552d7dc2b83648695a01dcb8a89ff0bf"
+    "approved_json_sha256": "b8e91e3098ec443c9dc283ae8383d1af552d7dc2b83648695a01dcb8a89ff0bf",
+    "reviewed_screenshot_sha256": {
+      "scale_1": "9e399dbc77a57475135938736017a2b554d658417708062d0506a5d8f36d9369",
+      "scale_2": "4a16b7a012b315ea2ca4ea854555ce3f4dc3b23385a0d5202981f690c6a23a84"
+    }
   },
   "cases": [
     {
@@ -28,7 +28,7 @@
       "status": "passed",
       "font_scale": 1,
       "display_density": 2.625,
-      "screenshot_sha256": "ac865dbdc5af2dc07531d668e58d0e3e5165e6fd39b39bece944533e737b3c6b",
+      "screenshot_sha256": "9e399dbc77a57475135938736017a2b554d658417708062d0506a5d8f36d9369",
       "family": "ArchivoVariable",
       "family_loaded": true,
       "style": {
@@ -90,7 +90,7 @@
       "status": "passed",
       "font_scale": 2,
       "display_density": 2.625,
-      "screenshot_sha256": "c2f9094da5a0d65fd01d2488f0402fe08e8e0ebc4fb861a6f5815e9971d98339",
+      "screenshot_sha256": "4a16b7a012b315ea2ca4ea854555ce3f4dc3b23385a0d5202981f690c6a23a84",
       "family": "ArchivoVariable",
       "family_loaded": true,
       "style": {
