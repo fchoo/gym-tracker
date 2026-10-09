@@ -243,6 +243,7 @@ BUILD_MANIFEST="$build_manifest" \
   node <<'NODE'
 import { renameSync, writeFileSync } from 'node:fs';
 
+const privacyBoundedManifest = process.env.SUITE === 'phase14-font-proof';
 const manifest = {
   schema_version: 1,
   suite: process.env.SUITE,
@@ -262,7 +263,7 @@ const manifest = {
     page_alignment_verified: true,
   },
   installed_apk: {
-    device_path: process.env.INSTALLED_APK_PATH,
+    ...(privacyBoundedManifest ? {} : { device_path: process.env.INSTALLED_APK_PATH }),
     sha256: process.env.INSTALLED_APK_SHA256,
     matches_retained_apk:
       process.env.INSTALLED_APK_SHA256 === process.env.APK_SHA256,
@@ -273,7 +274,7 @@ const manifest = {
   },
   device: {
     role: 'automated-test-device',
-    serial: process.env.DEVICE_SERIAL,
+    ...(privacyBoundedManifest ? {} : { serial: process.env.DEVICE_SERIAL }),
     api: Number(process.env.DEVICE_API),
     abi: process.env.DEVICE_ABI,
     model: process.env.DEVICE_MODEL,

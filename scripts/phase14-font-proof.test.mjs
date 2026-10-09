@@ -200,6 +200,26 @@ test("font proof reports restored scale only after the restore command succeeds"
   assert.equal(calls.at(-1), "emulator-5554 shell settings put system font_scale 1.3");
 });
 
+test("font proof build manifest omits raw device locators", () => {
+  const builder = readFileSync(
+    new URL("./build-current-native-test-apk.sh", import.meta.url),
+    "utf8",
+  );
+
+  assert.match(
+    builder,
+    /const privacyBoundedManifest = process\.env\.SUITE === 'phase14-font-proof';/u,
+  );
+  assert.match(
+    builder,
+    /\.\.\.\(privacyBoundedManifest \? \{\} : \{ device_path: process\.env\.INSTALLED_APK_PATH \}\)/u,
+  );
+  assert.match(
+    builder,
+    /\.\.\.\(privacyBoundedManifest \? \{\} : \{ serial: process\.env\.DEVICE_SERIAL \}\)/u,
+  );
+});
+
 test("font proof CLI only accepts an explicit manifest and existing-report mode", () => {
   assert.deepEqual(parsePhase14FontProofArgs([
     "--manifest", "artifacts/native/phase14-font-proof/build.json", "--verify-existing",
