@@ -207,7 +207,7 @@ export function BottomSheet({
     // Android can move focus to the newly exposed heading while the Modal is
     // still being removed. Restore after that native transition settles so
     // the invoking control remains the final keyboard/accessibility target.
-    requestAnimationFrame(restoreFocus);
+    setTimeout(restoreFocus, 250);
   }, [cancelDisabled, onCancel, restoreFocus]);
 
   const containTraversal = React.useCallback((event: NativeSyntheticEvent<{
