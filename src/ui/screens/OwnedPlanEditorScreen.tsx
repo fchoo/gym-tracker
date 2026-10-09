@@ -1459,6 +1459,7 @@ export function OwnedPlanEditorScreen({
       alternateLabel="Discard"
       body="Your edits are still here. Choose whether to save the complete plan, discard the local draft, or keep editing."
       cancelLabel="Keep editing"
+      confirmBusy={saveBusy}
       confirmLabel="Save changes"
       heading="Save changes?"
       onAlternate={() => {

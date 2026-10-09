@@ -471,12 +471,10 @@ describe("OwnedPlanEditorScreen create and save plan", () => {
       screen.getByRole("button", { name: "Exercise timing" }),
     );
     await fireEvent.press(screen.getByRole("button", { name: "Per-rep timing" }));
-    await act(async () => {
-      fireEvent.changeText(
-        screen.getByTestId("advanced-timing-config-interval"),
-        "3",
-      );
-    });
+    await fireEvent.changeText(
+      screen.getByTestId("advanced-timing-config-interval"),
+      "3",
+    );
     await fireEvent.press(screen.getByRole("button", { name: "Save timing" }));
 
     expect(screen.getByTestId("advanced-timing-exercise-summary"))
@@ -486,16 +484,14 @@ describe("OwnedPlanEditorScreen create and save plan", () => {
       screen.getByRole("button", { name: "Working set 1 timing" }),
     );
     await fireEvent.press(screen.getByRole("button", { name: "Cluster timing" }));
-    await act(async () => {
-      fireEvent.changeText(
-        screen.getByTestId("advanced-timing-config-cluster-pattern"),
-        "3+3+3",
-      );
-      fireEvent.changeText(
-        screen.getByTestId("advanced-timing-config-cluster-rest"),
-        "20",
-      );
-    });
+    await fireEvent.changeText(
+      screen.getByTestId("advanced-timing-config-cluster-pattern"),
+      "3+3+3",
+    );
+    await fireEvent.changeText(
+      screen.getByTestId("advanced-timing-config-cluster-rest"),
+      "20",
+    );
     await fireEvent.press(screen.getByRole("button", { name: "Save timing" }));
 
     expect(screen.getByTestId("advanced-timing-working-summary-0"))
@@ -741,8 +737,9 @@ describe("OwnedPlanEditorScreen create and save plan", () => {
       .toHaveProp("accessibilityState", expect.objectContaining({ busy: true }));
     expect(screen.getByText("Loading plan exercises")).toBeOnTheScreen();
 
-    await act(() => {
+    await act(async () => {
       exerciseLoad.resolve(pickerExercises);
+      await exerciseLoad.promise;
     });
 
     expect(await screen.findByText("3 plan exercises")).toBeOnTheScreen();
@@ -890,7 +887,10 @@ describe("OwnedPlanEditorScreen create and save plan", () => {
     expect(screen.getByTestId("owned-plan-editor-loading"))
       .toBeOnTheScreen();
 
-    pending.resolve(null);
+    await act(async () => {
+      pending.resolve(null);
+      await pending.promise;
+    });
     expect(await screen.findByText("Plan could not be loaded"))
       .toBeOnTheScreen();
     await rendered.unmount();
@@ -999,6 +999,58 @@ describe("OwnedPlanEditorScreen dirty leave and lifecycle", () => {
 
     expect(savePlan).not.toHaveBeenCalled();
     expect(onBack).toHaveBeenCalledTimes(1);
+  });
+
+  it("blocks discard and dismiss paths while dirty-leave save is still in flight", async () => {
+    const pendingSave = deferred<OwnedPlanCommittedResult>();
+    const savePlan = jest.fn(() => pendingSave.promise);
+    const onBack = jest.fn();
+    await renderEditor({
+      loadPlan: jest.fn(async () => completeSnapshot()),
+      onBack,
+      savePlan,
+    });
+
+    await fireEvent.changeText(
+      await screen.findByLabelText("Plan name"),
+      "Pending Save Name",
+    );
+    await fireEvent.press(screen.getByRole("button", { name: "Go back" }));
+    await fireEvent.press(
+      await screen.findByRole("button", { name: "Save changes" }),
+    );
+
+    expect(savePlan).toHaveBeenCalledTimes(1);
+    expect(screen.getByRole("button", { name: "Discard" })).toBeDisabled();
+    expect(screen.getByRole("button", { name: "Keep editing" })).toBeDisabled();
+    expect(screen.getByRole("button", { name: "Save changes" })).toBeDisabled();
+
+    await fireEvent.press(screen.getByRole("button", { name: "Discard" }));
+    await fireEvent.press(screen.getByRole("button", { name: "Keep editing" }));
+    await fireEvent.press(
+      screen.getByLabelText("Dismiss sheet", { includeHiddenElements: true }),
+    );
+    await fireEvent(
+      screen.getByTestId("bottom-sheet-modal"),
+      "requestClose",
+    );
+    await fireEvent(screen.getByTestId("bottom-sheet-frame"), "keyDown", {
+      nativeEvent: { key: "Escape", preventDefault: jest.fn() },
+    });
+
+    expect(onBack).not.toHaveBeenCalled();
+
+    await act(async () => {
+      pendingSave.resolve(committed(completeSnapshot({
+        name: "Pending Save Name",
+        revision: 2,
+      }), "save"));
+      await pendingSave.promise;
+    });
+
+    await waitFor(() => {
+      expect(onBack).toHaveBeenCalledTimes(1);
+    });
   });
 
   it("reorders only the draft and persists ordinals with Save Plan Changes", async () => {
