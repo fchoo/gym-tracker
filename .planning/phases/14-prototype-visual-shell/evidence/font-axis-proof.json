@@ -2,8 +2,8 @@
   "schema_version": 2,
   "suite": "phase14-font-proof",
   "status": "passed",
-  "source_tree_sha256": "cb68106600a08c56635a3df4919d3a23f1eb54c178e7bacb3181042e84099a69",
-  "apk_sha256": "7e125fc9ffcdb2592639240cfff978b97c4ea463fb3f77da886b552a2398e88c",
+  "source_tree_sha256": "74842bc4fc4a7cafc2f2b0738600e32ef78152783360cb4f176c4fe2bd3fb5f5",
+  "apk_sha256": "8e92c3ac67172d4211ea3cd52315136bcaab8a0aae9323670fa45a69533f541c",
   "package": "com.fchoo.gymtracker.devtest",
   "profile": "development-test",
   "proof_source_sha256": "f0eddbba430379d8161d5b5f68805783dab7d527a2914260602b0eec026f9f28",
@@ -14,10 +14,10 @@
   },
   "overlay_review": {
     "status": "passed",
-    "screenshot_sha256": "1d1042ba8e8f0621ccd0ec67212f9c961c1bc39ba739dd07392b1db9e259c8a4",
+    "screenshot_sha256": "ac865dbdc5af2dc07531d668e58d0e3e5165e6fd39b39bece944533e737b3c6b",
     "reviewed_screenshot_sha256": {
-      "scale_1": "1d1042ba8e8f0621ccd0ec67212f9c961c1bc39ba739dd07392b1db9e259c8a4",
-      "scale_2": "0077c878a6cfadef75b2e62695b8c2241336e893eaf0d933c1bc7906270de0dd"
+      "scale_1": "ac865dbdc5af2dc07531d668e58d0e3e5165e6fd39b39bece944533e737b3c6b",
+      "scale_2": "c2f9094da5a0d65fd01d2488f0402fe08e8e0ebc4fb861a6f5815e9971d98339"
     },
     "approved_html_sha256": "b5ddbad88fd465af2fa79475dc0c05efec49e551652f13c5220627730e1d9c96",
     "approved_json_sha256": "b8e91e3098ec443c9dc283ae8383d1af552d7dc2b83648695a01dcb8a89ff0bf"
@@ -28,7 +28,7 @@
       "status": "passed",
       "font_scale": 1,
       "display_density": 2.625,
-      "screenshot_sha256": "1d1042ba8e8f0621ccd0ec67212f9c961c1bc39ba739dd07392b1db9e259c8a4",
+      "screenshot_sha256": "ac865dbdc5af2dc07531d668e58d0e3e5165e6fd39b39bece944533e737b3c6b",
       "family": "ArchivoVariable",
       "family_loaded": true,
       "style": {
@@ -90,7 +90,7 @@
       "status": "passed",
       "font_scale": 2,
       "display_density": 2.625,
-      "screenshot_sha256": "0077c878a6cfadef75b2e62695b8c2241336e893eaf0d933c1bc7906270de0dd",
+      "screenshot_sha256": "c2f9094da5a0d65fd01d2488f0402fe08e8e0ebc4fb861a6f5815e9971d98339",
       "family": "ArchivoVariable",
       "family_loaded": true,
       "style": {
