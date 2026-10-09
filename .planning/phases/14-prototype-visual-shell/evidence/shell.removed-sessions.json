@@ -3,25 +3,25 @@
   "suite": "phase14",
   "status": "passed",
   "build_manifest": "artifacts/native/phase14/build.json",
-  "base_head": "a5faec9a1af3a12681b6f4a260d990c47c90839e",
-  "source_tree_sha256": "c240c155f50c4db6744132b8466833f1874d65a0e12687b31d7d34d8afe85c43",
+  "base_head": "ef329f2a3f23eb999d819aa16255c64e48a9dfd0",
+  "source_tree_sha256": "2cd4177084070b984abab7814897f35902d963ff4ea1e9a6ee04a08a7d9662b2",
   "package": "com.fchoo.gymtracker.devtest",
   "profile": "development-test",
   "device_identity_sha256": "96dcf303d772667590457dc76c2cd5ee828515c31e2af1b9fee5b3f440b204f9",
   "apk": {
     "path": "artifacts/native/phase14/gym-tracker-phase14-devtest.apk",
-    "sha256": "03527bbb7886a2db55328bc0de50ae8e19792a3bbc613e5dab65f69ed32cb64f",
-    "size_bytes": 131748516,
+    "sha256": "edf9bdd8da663f74f6985479778d248b022db71499dc7c0985b63f14a1e1418a",
+    "size_bytes": 131739812,
     "page_alignment_kib": 16,
     "page_alignment_verified": true,
-    "installed_sha256": "03527bbb7886a2db55328bc0de50ae8e19792a3bbc613e5dab65f69ed32cb64f",
+    "installed_sha256": "edf9bdd8da663f74f6985479778d248b022db71499dc7c0985b63f14a1e1418a",
     "matches_retained_apk": true
   },
   "stage": {
     "stage": "phase14-removed-sessions",
     "status": "passed",
     "report": "artifacts/native/phase14/maestro/phase14-removed-sessions.xml",
-    "report_sha256": "19a71a929beb3082139bb18b35ae440adb5493a26dca36cd49a737bcad6fad5b"
+    "report_sha256": "5b121e9fe770fb0fc3b4cbc7f03c2d6e9b917aa1b684785bfb4bdd496d28759f"
   },
   "evidence": {
     "id": "shell.removed-sessions",
@@ -29,11 +29,11 @@
     "requirement": "SHL-10",
     "path": ".planning/phases/14-prototype-visual-shell/evidence/shell.removed-sessions.json",
     "report": "artifacts/native/phase14/maestro/phase14-removed-sessions.xml",
-    "report_sha256": "19a71a929beb3082139bb18b35ae440adb5493a26dca36cd49a737bcad6fad5b",
+    "report_sha256": "5b121e9fe770fb0fc3b4cbc7f03c2d6e9b917aa1b684785bfb4bdd496d28759f",
     "screenshot": "artifacts/native/phase14/screenshots/shell.removed-sessions.png",
-    "screenshot_sha256": "1831189a90dfcfeef20c729db0985dba847318cf04b16c13810d9a871bdb8bbd",
+    "screenshot_sha256": "c5fc80251bf5bfc856589f3b42fdacde7a7ad1228cb3572149d52f600372b0ac",
     "component_verdict": "passed",
     "native_verdict": "passed",
-    "source_state_sha256": "c240c155f50c4db6744132b8466833f1874d65a0e12687b31d7d34d8afe85c43"
+    "source_state_sha256": "2cd4177084070b984abab7814897f35902d963ff4ea1e9a6ee04a08a7d9662b2"
   }
 }
