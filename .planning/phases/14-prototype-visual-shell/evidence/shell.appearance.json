@@ -3,18 +3,18 @@
   "suite": "phase14",
   "status": "passed",
   "build_manifest": "artifacts/native/phase14/build.json",
-  "base_head": "581512d4f5578507e2243879064ff1fc263cbd1a",
-  "source_tree_sha256": "04b03f12d9b580b70b828ac88247fd959b2e4be2da3a9a5123d3942a78a7175f",
+  "base_head": "e7bcdfdc7ef43252a99695de1715bcb193b58c46",
+  "source_tree_sha256": "56f58daec2ba04d11f38659c0dd41cb50b89b217345309405c722f6c09dd6f9b",
   "package": "com.fchoo.gymtracker.devtest",
   "profile": "development-test",
   "device_identity_sha256": "96dcf303d772667590457dc76c2cd5ee828515c31e2af1b9fee5b3f440b204f9",
   "apk": {
     "path": "artifacts/native/phase14/gym-tracker-phase14-devtest.apk",
-    "sha256": "cdac1e9ac83e5d6c37e3a8e7a8aa1855ddbfcf61e7c99e3fc915f31842c7c44e",
+    "sha256": "d71213e3fc21b541937315e7404a1b7ee78a58ee2414c7a36dab342a9e639d26",
     "size_bytes": 131758356,
     "page_alignment_kib": 16,
     "page_alignment_verified": true,
-    "installed_sha256": "cdac1e9ac83e5d6c37e3a8e7a8aa1855ddbfcf61e7c99e3fc915f31842c7c44e",
+    "installed_sha256": "d71213e3fc21b541937315e7404a1b7ee78a58ee2414c7a36dab342a9e639d26",
     "matches_retained_apk": true
   },
   "matrix": {
@@ -470,7 +470,7 @@
     "stage": "phase14-appearance",
     "status": "passed",
     "report": "artifacts/native/phase14/maestro/shell-appearance-light-390-portrait-scale-1.xml",
-    "report_sha256": "35b9eacf8683e96bd92616946cdcdea68c75e43a031c4da05a4d46ff1e2422aa",
+    "report_sha256": "0e45f2287d95cf31dca264afc4893bd8f33a526b6a8af457b76563259bd57283",
     "matrix_cells": [
       {
         "id": "shell-appearance-light-390-portrait-scale-1",
@@ -489,13 +489,13 @@
           "trigger-focus"
         ],
         "report": "artifacts/native/phase14/maestro/shell-appearance-light-390-portrait-scale-1.xml",
-        "report_sha256": "35b9eacf8683e96bd92616946cdcdea68c75e43a031c4da05a4d46ff1e2422aa",
+        "report_sha256": "0e45f2287d95cf31dca264afc4893bd8f33a526b6a8af457b76563259bd57283",
         "screenshot": "artifacts/native/phase14/screenshots/shell-appearance-light-390-portrait-scale-1.png",
-        "screenshot_sha256": "8fca8d327d5ea2aea535814d7c9a708d61182494effbf84782e91868753a158f",
+        "screenshot_sha256": "b9f0a9ca1ffba94cde7fc2d50307809c0bcbdcfd01276992cf33bed6329eb7eb",
         "semantic_tree": "artifacts/native/phase14/semantic/shell-appearance-light-390-portrait-scale-1.xml",
         "semantic_tree_sha256": "a3e41a3df40f7a656655464ba825e694d40a0df8dcad1c2d3eeb51c0f423e679",
         "focus_key_trace": "artifacts/native/phase14/traces/shell-appearance-light-390-portrait-scale-1.json",
-        "focus_key_trace_sha256": "6ef41f231f837ba44466d2bb2861e9ba17a631997d8b49e0b197bcb5cd9ea001",
+        "focus_key_trace_sha256": "e1b7b25011a181aac4a280766047b66ccc4a820c86e4184a065c3d0b64dbd7b4",
         "target_window_bounds": {
           "requested_viewport": {
             "width": 390,
@@ -509,8 +509,8 @@
           "night_mode": "Night mode: no"
         },
         "difference_overlay": "artifacts/native/phase14/overlays/shell-appearance-light-390-portrait-scale-1.json",
-        "difference_overlay_sha256": "3ca55b80f15cdd4cfd33a658ea2bdc4806db8c8707a1ba04b41602a94d238a23",
-        "source_state_sha256": "04b03f12d9b580b70b828ac88247fd959b2e4be2da3a9a5123d3942a78a7175f",
+        "difference_overlay_sha256": "c5af530f190a5d3b5f42711eaf201bd1dd9126213337f726518fd45b42b1b45e",
+        "source_state_sha256": "56f58daec2ba04d11f38659c0dd41cb50b89b217345309405c722f6c09dd6f9b",
         "summary": {
           "tests": 1,
           "failures": 0,
@@ -535,13 +535,13 @@
           "trigger-focus"
         ],
         "report": "artifacts/native/phase14/maestro/shell-appearance-dark-390-portrait-scale-1.xml",
-        "report_sha256": "caccb471650ecd227f3d01e80cb627ee4d91ea4ffc8b6e266844b4efae006389",
+        "report_sha256": "6d85428da74231cbac227fee74b3162c4a4796df0da51c05edab6afd666c1745",
         "screenshot": "artifacts/native/phase14/screenshots/shell-appearance-dark-390-portrait-scale-1.png",
-        "screenshot_sha256": "ba791a8ddf03c13b73ae7217637b209ef99bdb723b3874e57b8c51d32d27b773",
+        "screenshot_sha256": "d25c42dfd55e7d3fcb5db34e558668806f7a5ce2871b573c6290636d28874514",
         "semantic_tree": "artifacts/native/phase14/semantic/shell-appearance-dark-390-portrait-scale-1.xml",
         "semantic_tree_sha256": "aedfbf95807a0e9a68429fe995886509f0da3d2e410e05adac64773acc924875",
         "focus_key_trace": "artifacts/native/phase14/traces/shell-appearance-dark-390-portrait-scale-1.json",
-        "focus_key_trace_sha256": "91532e5a234ac6f49f26861a17f349c3a656cb9e7d074f21b1420e7dd37a8213",
+        "focus_key_trace_sha256": "df3beb43242b2f1cbd0de740ddcc5e82f4326ae5a670e7805ed129eb52efe55a",
         "target_window_bounds": {
           "requested_viewport": {
             "width": 390,
@@ -555,8 +555,8 @@
           "night_mode": "Night mode: no"
         },
         "difference_overlay": "artifacts/native/phase14/overlays/shell-appearance-dark-390-portrait-scale-1.json",
-        "difference_overlay_sha256": "abb2655b82b231c754b34464519402bf31387bec800a43d2433474276a757cee",
-        "source_state_sha256": "04b03f12d9b580b70b828ac88247fd959b2e4be2da3a9a5123d3942a78a7175f",
+        "difference_overlay_sha256": "206812c6b3903543fa07941713555db9e7df54845d02411b4331a0439204e5b3",
+        "source_state_sha256": "56f58daec2ba04d11f38659c0dd41cb50b89b217345309405c722f6c09dd6f9b",
         "summary": {
           "tests": 1,
           "failures": 0,
@@ -581,13 +581,13 @@
           "trigger-focus"
         ],
         "report": "artifacts/native/phase14/maestro/shell-appearance-system-light-live-switch.xml",
-        "report_sha256": "c5f6e007b766e172e4396b75b37041529a51d56675ba119d854dbd675cc6123a",
+        "report_sha256": "b73d6c16eccd1b6465522b59584a6df612294b20b8aa6ee7c7dc600c13475555",
         "screenshot": "artifacts/native/phase14/screenshots/shell-appearance-system-light-live-switch.png",
-        "screenshot_sha256": "0bbb485d169073ce915186d4796c16bb0652025c3ac743ca5aefbbc7490ec2a2",
+        "screenshot_sha256": "11f34ee97fda4e56f999fcfc7d6b54d373d93da1771c11c2b933ef7696ec173d",
         "semantic_tree": "artifacts/native/phase14/semantic/shell-appearance-system-light-live-switch.xml",
         "semantic_tree_sha256": "8ce28dd5adc110822aeeab39884170aedcc390cde56ad831987b633d87f1986e",
         "focus_key_trace": "artifacts/native/phase14/traces/shell-appearance-system-light-live-switch.json",
-        "focus_key_trace_sha256": "b4f5a957bcd46f8527e9dde946c55357b0a15ef8485fa7f59525149f7439d244",
+        "focus_key_trace_sha256": "a6295dc25aef6f78d6960f1ad5076853f55ec4104099dd14f26a97903cf3d3a1",
         "target_window_bounds": {
           "requested_viewport": {
             "width": 390,
@@ -601,8 +601,8 @@
           "night_mode": "Night mode: yes"
         },
         "difference_overlay": "artifacts/native/phase14/overlays/shell-appearance-system-light-live-switch.json",
-        "difference_overlay_sha256": "afea82fea76266051c839a8a9dc22eb19c46cec9d4f80f5b8c3c2c3f7ff5ff08",
-        "source_state_sha256": "04b03f12d9b580b70b828ac88247fd959b2e4be2da3a9a5123d3942a78a7175f",
+        "difference_overlay_sha256": "0aa42c69fabfcfd655165f975313d9eb6a5826df79ab999b6b86e2442d5631e4",
+        "source_state_sha256": "56f58daec2ba04d11f38659c0dd41cb50b89b217345309405c722f6c09dd6f9b",
         "summary": {
           "tests": 1,
           "failures": 0,
@@ -627,13 +627,13 @@
           "trigger-focus"
         ],
         "report": "artifacts/native/phase14/maestro/shell-appearance-system-dark-390-portrait-scale-1.xml",
-        "report_sha256": "c99e43b2c90cd7aace00c37af4217b6d9b08795aa432623506fe66ecf69790da",
+        "report_sha256": "fe255f9d2e5b14eb0ed35564322d2bb4a9190be011549e469e49eb1125f01cca",
         "screenshot": "artifacts/native/phase14/screenshots/shell-appearance-system-dark-390-portrait-scale-1.png",
-        "screenshot_sha256": "eb154aa72f5d84c28b6f80bf09aa543fdc4c469f8a2547f025c86b366458db59",
+        "screenshot_sha256": "7b9c6364650600d74d3e0923524925a218d25696b71bad4a7dc038e3f9e55579",
         "semantic_tree": "artifacts/native/phase14/semantic/shell-appearance-system-dark-390-portrait-scale-1.xml",
         "semantic_tree_sha256": "82e82eb4bdc3618a1066843ba21db8c57dac9e376f63efffb361feae583dbe93",
         "focus_key_trace": "artifacts/native/phase14/traces/shell-appearance-system-dark-390-portrait-scale-1.json",
-        "focus_key_trace_sha256": "bb4e1dcb5c49c7566fa56179f7dfa6ba8a252076caa6407be88a5b791fb4caba",
+        "focus_key_trace_sha256": "cf21d1b47fa78dd00d339fe8f9ccbac49c866f640ce7f09c32c95e3ceb08c9ee",
         "target_window_bounds": {
           "requested_viewport": {
             "width": 390,
@@ -647,8 +647,8 @@
           "night_mode": "Night mode: yes"
         },
         "difference_overlay": "artifacts/native/phase14/overlays/shell-appearance-system-dark-390-portrait-scale-1.json",
-        "difference_overlay_sha256": "22ec18e5f69f0af8369992a8d96523ba88b2828d795f786e6255c2d829f73c3a",
-        "source_state_sha256": "04b03f12d9b580b70b828ac88247fd959b2e4be2da3a9a5123d3942a78a7175f",
+        "difference_overlay_sha256": "7dd57dae4a9fb68e54f03403fa437ac5e775abc05abfba967e7499ac10cddbbd",
+        "source_state_sha256": "56f58daec2ba04d11f38659c0dd41cb50b89b217345309405c722f6c09dd6f9b",
         "summary": {
           "tests": 1,
           "failures": 0,
@@ -664,12 +664,12 @@
     "requirement": "SHL-03",
     "path": ".planning/phases/14-prototype-visual-shell/evidence/shell.appearance.json",
     "report": "artifacts/native/phase14/maestro/shell-appearance-light-390-portrait-scale-1.xml",
-    "report_sha256": "35b9eacf8683e96bd92616946cdcdea68c75e43a031c4da05a4d46ff1e2422aa",
+    "report_sha256": "0e45f2287d95cf31dca264afc4893bd8f33a526b6a8af457b76563259bd57283",
     "screenshot": "artifacts/native/phase14/screenshots/shell-appearance-light-390-portrait-scale-1.png",
-    "screenshot_sha256": "8fca8d327d5ea2aea535814d7c9a708d61182494effbf84782e91868753a158f",
+    "screenshot_sha256": "b9f0a9ca1ffba94cde7fc2d50307809c0bcbdcfd01276992cf33bed6329eb7eb",
     "component_verdict": "passed",
     "native_verdict": "passed",
-    "source_state_sha256": "04b03f12d9b580b70b828ac88247fd959b2e4be2da3a9a5123d3942a78a7175f",
+    "source_state_sha256": "56f58daec2ba04d11f38659c0dd41cb50b89b217345309405c722f6c09dd6f9b",
     "matrix_cells": [
       {
         "id": "shell-appearance-light-390-portrait-scale-1",
@@ -688,13 +688,13 @@
           "trigger-focus"
         ],
         "report": "artifacts/native/phase14/maestro/shell-appearance-light-390-portrait-scale-1.xml",
-        "report_sha256": "35b9eacf8683e96bd92616946cdcdea68c75e43a031c4da05a4d46ff1e2422aa",
+        "report_sha256": "0e45f2287d95cf31dca264afc4893bd8f33a526b6a8af457b76563259bd57283",
         "screenshot": "artifacts/native/phase14/screenshots/shell-appearance-light-390-portrait-scale-1.png",
-        "screenshot_sha256": "8fca8d327d5ea2aea535814d7c9a708d61182494effbf84782e91868753a158f",
+        "screenshot_sha256": "b9f0a9ca1ffba94cde7fc2d50307809c0bcbdcfd01276992cf33bed6329eb7eb",
         "semantic_tree": "artifacts/native/phase14/semantic/shell-appearance-light-390-portrait-scale-1.xml",
         "semantic_tree_sha256": "a3e41a3df40f7a656655464ba825e694d40a0df8dcad1c2d3eeb51c0f423e679",
         "focus_key_trace": "artifacts/native/phase14/traces/shell-appearance-light-390-portrait-scale-1.json",
-        "focus_key_trace_sha256": "6ef41f231f837ba44466d2bb2861e9ba17a631997d8b49e0b197bcb5cd9ea001",
+        "focus_key_trace_sha256": "e1b7b25011a181aac4a280766047b66ccc4a820c86e4184a065c3d0b64dbd7b4",
         "target_window_bounds": {
           "requested_viewport": {
             "width": 390,
@@ -708,8 +708,8 @@
           "night_mode": "Night mode: no"
         },
         "difference_overlay": "artifacts/native/phase14/overlays/shell-appearance-light-390-portrait-scale-1.json",
-        "difference_overlay_sha256": "3ca55b80f15cdd4cfd33a658ea2bdc4806db8c8707a1ba04b41602a94d238a23",
-        "source_state_sha256": "04b03f12d9b580b70b828ac88247fd959b2e4be2da3a9a5123d3942a78a7175f",
+        "difference_overlay_sha256": "c5af530f190a5d3b5f42711eaf201bd1dd9126213337f726518fd45b42b1b45e",
+        "source_state_sha256": "56f58daec2ba04d11f38659c0dd41cb50b89b217345309405c722f6c09dd6f9b",
         "summary": {
           "tests": 1,
           "failures": 0,
@@ -734,13 +734,13 @@
           "trigger-focus"
         ],
         "report": "artifacts/native/phase14/maestro/shell-appearance-dark-390-portrait-scale-1.xml",
-        "report_sha256": "caccb471650ecd227f3d01e80cb627ee4d91ea4ffc8b6e266844b4efae006389",
+        "report_sha256": "6d85428da74231cbac227fee74b3162c4a4796df0da51c05edab6afd666c1745",
         "screenshot": "artifacts/native/phase14/screenshots/shell-appearance-dark-390-portrait-scale-1.png",
-        "screenshot_sha256": "ba791a8ddf03c13b73ae7217637b209ef99bdb723b3874e57b8c51d32d27b773",
+        "screenshot_sha256": "d25c42dfd55e7d3fcb5db34e558668806f7a5ce2871b573c6290636d28874514",
         "semantic_tree": "artifacts/native/phase14/semantic/shell-appearance-dark-390-portrait-scale-1.xml",
         "semantic_tree_sha256": "aedfbf95807a0e9a68429fe995886509f0da3d2e410e05adac64773acc924875",
         "focus_key_trace": "artifacts/native/phase14/traces/shell-appearance-dark-390-portrait-scale-1.json",
-        "focus_key_trace_sha256": "91532e5a234ac6f49f26861a17f349c3a656cb9e7d074f21b1420e7dd37a8213",
+        "focus_key_trace_sha256": "df3beb43242b2f1cbd0de740ddcc5e82f4326ae5a670e7805ed129eb52efe55a",
         "target_window_bounds": {
           "requested_viewport": {
             "width": 390,
@@ -754,8 +754,8 @@
           "night_mode": "Night mode: no"
         },
         "difference_overlay": "artifacts/native/phase14/overlays/shell-appearance-dark-390-portrait-scale-1.json",
-        "difference_overlay_sha256": "abb2655b82b231c754b34464519402bf31387bec800a43d2433474276a757cee",
-        "source_state_sha256": "04b03f12d9b580b70b828ac88247fd959b2e4be2da3a9a5123d3942a78a7175f",
+        "difference_overlay_sha256": "206812c6b3903543fa07941713555db9e7df54845d02411b4331a0439204e5b3",
+        "source_state_sha256": "56f58daec2ba04d11f38659c0dd41cb50b89b217345309405c722f6c09dd6f9b",
         "summary": {
           "tests": 1,
           "failures": 0,
@@ -780,13 +780,13 @@
           "trigger-focus"
         ],
         "report": "artifacts/native/phase14/maestro/shell-appearance-system-light-live-switch.xml",
-        "report_sha256": "c5f6e007b766e172e4396b75b37041529a51d56675ba119d854dbd675cc6123a",
+        "report_sha256": "b73d6c16eccd1b6465522b59584a6df612294b20b8aa6ee7c7dc600c13475555",
         "screenshot": "artifacts/native/phase14/screenshots/shell-appearance-system-light-live-switch.png",
-        "screenshot_sha256": "0bbb485d169073ce915186d4796c16bb0652025c3ac743ca5aefbbc7490ec2a2",
+        "screenshot_sha256": "11f34ee97fda4e56f999fcfc7d6b54d373d93da1771c11c2b933ef7696ec173d",
         "semantic_tree": "artifacts/native/phase14/semantic/shell-appearance-system-light-live-switch.xml",
         "semantic_tree_sha256": "8ce28dd5adc110822aeeab39884170aedcc390cde56ad831987b633d87f1986e",
         "focus_key_trace": "artifacts/native/phase14/traces/shell-appearance-system-light-live-switch.json",
-        "focus_key_trace_sha256": "b4f5a957bcd46f8527e9dde946c55357b0a15ef8485fa7f59525149f7439d244",
+        "focus_key_trace_sha256": "a6295dc25aef6f78d6960f1ad5076853f55ec4104099dd14f26a97903cf3d3a1",
         "target_window_bounds": {
           "requested_viewport": {
             "width": 390,
@@ -800,8 +800,8 @@
           "night_mode": "Night mode: yes"
         },
         "difference_overlay": "artifacts/native/phase14/overlays/shell-appearance-system-light-live-switch.json",
-        "difference_overlay_sha256": "afea82fea76266051c839a8a9dc22eb19c46cec9d4f80f5b8c3c2c3f7ff5ff08",
-        "source_state_sha256": "04b03f12d9b580b70b828ac88247fd959b2e4be2da3a9a5123d3942a78a7175f",
+        "difference_overlay_sha256": "0aa42c69fabfcfd655165f975313d9eb6a5826df79ab999b6b86e2442d5631e4",
+        "source_state_sha256": "56f58daec2ba04d11f38659c0dd41cb50b89b217345309405c722f6c09dd6f9b",
         "summary": {
           "tests": 1,
           "failures": 0,
@@ -826,13 +826,13 @@
           "trigger-focus"
         ],
         "report": "artifacts/native/phase14/maestro/shell-appearance-system-dark-390-portrait-scale-1.xml",
-        "report_sha256": "c99e43b2c90cd7aace00c37af4217b6d9b08795aa432623506fe66ecf69790da",
+        "report_sha256": "fe255f9d2e5b14eb0ed35564322d2bb4a9190be011549e469e49eb1125f01cca",
         "screenshot": "artifacts/native/phase14/screenshots/shell-appearance-system-dark-390-portrait-scale-1.png",
-        "screenshot_sha256": "eb154aa72f5d84c28b6f80bf09aa543fdc4c469f8a2547f025c86b366458db59",
+        "screenshot_sha256": "7b9c6364650600d74d3e0923524925a218d25696b71bad4a7dc038e3f9e55579",
         "semantic_tree": "artifacts/native/phase14/semantic/shell-appearance-system-dark-390-portrait-scale-1.xml",
         "semantic_tree_sha256": "82e82eb4bdc3618a1066843ba21db8c57dac9e376f63efffb361feae583dbe93",
         "focus_key_trace": "artifacts/native/phase14/traces/shell-appearance-system-dark-390-portrait-scale-1.json",
-        "focus_key_trace_sha256": "bb4e1dcb5c49c7566fa56179f7dfa6ba8a252076caa6407be88a5b791fb4caba",
+        "focus_key_trace_sha256": "cf21d1b47fa78dd00d339fe8f9ccbac49c866f640ce7f09c32c95e3ceb08c9ee",
         "target_window_bounds": {
           "requested_viewport": {
             "width": 390,
@@ -846,8 +846,8 @@
           "night_mode": "Night mode: yes"
         },
         "difference_overlay": "artifacts/native/phase14/overlays/shell-appearance-system-dark-390-portrait-scale-1.json",
-        "difference_overlay_sha256": "22ec18e5f69f0af8369992a8d96523ba88b2828d795f786e6255c2d829f73c3a",
-        "source_state_sha256": "04b03f12d9b580b70b828ac88247fd959b2e4be2da3a9a5123d3942a78a7175f",
+        "difference_overlay_sha256": "7dd57dae4a9fb68e54f03403fa437ac5e775abc05abfba967e7499ac10cddbbd",
+        "source_state_sha256": "56f58daec2ba04d11f38659c0dd41cb50b89b217345309405c722f6c09dd6f9b",
         "summary": {
           "tests": 1,
           "failures": 0,

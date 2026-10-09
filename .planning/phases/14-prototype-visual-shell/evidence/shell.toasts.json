@@ -3,18 +3,18 @@
   "suite": "phase14",
   "status": "passed",
   "build_manifest": "artifacts/native/phase14/build.json",
-  "base_head": "581512d4f5578507e2243879064ff1fc263cbd1a",
-  "source_tree_sha256": "04b03f12d9b580b70b828ac88247fd959b2e4be2da3a9a5123d3942a78a7175f",
+  "base_head": "e7bcdfdc7ef43252a99695de1715bcb193b58c46",
+  "source_tree_sha256": "56f58daec2ba04d11f38659c0dd41cb50b89b217345309405c722f6c09dd6f9b",
   "package": "com.fchoo.gymtracker.devtest",
   "profile": "development-test",
   "device_identity_sha256": "96dcf303d772667590457dc76c2cd5ee828515c31e2af1b9fee5b3f440b204f9",
   "apk": {
     "path": "artifacts/native/phase14/gym-tracker-phase14-devtest.apk",
-    "sha256": "cdac1e9ac83e5d6c37e3a8e7a8aa1855ddbfcf61e7c99e3fc915f31842c7c44e",
+    "sha256": "d71213e3fc21b541937315e7404a1b7ee78a58ee2414c7a36dab342a9e639d26",
     "size_bytes": 131758356,
     "page_alignment_kib": 16,
     "page_alignment_verified": true,
-    "installed_sha256": "cdac1e9ac83e5d6c37e3a8e7a8aa1855ddbfcf61e7c99e3fc915f31842c7c44e",
+    "installed_sha256": "d71213e3fc21b541937315e7404a1b7ee78a58ee2414c7a36dab342a9e639d26",
     "matches_retained_apk": true
   },
   "matrix": {
@@ -470,7 +470,7 @@
     "stage": "phase14-toasts",
     "status": "passed",
     "report": "artifacts/native/phase14/maestro/shell-toasts-phone-390-portrait-scale-1-reduced-motion.xml",
-    "report_sha256": "06aa75e6c0754da739cc10fe656681ee619ecf098b7aec0784c5ffe17d96ad84",
+    "report_sha256": "b3f8f5b82980a2d32f290a73c0b32cda4d0f17a1df84ac4b7b1ca507adc1bdcd",
     "matrix_cells": [
       {
         "id": "shell-toasts-phone-390-portrait-scale-1-reduced-motion",
@@ -489,13 +489,13 @@
           "trigger-focus"
         ],
         "report": "artifacts/native/phase14/maestro/shell-toasts-phone-390-portrait-scale-1-reduced-motion.xml",
-        "report_sha256": "06aa75e6c0754da739cc10fe656681ee619ecf098b7aec0784c5ffe17d96ad84",
+        "report_sha256": "b3f8f5b82980a2d32f290a73c0b32cda4d0f17a1df84ac4b7b1ca507adc1bdcd",
         "screenshot": "artifacts/native/phase14/screenshots/shell-toasts-phone-390-portrait-scale-1-reduced-motion.png",
-        "screenshot_sha256": "8295e2802c40ff5fbfe360016e2dc13680be6f6f8c64ba8bd8c432a5a83b4251",
+        "screenshot_sha256": "8568b738cd98d206acd1d4d86e75790066609e7f1d09840f893b5823f7796c8a",
         "semantic_tree": "artifacts/native/phase14/semantic/shell-toasts-phone-390-portrait-scale-1-reduced-motion.xml",
         "semantic_tree_sha256": "ac321871cea0b12bee316877baee637e4c3b2fbafba666fea475087b605e816f",
         "focus_key_trace": "artifacts/native/phase14/traces/shell-toasts-phone-390-portrait-scale-1-reduced-motion.json",
-        "focus_key_trace_sha256": "4e7164492ebfe8e8d0394e91fd49564176eb44b0e1533012419e779381c12d5c",
+        "focus_key_trace_sha256": "ea2b3f8e7937bfe25aee03a7ef8ef12962f9506084fdd9ecf166b0fb9c0ef4ec",
         "target_window_bounds": {
           "requested_viewport": {
             "width": 390,
@@ -509,8 +509,8 @@
           "night_mode": "Night mode: no"
         },
         "difference_overlay": "artifacts/native/phase14/overlays/shell-toasts-phone-390-portrait-scale-1-reduced-motion.json",
-        "difference_overlay_sha256": "1cb16e61faa53598ae914ecddd2694be5d6be7ea7ecd99dfb6e580677bed7e89",
-        "source_state_sha256": "04b03f12d9b580b70b828ac88247fd959b2e4be2da3a9a5123d3942a78a7175f",
+        "difference_overlay_sha256": "3f6acf39d0c81419711466e650cdfa47c00da31d944f17f7b9932b5257571ba8",
+        "source_state_sha256": "56f58daec2ba04d11f38659c0dd41cb50b89b217345309405c722f6c09dd6f9b",
         "summary": {
           "tests": 1,
           "failures": 0,
@@ -526,12 +526,12 @@
     "requirement": "SHL-06",
     "path": ".planning/phases/14-prototype-visual-shell/evidence/shell.toasts.json",
     "report": "artifacts/native/phase14/maestro/shell-toasts-phone-390-portrait-scale-1-reduced-motion.xml",
-    "report_sha256": "06aa75e6c0754da739cc10fe656681ee619ecf098b7aec0784c5ffe17d96ad84",
+    "report_sha256": "b3f8f5b82980a2d32f290a73c0b32cda4d0f17a1df84ac4b7b1ca507adc1bdcd",
     "screenshot": "artifacts/native/phase14/screenshots/shell-toasts-phone-390-portrait-scale-1-reduced-motion.png",
-    "screenshot_sha256": "8295e2802c40ff5fbfe360016e2dc13680be6f6f8c64ba8bd8c432a5a83b4251",
+    "screenshot_sha256": "8568b738cd98d206acd1d4d86e75790066609e7f1d09840f893b5823f7796c8a",
     "component_verdict": "passed",
     "native_verdict": "passed",
-    "source_state_sha256": "04b03f12d9b580b70b828ac88247fd959b2e4be2da3a9a5123d3942a78a7175f",
+    "source_state_sha256": "56f58daec2ba04d11f38659c0dd41cb50b89b217345309405c722f6c09dd6f9b",
     "matrix_cells": [
       {
         "id": "shell-toasts-phone-390-portrait-scale-1-reduced-motion",
@@ -550,13 +550,13 @@
           "trigger-focus"
         ],
         "report": "artifacts/native/phase14/maestro/shell-toasts-phone-390-portrait-scale-1-reduced-motion.xml",
-        "report_sha256": "06aa75e6c0754da739cc10fe656681ee619ecf098b7aec0784c5ffe17d96ad84",
+        "report_sha256": "b3f8f5b82980a2d32f290a73c0b32cda4d0f17a1df84ac4b7b1ca507adc1bdcd",
         "screenshot": "artifacts/native/phase14/screenshots/shell-toasts-phone-390-portrait-scale-1-reduced-motion.png",
-        "screenshot_sha256": "8295e2802c40ff5fbfe360016e2dc13680be6f6f8c64ba8bd8c432a5a83b4251",
+        "screenshot_sha256": "8568b738cd98d206acd1d4d86e75790066609e7f1d09840f893b5823f7796c8a",
         "semantic_tree": "artifacts/native/phase14/semantic/shell-toasts-phone-390-portrait-scale-1-reduced-motion.xml",
         "semantic_tree_sha256": "ac321871cea0b12bee316877baee637e4c3b2fbafba666fea475087b605e816f",
         "focus_key_trace": "artifacts/native/phase14/traces/shell-toasts-phone-390-portrait-scale-1-reduced-motion.json",
-        "focus_key_trace_sha256": "4e7164492ebfe8e8d0394e91fd49564176eb44b0e1533012419e779381c12d5c",
+        "focus_key_trace_sha256": "ea2b3f8e7937bfe25aee03a7ef8ef12962f9506084fdd9ecf166b0fb9c0ef4ec",
         "target_window_bounds": {
           "requested_viewport": {
             "width": 390,
@@ -570,8 +570,8 @@
           "night_mode": "Night mode: no"
         },
         "difference_overlay": "artifacts/native/phase14/overlays/shell-toasts-phone-390-portrait-scale-1-reduced-motion.json",
-        "difference_overlay_sha256": "1cb16e61faa53598ae914ecddd2694be5d6be7ea7ecd99dfb6e580677bed7e89",
-        "source_state_sha256": "04b03f12d9b580b70b828ac88247fd959b2e4be2da3a9a5123d3942a78a7175f",
+        "difference_overlay_sha256": "3f6acf39d0c81419711466e650cdfa47c00da31d944f17f7b9932b5257571ba8",
+        "source_state_sha256": "56f58daec2ba04d11f38659c0dd41cb50b89b217345309405c722f6c09dd6f9b",
         "summary": {
           "tests": 1,
           "failures": 0,
