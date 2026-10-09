@@ -6,6 +6,7 @@ import {
   type RootFocusTarget,
   type RootOrigin,
   type RootRouteKey,
+  rootSettingsTriggerNativeID,
 } from "./rootFocus";
 
 type AppRootShellProps = Readonly<{
@@ -16,7 +17,9 @@ type AppRootShellProps = Readonly<{
   origin?: RootOrigin;
   onConsumeOrigin?: () => void;
   onOpenSettings?: () => void;
+  requestNativeFocus?: (nativeID: string) => void | Promise<boolean>;
   settingsContent?: React.ReactNode | ((closeSettings: () => void) => React.ReactNode);
+  settingsTriggerNativeID?: string;
   settingsTriggerRef?: React.RefObject<RootFocusTarget | null>;
 }>;
 
@@ -24,6 +27,7 @@ type RootSettingsControllerValue = Readonly<{
   closeRootSettings: () => void;
   openRootSettings: (input: Readonly<{
     root: RootRouteKey;
+    triggerNativeID?: string;
     triggerRef: React.RefObject<RootFocusTarget | null>;
   }>) => void;
 }>;
@@ -49,21 +53,30 @@ export function AppRootShell({
   origin,
   onConsumeOrigin,
   onOpenSettings,
+  requestNativeFocus,
   settingsContent,
+  settingsTriggerNativeID,
   settingsTriggerRef,
 }: AppRootShellProps) {
   const [settingsVisible, setSettingsVisible] = React.useState(false);
   const [activeSettingsTriggerRef, setActiveSettingsTriggerRef] = React.useState<
     React.RefObject<RootFocusTarget | null> | undefined
   >(settingsTriggerRef);
+  const [activeSettingsTriggerNativeID, setActiveSettingsTriggerNativeID] = React.useState<
+    string | undefined
+  >(settingsTriggerNativeID);
   const previousActiveRootRef = React.useRef<RootRouteKey | undefined>(activeRoot);
   const previousPathRef = React.useRef(currentPath);
   const closeSettings = React.useCallback(() => setSettingsVisible(false), []);
   const openRootSettings = React.useCallback((input: Readonly<{
     root: RootRouteKey;
+    triggerNativeID?: string;
     triggerRef: React.RefObject<RootFocusTarget | null>;
   }>) => {
     setActiveSettingsTriggerRef(input.triggerRef);
+    setActiveSettingsTriggerNativeID(
+      input.triggerNativeID ?? rootSettingsTriggerNativeID(input.root),
+    );
     if (settingsContent !== undefined) {
       setSettingsVisible(true);
       return;
@@ -81,8 +94,9 @@ export function AppRootShell({
   React.useEffect(() => {
     if (!settingsVisible) {
       setActiveSettingsTriggerRef(settingsTriggerRef);
+      setActiveSettingsTriggerNativeID(settingsTriggerNativeID);
     }
-  }, [settingsTriggerRef, settingsVisible]);
+  }, [settingsTriggerNativeID, settingsTriggerRef, settingsVisible]);
 
   React.useLayoutEffect(() => {
     const rootChanged = previousActiveRootRef.current !== activeRoot;
@@ -120,6 +134,8 @@ export function AppRootShell({
             cancelLabel="Close App Settings"
             heading="App Settings"
             onCancel={closeSettings}
+            requestNativeFocus={requestNativeFocus}
+            restoreFocusNativeID={activeSettingsTriggerNativeID}
             restoreFocusRef={activeSettingsTriggerRef}
             visible={settingsVisible}
           >

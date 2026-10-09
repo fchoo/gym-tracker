@@ -11,9 +11,13 @@ import {
   ProgressScreen,
 } from "../../src/ui/screens/ProgressScreen";
 import { useRootSettingsController } from "../../src/ui/shell/AppRootShell";
-import { useRootHeadingRef } from "../../src/ui/shell/rootFocus";
+import {
+  rootSettingsTriggerNativeID,
+  useRootHeadingRef,
+} from "../../src/ui/shell/rootFocus";
 
 export default function ProgressRoute() {
+  const settingsActionNativeID = rootSettingsTriggerNativeID("progress");
   const headingRef = useRootHeadingRef("progress");
   const settingsActionRef = React.useRef(null);
   const rootSettings = useRootSettingsController();
@@ -39,6 +43,7 @@ export default function ProgressRoute() {
         router.push(("/exercise-history/" + exerciseId + "?exerciseName=" + encodeURIComponent(exerciseName)) as Href)}
       onOpenSettings={() => rootSettings.openRootSettings({
         root: "progress",
+        triggerNativeID: settingsActionNativeID,
         triggerRef: settingsActionRef,
       })}
       onOpenSession={(sessionId) => router.push(("/session/" + sessionId) as Href)}
@@ -49,6 +54,7 @@ export default function ProgressRoute() {
       }}
       headingRef={headingRef}
       settingsActionRef={settingsActionRef}
+      settingsActionNativeID={settingsActionNativeID}
     />
   );
 }

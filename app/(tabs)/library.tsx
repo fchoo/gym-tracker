@@ -19,9 +19,13 @@ import {
   LibraryScreen,
 } from "../../src/ui/screens/LibraryScreen";
 import { useRootSettingsController } from "../../src/ui/shell/AppRootShell";
-import { useRootHeadingRef } from "../../src/ui/shell/rootFocus";
+import {
+  rootSettingsTriggerNativeID,
+  useRootHeadingRef,
+} from "../../src/ui/shell/rootFocus";
 
 export default function LibraryRoute() {
+  const settingsActionNativeID = rootSettingsTriggerNativeID("library");
   const headingRef = useRootHeadingRef("library");
   const settingsActionRef = useRef(null);
   const rootSettings = useRootSettingsController();
@@ -55,6 +59,7 @@ export default function LibraryRoute() {
         router.push(`/library/exercise/${exerciseId}` as Href)}
       onOpenSettings={() => rootSettings.openRootSettings({
         root: "library",
+        triggerNativeID: settingsActionNativeID,
         triggerRef: settingsActionRef,
       })}
       onOpenPlan={(planId) =>
@@ -70,6 +75,7 @@ export default function LibraryRoute() {
       setSection={runtime.setLibrarySection}
       headingRef={headingRef}
       settingsActionRef={settingsActionRef}
+      settingsActionNativeID={settingsActionNativeID}
     />
   );
 }

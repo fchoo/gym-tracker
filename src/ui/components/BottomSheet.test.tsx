@@ -17,6 +17,10 @@ import {
 import { FocusablePressable } from "./index";
 import { AppearanceProvider } from "../theme";
 
+const mockRequestAndroidViewFocus = jest.fn<
+  (nativeID: string) => Promise<boolean>
+>(async () => true);
+
 function SheetTestProviders({ children }: Readonly<{ children: React.ReactNode }>) {
   return (
     <SafeAreaProvider initialMetrics={{
@@ -66,6 +70,7 @@ function FocusTrapProbe({
 describe("BottomSheet", () => {
   beforeEach(() => {
     jest.restoreAllMocks();
+    mockRequestAndroidViewFocus.mockClear();
     Dimensions.set({
       screen: { fontScale: 1, height: 900, scale: 1, width: 800 },
       window: { fontScale: 1, height: 900, scale: 1, width: 800 },
@@ -189,6 +194,34 @@ describe("BottomSheet", () => {
     await waitFor(() => expect(setNativeProps).toHaveBeenLastCalledWith({
       hasTVPreferredFocus: false,
     }));
+  });
+
+  it("requests focus by nativeID after the modal dismissal delay and keeps the JS fallback", async () => {
+    const focus = jest.fn();
+    const restoreFocusRef = { current: { focus } as unknown as View };
+
+    await render(
+      <SheetTestProviders>
+        <BottomSheet
+          heading="Edit filters"
+          onCancel={jest.fn()}
+          requestNativeFocus={mockRequestAndroidViewFocus}
+          restoreFocusNativeID="root-settings-trigger-library"
+          restoreFocusRef={restoreFocusRef}
+          visible
+        >
+          <Text>Draft stays private</Text>
+        </BottomSheet>
+      </SheetTestProviders>,
+    );
+
+    await fireEvent.press(screen.getByRole("button", { name: "Close edit filters" }));
+
+    expect(mockRequestAndroidViewFocus).not.toHaveBeenCalled();
+    await waitFor(() => expect(mockRequestAndroidViewFocus).toHaveBeenCalledWith(
+      "root-settings-trigger-library",
+    ));
+    expect(focus).toHaveBeenCalledTimes(1);
   });
 
   it("registers focusable actions with the sheet trap and reports the focused control", async () => {

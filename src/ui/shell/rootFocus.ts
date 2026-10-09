@@ -13,6 +13,10 @@ export type RootHeadingRefs = Readonly<Record<
 
 const RootHeadingRefsContext = React.createContext<RootHeadingRefs | null>(null);
 
+export function rootSettingsTriggerNativeID(root: RootRouteKey): string {
+  return `root-settings-trigger-${root}`;
+}
+
 export function RootHeadingRefsProvider({
   children,
   headingRefs,

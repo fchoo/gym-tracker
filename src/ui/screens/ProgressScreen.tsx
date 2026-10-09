@@ -81,6 +81,7 @@ export type ProgressScreenProps = Readonly<{
   width?: number;
   headingRef?: React.RefObject<RootFocusTarget | null>;
   settingsActionRef?: React.RefObject<RootFocusTarget | null>;
+  settingsActionNativeID?: string;
 }>;
 
 const noOp = () => undefined;
@@ -653,6 +654,7 @@ export function ProgressScreen({
   width,
   headingRef,
   settingsActionRef,
+  settingsActionNativeID,
 }: ProgressScreenProps) {
   const [period, setPeriod] = useState<ProgressPeriod>("4_weeks");
   const [snapshot, setSnapshot] = useState<ProgressSnapshot | null>(null);
@@ -700,6 +702,7 @@ export function ProgressScreen({
             accessibilityHint="Opens App Settings"
             accessibilityLabel="Open App Settings"
             icon="settings"
+            nativeID={settingsActionNativeID}
             onPress={onOpenSettings}
             ref={settingsActionRef as React.Ref<View>}
           />

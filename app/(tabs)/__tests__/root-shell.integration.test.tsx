@@ -20,6 +20,14 @@ import RootTabsLayout from "../_layout";
 let mockPathname = "/";
 const mockPush = jest.fn();
 const mockNavigate = jest.fn();
+const mockRequestAndroidViewFocus = jest.fn<
+  (nativeID: string) => Promise<boolean>
+>(async () => true);
+
+jest.mock("../../../src/bootstrap/androidViewFocus", () => ({
+  requestAndroidViewFocus: (nativeID: string) =>
+    mockRequestAndroidViewFocus(nativeID),
+}));
 
 const todayView = {
   state: "scheduled" as const,
@@ -305,6 +313,7 @@ describe("RootTabsLayout root settings integration", () => {
     mockNavigate.mockReset();
     mockPathname = "/";
     mockPush.mockReset();
+    mockRequestAndroidViewFocus.mockClear();
     mockRuntime.readRestAlertPreferences.mockClear();
   });
 
@@ -329,10 +338,10 @@ describe("RootTabsLayout root settings integration", () => {
     );
 
     for (const root of [
-      { pathname: "/", heading: "Workout" },
-      { pathname: "/calendar", heading: "Calendar" },
-      { pathname: "/library", heading: "Library" },
-      { pathname: "/progress", heading: "Progress" },
+      { pathname: "/", heading: "Workout", nativeID: "root-settings-trigger-index" },
+      { pathname: "/calendar", heading: "Calendar", nativeID: "root-settings-trigger-calendar" },
+      { pathname: "/library", heading: "Library", nativeID: "root-settings-trigger-library" },
+      { pathname: "/progress", heading: "Progress", nativeID: "root-settings-trigger-progress" },
     ] as const) {
       await act(async () => {
         mockPathname = root.pathname;
@@ -347,10 +356,10 @@ describe("RootTabsLayout root settings integration", () => {
         expect(screen.getByRole("header", { name: root.heading }))
           .toBeOnTheScreen();
       });
-      expect(screen.getAllByRole("button", { name: "Open App Settings" }))
-        .toHaveLength(1);
+      const settingsAction = screen.getByRole("button", { name: "Open App Settings" });
+      expect(settingsAction).toHaveProp("nativeID", root.nativeID);
 
-      await fireEvent.press(screen.getByRole("button", { name: "Open App Settings" }));
+      await fireEvent.press(settingsAction);
       expect(screen.getAllByRole("header", { name: "App Settings" }))
         .toHaveLength(1);
       await fireEvent.press(screen.getByRole("button", { name: "Close App Settings" }));
@@ -358,6 +367,8 @@ describe("RootTabsLayout root settings integration", () => {
         expect(screen.queryByRole("header", { name: "App Settings" }))
           .toBeNull();
       });
+      await waitFor(() => expect(mockRequestAndroidViewFocus)
+        .toHaveBeenLastCalledWith(root.nativeID));
     }
   });
 });

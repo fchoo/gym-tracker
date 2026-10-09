@@ -78,6 +78,7 @@ type CalendarScreenProps = Readonly<{
   width?: number;
   headingRef?: React.RefObject<RootFocusTarget | null>;
   settingsActionRef?: React.RefObject<RootFocusTarget | null>;
+  settingsActionNativeID?: string;
 }>;
 
 const noOp = () => undefined;
@@ -377,6 +378,7 @@ export function CalendarScreen({
   width,
   headingRef,
   settingsActionRef,
+  settingsActionNativeID,
 }: CalendarScreenProps) {
   const { colors } = useAppTheme();
   const parsedInitial = parseLocalDate(initialDate);
@@ -437,6 +439,7 @@ export function CalendarScreen({
                   accessibilityHint="Opens App Settings"
                   accessibilityLabel="Open App Settings"
                   icon="settings"
+                  nativeID={settingsActionNativeID}
                   onPress={onOpenSettings}
                   ref={settingsActionRef as React.Ref<View>}
                 />
@@ -468,6 +471,7 @@ export function CalendarScreen({
                   accessibilityHint="Opens App Settings"
                   accessibilityLabel="Open App Settings"
                   icon="settings"
+                  nativeID={settingsActionNativeID}
                   onPress={onOpenSettings}
                   ref={settingsActionRef as React.Ref<View>}
                 />
@@ -496,6 +500,7 @@ export function CalendarScreen({
             accessibilityHint="Opens App Settings"
             accessibilityLabel="Open App Settings"
             icon="settings"
+            nativeID={settingsActionNativeID}
             onPress={onOpenSettings}
             ref={settingsActionRef as React.Ref<View>}
           />

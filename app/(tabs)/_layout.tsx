@@ -7,6 +7,7 @@ import {
 } from "../../src/ui/components";
 import { AppRootShell } from "../../src/ui/shell/AppRootShell";
 import { AppSettingsContent } from "../../src/ui/screens/SettingsScreen";
+import { requestAndroidViewFocus } from "../../src/bootstrap/androidViewFocus";
 import {
   rootBackBehavior,
 } from "../../src/ui/screens/RootScreens";
@@ -150,6 +151,7 @@ export default function RootTabsLayout() {
         currentPath={pathname}
         headingRefs={headingRefs}
         onConsumeOrigin={() => setOrigin(undefined)}
+        requestNativeFocus={requestAndroidViewFocus}
         settingsContent={(closeSettings) => (
           <RootSettingsContent
             dataAndRecoveryTriggerRef={dataAndRecoveryTriggerRef}

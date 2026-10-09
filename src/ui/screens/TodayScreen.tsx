@@ -80,6 +80,7 @@ export type TodayScreenProps = Readonly<{
   onRetry?: () => void;
   headingRef?: React.RefObject<RootFocusTarget | null>;
   settingsActionRef?: React.RefObject<RootFocusTarget | null>;
+  settingsActionNativeID?: string;
 }>;
 
 function TodaySkeleton() {
@@ -369,6 +370,7 @@ export function TodayScreen({
   onRetry = noOp,
   headingRef,
   settingsActionRef,
+  settingsActionNativeID,
 }: TodayScreenProps) {
   const [activationPreview, setActivationPreview] = useState(false);
   const trusted = launchState === "trusted";
@@ -480,6 +482,7 @@ export function TodayScreen({
                   accessibilityLabel="Open App Settings"
                   disabled={!trusted}
                   icon="settings"
+                  nativeID={settingsActionNativeID}
                   onPress={onOpenSettings}
                   ref={settingsActionRef as React.Ref<View>}
                 />

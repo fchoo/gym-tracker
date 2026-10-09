@@ -38,7 +38,9 @@ export type BottomSheetProps = Readonly<{
   cancelLabel?: string | undefined;
   consequenceMode?: boolean;
   initialFocusRef?: React.RefObject<FocusTarget | null> | undefined;
+  restoreFocusNativeID?: string | undefined;
   restoreFocusRef?: React.RefObject<FocusTarget | null> | undefined;
+  requestNativeFocus?: ((nativeID: string) => void | Promise<boolean>) | undefined;
   testID?: string | undefined;
   scrollTestID?: string | undefined;
   contentStyle?: ViewStyle | undefined;
@@ -76,7 +78,9 @@ export function BottomSheet({
   cancelLabel,
   consequenceMode = false,
   initialFocusRef,
+  restoreFocusNativeID,
   restoreFocusRef,
+  requestNativeFocus,
   testID,
   scrollTestID,
   contentStyle,
@@ -217,8 +221,13 @@ export function BottomSheet({
     // Android can move focus to the newly exposed heading while the Modal is
     // still being removed. Restore after that native transition settles so
     // the invoking control remains the final keyboard/accessibility target.
-    setTimeout(restoreFocus, 250);
-  }, [cancelDisabled, onCancel, restoreFocus]);
+    setTimeout(() => {
+      restoreFocus();
+      if (restoreFocusNativeID !== undefined) {
+        void requestNativeFocus?.(restoreFocusNativeID);
+      }
+    }, 250);
+  }, [cancelDisabled, onCancel, requestNativeFocus, restoreFocus, restoreFocusNativeID]);
 
   const containTraversal = React.useCallback((event: NativeSyntheticEvent<{
     key?: string;

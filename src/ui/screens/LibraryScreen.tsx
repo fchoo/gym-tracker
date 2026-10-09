@@ -178,6 +178,7 @@ type LibraryScreenProps = Readonly<{
   width?: number;
   headingRef?: React.RefObject<RootFocusTarget | null>;
   settingsActionRef?: React.RefObject<RootFocusTarget | null>;
+  settingsActionNativeID?: string;
 }>;
 
 type ExerciseBrowseState = Readonly<{
@@ -1207,6 +1208,7 @@ export function LibraryScreen({
   width,
   headingRef,
   settingsActionRef,
+  settingsActionNativeID,
 }: LibraryScreenProps) {
   const [snapshot, setSnapshot] = useState<LibraryBrowseSnapshot | null>(null);
   const [loadFailed, setLoadFailed] = useState(false);
@@ -1612,6 +1614,7 @@ export function LibraryScreen({
                     accessibilityLabel="Open App Settings"
                     icon="settings"
                     key="settings"
+                    nativeID={settingsActionNativeID}
                     onPress={onOpenSettings}
                     ref={settingsActionRef as React.Ref<View>}
                   />

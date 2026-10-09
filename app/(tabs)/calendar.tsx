@@ -11,9 +11,13 @@ import {
   CalendarScreen,
 } from "../../src/ui/screens/CalendarScreen";
 import { useRootSettingsController } from "../../src/ui/shell/AppRootShell";
-import { useRootHeadingRef } from "../../src/ui/shell/rootFocus";
+import {
+  rootSettingsTriggerNativeID,
+  useRootHeadingRef,
+} from "../../src/ui/shell/rootFocus";
 
 export default function CalendarRoute() {
+  const settingsActionNativeID = rootSettingsTriggerNativeID("calendar");
   const headingRef = useRootHeadingRef("calendar");
   const settingsActionRef = React.useRef(null);
   const rootSettings = useRootSettingsController();
@@ -35,6 +39,7 @@ export default function CalendarRoute() {
       })}
       onOpenSettings={() => rootSettings.openRootSettings({
         root: "calendar",
+        triggerNativeID: settingsActionNativeID,
         triggerRef: settingsActionRef,
       })}
       onOpenSession={(sessionId) =>
@@ -42,6 +47,7 @@ export default function CalendarRoute() {
       today={initialDate}
       headingRef={headingRef}
       settingsActionRef={settingsActionRef}
+      settingsActionNativeID={settingsActionNativeID}
     />
   );
 }

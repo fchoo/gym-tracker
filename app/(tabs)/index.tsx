@@ -16,9 +16,13 @@ import type {
 } from "../../src/domains/progress";
 import { TodayScreen } from "../../src/ui/screens/TodayScreen";
 import { useRootSettingsController } from "../../src/ui/shell/AppRootShell";
-import { useRootHeadingRef } from "../../src/ui/shell/rootFocus";
+import {
+  rootSettingsTriggerNativeID,
+  useRootHeadingRef,
+} from "../../src/ui/shell/rootFocus";
 
 export default function TodayRoute() {
+  const settingsActionNativeID = rootSettingsTriggerNativeID("index");
   const headingRef = useRootHeadingRef("index");
   const settingsActionRef = useRef(null);
   const rootSettings = useRootSettingsController();
@@ -88,6 +92,7 @@ export default function TodayRoute() {
       pendingRecommendations={pendingRecommendations}
       onOpenSettings={() => rootSettings.openRootSettings({
         root: "index",
+        triggerNativeID: settingsActionNativeID,
         triggerRef: settingsActionRef,
       })}
       onReviewSuggestion={() => router.push("/progress" as Href)}
@@ -148,6 +153,7 @@ export default function TodayRoute() {
       }}
       headingRef={headingRef}
       settingsActionRef={settingsActionRef}
+      settingsActionNativeID={settingsActionNativeID}
     />
   );
 }

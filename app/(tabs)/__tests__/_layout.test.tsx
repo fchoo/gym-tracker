@@ -2,6 +2,7 @@ import {
   act,
   fireEvent,
   render,
+  waitFor,
 } from "@testing-library/react-native";
 import {
   describe,
@@ -616,7 +617,8 @@ describe("RootTabsLayout adaptive navigator placement", () => {
     await fireEvent.press(rendered.getByRole("button", { name: "Close App Settings" }));
 
     expect(rendered.queryByRole("header", { name: "App Settings" })).toBeNull();
-    expect(mockSettingsTriggerFocus.index).toHaveBeenCalledTimes(1);
+    await waitFor(() => expect(mockSettingsTriggerFocus.index)
+      .toHaveBeenCalledTimes(1));
   });
 
   it("captures deep-route origin in production and restores exact or heading focus on return", async () => {

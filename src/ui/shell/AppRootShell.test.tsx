@@ -1,5 +1,5 @@
 import { act, fireEvent, render, screen, waitFor } from "@testing-library/react-native";
-import { describe, expect, it, jest } from "@jest/globals";
+import { beforeEach, describe, expect, it, jest } from "@jest/globals";
 import React from "react";
 import {
   Pressable,
@@ -18,6 +18,11 @@ import {
   AppRootShell,
   useRootSettingsController,
 } from "./AppRootShell";
+import { rootSettingsTriggerNativeID } from "./rootFocus";
+
+const mockRequestAndroidViewFocus = jest.fn<
+  (nativeID: string) => Promise<boolean>
+>(async () => true);
 
 function ShellToastTrigger() {
   const { enqueue } = useSemanticToast();
@@ -28,21 +33,44 @@ function ShellToastTrigger() {
 function RootSettingsTrigger({
   root = "index",
   triggerRef,
+  triggerNativeID = rootSettingsTriggerNativeID(root),
 }: Readonly<{
   root?: "index" | "calendar" | "library" | "progress";
   triggerRef: React.RefObject<{ focus?: () => void } | null>;
+  triggerNativeID?: string;
 }>) {
   const { openRootSettings } = useRootSettingsController();
   return (
     <Pressable
       accessibilityLabel="Open App Settings"
       accessibilityRole="button"
-      onPress={() => openRootSettings({ root, triggerRef })}
+      nativeID={triggerNativeID}
+      onPress={() => openRootSettings({ root, triggerNativeID, triggerRef })}
     />
   );
 }
 
 describe("AppRootShell", () => {
+  beforeEach(() => {
+    mockRequestAndroidViewFocus.mockClear();
+  });
+
+  it("provides one stable settings trigger nativeID per root", () => {
+    const nativeIDs = ["index", "calendar", "library", "progress"].map(
+      (root) => rootSettingsTriggerNativeID(
+        root as "index" | "calendar" | "library" | "progress",
+      ),
+    );
+
+    expect(nativeIDs).toEqual([
+      "root-settings-trigger-index",
+      "root-settings-trigger-calendar",
+      "root-settings-trigger-library",
+      "root-settings-trigger-progress",
+    ]);
+    expect(new Set(nativeIDs).size).toBe(4);
+  });
+
   it("keeps mounted root content in place and focuses the selected root heading", async () => {
     const workoutHeading = { current: { focus: jest.fn() } };
     const libraryHeading = { current: { focus: jest.fn() } };
@@ -100,6 +128,7 @@ describe("AppRootShell", () => {
       <AppearanceProvider>
         <AppRootShell
           activeRoot="index"
+          requestNativeFocus={mockRequestAndroidViewFocus}
           settingsContent={(
             <AppSettingsContent
               notificationPermission="granted"
@@ -126,6 +155,9 @@ describe("AppRootShell", () => {
     await fireEvent.press(screen.getByRole("button", { name: "Close App Settings" }));
     await waitFor(() => expect(trigger.current.focus)
       .toHaveBeenCalledTimes(focusCallsBeforeClose + 1));
+    await waitFor(() => expect(mockRequestAndroidViewFocus).toHaveBeenCalledWith(
+      "root-settings-trigger-index",
+    ));
   });
 
   it("dismisses root App Settings before a retained deep-route callback runs", async () => {

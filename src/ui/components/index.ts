@@ -469,6 +469,7 @@ export const IconAction = forwardRef<
     accessibilityHint?: string;
     busy?: boolean;
     disabled?: boolean;
+    nativeID?: string | undefined;
     selected?: boolean;
     tone?: "default" | "card";
     testID?: string;
@@ -481,6 +482,7 @@ export const IconAction = forwardRef<
     accessibilityHint,
     busy = false,
     disabled = false,
+    nativeID,
     selected = false,
     tone = "default",
     testID,
@@ -513,6 +515,7 @@ export const IconAction = forwardRef<
       disabled: isDisabled,
       focusable: !isDisabled,
       ...keyboardActivationProps(isDisabled, onPress),
+      nativeID,
       onPress,
       ref,
       style: ({ pressed }: { pressed: boolean }) => [
