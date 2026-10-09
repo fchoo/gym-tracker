@@ -6,6 +6,12 @@ import path from "node:path";
 
 import { PHASE14_SHELL_EVIDENCE_CASES } from "../src/testing/contracts/phase14Shell.contract.ts";
 import {
+  evaluatePhase14SemanticPredicate,
+  parsePhase14SemanticSnapshot,
+  validatePhase14ActionObservation,
+} from "./phase14-action-observation.mjs";
+import { validatePhase14CellCheckpoint } from "./phase14-cell-checkpoint.mjs";
+import {
   derivePhase14NativeVerdict,
   ingestPhase14JestReport,
   validatePhase14Dev02Evidence,
@@ -15,9 +21,18 @@ import {
 } from "./phase14-evidence-observation.mjs";
 import {
   PHASE14_NATIVE_MATRIX,
+  phase14BehaviorCoverageForCells,
   phase14MatrixCellsForIds,
   validatePhase14NativeMatrix,
 } from "./phase14-native-matrix.mjs";
+import {
+  canonicalJson,
+  derivePhase14RowVerdict,
+  phase14CellCaptureIdentitySha256,
+  resolvePhase14VisualReference,
+  validatePhase14CaptureIndex,
+  validatePhase14VisualAttestation,
+} from "./phase14-visual-review.mjs";
 import { resolvePhase14DeviceSerial, validatePhase14Manifest } from "./run-phase14-maestro.mjs";
 import { sourceTreeSha256 } from "./source-tree-digest.mjs";
 
@@ -91,26 +106,35 @@ function reportArtifact(relativePath, expectedSha256, readArtifact) {
   return Object.freeze({ ...artifact, summary: passingJunit(artifact.bytes) });
 }
 
-function focusedNodeFromXml(bytes) {
-  const node = bytes.toString("utf8").match(/<node\b[^>]*\bfocused="true"[^>]*>/u)?.[0];
-  if (node === undefined) return null;
-  for (const attribute of ["content-desc", "text", "resource-id"]) {
-    const value = node.match(new RegExp(`${attribute}="([^"]*)"`, "u"))?.[1];
-    if (value) return value;
-  }
-  return "focused-node";
-}
-
-function verifyTraceTrees(trace, readArtifact) {
-  for (const observation of trace.observations) {
-    for (const side of [observation.pre, observation.post]) {
+function verifyTraceTrees(trace, expectedCell, readArtifact) {
+  for (const [index, observation] of trace.observations.entries()) {
+    const actionId = expectedCell.behavior.actionIds[index];
+    const action = expectedCell.actions.find(({ id }) => id === actionId);
+    if (action === undefined) throw new Error("phase14_behavior_action_missing");
+    const snapshots = {};
+    for (const [sideName, side] of [["pre", observation.pre], ["post", observation.post]]) {
+      if (side.semantic_tree === null) {
+        if (action[sideName].semanticRequired !== false || side.semantic_tree_sha256 !== null || side.focused_node !== null) {
+          throw new Error("phase14_focus_tree_missing");
+        }
+        snapshots[sideName] = null;
+        continue;
+      }
       const tree = artifactBytes(side.semantic_tree, side.semantic_tree_sha256, {
         prefix: `${ARTIFACT_ROOT}traces/`, suffix: ".xml", pathCode: "phase14_focus_tree_path_invalid",
         missingCode: "phase14_focus_tree_missing", hashCode: "phase14_focus_tree_hash_invalid",
       }, readArtifact);
-      if (focusedNodeFromXml(tree.bytes) !== side.focused_node) throw new Error("phase14_focused_node_invalid");
+      const snapshot = parsePhase14SemanticSnapshot(tree.bytes);
+      if (snapshot.focused_node !== side.focused_node) throw new Error("phase14_focused_node_invalid");
+      snapshots[sideName] = snapshot;
     }
-    reportArtifact(observation.preparation_report, observation.preparation_report_sha256, readArtifact);
+    if (action.transport === "adb-launch") {
+      if (observation.preparation?.kind !== "adb-force-stop") throw new Error("phase14_action_preparation_invalid");
+    } else {
+      if (observation.preparation?.kind !== "maestro") throw new Error("phase14_action_preparation_invalid");
+      reportArtifact(observation.preparation.report, observation.preparation.report_sha256, readArtifact);
+    }
+    validatePhase14ActionObservation(observation, action, snapshots);
   }
 }
 
@@ -120,7 +144,7 @@ function expectedTheme(cell) {
   return { osScheme, renderedTheme: cell.expectedRenderedThemeAfterSwitch ?? renderedTheme };
 }
 
-function verifyTheme(observation, expectedCell, readArtifact) {
+function verifyTheme(observation, expectedCell, observedCell, readArtifact) {
   const expected = expectedTheme(expectedCell);
   if (
     observation?.selected_option !== expectedCell.appearanceSelection
@@ -129,26 +153,18 @@ function verifyTheme(observation, expectedCell, readArtifact) {
     || observation.rendered_theme !== expected.renderedTheme
     || observation.expected_rendered_theme !== expected.renderedTheme
     || observation.verdict !== "PASS"
+    || observation.selection_report !== observedCell.report
+    || observation.selection_report_sha256 !== observedCell.report_sha256
   ) {
     throw new Error("phase14_rendered_theme_invalid");
   }
   reportArtifact(observation.selection_report, observation.selection_report_sha256, readArtifact);
 }
 
-function comparisonEligible(cell) {
-  const policy = cell.referencePolicy;
-  if (policy.kind !== "revision18-png") return false;
-  const exact = policy.exactConfiguration;
-  return cell.viewport.width === exact.width
-    && cell.viewport.height === exact.height
-    && cell.orientation === exact.orientation
-    && cell.fontScale === exact.fontScale
-    && policy.filesByRenderedTheme?.[cell.renderedTheme] !== undefined;
-}
-
-function verifyVisual(comparison, expectedCell, screenshotSha256, readArtifact) {
+function verifyVisual(comparison, expectedCell, observedCell, readArtifact) {
   const policy = expectedCell.referencePolicy;
-  if (policy.kind === "native-only") {
+  const resolution = resolvePhase14VisualReference(expectedCell, observedCell.theme_observation);
+  if (resolution.kind === "native-only") {
     if (
       comparison?.verdict !== "N_A_REVIEWED"
       || comparison.rationale !== policy.rationale
@@ -158,7 +174,7 @@ function verifyVisual(comparison, expectedCell, screenshotSha256, readArtifact) 
     }
     return;
   }
-  if (!comparisonEligible(expectedCell)) {
+  if (resolution.kind === "not-exact") {
     if (comparison?.verdict !== "NOT_RUN" || comparison.reference_policy !== "authoritative-only") {
       throw new Error("phase14_visual_mapping_invalid");
     }
@@ -169,16 +185,26 @@ function verifyVisual(comparison, expectedCell, screenshotSha256, readArtifact) 
     missingCode: "phase14_visual_record_missing", hashCode: "phase14_visual_record_hash_invalid",
   }, readArtifact);
   const record = JSON.parse(recordArtifact.bytes.toString("utf8"));
+  const reviewedVerdict = comparison.review?.classification === "product_mismatch"
+    ? "FAIL"
+    : comparison.review?.classification === "accepted_deviation"
+      ? "ACCEPTED_EXCEPTION"
+      : comparison.review === undefined
+        ? "REVIEW_REQUIRED"
+        : "PASS";
+  const expectedVerdict = record.classification === "MATCH" ? "PASS" : reviewedVerdict;
   if (
     record.reference_id !== policy.referenceId
     || !same(record.reference_source, policy.source)
     || record.configuration_id !== expectedCell.configurationId
+    || record.capture_state !== policy.captureState
+    || record.observed_rendered_theme !== observedCell.theme_observation.rendered_theme
     || !same(record.artifacts, comparison.artifacts)
     || !same(record.metrics, comparison.metrics)
     || comparison.classification !== record.classification
-    || comparison.verdict !== (record.classification === "MATCH" ? "PASS" : "REVIEW_REQUIRED")
-    || record.artifacts.reference?.sha256 !== policy.filesByRenderedTheme[expectedCell.renderedTheme].sha256
-    || record.artifacts.native?.sha256 !== screenshotSha256
+    || comparison.verdict !== expectedVerdict
+    || record.artifacts.reference?.sha256 !== resolution.reference.sha256
+    || record.artifacts.native?.sha256 !== observedCell.screenshot_sha256
   ) {
     throw new Error("phase14_visual_mapping_invalid");
   }
@@ -193,8 +219,11 @@ function verifyVisual(comparison, expectedCell, screenshotSha256, readArtifact) 
 }
 
 function verifyRuntimeState(runtimeState, expectedCell, readArtifact) {
-  if (expectedCell.runtimeStatePolicy !== "no-write") {
-    if (runtimeState?.verdict !== "N_A_REVIEWED" || !/intentionally writes/iu.test(runtimeState.rationale ?? "")) {
+  if (!expectedCell.behavior.logicalStateProbe) {
+    const expectedRationale = expectedCell.runtimeStatePolicy === "preference-write-reviewed"
+      ? /intentionally writes/iu
+      : /explicit representative behavior configurations/iu;
+    if (runtimeState?.verdict !== "N_A_REVIEWED" || !expectedRationale.test(runtimeState.rationale ?? "")) {
       throw new Error("phase14_runtime_state_invalid");
     }
     return;
@@ -227,6 +256,8 @@ function verifyCell(cell, expectedCell, readArtifact) {
     || cell.font_scale !== expectedCell.fontScale
     || cell.reduced_motion !== expectedCell.reducedMotion
     || cell.live_os_switch !== expectedCell.liveOsSwitch
+    || !same(cell.behavior, expectedCell.behavior)
+    || !same(cell.capture_requirements, expectedCell.captureRequirements)
   ) {
     throw new Error("phase14_matrix_cells_invalid");
   }
@@ -237,17 +268,28 @@ function verifyCell(cell, expectedCell, readArtifact) {
     missingCode: "phase14_screenshot_missing", hashCode: "phase14_screenshot_hash_invalid",
     contentCode: "phase14_screenshot_content_invalid", png: true,
   }, readArtifact);
-  artifactBytes(cell.semantic_tree, cell.semantic_tree_sha256, {
+  const semanticArtifact = artifactBytes(cell.semantic_tree, cell.semantic_tree_sha256, {
     prefix: `${ARTIFACT_ROOT}semantic/`, suffix: ".xml", pathCode: "phase14_semantic_tree_path_invalid",
     missingCode: "phase14_semantic_tree_missing", hashCode: "phase14_semantic_tree_hash_invalid",
   }, readArtifact);
+  const semanticSnapshot = parsePhase14SemanticSnapshot(semanticArtifact.bytes);
+  const semanticEvaluation = evaluatePhase14SemanticPredicate(semanticSnapshot, expectedCell.state.capture, true);
+  if (
+    !semanticEvaluation.ok
+    || cell.semantic_observation?.capture_state !== expectedCell.state.captureState
+    || cell.semantic_observation.package !== expectedCell.state.capture.package
+    || cell.semantic_observation.focused_node !== semanticSnapshot.focused_node
+    || cell.semantic_observation.verdict !== "PASS"
+  ) {
+    throw new Error("phase14_capture_state_invalid");
+  }
   const traceArtifact = artifactBytes(cell.focus_key_trace, cell.focus_key_trace_sha256, {
     prefix: `${ARTIFACT_ROOT}traces/`, suffix: ".json", pathCode: "phase14_focus_trace_path_invalid",
     missingCode: "phase14_focus_trace_missing", hashCode: "phase14_focus_trace_hash_invalid",
   }, readArtifact);
   const trace = JSON.parse(traceArtifact.bytes.toString("utf8"));
-  validatePhase14FocusTrace(trace, expectedCell.actions.map(({ id }) => id));
-  verifyTraceTrees(trace, readArtifact);
+  validatePhase14FocusTrace(trace, expectedCell.behavior.actionIds);
+  verifyTraceTrees(trace, expectedCell, readArtifact);
   if (!same(cell.actions, trace.observations)) throw new Error("phase14_focus_trace_binding_invalid");
   if (
     !Array.isArray(cell.checkpoints)
@@ -270,11 +312,12 @@ function verifyCell(cell, expectedCell, readArtifact) {
     throw new Error("phase14_window_bounds_invalid");
   }
   verifyRuntimeState(cell.runtime_state, expectedCell, readArtifact);
-  verifyTheme(cell.theme_observation, expectedCell, readArtifact);
-  verifyVisual(cell.visual_comparison, expectedCell, cell.screenshot_sha256, readArtifact);
+  verifyTheme(cell.theme_observation, expectedCell, cell, readArtifact);
+  verifyVisual(cell.visual_comparison, expectedCell, cell, readArtifact);
   const derived = derivePhase14NativeVerdict({
     maestro: cell.maestro,
     actions: cell.actions,
+    expectedActionCount: expectedCell.behavior.actionIds.length,
     checkpoints: cell.checkpoints,
     runtimeState: cell.runtime_state,
     theme: cell.theme_observation,
@@ -288,8 +331,10 @@ export function stableDeviceIdentitySha256(values) {
 }
 
 export function validatePhase14Privacy(value, pathName = "evidence") {
+  const safePublicUiLabel = value === "Restore password" || value === "Merge password";
   if (
     typeof value === "string"
+    && !safePublicUiLabel
     && /(?:^\/(?!Users\/bytedance\/\.gstack\/projects\/fchoo-gym-tracker\/designs\/push-inspired-workout-20261001$)|\\\\|\bselect\b|\binsert\b|\bupdate\b|\bdelete\b|access[_-]?token|refresh[_-]?token|password(?!-settings)|archive[_-]?bytes|@[a-z0-9.-]+\.[a-z]{2,})/iu.test(value)
   ) {
     throw new Error(`phase14_privacy_invalid:${pathName}`);
@@ -345,10 +390,10 @@ export function validatePhase14Evidence(evidence, manifest, ids = expectedIds, o
   validatePhase14NativeMatrix(PHASE14_NATIVE_MATRIX);
   const readArtifact = options.readArtifact ?? defaultArtifactReader;
   if (
-    evidence?.schema_version !== 3
-    || evidence.producer !== "phase14-native-observation/v3"
+    evidence?.schema_version !== 4
+    || !["phase14-native-observation/v4", "phase14-native-evidence-finalized/v1"].includes(evidence.producer)
     || evidence.suite !== "phase14"
-    || !["PASS", "FAIL", "REVIEW_REQUIRED"].includes(evidence.verdict)
+    || !["PASS", "FAIL", "REVIEW_REQUIRED", "ACCEPTED_EXCEPTION"].includes(evidence.verdict)
     || evidence.build_manifest !== `${ARTIFACT_ROOT}build.json`
     || evidence.base_head !== manifest.base_head
     || evidence.source_tree_sha256 !== manifest.source_tree_sha256
@@ -358,6 +403,9 @@ export function validatePhase14Evidence(evidence, manifest, ids = expectedIds, o
     || evidence.apk?.sha256 !== manifest.apk.sha256
     || evidence.apk?.installed_sha256 !== manifest.apk.sha256
     || evidence.apk?.matches_retained_apk !== true
+    || !Number.isFinite(Date.parse(evidence.captured_started_at))
+    || !Number.isFinite(Date.parse(evidence.captured_finished_at))
+    || Date.parse(evidence.captured_finished_at) < Date.parse(evidence.captured_started_at)
     || !same(evidence.matrix, PHASE14_NATIVE_MATRIX)
   ) {
     throw new Error("phase14_evidence_identity_invalid");
@@ -372,11 +420,87 @@ export function validatePhase14Evidence(evidence, manifest, ids = expectedIds, o
     || evidence.coverage.requested_cell !== null
     || evidence.coverage.expected_cell_count !== expectedCells.length
     || evidence.coverage.observed_cell_count !== expectedCells.length
+    || evidence.coverage.checkpoint_cell_count !== expectedCells.length
+    || !Array.isArray(evidence.coverage.checkpoint_cell_ids)
+    || !same(evidence.coverage.checkpoint_cell_ids, expectedCells.map(({ id }) => id))
+    || !Number.isInteger(evidence.coverage.resumed_cell_count)
+    || evidence.coverage.resumed_cell_count < 0
+    || evidence.coverage.resumed_cell_count > expectedCells.length
   ) {
     throw new Error("phase14_evidence_coverage_invalid");
   }
   if (!Array.isArray(evidence.evidence) || evidence.evidence.length !== contracts.length) throw new Error("phase14_evidence_mapping_invalid");
   if (!Array.isArray(evidence.matrix_cells) || evidence.matrix_cells.length !== expectedCells.length) throw new Error("phase14_matrix_cells_invalid");
+  const checkpointSet = evidence.matrix_cells.map((cell) => ({
+    cell_id: cell.id,
+    observation_sha256: phase14CellCaptureIdentitySha256(cell),
+  }));
+  if (evidence.coverage.checkpoint_set_sha256 !== sha256(canonicalJson(checkpointSet))) {
+    throw new Error("phase14_cell_checkpoint_set_invalid");
+  }
+  if (
+    !Array.isArray(evidence.coverage.cell_checkpoints)
+    || evidence.coverage.cell_checkpoints.length !== expectedCells.length
+    || !same(evidence.coverage.cell_checkpoints.map(({ cell_id: cellId }) => cellId), expectedCells.map(({ id }) => id))
+  ) throw new Error("phase14_cell_checkpoint_coverage_invalid");
+  const checkpointIdentity = {
+    source_tree_sha256: evidence.source_tree_sha256,
+    apk_sha256: evidence.apk.sha256,
+    package: evidence.package,
+    profile: evidence.profile,
+    device_identity_sha256: evidence.device_identity_sha256,
+    matrix_schema_version: PHASE14_NATIVE_MATRIX.schemaVersion,
+  };
+  for (const [index, binding] of evidence.coverage.cell_checkpoints.entries()) {
+    const checkpointArtifact = artifactBytes(binding.path, binding.sha256, {
+      prefix: `${ARTIFACT_ROOT}cells/`, suffix: ".json", pathCode: "phase14_cell_checkpoint_path_invalid",
+      missingCode: "phase14_cell_checkpoint_missing", hashCode: "phase14_cell_checkpoint_hash_invalid",
+    }, readArtifact);
+    const checkpoint = JSON.parse(checkpointArtifact.bytes.toString("utf8"));
+    validatePhase14CellCheckpoint(checkpoint, {
+      expectedCell: expectedCells[index],
+      identity: checkpointIdentity,
+      readArtifact,
+    });
+    if (phase14CellCaptureIdentitySha256(checkpoint.observation)
+      !== phase14CellCaptureIdentitySha256(evidence.matrix_cells[index])) {
+      throw new Error("phase14_cell_checkpoint_merge_invalid");
+    }
+  }
+  if (!same(evidence.behavior_coverage, phase14BehaviorCoverageForCells(expectedCells))) {
+    throw new Error("phase14_behavior_coverage_invalid");
+  }
+
+  const captureIndexArtifact = artifactBytes(evidence.capture_index?.path, evidence.capture_index?.sha256, {
+    prefix: ARTIFACT_ROOT, suffix: "capture-index.json", pathCode: "phase14_capture_index_path_invalid",
+    missingCode: "phase14_capture_index_missing", hashCode: "phase14_capture_index_hash_invalid",
+  }, readArtifact);
+  const captureIndex = JSON.parse(captureIndexArtifact.bytes.toString("utf8"));
+  if (captureIndex.capture_set_sha256 !== evidence.capture_index.capture_set_sha256) {
+    throw new Error("phase14_capture_index_stale");
+  }
+  validatePhase14CaptureIndex(captureIndex, evidence);
+  let finalizationAttestation = null;
+  if (evidence.producer === "phase14-native-evidence-finalized/v1") {
+    const attestationArtifact = artifactBytes(
+      evidence.finalization?.attestation?.path,
+      evidence.finalization?.attestation?.file_sha256,
+      {
+        prefix: `${ARTIFACT_ROOT}review/`, suffix: ".json", pathCode: "phase14_visual_attestation_path_invalid",
+        missingCode: "phase14_visual_attestation_missing", hashCode: "phase14_visual_attestation_hash_invalid",
+      },
+      readArtifact,
+    );
+    const attestation = JSON.parse(attestationArtifact.bytes.toString("utf8"));
+    if (
+      evidence.finalization.mode !== "finalize-existing"
+      || evidence.finalization.capture_set_sha256 !== captureIndex.capture_set_sha256
+      || evidence.finalization.attestation.content_sha256 !== sha256(canonicalJson(attestation))
+      || evidence.finalization.attestation_sha256 !== evidence.finalization.attestation.content_sha256
+    ) throw new Error("phase14_finalize_identity_invalid");
+    validatePhase14VisualAttestation(attestation, captureIndex);
+    finalizationAttestation = attestation;
+  }
 
   const componentArtifact = artifactBytes(evidence.component_evidence?.report, evidence.component_evidence?.report_sha256, {
     prefix: `${ARTIFACT_ROOT}components/`, suffix: ".json", pathCode: "phase14_component_report_path_invalid",
@@ -406,17 +530,41 @@ export function validatePhase14Evidence(evidence, manifest, ids = expectedIds, o
     const verified = row.matrix_cells.map((cell, cellIndex) => verifyCell(cell, rowExpectedCells[cellIndex], readArtifact));
     flattened.push(...verified);
     const nativeVerdict = verified.every(({ native_verdict: verdict }) => verdict === "PASS") ? "PASS" : "FAIL";
-    const visualReview = verified.some(({ visual_comparison: comparison }) => comparison.verdict === "REVIEW_REQUIRED");
-    const visualVerdict = visualReview ? "REVIEW_REQUIRED" : "PASS";
-    const verdict = nativeVerdict === "FAIL" ? "FAIL" : (visualReview ? "REVIEW_REQUIRED" : "PASS");
-    if (row.native_verdict !== nativeVerdict || row.visual_verdict !== visualVerdict || row.verdict !== verdict) {
+    const visualVerdicts = verified.map(({ visual_comparison: comparison }) => comparison.verdict);
+    const comparableRequired = verified.filter(({ visual_comparison: comparison }) => comparison.artifacts !== undefined).length;
+    const derivedRow = derivePhase14RowVerdict({
+      componentVerdict: row.component_verdict,
+      nativeVerdict,
+      visualVerdicts,
+      comparableRequired,
+    });
+    if (row.native_verdict !== nativeVerdict || row.visual_verdict !== derivedRow.visual_verdict || row.verdict !== derivedRow.verdict) {
       throw new Error("phase14_derived_verdict_invalid");
     }
   }
   if (!same(evidence.matrix_cells, flattened)) throw new Error("phase14_matrix_cells_invalid");
-  const overall = evidence.evidence.every(({ verdict }) => verdict === "PASS")
-    ? "PASS"
-    : (evidence.evidence.some(({ verdict }) => verdict === "FAIL") ? "FAIL" : "REVIEW_REQUIRED");
+  if (finalizationAttestation !== null) {
+    const reviews = new Map(finalizationAttestation.comparisons.map((review) => [review.cell_id, review]));
+    for (const cell of flattened) {
+      const review = reviews.get(cell.id);
+      if (review === undefined) {
+        if (cell.visual_comparison.review !== undefined) throw new Error("phase14_visual_review_binding_invalid");
+        continue;
+      }
+      if (
+        cell.visual_comparison.review?.classification !== review.classification
+        || cell.visual_comparison.review.reviewer_fingerprint !== finalizationAttestation.reviewer.fingerprint
+        || !same(cell.visual_comparison.review.semantic_zero_tolerance, review.semantic_zero_tolerance)
+      ) throw new Error("phase14_visual_review_binding_invalid");
+    }
+  }
+  const overall = evidence.evidence.some(({ verdict }) => verdict === "FAIL")
+    ? "FAIL"
+    : evidence.evidence.some(({ verdict }) => verdict === "REVIEW_REQUIRED")
+      ? "REVIEW_REQUIRED"
+      : evidence.evidence.some(({ verdict }) => verdict === "ACCEPTED_EXCEPTION")
+        ? "ACCEPTED_EXCEPTION"
+        : "PASS";
   if (evidence.verdict !== overall) throw new Error("phase14_derived_verdict_invalid");
   if (ids.includes("shell.tokens")) {
     validatePhase14Dev02Evidence(evidence.dev02);
@@ -427,15 +575,22 @@ export function validatePhase14Evidence(evidence, manifest, ids = expectedIds, o
 }
 
 export function parsePhase14VerifierArgs(args) {
-  const options = { manifest: `${ARTIFACT_ROOT}build.json`, all: false, ids: [] };
+  const options = {
+    manifest: `${ARTIFACT_ROOT}build.json`,
+    evidence: `${ARTIFACT_ROOT}maestro/phase14-evidence.json`,
+    all: false,
+    ids: [],
+  };
   for (let index = 0; index < args.length; index += 1) {
     if (args[index] === "--manifest") options.manifest = args[++index] ?? "";
+    else if (args[index] === "--evidence") options.evidence = args[++index] ?? "";
     else if (args[index] === "--all") options.all = true;
     else if (args[index] === "--ids") options.ids = (args[++index] ?? "").split(",").filter(Boolean);
     else throw new Error(`phase14_unknown_argument:${args[index]}`);
   }
   if (
     options.manifest !== `${ARTIFACT_ROOT}build.json`
+    || ![`${ARTIFACT_ROOT}maestro/phase14-evidence.json`, `${ARTIFACT_ROOT}finalized-evidence.json`].includes(options.evidence)
     || (options.all === (options.ids.length > 0))
     || new Set(options.ids).size !== options.ids.length
     || options.ids.some((id) => !expectedIds.includes(id))
@@ -474,13 +629,13 @@ export function executePhase14EvidenceVerifier(args = process.argv.slice(2)) {
     deviceIdentitySha256: deviceIdentity(serial),
   });
   const ids = options.all ? expectedIds : options.ids;
-  const evidencePath = path.join(ROOT, ARTIFACT_ROOT, "maestro/phase14-evidence.json");
+  const evidencePath = path.join(ROOT, options.evidence);
   const evidence = JSON.parse(readFileSync(evidencePath, "utf8"));
   validatePhase14Evidence(evidence, manifest, ids, {
     coverageMode: options.all ? "all" : "ids",
   });
   const result = {
-    schema_version: 3,
+    schema_version: 4,
     suite: "phase14",
     verdict: evidence.verdict,
     ids,

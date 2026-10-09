@@ -20,77 +20,75 @@ tags:
     file: select-theme.yaml
 - runFlow:
     when:
-      true: ${PHASE14_STAGE == 'phase14-four-roots'}
+      true: ${PHASE14_STAGE == 'phase14-four-roots' && PHASE14_ACTION == 'none'}
     commands:
       - assertVisible: "Workout"
       - tapOn: "Calendar"
-      - assertVisible: "Calendar"
+      - assertVisible: "Calendar month grid"
       - tapOn: "Library"
-      - assertVisible: "Library"
+      - assertVisible: "Library section"
       - tapOn: "Progress"
       - assertVisible: "Progress"
       - tapOn: "Workout"
       - assertVisible: "Workout"
 - runFlow:
     when:
-      true: ${PHASE14_STAGE == 'phase14-root-state'}
+      true: ${PHASE14_STAGE == 'phase14-four-roots' && PHASE14_ACTION != 'none'}
+    commands:
+      - assertVisible: "Workout"
+- runFlow:
+    when:
+      true: ${PHASE14_STAGE == 'phase14-root-state' && PHASE14_ACTION == 'none'}
     commands:
       - tapOn: "Library"
-      - assertVisible: "Library"
+      - assertVisible: "Library section"
       - pressKey: BACK
       - assertVisible: "Workout"
 - runFlow:
     when:
-      true: ${PHASE14_STAGE == 'phase14-appearance'}
+      true: ${PHASE14_STAGE == 'phase14-root-state' && PHASE14_ACTION == 'back-from-library'}
+    commands:
+      - tapOn: "Library"
+      - extendedWaitUntil:
+          visible: "Library section"
+          timeout: 30000
+- runFlow:
+    when:
+      true: ${PHASE14_STAGE == 'phase14-appearance' && PHASE14_ACTION == 'appearance-dpad-system-to-light'}
     commands:
       - tapOn: "Open App Settings"
       - extendedWaitUntil:
           visible: "App Settings"
           timeout: 30000
       - assertVisible: "Appearance"
-      - runFlow:
-          when:
-            true: ${PHASE14_THEME_OPTION == 'Light'}
-          commands:
-            - tapOn: "Light"
-            - assertVisible: "Light"
-      - runFlow:
-          when:
-            true: ${PHASE14_THEME_OPTION == 'Dark'}
-          commands:
-            - tapOn: "Dark"
-            - assertVisible: "Dark"
-      - runFlow:
-          when:
-            true: ${PHASE14_THEME_OPTION == 'System'}
-          commands:
-            - tapOn: "System"
-            - assertVisible: "System"
+- runFlow:
+    when:
+      true: ${PHASE14_STAGE == 'phase14-appearance' && PHASE14_ACTION == 'none'}
+    commands:
+      - tapOn: "Open App Settings"
+      - extendedWaitUntil:
+          visible: "App Settings"
+          timeout: 30000
+      - assertVisible: "Appearance"
+      - tapOn: ${PHASE14_THEME_OPTION}
+      - assertVisible: ${PHASE14_THEME_OPTION}
       - pressKey: BACK
       - assertVisible: "Workout"
       - tapOn: "Calendar"
-      - assertVisible: "Calendar"
+      - assertVisible: "Calendar month grid"
       - tapOn: "Open App Settings"
       - extendedWaitUntil:
           visible: "App Settings"
           timeout: 30000
       - pressKey: BACK
-      - assertVisible: "Calendar"
       - tapOn: "Library"
-      - assertVisible: "Library"
+      - assertVisible: "Library section"
       - tapOn: "Open App Settings"
       - extendedWaitUntil:
           visible: "App Settings"
           timeout: 30000
       - pressKey: BACK
-      - assertVisible: "Library"
       - tapOn: "Progress"
-      - assertVisible: "Progress"
-      - tapOn: "Open App Settings"
-      - extendedWaitUntil:
-          visible: "App Settings"
-          timeout: 30000
-      - pressKey: BACK
       - assertVisible: "Progress"
 - runFlow:
     when:

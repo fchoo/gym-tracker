@@ -35,11 +35,17 @@ tags:
       - assertVisible: "Rest alerts"
 - runFlow:
     when:
-      true: ${PHASE14_STAGE == 'phase14-settings-deep-links'}
+      true: ${PHASE14_STAGE == 'phase14-settings-deep-links' && PHASE14_ACTION == 'none'}
     commands:
       - assertVisible: "Data and recovery"
       - pressKey: BACK
       - assertVisible: "Workout"
+- runFlow:
+    when:
+      true: ${PHASE14_STAGE == 'phase14-settings-deep-links' && PHASE14_ACTION == 'back-from-data-recovery'}
+    commands:
+      - assertVisible: "Data and recovery"
+      - assertVisible: "Manual encrypted backup"
 - runFlow:
     when:
       true: ${PHASE14_STAGE == 'phase14-removed-sessions'}
@@ -53,12 +59,19 @@ tags:
       - scrollUntilVisible:
           element:
             text: "Removed sessions"
+      - tapOn: "Removed sessions"
+      - extendedWaitUntil:
+          visible: "Removed sessions"
+          timeout: 30000
+- runFlow:
+    when:
+      true: ${PHASE14_STAGE == 'phase14-removed-sessions' && PHASE14_ACTION == 'back-from-removed-sessions'}
+    commands:
       - assertVisible: "Removed sessions"
 - runFlow:
     when:
       true: ${PHASE14_STAGE == 'phase14-data-recovery'}
     commands:
-      - assertVisible: "Manual encrypted backup"
       - tapOn: "Manual encrypted backup"
       - extendedWaitUntil:
           visible: "Manual encrypted backup"
@@ -66,33 +79,49 @@ tags:
       - scrollUntilVisible:
           element:
             text: "Restore clean"
-      - assertVisible: "Restore clean"
       - tapOn: "Restore password"
       - inputText: "phase14-cancel-only"
-      - runFlow:
-          when:
-            true: ${PHASE14_ACTION != 'ime-clearance'}
-          commands:
-            - hideKeyboard
-            - scrollUntilVisible:
-                element:
-                  id: "restore-clean-action"
-            - tapOn:
-                id: "restore-clean-action"
-            - extendedWaitUntil:
-                visible: "No backup was selected"
-                timeout: 30000
+- runFlow:
+    when:
+      true: ${PHASE14_STAGE == 'phase14-data-recovery' && PHASE14_ACTION == 'none'}
+    commands:
+      - hideKeyboard
+      - scrollUntilVisible:
+          element:
+            id: "restore-clean-action"
+      - tapOn:
+          id: "restore-clean-action"
+      - extendedWaitUntil:
+          visible: "No backup was selected"
+          timeout: 30000
+- runFlow:
+    when:
+      true: ${PHASE14_STAGE == 'phase14-data-recovery' && PHASE14_ACTION == 'ime-clearance-restore-field'}
+    commands:
+      - assertVisible: "Restore password"
 - runFlow:
     when:
       true: ${PHASE14_STAGE == 'phase14-automatic-backup'}
     commands:
-      - assertVisible: "Automatic backup settings"
       - tapOn: "Automatic backup settings"
       - extendedWaitUntil:
           visible: "Automatic backup settings"
           timeout: 30000
 - runFlow:
     when:
+      true: ${PHASE14_STAGE == 'phase14-automatic-backup' && PHASE14_ACTION == 'back-from-automatic-backup'}
+    commands:
+      - assertVisible: "Automatic backup settings"
+- runFlow:
+    when:
       true: ${PHASE14_STAGE == 'phase14-manual-backup'}
+    commands:
+      - tapOn: "Manual encrypted backup"
+      - extendedWaitUntil:
+          visible: "Manual encrypted backup"
+          timeout: 30000
+- runFlow:
+    when:
+      true: ${PHASE14_STAGE == 'phase14-manual-backup' && PHASE14_ACTION == 'back-from-manual-backup'}
     commands:
       - assertVisible: "Manual encrypted backup"

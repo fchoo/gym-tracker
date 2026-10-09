@@ -14,17 +14,7 @@ const REQUIRED_VIEWPORTS = Object.freeze([
 ]);
 const REQUIRED_ORIENTATIONS = Object.freeze(["portrait", "landscape"]);
 const REQUIRED_FONT_SCALES = Object.freeze([1, 2]);
-const REQUIRED_INPUT = Object.freeze(["dpad", "enter", "space", "back", "escape", "scrim", "ime-clearance"]);
-
-const ACTIONS = Object.freeze({
-  "dpad-down": Object.freeze({ id: "dpad-down", input: "DPAD_DOWN", transport: "adb-keyevent", command: Object.freeze({ keyCode: 20 }), postcondition: Object.freeze({ id: "focus-moved", kind: "semantic-tree-changed" }) }),
-  enter: Object.freeze({ id: "enter", input: "ENTER", transport: "adb-keyevent", command: Object.freeze({ keyCode: 66 }), postcondition: Object.freeze({ id: "activated-once", kind: "semantic-tree-changed" }) }),
-  space: Object.freeze({ id: "space", input: "SPACE", transport: "adb-keyevent", command: Object.freeze({ keyCode: 62 }), postcondition: Object.freeze({ id: "activated-once", kind: "semantic-tree-changed" }) }),
-  back: Object.freeze({ id: "back", input: "BACK", transport: "adb-keyevent", command: Object.freeze({ keyCode: 4 }), postcondition: Object.freeze({ id: "back-dismissed-or-navigated", kind: "semantic-tree-changed" }) }),
-  escape: Object.freeze({ id: "escape", input: "ESCAPE", transport: "adb-keyevent", command: Object.freeze({ keyCode: 111 }), postcondition: Object.freeze({ id: "escape-dismissed", kind: "semantic-tree-changed" }) }),
-  scrim: Object.freeze({ id: "scrim", input: "SCRIM", transport: "adb-coordinate", command: Object.freeze({ target: "outside-sheet" }), postcondition: Object.freeze({ id: "scrim-dismissed", kind: "semantic-tree-changed" }) }),
-  "ime-clearance": Object.freeze({ id: "ime-clearance", input: "IME_CLEARANCE", transport: "adb-keyevent", command: Object.freeze({ keyCode: 4 }), postcondition: Object.freeze({ id: "ime-hidden", kind: "semantic-tree-changed" }) }),
-});
+const REQUIRED_INPUT = Object.freeze(["dpad", "enter", "space", "back", "escape", "scrim", "ime-clearance", "launch"]);
 
 const CASE_BY_ID = Object.freeze(Object.fromEntries(
   PHASE14_SHELL_EVIDENCE_CASES.map((entry) => [entry.id, entry]),
@@ -41,7 +31,7 @@ function stateContract(entry) {
     stage: entry.stage,
     flow: entry.flow,
     state: Object.freeze({ ...entry.state }),
-    actions: Object.freeze(entry.actions.map((id) => ACTIONS[id])),
+    actions: Object.freeze([...entry.actions]),
     checkpoints: freezeList(entry.checkpoints.map((id) => ({ id, expectedVisible: id }))),
     postconditions: freezeList(entry.postconditions.map((id) => ({ id, kind: "semantic-contract" }))),
     componentTests: Object.freeze([...entry.componentTests]),
@@ -59,8 +49,59 @@ function configurationId(appearance, viewport, orientation, fontScale) {
   return `${appearance.id}-${viewport.width}x${viewport.height}-${orientation}-font-${fontScale}`;
 }
 
+const BASE_CAPTURE_REQUIREMENTS = Object.freeze({
+  geometry: true,
+  layout: true,
+  screenshot: true,
+  semantic: true,
+  theme: true,
+});
+
+function behaviorProfile(state, appearance, viewport, orientation, fontScale, variant) {
+  if (
+    variant === "base"
+    && appearance.id === "light"
+    && viewport.width === 390
+    && viewport.height === 844
+    && orientation === "portrait"
+    && fontScale === 1
+  ) return "normal";
+  if (
+    variant === "base"
+    && appearance.id === "dark"
+    && viewport.width === 360
+    && viewport.height === 800
+    && orientation === "portrait"
+    && fontScale === 2
+  ) return "accessibility-200";
+  if (
+    variant === "base"
+    && appearance.id === "system-on-light"
+    && viewport.width === 390
+    && viewport.height === 844
+    && orientation === "landscape"
+    && fontScale === 1
+    && ["shell.sheets", "shell.data-recovery"].includes(state.caseId)
+  ) return "landscape-geometry";
+  if (variant === "reduced-motion" && state.motionSensitive) return "reduced-motion";
+  return null;
+}
+
+function behaviorContract(state, profile) {
+  if (profile === null) {
+    return Object.freeze({ representative: false, profile: null, actionIds: Object.freeze([]), logicalStateProbe: false });
+  }
+  return Object.freeze({
+    representative: true,
+    profile,
+    actionIds: Object.freeze(state.actions.map(({ id }) => id)),
+    logicalStateProbe: state.runtimeStatePolicy === "no-write" && state.actions.length > 0,
+  });
+}
+
 function createCell(state, appearance, viewport, orientation, fontScale, variant = "base", overrides = {}) {
   const suffix = variant === "base" ? "" : `-${variant}`;
+  const profile = behaviorProfile(state, appearance, viewport, orientation, fontScale, variant);
   return Object.freeze({
     id: `${state.state.id}-${configurationId(appearance, viewport, orientation, fontScale)}${suffix}`,
     configurationId: configurationId(appearance, viewport, orientation, fontScale),
@@ -86,6 +127,8 @@ function createCell(state, appearance, viewport, orientation, fontScale, variant
     reducedMotion: false,
     liveOsSwitch: false,
     expectedInputs: Object.freeze(state.actions.map(({ id }) => id)),
+    behavior: behaviorContract(state, profile),
+    captureRequirements: BASE_CAPTURE_REQUIREMENTS,
     ...overrides,
   });
 }
@@ -138,7 +181,7 @@ export const PHASE14_EXECUTABLE_MATRIX_CELLS = Object.freeze([
 ]);
 
 export const PHASE14_NATIVE_MATRIX = Object.freeze({
-  schemaVersion: 3,
+  schemaVersion: 5,
   suite: "phase14",
   package: "com.fchoo.gymtracker.devtest",
   profile: "development-test",
@@ -170,6 +213,11 @@ export const PHASE14_NATIVE_MATRIX = Object.freeze({
   states: PHASE14_NATIVE_STATES,
   stages: Object.freeze(PHASE14_NATIVE_STATES.map(({ stage, flow }) => Object.freeze({ stage, flow }))),
   baseCellCount: 13 * 64,
+  behaviorProfiles: Object.freeze({
+    required: Object.freeze(["normal", "accessibility-200"]),
+    geometry: Object.freeze({ "shell.sheets": "landscape-geometry", "shell.data-recovery": "landscape-geometry" }),
+    motion: "reduced-motion",
+  }),
   cells: PHASE14_EXECUTABLE_MATRIX_CELLS,
 });
 
@@ -189,8 +237,17 @@ function validateState(state) {
     || source.flow !== state.flow
     || !same(source.state, state.state)
     || !Array.isArray(state.actions)
-    || state.actions.length < 1
-    || state.actions.some((action) => ACTIONS[action.id] !== action)
+    || state.actions.some((action) =>
+      typeof action?.id !== "string"
+      || action.preparation?.stage !== state.stage
+      || action.preparation?.action !== action.id
+      || !["adb-keyevent", "adb-coordinate", "adb-launch"].includes(action.transport)
+      || action.pre?.package !== "com.fchoo.gymtracker.devtest"
+      || action.post?.package !== "com.fchoo.gymtracker.devtest"
+      || action.pre?.rejectLauncher !== true
+      || action.post?.rejectLauncher !== true
+      || !Number.isInteger(action.poll?.timeoutMs)
+      || !Number.isInteger(action.poll?.intervalMs))
     || !Array.isArray(state.checkpoints)
     || state.checkpoints.length < 1
     || !Array.isArray(state.postconditions)
@@ -207,7 +264,7 @@ function validateState(state) {
 
 export function validatePhase14NativeMatrix(matrix) {
   if (
-    matrix?.schemaVersion !== 3
+    matrix?.schemaVersion !== 5
     || matrix.suite !== "phase14"
     || matrix.package !== "com.fchoo.gymtracker.devtest"
     || matrix.profile !== "development-test"
@@ -258,6 +315,10 @@ export function validatePhase14NativeMatrix(matrix) {
       || !REQUIRED_FONT_SCALES.includes(cell.fontScale)
       || typeof cell.reducedMotion !== "boolean"
       || typeof cell.liveOsSwitch !== "boolean"
+      || !same(cell.captureRequirements, BASE_CAPTURE_REQUIREMENTS)
+      || typeof cell.behavior?.representative !== "boolean"
+      || !Array.isArray(cell.behavior?.actionIds)
+      || typeof cell.behavior?.logicalStateProbe !== "boolean"
     ) {
       throw new Error("phase14_native_matrix_cells_invalid");
     }
@@ -279,9 +340,33 @@ export function validatePhase14NativeMatrix(matrix) {
     ) {
       throw new Error("phase14_native_matrix_cartesian_incomplete");
     }
+    const representatives = matrix.cells.filter(({ caseId, behavior }) =>
+      caseId === state.caseId && behavior.representative);
+    const expectedProfiles = ["normal", "accessibility-200"];
+    if (["shell.sheets", "shell.data-recovery"].includes(state.caseId)) expectedProfiles.push("landscape-geometry");
+    if (state.motionSensitive) expectedProfiles.push("reduced-motion");
+    if (
+      !same(representatives.map(({ behavior }) => behavior.profile).sort(), expectedProfiles.sort())
+      || representatives.some(({ behavior }) =>
+        !same(behavior.actionIds, state.actions.map(({ id }) => id))
+        || behavior.logicalStateProbe !== (state.runtimeStatePolicy === "no-write" && state.actions.length > 0))
+      || matrix.cells.some(({ caseId, behavior }) => caseId === state.caseId && !behavior.representative
+        && (behavior.profile !== null || behavior.actionIds.length !== 0 || behavior.logicalStateProbe !== false))
+    ) throw new Error("phase14_native_matrix_behavior_coverage_invalid");
   }
+  const inputName = {
+    DPAD_RIGHT: "dpad",
+    DPAD_DOWN: "dpad",
+    ENTER: "enter",
+    SPACE: "space",
+    BACK: "back",
+    ESCAPE: "escape",
+    SCRIM: "scrim",
+    IME_CLEARANCE: "ime-clearance",
+    LAUNCH: "launch",
+  };
   const observedInputs = new Set(matrix.states.flatMap(({ actions }) =>
-    actions.map(({ id }) => id === "dpad-down" ? "dpad" : id)));
+    actions.map(({ input }) => inputName[input])));
   if (REQUIRED_INPUT.some((input) => !observedInputs.has(input))) {
     throw new Error("phase14_native_matrix_input_incomplete");
   }
@@ -300,6 +385,18 @@ export function phase14NativeMatrixPlan(matrix = PHASE14_NATIVE_MATRIX) {
 export function phase14MatrixCellsForIds(ids, matrix = PHASE14_NATIVE_MATRIX) {
   validatePhase14NativeMatrix(matrix);
   return phase14NativeMatrixPlan(matrix).filter(({ caseId }) => ids.includes(caseId));
+}
+
+export function phase14BehaviorCoverageForCells(cells) {
+  return Object.freeze({
+    representative_cell_ids: Object.freeze(cells.filter(({ behavior }) => behavior.representative).map(({ id }) => id)),
+    logical_probe_cell_ids: Object.freeze(cells.filter(({ behavior }) => behavior.logicalStateProbe).map(({ id }) => id)),
+    profiles_by_case: Object.freeze(Object.fromEntries(PHASE14_NATIVE_STATES.map(({ caseId }) => [
+      caseId,
+      Object.freeze(cells.filter((cell) => cell.caseId === caseId && cell.behavior.representative)
+        .map(({ behavior }) => behavior.profile)),
+    ]))),
+  });
 }
 
 if (process.argv[1]?.endsWith("phase14-native-matrix.mjs")) {

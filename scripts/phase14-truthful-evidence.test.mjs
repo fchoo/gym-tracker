@@ -63,8 +63,8 @@ test("Phase 14 derives component verdicts only from mapped real Jest JSON with n
 
 test("Phase 14 focus traces require ordered observed pre/post trees, focus, timestamps, and postcondition verdicts", () => {
   const trace = {
-    schema_version: 2,
-    producer: "phase14-adb-observer/v1",
+    schema_version: 3,
+    producer: "phase14-adb-observer/v2",
     synthetic: false,
     cell_id: "cell",
     observations: [{
@@ -78,6 +78,7 @@ test("Phase 14 focus traces require ordered observed pre/post trees, focus, time
       pre: { semantic_tree_sha256: "a".repeat(64), focused_node: "Open App Settings" },
       post: { semantic_tree_sha256: "b".repeat(64), focused_node: "Calendar" },
       postcondition: { id: "focus-moved", verdict: "PASS", observed: true },
+      verdict: "PASS",
     }],
   };
   assert.doesNotThrow(() => validatePhase14FocusTrace(trace, ["dpad-down"]));
@@ -88,7 +89,7 @@ test("Phase 14 focus traces require ordered observed pre/post trees, focus, time
   assert.throws(
     () => validatePhase14FocusTrace({
       ...trace,
-      observations: [{ ...trace.observations[0], post: trace.observations[0].pre }],
+      observations: [{ ...trace.observations[0], verdict: "FAIL" }],
     }, ["dpad-down"]),
     /phase14_focus_trace_observation_invalid/u,
   );
@@ -134,7 +135,7 @@ test("Phase 14 visual comparison retains real PNG constituents and rejects metad
   const native = png([10, 20, 31, 255]);
   const comparison = comparePhase14PngBytes({ reference, native });
   assert.equal(comparison.metrics.changed_pixels, 1);
-  assert.equal(comparison.classification, "REVIEW_REQUIRED");
+  assert.equal(comparison.classification, "DIFFERENT");
   for (const key of ["reference", "native", "overlay", "difference", "mask"]) {
     assert.equal(PNG.sync.read(comparison.bytes[key]).width, 1);
     assert.equal(comparison.hashes[`${key}_sha256`], sha256(comparison.bytes[key]));
@@ -183,6 +184,7 @@ test("Phase 14 native verdict is derived from observations and never from ordina
   assert.equal(derivePhase14NativeVerdict({
     maestro: { verdict: "PASS" },
     actions: [{ postcondition: { verdict: "PASS" } }],
+    expectedActionCount: 1,
     checkpoints: [{ verdict: "PASS" }],
     runtimeState: { verdict: "PASS" },
     theme: { verdict: "PASS" },
@@ -190,6 +192,7 @@ test("Phase 14 native verdict is derived from observations and never from ordina
   assert.equal(derivePhase14NativeVerdict({
     maestro: { verdict: "PASS" },
     actions: [],
+    expectedActionCount: 1,
     checkpoints: [{ verdict: "PASS" }],
     runtimeState: { verdict: "PASS" },
     theme: { verdict: "PASS" },

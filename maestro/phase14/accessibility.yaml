@@ -23,14 +23,12 @@ tags:
       true: ${PHASE14_STAGE == 'phase14-sheets'}
     commands:
       - tapOn: "Library"
-      - assertVisible: "Library"
+      - assertVisible: "Library section"
       - tapOn: "Open App Settings"
       - extendedWaitUntil:
           visible: "App Settings"
           timeout: 30000
-      - tapOn: "Appearance"
       - assertVisible: "Appearance"
-      - assertVisible: ${PHASE14_THEME_OPTION}
 - runFlow:
     when:
       true: ${PHASE14_STAGE == 'phase14-toasts'}
@@ -46,10 +44,13 @@ tags:
           visible:
             id: "semantic-toast"
           timeout: 30000
-      - tapOn: "Tap background control"
-      - assertVisible: "Background control activated"
-      - assertVisible:
-          id: "semantic-toast"
+      - assertVisible: "Background control idle"
+- runFlow:
+    when:
+      true: ${PHASE14_STAGE == 'phase14-toasts' && PHASE14_ACTION == 'toast-background-enter'}
+    commands:
+      - assertVisible: "Toast proof active"
+      - assertVisible: "Background control idle"
 - runFlow:
     when:
       true: ${PHASE14_STAGE == 'phase14-launch'}

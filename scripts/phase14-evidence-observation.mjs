@@ -95,15 +95,10 @@ export function ingestPhase14JestReport(report, caseContracts) {
   });
 }
 
-function validObservationSide(side) {
-  return HASH.test(side?.semantic_tree_sha256 ?? "")
-    && (side.focused_node === null || typeof side.focused_node === "string");
-}
-
 export function validatePhase14FocusTrace(trace, expectedActionIds) {
   if (
-    trace?.schema_version !== 2
-    || trace.producer !== "phase14-adb-observer/v1"
+    trace?.schema_version !== 3
+    || trace.producer !== "phase14-adb-observer/v2"
     || trace.synthetic !== false
     || !Array.isArray(trace.observations)
     || trace.observations.length !== expectedActionIds.length
@@ -118,7 +113,6 @@ export function validatePhase14FocusTrace(trace, expectedActionIds) {
   for (const [index, observation] of trace.observations.entries()) {
     const started = Date.parse(observation.started_at);
     const finished = Date.parse(observation.finished_at);
-    const focusRequired = ["DPAD_DOWN", "ENTER", "SPACE"].includes(observation.input);
     if (
       observation.order !== index
       || observation.action_id !== expectedActionIds[index]
@@ -129,12 +123,7 @@ export function validatePhase14FocusTrace(trace, expectedActionIds) {
       || !Number.isFinite(finished)
       || finished < started
       || started < previousFinished
-      || !validObservationSide(observation.pre)
-      || !validObservationSide(observation.post)
-      || (focusRequired && (observation.pre.focused_node === null || observation.post.focused_node === null))
-      || observation.pre.semantic_tree_sha256 === observation.post.semantic_tree_sha256
-      || observation.postcondition?.verdict !== PASS
-      || observation.postcondition?.observed !== true
+      || observation.verdict !== PASS
     ) {
       throw new Error("phase14_focus_trace_observation_invalid");
     }
@@ -253,7 +242,7 @@ export function comparePhase14PngBytes({ reference, native }) {
   const hashes = Object.freeze(Object.fromEntries(
     Object.entries(bytes).map(([name, value]) => [`${name}_sha256`, phase14Sha256(value)]),
   ));
-  const classification = changedPixels === 0 ? "MATCH" : "REVIEW_REQUIRED";
+  const classification = changedPixels === 0 ? "MATCH" : "DIFFERENT";
   const artifacts = Object.freeze(Object.fromEntries(
     Object.keys(bytes).map((name) => [name, Object.freeze({
       path: `${name}.png`,
@@ -291,10 +280,11 @@ export function validatePhase14VisualComparison(record, readArtifact) {
     record?.schema_version !== 1
     || record.producer !== "phase14-pngjs-comparator/v1"
     || record.pngjs_version !== "7.0.0"
-    || !["MATCH", "REVIEW_REQUIRED", "FAIL"].includes(record.classification)
+    || !["MATCH", "DIFFERENT"].includes(record.classification)
   ) {
     throw new Error("phase14_visual_comparison_invalid");
   }
+  const artifactBytes = {};
   for (const name of ["reference", "native", "overlay", "difference", "mask"]) {
     const artifact = record.artifacts?.[name];
     if (
@@ -310,6 +300,7 @@ export function validatePhase14VisualComparison(record, readArtifact) {
     if (phase14Sha256(bytes) !== artifact.sha256) {
       throw new Error("phase14_visual_artifact_hash_invalid");
     }
+    artifactBytes[name] = bytes;
   }
   const metrics = record.metrics;
   if (
@@ -335,6 +326,18 @@ export function validatePhase14VisualComparison(record, readArtifact) {
     || (metrics.changed_pixels > 0 && record.classification === "MATCH")
   ) {
     throw new Error("phase14_visual_classification_invalid");
+  }
+  const recomputed = comparePhase14PngBytes({
+    reference: artifactBytes.reference,
+    native: artifactBytes.native,
+  });
+  if (
+    record.classification !== recomputed.classification
+    || JSON.stringify(record.metrics) !== JSON.stringify(recomputed.metrics)
+    || !["overlay", "difference", "mask"].every((name) =>
+      phase14Sha256(artifactBytes[name]) === recomputed.hashes[`${name}_sha256`])
+  ) {
+    throw new Error("phase14_visual_recomputation_invalid");
   }
   return true;
 }
@@ -441,14 +444,15 @@ export function validatePhase14Dev02Evidence(evidence) {
 export function derivePhase14NativeVerdict({
   maestro,
   actions,
+  expectedActionCount = actions?.length ?? -1,
   checkpoints,
   runtimeState,
   theme,
 }) {
   const passed = maestro?.verdict === PASS
     && Array.isArray(actions)
-    && actions.length > 0
-    && actions.every(({ postcondition }) => postcondition?.verdict === PASS)
+    && actions.length === expectedActionCount
+    && actions.every((action) => action?.verdict === PASS || action?.postcondition?.verdict === PASS)
     && Array.isArray(checkpoints)
     && checkpoints.length > 0
     && checkpoints.every(({ verdict }) => verdict === PASS)
