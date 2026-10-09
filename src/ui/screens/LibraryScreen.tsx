@@ -29,6 +29,7 @@ import {
   ActionCluster,
   ContentCard,
   FocusablePressable,
+  IconAction,
   InlineNotice,
   M3FilterChip,
   M3SearchField,
@@ -147,6 +148,7 @@ type LibraryScreenProps = Readonly<{
   onCreatePlan(): void;
   onOpenExercise(exerciseId: string): void;
   onOpenPlan(planId: string): void;
+  onOpenSettings?(): void;
   onOpenStarter?(templateId: string): void;
   onOpenTemplateUpdate?(input: Readonly<{
     ownedPlanId: string;
@@ -175,6 +177,7 @@ type LibraryScreenProps = Readonly<{
   ): Promise<LibrarySectionPreference>;
   width?: number;
   headingRef?: React.RefObject<RootFocusTarget | null>;
+  settingsActionRef?: React.RefObject<RootFocusTarget | null>;
 }>;
 
 type ExerciseBrowseState = Readonly<{
@@ -218,6 +221,8 @@ const initialProcessState = (): LibrarySectionState => ({
     selectedId: null,
   },
 });
+
+const noOp = () => undefined;
 
 function filterCount(filters: SearchFilters): number {
   return Object.values(filters).reduce(
@@ -1192,6 +1197,7 @@ export function LibraryScreen({
   onCreatePlan,
   onOpenExercise,
   onOpenPlan,
+  onOpenSettings = noOp,
   onOpenStarter = onOpenPlan,
   onOpenTemplateUpdate,
   onReviewChanges,
@@ -1200,6 +1206,7 @@ export function LibraryScreen({
   setSection,
   width,
   headingRef,
+  settingsActionRef,
 }: LibraryScreenProps) {
   const [snapshot, setSnapshot] = useState<LibraryBrowseSnapshot | null>(null);
   const [loadFailed, setLoadFailed] = useState(false);
@@ -1597,7 +1604,19 @@ export function LibraryScreen({
               {...(headingRef === undefined
                 ? {}
                 : { ref: headingRef as React.Ref<View> })}
-              action={headerAction}
+              actions={[
+                headerAction,
+                (
+                  <IconAction
+                    accessibilityHint="Opens App Settings"
+                    accessibilityLabel="Open App Settings"
+                    icon="settings"
+                    key="settings"
+                    onPress={onOpenSettings}
+                    ref={settingsActionRef as React.Ref<View>}
+                  />
+                ),
+              ]}
               title="Library"
             />
             <SegmentedControl

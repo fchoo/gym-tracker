@@ -1,3 +1,4 @@
+import React from "react";
 import {
   router,
   type Href,
@@ -9,10 +10,13 @@ import {
 import {
   CalendarScreen,
 } from "../../src/ui/screens/CalendarScreen";
+import { useRootSettingsController } from "../../src/ui/shell/AppRootShell";
 import { useRootHeadingRef } from "../../src/ui/shell/rootFocus";
 
 export default function CalendarRoute() {
   const headingRef = useRootHeadingRef("calendar");
+  const settingsActionRef = React.useRef(null);
+  const rootSettings = useRootSettingsController();
   const runtime = useWorkoutAppRuntime();
   const now = new Date();
   const initialDate = [
@@ -29,10 +33,15 @@ export default function CalendarRoute() {
         selectedDate,
         today: initialDate,
       })}
+      onOpenSettings={() => rootSettings.openRootSettings({
+        root: "calendar",
+        triggerRef: settingsActionRef,
+      })}
       onOpenSession={(sessionId) =>
         router.push(("/session/" + sessionId) as Href)}
       today={initialDate}
       headingRef={headingRef}
+      settingsActionRef={settingsActionRef}
     />
   );
 }

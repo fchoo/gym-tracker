@@ -934,7 +934,7 @@ describe("Plan 01-02 route shell", () => {
       </AppearanceProvider>,
     );
 
-    expect(screen.getByRole("header", { name: "Today" })).toBeOnTheScreen();
+    expect(screen.getByRole("header", { name: "Workout" })).toBeOnTheScreen();
     expect(
       screen.getAllByTestId(/today-skeleton/, { includeHiddenElements: true }),
     ).toHaveLength(6);
@@ -977,15 +977,15 @@ describe("Plan 01-02 route shell", () => {
     expect(navigate).not.toHaveBeenCalled();
   });
 
-  it("renders structured Today shell placeholders without stale workout facts", async () => {
+  it("renders structured Workout shell placeholders without stale workout facts", async () => {
     await render(
       <AppearanceProvider>
         <TodayScreen launchState="booting" />
       </AppearanceProvider>,
     );
 
-    expect(screen.getByRole("header", { name: "Today" })).toBeOnTheScreen();
-    expect(screen.getByRole("button", { name: "Settings" }))
+    expect(screen.getByRole("header", { name: "Workout" })).toBeOnTheScreen();
+    expect(screen.getByRole("button", { name: "Open App Settings" }))
       .toBeDisabled();
     expect(
       screen.getAllByTestId(/today-skeleton/, { includeHiddenElements: true }),
@@ -993,7 +993,7 @@ describe("Plan 01-02 route shell", () => {
     expect(screen.queryByText(/kg|reps|workout in progress/i)).not.toBeOnTheScreen();
   });
 
-  it("keeps trusted Today structural without unapproved future-phase copy", async () => {
+  it("keeps trusted Workout structural without unapproved future-phase copy", async () => {
     await render(
       <AppearanceProvider>
         <TodayScreen launchState="trusted" />
@@ -1052,7 +1052,7 @@ describe("Plan 01-02 route shell", () => {
   const emptyRootCases: ReadonlyArray<
     readonly [
       string,
-      React.ComponentType<{ onGoToday: () => void }>,
+      React.ComponentType<{ onGoWorkout: () => void }>,
       string,
       string,
     ]
@@ -1061,17 +1061,17 @@ describe("Plan 01-02 route shell", () => {
       "Library",
       LibraryScreen,
       "Library is not available yet",
-      "Full plan and exercise management will arrive in a later phase. Full Body Foundation is available from Today.",
+      "Full plan and exercise management will arrive in a later phase. Full Body Foundation is available from Workout.",
     ],
   ];
 
   it.each(emptyRootCases)(
     "renders only the exact intentional %s empty destination",
     async (destination, ScreenComponent, heading, body) => {
-      const goToday = jest.fn();
+      const goWorkout = jest.fn();
       await render(
         <AppearanceProvider>
-          <ScreenComponent onGoToday={goToday} />
+          <ScreenComponent onGoWorkout={goWorkout} />
         </AppearanceProvider>,
       );
 
@@ -1081,9 +1081,9 @@ describe("Plan 01-02 route shell", () => {
       expect(screen.getByRole("header", { name: heading })).toBeOnTheScreen();
       expect(screen.getByText(body)).toBeOnTheScreen();
       await fireEvent.press(
-        screen.getByRole("button", { name: "Go to Today" }),
+        screen.getByRole("button", { name: "Go to Workout" }),
       );
-      expect(goToday).toHaveBeenCalledTimes(1);
+      expect(goWorkout).toHaveBeenCalledTimes(1);
       expect(screen.queryByText(/search|filter|chart|create/i)).not.toBeOnTheScreen();
     },
   );
@@ -1128,7 +1128,7 @@ describe("Plan 01-02 shared component vocabulary", () => {
           action={<Text>Header action</Text>}
           backAction={secondary}
           eyebrow="PLANNED WORKOUT"
-          title="Today"
+          title="Workout"
         />
         <SectionHeader
           action={<Text>Section action</Text>}

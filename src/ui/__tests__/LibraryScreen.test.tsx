@@ -137,6 +137,7 @@ async function renderLibrary(
     listRecentExercises: jest.fn(async () => []),
     onCreateExercise: jest.fn(),
     onCreatePlan: jest.fn(),
+    onOpenSettings: jest.fn(),
     onOpenExercise: jest.fn(),
     onOpenPlan: jest.fn(),
     onReviewChanges: jest.fn(),
@@ -168,6 +169,19 @@ async function renderLibrary(
 }
 
 describe("LibraryScreen section state", () => {
+  it("keeps create actions contextual while App Settings stays in the Library root header", async () => {
+    const onOpenSettings = jest.fn();
+    const onCreatePlan = jest.fn();
+    await renderLibrary({ onCreatePlan, onOpenSettings });
+
+    expect(await screen.findByRole("header", { name: "Library" }))
+      .toBeOnTheScreen();
+    await fireEvent.press(screen.getByRole("button", { name: "Open App Settings" }));
+    expect(onOpenSettings).toHaveBeenCalledTimes(1);
+    await fireEvent.press(screen.getByRole("button", { name: "Create my own" }));
+    expect(onCreatePlan).toHaveBeenCalledTimes(1);
+  });
+
   it("keeps Library context while a shared filter sheet is opened, themed, and safely dismissed", async () => {
     const searchExercises = jest.fn(async () => ({
       state: "page" as const,

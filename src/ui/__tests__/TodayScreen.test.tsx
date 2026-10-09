@@ -91,7 +91,7 @@ describe("Plan 01-07 TodayScreen", () => {
   it("renders trusted loading structure without stale facts", async () => {
     await renderToday(undefined);
 
-    expect(screen.getByRole("header", { name: "Today" })).toBeOnTheScreen();
+    expect(screen.getByRole("header", { name: "Workout" })).toBeOnTheScreen();
     expect(
       screen.getAllByTestId(/today-skeleton/u, { includeHiddenElements: true }),
     ).toHaveLength(6);
@@ -100,15 +100,17 @@ describe("Plan 01-07 TodayScreen", () => {
 
   it("uses one labelled Settings gear without manual schedule or duplicate data controls", async () => {
     const start = jest.fn();
+    const openSettings = jest.fn();
     await renderToday(scheduledView, {
+      onOpenSettings: openSettings,
       onStartPlanDay: start,
       width: 360,
     });
 
-    const settings = screen.getByRole("button", { name: "Settings" });
+    const settings = screen.getByRole("button", { name: "Open App Settings" });
     expect(settings).toHaveProp(
       "accessibilityHint",
-      "Opens Settings",
+      "Opens App Settings",
     );
     expect(settings).toHaveStyle({ minHeight: 48 });
     expect(screen.getByTestId("adaptive-screen"))
@@ -129,6 +131,7 @@ describe("Plan 01-07 TodayScreen", () => {
       nativeEvent: { key: "Enter" },
     });
     expect(start).not.toHaveBeenCalled();
+    expect(openSettings).toHaveBeenCalledTimes(1);
   });
 
   it("shows only Full Body Foundation on first use and activates after preview", async () => {
@@ -405,7 +408,7 @@ describe("Plan 01-07 TodayScreen", () => {
     expect(retry).toHaveBeenCalledTimes(1);
   });
 
-  it("shows a safe action failure without hiding authoritative Today facts", async () => {
+  it("shows a safe action failure without hiding authoritative Workout facts", async () => {
     const retry = jest.fn();
     await renderToday(scheduledView, {
       actionFailure: {
@@ -421,13 +424,13 @@ describe("Plan 01-07 TodayScreen", () => {
     ).toBeOnTheScreen();
     expect(screen.getByText("60 kg × 8")).toBeOnTheScreen();
     await fireEvent.press(
-      screen.getByRole("button", { name: "Retry Today action" }),
+      screen.getByRole("button", { name: "Retry Workout action" }),
     );
     expect(retry).toHaveBeenCalledTimes(1);
   });
 
   it.each([599, 600, 840])(
-    "preserves Today hierarchy at width %i",
+    "preserves Workout root hierarchy at width %i",
     async (width) => {
       await renderToday(scheduledView, { width });
       expect(screen.getByRole("button", { name: "Start Full Body A" }))
@@ -511,7 +514,7 @@ describe("Plan 01-07 TodayScreen", () => {
       expect(screen.getByText("Back Squat")).toHaveStyle({
         color: colors.contentCardText,
       });
-      expect(screen.getByRole("button", { name: "Settings" }))
+      expect(screen.getByRole("button", { name: "Open App Settings" }))
         .toHaveStyle({ minHeight: 48 });
     },
   );

@@ -149,6 +149,7 @@ async function renderProgress(
       freshness: "current" as const,
       projection: projection(),
     })),
+    onOpenSettings: jest.fn(),
     onOpenExercise: jest.fn(),
     onOpenSession: jest.fn(),
     ...overrides,
@@ -162,6 +163,16 @@ async function renderProgress(
 }
 
 describe("ProgressScreen", () => {
+  it("exposes App Settings from the Progress root header", async () => {
+    const onOpenSettings = jest.fn();
+    await renderProgress({ onOpenSettings });
+
+    await screen.findByRole("header", { name: "Progress" });
+    await fireEvent.press(screen.getByRole("button", { name: "Open App Settings" }));
+
+    expect(onOpenSettings).toHaveBeenCalledTimes(1);
+  });
+
   it("renders one factual selected-period view with source-backed drill-downs and equivalent consistency output", async () => {
     const onOpenExercise = jest.fn();
     const onOpenSession = jest.fn();

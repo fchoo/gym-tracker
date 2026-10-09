@@ -18,10 +18,13 @@ import {
 import {
   LibraryScreen,
 } from "../../src/ui/screens/LibraryScreen";
+import { useRootSettingsController } from "../../src/ui/shell/AppRootShell";
 import { useRootHeadingRef } from "../../src/ui/shell/rootFocus";
 
 export default function LibraryRoute() {
   const headingRef = useRootHeadingRef("library");
+  const settingsActionRef = useRef(null);
+  const rootSettings = useRootSettingsController();
   const runtime = useWorkoutAppRuntime();
   const [refreshGeneration, setRefreshGeneration] = useState(0);
   const hasFocused = useRef(false);
@@ -50,6 +53,10 @@ export default function LibraryRoute() {
       onCreatePlan={() => router.push("/library/plan/create" as Href)}
       onOpenExercise={(exerciseId) =>
         router.push(`/library/exercise/${exerciseId}` as Href)}
+      onOpenSettings={() => rootSettings.openRootSettings({
+        root: "library",
+        triggerRef: settingsActionRef,
+      })}
       onOpenPlan={(planId) =>
         router.push(`/library/plan/${planId}/edit` as Href)}
       onOpenStarter={(templateId) =>
@@ -62,6 +69,7 @@ export default function LibraryRoute() {
       setExerciseFavorite={runtime.setLibraryExerciseFavorite}
       setSection={runtime.setLibrarySection}
       headingRef={headingRef}
+      settingsActionRef={settingsActionRef}
     />
   );
 }

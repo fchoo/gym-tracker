@@ -75,6 +75,7 @@ async function renderCalendar(
     initialDate: "2026-08-24",
     loadCalendarMonth: jest.fn(async () => month()),
     onOpenSession: jest.fn(),
+    onOpenSettings: jest.fn(),
     ...overrides,
   };
   await render(
@@ -86,6 +87,16 @@ async function renderCalendar(
 }
 
 describe("CalendarScreen", () => {
+  it("exposes App Settings from the Calendar root header", async () => {
+    const onOpenSettings = jest.fn();
+    await renderCalendar({ onOpenSettings });
+
+    await screen.findByRole("header", { name: "Calendar" });
+    await fireEvent.press(screen.getByRole("button", { name: "Open App Settings" }));
+
+    expect(onOpenSettings).toHaveBeenCalledTimes(1);
+  });
+
   it("renders a civil month grid with explicit state semantics and factual selected-date counts", async () => {
     const onOpenSession = jest.fn();
     await renderCalendar({ onOpenSession });

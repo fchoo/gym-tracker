@@ -62,9 +62,32 @@ tags:
           commands:
             - tapOn: "System"
             - assertVisible: "System"
+      - pressKey: BACK
+      - assertVisible: "Workout"
+      - tapOn: "Calendar"
+      - assertVisible: "Calendar"
+      - tapOn: "Open App Settings"
       - extendedWaitUntil:
-          visible: "Appearance"
+          visible: "App Settings"
           timeout: 30000
+      - pressKey: BACK
+      - assertVisible: "Calendar"
+      - tapOn: "Library"
+      - assertVisible: "Library"
+      - tapOn: "Open App Settings"
+      - extendedWaitUntil:
+          visible: "App Settings"
+          timeout: 30000
+      - pressKey: BACK
+      - assertVisible: "Library"
+      - tapOn: "Progress"
+      - assertVisible: "Progress"
+      - tapOn: "Open App Settings"
+      - extendedWaitUntil:
+          visible: "App Settings"
+          timeout: 30000
+      - pressKey: BACK
+      - assertVisible: "Progress"
 - runFlow:
     when:
       true: ${PHASE14_STAGE == 'phase14-tokens'}

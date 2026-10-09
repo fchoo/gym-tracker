@@ -45,6 +45,7 @@ const mockLoadProgress = jest.fn<() => Promise<Readonly<{
   freshness: "current",
   projection: { recommendations: [] },
 }));
+const mockOpenRootSettings = jest.fn();
 const mockPush = jest.fn();
 const mockStartEmptyWorkout = jest.fn<() => Promise<string>>();
 const mockStartPlanDay = jest.fn<(
@@ -88,6 +89,13 @@ jest.mock("../../../src/bootstrap/workoutAppRuntime", () => ({
     retry: jest.fn(),
     setRestAlertPreferences: mockSetRestAlertPreferences,
     workoutRefreshGeneration: mockWorkoutRefreshGeneration,
+  }),
+}));
+
+jest.mock("../../../src/ui/shell/AppRootShell", () => ({
+  useRootSettingsController: () => ({
+    closeRootSettings: jest.fn(),
+    openRootSettings: (...args: readonly unknown[]) => mockOpenRootSettings(...args),
   }),
 }));
 
@@ -165,6 +173,7 @@ describe("TodayRoute readiness", () => {
   beforeEach(() => {
     mockLaunchState = "booting";
     mockWorkoutRefreshGeneration = 0;
+    mockOpenRootSettings.mockReset();
     mockPush.mockReset();
     mockStartEmptyWorkout.mockReset();
     mockStartEmptyWorkout.mockResolvedValue("session-empty");
@@ -218,7 +227,7 @@ describe("TodayRoute readiness", () => {
     expect(mockPush).toHaveBeenCalledWith("/progress");
   });
 
-  it("opens Settings from Today", async () => {
+  it("delegates Workout settings requests to the shared root settings controller", async () => {
     mockLaunchState = "trusted";
 
     await render(<TodayRoute />);
@@ -226,7 +235,10 @@ describe("TodayRoute readiness", () => {
       name: "Open Settings",
     }));
 
-    expect(mockPush).toHaveBeenCalledWith("/more");
+    expect(mockOpenRootSettings).toHaveBeenCalledWith(expect.objectContaining({
+      root: "index",
+      triggerRef: expect.any(Object),
+    }));
   });
 
   it("clears a prior pending review indicator when the next progress read is stale", async () => {

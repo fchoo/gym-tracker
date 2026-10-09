@@ -205,14 +205,14 @@ export function TodayScreen({
 }
 
 type EmptyRootProps = Readonly<{
-  onGoToday: () => void;
+  onGoWorkout: () => void;
 }>;
 
 function IntentionalEmptyRoot({
   title,
   heading,
   body,
-  onGoToday,
+  onGoWorkout,
 }: EmptyRootProps &
   Readonly<{
     title: string;
@@ -228,7 +228,7 @@ function IntentionalEmptyRoot({
             body={body}
             heading={heading}
             primaryAction={
-              <PrimaryAction label="Go to Today" onPress={onGoToday} />
+              <PrimaryAction label="Go to Workout" onPress={onGoWorkout} />
             }
           />
         </>
@@ -237,12 +237,12 @@ function IntentionalEmptyRoot({
   );
 }
 
-export function LibraryScreen({ onGoToday }: EmptyRootProps) {
+export function LibraryScreen({ onGoWorkout }: EmptyRootProps) {
   return (
     <IntentionalEmptyRoot
-      body="Full plan and exercise management will arrive in a later phase. Full Body Foundation is available from Today."
+      body="Full plan and exercise management will arrive in a later phase. Full Body Foundation is available from Workout."
       heading="Library is not available yet"
-      onGoToday={onGoToday}
+      onGoWorkout={onGoWorkout}
       title="Library"
     />
   );

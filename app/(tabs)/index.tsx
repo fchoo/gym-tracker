@@ -4,6 +4,7 @@ import {
 } from "expo-router";
 import React, {
   useEffect,
+  useRef,
   useState,
 } from "react";
 
@@ -14,10 +15,13 @@ import type {
   ProgressRecommendationReview,
 } from "../../src/domains/progress";
 import { TodayScreen } from "../../src/ui/screens/TodayScreen";
+import { useRootSettingsController } from "../../src/ui/shell/AppRootShell";
 import { useRootHeadingRef } from "../../src/ui/shell/rootFocus";
 
 export default function TodayRoute() {
   const headingRef = useRootHeadingRef("index");
+  const settingsActionRef = useRef(null);
+  const rootSettings = useRootSettingsController();
   const runtime = useWorkoutAppRuntime();
   const {
     launchState,
@@ -82,7 +86,10 @@ export default function TodayRoute() {
       {...optionalStateProps}
       launchState={runtime.launchState}
       pendingRecommendations={pendingRecommendations}
-      onOpenSettings={() => router.push("/more" as Href)}
+      onOpenSettings={() => rootSettings.openRootSettings({
+        root: "index",
+        triggerRef: settingsActionRef,
+      })}
       onReviewSuggestion={() => router.push("/progress" as Href)}
       onActivatePlan={() => {
         void runtime.activatePlan();
@@ -140,6 +147,7 @@ export default function TodayRoute() {
         void runtime.chooseTimeZone(choice).then(() => runtime.refresh());
       }}
       headingRef={headingRef}
+      settingsActionRef={settingsActionRef}
     />
   );
 }

@@ -18,6 +18,8 @@ tags:
     when:
       true: ${PHASE14_STAGE == 'phase14-sheets'}
     commands:
+      - tapOn: "Library"
+      - assertVisible: "Library"
       - tapOn: "Open App Settings"
       - extendedWaitUntil:
           visible: "App Settings"
@@ -25,7 +27,7 @@ tags:
       - tapOn: "Appearance"
       - assertVisible: "Appearance"
       - pressKey: BACK
-      - assertVisible: "Workout"
+      - assertVisible: "Library"
 - runFlow:
     when:
       true: ${PHASE14_STAGE == 'phase14-toasts'}

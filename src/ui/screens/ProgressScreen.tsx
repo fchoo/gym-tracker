@@ -28,6 +28,7 @@ import {
   ContentCard,
   EmptyState,
   FocusablePressable,
+  IconAction,
   InlineNotice,
   M3SearchField,
   PrimaryAction,
@@ -74,11 +75,15 @@ export type ProgressScreenProps = Readonly<{
   }>): Promise<ProgressSnapshot>;
   onOpenExercise: OpenExercise;
   onOpenSession(sessionId: string): void;
+  onOpenSettings?(): void;
   onAcceptRecommendation?(recommendationId: string): Promise<unknown>;
   onKeepCurrentTarget?(recommendationId: string): Promise<unknown>;
   width?: number;
   headingRef?: React.RefObject<RootFocusTarget | null>;
+  settingsActionRef?: React.RefObject<RootFocusTarget | null>;
 }>;
+
+const noOp = () => undefined;
 
 const PERIODS: readonly Readonly<{
   value: ProgressPeriod;
@@ -642,10 +647,12 @@ export function ProgressScreen({
   loadProgress,
   onOpenExercise,
   onOpenSession,
+  onOpenSettings = noOp,
   onAcceptRecommendation,
   onKeepCurrentTarget,
   width,
   headingRef,
+  settingsActionRef,
 }: ProgressScreenProps) {
   const [period, setPeriod] = useState<ProgressPeriod>("4_weeks");
   const [snapshot, setSnapshot] = useState<ProgressSnapshot | null>(null);
@@ -688,6 +695,15 @@ export function ProgressScreen({
         {...(headingRef === undefined
           ? {}
           : { ref: headingRef as React.Ref<View> })}
+        action={(
+          <IconAction
+            accessibilityHint="Opens App Settings"
+            accessibilityLabel="Open App Settings"
+            icon="settings"
+            onPress={onOpenSettings}
+            ref={settingsActionRef as React.Ref<View>}
+          />
+        )}
         title="Progress"
       />
       <PeriodControls onChange={setPeriod} selected={period} />

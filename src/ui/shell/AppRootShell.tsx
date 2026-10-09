@@ -1,7 +1,6 @@
 import React from "react";
 import { View } from "react-native";
 
-import { IconAction } from "../components";
 import { BottomSheet } from "../components/BottomSheet";
 import {
   SemanticToastProvider,
@@ -28,6 +27,26 @@ type AppRootShellProps = Readonly<{
   onToastMountChange?: ((change: SemanticToastMountChange) => void) | undefined;
 }>;
 
+type RootSettingsControllerValue = Readonly<{
+  closeRootSettings: () => void;
+  openRootSettings: (input: Readonly<{
+    root: RootRouteKey;
+    triggerRef: React.RefObject<RootFocusTarget | null>;
+  }>) => void;
+}>;
+
+const RootSettingsControllerContext = React.createContext<RootSettingsControllerValue | null>(
+  null,
+);
+
+export function useRootSettingsController(): RootSettingsControllerValue {
+  const controller = React.useContext(RootSettingsControllerContext);
+  return controller ?? {
+    closeRootSettings: () => undefined,
+    openRootSettings: () => undefined,
+  };
+}
+
 /** Coordinates root focus and header-origin seams without owning route or screen state. */
 export function AppRootShell({
   children,
@@ -44,12 +63,36 @@ export function AppRootShell({
   onToastMountChange,
 }: AppRootShellProps) {
   const [settingsVisible, setSettingsVisible] = React.useState(false);
+  const [activeSettingsTriggerRef, setActiveSettingsTriggerRef] = React.useState<
+    React.RefObject<RootFocusTarget | null> | undefined
+  >(settingsTriggerRef);
   const previousActiveRootRef = React.useRef<RootRouteKey | undefined>(activeRoot);
   const previousPathRef = React.useRef(currentPath);
   const closeSettings = React.useCallback(() => setSettingsVisible(false), []);
+  const openRootSettings = React.useCallback((input: Readonly<{
+    root: RootRouteKey;
+    triggerRef: React.RefObject<RootFocusTarget | null>;
+  }>) => {
+    setActiveSettingsTriggerRef(input.triggerRef);
+    if (settingsContent !== undefined) {
+      setSettingsVisible(true);
+      return;
+    }
+    onOpenSettings?.();
+  }, [onOpenSettings, settingsContent]);
   const resolvedSettingsContent = typeof settingsContent === "function"
     ? settingsContent(closeSettings)
     : settingsContent;
+  const rootSettingsController = React.useMemo(() => ({
+    closeRootSettings: closeSettings,
+    openRootSettings,
+  }), [closeSettings, openRootSettings]);
+
+  React.useEffect(() => {
+    if (!settingsVisible) {
+      setActiveSettingsTriggerRef(settingsTriggerRef);
+    }
+  }, [settingsTriggerRef, settingsVisible]);
 
   React.useLayoutEffect(() => {
     const rootChanged = previousActiveRootRef.current !== activeRoot;
@@ -83,36 +126,22 @@ export function AppRootShell({
       onToastMountChange={onToastMountChange}
       topAvoidance={toastTopAvoidance}
     >
-      <View style={{ flex: 1 }} testID="app-root-shell">
-        {children}
-        {onOpenSettings === undefined && settingsContent === undefined ? null : (
-          <View accessibilityLabel="Root contextual actions">
-            <IconAction
-              accessibilityLabel="Open App Settings"
-              icon="settings"
-              onPress={() => {
-                if (settingsContent !== undefined) {
-                  setSettingsVisible(true);
-                  return;
-                }
-                onOpenSettings?.();
-              }}
-              ref={settingsTriggerRef as React.Ref<View>}
-            />
-          </View>
-        )}
-        {settingsContent === undefined ? null : (
-          <BottomSheet
-            cancelLabel="Close App Settings"
-            heading="App Settings"
-            onCancel={closeSettings}
-            restoreFocusRef={settingsTriggerRef}
-            visible={settingsVisible}
-          >
-            {resolvedSettingsContent}
-          </BottomSheet>
-        )}
-      </View>
+      <RootSettingsControllerContext.Provider value={rootSettingsController}>
+        <View style={{ flex: 1 }} testID="app-root-shell">
+          {children}
+          {settingsContent === undefined ? null : (
+            <BottomSheet
+              cancelLabel="Close App Settings"
+              heading="App Settings"
+              onCancel={closeSettings}
+              restoreFocusRef={activeSettingsTriggerRef}
+              visible={settingsVisible}
+            >
+              {resolvedSettingsContent}
+            </BottomSheet>
+          )}
+        </View>
+      </RootSettingsControllerContext.Provider>
     </SemanticToastProvider>
   );
 }

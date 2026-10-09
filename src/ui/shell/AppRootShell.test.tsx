@@ -1,17 +1,42 @@
 import { act, fireEvent, render, screen } from "@testing-library/react-native";
 import { describe, expect, it, jest } from "@jest/globals";
 import React from "react";
-import { StyleSheet, Text, View } from "react-native";
+import {
+  Pressable,
+  StyleSheet,
+  Text,
+  View,
+} from "react-native";
 
 import { AppSettingsContent } from "../screens/SettingsScreen";
 import { AppearanceProvider } from "../theme";
 import { useSemanticToast } from "../components/SemanticToast";
-import { AppRootShell } from "./AppRootShell";
+import {
+  AppRootShell,
+  useRootSettingsController,
+} from "./AppRootShell";
 
 function ShellToastTrigger() {
   const { enqueue } = useSemanticToast();
   React.useEffect(() => enqueue({ message: "Workout saved" }), [enqueue]);
   return null;
+}
+
+function RootSettingsTrigger({
+  root = "index",
+  triggerRef,
+}: Readonly<{
+  root?: "index" | "calendar" | "library" | "progress";
+  triggerRef: React.RefObject<{ focus?: () => void } | null>;
+}>) {
+  const { openRootSettings } = useRootSettingsController();
+  return (
+    <Pressable
+      accessibilityLabel="Open App Settings"
+      accessibilityRole="button"
+      onPress={() => openRootSettings({ root, triggerRef })}
+    />
+  );
 }
 
 describe("AppRootShell", () => {
@@ -50,16 +75,18 @@ describe("AppRootShell", () => {
     expect(libraryHeading.current.focus).toHaveBeenCalledTimes(1);
   });
 
-  it("keeps Settings last in the contextual action region", async () => {
+  it("delegates root-owned settings requests without rendering a floating trigger", async () => {
     const onOpenSettings = jest.fn();
+    const triggerRef = { current: { focus: jest.fn() } };
     await render(
       <AppearanceProvider>
         <AppRootShell activeRoot="index" onOpenSettings={onOpenSettings}>
-          <View />
+          <RootSettingsTrigger triggerRef={triggerRef} />
         </AppRootShell>
       </AppearanceProvider>,
     );
 
+    expect(screen.queryByLabelText("Root contextual actions")).toBeNull();
     await fireEvent.press(screen.getByRole("button", { name: "Open App Settings" }));
     expect(onOpenSettings).toHaveBeenCalledTimes(1);
   });
@@ -83,7 +110,7 @@ describe("AppRootShell", () => {
           )}
           settingsTriggerRef={trigger}
         >
-          <View />
+          <RootSettingsTrigger triggerRef={trigger} />
         </AppRootShell>
       </AppearanceProvider>,
     );
@@ -116,7 +143,7 @@ describe("AppRootShell", () => {
             />
           )}
         >
-          <View />
+          <RootSettingsTrigger triggerRef={{ current: { focus: jest.fn() } }} />
         </AppRootShell>
       </AppearanceProvider>,
     );

@@ -79,6 +79,7 @@ export type TodayScreenProps = Readonly<{
   onOpenSettings?: () => void;
   onRetry?: () => void;
   headingRef?: React.RefObject<RootFocusTarget | null>;
+  settingsActionRef?: React.RefObject<RootFocusTarget | null>;
 }>;
 
 function TodaySkeleton() {
@@ -367,6 +368,7 @@ export function TodayScreen({
   onOpenSettings = noOp,
   onRetry = noOp,
   headingRef,
+  settingsActionRef,
 }: TodayScreenProps) {
   const [activationPreview, setActivationPreview] = useState(false);
   const trusted = launchState === "trusted";
@@ -473,21 +475,22 @@ export function TodayScreen({
               action={
                 <IconAction
                   accessibilityHint={trusted
-                    ? "Opens Settings"
+                    ? "Opens App Settings"
                     : "Unavailable while workout data is prepared"}
-                  accessibilityLabel="Settings"
+                  accessibilityLabel="Open App Settings"
                   disabled={!trusted}
                   icon="settings"
                   onPress={onOpenSettings}
+                  ref={settingsActionRef as React.Ref<View>}
                 />
               }
-              title="Today"
+              title="Workout"
             />
             {actionFailure === undefined ? null : (
               <InlineNotice
                 action={
                   <SecondaryAction
-                    label="Retry Today action"
+                    label="Retry Workout action"
                     onPress={onRetry}
                   />
                 }

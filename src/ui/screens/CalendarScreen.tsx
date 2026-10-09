@@ -73,10 +73,14 @@ type CalendarScreenProps = Readonly<{
     today: string;
   }>): Promise<CalendarMonth>;
   onOpenSession(sessionId: string): void;
+  onOpenSettings?(): void;
   today?: string;
   width?: number;
   headingRef?: React.RefObject<RootFocusTarget | null>;
+  settingsActionRef?: React.RefObject<RootFocusTarget | null>;
 }>;
+
+const noOp = () => undefined;
 
 function monthStart(value: LocalDate): LocalDate {
   return parseLocalDate(value.slice(0, 8) + "01");
@@ -368,9 +372,11 @@ export function CalendarScreen({
   initialDate,
   loadCalendarMonth,
   onOpenSession,
+  onOpenSettings = noOp,
   today = initialDate,
   width,
   headingRef,
+  settingsActionRef,
 }: CalendarScreenProps) {
   const { colors } = useAppTheme();
   const parsedInitial = parseLocalDate(initialDate);
@@ -426,6 +432,15 @@ export function CalendarScreen({
               {...(headingRef === undefined
                 ? {}
                 : { ref: headingRef as React.Ref<View> })}
+              action={(
+                <IconAction
+                  accessibilityHint="Opens App Settings"
+                  accessibilityLabel="Open App Settings"
+                  icon="settings"
+                  onPress={onOpenSettings}
+                  ref={settingsActionRef as React.Ref<View>}
+                />
+              )}
               title="Calendar could not be loaded"
             />
             <Text style={[typeScale.body as TextStyle, { color: colors.textSecondary }]}>
@@ -448,6 +463,15 @@ export function CalendarScreen({
               {...(headingRef === undefined
                 ? {}
                 : { ref: headingRef as React.Ref<View> })}
+              action={(
+                <IconAction
+                  accessibilityHint="Opens App Settings"
+                  accessibilityLabel="Open App Settings"
+                  icon="settings"
+                  onPress={onOpenSettings}
+                  ref={settingsActionRef as React.Ref<View>}
+                />
+              )}
               title="Calendar"
             />
             <SkeletonBlock height={42} width="72%" />
@@ -467,6 +491,15 @@ export function CalendarScreen({
         {...(headingRef === undefined
           ? {}
           : { ref: headingRef as React.Ref<View> })}
+        action={(
+          <IconAction
+            accessibilityHint="Opens App Settings"
+            accessibilityLabel="Open App Settings"
+            icon="settings"
+            onPress={onOpenSettings}
+            ref={settingsActionRef as React.Ref<View>}
+          />
+        )}
         title="Calendar"
       />
       <View style={styles.monthHeader}>

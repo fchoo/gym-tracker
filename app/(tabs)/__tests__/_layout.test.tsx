@@ -47,76 +47,158 @@ const mockHeadingFocus = {
   library: jest.fn(),
   progress: jest.fn(),
 };
+const mockSettingsTriggerFocus = {
+  calendar: jest.fn(),
+  index: jest.fn(),
+  library: jest.fn(),
+  progress: jest.fn(),
+};
 const mockRemovedSessionsTriggerFocus = jest.fn();
 
 jest.mock("../index", () => {
   const React = require("react") as typeof import("react");
-  const { View } = require("react-native") as typeof import("react-native");
+  const {
+    Pressable,
+    View,
+  } = require("react-native") as typeof import("react-native");
+  const { useRootSettingsController } = require("../../../src/ui/shell/AppRootShell") as typeof import("../../../src/ui/shell/AppRootShell");
   const { useRootHeadingRef } = require("../../../src/ui/shell/rootFocus") as typeof import("../../../src/ui/shell/rootFocus");
   return {
     __esModule: true,
     default: () => {
       const headingRef = useRootHeadingRef("index");
+      const settingsTriggerRef = React.useRef<{ focus?: () => void } | null>(null);
+      const { openRootSettings } = useRootSettingsController();
       React.useEffect(() => {
         if (headingRef !== undefined) {
           headingRef.current = { focus: mockHeadingFocus.index };
         }
+        settingsTriggerRef.current = { focus: mockSettingsTriggerFocus.index };
       }, [headingRef]);
-      return <View accessibilityLabel="Workout" accessibilityRole="header" testID="root-route-index" />;
+      return (
+        <View>
+          <View accessibilityLabel="Workout" accessibilityRole="header" testID="root-route-index" />
+          <Pressable
+            accessibilityLabel="Open App Settings"
+            accessibilityRole="button"
+            onPress={() => openRootSettings({
+              root: "index",
+              triggerRef: settingsTriggerRef,
+            })}
+          />
+        </View>
+      );
     },
   };
 });
 
 jest.mock("../calendar", () => {
   const React = require("react") as typeof import("react");
-  const { View } = require("react-native") as typeof import("react-native");
+  const {
+    Pressable,
+    View,
+  } = require("react-native") as typeof import("react-native");
+  const { useRootSettingsController } = require("../../../src/ui/shell/AppRootShell") as typeof import("../../../src/ui/shell/AppRootShell");
   const { useRootHeadingRef } = require("../../../src/ui/shell/rootFocus") as typeof import("../../../src/ui/shell/rootFocus");
   return {
     __esModule: true,
     default: () => {
       const headingRef = useRootHeadingRef("calendar");
+      const settingsTriggerRef = React.useRef<{ focus?: () => void } | null>(null);
+      const { openRootSettings } = useRootSettingsController();
       React.useEffect(() => {
         if (headingRef !== undefined) {
           headingRef.current = { focus: mockHeadingFocus.calendar };
         }
+        settingsTriggerRef.current = { focus: mockSettingsTriggerFocus.calendar };
       }, [headingRef]);
-      return <View accessibilityLabel="Calendar" accessibilityRole="header" testID="root-route-calendar" />;
+      return (
+        <View>
+          <View accessibilityLabel="Calendar" accessibilityRole="header" testID="root-route-calendar" />
+          <Pressable
+            accessibilityLabel="Open App Settings"
+            accessibilityRole="button"
+            onPress={() => openRootSettings({
+              root: "calendar",
+              triggerRef: settingsTriggerRef,
+            })}
+          />
+        </View>
+      );
     },
   };
 });
 
 jest.mock("../library", () => {
   const React = require("react") as typeof import("react");
-  const { View } = require("react-native") as typeof import("react-native");
+  const {
+    Pressable,
+    View,
+  } = require("react-native") as typeof import("react-native");
+  const { useRootSettingsController } = require("../../../src/ui/shell/AppRootShell") as typeof import("../../../src/ui/shell/AppRootShell");
   const { useRootHeadingRef } = require("../../../src/ui/shell/rootFocus") as typeof import("../../../src/ui/shell/rootFocus");
   return {
     __esModule: true,
     default: () => {
       const headingRef = useRootHeadingRef("library");
+      const settingsTriggerRef = React.useRef<{ focus?: () => void } | null>(null);
+      const { openRootSettings } = useRootSettingsController();
       React.useEffect(() => {
         if (headingRef !== undefined) {
           headingRef.current = { focus: mockHeadingFocus.library };
         }
+        settingsTriggerRef.current = { focus: mockSettingsTriggerFocus.library };
       }, [headingRef]);
-      return <View accessibilityLabel="Library" accessibilityRole="header" testID="root-route-library" />;
+      return (
+        <View>
+          <View accessibilityLabel="Library" accessibilityRole="header" testID="root-route-library" />
+          <Pressable
+            accessibilityLabel="Open App Settings"
+            accessibilityRole="button"
+            onPress={() => openRootSettings({
+              root: "library",
+              triggerRef: settingsTriggerRef,
+            })}
+          />
+        </View>
+      );
     },
   };
 });
 
 jest.mock("../progress", () => {
   const React = require("react") as typeof import("react");
-  const { View } = require("react-native") as typeof import("react-native");
+  const {
+    Pressable,
+    View,
+  } = require("react-native") as typeof import("react-native");
+  const { useRootSettingsController } = require("../../../src/ui/shell/AppRootShell") as typeof import("../../../src/ui/shell/AppRootShell");
   const { useRootHeadingRef } = require("../../../src/ui/shell/rootFocus") as typeof import("../../../src/ui/shell/rootFocus");
   return {
     __esModule: true,
     default: () => {
       const headingRef = useRootHeadingRef("progress");
+      const settingsTriggerRef = React.useRef<{ focus?: () => void } | null>(null);
+      const { openRootSettings } = useRootSettingsController();
       React.useEffect(() => {
         if (headingRef !== undefined) {
           headingRef.current = { focus: mockHeadingFocus.progress };
         }
+        settingsTriggerRef.current = { focus: mockSettingsTriggerFocus.progress };
       }, [headingRef]);
-      return <View accessibilityLabel="Progress" accessibilityRole="header" testID="root-route-progress" />;
+      return (
+        <View>
+          <View accessibilityLabel="Progress" accessibilityRole="header" testID="root-route-progress" />
+          <Pressable
+            accessibilityLabel="Open App Settings"
+            accessibilityRole="button"
+            onPress={() => openRootSettings({
+              root: "progress",
+              triggerRef: settingsTriggerRef,
+            })}
+          />
+        </View>
+      );
     },
   };
 });
@@ -323,6 +405,9 @@ describe("RootTabsLayout adaptive navigator placement", () => {
     for (const focus of Object.values(mockHeadingFocus)) {
       focus.mockReset();
     }
+    for (const focus of Object.values(mockSettingsTriggerFocus)) {
+      focus.mockReset();
+    }
     mockRemovedSessionsTriggerFocus.mockReset();
     setRenderedDimensions(839, 1);
   });
@@ -465,7 +550,7 @@ describe("RootTabsLayout adaptive navigator placement", () => {
     expect(rendered.getByRole("tab", { name: "Library" })).toBeSelected();
   });
 
-  it("keeps the production settings trigger wired through its open and close flow", async () => {
+  it("keeps the root-header settings trigger wired through its open and close flow", async () => {
     const rendered = await render(
       <AppearanceProvider>
         <RootTabsLayout />
@@ -476,6 +561,7 @@ describe("RootTabsLayout adaptive navigator placement", () => {
     await fireEvent.press(rendered.getByRole("button", { name: "Close App Settings" }));
 
     expect(rendered.queryByRole("header", { name: "App Settings" })).toBeNull();
+    expect(mockSettingsTriggerFocus.index).toHaveBeenCalledTimes(1);
   });
 
   it("captures deep-route origin in production and restores exact or heading focus on return", async () => {
