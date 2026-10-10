@@ -37,5 +37,5 @@ test("Phase 15 tracer flows use only production route actions and ledger stages"
   assert.match(active, /tapOn: "Complete Set 1"/u);
   const recovery = readFileSync("maestro/phase15/recovery-completion.yaml", "utf8");
   assert.match(recovery, /PHASE15_STAGE == 'workout\.completion-review'/u);
-  assert.match(recovery, /Keep plan as is/u);
+  assert.match(recovery, /Keep plan as-is/u);
 });

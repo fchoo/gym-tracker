@@ -1,0 +1,19 @@
+appId: com.fchoo.gymtracker.devtest
+name: Phase 15 recovery and completion production tracer
+---
+- runFlow:
+    when:
+      true: ${PHASE15_STAGE == 'workout.completion-review'}
+    commands:
+      - tapOn: "Skip rest"
+      - scrollUntilVisible:
+          element:
+            text: "Finish workout"
+          direction: DOWN
+          centerElement: true
+          timeout: 30000
+      - tapOn: "Finish workout"
+      - extendedWaitUntil:
+          visible: "Keep plan as-is"
+          timeout: 30000
+      - tapOn: "Keep plan as-is"

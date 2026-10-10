@@ -1,0 +1,18 @@
+appId: com.fchoo.gymtracker.devtest
+name: Phase 15 active workout production tracer
+---
+- runFlow:
+    when:
+      true: ${PHASE15_STAGE == 'workout.complete-commit'}
+    commands:
+      - scrollUntilVisible:
+          element:
+            text: "Complete Set 1"
+          direction: DOWN
+          centerElement: true
+          timeout: 30000
+      - tapOn: "Complete Set 1"
+      - extendedWaitUntil:
+          visible: "RESTING"
+          timeout: 30000
+      - assertVisible: "Skip rest"
