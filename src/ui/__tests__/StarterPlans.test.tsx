@@ -582,6 +582,9 @@ describe("starter activation", () => {
     expect(await screen.findByRole("header", {
       name: "Activate Gym Body-Part Split",
     })).toBeOnTheScreen();
+    expect(screen.getByText(
+      "Strength plan activation affects only the reviewed Strength schedule. Any Running plan remains unchanged.",
+    )).toBeOnTheScreen();
     expect(screen.getByRole("button", { name: "Start date" }))
       .toHaveTextContent("2026-08-18");
     expect(screen.getByRole("radio", { name: "Weekday" })).toHaveProp(
@@ -867,6 +870,9 @@ describe("starter activation", () => {
     expect(await screen.findByText(
       "Plan could not be activated. Your current active plan and schedule are unchanged.",
     )).toBeOnTheScreen();
+    await waitFor(() =>
+      expect(activateStarterPlan).toHaveBeenCalledTimes(1)
+    );
     expect(screen.getByRole("button", { name: "Start date" }))
       .toHaveTextContent("2026-08-20");
   });
