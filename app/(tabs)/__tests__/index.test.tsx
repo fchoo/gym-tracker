@@ -281,9 +281,10 @@ describe("TodayRoute readiness", () => {
     await fireEvent.press(screen.getByRole("button", {
       name: "Start empty workout",
     }));
-    await waitFor(() => expect(mockPush).toHaveBeenLastCalledWith(
-      "/workout/session-empty",
-    ));
+    await waitFor(() => expect(mockPush).toHaveBeenLastCalledWith({
+      pathname: "/workout/[sessionId]",
+      params: { sessionId: "session-empty", returnTo: "/(tabs)" },
+    }));
     expect(mockRecordTrainAnyway).toHaveBeenLastCalledWith({
       workout: { kind: "empty", planDayId: null },
       advanceRotation: false,
@@ -292,17 +293,25 @@ describe("TodayRoute readiness", () => {
     await fireEvent.press(screen.getByRole("button", {
       name: "Start scheduled workout",
     }));
-    await waitFor(() => expect(mockPush).toHaveBeenLastCalledWith(
-      "/workout/session-scheduled-day-scheduled",
-    ));
+    await waitFor(() => expect(mockPush).toHaveBeenLastCalledWith({
+      pathname: "/workout/[sessionId]",
+      params: {
+        sessionId: "session-scheduled-day-scheduled",
+        returnTo: "/(tabs)",
+      },
+    }));
     expect(mockRecordTrainAnyway).toHaveBeenCalledTimes(1);
 
     await fireEvent.press(screen.getByRole("button", {
       name: "Start alternate workout",
     }));
-    await waitFor(() => expect(mockPush).toHaveBeenLastCalledWith(
-      "/workout/session-alternate-day-alternate",
-    ));
+    await waitFor(() => expect(mockPush).toHaveBeenLastCalledWith({
+      pathname: "/workout/[sessionId]",
+      params: {
+        sessionId: "session-alternate-day-alternate",
+        returnTo: "/(tabs)",
+      },
+    }));
     expect(mockRecordTrainAnyway).toHaveBeenLastCalledWith({
       workout: { kind: "plan_day", planDayId: "day-alternate" },
       advanceRotation: false,
@@ -311,9 +320,13 @@ describe("TodayRoute readiness", () => {
     await fireEvent.press(screen.getByRole("button", {
       name: "Start rest-day workout",
     }));
-    await waitFor(() => expect(mockPush).toHaveBeenLastCalledWith(
-      "/workout/session-rest_day-day-rest",
-    ));
+    await waitFor(() => expect(mockPush).toHaveBeenLastCalledWith({
+      pathname: "/workout/[sessionId]",
+      params: {
+        sessionId: "session-rest_day-day-rest",
+        returnTo: "/(tabs)",
+      },
+    }));
     expect(mockRecordTrainAnyway).toHaveBeenLastCalledWith({
       workout: { kind: "plan_day", planDayId: "day-rest" },
       advanceRotation: false,

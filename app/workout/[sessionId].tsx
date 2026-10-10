@@ -41,8 +41,9 @@ import {
 } from "../../src/ui/screens/ActiveWorkoutScreen";
 
 export default function ActiveWorkoutRoute() {
-  const { sessionId } = useLocalSearchParams<{
+  const { sessionId, returnTo } = useLocalSearchParams<{
     sessionId: string;
+    returnTo?: string;
   }>();
   const runtime = useWorkoutAppRuntime();
   const countdownCue = useRestCountdownCue();
@@ -54,6 +55,7 @@ export default function ActiveWorkoutRoute() {
     state: AdvancedTimingStateV1;
   }> | null>(null);
   const [failed, setFailed] = useState(false);
+  const [readAttempt, setReadAttempt] = useState(0);
   const [focusGeneration, setFocusGeneration] = useState(0);
   const [availableExercises, setAvailableExercises] = useState<readonly Readonly<{
     id: string;
@@ -88,11 +90,19 @@ export default function ActiveWorkoutRoute() {
       active = false;
     };
   }, [
+    readAttempt,
     resolvedSessionId,
     runtime.getAdvancedTimingContext,
     runtime.getActiveWorkout,
     runtime.workoutRefreshGeneration,
   ]);
+  const returnToWorkout = useCallback(() => {
+    if (returnTo === "/(tabs)") {
+      router.replace(returnTo);
+      return;
+    }
+    router.back();
+  }, [returnTo]);
   useFocusEffect(useCallback(() => {
     setFocusGeneration((current) => current + 1);
   }, []));
@@ -113,19 +123,23 @@ export default function ActiveWorkoutRoute() {
         primary={
           <>
             <ScreenHeader
-              backAction={() => router.back()}
+              backAction={returnToWorkout}
               eyebrow="WORKOUT OVERVIEW"
               title="Workout"
             />
             <EmptyState
               body="Your workout was not changed. Return to Today and resume the active session."
               heading="Workout could not be opened"
-              primaryAction={
+              primaryAction={<>
                 <PrimaryAction
-                  label="Go back to Today"
-                  onPress={() => router.replace("/(tabs)")}
+                  label="Retry opening workout data"
+                  onPress={() => setReadAttempt((attempt) => attempt + 1)}
                 />
-              }
+                <PrimaryAction
+                  label="Go back to Workout"
+                  onPress={returnToWorkout}
+                />
+              </>}
             />
           </>
         }
@@ -193,7 +207,7 @@ export default function ActiveWorkoutRoute() {
         void runtime.openRestNotificationSettings();
       }}
       onFinishLater={() => router.replace("/(tabs)")}
-      onGoBack={() => router.back()}
+      onGoBack={returnToWorkout}
       onOutcomeSaved={(savedSessionId) => {
         router.replace({
           pathname: "/completion/[sessionId]",

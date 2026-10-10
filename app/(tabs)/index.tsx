@@ -42,6 +42,12 @@ export default function TodayRoute() {
     ...(runtime.failure === undefined ? {} : { failure: runtime.failure }),
     ...(runtime.view === undefined ? {} : { view: runtime.view }),
   };
+  const openActiveWorkout = (sessionId: string) => {
+    router.push({
+      pathname: "/workout/[sessionId]",
+      params: { sessionId, returnTo: "/(tabs)" },
+    } as unknown as Href);
+  };
   useEffect(() => {
     let active = true;
     if (
@@ -101,7 +107,7 @@ export default function TodayRoute() {
       }}
       onResumeWorkout={(sessionId, expectedRevision) => {
         if (expectedRevision === undefined) {
-          router.push(`/workout/${sessionId}`);
+          openActiveWorkout(sessionId);
           return;
         }
         void runtime.resumePartialWorkout({
@@ -109,7 +115,7 @@ export default function TodayRoute() {
           expectedSessionRevision: expectedRevision,
           resumedAtMs: Date.now(),
         }).then(() => {
-          router.push(`/workout/${sessionId}`);
+          openActiveWorkout(sessionId);
         }).catch(() => undefined);
       }}
       onRetry={runtime.retry}
@@ -120,7 +126,7 @@ export default function TodayRoute() {
             advanceRotation: false,
           }).catch(() => null).then(() => sessionId);
         }).then((sessionId) => {
-          router.push(`/workout/${sessionId}`);
+          openActiveWorkout(sessionId);
         }).catch(() => undefined);
       }}
       onStartPlanDay={(dayId, mode) => {
@@ -141,7 +147,7 @@ export default function TodayRoute() {
             }).catch(() => null)
           ).then(() => sessionId);
         }).then((sessionId) => {
-          router.push(`/workout/${sessionId}`);
+          openActiveWorkout(sessionId);
         }).catch(() => undefined);
       }}
       planDays={runtime.planDays}
