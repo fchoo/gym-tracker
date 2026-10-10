@@ -1,0 +1,13 @@
+export const PHASE17_REQUIRED_LIBRARY_REQUIREMENTS = Object.freeze(Array.from({ length: 36 }, (_, i) => `LIB-${String(i + 1).padStart(2, "0")}`));
+
+const rows = [
+  ["remembered-state", "LIB-01"], ["plan-groups", "LIB-02"], ["exercise-search", "LIB-03"], ["exercise-favorites", "LIB-04"], ["actions-sheet", "LIB-05"], ["neutral-plan-chooser", "LIB-06", "neutral-chooser-no-command-no-preselection"], ["true-no-plans", "LIB-07"], ["owned-summary", "LIB-08"], ["owned-lifecycle", "LIB-09"], ["starter-detail", "LIB-10"], ["starter-activation", "LIB-11"], ["template-update", "LIB-12"], ["create-strength", "LIB-13"], ["plan-editor", "LIB-14"], ["editor-draft-guards", "LIB-15"], ["schedule-editor", "LIB-16"], ["replacement-impact", "LIB-17"], ["day-removal-impact", "LIB-18"], ["builtin-exercise", "LIB-19"], ["custom-exercise", "LIB-20"], ["create-exercise", "LIB-21"], ["copy-metric-migration", "LIB-22"], ["load-error-recovery", "LIB-23"], ["running-detail", "LIB-24"], ["running-create-zero-sessions", "LIB-25", "inactive-after-atomic-commit", "true-empty-after-reopen", "no-source-drift"], ["running-goal-edit", "LIB-26"], ["running-session-common", "LIB-27"], ["running-recovery", "LIB-28"], ["running-long", "LIB-29"], ["running-progression", "LIB-30"], ["running-tempo", "LIB-31"], ["running-intervals", "LIB-32"], ["running-hills", "LIB-33"], ["running-fartlek", "LIB-34"], ["running-session-lifecycle", "LIB-35", "stable-roots-revisions-delete-reorder-true-empty-retry"], ["running-conflict", "LIB-36", "move-run-move-strength-keep-both-one-exclusive-command"],
+];
+const primary = rows.map(([name, requirement, ...assertions]) => Object.freeze({ id: `library.${name}`, requirements: Object.freeze([requirement]), assertions: Object.freeze(assertions) }));
+export const PHASE17_LIBRARY_RUNNING_CASES = Object.freeze([...primary,
+  Object.freeze({ id: "library.running-create-typed-sessions", requirements: Object.freeze([]), assertions: Object.freeze(["seven-typed-session-branches", "one-aggregate-commit", "inactive-after-atomic-commit", "no-source-drift"]) }),
+  Object.freeze({ id: "library.running-two-same-day-slots", requirements: Object.freeze([]), assertions: Object.freeze(["same-weekday-order-retained", "portable-after-reopen", "no-activation"]) }),
+  Object.freeze({ id: "library.accessibility-recovery", requirements: Object.freeze([]), assertions: Object.freeze(["action-bearing", "focus-return", "keyboard-dpad", "minimum-48dp", "text-scale-200", "reduced-motion", "offline-process-recovery"]) }),
+]);
+export const PHASE17_LIBRARY_RUNNING_EVIDENCE_IDS = Object.freeze(PHASE17_LIBRARY_RUNNING_CASES.map(({ id }) => id));
+export const PHASE17_EVIDENCE_PATH = ".planning/phases/17-library-running-plans/evidence/phase17-library-running.json";

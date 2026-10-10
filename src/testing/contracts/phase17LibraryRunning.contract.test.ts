@@ -3,12 +3,13 @@ import {
   PHASE17_LIBRARY_RUNNING_EVIDENCE_IDS,
   PHASE17_REQUIRED_LIBRARY_REQUIREMENTS,
 } from "./phase17LibraryRunning.contract";
+import { describe, expect, it } from "@jest/globals";
 
 describe("Phase 17 Library and Running evidence ledger", () => {
   it("assigns every LIB requirement exactly once to a stable canonical evidence ID", () => {
     expect(PHASE17_REQUIRED_LIBRARY_REQUIREMENTS).toHaveLength(36);
-    expect(PHASE17_LIBRARY_RUNNING_CASES).toHaveLength(36);
-    expect(new Set(PHASE17_LIBRARY_RUNNING_EVIDENCE_IDS).size).toBe(36);
+    expect(PHASE17_LIBRARY_RUNNING_CASES).toHaveLength(39);
+    expect(new Set(PHASE17_LIBRARY_RUNNING_EVIDENCE_IDS).size).toBe(39);
 
     for (const number of Array.from({ length: 36 }, (_, index) => index + 1)) {
       const requirement = `LIB-${String(number).padStart(2, "0")}`;
@@ -17,7 +18,7 @@ describe("Phase 17 Library and Running evidence ledger", () => {
   });
 
   it("requires the neutral, inactive create and recovery matrix without collapsing the seven session forms", () => {
-    const cases = new Map(PHASE17_LIBRARY_RUNNING_CASES.map((entry) => [entry.id, entry]));
+    const cases = new Map<string, (typeof PHASE17_LIBRARY_RUNNING_CASES)[number]>(PHASE17_LIBRARY_RUNNING_CASES.map((entry) => [entry.id, entry]));
     for (const id of [
       "library.neutral-plan-chooser",
       "library.running-create-zero-sessions",
