@@ -14,6 +14,10 @@ export type RunningPlanDraftValidation =
   | "running_goal_distance_invalid"
   | "running_goal_days_invalid"
   | "running_goal_duration_invalid"
+  | "running_goal_target_date_invalid"
+  | "running_goal_runs_per_week_invalid"
+  | "running_goal_long_run_day_invalid"
+  | "running_goal_weekly_distance_invalid"
   | "running_session_invalid";
 
 export const RUNNING_WEEKDAYS = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"] as const;
@@ -39,6 +43,13 @@ export function validateRunningPlanDraft(draft: RunningPlanDraft): RunningPlanDr
   if (!Number.isSafeInteger(draft.goal.goalDistanceMeters) || draft.goal.goalDistanceMeters <= 0) return "running_goal_distance_invalid";
   if (draft.goal.trainingDays.length === 0 || new Set(draft.goal.trainingDays).size !== draft.goal.trainingDays.length) return "running_goal_days_invalid";
   if (draft.goal.targetDurationMs !== undefined && (!Number.isSafeInteger(draft.goal.targetDurationMs) || draft.goal.targetDurationMs <= 0)) return "running_goal_duration_invalid";
+  if (draft.goal.targetLocalDate !== undefined && !/^\d{4}-\d{2}-\d{2}$/u.test(draft.goal.targetLocalDate)) return "running_goal_target_date_invalid";
+  if (!Number.isSafeInteger(draft.goal.runsPerWeek) || draft.goal.runsPerWeek === undefined || draft.goal.runsPerWeek < 1) return "running_goal_runs_per_week_invalid";
+  if (draft.goal.currentWeeklyDistanceMeters !== undefined && (!Number.isFinite(draft.goal.currentWeeklyDistanceMeters) || draft.goal.currentWeeklyDistanceMeters <= 0)) return "running_goal_weekly_distance_invalid";
+  const longRunExists = draft.sessions.some((entry) => entry.session.sessionKind === "long_run");
+  if (longRunExists && (draft.goal.longRunDay === undefined || !draft.goal.trainingDays.includes(draft.goal.longRunDay))) return "running_goal_long_run_day_invalid";
+  const hasSameDaySlots = draft.sessions.some((entry, index) => draft.sessions.some((other, otherIndex) => otherIndex !== index && other.slot.weekday === entry.slot.weekday));
+  if (draft.goal.runsPerWeek > draft.goal.trainingDays.length && !hasSameDaySlots) return "running_goal_runs_per_week_invalid";
   const slots = new Set<string>();
   for (const entry of draft.sessions) {
     const key = `${entry.slot.weekday}:${entry.slot.ordinal}`;

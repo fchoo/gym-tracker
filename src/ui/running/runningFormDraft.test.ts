@@ -13,7 +13,7 @@ import {
 
 const draft: RunningPlanDraft = {
   version: 1, id: "running", name: "Running", revision: 1, createdAtMs: 1,
-  goal: { version: 1, id: "goal", planId: "running", revision: 1, goalDistanceMeters: 5_000, trainingDays: ["Monday"], createdAtMs: 1 },
+  goal: { version: 1, id: "goal", planId: "running", revision: 1, goalDistanceMeters: 5_000, targetDurationMs: 1_800_000, runsPerWeek: 1, trainingDays: ["Monday"], createdAtMs: 1 },
   sessions: [],
 };
 

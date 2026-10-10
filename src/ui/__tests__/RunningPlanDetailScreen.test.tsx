@@ -1,4 +1,4 @@
-import { fireEvent, render, screen } from "@testing-library/react-native";
+import { fireEvent, render, screen, waitFor } from "@testing-library/react-native";
 import { afterEach, beforeEach, describe, expect, it, jest } from "@jest/globals";
 import React from "react";
 
@@ -53,6 +53,15 @@ describe("RunningPlanDetailScreen", () => {
     await render(<AppearanceProvider><RunningPlanDetailScreen planId="running-1" loadPlan={jest.fn(async () => ({ ...plan, sessions: [] }))} onBack={jest.fn()} onEdit={jest.fn()} onNewSession={jest.fn()} onEditSession={jest.fn()} onGarmin={jest.fn()} createLifecycleRequestId={() => "lifecycle-1"} previewLifecycle={jest.fn(async () => lifecyclePreview)} confirmLifecycle={jest.fn(async () => ({ ...plan, lifecycle: "active" as const, active: true }))} /></AppearanceProvider>);
     expect(await screen.findByText("No sessions yet")).toBeOnTheScreen();
     expect(screen.getByText("Add a Recovery, Long run, Progression, Tempo, Intervals, Hills, or Fartlek session.")).toBeOnTheScreen();
+  });
+
+  it("distinguishes a retryable load failure from a contextual not-found result", async () => {
+    const loadPlan = jest.fn(async () => { throw new Error("sqlite unavailable"); });
+    await render(<AppearanceProvider><RunningPlanDetailScreen planId="running-1" loadPlan={loadPlan} onBack={jest.fn()} onEdit={jest.fn()} onNewSession={jest.fn()} onEditSession={jest.fn()} onGarmin={jest.fn()} createLifecycleRequestId={() => "lifecycle-1"} previewLifecycle={jest.fn(async () => lifecyclePreview)} confirmLifecycle={jest.fn(async () => plan)} /></AppearanceProvider>);
+    expect(await screen.findByText("Running plan could not be loaded")).toBeOnTheScreen();
+    fireEvent.press(screen.getByRole("button", { name: "Retry loading Running plan" }));
+    await waitFor(() => expect(loadPlan).toHaveBeenCalledTimes(2));
+    expect(screen.queryByText("Running plan not found")).not.toBeOnTheScreen();
   });
 
   it("requires a reviewed sport-scoped lifecycle confirmation, retains review after failure, and updates only from readback", async () => {

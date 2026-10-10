@@ -9,7 +9,7 @@ import { AppearanceProvider } from "../theme";
 
 const initialDraft: RunningPlanDraft = {
   version: 1 as const, id: "running-plan", name: "Running plan", revision: 1, createdAtMs: 1,
-  goal: { version: 1 as const, id: "running-goal", planId: "running-plan", revision: 1, goalDistanceMeters: 5_000, trainingDays: ["Monday" as const], createdAtMs: 1 },
+  goal: { version: 1 as const, id: "running-goal", planId: "running-plan", revision: 1, goalDistanceMeters: 5_000, targetDurationMs: 1_800_000, runsPerWeek: 1, trainingDays: ["Monday" as const], createdAtMs: 1 },
   sessions: [],
 };
 

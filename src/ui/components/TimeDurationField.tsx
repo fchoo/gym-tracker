@@ -85,8 +85,9 @@ export type TimeDurationFieldProps = Readonly<{
   onChangeText(value: string): void;
   disabled?: boolean;
   help?: string;
-  error?: string;
+  error?: string | undefined;
   tone?: "default" | "card";
+  triggerRef?: React.RefObject<View | null>;
 }>;
 
 function DurationCancelAction({ label }: Readonly<{ label: string }>) {
@@ -106,6 +107,7 @@ export function TimeDurationField({
   label,
   onChangeText,
   tone = "default",
+  triggerRef: suppliedTriggerRef,
   value,
 }: TimeDurationFieldProps) {
   const { colors } = useAppTheme();
@@ -115,7 +117,8 @@ export function TimeDurationField({
   const helpColor = tone === "card"
     ? colors.contentCardTextSecondary
     : colors.textSecondary;
-  const triggerRef = useRef<View>(null);
+  const localTriggerRef = useRef<View>(null);
+  const triggerRef = suppliedTriggerRef ?? localTriggerRef;
   const [open, setOpen] = useState(false);
   const [draft, setDraft] = useState<DurationParts>(() => durationParts(value));
   const [draftError, setDraftError] = useState<string | undefined>();

@@ -105,6 +105,7 @@ export function PlanEditorTextField({
   onChangeText,
   error,
   help,
+  inputRef,
   tone = "default",
   ...inputProps
 }: Readonly<{
@@ -113,6 +114,7 @@ export function PlanEditorTextField({
   onChangeText(value: string): void;
   error?: string | undefined;
   help?: string | undefined;
+  inputRef?: React.RefObject<TextInput | null>;
   tone?: "default" | "card";
 }> & Omit<TextInputProps, "accessibilityLabel" | "onChangeText" | "value">) {
   const { colors } = useAppTheme();
@@ -142,6 +144,7 @@ export function PlanEditorTextField({
       <TextInput
         {...inputProps}
         accessibilityLabel={label}
+        ref={inputRef}
         onChangeText={onChangeText}
         style={[
           typeScale.body as TextStyle,

@@ -153,7 +153,7 @@ export const RunningSessionRootV1Schema = z.strictObject({
 export type RunningSessionRoot = z.infer<typeof RunningSessionRootV1Schema>;
 
 const BenchmarkSchema = z.strictObject({
-  source: z.literal("owner_selected"),
+  source: z.enum(["owner_selected", "imported_activity", "personal_history", "manual"]),
   distanceMeters: PositiveIntegerSchema,
   durationMs: PositiveIntegerSchema,
   localDate: LocalDateSchema,
@@ -178,6 +178,12 @@ export const RunningGoalV1Schema = z.strictObject({
       context.addIssue({ code: z.ZodIssueCode.custom, message: "training days must be unique" });
     }
   }),
+  /** Added fields remain optional at the persistence boundary so revisions
+   * created before Phase 17 can be read without fabricated values. The editor
+   * requires these facts before it issues a new revisioned save. */
+  runsPerWeek: z.number().int().min(1).max(7).optional(),
+  longRunDay: WeekdaySchema.optional(),
+  currentWeeklyDistanceMeters: z.number().positive().finite().optional(),
   createdAtMs: NonnegativeIntegerSchema,
 });
 
