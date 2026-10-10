@@ -446,6 +446,8 @@ function detailSnapshot(
     primaryMuscles: ["core"],
     secondaryMuscles: ["shoulders"],
     equipment: ["bodyweight"],
+    instructions: [],
+    instructionSource: null,
     metricIdentity: {
       profile: "timed_hold",
       contractVersion: 1,

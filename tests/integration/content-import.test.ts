@@ -43,6 +43,9 @@ import {
   contentLibraryMigration,
 } from "../../src/platform/sqlite/migrations/0004_content_library";
 import {
+  exerciseInstructionSetsMigration,
+} from "../../src/platform/sqlite/migrations/0037_exercise_instruction_sets";
+import {
   migrations as runtimeMigrations,
 } from "../../src/platform/sqlite/migrations";
 import {
@@ -124,6 +127,7 @@ const migrations = [
   outcomeEffortMigration,
   exerciseHistoryIndexMigration,
   contentLibraryMigration,
+  exerciseInstructionSetsMigration,
 ] as const;
 const runtimes: SqliteKernel[] = [];
 const temporaryDirectories = new Set<string>();
@@ -366,7 +370,7 @@ describe("accepted content import repository", () => {
 
     expect(first).toEqual(expect.objectContaining({
       outcome: "committed",
-      revision: 1,
+      revision: 2,
       packSha256: catalog.acceptance.packSha256,
       added: 310,
       updated: 0,
@@ -378,7 +382,7 @@ describe("accepted content import repository", () => {
     });
     expect(repeated).toEqual({
       outcome: "committed",
-      revision: 1,
+      revision: 2,
       packSha256: catalog.acceptance.packSha256,
       added: 0,
       updated: 0,
@@ -391,9 +395,11 @@ describe("accepted content import repository", () => {
       `SELECT
          (SELECT COUNT(*) FROM exercise_catalog_sources) AS sources,
          (SELECT COUNT(*) FROM exercise_search_terms) AS search_terms,
-         (SELECT COUNT(*) FROM exercise_aliases) AS aliases`,
+         (SELECT COUNT(*) FROM exercise_aliases) AS aliases,
+         (SELECT COUNT(*) FROM exercise_instruction_sets) AS instructions`,
     )).toEqual([{
       aliases: 0,
+      instructions: 310,
       search_terms: 310,
       sources: 310,
     }]);
@@ -660,7 +666,7 @@ describe("accepted content import repository", () => {
     expect(result).toEqual(expect.objectContaining({
       added: 0,
       newlyUnavailable: 1,
-      revision: 2,
+      revision: 3,
       updated: 0,
     }));
     expect(await kernel.queryAll(
@@ -786,11 +792,11 @@ describe("accepted content import repository", () => {
     )).toEqual([
       {
         pack_sha256: catalog.acceptance.packSha256,
-        revision: 1,
+        revision: 2,
       },
       {
         pack_sha256: nextCatalog.acceptance.packSha256,
-        revision: 2,
+        revision: 3,
       },
     ]);
   });

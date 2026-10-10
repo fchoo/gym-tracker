@@ -27,6 +27,14 @@ export type CustomExerciseRuntimeDetail = Readonly<{
   primaryMuscles: readonly string[];
   secondaryMuscles: readonly string[];
   equipment: readonly string[];
+  instructions: readonly string[];
+  instructionSource: Readonly<{
+    namespace: string;
+    revision: string;
+    upstreamId: string | null;
+    license: string;
+    attribution: string;
+  }> | null;
   metricIdentity: MetricIdentity;
   defaultRestSeconds: number;
   availability: "available" | "unavailable";
@@ -97,6 +105,12 @@ type CustomExerciseDetailRow = Readonly<{
   source_revision: string | null;
   license: string | null;
   attribution: string | null;
+  instruction_steps_json: string | null;
+  instruction_source_namespace: string | null;
+  instruction_source_revision: string | null;
+  instruction_upstream_id: string | null;
+  instruction_source_license: string | null;
+  instruction_source_attribution: string | null;
 }>;
 
 type CustomExerciseTaxonomyRow = Readonly<{
@@ -149,6 +163,34 @@ function customExerciseIdentity(row: Readonly<{
   });
 }
 
+function instructionSteps(row: CustomExerciseDetailRow): readonly string[] {
+  if (row.instruction_steps_json === null) {
+    if (row.origin === "bundled") {
+      throw new Error("bundled_exercise_instructions_missing");
+    }
+    return Object.freeze([]);
+  }
+  if (row.origin !== "bundled") {
+    throw new Error("user_owned_exercise_instructions_unexpected");
+  }
+  try {
+    const parsed = JSON.parse(row.instruction_steps_json) as unknown;
+    if (
+      !Array.isArray(parsed)
+      || parsed.length < 1
+      || parsed.length > 24
+      || parsed.some((step) =>
+        typeof step !== "string" || step.length === 0 || step.trim() !== step
+      )
+    ) {
+      throw new Error("invalid");
+    }
+    return Object.freeze([...parsed]);
+  } catch {
+    throw new Error("bundled_exercise_instructions_invalid");
+  }
+}
+
 function formatCustomTarget(target: MetricTarget): string {
   switch (target.profile) {
     case "load_reps":
@@ -189,13 +231,21 @@ export async function readCustomExerciseDetail(
             preference.favorite, preference.hidden, preference.archived,
             preference.revision AS preference_revision,
             catalog.source_namespace, catalog.source_revision,
-            catalog.license, catalog.attribution
+            catalog.license, catalog.attribution,
+            instructions.steps_json AS instruction_steps_json,
+            instructions.source_namespace AS instruction_source_namespace,
+            instructions.source_revision AS instruction_source_revision,
+            instructions.upstream_id AS instruction_upstream_id,
+            instructions.source_license AS instruction_source_license,
+            instructions.source_attribution AS instruction_source_attribution
      FROM exercise_library_entries entry
      JOIN exercises source ON source.id = entry.exercise_id
      LEFT JOIN exercise_owner_preferences preference
        ON preference.exercise_id = entry.exercise_id
      LEFT JOIN exercise_catalog_sources catalog
        ON catalog.exercise_id = entry.exercise_id
+     LEFT JOIN exercise_instruction_sets instructions
+       ON instructions.exercise_id = entry.exercise_id
      WHERE entry.exercise_id = ?`,
     [exerciseId],
   );
@@ -246,6 +296,16 @@ export async function readCustomExerciseDetail(
     equipment: Object.freeze(taxonomy
       .filter(({ kind }) => kind === "equipment")
       .map(({ slug }) => slug)),
+    instructions: instructionSteps(row),
+    instructionSource: row.instruction_source_namespace === null
+      ? null
+      : Object.freeze({
+          namespace: row.instruction_source_namespace,
+          revision: row.instruction_source_revision!,
+          upstreamId: row.instruction_upstream_id,
+          license: row.instruction_source_license!,
+          attribution: row.instruction_source_attribution!,
+        }),
     metricIdentity: customExerciseIdentity(row),
     defaultRestSeconds: row.default_rest_seconds,
     availability: row.availability,

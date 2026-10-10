@@ -47,6 +47,14 @@ export type ExerciseDetailSnapshot = Readonly<{
   primaryMuscles: readonly string[];
   secondaryMuscles: readonly string[];
   equipment: readonly string[];
+  instructions: readonly string[];
+  instructionSource: Readonly<{
+    namespace: string;
+    revision: string;
+    upstreamId: string | null;
+    license: string;
+    attribution: string;
+  }> | null;
   metricIdentity: MetricIdentity;
   defaultRestSeconds: number;
   availability: "available" | "unavailable";
@@ -444,6 +452,31 @@ export function ExerciseDetailScreen({
               />
               </View>
             </ContentCard>
+            {snapshot.instructions.length > 0 ? (
+              <ContentCard testID="exercise-detail-instructions-card">
+                <SectionHeader
+                  title="Instructions"
+                  tone="card"
+                  {...(snapshot.instructionSource === null
+                    ? {}
+                    : {
+                        supportingText:
+                          `Source: ${snapshot.instructionSource.attribution}`,
+                      })}
+                />
+                {snapshot.instructions.map((instruction, index) => (
+                  <Text
+                    key={`${snapshot.exerciseId}:instruction:${index}`}
+                    style={[
+                      typeScale.body as TextStyle,
+                      { color: colors.contentCardText },
+                    ]}
+                  >
+                    {`${index + 1}. ${instruction}`}
+                  </Text>
+                ))}
+              </ContentCard>
+            ) : null}
             <ContentCard testID="exercise-detail-history-card">
               <SectionHeader
                 supportingText="Best, Average, and Last stay separated by metric identity and comparable targets."

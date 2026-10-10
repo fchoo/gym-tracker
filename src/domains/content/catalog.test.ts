@@ -95,7 +95,7 @@ describe("accepted exercise catalog runtime boundary", () => {
 
     expect(catalog.metadata).toEqual(expect.objectContaining({
       namespace: "gym-tracker.exercise-library",
-      revision: 1,
+      revision: 2,
       normalizationVersion: 1,
       metricSchemaVersion: 1,
     }));
@@ -106,7 +106,7 @@ describe("accepted exercise catalog runtime boundary", () => {
     expect(catalog.acceptance).toEqual(expect.objectContaining({
       accepted: true,
       reviewerResponse: "approved",
-      packSha256: "9ffa6209c4e07ddbd0f3988a2b3607b8f536595f70d4b74f41e0d5fa95779ae9",
+      packSha256: "d1e5f190d1bab2c337a203c67374e19807606f9340cb618bcf7564cf75fe2b13",
     }));
   });
 
@@ -161,7 +161,7 @@ describe("accepted exercise catalog runtime boundary", () => {
     [
       "unknown catalog version",
       (catalog: Record<string, unknown>) => {
-        catalog.schemaVersion = 2;
+        catalog.schemaVersion = 3;
       },
       "catalog_version_unsupported",
     ],
@@ -264,6 +264,14 @@ describe("accepted exercise catalog runtime boundary", () => {
           ...(exercises[1]!.source as object),
           upstreamId: firstSource.upstreamId,
         };
+        exercises[1]!.instructions = {
+          ...(exercises[1]!.instructions as object),
+          source: {
+            ...((exercises[1]!.instructions as Record<string, unknown>)
+              .source as object),
+            upstreamId: firstSource.upstreamId,
+          },
+        };
       },
       "catalog_identity_conflict",
     ],
@@ -274,6 +282,26 @@ describe("accepted exercise catalog runtime boundary", () => {
       code,
       retryable: false,
     } satisfies Partial<CatalogBoundaryError>));
+  });
+
+  it("requires source-backed, non-empty bundled instruction steps", async () => {
+    const catalog = await parseExerciseCatalog(acceptedInput());
+
+    expect(catalog.exercises.every((exercise) =>
+      exercise.instructions.steps.length > 0
+      && exercise.instructions.steps.every((step) => step.trim() === step)
+      && exercise.instructions.source.attribution.length > 0
+    )).toBe(true);
+
+    await expect(parseExerciseCatalog(rebindAcceptedInput((input) => {
+      const exercise = (input.exercises as Array<Record<string, unknown>>)[0]!;
+      exercise.instructions = {
+        ...(exercise.instructions as object),
+        steps: [],
+      };
+    }))).rejects.toEqual(expect.objectContaining({
+      code: "catalog_invalid",
+    }));
   });
 
   it("rejects a manifest whose pinned source hashes drift from the catalog", async () => {

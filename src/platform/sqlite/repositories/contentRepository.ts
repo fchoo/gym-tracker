@@ -97,6 +97,16 @@ type TaxonomyRow = Readonly<{
   slug: string;
 }>;
 
+type InstructionRow = Readonly<{
+  exercise_id: string;
+  source_namespace: string;
+  source_revision: string;
+  upstream_id: string | null;
+  source_license: string;
+  source_attribution: string;
+  steps_json: string;
+}>;
+
 type StagedExercise = Readonly<{
   exercise: CatalogExercise;
   aliases: readonly Readonly<{
@@ -305,6 +315,27 @@ function taxonomyMatches(
     && existingKeys.every((key, index) => key === stagedKeys[index]);
 }
 
+function instructionsMatch(
+  existing: InstructionRow | undefined,
+  exercise: CatalogExercise,
+): boolean {
+  return existing !== undefined && JSON.stringify([
+    existing.source_namespace,
+    existing.source_revision,
+    existing.upstream_id,
+    existing.source_license,
+    existing.source_attribution,
+    existing.steps_json,
+  ]) === JSON.stringify([
+    exercise.instructions.source.namespace,
+    exercise.instructions.source.sourceRevision,
+    exercise.instructions.source.upstreamId,
+    exercise.instructions.source.license,
+    exercise.instructions.source.attribution,
+    JSON.stringify(exercise.instructions.steps),
+  ]);
+}
+
 function installedMatchesExpected(
   installed: InstalledRow | undefined,
   expected: InstalledContentRevision | null,
@@ -336,7 +367,7 @@ async function classifyImport(
   catalog: ExerciseCatalog,
   staged: readonly StagedExercise[],
 ): Promise<ImportClassification | ContentImportErrorCode> {
-  const [libraryRows, sourceRows, aliasRows, taxonomyRows] = await Promise.all([
+  const [libraryRows, sourceRows, aliasRows, taxonomyRows, instructionRows] = await Promise.all([
     transaction.queryAll<LibraryRow>(
       `SELECT exercise_id, origin, canonical_name, exercise_type,
               movement_class, metric_profile, metric_contract_version,
@@ -364,6 +395,11 @@ async function classifyImport(
        FROM exercise_taxonomy
        ORDER BY exercise_id, kind, relation, ordinal`,
     ),
+    transaction.queryAll<InstructionRow>(
+      `SELECT exercise_id, source_namespace, source_revision, upstream_id,
+              source_license, source_attribution, steps_json
+       FROM exercise_instruction_sets`,
+    ),
   ]);
   const libraryById = new Map(
     libraryRows.map((row) => [row.exercise_id, row]),
@@ -381,6 +417,9 @@ async function classifyImport(
   );
   const aliasesById = arrayMap(aliasRows);
   const taxonomyById = arrayMap(taxonomyRows);
+  const instructionsById = new Map(
+    instructionRows.map((row) => [row.exercise_id, row]),
+  );
   const incomingIds = new Set(staged.map(({ exercise }) => exercise.id));
   const added: string[] = [];
   const updated: string[] = [];
@@ -422,6 +461,7 @@ async function classifyImport(
       || !sourceMatches(source, row.exercise)
       || !aliasesMatch(aliasesById.get(row.exercise.id) ?? [], row)
       || !taxonomyMatches(taxonomyById.get(row.exercise.id)!, row)
+      || !instructionsMatch(instructionsById.get(row.exercise.id), row.exercise)
     ) {
       updated.push(row.exercise.id);
     }
@@ -713,6 +753,39 @@ async function replaceTaxonomy(
   }
 }
 
+async function upsertInstructions(
+  transaction: SqliteTransactionExecutor,
+  catalog: ExerciseCatalog,
+  exercise: CatalogExercise,
+): Promise<void> {
+  await transaction.execute(
+    `INSERT INTO exercise_instruction_sets
+      (exercise_id, content_revision_id, source_namespace, source_revision,
+       upstream_id, source_license, source_attribution, steps_json, revision)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+     ON CONFLICT(exercise_id) DO UPDATE SET
+       content_revision_id = excluded.content_revision_id,
+       source_namespace = excluded.source_namespace,
+       source_revision = excluded.source_revision,
+       upstream_id = excluded.upstream_id,
+       source_license = excluded.source_license,
+       source_attribution = excluded.source_attribution,
+       steps_json = excluded.steps_json,
+       revision = excluded.revision`,
+    [
+      exercise.id,
+      contentRevisionId(catalog),
+      exercise.instructions.source.namespace,
+      exercise.instructions.source.sourceRevision,
+      exercise.instructions.source.upstreamId,
+      exercise.instructions.source.license,
+      exercise.instructions.source.attribution,
+      JSON.stringify(exercise.instructions.steps),
+      catalog.metadata.revision,
+    ],
+  );
+}
+
 async function syncAliases(
   transaction: SqliteTransactionExecutor,
   staged: StagedExercise,
@@ -782,6 +855,7 @@ async function writeCatalog(
   for (const row of staged) {
     await upsertLibraryEntry(transaction, catalog, row.exercise);
     await upsertCatalogSource(transaction, catalog, row.exercise);
+    await upsertInstructions(transaction, catalog, row.exercise);
     await syncAliases(transaction, row);
     await replaceTaxonomy(transaction, row);
     await syncSearchTerms(transaction, row);
