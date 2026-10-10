@@ -134,6 +134,10 @@ test("Phase 14 Maestro flows encode all shell stages and stay native-only", () =
   assert.match(settingsRecovery, /hideKeyboard/u);
   assert.match(settingsRecovery, /id: "restore-clean-action"/u);
   assert.match(settingsRecovery, /visible: "No backup was selected"/u);
+  const restAlertsStart = settingsRecovery.indexOf("true: ${PHASE14_STAGE == 'phase14-rest-alerts'}");
+  const restAlertsEnd = settingsRecovery.indexOf("- runFlow:", restAlertsStart + 1);
+  const restAlerts = settingsRecovery.slice(restAlertsStart, restAlertsEnd);
+  assert.match(restAlerts, /scrollUntilVisible:[\s\S]*?text: "Rest alerts"/u);
   const automaticBackupStart = settingsRecovery.indexOf("true: ${PHASE14_STAGE == 'phase14-automatic-backup'}");
   const automaticBackupEnd = settingsRecovery.indexOf("- runFlow:", automaticBackupStart + 1);
   const automaticBackup = settingsRecovery.slice(automaticBackupStart, automaticBackupEnd);
