@@ -1,0 +1,39 @@
+import { render, screen } from "@testing-library/react-native";
+import { describe, expect, it } from "@jest/globals";
+import React from "react";
+
+import type { ExerciseMetricHistory } from "../../domains/history";
+import { ExerciseTrendSheet } from "../components/ExerciseTrendSheet";
+import { AppearanceProvider } from "../theme";
+
+const history: ExerciseMetricHistory = {
+  exerciseId: "back-squat",
+  warmupVisits: [],
+  segments: [{
+    identity: { profile: "load_reps", contractVersion: 1, exerciseMetricGeneration: 1 },
+    referenceTarget: { version: 1, profile: "load_reps", loadGrams: 60_000, minReps: 6, maxReps: 8, incrementGrams: 2_500, perSide: false },
+    comparableSets: [{
+      sessionId: "session-1", localDate: "2026-08-24", exerciseId: "back-squat", exerciseName: "Back Squat",
+      identity: { profile: "load_reps", contractVersion: 1, exerciseMetricGeneration: 1 },
+      target: { version: 1, profile: "load_reps", loadGrams: 60_000, minReps: 6, maxReps: 8, incrementGrams: 2_500, perSide: false },
+      observation: { version: 1, profile: "load_reps", loadGrams: 60_000, reps: 8, source: "manual" },
+      sessionStatus: "completed", setKind: "working", setStatus: "completed", plannedWorkingSets: 1, completedWorkingSets: 1,
+      setId: "set-1", setOrdinal: 0, completedAtMs: 1_724_428_800_000,
+    }],
+    best: null,
+    average: null,
+    last: null,
+  }],
+};
+
+describe("ExerciseTrendSheet", () => {
+  it("renders written Recent, Best, Change, and chart data for compatible evidence", () => {
+    render(<AppearanceProvider><ExerciseTrendSheet exerciseName="Back Squat" history={history} onClose={() => undefined} visible /></AppearanceProvider>);
+
+    expect(screen.getByText("Recent")).toBeOnTheScreen();
+    expect(screen.getByText("Best")).toBeOnTheScreen();
+    expect(screen.getByText("Change")).toBeOnTheScreen();
+    expect(screen.getByLabelText("Back Squat comparable history chart")).toBeOnTheScreen();
+    expect(screen.getByText(/24 August 2026/u)).toBeOnTheScreen();
+  });
+});

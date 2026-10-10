@@ -9,6 +9,7 @@ import type {
 } from "../metrics";
 import {
   buildExerciseMetricHistory,
+  projectComparableExerciseTrend,
   type EffectiveMetricHistorySet,
 } from "./metricHistory";
 
@@ -56,6 +57,35 @@ function loadSet(
 }
 
 describe("effective metric history", () => {
+  it("projects at most six reverse-chronological completed comparable sessions", () => {
+    const history = buildExerciseMetricHistory({
+      exerciseId: "bench-press",
+      sets: Array.from({ length: 8 }, (_, index) => loadSet({
+        sessionId: `session-${index + 1}`,
+        setId: `set-${index + 1}`,
+        localDate: `2026-08-${String(index + 1).padStart(2, "0")}`,
+        completedAtMs: 1_724_428_800_000 + index * 86_400_000,
+        observation: {
+          version: 1,
+          profile: "load_reps",
+          loadGrams: 40_000 + index * 2_500,
+          reps: 8,
+          source: "manual",
+        },
+      })),
+    });
+
+    const trend = projectComparableExerciseTrend(history);
+
+    expect(trend).toMatchObject({
+      recent: { setId: "set-8" },
+      best: { setId: "set-8" },
+    });
+    expect(trend?.sessions.map(({ setId }) => setId)).toEqual([
+      "set-8", "set-7", "set-6", "set-5", "set-4", "set-3",
+    ]);
+  });
+
   it("uses only fully completed working-set visits for Best, Average, and Last", () => {
     const history = buildExerciseMetricHistory({
       exerciseId: "bench-press",
