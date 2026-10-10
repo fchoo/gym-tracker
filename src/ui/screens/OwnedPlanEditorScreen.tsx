@@ -18,9 +18,6 @@ import type {
   MetricTarget,
 } from "../../domains/metrics";
 import type {
-  AdvancedTimingConfigV1,
-} from "../../domains/advancedTiming";
-import type {
   OwnedPlanDayInput,
   OwnedPlanDraftInput,
   OwnedPlanOccurrenceInput,
@@ -45,10 +42,6 @@ import {
   SectionHeader,
   SkeletonBlock,
 } from "../components";
-import {
-  AdvancedTimingConfigSheet,
-  advancedTimingConfigSummary,
-} from "../components/AdvancedTimingConfigSheet";
 import {
   PlanEditorReorderableRow,
   PlanEditorTextField,
@@ -154,14 +147,7 @@ type TargetDraft = Readonly<{
   plannedRounds: string;
   workIntervalSeconds: string;
   intervalRestSeconds: string;
-  advancedTimingDefault: AdvancedTimingConfigV1 | null;
-  advancedTimingWarmupOverrides: readonly (AdvancedTimingConfigV1 | null)[];
-  advancedTimingWorkingOverrides: readonly (AdvancedTimingConfigV1 | null)[];
 }>;
-
-type TargetTimingScope =
-  | "exercise"
-  | Readonly<{ kind: "warmup" | "working"; ordinal: number }>;
 
 const PROFILE_LABELS: Readonly<Record<MetricProfile, string>> = {
   load_reps: "Load + reps",
@@ -226,20 +212,7 @@ function initialTargetDraft(
     plannedRounds: "3",
     workIntervalSeconds: "30",
     intervalRestSeconds: "30",
-    advancedTimingDefault: null,
-    advancedTimingWarmupOverrides: [],
-    advancedTimingWorkingOverrides: [null],
   };
-}
-
-function resizeTimingOverrides(
-  values: readonly (AdvancedTimingConfigV1 | null)[],
-  count: number,
-): readonly (AdvancedTimingConfigV1 | null)[] {
-  return Object.freeze(Array.from(
-    { length: count },
-    (_, ordinal) => values[ordinal] ?? null,
-  ));
 }
 
 function positiveInteger(value: string): number | null {
@@ -767,36 +740,23 @@ export function OwnedPlanEditorScreen({
     const occurrenceId = nextId("owned-plan-occurrence");
     const profile = targetDraft.exercise.metricIdentity.profile;
     const policyId = `${profile}.manual_hold.v1`;
-    const warmupOverrides = resizeTimingOverrides(
-      targetDraft.advancedTimingWarmupOverrides,
-      warmupSets,
-    );
-    const workingOverrides = resizeTimingOverrides(
-      targetDraft.advancedTimingWorkingOverrides,
-      workingSets,
-    );
     const occurrence: OwnedPlanOccurrenceInput = {
       id: occurrenceId,
       exerciseId: targetDraft.exercise.id,
       ordinal: selectedDay.occurrences.length,
       restSeconds,
       metricIdentity: { ...targetDraft.exercise.metricIdentity },
-      ...(targetDraft.advancedTimingDefault === null
-        ? {}
-        : { advancedTimingDefault: targetDraft.advancedTimingDefault }),
       warmups: Array.from({ length: warmupSets }, (_, ordinal) => ({
         id: nextId("owned-plan-warmup"),
         ordinal,
         loadGrams: warmupLoadGrams,
         reps: warmupReps,
-        advancedTimingOverride: warmupOverrides[ordinal] ?? null,
       })),
       targets: Array.from({ length: workingSets }, (_, ordinal) => ({
         id: nextId("owned-plan-target"),
         ordinal,
         target: { ...metric.target },
         units: { ...metric.units },
-        advancedTimingOverride: workingOverrides[ordinal] ?? null,
       })),
       policy: {
         id: nextId("owned-plan-policy"),
@@ -1512,9 +1472,7 @@ function TargetEditor({
   onChange(value: TargetDraft): void;
   onSave(): void;
 }>) {
-  const { colors } = useAppTheme();
   const profile = draft.exercise.metricIdentity.profile;
-  const [timingScope, setTimingScope] = useState<TargetTimingScope | null>(null);
   const textField = (
     key: keyof TargetDraft,
     label: string,
@@ -1571,20 +1529,7 @@ function TargetEditor({
             label="Warm-up sets"
             maximum={SET_MAX_COUNT}
             minimum={0}
-            onChangeText={(warmupSets) => {
-              const count = nonnegativeInteger(warmupSets);
-              onChange({
-                ...draft,
-                warmupSets,
-                advancedTimingWarmupOverrides: count === null
-                  || count > SET_MAX_COUNT
-                  ? draft.advancedTimingWarmupOverrides
-                  : resizeTimingOverrides(
-                      draft.advancedTimingWarmupOverrides,
-                      count,
-                    ),
-              });
-            }}
+            onChangeText={(warmupSets) => onChange({ ...draft, warmupSets })}
             tone="card"
             value={draft.warmupSets}
           />
@@ -1597,20 +1542,7 @@ function TargetEditor({
         label="Working sets"
         maximum={SET_MAX_COUNT}
         minimum={1}
-        onChangeText={(workingSets) => {
-          const count = positiveInteger(workingSets);
-          onChange({
-            ...draft,
-            workingSets,
-            advancedTimingWorkingOverrides: count === null
-              || count > SET_MAX_COUNT
-              ? draft.advancedTimingWorkingOverrides
-              : resizeTimingOverrides(
-                  draft.advancedTimingWorkingOverrides,
-                  count,
-                ),
-          });
-        }}
+        onChangeText={(workingSets) => onChange({ ...draft, workingSets })}
         tone="card"
         value={draft.workingSets}
       />
@@ -1659,76 +1591,6 @@ function TargetEditor({
         </>
       ) : null}
       {durationField("restSeconds", "Rest (seconds)")}
-      <View style={styles.timingRow}>
-        <View style={styles.timingCopy}>
-          <Text style={[
-            typeScale.bodyStrong as TextStyle,
-            { color: colors.contentCardText },
-          ]}>
-            Advanced timing
-          </Text>
-          <Text
-            style={[
-              typeScale.secondary as TextStyle,
-              { color: colors.contentCardTextSecondary },
-            ]}
-            testID="advanced-timing-exercise-summary"
-          >
-            {`Exercise · ${advancedTimingConfigSummary(
-              draft.advancedTimingDefault,
-              "exercise",
-            )}`}
-          </Text>
-        </View>
-        <View style={styles.timingActions}>
-          <SecondaryAction
-            label="Exercise timing"
-            onPress={() => setTimingScope("exercise")}
-          />
-        </View>
-      </View>
-      {draft.advancedTimingWarmupOverrides.map((override, ordinal) => (
-        <View key={`warmup-timing-${ordinal}`} style={styles.timingEntry}>
-          <Text
-            style={[
-              typeScale.secondary as TextStyle,
-              { color: colors.contentCardTextSecondary },
-            ]}
-            testID={`advanced-timing-warmup-summary-${ordinal}`}
-          >
-            {`Warm-up W${ordinal + 1} · ${advancedTimingConfigSummary(
-              override,
-              "set",
-            )}`}
-          </Text>
-          <SecondaryAction
-            label={`Warm-up W${ordinal + 1} timing`}
-            onPress={() => setTimingScope({ kind: "warmup", ordinal })}
-            testID={`advanced-timing-warmup-action-${ordinal}`}
-          />
-        </View>
-      ))}
-      {draft.advancedTimingWorkingOverrides.map((override, ordinal) => (
-        <View key={`working-timing-${ordinal}`} style={styles.timingEntry}>
-          <Text
-            style={[
-              typeScale.secondary as TextStyle,
-              { color: colors.contentCardTextSecondary },
-            ]}
-            testID={`advanced-timing-working-summary-${ordinal}`}
-          >
-            {`Working set ${ordinal + 1} · ${advancedTimingConfigSummary(
-              override,
-              "set",
-            )}`}
-          </Text>
-          <SecondaryAction
-            label={`Working set ${ordinal + 1} timing`}
-            onPress={() => setTimingScope({ kind: "working", ordinal })}
-            testID={`advanced-timing-working-action-${ordinal}`}
-          />
-        </View>
-      ))}
       {error ? (
         <InlineNotice
           body="Enter complete valid target values. Your edits are still here."
@@ -1738,36 +1600,6 @@ function TargetEditor({
         />
       ) : null}
       <PrimaryAction label="Save target" onPress={onSave} />
-      <AdvancedTimingConfigSheet
-        initialValue={draft.advancedTimingDefault}
-        onCancel={() => setTimingScope(null)}
-        onSave={(value) => {
-          onChange({ ...draft, advancedTimingDefault: value });
-          setTimingScope(null);
-        }}
-        scope="exercise"
-        visible={timingScope === "exercise"}
-      />
-      {timingScope === null || timingScope === "exercise" ? null : (
-        <AdvancedTimingConfigSheet
-          key={`${timingScope.kind}-${timingScope.ordinal}`}
-          initialValue={(timingScope.kind === "warmup"
-            ? draft.advancedTimingWarmupOverrides
-            : draft.advancedTimingWorkingOverrides)[timingScope.ordinal] ?? null}
-          onCancel={() => setTimingScope(null)}
-          onSave={(value) => {
-            const key = timingScope.kind === "warmup"
-              ? "advancedTimingWarmupOverrides"
-              : "advancedTimingWorkingOverrides";
-            const values = [...draft[key]];
-            values[timingScope.ordinal] = value;
-            onChange({ ...draft, [key]: Object.freeze(values) });
-            setTimingScope(null);
-          }}
-          scope="set"
-          visible
-        />
-      )}
     </View>
   );
 }
