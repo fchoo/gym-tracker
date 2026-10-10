@@ -3381,7 +3381,11 @@ describe("WorkoutAppRuntimeProvider", () => {
           { name: "origin", notnull: 1 },
           { name: "display_ordinal", notnull: 1 },
           { name: "advanced_timing_default_json", notnull: 1 },
+          { name: "default_rest_seconds_is_override", notnull: 1 },
         ];
+      }
+      if (parameters.includes("workout_session_exercise_rest_default_receipts")) {
+        return [{ name: "workout_session_exercise_rest_default_receipts" }];
       }
       if (sql === "PRAGMA table_info(session_sets)") {
         return [

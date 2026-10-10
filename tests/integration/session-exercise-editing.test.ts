@@ -3,6 +3,7 @@ import { DatabaseSync } from "node:sqlite";
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { createHash } from "node:crypto";
 
 import fullBodyFoundationAsset from "../../assets/content/full-body-foundation.v1.json";
 import { parseFullBodyFoundation } from "../../src/domains/content";
@@ -168,7 +169,108 @@ function reorderInput(
     })),
   };
 }
+
+function restDefaultInput(
+  sessionId: string,
+  expectedSessionRevision: number,
+  exercise: Awaited<ReturnType<typeof sessionExercise>>,
+  defaultRestSeconds = 75,
+  requestId = "exercise-rest-default-1",
+) {
+  const input = {
+    sessionId,
+    sessionExerciseId: exercise.id,
+    defaultRestSeconds,
+    expectedSessionRevision,
+    expectedSessionExerciseRevision: exercise.revision,
+    occurredAtMs: 2_500,
+    requestId,
+  };
+  return {
+    ...input,
+    requestSha256: createHash("sha256").update(JSON.stringify({
+      operation: "update_session_exercise_default_rest",
+      ...input,
+    })).digest("hex"),
+  };
+}
 describe("Phase 09 session exercise editing", () => {
+  it("commits one exercise rest override with canonical receipt replay while preserving an active rest", async () => {
+    const { kernel, repository, session } = await setup();
+    const exercise = await sessionExercise(kernel, session.id);
+    await kernel.write((transaction) => transaction.execute(
+      `UPDATE session_rest_states
+       SET status = 'running', started_at_ms = 1_000, ends_at_ms = 91_000,
+           remaining_ms = NULL, expired_at_ms = NULL, next_set_id = NULL, revision = 4
+       WHERE session_id = ?`,
+      [session.id],
+    ));
+    const beforeRest = await kernel.queryAll(
+      "SELECT status, started_at_ms, ends_at_ms, remaining_ms, expired_at_ms, next_set_id, revision FROM session_rest_states WHERE session_id = ?",
+      [session.id],
+    );
+    const input = restDefaultInput(session.id, session.revision, exercise);
+
+    await expect(repository.updateSessionExerciseDefaultRest!(input)).resolves.toMatchObject({
+      id: session.id,
+      revision: session.revision + 1,
+      currentExercise: expect.objectContaining({ id: exercise.id, defaultRestSeconds: 75 }),
+    });
+    await expect(createWorkoutRepository(kernel).updateSessionExerciseDefaultRest!(input))
+      .resolves.toMatchObject({ revision: session.revision + 1 });
+    await expect(repository.updateSessionExerciseDefaultRest!(restDefaultInput(
+      session.id, session.revision, exercise, 60, input.requestId,
+    ))).rejects.toThrow("session_exercise_default_rest_replay_conflict");
+
+    expect(await kernel.queryAll(
+      "SELECT default_rest_seconds, default_rest_seconds_is_override, revision FROM session_exercises WHERE id = ?",
+      [exercise.id],
+    )).toEqual([{ default_rest_seconds: 75, default_rest_seconds_is_override: 1, revision: exercise.revision + 1 }]);
+    expect(await kernel.queryAll(
+      "SELECT status, started_at_ms, ends_at_ms, remaining_ms, expired_at_ms, next_set_id, revision FROM session_rest_states WHERE session_id = ?",
+      [session.id],
+    )).toEqual(beforeRest);
+    await expect(repository.updateSessionExerciseDefaultRest!({
+      ...input,
+      requestId: "wrong-hash",
+    })).rejects.toThrow("session_exercise_default_rest_request_hash_invalid");
+  });
+
+  it("rejects stale, foreign, and rolled-back exercise rest writes without receipts", async () => {
+    let failCommit = false;
+    const { kernel, repository, session } = await setup({
+      beforeCommit: async () => {
+        if (failCommit) {
+          failCommit = false;
+          throw new Error("exercise_rest_commit_failed");
+        }
+      },
+    });
+    const exercise = await sessionExercise(kernel, session.id);
+    const initial = await kernel.queryAll(
+      "SELECT default_rest_seconds, default_rest_seconds_is_override, revision FROM session_exercises WHERE id = ?",
+      [exercise.id],
+    );
+    await expect(repository.updateSessionExerciseDefaultRest!(restDefaultInput(
+      session.id, session.revision + 1, exercise, 70, "stale-rest",
+    ))).rejects.toThrow("session_exercise_default_rest_conflict");
+    await expect(repository.updateSessionExerciseDefaultRest!(restDefaultInput(
+      session.id, session.revision, { ...exercise, id: "foreign-exercise" }, 70, "foreign-rest",
+    ))).rejects.toThrow("session_exercise_default_rest_conflict");
+    failCommit = true;
+    const rollback = restDefaultInput(session.id, session.revision, exercise, 70, "rollback-rest");
+    await expect(repository.updateSessionExerciseDefaultRest!(rollback))
+      .rejects.toThrow("sqlite_commit_failed");
+    expect(await kernel.queryAll(
+      "SELECT default_rest_seconds, default_rest_seconds_is_override, revision FROM session_exercises WHERE id = ?",
+      [exercise.id],
+    )).toEqual(initial);
+    expect(await kernel.queryAll<{ count: number }>(
+      "SELECT COUNT(*) AS count FROM workout_session_exercise_rest_default_receipts WHERE request_id = ?",
+      [rollback.requestId],
+    )).toEqual([{ count: 0 }]);
+  });
+
   it("appends one added-origin exercise and one null-lineage working set without changing prior snapshots", async () => {
     const { kernel, repository, session, libraryExerciseId } = await setup();
     const before = await kernel.queryAll<{ id: string; bytes: string }>("SELECT id, quote(session_id) || quote(exercise_id) || quote(ordinal) || quote(exercise_name) || quote(status) || quote(revision) AS bytes FROM session_exercises WHERE session_id = ? ORDER BY id", [session.id]);

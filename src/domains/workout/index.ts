@@ -183,6 +183,7 @@ export {
   type UndoCompletedSetInput,
   type UndoCompletedSetResult,
   type UpdateActiveSetDraftInput,
+  type UpdateSessionExerciseDefaultRestInput,
   type UpdateWarmupDraftInput,
   type WorkoutSessionView,
   type EmptyWorkoutView,

@@ -32,6 +32,7 @@ import { strengthOccurrenceProvenanceMigration } from "./0032_strength_occurrenc
 import { completedSetCorrectionReceiptsMigration } from "./0033_completed_set_correction_receipts";
 import { runningActivityMatchLedgerMigration } from "./0034_running_activity_match_ledger";
 import { importedActivityLifecycleStateMigration } from "./0035_imported_activity_lifecycle_state";
+import { sessionExerciseRestDefaultsMigration } from "./0036_session_exercise_rest_defaults";
 
 export const migrations = Object.freeze([
   initialMigration,
@@ -68,6 +69,7 @@ export const migrations = Object.freeze([
   completedSetCorrectionReceiptsMigration,
   runningActivityMatchLedgerMigration,
   importedActivityLifecycleStateMigration,
+  sessionExerciseRestDefaultsMigration,
 ]);
 
 export const CURRENT_SCHEMA_VERSION = migrations.reduce(
@@ -108,6 +110,7 @@ export {
   completedSetCorrectionReceiptsMigration,
   runningActivityMatchLedgerMigration,
   importedActivityLifecycleStateMigration,
+  sessionExerciseRestDefaultsMigration,
   outcomeEffortMigration,
   scheduleActivationMigration,
 };

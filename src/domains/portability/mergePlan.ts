@@ -10,13 +10,14 @@ import {
   LOGICAL_BACKUP_TABLE_DEFINITIONS,
 } from "./backupContracts";
 import {
-  workoutPreferenceKey,
-} from "../workout/workoutPreferences";
-import {
   LOGICAL_BACKUP_REFERENCE_DEFINITIONS,
 } from "./restoreCommands";
 
 type MergeTables = Readonly<Record<string, readonly LogicalBackupRow[]>>;
+
+function workoutPreferenceKey(planId: string): string {
+  return `gym_tracker.workout_plan_preferences.v1:${planId}`;
+}
 
 export type PortableMergeTableClass =
   | "metadata"

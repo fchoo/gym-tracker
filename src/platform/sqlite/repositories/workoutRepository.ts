@@ -47,6 +47,10 @@ import {
 import {
   runtimeSha256,
 } from "../../crypto/runtimeSha256";
+import {
+  DEFAULT_WORKOUT_PREFERENCE,
+  workoutPreferenceKey,
+} from "../../../domains/workout/workoutPreferences";
 import type {
   SqliteKernel,
   SqliteTransactionExecutor,
@@ -63,6 +67,7 @@ type SessionRow = Readonly<{
   active_session_exercise_id: string | null;
   active_set_id: string | null;
   revision: number;
+  plan_id?: string | null;
   modified_from_plan?: number;
 }>;
 
@@ -164,6 +169,18 @@ type SessionExerciseReorderReceiptRow = Readonly<{
   committed_at_ms: number;
 }>;
 
+type SessionExerciseRestDefaultReceiptRow = Readonly<{
+  request_sha256: string;
+  session_id: string;
+  session_exercise_id: string;
+  default_rest_seconds: number;
+  expected_session_revision: number;
+  expected_session_exercise_revision: number;
+  result_session_revision: number;
+  result_session_exercise_revision: number;
+  committed_at_ms: number;
+}>;
+
 type PersistedReplaceExerciseResult = Readonly<{
   outcome: "committed";
   disposition: "deleted_provisional" | "skipped_history_preserved";
@@ -201,6 +218,7 @@ type CompletionSetRow = SetRow & Readonly<{
   exercise_revision: number;
   source_plan_day_exercise_id: string | null;
   default_rest_seconds: number;
+  default_rest_seconds_is_override: 0 | 1;
 }>;
 
 type SnapshotV1 = Readonly<{
@@ -1225,12 +1243,44 @@ async function reorderReceipt(
   return receipt;
 }
 
+async function sessionExerciseRestDefaultRequestHash(
+  input: UpdateSessionExerciseDefaultRestInput,
+): Promise<string> {
+  return runtimeSha256(JSON.stringify({
+    operation: "update_session_exercise_default_rest",
+    sessionId: input.sessionId,
+    sessionExerciseId: input.sessionExerciseId,
+    defaultRestSeconds: input.defaultRestSeconds,
+    expectedSessionRevision: input.expectedSessionRevision,
+    expectedSessionExerciseRevision: input.expectedSessionExerciseRevision,
+    occurredAtMs: input.occurredAtMs,
+    requestId: input.requestId,
+  }));
+}
+
+function sessionExerciseRestDefaultReceiptMatches(
+  receipt: SessionExerciseRestDefaultReceiptRow,
+  input: UpdateSessionExerciseDefaultRestInput,
+): boolean {
+  return receipt.request_sha256 === input.requestSha256
+    && receipt.session_id === input.sessionId
+    && receipt.session_exercise_id === input.sessionExerciseId
+    && receipt.default_rest_seconds === input.defaultRestSeconds
+    && receipt.expected_session_revision === input.expectedSessionRevision
+    && receipt.expected_session_exercise_revision
+      === input.expectedSessionExerciseRevision
+    && receipt.result_session_revision === input.expectedSessionRevision + 1
+    && receipt.result_session_exercise_revision
+      === input.expectedSessionExerciseRevision + 1
+    && receipt.committed_at_ms === input.occurredAtMs;
+}
+
 async function exerciseRows(
   transaction: SqliteTransactionExecutor,
   input: Readonly<{ sessionId: string; sessionExerciseId: string }>,
 ): Promise<Readonly<{ session: SessionRow; exercise: ExerciseRow }> | null> {
   const [session] = await transaction.queryAll<SessionRow>(
-    `SELECT id, status, active_session_exercise_id, active_set_id, revision
+    `SELECT id, status, active_session_exercise_id, active_set_id, revision, plan_id
      FROM workout_sessions WHERE id = ?`,
     [input.sessionId],
   );
@@ -1947,7 +1997,7 @@ async function completionRows(
   set: CompletionSetRow;
 }> | null> {
   const [session] = await transaction.queryAll<SessionRow>(
-    `SELECT id, status, active_session_exercise_id, active_set_id, revision
+    `SELECT id, status, active_session_exercise_id, active_set_id, revision, plan_id
      FROM workout_sessions
      WHERE id = ?`,
     [sessionId],
@@ -1967,7 +2017,8 @@ async function completionRows(
                  se.exercise_metric_generation,`
               : ""}
             se.status AS exercise_status, se.revision AS exercise_revision,
-            se.source_plan_day_exercise_id, se.default_rest_seconds
+            se.source_plan_day_exercise_id, se.default_rest_seconds,
+            se.default_rest_seconds_is_override
      FROM session_sets ss
      JOIN session_exercises se ON se.id = ss.session_exercise_id
      WHERE ss.id = ? AND se.session_id = ?`,
@@ -2242,12 +2293,37 @@ async function restDurationSeconds(
   transaction: SqliteTransactionExecutor,
   set: CompletionSetRow,
   next: Awaited<ReturnType<typeof nextWorkingSet>>,
+  planId: string | null | undefined,
 ): Promise<number | null> {
   if (next === null) {
     return null;
   }
   if (next.exercise_id === set.session_exercise_id) {
-    return set.default_rest_seconds;
+    if (set.default_rest_seconds_is_override === 1) {
+      return set.default_rest_seconds;
+    }
+    if (planId === null || planId === undefined) {
+      return DEFAULT_WORKOUT_PREFERENCE.defaultRestSeconds;
+    }
+    const [preference] = await transaction.queryAll<{ value_json: string }>(
+      "SELECT value_json FROM app_settings WHERE key = ?",
+      [workoutPreferenceKey(planId)],
+    );
+    if (preference === undefined) return DEFAULT_WORKOUT_PREFERENCE.defaultRestSeconds;
+    try {
+      const value = JSON.parse(preference.value_json) as Readonly<{
+        version: number; planId: string; defaultRestSeconds: number;
+      }>;
+      if (value.version !== 1 || value.planId !== planId
+        || !Number.isSafeInteger(value.defaultRestSeconds)
+        || value.defaultRestSeconds < 0 || value.defaultRestSeconds > 86_400) {
+        throw new Error("workout_preference_for_rest_invalid");
+      }
+      return value.defaultRestSeconds;
+    } catch (error) {
+      if (error instanceof Error && error.message === "workout_preference_for_rest_invalid") throw error;
+      throw new Error("workout_preference_for_rest_invalid");
+    }
   }
   if (set.source_plan_day_exercise_id === null) {
     return set.default_rest_seconds;
@@ -2395,17 +2471,42 @@ export function createWorkoutRepository(
 
     async updateSessionExerciseDefaultRest(input: UpdateSessionExerciseDefaultRestInput) {
       if (!Number.isSafeInteger(input.defaultRestSeconds) || input.defaultRestSeconds < 0
-        || input.defaultRestSeconds > 86_400 || !Number.isSafeInteger(input.occurredAtMs)) {
+        || input.defaultRestSeconds > 86_400 || !Number.isSafeInteger(input.occurredAtMs)
+        || input.occurredAtMs < 0 || !/^[a-f0-9]{64}$/u.test(input.requestSha256)
+        || input.requestId.trim().length === 0 || input.requestId.length > 128) {
         throw new WorkoutCommandConflictError("session_exercise_default_rest_invalid");
       }
-      const view = await kernel.write(async (transaction) => {
+      const canonicalHash = await sessionExerciseRestDefaultRequestHash(input);
+      if (canonicalHash !== input.requestSha256) {
+        throw new WorkoutCommandConflictError("session_exercise_default_rest_request_hash_invalid");
+      }
+      const view = await kernel.write(async (transaction): Promise<
+        ActiveWorkoutView | null | Readonly<{ code: string }>
+      > => {
+        const [receipt] = await transaction.queryAll<SessionExerciseRestDefaultReceiptRow>(
+          `SELECT request_sha256, session_id, session_exercise_id,
+                  default_rest_seconds, expected_session_revision,
+                  expected_session_exercise_revision, result_session_revision,
+                  result_session_exercise_revision, committed_at_ms
+           FROM workout_session_exercise_rest_default_receipts
+           WHERE request_id = ?`,
+          [input.requestId],
+        );
+        if (receipt !== undefined) {
+          if (!sessionExerciseRestDefaultReceiptMatches(receipt, input)) {
+            return { code: "session_exercise_default_rest_replay_conflict" };
+          }
+          return loadPlannedWorkout(transaction, input.sessionId);
+        }
         const [session] = await transaction.queryAll<SessionRow>(
           "SELECT id, status, active_session_exercise_id, active_set_id, revision FROM workout_sessions WHERE id = ?",
           [input.sessionId],
         );
         if (session === undefined || session.status !== "in_progress" || session.revision !== input.expectedSessionRevision) return null;
         const update = await transaction.execute(
-          `UPDATE session_exercises SET default_rest_seconds = ?, revision = revision + 1
+          `UPDATE session_exercises
+           SET default_rest_seconds = ?, default_rest_seconds_is_override = 1,
+               revision = revision + 1
            WHERE id = ? AND session_id = ? AND revision = ?`,
           [input.defaultRestSeconds, input.sessionExerciseId, input.sessionId, input.expectedSessionExerciseRevision],
         );
@@ -2415,8 +2516,30 @@ export function createWorkoutRepository(
           [input.sessionId, input.expectedSessionRevision],
         );
         if (sessionUpdate.changes !== 1) throw new Error("session_exercise_default_rest_session_update_failed");
+        await transaction.execute(
+          `INSERT INTO workout_session_exercise_rest_default_receipts
+            (request_id, request_sha256, session_id, session_exercise_id,
+             default_rest_seconds, expected_session_revision,
+             expected_session_exercise_revision, result_session_revision,
+             result_session_exercise_revision, result_json, committed_at_ms)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+          [
+            input.requestId, input.requestSha256, input.sessionId,
+            input.sessionExerciseId, input.defaultRestSeconds,
+            input.expectedSessionRevision, input.expectedSessionExerciseRevision,
+            input.expectedSessionRevision + 1,
+            input.expectedSessionExerciseRevision + 1,
+            JSON.stringify({ version: 1, sessionId: input.sessionId,
+              sessionExerciseId: input.sessionExerciseId,
+              defaultRestSeconds: input.defaultRestSeconds }),
+            input.occurredAtMs,
+          ],
+        );
         return loadPlannedWorkout(transaction, input.sessionId);
       });
+      if (view !== null && "code" in view) {
+        throw new WorkoutCommandConflictError(view.code);
+      }
       if (view === null) throw new WorkoutCommandConflictError("session_exercise_default_rest_conflict");
       return view;
     },
@@ -3325,6 +3448,7 @@ export function createWorkoutRepository(
           transaction,
           set,
           next,
+          session.plan_id,
         );
         const observation = observationColumns(input.observation);
         const setUpdate = await transaction.execute(

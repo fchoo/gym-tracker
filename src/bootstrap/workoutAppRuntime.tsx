@@ -161,6 +161,7 @@ import {
   type AddWorkingSetInput,
   type CompleteSetInput,
   type CompleteWarmupInput,
+  type UpdateSessionExerciseDefaultRestInput,
   type DiscardWorkoutInput,
   type FinishCompletedInput,
   type FinishPartialInput,
@@ -627,6 +628,9 @@ type RuntimeValue = RuntimeState & Readonly<{
     input: AddWorkingSetInput,
   ): Promise<CommittedWorkoutMutationResult>;
   completeSet(input: CompleteSetInput): ReturnType<typeof completeSet>;
+  updateSessionExerciseDefaultRest(
+    input: UpdateSessionExerciseDefaultRestInput,
+  ): Promise<ActiveWorkoutView>;
   readWorkoutPreferences(planId: string): Promise<WorkoutPreference>;
   setWorkoutPreferences(input: WorkoutPreferenceWrite): Promise<WorkoutPreference>;
   completeWarmup(input: CompleteWarmupInput): Promise<ActiveWorkoutView>;
@@ -3902,6 +3906,21 @@ export function WorkoutAppRuntimeProvider({
     });
   }, [reconcileAfterCommit, requireServices, trustedRead]);
 
+  const updateWorkoutSessionExerciseDefaultRest = useCallback(
+    async (input: UpdateSessionExerciseDefaultRestInput) => {
+      const result = await runWorkoutMutation(
+        (repository) => {
+          if (repository.updateSessionExerciseDefaultRest === undefined) {
+            throw new Error("session_exercise_default_rest_unavailable");
+          }
+          return repository.updateSessionExerciseDefaultRest(input);
+        },
+      );
+      return result as ActiveWorkoutView;
+    },
+    [runWorkoutMutation],
+  );
+
   const readWorkoutPreferences = useCallback((planId: string) =>
     requireServices().workoutPreferenceRepository.read(planId), [requireServices]);
 
@@ -4143,6 +4162,7 @@ export function WorkoutAppRuntimeProvider({
     adjustRest: adjustWorkoutRest,
     beginAdvancedTimingClusterGap: beginRuntimeAdvancedTimingClusterGap,
     completeSet: completeWorkoutSet,
+    updateSessionExerciseDefaultRest: updateWorkoutSessionExerciseDefaultRest,
     readWorkoutPreferences,
     setWorkoutPreferences,
     completeWarmup: completeWorkoutWarmup,
