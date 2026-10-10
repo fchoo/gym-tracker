@@ -70,6 +70,12 @@ tags:
           visible: "App Settings"
           timeout: 30000
       - assertVisible: "Appearance"
+      - scrollUntilVisible:
+          element:
+            text: ${PHASE14_THEME_OPTION}
+          direction: DOWN
+          centerElement: true
+          timeout: 30000
       - tapOn: ${PHASE14_THEME_OPTION}
       - assertVisible: ${PHASE14_THEME_OPTION}
       - pressKey: BACK

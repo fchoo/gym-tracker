@@ -121,6 +121,13 @@ test("Phase 14 Maestro flows encode all shell stages and stay native-only", () =
   for (const id of ["phase14-four-roots", "phase14-root-state", "phase14-appearance", "phase14-tokens", "phase14-sheets", "phase14-toasts", "phase14-launch", "phase14-rest-alerts", "phase14-settings-deep-links", "phase14-removed-sessions", "phase14-data-recovery", "phase14-automatic-backup", "phase14-manual-backup"]) assert.match(combined, new RegExp(`PHASE14_STAGE == '${id}'`, "u"));
   const themeSelection = readFileSync("maestro/phase14/select-theme.yaml", "utf8");
   assert.match(themeSelection, /scrollUntilVisible:[\s\S]*?text: \$\{PHASE14_THEME_OPTION\}/u);
+  const appearanceJourney = combined.match(
+    /PHASE14_STAGE == 'phase14-appearance' && PHASE14_ACTION == 'none'[\s\S]*?(?=\n- runFlow:|$)/u,
+  )?.[0] ?? "";
+  assert.match(
+    appearanceJourney,
+    /scrollUntilVisible:[\s\S]*?text: \$\{PHASE14_THEME_OPTION\}[\s\S]*?tapOn: \$\{PHASE14_THEME_OPTION\}/u,
+  );
   assert.match(settingsRecovery, /tapOn: "Manual encrypted backup"/u);
   assert.match(settingsRecovery, /inputText: "phase14-cancel-only"/u);
   assert.match(settingsRecovery, /PHASE14_ACTION == 'ime-clearance-restore-field'/u);
