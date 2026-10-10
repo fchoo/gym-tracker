@@ -151,6 +151,69 @@ describe("ActiveWorkoutScreen explicit-save editor", () => {
     expect(addExercise).not.toHaveBeenCalled();
   });
 
+  it("requires explicit named delete confirmation and retains protected history truthfully", async () => {
+    const base = workoutView();
+    const completed = {
+      ...base.currentExercise.workingSets[0]!,
+      completedAtMs: 3_000,
+      status: "completed" as const,
+    };
+    const protectedView = {
+      ...base,
+      activeSetId: null,
+      currentExercise: {
+        ...base.currentExercise,
+        status: "completed" as const,
+        workingSets: [completed],
+      },
+      exercises: [{
+        ...base.currentExercise,
+        status: "completed" as const,
+        workingSets: [completed],
+      }],
+    };
+    await renderScreen(protectedView);
+
+    await fireEvent.press(screen.getByRole("button", {
+      name: "Back Squat exercise actions",
+    }));
+    await fireEvent.press(screen.getByRole("button", { name: "Delete exercise" }));
+
+    expect(screen.getByRole("header", { name: "Delete Back Squat?" })).toBeOnTheScreen();
+    expect(screen.getByRole("button", { name: "Confirm delete Back Squat" })).toBeOnTheScreen();
+    expect(screen.getByText(/completed sets.*marked Skipped/u)).toBeOnTheScreen();
+  });
+
+  it("retries a failed replace with the exact receipt-fenced command envelope", async () => {
+    let clock = 3_000;
+    const replaceExercise = jest.fn<NonNullable<ActiveWorkoutCommands["replaceExercise"]>>()
+      .mockRejectedValueOnce(new Error("storage_failed"));
+    const initial = workoutView();
+    await render(
+      <AppearanceProvider>
+        <ActiveWorkoutScreen
+          availableExercises={[{ id: "deadlift", name: "Deadlift" }]}
+          commands={commands(initial, { replaceExercise })}
+          nowMs={() => clock++}
+          onFinishLater={jest.fn()}
+          onGoBack={jest.fn()}
+          sessionId={initial.id}
+          view={initial}
+        />
+      </AppearanceProvider>,
+    );
+
+    await fireEvent.press(screen.getByRole("button", { name: "Back Squat exercise actions" }));
+    await fireEvent.press(screen.getByRole("button", { name: "Replace exercise" }));
+    await fireEvent.press(screen.getByRole("radio", { name: "Deadlift" }));
+    await fireEvent.press(screen.getByRole("button", { name: "Replace with Deadlift" }));
+    await waitFor(() => expect(replaceExercise).toHaveBeenCalledTimes(1));
+    await fireEvent.press(screen.getByRole("button", { name: "Retry replacing exercise" }));
+    await waitFor(() => expect(replaceExercise).toHaveBeenCalledTimes(2));
+
+    expect(replaceExercise.mock.calls[1]).toEqual(replaceExercise.mock.calls[0]);
+  });
+
   it("scopes the two-option Add set menu to its invoking exercise", async () => {
     const initial = workoutView();
     const warmup = {
