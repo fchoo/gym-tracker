@@ -72,15 +72,18 @@ describe("WorkoutSessionPresentation", () => {
   });
 
   it("keeps composed overview nodes mounted when a completed exercise is collapsed", async () => {
+    const activeExercise = model.exercises[0]!;
+    const completedExercise = model.exercises[1]!;
+    const completedWorkingSet = completedExercise.workingSets[0]!;
     const completedExerciseModel: WorkoutPresentationModel = {
       ...model,
       exercises: [
-        model.exercises[0],
+        activeExercise,
         {
-          ...model.exercises[1],
+          ...completedExercise,
           status: "completed",
           workingSets: [{
-            ...model.exercises[1]!.workingSets[0]!,
+            ...completedWorkingSet,
             status: "completed",
             result: "45 kg × 10",
           }],
