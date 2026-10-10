@@ -60,6 +60,42 @@ function lifecycleFromFacts(status: string, isActive: number): RunningPlanAggreg
   return isActive === 1 ? "active" : "inactive";
 }
 
+/**
+ * Read the readiness facts from the current membership, not the historical
+ * `running_plans.status` cache. A slot can be retired by a complete graph save
+ * while its old session revision remains deliberately retained for history.
+ */
+async function readRunningReadiness(
+  executor: SqliteReadTransactionExecutor,
+  planId: string,
+): Promise<RunningReadiness> {
+  const [recovery, slots] = await Promise.all([
+    executor.queryAll<{ count: number }>(`SELECT COUNT(*) AS count
+      FROM running_session_slots slot
+      JOIN running_session_roots root ON root.id = (
+        SELECT slot_revision.session_root_id
+        FROM running_session_slot_revisions slot_revision
+        WHERE slot_revision.slot_root_id = slot.id
+          AND slot_revision.session_revision_id = slot.session_revision_id
+        ORDER BY slot_revision.revision DESC
+        LIMIT 1
+      )
+      JOIN running_session_revisions revision
+        ON revision.id = slot.session_revision_id
+       AND revision.revision = root.current_revision
+      WHERE slot.plan_id = ? AND slot.retired_at_ms IS NULL
+        AND revision.session_kind = 'recovery'`, [planId]),
+    executor.queryAll<{ count: number }>(
+      "SELECT COUNT(*) AS count FROM running_session_slots WHERE plan_id = ? AND retired_at_ms IS NULL",
+      [planId],
+    ),
+  ]);
+  return evaluateRunningReadiness({
+    hasRecoveryRevision: (recovery[0]?.count ?? 0) > 0,
+    slotCount: slots[0]?.count ?? 0,
+  });
+}
+
 async function readRunningLifecyclePreview(
   executor: SqliteReadTransactionExecutor,
   planId: string,
@@ -93,8 +129,11 @@ async function readRunningLifecyclePreview(
     "SELECT COUNT(*) AS count FROM workout_sessions WHERE status = 'in_progress'",
   );
   const lifecycle = lifecycleFromFacts(target.running_status, target.plan_active);
+  const readiness = action === "activate"
+    ? await readRunningReadiness(executor, planId)
+    : null;
   if (
-    (action === "activate" && (lifecycle !== "inactive" || target.running_status !== "ready"))
+    (action === "activate" && (lifecycle !== "inactive" || !readiness?.ready))
     || (action === "archive" && lifecycle === "archived")
     || (action === "reactivate" && lifecycle !== "archived")
   ) throw new Error("running_lifecycle_action_invalid");
@@ -465,8 +504,13 @@ export function createRunningPlanRepository(kernel: SqliteKernel) {
           [input.planId, input.expectedPlanRevision],
         );
         if (changed.changes !== 1) throw new Error("running_plan_revision_conflict");
-        if (plan.status === "draft" && input.sessions.some((session) => session.sessionKind === "recovery") && input.slots.length > 0) {
-          await transaction.execute("UPDATE running_plans SET status = 'ready', revision = revision + 1 WHERE plan_id = ? AND status = 'draft'", [input.planId]);
+        if (plan.status !== "retired") {
+          const readiness = await readRunningReadiness(transaction, input.planId);
+          const status = readiness.ready ? "ready" : "draft";
+          await transaction.execute(
+            "UPDATE running_plans SET status = ?, revision = revision + 1 WHERE plan_id = ? AND status != ?",
+            [status, input.planId, status],
+          );
         }
         await transaction.execute(
           `INSERT INTO running_plan_events(id, plan_id, event_type, payload_json, created_at_ms)
@@ -483,13 +527,7 @@ export function createRunningPlanRepository(kernel: SqliteKernel) {
       });
     },
     async readiness(planId: string): Promise<RunningReadiness> {
-      const [recovery, slots] = await Promise.all([
-        kernel.queryAll<{ count: number }>(`SELECT COUNT(*) AS count FROM running_session_slots slot
-          JOIN running_session_revisions revision ON revision.id = slot.session_revision_id
-          WHERE slot.plan_id = ? AND slot.retired_at_ms IS NULL AND revision.session_kind = 'recovery'`, [planId]),
-        kernel.queryAll<{ count: number }>("SELECT COUNT(*) AS count FROM running_session_slots WHERE plan_id = ? AND retired_at_ms IS NULL", [planId]),
-      ]);
-      return evaluateRunningReadiness({ hasRecoveryRevision: (recovery[0]?.count ?? 0) > 0, slotCount: slots[0]?.count ?? 0 });
+      return readRunningReadiness(kernel, planId);
     },
     async createInactiveMinimum(input: CreateInactiveMinimumRunningPlanInput): Promise<void> {
       const readiness = evaluateRunningReadiness({ hasRecoveryRevision: true, slotCount: input.slots.length });
