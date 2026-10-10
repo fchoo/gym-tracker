@@ -2,7 +2,10 @@ import type { SqliteKernel } from "../sqliteKernel";
 import {
   evaluateRunningReadiness,
   parseRunningPlanAggregate,
+  parseRunningGoal,
+  parseRunningSessionRevision,
   type RunningPlanAggregate,
+  type RunningPlanSession,
   type RunningReadiness,
 } from "../../../domains/running/contracts";
 import { parseLocalDate, weekdayForLocalDate } from "../../../domains/scheduling/localDate";
@@ -45,15 +48,53 @@ export type CreateInactiveMinimumRunningPlanInput = Readonly<{
 export function createRunningPlanRepository(kernel: SqliteKernel) {
   return Object.freeze({
     async readAggregate(planId: string): Promise<RunningPlanAggregate | null> {
-      const [event] = await kernel.queryAll<{ payload_json: string }>(
-        `SELECT payload_json FROM running_plan_events
-         WHERE plan_id = ? AND json_extract(payload_json, '$.aggregate.version') = 1
-         ORDER BY created_at_ms DESC, id DESC LIMIT 1`,
+      const [plan] = await kernel.queryAll<{
+        id: string;
+        name: string;
+        revision: number;
+        created_at_ms: number;
+        is_active: number;
+      }>(
+        `SELECT plan.id, plan.name, plan.revision, running.created_at_ms, plan.is_active
+         FROM plans plan JOIN running_plans running ON running.plan_id = plan.id
+         WHERE plan.id = ? AND plan.plan_kind = 'running'`,
         [planId],
       );
-      if (event === undefined) return null;
-      const payload = JSON.parse(event.payload_json) as { aggregate?: unknown };
-      return parseRunningPlanAggregate(payload.aggregate);
+      if (plan === undefined || plan.is_active !== 0) return null;
+      const [goalRow] = await kernel.queryAll<{ goal_json: string }>(
+        `SELECT goal_json FROM running_goals WHERE plan_id = ?
+         ORDER BY revision DESC, created_at_ms DESC, id DESC LIMIT 1`, [planId],
+      );
+      if (goalRow === undefined) return null;
+      const rows = await kernel.queryAll<{
+        slot_id: string; slot_root_id: string; weekday: RunningPlanSession["slot"]["weekday"];
+        slot_revision: number; ordinal: number; definition_json: string;
+      }>(
+        `SELECT slot_revision.id AS slot_id, slot_root.id AS slot_root_id, slot_root.weekday,
+                slot_revision.revision AS slot_revision, slot_revision.ordinal, session.definition_json
+         FROM running_session_slot_roots slot_root
+         JOIN running_session_slot_revisions slot_revision
+           ON slot_revision.slot_root_id = slot_root.id
+          AND slot_revision.revision = (
+            SELECT MAX(current_slot.revision) FROM running_session_slot_revisions current_slot
+             WHERE current_slot.slot_root_id = slot_root.id
+          )
+         JOIN running_session_roots session_root ON session_root.id = slot_revision.session_root_id
+         JOIN running_session_revisions session
+           ON session.id = slot_revision.session_revision_id
+          AND session.revision = session_root.current_revision
+         WHERE slot_root.plan_id = ?
+         ORDER BY slot_root.weekday, slot_revision.ordinal, slot_root.id`, [planId],
+      );
+      const sessions = rows.map((row) => Object.freeze({
+        slot: Object.freeze({ id: row.slot_id, rootId: row.slot_root_id, weekday: row.weekday, revision: row.slot_revision, ordinal: row.ordinal }),
+        session: parseRunningSessionRevision(JSON.parse(row.definition_json)),
+      }));
+      return parseRunningPlanAggregate({
+        version: 1, id: plan.id, name: plan.name, revision: plan.revision,
+        active: false, createdAtMs: plan.created_at_ms,
+        goal: parseRunningGoal(JSON.parse(goalRow.goal_json)), sessions,
+      });
     },
     async createInactiveAggregate(input: CreateInactiveRunningPlanInput): Promise<RunningPlanAggregate> {
       const aggregate = parseRunningPlanAggregate({ ...input.plan, active: false });
