@@ -13,19 +13,27 @@ import {
 } from "@jest/globals";
 import React from "react";
 import type { ActiveWorkoutView } from "../../src/domains/workout";
+import type { WorkoutPreference } from "../../src/domains/workout/workoutPreferences";
 
 const mockBack = jest.fn();
 const mockReplace = jest.fn();
 const mockGetActiveWorkout = jest.fn<() => Promise<ActiveWorkoutView>>();
 const mockCompleteSet = jest.fn();
-const mockReadWorkoutPreferences = jest.fn(async () => ({
+const mockReadWorkoutPreferences = jest.fn<() => Promise<WorkoutPreference>>().mockResolvedValue({
   version: 1 as const,
   planId: "plan-owner",
   defaultRestSeconds: 90,
   weightIncrementGrams: 2500 as const,
   revision: 3,
-}));
-const mockSetWorkoutPreferences = jest.fn(async () => undefined);
+});
+type WorkoutPreferenceWrite = Readonly<{
+  planId: string;
+  expectedRevision: number;
+  defaultRestSeconds: number;
+  weightIncrementGrams: WorkoutPreference["weightIncrementGrams"];
+  updatedAtMs: number;
+}>;
+const mockSetWorkoutPreferences = jest.fn<(input: WorkoutPreferenceWrite) => Promise<void>>();
 const mockListOwnedPlanExercises = jest.fn<() => Promise<readonly Readonly<{
   id: string;
   name: string;
@@ -303,12 +311,13 @@ describe("ActiveWorkoutRoute", () => {
     await fireEvent.press(screen.getByRole("button", { name: "Save weight increment" }));
 
     await waitFor(() => expect(mockSetWorkoutPreferences).toHaveBeenCalledTimes(2));
-    expect(mockSetWorkoutPreferences.mock.calls[0][0]).toEqual(expect.objectContaining({
+    const [firstWrite, retryWrite] = mockSetWorkoutPreferences.mock.calls;
+    expect(firstWrite?.[0]).toEqual(expect.objectContaining({
       expectedRevision: 3,
       defaultRestSeconds: 90,
       weightIncrementGrams: 5000,
     }));
-    expect(mockSetWorkoutPreferences.mock.calls[1][0]).toEqual(expect.objectContaining({
+    expect(retryWrite?.[0]).toEqual(expect.objectContaining({
       expectedRevision: 4,
       defaultRestSeconds: 150,
       weightIncrementGrams: 5000,
