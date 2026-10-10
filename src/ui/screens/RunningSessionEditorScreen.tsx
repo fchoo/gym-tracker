@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
-import { AccessibilityInfo, StyleSheet, Text, View, type TextStyle } from "react-native";
+import { AccessibilityInfo, StyleSheet, Text, TextInput, View, type TextStyle } from "react-native";
 
 import type { RunningPlanAggregate, RunningPlanSession, RunningSessionKind } from "../../domains/running/contracts";
 import { InlineNotice, PrimaryAction, ScreenHeader, SecondaryAction } from "../components";
@@ -9,9 +9,13 @@ import { space, typeScale, useAppTheme } from "../theme";
 import {
   RunningSessionFields,
   initialRunningSessionFormDraft,
+  runningSessionFieldNativeID,
   type RunningSessionFormDraft,
+  type RunningSessionInvalidField,
+  type RunningSessionValidation,
   validateRunningSessionFormDraft,
 } from "../components/RunningSessionFields";
+import { requestAndroidViewFocus } from "../../bootstrap/androidViewFocus";
 
 function targetFromDraft(target: RunningSessionFormDraft["target"]): { paceMsPerKm?: number; heartRateZone?: number; rpe?: number } {
   if (target.mode === "pace") return { paceMsPerKm: Number(target.paceMsPerKm) };
@@ -108,6 +112,7 @@ export function RunningSessionEditorScreen(props: Readonly<{
   const [loadAttempt, setLoadAttempt] = useState(0);
   const requestId = useRef<string | null>(null);
   const saveRef = useRef<View>(null);
+  const fieldFocusRefs = useRef<Partial<Record<RunningSessionInvalidField, TextInput | null>>>({});
 
   useEffect(() => {
     let active = true;
@@ -135,10 +140,19 @@ export function RunningSessionEditorScreen(props: Readonly<{
       : current);
   };
   const update = (next: RunningSessionFormDraft) => { setDrafts((current) => ({ ...current, [kind]: next })); setError(null); };
+  const focusFirstInvalid = (validation: RunningSessionValidation) => {
+    const targetMode = validation.field === "target" ? draft.target.mode
+      : validation.field === "start_target" ? draft.startTarget.mode
+      : validation.field === "finish_target" ? draft.finishTarget.mode
+      : undefined;
+    const nativeID = runningSessionFieldNativeID(draft.kind, validation.field, targetMode);
+    fieldFocusRefs.current[validation.field]?.focus?.();
+    void requestAndroidViewFocus(nativeID);
+  };
   const save = async () => {
     if (plan === null) return;
     const validation = validateRunningSessionFormDraft(draft);
-    if (validation !== null) { const label = runningSessionKindLabel(draft.kind); setError(`${label} session needs attention. ${validation}`); AccessibilityInfo.announceForAccessibility(`Running ${label} session needs attention.`); requestAnimationFrame(() => saveRef.current?.focus?.()); return; }
+    if (validation !== null) { const label = runningSessionKindLabel(draft.kind); setError(`${label} session needs attention. ${validation.message}`); AccessibilityInfo.announceForAccessibility(`Running ${label} session needs attention.`); focusFirstInvalid(validation); return; }
     setSaving(true); setError(null);
     try {
       const result = await props.saveSession({
@@ -164,7 +178,7 @@ export function RunningSessionEditorScreen(props: Readonly<{
   if (state === "error") return <AdaptiveScreen primary={<>{header}<InlineNotice action={<SecondaryAction label="Retry loading session" onPress={() => setLoadAttempt((attempt) => attempt + 1)} />} body="Your edits were not changed. Try again." heading="Session could not be loaded" tone="error" /></>} testID="running-session-editor" />;
 
   const validationError = error?.includes("needs attention.") ?? false;
-  return <><AdaptiveScreen primary={<><>{header}</><Text style={[typeScale.body as TextStyle, { color: colors.textSecondary }]}>Configure only the steps this workout needs.</Text><Text style={[typeScale.label as TextStyle, { color: colors.textPrimary }]}>Workout type</Text><View style={styles.choices}>{(["recovery", "long_run", "progression", "tempo", "intervals", "hills", "fartlek"] as const).map((entry) => <SecondaryAction key={entry} label={`Workout type ${runningSessionKindLabel(entry)}`} onPress={() => selectKind(entry)} />)}</View><RunningSessionFields draft={draft} onChange={update} />{error === null ? null : <InlineNotice action={validationError ? undefined : <SecondaryAction label={`Retry saving ${runningSessionKindLabel(draft.kind)} session`} onPress={() => void save()} />} body={error} heading={validationError ? `${runningSessionKindLabel(draft.kind)} session needs attention` : "Save failed"} tone="error" />}<PrimaryAction busy={saving} disabled={saving} label={saving ? "Saving session…" : "Save session"} onPress={() => void save()} ref={saveRef} /></>} testID="running-session-editor" /><ConfirmationDialog alternateLabel="Discard changes" body="Your edits are still here. Choose whether to save the complete plan, discard the local draft, or keep editing." cancelLabel="Keep editing" confirmBusy={saving} confirmLabel="Save changes" heading="Save changes?" onAlternate={props.onBack} onCancel={() => setConfirmDiscard(false)} onConfirm={() => void save()} restoreFocusRef={saveRef} visible={confirmDiscard} /></>;
+  return <><AdaptiveScreen primary={<><>{header}</><Text style={[typeScale.body as TextStyle, { color: colors.textSecondary }]}>Configure only the steps this workout needs.</Text><Text style={[typeScale.label as TextStyle, { color: colors.textPrimary }]}>Workout type</Text><View style={styles.choices}>{(["recovery", "long_run", "progression", "tempo", "intervals", "hills", "fartlek"] as const).map((entry) => <SecondaryAction key={entry} label={`Workout type ${runningSessionKindLabel(entry)}`} onPress={() => selectKind(entry)} />)}</View><RunningSessionFields draft={draft} onChange={update} onFocusTargetRef={(field, node) => { fieldFocusRefs.current[field] = node; }} />{error === null ? null : <InlineNotice action={validationError ? undefined : <SecondaryAction label={`Retry saving ${runningSessionKindLabel(draft.kind)} session`} onPress={() => void save()} />} body={error} heading={validationError ? `${runningSessionKindLabel(draft.kind)} session needs attention` : "Save failed"} tone="error" />}<PrimaryAction busy={saving} disabled={saving} label={saving ? "Saving session…" : "Save session"} onPress={() => void save()} ref={saveRef} /></>} testID="running-session-editor" /><ConfirmationDialog alternateLabel="Discard changes" body="Your edits are still here. Choose whether to save the complete plan, discard the local draft, or keep editing." cancelLabel="Keep editing" confirmBusy={saving} confirmLabel="Save changes" heading="Save changes?" onAlternate={props.onBack} onCancel={() => setConfirmDiscard(false)} onConfirm={() => void save()} restoreFocusRef={saveRef} visible={confirmDiscard} /></>;
 }
 
 const styles = StyleSheet.create({ choices: { gap: space[2] }, srOnly: { height: 1, opacity: 0, width: 1 } });

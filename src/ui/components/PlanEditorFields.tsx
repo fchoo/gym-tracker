@@ -114,7 +114,7 @@ export function PlanEditorTextField({
   onChangeText(value: string): void;
   error?: string | undefined;
   help?: string | undefined;
-  inputRef?: React.RefObject<TextInput | null>;
+  inputRef?: React.Ref<TextInput> | undefined;
   tone?: "default" | "card";
 }> & Omit<TextInputProps, "accessibilityLabel" | "onChangeText" | "value">) {
   const { colors } = useAppTheme();

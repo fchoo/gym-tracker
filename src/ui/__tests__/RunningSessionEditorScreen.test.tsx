@@ -14,6 +14,27 @@ const plan: RunningPlanAggregate = {
 };
 
 describe("RunningSessionEditorScreen", () => {
+  it("announces and focuses the first invalid field instead of treating validation as a save failure", async () => {
+    const announce = jest.spyOn(require("react-native").AccessibilityInfo, "announceForAccessibility");
+    const view = await render(<AppearanceProvider><RunningSessionEditorScreen
+      loadPlan={jest.fn(async () => plan)}
+      mode="create"
+      onBack={jest.fn()}
+      onSaved={jest.fn()}
+      planId="plan-1"
+      createRequestId={() => "request-validation"}
+      saveSession={jest.fn(async () => ({ plan, sessionRootId: "unused" }))}
+    /></AppearanceProvider>);
+
+    await view.findByRole("header", { name: "New session" });
+    await fireEvent.press(view.getByRole("button", { name: "Save session" }));
+
+    expect(view.getByText("Recovery session needs attention")).toBeOnTheScreen();
+    expect(view.queryByText("Save failed")).not.toBeOnTheScreen();
+    expect(view.getByLabelText("Volume (metres)")).toHaveProp("nativeID", "running-session-recovery-volume");
+    expect(announce).toHaveBeenCalledWith("Running Recovery session needs attention.");
+  });
+
   it("names every selected session kind truthfully in save recovery messages", () => {
     expect(runningSessionKindLabel("long_run")).toBe("Long run");
     expect(runningSessionKindLabel("tempo")).toBe("Tempo");
