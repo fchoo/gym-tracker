@@ -340,7 +340,10 @@ export function BottomSheet({
                       horizontal={false}
                       keyboardShouldPersistTaps="handled"
                       showsVerticalScrollIndicator
-                      style={styles.scroll}
+                      style={[
+                        styles.scroll,
+                        compactLandscape ? styles.compactScroll : null,
+                      ]}
                       testID={scrollTestID ?? "bottom-sheet-scroll"}
                     >
                       {children}
@@ -363,6 +366,7 @@ const styles = StyleSheet.create({
     justifyContent: "flex-end",
   },
   boundary: { flexShrink: 1, minHeight: 0 },
+  compactScroll: { flexGrow: 1, minHeight: 0 },
   keyboardAvoider: { justifyContent: "flex-end" },
   frame: {
     borderTopLeftRadius: 24,
