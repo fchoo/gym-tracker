@@ -38,7 +38,7 @@ import {
   radius,
   sizes,
   space,
-  typeScale,
+  workoutTypeScale,
   useAppTheme,
 } from "../theme";
 
@@ -146,7 +146,7 @@ function RestTextControl({
       >
         <Text
           style={[
-            typeScale.bodyStrong as TextStyle,
+            workoutTypeScale.bodyStrong as TextStyle,
             { color: colors.textPrimary },
           ]}
         >
@@ -350,7 +350,7 @@ export function RestDock({
       ) : null}
       <Text
         style={[
-          typeScale.label as TextStyle,
+          workoutTypeScale.label as TextStyle,
           { color: colors.textSecondary },
         ]}
       >
@@ -358,7 +358,7 @@ export function RestDock({
       </Text>
       <Text
         style={[
-          typeScale.secondary as TextStyle,
+          workoutTypeScale.secondary as TextStyle,
           { color: colors.textSecondary },
         ]}
       >
@@ -368,7 +368,7 @@ export function RestDock({
         accessibilityLabel={`${formatDuration(remainingMs)} remaining`}
         accessibilityLiveRegion="none"
         style={[
-          typeScale.displayTimer as TextStyle,
+          workoutTypeScale.displayTimer as TextStyle,
           { color: remainingMs === 0 ? colors.timerAttention : colors.textPrimary },
         ]}
       >
@@ -378,7 +378,7 @@ export function RestDock({
         <Text
           accessibilityLiveRegion="polite"
           style={[
-            typeScale.secondary as TextStyle,
+            workoutTypeScale.secondary as TextStyle,
             { color: colors.textSecondary },
           ]}
         >
@@ -444,7 +444,7 @@ const styles = StyleSheet.create({
   controls: {
     flexDirection: "row",
     flexWrap: "wrap",
-    gap: space[1],
+    gap: space[2],
   },
   control: {
     flexBasis: sizes.minimumTarget,

@@ -127,6 +127,7 @@ describe("Plan 02-29 RestDock", () => {
     expect(screen.getByTestId("rest-controls")).toHaveStyle({
       flexDirection: "row",
       flexWrap: "wrap",
+      gap: 8,
     });
     for (const label of [
       "Subtract 15 seconds from rest",

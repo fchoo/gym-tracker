@@ -20,6 +20,7 @@ describe("SetRow", () => {
     await render(<AppearanceProvider><SetRow active index={1} kind="working" onPress={onPress} set={set} /></AppearanceProvider>);
     await fireEvent.press(screen.getByRole("button", { name: /Set 1\. 62\.5 kg × 6\. Current\. Edit set values/i }));
     expect(onPress).toHaveBeenCalledTimes(1);
+    expect(screen.getByRole("button", { name: /Set 1/u })).toHaveStyle({ minHeight: 60 });
     expect(screen.queryByRole("button", { name: /complete|reset|remove/i })).not.toBeOnTheScreen();
   });
 });

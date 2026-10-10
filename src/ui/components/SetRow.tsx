@@ -8,7 +8,7 @@ import {
 
 import type { ActiveWorkoutSet, SetObservation } from "../../domains/workout";
 import { FocusablePressable } from "./index";
-import { radius, space, typeScale, useAppTheme } from "../theme";
+import { radius, space, workoutTypeScale, useAppTheme } from "../theme";
 
 export function formatLoadGrams(loadGrams: number): string {
   const kilograms = loadGrams / 1_000;
@@ -105,16 +105,16 @@ export const SetRow = React.forwardRef<View, SetRowProps>(function SetRow({
       testID={overviewTestID ?? `${kind === "warmup" ? `warmup-W${index}` : `working-set-${index}`}-row`}
     >
       <View style={styles.heading}>
-        <Text style={[typeScale.bodyStrong as TextStyle, { color: primary }]}>{setName}</Text>
-        <Text style={[typeScale.secondary as TextStyle, { color: secondary }]}>{busy ? "Saving" : state}</Text>
+        <Text style={[workoutTypeScale.bodyStrong as TextStyle, { color: primary }]}>{setName}</Text>
+        <Text style={[workoutTypeScale.secondary as TextStyle, { color: secondary }]}>{busy ? "Saving" : state}</Text>
       </View>
-      <Text style={[typeScale.body as TextStyle, { color: primary }]}>{observation}</Text>
+      <Text style={[workoutTypeScale.body as TextStyle, { color: primary }]}>{observation}</Text>
     </FocusablePressable>
   );
 });
 
 const styles = StyleSheet.create({
-  row: { borderRadius: radius.standard, borderWidth: StyleSheet.hairlineWidth, gap: space[1], minHeight: 56, padding: space[4] },
-  compact: { minHeight: 48 },
+  row: { borderRadius: radius.standard, borderWidth: StyleSheet.hairlineWidth, gap: space[1], minHeight: 60, padding: space[4] },
+  compact: { minHeight: 60 },
   heading: { alignItems: "baseline", flexDirection: "row", justifyContent: "space-between", gap: space[2] },
 });
