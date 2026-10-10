@@ -68,10 +68,10 @@ Exactly four roots: **Workout, Calendar, Library, Progress**. Preserve SQLite au
 - [x] **WRK-09**: Expand/collapse each exercise by header tap or Enter/Space, retain full long names up to two lines, and keep trend/menu targets separate.
 - [x] **WRK-10**: Use one continuous 4px yellow active-exercise edge; current set uses amber fill, highlighted number, clock and Current label with no second stripe.
 - [x] **WRK-11**: Show Set, Previous, Target and State with completed check/green, current clock/amber and planned dash/neutral states.
-- [ ] **WRK-12**: Open editing by tapping any planned, current or committed row; changes apply only after Save and closing leaves facts unchanged.
-- [ ] **WRK-13**: Provide thumb-friendly kg/reps steppers and direct numeric input with units, nonnegative validation and explicit Save set values / Save committed set edit.
-- [ ] **WRK-14**: Use a duration-only editor for timed sets with sec labels and five-second decrement/increment controls.
-- [ ] **WRK-15**: Retain load_reps, bodyweight_reps, added_load_reps, assisted_reps, timed_hold, fixed_distance, fixed_time, intervals and unscored facts and compatible editors.
+- [x] **WRK-12**: Open editing by tapping any planned, current or committed row; changes apply only after Save and closing leaves facts unchanged.
+- [x] **WRK-13**: Provide thumb-friendly kg/reps steppers and direct numeric input with units, nonnegative validation and explicit Save set values / Save committed set edit.
+- [x] **WRK-14**: Use a duration-only editor for timed sets with sec labels and five-second decrement/increment controls.
+- [x] **WRK-15**: Retain load_reps, bodyweight_reps, added_load_reps, assisted_reps, timed_hold, fixed_distance, fixed_time, intervals and unscored facts and compatible editors.
 - [ ] **WRK-16**: Place warm-ups before working sets with independent W1/W2 and 01/02 ordinals; exclude warm-ups from working-set progress.
 - [ ] **WRK-17**: Offer only Add warm-up set and Add working set from each exercise's + Add set menu; append warm-ups after existing warm-ups and before working sets.
 - [ ] **WRK-18**: Pair Add exercise with Complete set in one compact dock row; show Saving set… and suppress duplicate taps until the real commit result arrives.
@@ -279,10 +279,10 @@ once and remains Pending until its owning phase is implemented and verified.
 | WRK-09 | 15 | workout.exercise-disclosure | Complete |
 | WRK-10 | 15 | workout.active-indicator | Complete |
 | WRK-11 | 15 | workout.set-states | Complete |
-| WRK-12 | 15 | workout.row-edit | Pending |
-| WRK-13 | 15 | workout.load-reps-editor | Pending |
-| WRK-14 | 15 | workout.duration-editor | Pending |
-| WRK-15 | 15 | workout.all-metrics | Pending |
+| WRK-12 | 15 | workout.row-edit | Complete |
+| WRK-13 | 15 | workout.load-reps-editor | Complete |
+| WRK-14 | 15 | workout.duration-editor | Complete |
+| WRK-15 | 15 | workout.all-metrics | Complete |
 | WRK-16 | 15 | workout.warmup-order | Pending |
 | WRK-17 | 15 | workout.add-set | Pending |
 | WRK-18 | 15 | workout.complete-commit | Pending |
