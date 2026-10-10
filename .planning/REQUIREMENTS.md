@@ -134,9 +134,9 @@ Exactly four roots: **Workout, Calendar, Library, Progress**. Preserve SQLite au
 - [ ] **LIB-10**: Retain immutable starter preview, source/equipment/schedule/training days, Preview activation and Save editable copy.
 - [ ] **LIB-11**: Preview the actual affected schedules and create/activate a reviewed owned copy only on confirmation; Save without activating stays inactive.
 - [ ] **LIB-12**: Keep template-update comparison and Create new copy reachable through the existing activation update query route, preserving previous owned history.
-- [ ] **LIB-13**: Collect Plan name and First day, continue to the real editor, and save the draft without activation.
-- [ ] **LIB-14**: Preserve day/exercise/set/metric target editing, add/move/remove actions and explicit save while applying the approved compact editor presentation.
-- [ ] **LIB-15**: Preserve unsaved-change confirmation, save failure/retry, revision conflict, archive/duplicate confirmations and immutable completed history.
+- [x] **LIB-13**: Collect Plan name and First day, continue to the real editor, and save the draft without activation.
+- [x] **LIB-14**: Preserve day/exercise/set/metric target editing, add/move/remove actions and explicit save while applying the approved compact editor presentation.
+- [x] **LIB-15**: Preserve unsaved-change confirmation, save failure/retry, revision conflict, archive/duplicate confirmations and immutable completed history.
 - [ ] **LIB-16**: Edit future weekday bindings with selected-day state and Save schedule, preserving real effective-date, rotation and multi-plan ownership rules.
 - [ ] **LIB-17**: Retain occurrence/all-occurrences scope, compatible metric selection, target review and refreshed impact preview before saving replacement.
 - [ ] **LIB-18**: Retain removal impact, replacement binding/remove binding, effective date and current-workout guard before deleting a plan day.
@@ -339,9 +339,9 @@ once and remains Pending until its owning phase is implemented and verified.
 | LIB-10 | 17 | library.starter-detail | Pending |
 | LIB-11 | 17 | library.starter-activation | Pending |
 | LIB-12 | 17 | library.template-update | Pending |
-| LIB-13 | 17 | library.create-strength | Pending |
-| LIB-14 | 17 | library.plan-editor | Pending |
-| LIB-15 | 17 | library.editor-draft-guards | Pending |
+| LIB-13 | 17 | library.create-strength | Complete |
+| LIB-14 | 17 | library.plan-editor | Complete |
+| LIB-15 | 17 | library.editor-draft-guards | Complete |
 | LIB-16 | 17 | library.schedule-editor | Pending |
 | LIB-17 | 17 | library.replacement-impact | Pending |
 | LIB-18 | 17 | library.day-removal-impact | Pending |
