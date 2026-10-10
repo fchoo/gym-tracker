@@ -12,9 +12,9 @@ provides:
   - Token-bound plan target application that retains immutable workout history
 affects: [15-11, 15-12, 15-13, workout-completion, plan-impact]
 actuals:
-  tokens: 8394
+  tokens: 7943
   tasks: 3
-  commits: 7
+  commits: 9
 tech-stack:
   added: []
   patterns:
@@ -28,6 +28,7 @@ key-files:
     - src/domains/plans/planImpactCommands.ts
 key-decisions:
   - "Resolved terminal outcome results are validated against the exact saved session ID and expected terminal status before navigation."
+  - "Unknown terminal receipts re-read durable session facts before choosing navigation or the original retry envelope."
   - "A preview without supported factual target rows is a Keep-only default-No state, even when other composition facts differ."
 patterns-established:
   - "Terminal outcome failure keeps the Active screen and source facts intact, with retry using the original input envelope."
@@ -78,15 +79,15 @@ status: complete
 
 ## Performance
 
-- **Duration:** 11m
+- **Duration:** 17m
 - **Started:** 2026-10-10T14:00:19Z
-- **Completed:** 2026-10-10T14:11:31Z
+- **Completed:** 2026-10-10T14:17:30Z
 - **Tasks:** 3
-- **Files modified:** 10
+- **Files modified:** 11
 
 ## Accomplishments
 
-- Finish, partial, zero-set, and discard stay on Active until an authoritative matching terminal result returns; failures retain source facts and retry the exact operation envelope.
+- Finish, partial, zero-set, and discard stay on Active until an authoritative matching terminal result returns; an unknown receipt first re-reads durable session facts before it can route or offer the original retry envelope.
 - Completion continues to present saved facts, actual counts, results, optional effort, details, and a projection-only summary retry path.
 - Plan write-back now emits typed current/proposed/unit target rows from canonical domain facts, applies only after source/token/revision revalidation, and exposes a Keep-only no-difference state.
 
@@ -95,6 +96,8 @@ status: complete
 1. **Task 1: Finish one workout through commit-gated outcome and completion routing**
    - `51387cd`: failing finish recovery coverage
    - `42a6a96`: commit-gated finish routing and recovery
+   - `a28ab5b`: failing unknown-outcome durable reload coverage
+   - `ee99ff9`: reload unknown terminal outcomes before deciding
 2. **Task 2: Cover partial, later, zero-set, discard, and factual completion review**
    - `b21f024`: failing partial recovery coverage
    - `11fe3e4`: operation-specific terminal outcome recovery
@@ -105,7 +108,8 @@ status: complete
 
 ## Files Created/Modified
 
-- `src/ui/screens/ActiveWorkoutScreen.tsx` — validates terminal results, preserves Active state on failure, and retries the original finish/partial/zero-set/discard command envelope.
+- `src/ui/screens/ActiveWorkoutScreen.tsx` — validates terminal results, re-reads source facts for unknown receipts, preserves Active state on failure, and retries the original finish/partial/zero-set/discard command envelope.
+- `app/workout/[sessionId].tsx` — owns the authoritative session-detail reload used to resolve unknown terminal receipts before navigation.
 - `src/ui/screens/WorkoutCompletionScreen.tsx` — renders factual plan target rows and the Keep-only no-difference sheet.
 - `src/domains/plans/planImpactCommands.ts` — emits typed source-derived current/proposed target changes alongside the signed preview composition.
 - `src/ui/__tests__/ActiveWorkoutScreen.test.tsx` — covers finish and partial recovery paths.
@@ -115,6 +119,7 @@ status: complete
 ## Decisions Made
 
 - Terminal navigation is permitted only after the command returns the requested session ID with its expected completed, partial, zero-set, or discarded status.
+- A mismatched terminal receipt is not trusted: the route reloads the requested session's durable detail, and the screen routes only if that detail confirms the expected terminal status.
 - Target deltas are canonical domain data; presentation formats those typed values but never derives proposed targets from workout result strings.
 - No supported target difference means no Save action. Closing or choosing Keep leaves the completed workout and future plan unchanged.
 
@@ -131,9 +136,18 @@ status: complete
 - **Verification:** `npm run typecheck` passed.
 - **Committed in:** `8576752`
 
-**Total deviations:** 1 auto-fixed (1 blocking)
-
 **Impact on plan:** The contract update is required for the source-produced preview rows and does not broaden runtime scope.
+
+**2. [Rule 1 - Bug] Reconciled unknown terminal receipts before routing**
+
+- **Found during:** Final integrity review of Task 1.
+- **Issue:** A mismatched terminal command result stayed Active but did not reload the authoritative session detail before choosing recovery; successful fallback routing also used the untrusted response ID.
+- **Fix:** Added a route-owned durable session-detail resolver for mismatched finish, partial, zero-set, and discard receipts, then route only with the requested session identity after its expected durable status is confirmed.
+- **Files modified:** `src/ui/screens/ActiveWorkoutScreen.tsx`, `app/workout/[sessionId].tsx`, `src/ui/__tests__/ActiveWorkoutScreen.test.tsx`
+- **Verification:** Focused component tests, typecheck, lint, and boundaries passed.
+- **Committed in:** `a28ab5b`, `ee99ff9`
+
+**Total deviations:** 2 auto-fixed (1 blocking, 1 bug)
 
 ## Issues Encountered
 
@@ -151,7 +165,7 @@ None.
 ## Self-Check: PASSED
 
 - Required source files and the summary exist.
-- All seven task commits are present in git history.
+- All nine task commits are present in git history.
 
 ---
 *Phase: 15-workout-parity*

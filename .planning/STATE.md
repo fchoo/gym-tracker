@@ -6,10 +6,10 @@ current_phase: 15
 current_phase_name: Workout Parity
 status: executing
 stopped_at: Completed 15-10-PLAN.md
-last_updated: "2026-10-10T14:12:33.450Z"
+last_updated: "2026-10-10T14:17:33.581Z"
 last_activity: 2026-10-10
 last_activity_desc: Phase 15 execution started
-state_head: 7861da18c53684421cd5c1efe1856e49a5895c2b
+state_head: ee99ff9302c0ba70e029e667ff418e620c65dabe
 progress:
   total_phases: 8
   completed_phases: 1
@@ -141,6 +141,7 @@ Gym Tracker remains a signed personal-use Android APK/AAB with SQLite-authoritat
 - [Phase 15]: Post-workout plan editing retains source plan identity and routes only after a session boundary.
 - [Phase 15]: Phase 15: terminal workout navigation requires the matching authoritative session ID and status; failures retain Active facts and reuse the original envelope.
 - [Phase 15]: Phase 15: write-back presents source-derived typed target deltas; no supported delta is Keep-only and never changes the plan.
+- [Phase 15]: Phase 15: unknown terminal receipts re-read durable session facts before deciding to navigate or reuse the original retry envelope.
 
 ### Pending Owner Review
 
@@ -165,7 +166,7 @@ Gym Tracker remains a signed personal-use Android APK/AAB with SQLite-authoritat
 
 ## Session Continuity
 
-Last session: 2026-10-10T14:12:33.382Z
+Last session: 2026-10-10T14:17:33.496Z
 Stopped at: Completed 15-10-PLAN.md
 Resume file: None
 Next action: Present the complete planning set for owner review; after explicit approval, run `/gsd-execute-phase 13`.
