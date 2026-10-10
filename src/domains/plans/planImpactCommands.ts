@@ -143,6 +143,22 @@ export type SessionExerciseEditsForPlanPreview = Readonly<{
   currentWorkoutUnaffected: true;
   previewToken: string;
   composition: readonly SessionExerciseWriteBackComposition[];
+  changes: readonly SessionExercisePlanTargetChange[];
+}>;
+
+/** A factual target delta emitted by the write-back domain, never inferred from UI text. */
+export type SessionExercisePlanTargetChange = Readonly<{
+  exerciseId: string;
+  metricIdentity: MetricIdentity;
+  targetOrdinal: number;
+  current: Readonly<{
+    target: MetricTarget;
+    units: Readonly<Record<string, unknown>>;
+  }>;
+  proposed: Readonly<{
+    target: MetricTarget;
+    units: Readonly<Record<string, unknown>>;
+  }>;
 }>;
 
 export type ApplySessionExerciseEditsToPlanInput = Readonly<{
@@ -607,9 +623,7 @@ export function canonicalizeSessionExerciseEditsForPlan(
           });
         }
         )),
-        targets: Object.freeze((isManual
-          ? exercise.targets
-          : source!.targets).map((target) => {
+        targets: Object.freeze(exercise.targets.map((target) => {
           const sessionTarget = exercise.targets.find(({ ordinal: index }) =>
             index === target.ordinal
           );
@@ -634,6 +648,49 @@ export function canonicalizeSessionExerciseEditsForPlan(
   return composition.some((entry) => entry === null)
     ? null
     : Object.freeze(composition as readonly SessionExerciseWriteBackComposition[]);
+}
+
+function targetChanges(
+  facts: SessionExerciseEditsForPlanFacts,
+  composition: readonly SessionExerciseWriteBackComposition[],
+): readonly SessionExercisePlanTargetChange[] {
+  const occurrences = new Map(
+    facts.day.occurrences.map((occurrence) => [occurrence.occurrenceId, occurrence]),
+  );
+  return Object.freeze(composition.flatMap((entry) => {
+    if (entry.source !== "planned" || entry.sourceOccurrenceId === null) {
+      return [];
+    }
+    const occurrence = occurrences.get(entry.sourceOccurrenceId);
+    if (occurrence === undefined || entry.metricIdentity.profile === "unscored") {
+      return [];
+    }
+    return entry.targets.flatMap((proposed) => {
+      const current = occurrence.targets.find(({ ordinal }) =>
+        ordinal === proposed.ordinal
+      );
+      if (
+        current === undefined
+        || JSON.stringify(current.target) === JSON.stringify(proposed.target)
+        && JSON.stringify(current.units) === JSON.stringify(proposed.units)
+      ) {
+        return [];
+      }
+      return [Object.freeze({
+        exerciseId: entry.exerciseId,
+        metricIdentity: Object.freeze({ ...entry.metricIdentity }),
+        targetOrdinal: proposed.ordinal,
+        current: Object.freeze({
+          target: Object.freeze({ ...current.target }),
+          units: Object.freeze({ ...current.units }),
+        }),
+        proposed: Object.freeze({
+          target: Object.freeze({ ...proposed.target }),
+          units: Object.freeze({ ...proposed.units }),
+        }),
+      })];
+    });
+  }));
 }
 
 function compositionMatchesDay(
@@ -719,6 +776,7 @@ export async function previewSessionExerciseEditsForPlan(
       composition,
     ),
     composition,
+    changes: targetChanges(facts, composition),
   });
 }
 

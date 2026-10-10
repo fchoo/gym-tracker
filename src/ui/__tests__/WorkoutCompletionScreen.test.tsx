@@ -1,4 +1,5 @@
 import {
+  cleanup,
   fireEvent,
   render,
   screen,
@@ -138,6 +139,17 @@ const completedDetail: SessionDetail = {
   readOnly: true,
 };
 
+const planTargetChange = {
+  exerciseId: "back-squat",
+  metricIdentity: loadRepsIdentity,
+  targetOrdinal: 0,
+  current: { target: loadRepsTarget, units: { load: "grams", count: "repetitions" } },
+  proposed: {
+    target: { ...loadRepsTarget, loadGrams: 62_500, minReps: 8, maxReps: 8 },
+    units: { load: "grams", count: "repetitions" },
+  },
+};
+
 const writeBackPreview = {
   kind: "session_exercise_edits" as const,
   sourceSessionId: completedDetail.id,
@@ -150,21 +162,12 @@ const writeBackPreview = {
   currentWorkoutUnaffected: true as const,
   previewToken: `session-writeback-v1:${"a".repeat(64)}`,
   composition: [],
-  changes: [],
+  changes: [planTargetChange],
 };
 
-const writeBackPreviewWithTargetChange = {
+const writeBackPreviewWithoutChanges = {
   ...writeBackPreview,
-  changes: [{
-    exerciseId: "back-squat",
-    metricIdentity: loadRepsIdentity,
-    targetOrdinal: 0,
-    current: { target: loadRepsTarget, units: { load: "grams", count: "repetitions" } },
-    proposed: {
-      target: { ...loadRepsTarget, loadGrams: 62_500, minReps: 8, maxReps: 8 },
-      units: { load: "grams", count: "repetitions" },
-    },
-  }],
+  changes: [],
 };
 
 async function renderCompletion(
@@ -196,7 +199,7 @@ async function renderCompletion(
 describe("Plan 01-10 completion and detail", () => {
   it("renders every source-produced target row and removes Save when no factual difference exists", async () => {
     await renderCompletion({
-      planWriteBack: { state: "awaiting_choice", preview: writeBackPreviewWithTargetChange },
+      planWriteBack: { state: "awaiting_choice", preview: writeBackPreview },
     });
 
     expect(screen.getByText("Exercise · back-squat")).toBeOnTheScreen();
@@ -204,8 +207,9 @@ describe("Plan 01-10 completion and detail", () => {
     expect(screen.getByText("Proposed · 62.5 kg × 8")).toBeOnTheScreen();
     expect(screen.getByText("load kg × reps")).toBeOnTheScreen();
 
+    await cleanup();
     await renderCompletion({
-      planWriteBack: { state: "awaiting_choice", preview: writeBackPreview },
+      planWriteBack: { state: "awaiting_choice", preview: writeBackPreviewWithoutChanges },
     });
     expect(screen.getByRole("header", {
       name: "No plan changes to review",
