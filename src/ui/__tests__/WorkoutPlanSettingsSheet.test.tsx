@@ -24,7 +24,7 @@ describe("WorkoutPlanSettingsSheet", () => {
     expect(screen.getByText("Default rest")).toBeOnTheScreen();
     expect(screen.getByText("Saved rest · 90 sec")).toBeOnTheScreen();
     expect(screen.getByRole("radio", { name: "2.5 kilograms" }))
-      .toHaveAccessibilityState({ checked: true });
+      .toHaveProp("accessibilityState", { checked: true, disabled: false });
     await fireEvent.changeText(
       screen.getByLabelText("Default between-set rest seconds"),
       "120",
