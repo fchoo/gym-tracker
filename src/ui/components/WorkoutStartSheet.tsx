@@ -19,7 +19,7 @@ import {
 function WorkoutStartCancelAction({ onClose }: Readonly<{ onClose: () => void }>) {
   const cancelSheet = useBottomSheetCancel();
 
-  return <SecondaryAction label="Cancel" onPress={cancelSheet ?? onClose} />;
+  return <SecondaryAction label="Return to Workout" onPress={cancelSheet ?? onClose} />;
 }
 
 export function WorkoutStartSheet({

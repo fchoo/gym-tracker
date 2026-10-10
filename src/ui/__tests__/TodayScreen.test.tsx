@@ -101,6 +101,43 @@ const selectedOccurrence: SelectedStrengthOccurrence = {
 };
 
 describe("Plan 01-07 TodayScreen", () => {
+  it("keeps rest and start-failure states truthful while alternatives remain explicit", async () => {
+    await renderToday({
+      state: "rest_day",
+      planId: "plan-copy",
+      planName: "Full Body Foundation",
+      nextDayId: "day-b",
+      nextDayName: "Full Body B",
+      nextLocalDate: "2026-09-09",
+    }, {
+      actionFailure: { code: "workout_action_failed", correlationCode: "GT-ACTION01" },
+    });
+
+    expect(screen.getByText("No workout planned")).toBeOnTheScreen();
+    expect(screen.getByRole("button", { name: "Nothing scheduled" })).toBeDisabled();
+    expect(screen.getByText("Workout was not started")).toBeOnTheScreen();
+    expect(screen.getByText(/Your saved data was not changed\. Try again\./u)).toBeOnTheScreen();
+    expect(screen.getByRole("button", { name: "Retry starting workout" })).toBeOnTheScreen();
+    await fireEvent.press(screen.getByRole("button", { name: "Choose another day" }));
+    expect(screen.getByRole("button", { name: "Return to Workout" })).toBeOnTheScreen();
+  });
+
+  it("shows independent Running context as navigation only", async () => {
+    const viewPlan = jest.fn();
+    const syncGarmin = jest.fn();
+    await renderToday(scheduledView, {
+      runningContext: { label: "Tempo", planId: "running-plan" },
+      onOpenRunningPlan: viewPlan,
+      onSyncGarmin: syncGarmin,
+    });
+
+    expect(screen.getByText("ALSO SCHEDULED")).toBeOnTheScreen();
+    await fireEvent.press(screen.getByRole("button", { name: "View plan" }));
+    await fireEvent.press(screen.getByRole("button", { name: "Sync Garmin" }));
+    expect(viewPlan).toHaveBeenCalledWith("running-plan");
+    expect(syncGarmin).toHaveBeenCalledTimes(1);
+    expect(screen.queryByRole("button", { name: /Start Run/u })).not.toBeOnTheScreen();
+  });
   it("renders the selected real occurrence before its complete persisted-order preview", async () => {
     const start = jest.fn();
     const { rendered } = await renderToday(scheduledView, {
@@ -424,7 +461,7 @@ describe("Plan 01-07 TodayScreen", () => {
     expect(screen.getByRole("header", { name: "Rest day" })).toBeOnTheScreen();
     expect(screen.getByText(/Full Body B · 2026-08-19/u)).toBeOnTheScreen();
     await fireEvent.press(
-      screen.getByRole("button", { name: "Train anyway" }),
+      screen.getByRole("button", { name: "Choose another day" }),
     );
     expect(screen.queryByRole("checkbox", {
       name: "Advance rotation after this workout",
@@ -518,13 +555,13 @@ describe("Plan 01-07 TodayScreen", () => {
       onRetry: retry,
     });
 
-    expect(screen.getByText("Workout action was not saved")).toBeOnTheScreen();
+    expect(screen.getByText("Workout was not started")).toBeOnTheScreen();
     expect(
-      screen.getByText("Your saved data was not changed. GT-ACTION01"),
+      screen.getByText("Your saved data was not changed. Try again. GT-ACTION01"),
     ).toBeOnTheScreen();
     expect(screen.getByText("60 kg × 8")).toBeOnTheScreen();
     await fireEvent.press(
-      screen.getByRole("button", { name: "Retry Workout action" }),
+      screen.getByRole("button", { name: "Retry starting workout" }),
     );
     expect(retry).toHaveBeenCalledTimes(1);
   });

@@ -80,6 +80,9 @@ export type TodayScreenProps = Readonly<{
   onStartOccurrence?: (occurrence: SelectedStrengthOccurrence) => void;
   selectedStrengthOccurrence?: SelectedStrengthOccurrence | null;
   strengthOccurrences?: readonly WorkoutOccurrencePreview[];
+  runningContext?: Readonly<{ label: string; planId: string }>;
+  onOpenRunningPlan?: (planId: string) => void;
+  onSyncGarmin?: () => void;
   scheduleToday?: ScheduleTodayPresentation;
   chooseScheduleTimeZone?: (
     choice: ScheduleTimeZoneChoice,
@@ -374,8 +377,10 @@ function RestDayContent({
           title="Rest day"
           tone="card"
         />
-        <PrimaryAction
-          label="Train anyway"
+        <Text>No workout planned</Text>
+        <PrimaryAction disabled label="Nothing scheduled" onPress={noOp} />
+        <SecondaryAction
+          label="Choose another day"
           onPress={() => setStartSheetVisible(true)}
           ref={startSheetActionRef}
         />
@@ -424,6 +429,9 @@ export function TodayScreen({
   onStartOccurrence,
   selectedStrengthOccurrence,
   strengthOccurrences,
+  runningContext,
+  onOpenRunningPlan = noOp,
+  onSyncGarmin = noOp,
   scheduleToday,
   chooseScheduleTimeZone = noOp,
   onOpenSettings = noOp,
@@ -433,6 +441,7 @@ export function TodayScreen({
   settingsActionNativeID,
 }: TodayScreenProps) {
   const [activationPreview, setActivationPreview] = useState(false);
+  const { colors } = useAppTheme();
   const trusted = launchState === "trusted";
   const adaptiveWidth = width === undefined ? {} : { width };
 
@@ -556,12 +565,12 @@ export function TodayScreen({
               <InlineNotice
                 action={
                   <SecondaryAction
-                    label="Retry Workout action"
+                    label="Retry starting workout"
                     onPress={onRetry}
                   />
                 }
-                body={`Your saved data was not changed. ${actionFailure.correlationCode}`}
-                heading="Workout action was not saved"
+                body={`Your saved data was not changed. Try again. ${actionFailure.correlationCode}`}
+                heading="Workout was not started"
                 tone="error"
               />
             )}
@@ -609,6 +618,14 @@ export function TodayScreen({
                   />
                 )}
             {content}
+            {!trusted || runningContext === undefined ? null : (
+              <View style={styles.runningContext}>
+                <Text style={[typeScale.label as TextStyle, { color: colors.textSecondary }]}>ALSO SCHEDULED</Text>
+                <Text style={[typeScale.bodyStrong as TextStyle, { color: colors.ink }]}>{runningContext.label}</Text>
+                <SecondaryAction label="View plan" onPress={() => onOpenRunningPlan(runningContext.planId)} />
+                <SecondaryAction label="Sync Garmin" onPress={onSyncGarmin} />
+              </View>
+            )}
           </>
         }
       />
@@ -627,6 +644,9 @@ const styles = StyleSheet.create({
     gap: space[2],
   },
   timeZoneActions: {
+    gap: space[2],
+  },
+  runningContext: {
     gap: space[2],
   },
 });
