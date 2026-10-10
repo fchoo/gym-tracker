@@ -83,6 +83,74 @@ async function renderScreen(view = workoutView(), commandOverrides: Partial<Acti
 }
 
 describe("ActiveWorkoutScreen explicit-save editor", () => {
+  it("keeps the global add picker non-mutating until an exercise is selected and confirmed", async () => {
+    const addExercise = jest.fn(async () => ({
+      outcome: "committed" as const,
+      sessionId: "session-1",
+      sessionExerciseId: "added-exercise",
+      setId: "added-set",
+      sessionRevision: 2,
+    }));
+    const initial = workoutView();
+    const renderedCommands = commands(initial, { addExercise });
+
+    await render(
+      <AppearanceProvider>
+        <ActiveWorkoutScreen
+          availableExercises={[
+            { id: "deadlift", name: "Deadlift" },
+            { id: "lat-pulldown", name: "Lat pulldown" },
+          ]}
+          commands={renderedCommands}
+          nowMs={() => 3_000}
+          onFinishLater={jest.fn()}
+          onGoBack={jest.fn()}
+          sessionId={initial.id}
+          view={initial}
+        />
+      </AppearanceProvider>,
+    );
+
+    await fireEvent.press(screen.getByRole("button", { name: "Add exercise" }));
+    expect(addExercise).not.toHaveBeenCalled();
+    await fireEvent.changeText(screen.getByLabelText("Search exercises"), "dead");
+    expect(screen.getByRole("button", { name: "Deadlift. Add exercise" })).toBeOnTheScreen();
+    expect(screen.queryByRole("button", { name: "Lat pulldown. Add exercise" })).not.toBeOnTheScreen();
+
+    await fireEvent.press(screen.getByRole("button", { name: "Deadlift. Add exercise" }));
+    expect(addExercise).not.toHaveBeenCalled();
+    await fireEvent.press(screen.getByRole("button", { name: "Add Deadlift" }));
+
+    await waitFor(() => expect(addExercise).toHaveBeenCalledWith(expect.objectContaining({
+      sessionId: "session-1",
+      expectedSessionRevision: 1,
+      libraryExerciseId: "deadlift",
+    })));
+  });
+
+  it("explains an empty global add search without issuing a mutation", async () => {
+    const addExercise = jest.fn<NonNullable<ActiveWorkoutCommands["addExercise"]>>();
+    const initial = workoutView();
+    await render(
+      <AppearanceProvider>
+        <ActiveWorkoutScreen
+          availableExercises={[]}
+          commands={commands(initial, { addExercise })}
+          nowMs={() => 3_000}
+          onFinishLater={jest.fn()}
+          onGoBack={jest.fn()}
+          sessionId={initial.id}
+          view={initial}
+        />
+      </AppearanceProvider>,
+    );
+
+    await fireEvent.press(screen.getByRole("button", { name: "Add exercise" }));
+
+    expect(screen.getByText("No exercises found")).toBeOnTheScreen();
+    expect(addExercise).not.toHaveBeenCalled();
+  });
+
   it("scopes the two-option Add set menu to its invoking exercise", async () => {
     const initial = workoutView();
     const warmup = {
