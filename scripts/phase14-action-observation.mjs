@@ -118,12 +118,13 @@ export function computePhase14ScrimTap(snapshot) {
   const sheetBounds = frame.bounds;
   const availableTop = sheetBounds.top - windowBounds.top;
   if (availableTop < 2) throw new Error("phase14_scrim_target_missing");
+  const edgeOffset = Math.max(1, Math.min(8, Math.floor(availableTop / 2)));
   return Object.freeze({
     rotation: snapshot.rotation,
     window_bounds: windowBounds,
     sheet_bounds: sheetBounds,
     x: Math.floor((windowBounds.left + windowBounds.right) / 2),
-    y: windowBounds.top + Math.floor(availableTop / 2),
+    y: sheetBounds.top - edgeOffset,
   });
 }
 

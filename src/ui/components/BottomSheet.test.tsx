@@ -301,7 +301,11 @@ describe("BottomSheet", () => {
       "yes",
     );
     expect(screen.getByTestId("bottom-sheet-scroll")).toHaveStyle({
+      flexShrink: 1,
       maxHeight: "82%",
+    });
+    expect(screen.getByTestId("bottom-sheet-surface")).toHaveStyle({
+      maxHeight: "72%",
     });
     expect(screen.queryByRole("button", { name: "Background action" }))
       .toBeNull();

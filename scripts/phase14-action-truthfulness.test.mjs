@@ -68,10 +68,10 @@ test("Phase 14 scrim coordinates come from actual rotated window and sheet bound
     window_bounds: { left: 0, top: 0, right: 390, bottom: 844 },
     sheet_bounds: { left: 0, top: 286, right: 390, bottom: 844 },
     x: 195,
-    y: 143,
+    y: 278,
   });
   const landscape = parsePhase14SemanticSnapshot(`<hierarchy rotation="1">${node({ label: "App", bounds: "[0,0][844,390]" })}${node({ label: "Appearance", bounds: "[0,120][844,390]", resourceId: `${PACKAGE}:id/bottom-sheet-frame` })}</hierarchy>`);
-  assert.deepEqual(computePhase14ScrimTap(landscape).y, 60);
+  assert.deepEqual(computePhase14ScrimTap(landscape).y, 112);
   assert.throws(
     () => computePhase14ScrimTap(parsePhase14SemanticSnapshot(`<hierarchy>${node({ label: "App" })}</hierarchy>`)),
     /phase14_sheet_bounds_missing/u,

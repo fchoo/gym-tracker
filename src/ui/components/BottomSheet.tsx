@@ -10,6 +10,7 @@ import {
   ScrollView,
   StyleSheet,
   Text,
+  useWindowDimensions,
   View,
   type TextStyle,
   type NativeSyntheticEvent,
@@ -81,6 +82,8 @@ export function BottomSheet({
   contentStyle,
 }: BottomSheetProps) {
   const { colors, reduceMotion } = useAppTheme();
+  const { height: windowHeight, width: windowWidth } = useWindowDimensions();
+  const compactLandscape = windowWidth > windowHeight && windowHeight <= 480;
   const insets = React.useContext(SafeAreaInsetsContext) ?? {
     bottom: 0,
     left: 0,
@@ -298,10 +301,12 @@ export function BottomSheet({
                     {
                       backgroundColor: colors.raised,
                       borderColor: colors.line,
+                      maxHeight: compactLandscape ? "72%" : undefined,
                       paddingBottom: insets.bottom,
                       transform: [{ translateY: translation }],
                     },
                   ]}
+                  testID="bottom-sheet-surface"
                 >
                   <AndroidEscapeBoundary
                     accessibilityViewIsModal
@@ -371,6 +376,6 @@ const styles = StyleSheet.create({
     paddingHorizontal: space[4],
     paddingTop: space[2],
   },
-  scroll: { maxHeight: "82%" },
+  scroll: { flexShrink: 1, maxHeight: "82%" },
   content: { gap: space[4], padding: space[4], paddingTop: space[2] },
 });
