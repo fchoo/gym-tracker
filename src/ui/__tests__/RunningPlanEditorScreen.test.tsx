@@ -32,4 +32,17 @@ describe("RunningPlanEditorScreen", () => {
     await waitFor(() => expect(savePlan).toHaveBeenCalledWith(expect.objectContaining({ sessions: [] })));
     expect(onSaved).toHaveBeenCalledWith("running-plan");
   });
+
+  it("offers all seven typed local session kinds before the first command", async () => {
+    await render(<AppearanceProvider><RunningPlanEditorScreen
+      createId={(kind) => `${kind}:id`}
+      initialDraft={initialDraft}
+      onBack={jest.fn()}
+      onSaved={jest.fn()}
+      savePlan={jest.fn(async (draft) => ({ ...draft, active: false as const }))}
+    /></AppearanceProvider>);
+    for (const label of ["recovery", "long run", "progression", "tempo", "intervals", "hills", "fartlek"]) {
+      expect(screen.getByRole("button", { name: `Add ${label}` })).toBeOnTheScreen();
+    }
+  });
 });

@@ -1,10 +1,19 @@
 import React, { useState } from "react";
 import { Text, TextInput, View } from "react-native";
 
-import type { RunningPlanAggregate, RunningPlanSession } from "../../domains/running/contracts";
+import { RUNNING_SESSION_KINDS, type RunningPlanAggregate, type RunningSessionKind } from "../../domains/running/contracts";
 import { PrimaryAction, ScreenHeader, SecondaryAction } from "../components";
 import { RunningSessionFields } from "../components/RunningSessionFields";
-import { validateRunningPlanDraft, type RunningPlanDraft } from "../running/runningFormDraft";
+import {
+  addRunningSessionDraft,
+  deleteRunningSessionDraft,
+  makeRunningSessionDraft,
+  reorderRunningSessionDraft,
+  runningPlanCommandFromDraft,
+  updateRunningSessionDraft,
+  validateRunningPlanDraft,
+  type RunningPlanDraft,
+} from "../running/runningFormDraft";
 
 export function RunningPlanEditorScreen(props: Readonly<{
   initialDraft: RunningPlanDraft;
@@ -16,19 +25,17 @@ export function RunningPlanEditorScreen(props: Readonly<{
   const [draft, setDraft] = useState(props.initialDraft);
   const [error, setError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
-  const addRecovery = () => setDraft((current) => {
-    const session: RunningPlanSession = {
-      slot: { id: props.createId("running-slot-revision"), rootId: props.createId("running-slot"), weekday: current.goal.trainingDays[0] ?? "Monday", revision: 1, ordinal: current.sessions.length },
-      session: { version: 1, id: props.createId("running-session-revision"), rootId: props.createId("running-session"), planId: current.id, sessionKind: "recovery", revision: 1, createdAtMs: current.createdAtMs, phases: [{ ordinal: 0, kind: "work", steps: [{ ordinal: 0, kind: "duration", durationMs: 60_000 }] }], contextual: {} },
-    };
-    return { ...current, sessions: [...current.sessions, session] };
-  });
+  const add = (kind: RunningSessionKind) => setDraft((current) => addRunningSessionDraft(current, makeRunningSessionDraft({
+    id: props.createId("running-session-revision"), rootId: props.createId("running-session"),
+    slotId: props.createId("running-slot-revision"), slotRootId: props.createId("running-slot"),
+    planId: current.id, kind, weekday: current.goal.trainingDays[0] ?? "Monday", ordinal: current.sessions.length, createdAtMs: current.createdAtMs,
+  })));
   const save = async () => {
     const validation = validateRunningPlanDraft(draft);
     if (validation !== null) { setError(validation); return; }
     setSaving(true); setError(null);
     try {
-      const committed = await props.savePlan(draft);
+      const committed = await props.savePlan(runningPlanCommandFromDraft(draft));
       props.onSaved(committed.id);
     } catch {
       setError("running_save_failed");
@@ -40,10 +47,11 @@ export function RunningPlanEditorScreen(props: Readonly<{
     <TextInput accessibilityLabel="Goal distance metres" keyboardType="number-pad" value={String(draft.goal.goalDistanceMeters)} onChangeText={(value) => setDraft((current) => ({ ...current, goal: { ...current.goal, goalDistanceMeters: Number(value) } }))} />
     <TextInput accessibilityLabel="Target time milliseconds" keyboardType="number-pad" value={draft.goal.targetDurationMs === undefined ? "" : String(draft.goal.targetDurationMs)} onChangeText={(value) => setDraft((current) => ({ ...current, goal: { ...current.goal, ...(value === "" ? {} : { targetDurationMs: Number(value) }) } }))} />
     <Text>Available days · {draft.goal.trainingDays.join(", ")}</Text>
-    <SecondaryAction label="Add recovery" onPress={addRecovery} />
-    {draft.sessions.map((session) => <View key={session.slot.rootId}>
-      <RunningSessionFields session={session} onChange={(entry) => setDraft((current) => ({ ...current, sessions: current.sessions.map((item) => item.slot.rootId === entry.slot.rootId ? entry : item) }))} />
-      <SecondaryAction label={`Delete ${session.session.sessionKind}`} onPress={() => setDraft((current) => ({ ...current, sessions: current.sessions.filter((item) => item.slot.rootId !== session.slot.rootId) }))} />
+    {RUNNING_SESSION_KINDS.map((kind) => <SecondaryAction key={kind} label={`Add ${kind.replace("_", " ")}`} onPress={() => add(kind)} />)}
+    {draft.sessions.map((session, index) => <View key={session.slot.rootId}>
+      <RunningSessionFields session={session} onChange={(entry) => setDraft((current) => updateRunningSessionDraft(current, entry))} />
+      <SecondaryAction label={`Delete ${session.session.sessionKind}`} onPress={() => setDraft((current) => deleteRunningSessionDraft(current, session.slot.rootId))} />
+      <SecondaryAction disabled={index === 0} label={`Move ${session.session.sessionKind} earlier`} onPress={() => setDraft((current) => reorderRunningSessionDraft(current, current.sessions.map((entry, position) => position === index ? current.sessions[index - 1]!.slot.rootId : position === index - 1 ? session.slot.rootId : entry.slot.rootId)))} />
     </View>)}
     {error === null ? null : <Text accessibilityRole="alert">{error}</Text>}
     <PrimaryAction busy={saving} disabled={saving} label="Save changes" onPress={() => void save()} />
