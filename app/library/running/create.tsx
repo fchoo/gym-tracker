@@ -10,5 +10,5 @@ export default function CreateRunningPlanRoute() {
     return { version: 1 as const, id, name: "Running plan", revision: 1, createdAtMs: now,
       goal: { version: 1 as const, id: runtime.createId("running-goal"), planId: id, revision: 1, goalDistanceMeters: 5_000, trainingDays: ["Monday" as const], createdAtMs: now }, sessions: [] };
   }, [runtime]);
-  return <><Stack.Screen options={{ gestureEnabled: false }} /><RunningPlanEditorScreen initialDraft={draft} onBack={() => router.back()} onSaved={(id) => router.replace(`/library/running/${id}` as Href)} savePlan={(plan) => runtime.createInactivePlan({ plan })} /></>;
+  return <><Stack.Screen options={{ gestureEnabled: false }} /><RunningPlanEditorScreen createId={runtime.createId} initialDraft={draft} onBack={() => router.back()} onSaved={(id) => router.replace(`/library/running/${id}` as Href)} savePlan={(plan) => runtime.createInactivePlan({ plan })} /></>;
 }

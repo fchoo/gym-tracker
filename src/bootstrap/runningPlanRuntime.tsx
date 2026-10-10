@@ -26,7 +26,10 @@ export function createRunningPlanRuntimePort(kernel: SqliteKernel, dependencies:
     createInactivePlan: async (input) => {
       const requestId = createId("running-plan-create");
       const requestSha256 = await dependencies.sha256(JSON.stringify({ requestId, plan: input.plan }));
-      return createInactiveRunningPlan(repository, { ...input, requestId, requestSha256 });
+      const committed = await createInactiveRunningPlan(repository, { ...input, requestId, requestSha256 });
+      const readBack = await repository.readAggregate(committed.id);
+      if (readBack === null) throw new Error("running_plan_readback_missing");
+      return readBack;
     },
   });
 }
