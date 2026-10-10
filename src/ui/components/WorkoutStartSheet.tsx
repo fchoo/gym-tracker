@@ -12,7 +12,7 @@ import {
 } from "./index";
 import { BottomSheet, useBottomSheetCancel } from "./BottomSheet";
 import {
-  typeScale,
+  workoutTypeScale,
   useAppTheme,
 } from "../theme";
 
@@ -40,6 +40,10 @@ export function WorkoutStartSheet({
   restoreFocusRef?: React.RefObject<View | null>;
 }>) {
   const { colors } = useAppTheme();
+  const scheduledDay = scheduledDayId === undefined
+    ? undefined
+    : planDays.find((day) => day.id === scheduledDayId);
+  const otherPlanDays = planDays.filter((day) => day.id !== scheduledDayId);
 
   return (
     <BottomSheet
@@ -51,29 +55,23 @@ export function WorkoutStartSheet({
     >
           <Text
             style={[
-              typeScale.body as TextStyle,
+              workoutTypeScale.body as TextStyle,
               { color: colors.textSecondary },
             ]}
           >
             Alternate, rest-day, and empty workouts do not advance your
             schedule. Completing the scheduled workout advances it.
           </Text>
-          {planDays.map((day) => (
-            day.id === scheduledDayId ? (
-              <PrimaryAction
-                key={day.id}
-                label={`Start ${day.name}`}
-                onPress={() => onStartDay(day.id)}
-                testID="scheduled-start-option"
-              />
-            ) : (
-              <PrimaryAction
-                key={day.id}
-                label={`Start ${day.name}`}
-                onPress={() => onStartDay(day.id)}
-              />
-            )
-          ))}
+          {scheduledDay === undefined ? null : <PrimaryAction
+            label={`Start ${scheduledDay.name}`}
+            onPress={() => onStartDay(scheduledDay.id)}
+            testID="scheduled-start-option"
+          />}
+          {otherPlanDays.map((day) => <PrimaryAction
+            key={day.id}
+            label={`Start ${day.name}`}
+            onPress={() => onStartDay(day.id)}
+          />)}
           <SecondaryAction
             label="Start empty workout"
             onPress={() => onStartEmpty()}

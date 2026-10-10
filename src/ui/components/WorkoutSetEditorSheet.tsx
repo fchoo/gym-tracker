@@ -6,7 +6,7 @@ import { BottomSheet } from "./BottomSheet";
 import { FocusablePressable, PrimaryAction, SecondaryAction } from "./index";
 import { SemanticNumberField } from "./SemanticNumberField";
 import { observationForSet } from "./SetRow";
-import { space, typeScale, useAppTheme } from "../theme";
+import { space, workoutTypeScale, useAppTheme } from "../theme";
 
 type Draft = Readonly<{ load: string; reps: string; duration: string; distance: string; rounds: string; source: SetObservation["source"] }>;
 
@@ -94,21 +94,26 @@ export function WorkoutSetEditorSheet({ exerciseName, onCancel, onSave, restoreF
       case "fixed_distance": return <SemanticNumberField kind="decimal" label="Duration (sec)" minimum={1} onChangeText={(duration) => update({ duration })} value={draft.duration} />;
       case "fixed_time": return <SemanticNumberField kind="integer" label="Distance (m)" minimum={1} onChangeText={(distance) => update({ distance })} value={draft.distance} />;
       case "intervals": return <><SemanticNumberField kind="integer" label="Completed rounds" minimum={0} onChangeText={(rounds) => update({ rounds })} value={draft.rounds} /><SemanticNumberField kind="decimal" label="Completed work (sec)" minimum={0} onChangeText={(duration) => update({ duration })} value={draft.duration} /></>;
-      case "unscored": return <Text style={[typeScale.body as TextStyle, { color: colors.textSecondary }]}>Saving records this set as completed. No performance metric is captured.</Text>;
+      case "unscored": return <Text style={[workoutTypeScale.body as TextStyle, { color: colors.textSecondary }]}>Saving records this set as completed. No performance metric is captured.</Text>;
     }
   })();
-  return <BottomSheet cancelDisabled={saving} cancelLabel={`Close edit ${exerciseName.toLocaleLowerCase("en")}`} contentStyle={styles.sheet} heading={`Edit ${exerciseName}`} onCancel={onCancel} restoreFocusRef={restoreFocusRef} testID="workout-set-editor-sheet" visible={visible}>
+  return <BottomSheet cancelDisabled={saving} cancelLabel="Return to Workout" contentStyle={styles.sheet} heading={`Edit ${exerciseName}`} onCancel={onCancel} restoreFocusRef={restoreFocusRef} testID="workout-set-editor-sheet" visible={visible}>
     <View style={styles.content}>
-      <Text style={[typeScale.secondary as TextStyle, { color: colors.textSecondary }]}>Changes remain local until you save them.</Text>
-      {profileContext === undefined ? null : <Text style={[typeScale.secondary as TextStyle, { color: colors.textSecondary }]}>{profileContext}</Text>}
-      {set.valueSources.length < 2 ? null : <View style={styles.sources}><Text style={[typeScale.label as TextStyle, { color: colors.textPrimary }]}>Start from</Text><View style={styles.sourceButtons}>{set.valueSources.map((candidate) => <FocusablePressable accessibilityLabel={`Use ${candidate.source.replaceAll("_", " ")}`} accessibilityRole="button" key={candidate.source} onPress={() => setDraft(draftFor(candidate.observation))} style={[styles.sourceButton, { borderColor: colors.divider }]}><Text style={[typeScale.secondary as TextStyle, { color: colors.textPrimary }]}>{candidate.source.replaceAll("_", " ")}</Text></FocusablePressable>)}</View></View>}
+      <Text style={[workoutTypeScale.secondary as TextStyle, { color: colors.textSecondary }]}>Changes remain local until you save them.</Text>
+      <Text style={[workoutTypeScale.secondary as TextStyle, { color: colors.textSecondary }]}>Return to Workout without saving to discard these entered changes.</Text>
+      {profileContext === undefined ? null : <Text style={[workoutTypeScale.secondary as TextStyle, { color: colors.textSecondary }]}>{profileContext}</Text>}
+      {set.valueSources.length < 2 ? null : <View style={styles.sources}><Text style={[workoutTypeScale.label as TextStyle, { color: colors.textPrimary }]}>Start from</Text><View style={styles.sourceButtons}>{set.valueSources.map((candidate) => {
+        const selected = draft.source === candidate.source;
+        const label = candidate.source.replaceAll("_", " ");
+        return <FocusablePressable accessibilityHint="Updates the local draft. Save set values is still required." accessibilityLabel={`Use ${label}`} accessibilityRole="button" accessibilityState={{ busy: saving, disabled: saving, selected }} disabled={saving} focusable={!saving} key={candidate.source} onPress={() => update(draftFor(candidate.observation))} style={[styles.sourceButton, { backgroundColor: selected ? colors.blueBg : "transparent", borderColor: selected ? colors.focusRing : colors.divider }]}><Text style={[workoutTypeScale.secondary as TextStyle, { color: colors.textPrimary }]}>{label}</Text></FocusablePressable>;
+      })}</View></View>}
       {metricFields}
-      {error === undefined ? null : <Text accessibilityLiveRegion="polite" style={[typeScale.secondary as TextStyle, { color: colors.destructive }]}>{error}</Text>}
-      <View style={styles.actions}><SecondaryAction disabled={saving} label="Cancel" onPress={onCancel} /><PrimaryAction busy={saving} disabled={saving} label={set.status === "completed" ? "Save committed set edit" : "Save set values"} onPress={() => { void save(); }} /></View>
+      {error === undefined ? null : <Text accessibilityLiveRegion="polite" style={[workoutTypeScale.secondary as TextStyle, { color: colors.destructive }]}>{error}</Text>}
+      <View style={styles.actions}><SecondaryAction disabled={saving} label="Return to Workout" onPress={onCancel} /><PrimaryAction busy={saving} disabled={saving} label={set.status === "completed" ? "Save committed set edit" : "Save set values"} onPress={() => { void save(); }} /></View>
     </View>
   </BottomSheet>;
 }
 
 const styles = StyleSheet.create({
-  sheet: { maxHeight: "82%" }, content: { gap: space[4] }, actions: { flexDirection: "row", flexWrap: "wrap", gap: space[2] }, stepper: { flexDirection: "row", flexWrap: "wrap", gap: space[2] }, sources: { gap: space[1] }, sourceButtons: { flexDirection: "row", flexWrap: "wrap", gap: space[1] }, sourceButton: { borderRadius: 8, borderWidth: StyleSheet.hairlineWidth, minHeight: 44, justifyContent: "center", paddingHorizontal: space[2] },
+  sheet: { maxHeight: "82%" }, content: { gap: space[4] }, actions: { flexDirection: "row", flexWrap: "wrap", gap: space[2] }, stepper: { flexDirection: "row", flexWrap: "wrap", gap: space[2] }, sources: { gap: space[1] }, sourceButtons: { flexDirection: "row", flexWrap: "wrap", gap: space[1] }, sourceButton: { borderRadius: 8, borderWidth: StyleSheet.hairlineWidth, minHeight: 48, justifyContent: "center", paddingHorizontal: space[2] },
 });

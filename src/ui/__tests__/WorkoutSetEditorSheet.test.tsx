@@ -30,9 +30,30 @@ describe("WorkoutSetEditorSheet", () => {
     const onSave = jest.fn(async (_observation: SetObservation) => undefined);
     const onCancel = jest.fn();
     await render(<AppearanceProvider><WorkoutSetEditorSheet exerciseName="Back Squat" onCancel={onCancel} onSave={onSave} set={set} visible /></AppearanceProvider>);
-    await fireEvent.press(screen.getByRole("button", { name: "Close edit back squat" }));
+    expect(screen.getByText("Return to Workout without saving to discard these entered changes.")).toBeOnTheScreen();
+    await fireEvent.press(screen.getAllByRole("button", { name: "Return to Workout" })[1]!);
     expect(onCancel).toHaveBeenCalledTimes(1);
     expect(onSave).not.toHaveBeenCalled();
+  });
+
+  it("exposes selected and busy semantics for source choices at the 48dp minimum", async () => {
+    const sourcedSet: ActiveWorkoutSet = {
+      ...set,
+      valueSources: [
+        { source: "recommended", observation: { version: 1, profile: "load_reps", loadGrams: 65_000, reps: 7, source: "recommended" } },
+        { source: "plan_default", observation: { version: 1, profile: "load_reps", loadGrams: 60_000, reps: 8, source: "plan_default" } },
+      ],
+    };
+    let resolveSave: (() => void) | undefined;
+    const onSave = jest.fn(() => new Promise<void>((resolve) => { resolveSave = resolve; }));
+    await render(<AppearanceProvider><WorkoutSetEditorSheet exerciseName="Back Squat" onCancel={jest.fn()} onSave={onSave} set={sourcedSet} visible /></AppearanceProvider>);
+    const recommended = screen.getByRole("button", { name: "Use recommended" });
+    await fireEvent.press(recommended);
+    expect(recommended).toHaveProp("accessibilityState", expect.objectContaining({ selected: true, busy: false }));
+    expect(recommended).toHaveStyle({ minHeight: 48 });
+    await fireEvent.press(screen.getByRole("button", { name: "Save set values" }));
+    expect(recommended).toHaveProp("accessibilityState", expect.objectContaining({ busy: true, disabled: true }));
+    await act(async () => { resolveSave?.(); });
   });
 
   it("dismisses through the scrim without saving a changed draft", async () => {
