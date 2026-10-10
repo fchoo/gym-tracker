@@ -24,12 +24,14 @@ import {
   type BottomSheetFocusableRef,
 } from "./bottomSheetFocus";
 import { AndroidEscapeBoundary } from "./AndroidEscapeBoundary";
-import { radius, space, typeScale, useAppTheme } from "../theme";
+import { radius, sizes, space, typeScale, useAppTheme } from "../theme";
 
 type FocusTarget = Readonly<{
   focus?: () => void;
   setNativeProps?: (props: Readonly<{ hasTVPreferredFocus: boolean }>) => void;
 }>;
+
+const BOTTOM_SHEET_HEADER_MIN_HEIGHT = 56;
 
 export type BottomSheetProps = Readonly<{
   visible: boolean;
@@ -87,6 +89,9 @@ export function BottomSheet({
   const compactLandscapeHeight = compactLandscape
     ? Math.floor(windowHeight * 0.72)
     : undefined;
+  const compactScrollMaxHeight = compactLandscapeHeight === undefined
+    ? undefined
+    : Math.max(sizes.minimumTarget, compactLandscapeHeight - BOTTOM_SHEET_HEADER_MIN_HEIGHT);
   const insets = React.useContext(SafeAreaInsetsContext) ?? {
     bottom: 0,
     left: 0,
@@ -345,7 +350,10 @@ export function BottomSheet({
                       showsVerticalScrollIndicator
                       style={[
                         styles.scroll,
-                        compactLandscape ? styles.compactScroll : null,
+                        compactLandscape ? [
+                          styles.compactScroll,
+                          { maxHeight: compactScrollMaxHeight },
+                        ] : null,
                       ]}
                       testID={scrollTestID ?? "bottom-sheet-scroll"}
                     >
@@ -381,7 +389,7 @@ const styles = StyleSheet.create({
     alignItems: "center",
     flexDirection: "row",
     justifyContent: "space-between",
-    minHeight: 56,
+    minHeight: BOTTOM_SHEET_HEADER_MIN_HEIGHT,
     paddingHorizontal: space[4],
     paddingTop: space[2],
   },

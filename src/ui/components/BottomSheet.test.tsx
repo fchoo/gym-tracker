@@ -309,7 +309,7 @@ describe("BottomSheet", () => {
       flexBasis: 0,
       flexGrow: 1,
       flexShrink: 1,
-      maxHeight: "82%",
+      maxHeight: 289,
       minHeight: 0,
     });
     expect(screen.getByTestId("bottom-sheet-surface")).toHaveStyle({
