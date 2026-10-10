@@ -85,11 +85,11 @@ Exactly four roots: **Workout, Calendar, Library, Progress**. Preserve SQLite au
 - [x] **WRK-26**: Use explicit sec controls for between-set rest and plan default rest; persist changes immediately without cadence, rest-between-reps, nested Advanced Timing or sound/haptic plan controls.
 - [x] **WRK-27**: Show plan identity and 1.25/2.5/5 weight-increment choices with saved selection; preserve the distinction between increment preference and existing set targets.
 - [x] **WRK-28**: Keep Edit plan after workout reachable and route to the real editor after the active session boundary, preserving schedule/history rules.
-- [ ] **WRK-29**: Open the global Add exercise picker, search available exercises, choose an exercise and add it to the active session with loading/error/retry handling.
-- [ ] **WRK-30**: Replace the chosen exercise through a contextual picker while retaining valid committed facts and requiring the domain's compatibility/impact rules.
-- [ ] **WRK-31**: Require a second explicit Confirm delete action before removing an exercise and preserve committed source history and safe next-current selection.
-- [ ] **WRK-32**: Support grip drag and accessible Move up/Move down alternatives while preserving current exercise/set identity; cancelled gestures must not commit a reorder.
-- [ ] **WRK-33**: Preserve shipped undo/edit-removal recovery through contextual feedback without adding a persistent Undo control to the approved compact dock.
+- [x] **WRK-29**: Open the global Add exercise picker, search available exercises, choose an exercise and add it to the active session with loading/error/retry handling.
+- [x] **WRK-30**: Replace the chosen exercise through a contextual picker while retaining valid committed facts and requiring the domain's compatibility/impact rules.
+- [x] **WRK-31**: Require a second explicit Confirm delete action before removing an exercise and preserve committed source history and safe next-current selection.
+- [x] **WRK-32**: Support grip drag and accessible Move up/Move down alternatives while preserving current exercise/set identity; cancelled gestures must not commit a reorder.
+- [x] **WRK-33**: Preserve shipped undo/edit-removal recovery through contextual feedback without adding a persistent Undo control to the approved compact dock.
 - [ ] **WRK-34**: Preserve Finish workout, Finish as partial, Finish workout later, zero-set save and Discard workout with confirmation and error/retry states.
 - [ ] **WRK-35**: Preserve complete/partial summary, per-exercise results/effort, modified-from-plan status, details/return actions and failed-summary retry.
 - [ ] **WRK-36**: Keep plan-change write-back explicit with preview/accept/cancel and failed-write retry; finishing never silently changes future targets.
@@ -296,11 +296,11 @@ once and remains Pending until its owning phase is implemented and verified.
 | WRK-26 | 15 | workout.timing-flat | Complete |
 | WRK-27 | 15 | workout.plan-increment | Complete |
 | WRK-28 | 15 | workout.plan-after-workout | Complete |
-| WRK-29 | 15 | workout.add-exercise | Pending |
-| WRK-30 | 15 | workout.replace-exercise | Pending |
-| WRK-31 | 15 | workout.delete-exercise | Pending |
-| WRK-32 | 15 | workout.reorder | Pending |
-| WRK-33 | 15 | workout.undo | Pending |
+| WRK-29 | 15 | workout.add-exercise | Complete |
+| WRK-30 | 15 | workout.replace-exercise | Complete |
+| WRK-31 | 15 | workout.delete-exercise | Complete |
+| WRK-32 | 15 | workout.reorder | Complete |
+| WRK-33 | 15 | workout.undo | Complete |
 | WRK-34 | 15 | workout.outcomes | Pending |
 | WRK-35 | 15 | workout.completion-review | Pending |
 | WRK-36 | 15 | workout.completion-writeback | Pending |
