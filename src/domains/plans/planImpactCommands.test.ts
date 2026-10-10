@@ -869,6 +869,46 @@ describe("D-01/D-02 session exercise write-back preview", () => {
     });
   });
 
+  it("emits source-derived typed current and proposed target rows without formatted-string comparisons", async () => {
+    const changedTarget = {
+      ...writeBackTarget,
+      loadGrams: 22_500,
+      minReps: 9,
+      maxReps: 9,
+    };
+    const facts = {
+      ...sessionWriteBackFacts,
+      sessionExercises: sessionWriteBackFacts.day.occurrences.map((occurrence) => ({
+        sessionExerciseId: `session-${occurrence.occurrenceId}`,
+        exerciseId: occurrence.exerciseId,
+        displayOrdinal: occurrence.ordinal,
+        sourceOccurrenceId: occurrence.occurrenceId,
+        restSeconds: occurrence.restSeconds,
+        metricIdentity: occurrence.metricIdentity,
+        targets: occurrence.occurrenceId === "owned-squat"
+          ? [{ ...occurrence.targets[0]!, target: changedTarget }]
+          : occurrence.targets,
+      })),
+      edits: [],
+    };
+
+    const preview = await previewSessionExerciseEditsForPlan({
+      repository: { readSessionExerciseEditsForPlan: jest.fn(async () => facts) },
+      sha256,
+      input: { sessionId: "session-edited" },
+    });
+
+    expect(preview).toMatchObject({
+      changes: [{
+        exerciseId: "exercise-squat",
+        targetOrdinal: 0,
+        metricIdentity: identity,
+        current: { target: writeBackTarget, units: writeBackUnits },
+        proposed: { target: changedTarget, units: writeBackUnits },
+      }],
+    });
+  });
+
   it("returns no aggregate for excluded or composition-restored sessions and binds final order", async () => {
     const baseline = {
       ...sessionWriteBackFacts,
