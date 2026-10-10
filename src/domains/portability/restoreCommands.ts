@@ -146,7 +146,7 @@ function validPassword(value: string): boolean {
 
 // v23-v27 add bookkeeping or trigger-only schema changes; archives remain the
 // Phase 11 portable graph, so archived schema-22 and current snapshots restore.
-export const LOGICAL_BACKUP_SUPPORTED_SCHEMA_VERSIONS = Object.freeze([15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 35, 36] as const);
+export const LOGICAL_BACKUP_SUPPORTED_SCHEMA_VERSIONS = Object.freeze([15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 35, 36, 37, 38, 39, 40] as const);
 
 type LogicalReference = Readonly<{
   childTable: string;
@@ -266,8 +266,10 @@ async function validateRows(
   const schemaVersionSupported = (
     LOGICAL_BACKUP_SUPPORTED_SCHEMA_VERSIONS as readonly number[]
   ).includes(snapshot.schemaVersion);
-  const formatMatchesSchema = snapshot.version === 6
-    ? snapshot.schemaVersion === 36
+  const formatMatchesSchema = snapshot.version === 7
+    ? snapshot.schemaVersion === 40
+    : snapshot.version === 6
+      ? snapshot.schemaVersion >= 36 && snapshot.schemaVersion <= 39
     : snapshot.version === 5
       ? snapshot.schemaVersion === 31
     : snapshot.version === 4

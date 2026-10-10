@@ -387,6 +387,32 @@ describe("restore preflight", () => {
       .resolves.toEqual(expect.objectContaining({ outcome: "ready" }));
   });
 
+  it.each([37, 38, 39])("accepts the frozen v6 graph through additive schema %i", async (schemaVersion) => {
+    const commands = createRestoreCommands({
+      crypto: cryptoPort(), files: { readSelectedArchiveAtMost: () => archiveFor(snapshot({
+        version: 6,
+        schemaVersion,
+        tables: { portable_owner_identity: [{ id: 1, owner_namespace: "0123456789abcdef0123456789abcdef" }] },
+      })) },
+      kdf, schema, candidateProbe, store: createRestorePreflightStore({ tokenFactory: () => `schema-${schemaVersion}-v6` }),
+    });
+    await expect(commands.preflightSecureRestore({ password: "owner-password" }))
+      .resolves.toEqual(expect.objectContaining({ outcome: "ready" }));
+  });
+
+  it("accepts the current v7 schema-40 archive for preflight", async () => {
+    const commands = createRestoreCommands({
+      crypto: cryptoPort(), files: { readSelectedArchiveAtMost: () => archiveFor(snapshot({
+        version: 7,
+        schemaVersion: 40,
+        tables: { portable_owner_identity: [{ id: 1, owner_namespace: "0123456789abcdef0123456789abcdef" }] },
+      })) },
+      kdf, schema, candidateProbe, store: createRestorePreflightStore({ tokenFactory: () => "schema-40-v7" }),
+    });
+    await expect(commands.preflightSecureRestore({ password: "owner-password" }))
+      .resolves.toEqual(expect.objectContaining({ outcome: "ready" }));
+  });
+
   describe("v6 active plan and schedule topology", () => {
     const plan = (id: string, kind: "strength" | "running", isActive = 1) => ({
       id,

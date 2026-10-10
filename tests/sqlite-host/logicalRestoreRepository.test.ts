@@ -480,7 +480,7 @@ describe("logical restore repository", () => {
     expect(LOGICAL_BACKUP_TABLES).toContain("bodyweight_entry_events");
     expect(LOGICAL_BACKUP_TABLES).toContain("bodyweight_command_receipts");
     expect(LOGICAL_BACKUP_TABLES).toContain("workout_session_exercise_rest_default_receipts");
-    expect(LOGICAL_BACKUP_FORMAT_VERSION).toBe(6);
+    expect(LOGICAL_BACKUP_FORMAT_VERSION).toBe(7);
     expect(LOGICAL_RESTORE_DELETE_TRIGGER_NAMES).toContain("portable_owner_identity_adoption_only");
     expect(LOGICAL_RESTORE_DELETE_TRIGGER_NAMES).toContain("workout_session_exercise_rest_default_receipts_immutable_delete");
     expect(LOGICAL_RESTORE_DELETE_TRIGGER_NAMES).not.toContain("starter_plan_sources_immutable_delete");

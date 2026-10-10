@@ -1,7 +1,7 @@
 /** Version 3 is the Phase 13 successor graph.  Versions 1 and 2 stay frozen. */
-/** Version 6 carries the complete schema-36 portable source graph. */
-export const LOGICAL_BACKUP_FORMAT_VERSION = 6 as const;
-export const LOGICAL_BACKUP_ACCEPTED_FORMAT_VERSIONS = Object.freeze([1, 2, 3, 4, 5, 6] as const);
+/** Version 7 carries the schema-40 collision-decision source graph. */
+export const LOGICAL_BACKUP_FORMAT_VERSION = 7 as const;
+export const LOGICAL_BACKUP_ACCEPTED_FORMAT_VERSIONS = Object.freeze([1, 2, 3, 4, 5, 6, 7] as const);
 
 export type LogicalBackupFormatVersion =
   (typeof LOGICAL_BACKUP_ACCEPTED_FORMAT_VERSIONS)[number];
@@ -146,6 +146,8 @@ export const LOGICAL_BACKUP_V2_TABLES = Object.freeze(
     "imported_activity_match_invalidations", "workout_session_schedule_links",
     "workout_schedule_reconciliation_receipts", "workout_completed_set_correction_receipts",
     "running_activity_match_events", "running_activity_match_receipts",
+    "schedule_collision_outcomes", "schedule_collision_receipts",
+    "schedule_collision_projections",
   ].includes(table)),
 ) as readonly LogicalBackupTableName[];
 
@@ -159,6 +161,8 @@ export const LOGICAL_BACKUP_V3_TABLES = Object.freeze(
     "imported_activity_match_invalidations", "workout_session_schedule_links",
     "workout_schedule_reconciliation_receipts", "workout_completed_set_correction_receipts",
     "running_activity_match_events", "running_activity_match_receipts",
+    "schedule_collision_outcomes", "schedule_collision_receipts",
+    "schedule_collision_projections",
   ].includes(table)),
 ) as readonly LogicalBackupTableName[];
 
@@ -170,6 +174,8 @@ export const LOGICAL_BACKUP_V4_TABLES = Object.freeze(
     "imported_activity_match_invalidations", "workout_session_schedule_links",
     "workout_schedule_reconciliation_receipts", "workout_completed_set_correction_receipts",
     "running_activity_match_events", "running_activity_match_receipts",
+    "schedule_collision_outcomes", "schedule_collision_receipts",
+    "schedule_collision_projections",
   ].includes(table)),
 ) as readonly LogicalBackupTableName[];
 
@@ -180,11 +186,23 @@ export const LOGICAL_BACKUP_V5_TABLES = Object.freeze(
     "imported_activity_match_invalidations", "workout_session_schedule_links",
     "workout_schedule_reconciliation_receipts", "workout_completed_set_correction_receipts",
     "running_activity_match_events", "running_activity_match_receipts",
+    "schedule_collision_outcomes", "schedule_collision_receipts",
+    "schedule_collision_projections",
   ].includes(table)),
 ) as readonly LogicalBackupTableName[];
 
-/** v6 excludes mutable projections which deterministic reconciliation rebuilds. */
+/** v6 is frozen at schema 36; collision decisions did not exist yet. */
 export const LOGICAL_BACKUP_V6_TABLES = Object.freeze(
+  LOGICAL_BACKUP_TABLES.filter((table) => ![
+    "running_current_matches",
+    "schedule_collision_outcomes",
+    "schedule_collision_receipts",
+    "schedule_collision_projections",
+  ].includes(table)),
+) as readonly LogicalBackupTableName[];
+
+/** v7 adds the schema-40 collision decision ledger; current matches still rebuild. */
+export const LOGICAL_BACKUP_V7_TABLES = Object.freeze(
   LOGICAL_BACKUP_TABLES.filter((table) => table !== "running_current_matches"),
 ) as readonly LogicalBackupTableName[];
 
@@ -256,6 +274,7 @@ export function logicalBackupTablesForVersion(
   version: LogicalBackupFormatVersion,
   schemaVersion = Number.POSITIVE_INFINITY,
 ): readonly (keyof typeof LOGICAL_BACKUP_TABLE_DEFINITIONS)[] {
+  if (version === 7) return LOGICAL_BACKUP_V7_TABLES;
   if (version === 6) return LOGICAL_BACKUP_V6_TABLES;
   const legacyTables = version === 5
     ? LOGICAL_BACKUP_V5_TABLES

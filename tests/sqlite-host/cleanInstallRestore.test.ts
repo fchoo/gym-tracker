@@ -426,10 +426,10 @@ describe("clean install logical restore", () => {
       createdAtMs: 1,
       snapshotId: "clean-install-empty-owner-state",
     })).resolves.toEqual({
-      version: 6,
+      version: 7,
       snapshotId: "clean-install-empty-owner-state",
       createdAtMs: 1,
-      schemaVersion: 36,
+      schemaVersion: 40,
       manifest: {
         catalogReferenceCount: 0,
         rowCounts: expect.any(Object),

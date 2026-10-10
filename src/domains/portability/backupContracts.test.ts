@@ -74,8 +74,8 @@ describe("logical backup contract", () => {
     expect(LOGICAL_BACKUP_TABLES).not.toContain("sqlite_master");
   });
 
-  it("freezes v1-v5 while the schema-36 successor carries every durable source fact", () => {
-    expect(LOGICAL_BACKUP_FORMAT_VERSION).toBe(6);
+  it("freezes v1-v6 while the schema-40 successor carries collision decision facts", () => {
+    expect(LOGICAL_BACKUP_FORMAT_VERSION).toBe(7);
     expect(logicalBackupTablesForVersion(5)).not.toContain("imported_activity_identities");
     expect(logicalBackupTablesForVersion(5)).not.toContain("running_activity_match_events");
     expect(logicalBackupTablesForVersion(5)).not.toContain("workout_session_schedule_links");
@@ -89,6 +89,16 @@ describe("logical backup contract", () => {
       "running_activity_match_events",
       "running_activity_match_receipts",
       "workout_session_exercise_rest_default_receipts",
+    ]));
+    expect(logicalBackupTablesForVersion(6)).not.toEqual(expect.arrayContaining([
+      "schedule_collision_outcomes",
+      "schedule_collision_receipts",
+      "schedule_collision_projections",
+    ]));
+    expect(logicalBackupTablesForVersion(7)).toEqual(expect.arrayContaining([
+      "schedule_collision_outcomes",
+      "schedule_collision_receipts",
+      "schedule_collision_projections",
     ]));
     expect(logicalBackupTablesForVersion(6)).not.toContain("running_activity_current_matches");
     expect(logicalBackupTablesForVersion(6)).not.toContain("imported_activity_current_lifecycle");
