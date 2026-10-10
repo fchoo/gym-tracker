@@ -122,13 +122,13 @@ Exactly four roots: **Workout, Calendar, Library, Progress**. Preserve SQLite au
 
 ### Phase 17: Library, plan creation and structured Running
 
-- [ ] **LIB-01**: Remember Plans/Exercises selection with independent search, filters, favorites and detail-return state.
-- [ ] **LIB-02**: Present Active Plans, My Plans and Starter Plans with owned/inactive/starter/Running identity, next scheduled item and grouped counts.
-- [ ] **LIB-03**: Search each view, clear query separately, apply filter counts and preserve query when clearing filters; distinguish No matches from true no-plan state.
+- [x] **LIB-01**: Remember Plans/Exercises selection with independent search, filters, favorites and detail-return state.
+- [x] **LIB-02**: Present Active Plans, My Plans and Starter Plans with owned/inactive/starter/Running identity, next scheduled item and grouped counts.
+- [x] **LIB-03**: Search each view, clear query separately, apply filter counts and preserve query when clearing filters; distinguish No matches from true no-plan state.
 - [x] **LIB-04**: Show Favorites, Recent and All Exercises with per-exercise favorite toggles and searchable metric/equipment context.
-- [ ] **LIB-05**: Provide Create plan and Create exercise from the Library actions sheet; keep Import plan explicitly unavailable/Later rather than implying a working importer.
-- [ ] **LIB-06**: Route every Create plan entry, including true empty Plans, to one neutral Strength/Running chooser explaining that creation does not activate.
-- [ ] **LIB-07**: Show No plans yet and Create a strength or running plan to get started with the same chooser action.
+- [x] **LIB-05**: Provide Create plan and Create exercise from the Library actions sheet; keep Import plan explicitly unavailable/Later rather than implying a working importer.
+- [x] **LIB-06**: Route every Create plan entry, including true empty Plans, to one neutral Strength/Running chooser explaining that creation does not activate.
+- [x] **LIB-07**: Show No plans yet and Create a strength or running plan to get started with the same chooser action.
 - [ ] **LIB-08**: Add a plan summary route with active/inactive status, schedule, history, source and training days before editing actions.
 - [ ] **LIB-09**: Provide Edit plan, Edit schedule, Duplicate, Archive plan/confirmation and Reactivate plan with preserved history and explicit activation.
 - [x] **LIB-10**: Retain immutable starter preview, source/equipment/schedule/training days, Preview activation and Save editable copy.
@@ -327,13 +327,13 @@ once and remains Pending until its owning phase is implemented and verified.
 | CAL-21 | 16 | calendar.calendar-load-error | Pending |
 | CAL-22 | 16 | calendar.history-deep-correction | Pending |
 | CAL-23 | 16 | calendar.history-management | Pending |
-| LIB-01 | 17 | library.views | Pending |
-| LIB-02 | 17 | library.plans-groups | Pending |
-| LIB-03 | 17 | library.search-filters | Pending |
+| LIB-01 | 17 | library.views | Complete |
+| LIB-02 | 17 | library.plans-groups | Complete |
+| LIB-03 | 17 | library.search-filters | Complete |
 | LIB-04 | 17 | library.exercise-lists | Complete |
-| LIB-05 | 17 | library.actions-menu | Pending |
-| LIB-06 | 17 | library.plan-type-chooser | Pending |
-| LIB-07 | 17 | library.empty-plans | Pending |
+| LIB-05 | 17 | library.actions-menu | Complete |
+| LIB-06 | 17 | library.plan-type-chooser | Complete |
+| LIB-07 | 17 | library.empty-plans | Complete |
 | LIB-08 | 17 | library.owned-detail | Pending |
 | LIB-09 | 17 | library.owned-actions | Pending |
 | LIB-10 | 17 | library.starter-detail | Complete |
