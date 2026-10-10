@@ -167,6 +167,7 @@ test("Phase 14 Maestro action preparation is conditional and does not consume th
   const shell = readFileSync("maestro/phase14/shell.yaml", "utf8");
   const settings = readFileSync("maestro/phase14/settings-recovery.yaml", "utf8");
   const accessibility = readFileSync("maestro/phase14/accessibility.yaml", "utf8");
+  const toastProofRoute = readFileSync("app/__phase14-toast-proof.tsx", "utf8");
   assert.match(shell, /PHASE14_STAGE == 'phase14-root-state' && PHASE14_ACTION == 'back-from-library'/u);
   assert.match(settings, /PHASE14_STAGE == 'phase14-settings-deep-links' && PHASE14_ACTION == 'back-from-data-recovery'/u);
   assert.match(settings, /PHASE14_STAGE == 'phase14-removed-sessions'[\s\S]*?tapOn: "Removed sessions"[\s\S]*?visible: "Removed sessions"/u);
@@ -174,6 +175,7 @@ test("Phase 14 Maestro action preparation is conditional and does not consume th
   const toastAction = accessibility.match(/PHASE14_STAGE == 'phase14-toasts' && PHASE14_ACTION == 'toast-background-enter'[\s\S]*?(?=\n- runFlow:|$)/u)?.[0] ?? "";
   assert.match(toastAction, /Background control idle/u);
   assert.doesNotMatch(toastAction, /tapOn: "Tap background control"/u);
+  assert.match(toastProofRoute, /PROOF_TOAST_DURATION_MS = 10_000/u);
   assert.doesNotMatch(accessibility, /PHASE14_STAGE == 'phase14-launch'[\s\S]*?pressKey: BACK/u);
 });
 

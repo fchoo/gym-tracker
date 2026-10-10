@@ -20,7 +20,7 @@ import {
 
 const TOAST_TOP_AVOIDANCE = 56;
 const TOAST_BOTTOM_AVOIDANCE = 74;
-const PROOF_TOAST_DURATION_MS = 6000;
+const PROOF_TOAST_DURATION_MS = 10_000;
 
 function phase14ToastProofEnabled(): boolean {
   const extra = Constants.expoConfig?.extra;
