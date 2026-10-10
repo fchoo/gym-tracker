@@ -12,11 +12,15 @@ import {
   jest,
 } from "@jest/globals";
 import React from "react";
+import type { ActiveWorkoutView } from "../../src/domains/workout";
 
 const mockBack = jest.fn();
 const mockReplace = jest.fn();
-const mockGetActiveWorkout = jest.fn();
-const mockListOwnedPlanExercises = jest.fn().mockResolvedValue([]);
+const mockGetActiveWorkout = jest.fn<() => Promise<ActiveWorkoutView>>();
+const mockListOwnedPlanExercises = jest.fn<() => Promise<readonly Readonly<{
+  id: string;
+  name: string;
+}>[]>>().mockResolvedValue([]);
 let mockParams: Readonly<{
   sessionId: string;
   returnTo?: string;
@@ -141,7 +145,7 @@ describe("ActiveWorkoutRoute", () => {
         exercises: [],
         progress: { completedWorkingSets: 0, totalWorkingSets: 0 },
         rest: { state: "idle", revision: 0, nextSetId: null },
-      });
+      } as unknown as ActiveWorkoutView);
 
     await render(<ActiveWorkoutRoute />);
 

@@ -105,6 +105,12 @@ import {
   SetRow,
 } from "../components/SetRow";
 import {
+  presentWorkoutSession,
+} from "../../domains/workout/workoutPresentation";
+import {
+  WorkoutSessionPresentation,
+} from "../components/WorkoutSessionPresentation";
+import {
   AdaptiveScreen,
 } from "../layout/AdaptiveScreen";
 import {
@@ -905,6 +911,7 @@ function PopulatedWorkoutOverview({
   const restCommandInFlightRef = useRef(false);
   const timingContext = latestAdvancedTimingContext ?? advancedTimingContext ?? null;
   const overviewExercises = React.useMemo(() => exercisesFor(view), [view]);
+  const presentationModel = React.useMemo(() => presentWorkoutSession(view), [view]);
   const replacementCandidates = availableExercises.filter((exercise) =>
     exercise.name.toLocaleLowerCase("en").includes(
       replacementQuery.trim().toLocaleLowerCase("en"),
@@ -2164,17 +2171,46 @@ function PopulatedWorkoutOverview({
         primary={
           <>
             {activeSet === undefined ? null : <TargetContext set={activeSet} />}
-            {overviewExercises.map((exercise, index) => {
-              const collapsed = isExerciseCollapsed(exercise, index);
-              const summary = workingSetSummary(exercise);
-              const status = exerciseStatusText(exercise);
-              const skippedSummary = exercise.status === "skipped" && summary.completed > 0
-                ? `${status} · Completed · ${summary.observation}`
-                : `${status} · ${summary.observation}`;
-              const statusDescription = exercise.status === "skipped" && summary.completed > 0
-                ? `${status}. Completed · ${summary.observation}`
-                : status;
-              const collapseLabel = `${exercise.name}. ${statusDescription}. ${summary.completed} of ${summary.total} working sets. ${collapsed ? "Expand" : "Collapse"} exercise`;
+            <WorkoutSessionPresentation
+              exerciseAccessibilityLabel={(presentationExercise, expanded, index) => {
+                const exercise = overviewExercises.find(({ id }) => id === presentationExercise.id);
+                if (exercise === undefined) return presentationExercise.name;
+                const summary = workingSetSummary(exercise);
+                const status = exerciseStatusText(exercise);
+                const statusDescription = exercise.status === "skipped" && summary.completed > 0
+                  ? `${status}. Completed · ${summary.observation}`
+                  : status;
+                return `${exercise.name}. ${statusDescription}. ${summary.completed} of ${summary.total} working sets. ${expanded ? "Collapse" : "Expand"} exercise`;
+              }}
+              exerciseSupportingText={(presentationExercise, expanded, index) => {
+                const exercise = overviewExercises.find(({ id }) => id === presentationExercise.id);
+                if (exercise === undefined) return "";
+                const summary = workingSetSummary(exercise);
+                const status = exerciseStatusText(exercise);
+                if (exercise.status === "skipped" && summary.completed > 0) {
+                  return `${status} · Completed · ${summary.observation}`;
+                }
+                return expanded
+                  ? `${status} · ${summary.completed} of ${summary.total} working sets`
+                  : `${status} · ${summary.observation}`;
+              }}
+              isExerciseExpanded={(presentationExercise, index) => {
+                const exercise = overviewExercises.find(({ id }) => id === presentationExercise.id);
+                return exercise === undefined ? false : !isExerciseCollapsed(exercise, index);
+              }}
+              model={presentationModel}
+              onExerciseToggle={(presentationExercise, expanded) => {
+                setExpandedExerciseIds((current) => {
+                  const next = new Set(current);
+                  if (expanded) next.delete(presentationExercise.id); else next.add(presentationExercise.id);
+                  return next;
+                });
+              }}
+            >
+              {(presentationExercise, expanded, index) => {
+              const exercise = overviewExercises.find(({ id }) => id === presentationExercise.id);
+              if (exercise === undefined) return null;
+              const collapsed = !expanded;
               return (
               <View
                 key={exercise.id}
@@ -2191,76 +2227,6 @@ function PopulatedWorkoutOverview({
                 }}
                 style={styles.exerciseSection}
               >
-                {index === 0 ? null : (
-                  <View
-                    style={[styles.exerciseDivider, { backgroundColor: colors.divider }]}
-                    testID={`exercise-divider-${exercise.id}`}
-                  />
-                )}
-                <FocusablePressable
-                  accessibilityLabel={collapseLabel}
-                  accessibilityRole="button"
-                  accessibilityState={{ expanded: !collapsed }}
-                  onPress={() => {
-                    setExpandedExerciseIds((current) => {
-                      const next = new Set(current);
-                      if (collapsed) {
-                        next.add(exercise.id);
-                      } else {
-                        next.delete(exercise.id);
-                      }
-                      return next;
-                    });
-                  }}
-                  style={({ pressed }) => [
-                    styles.exerciseToggle,
-                    {
-                      backgroundColor: pressed
-                        ? colors.contentCardPressed
-                        : "transparent",
-                      borderColor: colors.contentCardBorder,
-                    },
-                  ]}
-                >
-                  <View style={styles.exerciseToggleCopy}>
-                    <Text
-                      accessibilityRole="header"
-                      style={[typeScale.bodyStrong as TextStyle, { color: colors.contentCardText }]}
-                    >
-                      {exercise.name}
-                    </Text>
-                    <Text style={[typeScale.secondary as TextStyle, { color: colors.contentCardTextSecondary }]}>
-                      {exercise.status === "skipped" && summary.completed > 0
-                        ? skippedSummary
-                        : collapsed
-                          ? skippedSummary
-                          : `${status} · ${summary.completed} of ${summary.total} working sets`}
-                    </Text>
-                  </View>
-                  {collapsed && exercise.status === "completed" ? (
-                    <CircleCheck
-                      accessibilityElementsHidden
-                      color={colors.contentCardStatusCompleted}
-                      importantForAccessibility="no-hide-descendants"
-                      size={sizes.icon}
-                      strokeWidth={2.5}
-                    />
-                  ) : collapsed ? (
-                    <ChevronRight
-                      accessibilityElementsHidden
-                      color={colors.contentCardTextSecondary}
-                      importantForAccessibility="no-hide-descendants"
-                      size={sizes.icon}
-                    />
-                  ) : (
-                    <ChevronDown
-                      accessibilityElementsHidden
-                      color={colors.contentCardTextSecondary}
-                      importantForAccessibility="no-hide-descendants"
-                      size={sizes.icon}
-                    />
-                  )}
-                </FocusablePressable>
                 {reorderMode ? <>
                   <PlanEditorReorderableRow
                     count={overviewExercises.length}
@@ -2760,7 +2726,7 @@ function PopulatedWorkoutOverview({
               </>}
               </View>
             );
-            })}
+            }}</WorkoutSessionPresentation>
             {commands.addExercise === undefined ? null : (
               <PrimaryAction
                 accessibilityHint="Choose one library exercise to append to this workout."

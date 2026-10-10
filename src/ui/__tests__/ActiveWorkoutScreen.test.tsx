@@ -459,7 +459,7 @@ describe("Plan 01-08 ActiveWorkoutScreen", () => {
       name: "Back Squat. Completed. 2 of 2 working sets. Expand exercise",
     });
     expect(collapsed).toHaveProp("accessibilityState", expect.objectContaining({ expanded: false }));
-    expect(collapsed).toHaveStyle({ minHeight: 48, minWidth: 48 });
+    expect(collapsed).toHaveStyle({ minHeight: 80, minWidth: 48 });
     await fireEvent(collapsed, "focus");
     expect(collapsed).toHaveStyle({
       outlineColor: themes.light.focusRing,
