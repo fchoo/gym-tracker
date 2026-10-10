@@ -1,0 +1,52 @@
+appId: com.fchoo.gymtracker.devtest
+name: Phase 17 Library, chooser, detail, and recovery journey
+tags:
+  - phase-17
+  - native-only
+  - development-test
+---
+- assertTrue: ${PHASE17_CASE_ID == 'library.remembered-state' || PHASE17_CASE_ID == 'library.plan-groups' || PHASE17_CASE_ID == 'library.exercise-search' || PHASE17_CASE_ID == 'library.exercise-favorites' || PHASE17_CASE_ID == 'library.actions-sheet' || PHASE17_CASE_ID == 'library.neutral-plan-chooser' || PHASE17_CASE_ID == 'library.true-no-plans' || PHASE17_CASE_ID == 'library.owned-summary' || PHASE17_CASE_ID == 'library.owned-lifecycle' || PHASE17_CASE_ID == 'library.starter-detail' || PHASE17_CASE_ID == 'library.starter-activation' || PHASE17_CASE_ID == 'library.template-update' || PHASE17_CASE_ID == 'library.create-strength' || PHASE17_CASE_ID == 'library.plan-editor' || PHASE17_CASE_ID == 'library.editor-draft-guards' || PHASE17_CASE_ID == 'library.schedule-editor' || PHASE17_CASE_ID == 'library.replacement-impact' || PHASE17_CASE_ID == 'library.day-removal-impact' || PHASE17_CASE_ID == 'library.builtin-exercise' || PHASE17_CASE_ID == 'library.custom-exercise' || PHASE17_CASE_ID == 'library.create-exercise' || PHASE17_CASE_ID == 'library.copy-metric-migration' || PHASE17_CASE_ID == 'library.load-error-recovery'}
+- launchApp:
+    clearState: false
+    stopApp: true
+    permissions:
+      notifications: deny
+- extendedWaitUntil:
+    visible: "Workout"
+    timeout: 90000
+- tapOn: "Library"
+- extendedWaitUntil:
+    visible: "Library section"
+    timeout: 30000
+- runFlow:
+    when:
+      true: ${PHASE17_CASE_ID == 'library.remembered-state' || PHASE17_CASE_ID == 'library.plan-groups' || PHASE17_CASE_ID == 'library.exercise-search' || PHASE17_CASE_ID == 'library.exercise-favorites' || PHASE17_CASE_ID == 'library.actions-sheet' || PHASE17_CASE_ID == 'library.true-no-plans' || PHASE17_CASE_ID == 'library.load-error-recovery'}
+    commands:
+      - assertVisible: "Library section"
+      - pressKey: BACK
+      - assertVisible: "Workout"
+      - tapOn: "Library"
+      - assertVisible: "Library section"
+- runFlow:
+    when:
+      true: ${PHASE17_CASE_ID == 'library.neutral-plan-chooser' || PHASE17_CASE_ID == 'library.create-strength'}
+    commands:
+      - tapOn: "Create plan"
+      - extendedWaitUntil:
+          visible: "Choose a plan type"
+          timeout: 30000
+      - assertVisible: "Strength"
+      - assertVisible: "Running"
+- runFlow:
+    when:
+      true: ${PHASE17_CASE_ID == 'library.owned-summary' || PHASE17_CASE_ID == 'library.owned-lifecycle' || PHASE17_CASE_ID == 'library.starter-detail' || PHASE17_CASE_ID == 'library.starter-activation' || PHASE17_CASE_ID == 'library.template-update' || PHASE17_CASE_ID == 'library.plan-editor' || PHASE17_CASE_ID == 'library.editor-draft-guards' || PHASE17_CASE_ID == 'library.schedule-editor' || PHASE17_CASE_ID == 'library.replacement-impact' || PHASE17_CASE_ID == 'library.day-removal-impact'}
+    commands:
+      - openLink: "gymtracker-devtest:///library?phase17Case=${PHASE17_CASE_ID}"
+      - assertVisible: "Library section"
+- runFlow:
+    when:
+      true: ${PHASE17_CASE_ID == 'library.builtin-exercise' || PHASE17_CASE_ID == 'library.custom-exercise' || PHASE17_CASE_ID == 'library.create-exercise' || PHASE17_CASE_ID == 'library.copy-metric-migration'}
+    commands:
+      - assertVisible: "Exercises"
+      - pressKey: "Remote Dpad Down"
+      - pressKey: "Remote Dpad Center"

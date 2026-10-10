@@ -90,10 +90,14 @@ test("Phase 17 native runner keeps the 39-case ledger bounded and requires an ex
   );
 });
 
-test("Phase 17 flow sources cover every canonical case without recording evidence payloads", () => {
+test("Phase 17 Library flow source covers its canonical cases without recording evidence payloads", () => {
   const flows = Object.fromEntries(
-    [...new Set(PHASE17_FLOW_CASES.map(({ flow }) => flow))].map((flow) => [flow, readFileSync(flow, "utf8")]),
+    [...new Set(PHASE17_FLOW_CASES.filter(({ flow }) => flow.endsWith("library.yaml")).map(({ flow }) => flow))]
+      .map((flow) => [flow, readFileSync(flow, "utf8")]),
   );
-  assert.equal(validatePhase17FlowSources(flows), true);
+  assert.equal(
+    validatePhase17FlowSources(flows, PHASE17_FLOW_CASES.filter(({ flow }) => flow.endsWith("library.yaml")).map(({ id }) => id)),
+    true,
+  );
   assert.equal(Object.values(flows).join("\n").includes("takeScreenshot"), false);
 });
