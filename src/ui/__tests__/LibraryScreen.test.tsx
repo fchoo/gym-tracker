@@ -190,6 +190,30 @@ describe("LibraryScreen section state", () => {
     expect(screen.getByText("10K Build")).toBeOnTheScreen();
   });
 
+  it("keeps true-empty plan creation and the shared Actions sheet mutation-free until the owner chooses a route", async () => {
+    const onCreateExercise = jest.fn();
+    const onCreatePlan = jest.fn();
+    await renderLibrary({
+      loadLibrary: jest.fn(async () => ({
+        ...snapshot(),
+        plans: { active: null, activePlans: [], owned: [], starters: [] },
+      })),
+      onCreateExercise,
+      onCreatePlan,
+    });
+
+    expect(await screen.findByText("No plans yet")).toBeOnTheScreen();
+    await fireEvent.press(screen.getAllByRole("button", { name: "Create plan" }).at(-1)!);
+    expect(onCreatePlan).toHaveBeenCalledTimes(1);
+
+    await fireEvent.press(screen.getByRole("button", { name: "Actions" }));
+    const createExercise = await screen.findByRole("button", { name: "Create exercise" });
+    expect(screen.getByLabelText("Import plan, unavailable, Later").props.accessibilityState)
+      .toMatchObject({ disabled: true });
+    await fireEvent.press(createExercise);
+    expect(onCreateExercise).toHaveBeenCalledTimes(1);
+  });
+
   it("keeps create actions contextual while App Settings stays in the Library root header", async () => {
     const onOpenSettings = jest.fn();
     const onCreatePlan = jest.fn();
@@ -199,7 +223,7 @@ describe("LibraryScreen section state", () => {
       .toBeOnTheScreen();
     await fireEvent.press(screen.getByRole("button", { name: "Open App Settings" }));
     expect(onOpenSettings).toHaveBeenCalledTimes(1);
-    await fireEvent.press(screen.getByRole("button", { name: "Create my own" }));
+    await fireEvent.press(screen.getByRole("button", { name: "Create plan" }));
     expect(onCreatePlan).toHaveBeenCalledTimes(1);
   });
 
@@ -428,7 +452,7 @@ describe("LibraryScreen section state", () => {
         selected: false,
       }));
     expect(screen.getByLabelText("Search plans")).toBeOnTheScreen();
-    expect(screen.getByRole("button", { name: "Create my own" }))
+    expect(screen.getByRole("button", { name: "Create plan" }))
       .toBeOnTheScreen();
 
     const sectionHeaders = screen.getAllByRole("header").map(
@@ -599,7 +623,7 @@ describe("LibraryScreen Material 3 discovery controls", () => {
     await fireEvent.changeText(plansSearch, "missing");
     expect(await screen.findByLabelText("No Search plans results"))
       .toBeOnTheScreen();
-    expect(screen.getByText("No plans match")).toBeOnTheScreen();
+    expect(screen.getByText("No matches")).toBeOnTheScreen();
     await fireEvent.changeText(plansSearch, "full");
     expect(await screen.findByLabelText("1 Search plans result"))
       .toBeOnTheScreen();

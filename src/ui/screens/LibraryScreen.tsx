@@ -481,6 +481,7 @@ function whyStarterFits(
 }
 
 function PlansContent({
+  onClearSearchAndFilters,
   onCreatePlan,
   snapshot,
   query,
@@ -490,6 +491,7 @@ function PlansContent({
   selectedId,
   starterFilters,
 }: Readonly<{
+  onClearSearchAndFilters(): void;
   onCreatePlan(): void;
   snapshot: LibraryBrowseSnapshot;
   query: string;
@@ -507,6 +509,10 @@ function PlansContent({
     ?? (snapshot.plans.active === null ? [] : [snapshot.plans.active]);
   const active = sourceActive.filter((item) => sectionMatchesQuery(item, query));
   const activeIds = new Set(sourceActive.map(({ id }) => id));
+  const persistedPlanIds = new Set([
+    ...sourceActive.map(({ id }) => id),
+    ...snapshot.plans.owned.map(({ id }) => id),
+  ]);
   const owned = snapshot.plans.owned.filter((item) =>
     !activeIds.has(item.id) && sectionMatchesQuery(item, query)
   );
@@ -524,11 +530,26 @@ function PlansContent({
     || owned.length > 0
     || starters.length > 0;
 
-  if (query.trim().length > 0 && !hasMatches) {
+  if (
+    snapshot.plans.activePlans !== undefined
+    && persistedPlanIds.size === 0
+    && query.trim().length === 0
+  ) {
     return (
       <InlineNotice
-        body="Try another plan name or clear filters."
-        heading="No plans match"
+        action={<PrimaryAction label="Create plan" onPress={onCreatePlan} />}
+        body="Create a strength or running plan to get started."
+        heading="No plans yet"
+      />
+    );
+  }
+
+  if ((query.trim().length > 0 || filterCount(starterFilters as SearchFilters) > 0) && !hasMatches) {
+    return (
+      <InlineNotice
+        action={<SecondaryAction label="Clear search and filters" onPress={onClearSearchAndFilters} />}
+        body="No plan matches your search and current filters."
+        heading="No matches"
       />
     );
   }
@@ -1233,9 +1254,11 @@ export function LibraryScreen({
   const [reviewedUpdate, setReviewedUpdate] =
     useState<ContentUpdateResult | null>(null);
   const [busySection, setBusySection] = useState<LibrarySection | null>(null);
+  const [actionsVisible, setActionsVisible] = useState(false);
   const [filterVisible, setFilterVisible] = useState(false);
   const [starterFilters, setStarterFilters] = useState<StarterFilters>({});
   const filterActionRef = useRef<View>(null);
+  const actionsActionRef = useRef<View>(null);
   const reviewActionRef = useRef<View>(null);
   const scrollOffsetsRef = useRef<Record<LibrarySection, number>>({
     plans: 0,
@@ -1590,7 +1613,7 @@ export function LibraryScreen({
   const headerAction = section === "plans"
     ? (
         <PrimaryAction
-          label="Create my own"
+          label="Create plan"
           onPress={onCreatePlan}
         />
       )
@@ -1612,6 +1635,13 @@ export function LibraryScreen({
                 : { ref: headingRef as React.Ref<View> })}
               actions={[
                 headerAction,
+                (
+                  <SecondaryAction
+                    label="Actions"
+                    onPress={() => setActionsVisible(true)}
+                    ref={actionsActionRef}
+                  />
+                ),
                 (
                   <IconAction
                     accessibilityHint="Opens App Settings"
@@ -1789,6 +1819,10 @@ export function LibraryScreen({
               </>
             ) : section === "plans" ? (
               <PlansContent
+                onClearSearchAndFilters={() => {
+                  updateSectionState("plans", { query: "", filters: {} });
+                  setStarterFilters({});
+                }}
                 onCreatePlan={onCreatePlan}
                 onOpenPlan={(planId) => {
                   updateSectionState("plans", { selectedId: planId });
@@ -1879,6 +1913,33 @@ export function LibraryScreen({
           visible={filterVisible}
         />
       )}
+      <BottomSheet
+        heading="Library actions"
+        onCancel={() => setActionsVisible(false)}
+        restoreFocusRef={actionsActionRef}
+        testID="library-actions-sheet-frame"
+        visible={actionsVisible}
+      >
+        <PrimaryAction
+          label="Create plan"
+          onPress={() => {
+            setActionsVisible(false);
+            onCreatePlan();
+          }}
+        />
+        <SecondaryAction
+          label="Create exercise"
+          onPress={() => {
+            setActionsVisible(false);
+            onCreateExercise();
+          }}
+        />
+        <SecondaryAction
+          disabled
+          label="Import plan, unavailable, Later"
+          onPress={noOp}
+        />
+      </BottomSheet>
       <BottomSheet
         heading="Exercise library changes"
         onCancel={() => setReviewedUpdate(null)}
