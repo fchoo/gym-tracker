@@ -976,6 +976,17 @@ async function activateRunningScheduleTransaction(
   ) {
     throw new ScheduleRepositoryError("schedule_reference_invalid");
   }
+  const [readiness] = await transaction.queryAll<{ slot_count: number; recovery_count: number }>(
+    `SELECT COUNT(*) AS slot_count,
+            SUM(CASE WHEN revision.session_kind = 'recovery' THEN 1 ELSE 0 END) AS recovery_count
+       FROM running_session_slots slot
+       JOIN running_session_revisions revision ON revision.id = slot.session_revision_id
+      WHERE slot.plan_id = ? AND slot.retired_at_ms IS NULL`,
+    [input.planId],
+  );
+  if ((readiness?.slot_count ?? 0) === 0 || (readiness?.recovery_count ?? 0) === 0) {
+    throw new ScheduleRepositoryError("schedule_reference_invalid");
+  }
   const planUpdate = await transaction.execute(
     `UPDATE plans SET is_active = 1, revision = revision + 1
      WHERE id = ? AND revision = ? AND is_active = 0`,
