@@ -374,14 +374,14 @@ describe("restore preflight", () => {
       .resolves.toEqual(expect.objectContaining({ outcome: "ready" }));
   });
 
-  it("accepts only the schema-35 successor archive after all Phase 13 source facts exist", async () => {
+  it("accepts only the schema-36 successor archive after all portable source facts exist", async () => {
     const commands = createRestoreCommands({
       crypto: cryptoPort(), files: { readSelectedArchiveAtMost: () => archiveFor(snapshot({
         version: 6,
-        schemaVersion: 35,
+        schemaVersion: 36,
         tables: { portable_owner_identity: [{ id: 1, owner_namespace: "0123456789abcdef0123456789abcdef" }] },
       })) },
-      kdf, schema, candidateProbe, store: createRestorePreflightStore({ tokenFactory: () => "schema-35-v6" }),
+      kdf, schema, candidateProbe, store: createRestorePreflightStore({ tokenFactory: () => "schema-36-v6" }),
     });
     await expect(commands.preflightSecureRestore({ password: "owner-password" }))
       .resolves.toEqual(expect.objectContaining({ outcome: "ready" }));
@@ -419,7 +419,7 @@ describe("restore preflight", () => {
     };
     const successor = (tables: LogicalBackupSnapshot["tables"]) => snapshot({
       version: 6,
-      schemaVersion: 35,
+      schemaVersion: 36,
       tables,
     });
 

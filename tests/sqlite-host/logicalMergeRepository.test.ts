@@ -27,6 +27,9 @@ import {
   createLogicalBackupRepository,
 } from "../../src/platform/sqlite/repositories/logicalBackupRepository";
 import {
+  createWorkoutRepository,
+} from "../../src/platform/sqlite/repositories/workoutRepository";
+import {
   LOGICAL_BACKUP_TABLE_DEFINITIONS,
   type LogicalBackupRow,
 } from "../../src/domains/portability/backupContracts";
@@ -163,6 +166,42 @@ async function seedSession(
       [`set-${input.id}`, `exercise-${input.id}`],
     );
   });
+}
+
+async function createRestDefaultReceipt(
+  kernel: SqliteKernel,
+  sessionId: string,
+): Promise<void> {
+  const sessionExerciseId = `exercise-${sessionId}`;
+  const input = {
+    sessionId,
+    sessionExerciseId,
+    defaultRestSeconds: 75,
+    expectedSessionRevision: 1,
+    expectedSessionExerciseRevision: 1,
+    occurredAtMs: 3,
+    requestId: `rest-default-${sessionId}`,
+  };
+  const requestSha256 = createHash("sha256").update(JSON.stringify({
+    operation: "update_session_exercise_default_rest",
+    ...input,
+  })).digest("hex");
+  await kernel.write((transaction) => transaction.execute(
+    "UPDATE workout_sessions SET status = 'in_progress' WHERE id = ?",
+    [sessionId],
+  ));
+  await kernel.write((transaction) => transaction.execute(
+    "UPDATE session_sets SET target_json = ? WHERE session_exercise_id = ?",
+    [JSON.stringify({ version: 1, profile: "load_reps", loadGrams: 10_000, minReps: 8, maxReps: 10, incrementGrams: 1_000, perSide: false }), sessionExerciseId],
+  ));
+  await createWorkoutRepository(kernel).updateSessionExerciseDefaultRest!({
+    ...input,
+    requestSha256,
+  });
+  await kernel.write((transaction) => transaction.execute(
+    "UPDATE workout_sessions SET status = 'completed' WHERE id = ?",
+    [sessionId],
+ ));
 }
 
 async function seedOwnedPlan(
@@ -401,6 +440,7 @@ async function fullSessionPlanFixture() {
     portableId: "c".repeat(32),
     modifiedAtMs: 20,
   });
+  await createRestDefaultReceipt(archiveKernel, "archive-session");
   const archive = await snapshot(archiveKernel);
   const localKernel = await open("full-plan-session-local");
   await seedSession(localKernel, {
@@ -579,6 +619,7 @@ function mergeTransaction(
     "history_audit_events_immutable_delete",
     "workout_session_exercise_edit_receipts_immutable_delete",
     "workout_session_exercise_reorder_receipts_immutable_delete",
+    "workout_session_exercise_rest_default_receipts_immutable_delete",
   ];
   let reads = 0;
   return transactionStub({
@@ -1156,7 +1197,7 @@ describe("logical merge repository", () => {
       "session",
       async (stage) => { stages.push(stage); },
     );
-    expect(statements).toHaveLength(10);
+    expect(statements).toHaveLength(11);
     expect(statements.at(-1)).toContain('DELETE FROM "workout_sessions"');
     expect(stages).toEqual(expect.arrayContaining([
       "delete:session_advanced_timing_states",
@@ -1259,6 +1300,7 @@ describe("logical merge repository", () => {
       "history_audit_events_immutable_delete",
       "workout_session_exercise_edit_receipts_immutable_delete",
       "workout_session_exercise_reorder_receipts_immutable_delete",
+      "workout_session_exercise_rest_default_receipts_immutable_delete",
     ];
     const complete = new Map(triggerNames.map((name) => [name, `CREATE TRIGGER ${name} AFTER DELETE ON workout_sessions BEGIN SELECT 1; END`]));
     const recreatedWithDrift = transactionStub({
@@ -1318,6 +1360,7 @@ describe("logical merge repository", () => {
       "history_audit_events_immutable_delete",
       "workout_session_exercise_edit_receipts_immutable_delete",
       "workout_session_exercise_reorder_receipts_immutable_delete",
+      "workout_session_exercise_rest_default_receipts_immutable_delete",
     ];
     const triggers = new Map(triggerNames.map((name) => [name, `CREATE TRIGGER ${name} AFTER DELETE ON workout_sessions BEGIN SELECT 1; END`]));
     const executed: string[] = [];
@@ -1330,8 +1373,8 @@ describe("logical merge repository", () => {
     await __logicalMergeRepositoryTestOnly.recreateDeleteTriggers(transaction, captured, undefined);
 
     expect(captured).toEqual(triggers);
-    expect(executed.filter((sql) => sql.startsWith("DROP TRIGGER"))).toHaveLength(3);
-    expect(executed.filter((sql) => sql.startsWith("CREATE TRIGGER"))).toHaveLength(3);
+    expect(executed.filter((sql) => sql.startsWith("DROP TRIGGER"))).toHaveLength(4);
+    expect(executed.filter((sql) => sql.startsWith("CREATE TRIGGER"))).toHaveLength(4);
   });
 
   it("inserts source rows, existing taxonomy rows, and all aggregate table families", async () => {
@@ -2096,13 +2139,32 @@ describe("logical merge repository", () => {
     )).resolves.toEqual([{
       id: "local-session",
       portable_id: "c".repeat(32),
-      merge_modified_at_ms: 20,
+      merge_modified_at_ms: 23,
     }]);
     await expect(localKernel.queryAll(
       "SELECT id, session_id FROM session_exercises",
     )).resolves.toEqual([{
       id: "exercise-archive-session",
       session_id: "local-session",
+    }]);
+    await expect(localKernel.queryAll(
+      "SELECT request_id, request_sha256, session_id, session_exercise_id, default_rest_seconds, result_json FROM workout_session_exercise_rest_default_receipts",
+    )).resolves.toEqual([{
+      request_id: "rest-default-archive-session",
+      request_sha256: createHash("sha256").update(JSON.stringify({
+        operation: "update_session_exercise_default_rest",
+        sessionId: "archive-session",
+        sessionExerciseId: "exercise-archive-session",
+        defaultRestSeconds: 75,
+        expectedSessionRevision: 1,
+        expectedSessionExerciseRevision: 1,
+        occurredAtMs: 3,
+        requestId: "rest-default-archive-session",
+      })).digest("hex"),
+      session_id: "local-session",
+      session_exercise_id: "exercise-archive-session",
+      default_rest_seconds: 75,
+      result_json: JSON.stringify({ version: 1, sessionId: "archive-session", sessionExerciseId: "exercise-archive-session", defaultRestSeconds: 75 }),
     }]);
   });
 
@@ -2200,6 +2262,7 @@ describe("logical merge repository", () => {
       "trigger_drop:history_audit_events_immutable_delete",
       "trigger_drop:workout_session_exercise_edit_receipts_immutable_delete",
       "trigger_drop:workout_session_exercise_reorder_receipts_immutable_delete",
+      "trigger_drop:workout_session_exercise_rest_default_receipts_immutable_delete",
       "delete:session_advanced_timing_states",
       "delete:session_undo_snapshots",
       "delete:session_rest_states",
@@ -2207,6 +2270,7 @@ describe("logical merge repository", () => {
       "delete:history_audit_events",
       "delete:workout_session_exercise_edit_receipts",
       "delete:workout_session_exercise_reorder_receipts",
+      "delete:workout_session_exercise_rest_default_receipts",
       "delete:session_sets",
       "delete:session_exercises",
       "delete:workout_sessions",
@@ -2220,9 +2284,11 @@ describe("logical merge repository", () => {
       "insert:history_audit_events",
       "insert:workout_session_exercise_edit_receipts",
       "insert:workout_session_exercise_reorder_receipts",
+      "insert:workout_session_exercise_rest_default_receipts",
       "trigger_recreate:history_audit_events_immutable_delete",
       "trigger_recreate:workout_session_exercise_edit_receipts_immutable_delete",
       "trigger_recreate:workout_session_exercise_reorder_receipts_immutable_delete",
+      "trigger_recreate:workout_session_exercise_rest_default_receipts_immutable_delete",
       "verified",
       "state_updated",
     ];
@@ -2777,6 +2843,7 @@ describe("logical merge repository", () => {
       "trigger_drop:history_audit_events_immutable_delete",
       "trigger_drop:workout_session_exercise_edit_receipts_immutable_delete",
       "trigger_drop:workout_session_exercise_reorder_receipts_immutable_delete",
+      "trigger_drop:workout_session_exercise_rest_default_receipts_immutable_delete",
       "delete:session_advanced_timing_states",
       "delete:session_undo_snapshots",
       "delete:session_rest_states",
@@ -2784,6 +2851,7 @@ describe("logical merge repository", () => {
       "delete:history_audit_events",
       "delete:workout_session_exercise_edit_receipts",
       "delete:workout_session_exercise_reorder_receipts",
+      "delete:workout_session_exercise_rest_default_receipts",
       "delete:session_sets",
       "delete:session_exercises",
       "delete:workout_sessions",
@@ -2797,9 +2865,11 @@ describe("logical merge repository", () => {
       "insert:history_audit_events",
       "insert:workout_session_exercise_edit_receipts",
       "insert:workout_session_exercise_reorder_receipts",
+      "insert:workout_session_exercise_rest_default_receipts",
       "trigger_recreate:history_audit_events_immutable_delete",
       "trigger_recreate:workout_session_exercise_edit_receipts_immutable_delete",
       "trigger_recreate:workout_session_exercise_reorder_receipts_immutable_delete",
+      "trigger_recreate:workout_session_exercise_rest_default_receipts_immutable_delete",
       "verified",
       "state_updated",
     ];

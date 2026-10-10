@@ -250,6 +250,10 @@ async function seed(kernel: SqliteKernel, suffix: string): Promise<void> {
       [`session-exercise-${suffix}`, `session-${suffix}`, `occurrence-${suffix}`, `exercise-${suffix}`, `Exercise ${suffix}`],
     );
     await transaction.execute(
+      "INSERT INTO workout_session_exercise_rest_default_receipts (request_id, request_sha256, session_id, session_exercise_id, default_rest_seconds, expected_session_revision, expected_session_exercise_revision, result_session_revision, result_session_exercise_revision, result_json, committed_at_ms) VALUES (?, ?, ?, ?, 75, 1, 1, 2, 2, ?, 3)",
+      [`rest-default-${suffix}`, "a".repeat(64), `session-${suffix}`, `session-exercise-${suffix}`, JSON.stringify({ version: 1, sessionId: `session-${suffix}`, sessionExerciseId: `session-exercise-${suffix}`, defaultRestSeconds: 75 })],
+    );
+    await transaction.execute(
       "INSERT INTO session_sets (id, session_exercise_id, set_kind, ordinal, source_plan_working_set_target_id, source_owned_plan_working_set_target_id, advanced_timing_override_json, advanced_timing_resolved_json, target_load_grams, target_min_reps, target_max_reps, target_json, unit_json, rule_type, rule_version, metric_profile, metric_contract_version, exercise_metric_generation, status, completed_at_ms, revision) VALUES (?, ?, 'working', 0, ?, NULL, NULL, '{\"version\":1,\"mode\":\"per_rep\",\"intervalMs\":1000,\"cueChannels\":\"haptic\"}', 10000, 8, 10, '{}', '{}', 'load_reps', 1, 'load_reps', 1, 1, 'completed', 2, 1)",
       [`set-${suffix}`, `session-exercise-${suffix}`, `target-${suffix}`],
     );
@@ -287,6 +291,16 @@ describe("logical restore repository", () => {
       mode: "per_rep",
       config_json: '{"version":1,"mode":"per_rep","intervalMs":1000,"cueChannels":"haptic"}',
       progress_json: '{"nextRepetitionIndex":3}',
+    }]);
+    await expect(kernel.queryAll(
+      "SELECT request_id, request_sha256, session_id, session_exercise_id, default_rest_seconds, result_json FROM workout_session_exercise_rest_default_receipts",
+    )).resolves.toEqual([{
+      request_id: "rest-default-archive",
+      request_sha256: "a".repeat(64),
+      session_id: "session-archive",
+      session_exercise_id: "session-exercise-archive",
+      default_rest_seconds: 75,
+      result_json: JSON.stringify({ version: 1, sessionId: "session-archive", sessionExerciseId: "session-exercise-archive", defaultRestSeconds: 75 }),
     }]);
     await expect(kernel.queryAll("SELECT state, updated_at_ms FROM portability_restore_state"))
       .resolves.toEqual([{ state: "rebuild_pending", updated_at_ms: 99 }]);
@@ -465,8 +479,10 @@ describe("logical restore repository", () => {
     expect(LOGICAL_BACKUP_TABLES).toContain("bodyweight_entries");
     expect(LOGICAL_BACKUP_TABLES).toContain("bodyweight_entry_events");
     expect(LOGICAL_BACKUP_TABLES).toContain("bodyweight_command_receipts");
+    expect(LOGICAL_BACKUP_TABLES).toContain("workout_session_exercise_rest_default_receipts");
     expect(LOGICAL_BACKUP_FORMAT_VERSION).toBe(6);
     expect(LOGICAL_RESTORE_DELETE_TRIGGER_NAMES).toContain("portable_owner_identity_adoption_only");
+    expect(LOGICAL_RESTORE_DELETE_TRIGGER_NAMES).toContain("workout_session_exercise_rest_default_receipts_immutable_delete");
     expect(LOGICAL_RESTORE_DELETE_TRIGGER_NAMES).not.toContain("starter_plan_sources_immutable_delete");
     expect(LOGICAL_RESTORE_DELETE_TRIGGER_NAMES).not.toContain("session_sets_target_graph_insert");
     expect(LOGICAL_RESTORE_DELETE_TRIGGER_NAMES).not.toContain("progression_recommendations_actionable_evidence_insert");

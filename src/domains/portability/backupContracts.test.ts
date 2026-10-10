@@ -74,7 +74,7 @@ describe("logical backup contract", () => {
     expect(LOGICAL_BACKUP_TABLES).not.toContain("sqlite_master");
   });
 
-  it("freezes v1-v5 while the schema-35 successor carries every durable Phase 13 fact", () => {
+  it("freezes v1-v5 while the schema-36 successor carries every durable source fact", () => {
     expect(LOGICAL_BACKUP_FORMAT_VERSION).toBe(6);
     expect(logicalBackupTablesForVersion(5)).not.toContain("imported_activity_identities");
     expect(logicalBackupTablesForVersion(5)).not.toContain("running_activity_match_events");
@@ -88,6 +88,7 @@ describe("logical backup contract", () => {
       "workout_completed_set_correction_receipts",
       "running_activity_match_events",
       "running_activity_match_receipts",
+      "workout_session_exercise_rest_default_receipts",
     ]));
     expect(logicalBackupTablesForVersion(6)).not.toContain("running_activity_current_matches");
     expect(logicalBackupTablesForVersion(6)).not.toContain("imported_activity_current_lifecycle");

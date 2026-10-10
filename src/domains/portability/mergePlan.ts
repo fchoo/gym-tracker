@@ -73,6 +73,7 @@ export const PORTABLE_MERGE_TABLE_CLASSES = Object.freeze({
   workout_sessions: "workout_session",
   workout_session_exercise_edit_receipts: "workout_session",
   workout_session_exercise_reorder_receipts: "workout_session",
+  workout_session_exercise_rest_default_receipts: "workout_session",
   session_exercises: "workout_session",
   session_sets: "workout_session",
   session_rest_states: "workout_session",

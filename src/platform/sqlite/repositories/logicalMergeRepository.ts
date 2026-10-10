@@ -41,12 +41,14 @@ const SESSION_AGGREGATE_TABLES = Object.freeze([
   "history_audit_events",
   "workout_session_exercise_edit_receipts",
   "workout_session_exercise_reorder_receipts",
+  "workout_session_exercise_rest_default_receipts",
 ] as const);
 
 const MERGE_DELETE_TRIGGER_NAMES = Object.freeze([
   "history_audit_events_immutable_delete",
   "workout_session_exercise_edit_receipts_immutable_delete",
   "workout_session_exercise_reorder_receipts_immutable_delete",
+  "workout_session_exercise_rest_default_receipts_immutable_delete",
 ] as const);
 
 type SessionAggregateTable = (typeof SESSION_AGGREGATE_TABLES)[number];
@@ -318,10 +320,14 @@ function assertSessionAggregate(
     "history_audit_events",
     "workout_session_exercise_edit_receipts",
     "workout_session_exercise_reorder_receipts",
+    "workout_session_exercise_rest_default_receipts",
   ] as const) {
     for (const row of aggregate.tables[table] ?? []) {
       requireValid(row.session_id === operation.localId);
     }
+  }
+  for (const row of aggregate.tables.workout_session_exercise_rest_default_receipts ?? []) {
+    requireValid(exerciseIds.has(textId(row.session_exercise_id)));
   }
   for (const [table, column] of [
     ["session_rest_states", "next_set_id"],
@@ -944,6 +950,7 @@ async function deleteLocalAggregate(
     ["history_audit_events", "session_id = ?", [sessionId]],
     ["workout_session_exercise_edit_receipts", "session_id = ?", [sessionId]],
     ["workout_session_exercise_reorder_receipts", "session_id = ?", [sessionId]],
+    ["workout_session_exercise_rest_default_receipts", "session_id = ?", [sessionId]],
     ["session_sets", setWhere, [sessionId]],
     ["session_exercises", "session_id = ?", [sessionId]],
     ["workout_sessions", "id = ?", [sessionId]],
@@ -1140,6 +1147,7 @@ async function readSessionAggregate(
     history_audit_events: ["session_id = ?", [sessionId]],
     workout_session_exercise_edit_receipts: ["session_id = ?", [sessionId]],
     workout_session_exercise_reorder_receipts: ["session_id = ?", [sessionId]],
+    workout_session_exercise_rest_default_receipts: ["session_id = ?", [sessionId]],
   } as const satisfies Readonly<Record<SessionAggregateTable, readonly [
     string,
     readonly string[],
