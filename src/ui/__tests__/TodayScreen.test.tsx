@@ -14,6 +14,7 @@ import {
 import React from "react";
 
 import type {
+  SelectedStrengthOccurrence,
   TodayView,
 } from "../../domains/workout";
 import { TodayScreen } from "../screens/TodayScreen";
@@ -87,7 +88,106 @@ const scheduledView: TodayView = {
   ],
 };
 
+const selectedOccurrence: SelectedStrengthOccurrence = {
+  kind: "strength",
+  opportunityId: "occurrence-monday-a",
+  planId: "plan-copy",
+  planDayId: "day-a",
+  scheduleId: "schedule-copy",
+  scheduleVersionId: "schedule-version-1",
+  localDate: "2026-09-07",
+  timeZone: "Asia/Singapore",
+  sourceRevisions: { plan: 1, day: 1, schedule: 1 },
+};
+
 describe("Plan 01-07 TodayScreen", () => {
+  it("renders the selected real occurrence before its complete persisted-order preview", async () => {
+    const start = jest.fn();
+    const { rendered } = await renderToday(scheduledView, {
+      onStartOccurrence: start,
+      selectedStrengthOccurrence: selectedOccurrence,
+      strengthOccurrences: [{
+        occurrence: selectedOccurrence,
+        dayName: "Full Body A",
+        planName: "Full Body Foundation",
+        estimateMinutes: 48,
+        exercises: scheduledView.exercises,
+      }],
+    });
+
+    expect(screen.getByText("MON · 07 SEP 2026")).toBeOnTheScreen();
+    expect(screen.getByRole("heading", { name: "Full Body A" })).toBeOnTheScreen();
+    expect(screen.getByText("3 exercises · about 48 min")).toBeOnTheScreen();
+    expect(screen.getByText("Back Squat")).toBeOnTheScreen();
+    expect(screen.getByText("Bench Press")).toBeOnTheScreen();
+    expect(screen.getByText("Plank")).toBeOnTheScreen();
+    const tree = JSON.stringify(rendered.toJSON());
+    expect(tree.indexOf("Full Body A")).toBeLessThan(tree.indexOf("Back Squat"));
+    await fireEvent.press(screen.getByRole("button", { name: "Start Full Body A" }));
+    expect(start).toHaveBeenCalledWith(selectedOccurrence);
+  });
+
+  it("changes only the preview selection and gives a recovered session priority", async () => {
+    const alternate: SelectedStrengthOccurrence = {
+      ...selectedOccurrence,
+      opportunityId: "occurrence-wednesday-b",
+      planDayId: "day-b",
+      localDate: "2026-09-09",
+    };
+    const start = jest.fn();
+    const resume = jest.fn();
+    const { rendered } = await renderToday(scheduledView, {
+      onResumeWorkout: resume,
+      onStartOccurrence: start,
+      selectedStrengthOccurrence: selectedOccurrence,
+      strengthOccurrences: [
+        {
+          occurrence: selectedOccurrence,
+          dayName: "Full Body A",
+          planName: "Full Body Foundation",
+          estimateMinutes: 48,
+          exercises: scheduledView.exercises,
+        },
+        {
+          occurrence: alternate,
+          dayName: "Full Body B",
+          planName: "Full Body Foundation",
+          estimateMinutes: 42,
+          exercises: scheduledView.exercises.slice(0, 2),
+        },
+      ],
+    });
+
+    await fireEvent.press(screen.getByRole("button", { name: /Preview Full Body B/u }));
+    expect(screen.getByRole("heading", { name: "Full Body B" })).toBeOnTheScreen();
+    await fireEvent.press(screen.getByRole("button", { name: "Start Full Body B" }));
+    expect(start).toHaveBeenCalledWith(alternate);
+    expect(rendered.toJSON()).toBeTruthy();
+
+    await rendered.rerender(
+      <AppearanceProvider>
+        <TodayScreen
+          launchState="trusted"
+          onResumeWorkout={resume}
+          onStartOccurrence={start}
+          planDays={[]}
+          view={{
+            state: "active_workout",
+            sessionId: "recovered-session",
+            exerciseName: "Back Squat",
+            setLabel: "Working set 2",
+            restStatus: "idle",
+          }}
+          selectedStrengthOccurrence={selectedOccurrence}
+          strengthOccurrences={[]}
+        />
+      </AppearanceProvider>,
+    );
+    expect(screen.getByRole("button", { name: "Resume workout" })).toBeOnTheScreen();
+    expect(screen.queryByRole("button", { name: /Start Full Body/u })).not.toBeOnTheScreen();
+    expect(start).toHaveBeenCalledTimes(1);
+  });
+
   it("renders trusted loading structure without stale facts", async () => {
     await renderToday(undefined);
 
