@@ -8,6 +8,7 @@ import { PlanEditorReorderableRow, PlanEditorTextField, TimeDurationField } from
 import { runningSessionReadback } from "../components/RunningSessionFields";
 import { AdaptiveScreen } from "../layout/AdaptiveScreen";
 import { space, typeScale, useAppTheme } from "../theme";
+import { requestAndroidViewFocus } from "../../bootstrap/androidViewFocus";
 import {
   addRunningSessionDraft, deleteRunningSessionDraft, makeRunningSessionDraft,
   reorderRunningSessionDraft, runningPlanCommandFromDraft, validateRunningPlanDraft,
@@ -30,6 +31,18 @@ const validationCopy: Record<RunningPlanDraftValidation, string> = {
 const benchmarkSourceLabel = (source: "owner_selected" | "imported_activity" | "personal_history" | "manual") => ({ owner_selected: "Manual", imported_activity: "Imported activity", personal_history: "Personal history", manual: "Manual" })[source];
 const nextBenchmarkSource = (source: "owner_selected" | "imported_activity" | "personal_history" | "manual") => ({ owner_selected: "imported_activity", imported_activity: "personal_history", personal_history: "manual", manual: "imported_activity" } as const)[source];
 
+export type SessionDeleteFocusTarget = Readonly<{ kind: "row"; slotRootId: string }> | Readonly<{ kind: "add" }>;
+
+export function sessionDeleteFocusTarget(slotRootIds: readonly string[], deletedIndex: number): SessionDeleteFocusTarget {
+  const next = slotRootIds[deletedIndex + 1];
+  if (next !== undefined) return { kind: "row", slotRootId: next };
+  const previous = slotRootIds[deletedIndex - 1];
+  return previous === undefined ? { kind: "add" } : { kind: "row", slotRootId: previous };
+}
+
+const sessionEditNativeID = (slotRootId: string) => `running-plan-session-edit-${slotRootId}`;
+const sessionDeleteNativeID = (slotRootId: string) => `running-plan-session-delete-${slotRootId}`;
+
 /** A screen-local draft editor; commits only through the owning revisioned command. */
 export function RunningPlanEditorScreen(props: Readonly<{
   initialDraft: RunningPlanDraft;
@@ -47,6 +60,9 @@ export function RunningPlanEditorScreen(props: Readonly<{
   const [leaveVisible, setLeaveVisible] = useState(false);
   const [pendingSession, setPendingSession] = useState<string | undefined | null>(null);
   const [pendingDeleteSlotRootId, setPendingDeleteSlotRootId] = useState<string | null>(null);
+  const [pendingPostDeleteFocus, setPendingPostDeleteFocus] = useState<SessionDeleteFocusTarget | null>(null);
+  const [deleteRestoreNativeID, setDeleteRestoreNativeID] = useState<string | undefined>(undefined);
+  const [leaveRestoreNativeID, setLeaveRestoreNativeID] = useState<string | undefined>(undefined);
   const saveRef = useRef<View>(null);
   const distanceRef = useRef<TextInput>(null);
   const timeRef = useRef<View>(null);
@@ -57,8 +73,23 @@ export function RunningPlanEditorScreen(props: Readonly<{
   const weeklyDistanceRef = useRef<TextInput>(null);
   const addSessionRef = useRef<View>(null);
   const deleteRestoreRef = useRef<View>(null);
+  const leaveRestoreRef = useRef<View>(null);
+  const sessionEditRefs = useRef(new Map<string, View | null>());
+  const sessionDeleteRefs = useRef(new Map<string, View | null>());
 
   useEffect(() => { setDraft(props.initialDraft); }, [props.initialDraft]);
+  useEffect(() => {
+    if (pendingPostDeleteFocus === null) return;
+    const target = pendingPostDeleteFocus.kind === "add"
+      ? addSessionRef.current
+      : sessionEditRefs.current.get(pendingPostDeleteFocus.slotRootId) ?? null;
+    const nativeID = pendingPostDeleteFocus.kind === "add"
+      ? "running-plan-add-session"
+      : sessionEditNativeID(pendingPostDeleteFocus.slotRootId);
+    target?.focus?.();
+    void requestAndroidViewFocus(nativeID);
+    setPendingPostDeleteFocus(null);
+  }, [draft.sessions, pendingPostDeleteFocus]);
   const dirty = useMemo(() => JSON.stringify(draft) !== JSON.stringify(props.initialDraft), [draft, props.initialDraft]);
   const add = (kind: RunningSessionKind) => setDraft((current) => addRunningSessionDraft(current, makeRunningSessionDraft({
     id: props.createId("running-session-revision"), rootId: props.createId("running-session"),
@@ -133,13 +164,13 @@ export function RunningPlanEditorScreen(props: Readonly<{
     <View style={styles.summary}><Text style={[typeScale.label as TextStyle, { color: colors.textSecondary }]}>Sessions</Text><Text style={[typeScale.bodyStrong as TextStyle, { color: colors.textPrimary }]}>{draft.goal.runsPerWeek === undefined ? "Not set" : `${draft.goal.runsPerWeek} / week`}</Text><Text style={[typeScale.label as TextStyle, { color: colors.textSecondary }]}>Schedule</Text><Text style={[typeScale.bodyStrong as TextStyle, { color: colors.textPrimary }]}>{draft.goal.trainingDays.join(", ") || "Not set"}</Text></View>
     <Text accessibilityRole="header" style={[typeScale.sectionTitle as TextStyle, { color: colors.textPrimary }]}>Weekly structure</Text>
     <View style={styles.actionList}>{RUNNING_SESSION_KINDS.map((kind) => <SecondaryAction key={kind} label={`Add ${sessionName(kind)} session`} onPress={() => add(kind)} />)}</View>
-    {draft.sessions.length === 0 ? <EmptyState body="Add a Recovery, Long run, Progression, Tempo, Intervals, Hills, or Fartlek session." heading="No sessions yet" primaryAction={<SecondaryAction label="Add session" onPress={() => add("recovery")} ref={addSessionRef} />} /> : draft.sessions.map((session, index) => <PlanEditorReorderableRow key={session.slot.rootId} count={draft.sessions.length} label={`${session.slot.weekday} · ${sessionName(session.session.sessionKind)}`} moveEarlierLabel={`Move ${sessionName(session.session.sessionKind)} earlier`} moveLaterLabel={`Move ${sessionName(session.session.sessionKind)} later`} onMoveDown={() => move(index, index + 1)} onMoveUp={() => move(index, index - 1)} position={index}><View style={styles.sessionSummary}><Text style={[typeScale.bodyStrong as TextStyle, { color: colors.textPrimary }]}>{`${session.slot.weekday} · ${sessionName(session.session.sessionKind)}`}</Text><Text style={[typeScale.secondary as TextStyle, { color: colors.textSecondary }]}>{runningSessionReadback(session)}</Text><SecondaryAction label={`Edit ${sessionName(session.session.sessionKind)} session`} onPress={() => dirty ? (setPendingSession(session.session.rootId), setLeaveVisible(true)) : props.onOpenSession?.(session.session.rootId)} /><SecondaryAction destructive label={`Delete ${sessionName(session.session.sessionKind)} session`} onPress={() => { deleteRestoreRef.current = addSessionRef.current; setPendingDeleteSlotRootId(session.slot.rootId); }} /></View></PlanEditorReorderableRow>)}
+    {draft.sessions.length === 0 ? <EmptyState body="Add a Recovery, Long run, Progression, Tempo, Intervals, Hills, or Fartlek session." heading="No sessions yet" primaryAction={<SecondaryAction label="Add session" nativeID="running-plan-add-session" onPress={() => add("recovery")} ref={addSessionRef} />} /> : draft.sessions.map((session, index) => <PlanEditorReorderableRow key={session.slot.rootId} count={draft.sessions.length} label={`${session.slot.weekday} · ${sessionName(session.session.sessionKind)}`} moveEarlierLabel={`Move ${sessionName(session.session.sessionKind)} earlier`} moveLaterLabel={`Move ${sessionName(session.session.sessionKind)} later`} onMoveDown={() => move(index, index + 1)} onMoveUp={() => move(index, index - 1)} position={index}><View style={styles.sessionSummary}><Text style={[typeScale.bodyStrong as TextStyle, { color: colors.textPrimary }]}>{`${session.slot.weekday} · ${sessionName(session.session.sessionKind)}`}</Text><Text style={[typeScale.secondary as TextStyle, { color: colors.textSecondary }]}>{runningSessionReadback(session)}</Text><SecondaryAction label={`Edit ${sessionName(session.session.sessionKind)} session`} nativeID={sessionEditNativeID(session.slot.rootId)} onPress={() => { leaveRestoreRef.current = sessionEditRefs.current.get(session.slot.rootId) ?? null; setLeaveRestoreNativeID(sessionEditNativeID(session.slot.rootId)); if (dirty) { setPendingSession(session.session.rootId); setLeaveVisible(true); } else props.onOpenSession?.(session.session.rootId); }} ref={(node) => { sessionEditRefs.current.set(session.slot.rootId, node); }} /><SecondaryAction destructive label={`Delete ${sessionName(session.session.sessionKind)} session`} nativeID={sessionDeleteNativeID(session.slot.rootId)} onPress={() => { deleteRestoreRef.current = sessionDeleteRefs.current.get(session.slot.rootId) ?? null; setDeleteRestoreNativeID(sessionDeleteNativeID(session.slot.rootId)); setPendingDeleteSlotRootId(session.slot.rootId); }} ref={(node) => { sessionDeleteRefs.current.set(session.slot.rootId, node); }} /></View></PlanEditorReorderableRow>)}
     {error === null ? null : <InlineNotice action={<SecondaryAction label="Retry saving plan" onPress={() => void save()} />} body={error} heading="Save failed" tone="error" />}
     <PrimaryAction busy={saving} disabled={saving} label={saving ? "Saving plan…" : createLabel} onPress={() => void save()} ref={saveRef} />
   </>;
   return <><AdaptiveScreen primary={primary} testID="running-plan-editor" />
-    <ConfirmationDialog alternateLabel="Discard changes" body="Your edits are still here. Choose whether to save the complete plan, discard the local draft, or keep editing." cancelLabel="Keep editing" confirmBusy={saving} confirmLabel="Save changes" heading="Save changes?" onAlternate={leave} onCancel={() => { setLeaveVisible(false); setPendingSession(null); }} onConfirm={() => void save()} restoreFocusRef={saveRef} visible={leaveVisible} />
-    <ConfirmationDialog body="This removes the session from future versions of this plan. Past occurrences and matched activities stay unchanged." cancelLabel="Keep session" confirmLabel="Delete session" destructive heading={`Delete ${pendingDelete === undefined ? "" : sessionName(pendingDelete.session.sessionKind)} session?`} onCancel={() => setPendingDeleteSlotRootId(null)} onConfirm={() => { if (pendingDelete !== undefined) setDraft((current) => deleteRunningSessionDraft(current, pendingDelete.slot.rootId)); setPendingDeleteSlotRootId(null); }} restoreFocusRef={deleteRestoreRef} visible={pendingDelete !== undefined} />
+    <ConfirmationDialog alternateLabel="Discard changes" body="Your edits are still here. Choose whether to save the complete plan, discard the local draft, or keep editing." cancelLabel="Keep editing" confirmBusy={saving} confirmLabel="Save changes" heading="Save changes?" onAlternate={leave} onCancel={() => { setLeaveVisible(false); setPendingSession(null); }} onConfirm={() => void save()} requestNativeFocus={requestAndroidViewFocus} restoreFocusNativeID={leaveRestoreNativeID} restoreFocusRef={leaveRestoreRef} visible={leaveVisible} />
+    <ConfirmationDialog body="This removes the session from future versions of this plan. Past occurrences and matched activities stay unchanged." cancelLabel="Keep session" confirmLabel="Delete session" destructive heading={`Delete ${pendingDelete === undefined ? "" : sessionName(pendingDelete.session.sessionKind)} session?`} onCancel={() => setPendingDeleteSlotRootId(null)} onConfirm={() => { if (pendingDelete !== undefined) { const index = draft.sessions.findIndex((entry) => entry.slot.rootId === pendingDelete.slot.rootId); setPendingPostDeleteFocus(sessionDeleteFocusTarget(draft.sessions.map((entry) => entry.slot.rootId), index)); setDraft((current) => deleteRunningSessionDraft(current, pendingDelete.slot.rootId)); } setPendingDeleteSlotRootId(null); }} requestNativeFocus={requestAndroidViewFocus} restoreFocusNativeID={deleteRestoreNativeID} restoreFocusRef={deleteRestoreRef} visible={pendingDelete !== undefined} />
   </>;
 }
 

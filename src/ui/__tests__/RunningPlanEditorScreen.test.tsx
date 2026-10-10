@@ -3,9 +3,14 @@ import { describe, expect, it, jest } from "@jest/globals";
 import React from "react";
 
 import type { RunningPlanAggregate } from "../../domains/running/contracts";
-import { RunningPlanEditorScreen } from "../screens/RunningPlanEditorScreen";
+import { RunningPlanEditorScreen, sessionDeleteFocusTarget } from "../screens/RunningPlanEditorScreen";
 import { makeRunningSessionDraft, type RunningPlanDraft } from "../running/runningFormDraft";
 import { AppearanceProvider } from "../theme";
+
+const mockRequestAndroidViewFocus = jest.fn<(nativeID: string) => Promise<boolean>>(async () => true);
+jest.mock("../../bootstrap/androidViewFocus", () => ({
+  requestAndroidViewFocus: (nativeID: string) => mockRequestAndroidViewFocus(nativeID),
+}));
 
 const initialDraft: RunningPlanDraft = {
   version: 1 as const, id: "running-plan", name: "Running plan", revision: 1, createdAtMs: 1,
@@ -14,6 +19,72 @@ const initialDraft: RunningPlanDraft = {
 };
 
 describe("RunningPlanEditorScreen", () => {
+  it("chooses next, then previous, then Add session after first, middle, last, and final deletion", () => {
+    expect(sessionDeleteFocusTarget(["first", "second", "third"], 0)).toEqual({ kind: "row", slotRootId: "second" });
+    expect(sessionDeleteFocusTarget(["first", "second", "third"], 1)).toEqual({ kind: "row", slotRootId: "third" });
+    expect(sessionDeleteFocusTarget(["first", "second", "third"], 2)).toEqual({ kind: "row", slotRootId: "second" });
+    expect(sessionDeleteFocusTarget(["only"], 0)).toEqual({ kind: "add" });
+  });
+
+  it("keeps deletion local and returns cancellation focus to the exact delete trigger", async () => {
+    const savePlan = jest.fn<(draft: RunningPlanDraft) => Promise<RunningPlanAggregate>>(async (draft) => ({ ...draft, active: false, lifecycle: "inactive" }));
+    const view = await render(<AppearanceProvider><RunningPlanEditorScreen
+      createId={(kind) => `${kind}:id`}
+      initialDraft={initialDraft}
+      onBack={jest.fn()}
+      onSaved={jest.fn()}
+      savePlan={savePlan}
+    /></AppearanceProvider>);
+
+    await fireEvent.press(view.getByRole("button", { name: "Add Recovery session" }));
+    const trigger = view.getByRole("button", { name: "Delete Recovery session" });
+    expect(trigger).toHaveProp("nativeID", "running-plan-session-delete-running-slot:id");
+    await fireEvent.press(trigger);
+    await fireEvent.press(view.getByRole("button", { name: "Keep session" }));
+
+    expect(view.getByRole("button", { name: "Delete Recovery session" })).toBeOnTheScreen();
+    expect(savePlan).not.toHaveBeenCalled();
+  });
+
+  it("uses the stable Add session target after the final local deletion rerenders", async () => {
+    const view = await render(<AppearanceProvider><RunningPlanEditorScreen
+      createId={(kind) => `${kind}:final`}
+      initialDraft={initialDraft}
+      onBack={jest.fn()}
+      onSaved={jest.fn()}
+      savePlan={jest.fn(async (draft: typeof initialDraft) => ({ ...draft, active: false as const, lifecycle: "inactive" as const }))}
+    /></AppearanceProvider>);
+
+    await fireEvent.press(view.getByRole("button", { name: "Add Recovery session" }));
+    mockRequestAndroidViewFocus.mockClear();
+    await fireEvent.press(view.getByRole("button", { name: "Delete Recovery session" }));
+    await fireEvent.press(view.getByRole("button", { name: "Delete session" }));
+
+    await waitFor(() => expect(view.getByRole("button", { name: "Add session" })).toHaveProp("nativeID", "running-plan-add-session"));
+    expect(mockRequestAndroidViewFocus).toHaveBeenCalledWith("running-plan-add-session");
+  });
+
+  it("restores a dirty session-draft leave confirmation to its Edit trigger without writing", async () => {
+    const savePlan = jest.fn<(draft: RunningPlanDraft) => Promise<RunningPlanAggregate>>(async (draft) => ({ ...draft, active: false, lifecycle: "inactive" }));
+    const view = await render(<AppearanceProvider><RunningPlanEditorScreen
+      createId={(kind) => `${kind}:leave`}
+      initialDraft={initialDraft}
+      onBack={jest.fn()}
+      onSaved={jest.fn()}
+      savePlan={savePlan}
+    /></AppearanceProvider>);
+
+    await fireEvent.press(view.getByRole("button", { name: "Add Recovery session" }));
+    const trigger = view.getByRole("button", { name: "Edit Recovery session" });
+    expect(trigger).toHaveProp("nativeID", "running-plan-session-edit-running-slot:leave");
+    await fireEvent.press(trigger);
+    expect(view.getByText("Save changes?")).toBeOnTheScreen();
+    await fireEvent.press(view.getByRole("button", { name: "Keep editing" }));
+
+    expect(view.getByRole("button", { name: "Edit Recovery session" })).toBeOnTheScreen();
+    expect(savePlan).not.toHaveBeenCalled();
+  });
+
   it("keeps sessions local until save, supports delete to zero, then navigates only after committed readback", async () => {
     const savePlan = jest.fn(async (draft: typeof initialDraft) => ({ ...draft, active: false as const, lifecycle: "inactive" as const }));
     const onSaved = jest.fn();

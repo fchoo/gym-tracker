@@ -97,6 +97,7 @@ type ActionProps = Readonly<{
   disabled?: boolean;
   style?: StyleProp<ViewStyle>;
   testID?: string;
+  nativeID?: string;
 }>;
 
 function actionAccessibilityState(
@@ -374,6 +375,7 @@ export const PrimaryAction = forwardRef<View, ActionProps>(
       disabled = false,
       style,
       testID,
+      nativeID,
     },
     ref,
   ) {
@@ -393,6 +395,7 @@ export const PrimaryAction = forwardRef<View, ActionProps>(
         ...keyboardActivationProps(isDisabled, onPress),
         onAccessibilityAction,
         onPress,
+        nativeID,
         ref,
         style: ({ pressed }: { pressed: boolean }) => [
           styles.primaryAction,
@@ -464,6 +467,7 @@ export const SecondaryAction = forwardRef<
     destructive = false,
     style,
     testID,
+    nativeID,
   },
   ref,
 ) {
@@ -482,6 +486,7 @@ export const SecondaryAction = forwardRef<
       focusable: !isDisabled,
       ...keyboardActivationProps(isDisabled, onPress),
       onPress,
+      nativeID,
       ref,
       style: ({ pressed }: { pressed: boolean }) => [
         styles.secondaryAction,

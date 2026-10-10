@@ -83,6 +83,8 @@ export type ConfirmationDialogProps = Readonly<{
   onAlternate?: (() => void) | undefined;
   initialFocusRef?: React.RefObject<FocusTarget | null> | undefined;
   restoreFocusRef?: React.RefObject<FocusTarget | null> | undefined;
+  restoreFocusNativeID?: string | undefined;
+  requestNativeFocus?: ((nativeID: string) => void | Promise<boolean>) | undefined;
   scrollTestID?: string | undefined;
   children?: React.ReactNode;
 }>;
@@ -104,6 +106,8 @@ export function ConfirmationDialog({
   onAlternate,
   initialFocusRef,
   restoreFocusRef,
+  restoreFocusNativeID,
+  requestNativeFocus,
   scrollTestID,
   children,
 }: ConfirmationDialogProps) {
@@ -130,6 +134,8 @@ export function ConfirmationDialog({
       initialFocusRef={initialFocusRef ?? cancelRef}
       onCancel={onCancel}
       restoreFocusRef={restoreFocusRef}
+      restoreFocusNativeID={restoreFocusNativeID}
+      requestNativeFocus={requestNativeFocus}
       scrollTestID={scrollTestID}
       visible={visible}
     >
