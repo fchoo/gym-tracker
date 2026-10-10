@@ -13,6 +13,7 @@ export type NavigationRowProps = Readonly<{
   icon?: NavigationRowIcon;
   busy?: boolean;
   disabled?: boolean;
+  nativeID?: string;
   onPress(): void;
 }>;
 
@@ -24,6 +25,7 @@ export const NavigationRow = forwardRef<View, NavigationRowProps>(function Navig
   icon = "chevron",
   busy = false,
   disabled = false,
+  nativeID,
   onPress,
 }, ref) {
   const { colors } = useAppTheme();
@@ -37,6 +39,7 @@ export const NavigationRow = forwardRef<View, NavigationRowProps>(function Navig
       accessibilityRole="button"
       accessibilityState={{ busy, disabled: inactive }}
       disabled={inactive}
+      nativeID={nativeID}
       onFocus={() => setFocused(true)}
       onBlur={() => setFocused(false)}
       {...({ onKeyDown: (event: { nativeEvent: { key: string } }) => {

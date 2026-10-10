@@ -1,10 +1,13 @@
-import { fireEvent, render, screen } from "@testing-library/react-native";
+import { act, fireEvent, render, screen } from "@testing-library/react-native";
 import { beforeEach, describe, expect, it, jest } from "@jest/globals";
 import React from "react";
 
 import { AppearanceProvider } from "../../../src/ui/theme";
 
 const mockBack = jest.fn();
+const mockPush = jest.fn();
+const mockRequestAndroidViewFocus = jest.fn<(nativeID: string) => Promise<boolean>>();
+let mockFocusEffect: (() => void) | undefined;
 const mockConnect = jest.fn<() => Promise<void>>();
 const mockCreateCsvExport = jest.fn<() => Promise<{ exportId: string }>>();
 const mockShareCsvExport = jest.fn<(value: { exportId: string }) => Promise<void>>();
@@ -30,7 +33,17 @@ const mockRuntime: any = {
   discardCsvExport: mockDiscardCsvExport,
 };
 
-jest.mock("expo-router", () => ({ router: { back: mockBack, push: jest.fn() }, useLocalSearchParams: () => ({}) }));
+jest.mock("expo-router", () => ({
+  router: {
+    back: () => mockBack(),
+    push: (href: string) => mockPush(href),
+  },
+  useFocusEffect: (effect: () => void) => { mockFocusEffect = effect; },
+  useLocalSearchParams: () => ({}),
+}));
+jest.mock("../../../src/bootstrap/androidViewFocus", () => ({
+  requestAndroidViewFocus: (nativeID: string) => mockRequestAndroidViewFocus(nativeID),
+}));
 jest.mock("../../../src/bootstrap/workoutAppRuntime", () => ({
   useWorkoutAppRuntime: () => mockRuntime,
 }));
@@ -40,6 +53,10 @@ import DataAndRecoveryRoute from "../data-and-recovery";
 describe("DataAndRecoveryRoute", () => {
   beforeEach(() => {
     mockBack.mockReset();
+    mockPush.mockReset();
+    mockRequestAndroidViewFocus.mockReset();
+    mockRequestAndroidViewFocus.mockResolvedValue(true);
+    mockFocusEffect = undefined;
     mockConnect.mockReset();
     mockConnect.mockResolvedValue(undefined);
     mockCreateCsvExport.mockReset();
@@ -132,5 +149,26 @@ describe("DataAndRecoveryRoute", () => {
     expect(screen.getByRole("button", { name: "Manual encrypted backup" })).toBeOnTheScreen();
     expect(screen.getByRole("button", { name: "Export CSV" }).props.accessibilityHint).toBe("Creates a readable spreadsheet file that is not password-protected");
     expect(screen.queryByText("Create secure backup")).not.toBeOnTheScreen();
+  });
+
+  it("restores exact nested-route origin focus when the recovery hub resumes", async () => {
+    await render(<AppearanceProvider><DataAndRecoveryRoute /></AppearanceProvider>);
+    const automatic = screen.getByRole("button", { name: "Automatic backup settings" });
+    const manual = screen.getByRole("button", { name: "Manual encrypted backup" });
+
+    expect(automatic.props.nativeID).toBe("data-recovery-automatic-backup-settings");
+    expect(manual.props.nativeID).toBe("data-recovery-manual-encrypted-backup");
+
+    await fireEvent.press(automatic);
+    expect(mockPush).toHaveBeenCalledWith("/more/automatic-backup-settings");
+    await act(async () => { mockFocusEffect?.(); });
+    expect(mockRequestAndroidViewFocus)
+      .toHaveBeenLastCalledWith("data-recovery-automatic-backup-settings");
+
+    await fireEvent.press(manual);
+    expect(mockPush).toHaveBeenCalledWith("/more/manual-encrypted-backup");
+    await act(async () => { mockFocusEffect?.(); });
+    expect(mockRequestAndroidViewFocus)
+      .toHaveBeenLastCalledWith("data-recovery-manual-encrypted-backup");
   });
 });

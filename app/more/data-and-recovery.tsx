@@ -1,9 +1,11 @@
 import {
   router,
+  useFocusEffect,
   useLocalSearchParams,
 } from "expo-router";
 import Constants from "expo-constants";
 import React, {
+  useCallback,
   useEffect,
   useRef,
   useState,
@@ -26,6 +28,7 @@ import {
   type RuntimeRestorePreflightResult,
   type RuntimeSecureBackupArchive,
 } from "../../src/bootstrap/workoutAppRuntime";
+import { requestAndroidViewFocus } from "../../src/bootstrap/androidViewFocus";
 import { phase12BackupFixtureFromNativeContract, phase12BackupFixtureViewModel } from "../../src/bootstrap/phase12BackupTestControls";
 import type { AutomaticRecoveryPreparation } from "../../src/domains/backup/automaticBackupCoordinator";
 import {
@@ -674,6 +677,19 @@ export default function DataAndRecoveryRoute() {
     AutomaticRecoveryPreparation,
     { kind: "merge" }
   > | null>(null);
+  const automaticBackupSettingsRef = useRef<View>(null);
+  const manualEncryptedBackupRef = useRef<View>(null);
+  const nestedRouteOriginRef = useRef<Readonly<{
+    nativeID: string;
+    ref: React.RefObject<View | null>;
+  }> | null>(null);
+  useFocusEffect(useCallback(() => {
+    const origin = nestedRouteOriginRef.current;
+    if (origin === null) return;
+    nestedRouteOriginRef.current = null;
+    origin.ref.current?.focus?.();
+    void requestAndroidViewFocus(origin.nativeID);
+  }, []));
   const fixture = phase12BackupFixtureFromNativeContract({
     nativeContractsEnabled: Constants.expoConfig?.extra?.nativeContractsEnabled === true,
     buildProfile: Constants.expoConfig?.extra?.buildProfile,
@@ -767,8 +783,32 @@ export default function DataAndRecoveryRoute() {
     </View></ContentCard>
     <ContentCard><View style={styles.card}>
       <Text style={[typeScale.sectionTitle as TextStyle, { color: colors.contentCardText }]}>Recovery tools</Text>
-      <NavigationRow title="Automatic backup settings" supportingText="Account, connection, and privacy" onPress={() => router.push("/more/automatic-backup-settings")} />
-      <NavigationRow title="Manual encrypted backup" supportingText="Password-protected GTBK backup and recovery" onPress={() => router.push("/more/manual-encrypted-backup")} />
+      <NavigationRow
+        nativeID="data-recovery-automatic-backup-settings"
+        onPress={() => {
+          nestedRouteOriginRef.current = {
+            nativeID: "data-recovery-automatic-backup-settings",
+            ref: automaticBackupSettingsRef,
+          };
+          router.push("/more/automatic-backup-settings");
+        }}
+        ref={automaticBackupSettingsRef}
+        supportingText="Account, connection, and privacy"
+        title="Automatic backup settings"
+      />
+      <NavigationRow
+        nativeID="data-recovery-manual-encrypted-backup"
+        onPress={() => {
+          nestedRouteOriginRef.current = {
+            nativeID: "data-recovery-manual-encrypted-backup",
+            ref: manualEncryptedBackupRef,
+          };
+          router.push("/more/manual-encrypted-backup");
+        }}
+        ref={manualEncryptedBackupRef}
+        supportingText="Password-protected GTBK backup and recovery"
+        title="Manual encrypted backup"
+      />
       <NavigationRow title={csvRow.title} supportingText={csvRow.supportingText} icon={csvRow.icon} busy={csv.state.kind === "preparing" || csv.state.kind === "sharing"} disabled={csv.state.kind === "preparing" || csv.state.kind === "sharing"} {...(csv.state.kind === "ready" ? { accessibilityHint: "Creates a readable spreadsheet file that is not password-protected" } : {})} onPress={csvRow.action} />
     </View></ContentCard>
   </>} />;
