@@ -269,6 +269,19 @@ describe("LIB-05 custom exercise runtime reads", () => {
                  'available', 'MIT', 'Runtime attribution',
                  'not_applicable', NULL, 1)`,
       );
+      await transaction.execute(
+        `INSERT INTO exercise_instruction_sets
+          (exercise_id, content_revision_id, source_namespace,
+           source_revision, upstream_id, source_license, source_attribution,
+           steps_json, revision)
+         VALUES ('exercise-squat', 'runtime-source',
+                 'kinetic-place.exercises-db', 'revision-1', 'squat',
+                 'MIT', 'Runtime attribution', ?, 1)`,
+        [JSON.stringify([
+          "Set the bar at upper-chest height and brace before lifting.",
+          "Press overhead with control, then return to the start.",
+        ])],
+      );
     });
 
     await expect(port.loadExercise("missing-exercise")).resolves.toBeNull();
@@ -280,6 +293,13 @@ describe("LIB-05 custom exercise runtime reads", () => {
         source: expect.objectContaining({
           license: expect.any(String),
           attribution: expect.any(String),
+        }),
+        instructions: [
+          "Set the bar at upper-chest height and brace before lifting.",
+          "Press overhead with control, then return to the start.",
+        ],
+        instructionSource: expect.objectContaining({
+          attribution: "Runtime attribution",
         }),
       }),
     );
