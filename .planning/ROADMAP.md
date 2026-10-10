@@ -166,7 +166,22 @@ silently select a different transport.
   4. The full-width rest dock, countdown, pause/resume, ±15, skip, device-owned cues, and next-set context recover correctly across backgrounding, process death, and offline restart without completing a set.
   5. Add/replace/delete/reorder, Undo recovery, trend, flat second-based timing, finish/partial/later/discard, completion review, and explicit plan write-back preserve protected history and expose actionable retry states.
 
-**Plans**: 13 plans
+**Plans**: 1/13 plans executed
+
+- [x] 15-01-PLAN.md
+- [ ] 15-02-PLAN.md
+- [ ] 15-03-PLAN.md
+- [ ] 15-04-PLAN.md
+- [ ] 15-05-PLAN.md
+- [ ] 15-06-PLAN.md
+- [ ] 15-07-PLAN.md
+- [ ] 15-08-PLAN.md
+- [ ] 15-09-PLAN.md
+- [ ] 15-10-PLAN.md
+- [ ] 15-11-PLAN.md
+- [ ] 15-12-PLAN.md
+- [ ] 15-13-PLAN.md
+
 **UI hint**: yes
 **Plan flags**: focused legacy-timing cutover proof; UI specification required; plan check required; fresh review convergence required; TIM-01 retirement is locked with no compatibility mode
 
@@ -289,7 +304,7 @@ Plans:
 |---|---|---:|---|---|
 | 13. One-per-Sport Plan & Running Foundation | 13-multi-plan-running-foundation | 16/16 | Complete    | 2026-10-08 |
 | 14. Prototype Visual Shell | 14-prototype-visual-shell | 12/12 | In Progress|  |
-| 15. Workout Parity | 15-workout-parity | 0/13 | Not started | - |
+| 15. Workout Parity | 15-workout-parity | 1/13 | In Progress|  |
 | 16. Calendar Parity | 16-calendar-parity | 0/7 | Not started | - |
 | 17. Library & Running Plans | 17-library-running-plans | 0/14 | Not started | - |
 | 18. Garmin Account Sync | 18-garmin-import | 0/14 | Not started | - |

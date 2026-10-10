@@ -57,17 +57,17 @@ Exactly four roots: **Workout, Calendar, Library, Progress**. Preserve SQLite au
 
 ### Phase 15: Workout, Active Workout and completion
 
-- [ ] **WRK-01**: Present the workout identity, summary, full scrollable exercise preview and Start/Resume action before secondary controls.
+- [x] **WRK-01**: Present the workout identity, summary, full scrollable exercise preview and Start/Resume action before secondary controls.
 - [ ] **WRK-02**: Select real plan-day previews with selected state and keyboard alternatives without silently advancing schedule rotation.
 - [ ] **WRK-03**: Handle scheduled, rest/recovery and no-plan states with truthful action availability; retain starting-plan activation and empty-workout entry.
 - [ ] **WRK-04**: Preserve explicit scheduled-day, alternate-day and Start empty workout choices with cancel and focus restoration.
-- [ ] **WRK-05**: Start the selected occurrence and resume the exact saved active session after background or process death; display recovered context and retry failed reads/starts.
+- [x] **WRK-05**: Start the selected occurrence and resume the exact saved active session after background or process death; display recovered context and retry failed reads/starts.
 - [ ] **WRK-06**: Provide View plan and Sync Garmin contextual actions for Running alongside Strength, backed by actual independent active schedules.
-- [ ] **WRK-07**: Render a full vertically scrollable exercise list with workout identity, working-set progress and compact per-exercise metadata.
-- [ ] **WRK-08**: Return from the active workout to its plan/root context without discarding the active session.
-- [ ] **WRK-09**: Expand/collapse each exercise by header tap or Enter/Space, retain full long names up to two lines, and keep trend/menu targets separate.
-- [ ] **WRK-10**: Use one continuous 4px yellow active-exercise edge; current set uses amber fill, highlighted number, clock and Current label with no second stripe.
-- [ ] **WRK-11**: Show Set, Previous, Target and State with completed check/green, current clock/amber and planned dash/neutral states.
+- [x] **WRK-07**: Render a full vertically scrollable exercise list with workout identity, working-set progress and compact per-exercise metadata.
+- [x] **WRK-08**: Return from the active workout to its plan/root context without discarding the active session.
+- [x] **WRK-09**: Expand/collapse each exercise by header tap or Enter/Space, retain full long names up to two lines, and keep trend/menu targets separate.
+- [x] **WRK-10**: Use one continuous 4px yellow active-exercise edge; current set uses amber fill, highlighted number, clock and Current label with no second stripe.
+- [x] **WRK-11**: Show Set, Previous, Target and State with completed check/green, current clock/amber and planned dash/neutral states.
 - [ ] **WRK-12**: Open editing by tapping any planned, current or committed row; changes apply only after Save and closing leaves facts unchanged.
 - [ ] **WRK-13**: Provide thumb-friendly kg/reps steppers and direct numeric input with units, nonnegative validation and explicit Save set values / Save committed set edit.
 - [ ] **WRK-14**: Use a duration-only editor for timed sets with sec labels and five-second decrement/increment controls.
@@ -268,17 +268,17 @@ once and remains Pending until its owning phase is implemented and verified.
 | SHL-11 | 14 | shell.data-recovery | Complete |
 | SHL-12 | 14 | shell.automatic-backup | Complete |
 | SHL-13 | 14 | shell.manual-backup | Complete |
-| WRK-01 | 15 | workout.root-identity | Pending |
+| WRK-01 | 15 | workout.root-identity | Complete |
 | WRK-02 | 15 | workout.day-switch | Pending |
 | WRK-03 | 15 | workout.scheduled-rest-empty | Pending |
 | WRK-04 | 15 | workout.start-alternate | Pending |
-| WRK-05 | 15 | workout.start-resume | Pending |
+| WRK-05 | 15 | workout.start-resume | Complete |
 | WRK-06 | 15 | workout.context-running | Pending |
-| WRK-07 | 15 | workout.active-layout | Pending |
-| WRK-08 | 15 | workout.active-back | Pending |
-| WRK-09 | 15 | workout.exercise-disclosure | Pending |
-| WRK-10 | 15 | workout.active-indicator | Pending |
-| WRK-11 | 15 | workout.set-states | Pending |
+| WRK-07 | 15 | workout.active-layout | Complete |
+| WRK-08 | 15 | workout.active-back | Complete |
+| WRK-09 | 15 | workout.exercise-disclosure | Complete |
+| WRK-10 | 15 | workout.active-indicator | Complete |
+| WRK-11 | 15 | workout.set-states | Complete |
 | WRK-12 | 15 | workout.row-edit | Pending |
 | WRK-13 | 15 | workout.load-reps-editor | Pending |
 | WRK-14 | 15 | workout.duration-editor | Pending |

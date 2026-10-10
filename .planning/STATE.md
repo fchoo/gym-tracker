@@ -2,19 +2,19 @@
 gsd_state_version: 1.0
 milestone: v1.2
 milestone_name: Prototype Parity, Concurrent Plans & Garmin Import — PLANNED
-current_phase: 14
-current_phase_name: Prototype Visual Shell
+current_phase: 15
+current_phase_name: Workout Parity
 status: executing
-stopped_at: Completed 14-11-PLAN.md
-last_updated: "2026-10-09T00:16:35.292Z"
-last_activity: 2026-10-08
-last_activity_desc: Phase 14 execution started
-state_head: d8d0f7c63fd96aee3f291222633bf8bf50e3150b
+stopped_at: Completed 15-01-PLAN.md
+last_updated: "2026-10-10T11:27:39.880Z"
+last_activity: 2026-10-10
+last_activity_desc: Phase 15 execution started
+state_head: 36a6f8a73110113be3df21842096d2ad4ea19d2d
 progress:
   total_phases: 8
   completed_phases: 1
   total_plans: 98
-  completed_plans: 28
+  completed_plans: 29
   percent: 13
 ---
 
@@ -25,14 +25,14 @@ progress:
 See: .planning/PROJECT.md (updated 2026-10-06)
 
 **Core value:** Open today's workout, see trustworthy next targets, complete each working set with one primary action, recover safely from interruption, and understand exactly why the next target is recommended.
-**Current focus:** Phase 14 — Prototype Visual Shell
+**Current focus:** Phase 15 — Workout Parity
 
 ## Current Position
 
-Phase: 14 (Prototype Visual Shell) — EXECUTING
-Plan: 12 of 12
+Phase: 15 (Workout Parity) — EXECUTING
+Plan: 2 of 13
 Status: Ready to execute
-Last activity: 2026-10-08 — Phase 14 execution started
+Last activity: 2026-10-10 — Phase 15 execution started
 
 Progress: [█░░░░░░░░░] 13%
 
@@ -68,6 +68,7 @@ Gym Tracker remains a signed personal-use Android APK/AAB with SQLite-authoritat
 | Phase 14 P09 | 15m | 3 tasks | 11 files |
 | Phase 14 P10 | 196m | 3 tasks | 24 files |
 | Phase 14-prototype-visual-shell P11 | 3m | 2 tasks | 2 files |
+| Phase 15 P01 | 8m | 3 tasks | 10 files |
 
 ## Accumulated Context
 
@@ -111,6 +112,8 @@ Gym Tracker remains a signed personal-use Android APK/AAB with SQLite-authoritat
 - [Phase 14]: Phase 14: Native evidence targets real route/action identifiers with explicit IME clearance; static labels and hub pages are not accepted as action proof.
 - [Phase 14]: Phase 14: Final shell evidence is accepted only after fresh source/APK/installed-device/report identity and privacy validation agree across all 13 obligations.
 - [Phase 14]: DEV-02 remains owner-approved accessible-9b470b from 2026-10-07; fresh Plan 14-10 evidence independently verifies Light #9B470B titles, #D97820 sport roles, and unchanged Dark treatment.
+- [Phase 15]: Workout routes preserve explicit owning context and retry the same authoritative session ID.
+- [Phase 15]: WorkoutSessionPresentation is immutable and command-free; Active composes capabilities separately.
 
 ### Pending Owner Review
 
@@ -135,7 +138,7 @@ Gym Tracker remains a signed personal-use Android APK/AAB with SQLite-authoritat
 
 ## Session Continuity
 
-Last session: 2026-10-09T00:16:35.248Z
-Stopped at: Completed 14-11-PLAN.md
+Last session: 2026-10-10T11:27:39.824Z
+Stopped at: Completed 15-01-PLAN.md
 Resume file: None
 Next action: Present the complete planning set for owner review; after explicit approval, run `/gsd-execute-phase 13`.
