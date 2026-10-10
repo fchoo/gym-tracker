@@ -189,7 +189,7 @@ export const PHASE14_SHELL_EVIDENCE_CASES = [
     id: "shell.settings-deep-links", requirement: "SHL-09", stage: settingsDeepLinksStage, flow: "settings-recovery",
     evidencePath: `${PHASE14_SHELL_EVIDENCE_DIRECTORY}/shell.settings-deep-links.json`,
     state: { id: "settings-deep-links", dataPolicy: "installed-user-data-preserved", captureState: "workout-after-data-recovery-back", capture: predicate({ visible: ["Workout"], nodes: [{ label: "Workout", selected: true }], focus: { allowNull: true } }) },
-    actions: [action({ id: "back-from-data-recovery", stage: settingsDeepLinksStage, input: "BACK", transport: "adb-keyevent", command: { keyCode: 4 }, pre: predicate({ visible: ["Data and recovery", "Manual encrypted backup"], focus: { allowNull: true } }), post: predicate({ visible: ["Workout"], nodes: [{ label: "Workout", selected: true }], focus: { equals: "Workout", allowNull: false } }) })],
+    actions: [action({ id: "back-from-data-recovery", stage: settingsDeepLinksStage, input: "BACK", transport: "adb-keyevent", command: { keyCode: 4 }, pre: predicate({ visible: ["Manual encrypted backup"], focus: { allowNull: true } }), post: predicate({ visible: ["Workout"], nodes: [{ label: "Workout", selected: true }], focus: { equals: "Workout", allowNull: false } }) })],
     checkpoints: ["Data and recovery", "Workout"], postconditions: ["no-write-navigation", "origin-restored"],
     componentTests: ["app/more/__tests__/index.test.tsx", "app/more/__tests__/data-and-recovery.test.tsx"], runtimeStatePolicy: "no-write", motionSensitive: false,
     referencePolicy: nativeOnly("Deep-link Back recovery is native navigation without a matching prototype bitmap."),
