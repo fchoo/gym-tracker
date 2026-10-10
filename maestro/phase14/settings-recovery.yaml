@@ -51,6 +51,12 @@ tags:
       true: ${PHASE14_STAGE == 'phase14-settings-deep-links' && PHASE14_ACTION == 'back-from-data-recovery'}
     commands:
       - assertVisible: "Data and recovery"
+      - scrollUntilVisible:
+          element:
+            text: "Manual encrypted backup"
+          direction: DOWN
+          centerElement: true
+          timeout: 30000
       - assertVisible: "Manual encrypted backup"
 - runFlow:
     when:
@@ -78,6 +84,12 @@ tags:
     when:
       true: ${PHASE14_STAGE == 'phase14-data-recovery'}
     commands:
+      - scrollUntilVisible:
+          element:
+            text: "Manual encrypted backup"
+          direction: DOWN
+          centerElement: true
+          timeout: 30000
       - tapOn: "Manual encrypted backup"
       - extendedWaitUntil:
           visible: "Manual encrypted backup"
@@ -109,6 +121,12 @@ tags:
     when:
       true: ${PHASE14_STAGE == 'phase14-automatic-backup'}
     commands:
+      - scrollUntilVisible:
+          element:
+            text: "Automatic backup settings"
+          direction: DOWN
+          centerElement: true
+          timeout: 30000
       - tapOn: "Automatic backup settings"
       - extendedWaitUntil:
           visible: "Automatic backup settings"
@@ -122,6 +140,12 @@ tags:
     when:
       true: ${PHASE14_STAGE == 'phase14-manual-backup'}
     commands:
+      - scrollUntilVisible:
+          element:
+            text: "Manual encrypted backup"
+          direction: DOWN
+          centerElement: true
+          timeout: 30000
       - tapOn: "Manual encrypted backup"
       - extendedWaitUntil:
           visible: "Manual encrypted backup"
