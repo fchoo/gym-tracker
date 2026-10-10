@@ -1,10 +1,10 @@
 ---
 schema_version: 1
-open_count: 4
+open_count: 5
 waived_count: 0
 fixed_count: 85
-total_count: 89
-last_updated: 2026-10-10T21:13:49.181Z
+total_count: 90
+last_updated: 2026-10-10T21:20:49.264Z
 ---
 
 # Broken Windows Ledger
@@ -104,6 +104,7 @@ last_updated: 2026-10-10T21:13:49.181Z
 | 87 | 17 | deviation | src/bootstrap/runningPlanRuntime.tsx |  | Rule 2: added authoritative post-create Running session command/readback boundary | open |  | 2026-10-10T19:07:43.613Z |  |
 | 88 | 17 | deviation | src/domains/running/contracts.ts |  | Rule 2: strict Long run and Progression contextual source branches | open |  | 2026-10-10T19:07:43.690Z |  |
 | 89 | 17 | unrun-verify | scripts/run-coverage-gate.mjs |  | Global complete-coverage execution was intentionally not run; registration was verified by focused self-test. | open |  | 2026-10-10T21:13:49.181Z |  |
+| 90 | 17 | unrun-verify | .planning/phases/17-library-running-plans/17-VALIDATION.md |  | Phase 20 pending: deferred global host suite, CNG/APK, device state mutation, 39 native Maestro cases, and all-ID evidence verification. | open |  | 2026-10-10T21:20:49.264Z |  |
 
 ````json
 [
@@ -1173,6 +1174,18 @@ last_updated: 2026-10-10T21:13:49.181Z
     "status": "open",
     "reason": "",
     "recorded_at": "2026-10-10T21:13:49.181Z",
+    "resolved_at": null
+  },
+  {
+    "id": 90,
+    "kind": "unrun-verify",
+    "phase": "17",
+    "file": ".planning/phases/17-library-running-plans/17-VALIDATION.md",
+    "line": null,
+    "description": "Phase 20 pending: deferred global host suite, CNG/APK, device state mutation, 39 native Maestro cases, and all-ID evidence verification.",
+    "status": "open",
+    "reason": "",
+    "recorded_at": "2026-10-10T21:20:49.264Z",
     "resolved_at": null
   }
 ]

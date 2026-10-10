@@ -1,7 +1,7 @@
 ---
 phase: 17
 slug: library-running-plans
-status: draft
+status: implementation-complete-native-pending
 nyquist_compliant: false
 wave_0_complete: false
 created: 2026-10-06
@@ -108,8 +108,8 @@ Execution follows AGENTS.md and .trae/rules/rules.md. Every future implementatio
 | 17-12-02 | 4 | LIB-36 | T-17-12-01..03 | all collision/stale/replay/rollback component/integration cases | pending |
 | 17-13-01 | 5 | LIB-01..36 | T-17-13-01..04 | canonical contract unit + verifier mutation tests | pending |
 | 17-13-02 | 5 | LIB-01..36 | T-17-13-01..04 | verifier mutation tests + boundaries + complete coverage | pending |
-| 17-14-01 | 6 | LIB-01..23 | T-17-14-01..03 | Library native flow + scoped consolidated evidence verification | pending |
-| 17-14-02 | 6 | LIB-01..36 | T-17-14-01..03 | Running/accessibility native flows + all-evidence verification | pending |
+| 17-14-01 | 6 | LIB-01..23 | T-17-14-01..03 | Library native flow + scoped consolidated evidence verification | host implementation complete; native evidence pending Phase 20 |
+| 17-14-02 | 6 | LIB-01..36 | T-17-14-01..03 | Running/accessibility native flows + all-evidence verification | host implementation complete; native evidence pending Phase 20 |
 
 ## Mandatory behavior matrix
 
@@ -261,3 +261,21 @@ The installed decision-coverage checker parses only D-NN identifiers and therefo
 13. npm run verify:phase17:evidence -- --manifest artifacts/native/phase17/build.json --all
 
 Set nyquist_compliant and wave_0_complete to true only after the execution-time audit confirms every mapped test/evidence file exists and all commands pass against the same source/APK identity.
+
+## Owner-directed native validation handoff
+
+Plan 17-14 implemented the bounded runner, all three Maestro flow sources, package binding, static flow coverage, and manifest/evidence self-tests. The owner explicitly deferred build, install, device mutation, native execution, the global host suite, and creation of a passed evidence JSON. `nyquist_compliant` and `wave_0_complete` therefore remain false.
+
+Phase 20 must run, against one newly retained exact-source development-test APK, in this order:
+
+1. `npm run test:unit -- --runInBand`
+2. `npm run test:components -- --runInBand`
+3. `npm run test:sqlite:host -- --runInBand`
+4. `npm run test:integration -- --runInBand`
+5. `npm run test:coverage -- --runInBand`
+6. `npm run verify:cng`
+7. `npm run android:devtest:fresh -- --suite phase17`
+8. `npm run test:maestro:phase17 -- --manifest artifacts/native/phase17/build.json --all --execute`
+9. Create the privacy-safe consolidated evidence only from the retained run artifacts, then run `npm run verify:phase17:evidence -- --manifest artifacts/native/phase17/build.json --all`.
+
+No current artifact hash, device identity, report hash, case PASS, or native/global-suite PASS is claimed by this phase implementation record.
