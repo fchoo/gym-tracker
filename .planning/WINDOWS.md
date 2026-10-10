@@ -1,10 +1,10 @@
 ---
 schema_version: 1
-open_count: 0
+open_count: 1
 waived_count: 0
 fixed_count: 85
-total_count: 85
-last_updated: 2026-10-10T18:15:59.320Z
+total_count: 86
+last_updated: 2026-10-10T18:53:19.789Z
 ---
 
 # Broken Windows Ledger
@@ -100,6 +100,7 @@ last_updated: 2026-10-10T18:15:59.320Z
 | 83 | 14 | deviation | src/ui/__tests__/foundation.test.tsx |  | Replaced stale expanded loading-rail assertion with the all-width bottom-navigation contract | fixed |  | 2026-10-08T17:27:28.512Z | 2026-10-08T17:28:17.795Z |
 | 84 | 14 | unrun-verify | .planning/phases/14-prototype-visual-shell/14-11-PLAN.md |  | Plan named npm run test:evidence:v12:shell is absent; current Phase 14 equivalent passed, but live adb verifier was unavailable. | fixed | Plan 14-10 already passed the live exact-identity --all verifier; Plan 14-11 and orchestration passed the current Phase 14 evidence suite (15/15) without weakening the retained proof. | 2026-10-09T00:16:34.601Z | 2026-10-09T00:19:21.000Z |
 | 85 | 17 | unrun-verify | src/ui/__tests__/RunningPlanEditorScreen.test.tsx | 42 | npm run typecheck blocked by pre-existing TS2698 outside Plan 17-04 scope | fixed | Typed the RunningPlanDraft fixture and mock return as RunningPlanAggregate, so TS2698 no longer spreads an untyped mock parameter. | 2026-10-10T18:11:38.191Z | 2026-10-10T18:15:59.320Z |
+| 86 | 17 | unrun-verify | scripts/run-coverage-gate.mjs |  | Full four-project coverage gate did not return a final result in the execution harness; focused integrity verification passed. | open |  | 2026-10-10T18:53:19.789Z |  |
 
 ````json
 [
@@ -1122,6 +1123,18 @@ last_updated: 2026-10-10T18:15:59.320Z
     "reason": "Typed the RunningPlanDraft fixture and mock return as RunningPlanAggregate, so TS2698 no longer spreads an untyped mock parameter.",
     "recorded_at": "2026-10-10T18:11:38.191Z",
     "resolved_at": "2026-10-10T18:15:59.320Z"
+  },
+  {
+    "id": 86,
+    "kind": "unrun-verify",
+    "phase": "17",
+    "file": "scripts/run-coverage-gate.mjs",
+    "line": null,
+    "description": "Full four-project coverage gate did not return a final result in the execution harness; focused integrity verification passed.",
+    "status": "open",
+    "reason": "",
+    "recorded_at": "2026-10-10T18:53:19.789Z",
+    "resolved_at": null
   }
 ]
 ````

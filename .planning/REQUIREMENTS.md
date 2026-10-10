@@ -125,7 +125,7 @@ Exactly four roots: **Workout, Calendar, Library, Progress**. Preserve SQLite au
 - [ ] **LIB-01**: Remember Plans/Exercises selection with independent search, filters, favorites and detail-return state.
 - [ ] **LIB-02**: Present Active Plans, My Plans and Starter Plans with owned/inactive/starter/Running identity, next scheduled item and grouped counts.
 - [ ] **LIB-03**: Search each view, clear query separately, apply filter counts and preserve query when clearing filters; distinguish No matches from true no-plan state.
-- [ ] **LIB-04**: Show Favorites, Recent and All Exercises with per-exercise favorite toggles and searchable metric/equipment context.
+- [x] **LIB-04**: Show Favorites, Recent and All Exercises with per-exercise favorite toggles and searchable metric/equipment context.
 - [ ] **LIB-05**: Provide Create plan and Create exercise from the Library actions sheet; keep Import plan explicitly unavailable/Later rather than implying a working importer.
 - [ ] **LIB-06**: Route every Create plan entry, including true empty Plans, to one neutral Strength/Running chooser explaining that creation does not activate.
 - [ ] **LIB-07**: Show No plans yet and Create a strength or running plan to get started with the same chooser action.
@@ -140,10 +140,10 @@ Exactly four roots: **Workout, Calendar, Library, Progress**. Preserve SQLite au
 - [x] **LIB-16**: Edit future weekday bindings with selected-day state and Save schedule, preserving real effective-date, rotation and multi-plan ownership rules.
 - [x] **LIB-17**: Retain occurrence/all-occurrences scope, compatible metric selection, target review and refreshed impact preview before saving replacement.
 - [x] **LIB-18**: Retain removal impact, replacement binding/remove binding, effective date and current-workout guard before deleting a plan day.
-- [ ] **LIB-19**: Show exercise instructions, tracking, equipment, last result and plan usage with favorite and Hide from pickers actions while preserving bundled facts.
-- [ ] **LIB-20**: Show custom identity and manual progression; edit name/tracking/equipment through the real editor and archive explicitly.
-- [ ] **LIB-21**: Create a local custom exercise with valid Name, Tracking and Equipment fields, then open its detail; preserve all supported metric-profile choices.
-- [ ] **LIB-22**: Preserve existing edit?mode=copy and edit?mode=metric routes, future-target impact, policy choice, confirmation and active-workout guard.
+- [x] **LIB-19**: Show exercise instructions, tracking, equipment, last result and plan usage with favorite and Hide from pickers actions while preserving bundled facts.
+- [x] **LIB-20**: Show custom identity and manual progression; edit name/tracking/equipment through the real editor and archive explicitly.
+- [x] **LIB-21**: Create a local custom exercise with valid Name, Tracking and Equipment fields, then open its detail; preserve all supported metric-profile choices.
+- [x] **LIB-22**: Preserve existing edit?mode=copy and edit?mode=metric routes, future-target impact, policy choice, confirmation and active-workout guard.
 - [x] **LIB-23**: Preserve loading, query failure/retry, refresh failure, deleted/missing detail and content-update review/dismiss states in all Library flows.
 - [ ] **LIB-24**: Show saved goal/pacing/schedule and derived weekly sessions with Sync Garmin / match activity, Edit running plan and collision entry points.
 - [x] **LIB-25**: Open Running creation from the chooser with goal, benchmark and structured sessions; save inactive and make Garmin connection optional afterward.
@@ -330,7 +330,7 @@ once and remains Pending until its owning phase is implemented and verified.
 | LIB-01 | 17 | library.views | Pending |
 | LIB-02 | 17 | library.plans-groups | Pending |
 | LIB-03 | 17 | library.search-filters | Pending |
-| LIB-04 | 17 | library.exercise-lists | Pending |
+| LIB-04 | 17 | library.exercise-lists | Complete |
 | LIB-05 | 17 | library.actions-menu | Pending |
 | LIB-06 | 17 | library.plan-type-chooser | Pending |
 | LIB-07 | 17 | library.empty-plans | Pending |
@@ -345,10 +345,10 @@ once and remains Pending until its owning phase is implemented and verified.
 | LIB-16 | 17 | library.schedule-editor | Complete |
 | LIB-17 | 17 | library.replacement-impact | Complete |
 | LIB-18 | 17 | library.day-removal-impact | Complete |
-| LIB-19 | 17 | library.builtin-exercise | Pending |
-| LIB-20 | 17 | library.custom-exercise | Pending |
-| LIB-21 | 17 | library.create-exercise | Pending |
-| LIB-22 | 17 | library.copy-metric-migration | Pending |
+| LIB-19 | 17 | library.builtin-exercise | Complete |
+| LIB-20 | 17 | library.custom-exercise | Complete |
+| LIB-21 | 17 | library.create-exercise | Complete |
+| LIB-22 | 17 | library.copy-metric-migration | Complete |
 | LIB-23 | 17 | library.library-load-errors | Complete |
 | LIB-24 | 17 | library.running-detail | Pending |
 | LIB-25 | 17 | library.running-create | Complete |

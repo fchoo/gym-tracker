@@ -232,7 +232,7 @@ Plans:
   4. The owner can create and edit goals plus Recovery, Long run, Progression, Tempo, Intervals, Hills, and Fartlek sessions with their approved common/type-specific fields, validation, stable identities, deletion, and ordering.
   5. A saved Running plan can remain truly empty or contain multiple stable ordered sessions on the same weekday after reopen; future Move run, Move strength, and Keep both decisions persist only after explicit review and confirmation.
 
-**Plans**: 4/14 plans executed
+**Plans**: 5/14 plans executed
 
 - [x] 17-01-PLAN.md
 - [ ] 17-02-PLAN.md
@@ -240,7 +240,7 @@ Plans:
 - [x] 17-04-PLAN.md
 - [x] 17-05-PLAN.md
 - [x] 17-06-PLAN.md
-- [ ] 17-07-PLAN.md
+- [x] 17-07-PLAN.md
 - [ ] 17-08-PLAN.md
 - [ ] 17-09-PLAN.md
 - [ ] 17-10-PLAN.md
@@ -322,7 +322,7 @@ Plans:
 | 14. Prototype Visual Shell | 14-prototype-visual-shell | 12/12 | In Progress|  |
 | 15. Workout Parity | 15-workout-parity | 13/13 | In Progress|  |
 | 16. Calendar Parity | 16-calendar-parity | 0/7 | Not started | - |
-| 17. Library & Running Plans | 17-library-running-plans | 4/14 | In Progress|  |
+| 17. Library & Running Plans | 17-library-running-plans | 5/14 | In Progress|  |
 | 18. Garmin Account Sync | 18-garmin-import | 0/14 | Not started | - |
 | 19. Progress Parity | 19-progress-parity | 0/10 | Not started | - |
 | 20. Native Acceptance | 20-native-acceptance | 0/12 | Not started | - |
