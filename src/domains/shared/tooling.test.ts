@@ -730,6 +730,7 @@ describe("Plan 01-03 test and boundary tooling", () => {
       "src/platform/sqlite/migrations/0009_owned_plans.ts",
       "src/platform/sqlite/migrations/0010_owned_recommendations.ts",
       "src/platform/sqlite/migrations/0015_progression_evidence.ts",
+      "src/platform/sqlite/migrations/0037_exercise_instruction_sets.ts",
       "src/platform/sqlite/migrations/index.ts",
       "src/platform/sqlite/recoveryBackup.ts",
       "src/platform/sqlite/repositories/contentRepository.ts",

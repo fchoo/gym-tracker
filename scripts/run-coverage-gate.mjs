@@ -112,6 +112,7 @@ const integrityCriticalFiles = [
   "src/platform/sqlite/migrations/0033_completed_set_correction_receipts.ts",
   "src/platform/sqlite/migrations/0034_running_activity_match_ledger.ts",
   "src/platform/sqlite/migrations/0035_imported_activity_lifecycle_state.ts",
+  "src/platform/sqlite/migrations/0037_exercise_instruction_sets.ts",
   "src/platform/sqlite/migrations/index.ts",
   "src/platform/sqlite/recoveryBackup.ts",
   "src/platform/sqlite/repositories/contentRepository.ts",
