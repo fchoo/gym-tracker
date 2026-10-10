@@ -1632,7 +1632,7 @@ describe("WorkoutAppRuntimeProvider", () => {
       targetSessionSetId: null,
     } }));
 
-    expect(advanced.configureAdvancedTiming).toHaveBeenCalledTimes(1);
+    expect(advanced.configureAdvancedTiming).not.toHaveBeenCalled();
     expect(advanced.startAdvancedTiming).not.toHaveBeenCalled();
     expect(advanced.listActiveTimingContexts).not.toHaveBeenCalled();
     expect(rest.listActiveSessionIds).not.toHaveBeenCalled();
