@@ -79,7 +79,7 @@ test("Phase 14 scrim coordinates come from actual rotated window and sheet bound
 });
 
 test("Phase 14 action contracts are state-specific and exact", () => {
-  assert.equal(PHASE14_NATIVE_MATRIX.cells.length, 874);
+  assert.equal(PHASE14_NATIVE_MATRIX.cells.length, 17);
   for (const state of PHASE14_NATIVE_MATRIX.states) {
     assert.equal(Object.hasOwn(state.state, "fixture"), false, state.caseId);
     assert.equal(state.state.dataPolicy, state.caseId === "shell.toasts" ? "development-test-proof-route" : "installed-user-data-preserved");

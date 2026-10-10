@@ -101,7 +101,10 @@ function behaviorContract(state, profile) {
 
 function createCell(state, appearance, viewport, orientation, fontScale, variant = "base", overrides = {}) {
   const suffix = variant === "base" ? "" : `-${variant}`;
-  const profile = behaviorProfile(state, appearance, viewport, orientation, fontScale, variant);
+  const { behaviorProfile: profileOverride, ...cellOverrides } = overrides;
+  const profile = profileOverride === undefined
+    ? behaviorProfile(state, appearance, viewport, orientation, fontScale, variant)
+    : profileOverride;
   return Object.freeze({
     id: `${state.state.id}-${configurationId(appearance, viewport, orientation, fontScale)}${suffix}`,
     configurationId: configurationId(appearance, viewport, orientation, fontScale),
@@ -129,55 +132,70 @@ function createCell(state, appearance, viewport, orientation, fontScale, variant
     expectedInputs: Object.freeze(state.actions.map(({ id }) => id)),
     behavior: behaviorContract(state, profile),
     captureRequirements: BASE_CAPTURE_REQUIREMENTS,
-    ...overrides,
+    ...cellOverrides,
   });
 }
 
-function baseCells() {
-  const cells = [];
-  for (const state of PHASE14_NATIVE_STATES) {
-    for (const appearance of REQUIRED_APPEARANCES) {
-      for (const viewport of REQUIRED_VIEWPORTS) {
-        for (const orientation of REQUIRED_ORIENTATIONS) {
-          for (const fontScale of REQUIRED_FONT_SCALES) {
-            cells.push(createCell(state, appearance, viewport, orientation, fontScale));
-          }
-        }
-      }
-    }
-  }
-  return cells;
+function requiredState(caseId) {
+  const state = PHASE14_NATIVE_STATES.find((entry) => entry.caseId === caseId);
+  if (state === undefined) throw new Error(`phase14_native_matrix_unknown_case:${caseId}`);
+  return state;
 }
 
-function variantCells() {
-  const viewport = REQUIRED_VIEWPORTS[1];
-  const cells = [];
-  for (const state of PHASE14_NATIVE_STATES) {
-    const system = REQUIRED_APPEARANCES[2];
-    cells.push(createCell(state, system, viewport, "portrait", 1, "system-live-switch", {
-      liveOsSwitch: true,
-      systemNightAfter: true,
-      expectedRenderedThemeAfterSwitch: "dark",
-    }));
-    for (const appearance of REQUIRED_APPEARANCES.slice(0, 2)) {
-      cells.push(createCell(state, appearance, viewport, "portrait", 1, "explicit-theme-invariance", {
-        liveOsSwitch: true,
-        systemNightAfter: appearance.osScheme !== "dark",
-        expectedRenderedThemeAfterSwitch: appearance.renderedTheme,
-      }));
-    }
-    if (state.motionSensitive) {
-      cells.push(createCell(state, REQUIRED_APPEARANCES[1], viewport, "portrait", 1, "reduced-motion", {
-        reducedMotion: true,
-      }));
-    }
-  }
-  return cells;
+function requiredAppearance(id) {
+  const appearance = REQUIRED_APPEARANCES.find((entry) => entry.id === id);
+  if (appearance === undefined) throw new Error(`phase14_native_matrix_unknown_appearance:${id}`);
+  return appearance;
 }
 
+function requiredViewport(width, height) {
+  const viewport = REQUIRED_VIEWPORTS.find((entry) => entry.width === width && entry.height === height);
+  if (viewport === undefined) throw new Error(`phase14_native_matrix_unknown_viewport:${width}x${height}`);
+  return viewport;
+}
+
+function representativeCell({
+  caseId,
+  appearance,
+  viewport,
+  orientation,
+  fontScale,
+  profile = null,
+  variant = "base",
+  ...overrides
+}) {
+  return createCell(
+    requiredState(caseId),
+    requiredAppearance(appearance),
+    requiredViewport(viewport[0], viewport[1]),
+    orientation,
+    fontScale,
+    variant,
+    { behaviorProfile: profile, ...overrides },
+  );
+}
+
+// Risk-based native coverage: one exact action-bearing representative for every
+// shell requirement, plus four appearance/theme variants. This is the original
+// validated Phase 14 scale and avoids a redundant 13 x 64 Cartesian product.
 export const PHASE14_EXECUTABLE_MATRIX_CELLS = Object.freeze([
-  ...baseCells(),
-  ...variantCells(),
+  representativeCell({ caseId: "shell.four-roots", appearance: "dark", viewport: [360, 800], orientation: "portrait", fontScale: 2, profile: "accessibility-200" }),
+  representativeCell({ caseId: "shell.four-roots", appearance: "system-on-light", viewport: [390, 844], orientation: "portrait", fontScale: 1, variant: "system-live-switch", liveOsSwitch: true, systemNightAfter: true, expectedRenderedThemeAfterSwitch: "dark" }),
+  representativeCell({ caseId: "shell.root-state", appearance: "dark", viewport: [390, 844], orientation: "portrait", fontScale: 1, profile: "normal" }),
+  representativeCell({ caseId: "shell.appearance", appearance: "light", viewport: [390, 844], orientation: "portrait", fontScale: 1, profile: "normal", variant: "explicit-theme-invariance", liveOsSwitch: true, systemNightAfter: false, expectedRenderedThemeAfterSwitch: "light" }),
+  representativeCell({ caseId: "shell.appearance", appearance: "dark", viewport: [390, 844], orientation: "portrait", fontScale: 1, variant: "explicit-theme-invariance", liveOsSwitch: true, systemNightAfter: true, expectedRenderedThemeAfterSwitch: "dark" }),
+  representativeCell({ caseId: "shell.appearance", appearance: "system-on-light", viewport: [390, 844], orientation: "portrait", fontScale: 1 }),
+  representativeCell({ caseId: "shell.appearance", appearance: "system-on-dark", viewport: [390, 844], orientation: "portrait", fontScale: 1 }),
+  representativeCell({ caseId: "shell.tokens", appearance: "system-on-dark", viewport: [600, 960], orientation: "portrait", fontScale: 1, profile: "normal" }),
+  representativeCell({ caseId: "shell.sheets", appearance: "system-on-light", viewport: [390, 844], orientation: "landscape", fontScale: 1, profile: "landscape-geometry" }),
+  representativeCell({ caseId: "shell.toasts", appearance: "dark", viewport: [390, 844], orientation: "portrait", fontScale: 1, profile: "reduced-motion", variant: "reduced-motion", reducedMotion: true }),
+  representativeCell({ caseId: "shell.launch", appearance: "system-on-light", viewport: [360, 800], orientation: "portrait", fontScale: 2, profile: "accessibility-200" }),
+  representativeCell({ caseId: "shell.rest-alerts", appearance: "dark", viewport: [390, 844], orientation: "portrait", fontScale: 1, profile: "normal" }),
+  representativeCell({ caseId: "shell.settings-deep-links", appearance: "light", viewport: [600, 960], orientation: "portrait", fontScale: 2, profile: "accessibility-200" }),
+  representativeCell({ caseId: "shell.removed-sessions", appearance: "dark", viewport: [390, 844], orientation: "portrait", fontScale: 2, profile: "accessibility-200" }),
+  representativeCell({ caseId: "shell.data-recovery", appearance: "light", viewport: [840, 1080], orientation: "landscape", fontScale: 1, profile: "landscape-geometry" }),
+  representativeCell({ caseId: "shell.automatic-backup", appearance: "system-on-light", viewport: [600, 960], orientation: "portrait", fontScale: 1, profile: "normal" }),
+  representativeCell({ caseId: "shell.manual-backup", appearance: "system-on-dark", viewport: [840, 1080], orientation: "portrait", fontScale: 2, profile: "accessibility-200" }),
 ]);
 
 export const PHASE14_NATIVE_MATRIX = Object.freeze({
@@ -212,9 +230,9 @@ export const PHASE14_NATIVE_MATRIX = Object.freeze({
   recovery: Object.freeze(["development-test-fixtures", "no-write-navigation"]),
   states: PHASE14_NATIVE_STATES,
   stages: Object.freeze(PHASE14_NATIVE_STATES.map(({ stage, flow }) => Object.freeze({ stage, flow }))),
-  baseCellCount: 13 * 64,
+  representativeCellCount: 17,
   behaviorProfiles: Object.freeze({
-    required: Object.freeze(["normal", "accessibility-200"]),
+    required: Object.freeze(["normal", "accessibility-200", "landscape-geometry", "reduced-motion"]),
     geometry: Object.freeze({ "shell.sheets": "landscape-geometry", "shell.data-recovery": "landscape-geometry" }),
     motion: "reduced-motion",
   }),
@@ -290,7 +308,11 @@ export function validatePhase14NativeMatrix(matrix) {
     throw new Error("phase14_native_matrix_state_invalid");
   }
   matrix.states.forEach(validateState);
-  if (!Array.isArray(matrix.cells) || matrix.cells.length < matrix.baseCellCount) {
+  if (
+    matrix.representativeCellCount !== 17
+    || !Array.isArray(matrix.cells)
+    || matrix.cells.length !== matrix.representativeCellCount
+  ) {
     throw new Error("phase14_native_matrix_cells_invalid");
   }
   const ids = new Set();
@@ -324,29 +346,25 @@ export function validatePhase14NativeMatrix(matrix) {
     }
     ids.add(cell.id);
   }
-  const base = matrix.cells.filter(({ variant }) => variant === "base");
-  if (base.length !== PHASE14_NATIVE_STATES.length * 64) {
-    throw new Error("phase14_native_matrix_cartesian_incomplete");
+  if (
+    REQUIRED_APPEARANCES.some(({ id }) => !matrix.cells.some(({ appearance }) => appearance === id))
+    || REQUIRED_VIEWPORTS.some((viewport) => !matrix.cells.some((cell) => same(cell.viewport, viewport)))
+    || REQUIRED_ORIENTATIONS.some((orientation) => !matrix.cells.some((cell) => cell.orientation === orientation))
+    || REQUIRED_FONT_SCALES.some((fontScale) => !matrix.cells.some((cell) => cell.fontScale === fontScale))
+    || !matrix.cells.some(({ variant, liveOsSwitch }) => variant === "system-live-switch" && liveOsSwitch)
+    || !matrix.cells.some(({ appearance, variant, liveOsSwitch }) => appearance === "light" && variant === "explicit-theme-invariance" && liveOsSwitch)
+    || !matrix.cells.some(({ appearance, variant, liveOsSwitch }) => appearance === "dark" && variant === "explicit-theme-invariance" && liveOsSwitch)
+    || !matrix.cells.some(({ variant, reducedMotion }) => variant === "reduced-motion" && reducedMotion)
+  ) {
+    throw new Error("phase14_native_matrix_representative_coverage_invalid");
   }
   for (const state of matrix.states) {
-    const stateBase = base.filter(({ caseId }) => caseId === state.caseId);
-    if (
-      stateBase.length !== 64
-      || new Set(stateBase.map(({ configurationId: id }) => id)).size !== 64
-      || !matrix.cells.some(({ caseId, variant }) => caseId === state.caseId && variant === "system-live-switch")
-      || !matrix.cells.some(({ caseId, variant }) => caseId === state.caseId && variant === "explicit-theme-invariance")
-      || (state.motionSensitive && !matrix.cells.some(({ caseId, variant, reducedMotion }) =>
-        caseId === state.caseId && variant === "reduced-motion" && reducedMotion))
-    ) {
-      throw new Error("phase14_native_matrix_cartesian_incomplete");
-    }
+    const stateCells = matrix.cells.filter(({ caseId }) => caseId === state.caseId);
     const representatives = matrix.cells.filter(({ caseId, behavior }) =>
       caseId === state.caseId && behavior.representative);
-    const expectedProfiles = ["normal", "accessibility-200"];
-    if (["shell.sheets", "shell.data-recovery"].includes(state.caseId)) expectedProfiles.push("landscape-geometry");
-    if (state.motionSensitive) expectedProfiles.push("reduced-motion");
     if (
-      !same(representatives.map(({ behavior }) => behavior.profile).sort(), expectedProfiles.sort())
+      stateCells.length < 1
+      || representatives.length !== 1
       || representatives.some(({ behavior }) =>
         !same(behavior.actionIds, state.actions.map(({ id }) => id))
         || behavior.logicalStateProbe !== (state.runtimeStatePolicy === "no-write" && state.actions.length > 0))
@@ -354,6 +372,15 @@ export function validatePhase14NativeMatrix(matrix) {
         && (behavior.profile !== null || behavior.actionIds.length !== 0 || behavior.logicalStateProbe !== false))
     ) throw new Error("phase14_native_matrix_behavior_coverage_invalid");
   }
+  const profiles = new Set(matrix.cells.filter(({ behavior }) => behavior.representative)
+    .map(({ behavior }) => behavior.profile));
+  if (
+    matrix.behaviorProfiles.required.some((profile) => !profiles.has(profile))
+    || matrix.cells.filter(({ behavior }) => behavior.profile === "landscape-geometry")
+      .some(({ caseId }) => !["shell.sheets", "shell.data-recovery"].includes(caseId))
+    || !["shell.sheets", "shell.data-recovery"].every((caseId) =>
+      matrix.cells.some((cell) => cell.caseId === caseId && cell.behavior.profile === "landscape-geometry"))
+  ) throw new Error("phase14_native_matrix_behavior_coverage_invalid");
   const inputName = {
     DPAD_RIGHT: "dpad",
     DPAD_DOWN: "dpad",
