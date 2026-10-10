@@ -767,6 +767,9 @@ describe("Exercise replacement", () => {
     await fireEvent.press(
       screen.getByRole("button", { name: "Save replacement" }),
     );
+    await fireEvent.press(screen.getByRole("button", {
+      name: "Replace exercises",
+    }));
 
     expect(await screen.findByText(
       "Replacement could not be saved. Your review is still here. Try again.",
@@ -780,6 +783,9 @@ describe("Exercise replacement", () => {
       }));
     await fireEvent.press(
       screen.getByRole("button", { name: "Save replacement" }),
+    );
+    await fireEvent.press(
+      screen.getByRole("button", { name: "Replace exercises" }),
     );
     await waitFor(() => expect(replaceExercise).toHaveBeenCalledTimes(2));
   });

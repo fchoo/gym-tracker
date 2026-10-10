@@ -38,6 +38,9 @@ import {
   ImpactPreview,
 } from "../components/ImpactPreview";
 import {
+  ConfirmationDialog,
+} from "../components/ConfirmationDialog";
+import {
   radius,
   sizes,
   space,
@@ -216,7 +219,9 @@ export function ExerciseReplacementScreen({
     historyImmutable: false,
   });
   const [saving, setSaving] = useState(false);
+  const [confirmVisible, setConfirmVisible] = useState(false);
   const [saveError, setSaveError] = useState<"failed" | "stale" | null>(null);
+  const saveActionRef = useRef<View>(null);
   const adaptiveWidth = width === undefined ? {} : { width };
 
   useEffect(() => {
@@ -320,9 +325,11 @@ export function ExerciseReplacementScreen({
       if (code === "plan_impact_preview_stale") {
         requestRef.current = null;
         setSaveError("stale");
+        setConfirmVisible(false);
         setRetryGeneration((value) => value + 1);
       } else {
         setSaveError("failed");
+        setConfirmVisible(false);
       }
     } finally {
       setSaving(false);
@@ -403,10 +410,15 @@ export function ExerciseReplacementScreen({
     );
   }
 
+  const replacementName = preview.candidates.find(({ exerciseId }) =>
+    exerciseId === replacementExerciseId
+  )?.name ?? "the selected compatible exercise";
+
   return (
-    <AdaptiveScreen
-      onRequestBack={onBack}
-      primary={(
+    <>
+      <AdaptiveScreen
+        onRequestBack={onBack}
+        primary={(
         <View style={styles.screen}>
           <ScreenHeader
             backAction={onBack}
@@ -568,13 +580,28 @@ export function ExerciseReplacementScreen({
             disabled={replacementExerciseId === null || !reviewComplete}
             label="Save replacement"
             onPress={() => {
-              void save();
+              setConfirmVisible(true);
             }}
+            ref={saveActionRef}
           />
         </View>
       )}
-      {...adaptiveWidth}
-    />
+        {...adaptiveWidth}
+      />
+      <ConfirmationDialog
+        body={`Replace ${selectedOccurrences.length} future ${selectedOccurrences.length === 1 ? "occurrence" : "occurrences"} with ${replacementName}. Current workouts and completed history remain unchanged.`}
+        cancelLabel="Keep reviewing"
+        confirmBusy={saving}
+        confirmLabel="Replace exercises"
+        heading="Replace future plan exercises?"
+        onCancel={() => setConfirmVisible(false)}
+        onConfirm={() => {
+          void save();
+        }}
+        restoreFocusRef={saveActionRef}
+        visible={confirmVisible}
+      />
+    </>
   );
 }
 
