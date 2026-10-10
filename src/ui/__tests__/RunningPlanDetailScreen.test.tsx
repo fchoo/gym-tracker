@@ -11,7 +11,7 @@ const plan: RunningPlanAggregate = {
   version: 1, id: "running-1", name: "10K base", revision: 3, active: false, lifecycle: "inactive", createdAtMs: 1,
   goal: { version: 1, id: "goal-1", planId: "running-1", revision: 3, goalDistanceMeters: 10000, targetDurationMs: 3_600_000, trainingDays: ["Monday", "Wednesday"], createdAtMs: 1 },
   sessions: [
-    { slot: { id: "slot-2", rootId: "slot-2", weekday: "Monday", revision: 1, ordinal: 1 }, session: { version: 1, id: "session-2", rootId: "session-2", planId: "running-1", sessionKind: "tempo", revision: 1, createdAtMs: 1, phases: [{ ordinal: 0, kind: "work", steps: [{ ordinal: 0, kind: "duration", durationMs: 60_000 }] }], contextual: { format: "continuous", durationMs: 60_000 } } },
+    { slot: { id: "slot-2", rootId: "slot-2", weekday: "Monday", revision: 1, ordinal: 1 }, session: { version: 1, id: "session-2", rootId: "session-2", planId: "running-1", sessionKind: "tempo", revision: 1, createdAtMs: 1, phases: [{ ordinal: 0, kind: "work", steps: [{ ordinal: 0, kind: "duration", durationMs: 60_000 }] }], contextual: { format: "continuous", work: { durationMs: 60_000 } } } },
     { slot: { id: "slot-1", rootId: "slot-1", weekday: "Monday", revision: 1, ordinal: 0 }, session: { version: 1, id: "session-1", rootId: "session-1", planId: "running-1", sessionKind: "recovery", revision: 1, createdAtMs: 1, phases: [{ ordinal: 0, kind: "work", steps: [{ ordinal: 0, kind: "duration", durationMs: 60_000 }] }], advisoryTarget: { rpe: 3 }, contextual: {} } },
   ],
 };

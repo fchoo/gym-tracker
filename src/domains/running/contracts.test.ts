@@ -30,7 +30,7 @@ describe("Running source contracts", () => {
     ["recovery", {}],
     ["long_run", { finish: "easy_throughout" }],
     ["progression", { stages: 3, startTarget: { rpe: 4 }, finishTarget: { paceMsPerKm: 300_000 } }],
-    ["tempo", { format: "continuous", durationMs: 1_200_000 }],
+    ["tempo", { format: "continuous", work: { durationMs: 1_200_000 } }],
     ["intervals", { repetitions: 4, work: { durationMs: 180_000 }, recovery: { durationMs: 90_000 } }],
     ["hills", { repetitions: 6, work: { distanceMeters: 200 }, returnRecovery: { durationMs: 120_000 } }],
     ["fartlek", { format: "structured", repetitions: 5, work: { durationMs: 60_000 }, recovery: { durationMs: 60_000 } }],
@@ -71,13 +71,13 @@ describe("Running source contracts", () => {
     expect(() => parseRunningSessionRevision({
       ...base,
       sessionKind: "tempo",
-      contextual: { format: "continuous", durationMs: 600_000 },
+      contextual: { format: "continuous", work: { durationMs: 600_000 } },
       advisoryTarget: { paceMsPerKm: 300_000, heartRateZone: 3, rpe: 7 },
     })).not.toThrow();
     expect(() => parseRunningSessionRevision({
       ...base,
       sessionKind: "tempo",
-      contextual: { format: "continuous", durationMs: 600_000 },
+      contextual: { format: "continuous", work: { durationMs: 600_000 } },
       advisoryTarget: { heartRateZone: 6 },
     })).toThrow(RunningBoundaryError);
   });

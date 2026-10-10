@@ -74,9 +74,14 @@ const ProgressionContextSchema = z.strictObject({
   finishTarget: AdvisoryTargetSchema,
 });
 const TempoContextSchema = z.strictObject({
-  format: z.enum(["continuous", "cruise"]),
-  durationMs: PositiveIntegerSchema,
-});
+  format: z.literal("continuous"),
+  work: QuantitySchema,
+}).or(z.strictObject({
+  format: z.literal("tempo_repeats"),
+  repetitions: PositiveIntegerSchema.max(100),
+  work: QuantitySchema,
+  recovery: QuantitySchema,
+}));
 const IntervalsContextSchema = z.strictObject({
   repetitions: PositiveIntegerSchema.max(100),
   work: QuantitySchema,

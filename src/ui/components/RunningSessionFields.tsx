@@ -23,6 +23,15 @@ export type RunningSessionFormDraft = Readonly<{
   stages: string;
   startTarget: RunningSessionTargetDraft;
   finishTarget: RunningSessionTargetDraft;
+  tempoFormat: "continuous" | "tempo_repeats";
+  fartlekStyle: "structured" | "unstructured";
+  repeats: string;
+  work: string;
+  workUnit: "distance" | "duration";
+  recovery: string;
+  recoveryUnit: "distance" | "duration";
+  fastCue: string;
+  easyRecoveryCue: string;
 }>;
 
 const WEEKDAYS = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"] as const;
@@ -47,6 +56,15 @@ export function initialRunningSessionFormDraft(
     stages: "",
     startTarget: emptyTarget(),
     finishTarget: emptyTarget(),
+    tempoFormat: "continuous",
+    fartlekStyle: "structured",
+    repeats: "",
+    work: "",
+    workUnit: "duration",
+    recovery: "",
+    recoveryUnit: "duration",
+    fastCue: "",
+    easyRecoveryCue: "",
   };
 }
 
@@ -72,6 +90,20 @@ export function validateRunningSessionFormDraft(draft: RunningSessionFormDraft):
     if (!/^(?:[2-9]|[1-9]\d+)$/u.test(draft.stages)) return "Stages must be a whole number of at least 2.";
     if (!validTarget(draft.startTarget) || !validTarget(draft.finishTarget)) return "Choose valid Start target and Finish target values.";
   }
+  const requiresTarget = draft.kind === "tempo" || draft.kind === "intervals" || draft.kind === "hills" || draft.kind === "fartlek";
+  if (requiresTarget && !validTarget(draft.target)) return "Choose a valid intensity target.";
+  const validQuantity = (value: string) => validPositiveInteger(value);
+  if (draft.kind === "tempo") {
+    if (!validQuantity(draft.work)) return "Enter a positive Work duration or distance.";
+    if (draft.tempoFormat === "tempo_repeats" && (!validPositiveInteger(draft.repeats) || !validQuantity(draft.recovery))) return "Tempo repeats need whole Repeats and positive Recovery.";
+  }
+  if (draft.kind === "intervals" && (!validPositiveInteger(draft.repeats) || !validQuantity(draft.work) || !validQuantity(draft.recovery))) return "Intervals need whole Repeats, positive Work, and positive Recovery.";
+  if (draft.kind === "hills" && (!validPositiveInteger(draft.repeats) || !validQuantity(draft.work) || !validQuantity(draft.recovery))) return "Hills need whole Repeats, positive Uphill, and positive Return recovery.";
+  if (draft.kind === "fartlek") {
+    if (!validPositiveInteger(draft.repeats)) return "Fartlek needs whole Surges / repeats.";
+    if (draft.fartlekStyle === "structured" && (!validQuantity(draft.work) || !validQuantity(draft.recovery))) return "Structured Fartlek needs positive Fast segment and Easy float / recovery.";
+    if (draft.fartlekStyle === "unstructured" && (draft.fastCue.trim().length === 0 || draft.fastCue.trim().length > 120 || draft.easyRecoveryCue.trim().length === 0 || draft.easyRecoveryCue.trim().length > 120)) return "Unstructured Fartlek needs bounded Fast cue and Easy recovery cue.";
+  }
   return null;
 }
 
@@ -87,7 +119,32 @@ export function runningSessionPreview(draft: RunningSessionFormDraft): string | 
   if (draft.kind === "recovery") return `${volume} · ${targetText(draft.target)}`;
   if (draft.kind === "long_run") return `${volume} · ${draft.finish.replaceAll("_", " ")}`;
   if (draft.kind === "progression") return `${volume} · ${draft.stages} stages · ${targetText(draft.startTarget)} → ${targetText(draft.finishTarget)}`;
+  const quantity = (value: string, unit: "distance" | "duration") => `${value} ${unit === "distance" ? "m" : "ms"}`;
+  if (draft.kind === "tempo") return draft.tempoFormat === "continuous"
+    ? `${quantity(draft.work, draft.workUnit)} continuous · ${targetText(draft.target)}`
+    : `${draft.repeats} × ${quantity(draft.work, draft.workUnit)} · ${quantity(draft.recovery, draft.recoveryUnit)}`;
+  if (draft.kind === "intervals") return `${draft.repeats} × ${quantity(draft.work, draft.workUnit)} · ${quantity(draft.recovery, draft.recoveryUnit)} · ${targetText(draft.target)}`;
+  if (draft.kind === "hills") return `${draft.repeats} × ${quantity(draft.work, draft.workUnit)} · ${quantity(draft.recovery, draft.recoveryUnit)}`;
+  if (draft.kind === "fartlek") return draft.fartlekStyle === "structured"
+    ? `${draft.repeats} × ${quantity(draft.work, draft.workUnit)} / ${quantity(draft.recovery, draft.recoveryUnit)}`
+    : `${draft.repeats} surges · ${draft.fastCue.trim()} / ${draft.easyRecoveryCue.trim()}`;
   return null;
+}
+
+function QuantityFields(props: Readonly<{
+  label: string;
+  value: string;
+  unit: "distance" | "duration";
+  onChange(value: string, unit?: "distance" | "duration"): void;
+}>) {
+  return <View accessibilityLabel={props.label}>
+    <Text>{props.label}</Text>
+    <View>
+      <SecondaryAction label={`${props.label} unit distance`} onPress={() => props.onChange(props.value, "distance")} />
+      <SecondaryAction label={`${props.label} unit duration`} onPress={() => props.onChange(props.value, "duration")} />
+    </View>
+    <TextInput accessibilityLabel={`${props.label} ${props.unit === "distance" ? "distance metres" : "duration milliseconds"}`} keyboardType="number-pad" onChangeText={(value) => props.onChange(value)} value={props.value} />
+  </View>;
 }
 
 function TargetFields(props: Readonly<{
@@ -151,6 +208,21 @@ export function RunningSessionFields(props: Readonly<{
       <TextInput accessibilityLabel="Stages" keyboardType="number-pad" onChangeText={(stages) => update({ stages })} value={draft.stages} />
       <TargetFields label="Start target" target={draft.startTarget} onChange={(startTarget) => update({ startTarget })} />
       <TargetFields label="Finish target" target={draft.finishTarget} onChange={(finishTarget) => update({ finishTarget })} />
+    </> : null}
+    {draft.kind === "tempo" ? <>
+      <Text>Format</Text>
+      <SecondaryAction label="Format Continuous" onPress={() => update({ tempoFormat: "continuous" })} />
+      <SecondaryAction label="Format Tempo repeats" onPress={() => update({ tempoFormat: "tempo_repeats" })} />
+      {draft.tempoFormat === "tempo_repeats" ? <TextInput accessibilityLabel="Repeats" keyboardType="number-pad" onChangeText={(repeats) => update({ repeats })} value={draft.repeats} /> : null}
+      <QuantityFields label="Work" value={draft.work} unit={draft.workUnit} onChange={(work, workUnit) => update({ work, ...(workUnit === undefined ? {} : { workUnit }) })} />
+      {draft.tempoFormat === "tempo_repeats" ? <QuantityFields label="Recovery" value={draft.recovery} unit={draft.recoveryUnit} onChange={(recovery, recoveryUnit) => update({ recovery, ...(recoveryUnit === undefined ? {} : { recoveryUnit }) })} /> : null}
+      <TargetFields label="Intensity target" target={draft.target} onChange={(target) => update({ target })} />
+    </> : null}
+    {draft.kind === "intervals" ? <>
+      <TextInput accessibilityLabel="Repeats" keyboardType="number-pad" onChangeText={(repeats) => update({ repeats })} value={draft.repeats} />
+      <QuantityFields label="Work" value={draft.work} unit={draft.workUnit} onChange={(work, workUnit) => update({ work, ...(workUnit === undefined ? {} : { workUnit }) })} />
+      <QuantityFields label="Recovery" value={draft.recovery} unit={draft.recoveryUnit} onChange={(recovery, recoveryUnit) => update({ recovery, ...(recoveryUnit === undefined ? {} : { recoveryUnit }) })} />
+      <TargetFields label="Intensity target" target={draft.target} onChange={(target) => update({ target })} />
     </> : null}
     <Text>Session preview</Text>
     <Text>{preview ?? "Complete the visible fields to preview this session."}</Text>

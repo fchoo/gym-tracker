@@ -52,7 +52,7 @@ async function migratedKernel(): Promise<SqliteKernel> {
 function session(planId: string, kind: "recovery" | "tempo", ordinal: number): RunningPlanSession {
   return {
     slot: { id: `${kind}-slot-v1`, rootId: `${kind}-slot`, weekday: "Monday" as const, revision: 1, ordinal },
-    session: { version: 1 as const, id: `${kind}-v1`, rootId: kind, planId, sessionKind: kind, revision: 1, createdAtMs: 100, phases: [{ ordinal: 0, kind: "work" as const, steps: [{ ordinal: 0, kind: "duration" as const, durationMs: 60_000 }] }], contextual: kind === "tempo" ? { format: "continuous" as const, durationMs: 60_000 } : {} },
+    session: { version: 1 as const, id: `${kind}-v1`, rootId: kind, planId, sessionKind: kind, revision: 1, createdAtMs: 100, phases: [{ ordinal: 0, kind: "work" as const, steps: [{ ordinal: 0, kind: "duration" as const, durationMs: 60_000 }] }], contextual: kind === "tempo" ? { format: "continuous" as const, work: { durationMs: 60_000 } } : {} },
   } as RunningPlanSession;
 }
 
