@@ -36,7 +36,7 @@ export function ExerciseTrendSheet({ exerciseName, history, onClose, visible }: 
   const { colors } = useAppTheme();
   const trend = history === null ? null : projectComparableExerciseTrend(history);
   const chartLabel = "Exercise performance over six sessions";
-  return <BottomSheet heading={`${exerciseName} trend`} onCancel={onClose} scrollTestID="exercise-trend-sheet-content" visible={visible}>
+  return <BottomSheet cancelLabel="Return to Workout" heading={`${exerciseName} trend`} onCancel={onClose} scrollTestID="exercise-trend-sheet-content" visible={visible}>
     {trend === null ? <View style={styles.content}>
       <Text style={[typeScale.body as TextStyle, { color: colors.textSecondary }]}>Not enough comparable history yet.</Text>
       <Text style={[typeScale.secondary as TextStyle, { color: colors.textSecondary }]}>Your current workout is unchanged.</Text>

@@ -510,7 +510,7 @@ describe("ActiveWorkoutScreen explicit-save editor", () => {
     await renderScreen(completed, { reviseCompletedSet });
 
     await fireEvent.press(screen.getByRole("button", {
-      name: /Back Squat\. Completed\. 1 of 1 working sets\. Expand exercise/u,
+      name: /Back Squat\. 60 kg × 8 · 1\/1 complete\. Expand exercise/u,
     }));
     await fireEvent.press(screen.getByRole("button", { name: /Set 1\. 60 kg × 8\. Completed/u }));
     await fireEvent.changeText(screen.getByLabelText("Load (kg)"), "65");
@@ -542,7 +542,7 @@ describe("ActiveWorkoutScreen explicit-save editor", () => {
     });
     await act(async () => resolveCompletion({ outcome: "committed", view: { ...completedBase, exercises: [completedBase.currentExercise] } }));
     expect(screen.getByRole("button", {
-      name: /Back Squat\. Completed\. 1 of 1 working sets\. Expand exercise/u,
+      name: /Back Squat\. 60 kg × 8 · 1\/1 complete\. Expand exercise/u,
     })).toBeOnTheScreen();
   });
 
@@ -574,7 +574,7 @@ describe("ActiveWorkoutScreen explicit-save editor", () => {
     await fireEvent.press(screen.getByRole("button", { name: "Complete Set 1" }));
 
     await waitFor(() => expect(screen.getByRole("button", {
-      name: /Back Squat\. Completed\. 1 of 1 working sets\. Expand exercise/u,
+      name: /Back Squat\. 60 kg × 8 · 1\/1 complete\. Expand exercise/u,
     })).toBeOnTheScreen());
     expect(screen.getByRole("button", { name: "Finish workout" })).toBeOnTheScreen();
   });
@@ -594,7 +594,7 @@ describe("ActiveWorkoutScreen explicit-save editor", () => {
     await waitFor(() => expect(screen.getByRole("button", { name: "Set not saved · Retry" })).toBeOnTheScreen());
     await fireEvent.press(screen.getByRole("button", { name: "Set not saved · Retry" }));
     await waitFor(() => expect(screen.getByRole("button", {
-      name: /Back Squat\. Completed\. 1 of 1 working sets\. Expand exercise/u,
+      name: /Back Squat\. 60 kg × 8 · 1\/1 complete\. Expand exercise/u,
     })).toBeOnTheScreen());
 
     expect(completeSet).toHaveBeenCalledTimes(2);

@@ -365,6 +365,27 @@ function workingSetSummary(exercise: ActiveWorkoutExercise): Readonly<{
   };
 }
 
+function exerciseHeaderMetadata(
+  exercise: ActiveWorkoutExercise,
+  activeSetId: string | null,
+): string {
+  const currentSet = [...exercise.warmups, ...exercise.workingSets].find(
+    ({ id }) => id === activeSetId,
+  );
+  const referenceSet = currentSet ?? exercise.workingSets[0];
+  const target = referenceSet === undefined
+    ? "No target"
+    : formatObservation(observationForSet(referenceSet));
+  if (currentSet?.kind === "warmup") {
+    return `${target} · warm-up W${currentSet.ordinal + 1}`;
+  }
+  if (currentSet?.kind === "working") {
+    return `${target} · set ${currentSet.ordinal + 1}/${exercise.workingSets.length}`;
+  }
+  const summary = workingSetSummary(exercise);
+  return `${target} · ${summary.completed}/${summary.total} complete`;
+}
+
 function TargetContext({
   set,
 }: Readonly<{ set: ActiveWorkoutSet }>) {
@@ -2126,24 +2147,19 @@ function PopulatedWorkoutOverview({
               exerciseAccessibilityLabel={(presentationExercise, expanded, index) => {
                 const exercise = overviewExercises.find(({ id }) => id === presentationExercise.id);
                 if (exercise === undefined) return presentationExercise.name;
-                const summary = workingSetSummary(exercise);
-                const status = exerciseStatusText(exercise);
-                const statusDescription = exercise.status === "skipped" && summary.completed > 0
-                  ? `${status}. Completed · ${summary.observation}`
-                  : status;
-                return `${exercise.name}. ${statusDescription}. ${summary.completed} of ${summary.total} working sets. ${expanded ? "Collapse" : "Expand"} exercise`;
+                const metadata = exerciseHeaderMetadata(
+                  exercise,
+                  exercise.id === activeExercise.id ? view.activeSetId : null,
+                );
+                return `${exercise.name}. ${metadata}. ${expanded ? "Collapse" : "Expand"} exercise`;
               }}
               exerciseSupportingText={(presentationExercise, expanded, index) => {
                 const exercise = overviewExercises.find(({ id }) => id === presentationExercise.id);
                 if (exercise === undefined) return "";
-                const summary = workingSetSummary(exercise);
-                const status = exerciseStatusText(exercise);
-                if (exercise.status === "skipped" && summary.completed > 0) {
-                  return `${status} · Completed · ${summary.observation}`;
-                }
-                return expanded
-                  ? `${status} · ${summary.completed} of ${summary.total} working sets`
-                  : `${status} · ${summary.observation}`;
+                return exerciseHeaderMetadata(
+                  exercise,
+                  exercise.id === activeExercise.id ? view.activeSetId : null,
+                );
               }}
               renderExerciseAccessory={(presentationExercise) => {
                 const exercise = overviewExercises.find(({ id }) => id === presentationExercise.id);
@@ -2523,6 +2539,7 @@ function PopulatedWorkoutOverview({
         testID="active-workout"
       />
       <BottomSheet
+        cancelLabel="Return to Workout"
         contentStyle={styles.moreSheetContent}
         heading="More workout actions"
         onCancel={() => setMoreVisible(false)}
@@ -2598,6 +2615,7 @@ function PopulatedWorkoutOverview({
         if (exercise === undefined) return null;
         return (
           <BottomSheet
+            cancelLabel="Return to Workout"
             heading={`Timing · ${exercise.name}`}
             cancelDisabled={timingRestBusy}
             onCancel={() => setTimingExerciseId(null)}
@@ -2629,6 +2647,7 @@ function PopulatedWorkoutOverview({
         );
       })()}
       <BottomSheet
+        cancelLabel="Return to Workout"
         contentStyle={styles.moreSheetContent}
         heading="Exercise actions"
         onCancel={closeExerciseActions}
@@ -2675,6 +2694,7 @@ function PopulatedWorkoutOverview({
             )}
       </BottomSheet>
       <BottomSheet
+        cancelLabel="Return to Workout"
         contentStyle={styles.moreSheetContent}
         heading="Choose exercise"
         onCancel={closeExerciseAddPicker}
@@ -2757,6 +2777,7 @@ function PopulatedWorkoutOverview({
         ) : null}
       </BottomSheet>
       <BottomSheet
+        cancelLabel="Return to Workout"
         contentStyle={styles.moreSheetContent}
         heading="Choose exercise"
         onCancel={closeReplacementPicker}
@@ -2923,6 +2944,7 @@ function PopulatedWorkoutOverview({
         const workingAvailable = exercise.workingSets.length > 0;
         return (
           <BottomSheet
+            cancelLabel="Return to Workout"
             heading={`Add set · ${exercise.name}`}
             onCancel={() => setAddSetMenuExerciseId(null)}
             restoreFocusRef={workingAddRef}
