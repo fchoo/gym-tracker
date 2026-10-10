@@ -36,6 +36,13 @@ export function RunningPlanEditorScreen(props: Readonly<{
     slotId: props.createId("running-slot-revision"), slotRootId: props.createId("running-slot"),
     planId: current.id, kind, weekday: current.goal.trainingDays[0] ?? "Monday", ordinal: current.sessions.length, createdAtMs: current.createdAtMs,
   })));
+  const move = (from: number, to: number) => setDraft((current) => {
+    const order = current.sessions.map((entry) => entry.slot.rootId);
+    const [moved] = order.splice(from, 1);
+    if (moved === undefined) return current;
+    order.splice(to, 0, moved);
+    return reorderRunningSessionDraft(current, order);
+  });
   const save = async () => {
     const validation = validateRunningPlanDraft(draft);
     if (validation !== null) { setError(validation); return; }
@@ -62,7 +69,8 @@ export function RunningPlanEditorScreen(props: Readonly<{
         if (dirty) { setPendingSession(session.session.rootId); setLeaveVisible(true); } else props.onOpenSession?.(session.session.rootId);
       }} />
       <SecondaryAction label={`Delete ${session.session.sessionKind}`} onPress={() => setDraft((current) => deleteRunningSessionDraft(current, session.slot.rootId))} />
-      <SecondaryAction disabled={index === 0} label={`Move ${session.session.sessionKind} earlier`} onPress={() => setDraft((current) => reorderRunningSessionDraft(current, current.sessions.map((entry, position) => position === index ? current.sessions[index - 1]!.slot.rootId : position === index - 1 ? session.slot.rootId : entry.slot.rootId)))} />
+      <SecondaryAction disabled={index === 0} label={`Move ${session.session.sessionKind} earlier`} onPress={() => move(index, index - 1)} />
+      <SecondaryAction disabled={index === draft.sessions.length - 1} label={`Move ${session.session.sessionKind} later`} onPress={() => move(index, index + 1)} />
     </View>)}
     {error === null ? null : <Text accessibilityRole="alert">{error}</Text>}
     <PrimaryAction busy={saving} disabled={saving} label="Save changes" onPress={() => void save()} />
