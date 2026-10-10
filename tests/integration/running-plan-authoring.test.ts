@@ -69,6 +69,44 @@ describe("Running plan authoring boundary", () => {
     await expect(repository.createInactiveAggregate({ ...plan, requestSha256: "3".repeat(64) })).rejects.toThrow("sqlite_transaction_failed");
   });
 
+  it("round-trips Tempo, Intervals, Hills, and both Fartlek structures as inactive same-day source facts", async () => {
+    const kernel = await migratedKernel(); const repository = createRunningPlanRepository(kernel);
+    const session = (id: string, ordinal: number, sessionKind: RunningPlanSession["session"]["sessionKind"], contextual: RunningPlanSession["session"]["contextual"], advisoryTarget: NonNullable<RunningPlanSession["session"]["advisoryTarget"]> = { rpe: 6 }, planId = "typed-branches") => ({
+      slot: { id: `${id}-slot-v1`, rootId: `${id}-slot`, weekday: "Saturday" as const, revision: 1, ordinal },
+      session: { version: 1 as const, id: `${id}-v1`, rootId: id, planId, sessionKind, revision: 1, createdAtMs: 100 + ordinal, phases: [{ ordinal: 0, kind: "work" as const, steps: [{ ordinal: 0, kind: "duration" as const, durationMs: 60_000 }] }], advisoryTarget, contextual },
+    } as RunningPlanSession);
+    const input: CreateInactiveRunningPlanInput = {
+      requestId: "typed-branches-request", requestSha256: "9".repeat(64),
+      plan: {
+        version: 1, id: "typed-branches", name: "Typed branches", revision: 1, createdAtMs: 100,
+        goal: { version: 1, id: "typed-branches-goal", planId: "typed-branches", revision: 1, goalDistanceMeters: 10_000, trainingDays: ["Saturday"], createdAtMs: 100 },
+        sessions: [
+          session("tempo", 0, "tempo", { format: "tempo_repeats", repetitions: 3, work: { distanceMeters: 800 }, recovery: { durationMs: 120_000 } }, { paceMsPerKm: 285_000 }),
+          session("intervals", 1, "intervals", { repetitions: 6, work: { durationMs: 60_000 }, recovery: { distanceMeters: 200 } }, { heartRateZone: 3 }),
+          session("hills", 2, "hills", { repetitions: 8, work: { distanceMeters: 250 }, returnRecovery: { durationMs: 90_000 } }),
+          session("fartlek-structured", 3, "fartlek", { format: "structured", repetitions: 5, work: { durationMs: 45_000 }, recovery: { durationMs: 30_000 } }),
+        ],
+      },
+    };
+    const committed = await repository.createInactiveAggregate(input);
+    expect(committed.active).toBe(false);
+    expect(committed.sessions.map((entry) => [entry.slot.weekday, entry.slot.ordinal, entry.session.contextual])).toEqual([
+      ["Saturday", 0, { format: "tempo_repeats", repetitions: 3, work: { distanceMeters: 800 }, recovery: { durationMs: 120_000 } }],
+      ["Saturday", 1, { repetitions: 6, work: { durationMs: 60_000 }, recovery: { distanceMeters: 200 } }],
+      ["Saturday", 2, { repetitions: 8, work: { distanceMeters: 250 }, returnRecovery: { durationMs: 90_000 } }],
+      ["Saturday", 3, { format: "structured", repetitions: 5, work: { durationMs: 45_000 }, recovery: { durationMs: 30_000 } }],
+    ]);
+    await expect(repository.readAggregate("typed-branches")).resolves.toEqual(committed);
+    await expect(repository.createInactiveAggregate({
+      requestId: "typed-cues-request", requestSha256: "8".repeat(64),
+      plan: {
+        ...input.plan, id: "typed-cues", name: "Typed cues",
+        goal: { ...input.plan.goal, id: "typed-cues-goal", planId: "typed-cues" },
+        sessions: [session("fartlek-unstructured", 0, "fartlek", { format: "unstructured", repetitions: 7, fastCue: "lamp posts", easyRecoveryCue: "easy to bridge" }, { heartRateZone: 3 }, "typed-cues")],
+      },
+    })).resolves.toMatchObject({ active: false, sessions: [expect.objectContaining({ session: expect.objectContaining({ contextual: { format: "unstructured", repetitions: 7, fastCue: "lamp posts", easyRecoveryCue: "easy to bridge" } }) })] });
+  });
+
   it("adds Recovery, Long run, and Progression revisions then reopens exact typed source facts", async () => {
     const kernel = await migratedKernel(); const repository = createRunningPlanRepository(kernel);
     const plan: CreateInactiveRunningPlanInput = { requestId: "typed-request", requestSha256: "4".repeat(64), plan: { version: 1, id: "typed", name: "Typed", revision: 1, createdAtMs: 100, goal: { version: 1, id: "typed-goal", planId: "typed", revision: 1, goalDistanceMeters: 10_000, trainingDays: ["Monday", "Thursday"], createdAtMs: 100 }, sessions: [] } };
