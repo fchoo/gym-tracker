@@ -569,9 +569,9 @@ describe("active workout metric profiles", () => {
       }
       expect(screen.queryByText(/cadence|cluster|rest-between-reps|cue/u))
         .not.toBeOnTheScreen();
-      await fireEvent.press(screen.getByRole("button", {
-        name: `Close edit ${profileCase.name.toLocaleLowerCase("en")}`,
-      }));
+      await fireEvent.press(screen.getAllByRole("button", {
+        name: "Return to Workout",
+      })[0]!);
       expect(onCancel).toHaveBeenCalledTimes(1);
       expect(onSave).not.toHaveBeenCalled();
     },
@@ -633,6 +633,9 @@ describe("active workout metric profiles", () => {
         />
       </AppearanceProvider>,
     );
+    await fireEvent.press(screen.getByRole("button", {
+      name: /Load \+ reps\..*Expand exercise/u,
+    }));
     await fireEvent.press(screen.getByRole("button", { name: /Set 1.*Edit set values/u }));
     expect(screen.getByRole("button", { name: "Save committed set edit" }))
       .toBeOnTheScreen();
