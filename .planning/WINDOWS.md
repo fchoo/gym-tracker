@@ -1,10 +1,10 @@
 ---
 schema_version: 1
-open_count: 3
+open_count: 4
 waived_count: 0
 fixed_count: 85
-total_count: 88
-last_updated: 2026-10-10T19:07:43.690Z
+total_count: 89
+last_updated: 2026-10-10T21:13:49.181Z
 ---
 
 # Broken Windows Ledger
@@ -103,6 +103,7 @@ last_updated: 2026-10-10T19:07:43.690Z
 | 86 | 17 | unrun-verify | scripts/run-coverage-gate.mjs |  | Full four-project coverage gate did not return a final result in the execution harness; focused integrity verification passed. | open |  | 2026-10-10T18:53:19.789Z |  |
 | 87 | 17 | deviation | src/bootstrap/runningPlanRuntime.tsx |  | Rule 2: added authoritative post-create Running session command/readback boundary | open |  | 2026-10-10T19:07:43.613Z |  |
 | 88 | 17 | deviation | src/domains/running/contracts.ts |  | Rule 2: strict Long run and Progression contextual source branches | open |  | 2026-10-10T19:07:43.690Z |  |
+| 89 | 17 | unrun-verify | scripts/run-coverage-gate.mjs |  | Global complete-coverage execution was intentionally not run; registration was verified by focused self-test. | open |  | 2026-10-10T21:13:49.181Z |  |
 
 ````json
 [
@@ -1160,6 +1161,18 @@ last_updated: 2026-10-10T19:07:43.690Z
     "status": "open",
     "reason": "",
     "recorded_at": "2026-10-10T19:07:43.690Z",
+    "resolved_at": null
+  },
+  {
+    "id": 89,
+    "kind": "unrun-verify",
+    "phase": "17",
+    "file": "scripts/run-coverage-gate.mjs",
+    "line": null,
+    "description": "Global complete-coverage execution was intentionally not run; registration was verified by focused self-test.",
+    "status": "open",
+    "reason": "",
+    "recorded_at": "2026-10-10T21:13:49.181Z",
     "resolved_at": null
   }
 ]
