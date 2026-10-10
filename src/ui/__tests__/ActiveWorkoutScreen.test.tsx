@@ -85,6 +85,43 @@ async function renderScreen(view = workoutView(), commandOverrides: Partial<Acti
 }
 
 describe("ActiveWorkoutScreen explicit-save editor", () => {
+  it("reloads durable facts before accepting an unknown finish receipt", async () => {
+    const initial = workoutView({ activeSetId: null });
+    const onOutcomeSaved = jest.fn();
+    const onResolveUnknownOutcome = jest.fn(async () => ({
+      id: initial.id,
+      status: "completed",
+    } as never));
+    const finishCompleted = jest.fn<ActiveWorkoutCommands["finishCompleted"]>()
+      .mockResolvedValue({
+        detail: {
+          id: "unexpected-session",
+          status: "completed",
+        } as never,
+        invalidationScopes: [],
+      });
+
+    await render(
+      <AppearanceProvider>
+        <ActiveWorkoutScreen
+          commands={commands(initial, { finishCompleted })}
+          nowMs={() => 3_000}
+          onFinishLater={jest.fn()}
+          onGoBack={jest.fn()}
+          onOutcomeSaved={onOutcomeSaved}
+          onResolveUnknownOutcome={onResolveUnknownOutcome}
+          sessionId={initial.id}
+          view={initial}
+        />
+      </AppearanceProvider>,
+    );
+
+    await fireEvent.press(screen.getByRole("button", { name: "Finish workout" }));
+
+    await waitFor(() => expect(onResolveUnknownOutcome).toHaveBeenCalledWith(initial.id));
+    expect(onOutcomeSaved).toHaveBeenCalledWith(initial.id);
+  });
+
   it("keeps the workout active and offers an operation-specific retry when finishing fails", async () => {
     const onOutcomeSaved = jest.fn();
     const initial = workoutView({ activeSetId: null });
