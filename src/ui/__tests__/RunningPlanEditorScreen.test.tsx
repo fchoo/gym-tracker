@@ -15,7 +15,7 @@ const initialDraft: RunningPlanDraft = {
 
 describe("RunningPlanEditorScreen", () => {
   it("keeps sessions local until save, supports delete to zero, then navigates only after committed readback", async () => {
-    const savePlan = jest.fn(async (draft: typeof initialDraft) => ({ ...draft, active: false as const }));
+    const savePlan = jest.fn(async (draft: typeof initialDraft) => ({ ...draft, active: false as const, lifecycle: "inactive" as const }));
     const onSaved = jest.fn();
     await render(<AppearanceProvider><RunningPlanEditorScreen
       createId={(kind) => `${kind}:id`}
@@ -41,7 +41,7 @@ describe("RunningPlanEditorScreen", () => {
       initialDraft={initialDraft}
       onBack={jest.fn()}
       onSaved={jest.fn()}
-      savePlan={jest.fn(async (draft: RunningPlanDraft): Promise<RunningPlanAggregate> => ({ ...draft, active: false }))}
+      savePlan={jest.fn(async (draft: RunningPlanDraft): Promise<RunningPlanAggregate> => ({ ...draft, active: false, lifecycle: "inactive" }))}
     /></AppearanceProvider>);
     for (const label of ["recovery", "long run", "progression", "tempo", "intervals", "hills", "fartlek"]) {
       expect(screen.getByRole("button", { name: `Add ${label}` })).toBeOnTheScreen();

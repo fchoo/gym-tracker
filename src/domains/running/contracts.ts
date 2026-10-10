@@ -198,6 +198,7 @@ export type RunningPlanAggregate = Readonly<{
   name: string;
   revision: number;
   active: boolean;
+  lifecycle: "inactive" | "active" | "archived";
   createdAtMs: number;
   goal: RunningGoal;
   sessions: readonly RunningPlanSession[];
@@ -224,6 +225,9 @@ export function parseRunningPlanAggregate(input: unknown): RunningPlanAggregate 
   if (
     aggregate?.version !== 1 || typeof aggregate.id !== "string" || aggregate.id.trim() === ""
     || typeof aggregate.name !== "string" || aggregate.name.trim() === "" || typeof aggregate.active !== "boolean"
+    || (aggregate.lifecycle !== "inactive" && aggregate.lifecycle !== "active" && aggregate.lifecycle !== "archived")
+    || (aggregate.active && aggregate.lifecycle !== "active")
+    || (!aggregate.active && aggregate.lifecycle === "active")
     || !Number.isSafeInteger(aggregate.revision) || aggregate.revision < 1
     || !Number.isSafeInteger(aggregate.createdAtMs) || aggregate.createdAtMs < 0
     || !Array.isArray(aggregate.sessions)

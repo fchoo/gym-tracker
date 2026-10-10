@@ -57,7 +57,7 @@ export type RunningSourceGraphRepository = Readonly<{
 export type CreateInactiveRunningPlanInput = Readonly<{
   requestId: string;
   requestSha256: string;
-  plan: Omit<RunningPlanAggregate, "active">;
+  plan: Omit<RunningPlanAggregate, "active" | "lifecycle">;
 }>;
 
 export type RunningAggregateRepository = Readonly<{
@@ -121,6 +121,6 @@ export async function createInactiveRunningPlan(
   if (!identifier(input.requestId) || !SHA256.test(input.requestSha256)) {
     throw new RunningCommandError("running_command_hash_invalid");
   }
-  const plan = parseRunningPlanAggregate({ ...input.plan, active: false });
+  const plan = parseRunningPlanAggregate({ ...input.plan, active: false, lifecycle: "inactive" });
   return repository.createInactiveAggregate({ ...input, plan });
 }

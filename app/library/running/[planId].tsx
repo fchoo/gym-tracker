@@ -22,6 +22,9 @@ export default function RunningPlanDetailRoute() {
       onGarmin={() => undefined}
       onNewSession={() => router.push(`/library/running/${planId}/session/new` as Href)}
       planId={planId}
+      createLifecycleRequestId={() => runtime.createId("running-lifecycle")}
+      previewLifecycle={runtime.previewLifecycle}
+      confirmLifecycle={runtime.confirmLifecycle}
     />
   </>;
 }

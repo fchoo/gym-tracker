@@ -3,9 +3,11 @@ import { describe, expect, it, jest } from "@jest/globals";
 const mockReadAggregate = jest.fn<any>();
 const mockCreateInactiveRunningPlan = jest.fn<any>();
 const mockSaveRunningSourceGraph = jest.fn<any>();
+const mockPreviewLifecycle = jest.fn<any>();
+const mockConfirmLifecycle = jest.fn<any>();
 
 jest.mock("../platform/sqlite/repositories/runningPlanRepository", () => ({
-  createRunningPlanRepository: () => ({ readAggregate: mockReadAggregate, saveSourceGraph: mockSaveRunningSourceGraph }),
+  createRunningPlanRepository: () => ({ readAggregate: mockReadAggregate, saveSourceGraph: mockSaveRunningSourceGraph, previewLifecycle: mockPreviewLifecycle, confirmLifecycle: mockConfirmLifecycle }),
 }));
 jest.mock("../domains/running/commands", () => ({
   createInactiveRunningPlan: (...arguments_: unknown[]) => mockCreateInactiveRunningPlan(...arguments_),
@@ -42,6 +44,28 @@ describe("RunningPlanRuntimePort", () => {
       expectedPlanRevision: 1,
       sessions: [expect.objectContaining({ rootId: "running-session:uuid", revision: 1 })],
       slots: [expect.objectContaining({ rootId: "running-slot:uuid", ordinal: 0 })],
+    }));
+  });
+
+  it("reuses a review envelope on lifecycle retry and returns only authoritative lifecycle readback", async () => {
+    const preview = {
+      action: "activate" as const, planId: "running", planName: "Running", expectedPlanRevision: 1,
+      expectedScheduleRevision: 1, lifecycle: "inactive" as const, activeWorkout: false,
+      activeRunning: null, confirmationToken: "running-lifecycle-preview-v1:test",
+    };
+    const readBack = {
+      id: "running", version: 1 as const, name: "Running", revision: 2, active: true as const, lifecycle: "active" as const, createdAtMs: 1,
+      goal: { version: 1 as const, id: "goal-1", planId: "running", revision: 1, goalDistanceMeters: 5000, trainingDays: ["Monday" as const], createdAtMs: 1 }, sessions: [],
+    };
+    mockPreviewLifecycle.mockResolvedValue(preview);
+    mockConfirmLifecycle.mockResolvedValue({ planId: "running", lifecycle: "active" });
+    mockReadAggregate.mockResolvedValue(readBack);
+    const runtime = createRunningPlanRuntimePort({} as never, { nowMs: () => 2, randomUUID: () => "uuid", sha256: async () => "a".repeat(64) });
+    await expect(runtime.previewLifecycle("running", "activate")).resolves.toEqual(preview);
+    await expect(runtime.confirmLifecycle({ action: "activate", preview, requestId: "lifecycle-request" })).resolves.toEqual(readBack);
+    await expect(runtime.confirmLifecycle({ action: "activate", preview: { ...preview, confirmationToken: "ignored-on-retry" }, requestId: "lifecycle-request" })).resolves.toEqual(readBack);
+    expect(mockConfirmLifecycle).toHaveBeenLastCalledWith(expect.objectContaining({
+      action: "activate", requestId: "lifecycle-request", preview,
     }));
   });
 });

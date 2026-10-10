@@ -8,7 +8,7 @@ import { initialRunningSessionFormDraft } from "../components/RunningSessionFiel
 import { AppearanceProvider } from "../theme";
 
 const plan: RunningPlanAggregate = {
-  version: 1, id: "plan-1", name: "Plan", revision: 1, active: false, createdAtMs: 1,
+  version: 1, id: "plan-1", name: "Plan", revision: 1, active: false, lifecycle: "inactive", createdAtMs: 1,
   goal: { version: 1, id: "goal-1", planId: "plan-1", revision: 1, goalDistanceMeters: 5000, trainingDays: ["Monday"], createdAtMs: 1 },
   sessions: [],
 };

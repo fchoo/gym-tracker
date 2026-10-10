@@ -2,15 +2,26 @@ import React, { createContext, useContext } from "react";
 
 import { canonicalRunningRequestHash, createInactiveRunningPlan, saveRunningSourceGraph, type CreateInactiveRunningPlanInput } from "../domains/running/commands";
 import type { RunningPlanAggregate, RunningSessionRevision } from "../domains/running/contracts";
+import type { RunningLifecycleAction, RunningLifecyclePreview } from "../domains/running/lifecycle";
 import type { SqliteKernel } from "../platform/sqlite";
-import { createRunningPlanRepository } from "../platform/sqlite/repositories/runningPlanRepository";
+import {
+  createRunningPlanRepository,
+} from "../platform/sqlite/repositories/runningPlanRepository";
 
 export type RunningPlanRuntimePort = Readonly<{
   createId(kind: string): string;
   createInactivePlan(input: Omit<CreateInactiveRunningPlanInput, "requestId" | "requestSha256">): Promise<RunningPlanAggregate>;
   loadPlan(planId: string): Promise<RunningPlanAggregate | null>;
-  savePlan(input: Omit<RunningPlanAggregate, "active">): Promise<RunningPlanAggregate>;
+  savePlan(input: Omit<RunningPlanAggregate, "active" | "lifecycle">): Promise<RunningPlanAggregate>;
   saveSession(input: RunningSessionMutationInput): Promise<RunningSessionMutationResult>;
+  previewLifecycle(planId: string, action: RunningLifecycleAction): Promise<RunningLifecyclePreview>;
+  confirmLifecycle(input: RunningLifecycleConfirmationInput): Promise<RunningPlanAggregate>;
+}>;
+
+export type RunningLifecycleConfirmationInput = Readonly<{
+  action: RunningLifecycleAction;
+  preview: RunningLifecyclePreview;
+  requestId: string;
 }>;
 
 export type RunningSessionMutationInput = Readonly<{
@@ -42,6 +53,7 @@ export function createRunningPlanRuntimePort(kernel: SqliteKernel, dependencies:
   const repository = createRunningPlanRepository(kernel);
   const createId = (kind: string) => `${kind}:${dependencies.randomUUID()}`;
   const sessionCommands = new Map<string, ReturnType<typeof buildSessionCommand>>();
+  const lifecycleCommands = new Map<string, RunningLifecycleConfirmationInput>();
   return Object.freeze({
     createId,
     loadPlan: (planId) => repository.readAggregate(planId),
@@ -90,6 +102,29 @@ export function createRunningPlanRuntimePort(kernel: SqliteKernel, dependencies:
       const readBack = await repository.readAggregate(plan.id);
       if (readBack === null) throw new Error("running_plan_readback_missing");
       return Object.freeze({ plan: readBack, sessionRootId: command.sessions[0]!.rootId });
+    },
+    previewLifecycle: (planId, action) => repository.previewLifecycle(planId, action),
+    confirmLifecycle: async (input) => {
+      const command = lifecycleCommands.get(input.requestId) ?? input;
+      lifecycleCommands.set(input.requestId, command);
+      const requestSha256 = canonicalRunningRequestHash({
+        action: command.action,
+        preview: command.preview,
+        requestId: command.requestId,
+      });
+      const committed = await repository.confirmLifecycle({
+        action: command.action,
+        requestId: command.requestId,
+        requestSha256,
+        confirmationToken: command.preview.confirmationToken,
+        preview: command.preview,
+        committedAtMs: dependencies.nowMs(),
+      });
+      const readBack = await repository.readAggregate(committed.planId);
+      if (readBack === null || readBack.lifecycle !== committed.lifecycle) {
+        throw new Error("running_lifecycle_readback_missing");
+      }
+      return readBack;
     },
   });
 }

@@ -9,6 +9,7 @@ import { configureSqliteConnection } from "../../src/platform/sqlite/connection"
 import { createMigrationRunner } from "../../src/platform/sqlite/migrationRunner";
 import { migrations } from "../../src/platform/sqlite/migrations";
 import { createRunningPlanRepository } from "../../src/platform/sqlite/repositories/runningPlanRepository";
+import { createLogicalBackupRepository } from "../../src/platform/sqlite/repositories/logicalBackupRepository";
 import { createSqliteKernel, type SqliteKernel } from "../../src/platform/sqlite/sqliteKernel";
 import { canonicalRunningRequestHash, saveRunningSourceGraph, type CreateInactiveRunningPlanInput, type SaveRunningSourceGraphInput } from "../../src/domains/running/commands";
 import type { RunningPlanSession } from "../../src/domains/running/contracts";
@@ -90,5 +91,77 @@ describe("Running plan authoring boundary", () => {
       expect.objectContaining({ session: expect.objectContaining({ sessionKind: "progression", contextual: { stages: 3, startTarget: { rpe: 4 }, finishTarget: { paceMsPerKm: 290_000 } } }) }),
     ]));
     expect(readBack?.sessions.filter((entry) => entry.slot.weekday === "Thursday").map((entry) => entry.slot.ordinal)).toEqual([0, 1]);
+  });
+
+  it("replaces only the active Running schedule, rejects stale or active-workout lifecycle confirms, and preserves archived source history", async () => {
+    const kernel = await migratedKernel();
+    const repository = createRunningPlanRepository(kernel);
+    await kernel.write((transaction) => transaction.execute(
+      `UPDATE workout_sessions SET status = 'completed', completed_at_ms = COALESCE(completed_at_ms, started_at_ms),
+       active_session_exercise_id = NULL, active_set_id = NULL WHERE status = 'in_progress'`,
+    ));
+    const create = async (id: string) => {
+      const base = session(id, "recovery", 0);
+      const recovery = {
+        ...base,
+        slot: { ...base.slot, id: `${id}-slot-v1`, rootId: `${id}-slot` },
+        session: { ...base.session, id: `${id}-recovery-v1`, rootId: `${id}-recovery` },
+      };
+      return repository.createInactiveAggregate({
+      requestId: `${id}-create`, requestSha256: `${id === "running-a" ? "a" : "b"}`.repeat(64),
+      plan: {
+        version: 1, id, name: id, revision: 1, createdAtMs: 100,
+        goal: { version: 1, id: `${id}-goal`, planId: id, revision: 1, goalDistanceMeters: 5_000, trainingDays: ["Monday"], createdAtMs: 100 },
+        sessions: [recovery],
+      },
+      });
+    };
+    await create("running-a");
+    await create("running-b");
+    const confirm = async (requestId: string, preview: Awaited<ReturnType<typeof repository.previewLifecycle>>) => {
+      const input = { action: preview.action, requestId, preview, confirmationToken: preview.confirmationToken, committedAtMs: 200 };
+      return repository.confirmLifecycle({ ...input, requestSha256: canonicalRunningRequestHash(input) });
+    };
+    const strengthBefore = await kernel.queryAll<{ id: string; is_active: number }>(
+      "SELECT id, is_active FROM plans WHERE plan_kind = 'strength' ORDER BY id",
+    );
+    const firstPreview = await repository.previewLifecycle("running-a", "activate");
+    expect(firstPreview.activeRunning).toBeNull();
+    await expect(confirm("activate-a", firstPreview)).resolves.toEqual({ planId: "running-a", lifecycle: "active" });
+    const replacePreview = await repository.previewLifecycle("running-b", "activate");
+    expect(replacePreview.activeRunning).toMatchObject({ planId: "running-a", scheduleId: "running-a:schedule" });
+    const replacement = await confirm("activate-b", replacePreview);
+    await expect(repository.confirmLifecycle({
+      action: replacePreview.action, requestId: "activate-b", preview: replacePreview,
+      confirmationToken: replacePreview.confirmationToken, committedAtMs: 200,
+      requestSha256: canonicalRunningRequestHash({ action: replacePreview.action, requestId: "activate-b", preview: replacePreview, confirmationToken: replacePreview.confirmationToken, committedAtMs: 200 }),
+    })).resolves.toEqual(replacement);
+    await expect(repository.readAggregate("running-a")).resolves.toMatchObject({ lifecycle: "inactive", active: false });
+    await expect(repository.readAggregate("running-b")).resolves.toMatchObject({ lifecycle: "active", active: true });
+    await expect(kernel.queryAll<{ id: string; is_active: number }>("SELECT id, is_active FROM plans WHERE plan_kind = 'strength' ORDER BY id")).resolves.toEqual(strengthBefore);
+
+    const stalePreview = await repository.previewLifecycle("running-b", "archive");
+    await kernel.write((transaction) => transaction.execute("UPDATE plans SET revision = revision + 1 WHERE id = ?", ["running-b"]));
+    await expect(confirm("archive-stale", stalePreview)).rejects.toThrow("sqlite_transaction_failed");
+
+    const archivePreview = await repository.previewLifecycle("running-b", "archive");
+    await kernel.write((transaction) => transaction.execute("UPDATE workout_sessions SET status = 'in_progress', completed_at_ms = NULL WHERE id = (SELECT id FROM workout_sessions LIMIT 1)"));
+    const blockedPreview = await repository.previewLifecycle("running-b", "archive");
+    expect(blockedPreview.activeWorkout).toBe(true);
+    await expect(confirm("archive-blocked", blockedPreview)).rejects.toThrow("sqlite_transaction_failed");
+    await kernel.write((transaction) => transaction.execute("UPDATE workout_sessions SET status = 'completed', completed_at_ms = COALESCE(completed_at_ms, started_at_ms), active_session_exercise_id = NULL, active_set_id = NULL WHERE status = 'in_progress'"));
+    await expect(confirm("archive-b", archivePreview)).resolves.toEqual({ planId: "running-b", lifecycle: "archived" });
+    await expect(repository.readAggregate("running-b")).resolves.toMatchObject({ lifecycle: "archived", active: false, sessions: [expect.anything()] });
+    await expect(kernel.queryAll<{ count: number }>("SELECT COUNT(*) AS count FROM running_session_revisions WHERE plan_id = ?", ["running-b"])).resolves.toEqual([{ count: 1 }]);
+    const backup = await createLogicalBackupRepository(kernel).collect({ snapshotId: "lifecycle-backup", createdAtMs: 300 });
+    expect(backup.tables.running_plan_events).toEqual(expect.arrayContaining([
+      expect.objectContaining({ plan_id: "running-b", event_type: "archived" }),
+    ]));
+    expect(backup.tables.running_plan_receipts).toEqual(expect.arrayContaining([
+      expect.objectContaining({ plan_id: "running-b", operation: "archive" }),
+    ]));
+    const reactivatePreview = await repository.previewLifecycle("running-b", "reactivate");
+    await expect(confirm("reactivate-b", reactivatePreview)).resolves.toEqual({ planId: "running-b", lifecycle: "inactive" });
+    await expect(repository.readAggregate("running-b")).resolves.toMatchObject({ lifecycle: "inactive", active: false });
   });
 });

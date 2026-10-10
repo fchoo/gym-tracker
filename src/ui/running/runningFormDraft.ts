@@ -8,7 +8,7 @@ import {
 
 export { RUNNING_SESSION_KINDS };
 
-export type RunningPlanDraft = Omit<RunningPlanAggregate, "active">;
+export type RunningPlanDraft = Omit<RunningPlanAggregate, "active" | "lifecycle">;
 export type RunningPlanDraftValidation =
   | "running_goal_distance_invalid"
   | "running_goal_days_invalid"
@@ -47,10 +47,10 @@ export function validateRunningPlanDraft(draft: RunningPlanDraft): RunningPlanDr
   return null;
 }
 
-export function runningPlanCommandFromDraft(draft: RunningPlanDraft): Omit<RunningPlanAggregate, "active"> {
+export function runningPlanCommandFromDraft(draft: RunningPlanDraft): Omit<RunningPlanAggregate, "active" | "lifecycle"> {
   const validation = validateRunningPlanDraft(draft);
   if (validation !== null) throw new Error(validation);
-  return draftFromRunningPlan({ ...draft, active: false });
+  return draftFromRunningPlan({ ...draft, active: false, lifecycle: "inactive" });
 }
 
 export function makeRunningSessionDraft(input: Readonly<{

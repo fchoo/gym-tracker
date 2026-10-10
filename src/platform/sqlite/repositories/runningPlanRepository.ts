@@ -1,4 +1,4 @@
-import type { SqliteKernel } from "../sqliteKernel";
+import type { SqliteKernel, SqliteReadTransactionExecutor, SqliteTransactionExecutor } from "../sqliteKernel";
 import {
   evaluateRunningReadiness,
   parseRunningPlanAggregate,
@@ -11,11 +11,12 @@ import {
 import { parseLocalDate, weekdayForLocalDate } from "../../../domains/scheduling/localDate";
 import { createScheduleRepository } from "./scheduleRepository";
 import type { CreateInactiveRunningPlanInput, SaveRunningSourceGraphInput } from "../../../domains/running/commands";
+import { runningLifecycleToken, type RunningLifecycleAction, type RunningLifecyclePreview } from "../../../domains/running/lifecycle";
 
 export type RunningPlanReceipt = Readonly<{
   requestId: string;
   requestSha256: string;
-  operation: "create" | "edit" | "copy";
+  operation: "create" | "edit" | "copy" | "activate" | "archive" | "reactivate";
   planId: string;
   expectedPlanRevision: number;
   result: Readonly<Record<string, unknown>>;
@@ -45,6 +46,89 @@ export type CreateInactiveMinimumRunningPlanInput = Readonly<{
   slots: readonly RunningSlotInput[];
 }>;
 
+export type ConfirmRunningLifecycleInput = Readonly<{
+  action: RunningLifecycleAction;
+  requestId: string;
+  requestSha256: string;
+  confirmationToken: string;
+  preview: RunningLifecyclePreview;
+  committedAtMs: number;
+}>;
+
+function lifecycleFromFacts(status: string, isActive: number): RunningPlanAggregate["lifecycle"] {
+  if (status === "retired") return "archived";
+  return isActive === 1 ? "active" : "inactive";
+}
+
+async function readRunningLifecyclePreview(
+  executor: SqliteReadTransactionExecutor,
+  planId: string,
+  action: RunningLifecycleAction,
+): Promise<RunningLifecyclePreview> {
+  const [target] = await executor.queryAll<{
+    plan_id: string; plan_name: string; plan_revision: number; plan_active: number;
+    running_status: string; schedule_id: string; schedule_revision: number;
+  }>(
+    `SELECT plan.id AS plan_id, plan.name AS plan_name, plan.revision AS plan_revision,
+            plan.is_active AS plan_active, running.status AS running_status,
+            schedule.id AS schedule_id, schedule.revision AS schedule_revision
+       FROM plans plan
+       JOIN running_plans running ON running.plan_id = plan.id
+       JOIN owned_plan_schedules schedule ON schedule.plan_id = plan.id
+      WHERE plan.id = ? AND plan.plan_kind = 'running'`,
+    [planId],
+  );
+  if (target === undefined) throw new Error("running_lifecycle_plan_missing");
+  const activeRows = await executor.queryAll<{
+    plan_id: string; plan_name: string; plan_revision: number; schedule_id: string; schedule_revision: number;
+  }>(
+    `SELECT plan.id AS plan_id, plan.name AS plan_name, plan.revision AS plan_revision,
+            schedule.id AS schedule_id, schedule.revision AS schedule_revision
+       FROM plans plan JOIN owned_plan_schedules schedule ON schedule.plan_id = plan.id
+      WHERE plan.plan_kind = 'running' AND plan.is_active = 1 AND schedule.lifecycle = 'active'
+      ORDER BY plan.id`,
+  );
+  if (activeRows.length > 1) throw new Error("running_lifecycle_active_state_invalid");
+  const [workout] = await executor.queryAll<{ count: number }>(
+    "SELECT COUNT(*) AS count FROM workout_sessions WHERE status = 'in_progress'",
+  );
+  const lifecycle = lifecycleFromFacts(target.running_status, target.plan_active);
+  if (
+    (action === "activate" && (lifecycle !== "inactive" || target.running_status !== "ready"))
+    || (action === "archive" && lifecycle === "archived")
+    || (action === "reactivate" && lifecycle !== "archived")
+  ) throw new Error("running_lifecycle_action_invalid");
+  const facts = {
+    action,
+    planId: target.plan_id,
+    planName: target.plan_name,
+    expectedPlanRevision: target.plan_revision,
+    expectedScheduleRevision: target.schedule_revision,
+    lifecycle,
+    activeWorkout: (workout?.count ?? 0) > 0,
+    activeRunning: activeRows[0] === undefined ? null : Object.freeze({
+      planId: activeRows[0].plan_id,
+      planName: activeRows[0].plan_name,
+      planRevision: activeRows[0].plan_revision,
+      scheduleId: activeRows[0].schedule_id,
+      scheduleRevision: activeRows[0].schedule_revision,
+    }),
+  } as const;
+  return Object.freeze({ ...facts, confirmationToken: runningLifecycleToken(facts) });
+}
+
+async function assertRunningActivePair(transaction: SqliteTransactionExecutor): Promise<void> {
+  const rows = await transaction.queryAll<{ plan_id: string; schedule_id: string }>(
+    `SELECT plan.id AS plan_id, schedule.id AS schedule_id
+       FROM plans plan LEFT JOIN owned_plan_schedules schedule
+         ON schedule.plan_id = plan.id AND schedule.lifecycle = 'active'
+      WHERE plan.plan_kind = 'running' AND plan.is_active = 1`,
+  );
+  if (rows.length > 1 || rows.some((row) => !row.schedule_id)) {
+    throw new Error("running_lifecycle_active_state_invalid");
+  }
+}
+
 export function createRunningPlanRepository(kernel: SqliteKernel) {
   return Object.freeze({
     async readAggregate(planId: string): Promise<RunningPlanAggregate | null> {
@@ -54,8 +138,9 @@ export function createRunningPlanRepository(kernel: SqliteKernel) {
         revision: number;
         created_at_ms: number;
         is_active: number;
+        status: string;
       }>(
-        `SELECT plan.id, plan.name, plan.revision, running.created_at_ms, plan.is_active
+        `SELECT plan.id, plan.name, plan.revision, running.created_at_ms, plan.is_active, running.status
          FROM plans plan JOIN running_plans running ON running.plan_id = plan.id
          WHERE plan.id = ? AND plan.plan_kind = 'running'`,
         [planId],
@@ -92,12 +177,124 @@ export function createRunningPlanRepository(kernel: SqliteKernel) {
       }));
       return parseRunningPlanAggregate({
         version: 1, id: plan.id, name: plan.name, revision: plan.revision,
-        active: plan.is_active === 1, createdAtMs: plan.created_at_ms,
+        active: plan.is_active === 1,
+        lifecycle: lifecycleFromFacts(plan.status, plan.is_active),
+        createdAtMs: plan.created_at_ms,
         goal: parseRunningGoal(JSON.parse(goalRow.goal_json)), sessions,
       });
     },
+    async previewLifecycle(planId: string, action: RunningLifecycleAction): Promise<RunningLifecyclePreview> {
+      return kernel.readSnapshot === undefined
+        ? readRunningLifecyclePreview(kernel, planId, action)
+        : kernel.readSnapshot((transaction) => readRunningLifecyclePreview(transaction, planId, action));
+    },
+    async confirmLifecycle(input: ConfirmRunningLifecycleInput): Promise<Readonly<{ planId: string; lifecycle: RunningPlanAggregate["lifecycle"] }>> {
+      return kernel.write(async (transaction) => {
+        const [receipt] = await transaction.queryAll<{
+          request_sha256: string; operation: string; result_json: string;
+        }>("SELECT request_sha256, operation, result_json FROM running_plan_receipts WHERE request_id = ?", [input.requestId]);
+        if (receipt !== undefined) {
+          if (receipt.request_sha256 !== input.requestSha256 || receipt.operation !== input.action) {
+            throw new Error("running_lifecycle_receipt_conflict");
+          }
+          return Object.freeze(JSON.parse(receipt.result_json) as { planId: string; lifecycle: RunningPlanAggregate["lifecycle"] });
+        }
+        const expectedToken = runningLifecycleToken({
+          action: input.preview.action, planId: input.preview.planId, planName: input.preview.planName,
+          expectedPlanRevision: input.preview.expectedPlanRevision,
+          expectedScheduleRevision: input.preview.expectedScheduleRevision,
+          lifecycle: input.preview.lifecycle, activeWorkout: input.preview.activeWorkout,
+          activeRunning: input.preview.activeRunning,
+        });
+        if (input.action !== input.preview.action || input.confirmationToken !== expectedToken || input.confirmationToken !== input.preview.confirmationToken) {
+          throw new Error("running_lifecycle_preview_invalid");
+        }
+        const fresh = await readRunningLifecyclePreview(transaction, input.preview.planId, input.action);
+        if (fresh.confirmationToken !== input.confirmationToken) {
+          throw new Error("running_lifecycle_preview_stale");
+        }
+        if (fresh.activeWorkout) throw new Error("running_lifecycle_active_workout_blocked");
+        let lifecycle: RunningPlanAggregate["lifecycle"];
+        if (input.action === "activate") {
+          const current = fresh.activeRunning;
+          if (current !== null && current.planId !== fresh.planId) {
+            const retiredPlan = await transaction.execute(
+              "UPDATE plans SET is_active = 0, revision = revision + 1 WHERE id = ? AND revision = ? AND is_active = 1",
+              [current.planId, current.planRevision],
+            );
+            const retiredSchedule = await transaction.execute(
+              `UPDATE owned_plan_schedules SET lifecycle = 'inactive', revision = revision + 1,
+                 deactivated_at_ms = ? WHERE id = ? AND revision = ? AND lifecycle = 'active'`,
+              [input.committedAtMs, current.scheduleId, current.scheduleRevision],
+            );
+            if (retiredPlan.changes !== 1 || retiredSchedule.changes !== 1) throw new Error("running_lifecycle_preview_stale");
+          }
+          const activatedPlan = await transaction.execute(
+            "UPDATE plans SET is_active = 1, revision = revision + 1 WHERE id = ? AND revision = ? AND is_active = 0",
+            [fresh.planId, fresh.expectedPlanRevision],
+          );
+          const activatedSchedule = await transaction.execute(
+            `UPDATE owned_plan_schedules SET lifecycle = 'active', revision = revision + 1,
+               activated_at_ms = ?, deactivated_at_ms = NULL
+             WHERE plan_id = ? AND revision = ? AND lifecycle = 'inactive'`,
+            [input.committedAtMs, fresh.planId, fresh.expectedScheduleRevision],
+          );
+          if (activatedPlan.changes !== 1 || activatedSchedule.changes !== 1) throw new Error("running_lifecycle_preview_stale");
+          lifecycle = "active";
+        } else if (input.action === "archive") {
+          if (fresh.lifecycle === "active") {
+            const deactivatedPlan = await transaction.execute(
+              "UPDATE plans SET is_active = 0, revision = revision + 1 WHERE id = ? AND revision = ? AND is_active = 1",
+              [fresh.planId, fresh.expectedPlanRevision],
+            );
+            const deactivatedSchedule = await transaction.execute(
+              `UPDATE owned_plan_schedules SET lifecycle = 'inactive', revision = revision + 1,
+                 deactivated_at_ms = ? WHERE plan_id = ? AND revision = ? AND lifecycle = 'active'`,
+              [input.committedAtMs, fresh.planId, fresh.expectedScheduleRevision],
+            );
+            if (deactivatedPlan.changes !== 1 || deactivatedSchedule.changes !== 1) throw new Error("running_lifecycle_preview_stale");
+          } else {
+            const archivedPlan = await transaction.execute(
+              "UPDATE plans SET revision = revision + 1 WHERE id = ? AND revision = ? AND is_active = 0",
+              [fresh.planId, fresh.expectedPlanRevision],
+            );
+            if (archivedPlan.changes !== 1) throw new Error("running_lifecycle_preview_stale");
+          }
+          const status = await transaction.execute(
+            "UPDATE running_plans SET status = 'retired', revision = revision + 1 WHERE plan_id = ? AND status != 'retired'",
+            [fresh.planId],
+          );
+          if (status.changes !== 1) throw new Error("running_lifecycle_preview_stale");
+          lifecycle = "archived";
+        } else {
+          const restoredPlan = await transaction.execute(
+            "UPDATE plans SET revision = revision + 1 WHERE id = ? AND revision = ? AND is_active = 0",
+            [fresh.planId, fresh.expectedPlanRevision],
+          );
+          const status = await transaction.execute(
+            "UPDATE running_plans SET status = 'ready', revision = revision + 1 WHERE plan_id = ? AND status = 'retired'",
+            [fresh.planId],
+          );
+          if (restoredPlan.changes !== 1 || status.changes !== 1) throw new Error("running_lifecycle_preview_stale");
+          lifecycle = "inactive";
+        }
+        await assertRunningActivePair(transaction);
+        const result = Object.freeze({ planId: fresh.planId, lifecycle });
+        await transaction.execute(
+          "INSERT INTO running_plan_events(id, plan_id, event_type, payload_json, created_at_ms) VALUES (?, ?, ?, ?, ?)",
+          [`${input.requestId}:event`, fresh.planId, input.action === "activate" ? "activated" : input.action === "archive" ? "archived" : "reactivated", JSON.stringify({ preview: input.preview, result }), input.committedAtMs],
+        );
+        await transaction.execute(
+          `INSERT INTO running_plan_receipts
+            (request_id, request_sha256, operation, plan_id, expected_plan_revision, result_json, committed_at_ms)
+           VALUES (?, ?, ?, ?, ?, ?, ?)`,
+          [input.requestId, input.requestSha256, input.action, fresh.planId, fresh.expectedPlanRevision, JSON.stringify(result), input.committedAtMs],
+        );
+        return result;
+      });
+    },
     async createInactiveAggregate(input: CreateInactiveRunningPlanInput): Promise<RunningPlanAggregate> {
-      const aggregate = parseRunningPlanAggregate({ ...input.plan, active: false });
+      const aggregate = parseRunningPlanAggregate({ ...input.plan, active: false, lifecycle: "inactive" });
       return kernel.write(async (transaction) => {
         const [receipt] = await transaction.queryAll<{ request_sha256: string; result_json: string }>(
           "SELECT request_sha256, result_json FROM running_plan_receipts WHERE request_id = ?", [input.requestId],
@@ -116,7 +313,9 @@ export function createRunningPlanRepository(kernel: SqliteKernel) {
         await transaction.execute("INSERT INTO plan_days(id, plan_id, ordinal, name, revision) VALUES (?, ?, 0, 'Running schedule anchor', 1)", [
           `${aggregate.id}:anchor`, aggregate.id,
         ]);
-        await transaction.execute("INSERT INTO running_plans(plan_id, status, revision, created_at_ms) VALUES (?, 'draft', ?, ?)", [aggregate.id, aggregate.revision, aggregate.createdAtMs]);
+        const initialStatus = aggregate.sessions.some((entry) => entry.session.sessionKind === "recovery")
+          && aggregate.sessions.length > 0 ? "ready" : "draft";
+        await transaction.execute("INSERT INTO running_plans(plan_id, status, revision, created_at_ms) VALUES (?, ?, ?, ?)", [aggregate.id, initialStatus, aggregate.revision, aggregate.createdAtMs]);
         await transaction.execute("INSERT INTO running_goals(id, plan_id, goal_json, revision, created_at_ms) VALUES (?, ?, ?, ?, ?)", [
           aggregate.goal.id, aggregate.id, JSON.stringify(aggregate.goal), aggregate.goal.revision, aggregate.goal.createdAtMs,
         ]);
@@ -167,8 +366,9 @@ export function createRunningPlanRepository(kernel: SqliteKernel) {
           }
           return Object.freeze(JSON.parse(receipt.result_json) as Record<string, unknown>);
         }
-        const [plan] = await transaction.queryAll<{ revision: number; plan_kind: string; is_active: number }>(
-          "SELECT revision, plan_kind, is_active FROM plans WHERE id = ?",
+        const [plan] = await transaction.queryAll<{ revision: number; plan_kind: string; is_active: number; status: string }>(
+          `SELECT plan.revision, plan.plan_kind, plan.is_active, running.status
+           FROM plans plan JOIN running_plans running ON running.plan_id = plan.id WHERE plan.id = ?`,
           [input.planId],
         );
         if (plan === undefined || plan.plan_kind !== "running" || plan.revision !== input.expectedPlanRevision) {
@@ -226,6 +426,9 @@ export function createRunningPlanRepository(kernel: SqliteKernel) {
           [input.planId, input.expectedPlanRevision],
         );
         if (changed.changes !== 1) throw new Error("running_plan_revision_conflict");
+        if (plan.status === "draft" && input.sessions.some((session) => session.sessionKind === "recovery") && input.slots.length > 0) {
+          await transaction.execute("UPDATE running_plans SET status = 'ready', revision = revision + 1 WHERE plan_id = ? AND status = 'draft'", [input.planId]);
+        }
         await transaction.execute(
           `INSERT INTO running_plan_events(id, plan_id, event_type, payload_json, created_at_ms)
            VALUES (?, ?, ?, ?, ?)`,

@@ -1,13 +1,14 @@
-import { render, screen } from "@testing-library/react-native";
+import { fireEvent, render, screen } from "@testing-library/react-native";
 import { describe, expect, it, jest } from "@jest/globals";
 import React from "react";
 
 import type { RunningPlanAggregate } from "../../domains/running/contracts";
+import type { RunningLifecyclePreview } from "../../domains/running/lifecycle";
 import { RunningPlanDetailScreen } from "../screens/RunningPlanDetailScreen";
 import { AppearanceProvider } from "../theme";
 
 const plan: RunningPlanAggregate = {
-  version: 1, id: "running-1", name: "10K base", revision: 3, active: false, createdAtMs: 1,
+  version: 1, id: "running-1", name: "10K base", revision: 3, active: false, lifecycle: "inactive", createdAtMs: 1,
   goal: { version: 1, id: "goal-1", planId: "running-1", revision: 3, goalDistanceMeters: 10000, targetDurationMs: 3_600_000, trainingDays: ["Monday", "Wednesday"], createdAtMs: 1 },
   sessions: [
     { slot: { id: "slot-2", rootId: "slot-2", weekday: "Monday", revision: 1, ordinal: 1 }, session: { version: 1, id: "session-2", rootId: "session-2", planId: "running-1", sessionKind: "tempo", revision: 1, createdAtMs: 1, phases: [{ ordinal: 0, kind: "work", steps: [{ ordinal: 0, kind: "duration", durationMs: 60_000 }] }], contextual: { format: "continuous", durationMs: 60_000 } } },
@@ -15,9 +16,15 @@ const plan: RunningPlanAggregate = {
   ],
 };
 
+const lifecyclePreview: RunningLifecyclePreview = {
+  action: "activate", planId: "running-1", planName: "10K base", expectedPlanRevision: 3,
+  expectedScheduleRevision: 1, lifecycle: "inactive", activeWorkout: false, activeRunning: null,
+  confirmationToken: "running-lifecycle-preview-v1:test",
+};
+
 describe("RunningPlanDetailScreen", () => {
   it("shows factual inactive goal, pace, zero-safe facts, and stable same-day slot order", async () => {
-    await render(<AppearanceProvider><RunningPlanDetailScreen planId="running-1" loadPlan={jest.fn(async () => plan)} onBack={jest.fn()} onEdit={jest.fn()} onNewSession={jest.fn()} onEditSession={jest.fn()} onGarmin={jest.fn()} /></AppearanceProvider>);
+    await render(<AppearanceProvider><RunningPlanDetailScreen planId="running-1" loadPlan={jest.fn(async () => plan)} onBack={jest.fn()} onEdit={jest.fn()} onNewSession={jest.fn()} onEditSession={jest.fn()} onGarmin={jest.fn()} createLifecycleRequestId={() => "lifecycle-1"} previewLifecycle={jest.fn(async () => lifecyclePreview)} confirmLifecycle={jest.fn(async () => ({ ...plan, lifecycle: "active" as const, active: true }))} /></AppearanceProvider>);
     await screen.findByText("INACTIVE");
     expect(screen.getByText("Goal · 10000 m")).toBeOnTheScreen();
     expect(screen.getByText("Target pace · 6:00 / km")).toBeOnTheScreen();
@@ -26,7 +33,31 @@ describe("RunningPlanDetailScreen", () => {
   });
 
   it("shows an explicit empty weekly structure without creating a session", async () => {
-    await render(<AppearanceProvider><RunningPlanDetailScreen planId="running-1" loadPlan={jest.fn(async () => ({ ...plan, sessions: [] }))} onBack={jest.fn()} onEdit={jest.fn()} onNewSession={jest.fn()} onEditSession={jest.fn()} onGarmin={jest.fn()} /></AppearanceProvider>);
+    await render(<AppearanceProvider><RunningPlanDetailScreen planId="running-1" loadPlan={jest.fn(async () => ({ ...plan, sessions: [] }))} onBack={jest.fn()} onEdit={jest.fn()} onNewSession={jest.fn()} onEditSession={jest.fn()} onGarmin={jest.fn()} createLifecycleRequestId={() => "lifecycle-1"} previewLifecycle={jest.fn(async () => lifecyclePreview)} confirmLifecycle={jest.fn(async () => ({ ...plan, lifecycle: "active" as const, active: true }))} /></AppearanceProvider>);
     expect(await screen.findByText("No weekly sessions scheduled.")).toBeOnTheScreen();
+  });
+
+  it("requires a reviewed sport-scoped lifecycle confirmation, retains review after failure, and updates only from readback", async () => {
+    const previewLifecycle = jest.fn(async (): Promise<RunningLifecyclePreview> => ({
+      ...lifecyclePreview,
+      activeRunning: { planId: "other-running", planName: "Other Running", planRevision: 8, scheduleId: "other-schedule", scheduleRevision: 4 },
+    }));
+    let confirmationAttempts = 0;
+    const confirmLifecycle = jest.fn(async (): Promise<RunningPlanAggregate> => {
+      confirmationAttempts += 1;
+      if (confirmationAttempts === 1) throw new Error("stale");
+      return { ...plan, active: true, lifecycle: "active", revision: 4 };
+    });
+    await render(<AppearanceProvider><RunningPlanDetailScreen planId="running-1" loadPlan={jest.fn(async () => plan)} onBack={jest.fn()} onEdit={jest.fn()} onNewSession={jest.fn()} onEditSession={jest.fn()} onGarmin={jest.fn()} createLifecycleRequestId={() => "lifecycle-1"} previewLifecycle={previewLifecycle} confirmLifecycle={confirmLifecycle} /></AppearanceProvider>);
+    await screen.findByText("INACTIVE");
+    fireEvent.press(screen.getByRole("button", { name: "Preview activation" }));
+    expect(await screen.findByText("Review activate")).toBeOnTheScreen();
+    expect(screen.getByText("Active Running schedule affected · Other Running · revision 8")).toBeOnTheScreen();
+    fireEvent.press(screen.getByRole("button", { name: "Confirm activate" }));
+    expect(await screen.findByText("Running lifecycle needs attention")).toBeOnTheScreen();
+    expect(screen.getByText("Review activate")).toBeOnTheScreen();
+    fireEvent.press(screen.getByRole("button", { name: "Confirm activate" }));
+    expect(await screen.findByText("ACTIVE")).toBeOnTheScreen();
+    expect(confirmLifecycle).toHaveBeenCalledWith(expect.objectContaining({ requestId: "lifecycle-1", preview: expect.objectContaining({ planId: "running-1" }) }));
   });
 });

@@ -34,6 +34,7 @@ import { runningActivityMatchLedgerMigration } from "./0034_running_activity_mat
 import { importedActivityLifecycleStateMigration } from "./0035_imported_activity_lifecycle_state";
 import { sessionExerciseRestDefaultsMigration } from "./0036_session_exercise_rest_defaults";
 import { exerciseInstructionSetsMigration } from "./0037_exercise_instruction_sets";
+import { runningPlanLifecycleReceiptsMigration } from "./0038_running_plan_lifecycle_receipts";
 
 export const migrations = Object.freeze([
   initialMigration,
@@ -72,6 +73,7 @@ export const migrations = Object.freeze([
   importedActivityLifecycleStateMigration,
   sessionExerciseRestDefaultsMigration,
   exerciseInstructionSetsMigration,
+  runningPlanLifecycleReceiptsMigration,
 ]);
 
 export const CURRENT_SCHEMA_VERSION = migrations.reduce(
@@ -114,6 +116,7 @@ export {
   importedActivityLifecycleStateMigration,
   sessionExerciseRestDefaultsMigration,
   exerciseInstructionSetsMigration,
+  runningPlanLifecycleReceiptsMigration,
   outcomeEffortMigration,
   scheduleActivationMigration,
 };
