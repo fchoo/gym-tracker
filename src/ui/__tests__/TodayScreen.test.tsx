@@ -116,7 +116,7 @@ describe("Plan 01-07 TodayScreen", () => {
     });
 
     expect(screen.getAllByText("MON · 07 SEP 2026")).toHaveLength(2);
-    expect(screen.getByRole("heading", { name: "Full Body A" })).toBeOnTheScreen();
+    expect(screen.getAllByText("Full Body A")).toHaveLength(2);
     expect(screen.getByText("3 exercises · about 48 min")).toBeOnTheScreen();
     expect(screen.getByText("Back Squat")).toBeOnTheScreen();
     expect(screen.getByText("Bench Press")).toBeOnTheScreen();
@@ -159,7 +159,7 @@ describe("Plan 01-07 TodayScreen", () => {
     });
 
     await fireEvent.press(screen.getByRole("tab", { name: /Preview Full Body B/u }));
-    expect(screen.getByRole("heading", { name: "Full Body B" })).toBeOnTheScreen();
+    expect(screen.getAllByText("Full Body B")).toHaveLength(2);
     await fireEvent.press(screen.getByRole("button", { name: "Start Full Body B" }));
     expect(start).toHaveBeenCalledWith(alternate);
     expect(rendered.toJSON()).toBeTruthy();
