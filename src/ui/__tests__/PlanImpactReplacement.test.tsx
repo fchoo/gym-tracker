@@ -215,6 +215,34 @@ describe("Plan impact day removal", () => {
     },
   );
 
+  it("requires a final confirmation before a reviewed day removal writes", async () => {
+    const removeDay = jest.fn<
+      React.ComponentProps<typeof PlanDayRemovalScreen>["removeDay"]
+    >(async () => ({
+      outcome: "committed",
+      planId: preview.planId,
+      planRevision: 5,
+      scheduleRevision: 8,
+      currentWorkoutUnaffected: true,
+      invalidations: [],
+    }));
+    await renderDayRemoval({ removeDay });
+
+    await fireEvent.press(await screen.findByRole("radio", {
+      name: "Remove binding",
+    }));
+    await fireEvent.press(screen.getByRole("button", { name: "Remove day" }));
+
+    expect(await screen.findByRole("header", {
+      name: "Remove future plan day?",
+    })).toBeOnTheScreen();
+    expect(removeDay).not.toHaveBeenCalled();
+    await fireEvent.press(screen.getByRole("button", {
+      name: "Keep reviewing",
+    }));
+    expect(removeDay).not.toHaveBeenCalled();
+  });
+
   it("keeps the effective-date choice unchanged when its calendar is cancelled", async () => {
     const { screenProps } = await renderDayRemoval();
 
