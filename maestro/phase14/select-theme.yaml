@@ -9,11 +9,20 @@ tags:
     visible: "App Settings"
     timeout: 30000
 - assertVisible: "Appearance"
-- scrollUntilVisible:
-    element:
-      text: ${PHASE14_THEME_OPTION}
-    direction: DOWN
-    centerElement: true
+- pressKey: "Remote Dpad Down"
+- runFlow:
+    when:
+      true: ${PHASE14_THEME_OPTION == 'Light'}
+    commands:
+      - pressKey: "Remote Dpad Down"
+- runFlow:
+    when:
+      true: ${PHASE14_THEME_OPTION == 'Dark'}
+    commands:
+      - pressKey: "Remote Dpad Down"
+      - pressKey: "Remote Dpad Down"
+- extendedWaitUntil:
+    visible: ${PHASE14_THEME_OPTION}
     timeout: 30000
 - tapOn: ${PHASE14_THEME_OPTION}
 - assertVisible: ${PHASE14_THEME_OPTION}
