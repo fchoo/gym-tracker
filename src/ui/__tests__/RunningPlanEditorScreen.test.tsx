@@ -2,10 +2,12 @@ import { fireEvent, render, screen, waitFor } from "@testing-library/react-nativ
 import { describe, expect, it, jest } from "@jest/globals";
 import React from "react";
 
+import type { RunningPlanAggregate } from "../../domains/running/contracts";
 import { RunningPlanEditorScreen } from "../screens/RunningPlanEditorScreen";
+import type { RunningPlanDraft } from "../running/runningFormDraft";
 import { AppearanceProvider } from "../theme";
 
-const initialDraft = {
+const initialDraft: RunningPlanDraft = {
   version: 1 as const, id: "running-plan", name: "Running plan", revision: 1, createdAtMs: 1,
   goal: { version: 1 as const, id: "running-goal", planId: "running-plan", revision: 1, goalDistanceMeters: 5_000, trainingDays: ["Monday" as const], createdAtMs: 1 },
   sessions: [],
@@ -39,7 +41,7 @@ describe("RunningPlanEditorScreen", () => {
       initialDraft={initialDraft}
       onBack={jest.fn()}
       onSaved={jest.fn()}
-      savePlan={jest.fn(async (draft) => ({ ...draft, active: false as const }))}
+      savePlan={jest.fn(async (draft: RunningPlanDraft): Promise<RunningPlanAggregate> => ({ ...draft, active: false }))}
     /></AppearanceProvider>);
     for (const label of ["recovery", "long run", "progression", "tempo", "intervals", "hills", "fartlek"]) {
       expect(screen.getByRole("button", { name: `Add ${label}` })).toBeOnTheScreen();
