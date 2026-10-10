@@ -77,14 +77,14 @@ Exactly four roots: **Workout, Calendar, Library, Progress**. Preserve SQLite au
 - [x] **WRK-18**: Pair Add exercise with Complete set in one compact dock row; show Saving set… and suppress duplicate taps until the real commit result arrives.
 - [x] **WRK-19**: On failed set save, preserve the current row and entered values and expose Set not saved · Retry without false completion feedback.
 - [x] **WRK-20**: After the final set commits, collapse its exercise and reveal the next current exercise; warm-up completion advances without between-set rest.
-- [ ] **WRK-21**: Replace completion controls with a full-width rest dock showing Resting/Rest paused, countdown and next-set context.
-- [ ] **WRK-22**: Provide −15, +15, Pause/Resume and Skip with accessible labels; expiry or skip restores the ready action without completing a set.
+- [x] **WRK-21**: Replace completion controls with a full-width rest dock showing Resting/Rest paused, countdown and next-set context.
+- [x] **WRK-22**: Provide −15, +15, Pause/Resume and Skip with accessible labels; expiry or skip restores the ready action without completing a set.
 - [x] **WRK-23**: Recover the authoritative rest deadline/pause state and device-owned cues across backgrounding, process death and offline restart.
 - [ ] **WRK-24**: Open trend via a dedicated icon and show Recent, Best, Change, six-session history and an accessible chart from comparable facts.
 - [x] **WRK-25**: Limit exercise overflow to flat between-set timing, Replace exercise and Delete exercise; keep trend separate.
 - [x] **WRK-26**: Use explicit sec controls for between-set rest and plan default rest; persist changes immediately without cadence, rest-between-reps, nested Advanced Timing or sound/haptic plan controls.
 - [x] **WRK-27**: Show plan identity and 1.25/2.5/5 weight-increment choices with saved selection; preserve the distinction between increment preference and existing set targets.
-- [ ] **WRK-28**: Keep Edit plan after workout reachable and route to the real editor after the active session boundary, preserving schedule/history rules.
+- [x] **WRK-28**: Keep Edit plan after workout reachable and route to the real editor after the active session boundary, preserving schedule/history rules.
 - [ ] **WRK-29**: Open the global Add exercise picker, search available exercises, choose an exercise and add it to the active session with loading/error/retry handling.
 - [ ] **WRK-30**: Replace the chosen exercise through a contextual picker while retaining valid committed facts and requiring the domain's compatibility/impact rules.
 - [ ] **WRK-31**: Require a second explicit Confirm delete action before removing an exercise and preserve committed source history and safe next-current selection.
@@ -288,14 +288,14 @@ once and remains Pending until its owning phase is implemented and verified.
 | WRK-18 | 15 | workout.complete-commit | Complete |
 | WRK-19 | 15 | workout.complete-failure | Complete |
 | WRK-20 | 15 | workout.completion-collapse | Complete |
-| WRK-21 | 15 | workout.rest-dock | Pending |
-| WRK-22 | 15 | workout.rest-controls | Pending |
+| WRK-21 | 15 | workout.rest-dock | Complete |
+| WRK-22 | 15 | workout.rest-controls | Complete |
 | WRK-23 | 15 | workout.rest-recovery | Complete |
 | WRK-24 | 15 | workout.trend | Pending |
 | WRK-25 | 15 | workout.exercise-menu | Complete |
 | WRK-26 | 15 | workout.timing-flat | Complete |
 | WRK-27 | 15 | workout.plan-increment | Complete |
-| WRK-28 | 15 | workout.plan-after-workout | Pending |
+| WRK-28 | 15 | workout.plan-after-workout | Complete |
 | WRK-29 | 15 | workout.add-exercise | Pending |
 | WRK-30 | 15 | workout.replace-exercise | Pending |
 | WRK-31 | 15 | workout.delete-exercise | Pending |
