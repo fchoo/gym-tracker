@@ -658,6 +658,68 @@ describe("active workout metric profiles", () => {
     },
   );
 
+  it("opens and saves a zero-distance fixed-time observation, then persists a positive edit", async () => {
+    const fixedTimeCase = uiProfileCases.find(({ identity }) => identity.profile === "fixed_time")!;
+    const zeroObservation = {
+      version: 1,
+      profile: "fixed_time",
+      durationMs: 720_000,
+      distanceMeters: 0,
+      source: "manual",
+    } as const;
+    const onSave = jest.fn(async () => undefined);
+    const set = {
+      ...profileSet(fixedTimeCase),
+      observation: zeroObservation,
+      valueSources: [{ source: "manual" as const, observation: zeroObservation }],
+    };
+    const { unmount } = await render(
+      <AppearanceProvider>
+        <WorkoutSetEditorSheet
+          exerciseName={fixedTimeCase.name}
+          onCancel={jest.fn()}
+          onSave={onSave}
+          set={set}
+          visible
+        />
+      </AppearanceProvider>,
+    );
+
+    const distance = screen.getByLabelText("Distance (m)");
+    expect(distance).toHaveProp("value", "0");
+    await fireEvent.press(screen.getByRole("button", { name: "Save set values" }));
+    expect(onSave).toHaveBeenCalledWith(zeroObservation);
+
+    await fireEvent.changeText(distance, "2500");
+    await fireEvent.press(screen.getByRole("button", { name: "Save set values" }));
+    expect(onSave).toHaveBeenLastCalledWith({ ...zeroObservation, distanceMeters: 2_500 });
+    unmount();
+  });
+
+  it.each(["-1", "12.5", "not-a-number"])(
+    "rejects invalid fixed-time distance %s without saving",
+    async (distanceValue) => {
+      const fixedTimeCase = uiProfileCases.find(({ identity }) => identity.profile === "fixed_time")!;
+      const onSave = jest.fn(async () => undefined);
+      await render(
+        <AppearanceProvider>
+          <WorkoutSetEditorSheet
+            exerciseName={fixedTimeCase.name}
+            onCancel={jest.fn()}
+            onSave={onSave}
+            set={profileSet(fixedTimeCase)}
+            visible
+          />
+        </AppearanceProvider>,
+      );
+
+      await fireEvent.changeText(screen.getByLabelText("Distance (m)"), distanceValue);
+      await fireEvent.press(screen.getByRole("button", { name: "Save set values" }));
+      expect(screen.getByText("Enter a nonnegative whole-number distance.")).toBeOnTheScreen();
+      expect(onSave).not.toHaveBeenCalled();
+    },
+  );
+
   it("uses the committed-edit label and revision-fenced correction path", async () => {
     const initial = profileView(uiProfileCases[0]!, "completed");
     const reviseCompletedSet = jest.fn(async () => ({

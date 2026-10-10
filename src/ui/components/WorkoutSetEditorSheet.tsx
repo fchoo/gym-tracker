@@ -45,7 +45,7 @@ function observationFrom(set: ActiveWorkoutSet, draft: Draft): SetObservation | 
       if (duration === null) return "Enter a nonnegative duration.";
       return set.target.version === 1 ? { version: 1, profile: "timed_hold", durationSeconds: duration, source } : { version: 2, profile: "timed_hold", durationMs: Math.round(duration * 1_000), source };
     case "fixed_distance": return duration === null || duration < 1 ? "Enter a duration greater than zero." : { version: 1, profile: "fixed_distance", distanceMeters: set.target.plannedDistanceMeters, durationMs: Math.round(duration * 1_000), source };
-    case "fixed_time": return distance === null || distance < 1 || !Number.isSafeInteger(distance) ? "Enter a whole-number distance greater than zero." : { version: 1, profile: "fixed_time", durationMs: set.target.plannedDurationMs, distanceMeters: distance, source };
+    case "fixed_time": return distance === null || !Number.isSafeInteger(distance) ? "Enter a nonnegative whole-number distance." : { version: 1, profile: "fixed_time", durationMs: set.target.plannedDurationMs, distanceMeters: distance, source };
     case "intervals": return rounds === null || duration === null || !Number.isSafeInteger(rounds) || (rounds < 1 && duration < 1) ? "Enter completed rounds or completed work." : { version: 1, profile: "intervals", protocolId: set.target.protocolId, completedRounds: rounds, completedWorkMs: Math.round(duration * 1_000), source };
     case "unscored": return { version: 1, profile: "unscored", completed: true, source };
   }
@@ -92,7 +92,7 @@ export function WorkoutSetEditorSheet({ exerciseName, onCancel, onSave, restoreF
       case "bodyweight_reps": return <SemanticNumberField kind="integer" label="Repetitions" minimum={1} onChangeText={(reps) => update({ reps })} value={draft.reps} />;
       case "timed_hold": return <><SemanticNumberField kind="decimal" label="Duration (sec)" minimum={0} onChangeText={(duration) => update({ duration })} value={draft.duration} /><View style={styles.stepper}><SecondaryAction label="−5 sec" onPress={() => update({ duration: String(Math.max(0, Number(draft.duration || "0") - 5)) })} /><SecondaryAction label="+5 sec" onPress={() => update({ duration: String(Number(draft.duration || "0") + 5) })} /></View></>;
       case "fixed_distance": return <SemanticNumberField kind="decimal" label="Duration (sec)" minimum={1} onChangeText={(duration) => update({ duration })} value={draft.duration} />;
-      case "fixed_time": return <SemanticNumberField kind="integer" label="Distance (m)" minimum={1} onChangeText={(distance) => update({ distance })} value={draft.distance} />;
+      case "fixed_time": return <SemanticNumberField kind="integer" label="Distance (m)" minimum={0} onChangeText={(distance) => update({ distance })} value={draft.distance} />;
       case "intervals": return <><SemanticNumberField kind="integer" label="Completed rounds" minimum={0} onChangeText={(rounds) => update({ rounds })} value={draft.rounds} /><SemanticNumberField kind="decimal" label="Completed work (sec)" minimum={0} onChangeText={(duration) => update({ duration })} value={draft.duration} /></>;
       case "unscored": return <Text style={[workoutTypeScale.body as TextStyle, { color: colors.textSecondary }]}>Saving records this set as completed. No performance metric is captured.</Text>;
     }
