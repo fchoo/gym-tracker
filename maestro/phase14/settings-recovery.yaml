@@ -97,6 +97,12 @@ tags:
       - scrollUntilVisible:
           element:
             text: "Restore clean"
+      - scrollUntilVisible:
+          element:
+            text: "Restore password"
+          direction: DOWN
+          centerElement: true
+          timeout: 30000
       - tapOn: "Restore password"
       - inputText: "phase14-cancel-only"
 - runFlow:

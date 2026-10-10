@@ -152,6 +152,10 @@ test("Phase 14 Maestro flows encode all shell stages and stay native-only", () =
   const dataRecoveryEnd = settingsRecovery.indexOf("- runFlow:", dataRecoveryStart + 1);
   const dataRecovery = settingsRecovery.slice(dataRecoveryStart, dataRecoveryEnd);
   assert.match(dataRecovery, /scrollUntilVisible:[\s\S]*?text: "Manual encrypted backup"/u);
+  assert.match(
+    dataRecovery,
+    /scrollUntilVisible:[\s\S]*?text: "Restore password"[\s\S]*?tapOn: "Restore password"/u,
+  );
   const deepLinkActionStart = settingsRecovery.indexOf("PHASE14_ACTION == 'back-from-data-recovery'");
   const deepLinkActionEnd = settingsRecovery.indexOf("- runFlow:", deepLinkActionStart + 1);
   const deepLinkAction = settingsRecovery.slice(deepLinkActionStart, deepLinkActionEnd);
