@@ -301,6 +301,13 @@ describe("BottomSheet", () => {
       "yes",
     );
     expect(screen.getByTestId("bottom-sheet-frame")).toHaveStyle({
+      flexBasis: 0,
+      flexGrow: 1,
+      flexShrink: 1,
+      minHeight: 0,
+    });
+    expect(screen.getByTestId("bottom-sheet-layout")).toHaveStyle({
+      flexBasis: 0,
       flexGrow: 1,
       flexShrink: 1,
       minHeight: 0,

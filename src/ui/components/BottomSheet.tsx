@@ -321,44 +321,49 @@ export function BottomSheet({
                     importantForAccessibility="yes"
                     onEscape={cancel}
                     onKeyDown={containTraversal as never}
-                    style={styles.boundary}
+                    style={compactLandscape ? styles.compactBoundary : undefined}
                     testID="bottom-sheet-frame"
                   >
-                    <View style={styles.header}>
-                      <View
-                        accessible
-                        accessibilityLabel={heading}
-                        accessibilityRole="header"
-                        focusable
-                        ref={headingRef}
-                      >
-                        <Text style={[typeScale.screenTitle as TextStyle, { color: colors.textPrimary }]}>
-                          {heading}
-                        </Text>
-                      </View>
-                      <IconAction
-                        accessibilityLabel={resolvedCancelLabel}
-                        disabled={cancelDisabled}
-                        icon="clear"
-                        onPress={cancel}
-                      />
-                    </View>
-                    <ScrollView
-                      contentContainerStyle={[styles.content, contentStyle]}
-                      horizontal={false}
-                      keyboardShouldPersistTaps="handled"
-                      showsVerticalScrollIndicator
-                      style={[
-                        styles.scroll,
-                        compactLandscape ? [
-                          styles.compactScroll,
-                          { maxHeight: compactScrollMaxHeight },
-                        ] : null,
-                      ]}
-                      testID={scrollTestID ?? "bottom-sheet-scroll"}
+                    <View
+                      style={compactLandscape ? styles.compactLayout : undefined}
+                      testID="bottom-sheet-layout"
                     >
-                      {children}
-                    </ScrollView>
+                      <View style={styles.header}>
+                        <View
+                          accessible
+                          accessibilityLabel={heading}
+                          accessibilityRole="header"
+                          focusable
+                          ref={headingRef}
+                        >
+                          <Text style={[typeScale.screenTitle as TextStyle, { color: colors.textPrimary }]}>
+                            {heading}
+                          </Text>
+                        </View>
+                        <IconAction
+                          accessibilityLabel={resolvedCancelLabel}
+                          disabled={cancelDisabled}
+                          icon="clear"
+                          onPress={cancel}
+                        />
+                      </View>
+                      <ScrollView
+                        contentContainerStyle={[styles.content, contentStyle]}
+                        horizontal={false}
+                        keyboardShouldPersistTaps="handled"
+                        showsVerticalScrollIndicator
+                        style={[
+                          styles.scroll,
+                          compactLandscape ? [
+                            styles.compactScroll,
+                            { maxHeight: compactScrollMaxHeight },
+                          ] : null,
+                        ]}
+                        testID={scrollTestID ?? "bottom-sheet-scroll"}
+                      >
+                        {children}
+                      </ScrollView>
+                    </View>
                   </AndroidEscapeBoundary>
                 </Animated.View>
               </KeyboardAvoidingView>
@@ -376,7 +381,8 @@ const styles = StyleSheet.create({
     flex: 1,
     justifyContent: "flex-end",
   },
-  boundary: { flexGrow: 1, flexShrink: 1, minHeight: 0 },
+  compactBoundary: { flexBasis: 0, flexGrow: 1, flexShrink: 1, minHeight: 0 },
+  compactLayout: { flexBasis: 0, flexGrow: 1, flexShrink: 1, minHeight: 0 },
   compactScroll: { flexBasis: 0, flexGrow: 1, minHeight: 0 },
   keyboardAvoider: { justifyContent: "flex-end" },
   frame: {
