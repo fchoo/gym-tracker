@@ -48,4 +48,29 @@ describe("RunningSessionFields", () => {
     expect(view.getByLabelText("Stages")).toBeOnTheScreen();
     expect(view.queryByText("Effort target")).not.toBeOnTheScreen();
   });
+
+  it("shows the Tempo and Intervals contextual fields without leaking a hidden recovery branch", async () => {
+    const onChange = jest.fn();
+    const view = await render(<AppearanceProvider><RunningSessionFields
+      draft={initialRunningSessionFormDraft("tempo", "Monday")}
+      onChange={onChange}
+    /></AppearanceProvider>);
+
+    expect(view.getByText("Format")).toBeOnTheScreen();
+    expect(view.getByRole("button", { name: "Format Continuous" })).toBeOnTheScreen();
+    expect(view.getByLabelText("Work duration milliseconds")).toBeOnTheScreen();
+    expect(view.getByText("Intensity target")).toBeOnTheScreen();
+    expect(view.queryByLabelText("Repeats")).not.toBeOnTheScreen();
+    expect(view.queryByLabelText("Recovery duration milliseconds")).not.toBeOnTheScreen();
+
+    await view.rerender(<AppearanceProvider><RunningSessionFields
+      draft={{ ...initialRunningSessionFormDraft("intervals", "Tuesday"), repeats: "4" } as never}
+      onChange={onChange}
+    /></AppearanceProvider>);
+    expect(view.getByLabelText("Repeats")).toBeOnTheScreen();
+    expect(view.getByLabelText("Work duration milliseconds")).toBeOnTheScreen();
+    expect(view.getByLabelText("Recovery duration milliseconds")).toBeOnTheScreen();
+    expect(view.getByText("Intensity target")).toBeOnTheScreen();
+    expect(view.queryByText("Format")).not.toBeOnTheScreen();
+  });
 });

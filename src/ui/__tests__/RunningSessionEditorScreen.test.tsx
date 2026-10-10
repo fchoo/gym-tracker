@@ -43,6 +43,49 @@ describe("RunningSessionEditorScreen", () => {
     expect(progression).not.toHaveProperty("advisoryTarget");
   });
 
+  it("serializes exact Tempo and Intervals branches with selected units and no inactive fields", () => {
+    const tempo = makeRunningSessionSpec({
+      ...initialRunningSessionFormDraft("tempo", "Tuesday"),
+      tempoFormat: "tempo_repeats",
+      repeats: "3",
+      work: "800",
+      workUnit: "distance",
+      recovery: "120000",
+      recoveryUnit: "duration",
+      target: { mode: "pace", paceMsPerKm: "285000", heartRateZone: "4", rpe: "8" },
+    } as never);
+    expect(tempo).toEqual(expect.objectContaining({
+      sessionKind: "tempo",
+      advisoryTarget: { paceMsPerKm: 285000 },
+      contextual: {
+        format: "tempo_repeats",
+        repetitions: 3,
+        work: { distanceMeters: 800 },
+        recovery: { durationMs: 120000 },
+      },
+    }));
+    expect(tempo).not.toHaveProperty("contextual.durationMs");
+
+    const intervals = makeRunningSessionSpec({
+      ...initialRunningSessionFormDraft("intervals", "Thursday"),
+      repeats: "6",
+      work: "60000",
+      workUnit: "duration",
+      recovery: "200",
+      recoveryUnit: "distance",
+      target: { mode: "heart_rate_zone", paceMsPerKm: "300000", heartRateZone: "3", rpe: "8" },
+    } as never);
+    expect(intervals).toEqual(expect.objectContaining({
+      sessionKind: "intervals",
+      advisoryTarget: { heartRateZone: 3 },
+      contextual: {
+        repetitions: 6,
+        work: { durationMs: 60000 },
+        recovery: { distanceMeters: 200 },
+      },
+    }));
+  });
+
   it("keeps create identity UI-only until the committed Recovery command readback", async () => {
     const saveSession = jest.fn(async () => ({ plan: { ...plan, revision: 2 }, sessionRootId: "session-root-1" }));
     const onSaved = jest.fn();
