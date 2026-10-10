@@ -48,6 +48,9 @@ export type SaveRunningSourceGraphInput = Readonly<{
   goal: RunningGoal;
   sessions: readonly RunningSessionRevision[];
   slots: readonly RunningSlotRevisionDraft[];
+  /** Aggregate editors publish the complete current membership; lower-level
+   * authoring callers may append a partial graph without retiring siblings. */
+  completeMembership?: boolean;
 }>;
 
 export type RunningSourceGraphRepository = Readonly<{

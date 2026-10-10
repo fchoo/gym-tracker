@@ -101,8 +101,8 @@ export function RunningSessionEditorScreen(props: Readonly<{
   const [error, setError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
   const [confirmDiscard, setConfirmDiscard] = useState(false);
+  const [loadAttempt, setLoadAttempt] = useState(0);
   const requestId = useRef<string | null>(null);
-  const loaded = useRef(false);
 
   useEffect(() => {
     let active = true;
@@ -115,10 +115,10 @@ export function RunningSessionEditorScreen(props: Readonly<{
       const first = existing === undefined
         ? initialRunningSessionFormDraft("recovery", next.goal.trainingDays[0] ?? "Monday")
         : draftFromSession(existing);
-      setPlan(next); setKind(first.kind); setDrafts({ [first.kind]: first }); setState("ready"); loaded.current = true;
+      setPlan(next); setKind(first.kind); setDrafts({ [first.kind]: first }); setState("ready");
     }).catch(() => { if (active) setState("error"); });
     return () => { active = false; };
-  }, [props.loadPlan, props.mode, props.planId, props.sessionId]);
+  }, [loadAttempt, props.loadPlan, props.mode, props.planId, props.sessionId]);
 
   const draft = useMemo(() => drafts[kind] ?? initialRunningSessionFormDraft(kind, plan?.goal.trainingDays[0] ?? "Monday"), [drafts, kind, plan]);
   const existing = plan?.sessions.find((entry) => entry.session.rootId === props.sessionId);
@@ -154,7 +154,7 @@ export function RunningSessionEditorScreen(props: Readonly<{
 
   if (state === "loading") return <View><Text>Loading session…</Text></View>;
   if (state === "missing") return <View><ScreenHeader backAction={props.onBack} eyebrow="RUNNING" title="Session unavailable" /><Text>This session is no longer available.</Text></View>;
-  if (state === "error") return <View><ScreenHeader backAction={props.onBack} eyebrow="RUNNING" title="Session unavailable" /><Text>Session could not be loaded. Your edits were not changed.</Text><PrimaryAction label="Retry loading session" onPress={() => { loaded.current = false; }} /></View>;
+  if (state === "error") return <View><ScreenHeader backAction={props.onBack} eyebrow="RUNNING" title="Session unavailable" /><Text>Session could not be loaded. Your edits were not changed.</Text><PrimaryAction label="Retry loading session" onPress={() => setLoadAttempt((attempt) => attempt + 1)} /></View>;
 
   return <View testID="running-session-editor">
     <ScreenHeader backAction={() => setConfirmDiscard(true)} eyebrow="RUNNING" title={props.mode === "create" ? "New session" : "Edit session"} />

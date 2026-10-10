@@ -168,6 +168,10 @@ export function createRunningPlanRepository(kernel: SqliteKernel) {
          JOIN running_session_revisions session
            ON session.id = slot_revision.session_revision_id
           AND session.revision = session_root.current_revision
+         JOIN running_session_slots current_slot
+           ON current_slot.id = slot_root.id
+          AND current_slot.plan_id = slot_root.plan_id
+          AND current_slot.retired_at_ms IS NULL
          WHERE slot_root.plan_id = ?
          ORDER BY slot_root.weekday, slot_revision.ordinal, slot_root.id`, [planId],
       );
@@ -375,16 +379,23 @@ export function createRunningPlanRepository(kernel: SqliteKernel) {
           throw new Error("running_plan_revision_conflict");
         }
         for (const session of input.sessions) {
-          const [root] = await transaction.queryAll<{ current_revision: number }>(
-            "SELECT current_revision FROM running_session_roots WHERE id = ?", [session.rootId],
+          const [root] = await transaction.queryAll<{ current_revision: number; plan_id: string }>(
+            "SELECT current_revision, plan_id FROM running_session_roots WHERE id = ?", [session.rootId],
           );
           if (root === undefined) {
             await transaction.execute(
               "INSERT INTO running_session_roots(id, plan_id, session_kind, current_revision, created_at_ms) VALUES (?, ?, ?, ?, ?)",
               [session.rootId, input.planId, session.sessionKind, session.revision, session.createdAtMs],
             );
-          } else if (session.revision <= root.current_revision) {
+          } else if (root.plan_id !== input.planId || session.revision < root.current_revision) {
             throw new Error("running_session_revision_conflict");
+          } else if (session.revision === root.current_revision) {
+            const [current] = await transaction.queryAll<{ id: string }>(
+              "SELECT id FROM running_session_revisions WHERE id = ? AND plan_id = ? AND revision = ?",
+              [session.id, input.planId, session.revision],
+            );
+            if (current === undefined) throw new Error("running_session_revision_conflict");
+            continue;
           } else {
             await transaction.execute(
               "UPDATE running_session_roots SET current_revision = ? WHERE id = ? AND current_revision = ?",
@@ -396,6 +407,13 @@ export function createRunningPlanRepository(kernel: SqliteKernel) {
               (id, plan_id, session_kind, revision, definition_json, created_at_ms)
              VALUES (?, ?, ?, ?, ?, ?)`,
             [session.id, input.planId, session.sessionKind, session.revision, JSON.stringify(session), session.createdAtMs],
+          );
+        }
+        if (input.completeMembership === true) {
+          await transaction.execute(
+            `UPDATE running_session_slots SET ordinal = ordinal + 1000000
+             WHERE plan_id = ? AND retired_at_ms IS NULL`,
+            [input.planId],
           );
         }
         for (const slot of input.slots) {
@@ -413,6 +431,27 @@ export function createRunningPlanRepository(kernel: SqliteKernel) {
               (id, slot_root_id, revision, ordinal, session_root_id, session_revision_id, created_at_ms)
              VALUES (?, ?, ?, ?, ?, ?, ?)`,
             [slot.id, slot.rootId, slot.revision, slot.ordinal, slot.sessionRootId, slot.sessionRevisionId, input.createdAtMs],
+          );
+          const current = await transaction.execute(
+            `UPDATE running_session_slots
+                SET weekday = ?, ordinal = ?, session_revision_id = ?, revision = ?, retired_at_ms = NULL
+              WHERE id = ? AND plan_id = ?`,
+            [slot.weekday, slot.ordinal, slot.sessionRevisionId, slot.revision, slot.rootId, input.planId],
+          );
+          if (current.changes === 0) {
+            await transaction.execute(
+              `INSERT INTO running_session_slots
+                (id, plan_id, weekday, ordinal, session_revision_id, revision, retired_at_ms)
+               VALUES (?, ?, ?, ?, ?, ?, NULL)`,
+              [slot.rootId, input.planId, slot.weekday, slot.ordinal, slot.sessionRevisionId, slot.revision],
+            );
+          }
+        }
+        if (input.completeMembership === true) {
+          await transaction.execute(
+            `UPDATE running_session_slots SET retired_at_ms = ?
+             WHERE plan_id = ? AND retired_at_ms IS NULL AND ordinal >= 1000000`,
+            [input.createdAtMs, input.planId],
           );
         }
         await transaction.execute(

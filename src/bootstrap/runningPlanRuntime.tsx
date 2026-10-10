@@ -78,7 +78,7 @@ export function createRunningPlanRuntimePort(kernel: SqliteKernel, dependencies:
       };
       const slots = command.slots.map((slot, index) => ({ ...slot, sessionRevisionId: command.sessions[index]!.id }));
       const hashInput = { ...command, slots };
-      await saveRunningSourceGraph(repository, { ...hashInput, requestSha256: canonicalRunningRequestHash(hashInput) });
+      await saveRunningSourceGraph(repository, { ...hashInput, completeMembership: true, requestSha256: canonicalRunningRequestHash({ ...hashInput, completeMembership: true }) });
       const readBack = await repository.readAggregate(current.id);
       if (readBack === null) throw new Error("running_plan_readback_missing");
       return readBack;
@@ -96,8 +96,8 @@ export function createRunningPlanRuntimePort(kernel: SqliteKernel, dependencies:
       const command = sessionCommands.get(input.requestId) ?? buildSessionCommand({ plan, input, existing, createId, now: dependencies.nowMs() });
       sessionCommands.set(input.requestId, command);
       await saveRunningSourceGraph(repository, {
-        ...command,
-        requestSha256: canonicalRunningRequestHash(command),
+        ...command, completeMembership: true,
+        requestSha256: canonicalRunningRequestHash({ ...command, completeMembership: true }),
       });
       const readBack = await repository.readAggregate(plan.id);
       if (readBack === null) throw new Error("running_plan_readback_missing");
@@ -149,11 +149,19 @@ function buildSessionCommand(input: Readonly<{
     revision: slotRevision, ordinal: input.existing?.slot.ordinal ?? input.plan.sessions.filter((entry) => entry.slot.weekday === input.input.session.weekday).length,
     sessionRootId, sessionRevisionId: session.id,
   };
+  const retained = input.plan.sessions.filter((entry) => entry.session.rootId !== sessionRootId);
+  const retainedSessions = retained.map((entry) => entry.session);
+  const retainedSlots = retained.map((entry) => ({
+    id: input.createId("running-slot-revision"), rootId: entry.slot.rootId,
+    weekday: entry.slot.weekday, revision: entry.slot.revision + 1,
+    ordinal: entry.slot.ordinal, sessionRootId: entry.session.rootId,
+    sessionRevisionId: entry.session.id,
+  }));
   return {
     requestId: input.input.requestId, operation: "edit" as const, planId: input.plan.id,
     expectedPlanRevision: input.plan.revision, createdAtMs: input.now,
     goal: { ...input.plan.goal, id: input.createId("running-goal-revision"), revision: input.plan.goal.revision + 1, createdAtMs: input.now },
-    sessions: [session], slots: [slot],
+    sessions: [session, ...retainedSessions], slots: [slot, ...retainedSlots],
   };
 }
 
