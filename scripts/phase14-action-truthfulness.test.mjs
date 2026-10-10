@@ -10,8 +10,16 @@ import {
   validatePhase14ActionObservation,
 } from "./phase14-action-observation.mjs";
 import { PHASE14_NATIVE_MATRIX } from "./phase14-native-matrix.mjs";
+import { parsePhase14ImeVisibility } from "./run-phase14-maestro.mjs";
 
 const PACKAGE = "com.fchoo.gymtracker.devtest";
+
+test("Phase 14 IME visibility prefers Android's current input request state", () => {
+  assert.equal(parsePhase14ImeVisibility("mInputShown=true mIsInputViewShown=true"), true);
+  assert.equal(parsePhase14ImeVisibility("mInputShown=false mIsInputViewShown=true"), false);
+  assert.equal(parsePhase14ImeVisibility("mIsInputViewShown=true"), true);
+  assert.equal(parsePhase14ImeVisibility("mIsInputViewShown=false"), false);
+});
 
 function node({
   bounds = "[0,0][390,844]",

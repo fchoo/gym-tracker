@@ -366,9 +366,16 @@ function isPackageForeground(adbPath, serial, packageName) {
   return focusLines.some((line) => line.includes(`${packageName}/`));
 }
 
+export function parsePhase14ImeVisibility(output) {
+  const inputShown = output.match(/\bmInputShown=(true|false)\b/u);
+  if (inputShown !== null) return inputShown[1] === "true";
+  return output.match(/\bmIsInputViewShown=(true|false)\b/u)?.[1] === "true";
+}
+
 function isImeVisible(adbPath, serial) {
-  const output = adb(adbPath, serial, "shell", "dumpsys", "input_method");
-  return /mInputShown=true|mIsInputViewShown=true/u.test(output);
+  return parsePhase14ImeVisibility(
+    adb(adbPath, serial, "shell", "dumpsys", "input_method"),
+  );
 }
 
 function resolveLauncherComponent(adbPath, serial, packageName) {
