@@ -597,6 +597,45 @@ describe("OwnedPlanEditorScreen create and save plan", () => {
     await waitFor(() => expect(savePlan).toHaveBeenCalledTimes(2));
   });
 
+  it("retains a revision-conflicted draft while the owner reviews the latest plan", async () => {
+    const latest = completeSnapshot({
+      name: "Latest owner plan",
+      revision: 2,
+    });
+    const savePlan = jest.fn(async () => {
+      throw Object.assign(new Error("owned_plan_revision_conflict"), {
+        code: "owned_plan_revision_conflict",
+      });
+    });
+    const loadPlan = jest.fn()
+      .mockResolvedValueOnce(completeSnapshot({ name: "Original plan" }))
+      .mockResolvedValueOnce(latest);
+    await renderEditor({ loadPlan, savePlan });
+
+    await fireEvent.changeText(
+      await screen.findByLabelText("Plan name"),
+      "My unsaved local edit",
+    );
+    await fireEvent.press(
+      screen.getByRole("button", { name: "Save Plan Changes" }),
+    );
+
+    expect(await screen.findByText("Plan changed elsewhere"))
+      .toBeOnTheScreen();
+    expect(screen.getByText(
+      "Your draft is still here and was not saved over the latest plan.",
+    )).toBeOnTheScreen();
+    expect(screen.getByDisplayValue("My unsaved local edit")).toBeOnTheScreen();
+
+    await fireEvent.press(screen.getByRole("button", {
+      name: "Review latest",
+    }));
+
+    await waitFor(() => expect(loadPlan).toHaveBeenCalledTimes(2));
+    expect(screen.getByDisplayValue("My unsaved local edit")).toBeOnTheScreen();
+    expect(screen.queryByText("Plan changed elsewhere")).not.toBeOnTheScreen();
+  });
+
   it("covers loading, load error, empty, partial, populated, and many-day states", async () => {
     const pending = deferred<OwnedPlanSnapshot | null>();
     const { rendered } = await renderEditor({
