@@ -13,9 +13,6 @@ import React, {
 import type {
   WorkoutSessionView,
 } from "../../src/domains/workout";
-import type {
-  AdvancedTimingStateV1,
-} from "../../src/domains/advancedTiming";
 import {
   useWorkoutAppRuntime,
 } from "../../src/bootstrap/workoutAppRuntime";
@@ -49,11 +46,6 @@ export default function ActiveWorkoutRoute() {
   const countdownCue = useRestCountdownCue();
   const resolvedSessionId = sessionId ?? "unknown";
   const [view, setView] = useState<WorkoutSessionView | null>(null);
-  const [advancedTimingContext, setAdvancedTimingContext] = useState<Readonly<{
-    sessionId: string;
-    sessionRevision: number;
-    state: AdvancedTimingStateV1;
-  }> | null>(null);
   const [failed, setFailed] = useState(false);
   const [readAttempt, setReadAttempt] = useState(0);
   const [focusGeneration, setFocusGeneration] = useState(0);
@@ -72,14 +64,9 @@ export default function ActiveWorkoutRoute() {
     let active = true;
     setFailed(false);
     setView((current) => current?.id === resolvedSessionId ? current : null);
-    void Promise.all([
-      runtime.getActiveWorkout(resolvedSessionId),
-      (runtime.getAdvancedTimingContext?.(resolvedSessionId)
-        ?? Promise.resolve(null)).catch(() => null),
-    ]).then(([nextView, nextAdvancedTimingContext]) => {
+    void runtime.getActiveWorkout(resolvedSessionId).then((nextView) => {
       if (active) {
         setView(nextView);
-        setAdvancedTimingContext(nextAdvancedTimingContext);
       }
     }).catch(() => {
       if (active) {
@@ -92,7 +79,6 @@ export default function ActiveWorkoutRoute() {
   }, [
     readAttempt,
     resolvedSessionId,
-    runtime.getAdvancedTimingContext,
     runtime.getActiveWorkout,
     runtime.workoutRefreshGeneration,
   ]);
@@ -178,28 +164,14 @@ export default function ActiveWorkoutRoute() {
         adjustRest: runtime.adjustRest,
         skipRest: runtime.skipRest,
         expireRest: runtime.expireRest,
-        configureAdvancedTiming: runtime.configureAdvancedTiming,
-        updateSessionExerciseAdvancedTiming:
-          runtime.updateSessionExerciseAdvancedTiming,
-        updateSessionSetAdvancedTiming: runtime.updateSessionSetAdvancedTiming,
-        startAdvancedTiming: runtime.startAdvancedTiming,
-        beginAdvancedTimingClusterGap: runtime.beginAdvancedTimingClusterGap,
-        skipAdvancedTimingClusterGap: runtime.skipAdvancedTimingClusterGap,
-        pauseAdvancedTiming: runtime.pauseAdvancedTiming,
-        resumeAdvancedTiming: runtime.resumeAdvancedTiming,
-        reconcileAdvancedTiming: runtime.reconcileAdvancedTiming,
-        stopAdvancedTiming: runtime.stopAdvancedTiming,
         finishCompleted: runtime.finishCompleted,
         finishPartial: runtime.finishPartial,
         saveZeroSetWorkout: runtime.saveZeroSetWorkout,
         discardWorkout: runtime.discardWorkout,
         skipExercise: runtime.skipExercise,
       }}
-      advancedTimingContext={advancedTimingContext}
       availableExercises={availableExercises}
-      cueUnavailable={runtime.advancedTimingCueFailed === true}
       nowMs={() => Date.now()}
-      onAdvancedTimingChanged={setAdvancedTimingContext}
       notificationPermission={runtime.notificationPermission}
       restSoundEnabled={runtime.readRestAlertPreferences().soundEnabled}
       countdownCue={countdownCue}

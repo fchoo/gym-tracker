@@ -27,14 +27,6 @@ import {
 } from "react-native";
 
 import type {
-  AdvancedTimingCommandResult,
-  AdvancedTimingConfigV1,
-  AdvancedTimingRevisionInput,
-  AdvancedTimingStateV1,
-  UpdateSessionExerciseAdvancedTimingInput,
-  UpdateSessionSetAdvancedTimingInput,
-} from "../../domains/advancedTiming";
-import type {
   AdjustRestInput,
   RestCommandResult,
   RestNotificationPermission,
@@ -83,15 +75,6 @@ import {
   SecondaryAction,
   SectionHeader,
 } from "../components";
-import {
-  AdvancedTimingIndicator,
-  type AdvancedTimingIndicatorContext,
-} from "../components/AdvancedTimingIndicator";
-import {
-  AdvancedTimingConfigSheet,
-  advancedTimingConfigSummary,
-  type AdvancedTimingConfigScope,
-} from "../components/AdvancedTimingConfigSheet";
 import { BottomSheet } from "../components/BottomSheet";
 import {
   RestDock,
@@ -151,40 +134,6 @@ export interface ActiveWorkoutCommands {
   adjustRest(input: AdjustRestInput): Promise<RestCommandResult>;
   skipRest(input: RestRevisionInput): Promise<RestCommandResult>;
   expireRest(input: RestRevisionInput): Promise<RestCommandResult>;
-  configureAdvancedTiming?(
-    input: AdvancedTimingRevisionInput & Readonly<{
-      config: AdvancedTimingConfigV1;
-    }>,
-  ): Promise<AdvancedTimingCommandResult>;
-  updateSessionExerciseAdvancedTiming?(
-    input: UpdateSessionExerciseAdvancedTimingInput,
-  ): Promise<AdvancedTimingCommandResult>;
-  updateSessionSetAdvancedTiming?(
-    input: UpdateSessionSetAdvancedTimingInput,
-  ): Promise<AdvancedTimingCommandResult>;
-  startAdvancedTiming?(
-    input: AdvancedTimingRevisionInput & Readonly<{
-      config: AdvancedTimingConfigV1;
-      countdownCue?: RestCountdownCuePort | undefined;
-    }>,
-  ): Promise<AdvancedTimingCommandResult>;
-  beginAdvancedTimingClusterGap?(
-    input: AdvancedTimingRevisionInput & Readonly<{
-      countdownCue?: RestCountdownCuePort | undefined;
-    }>,
-  ): Promise<AdvancedTimingCommandResult>;
-  skipAdvancedTimingClusterGap?(
-    input: AdvancedTimingRevisionInput & Readonly<{
-      countdownCue?: RestCountdownCuePort | undefined;
-    }>,
-  ): Promise<AdvancedTimingCommandResult>;
-  pauseAdvancedTiming?(input: AdvancedTimingRevisionInput): Promise<AdvancedTimingCommandResult>;
-  resumeAdvancedTiming?(input: AdvancedTimingRevisionInput): Promise<AdvancedTimingCommandResult>;
-  reconcileAdvancedTiming?(input: AdvancedTimingRevisionInput & Readonly<{
-    countdownCue?: RestCountdownCuePort | undefined;
-    foregroundSinceMs: number;
-  }>): Promise<AdvancedTimingCommandResult>;
-  stopAdvancedTiming?(input: AdvancedTimingRevisionInput): Promise<AdvancedTimingCommandResult>;
   finishCompleted(input: FinishCompletedInput): Promise<FinishOutcomeResult>;
   finishPartial(input: FinishPartialInput): Promise<FinishOutcomeResult>;
   saveZeroSetWorkout(input: SaveZeroSetInput): Promise<FinishOutcomeResult>;
@@ -488,9 +437,6 @@ export type ActiveWorkoutScreenProps = Readonly<{
   notificationPermission?: RestNotificationPermission;
   restSoundEnabled?: boolean;
   countdownCue?: RestCountdownCuePort | undefined;
-  advancedTimingContext?: AdvancedTimingIndicatorContext | null | undefined;
-  cueUnavailable?: boolean;
-  onAdvancedTimingChanged?: (context: AdvancedTimingIndicatorContext) => void;
   onOpenNotificationSettings?: () => void;
   onGoBack: () => void;
   onFinishLater: () => void;
@@ -507,9 +453,6 @@ export function ActiveWorkoutScreen({
   notificationPermission = "undetermined",
   restSoundEnabled = false,
   countdownCue,
-  advancedTimingContext = null,
-  cueUnavailable = false,
-  onAdvancedTimingChanged = () => undefined,
   onOpenNotificationSettings = () => undefined,
   onGoBack,
   onFinishLater,
@@ -540,9 +483,6 @@ export function ActiveWorkoutScreen({
       commands={commands}
       availableExercises={availableExercises}
       countdownCue={countdownCue}
-      advancedTimingContext={advancedTimingContext}
-      cueUnavailable={cueUnavailable}
-      onAdvancedTimingChanged={onAdvancedTimingChanged}
       initialView={initialView}
       notificationPermission={notificationPermission}
       nowMs={nowMs}
@@ -788,9 +728,6 @@ function PopulatedWorkoutOverview({
   notificationPermission = "undetermined",
   restSoundEnabled = false,
   countdownCue,
-  advancedTimingContext,
-  cueUnavailable = false,
-  onAdvancedTimingChanged,
   onOpenNotificationSettings = () => undefined,
   onGoBack,
   onFinishLater,
@@ -819,9 +756,6 @@ function PopulatedWorkoutOverview({
   const [activeWorkingCardOffset, setActiveWorkingCardOffset] = useState<
     Readonly<{ exerciseId: string; y: number }> | null
   >(null);
-  const [timingPanelMeasurement, setTimingPanelMeasurement] = useState<
-    Readonly<{ exerciseId: string; y: number }> | null
-  >(null);
   const [pendingScrollTarget, setPendingScrollTarget] = useState<
     Readonly<{ key: string; setId: string; animated: boolean }> | null
   >(() => initialView.activeSetId === null
@@ -831,9 +765,6 @@ function PopulatedWorkoutOverview({
       setId: initialView.activeSetId,
       animated: false,
     });
-  const [pendingTimingPanelScroll, setPendingTimingPanelScroll] = useState<
-    Readonly<{ key: string; exerciseId: string; animated: boolean }> | null
-  >(null);
   const [editingCompletedSetId, setEditingCompletedSetId] =
     useState<string | null>(null);
   const [expandedExerciseIds, setExpandedExerciseIds] = useState<ReadonlySet<string>>(
@@ -877,18 +808,6 @@ function PopulatedWorkoutOverview({
   const [exerciseAddBusy, setExerciseAddBusy] = useState(false);
   const [exerciseAddFailed, setExerciseAddFailed] = useState(false);
   const [reorderMode, setReorderMode] = useState(false);
-  const [timingConfig, setTimingConfig] = useState<Readonly<{
-    scope: AdvancedTimingConfigScope;
-    exercise: ActiveWorkoutExercise;
-    set?: ActiveWorkoutSet;
-  }> | null>(null);
-  const [timingConfigBusy, setTimingConfigBusy] = useState(false);
-  const [timingConfigFailed, setTimingConfigFailed] = useState(false);
-  const [selectedTimingTargetSetId, setSelectedTimingTargetSetId] =
-    useState<string | null>(null);
-  const [latestAdvancedTimingContext, setLatestAdvancedTimingContext] = useState(
-    advancedTimingContext ?? null,
-  );
   const [replacementPickerForId, setReplacementPickerForId] =
     useState<string | null>(null);
   const [replacementQuery, setReplacementQuery] = useState("");
@@ -909,7 +828,6 @@ function PopulatedWorkoutOverview({
   const sectionMutationRef = useRef<SectionMutation | null>(null);
   const correctionSetIdRef = useRef<string | null>(null);
   const restCommandInFlightRef = useRef(false);
-  const timingContext = latestAdvancedTimingContext ?? advancedTimingContext ?? null;
   const overviewExercises = React.useMemo(() => exercisesFor(view), [view]);
   const presentationModel = React.useMemo(() => presentWorkoutSession(view), [view]);
   const replacementCandidates = availableExercises.filter((exercise) =>
@@ -933,21 +851,6 @@ function PopulatedWorkoutOverview({
   const activeSets = activeExercise.workingSets;
   const activeIndex = workingIndex(activeSets, view.activeSetId);
   const activeSet = activeOwner?.set;
-  const persistedTimingTargetId = timingContext?.state.targetSessionSetId ?? null;
-  const timingContextLocksTarget = timingContext !== null
-    && timingContext.state.state !== "idle"
-    && timingContext.state.state !== "stopped";
-  const selectedTimingOwner = resolveSetOwner(
-    view,
-    (timingContextLocksTarget ? persistedTimingTargetId : selectedTimingTargetSetId)
-      ?? persistedTimingTargetId
-      ?? "",
-  );
-  const timingTargetSet = selectedTimingOwner?.exercise.id === activeExercise.id
-    && (selectedTimingOwner.set.status === "planned"
-      || selectedTimingOwner.set.status === "draft")
-    ? selectedTimingOwner.set
-    : activeSet;
   const adaptiveWidth = width === undefined ? {} : { width };
   const activeExerciseIndex = overviewExercises.findIndex(
     ({ id }) => id === view.activeExerciseId,
@@ -960,28 +863,6 @@ function PopulatedWorkoutOverview({
       || (activeExerciseIndex >= 0 && index < activeExerciseIndex));
 
   const applyView = (nextView: ActiveWorkoutView) => {
-    const targetSetId = timingContext?.state.targetSessionSetId ?? null;
-    const target = targetSetId === null
-      ? undefined
-      : resolveSetOwner(nextView, targetSetId)?.set;
-    if (targetSetId !== null
-      && (target === undefined
-        || target.status === "completed"
-        || target.status === "skipped")) {
-      const nextContext = {
-        sessionId,
-        sessionRevision: nextView.revision,
-        state: {
-          version: 1 as const,
-          state: "idle" as const,
-          revision: 0,
-          targetSessionSetId: null,
-        },
-      };
-      setLatestAdvancedTimingContext(nextContext);
-      setSelectedTimingTargetSetId(null);
-      onAdvancedTimingChanged?.(nextContext);
-    }
     viewRef.current = nextView;
     setView(nextView);
   };
@@ -993,20 +874,6 @@ function PopulatedWorkoutOverview({
       <ScreenHeader
         action={
           <ActionCluster style={styles.headerActions}>
-            <IconAction
-              accessibilityLabel={`Configure ${activeExercise.name} timing`}
-              disabled={
-                timingConfigBusy
-                || commands.updateSessionExerciseAdvancedTiming === undefined
-                || activeExercise.status === "completed"
-                || activeExercise.status === "skipped"
-              }
-              icon="settings"
-              onPress={() => {
-                setTimingConfigFailed(false);
-                setTimingConfig({ scope: "exercise", exercise: activeExercise });
-              }}
-            />
             <IconAction
               accessibilityLabel="More workout actions"
               icon="more"
@@ -1038,334 +905,12 @@ function PopulatedWorkoutOverview({
     setView(nextView);
   };
 
-  const applyAdvancedTimingResult = (result: AdvancedTimingCommandResult) => {
-    setPendingScrollTarget(null);
-    const nextContext = {
-      sessionId,
-      sessionRevision: result.sessionRevision,
-      state: result.state,
-    };
-    setLatestAdvancedTimingContext(nextContext);
-    onAdvancedTimingChanged?.(nextContext);
-    const nextView = {
-      ...viewRef.current,
-      revision: result.sessionRevision,
-    };
-    viewRef.current = nextView;
-    setView(nextView);
-  };
-
-  const scheduleTimingPanelScroll = (
-    exerciseId: string,
-    sessionRevision: number,
-  ) => {
-    setPendingScrollTarget(null);
-    setPendingTimingPanelScroll({
-      animated: !reduceMotion,
-      exerciseId,
-      key: `timing-${sessionRevision}-${exerciseId}`,
-    });
-  };
-
-  const applyExerciseTimingConfig = (
-    exerciseId: string,
-    config: AdvancedTimingConfigV1,
-    sessionRevision: number,
-  ) => {
-    const current = viewRef.current;
-    const nextExercises = exercisesFor(current).map((exercise) => {
-      if (exercise.id !== exerciseId) return exercise;
-      const appliesInheritedConfig = (set: ActiveWorkoutSet) =>
-        (set.status === "planned" || set.status === "draft")
-        && (set.advancedTimingOverride === null
-          || set.advancedTimingOverride === undefined);
-      const applyInheritedConfig = (set: ActiveWorkoutSet): ActiveWorkoutSet => {
-        if (!appliesInheritedConfig(set)) return set;
-        return {
-          ...set,
-          revision: set.revision + 1,
-          advancedTimingResolved: config,
-        };
-      };
-      return {
-        ...exercise,
-        revision: exercise.revision + 1,
-        advancedTimingDefault: config,
-        warmups: exercise.warmups.map(applyInheritedConfig),
-        workingSets: exercise.workingSets.map(applyInheritedConfig),
-      };
-    });
-    const currentExercise = nextExercises.find(
-      ({ id }) => id === current.currentExercise.id,
-    ) ?? current.currentExercise;
-    const nextView = {
-      ...current,
-      revision: sessionRevision,
-      currentExercise,
-      exercises: current.exercises.length === 0 ? [] : nextExercises,
-    };
-    viewRef.current = nextView;
-    setView(nextView);
-  };
-
-  const applySetTimingConfig = (
-    exerciseId: string,
-    setId: string,
-    override: AdvancedTimingConfigV1 | null,
-    sessionRevision: number,
-  ) => {
-    const current = viewRef.current;
-    const nextExercises = exercisesFor(current).map((exercise) => {
-      if (exercise.id !== exerciseId) return exercise;
-      const resolvedConfig = override ?? exercise.advancedTimingDefault;
-      const applyConfig = (set: ActiveWorkoutSet): ActiveWorkoutSet => {
-        if (set.id !== setId) return set;
-        const { advancedTimingResolved: _previousResolvedConfig, ...setWithoutResolved } = set;
-        return {
-          ...setWithoutResolved,
-          revision: set.revision + 1,
-          advancedTimingOverride: override,
-          ...(resolvedConfig === undefined
-            ? {}
-            : { advancedTimingResolved: resolvedConfig }),
-        };
-      };
-      return {
-        ...exercise,
-        warmups: exercise.warmups.map(applyConfig),
-        workingSets: exercise.workingSets.map(applyConfig),
-      };
-    });
-    const currentExercise = nextExercises.find(
-      ({ id }) => id === current.currentExercise.id,
-    ) ?? current.currentExercise;
-    const nextView = {
-      ...current,
-      revision: sessionRevision,
-      currentExercise,
-      exercises: current.exercises.length === 0 ? [] : nextExercises,
-    };
-    viewRef.current = nextView;
-    setView(nextView);
-  };
-
   const restInput = (): RestRevisionInput => ({
     sessionId,
     expectedSessionRevision: view.revision,
     expectedRestRevision: view.rest.revision,
     nowMs: nowMs(),
   });
-
-  const advancedInput = (): AdvancedTimingRevisionInput | null => {
-    const context = timingContext;
-    const target = timingTargetSet;
-    if (context === null || target === undefined) {
-      return null;
-    }
-    return {
-      sessionId,
-      sessionSetId: target.id,
-      expectedSessionRevision: view.revision,
-      expectedAdvancedTimingRevision: context.state.revision,
-      nowMs: nowMs(),
-    };
-  };
-
-  const configureAndStartAdvancedTiming = async (
-    config: Extract<AdvancedTimingConfigV1, { mode: "per_rep" }>,
-  ): Promise<AdvancedTimingCommandResult> => {
-    const input = advancedInput();
-    if (
-      input === null
-      || commands.configureAdvancedTiming === undefined
-      || commands.startAdvancedTiming === undefined
-    ) {
-      throw new Error("advanced_timing_unavailable");
-    }
-    const configured = await commands.configureAdvancedTiming({
-      ...input,
-      config,
-    });
-    applyAdvancedTimingResult(configured);
-    const started = await commands.startAdvancedTiming({
-      ...input,
-      expectedSessionRevision: configured.sessionRevision,
-      expectedAdvancedTimingRevision: configured.state.revision,
-      nowMs: nowMs(),
-      config,
-      countdownCue,
-    });
-    applyAdvancedTimingResult(started);
-    return started;
-  };
-
-  const configureAndStartClusterTiming = async (
-    config: Extract<AdvancedTimingConfigV1, { mode: "cluster" }>,
-  ): Promise<AdvancedTimingCommandResult> => {
-    const input = advancedInput();
-    if (
-      input === null
-      || commands.configureAdvancedTiming === undefined
-      || commands.startAdvancedTiming === undefined
-    ) {
-      throw new Error("advanced_timing_unavailable");
-    }
-    const configured = await commands.configureAdvancedTiming({
-      ...input,
-      config,
-    });
-    applyAdvancedTimingResult(configured);
-    const started = await commands.startAdvancedTiming({
-      ...input,
-      expectedSessionRevision: configured.sessionRevision,
-      expectedAdvancedTimingRevision: configured.state.revision,
-      nowMs: nowMs(),
-      config,
-      countdownCue,
-    });
-    applyAdvancedTimingResult(started);
-    return started;
-  };
-
-  const runAdvancedTiming = async (
-    command: (
-      input: AdvancedTimingRevisionInput,
-    ) => Promise<AdvancedTimingCommandResult>,
-  ): Promise<AdvancedTimingCommandResult> => {
-    const input = advancedInput();
-    if (input === null) {
-      throw new Error("advanced_timing_unavailable");
-    }
-    const result = await command(input);
-    applyAdvancedTimingResult(result);
-    return result;
-  };
-
-  const saveAdvancedTimingConfig = async (
-    value: AdvancedTimingConfigV1 | null,
-  ) => {
-    const target = timingConfig;
-    if (target === null || timingConfigBusy) {
-      return;
-    }
-    setTimingConfigBusy(true);
-    setTimingConfigFailed(false);
-    try {
-      if (target.scope === "exercise") {
-        if (
-          commands.updateSessionExerciseAdvancedTiming === undefined
-          || value === null
-        ) {
-          throw new Error("advanced_timing_config_unavailable");
-        }
-        const result = await commands.updateSessionExerciseAdvancedTiming({
-          sessionId,
-          sessionExerciseId: target.exercise.id,
-          expectedSessionRevision: viewRef.current.revision,
-          expectedSessionExerciseRevision: target.exercise.revision,
-          config: value,
-          nowMs: nowMs(),
-        });
-        applyAdvancedTimingResult(result);
-        applyExerciseTimingConfig(
-          target.exercise.id,
-          value,
-          result.sessionRevision,
-        );
-        scheduleTimingPanelScroll(target.exercise.id, result.sessionRevision);
-      } else {
-        const set = target.set;
-        if (set === undefined
-          || commands.updateSessionSetAdvancedTiming === undefined) {
-          throw new Error("advanced_timing_config_unavailable");
-        }
-        const result = await commands.updateSessionSetAdvancedTiming({
-          sessionId,
-          sessionSetId: set.id,
-          expectedSessionRevision: viewRef.current.revision,
-          expectedSetRevision: set.revision,
-          override: value,
-          nowMs: nowMs(),
-        });
-        applyAdvancedTimingResult(result);
-        applySetTimingConfig(
-          target.exercise.id,
-          set.id,
-          value,
-          result.sessionRevision,
-        );
-        if (target.exercise.id === activeExercise.id
-          && (set.kind === "warmup" || set.id === viewRef.current.activeSetId)) {
-          setSelectedTimingTargetSetId(set.id);
-        }
-        scheduleTimingPanelScroll(target.exercise.id, result.sessionRevision);
-      }
-      setTimingConfig(null);
-    } catch {
-      setTimingConfigFailed(true);
-    } finally {
-      setTimingConfigBusy(false);
-    }
-  };
-
-  const renderSetTimingControl = (
-    exercise: ActiveWorkoutExercise,
-    set: ActiveWorkoutSet,
-  ) => {
-    const label = set.kind === "warmup"
-      ? `Warm-up W${set.ordinal + 1}`
-      : `Working set ${set.ordinal + 1}`;
-    const testKey = `${exercise.id}-${set.id}`;
-    const timingActionLabel = `Configure ${exercise.name}, ${
-      set.kind === "warmup" ? `warm-up W${set.ordinal + 1}` : `working set ${set.ordinal + 1}`
-    } timing`;
-    const editable = set.status === "planned" || set.status === "draft";
-    const summary = editable
-      ? advancedTimingConfigSummary(set.advancedTimingOverride ?? null, "set")
-      : advancedTimingConfigSummary(
-          set.advancedTimingResolved
-            ?? set.advancedTimingOverride
-            ?? exercise.advancedTimingDefault,
-          "exercise",
-        );
-    return (
-      <View style={styles.setTimingRow} testID={`set-timing-${testKey}`}>
-        <Text
-          style={[
-            typeScale.secondary as TextStyle,
-            { color: colors.contentCardTextSecondary },
-          ]}
-          testID={`set-timing-summary-${testKey}`}
-        >
-          {`${label} timing · ${summary}`}
-        </Text>
-        {editable ? (
-          <SecondaryAction
-            disabled={
-              timingConfigBusy
-              || commands.updateSessionSetAdvancedTiming === undefined
-            }
-            label={timingActionLabel}
-            onPress={() => {
-              setTimingConfigFailed(false);
-              setTimingConfig({ scope: "set", exercise, set });
-            }}
-            testID={`set-timing-action-${exercise.id}-${set.id}`}
-          />
-        ) : (
-          <Text
-            style={[
-              typeScale.secondary as TextStyle,
-              { color: colors.contentCardTextSecondary },
-            ]}
-            testID={`set-timing-readonly-${testKey}`}
-          >
-            {`${set.status === "completed" ? "Completed" : "Skipped"} sets are read-only. Timing cannot change.`}
-          </Text>
-        )}
-      </View>
-    );
-  };
 
   const runRest = async (
     command: () => Promise<RestCommandResult>,
@@ -1398,17 +943,6 @@ function PopulatedWorkoutOverview({
         });
     }
   }, [initialView]);
-
-  useEffect(() => {
-    if (advancedTimingContext === null || advancedTimingContext === undefined) {
-      return;
-    }
-    setLatestAdvancedTimingContext((current) =>
-      current === null || advancedTimingContext.sessionRevision >= current.sessionRevision
-        ? advancedTimingContext
-        : current
-    );
-  }, [advancedTimingContext]);
 
   useEffect(() => {
     setExpandedCompactSetId((current) =>
@@ -2096,35 +1630,22 @@ function PopulatedWorkoutOverview({
         scrollOffset={revealedSetOffset}
         {...(revealedSetId === null ? {} : { scrollRestoreKey: revealedSetId })}
         {...(
-          pendingTimingPanelScroll !== null
-          && timingPanelMeasurement?.exerciseId === pendingTimingPanelScroll.exerciseId
-          && activeExerciseOffset?.exerciseId === pendingTimingPanelScroll.exerciseId
-          && activeWorkingCardOffset?.exerciseId === pendingTimingPanelScroll.exerciseId
-            ? {
+          pendingScrollTarget === null
+          || activeSet === undefined
+          || pendingScrollTarget.setId !== activeSet.id
+          || activeSetMeasurement?.setId !== activeSet.id
+          || activeExerciseOffset?.exerciseId !== activeExercise.id
+          || activeWorkingCardOffset?.exerciseId !== activeExercise.id
+            ? {}
+            : {
               measuredScrollRequest: {
-                animated: pendingTimingPanelScroll.animated,
-                targetKey: pendingTimingPanelScroll.key,
+                animated: pendingScrollTarget.animated,
+                targetKey: pendingScrollTarget.key,
                 y: activeExerciseOffset.y
                   + activeWorkingCardOffset.y
-                  + timingPanelMeasurement.y,
+                  + activeSetMeasurement.y,
               },
             }
-            : pendingScrollTarget === null
-              || activeSet === undefined
-              || pendingScrollTarget.setId !== activeSet.id
-              || activeSetMeasurement?.setId !== activeSet.id
-              || activeExerciseOffset?.exerciseId !== activeExercise.id
-              || activeWorkingCardOffset?.exerciseId !== activeExercise.id
-                ? {}
-                : {
-                  measuredScrollRequest: {
-                    animated: pendingScrollTarget.animated,
-                    targetKey: pendingScrollTarget.key,
-                    y: activeExerciseOffset.y
-                      + activeWorkingCardOffset.y
-                      + activeSetMeasurement.y,
-                  },
-                }
         )}
         stickyHeader={identityHeader}
         dock={(
@@ -2469,7 +1990,6 @@ function PopulatedWorkoutOverview({
                   set={set}
                   tone="card"
                 />
-                {renderSetTimingControl(exercise, set)}
                 </React.Fragment>
               ))}
                 </ContentCard>
@@ -2530,86 +2050,6 @@ function PopulatedWorkoutOverview({
                   tone="error"
                 />
               )}
-              {exercise.id === activeExercise.id ? (
-                <View
-                  onLayout={(event: LayoutChangeEvent) => {
-                    const y = event.nativeEvent.layout.y;
-                    setTimingPanelMeasurement((current) =>
-                      current?.exerciseId === exercise.id && current.y === y
-                        ? current
-                        : { exerciseId: exercise.id, y }
-                    );
-                  }}
-                  testID="advanced-timing-panel-measurement"
-                >
-                <AdvancedTimingIndicator
-                  busy={workingBusySetId !== null}
-                  context={timingContext}
-                  cueUnavailable={cueUnavailable}
-                  disabled={
-                    timingTargetSet === undefined
-                    || timingTargetSet.status === "completed"
-                    || timingTargetSet.status === "skipped"
-                    || timingContext === null
-                    || commands.configureAdvancedTiming === undefined
-                    || commands.startAdvancedTiming === undefined
-                  }
-                  nowMs={nowMs}
-                  onConfigureAndStart={configureAndStartAdvancedTiming}
-                  onConfigureAndStartCluster={configureAndStartClusterTiming}
-                  onBeginClusterGap={() => runAdvancedTiming((input) => {
-                    if (commands.beginAdvancedTimingClusterGap === undefined) {
-                      throw new Error("advanced_timing_unavailable");
-                    }
-                    return commands.beginAdvancedTimingClusterGap({
-                      ...input,
-                      countdownCue,
-                    });
-                  })}
-                  onPause={() => runAdvancedTiming((input) => {
-                    if (commands.pauseAdvancedTiming === undefined) {
-                      throw new Error("advanced_timing_unavailable");
-                    }
-                    return commands.pauseAdvancedTiming(input);
-                  })}
-                  onReconcile={(foregroundSinceMs) => runAdvancedTiming((input) => {
-                    if (commands.reconcileAdvancedTiming === undefined) {
-                      throw new Error("advanced_timing_unavailable");
-                    }
-                    return commands.reconcileAdvancedTiming({
-                      ...input,
-                      countdownCue,
-                      foregroundSinceMs,
-                    });
-                  })}
-                  onResume={() => runAdvancedTiming((input) => {
-                    if (commands.resumeAdvancedTiming === undefined) {
-                      throw new Error("advanced_timing_unavailable");
-                    }
-                    return commands.resumeAdvancedTiming(input);
-                  })}
-                  onSkipClusterGap={() => runAdvancedTiming((input) => {
-                    if (commands.skipAdvancedTimingClusterGap === undefined) {
-                      throw new Error("advanced_timing_unavailable");
-                    }
-                    return commands.skipAdvancedTimingClusterGap({
-                      ...input,
-                      countdownCue,
-                    });
-                  })}
-                  onStop={() => runAdvancedTiming((input) => {
-                    if (commands.stopAdvancedTiming === undefined) {
-                      throw new Error("advanced_timing_unavailable");
-                    }
-                    return commands.stopAdvancedTiming(input);
-                  })}
-                  {...(timingTargetSet?.advancedTimingResolved === undefined
-                    ? {}
-                    : { resolvedConfig: timingTargetSet.advancedTimingResolved })}
-                  targetSetId={timingTargetSet?.id ?? null}
-                />
-                </View>
-              ) : null}
               {exercise.workingSets.map((set, index) => (
                 <React.Fragment key={set.id}>
                 <SetRow
@@ -2669,7 +2109,6 @@ function PopulatedWorkoutOverview({
                     ? { overviewTestID: `overview-${exercise.id}-${set.id}` }
                     : {})}
                 />
-                {renderSetTimingControl(exercise, set)}
                 </React.Fragment>
               ))}
               {saveFailedSetId === null ? null : (
@@ -2795,22 +2234,6 @@ function PopulatedWorkoutOverview({
         scrollTestID="exercise-actions-sheet-content"
         visible={exerciseActionsVisibleForId !== null}
       >
-            {exerciseActionsVisibleForId === null ? null : (
-              <SecondaryAction
-                label="Configure timing"
-                onPress={() => {
-                  const exerciseId = exerciseActionsVisibleForId;
-                  closeExerciseActions();
-                  const target = exercisesFor(viewRef.current).find(
-                    ({ id }) => id === exerciseId,
-                  );
-                  if (target !== undefined) {
-                    setTimingConfigFailed(false);
-                    setTimingConfig({ scope: "exercise", exercise: target });
-                  }
-                }}
-              />
-            )}
             {exerciseActionsVisibleForId === null ? null : (
               <SecondaryAction
                 label="Replace exercise"
@@ -2990,29 +2413,6 @@ function PopulatedWorkoutOverview({
         restoreFocusRef={moreActionRef}
         visible={outcomeConfirmation !== null}
       />
-      {timingConfig === null ? null : (
-        <AdvancedTimingConfigSheet
-          initialValue={timingConfig.scope === "exercise"
-            ? timingConfig.exercise.advancedTimingDefault ?? null
-            : timingConfig.set?.advancedTimingOverride ?? null}
-          onCancel={() => {
-            setTimingConfig(null);
-            setTimingConfigFailed(false);
-          }}
-          onSave={(value) => {
-            void saveAdvancedTimingConfig(value);
-          }}
-          scope={timingConfig.scope}
-          visible
-        />
-      )}
-      {timingConfigFailed ? (
-        <InlineNotice
-          body="Your recorded sets and rest were not changed. Try again."
-          heading="Timing could not be saved"
-          tone="error"
-        />
-      ) : null}
       {exerciseActionCandidate?.action !== "remove" ? null : (
         <ConfirmationSheet
           body={(() => {
@@ -3119,13 +2519,6 @@ const styles = StyleSheet.create({
   },
   section: {
     gap: space[2],
-  },
-  setTimingRow: {
-    flexDirection: "row",
-    flexWrap: "wrap",
-    alignItems: "center",
-    gap: space[2],
-    justifyContent: "space-between",
   },
   exerciseSection: {
     gap: space[2],
