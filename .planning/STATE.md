@@ -5,16 +5,16 @@ milestone_name: Prototype Parity, Concurrent Plans & Garmin Import — PLANNED
 current_phase: 15
 current_phase_name: Workout Parity
 status: executing
-stopped_at: Completed 15-04-PLAN.md
-last_updated: "2026-10-10T12:45:52.172Z"
+stopped_at: Completed 15-06-PLAN.md
+last_updated: "2026-10-10T13:11:35.271Z"
 last_activity: 2026-10-10
 last_activity_desc: Phase 15 execution started
-state_head: 76281101082aa4d83d7bb1eaaafc61f5bee95556
+state_head: fabad900baaf0f70033de7f25610969ea70b9003
 progress:
   total_phases: 8
   completed_phases: 1
   total_plans: 98
-  completed_plans: 32
+  completed_plans: 33
   percent: 13
 ---
 
@@ -30,7 +30,7 @@ See: .planning/PROJECT.md (updated 2026-10-06)
 ## Current Position
 
 Phase: 15 (Workout Parity) — EXECUTING
-Plan: 5 of 13
+Plan: 6 of 13
 Status: Ready to execute
 Last activity: 2026-10-10 — Phase 15 execution started
 
@@ -72,6 +72,7 @@ Gym Tracker remains a signed personal-use Android APK/AAB with SQLite-authoritat
 | Phase 15-workout-parity P03 | 32m | 3 tasks | 8 files |
 | Phase 15 P02 | 27min | 6 tasks | 15 files |
 | Phase 15 P04 | 13min | 3 tasks | 7 files |
+| Phase 15 P06 | 1h 40m | 3 tasks | 14 files |
 
 ## Accumulated Context
 
@@ -124,6 +125,7 @@ Gym Tracker remains a signed personal-use Android APK/AAB with SQLite-authoritat
 - [Phase 15]: Phase 15: Set rows expose edit intent only; local drafts persist exclusively through explicit Save.
 - [Phase 15]: Phase 15: Completed corrections use Save committed set edit and retain the sheet draft when the revision-fenced command fails.
 - [Phase 15]: Phase 15: Complete Set remains screen-owned, duplicate-safe, and retries the exact transaction envelope.
+- [Phase 15]: Exercise rest defaults use canonical request receipts; eligible rest resolves exercise override before plan preference.
 
 ### Pending Owner Review
 
@@ -148,7 +150,7 @@ Gym Tracker remains a signed personal-use Android APK/AAB with SQLite-authoritat
 
 ## Session Continuity
 
-Last session: 2026-10-10T12:45:52.113Z
-Stopped at: Completed 15-04-PLAN.md
+Last session: 2026-10-10T13:11:35.210Z
+Stopped at: Completed 15-06-PLAN.md
 Resume file: None
 Next action: Present the complete planning set for owner review; after explicit approval, run `/gsd-execute-phase 13`.

@@ -83,7 +83,7 @@ Exactly four roots: **Workout, Calendar, Library, Progress**. Preserve SQLite au
 - [ ] **WRK-24**: Open trend via a dedicated icon and show Recent, Best, Change, six-session history and an accessible chart from comparable facts.
 - [x] **WRK-25**: Limit exercise overflow to flat between-set timing, Replace exercise and Delete exercise; keep trend separate.
 - [x] **WRK-26**: Use explicit sec controls for between-set rest and plan default rest; persist changes immediately without cadence, rest-between-reps, nested Advanced Timing or sound/haptic plan controls.
-- [ ] **WRK-27**: Show plan identity and 1.25/2.5/5 weight-increment choices with saved selection; preserve the distinction between increment preference and existing set targets.
+- [x] **WRK-27**: Show plan identity and 1.25/2.5/5 weight-increment choices with saved selection; preserve the distinction between increment preference and existing set targets.
 - [ ] **WRK-28**: Keep Edit plan after workout reachable and route to the real editor after the active session boundary, preserving schedule/history rules.
 - [ ] **WRK-29**: Open the global Add exercise picker, search available exercises, choose an exercise and add it to the active session with loading/error/retry handling.
 - [ ] **WRK-30**: Replace the chosen exercise through a contextual picker while retaining valid committed facts and requiring the domain's compatibility/impact rules.
@@ -294,7 +294,7 @@ once and remains Pending until its owning phase is implemented and verified.
 | WRK-24 | 15 | workout.trend | Pending |
 | WRK-25 | 15 | workout.exercise-menu | Complete |
 | WRK-26 | 15 | workout.timing-flat | Complete |
-| WRK-27 | 15 | workout.plan-increment | Pending |
+| WRK-27 | 15 | workout.plan-increment | Complete |
 | WRK-28 | 15 | workout.plan-after-workout | Pending |
 | WRK-29 | 15 | workout.add-exercise | Pending |
 | WRK-30 | 15 | workout.replace-exercise | Pending |
