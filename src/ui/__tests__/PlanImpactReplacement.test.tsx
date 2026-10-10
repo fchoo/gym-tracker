@@ -704,6 +704,21 @@ describe("Exercise replacement", () => {
       screen.getByRole("button", { name: "Save replacement" }),
     );
 
+    expect(await screen.findByRole("header", {
+      name: "Replace future plan exercises?",
+    })).toBeOnTheScreen();
+    expect(replaceExercise).not.toHaveBeenCalled();
+    await fireEvent.press(screen.getByRole("button", {
+      name: "Keep reviewing",
+    }));
+    expect(replaceExercise).not.toHaveBeenCalled();
+    await fireEvent.press(
+      screen.getByRole("button", { name: "Save replacement" }),
+    );
+    await fireEvent.press(screen.getByRole("button", {
+      name: "Replace exercises",
+    }));
+
     await waitFor(() => expect(replaceExercise).toHaveBeenCalledTimes(1));
     expect(replaceExercise).toHaveBeenCalledWith(expect.objectContaining({
       planId: replacementPreview.planId,
