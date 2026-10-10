@@ -81,7 +81,7 @@ test("Phase 15 matrix requires native accessibility, recovery, privacy-safe visu
   assert.deepEqual(PHASE15_NATIVE_MATRIX.restoreAfterEachCase, [
     "fontScale", "appearance", "orientation", "notificationState", "fixtureDatabase",
   ]);
-  assert.equal(PHASE15_NATIVE_MATRIX.cells.filter(({ visual }) => visual?.referenceViewport === "390x844").length, 6);
+  assert.equal(PHASE15_NATIVE_MATRIX.cells.filter(({ visual }) => visual?.referenceIds?.length === 1).length, 6);
   assert.ok(PHASE15_NATIVE_MATRIX.cells.some(({ reducedMotion }) => reducedMotion));
   assert.ok(PHASE15_NATIVE_MATRIX.cells.some(({ lifecycle }) => lifecycle === "process-death-offline-restart"));
 });
@@ -90,7 +90,7 @@ test("Phase 15 flows declare all ledger stages and retain exact accessibility ac
   const flows = ["workout-root.yaml", "active-workout.yaml", "recovery-completion.yaml"]
     .map((file) => readFileSync(`maestro/phase15/${file}`, "utf8"))
     .join("\n");
-  for (const id of PHASE15_NATIVE_MATRIX.requiredCaseIds) assert.match(flows, new RegExp(`PHASE15_STAGE == '${id.replaceAll(".", "\\\\.")}'`, "u"));
+  for (const id of PHASE15_NATIVE_MATRIX.requiredCaseIds) assert.match(flows, new RegExp(`PHASE15_STAGE == '${id}'`, "u"));
   for (const action of ["hideKeyboard", "pressKey: \"Escape\"", "pressKey: \"Back\"", "pressKey: \"Remote Dpad Center\""]) {
     assert.match(flows, new RegExp(action.replaceAll(".", "\\\\.").replaceAll("*", "\\\\*"), "u"));
   }

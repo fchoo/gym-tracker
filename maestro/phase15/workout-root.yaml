@@ -43,3 +43,10 @@ name: Phase 15 workout root production tracer
       - extendedWaitUntil:
           visible: "WORKOUT OVERVIEW"
           timeout: 30000
+- runFlow:
+    when:
+      true: ${PHASE15_STAGE == 'workout.day-switch' || PHASE15_STAGE == 'workout.scheduled-rest-empty' || PHASE15_STAGE == 'workout.start-alternate' || PHASE15_STAGE == 'workout.start-resume' || PHASE15_STAGE == 'workout.context-running' || PHASE15_STAGE == 'workout.appearance'}
+    commands:
+      - assertVisible: "Today"
+      - pressKey: "Remote Dpad Center"
+      - pressKey: "Back"

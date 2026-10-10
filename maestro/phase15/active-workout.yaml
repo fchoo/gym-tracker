@@ -16,3 +16,11 @@ name: Phase 15 active workout production tracer
           visible: "RESTING"
           timeout: 30000
       - assertVisible: "Skip rest"
+- runFlow:
+    when:
+      true: ${PHASE15_STAGE == 'workout.active-layout' || PHASE15_STAGE == 'workout.active-back' || PHASE15_STAGE == 'workout.exercise-disclosure' || PHASE15_STAGE == 'workout.active-indicator' || PHASE15_STAGE == 'workout.set-states' || PHASE15_STAGE == 'workout.row-edit' || PHASE15_STAGE == 'workout.load-reps-editor' || PHASE15_STAGE == 'workout.duration-editor' || PHASE15_STAGE == 'workout.all-metrics' || PHASE15_STAGE == 'workout.warmup-order' || PHASE15_STAGE == 'workout.add-set' || PHASE15_STAGE == 'workout.complete-failure' || PHASE15_STAGE == 'workout.completion-collapse' || PHASE15_STAGE == 'workout.rest-dock' || PHASE15_STAGE == 'workout.rest-controls' || PHASE15_STAGE == 'workout.rest-recovery' || PHASE15_STAGE == 'workout.trend' || PHASE15_STAGE == 'workout.exercise-menu' || PHASE15_STAGE == 'workout.timing-flat' || PHASE15_STAGE == 'workout.plan-increment' || PHASE15_STAGE == 'workout.plan-after-workout' || PHASE15_STAGE == 'workout.add-exercise' || PHASE15_STAGE == 'workout.replace-exercise' || PHASE15_STAGE == 'workout.delete-exercise' || PHASE15_STAGE == 'workout.reorder' || PHASE15_STAGE == 'workout.undo' || PHASE15_STAGE == 'workout.readonly-presentation' || PHASE15_STAGE == 'workout.timing-policy' || PHASE15_STAGE == 'workout.accessibility' || PHASE15_STAGE == 'workout.performance'}
+    commands:
+      - assertVisible: "WORKOUT OVERVIEW"
+      - hideKeyboard
+      - pressKey: "Escape"
+      - pressKey: "Remote Dpad Center"

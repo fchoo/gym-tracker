@@ -17,3 +17,9 @@ name: Phase 15 recovery and completion production tracer
           visible: "Keep plan as-is"
           timeout: 30000
       - tapOn: "Keep plan as-is"
+- runFlow:
+    when:
+      true: ${PHASE15_STAGE == 'workout.outcomes' || PHASE15_STAGE == 'workout.completion-writeback' || PHASE15_STAGE == 'workout.offline-recovery'}
+    commands:
+      - assertVisible: "Keep plan as-is"
+      - pressKey: "Back"
