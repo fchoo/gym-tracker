@@ -18,7 +18,7 @@ import {
   type BackupEnvelopeCryptoPort,
 } from "../../src/domains/portability/backupFormat";
 import {
-  LOGICAL_BACKUP_V2_TABLES,
+  logicalBackupTablesForVersion,
   type LogicalBackupSnapshot,
 } from "../../src/domains/portability/backupContracts";
 import {
@@ -199,8 +199,9 @@ function legacyV2Archive(
   snapshot: LogicalBackupSnapshot,
   ownerNamespace: string,
 ): LogicalBackupSnapshot {
+  const tablesForSchema27 = logicalBackupTablesForVersion(2, 27);
   const tables = Object.freeze(Object.fromEntries(
-    LOGICAL_BACKUP_V2_TABLES.map((table) => [
+    tablesForSchema27.map((table) => [
       table,
       table === "portable_owner_identity"
         ? [{ id: 1, owner_namespace: ownerNamespace }]
@@ -208,7 +209,7 @@ function legacyV2Archive(
     ]),
   ));
   const rowCounts = Object.freeze(Object.fromEntries(
-    LOGICAL_BACKUP_V2_TABLES.map((table) => [table, tables[table]!.length]),
+    tablesForSchema27.map((table) => [table, tables[table]!.length]),
   ));
   return Object.freeze({
     ...snapshot,
