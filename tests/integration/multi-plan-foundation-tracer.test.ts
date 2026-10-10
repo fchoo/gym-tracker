@@ -77,6 +77,30 @@ async function migratedKernel(): Promise<SqliteKernel> {
 }
 
 describe("minimum Running activation and ordered occurrences", () => {
+  it("creates, reopens, replays, and preserves an inactive zero-session aggregate", async () => {
+    const kernel = await migratedKernel();
+    const repository = createRunningPlanRepository(kernel);
+    const input = {
+      requestId: "aggregate-zero-create",
+      requestSha256: "f".repeat(64),
+      plan: {
+        version: 1 as const,
+        id: "aggregate-zero", name: "Zero session Running", revision: 1,
+        createdAtMs: 10_000, goal: {
+          version: 1 as const, id: "aggregate-zero-goal", planId: "aggregate-zero", revision: 1,
+          goalDistanceMeters: 5_000, trainingDays: ["Monday" as const], createdAtMs: 10_000,
+        }, sessions: [],
+      },
+    };
+
+    const committed = await repository.createInactiveAggregate(input);
+    expect(committed.active).toBe(false);
+    expect(committed.sessions).toEqual([]);
+    await expect(repository.createInactiveAggregate(input)).resolves.toEqual(committed);
+    await expect(repository.readAggregate("aggregate-zero")).resolves.toEqual(committed);
+    await expect(kernel.queryAll<{ count: number }>("SELECT COUNT(*) AS count FROM running_session_revisions WHERE plan_id = ?", ["aggregate-zero"])).resolves.toEqual([{ count: 0 }]);
+  });
+
   it("requires a Recovery revision and at least one stable slot", () => {
     expect(evaluateRunningReadiness({ hasRecoveryRevision: false, slotCount: 2 })).toEqual({ ready: false, reason: "missing_recovery" });
     expect(evaluateRunningReadiness({ hasRecoveryRevision: true, slotCount: 0 })).toEqual({ ready: false, reason: "missing_slots" });

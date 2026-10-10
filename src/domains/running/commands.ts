@@ -1,8 +1,10 @@
 import { createHash } from "node:crypto";
 
 import {
+  parseRunningPlanAggregate,
   parseRunningGoal,
   parseRunningSessionRevision,
+  type RunningPlanAggregate,
   type RunningGoal,
   type RunningSessionRevision,
 } from "./contracts";
@@ -52,6 +54,17 @@ export type RunningSourceGraphRepository = Readonly<{
   saveSourceGraph(input: SaveRunningSourceGraphInput): Promise<Readonly<Record<string, unknown>>>;
 }>;
 
+export type CreateInactiveRunningPlanInput = Readonly<{
+  requestId: string;
+  requestSha256: string;
+  plan: Omit<RunningPlanAggregate, "active">;
+}>;
+
+export type RunningAggregateRepository = Readonly<{
+  createInactiveAggregate(input: CreateInactiveRunningPlanInput): Promise<RunningPlanAggregate>;
+  readAggregate(planId: string): Promise<RunningPlanAggregate | null>;
+}>;
+
 function stableJson(value: unknown): string {
   if (Array.isArray(value)) return `[${value.map(stableJson).join(",")}]`;
   if (typeof value === "object" && value !== null) {
@@ -99,4 +112,15 @@ export async function saveRunningSourceGraph(
 ): Promise<Readonly<Record<string, unknown>>> {
   assertInput(input);
   return repository.saveSourceGraph(input);
+}
+
+export async function createInactiveRunningPlan(
+  repository: RunningAggregateRepository,
+  input: CreateInactiveRunningPlanInput,
+): Promise<RunningPlanAggregate> {
+  if (!identifier(input.requestId) || !SHA256.test(input.requestSha256)) {
+    throw new RunningCommandError("running_command_hash_invalid");
+  }
+  const plan = parseRunningPlanAggregate({ ...input.plan, active: false });
+  return repository.createInactiveAggregate({ ...input, plan });
 }

@@ -1,8 +1,13 @@
 import type { SqliteKernel } from "../sqliteKernel";
-import { evaluateRunningReadiness, type RunningReadiness } from "../../../domains/running/contracts";
+import {
+  evaluateRunningReadiness,
+  parseRunningPlanAggregate,
+  type RunningPlanAggregate,
+  type RunningReadiness,
+} from "../../../domains/running/contracts";
 import { parseLocalDate, weekdayForLocalDate } from "../../../domains/scheduling/localDate";
 import { createScheduleRepository } from "./scheduleRepository";
-import type { SaveRunningSourceGraphInput } from "../../../domains/running/commands";
+import type { CreateInactiveRunningPlanInput, SaveRunningSourceGraphInput } from "../../../domains/running/commands";
 
 export type RunningPlanReceipt = Readonly<{
   requestId: string;
@@ -39,6 +44,69 @@ export type CreateInactiveMinimumRunningPlanInput = Readonly<{
 
 export function createRunningPlanRepository(kernel: SqliteKernel) {
   return Object.freeze({
+    async readAggregate(planId: string): Promise<RunningPlanAggregate | null> {
+      const [event] = await kernel.queryAll<{ payload_json: string }>(
+        `SELECT payload_json FROM running_plan_events
+         WHERE plan_id = ? AND json_extract(payload_json, '$.aggregate.version') = 1
+         ORDER BY created_at_ms DESC, id DESC LIMIT 1`,
+        [planId],
+      );
+      if (event === undefined) return null;
+      const payload = JSON.parse(event.payload_json) as { aggregate?: unknown };
+      return parseRunningPlanAggregate(payload.aggregate);
+    },
+    async createInactiveAggregate(input: CreateInactiveRunningPlanInput): Promise<RunningPlanAggregate> {
+      const aggregate = parseRunningPlanAggregate({ ...input.plan, active: false });
+      return kernel.write(async (transaction) => {
+        const [receipt] = await transaction.queryAll<{ request_sha256: string; result_json: string }>(
+          "SELECT request_sha256, result_json FROM running_plan_receipts WHERE request_id = ?", [input.requestId],
+        );
+        if (receipt !== undefined) {
+          if (receipt.request_sha256 !== input.requestSha256) throw new Error("running_plan_receipt_conflict");
+          return parseRunningPlanAggregate((JSON.parse(receipt.result_json) as { aggregate?: unknown }).aggregate);
+        }
+        const [existing] = await transaction.queryAll<{ id: string }>("SELECT id FROM plans WHERE id = ?", [aggregate.id]);
+        if (existing !== undefined) throw new Error("running_plan_revision_conflict");
+        await transaction.execute(
+          `INSERT INTO plans (id, content_pack_id, origin, source_namespace, upstream_id, name, days_per_week, audience, goal, estimate_minutes, attribution, is_active, revision, plan_kind)
+           VALUES (?, NULL, 'custom', NULL, NULL, ?, ?, 'Owner', 'Running', 1, 'Owner-authored', 0, ?, 'running')`,
+          [aggregate.id, aggregate.name, Math.max(1, aggregate.goal.trainingDays.length), aggregate.revision],
+        );
+        await transaction.execute("INSERT INTO plan_days(id, plan_id, ordinal, name, revision) VALUES (?, ?, 0, 'Running schedule anchor', 1)", [
+          `${aggregate.id}:anchor`, aggregate.id,
+        ]);
+        await transaction.execute("INSERT INTO running_plans(plan_id, status, revision, created_at_ms) VALUES (?, 'draft', ?, ?)", [aggregate.id, aggregate.revision, aggregate.createdAtMs]);
+        await transaction.execute("INSERT INTO running_goals(id, plan_id, goal_json, revision, created_at_ms) VALUES (?, ?, ?, ?, ?)", [
+          aggregate.goal.id, aggregate.id, JSON.stringify(aggregate.goal), aggregate.goal.revision, aggregate.goal.createdAtMs,
+        ]);
+        for (const { session, slot } of aggregate.sessions) {
+          await transaction.execute("INSERT INTO running_session_roots(id, plan_id, session_kind, current_revision, created_at_ms) VALUES (?, ?, ?, ?, ?)", [
+            session.rootId, aggregate.id, session.sessionKind, session.revision, session.createdAtMs,
+          ]);
+          await transaction.execute("INSERT INTO running_session_revisions(id, plan_id, session_kind, revision, definition_json, created_at_ms) VALUES (?, ?, ?, ?, ?, ?)", [
+            session.id, aggregate.id, session.sessionKind, session.revision, JSON.stringify(session), session.createdAtMs,
+          ]);
+          await transaction.execute("INSERT INTO running_session_slot_roots(id, plan_id, weekday, created_at_ms) VALUES (?, ?, ?, ?)", [
+            slot.rootId, aggregate.id, slot.weekday, aggregate.createdAtMs,
+          ]);
+          await transaction.execute(`INSERT INTO running_session_slot_revisions (id, slot_root_id, revision, ordinal, session_root_id, session_revision_id, created_at_ms)
+             VALUES (?, ?, ?, ?, ?, ?, ?)`, [slot.id, slot.rootId, slot.revision, slot.ordinal, session.rootId, session.id, aggregate.createdAtMs]);
+          await transaction.execute("INSERT INTO running_session_slots(id, plan_id, weekday, ordinal, session_revision_id, revision) VALUES (?, ?, ?, ?, ?, ?)", [
+            slot.rootId, aggregate.id, slot.weekday, slot.ordinal, session.id, slot.revision,
+          ]);
+        }
+        await transaction.execute(`INSERT INTO owned_plan_schedules (id, plan_id, lifecycle, revision, activated_at_ms, deactivated_at_ms, plan_kind)
+           VALUES (?, ?, 'inactive', 1, ?, ?, 'running')`, [
+          `${aggregate.id}:schedule`, aggregate.id, aggregate.createdAtMs, aggregate.createdAtMs,
+        ]);
+        const result = Object.freeze({ aggregate });
+        await transaction.execute(`INSERT INTO running_plan_events(id, plan_id, event_type, payload_json, created_at_ms)
+           VALUES (?, ?, 'created', ?, ?)`, [`${input.requestId}:event`, aggregate.id, JSON.stringify(result), aggregate.createdAtMs]);
+        await transaction.execute(`INSERT INTO running_plan_receipts (request_id, request_sha256, operation, plan_id, expected_plan_revision, result_json, committed_at_ms)
+           VALUES (?, ?, 'create', ?, 0, ?, ?)`, [input.requestId, input.requestSha256, aggregate.id, JSON.stringify(result), aggregate.createdAtMs]);
+        return aggregate;
+      });
+    },
     async saveSourceGraph(input: SaveRunningSourceGraphInput): Promise<Readonly<Record<string, unknown>>> {
       return kernel.write(async (transaction) => {
         const [receipt] = await transaction.queryAll<{

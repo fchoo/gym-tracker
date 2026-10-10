@@ -175,6 +175,33 @@ export const RunningGoalV1Schema = z.strictObject({
 
 export type RunningGoal = z.infer<typeof RunningGoalV1Schema>;
 
+/**
+ * The authoring aggregate is the only Running shape exposed above the SQLite
+ * boundary.  Session roots and slots deliberately remain source facts so a
+ * later edit can append a revision without changing either durable identity.
+ */
+export type RunningPlanSession = Readonly<{
+  slot: Readonly<{
+    id: string;
+    rootId: string;
+    weekday: "Monday" | "Tuesday" | "Wednesday" | "Thursday" | "Friday" | "Saturday" | "Sunday";
+    revision: number;
+    ordinal: number;
+  }>;
+  session: RunningSessionRevision;
+}>;
+
+export type RunningPlanAggregate = Readonly<{
+  version: 1;
+  id: string;
+  name: string;
+  revision: number;
+  active: false;
+  createdAtMs: number;
+  goal: RunningGoal;
+  sessions: readonly RunningPlanSession[];
+}>;
+
 export function parseRunningSessionRevision(input: unknown): RunningSessionRevision {
   const result = RunningSessionRevisionV1Schema.safeParse(input);
   if (!result.success) {
@@ -189,6 +216,40 @@ export function parseRunningGoal(input: unknown): RunningGoal {
     throw new RunningBoundaryError("validation", "running_goal_invalid");
   }
   return result.data;
+}
+
+export function parseRunningPlanAggregate(input: unknown): RunningPlanAggregate {
+  const aggregate = input as RunningPlanAggregate;
+  if (
+    aggregate?.version !== 1 || typeof aggregate.id !== "string" || aggregate.id.trim() === ""
+    || typeof aggregate.name !== "string" || aggregate.name.trim() === "" || aggregate.active !== false
+    || !Number.isSafeInteger(aggregate.revision) || aggregate.revision < 1
+    || !Number.isSafeInteger(aggregate.createdAtMs) || aggregate.createdAtMs < 0
+    || !Array.isArray(aggregate.sessions)
+  ) throw new RunningBoundaryError("validation", "running_goal_invalid");
+  const goal = parseRunningGoal(aggregate.goal);
+  if (goal.planId !== aggregate.id) throw new RunningBoundaryError("validation", "running_goal_invalid");
+  const slotKeys = new Set<string>();
+  const sessionRoots = new Set<string>();
+  for (const entry of aggregate.sessions) {
+    const session = parseRunningSessionRevision(entry.session);
+    if (session.planId !== aggregate.id || sessionRoots.has(session.rootId)) {
+      throw new RunningBoundaryError("validation", "running_session_invalid");
+    }
+    sessionRoots.add(session.rootId);
+    const slot = entry.slot;
+    if (!slot || typeof slot.id !== "string" || typeof slot.rootId !== "string"
+      || !WeekdaySchema.safeParse(slot.weekday).success || !Number.isSafeInteger(slot.ordinal) || slot.ordinal < 0
+      || !Number.isSafeInteger(slot.revision) || slot.revision < 1) {
+      throw new RunningBoundaryError("validation", "running_session_invalid");
+    }
+    const key = `${slot.weekday}:${slot.ordinal}`;
+    if (slotKeys.has(key)) throw new RunningBoundaryError("validation", "running_session_invalid");
+    slotKeys.add(key);
+  }
+  return Object.freeze({ ...aggregate, goal, sessions: Object.freeze(aggregate.sessions.map((entry) => Object.freeze({
+    slot: Object.freeze({ ...entry.slot }), session: parseRunningSessionRevision(entry.session),
+  }))) });
 }
 
 export type RunningReadiness = Readonly<{
