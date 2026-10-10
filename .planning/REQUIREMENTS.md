@@ -130,7 +130,7 @@ Exactly four roots: **Workout, Calendar, Library, Progress**. Preserve SQLite au
 - [x] **LIB-06**: Route every Create plan entry, including true empty Plans, to one neutral Strength/Running chooser explaining that creation does not activate.
 - [x] **LIB-07**: Show No plans yet and Create a strength or running plan to get started with the same chooser action.
 - [ ] **LIB-08**: Add a plan summary route with active/inactive status, schedule, history, source and training days before editing actions.
-- [ ] **LIB-09**: Provide Edit plan, Edit schedule, Duplicate, Archive plan/confirmation and Reactivate plan with preserved history and explicit activation.
+- [x] **LIB-09**: Provide Edit plan, Edit schedule, Duplicate, Archive plan/confirmation and Reactivate plan with preserved history and explicit activation.
 - [x] **LIB-10**: Retain immutable starter preview, source/equipment/schedule/training days, Preview activation and Save editable copy.
 - [x] **LIB-11**: Preview the actual affected schedules and create/activate a reviewed owned copy only on confirmation; Save without activating stays inactive.
 - [x] **LIB-12**: Keep template-update comparison and Create new copy reachable through the existing activation update query route, preserving previous owned history.
@@ -145,7 +145,7 @@ Exactly four roots: **Workout, Calendar, Library, Progress**. Preserve SQLite au
 - [x] **LIB-21**: Create a local custom exercise with valid Name, Tracking and Equipment fields, then open its detail; preserve all supported metric-profile choices.
 - [x] **LIB-22**: Preserve existing edit?mode=copy and edit?mode=metric routes, future-target impact, policy choice, confirmation and active-workout guard.
 - [x] **LIB-23**: Preserve loading, query failure/retry, refresh failure, deleted/missing detail and content-update review/dismiss states in all Library flows.
-- [ ] **LIB-24**: Show saved goal/pacing/schedule and derived weekly sessions with Sync Garmin / match activity, Edit running plan and collision entry points.
+- [x] **LIB-24**: Show saved goal/pacing/schedule and derived weekly sessions with Sync Garmin / match activity, Edit running plan and collision entry points.
 - [x] **LIB-25**: Open Running creation from the chooser with goal, benchmark and structured sessions; save inactive and make Garmin connection optional afterward.
 - [x] **LIB-26**: Edit goal distance/time and weekly sessions, validate invalid goal input, and persist edits that the detail and Progress can read.
 - [x] **LIB-27**: Add/edit a session with Workout type, Day, Warm-up, Cool-down, Session preview and Save session; preserve common fields when changing type.
@@ -335,7 +335,7 @@ once and remains Pending until its owning phase is implemented and verified.
 | LIB-06 | 17 | library.plan-type-chooser | Complete |
 | LIB-07 | 17 | library.empty-plans | Complete |
 | LIB-08 | 17 | library.owned-detail | Pending |
-| LIB-09 | 17 | library.owned-actions | Pending |
+| LIB-09 | 17 | library.owned-actions | Complete |
 | LIB-10 | 17 | library.starter-detail | Complete |
 | LIB-11 | 17 | library.starter-activation | Complete |
 | LIB-12 | 17 | library.template-update | Complete |
@@ -350,7 +350,7 @@ once and remains Pending until its owning phase is implemented and verified.
 | LIB-21 | 17 | library.create-exercise | Complete |
 | LIB-22 | 17 | library.copy-metric-migration | Complete |
 | LIB-23 | 17 | library.library-load-errors | Complete |
-| LIB-24 | 17 | library.running-detail | Pending |
+| LIB-24 | 17 | library.running-detail | Complete |
 | LIB-25 | 17 | library.running-create | Complete |
 | LIB-26 | 17 | library.running-goal-edit | Complete |
 | LIB-27 | 17 | library.running-session-common | Complete |

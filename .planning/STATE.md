@@ -5,16 +5,16 @@ milestone_name: Prototype Parity, Concurrent Plans & Garmin Import — PLANNED
 current_phase: 17
 current_phase_name: Library & Running Plans
 status: executing
-stopped_at: Completed 17-02-PLAN.md
-last_updated: "2026-10-10T19:20:31.707Z"
+stopped_at: Completed 17-08-PLAN.md
+last_updated: "2026-10-10T19:38:48.840Z"
 last_activity: 2026-10-11
 last_activity_desc: Phase 17 execution started
-state_head: d051afadb2c11645e0608da8dccb82ab299b3d38
+state_head: bbe95c9d699345b5bd5931cc494dea737fe21f3a
 progress:
   total_phases: 8
   completed_phases: 1
   total_plans: 98
-  completed_plans: 48
+  completed_plans: 49
   percent: 13
 ---
 
@@ -30,7 +30,7 @@ See: .planning/PROJECT.md (updated 2026-10-06)
 ## Current Position
 
 Phase: 17 (Library & Running Plans) — EXECUTING
-Plan: 8 of 14
+Plan: 9 of 14
 Status: Ready to execute
 Last activity: 2026-10-11 — Phase 17 execution started
 
@@ -88,6 +88,7 @@ Gym Tracker remains a signed personal-use Android APK/AAB with SQLite-authoritat
 | Phase 17 P07 | 45m | 3 tasks | 13 files |
 | Phase 17 P09 | 2h 7m | 2 tasks | 14 files |
 | Phase 17 P02 | 7m | 3 tasks | 8 files |
+| Phase 17 P08 | 13m | 3 tasks | 19 files |
 
 ## Accumulated Context
 
@@ -175,6 +176,9 @@ Gym Tracker remains a signed personal-use Android APK/AAB with SQLite-authoritat
 - [Phase 17]: Create-plan navigation is neutral: only an explicit chooser choice enters Strength or Running authoring, and neither transition can activate a plan.
 - [Phase 17]: The Library runtime returns a sport-aware active collection from one batched snapshot; duplicate active rows for one sport fail closed instead of being hidden.
 - [Phase 17]: True empty is determined from the new authoritative active collection plus persisted owned plans, while legacy test snapshots remain backwards-compatible during the migration.
+- [Phase 17]: [Phase 17]: Running lifecycle is source-derived from plans.is_active plus running_plans.status; routes never infer or write lifecycle facts.
+- [Phase 17]: [Phase 17]: Running activation atomically replaces only the same-sport active pair; Strength remains untouched.
+- [Phase 17]: [Phase 17]: Archived Running plans retain immutable history and reactivate as inactive, requiring a fresh activation review.
 
 ### Pending Owner Review
 
@@ -199,7 +203,7 @@ Gym Tracker remains a signed personal-use Android APK/AAB with SQLite-authoritat
 
 ## Session Continuity
 
-Last session: 2026-10-10T19:20:31.551Z
-Stopped at: Completed 17-02-PLAN.md
+Last session: 2026-10-10T19:38:48.664Z
+Stopped at: Completed 17-08-PLAN.md
 Resume file: None
 Next action: Present the complete planning set for owner review; after explicit approval, run `/gsd-execute-phase 13`.
