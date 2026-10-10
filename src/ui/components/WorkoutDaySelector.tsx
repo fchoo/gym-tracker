@@ -21,7 +21,14 @@ export function WorkoutDaySelector({
 }>) {
   const { colors } = useAppTheme();
   const refs = useRef<Array<View | null>>([]);
-  const selectable = useMemo(() => items.slice(0, 5), [items]);
+  const selectable = useMemo(() => {
+    const selectedIndex = Math.max(0, items.findIndex(({ id }) => id === selectedId));
+    const start = Math.min(
+      Math.max(0, selectedIndex - 2),
+      Math.max(0, items.length - 5),
+    );
+    return items.slice(start, start + 5);
+  }, [items, selectedId]);
   const move = (index: number) => {
     const next = selectable[index];
     if (next === undefined) return;
@@ -32,7 +39,9 @@ export function WorkoutDaySelector({
   return (
     <View accessibilityLabel="Workout day previews" accessibilityRole="tablist" style={styles.row}>
       {selectable.map((item, index) => {
-        const selected = item.id === selectedId;
+        const selected = item.id === selectedId || (
+          items.every(({ id }) => id !== selectedId) && index === 0
+        );
         return (
           <FocusablePressable
             accessibilityHint={selected
@@ -59,8 +68,8 @@ export function WorkoutDaySelector({
             style={[
               styles.item,
               {
-                backgroundColor: selected ? colors.surfaceSubtle : colors.contentCard,
-                borderColor: selected ? colors.orange : colors.contentCardBorder,
+                backgroundColor: selected ? colors.contentCardSelected : colors.contentCard,
+                borderColor: selected ? colors.focusRing : colors.contentCardBorder,
               },
             ]}
             testID={`workout-day-preview-${item.id}`}

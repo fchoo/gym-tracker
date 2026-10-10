@@ -27,4 +27,23 @@ describe("WorkoutDaySelector", () => {
     expect(screen.getByTestId("workout-day-preview-mon")).toHaveProp("focusable", false);
     expect(Object.keys(WorkoutDaySelector)).not.toContain("onReorder");
   });
+
+  it("centres a six-plus item preview window on the selected occurrence with one selected tab stop", async () => {
+    const week = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"].map((label) => ({
+      id: label.toLowerCase(), label, detail: `${label} preview`,
+    }));
+    await render(<AppearanceProvider><WorkoutDaySelector items={week} selectedId="sat" onSelect={jest.fn()} /></AppearanceProvider>);
+
+    const tabs = screen.getAllByRole("tab");
+    expect(tabs).toHaveLength(5);
+    expect(screen.queryByTestId("workout-day-preview-mon")).toBeNull();
+    expect(screen.getByTestId("workout-day-preview-sat")).toHaveProp("focusable", true);
+    expect(screen.getByTestId("workout-day-preview-sat")).toBeSelected();
+    expect(screen.getByTestId("workout-day-preview-sat")).toHaveStyle({
+      backgroundColor: "#DCE9F9",
+      borderColor: "#195FAE",
+    });
+    expect(tabs.filter((tab) => tab.props.accessibilityState.selected)).toHaveLength(1);
+    expect(tabs.filter((tab) => tab.props.focusable)).toHaveLength(1);
+  });
 });
