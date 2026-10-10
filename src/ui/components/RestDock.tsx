@@ -8,8 +8,6 @@ import {
   Pause,
   Play,
   SkipForward,
-  ChevronDown,
-  ChevronUp,
   type LucideIcon,
 } from "lucide-react-native";
 import {
@@ -162,6 +160,7 @@ function RestTextControl({
 export function RestDock({
   state,
   nowMs,
+  exerciseName,
   nextSetIndex,
   nextTarget,
   notificationPermission,
@@ -178,6 +177,7 @@ export function RestDock({
 }: Readonly<{
   state: Extract<RestStateV1, { state: "running" | "paused" }>;
   nowMs: () => number;
+  exerciseName?: string;
   nextSetIndex: number;
   nextTarget: string;
   notificationPermission: RestNotificationPermission;
@@ -198,7 +198,6 @@ export function RestDock({
 }>) {
   const { colors } = useAppTheme();
   const [displayNowMs, setDisplayNowMs] = useState(nowMs());
-  const [expanded, setExpanded] = useState(false);
   const expiredRef = useRef(false);
   const announcedRef = useRef<string | null>(null);
   const appStateRef = useRef<AppStateStatus>(AppState.currentState);
@@ -329,9 +328,8 @@ export function RestDock({
     });
   }, [countdownCue, remainingSeconds, restSoundEnabled, state.state]);
 
-  const label = state.state === "paused"
-    ? `REST PAUSED · NEXT: SET ${nextSetIndex} AT ${nextTarget}`
-    : `RESTING · NEXT: SET ${nextSetIndex} AT ${nextTarget}`;
+  const status = state.state === "paused" ? "REST PAUSED" : "RESTING";
+  const context = `${exerciseName ?? "Next exercise"} · working set ${nextSetIndex} next`;
 
   return (
     <View
@@ -356,7 +354,15 @@ export function RestDock({
           { color: colors.textSecondary },
         ]}
       >
-        {label}
+        {status}
+      </Text>
+      <Text
+        style={[
+          typeScale.secondary as TextStyle,
+          { color: colors.textSecondary },
+        ]}
+      >
+        {context}
       </Text>
       <Text
         accessibilityLabel={`${formatDuration(remainingMs)} remaining`}
@@ -368,15 +374,6 @@ export function RestDock({
       >
         {formatDuration(remainingMs)}
       </Text>
-      <RestControl
-        accessibilityLabel={expanded
-          ? "Collapse rest controls"
-          : "Expand rest controls"}
-        disabled={false}
-        icon={expanded ? ChevronUp : ChevronDown}
-        onPress={() => setExpanded((current) => !current)}
-        testID="rest-collapse-toggle"
-      />
       {announcement === null ? null : (
         <Text
           accessibilityLiveRegion="polite"
@@ -388,14 +385,13 @@ export function RestDock({
           {announcement}
         </Text>
       )}
-      {expanded ? (
-        <View style={styles.controls} testID="rest-controls">
-          <RestControl
-            accessibilityLabel="Skip rest"
-            disabled={busy}
-            icon={SkipForward}
-            onPress={onSkip}
-            testID="rest-control-Skip rest"
+      <View style={styles.controls} testID="rest-controls">
+          <RestTextControl
+            accessibilityLabel="Subtract 15 seconds from rest"
+            disabled={busy || remainingMs === 0}
+            label="−15"
+            onPress={() => onAdjust(-15_000)}
+            testID="rest-control-Subtract 15 seconds from rest"
           />
           <RestControl
             accessibilityLabel={state.state === "paused" ? "Resume rest" : "Pause rest"}
@@ -407,38 +403,20 @@ export function RestDock({
             }`}
           />
           <RestTextControl
-            accessibilityLabel="Subtract 15 seconds"
-            disabled={busy || remainingMs === 0}
-            label="−15"
-            onPress={() => onAdjust(-15_000)}
-            testID="rest-control-Subtract 15 seconds"
-          />
-          <RestTextControl
-            accessibilityLabel="Add 15 seconds"
+            accessibilityLabel="Add 15 seconds to rest"
             disabled={busy || remainingMs === 0}
             label="+15"
             onPress={() => onAdjust(15_000)}
-            testID="rest-control-Add 15 seconds"
+            testID="rest-control-Add 15 seconds to rest"
           />
-        </View>
-      ) : null}
-      {expanded && undo !== undefined ? (
-        <View style={styles.undo}>
-          <Text
-            style={[
-              typeScale.secondary as TextStyle,
-              { color: colors.textSecondary },
-            ]}
-          >
-            {`Set ${undo.setIndex} saved · Undo set (${undo.secondsRemaining} sec)`}
-          </Text>
-          <SecondaryAction
+          <RestControl
+            accessibilityLabel="Skip rest"
             disabled={busy}
-            label="Undo completed set"
-            onPress={undo.onUndo}
+            icon={SkipForward}
+            onPress={onSkip}
+            testID="rest-control-Skip rest"
           />
         </View>
-      ) : null}
       {notificationPermission === "denied" ? (
         <InlineNotice
           action={

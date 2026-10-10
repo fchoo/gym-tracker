@@ -154,14 +154,11 @@ describe("Plan 02-29 RestDock", () => {
     });
 
     await fireEvent.press(screen.getByRole("button", {
-      name: "Expand rest controls",
-    }));
-    await fireEvent.press(screen.getByRole("button", {
-      name: "Subtract 15 seconds",
+      name: "Subtract 15 seconds from rest",
     }));
     await fireEvent.press(screen.getByRole("button", { name: "Pause rest" }));
     await fireEvent.press(screen.getByRole("button", {
-      name: "Add 15 seconds",
+      name: "Add 15 seconds to rest",
     }));
     await fireEvent.press(screen.getByRole("button", { name: "Skip rest" }));
     expect(onAdjust).toHaveBeenNthCalledWith(1, -15_000);
@@ -192,7 +189,7 @@ describe("Plan 02-29 RestDock", () => {
         />
       </AppearanceProvider>,
     );
-    expect(screen.getByText("REST PAUSED · NEXT: SET 2 AT 60 kg × 8"))
+    expect(screen.getByText("REST PAUSED"))
       .toBeOnTheScreen();
     expect(screen.getByText("01:00")).toBeOnTheScreen();
     await fireEvent.press(screen.getByRole("button", { name: "Resume rest" }));
@@ -562,10 +559,6 @@ describe("Plan 02-29 RestDock", () => {
       notificationPermission: "denied",
       onOpenSettings,
     });
-    await fireEvent.press(screen.getByRole("button", {
-      name: "Expand rest controls",
-    }));
-
     expect(screen.getByText("Background rest alerts are off"))
       .toBeOnTheScreen();
     expect(screen.getByText(
@@ -574,9 +567,7 @@ describe("Plan 02-29 RestDock", () => {
     expect(screen.getByRole("button", { name: "Pause rest" }))
       .toBeOnTheScreen();
     const tree = JSON.stringify(rendered.toJSON());
-    expect(tree.indexOf("RESTING · NEXT: SET 2 AT 60 kg × 8"))
-      .toBeLessThan(tree.indexOf("Background rest alerts are off"));
-    expect(tree.indexOf("Expand rest controls"))
+    expect(tree.indexOf("RESTING"))
       .toBeLessThan(tree.indexOf("Background rest alerts are off"));
     expect(tree.indexOf("Skip rest"))
       .toBeLessThan(tree.indexOf("Background rest alerts are off"));

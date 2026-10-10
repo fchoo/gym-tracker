@@ -1685,6 +1685,7 @@ function PopulatedWorkoutOverview({
         ) ? (
           <RestDock
             busy={restBusy}
+            exerciseName={activeExercise.name}
             nextSetIndex={activeIndex + 1}
             nextTarget={nextTarget}
             notificationPermission={notificationPermission}
