@@ -12,6 +12,7 @@ import {
   PHASE15_VISUAL_REFERENCES,
 } from "../src/testing/contracts/phase15Workout.contract.ts";
 import { sourceTreeSha256 } from "./source-tree-digest.mjs";
+import { validatePhase15WorkoutBenchmarkEvidence } from "./benchmark-phase15-workout.mjs";
 
 const ROOT = process.cwd();
 const HASH = /^[a-f0-9]{64}$/u;
@@ -90,7 +91,13 @@ function validateCrossCutting(evidence) {
   hash(evidence.accessibility?.keyboard_dpad_trace_sha256, "accessibility_trace_invalid");
   hash(evidence.recovery?.offline_restart_trace_sha256, "recovery_trace_invalid");
   if (evidence.recovery?.process_death_verified !== true) fail("recovery_invalid");
-  if (evidence.performance?.sample_count < 100 || evidence.performance?.render_transition_p95_ms > 150 || evidence.performance?.active_js_task_max_ms > 50) fail("performance_invalid");
+  try {
+    const summary = validatePhase15WorkoutBenchmarkEvidence(evidence.performance, evidence.manifest);
+    if (summary.sample_count !== evidence.performance.sample_count || summary.render_transition_p95_ms !== evidence.performance.render_transition_p95_ms || summary.active_js_task_max_ms !== evidence.performance.active_js_task_max_ms) fail("performance_summary_invalid");
+  } catch (error) {
+    if (error instanceof Error && error.message.startsWith("phase15_")) throw error;
+    fail("performance_invalid");
+  }
   if (evidence.timing?.owner_record_sha256 !== TIM_OWNER_RECORD_SHA256 || evidence.timing?.retirement_evidence_sha256 !== TIM_RETIREMENT_EVIDENCE_SHA256 || evidence.timing?.selection !== "retire-playback" || evidence.timing?.legacy_playback_compatibility !== false || evidence.timing?.zero_cue_lifecycle_verified !== true) fail("tim_invalid");
 }
 
@@ -121,12 +128,14 @@ export function createPhase15EvidenceFixture() {
   const cases = PHASE15_REQUIRED_CASES.map((entry, index) => ({ id: entry.id, evidence_path: entry.evidence_path, status: "passed", source_tree_sha256: manifest.source_tree_sha256, duration_ms: index + 1, opaque_scoped_id: syntheticHash(entry.id).slice(0, 32), runtime: { sqlite_contract: "expo-sqlite-authoritative", fixture_only: false }, action: { receipt_sha256: syntheticHash(`${entry.id}:receipt`) }, semantic: { tree_sha256: syntheticHash(`${entry.id}:semantic`), labels: ["Workout"], roles: ["button"], actions: ["activate"] }, focus: { trace_sha256: syntheticHash(`${entry.id}:focus`), restored: true, keyboard_dpad_activated: true }, geometry: { min_target_dp: 48, text_scale: 2, reduced_motion: true } }));
   const visuals = Object.entries(PHASE15_VISUAL_REFERENCES).map(([reference_id, reference_sha256]) => { const native_screenshot_sha256 = syntheticHash(`${reference_id}:native`); const inputs = { reference_sha256, native_screenshot_sha256 }; return { reference_id, reference_sha256, native_screenshot_sha256, viewport: { width: 390, height: 844 }, theme: reference_id.startsWith("light") ? "light" : "dark", overlay: { sha256: syntheticHash(`${reference_id}:overlay`), inputs }, difference: { sha256: syntheticHash(`${reference_id}:difference`), inputs } }; });
   const identity = { base_head: manifest.base_head, source_tree_sha256: manifest.source_tree_sha256, package: manifest.package, apk_sha256: manifest.apk.sha256, installed_apk_sha256: manifest.installed_apk.sha256, device_serial: manifest.device.serial, report_sha256: manifest.report_sha256 };
-  return { schema_version: 1, suite: "phase15", status: "passed", manifest, identity, cases, visuals, accessibility: { semantic_tree_verified: true, focus_order_verified: true, target_min_dp: 48, text_scale: 2, reduced_motion_verified: true, keyboard_dpad_trace_sha256: syntheticHash("a11y") }, recovery: { process_death_verified: true, offline_restart_trace_sha256: syntheticHash("recovery") }, performance: { sample_count: 100, render_transition_p95_ms: 150, active_js_task_max_ms: 50 }, timing: { owner_record_sha256: TIM_OWNER_RECORD_SHA256, retirement_evidence_sha256: TIM_RETIREMENT_EVIDENCE_SHA256, selection: "retire-playback", legacy_playback_compatibility: false, zero_cue_lifecycle_verified: true } };
+  const renderTransition = Array.from({ length: 100 }, () => 150);
+  const performance = { schema_version: 1, suite: "phase15", status: "passed", producer: "phase15-rendered-workout-benchmark/v1", identity: { base_head: manifest.base_head, source_tree_sha256: manifest.source_tree_sha256, package: manifest.package, apk_sha256: manifest.apk.sha256, installed_apk_sha256: manifest.installed_apk.sha256, device_serial: manifest.device.serial }, measurements: { render_transition_ms: renderTransition, active_js_task_ms: [50], long_session_render_ms: [1], long_session_scroll_ms: [1], long_session_interaction_ms: [1] }, sample_count: 100, render_transition_p95_ms: 150, active_js_task_max_ms: 50 };
+  return { schema_version: 1, suite: "phase15", status: "passed", manifest, identity, cases, visuals, accessibility: { semantic_tree_verified: true, focus_order_verified: true, target_min_dp: 48, text_scale: 2, reduced_motion_verified: true, keyboard_dpad_trace_sha256: syntheticHash("a11y") }, recovery: { process_death_verified: true, offline_restart_trace_sha256: syntheticHash("recovery") }, performance, timing: { owner_record_sha256: TIM_OWNER_RECORD_SHA256, retirement_evidence_sha256: TIM_RETIREMENT_EVIDENCE_SHA256, selection: "retire-playback", legacy_playback_compatibility: false, zero_cue_lifecycle_verified: true } };
 }
 
 export function validatePhase15PackageScripts(packageJson) {
   const scripts = packageJson?.scripts;
-  if (scripts?.["test:maestro:phase15"] !== "node scripts/run-phase15-maestro.mjs" || scripts?.["verify:phase15:evidence"] !== "node scripts/verify-phase15-evidence.mjs --manifest artifacts/native/phase15/build.json --all" || scripts?.["test:evidence:phase15"] !== "node --test scripts/phase15-evidence-scripts.test.mjs") fail("package_scripts_invalid");
+  if (scripts?.["test:maestro:phase15"] !== "node scripts/run-phase15-maestro.mjs" || scripts?.["benchmark:phase15:host"] !== "node scripts/benchmark-phase15-workout.mjs --host" || scripts?.["benchmark:phase15"] !== "node scripts/benchmark-phase15-workout.mjs --manifest artifacts/native/phase15/build.json --evidence artifacts/native/phase15/evidence/performance.json" || scripts?.["verify:phase15:evidence"] !== "node scripts/verify-phase15-evidence.mjs --manifest artifacts/native/phase15/build.json --all" || scripts?.["test:evidence:phase15"] !== "node --test scripts/phase15-evidence-scripts.test.mjs") fail("package_scripts_invalid");
   return true;
 }
 

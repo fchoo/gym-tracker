@@ -83,6 +83,7 @@ test("Phase 15 requires real SQLite, action, semantic, focus, geometry, accessib
     ["accessibility", "keyboard_dpad_trace_sha256"],
     ["recovery", "offline_restart_trace_sha256"],
     ["performance", "sample_count"],
+    ["performance", "measurements", "render_transition_ms"],
   ];
   for (const path of paths) {
     const evidence = fixture();
@@ -122,6 +123,18 @@ test("Phase 15 rejects non-approved TIM evidence and privacy-unsafe payloads rec
     (entry) => { entry.timing.retirement_evidence_sha256 = ""; },
     (entry) => { entry.cases[0].runtime.exercise_name = "Sensitive exercise"; },
     (entry) => { entry.cases[0].opaque_scoped_id = "employee@example.com"; },
+  ]) {
+    const evidence = fixture();
+    mutate(evidence);
+    assert.throws(() => validatePhase15Evidence(evidence));
+  }
+});
+
+test("Phase 15 rejects performance summaries that do not derive from retained raw measurements", () => {
+  for (const mutate of [
+    (entry) => { entry.performance.measurements.render_transition_ms.pop(); },
+    (entry) => { entry.performance.measurements.active_js_task_ms[0] = 51; },
+    (entry) => { entry.performance.render_transition_p95_ms = 149; },
   ]) {
     const evidence = fixture();
     mutate(evidence);

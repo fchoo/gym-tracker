@@ -1,5 +1,12 @@
 import {
+  describe,
+  expect,
+  it,
+} from "@jest/globals";
+
+import {
   PHASE15_BENCHMARK_MINIMUM_SAMPLES,
+  createPhase15WorkoutBenchmarkRecorder,
   percentile,
   validatePhase15WorkoutBenchmarkResult,
 } from "./phase15WorkoutBenchmark";
@@ -32,6 +39,36 @@ describe("Phase 15 rendered workout benchmark", () => {
     expect(percentile([30, 10, 20, 40], 0.5)).toBe(20);
   });
 
+  it("records activation, authoritative commit, rendered frame, and long-session work in order", () => {
+    let now = 0;
+    const recorder = createPhase15WorkoutBenchmarkRecorder(() => now);
+    for (let index = 0; index < PHASE15_BENCHMARK_MINIMUM_SAMPLES; index += 1) {
+      recorder.markActivation();
+      now += 2;
+      recorder.markAuthoritativeCommit();
+      now += 18;
+      recorder.markFirstRestDockFrame();
+    }
+    const renderStarted = now;
+    now += 4;
+    recorder.markLongSessionWork("render", renderStarted);
+    const scrollStarted = now;
+    now += 3;
+    recorder.markLongSessionWork("scroll", scrollStarted);
+    const interactionStarted = now;
+    now += 2;
+    recorder.markLongSessionWork("interaction", interactionStarted);
+    recorder.measureActiveJsTask(() => { now += 5; });
+
+    expect(recorder.result().measurements).toMatchObject({
+      render_transition_ms: Array.from({ length: PHASE15_BENCHMARK_MINIMUM_SAMPLES }, () => 20),
+      active_js_task_ms: [5],
+      long_session_render_ms: [4],
+      long_session_scroll_ms: [3],
+      long_session_interaction_ms: [2],
+    });
+  });
+
   it("rejects incomplete, non-finite, and over-budget raw measurements", () => {
     const incomplete = validResult();
     incomplete.measurements.render_transition_ms.pop();
@@ -46,7 +83,9 @@ describe("Phase 15 rendered workout benchmark", () => {
     );
 
     const slow = validResult();
-    slow.measurements.render_transition_ms[99] = 151;
+    for (let index = 94; index < 100; index += 1) {
+      slow.measurements.render_transition_ms[index] = 151;
+    }
     expect(() => validatePhase15WorkoutBenchmarkResult(slow)).toThrow(
       "phase15_render_transition_budget_exceeded",
     );
