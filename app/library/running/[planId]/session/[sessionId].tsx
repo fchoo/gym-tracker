@@ -1,7 +1,7 @@
 import { router, Stack, useLocalSearchParams, type Href } from "expo-router";
 
 import { useRunningPlanRuntime } from "../../../../../src/bootstrap/runningPlanRuntime";
-import { runningSessionPayloadFromDraft, RunningSessionEditorScreen } from "../../../../../src/ui/screens/RunningSessionEditorScreen";
+import { makeRunningSessionSpec, RunningSessionEditorScreen } from "../../../../../src/ui/screens/RunningSessionEditorScreen";
 
 function routeId(value: string | string[] | undefined): string | null {
   return typeof value === "string" && value.trim() !== "" ? value : null;
@@ -28,7 +28,7 @@ export default function EditRunningSessionRoute() {
       sessionId={sessionId}
       saveSession={(input) => runtime.saveSession({
         ...input,
-        session: runningSessionPayloadFromDraft(input.draft),
+        session: makeRunningSessionSpec(input.draft),
       })}
     />
   </>;

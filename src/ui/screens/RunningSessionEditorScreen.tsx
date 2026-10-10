@@ -16,7 +16,7 @@ function targetFromDraft(target: RunningSessionFormDraft["target"]): { paceMsPer
   return { rpe: Number(target.rpe) };
 }
 
-export function runningSessionPayloadFromDraft(draft: RunningSessionFormDraft) {
+export function makeRunningSessionSpec(draft: RunningSessionFormDraft) {
   const work = draft.volumeUnit === "distance"
     ? { ordinal: 0, kind: "distance" as const, distanceMeters: Number(draft.volume) }
     : { ordinal: 0, kind: "duration" as const, durationMs: Number(draft.volume) };

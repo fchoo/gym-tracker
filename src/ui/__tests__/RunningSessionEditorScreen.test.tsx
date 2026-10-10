@@ -3,7 +3,8 @@ import { describe, expect, it, jest } from "@jest/globals";
 import React from "react";
 
 import type { RunningPlanAggregate } from "../../domains/running/contracts";
-import { RunningSessionEditorScreen } from "../screens/RunningSessionEditorScreen";
+import { makeRunningSessionSpec, RunningSessionEditorScreen } from "../screens/RunningSessionEditorScreen";
+import { initialRunningSessionFormDraft } from "../components/RunningSessionFields";
 import { AppearanceProvider } from "../theme";
 
 const plan: RunningPlanAggregate = {
@@ -13,6 +14,35 @@ const plan: RunningPlanAggregate = {
 };
 
 describe("RunningSessionEditorScreen", () => {
+  it("serializes only the selected Long run or Progression contextual variant", () => {
+    const longRun = makeRunningSessionSpec({
+      ...initialRunningSessionFormDraft("long_run", "Tuesday"),
+      volume: "12000",
+      target: { mode: "heart_rate_zone", paceMsPerKm: "999", heartRateZone: "2", rpe: "9" },
+      finish: "steady_finish",
+      stages: "9",
+      startTarget: { mode: "rpe", paceMsPerKm: "", heartRateZone: "", rpe: "3" },
+      finishTarget: { mode: "rpe", paceMsPerKm: "", heartRateZone: "", rpe: "8" },
+    });
+    expect(longRun).toEqual(expect.objectContaining({
+      sessionKind: "long_run", advisoryTarget: { heartRateZone: 2 }, contextual: { finish: "steady_finish" },
+    }));
+    expect(longRun).not.toHaveProperty("contextual.stages");
+
+    const progression = makeRunningSessionSpec({
+      ...initialRunningSessionFormDraft("progression", "Thursday"),
+      volume: "9000", stages: "3",
+      startTarget: { mode: "rpe", paceMsPerKm: "", heartRateZone: "", rpe: "4" },
+      finishTarget: { mode: "pace", paceMsPerKm: "290000", heartRateZone: "", rpe: "" },
+      finish: "progression_finish",
+    });
+    expect(progression).toEqual(expect.objectContaining({
+      sessionKind: "progression",
+      contextual: { stages: 3, startTarget: { rpe: 4 }, finishTarget: { paceMsPerKm: 290000 } },
+    }));
+    expect(progression).not.toHaveProperty("advisoryTarget");
+  });
+
   it("keeps create identity UI-only until the committed Recovery command readback", async () => {
     const saveSession = jest.fn(async () => ({ plan: { ...plan, revision: 2 }, sessionRootId: "session-root-1" }));
     const onSaved = jest.fn();
