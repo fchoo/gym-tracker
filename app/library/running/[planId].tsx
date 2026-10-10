@@ -25,6 +25,10 @@ export default function RunningPlanDetailRoute() {
       createLifecycleRequestId={() => runtime.createId("running-lifecycle")}
       previewLifecycle={runtime.previewLifecycle}
       confirmLifecycle={runtime.confirmLifecycle}
+      createCollisionRequestId={() => runtime.createId("schedule-collision")}
+      previewScheduleCollision={runtime.previewScheduleCollision}
+      previewScheduleCollisionForPlan={runtime.previewScheduleCollisionForPlan}
+      commitScheduleCollisionChoice={runtime.commitScheduleCollisionChoice}
     />
   </>;
 }

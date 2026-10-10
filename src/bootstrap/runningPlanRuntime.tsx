@@ -3,10 +3,12 @@ import React, { createContext, useContext } from "react";
 import { canonicalRunningRequestHash, createInactiveRunningPlan, saveRunningSourceGraph, type CreateInactiveRunningPlanInput } from "../domains/running/commands";
 import type { RunningPlanAggregate, RunningSessionRevision } from "../domains/running/contracts";
 import type { RunningLifecycleAction, RunningLifecyclePreview } from "../domains/running/lifecycle";
+import type { CommitScheduleCollisionChoiceInput, ScheduleCollisionPreview } from "../domains/scheduling/collisionCommands";
 import type { SqliteKernel } from "../platform/sqlite";
 import {
   createRunningPlanRepository,
 } from "../platform/sqlite/repositories/runningPlanRepository";
+import { createScheduleCollisionRepository, type ScheduleCollisionCommandResult } from "../platform/sqlite/repositories/scheduleCollisionRepository";
 
 export type RunningPlanRuntimePort = Readonly<{
   createId(kind: string): string;
@@ -16,6 +18,9 @@ export type RunningPlanRuntimePort = Readonly<{
   saveSession(input: RunningSessionMutationInput): Promise<RunningSessionMutationResult>;
   previewLifecycle(planId: string, action: RunningLifecycleAction): Promise<RunningLifecyclePreview>;
   confirmLifecycle(input: RunningLifecycleConfirmationInput): Promise<RunningPlanAggregate>;
+  previewScheduleCollision(input: Omit<ScheduleCollisionPreview, "confirmationToken">): Promise<ScheduleCollisionPreview>;
+  previewScheduleCollisionForPlan(planId: string): Promise<ScheduleCollisionPreview | null>;
+  commitScheduleCollisionChoice(input: CommitScheduleCollisionChoiceInput): Promise<ScheduleCollisionCommandResult>;
 }>;
 
 export type RunningLifecycleConfirmationInput = Readonly<{
@@ -51,6 +56,7 @@ export function createRunningPlanRuntimePort(kernel: SqliteKernel, dependencies:
   sha256(value: string): Promise<string>;
 }>): RunningPlanRuntimePort {
   const repository = createRunningPlanRepository(kernel);
+  const collisions = createScheduleCollisionRepository(kernel, dependencies.sha256);
   const createId = (kind: string) => `${kind}:${dependencies.randomUUID()}`;
   const sessionCommands = new Map<string, ReturnType<typeof buildSessionCommand>>();
   const lifecycleCommands = new Map<string, RunningLifecycleConfirmationInput>();
@@ -126,6 +132,9 @@ export function createRunningPlanRuntimePort(kernel: SqliteKernel, dependencies:
       }
       return readBack;
     },
+    previewScheduleCollision: (input) => collisions.preview(input),
+    previewScheduleCollisionForPlan: (planId) => collisions.previewForRunningPlan(planId),
+    commitScheduleCollisionChoice: (input) => collisions.confirm(input),
   });
 }
 

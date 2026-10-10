@@ -32,9 +32,9 @@ const preview = {
 } as const;
 
 describe("ScheduleConflictSheet", () => {
-  it("keeps every factual choice unselected until the owner reviews Move run", () => {
+  it("keeps every factual choice unselected until the owner reviews Move run", async () => {
     const onConfirm = jest.fn();
-    render(
+    await render(
       <AppearanceProvider>
         <ScheduleConflictSheet
           onCancel={jest.fn()}
@@ -45,16 +45,16 @@ describe("ScheduleConflictSheet", () => {
       </AppearanceProvider>,
     );
 
-    expect(screen.getByRole("radio", { name: "Move run · 2026-11-10" }))
-      .toHaveAccessibilityState({ checked: false });
-    expect(screen.getByRole("radio", { name: "Move strength · 2026-11-10" }))
-      .toHaveAccessibilityState({ checked: false });
-    expect(screen.getByRole("radio", { name: "Keep both · 2026-11-09" }))
-      .toHaveAccessibilityState({ checked: false });
+    expect(screen.getByRole("radio", { name: "Move run · 2026-11-10" }).props.accessibilityState)
+      .toEqual(expect.objectContaining({ checked: false }));
+    expect(screen.getByRole("radio", { name: "Move strength · 2026-11-10" }).props.accessibilityState)
+      .toEqual(expect.objectContaining({ checked: false }));
+    expect(screen.getByRole("radio", { name: "Keep both · 2026-11-09" }).props.accessibilityState)
+      .toEqual(expect.objectContaining({ checked: false }));
 
     fireEvent.press(screen.getByRole("radio", { name: "Move run · 2026-11-10" }));
 
-    expect(screen.getByText("Review schedule change")).toBeOnTheScreen();
+    expect(await screen.findByText("Review schedule change")).toBeOnTheScreen();
     expect(screen.getByText("10K base · 2026-11-09 → 2026-11-10")).toBeOnTheScreen();
     expect(screen.getByText("Upper body · 2026-11-09 → 2026-11-09")).toBeOnTheScreen();
     fireEvent.press(screen.getByRole("button", { name: "Confirm schedule change" }));

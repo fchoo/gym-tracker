@@ -3,8 +3,10 @@ import { Text, View } from "react-native";
 
 import type { RunningPlanAggregate, RunningPlanSession } from "../../domains/running/contracts";
 import type { RunningLifecycleAction, RunningLifecyclePreview } from "../../domains/running/lifecycle";
+import type { CommitScheduleCollisionChoiceInput, ScheduleCollisionPreview } from "../../domains/scheduling/collisionCommands";
 import { AdaptiveScreen } from "../layout/AdaptiveScreen";
 import { InlineNotice, PrimaryAction, ScreenHeader, SecondaryAction, SkeletonBlock } from "../components";
+import { ScheduleConflictSheet } from "../components/ScheduleConflictSheet";
 
 export type RunningPlanDetailScreenProps = Readonly<{
   planId: string;
@@ -17,6 +19,10 @@ export type RunningPlanDetailScreenProps = Readonly<{
   createLifecycleRequestId(): string;
   previewLifecycle(planId: string, action: RunningLifecycleAction): Promise<RunningLifecyclePreview>;
   confirmLifecycle(input: Readonly<{ action: RunningLifecycleAction; preview: RunningLifecyclePreview; requestId: string }>): Promise<RunningPlanAggregate>;
+  createCollisionRequestId?(): string;
+  previewScheduleCollision?(input: Omit<ScheduleCollisionPreview, "confirmationToken">): Promise<ScheduleCollisionPreview>;
+  previewScheduleCollisionForPlan?(planId: string): Promise<ScheduleCollisionPreview | null>;
+  commitScheduleCollisionChoice?(input: CommitScheduleCollisionChoiceInput): Promise<unknown>;
 }>;
 
 type LoadState = "loading" | "ready" | "missing" | "error";
@@ -60,6 +66,8 @@ export function RunningPlanDetailScreen(props: RunningPlanDetailScreenProps) {
   const [review, setReview] = useState<RunningLifecyclePreview | null>(null);
   const [reviewError, setReviewError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  const [collision, setCollision] = useState<ScheduleCollisionPreview | null>(null);
+  const [collisionError, setCollisionError] = useState<string | null>(null);
   useEffect(() => {
     let mounted = true;
     setState("loading");
@@ -102,6 +110,26 @@ export function RunningPlanDetailScreen(props: RunningPlanDetailScreenProps) {
     ? "activate" : plan.lifecycle === "archived" ? "reactivate" : "archive";
   const lifecycleLabel = lifecycleAction === "activate" ? "Preview activation"
     : lifecycleAction === "archive" ? "Review archive" : "Review reactivate";
+  const confirmCollision = (input: Readonly<{ choice: CommitScheduleCollisionChoiceInput["choice"]; preview: ScheduleCollisionPreview }>) => {
+    if (props.commitScheduleCollisionChoice === undefined || props.createCollisionRequestId === undefined) return;
+    setBusy(true); setCollisionError(null);
+    void props.commitScheduleCollisionChoice({ ...input, requestId: props.createCollisionRequestId(), committedAtMs: Date.now() }).then(() => {
+      setCollision(null); setRetryGeneration((value) => value + 1);
+    }).catch((error: unknown) => {
+      setCollisionError(error instanceof Error && error.message === "schedule_collision_revision_conflict"
+        ? "Schedule changed while you were reviewing. Reload the actual dates before confirming."
+        : "Schedule change did not commit. Review is retained so you can retry or cancel.");
+    }).finally(() => setBusy(false));
+  };
+  const beginCollisionReview = () => {
+    if (props.previewScheduleCollisionForPlan === undefined) return;
+    setBusy(true); setCollisionError(null);
+    void props.previewScheduleCollisionForPlan(plan.id).then((preview) => {
+      if (preview === null) setCollisionError("No current Strength and Running collision needs review.");
+      else setCollision(preview);
+    }).catch(() => setCollisionError("Schedule collision review could not be prepared. Your schedules were not changed."))
+      .finally(() => setBusy(false));
+  };
   return <AdaptiveScreen testID="running-plan-detail" primary={<><ScreenHeader backAction={props.onBack} title="Running plan" /><Facts plan={plan} onEditSession={props.onEditSession} />
     {review === null ? <PrimaryAction disabled={busy} label={lifecycleLabel} onPress={() => beginLifecycleReview(lifecycleAction)} /> : <View>
       <Text accessibilityRole="header">Review {review.action}</Text>
@@ -110,5 +138,9 @@ export function RunningPlanDetailScreen(props: RunningPlanDetailScreenProps) {
       <SecondaryAction disabled={busy} label="Cancel lifecycle review" onPress={() => { setReview(null); setReviewError(null); }} />
     </View>}
     {reviewError === null ? null : <InlineNotice heading="Running lifecycle needs attention" body={reviewError} tone="error" action={<SecondaryAction disabled={busy} label="Retry review" onPress={() => beginLifecycleReview(review?.action ?? lifecycleAction)} />} />}
-    <PrimaryAction disabled={busy} label="Edit running plan" onPress={props.onEdit} /><SecondaryAction disabled={busy} label="Add session" onPress={props.onNewSession} /><SecondaryAction disabled={busy} label="Sync Garmin / match activity" onPress={props.onGarmin} /></>} />;
+    {props.previewScheduleCollisionForPlan === undefined ? null : <SecondaryAction disabled={busy} label="Review schedule collision" onPress={beginCollisionReview} />}
+    {collisionError === null ? null : <InlineNotice heading="Schedule collision needs attention" body={collisionError} tone="error" action={<SecondaryAction disabled={busy} label="Retry schedule review" onPress={beginCollisionReview} />} />}
+    <PrimaryAction disabled={busy} label="Edit running plan" onPress={props.onEdit} /><SecondaryAction disabled={busy} label="Add session" onPress={props.onNewSession} /><SecondaryAction disabled={busy} label="Sync Garmin / match activity" onPress={props.onGarmin} />
+    {collision === null ? null : <ScheduleConflictSheet busy={busy} error={collisionError} onCancel={() => { setCollision(null); setCollisionError(null); }} onConfirm={confirmCollision} preview={collision} visible />}
+  </>} />;
 }
