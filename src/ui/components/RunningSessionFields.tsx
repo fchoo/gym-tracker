@@ -224,6 +224,12 @@ export function RunningSessionFields(props: Readonly<{
       <QuantityFields label="Recovery" value={draft.recovery} unit={draft.recoveryUnit} onChange={(recovery, recoveryUnit) => update({ recovery, ...(recoveryUnit === undefined ? {} : { recoveryUnit }) })} />
       <TargetFields label="Intensity target" target={draft.target} onChange={(target) => update({ target })} />
     </> : null}
+    {draft.kind === "hills" ? <>
+      <TextInput accessibilityLabel="Repeats" keyboardType="number-pad" onChangeText={(repeats) => update({ repeats })} value={draft.repeats} />
+      <QuantityFields label="Uphill" value={draft.work} unit={draft.workUnit} onChange={(work, workUnit) => update({ work, ...(workUnit === undefined ? {} : { workUnit }) })} />
+      <QuantityFields label="Return recovery" value={draft.recovery} unit={draft.recoveryUnit} onChange={(recovery, recoveryUnit) => update({ recovery, ...(recoveryUnit === undefined ? {} : { recoveryUnit }) })} />
+      <TargetFields label="Effort target" target={draft.target} onChange={(target) => update({ target })} />
+    </> : null}
     <Text>Session preview</Text>
     <Text>{preview ?? "Complete the visible fields to preview this session."}</Text>
   </View>;

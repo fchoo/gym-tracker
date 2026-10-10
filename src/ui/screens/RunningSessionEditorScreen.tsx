@@ -24,7 +24,7 @@ function targetDraft(target: { paceMsPerKm?: number | undefined; heartRateZone?:
 
 export function makeRunningSessionSpec(draft: RunningSessionFormDraft) {
   const quantity = (value: string, unit: "distance" | "duration") => unit === "distance" ? { distanceMeters: Number(value) } : { durationMs: Number(value) };
-  const selectedWork = draft.kind === "tempo" || draft.kind === "intervals"
+  const selectedWork = draft.kind === "tempo" || draft.kind === "intervals" || draft.kind === "hills"
     ? quantity(draft.work, draft.workUnit)
     : quantity(draft.volume, draft.volumeUnit);
   const work = selectedWork === undefined ? undefined : "distanceMeters" in selectedWork
@@ -40,6 +40,7 @@ export function makeRunningSessionSpec(draft: RunningSessionFormDraft) {
   if (draft.kind === "progression") return { sessionKind: draft.kind, weekday: draft.weekday, phases, contextual: { stages: Number(draft.stages), startTarget: targetFromDraft(draft.startTarget), finishTarget: targetFromDraft(draft.finishTarget) } };
   if (draft.kind === "tempo") return { sessionKind: draft.kind, weekday: draft.weekday, phases, advisoryTarget: targetFromDraft(draft.target), contextual: draft.tempoFormat === "continuous" ? { format: "continuous" as const, work: quantity(draft.work, draft.workUnit) } : { format: "tempo_repeats" as const, repetitions: Number(draft.repeats), work: quantity(draft.work, draft.workUnit), recovery: quantity(draft.recovery, draft.recoveryUnit) } };
   if (draft.kind === "intervals") return { sessionKind: draft.kind, weekday: draft.weekday, phases, advisoryTarget: targetFromDraft(draft.target), contextual: { repetitions: Number(draft.repeats), work: quantity(draft.work, draft.workUnit), recovery: quantity(draft.recovery, draft.recoveryUnit) } };
+  if (draft.kind === "hills") return { sessionKind: draft.kind, weekday: draft.weekday, phases, advisoryTarget: targetFromDraft(draft.target), contextual: { repetitions: Number(draft.repeats), work: quantity(draft.work, draft.workUnit), returnRecovery: quantity(draft.recovery, draft.recoveryUnit) } };
   throw new Error("running_session_kind_not_supported_by_route");
 }
 
@@ -71,6 +72,7 @@ function draftFromSession(session: RunningPlanSession): RunningSessionFormDraft 
     return { ...base, tempoFormat: typed.format, repeats: typed.format === "tempo_repeats" ? String(typed.repetitions) : "", work: selectedWork.value, workUnit: selectedWork.unit, recovery: typed.format === "tempo_repeats" ? quantity(typed.recovery).value : "", recoveryUnit: typed.format === "tempo_repeats" ? quantity(typed.recovery).unit : "duration", target: targetDraft(session.session.advisoryTarget) };
   }
   if (session.session.sessionKind === "intervals") { const typed = contextual as { repetitions: number; work: { distanceMeters: number } | { durationMs: number }; recovery: { distanceMeters: number } | { durationMs: number } }; const selectedWork = quantity(typed.work); const recovery = quantity(typed.recovery); return { ...base, repeats: String(typed.repetitions), work: selectedWork.value, workUnit: selectedWork.unit, recovery: recovery.value, recoveryUnit: recovery.unit, target: targetDraft(session.session.advisoryTarget) }; }
+  if (session.session.sessionKind === "hills") { const typed = contextual as { repetitions: number; work: { distanceMeters: number } | { durationMs: number }; returnRecovery: { distanceMeters: number } | { durationMs: number } }; const selectedWork = quantity(typed.work); const recovery = quantity(typed.returnRecovery); return { ...base, repeats: String(typed.repetitions), work: selectedWork.value, workUnit: selectedWork.unit, recovery: recovery.value, recoveryUnit: recovery.unit, target: targetDraft(session.session.advisoryTarget) }; }
   if (session.session.sessionKind === "long_run") return { ...base, finish: (contextual as { finish: RunningSessionFormDraft["finish"] }).finish, target: targetDraft(session.session.advisoryTarget) };
   if (session.session.sessionKind === "progression") { const typed = contextual as { stages: number; startTarget: Parameters<typeof targetDraft>[0]; finishTarget: Parameters<typeof targetDraft>[0] }; return { ...base, stages: String(typed.stages), startTarget: targetDraft(typed.startTarget), finishTarget: targetDraft(typed.finishTarget) }; }
   return { ...base, target: targetDraft(session.session.advisoryTarget) };
@@ -152,7 +154,7 @@ export function RunningSessionEditorScreen(props: Readonly<{
     <ScreenHeader backAction={() => setConfirmDiscard(true)} eyebrow="RUNNING" title={props.mode === "create" ? "New session" : "Edit session"} />
     <Text>Configure only the steps this workout needs.</Text>
     <Text>Workout type</Text>
-    {(["recovery", "long_run", "progression", "tempo", "intervals"] as const).map((entry) => <SecondaryAction key={entry} label={`Workout type ${entry === "long_run" ? "Long run" : entry[0]!.toUpperCase() + entry.slice(1)}`} onPress={() => selectKind(entry)} />)}
+    {(["recovery", "long_run", "progression", "tempo", "intervals", "hills"] as const).map((entry) => <SecondaryAction key={entry} label={`Workout type ${entry === "long_run" ? "Long run" : entry[0]!.toUpperCase() + entry.slice(1)}`} onPress={() => selectKind(entry)} />)}
     <RunningSessionFields draft={draft} onChange={update} />
     {error === null ? null : <Text accessibilityRole="alert">{error}</Text>}
     <PrimaryAction busy={saving} disabled={saving} label={saving ? "Saving session…" : "Save session"} onPress={() => void save()} />
