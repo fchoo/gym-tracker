@@ -183,6 +183,10 @@ test("Phase 14 locks and verifies exact display geometry before native capture",
   assert.match(runner, /user-rotation[\s\S]*?lock/u);
   assert.match(runner, /function waitForExactDisplayGeometry/u);
   assert.match(runner, /applyCellDeviceState[\s\S]*?waitForExactDisplayGeometry/u);
+  assert.match(
+    runner,
+    /function applyCellDeviceState[\s\S]*?settings[\s\S]*?font_scale[\s\S]*?setNightMode[\s\S]*?fixed-to-user-rotation[\s\S]*?user-rotation[\s\S]*?waitForExactDisplayGeometry/u,
+  );
   assert.match(runner, /restoreCellDeviceState[\s\S]*?fixedToUserRotation/u);
   assert.match(
     runner,

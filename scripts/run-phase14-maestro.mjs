@@ -290,6 +290,9 @@ function applyCellDeviceState(adbPath, serial, cell) {
     adb(adbPath, serial, "shell", "settings", "put", "global", key, animationScale);
   }
   setNightMode(adbPath, serial, cell.osScheme);
+  // Size, font, and UI mode changes can recreate the display and drop the first lock.
+  adb(adbPath, serial, "shell", "wm", "fixed-to-user-rotation", "enabled");
+  adb(adbPath, serial, "shell", "wm", "user-rotation", "lock", cell.orientation === "landscape" ? "1" : "0");
   waitForExactDisplayGeometry(adbPath, serial, cell);
 }
 
