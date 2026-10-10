@@ -49,6 +49,7 @@ import {
 import { sourceTreeSha256 } from "./source-tree-digest.mjs";
 
 const ROOT = process.cwd();
+const REVISION18_ROOT = "/Users/bytedance/.gstack/projects/fchoo-gym-tracker/designs/push-inspired-workout-20261001";
 const PACKAGE = "com.fchoo.gymtracker.devtest";
 const ARTIFACT_ROOT = "artifacts/native/phase14";
 const sha256 = (value) => createHash("sha256").update(value).digest("hex");

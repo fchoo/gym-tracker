@@ -168,3 +168,12 @@ test("Phase 14 locks and verifies exact display geometry before native capture",
     /const applied = Object\.freeze\(\{ original: readDeviceState\(adbPath, serial\) \}\);[\s\S]*?try \{[\s\S]*?applyCellDeviceState\(adbPath, serial, cell\)[\s\S]*?finally \{[\s\S]*?restoreCellDeviceState\(adbPath, serial, applied\)/u,
   );
 });
+
+test("Phase 14 token evidence reads the approved Revision 18 source explicitly", () => {
+  const runner = readFileSync("scripts/run-phase14-maestro.mjs", "utf8");
+  assert.match(
+    runner,
+    /const REVISION18_ROOT = "\/Users\/bytedance\/\.gstack\/projects\/fchoo-gym-tracker\/designs\/push-inspired-workout-20261001"/u,
+  );
+  assert.match(runner, /path\.join\(REVISION18_ROOT, "approved-hybrid\.html"\)/u);
+});
