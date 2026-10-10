@@ -60,7 +60,7 @@ export function createRunningPlanRepository(kernel: SqliteKernel) {
          WHERE plan.id = ? AND plan.plan_kind = 'running'`,
         [planId],
       );
-      if (plan === undefined || plan.is_active !== 0) return null;
+      if (plan === undefined) return null;
       const [goalRow] = await kernel.queryAll<{ goal_json: string }>(
         `SELECT goal_json FROM running_goals WHERE plan_id = ?
          ORDER BY revision DESC, created_at_ms DESC, id DESC LIMIT 1`, [planId],
@@ -92,7 +92,7 @@ export function createRunningPlanRepository(kernel: SqliteKernel) {
       }));
       return parseRunningPlanAggregate({
         version: 1, id: plan.id, name: plan.name, revision: plan.revision,
-        active: false, createdAtMs: plan.created_at_ms,
+        active: plan.is_active === 1, createdAtMs: plan.created_at_ms,
         goal: parseRunningGoal(JSON.parse(goalRow.goal_json)), sessions,
       });
     },
@@ -220,9 +220,9 @@ export function createRunningPlanRepository(kernel: SqliteKernel) {
           [input.goal.id, input.planId, JSON.stringify(input.goal), input.goal.revision, input.goal.createdAtMs],
         );
         const nextRevision = plan.revision + 1;
-        const result = Object.freeze({ planId: input.planId, planRevision: nextRevision, active: false, sessionRootIds: input.sessions.map((session) => session.rootId), slotRootIds: input.slots.map((slot) => slot.rootId) });
+        const result = Object.freeze({ planId: input.planId, planRevision: nextRevision, active: plan.is_active === 1, sessionRootIds: input.sessions.map((session) => session.rootId), slotRootIds: input.slots.map((slot) => slot.rootId) });
         const changed = await transaction.execute(
-          "UPDATE plans SET revision = revision + 1, is_active = 0 WHERE id = ? AND revision = ?",
+          "UPDATE plans SET revision = revision + 1 WHERE id = ? AND revision = ?",
           [input.planId, input.expectedPlanRevision],
         );
         if (changed.changes !== 1) throw new Error("running_plan_revision_conflict");

@@ -4,10 +4,13 @@ import React from "react";
 
 const mockCreateInactivePlan = jest.fn(async ({ plan }: { plan: { id: string } }) => ({ id: plan.id }));
 const mockEditorProps = jest.fn();
-jest.mock("expo-router", () => ({ Stack: { Screen: () => null }, router: { back: jest.fn(), replace: jest.fn() }, }));
+const mockDetailProps = jest.fn();
+jest.mock("expo-router", () => ({ Stack: { Screen: () => null }, router: { back: jest.fn(), replace: jest.fn(), push: jest.fn() }, useLocalSearchParams: () => ({ planId: "running-plan:id" }) }));
 jest.mock("../../../../src/bootstrap/runningPlanRuntime", () => ({ useRunningPlanRuntime: () => ({ createId: (kind: string) => `${kind}:id`, createInactivePlan: mockCreateInactivePlan }), }));
 jest.mock("../../../../src/ui/screens/RunningPlanEditorScreen", () => ({ RunningPlanEditorScreen: (props: unknown) => { mockEditorProps(props); return null; } }));
+jest.mock("../../../../src/ui/screens/RunningPlanDetailScreen", () => ({ RunningPlanDetailScreen: (props: unknown) => { mockDetailProps(props); return null; } }));
 import CreateRunningPlanRoute from "../create";
+import RunningPlanDetailRoute from "../[planId]";
 import { router } from "expo-router";
 
 describe("Running create route", () => {
@@ -18,5 +21,17 @@ describe("Running create route", () => {
     props.onSaved("running-plan:id");
     expect(mockCreateInactivePlan).toHaveBeenCalledWith({ plan: props.initialDraft });
     expect(router.replace).toHaveBeenCalledWith("/library/running/running-plan:id");
+  });
+});
+
+describe("Running detail route", () => {
+  it("normalizes the plan identity and leaves all facts and commands with the runtime", async () => {
+    await render(<RunningPlanDetailRoute />);
+    const props = mockDetailProps.mock.calls[0]![0] as { planId: string; onEdit(): void; onNewSession(): void; onEditSession(id: string): void };
+    expect(props.planId).toBe("running-plan:id");
+    props.onEdit(); props.onNewSession(); props.onEditSession("session-root");
+    expect(router.push).toHaveBeenCalledWith("/library/running/running-plan:id/edit");
+    expect(router.push).toHaveBeenCalledWith("/library/running/running-plan:id/session/new");
+    expect(router.push).toHaveBeenCalledWith("/library/running/running-plan:id/session/session-root");
   });
 });

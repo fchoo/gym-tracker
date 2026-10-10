@@ -197,7 +197,7 @@ export type RunningPlanAggregate = Readonly<{
   id: string;
   name: string;
   revision: number;
-  active: false;
+  active: boolean;
   createdAtMs: number;
   goal: RunningGoal;
   sessions: readonly RunningPlanSession[];
@@ -223,7 +223,7 @@ export function parseRunningPlanAggregate(input: unknown): RunningPlanAggregate 
   const aggregate = input as RunningPlanAggregate;
   if (
     aggregate?.version !== 1 || typeof aggregate.id !== "string" || aggregate.id.trim() === ""
-    || typeof aggregate.name !== "string" || aggregate.name.trim() === "" || aggregate.active !== false
+    || typeof aggregate.name !== "string" || aggregate.name.trim() === "" || typeof aggregate.active !== "boolean"
     || !Number.isSafeInteger(aggregate.revision) || aggregate.revision < 1
     || !Number.isSafeInteger(aggregate.createdAtMs) || aggregate.createdAtMs < 0
     || !Array.isArray(aggregate.sessions)
