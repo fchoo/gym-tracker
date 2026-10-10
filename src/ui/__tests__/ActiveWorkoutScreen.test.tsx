@@ -85,6 +85,17 @@ async function renderScreen(view = workoutView(), commandOverrides: Partial<Acti
 }
 
 describe("ActiveWorkoutScreen explicit-save editor", () => {
+  it("keeps the exercise overflow to Timing, Replace exercise, and Delete exercise", async () => {
+    await renderScreen();
+
+    await fireEvent.press(screen.getByRole("button", { name: "Back Squat exercise actions" }));
+
+    expect(screen.getByRole("button", { name: "Timing" })).toBeOnTheScreen();
+    expect(screen.getByRole("button", { name: "Replace exercise" })).toBeOnTheScreen();
+    expect(screen.getByRole("button", { name: "Delete exercise" })).toBeOnTheScreen();
+    expect(screen.queryByRole("button", { name: /trend/i })).not.toBeOnTheScreen();
+  });
+
   it("keeps the global add picker non-mutating until an exercise is selected and confirmed", async () => {
     const addExercise = jest.fn(async () => ({
       outcome: "committed" as const,

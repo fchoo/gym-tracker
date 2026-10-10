@@ -104,9 +104,15 @@ jest.mock("../../src/ui/layout/AdaptiveScreen", () => ({
 jest.mock("../../src/ui/screens/ActiveWorkoutScreen", () => {
   const { Pressable } = require("react-native") as typeof import("react-native");
   return {
-    ActiveWorkoutScreen: ({ onGoBack }: Readonly<{ onGoBack(): void }>) => (
+    ActiveWorkoutScreen: ({ onGoBack, onFinishLater, onRequestPlanEdit }: Readonly<{
+      onGoBack(): void;
+      onFinishLater(): void;
+      onRequestPlanEdit(): void;
+    }>) => <>
       <Pressable accessibilityRole="button" accessibilityLabel="Back to Workout" onPress={onGoBack} />
-    ),
+      <Pressable accessibilityRole="button" accessibilityLabel="Edit plan after workout" onPress={onRequestPlanEdit} />
+      <Pressable accessibilityRole="button" accessibilityLabel="Finish workout later" onPress={onFinishLater} />
+    </>,
   };
 });
 
@@ -179,5 +185,22 @@ describe("ActiveWorkoutRoute", () => {
     rendered.unmount();
 
     expect(mockCompleteSet).not.toHaveBeenCalled();
+  });
+
+  it("defers editing the owning plan until Finish workout later returns from Active", async () => {
+    mockGetActiveWorkout.mockResolvedValue({
+      id: "session-identity", status: "in_progress", revision: 3,
+      planId: "plan-owner", activeSetId: null, activeExerciseId: null,
+      currentExercise: {}, exercises: [], progress: { completedWorkingSets: 0, totalWorkingSets: 0 },
+      rest: { state: "idle", revision: 0, nextSetId: null },
+    } as unknown as ActiveWorkoutView);
+
+    await render(<ActiveWorkoutRoute />);
+    await waitFor(() => expect(mockGetActiveWorkout).toHaveBeenCalledWith("session-identity"));
+    await fireEvent.press(screen.getByRole("button", { name: "Edit plan after workout" }));
+    expect(mockReplace).not.toHaveBeenCalledWith("/library/plan/plan-owner/edit");
+    await fireEvent.press(screen.getByRole("button", { name: "Finish workout later" }));
+
+    expect(mockReplace).toHaveBeenCalledWith("/library/plan/plan-owner/edit");
   });
 });
