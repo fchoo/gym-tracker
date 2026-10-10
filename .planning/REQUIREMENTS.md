@@ -131,9 +131,9 @@ Exactly four roots: **Workout, Calendar, Library, Progress**. Preserve SQLite au
 - [ ] **LIB-07**: Show No plans yet and Create a strength or running plan to get started with the same chooser action.
 - [ ] **LIB-08**: Add a plan summary route with active/inactive status, schedule, history, source and training days before editing actions.
 - [ ] **LIB-09**: Provide Edit plan, Edit schedule, Duplicate, Archive plan/confirmation and Reactivate plan with preserved history and explicit activation.
-- [ ] **LIB-10**: Retain immutable starter preview, source/equipment/schedule/training days, Preview activation and Save editable copy.
-- [ ] **LIB-11**: Preview the actual affected schedules and create/activate a reviewed owned copy only on confirmation; Save without activating stays inactive.
-- [ ] **LIB-12**: Keep template-update comparison and Create new copy reachable through the existing activation update query route, preserving previous owned history.
+- [x] **LIB-10**: Retain immutable starter preview, source/equipment/schedule/training days, Preview activation and Save editable copy.
+- [x] **LIB-11**: Preview the actual affected schedules and create/activate a reviewed owned copy only on confirmation; Save without activating stays inactive.
+- [x] **LIB-12**: Keep template-update comparison and Create new copy reachable through the existing activation update query route, preserving previous owned history.
 - [x] **LIB-13**: Collect Plan name and First day, continue to the real editor, and save the draft without activation.
 - [x] **LIB-14**: Preserve day/exercise/set/metric target editing, add/move/remove actions and explicit save while applying the approved compact editor presentation.
 - [x] **LIB-15**: Preserve unsaved-change confirmation, save failure/retry, revision conflict, archive/duplicate confirmations and immutable completed history.
@@ -144,7 +144,7 @@ Exactly four roots: **Workout, Calendar, Library, Progress**. Preserve SQLite au
 - [ ] **LIB-20**: Show custom identity and manual progression; edit name/tracking/equipment through the real editor and archive explicitly.
 - [ ] **LIB-21**: Create a local custom exercise with valid Name, Tracking and Equipment fields, then open its detail; preserve all supported metric-profile choices.
 - [ ] **LIB-22**: Preserve existing edit?mode=copy and edit?mode=metric routes, future-target impact, policy choice, confirmation and active-workout guard.
-- [ ] **LIB-23**: Preserve loading, query failure/retry, refresh failure, deleted/missing detail and content-update review/dismiss states in all Library flows.
+- [x] **LIB-23**: Preserve loading, query failure/retry, refresh failure, deleted/missing detail and content-update review/dismiss states in all Library flows.
 - [ ] **LIB-24**: Show saved goal/pacing/schedule and derived weekly sessions with Sync Garmin / match activity, Edit running plan and collision entry points.
 - [x] **LIB-25**: Open Running creation from the chooser with goal, benchmark and structured sessions; save inactive and make Garmin connection optional afterward.
 - [x] **LIB-26**: Edit goal distance/time and weekly sessions, validate invalid goal input, and persist edits that the detail and Progress can read.
@@ -336,9 +336,9 @@ once and remains Pending until its owning phase is implemented and verified.
 | LIB-07 | 17 | library.empty-plans | Pending |
 | LIB-08 | 17 | library.owned-detail | Pending |
 | LIB-09 | 17 | library.owned-actions | Pending |
-| LIB-10 | 17 | library.starter-detail | Pending |
-| LIB-11 | 17 | library.starter-activation | Pending |
-| LIB-12 | 17 | library.template-update | Pending |
+| LIB-10 | 17 | library.starter-detail | Complete |
+| LIB-11 | 17 | library.starter-activation | Complete |
+| LIB-12 | 17 | library.template-update | Complete |
 | LIB-13 | 17 | library.create-strength | Complete |
 | LIB-14 | 17 | library.plan-editor | Complete |
 | LIB-15 | 17 | library.editor-draft-guards | Complete |
@@ -349,7 +349,7 @@ once and remains Pending until its owning phase is implemented and verified.
 | LIB-20 | 17 | library.custom-exercise | Pending |
 | LIB-21 | 17 | library.create-exercise | Pending |
 | LIB-22 | 17 | library.copy-metric-migration | Pending |
-| LIB-23 | 17 | library.library-load-errors | Pending |
+| LIB-23 | 17 | library.library-load-errors | Complete |
 | LIB-24 | 17 | library.running-detail | Pending |
 | LIB-25 | 17 | library.running-create | Complete |
 | LIB-26 | 17 | library.running-goal-edit | Complete |

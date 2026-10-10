@@ -5,16 +5,16 @@ milestone_name: Prototype Parity, Concurrent Plans & Garmin Import — PLANNED
 current_phase: 17
 current_phase_name: Library & Running Plans
 status: executing
-stopped_at: Completed 17-05-PLAN.md
-last_updated: "2026-10-10T18:26:32.648Z"
+stopped_at: Completed 17-06-PLAN.md
+last_updated: "2026-10-10T18:37:30.572Z"
 last_activity: 2026-10-11
 last_activity_desc: Phase 17 execution started
-state_head: f944455c6b668f41ac26ff87c45cc1023a6f3250
+state_head: 8e6ec43afddd2cb5e72f65c1ad280cf85fd2864b
 progress:
   total_phases: 8
   completed_phases: 1
   total_plans: 98
-  completed_plans: 44
+  completed_plans: 45
   percent: 13
 ---
 
@@ -30,7 +30,7 @@ See: .planning/PROJECT.md (updated 2026-10-06)
 ## Current Position
 
 Phase: 17 (Library & Running Plans) — EXECUTING
-Plan: 4 of 14
+Plan: 5 of 14
 Status: Ready to execute
 Last activity: 2026-10-11 — Phase 17 execution started
 
@@ -84,6 +84,7 @@ Gym Tracker remains a signed personal-use Android APK/AAB with SQLite-authoritat
 | Phase 17 P01 | 2h | 3 tasks | 11 files |
 | Phase 17 P04 | 6min | 3 tasks | 6 files |
 | Phase 17 P05 | 5min | 3 tasks | 5 files |
+| Phase 17 P06 | 7m | 3 tasks | 7 files |
 
 ## Accumulated Context
 
@@ -161,6 +162,9 @@ Gym Tracker remains a signed personal-use Android APK/AAB with SQLite-authoritat
 - [Phase 17]: Owned-plan revision conflicts refresh only the committed snapshot; the local aggregate draft remains until the owner explicitly resolves it.
 - [Phase 17]: [Phase 17]: Stale Strength schedule conflicts refresh authoritative facts without replacing the local draft.
 - [Phase 17]: [Phase 17]: Replacement and plan-day removal use a final focus-restoring ConfirmationDialog; domain preview tokens and revisions remain authoritative.
+- [Phase 17]: Starter save creates a fresh inactive owned copy and routes to editing only after durable commit and authoritative refresh.
+- [Phase 17]: Strength starter activation reads and mutates only Strength schedule state; Running remains unaffected under MAP-01.
+- [Phase 17]: Template-update copies re-read the comparison immediately after confirmation, binding creation to current revisions while preserving owned history.
 
 ### Pending Owner Review
 
@@ -185,7 +189,7 @@ Gym Tracker remains a signed personal-use Android APK/AAB with SQLite-authoritat
 
 ## Session Continuity
 
-Last session: 2026-10-10T18:26:32.512Z
-Stopped at: Completed 17-05-PLAN.md
+Last session: 2026-10-10T18:37:30.422Z
+Stopped at: Completed 17-06-PLAN.md
 Resume file: None
 Next action: Present the complete planning set for owner review; after explicit approval, run `/gsd-execute-phase 13`.
