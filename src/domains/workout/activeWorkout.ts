@@ -358,6 +358,17 @@ export type UndoCompletedSetResult =
       outcome: "unavailable";
     }>;
 
+export type UpdateSessionExerciseDefaultRestInput = Readonly<{
+  sessionId: string;
+  sessionExerciseId: string;
+  defaultRestSeconds: number;
+  expectedSessionRevision: number;
+  expectedSessionExerciseRevision: number;
+  occurredAtMs: number;
+  requestId: string;
+  requestSha256: string;
+}>;
+
 export interface ActiveWorkoutRepository {
   getActiveWorkout(sessionId: string): Promise<ActiveWorkoutView>;
   getWorkoutSession(sessionId: string): Promise<WorkoutSessionView>;
@@ -379,6 +390,9 @@ export interface ActiveWorkoutRepository {
   reorderExercises?: (
     input: ReorderExercisesInput,
   ) => Promise<ReorderExercisesResult>;
+  updateSessionExerciseDefaultRest?: (
+    input: UpdateSessionExerciseDefaultRestInput,
+  ) => Promise<ActiveWorkoutView>;
   copyPreviousWarmup(
     input: CopyPreviousWarmupInput,
   ): Promise<ActiveWorkoutView>;

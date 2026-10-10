@@ -19,6 +19,7 @@ import type {
   ReorderExercisesInput,
   ReorderExercisesResult,
   ReviseCompletedSetInput,
+  UpdateSessionExerciseDefaultRestInput,
   SetObservation,
   SetTarget,
   SetValueSource,
@@ -2391,6 +2392,34 @@ export function createWorkoutRepository(
 
     getWorkoutSession: (sessionId: string) =>
       loadActiveWorkout(kernel, sessionId),
+
+    async updateSessionExerciseDefaultRest(input: UpdateSessionExerciseDefaultRestInput) {
+      if (!Number.isSafeInteger(input.defaultRestSeconds) || input.defaultRestSeconds < 0
+        || input.defaultRestSeconds > 86_400 || !Number.isSafeInteger(input.occurredAtMs)) {
+        throw new WorkoutCommandConflictError("session_exercise_default_rest_invalid");
+      }
+      const view = await kernel.write(async (transaction) => {
+        const [session] = await transaction.queryAll<SessionRow>(
+          "SELECT id, status, active_session_exercise_id, active_set_id, revision FROM workout_sessions WHERE id = ?",
+          [input.sessionId],
+        );
+        if (session === undefined || session.status !== "in_progress" || session.revision !== input.expectedSessionRevision) return null;
+        const update = await transaction.execute(
+          `UPDATE session_exercises SET default_rest_seconds = ?, revision = revision + 1
+           WHERE id = ? AND session_id = ? AND revision = ?`,
+          [input.defaultRestSeconds, input.sessionExerciseId, input.sessionId, input.expectedSessionExerciseRevision],
+        );
+        if (update.changes !== 1) return null;
+        const sessionUpdate = await transaction.execute(
+          "UPDATE workout_sessions SET revision = revision + 1 WHERE id = ? AND revision = ?",
+          [input.sessionId, input.expectedSessionRevision],
+        );
+        if (sessionUpdate.changes !== 1) throw new Error("session_exercise_default_rest_session_update_failed");
+        return loadPlannedWorkout(transaction, input.sessionId);
+      });
+      if (view === null) throw new WorkoutCommandConflictError("session_exercise_default_rest_conflict");
+      return view;
+    },
 
     async addExercise(input) {
       const mutation = await kernel.write(async (transaction): Promise<
