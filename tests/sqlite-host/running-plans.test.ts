@@ -9,6 +9,7 @@ import { configureSqliteConnection } from "../../src/platform/sqlite/connection"
 import { createMigrationRunner } from "../../src/platform/sqlite/migrationRunner";
 import { migrations } from "../../src/platform/sqlite/migrations";
 import { createRunningPlanRepository } from "../../src/platform/sqlite/repositories/runningPlanRepository";
+import { createLogicalBackupRepository } from "../../src/platform/sqlite/repositories/logicalBackupRepository";
 import { createSqliteKernel, type SqliteKernel } from "../../src/platform/sqlite/sqliteKernel";
 import { canonicalRunningRequestHash, saveRunningSourceGraph, type CreateInactiveRunningPlanInput, type SaveRunningSourceGraphInput } from "../../src/domains/running/commands";
 import type { RunningPlanSession } from "../../src/domains/running/contracts";
@@ -103,5 +104,14 @@ describe("Running plan lifecycle persistence", () => {
       { id: "recovery-slot" }, { id: "tempo-slot" },
     ]);
     await expect(kernel.queryAll<{ request_id: string }>("SELECT request_id FROM running_plan_receipts WHERE plan_id = ? AND request_id = ?", ["running", "delete-tempo"])).resolves.toEqual([{ request_id: "delete-tempo" }]);
+    const backup = await createLogicalBackupRepository(kernel).collect({ snapshotId: "running-lifecycle", createdAtMs: 300 });
+    expect(backup.tables.running_session_slots).toEqual(expect.arrayContaining([
+      expect.objectContaining({ id: "recovery-slot", retired_at_ms: null }),
+      expect.objectContaining({ id: "tempo-slot", retired_at_ms: 200 }),
+    ]));
+    expect(backup.tables.running_session_slot_roots).toEqual(expect.arrayContaining([
+      expect.objectContaining({ id: "recovery-slot" }),
+      expect.objectContaining({ id: "tempo-slot" }),
+    ]));
   });
 });
