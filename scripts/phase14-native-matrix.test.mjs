@@ -174,6 +174,16 @@ test("Phase 14 Maestro flows encode all shell stages and stay native-only", () =
   assert.match(runner, /finally \{[\s\S]*?force-stop[\s\S]*?restoreCellDeviceState/u);
 });
 
+test("Phase 14 native-only visual rows use the verifier schema", () => {
+  const runner = readFileSync("scripts/run-phase14-maestro.mjs", "utf8");
+  const nativeOnlyBranch = runner.match(
+    /if \(resolution\.kind === "native-only"\)[\s\S]*?if \(resolution\.kind === "not-exact"\)/u,
+  )?.[0] ?? "";
+
+  assert.match(nativeOnlyBranch, /reference_policy: "native-only"/u);
+  assert.doesNotMatch(nativeOnlyBranch, /return resolution/u);
+});
+
 test("Phase 14 locks and verifies exact display geometry before native capture", () => {
   const runner = readFileSync("scripts/run-phase14-maestro.mjs", "utf8");
   assert.match(runner, /fixed-to-user-rotation/u);
