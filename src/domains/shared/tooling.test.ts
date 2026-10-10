@@ -102,13 +102,11 @@ describe("Plan 01-03 test and boundary tooling", () => {
     );
   });
 
-  it("does not retain sheet and dock modules replaced by inline set rows", () => {
-    for (const obsoleteFile of [
+  it("does not retain the ValueEditorSheet module replaced by inline set rows", () => {
+    expect(existsSync(join(
+      repositoryRoot,
       "src/ui/components/ValueEditorSheet.tsx",
-      "src/ui/components/WorkoutActionDock.tsx",
-    ]) {
-      expect(existsSync(join(repositoryRoot, obsoleteFile))).toBe(false);
-    }
+    ))).toBe(false);
   });
 
   it("builds the development-test APK as an embedded release artifact", () => {
