@@ -101,7 +101,9 @@ const FartlekContextSchema = z.union([
   }),
   z.strictObject({
     format: z.literal("unstructured"),
-    durationMs: PositiveIntegerSchema,
+    repetitions: PositiveIntegerSchema.max(100),
+    fastCue: z.string().trim().min(1).max(120),
+    easyRecoveryCue: z.string().trim().min(1).max(120),
   }),
 ]);
 
@@ -112,7 +114,7 @@ const RevisionCommonSchema = z.strictObject({
   planId: IdentifierSchema,
   revision: PositiveIntegerSchema,
   createdAtMs: NonnegativeIntegerSchema,
-  phases: z.array(RunningPhaseSchema).min(1).max(100),
+  phases: z.array(RunningPhaseSchema).max(100),
   advisoryTarget: AdvisoryTargetSchema.optional(),
 });
 

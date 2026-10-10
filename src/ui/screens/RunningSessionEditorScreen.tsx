@@ -24,9 +24,9 @@ function targetDraft(target: { paceMsPerKm?: number | undefined; heartRateZone?:
 
 export function makeRunningSessionSpec(draft: RunningSessionFormDraft) {
   const quantity = (value: string, unit: "distance" | "duration") => unit === "distance" ? { distanceMeters: Number(value) } : { durationMs: Number(value) };
-  const selectedWork = draft.kind === "tempo" || draft.kind === "intervals" || draft.kind === "hills"
+  const selectedWork = draft.kind === "tempo" || draft.kind === "intervals" || draft.kind === "hills" || (draft.kind === "fartlek" && draft.fartlekStyle === "structured")
     ? quantity(draft.work, draft.workUnit)
-    : quantity(draft.volume, draft.volumeUnit);
+    : draft.kind === "fartlek" ? undefined : quantity(draft.volume, draft.volumeUnit);
   const work = selectedWork === undefined ? undefined : "distanceMeters" in selectedWork
     ? { ordinal: 0, kind: "distance" as const, distanceMeters: selectedWork.distanceMeters }
     : { ordinal: 0, kind: "duration" as const, durationMs: selectedWork.durationMs };
@@ -41,6 +41,7 @@ export function makeRunningSessionSpec(draft: RunningSessionFormDraft) {
   if (draft.kind === "tempo") return { sessionKind: draft.kind, weekday: draft.weekday, phases, advisoryTarget: targetFromDraft(draft.target), contextual: draft.tempoFormat === "continuous" ? { format: "continuous" as const, work: quantity(draft.work, draft.workUnit) } : { format: "tempo_repeats" as const, repetitions: Number(draft.repeats), work: quantity(draft.work, draft.workUnit), recovery: quantity(draft.recovery, draft.recoveryUnit) } };
   if (draft.kind === "intervals") return { sessionKind: draft.kind, weekday: draft.weekday, phases, advisoryTarget: targetFromDraft(draft.target), contextual: { repetitions: Number(draft.repeats), work: quantity(draft.work, draft.workUnit), recovery: quantity(draft.recovery, draft.recoveryUnit) } };
   if (draft.kind === "hills") return { sessionKind: draft.kind, weekday: draft.weekday, phases, advisoryTarget: targetFromDraft(draft.target), contextual: { repetitions: Number(draft.repeats), work: quantity(draft.work, draft.workUnit), returnRecovery: quantity(draft.recovery, draft.recoveryUnit) } };
+  if (draft.kind === "fartlek") return { sessionKind: draft.kind, weekday: draft.weekday, phases, advisoryTarget: targetFromDraft(draft.target), contextual: draft.fartlekStyle === "structured" ? { format: "structured" as const, repetitions: Number(draft.repeats), work: quantity(draft.work, draft.workUnit), recovery: quantity(draft.recovery, draft.recoveryUnit) } : { format: "unstructured" as const, repetitions: Number(draft.repeats), fastCue: draft.fastCue.trim(), easyRecoveryCue: draft.easyRecoveryCue.trim() } };
   throw new Error("running_session_kind_not_supported_by_route");
 }
 
@@ -73,6 +74,7 @@ function draftFromSession(session: RunningPlanSession): RunningSessionFormDraft 
   }
   if (session.session.sessionKind === "intervals") { const typed = contextual as { repetitions: number; work: { distanceMeters: number } | { durationMs: number }; recovery: { distanceMeters: number } | { durationMs: number } }; const selectedWork = quantity(typed.work); const recovery = quantity(typed.recovery); return { ...base, repeats: String(typed.repetitions), work: selectedWork.value, workUnit: selectedWork.unit, recovery: recovery.value, recoveryUnit: recovery.unit, target: targetDraft(session.session.advisoryTarget) }; }
   if (session.session.sessionKind === "hills") { const typed = contextual as { repetitions: number; work: { distanceMeters: number } | { durationMs: number }; returnRecovery: { distanceMeters: number } | { durationMs: number } }; const selectedWork = quantity(typed.work); const recovery = quantity(typed.returnRecovery); return { ...base, repeats: String(typed.repetitions), work: selectedWork.value, workUnit: selectedWork.unit, recovery: recovery.value, recoveryUnit: recovery.unit, target: targetDraft(session.session.advisoryTarget) }; }
+  if (session.session.sessionKind === "fartlek") { const typed = contextual as { format: "structured"; repetitions: number; work: { distanceMeters: number } | { durationMs: number }; recovery: { distanceMeters: number } | { durationMs: number } } | { format: "unstructured"; repetitions: number; fastCue: string; easyRecoveryCue: string }; if (typed.format === "structured") { const selectedWork = quantity(typed.work); const recovery = quantity(typed.recovery); return { ...base, fartlekStyle: "structured", repeats: String(typed.repetitions), work: selectedWork.value, workUnit: selectedWork.unit, recovery: recovery.value, recoveryUnit: recovery.unit, target: targetDraft(session.session.advisoryTarget) }; } return { ...base, fartlekStyle: "unstructured", repeats: String(typed.repetitions), fastCue: typed.fastCue, easyRecoveryCue: typed.easyRecoveryCue, target: targetDraft(session.session.advisoryTarget) }; }
   if (session.session.sessionKind === "long_run") return { ...base, finish: (contextual as { finish: RunningSessionFormDraft["finish"] }).finish, target: targetDraft(session.session.advisoryTarget) };
   if (session.session.sessionKind === "progression") { const typed = contextual as { stages: number; startTarget: Parameters<typeof targetDraft>[0]; finishTarget: Parameters<typeof targetDraft>[0] }; return { ...base, stages: String(typed.stages), startTarget: targetDraft(typed.startTarget), finishTarget: targetDraft(typed.finishTarget) }; }
   return { ...base, target: targetDraft(session.session.advisoryTarget) };
@@ -154,7 +156,7 @@ export function RunningSessionEditorScreen(props: Readonly<{
     <ScreenHeader backAction={() => setConfirmDiscard(true)} eyebrow="RUNNING" title={props.mode === "create" ? "New session" : "Edit session"} />
     <Text>Configure only the steps this workout needs.</Text>
     <Text>Workout type</Text>
-    {(["recovery", "long_run", "progression", "tempo", "intervals", "hills"] as const).map((entry) => <SecondaryAction key={entry} label={`Workout type ${entry === "long_run" ? "Long run" : entry[0]!.toUpperCase() + entry.slice(1)}`} onPress={() => selectKind(entry)} />)}
+    {(["recovery", "long_run", "progression", "tempo", "intervals", "hills", "fartlek"] as const).map((entry) => <SecondaryAction key={entry} label={`Workout type ${entry === "long_run" ? "Long run" : entry[0]!.toUpperCase() + entry.slice(1)}`} onPress={() => selectKind(entry)} />)}
     <RunningSessionFields draft={draft} onChange={update} />
     {error === null ? null : <Text accessibilityRole="alert">{error}</Text>}
     <PrimaryAction busy={saving} disabled={saving} label={saving ? "Saving session…" : "Save session"} onPress={() => void save()} />

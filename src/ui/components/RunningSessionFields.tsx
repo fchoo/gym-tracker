@@ -230,6 +230,14 @@ export function RunningSessionFields(props: Readonly<{
       <QuantityFields label="Return recovery" value={draft.recovery} unit={draft.recoveryUnit} onChange={(recovery, recoveryUnit) => update({ recovery, ...(recoveryUnit === undefined ? {} : { recoveryUnit }) })} />
       <TargetFields label="Effort target" target={draft.target} onChange={(target) => update({ target })} />
     </> : null}
+    {draft.kind === "fartlek" ? <>
+      <Text>Style</Text>
+      <SecondaryAction label="Style Structured" onPress={() => update({ fartlekStyle: "structured" })} />
+      <SecondaryAction label="Style Unstructured" onPress={() => update({ fartlekStyle: "unstructured" })} />
+      <TextInput accessibilityLabel="Surges / repeats" keyboardType="number-pad" onChangeText={(repeats) => update({ repeats })} value={draft.repeats} />
+      {draft.fartlekStyle === "structured" ? <><QuantityFields label="Fast segment" value={draft.work} unit={draft.workUnit} onChange={(work, workUnit) => update({ work, ...(workUnit === undefined ? {} : { workUnit }) })} /><QuantityFields label="Easy float / recovery" value={draft.recovery} unit={draft.recoveryUnit} onChange={(recovery, recoveryUnit) => update({ recovery, ...(recoveryUnit === undefined ? {} : { recoveryUnit }) })} /></> : <><TextInput accessibilityLabel="Fast cue" maxLength={120} onChangeText={(fastCue) => update({ fastCue })} value={draft.fastCue} /><TextInput accessibilityLabel="Easy recovery cue" maxLength={120} onChangeText={(easyRecoveryCue) => update({ easyRecoveryCue })} value={draft.easyRecoveryCue} /></>}
+      <TargetFields label="Effort target" target={draft.target} onChange={(target) => update({ target })} />
+    </> : null}
     <Text>Session preview</Text>
     <Text>{preview ?? "Complete the visible fields to preview this session."}</Text>
   </View>;

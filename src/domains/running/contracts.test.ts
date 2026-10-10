@@ -91,4 +91,16 @@ describe("Running source contracts", () => {
     expect(evaluateRunningReadiness({ hasRecoveryRevision: true, slotCount: 0 })).toEqual({ ready: false, reason: "missing_slots" });
     expect(evaluateRunningReadiness({ hasRecoveryRevision: true, slotCount: 1 })).toEqual({ ready: true, reason: "ready" });
   });
+
+  test("keeps unstructured Fartlek cues bounded and excludes structured quantities", () => {
+    expect(parseRunningSessionRevision({
+      ...base, id: "revision-fartlek-cues", rootId: "root-fartlek-cues", sessionKind: "fartlek", phases: [],
+      advisoryTarget: { heartRateZone: 3 },
+      contextual: { format: "unstructured", repetitions: 4, fastCue: "lamp posts", easyRecoveryCue: "easy to bridge" },
+    })).toMatchObject({ contextual: { format: "unstructured", repetitions: 4, fastCue: "lamp posts", easyRecoveryCue: "easy to bridge" } });
+    expect(() => parseRunningSessionRevision({
+      ...base, id: "revision-fartlek-invalid", rootId: "root-fartlek-invalid", sessionKind: "fartlek", phases: [],
+      contextual: { format: "unstructured", repetitions: 4, fastCue: "x".repeat(121), easyRecoveryCue: "easy", work: { durationMs: 60_000 } },
+    })).toThrow(RunningBoundaryError);
+  });
 });
