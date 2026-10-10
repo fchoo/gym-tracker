@@ -95,6 +95,10 @@ import { strengthOccurrenceProvenanceMigration } from "../../src/platform/sqlite
 import { completedSetCorrectionReceiptsMigration } from "../../src/platform/sqlite/migrations/0033_completed_set_correction_receipts";
 import { runningActivityMatchLedgerMigration } from "../../src/platform/sqlite/migrations/0034_running_activity_match_ledger";
 import { importedActivityLifecycleStateMigration } from "../../src/platform/sqlite/migrations/0035_imported_activity_lifecycle_state";
+import {
+  SESSION_EXERCISE_REST_DEFAULT_RECEIPTS_TABLE,
+  sessionExerciseRestDefaultsMigration,
+} from "../../src/platform/sqlite/migrations/0036_session_exercise_rest_defaults";
 
 const MIGRATIONS_THROUGH_V18 = runtimeMigrations.filter(
   ({ version }) => version <= 18,
@@ -286,7 +290,7 @@ const requiredTables = [
 ] as const;
 
 describe("Plan 01-06 forward migrations and internal recovery", () => {
-  it("upgrades the schema-27 protected baseline to the complete Phase 13 source graph", async () => {
+  it("upgrades the schema-27 protected baseline to the complete current source graph", async () => {
     const runtime = await createHostRuntime(fixture("v27-multi-plan-baseline.sql"));
     try {
       const result = await createMigrationRunner({
@@ -297,17 +301,25 @@ describe("Plan 01-06 forward migrations and internal recovery", () => {
       }).run();
 
       expect(multiPlanRunningFoundationMigration.version).toBe(28);
-      expect(result.currentVersion).toBe(35);
+      expect(sessionExerciseRestDefaultsMigration.version).toBe(36);
+      expect(result.currentVersion).toBe(36);
       await expect(runtime.kernel.queryAll<{ name: string }>(
         `SELECT name FROM sqlite_master WHERE type = 'table'
          AND name IN ('running_plans', 'running_session_slots',
-           'imported_activities', 'running_match_events') ORDER BY name`,
+           'imported_activities', 'running_match_events',
+           '${SESSION_EXERCISE_REST_DEFAULT_RECEIPTS_TABLE}') ORDER BY name`,
       )).resolves.toEqual([
         { name: "imported_activities" },
         { name: "running_match_events" },
         { name: "running_plans" },
         { name: "running_session_slots" },
+        { name: SESSION_EXERCISE_REST_DEFAULT_RECEIPTS_TABLE },
       ]);
+      await expect(runtime.kernel.queryAll<{ name: string }>(
+        "PRAGMA table_info(session_exercises)",
+      )).resolves.toContainEqual(expect.objectContaining({
+        name: "default_rest_seconds_is_override",
+      }));
       await expect(runtime.kernel.queryAll<{ plan_kind: string }>(
         "SELECT plan_kind FROM plans ORDER BY id",
       )).resolves.toEqual([{ plan_kind: "strength" }]);
@@ -489,6 +501,7 @@ describe("Plan 01-06 forward migrations and internal recovery", () => {
         33,
         34,
         35,
+      36,
     ]);
     expect(runtimeMigrations.slice(0, 3)).toEqual(migrations);
     expect(initialMigration).toEqual(expect.objectContaining({
@@ -1058,8 +1071,8 @@ describe("Plan 01-06 forward migrations and internal recovery", () => {
       }).run();
 
       expect(result).toEqual(expect.objectContaining({
-        appliedVersions: [22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35],
-        currentVersion: 35,
+        appliedVersions: [22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36],
+        currentVersion: 36,
       }));
       await expect(runtime.kernel.queryAll(
         "SELECT id, owner_namespace FROM portable_owner_identity",
@@ -1496,8 +1509,8 @@ describe("Plan 01-06 forward migrations and internal recovery", () => {
         recoveryBackup: validatedBackup(),
       }).run();
       expect(result).toEqual(expect.objectContaining({
-        appliedVersions: [27, 28, 29, 30, 31, 32, 33, 34, 35],
-        currentVersion: 35,
+        appliedVersions: [27, 28, 29, 30, 31, 32, 33, 34, 35, 36],
+        currentVersion: 36,
       }));
       await expect(advancedTimingTargetOwnershipMigration.verify({
         execute: async () => ({ changes: 0, lastInsertRowId: 0 }),

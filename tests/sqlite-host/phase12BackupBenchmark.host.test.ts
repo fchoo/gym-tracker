@@ -35,8 +35,12 @@ import {
   createMigrationRunner,
 } from "../../src/platform/sqlite/migrationRunner";
 import {
+  CURRENT_SCHEMA_VERSION,
   migrations,
 } from "../../src/platform/sqlite/migrations";
+import {
+  SESSION_EXERCISE_REST_DEFAULT_RECEIPTS_TABLE,
+} from "../../src/platform/sqlite/migrations/0036_session_exercise_rest_defaults";
 import type {
   RecoveryBackupPort,
 } from "../../src/platform/sqlite/recoveryBackup";
@@ -137,18 +141,26 @@ async function migratedKernel(): Promise<SqliteKernel> {
       validated: true,
     }),
   };
-  await createMigrationRunner({
+  const migrationResult = await createMigrationRunner({
     databaseName: "gym-tracker.db",
     kernel,
     migrations,
     recoveryBackup,
   }).run();
+  expect(migrationResult).toEqual(expect.objectContaining({
+    currentVersion: 36,
+  }));
+  expect(CURRENT_SCHEMA_VERSION).toBe(36);
   kernels.push(kernel);
   return kernel;
 }
 
 it("seeds a maximum fixture accepted by the fully migrated schema", async () => {
   const kernel = await migratedKernel();
+
+  await expect(kernel.queryAll<{ name: string }>(
+    `SELECT name FROM sqlite_master WHERE type = 'table' AND name = '${SESSION_EXERCISE_REST_DEFAULT_RECEIPTS_TABLE}'`,
+  )).resolves.toEqual([{ name: SESSION_EXERCISE_REST_DEFAULT_RECEIPTS_TABLE }]);
 
   await expect(phase12SqliteVariableLimit(kernel))
     .resolves.toBeGreaterThanOrEqual(LOGICAL_MERGE_BATCH_PARAMETER_LIMIT);
@@ -159,6 +171,7 @@ it("seeds a maximum fixture accepted by the fully migrated schema", async () => 
     snapshotId: "phase12-writer-00",
     createdAtMs: 100,
   });
+  expect(snapshot.schemaVersion).toBe(36);
   expect({
     rows: snapshot.manifest.totalRows,
     bytes: phase12EncodedDriveObjectBytes(snapshot),
