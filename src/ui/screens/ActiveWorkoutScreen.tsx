@@ -224,6 +224,7 @@ type SectionMutation = "add_warmup" | "add_working";
 
 type SectionMutationFailure = Readonly<{
   operation: SectionMutation;
+  sessionExerciseId: string;
   retry: () => void;
 }>;
 
@@ -810,6 +811,7 @@ function PopulatedWorkoutOverview({
   const [exerciseAddSelectedId, setExerciseAddSelectedId] = useState<string | null>(null);
   const [exerciseAddBusy, setExerciseAddBusy] = useState(false);
   const [exerciseAddFailed, setExerciseAddFailed] = useState(false);
+  const [addSetMenuExerciseId, setAddSetMenuExerciseId] = useState<string | null>(null);
   const [reorderMode, setReorderMode] = useState(false);
   const [replacementPickerForId, setReplacementPickerForId] =
     useState<string | null>(null);
@@ -823,7 +825,6 @@ function PopulatedWorkoutOverview({
   const moreFirstActionRef = useRef<View>(null);
   const exerciseActionRefs = useRef(new Map<string, View | null>());
   const exerciseActionFirstRef = useRef<View>(null);
-  const warmupAddRef = useRef<View>(null);
   const workingAddRef = useRef<View>(null);
   const removeFocusRef = useRef<View>(null);
   const removeGlyphRefs = useRef(new Map<string, View | null>());
@@ -1127,8 +1128,9 @@ function PopulatedWorkoutOverview({
     } catch {
       setSectionFailure({
         operation: "add_warmup",
+        sessionExerciseId: exercise.id,
         retry: () => {
-          void addWarmup();
+          void addWarmup(exercise);
         },
       });
     } finally {
@@ -1162,8 +1164,9 @@ function PopulatedWorkoutOverview({
     } catch {
       setSectionFailure({
         operation: "add_working",
+        sessionExerciseId: exercise.id,
         retry: () => {
-          void addWorking();
+          void addWorking(exercise);
         },
       });
     } finally {
@@ -1261,8 +1264,7 @@ function PopulatedWorkoutOverview({
         : nextExercise.workingSets;
       const nextSet = nextSets[candidate.index] ?? nextSets.at(-1);
       if (nextSet === undefined) {
-        (candidate.kind === "warmup" ? warmupAddRef : workingAddRef)
-          .current?.focus();
+        workingAddRef.current?.focus();
       } else {
         setRevealedSetId(nextSet.id);
         setRevealedSetOffset(0);
@@ -1933,28 +1935,6 @@ function PopulatedWorkoutOverview({
                     : "active-workout-warmups-card"}
                 >
               <SectionHeader
-                action={(
-                  <View
-                    style={styles.inlineActions}
-                    testID={isMultiExerciseOverview
-                      ? `active-workout-${exercise.id}-warmup-actions`
-                      : "active-workout-warmup-actions"}
-                  >
-                    <SectionGlyphAction
-                      busy={sectionMutationRef.current === "add_warmup"}
-                      disabled={
-                        warmupBusy !== null
-                        || exercise.metricProfile !== "load_reps"
-                      }
-                      accessibilityLabel="Add warm-up"
-                      icon={Plus}
-                      onPress={() => {
-                        void addWarmup(exercise);
-                      }}
-                      ref={warmupAddRef}
-                    />
-                  </View>
-                )}
                 supportingText="Optional warm-up sets"
                 title="Warm-ups"
                 tone="card"
@@ -2041,12 +2021,16 @@ function PopulatedWorkoutOverview({
                       : "active-workout-working-actions"}
                   >
                     <SectionGlyphAction
-                      busy={sectionMutationRef.current === "add_working"}
-                      disabled={workingBusySetId !== null}
-                      accessibilityLabel="Add working set"
+                      busy={sectionMutationRef.current !== null}
+                      disabled={
+                        sectionMutationRef.current !== null
+                        || warmupBusy !== null
+                        || workingBusySetId !== null
+                      }
+                      accessibilityLabel="Add set"
                       icon={Plus}
                       onPress={() => {
-                        void addWorking(exercise);
+                        setAddSetMenuExerciseId(exercise.id);
                       }}
                       ref={workingAddRef}
                     />
@@ -2056,7 +2040,8 @@ function PopulatedWorkoutOverview({
                 title="Working sets"
                 tone="card"
               />
-              {sectionFailure?.operation !== "add_working" ? null : (
+              {sectionFailure?.operation !== "add_working"
+                || sectionFailure.sessionExerciseId !== exercise.id ? null : (
                 <InlineNotice
                   action={
                     <SecondaryAction
@@ -2428,6 +2413,39 @@ function PopulatedWorkoutOverview({
         restoreFocusRef={removeFocusRef}
         visible
       />}
+      {addSetMenuExerciseId === null ? null : (() => {
+        const exercise = exercisesFor(view).find(
+          ({ id }) => id === addSetMenuExerciseId,
+        );
+        if (exercise === undefined) return null;
+        const warmupAvailable = exercise.metricProfile === "load_reps";
+        const workingAvailable = exercise.workingSets.length > 0;
+        return (
+          <BottomSheet
+            heading={`Add set · ${exercise.name}`}
+            onCancel={() => setAddSetMenuExerciseId(null)}
+            restoreFocusRef={workingAddRef}
+            visible
+          >
+            <PrimaryAction
+              disabled={!warmupAvailable || sectionMutationRef.current !== null}
+              label="Add warm-up set"
+              onPress={() => {
+                setAddSetMenuExerciseId(null);
+                void addWarmup(exercise);
+              }}
+            />
+            <SecondaryAction
+              disabled={!workingAvailable || sectionMutationRef.current !== null}
+              label="Add working set"
+              onPress={() => {
+                setAddSetMenuExerciseId(null);
+                void addWorking(exercise);
+              }}
+            />
+          </BottomSheet>
+        );
+      })()}
       {removalAnnouncement === null ? null : (
         <Text accessibilityLiveRegion="polite" style={styles.visuallyHidden}>
           {removalAnnouncement}

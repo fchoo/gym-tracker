@@ -83,6 +83,43 @@ async function renderScreen(view = workoutView(), commandOverrides: Partial<Acti
 }
 
 describe("ActiveWorkoutScreen explicit-save editor", () => {
+  it("scopes the two-option Add set menu to its invoking exercise", async () => {
+    const initial = workoutView();
+    const warmup = {
+      ...initial.currentExercise.workingSets[0]!,
+      id: "warmup-1",
+      kind: "warmup" as const,
+      ordinal: 0,
+      sourceTargetId: null,
+      metricIdentity: null,
+      status: "draft" as const,
+    };
+    const withWarmup = {
+      ...initial,
+      revision: 2,
+      currentExercise: {
+        ...initial.currentExercise,
+        revision: 2,
+        warmups: [warmup],
+      },
+    };
+    const nextView = { ...withWarmup, exercises: [withWarmup.currentExercise] };
+    const addWarmup = jest.fn(async () => ({ ...nextView, committedSetId: warmup.id }));
+    await renderScreen(initial, { addWarmup });
+
+    await fireEvent.press(screen.getByRole("button", { name: "Add set" }));
+    expect(screen.getByRole("button", { name: "Add warm-up set" })).toBeOnTheScreen();
+    expect(screen.getByRole("button", { name: "Add working set" })).toBeOnTheScreen();
+    expect(screen.queryByRole("button", { name: "Add circuit set" })).not.toBeOnTheScreen();
+    await fireEvent.press(screen.getByRole("button", { name: "Add warm-up set" }));
+
+    await waitFor(() => expect(addWarmup).toHaveBeenCalledWith(expect.objectContaining({
+      sessionId: "session-1",
+      sessionExerciseId: "exercise-1",
+    })));
+    expect(screen.getByRole("button", { name: /Warm-up W1/u })).toBeOnTheScreen();
+  });
+
   it("opens a facts-only row in one local editor, keeps source choice local, and cancels without a source write", async () => {
     const updateActiveSetDraft = jest.fn(async () => workoutView());
     await renderScreen(undefined, { updateActiveSetDraft });
