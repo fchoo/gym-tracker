@@ -37,7 +37,5 @@ jest.mock("expo-constants", () => ({
   },
 }));
 
-global.IS_REACT_ACT_ENVIRONMENT = true;
-
 global.__GYM_TRACKER_TEST_SHA256__ = async (value) =>
   require("node:crypto").createHash("sha256").update(value).digest("hex");
