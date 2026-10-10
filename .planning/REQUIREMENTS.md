@@ -72,11 +72,11 @@ Exactly four roots: **Workout, Calendar, Library, Progress**. Preserve SQLite au
 - [x] **WRK-13**: Provide thumb-friendly kg/reps steppers and direct numeric input with units, nonnegative validation and explicit Save set values / Save committed set edit.
 - [x] **WRK-14**: Use a duration-only editor for timed sets with sec labels and five-second decrement/increment controls.
 - [x] **WRK-15**: Retain load_reps, bodyweight_reps, added_load_reps, assisted_reps, timed_hold, fixed_distance, fixed_time, intervals and unscored facts and compatible editors.
-- [ ] **WRK-16**: Place warm-ups before working sets with independent W1/W2 and 01/02 ordinals; exclude warm-ups from working-set progress.
-- [ ] **WRK-17**: Offer only Add warm-up set and Add working set from each exercise's + Add set menu; append warm-ups after existing warm-ups and before working sets.
-- [ ] **WRK-18**: Pair Add exercise with Complete set in one compact dock row; show Saving set… and suppress duplicate taps until the real commit result arrives.
-- [ ] **WRK-19**: On failed set save, preserve the current row and entered values and expose Set not saved · Retry without false completion feedback.
-- [ ] **WRK-20**: After the final set commits, collapse its exercise and reveal the next current exercise; warm-up completion advances without between-set rest.
+- [x] **WRK-16**: Place warm-ups before working sets with independent W1/W2 and 01/02 ordinals; exclude warm-ups from working-set progress.
+- [x] **WRK-17**: Offer only Add warm-up set and Add working set from each exercise's + Add set menu; append warm-ups after existing warm-ups and before working sets.
+- [x] **WRK-18**: Pair Add exercise with Complete set in one compact dock row; show Saving set… and suppress duplicate taps until the real commit result arrives.
+- [x] **WRK-19**: On failed set save, preserve the current row and entered values and expose Set not saved · Retry without false completion feedback.
+- [x] **WRK-20**: After the final set commits, collapse its exercise and reveal the next current exercise; warm-up completion advances without between-set rest.
 - [ ] **WRK-21**: Replace completion controls with a full-width rest dock showing Resting/Rest paused, countdown and next-set context.
 - [ ] **WRK-22**: Provide −15, +15, Pause/Resume and Skip with accessible labels; expiry or skip restores the ready action without completing a set.
 - [x] **WRK-23**: Recover the authoritative rest deadline/pause state and device-owned cues across backgrounding, process death and offline restart.
@@ -283,11 +283,11 @@ once and remains Pending until its owning phase is implemented and verified.
 | WRK-13 | 15 | workout.load-reps-editor | Complete |
 | WRK-14 | 15 | workout.duration-editor | Complete |
 | WRK-15 | 15 | workout.all-metrics | Complete |
-| WRK-16 | 15 | workout.warmup-order | Pending |
-| WRK-17 | 15 | workout.add-set | Pending |
-| WRK-18 | 15 | workout.complete-commit | Pending |
-| WRK-19 | 15 | workout.complete-failure | Pending |
-| WRK-20 | 15 | workout.completion-collapse | Pending |
+| WRK-16 | 15 | workout.warmup-order | Complete |
+| WRK-17 | 15 | workout.add-set | Complete |
+| WRK-18 | 15 | workout.complete-commit | Complete |
+| WRK-19 | 15 | workout.complete-failure | Complete |
+| WRK-20 | 15 | workout.completion-collapse | Complete |
 | WRK-21 | 15 | workout.rest-dock | Pending |
 | WRK-22 | 15 | workout.rest-controls | Pending |
 | WRK-23 | 15 | workout.rest-recovery | Complete |

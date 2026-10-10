@@ -5,16 +5,16 @@ milestone_name: Prototype Parity, Concurrent Plans & Garmin Import — PLANNED
 current_phase: 15
 current_phase_name: Workout Parity
 status: executing
-stopped_at: Completed 15-06-PLAN.md
-last_updated: "2026-10-10T13:11:35.271Z"
+stopped_at: Completed 15-05-PLAN.md
+last_updated: "2026-10-10T13:22:08.582Z"
 last_activity: 2026-10-10
 last_activity_desc: Phase 15 execution started
-state_head: fabad900baaf0f70033de7f25610969ea70b9003
+state_head: 146225c10f061f91df5e46c7f5fa9f2da9ad50e5
 progress:
   total_phases: 8
   completed_phases: 1
   total_plans: 98
-  completed_plans: 33
+  completed_plans: 34
   percent: 13
 ---
 
@@ -30,7 +30,7 @@ See: .planning/PROJECT.md (updated 2026-10-06)
 ## Current Position
 
 Phase: 15 (Workout Parity) — EXECUTING
-Plan: 6 of 13
+Plan: 7 of 13
 Status: Ready to execute
 Last activity: 2026-10-10 — Phase 15 execution started
 
@@ -73,6 +73,7 @@ Gym Tracker remains a signed personal-use Android APK/AAB with SQLite-authoritat
 | Phase 15 P02 | 27min | 6 tasks | 15 files |
 | Phase 15 P04 | 13min | 3 tasks | 7 files |
 | Phase 15 P06 | 1h 40m | 3 tasks | 14 files |
+| Phase 15 P05 | 6m | 3 tasks | 4 files |
 
 ## Accumulated Context
 
@@ -126,6 +127,8 @@ Gym Tracker remains a signed personal-use Android APK/AAB with SQLite-authoritat
 - [Phase 15]: Phase 15: Completed corrections use Save committed set edit and retain the sheet draft when the revision-fenced command fails.
 - [Phase 15]: Phase 15: Complete Set remains screen-owned, duplicate-safe, and retries the exact transaction envelope.
 - [Phase 15]: Exercise rest defaults use canonical request receipts; eligible rest resolves exercise override before plan preference.
+- [Phase 15]: Phase 15: WorkoutActionDock remains render-only; ActiveWorkoutScreen owns retry, revision, idempotency, and committed effects.
+- [Phase 15]: Phase 15: Add Set is scoped to the invoking exercise and exposes only warm-up or working additions.
 
 ### Pending Owner Review
 
@@ -150,7 +153,7 @@ Gym Tracker remains a signed personal-use Android APK/AAB with SQLite-authoritat
 
 ## Session Continuity
 
-Last session: 2026-10-10T13:11:35.210Z
-Stopped at: Completed 15-06-PLAN.md
+Last session: 2026-10-10T13:22:08.514Z
+Stopped at: Completed 15-05-PLAN.md
 Resume file: None
 Next action: Present the complete planning set for owner review; after explicit approval, run `/gsd-execute-phase 13`.
