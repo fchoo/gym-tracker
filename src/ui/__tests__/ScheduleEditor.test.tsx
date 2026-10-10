@@ -671,6 +671,40 @@ describe("schedule editor and Today expansion", () => {
       .not.toBeOnTheScreen();
   });
 
+  it("refreshes factual revisions after a stale schedule save without losing the draft", async () => {
+    const refreshed = scheduleSnapshot({
+      planRevision: 9,
+      scheduleRevision: 8,
+    });
+    const loadSchedule = jest.fn<
+      React.ComponentProps<typeof ScheduleEditorScreen>["loadSchedule"]
+    >()
+      .mockResolvedValueOnce(scheduleSnapshot())
+      .mockResolvedValueOnce(refreshed);
+    const saveSchedule = jest.fn<
+      React.ComponentProps<typeof ScheduleEditorScreen>["saveSchedule"]
+    >().mockRejectedValueOnce({ code: "schedule_preview_conflict" });
+    await renderEditor({ loadSchedule, saveSchedule });
+
+    await fireEvent.changeText(
+      await screen.findByLabelText("Schedule timezone"),
+      "Australia/Sydney",
+    );
+    await fireEvent.press(screen.getByRole("button", {
+      name: "Save schedule",
+    }));
+    await fireEvent.press(screen.getAllByRole("button", {
+      name: "Save schedule",
+    }).at(-1)!);
+
+    expect(await screen.findByText(
+      "Schedule changed. Review the current schedule before trying again.",
+    )).toBeOnTheScreen();
+    await waitFor(() => expect(loadSchedule).toHaveBeenCalledTimes(2));
+    expect(screen.getByDisplayValue("Australia/Sydney")).toBeOnTheScreen();
+    expect(screen.getByText("Effective 2026-08-19")).toBeOnTheScreen();
+  });
+
   it("creates and cancels Rest day and Skip overrides without silent writes", async () => {
     const setDateOverride = jest.fn(async () => scheduleSnapshot({
       dateOverride: {
