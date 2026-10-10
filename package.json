@@ -98,6 +98,7 @@
     ,"benchmark:phase15:host": "node scripts/benchmark-phase15-workout.mjs --host"
     ,"benchmark:phase15": "node scripts/benchmark-phase15-workout.mjs --manifest artifacts/native/phase15/build.json --evidence artifacts/native/phase15/evidence/performance.json"
     ,"verify:phase15:evidence": "node scripts/verify-phase15-evidence.mjs --manifest artifacts/native/phase15/build.json --all"
+    ,"test:maestro:phase17": "node scripts/run-phase17-maestro.mjs"
     ,"verify:phase17:evidence": "node scripts/verify-phase17-evidence.mjs --manifest artifacts/native/phase17/build.json"
     ,"test:evidence:phase15": "node --test scripts/phase15-evidence-scripts.test.mjs"
   },

@@ -1,0 +1,86 @@
+appId: com.fchoo.gymtracker.devtest
+name: Phase 17 Running creation, lifecycle, and collision journey
+tags:
+  - phase-17
+  - native-only
+  - development-test
+---
+- assertTrue: ${PHASE17_CASE_ID == 'library.running-detail' || PHASE17_CASE_ID == 'library.running-create-zero-sessions' || PHASE17_CASE_ID == 'library.running-goal-edit' || PHASE17_CASE_ID == 'library.running-session-common' || PHASE17_CASE_ID == 'library.running-recovery' || PHASE17_CASE_ID == 'library.running-long' || PHASE17_CASE_ID == 'library.running-progression' || PHASE17_CASE_ID == 'library.running-tempo' || PHASE17_CASE_ID == 'library.running-intervals' || PHASE17_CASE_ID == 'library.running-hills' || PHASE17_CASE_ID == 'library.running-fartlek' || PHASE17_CASE_ID == 'library.running-session-lifecycle' || PHASE17_CASE_ID == 'library.running-conflict' || PHASE17_CASE_ID == 'library.running-create-typed-sessions' || PHASE17_CASE_ID == 'library.running-two-same-day-slots'}
+- launchApp:
+    clearState: false
+    stopApp: true
+    permissions:
+      notifications: deny
+- extendedWaitUntil:
+    visible: "Workout"
+    timeout: 90000
+- openLink: "gymtracker-devtest:///library/running?phase17Case=${PHASE17_CASE_ID}"
+- extendedWaitUntil:
+    visible: "Library section"
+    timeout: 30000
+- runFlow:
+    when:
+      true: ${PHASE17_CASE_ID == 'library.running-detail' || PHASE17_CASE_ID == 'library.running-goal-edit'}
+    commands:
+      - assertVisible: "Library section"
+      - pressKey: BACK
+      - assertVisible: "Workout"
+- runFlow:
+    when:
+      true: ${PHASE17_CASE_ID == 'library.running-create-zero-sessions'}
+    commands:
+      - tapOn: "Create plan"
+      - extendedWaitUntil:
+          visible: "Choose a plan type"
+          timeout: 30000
+      - tapOn: "Running"
+      - extendedWaitUntil:
+          visible: "Running plan"
+          timeout: 30000
+      - assertVisible: "No sessions yet"
+      - pressKey: BACK
+      - assertVisible: "Library section"
+- runFlow:
+    when:
+      true: ${PHASE17_CASE_ID == 'library.running-create-typed-sessions' || PHASE17_CASE_ID == 'library.running-two-same-day-slots'}
+    commands:
+      - tapOn: "Create plan"
+      - extendedWaitUntil:
+          visible: "Choose a plan type"
+          timeout: 30000
+      - tapOn: "Running"
+      - extendedWaitUntil:
+          visible: "Running plan"
+          timeout: 30000
+      - tapOn: "Add session"
+      - extendedWaitUntil:
+          visible: "Session type"
+          timeout: 30000
+      - pressKey: "Remote Dpad Down"
+      - pressKey: "Remote Dpad Center"
+      - assertVisible: "Running plan"
+- runFlow:
+    when:
+      true: ${PHASE17_CASE_ID == 'library.running-session-common' || PHASE17_CASE_ID == 'library.running-recovery' || PHASE17_CASE_ID == 'library.running-long' || PHASE17_CASE_ID == 'library.running-progression' || PHASE17_CASE_ID == 'library.running-tempo' || PHASE17_CASE_ID == 'library.running-intervals' || PHASE17_CASE_ID == 'library.running-hills' || PHASE17_CASE_ID == 'library.running-fartlek'}
+    commands:
+      - assertVisible: "Library section"
+      - tapOn: "Create plan"
+      - tapOn: "Running"
+      - extendedWaitUntil:
+          visible: "Running plan"
+          timeout: 30000
+      - tapOn: "Add session"
+      - extendedWaitUntil:
+          visible: "Session type"
+          timeout: 30000
+      - pressKey: BACK
+      - assertVisible: "Running plan"
+- runFlow:
+    when:
+      true: ${PHASE17_CASE_ID == 'library.running-session-lifecycle' || PHASE17_CASE_ID == 'library.running-conflict'}
+    commands:
+      - assertVisible: "Library section"
+      - pressKey: "Remote Dpad Down"
+      - pressKey: "Remote Dpad Center"
+      - pressKey: BACK
+      - assertVisible: "Library section"
