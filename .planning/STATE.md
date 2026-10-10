@@ -5,16 +5,16 @@ milestone_name: Prototype Parity, Concurrent Plans & Garmin Import — PLANNED
 current_phase: 17
 current_phase_name: Library & Running Plans
 status: executing
-stopped_at: Completed 17-08-PLAN.md
-last_updated: "2026-10-10T19:38:48.840Z"
+stopped_at: Completed 17-10-PLAN.md
+last_updated: "2026-10-10T19:51:29.354Z"
 last_activity: 2026-10-11
 last_activity_desc: Phase 17 execution started
-state_head: bbe95c9d699345b5bd5931cc494dea737fe21f3a
+state_head: 97d01b50074a92c29e6408dd14533d2c8e5e8759
 progress:
   total_phases: 8
   completed_phases: 1
   total_plans: 98
-  completed_plans: 49
+  completed_plans: 50
   percent: 13
 ---
 
@@ -30,7 +30,7 @@ See: .planning/PROJECT.md (updated 2026-10-06)
 ## Current Position
 
 Phase: 17 (Library & Running Plans) — EXECUTING
-Plan: 9 of 14
+Plan: 10 of 14
 Status: Ready to execute
 Last activity: 2026-10-11 — Phase 17 execution started
 
@@ -89,6 +89,7 @@ Gym Tracker remains a signed personal-use Android APK/AAB with SQLite-authoritat
 | Phase 17 P09 | 2h 7m | 2 tasks | 14 files |
 | Phase 17 P02 | 7m | 3 tasks | 8 files |
 | Phase 17 P08 | 13m | 3 tasks | 19 files |
+| Phase 17 P10 | 10m | 3 tasks | 9 files |
 
 ## Accumulated Context
 
@@ -179,6 +180,9 @@ Gym Tracker remains a signed personal-use Android APK/AAB with SQLite-authoritat
 - [Phase 17]: [Phase 17]: Running lifecycle is source-derived from plans.is_active plus running_plans.status; routes never infer or write lifecycle facts.
 - [Phase 17]: [Phase 17]: Running activation atomically replaces only the same-sport active pair; Strength remains untouched.
 - [Phase 17]: [Phase 17]: Archived Running plans retain immutable history and reactivate as inactive, requiring a fresh activation review.
+- [Phase 17]: Phase 17: Tempo Continuous omits repetitions/recovery; Tempo repeats owns them as a strict selected branch.
+- [Phase 17]: Phase 17: Structured and Unstructured Fartlek persist exclusive quantity or bounded-cue shapes; no generic notes payload is used.
+- [Phase 17]: Phase 17: One root per session kind per plan remains authoritative, so each Fartlek style is independently round-tripped as inactive source facts.
 
 ### Pending Owner Review
 
@@ -203,7 +207,7 @@ Gym Tracker remains a signed personal-use Android APK/AAB with SQLite-authoritat
 
 ## Session Continuity
 
-Last session: 2026-10-10T19:38:48.664Z
-Stopped at: Completed 17-08-PLAN.md
+Last session: 2026-10-10T19:51:29.196Z
+Stopped at: Completed 17-10-PLAN.md
 Resume file: None
 Next action: Present the complete planning set for owner review; after explicit approval, run `/gsd-execute-phase 13`.
