@@ -171,7 +171,7 @@ async function seedSession(
 async function createRestDefaultReceipt(
   kernel: SqliteKernel,
   sessionId: string,
-): Promise<void> {
+): Promise<Readonly<{ requestId: string; requestSha256: string }>> {
   const sessionExerciseId = `exercise-${sessionId}`;
   const input = {
     sessionId,
@@ -202,6 +202,7 @@ async function createRestDefaultReceipt(
     "UPDATE workout_sessions SET status = 'completed' WHERE id = ?",
     [sessionId],
  ));
+  return { requestId: input.requestId, requestSha256 };
 }
 
 async function seedOwnedPlan(
@@ -2164,8 +2165,94 @@ describe("logical merge repository", () => {
       session_id: "local-session",
       session_exercise_id: "exercise-archive-session",
       default_rest_seconds: 75,
-      result_json: JSON.stringify({ version: 1, sessionId: "archive-session", sessionExerciseId: "exercise-archive-session", defaultRestSeconds: 75 }),
+      result_json: JSON.stringify({ version: 1, sessionId: "local-session", sessionExerciseId: "exercise-archive-session", defaultRestSeconds: 75 }),
     }]);
+  });
+
+  it("remaps colliding immutable rest-default receipts with their session identities", async () => {
+    const archiveKernel = await open("rest-default-receipt-archive");
+    await seedSession(archiveKernel, {
+      id: "shared-session",
+      portableId: "e".repeat(32),
+      modifiedAtMs: 20,
+    });
+    const archiveReceipt = await createRestDefaultReceipt(archiveKernel, "shared-session");
+    const archive = await snapshot(archiveKernel);
+
+    const localKernel = await open("rest-default-receipt-local");
+    await seedSession(localKernel, {
+      id: "shared-session",
+      portableId: "f".repeat(32),
+      modifiedAtMs: 10,
+    });
+    await createRestDefaultReceipt(localKernel, "shared-session");
+    const local = await createSqliteMergeLocalFactsPort(localKernel).read();
+    const plan = await buildPortableMergePlan({
+      archive: {
+        ...archive,
+        version: 2 as const,
+        tables: {
+          ...archive.tables,
+          portable_owner_identity: [{ id: 1, owner_namespace: local.ownerNamespace }],
+        },
+      },
+      local: {
+        version: 2 as const,
+        ...local,
+        tables: {
+          ...local.tables,
+          portable_owner_identity: [{ id: 1, owner_namespace: local.ownerNamespace }],
+        },
+      },
+      payloadDigest: sha256,
+    });
+
+    await expect(createFullPlanLogicalMergeWriter(localKernel, { sha256 })
+      .commitFullPlan({
+        localFingerprint: await sha256(canonicalMergeValue(local)),
+        plan,
+      })).resolves.toEqual({ state: "rebuild_pending" });
+
+    const [mappedSession] = await localKernel.queryAll<{ id: string }>(
+      "SELECT id FROM workout_sessions WHERE portable_id = ?",
+      ["e".repeat(32)],
+    );
+    expect(mappedSession?.id).toBeDefined();
+    expect(mappedSession?.id).not.toBe("shared-session");
+    const [mappedExercise] = await localKernel.queryAll<{ id: string }>(
+      "SELECT id FROM session_exercises WHERE session_id = ?",
+      [mappedSession!.id],
+    );
+    expect(mappedExercise?.id).toBeDefined();
+    expect(mappedExercise?.id).not.toBe("exercise-shared-session");
+    const [mappedReceipt] = await localKernel.queryAll<{
+      request_id: string;
+      request_sha256: string;
+      session_id: string;
+      session_exercise_id: string;
+      result_json: string;
+    }>(
+      `SELECT request_id, request_sha256, session_id, session_exercise_id, result_json
+       FROM workout_session_exercise_rest_default_receipts
+       WHERE session_id = ?`,
+      [mappedSession!.id],
+    );
+    expect(mappedReceipt).toEqual({
+      request_id: expect.not.stringMatching(/^rest-default-shared-session$/u),
+      request_sha256: archiveReceipt.requestSha256,
+      session_id: mappedSession!.id,
+      session_exercise_id: mappedExercise!.id,
+      result_json: JSON.stringify({
+        version: 1,
+        sessionId: mappedSession!.id,
+        sessionExerciseId: mappedExercise!.id,
+        defaultRestSeconds: 75,
+      }),
+    });
+    await expect(localKernel.queryAll(
+      "SELECT request_id FROM workout_session_exercise_rest_default_receipts WHERE request_id = ?",
+      [archiveReceipt.requestId],
+    )).resolves.toEqual([{ request_id: archiveReceipt.requestId }]);
   });
 
   it("applies a precomputed owned-plan root, day, and aggregate state atomically", async () => {

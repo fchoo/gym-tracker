@@ -342,6 +342,28 @@ describe("portable merge plan", () => {
       .rejects.toEqual(new MergePlanError("merge_plan_invalid"));
   });
 
+  it("fails closed when materializing a rest-default receipt outside its canonical shape", async () => {
+    const archive = snapshot({ id: "archive-session", marker: "archive", modifiedAtMs: 20 }, {
+      session_exercises: [{ id: "exercise", session_id: "archive-session" }],
+      workout_session_exercise_rest_default_receipts: [{
+        request_id: "exercise-rest:invalid",
+        session_id: "archive-session",
+        session_exercise_id: "exercise",
+        result_json: JSON.stringify({
+          version: 1,
+          sessionId: "archive-session",
+          sessionExerciseId: "exercise",
+          defaultRestSeconds: -1,
+        }),
+      }],
+    });
+    const local = snapshot({ id: "local-session", marker: "local", modifiedAtMs: 10 });
+
+    const plan = await buildPortableMergePlan({ archive, local, payloadDigest });
+
+    expect(() => plan.aggregates).toThrow(new MergePlanError("merge_plan_invalid"));
+  });
+
   it("uses the canonical payload digest to break an equal-timestamp session tie deterministically", async () => {
     const archive = snapshot({ id: "archive-session", marker: "archive", modifiedAtMs: 20 });
     const local = snapshot({ id: "local-session", marker: "local", modifiedAtMs: 20 });
@@ -505,6 +527,24 @@ describe("portable merge plan", () => {
           }],
         }),
       }],
+      workout_session_exercise_rest_default_receipts: [{
+        request_id: "exercise-rest:deterministic-request-sha",
+        request_sha256: "a".repeat(64),
+        session_id: "session-1",
+        session_exercise_id: "exercise-1",
+        default_rest_seconds: 75,
+        expected_session_revision: 1,
+        expected_session_exercise_revision: 1,
+        result_session_revision: 2,
+        result_session_exercise_revision: 2,
+        result_json: JSON.stringify({
+          version: 1,
+          sessionId: "session-1",
+          sessionExerciseId: "exercise-1",
+          defaultRestSeconds: 75,
+        }),
+        committed_at_ms: 1,
+      }],
     } as const;
     const archive = snapshot(
       { id: "session-1", marker: "archive", modifiedAtMs: 20 },
@@ -601,6 +641,20 @@ describe("portable merge plan", () => {
           sessionId,
           orderedSessionExerciseIds: [exerciseId],
           expectedSessionExerciseRevisions: [{ sessionExerciseId: exerciseId, revision: 1 }],
+        }),
+      }),
+    ]);
+    expect(aggregate?.tables.workout_session_exercise_rest_default_receipts).toEqual([
+      expect.objectContaining({
+        request_id: expect.not.stringMatching(/^exercise-rest:deterministic-request-sha$/u),
+        request_sha256: "a".repeat(64),
+        session_id: sessionId,
+        session_exercise_id: exerciseId,
+        result_json: JSON.stringify({
+          version: 1,
+          sessionId,
+          sessionExerciseId: exerciseId,
+          defaultRestSeconds: 75,
         }),
       }),
     ]);

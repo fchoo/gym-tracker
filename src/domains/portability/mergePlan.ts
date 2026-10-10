@@ -566,6 +566,25 @@ function rewriteReorderReceiptResult(
   return encodeJson(rewritten);
 }
 
+function rewriteRestDefaultReceiptResult(
+  serialized: unknown,
+  sessionIds: ReadonlyMap<string, string>,
+  exerciseIds: ReadonlyMap<string, string>,
+): string {
+  const result = parseJsonObject(serialized);
+  if (result.version !== 1
+    || typeof result.defaultRestSeconds !== "number"
+    || !Number.isSafeInteger(result.defaultRestSeconds)
+    || result.defaultRestSeconds < 0 || result.defaultRestSeconds > 86_400) {
+    invalid();
+  }
+  return encodeJson({
+    ...result,
+    sessionId: mappedIdentifier(sessionIds, result.sessionId),
+    sessionExerciseId: mappedIdentifier(exerciseIds, result.sessionExerciseId),
+  });
+}
+
 function sessionAggregate(
   snapshot: PortableMergePlanSnapshot,
   local: PortableMergePlanSnapshot,
@@ -608,6 +627,7 @@ function sessionAggregate(
     ["history_audit_events", "id"],
     ["workout_session_exercise_edit_receipts", "request_id"],
     ["workout_session_exercise_reorder_receipts", "request_id"],
+    ["workout_session_exercise_rest_default_receipts", "request_id"],
   ] as const) {
     const rows = indexedRows(table)
       ?? rowsFor(snapshot, table).filter((row) => row.session_id === sessionId);
@@ -671,6 +691,7 @@ function sessionAggregate(
         if (immutableIds !== undefined) {
           const keyColumn = table === "workout_session_exercise_edit_receipts"
             || table === "workout_session_exercise_reorder_receipts"
+            || table === "workout_session_exercise_rest_default_receipts"
             ? "request_id"
             : "id";
           const replacement = mappedIdentifier(immutableIds, row[keyColumn]);
@@ -724,6 +745,16 @@ function sessionAggregate(
           mapped = Object.freeze({
             ...mapped,
             result_json: rewriteReorderReceiptResult(
+              mapped.result_json,
+              sessionMap,
+              mappedExercises.ids,
+            ),
+          });
+        }
+        if (table === "workout_session_exercise_rest_default_receipts") {
+          mapped = Object.freeze({
+            ...mapped,
+            result_json: rewriteRestDefaultReceiptResult(
               mapped.result_json,
               sessionMap,
               mappedExercises.ids,
