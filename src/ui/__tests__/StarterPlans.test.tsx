@@ -971,6 +971,13 @@ describe("starter template update", () => {
     await fireEvent.press(screen.getByRole("button", {
       name: "Create new copy",
     }));
+    expect(createNewCopy).not.toHaveBeenCalled();
+    expect(screen.getByRole("header", {
+      name: "Create new copy?",
+    })).toBeOnTheScreen();
+    await fireEvent.press(screen.getAllByRole("button", {
+      name: "Create new copy",
+    }).at(-1)!);
     expect(createNewCopy).toHaveBeenCalledWith(preview);
     expect(onCreated).toHaveBeenCalledWith("owned-foundation-new");
     expect(await screen.findByText("New copy created")).toBeOnTheScreen();
