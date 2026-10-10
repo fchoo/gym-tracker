@@ -5,7 +5,7 @@ import { existsSync, readFileSync } from "node:fs";
 import path from "node:path";
 import { pathToFileURL } from "node:url";
 
-import { PHASE17_LIBRARY_RUNNING_CASES } from "../src/testing/contracts/phase17LibraryRunning.contract.ts";
+import { PHASE17_CASE_ACTION_CONTRACTS, PHASE17_LIBRARY_RUNNING_CASES } from "../src/testing/contracts/phase17LibraryRunning.contract.ts";
 import { sourceTreeSha256 } from "./source-tree-digest.mjs";
 
 const ROOT = process.cwd();
@@ -20,7 +20,7 @@ function flowFor(id) {
 }
 
 export const PHASE17_FLOW_CASES = Object.freeze(
-  PHASE17_LIBRARY_RUNNING_CASES.map(({ id }) => Object.freeze({ id, flow: flowFor(id) })),
+  PHASE17_CASE_ACTION_CONTRACTS.map((contract) => Object.freeze({ ...contract, flow: flowFor(contract.id) })),
 );
 
 export const PHASE17_DEVICE_PROFILES = Object.freeze({
@@ -102,15 +102,20 @@ export function createPhase17RunnerPlan(manifest) {
     device_profiles: PHASE17_DEVICE_PROFILES,
     device_state_restoration: "guaranteed",
     evidence_policy: "runner-never-writes-consolidated-evidence",
+    source_setup_policy: "authoritative-sqlite-commands-only",
+    result_policy: "native-evidence-pending-until-phase20",
   });
 }
 
 export function validatePhase17FlowSources(flows, ids = PHASE17_FLOW_CASES.map(({ id }) => id)) {
   const text = Object.values(flows ?? {}).join("\n");
   for (const id of ids) {
-    if (!text.includes(`PHASE17_CASE_ID == '${id}'`)) {
+    const contract = PHASE17_FLOW_CASES.find((entry) => entry.id === id);
+    if (contract === undefined || !text.includes(`PHASE17_CASE_ID == '${id}'`)) {
       throw new Error(`phase17_flow_case_missing:${id}`);
     }
+    const binding = `# phase17-contract: ${contract.id} | ${contract.action} | ${contract.uiReadback} | ${contract.sourceProbe}`;
+    if (!text.includes(binding)) throw new Error(`phase17_flow_contract_missing:${id}`);
   }
   if (text.includes("takeScreenshot") || text.includes("writeFile") || text.includes("inputText: \"")) {
     throw new Error("phase17_flow_privacy_unsafe");
@@ -163,6 +168,19 @@ function profileFor(id) {
   return PHASE17_DEVICE_PROFILES.standard;
 }
 
+function sessionKindFor(id) {
+  const kinds = Object.freeze({
+    "library.running-recovery": "Recovery",
+    "library.running-long": "Long run",
+    "library.running-progression": "Progression",
+    "library.running-tempo": "Tempo",
+    "library.running-intervals": "Intervals",
+    "library.running-hills": "Hills",
+    "library.running-fartlek": "Fartlek",
+  });
+  return kinds[id] ?? "Recovery";
+}
+
 function applyDeviceProfile(adbPath, serial, profile) {
   adb(adbPath, serial, "shell", "wm", "density", "160");
   adb(adbPath, serial, "shell", "wm", "size", `${profile.width}x${profile.height}`);
@@ -181,6 +199,7 @@ function runCase({ adbPath, manifest, id }) {
   const args = [
     "test", "--no-ansi", "--udid", manifest.device.serial,
     "-e", `PHASE17_CASE_ID=${id}`,
+    "-e", `PHASE17_SESSION_KIND=${sessionKindFor(id)}`,
     "-e", `PHASE17_TEXT_SCALE=${profile.fontScale}`,
     "-e", `PHASE17_REDUCED_MOTION=${profile.reducedMotion}`,
     "-e", `PHASE17_THEME=${profile.night}`,

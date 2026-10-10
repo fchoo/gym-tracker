@@ -4,6 +4,7 @@ tags:
   - phase-17
   - native-only
   - development-test
+# phase17-contract: library.accessibility-recovery | exercise-200pct-dpad-back-escape-ime-and-reduced-motion | focus-target-and-motion-readback-visible | accessibility_runtime_profile
 ---
 - assertTrue: ${PHASE17_CASE_ID == 'library.accessibility-recovery'}
 - launchApp:

@@ -25,7 +25,8 @@ decisions:
 patterns-established:
   - "Native flow sources declare canonical IDs and remain payload-free; evidence is produced only from retained real-run artifacts."
   - "Risk-based native coverage is one case per canonical ledger ID, not a Cartesian matrix."
-requirements-completed: [LIB-01, LIB-02, LIB-03, LIB-04, LIB-05, LIB-06, LIB-07, LIB-08, LIB-09, LIB-10, LIB-11, LIB-12, LIB-13, LIB-14, LIB-15, LIB-16, LIB-17, LIB-18, LIB-19, LIB-20, LIB-21, LIB-22, LIB-23, LIB-24, LIB-25, LIB-26, LIB-27, LIB-28, LIB-29, LIB-30, LIB-31, LIB-32, LIB-33, LIB-34, LIB-35, LIB-36]
+requirements-completed: []
+requirements-pending-native-evidence: [LIB-01, LIB-02, LIB-03, LIB-04, LIB-05, LIB-06, LIB-07, LIB-08, LIB-09, LIB-10, LIB-11, LIB-12, LIB-13, LIB-14, LIB-15, LIB-16, LIB-17, LIB-18, LIB-19, LIB-20, LIB-21, LIB-22, LIB-23, LIB-24, LIB-25, LIB-26, LIB-27, LIB-28, LIB-29, LIB-30, LIB-31, LIB-32, LIB-33, LIB-34, LIB-35, LIB-36]
 coverage:
   - id: D1
     description: Bounded Phase 17 runner and all three payload-free Maestro source flows

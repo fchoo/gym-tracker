@@ -4,6 +4,29 @@ tags:
   - phase-17
   - native-only
   - development-test
+# phase17-contract: library.remembered-state | return-to-library | selected-section-restored | library_view_state
+# phase17-contract: library.plan-groups | filter-plan-group | filtered-plan-group-visible | owned_plans
+# phase17-contract: library.exercise-search | search-exercises | matching-exercise-result-visible | exercise_search_index
+# phase17-contract: library.exercise-favorites | toggle-exercise-favorite | favorite-section-updated | exercise_preferences
+# phase17-contract: library.actions-sheet | open-library-actions | library-actions-sheet-visible | library_action_state
+# phase17-contract: library.neutral-plan-chooser | open-neutral-plan-chooser | strength-and-running-unselected | plan_create_intent
+# phase17-contract: library.true-no-plans | create-and-return-to-empty-library | no-plans-empty-state-visible | owned_plans
+# phase17-contract: library.owned-summary | open-strength-detail | strength-summary-facts-visible | owned_plans
+# phase17-contract: library.owned-lifecycle | preview-and-confirm-strength-lifecycle | strength-lifecycle-readback-visible | owned_plan_lifecycle_receipts
+# phase17-contract: library.starter-detail | open-starter-detail | starter-facts-visible | starter_plan_catalog
+# phase17-contract: library.starter-activation | preview-and-confirm-starter-activation | starter-activation-readback-visible | starter_plan_activations
+# phase17-contract: library.template-update | review-template-update | template-update-impact-visible | template_update_receipts
+# phase17-contract: library.create-strength | create-and-save-strength-plan | saved-strength-plan-visible-after-reopen | owned_plans
+# phase17-contract: library.plan-editor | edit-and-save-strength-plan | saved-strength-plan-edit-visible | owned_plan_revisions
+# phase17-contract: library.editor-draft-guards | discard-strength-draft | saved-plan-unchanged-after-reopen | owned_plan_revisions
+# phase17-contract: library.schedule-editor | save-strength-schedule | saved-strength-schedule-visible | plan_schedule_slots
+# phase17-contract: library.replacement-impact | replace-strength-exercise | replacement-impact-and-result-visible | plan_exercise_replacements
+# phase17-contract: library.day-removal-impact | remove-strength-day | day-removal-impact-visible | plan_day_revisions
+# phase17-contract: library.builtin-exercise | open-bundled-exercise-instructions | bundled-instructions-and-favorite-visible | exercise_instruction_sets
+# phase17-contract: library.custom-exercise | edit-and-archive-custom-exercise | archived-custom-exercise-visible | custom_exercises
+# phase17-contract: library.create-exercise | create-custom-exercise | created-custom-exercise-visible-after-reopen | custom_exercises
+# phase17-contract: library.copy-metric-migration | copy-exercise-and-migrate-metric | copied-metric-migration-visible | custom_exercise_metric_migrations
+# phase17-contract: library.load-error-recovery | retry-library-load | recovered-library-content-visible | library_load_receipts
 ---
 - assertTrue: ${PHASE17_CASE_ID == 'library.remembered-state' || PHASE17_CASE_ID == 'library.plan-groups' || PHASE17_CASE_ID == 'library.exercise-search' || PHASE17_CASE_ID == 'library.exercise-favorites' || PHASE17_CASE_ID == 'library.actions-sheet' || PHASE17_CASE_ID == 'library.neutral-plan-chooser' || PHASE17_CASE_ID == 'library.true-no-plans' || PHASE17_CASE_ID == 'library.owned-summary' || PHASE17_CASE_ID == 'library.owned-lifecycle' || PHASE17_CASE_ID == 'library.starter-detail' || PHASE17_CASE_ID == 'library.starter-activation' || PHASE17_CASE_ID == 'library.template-update' || PHASE17_CASE_ID == 'library.create-strength' || PHASE17_CASE_ID == 'library.plan-editor' || PHASE17_CASE_ID == 'library.editor-draft-guards' || PHASE17_CASE_ID == 'library.schedule-editor' || PHASE17_CASE_ID == 'library.replacement-impact' || PHASE17_CASE_ID == 'library.day-removal-impact' || PHASE17_CASE_ID == 'library.builtin-exercise' || PHASE17_CASE_ID == 'library.custom-exercise' || PHASE17_CASE_ID == 'library.create-exercise' || PHASE17_CASE_ID == 'library.copy-metric-migration' || PHASE17_CASE_ID == 'library.load-error-recovery'}
 - launchApp:
