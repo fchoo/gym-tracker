@@ -94,7 +94,7 @@ status: complete
 
 - PASS: focused component suite for `TodayScreen`, `WorkoutDaySelector`, foundation, and Workout route — 4 suites, 84 tests.
 - PASS: `npm run lint -- --quiet` and `npm run check:boundaries` (333 files).
-- NOT RUN TO PASS: `npm run typecheck` remains blocked by two pre-existing `WorkoutSessionPresentation.test.tsx` fixture type errors from Plan 15-01, outside this plan’s files.
+- PASS: post-fix `npm run typecheck`, `npm run lint -- --quiet`, and `npm run check:boundaries` (333 files), after Plan 15-01 commits `2384f15a` and `b0315a97` resolved the presenter-fixture typing errors.
 
 ## Deviations from Plan
 
@@ -116,11 +116,11 @@ status: complete
 
 ## Issues Encountered
 
-The full typecheck is blocked by existing Plan 15-01 presenter-fixture typing failures. Focused root verification and boundary checks pass; no unrelated files were changed.
+None remaining. The earlier Plan 15-01 presenter-fixture typecheck failure was resolved after this plan completed; post-fix typecheck, lint, and boundary verification now pass.
 
 ## Next Phase Readiness
 
-The Workout root exposes a stable occurrence/start seam and source-backed truth states for later native acceptance. Full typecheck should be rerun after the pre-existing presenter fixture issue is resolved.
+The Workout root exposes a stable occurrence/start seam and source-backed truth states for later native acceptance. Full typecheck, lint, and boundary verification are now green.
 
 ## Self-Check: PASSED
 
