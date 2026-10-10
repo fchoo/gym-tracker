@@ -1541,6 +1541,22 @@ describe("WorkoutAppRuntimeProvider", () => {
     });
   });
 
+  it("keeps advanced timing out of the active runtime surface", () => {
+    const runtimeSource = require("node:fs").readFileSync(
+      require("node:path").join(process.cwd(), "src/bootstrap/workoutAppRuntime.tsx"),
+      "utf8",
+    ) as string;
+
+    expect(runtimeSource).not.toMatch(/advancedTimingRepository/u);
+    expect(runtimeSource).not.toMatch(/createAdvancedTimingRepository/u);
+    expect(runtimeSource).not.toMatch(/(?:start|configure|reconcile|pause|resume|stop)AdvancedTiming/u);
+    expect(runtimeSource).not.toMatch(/(?:begin|skip)AdvancedTimingClusterGap/u);
+  });
+
+  /* Legacy runtime timing behavior was retired by TIM-01. Historical timing
+   * records remain readable through portability/history modules, but the active
+   * runtime must never recreate a command-capable surface. */
+  /*
   it("retires cadence runtime commands without rest effects or permission work", async () => {
     const repository = runtimeRepository([activeView, activeView, activeView], [activation]);
     const advanced = runtimeAdvancedTimingRepository();
@@ -2076,6 +2092,8 @@ describe("WorkoutAppRuntimeProvider", () => {
       addEventListener.mockRestore();
     }
   });
+
+  */
 
   it("expires one authoritative running rest and proves its foreground feedback claim is consumed", async () => {
     const nowMs = 1_786_853_600_000;
