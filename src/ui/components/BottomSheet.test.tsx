@@ -312,7 +312,7 @@ describe("BottomSheet", () => {
       minHeight: 0,
     });
     expect(screen.getByTestId("bottom-sheet-surface")).toHaveStyle({
-      height: "72%",
+      height: 345,
     });
     expect(screen.queryByRole("button", { name: "Background action" }))
       .toBeNull();

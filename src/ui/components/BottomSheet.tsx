@@ -84,6 +84,9 @@ export function BottomSheet({
   const { colors, reduceMotion } = useAppTheme();
   const { height: windowHeight, width: windowWidth } = useWindowDimensions();
   const compactLandscape = windowWidth > windowHeight && windowHeight <= 480;
+  const compactLandscapeHeight = compactLandscape
+    ? Math.floor(windowHeight * 0.72)
+    : undefined;
   const insets = React.useContext(SafeAreaInsetsContext) ?? {
     bottom: 0,
     left: 0,
@@ -301,7 +304,7 @@ export function BottomSheet({
                     {
                       backgroundColor: colors.raised,
                       borderColor: colors.line,
-                      height: compactLandscape ? "72%" : undefined,
+                      height: compactLandscapeHeight,
                       paddingBottom: insets.bottom,
                       transform: [{ translateY: translation }],
                     },
