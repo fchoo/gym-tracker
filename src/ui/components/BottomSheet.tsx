@@ -301,7 +301,7 @@ export function BottomSheet({
                     {
                       backgroundColor: colors.raised,
                       borderColor: colors.line,
-                      maxHeight: compactLandscape ? "72%" : undefined,
+                      height: compactLandscape ? "72%" : undefined,
                       paddingBottom: insets.bottom,
                       transform: [{ translateY: translation }],
                     },
@@ -365,7 +365,7 @@ const styles = StyleSheet.create({
     flex: 1,
     justifyContent: "flex-end",
   },
-  boundary: { flexShrink: 1, minHeight: 0 },
+  boundary: { flexGrow: 1, flexShrink: 1, minHeight: 0 },
   compactScroll: { flexGrow: 1, minHeight: 0 },
   keyboardAvoider: { justifyContent: "flex-end" },
   frame: {
