@@ -1,5 +1,6 @@
 import {
   act,
+  fireEvent,
   render,
   screen,
 } from "@testing-library/react-native";
@@ -33,14 +34,18 @@ jest.mock("../../../src/bootstrap/workoutAppRuntime", () => ({
 }));
 
 jest.mock("../../../src/ui/screens/LibraryScreen", () => {
-  const { Text } = require("react-native") as typeof import("react-native");
+  const { Text, Pressable } = require("react-native") as typeof import("react-native");
   return {
     LibraryScreen: ({
+      onCreatePlan,
       refreshGeneration,
-    }: Readonly<{ refreshGeneration?: number }>) => (
-      <Text testID="library-refresh-generation">
-        {refreshGeneration ?? -1}
-      </Text>
+    }: Readonly<{ onCreatePlan(): void; refreshGeneration?: number }>) => (
+      <>
+        <Text testID="library-refresh-generation">
+          {refreshGeneration ?? -1}
+        </Text>
+        <Pressable accessibilityRole="button" accessibilityLabel="Create plan" onPress={onCreatePlan} />
+      </>
     ),
   };
 });
@@ -69,5 +74,13 @@ describe("LibraryRoute focus lifecycle", () => {
     });
     expect(screen.getByTestId("library-refresh-generation"))
       .toHaveTextContent("1");
+  });
+
+  it("routes every Library Create plan affordance to the neutral chooser", async () => {
+    await render(<LibraryRoute />);
+
+    await fireEvent.press(screen.getByRole("button", { name: "Create plan" }));
+
+    expect(mockPush).toHaveBeenCalledWith("/library/plan/create");
   });
 });
