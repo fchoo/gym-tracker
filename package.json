@@ -94,6 +94,9 @@
     ,"verify:phase14:evidence": "node scripts/verify-phase14-evidence.mjs"
     ,"test:evidence:v12:shell": "node --test scripts/phase14-evidence-scripts.test.mjs"
     ,"test:evidence:phase14": "node --test scripts/phase14-font-proof.test.mjs scripts/phase14-evidence-scripts.test.mjs scripts/phase14-native-matrix.test.mjs"
+    ,"test:maestro:phase15": "node scripts/run-phase15-maestro.mjs"
+    ,"verify:phase15:evidence": "node scripts/verify-phase15-evidence.mjs --manifest artifacts/native/phase15/build.json --all"
+    ,"test:evidence:phase15": "node --test scripts/phase15-evidence-scripts.test.mjs"
   },
   "dependencies": {
     "@expo-google-fonts/ibm-plex-mono": "0.4.1",
