@@ -18,9 +18,12 @@ tags:
 - extendedWaitUntil:
     visible: "Library section"
     timeout: 30000
+- assertTrue: ${PHASE17_TEXT_SCALE == 2 && PHASE17_REDUCED_MOTION == true && PHASE17_THEME == 'dark'}
 - pressKey: "Remote Dpad Down"
 - pressKey: "Remote Dpad Center"
 - pressKey: BACK
+- assertVisible: "Library section"
+- pressKey: ESCAPE
 - assertVisible: "Library section"
 - pressKey: BACK
 - assertVisible: "Workout"

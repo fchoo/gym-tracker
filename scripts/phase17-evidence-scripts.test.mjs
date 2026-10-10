@@ -80,6 +80,9 @@ test("Phase 17 native runner keeps the 39-case ledger bounded and requires an ex
   assert.equal(plan.risk_based, true);
   assert.equal(plan.cartesian_expansion, false);
   assert.equal(plan.device_state_restoration, "guaranteed");
+  assert.equal(plan.device_profiles.largeText.fontScale, 2);
+  assert.equal(plan.device_profiles.compactLandscape.reducedMotion, true);
+  assert.equal(plan.device_profiles.compactLandscape.width > plan.device_profiles.compactLandscape.height, true);
   assert.deepEqual(
     parsePhase17RunnerArgs(["--manifest", "artifacts/native/phase17/build.json", "--all"]),
     { manifest: "artifacts/native/phase17/build.json", ids: PHASE17_LIBRARY_RUNNING_EVIDENCE_IDS, execute: false },

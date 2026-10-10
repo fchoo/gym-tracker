@@ -23,6 +23,12 @@ export const PHASE17_FLOW_CASES = Object.freeze(
   PHASE17_LIBRARY_RUNNING_CASES.map(({ id }) => Object.freeze({ id, flow: flowFor(id) })),
 );
 
+export const PHASE17_DEVICE_PROFILES = Object.freeze({
+  standard: Object.freeze({ width: 393, height: 852, fontScale: 1, night: "auto", reducedMotion: false }),
+  largeText: Object.freeze({ width: 393, height: 852, fontScale: 2, night: "light", reducedMotion: true }),
+  compactLandscape: Object.freeze({ width: 852, height: 393, fontScale: 2, night: "dark", reducedMotion: true }),
+});
+
 const caseById = Object.freeze(Object.fromEntries(
   PHASE17_LIBRARY_RUNNING_CASES.map((entry) => [entry.id, entry]),
 ));
@@ -93,6 +99,7 @@ export function createPhase17RunnerPlan(manifest) {
     risk_based: true,
     cartesian_expansion: false,
     seven_session_kinds: 7,
+    device_profiles: PHASE17_DEVICE_PROFILES,
     device_state_restoration: "guaranteed",
     evidence_policy: "runner-never-writes-consolidated-evidence",
   });
@@ -148,9 +155,37 @@ function restoreDeviceState(adbPath, serial, state) {
   adb(adbPath, serial, "shell", "cmd", "uimode", "night", state.nightMode.includes("yes") ? "yes" : state.nightMode.includes("no") ? "no" : "auto");
 }
 
+function profileFor(id) {
+  if (id === "library.accessibility-recovery") return PHASE17_DEVICE_PROFILES.compactLandscape;
+  if (id === "library.remembered-state" || id === "library.running-create-typed-sessions") {
+    return PHASE17_DEVICE_PROFILES.largeText;
+  }
+  return PHASE17_DEVICE_PROFILES.standard;
+}
+
+function applyDeviceProfile(adbPath, serial, profile) {
+  adb(adbPath, serial, "shell", "wm", "density", "160");
+  adb(adbPath, serial, "shell", "wm", "size", `${profile.width}x${profile.height}`);
+  adb(adbPath, serial, "shell", "settings", "put", "system", "font_scale", String(profile.fontScale));
+  const scale = profile.reducedMotion ? "0" : "1";
+  for (const key of ["animator_duration_scale", "transition_animation_scale", "window_animation_scale"]) {
+    adb(adbPath, serial, "shell", "settings", "put", "global", key, scale);
+  }
+  adb(adbPath, serial, "shell", "cmd", "uimode", "night", profile.night);
+}
+
 function runCase({ adbPath, manifest, id }) {
   const flow = flowFor(id);
-  const args = ["test", "--no-ansi", "--udid", manifest.device.serial, "-e", `PHASE17_CASE_ID=${id}`, "-e", "PHASE17_SAFE_INPUT=phase17-test", flow];
+  const profile = profileFor(id);
+  applyDeviceProfile(adbPath, manifest.device.serial, profile);
+  const args = [
+    "test", "--no-ansi", "--udid", manifest.device.serial,
+    "-e", `PHASE17_CASE_ID=${id}`,
+    "-e", `PHASE17_TEXT_SCALE=${profile.fontScale}`,
+    "-e", `PHASE17_REDUCED_MOTION=${profile.reducedMotion}`,
+    "-e", `PHASE17_THEME=${profile.night}`,
+    flow,
+  ];
   execFileSync("maestro", args, { cwd: ROOT, stdio: "inherit" });
   return Object.freeze({ id, flow });
 }
