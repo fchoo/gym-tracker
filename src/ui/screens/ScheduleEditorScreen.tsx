@@ -245,12 +245,13 @@ export function ScheduleEditorScreen({
   const [snapshot, setSnapshot] = useState<ScheduleEditorSnapshot | null>();
   const [draft, setDraft] = useState<DraftState | null>(null);
   const [loadFailed, setLoadFailed] = useState(false);
-  const [saveFailed, setSaveFailed] = useState(false);
+  const [saveError, setSaveError] = useState<"failed" | "stale" | null>(null);
   const [busy, setBusy] = useState(false);
   const [confirmVisible, setConfirmVisible] = useState(false);
   const [overrideReplacement, setOverrideReplacement] =
     useState<ScheduleOverrideSelection | null>(null);
   const saveActionRef = useRef<View>(null);
+  const preserveDraftOnRefreshRef = useRef(false);
 
   useEffect(() => {
     let active = true;
@@ -261,7 +262,13 @@ export function ScheduleEditorScreen({
         return;
       }
       setSnapshot(loaded);
-      setDraft(loaded === null ? null : initialDraft(loaded));
+      setDraft((current) => {
+        const preserveDraft = preserveDraftOnRefreshRef.current;
+        preserveDraftOnRefreshRef.current = false;
+        return loaded === null ? null : preserveDraft && current !== null
+          ? current
+          : initialDraft(loaded);
+      });
     }).catch(() => {
       if (active) {
         setSnapshot(null);
@@ -363,7 +370,7 @@ export function ScheduleEditorScreen({
       return;
     }
     setBusy(true);
-    setSaveFailed(false);
+    setSaveError(null);
     try {
       const saved = await saveSchedule({
         planId: loadedSnapshot.planId,
@@ -379,8 +386,20 @@ export function ScheduleEditorScreen({
       setDraft(initialDraft(saved));
       setConfirmVisible(false);
       onSaved(saved.planId);
-    } catch {
-      setSaveFailed(true);
+    } catch (caught) {
+      const code = typeof caught === "object"
+          && caught !== null
+          && "code" in caught
+          && typeof caught.code === "string"
+        ? caught.code
+        : null;
+      if (code === "schedule_preview_conflict") {
+        preserveDraftOnRefreshRef.current = true;
+        setSaveError("stale");
+        setRetryGeneration((value) => value + 1);
+      } else {
+        setSaveError("failed");
+      }
       setConfirmVisible(false);
     } finally {
       setBusy(false);
@@ -393,7 +412,7 @@ export function ScheduleEditorScreen({
         primary={
           <>
             <ScreenHeader backAction={onBack} title="Edit schedule" />
-            {saveFailed ? (
+            {saveError === "failed" ? (
               <InlineNotice
                 action={
                   <SecondaryAction
@@ -404,6 +423,19 @@ export function ScheduleEditorScreen({
                 body="Schedule could not be saved. Your edits are still here. Try again."
                 heading="Schedule could not be saved"
                 tone="error"
+              />
+            ) : null}
+            {saveError === "stale" ? (
+              <InlineNotice
+                action={
+                  <SecondaryAction
+                    label="Review current schedule"
+                    onPress={() => setConfirmVisible(false)}
+                  />
+                }
+                body="Schedule changed. Review the current schedule before trying again. Your edits are still here."
+                heading="Schedule preview refreshed"
+                tone="attention"
               />
             ) : null}
             {loadedSnapshot.current === null ? (

@@ -697,12 +697,10 @@ describe("schedule editor and Today expansion", () => {
       name: "Save schedule",
     }).at(-1)!);
 
-    expect(await screen.findByText(
-      "Schedule changed. Review the current schedule before trying again.",
-    )).toBeOnTheScreen();
+    expect(await screen.findByText("Schedule preview refreshed"))
+      .toBeOnTheScreen();
     await waitFor(() => expect(loadSchedule).toHaveBeenCalledTimes(2));
     expect(screen.getByDisplayValue("Australia/Sydney")).toBeOnTheScreen();
-    expect(screen.getByText("Effective 2026-08-19")).toBeOnTheScreen();
   });
 
   it("creates and cancels Rest day and Skip overrides without silent writes", async () => {
