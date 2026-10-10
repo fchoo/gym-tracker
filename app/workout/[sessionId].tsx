@@ -203,6 +203,7 @@ export default function ActiveWorkoutRoute() {
         } as unknown as Href);
       }}
       onDiscarded={() => router.replace("/(tabs)")}
+      loadExerciseHistory={runtime.loadExerciseMetricHistory}
       sessionId={resolvedSessionId}
       view={view}
       key={`${resolvedSessionId}:${focusGeneration}`}

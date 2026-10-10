@@ -49,6 +49,16 @@ export type ExerciseMetricHistory = Readonly<{
   warmupVisits: readonly EffectiveMetricHistorySet[];
 }>;
 
+/** A bounded, one-point-per-session view for the Active Workout trend sheet. */
+export type ExerciseMetricTrend = Readonly<{
+  identity: MetricIdentity;
+  referenceTarget: MetricTarget;
+  sessions: readonly EffectiveMetricHistorySet[];
+  recent: EffectiveMetricHistorySet;
+  best: EffectiveMetricHistorySet;
+  previous: EffectiveMetricHistorySet | null;
+}>;
+
 type ComparableEntry = Readonly<{
   set: EffectiveMetricHistorySet;
   exposure: MetricExposure;
@@ -207,5 +217,59 @@ export function buildExerciseMetricHistory(input: Readonly<{
     exerciseId: input.exerciseId,
     segments: Object.freeze(segments),
     warmupVisits: Object.freeze(warmupVisits),
+  });
+}
+
+/**
+ * Keeps Active's compact trend factual: only one completed working-set result
+ * per compatible session, newest first, with no target/profile blending.
+ */
+export function projectComparableExerciseTrend(
+  history: ExerciseMetricHistory,
+): ExerciseMetricTrend | null {
+  const segments = [...history.segments]
+    .filter(({ comparableSets }) => comparableSets.length > 0)
+    .sort((left, right) =>
+      visitOrder(left.comparableSets[0]!, right.comparableSets[0]!)
+      || metricIdentityKey(left.identity).localeCompare(metricIdentityKey(right.identity))
+    );
+  const segment = segments[0];
+  if (segment === undefined) {
+    return null;
+  }
+  const seenSessionIds = new Set<string>();
+  const sessions = segment.comparableSets.filter((set) => {
+    if (seenSessionIds.has(set.sessionId)) {
+      return false;
+    }
+    seenSessionIds.add(set.sessionId);
+    return true;
+  }).slice(0, 6);
+  const recent = sessions[0];
+  if (recent === undefined) {
+    return null;
+  }
+  const candidates = sessions.map((set) => ({
+    observation: set.observation!,
+    completedAtMs: set.completedAtMs!,
+    sessionId: set.sessionId,
+    setOrdinal: set.setOrdinal,
+    setId: set.setId,
+  }));
+  const bestCandidate = selectBestMetricCandidate({
+    identity: segment.identity,
+    target: segment.referenceTarget,
+    candidates,
+  });
+  const best = bestCandidate === null
+    ? recent
+    : sessions.find(({ setId }) => setId === bestCandidate.setId) ?? recent;
+  return Object.freeze({
+    identity: segment.identity,
+    referenceTarget: segment.referenceTarget,
+    sessions: Object.freeze(sessions),
+    recent,
+    best,
+    previous: sessions[1] ?? null,
   });
 }

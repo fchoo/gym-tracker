@@ -1,4 +1,4 @@
-import { render, screen } from "@testing-library/react-native";
+import { render } from "@testing-library/react-native";
 import { describe, expect, it } from "@jest/globals";
 import React from "react";
 
@@ -27,13 +27,13 @@ const history: ExerciseMetricHistory = {
 };
 
 describe("ExerciseTrendSheet", () => {
-  it("renders written Recent, Best, Change, and chart data for compatible evidence", () => {
-    render(<AppearanceProvider><ExerciseTrendSheet exerciseName="Back Squat" history={history} onClose={() => undefined} visible /></AppearanceProvider>);
+  it("renders written Recent, Best, Change, and chart data for compatible evidence", async () => {
+    const rendered = await render(<AppearanceProvider><ExerciseTrendSheet exerciseName="Back Squat" history={history} onClose={() => undefined} visible /></AppearanceProvider>);
 
-    expect(screen.getByText("Recent")).toBeOnTheScreen();
-    expect(screen.getByText("Best")).toBeOnTheScreen();
-    expect(screen.getByText("Change")).toBeOnTheScreen();
-    expect(screen.getByLabelText("Back Squat comparable history chart")).toBeOnTheScreen();
-    expect(screen.getByText(/24 August 2026/u)).toBeOnTheScreen();
+    expect(rendered.getByText("Recent")).toBeTruthy();
+    expect(rendered.getByText("Best")).toBeTruthy();
+    expect(rendered.getByText("Change")).toBeTruthy();
+    expect(rendered.getByLabelText("Back Squat comparable history chart")).toBeTruthy();
+    expect(rendered.getByText(/24 August 2026/u)).toBeTruthy();
   });
 });

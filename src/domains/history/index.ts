@@ -20,8 +20,10 @@ export {
 } from "./contracts";
 export {
   buildExerciseMetricHistory,
+  projectComparableExerciseTrend,
   type EffectiveMetricHistorySet,
   type ExerciseMetricHistory,
+  type ExerciseMetricTrend,
   type MetricHistorySegment,
 } from "./metricHistory";
 export {

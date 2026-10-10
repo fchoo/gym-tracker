@@ -85,6 +85,10 @@ import { useOptionalSemanticToast } from "../components/SemanticToast";
 import type {
   RestCountdownCuePort,
 } from "../../domains/rest/restCountdownCuePort";
+import type {
+  ExerciseMetricHistory,
+} from "../../domains/history";
+import { ExerciseTrendSheet } from "../components/ExerciseTrendSheet";
 import {
   formatObservation,
   observationForSet,
@@ -452,6 +456,7 @@ export type ActiveWorkoutScreenProps = Readonly<{
   onFinishLater: () => void;
   onOutcomeSaved?: (sessionId: string) => void;
   onDiscarded?: () => void;
+  loadExerciseHistory?: ((exerciseId: string) => Promise<ExerciseMetricHistory>) | undefined;
   width?: number;
 }>;
 
@@ -468,6 +473,7 @@ export function ActiveWorkoutScreen({
   onFinishLater,
   onOutcomeSaved = () => onFinishLater(),
   onDiscarded = onFinishLater,
+  loadExerciseHistory,
   availableExercises = [],
   availableExercisesState = "ready",
   onRetryAvailableExercises,
@@ -481,6 +487,7 @@ export function ActiveWorkoutScreen({
         availableExercisesState={availableExercisesState}
         nowMs={nowMs}
         onDiscarded={onDiscarded}
+        loadExerciseHistory={loadExerciseHistory}
         onFinishLater={onFinishLater}
         onGoBack={onGoBack}
         onOutcomeSaved={onOutcomeSaved}
@@ -502,6 +509,7 @@ export function ActiveWorkoutScreen({
       notificationPermission={notificationPermission}
       nowMs={nowMs}
       onDiscarded={onDiscarded}
+      loadExerciseHistory={loadExerciseHistory}
       onFinishLater={onFinishLater}
       onGoBack={onGoBack}
       onOpenNotificationSettings={onOpenNotificationSettings}
@@ -525,6 +533,7 @@ type EmptyWorkoutOverviewProps = Readonly<{
   onFinishLater: () => void;
   onOutcomeSaved: (sessionId: string) => void;
   onDiscarded: () => void;
+  loadExerciseHistory?: ((exerciseId: string) => Promise<ExerciseMetricHistory>) | undefined;
   onRetryAvailableExercises?: (() => void) | undefined;
   width?: number;
 }>;
@@ -540,6 +549,7 @@ function EmptyWorkoutOverview({
   onFinishLater,
   onOutcomeSaved,
   onDiscarded,
+  loadExerciseHistory,
   onRetryAvailableExercises,
   width,
 }: EmptyWorkoutOverviewProps) {
@@ -768,6 +778,7 @@ function PopulatedWorkoutOverview({
   onFinishLater,
   onOutcomeSaved = () => onFinishLater(),
   onDiscarded = onFinishLater,
+  loadExerciseHistory,
   availableExercises = [],
   availableExercisesState = "ready",
   onRetryAvailableExercises,
@@ -830,6 +841,8 @@ function PopulatedWorkoutOverview({
     useState<ExerciseEditCandidate | null>(null);
   const [exerciseActionsVisibleForId, setExerciseActionsVisibleForId] =
     useState<string | null>(null);
+  const [trendExerciseId, setTrendExerciseId] = useState<string | null>(null);
+  const [trendHistory, setTrendHistory] = useState<ExerciseMetricHistory | null>(null);
   const [exerciseEditBusy, setExerciseEditBusy] = useState(false);
   const [exerciseEditFailure, setExerciseEditFailure] =
     useState<ExerciseEditFailure | null>(null);
@@ -896,6 +909,20 @@ function PopulatedWorkoutOverview({
   const activeExerciseIndex = overviewExercises.findIndex(
     ({ id }) => id === view.activeExerciseId,
   );
+
+  useEffect(() => {
+    if (trendExerciseId === null || loadExerciseHistory === undefined) return;
+    let active = true;
+    setTrendHistory(null);
+    const exercise = overviewExercises.find(({ id }) => id === trendExerciseId);
+    if (exercise === undefined) return;
+    void loadExerciseHistory(exercise.exerciseId).then((history) => {
+      if (active) setTrendHistory(history);
+    }).catch(() => {
+      if (active) setTrendHistory(null);
+    });
+    return () => { active = false; };
+  }, [loadExerciseHistory, overviewExercises, trendExerciseId]);
 
   const isExerciseCollapsed = (exercise: ActiveWorkoutExercise, index: number) =>
     !expandedExerciseIds.has(exercise.id)
@@ -1929,6 +1956,19 @@ function PopulatedWorkoutOverview({
                     : null}
                 </> : null}
                 <FocusablePressable
+                  accessibilityLabel={`Open ${exercise.name} trend`}
+                  accessibilityRole="button"
+                  focusable
+                  onPress={() => setTrendExerciseId(exercise.id)}
+                  style={({ pressed }) => [styles.exerciseTrend, {
+                    backgroundColor: pressed ? colors.contentCardPressed : "transparent",
+                    borderColor: colors.contentCardBorder,
+                  }]}
+                  testID={`exercise-trend-${exercise.exerciseId}`}
+                >
+                  <Text accessibilityElementsHidden importantForAccessibility="no-hide-descendants" style={[typeScale.bodyStrong as TextStyle, { color: colors.focusRing }]}>↗</Text>
+                </FocusablePressable>
+                <FocusablePressable
                   accessibilityLabel={`${exercise.name} exercise actions`}
                   accessibilityRole="button"
                   accessibilityState={{
@@ -2248,6 +2288,12 @@ function PopulatedWorkoutOverview({
               }}
             />
       </BottomSheet>
+      <ExerciseTrendSheet
+        exerciseName={overviewExercises.find(({ id }) => id === trendExerciseId)?.name ?? "Exercise"}
+        history={trendHistory}
+        onClose={() => setTrendExerciseId(null)}
+        visible={trendExerciseId !== null}
+      />
       <BottomSheet
         contentStyle={styles.moreSheetContent}
         heading="Exercise actions"
@@ -2586,6 +2632,17 @@ const styles = StyleSheet.create({
     minWidth: sizes.minimumTarget,
     position: "absolute",
     right: 0,
+  },
+  exerciseTrend: {
+    alignItems: "center",
+    borderRadius: radius.standard,
+    borderWidth: StyleSheet.hairlineWidth,
+    justifyContent: "center",
+    minHeight: sizes.minimumTarget,
+    minWidth: sizes.minimumTarget,
+    position: "absolute",
+    right: sizes.minimumTarget + space[1],
+    top: 0,
   },
   exerciseActionAfterDivider: {
     top: sizes.focusRing + space[2],
