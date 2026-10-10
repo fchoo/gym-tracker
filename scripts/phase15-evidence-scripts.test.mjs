@@ -1,6 +1,8 @@
 import assert from "node:assert/strict";
 import { createHash } from "node:crypto";
-import { readFileSync } from "node:fs";
+import { mkdtempSync, readFileSync, unlinkSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import path from "node:path";
 import test from "node:test";
 
 import {
@@ -10,10 +12,12 @@ import {
 } from "../src/testing/contracts/phase15Workout.contract.ts";
 import {
   createPhase15EvidenceFixture,
+  materializePhase15EvidenceFixture,
   validatePhase15Evidence,
   validatePhase15PackageScripts,
   validatePhase15PinnedVisualSources,
   validatePhase15RunnerManifest,
+  verifyPhase15EvidenceArtifacts,
 } from "./verify-phase15-evidence.mjs";
 
 const sha256 = (value) => createHash("sha256").update(value).digest("hex");
@@ -35,6 +39,30 @@ test("Phase 15 ledger assigns WRK-01 through WRK-36 and cross-cutting cases exac
 
 test("Phase 15 accepts only the complete root-to-completion fixture", () => {
   assert.equal(validatePhase15Evidence(fixture()).status, "passed");
+});
+
+test("Phase 15 fails closed when retained evidence is absent, replaced, forged, or traversal-addressed", () => {
+  const root = mkdtempSync(path.join(tmpdir(), "phase15-evidence-"));
+  const evidence = materializePhase15EvidenceFixture(root);
+  assert.equal(verifyPhase15EvidenceArtifacts(evidence, { root }), true);
+
+  const missing = clone(evidence);
+  unlinkSync(path.join(root, missing.artifacts.cases[missing.cases[0].id].receipt.path));
+  assert.throws(() => verifyPhase15EvidenceArtifacts(missing, { root }), /case_receipt_missing/u);
+
+  const replacedRoot = mkdtempSync(path.join(tmpdir(), "phase15-evidence-"));
+  const replaced = materializePhase15EvidenceFixture(replacedRoot);
+  writeFileSync(path.join(replacedRoot, replaced.artifacts.visuals[replaced.visuals[0].reference_id].native_screenshot.path), "replaced");
+  assert.throws(() => verifyPhase15EvidenceArtifacts(replaced, { root: replacedRoot }), /visual_native_screenshot_hash_invalid/u);
+
+  const forged = fixture();
+  forged.artifacts = { report: { path: "evidence/raw/forged-report.json", sha256: forged.manifest.report_sha256 }, cases: {}, visuals: {}, accessibility: { path: "evidence/raw/a11y.json", sha256: forged.accessibility.keyboard_dpad_trace_sha256 }, recovery: { path: "evidence/raw/recovery.json", sha256: forged.recovery.offline_restart_trace_sha256 } };
+  assert.throws(() => verifyPhase15EvidenceArtifacts(forged, { root: mkdtempSync(path.join(tmpdir(), "phase15-evidence-")) }), /report_missing/u);
+
+  const traversalRoot = mkdtempSync(path.join(tmpdir(), "phase15-evidence-"));
+  const traversal = materializePhase15EvidenceFixture(traversalRoot);
+  traversal.artifacts.report.path = "../forged-report.json";
+  assert.throws(() => verifyPhase15EvidenceArtifacts(traversal, { root: traversalRoot }), /report_path_invalid/u);
 });
 
 test("Phase 15 rejects every stale or forged source/build/install identity field", () => {

@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 import { createHash } from "node:crypto";
 import { execFileSync } from "node:child_process";
-import { existsSync, readFileSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import { pathToFileURL } from "node:url";
 
@@ -101,6 +101,50 @@ function validateCrossCutting(evidence) {
   if (evidence.timing?.owner_record_sha256 !== TIM_OWNER_RECORD_SHA256 || evidence.timing?.retirement_evidence_sha256 !== TIM_RETIREMENT_EVIDENCE_SHA256 || evidence.timing?.selection !== "retire-playback" || evidence.timing?.legacy_playback_compatibility !== false || evidence.timing?.zero_cue_lifecycle_verified !== true) fail("tim_invalid");
 }
 
+function readRetainedArtifact(root, artifact, code) {
+  if (typeof artifact?.path !== "string" || !HASH.test(artifact?.sha256 ?? "")) fail(`${code}_descriptor_invalid`);
+  if (path.isAbsolute(artifact.path) || artifact.path.split(/[\\/]+/u).includes("..")) fail(`${code}_path_invalid`);
+  const absolute = path.resolve(root, artifact.path);
+  const rootPrefix = `${path.resolve(root)}${path.sep}`;
+  if (!absolute.startsWith(rootPrefix) || !existsSync(absolute)) fail(`${code}_missing`);
+  const bytes = readFileSync(absolute);
+  if (sha256(bytes) !== artifact.sha256) fail(`${code}_hash_invalid`);
+  return bytes;
+}
+
+/** Fail-closed provenance verification for raw, retained native observations. */
+export function verifyPhase15EvidenceArtifacts(evidence, { root = ROOT } = {}) {
+  const artifacts = evidence?.artifacts;
+  plainObject(artifacts, "artifacts_invalid");
+  const reportBytes = readRetainedArtifact(root, artifacts.report, "report");
+  if (artifacts.report.sha256 !== evidence.manifest.report_sha256) fail("report_manifest_mismatch");
+  let report;
+  try { report = JSON.parse(reportBytes.toString("utf8")); } catch { fail("report_parse_invalid"); }
+  if (!Array.isArray(report.cases)) fail("report_cases_invalid");
+  for (const entry of evidence.cases) {
+    const retained = artifacts.cases?.[entry.id];
+    const receipt = readRetainedArtifact(root, retained?.receipt, "case_receipt");
+    const semantic = readRetainedArtifact(root, retained?.semantic, "case_semantic");
+    const focus = readRetainedArtifact(root, retained?.focus, "case_focus");
+    if (retained.receipt.sha256 !== entry.action.receipt_sha256 || retained.semantic.sha256 !== entry.semantic.tree_sha256 || retained.focus.sha256 !== entry.focus.trace_sha256) fail("case_artifact_binding_invalid");
+    if (receipt.length === 0 || semantic.length === 0 || focus.length === 0) fail("case_artifact_empty");
+    const reportCase = report.cases.find(({ id }) => id === entry.id);
+    if (reportCase?.status !== "passed" || reportCase.device_action !== "executed") fail("report_case_binding_invalid");
+  }
+  for (const visual of evidence.visuals) {
+    const retained = artifacts.visuals?.[visual.reference_id];
+    for (const [key, expected] of [["native_screenshot", visual.native_screenshot_sha256], ["overlay", visual.overlay.sha256], ["difference", visual.difference.sha256]]) {
+      const artifact = retained?.[key];
+      readRetainedArtifact(root, artifact, `visual_${key}`);
+      if (artifact.sha256 !== expected) fail("visual_artifact_binding_invalid");
+    }
+  }
+  const accessibility = readRetainedArtifact(root, artifacts.accessibility, "accessibility_trace");
+  const recovery = readRetainedArtifact(root, artifacts.recovery, "recovery_trace");
+  if (artifacts.accessibility.sha256 !== evidence.accessibility.keyboard_dpad_trace_sha256 || artifacts.recovery.sha256 !== evidence.recovery.offline_restart_trace_sha256 || accessibility.length === 0 || recovery.length === 0) fail("cross_cutting_artifact_binding_invalid");
+  return true;
+}
+
 export function validatePhase15Evidence(evidence) {
   if (evidence?.schema_version !== 1 || evidence.suite !== "phase15" || evidence.status !== "passed") fail("evidence_invalid");
   validateManifest(evidence.manifest);
@@ -131,6 +175,54 @@ export function createPhase15EvidenceFixture() {
   const renderTransition = Array.from({ length: 100 }, () => 150);
   const performance = { schema_version: 1, suite: "phase15", status: "passed", producer: "phase15-rendered-workout-benchmark/v1", identity: { base_head: manifest.base_head, source_tree_sha256: manifest.source_tree_sha256, package: manifest.package, apk_sha256: manifest.apk.sha256, installed_apk_sha256: manifest.installed_apk.sha256, device_serial: manifest.device.serial }, measurements: { render_transition_ms: renderTransition, active_js_task_ms: [50], long_session_render_ms: [1], long_session_scroll_ms: [1], long_session_interaction_ms: [1] }, sample_count: 100, render_transition_p95_ms: 150, active_js_task_max_ms: 50 };
   return { schema_version: 1, suite: "phase15", status: "passed", manifest, identity, cases, visuals, accessibility: { semantic_tree_verified: true, focus_order_verified: true, target_min_dp: 48, text_scale: 2, reduced_motion_verified: true, keyboard_dpad_trace_sha256: syntheticHash("a11y") }, recovery: { process_death_verified: true, offline_restart_trace_sha256: syntheticHash("recovery") }, performance, timing: { owner_record_sha256: TIM_OWNER_RECORD_SHA256, retirement_evidence_sha256: TIM_RETIREMENT_EVIDENCE_SHA256, selection: "retire-playback", legacy_playback_compatibility: false, zero_cue_lifecycle_verified: true } };
+}
+
+/** Creates retained synthetic bytes only for mutation tests; production never calls this helper. */
+export function materializePhase15EvidenceFixture(root) {
+  const evidence = createPhase15EvidenceFixture();
+  const writeArtifact = (relativePath, value) => {
+    const absolute = path.join(root, relativePath);
+    mkdirSync(path.dirname(absolute), { recursive: true });
+    const bytes = Buffer.from(value);
+    writeFileSync(absolute, bytes);
+    return { path: relativePath, sha256: sha256(bytes) };
+  };
+  evidence.artifacts = { cases: {}, visuals: {} };
+  for (const entry of evidence.cases) {
+    const base = `evidence/raw/cases/${entry.id}`;
+    const retained = {
+      receipt: writeArtifact(`${base}/receipt.json`, `receipt:${entry.id}`),
+      semantic: writeArtifact(`${base}/semantic.json`, `semantic:${entry.id}`),
+      focus: writeArtifact(`${base}/focus.json`, `focus:${entry.id}`),
+    };
+    evidence.artifacts.cases[entry.id] = retained;
+    entry.action.receipt_sha256 = retained.receipt.sha256;
+    entry.semantic.tree_sha256 = retained.semantic.sha256;
+    entry.focus.trace_sha256 = retained.focus.sha256;
+  }
+  for (const visual of evidence.visuals) {
+    const base = `evidence/raw/visuals/${visual.reference_id}`;
+    const retained = {
+      native_screenshot: writeArtifact(`${base}/native.png`, `native:${visual.reference_id}`),
+      overlay: writeArtifact(`${base}/overlay.png`, `overlay:${visual.reference_id}`),
+      difference: writeArtifact(`${base}/difference.png`, `difference:${visual.reference_id}`),
+    };
+    evidence.artifacts.visuals[visual.reference_id] = retained;
+    visual.native_screenshot_sha256 = retained.native_screenshot.sha256;
+    visual.overlay.sha256 = retained.overlay.sha256;
+    visual.difference.sha256 = retained.difference.sha256;
+    visual.overlay.inputs.native_screenshot_sha256 = retained.native_screenshot.sha256;
+    visual.difference.inputs.native_screenshot_sha256 = retained.native_screenshot.sha256;
+  }
+  evidence.artifacts.accessibility = writeArtifact("evidence/raw/accessibility.json", "keyboard-dpad-observed");
+  evidence.artifacts.recovery = writeArtifact("evidence/raw/recovery.json", "offline-restart-observed");
+  evidence.accessibility.keyboard_dpad_trace_sha256 = evidence.artifacts.accessibility.sha256;
+  evidence.recovery.offline_restart_trace_sha256 = evidence.artifacts.recovery.sha256;
+  const report = { cases: evidence.cases.map(({ id }) => ({ id, status: "passed", device_action: "executed" })) };
+  evidence.artifacts.report = writeArtifact("evidence/raw/maestro-device-report.json", JSON.stringify(report));
+  evidence.manifest.report_sha256 = evidence.artifacts.report.sha256;
+  evidence.identity.report_sha256 = evidence.artifacts.report.sha256;
+  return evidence;
 }
 
 export function validatePhase15PackageScripts(packageJson) {
@@ -178,6 +270,7 @@ export function executePhase15EvidenceVerifier(args = process.argv.slice(2)) {
   if (JSON.stringify(manifest) !== JSON.stringify(evidence.manifest)) fail("evidence_manifest_mismatch");
   validatePhase15PinnedVisualSources();
   const result = validatePhase15Evidence(evidence);
+  verifyPhase15EvidenceArtifacts(evidence);
   writeFileSync(path.join(ROOT, "artifacts/native/phase15/evidence/verification.json"), `${JSON.stringify(result, null, 2)}\n`);
   return result;
 }
