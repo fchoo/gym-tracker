@@ -132,12 +132,29 @@ export function validatePhase15PackageScripts(packageJson) {
 
 function parseArgs(args) { const options = { manifest: "artifacts/native/phase15/build.json", all: false }; for (let index = 0; index < args.length; index += 1) { const argument = args[index]; if (argument === "--all") options.all = true; else if (argument === "--manifest") options.manifest = args[++index]; else if (argument.startsWith("--manifest=")) options.manifest = argument.slice(11); else fail("argument_invalid"); } if (!options.all || options.manifest !== "artifacts/native/phase15/build.json") fail("argument_invalid"); return options; }
 
-function validatePinnedSources() {
+export function validatePhase15PinnedVisualSources({ readFile = readFileSync } = {}) {
   const manifestPath = path.join(ROOT, ".planning/design/v1.2-browser-evidence/source-manifest.json");
-  if (!existsSync(manifestPath) || sha256(readFileSync(manifestPath)) !== PHASE15_PINNED_VISUAL_SOURCES.source_manifest) fail("source_manifest_stale");
-  const sourceManifest = JSON.parse(readFileSync(manifestPath, "utf8"));
-  const entries = JSON.stringify(sourceManifest);
-  for (const requiredHash of Object.values(PHASE15_PINNED_VISUAL_SOURCES)) if (!entries.includes(requiredHash)) fail("visual_source_pin_missing");
+  const approvedRoot = "/Users/bytedance/.gstack/projects/fchoo-gym-tracker/designs/push-inspired-workout-20261001";
+  const pinnedFiles = {
+    [path.join(approvedRoot, "approved.json")]: PHASE15_PINNED_VISUAL_SOURCES.approved_json,
+    [path.join(approvedRoot, "approved-hybrid.html")]: PHASE15_PINNED_VISUAL_SOURCES.approved_hybrid_html,
+    [manifestPath]: PHASE15_PINNED_VISUAL_SOURCES.source_manifest,
+    [path.join(ROOT, ".planning/design/v1.2-browser-evidence/light-workout-root.png")]: PHASE15_VISUAL_REFERENCES["light-workout-root"],
+    [path.join(ROOT, ".planning/design/v1.2-browser-evidence/dark-workout-root.png")]: PHASE15_VISUAL_REFERENCES["dark-workout-root"],
+    [path.join(ROOT, ".planning/design/v1.2-browser-evidence/light-active-overview.png")]: PHASE15_VISUAL_REFERENCES["light-active-overview"],
+    [path.join(ROOT, ".planning/design/v1.2-browser-evidence/dark-active-overview.png")]: PHASE15_VISUAL_REFERENCES["dark-active-overview"],
+    [path.join(ROOT, ".planning/design/v1.2-browser-evidence/light-working-committed-rest.png")]: PHASE15_VISUAL_REFERENCES["light-committed-rest"],
+    [path.join(ROOT, ".planning/design/v1.2-browser-evidence/dark-working-committed-rest.png")]: PHASE15_VISUAL_REFERENCES["dark-committed-rest"],
+  };
+  for (const [file, expectedHash] of Object.entries(pinnedFiles)) {
+    let bytes;
+    try { bytes = readFile(file); } catch { fail("visual_source_missing"); }
+    if (sha256(bytes) !== expectedHash) fail("visual_source_stale");
+  }
+  const sourceManifest = JSON.parse(readFile(manifestPath, "utf8"));
+  const sourceHashes = new Set(sourceManifest.sources?.map(({ sha256: entryHash }) => entryHash));
+  if (!sourceHashes.has(PHASE15_PINNED_VISUAL_SOURCES.approved_json) || !sourceHashes.has(PHASE15_PINNED_VISUAL_SOURCES.approved_hybrid_html)) fail("visual_source_pin_missing");
+  return true;
 }
 
 export function executePhase15EvidenceVerifier(args = process.argv.slice(2)) {
@@ -150,7 +167,7 @@ export function executePhase15EvidenceVerifier(args = process.argv.slice(2)) {
   validateManifest(manifest);
   if (manifest.base_head !== execFileSync("git", ["rev-parse", "HEAD"], { cwd: ROOT, encoding: "utf8" }).trim() || manifest.source_tree_sha256 !== sourceTreeSha256(ROOT) || !existsSync(path.join(ROOT, manifest.apk.path)) || sha256(readFileSync(path.join(ROOT, manifest.apk.path))) !== manifest.apk.sha256) fail("artifact_stale");
   if (JSON.stringify(manifest) !== JSON.stringify(evidence.manifest)) fail("evidence_manifest_mismatch");
-  validatePinnedSources();
+  validatePhase15PinnedVisualSources();
   const result = validatePhase15Evidence(evidence);
   writeFileSync(path.join(ROOT, "artifacts/native/phase15/evidence/verification.json"), `${JSON.stringify(result, null, 2)}\n`);
   return result;
