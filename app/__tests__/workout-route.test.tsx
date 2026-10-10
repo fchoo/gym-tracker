@@ -17,6 +17,7 @@ import type { ActiveWorkoutView } from "../../src/domains/workout";
 const mockBack = jest.fn();
 const mockReplace = jest.fn();
 const mockGetActiveWorkout = jest.fn<() => Promise<ActiveWorkoutView>>();
+const mockCompleteSet = jest.fn();
 const mockListOwnedPlanExercises = jest.fn<() => Promise<readonly Readonly<{
   id: string;
   name: string;
@@ -42,7 +43,7 @@ jest.mock("../../src/bootstrap/workoutAppRuntime", () => ({
     addWorkingSet: jest.fn(),
     adjustRest: jest.fn(),
     beginAdvancedTimingClusterGap: jest.fn(),
-    completeSet: jest.fn(),
+    completeSet: mockCompleteSet,
     completeWarmup: jest.fn(),
     configureAdvancedTiming: jest.fn(),
     discardWorkout: jest.fn(),
@@ -125,6 +126,7 @@ describe("ActiveWorkoutRoute", () => {
     mockBack.mockReset();
     mockReplace.mockReset();
     mockGetActiveWorkout.mockReset();
+    mockCompleteSet.mockReset();
     mockListOwnedPlanExercises.mockClear();
     mockParams = {
       sessionId: "session-identity",
@@ -165,5 +167,26 @@ describe("ActiveWorkoutRoute", () => {
     }));
     expect(mockReplace).toHaveBeenCalledWith("/(tabs)");
     expect(mockBack).not.toHaveBeenCalled();
+  });
+
+  it("does not issue a workout command when Active unmounts or returns", async () => {
+    mockGetActiveWorkout.mockResolvedValue({
+      id: "session-identity",
+      status: "in_progress",
+      revision: 3,
+      activeSetId: null,
+      activeExerciseId: null,
+      currentExercise: {},
+      exercises: [],
+      progress: { completedWorkingSets: 0, totalWorkingSets: 0 },
+      rest: { state: "idle", revision: 0, nextSetId: null },
+    } as unknown as ActiveWorkoutView);
+    const rendered = await render(<ActiveWorkoutRoute />);
+
+    await waitFor(() => expect(mockGetActiveWorkout).toHaveBeenCalledWith("session-identity"));
+    await fireEvent.press(screen.getByRole("button", { name: "Back to Workout" }));
+    rendered.unmount();
+
+    expect(mockCompleteSet).not.toHaveBeenCalled();
   });
 });

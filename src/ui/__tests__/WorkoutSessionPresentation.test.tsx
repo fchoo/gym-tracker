@@ -3,10 +3,14 @@ import { fireEvent, render, screen, waitFor } from "@testing-library/react-nativ
 import { describe, expect, it } from "@jest/globals";
 
 import {
+  presentSessionDetail,
   presentWorkoutSession,
   type WorkoutPresentationModel,
 } from "../../domains/workout/workoutPresentation";
 import type { ActiveWorkoutView } from "../../domains/workout";
+import type { SessionDetail } from "../../domains/workout";
+import { readFileSync } from "node:fs";
+import { resolve } from "node:path";
 import { WorkoutSessionPresentation } from "../components/WorkoutSessionPresentation";
 import { AppearanceProvider } from "../theme";
 
@@ -92,5 +96,26 @@ describe("WorkoutSessionPresentation", () => {
     expect(result.exercises[0]?.workingSets[0]).toMatchObject({
       id: "set-1", target: "50 kg × 5", result: null,
     });
+  });
+
+  it("maps a planned session detail and keeps its public presentation boundary command-free", () => {
+    const model = presentSessionDetail({
+      id: "planned-detail", revision: 1,
+      workingSetProgress: { completed: 0, planned: 1, percent: 0 },
+      exercises: [{
+        id: "detail-exercise", exerciseId: "exercise-row", name: "Cable row", status: "planned",
+        warmups: [], workingSets: [{ id: "detail-set", kind: "working", ordinal: 1, status: "planned", value: "45 kg × 10" }],
+      }],
+    } as unknown as SessionDetail);
+    const presenterSource = readFileSync(
+      resolve(process.cwd(), "src/ui/components/WorkoutSessionPresentation.tsx"),
+      "utf8",
+    );
+
+    expect(model).toMatchObject({
+      activeExerciseId: null,
+      exercises: [{ name: "Cable row", workingSets: [{ target: "45 kg × 10" }] }],
+    });
+    expect(presenterSource).not.toMatch(/(runtime|repository|commands|resume|correction|removal|schedule|outcome|write-back|navigation)/iu);
   });
 });

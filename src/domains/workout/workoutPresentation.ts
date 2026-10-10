@@ -5,6 +5,11 @@ import type {
   ActiveWorkoutView,
   SetObservation,
 } from "./activeWorkout";
+import type {
+  SessionDetail,
+  SessionExerciseDetail,
+  SessionSetDetail,
+} from "./sessionDetail";
 
 export type WorkoutPresentationSet = Readonly<{
   id: string;
@@ -97,6 +102,29 @@ function presentExercise(exercise: ActiveWorkoutExercise): WorkoutPresentationEx
   };
 }
 
+function presentDetailSet(set: SessionSetDetail): WorkoutPresentationSet {
+  return {
+    id: set.id,
+    kind: set.kind,
+    ordinal: set.ordinal,
+    status: set.status,
+    previous: null,
+    target: set.value,
+    result: set.status === "completed" && set.observation !== null ? set.value : null,
+  };
+}
+
+function presentDetailExercise(exercise: SessionExerciseDetail): WorkoutPresentationExercise {
+  return {
+    id: exercise.id,
+    exerciseId: exercise.exerciseId,
+    name: exercise.name,
+    status: exercise.status,
+    warmups: exercise.warmups.map(presentDetailSet),
+    workingSets: exercise.workingSets.map(presentDetailSet),
+  };
+}
+
 /** Maps authoritative live-session facts to immutable, command-free display facts. */
 export function presentWorkoutSession(view: ActiveWorkoutView): WorkoutPresentationModel {
   const exercises = view.exercises.length > 0 ? view.exercises : [view.currentExercise];
@@ -106,5 +134,19 @@ export function presentWorkoutSession(view: ActiveWorkoutView): WorkoutPresentat
     progress: view.progress,
     activeExerciseId: view.activeExerciseId,
     exercises: exercises.map(presentExercise),
+  };
+}
+
+/** Maps a historical or planned SessionDetail to the same read-only facts surface. */
+export function presentSessionDetail(detail: SessionDetail): WorkoutPresentationModel {
+  return {
+    sessionId: detail.id,
+    revision: detail.revision,
+    progress: {
+      completedWorkingSets: detail.workingSetProgress.completed,
+      totalWorkingSets: detail.workingSetProgress.planned,
+    },
+    activeExerciseId: null,
+    exercises: detail.exercises.map(presentDetailExercise),
   };
 }
