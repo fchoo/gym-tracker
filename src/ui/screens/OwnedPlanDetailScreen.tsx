@@ -1,10 +1,6 @@
 import React, { useEffect, useRef, useState } from "react";
 import { Text, View, type TextStyle } from "react-native";
 
-import type {
-  OwnedPlanRepositoryResult,
-  OwnedPlanSnapshot,
-} from "../../platform/sqlite/repositories/ownedPlanRepository";
 import {
   AdaptiveScreen,
 } from "../layout/AdaptiveScreen";
@@ -25,36 +21,52 @@ import {
 
 export type OwnedPlanDetailScreenProps = Readonly<{
   planId: string;
-  loadPlan(planId: string): Promise<OwnedPlanSnapshot | null>;
+  loadPlan(planId: string): Promise<OwnedPlanDetailSnapshot | null>;
   duplicatePlan(input: Readonly<{
     sourcePlanId: string;
     expectedRevision: number;
     name: string;
-  }>): Promise<OwnedPlanRepositoryResult>;
+  }>): Promise<OwnedPlanDetailResult>;
   archivePlan(input: Readonly<{
     planId: string;
     expectedRevision: number;
-  }>): Promise<OwnedPlanRepositoryResult>;
+  }>): Promise<OwnedPlanDetailResult>;
   restorePlan(input: Readonly<{
     planId: string;
     expectedRevision: number;
-  }>): Promise<OwnedPlanRepositoryResult>;
+  }>): Promise<OwnedPlanDetailResult>;
   onBack(): void;
   onEdit(): void;
   onSchedule(): void;
   onDuplicated(planId: string): void;
 }>;
 
+export type OwnedPlanDetailSnapshot = Readonly<{
+  id: string;
+  name: string;
+  revision: number;
+  lifecycle: "draft" | "ready" | "archived";
+  isActive: boolean;
+  hasInProgressWorkout: boolean;
+  days: readonly Readonly<{ id: string; name: string }>[];
+  scheduleDefaults: Readonly<{ lifecycle: string }> | null;
+}>;
+
+export type OwnedPlanDetailResult = Readonly<{
+  outcome: "committed" | "already_committed" | "requires_schedule_impact";
+  plan?: OwnedPlanDetailSnapshot;
+}>;
+
 type DetailState = "loading" | "ready" | "missing" | "error";
 type LifecycleReview = "duplicate" | "archive" | "reactivate";
 
-function resultPlan(result: OwnedPlanRepositoryResult): OwnedPlanSnapshot | null {
+function resultPlan(result: OwnedPlanDetailResult): OwnedPlanDetailSnapshot | null {
   return result.outcome === "committed" || result.outcome === "already_committed"
-    ? result.plan
+    ? result.plan ?? null
     : null;
 }
 
-function lifecycleLabel(plan: OwnedPlanSnapshot): string {
+function lifecycleLabel(plan: OwnedPlanDetailSnapshot): string {
   if (plan.lifecycle === "archived") return "ARCHIVED";
   return plan.isActive ? "ACTIVE" : "INACTIVE";
 }
@@ -83,7 +95,7 @@ export function OwnedPlanDetailScreen(props: OwnedPlanDetailScreenProps) {
   const archiveTriggerRef = useRef<View>(null);
   const restoreTriggerRef = useRef<View>(null);
   const [state, setState] = useState<DetailState>("loading");
-  const [plan, setPlan] = useState<OwnedPlanSnapshot | null>(null);
+  const [plan, setPlan] = useState<OwnedPlanDetailSnapshot | null>(null);
   const [retryGeneration, setRetryGeneration] = useState(0);
   const [review, setReview] = useState<LifecycleReview | null>(null);
   const [busy, setBusy] = useState(false);
@@ -207,17 +219,24 @@ export function OwnedPlanDetailScreen(props: OwnedPlanDetailScreenProps) {
         />}
         <PrimaryAction label="Edit plan" onPress={props.onEdit} />
         <SecondaryAction label="Edit schedule" onPress={props.onSchedule} />
-        {!isArchived ? <SecondaryAction label="Preview activation" onPress={props.onSchedule} /> : null}
+        {!isArchived ? <SecondaryAction
+          disabled={plan.hasInProgressWorkout}
+          label="Preview activation"
+          onPress={props.onSchedule}
+        /> : null}
         <SecondaryAction
+          disabled={plan.hasInProgressWorkout || busy}
           label="Duplicate plan"
           onPress={() => setReview("duplicate")}
           ref={duplicateTriggerRef}
         />
         {isArchived ? <SecondaryAction
+          disabled={plan.hasInProgressWorkout || busy}
           label="Reactivate plan"
           onPress={() => setReview("reactivate")}
           ref={restoreTriggerRef}
         /> : <SecondaryAction
+          disabled={plan.hasInProgressWorkout || busy}
           destructive
           label="Archive plan"
           onPress={() => setReview("archive")}
