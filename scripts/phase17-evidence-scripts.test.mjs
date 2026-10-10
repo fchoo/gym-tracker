@@ -12,6 +12,12 @@ import {
   validatePhase17IntegrityCoverageRegistry,
   verifyPhase17EvidenceArtifacts,
 } from "./verify-phase17-evidence.mjs";
+import {
+  PHASE17_FLOW_CASES,
+  createPhase17RunnerPlan,
+  parsePhase17RunnerArgs,
+  validatePhase17FlowSources,
+} from "./run-phase17-maestro.mjs";
 
 const clone = (value) => structuredClone(value);
 const fixture = () => createPhase17EvidenceFixture();
@@ -63,4 +69,31 @@ test("Phase 17 rejects forged, traversing, symlinked, stale, and privacy-unsafe 
 
 test("Phase 17 registers all landed Running migrations and authority at complete coverage", () => {
   assert.equal(validatePhase17IntegrityCoverageRegistry(readFileSync("scripts/run-coverage-gate.mjs", "utf8")), true);
+});
+
+test("Phase 17 native runner keeps the 39-case ledger bounded and requires an explicit execution opt-in", () => {
+  const manifest = fixture().manifest;
+  const plan = createPhase17RunnerPlan(manifest);
+
+  assert.equal(plan.case_ids.length, PHASE17_LIBRARY_RUNNING_EVIDENCE_IDS.length);
+  assert.equal(new Set(plan.case_ids).size, PHASE17_LIBRARY_RUNNING_EVIDENCE_IDS.length);
+  assert.equal(plan.risk_based, true);
+  assert.equal(plan.cartesian_expansion, false);
+  assert.equal(plan.device_state_restoration, "guaranteed");
+  assert.deepEqual(
+    parsePhase17RunnerArgs(["--manifest", "artifacts/native/phase17/build.json", "--all"]),
+    { manifest: "artifacts/native/phase17/build.json", ids: PHASE17_LIBRARY_RUNNING_EVIDENCE_IDS, execute: false },
+  );
+  assert.throws(
+    () => parsePhase17RunnerArgs(["--manifest", "artifacts/native/phase17/build.json", "--all", "--execute", "--execute"]),
+    /phase17_runner_arguments_invalid/u,
+  );
+});
+
+test("Phase 17 flow sources cover every canonical case without recording evidence payloads", () => {
+  const flows = Object.fromEntries(
+    [...new Set(PHASE17_FLOW_CASES.map(({ flow }) => flow))].map((flow) => [flow, readFileSync(flow, "utf8")]),
+  );
+  assert.equal(validatePhase17FlowSources(flows), true);
+  assert.equal(Object.values(flows).join("\n").includes("takeScreenshot"), false);
 });
