@@ -44,6 +44,7 @@ async function renderDock(
   const props = {
     state,
     nowMs: () => 40_000,
+    exerciseName: "Back Squat",
     nextSetIndex: 2,
     nextTarget: "60 kg × 8",
     notificationPermission: "granted" as const,
@@ -105,48 +106,36 @@ afterEach(() => {
 });
 
 describe("Plan 02-29 RestDock", () => {
-  it("keeps running time visible when collapsed and expands ordered controls", async () => {
+  it("keeps the full durable dock reachable with exercise-aware context and ordered controls", async () => {
     const { rendered } = await renderDock(running);
 
-    expect(screen.getByText("RESTING · NEXT: SET 2 AT 60 kg × 8"))
+    expect(screen.getByText("RESTING")).toBeOnTheScreen();
+    expect(screen.getByText("Back Squat · working set 2 next"))
       .toBeOnTheScreen();
     expect(screen.getByText("01:00")).toBeOnTheScreen();
     expect(screen.getByText("01:00")).toHaveProp(
       "accessibilityLiveRegion",
       "none",
     );
-    expect(screen.getByRole("button", {
-      name: "Expand rest controls",
-    })).toHaveStyle({ minHeight: 48, minWidth: 48 });
-    expect(screen.queryByTestId("rest-controls")).not.toBeOnTheScreen();
-
-    await fireEvent.press(screen.getByRole("button", {
-      name: "Expand rest controls",
-    }));
-
-    expect(screen.getByText("01:00")).toBeOnTheScreen();
-    expect(screen.getByRole("button", {
-      name: "Collapse rest controls",
-    })).toHaveStyle({ minHeight: 48, minWidth: 48 });
     const tree = JSON.stringify(rendered.toJSON());
-    expect(tree.indexOf("Skip rest")).toBeLessThan(tree.indexOf("Pause rest"));
-    expect(tree.indexOf("Pause rest")).toBeLessThan(tree.indexOf("−15"));
-    expect(tree.indexOf("−15")).toBeLessThan(tree.indexOf("+15"));
+    expect(tree.indexOf("Subtract 15 seconds from rest"))
+      .toBeLessThan(tree.indexOf("Pause rest"));
+    expect(tree.indexOf("Pause rest"))
+      .toBeLessThan(tree.indexOf("Add 15 seconds to rest"));
+    expect(tree.indexOf("Add 15 seconds to rest"))
+      .toBeLessThan(tree.indexOf("Skip rest"));
     expect(screen.getByTestId("rest-controls")).toHaveStyle({
       flexDirection: "row",
       flexWrap: "wrap",
     });
     for (const label of [
-      "Skip rest",
+      "Subtract 15 seconds from rest",
       "Pause rest",
-      "Subtract 15 seconds",
-      "Add 15 seconds",
+      "Add 15 seconds to rest",
+      "Skip rest",
     ]) {
       expect(screen.getByRole("button", { name: label }))
         .toHaveStyle({ minHeight: 48, minWidth: 48 });
-      expect(screen.getByTestId(`rest-control-${label}`)).toHaveStyle({
-        flexGrow: 1,
-      });
     }
     expect(screen.getByRole("button", { name: "Skip rest" }))
       .toHaveProp("focusable", true);
@@ -597,7 +586,7 @@ describe("Plan 02-29 RestDock", () => {
     expect(onOpenSettings).toHaveBeenCalledTimes(1);
   });
 
-  it("keeps undo after the four rest controls", async () => {
+  it("does not render contextual Undo as a persistent fifth rest control", async () => {
     const onUndo = jest.fn();
     const { rendered } = await renderDock(running, {
       undo: {
@@ -607,18 +596,10 @@ describe("Plan 02-29 RestDock", () => {
       },
     });
 
-    await fireEvent.press(screen.getByRole("button", {
-      name: "Expand rest controls",
-    }));
-    expect(screen.getByText("Set 1 saved · Undo set (7 sec)"))
-      .toBeOnTheScreen();
-    const tree = JSON.stringify(rendered.toJSON());
-    expect(tree.indexOf("Skip rest")).toBeLessThan(
-      tree.indexOf("Undo completed set"),
-    );
-    await fireEvent.press(
-      screen.getByRole("button", { name: "Undo completed set" }),
-    );
-    expect(onUndo).toHaveBeenCalledTimes(1);
+    expect(screen.queryByText("Set 1 saved · Undo set (7 sec)"))
+      .not.toBeOnTheScreen();
+    expect(screen.queryByRole("button", { name: "Undo completed set" }))
+      .not.toBeOnTheScreen();
+    expect(onUndo).not.toHaveBeenCalled();
   });
 });
