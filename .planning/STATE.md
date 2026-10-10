@@ -4,17 +4,17 @@ milestone: v1.2
 milestone_name: Prototype Parity, Concurrent Plans & Garmin Import — PLANNED
 current_phase: 15
 current_phase_name: Workout Parity
-status: executing
-stopped_at: Completed 15-12-PLAN.md
-last_updated: "2026-10-10T14:32:11.595Z"
+status: verifying
+stopped_at: Completed 15-13-PLAN.md
+last_updated: "2026-10-10T14:41:50.212Z"
 last_activity: 2026-10-10
 last_activity_desc: Phase 15 execution started
-state_head: faa7b5d910459387998332c13df2f05e8276f41e
+state_head: 7669d3c2b75461bd23f34ee331e74364d97439cb
 progress:
   total_phases: 8
   completed_phases: 1
   total_plans: 98
-  completed_plans: 40
+  completed_plans: 41
   percent: 13
 ---
 
@@ -31,7 +31,7 @@ See: .planning/PROJECT.md (updated 2026-10-06)
 
 Phase: 15 (Workout Parity) — EXECUTING
 Plan: 13 of 13
-Status: Ready to execute
+Status: Phase complete — ready for verification
 Last activity: 2026-10-10 — Phase 15 execution started
 
 Progress: [█░░░░░░░░░] 13%
@@ -80,6 +80,7 @@ Gym Tracker remains a signed personal-use Android APK/AAB with SQLite-authoritat
 | Phase 15 P10 | 11m | 3 tasks | 10 files |
 | Phase 15 P11 | 13 min | 2 tasks | 5 files |
 | Phase 15 P12 | 4 min | 2 tasks | 5 files |
+| Phase 15 P13 | 4m | 2 tasks | 10 files |
 
 ## Accumulated Context
 
@@ -149,6 +150,8 @@ Gym Tracker remains a signed personal-use Android APK/AAB with SQLite-authoritat
 - [Phase 15]: TIM-01 evidence requires approved retire-playback with zero-cue lifecycle proof and no compatibility branch.
 - [Phase 15]: Phase 15 native evidence uses one action-bearing representative per ledger case plus only distinct risk variants.
 - [Phase 15]: Phase 15 native matrix restores font scale, appearance, orientation, notification state, and fixture database after each case.
+- [Phase 15]: Phase 15 rendered benchmark records first RestDock native-frame timing and raw long-session samples; host validation is not native evidence.
+- [Phase 15]: Phase 15 exact-source APK/native/performance acceptance is deferred to Phase 20's single end-of-all-phases production-APK closure; no native PASS is claimed.
 
 ### Pending Owner Review
 
@@ -173,7 +176,7 @@ Gym Tracker remains a signed personal-use Android APK/AAB with SQLite-authoritat
 
 ## Session Continuity
 
-Last session: 2026-10-10T14:32:11.509Z
-Stopped at: Completed 15-12-PLAN.md
+Last session: 2026-10-10T14:41:50.126Z
+Stopped at: Completed 15-13-PLAN.md
 Resume file: None
 Next action: Present the complete planning set for owner review; after explicit approval, run `/gsd-execute-phase 13`.
