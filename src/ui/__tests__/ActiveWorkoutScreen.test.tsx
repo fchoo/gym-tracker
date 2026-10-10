@@ -85,6 +85,44 @@ async function renderScreen(view = workoutView(), commandOverrides: Partial<Acti
 }
 
 describe("ActiveWorkoutScreen explicit-save editor", () => {
+  it("keeps the workout active and offers an operation-specific retry when finishing fails", async () => {
+    const onOutcomeSaved = jest.fn();
+    const initial = workoutView({ activeSetId: null });
+    const finishCompleted = jest.fn<ActiveWorkoutCommands["finishCompleted"]>()
+      .mockRejectedValueOnce(new Error("storage_failed"));
+
+    await render(
+      <AppearanceProvider>
+        <ActiveWorkoutScreen
+          commands={commands(initial, { finishCompleted })}
+          nowMs={() => 3_000}
+          onFinishLater={jest.fn()}
+          onGoBack={jest.fn()}
+          onOutcomeSaved={onOutcomeSaved}
+          sessionId={initial.id}
+          view={initial}
+        />
+      </AppearanceProvider>,
+    );
+
+    await fireEvent.press(screen.getByRole("button", { name: "Finish workout" }));
+
+    await waitFor(() => {
+      expect(screen.getByRole("header", {
+        name: "Workout was not finished",
+      })).toBeOnTheScreen();
+    });
+    expect(screen.getByText(
+      "Your workout is still active. Your completed sets and rest are unchanged. Try finishing again.",
+    )).toBeOnTheScreen();
+    expect(onOutcomeSaved).not.toHaveBeenCalled();
+
+    await fireEvent.press(screen.getByRole("button", {
+      name: "Retry finishing workout",
+    }));
+    await waitFor(() => expect(finishCompleted).toHaveBeenCalledTimes(2));
+  });
+
   it("keeps the exercise overflow to Timing, Replace exercise, and Delete exercise", async () => {
     await renderScreen();
 
