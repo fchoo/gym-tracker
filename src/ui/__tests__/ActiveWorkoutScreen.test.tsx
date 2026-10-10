@@ -123,6 +123,48 @@ describe("ActiveWorkoutScreen explicit-save editor", () => {
     await waitFor(() => expect(finishCompleted).toHaveBeenCalledTimes(2));
   });
 
+  it("keeps a failed partial save in its confirmation context and reuses its exact token", async () => {
+    const finishPartial = jest.fn<ActiveWorkoutCommands["finishPartial"]>()
+      .mockRejectedValueOnce(new Error("storage_failed"));
+    const initial = workoutView();
+
+    await render(
+      <AppearanceProvider>
+        <ActiveWorkoutScreen
+          commands={commands(initial, { finishPartial })}
+          nowMs={() => 3_000}
+          onFinishLater={jest.fn()}
+          onGoBack={jest.fn()}
+          sessionId={initial.id}
+          view={initial}
+        />
+      </AppearanceProvider>,
+    );
+
+    await fireEvent.press(screen.getByRole("button", {
+      name: "More workout actions",
+    }));
+    await fireEvent.press(screen.getByRole("button", {
+      name: "Finish as partial",
+    }));
+    await fireEvent.press(screen.getByRole("button", {
+      name: "Save partial workout",
+    }));
+
+    await waitFor(() => expect(screen.getByRole("header", {
+      name: "Partial workout was not saved",
+    })).toBeOnTheScreen());
+    expect(screen.getByText(
+      "Your workout is still active. Your completed sets and current rest are unchanged. Try saving the partial workout again.",
+    )).toBeOnTheScreen();
+
+    await fireEvent.press(screen.getByRole("button", {
+      name: "Retry saving partial workout",
+    }));
+    await waitFor(() => expect(finishPartial).toHaveBeenCalledTimes(2));
+    expect(finishPartial.mock.calls[1]?.[0]).toEqual(finishPartial.mock.calls[0]?.[0]);
+  });
+
   it("keeps the exercise overflow to Timing, Replace exercise, and Delete exercise", async () => {
     await renderScreen();
 
