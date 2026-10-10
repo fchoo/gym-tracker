@@ -88,31 +88,38 @@ export default function ActiveWorkoutRoute() {
     setPlanPreference(preference);
     setPlanSettingsVisible(true);
   }, [activePlanId, runtime.readWorkoutPreferences]);
-  const savePlanPreferences = useCallback(async (draft: Readonly<{
-    defaultRestSeconds: number;
-    weightIncrementGrams: number;
-  }>) => {
-    if (activePlanId === null || planPreference === null) {
+  const savePlanPreferences = useCallback(async (
+    field: "defaultRestSeconds" | "weightIncrementGrams",
+    value: number,
+  ) => {
+    if (activePlanId === null) {
       throw new Error("workout_plan_preferences_unavailable");
     }
-    const write = async (expectedRevision: number) => runtime.setWorkoutPreferences({
+    const write = async (source: WorkoutPreference) => runtime.setWorkoutPreferences({
       planId: activePlanId,
-      expectedRevision,
-      defaultRestSeconds: draft.defaultRestSeconds,
-      weightIncrementGrams: draft.weightIncrementGrams,
+      expectedRevision: source.revision,
+      defaultRestSeconds: field === "defaultRestSeconds"
+        ? value
+        : source.defaultRestSeconds,
+      weightIncrementGrams: field === "weightIncrementGrams"
+        ? value
+        : source.weightIncrementGrams,
       updatedAtMs: Date.now(),
     });
     try {
-      await write(planPreference.revision);
+      await write(await runtime.readWorkoutPreferences(activePlanId));
     } catch {
       const source = await runtime.readWorkoutPreferences(activePlanId);
-      if (source.revision === planPreference.revision) throw new Error("workout_plan_preferences_not_saved");
-      await write(source.revision);
+      try {
+        await write(source);
+      } catch {
+        throw new Error("workout_plan_preferences_not_saved");
+      }
     }
     const source = await runtime.readWorkoutPreferences(activePlanId);
     setPlanPreference(source);
     setPlanSettingsVisible(false);
-  }, [activePlanId, planPreference, runtime.readWorkoutPreferences, runtime.setWorkoutPreferences]);
+  }, [activePlanId, runtime.readWorkoutPreferences, runtime.setWorkoutPreferences]);
   useEffect(() => {
     let active = true;
     setFailed(false);

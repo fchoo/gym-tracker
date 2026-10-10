@@ -31,6 +31,31 @@ describe("WorkoutPlanSettingsSheet", () => {
     );
     expect(screen.getByText("Saved rest · 90 sec")).toBeOnTheScreen();
     await fireEvent.press(screen.getByRole("button", { name: "Save default rest" }));
-    expect(onSave).toHaveBeenCalledWith({ defaultRestSeconds: 120, weightIncrementGrams: 2500 });
+    expect(onSave).toHaveBeenCalledWith("defaultRestSeconds", 120);
+  });
+
+  it("saves only the confirmed increment and leaves the pending rest draft local", async () => {
+    const onSave = jest.fn(async () => undefined);
+    await render(<AppearanceProvider><WorkoutPlanSettingsSheet
+      defaultRestSeconds={90}
+      onClose={jest.fn()}
+      onEditPlanAfterWorkout={jest.fn()}
+      onOpenWorkoutActions={jest.fn()}
+      onSave={onSave}
+      planName="Full Body A"
+      scheduleSummary="Monday"
+      visible
+      weightIncrementGrams={2500}
+    /></AppearanceProvider>);
+
+    await fireEvent.changeText(
+      screen.getByLabelText("Default between-set rest seconds"),
+      "120",
+    );
+    await fireEvent.press(screen.getByRole("radio", { name: "5 kilograms" }));
+    await fireEvent.press(screen.getByRole("button", { name: "Save weight increment" }));
+
+    expect(onSave).toHaveBeenCalledWith("weightIncrementGrams", 5000);
+    expect(screen.getByLabelText("Default between-set rest seconds")).toHaveProp("value", "120");
   });
 });

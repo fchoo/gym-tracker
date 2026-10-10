@@ -11,6 +11,8 @@ type PreferenceDraft = Readonly<{
   weightIncrementGrams: number;
 }>;
 
+type PreferenceField = keyof PreferenceDraft;
+
 export type WorkoutPlanSettingsSheetProps = Readonly<{
   visible: boolean;
   planName: string;
@@ -18,7 +20,7 @@ export type WorkoutPlanSettingsSheetProps = Readonly<{
   defaultRestSeconds: number;
   weightIncrementGrams: number;
   onClose(): void;
-  onSave(draft: PreferenceDraft): Promise<void>;
+  onSave(field: PreferenceField, value: number): Promise<void>;
   onEditPlanAfterWorkout(): void;
   onOpenWorkoutActions(): void;
 }>;
@@ -41,12 +43,21 @@ export function WorkoutPlanSettingsSheet({
     }
   }, [defaultRestSeconds, visible, weightIncrementGrams]);
 
-  const save = async () => {
-    if (saving || !Number.isSafeInteger(draft.defaultRestSeconds) || draft.defaultRestSeconds < 0) return;
+  const save = async (field: PreferenceField) => {
+    const value = draft[field];
+    if (
+      saving
+      || !Number.isSafeInteger(value)
+      || (field === "defaultRestSeconds" && value < 0)
+    ) return;
     setSaving(true);
     setFailure(null);
-    try { await onSave(draft); }
-    catch { setFailure("Default rest was not saved"); }
+    try { await onSave(field, value); }
+    catch {
+      setFailure(field === "defaultRestSeconds"
+        ? "Default rest was not saved"
+        : "Weight increment was not saved");
+    }
     finally { setSaving(false); }
   };
 
@@ -58,7 +69,7 @@ export function WorkoutPlanSettingsSheet({
       <Text style={[typeScale.secondary as TextStyle, { color: colors.textSecondary }]}>Between-set rest · sec</Text>
       <TextInput accessibilityLabel="Default between-set rest seconds" keyboardType="number-pad" onChangeText={(value) => setDraft((current) => ({ ...current, defaultRestSeconds: Number(value) }))} style={[styles.input, { borderColor: colors.divider, color: colors.textPrimary }]} value={String(draft.defaultRestSeconds)} />
       <Text style={[typeScale.secondary as TextStyle, { color: colors.textSecondary }]}>{`Saved rest · ${saved.defaultRestSeconds} sec`}</Text>
-      <PrimaryAction busy={saving} disabled={saving} label="Save default rest" onPress={() => { void save(); }} />
+      <PrimaryAction busy={saving} disabled={saving} label="Save default rest" onPress={() => { void save("defaultRestSeconds"); }} />
       {failure === null ? null : <Text accessibilityRole="alert" style={[typeScale.body as TextStyle, { color: colors.destructive }]}>{failure}</Text>}
     </View>
     <View style={[styles.section, { borderColor: colors.divider }]}>
@@ -70,7 +81,7 @@ export function WorkoutPlanSettingsSheet({
           <Text style={[typeScale.bodyStrong as TextStyle, { color: colors.textPrimary }]}>{`${value / 1000} kg${selected ? " · Selected" : ""}`}</Text>
         </FocusablePressable>;
       })}
-      <PrimaryAction busy={saving} disabled={saving} label="Save weight increment" onPress={() => { void save(); }} />
+      <PrimaryAction busy={saving} disabled={saving} label="Save weight increment" onPress={() => { void save("weightIncrementGrams"); }} />
     </View>
     <Text style={[typeScale.secondary as TextStyle, { color: colors.textSecondary }]}>Sound and haptic cues remain controlled by device settings.</Text>
     <SecondaryAction disabled={saving} label="Edit plan after workout · Schedule" onPress={onEditPlanAfterWorkout} />

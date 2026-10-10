@@ -96,15 +96,22 @@ jest.mock("../../src/ui/screens/RootScreens", () => ({
 jest.mock("../../src/ui/components/WorkoutPlanSettingsSheet", () => ({
   WorkoutPlanSettingsSheet: ({ visible, onSave }: Readonly<{
     visible: boolean;
-    onSave(draft: Readonly<{ defaultRestSeconds: number; weightIncrementGrams: number }>): Promise<void>;
+    onSave(field: "defaultRestSeconds" | "weightIncrementGrams", value: number): Promise<void>;
   }>) => {
     if (!visible) return null;
     const { Pressable } = require("react-native") as typeof import("react-native");
-    return <Pressable
-      accessibilityLabel="Save plan settings"
-      accessibilityRole="button"
-      onPress={() => { void onSave({ defaultRestSeconds: 120, weightIncrementGrams: 2500 }); }}
-    />;
+    return <>
+      <Pressable
+        accessibilityLabel="Save default rest"
+        accessibilityRole="button"
+        onPress={() => { void onSave("defaultRestSeconds", 120); }}
+      />
+      <Pressable
+        accessibilityLabel="Save weight increment"
+        accessibilityRole="button"
+        onPress={() => { void onSave("weightIncrementGrams", 5000); }}
+      />
+    </>;
   },
 }));
 
@@ -248,7 +255,7 @@ describe("ActiveWorkoutRoute", () => {
     await waitFor(() => expect(mockReadWorkoutPreferences).toHaveBeenCalledWith("plan-owner"));
   });
 
-  it("writes plan preferences with the read revision and reloads the saved source", async () => {
+  it("writes only confirmed default rest against the latest saved increment and reloads the source", async () => {
     mockGetActiveWorkout.mockResolvedValue({
       id: "session-identity", status: "in_progress", revision: 3,
       planId: "plan-owner", activeSetId: null, activeExerciseId: null,
@@ -260,8 +267,8 @@ describe("ActiveWorkoutRoute", () => {
     await render(<ActiveWorkoutRoute />);
     await waitFor(() => expect(mockGetActiveWorkout).toHaveBeenCalledWith("session-identity"));
     await fireEvent.press(screen.getByRole("button", { name: "Open plan settings" }));
-    await waitFor(() => expect(screen.getByRole("button", { name: "Save plan settings" })).toBeOnTheScreen());
-    await fireEvent.press(screen.getByRole("button", { name: "Save plan settings" }));
+    await waitFor(() => expect(screen.getByRole("button", { name: "Save default rest" })).toBeOnTheScreen());
+    await fireEvent.press(screen.getByRole("button", { name: "Save default rest" }));
 
     await waitFor(() => expect(mockSetWorkoutPreferences).toHaveBeenCalledWith(expect.objectContaining({
       planId: "plan-owner",
@@ -271,5 +278,40 @@ describe("ActiveWorkoutRoute", () => {
       updatedAtMs: expect.any(Number),
     })));
     expect(mockReadWorkoutPreferences).toHaveBeenLastCalledWith("plan-owner");
+  });
+
+  it("writes only confirmed weight increment against the latest saved rest after a conflict", async () => {
+    mockGetActiveWorkout.mockResolvedValue({
+      id: "session-identity", status: "in_progress", revision: 3,
+      planId: "plan-owner", activeSetId: null, activeExerciseId: null,
+      currentExercise: {}, exercises: [], progress: { completedWorkingSets: 0, totalWorkingSets: 0 },
+      rest: { state: "idle", revision: 0, nextSetId: null },
+    } as unknown as ActiveWorkoutView);
+    mockReadWorkoutPreferences
+      .mockResolvedValueOnce({ version: 1, planId: "plan-owner", defaultRestSeconds: 90, weightIncrementGrams: 2500, revision: 3 })
+      .mockResolvedValueOnce({ version: 1, planId: "plan-owner", defaultRestSeconds: 90, weightIncrementGrams: 2500, revision: 3 })
+      .mockResolvedValueOnce({ version: 1, planId: "plan-owner", defaultRestSeconds: 150, weightIncrementGrams: 2500, revision: 4 })
+      .mockResolvedValueOnce({ version: 1, planId: "plan-owner", defaultRestSeconds: 150, weightIncrementGrams: 5000, revision: 5 });
+    mockSetWorkoutPreferences
+      .mockRejectedValueOnce(new Error("revision_conflict"))
+      .mockResolvedValueOnce(undefined);
+
+    await render(<ActiveWorkoutRoute />);
+    await waitFor(() => expect(mockGetActiveWorkout).toHaveBeenCalledWith("session-identity"));
+    await fireEvent.press(screen.getByRole("button", { name: "Open plan settings" }));
+    await waitFor(() => expect(screen.getByRole("button", { name: "Save weight increment" })).toBeOnTheScreen());
+    await fireEvent.press(screen.getByRole("button", { name: "Save weight increment" }));
+
+    await waitFor(() => expect(mockSetWorkoutPreferences).toHaveBeenCalledTimes(2));
+    expect(mockSetWorkoutPreferences.mock.calls[0][0]).toEqual(expect.objectContaining({
+      expectedRevision: 3,
+      defaultRestSeconds: 90,
+      weightIncrementGrams: 5000,
+    }));
+    expect(mockSetWorkoutPreferences.mock.calls[1][0]).toEqual(expect.objectContaining({
+      expectedRevision: 4,
+      defaultRestSeconds: 150,
+      weightIncrementGrams: 5000,
+    }));
   });
 });
