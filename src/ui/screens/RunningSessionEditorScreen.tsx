@@ -22,6 +22,10 @@ function targetDraft(target: { paceMsPerKm?: number | undefined; heartRateZone?:
   return { mode: "rpe", paceMsPerKm: "", heartRateZone: "", rpe: target?.rpe === undefined ? "" : String(target.rpe) };
 }
 
+export function runningSessionKindLabel(kind: RunningSessionKind): string {
+  return kind === "long_run" ? "Long run" : `${kind[0]!.toUpperCase()}${kind.slice(1)}`;
+}
+
 export function makeRunningSessionSpec(draft: RunningSessionFormDraft) {
   const quantity = (value: string, unit: "distance" | "duration") => unit === "distance" ? { distanceMeters: Number(value) } : { durationMs: Number(value) };
   const selectedWork = draft.kind === "tempo" || draft.kind === "intervals" || draft.kind === "hills" || (draft.kind === "fartlek" && draft.fartlekStyle === "structured")
@@ -144,7 +148,7 @@ export function RunningSessionEditorScreen(props: Readonly<{
       });
       props.onSaved(result.sessionRootId);
     } catch {
-      setError(`${draft.kind === "long_run" ? "Long run" : draft.kind === "recovery" ? "Recovery" : "Progression"} session could not be saved. Your edits are still here. Try again.`);
+      setError(`${runningSessionKindLabel(draft.kind)} session could not be saved. Your edits are still here. Try again.`);
     } finally { setSaving(false); }
   };
 
@@ -156,7 +160,7 @@ export function RunningSessionEditorScreen(props: Readonly<{
     <ScreenHeader backAction={() => setConfirmDiscard(true)} eyebrow="RUNNING" title={props.mode === "create" ? "New session" : "Edit session"} />
     <Text>Configure only the steps this workout needs.</Text>
     <Text>Workout type</Text>
-    {(["recovery", "long_run", "progression", "tempo", "intervals", "hills", "fartlek"] as const).map((entry) => <SecondaryAction key={entry} label={`Workout type ${entry === "long_run" ? "Long run" : entry[0]!.toUpperCase() + entry.slice(1)}`} onPress={() => selectKind(entry)} />)}
+    {(["recovery", "long_run", "progression", "tempo", "intervals", "hills", "fartlek"] as const).map((entry) => <SecondaryAction key={entry} label={`Workout type ${runningSessionKindLabel(entry)}`} onPress={() => selectKind(entry)} />)}
     <RunningSessionFields draft={draft} onChange={update} />
     {error === null ? null : <Text accessibilityRole="alert">{error}</Text>}
     <PrimaryAction busy={saving} disabled={saving} label={saving ? "Saving session…" : "Save session"} onPress={() => void save()} />

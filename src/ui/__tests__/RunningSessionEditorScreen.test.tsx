@@ -3,7 +3,7 @@ import { describe, expect, it, jest } from "@jest/globals";
 import React from "react";
 
 import type { RunningPlanAggregate } from "../../domains/running/contracts";
-import { makeRunningSessionSpec, RunningSessionEditorScreen } from "../screens/RunningSessionEditorScreen";
+import { makeRunningSessionSpec, runningSessionKindLabel, RunningSessionEditorScreen } from "../screens/RunningSessionEditorScreen";
 import { initialRunningSessionFormDraft } from "../components/RunningSessionFields";
 import { AppearanceProvider } from "../theme";
 
@@ -14,6 +14,14 @@ const plan: RunningPlanAggregate = {
 };
 
 describe("RunningSessionEditorScreen", () => {
+  it("names every selected session kind truthfully in save recovery messages", () => {
+    expect(runningSessionKindLabel("long_run")).toBe("Long run");
+    expect(runningSessionKindLabel("tempo")).toBe("Tempo");
+    expect(runningSessionKindLabel("intervals")).toBe("Intervals");
+    expect(runningSessionKindLabel("hills")).toBe("Hills");
+    expect(runningSessionKindLabel("fartlek")).toBe("Fartlek");
+  });
+
   it("serializes only the selected Long run or Progression contextual variant", () => {
     const longRun = makeRunningSessionSpec({
       ...initialRunningSessionFormDraft("long_run", "Tuesday"),
