@@ -1,5 +1,6 @@
 import React, {
   useEffect,
+  useRef,
   useState,
 } from "react";
 import {
@@ -16,6 +17,7 @@ import {
   AdaptiveScreen,
 } from "../layout/AdaptiveScreen";
 import {
+  ConfirmationSheet,
   InlineNotice,
   PrimaryAction,
   ScreenHeader,
@@ -75,6 +77,8 @@ export function TemplateUpdateScreen({
   const [busy, setBusy] = useState(false);
   const [createFailed, setCreateFailed] = useState(false);
   const [createdPlanId, setCreatedPlanId] = useState<string | null>(null);
+  const [confirmVisible, setConfirmVisible] = useState(false);
+  const createActionRef = useRef<View>(null);
 
   useEffect(() => {
     let active = true;
@@ -95,6 +99,28 @@ export function TemplateUpdateScreen({
       active = false;
     };
   }, [loadUpdate, ownedPlanId, retryGeneration, templateId]);
+
+  async function confirmCreate() {
+    setConfirmVisible(false);
+    setBusy(true);
+    setCreateFailed(false);
+    try {
+      const currentPreview = await loadUpdate({ ownedPlanId, templateId });
+      if (currentPreview === null) {
+        setPreview(null);
+        setState("empty");
+        return;
+      }
+      setPreview(currentPreview);
+      const planId = await createNewCopy(currentPreview);
+      setCreatedPlanId(planId);
+      onCreated(planId);
+    } catch {
+      setCreateFailed(true);
+    } finally {
+      setBusy(false);
+    }
+  }
 
   let content: React.ReactNode;
   if (state === "loading") {
@@ -183,32 +209,36 @@ export function TemplateUpdateScreen({
         <PrimaryAction
           busy={busy}
           label="Create new copy"
-          onPress={() => {
-            setBusy(true);
-            setCreateFailed(false);
-            void createNewCopy(preview).then((planId) => {
-              setCreatedPlanId(planId);
-              onCreated(planId);
-            }).catch(() => {
-              setCreateFailed(true);
-            }).finally(() => setBusy(false));
-          }}
+          onPress={() => setConfirmVisible(true)}
+          ref={createActionRef}
         />
       </>
     );
   }
 
   return (
-    <AdaptiveScreen
-      primary={
-        <>
-          <ScreenHeader backAction={onBack} title="Template update" />
-          {content}
-        </>
-      }
-      testID="template-update"
-      {...(width === undefined ? {} : { width })}
-    />
+    <>
+      <AdaptiveScreen
+        primary={
+          <>
+            <ScreenHeader backAction={onBack} title="Template update" />
+            {content}
+          </>
+        }
+        testID="template-update"
+        {...(width === undefined ? {} : { width })}
+      />
+      <ConfirmationSheet
+        body="The accepted template will create a fresh inactive copy. Your current copy, schedule, draft, and completed history remain unchanged."
+        cancelLabel="Keep reviewing"
+        confirmLabel="Create new copy"
+        heading="Create new copy?"
+        onCancel={() => setConfirmVisible(false)}
+        onConfirm={() => { void confirmCreate(); }}
+        restoreFocusRef={createActionRef}
+        visible={confirmVisible}
+      />
+    </>
   );
 }
 
