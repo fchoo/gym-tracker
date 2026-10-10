@@ -79,10 +79,10 @@ Exactly four roots: **Workout, Calendar, Library, Progress**. Preserve SQLite au
 - [ ] **WRK-20**: After the final set commits, collapse its exercise and reveal the next current exercise; warm-up completion advances without between-set rest.
 - [ ] **WRK-21**: Replace completion controls with a full-width rest dock showing Resting/Rest paused, countdown and next-set context.
 - [ ] **WRK-22**: Provide −15, +15, Pause/Resume and Skip with accessible labels; expiry or skip restores the ready action without completing a set.
-- [ ] **WRK-23**: Recover the authoritative rest deadline/pause state and device-owned cues across backgrounding, process death and offline restart.
+- [x] **WRK-23**: Recover the authoritative rest deadline/pause state and device-owned cues across backgrounding, process death and offline restart.
 - [ ] **WRK-24**: Open trend via a dedicated icon and show Recent, Best, Change, six-session history and an accessible chart from comparable facts.
-- [ ] **WRK-25**: Limit exercise overflow to flat between-set timing, Replace exercise and Delete exercise; keep trend separate.
-- [ ] **WRK-26**: Use explicit sec controls for between-set rest and plan default rest; persist changes immediately without cadence, rest-between-reps, nested Advanced Timing or sound/haptic plan controls.
+- [x] **WRK-25**: Limit exercise overflow to flat between-set timing, Replace exercise and Delete exercise; keep trend separate.
+- [x] **WRK-26**: Use explicit sec controls for between-set rest and plan default rest; persist changes immediately without cadence, rest-between-reps, nested Advanced Timing or sound/haptic plan controls.
 - [ ] **WRK-27**: Show plan identity and 1.25/2.5/5 weight-increment choices with saved selection; preserve the distinction between increment preference and existing set targets.
 - [ ] **WRK-28**: Keep Edit plan after workout reachable and route to the real editor after the active session boundary, preserving schedule/history rules.
 - [ ] **WRK-29**: Open the global Add exercise picker, search available exercises, choose an exercise and add it to the active session with loading/error/retry handling.
@@ -290,10 +290,10 @@ once and remains Pending until its owning phase is implemented and verified.
 | WRK-20 | 15 | workout.completion-collapse | Pending |
 | WRK-21 | 15 | workout.rest-dock | Pending |
 | WRK-22 | 15 | workout.rest-controls | Pending |
-| WRK-23 | 15 | workout.rest-recovery | Pending |
+| WRK-23 | 15 | workout.rest-recovery | Complete |
 | WRK-24 | 15 | workout.trend | Pending |
-| WRK-25 | 15 | workout.exercise-menu | Pending |
-| WRK-26 | 15 | workout.timing-flat | Pending |
+| WRK-25 | 15 | workout.exercise-menu | Complete |
+| WRK-26 | 15 | workout.timing-flat | Complete |
 | WRK-27 | 15 | workout.plan-increment | Pending |
 | WRK-28 | 15 | workout.plan-after-workout | Pending |
 | WRK-29 | 15 | workout.add-exercise | Pending |
