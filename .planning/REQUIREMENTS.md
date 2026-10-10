@@ -90,9 +90,9 @@ Exactly four roots: **Workout, Calendar, Library, Progress**. Preserve SQLite au
 - [x] **WRK-31**: Require a second explicit Confirm delete action before removing an exercise and preserve committed source history and safe next-current selection.
 - [x] **WRK-32**: Support grip drag and accessible Move up/Move down alternatives while preserving current exercise/set identity; cancelled gestures must not commit a reorder.
 - [x] **WRK-33**: Preserve shipped undo/edit-removal recovery through contextual feedback without adding a persistent Undo control to the approved compact dock.
-- [ ] **WRK-34**: Preserve Finish workout, Finish as partial, Finish workout later, zero-set save and Discard workout with confirmation and error/retry states.
-- [ ] **WRK-35**: Preserve complete/partial summary, per-exercise results/effort, modified-from-plan status, details/return actions and failed-summary retry.
-- [ ] **WRK-36**: Keep plan-change write-back explicit with preview/accept/cancel and failed-write retry; finishing never silently changes future targets.
+- [x] **WRK-34**: Preserve Finish workout, Finish as partial, Finish workout later, zero-set save and Discard workout with confirmation and error/retry states.
+- [x] **WRK-35**: Preserve complete/partial summary, per-exercise results/effort, modified-from-plan status, details/return actions and failed-summary retry.
+- [x] **WRK-36**: Keep plan-change write-back explicit with preview/accept/cancel and failed-write retry; finishing never silently changes future targets.
 
 ### Phase 16: Calendar and read-only detail
 
@@ -301,9 +301,9 @@ once and remains Pending until its owning phase is implemented and verified.
 | WRK-31 | 15 | workout.delete-exercise | Complete |
 | WRK-32 | 15 | workout.reorder | Complete |
 | WRK-33 | 15 | workout.undo | Complete |
-| WRK-34 | 15 | workout.outcomes | Pending |
-| WRK-35 | 15 | workout.completion-review | Pending |
-| WRK-36 | 15 | workout.completion-writeback | Pending |
+| WRK-34 | 15 | workout.outcomes | Complete |
+| WRK-35 | 15 | workout.completion-review | Complete |
+| WRK-36 | 15 | workout.completion-writeback | Complete |
 | CAL-01 | 16 | calendar.month | Pending |
 | CAL-02 | 16 | calendar.calendar-key | Pending |
 | CAL-03 | 16 | calendar.event-encoding | Pending |

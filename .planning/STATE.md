@@ -5,16 +5,16 @@ milestone_name: Prototype Parity, Concurrent Plans & Garmin Import — PLANNED
 current_phase: 15
 current_phase_name: Workout Parity
 status: executing
-stopped_at: Completed 15-09-PLAN.md
-last_updated: "2026-10-10T13:58:47.624Z"
+stopped_at: Completed 15-10-PLAN.md
+last_updated: "2026-10-10T14:12:33.450Z"
 last_activity: 2026-10-10
 last_activity_desc: Phase 15 execution started
-state_head: 08b117aa96cdb5dd2e6ea1a90d9e6e10239bdf14
+state_head: 7861da18c53684421cd5c1efe1856e49a5895c2b
 progress:
   total_phases: 8
   completed_phases: 1
   total_plans: 98
-  completed_plans: 37
+  completed_plans: 38
   percent: 13
 ---
 
@@ -30,7 +30,7 @@ See: .planning/PROJECT.md (updated 2026-10-06)
 ## Current Position
 
 Phase: 15 (Workout Parity) — EXECUTING
-Plan: 10 of 13
+Plan: 11 of 13
 Status: Ready to execute
 Last activity: 2026-10-10 — Phase 15 execution started
 
@@ -77,6 +77,7 @@ Gym Tracker remains a signed personal-use Android APK/AAB with SQLite-authoritat
 | Phase 15 P07 | 7m | 3 tasks | 5 files |
 | Phase 15 P08 | 12m | 3 tasks | 7 files |
 | Phase 15-workout-parity P09 | 13m | 2 tasks | 11 files |
+| Phase 15 P10 | 11m | 3 tasks | 10 files |
 
 ## Accumulated Context
 
@@ -138,6 +139,8 @@ Gym Tracker remains a signed personal-use Android APK/AAB with SQLite-authoritat
 - [Phase 15]: Active Workout retries reuse the original receipt envelope; contextual Undo remains a bounded toast action outside persistent docks.
 - [Phase 15]: Active trend projects one completed compatible result per session, bounded to six newest sessions.
 - [Phase 15]: Post-workout plan editing retains source plan identity and routes only after a session boundary.
+- [Phase 15]: Phase 15: terminal workout navigation requires the matching authoritative session ID and status; failures retain Active facts and reuse the original envelope.
+- [Phase 15]: Phase 15: write-back presents source-derived typed target deltas; no supported delta is Keep-only and never changes the plan.
 
 ### Pending Owner Review
 
@@ -162,7 +165,7 @@ Gym Tracker remains a signed personal-use Android APK/AAB with SQLite-authoritat
 
 ## Session Continuity
 
-Last session: 2026-10-10T13:58:47.541Z
-Stopped at: Completed 15-09-PLAN.md
+Last session: 2026-10-10T14:12:33.382Z
+Stopped at: Completed 15-10-PLAN.md
 Resume file: None
 Next action: Present the complete planning set for owner review; after explicit approval, run `/gsd-execute-phase 13`.
