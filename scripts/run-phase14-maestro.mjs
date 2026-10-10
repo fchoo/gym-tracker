@@ -334,6 +334,7 @@ function runMaestroCell({ actionId = "none", cell, flowPath, reportPath, serial 
     "-e", `PHASE14_THEME_OPTION=${cell.appearanceSelection}`,
     "-e", `PHASE14_RENDERED_THEME=${cell.renderedTheme}`,
     "-e", `PHASE14_REDUCED_MOTION=${cell.reducedMotion ? "true" : "false"}`,
+    "-e", `PHASE14_COMPACT_LANDSCAPE=${cell.orientation === "landscape" && cell.viewport.width <= 480 ? "true" : "false"}`,
     "-e", `PHASE14_ACTION=${actionId}`,
     "-e", `PHASE14_THEME_PRESELECTED=${actionId === "none" ? "false" : "true"}`,
     flowPath,

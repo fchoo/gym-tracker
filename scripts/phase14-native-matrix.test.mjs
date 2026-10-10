@@ -120,11 +120,12 @@ test("Phase 14 Maestro flows encode all shell stages and stay native-only", () =
   const combined = ["shell.yaml", "accessibility.yaml"].map((name) => readFileSync(`maestro/phase14/${name}`, "utf8")).concat(settingsRecovery).join("\n");
   for (const id of ["phase14-four-roots", "phase14-root-state", "phase14-appearance", "phase14-tokens", "phase14-sheets", "phase14-toasts", "phase14-launch", "phase14-rest-alerts", "phase14-settings-deep-links", "phase14-removed-sessions", "phase14-data-recovery", "phase14-automatic-backup", "phase14-manual-backup"]) assert.match(combined, new RegExp(`PHASE14_STAGE == '${id}'`, "u"));
   const themeSelection = readFileSync("maestro/phase14/select-theme.yaml", "utf8");
-  assert.doesNotMatch(themeSelection, /scrollUntilVisible/u);
+  assert.match(themeSelection, /PHASE14_COMPACT_LANDSCAPE != 'true'[\s\S]*?scrollUntilVisible/u);
+  assert.match(themeSelection, /PHASE14_COMPACT_LANDSCAPE == 'true'[\s\S]*?pressKey: "Remote Dpad Down"/u);
   assert.match(themeSelection, /pressKey: "Remote Dpad Down"/u);
   assert.match(themeSelection, /PHASE14_THEME_OPTION == 'Light'[\s\S]*?pressKey: "Remote Dpad Down"/u);
   assert.match(themeSelection, /PHASE14_THEME_OPTION == 'Dark'[\s\S]*?pressKey: "Remote Dpad Down"[\s\S]*?pressKey: "Remote Dpad Down"/u);
-  assert.match(themeSelection, /tapOn: \$\{PHASE14_THEME_OPTION\}/u);
+  assert.match(themeSelection, /tapOn: \$\{PHASE14_THEME_OPTION\}[\s\S]*?assertVisible: "App Settings"/u);
   const appearanceJourney = combined.match(
     /PHASE14_STAGE == 'phase14-appearance' && PHASE14_ACTION == 'none'[\s\S]*?(?=\n- runFlow:|$)/u,
   )?.[0] ?? "";
@@ -173,6 +174,7 @@ test("Phase 14 Maestro flows encode all shell stages and stay native-only", () =
   assert.doesNotMatch(toastFlow, /tapOn: "Tap background control"/u);
 
   const runner = readFileSync("scripts/run-phase14-maestro.mjs", "utf8");
+  assert.match(runner, /PHASE14_COMPACT_LANDSCAPE=\$\{cell\.orientation === "landscape" && cell\.viewport\.width <= 480/u);
   assert.match(runner, /runComponentEvidence\(ids, outputDirectory\)/u);
   assert.match(runner, /executeObservedAction/u);
   assert.match(runner, /captureRuntimeSourceStateProof/u);
