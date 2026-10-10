@@ -16,7 +16,7 @@ affects: [15-workout-parity, 16-calendar-parity, workout, active-workout]
 actuals:
   tokens: 9337
   tasks: 3
-  commits: 3
+  commits: 4
 tech-stack:
   added: []
   patterns:
@@ -95,12 +95,14 @@ status: complete
 - Added `WorkoutPresentationModel`, a live-session adapter, and `WorkoutSessionPresentation` / `WorkoutSetFactsRow` for immutable identity, progress, exercise, warm-up, working-set, previous, target, result, and state facts.
 - Kept all Active mutation, retry, rest, timing, focus/scroll, editor, and outcome authority in the existing controller while the presenter owns only disclosure and fact rendering.
 - Proved that a planned or historical `SessionDetail` maps to the same facts model without runtime, repository, route, or mutation capability; Back and unmount issue no workout command.
+- Restored the collapsed completed-exercise overview node after the Wave 1 full-suite gate found a production Today-plan cardinality regression.
 
 ## Task Commits
 
 1. **Task 1: Trace one selected occurrence from Workout through Active and recovery** — `14f656b8` (`feat`)
 2. **Task 2: Extract immutable Active facts presentation without changing source authority** — `8386fddb` (`feat`)
 3. **Task 3: Prove the Phase 16 facts-only capability boundary and navigation safety** — `36a6f8a7` (`test`)
+4. **Wave-gate regression fix: retain collapsed composed overview nodes** — `7d8dde25` (`fix`)
 
 ## Files Created/Modified
 
@@ -124,6 +126,8 @@ status: complete
 - PASS: `npm run typecheck`.
 - PASS: `npm run lint`.
 - PASS: `npm run check:boundaries` — 332 files.
+- PASS: `npm run test:components -- --runInBand app/__tests__/phase2-attended-preview.test.tsx src/ui/__tests__/WorkoutSessionPresentation.test.tsx` — 2 suites, 63 tests.
+- PASS: `npm run test:components -- --runInBand` — full components project; the Expo Go push-notification warning from `LibraryScreen` is non-failing.
 
 ## Deviations from Plan
 
@@ -138,7 +142,16 @@ status: complete
 - **Verification:** `npm run typecheck` and focused route tests passed.
 - **Committed in:** `8386fddb`.
 
-**Total deviations:** 1 auto-fixed (Rule 1).
+**2. [Rule 1 - Wave-gate production preview cardinality] Preserve collapsed composed overview nodes.**
+
+- **Found during:** Post-wave `npm run test:all` component gate, before Wave 2.
+- **Issue:** `phase2TodayPlanManyView` supplies four authoritative exercises, but its completed Bench Press node disappeared from the production Today-plan overview. The facts adapter retained all four exercises; the new presenter only invoked the Active composition callback when an exercise was expanded. Completed exercises are intentionally collapsed, so the legacy overview wrapper was removed with its details.
+- **Fix:** Invoke an explicitly supplied composition callback for every presentation exercise. The Active callback continues to hide detailed cards when collapsed, preserving disclosure while retaining the overview header and its accessibility contract. Added focused coverage for a completed collapsed exercise whose overview node remains mounted and whose detail remains hidden.
+- **Files modified:** `src/ui/components/WorkoutSessionPresentation.tsx`, `src/ui/__tests__/WorkoutSessionPresentation.test.tsx`.
+- **Verification:** focused attended-preview/presenter suites, all Plan 15 focused checks, and the full components project passed.
+- **Committed in:** `7d8dde25`.
+
+**Total deviations:** 2 auto-fixed (Rule 1).
 
 ## TDD Gate Compliance
 
@@ -160,4 +173,4 @@ Phase 16 can consume `presentSessionDetail` and `WorkoutSessionPresentation` for
 ## Self-Check: PASSED
 
 - Confirmed the four created presentation/test files and six modified route/controller files exist.
-- Confirmed task commits `14f656b8`, `8386fddb`, and `36a6f8a7` are reachable in git history.
+- Confirmed task commits `14f656b8`, `8386fddb`, `36a6f8a7`, and regression fix `7d8dde25` are reachable in git history.
