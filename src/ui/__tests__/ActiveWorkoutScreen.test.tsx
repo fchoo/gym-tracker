@@ -470,7 +470,7 @@ describe("ActiveWorkoutScreen explicit-save editor", () => {
     await fireEvent.changeText(screen.getByLabelText("Load (kg)"), "65");
     await fireEvent.changeText(screen.getByLabelText("Repetitions"), "9");
     expect(updateActiveSetDraft).not.toHaveBeenCalled();
-    await fireEvent.press(screen.getByRole("button", { name: "Cancel" }));
+    await fireEvent.press(screen.getAllByRole("button", { name: "Return to Workout" })[1]!);
 
     expect(updateActiveSetDraft).not.toHaveBeenCalled();
     expect(screen.queryByTestId("workout-set-editor-sheet")).not.toBeOnTheScreen();
