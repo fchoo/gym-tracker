@@ -2,7 +2,7 @@ import React, { useMemo, useRef } from "react";
 import { StyleSheet, Text, View, type TextStyle } from "react-native";
 
 import { FocusablePressable } from "./index";
-import { space, typeScale, useAppTheme } from "../theme";
+import { space, workoutTypeScale, useAppTheme } from "../theme";
 
 export type WorkoutDayPreview = Readonly<{
   id: string;
@@ -21,7 +21,6 @@ export function WorkoutDaySelector({
 }>) {
   const { colors } = useAppTheme();
   const refs = useRef<Array<View | null>>([]);
-  const selectedIndex = Math.max(0, items.findIndex((item) => item.id === selectedId));
   const selectable = useMemo(() => items.slice(0, 5), [items]);
   const move = (index: number) => {
     const next = selectable[index];
@@ -36,13 +35,19 @@ export function WorkoutDaySelector({
         const selected = item.id === selectedId;
         return (
           <FocusablePressable
+            accessibilityHint={selected
+              ? "Selected day preview. Use Arrow keys, Home, or End to move focus."
+              : "Day preview. Use Arrow keys, Home, or End from the selected preview to move focus."}
             accessibilityLabel={`Preview ${item.label}. ${item.detail}`}
             accessibilityRole="tab"
             accessibilityState={{ selected }}
-            focusable
+            focusable={selected}
             key={item.id}
             onKeyDown={(event) => {
               const key = event.nativeEvent.key;
+              if (["ArrowLeft", "ArrowRight", "Home", "End"].includes(key)) {
+                (event as unknown as { preventDefault?: () => void }).preventDefault?.();
+              }
               if (key === "ArrowLeft") move(Math.max(0, index - 1));
               if (key === "ArrowRight") move(Math.min(selectable.length - 1, index + 1));
               if (key === "Home") move(0);
@@ -60,8 +65,8 @@ export function WorkoutDaySelector({
             ]}
             testID={`workout-day-preview-${item.id}`}
           >
-            <Text style={[typeScale.bodyStrong as TextStyle, { color: colors.contentCardText }]}>{item.label}</Text>
-            <Text numberOfLines={2} style={[typeScale.secondary as TextStyle, { color: colors.contentCardTextSecondary }]}>{item.detail}</Text>
+            <Text style={[workoutTypeScale.bodyStrong as TextStyle, { color: colors.contentCardText }]}>{item.label}</Text>
+            <Text style={[workoutTypeScale.secondary as TextStyle, { color: colors.contentCardTextSecondary }]}>{item.detail}</Text>
           </FocusablePressable>
         );
       })}

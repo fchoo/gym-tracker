@@ -23,6 +23,8 @@ describe("WorkoutDaySelector", () => {
     await render(<AppearanceProvider><WorkoutDaySelector items={items} selectedId="wed" onSelect={jest.fn()} /></AppearanceProvider>);
     expect(screen.getByRole("tab", { name: /Preview Wed/u })).toBeSelected();
     expect(screen.getByTestId("workout-day-preview-wed")).toHaveStyle({ minHeight: 56 });
+    expect(screen.getByTestId("workout-day-preview-wed")).toHaveProp("focusable", true);
+    expect(screen.getByTestId("workout-day-preview-mon")).toHaveProp("focusable", false);
     expect(Object.keys(WorkoutDaySelector)).not.toContain("onReorder");
   });
 });
