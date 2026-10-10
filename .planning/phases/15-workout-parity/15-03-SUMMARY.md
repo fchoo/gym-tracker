@@ -16,7 +16,7 @@ affects: [15-workout-parity, 16-calendar-parity, workout]
 actuals:
   tokens: 7015
   tasks: 3
-  commits: 5
+  commits: 6
 tech-stack:
   added: []
   patterns:
@@ -83,18 +83,23 @@ status: complete
 - Rebuilt the scheduled Workout composition around real selected-occurrence identity, local presentation-only preview selection, persisted exercise order, and direct exact-envelope start routing.
 - Added factual rest, start-failure, start-alternative, and recovered-session behavior using the approved copy; sheet dismissal is now `Return to Workout`.
 - Added a five-item-capable selector with touch, Enter, Space, Arrow, Home, End, selected-state semantics, and 56dp targets; Running remains contextual navigation only.
+- Closed the Wave 2 component-gate rest-day regression without allowing a source-less start.
 
 ## Task Commits
 
 1. **Task 1: Render and start one real scheduled Workout occurrence** — `71da3aae` (`test`), `4b868a73` (`feat`), `746ce4af` (`fix`)
 2. **Task 2: Complete truthful root states, alternatives, and Running context** — `7a925247` (`feat`)
 3. **Task 3: Enforce root keyboard, focus, text-scale, and responsive contracts** — `bf478929` (`test`)
+4. **Wave 2 component-gate auto-fix: restore source-backed rest-day start** — `a2d92aa` (`fix`)
 
 ## Verification
 
 - PASS: focused component suite for `TodayScreen`, `WorkoutDaySelector`, foundation, and Workout route — 4 suites, 84 tests.
 - PASS: `npm run lint -- --quiet` and `npm run check:boundaries` (333 files).
 - PASS: post-fix `npm run typecheck`, `npm run lint -- --quiet`, and `npm run check:boundaries` (333 files), after Plan 15-01 commits `2384f15a` and `b0315a97` resolved the presenter-fixture typing errors.
+- PASS: Wave 2 focused `ScheduleEditor` and `TodayScreen` component suites — 2 suites, 38 tests.
+- PASS: Wave 2 Workout root route suites — 2 suites, 8 tests.
+- PASS: Wave 2 `npm run typecheck`, `npm run lint -- --quiet`, `npm run check:boundaries` (331 files), and full `npm run test:components -- --runInBand`.
 
 ## Deviations from Plan
 
@@ -113,6 +118,14 @@ status: complete
 - **Fix:** Asserted visible editorial identity while preserving the native header semantic.
 - **Files modified:** `src/ui/__tests__/TodayScreen.test.tsx`
 - **Committed in:** `746ce4af`
+
+**3. [Rule 1 - Correctness] Restored the explicit rest-day start only for a source-backed next plan day.**
+- **Found during:** Wave 2 full component gate (`ScheduleEditor` regression).
+- **Issue:** The truthful-rest rewrite in `7a925247` unconditionally replaced `Train anyway` with `Choose another day`. Its fixture already supplied a factual `nextDayId` that existed in `planDays`, so the rewrite hid an eligible non-advancing rest-day start rather than exposing a missing-data state.
+- **Fix:** Derive rest-day eligibility from the authoritative `planDays` list. An existing next day keeps the explicit `Train anyway` entry point; a missing next day retains disabled `Nothing scheduled` and only the generic alternatives selector. The focused TodayScreen coverage asserts both paths.
+- **Files modified:** `src/ui/screens/TodayScreen.tsx`, `src/ui/__tests__/TodayScreen.test.tsx`
+- **Verification:** ScheduleEditor, TodayScreen, Workout root route, typecheck, lint, boundaries, and full components passed.
+- **Committed in:** `a2d92aa`
 
 ## Issues Encountered
 
