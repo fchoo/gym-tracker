@@ -125,6 +125,10 @@ import type {
   TodayView,
   WorkoutSessionView,
 } from "../domains/workout";
+import type {
+  WorkoutPreference,
+  WorkoutPreferenceWrite,
+} from "../domains/workout/workoutPreferences";
 import {
   DISCARD_CONFIRMATION,
   PARTIAL_CONFIRMATION,
@@ -202,6 +206,9 @@ import {
 import {
   createEffectStore,
 } from "../platform/sqlite/effects/effectStore";
+import {
+  createWorkoutPreferenceRepository,
+} from "../platform/sqlite/repositories/workoutPreferenceRepository";
 import {
   createBackupCommands,
   type SecureBackupArchiveHandle,
@@ -620,6 +627,8 @@ type RuntimeValue = RuntimeState & Readonly<{
     input: AddWorkingSetInput,
   ): Promise<CommittedWorkoutMutationResult>;
   completeSet(input: CompleteSetInput): ReturnType<typeof completeSet>;
+  readWorkoutPreferences(planId: string): Promise<WorkoutPreference>;
+  setWorkoutPreferences(input: WorkoutPreferenceWrite): Promise<WorkoutPreference>;
   completeWarmup(input: CompleteWarmupInput): Promise<ActiveWorkoutView>;
   createSecureBackup(input: Readonly<{
     password: string;
@@ -996,6 +1005,7 @@ type RuntimeServices = Readonly<{
   advancedTimingRepository: ReturnType<typeof createAdvancedTimingRepository>;
   outcomeRepository: ReturnType<typeof createWorkoutOutcomeRepository>;
   workoutRepository: ReturnType<typeof createWorkoutRepository>;
+  workoutPreferenceRepository: ReturnType<typeof createWorkoutPreferenceRepository>;
 }>;
 
 type CustomExerciseReadServices = Pick<
@@ -1039,6 +1049,9 @@ export type WorkoutAppRuntimeDependencies = Readonly<{
   createWorkoutRepository(
     kernel: SqliteKernel,
   ): ReturnType<typeof createWorkoutRepository>;
+  createWorkoutPreferenceRepository?(
+    kernel: SqliteKernel,
+  ): ReturnType<typeof createWorkoutPreferenceRepository>;
   createBackupCommands?(kernel: SqliteKernel): SecureBackupCommands;
   createCsvExportRepository?(kernel: SqliteKernel): CsvExportRepository;
   createCsvFiles?(): CsvFilePort;
@@ -2303,6 +2316,8 @@ export function WorkoutAppRuntimeProvider({
       restRepository,
       advancedTimingRepository,
       workoutRepository: dependencies.createWorkoutRepository(kernel),
+      workoutPreferenceRepository: dependencies.createWorkoutPreferenceRepository?.(kernel)
+        ?? createWorkoutPreferenceRepository(kernel),
     };
     servicesRef.current = services;
     try {
@@ -3887,6 +3902,16 @@ export function WorkoutAppRuntimeProvider({
     });
   }, [reconcileAfterCommit, requireServices, trustedRead]);
 
+  const readWorkoutPreferences = useCallback((planId: string) =>
+    requireServices().workoutPreferenceRepository.read(planId), [requireServices]);
+
+  const setWorkoutPreferences = useCallback(async (input: WorkoutPreferenceWrite) => {
+    const services = requireServices();
+    const saved = await services.workoutPreferenceRepository.write(input);
+    await services.lifecycle.trigger("post_commit").catch(() => undefined);
+    return saved;
+  }, [requireServices]);
+
   const undoWorkoutSet = useCallback((input: UndoCompletedSetInput) => {
     const services = requireServices();
     return undoCompletedSet({
@@ -4118,6 +4143,8 @@ export function WorkoutAppRuntimeProvider({
     adjustRest: adjustWorkoutRest,
     beginAdvancedTimingClusterGap: beginRuntimeAdvancedTimingClusterGap,
     completeSet: completeWorkoutSet,
+    readWorkoutPreferences,
+    setWorkoutPreferences,
     completeWarmup: completeWorkoutWarmup,
     collectPhase14SourceStateProof: () => {
       if (!phase14NativeRecoveryFixtureEnabled()) {
@@ -4352,6 +4379,8 @@ export function WorkoutAppRuntimeProvider({
     adjustWorkoutRest,
     beginRuntimeAdvancedTimingClusterGap,
     completeWorkoutSet,
+    readWorkoutPreferences,
+    setWorkoutPreferences,
     completeWorkoutWarmup,
     configureRuntimeAdvancedTiming,
     requireServices,
