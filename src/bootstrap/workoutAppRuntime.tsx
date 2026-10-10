@@ -748,6 +748,7 @@ type RuntimeValue = RuntimeState & Readonly<{
   activateAcceptedStarterPlan(
     command: StarterPlanRuntimeActivationCommand,
   ): Promise<AcceptedStarterPlanActivation>;
+  createStarterEditableCopy(templateId: string): Promise<string>;
   finishStarterSwitchWorkout(input: Readonly<{
     sessionId: string;
     sessionRevision: number;
@@ -2757,6 +2758,47 @@ export function WorkoutAppRuntimeProvider({
     });
   }, [dependencies, requireServices, trustedRead]);
 
+  const createStarterEditableCopy = useCallback(async (
+    templateId: string,
+  ): Promise<string> => {
+    const catalog = starterPlansRef.current;
+    if (catalog === undefined) {
+      throw new Error("starter_catalog_unavailable");
+    }
+    const template = findStarterPlan(catalog, templateId);
+    if (template === null) {
+      throw new Error("starter_template_not_found");
+    }
+    const services = requireServices();
+    const { CryptoDigestAlgorithm, digestStringAsync } = require("expo-crypto") as typeof import("expo-crypto");
+    const createdAtMs = dependencies.nowMs();
+    const result = await createStarterPlanCopy({
+      starterPackBytes: `${JSON.stringify(starterPlansAsset, null, 2)}\n`,
+      acceptanceBytes: `${JSON.stringify(starterPlansAcceptanceAsset, null, 2)}\n`,
+      sha256: (value) => digestStringAsync(CryptoDigestAlgorithm.SHA256, value),
+      repository: createStarterPlanRepository(services.kernel),
+      requestId: `starter-editable-copy:${template.id}:${createdAtMs}`,
+      createdAtMs,
+      sourceOwnedPlanId: `starter:${template.id}:r${template.revision}`,
+      expectedSourcePlanRevision: template.revision,
+      expectedActiveScheduleRevision: null,
+      templateId: template.id,
+      templateRevision: template.revision,
+      startLocalDate: localContext(dependencies.now()).localDate,
+      timeZone: localContext(dependencies.now()).timezone,
+      ...suggestedTemplateSchedule(template),
+    });
+    return acknowledgeCommittedRuntimeResult({
+      result,
+      refresh: () => trustedRead(services),
+      onRefreshed: setState,
+      onRefreshFailed: () => setState((current) => ({
+        ...current,
+        actionFailure: { code: "workout_action_failed", correlationCode: "GT-ACTION01" },
+      })),
+    }).then(({ plan }) => plan.id);
+  }, [dependencies, requireServices, trustedRead]);
+
   const loadStarterTemplateUpdate = useCallback((input: Readonly<{
     ownedPlanId: string;
     templateId: string;
@@ -3922,6 +3964,7 @@ export function WorkoutAppRuntimeProvider({
     actOnToday: (action) => requireServices().schedules.actOnToday(action),
     acceptRecommendation: acceptWorkoutRecommendation,
     activateAcceptedStarterPlan: activateAcceptedStarter,
+    createStarterEditableCopy,
     activatePlan,
     addExercise: addWorkoutExercise,
     addWarmup: addWorkoutWarmup,
@@ -4147,6 +4190,7 @@ export function WorkoutAppRuntimeProvider({
   }), [
     acceptWorkoutRecommendation,
     activateAcceptedStarter,
+    createStarterEditableCopy,
     activatePlan,
     addWorkoutExercise,
     addWorkoutWarmup,

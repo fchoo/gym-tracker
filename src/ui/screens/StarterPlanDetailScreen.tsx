@@ -41,6 +41,8 @@ import {
 type StarterPlanDetailScreenProps = Readonly<{
   templateId: string;
   loadStarterPlan(templateId: string): Promise<AcceptedStarterTemplate | null>;
+  saveEditableCopy(templateId: string): Promise<string>;
+  onSavedCopy(planId: string): void;
   onActivate(templateId: string): void;
   onBack(): void;
   width?: number;
@@ -215,6 +217,8 @@ function DetailSkeleton({
 export function StarterPlanDetailScreen({
   templateId,
   loadStarterPlan,
+  saveEditableCopy,
+  onSavedCopy,
   onActivate,
   onBack,
   width: widthOverride,
@@ -227,6 +231,7 @@ export function StarterPlanDetailScreen({
     "loading",
   );
   const [retryGeneration, setRetryGeneration] = useState(0);
+  const [copyState, setCopyState] = useState<"idle" | "saving" | "error">("idle");
 
   useEffect(() => {
     let active = true;
@@ -295,6 +300,25 @@ export function StarterPlanDetailScreen({
       <ScreenHeader backAction={onBack} title={template.displayName} />
       {overview}
       {widthClass === "compact" ? days : null}
+      {copyState === "error" ? (
+        <InlineNotice
+          body="An editable copy could not be saved. The starter and your existing plan history were not changed."
+          heading="Editable copy could not be saved"
+          tone="error"
+        />
+      ) : null}
+      <SecondaryAction
+        busy={copyState === "saving"}
+        label="Save editable copy"
+        onPress={() => {
+          setCopyState("saving");
+          void saveEditableCopy(template.id).then(onSavedCopy).catch(() => {
+            setCopyState("error");
+          }).finally(() => setCopyState((current) =>
+            current === "saving" ? "idle" : current
+          ));
+        }}
+      />
       <PrimaryAction
         label="Activate plan"
         onPress={() => onActivate(template.id)}

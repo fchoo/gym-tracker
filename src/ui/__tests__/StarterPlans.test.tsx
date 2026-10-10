@@ -151,6 +151,8 @@ async function renderDetail(
 ) {
   const props: React.ComponentProps<typeof StarterPlanDetailScreen> = {
     loadStarterPlan: jest.fn(async () => template),
+    saveEditableCopy: jest.fn(async () => "owned-copy"),
+    onSavedCopy: jest.fn(),
     onActivate: jest.fn(),
     onBack: jest.fn(),
     templateId: template?.id ?? "missing-template",
@@ -340,7 +342,7 @@ describe("starter detail", () => {
     const bodyPart = catalog.templates.find(
       ({ id }) => id === "gym-body-part-split",
     )!;
-    await renderDetail(bodyPart);
+    const { props } = await renderDetail(bodyPart);
 
     expect(await screen.findByRole("header", {
       name: "Gym Body-Part Split",
@@ -379,6 +381,13 @@ describe("starter detail", () => {
       .toHaveStyle({ minHeight: 56 });
     expect(screen.getByRole("button", { name: "Save editable copy" }))
       .toBeOnTheScreen();
+    await fireEvent.press(screen.getByRole("button", {
+      name: "Save editable copy",
+    }));
+    await waitFor(() => {
+      expect(props.saveEditableCopy).toHaveBeenCalledWith(bodyPart.id);
+      expect(props.onSavedCopy).toHaveBeenCalledWith("owned-copy");
+    });
   });
 
   it("preserves complete long source notes and uses compact push versus expanded detail pane semantics", async () => {
@@ -404,6 +413,8 @@ describe("starter detail", () => {
       <AppearanceProvider>
         <StarterPlanDetailScreen
           loadStarterPlan={jest.fn(async () => longTemplate)}
+          saveEditableCopy={jest.fn(async () => "owned-copy")}
+          onSavedCopy={jest.fn()}
           onActivate={jest.fn()}
           onBack={jest.fn()}
           templateId={longTemplate.id}
@@ -442,6 +453,8 @@ describe("starter detail", () => {
           loadStarterPlan={jest.fn(async () => {
             throw new Error("safe failure");
           })}
+          saveEditableCopy={jest.fn(async () => "owned-copy")}
+          onSavedCopy={jest.fn()}
           onActivate={jest.fn()}
           onBack={jest.fn()}
           templateId="missing-template"
@@ -457,6 +470,8 @@ describe("starter detail", () => {
       <AppearanceProvider>
         <StarterPlanDetailScreen
           loadStarterPlan={jest.fn(async () => null)}
+          saveEditableCopy={jest.fn(async () => "owned-copy")}
+          onSavedCopy={jest.fn()}
           onActivate={jest.fn()}
           onBack={jest.fn()}
           templateId="missing-template"

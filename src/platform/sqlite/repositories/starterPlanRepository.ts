@@ -1178,6 +1178,13 @@ async function insertCopyReceipt(
   );
 }
 
+function isDirectStarterCopy(
+  input: AcceptedStarterPlanCopyRepositoryInput,
+): boolean {
+  return input.sourceOwnedPlanId === `starter:${input.template.id}:r${input.template.revision}`
+    && input.expectedSourcePlanRevision === input.template.revision;
+}
+
 export function createStarterPlanRepository(
   kernel: SqliteKernel,
   observer: StarterPlanRepositoryTestObserver = {},
@@ -1319,7 +1326,7 @@ export function createStarterPlanRepository(
                 };
           }
           const active = await readActiveSchedule(transaction);
-          if (!expectedActiveRevisionMatches(
+          if (!isDirectStarterCopy(input) && !expectedActiveRevisionMatches(
             active,
             input.expectedActiveScheduleRevision,
           )) {
@@ -1328,12 +1335,14 @@ export function createStarterPlanRepository(
               code: "starter_schedule_revision_conflict",
             };
           }
-          const sourceConflict = await validateUpdateSource(
-            transaction,
-            input,
-          );
-          if (sourceConflict !== null) {
-            return { kind: "conflict", code: sourceConflict };
+          if (!isDirectStarterCopy(input)) {
+            const sourceConflict = await validateUpdateSource(
+              transaction,
+              input,
+            );
+            if (sourceConflict !== null) {
+              return { kind: "conflict", code: sourceConflict };
+            }
           }
           const referenceConflict = await validateExerciseReferences(
             transaction,
