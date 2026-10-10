@@ -5,16 +5,16 @@ milestone_name: Prototype Parity, Concurrent Plans & Garmin Import — PLANNED
 current_phase: 17
 current_phase_name: Library & Running Plans
 status: executing
-stopped_at: Completed 17-10-PLAN.md
-last_updated: "2026-10-10T19:51:29.354Z"
+stopped_at: Completed 17-03-PLAN.md
+last_updated: "2026-10-10T20:02:36.919Z"
 last_activity: 2026-10-11
 last_activity_desc: Phase 17 execution started
-state_head: 97d01b50074a92c29e6408dd14533d2c8e5e8759
+state_head: a74810ff4bbd17b34b3361c0cd2e4087d3d9a2ba
 progress:
   total_phases: 8
   completed_phases: 1
   total_plans: 98
-  completed_plans: 50
+  completed_plans: 51
   percent: 13
 ---
 
@@ -30,7 +30,7 @@ See: .planning/PROJECT.md (updated 2026-10-06)
 ## Current Position
 
 Phase: 17 (Library & Running Plans) — EXECUTING
-Plan: 10 of 14
+Plan: 11 of 14
 Status: Ready to execute
 Last activity: 2026-10-11 — Phase 17 execution started
 
@@ -90,6 +90,7 @@ Gym Tracker remains a signed personal-use Android APK/AAB with SQLite-authoritat
 | Phase 17 P02 | 7m | 3 tasks | 8 files |
 | Phase 17 P08 | 13m | 3 tasks | 19 files |
 | Phase 17 P10 | 10m | 3 tasks | 9 files |
+| Phase 17 P03 | 8m | 2 tasks | 5 files |
 
 ## Accumulated Context
 
@@ -183,6 +184,8 @@ Gym Tracker remains a signed personal-use Android APK/AAB with SQLite-authoritat
 - [Phase 17]: Phase 17: Tempo Continuous omits repetitions/recovery; Tempo repeats owns them as a strict selected branch.
 - [Phase 17]: Phase 17: Structured and Unstructured Fartlek persist exclusive quantity or bounded-cue shapes; no generic notes payload is used.
 - [Phase 17]: Phase 17: One root per session kind per plan remains authoritative, so each Fartlek style is independently round-tripped as inactive source facts.
+- [Phase 17]: Owned Strength rows default to a source-backed summary while all existing deep edit and schedule routes remain directly addressable.
+- [Phase 17]: Owned archive/reactivate is reviewed separately from schedule activation; UI does not bypass current revision, receipt, active-workout, or MAP-01 guards.
 
 ### Pending Owner Review
 
@@ -207,7 +210,7 @@ Gym Tracker remains a signed personal-use Android APK/AAB with SQLite-authoritat
 
 ## Session Continuity
 
-Last session: 2026-10-10T19:51:29.196Z
-Stopped at: Completed 17-10-PLAN.md
+Last session: 2026-10-10T20:02:36.757Z
+Stopped at: Completed 17-03-PLAN.md
 Resume file: None
 Next action: Present the complete planning set for owner review; after explicit approval, run `/gsd-execute-phase 13`.

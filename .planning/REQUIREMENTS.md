@@ -129,7 +129,7 @@ Exactly four roots: **Workout, Calendar, Library, Progress**. Preserve SQLite au
 - [x] **LIB-05**: Provide Create plan and Create exercise from the Library actions sheet; keep Import plan explicitly unavailable/Later rather than implying a working importer.
 - [x] **LIB-06**: Route every Create plan entry, including true empty Plans, to one neutral Strength/Running chooser explaining that creation does not activate.
 - [x] **LIB-07**: Show No plans yet and Create a strength or running plan to get started with the same chooser action.
-- [ ] **LIB-08**: Add a plan summary route with active/inactive status, schedule, history, source and training days before editing actions.
+- [x] **LIB-08**: Add a plan summary route with active/inactive status, schedule, history, source and training days before editing actions.
 - [x] **LIB-09**: Provide Edit plan, Edit schedule, Duplicate, Archive plan/confirmation and Reactivate plan with preserved history and explicit activation.
 - [x] **LIB-10**: Retain immutable starter preview, source/equipment/schedule/training days, Preview activation and Save editable copy.
 - [x] **LIB-11**: Preview the actual affected schedules and create/activate a reviewed owned copy only on confirmation; Save without activating stays inactive.
@@ -334,7 +334,7 @@ once and remains Pending until its owning phase is implemented and verified.
 | LIB-05 | 17 | library.actions-menu | Complete |
 | LIB-06 | 17 | library.plan-type-chooser | Complete |
 | LIB-07 | 17 | library.empty-plans | Complete |
-| LIB-08 | 17 | library.owned-detail | Pending |
+| LIB-08 | 17 | library.owned-detail | Complete |
 | LIB-09 | 17 | library.owned-actions | Complete |
 | LIB-10 | 17 | library.starter-detail | Complete |
 | LIB-11 | 17 | library.starter-activation | Complete |
