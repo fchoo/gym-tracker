@@ -12,6 +12,7 @@ import {
   createPhase15EvidenceFixture,
   validatePhase15Evidence,
   validatePhase15PackageScripts,
+  validatePhase15PinnedVisualSources,
   validatePhase15RunnerManifest,
 } from "./verify-phase15-evidence.mjs";
 
@@ -105,6 +106,13 @@ test("Phase 15 pins every visual source and rejects incomplete or unchained visu
     mutate(evidence);
     assert.throws(() => validatePhase15Evidence(evidence));
   }
+});
+
+test("Phase 15 recomputes approved source, manifest, and all six checked-in reference hashes", () => {
+  assert.equal(validatePhase15PinnedVisualSources(), true);
+  assert.throws(() => validatePhase15PinnedVisualSources({
+    readFile: (file) => file.endsWith("light-workout-root.png") ? Buffer.from("stale") : readFileSync(file),
+  }));
 });
 
 test("Phase 15 rejects non-approved TIM evidence and privacy-unsafe payloads recursively", () => {
