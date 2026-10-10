@@ -189,6 +189,9 @@ describe("Plan impact day removal", () => {
       await fireEvent.press(
         screen.getByRole("button", { name: "Remove day" }),
       );
+      await fireEvent.press(screen.getAllByRole("button", {
+        name: "Remove day",
+      }).at(-1)!);
 
       await waitFor(() => expect(removeDay).toHaveBeenCalledTimes(1));
       expect(removeDay).toHaveBeenCalledWith(expect.objectContaining({
@@ -267,6 +270,9 @@ describe("Plan impact day removal", () => {
     expect(screen.getByRole("button", { name: "Effective date" }))
       .toHaveTextContent("2026-08-19");
     await fireEvent.press(screen.getByRole("button", { name: "Remove day" }));
+    await fireEvent.press(screen.getAllByRole("button", {
+      name: "Remove day",
+    }).at(-1)!);
     await waitFor(() => expect(screenProps.removeDay).toHaveBeenCalledWith(
       expect.objectContaining({
         choice: {
@@ -314,6 +320,9 @@ describe("Plan impact day removal", () => {
     await fireEvent.press(
       screen.getByRole("button", { name: "Remove day" }),
     );
+    await fireEvent.press(screen.getAllByRole("button", {
+      name: "Remove day",
+    }).at(-1)!);
 
     expect(await screen.findByText(
       "Impact changed. Review the current preview before trying again.",
@@ -329,6 +338,9 @@ describe("Plan impact day removal", () => {
     await fireEvent.press(
       screen.getByRole("button", { name: "Remove day" }),
     );
+    await fireEvent.press(screen.getAllByRole("button", {
+      name: "Remove day",
+    }).at(-1)!);
     await waitFor(() => expect(removeDay).toHaveBeenCalledTimes(2));
     expect(removeDay.mock.calls[1]![0]).toEqual(expect.objectContaining({
       expectedPlanRevision: 5,

@@ -21,6 +21,9 @@ import {
   AdaptiveScreen,
 } from "../layout/AdaptiveScreen";
 import {
+  ConfirmationDialog,
+} from "../components/ConfirmationDialog";
+import {
   EmptyState,
   CalendarField,
   FocusablePressable,
@@ -144,9 +147,11 @@ export function PlanDayRemovalScreen({
   const [choice, setChoice] = useState<RemovalChoice | null>(null);
   const [effectiveDate, setEffectiveDate] = useState("");
   const [saving, setSaving] = useState(false);
+  const [confirmVisible, setConfirmVisible] = useState(false);
   const [saveError, setSaveError] = useState<
     "stale" | "failed" | "date" | null
   >(null);
+  const removeActionRef = useRef<View>(null);
   const adaptiveWidth = width === undefined ? {} : { width };
 
   useEffect(() => {
@@ -241,11 +246,14 @@ export function PlanDayRemovalScreen({
       ) {
         requestRef.current = null;
         setSaveError("stale");
+        setConfirmVisible(false);
         setRetryGeneration((value) => value + 1);
       } else if (errorCode(error) === "plan_impact_date_invalid") {
         setSaveError("date");
+        setConfirmVisible(false);
       } else {
         setSaveError("failed");
+        setConfirmVisible(false);
       }
     } finally {
       setSaving(false);
@@ -306,9 +314,10 @@ export function PlanDayRemovalScreen({
   }`;
 
   return (
-    <AdaptiveScreen
-      onRequestBack={onBack}
-      primary={(
+    <>
+      <AdaptiveScreen
+        onRequestBack={onBack}
+        primary={(
         <View style={styles.screen}>
           <ScreenHeader
             backAction={onBack}
@@ -411,13 +420,29 @@ export function PlanDayRemovalScreen({
             disabled={choice === null || preview.restructuringBlocked}
             label="Remove day"
             onPress={() => {
-              void commit();
+              setConfirmVisible(true);
             }}
+            ref={removeActionRef}
           />
         </View>
       )}
-      {...adaptiveWidth}
-    />
+        {...adaptiveWidth}
+      />
+      <ConfirmationDialog
+        body={`Apply the selected future-only change to ${preview.dayName}. Existing opportunities, completed sessions, and history remain unchanged.`}
+        cancelLabel="Keep reviewing"
+        confirmBusy={saving}
+        confirmLabel="Remove day"
+        destructive
+        heading="Remove future plan day?"
+        onCancel={() => setConfirmVisible(false)}
+        onConfirm={() => {
+          void commit();
+        }}
+        restoreFocusRef={removeActionRef}
+        visible={confirmVisible}
+      />
+    </>
   );
 }
 
