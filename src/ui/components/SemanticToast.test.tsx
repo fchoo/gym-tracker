@@ -1,4 +1,4 @@
-import { act, render, screen } from "@testing-library/react-native";
+import { act, fireEvent, render, screen } from "@testing-library/react-native";
 import { describe, expect, it, jest } from "@jest/globals";
 import React from "react";
 import { StyleSheet } from "react-native";
@@ -15,6 +15,18 @@ function ToastTrigger({ events }: Readonly<{ events: readonly { message: string;
   React.useEffect(() => {
     events.forEach(enqueue);
   }, [enqueue, events]);
+  return null;
+}
+
+function ActionToastTrigger({ onUndo }: Readonly<{ onUndo: () => void }>) {
+  const { enqueue } = useSemanticToast();
+  React.useEffect(() => {
+    enqueue({
+      message: "Set completed",
+      action: { label: "Undo completed set", onPress: onUndo },
+      durationMs: 8_000,
+    });
+  }, [enqueue, onUndo]);
   return null;
 }
 
@@ -111,5 +123,19 @@ describe("SemanticToast", () => {
     await act(() => jest.advanceTimersByTime(2400));
     expect(screen.queryByText("Workout saved")).toBeNull();
     jest.useRealTimers();
+  });
+
+  it("renders a bounded contextual action without making it a persistent control", async () => {
+    const onUndo = jest.fn();
+    await render(
+      <AppearanceProvider>
+        <SemanticToastProvider>
+          <ActionToastTrigger onUndo={onUndo} />
+        </SemanticToastProvider>
+      </AppearanceProvider>,
+    );
+
+    await fireEvent.press(screen.getByRole("button", { name: "Undo completed set" }));
+    expect(onUndo).toHaveBeenCalledTimes(1);
   });
 });

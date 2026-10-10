@@ -5,6 +5,7 @@ import React from "react";
 import type { ActiveWorkoutView, CompleteSetResult } from "../../domains/workout";
 import { ActiveWorkoutScreen, type ActiveWorkoutCommands } from "../screens/ActiveWorkoutScreen";
 import { AppearanceProvider } from "../theme";
+import { SemanticToastProvider } from "../components/SemanticToast";
 
 const identity = { profile: "load_reps" as const, contractVersion: 1, exerciseMetricGeneration: 1 };
 const observation = { version: 1 as const, profile: "load_reps" as const, loadGrams: 60_000, reps: 8, source: "manual" as const };
@@ -61,6 +62,7 @@ function commands(view: ActiveWorkoutView, overrides: Partial<ActiveWorkoutComma
     saveZeroSetWorkout: jest.fn(async () => ({ detail: {} as never, invalidationScopes: [] })),
     discardWorkout: jest.fn(async () => ({ detail: {} as never, invalidationScopes: [] })),
     skipExercise: jest.fn(async () => ({ sessionId: view.id, status: "in_progress" as const, sessionRevision: view.revision })),
+    undoCompletedSet: jest.fn(async () => ({ outcome: "unavailable" as const })),
     ...overrides,
   };
 }
@@ -393,5 +395,60 @@ describe("ActiveWorkoutScreen explicit-save editor", () => {
 
     expect(completeSet).toHaveBeenCalledTimes(2);
     expect(completeSet.mock.calls[1]).toEqual(completeSet.mock.calls[0]);
+  });
+
+  it("offers contextual Undo after a committed set and restores the returned source view", async () => {
+    const initial = workoutView();
+    const completedSet = {
+      ...initial.currentExercise.workingSets[0]!,
+      completedAtMs: 3_000,
+      revision: 2,
+      status: "completed" as const,
+    };
+    const completed = {
+      ...initial,
+      activeSetId: null,
+      currentExercise: {
+        ...initial.currentExercise,
+        status: "completed" as const,
+        workingSets: [completedSet],
+      },
+      exercises: [{
+        ...initial.currentExercise,
+        status: "completed" as const,
+        workingSets: [completedSet],
+      }],
+      revision: 2,
+    };
+    const undoCompletedSet = jest.fn<NonNullable<ActiveWorkoutCommands["undoCompletedSet"]>>()
+      .mockResolvedValue({ outcome: "undone", view: initial });
+    await render(
+      <AppearanceProvider>
+        <SemanticToastProvider>
+          <ActiveWorkoutScreen
+            commands={commands(initial, {
+              completeSet: jest.fn(async () => ({ outcome: "committed" as const, view: completed })),
+              undoCompletedSet,
+            })}
+            nowMs={() => 3_000}
+            onFinishLater={jest.fn()}
+            onGoBack={jest.fn()}
+            sessionId={initial.id}
+            view={initial}
+          />
+        </SemanticToastProvider>
+      </AppearanceProvider>,
+    );
+
+    await fireEvent.press(screen.getByRole("button", { name: "Complete Set 1" }));
+    await waitFor(() => expect(screen.getByRole("button", { name: "Undo completed set" })).toBeOnTheScreen());
+    await fireEvent.press(screen.getByRole("button", { name: "Undo completed set" }));
+
+    await waitFor(() => expect(undoCompletedSet).toHaveBeenCalledWith({
+      sessionId: "session-1",
+      completedSetId: "working-1",
+      nowMs: 3_000,
+    }));
+    expect(screen.getByRole("button", { name: "Complete Set 1" })).toBeOnTheScreen();
   });
 });
