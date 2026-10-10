@@ -37,7 +37,7 @@ import {
 } from "../layout/AdaptiveScreen";
 import {
   space,
-  typeScale,
+  workoutTypeScale,
   useAppTheme,
 } from "../theme";
 
@@ -184,7 +184,7 @@ export function WorkoutCompletionScreen({
           >
             <Text
               style={[
-                typeScale.bodyStrong as TextStyle,
+                workoutTypeScale.bodyStrong as TextStyle,
                 { color: colors.contentCardText },
               ]}
             >
@@ -193,7 +193,7 @@ export function WorkoutCompletionScreen({
             </Text>
             <Text
               style={[
-                typeScale.body as TextStyle,
+                workoutTypeScale.body as TextStyle,
                 { color: colors.contentCardTextSecondary },
               ]}
             >
@@ -214,7 +214,7 @@ export function WorkoutCompletionScreen({
                 />
                 <Text
                   style={[
-                    typeScale.bodyStrong as TextStyle,
+                    workoutTypeScale.bodyStrong as TextStyle,
                     { color: colors.contentCardText },
                   ]}
                 >
@@ -280,7 +280,7 @@ export function WorkoutCompletionScreen({
                   <Text
                     accessibilityRole="header"
                     style={[
-                      typeScale.sectionTitle as TextStyle,
+                      workoutTypeScale.sectionTitle as TextStyle,
                       { color: colors.contentCardText },
                     ]}
                   >
@@ -288,7 +288,7 @@ export function WorkoutCompletionScreen({
                   </Text>
                   <Text
                     style={[
-                      typeScale.body as TextStyle,
+                      workoutTypeScale.body as TextStyle,
                       { color: colors.contentCardTextSecondary },
                     ]}
                   >
@@ -297,7 +297,7 @@ export function WorkoutCompletionScreen({
                   {exercise.totalWorkingReps === null ? null : (
                     <Text
                       style={[
-                        typeScale.body as TextStyle,
+                        workoutTypeScale.body as TextStyle,
                         { color: colors.contentCardTextSecondary },
                       ]}
                     >
@@ -306,7 +306,7 @@ export function WorkoutCompletionScreen({
                   )}
                   <Text
                     style={[
-                      typeScale.secondary as TextStyle,
+                      workoutTypeScale.secondary as TextStyle,
                       { color: colors.contentCardTextSecondary },
                     ]}
                   >
@@ -366,7 +366,7 @@ export function WorkoutCompletionScreen({
           scrollTestID="workout-plan-write-back-sheet"
           visible
         >
-          <Text style={[typeScale.body as TextStyle, { color: colors.textSecondary }]}>
+          <Text style={[workoutTypeScale.body as TextStyle, { color: colors.textSecondary }]}>
             This workout does not change future targets. Keep the plan as-is.
           </Text>
           <SecondaryAction
@@ -409,16 +409,16 @@ export function WorkoutCompletionScreen({
             key={`${change.exerciseId}:${change.targetOrdinal}`}
             style={styles.planChange}
           >
-            <Text style={[typeScale.bodyStrong as TextStyle, { color: colors.contentCardText }]}>
+            <Text style={[workoutTypeScale.bodyStrong as TextStyle, { color: colors.contentCardText }]}>
               Exercise · {change.exerciseId}
             </Text>
-            <Text style={[typeScale.body as TextStyle, { color: colors.contentCardTextSecondary }]}>
+            <Text style={[workoutTypeScale.body as TextStyle, { color: colors.contentCardTextSecondary }]}>
               Current plan · {targetText(change.current.target)}
             </Text>
-            <Text style={[typeScale.body as TextStyle, { color: colors.contentCardTextSecondary }]}>
+            <Text style={[workoutTypeScale.body as TextStyle, { color: colors.contentCardTextSecondary }]}>
               Proposed · {targetText(change.proposed.target)}
             </Text>
-            <Text style={[typeScale.secondary as TextStyle, { color: colors.contentCardTextSecondary }]}>
+            <Text style={[workoutTypeScale.secondary as TextStyle, { color: colors.contentCardTextSecondary }]}>
               {targetUnit(change.metricIdentity.profile)}
             </Text>
           </ContentCard>

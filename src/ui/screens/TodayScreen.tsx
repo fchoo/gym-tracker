@@ -38,6 +38,7 @@ import {
   PrimaryAction,
   ScreenHeader,
   SecondaryAction,
+  WorkoutPrimaryAction,
   SectionHeader,
   SkeletonBlock,
 } from "../components";
@@ -51,7 +52,7 @@ import { RootFailureState } from "./RootFailureState";
 import type { RootFocusTarget } from "../shell/rootFocus";
 import {
   space,
-  typeScale,
+  workoutTypeScale,
   useAppTheme,
 } from "../theme";
 import type { LaunchState } from "./RootScreens";
@@ -152,7 +153,7 @@ function ActivationContent({
         />
         <Text
           style={[
-            typeScale.body as TextStyle,
+            workoutTypeScale.body as TextStyle,
             { color: colors.contentCardTextSecondary },
           ]}
         >
@@ -177,7 +178,7 @@ function ActivationContent({
       <PlanActivationRow onPress={onPreview} tone="card" />
       <Text
         style={[
-          typeScale.body as TextStyle,
+          workoutTypeScale.body as TextStyle,
           { color: colors.contentCardTextSecondary },
         ]}
       >
@@ -255,7 +256,7 @@ function ScheduledContent({
     <>
       {selectedPreview === undefined ? null : (
         <>
-          <Text style={[typeScale.secondary as TextStyle, { color: colors.textSecondary }]}>
+          <Text style={[workoutTypeScale.secondary as TextStyle, { color: colors.textSecondary }]}>
             {occurrenceDate(selectedPreview.occurrence.localDate)}
           </Text>
           <WorkoutDaySelector
@@ -266,15 +267,15 @@ function ScheduledContent({
         </>
       )}
       <ContentCard style={styles.section} testID="today-workout-card">
-        <Text style={[typeScale.label as TextStyle, { color: colors.textSecondary }]}>PLANNED WORKOUT</Text>
-        <Text accessibilityRole="header" style={[typeScale.editorialWorkoutTitle as TextStyle, { color: colors.ink }]}>
+        <Text style={[workoutTypeScale.label as TextStyle, { color: colors.textSecondary }]}>PLANNED WORKOUT</Text>
+        <Text accessibilityRole="header" style={[workoutTypeScale.editorialWorkoutTitle as TextStyle, { color: colors.ink }]}>
           {selectedView.dayName}
         </Text>
-        <Text style={[typeScale.body as TextStyle, { color: colors.textSecondary }]}>{selectedView.planName}</Text>
-        <Text style={[typeScale.body as TextStyle, { color: colors.textSecondary }]}>
+        <Text style={[workoutTypeScale.body as TextStyle, { color: colors.textSecondary }]}>{selectedView.planName}</Text>
+        <Text style={[workoutTypeScale.body as TextStyle, { color: colors.textSecondary }]}>
           {selectedView.exercises.length} exercises · about {selectedView.estimateMinutes} min
         </Text>
-        <PrimaryAction
+        <WorkoutPrimaryAction
           label={`Start ${selectedView.dayName}`}
           onPress={() => selectedPreview === undefined || onStartOccurrence === undefined
             ? onStart(selectedView.dayId, "scheduled")
@@ -285,7 +286,7 @@ function ScheduledContent({
       <View style={styles.section}>
         <Text
           style={[
-            typeScale.label as TextStyle,
+            workoutTypeScale.label as TextStyle,
             { color: colors.textSecondary },
           ]}
         >
@@ -324,7 +325,7 @@ function ScheduledContent({
                   <Text
                     accessibilityLabel={`Pending target review for ${exercise.name}`}
                     style={[
-                      typeScale.secondary as TextStyle,
+                      workoutTypeScale.secondary as TextStyle,
                       { color: colors.contentCardTextSecondary },
                     ]}
                   >
@@ -501,7 +502,7 @@ export function TodayScreen({
         content = (
           <InlineNotice
             action={
-              <PrimaryAction
+              <WorkoutPrimaryAction
                 label="Resume workout"
                 onPress={() => onResumeWorkout(view.sessionId)}
               />
@@ -516,7 +517,7 @@ export function TodayScreen({
         content = (
           <InlineNotice
             action={
-              <PrimaryAction
+              <WorkoutPrimaryAction
                 label="Resume workout"
                 onPress={() => onResumeWorkout(
                   view.sessionId,
@@ -621,8 +622,8 @@ export function TodayScreen({
             {content}
             {!trusted || runningContext === undefined ? null : (
               <View style={styles.runningContext}>
-                <Text style={[typeScale.label as TextStyle, { color: colors.textSecondary }]}>ALSO SCHEDULED</Text>
-                <Text style={[typeScale.bodyStrong as TextStyle, { color: colors.ink }]}>{runningContext.label}</Text>
+                <Text style={[workoutTypeScale.label as TextStyle, { color: colors.textSecondary }]}>ALSO SCHEDULED</Text>
+                <Text style={[workoutTypeScale.bodyStrong as TextStyle, { color: colors.ink }]}>{runningContext.label}</Text>
                 <SecondaryAction label="View plan" onPress={() => onOpenRunningPlan(runningContext.planId)} />
                 <SecondaryAction label="Sync Garmin" onPress={onSyncGarmin} />
               </View>

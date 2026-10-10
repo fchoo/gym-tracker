@@ -49,6 +49,7 @@ import {
   type AppearancePreference,
   typeScale,
   useAppTheme,
+  workoutTypeScale,
 } from "../theme";
 import {
   useBottomSheetFocusRegistration,
@@ -400,6 +401,46 @@ export const PrimaryAction = forwardRef<View, ActionProps>(
         testID,
       },
       actionText(label, colors.onAction),
+    );
+  },
+);
+
+/** Workout-root-only primary action. Orange is reserved for this hierarchy. */
+export const WorkoutPrimaryAction = forwardRef<View, ActionProps>(
+  function WorkoutPrimaryActionElement(
+    { label, onPress, accessibilityHint, busy = false, disabled = false, testID },
+    ref,
+  ) {
+    const { colors } = useAppTheme();
+    const isDisabled = disabled || busy;
+    return h(
+      FocusablePressable,
+      {
+        accessibilityHint,
+        accessibilityLabel: label,
+        accessibilityRole: "button",
+        accessibilityState: actionAccessibilityState(disabled, busy),
+        disabled: isDisabled,
+        focusable: !isDisabled,
+        ...keyboardActivationProps(isDisabled, onPress),
+        onPress,
+        ref,
+        style: ({ pressed }: { pressed: boolean }) => [
+          styles.primaryAction,
+          {
+            backgroundColor: pressed ? colors.workoutPrimaryActionPressed : colors.workoutPrimaryAction,
+            opacity: isDisabled ? 0.62 : 1,
+          },
+        ],
+        testID,
+      },
+      h(Text, {
+        style: [
+          workoutTypeScale.emphasis as TextStyle,
+          styles.actionLabel,
+          { color: colors.onWorkoutPrimaryAction },
+        ],
+      }, label),
     );
   },
 );

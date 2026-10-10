@@ -2,7 +2,7 @@ import React from "react";
 import { StyleSheet, Text, View, type TextStyle } from "react-native";
 
 import type { WorkoutPresentationSet } from "../../domains/workout/workoutPresentation";
-import { space, typeScale, useAppTheme } from "../theme";
+import { space, workoutTypeScale, useAppTheme } from "../theme";
 
 export function WorkoutSetFactsRow({ set }: Readonly<{ set: WorkoutPresentationSet }>) {
   const { colors } = useAppTheme();
@@ -16,10 +16,10 @@ export function WorkoutSetFactsRow({ set }: Readonly<{ set: WorkoutPresentationS
       ]}
       testID={`workout-presentation-set-${set.id}`}
     >
-      <Text style={[typeScale.bodyStrong as TextStyle, styles.ordinal, { color: colors.textPrimary }]}>{ordinal}</Text>
-      <Text style={[typeScale.secondary as TextStyle, styles.fact, { color: colors.textSecondary }]}>{set.previous ?? "—"}</Text>
-      <Text style={[typeScale.secondary as TextStyle, styles.fact, { color: colors.textPrimary }]}>{set.result ?? set.target}</Text>
-      <Text style={[typeScale.secondary as TextStyle, styles.state, { color: set.status === "draft" ? colors.yellow : colors.textSecondary }]}>{state}</Text>
+      <Text style={[workoutTypeScale.bodyStrong as TextStyle, styles.ordinal, { color: colors.textPrimary }]}>{ordinal}</Text>
+      <Text style={[workoutTypeScale.secondary as TextStyle, styles.fact, { color: colors.textSecondary }]}>{set.previous ?? "—"}</Text>
+      <Text style={[workoutTypeScale.secondary as TextStyle, styles.fact, { color: colors.textPrimary }]}>{set.result ?? set.target}</Text>
+      <Text style={[workoutTypeScale.secondary as TextStyle, styles.state, { color: set.status === "draft" ? colors.yellow : colors.textSecondary }]}>{state}</Text>
     </View>
   );
 }

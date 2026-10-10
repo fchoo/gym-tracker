@@ -124,6 +124,87 @@ export const typeScale = {
   },
 };
 
+/**
+ * Phase 15 Workout semantics intentionally differ from the shared Phase 14
+ * shell. Keep the shell's calibrated Archivo 800/890 proof above intact;
+ * Workout surfaces consume these four logical roles instead.
+ */
+export const workoutTypeScale = {
+  body: {
+    fontFamily: fontFamilies.interfaceRegular,
+    fontSize: 16,
+    lineHeight: 22,
+    fontWeight: "400",
+  },
+  emphasis: {
+    fontFamily: fontFamilies.interfaceEmphasis,
+    fontSize: 18,
+    lineHeight: 22,
+    fontWeight: "700",
+  },
+  numericEmphasis: {
+    fontFamily: fontFamilies.numericRegular,
+    fontSize: 30,
+    lineHeight: 33,
+    fontWeight: "700",
+    fontVariant: ["tabular-nums"],
+  },
+  editorialWorkoutTitle: {
+    fontFamily: fontFamilies.interfaceEmphasis,
+    fontSize: 57,
+    lineHeight: 49,
+    fontWeight: "700",
+    fontStretch: "condensed",
+    letterSpacing: revision18EditorialWorkoutTitleLetterSpacing,
+  },
+  // Named compatibility aliases retain the four Workout semantic roles while
+  // letting feature surfaces state their intended content role clearly.
+  displayTimer: {
+    fontFamily: fontFamilies.numericRegular,
+    fontSize: 30,
+    lineHeight: 33,
+    fontWeight: "700",
+    fontVariant: ["tabular-nums"],
+  },
+  targetValue: {
+    fontFamily: fontFamilies.numericRegular,
+    fontSize: 30,
+    lineHeight: 33,
+    fontWeight: "700",
+    fontVariant: ["tabular-nums"],
+  },
+  screenTitle: {
+    fontFamily: fontFamilies.interfaceEmphasis,
+    fontSize: 18,
+    lineHeight: 22,
+    fontWeight: "700",
+  },
+  sectionTitle: {
+    fontFamily: fontFamilies.interfaceEmphasis,
+    fontSize: 18,
+    lineHeight: 22,
+    fontWeight: "700",
+  },
+  bodyStrong: {
+    fontFamily: fontFamilies.interfaceEmphasis,
+    fontSize: 18,
+    lineHeight: 22,
+    fontWeight: "700",
+  },
+  secondary: {
+    fontFamily: fontFamilies.interfaceRegular,
+    fontSize: 16,
+    lineHeight: 22,
+    fontWeight: "400",
+  },
+  label: {
+    fontFamily: fontFamilies.interfaceRegular,
+    fontSize: 16,
+    lineHeight: 22,
+    fontWeight: "400",
+  },
+};
+
 export const themes = {
   light: {
     paper: "#FFFAF0", bone: "#F4F0E6", ink: "#0D0C0A", quiet: "#655F56", clay: "#D8C3AB",
@@ -132,7 +213,7 @@ export const themes = {
     green: "#166B4C", greenBg: "#DCECDF", yellow: "#8D5D00", yellowBg: "#FFF0C2",
     blue: "#195FAE", blueBg: "#DCE9F9", toastBg: "#FFFAF0", toastBorder: "#CEC6B8", toastText: "#0D0C0A", toastAccent: "#166B4C",
     dangerSource: "#FF8279", calendarStrengthTextLight: "#9B470B",
-    canvas: "#FFFAF0", contentCard: "#F0EADF", contentCardBorder: "#CEC6B8", contentCardDisabled: "#F4F0E6", contentCardPressed: "#F4F0E6", contentCardSelected: "#DCE9F9", contentCardStatusCompleted: "#166B4C", contentCardText: "#0D0C0A", contentCardTextSecondary: "#655F56", surfaceSubtle: "#F4F0E6", textPrimary: "#0D0C0A", textSecondary: "#655F56", divider: "#CEC6B8", action: "#195FAE", actionPressed: "#195FAE", onAction: "#FFFAF0", completed: "#166B4C", timerAttention: "#8D5D00",
+    canvas: "#FFFAF0", contentCard: "#F0EADF", contentCardBorder: "#CEC6B8", contentCardDisabled: "#F4F0E6", contentCardPressed: "#F4F0E6", contentCardSelected: "#DCE9F9", contentCardStatusCompleted: "#166B4C", contentCardText: "#0D0C0A", contentCardTextSecondary: "#655F56", surfaceSubtle: "#F4F0E6", textPrimary: "#0D0C0A", textSecondary: "#655F56", divider: "#CEC6B8", action: "#195FAE", actionPressed: "#195FAE", onAction: "#FFFAF0", workoutPrimaryAction: "#D97820", workoutPrimaryActionPressed: "#D97820", onWorkoutPrimaryAction: "#281306", completed: "#166B4C", timerAttention: "#8D5D00",
     destructive: "#B42318",
     errorSurface: "#FEE4E2",
     focusRing: "#195FAE",
@@ -144,7 +225,7 @@ export const themes = {
     green: "#72DF92", greenBg: "#14271A", yellow: "#F0C84B", yellowBg: "#2A2410",
     blue: "#71AAFF", blueBg: "#14243B", toastBg: "#202020", toastBorder: "#3D423E", toastText: "#F7F7F2", toastAccent: "#72DF92",
     dangerSource: "#FF8279", calendarStrengthTextLight: "#D97820",
-    canvas: "#080808", contentCard: "#151515", contentCardBorder: "#333330", contentCardDisabled: "#151515", contentCardPressed: "#202020", contentCardSelected: "#14243B", contentCardStatusCompleted: "#72DF92", contentCardText: "#F7F7F2", contentCardTextSecondary: "#AAA9A2", surfaceSubtle: "#151515", textPrimary: "#F7F7F2", textSecondary: "#AAA9A2", divider: "#333330", action: "#71AAFF", actionPressed: "#71AAFF", onAction: "#080808", completed: "#72DF92", timerAttention: "#F0C84B", destructive: "#FF8279", errorSurface: "#2A2410", focusRing: "#71AAFF",
+    canvas: "#080808", contentCard: "#151515", contentCardBorder: "#333330", contentCardDisabled: "#151515", contentCardPressed: "#202020", contentCardSelected: "#14243B", contentCardStatusCompleted: "#72DF92", contentCardText: "#F7F7F2", contentCardTextSecondary: "#AAA9A2", surfaceSubtle: "#151515", textPrimary: "#F7F7F2", textSecondary: "#AAA9A2", divider: "#333330", action: "#71AAFF", actionPressed: "#71AAFF", onAction: "#080808", workoutPrimaryAction: "#D97820", workoutPrimaryActionPressed: "#D97820", onWorkoutPrimaryAction: "#281306", completed: "#72DF92", timerAttention: "#F0C84B", destructive: "#FF8279", errorSurface: "#2A2410", focusRing: "#71AAFF",
   },
 } as const;
 

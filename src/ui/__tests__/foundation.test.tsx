@@ -60,6 +60,7 @@ import {
   space,
   themes,
   typeScale,
+  workoutTypeScale,
   type ThemeColors,
   useAppTheme,
 } from "../theme";
@@ -244,6 +245,14 @@ describe("Plan 01-02 UI foundation", () => {
         PHASE14_FONT_PROOF.oracle.fontSizePx
         * PHASE14_FONT_PROOF.oracle.letterSpacingEm,
     });
+    expect(workoutTypeScale).toEqual(expect.objectContaining({
+      body: expect.objectContaining({ fontSize: 16, fontWeight: "400" }),
+      emphasis: expect.objectContaining({ fontSize: 18, fontWeight: "700" }),
+      numericEmphasis: expect.objectContaining({ fontSize: 30, fontWeight: "700" }),
+      editorialWorkoutTitle: expect.objectContaining({ fontSize: 57, fontWeight: "700" }),
+    }));
+    expect(themes.light.workoutPrimaryAction).toBe("#D97820");
+    expect(themes.dark.workoutPrimaryAction).toBe("#D97820");
     expect(sizes.focusRing).toBe(3);
     expect(motion.standard.positionTransitions).toBe(true);
     expect(motion.reduced.positionTransitions).toBe(false);
