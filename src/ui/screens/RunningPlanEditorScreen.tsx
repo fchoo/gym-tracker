@@ -3,7 +3,6 @@ import { Text, TextInput, View } from "react-native";
 
 import { RUNNING_SESSION_KINDS, type RunningPlanAggregate, type RunningSessionKind } from "../../domains/running/contracts";
 import { PrimaryAction, ScreenHeader, SecondaryAction } from "../components";
-import { RunningSessionFields, initialRunningSessionFormDraft } from "../components/RunningSessionFields";
 import {
   addRunningSessionDraft,
   deleteRunningSessionDraft,
@@ -69,7 +68,7 @@ export function RunningPlanEditorScreen(props: Readonly<{
     {draft.sessions.length === 0 ? <Text accessibilityRole="summary">No sessions yet</Text> : null}
     {draft.sessions.map((session, index) => <View key={session.slot.rootId}>
       <Text>{`${session.slot.weekday} · ${session.session.sessionKind.replaceAll("_", " ")}`}</Text>
-      <RunningSessionFields draft={{ ...initialRunningSessionFormDraft(session.session.sessionKind, session.slot.weekday), kind: session.session.sessionKind }} onChange={() => undefined} />
+      <Text accessibilityRole="summary">{`${session.session.phases.length} phase${session.session.phases.length === 1 ? "" : "s"} · revision ${session.session.revision}`}</Text>
       <SecondaryAction label={`Edit ${session.session.sessionKind.replaceAll("_", " ")}`} onPress={() => {
         if (dirty) { setPendingSession(session.session.rootId); setLeaveVisible(true); } else props.onOpenSession?.(session.session.rootId);
       }} />

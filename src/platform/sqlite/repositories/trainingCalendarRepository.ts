@@ -56,21 +56,23 @@ async function queryRange(
   const [strengthRows, runningRows, importedRows] = await Promise.all([
     reader.queryAll<StrengthRow>(
       `SELECT opportunity.id, opportunity.schedule_id, opportunity.schedule_version_id,
-              schedule.plan_id, opportunity.local_date, version.timezone,
+              schedule.plan_id, COALESCE(projection.moved_local_date, opportunity.local_date) AS local_date, version.timezone,
               opportunity.revision, opportunity.state, opportunity.outcome
          FROM owned_plan_schedule_opportunities opportunity
          JOIN owned_plan_schedules schedule ON schedule.id = opportunity.schedule_id
          JOIN owned_plan_schedule_versions version ON version.id = opportunity.schedule_version_id
-        WHERE opportunity.local_date >= ? AND opportunity.local_date < ?
-        ORDER BY opportunity.local_date, opportunity.id`, [input.start, input.end],
+         LEFT JOIN schedule_collision_projections projection ON projection.selected_kind = 'strength' AND projection.selected_opportunity_id = opportunity.id
+        WHERE COALESCE(projection.moved_local_date, opportunity.local_date) >= ? AND COALESCE(projection.moved_local_date, opportunity.local_date) < ?
+        ORDER BY local_date, opportunity.id`, [input.start, input.end],
     ),
     reader.queryAll<RunningRow>(
       `SELECT opportunity.id, opportunity.schedule_id, opportunity.schedule_version_id,
               opportunity.plan_id, opportunity.slot_id, opportunity.session_revision_id,
-              opportunity.local_date, opportunity.timezone, opportunity.state
+              COALESCE(projection.moved_local_date, opportunity.local_date) AS local_date, opportunity.timezone, opportunity.state
          FROM running_opportunities opportunity
-        WHERE opportunity.local_date >= ? AND opportunity.local_date < ?
-        ORDER BY opportunity.local_date, opportunity.slot_id, opportunity.id`, [input.start, input.end],
+         LEFT JOIN schedule_collision_projections projection ON projection.selected_kind = 'running' AND projection.selected_opportunity_id = opportunity.id
+        WHERE COALESCE(projection.moved_local_date, opportunity.local_date) >= ? AND COALESCE(projection.moved_local_date, opportunity.local_date) < ?
+        ORDER BY local_date, opportunity.slot_id, opportunity.id`, [input.start, input.end],
     ),
     reader.queryAll<ImportedRow>(
       `SELECT activity.id, activity.started_at_ms, activity.aggregate_json,

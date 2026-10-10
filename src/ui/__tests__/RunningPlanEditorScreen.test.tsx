@@ -27,7 +27,8 @@ describe("RunningPlanEditorScreen", () => {
 
     expect(screen.getByRole("header", { name: "New Running plan" })).toBeOnTheScreen();
     await fireEvent.press(screen.getByRole("button", { name: "Add recovery" }));
-    expect(screen.getByLabelText("Running Recovery session")).toBeOnTheScreen();
+    expect(screen.getByRole("summary", { name: "1 phase · revision 1" })).toBeOnTheScreen();
+    expect(screen.queryByLabelText("Running Recovery session")).not.toBeOnTheScreen();
     await fireEvent.press(screen.getByRole("button", { name: "Delete recovery" }));
     expect(screen.getByText("Remove recovery session?")).toBeOnTheScreen();
     await fireEvent.press(screen.getByRole("button", { name: "Remove session" }));

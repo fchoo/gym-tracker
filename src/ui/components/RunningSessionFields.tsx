@@ -82,7 +82,7 @@ export function validateRunningSessionFormDraft(draft: RunningSessionFormDraft):
   if ((draft.warmUp !== "" && !validPositiveInteger(draft.warmUp)) || (draft.coolDown !== "" && !validPositiveInteger(draft.coolDown))) {
     return "Warm-up and Cool-down must be positive when supplied.";
   }
-  if (!validPositiveInteger(draft.volume)) return "Enter a positive Volume.";
+  if ((draft.kind === "recovery" || draft.kind === "long_run" || draft.kind === "progression") && !validPositiveInteger(draft.volume)) return "Enter a positive Volume.";
   if (draft.kind === "recovery" || draft.kind === "long_run") {
     if (!validTarget(draft.target)) return "Choose a valid target.";
   }

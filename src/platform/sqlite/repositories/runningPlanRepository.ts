@@ -483,11 +483,13 @@ export function createRunningPlanRepository(kernel: SqliteKernel) {
       });
     },
     async readiness(planId: string): Promise<RunningReadiness> {
-      const [revision, slots] = await Promise.all([
-        kernel.queryAll<{ count: number }>("SELECT COUNT(*) AS count FROM running_session_revisions WHERE plan_id = ? AND session_kind = 'recovery'", [planId]),
-        kernel.queryAll<{ count: number }>("SELECT COUNT(*) AS count FROM running_session_slots WHERE plan_id = ?", [planId]),
+      const [recovery, slots] = await Promise.all([
+        kernel.queryAll<{ count: number }>(`SELECT COUNT(*) AS count FROM running_session_slots slot
+          JOIN running_session_revisions revision ON revision.id = slot.session_revision_id
+          WHERE slot.plan_id = ? AND slot.retired_at_ms IS NULL AND revision.session_kind = 'recovery'`, [planId]),
+        kernel.queryAll<{ count: number }>("SELECT COUNT(*) AS count FROM running_session_slots WHERE plan_id = ? AND retired_at_ms IS NULL", [planId]),
       ]);
-      return evaluateRunningReadiness({ hasRecoveryRevision: (revision[0]?.count ?? 0) > 0, slotCount: slots[0]?.count ?? 0 });
+      return evaluateRunningReadiness({ hasRecoveryRevision: (recovery[0]?.count ?? 0) > 0, slotCount: slots[0]?.count ?? 0 });
     },
     async createInactiveMinimum(input: CreateInactiveMinimumRunningPlanInput): Promise<void> {
       const readiness = evaluateRunningReadiness({ hasRecoveryRevision: true, slotCount: input.slots.length });
@@ -585,7 +587,7 @@ export function createRunningPlanRepository(kernel: SqliteKernel) {
           session_revision_id: string;
         }>(
           `SELECT id, ordinal, session_revision_id FROM running_session_slots
-           WHERE plan_id = ? AND weekday = ? ORDER BY ordinal, id`,
+           WHERE plan_id = ? AND weekday = ? AND retired_at_ms IS NULL ORDER BY ordinal, id`,
           [input.planId, weekday],
         );
         if (matchingSlots.length !== input.occurrenceIds.length) throw new Error("running_occurrence_identity_invalid");

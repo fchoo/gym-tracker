@@ -1,5 +1,6 @@
 import {
   RUNNING_SESSION_KINDS,
+  parseRunningSessionRevision,
   type RunningPlanAggregate,
   type RunningPlanSession,
   type RunningSessionKind,
@@ -70,12 +71,12 @@ export function makeRunningSessionDraft(input: Readonly<{
       startTarget: { rpe: 4 },
       finishTarget: { rpe: 7 },
     }
-    : input.kind === "tempo" ? { format: "continuous" as const, durationMs: 60_000 }
+    : input.kind === "tempo" ? { format: "continuous" as const, work: { durationMs: 60_000 } }
     : input.kind === "intervals" ? { repetitions: 1, work: { durationMs: 60_000 }, recovery: { durationMs: 60_000 } }
     : input.kind === "hills" ? { repetitions: 1, work: { durationMs: 60_000 }, returnRecovery: { durationMs: 60_000 } }
     : input.kind === "fartlek" ? { format: "structured" as const, repetitions: 1, work: { durationMs: 60_000 }, recovery: { durationMs: 60_000 } }
     : {};
-  const session = {
+  const session = parseRunningSessionRevision({
     version: 1 as const,
     id: input.id,
     rootId: input.rootId,
@@ -85,7 +86,7 @@ export function makeRunningSessionDraft(input: Readonly<{
     createdAtMs: input.createdAtMs,
     phases: [{ ordinal: 0, kind: "work" as const, steps: [{ ordinal: 0, kind: "duration" as const, durationMs: 60_000 }] }],
     contextual,
-  } as RunningSessionRevision;
+  });
   return { slot: { id: input.slotId, rootId: input.slotRootId, weekday: input.weekday, revision: 1, ordinal: input.ordinal }, session };
 }
 
