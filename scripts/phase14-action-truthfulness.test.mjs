@@ -103,6 +103,10 @@ test("Phase 14 action contracts are state-specific and exact", () => {
   const deepLink = PHASE14_NATIVE_MATRIX.states.find(({ caseId }) => caseId === "shell.settings-deep-links");
   assert.deepEqual(deepLink.actions.map(({ id }) => id), ["back-from-data-recovery"]);
   assert.deepEqual(deepLink.actions[0].pre.visible, ["Manual encrypted backup"]);
+  const dataRecovery = PHASE14_NATIVE_MATRIX.states.find(({ caseId }) => caseId === "shell.data-recovery");
+  assert.deepEqual(dataRecovery.state.capture.visible, ["Restore clean", "No backup was selected"]);
+  assert.deepEqual(dataRecovery.actions[0].pre.visible, ["Restore clean", "Restore password"]);
+  assert.deepEqual(dataRecovery.actions[0].post.visible, ["Restore clean", "Restore password"]);
   const launch = PHASE14_NATIVE_MATRIX.states.find(({ caseId }) => caseId === "shell.launch");
   assert.equal(launch.actions[0].transport, "adb-launch");
   assert.equal(launch.actions[0].pre.packageForeground, false);

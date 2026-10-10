@@ -206,8 +206,8 @@ export const PHASE14_SHELL_EVIDENCE_CASES = [
   {
     id: "shell.data-recovery", requirement: "SHL-11", stage: dataRecoveryStage, flow: "settings-recovery",
     evidencePath: `${PHASE14_SHELL_EVIDENCE_DIRECTORY}/shell.data-recovery.json`,
-    state: { id: "data-recovery", dataPolicy: "installed-user-data-preserved", captureState: "manual-backup-no-selection", capture: predicate({ visible: ["Manual encrypted backup", "No backup was selected"], focus: { allowNull: true } }) },
-    actions: [action({ id: "ime-clearance-restore-field", stage: dataRecoveryStage, input: "IME_CLEARANCE", transport: "adb-keyevent", command: { keyCode: 4 }, pre: predicate({ visible: ["Manual encrypted backup", "Restore password"], focus: { equals: "Restore password", allowNull: false }, imeVisible: true }), post: predicate({ visible: ["Manual encrypted backup", "Restore password"], focus: { equals: "Restore password", allowNull: false }, imeVisible: false }) })],
+    state: { id: "data-recovery", dataPolicy: "installed-user-data-preserved", captureState: "manual-backup-no-selection", capture: predicate({ visible: ["Restore clean", "No backup was selected"], focus: { allowNull: true } }) },
+    actions: [action({ id: "ime-clearance-restore-field", stage: dataRecoveryStage, input: "IME_CLEARANCE", transport: "adb-keyevent", command: { keyCode: 4 }, pre: predicate({ visible: ["Restore clean", "Restore password"], focus: { equals: "Restore password", allowNull: false }, imeVisible: true }), post: predicate({ visible: ["Restore clean", "Restore password"], focus: { equals: "Restore password", allowNull: false }, imeVisible: false }) })],
     checkpoints: ["Manual encrypted backup", "Restore password"], postconditions: ["ime-cleared", "cancel-does-not-write"],
     componentTests: ["app/more/__tests__/data-and-recovery.test.tsx", "app/more/__tests__/manual-encrypted-backup.test.tsx"], runtimeStatePolicy: "no-write", motionSensitive: false,
     referencePolicy: nativeOnly("Backup and IME recovery are native-only source-integrity states."),
