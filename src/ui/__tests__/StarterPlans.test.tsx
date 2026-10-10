@@ -377,6 +377,8 @@ describe("starter detail", () => {
       .toBeOnTheScreen();
     expect(screen.getByRole("button", { name: "Activate plan" }))
       .toHaveStyle({ minHeight: 56 });
+    expect(screen.getByRole("button", { name: "Save editable copy" }))
+      .toBeOnTheScreen();
   });
 
   it("preserves complete long source notes and uses compact push versus expanded detail pane semantics", async () => {
