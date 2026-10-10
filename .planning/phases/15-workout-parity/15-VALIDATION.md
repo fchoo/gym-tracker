@@ -1,15 +1,25 @@
 ---
 phase: 15-workout-parity
-status: planned
+status: validated_host
 nyquist: true
-wave_0_complete: false
+wave_0_complete: true
+host_testable_requirements: 36
+host_test_status: green
+phase20_manual_items_pending: true
 requirements: [WRK-01, WRK-02, WRK-03, WRK-04, WRK-05, WRK-06, WRK-07, WRK-08, WRK-09, WRK-10, WRK-11, WRK-12, WRK-13, WRK-14, WRK-15, WRK-16, WRK-17, WRK-18, WRK-19, WRK-20, WRK-21, WRK-22, WRK-23, WRK-24, WRK-25, WRK-26, WRK-27, WRK-28, WRK-29, WRK-30, WRK-31, WRK-32, WRK-33, WRK-34, WRK-35, WRK-36]
 plans: [15-01, 15-02, 15-03, 15-04, 15-05, 15-06, 15-07, 15-08, 15-09, 15-10, 15-11, 15-12, 15-13]
 ---
 
 # Phase 15 Validation Contract
 
-This is the executable validation map for Phase 15. It maps every plan task to a narrow automated check, the final fresh-native backstop, and one canonical workout.* evidence ID. It records planned proof only; no application test, build, device mutation, evidence capture, or release has run while creating this file.
+This is the executable validation map for Phase 15. It maps every plan task to a narrow automated check, the final fresh-native backstop, and one canonical workout.* evidence ID. The host checks below were executed during the Nyquist audit; this document does not claim APK, device, screenshot, native-matrix, or global-suite acceptance.
+
+## Audit disposition
+
+- All 36 WRK requirements are host-testable and have targeted behavioral coverage.
+- No new test file was required: the existing focused tests exercise the submitted gaps and all executed focused commands passed.
+- No implementation files were modified.
+- Exact-source APK/native 56-cell/global final acceptance remains pending for Phase 20 and is intentionally not represented as PASS here.
 
 ## Phase gate
 
@@ -286,6 +296,81 @@ After implementation authorization and all plan summaries exist, the executor ru
 10. npm run benchmark:phase15:workout -- --manifest artifacts/native/phase15/build.json
 11. npm run verify:phase15:evidence -- --manifest artifacts/native/phase15/build.json --all
 
-No implementation, test, build, emulator/device mutation, evidence capture, release, deployment, or commit is authorized by this validation document. Those commands run only after the milestone owner authorizes execution.
+This audit intentionally ran only focused host checks. Global suite execution,
+APK build/install, emulator/device mutation, native evidence capture, release,
+deployment, and commit operations remain outside this audit and require the
+milestone owner's Phase 20 authorization.
 
-**Approval:** TIM-01 is finalized; Phase 13/14 execution, Phase 15 implementation, and fresh native verification remain pending.
+**Approval:** TIM-01 and the Phase 15 host-test gate are validated; fresh native
+verification remains pending for Phase 20.
+
+## Nyquist host requirement-to-test map
+
+The following map records behavioral tests that actually ran in this audit. The
+native column in the earlier task map remains a Phase 20 backstop and is not a
+host-test substitute.
+
+| Requirement | Behavioral test evidence | Host command | Status |
+|---|---|---|---|
+| WRK-01 | `TodayScreen.test.tsx`, `workout-route.test.tsx`, `today-schedule-workout.test.ts` | focused components + integration | green |
+| WRK-02 | `WorkoutDaySelector.test.tsx`, `TodayScreen.test.tsx` | focused components | green |
+| WRK-03 | `TodayScreen.test.tsx`, `foundation.test.tsx` | focused components | green |
+| WRK-04 | `TodayScreen.test.tsx`, `WorkoutStartSheet.test.tsx` | focused components | green |
+| WRK-05 | `workout-route.test.tsx`, `today-schedule-workout.test.ts` | focused components + integration | green |
+| WRK-06 | `TodayScreen.test.tsx`, `foundation.test.tsx` | focused components | green |
+| WRK-07 | `WorkoutSessionPresentation.test.tsx`, `ActiveWorkoutScreen.test.tsx` | focused components | green |
+| WRK-08 | `workout-route.test.tsx` | focused components | green |
+| WRK-09 | `WorkoutSessionPresentation.test.tsx`, `ActiveWorkoutScreen.test.tsx`, `ExerciseTrendSheet.test.tsx` | focused components | green |
+| WRK-10 | `WorkoutSessionPresentation.test.tsx`, `ActiveWorkoutScreen.test.tsx` | focused components | green |
+| WRK-11 | `WorkoutSessionPresentation.test.tsx`, `SetRow.test.tsx` | focused components | green |
+| WRK-12 | `WorkoutSetEditorSheet.test.tsx`, `ActiveWorkoutScreen.test.tsx` | focused components | green |
+| WRK-13 | `WorkoutSetEditorSheet.test.tsx`, `ActiveWorkoutMetricProfiles.test.tsx`, `cross-profile-workout.test.ts` | focused components + integration | green |
+| WRK-14 | `ActiveWorkoutMetricProfiles.test.tsx`, `cross-profile-workout.test.ts` | focused components + integration | green |
+| WRK-15 | `ActiveWorkoutMetricProfiles.test.tsx`, `cross-profile-workout.test.ts` | focused components + integration | green |
+| WRK-16 | `ActiveWorkoutScreen.test.tsx`, `complete-set.test.ts` | focused components + integration | green |
+| WRK-17 | `ActiveWorkoutScreen.test.tsx`, `complete-set.test.ts` | focused components + integration | green |
+| WRK-18 | `WorkoutActionDock.test.tsx`, `ActiveWorkoutScreen.test.tsx`, `complete-set.test.ts` | focused components + integration | green |
+| WRK-19 | `ActiveWorkoutScreen.test.tsx`, `complete-set.test.ts` | focused components + integration | green |
+| WRK-20 | `ActiveWorkoutScreen.test.tsx`, `complete-set.test.ts` | focused components + integration | green |
+| WRK-21 | `RestDock.test.tsx`, `ActiveWorkoutScreen.test.tsx`, `rest-lifecycle.test.ts` | focused components + integration | green |
+| WRK-22 | `RestDock.test.tsx`, `workoutLifecycle.test.ts`, `rest-lifecycle.test.ts` | focused components + integration | green |
+| WRK-23 | `workoutLifecycle.test.ts`, notification adapter tests, `rest-lifecycle.test.ts` | focused unit + integration | green |
+| WRK-24 | `metricHistory.test.ts`, `ExerciseTrendSheet.test.tsx` | focused unit + components | green |
+| WRK-25 | `ActiveWorkoutScreen.test.tsx`, timing source audit | focused components + source audit | green |
+| WRK-26 | `workoutPreferences.test.ts`, `complete-set.test.ts`, `rest-lifecycle.test.ts`, restore/merge tests | focused unit + integration + SQLite host | green |
+| WRK-27 | `workoutPreferences.test.ts`, `workout-preferences.test.ts`, `WorkoutPlanSettingsSheet.test.tsx` | focused unit + components + SQLite host | green |
+| WRK-28 | `workout-route.test.tsx`, `ActiveWorkoutScreen.test.tsx` | focused components | green |
+| WRK-29 | `ActiveWorkoutScreen.test.tsx`, `sessionExerciseCommands.test.ts` | focused components + unit | green |
+| WRK-30 | `ActiveWorkoutScreen.test.tsx`, `session-exercise-editing.test.ts`, `plan-impact-replacement.test.ts` | focused components + integration | green |
+| WRK-31 | `ActiveWorkoutScreen.test.tsx`, `session-exercise-editing.test.ts`, `complete-set.test.ts` | focused components + integration | green |
+| WRK-32 | `session-exercise-editing.test.ts`, `ActiveWorkoutScreen.test.tsx` | focused components + integration | green |
+| WRK-33 | `ActiveWorkoutScreen.test.tsx`, `complete-set.test.ts`, `session-exercise-editing.test.ts` | focused components + integration | green |
+| WRK-34 | `ActiveWorkoutScreen.test.tsx`, `workout-outcomes.test.ts` | focused components + integration | green |
+| WRK-35 | `WorkoutCompletionScreen.test.tsx`, `completion-route.test.tsx`, `workout-outcomes.test.ts` | focused components + integration | green |
+| WRK-36 | `planImpactCommands.test.ts`, `plan-impact-replacement.test.ts` | focused unit + integration | green |
+
+## Executed audit commands
+
+- `npm run test:components -- --runInBand` with the focused Phase 15 root, Active, editor, dock, rest, trend, completion, and route tests — passed.
+- `npm run test:unit -- --runInBand` with the focused workout, timing, lifecycle, notification, history, and preference tests — passed.
+- `npm run test:integration -- --runInBand` with seven Phase 15 integration suites — 7 suites / 120 tests passed.
+- `npm run test:sqlite:host -- --runInBand` with preference, restore, merge, and portable-merge suites — passed.
+- `node --test scripts/phase15-evidence-scripts.test.mjs scripts/phase15-native-matrix.test.mjs scripts/benchmark-phase15-workout.test.mjs` — 19 tests passed.
+
+## Phase 20 manual/final evidence items
+
+These are explicit pending evidence items, not host-test gaps and not PASS claims:
+
+1. Build and install one exact-source current-HEAD APK.
+2. Execute the complete native 56-cell UI/accessibility/recovery matrix.
+3. Capture fresh native semantic, visual/hash-chain, offline/process-death, and device-state evidence.
+4. Run rendered performance on the current APK and complete the final global acceptance gate.
+
+## Audit trail
+
+| Date | Action | Result |
+|---|---|---|
+| 2026-10-11 | Loaded all Phase 15 plans, summaries, requirements WRK-01..36, validation, and clean review/UI-review reports | Owner-deferred native/global items kept pending |
+| 2026-10-11 | Compared every host-testable requirement with implementation-facing behavioral tests | No missing host test file found |
+| 2026-10-11 | Ran focused component, unit, integration, SQLite-host, and Phase 15 evidence tests | All executed checks passed; no implementation bug observed |
+| 2026-10-11 | Updated this validation map | Host status `validated_host`; Phase 20 status remains pending |
