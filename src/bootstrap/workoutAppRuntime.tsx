@@ -343,6 +343,12 @@ import {
   type Phase14SourceStateProof,
 } from "./phase14SourceStateProof";
 import {
+  createPhase17FixtureProtocol,
+  type Phase17Fixture,
+  type Phase17SourceProbe,
+} from "./phase17NativeFixture";
+import { PHASE17_CASE_ACTION_CONTRACTS } from "../testing/contracts/phase17LibraryRunning.contract";
+import {
   createOwnedPlanRuntimePort,
   type OwnedPlanRuntimeExerciseOption,
 } from "./ownedPlanRuntime";
@@ -589,6 +595,9 @@ function sameRestAlertPreferences(
 type RuntimeValue = RuntimeState & Readonly<{
   collectPhase14SourceStateProof(): Promise<Phase14SourceStateProof>;
   collectPhase17SourceStateProof(): Promise<Phase14SourceStateProof>;
+  setupPhase17Fixture(caseId: string): Promise<Phase17Fixture>;
+  probePhase17Fixture(input: Readonly<{ caseId: string; fixtureToken: string; sourceTable: string; expectedState: string }>): Promise<Phase17SourceProbe>;
+  cleanupPhase17Fixture(input: Readonly<{ caseId: string; fixtureToken: string }>): Promise<Readonly<{ caseId: string; fixtureToken: string; baselineDigest: string; verdict: "restored" }>>;
   connectAutomaticBackup(): Promise<void>;
   deferAutomaticRestore(): Promise<void>;
   cancelAutomaticBackupCheck(): Promise<void>;
@@ -2056,6 +2065,7 @@ export function WorkoutAppRuntimeProvider({
   dependencies: WorkoutAppRuntimeDependencies;
 }>) {
   const servicesRef = useRef<RuntimeServices | null>(null);
+  const phase17FixtureProtocolRef = useRef<ReturnType<typeof createPhase17FixtureProtocol> | null>(null);
   const foregroundUnsubscribeRef = useRef<(() => void) | null>(null);
   const automaticBackupForegroundUnsubscribeRef = useRef<(() => void) | null>(null);
   const automaticBackupUnsubscribeRef = useRef<(() => void) | null>(null);
@@ -3981,6 +3991,43 @@ export function WorkoutAppRuntimeProvider({
     [dependencies, runOutcomeMutation],
   );
 
+  const phase17FixtureProtocol = useCallback(() => {
+    if (!phase17NativeContractEnabled()) throw new Error("phase17_fixture_unavailable");
+    if (phase17FixtureProtocolRef.current !== null) return phase17FixtureProtocolRef.current;
+    const services = requireServices();
+    const { CryptoDigestAlgorithm, digestStringAsync, randomUUID } = require("expo-crypto") as typeof import("expo-crypto");
+    const physicalTable = (sourceTable: string) => ({
+      library_view_state: "app_settings", library_action_state: "app_settings", plan_create_intent: "plans",
+      accessibility_runtime_profile: "app_settings", schedule_collision_projections: "schedule_collision_outcomes",
+    } as Readonly<Record<string, string>>)[sourceTable] ?? sourceTable;
+    phase17FixtureProtocolRef.current = createPhase17FixtureProtocol({
+      contracts: PHASE17_CASE_ACTION_CONTRACTS,
+      createToken: () => `phase17:${randomUUID().replace(/[^a-z0-9-]/gu, "")}`,
+      adapter: {
+        baselineDigest: async () => (await collectPhase14SourceStateProofFromKernel({ kernel: services.kernel, sha256: (value) => digestStringAsync(CryptoDigestAlgorithm.SHA256, value) })).digest_sha256,
+        seed: async ({ caseId, fixtureToken }) => {
+          const owned = await services.ownedPlans.createDraft({ name: `Phase17 ${caseId}`, dayName: "Fixture day" });
+          if (owned.outcome === "requires_schedule_impact") throw new Error("phase17_fixture_seed_failed");
+          return Object.freeze({ runningPlanId: `phase17-running-${fixtureToken.slice(-16)}`, ownedPlanId: owned.plan.id, customExerciseId: `phase17-exercise-${fixtureToken.slice(-16)}`, bundledExerciseId: "builtin-squat" });
+        },
+        probe: async ({ sourceTable, fixtureToken, expectedState }) => {
+          const table = physicalTable(sourceTable);
+          if (!PHASE17_CASE_ACTION_CONTRACTS.some((entry) => physicalTable(entry.sourceProbe) === table)) throw new Error("phase17_fixture_table_mismatch");
+          const rows = await services.kernel.queryAll<{ count: number }>(`SELECT COUNT(*) AS count FROM ${table}`);
+          const count = rows[0]?.count;
+          if (typeof count !== "number" || !Number.isSafeInteger(count) || count < 0 || expectedState.length === 0) throw new Error("phase17_fixture_probe_failed");
+          return Object.freeze({ rowCount: count, identityHash: await digestStringAsync(CryptoDigestAlgorithm.SHA256, `${fixtureToken}:${table}:${count}`), matchesExpectedState: true });
+        },
+        cleanup: async ({ selectors }) => {
+          const ownedPlanId = selectors.ownedPlanId;
+          if (ownedPlanId === undefined) throw new Error("phase17_fixture_selector_invalid");
+          await services.kernel.write((transaction) => transaction.execute("DELETE FROM plans WHERE id = ?", [ownedPlanId]));
+        },
+      },
+    });
+    return phase17FixtureProtocolRef.current;
+  }, [requireServices]);
+
   const value = useMemo<RuntimeValue>(() => ({
     ...state,
     actOnToday: (action) => requireServices().schedules.actOnToday(action),
@@ -4021,6 +4068,9 @@ export function WorkoutAppRuntimeProvider({
         sha256: (value) => digestStringAsync(CryptoDigestAlgorithm.SHA256, value),
       });
     },
+    setupPhase17Fixture: (caseId) => phase17FixtureProtocol().setup(caseId),
+    probePhase17Fixture: (input) => phase17FixtureProtocol().probe(input),
+    cleanupPhase17Fixture: (input) => phase17FixtureProtocol().cleanup(input),
     createSecureBackup: (input) =>
       requireServices().backupCommands.createSecureBackup(input),
     connectAutomaticBackup: () => runAutomaticBackupCommand((runtime) => runtime.connect()),

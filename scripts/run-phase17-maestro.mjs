@@ -232,7 +232,7 @@ function applyDeviceProfile(adbPath, serial, profile) {
   adb(adbPath, serial, "shell", "cmd", "uimode", "night", profile.night);
 }
 
-function runCase({ adbPath, manifest, id }) {
+function runCase({ adbPath, manifest, id, fixture }) {
   const flow = flowFor(id);
   const profile = profileFor(id);
   applyDeviceProfile(adbPath, manifest.device.serial, profile);
@@ -242,6 +242,11 @@ function runCase({ adbPath, manifest, id }) {
   const args = [
     "test", "--no-ansi", "--format", "junit", "--output", report, "--test-output-dir", artifactDirectory, "--udid", manifest.device.serial,
     "-e", `PHASE17_CASE_ID=${id}`,
+    "-e", `PHASE17_FIXTURE_TOKEN=${fixture.fixtureToken}`,
+    "-e", `PHASE17_RUNNING_PLAN_ID=${fixture.selectors.runningPlanId}`,
+    "-e", `PHASE17_OWNED_PLAN_ID=${fixture.selectors.ownedPlanId}`,
+    "-e", `PHASE17_CUSTOM_EXERCISE_ID=${fixture.selectors.customExerciseId}`,
+    "-e", `PHASE17_BUNDLED_EXERCISE_ID=${fixture.selectors.bundledExerciseId}`,
     "-e", `PHASE17_SESSION_KIND=${sessionKindFor(id)}`,
     "-e", `PHASE17_TEXT_SCALE=${profile.fontScale}`,
     "-e", `PHASE17_REDUCED_MOTION=${profile.reducedMotion}`,
@@ -249,40 +254,46 @@ function runCase({ adbPath, manifest, id }) {
     flow,
   ];
   execFileSync("maestro", args, { cwd: ROOT, stdio: "inherit" });
-  const source = capturePhase17SourceProbe(adbPath, manifest.device.serial, id);
+  const source = capturePhase17SourceProbe(adbPath, manifest.device.serial, id, fixture);
   return Object.freeze({ id, flow, report, source });
 }
 
-function portUri(operation, id, baseline) {
+function portUri(operation, id, fixture) {
   const query = new URLSearchParams({ operation, case: id });
-  if (baseline !== undefined) query.set("baseline", baseline);
+  if (fixture !== undefined) {
+    query.set("fixtureToken", fixture.fixtureToken);
+    query.set("sourceTable", fixture.sourceTable);
+    query.set("expectedState", fixture.expectedState);
+  }
   return `${PHASE17_PORT}?${query}`;
 }
 
-function readPhase17Port(adbPath, serial, operation, id, baseline) {
-  adb(adbPath, serial, "shell", "am", "start", "-W", "-a", "android.intent.action.VIEW", "-d", portUri(operation, id, baseline), PACKAGE);
+function readPhase17Port(adbPath, serial, operation, id, fixture) {
+  adb(adbPath, serial, "shell", "am", "start", "-W", "-a", "android.intent.action.VIEW", "-d", portUri(operation, id, fixture), PACKAGE);
   const xml = adb(adbPath, serial, "shell", "uiautomator", "dump", "/sdcard/phase17-window.xml");
   if (!xml.includes("UI hierchary dumped")) throw new Error(`phase17_port_dump_failed:${operation}:${id}`);
   return adb(adbPath, serial, "shell", "cat", "/sdcard/phase17-window.xml");
 }
 
-export function capturePhase17SourceProbe(adbPath, serial, id) {
-  const output = readPhase17Port(adbPath, serial, "probe", id);
-  const digest = output.match(/PHASE17_SOURCE_PROBE case=[^\s]+ digest_sha256=([a-f0-9]{64})/u)?.[1];
-  if (digest === undefined) throw new Error(`phase17_source_probe_missing:${id}`);
-  return Object.freeze({ probe: PHASE17_FLOW_CASES.find((entry) => entry.id === id)?.sourceProbe, digest_sha256: digest });
+export function capturePhase17SourceProbe(adbPath, serial, id, fixture) {
+  const output = readPhase17Port(adbPath, serial, "probe", id, fixture);
+  const identityHash = output.match(/identity_hash=([a-f0-9]{64})/u)?.[1];
+  if (identityHash === undefined || !output.includes(`fixture_token=${fixture.fixtureToken}`) || !output.includes(`source_table=${fixture.sourceTable}`) || !output.includes("verdict=matched")) throw new Error(`phase17_source_probe_missing:${id}`);
+  return Object.freeze({ probe: fixture.sourceTable, identity_hash: identityHash });
 }
 
 function setupPhase17Case(adbPath, serial, id) {
   const output = readPhase17Port(adbPath, serial, "setup", id);
-  const setup = output.match(/PHASE17_SETUP_READY case=[^\s]+ baseline_sha256=([a-f0-9]{64})/u)?.[1];
-  if (setup === undefined) throw new Error(`phase17_setup_missing:${id}`);
-  return setup;
+  const match = output.match(/PHASE17_SETUP_READY case=([^\s]+) fixture_token=([^\s]+) baseline_sha256=([a-f0-9]{64}) source_table=([^\s]+) expected_state=([^\s]+) selectors=([^\s]+)/u);
+  if (match === null || match[1] !== id) throw new Error(`phase17_setup_missing:${id}`);
+  const selectors = Object.fromEntries(match[6].split(",").map((entry) => [entry.slice(0, entry.indexOf(":")), entry.slice(entry.indexOf(":") + 1)]));
+  if (!match[2] || !selectors.runningPlanId || !selectors.ownedPlanId || !selectors.customExerciseId || !selectors.bundledExerciseId) throw new Error(`phase17_setup_fixture_invalid:${id}`);
+  return Object.freeze({ fixtureToken: match[2], baselineDigest: match[3], sourceTable: match[4], expectedState: match[5], selectors });
 }
 
-function cleanupPhase17Case(adbPath, serial, id, baseline) {
-  const output = readPhase17Port(adbPath, serial, "cleanup", id, baseline);
-  if (!output.includes(`PHASE17_CLEANUP_READY case=${id} baseline_sha256=${baseline}`)) throw new Error(`phase17_cleanup_missing:${id}`);
+function cleanupPhase17Case(adbPath, serial, id, fixture) {
+  const output = readPhase17Port(adbPath, serial, "cleanup", id, fixture);
+  if (!output.includes(`PHASE17_CLEANUP_READY case=${id} fixture_token=${fixture.fixtureToken} baseline_sha256=${fixture.baselineDigest} verdict=restored`)) throw new Error(`phase17_cleanup_missing:${id}`);
 }
 
 export function executePhase17Maestro(args = process.argv.slice(2)) {
@@ -301,9 +312,9 @@ export function executePhase17Maestro(args = process.argv.slice(2)) {
   const original = readDeviceState(adbPath, manifest.device.serial);
   try {
     const results = options.ids.map((id) => {
-      const baseline = setupPhase17Case(adbPath, manifest.device.serial, id);
-      try { return runCase({ adbPath, manifest, id }); }
-      finally { cleanupPhase17Case(adbPath, manifest.device.serial, id, baseline); }
+      const fixture = setupPhase17Case(adbPath, manifest.device.serial, id);
+      try { return runCase({ adbPath, manifest, id, fixture }); }
+      finally { cleanupPhase17Case(adbPath, manifest.device.serial, id, fixture); }
     });
     return Object.freeze({ status: "executed", plan, results, evidence_written: false });
   } finally {
