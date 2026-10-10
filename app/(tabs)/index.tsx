@@ -150,7 +150,18 @@ export default function TodayRoute() {
           openActiveWorkout(sessionId);
         }).catch(() => undefined);
       }}
+      onStartOccurrence={(occurrence) => {
+        void runtime.startSelectedStrengthOccurrence(occurrence).then((sessionId) => {
+          const consumeOverride = runtime.scheduleToday?.overrideState === "pending"
+            ? runtime.consumeDateOverride(occurrence.localDate)
+            : Promise.resolve(null);
+          return consumeOverride.catch(() => null).then(() => sessionId);
+        }).then(openActiveWorkout).catch(() => undefined);
+      }}
       planDays={runtime.planDays}
+      {...(runtime.selectedStrengthOccurrence === undefined
+        ? {}
+        : { selectedStrengthOccurrence: runtime.selectedStrengthOccurrence })}
       {...(runtime.scheduleToday === undefined
         ? {}
         : { scheduleToday: runtime.scheduleToday })}

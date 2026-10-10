@@ -97,7 +97,7 @@ const selectedOccurrence: SelectedStrengthOccurrence = {
   scheduleVersionId: "schedule-version-1",
   localDate: "2026-09-07",
   timeZone: "Asia/Singapore",
-  sourceRevisions: { plan: 1, day: 1, schedule: 1 },
+  sourceRevisions: { plan: 1, day: 1, schedule: 1, opportunity: 1 },
 };
 
 describe("Plan 01-07 TodayScreen", () => {
@@ -115,7 +115,7 @@ describe("Plan 01-07 TodayScreen", () => {
       }],
     });
 
-    expect(screen.getByText("MON · 07 SEP 2026")).toBeOnTheScreen();
+    expect(screen.getAllByText("MON · 07 SEP 2026")).toHaveLength(2);
     expect(screen.getByRole("heading", { name: "Full Body A" })).toBeOnTheScreen();
     expect(screen.getByText("3 exercises · about 48 min")).toBeOnTheScreen();
     expect(screen.getByText("Back Squat")).toBeOnTheScreen();
@@ -158,7 +158,7 @@ describe("Plan 01-07 TodayScreen", () => {
       ],
     });
 
-    await fireEvent.press(screen.getByRole("button", { name: /Preview Full Body B/u }));
+    await fireEvent.press(screen.getByRole("tab", { name: /Preview Full Body B/u }));
     expect(screen.getByRole("heading", { name: "Full Body B" })).toBeOnTheScreen();
     await fireEvent.press(screen.getByRole("button", { name: "Start Full Body B" }));
     expect(start).toHaveBeenCalledWith(alternate);

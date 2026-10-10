@@ -130,6 +130,7 @@ import type {
   RemoveWorkingSetInput,
   ReorderExercisesInput,
   ReviseCompletedSetInput,
+  SelectedStrengthOccurrence,
   SessionDetail,
   TodayView,
   WorkoutSessionView,
@@ -515,6 +516,7 @@ type RuntimeState = Readonly<{
   launchState: "booting" | "trusted" | "failed";
   view?: TodayView;
   planDays: readonly ActivatedPlanDay[];
+  selectedStrengthOccurrence?: SelectedStrengthOccurrence | null;
   latestBackup: RuntimeBackupMetadata | null;
   automaticBackup: AutomaticBackupViewModel;
   contentUpdateResult?: ContentUpdateResult;
@@ -959,6 +961,9 @@ type RuntimeValue = RuntimeState & Readonly<{
   startPlanDay(
     dayId: string,
     mode: "scheduled" | "alternate" | "rest_day",
+  ): Promise<string>;
+  startSelectedStrengthOccurrence(
+    occurrence: SelectedStrengthOccurrence,
   ): Promise<string>;
   undoCompletedSet(
     input: UndoCompletedSetInput,
@@ -2134,6 +2139,9 @@ export function WorkoutAppRuntimeProvider({
         ? legacyView
         : scheduledToday?.view ?? legacyView,
       planDays: scheduledToday?.planDays ?? activation?.days ?? [],
+      ...(scheduledToday?.selectedStrengthOccurrence === undefined
+        ? {}
+        : { selectedStrengthOccurrence: scheduledToday.selectedStrengthOccurrence }),
       latestBackup,
       automaticBackup: phase12NativeFixtureViewModel()
         ?? services.automaticBackupRuntime?.current()
@@ -2534,6 +2542,38 @@ export function WorkoutAppRuntimeProvider({
                   .padStart(64, "0"),
               }
             : {}),
+        },
+      });
+      setState(await trustedRead(services));
+      return session.id;
+    } catch {
+      setState((current) => ({
+        ...current,
+        actionFailure: {
+          code: "workout_action_failed",
+          correlationCode: "GT-ACTION01",
+        },
+      }));
+      throw new Error("workout_action_failed");
+    }
+  }, [dependencies, requireServices, trustedRead]);
+
+  const startSelectedStrengthOccurrence = useCallback(async (
+    occurrence: SelectedStrengthOccurrence,
+  ): Promise<string> => {
+    const services = requireServices();
+    try {
+      const session = await startWorkout({
+        repository: services.repository,
+        request: {
+          mode: "scheduled",
+          planId: occurrence.planId,
+          planDayId: occurrence.planDayId,
+          localDate: occurrence.localDate,
+          timezone: occurrence.timeZone,
+          startedAtMs: dependencies.nowMs(),
+          selectedOccurrence: occurrence,
+          commandIdentity: dependencies.nowMs().toString(16).padStart(64, "0"),
         },
       });
       setState(await trustedRead(services));
@@ -4356,6 +4396,7 @@ export function WorkoutAppRuntimeProvider({
     startManualRest: startWorkoutRest,
     startEmptyWorkout,
     startPlanDay,
+    startSelectedStrengthOccurrence,
     createStarterTemplateUpdateCopy,
     duplicateOwnedPlan: duplicateOwnedDraft,
     archiveOwnedPlan: archiveOwnedDraft,

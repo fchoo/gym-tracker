@@ -13,6 +13,7 @@ import type {
   ActivatedPlanDay,
 } from "../../domains/plans";
 import type {
+  SelectedStrengthOccurrence,
   TodayExercise,
   TodayView,
 } from "../../domains/workout";
@@ -41,6 +42,10 @@ import {
   SkeletonBlock,
 } from "../components";
 import { WorkoutStartSheet } from "../components/WorkoutStartSheet";
+import {
+  WorkoutDaySelector,
+  type WorkoutDayPreview,
+} from "../components/WorkoutDaySelector";
 import { AdaptiveScreen } from "../layout/AdaptiveScreen";
 import { RootFailureState } from "./RootFailureState";
 import type { RootFocusTarget } from "../shell/rootFocus";
@@ -72,6 +77,9 @@ export type TodayScreenProps = Readonly<{
     dayId: string,
     mode: "scheduled" | "alternate" | "rest_day",
   ) => void;
+  onStartOccurrence?: (occurrence: SelectedStrengthOccurrence) => void;
+  selectedStrengthOccurrence?: SelectedStrengthOccurrence | null;
+  strengthOccurrences?: readonly WorkoutOccurrencePreview[];
   scheduleToday?: ScheduleTodayPresentation;
   chooseScheduleTimeZone?: (
     choice: ScheduleTimeZoneChoice,
@@ -82,6 +90,22 @@ export type TodayScreenProps = Readonly<{
   settingsActionRef?: React.RefObject<RootFocusTarget | null>;
   settingsActionNativeID?: string;
 }>;
+
+export type WorkoutOccurrencePreview = Readonly<{
+  occurrence: SelectedStrengthOccurrence;
+  planName: string;
+  dayName: string;
+  estimateMinutes: number;
+  exercises: readonly TodayExercise[];
+}>;
+
+function occurrenceDate(localDate: string): string {
+  const [year = "", month = "", day = ""] = localDate.split("-");
+  const date = new Date(`${localDate}T12:00:00Z`);
+  const weekday = ["SUN", "MON", "TUE", "WED", "THU", "FRI", "SAT"][date.getUTCDay()] ?? "";
+  const months = ["JAN", "FEB", "MAR", "APR", "MAY", "JUN", "JUL", "AUG", "SEP", "OCT", "NOV", "DEC"];
+  return `${weekday} · ${day} ${months[Math.max(0, Number(month) - 1)] ?? ""} ${year}`;
+}
 
 function TodaySkeleton() {
   return (
@@ -181,6 +205,9 @@ function ScheduledContent({
   onStartEmpty,
   onReviewSuggestion,
   pendingRecommendations,
+  selectedStrengthOccurrence,
+  strengthOccurrences = [],
+  onStartOccurrence,
 }: Readonly<{
   view: Extract<TodayView, { state: "scheduled" }>;
   planDays: readonly ActivatedPlanDay[];
@@ -191,36 +218,66 @@ function ScheduledContent({
   onStartEmpty: () => void;
   onReviewSuggestion: (exerciseId: string) => void;
   pendingRecommendations: readonly ProgressRecommendationReview[];
+  selectedStrengthOccurrence?: SelectedStrengthOccurrence | null;
+  strengthOccurrences?: readonly WorkoutOccurrencePreview[];
+  onStartOccurrence?: (occurrence: SelectedStrengthOccurrence) => void;
 }>) {
   const [startSheetVisible, setStartSheetVisible] = useState(false);
+  const [selectedOccurrenceId, setSelectedOccurrenceId] = useState(
+    selectedStrengthOccurrence?.opportunityId,
+  );
   const { colors } = useAppTheme();
   const startSheetActionRef = useRef<View>(null);
 
+  const selectedPreview = strengthOccurrences.find(
+    ({ occurrence }) => occurrence.opportunityId === selectedOccurrenceId,
+  ) ?? strengthOccurrences.find(
+    ({ occurrence }) => occurrence.opportunityId === selectedStrengthOccurrence?.opportunityId,
+  );
+  const selectedView = selectedPreview === undefined ? view : {
+    ...view,
+    planName: selectedPreview.planName,
+    dayId: selectedPreview.occurrence.planDayId,
+    dayName: selectedPreview.dayName,
+    estimateMinutes: selectedPreview.estimateMinutes,
+    exercises: selectedPreview.exercises,
+  };
+  const previews: readonly WorkoutDayPreview[] = strengthOccurrences.map(({ occurrence, dayName }) => ({
+    id: occurrence.opportunityId,
+    label: dayName,
+    detail: occurrenceDate(occurrence.localDate),
+  }));
+
   return (
     <>
+      {selectedPreview === undefined ? null : (
+        <>
+          <Text style={[typeScale.secondary as TextStyle, { color: colors.textSecondary }]}>
+            {occurrenceDate(selectedPreview.occurrence.localDate)}
+          </Text>
+          <WorkoutDaySelector
+            items={previews}
+            onSelect={setSelectedOccurrenceId}
+            selectedId={selectedPreview.occurrence.opportunityId}
+          />
+        </>
+      )}
       <ContentCard style={styles.section} testID="today-workout-card">
-        <Text
-          style={[
-            typeScale.label as TextStyle,
-            { color: colors.contentCardTextSecondary },
-          ]}
-        >
-          PLANNED WORKOUT
+        <Text style={[typeScale.label as TextStyle, { color: colors.textSecondary }]}>PLANNED WORKOUT</Text>
+        <Text accessibilityRole="header" style={[typeScale.editorialWorkoutTitle as TextStyle, { color: colors.ink }]}>
+          {selectedView.dayName}
         </Text>
-        <SectionHeader
-          supportingText={`${view.exercises.length} exercises · about ${view.estimateMinutes} min`}
-          title={view.dayName}
-          tone="card"
-        />
+        <Text style={[typeScale.body as TextStyle, { color: colors.textSecondary }]}>{selectedView.planName}</Text>
+        <Text style={[typeScale.body as TextStyle, { color: colors.textSecondary }]}>
+          {selectedView.exercises.length} exercises · about {selectedView.estimateMinutes} min
+        </Text>
         <PrimaryAction
-          label={`Start ${view.dayName}`}
-          onPress={() => onStart(view.dayId, "scheduled")}
+          label={`Start ${selectedView.dayName}`}
+          onPress={() => selectedPreview === undefined || onStartOccurrence === undefined
+            ? onStart(selectedView.dayId, "scheduled")
+            : onStartOccurrence(selectedPreview.occurrence)}
         />
-        <SecondaryAction
-          label="Choose another day"
-          onPress={() => setStartSheetVisible(true)}
-          ref={startSheetActionRef}
-        />
+        <SecondaryAction label="Choose another day" onPress={() => setStartSheetVisible(true)} ref={startSheetActionRef} />
       </ContentCard>
       <View style={styles.section}>
         <Text
@@ -231,7 +288,7 @@ function ScheduledContent({
         >
           TODAY IN CONTEXT
         </Text>
-        {view.exercises.map((exercise) => (
+        {selectedView.exercises.map((exercise) => (
           <ContentCard
             key={exercise.exerciseId}
             style={styles.exerciseGroup}
@@ -285,7 +342,7 @@ function ScheduledContent({
         onStartEmpty={onStartEmpty}
         planDays={planDays}
         restoreFocusRef={startSheetActionRef}
-        scheduledDayId={view.dayId}
+        scheduledDayId={selectedView.dayId}
         visible={startSheetVisible}
       />
     </>
@@ -364,6 +421,9 @@ export function TodayScreen({
   pendingRecommendations = [],
   onStartEmpty = noOp,
   onStartPlanDay = noOp,
+  onStartOccurrence,
+  selectedStrengthOccurrence,
+  strengthOccurrences,
   scheduleToday,
   chooseScheduleTimeZone = noOp,
   onOpenSettings = noOp,
@@ -410,6 +470,9 @@ export function TodayScreen({
             onStart={(dayId, mode) => onStartPlanDay(dayId, mode)}
             onStartEmpty={onStartEmpty}
             planDays={planDays}
+            {...(onStartOccurrence === undefined ? {} : { onStartOccurrence })}
+            {...(selectedStrengthOccurrence === undefined ? {} : { selectedStrengthOccurrence })}
+            {...(strengthOccurrences === undefined ? {} : { strengthOccurrences })}
             view={view}
           />
         );
