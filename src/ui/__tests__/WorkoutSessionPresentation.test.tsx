@@ -1,4 +1,5 @@
 import React from "react";
+import { View } from "react-native";
 import { fireEvent, render, screen, waitFor } from "@testing-library/react-native";
 import { describe, expect, it } from "@jest/globals";
 
@@ -68,6 +69,44 @@ describe("WorkoutSessionPresentation", () => {
     }));
 
     await waitFor(() => expect(screen.getByText("45 kg × 10")).toBeOnTheScreen());
+  });
+
+  it("keeps composed overview nodes mounted when a completed exercise is collapsed", async () => {
+    const completedExerciseModel: WorkoutPresentationModel = {
+      ...model,
+      exercises: [
+        model.exercises[0],
+        {
+          ...model.exercises[1],
+          status: "completed",
+          workingSets: [{
+            ...model.exercises[1]!.workingSets[0]!,
+            status: "completed",
+            result: "45 kg × 10",
+          }],
+        },
+      ],
+    };
+
+    await render(
+      <AppearanceProvider>
+        <WorkoutSessionPresentation
+          isExerciseExpanded={(exercise) => exercise.id === "session-exercise-1"}
+          model={completedExerciseModel}
+        >
+          {(exercise, expanded) => (
+            <View testID={`overview-exercise-${exercise.id}`}>
+              {expanded ? <View testID={`overview-exercise-detail-${exercise.id}`} /> : null}
+            </View>
+          )}
+        </WorkoutSessionPresentation>
+      </AppearanceProvider>,
+    );
+
+    expect(screen.getByTestId("overview-exercise-session-exercise-1")).toBeOnTheScreen();
+    expect(screen.getByTestId("overview-exercise-session-exercise-2")).toBeOnTheScreen();
+    expect(screen.getByTestId("overview-exercise-detail-session-exercise-1")).toBeOnTheScreen();
+    expect(screen.queryByTestId("overview-exercise-detail-session-exercise-2")).not.toBeOnTheScreen();
   });
 
   it("maps a live workout view without creating commands", () => {

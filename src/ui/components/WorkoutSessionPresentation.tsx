@@ -84,9 +84,11 @@ export function WorkoutSessionPresentation({
               {renderExerciseAccessory?.(exercise, index)}
               {expanded ? <ChevronDown color={colors.textSecondary} size={24} /> : <ChevronRight color={colors.textSecondary} size={24} />}
             </FocusablePressable>
-            {expanded ? children?.(exercise, expanded, index) ?? (
-              <View>{exercise.warmups.map((set) => <WorkoutSetFactsRow key={set.id} set={set} />)}{exercise.workingSets.map((set) => <WorkoutSetFactsRow key={set.id} set={set} />)}</View>
-            ) : null}
+            {children !== undefined
+              ? children(exercise, expanded, index)
+              : expanded ? (
+                <View>{exercise.warmups.map((set) => <WorkoutSetFactsRow key={set.id} set={set} />)}{exercise.workingSets.map((set) => <WorkoutSetFactsRow key={set.id} set={set} />)}</View>
+              ) : null}
           </View>
         );
       })}
