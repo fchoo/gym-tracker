@@ -63,7 +63,7 @@ export default function LibraryRoute() {
         triggerRef: settingsActionRef,
       })}
       onOpenPlan={(planId) =>
-        router.push(`/library/plan/${planId}/edit` as Href)}
+        router.push(`/library/plan/${planId}` as Href)}
       onOpenStarter={(templateId) =>
         router.push(`/library/starter/${templateId}` as Href)}
       onOpenTemplateUpdate={({ ownedPlanId, templateId }) =>

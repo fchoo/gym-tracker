@@ -38,13 +38,19 @@ jest.mock("../../../src/ui/screens/LibraryScreen", () => {
   return {
     LibraryScreen: ({
       onCreatePlan,
+      onOpenPlan,
       refreshGeneration,
-    }: Readonly<{ onCreatePlan(): void; refreshGeneration?: number }>) => (
+    }: Readonly<{
+      onCreatePlan(): void;
+      onOpenPlan(planId: string): void;
+      refreshGeneration?: number;
+    }>) => (
       <>
         <Text testID="library-refresh-generation">
           {refreshGeneration ?? -1}
         </Text>
         <Pressable accessibilityRole="button" accessibilityLabel="Create plan" onPress={onCreatePlan} />
+        <Pressable accessibilityRole="button" accessibilityLabel="Open Strength plan" onPress={() => onOpenPlan("owned-strength-1")} />
       </>
     ),
   };
@@ -82,5 +88,13 @@ describe("LibraryRoute focus lifecycle", () => {
     await fireEvent.press(screen.getByRole("button", { name: "Create plan" }));
 
     expect(mockPush).toHaveBeenCalledWith("/library/plan/create");
+  });
+
+  it("opens an owned Strength row at its source-backed summary", async () => {
+    await render(<LibraryRoute />);
+
+    await fireEvent.press(screen.getByRole("button", { name: "Open Strength plan" }));
+
+    expect(mockPush).toHaveBeenCalledWith("/library/plan/owned-strength-1");
   });
 });
