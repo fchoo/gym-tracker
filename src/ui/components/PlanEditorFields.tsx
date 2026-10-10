@@ -180,6 +180,7 @@ export function PlanEditorReorderableRow({
   onMoveTo,
   onDragPreview,
   preview = null,
+  dragActivationDistance,
   disabled = false,
   reorderId = label,
   children,
@@ -197,6 +198,7 @@ export function PlanEditorReorderableRow({
   ): void;
   onDragPreview?(preview: PlanEditorReorderPreview | null): void;
   preview?: PlanEditorReorderPreview | null;
+  dragActivationDistance?: number | undefined;
   disabled?: boolean;
   reorderId?: string;
   children: React.ReactNode;
@@ -274,7 +276,8 @@ export function PlanEditorReorderableRow({
       rowHeight,
     ), "drag");
   }, [count, position, requestMove, rowHeight]);
-  const dragGesture = React.useMemo(() => Gesture.Pan()
+  const dragGesture = React.useMemo(() => {
+    const gesture = Gesture.Pan()
     .enabled(!disabled)
     .activateAfterLongPress(REORDER_HOLD_MS)
     .maxPointers(1)
@@ -302,9 +305,15 @@ export function PlanEditorReorderableRow({
     .onFinalize(() => {
       translationY.value = withTiming(0, { duration: motion.setCommitMs });
       scheduleOnRN(publishPreview, null);
-    }), [
+    });
+    if (dragActivationDistance !== undefined) {
+      gesture.activeOffsetY([-dragActivationDistance, dragActivationDistance]);
+    }
+    return gesture;
+  }, [
     count,
     disabled,
+    dragActivationDistance,
     finishDrag,
     motion.setCommitMs,
     position,

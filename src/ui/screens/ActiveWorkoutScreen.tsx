@@ -181,6 +181,7 @@ type CommittedExerciseReorderRefreshFailure = Readonly<{
 type ExerciseReorderFailure = Readonly<{
   sourcePosition: number;
   targetPosition: number;
+  request: ReorderExercisesInput;
   retry: () => void;
 }>;
 
@@ -1344,7 +1345,10 @@ function PopulatedWorkoutOverview({
     }
   };
 
-  const submitExerciseEdit = async (candidate: ExerciseEditCandidate) => {
+  const submitExerciseEdit = async (
+    candidate: ExerciseEditCandidate,
+    retryRequest?: ReplaceExerciseInput | RemoveExerciseInput,
+  ) => {
     if (exerciseEditBusy) {
       return;
     }
@@ -1358,32 +1362,34 @@ function PopulatedWorkoutOverview({
     setExerciseEditBusy(true);
     setExerciseEditFailure(null);
     setExerciseEditRecovery(null);
+    let commandRequest = retryRequest;
     try {
-      const occurredAtMs = nowMs();
-      const operation = candidate.action === "replace"
-        ? "replace_exercise"
-        : "remove_exercise";
-      const identity = {
-        operation,
-        sessionId,
-        sessionExerciseId: exercise.id,
-        expectedSessionRevision: currentView.revision,
-        expectedSessionExerciseRevision: exercise.revision,
-        occurredAtMs,
-        ...(candidate.action === "replace"
-          ? { libraryExerciseId: replacementExerciseId }
-          : {}),
-      };
-      const requestSha256 = await Crypto.digestStringAsync(
-        Crypto.CryptoDigestAlgorithm.SHA256,
-        stableJson(identity),
-      );
-      const requestId = `${operation}:${requestSha256}`;
-      const result = candidate.action === "replace"
-        ? await commands.replaceExercise?.({
-            requestId,
-            requestSha256,
-            sessionId,
+      commandRequest = retryRequest ?? await (async (): Promise<
+        ReplaceExerciseInput | RemoveExerciseInput
+      > => {
+        const occurredAtMs = nowMs();
+        const operation = candidate.action === "replace"
+          ? "replace_exercise"
+          : "remove_exercise";
+        const identity = {
+          operation,
+          sessionId,
+          sessionExerciseId: exercise.id,
+          expectedSessionRevision: currentView.revision,
+          expectedSessionExerciseRevision: exercise.revision,
+          occurredAtMs,
+          ...(candidate.action === "replace"
+            ? { libraryExerciseId: replacementExerciseId }
+            : {}),
+        };
+        const requestSha256 = await Crypto.digestStringAsync(
+          Crypto.CryptoDigestAlgorithm.SHA256,
+          stableJson(identity),
+        );
+        const requestId = `${operation}:${requestSha256}`;
+        if (candidate.action === "replace") {
+          return {
+            requestId, requestSha256, sessionId,
             expectedSessionRevision: currentView.revision,
             sessionExerciseId: exercise.id,
             expectedSessionExerciseRevision: exercise.revision,
@@ -1391,16 +1397,19 @@ function PopulatedWorkoutOverview({
             libraryExerciseId: replacementExerciseId ?? "",
             replacementSessionExerciseId: `${requestId}:exercise`,
             replacementSetId: `${requestId}:set`,
-          })
-        : await commands.removeExercise?.({
-            requestId,
-            requestSha256,
-            sessionId,
-            expectedSessionRevision: currentView.revision,
-            sessionExerciseId: exercise.id,
-            expectedSessionExerciseRevision: exercise.revision,
-            occurredAtMs,
-          });
+          };
+        }
+        return {
+          requestId, requestSha256, sessionId,
+          expectedSessionRevision: currentView.revision,
+          sessionExerciseId: exercise.id,
+          expectedSessionExerciseRevision: exercise.revision,
+          occurredAtMs,
+        };
+      })();
+      const result = candidate.action === "replace"
+        ? await commands.replaceExercise?.(commandRequest as ReplaceExerciseInput)
+        : await commands.removeExercise?.(commandRequest as RemoveExerciseInput);
       if (result === undefined) {
         throw new Error("exercise_edit_unavailable");
       }
@@ -1418,7 +1427,7 @@ function PopulatedWorkoutOverview({
       setExerciseEditFailure({
         ...candidate,
         retry: () => {
-          void submitExerciseEdit(candidate);
+          void submitExerciseEdit(candidate, commandRequest);
         },
       });
       setExerciseActionCandidate(null);
@@ -1433,6 +1442,7 @@ function PopulatedWorkoutOverview({
     sourcePosition: number,
     targetPosition: number,
     _method: PlanEditorReorderMethod = "fallback",
+    retryRequest?: ReorderExercisesInput,
   ) => {
     if (exerciseReorderBusy || sourcePosition === targetPosition) {
       return;
@@ -1450,28 +1460,32 @@ function PopulatedWorkoutOverview({
     setExerciseReorderBusy(true);
     setExerciseReorderFailure(null);
     setExerciseReorderRecovery(false);
+    let commandRequest = retryRequest;
     try {
-      const occurredAtMs = nowMs();
-      const identity = {
-        operation: "reorder_exercises",
-        sessionId,
-        expectedSessionRevision: currentView.revision,
-        occurredAtMs,
-        orderedSessionExerciseIds: orderedExercises.map(({ id }) => id),
-        expectedSessionExerciseRevisions: orderedExercises.map(({ id, revision }) => ({
-          sessionExerciseId: id,
-          revision,
-        })),
-      };
-      const requestSha256 = await Crypto.digestStringAsync(
-        Crypto.CryptoDigestAlgorithm.SHA256,
-        stableJson(identity),
-      );
-      const result = await commands.reorderExercises?.({
-        requestId: `reorder_exercises:${requestSha256}`,
-        requestSha256,
-        ...identity,
-      });
+      commandRequest = retryRequest ?? await (async (): Promise<ReorderExercisesInput> => {
+        const occurredAtMs = nowMs();
+        const identity = {
+          operation: "reorder_exercises",
+          sessionId,
+          expectedSessionRevision: currentView.revision,
+          occurredAtMs,
+          orderedSessionExerciseIds: orderedExercises.map(({ id }) => id),
+          expectedSessionExerciseRevisions: orderedExercises.map(({ id, revision }) => ({
+            sessionExerciseId: id,
+            revision,
+          })),
+        };
+        const requestSha256 = await Crypto.digestStringAsync(
+          Crypto.CryptoDigestAlgorithm.SHA256,
+          stableJson(identity),
+        );
+        return {
+          requestId: `reorder_exercises:${requestSha256}`,
+          requestSha256,
+          ...identity,
+        };
+      })();
+      const result = await commands.reorderExercises?.(commandRequest);
       if (result === undefined) {
         throw new Error("reorder_exercises_unavailable");
       }
@@ -1488,8 +1502,9 @@ function PopulatedWorkoutOverview({
       setExerciseReorderFailure({
         sourcePosition,
         targetPosition,
+        request: commandRequest as ReorderExercisesInput,
         retry: () => {
-          void submitExerciseReorder(sourcePosition, targetPosition);
+          void submitExerciseReorder(sourcePosition, targetPosition, "fallback", commandRequest);
         },
       });
     } finally {
@@ -1828,6 +1843,7 @@ function PopulatedWorkoutOverview({
                 {reorderMode ? <>
                   <PlanEditorReorderableRow
                     count={overviewExercises.length}
+                    dragActivationDistance={8}
                     disabled={exerciseReorderBusy}
                     label={exercise.name}
                     onMoveDown={() => {
@@ -2228,7 +2244,7 @@ function PopulatedWorkoutOverview({
             {exerciseActionsVisibleForId === null ? null : (
               <SecondaryAction
                 destructive
-                label="Remove exercise"
+                label="Delete exercise"
                 onPress={() => {
                   const exerciseId = exerciseActionsVisibleForId;
                   closeExerciseActions();
@@ -2417,14 +2433,18 @@ function PopulatedWorkoutOverview({
             ) ?? false;
             return hasCompletedHistory
               ? "This exercise has completed sets. They will be retained and this exercise will be marked Skipped, not deleted."
-              : `Remove ${exercise?.name ?? "this exercise"} from this workout?`;
+              : `Delete ${exercise?.name ?? "this exercise"} from this workout?`;
           })()}
           cancelLabel="Keep exercise"
           confirmBusy={exerciseEditBusy}
-          confirmLabel="Remove exercise"
-          confirmTestID="remove-exercise-confirm"
+          confirmLabel={`Confirm delete ${exercisesFor(view).find(
+            ({ id }) => id === exerciseActionCandidate.exerciseId,
+          )?.name ?? "exercise"}`}
+          confirmTestID="delete-exercise-confirm"
           destructive
-          heading="Remove exercise"
+          heading={`Delete ${exercisesFor(view).find(
+            ({ id }) => id === exerciseActionCandidate.exerciseId,
+          )?.name ?? "exercise"}?`}
           onCancel={() => {
             const exerciseId = exerciseActionCandidate.exerciseId;
             setExerciseActionCandidate(null);
