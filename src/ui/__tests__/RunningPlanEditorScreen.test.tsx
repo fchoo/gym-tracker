@@ -25,15 +25,15 @@ describe("RunningPlanEditorScreen", () => {
       savePlan={savePlan}
     /></AppearanceProvider>);
 
-    expect(screen.getByRole("header", { name: "New Running plan" })).toBeOnTheScreen();
-    await fireEvent.press(screen.getByRole("button", { name: "Add recovery" }));
-    expect(screen.getByRole("summary", { name: "1 phase · revision 1" })).toBeOnTheScreen();
+    expect(screen.getByRole("header", { name: "Goal and weekly sessions" })).toBeOnTheScreen();
+    await fireEvent.press(screen.getByRole("button", { name: "Add Recovery session" }));
+    expect(screen.getByText("1 phase")).toBeOnTheScreen();
     expect(screen.queryByLabelText("Running Recovery session")).not.toBeOnTheScreen();
-    await fireEvent.press(screen.getByRole("button", { name: "Delete recovery" }));
-    expect(screen.getByText("Remove recovery session?")).toBeOnTheScreen();
-    await fireEvent.press(screen.getByRole("button", { name: "Remove session" }));
+    await fireEvent.press(screen.getByRole("button", { name: "Delete Recovery session" }));
+    expect(screen.getByText("Delete Recovery session?")).toBeOnTheScreen();
+    await fireEvent.press(screen.getByRole("button", { name: "Delete session" }));
     expect(screen.queryByLabelText("Running Recovery session")).not.toBeOnTheScreen();
-    await fireEvent.press(screen.getByRole("button", { name: "Save changes" }));
+    await fireEvent.press(screen.getByRole("button", { name: "Create running plan" }));
     await waitFor(() => expect(savePlan).toHaveBeenCalledWith(expect.objectContaining({ sessions: [] })));
     expect(onSaved).toHaveBeenCalledWith("running-plan");
   });
@@ -49,11 +49,11 @@ describe("RunningPlanEditorScreen", () => {
     /></AppearanceProvider>);
 
     expect(view.getByText("No sessions yet")).toBeOnTheScreen();
-    await fireEvent.press(view.getByRole("button", { name: "Add recovery" }));
-    await fireEvent.press(view.getByRole("button", { name: "Delete recovery" }));
-    expect(view.getByText("Remove recovery session?" )).toBeOnTheScreen();
+    await fireEvent.press(view.getByRole("button", { name: "Add Recovery session" }));
+    await fireEvent.press(view.getByRole("button", { name: "Delete Recovery session" }));
+    expect(view.getByText("Delete Recovery session?" )).toBeOnTheScreen();
     expect(savePlan).not.toHaveBeenCalled();
-    await fireEvent.press(view.getByRole("button", { name: "Remove session" }));
+    await fireEvent.press(view.getByRole("button", { name: "Delete session" }));
     expect(view.getByText("No sessions yet")).toBeOnTheScreen();
     expect(savePlan).not.toHaveBeenCalled();
   });
@@ -66,8 +66,8 @@ describe("RunningPlanEditorScreen", () => {
       onSaved={jest.fn()}
       savePlan={jest.fn(async (draft: RunningPlanDraft): Promise<RunningPlanAggregate> => ({ ...draft, active: false, lifecycle: "inactive" }))}
     /></AppearanceProvider>);
-    for (const label of ["recovery", "long run", "progression", "tempo", "intervals", "hills", "fartlek"]) {
-      expect(screen.getByRole("button", { name: `Add ${label}` })).toBeOnTheScreen();
+    for (const label of ["Recovery", "Long run", "Progression", "Tempo", "Intervals", "Hills", "Fartlek"]) {
+      expect(screen.getByRole("button", { name: `Add ${label} session` })).toBeOnTheScreen();
     }
   });
 
@@ -90,8 +90,8 @@ describe("RunningPlanEditorScreen", () => {
       savePlan={savePlan}
     /></AppearanceProvider>);
 
-    await fireEvent.press(view.getByRole("button", { name: "Move recovery later" }));
-    await fireEvent.press(view.getByRole("button", { name: "Save changes" }));
+    await fireEvent(view.getByRole("adjustable", { name: "Reorder Monday · Recovery" }), "accessibilityAction", { nativeEvent: { actionName: "decrement" } });
+    await fireEvent.press(view.getByRole("button", { name: "Create running plan" }));
 
     await waitFor(() => expect(savePlan).toHaveBeenCalledWith(expect.objectContaining({
       sessions: [

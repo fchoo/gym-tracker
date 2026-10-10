@@ -146,8 +146,8 @@ describe("RunningSessionEditorScreen", () => {
     /></AppearanceProvider>);
 
     await view.findByRole("header", { name: "New session" });
-    await fireEvent.changeText(view.getByLabelText("Volume distance metres"), "5000");
-    await fireEvent.changeText(view.getByLabelText("RPE"), "5");
+    await fireEvent.changeText(view.getByLabelText("Volume (metres)"), "5000");
+    await fireEvent.changeText(view.getByLabelText("RPE (1–10)"), "5");
     await fireEvent.press(view.getByRole("button", { name: "Save session" }));
 
     await waitFor(() => expect(saveSession).toHaveBeenCalledWith(expect.objectContaining({
@@ -172,12 +172,13 @@ describe("RunningSessionEditorScreen", () => {
 
     await view.findByRole("header", { name: "New session" });
     await fireEvent.press(view.getByRole("button", { name: "Workout type Long run" }));
-    await fireEvent.changeText(view.getByLabelText("Volume distance metres"), "12000");
-    await fireEvent.changeText(view.getByLabelText("RPE"), "6");
+    await fireEvent.changeText(view.getByLabelText("Volume (metres)"), "12000");
+    await fireEvent.changeText(view.getByLabelText("RPE (1–10)"), "6");
     await fireEvent.press(view.getByRole("button", { name: "Save session" }));
 
-    await view.findByText("Long run session could not be saved. Your edits are still here. Try again.");
-    expect(view.getByLabelText("Volume distance metres")).toHaveProp("value", "12000");
+    await view.findByText("Save failed");
+    expect(view.getByText("Long run session could not be saved. Your edits are still here. Try again.")).toBeOnTheScreen();
+    expect(view.getByLabelText("Volume (metres)")).toHaveProp("value", "12000");
     expect(view.getByRole("button", { name: "Retry saving session" })).toBeOnTheScreen();
   });
 

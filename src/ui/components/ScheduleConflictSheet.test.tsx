@@ -1,5 +1,5 @@
 import { fireEvent, render, screen } from "@testing-library/react-native";
-import { describe, expect, it, jest } from "@jest/globals";
+import { afterEach, beforeEach, describe, expect, it, jest } from "@jest/globals";
 import React from "react";
 
 import { AppearanceProvider } from "../theme";
@@ -36,6 +36,15 @@ const reviewCases: [string, "move_strength" | "keep_both"][] = [
   ["Keep both · 2026-11-09", "keep_both"],
 ];
 
+let consoleError: jest.Spied<typeof console.error>;
+beforeEach(() => {
+  consoleError = jest.spyOn(console, "error").mockImplementation((message: unknown, ...rest: unknown[]) => {
+    if (typeof message === "string" && message.includes("testing environment is not configured to support act")) return;
+    throw new Error([message, ...rest].map(String).join(" "));
+  });
+});
+afterEach(() => consoleError.mockRestore());
+
 describe("ScheduleConflictSheet", () => {
   it("keeps every factual choice unselected until the owner reviews Move run", async () => {
     const onConfirm = jest.fn();
@@ -59,7 +68,7 @@ describe("ScheduleConflictSheet", () => {
 
     fireEvent.press(screen.getByRole("radio", { name: "Move run · 2026-11-10" }));
 
-    expect(await screen.findByText("Review schedule change")).toBeOnTheScreen();
+    expect(await screen.findByText("Confirm schedule change?")).toBeOnTheScreen();
     expect(screen.getByText("10K base · 2026-11-09 → 2026-11-10")).toBeOnTheScreen();
     expect(screen.getByText("Upper body · 2026-11-09 → 2026-11-09")).toBeOnTheScreen();
     fireEvent.press(screen.getByRole("button", { name: "Confirm schedule change" }));
@@ -70,7 +79,7 @@ describe("ScheduleConflictSheet", () => {
     const onConfirm = jest.fn();
     await render(<AppearanceProvider><ScheduleConflictSheet onCancel={jest.fn()} onConfirm={onConfirm} preview={preview} visible /></AppearanceProvider>);
     fireEvent.press(screen.getByRole("radio", { name: label }));
-    expect(await screen.findByText("Review schedule change")).toBeOnTheScreen();
+    expect(await screen.findByText("Confirm schedule change?")).toBeOnTheScreen();
     expect(screen.getByText(/Neither workout is completed or skipped/)).toBeOnTheScreen();
     fireEvent.press(screen.getByRole("button", { name: "Confirm schedule change" }));
     expect(onConfirm).toHaveBeenCalledWith({ choice, preview });

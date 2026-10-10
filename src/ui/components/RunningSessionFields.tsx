@@ -1,8 +1,10 @@
 import React from "react";
-import { Text, TextInput, View } from "react-native";
+import { StyleSheet, Text, View, type TextStyle } from "react-native";
 
 import type { RunningSessionKind } from "../../domains/running/contracts";
 import { PrimaryAction, SecondaryAction } from ".";
+import { PlanEditorTextField } from "./PlanEditorFields";
+import { space, typeScale, useAppTheme } from "../theme";
 
 export type RunningSessionTargetDraft = Readonly<{
   mode: "pace" | "heart_rate_zone" | "rpe";
@@ -108,18 +110,25 @@ export function validateRunningSessionFormDraft(draft: RunningSessionFormDraft):
 }
 
 function targetText(target: RunningSessionTargetDraft): string {
-  if (target.mode === "pace") return target.paceMsPerKm === "" ? "Pace" : `${target.paceMsPerKm} ms/km`;
+  if (target.mode === "pace") {
+    if (target.paceMsPerKm === "") return "Pace";
+    const seconds = Math.round(Number(target.paceMsPerKm) / 1000);
+    return `${Math.floor(seconds / 60)}:${String(seconds % 60).padStart(2, "0")} / km`;
+  }
   if (target.mode === "heart_rate_zone") return target.heartRateZone === "" ? "HR zone" : `Z${target.heartRateZone}`;
   return target.rpe === "" ? "RPE" : `RPE ${target.rpe}`;
 }
 
 export function runningSessionPreview(draft: RunningSessionFormDraft): string | null {
   if (validateRunningSessionFormDraft(draft) !== null) return null;
-  const volume = draft.volumeUnit === "distance" ? `${draft.volume} m` : `${draft.volume} ms`;
+  const quantityLabel = (value: string, unit: "distance" | "duration") => unit === "distance"
+    ? `${value} m`
+    : `${Math.round(Number(value) / 60_000)} min`;
+  const volume = quantityLabel(draft.volume, draft.volumeUnit);
   if (draft.kind === "recovery") return `${volume} · ${targetText(draft.target)}`;
   if (draft.kind === "long_run") return `${volume} · ${draft.finish.replaceAll("_", " ")}`;
   if (draft.kind === "progression") return `${volume} · ${draft.stages} stages · ${targetText(draft.startTarget)} → ${targetText(draft.finishTarget)}`;
-  const quantity = (value: string, unit: "distance" | "duration") => `${value} ${unit === "distance" ? "m" : "ms"}`;
+  const quantity = quantityLabel;
   if (draft.kind === "tempo") return draft.tempoFormat === "continuous"
     ? `${quantity(draft.work, draft.workUnit)} continuous · ${targetText(draft.target)}`
     : `${draft.repeats} × ${quantity(draft.work, draft.workUnit)} · ${quantity(draft.recovery, draft.recoveryUnit)}`;
@@ -137,13 +146,22 @@ function QuantityFields(props: Readonly<{
   unit: "distance" | "duration";
   onChange(value: string, unit?: "distance" | "duration"): void;
 }>) {
-  return <View accessibilityLabel={props.label}>
-    <Text>{props.label}</Text>
-    <View>
+  const { colors } = useAppTheme();
+  const durationValue = props.unit === "duration" && props.value !== ""
+    ? String(Number(props.value) / 60_000)
+    : props.value;
+  return <View accessibilityLabel={props.label} style={styles.field}>
+    <Text style={[typeScale.label as TextStyle, { color: colors.textPrimary }]}>{props.label}</Text>
+    <View style={styles.choiceGroup}>
       <SecondaryAction label={`${props.label} unit distance`} onPress={() => props.onChange(props.value, "distance")} />
       <SecondaryAction label={`${props.label} unit duration`} onPress={() => props.onChange(props.value, "duration")} />
     </View>
-    <TextInput accessibilityLabel={`${props.label} ${props.unit === "distance" ? "distance metres" : "duration milliseconds"}`} keyboardType="number-pad" onChangeText={(value) => props.onChange(value)} value={props.value} />
+    <PlanEditorTextField
+      keyboardType="decimal-pad"
+      label={props.unit === "distance" ? `${props.label} (metres)` : `${props.label} (minutes)`}
+      onChangeText={(value) => props.onChange(props.unit === "duration" && value !== "" ? String(Math.round(Number(value) * 60_000)) : value)}
+      value={durationValue}
+    />
   </View>;
 }
 
@@ -153,16 +171,19 @@ function TargetFields(props: Readonly<{
   onChange(target: RunningSessionTargetDraft): void;
 }>) {
   const prefix = props.label === "Easy target" || props.label === "Effort target" ? "" : `${props.label} `;
-  return <View accessibilityLabel={props.label}>
-    <Text>{props.label}</Text>
-    <View>
+  const { colors } = useAppTheme();
+  const paceSeconds = Math.round(Number(props.target.paceMsPerKm) / 1000);
+  const paceValue = props.target.paceMsPerKm === "" ? "" : `${Math.floor(paceSeconds / 60)}:${String(paceSeconds % 60).padStart(2, "0")}`;
+  return <View accessibilityLabel={props.label} style={styles.field}>
+    <Text style={[typeScale.label as TextStyle, { color: colors.textPrimary }]}>{props.label}</Text>
+    <View style={styles.choiceGroup}>
       <SecondaryAction label={`${prefix}Target: Pace`} onPress={() => props.onChange({ ...props.target, mode: "pace" })} />
       <SecondaryAction label={`${prefix}Target: HR zone`} onPress={() => props.onChange({ ...props.target, mode: "heart_rate_zone" })} />
       <SecondaryAction label={`${prefix}Target: RPE`} onPress={() => props.onChange({ ...props.target, mode: "rpe" })} />
     </View>
-    {props.target.mode === "pace" ? <TextInput accessibilityLabel={`${prefix}Pace milliseconds per kilometre`} keyboardType="number-pad" onChangeText={(paceMsPerKm) => props.onChange({ ...props.target, paceMsPerKm })} value={props.target.paceMsPerKm} /> : null}
-    {props.target.mode === "heart_rate_zone" ? <TextInput accessibilityLabel={`${prefix}HR zone`} keyboardType="number-pad" onChangeText={(heartRateZone) => props.onChange({ ...props.target, heartRateZone })} value={props.target.heartRateZone} /> : null}
-    {props.target.mode === "rpe" ? <TextInput accessibilityLabel={`${prefix}RPE`} keyboardType="number-pad" onChangeText={(rpe) => props.onChange({ ...props.target, rpe })} value={props.target.rpe} /> : null}
+    {props.target.mode === "pace" ? <PlanEditorTextField help="Minutes:seconds per kilometre, for example 5:30." label={`${prefix}Pace / km`} onChangeText={(pace) => { const [minutes, seconds = "0"] = pace.split(":"); const value = Number(minutes) * 60_000 + Number(seconds) * 1000; props.onChange({ ...props.target, paceMsPerKm: Number.isFinite(value) ? String(value) : "" }); }} value={paceValue} /> : null}
+    {props.target.mode === "heart_rate_zone" ? <PlanEditorTextField keyboardType="number-pad" label={`${prefix}HR zone (Z1–Z5)`} onChangeText={(heartRateZone) => props.onChange({ ...props.target, heartRateZone })} value={props.target.heartRateZone} /> : null}
+    {props.target.mode === "rpe" ? <PlanEditorTextField keyboardType="number-pad" label={`${prefix}RPE (1–10)`} onChangeText={(rpe) => props.onChange({ ...props.target, rpe })} value={props.target.rpe} /> : null}
   </View>;
 }
 
@@ -176,28 +197,26 @@ export function RunningSessionFields(props: Readonly<{
   const isContextual = draft.kind === "recovery" || draft.kind === "long_run" || draft.kind === "progression";
 
   const kindLabel = draft.kind.replaceAll("_", " ").replace(/^./u, (value) => value.toUpperCase());
-  return <View accessibilityLabel={`Running ${kindLabel} session`}>
-    <Text>Day</Text>
-    <View>{WEEKDAYS.map((weekday) => <SecondaryAction key={weekday} label={`Day ${weekday}`} onPress={() => update({ weekday })} />)}</View>
-    <TextInput accessibilityLabel="Warm-up duration milliseconds" keyboardType="number-pad" onChangeText={(warmUp) => update({ warmUp })} value={draft.warmUp} />
-    <TextInput accessibilityLabel="Cool-down duration milliseconds" keyboardType="number-pad" onChangeText={(coolDown) => update({ coolDown })} value={draft.coolDown} />
+  const { colors } = useAppTheme();
+  const durationValue = (value: string) => value === "" ? "" : String(Number(value) / 60_000);
+  const durationUpdate = (key: "warmUp" | "coolDown", value: string) => update({ [key]: value === "" ? "" : String(Math.round(Number(value) * 60_000)) });
+  return <View accessibilityLabel={`Running ${kindLabel} session`} style={styles.form}>
+    <Text style={[typeScale.label as TextStyle, { color: colors.textPrimary }]}>Day</Text>
+    <View style={styles.choiceGroup}>{WEEKDAYS.map((weekday) => <SecondaryAction key={weekday} label={`Day ${weekday}`} onPress={() => update({ weekday })} />)}</View>
+    <PlanEditorTextField help="Optional. Enter minutes; zero is shown as None after save." keyboardType="decimal-pad" label="Warm-up (minutes)" onChangeText={(warmUp) => durationUpdate("warmUp", warmUp)} value={durationValue(draft.warmUp)} />
+    <PlanEditorTextField help="Optional. Enter minutes; zero is shown as None after save." keyboardType="decimal-pad" label="Cool-down (minutes)" onChangeText={(coolDown) => durationUpdate("coolDown", coolDown)} value={durationValue(draft.coolDown)} />
     {isContextual ? <>
-      <Text>Volume</Text>
-      <View>
+      <Text style={[typeScale.label as TextStyle, { color: colors.textPrimary }]}>Volume</Text>
+      <View style={styles.choiceGroup}>
         <SecondaryAction label="Volume unit distance" onPress={() => update({ volumeUnit: "distance" })} />
         <SecondaryAction label="Volume unit duration" onPress={() => update({ volumeUnit: "duration" })} />
       </View>
-      <TextInput
-        accessibilityLabel={`Volume ${draft.volumeUnit === "distance" ? "distance metres" : "duration milliseconds"}`}
-        keyboardType="number-pad"
-        onChangeText={(volume) => update({ volume })}
-        value={draft.volume}
-      />
+      <PlanEditorTextField keyboardType="decimal-pad" label={draft.volumeUnit === "distance" ? "Volume (metres)" : "Volume (minutes)"} onChangeText={(volume) => update({ volume: draft.volumeUnit === "duration" && volume !== "" ? String(Math.round(Number(volume) * 60_000)) : volume })} value={draft.volumeUnit === "duration" ? durationValue(draft.volume) : draft.volume} />
     </> : null}
     {draft.kind === "recovery" ? <TargetFields label="Easy target" target={draft.target} onChange={(target) => update({ target })} /> : null}
     {draft.kind === "long_run" ? <>
       <TargetFields label="Effort target" target={draft.target} onChange={(target) => update({ target })} />
-      <Text>Finish</Text>
+      <Text style={[typeScale.label as TextStyle, { color: colors.textPrimary }]}>Finish</Text>
       {([
         ["easy_throughout", "Easy throughout"],
         ["steady_finish", "Steady finish"],
@@ -205,40 +224,46 @@ export function RunningSessionFields(props: Readonly<{
       ] as const).map(([finish, label]) => <SecondaryAction key={finish} label={label} onPress={() => update({ finish })} />)}
     </> : null}
     {draft.kind === "progression" ? <>
-      <TextInput accessibilityLabel="Stages" keyboardType="number-pad" onChangeText={(stages) => update({ stages })} value={draft.stages} />
+      <PlanEditorTextField keyboardType="number-pad" label="Stages" onChangeText={(stages) => update({ stages })} value={draft.stages} />
       <TargetFields label="Start target" target={draft.startTarget} onChange={(startTarget) => update({ startTarget })} />
       <TargetFields label="Finish target" target={draft.finishTarget} onChange={(finishTarget) => update({ finishTarget })} />
     </> : null}
     {draft.kind === "tempo" ? <>
-      <Text>Format</Text>
+      <Text style={[typeScale.label as TextStyle, { color: colors.textPrimary }]}>Format</Text>
       <SecondaryAction label="Format Continuous" onPress={() => update({ tempoFormat: "continuous" })} />
       <SecondaryAction label="Format Tempo repeats" onPress={() => update({ tempoFormat: "tempo_repeats" })} />
-      {draft.tempoFormat === "tempo_repeats" ? <TextInput accessibilityLabel="Repeats" keyboardType="number-pad" onChangeText={(repeats) => update({ repeats })} value={draft.repeats} /> : null}
+      {draft.tempoFormat === "tempo_repeats" ? <PlanEditorTextField keyboardType="number-pad" label="Repeats" onChangeText={(repeats) => update({ repeats })} value={draft.repeats} /> : null}
       <QuantityFields label="Work" value={draft.work} unit={draft.workUnit} onChange={(work, workUnit) => update({ work, ...(workUnit === undefined ? {} : { workUnit }) })} />
       {draft.tempoFormat === "tempo_repeats" ? <QuantityFields label="Recovery" value={draft.recovery} unit={draft.recoveryUnit} onChange={(recovery, recoveryUnit) => update({ recovery, ...(recoveryUnit === undefined ? {} : { recoveryUnit }) })} /> : null}
       <TargetFields label="Intensity target" target={draft.target} onChange={(target) => update({ target })} />
     </> : null}
     {draft.kind === "intervals" ? <>
-      <TextInput accessibilityLabel="Repeats" keyboardType="number-pad" onChangeText={(repeats) => update({ repeats })} value={draft.repeats} />
+      <PlanEditorTextField keyboardType="number-pad" label="Repeats" onChangeText={(repeats) => update({ repeats })} value={draft.repeats} />
       <QuantityFields label="Work" value={draft.work} unit={draft.workUnit} onChange={(work, workUnit) => update({ work, ...(workUnit === undefined ? {} : { workUnit }) })} />
       <QuantityFields label="Recovery" value={draft.recovery} unit={draft.recoveryUnit} onChange={(recovery, recoveryUnit) => update({ recovery, ...(recoveryUnit === undefined ? {} : { recoveryUnit }) })} />
       <TargetFields label="Intensity target" target={draft.target} onChange={(target) => update({ target })} />
     </> : null}
     {draft.kind === "hills" ? <>
-      <TextInput accessibilityLabel="Repeats" keyboardType="number-pad" onChangeText={(repeats) => update({ repeats })} value={draft.repeats} />
+      <PlanEditorTextField keyboardType="number-pad" label="Repeats" onChangeText={(repeats) => update({ repeats })} value={draft.repeats} />
       <QuantityFields label="Uphill" value={draft.work} unit={draft.workUnit} onChange={(work, workUnit) => update({ work, ...(workUnit === undefined ? {} : { workUnit }) })} />
       <QuantityFields label="Return recovery" value={draft.recovery} unit={draft.recoveryUnit} onChange={(recovery, recoveryUnit) => update({ recovery, ...(recoveryUnit === undefined ? {} : { recoveryUnit }) })} />
       <TargetFields label="Effort target" target={draft.target} onChange={(target) => update({ target })} />
     </> : null}
     {draft.kind === "fartlek" ? <>
-      <Text>Style</Text>
+      <Text style={[typeScale.label as TextStyle, { color: colors.textPrimary }]}>Style</Text>
       <SecondaryAction label="Style Structured" onPress={() => update({ fartlekStyle: "structured" })} />
       <SecondaryAction label="Style Unstructured" onPress={() => update({ fartlekStyle: "unstructured" })} />
-      <TextInput accessibilityLabel="Surges / repeats" keyboardType="number-pad" onChangeText={(repeats) => update({ repeats })} value={draft.repeats} />
-      {draft.fartlekStyle === "structured" ? <><QuantityFields label="Fast segment" value={draft.work} unit={draft.workUnit} onChange={(work, workUnit) => update({ work, ...(workUnit === undefined ? {} : { workUnit }) })} /><QuantityFields label="Easy float / recovery" value={draft.recovery} unit={draft.recoveryUnit} onChange={(recovery, recoveryUnit) => update({ recovery, ...(recoveryUnit === undefined ? {} : { recoveryUnit }) })} /></> : <><TextInput accessibilityLabel="Fast cue" maxLength={120} onChangeText={(fastCue) => update({ fastCue })} value={draft.fastCue} /><TextInput accessibilityLabel="Easy recovery cue" maxLength={120} onChangeText={(easyRecoveryCue) => update({ easyRecoveryCue })} value={draft.easyRecoveryCue} /></>}
+      <PlanEditorTextField keyboardType="number-pad" label="Surges / repeats" onChangeText={(repeats) => update({ repeats })} value={draft.repeats} />
+      {draft.fartlekStyle === "structured" ? <><QuantityFields label="Fast segment" value={draft.work} unit={draft.workUnit} onChange={(work, workUnit) => update({ work, ...(workUnit === undefined ? {} : { workUnit }) })} /><QuantityFields label="Easy float / recovery" value={draft.recovery} unit={draft.recoveryUnit} onChange={(recovery, recoveryUnit) => update({ recovery, ...(recoveryUnit === undefined ? {} : { recoveryUnit }) })} /></> : <><PlanEditorTextField label="Fast cue" maxLength={120} onChangeText={(fastCue) => update({ fastCue })} value={draft.fastCue} /><PlanEditorTextField label="Easy recovery cue" maxLength={120} onChangeText={(easyRecoveryCue) => update({ easyRecoveryCue })} value={draft.easyRecoveryCue} /></>}
       <TargetFields label="Effort target" target={draft.target} onChange={(target) => update({ target })} />
     </> : null}
-    <Text>Session preview</Text>
-    <Text>{preview ?? "Complete the visible fields to preview this session."}</Text>
+    <Text accessibilityRole="header" style={[typeScale.sectionTitle as TextStyle, { color: colors.textPrimary }]}>Session preview</Text>
+    <Text style={[typeScale.body as TextStyle, { color: colors.textSecondary }]}>{preview ?? "Complete the visible fields to preview this session."}</Text>
   </View>;
 }
+
+const styles = StyleSheet.create({
+  choiceGroup: { gap: space[2] },
+  field: { gap: space[1] },
+  form: { gap: space[4] },
+});

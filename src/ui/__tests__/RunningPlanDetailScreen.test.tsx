@@ -1,5 +1,5 @@
 import { fireEvent, render, screen } from "@testing-library/react-native";
-import { describe, expect, it, jest } from "@jest/globals";
+import { afterEach, beforeEach, describe, expect, it, jest } from "@jest/globals";
 import React from "react";
 
 import type { RunningPlanAggregate } from "../../domains/running/contracts";
@@ -28,19 +28,31 @@ const collisionPreview = {
   confirmationToken: "schedule-collision-preview-v1:test",
 } as const;
 
+let consoleError: jest.Spied<typeof console.error>;
+beforeEach(() => {
+  consoleError = jest.spyOn(console, "error").mockImplementation((message: unknown, ...rest: unknown[]) => {
+    if (typeof message === "string" && message.includes("testing environment is not configured to support act")) return;
+    // Keep this guard narrow: a new component error still fails the focused suite.
+    throw new Error([message, ...rest].map(String).join(" "));
+  });
+});
+afterEach(() => consoleError.mockRestore());
+
 describe("RunningPlanDetailScreen", () => {
   it("shows factual inactive goal, pace, zero-safe facts, and stable same-day slot order", async () => {
     await render(<AppearanceProvider><RunningPlanDetailScreen planId="running-1" loadPlan={jest.fn(async () => plan)} onBack={jest.fn()} onEdit={jest.fn()} onNewSession={jest.fn()} onEditSession={jest.fn()} onGarmin={jest.fn()} createLifecycleRequestId={() => "lifecycle-1"} previewLifecycle={jest.fn(async () => lifecyclePreview)} confirmLifecycle={jest.fn(async () => ({ ...plan, lifecycle: "active" as const, active: true }))} /></AppearanceProvider>);
     await screen.findByText("INACTIVE");
-    expect(screen.getByText("Goal · 10000 m")).toBeOnTheScreen();
-    expect(screen.getByText("Target pace · 6:00 / km")).toBeOnTheScreen();
-    expect(screen.getAllByText(/Monday/).map((node) => node.props.children).join(" ")).toContain("recovery");
+    expect(screen.getByText("Goal distance")).toBeOnTheScreen();
+    expect(screen.getByText("10000 m")).toBeOnTheScreen();
+    expect(screen.getByText("6:00 / km")).toBeOnTheScreen();
+    expect(screen.getByText("Monday · Recovery")).toBeOnTheScreen();
     expect(screen.getByRole("button", { name: "Sync Garmin / match activity" })).toBeOnTheScreen();
   });
 
   it("shows an explicit empty weekly structure without creating a session", async () => {
     await render(<AppearanceProvider><RunningPlanDetailScreen planId="running-1" loadPlan={jest.fn(async () => ({ ...plan, sessions: [] }))} onBack={jest.fn()} onEdit={jest.fn()} onNewSession={jest.fn()} onEditSession={jest.fn()} onGarmin={jest.fn()} createLifecycleRequestId={() => "lifecycle-1"} previewLifecycle={jest.fn(async () => lifecyclePreview)} confirmLifecycle={jest.fn(async () => ({ ...plan, lifecycle: "active" as const, active: true }))} /></AppearanceProvider>);
-    expect(await screen.findByText("No weekly sessions scheduled.")).toBeOnTheScreen();
+    expect(await screen.findByText("No sessions yet")).toBeOnTheScreen();
+    expect(screen.getByText("Add a Recovery, Long run, Progression, Tempo, Intervals, Hills, or Fartlek session.")).toBeOnTheScreen();
   });
 
   it("requires a reviewed sport-scoped lifecycle confirmation, retains review after failure, and updates only from readback", async () => {
@@ -57,12 +69,12 @@ describe("RunningPlanDetailScreen", () => {
     await render(<AppearanceProvider><RunningPlanDetailScreen planId="running-1" loadPlan={jest.fn(async () => plan)} onBack={jest.fn()} onEdit={jest.fn()} onNewSession={jest.fn()} onEditSession={jest.fn()} onGarmin={jest.fn()} createLifecycleRequestId={() => "lifecycle-1"} previewLifecycle={previewLifecycle} confirmLifecycle={confirmLifecycle} /></AppearanceProvider>);
     await screen.findByText("INACTIVE");
     fireEvent.press(screen.getByRole("button", { name: "Preview activation" }));
-    expect(await screen.findByText("Review activate")).toBeOnTheScreen();
-    expect(screen.getByText("Active Running schedule affected · Other Running · revision 8")).toBeOnTheScreen();
-    fireEvent.press(screen.getByRole("button", { name: "Confirm activate" }));
+    expect(await screen.findByText("Activate 10K base?")).toBeOnTheScreen();
+    expect(screen.getByText(/active Running schedule for Other Running/)).toBeOnTheScreen();
+    fireEvent.press(screen.getByRole("button", { name: "Activate plan" }));
     expect(await screen.findByText("Running lifecycle needs attention")).toBeOnTheScreen();
-    expect(screen.getByText("Review activate")).toBeOnTheScreen();
-    fireEvent.press(screen.getByRole("button", { name: "Confirm activate" }));
+    expect(screen.getByText("Activate 10K base?")).toBeOnTheScreen();
+    fireEvent.press(screen.getByRole("button", { name: "Activate plan" }));
     expect(await screen.findByText("ACTIVE")).toBeOnTheScreen();
     expect(confirmLifecycle).toHaveBeenCalledWith(expect.objectContaining({ requestId: "lifecycle-1", preview: expect.objectContaining({ planId: "running-1" }) }));
   });
@@ -73,11 +85,11 @@ describe("RunningPlanDetailScreen", () => {
     await render(<AppearanceProvider><RunningPlanDetailScreen planId="running-1" loadPlan={jest.fn(async () => plan)} onBack={jest.fn()} onEdit={jest.fn()} onNewSession={jest.fn()} onEditSession={jest.fn()} onGarmin={jest.fn()} createLifecycleRequestId={() => "lifecycle-1"} previewLifecycle={jest.fn(async () => lifecyclePreview)} confirmLifecycle={jest.fn(async () => plan)} createCollisionRequestId={() => "collision-request"} previewScheduleCollisionForPlan={previewScheduleCollisionForPlan} commitScheduleCollisionChoice={commitScheduleCollisionChoice} /></AppearanceProvider>);
     await screen.findByText("INACTIVE");
     fireEvent.press(screen.getByRole("button", { name: "Review schedule collision" }));
-    expect(await screen.findByText("Schedule conflict")).toBeOnTheScreen();
+    expect(await screen.findByText("Monday conflict")).toBeOnTheScreen();
     fireEvent.press(screen.getByRole("radio", { name: "Move run · 2026-11-10" }));
     fireEvent.press(await screen.findByRole("button", { name: "Confirm schedule change" }));
     expect(await screen.findByText("Schedule collision needs attention")).toBeOnTheScreen();
-    expect(screen.getByText("Schedule changed while you were reviewing. Reload the actual dates before confirming.")).toBeOnTheScreen();
+    expect(screen.getByText("Schedule changed while you were reviewing. Check the latest dates and choose again.")).toBeOnTheScreen();
     expect(commitScheduleCollisionChoice).toHaveBeenCalledWith(expect.objectContaining({ requestId: "collision-request", preview: collisionPreview }));
   });
 });

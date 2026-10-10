@@ -17,12 +17,12 @@ describe("RunningSessionFields", () => {
       onChange={onChange}
     /></AppearanceProvider>);
 
-    expect(view.getByLabelText("Volume distance metres")).toBeOnTheScreen();
+    expect(view.getByLabelText("Volume (metres)")).toBeOnTheScreen();
     expect(view.getByText("Easy target")).toBeOnTheScreen();
     expect(view.queryByText("Finish")).not.toBeOnTheScreen();
     expect(view.queryByText("Stages")).not.toBeOnTheScreen();
 
-    fireEvent.changeText(view.getByLabelText("Volume distance metres"), "5000");
+    fireEvent.changeText(view.getByLabelText("Volume (metres)"), "5000");
     expect(onChange).toHaveBeenLastCalledWith(expect.objectContaining({ volume: "5000" }));
   });
 
@@ -58,7 +58,7 @@ describe("RunningSessionFields", () => {
 
     expect(view.getByText("Format")).toBeOnTheScreen();
     expect(view.getByRole("button", { name: "Format Continuous" })).toBeOnTheScreen();
-    expect(view.getByLabelText("Work duration milliseconds")).toBeOnTheScreen();
+    expect(view.getByLabelText("Work (minutes)")).toBeOnTheScreen();
     expect(view.getByText("Intensity target")).toBeOnTheScreen();
     expect(view.queryByLabelText("Repeats")).not.toBeOnTheScreen();
     expect(view.queryByLabelText("Recovery duration milliseconds")).not.toBeOnTheScreen();
@@ -68,8 +68,8 @@ describe("RunningSessionFields", () => {
       onChange={onChange}
     /></AppearanceProvider>);
     expect(view.getByLabelText("Repeats")).toBeOnTheScreen();
-    expect(view.getByLabelText("Work duration milliseconds")).toBeOnTheScreen();
-    expect(view.getByLabelText("Recovery duration milliseconds")).toBeOnTheScreen();
+    expect(view.getByLabelText("Work (minutes)")).toBeOnTheScreen();
+    expect(view.getByLabelText("Recovery (minutes)")).toBeOnTheScreen();
     expect(view.getByText("Intensity target")).toBeOnTheScreen();
     expect(view.queryByText("Format")).not.toBeOnTheScreen();
   });
@@ -81,10 +81,10 @@ describe("RunningSessionFields", () => {
     /></AppearanceProvider>);
 
     expect(view.getByLabelText("Repeats")).toBeOnTheScreen();
-    expect(view.getByLabelText("Uphill duration milliseconds")).toBeOnTheScreen();
-    expect(view.getByLabelText("Return recovery duration milliseconds")).toBeOnTheScreen();
+    expect(view.getByLabelText("Uphill (minutes)")).toBeOnTheScreen();
+    expect(view.getByLabelText("Return recovery (minutes)")).toBeOnTheScreen();
     expect(view.getByText("Effort target")).toBeOnTheScreen();
-    expect(view.queryByLabelText("Work duration milliseconds")).not.toBeOnTheScreen();
+    expect(view.queryByLabelText("Work (minutes)")).not.toBeOnTheScreen();
   });
 
   it("keeps Structured and Unstructured Fartlek fields distinct", async () => {
@@ -94,8 +94,8 @@ describe("RunningSessionFields", () => {
     /></AppearanceProvider>);
     expect(view.getByRole("button", { name: "Style Structured" })).toBeOnTheScreen();
     expect(view.getByLabelText("Surges / repeats")).toBeOnTheScreen();
-    expect(view.getByLabelText("Fast segment duration milliseconds")).toBeOnTheScreen();
-    expect(view.getByLabelText("Easy float / recovery duration milliseconds")).toBeOnTheScreen();
+    expect(view.getByLabelText("Fast segment (minutes)")).toBeOnTheScreen();
+    expect(view.getByLabelText("Easy float / recovery (minutes)")).toBeOnTheScreen();
     expect(view.queryByLabelText("Fast cue")).not.toBeOnTheScreen();
 
     await view.rerender(<AppearanceProvider><RunningSessionFields
@@ -104,6 +104,6 @@ describe("RunningSessionFields", () => {
     /></AppearanceProvider>);
     expect(view.getByLabelText("Fast cue")).toBeOnTheScreen();
     expect(view.getByLabelText("Easy recovery cue")).toBeOnTheScreen();
-    expect(view.queryByLabelText("Fast segment duration milliseconds")).not.toBeOnTheScreen();
+    expect(view.queryByLabelText("Fast segment (minutes)")).not.toBeOnTheScreen();
   });
 });

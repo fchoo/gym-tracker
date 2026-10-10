@@ -1,8 +1,11 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
-import { Text, View } from "react-native";
+import { StyleSheet, Text, View, type TextStyle } from "react-native";
 
 import type { RunningPlanAggregate, RunningPlanSession, RunningSessionKind } from "../../domains/running/contracts";
-import { PrimaryAction, ScreenHeader, SecondaryAction } from "../components";
+import { InlineNotice, PrimaryAction, ScreenHeader, SecondaryAction } from "../components";
+import { ConfirmationDialog } from "../components/ConfirmationDialog";
+import { AdaptiveScreen } from "../layout/AdaptiveScreen";
+import { space, typeScale, useAppTheme } from "../theme";
 import {
   RunningSessionFields,
   initialRunningSessionFormDraft,
@@ -94,6 +97,7 @@ export function RunningSessionEditorScreen(props: Readonly<{
   onBack(): void;
   onSaved(sessionRootId: string): void;
 }>) {
+  const { colors } = useAppTheme();
   const [plan, setPlan] = useState<RunningPlanAggregate | null>(null);
   const [state, setState] = useState<"loading" | "ready" | "missing" | "error">("loading");
   const [drafts, setDrafts] = useState<Partial<Record<RunningSessionKind, RunningSessionFormDraft>>>({});
@@ -152,19 +156,12 @@ export function RunningSessionEditorScreen(props: Readonly<{
     } finally { setSaving(false); }
   };
 
-  if (state === "loading") return <View><Text>Loading session…</Text></View>;
-  if (state === "missing") return <View><ScreenHeader backAction={props.onBack} eyebrow="RUNNING" title="Session unavailable" /><Text>This session is no longer available.</Text></View>;
-  if (state === "error") return <View><ScreenHeader backAction={props.onBack} eyebrow="RUNNING" title="Session unavailable" /><Text>Session could not be loaded. Your edits were not changed.</Text><PrimaryAction label="Retry loading session" onPress={() => setLoadAttempt((attempt) => attempt + 1)} /></View>;
+  const header = <ScreenHeader backAction={() => setConfirmDiscard(true)} density="deep" eyebrow="RUNNING" title={props.mode === "create" ? "New session" : "Edit session"} />;
+  if (state === "loading") return <AdaptiveScreen primary={<>{header}<View accessibilityLiveRegion="polite" accessibilityRole="progressbar"><Text style={styles.srOnly}>Loading session</Text></View><Text style={[typeScale.body as TextStyle, { color: colors.textSecondary }]}>Loading session…</Text></>} testID="running-session-editor" />;
+  if (state === "missing") return <AdaptiveScreen primary={<>{header}<InlineNotice action={<SecondaryAction label="Back to running plan" onPress={props.onBack} />} body="This item is no longer available." heading="Session not found" tone="error" /></>} testID="running-session-editor" />;
+  if (state === "error") return <AdaptiveScreen primary={<>{header}<InlineNotice action={<SecondaryAction label="Retry loading session" onPress={() => setLoadAttempt((attempt) => attempt + 1)} />} body="Your edits were not changed. Try again." heading="Session could not be loaded" tone="error" /></>} testID="running-session-editor" />;
 
-  return <View testID="running-session-editor">
-    <ScreenHeader backAction={() => setConfirmDiscard(true)} eyebrow="RUNNING" title={props.mode === "create" ? "New session" : "Edit session"} />
-    <Text>Configure only the steps this workout needs.</Text>
-    <Text>Workout type</Text>
-    {(["recovery", "long_run", "progression", "tempo", "intervals", "hills", "fartlek"] as const).map((entry) => <SecondaryAction key={entry} label={`Workout type ${runningSessionKindLabel(entry)}`} onPress={() => selectKind(entry)} />)}
-    <RunningSessionFields draft={draft} onChange={update} />
-    {error === null ? null : <Text accessibilityRole="alert">{error}</Text>}
-    <PrimaryAction busy={saving} disabled={saving} label={saving ? "Saving session…" : "Save session"} onPress={() => void save()} />
-    {error === null ? null : <SecondaryAction label="Retry saving session" onPress={() => void save()} />}
-    {confirmDiscard ? <View accessibilityViewIsModal><Text>Discard session edits?</Text><SecondaryAction label="Keep editing" onPress={() => setConfirmDiscard(false)} /><PrimaryAction label="Discard changes" onPress={props.onBack} /></View> : null}
-  </View>;
+  return <><AdaptiveScreen primary={<><>{header}</><Text style={[typeScale.body as TextStyle, { color: colors.textSecondary }]}>Configure only the steps this workout needs.</Text><Text style={[typeScale.label as TextStyle, { color: colors.textPrimary }]}>Workout type</Text><View style={styles.choices}>{(["recovery", "long_run", "progression", "tempo", "intervals", "hills", "fartlek"] as const).map((entry) => <SecondaryAction key={entry} label={`Workout type ${runningSessionKindLabel(entry)}`} onPress={() => selectKind(entry)} />)}</View><RunningSessionFields draft={draft} onChange={update} />{error === null ? null : <InlineNotice action={<SecondaryAction label="Retry saving session" onPress={() => void save()} />} body={error} heading="Save failed" tone="error" />}<PrimaryAction busy={saving} disabled={saving} label={saving ? "Saving session…" : "Save session"} onPress={() => void save()} /></>} testID="running-session-editor" /><ConfirmationDialog alternateLabel="Discard changes" body="Your edits are still here. Choose whether to save the complete plan, discard the local draft, or keep editing." cancelLabel="Keep editing" confirmBusy={saving} confirmLabel="Save changes" heading="Save changes?" onAlternate={props.onBack} onCancel={() => setConfirmDiscard(false)} onConfirm={() => void save()} visible={confirmDiscard} /></>;
 }
+
+const styles = StyleSheet.create({ choices: { gap: space[2] }, srOnly: { height: 1, opacity: 0, width: 1 } });

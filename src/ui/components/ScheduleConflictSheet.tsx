@@ -43,6 +43,11 @@ function afterDate(
   return choice === `move_${sport}` ? occurrence.movedLocalDate : occurrence.localDate;
 }
 
+function weekday(localDate: string): string {
+  const date = new Date(`${localDate}T12:00:00Z`);
+  return Number.isNaN(date.getTime()) ? "Schedule" : new Intl.DateTimeFormat("en", { weekday: "long", timeZone: "UTC" }).format(date);
+}
+
 function RadioChoice({
   checked,
   label,
@@ -99,14 +104,14 @@ export function ScheduleConflictSheet({
   return (
     <>
       <BottomSheet
-        heading="Schedule conflict"
+        heading={`${weekday(preview.running.localDate)} conflict`}
         onCancel={close}
         restoreFocusRef={restoreFocusRef}
         testID="schedule-conflict-sheet"
         visible={visible && !reviewing}
       >
         <Text style={[typeScale.body as TextStyle, { color: colors.textSecondary }]}>
-          {`${preview.running.planName} and ${preview.strength.planName} overlap on ${preview.running.localDate}. Choose a calendar arrangement.`}
+          {`${preview.running.planName} and ${preview.strength.planName} overlap. Choose a calendar arrangement; no medical judgment is made.`}
         </Text>
         <View accessibilityRole="radiogroup" style={styles.choices}>
           {factualChoices.map((candidate) => (
@@ -123,7 +128,7 @@ export function ScheduleConflictSheet({
             {error}
           </Text>
         )}
-        <SecondaryAction label="Back" onPress={close} />
+        <SecondaryAction label="Keep current schedule" onPress={close} />
       </BottomSheet>
       {choice === null ? null : (
         <ConfirmationDialog
@@ -131,7 +136,7 @@ export function ScheduleConflictSheet({
           cancelLabel="Keep current schedule"
           confirmBusy={busy}
           confirmLabel="Confirm schedule change"
-          heading="Review schedule change"
+          heading="Confirm schedule change?"
           onCancel={close}
           onConfirm={() => onConfirm({ choice, preview })}
           restoreFocusRef={restoreFocusRef}
