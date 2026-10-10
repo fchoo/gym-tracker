@@ -26,12 +26,13 @@ export function WorkoutActionDock({
   const busy = state === "saving";
   return (
     <View style={styles.dock} testID="workout-action-dock">
-      <View style={styles.action}>
+      <View style={[styles.action, styles.addAction]} testID="workout-action-dock-add">
         <SecondaryAction
           disabled={busy}
           label="Add exercise"
           onPress={onAddExercise}
           ref={addExerciseRef}
+          style={styles.compactAction}
         />
       </View>
       <View style={styles.action}>
@@ -39,6 +40,7 @@ export function WorkoutActionDock({
           busy={busy}
           label={completeLabel}
           onPress={onComplete}
+          style={styles.compactAction}
         />
       </View>
     </View>
@@ -48,9 +50,12 @@ export function WorkoutActionDock({
 const styles = StyleSheet.create({
   dock: {
     flexDirection: "row",
+    flexWrap: "wrap",
     gap: space[2],
     paddingHorizontal: space[2],
     paddingVertical: space[1],
   },
-  action: { flex: 1 },
+  action: { flexBasis: 0, flexGrow: 1, minWidth: 0 },
+  addAction: { flexBasis: 128, minWidth: 128 },
+  compactAction: { minHeight: 56 },
 });

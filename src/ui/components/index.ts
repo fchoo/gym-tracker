@@ -38,6 +38,7 @@ import {
   View,
   type PressableProps,
   type PressableStateCallbackType,
+  type StyleProp,
   type TextStyle,
   type ViewStyle,
 } from "react-native";
@@ -94,6 +95,7 @@ type ActionProps = Readonly<{
   onAccessibilityAction?: PressableProps["onAccessibilityAction"];
   busy?: boolean;
   disabled?: boolean;
+  style?: StyleProp<ViewStyle>;
   testID?: string;
 }>;
 
@@ -370,6 +372,7 @@ export const PrimaryAction = forwardRef<View, ActionProps>(
       onAccessibilityAction,
       busy = false,
       disabled = false,
+      style,
       testID,
     },
     ref,
@@ -393,6 +396,7 @@ export const PrimaryAction = forwardRef<View, ActionProps>(
         ref,
         style: ({ pressed }: { pressed: boolean }) => [
           styles.primaryAction,
+          style,
           {
             backgroundColor: pressed ? colors.actionPressed : colors.action,
             opacity: isDisabled ? 0.62 : 1,
@@ -408,7 +412,7 @@ export const PrimaryAction = forwardRef<View, ActionProps>(
 /** Workout-root-only primary action. Orange is reserved for this hierarchy. */
 export const WorkoutPrimaryAction = forwardRef<View, ActionProps>(
   function WorkoutPrimaryActionElement(
-    { label, onPress, accessibilityHint, busy = false, disabled = false, testID },
+    { label, onPress, accessibilityHint, busy = false, disabled = false, style, testID },
     ref,
   ) {
     const { colors } = useAppTheme();
@@ -427,6 +431,8 @@ export const WorkoutPrimaryAction = forwardRef<View, ActionProps>(
         ref,
         style: ({ pressed }: { pressed: boolean }) => [
           styles.primaryAction,
+          styles.workoutPrimaryAction,
+          style,
           {
             backgroundColor: pressed ? colors.workoutPrimaryActionPressed : colors.workoutPrimaryAction,
             opacity: isDisabled ? 0.62 : 1,
@@ -456,6 +462,7 @@ export const SecondaryAction = forwardRef<
     busy = false,
     disabled = false,
     destructive = false,
+    style,
     testID,
   },
   ref,
@@ -478,6 +485,7 @@ export const SecondaryAction = forwardRef<
       ref,
       style: ({ pressed }: { pressed: boolean }) => [
         styles.secondaryAction,
+        style,
         {
           backgroundColor: pressed ? colors.surfaceSubtle : colors.surface,
           borderColor: destructive ? colors.destructive : colors.divider,
@@ -1327,6 +1335,10 @@ const styles = StyleSheet.create({
     paddingHorizontal: space[4],
     paddingVertical: space[2],
     width: "100%",
+  },
+  workoutPrimaryAction: {
+    borderRadius: 16,
+    minHeight: 64,
   },
   secondaryAction: {
     alignItems: "center",
