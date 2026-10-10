@@ -607,7 +607,9 @@ describe("OwnedPlanEditorScreen create and save plan", () => {
         code: "owned_plan_revision_conflict",
       });
     });
-    const loadPlan = jest.fn()
+    const loadPlan = jest.fn<
+      React.ComponentProps<typeof OwnedPlanEditorScreen>["loadPlan"]
+    >()
       .mockResolvedValueOnce(completeSnapshot({ name: "Original plan" }))
       .mockResolvedValueOnce(latest);
     await renderEditor({ loadPlan, savePlan });
