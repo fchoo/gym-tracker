@@ -858,7 +858,7 @@ function ExercisesContent({
       <InlineNotice
         action={
           <SecondaryAction
-            label="Retry exercise search"
+            label="Retry loading Library"
             onPress={onRetry}
           />
         }
@@ -876,8 +876,8 @@ function ExercisesContent({
         <SectionHeader title="Results" />
         {browse.items.length === 0 ? (
           <InlineNotice
-            body="Try another name or alias, or clear filters to see all available exercises."
-            heading="No exercises match"
+            body="No exercise matches your search and current filters."
+            heading="No matches"
           />
         ) : (
           <ExerciseRows
@@ -1785,12 +1785,12 @@ export function LibraryScreen({
               <InlineNotice
                 action={
                   <SecondaryAction
-                    label="Retry Library refresh"
+                    label="Retry refreshing Library"
                     onPress={requestLibraryRefresh}
                   />
                 }
-                body="Library could not be refreshed. Your current content, selection, search, and filters are unchanged."
-                heading="Library refresh failed"
+                body="Library could not refresh. Your current results are still shown."
+                heading="Library could not refresh"
                 tone="error"
               />
             )}
@@ -1799,7 +1799,7 @@ export function LibraryScreen({
                 action={
                   <SecondaryAction
                     busy={loadRetrying}
-                    label="Retry Library"
+                    label="Retry loading Library"
                     onPress={retryInitialLoad}
                   />
                 }

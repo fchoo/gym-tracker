@@ -313,7 +313,7 @@ describe("LibraryScreen section state", () => {
     );
 
     expect(await screen.findByText(
-      "Library could not be refreshed. Your current content, selection, search, and filters are unchanged.",
+      "Library could not refresh. Your current results are still shown.",
     )).toBeOnTheScreen();
     expect(screen.getByText("Upper / Lower")).toBeOnTheScreen();
     expect(screen.queryByText("Library could not be loaded"))
@@ -641,7 +641,8 @@ describe("LibraryScreen Material 3 discovery controls", () => {
     await fireEvent.changeText(exercisesSearch, "zero");
     expect(await screen.findByLabelText("No Search exercises results"))
       .toBeOnTheScreen();
-    expect(screen.getByText("No exercises match")).toBeOnTheScreen();
+    expect(screen.getByText("No matches")).toBeOnTheScreen();
+    expect(screen.getByText("No exercise matches your search and current filters.")).toBeOnTheScreen();
     await fireEvent.changeText(exercisesSearch, "one");
     expect(await screen.findByLabelText("1 Search exercises result"))
       .toBeOnTheScreen();
@@ -1370,7 +1371,7 @@ describe("LibraryScreen committed content update and UI truths", () => {
     expect(await screen.findByText(
       "Library could not be loaded. Your plans and exercises were not changed. Try again.",
     )).toBeOnTheScreen();
-    expect(screen.getByRole("button", { name: "Retry Library" }))
+    expect(screen.getByRole("button", { name: "Retry loading Library" }))
       .toBeOnTheScreen();
   });
 
@@ -1416,7 +1417,7 @@ describe("LibraryScreen committed content update and UI truths", () => {
     });
 
     expect(await screen.findByText(
-      "Library could not be refreshed. Your current content, selection, search, and filters are unchanged.",
+      "Library could not refresh. Your current results are still shown.",
     )).toBeOnTheScreen();
     expect(screen.getByDisplayValue("upper")).toBeOnTheScreen();
     expect(screen.getByTestId("library-plan-card-upper-lower"))
@@ -1425,7 +1426,7 @@ describe("LibraryScreen committed content update and UI truths", () => {
       }));
 
     await fireEvent.press(screen.getByRole("button", {
-      name: "Retry Library refresh",
+      name: "Retry refreshing Library",
     }));
     await waitFor(() => {
       expect(refreshLibrary).toHaveBeenCalledTimes(2);
@@ -1480,7 +1481,7 @@ describe("LibraryScreen committed content update and UI truths", () => {
     });
 
     const retryAction = await screen.findByRole("button", {
-      name: "Retry Library",
+      name: "Retry loading Library",
     });
     await fireEvent.press(retryAction);
     await fireEvent.press(retryAction);
