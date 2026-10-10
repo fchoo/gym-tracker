@@ -88,7 +88,7 @@ describe("ActiveWorkoutScreen explicit-save editor", () => {
   it("keeps the exercise overflow to Timing, Replace exercise, and Delete exercise", async () => {
     await renderScreen();
 
-    await fireEvent.press(screen.getByRole("button", { name: "Back Squat exercise actions" }));
+    await fireEvent.press(screen.getByRole("button", { name: "Open Back Squat menu" }));
 
     expect(screen.getByRole("button", { name: "Timing" })).toBeOnTheScreen();
     expect(screen.getByRole("button", { name: "Replace exercise" })).toBeOnTheScreen();
@@ -189,7 +189,7 @@ describe("ActiveWorkoutScreen explicit-save editor", () => {
     await renderScreen(protectedView);
 
     await fireEvent.press(screen.getByRole("button", {
-      name: "Back Squat exercise actions",
+      name: "Open Back Squat menu",
     }));
     await fireEvent.press(screen.getByRole("button", { name: "Delete exercise" }));
 
@@ -217,7 +217,7 @@ describe("ActiveWorkoutScreen explicit-save editor", () => {
       </AppearanceProvider>,
     );
 
-    await fireEvent.press(screen.getByRole("button", { name: "Back Squat exercise actions" }));
+    await fireEvent.press(screen.getByRole("button", { name: "Open Back Squat menu" }));
     await fireEvent.press(screen.getByRole("button", { name: "Replace exercise" }));
     await fireEvent.press(screen.getByRole("radio", { name: "Deadlift" }));
     await fireEvent.press(screen.getByRole("button", { name: "Replace with Deadlift" }));

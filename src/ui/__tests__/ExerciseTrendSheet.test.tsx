@@ -33,7 +33,7 @@ describe("ExerciseTrendSheet", () => {
     expect(rendered.getByText("Recent")).toBeTruthy();
     expect(rendered.getByText("Best")).toBeTruthy();
     expect(rendered.getByText("Change")).toBeTruthy();
-    expect(rendered.getByLabelText("Back Squat comparable history chart")).toBeTruthy();
+    expect(rendered.getByLabelText("Exercise performance over six sessions")).toBeTruthy();
     expect(rendered.getByText(/24 August 2026/u)).toBeTruthy();
   });
 });

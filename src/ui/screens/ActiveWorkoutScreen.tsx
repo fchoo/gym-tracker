@@ -1964,7 +1964,7 @@ function PopulatedWorkoutOverview({
                     : null}
                 </> : null}
                 <FocusablePressable
-                  accessibilityLabel={`Open ${exercise.name} trend`}
+                  accessibilityLabel={`View ${exercise.name} trend`}
                   accessibilityRole="button"
                   focusable
                   onPress={() => setTrendExerciseId(exercise.id)}
@@ -1977,7 +1977,7 @@ function PopulatedWorkoutOverview({
                   <Text accessibilityElementsHidden importantForAccessibility="no-hide-descendants" style={[typeScale.bodyStrong as TextStyle, { color: colors.focusRing }]}>↗</Text>
                 </FocusablePressable>
                 <FocusablePressable
-                  accessibilityLabel={`${exercise.name} exercise actions`}
+                  accessibilityLabel={`Open ${exercise.name} menu`}
                   accessibilityRole="button"
                   accessibilityState={{
                     busy: exerciseEditBusy,

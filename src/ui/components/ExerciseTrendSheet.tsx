@@ -4,6 +4,7 @@ import Svg, { Circle, Line } from "react-native-svg";
 
 import type { ExerciseMetricHistory } from "../../domains/history";
 import { projectComparableExerciseTrend } from "../../domains/history";
+import { compareMetricObservations } from "../../domains/metrics";
 import { formatObservation } from "./SetRow";
 import { BottomSheet } from "./BottomSheet";
 import { space, typeScale, useAppTheme } from "../theme";
@@ -34,19 +35,33 @@ function Fact({ label, value }: Readonly<{ label: string; value: string }>) {
 export function ExerciseTrendSheet({ exerciseName, history, onClose, visible }: ExerciseTrendSheetProps) {
   const { colors } = useAppTheme();
   const trend = history === null ? null : projectComparableExerciseTrend(history);
-  const chartLabel = `${exerciseName} comparable history chart`;
+  const chartLabel = "Exercise performance over six sessions";
   return <BottomSheet heading={`${exerciseName} trend`} onCancel={onClose} scrollTestID="exercise-trend-sheet-content" visible={visible}>
-    {trend === null ? <Text style={[typeScale.body as TextStyle, { color: colors.textSecondary }]}>Not enough comparable history yet.</Text> : <View style={styles.content}>
+    {trend === null ? <View style={styles.content}>
+      <Text style={[typeScale.body as TextStyle, { color: colors.textSecondary }]}>Not enough comparable history yet.</Text>
+      <Text style={[typeScale.secondary as TextStyle, { color: colors.textSecondary }]}>Your current workout is unchanged.</Text>
+    </View> : <View style={styles.content}>
       <View style={styles.facts}>
         <Fact label="Recent" value={formatObservation(trend.recent.observation!)} />
         <Fact label="Best" value={formatObservation(trend.best.observation!)} />
         <Fact label="Change" value={trend.previous === null ? "One comparable session recorded" : `${formatObservation(trend.previous.observation!)} → ${formatObservation(trend.recent.observation!)}`} />
       </View>
       <View accessibilityLabel={chartLabel} style={styles.chart}>
-        <Text style={[typeScale.secondary as TextStyle, { color: colors.textSecondary }]}>Newest comparable sessions; the data table gives exact recorded results.</Text>
+        <Text style={[typeScale.secondary as TextStyle, { color: colors.textSecondary }]}>Relative performance order for newest-to-oldest comparable sessions. The data table gives exact recorded results.</Text>
         <Svg accessibilityElementsHidden height={72} importantForAccessibility="no-hide-descendants" width="100%">
           <Line stroke={colors.divider} strokeWidth={1} x1="8" x2="292" y1="60" y2="60" />
-          {trend.sessions.map((set, index) => <Circle cx={16 + index * 52} cy={60} fill={colors.focusRing} key={set.setId} r={5} />)}
+          {trend.sessions.map((set, index) => {
+            const betterCount = trend.sessions.filter((candidate) =>
+              compareMetricObservations({
+                identity: trend.identity,
+                target: trend.referenceTarget,
+                left: candidate.observation!,
+                right: set.observation!,
+              }) === "better"
+            ).length;
+            const y = 12 + (betterCount / Math.max(1, trend.sessions.length - 1)) * 44;
+            return <Circle cx={16 + index * 52} cy={y} fill={colors.focusRing} key={set.setId} r={5} />;
+          })}
         </Svg>
       </View>
       <View accessibilityLabel="Comparable history data" style={styles.rows}>
