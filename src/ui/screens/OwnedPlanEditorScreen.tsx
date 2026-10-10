@@ -468,6 +468,14 @@ function resultPlan(
   return result.outcome === "requires_schedule_impact" ? null : result.plan;
 }
 
+function isRevisionConflict(error: unknown): boolean {
+  return typeof error === "object"
+    && error !== null
+    && "code" in error
+    && (error as Readonly<{ code?: unknown }>).code
+      === "owned_plan_revision_conflict";
+}
+
 function move<Value>(
   values: readonly Value[],
   sourceIndex: number,
@@ -535,6 +543,8 @@ export function OwnedPlanEditorScreen({
   const [targetError, setTargetError] = useState(false);
   const [saveBusy, setSaveBusy] = useState(false);
   const [saveError, setSaveError] = useState(false);
+  const [revisionConflict, setRevisionConflict] = useState(false);
+  const [reviewLatestError, setReviewLatestError] = useState(false);
   const [impactRequired, setImpactRequired] = useState(false);
   const [dirtyLeaveVisible, setDirtyLeaveVisible] = useState(false);
   const [duplicateVisible, setDuplicateVisible] = useState(false);
@@ -671,6 +681,8 @@ export function OwnedPlanEditorScreen({
   ) => {
     setDraft((current) => current === null ? current : update(current));
     setSaveError(false);
+    setRevisionConflict(false);
+    setReviewLatestError(false);
     setImpactRequired(false);
     setDraftFeedback(null);
   }, []);
@@ -796,6 +808,7 @@ export function OwnedPlanEditorScreen({
     }
     setSaveBusy(true);
     setSaveError(false);
+    setRevisionConflict(false);
     try {
       const result = await savePlan({
         expectedRevision: snapshot.revision,
@@ -824,14 +837,33 @@ export function OwnedPlanEditorScreen({
         onSaved(committed.id);
       }
       return true;
-    } catch {
-      setSaveError(true);
+    } catch (error) {
+      setRevisionConflict(isRevisionConflict(error));
+      setSaveError(!isRevisionConflict(error));
       queueMicrotask(() => errorSummaryRef.current?.focus());
       return false;
     } finally {
       setSaveBusy(false);
     }
   }, [draft, onBack, onSaved, savePlan, snapshot]);
+
+  const reviewLatest = useCallback(async () => {
+    if (snapshot === null) {
+      return;
+    }
+    setReviewLatestError(false);
+    try {
+      const latest = await loadPlan(snapshot.id);
+      if (latest === null) {
+        setReviewLatestError(true);
+        return;
+      }
+      setSnapshot(latest);
+      setRevisionConflict(false);
+    } catch {
+      setReviewLatestError(true);
+    }
+  }, [loadPlan, snapshot]);
 
   const requestBack = useCallback(() => {
     if (dirty) {
@@ -1182,6 +1214,52 @@ export function OwnedPlanEditorScreen({
                 onPress={() => {
                   void commitPlan();
                 }}
+              />
+            </View>
+          ) : null}
+          {revisionConflict ? (
+            <View
+              accessibilityRole="alert"
+              accessible
+              focusable
+              ref={errorSummaryRef}
+              style={[
+                styles.errorSummary,
+                {
+                  backgroundColor: colors.surface,
+                  borderColor: colors.timerAttention,
+                },
+              ]}
+            >
+              <Text style={[
+                typeScale.bodyStrong as TextStyle,
+                { color: colors.textPrimary },
+              ]}>
+                Plan changed elsewhere
+              </Text>
+              <Text style={[
+                typeScale.body as TextStyle,
+                { color: colors.textPrimary },
+              ]}>
+                Your draft is still here and was not saved over the latest plan.
+              </Text>
+              {reviewLatestError ? (
+                <Text style={[
+                  typeScale.secondary as TextStyle,
+                  { color: colors.textPrimary },
+                ]}>
+                  The latest plan could not be loaded. Try reviewing again.
+                </Text>
+              ) : null}
+              <SecondaryAction
+                label="Review latest"
+                onPress={() => {
+                  void reviewLatest();
+                }}
+              />
+              <SecondaryAction
+                label="Keep editing"
+                onPress={() => setRevisionConflict(false)}
               />
             </View>
           ) : null}
