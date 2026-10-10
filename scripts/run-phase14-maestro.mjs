@@ -608,7 +608,13 @@ function themeObservation(adbPath, serial, cell, selectionReport) {
 function writeVisualComparison(cell, nativeCapture, observedTheme, outputDirectory) {
   const policy = cell.referencePolicy;
   const resolution = resolvePhase14VisualReference(cell, observedTheme);
-  if (resolution.kind === "native-only") return resolution;
+  if (resolution.kind === "native-only") {
+    return Object.freeze({
+      verdict: resolution.verdict,
+      rationale: resolution.rationale,
+      reference_policy: "native-only",
+    });
+  }
   if (resolution.kind === "not-exact") {
     return Object.freeze({
       verdict: "NOT_RUN",
