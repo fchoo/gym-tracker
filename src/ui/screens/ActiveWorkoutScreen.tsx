@@ -21,6 +21,7 @@ import {
   ScrollView,
   StyleSheet,
   Text,
+  TextInput,
   View,
   type LayoutChangeEvent,
   type TextStyle,
@@ -57,6 +58,7 @@ import type {
   UndoCompletedSetInput,
   UndoCompletedSetResult,
   UpdateActiveSetDraftInput,
+  UpdateSessionExerciseDefaultRestInput,
   UpdateWarmupDraftInput,
 } from "../../domains/workout";
 import type {
@@ -145,6 +147,9 @@ export interface ActiveWorkoutCommands {
   adjustRest(input: AdjustRestInput): Promise<RestCommandResult>;
   skipRest(input: RestRevisionInput): Promise<RestCommandResult>;
   expireRest(input: RestRevisionInput): Promise<RestCommandResult>;
+  updateSessionExerciseDefaultRest?(
+    input: UpdateSessionExerciseDefaultRestInput,
+  ): Promise<ActiveWorkoutView>;
   finishCompleted(input: FinishCompletedInput): Promise<FinishOutcomeResult>;
   finishPartial(input: FinishPartialInput): Promise<FinishOutcomeResult>;
   saveZeroSetWorkout(input: SaveZeroSetInput): Promise<FinishOutcomeResult>;
@@ -469,6 +474,7 @@ export type ActiveWorkoutScreenProps = Readonly<{
   onDiscarded?: () => void;
   onResolveUnknownOutcome?: (sessionId: string) => Promise<Pick<SessionDetail, "id" | "status">>;
   onRequestPlanEdit?: () => void;
+  onOpenPlanSettings?: () => void;
   loadExerciseHistory?: ((exerciseId: string) => Promise<ExerciseMetricHistory>) | undefined;
   width?: number;
 }>;
@@ -490,6 +496,7 @@ export function ActiveWorkoutScreen({
     throw new Error("outcome_source_reload_unavailable");
   },
   onRequestPlanEdit = () => undefined,
+  onOpenPlanSettings = () => undefined,
   loadExerciseHistory,
   availableExercises = [],
   availableExercisesState = "ready",
@@ -529,6 +536,7 @@ export function ActiveWorkoutScreen({
       nowMs={nowMs}
       onDiscarded={onDiscarded}
       onRequestPlanEdit={onRequestPlanEdit}
+      onOpenPlanSettings={onOpenPlanSettings}
       loadExerciseHistory={loadExerciseHistory}
       onFinishLater={onFinishLater}
       onGoBack={onGoBack}
@@ -556,6 +564,7 @@ type EmptyWorkoutOverviewProps = Readonly<{
   onDiscarded: () => void;
   onResolveUnknownOutcome: (sessionId: string) => Promise<Pick<SessionDetail, "id" | "status">>;
   onRequestPlanEdit: () => void;
+  onOpenPlanSettings?: () => void;
   loadExerciseHistory?: ((exerciseId: string) => Promise<ExerciseMetricHistory>) | undefined;
   onRetryAvailableExercises?: (() => void) | undefined;
   width?: number;
@@ -878,6 +887,7 @@ function PopulatedWorkoutOverview({
     throw new Error("outcome_source_reload_unavailable");
   },
   onRequestPlanEdit = () => undefined,
+  onOpenPlanSettings = () => undefined,
   loadExerciseHistory,
   availableExercises = [],
   availableExercisesState = "ready",
@@ -945,6 +955,9 @@ function PopulatedWorkoutOverview({
   const [trendExerciseId, setTrendExerciseId] = useState<string | null>(null);
   const [trendHistory, setTrendHistory] = useState<ExerciseMetricHistory | null>(null);
   const [timingExerciseId, setTimingExerciseId] = useState<string | null>(null);
+  const [timingRestDraft, setTimingRestDraft] = useState("");
+  const [timingRestBusy, setTimingRestBusy] = useState(false);
+  const [timingRestFailure, setTimingRestFailure] = useState<string | null>(null);
   const [exerciseEditBusy, setExerciseEditBusy] = useState(false);
   const [exerciseEditFailure, setExerciseEditFailure] =
     useState<ExerciseEditFailure | null>(null);
@@ -1042,6 +1055,50 @@ function PopulatedWorkoutOverview({
   const applyView = (nextView: ActiveWorkoutView) => {
     viewRef.current = nextView;
     setView(nextView);
+  };
+
+  const saveExerciseRest = async () => {
+    const exercise = overviewExercises.find(({ id }) => id === timingExerciseId);
+    const defaultRestSeconds = Number(timingRestDraft);
+    if (
+      exercise === undefined
+      || commands.updateSessionExerciseDefaultRest === undefined
+      || timingRestBusy
+      || !Number.isSafeInteger(defaultRestSeconds)
+      || defaultRestSeconds < 0
+    ) {
+      return;
+    }
+    setTimingRestBusy(true);
+    setTimingRestFailure(null);
+    try {
+      const occurredAtMs = nowMs();
+      const identity = {
+        operation: "update_session_exercise_default_rest",
+        sessionId,
+        sessionExerciseId: exercise.id,
+        defaultRestSeconds,
+        expectedSessionRevision: viewRef.current.revision,
+        expectedSessionExerciseRevision: exercise.revision,
+        occurredAtMs,
+      };
+      const requestSha256 = await Crypto.digestStringAsync(
+        Crypto.CryptoDigestAlgorithm.SHA256,
+        stableJson(identity),
+      );
+      const nextView = await commands.updateSessionExerciseDefaultRest({
+        ...identity,
+        requestId: `exercise-rest:${requestSha256}`,
+        requestSha256,
+      });
+      applyView(nextView);
+      setTimingExerciseId(null);
+      setTimingRestFailure(null);
+    } catch {
+      setTimingRestFailure("Between-set rest was not saved");
+    } finally {
+      setTimingRestBusy(false);
+    }
   };
 
   const identityHeader = (
@@ -2508,6 +2565,16 @@ function PopulatedWorkoutOverview({
             {view.planId === null || view.planId === undefined ? null : (
               <SecondaryAction
                 disabled={outcomeBusy}
+                label="Plan settings"
+                onPress={() => {
+                  closeMoreActions();
+                  onOpenPlanSettings();
+                }}
+              />
+            )}
+            {view.planId === null || view.planId === undefined ? null : (
+              <SecondaryAction
+                disabled={outcomeBusy}
                 label="Edit plan after workout · Schedule"
                 onPress={() => {
                   closeMoreActions();
@@ -2537,6 +2604,7 @@ function PopulatedWorkoutOverview({
         return (
           <BottomSheet
             heading={`Timing · ${exercise.name}`}
+            cancelDisabled={timingRestBusy}
             onCancel={() => setTimingExerciseId(null)}
             restoreFocusRef={{ current: exerciseActionRefs.current.get(exercise.id) ?? null }}
             visible
@@ -2544,6 +2612,24 @@ function PopulatedWorkoutOverview({
             <Text style={[typeScale.body as TextStyle, { color: colors.textSecondary }]}>
               {`Between-set rest · ${exercise.defaultRestSeconds} sec`}
             </Text>
+            <TextInput
+              accessibilityLabel={`Between-set rest seconds for ${exercise.name}`}
+              keyboardType="number-pad"
+              onChangeText={setTimingRestDraft}
+              style={[styles.timingRestInput, { borderColor: colors.divider, color: colors.textPrimary }]}
+              value={timingRestDraft}
+            />
+            {timingRestFailure === null ? null : (
+              <Text accessibilityRole="alert" style={[typeScale.body as TextStyle, { color: colors.destructive }]}>
+                {timingRestFailure}
+              </Text>
+            )}
+            <PrimaryAction
+              busy={timingRestBusy}
+              disabled={timingRestBusy || commands.updateSessionExerciseDefaultRest === undefined}
+              label="Save between-set rest"
+              onPress={() => { void saveExerciseRest(); }}
+            />
           </BottomSheet>
         );
       })()}
@@ -2559,6 +2645,9 @@ function PopulatedWorkoutOverview({
                 label="Timing"
                 onPress={() => {
                   setTimingExerciseId(exerciseActionsVisibleForId);
+                  const exercise = overviewExercises.find(({ id }) => id === exerciseActionsVisibleForId);
+                  setTimingRestDraft(String(exercise?.defaultRestSeconds ?? 0));
+                  setTimingRestFailure(null);
                   closeExerciseActions();
                 }}
               />
@@ -2984,6 +3073,13 @@ const styles = StyleSheet.create({
   moreSheetContent: {
     gap: space[4],
     padding: space[6],
+  },
+  timingRestInput: {
+    borderRadius: radius.standard,
+    borderWidth: StyleSheet.hairlineWidth,
+    fontSize: 18,
+    minHeight: sizes.minimumTarget,
+    paddingHorizontal: space[2],
   },
   visuallyHidden: {
     height: 1,

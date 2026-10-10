@@ -18,6 +18,14 @@ const mockBack = jest.fn();
 const mockReplace = jest.fn();
 const mockGetActiveWorkout = jest.fn<() => Promise<ActiveWorkoutView>>();
 const mockCompleteSet = jest.fn();
+const mockReadWorkoutPreferences = jest.fn(async () => ({
+  version: 1 as const,
+  planId: "plan-owner",
+  defaultRestSeconds: 90,
+  weightIncrementGrams: 2500 as const,
+  revision: 3,
+}));
+const mockSetWorkoutPreferences = jest.fn(async () => undefined);
 const mockListOwnedPlanExercises = jest.fn<() => Promise<readonly Readonly<{
   id: string;
   name: string;
@@ -53,6 +61,7 @@ jest.mock("../../src/bootstrap/workoutAppRuntime", () => ({
     notificationPermission: "undetermined",
     pauseRest: jest.fn(),
     readRestAlertPreferences: () => ({ soundEnabled: false }),
+    readWorkoutPreferences: mockReadWorkoutPreferences,
     removeExercise: jest.fn(),
     removeWarmup: jest.fn(),
     removeWorkingSet: jest.fn(),
@@ -64,6 +73,8 @@ jest.mock("../../src/bootstrap/workoutAppRuntime", () => ({
     skipExercise: jest.fn(),
     skipRest: jest.fn(),
     startManualRest: jest.fn(),
+    setWorkoutPreferences: mockSetWorkoutPreferences,
+    updateSessionExerciseDefaultRest: jest.fn(),
     updateActiveSetDraft: jest.fn(),
     updateWarmupDraft: jest.fn(),
     workoutRefreshGeneration: 0,
@@ -80,6 +91,21 @@ jest.mock("../../src/bootstrap/workoutMutationTestControls", () => ({
 
 jest.mock("../../src/ui/screens/RootScreens", () => ({
   ActiveWorkoutLoadingScreen: () => null,
+}));
+
+jest.mock("../../src/ui/components/WorkoutPlanSettingsSheet", () => ({
+  WorkoutPlanSettingsSheet: ({ visible, onSave }: Readonly<{
+    visible: boolean;
+    onSave(draft: Readonly<{ defaultRestSeconds: number; weightIncrementGrams: number }>): Promise<void>;
+  }>) => {
+    if (!visible) return null;
+    const { Pressable } = require("react-native") as typeof import("react-native");
+    return <Pressable
+      accessibilityLabel="Save plan settings"
+      accessibilityRole="button"
+      onPress={() => { void onSave({ defaultRestSeconds: 120, weightIncrementGrams: 2500 }); }}
+    />;
+  },
 }));
 
 jest.mock("../../src/ui/components", () => {
@@ -104,13 +130,15 @@ jest.mock("../../src/ui/layout/AdaptiveScreen", () => ({
 jest.mock("../../src/ui/screens/ActiveWorkoutScreen", () => {
   const { Pressable } = require("react-native") as typeof import("react-native");
   return {
-    ActiveWorkoutScreen: ({ onGoBack, onFinishLater, onRequestPlanEdit }: Readonly<{
+  ActiveWorkoutScreen: ({ onGoBack, onFinishLater, onOpenPlanSettings, onRequestPlanEdit }: Readonly<{
       onGoBack(): void;
       onFinishLater(): void;
+    onOpenPlanSettings(): void;
       onRequestPlanEdit(): void;
     }>) => <>
       <Pressable accessibilityRole="button" accessibilityLabel="Back to Workout" onPress={onGoBack} />
       <Pressable accessibilityRole="button" accessibilityLabel="Edit plan after workout" onPress={onRequestPlanEdit} />
+      <Pressable accessibilityRole="button" accessibilityLabel="Open plan settings" onPress={onOpenPlanSettings} />
       <Pressable accessibilityRole="button" accessibilityLabel="Finish workout later" onPress={onFinishLater} />
     </>,
   };
@@ -124,6 +152,8 @@ describe("ActiveWorkoutRoute", () => {
     mockReplace.mockReset();
     mockGetActiveWorkout.mockReset();
     mockCompleteSet.mockReset();
+    mockReadWorkoutPreferences.mockClear();
+    mockSetWorkoutPreferences.mockReset();
     mockListOwnedPlanExercises.mockClear();
     mockParams = {
       sessionId: "session-identity",
@@ -202,5 +232,44 @@ describe("ActiveWorkoutRoute", () => {
     await fireEvent.press(screen.getByRole("button", { name: "Finish workout later" }));
 
     expect(mockReplace).toHaveBeenCalledWith("/library/plan/plan-owner/edit");
+  });
+
+  it("loads settings through the active session's authoritative plan id", async () => {
+    mockGetActiveWorkout.mockResolvedValue({
+      id: "session-identity", status: "in_progress", revision: 3,
+      planId: "plan-owner", activeSetId: null, activeExerciseId: null,
+      currentExercise: {}, exercises: [], progress: { completedWorkingSets: 0, totalWorkingSets: 0 },
+      rest: { state: "idle", revision: 0, nextSetId: null },
+    } as unknown as ActiveWorkoutView);
+
+    await render(<ActiveWorkoutRoute />);
+    await waitFor(() => expect(mockGetActiveWorkout).toHaveBeenCalledWith("session-identity"));
+    await fireEvent.press(screen.getByRole("button", { name: "Open plan settings" }));
+    await waitFor(() => expect(mockReadWorkoutPreferences).toHaveBeenCalledWith("plan-owner"));
+  });
+
+  it("writes plan preferences with the read revision and reloads the saved source", async () => {
+    mockGetActiveWorkout.mockResolvedValue({
+      id: "session-identity", status: "in_progress", revision: 3,
+      planId: "plan-owner", activeSetId: null, activeExerciseId: null,
+      currentExercise: {}, exercises: [], progress: { completedWorkingSets: 0, totalWorkingSets: 0 },
+      rest: { state: "idle", revision: 0, nextSetId: null },
+    } as unknown as ActiveWorkoutView);
+    mockSetWorkoutPreferences.mockResolvedValue(undefined);
+
+    await render(<ActiveWorkoutRoute />);
+    await waitFor(() => expect(mockGetActiveWorkout).toHaveBeenCalledWith("session-identity"));
+    await fireEvent.press(screen.getByRole("button", { name: "Open plan settings" }));
+    await waitFor(() => expect(screen.getByRole("button", { name: "Save plan settings" })).toBeOnTheScreen());
+    await fireEvent.press(screen.getByRole("button", { name: "Save plan settings" }));
+
+    await waitFor(() => expect(mockSetWorkoutPreferences).toHaveBeenCalledWith(expect.objectContaining({
+      planId: "plan-owner",
+      expectedRevision: 3,
+      defaultRestSeconds: 120,
+      weightIncrementGrams: 2500,
+      updatedAtMs: expect.any(Number),
+    })));
+    expect(mockReadWorkoutPreferences).toHaveBeenLastCalledWith("plan-owner");
   });
 });

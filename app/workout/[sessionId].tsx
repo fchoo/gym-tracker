@@ -13,6 +13,9 @@ import React, {
 import type {
   WorkoutSessionView,
 } from "../../src/domains/workout";
+import type {
+  WorkoutPreference,
+} from "../../src/domains/workout/workoutPreferences";
 import {
   useWorkoutAppRuntime,
 } from "../../src/bootstrap/workoutAppRuntime";
@@ -36,6 +39,9 @@ import {
 import {
   ActiveWorkoutScreen,
 } from "../../src/ui/screens/ActiveWorkoutScreen";
+import {
+  WorkoutPlanSettingsSheet,
+} from "../../src/ui/components/WorkoutPlanSettingsSheet";
 
 export default function ActiveWorkoutRoute() {
   const { sessionId, returnTo } = useLocalSearchParams<{
@@ -58,6 +64,8 @@ export default function ActiveWorkoutRoute() {
   >("loading");
   const [availableExercisesAttempt, setAvailableExercisesAttempt] = useState(0);
   const [deferredPlanId, setDeferredPlanId] = useState<string | null>(null);
+  const [planSettingsVisible, setPlanSettingsVisible] = useState(false);
+  const [planPreference, setPlanPreference] = useState<WorkoutPreference | null>(null);
   const mutationCommands = createWorkoutMutationTestCommandAdapters({
     addWarmup: runtime.addWarmup,
     addWorkingSet: runtime.addWorkingSet,
@@ -67,7 +75,44 @@ export default function ActiveWorkoutRoute() {
   });
   useEffect(() => {
     setDeferredPlanId(null);
+    setPlanSettingsVisible(false);
+    setPlanPreference(null);
   }, [resolvedSessionId]);
+
+  const activePlanId = view !== null && "planId" in view
+    ? view.planId ?? null
+    : null;
+  const openPlanSettings = useCallback(async () => {
+    if (activePlanId === null) return;
+    const preference = await runtime.readWorkoutPreferences(activePlanId);
+    setPlanPreference(preference);
+    setPlanSettingsVisible(true);
+  }, [activePlanId, runtime.readWorkoutPreferences]);
+  const savePlanPreferences = useCallback(async (draft: Readonly<{
+    defaultRestSeconds: number;
+    weightIncrementGrams: number;
+  }>) => {
+    if (activePlanId === null || planPreference === null) {
+      throw new Error("workout_plan_preferences_unavailable");
+    }
+    const write = async (expectedRevision: number) => runtime.setWorkoutPreferences({
+      planId: activePlanId,
+      expectedRevision,
+      defaultRestSeconds: draft.defaultRestSeconds,
+      weightIncrementGrams: draft.weightIncrementGrams,
+      updatedAtMs: Date.now(),
+    });
+    try {
+      await write(planPreference.revision);
+    } catch {
+      const source = await runtime.readWorkoutPreferences(activePlanId);
+      if (source.revision === planPreference.revision) throw new Error("workout_plan_preferences_not_saved");
+      await write(source.revision);
+    }
+    const source = await runtime.readWorkoutPreferences(activePlanId);
+    setPlanPreference(source);
+    setPlanSettingsVisible(false);
+  }, [activePlanId, planPreference, runtime.readWorkoutPreferences, runtime.setWorkoutPreferences]);
   useEffect(() => {
     let active = true;
     setFailed(false);
@@ -158,6 +203,7 @@ export default function ActiveWorkoutRoute() {
   }
 
   return (
+    <>
     <ActiveWorkoutScreen
       commands={{
         addExercise: runtime.addExercise,
@@ -180,6 +226,7 @@ export default function ActiveWorkoutRoute() {
         adjustRest: runtime.adjustRest,
         skipRest: runtime.skipRest,
         expireRest: runtime.expireRest,
+        updateSessionExerciseDefaultRest: runtime.updateSessionExerciseDefaultRest,
         finishCompleted: runtime.finishCompleted,
         finishPartial: runtime.finishPartial,
         saveZeroSetWorkout: runtime.saveZeroSetWorkout,
@@ -223,10 +270,28 @@ export default function ActiveWorkoutRoute() {
           setDeferredPlanId(view.planId);
         }
       }}
+      onOpenPlanSettings={() => { void openPlanSettings(); }}
       loadExerciseHistory={runtime.loadExerciseMetricHistory}
       sessionId={resolvedSessionId}
       view={view}
       key={`${resolvedSessionId}:${focusGeneration}`}
     />
+    {activePlanId === null || planPreference === null ? null : (
+      <WorkoutPlanSettingsSheet
+        defaultRestSeconds={planPreference.defaultRestSeconds}
+        onClose={() => setPlanSettingsVisible(false)}
+        onEditPlanAfterWorkout={() => {
+          setPlanSettingsVisible(false);
+          setDeferredPlanId(activePlanId);
+        }}
+        onOpenWorkoutActions={() => setPlanSettingsVisible(false)}
+        onSave={savePlanPreferences}
+        planName="Workout plan"
+        scheduleSummary="Saved to this plan"
+        visible={planSettingsVisible}
+        weightIncrementGrams={planPreference.weightIncrementGrams}
+      />
+    )}
+    </>
   );
 }

@@ -7,6 +7,12 @@ import { ActiveWorkoutScreen, type ActiveWorkoutCommands } from "../screens/Acti
 import { AppearanceProvider } from "../theme";
 import { SemanticToastProvider } from "../components/SemanticToast";
 
+jest.mock("expo-crypto", () => ({
+  CryptoDigestAlgorithm: { SHA256: "SHA-256" },
+  digestStringAsync: async (_algorithm: string, value: string) =>
+    require("node:crypto").createHash("sha256").update(value).digest("hex"),
+}));
+
 const identity = { profile: "load_reps" as const, contractVersion: 1, exerciseMetricGeneration: 1 };
 const observation = { version: 1 as const, profile: "load_reps" as const, loadGrams: 60_000, reps: 8, source: "manual" as const };
 
@@ -85,6 +91,75 @@ async function renderScreen(view = workoutView(), commandOverrides: Partial<Acti
 }
 
 describe("ActiveWorkoutScreen explicit-save editor", () => {
+  it("saves a per-exercise rest draft with authoritative revisions and a stable receipt envelope", async () => {
+    const initial = workoutView();
+    const saved = workoutView({
+      revision: 2,
+      currentExercise: { ...initial.currentExercise, defaultRestSeconds: 120 },
+      exercises: [{ ...initial.exercises[0]!, defaultRestSeconds: 120 }],
+    });
+    const updateSessionExerciseDefaultRest = jest.fn(async () => saved);
+    await renderScreen(initial, { updateSessionExerciseDefaultRest });
+
+    await fireEvent.press(screen.getByRole("button", { name: "Open Back Squat menu" }));
+    await fireEvent.press(screen.getByRole("button", { name: "Timing" }));
+    await fireEvent.changeText(
+      screen.getByLabelText("Between-set rest seconds for Back Squat"),
+      "120",
+    );
+    await fireEvent.press(screen.getByRole("button", { name: "Save between-set rest" }));
+
+    await waitFor(() => expect(updateSessionExerciseDefaultRest).toHaveBeenCalledTimes(1));
+    expect(updateSessionExerciseDefaultRest).toHaveBeenCalledWith(expect.objectContaining({
+      sessionId: initial.id,
+      sessionExerciseId: "exercise-1",
+      defaultRestSeconds: 120,
+      expectedSessionRevision: initial.revision,
+      expectedSessionExerciseRevision: 1,
+      occurredAtMs: 3_000,
+      requestId: expect.stringMatching(/^exercise-rest:/u),
+      requestSha256: expect.stringMatching(/^[a-f0-9]{64}$/u),
+    }));
+    expect(screen.queryByLabelText("Between-set rest seconds for Back Squat")).toBeNull();
+  });
+
+  it("keeps the per-exercise rest draft open without a write acknowledgement on failure", async () => {
+    const updateSessionExerciseDefaultRest = jest.fn(async () => {
+      throw new Error("write_failed");
+    });
+    await renderScreen(workoutView(), { updateSessionExerciseDefaultRest });
+
+    await fireEvent.press(screen.getByRole("button", { name: "Open Back Squat menu" }));
+    await fireEvent.press(screen.getByRole("button", { name: "Timing" }));
+    const input = screen.getByLabelText("Between-set rest seconds for Back Squat");
+    await fireEvent.changeText(input, "120");
+    await fireEvent.press(screen.getByRole("button", { name: "Save between-set rest" }));
+
+    await waitFor(() => expect(screen.getByRole("alert")).toHaveTextContent("Between-set rest was not saved"));
+    expect(screen.getByLabelText("Between-set rest seconds for Back Squat")).toHaveProp("value", "120");
+  });
+
+  it("opens real plan settings only for the session's owning plan", async () => {
+    const onOpenPlanSettings = jest.fn();
+    await render(
+      <AppearanceProvider>
+        <ActiveWorkoutScreen
+          commands={commands(workoutView({ planId: "plan-owner" }))}
+          nowMs={() => 3_000}
+          onFinishLater={jest.fn()}
+          onGoBack={jest.fn()}
+          onOpenPlanSettings={onOpenPlanSettings}
+          sessionId="session-1"
+          view={workoutView({ planId: "plan-owner" })}
+        />
+      </AppearanceProvider>,
+    );
+
+    await fireEvent.press(screen.getByRole("button", { name: "More workout actions" }));
+    await fireEvent.press(screen.getByRole("button", { name: "Plan settings" }));
+    expect(onOpenPlanSettings).toHaveBeenCalledTimes(1);
+  });
+
   it("reloads durable facts before accepting an unknown finish receipt", async () => {
     const initial = workoutView({ activeSetId: null });
     const onOutcomeSaved = jest.fn();
