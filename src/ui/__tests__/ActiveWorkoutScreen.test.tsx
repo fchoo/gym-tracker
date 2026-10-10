@@ -1,4 +1,4 @@
-import { act, fireEvent, render, screen, waitFor } from "@testing-library/react-native";
+import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react-native";
 import { describe, expect, it, jest } from "@jest/globals";
 import React from "react";
 
@@ -93,7 +93,8 @@ describe("ActiveWorkoutScreen explicit-save editor", () => {
     expect(screen.getByRole("button", { name: "Timing" })).toBeOnTheScreen();
     expect(screen.getByRole("button", { name: "Replace exercise" })).toBeOnTheScreen();
     expect(screen.getByRole("button", { name: "Delete exercise" })).toBeOnTheScreen();
-    expect(screen.queryByRole("button", { name: /trend/i })).not.toBeOnTheScreen();
+    expect(within(screen.getByTestId("exercise-actions-sheet-content"))
+      .queryByRole("button", { name: /trend/i })).not.toBeOnTheScreen();
   });
 
   it("keeps the global add picker non-mutating until an exercise is selected and confirmed", async () => {

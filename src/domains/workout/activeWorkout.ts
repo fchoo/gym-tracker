@@ -114,6 +114,7 @@ export type ActiveWorkoutView = Readonly<{
   id: string;
   status: "in_progress";
   revision: number;
+  planId?: string | null;
   modifiedFromPlan?: boolean;
   activeSetId: string | null;
   activeExerciseId: string | null;

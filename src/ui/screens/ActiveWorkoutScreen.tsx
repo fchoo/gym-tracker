@@ -456,6 +456,7 @@ export type ActiveWorkoutScreenProps = Readonly<{
   onFinishLater: () => void;
   onOutcomeSaved?: (sessionId: string) => void;
   onDiscarded?: () => void;
+  onRequestPlanEdit?: () => void;
   loadExerciseHistory?: ((exerciseId: string) => Promise<ExerciseMetricHistory>) | undefined;
   width?: number;
 }>;
@@ -473,6 +474,7 @@ export function ActiveWorkoutScreen({
   onFinishLater,
   onOutcomeSaved = () => onFinishLater(),
   onDiscarded = onFinishLater,
+  onRequestPlanEdit = () => undefined,
   loadExerciseHistory,
   availableExercises = [],
   availableExercisesState = "ready",
@@ -487,6 +489,7 @@ export function ActiveWorkoutScreen({
         availableExercisesState={availableExercisesState}
         nowMs={nowMs}
         onDiscarded={onDiscarded}
+        onRequestPlanEdit={onRequestPlanEdit}
         loadExerciseHistory={loadExerciseHistory}
         onFinishLater={onFinishLater}
         onGoBack={onGoBack}
@@ -509,6 +512,7 @@ export function ActiveWorkoutScreen({
       notificationPermission={notificationPermission}
       nowMs={nowMs}
       onDiscarded={onDiscarded}
+      onRequestPlanEdit={onRequestPlanEdit}
       loadExerciseHistory={loadExerciseHistory}
       onFinishLater={onFinishLater}
       onGoBack={onGoBack}
@@ -533,6 +537,7 @@ type EmptyWorkoutOverviewProps = Readonly<{
   onFinishLater: () => void;
   onOutcomeSaved: (sessionId: string) => void;
   onDiscarded: () => void;
+  onRequestPlanEdit: () => void;
   loadExerciseHistory?: ((exerciseId: string) => Promise<ExerciseMetricHistory>) | undefined;
   onRetryAvailableExercises?: (() => void) | undefined;
   width?: number;
@@ -549,6 +554,7 @@ function EmptyWorkoutOverview({
   onFinishLater,
   onOutcomeSaved,
   onDiscarded,
+  onRequestPlanEdit,
   loadExerciseHistory,
   onRetryAvailableExercises,
   width,
@@ -778,6 +784,7 @@ function PopulatedWorkoutOverview({
   onFinishLater,
   onOutcomeSaved = () => onFinishLater(),
   onDiscarded = onFinishLater,
+  onRequestPlanEdit = () => undefined,
   loadExerciseHistory,
   availableExercises = [],
   availableExercisesState = "ready",
@@ -843,6 +850,7 @@ function PopulatedWorkoutOverview({
     useState<string | null>(null);
   const [trendExerciseId, setTrendExerciseId] = useState<string | null>(null);
   const [trendHistory, setTrendHistory] = useState<ExerciseMetricHistory | null>(null);
+  const [timingExerciseId, setTimingExerciseId] = useState<string | null>(null);
   const [exerciseEditBusy, setExerciseEditBusy] = useState(false);
   const [exerciseEditFailure, setExerciseEditFailure] =
     useState<ExerciseEditFailure | null>(null);
@@ -2278,6 +2286,16 @@ function PopulatedWorkoutOverview({
                 setOutcomeConfirmation("partial");
               }}
             />
+            {view.planId === null || view.planId === undefined ? null : (
+              <SecondaryAction
+                disabled={outcomeBusy}
+                label="Edit plan after workout · Schedule"
+                onPress={() => {
+                  closeMoreActions();
+                  onRequestPlanEdit();
+                }}
+              />
+            )}
             <SecondaryAction
               destructive
               disabled={outcomeBusy}
@@ -2294,6 +2312,22 @@ function PopulatedWorkoutOverview({
         onClose={() => setTrendExerciseId(null)}
         visible={trendExerciseId !== null}
       />
+      {timingExerciseId === null ? null : (() => {
+        const exercise = overviewExercises.find(({ id }) => id === timingExerciseId);
+        if (exercise === undefined) return null;
+        return (
+          <BottomSheet
+            heading={`Timing · ${exercise.name}`}
+            onCancel={() => setTimingExerciseId(null)}
+            restoreFocusRef={{ current: exerciseActionRefs.current.get(exercise.id) ?? null }}
+            visible
+          >
+            <Text style={[typeScale.body as TextStyle, { color: colors.textSecondary }]}>
+              {`Between-set rest · ${exercise.defaultRestSeconds} sec`}
+            </Text>
+          </BottomSheet>
+        );
+      })()}
       <BottomSheet
         contentStyle={styles.moreSheetContent}
         heading="Exercise actions"
@@ -2301,6 +2335,15 @@ function PopulatedWorkoutOverview({
         scrollTestID="exercise-actions-sheet-content"
         visible={exerciseActionsVisibleForId !== null}
       >
+            {exerciseActionsVisibleForId === null ? null : (
+              <SecondaryAction
+                label="Timing"
+                onPress={() => {
+                  setTimingExerciseId(exerciseActionsVisibleForId);
+                  closeExerciseActions();
+                }}
+              />
+            )}
             {exerciseActionsVisibleForId === null ? null : (
               <SecondaryAction
                 label="Replace exercise"

@@ -788,7 +788,7 @@ async function loadActiveWorkout(
   const advancedTimingSnapshots = await supportsAdvancedTimingSnapshots(executor);
   const [session] = await executor.queryAll<SessionRow>(
     `SELECT id, status, active_session_exercise_id, active_set_id, revision,
-            modified_from_plan
+            plan_id, modified_from_plan
      FROM workout_sessions
      WHERE id = ?`,
     [sessionId],
@@ -937,6 +937,7 @@ async function loadActiveWorkout(
     id: session.id,
     status: "in_progress",
     revision: session.revision,
+    planId: session.plan_id ?? null,
     modifiedFromPlan: session.modified_from_plan === 1,
     activeSetId: session.active_set_id,
     activeExerciseId: session.active_session_exercise_id,

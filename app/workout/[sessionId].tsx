@@ -57,6 +57,7 @@ export default function ActiveWorkoutRoute() {
     "loading" | "ready" | "error"
   >("loading");
   const [availableExercisesAttempt, setAvailableExercisesAttempt] = useState(0);
+  const [deferredPlanId, setDeferredPlanId] = useState<string | null>(null);
   const mutationCommands = createWorkoutMutationTestCommandAdapters({
     addWarmup: runtime.addWarmup,
     addWorkingSet: runtime.addWorkingSet,
@@ -64,6 +65,9 @@ export default function ActiveWorkoutRoute() {
     replaceExercise: runtime.replaceExercise,
     removeExercise: runtime.removeExercise,
   });
+  useEffect(() => {
+    setDeferredPlanId(null);
+  }, [resolvedSessionId]);
   useEffect(() => {
     let active = true;
     setFailed(false);
@@ -194,15 +198,30 @@ export default function ActiveWorkoutRoute() {
       onRetryAvailableExercises={() => {
         setAvailableExercisesAttempt((attempt) => attempt + 1);
       }}
-      onFinishLater={() => router.replace("/(tabs)")}
+      onFinishLater={() => {
+        if (deferredPlanId !== null) {
+          router.replace(`/library/plan/${deferredPlanId}/edit` as Href);
+          return;
+        }
+        router.replace("/(tabs)");
+      }}
       onGoBack={returnToWorkout}
       onOutcomeSaved={(savedSessionId) => {
+        if (deferredPlanId !== null) {
+          router.replace(`/library/plan/${deferredPlanId}/edit` as Href);
+          return;
+        }
         router.replace({
           pathname: "/completion/[sessionId]",
           params: { sessionId: savedSessionId },
         } as unknown as Href);
       }}
       onDiscarded={() => router.replace("/(tabs)")}
+      onRequestPlanEdit={() => {
+        if ("planId" in view && view.planId !== null && view.planId !== undefined) {
+          setDeferredPlanId(view.planId);
+        }
+      }}
       loadExerciseHistory={runtime.loadExerciseMetricHistory}
       sessionId={resolvedSessionId}
       view={view}
