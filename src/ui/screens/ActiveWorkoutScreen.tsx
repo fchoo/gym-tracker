@@ -1539,13 +1539,14 @@ function PopulatedWorkoutOverview({
       setEditingCompletedSetId(null);
       setRevealedSetId(result.committedSetId);
       setRevealedSetOffset(0);
-    } catch {
+    } catch (error) {
       setCorrectionFailure({
         setId: currentSet.id,
         retry: () => {
           void reviseCompletedSet(currentSet, observation);
         },
       });
+      throw error;
     } finally {
       correctionSetIdRef.current = null;
       setCorrectionBusySetId(null);
