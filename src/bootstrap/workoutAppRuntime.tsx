@@ -1851,7 +1851,7 @@ async function readStarterActivationPreview(
     kernel.queryAll<ActiveStarterScheduleRow>(
       `SELECT revision
        FROM owned_plan_schedules
-       WHERE lifecycle = 'active'
+       WHERE lifecycle = 'active' AND plan_kind = 'strength'
        ORDER BY id`,
     ),
     kernel.queryAll<StarterCopyRow>(

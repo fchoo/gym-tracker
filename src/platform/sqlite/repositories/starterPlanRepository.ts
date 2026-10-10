@@ -233,6 +233,12 @@ async function readCopyReceipt(
 async function readActiveSchedule(
   transaction: SqliteTransactionExecutor,
 ): Promise<ActiveScheduleRow | undefined> {
+  const planColumns = await transaction.queryAll<{ name: string }>(
+    "PRAGMA table_info(plans)",
+  );
+  const supportsPlanKinds = planColumns.some(({ name }) => name === "plan_kind");
+  const planKindFilter = supportsPlanKinds ? " AND plan.plan_kind = 'strength'" : "";
+  const scheduleKindFilter = supportsPlanKinds ? " AND plan_kind = 'strength'" : "";
   const activePlans = await transaction.queryAll<ActiveScheduleRow>(
     `SELECT schedule.id AS schedule_id,
             schedule.revision AS schedule_revision,
@@ -243,7 +249,7 @@ async function readActiveSchedule(
      LEFT JOIN owned_plan_schedules schedule
        ON schedule.plan_id = plan.id
       AND schedule.lifecycle = 'active'
-     WHERE plan.is_active = 1
+     WHERE plan.is_active = 1${planKindFilter}
      ORDER BY plan.id`,
   );
   const activeSchedules = await transaction.queryAll<{
@@ -253,7 +259,7 @@ async function readActiveSchedule(
   }>(
     `SELECT id AS schedule_id, revision AS schedule_revision, plan_id
      FROM owned_plan_schedules
-     WHERE lifecycle = 'active'
+     WHERE lifecycle = 'active'${scheduleKindFilter}
      ORDER BY id`,
   );
   if (activePlans.length > 1 || activeSchedules.length > 1) {
