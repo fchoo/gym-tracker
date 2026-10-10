@@ -6,11 +6,12 @@ const mockCreateInactivePlan = jest.fn(async ({ plan }: { plan: { id: string } }
 const mockEditorProps = jest.fn();
 const mockDetailProps = jest.fn();
 jest.mock("expo-router", () => ({ Stack: { Screen: () => null }, router: { back: jest.fn(), replace: jest.fn(), push: jest.fn() }, useLocalSearchParams: () => ({ planId: "running-plan:id" }) }));
-jest.mock("../../../../src/bootstrap/runningPlanRuntime", () => ({ useRunningPlanRuntime: () => ({ createId: (kind: string) => `${kind}:id`, createInactivePlan: mockCreateInactivePlan }), }));
+jest.mock("../../../../src/bootstrap/runningPlanRuntime", () => ({ useRunningPlanRuntime: () => ({ createId: (kind: string) => `${kind}:id`, createInactivePlan: mockCreateInactivePlan, loadPlan: async () => ({ id: "running-plan:id", goal: { trainingDays: ["Monday"] }, sessions: [] }), savePlan: async (draft: { id: string }) => draft }), }));
 jest.mock("../../../../src/ui/screens/RunningPlanEditorScreen", () => ({ RunningPlanEditorScreen: (props: unknown) => { mockEditorProps(props); return null; } }));
 jest.mock("../../../../src/ui/screens/RunningPlanDetailScreen", () => ({ RunningPlanDetailScreen: (props: unknown) => { mockDetailProps(props); return null; } }));
 import CreateRunningPlanRoute from "../create";
 import RunningPlanDetailRoute from "../[planId]";
+import EditRunningPlanRoute from "../[planId]/edit";
 import { router } from "expo-router";
 
 describe("Running create route", () => {
@@ -21,6 +22,17 @@ describe("Running create route", () => {
     props.onSaved("running-plan:id");
     expect(mockCreateInactivePlan).toHaveBeenCalledWith({ plan: props.initialDraft });
     expect(router.replace).toHaveBeenCalledWith("/library/running/running-plan:id");
+  });
+});
+
+describe("Running editor route", () => {
+  it("normalizes identity and delegates revision-safe save and child navigation to the runtime", async () => {
+    await render(<EditRunningPlanRoute />);
+    const props = mockEditorProps.mock.calls.at(-1)![0] as { title: string; onOpenSession(id?: string): void };
+    expect(props.title).toBe("Edit Running plan");
+    props.onOpenSession(); props.onOpenSession("session-root");
+    expect(router.push).toHaveBeenCalledWith("/library/running/running-plan:id/session/new");
+    expect(router.push).toHaveBeenCalledWith("/library/running/running-plan:id/session/session-root");
   });
 });
 

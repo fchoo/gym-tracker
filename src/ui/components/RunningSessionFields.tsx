@@ -118,7 +118,8 @@ export function RunningSessionFields(props: Readonly<{
   const preview = runningSessionPreview(draft);
   const isContextual = draft.kind === "recovery" || draft.kind === "long_run" || draft.kind === "progression";
 
-  return <View accessibilityLabel={`Running ${draft.kind.replaceAll("_", " ")} session`}>
+  const kindLabel = draft.kind.replaceAll("_", " ").replace(/^./u, (value) => value.toUpperCase());
+  return <View accessibilityLabel={`Running ${kindLabel} session`}>
     <Text>Day</Text>
     <View>{WEEKDAYS.map((weekday) => <SecondaryAction key={weekday} label={`Day ${weekday}`} onPress={() => update({ weekday })} />)}</View>
     <TextInput accessibilityLabel="Warm-up duration milliseconds" keyboardType="number-pad" onChangeText={(warmUp) => update({ warmUp })} value={draft.warmUp} />

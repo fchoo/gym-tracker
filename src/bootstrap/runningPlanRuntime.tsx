@@ -9,6 +9,7 @@ export type RunningPlanRuntimePort = Readonly<{
   createId(kind: string): string;
   createInactivePlan(input: Omit<CreateInactiveRunningPlanInput, "requestId" | "requestSha256">): Promise<RunningPlanAggregate>;
   loadPlan(planId: string): Promise<RunningPlanAggregate | null>;
+  savePlan(input: Omit<RunningPlanAggregate, "active">): Promise<RunningPlanAggregate>;
   saveSession(input: RunningSessionMutationInput): Promise<RunningSessionMutationResult>;
 }>;
 
@@ -49,6 +50,24 @@ export function createRunningPlanRuntimePort(kernel: SqliteKernel, dependencies:
       const requestSha256 = await dependencies.sha256(JSON.stringify({ requestId, plan: input.plan }));
       const committed = await createInactiveRunningPlan(repository, { ...input, requestId, requestSha256 });
       const readBack = await repository.readAggregate(committed.id);
+      if (readBack === null) throw new Error("running_plan_readback_missing");
+      return readBack;
+    },
+    savePlan: async (input) => {
+      const current = await repository.readAggregate(input.id);
+      if (current === null || current.revision !== input.revision) throw new Error("running_plan_revision_conflict");
+      const now = dependencies.nowMs();
+      const command = {
+        requestId: createId("running-plan-save"), operation: "edit" as const, planId: current.id,
+        expectedPlanRevision: current.revision, createdAtMs: now,
+        goal: { ...input.goal, id: createId("running-goal-revision"), revision: current.goal.revision + 1, createdAtMs: now },
+        sessions: input.sessions.map((entry) => ({ ...entry.session, id: createId("running-session-revision"), revision: entry.session.revision + 1, createdAtMs: now })),
+        slots: input.sessions.map((entry, index) => ({ id: createId("running-slot-revision"), rootId: entry.slot.rootId, weekday: entry.slot.weekday, revision: entry.slot.revision + 1, ordinal: index, sessionRootId: entry.session.rootId, sessionRevisionId: "" })),
+      };
+      const slots = command.slots.map((slot, index) => ({ ...slot, sessionRevisionId: command.sessions[index]!.id }));
+      const hashInput = { ...command, slots };
+      await saveRunningSourceGraph(repository, { ...hashInput, requestSha256: canonicalRunningRequestHash(hashInput) });
+      const readBack = await repository.readAggregate(current.id);
       if (readBack === null) throw new Error("running_plan_readback_missing");
       return readBack;
     },
