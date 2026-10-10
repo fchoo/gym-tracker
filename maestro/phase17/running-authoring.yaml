@@ -1,116 +1,184 @@
 appId: com.fchoo.gymtracker.devtest
-name: Phase 17 Running creation, lifecycle, and collision journey
-tags:
-  - phase-17
-  - native-only
-  - development-test
-# phase17-contract: library.running-detail | open-running-detail | saved-running-facts-visible | running_plans
-# phase17-contract: library.running-create-zero-sessions | create-save-and-reopen-empty-running-plan | no-sessions-visible-after-reopen | running_plan_aggregates
-# phase17-contract: library.running-goal-edit | edit-save-and-reopen-running-goal | saved-running-goal-visible | running_plan_revisions
-# phase17-contract: library.running-session-common | save-reopen-common-running-session-fields | session-common-fields-visible | running_session_revisions
-# phase17-contract: library.running-recovery | choose-fill-save-reopen-recovery | recovery-session-visible | running_session_revisions
-# phase17-contract: library.running-long | choose-fill-save-reopen-long-run | long-run-session-visible | running_session_revisions
-# phase17-contract: library.running-progression | choose-fill-save-reopen-progression | progression-session-visible | running_session_revisions
-# phase17-contract: library.running-tempo | choose-fill-save-reopen-tempo | tempo-session-visible | running_session_revisions
-# phase17-contract: library.running-intervals | choose-fill-save-reopen-intervals | intervals-session-visible | running_session_revisions
-# phase17-contract: library.running-hills | choose-fill-save-reopen-hills | hills-session-visible | running_session_revisions
-# phase17-contract: library.running-fartlek | choose-fill-save-reopen-fartlek | fartlek-session-visible | running_session_revisions
-# phase17-contract: library.running-session-lifecycle | edit-reorder-delete-and-retry-running-sessions | stable-order-and-true-empty-readback-visible | running_session_slots
-# phase17-contract: library.running-conflict | confirm-move-run-move-strength-and-keep-both | calendar-and-today-projection-visible | schedule_collision_projections
-# phase17-contract: library.running-create-typed-sessions | choose-fill-save-reopen-all-seven-session-types | seven-session-kinds-visible-after-reopen | running_session_revisions
-# phase17-contract: library.running-two-same-day-slots | create-reorder-and-delete-same-weekday-slots | same-weekday-order-visible-after-reopen | running_session_slots
+name: Phase 17 Running executable journeys
+tags: [phase-17, native-only, development-test]
 ---
-- assertTrue: ${PHASE17_CASE_ID == 'library.running-detail' || PHASE17_CASE_ID == 'library.running-create-zero-sessions' || PHASE17_CASE_ID == 'library.running-goal-edit' || PHASE17_CASE_ID == 'library.running-session-common' || PHASE17_CASE_ID == 'library.running-recovery' || PHASE17_CASE_ID == 'library.running-long' || PHASE17_CASE_ID == 'library.running-progression' || PHASE17_CASE_ID == 'library.running-tempo' || PHASE17_CASE_ID == 'library.running-intervals' || PHASE17_CASE_ID == 'library.running-hills' || PHASE17_CASE_ID == 'library.running-fartlek' || PHASE17_CASE_ID == 'library.running-session-lifecycle' || PHASE17_CASE_ID == 'library.running-conflict' || PHASE17_CASE_ID == 'library.running-create-typed-sessions' || PHASE17_CASE_ID == 'library.running-two-same-day-slots'}
-- launchApp:
-    clearState: false
-    stopApp: true
-    permissions:
-      notifications: deny
-- extendedWaitUntil:
-    visible: "Workout"
-    timeout: 90000
-- openLink: "gymtracker-devtest:///library/running?phase17Case=${PHASE17_CASE_ID}"
-- extendedWaitUntil:
-    visible: "Library section"
-    timeout: 30000
+- launchApp: { clearState: false, stopApp: true, permissions: { notifications: deny } }
+- extendedWaitUntil: { visible: "Workout", timeout: 90000 }
+- tapOn: "Library"
+- extendedWaitUntil: { visible: "Library section", timeout: 30000 }
 - runFlow:
     when:
-      true: ${PHASE17_CASE_ID == 'library.running-detail' || PHASE17_CASE_ID == 'library.running-goal-edit'}
+      true: "${PHASE17_CASE_ID == 'library.running-detail'}"
     commands:
-      - assertVisible: "Library section"
+      - openLink: "gymtracker-devtest:///library/running/${PHASE17_RUNNING_PLAN_ID}"
+      - assertVisible: "Running plan"
       - pressKey: BACK
-      - assertVisible: "Workout"
+      - assertVisible: "Library section"
 - runFlow:
     when:
-      true: ${PHASE17_CASE_ID == 'library.running-create-zero-sessions'}
+      true: "${PHASE17_CASE_ID == 'library.running-create-zero-sessions'}"
     commands:
       - tapOn: "Create plan"
-      - extendedWaitUntil:
-          visible: "Choose a plan type"
-          timeout: 30000
       - tapOn: "Running"
-      - extendedWaitUntil:
-          visible: "Running plan"
-          timeout: 30000
-      - tapOn: "Create running plan"
-      - extendedWaitUntil:
-          visible: "No sessions yet"
-          timeout: 30000
+      - inputText: "Phase17 empty plan"
+      - tapOn: "Save changes"
       - assertVisible: "No sessions yet"
       - pressKey: BACK
-      - assertVisible: "Library section"
+      - openLink: "gymtracker-devtest:///library/running/${PHASE17_RUNNING_PLAN_ID}"
+      - assertVisible: "No sessions yet"
 - runFlow:
     when:
-      true: ${PHASE17_CASE_ID == 'library.running-create-typed-sessions' || PHASE17_CASE_ID == 'library.running-two-same-day-slots'}
+      true: "${PHASE17_CASE_ID == 'library.running-goal-edit'}"
     commands:
-      - tapOn: "Create plan"
-      - extendedWaitUntil:
-          visible: "Choose a plan type"
-          timeout: 30000
-      - tapOn: "Running"
-      - extendedWaitUntil:
-          visible: "Running plan"
-          timeout: 30000
-      - tapOn: "Create running plan"
-      - extendedWaitUntil:
-          visible: "No sessions yet"
-          timeout: 30000
-      - tapOn: "Add session"
-      - extendedWaitUntil:
-          visible: "New session"
-          timeout: 30000
+      - openLink: "gymtracker-devtest:///library/running/${PHASE17_RUNNING_PLAN_ID}/edit"
+      - inputText: "5000"
+      - tapOn: "Save changes"
+      - assertVisible: "Goal distance"
+- runFlow:
+    when:
+      true: "${PHASE17_CASE_ID == 'library.running-session-common'}"
+    commands:
+      - openLink: "gymtracker-devtest:///library/running/${PHASE17_RUNNING_PLAN_ID}/session/new"
       - tapOn: "Workout type Recovery"
-      - assertVisible: "Session preview"
-      - pressKey: BACK
-      - assertVisible: "Running plan"
+      - inputText: "30"
+      - tapOn: "Save session"
+      - assertVisible: "Recovery"
 - runFlow:
     when:
-      true: ${PHASE17_CASE_ID == 'library.running-session-common' || PHASE17_CASE_ID == 'library.running-recovery' || PHASE17_CASE_ID == 'library.running-long' || PHASE17_CASE_ID == 'library.running-progression' || PHASE17_CASE_ID == 'library.running-tempo' || PHASE17_CASE_ID == 'library.running-intervals' || PHASE17_CASE_ID == 'library.running-hills' || PHASE17_CASE_ID == 'library.running-fartlek'}
+      true: "${PHASE17_CASE_ID == 'library.running-recovery'}"
     commands:
-      - assertVisible: "Library section"
-      - tapOn: "Create plan"
-      - tapOn: "Running"
-      - extendedWaitUntil:
-          visible: "Running plan"
-          timeout: 30000
-      - tapOn: "Create running plan"
-      - extendedWaitUntil:
-          visible: "No sessions yet"
-          timeout: 30000
-      - tapOn: "Add session"
-      - extendedWaitUntil:
-          visible: "New session"
-          timeout: 30000
-      - tapOn: "Workout type ${PHASE17_SESSION_KIND}"
-      - assertVisible: "Session preview"
-      - pressKey: BACK
-      - assertVisible: "Running plan"
+      - openLink: "gymtracker-devtest:///library/running/${PHASE17_RUNNING_PLAN_ID}/session/new"
+      - tapOn: "Workout type Recovery"
+      - inputText: "30"
+      - tapOn: "Save session"
+      - openLink: "gymtracker-devtest:///library/running/${PHASE17_RUNNING_PLAN_ID}"
+      - assertVisible: "Recovery"
 - runFlow:
     when:
-      true: ${PHASE17_CASE_ID == 'library.running-session-lifecycle' || PHASE17_CASE_ID == 'library.running-conflict'}
+      true: "${PHASE17_CASE_ID == 'library.running-long'}"
     commands:
-      - assertVisible: "Library section"
-      - pressKey: "Remote Dpad Down"
-      - pressKey: "Remote Dpad Center"
-      - pressKey: BACK
-      - assertVisible: "Library section"
+      - openLink: "gymtracker-devtest:///library/running/${PHASE17_RUNNING_PLAN_ID}/session/new"
+      - tapOn: "Workout type Long run"
+      - inputText: "60"
+      - tapOn: "Save session"
+      - openLink: "gymtracker-devtest:///library/running/${PHASE17_RUNNING_PLAN_ID}"
+      - assertVisible: "Long run"
+- runFlow:
+    when:
+      true: "${PHASE17_CASE_ID == 'library.running-progression'}"
+    commands:
+      - openLink: "gymtracker-devtest:///library/running/${PHASE17_RUNNING_PLAN_ID}/session/new"
+      - tapOn: "Workout type Progression"
+      - inputText: "45"
+      - tapOn: "Save session"
+      - openLink: "gymtracker-devtest:///library/running/${PHASE17_RUNNING_PLAN_ID}"
+      - assertVisible: "Progression"
+- runFlow:
+    when:
+      true: "${PHASE17_CASE_ID == 'library.running-tempo'}"
+    commands:
+      - openLink: "gymtracker-devtest:///library/running/${PHASE17_RUNNING_PLAN_ID}/session/new"
+      - tapOn: "Workout type Tempo"
+      - inputText: "20"
+      - tapOn: "Save session"
+      - openLink: "gymtracker-devtest:///library/running/${PHASE17_RUNNING_PLAN_ID}"
+      - assertVisible: "Tempo"
+- runFlow:
+    when:
+      true: "${PHASE17_CASE_ID == 'library.running-intervals'}"
+    commands:
+      - openLink: "gymtracker-devtest:///library/running/${PHASE17_RUNNING_PLAN_ID}/session/new"
+      - tapOn: "Workout type Intervals"
+      - inputText: "6"
+      - tapOn: "Save session"
+      - openLink: "gymtracker-devtest:///library/running/${PHASE17_RUNNING_PLAN_ID}"
+      - assertVisible: "Intervals"
+- runFlow:
+    when:
+      true: "${PHASE17_CASE_ID == 'library.running-hills'}"
+    commands:
+      - openLink: "gymtracker-devtest:///library/running/${PHASE17_RUNNING_PLAN_ID}/session/new"
+      - tapOn: "Workout type Hills"
+      - inputText: "8"
+      - tapOn: "Save session"
+      - openLink: "gymtracker-devtest:///library/running/${PHASE17_RUNNING_PLAN_ID}"
+      - assertVisible: "Hills"
+- runFlow:
+    when:
+      true: "${PHASE17_CASE_ID == 'library.running-fartlek'}"
+    commands:
+      - openLink: "gymtracker-devtest:///library/running/${PHASE17_RUNNING_PLAN_ID}/session/new"
+      - tapOn: "Workout type Fartlek"
+      - inputText: "10"
+      - tapOn: "Save session"
+      - openLink: "gymtracker-devtest:///library/running/${PHASE17_RUNNING_PLAN_ID}"
+      - assertVisible: "Fartlek"
+- runFlow:
+    when:
+      true: "${PHASE17_CASE_ID == 'library.running-session-lifecycle'}"
+    commands:
+      - openLink: "gymtracker-devtest:///library/running/${PHASE17_RUNNING_PLAN_ID}/edit"
+      - swipe: { start: "90%, 70%", end: "10%, 70%", duration: 500 }
+      - tapOn: "Delete session"
+      - tapOn: "Confirm"
+      - tapOn: "Save changes"
+      - openLink: "gymtracker-devtest:///library/running/${PHASE17_RUNNING_PLAN_ID}"
+      - assertVisible: "No sessions yet"
+      - tapOn: "Retry loading Running plan"
+- runFlow:
+    when:
+      true: "${PHASE17_CASE_ID == 'library.running-conflict'}"
+    commands:
+      - openLink: "gymtracker-devtest:///library/running/${PHASE17_RUNNING_PLAN_ID}"
+      - tapOn: "Review schedule collision"
+      - tapOn: "Move Running"
+      - tapOn: "Confirm"
+      - tapOn: "Calendar"
+      - assertVisible: "Calendar"
+      - tapOn: "Today"
+      - assertVisible: "Today"
+- runFlow:
+    when:
+      true: "${PHASE17_CASE_ID == 'library.running-create-typed-sessions'}"
+    commands:
+      - openLink: "gymtracker-devtest:///library/running/${PHASE17_RUNNING_PLAN_ID}/session/new"
+      - tapOn: "Workout type Recovery"
+      - inputText: "30"
+      - tapOn: "Save session"
+      - openLink: "gymtracker-devtest:///library/running/${PHASE17_RUNNING_PLAN_ID}/session/new"
+      - tapOn: "Workout type Long run"
+      - inputText: "60"
+      - tapOn: "Save session"
+      - openLink: "gymtracker-devtest:///library/running/${PHASE17_RUNNING_PLAN_ID}/session/new"
+      - tapOn: "Workout type Progression"
+      - inputText: "45"
+      - tapOn: "Save session"
+      - openLink: "gymtracker-devtest:///library/running/${PHASE17_RUNNING_PLAN_ID}/session/new"
+      - tapOn: "Workout type Tempo"
+      - inputText: "20"
+      - tapOn: "Save session"
+      - openLink: "gymtracker-devtest:///library/running/${PHASE17_RUNNING_PLAN_ID}/session/new"
+      - tapOn: "Workout type Intervals"
+      - inputText: "6"
+      - tapOn: "Save session"
+      - openLink: "gymtracker-devtest:///library/running/${PHASE17_RUNNING_PLAN_ID}/session/new"
+      - tapOn: "Workout type Hills"
+      - inputText: "8"
+      - tapOn: "Save session"
+      - openLink: "gymtracker-devtest:///library/running/${PHASE17_RUNNING_PLAN_ID}/session/new"
+      - tapOn: "Workout type Fartlek"
+      - inputText: "10"
+      - tapOn: "Save session"
+      - openLink: "gymtracker-devtest:///library/running/${PHASE17_RUNNING_PLAN_ID}"
+      - assertVisible: "Weekly structure"
+- runFlow:
+    when:
+      true: "${PHASE17_CASE_ID == 'library.running-two-same-day-slots'}"
+    commands:
+      - openLink: "gymtracker-devtest:///library/running/${PHASE17_RUNNING_PLAN_ID}/edit"
+      - swipe: { start: "90%, 65%", end: "10%, 65%", duration: 500 }
+      - tapOn: "Delete session"
+      - tapOn: "Confirm"
+      - tapOn: "Save changes"
+      - openLink: "gymtracker-devtest:///library/running/${PHASE17_RUNNING_PLAN_ID}"
+      - assertVisible: "Weekly structure"

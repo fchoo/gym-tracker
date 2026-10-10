@@ -588,6 +588,7 @@ function sameRestAlertPreferences(
 
 type RuntimeValue = RuntimeState & Readonly<{
   collectPhase14SourceStateProof(): Promise<Phase14SourceStateProof>;
+  collectPhase17SourceStateProof(): Promise<Phase14SourceStateProof>;
   connectAutomaticBackup(): Promise<void>;
   deferAutomaticRestore(): Promise<void>;
   cancelAutomaticBackupCheck(): Promise<void>;
@@ -1256,6 +1257,13 @@ function phase14NativeRecoveryFixtureEnabled(): boolean {
     buildProfile: Constants.expoConfig?.extra?.buildProfile,
     suite: Constants.expoConfig?.extra?.nativeContractSuite,
   }) !== null;
+}
+
+function phase17NativeContractEnabled(): boolean {
+  const { default: Constants } = require("expo-constants") as typeof import("expo-constants");
+  return Constants.expoConfig?.extra?.buildProfile === "development-test"
+    && Constants.expoConfig.extra.nativeContractsEnabled === true
+    && Constants.expoConfig.extra.nativeContractSuite === "phase17";
 }
 
 function phase12NativeFixtureViewModel(): AutomaticBackupViewModel | null {
@@ -4001,6 +4009,16 @@ export function WorkoutAppRuntimeProvider({
         kernel: requireServices().kernel,
         sha256: (value) =>
           digestStringAsync(CryptoDigestAlgorithm.SHA256, value),
+      });
+    },
+    collectPhase17SourceStateProof: () => {
+      if (!phase17NativeContractEnabled()) {
+        return Promise.reject(new Error("phase17_source_state_proof_unavailable"));
+      }
+      const { CryptoDigestAlgorithm, digestStringAsync } = require("expo-crypto") as typeof import("expo-crypto");
+      return collectPhase14SourceStateProofFromKernel({
+        kernel: requireServices().kernel,
+        sha256: (value) => digestStringAsync(CryptoDigestAlgorithm.SHA256, value),
       });
     },
     createSecureBackup: (input) =>

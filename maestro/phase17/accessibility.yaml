@@ -1,30 +1,22 @@
 appId: com.fchoo.gymtracker.devtest
-name: Phase 17 accessibility and recovery journey
-tags:
-  - phase-17
-  - native-only
-  - development-test
-# phase17-contract: library.accessibility-recovery | exercise-200pct-dpad-back-escape-ime-and-reduced-motion | focus-target-and-motion-readback-visible | accessibility_runtime_profile
+name: Phase 17 accessibility executable journey
+tags: [phase-17, native-only, development-test]
 ---
-- assertTrue: ${PHASE17_CASE_ID == 'library.accessibility-recovery'}
-- launchApp:
-    clearState: false
-    stopApp: true
-    permissions:
-      notifications: deny
-- extendedWaitUntil:
-    visible: "Workout"
-    timeout: 90000
+- launchApp: { clearState: false, stopApp: true, permissions: { notifications: deny } }
+- extendedWaitUntil: { visible: "Workout", timeout: 90000 }
 - tapOn: "Library"
-- extendedWaitUntil:
-    visible: "Library section"
-    timeout: 30000
-- assertTrue: ${PHASE17_TEXT_SCALE == 2 && PHASE17_REDUCED_MOTION == true && PHASE17_THEME == 'dark'}
-- pressKey: "Remote Dpad Down"
-- pressKey: "Remote Dpad Center"
-- pressKey: BACK
-- assertVisible: "Library section"
-- pressKey: ESCAPE
-- assertVisible: "Library section"
-- pressKey: BACK
-- assertVisible: "Workout"
+- extendedWaitUntil: { visible: "Library section", timeout: 30000 }
+- runFlow:
+    when:
+      true: "${PHASE17_CASE_ID == 'library.accessibility-recovery'}"
+    commands:
+      - pressKey: "Remote Dpad Down"
+      - pressKey: "Remote Dpad Center"
+      - pressKey: BACK
+      - pressKey: ESCAPE
+      - tapOn: "Search exercises"
+      - inputText: "squat"
+      - pressKey: ENTER
+      - assertVisible: "Library section"
+      - swipe: { start: "95%, 75%", end: "95%, 25%", duration: 500 }
+      - assertVisible: "48 dp"

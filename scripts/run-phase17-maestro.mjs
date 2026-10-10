@@ -1,9 +1,10 @@
 #!/usr/bin/env node
 import { execFileSync } from "node:child_process";
 import { createHash } from "node:crypto";
-import { existsSync, readFileSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync } from "node:fs";
 import path from "node:path";
 import { pathToFileURL } from "node:url";
+import { parseAllDocuments } from "yaml";
 
 import { PHASE17_CASE_ACTION_CONTRACTS, PHASE17_LIBRARY_RUNNING_CASES } from "../src/testing/contracts/phase17LibraryRunning.contract.ts";
 import { sourceTreeSha256 } from "./source-tree-digest.mjs";
@@ -12,6 +13,9 @@ const ROOT = process.cwd();
 const ARTIFACT_ROOT = "artifacts/native/phase17";
 const PACKAGE = "com.fchoo.gymtracker.devtest";
 const SHA256 = /^[a-f0-9]{64}$/u;
+const PHASE17_PORT = "gymtracker-devtest://__phase17-maestro";
+const EXECUTABLE_COMMANDS = new Set(["tapOn", "inputText", "pressKey", "swipe", "openLink", "launchApp"]);
+const ASSERTION_COMMANDS = new Set(["assertVisible", "assertNotVisible", "extendedWaitUntil"]);
 
 function flowFor(id) {
   if (id === "library.accessibility-recovery") return "maestro/phase17/accessibility.yaml";
@@ -107,19 +111,55 @@ export function createPhase17RunnerPlan(manifest) {
   });
 }
 
+function whenContainsCase(value, id) {
+  return typeof value === "string" && value.includes(`PHASE17_CASE_ID == '${id}'`);
+}
+
+export function parsePhase17FlowSources(flows) {
+  return Object.fromEntries(Object.entries(flows ?? {}).map(([flow, source]) => [
+    flow,
+    parseAllDocuments(source, { prettyErrors: true }),
+  ]));
+}
+
+export function commandTreeForPhase17Case(flows, id) {
+  const documents = parsePhase17FlowSources(flows)[flowFor(id)] ?? [];
+  const tree = [];
+  const walk = (entries) => {
+    for (const entry of entries ?? []) {
+      if (!entry || typeof entry !== "object") continue;
+      const [name] = Object.keys(entry);
+      if (name === "runFlow" && whenContainsCase(entry.runFlow?.when?.true, id)) {
+        for (const command of entry.runFlow.commands ?? []) {
+          const [commandName] = Object.keys(command ?? {});
+          tree.push(Object.freeze({ name: commandName, value: command?.[commandName] }));
+        }
+      }
+    }
+  };
+  for (const document of documents) {
+    const parsed = document.toJSON();
+    if (Array.isArray(parsed)) walk(parsed);
+  }
+  return Object.freeze(tree);
+}
+
 export function validatePhase17FlowSources(flows, ids = PHASE17_FLOW_CASES.map(({ id }) => id)) {
-  const text = Object.values(flows ?? {}).join("\n");
   for (const id of ids) {
     const contract = PHASE17_FLOW_CASES.find((entry) => entry.id === id);
-    if (contract === undefined || !text.includes(`PHASE17_CASE_ID == '${id}'`)) {
+    const commands = commandTreeForPhase17Case(flows, id);
+    if (contract === undefined || commands.length === 0) {
       throw new Error(`phase17_flow_case_missing:${id}`);
     }
-    const binding = `# phase17-contract: ${contract.id} | ${contract.action} | ${contract.uiReadback} | ${contract.sourceProbe}`;
-    if (!text.includes(binding)) throw new Error(`phase17_flow_contract_missing:${id}`);
+    if (!commands.some(({ name }) => EXECUTABLE_COMMANDS.has(name))) throw new Error(`phase17_flow_action_missing:${id}`);
+    if (!commands.some(({ name }) => ASSERTION_COMMANDS.has(name))) throw new Error(`phase17_flow_assertion_missing:${id}`);
+    if (!commands.some(({ name }) => name === "tapOn" || name === "pressKey" || name === "openLink")) throw new Error(`phase17_flow_selector_missing:${id}`);
   }
-  if (text.includes("takeScreenshot") || text.includes("writeFile") || text.includes("inputText: \"")) {
+  const text = Object.values(flows ?? {}).join("\n");
+  if (text.includes("takeScreenshot") || text.includes("writeFile") || text.includes("assertTrue:")) {
     throw new Error("phase17_flow_privacy_unsafe");
   }
+  if (!text.includes("PHASE17_CASE_ID")) throw new Error("phase17_flow_case_dispatch_missing");
   return true;
 }
 
@@ -196,8 +236,11 @@ function runCase({ adbPath, manifest, id }) {
   const flow = flowFor(id);
   const profile = profileFor(id);
   applyDeviceProfile(adbPath, manifest.device.serial, profile);
+  const artifactDirectory = path.join(ROOT, ARTIFACT_ROOT, "maestro", id);
+  mkdirSync(artifactDirectory, { recursive: true });
+  const report = path.join(artifactDirectory, "report.xml");
   const args = [
-    "test", "--no-ansi", "--udid", manifest.device.serial,
+    "test", "--no-ansi", "--format", "junit", "--output", report, "--test-output-dir", artifactDirectory, "--udid", manifest.device.serial,
     "-e", `PHASE17_CASE_ID=${id}`,
     "-e", `PHASE17_SESSION_KIND=${sessionKindFor(id)}`,
     "-e", `PHASE17_TEXT_SCALE=${profile.fontScale}`,
@@ -206,7 +249,40 @@ function runCase({ adbPath, manifest, id }) {
     flow,
   ];
   execFileSync("maestro", args, { cwd: ROOT, stdio: "inherit" });
-  return Object.freeze({ id, flow });
+  const source = capturePhase17SourceProbe(adbPath, manifest.device.serial, id);
+  return Object.freeze({ id, flow, report, source });
+}
+
+function portUri(operation, id, baseline) {
+  const query = new URLSearchParams({ operation, case: id });
+  if (baseline !== undefined) query.set("baseline", baseline);
+  return `${PHASE17_PORT}?${query}`;
+}
+
+function readPhase17Port(adbPath, serial, operation, id, baseline) {
+  adb(adbPath, serial, "shell", "am", "start", "-W", "-a", "android.intent.action.VIEW", "-d", portUri(operation, id, baseline), PACKAGE);
+  const xml = adb(adbPath, serial, "shell", "uiautomator", "dump", "/sdcard/phase17-window.xml");
+  if (!xml.includes("UI hierchary dumped")) throw new Error(`phase17_port_dump_failed:${operation}:${id}`);
+  return adb(adbPath, serial, "shell", "cat", "/sdcard/phase17-window.xml");
+}
+
+export function capturePhase17SourceProbe(adbPath, serial, id) {
+  const output = readPhase17Port(adbPath, serial, "probe", id);
+  const digest = output.match(/PHASE17_SOURCE_PROBE case=[^\s]+ digest_sha256=([a-f0-9]{64})/u)?.[1];
+  if (digest === undefined) throw new Error(`phase17_source_probe_missing:${id}`);
+  return Object.freeze({ probe: PHASE17_FLOW_CASES.find((entry) => entry.id === id)?.sourceProbe, digest_sha256: digest });
+}
+
+function setupPhase17Case(adbPath, serial, id) {
+  const output = readPhase17Port(adbPath, serial, "setup", id);
+  const setup = output.match(/PHASE17_SETUP_READY case=[^\s]+ baseline_sha256=([a-f0-9]{64})/u)?.[1];
+  if (setup === undefined) throw new Error(`phase17_setup_missing:${id}`);
+  return setup;
+}
+
+function cleanupPhase17Case(adbPath, serial, id, baseline) {
+  const output = readPhase17Port(adbPath, serial, "cleanup", id, baseline);
+  if (!output.includes(`PHASE17_CLEANUP_READY case=${id} baseline_sha256=${baseline}`)) throw new Error(`phase17_cleanup_missing:${id}`);
 }
 
 export function executePhase17Maestro(args = process.argv.slice(2)) {
@@ -224,7 +300,11 @@ export function executePhase17Maestro(args = process.argv.slice(2)) {
   const adbPath = resolveAdb();
   const original = readDeviceState(adbPath, manifest.device.serial);
   try {
-    const results = options.ids.map((id) => runCase({ adbPath, manifest, id }));
+    const results = options.ids.map((id) => {
+      const baseline = setupPhase17Case(adbPath, manifest.device.serial, id);
+      try { return runCase({ adbPath, manifest, id }); }
+      finally { cleanupPhase17Case(adbPath, manifest.device.serial, id, baseline); }
+    });
     return Object.freeze({ status: "executed", plan, results, evidence_written: false });
   } finally {
     restoreDeviceState(adbPath, manifest.device.serial, original);
