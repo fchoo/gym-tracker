@@ -180,4 +180,27 @@ describe("RunningSessionEditorScreen", () => {
     expect(view.getByLabelText("Volume distance metres")).toHaveProp("value", "12000");
     expect(view.getByRole("button", { name: "Retry saving session" })).toBeOnTheScreen();
   });
+
+  it("retries a failed load without writing and returns to the session draft", async () => {
+    const loadPlan = jest.fn()
+      .mockRejectedValueOnce(new Error("temporary read failure"))
+      .mockResolvedValueOnce(plan);
+    const saveSession = jest.fn();
+    const view = await render(<AppearanceProvider><RunningSessionEditorScreen
+      loadPlan={loadPlan}
+      mode="create"
+      onBack={jest.fn()}
+      onSaved={jest.fn()}
+      planId="plan-1"
+      createRequestId={() => "request-retry-load"}
+      saveSession={saveSession}
+    /></AppearanceProvider>);
+
+    await view.findByRole("button", { name: "Retry loading session" });
+    await fireEvent.press(view.getByRole("button", { name: "Retry loading session" }));
+
+    await view.findByRole("header", { name: "New session" });
+    expect(loadPlan).toHaveBeenCalledTimes(2);
+    expect(saveSession).not.toHaveBeenCalled();
+  });
 });
