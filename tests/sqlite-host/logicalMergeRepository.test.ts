@@ -2711,7 +2711,7 @@ describe("logical merge repository", () => {
     const archive = await snapshot(archiveKernel);
     const localKernel = await open("full-plan-duplicate-local");
     await seedSession(localKernel, {
-      id: "local-session", portableId: "a".repeat(32), modifiedAtMs: 20,
+      id: "local-session", portableId: "a".repeat(32), modifiedAtMs: 21,
     });
     const local = await createSqliteMergeLocalFactsPort(localKernel).read();
     const plan = await buildPortableMergePlan({
