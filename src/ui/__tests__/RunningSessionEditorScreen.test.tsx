@@ -182,10 +182,10 @@ describe("RunningSessionEditorScreen", () => {
   });
 
   it("retries a failed load without writing and returns to the session draft", async () => {
-    const loadPlan = jest.fn()
+    const loadPlan = jest.fn<React.ComponentProps<typeof RunningSessionEditorScreen>["loadPlan"]>()
       .mockRejectedValueOnce(new Error("temporary read failure"))
       .mockResolvedValueOnce(plan);
-    const saveSession = jest.fn();
+    const saveSession = jest.fn<React.ComponentProps<typeof RunningSessionEditorScreen>["saveSession"]>();
     const view = await render(<AppearanceProvider><RunningSessionEditorScreen
       loadPlan={loadPlan}
       mode="create"

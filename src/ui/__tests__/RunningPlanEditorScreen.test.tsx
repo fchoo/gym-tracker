@@ -29,10 +29,32 @@ describe("RunningPlanEditorScreen", () => {
     await fireEvent.press(screen.getByRole("button", { name: "Add recovery" }));
     expect(screen.getByLabelText("Running Recovery session")).toBeOnTheScreen();
     await fireEvent.press(screen.getByRole("button", { name: "Delete recovery" }));
+    expect(screen.getByText("Remove recovery session?")).toBeOnTheScreen();
+    await fireEvent.press(screen.getByRole("button", { name: "Remove session" }));
     expect(screen.queryByLabelText("Running Recovery session")).not.toBeOnTheScreen();
     await fireEvent.press(screen.getByRole("button", { name: "Save changes" }));
     await waitFor(() => expect(savePlan).toHaveBeenCalledWith(expect.objectContaining({ sessions: [] })));
     expect(onSaved).toHaveBeenCalledWith("running-plan");
+  });
+
+  it("confirms a final-session removal locally and renders a true saved-empty state", async () => {
+    const savePlan = jest.fn(async (draft: typeof initialDraft) => ({ ...draft, active: false as const, lifecycle: "inactive" as const }));
+    const view = await render(<AppearanceProvider><RunningPlanEditorScreen
+      createId={(kind) => `${kind}:id`}
+      initialDraft={initialDraft}
+      onBack={jest.fn()}
+      onSaved={jest.fn()}
+      savePlan={savePlan}
+    /></AppearanceProvider>);
+
+    expect(view.getByText("No sessions yet")).toBeOnTheScreen();
+    await fireEvent.press(view.getByRole("button", { name: "Add recovery" }));
+    await fireEvent.press(view.getByRole("button", { name: "Delete recovery" }));
+    expect(view.getByText("Remove recovery session?" )).toBeOnTheScreen();
+    expect(savePlan).not.toHaveBeenCalled();
+    await fireEvent.press(view.getByRole("button", { name: "Remove session" }));
+    expect(view.getByText("No sessions yet")).toBeOnTheScreen();
+    expect(savePlan).not.toHaveBeenCalled();
   });
 
   it("offers all seven typed local session kinds before the first command", async () => {

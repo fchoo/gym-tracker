@@ -26,6 +26,12 @@ describe("multi-plan portability successor boundary", () => {
       "running_activity_match_events",
       "running_activity_match_receipts",
       "bodyweight_entry_events",
+      "running_session_roots",
+      "running_session_slot_roots",
+      "running_session_slot_revisions",
+      "running_session_slots",
+      "running_plan_receipts",
+      "running_plan_events",
     ]));
     expect(v6).not.toEqual(expect.arrayContaining([
       "running_current_matches",
