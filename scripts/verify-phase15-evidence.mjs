@@ -1,7 +1,14 @@
 #!/usr/bin/env node
 import { createHash } from "node:crypto";
 import { execFileSync } from "node:child_process";
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import {
+  existsSync,
+  lstatSync,
+  mkdirSync,
+  readFileSync,
+  realpathSync,
+  writeFileSync,
+} from "node:fs";
 import path from "node:path";
 import { pathToFileURL } from "node:url";
 
@@ -104,10 +111,22 @@ function validateCrossCutting(evidence) {
 function readRetainedArtifact(root, artifact, code) {
   if (typeof artifact?.path !== "string" || !HASH.test(artifact?.sha256 ?? "")) fail(`${code}_descriptor_invalid`);
   if (path.isAbsolute(artifact.path) || artifact.path.split(/[\\/]+/u).includes("..")) fail(`${code}_path_invalid`);
-  const absolute = path.resolve(root, artifact.path);
-  const rootPrefix = `${path.resolve(root)}${path.sep}`;
+  const rootReal = realpathSync(root);
+  const absolute = path.resolve(rootReal, artifact.path);
+  const relative = path.relative(rootReal, absolute);
+  const rootPrefix = `${rootReal}${path.sep}`;
+  if (relative.length === 0 || relative.startsWith(`..${path.sep}`) || path.isAbsolute(relative)) {
+    fail(`${code}_path_invalid`);
+  }
   if (!absolute.startsWith(rootPrefix) || !existsSync(absolute)) fail(`${code}_missing`);
-  const bytes = readFileSync(absolute);
+  let current = rootReal;
+  for (const segment of relative.split(path.sep)) {
+    current = path.join(current, segment);
+    if (lstatSync(current).isSymbolicLink()) fail(`${code}_path_invalid`);
+  }
+  const real = realpathSync(absolute);
+  if (!real.startsWith(rootPrefix)) fail(`${code}_path_invalid`);
+  const bytes = readFileSync(real);
   if (sha256(bytes) !== artifact.sha256) fail(`${code}_hash_invalid`);
   return bytes;
 }

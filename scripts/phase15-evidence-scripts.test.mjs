@@ -1,6 +1,12 @@
 import assert from "node:assert/strict";
 import { createHash } from "node:crypto";
-import { mkdtempSync, readFileSync, unlinkSync, writeFileSync } from "node:fs";
+import {
+  mkdtempSync,
+  readFileSync,
+  symlinkSync,
+  unlinkSync,
+  writeFileSync,
+} from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import test from "node:test";
@@ -63,6 +69,36 @@ test("Phase 15 fails closed when retained evidence is absent, replaced, forged, 
   const traversal = materializePhase15EvidenceFixture(traversalRoot);
   traversal.artifacts.report.path = "../forged-report.json";
   assert.throws(() => verifyPhase15EvidenceArtifacts(traversal, { root: traversalRoot }), /report_path_invalid/u);
+});
+
+test("Phase 15 rejects correctly hashed report and case-artifact symlink escapes", () => {
+  const reportRoot = mkdtempSync(path.join(tmpdir(), "phase15-evidence-"));
+  const reportEscapeRoot = mkdtempSync(path.join(tmpdir(), "phase15-evidence-external-"));
+  const reportEscape = materializePhase15EvidenceFixture(reportRoot);
+  const externalReport = path.join(reportEscapeRoot, "maestro-device-report.json");
+  const reportBytes = Buffer.from(JSON.stringify({ cases: reportEscape.cases.map(({ id }) => ({ id, status: "passed", device_action: "executed" })) }));
+  writeFileSync(externalReport, reportBytes);
+  reportEscape.artifacts.report.sha256 = sha256(reportBytes);
+  reportEscape.manifest.report_sha256 = reportEscape.artifacts.report.sha256;
+  reportEscape.identity.report_sha256 = reportEscape.artifacts.report.sha256;
+  const retainedReport = path.join(reportRoot, reportEscape.artifacts.report.path);
+  unlinkSync(retainedReport);
+  symlinkSync(externalReport, retainedReport);
+  assert.throws(() => verifyPhase15EvidenceArtifacts(reportEscape, { root: reportRoot }), /report_path_invalid/u);
+
+  const caseRoot = mkdtempSync(path.join(tmpdir(), "phase15-evidence-"));
+  const caseEscapeRoot = mkdtempSync(path.join(tmpdir(), "phase15-evidence-external-"));
+  const caseEscape = materializePhase15EvidenceFixture(caseRoot);
+  const caseId = caseEscape.cases[0].id;
+  const externalReceipt = path.join(caseEscapeRoot, "receipt.json");
+  const receiptBytes = Buffer.from("correctly-hashed external receipt");
+  writeFileSync(externalReceipt, receiptBytes);
+  caseEscape.artifacts.cases[caseId].receipt.sha256 = sha256(receiptBytes);
+  caseEscape.cases[0].action.receipt_sha256 = caseEscape.artifacts.cases[caseId].receipt.sha256;
+  const retainedReceipt = path.join(caseRoot, caseEscape.artifacts.cases[caseId].receipt.path);
+  unlinkSync(retainedReceipt);
+  symlinkSync(externalReceipt, retainedReceipt);
+  assert.throws(() => verifyPhase15EvidenceArtifacts(caseEscape, { root: caseRoot }), /case_receipt_path_invalid/u);
 });
 
 test("Phase 15 rejects every stale or forged source/build/install identity field", () => {
