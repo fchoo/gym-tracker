@@ -39,3 +39,9 @@ jest.mock("expo-constants", () => ({
 
 global.__GYM_TRACKER_TEST_SHA256__ = async (value) =>
   require("node:crypto").createHash("sha256").update(value).digest("hex");
+
+// React 19 requires an explicit concurrent-act environment. Component suites
+// use Testing Library's async helpers, so leaving this unset turns legitimate
+// focus/sheet settlement into noisy false-positive warnings.
+global.IS_REACT_ACT_ENVIRONMENT = true;
+globalThis.IS_REACT_ACT_ENVIRONMENT = true;

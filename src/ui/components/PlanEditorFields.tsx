@@ -186,6 +186,8 @@ export function PlanEditorReorderableRow({
   children,
   trailing,
   tone = "default",
+  moveEarlierLabel = "Move earlier",
+  moveLaterLabel = "Move later",
 }: Readonly<{
   label: string;
   position: number;
@@ -204,6 +206,8 @@ export function PlanEditorReorderableRow({
   children: React.ReactNode;
   trailing?: React.ReactNode;
   tone?: "default" | "card";
+  moveEarlierLabel?: string;
+  moveLaterLabel?: string;
 }>) {
   const { fontScale } = useWindowDimensions();
   const { colors, motion } = useAppTheme();
@@ -367,9 +371,9 @@ export function PlanEditorReorderableRow({
         <GestureDetector gesture={dragGesture}>
           <FocusablePressable
             accessibilityActions={[
-              ...(canMoveUp ? [{ name: "increment", label: "Move up" }] : []),
+              ...(canMoveUp ? [{ name: "increment", label: moveEarlierLabel }] : []),
               ...(canMoveDown
-                ? [{ name: "decrement", label: "Move down" }]
+                ? [{ name: "decrement", label: moveLaterLabel }]
                 : []),
             ]}
             accessibilityHint="Touch and hold to drag. Use accessibility actions to move this item."
@@ -404,6 +408,7 @@ export function PlanEditorReorderableRow({
               if (key === "ArrowDown" && canMoveDown) {
                 requestMove(position + 1);
               }
+              if (key === "Escape") publishPreview(null);
             }}
             onPress={() => undefined}
             style={[

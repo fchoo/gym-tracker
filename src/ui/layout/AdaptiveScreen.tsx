@@ -197,6 +197,7 @@ export function AdaptiveScreen({
       {scrollable ? (
         <>
           <ScrollView
+            automaticallyAdjustKeyboardInsets
             contentContainerStyle={[
               styles.scrollContent,
               dock !== undefined && styles.scrollContentWithDock,

@@ -14,6 +14,8 @@ export type NavigationRowProps = Readonly<{
   busy?: boolean;
   disabled?: boolean;
   nativeID?: string;
+  /** Collection rows grow without changing compact Settings/action rows. */
+  density?: "compact" | "collection" | "activePlan";
   onPress(): void;
 }>;
 
@@ -26,6 +28,7 @@ export const NavigationRow = forwardRef<View, NavigationRowProps>(function Navig
   busy = false,
   disabled = false,
   nativeID,
+  density = "compact",
   onPress,
 }, ref) {
   const { colors } = useAppTheme();
@@ -49,6 +52,8 @@ export const NavigationRow = forwardRef<View, NavigationRowProps>(function Navig
       ref={ref}
       style={({ pressed }) => [
         styles.row,
+        density === "collection" && styles.collectionRow,
+        density === "activePlan" && styles.activePlanRow,
         { borderColor: focused ? colors.focusRing : colors.divider, backgroundColor: pressed ? colors.surfaceSubtle : "transparent", opacity: inactive ? 0.62 : 1 },
       ]}
     >
@@ -62,6 +67,8 @@ export const NavigationRow = forwardRef<View, NavigationRowProps>(function Navig
 });
 
 const styles = StyleSheet.create({
-  row: { alignItems: "center", borderBottomWidth: StyleSheet.hairlineWidth, flexDirection: "row", gap: space[2], minHeight: 48, paddingVertical: space[2] },
+  row: { alignItems: "center", borderBottomWidth: StyleSheet.hairlineWidth, flexDirection: "row", gap: space[2], minHeight: sizes.minimumTarget, paddingVertical: space[2] },
+  collectionRow: { minHeight: sizes.collectionRow },
+  activePlanRow: { minHeight: sizes.activePlanRow },
   copy: { flex: 1, gap: space[1] },
 });

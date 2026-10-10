@@ -48,6 +48,9 @@ export const radius = {
 export const sizes = {
   minimumTarget: 48,
   primaryAction: 56,
+  deepRouteHeader: 64,
+  collectionRow: 88,
+  activePlanRow: 120,
   numericControlMinimum: 56,
   numericControlMaximum: 64,
   readableWorkoutWidth: 720,

@@ -53,4 +53,10 @@ describe("NavigationRow", () => {
     expect(rendered.getByText("Restore Library filter").parent?.parent).toBeDisabled();
   });
 
+  it("keeps compact actions at 48dp while exposing Phase 17 collection variants", async () => {
+    const rendered = await render(<AppearanceProvider><><NavigationRow density="collection" onPress={jest.fn()} title="Running plan" /><NavigationRow density="activePlan" onPress={jest.fn()} title="Active Running plan" /></></AppearanceProvider>);
+    expect(rendered.getByText("Running plan").parent?.parent).toHaveStyle({ minHeight: 88 });
+    expect(rendered.getByText("Active Running plan").parent?.parent).toHaveStyle({ minHeight: 120 });
+  });
+
 });

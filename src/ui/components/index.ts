@@ -593,12 +593,15 @@ export const ScreenHeader = forwardRef<View, Readonly<{
   action?: React.ReactNode;
   actions?: readonly React.ReactNode[];
   backAction?: () => void;
+  /** Deep Library routes opt into the Phase 17 64dp header track. */
+  density?: "standard" | "deep";
 }>>(function ScreenHeader({
   title,
   eyebrow,
   action,
   actions,
   backAction,
+  density = "standard",
 }, ref) {
   const { colors } = useAppTheme();
   const copy = [
@@ -640,7 +643,7 @@ export const ScreenHeader = forwardRef<View, Readonly<{
 
   return h(
     View,
-    { style: styles.screenHeader },
+    { style: [styles.screenHeader, density === "deep" && styles.screenHeaderDeep] },
     backAction === undefined
       ? null
       : h(IconAction, {
@@ -1364,6 +1367,9 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     gap: space[2],
     minHeight: sizes.minimumTarget,
+  },
+  screenHeaderDeep: {
+    minHeight: sizes.deepRouteHeader,
   },
   headerCopy: {
     flex: 1,
