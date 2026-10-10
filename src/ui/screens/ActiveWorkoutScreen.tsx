@@ -229,6 +229,16 @@ type OutcomeConfirmation =
   | "discard"
   | null;
 
+type TerminalWorkoutOperation =
+  | "finish_completed"
+  | "partial"
+  | "zero_sets"
+  | "discard";
+
+type OutcomeFailure = Readonly<{
+  operation: TerminalWorkoutOperation;
+}>;
+
 type SectionMutation = "add_warmup" | "add_working";
 
 type SectionMutationFailure = Readonly<{
@@ -839,6 +849,7 @@ function PopulatedWorkoutOverview({
   const [outcomeConfirmation, setOutcomeConfirmation] =
     useState<OutcomeConfirmation>(null);
   const [outcomeBusy, setOutcomeBusy] = useState(false);
+  const [outcomeFailure, setOutcomeFailure] = useState<OutcomeFailure | null>(null);
   const [pendingRemoval, setPendingRemoval] = useState<RemovalCandidate | null>(null);
   const [removalBusy, setRemovalBusy] = useState(false);
   const [removalFailure, setRemovalFailure] = useState<RemovalFailure | null>(null);
@@ -888,6 +899,7 @@ function PopulatedWorkoutOverview({
   const draftQueue = useRef(Promise.resolve());
   const sectionMutationRef = useRef<SectionMutation | null>(null);
   const completionInFlightRef = useRef(false);
+  const finishCompletedInputRef = useRef<FinishCompletedInput | null>(null);
   const correctionSetIdRef = useRef<string | null>(null);
   const restCommandInFlightRef = useRef(false);
   const overviewExercises = React.useMemo(() => exercisesFor(view), [view]);
@@ -1669,14 +1681,27 @@ function PopulatedWorkoutOverview({
   };
 
   const finishCompletedWorkout = async () => {
+    if (outcomeBusy) return;
+    const input = finishCompletedInputRef.current ?? {
+      sessionId,
+      expectedSessionRevision: viewRef.current.revision,
+      endedAtMs: nowMs(),
+    };
+    finishCompletedInputRef.current = input;
     setOutcomeBusy(true);
+    setOutcomeFailure(null);
     try {
-      await commands.finishCompleted({
-        sessionId,
-        expectedSessionRevision: view.revision,
-        endedAtMs: nowMs(),
-      });
-      onOutcomeSaved(sessionId);
+      const result = await commands.finishCompleted(input);
+      if (
+        result.detail.id !== sessionId
+        || result.detail.status !== "completed"
+      ) {
+        throw new Error("finish_workout_result_unknown");
+      }
+      finishCompletedInputRef.current = null;
+      onOutcomeSaved(result.detail.id);
+    } catch {
+      setOutcomeFailure({ operation: "finish_completed" });
     } finally {
       setOutcomeBusy(false);
     }
@@ -2537,6 +2562,19 @@ function PopulatedWorkoutOverview({
         }}
         restoreFocusRef={moreActionRef}
         visible={outcomeConfirmation !== null}
+      />
+      <ConfirmationSheet
+        body="Your workout is still active. Your completed sets and rest are unchanged. Try finishing again."
+        cancelLabel="Return to Workout"
+        confirmBusy={outcomeBusy}
+        confirmLabel="Retry finishing workout"
+        heading="Workout was not finished"
+        onCancel={() => setOutcomeFailure(null)}
+        onConfirm={() => {
+          void finishCompletedWorkout();
+        }}
+        restoreFocusRef={moreActionRef}
+        visible={outcomeFailure?.operation === "finish_completed"}
       />
       {exerciseActionCandidate?.action !== "remove" ? null : (
         <ConfirmationSheet
