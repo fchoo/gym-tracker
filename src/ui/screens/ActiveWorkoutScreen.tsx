@@ -53,6 +53,8 @@ import type {
   SaveZeroSetInput,
   SetObservation,
   SkipExerciseInput,
+  UndoCompletedSetInput,
+  UndoCompletedSetResult,
   UpdateActiveSetDraftInput,
   UpdateWarmupDraftInput,
 } from "../../domains/workout";
@@ -79,6 +81,7 @@ import { BottomSheet } from "../components/BottomSheet";
 import {
   RestDock,
 } from "../components/RestDock";
+import { useOptionalSemanticToast } from "../components/SemanticToast";
 import type {
   RestCountdownCuePort,
 } from "../../domains/rest/restCountdownCuePort";
@@ -127,6 +130,7 @@ export interface ActiveWorkoutCommands {
   /** @deprecated The screen never invokes legacy skip commands. */
   skipWorkingSet?(input: import("../../domains/workout").SkipWorkingSetInput): Promise<ActiveWorkoutView>;
   completeSet(input: CompleteSetInput): Promise<CompleteSetResult>;
+  undoCompletedSet?(input: UndoCompletedSetInput): Promise<UndoCompletedSetResult>;
   reviseCompletedSet(
     input: ReviseCompletedSetInput,
   ): Promise<CommittedSetMutationResult>;
@@ -770,6 +774,7 @@ function PopulatedWorkoutOverview({
   width,
 }: PopulatedWorkoutOverviewProps) {
   const { colors, reduceMotion } = useAppTheme();
+  const semanticToast = useOptionalSemanticToast();
   const [view, setView] = useState(initialView);
   const viewRef = useRef(initialView);
   const parentActiveSetIdRef = useRef(initialView.activeSetId);
@@ -1034,6 +1039,17 @@ function PopulatedWorkoutOverview({
         completedAtMs,
       });
       applyView(result.view);
+      if (result.outcome === "committed") {
+        const completedSetId = currentSet.id;
+        semanticToast?.enqueue({
+          message: "Set completed",
+          durationMs: 8_000,
+          action: {
+            label: "Undo completed set",
+            onPress: () => { void undoCompletedSet(completedSetId); },
+          },
+        });
+      }
       if (
         result.outcome === "committed"
         && result.view.activeSetId !== null
@@ -1051,6 +1067,17 @@ function PopulatedWorkoutOverview({
     } finally {
       completionInFlightRef.current = false;
       setWorkingBusySetId(null);
+    }
+  };
+
+  const undoCompletedSet = async (completedSetId: string) => {
+    const result = await commands.undoCompletedSet?.({
+      sessionId,
+      completedSetId,
+      nowMs: nowMs(),
+    });
+    if (result?.outcome === "undone") {
+      applyView(result.view);
     }
   };
 

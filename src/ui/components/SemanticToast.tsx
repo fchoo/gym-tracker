@@ -1,5 +1,5 @@
 import React, { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from "react";
-import { Animated, StyleSheet, Text, View, type TextStyle } from "react-native";
+import { Animated, Pressable, StyleSheet, Text, View, type TextStyle } from "react-native";
 
 import { space, typeScale, useAppTheme } from "../theme";
 
@@ -8,6 +8,7 @@ export type SemanticToastEvent = Readonly<{
   message: string;
   severity?: SemanticToastSeverity;
   durationMs?: number;
+  action?: Readonly<{ label: string; onPress: () => void }> | undefined;
 }>;
 
 export type SemanticToastMountChange =
@@ -30,6 +31,10 @@ export function useSemanticToast(): ToastContextValue {
   const value = useContext(ToastContext);
   if (value === undefined) throw new Error("useSemanticToast must be inside SemanticToastProvider");
   return value;
+}
+
+export function useOptionalSemanticToast(): ToastContextValue | undefined {
+  return useContext(ToastContext);
 }
 
 export function SemanticToastProvider({
@@ -57,6 +62,7 @@ export function SemanticToastProvider({
       message: event.message.trim(),
       severity: event.severity ?? "success",
       ...(normalizedDurationMs === undefined ? {} : { durationMs: normalizedDurationMs }),
+      ...(event.action === undefined ? {} : { action: event.action }),
     };
     if (!isBoundedUserMessage(normalized.message)) return;
     setQueue((currentQueue) => currentQueue.some((item) => item.message === normalized.message)
@@ -139,7 +145,7 @@ export function SemanticToastProvider({
             accessible
             importantForAccessibility="yes"
             onLayout={handleToastLayout}
-            pointerEvents="none"
+            pointerEvents={current.action === undefined ? "none" : "auto"}
             style={[
               styles.toast,
               {
@@ -155,6 +161,21 @@ export function SemanticToastProvider({
             <Text style={[typeScale.body as TextStyle, styles.copy, { color: colors.toastText }]}>
               {current.message}
             </Text>
+            {current.action === undefined ? null : (
+              <Pressable
+                accessibilityLabel={current.action.label}
+                accessibilityRole="button"
+                onPress={() => {
+                  current.action?.onPress();
+                  dismiss();
+                }}
+                style={styles.action}
+              >
+                <Text style={[typeScale.label as TextStyle, { color: colors.toastText }]}>
+                  {current.action.label}
+                </Text>
+              </Pressable>
+            )}
           </Animated.View>
         )}
       </View>
@@ -204,4 +225,5 @@ const styles = StyleSheet.create({
   },
   accent: { width: 4 },
   copy: { alignSelf: "center", flex: 1, paddingLeft: 12, paddingVertical: space[2] },
+  action: { alignSelf: "center", minHeight: 48, justifyContent: "center", paddingHorizontal: space[2] },
 });

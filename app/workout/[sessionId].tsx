@@ -168,6 +168,7 @@ export default function ActiveWorkoutRoute() {
         removeWarmup: runtime.removeWarmup,
         removeWorkingSet: runtime.removeWorkingSet,
         completeSet: runtime.completeSet,
+        undoCompletedSet: runtime.undoCompletedSet,
         reviseCompletedSet: mutationCommands.reviseCompletedSet,
         startManualRest: runtime.startManualRest,
         pauseRest: runtime.pauseRest,
