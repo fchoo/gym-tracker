@@ -86,4 +86,24 @@ describe("RunningSessionFields", () => {
     expect(view.getByText("Effort target")).toBeOnTheScreen();
     expect(view.queryByLabelText("Work duration milliseconds")).not.toBeOnTheScreen();
   });
+
+  it("keeps Structured and Unstructured Fartlek fields distinct", async () => {
+    const view = await render(<AppearanceProvider><RunningSessionFields
+      draft={initialRunningSessionFormDraft("fartlek", "Sunday")}
+      onChange={jest.fn()}
+    /></AppearanceProvider>);
+    expect(view.getByRole("button", { name: "Style Structured" })).toBeOnTheScreen();
+    expect(view.getByLabelText("Surges / repeats")).toBeOnTheScreen();
+    expect(view.getByLabelText("Fast segment duration milliseconds")).toBeOnTheScreen();
+    expect(view.getByLabelText("Easy float / recovery duration milliseconds")).toBeOnTheScreen();
+    expect(view.queryByLabelText("Fast cue")).not.toBeOnTheScreen();
+
+    await view.rerender(<AppearanceProvider><RunningSessionFields
+      draft={{ ...initialRunningSessionFormDraft("fartlek", "Sunday"), fartlekStyle: "unstructured" } as never}
+      onChange={jest.fn()}
+    /></AppearanceProvider>);
+    expect(view.getByLabelText("Fast cue")).toBeOnTheScreen();
+    expect(view.getByLabelText("Easy recovery cue")).toBeOnTheScreen();
+    expect(view.queryByLabelText("Fast segment duration milliseconds")).not.toBeOnTheScreen();
+  });
 });

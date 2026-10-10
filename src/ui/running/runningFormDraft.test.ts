@@ -4,6 +4,7 @@ import {
   RUNNING_SESSION_KINDS,
   addRunningSessionDraft,
   deleteRunningSessionDraft,
+  isRunningSessionKind,
   makeRunningSessionDraft,
   reorderRunningSessionDraft,
   validateRunningPlanDraft,
@@ -36,5 +37,10 @@ describe("Running plan local draft", () => {
     const complete = allKinds.reduce(addRunningSessionDraft, draft);
     expect(validateRunningPlanDraft(complete)).toBeNull();
     expect(complete.sessions.map((entry) => entry.session.sessionKind)).toEqual(RUNNING_SESSION_KINDS);
+  });
+
+  it("recognizes Fartlek as one of the fixed typed session discriminants", () => {
+    expect(isRunningSessionKind("fartlek")).toBe(true);
+    expect(isRunningSessionKind("cadence_cluster")).toBe(false);
   });
 });

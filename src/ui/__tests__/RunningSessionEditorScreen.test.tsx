@@ -104,6 +104,26 @@ describe("RunningSessionEditorScreen", () => {
     expect(hills).not.toHaveProperty("contextual.recovery");
   });
 
+  it("serializes Fartlek styles without mixing quantity and cue branches", () => {
+    const structured = makeRunningSessionSpec({
+      ...initialRunningSessionFormDraft("fartlek", "Sunday"),
+      repeats: "5", work: "45000", workUnit: "duration", recovery: "150", recoveryUnit: "distance",
+      target: { mode: "rpe", paceMsPerKm: "", heartRateZone: "", rpe: "6" },
+      fastCue: "ignored", easyRecoveryCue: "ignored",
+    } as never);
+    expect(structured).toEqual(expect.objectContaining({ contextual: { format: "structured", repetitions: 5, work: { durationMs: 45000 }, recovery: { distanceMeters: 150 } } }));
+    expect(structured).not.toHaveProperty("contextual.fastCue");
+
+    const unstructured = makeRunningSessionSpec({
+      ...initialRunningSessionFormDraft("fartlek", "Sunday"),
+      fartlekStyle: "unstructured", repeats: "7", fastCue: "lamp posts", easyRecoveryCue: "easy to bridge",
+      target: { mode: "heart_rate_zone", paceMsPerKm: "", heartRateZone: "3", rpe: "" },
+      work: "60000", recovery: "30000",
+    } as never);
+    expect(unstructured).toEqual(expect.objectContaining({ contextual: { format: "unstructured", repetitions: 7, fastCue: "lamp posts", easyRecoveryCue: "easy to bridge" } }));
+    expect(unstructured).not.toHaveProperty("contextual.work");
+  });
+
   it("keeps create identity UI-only until the committed Recovery command readback", async () => {
     const saveSession = jest.fn(async () => ({ plan: { ...plan, revision: 2 }, sessionRootId: "session-root-1" }));
     const onSaved = jest.fn();
