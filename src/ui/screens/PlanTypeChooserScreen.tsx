@@ -103,7 +103,7 @@ function PlanTypeChoice({
 
 const styles = StyleSheet.create({
   body: { marginTop: space[2] },
-  choice: { borderRadius: radius.emphasized, borderWidth: 1, minHeight: 0, padding: space[6] },
+  choice: { borderRadius: radius.emphasized, borderWidth: 1, minHeight: 156, padding: space[6] },
   choices: { gap: space[4], marginTop: space[8] },
   choiceTitle: { marginTop: space[1], marginBottom: space[1] },
   footer: { marginTop: space[8], paddingBottom: space[8] },

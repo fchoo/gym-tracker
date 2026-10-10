@@ -179,7 +179,7 @@ describe("RunningSessionEditorScreen", () => {
     await view.findByText("Save failed");
     expect(view.getByText("Long run session could not be saved. Your edits are still here. Try again.")).toBeOnTheScreen();
     expect(view.getByLabelText("Volume (metres)")).toHaveProp("value", "12000");
-    expect(view.getByRole("button", { name: "Retry saving session" })).toBeOnTheScreen();
+    expect(view.getByRole("button", { name: "Retry saving Long run session" })).toBeOnTheScreen();
   });
 
   it("retries a failed load without writing and returns to the session draft", async () => {

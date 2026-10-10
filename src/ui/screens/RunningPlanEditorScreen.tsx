@@ -5,6 +5,7 @@ import { RUNNING_SESSION_KINDS, type RunningPlanAggregate, type RunningSessionKi
 import { ConfirmationDialog } from "../components/ConfirmationDialog";
 import { EmptyState, FocusablePressable, InlineNotice, PrimaryAction, ScreenHeader, SecondaryAction } from "../components";
 import { PlanEditorReorderableRow, PlanEditorTextField, TimeDurationField } from "../components/PlanEditorFields";
+import { runningSessionReadback } from "../components/RunningSessionFields";
 import { AdaptiveScreen } from "../layout/AdaptiveScreen";
 import { space, typeScale, useAppTheme } from "../theme";
 import {
@@ -20,9 +21,10 @@ const validationCopy: Record<RunningPlanDraftValidation, string> = {
   running_goal_days_invalid: "Choose at least one available day.",
   running_goal_duration_invalid: "Enter a valid target time.",
   running_goal_target_date_invalid: "Choose a future target date or leave it blank.",
-  running_goal_runs_per_week_invalid: "Choose enough available days for your weekly sessions, or add another ordered session to a selected day.",
+  running_goal_runs_per_week_invalid: "",
   running_goal_long_run_day_invalid: "Choose a long-run day from the available days.",
   running_goal_weekly_distance_invalid: "Enter a valid current weekly distance.",
+  running_goal_benchmark_invalid: "Enter a valid benchmark distance, time, and recorded date.",
   running_session_invalid: "Review the saved session order and details.",
 };
 const benchmarkSourceLabel = (source: "owner_selected" | "imported_activity" | "personal_history" | "manual") => ({ owner_selected: "Manual", imported_activity: "Imported activity", personal_history: "Personal history", manual: "Manual" })[source];
@@ -53,6 +55,8 @@ export function RunningPlanEditorScreen(props: Readonly<{
   const daysRef = useRef<View>(null);
   const longRunRef = useRef<View>(null);
   const weeklyDistanceRef = useRef<TextInput>(null);
+  const addSessionRef = useRef<View>(null);
+  const deleteRestoreRef = useRef<View>(null);
 
   useEffect(() => { setDraft(props.initialDraft); }, [props.initialDraft]);
   const dirty = useMemo(() => JSON.stringify(draft) !== JSON.stringify(props.initialDraft), [draft, props.initialDraft]);
@@ -83,7 +87,10 @@ export function RunningPlanEditorScreen(props: Readonly<{
   const save = async () => {
     const validation = validateRunningPlanDraft(draft);
     if (validation !== null) {
-      setError(`Running plan needs attention. ${validationCopy[validation]}`);
+      const message = validation === "running_goal_runs_per_week_invalid"
+        ? `Choose enough available days for your ${draft.goal.runsPerWeek ?? 0} weekly sessions, or add another ordered session to a selected day.`
+        : validationCopy[validation];
+      setError(`Running plan needs attention. ${message}`);
       AccessibilityInfo.announceForAccessibility("Running plan needs attention.");
       focusFirstInvalid(validation);
       return;
@@ -91,6 +98,7 @@ export function RunningPlanEditorScreen(props: Readonly<{
     setSaving(true); setError(null);
     try {
       const committed = await props.savePlan(runningPlanCommandFromDraft(draft));
+      AccessibilityInfo.announceForAccessibility(`${props.title === undefined ? "Running plan created" : "Running plan saved"}. Activation stays separate.`);
       props.onSaved(committed.id);
       if (pendingSession !== null) props.onOpenSession?.(pendingSession);
     } catch {
@@ -102,7 +110,9 @@ export function RunningPlanEditorScreen(props: Readonly<{
     if (pendingSession !== null) props.onOpenSession?.(pendingSession); else props.onBack();
   };
   const createLabel = props.title === undefined ? "Create running plan" : "Save running plan";
-  const invalid = (code: RunningPlanDraftValidation) => error?.includes(validationCopy[code]) ? validationCopy[code] : undefined;
+  const invalid = (code: RunningPlanDraftValidation) => code === "running_goal_runs_per_week_invalid"
+    ? (error?.includes("weekly sessions") ? error.replace("Running plan needs attention. ", "") : undefined)
+    : (validationCopy[code] !== "" && error?.includes(validationCopy[code]) ? validationCopy[code] : undefined);
   const primary = <>
     <ScreenHeader backAction={() => dirty ? setLeaveVisible(true) : props.onBack()} density="deep" eyebrow="RUNNING" title={props.title ?? "Goal and weekly sessions"} />
     <Text style={[typeScale.sectionTitle as TextStyle, { color: colors.textPrimary }]}>Goal and weekly sessions</Text>
@@ -110,7 +120,7 @@ export function RunningPlanEditorScreen(props: Readonly<{
     <PlanEditorTextField label="Plan name" onChangeText={(name) => setDraft((current) => ({ ...current, name }))} value={draft.name} />
     <PlanEditorTextField error={invalid("running_goal_distance_invalid")} help="Required. Enter metres." inputRef={distanceRef} keyboardType="decimal-pad" label="Goal distance (metres)" onChangeText={(value) => setDraft((current) => ({ ...current, goal: { ...current.goal, goalDistanceMeters: Number(value) } }))} value={draft.goal.goalDistanceMeters === 0 ? "" : String(draft.goal.goalDistanceMeters)} />
     <TimeDurationField {...(invalid("running_goal_duration_invalid") === undefined ? {} : { error: invalid("running_goal_duration_invalid") })} help="Required. Enter hours, minutes, and seconds." label="Target time" onChangeText={(seconds) => setDraft((current) => ({ ...current, goal: { ...current.goal, targetDurationMs: seconds === "" ? undefined : Number(seconds) * 1000 } }))} triggerRef={timeRef} value={draft.goal.targetDurationMs === undefined ? "" : String(draft.goal.targetDurationMs / 1000)} />
-    {draft.goal.benchmark === undefined ? <><Text style={[typeScale.label as TextStyle, { color: colors.textPrimary }]}>Current benchmark</Text><Text style={[typeScale.body as TextStyle, { color: colors.textSecondary }]}>No benchmark recorded</Text><SecondaryAction label="Add manual benchmark" onPress={() => setDraft((current) => ({ ...current, goal: { ...current.goal, benchmark: { source: "manual", distanceMeters: 0, durationMs: 0, localDate: "" } } }))} /></> : <><Text style={[typeScale.label as TextStyle, { color: colors.textPrimary }]}>Current benchmark</Text><PlanEditorTextField help="Recorded metres." keyboardType="decimal-pad" label="Benchmark distance (metres)" onChangeText={(value) => setDraft((current) => current.goal.benchmark === undefined ? current : ({ ...current, goal: { ...current.goal, benchmark: { ...current.goal.benchmark, distanceMeters: Number(value) } } }))} value={draft.goal.benchmark.distanceMeters === 0 ? "" : String(draft.goal.benchmark.distanceMeters)} /><TimeDurationField help="Recorded benchmark duration." label="Benchmark time" onChangeText={(seconds) => setDraft((current) => current.goal.benchmark === undefined ? current : ({ ...current, goal: { ...current.goal, benchmark: { ...current.goal.benchmark, durationMs: Number(seconds) * 1000 } } }))} value={draft.goal.benchmark.durationMs === 0 ? "" : String(draft.goal.benchmark.durationMs / 1000)} /><SecondaryAction label={`Benchmark source: ${benchmarkSourceLabel(draft.goal.benchmark.source)}`} onPress={() => setDraft((current) => current.goal.benchmark === undefined ? current : ({ ...current, goal: { ...current.goal, benchmark: { ...current.goal.benchmark, source: nextBenchmarkSource(current.goal.benchmark.source) } } }))} /><PlanEditorTextField label="Benchmark recorded date" onChangeText={(localDate) => setDraft((current) => current.goal.benchmark === undefined ? current : ({ ...current, goal: { ...current.goal, benchmark: { ...current.goal.benchmark, localDate } } }))} value={draft.goal.benchmark.localDate} /></>}
+    {draft.goal.benchmark === undefined ? <><Text style={[typeScale.label as TextStyle, { color: colors.textPrimary }]}>Current benchmark</Text><Text style={[typeScale.body as TextStyle, { color: colors.textSecondary }]}>No benchmark recorded</Text><SecondaryAction label="Add manual benchmark" onPress={() => setDraft((current) => ({ ...current, goal: { ...current.goal, benchmark: { source: "manual", distanceMeters: 0, durationMs: 0, localDate: "" } } }))} /></> : <><Text style={[typeScale.label as TextStyle, { color: colors.textPrimary }]}>Current benchmark</Text><PlanEditorTextField error={invalid("running_goal_benchmark_invalid")} help="Recorded metres." keyboardType="decimal-pad" label="Benchmark distance (metres)" onChangeText={(value) => setDraft((current) => current.goal.benchmark === undefined ? current : ({ ...current, goal: { ...current.goal, benchmark: { ...current.goal.benchmark, distanceMeters: Number(value) } } }))} value={draft.goal.benchmark.distanceMeters === 0 ? "" : String(draft.goal.benchmark.distanceMeters)} /><TimeDurationField help="Recorded benchmark duration." label="Benchmark time" onChangeText={(seconds) => setDraft((current) => current.goal.benchmark === undefined ? current : ({ ...current, goal: { ...current.goal, benchmark: { ...current.goal.benchmark, durationMs: Number(seconds) * 1000 } } }))} value={draft.goal.benchmark.durationMs === 0 ? "" : String(draft.goal.benchmark.durationMs / 1000)} /><SecondaryAction label={`Benchmark source: ${benchmarkSourceLabel(draft.goal.benchmark.source)}`} onPress={() => setDraft((current) => current.goal.benchmark === undefined ? current : ({ ...current, goal: { ...current.goal, benchmark: { ...current.goal.benchmark, source: nextBenchmarkSource(current.goal.benchmark.source) } } }))} /><PlanEditorTextField error={invalid("running_goal_benchmark_invalid")} help="Required. Use YYYY-MM-DD." label="Benchmark recorded date" onChangeText={(localDate) => setDraft((current) => current.goal.benchmark === undefined ? current : ({ ...current, goal: { ...current.goal, benchmark: { ...current.goal.benchmark, localDate } } }))} value={draft.goal.benchmark.localDate} /></>}
     <PlanEditorTextField error={invalid("running_goal_target_date_invalid")} help="Optional. Use YYYY-MM-DD." inputRef={dateRef} label="Target date (optional)" onChangeText={(targetLocalDate) => setDraft((current) => ({ ...current, goal: { ...current.goal, targetLocalDate: targetLocalDate === "" ? undefined : targetLocalDate } }))} value={draft.goal.targetLocalDate ?? ""} />
     <PlanEditorTextField error={invalid("running_goal_runs_per_week_invalid")} help="Required whole number." inputRef={runsRef} keyboardType="number-pad" label="Runs per week" onChangeText={(value) => setDraft((current) => ({ ...current, goal: { ...current.goal, runsPerWeek: Number(value) } }))} value={draft.goal.runsPerWeek === undefined ? "" : String(draft.goal.runsPerWeek)} />
     <Text style={[typeScale.label as TextStyle, { color: colors.textPrimary }]}>Available days</Text>
@@ -123,13 +133,13 @@ export function RunningPlanEditorScreen(props: Readonly<{
     <View style={styles.summary}><Text style={[typeScale.label as TextStyle, { color: colors.textSecondary }]}>Sessions</Text><Text style={[typeScale.bodyStrong as TextStyle, { color: colors.textPrimary }]}>{draft.goal.runsPerWeek === undefined ? "Not set" : `${draft.goal.runsPerWeek} / week`}</Text><Text style={[typeScale.label as TextStyle, { color: colors.textSecondary }]}>Schedule</Text><Text style={[typeScale.bodyStrong as TextStyle, { color: colors.textPrimary }]}>{draft.goal.trainingDays.join(", ") || "Not set"}</Text></View>
     <Text accessibilityRole="header" style={[typeScale.sectionTitle as TextStyle, { color: colors.textPrimary }]}>Weekly structure</Text>
     <View style={styles.actionList}>{RUNNING_SESSION_KINDS.map((kind) => <SecondaryAction key={kind} label={`Add ${sessionName(kind)} session`} onPress={() => add(kind)} />)}</View>
-    {draft.sessions.length === 0 ? <EmptyState body="Add a Recovery, Long run, Progression, Tempo, Intervals, Hills, or Fartlek session." heading="No sessions yet" primaryAction={<SecondaryAction label="Add session" onPress={() => add("recovery")} />} /> : draft.sessions.map((session, index) => <PlanEditorReorderableRow key={session.slot.rootId} count={draft.sessions.length} label={`${session.slot.weekday} · ${sessionName(session.session.sessionKind)}`} moveEarlierLabel={`Move ${sessionName(session.session.sessionKind)} earlier`} moveLaterLabel={`Move ${sessionName(session.session.sessionKind)} later`} onMoveDown={() => move(index, index + 1)} onMoveUp={() => move(index, index - 1)} position={index}><View style={styles.sessionSummary}><Text style={[typeScale.bodyStrong as TextStyle, { color: colors.textPrimary }]}>{`${session.slot.weekday} · ${sessionName(session.session.sessionKind)}`}</Text><Text style={[typeScale.secondary as TextStyle, { color: colors.textSecondary }]}>{`${session.session.phases.length} phase${session.session.phases.length === 1 ? "" : "s"}`}</Text><SecondaryAction label={`Edit ${sessionName(session.session.sessionKind)} session`} onPress={() => dirty ? (setPendingSession(session.session.rootId), setLeaveVisible(true)) : props.onOpenSession?.(session.session.rootId)} /><SecondaryAction destructive label={`Delete ${sessionName(session.session.sessionKind)} session`} onPress={() => setPendingDeleteSlotRootId(session.slot.rootId)} /></View></PlanEditorReorderableRow>)}
+    {draft.sessions.length === 0 ? <EmptyState body="Add a Recovery, Long run, Progression, Tempo, Intervals, Hills, or Fartlek session." heading="No sessions yet" primaryAction={<SecondaryAction label="Add session" onPress={() => add("recovery")} ref={addSessionRef} />} /> : draft.sessions.map((session, index) => <PlanEditorReorderableRow key={session.slot.rootId} count={draft.sessions.length} label={`${session.slot.weekday} · ${sessionName(session.session.sessionKind)}`} moveEarlierLabel={`Move ${sessionName(session.session.sessionKind)} earlier`} moveLaterLabel={`Move ${sessionName(session.session.sessionKind)} later`} onMoveDown={() => move(index, index + 1)} onMoveUp={() => move(index, index - 1)} position={index}><View style={styles.sessionSummary}><Text style={[typeScale.bodyStrong as TextStyle, { color: colors.textPrimary }]}>{`${session.slot.weekday} · ${sessionName(session.session.sessionKind)}`}</Text><Text style={[typeScale.secondary as TextStyle, { color: colors.textSecondary }]}>{runningSessionReadback(session)}</Text><SecondaryAction label={`Edit ${sessionName(session.session.sessionKind)} session`} onPress={() => dirty ? (setPendingSession(session.session.rootId), setLeaveVisible(true)) : props.onOpenSession?.(session.session.rootId)} /><SecondaryAction destructive label={`Delete ${sessionName(session.session.sessionKind)} session`} onPress={() => { deleteRestoreRef.current = addSessionRef.current; setPendingDeleteSlotRootId(session.slot.rootId); }} /></View></PlanEditorReorderableRow>)}
     {error === null ? null : <InlineNotice action={<SecondaryAction label="Retry saving plan" onPress={() => void save()} />} body={error} heading="Save failed" tone="error" />}
     <PrimaryAction busy={saving} disabled={saving} label={saving ? "Saving plan…" : createLabel} onPress={() => void save()} ref={saveRef} />
   </>;
   return <><AdaptiveScreen primary={primary} testID="running-plan-editor" />
     <ConfirmationDialog alternateLabel="Discard changes" body="Your edits are still here. Choose whether to save the complete plan, discard the local draft, or keep editing." cancelLabel="Keep editing" confirmBusy={saving} confirmLabel="Save changes" heading="Save changes?" onAlternate={leave} onCancel={() => { setLeaveVisible(false); setPendingSession(null); }} onConfirm={() => void save()} restoreFocusRef={saveRef} visible={leaveVisible} />
-    <ConfirmationDialog body="This removes the session from future versions of this plan. Past occurrences and matched activities stay unchanged." cancelLabel="Keep session" confirmLabel="Delete session" destructive heading={`Delete ${pendingDelete === undefined ? "" : sessionName(pendingDelete.session.sessionKind)} session?`} onCancel={() => setPendingDeleteSlotRootId(null)} onConfirm={() => { if (pendingDelete !== undefined) setDraft((current) => deleteRunningSessionDraft(current, pendingDelete.slot.rootId)); setPendingDeleteSlotRootId(null); }} restoreFocusRef={saveRef} visible={pendingDelete !== undefined} />
+    <ConfirmationDialog body="This removes the session from future versions of this plan. Past occurrences and matched activities stay unchanged." cancelLabel="Keep session" confirmLabel="Delete session" destructive heading={`Delete ${pendingDelete === undefined ? "" : sessionName(pendingDelete.session.sessionKind)} session?`} onCancel={() => setPendingDeleteSlotRootId(null)} onConfirm={() => { if (pendingDelete !== undefined) setDraft((current) => deleteRunningSessionDraft(current, pendingDelete.slot.rootId)); setPendingDeleteSlotRootId(null); }} restoreFocusRef={deleteRestoreRef} visible={pendingDelete !== undefined} />
   </>;
 }
 

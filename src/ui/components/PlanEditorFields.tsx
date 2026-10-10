@@ -402,6 +402,10 @@ export function PlanEditorReorderableRow({
                 requestMove(position + 1);
                 return;
               }
+              if (key === "Escape") {
+                publishPreview(null);
+                return;
+              }
               if (!shiftKey) {
                 return;
               }
@@ -411,7 +415,6 @@ export function PlanEditorReorderableRow({
               if (key === "ArrowDown" && canMoveDown) {
                 requestMove(position + 1);
               }
-              if (key === "Escape") publishPreview(null);
             }}
             onPress={() => undefined}
             style={[

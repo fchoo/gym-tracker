@@ -8,6 +8,7 @@ import {
   makeRunningSessionDraft,
   reorderRunningSessionDraft,
   validateRunningPlanDraft,
+  isFutureLocalDate,
   type RunningPlanDraft,
 } from "./runningFormDraft";
 
@@ -34,7 +35,7 @@ describe("Running plan local draft", () => {
       id: `${kind}-v1`, rootId: `${kind}-root`, slotId: `${kind}-slot-v1`, slotRootId: `${kind}-slot`,
       planId: "running", kind, weekday: "Monday", ordinal, createdAtMs: 1,
     }));
-    const complete = allKinds.reduce(addRunningSessionDraft, draft);
+    const complete = { ...allKinds.reduce(addRunningSessionDraft, draft), goal: { ...draft.goal, longRunDay: "Monday" as const } };
     expect(validateRunningPlanDraft(complete)).toBeNull();
     expect(complete.sessions.map((entry) => entry.session.sessionKind)).toEqual(RUNNING_SESSION_KINDS);
   });
@@ -42,5 +43,11 @@ describe("Running plan local draft", () => {
   it("recognizes Fartlek as one of the fixed typed session discriminants", () => {
     expect(isRunningSessionKind("fartlek")).toBe(true);
     expect(isRunningSessionKind("cadence_cluster")).toBe(false);
+  });
+
+  it("accepts only calendar-valid dates after the injected local today", () => {
+    expect(isFutureLocalDate("2026-10-12", "2026-10-11")).toBe(true);
+    expect(isFutureLocalDate("2026-10-11", "2026-10-11")).toBe(false);
+    expect(isFutureLocalDate("2026-02-30", "2026-02-01")).toBe(false);
   });
 });

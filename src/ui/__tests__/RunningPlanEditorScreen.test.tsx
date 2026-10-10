@@ -27,7 +27,7 @@ describe("RunningPlanEditorScreen", () => {
 
     expect(screen.getByRole("header", { name: "Goal and weekly sessions" })).toBeOnTheScreen();
     await fireEvent.press(screen.getByRole("button", { name: "Add Recovery session" }));
-    expect(screen.getByText("1 phase")).toBeOnTheScreen();
+    expect(screen.getByText("1 min · easy No target")).toBeOnTheScreen();
     expect(screen.queryByLabelText("Running Recovery session")).not.toBeOnTheScreen();
     await fireEvent.press(screen.getByRole("button", { name: "Delete Recovery session" }));
     expect(screen.getByText("Delete Recovery session?")).toBeOnTheScreen();

@@ -52,8 +52,8 @@ describe("PlanEditorReorderableRow", () => {
     );
     expect(handle).toHaveStyle({ minHeight: 48, minWidth: 48 });
     expect(handle).toHaveProp("accessibilityActions", [
-      { name: "increment", label: "Move up" },
-      { name: "decrement", label: "Move down" },
+      { name: "increment", label: "Move earlier" },
+      { name: "decrement", label: "Move later" },
     ]);
     expect(rendered.getByTestId("replace-slot")).toBeOnTheScreen();
     expect(rendered.queryByText("Position 2 of 3")).not.toBeOnTheScreen();

@@ -18,6 +18,7 @@ export type RunningPlanDraftValidation =
   | "running_goal_runs_per_week_invalid"
   | "running_goal_long_run_day_invalid"
   | "running_goal_weekly_distance_invalid"
+  | "running_goal_benchmark_invalid"
   | "running_session_invalid";
 
 export const RUNNING_WEEKDAYS = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"] as const;
@@ -39,11 +40,28 @@ export function draftFromRunningPlan(plan: RunningPlanAggregate): RunningPlanDra
   };
 }
 
-export function validateRunningPlanDraft(draft: RunningPlanDraft): RunningPlanDraftValidation | null {
+export function localDateFromNow(now: Date = new Date()): string {
+  const offset = now.getTimezoneOffset() * 60_000;
+  return new Date(now.getTime() - offset).toISOString().slice(0, 10);
+}
+
+export function isFutureLocalDate(value: string, todayLocalDate = localDateFromNow()): boolean {
+  const match = /^(\d{4})-(\d{2})-(\d{2})$/u.exec(value);
+  if (match === null) return false;
+  const [, year, month, day] = match;
+  const parsed = new Date(Date.UTC(Number(year), Number(month) - 1, Number(day)));
+  return parsed.getUTCFullYear() === Number(year)
+    && parsed.getUTCMonth() === Number(month) - 1
+    && parsed.getUTCDate() === Number(day)
+    && value > todayLocalDate;
+}
+
+export function validateRunningPlanDraft(draft: RunningPlanDraft, todayLocalDate = localDateFromNow()): RunningPlanDraftValidation | null {
   if (!Number.isSafeInteger(draft.goal.goalDistanceMeters) || draft.goal.goalDistanceMeters <= 0) return "running_goal_distance_invalid";
   if (draft.goal.trainingDays.length === 0 || new Set(draft.goal.trainingDays).size !== draft.goal.trainingDays.length) return "running_goal_days_invalid";
   if (draft.goal.targetDurationMs !== undefined && (!Number.isSafeInteger(draft.goal.targetDurationMs) || draft.goal.targetDurationMs <= 0)) return "running_goal_duration_invalid";
-  if (draft.goal.targetLocalDate !== undefined && !/^\d{4}-\d{2}-\d{2}$/u.test(draft.goal.targetLocalDate)) return "running_goal_target_date_invalid";
+  if (draft.goal.targetLocalDate !== undefined && !isFutureLocalDate(draft.goal.targetLocalDate, todayLocalDate)) return "running_goal_target_date_invalid";
+  if (draft.goal.benchmark !== undefined && (!Number.isSafeInteger(draft.goal.benchmark.distanceMeters) || draft.goal.benchmark.distanceMeters <= 0 || !Number.isSafeInteger(draft.goal.benchmark.durationMs) || draft.goal.benchmark.durationMs <= 0 || !/^\d{4}-\d{2}-\d{2}$/u.test(draft.goal.benchmark.localDate))) return "running_goal_benchmark_invalid";
   if (!Number.isSafeInteger(draft.goal.runsPerWeek) || draft.goal.runsPerWeek === undefined || draft.goal.runsPerWeek < 1) return "running_goal_runs_per_week_invalid";
   if (draft.goal.currentWeeklyDistanceMeters !== undefined && (!Number.isFinite(draft.goal.currentWeeklyDistanceMeters) || draft.goal.currentWeeklyDistanceMeters <= 0)) return "running_goal_weekly_distance_invalid";
   const longRunExists = draft.sessions.some((entry) => entry.session.sessionKind === "long_run");
