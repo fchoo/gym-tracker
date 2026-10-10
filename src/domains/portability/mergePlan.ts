@@ -10,6 +10,9 @@ import {
   LOGICAL_BACKUP_TABLE_DEFINITIONS,
 } from "./backupContracts";
 import {
+  workoutPreferenceKey,
+} from "../workout/workoutPreferences";
+import {
   LOGICAL_BACKUP_REFERENCE_DEFINITIONS,
 } from "./restoreCommands";
 
@@ -814,6 +817,7 @@ function assertReferenceClosure(snapshot: PortableMergePlanSnapshot): void {
 function settingPlan(
   archive: PortableMergePlanSnapshot,
   local: PortableMergePlanSnapshot,
+  planMappings: ReadonlyMap<string, string>,
 ): Readonly<{
   operations: readonly PortableMergeOperation[];
   inserts: readonly LogicalBackupRow[];
@@ -826,8 +830,23 @@ function settingPlan(
   }
   const archiveKeys = new Set<string>();
   const inserts: LogicalBackupRow[] = [];
-  const operations = rowsFor(archive, "app_settings").map((row) => {
-    const key = textId(row.key);
+  const operations = rowsFor(archive, "app_settings").map((source) => {
+    let row = source;
+    let key = textId(row.key);
+    if (key.startsWith("gym_tracker.workout_plan_preferences.v1:")) {
+      const archivePlanId = key.slice("gym_tracker.workout_plan_preferences.v1:".length);
+      const localPlanId = planMappings.get(archivePlanId);
+      if (localPlanId === undefined) invalid();
+      let value: unknown;
+      try { value = JSON.parse(textId(row.value_json)); } catch { invalid(); }
+      if (typeof value !== "object" || value === null || Array.isArray(value)
+        || (value as Record<string, unknown>).version !== 1
+        || (value as Record<string, unknown>).planId !== archivePlanId) invalid();
+      row = Object.freeze({ ...row, key: workoutPreferenceKey(localPlanId), value_json: JSON.stringify({
+        ...(value as Record<string, unknown>), planId: localPlanId,
+      }) });
+      key = textId(row.key);
+    }
     if (archiveKeys.has(key)) invalid();
     archiveKeys.add(key);
     const operation = Object.freeze({
@@ -1658,7 +1677,6 @@ export async function buildPortableMergePlan(input: Readonly<{
   if (new Set(sessionOperations.map(operationKey)).size !== sessionOperations.length) {
     invalid();
   }
-  const settings = settingPlan(input.archive, input.local);
   const exercises = rootOperations(input.archive, input.local, {
     aggregateClass: "custom_exercise",
     table: "exercises",
@@ -1667,6 +1685,9 @@ export async function buildPortableMergePlan(input: Readonly<{
     aggregateClass: "owned_plan",
     table: "plans",
   });
+  const settings = settingPlan(input.archive, input.local, new Map(
+    plans.idMappings.map(({ archiveId, localId }) => [archiveId, localId]),
+  ));
   const sourceGraph = await sourceGraphPlan(
     input.archive,
     input.local,
