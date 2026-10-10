@@ -17,6 +17,10 @@ export function rootSettingsTriggerNativeID(root: RootRouteKey): string {
   return `root-settings-trigger-${root}`;
 }
 
+export function rootTabNativeID(root: RootRouteKey): string {
+  return `root-tab-${root}`;
+}
+
 export function RootHeadingRefsProvider({
   children,
   headingRefs,

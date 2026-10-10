@@ -56,6 +56,7 @@ import {
 } from "./bottomSheetFocus";
 import { BottomSheet } from "./BottomSheet";
 import { ConfirmationDialog } from "./ConfirmationDialog";
+import { rootTabNativeID } from "../shell/rootFocus";
 
 export {
   ImpactPreview,
@@ -1068,6 +1069,7 @@ export function AppTabs({
         disabled,
         focusable: !disabled,
         key: destination.name,
+        nativeID: rootTabNativeID(destination.name),
         ...keyboardActivationProps(disabled, navigate),
         onPress: navigate,
         style: ({ pressed }: { pressed: boolean }) => [

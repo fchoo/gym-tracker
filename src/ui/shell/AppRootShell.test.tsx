@@ -299,6 +299,39 @@ describe("AppRootShell", () => {
     expect(consumeOrigin).toHaveBeenCalledTimes(1);
   });
 
+  it("restores native focus to the selected root after direct deep-link Back", async () => {
+    const workoutHeading = { current: { focus: jest.fn() } };
+    const { rerender } = await render(
+      <AppearanceProvider>
+        <AppRootShell
+          currentPath="/more/data-and-recovery"
+          headingRefs={{ index: workoutHeading }}
+          requestNativeFocus={mockRequestAndroidViewFocus}
+        >
+          <View />
+        </AppRootShell>
+      </AppearanceProvider>,
+    );
+
+    await act(async () => {
+      rerender(
+        <AppearanceProvider>
+          <AppRootShell
+            activeRoot="index"
+            currentPath="/"
+            headingRefs={{ index: workoutHeading }}
+            requestNativeFocus={mockRequestAndroidViewFocus}
+          >
+            <View />
+          </AppRootShell>
+        </AppearanceProvider>,
+      );
+    });
+
+    expect(workoutHeading.current.focus).toHaveBeenCalledTimes(1);
+    expect(mockRequestAndroidViewFocus).toHaveBeenCalledWith("root-tab-index");
+  });
+
   it("uses the one root-owned toast host without creating a shell-local queue", async () => {
     await render(
       <AppearanceProvider>

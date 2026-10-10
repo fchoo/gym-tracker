@@ -7,6 +7,7 @@ import {
   type RootOrigin,
   type RootRouteKey,
   rootSettingsTriggerNativeID,
+  rootTabNativeID,
 } from "./rootFocus";
 
 type AppRootShellProps = Readonly<{
@@ -103,6 +104,10 @@ export function AppRootShell({
     const pathChanged = previousPathRef.current !== currentPath;
 
     if (activeRoot !== undefined) {
+      const focusRoot = () => {
+        headingRefs?.[activeRoot]?.current?.focus?.();
+        void requestNativeFocus?.(rootTabNativeID(activeRoot));
+      };
       const originTrigger = origin !== undefined && origin.root === activeRoot
         ? origin.trigger?.current
         : undefined;
@@ -110,20 +115,20 @@ export function AppRootShell({
         if (originTrigger?.focus !== undefined) {
           originTrigger.focus();
         } else {
-          headingRefs?.[activeRoot]?.current?.focus?.();
+          focusRoot();
         }
         onConsumeOrigin?.();
       } else if (pathChanged && origin !== undefined && origin.root !== activeRoot) {
-        headingRefs?.[activeRoot]?.current?.focus?.();
+        focusRoot();
         onConsumeOrigin?.();
       } else if (rootChanged) {
-        headingRefs?.[activeRoot]?.current?.focus?.();
+        focusRoot();
       }
     }
 
     previousActiveRootRef.current = activeRoot;
     previousPathRef.current = currentPath;
-  }, [activeRoot, currentPath, headingRefs, onConsumeOrigin, origin]);
+  }, [activeRoot, currentPath, headingRefs, onConsumeOrigin, origin, requestNativeFocus]);
 
   return (
     <RootSettingsControllerContext.Provider value={rootSettingsController}>

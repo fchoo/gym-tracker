@@ -824,6 +824,13 @@ describe("Plan 01-02 route shell", () => {
     ]);
     const today = screen.getByRole("tab", { name: "Workout" });
     expect(today).toBeSelected();
+    expect(today.props.nativeID).toBe("root-tab-index");
+    expect(screen.getByRole("tab", { name: "Calendar" }).props.nativeID)
+      .toBe("root-tab-calendar");
+    expect(screen.getByRole("tab", { name: "Library" }).props.nativeID)
+      .toBe("root-tab-library");
+    expect(screen.getByRole("tab", { name: "Progress" }).props.nativeID)
+      .toBe("root-tab-progress");
     for (const label of ["Workout", "Calendar", "Library", "Progress"]) {
       expect(screen.getByText(label)).toBeOnTheScreen();
     }
