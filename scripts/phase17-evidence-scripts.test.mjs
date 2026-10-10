@@ -3,6 +3,7 @@ import { readFileSync } from "node:fs";
 import test from "node:test";
 import { PHASE17_CASE_ACTION_CONTRACTS, PHASE17_LIBRARY_RUNNING_EVIDENCE_IDS } from "../src/testing/contracts/phase17LibraryRunning.contract.ts";
 import { createPhase17FixtureProtocol } from "../src/bootstrap/phase17NativeFixture.ts";
+import { PHASE17_FAMILY_A_CASE_IDS, createPhase17FamilyAFixtureAdapter } from "../src/bootstrap/phase17FamilyAFixture.ts";
 import { validatePhase17Evidence, validatePhase17IntegrityCoverageRegistry } from "./verify-phase17-evidence.mjs";
 import { PHASE17_FLOW_CASES, commandTreeForPhase17Case, createPhase17RunnerPlan, parsePhase17RunnerArgs, validatePhase17FlowSources } from "./run-phase17-maestro.mjs";
 
@@ -76,7 +77,7 @@ test("Phase 17 fixture protocol binds Library, session, lifecycle, and collision
     adapter: {
       baselineDigest: async () => digest,
       canonicalHash: async () => "b".repeat(64),
-      seed: async ({ fixtureToken }) => ({ selectors: { runningPlanId: `running-${fixtureToken}`, ownedPlanId: "owned-opaque" }, expectedState: { lifecycle: "inactive", revision: 1 } }),
+      seed: async ({ fixtureToken }) => ({ selectors: { runningPlanId: `running-${fixtureToken}`, ownedPlanId: "owned-opaque" }, expectedPreState: { lifecycle: "inactive", revision: 1 }, expectedPostState: { lifecycle: "inactive", revision: 1 } }),
       probe: async ({ sourceTable }) => ({ rowCount: 1, identityHash: "b".repeat(64), facts: { lifecycle: sourceTable.length > 0 ? "inactive" : "invalid", revision: 1 } }),
       cleanup: async ({ fixtureToken }) => { cleaned.push(fixtureToken); digest = "a".repeat(64); },
     },
@@ -98,7 +99,7 @@ test("Phase 17 fixture protocol fails closed for missing or mismatched lifecycle
     adapter: {
       baselineDigest: async () => digest,
       canonicalHash: async () => "d".repeat(64),
-      seed: async () => ({ selectors: { ownedPlanId: "opaque-owned" }, expectedState: { lifecycle: "inactive", revision: 1 } }),
+      seed: async () => ({ selectors: { ownedPlanId: "opaque-owned" }, expectedPreState: { lifecycle: "inactive", revision: 1 }, expectedPostState: { lifecycle: "inactive", revision: 1 } }),
       probe: async () => ({ rowCount: 1, identityHash: "d".repeat(64), facts: { lifecycle: "inactive", revision: 1 } }),
       cleanup: async () => undefined,
     },
@@ -114,11 +115,11 @@ test("Phase 17 fixture protocol fails closed for missing or mismatched lifecycle
   const cleanupFailure = createPhase17FixtureProtocol({
     contracts: PHASE17_CASE_ACTION_CONTRACTS,
     createToken: () => "phase17:fixture-token-0003",
-    adapter: { baselineDigest: async () => "f".repeat(64), canonicalHash: async () => "f".repeat(64), seed: async () => ({ selectors: { ownedPlanId: "opaque" }, expectedState: { lifecycle: "inactive" } }), probe: async () => ({ rowCount: 1, identityHash: "f".repeat(64), facts: { lifecycle: "inactive" } }), cleanup: async () => { throw new Error("cleanup failed"); } },
+    adapter: { baselineDigest: async () => "f".repeat(64), canonicalHash: async () => "f".repeat(64), seed: async () => ({ selectors: { ownedPlanId: "opaque" }, expectedPreState: { lifecycle: "inactive" }, expectedPostState: { lifecycle: "inactive" } }), probe: async () => ({ rowCount: 1, identityHash: "f".repeat(64), facts: { lifecycle: "inactive" } }), cleanup: async () => { throw new Error("cleanup failed"); } },
   });
   const cleanupFixture = await cleanupFailure.setup("library.owned-summary");
   await assert.rejects(cleanupFailure.cleanup({ caseId: cleanupFixture.caseId, fixtureToken: cleanupFixture.fixtureToken }), /cleanup failed/u);
-  assert.deepEqual(Object.keys(fixture).sort(), ["baselineDigest", "caseId", "expectedState", "expectedStateHash", "fixtureToken", "selectors", "sourceTable"]);
+  assert.deepEqual(Object.keys(fixture).sort(), ["baselineDigest", "caseId", "expectedPostState", "expectedPreState", "expectedState", "expectedStateHash", "fixtureToken", "selectors", "sourceTable"]);
   assert.equal(JSON.stringify(fixture).includes("raw-row"), false);
 });
 
@@ -130,7 +131,7 @@ test("Phase 17 rejects unrelated rows, fabricated identities, wrong facts or cou
     adapter: {
       baselineDigest: async () => digest,
       canonicalHash: async () => "2".repeat(64),
-      seed: async () => ({ selectors: { runningPlanId: "returned-running-id" }, expectedState: { id: "returned-running-id", lifecycle: "inactive", revision: 1 } }),
+      seed: async () => ({ selectors: { runningPlanId: "returned-running-id" }, expectedPreState: { id: "returned-running-id", lifecycle: "inactive", revision: 1 }, expectedPostState: { id: "returned-running-id", lifecycle: "inactive", revision: 1 } }),
       probe: async () => ({ rowCount: 2, identityHash: "3".repeat(64), facts: { id: "unrelated-row", lifecycle: "inactive", revision: 1 } }),
       cleanup: async () => { digest = "4".repeat(64); },
     },
@@ -139,4 +140,33 @@ test("Phase 17 rejects unrelated rows, fabricated identities, wrong facts or cou
   await assert.rejects(protocol.probe({ caseId: fixture.caseId, fixtureToken: fixture.fixtureToken, sourceTable: fixture.sourceTable }), /phase17_fixture_probe_failed/u);
   await assert.rejects(protocol.cleanup({ caseId: fixture.caseId, fixtureToken: fixture.fixtureToken }), /phase17_fixture_cleanup_digest_mismatch/u);
   assert.equal(JSON.stringify(fixture).includes("unrelated-row"), false);
+});
+
+test("Phase 17 Family A is an explicit typed registry with table-specific seed, probe and token cleanup", async () => {
+  const touched = [];
+  const adapter = createPhase17FamilyAFixtureAdapter({
+    baselineDigest: async () => "a".repeat(64),
+    canonicalHash: async () => "b".repeat(64),
+    driver: {
+      seed: async (caseId, token, sourceTable) => {
+        touched.push(`seed:${caseId}:${sourceTable}`);
+        const facts = { id: `${caseId}:${token}`, sourceTable };
+        return { selectors: { fixtureId: facts.id }, expectedPreState: facts, expectedPostState: facts };
+      },
+      probe: async (caseId, token, sourceTable, selectors) => {
+        touched.push(`probe:${caseId}:${sourceTable}`);
+        return { rowCount: 1, identityHash: "c".repeat(64), facts: { id: selectors.fixtureId, sourceTable } };
+      },
+      cleanup: async (caseId, token, selectors) => { touched.push(`cleanup:${caseId}:${selectors.fixtureId}`); },
+    },
+  });
+  const protocol = createPhase17FixtureProtocol({ contracts: PHASE17_CASE_ACTION_CONTRACTS, adapter, createToken: () => "phase17:fixture-token-0005" });
+  for (const caseId of ["library.exercise-search", "library.owned-lifecycle", "library.starter-activation", "library.custom-exercise", "library.copy-metric-migration"]) {
+    const fixture = await protocol.setup(caseId);
+    await protocol.probe({ caseId, fixtureToken: fixture.fixtureToken, sourceTable: fixture.sourceTable });
+    await protocol.cleanup({ caseId, fixtureToken: fixture.fixtureToken });
+  }
+  assert.equal(PHASE17_FAMILY_A_CASE_IDS.length, 23);
+  assert.equal(touched.filter((entry) => entry.startsWith("seed:")).length, 5);
+  await assert.rejects(adapter.seed({ caseId: "library.running-detail", fixtureToken: "phase17:fixture-token-0005", sourceTable: "running_plans" }), /phase17_fixture_family_unimplemented/u);
 });

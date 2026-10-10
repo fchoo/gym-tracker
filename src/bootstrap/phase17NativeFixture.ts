@@ -11,6 +11,11 @@ export type Phase17Fixture = Readonly<{
   fixtureToken: string;
   baselineDigest: string;
   sourceTable: string;
+  /** Facts read immediately after setup, before the Maestro interaction. */
+  expectedPreState: Phase17Facts;
+  /** Facts that the case's declared source probe must expose after the interaction. */
+  expectedPostState: Phase17Facts;
+  /** @deprecated Kept for the port protocol; it is always expectedPostState. */
   expectedState: Phase17Facts;
   expectedStateHash: string;
   selectors: Readonly<Record<string, string>>;
@@ -28,7 +33,8 @@ export type Phase17SourceProbe = Readonly<{
 
 export type Phase17FixtureSeed = Readonly<{
   selectors: Readonly<Record<string, string>>;
-  expectedState: Phase17Facts;
+  expectedPreState: Phase17Facts;
+  expectedPostState: Phase17Facts;
 }>;
 
 export type Phase17FixtureAdapter = Readonly<{
@@ -90,12 +96,12 @@ export function createPhase17FixtureProtocol(input: Readonly<{
       const baselineDigest = await input.adapter.baselineDigest();
       if (!HASH.test(baselineDigest)) throw new Error("phase17_fixture_baseline_invalid");
       const seed = await input.adapter.seed({ caseId, fixtureToken, sourceTable: contract.sourceProbe });
-      if (Object.values(seed.selectors).some((value) => typeof value !== "string" || value.length === 0) || !validFacts(seed.expectedState)) {
+      if (Object.values(seed.selectors).some((value) => typeof value !== "string" || value.length === 0) || !validFacts(seed.expectedPreState) || !validFacts(seed.expectedPostState)) {
         throw new Error("phase17_fixture_manifest_invalid");
       }
-      const expectedStateHash = await input.adapter.canonicalHash(seed.expectedState);
+      const expectedStateHash = await input.adapter.canonicalHash(seed.expectedPostState);
       if (!HASH.test(expectedStateHash)) throw new Error("phase17_fixture_expected_state_invalid");
-      active = Object.freeze({ caseId, fixtureToken, baselineDigest, sourceTable: contract.sourceProbe, expectedState: Object.freeze({ ...seed.expectedState }), expectedStateHash, selectors: Object.freeze({ ...seed.selectors }) });
+      active = Object.freeze({ caseId, fixtureToken, baselineDigest, sourceTable: contract.sourceProbe, expectedPreState: Object.freeze({ ...seed.expectedPreState }), expectedPostState: Object.freeze({ ...seed.expectedPostState }), expectedState: Object.freeze({ ...seed.expectedPostState }), expectedStateHash, selectors: Object.freeze({ ...seed.selectors }) });
       return active;
     },
     async probe(inputValue: Readonly<{ caseId: string; fixtureToken: string; sourceTable: string }>): Promise<Phase17SourceProbe> {
@@ -103,7 +109,7 @@ export function createPhase17FixtureProtocol(input: Readonly<{
       requireFixture(active, inputValue.caseId, inputValue.fixtureToken);
       if (active.sourceTable !== inputValue.sourceTable) throw new Error("phase17_fixture_table_mismatch");
       const proof = await input.adapter.probe({ ...inputValue, selectors: active.selectors });
-      if (!Number.isSafeInteger(proof.rowCount) || proof.rowCount < 1 || !HASH.test(proof.identityHash) || !validFacts(proof.facts) || !sameFacts(proof.facts, active.expectedState)) {
+      if (!Number.isSafeInteger(proof.rowCount) || proof.rowCount < 1 || !HASH.test(proof.identityHash) || !validFacts(proof.facts) || !sameFacts(proof.facts, active.expectedPostState)) {
         throw new Error("phase17_fixture_probe_failed");
       }
       return Object.freeze({ ...inputValue, rowCount: proof.rowCount, identityHash: proof.identityHash, expectedStateHash: active.expectedStateHash, verdict: "matched" });

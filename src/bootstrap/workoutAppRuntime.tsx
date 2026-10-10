@@ -47,10 +47,6 @@ import type {
   SearchFilters,
 } from "../domains/library/search";
 import {
-  canonicalRunningRequestHash,
-  createInactiveRunningPlan,
-} from "../domains/running/commands";
-import {
   archiveCustomExercise,
   createCustomExercise as createCustomExerciseCommand,
   editCustomExercise as editCustomExerciseCommand,
@@ -259,9 +255,6 @@ import {
   type CustomExerciseArchivePreview,
 } from "../platform/sqlite/repositories/customExerciseRepository";
 import {
-  createRunningPlanRepository,
-} from "../platform/sqlite/repositories/runningPlanRepository";
-import {
   createLibrarySearchRepository,
   type LibrarySearchItem,
   type LibrarySearchResult,
@@ -354,6 +347,10 @@ import {
   type Phase17Fixture,
   type Phase17SourceProbe,
 } from "./phase17NativeFixture";
+import {
+  assertPhase17FamilyARegistry,
+  createPhase17FamilyAFixtureAdapter,
+} from "./phase17FamilyAFixture";
 import { PHASE17_CASE_ACTION_CONTRACTS } from "../testing/contracts/phase17LibraryRunning.contract";
 import {
   createOwnedPlanRuntimePort,
@@ -4003,81 +4000,85 @@ export function WorkoutAppRuntimeProvider({
     if (phase17FixtureProtocolRef.current !== null) return phase17FixtureProtocolRef.current;
     const services = requireServices();
     const { CryptoDigestAlgorithm, digestStringAsync, randomUUID } = require("expo-crypto") as typeof import("expo-crypto");
+    assertPhase17FamilyARegistry(PHASE17_CASE_ACTION_CONTRACTS);
     const physicalTable = (sourceTable: string) => ({
       library_view_state: "app_settings", library_action_state: "app_settings", plan_create_intent: "plans",
-      accessibility_runtime_profile: "app_settings", schedule_collision_projections: "schedule_collision_outcomes",
+      exercise_search_index: "exercise_search_terms", exercise_preferences: "exercise_owner_preferences",
+      owned_plan_lifecycle_receipts: "owned_plan_mutation_requests", owned_plan_revisions: "plans",
+      plan_schedule_slots: "owned_plan_schedules", plan_exercise_replacements: "owned_plan_mutation_requests",
+      plan_day_revisions: "plan_days", custom_exercises: "exercises",
+      custom_exercise_metric_migrations: "metric_profile_migration_events",
+      library_load_receipts: "app_settings", starter_plan_catalog: "starter_plan_sources",
+      starter_plan_activations: "starter_plan_activation_requests", template_update_receipts: "starter_plan_copy_requests",
+      exercise_instruction_sets: "exercise_instruction_sets",
     } as Readonly<Record<string, string>>)[sourceTable] ?? sourceTable;
     phase17FixtureProtocolRef.current = createPhase17FixtureProtocol({
       contracts: PHASE17_CASE_ACTION_CONTRACTS,
       createToken: () => `phase17:${randomUUID().replace(/[^a-z0-9-]/gu, "")}`,
-      adapter: {
+      adapter: createPhase17FamilyAFixtureAdapter({
         baselineDigest: async () => (await collectPhase14SourceStateProofFromKernel({ kernel: services.kernel, sha256: (value) => digestStringAsync(CryptoDigestAlgorithm.SHA256, value) })).digest_sha256,
         canonicalHash: async (value) => digestStringAsync(CryptoDigestAlgorithm.SHA256, JSON.stringify(value, Object.keys(value).sort())),
-        seed: async ({ caseId, fixtureToken, sourceTable }) => {
+        driver: {
+        seed: async (caseId, fixtureToken, sourceTable) => {
           const owned = await services.ownedPlans.createDraft({ name: `Phase17 ${caseId}`, dayName: "Fixture day" });
           if (owned.outcome === "requires_schedule_impact") throw new Error("phase17_fixture_seed_failed");
-          const runningPlanId = `phase17-running-${fixtureToken.slice(-16)}`;
-          const runningCreate = {
-            requestId: `phase17-running-create-${fixtureToken.slice(-16)}`,
-            plan: {
-              version: 1 as const,
-              id: runningPlanId,
-              name: `Phase17 Running ${caseId}`,
-              revision: 1,
-              createdAtMs: dependencies.nowMs(),
-              goal: {
-                version: 1 as const,
-                id: `${runningPlanId}-goal`,
-                planId: runningPlanId,
-                revision: 1,
-                goalDistanceMeters: 5_000,
-                trainingDays: ["Monday" as const],
-                createdAtMs: dependencies.nowMs(),
-              },
-              sessions: [],
-            },
-          };
-          const running = await createInactiveRunningPlan(createRunningPlanRepository(services.kernel), {
-            ...runningCreate,
-            requestSha256: canonicalRunningRequestHash(runningCreate),
+          const customId = `phase17-custom-${fixtureToken.slice(-16)}`;
+          const custom = await createRuntimeCustomExercise({
+            requestId: `phase17-custom-create-${fixtureToken.slice(-16)}`, exerciseId: customId,
+            name: `Phase17 exercise ${caseId}`, aliases: ["Phase17"], exerciseType: "strength",
+            movementClass: "compound", primaryMuscles: ["quadriceps"], secondaryMuscles: [], equipment: ["barbell"],
+            metricIdentity: { profile: "load_reps", contractVersion: 1, exerciseMetricGeneration: 1 }, defaultRestSeconds: 60,
           });
-          const [row] = await services.kernel.queryAll<Readonly<{ id: string; revision: number; is_active: number }>>(
+          const [row, bundled, starter] = await Promise.all([
+            services.kernel.queryAll<Readonly<{ id: string; revision: number; is_active: number }>>(
             "SELECT id, revision, is_active FROM plans WHERE id = ? AND name = ?",
             [owned.plan.id, `Phase17 ${caseId}`],
-          );
-          if (row === undefined) throw new Error("phase17_fixture_seed_failed");
-          const expectedState = sourceTable === "running_plans"
-            ? Object.freeze({ planId: running.id, status: "draft", revision: 1 })
-            : Object.freeze({ id: row.id, revision: row.revision, isActive: row.is_active });
-          return Object.freeze({ selectors: Object.freeze({ ownedPlanId: row.id, runningPlanId: running.id }), expectedState });
+            ),
+            services.kernel.queryAll<Readonly<{ exercise_id: string }>>("SELECT exercise_id FROM exercise_library_entries ORDER BY exercise_id LIMIT 1"),
+            services.kernel.queryAll<Readonly<{ template_id: string }>>("SELECT template_id FROM starter_plan_sources ORDER BY template_id LIMIT 1"),
+          ]);
+          const plan = row[0]; const bundledExerciseId = bundled[0]?.exercise_id; const starterTemplateId = starter[0]?.template_id;
+          if (plan === undefined || bundledExerciseId === undefined || starterTemplateId === undefined || custom.exercise.exerciseId !== customId) throw new Error("phase17_fixture_seed_failed");
+          if (sourceTable === "exercise_preferences") await setLibraryExerciseFavorite(bundledExerciseId, true);
+          const selectors = Object.freeze({ ownedPlanId: plan.id, customExerciseId: custom.exercise.exerciseId, bundledExerciseId, starterTemplateId });
+          const facts = Object.freeze({ caseId, fixtureToken, ownedPlanId: plan.id, customExerciseId: custom.exercise.exerciseId, bundledExerciseId, starterTemplateId, sourceTable: physicalTable(sourceTable) });
+          return Object.freeze({ selectors, expectedPreState: facts, expectedPostState: facts });
         },
-        probe: async ({ sourceTable, fixtureToken, selectors }) => {
+        probe: async (caseId, fixtureToken, sourceTable, selectors) => {
           const table = physicalTable(sourceTable);
-          if (!PHASE17_CASE_ACTION_CONTRACTS.some((entry) => physicalTable(entry.sourceProbe) === table)) throw new Error("phase17_fixture_table_mismatch");
-          if (table === "running_plans" && selectors.runningPlanId !== undefined) {
-            const rows = await services.kernel.queryAll<Readonly<{ plan_id: string; status: string; revision: number }>>(
-              "SELECT plan_id, status, revision FROM running_plans WHERE plan_id = ?",
-              [selectors.runningPlanId],
-            );
-            const row = rows[0];
-            if (row === undefined || rows.length !== 1) throw new Error("phase17_fixture_probe_failed");
-            return Object.freeze({ rowCount: rows.length, identityHash: await digestStringAsync(CryptoDigestAlgorithm.SHA256, `${fixtureToken}:${table}:${row.plan_id}`), facts: Object.freeze({ planId: row.plan_id, status: row.status, revision: row.revision }) });
-          }
-          if (table !== "plans" || selectors.ownedPlanId === undefined) throw new Error("phase17_fixture_table_unseeded");
-          const rows = await services.kernel.queryAll<Readonly<{ id: string; revision: number; is_active: number }>>(
-            "SELECT id, revision, is_active FROM plans WHERE id = ? AND origin IN ('custom', 'copied')",
-            [selectors.ownedPlanId],
-          );
-          const row = rows[0];
-          if (row === undefined || rows.length !== 1) throw new Error("phase17_fixture_probe_failed");
-          return Object.freeze({ rowCount: rows.length, identityHash: await digestStringAsync(CryptoDigestAlgorithm.SHA256, `${fixtureToken}:${table}:${row.id}`), facts: Object.freeze({ id: row.id, revision: row.revision, isActive: row.is_active }) });
-        },
-        cleanup: async ({ selectors }) => {
+          const customExerciseId = selectors.customExerciseId;
+          const bundledExerciseId = selectors.bundledExerciseId;
           const ownedPlanId = selectors.ownedPlanId;
-          if (ownedPlanId === undefined) throw new Error("phase17_fixture_selector_invalid");
-          await services.kernel.write((transaction) => transaction.execute("DELETE FROM plans WHERE id = ?", [ownedPlanId]));
+          const starterTemplateId = selectors.starterTemplateId;
+          if (customExerciseId === undefined || bundledExerciseId === undefined || ownedPlanId === undefined || starterTemplateId === undefined) throw new Error("phase17_fixture_selector_invalid");
+          const rows = await (async () => {
+            switch (table) {
+              case "plans": return services.kernel.queryAll("SELECT id FROM plans WHERE id = ? AND origin IN ('custom', 'copied')", [ownedPlanId]);
+              case "exercises": return services.kernel.queryAll("SELECT id FROM exercises WHERE id = ? AND origin = 'custom'", [customExerciseId]);
+              case "exercise_search_terms": return services.kernel.queryAll("SELECT exercise_id FROM exercise_search_terms WHERE exercise_id = ?", [bundledExerciseId]);
+              case "exercise_owner_preferences": return services.kernel.queryAll("SELECT exercise_id FROM exercise_owner_preferences WHERE exercise_id = ?", [bundledExerciseId]);
+              case "exercise_instruction_sets": return services.kernel.queryAll("SELECT exercise_id FROM exercise_instruction_sets WHERE exercise_id = ?", [bundledExerciseId]);
+              case "starter_plan_sources": return services.kernel.queryAll("SELECT template_id FROM starter_plan_sources WHERE template_id = ?", [starterTemplateId]);
+              case "owned_plan_mutation_requests": return services.kernel.queryAll("SELECT result_plan_id FROM owned_plan_mutation_requests WHERE result_plan_id = ?", [ownedPlanId]);
+              case "plan_days": return services.kernel.queryAll("SELECT id FROM plan_days WHERE plan_id = ?", [ownedPlanId]);
+              default: throw new Error("phase17_fixture_table_unseeded");
+            }
+          })();
+          if (rows.length !== 1) throw new Error("phase17_fixture_probe_failed");
+          const facts = Object.freeze({ caseId, fixtureToken, ownedPlanId, customExerciseId, bundledExerciseId, starterTemplateId, sourceTable: table });
+          return Object.freeze({ rowCount: 1, identityHash: await digestStringAsync(CryptoDigestAlgorithm.SHA256, `${fixtureToken}:${table}:${JSON.stringify(facts)}`), facts });
         },
-      },
+        cleanup: async (_caseId, _fixtureToken, selectors) => {
+          const ownedPlanId = selectors.ownedPlanId;
+          const customExerciseId = selectors.customExerciseId;
+          if (ownedPlanId === undefined || customExerciseId === undefined) throw new Error("phase17_fixture_selector_invalid");
+          await services.kernel.write(async (transaction) => {
+            await transaction.execute("DELETE FROM plans WHERE id = ?", [ownedPlanId]);
+            await transaction.execute("DELETE FROM exercises WHERE id = ?", [customExerciseId]);
+          });
+        },
+        },
+      }),
     });
     return phase17FixtureProtocolRef.current;
   }, [requireServices]);
