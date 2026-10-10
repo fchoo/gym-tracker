@@ -300,6 +300,10 @@ describe("BottomSheet", () => {
       "importantForAccessibility",
       "yes",
     );
+    expect(screen.getByTestId("bottom-sheet-frame")).toHaveStyle({
+      flexShrink: 1,
+      minHeight: 0,
+    });
     expect(screen.getByTestId("bottom-sheet-scroll")).toHaveStyle({
       flexShrink: 1,
       maxHeight: "82%",

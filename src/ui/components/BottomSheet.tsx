@@ -313,6 +313,7 @@ export function BottomSheet({
                     importantForAccessibility="yes"
                     onEscape={cancel}
                     onKeyDown={containTraversal as never}
+                    style={styles.boundary}
                     testID="bottom-sheet-frame"
                   >
                     <View style={styles.header}>
@@ -361,6 +362,7 @@ const styles = StyleSheet.create({
     flex: 1,
     justifyContent: "flex-end",
   },
+  boundary: { flexShrink: 1, minHeight: 0 },
   keyboardAvoider: { justifyContent: "flex-end" },
   frame: {
     borderTopLeftRadius: 24,
