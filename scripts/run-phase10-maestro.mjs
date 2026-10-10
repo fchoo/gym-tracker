@@ -12,23 +12,21 @@ import { sourceTreeSha256 } from "./source-tree-digest.mjs";
 const projectRoot = process.cwd();
 const ADB_FALLBACK = "/opt/homebrew/share/android-commandlinetools/platform-tools/adb";
 
-export const PHASE10_MAESTRO_FLOW_CONTRACTS = Object.freeze([
-  Object.freeze({
-    id: "phase10-advanced-set-timing",
-    flow: "maestro/phase10/advanced-set-timing.yaml",
-  }),
-]);
+// TIM-01 retired the interactive advanced-timing surface. Keep the retained
+// Phase 10 build contract executable, but do not replay the removed Maestro
+// flow against a newer runtime.
+export const PHASE10_MAESTRO_FLOW_CONTRACTS = Object.freeze([]);
 
 export const PHASE10_EVIDENCE_MATRIX = Object.freeze([
-  Object.freeze({ id: "WORK-26", source: "src/ui/__tests__/AdvancedTimingIndicator.test.tsx", flows: ["phase10-advanced-set-timing"] }),
-  Object.freeze({ id: "D-01", source: "src/bootstrap/workoutAppRuntime.test.tsx", flows: ["phase10-advanced-set-timing"] }),
-  Object.freeze({ id: "D-02", source: "tests/integration/advanced-timing.test.ts", flows: ["phase10-advanced-set-timing"] }),
-  Object.freeze({ id: "D-03", source: "tests/integration/rest-lifecycle.test.ts", flows: ["phase10-advanced-set-timing"] }),
-  Object.freeze({ id: "D-04", source: "tests/integration/advanced-timing.test.ts", flows: ["phase10-advanced-set-timing"] }),
-  Object.freeze({ id: "ROADMAP-10-01", source: "tests/integration/advanced-timing.test.ts", flows: ["phase10-advanced-set-timing"] }),
-  Object.freeze({ id: "ROADMAP-10-02", source: "src/ui/__tests__/AdvancedTimingIndicator.test.tsx", flows: ["phase10-advanced-set-timing"] }),
-  Object.freeze({ id: "ROADMAP-10-03", source: "src/bootstrap/workoutAppRuntime.test.tsx", flows: ["phase10-advanced-set-timing"] }),
-  Object.freeze({ id: "ROADMAP-10-04", source: "src/ui/__tests__/ActiveWorkoutScreen.test.tsx", flows: ["phase10-advanced-set-timing"] }),
+  Object.freeze({ id: "WORK-26", source: "src/bootstrap/workoutAppRuntime.test.tsx", flows: [], retiredBy: "TIM-01" }),
+  Object.freeze({ id: "D-01", source: "src/bootstrap/workoutAppRuntime.test.tsx", flows: [], retiredBy: "TIM-01" }),
+  Object.freeze({ id: "D-02", source: "src/bootstrap/workoutAppRuntime.test.tsx", flows: [], retiredBy: "TIM-01" }),
+  Object.freeze({ id: "D-03", source: "src/bootstrap/workoutAppRuntime.test.tsx", flows: [], retiredBy: "TIM-01" }),
+  Object.freeze({ id: "D-04", source: "src/bootstrap/workoutAppRuntime.test.tsx", flows: [], retiredBy: "TIM-01" }),
+  Object.freeze({ id: "ROADMAP-10-01", source: "src/bootstrap/workoutAppRuntime.test.tsx", flows: [], retiredBy: "TIM-01" }),
+  Object.freeze({ id: "ROADMAP-10-02", source: "src/bootstrap/workoutAppRuntime.test.tsx", flows: [], retiredBy: "TIM-01" }),
+  Object.freeze({ id: "ROADMAP-10-03", source: "src/bootstrap/workoutAppRuntime.test.tsx", flows: [], retiredBy: "TIM-01" }),
+  Object.freeze({ id: "ROADMAP-10-04", source: "src/ui/__tests__/ActiveWorkoutMetricProfiles.test.tsx", flows: [], retiredBy: "TIM-01" }),
 ]);
 
 function fail(message) {
