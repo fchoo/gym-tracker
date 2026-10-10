@@ -1,4 +1,5 @@
 import {
+  act,
   fireEvent,
   render,
   screen,
@@ -606,6 +607,54 @@ describe("active workout metric profiles", () => {
         expect(screen.getByLabelText(label)).toBeOnTheScreen();
       }
       expect(screen.getByTestId("workout-set-editor-sheet")).toBeOnTheScreen();
+    },
+  );
+
+  it.each([
+    [
+      "fixed-distance",
+      uiProfileCases.find(({ identity }) => identity.profile === "fixed_distance")!,
+      "Duration (sec)",
+      "720",
+      "725",
+      { version: 1, profile: "fixed_distance", distanceMeters: 2_000, durationMs: 725_000, source: "manual" },
+    ],
+    [
+      "fixed-time",
+      uiProfileCases.find(({ identity }) => identity.profile === "fixed_time")!,
+      "Distance (m)",
+      "2400",
+      "2500",
+      { version: 1, profile: "fixed_time", durationMs: 720_000, distanceMeters: 2_500, source: "manual" },
+    ],
+  ] as const)(
+    "opens existing %s observations unchanged and persists a normal edit",
+    async (...[_name, profileCase, label, initialValue, editedValue, editedObservation]) => {
+      const unchangedSave = jest.fn(async () => undefined);
+      const set = profileSet(profileCase);
+      const { unmount } = await render(
+        <AppearanceProvider>
+          <WorkoutSetEditorSheet
+            exerciseName={profileCase.name}
+            onCancel={jest.fn()}
+            onSave={unchangedSave}
+            set={set}
+            visible
+          />
+        </AppearanceProvider>,
+      );
+
+      const input = screen.getByLabelText(label);
+      expect(input).toHaveProp("value", initialValue);
+      await fireEvent.press(screen.getByRole("button", { name: "Save set values" }));
+      expect(unchangedSave).toHaveBeenCalledWith(profileCase.observation);
+      await act(async () => {
+        fireEvent.changeText(screen.getByLabelText(label), editedValue);
+      });
+      await waitFor(() => expect(screen.getByLabelText(label)).toHaveProp("value", editedValue));
+      await fireEvent.press(screen.getByRole("button", { name: "Save set values" }));
+      expect(unchangedSave).toHaveBeenLastCalledWith(editedObservation);
+      unmount();
     },
   );
 
