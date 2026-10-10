@@ -1,4 +1,4 @@
-import { fireEvent, render, screen } from "@testing-library/react-native";
+import { act, fireEvent, render, screen } from "@testing-library/react-native";
 import { describe, expect, it, jest } from "@jest/globals";
 import React from "react";
 
@@ -33,5 +33,29 @@ describe("WorkoutSetEditorSheet", () => {
     await fireEvent.press(screen.getByRole("button", { name: "Close edit back squat" }));
     expect(onCancel).toHaveBeenCalledTimes(1);
     expect(onSave).not.toHaveBeenCalled();
+  });
+
+  it("dismisses through the scrim without saving a changed draft", async () => {
+    const onSave = jest.fn(async (_observation: SetObservation) => undefined);
+    const onCancel = jest.fn();
+    await render(<AppearanceProvider><WorkoutSetEditorSheet exerciseName="Back Squat" onCancel={onCancel} onSave={onSave} set={set} visible /></AppearanceProvider>);
+    await fireEvent.changeText(screen.getByLabelText("Load (kg)"), "65");
+    await fireEvent.press(screen.getByLabelText("Dismiss sheet", {
+      includeHiddenElements: true,
+    }));
+    expect(onCancel).toHaveBeenCalledTimes(1);
+    expect(onSave).not.toHaveBeenCalled();
+  });
+
+  it("disables duplicate saves until the explicit-save command settles", async () => {
+    let resolveSave: (() => void) | undefined;
+    const onSave = jest.fn(() => new Promise<void>((resolve) => { resolveSave = resolve; }));
+    await render(<AppearanceProvider><WorkoutSetEditorSheet exerciseName="Back Squat" onCancel={jest.fn()} onSave={onSave} set={set} visible /></AppearanceProvider>);
+    const save = screen.getByRole("button", { name: "Save set values" });
+    await fireEvent.press(save);
+    await fireEvent.press(save);
+    expect(onSave).toHaveBeenCalledTimes(1);
+    expect(save).toBeDisabled();
+    await act(async () => { resolveSave?.(); });
   });
 });

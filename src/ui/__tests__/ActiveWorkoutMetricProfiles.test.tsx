@@ -27,9 +27,8 @@ import {
 import {
   MetricProfileOption,
 } from "../components/MetricProfileOption";
-import {
-  SetRow,
-} from "../components/SetRow";
+import { SetRow } from "../components/SetRow";
+import { WorkoutSetEditorSheet } from "../components/WorkoutSetEditorSheet";
 import {
   ActiveWorkoutScreen,
   type ActiveWorkoutCommands,
@@ -161,10 +160,7 @@ const uiProfileCases: readonly UiProfileCase[] = [
       reps: 8,
       source: "manual",
     },
-    inputLabels: [
-      "Working set 1 load in kilograms",
-      "Working set 1 repetitions",
-    ],
+    inputLabels: ["Load (kg)", "Repetitions"],
   },
   {
     name: "Bodyweight reps",
@@ -187,8 +183,8 @@ const uiProfileCases: readonly UiProfileCase[] = [
       reps: 12,
       source: "manual",
     },
-    inputLabels: ["Working set 1 repetitions"],
-    fixedLabel: "Bodyweight · strict",
+    inputLabels: ["Repetitions"],
+    fixedLabel: "Variation · strict",
   },
   {
     name: "Added load + reps",
@@ -213,10 +209,7 @@ const uiProfileCases: readonly UiProfileCase[] = [
       reps: 8,
       source: "manual",
     },
-    inputLabels: [
-      "Working set 1 added load in kilograms",
-      "Working set 1 repetitions",
-    ],
+    inputLabels: ["Added load (kg)", "Repetitions"],
   },
   {
     name: "Assisted reps",
@@ -242,10 +235,7 @@ const uiProfileCases: readonly UiProfileCase[] = [
       reps: 8,
       source: "manual",
     },
-    inputLabels: [
-      "Working set 1 assistance in kilograms",
-      "Working set 1 repetitions",
-    ],
+    inputLabels: ["Assistance (kg)", "Repetitions"],
     fixedLabel: "Assistance equipment · machine-stack",
   },
   {
@@ -267,7 +257,7 @@ const uiProfileCases: readonly UiProfileCase[] = [
       durationMs: 45_250,
       source: "manual",
     },
-    inputLabels: ["Working set 1 duration in seconds"],
+    inputLabels: ["Duration (sec)"],
   },
   {
     name: "Fixed distance",
@@ -288,7 +278,7 @@ const uiProfileCases: readonly UiProfileCase[] = [
       durationMs: 720_000,
       source: "manual",
     },
-    inputLabels: ["Working set 1 actual duration in seconds"],
+    inputLabels: ["Duration (sec)"],
     fixedLabel: "Planned distance · 2000 m",
   },
   {
@@ -310,7 +300,7 @@ const uiProfileCases: readonly UiProfileCase[] = [
       distanceMeters: 2_400,
       source: "manual",
     },
-    inputLabels: ["Working set 1 actual distance in meters"],
+    inputLabels: ["Distance (m)"],
     fixedLabel: "Planned duration · 720 sec",
   },
   {
@@ -338,10 +328,7 @@ const uiProfileCases: readonly UiProfileCase[] = [
       completedWorkMs: 180_000,
       source: "manual",
     },
-    inputLabels: [
-      "Working set 1 completed rounds",
-      "Working set 1 completed work in seconds",
-    ],
+    inputLabels: ["Completed rounds", "Completed work (sec)"],
     fixedLabel: "Protocol · 6 rounds · 30 sec work · 30 sec rest",
   },
   {
@@ -508,7 +495,7 @@ function profileCommands(
 }
 
 describe("active workout metric profiles", () => {
-  it("reads persisted added load identity into the shared inline SetRow", async () => {
+  it("reads persisted added-load identity into a facts-only SetRow", async () => {
     const repository = createWorkoutRepository(persistedAddedLoadKernel());
     const view = await repository.getActiveWorkout("session-added-load");
     const set = view.currentExercise.workingSets[0]!;
@@ -540,51 +527,35 @@ describe("active workout metric profiles", () => {
       <AppearanceProvider>
         <SetRow
           active
-          count={1}
           index={1}
           kind="working"
-          onChangeValues={jest.fn(() => undefined)}
-          onComplete={jest.fn()}
-          onRemove={jest.fn()}
+          onPress={jest.fn()}
           set={set}
         />
       </AppearanceProvider>,
     );
 
-    expect(
-      screen.getByLabelText("Working set 1 added load in kilograms"),
-    ).toHaveProp("value", "17.5");
-    expect(screen.getByLabelText("Working set 1 repetitions"))
-      .toHaveProp("value", "7");
-    expect(screen.getByText("kg")).toBeOnTheScreen();
-    expect(
-      screen.getByRole("button", { name: "Complete Set 1" }),
-    ).toBeOnTheScreen();
-    expect(
-      screen.getByRole("button", { name: "Reset set 1" }),
-    ).toBeOnTheScreen();
-    expect(
-      screen.getByRole("button", { name: "Remove set 1" }),
-    ).toBeOnTheScreen();
+    expect(screen.getByRole("button", {
+      name: /Set 1\. BW \+ 17\.5 kg × 7\. Current\. Edit set values/u,
+    })).toBeOnTheScreen();
+    expect(screen.queryByRole("button", { name: /complete|reset|remove/u }))
+      .not.toBeOnTheScreen();
   });
 
   it.each(uiProfileCases)(
-    "keeps $name inline with adjacent Reset, Complete, and Remove",
+    "keeps $name local to the compatible explicit-save editor",
     async (profileCase) => {
       const set = profileSet(profileCase);
-      const onComplete = jest.fn();
-      const onRemove = jest.fn();
+      const onCancel = jest.fn();
+      const onSave = jest.fn(async () => undefined);
       await render(
         <AppearanceProvider>
-          <SetRow
-            active
-            count={1}
-            index={1}
-            kind="working"
-            onChangeValues={jest.fn(() => undefined)}
-            onComplete={onComplete}
-            onRemove={onRemove}
+          <WorkoutSetEditorSheet
+            exerciseName={profileCase.name}
+            onCancel={onCancel}
+            onSave={onSave}
             set={set}
+            visible
           />
         </AppearanceProvider>,
       );
@@ -592,83 +563,85 @@ describe("active workout metric profiles", () => {
       for (const label of profileCase.inputLabels) {
         const input = screen.getByLabelText(label);
         expect(input).toBeOnTheScreen();
-        if (durationInputLabels.has(label)) {
-          expect(input).toHaveProp(
-            "accessibilityHint",
-            "Opens a time-style duration selector.",
-          );
-        } else {
-          expect(input).toHaveProp(
-            "keyboardType",
-            decimalInputLabels.has(label) ? "decimal-pad" : "number-pad",
-          );
-        }
       }
       if (profileCase.fixedLabel !== undefined) {
         expect(screen.getByText(profileCase.fixedLabel)).toBeOnTheScreen();
       }
-      expect(screen.getByTestId("working-set-1-actions")).toHaveStyle({
-        flexDirection: "row",
-      });
-      await fireEvent.press(
-        screen.getByRole("button", { name: "Complete Set 1" }),
-      );
-      expect(onComplete).toHaveBeenCalledTimes(1);
-      await fireEvent.press(
-        screen.getByRole("button", { name: "Remove set 1" }),
-      );
-      expect(onRemove).toHaveBeenCalledTimes(1);
+      expect(screen.queryByText(/cadence|cluster|rest-between-reps|cue/u))
+        .not.toBeOnTheScreen();
+      await fireEvent.press(screen.getByRole("button", {
+        name: `Close edit ${profileCase.name.toLocaleLowerCase("en")}`,
+      }));
+      expect(onCancel).toHaveBeenCalledTimes(1);
+      expect(onSave).not.toHaveBeenCalled();
     },
   );
 
   it.each(uiProfileCases)(
-    "retains $name values through failed Complete and direct Retry",
+    "saves $name exactly once and retains its draft after a failed save",
     async (profileCase) => {
-      const initial = profileView(profileCase);
-      const completeSet = jest.fn<ActiveWorkoutCommands["completeSet"]>()
-        .mockRejectedValueOnce(new Error("storage_failed"))
-        .mockResolvedValueOnce({
-          outcome: "committed",
-          view: profileView(profileCase, "completed"),
-        });
+      const onSave = jest.fn(async () => {
+        throw new Error("storage_failed");
+      });
+      const set = profileSet(profileCase);
       await render(
         <AppearanceProvider>
-          <ActiveWorkoutScreen
-            commands={profileCommands(initial, completeSet)}
-            nowMs={() => 3_000}
-            onFinishLater={jest.fn()}
-            onGoBack={jest.fn()}
-            sessionId={initial.id}
-            view={initial}
+          <WorkoutSetEditorSheet
+            exerciseName={profileCase.name}
+            onCancel={jest.fn()}
+            onSave={onSave}
+            set={set}
+            visible
           />
         </AppearanceProvider>,
       );
 
-      await fireEvent.press(
-        screen.getByRole("button", { name: "Complete Set 1" }),
-      );
-      await waitFor(() => {
-        expect(screen.getByRole("button", {
-          name: "Set not saved · Retry",
-        })).toBeOnTheScreen();
-      });
+      await fireEvent.press(screen.getByRole("button", {
+        name: "Save set values",
+      }));
+      expect(onSave).toHaveBeenCalledWith(profileCase.observation);
+      expect(screen.getByText(/Your draft is still available; try Save again/u))
+        .toBeOnTheScreen();
       for (const label of profileCase.inputLabels) {
         expect(screen.getByLabelText(label)).toBeOnTheScreen();
       }
-      await fireEvent.press(
-        screen.getByRole("button", { name: "Set not saved · Retry" }),
-      );
-      await waitFor(() => {
-        const completedRow = screen.getByTestId(
-          `overview-exercise-${profileCase.identity.profile}-set-${profileCase.identity.profile}`,
-        );
-        expect(completedRow.props.accessibilityLabel)
-          .toEqual(expect.stringContaining("Completed. Expand set editor"));
-      });
-      expect(completeSet).toHaveBeenCalledTimes(2);
-      expect(completeSet.mock.calls[1]).toEqual(completeSet.mock.calls[0]);
+      expect(screen.getByTestId("workout-set-editor-sheet")).toBeOnTheScreen();
     },
   );
+
+  it("uses the committed-edit label and revision-fenced correction path", async () => {
+    const initial = profileView(uiProfileCases[0]!, "completed");
+    const reviseCompletedSet = jest.fn(async () => ({
+      ...initial,
+      committedSetId: initial.currentExercise.workingSets[0]!.id,
+    }));
+    await render(
+      <AppearanceProvider>
+        <ActiveWorkoutScreen
+          commands={{
+            ...profileCommands(initial, jest.fn<ActiveWorkoutCommands["completeSet"]>(async () => ({
+              outcome: "already_completed",
+              view: initial,
+            }))),
+            reviseCompletedSet,
+          }}
+          nowMs={() => 3_000}
+          onFinishLater={jest.fn()}
+          onGoBack={jest.fn()}
+          sessionId={initial.id}
+          view={initial}
+        />
+      </AppearanceProvider>,
+    );
+    await fireEvent.press(screen.getByRole("button", { name: /Set 1.*Edit set values/u }));
+    expect(screen.getByRole("button", { name: "Save committed set edit" }))
+      .toBeOnTheScreen();
+    await fireEvent.press(screen.getByRole("button", { name: "Save committed set edit" }));
+    await waitFor(() => expect(reviseCompletedSet).toHaveBeenCalledWith(expect.objectContaining({
+      setId: initial.currentExercise.workingSets[0]!.id,
+      expectedSetRevision: initial.currentExercise.workingSets[0]!.revision,
+    })));
+  });
 
   it("renders every explicit metric profile choice with approved copy", async () => {
     const onSelect = jest.fn();

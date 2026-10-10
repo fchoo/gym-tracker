@@ -55,21 +55,12 @@ export type SetRowProps = Readonly<{
   kind: "warmup" | "working";
   index: number;
   active: boolean;
-  /** @deprecated Rows no longer own persistence; retained briefly for test fixture compatibility. */
-  count?: number;
   busy?: boolean;
   disabled?: boolean;
   compact?: boolean;
   tone?: "default" | "card";
   overviewTestID?: string;
   onPress?(): void;
-  /** @deprecated Rows no longer own persistence. */
-  onChangeValues?(observation: SetObservation): Promise<void> | void;
-  /** @deprecated Rows no longer own completion. */
-  onComplete?(): void;
-  /** @deprecated Rows no longer own removal. */
-  onRemove?(): void;
-  onSkip?(): void;
 }>;
 
 /** Facts-only row. Editing authority belongs to WorkoutSetEditorSheet. */

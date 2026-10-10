@@ -104,7 +104,7 @@ export function WorkoutSetEditorSheet({ exerciseName, onCancel, onSave, restoreF
       {set.valueSources.length < 2 ? null : <View style={styles.sources}><Text style={[typeScale.label as TextStyle, { color: colors.textPrimary }]}>Start from</Text><View style={styles.sourceButtons}>{set.valueSources.map((candidate) => <FocusablePressable accessibilityLabel={`Use ${candidate.source.replaceAll("_", " ")}`} accessibilityRole="button" key={candidate.source} onPress={() => setDraft(draftFor(candidate.observation))} style={[styles.sourceButton, { borderColor: colors.divider }]}><Text style={[typeScale.secondary as TextStyle, { color: colors.textPrimary }]}>{candidate.source.replaceAll("_", " ")}</Text></FocusablePressable>)}</View></View>}
       {metricFields}
       {error === undefined ? null : <Text accessibilityLiveRegion="polite" style={[typeScale.secondary as TextStyle, { color: colors.destructive }]}>{error}</Text>}
-      <View style={styles.actions}><SecondaryAction disabled={saving} label="Cancel" onPress={onCancel} /><PrimaryAction busy={saving} disabled={saving} label="Save set values" onPress={() => { void save(); }} /></View>
+      <View style={styles.actions}><SecondaryAction disabled={saving} label="Cancel" onPress={onCancel} /><PrimaryAction busy={saving} disabled={saving} label={set.status === "completed" ? "Save committed set edit" : "Save set values"} onPress={() => { void save(); }} /></View>
     </View>
   </BottomSheet>;
 }
