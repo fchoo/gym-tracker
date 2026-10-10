@@ -73,4 +73,17 @@ describe("RunningSessionFields", () => {
     expect(view.getByText("Intensity target")).toBeOnTheScreen();
     expect(view.queryByText("Format")).not.toBeOnTheScreen();
   });
+
+  it("keeps Hills uphill and return recovery as separate unit-bearing controls", async () => {
+    const view = await render(<AppearanceProvider><RunningSessionFields
+      draft={initialRunningSessionFormDraft("hills", "Saturday")}
+      onChange={jest.fn()}
+    /></AppearanceProvider>);
+
+    expect(view.getByLabelText("Repeats")).toBeOnTheScreen();
+    expect(view.getByLabelText("Uphill duration milliseconds")).toBeOnTheScreen();
+    expect(view.getByLabelText("Return recovery duration milliseconds")).toBeOnTheScreen();
+    expect(view.getByText("Effort target")).toBeOnTheScreen();
+    expect(view.queryByLabelText("Work duration milliseconds")).not.toBeOnTheScreen();
+  });
 });

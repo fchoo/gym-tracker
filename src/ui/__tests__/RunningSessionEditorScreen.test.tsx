@@ -86,6 +86,24 @@ describe("RunningSessionEditorScreen", () => {
     }));
   });
 
+  it("serializes Hills with distinct uphill and return-recovery quantities", () => {
+    const hills = makeRunningSessionSpec({
+      ...initialRunningSessionFormDraft("hills", "Saturday"),
+      repeats: "8",
+      work: "250",
+      workUnit: "distance",
+      recovery: "90000",
+      recoveryUnit: "duration",
+      target: { mode: "rpe", paceMsPerKm: "300000", heartRateZone: "4", rpe: "7" },
+    } as never);
+    expect(hills).toEqual(expect.objectContaining({
+      sessionKind: "hills",
+      advisoryTarget: { rpe: 7 },
+      contextual: { repetitions: 8, work: { distanceMeters: 250 }, returnRecovery: { durationMs: 90000 } },
+    }));
+    expect(hills).not.toHaveProperty("contextual.recovery");
+  });
+
   it("keeps create identity UI-only until the committed Recovery command readback", async () => {
     const saveSession = jest.fn(async () => ({ plan: { ...plan, revision: 2 }, sessionRootId: "session-root-1" }));
     const onSaved = jest.fn();
