@@ -51,6 +51,7 @@ import type {
   RemoveWorkingSetInput,
   ReviseCompletedSetInput,
   SaveZeroSetInput,
+  SessionDetail,
   SetObservation,
   SkipExerciseInput,
   UndoCompletedSetInput,
@@ -466,6 +467,7 @@ export type ActiveWorkoutScreenProps = Readonly<{
   onFinishLater: () => void;
   onOutcomeSaved?: (sessionId: string) => void;
   onDiscarded?: () => void;
+  onResolveUnknownOutcome?: (sessionId: string) => Promise<Pick<SessionDetail, "id" | "status">>;
   onRequestPlanEdit?: () => void;
   loadExerciseHistory?: ((exerciseId: string) => Promise<ExerciseMetricHistory>) | undefined;
   width?: number;
@@ -484,6 +486,9 @@ export function ActiveWorkoutScreen({
   onFinishLater,
   onOutcomeSaved = () => onFinishLater(),
   onDiscarded = onFinishLater,
+  onResolveUnknownOutcome = async () => {
+    throw new Error("outcome_source_reload_unavailable");
+  },
   onRequestPlanEdit = () => undefined,
   loadExerciseHistory,
   availableExercises = [],
@@ -504,6 +509,7 @@ export function ActiveWorkoutScreen({
         onFinishLater={onFinishLater}
         onGoBack={onGoBack}
         onOutcomeSaved={onOutcomeSaved}
+        onResolveUnknownOutcome={onResolveUnknownOutcome}
         onRetryAvailableExercises={onRetryAvailableExercises}
         sessionId={sessionId}
         view={initialView}
@@ -528,6 +534,7 @@ export function ActiveWorkoutScreen({
       onGoBack={onGoBack}
       onOpenNotificationSettings={onOpenNotificationSettings}
       onOutcomeSaved={onOutcomeSaved}
+      onResolveUnknownOutcome={onResolveUnknownOutcome}
       onRetryAvailableExercises={onRetryAvailableExercises}
       restSoundEnabled={restSoundEnabled}
       sessionId={sessionId}
@@ -547,6 +554,7 @@ type EmptyWorkoutOverviewProps = Readonly<{
   onFinishLater: () => void;
   onOutcomeSaved: (sessionId: string) => void;
   onDiscarded: () => void;
+  onResolveUnknownOutcome: (sessionId: string) => Promise<Pick<SessionDetail, "id" | "status">>;
   onRequestPlanEdit: () => void;
   loadExerciseHistory?: ((exerciseId: string) => Promise<ExerciseMetricHistory>) | undefined;
   onRetryAvailableExercises?: (() => void) | undefined;
@@ -564,6 +572,7 @@ function EmptyWorkoutOverview({
   onFinishLater,
   onOutcomeSaved,
   onDiscarded,
+  onResolveUnknownOutcome,
   onRequestPlanEdit,
   loadExerciseHistory,
   onRetryAvailableExercises,
@@ -643,11 +652,14 @@ function EmptyWorkoutOverview({
     try {
       const result = await commands.saveZeroSetWorkout(input);
       if (result.detail.id !== sessionId || result.detail.status !== "zero_sets") {
-        throw new Error("zero_set_workout_result_unknown");
+        const durableDetail = await onResolveUnknownOutcome(sessionId);
+        if (durableDetail.id !== sessionId || durableDetail.status !== "zero_sets") {
+          throw new Error("zero_set_workout_result_unknown");
+        }
       }
       saveZeroSetInputRef.current = null;
       setOutcomeConfirmation(null);
-      onOutcomeSaved(result.detail.id);
+      onOutcomeSaved(sessionId);
     } catch {
       setOutcomeConfirmation(null);
       setOutcomeFailure("zero_sets");
@@ -670,7 +682,10 @@ function EmptyWorkoutOverview({
     try {
       const result = await commands.discardWorkout(input);
       if (result.detail.id !== sessionId || result.detail.status !== "discarded") {
-        throw new Error("discard_workout_result_unknown");
+        const durableDetail = await onResolveUnknownOutcome(sessionId);
+        if (durableDetail.id !== sessionId || durableDetail.status !== "discarded") {
+          throw new Error("discard_workout_result_unknown");
+        }
       }
       discardWorkoutInputRef.current = null;
       setOutcomeConfirmation(null);
@@ -859,6 +874,9 @@ function PopulatedWorkoutOverview({
   onFinishLater,
   onOutcomeSaved = () => onFinishLater(),
   onDiscarded = onFinishLater,
+  onResolveUnknownOutcome = async () => {
+    throw new Error("outcome_source_reload_unavailable");
+  },
   onRequestPlanEdit = () => undefined,
   loadExerciseHistory,
   availableExercises = [],
@@ -1764,10 +1782,13 @@ function PopulatedWorkoutOverview({
         result.detail.id !== sessionId
         || result.detail.status !== "completed"
       ) {
-        throw new Error("finish_workout_result_unknown");
+        const durableDetail = await onResolveUnknownOutcome(sessionId);
+        if (durableDetail.id !== sessionId || durableDetail.status !== "completed") {
+          throw new Error("finish_workout_result_unknown");
+        }
       }
       finishCompletedInputRef.current = null;
-      onOutcomeSaved(result.detail.id);
+      onOutcomeSaved(sessionId);
     } catch {
       setOutcomeFailure({ operation: "finish_completed" });
     } finally {
@@ -1789,11 +1810,14 @@ function PopulatedWorkoutOverview({
     try {
       const result = await commands.finishPartial(input);
       if (result.detail.id !== sessionId || result.detail.status !== "partial") {
-        throw new Error("partial_workout_result_unknown");
+        const durableDetail = await onResolveUnknownOutcome(sessionId);
+        if (durableDetail.id !== sessionId || durableDetail.status !== "partial") {
+          throw new Error("partial_workout_result_unknown");
+        }
       }
       finishPartialInputRef.current = null;
       setOutcomeConfirmation(null);
-      onOutcomeSaved(result.detail.id);
+      onOutcomeSaved(sessionId);
     } catch {
       setOutcomeConfirmation(null);
       setOutcomeFailure({ operation: "partial" });
@@ -1816,11 +1840,14 @@ function PopulatedWorkoutOverview({
     try {
       const result = await commands.saveZeroSetWorkout(input);
       if (result.detail.id !== sessionId || result.detail.status !== "zero_sets") {
-        throw new Error("zero_set_workout_result_unknown");
+        const durableDetail = await onResolveUnknownOutcome(sessionId);
+        if (durableDetail.id !== sessionId || durableDetail.status !== "zero_sets") {
+          throw new Error("zero_set_workout_result_unknown");
+        }
       }
       saveZeroSetInputRef.current = null;
       setOutcomeConfirmation(null);
-      onOutcomeSaved(result.detail.id);
+      onOutcomeSaved(sessionId);
     } catch {
       setOutcomeConfirmation(null);
       setOutcomeFailure({ operation: "zero_sets" });
@@ -1843,7 +1870,10 @@ function PopulatedWorkoutOverview({
     try {
       const result = await commands.discardWorkout(input);
       if (result.detail.id !== sessionId || result.detail.status !== "discarded") {
-        throw new Error("discard_workout_result_unknown");
+        const durableDetail = await onResolveUnknownOutcome(sessionId);
+        if (durableDetail.id !== sessionId || durableDetail.status !== "discarded") {
+          throw new Error("discard_workout_result_unknown");
+        }
       }
       discardWorkoutInputRef.current = null;
       setOutcomeConfirmation(null);

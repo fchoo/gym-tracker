@@ -216,6 +216,7 @@ export default function ActiveWorkoutRoute() {
           params: { sessionId: savedSessionId },
         } as unknown as Href);
       }}
+      onResolveUnknownOutcome={(outcomeSessionId) => runtime.getSessionDetail(outcomeSessionId)}
       onDiscarded={() => router.replace("/(tabs)")}
       onRequestPlanEdit={() => {
         if ("planId" in view && view.planId !== null && view.planId !== undefined) {
