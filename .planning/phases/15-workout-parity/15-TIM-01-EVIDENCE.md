@@ -2,7 +2,7 @@
 
 **Recorded:** 2026-10-10
 **Characterization status:** passed
-**Policy validation:** pending Task 15-02-02
+**Policy validation:** passed
 
 ## Fresh characterization baseline
 
@@ -34,6 +34,23 @@ schema versions, and opaque identifiers; it contains no workout content.
 | `tests/sqlite-host/logicalRestoreRepository.test.ts` | `1d620236bf372cf0248575523a87e220cd27dbf6e2aea2a8f39efb1188995d0e` |
 | `tests/sqlite-host/logicalMergeRepository.test.ts` | `1b1f25aa965e23d60fd8ffb2d3a980da29baa96ffd640375dbebbfd8c3806c9c` |
 | `.planning/v1.2-owner-decisions.json` | `f1f9af1762e6e8fefbda0ee48f1ce2dca58907f19686f36e92130f718769783e` |
+
+## Approved owner record validation
+
+Validated automatically against `.planning/v1.2-owner-decisions.json` on
+2026-10-10. The recorded owner decision date is **2026-10-07** and the exact
+validated values are:
+
+| Field | Value |
+| --- | --- |
+| `decisions.TIM-01.status` | `approved` |
+| `decisions.TIM-01.selection` | `retire-playback` |
+| `decisions.TIM-01.legacy_playback_compatibility` | `false` |
+| fresh evidence hash | `c84c0f78af6455e4f3f86881ed7293ded1fb5901fd4e207089bce718314c2ba3` |
+
+This is an approved capability retirement with no compatibility branch. A
+technical failure remains an implementation blocker and does not reopen the
+product decision.
 
 ## Retained-fact boundary
 
