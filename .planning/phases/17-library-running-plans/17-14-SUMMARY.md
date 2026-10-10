@@ -53,9 +53,9 @@ metrics:
   completed: "2026-10-11"
 status: complete
 actuals:
-  tokens: 5032
+  tokens: 9949
   tasks: 2
-  commits: 4
+  commits: 5
 ---
 
 # Phase 17 Plan 14: Bounded Native Runner and Flow Sources Summary
@@ -64,7 +64,7 @@ Manifest-bound, risk-based Library/Running native runner with 39 canonical cases
 
 ## Completed Work
 
-- Added a static-tested native runner that accepts only the retained Phase 17 manifest, validates the exact current source/APK identity, and plans the complete canonical ledger without expanding it into a Cartesian matrix.
+- Added a static-tested native runner that accepts only the retained Phase 17 manifest, validates the exact current source/APK identity, and plans the complete canonical ledger without expanding it into a Cartesian matrix. Its representative profiles apply 200% text, Light/Dark/System selection, reduced motion, and landscape before each relevant case.
 - Added Library, Running authoring, and accessibility/recovery Maestro flows spanning chooser, preserved routes, Strength lifecycle, bundled/custom exercise paths, all seven Running variants, zero/nonempty/same-day ordering, lifecycle/collision, keyboard/D-pad/Back, IME-safe flow structure, 200% text, reduced motion, 48dp, focus, and process recovery cases.
 - Added `test:maestro:phase17` package binding and focused static tests that reject missing flow coverage and payload-capturing Maestro sources.
 - Recorded the owner-directed Phase 20 handoff: full global host gate, CNG, fresh development-test APK, device install/mutation, all 39 native cases, artifact/evidence binding, and all-ID verification remain intentionally unrun.
@@ -86,6 +86,7 @@ Manifest-bound, risk-based Library/Running native runner with 39 canonical cases
 2. **Task 2: Capture Running authoring/accessibility and close all evidence**
    - `a013219a` — test RED coverage for Running and accessibility flows.
    - `d2c17327` — Running/accessibility flow sources and package command binding.
+   - `55e495fd` — representative device accessibility profiles applied before each relevant native case.
 
 ## Files Created/Modified
 
