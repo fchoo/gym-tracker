@@ -446,7 +446,7 @@ const styles = StyleSheet.create({
   input: {
     borderRadius: radius.standard,
     borderWidth: StyleSheet.hairlineWidth,
-    minHeight: sizes.minimumTarget,
+    minHeight: 56,
     paddingHorizontal: space[4],
     paddingVertical: space[2],
   },

@@ -1644,18 +1644,4 @@ const styles = StyleSheet.create({
   targetEditor: {
     gap: space[4],
   },
-  timingRow: {
-    gap: space[2],
-  },
-  timingCopy: {
-    gap: space[1],
-  },
-  timingActions: {
-    flexDirection: "row",
-    flexWrap: "wrap",
-    gap: space[2],
-  },
-  timingEntry: {
-    gap: space[2],
-  },
 });
