@@ -1,5 +1,6 @@
 import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react-native";
 import { describe, expect, it, jest } from "@jest/globals";
+import { readFileSync } from "node:fs";
 import React from "react";
 
 import type { ActiveWorkoutView, CompleteSetResult } from "../../domains/workout";
@@ -91,6 +92,12 @@ async function renderScreen(view = workoutView(), commandOverrides: Partial<Acti
 }
 
 describe("ActiveWorkoutScreen explicit-save editor", () => {
+  it("sets Return to Workout on every non-confirmation Active bottom-sheet call site", () => {
+    const source = readFileSync("src/ui/screens/ActiveWorkoutScreen.tsx", "utf8");
+    expect([...source.matchAll(/<BottomSheet\s+cancelLabel="Return to Workout"/gu)])
+      .toHaveLength(6);
+  });
+
   it("saves a per-exercise rest draft with authoritative revisions and a stable receipt envelope", async () => {
     const initial = workoutView();
     const saved = workoutView({

@@ -1,5 +1,5 @@
 import { render } from "@testing-library/react-native";
-import { describe, expect, it } from "@jest/globals";
+import { describe, expect, it, jest } from "@jest/globals";
 import React from "react";
 
 import type { ExerciseMetricHistory } from "../../domains/history";
@@ -27,6 +27,12 @@ const history: ExerciseMetricHistory = {
 };
 
 describe("ExerciseTrendSheet", () => {
+  it("uses Return to Workout for its non-mutating dismissal", async () => {
+    const rendered = await render(<AppearanceProvider><ExerciseTrendSheet exerciseName="Back Squat" history={null} onClose={jest.fn()} visible /></AppearanceProvider>);
+
+    expect(rendered.getByLabelText("Return to Workout")).toBeTruthy();
+  });
+
   it("renders written Recent, Best, Change, and chart data for compatible evidence", async () => {
     const rendered = await render(<AppearanceProvider><ExerciseTrendSheet exerciseName="Back Squat" history={history} onClose={() => undefined} visible /></AppearanceProvider>);
 
