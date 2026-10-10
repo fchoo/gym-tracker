@@ -4,7 +4,7 @@ import React from "react";
 
 import type { RunningPlanAggregate } from "../../domains/running/contracts";
 import { RunningPlanEditorScreen } from "../screens/RunningPlanEditorScreen";
-import type { RunningPlanDraft } from "../running/runningFormDraft";
+import { makeRunningSessionDraft, type RunningPlanDraft } from "../running/runningFormDraft";
 import { AppearanceProvider } from "../theme";
 
 const initialDraft: RunningPlanDraft = {
@@ -46,5 +46,35 @@ describe("RunningPlanEditorScreen", () => {
     for (const label of ["recovery", "long run", "progression", "tempo", "intervals", "hills", "fartlek"]) {
       expect(screen.getByRole("button", { name: `Add ${label}` })).toBeOnTheScreen();
     }
+  });
+
+  it("moves same-day stable slots later and submits the exact reordered membership", async () => {
+    const recovery = makeRunningSessionDraft({
+      id: "recovery-v1", rootId: "recovery-root", slotId: "recovery-slot-v1", slotRootId: "recovery-slot",
+      planId: initialDraft.id, kind: "recovery", weekday: "Monday", ordinal: 0, createdAtMs: 1,
+    });
+    const tempo = makeRunningSessionDraft({
+      id: "tempo-v1", rootId: "tempo-root", slotId: "tempo-slot-v1", slotRootId: "tempo-slot",
+      planId: initialDraft.id, kind: "tempo", weekday: "Monday", ordinal: 1, createdAtMs: 1,
+    });
+    const sameDayDraft = { ...initialDraft, sessions: [recovery, tempo] };
+    const savePlan = jest.fn(async (draft: RunningPlanDraft): Promise<RunningPlanAggregate> => ({ ...draft, active: false, lifecycle: "inactive" }));
+    const view = await render(<AppearanceProvider><RunningPlanEditorScreen
+      createId={(kind) => `${kind}:id`}
+      initialDraft={sameDayDraft}
+      onBack={jest.fn()}
+      onSaved={jest.fn()}
+      savePlan={savePlan}
+    /></AppearanceProvider>);
+
+    await fireEvent.press(view.getByRole("button", { name: "Move recovery later" }));
+    await fireEvent.press(view.getByRole("button", { name: "Save changes" }));
+
+    await waitFor(() => expect(savePlan).toHaveBeenCalledWith(expect.objectContaining({
+      sessions: [
+        expect.objectContaining({ slot: expect.objectContaining({ rootId: "tempo-slot", ordinal: 0 }) }),
+        expect.objectContaining({ slot: expect.objectContaining({ rootId: "recovery-slot", ordinal: 1 }) }),
+      ],
+    })));
   });
 });
