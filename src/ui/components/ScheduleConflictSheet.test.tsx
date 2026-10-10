@@ -31,6 +31,11 @@ const preview = {
   confirmationToken: "schedule-collision-preview-v1:test",
 } as const;
 
+const reviewCases: [string, "move_strength" | "keep_both"][] = [
+  ["Move strength · 2026-11-10", "move_strength"],
+  ["Keep both · 2026-11-09", "keep_both"],
+];
+
 describe("ScheduleConflictSheet", () => {
   it("keeps every factual choice unselected until the owner reviews Move run", async () => {
     const onConfirm = jest.fn();
@@ -59,5 +64,15 @@ describe("ScheduleConflictSheet", () => {
     expect(screen.getByText("Upper body · 2026-11-09 → 2026-11-09")).toBeOnTheScreen();
     fireEvent.press(screen.getByRole("button", { name: "Confirm schedule change" }));
     expect(onConfirm).toHaveBeenCalledWith({ choice: "move_running", preview });
+  });
+
+  it.each(reviewCases)("reviews %s without preselecting it", async (label, choice) => {
+    const onConfirm = jest.fn();
+    await render(<AppearanceProvider><ScheduleConflictSheet onCancel={jest.fn()} onConfirm={onConfirm} preview={preview} visible /></AppearanceProvider>);
+    fireEvent.press(screen.getByRole("radio", { name: label }));
+    expect(await screen.findByText("Review schedule change")).toBeOnTheScreen();
+    expect(screen.getByText(/Neither workout is completed or skipped/)).toBeOnTheScreen();
+    fireEvent.press(screen.getByRole("button", { name: "Confirm schedule change" }));
+    expect(onConfirm).toHaveBeenCalledWith({ choice, preview });
   });
 });

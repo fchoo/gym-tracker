@@ -22,6 +22,12 @@ const lifecyclePreview: RunningLifecyclePreview = {
   confirmationToken: "running-lifecycle-preview-v1:test",
 };
 
+const collisionPreview = {
+  running: { occurrenceId: "running-opportunity", planId: "running-1", planName: "10K base", scheduleId: "running-schedule", scheduleVersionId: "running-v1", scheduleRevision: 2, occurrenceRevision: 1, localDate: "2026-11-09", movedLocalDate: "2026-11-10" },
+  strength: { occurrenceId: "strength-opportunity", planId: "strength-1", planName: "Upper body", scheduleId: "strength-schedule", scheduleVersionId: "strength-v1", scheduleRevision: 3, occurrenceRevision: 2, localDate: "2026-11-09", movedLocalDate: "2026-11-10" },
+  confirmationToken: "schedule-collision-preview-v1:test",
+} as const;
+
 describe("RunningPlanDetailScreen", () => {
   it("shows factual inactive goal, pace, zero-safe facts, and stable same-day slot order", async () => {
     await render(<AppearanceProvider><RunningPlanDetailScreen planId="running-1" loadPlan={jest.fn(async () => plan)} onBack={jest.fn()} onEdit={jest.fn()} onNewSession={jest.fn()} onEditSession={jest.fn()} onGarmin={jest.fn()} createLifecycleRequestId={() => "lifecycle-1"} previewLifecycle={jest.fn(async () => lifecyclePreview)} confirmLifecycle={jest.fn(async () => ({ ...plan, lifecycle: "active" as const, active: true }))} /></AppearanceProvider>);
@@ -59,5 +65,19 @@ describe("RunningPlanDetailScreen", () => {
     fireEvent.press(screen.getByRole("button", { name: "Confirm activate" }));
     expect(await screen.findByText("ACTIVE")).toBeOnTheScreen();
     expect(confirmLifecycle).toHaveBeenCalledWith(expect.objectContaining({ requestId: "lifecycle-1", preview: expect.objectContaining({ planId: "running-1" }) }));
+  });
+
+  it("retains a stale schedule collision review and requires an explicit reload", async () => {
+    const previewScheduleCollisionForPlan = jest.fn(async () => collisionPreview);
+    const commitScheduleCollisionChoice = jest.fn(async () => { throw new Error("schedule_collision_revision_conflict"); });
+    await render(<AppearanceProvider><RunningPlanDetailScreen planId="running-1" loadPlan={jest.fn(async () => plan)} onBack={jest.fn()} onEdit={jest.fn()} onNewSession={jest.fn()} onEditSession={jest.fn()} onGarmin={jest.fn()} createLifecycleRequestId={() => "lifecycle-1"} previewLifecycle={jest.fn(async () => lifecyclePreview)} confirmLifecycle={jest.fn(async () => plan)} createCollisionRequestId={() => "collision-request"} previewScheduleCollisionForPlan={previewScheduleCollisionForPlan} commitScheduleCollisionChoice={commitScheduleCollisionChoice} /></AppearanceProvider>);
+    await screen.findByText("INACTIVE");
+    fireEvent.press(screen.getByRole("button", { name: "Review schedule collision" }));
+    expect(await screen.findByText("Schedule conflict")).toBeOnTheScreen();
+    fireEvent.press(screen.getByRole("radio", { name: "Move run · 2026-11-10" }));
+    fireEvent.press(await screen.findByRole("button", { name: "Confirm schedule change" }));
+    expect(await screen.findByText("Schedule collision needs attention")).toBeOnTheScreen();
+    expect(screen.getByText("Schedule changed while you were reviewing. Reload the actual dates before confirming.")).toBeOnTheScreen();
+    expect(commitScheduleCollisionChoice).toHaveBeenCalledWith(expect.objectContaining({ requestId: "collision-request", preview: collisionPreview }));
   });
 });

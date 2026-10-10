@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useEffect, useMemo, useRef, useState } from "react";
 import { Text, View } from "react-native";
 
 import type { RunningPlanAggregate, RunningPlanSession } from "../../domains/running/contracts";
@@ -68,6 +68,7 @@ export function RunningPlanDetailScreen(props: RunningPlanDetailScreenProps) {
   const [busy, setBusy] = useState(false);
   const [collision, setCollision] = useState<ScheduleCollisionPreview | null>(null);
   const [collisionError, setCollisionError] = useState<string | null>(null);
+  const collisionTriggerRef = useRef<View>(null);
   useEffect(() => {
     let mounted = true;
     setState("loading");
@@ -138,9 +139,9 @@ export function RunningPlanDetailScreen(props: RunningPlanDetailScreenProps) {
       <SecondaryAction disabled={busy} label="Cancel lifecycle review" onPress={() => { setReview(null); setReviewError(null); }} />
     </View>}
     {reviewError === null ? null : <InlineNotice heading="Running lifecycle needs attention" body={reviewError} tone="error" action={<SecondaryAction disabled={busy} label="Retry review" onPress={() => beginLifecycleReview(review?.action ?? lifecycleAction)} />} />}
-    {props.previewScheduleCollisionForPlan === undefined ? null : <SecondaryAction disabled={busy} label="Review schedule collision" onPress={beginCollisionReview} />}
+    {props.previewScheduleCollisionForPlan === undefined ? null : <SecondaryAction disabled={busy} label="Review schedule collision" onPress={beginCollisionReview} ref={collisionTriggerRef} />}
     {collisionError === null ? null : <InlineNotice heading="Schedule collision needs attention" body={collisionError} tone="error" action={<SecondaryAction disabled={busy} label="Retry schedule review" onPress={beginCollisionReview} />} />}
     <PrimaryAction disabled={busy} label="Edit running plan" onPress={props.onEdit} /><SecondaryAction disabled={busy} label="Add session" onPress={props.onNewSession} /><SecondaryAction disabled={busy} label="Sync Garmin / match activity" onPress={props.onGarmin} />
-    {collision === null ? null : <ScheduleConflictSheet busy={busy} error={collisionError} onCancel={() => { setCollision(null); setCollisionError(null); }} onConfirm={confirmCollision} preview={collision} visible />}
+    {collision === null ? null : <ScheduleConflictSheet busy={busy} error={collisionError} onCancel={() => { setCollision(null); setCollisionError(null); }} onConfirm={confirmCollision} preview={collision} restoreFocusRef={collisionTriggerRef} visible />}
   </>} />;
 }

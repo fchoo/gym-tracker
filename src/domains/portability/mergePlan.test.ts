@@ -2050,6 +2050,42 @@ describe("portable merge plan", () => {
     expect(graph.tables.imported_activity_events![0]!.id).not.toBe("event");
   });
 
+  it("rewrites collision outcomes and immutable receipts through owned-plan ID remaps", () => {
+    const archive = snapshot({ id: "archive", marker: "archive", modifiedAtMs: 2 }, {
+      schedule_collision_outcomes: [{
+        id: "outcome", request_id: "request", strength_opportunity_id: "strength-opportunity",
+        strength_schedule_id: "strength-schedule", running_opportunity_id: "running-opportunity",
+        running_schedule_id: "running-schedule",
+      }],
+      schedule_collision_receipts: [{ request_id: "request", outcome_id: "outcome" }],
+      schedule_collision_projections: [{ outcome_id: "outcome" }],
+    });
+    const local = snapshot({ id: "local", marker: "local", modifiedAtMs: 1 }, {
+      schedule_collision_outcomes: [{
+        id: "outcome", request_id: "other-request", strength_opportunity_id: "other-strength",
+        strength_schedule_id: "other-strength-schedule", running_opportunity_id: "other-running",
+        running_schedule_id: "other-running-schedule",
+      }],
+    });
+    const mapped = __mergePlanTestOnly.mappedGraphRows(archive, local, new Map([
+      ["owned_plan_schedule_opportunities", new Map([["strength-opportunity", "merged-strength-opportunity"]])],
+      ["owned_plan_schedules", new Map([
+        ["strength-schedule", "merged-strength-schedule"],
+        ["running-schedule", "merged-running-schedule"],
+      ])],
+      ["running_opportunities", new Map([["running-opportunity", "merged-running-opportunity"]])],
+    ]));
+    const outcome = mapped.schedule_collision_outcomes![0]!;
+    expect(outcome).toEqual(expect.objectContaining({
+      strength_opportunity_id: "merged-strength-opportunity",
+      strength_schedule_id: "merged-strength-schedule",
+      running_opportunity_id: "merged-running-opportunity",
+      running_schedule_id: "merged-running-schedule",
+    }));
+    expect(mapped.schedule_collision_receipts![0]!.outcome_id).toBe(outcome.id);
+    expect(mapped.schedule_collision_projections![0]!.outcome_id).toBe(outcome.id);
+  });
+
   it("covers legacy source identities, nullable graph references, and invalid digests", async () => {
     expect(__mergePlanTestOnly.sourceIdentityKey({
       source: "garmin",

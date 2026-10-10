@@ -1204,10 +1204,14 @@ function planAggregate(
   exerciseMappings: ReadonlyMap<string, string>,
   planMappings: ReadonlyMap<string, string>,
   sessionMappings: ReadonlyMap<string, string>,
+  referenceMaps?: Map<string, ReadonlyMap<string, string>>,
 ): PortableMergeAggregate {
   const archivePlanId = operation.archiveId;
   const localPlanId = operation.localId;
   const tables: Record<string, readonly LogicalBackupRow[]> = {};
+  const recordMap = (table: string, ids: ReadonlyMap<string, string>): void => {
+    referenceMaps?.set(table, ids);
+  };
   const root = rowsFor(snapshot, "plans").filter((row) => row.id === archivePlanId);
   if (root.length !== 1) invalid();
   const planKind = root[0]!.plan_kind;
@@ -1225,11 +1229,13 @@ function planAggregate(
 
   if (planMappings.get(archivePlanId) !== localPlanId) invalid();
   const planMap = new Map([[archivePlanId, localPlanId]]);
+  recordMap("plans", planMap);
   const days = rowsFor(snapshot, "plan_days").filter((row) => row.plan_id === archivePlanId);
   const mappedDays = mappedRows(local, "plan_days", days, [
     { column: "plan_id", ids: planMap },
   ], operation.kind === "keep_both", operation.portableId);
   if (mappedDays.rows.length > 0) tables.plan_days = mappedDays.rows;
+  recordMap("plan_days", mappedDays.ids);
 
   const occurrences = rowsFor(snapshot, "plan_day_exercises")
     .filter((row) => mappedDays.ids.has(textId(row.plan_day_id)));
@@ -1282,6 +1288,7 @@ function planAggregate(
   if (mappedOwnedSchedules.rows.length > 0) {
     tables.owned_plan_schedules = Object.freeze(normalizedOwnedSchedules);
   }
+  recordMap("owned_plan_schedules", mappedOwnedSchedules.ids);
 
   const scheduleVersions = rowsFor(snapshot, "owned_plan_schedule_versions")
     .filter((row) => mappedOwnedSchedules.ids.has(textId(row.schedule_id)));
@@ -1291,6 +1298,7 @@ function planAggregate(
   if (mappedScheduleVersions.rows.length > 0) {
     tables.owned_plan_schedule_versions = mappedScheduleVersions.rows;
   }
+  recordMap("owned_plan_schedule_versions", mappedScheduleVersions.ids);
 
   const scheduleBindings = rowsFor(snapshot, "owned_plan_schedule_bindings")
     .filter((row) => mappedScheduleVersions.ids.has(textId(row.schedule_version_id)));
@@ -1318,7 +1326,80 @@ function planAggregate(
     const mapped = mappedRows(local, table, rows, maps,
       operation.kind === "keep_both", operation.portableId);
     if (mapped.rows.length > 0) tables[table] = mapped.rows;
+    recordMap(table, mapped.ids);
   }
+
+  const runningRoots = rowsFor(snapshot, "running_plans")
+    .filter((row) => row.plan_id === archivePlanId);
+  const mappedRunningRoots = mappedRows(local, "running_plans", runningRoots, [
+    { column: "plan_id", ids: planMap },
+  ], operation.kind === "keep_both", operation.portableId, "plan_id", planMap);
+  if (mappedRunningRoots.rows.length > 0) tables.running_plans = mappedRunningRoots.rows;
+  recordMap("running_plans", mappedRunningRoots.ids);
+
+  const runningRevisions = rowsFor(snapshot, "running_session_revisions")
+    .filter((row) => row.plan_id === archivePlanId);
+  const mappedRunningRevisions = mappedRows(local, "running_session_revisions", runningRevisions, [
+    { column: "plan_id", ids: planMap },
+  ], operation.kind === "keep_both", operation.portableId);
+  if (mappedRunningRevisions.rows.length > 0) tables.running_session_revisions = mappedRunningRevisions.rows;
+  recordMap("running_session_revisions", mappedRunningRevisions.ids);
+
+  const runningSessionRoots = rowsFor(snapshot, "running_session_roots")
+    .filter((row) => row.plan_id === archivePlanId);
+  const mappedRunningSessionRoots = mappedRows(local, "running_session_roots", runningSessionRoots, [
+    { column: "plan_id", ids: planMap },
+  ], operation.kind === "keep_both", operation.portableId);
+  if (mappedRunningSessionRoots.rows.length > 0) tables.running_session_roots = mappedRunningSessionRoots.rows;
+  recordMap("running_session_roots", mappedRunningSessionRoots.ids);
+
+  const runningSlotRoots = rowsFor(snapshot, "running_session_slot_roots")
+    .filter((row) => row.plan_id === archivePlanId);
+  const mappedRunningSlotRoots = mappedRows(local, "running_session_slot_roots", runningSlotRoots, [
+    { column: "plan_id", ids: planMap },
+  ], operation.kind === "keep_both", operation.portableId);
+  if (mappedRunningSlotRoots.rows.length > 0) tables.running_session_slot_roots = mappedRunningSlotRoots.rows;
+  recordMap("running_session_slot_roots", mappedRunningSlotRoots.ids);
+
+  const runningSlotRevisions = rowsFor(snapshot, "running_session_slot_revisions")
+    .filter((row) => mappedRunningSlotRoots.ids.has(textId(row.slot_root_id)));
+  const mappedRunningSlotRevisions = mappedRows(local, "running_session_slot_revisions", runningSlotRevisions, [
+    { column: "slot_root_id", ids: mappedRunningSlotRoots.ids },
+    { column: "session_root_id", ids: mappedRunningSessionRoots.ids },
+    { column: "session_revision_id", ids: mappedRunningRevisions.ids },
+  ], operation.kind === "keep_both", operation.portableId);
+  if (mappedRunningSlotRevisions.rows.length > 0) tables.running_session_slot_revisions = mappedRunningSlotRevisions.rows;
+  recordMap("running_session_slot_revisions", mappedRunningSlotRevisions.ids);
+
+  for (const table of ["running_plan_receipts", "running_plan_events", "running_goals"] as const) {
+    const rows = rowsFor(snapshot, table).filter((row) => row.plan_id === archivePlanId);
+    const mapped = mappedRows(local, table, rows, [
+      { column: "plan_id", ids: planMap },
+    ], operation.kind === "keep_both", operation.portableId);
+    if (mapped.rows.length > 0) tables[table] = mapped.rows;
+    recordMap(table, mapped.ids);
+  }
+
+  const runningSlots = rowsFor(snapshot, "running_session_slots")
+    .filter((row) => row.plan_id === archivePlanId);
+  const mappedRunningSlots = mappedRows(local, "running_session_slots", runningSlots, [
+    { column: "plan_id", ids: planMap },
+    { column: "session_revision_id", ids: mappedRunningRevisions.ids },
+  ], operation.kind === "keep_both", operation.portableId);
+  if (mappedRunningSlots.rows.length > 0) tables.running_session_slots = mappedRunningSlots.rows;
+  recordMap("running_session_slots", mappedRunningSlots.ids);
+
+  const runningOpportunities = rowsFor(snapshot, "running_opportunities")
+    .filter((row) => row.plan_id === archivePlanId);
+  const mappedRunningOpportunities = mappedRows(local, "running_opportunities", runningOpportunities, [
+    { column: "plan_id", ids: planMap },
+    { column: "schedule_id", ids: mappedOwnedSchedules.ids },
+    { column: "schedule_version_id", ids: mappedScheduleVersions.ids },
+    { column: "slot_id", ids: mappedRunningSlots.ids },
+    { column: "session_revision_id", ids: mappedRunningRevisions.ids },
+  ], operation.kind === "keep_both", operation.portableId);
+  if (mappedRunningOpportunities.rows.length > 0) tables.running_opportunities = mappedRunningOpportunities.rows;
+  recordMap("running_opportunities", mappedRunningOpportunities.ids);
 
   const ownedDayExercises = rowsFor(snapshot, "owned_plan_day_exercises")
     .filter((row) => mappedDays.ids.has(textId(row.plan_day_id)));
@@ -1544,6 +1625,8 @@ const PHASE13_SOURCE_GRAPH_TABLES = Object.freeze([
   "bodyweight_entry_events", "bodyweight_command_receipts",
   "running_match_events", "running_activity_match_events",
   "running_activity_match_receipts",
+  "schedule_collision_outcomes", "schedule_collision_receipts",
+  "schedule_collision_projections",
 ] as const satisfies readonly LogicalBackupTableName[]);
 
 function sourceGraphRows(snapshot: PortableMergePlanSnapshot): Readonly<Record<string, readonly LogicalBackupRow[]>> {
@@ -1567,6 +1650,7 @@ function sourceGraphHasRows(snapshot: PortableMergePlanSnapshot): boolean {
 function mappedGraphRows(
   archive: PortableMergePlanSnapshot,
   local: PortableMergePlanSnapshot,
+  externalReferenceMaps: ReadonlyMap<string, ReadonlyMap<string, string>> = new Map(),
 ): Readonly<Record<string, readonly LogicalBackupRow[]>> {
   const archiveIdentities = new Map(rowsFor(archive, "imported_activity_identities").map((row) => [
     sourceIdentityKey(row), textId(row.activity_id),
@@ -1582,7 +1666,9 @@ function mappedGraphRows(
     if (localActivityId !== undefined && localActivityId !== archiveActivityId) invalid();
   }
 
-  const maps = new Map<string, Map<string, string>>();
+  const maps = new Map<string, Map<string, string>>(
+    [...externalReferenceMaps].map(([table, ids]) => [table, new Map(ids)]),
+  );
   const result: Record<string, readonly LogicalBackupRow[]> = {};
   for (const table of PHASE13_SOURCE_GRAPH_TABLES) {
     const definition = LOGICAL_BACKUP_TABLE_DEFINITIONS[table];
@@ -1618,6 +1704,12 @@ function mappedGraphRows(
         const value = mapped[reference.childColumns[0]!];
         if (value === null || value === undefined) continue;
         const replacement = maps.get(reference.parentTable)?.get(textId(value));
+        if (replacement === undefined && table === "schedule_collision_outcomes") {
+          // The graph owns immutable facts but is allowed to reference an
+          // imported owned-plan row.  A missing mapping would leave an archive
+          // physical ID in the receipt and violate the merged FK graph.
+          invalid();
+        }
         if (replacement !== undefined && replacement !== value) {
           mapped = Object.freeze({ ...mapped, [reference.childColumns[0]!]: replacement });
         }
@@ -1633,6 +1725,7 @@ async function sourceGraphPlan(
   archive: PortableMergePlanSnapshot,
   local: PortableMergePlanSnapshot,
   payloadDigest: (value: string) => Promise<string>,
+  externalReferenceMaps: ReadonlyMap<string, ReadonlyMap<string, string>> = new Map(),
 ): Promise<Readonly<{ operation?: Extract<PortableMergeOperation, { aggregateClass: "source_graph" }>; aggregate?: PortableMergeAggregate }>> {
   if (!sourceGraphHasRows(archive)) return Object.freeze({});
   const archiveRows = sourceGraphRows(archive);
@@ -1656,7 +1749,7 @@ async function sourceGraphPlan(
   if (operation.kind === "duplicate") return Object.freeze({ operation });
   let tables: Readonly<Record<string, readonly LogicalBackupRow[]>>;
   try {
-    tables = mappedGraphRows(archive, local);
+    tables = mappedGraphRows(archive, local, externalReferenceMaps);
   } catch {
     return Object.freeze({
       operation: Object.freeze({ ...operation, kind: "conflict" as const }),
@@ -1724,10 +1817,32 @@ export async function buildPortableMergePlan(input: Readonly<{
   const settings = settingPlan(input.archive, input.local, new Map(
     plans.idMappings.map(({ archiveId, localId }) => [archiveId, localId]),
   ));
+  const ownedReferenceMaps = new Map<string, ReadonlyMap<string, string>>();
+  const exerciseMappings = new Map(
+    exercises.idMappings.map(({ archiveId, localId }) => [archiveId, localId]),
+  );
+  const planMappings = new Map(
+    plans.idMappings.map(({ archiveId, localId }) => [archiveId, localId]),
+  );
+  const emptySessionMappings = new Map<string, string>();
+  for (const operation of plans.operations) {
+    if (operation.aggregateClass !== "owned_plan"
+      || (operation.kind !== "insert" && operation.kind !== "keep_both" && operation.kind !== "duplicate")) continue;
+    planAggregate(
+      input.archive,
+      input.local,
+      operation,
+      exerciseMappings,
+      planMappings,
+      emptySessionMappings,
+      ownedReferenceMaps,
+    );
+  }
   const sourceGraph = await sourceGraphPlan(
     input.archive,
     input.local,
     input.payloadDigest,
+    ownedReferenceMaps,
   );
   const operations: readonly PortableMergeOperation[] = Object.freeze([
     ...sessionOperations,

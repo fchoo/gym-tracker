@@ -82,6 +82,8 @@ export const LOGICAL_RESTORE_DELETE_TRIGGER_NAMES = Object.freeze([
   "workout_session_exercise_rest_default_receipts_immutable_delete",
   "running_activity_match_events_immutable_delete",
   "running_activity_match_receipts_immutable_delete",
+  "schedule_collision_outcomes_immutable_delete",
+  "schedule_collision_receipts_immutable_delete",
 ] as const);
 
 /**
@@ -104,6 +106,7 @@ export const LOGICAL_RESTORE_BACKUP_TRIGGER_NAMES = Object.freeze(
       "bodyweight_entry_events", "bodyweight_command_receipts", "workout_session_schedule_links",
       "workout_schedule_reconciliation_receipts", "running_activity_match_events",
       "running_activity_match_receipts",
+      "schedule_collision_outcomes", "schedule_collision_receipts", "schedule_collision_projections",
     ].flatMap((table) => ["insert", "update", "delete"].map(
       (operation) => `automatic_backup_generation_${table}_${operation}`,
     )),

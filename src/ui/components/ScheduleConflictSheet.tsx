@@ -1,4 +1,4 @@
-import React, { useMemo, useRef, useState } from "react";
+import React, { useMemo, useState } from "react";
 import { StyleSheet, Text, View, type TextStyle } from "react-native";
 
 import { BottomSheet } from "./BottomSheet";
@@ -14,6 +14,7 @@ export type ScheduleConflictSheetProps = Readonly<{
   preview: ScheduleCollisionPreview;
   busy?: boolean;
   error?: string | null;
+  restoreFocusRef?: React.RefObject<View | null>;
   onCancel(): void;
   onConfirm(input: Readonly<{
     choice: ScheduleCollisionChoice;
@@ -80,10 +81,10 @@ export function ScheduleConflictSheet({
   onCancel,
   onConfirm,
   preview,
+  restoreFocusRef,
   visible,
 }: ScheduleConflictSheetProps) {
   const { colors } = useAppTheme();
-  const triggerRef = useRef<View>(null);
   const [choice, setChoice] = useState<ScheduleCollisionChoice | null>(null);
   const reviewing = choice !== null;
   const factualChoices = useMemo(
@@ -100,7 +101,7 @@ export function ScheduleConflictSheet({
       <BottomSheet
         heading="Schedule conflict"
         onCancel={close}
-        restoreFocusRef={triggerRef}
+        restoreFocusRef={restoreFocusRef}
         testID="schedule-conflict-sheet"
         visible={visible && !reviewing}
       >
@@ -126,14 +127,14 @@ export function ScheduleConflictSheet({
       </BottomSheet>
       {choice === null ? null : (
         <ConfirmationDialog
-          body="Review both dates before confirming. This changes only the selected future occurrence."
+          body="Review both actual dates before confirming. Neither workout is completed or skipped; only the selected future occurrence changes."
           cancelLabel="Keep current schedule"
           confirmBusy={busy}
           confirmLabel="Confirm schedule change"
           heading="Review schedule change"
           onCancel={close}
           onConfirm={() => onConfirm({ choice, preview })}
-          restoreFocusRef={triggerRef}
+          restoreFocusRef={restoreFocusRef}
           visible={visible}
         >
           <View style={styles.review}>

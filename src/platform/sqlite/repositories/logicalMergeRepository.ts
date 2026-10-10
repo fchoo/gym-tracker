@@ -89,6 +89,16 @@ const FULL_PLAN_OWNED_PLAN_TABLES = Object.freeze([
   "owned_plan_schedule_overrides",
   "owned_plan_schedule_opportunities",
   "owned_plan_schedule_events",
+  "running_plans",
+  "running_session_revisions",
+  "running_session_roots",
+  "running_session_slot_roots",
+  "running_session_slot_revisions",
+  "running_plan_receipts",
+  "running_plan_events",
+  "running_goals",
+  "running_session_slots",
+  "running_opportunities",
   "owned_plan_mutation_requests",
   "starter_plan_activation_requests",
   "owned_progression_recommendations",
@@ -105,6 +115,8 @@ const FULL_PLAN_SOURCE_GRAPH_TABLES = Object.freeze([
   "bodyweight_entry_events", "bodyweight_command_receipts",
   "running_match_events", "running_activity_match_events",
   "running_activity_match_receipts",
+  "schedule_collision_outcomes", "schedule_collision_receipts",
+  "schedule_collision_projections",
 ] as const satisfies readonly LogicalBackupTableName[]);
 
 const SOURCE_GRAPH_BACKUP_TRIGGER_NAMES = Object.freeze(
