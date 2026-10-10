@@ -157,7 +157,7 @@ Exactly four roots: **Workout, Calendar, Library, Progress**. Preserve SQLite au
 - [x] **LIB-33**: Expose Repeats, Uphill duration/distance, Return recovery and Effort target for Hills.
 - [x] **LIB-34**: Expose Structured/Unstructured style, Surges/repeats, Fast segment or cue, Easy float/recovery and Effort target.
 - [x] **LIB-35**: Persist session addition, edit, deletion and order; preserve a truly empty saved session list and provide error/retry without restoring fixture defaults.
-- [ ] **LIB-36**: Offer Move run, Move strength and Keep both with actual future-date choices, explicit confirmation and persisted outcomes.
+- [x] **LIB-36**: Offer Move run, Move strength and Keep both with actual future-date choices, explicit confirmation and persisted outcomes.
 
 ### Phase 18: Standalone Garmin account sync and activity detail
 
@@ -362,7 +362,7 @@ once and remains Pending until its owning phase is implemented and verified.
 | LIB-33 | 17 | library.running-hills | Complete |
 | LIB-34 | 17 | library.running-fartlek | Complete |
 | LIB-35 | 17 | library.running-session-lifecycle | Complete |
-| LIB-36 | 17 | library.running-conflict | Pending |
+| LIB-36 | 17 | library.running-conflict | Complete |
 | GAR-01 | 18 | garmin.entry | Pending |
 | GAR-02 | 18 | garmin.header | Pending |
 | GAR-03 | 18 | garmin.not-connected | Pending |
