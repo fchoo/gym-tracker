@@ -58,11 +58,11 @@ Exactly four roots: **Workout, Calendar, Library, Progress**. Preserve SQLite au
 ### Phase 15: Workout, Active Workout and completion
 
 - [x] **WRK-01**: Present the workout identity, summary, full scrollable exercise preview and Start/Resume action before secondary controls.
-- [ ] **WRK-02**: Select real plan-day previews with selected state and keyboard alternatives without silently advancing schedule rotation.
-- [ ] **WRK-03**: Handle scheduled, rest/recovery and no-plan states with truthful action availability; retain starting-plan activation and empty-workout entry.
-- [ ] **WRK-04**: Preserve explicit scheduled-day, alternate-day and Start empty workout choices with cancel and focus restoration.
+- [x] **WRK-02**: Select real plan-day previews with selected state and keyboard alternatives without silently advancing schedule rotation.
+- [x] **WRK-03**: Handle scheduled, rest/recovery and no-plan states with truthful action availability; retain starting-plan activation and empty-workout entry.
+- [x] **WRK-04**: Preserve explicit scheduled-day, alternate-day and Start empty workout choices with cancel and focus restoration.
 - [x] **WRK-05**: Start the selected occurrence and resume the exact saved active session after background or process death; display recovered context and retry failed reads/starts.
-- [ ] **WRK-06**: Provide View plan and Sync Garmin contextual actions for Running alongside Strength, backed by actual independent active schedules.
+- [x] **WRK-06**: Provide View plan and Sync Garmin contextual actions for Running alongside Strength, backed by actual independent active schedules.
 - [x] **WRK-07**: Render a full vertically scrollable exercise list with workout identity, working-set progress and compact per-exercise metadata.
 - [x] **WRK-08**: Return from the active workout to its plan/root context without discarding the active session.
 - [x] **WRK-09**: Expand/collapse each exercise by header tap or Enter/Space, retain full long names up to two lines, and keep trend/menu targets separate.
@@ -269,11 +269,11 @@ once and remains Pending until its owning phase is implemented and verified.
 | SHL-12 | 14 | shell.automatic-backup | Complete |
 | SHL-13 | 14 | shell.manual-backup | Complete |
 | WRK-01 | 15 | workout.root-identity | Complete |
-| WRK-02 | 15 | workout.day-switch | Pending |
-| WRK-03 | 15 | workout.scheduled-rest-empty | Pending |
-| WRK-04 | 15 | workout.start-alternate | Pending |
+| WRK-02 | 15 | workout.day-switch | Complete |
+| WRK-03 | 15 | workout.scheduled-rest-empty | Complete |
+| WRK-04 | 15 | workout.start-alternate | Complete |
 | WRK-05 | 15 | workout.start-resume | Complete |
-| WRK-06 | 15 | workout.context-running | Pending |
+| WRK-06 | 15 | workout.context-running | Complete |
 | WRK-07 | 15 | workout.active-layout | Complete |
 | WRK-08 | 15 | workout.active-back | Complete |
 | WRK-09 | 15 | workout.exercise-disclosure | Complete |
