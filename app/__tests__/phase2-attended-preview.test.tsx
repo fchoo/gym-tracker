@@ -377,7 +377,7 @@ describe("Phase2AttendedPreviewRoute", () => {
         .props.refreshControl.props.onRefresh();
     });
     expect(await screen.findByRole("button", {
-      name: "Retry Library refresh",
+      name: "Retry refreshing Library",
     })).toBeOnTheScreen();
     expect(screen.getByDisplayValue("travel")).toBeOnTheScreen();
     expect(screen.getByTestId("library-plan-card-preview-draft-plan"))
@@ -385,7 +385,7 @@ describe("Phase2AttendedPreviewRoute", () => {
         selected: true,
       }));
     await fireEvent.press(screen.getByRole("button", {
-      name: "Retry Library refresh",
+      name: "Retry refreshing Library",
     }));
     expect(await screen.findByTestId("library-plan-card-preview-draft-plan"))
       .toBeOnTheScreen();

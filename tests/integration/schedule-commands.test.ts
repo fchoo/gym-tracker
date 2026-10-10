@@ -2659,6 +2659,56 @@ describe("schedule repository edge contracts", () => {
            VALUES ('schedule-coverage-running', 'ready', 1, 1)`,
         );
         await transaction.execute(
+          `INSERT INTO running_goals
+            (id, plan_id, goal_json, revision, created_at_ms)
+           VALUES (
+             'schedule-coverage-running:goal:1', 'schedule-coverage-running',
+             '{"version":1,"id":"schedule-coverage-running:goal:1"}', 1, 1
+           )`,
+        );
+        await transaction.execute(
+          `INSERT INTO running_session_revisions
+            (id, plan_id, session_kind, revision, definition_json, created_at_ms)
+           VALUES (
+             'schedule-coverage-running:recovery:1', 'schedule-coverage-running',
+             'recovery', 1, '{"version":1,"sessionKind":"recovery"}', 1
+           )`,
+        );
+        await transaction.execute(
+          `INSERT INTO running_session_roots
+            (id, plan_id, session_kind, current_revision, created_at_ms)
+           VALUES (
+             'schedule-coverage-running:recovery', 'schedule-coverage-running',
+             'recovery', 1, 1
+           )`,
+        );
+        await transaction.execute(
+          `INSERT INTO running_session_slot_roots
+            (id, plan_id, weekday, created_at_ms)
+           VALUES (
+             'schedule-coverage-running:slot', 'schedule-coverage-running',
+             'Monday', 1
+           )`,
+        );
+        await transaction.execute(
+          `INSERT INTO running_session_slot_revisions
+            (id, slot_root_id, revision, ordinal, session_root_id,
+             session_revision_id, created_at_ms)
+           VALUES (
+             'schedule-coverage-running:slot:1', 'schedule-coverage-running:slot',
+             1, 0, 'schedule-coverage-running:recovery',
+             'schedule-coverage-running:recovery:1', 1
+           )`,
+        );
+        await transaction.execute(
+          `INSERT INTO running_session_slots
+            (id, plan_id, weekday, ordinal, session_revision_id, revision, retired_at_ms)
+           VALUES (
+             'schedule-coverage-running:slot', 'schedule-coverage-running',
+             'Monday', 0, 'schedule-coverage-running:recovery:1', 1, NULL
+           )`,
+        );
+        await transaction.execute(
           `INSERT INTO owned_plan_schedules
             (id, plan_id, lifecycle, revision, activated_at_ms,
              deactivated_at_ms, plan_kind)
@@ -2667,7 +2717,53 @@ describe("schedule repository edge contracts", () => {
              'inactive', 1, 1, 1, 'running'
            )`,
         );
+        await transaction.execute(
+          `INSERT INTO owned_plan_schedule_versions
+            (id, schedule_id, version_number, effective_local_date, mode,
+             timezone, rotation_pointer, created_at_ms)
+           VALUES (
+             'schedule-coverage-running:version:1', 'schedule-coverage-running',
+             1, '2026-08-01', 'weekday', 'Asia/Singapore', NULL, 1
+           )`,
+        );
+        await transaction.execute(
+          `INSERT INTO plan_days
+            (id, plan_id, ordinal, name, revision)
+           VALUES (
+             'schedule-coverage-running:day:1', 'schedule-coverage-running',
+             0, 'Recovery', 1
+           )`,
+        );
+        await transaction.execute(
+          `INSERT INTO owned_plan_schedule_bindings
+            (id, schedule_version_id, mode, ordinal, week_index, weekday,
+             plan_day_id)
+           VALUES (
+             'schedule-coverage-running:binding:1',
+             'schedule-coverage-running:version:1', 'weekday', 0, 0,
+             'Monday', 'schedule-coverage-running:day:1'
+           )`,
+        );
       });
+      const [readiness] = await kernel.queryAll<{ recovery_count: number; slot_count: number; version_count: number; binding_count: number }>(
+        `SELECT
+           (SELECT COUNT(*) FROM running_session_slots slot
+            JOIN running_session_roots root ON root.id = 'schedule-coverage-running:recovery'
+            JOIN running_session_revisions revision ON revision.id = slot.session_revision_id
+              AND revision.revision = root.current_revision
+            WHERE slot.plan_id = 'schedule-coverage-running' AND slot.retired_at_ms IS NULL
+              AND revision.session_kind = 'recovery') AS recovery_count,
+           (SELECT COUNT(*) FROM running_session_slots
+            WHERE plan_id = 'schedule-coverage-running' AND retired_at_ms IS NULL) AS slot_count,
+           (SELECT COUNT(*) FROM owned_plan_schedule_versions
+            WHERE schedule_id = 'schedule-coverage-running') AS version_count,
+           (SELECT COUNT(*) FROM owned_plan_schedule_bindings binding
+            JOIN owned_plan_schedule_versions version ON version.id = binding.schedule_version_id
+            WHERE version.schedule_id = 'schedule-coverage-running') AS binding_count`,
+      );
+      if (readiness?.recovery_count !== 1 || readiness.slot_count !== 1 || readiness.version_count !== 1 || readiness.binding_count !== 1) {
+        throw new Error(`schedule_running_fixture_not_current:${JSON.stringify(readiness)}`);
+      }
     };
     const activate = (kernel: SqliteKernel) =>
       createScheduleRepository(kernel).activateRunningSchedule?.({

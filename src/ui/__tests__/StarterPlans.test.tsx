@@ -295,7 +295,7 @@ describe("starter discovery", () => {
     expect(await screen.findByText(
       "Library could not be loaded. Your plans and exercises were not changed. Try again.",
     )).toBeOnTheScreen();
-    expect(screen.getByRole("button", { name: "Retry Library" }))
+    expect(screen.getByRole("button", { name: "Retry loading Library" }))
       .toBeOnTheScreen();
   });
 
@@ -659,9 +659,9 @@ describe("starter activation", () => {
     );
     expect(weekdayHandle).toHaveProp(
       "accessibilityActions",
-      expect.arrayContaining([{ name: "increment", label: "Move up" }]),
+      expect.arrayContaining([{ name: "increment", label: "Move earlier" }]),
     );
-    expect(screen.queryByRole("button", { name: "Move Back up" }))
+    expect(screen.queryByRole("button", { name: "Move Back earlier" }))
       .not.toBeOnTheScreen();
     expect(screen.queryByText("Position 2 of 5")).not.toBeOnTheScreen();
     await fireEvent(

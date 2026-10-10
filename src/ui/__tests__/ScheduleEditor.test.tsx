@@ -244,7 +244,7 @@ describe("schedule editor tracer", () => {
     expect(saveSchedule).not.toHaveBeenCalled();
     expect(screen.getAllByText("Strength B").at(-1)).toBeOnTheScreen();
     expect(screen.queryByText("Position 2 of 2")).not.toBeOnTheScreen();
-    expect(screen.queryByRole("button", { name: "Move Strength B up" }))
+    expect(screen.queryByRole("button", { name: "Move Strength B earlier" }))
       .not.toBeOnTheScreen();
 
     await fireEvent.press(screen.getByRole("button", {
@@ -460,9 +460,9 @@ describe("schedule binding editor", () => {
     );
     expect(weekdayHandle).toHaveProp(
       "accessibilityActions",
-      expect.arrayContaining([{ name: "increment", label: "Move up" }]),
+      expect.arrayContaining([{ name: "increment", label: "Move earlier" }]),
     );
-    expect(screen.queryByRole("button", { name: "Move Strength B up" }))
+    expect(screen.queryByRole("button", { name: "Move Strength B earlier" }))
       .not.toBeOnTheScreen();
     expect(screen.queryByText("Position 2 of 3")).not.toBeOnTheScreen();
     await fireEvent(

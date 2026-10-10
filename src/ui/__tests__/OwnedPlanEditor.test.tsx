@@ -841,7 +841,7 @@ describe("OwnedPlanEditorScreen dirty leave and lifecycle", () => {
     expect(await screen.findByTestId("drag-day-Recovery")).toHaveProp(
       "accessibilityActions",
       expect.arrayContaining([
-        expect.objectContaining({ label: "Move up" }),
+        expect.objectContaining({ label: "Move earlier" }),
       ]),
     );
     await fireEvent(
@@ -1516,9 +1516,9 @@ describe("OwnedPlanEditorScreen reorder hierarchy", () => {
     expect(screen.getByTestId("drag-day-Recovery"))
       .toHaveStyle({ minHeight: 48, minWidth: 48 });
     expect(screen.queryByText("Position 2 of 2")).not.toBeOnTheScreen();
-    expect(screen.queryByRole("button", { name: "Move Recovery up" }))
+    expect(screen.queryByRole("button", { name: "Move Recovery earlier" }))
       .not.toBeOnTheScreen();
-    expect(screen.queryByRole("button", { name: "Move Recovery down" }))
+    expect(screen.queryByRole("button", { name: "Move Recovery later" }))
       .not.toBeOnTheScreen();
     await rendered.unmount();
     await act(() => {
@@ -1560,10 +1560,10 @@ describe("OwnedPlanEditorScreen reorder hierarchy", () => {
     )).toHaveStyle({ minHeight: 48, minWidth: 48 });
     expect(screen.queryByText("Position 2 of 2")).not.toBeOnTheScreen();
     expect(screen.queryByRole("button", {
-      name: "Move A very long plan day name that must remain fully reachable up",
+      name: "Move A very long plan day name that must remain fully reachable earlier",
     })).not.toBeOnTheScreen();
     expect(screen.queryByRole("button", {
-      name: "Move A very long plan day name that must remain fully reachable down",
+      name: "Move A very long plan day name that must remain fully reachable later",
     })).not.toBeOnTheScreen();
 
     await rendered.unmount();

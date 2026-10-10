@@ -216,7 +216,8 @@ async function acceptedCatalogWithEmptyEquipment() {
   const acceptance = JSON.parse(
     catalogAcceptanceBytes,
   ) as Record<string, unknown>;
-  (catalog.metadata as Record<string, unknown>).revision = 2;
+  const metadata = catalog.metadata as Record<string, unknown>;
+  metadata.revision = Number(metadata.revision) + 1;
   const [exercise] = catalog.exercises as Array<Record<string, unknown>>;
   exercise!.equipment = [];
   const nextCatalogBytes = `${JSON.stringify(catalog, null, 2)}\n`;
@@ -233,9 +234,25 @@ async function acceptedCatalogWithEmptyEquipment() {
   });
 }
 
-async function createRuntime(
-  options: Readonly<{ includeOwnedPlans?: boolean }> = {},
-): Promise<SqliteKernel> {
+async function assertPhase17FixtureReady(kernel: SqliteKernel): Promise<void> {
+  const [version] = await kernel.queryAll<{ user_version: number }>("PRAGMA user_version");
+  if (version?.user_version !== 40) {
+    throw new Error(`starter_activation_fixture_schema_not_current:${String(version?.user_version)}`);
+  }
+  const tables = await kernel.queryAll<{ name: string }>(
+    `SELECT name FROM sqlite_master
+     WHERE type = 'table' AND name IN (
+       'exercise_instruction_sets', 'running_session_roots',
+       'running_session_slot_roots', 'running_session_slot_revisions',
+       'running_session_slots', 'schedule_collision_outcomes'
+     ) ORDER BY name`,
+  );
+  if (tables.length !== 6) {
+    throw new Error(`starter_activation_fixture_tables_not_current:${tables.map(({ name }) => name).join(",")}`);
+  }
+}
+
+async function createRuntime(): Promise<SqliteKernel> {
   const directory = mkdtempSync(join(tmpdir(), "gym-starter-activation-"));
   temporaryDirectories.add(directory);
   const databasePath = join(directory, "gym-tracker.db");
@@ -258,11 +275,10 @@ async function createRuntime(
   await createMigrationRunner({
     databaseName: "gym-tracker.db",
     kernel,
-    migrations: options.includeOwnedPlans === false
-      ? migrations.filter(({ version }) => version <= 8)
-      : migrations,
+    migrations: migrations.filter(({ version }) => version <= 40),
     recoveryBackup: validatedRecoveryBackup(),
   }).run();
+  await assertPhase17FixtureReady(kernel);
   const catalog = await parseExerciseCatalog({
     catalogBytes,
     manifestBytes: catalogManifestBytes,
@@ -461,6 +477,17 @@ describe("accepted starter activation repository", () => {
       acceptanceBytes: catalogAcceptanceBytes,
       sha256,
     });
+    await expect(kernel.queryAll<{ revision: number; pack_sha256: string }>(
+      `SELECT revision, pack_sha256
+       FROM content_pack_revisions
+       WHERE namespace = ?
+       ORDER BY revision DESC
+       LIMIT 1`,
+      [catalog.metadata.namespace],
+    )).resolves.toEqual([{
+      revision: catalog.metadata.revision,
+      pack_sha256: catalog.acceptance.packSha256,
+    }]);
     const projected = catalog.exercises[0]!;
     await kernel.write((transaction) =>
       transaction.execute(
@@ -516,6 +543,7 @@ describe("accepted starter activation repository", () => {
     )).toEqual([{ default_rest_seconds: 120 }]);
 
     const emptyEquipmentCatalog = await acceptedCatalogWithEmptyEquipment();
+    expect(emptyEquipmentCatalog.metadata.revision).toBe(catalog.metadata.revision + 1);
     await createContentRepository(kernel).importAcceptedCatalog({
       catalog: emptyEquipmentCatalog,
       expectedInstalled: {
@@ -2075,7 +2103,7 @@ describe("accepted starter activation repository", () => {
     expect(sourceConflict.code).toBe("starter_source_conflict");
   });
 
-  it("fails closed on malformed inactive-copy receipts and supports retained v8 without aggregate state", async () => {
+  it("fails closed on malformed inactive-copy receipts and supports the migrated legacy fixture", async () => {
     const malformedKernel = await createRuntime();
     const malformedLegacy = await prepareLegacyUpdateSource(malformedKernel);
     const pack = await acceptedPack();
@@ -2116,7 +2144,7 @@ describe("accepted starter activation repository", () => {
     }).catch((error: unknown) => error);
     expect(malformed).toMatchObject({ code: "sqlite_transaction_failed" });
 
-    const retainedKernel = await createRuntime({ includeOwnedPlans: false });
+    const retainedKernel = await createRuntime();
     const retained = await activate(retainedKernel, {
       templateId: "upper-lower",
       requestId: "request-retained-v8-activation",
@@ -2128,8 +2156,8 @@ describe("accepted starter activation repository", () => {
       `SELECT COUNT(*) AS count
        FROM sqlite_master
        WHERE type = 'table'
-         AND name = 'owned_plan_aggregate_states'`,
-    )).resolves.toEqual([{ count: 0 }]);
+         AND name = 'exercise_instruction_sets'`,
+    )).resolves.toEqual([{ count: 1 }]);
   });
 
   it("reactivates the selected copy and preserves the previous plan and schedule", async () => {
