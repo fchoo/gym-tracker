@@ -5,16 +5,16 @@ milestone_name: Prototype Parity, Concurrent Plans & Garmin Import — PLANNED
 current_phase: 15
 current_phase_name: Workout Parity
 status: executing
-stopped_at: Completed 15-11-PLAN.md
-last_updated: "2026-10-10T14:25:16.616Z"
+stopped_at: Completed 15-12-PLAN.md
+last_updated: "2026-10-10T14:32:11.595Z"
 last_activity: 2026-10-10
 last_activity_desc: Phase 15 execution started
-state_head: 6f6ad716b6bb6e23bb4f471ce1c31aa8fb254fe1
+state_head: faa7b5d910459387998332c13df2f05e8276f41e
 progress:
   total_phases: 8
   completed_phases: 1
   total_plans: 98
-  completed_plans: 39
+  completed_plans: 40
   percent: 13
 ---
 
@@ -30,7 +30,7 @@ See: .planning/PROJECT.md (updated 2026-10-06)
 ## Current Position
 
 Phase: 15 (Workout Parity) — EXECUTING
-Plan: 12 of 13
+Plan: 13 of 13
 Status: Ready to execute
 Last activity: 2026-10-10 — Phase 15 execution started
 
@@ -79,6 +79,7 @@ Gym Tracker remains a signed personal-use Android APK/AAB with SQLite-authoritat
 | Phase 15-workout-parity P09 | 13m | 2 tasks | 11 files |
 | Phase 15 P10 | 11m | 3 tasks | 10 files |
 | Phase 15 P11 | 13 min | 2 tasks | 5 files |
+| Phase 15 P12 | 4 min | 2 tasks | 5 files |
 
 ## Accumulated Context
 
@@ -146,6 +147,8 @@ Gym Tracker remains a signed personal-use Android APK/AAB with SQLite-authoritat
 - [Phase 15]: Phase 15 evidence accepts only Expo SQLite-authoritative native cases; fixture-only evidence is rejected.
 - [Phase 15]: Phase 15 visual evidence recomputes approved/source-manifest/reference hashes and binds native plus reference inputs.
 - [Phase 15]: TIM-01 evidence requires approved retire-playback with zero-cue lifecycle proof and no compatibility branch.
+- [Phase 15]: Phase 15 native evidence uses one action-bearing representative per ledger case plus only distinct risk variants.
+- [Phase 15]: Phase 15 native matrix restores font scale, appearance, orientation, notification state, and fixture database after each case.
 
 ### Pending Owner Review
 
@@ -170,7 +173,7 @@ Gym Tracker remains a signed personal-use Android APK/AAB with SQLite-authoritat
 
 ## Session Continuity
 
-Last session: 2026-10-10T14:25:16.533Z
-Stopped at: Completed 15-11-PLAN.md
+Last session: 2026-10-10T14:32:11.509Z
+Stopped at: Completed 15-12-PLAN.md
 Resume file: None
 Next action: Present the complete planning set for owner review; after explicit approval, run `/gsd-execute-phase 13`.
