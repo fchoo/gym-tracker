@@ -62,6 +62,19 @@ async function queryRange(
          JOIN owned_plan_schedules schedule ON schedule.id = opportunity.schedule_id
          JOIN owned_plan_schedule_versions version ON version.id = opportunity.schedule_version_id
          LEFT JOIN schedule_collision_projections projection ON projection.selected_kind = 'strength' AND projection.selected_opportunity_id = opportunity.id
+          AND NOT EXISTS (
+            SELECT 1
+            FROM schedule_collision_outcomes later
+            JOIN schedule_collision_outcomes current ON current.id = projection.outcome_id
+            WHERE later.strength_opportunity_id = current.strength_opportunity_id
+              AND later.strength_schedule_revision = current.strength_schedule_revision
+              AND later.strength_opportunity_revision = current.strength_opportunity_revision
+              AND later.running_opportunity_id = current.running_opportunity_id
+              AND later.running_schedule_revision = current.running_schedule_revision
+              AND later.running_opportunity_revision = current.running_opportunity_revision
+              AND (later.committed_at_ms > current.committed_at_ms
+                OR (later.committed_at_ms = current.committed_at_ms AND later.id > current.id))
+          )
         WHERE COALESCE(projection.moved_local_date, opportunity.local_date) >= ? AND COALESCE(projection.moved_local_date, opportunity.local_date) < ?
         ORDER BY local_date, opportunity.id`, [input.start, input.end],
     ),
@@ -71,6 +84,19 @@ async function queryRange(
               COALESCE(projection.moved_local_date, opportunity.local_date) AS local_date, opportunity.timezone, opportunity.state
          FROM running_opportunities opportunity
          LEFT JOIN schedule_collision_projections projection ON projection.selected_kind = 'running' AND projection.selected_opportunity_id = opportunity.id
+          AND NOT EXISTS (
+            SELECT 1
+            FROM schedule_collision_outcomes later
+            JOIN schedule_collision_outcomes current ON current.id = projection.outcome_id
+            WHERE later.strength_opportunity_id = current.strength_opportunity_id
+              AND later.strength_schedule_revision = current.strength_schedule_revision
+              AND later.strength_opportunity_revision = current.strength_opportunity_revision
+              AND later.running_opportunity_id = current.running_opportunity_id
+              AND later.running_schedule_revision = current.running_schedule_revision
+              AND later.running_opportunity_revision = current.running_opportunity_revision
+              AND (later.committed_at_ms > current.committed_at_ms
+                OR (later.committed_at_ms = current.committed_at_ms AND later.id > current.id))
+          )
         WHERE COALESCE(projection.moved_local_date, opportunity.local_date) >= ? AND COALESCE(projection.moved_local_date, opportunity.local_date) < ?
         ORDER BY local_date, opportunity.slot_id, opportunity.id`, [input.start, input.end],
     ),
