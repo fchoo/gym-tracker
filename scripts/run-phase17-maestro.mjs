@@ -243,10 +243,7 @@ function runCase({ adbPath, manifest, id, fixture }) {
     "test", "--no-ansi", "--format", "junit", "--output", report, "--test-output-dir", artifactDirectory, "--udid", manifest.device.serial,
     "-e", `PHASE17_CASE_ID=${id}`,
     "-e", `PHASE17_FIXTURE_TOKEN=${fixture.fixtureToken}`,
-    "-e", `PHASE17_RUNNING_PLAN_ID=${fixture.selectors.runningPlanId}`,
-    "-e", `PHASE17_OWNED_PLAN_ID=${fixture.selectors.ownedPlanId}`,
-    "-e", `PHASE17_CUSTOM_EXERCISE_ID=${fixture.selectors.customExerciseId}`,
-    "-e", `PHASE17_BUNDLED_EXERCISE_ID=${fixture.selectors.bundledExerciseId}`,
+    ...Object.entries(fixture.selectors).flatMap(([key, value]) => ["-e", `PHASE17_${key.replace(/([A-Z])/gu, "_$1").toUpperCase()}=${value}`]),
     "-e", `PHASE17_SESSION_KIND=${sessionKindFor(id)}`,
     "-e", `PHASE17_TEXT_SCALE=${profile.fontScale}`,
     "-e", `PHASE17_REDUCED_MOTION=${profile.reducedMotion}`,
@@ -263,7 +260,6 @@ function portUri(operation, id, fixture) {
   if (fixture !== undefined) {
     query.set("fixtureToken", fixture.fixtureToken);
     query.set("sourceTable", fixture.sourceTable);
-    query.set("expectedState", fixture.expectedState);
   }
   return `${PHASE17_PORT}?${query}`;
 }
@@ -278,17 +274,19 @@ function readPhase17Port(adbPath, serial, operation, id, fixture) {
 export function capturePhase17SourceProbe(adbPath, serial, id, fixture) {
   const output = readPhase17Port(adbPath, serial, "probe", id, fixture);
   const identityHash = output.match(/identity_hash=([a-f0-9]{64})/u)?.[1];
-  if (identityHash === undefined || !output.includes(`fixture_token=${fixture.fixtureToken}`) || !output.includes(`source_table=${fixture.sourceTable}`) || !output.includes("verdict=matched")) throw new Error(`phase17_source_probe_missing:${id}`);
-  return Object.freeze({ probe: fixture.sourceTable, identity_hash: identityHash });
+  const expectedStateHash = output.match(/expected_state_hash=([a-f0-9]{64})/u)?.[1];
+  const rowCount = Number(output.match(/row_count=(\d+)/u)?.[1]);
+  if (identityHash === undefined || expectedStateHash !== fixture.expectedStateHash || !Number.isSafeInteger(rowCount) || rowCount < 1 || !output.includes(`case=${id}`) || !output.includes(`fixture_token=${fixture.fixtureToken}`) || !output.includes(`source_table=${fixture.sourceTable}`) || !output.includes("verdict=matched")) throw new Error(`phase17_source_probe_missing:${id}`);
+  return Object.freeze({ probe: fixture.sourceTable, row_count: rowCount, identity_hash: identityHash, expected_state_hash: expectedStateHash });
 }
 
 function setupPhase17Case(adbPath, serial, id) {
   const output = readPhase17Port(adbPath, serial, "setup", id);
-  const match = output.match(/PHASE17_SETUP_READY case=([^\s]+) fixture_token=([^\s]+) baseline_sha256=([a-f0-9]{64}) source_table=([^\s]+) expected_state=([^\s]+) selectors=([^\s]+)/u);
+  const match = output.match(/PHASE17_SETUP_READY case=([^\s]+) fixture_token=([^\s]+) baseline_sha256=([a-f0-9]{64}) source_table=([^\s]+) expected_state_hash=([a-f0-9]{64}) selectors=([^\s]+)/u);
   if (match === null || match[1] !== id) throw new Error(`phase17_setup_missing:${id}`);
   const selectors = Object.fromEntries(match[6].split(",").map((entry) => [entry.slice(0, entry.indexOf(":")), entry.slice(entry.indexOf(":") + 1)]));
-  if (!match[2] || !selectors.runningPlanId || !selectors.ownedPlanId || !selectors.customExerciseId || !selectors.bundledExerciseId) throw new Error(`phase17_setup_fixture_invalid:${id}`);
-  return Object.freeze({ fixtureToken: match[2], baselineDigest: match[3], sourceTable: match[4], expectedState: match[5], selectors });
+  if (!match[2] || Object.values(selectors).some((value) => value.length === 0)) throw new Error(`phase17_setup_fixture_invalid:${id}`);
+  return Object.freeze({ fixtureToken: match[2], baselineDigest: match[3], sourceTable: match[4], expectedStateHash: match[5], selectors });
 }
 
 function cleanupPhase17Case(adbPath, serial, id, fixture) {

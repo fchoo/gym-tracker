@@ -75,14 +75,15 @@ test("Phase 17 fixture protocol binds Library, session, lifecycle, and collision
     createToken: () => "phase17:fixture-token-0001",
     adapter: {
       baselineDigest: async () => digest,
-      seed: async ({ fixtureToken }) => ({ runningPlanId: `running-${fixtureToken}`, ownedPlanId: "owned-opaque", customExerciseId: "custom-opaque", bundledExerciseId: "bundled-opaque" }),
-      probe: async ({ sourceTable, expectedState }) => ({ rowCount: 1, identityHash: "b".repeat(64), matchesExpectedState: sourceTable.length > 0 && expectedState.length > 0 }),
+      canonicalHash: async () => "b".repeat(64),
+      seed: async ({ fixtureToken }) => ({ selectors: { runningPlanId: `running-${fixtureToken}`, ownedPlanId: "owned-opaque" }, expectedState: { lifecycle: "inactive", revision: 1 } }),
+      probe: async ({ sourceTable }) => ({ rowCount: 1, identityHash: "b".repeat(64), facts: { lifecycle: sourceTable.length > 0 ? "inactive" : "invalid", revision: 1 } }),
       cleanup: async ({ fixtureToken }) => { cleaned.push(fixtureToken); digest = "a".repeat(64); },
     },
   });
   for (const caseId of ["library.owned-summary", "library.running-recovery", "library.running-session-lifecycle", "library.running-conflict"]) {
     const fixture = await protocol.setup(caseId);
-    const proof = await protocol.probe({ caseId, fixtureToken: fixture.fixtureToken, sourceTable: fixture.sourceTable, expectedState: fixture.expectedState });
+    const proof = await protocol.probe({ caseId, fixtureToken: fixture.fixtureToken, sourceTable: fixture.sourceTable });
     assert.equal(proof.verdict, "matched");
     await protocol.cleanup({ caseId, fixtureToken: fixture.fixtureToken });
   }
@@ -96,27 +97,46 @@ test("Phase 17 fixture protocol fails closed for missing or mismatched lifecycle
     createToken: () => "phase17:fixture-token-0002",
     adapter: {
       baselineDigest: async () => digest,
-      seed: async () => ({ runningPlanId: "opaque-running", ownedPlanId: "opaque-owned", customExerciseId: "opaque-custom", bundledExerciseId: "opaque-bundled" }),
-      probe: async () => ({ rowCount: 1, identityHash: "d".repeat(64), matchesExpectedState: true }),
+      canonicalHash: async () => "d".repeat(64),
+      seed: async () => ({ selectors: { ownedPlanId: "opaque-owned" }, expectedState: { lifecycle: "inactive", revision: 1 } }),
+      probe: async () => ({ rowCount: 1, identityHash: "d".repeat(64), facts: { lifecycle: "inactive", revision: 1 } }),
       cleanup: async () => undefined,
     },
   });
-  await assert.rejects(protocol.probe({ caseId: "library.running-recovery", fixtureToken: "phase17:fixture-token-0002", sourceTable: "running_session_revisions", expectedState: "recovery-session-visible" }), /phase17_fixture_missing/u);
+  await assert.rejects(protocol.probe({ caseId: "library.running-recovery", fixtureToken: "phase17:fixture-token-0002", sourceTable: "running_session_revisions" }), /phase17_fixture_missing/u);
   const fixture = await protocol.setup("library.running-recovery");
   await assert.rejects(protocol.setup("library.running-long"), /phase17_fixture_active/u);
-  await assert.rejects(protocol.probe({ caseId: "library.running-long", fixtureToken: fixture.fixtureToken, sourceTable: fixture.sourceTable, expectedState: fixture.expectedState }), /phase17_fixture_case_mismatch/u);
-  await assert.rejects(protocol.probe({ caseId: fixture.caseId, fixtureToken: "phase17:wrong-token-000000", sourceTable: fixture.sourceTable, expectedState: fixture.expectedState }), /phase17_fixture_token_invalid/u);
-  await assert.rejects(protocol.probe({ caseId: fixture.caseId, fixtureToken: fixture.fixtureToken, sourceTable: "wrong_table", expectedState: fixture.expectedState }), /phase17_fixture_table_mismatch/u);
-  await assert.rejects(protocol.probe({ caseId: fixture.caseId, fixtureToken: fixture.fixtureToken, sourceTable: fixture.sourceTable, expectedState: "wrong-state" }), /phase17_fixture_expected_state_mismatch/u);
+  await assert.rejects(protocol.probe({ caseId: "library.running-long", fixtureToken: fixture.fixtureToken, sourceTable: fixture.sourceTable }), /phase17_fixture_case_mismatch/u);
+  await assert.rejects(protocol.probe({ caseId: fixture.caseId, fixtureToken: "phase17:wrong-token-000000", sourceTable: fixture.sourceTable }), /phase17_fixture_token_invalid/u);
+  await assert.rejects(protocol.probe({ caseId: fixture.caseId, fixtureToken: fixture.fixtureToken, sourceTable: "wrong_table" }), /phase17_fixture_table_mismatch/u);
   digest = "e".repeat(64);
   await assert.rejects(protocol.cleanup({ caseId: fixture.caseId, fixtureToken: fixture.fixtureToken }), /phase17_fixture_cleanup_digest_mismatch/u);
   const cleanupFailure = createPhase17FixtureProtocol({
     contracts: PHASE17_CASE_ACTION_CONTRACTS,
     createToken: () => "phase17:fixture-token-0003",
-    adapter: { baselineDigest: async () => "f".repeat(64), seed: async () => ({ ownedPlanId: "opaque" }), probe: async () => ({ rowCount: 1, identityHash: "f".repeat(64), matchesExpectedState: true }), cleanup: async () => { throw new Error("cleanup failed"); } },
+    adapter: { baselineDigest: async () => "f".repeat(64), canonicalHash: async () => "f".repeat(64), seed: async () => ({ selectors: { ownedPlanId: "opaque" }, expectedState: { lifecycle: "inactive" } }), probe: async () => ({ rowCount: 1, identityHash: "f".repeat(64), facts: { lifecycle: "inactive" } }), cleanup: async () => { throw new Error("cleanup failed"); } },
   });
   const cleanupFixture = await cleanupFailure.setup("library.owned-summary");
   await assert.rejects(cleanupFailure.cleanup({ caseId: cleanupFixture.caseId, fixtureToken: cleanupFixture.fixtureToken }), /cleanup failed/u);
-  assert.deepEqual(Object.keys(fixture).sort(), ["baselineDigest", "caseId", "expectedState", "fixtureToken", "selectors", "sourceTable"]);
+  assert.deepEqual(Object.keys(fixture).sort(), ["baselineDigest", "caseId", "expectedState", "expectedStateHash", "fixtureToken", "selectors", "sourceTable"]);
   assert.equal(JSON.stringify(fixture).includes("raw-row"), false);
+});
+
+test("Phase 17 rejects unrelated rows, fabricated identities, wrong facts or count, and cleanup leaks", async () => {
+  let digest = "1".repeat(64);
+  const protocol = createPhase17FixtureProtocol({
+    contracts: PHASE17_CASE_ACTION_CONTRACTS,
+    createToken: () => "phase17:fixture-token-0004",
+    adapter: {
+      baselineDigest: async () => digest,
+      canonicalHash: async () => "2".repeat(64),
+      seed: async () => ({ selectors: { runningPlanId: "returned-running-id" }, expectedState: { id: "returned-running-id", lifecycle: "inactive", revision: 1 } }),
+      probe: async () => ({ rowCount: 2, identityHash: "3".repeat(64), facts: { id: "unrelated-row", lifecycle: "inactive", revision: 1 } }),
+      cleanup: async () => { digest = "4".repeat(64); },
+    },
+  });
+  const fixture = await protocol.setup("library.running-detail");
+  await assert.rejects(protocol.probe({ caseId: fixture.caseId, fixtureToken: fixture.fixtureToken, sourceTable: fixture.sourceTable }), /phase17_fixture_probe_failed/u);
+  await assert.rejects(protocol.cleanup({ caseId: fixture.caseId, fixtureToken: fixture.fixtureToken }), /phase17_fixture_cleanup_digest_mismatch/u);
+  assert.equal(JSON.stringify(fixture).includes("unrelated-row"), false);
 });

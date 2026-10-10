@@ -14,22 +14,22 @@ function enabled(): boolean {
 
 function Phase17Port() {
   const runtime = useWorkoutAppRuntime();
-  const { operation, case: caseId, fixtureToken, sourceTable, expectedState } = useLocalSearchParams<{
-    operation?: string; case?: string; fixtureToken?: string; sourceTable?: string; expectedState?: string;
+  const { operation, case: caseId, fixtureToken, sourceTable } = useLocalSearchParams<{
+    operation?: string; case?: string; fixtureToken?: string; sourceTable?: string;
   }>();
   const [output, setOutput] = React.useState("PHASE17_PORT_PENDING");
   React.useEffect(() => {
     if (runtime.launchState !== "trusted" || typeof caseId !== "string") return;
     if (operation === "setup") {
       void runtime.setupPhase17Fixture(caseId).then((fixture) => setOutput(
-        `PHASE17_SETUP_READY case=${fixture.caseId} fixture_token=${fixture.fixtureToken} baseline_sha256=${fixture.baselineDigest} source_table=${fixture.sourceTable} expected_state=${fixture.expectedState} selectors=${Object.entries(fixture.selectors).map(([key, value]) => `${key}:${value}`).join(",")}`,
+        `PHASE17_SETUP_READY case=${fixture.caseId} fixture_token=${fixture.fixtureToken} baseline_sha256=${fixture.baselineDigest} source_table=${fixture.sourceTable} expected_state_hash=${fixture.expectedStateHash} selectors=${Object.entries(fixture.selectors).map(([key, value]) => `${key}:${value}`).join(",")}`,
       )).catch(() => setOutput("PHASE17_PORT_ERROR"));
       return;
     }
     if (typeof fixtureToken !== "string") { setOutput("PHASE17_PORT_FIXTURE_TOKEN_MISSING"); return; }
-    if (operation === "probe" && typeof sourceTable === "string" && typeof expectedState === "string") {
-      void runtime.probePhase17Fixture({ caseId, fixtureToken, sourceTable, expectedState }).then((proof) => setOutput(
-        `PHASE17_SOURCE_PROBE case=${proof.caseId} fixture_token=${proof.fixtureToken} source_table=${proof.sourceTable} expected_state=${proof.expectedState} row_count=${proof.rowCount} identity_hash=${proof.identityHash} verdict=${proof.verdict}`,
+    if (operation === "probe" && typeof sourceTable === "string") {
+      void runtime.probePhase17Fixture({ caseId, fixtureToken, sourceTable }).then((proof) => setOutput(
+        `PHASE17_SOURCE_PROBE case=${proof.caseId} fixture_token=${proof.fixtureToken} source_table=${proof.sourceTable} row_count=${proof.rowCount} identity_hash=${proof.identityHash} expected_state_hash=${proof.expectedStateHash} verdict=${proof.verdict}`,
       )).catch(() => setOutput("PHASE17_PORT_ERROR"));
       return;
     }
@@ -40,7 +40,7 @@ function Phase17Port() {
       return;
     }
     setOutput("PHASE17_PORT_INVALID_OPERATION");
-  }, [caseId, expectedState, fixtureToken, operation, runtime, sourceTable]);
+  }, [caseId, fixtureToken, operation, runtime, sourceTable]);
   return <View><Text accessibilityLabel={output} selectable>{output}</Text></View>;
 }
 

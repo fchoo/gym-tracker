@@ -47,6 +47,10 @@ import type {
   SearchFilters,
 } from "../domains/library/search";
 import {
+  canonicalRunningRequestHash,
+  createInactiveRunningPlan,
+} from "../domains/running/commands";
+import {
   archiveCustomExercise,
   createCustomExercise as createCustomExerciseCommand,
   editCustomExercise as editCustomExerciseCommand,
@@ -254,6 +258,9 @@ import {
   createCustomExerciseRepository,
   type CustomExerciseArchivePreview,
 } from "../platform/sqlite/repositories/customExerciseRepository";
+import {
+  createRunningPlanRepository,
+} from "../platform/sqlite/repositories/runningPlanRepository";
 import {
   createLibrarySearchRepository,
   type LibrarySearchItem,
@@ -596,7 +603,7 @@ type RuntimeValue = RuntimeState & Readonly<{
   collectPhase14SourceStateProof(): Promise<Phase14SourceStateProof>;
   collectPhase17SourceStateProof(): Promise<Phase14SourceStateProof>;
   setupPhase17Fixture(caseId: string): Promise<Phase17Fixture>;
-  probePhase17Fixture(input: Readonly<{ caseId: string; fixtureToken: string; sourceTable: string; expectedState: string }>): Promise<Phase17SourceProbe>;
+  probePhase17Fixture(input: Readonly<{ caseId: string; fixtureToken: string; sourceTable: string }>): Promise<Phase17SourceProbe>;
   cleanupPhase17Fixture(input: Readonly<{ caseId: string; fixtureToken: string }>): Promise<Readonly<{ caseId: string; fixtureToken: string; baselineDigest: string; verdict: "restored" }>>;
   connectAutomaticBackup(): Promise<void>;
   deferAutomaticRestore(): Promise<void>;
@@ -4005,18 +4012,65 @@ export function WorkoutAppRuntimeProvider({
       createToken: () => `phase17:${randomUUID().replace(/[^a-z0-9-]/gu, "")}`,
       adapter: {
         baselineDigest: async () => (await collectPhase14SourceStateProofFromKernel({ kernel: services.kernel, sha256: (value) => digestStringAsync(CryptoDigestAlgorithm.SHA256, value) })).digest_sha256,
-        seed: async ({ caseId, fixtureToken }) => {
+        canonicalHash: async (value) => digestStringAsync(CryptoDigestAlgorithm.SHA256, JSON.stringify(value, Object.keys(value).sort())),
+        seed: async ({ caseId, fixtureToken, sourceTable }) => {
           const owned = await services.ownedPlans.createDraft({ name: `Phase17 ${caseId}`, dayName: "Fixture day" });
           if (owned.outcome === "requires_schedule_impact") throw new Error("phase17_fixture_seed_failed");
-          return Object.freeze({ runningPlanId: `phase17-running-${fixtureToken.slice(-16)}`, ownedPlanId: owned.plan.id, customExerciseId: `phase17-exercise-${fixtureToken.slice(-16)}`, bundledExerciseId: "builtin-squat" });
+          const runningPlanId = `phase17-running-${fixtureToken.slice(-16)}`;
+          const runningCreate = {
+            requestId: `phase17-running-create-${fixtureToken.slice(-16)}`,
+            plan: {
+              version: 1 as const,
+              id: runningPlanId,
+              name: `Phase17 Running ${caseId}`,
+              revision: 1,
+              createdAtMs: dependencies.nowMs(),
+              goal: {
+                version: 1 as const,
+                id: `${runningPlanId}-goal`,
+                planId: runningPlanId,
+                revision: 1,
+                goalDistanceMeters: 5_000,
+                trainingDays: ["Monday" as const],
+                createdAtMs: dependencies.nowMs(),
+              },
+              sessions: [],
+            },
+          };
+          const running = await createInactiveRunningPlan(createRunningPlanRepository(services.kernel), {
+            ...runningCreate,
+            requestSha256: canonicalRunningRequestHash(runningCreate),
+          });
+          const [row] = await services.kernel.queryAll<Readonly<{ id: string; revision: number; is_active: number }>>(
+            "SELECT id, revision, is_active FROM plans WHERE id = ? AND name = ?",
+            [owned.plan.id, `Phase17 ${caseId}`],
+          );
+          if (row === undefined) throw new Error("phase17_fixture_seed_failed");
+          const expectedState = sourceTable === "running_plans"
+            ? Object.freeze({ planId: running.id, status: "draft", revision: 1 })
+            : Object.freeze({ id: row.id, revision: row.revision, isActive: row.is_active });
+          return Object.freeze({ selectors: Object.freeze({ ownedPlanId: row.id, runningPlanId: running.id }), expectedState });
         },
-        probe: async ({ sourceTable, fixtureToken, expectedState }) => {
+        probe: async ({ sourceTable, fixtureToken, selectors }) => {
           const table = physicalTable(sourceTable);
           if (!PHASE17_CASE_ACTION_CONTRACTS.some((entry) => physicalTable(entry.sourceProbe) === table)) throw new Error("phase17_fixture_table_mismatch");
-          const rows = await services.kernel.queryAll<{ count: number }>(`SELECT COUNT(*) AS count FROM ${table}`);
-          const count = rows[0]?.count;
-          if (typeof count !== "number" || !Number.isSafeInteger(count) || count < 0 || expectedState.length === 0) throw new Error("phase17_fixture_probe_failed");
-          return Object.freeze({ rowCount: count, identityHash: await digestStringAsync(CryptoDigestAlgorithm.SHA256, `${fixtureToken}:${table}:${count}`), matchesExpectedState: true });
+          if (table === "running_plans" && selectors.runningPlanId !== undefined) {
+            const rows = await services.kernel.queryAll<Readonly<{ plan_id: string; status: string; revision: number }>>(
+              "SELECT plan_id, status, revision FROM running_plans WHERE plan_id = ?",
+              [selectors.runningPlanId],
+            );
+            const row = rows[0];
+            if (row === undefined || rows.length !== 1) throw new Error("phase17_fixture_probe_failed");
+            return Object.freeze({ rowCount: rows.length, identityHash: await digestStringAsync(CryptoDigestAlgorithm.SHA256, `${fixtureToken}:${table}:${row.plan_id}`), facts: Object.freeze({ planId: row.plan_id, status: row.status, revision: row.revision }) });
+          }
+          if (table !== "plans" || selectors.ownedPlanId === undefined) throw new Error("phase17_fixture_table_unseeded");
+          const rows = await services.kernel.queryAll<Readonly<{ id: string; revision: number; is_active: number }>>(
+            "SELECT id, revision, is_active FROM plans WHERE id = ? AND origin IN ('custom', 'copied')",
+            [selectors.ownedPlanId],
+          );
+          const row = rows[0];
+          if (row === undefined || rows.length !== 1) throw new Error("phase17_fixture_probe_failed");
+          return Object.freeze({ rowCount: rows.length, identityHash: await digestStringAsync(CryptoDigestAlgorithm.SHA256, `${fixtureToken}:${table}:${row.id}`), facts: Object.freeze({ id: row.id, revision: row.revision, isActive: row.is_active }) });
         },
         cleanup: async ({ selectors }) => {
           const ownedPlanId = selectors.ownedPlanId;
