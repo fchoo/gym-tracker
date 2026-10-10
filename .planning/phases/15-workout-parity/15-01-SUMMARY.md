@@ -16,7 +16,7 @@ affects: [15-workout-parity, 16-calendar-parity, workout, active-workout]
 actuals:
   tokens: 9337
   tasks: 3
-  commits: 4
+  commits: 5
 tech-stack:
   added: []
   patterns:
@@ -96,6 +96,7 @@ status: complete
 - Kept all Active mutation, retry, rest, timing, focus/scroll, editor, and outcome authority in the existing controller while the presenter owns only disclosure and fact rendering.
 - Proved that a planned or historical `SessionDetail` maps to the same facts model without runtime, repository, route, or mutation capability; Back and unmount issue no workout command.
 - Restored the collapsed completed-exercise overview node after the Wave 1 full-suite gate found a production Today-plan cardinality regression.
+- Type-safe fixture bindings now keep the collapsed-overview regression test compatible with strict indexed array access.
 
 ## Task Commits
 
@@ -103,6 +104,7 @@ status: complete
 2. **Task 2: Extract immutable Active facts presentation without changing source authority** — `8386fddb` (`feat`)
 3. **Task 3: Prove the Phase 16 facts-only capability boundary and navigation safety** — `36a6f8a7` (`test`)
 4. **Wave-gate regression fix: retain collapsed composed overview nodes** — `7d8dde25` (`fix`)
+5. **Wave-gate typecheck fix: type collapsed overview fixture safely** — `2384f15` (`test`)
 
 ## Files Created/Modified
 
@@ -128,6 +130,8 @@ status: complete
 - PASS: `npm run check:boundaries` — 332 files.
 - PASS: `npm run test:components -- --runInBand app/__tests__/phase2-attended-preview.test.tsx src/ui/__tests__/WorkoutSessionPresentation.test.tsx` — 2 suites, 63 tests.
 - PASS: `npm run test:components -- --runInBand` — full components project; the Expo Go push-notification warning from `LibraryScreen` is non-failing.
+- PASS: `npm run test:components -- --runInBand src/ui/__tests__/WorkoutSessionPresentation.test.tsx` — 1 suite, 4 tests.
+- PASS: `npm run typecheck`, `npm run lint`, and `npm run check:boundaries` — 333 files.
 
 ## Deviations from Plan
 
@@ -151,7 +155,16 @@ status: complete
 - **Verification:** focused attended-preview/presenter suites, all Plan 15 focused checks, and the full components project passed.
 - **Committed in:** `7d8dde25`.
 
-**Total deviations:** 2 auto-fixed (Rule 1).
+**3. [Rule 1 - Wave-gate regression fixture typecheck] Bind required fixture sources before spreading them.**
+
+- **Found during:** Post-wave follow-up typecheck after the completed-collapsed overview regression test was added.
+- **Issue:** Strict indexed access means `model.exercises[0]` and `[1]` are potentially undefined. Directly placing/spreading those values made required presentation fields optional and generated a misleading duplicate-structural-type compiler error.
+- **Fix:** Bound the known required source exercise and working set with explicit non-undefined assertions before constructing the fixture, following existing test style. No production code changed.
+- **Files modified:** `src/ui/__tests__/WorkoutSessionPresentation.test.tsx`.
+- **Verification:** focused presenter test, typecheck, lint, and boundary check passed.
+- **Committed in:** `2384f15`.
+
+**Total deviations:** 3 auto-fixed (Rule 1).
 
 ## TDD Gate Compliance
 
@@ -173,4 +186,4 @@ Phase 16 can consume `presentSessionDetail` and `WorkoutSessionPresentation` for
 ## Self-Check: PASSED
 
 - Confirmed the four created presentation/test files and six modified route/controller files exist.
-- Confirmed task commits `14f656b8`, `8386fddb`, `36a6f8a7`, and regression fix `7d8dde25` are reachable in git history.
+- Confirmed task commits `14f656b8`, `8386fddb`, `36a6f8a7`, and regression fixes `7d8dde25` and `2384f15` are reachable in git history.
