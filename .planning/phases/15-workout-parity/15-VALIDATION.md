@@ -13,6 +13,17 @@ This is the executable validation map for Phase 15. It maps every plan task to a
 
 ## Phase gate
 
+### Owner-directed Phase 20 final-native closure
+
+Plan 15-13 implements the rendered benchmark route, identity-bound raw numeric
+schema, and fail-closed verifier plumbing. The exact-source APK build/install,
+full 56-cell native matrix, device-state mutation, and final performance/native
+acceptance are intentionally deferred to **Phase 20's single end-of-all-phases
+production-APK closure**. This is an owner-directed sequencing decision, not a
+missing credential, a skipped requirement, or a passing native result. Until
+Phase 20 records one fresh exact-HEAD artifact, Phase 15 has no current native
+PASS evidence and no stale artifact may be treated as current.
+
 Phase 15 passes only when all of the following are true:
 
 1. Phase 13 and Phase 14 execution summaries required by 15-01 exist and their verification gates passed. Phase 15 must consume their exact selected-occurrence, shell, token, overlay, toast, focus, and settings contracts rather than recreate them.
