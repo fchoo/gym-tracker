@@ -863,10 +863,13 @@ function PopulatedWorkoutOverview({
   );
 
   const isExerciseCollapsed = (exercise: ActiveWorkoutExercise, index: number) =>
-    exercise.id !== view.activeExerciseId
-    && !expandedExerciseIds.has(exercise.id)
-    && (exercise.status === "completed"
-      || (activeExerciseIndex >= 0 && index < activeExerciseIndex));
+    !expandedExerciseIds.has(exercise.id)
+    && (
+      (exercise.status === "completed" && (
+        exercise.id !== view.activeExerciseId || view.activeSetId === null
+      ))
+      || (activeExerciseIndex >= 0 && index < activeExerciseIndex)
+    );
 
   const applyView = (nextView: ActiveWorkoutView) => {
     viewRef.current = nextView;

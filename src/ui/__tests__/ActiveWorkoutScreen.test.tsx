@@ -91,7 +91,7 @@ describe("ActiveWorkoutScreen explicit-save editor", () => {
       kind: "warmup" as const,
       ordinal: 0,
       sourceTargetId: null,
-      metricIdentity: null,
+      metricIdentity: identity,
       status: "draft" as const,
     };
     const withWarmup = {
@@ -172,6 +172,9 @@ describe("ActiveWorkoutScreen explicit-save editor", () => {
     const reviseCompletedSet = jest.fn(async () => { throw new Error("storage_failed"); });
     await renderScreen(completed, { reviseCompletedSet });
 
+    await fireEvent.press(screen.getByRole("button", {
+      name: /Back Squat\. Completed\. 1 of 1 working sets\. Expand exercise/u,
+    }));
     await fireEvent.press(screen.getByRole("button", { name: /Set 1\. 60 kg × 8\. Completed/u }));
     await fireEvent.changeText(screen.getByLabelText("Load (kg)"), "65");
     await fireEvent.press(screen.getByRole("button", { name: "Save committed set edit" }));
@@ -201,7 +204,42 @@ describe("ActiveWorkoutScreen explicit-save editor", () => {
       currentExercise: { ...workoutView().currentExercise, status: "completed" as const, workingSets: [{ ...workoutView().currentExercise.workingSets[0]!, status: "completed" as const, completedAtMs: 3_000 }] },
     });
     await act(async () => resolveCompletion({ outcome: "committed", view: { ...completedBase, exercises: [completedBase.currentExercise] } }));
-    expect(screen.getByRole("button", { name: /Set 1\. 60 kg × 8\. Completed/u })).toBeOnTheScreen();
+    expect(screen.getByRole("button", {
+      name: /Back Squat\. Completed\. 1 of 1 working sets\. Expand exercise/u,
+    })).toBeOnTheScreen();
+  });
+
+  it("collapses the final exercise and reveals Finish workout only after its committed source view", async () => {
+    const initial = workoutView();
+    const completedExercise = {
+      ...initial.currentExercise,
+      status: "completed" as const,
+      revision: 2,
+      workingSets: initial.currentExercise.workingSets.map((set) => ({
+        ...set,
+        completedAtMs: 3_000,
+        revision: 2,
+        status: "completed" as const,
+      })),
+    };
+    const completed = {
+      ...initial,
+      activeSetId: null,
+      currentExercise: completedExercise,
+      exercises: [completedExercise],
+      progress: { completedWorkingSets: 1, totalWorkingSets: 1 },
+      revision: 2,
+    };
+    await renderScreen(initial, {
+      completeSet: jest.fn(async () => ({ outcome: "committed" as const, view: completed })),
+    });
+
+    await fireEvent.press(screen.getByRole("button", { name: "Complete Set 1" }));
+
+    await waitFor(() => expect(screen.getByRole("button", {
+      name: /Back Squat\. Completed\. 1 of 1 working sets\. Expand exercise/u,
+    })).toBeOnTheScreen());
+    expect(screen.getByRole("button", { name: "Finish workout" })).toBeOnTheScreen();
   });
 
   it("retries a failed screen-owned completion with the exact command envelope", async () => {
@@ -219,7 +257,7 @@ describe("ActiveWorkoutScreen explicit-save editor", () => {
     await waitFor(() => expect(screen.getByRole("button", { name: "Set not saved · Retry" })).toBeOnTheScreen());
     await fireEvent.press(screen.getByRole("button", { name: "Set not saved · Retry" }));
     await waitFor(() => expect(screen.getByRole("button", {
-      name: /Set 1\. 60 kg × 8\. Completed/u,
+      name: /Back Squat\. Completed\. 1 of 1 working sets\. Expand exercise/u,
     })).toBeOnTheScreen());
 
     expect(completeSet).toHaveBeenCalledTimes(2);
