@@ -418,13 +418,14 @@ describe("LibraryScreen section state", () => {
     const activePlan = screen.getByRole("button", {
       name: /Active Plan With A Deliberately Long Name.*Active/u,
     });
-    expect(activePlan).toHaveStyle({ minHeight: 48 });
+    expect(activePlan).toHaveStyle({ minHeight: 120 });
     await fireEvent.press(activePlan);
     expect(onOpenPlan).toHaveBeenCalledWith("active-plan");
 
     const starterPlan = screen.getByRole("button", {
       name: /Full Body Foundation.*General strength/u,
     });
+    expect(starterPlan).toHaveStyle({ minHeight: 88 });
     await fireEvent.press(starterPlan);
     expect(onOpenStarter).toHaveBeenCalledWith("starter-plan");
 
