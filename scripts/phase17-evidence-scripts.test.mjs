@@ -4,6 +4,7 @@ import test from "node:test";
 import { PHASE17_CASE_ACTION_CONTRACTS, PHASE17_LIBRARY_RUNNING_EVIDENCE_IDS } from "../src/testing/contracts/phase17LibraryRunning.contract.ts";
 import { createPhase17FixtureProtocol } from "../src/bootstrap/phase17NativeFixture.ts";
 import { PHASE17_FAMILY_A_CASE_IDS, createPhase17FamilyAFixtureAdapter } from "../src/bootstrap/phase17FamilyAFixture.ts";
+import { PHASE17_FAMILY_B_CASE_IDS, assertPhase17FamilyBRegistry, createPhase17FamilyFixtureAdapter } from "../src/bootstrap/phase17FamilyBFixture.ts";
 import { validatePhase17Evidence, validatePhase17IntegrityCoverageRegistry } from "./verify-phase17-evidence.mjs";
 import { PHASE17_FLOW_CASES, commandTreeForPhase17Case, createPhase17RunnerPlan, parsePhase17RunnerArgs, validatePhase17FlowSources } from "./run-phase17-maestro.mjs";
 
@@ -169,4 +170,51 @@ test("Phase 17 Family A is an explicit typed registry with table-specific seed, 
   assert.equal(PHASE17_FAMILY_A_CASE_IDS.length, 23);
   assert.equal(touched.filter((entry) => entry.startsWith("seed:")).length, 5);
   await assert.rejects(adapter.seed({ caseId: "library.running-detail", fixtureToken: "phase17:fixture-token-0005", sourceTable: "running_plans" }), /phase17_fixture_family_unimplemented/u);
+});
+
+test("Phase 17 Family B maps every non-collision Running ledger ID to an explicit authoritative fixture family", async () => {
+  assert.equal(PHASE17_FAMILY_B_CASE_IDS.length, 14);
+  assert.equal(assertPhase17FamilyBRegistry(PHASE17_CASE_ACTION_CONTRACTS), true);
+  assert.equal(PHASE17_FAMILY_B_CASE_IDS.includes("library.running-conflict"), false);
+  const calls = [];
+  const familyA = {
+    seed: async () => { throw new Error("phase17_fixture_family_unimplemented"); },
+    probe: async () => { throw new Error("phase17_fixture_family_unimplemented"); },
+    cleanup: async () => { throw new Error("phase17_fixture_family_unimplemented"); },
+  };
+  const familyB = {
+    seed: async (caseId, token, sourceTable) => {
+      calls.push(`seed:${caseId}:${sourceTable}`);
+      const facts = { planId: `readback:${token}`, revision: 1, requestIds: [`request:${caseId}`] };
+      return { selectors: { runningPlanId: facts.planId, runningPlanRevision: "1", runningRequestId: facts.requestIds[0] }, expectedPreState: facts, expectedPostState: facts };
+    },
+    probe: async (caseId, token, sourceTable, selectors) => {
+      calls.push(`probe:${caseId}:${sourceTable}`);
+      return { rowCount: 1, identityHash: "c".repeat(64), facts: { planId: selectors.runningPlanId, revision: 1, requestIds: [`request:${caseId}`] } };
+    },
+    cleanup: async (caseId, token, selectors) => { calls.push(`cleanup:${caseId}:${selectors.runningPlanId}`); },
+  };
+  const adapter = createPhase17FamilyFixtureAdapter({ baselineDigest: async () => "a".repeat(64), canonicalHash: async () => "b".repeat(64), familyA, familyB });
+  const protocol = createPhase17FixtureProtocol({ contracts: PHASE17_CASE_ACTION_CONTRACTS, adapter, createToken: () => "phase17:fixture-token-family-b" });
+  for (const caseId of PHASE17_FAMILY_B_CASE_IDS) {
+    const fixture = await protocol.setup(caseId);
+    assert.ok(fixture.selectors.runningPlanId.startsWith("readback:"), caseId);
+    assert.ok(fixture.selectors.runningRequestId.startsWith("request:"), caseId);
+    await protocol.probe({ caseId, fixtureToken: fixture.fixtureToken, sourceTable: fixture.sourceTable });
+    await protocol.cleanup({ caseId, fixtureToken: fixture.fixtureToken });
+  }
+  assert.equal(calls.filter((call) => call.startsWith("seed:")).length, PHASE17_FAMILY_B_CASE_IDS.length);
+  assert.equal(calls.filter((call) => call.startsWith("probe:")).length, PHASE17_FAMILY_B_CASE_IDS.length);
+  assert.equal(calls.filter((call) => call.startsWith("cleanup:")).length, PHASE17_FAMILY_B_CASE_IDS.length);
+  await assert.rejects(adapter.seed({ caseId: "library.running-conflict", fixtureToken: "phase17:fixture-token-family-b", sourceTable: "schedule_collision_projections" }), /phase17_fixture_family_unimplemented/u);
+});
+
+test("Phase 17 Running YAML consumes only fixture-owned Running IDs and names the complete non-collision lifecycle", () => {
+  const running = readFileSync("maestro/phase17/running-authoring.yaml", "utf8");
+  for (const selector of ["PHASE17_RUNNING_PLAN_ID", "PHASE17_RUNNING_PLAN_REVISION", "PHASE17_RUNNING_SESSION_ROOT_ID", "PHASE17_RUNNING_SLOT_ROOT_ID", "PHASE17_RUNNING_REQUEST_ID"]) {
+    assert.match(running, new RegExp(selector, "u"));
+  }
+  for (const action of ["Move earlier", "Delete session", "Activate plan", "Archive plan", "Reactivate plan", "Retry loading Running plan", "Retry saving Running plan"]) {
+    assert.match(running, new RegExp(action, "u"));
+  }
 });

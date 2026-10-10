@@ -37,6 +37,7 @@ import { exerciseInstructionSetsMigration } from "./0037_exercise_instruction_se
 import { runningPlanLifecycleReceiptsMigration } from "./0038_running_plan_lifecycle_receipts";
 import { runningSessionSlotMembershipMigration } from "./0039_running_session_slot_membership";
 import { scheduleCollisionOutcomesMigration } from "./0040_schedule_collision_outcomes";
+import { phase17FixtureCleanupMigration } from "./0041_phase17_fixture_cleanup";
 
 export const migrations = Object.freeze([
   initialMigration,
@@ -78,6 +79,7 @@ export const migrations = Object.freeze([
   runningPlanLifecycleReceiptsMigration,
   runningSessionSlotMembershipMigration,
   scheduleCollisionOutcomesMigration,
+  phase17FixtureCleanupMigration,
 ]);
 
 export const CURRENT_SCHEMA_VERSION = migrations.reduce(
@@ -123,6 +125,7 @@ export {
   runningPlanLifecycleReceiptsMigration,
   runningSessionSlotMembershipMigration,
   scheduleCollisionOutcomesMigration,
+  phase17FixtureCleanupMigration,
   outcomeEffortMigration,
   scheduleActivationMigration,
 };

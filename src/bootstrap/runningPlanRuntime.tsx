@@ -145,17 +145,18 @@ function buildSessionCommand(input: Readonly<{
   createId(kind: string): string;
   now: number;
 }>) {
+  const { weekday, ...sessionDefinition } = input.input.session;
   const sessionRootId = input.existing?.session.rootId ?? input.createId("running-session");
   const sessionRevision = (input.existing?.session.revision ?? 0) + 1;
   const slotRootId = input.existing?.slot.rootId ?? input.createId("running-slot");
   const slotRevision = (input.existing?.slot.revision ?? 0) + 1;
   const session = {
     version: 1 as const, id: input.createId("running-session-revision"), rootId: sessionRootId,
-    planId: input.plan.id, revision: sessionRevision, createdAtMs: input.now, ...input.input.session,
+    planId: input.plan.id, revision: sessionRevision, createdAtMs: input.now, ...sessionDefinition,
   } as RunningSessionRevision;
   const slot = {
-    id: input.createId("running-slot-revision"), rootId: slotRootId, weekday: input.input.session.weekday,
-    revision: slotRevision, ordinal: input.existing?.slot.ordinal ?? input.plan.sessions.filter((entry) => entry.slot.weekday === input.input.session.weekday).length,
+    id: input.createId("running-slot-revision"), rootId: slotRootId, weekday,
+    revision: slotRevision, ordinal: input.existing?.slot.ordinal ?? input.plan.sessions.filter((entry) => entry.slot.weekday === weekday).length,
     sessionRootId, sessionRevisionId: session.id,
   };
   const retained = input.plan.sessions.filter((entry) => entry.session.rootId !== sessionRootId);

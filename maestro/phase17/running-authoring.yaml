@@ -18,10 +18,7 @@ tags: [phase-17, native-only, development-test]
     when:
       true: "${PHASE17_CASE_ID == 'library.running-create-zero-sessions'}"
     commands:
-      - tapOn: "Create plan"
-      - tapOn: "Running"
-      - inputText: "Phase17 empty plan"
-      - tapOn: "Save changes"
+      - openLink: "gymtracker-devtest:///library/running/${PHASE17_RUNNING_PLAN_ID}?revision=${PHASE17_RUNNING_PLAN_REVISION}&request=${PHASE17_RUNNING_REQUEST_ID}"
       - assertVisible: "No sessions yet"
       - pressKey: BACK
       - openLink: "gymtracker-devtest:///library/running/${PHASE17_RUNNING_PLAN_ID}"
@@ -42,6 +39,7 @@ tags: [phase-17, native-only, development-test]
       - tapOn: "Workout type Recovery"
       - inputText: "30"
       - tapOn: "Save session"
+      - openLink: "gymtracker-devtest:///library/running/${PHASE17_RUNNING_PLAN_ID}/session/${PHASE17_RUNNING_SESSION_ROOT_ID}"
       - assertVisible: "Recovery"
 - runFlow:
     when:
@@ -118,13 +116,25 @@ tags: [phase-17, native-only, development-test]
       true: "${PHASE17_CASE_ID == 'library.running-session-lifecycle'}"
     commands:
       - openLink: "gymtracker-devtest:///library/running/${PHASE17_RUNNING_PLAN_ID}/edit"
+      - openLink: "gymtracker-devtest:///library/running/${PHASE17_RUNNING_PLAN_ID}/session/${PHASE17_RUNNING_SESSION_ROOT_ID}?slot=${PHASE17_RUNNING_SLOT_ROOT_ID}"
+      - pressKey: BACK
+      - tapOn: "Activate plan"
+      - tapOn: "Activate plan"
+      - assertVisible: "Active"
+      - tapOn: "Archive plan"
+      - tapOn: "Archive plan"
+      - assertVisible: "Archived"
+      - tapOn: "Reactivate plan"
+      - tapOn: "Reactivate plan"
       - swipe: { start: "90%, 70%", end: "10%, 70%", duration: 500 }
+      - tapOn: "Move earlier"
       - tapOn: "Delete session"
       - tapOn: "Confirm"
       - tapOn: "Save changes"
       - openLink: "gymtracker-devtest:///library/running/${PHASE17_RUNNING_PLAN_ID}"
       - assertVisible: "No sessions yet"
       - tapOn: "Retry loading Running plan"
+      - tapOn: "Retry saving Running plan"
 - runFlow:
     when:
       true: "${PHASE17_CASE_ID == 'library.running-conflict'}"
@@ -177,6 +187,7 @@ tags: [phase-17, native-only, development-test]
     commands:
       - openLink: "gymtracker-devtest:///library/running/${PHASE17_RUNNING_PLAN_ID}/edit"
       - swipe: { start: "90%, 65%", end: "10%, 65%", duration: 500 }
+      - tapOn: "Move earlier"
       - tapOn: "Delete session"
       - tapOn: "Confirm"
       - tapOn: "Save changes"

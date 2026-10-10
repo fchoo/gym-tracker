@@ -42,9 +42,11 @@ describe("RunningPlanRuntimePort", () => {
     })).resolves.toEqual({ plan: readBack, sessionRootId: "running-session:uuid" });
     expect(mockSaveRunningSourceGraph).toHaveBeenCalledWith(expect.anything(), expect.objectContaining({
       expectedPlanRevision: 1,
-      sessions: [expect.objectContaining({ rootId: "running-session:uuid", revision: 1 })],
+      sessions: expect.arrayContaining([expect.objectContaining({ rootId: "running-session:uuid", revision: 1 })]),
       slots: [expect.objectContaining({ rootId: "running-slot:uuid", ordinal: 0 })],
     }));
+    const command = mockSaveRunningSourceGraph.mock.calls[0]?.[1] as { sessions: readonly Record<string, unknown>[] };
+    expect(command.sessions[0]).not.toHaveProperty("weekday");
   });
 
   it("reuses a review envelope on lifecycle retry and returns only authoritative lifecycle readback", async () => {

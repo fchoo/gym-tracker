@@ -13,6 +13,9 @@ import { createLogicalBackupRepository } from "../../src/platform/sqlite/reposit
 import { createSqliteKernel, type SqliteKernel } from "../../src/platform/sqlite/sqliteKernel";
 import { canonicalRunningRequestHash, saveRunningSourceGraph, type CreateInactiveRunningPlanInput, type SaveRunningSourceGraphInput } from "../../src/domains/running/commands";
 import type { RunningPlanSession } from "../../src/domains/running/contracts";
+import { createRunningPlanRuntimePort } from "../../src/bootstrap/runningPlanRuntime";
+import { PHASE17_FAMILY_B_CASE_IDS, createPhase17FamilyBFixtureDriver } from "../../src/bootstrap/phase17FamilyBFixture";
+import { createHash } from "node:crypto";
 
 class Result<Row extends Record<string, unknown>> implements SqlitePreparedResult<Row> {
   constructor(readonly changes: number, readonly lastInsertRowId: number, private readonly rows: readonly Row[]) {}
@@ -113,5 +116,67 @@ describe("Running plan lifecycle persistence", () => {
       expect.objectContaining({ id: "recovery-slot" }),
       expect.objectContaining({ id: "tempo-slot" }),
     ]));
+  });
+
+  it("seeds, reads, and token-cleans every non-collision Phase 17 Running fixture through real migrated SQLite commands", async () => {
+    const kernel = await migratedKernel();
+    let nonce = 0;
+    const sha256 = async (value: string) => createHash("sha256").update(value).digest("hex");
+    const running = createRunningPlanRuntimePort(kernel, {
+      nowMs: () => 1_000 + nonce,
+      randomUUID: () => `fixture-${++nonce}`,
+      sha256,
+    });
+    const driver = createPhase17FamilyBFixtureDriver({ kernel, running, sha256 });
+    for (const caseId of PHASE17_FAMILY_B_CASE_IDS) {
+      const token = `phase17:fixture-token-${String(++nonce).padStart(16, "0")}`;
+      const sourceTable = caseId === "library.running-create-zero-sessions" ? "running_plan_aggregates"
+        : caseId === "library.running-goal-edit" ? "running_plan_revisions"
+          : caseId === "library.running-session-lifecycle" || caseId === "library.running-two-same-day-slots" ? "running_session_slots"
+            : "running_session_revisions";
+      let seed;
+      try { seed = await driver.seed(caseId, token, sourceTable); }
+      catch (error) { throw new Error(`${caseId}: ${(error as Error).message}`); }
+      const planId = seed.selectors.runningPlanId;
+      if (planId === undefined) throw new Error(`${caseId}: fixture returned no running plan ID`);
+      expect(planId).toContain("phase17:running-plan:");
+      expect(seed.selectors.runningPlanRevision).toBeDefined();
+      expect(seed.expectedPreState).toEqual(seed.expectedPostState);
+      await expect(driver.probe(caseId, token, sourceTable, seed.selectors)).resolves.toEqual(expect.objectContaining({
+        rowCount: 1,
+        facts: seed.expectedPostState,
+      }));
+      await driver.cleanup(caseId, token, seed.selectors);
+      await expect(kernel.queryAll<{ id: string }>("SELECT id FROM plans WHERE id = ?", [planId])).resolves.toEqual([]);
+      await expect(kernel.queryAll<{ request_id: string }>("SELECT request_id FROM running_plan_receipts WHERE plan_id = ?", [planId])).resolves.toEqual([]);
+    }
+  });
+
+  it("keeps real activation, archive, reactivate, and receipt retry facts scoped to a Running fixture plan", async () => {
+    const kernel = await migratedKernel();
+    await kernel.write(async (transaction) => {
+      await transaction.execute("UPDATE workout_sessions SET status = 'completed' WHERE status = 'in_progress'");
+    });
+    let nonce = 0;
+    const sha256 = async (value: string) => createHash("sha256").update(value).digest("hex");
+    const runtime = createRunningPlanRuntimePort(kernel, {
+      nowMs: () => 2_000 + nonce,
+      randomUUID: () => `lifecycle-${++nonce}`,
+      sha256,
+    });
+    const created = await runtime.createInactivePlan({ plan: {
+      version: 1, id: "phase17:lifecycle-plan", name: "Fixture", revision: 1, createdAtMs: 2_000,
+      goal: { version: 1, id: "phase17:lifecycle-goal", planId: "phase17:lifecycle-plan", revision: 1, goalDistanceMeters: 5_000, trainingDays: ["Monday"], createdAtMs: 2_000 },
+      sessions: [session("phase17:lifecycle-plan", "recovery", 0)],
+    } });
+    expect(created.lifecycle).toBe("inactive");
+    for (const [action, lifecycle] of [["activate", "active"], ["archive", "archived"], ["reactivate", "inactive"]] as const) {
+      const preview = await runtime.previewLifecycle(created.id, action);
+      const requestId = `phase17:lifecycle-${action}`;
+      const result = await runtime.confirmLifecycle({ action, preview, requestId });
+      await expect(runtime.confirmLifecycle({ action, preview: { ...preview, confirmationToken: "stale-retry-is-ignored" }, requestId })).resolves.toEqual(result);
+      expect(result.lifecycle).toBe(lifecycle);
+    }
+    await expect(kernel.queryAll<{ request_id: string }>("SELECT request_id FROM running_plan_receipts WHERE plan_id = ? AND operation IN ('activate', 'archive', 'reactivate') ORDER BY request_id", [created.id])).resolves.toHaveLength(3);
   });
 });

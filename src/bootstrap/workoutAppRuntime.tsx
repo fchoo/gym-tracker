@@ -349,8 +349,13 @@ import {
 } from "./phase17NativeFixture";
 import {
   assertPhase17FamilyARegistry,
-  createPhase17FamilyAFixtureAdapter,
 } from "./phase17FamilyAFixture";
+import {
+  assertPhase17FamilyBRegistry,
+  createPhase17FamilyBFixtureDriver,
+  createPhase17FamilyFixtureAdapter,
+} from "./phase17FamilyBFixture";
+import { createRunningPlanRuntimePort } from "./runningPlanRuntime";
 import { PHASE17_CASE_ACTION_CONTRACTS } from "../testing/contracts/phase17LibraryRunning.contract";
 import {
   createOwnedPlanRuntimePort,
@@ -4001,6 +4006,7 @@ export function WorkoutAppRuntimeProvider({
     const services = requireServices();
     const { CryptoDigestAlgorithm, digestStringAsync, randomUUID } = require("expo-crypto") as typeof import("expo-crypto");
     assertPhase17FamilyARegistry(PHASE17_CASE_ACTION_CONTRACTS);
+    assertPhase17FamilyBRegistry(PHASE17_CASE_ACTION_CONTRACTS);
     const physicalTable = (sourceTable: string) => ({
       library_view_state: "app_settings", library_action_state: "app_settings", plan_create_intent: "plans",
       exercise_search_index: "exercise_search_terms", exercise_preferences: "exercise_owner_preferences",
@@ -4011,14 +4017,26 @@ export function WorkoutAppRuntimeProvider({
       library_load_receipts: "app_settings", starter_plan_catalog: "starter_plan_sources",
       starter_plan_activations: "starter_plan_activation_requests", template_update_receipts: "starter_plan_copy_requests",
       exercise_instruction_sets: "exercise_instruction_sets",
+      running_plan_aggregates: "running_plans", running_plan_revisions: "running_goals",
+      running_session_revisions: "running_session_revisions", running_session_slots: "running_session_slots",
+      running_plan_receipts: "running_plan_receipts",
     } as Readonly<Record<string, string>>)[sourceTable] ?? sourceTable;
     phase17FixtureProtocolRef.current = createPhase17FixtureProtocol({
       contracts: PHASE17_CASE_ACTION_CONTRACTS,
       createToken: () => `phase17:${randomUUID().replace(/[^a-z0-9-]/gu, "")}`,
-      adapter: createPhase17FamilyAFixtureAdapter({
+      adapter: createPhase17FamilyFixtureAdapter({
         baselineDigest: async () => (await collectPhase14SourceStateProofFromKernel({ kernel: services.kernel, sha256: (value) => digestStringAsync(CryptoDigestAlgorithm.SHA256, value) })).digest_sha256,
         canonicalHash: async (value) => digestStringAsync(CryptoDigestAlgorithm.SHA256, JSON.stringify(value, Object.keys(value).sort())),
-        driver: {
+        familyB: createPhase17FamilyBFixtureDriver({
+          kernel: services.kernel,
+          running: createRunningPlanRuntimePort(services.kernel, {
+            nowMs: dependencies.nowMs,
+            randomUUID,
+            sha256: (value) => digestStringAsync(CryptoDigestAlgorithm.SHA256, value),
+          }),
+          sha256: (value) => digestStringAsync(CryptoDigestAlgorithm.SHA256, value),
+        }),
+        familyA: {
         seed: async (caseId, fixtureToken, sourceTable) => {
           const owned = await services.ownedPlans.createDraft({ name: `Phase17 ${caseId}`, dayName: "Fixture day" });
           if (owned.outcome === "requires_schedule_impact") throw new Error("phase17_fixture_seed_failed");
