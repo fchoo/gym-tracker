@@ -87,6 +87,7 @@ import {
   observationForSet,
   SetRow,
 } from "../components/SetRow";
+import { WorkoutSetEditorSheet } from "../components/WorkoutSetEditorSheet";
 import {
   presentWorkoutSession,
 } from "../../domains/workout/workoutPresentation";
@@ -767,6 +768,7 @@ function PopulatedWorkoutOverview({
     });
   const [editingCompletedSetId, setEditingCompletedSetId] =
     useState<string | null>(null);
+  const [editingSetId, setEditingSetId] = useState<string | null>(null);
   const [expandedExerciseIds, setExpandedExerciseIds] = useState<ReadonlySet<string>>(
     () => new Set(),
   );
@@ -824,6 +826,7 @@ function PopulatedWorkoutOverview({
   const workingAddRef = useRef<View>(null);
   const removeFocusRef = useRef<View>(null);
   const removeGlyphRefs = useRef(new Map<string, View | null>());
+  const setRowRefs = useRef(new Map<string, View | null>());
   const draftQueue = useRef(Promise.resolve());
   const sectionMutationRef = useRef<SectionMutation | null>(null);
   const correctionSetIdRef = useRef<string | null>(null);
@@ -1045,6 +1048,25 @@ function PopulatedWorkoutOverview({
       setSaveFailedSetId(set.id);
     });
     return save;
+  };
+
+  const editorOwner = editingSetId === null
+    ? undefined
+    : resolveSetOwner(view, editingSetId);
+
+  const saveEditorValues = async (observation: SetObservation) => {
+    const owner = editingSetId === null
+      ? undefined
+      : resolveSetOwner(viewRef.current, editingSetId);
+    if (owner === undefined) {
+      throw new Error("set_no_longer_available");
+    }
+    if (owner.set.status === "completed") {
+      await reviseCompletedSet(owner.set, observation);
+    } else {
+      await persistValues(owner.set, observation);
+    }
+    setEditingSetId(null);
   };
 
   const runWarmup = async (set: ActiveWorkoutSet) => {
@@ -1688,7 +1710,13 @@ function PopulatedWorkoutOverview({
               void finishCompletedWorkout();
             }}
           />
-        ) : undefined}
+        ) : (
+          <PrimaryAction
+            busy={workingBusySetId === activeSet.id}
+            label={`Complete Set ${activeIndex + 1}`}
+            onPress={() => { void completeCurrentSet(activeSet); }}
+          />
+        )}
         primary={
           <>
             {activeSet === undefined ? null : <TargetContext set={activeSet} />}
@@ -1958,35 +1986,14 @@ function PopulatedWorkoutOverview({
                     && set.id !== activeSet?.id
                     && set.id !== expandedCompactSetId}
                   busy={warmupBusy?.setId === set.id}
-                  count={exercise.warmups.length}
                   index={index + 1}
                   key={`${set.id}-${set.id === activeSet?.id || set.id === expandedCompactSetId ? "expanded" : "compact"}`}
                   kind="warmup"
-                  onChangeValues={(observation) => {
-                    return persistValues(set, observation);
-                  }}
-                  onComplete={() => {
-                    void runWarmup(set);
-                  }}
-                  onExpandCompact={() => setExpandedCompactSetId(set.id)}
-                  onRevealedLayout={setRevealedSetOffset}
-                  {...(set.id === activeSet?.id
-                    ? { onMeasuredLayout: (y: number) => {
-                      setActiveSetMeasurement((current) =>
-                        current?.setId === set.id && current.y === y
-                          ? current
-                          : { setId: set.id, y }
-                      );
-                    } }
-                    : {})}
+                  onPress={() => setEditingSetId(set.id)}
                   {...(isMultiExerciseOverview
                     ? { overviewTestID: `overview-${exercise.id}-${set.id}` }
                     : {})}
-                  onRemove={() => requestRemoval("warmup", set, index)}
-                  removeRef={(node) => {
-                    removeGlyphRefs.current.set(set.id, node);
-                  }}
-                  revealed={revealedSetId === set.id}
+                  ref={(node) => { setRowRefs.current.set(set.id, node); }}
                   set={set}
                   tone="card"
                 />
@@ -2057,52 +2064,13 @@ function PopulatedWorkoutOverview({
                   compact={isMultiExerciseOverview
                     && set.id !== activeSet?.id
                     && set.id !== expandedCompactSetId}
-                  actionsDisabled={
-                    view.rest.state === "running"
-                    || view.rest.state === "paused"
-                  }
                   busy={workingBusySetId === set.id}
-                  count={exercise.workingSets.length}
                   index={index + 1}
                   key={`${set.id}-${set.id === activeSet?.id || set.id === expandedCompactSetId ? "expanded" : "compact"}`}
                   kind="working"
-                  onChangeValues={(observation) => {
-                    return persistValues(set, observation);
-                  }}
-                  onComplete={() => {
-                    void completeCurrentSet(set);
-                  }}
-                  onExpandCompact={() => setExpandedCompactSetId(set.id)}
-                  onCancelCorrection={() => {
-                    setEditingCompletedSetId(null);
-                    setCorrectionFailure(null);
-                  }}
-                  onEditCompleted={() => {
-                    setEditingCompletedSetId(set.id);
-                    setCorrectionFailure(null);
-                  }}
-                  onSaveCorrection={(observation) => {
-                    return reviseCompletedSet(set, observation);
-                  }}
-                  onRemove={() => requestRemoval("working", set, index)}
-                  {...(set.id === activeSet?.id
-                    ? { onMeasuredLayout: (y: number) => {
-                      setActiveSetMeasurement((current) =>
-                        current?.setId === set.id && current.y === y
-                          ? current
-                          : { setId: set.id, y }
-                      );
-                    } }
-                    : {})}
-                  removeRef={(node) => {
-                    removeGlyphRefs.current.set(set.id, node);
-                  }}
-                  correctionBusy={correctionBusySetId === set.id}
-                  correctionError={correctionFailure?.setId === set.id
-                    ? "Correction was not saved. Retry the correction."
-                    : undefined}
-                  correctionMode={editingCompletedSetId === set.id}
-                  revealed={revealedSetId === set.id}
+                  disabled={view.rest.state === "running" || view.rest.state === "paused"}
+                  onPress={() => setEditingSetId(set.id)}
+                  ref={(node) => { setRowRefs.current.set(set.id, node); }}
                   set={set}
                   tone="card"
                   {...(isMultiExerciseOverview
@@ -2473,6 +2441,16 @@ function PopulatedWorkoutOverview({
         <Text accessibilityLiveRegion="polite" style={styles.visuallyHidden}>
           {removalAnnouncement}
         </Text>
+      )}
+      {editorOwner === undefined ? null : (
+        <WorkoutSetEditorSheet
+          exerciseName={editorOwner.exercise.name}
+          onCancel={() => setEditingSetId(null)}
+          onSave={saveEditorValues}
+          restoreFocusRef={{ current: setRowRefs.current.get(editorOwner.set.id) ?? null }}
+          set={editorOwner.set}
+          visible
+        />
       )}
       {exerciseReorderRecovery ? (
         <InlineNotice

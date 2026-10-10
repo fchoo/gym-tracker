@@ -16,7 +16,7 @@ const set: ActiveWorkoutSet = {
 
 describe("WorkoutSetEditorSheet", () => {
   it("keeps a load/reps draft local until explicit Save", async () => {
-    const onSave = jest.fn<Promise<void>, [SetObservation]>(async () => undefined);
+    const onSave = jest.fn(async (_observation: SetObservation) => undefined);
     const onCancel = jest.fn();
     await render(<AppearanceProvider><WorkoutSetEditorSheet exerciseName="Back Squat" onCancel={onCancel} onSave={onSave} set={set} visible /></AppearanceProvider>);
     await fireEvent.changeText(screen.getByLabelText("Load (kg)"), "65");
@@ -27,7 +27,7 @@ describe("WorkoutSetEditorSheet", () => {
   });
 
   it("cancels without saving", async () => {
-    const onSave = jest.fn<Promise<void>, [SetObservation]>(async () => undefined);
+    const onSave = jest.fn(async (_observation: SetObservation) => undefined);
     const onCancel = jest.fn();
     await render(<AppearanceProvider><WorkoutSetEditorSheet exerciseName="Back Squat" onCancel={onCancel} onSave={onSave} set={set} visible /></AppearanceProvider>);
     await fireEvent.press(screen.getByRole("button", { name: "Close edit back squat" }));
