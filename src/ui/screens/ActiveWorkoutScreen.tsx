@@ -573,11 +573,15 @@ function EmptyWorkoutOverview({
   const [outcomeConfirmation, setOutcomeConfirmation] =
     useState<"zero_sets" | "discard" | null>(null);
   const [outcomeBusy, setOutcomeBusy] = useState(false);
+  const [outcomeFailure, setOutcomeFailure] =
+    useState<"zero_sets" | "discard" | null>(null);
   const [pickerVisible, setPickerVisible] = useState(false);
   const [query, setQuery] = useState("");
   const [selectedExerciseId, setSelectedExerciseId] = useState<string | null>(null);
   const [addFailed, setAddFailed] = useState(false);
   const searchRef = useRef<M3SearchFieldHandle>(null);
+  const saveZeroSetInputRef = useRef<SaveZeroSetInput | null>(null);
+  const discardWorkoutInputRef = useRef<DiscardWorkoutInput | null>(null);
   const adaptiveWidth = width === undefined ? {} : { width };
   const filteredExercises = availableExercises.filter((exercise) =>
     exercise.name.toLocaleLowerCase("en").includes(query.trim().toLocaleLowerCase("en")),
@@ -625,34 +629,85 @@ function EmptyWorkoutOverview({
         destructive: true,
       };
 
-  const confirmOutcome = async () => {
-    const confirmation = outcomeConfirmation;
-    if (confirmation === null) {
-      return;
-    }
+  const saveZeroSetWorkout = async () => {
+    if (outcomeBusy) return;
+    const input = saveZeroSetInputRef.current ?? {
+      sessionId,
+      expectedSessionRevision: view.revision,
+      confirmation: "save_zero_set_workout",
+      endedAtMs: nowMs(),
+    };
+    saveZeroSetInputRef.current = input;
     setOutcomeBusy(true);
+    setOutcomeFailure(null);
     try {
-      if (confirmation === "zero_sets") {
-        await commands.saveZeroSetWorkout({
-          sessionId,
-          expectedSessionRevision: view.revision,
-          confirmation: "save_zero_set_workout",
-          endedAtMs: nowMs(),
-        });
-        onOutcomeSaved(sessionId);
-        return;
+      const result = await commands.saveZeroSetWorkout(input);
+      if (result.detail.id !== sessionId || result.detail.status !== "zero_sets") {
+        throw new Error("zero_set_workout_result_unknown");
       }
-      await commands.discardWorkout({
-        sessionId,
-        expectedSessionRevision: view.revision,
-        confirmation: "discard_workout",
-        endedAtMs: nowMs(),
-      });
-      onDiscarded();
+      saveZeroSetInputRef.current = null;
+      setOutcomeConfirmation(null);
+      onOutcomeSaved(result.detail.id);
+    } catch {
+      setOutcomeConfirmation(null);
+      setOutcomeFailure("zero_sets");
     } finally {
       setOutcomeBusy(false);
     }
   };
+
+  const discardCurrentWorkout = async () => {
+    if (outcomeBusy) return;
+    const input = discardWorkoutInputRef.current ?? {
+      sessionId,
+      expectedSessionRevision: view.revision,
+      confirmation: "discard_workout",
+      endedAtMs: nowMs(),
+    };
+    discardWorkoutInputRef.current = input;
+    setOutcomeBusy(true);
+    setOutcomeFailure(null);
+    try {
+      const result = await commands.discardWorkout(input);
+      if (result.detail.id !== sessionId || result.detail.status !== "discarded") {
+        throw new Error("discard_workout_result_unknown");
+      }
+      discardWorkoutInputRef.current = null;
+      setOutcomeConfirmation(null);
+      onDiscarded();
+    } catch {
+      setOutcomeConfirmation(null);
+      setOutcomeFailure("discard");
+    } finally {
+      setOutcomeBusy(false);
+    }
+  };
+
+  const confirmOutcome = async () => {
+    if (outcomeConfirmation === "zero_sets") {
+      await saveZeroSetWorkout();
+      return;
+    }
+    if (outcomeConfirmation === "discard") {
+      await discardCurrentWorkout();
+    }
+  };
+
+  const outcomeFailureCopy = outcomeFailure === "zero_sets"
+    ? {
+        body: "The workout is still active with zero completed working sets. Try saving it again or keep training.",
+        confirmLabel: "Retry saving zero-set workout",
+        heading: "Zero-set workout was not saved",
+        retry: saveZeroSetWorkout,
+      }
+    : outcomeFailure === "discard"
+      ? {
+          body: "The workout is still active. No saved set or history fact was removed. Try again or keep the workout.",
+          confirmLabel: "Retry discarding workout",
+          heading: "Workout was not discarded",
+          retry: discardCurrentWorkout,
+        }
+      : null;
 
   return (
     <>
@@ -772,6 +827,16 @@ function EmptyWorkoutOverview({
           void confirmOutcome();
         }}
         visible={outcomeConfirmation !== null}
+      />
+      <ConfirmationSheet
+        body={outcomeFailureCopy?.body ?? ""}
+        cancelLabel="Return to Workout"
+        confirmBusy={outcomeBusy}
+        confirmLabel={outcomeFailureCopy?.confirmLabel ?? "Retry"}
+        heading={outcomeFailureCopy?.heading ?? "Workout was not saved"}
+        onCancel={() => setOutcomeFailure(null)}
+        onConfirm={() => { void outcomeFailureCopy?.retry(); }}
+        visible={outcomeFailureCopy !== null}
       />
     </>
   );
@@ -900,6 +965,9 @@ function PopulatedWorkoutOverview({
   const sectionMutationRef = useRef<SectionMutation | null>(null);
   const completionInFlightRef = useRef(false);
   const finishCompletedInputRef = useRef<FinishCompletedInput | null>(null);
+  const finishPartialInputRef = useRef<FinishPartialInput | null>(null);
+  const saveZeroSetInputRef = useRef<SaveZeroSetInput | null>(null);
+  const discardWorkoutInputRef = useRef<DiscardWorkoutInput | null>(null);
   const correctionSetIdRef = useRef<string | null>(null);
   const restCommandInFlightRef = useRef(false);
   const overviewExercises = React.useMemo(() => exercisesFor(view), [view]);
@@ -1707,9 +1775,102 @@ function PopulatedWorkoutOverview({
     }
   };
 
+  const finishPartialWorkout = async () => {
+    if (outcomeBusy) return;
+    const input = finishPartialInputRef.current ?? {
+      sessionId,
+      expectedSessionRevision: viewRef.current.revision,
+      confirmation: "save_partial_workout",
+      endedAtMs: nowMs(),
+    };
+    finishPartialInputRef.current = input;
+    setOutcomeBusy(true);
+    setOutcomeFailure(null);
+    try {
+      const result = await commands.finishPartial(input);
+      if (result.detail.id !== sessionId || result.detail.status !== "partial") {
+        throw new Error("partial_workout_result_unknown");
+      }
+      finishPartialInputRef.current = null;
+      setOutcomeConfirmation(null);
+      onOutcomeSaved(result.detail.id);
+    } catch {
+      setOutcomeConfirmation(null);
+      setOutcomeFailure({ operation: "partial" });
+    } finally {
+      setOutcomeBusy(false);
+    }
+  };
+
+  const saveZeroSetWorkout = async () => {
+    if (outcomeBusy) return;
+    const input = saveZeroSetInputRef.current ?? {
+      sessionId,
+      expectedSessionRevision: viewRef.current.revision,
+      confirmation: "save_zero_set_workout",
+      endedAtMs: nowMs(),
+    };
+    saveZeroSetInputRef.current = input;
+    setOutcomeBusy(true);
+    setOutcomeFailure(null);
+    try {
+      const result = await commands.saveZeroSetWorkout(input);
+      if (result.detail.id !== sessionId || result.detail.status !== "zero_sets") {
+        throw new Error("zero_set_workout_result_unknown");
+      }
+      saveZeroSetInputRef.current = null;
+      setOutcomeConfirmation(null);
+      onOutcomeSaved(result.detail.id);
+    } catch {
+      setOutcomeConfirmation(null);
+      setOutcomeFailure({ operation: "zero_sets" });
+    } finally {
+      setOutcomeBusy(false);
+    }
+  };
+
+  const discardCurrentWorkout = async () => {
+    if (outcomeBusy) return;
+    const input = discardWorkoutInputRef.current ?? {
+      sessionId,
+      expectedSessionRevision: viewRef.current.revision,
+      confirmation: "discard_workout",
+      endedAtMs: nowMs(),
+    };
+    discardWorkoutInputRef.current = input;
+    setOutcomeBusy(true);
+    setOutcomeFailure(null);
+    try {
+      const result = await commands.discardWorkout(input);
+      if (result.detail.id !== sessionId || result.detail.status !== "discarded") {
+        throw new Error("discard_workout_result_unknown");
+      }
+      discardWorkoutInputRef.current = null;
+      setOutcomeConfirmation(null);
+      onDiscarded();
+    } catch {
+      setOutcomeConfirmation(null);
+      setOutcomeFailure({ operation: "discard" });
+    } finally {
+      setOutcomeBusy(false);
+    }
+  };
+
   const confirmOutcome = async () => {
     const confirmation = outcomeConfirmation;
     if (confirmation === null) {
+      return;
+    }
+    if (confirmation === "partial") {
+      await finishPartialWorkout();
+      return;
+    }
+    if (confirmation === "zero_sets") {
+      await saveZeroSetWorkout();
+      return;
+    }
+    if (confirmation === "discard") {
+      await discardCurrentWorkout();
       return;
     }
     setOutcomeBusy(true);
@@ -1726,33 +1887,6 @@ function PopulatedWorkoutOverview({
         setOutcomeConfirmation(null);
         return;
       }
-      if (confirmation === "partial") {
-        await commands.finishPartial({
-          sessionId,
-          expectedSessionRevision: view.revision,
-          confirmation: "save_partial_workout",
-          endedAtMs: nowMs(),
-        });
-        onOutcomeSaved(sessionId);
-        return;
-      }
-      if (confirmation === "zero_sets") {
-        await commands.saveZeroSetWorkout({
-          sessionId,
-          expectedSessionRevision: view.revision,
-          confirmation: "save_zero_set_workout",
-          endedAtMs: nowMs(),
-        });
-        onOutcomeSaved(sessionId);
-        return;
-      }
-      await commands.discardWorkout({
-        sessionId,
-        expectedSessionRevision: view.revision,
-        confirmation: "discard_workout",
-        endedAtMs: nowMs(),
-      });
-      onDiscarded();
     } finally {
       setOutcomeBusy(false);
     }
@@ -1779,6 +1913,36 @@ function PopulatedWorkoutOverview({
           confirmTestID: "discard-workout-confirm",
           destructive: true,
         };
+
+  const outcomeFailureCopy = outcomeFailure?.operation === "finish_completed"
+    ? {
+        body: "Your workout is still active. Your completed sets and rest are unchanged. Try finishing again.",
+        confirmLabel: "Retry finishing workout",
+        heading: "Workout was not finished",
+        retry: finishCompletedWorkout,
+      }
+    : outcomeFailure?.operation === "partial"
+      ? {
+          body: "Your workout is still active. Your completed sets and current rest are unchanged. Try saving the partial workout again.",
+          confirmLabel: "Retry saving partial workout",
+          heading: "Partial workout was not saved",
+          retry: finishPartialWorkout,
+        }
+      : outcomeFailure?.operation === "zero_sets"
+        ? {
+            body: "The workout is still active with zero completed working sets. Try saving it again or keep training.",
+            confirmLabel: "Retry saving zero-set workout",
+            heading: "Zero-set workout was not saved",
+            retry: saveZeroSetWorkout,
+          }
+        : outcomeFailure?.operation === "discard"
+          ? {
+              body: "The workout is still active. No saved set or history fact was removed. Try again or keep the workout.",
+              confirmLabel: "Retry discarding workout",
+              heading: "Workout was not discarded",
+              retry: discardCurrentWorkout,
+            }
+          : null;
 
   function closeMoreActions() {
     setMoreVisible(false);
@@ -2564,17 +2728,17 @@ function PopulatedWorkoutOverview({
         visible={outcomeConfirmation !== null}
       />
       <ConfirmationSheet
-        body="Your workout is still active. Your completed sets and rest are unchanged. Try finishing again."
+        body={outcomeFailureCopy?.body ?? ""}
         cancelLabel="Return to Workout"
         confirmBusy={outcomeBusy}
-        confirmLabel="Retry finishing workout"
-        heading="Workout was not finished"
+        confirmLabel={outcomeFailureCopy?.confirmLabel ?? "Retry"}
+        heading={outcomeFailureCopy?.heading ?? "Workout was not saved"}
         onCancel={() => setOutcomeFailure(null)}
         onConfirm={() => {
-          void finishCompletedWorkout();
+          void outcomeFailureCopy?.retry();
         }}
         restoreFocusRef={moreActionRef}
-        visible={outcomeFailure?.operation === "finish_completed"}
+        visible={outcomeFailureCopy !== null}
       />
       {exerciseActionCandidate?.action !== "remove" ? null : (
         <ConfirmationSheet
