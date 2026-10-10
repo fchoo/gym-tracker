@@ -88,6 +88,7 @@ import {
   SetRow,
 } from "../components/SetRow";
 import { WorkoutSetEditorSheet } from "../components/WorkoutSetEditorSheet";
+import { WorkoutActionDock } from "../components/WorkoutActionDock";
 import {
   presentWorkoutSession,
 } from "../../domains/workout/workoutPresentation";
@@ -829,6 +830,7 @@ function PopulatedWorkoutOverview({
   const setRowRefs = useRef(new Map<string, View | null>());
   const draftQueue = useRef(Promise.resolve());
   const sectionMutationRef = useRef<SectionMutation | null>(null);
+  const completionInFlightRef = useRef(false);
   const correctionSetIdRef = useRef<string | null>(null);
   const restCommandInFlightRef = useRef(false);
   const overviewExercises = React.useMemo(() => exercisesFor(view), [view]);
@@ -963,10 +965,11 @@ function PopulatedWorkoutOverview({
     const requestedSetId = set?.id;
     if (
       requestedSetId === undefined
-      || workingBusySetId !== null
+      || completionInFlightRef.current
     ) {
       return;
     }
+    completionInFlightRef.current = true;
     setWorkingBusySetId(requestedSetId);
     setSaveFailedSetId(null);
     try {
@@ -1012,6 +1015,7 @@ function PopulatedWorkoutOverview({
     } catch {
       setSaveFailedSetId(requestedSetId);
     } finally {
+      completionInFlightRef.current = false;
       setWorkingBusySetId(null);
     }
   };
@@ -1712,10 +1716,18 @@ function PopulatedWorkoutOverview({
             }}
           />
         ) : (
-          <PrimaryAction
-            busy={workingBusySetId === activeSet.id}
-            label={`Complete Set ${activeIndex + 1}`}
-            onPress={() => { void completeCurrentSet(activeSet); }}
+          <WorkoutActionDock
+            completeLabel={saveFailedSetId === activeSet.id
+              ? "Set not saved · Retry"
+              : `Complete Set ${activeIndex + 1}`}
+            onAddExercise={() => {
+              setExerciseAddFailed(false);
+              setExerciseAddPickerVisible(true);
+            }}
+            onComplete={() => { void completeCurrentSet(activeSet); }}
+            state={workingBusySetId === activeSet.id
+              ? "saving"
+              : saveFailedSetId === activeSet.id ? "failed" : "ready"}
           />
         )}
         primary={
@@ -2082,16 +2094,6 @@ function PopulatedWorkoutOverview({
               ))}
               {saveFailedSetId === null ? null : (
                 <InlineNotice
-                  action={
-                    saveFailedSetId === activeSet?.id ? (
-                      <PrimaryAction
-                        label="Set not saved · Retry"
-                        onPress={() => {
-                          void completeCurrentSet(activeSet);
-                        }}
-                      />
-                    ) : undefined
-                  }
                   body="Your values are still here. The set was not completed and rest did not start."
                   heading="Set not saved"
                   card
@@ -2135,18 +2137,6 @@ function PopulatedWorkoutOverview({
               </View>
             );
             }}</WorkoutSessionPresentation>
-            {commands.addExercise === undefined ? null : (
-              <PrimaryAction
-                accessibilityHint="Choose one library exercise to append to this workout."
-                label="Add exercise"
-                onPress={() => {
-                  setExerciseAddFailed(false);
-                  setExerciseAddPickerVisible(true);
-                }}
-                ref={exerciseAddTriggerRef}
-                testID="active-workout-add-exercise"
-              />
-            )}
           </>
         }
         testID="active-workout"
