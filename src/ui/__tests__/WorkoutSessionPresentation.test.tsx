@@ -62,6 +62,8 @@ describe("WorkoutSessionPresentation", () => {
     expect(screen.getByText("01")).toBeOnTheScreen();
     expect(screen.getByTestId("workout-presentation-exercise-session-exercise-1"))
       .toHaveStyle({ borderLeftWidth: 4 });
+    expect(screen.getByTestId("exercise-header-session-exercise-1"))
+      .toHaveStyle({ minHeight: 80, flexDirection: "row" });
     expect(screen.queryByText("45 kg × 10")).not.toBeOnTheScreen();
 
     fireEvent.press(screen.getByRole("button", {

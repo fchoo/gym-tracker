@@ -112,7 +112,7 @@ import {
   radius,
   sizes,
   space,
-  typeScale,
+  workoutTypeScale,
   useAppTheme,
 } from "../theme";
 
@@ -383,7 +383,7 @@ function TargetContext({
     <ContentCard style={styles.targetSection} testID="active-workout-target-card">
       <Text
         style={[
-          typeScale.label as TextStyle,
+          workoutTypeScale.label as TextStyle,
           { color: colors.contentCardTextSecondary },
         ]}
       >
@@ -391,7 +391,7 @@ function TargetContext({
       </Text>
       <Text
         style={[
-          typeScale.targetValue as TextStyle,
+          workoutTypeScale.targetValue as TextStyle,
           { color: colors.contentCardText },
         ]}
       >
@@ -399,7 +399,7 @@ function TargetContext({
       </Text>
       <Text
         style={[
-          typeScale.body as TextStyle,
+          workoutTypeScale.body as TextStyle,
           { color: colors.contentCardTextSecondary },
         ]}
       >
@@ -803,10 +803,10 @@ function EmptyWorkoutOverview({
                     }}
                     style={[styles.exerciseOption, { borderColor: colors.contentCardBorder }]}
                   >
-                    <Text style={[typeScale.bodyStrong as TextStyle, { color: colors.contentCardText }]}>
+                    <Text style={[workoutTypeScale.bodyStrong as TextStyle, { color: colors.contentCardText }]}>
                       {exercise.name}
                     </Text>
-                    <Text style={[typeScale.secondary as TextStyle, { color: colors.contentCardTextSecondary }]}>
+                    <Text style={[workoutTypeScale.secondary as TextStyle, { color: colors.contentCardTextSecondary }]}>
                       {selectedExerciseId === exercise.id ? "Selected" : "Select"}
                     </Text>
                   </FocusablePressable>
@@ -2145,6 +2145,57 @@ function PopulatedWorkoutOverview({
                   ? `${status} · ${summary.completed} of ${summary.total} working sets`
                   : `${status} · ${summary.observation}`;
               }}
+              renderExerciseAccessory={(presentationExercise) => {
+                const exercise = overviewExercises.find(({ id }) => id === presentationExercise.id);
+                if (exercise === undefined) return null;
+                return <>
+                  <FocusablePressable
+                    accessibilityLabel={`View ${exercise.name} trend`}
+                    accessibilityRole="button"
+                    focusable
+                    onPress={() => setTrendExerciseId(exercise.id)}
+                    style={({ pressed }) => [styles.exerciseHeaderAction, {
+                      backgroundColor: pressed ? colors.contentCardPressed : "transparent",
+                      borderColor: colors.contentCardBorder,
+                    }]}
+                    testID={`exercise-trend-${exercise.exerciseId}`}
+                  >
+                    <Text accessibilityElementsHidden importantForAccessibility="no-hide-descendants" style={[workoutTypeScale.bodyStrong as TextStyle, { color: colors.focusRing }]}>↗</Text>
+                  </FocusablePressable>
+                  <FocusablePressable
+                    accessibilityLabel={`Open ${exercise.name} menu`}
+                    accessibilityRole="button"
+                    accessibilityState={{
+                      busy: exerciseEditBusy,
+                      disabled: exerciseEditBusy,
+                      expanded: exerciseActionsVisibleForId === exercise.id,
+                    }}
+                    disabled={exerciseEditBusy}
+                    focusable={!exerciseEditBusy}
+                    onPress={() => {
+                      setExerciseActionsVisibleForId(exercise.id);
+                      setExerciseEditFailure(null);
+                      setExerciseEditRecovery(null);
+                    }}
+                    ref={(node) => {
+                      exerciseActionRefs.current.set(exercise.id, node);
+                    }}
+                    style={({ pressed }) => [
+                      styles.exerciseHeaderAction,
+                      {
+                        backgroundColor: pressed ? colors.contentCardPressed : "transparent",
+                        borderColor: exerciseActionsVisibleForId === exercise.id
+                          ? colors.action
+                          : colors.contentCardBorder,
+                        opacity: exerciseEditBusy ? 0.62 : 1,
+                      },
+                    ]}
+                    testID={`exercise-actions-${exercise.exerciseId}`}
+                  >
+                    <Text accessibilityElementsHidden importantForAccessibility="no-hide-descendants" style={[workoutTypeScale.bodyStrong as TextStyle, { color: colors.contentCardText }]}>•••</Text>
+                  </FocusablePressable>
+                </>;
+              }}
               isExerciseExpanded={(presentationExercise, index) => {
                 const exercise = overviewExercises.find(({ id }) => id === presentationExercise.id);
                 return exercise === undefined ? false : !isExerciseCollapsed(exercise, index);
@@ -2197,11 +2248,11 @@ function PopulatedWorkoutOverview({
                     reorderId={`exercise-${exercise.id}`}
                     tone="card"
                   >
-                    <Text style={[typeScale.secondary as TextStyle, { color: colors.contentCardTextSecondary }]}>
+                    <Text style={[workoutTypeScale.secondary as TextStyle, { color: colors.contentCardTextSecondary }]}>
                       Reorder exercise
                     </Text>
                     <Text
-                      style={[typeScale.secondary as TextStyle, { color: colors.contentCardTextSecondary }]}
+                      style={[workoutTypeScale.secondary as TextStyle, { color: colors.contentCardTextSecondary }]}
                       testID={`exercise-reorder-position-${exercise.id}`}
                     >
                       {`${exercise.name} · Position ${index + 1} of ${overviewExercises.length}`}
@@ -2228,7 +2279,7 @@ function PopulatedWorkoutOverview({
                       <Text
                         accessibilityLiveRegion="polite"
                         style={[
-                          typeScale.secondary as TextStyle,
+                          workoutTypeScale.secondary as TextStyle,
                           styles.reorderAnnouncement,
                           { color: colors.contentCardTextSecondary },
                         ]}
@@ -2239,62 +2290,6 @@ function PopulatedWorkoutOverview({
                     )
                     : null}
                 </> : null}
-                <FocusablePressable
-                  accessibilityLabel={`View ${exercise.name} trend`}
-                  accessibilityRole="button"
-                  focusable
-                  onPress={() => setTrendExerciseId(exercise.id)}
-                  style={({ pressed }) => [styles.exerciseTrend, {
-                    backgroundColor: pressed ? colors.contentCardPressed : "transparent",
-                    borderColor: colors.contentCardBorder,
-                  }]}
-                  testID={`exercise-trend-${exercise.exerciseId}`}
-                >
-                  <Text accessibilityElementsHidden importantForAccessibility="no-hide-descendants" style={[typeScale.bodyStrong as TextStyle, { color: colors.focusRing }]}>↗</Text>
-                </FocusablePressable>
-                <FocusablePressable
-                  accessibilityLabel={`Open ${exercise.name} menu`}
-                  accessibilityRole="button"
-                  accessibilityState={{
-                    busy: exerciseEditBusy,
-                    disabled: exerciseEditBusy,
-                    expanded: exerciseActionsVisibleForId === exercise.id,
-                  }}
-                  disabled={exerciseEditBusy}
-                  focusable={!exerciseEditBusy}
-                  onPress={() => {
-                    setExerciseActionsVisibleForId(exercise.id);
-                    setExerciseEditFailure(null);
-                    setExerciseEditRecovery(null);
-                  }}
-                  ref={(node) => {
-                    exerciseActionRefs.current.set(exercise.id, node);
-                  }}
-                  style={({ pressed }) => [
-                    styles.exerciseAction,
-                    index === 0
-                      ? styles.exerciseActionFirst
-                      : styles.exerciseActionAfterDivider,
-                    {
-                      backgroundColor: pressed
-                        ? colors.contentCardPressed
-                        : "transparent",
-                      borderColor: exerciseActionsVisibleForId === exercise.id
-                        ? colors.action
-                        : colors.contentCardBorder,
-                      opacity: exerciseEditBusy ? 0.62 : 1,
-                    },
-                  ]}
-                  testID={`exercise-actions-${exercise.exerciseId}`}
-                >
-                  <Text
-                    accessibilityElementsHidden
-                    importantForAccessibility="no-hide-descendants"
-                    style={[typeScale.bodyStrong as TextStyle, { color: colors.contentCardText }]}
-                  >
-                    •••
-                  </Text>
-                </FocusablePressable>
                 {exerciseEditFailure?.exerciseId !== exercise.id ? null : (
                   <InlineNotice
                     action={
@@ -2609,7 +2604,7 @@ function PopulatedWorkoutOverview({
             restoreFocusRef={{ current: exerciseActionRefs.current.get(exercise.id) ?? null }}
             visible
           >
-            <Text style={[typeScale.body as TextStyle, { color: colors.textSecondary }]}>
+            <Text style={[workoutTypeScale.body as TextStyle, { color: colors.textSecondary }]}>
               {`Between-set rest · ${exercise.defaultRestSeconds} sec`}
             </Text>
             <TextInput
@@ -2620,7 +2615,7 @@ function PopulatedWorkoutOverview({
               value={timingRestDraft}
             />
             {timingRestFailure === null ? null : (
-              <Text accessibilityRole="alert" style={[typeScale.body as TextStyle, { color: colors.destructive }]}>
+              <Text accessibilityRole="alert" style={[workoutTypeScale.body as TextStyle, { color: colors.destructive }]}>
                 {timingRestFailure}
               </Text>
             )}
@@ -2742,11 +2737,11 @@ function PopulatedWorkoutOverview({
               },
             ]}
           >
-            <Text style={[typeScale.bodyStrong as TextStyle, { color: colors.textPrimary }]}>
+            <Text style={[workoutTypeScale.bodyStrong as TextStyle, { color: colors.textPrimary }]}>
               {candidate.name}
             </Text>
             {exerciseAddSelectedId === candidate.id ? (
-              <Text style={[typeScale.secondary as TextStyle, { color: colors.textSecondary }]}>
+              <Text style={[workoutTypeScale.secondary as TextStyle, { color: colors.textSecondary }]}>
                 Selected
               </Text>
             ) : null}
@@ -2821,11 +2816,11 @@ function PopulatedWorkoutOverview({
                   },
                 ]}
               >
-                <Text style={[typeScale.bodyStrong as TextStyle, { color: colors.textPrimary }]}>
+                <Text style={[workoutTypeScale.bodyStrong as TextStyle, { color: colors.textPrimary }]}>
                   {candidate.name}
                 </Text>
                 {replacementExerciseId === candidate.id ? (
-                  <Text style={[typeScale.secondary as TextStyle, { color: colors.textSecondary }]}>
+                  <Text style={[workoutTypeScale.secondary as TextStyle, { color: colors.textSecondary }]}>
                     Selected
                   </Text>
                 ) : null}
@@ -2987,32 +2982,13 @@ const styles = StyleSheet.create({
     minHeight: sizes.minimumTarget,
     padding: space[2],
   },
-  exerciseAction: {
+  exerciseHeaderAction: {
     alignItems: "center",
     borderRadius: radius.standard,
     borderWidth: StyleSheet.hairlineWidth,
     justifyContent: "center",
     minHeight: sizes.minimumTarget,
     minWidth: sizes.minimumTarget,
-    position: "absolute",
-    right: 0,
-  },
-  exerciseTrend: {
-    alignItems: "center",
-    borderRadius: radius.standard,
-    borderWidth: StyleSheet.hairlineWidth,
-    justifyContent: "center",
-    minHeight: sizes.minimumTarget,
-    minWidth: sizes.minimumTarget,
-    position: "absolute",
-    right: sizes.minimumTarget + space[1],
-    top: 0,
-  },
-  exerciseActionAfterDivider: {
-    top: sizes.focusRing + space[2],
-  },
-  exerciseActionFirst: {
-    top: 0,
   },
   exerciseDivider: {
     height: sizes.focusRing,
@@ -3026,7 +3002,6 @@ const styles = StyleSheet.create({
   },
   exerciseSection: {
     gap: space[2],
-    position: "relative",
   },
   exerciseToggle: {
     alignItems: "center",

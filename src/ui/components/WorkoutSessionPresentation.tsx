@@ -1,12 +1,12 @@
 import React, { useEffect, useState } from "react";
-import { ChevronDown, ChevronRight } from "lucide-react-native";
+import { ChevronDown, ChevronRight, GripVertical } from "lucide-react-native";
 import { StyleSheet, Text, View, type TextStyle } from "react-native";
 
 import type {
   WorkoutPresentationExercise,
   WorkoutPresentationModel,
 } from "../../domains/workout/workoutPresentation";
-import { space, typeScale, useAppTheme } from "../theme";
+import { space, workoutTypeScale, useAppTheme } from "../theme";
 import { FocusablePressable } from "./index";
 import { WorkoutSetFactsRow } from "./WorkoutSetFactsRow";
 
@@ -59,31 +59,36 @@ export function WorkoutSessionPresentation({
               style={[styles.divider, { backgroundColor: colors.divider }]}
               testID={`exercise-divider-${exercise.id}`}
             />}
-            <FocusablePressable
-              accessibilityLabel={exerciseAccessibilityLabel?.(exercise, expanded, index)
-                ?? `${exercise.name}. ${status}. ${completed} of ${total} working sets. ${expanded ? "Collapse" : "Expand"} exercise`}
-              accessibilityRole="button"
-              accessibilityState={{ expanded }}
-              onPress={() => {
-                if (onExerciseToggle !== undefined) {
-                  onExerciseToggle(exercise, expanded, index);
-                  return;
-                }
-                setExpandedIds((current) => {
-                  const next = new Set(current);
-                  if (expanded) next.delete(exercise.id); else next.add(exercise.id);
-                  return next;
-                });
-              }}
-              style={styles.header}
-            >
-              <View style={styles.copy}>
-                <Text accessibilityRole="header" style={[typeScale.bodyStrong as TextStyle, { color: colors.textPrimary }]}>{exercise.name}</Text>
-                <Text style={[typeScale.secondary as TextStyle, { color: colors.textSecondary }]}>{exerciseSupportingText?.(exercise, expanded, index) ?? `${exercise.status} · ${completed} of ${total} working sets`}</Text>
+            <View style={styles.header} testID={`exercise-header-${exercise.id}`}>
+              <View accessibilityElementsHidden importantForAccessibility="no-hide-descendants" style={styles.grip}>
+                <GripVertical color={colors.textSecondary} size={24} />
               </View>
-              {renderExerciseAccessory?.(exercise, index)}
-              {expanded ? <ChevronDown color={colors.textSecondary} size={24} /> : <ChevronRight color={colors.textSecondary} size={24} />}
-            </FocusablePressable>
+              <FocusablePressable
+                accessibilityLabel={exerciseAccessibilityLabel?.(exercise, expanded, index)
+                  ?? `${exercise.name}. ${status}. ${completed} of ${total} working sets. ${expanded ? "Collapse" : "Expand"} exercise`}
+                accessibilityRole="button"
+                accessibilityState={{ expanded }}
+                onPress={() => {
+                  if (onExerciseToggle !== undefined) {
+                    onExerciseToggle(exercise, expanded, index);
+                    return;
+                  }
+                  setExpandedIds((current) => {
+                    const next = new Set(current);
+                    if (expanded) next.delete(exercise.id); else next.add(exercise.id);
+                    return next;
+                  });
+                }}
+                style={styles.disclosure}
+              >
+                <View style={styles.copy}>
+                  <Text accessibilityRole="header" style={[workoutTypeScale.bodyStrong as TextStyle, { color: colors.textPrimary }]}>{exercise.name}</Text>
+                  <Text style={[workoutTypeScale.secondary as TextStyle, { color: colors.textSecondary }]}>{exerciseSupportingText?.(exercise, expanded, index) ?? `${exercise.status} · ${completed} of ${total} working sets`}</Text>
+                </View>
+                {expanded ? <ChevronDown color={colors.textSecondary} size={24} /> : <ChevronRight color={colors.textSecondary} size={24} />}
+              </FocusablePressable>
+              <View style={styles.actions}>{renderExerciseAccessory?.(exercise, index)}</View>
+            </View>
             {children !== undefined
               ? children(exercise, expanded, index)
               : expanded ? (
@@ -99,6 +104,9 @@ export function WorkoutSessionPresentation({
 const styles = StyleSheet.create({
   exercise: { marginBottom: space[2] },
   divider: { height: 3, width: "100%" },
-  header: { alignItems: "center", flexDirection: "row", gap: space[2], minHeight: 80, minWidth: 48, paddingHorizontal: space[4] },
-  copy: { flex: 1 },
+  header: { alignItems: "stretch", flexDirection: "row", minHeight: 80 },
+  grip: { alignItems: "center", justifyContent: "center", minHeight: 80, width: 48 },
+  disclosure: { alignItems: "center", flex: 1, flexDirection: "row", gap: space[2], justifyContent: "space-between", minHeight: 80, minWidth: 48, paddingVertical: space[2] },
+  copy: { flex: 1, flexShrink: 1 },
+  actions: { alignItems: "center", flexDirection: "row", minHeight: 80 },
 });
