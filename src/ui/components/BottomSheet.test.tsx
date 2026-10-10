@@ -306,6 +306,7 @@ describe("BottomSheet", () => {
       minHeight: 0,
     });
     expect(screen.getByTestId("bottom-sheet-scroll")).toHaveStyle({
+      flexBasis: 0,
       flexGrow: 1,
       flexShrink: 1,
       maxHeight: "82%",

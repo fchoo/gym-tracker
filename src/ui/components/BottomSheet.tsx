@@ -369,7 +369,7 @@ const styles = StyleSheet.create({
     justifyContent: "flex-end",
   },
   boundary: { flexGrow: 1, flexShrink: 1, minHeight: 0 },
-  compactScroll: { flexGrow: 1, minHeight: 0 },
+  compactScroll: { flexBasis: 0, flexGrow: 1, minHeight: 0 },
   keyboardAvoider: { justifyContent: "flex-end" },
   frame: {
     borderTopLeftRadius: 24,
