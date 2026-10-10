@@ -146,17 +146,17 @@ Exactly four roots: **Workout, Calendar, Library, Progress**. Preserve SQLite au
 - [ ] **LIB-22**: Preserve existing edit?mode=copy and edit?mode=metric routes, future-target impact, policy choice, confirmation and active-workout guard.
 - [ ] **LIB-23**: Preserve loading, query failure/retry, refresh failure, deleted/missing detail and content-update review/dismiss states in all Library flows.
 - [ ] **LIB-24**: Show saved goal/pacing/schedule and derived weekly sessions with Sync Garmin / match activity, Edit running plan and collision entry points.
-- [ ] **LIB-25**: Open Running creation from the chooser with goal, benchmark and structured sessions; save inactive and make Garmin connection optional afterward.
-- [ ] **LIB-26**: Edit goal distance/time and weekly sessions, validate invalid goal input, and persist edits that the detail and Progress can read.
-- [ ] **LIB-27**: Add/edit a session with Workout type, Day, Warm-up, Cool-down, Session preview and Save session; preserve common fields when changing type.
-- [ ] **LIB-28**: Expose Volume (time or distance) and Easy target (pace, HR zone, or RPE) for Recovery sessions.
-- [ ] **LIB-29**: Expose volume, Effort target and Easy throughout/Steady finish/Progression finish options for Long run.
-- [ ] **LIB-30**: Expose Total volume, Stages, Start target and Finish target for Progression sessions.
-- [ ] **LIB-31**: Expose Continuous/Tempo repeats format, Repeats, Work duration/distance, Recovery and Intensity target for Tempo.
-- [ ] **LIB-32**: Expose Repeats, Work duration/distance, Recovery and pace/HR-zone/RPE target for Intervals.
-- [ ] **LIB-33**: Expose Repeats, Uphill duration/distance, Return recovery and Effort target for Hills.
-- [ ] **LIB-34**: Expose Structured/Unstructured style, Surges/repeats, Fast segment or cue, Easy float/recovery and Effort target.
-- [ ] **LIB-35**: Persist session addition, edit, deletion and order; preserve a truly empty saved session list and provide error/retry without restoring fixture defaults.
+- [x] **LIB-25**: Open Running creation from the chooser with goal, benchmark and structured sessions; save inactive and make Garmin connection optional afterward.
+- [x] **LIB-26**: Edit goal distance/time and weekly sessions, validate invalid goal input, and persist edits that the detail and Progress can read.
+- [x] **LIB-27**: Add/edit a session with Workout type, Day, Warm-up, Cool-down, Session preview and Save session; preserve common fields when changing type.
+- [x] **LIB-28**: Expose Volume (time or distance) and Easy target (pace, HR zone, or RPE) for Recovery sessions.
+- [x] **LIB-29**: Expose volume, Effort target and Easy throughout/Steady finish/Progression finish options for Long run.
+- [x] **LIB-30**: Expose Total volume, Stages, Start target and Finish target for Progression sessions.
+- [x] **LIB-31**: Expose Continuous/Tempo repeats format, Repeats, Work duration/distance, Recovery and Intensity target for Tempo.
+- [x] **LIB-32**: Expose Repeats, Work duration/distance, Recovery and pace/HR-zone/RPE target for Intervals.
+- [x] **LIB-33**: Expose Repeats, Uphill duration/distance, Return recovery and Effort target for Hills.
+- [x] **LIB-34**: Expose Structured/Unstructured style, Surges/repeats, Fast segment or cue, Easy float/recovery and Effort target.
+- [x] **LIB-35**: Persist session addition, edit, deletion and order; preserve a truly empty saved session list and provide error/retry without restoring fixture defaults.
 - [ ] **LIB-36**: Offer Move run, Move strength and Keep both with actual future-date choices, explicit confirmation and persisted outcomes.
 
 ### Phase 18: Standalone Garmin account sync and activity detail
@@ -351,17 +351,17 @@ once and remains Pending until its owning phase is implemented and verified.
 | LIB-22 | 17 | library.copy-metric-migration | Pending |
 | LIB-23 | 17 | library.library-load-errors | Pending |
 | LIB-24 | 17 | library.running-detail | Pending |
-| LIB-25 | 17 | library.running-create | Pending |
-| LIB-26 | 17 | library.running-goal-edit | Pending |
-| LIB-27 | 17 | library.running-session-common | Pending |
-| LIB-28 | 17 | library.running-recovery | Pending |
-| LIB-29 | 17 | library.running-long | Pending |
-| LIB-30 | 17 | library.running-progression | Pending |
-| LIB-31 | 17 | library.running-tempo | Pending |
-| LIB-32 | 17 | library.running-intervals | Pending |
-| LIB-33 | 17 | library.running-hills | Pending |
-| LIB-34 | 17 | library.running-fartlek | Pending |
-| LIB-35 | 17 | library.running-session-lifecycle | Pending |
+| LIB-25 | 17 | library.running-create | Complete |
+| LIB-26 | 17 | library.running-goal-edit | Complete |
+| LIB-27 | 17 | library.running-session-common | Complete |
+| LIB-28 | 17 | library.running-recovery | Complete |
+| LIB-29 | 17 | library.running-long | Complete |
+| LIB-30 | 17 | library.running-progression | Complete |
+| LIB-31 | 17 | library.running-tempo | Complete |
+| LIB-32 | 17 | library.running-intervals | Complete |
+| LIB-33 | 17 | library.running-hills | Complete |
+| LIB-34 | 17 | library.running-fartlek | Complete |
+| LIB-35 | 17 | library.running-session-lifecycle | Complete |
 | LIB-36 | 17 | library.running-conflict | Pending |
 | GAR-01 | 18 | garmin.entry | Pending |
 | GAR-02 | 18 | garmin.header | Pending |
