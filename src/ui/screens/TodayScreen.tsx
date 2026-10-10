@@ -368,6 +368,7 @@ function RestDayContent({
 }>) {
   const [startSheetVisible, setStartSheetVisible] = useState(false);
   const startSheetActionRef = useRef<View>(null);
+  const hasNextPlanDay = planDays.some((day) => day.id === view.nextDayId);
 
   return (
     <>
@@ -380,7 +381,7 @@ function RestDayContent({
         <Text>No workout planned</Text>
         <PrimaryAction disabled label="Nothing scheduled" onPress={noOp} />
         <SecondaryAction
-          label="Choose another day"
+          label={hasNextPlanDay ? "Train anyway" : "Choose another day"}
           onPress={() => setStartSheetVisible(true)}
           ref={startSheetActionRef}
         />

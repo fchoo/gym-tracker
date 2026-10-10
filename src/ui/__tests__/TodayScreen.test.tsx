@@ -118,8 +118,25 @@ describe("Plan 01-07 TodayScreen", () => {
     expect(screen.getByText("Workout was not started")).toBeOnTheScreen();
     expect(screen.getByText(/Your saved data was not changed\. Try again\./u)).toBeOnTheScreen();
     expect(screen.getByRole("button", { name: "Retry starting workout" })).toBeOnTheScreen();
-    await fireEvent.press(screen.getByRole("button", { name: "Choose another day" }));
+    await fireEvent.press(screen.getByRole("button", { name: "Train anyway" }));
     expect(screen.getByRole("button", { name: "Return to Workout" })).toBeOnTheScreen();
+  });
+
+  it("keeps a source-less rest-day view truthful while offering explicit alternatives", async () => {
+    await renderToday({
+      state: "rest_day",
+      planId: "plan-copy",
+      planName: "Full Body Foundation",
+      nextDayId: "removed-day",
+      nextDayName: "Retired Strength Day",
+      nextLocalDate: "2026-09-09",
+    }, {
+      planDays: [{ id: "day-a", name: "Full Body A", ordinal: 0 }],
+    });
+
+    expect(screen.getByRole("button", { name: "Nothing scheduled" })).toBeDisabled();
+    expect(screen.queryByRole("button", { name: "Train anyway" })).not.toBeOnTheScreen();
+    expect(screen.getByRole("button", { name: "Choose another day" })).toBeOnTheScreen();
   });
 
   it("shows independent Running context as navigation only", async () => {
@@ -461,7 +478,7 @@ describe("Plan 01-07 TodayScreen", () => {
     expect(screen.getByRole("header", { name: "Rest day" })).toBeOnTheScreen();
     expect(screen.getByText(/Full Body B · 2026-08-19/u)).toBeOnTheScreen();
     await fireEvent.press(
-      screen.getByRole("button", { name: "Choose another day" }),
+      screen.getByRole("button", { name: "Train anyway" }),
     );
     expect(screen.queryByRole("checkbox", {
       name: "Advance rotation after this workout",
