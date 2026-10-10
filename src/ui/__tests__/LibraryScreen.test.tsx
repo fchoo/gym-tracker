@@ -169,6 +169,27 @@ async function renderLibrary(
 }
 
 describe("LibraryScreen section state", () => {
+  it("renders both source-backed active sport identities without collapsing either row", async () => {
+    await renderLibrary({
+      loadLibrary: jest.fn(async () => ({
+        ...snapshot(),
+        plans: {
+          active: null,
+          activePlans: [
+            { id: "strength-active", name: "Strength Base", daysPerWeek: 3, sport: "Strength" as const, status: "Active" as const },
+            { id: "running-active", name: "10K Build", daysPerWeek: 4, sport: "Running" as const, status: "Active" as const },
+          ],
+          owned: [],
+          starters: starterPlans,
+        },
+      })),
+    });
+
+    expect(await screen.findByText("Active Plans (2)")).toBeOnTheScreen();
+    expect(screen.getByText("Strength Base")).toBeOnTheScreen();
+    expect(screen.getByText("10K Build")).toBeOnTheScreen();
+  });
+
   it("keeps create actions contextual while App Settings stays in the Library root header", async () => {
     const onOpenSettings = jest.fn();
     const onCreatePlan = jest.fn();

@@ -404,6 +404,7 @@ export type LibraryRuntimeSectionPreference = Readonly<{
 export type LibraryRuntimePlanSummary = Readonly<{
   id: string;
   name: string;
+  sport: "Running" | "Strength";
   daysPerWeek: number;
   status?: "Active" | "Draft" | "Archived" | "Inactive";
   scheduleSummary?: string;
@@ -429,6 +430,7 @@ export type LibraryRuntimeSnapshot = Readonly<{
   sectionPreference: LibraryRuntimeSectionPreference;
   plans: Readonly<{
     active: LibraryRuntimePlanSummary | null;
+    activePlans: readonly LibraryRuntimePlanSummary[];
     owned: readonly LibraryRuntimePlanSummary[];
     starters: readonly LibraryRuntimeStarterPlanSummary[];
   }>;
@@ -457,6 +459,7 @@ type LibraryPlanRow = Readonly<{
   source_namespace: string | null;
   upstream_id: string | null;
   source_revision: number | null;
+  plan_kind: "running" | "strength";
 }>;
 
 type LibraryTaxonomyRow = Readonly<{
@@ -1749,7 +1752,8 @@ async function readLibraryPlans(
             legacy_schedule.id AS legacy_schedule_id,
             plan.source_namespace,
             plan.upstream_id,
-            source.source_revision
+            source.source_revision,
+            plan.plan_kind
      FROM plans plan
      LEFT JOIN owned_plan_aggregate_states state ON state.plan_id = plan.id
      LEFT JOIN owned_plan_schedules schedule ON schedule.plan_id = plan.id
@@ -1766,6 +1770,7 @@ async function readLibraryPlans(
     return Object.freeze({
       id: row.id,
       name: row.name,
+      sport: row.plan_kind === "running" ? "Running" : "Strength",
       daysPerWeek: row.days_per_week,
       status: libraryPlanStatus(row)!,
       scheduleSummary: row.schedule_lifecycle === "active"
@@ -1785,8 +1790,17 @@ async function readLibraryPlans(
         : {}),
     });
   });
+  const activePlans = summaries.filter(({ status }) => status === "Active");
+  const activeSports = new Set<string>();
+  for (const activePlan of activePlans) {
+    if (activeSports.has(activePlan.sport)) {
+      throw new Error("library_active_plan_contract_invalid");
+    }
+    activeSports.add(activePlan.sport);
+  }
   return Object.freeze({
-    active: summaries.find(({ status }) => status === "Active") ?? null,
+    active: activePlans[0] ?? null,
+    activePlans: Object.freeze(activePlans),
     owned: Object.freeze(summaries),
     starters: starterPlans,
   });

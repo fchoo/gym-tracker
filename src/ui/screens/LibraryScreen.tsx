@@ -60,6 +60,7 @@ export type LibrarySectionPreference = Readonly<{
 export type LibraryPlanSummary = Readonly<{
   id: string;
   name: string;
+  sport?: "Running" | "Strength";
   daysPerWeek: number;
   status?: "Active" | "Draft" | "Archived" | "Inactive";
   scheduleSummary?: string;
@@ -119,6 +120,7 @@ export type LibraryBrowseSnapshot = Readonly<{
   sectionPreference: LibrarySectionPreference;
   plans: Readonly<{
     active: LibraryPlanSummary | null;
+    activePlans?: readonly LibraryPlanSummary[];
     owned: readonly LibraryPlanSummary[];
     starters: readonly LibraryStarterPlanSummary[];
   }>;
@@ -479,6 +481,7 @@ function whyStarterFits(
 }
 
 function PlansContent({
+  onCreatePlan,
   snapshot,
   query,
   onOpenPlan,
@@ -487,6 +490,7 @@ function PlansContent({
   selectedId,
   starterFilters,
 }: Readonly<{
+  onCreatePlan(): void;
   snapshot: LibraryBrowseSnapshot;
   query: string;
   onOpenPlan(planId: string): void;
@@ -499,12 +503,12 @@ function PlansContent({
   starterFilters: StarterFilters;
 }>) {
   const { colors } = useAppTheme();
-  const active = snapshot.plans.active !== null
-      && sectionMatchesQuery(snapshot.plans.active, query)
-    ? snapshot.plans.active
-    : null;
+  const sourceActive = snapshot.plans.activePlans
+    ?? (snapshot.plans.active === null ? [] : [snapshot.plans.active]);
+  const active = sourceActive.filter((item) => sectionMatchesQuery(item, query));
+  const activeIds = new Set(sourceActive.map(({ id }) => id));
   const owned = snapshot.plans.owned.filter((item) =>
-    sectionMatchesQuery(item, query)
+    !activeIds.has(item.id) && sectionMatchesQuery(item, query)
   );
   const starters = snapshot.plans.starters
     .filter((item) =>
@@ -516,7 +520,7 @@ function PlansContent({
       - (right.ordinal ?? Number.MAX_SAFE_INTEGER)
       || left.id.localeCompare(right.id, "en")
     );
-  const hasMatches = active !== null
+  const hasMatches = active.length > 0
     || owned.length > 0
     || starters.length > 0;
 
@@ -531,8 +535,8 @@ function PlansContent({
 
   return (
     <>
-      <SectionHeader title="Active Plan" />
-      {active === null ? (
+      <SectionHeader title={`Active Plans (${active.length})`} />
+      {active.length === 0 ? (
         <>
           <Text style={[typeScale.body as TextStyle, { color: colors.textSecondary }]}>
             No active plan
@@ -544,22 +548,23 @@ function PlansContent({
             Review a starter plan or create your own. Nothing is scheduled until you confirm it.
           </Text>
         </>
-      ) : (
+      ) : active.map((item) => (
         <PlanRow
-          item={active}
-          {...(active.templateUpdateTemplateId === undefined
+          item={item}
+          {...(item.templateUpdateTemplateId === undefined
               || onOpenTemplateUpdate === undefined
             ? {}
             : {
                 onOpenTemplateUpdate: () => onOpenTemplateUpdate({
-                  ownedPlanId: active.id,
-                  templateId: active.templateUpdateTemplateId!,
+                  ownedPlanId: item.id,
+                  templateId: item.templateUpdateTemplateId!,
                 }),
               })}
-          onPress={() => onOpenPlan(active.id)}
-          selected={selectedId === active.id}
+          key={item.id}
+          onPress={() => onOpenPlan(item.id)}
+          selected={selectedId === item.id}
         />
-      )}
+      ))}
       <SectionHeader title="My Plans" />
       {owned.length === 0 ? (
         <Text style={[typeScale.body as TextStyle, { color: colors.textSecondary }]}>
@@ -608,10 +613,9 @@ function planResultCount(
   starterFilters: StarterFilters,
 ): number {
   return [
-    snapshot.plans.active === null
-      || !sectionMatchesQuery(snapshot.plans.active, query)
-      ? null
-      : snapshot.plans.active,
+    ...(snapshot.plans.activePlans
+      ?? (snapshot.plans.active === null ? [] : [snapshot.plans.active]))
+      .filter((item) => sectionMatchesQuery(item, query)),
     ...snapshot.plans.owned.filter((item) =>
       sectionMatchesQuery(item, query)
     ),
@@ -1785,6 +1789,7 @@ export function LibraryScreen({
               </>
             ) : section === "plans" ? (
               <PlansContent
+                onCreatePlan={onCreatePlan}
                 onOpenPlan={(planId) => {
                   updateSectionState("plans", { selectedId: planId });
                   onOpenPlan(planId);
