@@ -436,6 +436,8 @@ export type ActiveWorkoutScreenProps = Readonly<{
   view: ActiveWorkoutView | EmptyWorkoutView;
   commands: ActiveWorkoutCommands;
   availableExercises?: readonly Readonly<{ id: string; name: string }>[];
+  availableExercisesState?: "loading" | "ready" | "error";
+  onRetryAvailableExercises?: (() => void) | undefined;
   nowMs: () => number;
   notificationPermission?: RestNotificationPermission;
   restSoundEnabled?: boolean;
@@ -462,6 +464,8 @@ export function ActiveWorkoutScreen({
   onOutcomeSaved = () => onFinishLater(),
   onDiscarded = onFinishLater,
   availableExercises = [],
+  availableExercisesState = "ready",
+  onRetryAvailableExercises,
   width,
 }: ActiveWorkoutScreenProps) {
   if ("state" in initialView) {
@@ -469,11 +473,13 @@ export function ActiveWorkoutScreen({
       <EmptyWorkoutOverview
         commands={commands}
         availableExercises={availableExercises}
+        availableExercisesState={availableExercisesState}
         nowMs={nowMs}
         onDiscarded={onDiscarded}
         onFinishLater={onFinishLater}
         onGoBack={onGoBack}
         onOutcomeSaved={onOutcomeSaved}
+        onRetryAvailableExercises={onRetryAvailableExercises}
         sessionId={sessionId}
         view={initialView}
         {...(width === undefined ? {} : { width })}
@@ -485,6 +491,7 @@ export function ActiveWorkoutScreen({
     <PopulatedWorkoutOverview
       commands={commands}
       availableExercises={availableExercises}
+      availableExercisesState={availableExercisesState}
       countdownCue={countdownCue}
       initialView={initialView}
       notificationPermission={notificationPermission}
@@ -494,6 +501,7 @@ export function ActiveWorkoutScreen({
       onGoBack={onGoBack}
       onOpenNotificationSettings={onOpenNotificationSettings}
       onOutcomeSaved={onOutcomeSaved}
+      onRetryAvailableExercises={onRetryAvailableExercises}
       restSoundEnabled={restSoundEnabled}
       sessionId={sessionId}
       {...(width === undefined ? {} : { width })}
@@ -506,11 +514,13 @@ type EmptyWorkoutOverviewProps = Readonly<{
   view: EmptyWorkoutView;
   commands: ActiveWorkoutCommands;
   availableExercises?: readonly Readonly<{ id: string; name: string }>[];
+  availableExercisesState: "loading" | "ready" | "error";
   nowMs: () => number;
   onGoBack: () => void;
   onFinishLater: () => void;
   onOutcomeSaved: (sessionId: string) => void;
   onDiscarded: () => void;
+  onRetryAvailableExercises?: (() => void) | undefined;
   width?: number;
 }>;
 
@@ -519,11 +529,13 @@ function EmptyWorkoutOverview({
   view,
   commands,
   availableExercises = [],
+  availableExercisesState,
   nowMs,
   onGoBack,
   onFinishLater,
   onOutcomeSaved,
   onDiscarded,
+  onRetryAvailableExercises,
   width,
 }: EmptyWorkoutOverviewProps) {
   const { colors } = useAppTheme();
@@ -654,7 +666,22 @@ function EmptyWorkoutOverview({
                   state={filteredExercises.length === 0 ? "empty" : "results"}
                   value={query}
                 />
-                {filteredExercises.map((exercise) => (
+                {availableExercisesState === "loading" ? (
+                  <InlineNotice
+                    body="Please wait while your exercise library loads."
+                    heading="Loading exercises"
+                    tone="neutral"
+                  />
+                ) : availableExercisesState === "error" ? (
+                  <InlineNotice
+                    action={<SecondaryAction label="Retry loading exercises" onPress={() => onRetryAvailableExercises?.()} />}
+                    body="Your workout was not changed. Retry loading exercises before choosing one."
+                    heading="Exercises could not be loaded"
+                    tone="error"
+                  />
+                ) : filteredExercises.length === 0 ? (
+                  <InlineNotice body="Try a different search." heading="No exercises found" tone="neutral" />
+                ) : filteredExercises.map((exercise) => (
                   <FocusablePressable
                     accessibilityLabel={`${exercise.name}. Add exercise`}
                     accessibilityRole="button"
@@ -737,6 +764,8 @@ function PopulatedWorkoutOverview({
   onOutcomeSaved = () => onFinishLater(),
   onDiscarded = onFinishLater,
   availableExercises = [],
+  availableExercisesState = "ready",
+  onRetryAvailableExercises,
   width,
 }: PopulatedWorkoutOverviewProps) {
   const { colors, reduceMotion } = useAppTheme();
@@ -1723,6 +1752,7 @@ function PopulatedWorkoutOverview({
           />
         ) : (
           <WorkoutActionDock
+            addExerciseRef={exerciseAddTriggerRef}
             completeLabel={saveFailedSetId === activeSet.id
               ? "Set not saved · Retry"
               : `Complete Set ${activeIndex + 1}`}
@@ -2234,7 +2264,22 @@ function PopulatedWorkoutOverview({
           state={exerciseAddCandidates.length === 0 ? "empty" : "results"}
           value={exerciseAddQuery}
         />
-        {exerciseAddCandidates.map((candidate) => (
+        {availableExercisesState === "loading" ? (
+          <InlineNotice
+            body="Please wait while your exercise library loads."
+            heading="Loading exercises"
+            tone="neutral"
+          />
+        ) : availableExercisesState === "error" ? (
+          <InlineNotice
+            action={<SecondaryAction label="Retry loading exercises" onPress={() => onRetryAvailableExercises?.()} />}
+            body="Your workout was not changed. Retry loading exercises before choosing one."
+            heading="Exercises could not be loaded"
+            tone="error"
+          />
+        ) : exerciseAddCandidates.length === 0 ? (
+          <InlineNotice body="Try a different search." heading="No exercises found" tone="neutral" />
+        ) : exerciseAddCandidates.map((candidate) => (
           <FocusablePressable
             accessibilityLabel={`${candidate.name}. Add exercise`}
             accessibilityRole="button"

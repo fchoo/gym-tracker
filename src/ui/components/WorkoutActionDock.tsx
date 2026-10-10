@@ -6,6 +6,7 @@ import { space } from "../theme";
 
 export type WorkoutActionDockProps = Readonly<{
   completeLabel: string;
+  addExerciseRef?: React.Ref<View> | undefined;
   onAddExercise: () => void;
   onComplete: () => void;
   state: "ready" | "saving" | "failed";
@@ -17,6 +18,7 @@ export type WorkoutActionDockProps = Readonly<{
  */
 export function WorkoutActionDock({
   completeLabel,
+  addExerciseRef,
   onAddExercise,
   onComplete,
   state,
@@ -29,6 +31,7 @@ export function WorkoutActionDock({
           disabled={busy}
           label="Add exercise"
           onPress={onAddExercise}
+          ref={addExerciseRef}
         />
       </View>
       <View style={styles.action}>

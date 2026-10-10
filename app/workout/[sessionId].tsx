@@ -53,6 +53,10 @@ export default function ActiveWorkoutRoute() {
     id: string;
     name: string;
   }>[]>([]);
+  const [availableExercisesState, setAvailableExercisesState] = useState<
+    "loading" | "ready" | "error"
+  >("loading");
+  const [availableExercisesAttempt, setAvailableExercisesAttempt] = useState(0);
   const mutationCommands = createWorkoutMutationTestCommandAdapters({
     addWarmup: runtime.addWarmup,
     addWorkingSet: runtime.addWorkingSet,
@@ -94,13 +98,20 @@ export default function ActiveWorkoutRoute() {
   }, []));
   useEffect(() => {
     let active = true;
+    setAvailableExercisesState("loading");
     void runtime.listOwnedPlanExercises().then((exercises) => {
       if (active) {
         setAvailableExercises(exercises.map(({ id, name }) => ({ id, name })));
+        setAvailableExercisesState("ready");
       }
-    }).catch(() => { if (active) setAvailableExercises([]); });
+    }).catch(() => {
+      if (active) {
+        setAvailableExercises([]);
+        setAvailableExercisesState("error");
+      }
+    });
     return () => { active = false; };
-  }, [runtime.listOwnedPlanExercises]);
+  }, [availableExercisesAttempt, runtime.listOwnedPlanExercises]);
 
   if (failed) {
     return (
@@ -171,12 +182,16 @@ export default function ActiveWorkoutRoute() {
         skipExercise: runtime.skipExercise,
       }}
       availableExercises={availableExercises}
+      availableExercisesState={availableExercisesState}
       nowMs={() => Date.now()}
       notificationPermission={runtime.notificationPermission}
       restSoundEnabled={runtime.readRestAlertPreferences().soundEnabled}
       countdownCue={countdownCue}
       onOpenNotificationSettings={() => {
         void runtime.openRestNotificationSettings();
+      }}
+      onRetryAvailableExercises={() => {
+        setAvailableExercisesAttempt((attempt) => attempt + 1);
       }}
       onFinishLater={() => router.replace("/(tabs)")}
       onGoBack={returnToWorkout}
