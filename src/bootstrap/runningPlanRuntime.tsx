@@ -1,7 +1,7 @@
 import React, { createContext, useContext } from "react";
 
-import { createInactiveRunningPlan, type CreateInactiveRunningPlanInput } from "../domains/running/commands";
-import type { RunningPlanAggregate } from "../domains/running/contracts";
+import { canonicalRunningRequestHash, createInactiveRunningPlan, saveRunningSourceGraph, type CreateInactiveRunningPlanInput } from "../domains/running/commands";
+import type { RunningPlanAggregate, RunningSessionRevision } from "../domains/running/contracts";
 import type { SqliteKernel } from "../platform/sqlite";
 import { createRunningPlanRepository } from "../platform/sqlite/repositories/runningPlanRepository";
 
@@ -9,7 +9,27 @@ export type RunningPlanRuntimePort = Readonly<{
   createId(kind: string): string;
   createInactivePlan(input: Omit<CreateInactiveRunningPlanInput, "requestId" | "requestSha256">): Promise<RunningPlanAggregate>;
   loadPlan(planId: string): Promise<RunningPlanAggregate | null>;
+  saveSession(input: RunningSessionMutationInput): Promise<RunningSessionMutationResult>;
 }>;
+
+export type RunningSessionMutationInput = Readonly<{
+  planId: string;
+  expectedPlanRevision: number;
+  requestId: string;
+  sessionRootId?: string | undefined;
+  expectedSessionRevision?: number | undefined;
+  slotRootId?: string | undefined;
+  expectedSlotRevision?: number | undefined;
+  session: Readonly<{
+    sessionKind: RunningSessionRevision["sessionKind"];
+    weekday: "Monday" | "Tuesday" | "Wednesday" | "Thursday" | "Friday" | "Saturday" | "Sunday";
+    phases: RunningSessionRevision["phases"];
+    advisoryTarget?: RunningSessionRevision["advisoryTarget"];
+    contextual: RunningSessionRevision["contextual"];
+  }>;
+}>;
+
+export type RunningSessionMutationResult = Readonly<{ plan: RunningPlanAggregate; sessionRootId: string }>;
 
 const RunningPlanRuntimeContext = createContext<RunningPlanRuntimePort | null>(null);
 
@@ -20,6 +40,7 @@ export function createRunningPlanRuntimePort(kernel: SqliteKernel, dependencies:
 }>): RunningPlanRuntimePort {
   const repository = createRunningPlanRepository(kernel);
   const createId = (kind: string) => `${kind}:${dependencies.randomUUID()}`;
+  const sessionCommands = new Map<string, ReturnType<typeof buildSessionCommand>>();
   return Object.freeze({
     createId,
     loadPlan: (planId) => repository.readAggregate(planId),
@@ -31,7 +52,55 @@ export function createRunningPlanRuntimePort(kernel: SqliteKernel, dependencies:
       if (readBack === null) throw new Error("running_plan_readback_missing");
       return readBack;
     },
+    saveSession: async (input) => {
+      const plan = await repository.readAggregate(input.planId);
+      if (plan === null || plan.revision !== input.expectedPlanRevision) throw new Error("running_plan_revision_conflict");
+      const existing = input.sessionRootId === undefined
+        ? undefined
+        : plan.sessions.find((entry) => entry.session.rootId === input.sessionRootId);
+      if (input.sessionRootId !== undefined && (
+        existing === undefined || existing.session.revision !== input.expectedSessionRevision
+        || existing.slot.rootId !== input.slotRootId || existing.slot.revision !== input.expectedSlotRevision
+      )) throw new Error("running_session_revision_conflict");
+      const command = sessionCommands.get(input.requestId) ?? buildSessionCommand({ plan, input, existing, createId, now: dependencies.nowMs() });
+      sessionCommands.set(input.requestId, command);
+      await saveRunningSourceGraph(repository, {
+        ...command,
+        requestSha256: canonicalRunningRequestHash(command),
+      });
+      const readBack = await repository.readAggregate(plan.id);
+      if (readBack === null) throw new Error("running_plan_readback_missing");
+      return Object.freeze({ plan: readBack, sessionRootId: command.sessions[0]!.rootId });
+    },
   });
+}
+
+function buildSessionCommand(input: Readonly<{
+  plan: RunningPlanAggregate;
+  input: RunningSessionMutationInput;
+  existing: RunningPlanAggregate["sessions"][number] | undefined;
+  createId(kind: string): string;
+  now: number;
+}>) {
+  const sessionRootId = input.existing?.session.rootId ?? input.createId("running-session");
+  const sessionRevision = (input.existing?.session.revision ?? 0) + 1;
+  const slotRootId = input.existing?.slot.rootId ?? input.createId("running-slot");
+  const slotRevision = (input.existing?.slot.revision ?? 0) + 1;
+  const session = {
+    version: 1 as const, id: input.createId("running-session-revision"), rootId: sessionRootId,
+    planId: input.plan.id, revision: sessionRevision, createdAtMs: input.now, ...input.input.session,
+  } as RunningSessionRevision;
+  const slot = {
+    id: input.createId("running-slot-revision"), rootId: slotRootId, weekday: input.input.session.weekday,
+    revision: slotRevision, ordinal: input.existing?.slot.ordinal ?? input.plan.sessions.filter((entry) => entry.slot.weekday === input.input.session.weekday).length,
+    sessionRootId, sessionRevisionId: session.id,
+  };
+  return {
+    requestId: input.input.requestId, operation: "edit" as const, planId: input.plan.id,
+    expectedPlanRevision: input.plan.revision, createdAtMs: input.now,
+    goal: { ...input.plan.goal, id: input.createId("running-goal-revision"), revision: input.plan.goal.revision + 1, createdAtMs: input.now },
+    sessions: [session], slots: [slot],
+  };
 }
 
 export function RunningPlanRuntimeProvider(props: Readonly<{ runtime: RunningPlanRuntimePort; children: React.ReactNode }>) {

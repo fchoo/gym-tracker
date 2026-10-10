@@ -65,12 +65,13 @@ const AdvisoryTargetSchema = z.strictObject({
 }).refine((target) => Object.keys(target).length > 0);
 
 const EmptyContextSchema = z.strictObject({});
+const LongRunContextSchema = z.strictObject({
+  finish: z.enum(["easy_throughout", "steady_finish", "progression_finish"]),
+});
 const ProgressionContextSchema = z.strictObject({
-  stages: z.array(z.strictObject({
-    ordinal: NonnegativeIntegerSchema,
-    distanceMeters: PositiveIntegerSchema,
-    pace: z.string().min(1).max(32),
-  })).min(1).max(30),
+  stages: z.number().int().min(2).max(30),
+  startTarget: AdvisoryTargetSchema,
+  finishTarget: AdvisoryTargetSchema,
 });
 const TempoContextSchema = z.strictObject({
   format: z.enum(["continuous", "cruise"]),
@@ -112,7 +113,7 @@ const RevisionCommonSchema = z.strictObject({
 
 export const RunningSessionRevisionV1Schema = z.discriminatedUnion("sessionKind", [
   RevisionCommonSchema.extend({ sessionKind: z.literal("recovery"), contextual: EmptyContextSchema }),
-  RevisionCommonSchema.extend({ sessionKind: z.literal("long_run"), contextual: EmptyContextSchema }),
+  RevisionCommonSchema.extend({ sessionKind: z.literal("long_run"), contextual: LongRunContextSchema }),
   RevisionCommonSchema.extend({ sessionKind: z.literal("progression"), contextual: ProgressionContextSchema }),
   RevisionCommonSchema.extend({ sessionKind: z.literal("tempo"), contextual: TempoContextSchema }),
   RevisionCommonSchema.extend({ sessionKind: z.literal("intervals"), contextual: IntervalsContextSchema }),

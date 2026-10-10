@@ -28,8 +28,8 @@ const base = {
 describe("Running source contracts", () => {
   test.each([
     ["recovery", {}],
-    ["long_run", {}],
-    ["progression", { stages: [{ ordinal: 0, distanceMeters: 1_000, pace: "easy" }] }],
+    ["long_run", { finish: "easy_throughout" }],
+    ["progression", { stages: 3, startTarget: { rpe: 4 }, finishTarget: { paceMsPerKm: 300_000 } }],
     ["tempo", { format: "continuous", durationMs: 1_200_000 }],
     ["intervals", { repetitions: 4, work: { durationMs: 180_000 }, recovery: { durationMs: 90_000 } }],
     ["hills", { repetitions: 6, work: { distanceMeters: 200 }, returnRecovery: { durationMs: 120_000 } }],
@@ -49,6 +49,7 @@ describe("Running source contracts", () => {
       phases: [{ ordinal: 0, kind: "work", steps: [{ ordinal: 0, kind: "distance", distanceMeters: 1.5 }] }],
     })).toThrow(RunningBoundaryError);
     expect(() => parseRunningSessionRevision({ ...base, sessionKind: "long_run", contextual: {}, gender: "female" })).toThrow(RunningBoundaryError);
+    expect(() => parseRunningSessionRevision({ ...base, sessionKind: "progression", contextual: { stages: 1, startTarget: { rpe: 4 }, finishTarget: { rpe: 7 } } })).toThrow(RunningBoundaryError);
   });
 
   test("preserves optional owner facts as absent and validates advisory targets", () => {

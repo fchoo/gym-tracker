@@ -3,7 +3,7 @@ import { Text, TextInput, View } from "react-native";
 
 import { RUNNING_SESSION_KINDS, type RunningPlanAggregate, type RunningSessionKind } from "../../domains/running/contracts";
 import { PrimaryAction, ScreenHeader, SecondaryAction } from "../components";
-import { RunningSessionFields } from "../components/RunningSessionFields";
+import { RunningSessionFields, initialRunningSessionFormDraft } from "../components/RunningSessionFields";
 import {
   addRunningSessionDraft,
   deleteRunningSessionDraft,
@@ -49,7 +49,7 @@ export function RunningPlanEditorScreen(props: Readonly<{
     <Text>Available days · {draft.goal.trainingDays.join(", ")}</Text>
     {RUNNING_SESSION_KINDS.map((kind) => <SecondaryAction key={kind} label={`Add ${kind.replace("_", " ")}`} onPress={() => add(kind)} />)}
     {draft.sessions.map((session, index) => <View key={session.slot.rootId}>
-      <RunningSessionFields session={session} onChange={(entry) => setDraft((current) => updateRunningSessionDraft(current, entry))} />
+      <RunningSessionFields draft={initialRunningSessionFormDraft(session.session.sessionKind, session.slot.weekday)} onChange={() => undefined} />
       <SecondaryAction label={`Delete ${session.session.sessionKind}`} onPress={() => setDraft((current) => deleteRunningSessionDraft(current, session.slot.rootId))} />
       <SecondaryAction disabled={index === 0} label={`Move ${session.session.sessionKind} earlier`} onPress={() => setDraft((current) => reorderRunningSessionDraft(current, current.sessions.map((entry, position) => position === index ? current.sessions[index - 1]!.slot.rootId : position === index - 1 ? session.slot.rootId : entry.slot.rootId)))} />
     </View>)}

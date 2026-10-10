@@ -10,7 +10,7 @@ import { createMigrationRunner } from "../../src/platform/sqlite/migrationRunner
 import { migrations } from "../../src/platform/sqlite/migrations";
 import { createRunningPlanRepository } from "../../src/platform/sqlite/repositories/runningPlanRepository";
 import { createSqliteKernel, type SqliteKernel } from "../../src/platform/sqlite/sqliteKernel";
-import type { CreateInactiveRunningPlanInput } from "../../src/domains/running/commands";
+import { canonicalRunningRequestHash, saveRunningSourceGraph, type CreateInactiveRunningPlanInput, type SaveRunningSourceGraphInput } from "../../src/domains/running/commands";
 import type { RunningPlanSession } from "../../src/domains/running/contracts";
 
 class Result<Row extends Record<string, unknown>> implements SqlitePreparedResult<Row> {
@@ -66,5 +66,29 @@ describe("Running plan authoring boundary", () => {
     await expect(repository.readAggregate("same-day")).resolves.toEqual(committed);
     await expect(kernel.queryAll<{ plan_kind: string; is_active: number }>("SELECT plan_kind, is_active FROM plans WHERE id = ?", ["same-day"])).resolves.toEqual([{ plan_kind: "running", is_active: 0 }]);
     await expect(repository.createInactiveAggregate({ ...plan, requestSha256: "3".repeat(64) })).rejects.toThrow("sqlite_transaction_failed");
+  });
+
+  it("adds Recovery, Long run, and Progression revisions then reopens exact typed source facts", async () => {
+    const kernel = await migratedKernel(); const repository = createRunningPlanRepository(kernel);
+    const plan: CreateInactiveRunningPlanInput = { requestId: "typed-request", requestSha256: "4".repeat(64), plan: { version: 1, id: "typed", name: "Typed", revision: 1, createdAtMs: 100, goal: { version: 1, id: "typed-goal", planId: "typed", revision: 1, goalDistanceMeters: 10_000, trainingDays: ["Monday", "Thursday"], createdAtMs: 100 }, sessions: [] } };
+    await repository.createInactiveAggregate(plan);
+    const graph = (expectedPlanRevision: number, requestId: string, session: SaveRunningSourceGraphInput["sessions"][number], slot: SaveRunningSourceGraphInput["slots"][number]): SaveRunningSourceGraphInput => {
+      const value = { requestId, operation: "edit" as const, planId: "typed", expectedPlanRevision, createdAtMs: 200 + expectedPlanRevision, goal: { ...plan.plan.goal, id: `typed-goal-${expectedPlanRevision}`, revision: expectedPlanRevision + 1, createdAtMs: 200 + expectedPlanRevision }, sessions: [session], slots: [slot] };
+      return { ...value, requestSha256: canonicalRunningRequestHash(value) };
+    };
+    const recovery = { version: 1 as const, id: "recovery-v1", rootId: "recovery-root", planId: "typed", revision: 1, createdAtMs: 201, sessionKind: "recovery" as const, phases: [{ ordinal: 0, kind: "work" as const, steps: [{ ordinal: 0, kind: "distance" as const, distanceMeters: 5_000 }] }], advisoryTarget: { rpe: 4 }, contextual: {} };
+    await saveRunningSourceGraph(repository, graph(1, "typed-recovery", recovery, { id: "recovery-slot-v1", rootId: "recovery-slot", weekday: "Monday", revision: 1, ordinal: 0, sessionRootId: recovery.rootId, sessionRevisionId: recovery.id }));
+    const longRun = { version: 1 as const, id: "long-v1", rootId: "long-root", planId: "typed", revision: 1, createdAtMs: 202, sessionKind: "long_run" as const, phases: [{ ordinal: 0, kind: "work" as const, steps: [{ ordinal: 0, kind: "distance" as const, distanceMeters: 14_000 }] }], advisoryTarget: { heartRateZone: 2 }, contextual: { finish: "steady_finish" as const } };
+    await saveRunningSourceGraph(repository, graph(2, "typed-long", longRun, { id: "long-slot-v1", rootId: "long-slot", weekday: "Thursday", revision: 1, ordinal: 0, sessionRootId: longRun.rootId, sessionRevisionId: longRun.id }));
+    const progression = { version: 1 as const, id: "progression-v1", rootId: "progression-root", planId: "typed", revision: 1, createdAtMs: 203, sessionKind: "progression" as const, phases: [{ ordinal: 0, kind: "work" as const, steps: [{ ordinal: 0, kind: "distance" as const, distanceMeters: 9_000 }] }], contextual: { stages: 3, startTarget: { rpe: 4 }, finishTarget: { paceMsPerKm: 290_000 } } };
+    await saveRunningSourceGraph(repository, graph(3, "typed-progression", progression, { id: "progression-slot-v1", rootId: "progression-slot", weekday: "Thursday", revision: 1, ordinal: 1, sessionRootId: progression.rootId, sessionRevisionId: progression.id }));
+    const readBack = await repository.readAggregate("typed");
+    expect(readBack?.active).toBe(false);
+    expect(readBack?.sessions).toEqual(expect.arrayContaining([
+      expect.objectContaining({ session: expect.objectContaining({ sessionKind: "recovery", advisoryTarget: { rpe: 4 } }) }),
+      expect.objectContaining({ session: expect.objectContaining({ sessionKind: "long_run", contextual: { finish: "steady_finish" } }) }),
+      expect.objectContaining({ session: expect.objectContaining({ sessionKind: "progression", contextual: { stages: 3, startTarget: { rpe: 4 }, finishTarget: { paceMsPerKm: 290_000 } } }) }),
+    ]));
+    expect(readBack?.sessions.filter((entry) => entry.slot.weekday === "Thursday").map((entry) => entry.slot.ordinal)).toEqual([0, 1]);
   });
 });

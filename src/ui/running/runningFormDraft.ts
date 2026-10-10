@@ -64,7 +64,12 @@ export function makeRunningSessionDraft(input: Readonly<{
   ordinal: number;
   createdAtMs: number;
 }>): RunningPlanSession {
-  const contextual = input.kind === "progression" ? { stages: [{ ordinal: 0, distanceMeters: 1_000, pace: "steady" }] }
+  const contextual = input.kind === "long_run" ? { finish: "easy_throughout" as const }
+    : input.kind === "progression" ? {
+      stages: 2,
+      startTarget: { rpe: 4 },
+      finishTarget: { rpe: 7 },
+    }
     : input.kind === "tempo" ? { format: "continuous" as const, durationMs: 60_000 }
     : input.kind === "intervals" ? { repetitions: 1, work: { durationMs: 60_000 }, recovery: { durationMs: 60_000 } }
     : input.kind === "hills" ? { repetitions: 1, work: { durationMs: 60_000 }, returnRecovery: { durationMs: 60_000 } }
