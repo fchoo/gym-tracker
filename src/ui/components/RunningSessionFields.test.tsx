@@ -6,6 +6,7 @@ import {
   RunningSessionFields,
   initialRunningSessionFormDraft,
   runningSessionFieldNativeID,
+  runningSessionPreview,
   validateRunningSessionFormDraft,
   type RunningSessionFormDraft,
 } from "./RunningSessionFields";
@@ -161,5 +162,11 @@ describe("RunningSessionFields", () => {
     expect(view.getByLabelText("Fast cue")).toBeOnTheScreen();
     expect(view.getByLabelText("Easy recovery cue")).toBeOnTheScreen();
     expect(view.queryByLabelText("Fast segment (minutes)")).not.toBeOnTheScreen();
+  });
+
+  it("keeps effort targets and units in Hills and structured Fartlek previews", () => {
+    const target = { mode: "rpe" as const, paceMsPerKm: "", heartRateZone: "", rpe: "7" };
+    expect(runningSessionPreview({ ...initialRunningSessionFormDraft("hills", "Saturday"), repeats: "6", work: "60000", recovery: "120000", target })).toBe("6 × uphill 1 min · return recovery 2 min · RPE 7");
+    expect(runningSessionPreview({ ...initialRunningSessionFormDraft("fartlek", "Sunday"), repeats: "5", work: "800", workUnit: "distance", recovery: "60000", target })).toBe("5 × 800 m · easy 1 min · RPE 7");
   });
 });

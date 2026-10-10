@@ -160,9 +160,9 @@ export function runningSessionPreview(draft: RunningSessionFormDraft): string | 
     ? `${quantity(draft.work, draft.workUnit)} continuous · ${targetText(draft.target)}`
     : `${draft.repeats} × ${quantity(draft.work, draft.workUnit)} · ${quantity(draft.recovery, draft.recoveryUnit)}`;
   if (draft.kind === "intervals") return `${draft.repeats} × ${quantity(draft.work, draft.workUnit)} · ${quantity(draft.recovery, draft.recoveryUnit)} · ${targetText(draft.target)}`;
-  if (draft.kind === "hills") return `${draft.repeats} × ${quantity(draft.work, draft.workUnit)} · ${quantity(draft.recovery, draft.recoveryUnit)}`;
+  if (draft.kind === "hills") return `${draft.repeats} × uphill ${quantity(draft.work, draft.workUnit)} · return recovery ${quantity(draft.recovery, draft.recoveryUnit)} · ${targetText(draft.target)}`;
   if (draft.kind === "fartlek") return draft.fartlekStyle === "structured"
-    ? `${draft.repeats} × ${quantity(draft.work, draft.workUnit)} / ${quantity(draft.recovery, draft.recoveryUnit)}`
+    ? `${draft.repeats} × ${quantity(draft.work, draft.workUnit)} · easy ${quantity(draft.recovery, draft.recoveryUnit)} · ${targetText(draft.target)}`
     : `${draft.repeats} surges · ${draft.fastCue.trim()} / ${draft.easyRecoveryCue.trim()}`;
   return null;
 }

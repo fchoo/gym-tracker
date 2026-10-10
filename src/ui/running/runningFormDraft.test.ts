@@ -5,6 +5,7 @@ import {
   addRunningSessionDraft,
   deleteRunningSessionDraft,
   isRunningSessionKind,
+  isCalendarLocalDate,
   makeRunningSessionDraft,
   reorderRunningSessionDraft,
   validateRunningPlanDraft,
@@ -49,5 +50,19 @@ describe("Running plan local draft", () => {
     expect(isFutureLocalDate("2026-10-12", "2026-10-11")).toBe(true);
     expect(isFutureLocalDate("2026-10-11", "2026-10-11")).toBe(false);
     expect(isFutureLocalDate("2026-02-30", "2026-02-01")).toBe(false);
+  });
+
+  it("rejects an impossible benchmark recorded date while retaining a valid draft shape", () => {
+    const withImpossibleBenchmark = {
+      ...draft,
+      goal: {
+        ...draft.goal,
+        benchmark: { source: "manual" as const, distanceMeters: 5_000, durationMs: 1_800_000, localDate: "2026-02-30" },
+      },
+    };
+
+    expect(isCalendarLocalDate("2026-02-29")).toBe(false);
+    expect(isCalendarLocalDate("2028-02-29")).toBe(true);
+    expect(validateRunningPlanDraft(withImpossibleBenchmark, "2026-02-01")).toBe("running_goal_benchmark_invalid");
   });
 });

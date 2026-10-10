@@ -171,4 +171,24 @@ describe("RunningPlanEditorScreen", () => {
       ],
     })));
   });
+
+  it("focuses and announces the stable Running plan recovery heading after an async save failure", async () => {
+    const announce = jest.spyOn(require("react-native").AccessibilityInfo, "announceForAccessibility");
+    const view = await render(<AppearanceProvider><RunningPlanEditorScreen
+      createId={(kind) => `${kind}:failure`}
+      initialDraft={initialDraft}
+      onBack={jest.fn()}
+      onSaved={jest.fn()}
+      savePlan={jest.fn(async () => { throw new Error("write_failed"); })}
+    /></AppearanceProvider>);
+
+    mockRequestAndroidViewFocus.mockClear();
+    await fireEvent.press(view.getByRole("button", { name: "Create running plan" }));
+
+    await view.findByText("Running plan could not be saved");
+    expect(view.getByText("Running plan could not be saved").parent?.parent).toHaveProp("nativeID", "running-plan-save-error-heading");
+    expect(view.getByRole("button", { name: "Retry saving plan" })).toBeOnTheScreen();
+    expect(announce).toHaveBeenCalledWith("Running plan could not be saved. Your edits are still here. Retry saving plan.");
+    await waitFor(() => expect(mockRequestAndroidViewFocus).toHaveBeenCalledWith("running-plan-save-error-heading"));
+  });
 });

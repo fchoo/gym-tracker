@@ -64,6 +64,7 @@ export function RunningPlanEditorScreen(props: Readonly<{
   const [deleteRestoreNativeID, setDeleteRestoreNativeID] = useState<string | undefined>(undefined);
   const [leaveRestoreNativeID, setLeaveRestoreNativeID] = useState<string | undefined>(undefined);
   const saveRef = useRef<View>(null);
+  const saveErrorRef = useRef<View>(null);
   const distanceRef = useRef<TextInput>(null);
   const timeRef = useRef<View>(null);
   const dateRef = useRef<TextInput>(null);
@@ -90,6 +91,13 @@ export function RunningPlanEditorScreen(props: Readonly<{
     void requestAndroidViewFocus(nativeID);
     setPendingPostDeleteFocus(null);
   }, [draft.sessions, pendingPostDeleteFocus]);
+  useEffect(() => {
+    if (error === null || !error.startsWith("Running plan could not be saved.")) return;
+    requestAnimationFrame(() => {
+      saveErrorRef.current?.focus?.();
+      void requestAndroidViewFocus("running-plan-save-error-heading");
+    });
+  }, [error]);
   const dirty = useMemo(() => JSON.stringify(draft) !== JSON.stringify(props.initialDraft), [draft, props.initialDraft]);
   const add = (kind: RunningSessionKind) => setDraft((current) => addRunningSessionDraft(current, makeRunningSessionDraft({
     id: props.createId("running-session-revision"), rootId: props.createId("running-session"),
@@ -134,6 +142,7 @@ export function RunningPlanEditorScreen(props: Readonly<{
       if (pendingSession !== null) props.onOpenSession?.(pendingSession);
     } catch {
       setError("Running plan could not be saved. Your edits are still here. Try again.");
+      AccessibilityInfo.announceForAccessibility("Running plan could not be saved. Your edits are still here. Retry saving plan.");
     } finally { setSaving(false); }
   };
   const leave = () => {
@@ -144,6 +153,7 @@ export function RunningPlanEditorScreen(props: Readonly<{
   const invalid = (code: RunningPlanDraftValidation) => code === "running_goal_runs_per_week_invalid"
     ? (error?.includes("weekly sessions") ? error.replace("Running plan needs attention. ", "") : undefined)
     : (validationCopy[code] !== "" && error?.includes(validationCopy[code]) ? validationCopy[code] : undefined);
+  const saveFailure = error?.startsWith("Running plan could not be saved.") ?? false;
   const primary = <>
     <ScreenHeader backAction={() => dirty ? setLeaveVisible(true) : props.onBack()} density="deep" eyebrow="RUNNING" title={props.title ?? "Goal and weekly sessions"} />
     <Text style={[typeScale.sectionTitle as TextStyle, { color: colors.textPrimary }]}>Goal and weekly sessions</Text>
@@ -165,7 +175,7 @@ export function RunningPlanEditorScreen(props: Readonly<{
     <Text accessibilityRole="header" style={[typeScale.sectionTitle as TextStyle, { color: colors.textPrimary }]}>Weekly structure</Text>
     <View style={styles.actionList}>{RUNNING_SESSION_KINDS.map((kind) => <SecondaryAction key={kind} label={`Add ${sessionName(kind)} session`} onPress={() => add(kind)} />)}</View>
     {draft.sessions.length === 0 ? <EmptyState body="Add a Recovery, Long run, Progression, Tempo, Intervals, Hills, or Fartlek session." heading="No sessions yet" primaryAction={<SecondaryAction label="Add session" nativeID="running-plan-add-session" onPress={() => add("recovery")} ref={addSessionRef} />} /> : draft.sessions.map((session, index) => <PlanEditorReorderableRow key={session.slot.rootId} count={draft.sessions.length} label={`${session.slot.weekday} · ${sessionName(session.session.sessionKind)}`} moveEarlierLabel={`Move ${sessionName(session.session.sessionKind)} earlier`} moveLaterLabel={`Move ${sessionName(session.session.sessionKind)} later`} onMoveDown={() => move(index, index + 1)} onMoveUp={() => move(index, index - 1)} position={index}><View style={styles.sessionSummary}><Text style={[typeScale.bodyStrong as TextStyle, { color: colors.textPrimary }]}>{`${session.slot.weekday} · ${sessionName(session.session.sessionKind)}`}</Text><Text style={[typeScale.secondary as TextStyle, { color: colors.textSecondary }]}>{runningSessionReadback(session)}</Text><SecondaryAction label={`Edit ${sessionName(session.session.sessionKind)} session`} nativeID={sessionEditNativeID(session.slot.rootId)} onPress={() => { leaveRestoreRef.current = sessionEditRefs.current.get(session.slot.rootId) ?? null; setLeaveRestoreNativeID(sessionEditNativeID(session.slot.rootId)); if (dirty) { setPendingSession(session.session.rootId); setLeaveVisible(true); } else props.onOpenSession?.(session.session.rootId); }} ref={(node) => { sessionEditRefs.current.set(session.slot.rootId, node); }} /><SecondaryAction destructive label={`Delete ${sessionName(session.session.sessionKind)} session`} nativeID={sessionDeleteNativeID(session.slot.rootId)} onPress={() => { deleteRestoreRef.current = sessionDeleteRefs.current.get(session.slot.rootId) ?? null; setDeleteRestoreNativeID(sessionDeleteNativeID(session.slot.rootId)); setPendingDeleteSlotRootId(session.slot.rootId); }} ref={(node) => { sessionDeleteRefs.current.set(session.slot.rootId, node); }} /></View></PlanEditorReorderableRow>)}
-    {error === null ? null : <InlineNotice action={<SecondaryAction label="Retry saving plan" onPress={() => void save()} />} body={error} heading="Save failed" tone="error" />}
+    {error === null ? null : <InlineNotice action={<SecondaryAction label="Retry saving plan" onPress={() => void save()} />} body={error} heading={saveFailure ? "Running plan could not be saved" : "Running plan needs attention"} {...(saveFailure ? { focusable: true, nativeID: "running-plan-save-error-heading", noticeRef: saveErrorRef } : {})} tone="error" />}
     <PrimaryAction busy={saving} disabled={saving} label={saving ? "Saving plan…" : createLabel} onPress={() => void save()} ref={saveRef} />
   </>;
   return <><AdaptiveScreen primary={primary} testID="running-plan-editor" />

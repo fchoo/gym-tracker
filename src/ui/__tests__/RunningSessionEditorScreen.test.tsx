@@ -7,6 +7,11 @@ import { makeRunningSessionSpec, runningSessionKindLabel, RunningSessionEditorSc
 import { initialRunningSessionFormDraft } from "../components/RunningSessionFields";
 import { AppearanceProvider } from "../theme";
 
+const mockRequestAndroidViewFocus = jest.fn<(nativeID: string) => Promise<boolean>>(async () => true);
+jest.mock("../../bootstrap/androidViewFocus", () => ({
+  requestAndroidViewFocus: (nativeID: string) => mockRequestAndroidViewFocus(nativeID),
+}));
+
 const plan: RunningPlanAggregate = {
   version: 1, id: "plan-1", name: "Plan", revision: 1, active: false, lifecycle: "inactive", createdAtMs: 1,
   goal: { version: 1, id: "goal-1", planId: "plan-1", revision: 1, goalDistanceMeters: 5000, trainingDays: ["Monday"], createdAtMs: 1 },
@@ -197,10 +202,12 @@ describe("RunningSessionEditorScreen", () => {
     await fireEvent.changeText(view.getByLabelText("RPE (1–10)"), "6");
     await fireEvent.press(view.getByRole("button", { name: "Save session" }));
 
-    await view.findByText("Save failed");
+    await view.findByText("Long run session could not be saved");
     expect(view.getByText("Long run session could not be saved. Your edits are still here. Try again.")).toBeOnTheScreen();
     expect(view.getByLabelText("Volume (metres)")).toHaveProp("value", "12000");
     expect(view.getByRole("button", { name: "Retry saving Long run session" })).toBeOnTheScreen();
+    expect(view.getByText("Long run session could not be saved").parent?.parent).toHaveProp("nativeID", "running-session-save-error-heading");
+    await waitFor(() => expect(mockRequestAndroidViewFocus).toHaveBeenCalledWith("running-session-save-error-heading"));
   });
 
   it("retries a failed load without writing and returns to the session draft", async () => {

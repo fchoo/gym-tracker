@@ -771,12 +771,19 @@ export function InlineNotice({
   tone = "neutral",
   card = false,
   action,
+  focusable = false,
+  nativeID,
+  noticeRef,
 }: Readonly<{
   heading: string;
   body: string;
   tone?: NoticeTone;
   card?: boolean;
   action?: React.ReactNode;
+  /** Used by recovery flows that must move assistive focus to this notice. */
+  focusable?: boolean;
+  nativeID?: string;
+  noticeRef?: React.Ref<View>;
 }>) {
   const { colors } = useAppTheme();
   const semanticColor =
@@ -804,6 +811,11 @@ export function InlineNotice({
     View,
     {
       accessibilityLiveRegion: tone === "neutral" ? "none" : "polite",
+      accessibilityRole: focusable ? "header" : undefined,
+      accessible: focusable || undefined,
+      focusable,
+      nativeID,
+      ref: noticeRef,
       style: styles.notice,
     },
     iconElement(noticeIcons[tone], semanticColor, iconLabel),
