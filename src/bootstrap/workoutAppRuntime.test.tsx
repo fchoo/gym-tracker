@@ -605,6 +605,7 @@ const sessionWriteBackPreview: SessionExerciseEditsForPlanPreview = {
   currentWorkoutUnaffected: true,
   previewToken: `session-writeback-v1:${"a".repeat(64)}`,
   composition: [],
+  changes: [],
 };
 
 function runtimeOutcomeRepository():

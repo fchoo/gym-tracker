@@ -337,6 +337,7 @@ describe("owned plan runtime port", () => {
       currentWorkoutUnaffected: true,
       previewToken: `session-writeback-v1:${'a'.repeat(64)}`,
       composition: [],
+      changes: [],
     });
     mockedApplySessionExerciseEditsToPlan.mockResolvedValue({
       outcome: 'committed',

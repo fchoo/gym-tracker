@@ -94,6 +94,7 @@ const awaiting: CompletedWorkoutPlanWriteBackState = {
     currentWorkoutUnaffected: true,
     previewToken: `session-writeback-v1:${"a".repeat(64)}`,
     composition: [],
+    changes: [],
   },
 };
 
