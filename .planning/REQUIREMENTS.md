@@ -137,9 +137,9 @@ Exactly four roots: **Workout, Calendar, Library, Progress**. Preserve SQLite au
 - [x] **LIB-13**: Collect Plan name and First day, continue to the real editor, and save the draft without activation.
 - [x] **LIB-14**: Preserve day/exercise/set/metric target editing, add/move/remove actions and explicit save while applying the approved compact editor presentation.
 - [x] **LIB-15**: Preserve unsaved-change confirmation, save failure/retry, revision conflict, archive/duplicate confirmations and immutable completed history.
-- [ ] **LIB-16**: Edit future weekday bindings with selected-day state and Save schedule, preserving real effective-date, rotation and multi-plan ownership rules.
-- [ ] **LIB-17**: Retain occurrence/all-occurrences scope, compatible metric selection, target review and refreshed impact preview before saving replacement.
-- [ ] **LIB-18**: Retain removal impact, replacement binding/remove binding, effective date and current-workout guard before deleting a plan day.
+- [x] **LIB-16**: Edit future weekday bindings with selected-day state and Save schedule, preserving real effective-date, rotation and multi-plan ownership rules.
+- [x] **LIB-17**: Retain occurrence/all-occurrences scope, compatible metric selection, target review and refreshed impact preview before saving replacement.
+- [x] **LIB-18**: Retain removal impact, replacement binding/remove binding, effective date and current-workout guard before deleting a plan day.
 - [ ] **LIB-19**: Show exercise instructions, tracking, equipment, last result and plan usage with favorite and Hide from pickers actions while preserving bundled facts.
 - [ ] **LIB-20**: Show custom identity and manual progression; edit name/tracking/equipment through the real editor and archive explicitly.
 - [ ] **LIB-21**: Create a local custom exercise with valid Name, Tracking and Equipment fields, then open its detail; preserve all supported metric-profile choices.
@@ -342,9 +342,9 @@ once and remains Pending until its owning phase is implemented and verified.
 | LIB-13 | 17 | library.create-strength | Complete |
 | LIB-14 | 17 | library.plan-editor | Complete |
 | LIB-15 | 17 | library.editor-draft-guards | Complete |
-| LIB-16 | 17 | library.schedule-editor | Pending |
-| LIB-17 | 17 | library.replacement-impact | Pending |
-| LIB-18 | 17 | library.day-removal-impact | Pending |
+| LIB-16 | 17 | library.schedule-editor | Complete |
+| LIB-17 | 17 | library.replacement-impact | Complete |
+| LIB-18 | 17 | library.day-removal-impact | Complete |
 | LIB-19 | 17 | library.builtin-exercise | Pending |
 | LIB-20 | 17 | library.custom-exercise | Pending |
 | LIB-21 | 17 | library.create-exercise | Pending |
