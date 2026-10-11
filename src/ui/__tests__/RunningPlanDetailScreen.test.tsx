@@ -39,6 +39,18 @@ beforeEach(() => {
 afterEach(() => consoleError.mockRestore());
 
 describe("RunningPlanDetailScreen", () => {
+  it("activates the one Garmin handoff without replacing loaded plan facts", async () => {
+    const onGarmin = jest.fn();
+    await render(<AppearanceProvider><RunningPlanDetailScreen planId="running-1" loadPlan={jest.fn(async () => plan)} onBack={jest.fn()} onEdit={jest.fn()} onNewSession={jest.fn()} onEditSession={jest.fn()} onGarmin={onGarmin} createLifecycleRequestId={() => "lifecycle-1"} previewLifecycle={jest.fn(async () => lifecyclePreview)} confirmLifecycle={jest.fn(async () => plan)} /></AppearanceProvider>);
+
+    expect(await screen.findByText("10K base")).toBeOnTheScreen();
+    await fireEvent.press(screen.getByRole("button", { name: "Sync Garmin / match activity" }));
+
+    expect(onGarmin).toHaveBeenCalledTimes(1);
+    expect(screen.getByText("10K base")).toBeOnTheScreen();
+    expect(screen.getByText("Monday · Tempo")).toBeOnTheScreen();
+  });
+
   it("shows factual inactive goal, pace, zero-safe facts, and stable same-day slot order", async () => {
     await render(<AppearanceProvider><RunningPlanDetailScreen planId="running-1" loadPlan={jest.fn(async () => plan)} onBack={jest.fn()} onEdit={jest.fn()} onNewSession={jest.fn()} onEditSession={jest.fn()} onGarmin={jest.fn()} createLifecycleRequestId={() => "lifecycle-1"} previewLifecycle={jest.fn(async () => lifecyclePreview)} confirmLifecycle={jest.fn(async () => ({ ...plan, lifecycle: "active" as const, active: true }))} /></AppearanceProvider>);
     await screen.findByText("INACTIVE");

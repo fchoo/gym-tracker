@@ -130,6 +130,25 @@ describe("ImportedActivityDetailRoute local identity boundary", () => {
     expect(mockLoadImportedActivityDetail).not.toHaveBeenCalled();
   });
 
+  it.each([
+    { origin: "library", returnToken: undefined },
+    { origin: "workout", returnToken: "calendar:day:2026-10-04:agenda-1" },
+    { origin: "calendar", returnToken: "https://arbitrary.example" },
+    { origin: ["calendar"], returnToken: "calendar:day:2026-10-04:agenda-1" },
+  ])("rejects invalid Calendar route context %# without loading or redirecting", async ({ origin, returnToken }) => {
+    mockParams = {
+      activityId: "activity-local-01",
+      origin,
+      ...(returnToken === undefined ? {} : { returnToken }),
+    };
+
+    await renderRoute();
+
+    expect(await screen.findByText("Activity not found")).toBeTruthy();
+    expect(mockLoadImportedActivityDetail).not.toHaveBeenCalled();
+    expect(mockPush).not.toHaveBeenCalled();
+  });
+
   it("retries the same validated local ID after a bounded projection failure", async () => {
     await renderRoute();
 
