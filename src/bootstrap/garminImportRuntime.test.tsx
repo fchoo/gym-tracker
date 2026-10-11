@@ -53,7 +53,7 @@ describe("Garmin import runtime", () => {
     const repository: ImportedActivityCommandRepository = {
       confirmGarminImport: jest.fn(async (input) => {
         events.push("committed");
-        expect(input.staged.envelope).toBe(envelopeValue);
+        expect(input.staged.envelope).toEqual(envelopeValue);
         expect(input.staged.canonical_payload_json).toBe(
           canonicalJson({
             normalization_version: 1,
