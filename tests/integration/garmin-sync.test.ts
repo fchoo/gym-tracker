@@ -113,7 +113,9 @@ async function runtime() {
   return { kernel, repository: createImportedActivityRepository(kernel) };
 }
 
-async function source(): Promise<GarminActivitySourcePort> {
+async function source(input: Readonly<{
+  readActivity?: (externalActivityId: string) => ReturnType<GarminActivitySourcePort["readActivity"]>;
+}> = {}): Promise<GarminActivitySourcePort> {
   const externalActivityId = "424242";
   const accountNamespace = "account-integration";
   const components = {
@@ -142,11 +144,11 @@ async function source(): Promise<GarminActivitySourcePort> {
     resumeMfa: jest.fn(async () => ({ kind: "connected" as const, account_namespace: accountNamespace, generation: 1 })),
     logout: jest.fn(async () => undefined),
     listRunningSummaries: jest.fn(async () => ({ items: [summaryEnvelope] })),
-    readActivity: jest.fn(async (activityId: string) => normalizeGarminActivity({
-      account_namespace: accountNamespace,
-      external_activity_id: activityId,
-      ...components,
-    }, sha256)),
+    readActivity: jest.fn(input.readActivity ?? (async (activityId: string) => normalizeGarminActivity({
+        account_namespace: accountNamespace,
+        external_activity_id: activityId,
+        ...components,
+      }, sha256))),
   };
 }
 
@@ -178,5 +180,72 @@ describe("Garmin foreground sync", () => {
         (SELECT count(*) FROM imported_activity_payloads) AS payloads,
         (SELECT count(*) FROM imported_activity_receipts) AS receipts`,
     )).resolves.toEqual([{ activities: 1, payloads: 1, receipts: 1 }]);
+  });
+
+  it("keeps exact replay unchanged and stages a changed digest for revision review", async () => {
+    const { kernel, repository } = await runtime();
+    const original = await normalizeGarminActivity({
+      account_namespace: "account-integration",
+      external_activity_id: "424242",
+      activity: {
+        activityId: 424242,
+        activityTypeDTO: { typeKey: "running" },
+        summaryDTO: { startTimeGMT: "2026-10-05T23:30:00.000Z", distance: 5_000 },
+      },
+      splits: { lapDTOs: [] },
+      details: { metricDescriptors: [], activityDetailMetrics: [] },
+    }, sha256);
+    const revised = await normalizeGarminActivity({
+      account_namespace: "account-integration",
+      external_activity_id: "424242",
+      activity: {
+        activityId: 424242,
+        activityTypeDTO: { typeKey: "running" },
+        summaryDTO: { startTimeGMT: "2026-10-05T23:30:00.000Z", distance: 5_001 },
+      },
+      splits: { lapDTOs: [] },
+      details: { metricDescriptors: [], activityDetailMetrics: [] },
+    }, sha256);
+    let current = original;
+    let request = 0;
+    const syncSource = await source({ readActivity: async () => current });
+    const coordinator = createGarminSyncCoordinator({
+      source: syncSource,
+      importActivity: createGarminSharedImportCommitter({
+        repository,
+        sha256,
+        requestFor: async () => {
+          request += 1;
+          return {
+            requestId: `garmin-sync-request-${request}`,
+            requestSha256: await sha256(`request-${request}`),
+            activityId: "garmin-local-activity",
+            expectedAggregateRevision: 0,
+            confirmedLocalDate: "2026-10-06",
+          };
+        },
+      }),
+    });
+
+    await expect(coordinator.syncNow()).resolves.toMatchObject({ kind: "success", counts: { newActivities: 1 } });
+    await expect(coordinator.syncNow()).resolves.toMatchObject({ kind: "success", counts: { unchangedActivities: 1 } });
+    const [acceptedBefore] = await kernel.queryAll<{ accepted_normalized_sha256: string }>(
+      "SELECT accepted_normalized_sha256 FROM imported_activity_identities",
+    );
+    current = revised;
+    await expect(coordinator.syncNow()).resolves.toMatchObject({ kind: "success", counts: { reviewActivities: 1 } });
+
+    await expect(kernel.queryAll<{
+      accepted_normalized_sha256: string;
+      payloads: number;
+      events: number;
+    }>(`SELECT accepted_normalized_sha256,
+        (SELECT count(*) FROM imported_activity_payloads) AS payloads,
+        (SELECT count(*) FROM imported_activity_events) AS events
+      FROM imported_activity_identities`)).resolves.toEqual([{
+      accepted_normalized_sha256: acceptedBefore!.accepted_normalized_sha256,
+      payloads: 1,
+      events: 1,
+    }]);
   });
 });
