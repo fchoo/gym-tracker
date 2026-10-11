@@ -1,7 +1,9 @@
 import assert from "node:assert/strict";
 import { createHash } from "node:crypto";
-import { readFileSync } from "node:fs";
+import { chmodSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import path from "node:path";
 import test from "node:test";
+import { execFileSync } from "node:child_process";
 
 import {
   GARMIN_JSON_FIXTURE_MANIFEST,
@@ -12,9 +14,11 @@ import { canonicalizeGarminPayload } from "../src/platform/garmin/canonicalGarmi
 import {
   PHASE18_GARMIN_BENCHMARK_METRICS,
   executePhase18GarminBenchmark,
+  executePhase18GarminBenchmarkCli,
   parsePhase18GarminBenchmarkArgs,
   validatePhase18GarminBenchmarkEvidence,
 } from "./benchmark-phase18-garmin.mjs";
+import { sourceTreeSha256 } from "./source-tree-digest.mjs";
 
 const HASH = "a".repeat(64);
 const HEAD = "b".repeat(40);
@@ -100,6 +104,59 @@ function evidence(overrides = {}) {
     skipped: 0,
     ...overrides,
   };
+}
+
+function benchmarkMeasurements() {
+  return Object.fromEntries(
+    PHASE18_GARMIN_BENCHMARK_METRICS.map((metric) => [metric, samples(metric, 1)]),
+  );
+}
+
+function benchmarkMeasurementContext(identitySha256) {
+  const measurements = benchmarkMeasurements();
+  return {
+    profile: "physical-arm64",
+    device_identity_sha256: identitySha256,
+    commands: Object.fromEntries(PHASE18_GARMIN_BENCHMARK_METRICS.map((metric) => [metric, `collect:${metric}`])),
+    sample_labels: Object.fromEntries(PHASE18_GARMIN_BENCHMARK_METRICS.map((metric) => [
+      metric,
+      measurements[metric].map((_, index) => `${BASELINE.metrics[metric].mode}-${index + 1}`),
+    ])),
+  };
+}
+
+function writeExecutable(filePath, contents) {
+  mkdirSync(path.dirname(filePath), { recursive: true });
+  writeFileSync(filePath, contents);
+  chmodSync(filePath, 0o755);
+}
+
+function captureCli(fn, argv) {
+  const originalArgv = process.argv;
+  const originalStdoutWrite = process.stdout.write.bind(process.stdout);
+  const originalStderrWrite = process.stderr.write.bind(process.stderr);
+  const originalExitCode = process.exitCode;
+  let stdout = "";
+  let stderr = "";
+  process.argv = argv;
+  process.stdout.write = ((chunk) => {
+    stdout += String(chunk);
+    return true;
+  });
+  process.stderr.write = ((chunk) => {
+    stderr += String(chunk);
+    return true;
+  });
+  process.exitCode = 0;
+  try {
+    fn();
+  } finally {
+    process.argv = originalArgv;
+    process.stdout.write = originalStdoutWrite;
+    process.stderr.write = originalStderrWrite;
+    process.exitCode = originalExitCode;
+  }
+  return { stdout, stderr };
 }
 
 test("canonical manifest uses production component hashing and fidelity values", () => {
@@ -201,6 +258,33 @@ test("benchmark execution requires exact paths and explicit Phase 20 authority",
     ]),
     /phase18_garmin_benchmark_arguments_invalid/u,
   );
+  assert.throws(
+    () => parsePhase18GarminBenchmarkArgs([
+      "--manifest", MANIFEST_PATH,
+      "--evidence", EVIDENCE_PATH,
+      "--unknown",
+    ]),
+    /phase18_garmin_benchmark_arguments_invalid/u,
+  );
+});
+
+test("benchmark CLI helper emits deferred success and bounded argument errors", () => {
+  const success = captureCli(executePhase18GarminBenchmarkCli, [
+    "node",
+    "scripts/benchmark-phase18-garmin.mjs",
+    "--manifest", MANIFEST_PATH,
+    "--evidence", EVIDENCE_PATH,
+  ]);
+  assert.match(success.stdout, /"status":"native_measurements_deferred"/u);
+
+  const failure = captureCli(executePhase18GarminBenchmarkCli, [
+    "node",
+    "scripts/benchmark-phase18-garmin.mjs",
+    "--manifest", MANIFEST_PATH,
+    "--evidence", EVIDENCE_PATH,
+    "--bad",
+  ]);
+  assert.match(failure.stderr, /phase18_garmin_benchmark_arguments_invalid/u);
 });
 
 test("execute collects installed samples and writes evidence with source-owned budgets", () => {
@@ -226,6 +310,226 @@ test("execute collects installed samples and writes evidence with source-owned b
   assert.equal(writes.length, 1);
   assert.equal("budgets" in writes[0], false);
   assert.deepEqual(writes[0].producer_context, collected.producer_context);
+  assert.deepEqual(executePhase18GarminBenchmark([
+    "--manifest", MANIFEST_PATH,
+    "--evidence", EVIDENCE_PATH,
+  ]), {
+    status: "native_measurements_deferred",
+    fixture_manifest_sha256: GARMIN_JSON_FIXTURE_MANIFEST_SHA256,
+  });
+});
+
+test("execute follows the installed-route benchmark path in-process", { concurrency: false }, () => {
+  const artifactRoot = path.resolve("artifacts/native/phase18-garmin-acceptance");
+  const sdkRoot = path.resolve("artifacts/fake-android-sdk-benchmark");
+  const apkPath = path.join(artifactRoot, "gym-tracker-phase18-garmin-acceptance-devtest.apk");
+  const installedApkPath = path.resolve("artifacts/installed-benchmark.apk");
+  const markerPath = path.resolve("artifacts/benchmark-logcat-count.txt");
+  const pidPath = path.resolve("artifacts/benchmark-pid-count.txt");
+  const noncePath = path.resolve("artifacts/benchmark-nonce.txt");
+  const retainedApkBytes = Buffer.from("benchmark-apk");
+  const deviceFacts = {
+    serial: "PHASE18BENCH",
+    abi: "arm64-v8a",
+    api: "36",
+    model: "phase18-bench-device",
+  };
+  const retainedSignatureSha256 = "b".repeat(64);
+  const currentHead = execFileSync("git", ["rev-parse", "HEAD"], { encoding: "utf8" }).trim();
+  const currentSourceTreeSha256 = sourceTreeSha256(process.cwd());
+  const currentPythonLockSha256 = createHash("sha256").update(readFileSync("modules/garmin-connect/python/garmin-python-lock.json")).digest("hex");
+  const retainedApkSha256 = createHash("sha256").update(retainedApkBytes).digest("hex");
+  const deviceIdentitySha256 = createHash("sha256").update(JSON.stringify({
+    serial: deviceFacts.serial,
+    abi: deviceFacts.abi,
+    apiLevel: deviceFacts.api,
+    model: deviceFacts.model,
+  })).digest("hex");
+  const originalAndroidHome = process.env.ANDROID_HOME;
+  const originalAndroidSdkRoot = process.env.ANDROID_SDK_ROOT;
+  try {
+    rmSync(artifactRoot, { recursive: true, force: true });
+    rmSync(sdkRoot, { recursive: true, force: true });
+    rmSync(path.resolve("artifacts/installed-benchmark.apk"), { force: true });
+    mkdirSync(artifactRoot, { recursive: true });
+    writeFileSync(apkPath, retainedApkBytes);
+    writeFileSync(installedApkPath, retainedApkBytes);
+    writeFileSync(path.join(artifactRoot, "build.json"), `${JSON.stringify({
+      schema_version: 1,
+      suite: "phase18-garmin-acceptance",
+      profile: "development-test",
+      package: "com.fchoo.gymtracker.devtest",
+      abi: "arm64-v8a",
+      js_bundle_embedded: true,
+      base_head: currentHead,
+      source_tree_sha256: currentSourceTreeSha256,
+      python_lock_sha256: currentPythonLockSha256,
+      apk_sha256: retainedApkSha256,
+      signature_sha256: retainedSignatureSha256,
+      device_identity_sha256: deviceIdentitySha256,
+    }, null, 2)}\n`);
+    writeExecutable(path.join(sdkRoot, "platform-tools", "adb"), `#!/bin/sh
+set -eu
+if [ "$1" = "devices" ]; then
+  printf 'List of devices attached\\n${deviceFacts.serial}\\tdevice\\n'
+  exit 0
+fi
+if [ "$1" = "-s" ]; then
+  shift 2
+fi
+if [ "$1" = "shell" ] && [ "$2" = "pidof" ] && [ "$3" = "com.fchoo.gymtracker.devtest" ]; then
+  count=0
+  [ -f "${pidPath}" ] && count=$(cat "${pidPath}")
+  count=$((count + 1))
+  printf '%s' "$count" > "${pidPath}"
+  if [ "$count" -gt 1 ]; then printf '4242\\n'; fi
+  exit 0
+fi
+if [ "$1" = "shell" ] && [ "$2" = "getprop" ]; then
+  case "$3" in
+    ro.product.cpu.abi) printf '${deviceFacts.abi}\\n' ;;
+    ro.build.version.sdk) printf '${deviceFacts.api}\\n' ;;
+    ro.product.model) printf '${deviceFacts.model}\\n' ;;
+    *) exit 1 ;;
+  esac
+  exit 0
+fi
+if [ "$1" = "shell" ] && [ "$2" = "pm" ] && [ "$3" = "path" ] && [ "$4" = "com.fchoo.gymtracker.devtest" ]; then
+  printf 'package:/data/app/phase18/base.apk\\n'
+  exit 0
+fi
+if [ "$1" = "exec-out" ] && [ "$2" = "cat" ] && [ "$3" = "/data/app/phase18/base.apk" ]; then
+  cat "${installedApkPath}"
+  exit 0
+fi
+if [ "$1" = "logcat" ] && [ "$2" = "-c" ]; then
+  exit 0
+fi
+if [ "$1" = "shell" ] && [ "$2" = "am" ] && [ "$3" = "start" ]; then
+  nonce=$(printf '%s' "$8" | sed -n 's/.*nonce=\\([a-f0-9]*\\).*/\\1/p')
+  printf '%s' "$nonce" > "${noncePath}"
+  exit 0
+fi
+if [ "$1" = "logcat" ] && [ "$2" = "--pid" ] && [ "$4" = "-d" ]; then
+  count=0
+  [ -f "${markerPath}" ] && count=$(cat "${markerPath}")
+  count=$((count + 1))
+  printf '%s' "$count" > "${markerPath}"
+  if [ "$count" -eq 1 ]; then
+    printf 'waiting\\n'
+  else
+    nonce=$(cat "${noncePath}")
+    printf 'I GYM_TRACKER_PHASE18_GARMIN_BENCHMARK:%s\\n' "$(printf '%s' '${JSON.stringify({
+      run_nonce: "",
+      source: "installed-route-log",
+      measurements: benchmarkMeasurements(),
+      measurement_context: benchmarkMeasurementContext(deviceIdentitySha256),
+    })}' | sed "s/\\\"run_nonce\\\":\\\"\\\"/\\\"run_nonce\\\":\\\"$nonce\\\"/")"
+  fi
+  exit 0
+fi
+exit 1
+`);
+    writeExecutable(path.join(sdkRoot, "build-tools", "35.0.0", "apksigner"), `#!/bin/sh
+set -eu
+printf 'Signer #1 certificate SHA-256 digest: ${retainedSignatureSha256}\\n'
+`);
+    process.env.ANDROID_HOME = sdkRoot;
+    process.env.ANDROID_SDK_ROOT = sdkRoot;
+    const report = executePhase18GarminBenchmark([
+      "--manifest", MANIFEST_PATH,
+      "--evidence", EVIDENCE_PATH,
+      "--execute",
+      "--phase20-native-checkpoint",
+    ]);
+    assert.equal(report.sample_counts.python_warm_start_ms, 10);
+    assert.equal(report.maxima.frame_time_ms, 30);
+  } finally {
+    if (originalAndroidHome === undefined) delete process.env.ANDROID_HOME;
+    else process.env.ANDROID_HOME = originalAndroidHome;
+    if (originalAndroidSdkRoot === undefined) delete process.env.ANDROID_SDK_ROOT;
+    else process.env.ANDROID_SDK_ROOT = originalAndroidSdkRoot;
+    rmSync(artifactRoot, { recursive: true, force: true });
+    rmSync(sdkRoot, { recursive: true, force: true });
+    rmSync(path.resolve("artifacts/installed-benchmark.apk"), { force: true });
+    rmSync(markerPath, { force: true });
+    rmSync(pidPath, { force: true });
+    rmSync(noncePath, { force: true });
+  }
+});
+
+test("installed-route benchmark fails closed on collector timeout", { concurrency: false }, () => {
+  const sdkRoot = path.resolve("artifacts/fake-android-sdk-benchmark-timeout");
+  const artifactRoot = path.resolve("artifacts/native/phase18-garmin-acceptance");
+  const apkPath = path.join(artifactRoot, "gym-tracker-phase18-garmin-acceptance-devtest.apk");
+  const installedApkPath = path.resolve("artifacts/installed-benchmark-timeout.apk");
+  const retainedApkBytes = Buffer.from("benchmark-apk");
+  const retainedSignatureSha256 = "b".repeat(64);
+  const originalAndroidHome = process.env.ANDROID_HOME;
+  const originalAndroidSdkRoot = process.env.ANDROID_SDK_ROOT;
+  const originalDateNow = Date.now;
+  let now = 0;
+  try {
+    mkdirSync(artifactRoot, { recursive: true });
+    writeFileSync(apkPath, retainedApkBytes);
+    writeFileSync(installedApkPath, retainedApkBytes);
+    writeExecutable(path.join(sdkRoot, "platform-tools", "adb"), `#!/bin/sh
+set -eu
+if [ "$1" = "devices" ]; then
+  printf 'List of devices attached\\nTIMEOUT\\tdevice\\n'
+  exit 0
+fi
+if [ "$1" = "shell" ] && [ "$2" = "pidof" ]; then
+  printf '1234\\n'
+  exit 0
+fi
+if [ "$1" = "logcat" ] && [ "$2" = "--pid" ]; then
+  printf 'no marker yet\\n'
+  exit 0
+fi
+if [ "$1" = "logcat" ] && [ "$2" = "-c" ]; then exit 0; fi
+if [ "$1" = "shell" ] && [ "$2" = "am" ]; then exit 0; fi
+if [ "$1" = "-s" ]; then
+  shift 2
+  if [ "$1" = "shell" ] && [ "$2" = "pidof" ]; then printf '1234\\n'; exit 0; fi
+fi
+exit 0
+`);
+    writeExecutable(path.join(sdkRoot, "build-tools", "35.0.0", "apksigner"), `#!/bin/sh
+set -eu
+printf 'Signer #1 certificate SHA-256 digest: ${retainedSignatureSha256}\\n'
+`);
+    process.env.ANDROID_HOME = sdkRoot;
+    process.env.ANDROID_SDK_ROOT = sdkRoot;
+    Date.now = () => {
+      now += 61_000;
+      return now;
+    };
+    assert.throws(
+      () => executePhase18GarminBenchmark([
+        "--manifest", MANIFEST_PATH,
+        "--evidence", EVIDENCE_PATH,
+        "--execute",
+        "--phase20-native-checkpoint",
+      ], {
+        readJson: () => manifest(),
+        readBytes: () => BASELINE_BYTES,
+        resolveCurrentIdentity: () => identity(),
+        writeEvidence: () => {
+          throw new Error("should not write");
+        },
+      }),
+      /phase18_garmin_benchmark_collector_timeout/u,
+    );
+  } finally {
+    Date.now = originalDateNow;
+    if (originalAndroidHome === undefined) delete process.env.ANDROID_HOME;
+    else process.env.ANDROID_HOME = originalAndroidHome;
+    if (originalAndroidSdkRoot === undefined) delete process.env.ANDROID_SDK_ROOT;
+    else process.env.ANDROID_SDK_ROOT = originalAndroidSdkRoot;
+    rmSync(sdkRoot, { recursive: true, force: true });
+    rmSync(installedApkPath, { force: true });
+  }
 });
 
 test("focused coverage gate registers every Phase 18 integrity-critical module", () => {

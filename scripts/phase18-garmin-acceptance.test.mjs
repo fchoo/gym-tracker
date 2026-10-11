@@ -8,6 +8,7 @@ import {
   createPhase18GarminAcceptanceRawReport,
   createPhase18GarminAcceptanceRunnerPlan,
   executePhase18GarminAcceptanceRunner,
+  executePhase18GarminAcceptanceRunnerCli,
   parsePhase18GarminAcceptanceRunnerArgs,
   validatePhase18GarminAcceptanceManifest,
 } from "./run-phase18-garmin-acceptance.mjs";
@@ -15,6 +16,7 @@ import { createPhase18GarminAdversarialRunnerPlan } from "./run-phase18-garmin-a
 import { createPhase18GarminProofRunnerPlan } from "./run-phase18-garmin-proof.mjs";
 import {
   executePhase18GarminAcceptanceVerifier,
+  executePhase18GarminAcceptanceVerifierCli,
   validatePhase18GarminAcceptanceCurrentIdentity,
   validatePhase18GarminAcceptanceEvidence,
 } from "./verify-phase18-garmin-acceptance.mjs";
@@ -76,6 +78,34 @@ const observations = {
   reduced_motion: true,
   process_restart: true,
 };
+
+function captureCli(fn, argv) {
+  const originalArgv = process.argv;
+  const originalStdoutWrite = process.stdout.write.bind(process.stdout);
+  const originalStderrWrite = process.stderr.write.bind(process.stderr);
+  const originalExitCode = process.exitCode;
+  let stdout = "";
+  let stderr = "";
+  process.argv = argv;
+  process.stdout.write = ((chunk) => {
+    stdout += String(chunk);
+    return true;
+  });
+  process.stderr.write = ((chunk) => {
+    stderr += String(chunk);
+    return true;
+  });
+  process.exitCode = 0;
+  try {
+    fn();
+  } finally {
+    process.argv = originalArgv;
+    process.stdout.write = originalStdoutWrite;
+    process.stderr.write = originalStderrWrite;
+    process.exitCode = originalExitCode;
+  }
+  return { stdout, stderr };
+}
 
 function proofPassedCase(id) {
   const base = { id, status: "passed", duration_ms: 1 };
@@ -275,6 +305,14 @@ test("Phase 18 acceptance runner is inert without the explicit Phase 20 native g
       "--manifest", MANIFEST_PATH,
       "--record", RECORD_PATH,
       "--execute",
+    ]),
+    /phase18_acceptance_runner_arguments_invalid/u,
+  );
+  assert.throws(
+    () => parsePhase18GarminAcceptanceRunnerArgs([
+      "--manifest", MANIFEST_PATH,
+      "--record", RECORD_PATH,
+      "--unexpected",
     ]),
     /phase18_acceptance_runner_arguments_invalid/u,
   );
@@ -507,6 +545,116 @@ test("CLI verifier resolves current identity and hashes every owner, Maestro, an
     native_prerequisites: 2,
   });
   assert.deepEqual(ownerCalls, [PROOF_PATH, ADVERSARIAL_PATH]);
+});
+
+test("verifier fails closed on report identity and Maestro or privacy observation drift", () => {
+  const maestroSourcePath = "maestro/phase18/garmin-sync.yaml";
+  const maestroReportPath = `${PHASE18_GARMIN_ACCEPTANCE_ARTIFACT_ROOT}/maestro-report.json`;
+  const privacyReportPath = `${PHASE18_GARMIN_ACCEPTANCE_ARTIFACT_ROOT}/privacy-report.json`;
+  const bytes = new Map([
+    [maestroSourcePath, Buffer.from("flow")],
+    [maestroReportPath, Buffer.from("maestro")],
+    [privacyReportPath, Buffer.from("privacy")],
+  ]);
+  const digest = (value) => createHash("sha256").update(value).digest("hex");
+  const current = {
+    currentHead: HEAD,
+    currentSourceTreeSha256: HASH,
+    currentPythonLockSha256: HASH,
+    retainedApkSha256: HASH,
+    installedApkSha256: HASH,
+    retainedSignatureSha256: HASH,
+    deviceIdentitySha256: HASH,
+  };
+  const proofEvidence = validProofEvidence(current);
+  const adversarialEvidence = validAdversarialEvidence(current);
+  const proofBytes = Buffer.from(JSON.stringify(proofEvidence));
+  const adversarialBytes = Buffer.from(JSON.stringify(adversarialEvidence));
+  bytes.set(PROOF_PATH, proofBytes);
+  bytes.set(ADVERSARIAL_PATH, adversarialBytes);
+  const exact = evidence({
+    cases: cases({ nativeStatus: "verified" }).map((entry) => entry.id === "P18-NATIVE-18-03-REAL-ACCOUNT"
+      ? { ...entry, artifact_sha256: digest(bytes.get(PROOF_PATH)) }
+      : entry.id === "P18-NATIVE-18-13-ADVERSARIAL"
+        ? { ...entry, artifact_sha256: digest(bytes.get(ADVERSARIAL_PATH)) }
+        : entry),
+    native_flow: {
+      path: maestroSourcePath,
+      source_sha256: digest(bytes.get(maestroSourcePath)),
+      report_sha256: digest(bytes.get(maestroReportPath)),
+    },
+    privacy_scan: {
+      status: "passed",
+      scanned_artifact_count: 4,
+      report_sha256: digest(bytes.get(privacyReportPath)),
+    },
+  });
+  const readJson = (artifactPath) => {
+    if (artifactPath === MANIFEST_PATH) return retainedManifest();
+    if (artifactPath.endsWith("raw-report.json")) return exact;
+    if (artifactPath === maestroReportPath) return { status: "passed", observations };
+    if (artifactPath === privacyReportPath) return { status: "passed", scanned_artifact_count: 4 };
+    if (artifactPath === PROOF_PATH) return proofEvidence;
+    if (artifactPath === ADVERSARIAL_PATH) return adversarialEvidence;
+    throw new Error(`unexpected path: ${artifactPath}`);
+  };
+
+  assert.throws(
+    () => executePhase18GarminAcceptanceVerifier([
+      "--manifest", MANIFEST_PATH,
+    ], {
+      resolveCurrentIdentity: () => current,
+      readBytes: (artifactPath) => bytes.get(artifactPath),
+      readJson: (artifactPath) => artifactPath.endsWith("raw-report.json")
+        ? { ...exact, manifest: manifest({ apk_sha256: "c".repeat(64) }) }
+        : readJson(artifactPath),
+      verifyOwnerArtifact: () => {},
+    }),
+    /phase18_acceptance_evidence_report_identity_invalid/u,
+  );
+
+  assert.throws(
+    () => validatePhase18GarminAcceptanceEvidence({
+      ...exact,
+      observations: { ...observations, reduced_motion: false },
+    }),
+    /phase18_acceptance_evidence_observations_invalid/u,
+  );
+
+  assert.throws(
+    () => executePhase18GarminAcceptanceVerifier([
+      "--manifest", MANIFEST_PATH,
+    ], {
+      resolveCurrentIdentity: () => current,
+      readBytes: (artifactPath) => bytes.get(artifactPath),
+      readJson: (artifactPath) => {
+        if (artifactPath === maestroReportPath) {
+          return { status: "passed", observations: { ...observations, reduced_motion: false } };
+        }
+        return readJson(artifactPath);
+      },
+      verifyOwnerArtifact: () => {},
+    }),
+    /phase18_acceptance_evidence_observations_invalid/u,
+  );
+});
+
+test("acceptance CLI helpers emit bounded stdout and stderr", () => {
+  const runner = captureCli(executePhase18GarminAcceptanceRunnerCli, [
+    "node",
+    "scripts/run-phase18-garmin-acceptance.mjs",
+    "--manifest", MANIFEST_PATH,
+    "--record", RECORD_PATH,
+  ]);
+  assert.match(runner.stdout, /"status":"native_deferred"/u);
+
+  const verifier = captureCli(executePhase18GarminAcceptanceVerifierCli, [
+    "node",
+    "scripts/verify-phase18-garmin-acceptance.mjs",
+    "--manifest",
+    "wrong.json",
+  ]);
+  assert.match(verifier.stderr, /phase18_acceptance_evidence_arguments_invalid/u);
 });
 
 test("verifier rejects private provider, account, health, location, file, URL, and device data", () => {

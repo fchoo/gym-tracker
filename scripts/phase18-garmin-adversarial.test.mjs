@@ -1,19 +1,24 @@
 import assert from "node:assert/strict";
+import { chmodSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { createHash } from "node:crypto";
-import { readFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import path from "node:path";
 import test from "node:test";
 
 import {
   PHASE18_GARMIN_ADVERSARIAL_ARTIFACT_ROOT,
+  collectInstalledNativeReport,
   createPhase18GarminAdversarialRawReport,
   createPhase18GarminAdversarialRunnerPlan,
   executePhase18GarminAdversarialRunner,
+  executePhase18GarminAdversarialRunnerCli,
   parsePhase18GarminAdversarialRunnerArgs,
   validatePhase18GarminAdversarialManifest,
 } from "./run-phase18-garmin-adversarial.mjs";
 import {
   assertPhase18GarminAdversarialPrivacySafe,
   executePhase18GarminAdversarialVerifier,
+  executePhase18GarminAdversarialVerifierCli,
   validatePhase18GarminAdversarialCurrentIdentity,
   validatePhase18GarminAdversarialEvidence,
 } from "./verify-phase18-garmin-adversarial.mjs";
@@ -26,6 +31,40 @@ const NATIVE_BYTES = Buffer.from("native report\n");
 const PRIVACY_BYTES = Buffer.from("privacy report\n");
 const NATIVE_HASH = createHash("sha256").update(NATIVE_BYTES).digest("hex");
 const PRIVACY_HASH = createHash("sha256").update(PRIVACY_BYTES).digest("hex");
+
+function captureCli(fn, argv) {
+  const originalArgv = process.argv;
+  const originalStdoutWrite = process.stdout.write.bind(process.stdout);
+  const originalStderrWrite = process.stderr.write.bind(process.stderr);
+  const originalExitCode = process.exitCode;
+  let stdout = "";
+  let stderr = "";
+  process.argv = argv;
+  process.stdout.write = ((chunk) => {
+    stdout += String(chunk);
+    return true;
+  });
+  process.stderr.write = ((chunk) => {
+    stderr += String(chunk);
+    return true;
+  });
+  process.exitCode = 0;
+  try {
+    fn();
+  } finally {
+    process.argv = originalArgv;
+    process.stdout.write = originalStdoutWrite;
+    process.stderr.write = originalStderrWrite;
+    process.exitCode = originalExitCode;
+  }
+  return { stdout, stderr };
+}
+
+function writeExecutable(filePath, contents) {
+  mkdirSync(path.dirname(filePath), { recursive: true });
+  writeFileSync(filePath, contents);
+  chmodSync(filePath, 0o755);
+}
 
 test("installed adversarial route uses the native producer and never the host-fake suite", () => {
   const route = readFileSync("app/__phase18-garmin-adversarial.tsx", "utf8");
@@ -153,6 +192,14 @@ test("adversarial runner is inert without the explicit Phase 20 authority", () =
       "--manifest", MANIFEST,
       "--record", RECORD,
       "--execute",
+    ]),
+    /phase18_garmin_adversarial_runner_arguments_invalid/u,
+  );
+  assert.throws(
+    () => parsePhase18GarminAdversarialRunnerArgs([
+      "--manifest", MANIFEST,
+      "--record", RECORD,
+      "--unexpected",
     ]),
     /phase18_garmin_adversarial_runner_arguments_invalid/u,
   );
@@ -406,9 +453,62 @@ test("runner rejects private native records before any raw report write", () => 
   assert.equal(writes.length, 0);
 });
 
+test("runner rejects privacy-unsafe free-form strings and native collection timeouts", () => {
+  assert.throws(
+    () => executePhase18GarminAdversarialRunner([
+      "--manifest", MANIFEST,
+      "--record", RECORD,
+      "--execute",
+      "--phase20-native-checkpoint",
+    ], {
+      readJson: () => retainedManifest(),
+      collectNativeReport: () => ({
+        report: {
+          schema_version: 1,
+          suite: "phase18-garmin-adversarial",
+          status: "passed",
+          cases: cases(),
+          current_identity: {
+            currentHead: HEAD,
+            currentSourceTreeSha256: HASH,
+            currentPythonLockSha256: HASH,
+            retainedApkSha256: HASH,
+            retainedSignatureSha256: HASH,
+            deviceIdentitySha256: HASH,
+          },
+        },
+        logcat: "owner@example.invalid",
+      }),
+    }),
+    /phase18_garmin_adversarial_record_privacy_invalid/u,
+  );
+  const originalDateNow = Date.now;
+  const originalPath = process.env.PATH;
+  const root = mkdtempSync(path.join(tmpdir(), "phase18-adv-timeout-"));
+  try {
+    writeExecutable(path.join(root, "adb"), `#!/bin/sh
+set -eu
+exit 0
+`);
+    process.env.PATH = `${root}:${originalPath ?? ""}`;
+    let index = 0;
+    const timeline = [0, 0, 31_000];
+    Date.now = () => timeline[Math.min(index++, timeline.length - 1)];
+    assert.throws(
+      () => collectInstalledNativeReport(),
+      /phase18_garmin_adversarial_native_report_timeout/u,
+    );
+  } finally {
+    Date.now = originalDateNow;
+    if (originalPath === undefined) delete process.env.PATH;
+    else process.env.PATH = originalPath;
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
 test("verifier sealing is write-once and requires explicit Phase 20 authority", () => {
   const exact = evidence();
-  const reads = (path) => path === MANIFEST ? manifest() : exact;
+  const reads = (path) => path === MANIFEST ? retainedManifest() : exact;
   const writes = [];
   const resolveCurrentIdentity = () => ({
     currentHead: HEAD,
@@ -456,4 +556,30 @@ test("verifier sealing is write-once and requires explicit Phase 20 authority", 
     final_evidence_written: true,
   });
   assert.equal(writes.length, 1);
+});
+
+test("adversarial CLI helpers emit bounded stdout and stderr", () => {
+  const runner = captureCli(executePhase18GarminAdversarialRunnerCli, [
+    "node",
+    "scripts/run-phase18-garmin-adversarial.mjs",
+    "--manifest", MANIFEST,
+    "--record", RECORD,
+  ]);
+  assert.match(runner.stdout, /"status":"native_deferred"/u);
+
+  const runnerFailure = captureCli(executePhase18GarminAdversarialRunnerCli, [
+    "node",
+    "scripts/run-phase18-garmin-adversarial.mjs",
+    "--manifest",
+    "wrong.json",
+  ]);
+  assert.match(runnerFailure.stderr, /phase18_garmin_adversarial_runner_arguments_invalid/u);
+
+  const verifier = captureCli(executePhase18GarminAdversarialVerifierCli, [
+    "node",
+    "scripts/verify-phase18-garmin-adversarial.mjs",
+    "--manifest",
+    "wrong.json",
+  ]);
+  assert.match(verifier.stderr, /phase18_garmin_adversarial_evidence_arguments_invalid/u);
 });
