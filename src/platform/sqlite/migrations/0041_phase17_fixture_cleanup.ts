@@ -106,7 +106,8 @@ export const phase17FixtureCleanupMigration: Migration = Object.freeze({
     await transaction.execute(`CREATE TRIGGER owned_plan_requests_immutable_delete
       BEFORE DELETE ON owned_plan_mutation_requests
       WHEN NOT (${manifestContains("requestIds", "OLD.request_id")}
-        OR (OLD.request_id GLOB 'phase17:fixture:owned-plan-create:*:setup'
+        OR ((OLD.request_id GLOB 'phase17:fixture:owned-plan-create:*:setup'
+          OR OLD.request_id GLOB 'phase17:fixture:owned-plan-save:*:setup')
           AND (${fixturePlanPredicate("OLD.result_plan_id")})))
       BEGIN SELECT RAISE(ABORT, 'owned_plan_request_immutable'); END`);
     await transaction.execute(`CREATE TRIGGER activation_requests_immutable_delete

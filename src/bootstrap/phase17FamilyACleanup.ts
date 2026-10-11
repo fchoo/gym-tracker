@@ -4,7 +4,10 @@ import { PHASE17_FAMILY_A_MUTATION_RECEIPTS } from "../testing/contracts/phase17
 const TOKEN = /^phase17:[a-z0-9-]{16,128}$/u;
 const requestIdFor = (caseId: string, fixtureToken: string) =>
   `phase17:${caseId}:${fixtureToken.slice("phase17:".length)}:action`;
-const setupRequestIdFor = (kind: "owned-plan-create" | "custom-exercise-create", fixtureToken: string) =>
+const setupRequestIdFor = (
+  kind: "owned-plan-create" | "owned-plan-save" | "custom-exercise-create",
+  fixtureToken: string,
+) =>
   `phase17:fixture:${kind}:${fixtureToken.slice("phase17:".length)}:setup`;
 
 export type Phase17FamilyACleanupManifest = Readonly<{
@@ -157,6 +160,7 @@ export async function cleanupPhase17FamilyAManifest(
     // must disappear before the seed graph or logical snapshot is restored.
     await removeByIds(transaction, "custom_exercise_mutation_receipts", "request_id", [setupRequestIdFor("custom-exercise-create", exact.fixtureToken)]);
     await removeByIds(transaction, "owned_plan_mutation_requests", "request_id", [setupRequestIdFor("owned-plan-create", exact.fixtureToken)]);
+    await removeByIds(transaction, "owned_plan_mutation_requests", "request_id", [setupRequestIdFor("owned-plan-save", exact.fixtureToken)]);
 
     // Schedule descendants must precede versions and schedules; all lists are exact manifest IDs.
     await removeByIds(transaction, "owned_plan_schedule_overrides", "schedule_id", exact.scheduleIds);
@@ -184,6 +188,10 @@ export async function cleanupPhase17FamilyAManifest(
     await removeByIds(transaction, "plan_days", "plan_id", exact.planIds);
     await removeByIds(transaction, "plans", "id", exact.planIds);
 
+    // Owner preferences are source facts rather than FK-cascaded library rows.
+    // Remove only the fixture manifest's exact exercise preferences before
+    // deleting the roots so the logical v8 backup returns to its baseline.
+    await removeByIds(transaction, "exercise_owner_preferences", "exercise_id", exact.exerciseIds);
     // Custom-library children cascade from exercise_library_entries/exercises; delete exact roots only.
     await removeByIds(transaction, "exercises", "id", exact.exerciseIds);
   });

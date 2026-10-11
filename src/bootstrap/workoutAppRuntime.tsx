@@ -4255,6 +4255,44 @@ export function WorkoutAppRuntimeProvider({
               createdAtMs: dependencies.nowMs(),
             },
           });
+          const fixtureDay = owned.plan.days[0];
+          if (fixtureDay === undefined) throw new Error("phase17_fixture_seed_failed");
+          const suffix = fixtureToken.slice("phase17:".length);
+          const enriched = await services.ownedPlans.savePlan({
+            requestId: fixtureSetupIds.requestId("owned-plan-save"),
+            expectedRevision: owned.plan.revision,
+            plan: {
+              id: owned.plan.id,
+              name: owned.plan.name,
+              days: [{
+                id: fixtureDay.id,
+                name: fixtureDay.name,
+                ordinal: fixtureDay.ordinal,
+                occurrences: [{
+                  id: `phase17:owned-plan-occurrence:${suffix}`,
+                  exerciseId: custom.exercise.exerciseId,
+                  ordinal: 0,
+                  restSeconds: 60,
+                  metricIdentity: { profile: "load_reps", contractVersion: 1, exerciseMetricGeneration: 1 },
+                  warmups: [{ id: `phase17:owned-plan-warmup:${suffix}`, ordinal: 0, loadGrams: 10_000, reps: 5 }],
+                  targets: [{
+                    id: `phase17:owned-plan-target:${suffix}`,
+                    ordinal: 0,
+                    target: { profile: "load_reps", version: 1, loadGrams: 20_000, minReps: 8, maxReps: 12, incrementGrams: 2_500, perSide: false },
+                    units: { version: 1, load: "grams", count: "repetitions" },
+                  }],
+                  policy: {
+                    id: `phase17:owned-plan-policy:${suffix}`,
+                    kind: "manual_hold",
+                    policyId: "manual-hold-v1",
+                    version: 1,
+                    rule: { kind: "manual_hold", id: "manual-hold-v1", version: 1 },
+                  },
+                }],
+              }],
+            },
+          });
+          if (enriched.outcome === "requires_schedule_impact") throw new Error("phase17_fixture_seed_failed");
           const [row, bundled, starter] = await Promise.all([
             services.kernel.queryAll<Readonly<{ id: string; revision: number; is_active: number }>>(
             "SELECT id, revision, is_active FROM plans WHERE id = ? AND name = ?",
