@@ -3,6 +3,7 @@ import { describe, expect, it, jest } from "@jest/globals";
 
 import { canonicalJson } from "../domains/activities/importContracts";
 import type {
+  ConfirmGarminImportInput,
   GarminImportResult,
   ImportedActivityCommandRepository,
 } from "../domains/activities/importCommands";
@@ -51,7 +52,7 @@ describe("Garmin import runtime", () => {
       aggregateRevision: 1,
     });
     const repository: ImportedActivityCommandRepository = {
-      confirmGarminImport: jest.fn(async (input) => {
+      confirmGarminImport: jest.fn(async (input: ConfirmGarminImportInput) => {
         events.push("committed");
         expect(input.staged.envelope).toEqual(envelopeValue);
         expect(input.staged.canonical_payload_json).toBe(

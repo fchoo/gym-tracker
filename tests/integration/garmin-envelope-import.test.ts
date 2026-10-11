@@ -251,12 +251,12 @@ describe("Garmin envelope import boundary", () => {
       [request.activityId],
     )).resolves.toEqual([{
       date_provenance: JSON.stringify({
-        absoluteStartedAtMs: proposal.date.absoluteStartedAtMs,
-        sourceLocalDateTime: "2026-10-06T00:30:00",
-        confirmedLocalDate: "2026-10-06",
-        confirmedLocalTime: "00:30:00",
-        confirmedTimeZone: "Asia/Singapore",
-        confirmedUtcOffsetMinutes: 480,
+        absolute_started_at_ms: proposal.date.absoluteStartedAtMs,
+        source_local_date_time: "2026-10-06T00:30:00",
+        confirmed_local_date: "2026-10-06",
+        confirmed_local_time: "00:30:00",
+        confirmed_time_zone: "Asia/Singapore",
+        confirmed_utc_offset_minutes: 480,
       }),
     }]);
 
@@ -271,7 +271,10 @@ describe("Garmin envelope import boundary", () => {
     ["stale", "Asia/Singapore"],
     ["invalid", "Australia/Lord_Howe"],
     ["dst_gap", "America/New_York"],
-  ] as const)("keeps %s date outcomes zero-write regardless of phone zone %s", async (reason, phoneZone) => {
+  ] as Array<[
+    "cancelled" | "stale" | "invalid" | "dst_gap",
+    string,
+  ]>)("keeps %s date outcomes zero-write regardless of phone zone %s", async (reason, phoneZone) => {
     const { kernel, runtime } = await applicationRuntime();
     const proposal = await runtime.prepareEnvelope({
       envelope: await envelope(),

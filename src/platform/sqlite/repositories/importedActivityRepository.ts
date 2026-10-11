@@ -63,7 +63,28 @@ export function createImportedActivityRepository(kernel: SqliteKernel) {
         if (outcome.kind !== "new") return Object.freeze({ kind: outcome.kind === "revision_review" ? "revision_review" : "conflict", activityId: existing?.activity_id ?? input.activityId, aggregateRevision: existing?.aggregate_revision ?? 0 });
         if (input.expectedAggregateRevision !== 0) return Object.freeze({ kind: "conflict", activityId: input.activityId, aggregateRevision: 0 });
         const now = envelope.normalized.started_at_ms;
-        const aggregate = JSON.stringify({ source_kind: envelope.source_kind, account_namespace: envelope.account_namespace, external_activity_id: envelope.external_activity_id, normalized_json_sha256: envelope.normalized_json_sha256, sample_fidelity: envelope.sample_fidelity, confirmed_local_date: input.confirmedLocalDate, normalized: envelope.normalized });
+        const dateProvenance = input.dateProvenance;
+        const aggregate = JSON.stringify({
+          source_kind: envelope.source_kind,
+          account_namespace: envelope.account_namespace,
+          external_activity_id: envelope.external_activity_id,
+          normalized_json_sha256: envelope.normalized_json_sha256,
+          sample_fidelity: envelope.sample_fidelity,
+          confirmed_local_date: input.confirmedLocalDate,
+          ...(dateProvenance === undefined ? {} : {
+            date_provenance: {
+              absolute_started_at_ms: dateProvenance.absoluteStartedAtMs,
+              ...(dateProvenance.sourceLocalDateTime === undefined ? {} : { source_local_date_time: dateProvenance.sourceLocalDateTime }),
+              ...(dateProvenance.sourceTimeZone === undefined ? {} : { source_time_zone: dateProvenance.sourceTimeZone }),
+              ...(dateProvenance.sourceUtcOffsetMinutes === undefined ? {} : { source_utc_offset_minutes: dateProvenance.sourceUtcOffsetMinutes }),
+              confirmed_local_date: dateProvenance.confirmedLocalDate,
+              confirmed_local_time: dateProvenance.confirmedLocalTime,
+              confirmed_time_zone: dateProvenance.confirmedTimeZone,
+              confirmed_utc_offset_minutes: dateProvenance.confirmedUtcOffsetMinutes,
+            },
+          }),
+          normalized: envelope.normalized,
+        });
         await transaction.execute("INSERT INTO imported_activities(id, source, source_activity_id, started_at_ms, aggregate_json, imported_at_ms) VALUES (?, ?, ?, ?, ?, ?)", [input.activityId, `${envelope.source_kind}:${envelope.account_namespace}`, envelope.external_activity_id, envelope.normalized.started_at_ms, aggregate, now]);
         await transaction.execute("INSERT INTO imported_activity_identities(activity_id, source_kind, account_namespace, external_activity_id, aggregate_revision, accepted_normalized_sha256, removal_state) VALUES (?, ?, ?, ?, 1, ?, 'active')", [input.activityId, envelope.source_kind, envelope.account_namespace, envelope.external_activity_id, envelope.normalized_json_sha256]);
         await transaction.execute("INSERT INTO imported_activity_payloads(id, activity_id, payload_json, sha256) VALUES (?, ?, ?, ?)", [`${input.activityId}:payload:1`, input.activityId, input.staged.canonical_payload_json, envelope.normalized_json_sha256]);
