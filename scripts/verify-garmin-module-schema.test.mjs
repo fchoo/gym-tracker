@@ -34,7 +34,8 @@ test("the Garmin Expo module declares one bounded Android runtime module", () =>
   assert.match(gradle, /GARMIN_PYTHON_VERSION\s*=\s*["']3\.13["']/u);
   assert.match(gradle, /arm64-v8a/u);
   assert.match(manifest, /^<manifest\b/u);
-  assert.match(kotlin, /AsyncFunction\("runtimeInfo"\)/u);
+  assert.match(kotlin, /RUNTIME_INFO_OPERATION\s*=\s*"runtimeInfo"/u);
+  assert.match(kotlin, /AsyncFunction\(RUNTIME_INFO_OPERATION\)/u);
   assert.match(kotlin, /runOnQueue\(appContext\.backgroundCoroutineScope\)/u);
   assert.doesNotMatch(kotlin, /PyObject|traceback|eval|http:\/\/|https:\/\//iu);
 });
