@@ -349,6 +349,7 @@ import {
 } from "./phase17NativeFixture";
 import {
   createPhase17ActionEnvelopeSource,
+  createPhase17FixtureSetupIdentityFactory,
   phase17ActionLabel,
 } from "./phase17ActionEnvelope";
 import {
@@ -4093,6 +4094,15 @@ export function WorkoutAppRuntimeProvider({
     if (phase17FixtureProtocolRef.current !== null) return phase17FixtureProtocolRef.current;
     const services = requireServices();
     const { CryptoDigestAlgorithm, digestStringAsync, randomUUID } = require("expo-crypto") as typeof import("expo-crypto");
+    const { default: Constants } = require("expo-constants") as typeof import("expo-constants");
+    const fixtureSetupIds = createPhase17FixtureSetupIdentityFactory({
+      identity: () => ({
+        packageName: Constants.expoConfig?.android?.package ?? Constants.expoConfig?.ios?.bundleIdentifier,
+        buildProfile: Constants.expoConfig?.extra?.buildProfile,
+        nativeContractsEnabled: Constants.expoConfig?.extra?.nativeContractsEnabled === true,
+        suite: Constants.expoConfig?.extra?.nativeContractSuite,
+      }),
+    });
     assertPhase17FamilyARegistry(PHASE17_CASE_ACTION_CONTRACTS);
     assertPhase17FamilyBRegistry(PHASE17_CASE_ACTION_CONTRACTS);
     assertPhase17FamilyCRegistry(PHASE17_CASE_ACTION_CONTRACTS);
@@ -4188,14 +4198,22 @@ export function WorkoutAppRuntimeProvider({
         seed: async (caseId, fixtureToken, sourceTable) => {
           const contract = PHASE17_CASE_ACTION_CONTRACTS.find(({ id }) => id === caseId);
           if (contract === undefined) throw new Error("phase17_fixture_case_invalid");
+          fixtureSetupIds.begin(fixtureToken);
+          try {
           const owned = await services.ownedPlans.createDraft({ name: `Phase17 ${caseId}`, dayName: "Fixture day" });
           if (owned.outcome === "requires_schedule_impact") throw new Error("phase17_fixture_seed_failed");
-          const customId = `phase17-custom-${fixtureToken.slice(-16)}`;
-          const custom = await createRuntimeCustomExercise({
-            requestId: `phase17-custom-create-${fixtureToken.slice(-16)}`, exerciseId: customId,
-            name: `Phase17 exercise ${caseId}`, aliases: ["Phase17"], exerciseType: "strength",
-            movementClass: "compound", primaryMuscles: ["quadriceps"], secondaryMuscles: [], equipment: ["barbell"],
-            metricIdentity: { profile: "load_reps", contractVersion: 1, exerciseMetricGeneration: 1 }, defaultRestSeconds: 60,
+          const customId = fixtureSetupIds.customExerciseId();
+          const custom = await createCustomExerciseCommand({
+            repository: services.customExerciseRepository,
+            invalidate: async () => undefined,
+            input: {
+              requestId: fixtureSetupIds.requestId("custom-exercise-create"),
+              exerciseId: customId,
+              name: `Phase17 exercise ${caseId}`, aliases: ["Phase17"], exerciseType: "strength",
+              movementClass: "compound", primaryMuscles: ["quadriceps"], secondaryMuscles: [], equipment: ["barbell"],
+              metricIdentity: { profile: "load_reps", contractVersion: 1, exerciseMetricGeneration: 1 }, defaultRestSeconds: 60,
+              createdAtMs: dependencies.nowMs(),
+            },
           });
           const [row, bundled, starter] = await Promise.all([
             services.kernel.queryAll<Readonly<{ id: string; revision: number; is_active: number }>>(
@@ -4212,6 +4230,9 @@ export function WorkoutAppRuntimeProvider({
           const facts = Object.freeze({ caseId, fixtureToken, ownedPlanId: plan.id, customExerciseId: custom.exercise.exerciseId, bundledExerciseId, starterTemplateId, sourceTable: physicalTable(sourceTable) });
           const expectedPostState = actionReceiptId === null ? facts : Object.freeze({ caseId, fixtureToken, ownedPlanId: plan.id, customExerciseId: custom.exercise.exerciseId, bundledExerciseId, starterTemplateId, sourceTable: physicalTable(sourceTable), actionReceiptId, action: contract.action });
           return Object.freeze({ selectors, expectedPreState: facts, expectedPostState, actionReceiptId });
+          } finally {
+            fixtureSetupIds.end(fixtureToken);
+          }
         },
         probe: async (caseId, fixtureToken, sourceTable, selectors) => {
           const contract = PHASE17_CASE_ACTION_CONTRACTS.find(({ id }) => id === caseId);

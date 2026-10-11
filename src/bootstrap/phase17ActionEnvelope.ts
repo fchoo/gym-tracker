@@ -29,6 +29,37 @@ export type Phase17ActionEnvelopeStore = Readonly<{
   clear(): Promise<void>;
 }>;
 
+/** Fixture setup is deliberately distinct from product-action envelopes. */
+export function createPhase17FixtureSetupIdentityFactory(input: Readonly<{
+  identity(): Phase17NativeContractIdentity;
+}>) {
+  let activeToken: string | null = null;
+  const requireActive = () => {
+    if (!phase17ActionEnvelopeSourceEnabled(input.identity())) throw new Error("phase17_fixture_setup_unavailable");
+    if (activeToken === null) throw new Error("phase17_fixture_setup_inactive");
+    return activeToken;
+  };
+  const suffix = () => requireActive().slice("phase17:".length);
+  return Object.freeze({
+    begin(fixtureToken: string): void {
+      if (!phase17ActionEnvelopeSourceEnabled(input.identity()) || !TOKEN.test(fixtureToken)) throw new Error("phase17_fixture_setup_unavailable");
+      if (activeToken !== null) throw new Error("phase17_fixture_setup_active");
+      activeToken = fixtureToken;
+    },
+    end(fixtureToken: string): void {
+      if (activeToken !== fixtureToken) throw new Error("phase17_fixture_setup_token_mismatch");
+      activeToken = null;
+    },
+    customExerciseId(): string { return `phase17:custom:${suffix()}`; },
+    requestId(kind: string): string {
+      if (!/^[a-z0-9-]+$/u.test(kind)) throw new Error("phase17_fixture_setup_kind_invalid");
+      return `phase17:fixture:${kind}:${suffix()}:setup`;
+    },
+    ownedPlanId(): string { return `phase17:owned-plan:${suffix()}`; },
+    ownedPlanDayId(): string { return `phase17:owned-plan-day:${suffix()}`; },
+  });
+}
+
 export function phase17ActionEnvelopeSourceEnabled(
   identity: Phase17NativeContractIdentity,
 ): boolean {

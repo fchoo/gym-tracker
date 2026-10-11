@@ -2,6 +2,7 @@ import { describe, expect, it } from "@jest/globals";
 
 import {
   createPhase17ActionEnvelopeSource,
+  createPhase17FixtureSetupIdentityFactory,
   phase17ActionEnvelopeSourceEnabled,
 } from "./phase17ActionEnvelope";
 
@@ -22,6 +23,21 @@ function fixture(identity = { packageName: "com.fchoo.gymtracker.devtest", build
 }
 
 describe("Phase 17 action envelope source", () => {
+  it("creates setup-only identities only during a token-scoped dev-test setup", () => {
+    const setup = createPhase17FixtureSetupIdentityFactory({ identity: () => ({ packageName: "com.fchoo.gymtracker.devtest", buildProfile: "development-test", nativeContractsEnabled: true, suite: "phase17" }) });
+    expect(() => setup.requestId("custom-exercise-create")).toThrow("phase17_fixture_setup_inactive");
+    setup.begin(token);
+    expect(setup.customExerciseId()).toBe(`phase17:custom:${token.slice("phase17:".length)}`);
+    expect(setup.requestId("custom-exercise-create")).toBe(`phase17:fixture:custom-exercise-create:${token.slice("phase17:".length)}:setup`);
+    setup.end(token);
+    expect(() => setup.ownedPlanId()).toThrow("phase17_fixture_setup_inactive");
+  });
+
+  it("does not expose setup identities to production", () => {
+    const setup = createPhase17FixtureSetupIdentityFactory({ identity: () => ({ packageName: "com.fchoo.gymtracker", buildProfile: "production", nativeContractsEnabled: false, suite: undefined }) });
+    expect(() => setup.begin(token)).toThrow("phase17_fixture_setup_unavailable");
+  });
+
   it("gates the persisted source on the exact native contract identity", () => {
     expect(phase17ActionEnvelopeSourceEnabled({ packageName: "com.fchoo.gymtracker.devtest", buildProfile: "development-test", nativeContractsEnabled: true, suite: "phase17" })).toBe(true);
     expect(phase17ActionEnvelopeSourceEnabled({ packageName: "com.fchoo.gymtracker", buildProfile: "development-test", nativeContractsEnabled: true, suite: "phase17" })).toBe(false);
