@@ -111,9 +111,8 @@ export async function materializePhase17FamilyACleanupManifest(
       `SELECT id
        FROM owned_plan_schedule_events
        WHERE schedule_id = ?
-         AND json_extract(payload_json, '$.requestId') = ?
        ORDER BY id`,
-      [row.result_schedule_id, requestId],
+      [row.result_schedule_id],
     );
     scheduleEventIds = [...scheduleEventIds, ...events.map(({ id }) => id)];
   } else if (receipt[1] === "owned_plan_schedule_events") {
@@ -125,7 +124,16 @@ export async function materializePhase17FamilyACleanupManifest(
     if (row === undefined) throw new Error("phase17_family_a_cleanup_receipt_missing");
     const result = JSON.parse(row.payload_json) as { result?: { planId?: unknown } };
     if (typeof result.result?.planId !== "string") throw new Error("phase17_family_a_cleanup_receipt_invalid");
-    planIds = [...planIds, result.result.planId]; scheduleIds = [...scheduleIds, row.schedule_id]; scheduleEventIds = [...scheduleEventIds, eventId];
+    const events = await kernel.queryAll<Readonly<{ id: string }>>(
+      `SELECT id
+       FROM owned_plan_schedule_events
+       WHERE schedule_id = ?
+       ORDER BY id`,
+      [row.schedule_id],
+    );
+    planIds = [...planIds, result.result.planId];
+    scheduleIds = [...scheduleIds, row.schedule_id];
+    scheduleEventIds = [...scheduleEventIds, ...events.map(({ id }) => id)];
   } else if (receipt[1] === "metric_profile_migration_events") {
     const [row] = await kernel.queryAll<Readonly<{ exercise_id: string }>>(
       "SELECT exercise_id FROM metric_profile_migration_events WHERE idempotency_key = ?", [requestId],
