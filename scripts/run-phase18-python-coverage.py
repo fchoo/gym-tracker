@@ -4,14 +4,12 @@
 from __future__ import annotations
 
 import argparse
-import ast
 import hashlib
+import importlib
 import importlib.util
-import io
 import json
 from pathlib import Path
 import sys
-import trace
 import unittest
 
 
@@ -34,23 +32,24 @@ REQUIRED_CASES = (
     "test_activity_refresh_and_adversarial_branches_are_bounded",
     "test_module_entrypoints_and_retry_headers_fail_closed",
 )
+def _load_coverage_module():
+    original_path = list(sys.path)
+    blocked = {
+        str(PROJECT_ROOT),
+        str(PROJECT_ROOT / "scripts"),
+        "",
+    }
+    sys.path[:] = [entry for entry in sys.path if entry not in blocked]
+    try:
+        return importlib.import_module("coverage")
+    except ImportError:
+        return None
+    finally:
+        sys.path[:] = original_path
 
 
 def _sha256(path: Path) -> str:
     return hashlib.sha256(path.read_bytes()).hexdigest()
-
-
-def _executable_lines(path: Path) -> set[int]:
-    source = path.read_text(encoding="utf-8")
-    lines = {
-        line for line in trace._find_executable_linenos(str(path))
-        if isinstance(line, int) and line > 0
-    }
-    tree = ast.parse(source, filename=str(path))
-    for node in ast.walk(tree):
-        if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)) and node.body:
-            lines.difference_update(range(node.lineno + 1, node.body[0].lineno))
-    return lines
 
 
 class _RecordingResult(unittest.TextTestResult):
@@ -80,24 +79,57 @@ def _run_tests() -> _RecordingResult:
     return result
 
 
+def _run_with_coverage_py(coverage_lib):
+    coverage = coverage_lib.Coverage(branch=True, source=[str(SOURCE_PATH.parent)])
+    coverage.start()
+    try:
+        result = _run_tests()
+    finally:
+        coverage.stop()
+        coverage.save()
+    analysis = coverage._analyze(str(SOURCE_PATH))  # type: ignore[attr-defined]
+    branch_stats = analysis.branch_stats()
+    missing_branch_arcs = analysis.missing_branch_arcs()
+    total_branches = sum(total for total, _taken in branch_stats.values())
+    covered_branches = sum(taken for _total, taken in branch_stats.values())
+    missing_branches = sorted(
+        (line, destination)
+        for line, destinations in missing_branch_arcs.items()
+        for destination in destinations
+    )
+    return result, analysis, covered_branches, total_branches, missing_branches, "coverage.py"
+
+
+def _counter(covered: int, total: int) -> dict[str, int | float]:
+    missed = total - covered
+    percent = 100 if total == 0 else round(100 * covered / total, 2)
+    return {
+        "covered": covered,
+        "missed": missed,
+        "total": total,
+        "percent": percent,
+    }
+
+
 def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("--output", type=Path, default=DEFAULT_OUTPUT)
     args = parser.parse_args()
 
-    tracer = trace.Trace(count=True, trace=False, ignoredirs=[sys.base_prefix])
-    result = tracer.runfunc(_run_tests)
-    counts = tracer.results().counts
-    source = SOURCE_PATH.resolve()
-    executable_lines = _executable_lines(source)
-    covered_lines = {
-        line for (filename, line), count in counts.items()
-        if Path(filename).resolve() == source and count > 0
-    } & executable_lines
-    missing_lines = sorted(executable_lines - covered_lines)
+    coverage_lib = _load_coverage_module()
+    if coverage_lib is None:
+        raise RuntimeError("phase18_python_coverage_unavailable:coverage_py")
+    result, analysis, covered_branches, total_branches, missing_branches, coverage_engine = _run_with_coverage_py(coverage_lib)
+    covered_lines = set(analysis.statements) - set(analysis.missing)
+    missing_lines = sorted(analysis.missing)
     executed_cases = sorted(result.executed)
     missing_cases = sorted(set(REQUIRED_CASES) - set(executed_cases))
-    passed = result.wasSuccessful() and not missing_cases and not missing_lines
+    passed = (
+        result.wasSuccessful()
+        and not missing_cases
+        and not missing_lines
+        and not missing_branches
+    )
     report = {
         "schema_version": 1,
         "suite": "phase18-garmin-python",
@@ -106,6 +138,7 @@ def main() -> int:
             "name": "python",
             "version": f"{sys.version_info.major}.{sys.version_info.minor}",
         },
+        "coverage_engine": coverage_engine,
         "sources": [{
             "path": SOURCE_PATH.relative_to(PROJECT_ROOT).as_posix(),
             "sha256": _sha256(SOURCE_PATH),
@@ -122,25 +155,11 @@ def main() -> int:
         "executed_cases": executed_cases,
         "missing_cases": missing_cases,
         "coverage": {
-            "lines": {
-                "covered": len(covered_lines),
-                "missed": len(missing_lines),
-                "total": len(executable_lines),
-                "percent": round(100 * len(covered_lines) / len(executable_lines), 2),
-            },
-            # The stdlib `trace` module has no branch oracle, so we do not
-            # fabricate a `branches` counter. The defensible secondary metric
-            # is the count of required regression case contracts that executed.
-            "cases": {
-                "covered": len(REQUIRED_CASES) - len(missing_cases),
-                "missed": len(missing_cases),
-                "total": len(REQUIRED_CASES),
-                "percent": round(
-                    100 * (len(REQUIRED_CASES) - len(missing_cases)) / len(REQUIRED_CASES),
-                    2,
-                ),
-            },
+            "lines": _counter(len(covered_lines), len(analysis.statements)),
+            "branches": _counter(covered_branches, total_branches),
         },
+        "missing_lines": missing_lines,
+        "missing_branches": [list(arc) for arc in missing_branches],
     }
     args.output.parent.mkdir(parents=True, exist_ok=True)
     args.output.write_text(json.dumps(report, indent=2) + "\n", encoding="utf-8")

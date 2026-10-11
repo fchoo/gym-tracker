@@ -14,11 +14,11 @@ export const PHASE18_LANGUAGE_COVERAGE_SPECS = Object.freeze({
       "modules/garmin-connect/android/src/main/python/garmin_bridge.py",
     ]),
     testPath: "modules/garmin-connect/android/src/test/python/test_garmin_bridge.py",
-    // The stdlib `trace` collector measures line execution only. There is no
-    // real branch oracle, so the defensible coverage contract is line coverage
-    // plus the count of required regression case contracts that executed. We
-    // deliberately do NOT emit a fabricated `branches` counter.
-    metrics: Object.freeze(["lines", "cases"]),
+    // Python must report real line and branch coverage. The runner prefers
+    // coverage.py branch data when available and otherwise falls back to a
+    // deterministic arc tracer that measures actual executed control-flow
+    // transitions instead of named-case proxies.
+    metrics: Object.freeze(["lines", "branches"]),
     requiredCases: Object.freeze([
       "test_account_namespace_is_locally_generated_and_survives_profile_rename",
       "test_login_mfa_and_reads_use_only_the_fixed_operations",

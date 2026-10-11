@@ -359,6 +359,8 @@ class GarminBridgeTests(unittest.TestCase):
             "status": "ok", "generation": 0, "data": {"kind": "disconnected"},
         })
         bridge._capture_tokens()
+        with self.assertRaisesRegex(garmin_bridge._BridgeInputError, "sign_in_required"):
+            bridge._read_token_data()
 
         for email, password in (("", "secret"), ("owner", "")):
             self.assertEqual(
@@ -415,6 +417,18 @@ class GarminBridgeTests(unittest.TestCase):
             result = bridge.dispatch("getActivities", {"start": 0, "limit": 1, "activityType": "running"})
             self.assertEqual(result, {"status": "error", "error": {"code": "malformed_response"}})
 
+        fake = FakeClient()
+        fake.get_activities = lambda *_args: [DISCOVERY_FIXTURE]
+        bridge = garmin_bridge.create_bridge(
+            client_factory=lambda **_kwargs: fake,
+            namespace_factory=lambda: ACCOUNT_NAMESPACE,
+        )
+        bridge.dispatch("login", {"email": "owner", "password": "secret"})
+        single_page = bridge.dispatch("getActivities", {"start": 0, "limit": 2, "activityType": "running"})
+        self.assertEqual(len(single_page["data"]["items"]), 1)
+        self.assertEqual(single_page["data"]["items"][0]["activityType"], {"typeKey": "running"})
+        self.assertNotIn("nextStart", single_page["data"])
+
         no_refresh = FakeClient()
         no_refresh._refresh_di_token = None
         bridge = garmin_bridge.create_bridge(
@@ -460,6 +474,16 @@ class GarminBridgeTests(unittest.TestCase):
         self.assertIsNone(garmin_bridge.GarminBridge._retry_after_ms(
             SimpleNamespace(headers={"Retry-After": "invalid"}),
         ))
+        root = RuntimeError("root")
+        current = root
+        for index in range(4):
+            next_error = RuntimeError(f"layer-{index}")
+            current.__cause__ = next_error
+            current = next_error
+        self.assertEqual(
+            garmin_bridge.GarminBridge._classify_error(root, "getActivity"),
+            ("temporary_failure", None),
+        )
 
 
 if __name__ == "__main__":
