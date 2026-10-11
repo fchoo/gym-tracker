@@ -4,7 +4,6 @@ import com.chaquo.python.Python
 import com.chaquo.python.android.AndroidPlatform
 import expo.modules.kotlin.modules.Module
 import expo.modules.kotlin.modules.ModuleDefinition
-import expo.modules.kotlin.functions.Coroutine
 
 private const val RUNTIME_INFO_OPERATION = "runtimeInfo"
 
@@ -61,12 +60,12 @@ private data class GarminRuntimeInfo(
 }
 
 class GarminConnectModule : Module() {
-  override fun definition(): ModuleDefinition = ModuleDefinition {
+  override fun definition() = ModuleDefinition {
     Name("GarminConnect")
 
-    (AsyncFunction(RUNTIME_INFO_OPERATION) Coroutine {
-      runtimeInfo()
-    }).runOnQueue(appContext.backgroundCoroutineScope)
+    AsyncFunction(RUNTIME_INFO_OPERATION)
+      .SuspendBody<Map<String, Any>> { runtimeInfo() }
+      .runOnQueue(appContext.backgroundCoroutineScope)
   }
 
   private fun runtimeInfo(): Map<String, Any> {
