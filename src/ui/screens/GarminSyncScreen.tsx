@@ -29,6 +29,7 @@ import {
   type GarminActivityListItem,
   type GarminConnectionControllerError,
   type GarminConnectionControllerInput,
+  type GarminPresentationFailure,
   type GarminSyncPresentation,
   useGarminConnectionController,
 } from "../garmin/useGarminConnectionController";
@@ -220,7 +221,55 @@ function ImportedActivities({
   );
 }
 
-function SyncResult({ sync }: Readonly<{ sync: GarminSyncPresentation }>) {
+function syncFailureCopy(failure: GarminPresentationFailure): Readonly<{
+  heading: string;
+  body: string;
+}> {
+  switch (failure.code) {
+    case "offline":
+      return { heading: "You are offline", body: "Connect to the internet when you want to fetch new activities." };
+    case "temporary_failure":
+      return { heading: "Garmin is temporarily unavailable", body: "Try again when the service is available." };
+    case "sign_in_required":
+      return { heading: "Sign in to Garmin again", body: "The Garmin session needs a new foreground sign-in." };
+    case "data_access_denied":
+      return { heading: "Garmin data access was denied", body: "Sign in again when activity access is available." };
+    case "rate_limited": {
+      const minutes = failure.retryAfterMs === undefined ? null : Math.ceil(failure.retryAfterMs / 60_000);
+      return {
+        heading: "Garmin asked us to wait",
+        body: minutes === null
+          ? "Retry later. No automatic retry will run."
+          : `Retry after ${minutes} minute${minutes === 1 ? "" : "s"}. No automatic retry will run.`,
+      };
+    }
+    case "timeout":
+      return { heading: "Garmin took too long to respond", body: "Try the foreground sync again." };
+    case "malformed_response":
+      return { heading: "Garmin returned data this app could not use", body: "Nothing from this attempt was presented as committed." };
+    case "stale_generation":
+      return { heading: "Garmin connection changed", body: "The older sync result was ignored." };
+    case "import_conflict":
+      return { heading: "An activity could not be saved", body: "Previously committed activity facts were kept." };
+    case "sync_in_progress":
+      return { heading: "Garmin sync is already running", body: "Wait for the foreground sync to finish." };
+  }
+}
+
+function countLabel(count: number, singular: string, plural = `${singular}s`): string {
+  return `${count} ${count === 1 ? singular : plural}`;
+}
+
+function SyncResult({
+  sync,
+  onRetry,
+  onSignIn,
+}: Readonly<{
+  sync: GarminSyncPresentation;
+  onRetry(): void;
+  onSignIn(): void;
+}>) {
+  const { colors } = useAppTheme();
   if (sync.kind === "idle") return null;
   if (sync.kind === "syncing") {
     const counts = sync.progress?.counts;
@@ -230,11 +279,63 @@ function SyncResult({ sync }: Readonly<{ sync: GarminSyncPresentation }>) {
     return <InlineNotice body={detail} heading="Syncing Garmin activities" tone="neutral" />;
   }
   if (sync.kind === "success") {
-    return sync.counts.newActivities === 0
-      ? <InlineNotice body="Your imported history is up to date." heading="No new activities" tone="completed" />
-      : <InlineNotice body={`${sync.counts.newActivities} new activit${sync.counts.newActivities === 1 ? "y" : "ies"} committed.`} heading="New activities" tone="completed" />;
+    const reviewCopy = sync.counts.reviewActivities === 0
+      ? null
+      : `${countLabel(sync.counts.reviewActivities, "activity", "activities")} ${sync.counts.reviewActivities === 1 ? "needs" : "need"} review.`;
+    const heading = sync.counts.newActivities > 0
+      ? "New activities"
+      : sync.counts.reviewActivities > 0
+        ? "Needs review"
+        : "No new activities";
+    const body = sync.counts.newActivities > 0
+      ? `${countLabel(sync.counts.newActivities, "new activity", "new activities")} committed.`
+      : sync.counts.reviewActivities > 0
+        ? "Accepted activity facts were kept until you review the source revision."
+        : "Your imported history is up to date.";
+    return (
+      <View style={styles.resultGroup}>
+        <InlineNotice body={body} heading={heading} tone={reviewCopy === null ? "completed" : "attention"} />
+        {reviewCopy === null ? null : <Text style={[typeScale.body as TextStyle, { color: colors.textSecondary }]}>{reviewCopy}</Text>}
+        <Text style={[typeScale.secondary as TextStyle, { color: colors.textSecondary }]}>
+          {`${sync.counts.newActivities} new · ${sync.counts.unchangedActivities} unchanged · ${sync.counts.reviewActivities} need review`}
+        </Text>
+        <Text style={[typeScale.secondary as TextStyle, { color: colors.textSecondary }]}>
+          {`Last successful sync: ${new Date(sync.completedAtMs).toISOString()}`}
+        </Text>
+      </View>
+    );
   }
-  return <InlineNotice body="Your imported history was kept." heading={sync.kind === "partial" ? "Sync partly completed" : "Garmin sync was not completed"} tone="error" />;
+  const copy = syncFailureCopy(sync.failure);
+  const committed = sync.kind === "partial"
+    ? sync.counts.newActivities + sync.counts.unchangedActivities + sync.counts.reviewActivities
+    : 0;
+  const action = sync.failure.code === "sign_in_required" || sync.failure.code === "data_access_denied"
+    ? <SecondaryAction label="Sign in again" onPress={onSignIn} />
+    : sync.failure.retryable
+      ? <SecondaryAction label="Retry Garmin sync" onPress={onRetry} />
+      : null;
+  return (
+    <View style={styles.resultGroup}>
+      <InlineNotice
+        action={action}
+        body={sync.kind === "partial"
+          ? `${countLabel(committed, "activity", "activities")} committed before the connection was interrupted.`
+          : copy.body}
+        heading={sync.kind === "partial" ? "Sync partly completed" : copy.heading}
+        tone="error"
+      />
+      {sync.kind === "partial" ? (
+        <>
+          <Text style={[typeScale.body as TextStyle, { color: colors.textSecondary }]}>{copy.heading}</Text>
+          {sync.counts.reviewActivities === 0 ? null : (
+            <Text style={[typeScale.body as TextStyle, { color: colors.textSecondary }]}>
+              {`${countLabel(sync.counts.reviewActivities, "activity", "activities")} ${sync.counts.reviewActivities === 1 ? "needs" : "need"} review.`}
+            </Text>
+          )}
+        </>
+      ) : null}
+    </View>
+  );
 }
 
 export function GarminSyncScreen(props: GarminSyncScreenProps) {
@@ -383,7 +484,11 @@ export function GarminSyncScreen(props: GarminSyncScreenProps) {
               ref={disconnectRef}
             />
           </View>
-          <SyncResult sync={state.sync} />
+          <SyncResult
+            onRetry={() => { void controller.syncNow(); }}
+            onSignIn={controller.openCredentials}
+            sync={state.sync}
+          />
         </View>
       ) : null}
       <ImportedActivities
@@ -506,5 +611,8 @@ const styles = StyleSheet.create({
   },
   activityCopy: {
     gap: space[1],
+  },
+  resultGroup: {
+    gap: space[2],
   },
 });

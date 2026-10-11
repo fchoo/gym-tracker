@@ -44,6 +44,8 @@ export type GarminConnectionControllerError = Readonly<{
   retryAfterMs?: number;
 }>;
 
+export type GarminPresentationFailure = GarminSyncFailure;
+
 export type GarminSyncPresentation =
   | Readonly<{ kind: "idle" }>
   | Readonly<{ kind: "syncing"; progress?: GarminSyncProgress }>
@@ -139,6 +141,20 @@ function connectionKind(
 
 function committedCount(counts: GarminSyncCounts): number {
   return counts.newActivities + counts.unchangedActivities + counts.reviewActivities;
+}
+
+function normalizeSyncFailure(failure: GarminSyncFailure): GarminSyncFailure {
+  if (failure.code !== "rate_limited" || failure.retryAfterMs === undefined) {
+    return Object.freeze({ code: failure.code, retryable: failure.retryable });
+  }
+  const retryAfterMs = Number.isSafeInteger(failure.retryAfterMs) && failure.retryAfterMs >= 0
+    ? Math.min(900_000, Math.max(1_000, failure.retryAfterMs))
+    : undefined;
+  return Object.freeze({
+    code: failure.code,
+    retryable: failure.retryable,
+    ...(retryAfterMs === undefined ? {} : { retryAfterMs }),
+  });
 }
 
 export function useGarminConnectionController(input: GarminConnectionControllerInput) {
@@ -420,14 +436,22 @@ export function useGarminConnectionController(input: GarminConnectionControllerI
           setState((current) => ({
             ...current,
             operation: "idle",
-            sync: Object.freeze({ kind: "partial", counts: result!.counts, failure: result!.failure }),
+            sync: Object.freeze({
+              kind: "partial",
+              counts: result!.counts,
+              failure: normalizeSyncFailure(result!.failure),
+            }),
           }));
           break;
         case "failure":
           setState((current) => ({
             ...current,
             operation: "idle",
-            sync: Object.freeze({ kind: "failure", counts: result!.counts, failure: result!.failure }),
+            sync: Object.freeze({
+              kind: "failure",
+              counts: result!.counts,
+              failure: normalizeSyncFailure(result!.failure),
+            }),
           }));
           break;
         case "cancelled":

@@ -170,6 +170,23 @@ describe("GarminSyncScreen committed sync presentation", () => {
     expect(screen.getByRole("button", { name: "Retry Garmin sync" })).toBeOnTheScreen();
   });
 
+  it("keeps accepted rows while a committed source revision waits for review", async () => {
+    await renderScreen({
+      source: connectedSource(),
+      coordinator: {
+        syncNow: async () => ({
+          kind: "success",
+          counts: { ...counts, newActivities: 0, reviewActivities: 1 },
+        }),
+      },
+    });
+    await fireEvent.press(await screen.findByRole("button", { name: "Sync now" }));
+
+    expect(await screen.findByText("Needs review")).toBeOnTheScreen();
+    expect(screen.getByText("1 activity needs review.")).toBeOnTheScreen();
+    expect(screen.getByText("Morning run")).toBeOnTheScreen();
+  });
+
   it.each([
     ["offline", "You are offline", "Retry Garmin sync"],
     ["temporary_failure", "Garmin is temporarily unavailable", "Retry Garmin sync"],
@@ -193,6 +210,9 @@ describe("GarminSyncScreen committed sync presentation", () => {
 
     expect(await screen.findByText(heading)).toBeOnTheScreen();
     expect(screen.getByText("Morning run")).toBeOnTheScreen();
+    if (code === "rate_limited") {
+      expect(screen.getByText("Retry after 1 minute. No automatic retry will run.")).toBeOnTheScreen();
+    }
     if (action === null) {
       expect(screen.queryByRole("button", { name: "Retry Garmin sync" })).not.toBeOnTheScreen();
     } else {
