@@ -4412,7 +4412,11 @@ export function WorkoutAppRuntimeProvider({
               "SELECT operation, result_plan_id, result_revision, result_json FROM owned_plan_mutation_requests WHERE request_id = ?",
               [actionReceiptId],
             );
-            const expectedOperation = caseId === "library.owned-lifecycle" ? "archive" : caseId === "library.plan-editor" ? "save" : "create";
+            const expectedOperation = caseId === "library.owned-lifecycle"
+              ? "archive"
+              : caseId === "library.true-no-plans"
+                ? "create"
+                : "save";
             if (receipt === undefined || receipt.operation !== expectedOperation) throw new Error("phase17_family_a_action_receipt_missing");
             requireCommittedJson(receipt.result_json);
             const entities = await services.kernel.queryAll(
