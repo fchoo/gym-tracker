@@ -1,6 +1,10 @@
 #!/usr/bin/env node
 
-import { readFileSync } from "node:fs";
+import { execFileSync } from "node:child_process";
+import { createHash } from "node:crypto";
+import { existsSync, mkdtempSync, readFileSync, readdirSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
+import path from "node:path";
 import { isDeepStrictEqual } from "node:util";
 import { pathToFileURL } from "node:url";
 
@@ -10,8 +14,24 @@ import {
   createPhase18GarminAcceptanceRunnerPlan,
   validatePhase18GarminAcceptanceManifest,
 } from "./run-phase18-garmin-acceptance.mjs";
+import { sanitizePhase18BuildManifest } from "./phase18-build-manifest.mjs";
+import { sourceTreeSha256 } from "./source-tree-digest.mjs";
+import {
+  validatePhase18GarminProofCurrentIdentity,
+  validatePhase18GarminProofEvidence,
+} from "./verify-phase18-garmin-proof.mjs";
+import {
+  validatePhase18GarminAdversarialCurrentIdentity,
+  validatePhase18GarminAdversarialEvidence,
+} from "./verify-phase18-garmin-adversarial.mjs";
 
 const MANIFEST = `${PHASE18_GARMIN_ACCEPTANCE_ARTIFACT_ROOT}/build.json`;
+const APK = `${PHASE18_GARMIN_ACCEPTANCE_ARTIFACT_ROOT}/gym-tracker-phase18-garmin-acceptance-devtest.apk`;
+const PROOF_EVIDENCE = "artifacts/native/phase18-garmin-proof/final-evidence.json";
+const ADVERSARIAL_EVIDENCE = "artifacts/native/phase18-garmin-adversarial/final-evidence.json";
+const MAESTRO_SOURCE = "maestro/phase18/garmin-sync.yaml";
+const MAESTRO_REPORT = `${PHASE18_GARMIN_ACCEPTANCE_ARTIFACT_ROOT}/maestro-report.json`;
+const PRIVACY_REPORT = `${PHASE18_GARMIN_ACCEPTANCE_ARTIFACT_ROOT}/privacy-report.json`;
 const HASH = /^[a-f0-9]{64}$/u;
 const SEMANTIC_STATE = /^[a-z][a-z0-9-]{0,63}$/u;
 const FORBIDDEN_KEY = /(?:^|_)(?:account|activity_id|authorization|ciphertext|cookie|credentials?|device_serial|email|external_activity_id|filename|heart_rate|latitude|longitude|mfa_code|password|raw_json|route|secret|serial|sql_param|token|url)(?:$|_)/iu;
@@ -57,6 +77,66 @@ function privacySafe(value) {
       if (FORBIDDEN_KEY.test(key)) fail("privacy_invalid");
       privacySafe(entry);
     }
+  }
+}
+
+function sha256(value) {
+  return createHash("sha256").update(value).digest("hex");
+}
+
+function command(program, args) {
+  return execFileSync(program, args, { encoding: "utf8", maxBuffer: 64 * 1024 * 1024 }).trim();
+}
+
+function resolveCurrentIdentity() {
+  const androidHome = process.env.ANDROID_HOME ?? process.env.ANDROID_SDK_ROOT;
+  if (androidHome === undefined) fail("android_sdk_missing");
+  const adb = path.join(androidHome, "platform-tools", "adb");
+  const buildTools = path.join(androidHome, "build-tools");
+  const apksigner = existsSync(buildTools)
+    ? readdirSync(buildTools).sort().reverse()
+      .map((version) => path.join(buildTools, version, "apksigner"))
+      .find(existsSync)
+    : undefined;
+  if (apksigner === undefined) fail("apksigner_missing");
+  const devices = command(adb, ["devices"]).split("\n").slice(1)
+    .map((line) => line.trim().split(/\s+/u)).filter(([, state]) => state === "device");
+  if (devices.length !== 1 || devices[0]?.[0] === undefined) fail("device_identity_invalid");
+  const serial = devices[0][0];
+  const getprop = (name) => command(adb, ["-s", serial, "shell", "getprop", name]);
+  const deviceIdentitySha256 = sha256([
+    getprop("ro.build.fingerprint"), getprop("ro.product.cpu.abi"),
+    getprop("ro.product.model"), getprop("ro.build.version.sdk"),
+    getprop("ro.build.version.release"), "",
+  ].join("\n"));
+  const installedPath = command(adb, ["-s", serial, "shell", "pm", "path", "com.fchoo.gymtracker.devtest"])
+    .split("\n").find((line) => line.startsWith("package:"))?.slice("package:".length);
+  if (installedPath === undefined) fail("installed_apk_missing");
+  const temporary = mkdtempSync(path.join(tmpdir(), "phase18-acceptance-"));
+  try {
+    const installedCopy = path.join(temporary, "installed.apk");
+    execFileSync(adb, ["-s", serial, "pull", installedPath, installedCopy], { stdio: "ignore" });
+    const signatureOutput = command(apksigner, ["verify", "--print-certs", APK]);
+    const signature = signatureOutput.match(/certificate SHA-256 digest:\s*([A-Fa-f0-9:]{64,95})/u)?.[1]
+      ?.replaceAll(":", "").toLowerCase();
+    if (signature === undefined || !HASH.test(signature)) fail("signature_unreadable");
+    return Object.freeze({
+      currentHead: command("git", ["rev-parse", "HEAD"]),
+      currentSourceTreeSha256: sourceTreeSha256(),
+      currentPythonLockSha256: sha256(readFileSync("modules/garmin-connect/python/garmin-python-lock.json")),
+      retainedApkSha256: sha256(readFileSync(APK)),
+      installedApkSha256: sha256(readFileSync(installedCopy)),
+      retainedSignatureSha256: signature,
+      deviceIdentitySha256,
+    });
+  } finally {
+    rmSync(temporary, { recursive: true, force: true });
+  }
+}
+
+function matchingArtifactIdentity(ownerManifest, acceptanceManifest) {
+  for (const key of ["base_head", "source_tree_sha256", "python_lock_sha256", "signature_sha256", "device_identity_sha256", "package", "profile", "abi"]) {
+    if (ownerManifest?.[key] !== acceptanceManifest?.[key]) fail("owner_manifest_invalid");
   }
 }
 
@@ -230,12 +310,57 @@ export function executePhase18GarminAcceptanceVerifier(
   ) fail("arguments_invalid");
   const readJson = dependencies.readJson
     ?? ((path) => JSON.parse(readFileSync(path, "utf8")));
-  const manifest = readJson(MANIFEST);
+  const readBytes = dependencies.readBytes ?? readFileSync;
+  const current = (dependencies.resolveCurrentIdentity ?? resolveCurrentIdentity)();
+  const retainedManifest = readJson(MANIFEST);
+  const manifest = sanitizePhase18BuildManifest(retainedManifest, {
+    suite: "phase18-garmin-acceptance",
+    pythonLockSha256: current.currentPythonLockSha256,
+    signatureSha256: current.retainedSignatureSha256,
+  });
   const evidence = readJson(PHASE18_GARMIN_ACCEPTANCE_RAW_REPORT);
   if (!isDeepStrictEqual(evidence?.manifest, manifest)) {
     fail("report_identity_invalid");
   }
-  return validatePhase18GarminAcceptanceEvidence(evidence);
+  const validated = validatePhase18GarminAcceptanceEvidence(evidence);
+  validatePhase18GarminAcceptanceCurrentIdentity(evidence, {
+    ...current,
+    nativeFlowSourceSha256: sha256(readBytes(MAESTRO_SOURCE)),
+    nativeFlowReportSha256: sha256(readBytes(MAESTRO_REPORT)),
+    privacyReportSha256: sha256(readBytes(PRIVACY_REPORT)),
+  });
+  const ownerArtifacts = [
+    [PROOF_EVIDENCE, validatePhase18GarminProofEvidence, validatePhase18GarminProofCurrentIdentity],
+    [ADVERSARIAL_EVIDENCE, validatePhase18GarminAdversarialEvidence, validatePhase18GarminAdversarialCurrentIdentity],
+  ];
+  const ownerVerifier = dependencies.verifyOwnerArtifact;
+  for (const [artifactPath, validateEvidence, validateIdentity] of ownerArtifacts) {
+    const ownerEvidence = readJson(artifactPath);
+    if (ownerVerifier === undefined) validateEvidence(ownerEvidence);
+    else ownerVerifier(artifactPath, ownerEvidence);
+    matchingArtifactIdentity(ownerEvidence.manifest, manifest);
+    const artifactHash = sha256(readBytes(artifactPath));
+    const row = evidence.cases.find(({ artifact }) => artifact === artifactPath);
+    if (row?.status !== "verified" || row.artifact_sha256 !== artifactHash) fail("owner_artifact_invalid");
+    if (ownerVerifier === undefined) {
+      validateIdentity(ownerEvidence, dependencies.ownerCurrentIdentity?.[artifactPath] ?? {
+        ...current,
+        retainedApkSha256: ownerEvidence.manifest?.apk_sha256,
+        installedApkSha256: ownerEvidence.manifest?.apk_sha256,
+        nativeReportSha256: ownerEvidence.native_report?.sha256,
+        privacyReportSha256: ownerEvidence.privacy_scan?.report_sha256,
+        rawReportSha256: ownerEvidence.raw_report_sha256,
+      });
+    }
+  }
+  const maestro = readJson(MAESTRO_REPORT);
+  const privacy = readJson(PRIVACY_REPORT);
+  if (maestro?.status !== "passed" || privacy?.status !== "passed"
+    || !isDeepStrictEqual(evidence.observations, maestro.observations)
+    || evidence.privacy_scan.scanned_artifact_count !== privacy.scanned_artifact_count) {
+    fail("observations_invalid");
+  }
+  return validated;
 }
 
 if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
