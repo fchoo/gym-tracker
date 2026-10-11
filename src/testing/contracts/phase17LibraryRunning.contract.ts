@@ -38,7 +38,7 @@ const rows: readonly CaseRow[] = [
   ["library.custom-exercise", "LIB-20", "mutating", "edit-and-archive-custom-exercise", "archived-custom-exercise-visible", "custom_exercises"],
   ["library.create-exercise", "LIB-21", "mutating", "create-custom-exercise", "created-custom-exercise-visible-after-reopen", "custom_exercises"],
   ["library.copy-metric-migration", "LIB-22", "mutating", "copy-exercise-and-migrate-metric", "copied-metric-migration-visible", "custom_exercise_metric_migrations"],
-  ["library.load-error-recovery", "LIB-23", "mutating", "retry-library-load", "recovered-library-content-visible", "library_load_receipts"],
+  ["library.load-error-recovery", "LIB-23", "read_only", "retry-library-load", "recovered-library-content-visible", "owned_plans"],
   ["library.running-detail", "LIB-24", "read_only", "open-running-detail", "saved-running-facts-visible", "running_plans"],
   ["library.running-create-zero-sessions", "LIB-25", "mutating", "create-save-and-reopen-empty-running-plan", "no-sessions-visible-after-reopen", "running_plan_aggregates", "inactive-after-atomic-commit", "true-empty-after-reopen", "no-source-drift"],
   ["library.running-goal-edit", "LIB-26", "mutating", "edit-save-and-reopen-running-goal", "saved-running-goal-visible", "running_plan_revisions"],
@@ -67,6 +67,35 @@ export type Phase17CaseActionContract = Readonly<{
   cleanupRequired: true;
   /** Mutations must expose this deterministic request/receipt identity. */
   actionReceiptRequired: boolean;
+}>;
+
+/**
+ * Family A's mutating journeys are backed by the owning domain's persisted
+ * receipt, never by the dev-test action envelope.  The probe implementation
+ * also reads the named authoritative post-state rows at the receipt result
+ * identifiers and revisions.  Keeping this one explicit row per product
+ * command makes a new mutating ledger case fail review until it declares its
+ * own durable evidence contract.
+ */
+export const PHASE17_FAMILY_A_MUTATION_RECEIPTS = Object.freeze([
+  ["library.exercise-favorites", "custom_exercise_mutation_receipts", "favorite_and_preference_revision"],
+  ["library.true-no-plans", "owned_plan_mutation_requests", "created_plan_revision"],
+  ["library.owned-lifecycle", "owned_plan_mutation_requests", "lifecycle_plan_revision"],
+  ["library.starter-activation", "starter_plan_activation_requests", "activated_plan_and_schedule_revision"],
+  ["library.create-strength", "owned_plan_mutation_requests", "created_plan_revision"],
+  ["library.plan-editor", "owned_plan_mutation_requests", "saved_plan_revision"],
+  ["library.schedule-editor", "owned_plan_schedule_events", "saved_schedule_and_plan_revision"],
+  ["library.replacement-impact", "owned_plan_schedule_events", "replacement_plan_and_schedule_revision"],
+  ["library.day-removal-impact", "owned_plan_schedule_events", "day_removal_plan_and_schedule_revision"],
+  ["library.custom-exercise", "custom_exercise_mutation_receipts", "archived_exercise_revision"],
+  ["library.create-exercise", "custom_exercise_mutation_receipts", "created_exercise_revision"],
+  ["library.copy-metric-migration", "metric_profile_migration_events", "migrated_exercise_generation_and_revision"],
+] as const);
+
+export type Phase17FamilyAMutationReceipt = Readonly<{
+  caseId: (typeof PHASE17_FAMILY_A_MUTATION_RECEIPTS)[number][0];
+  receiptTable: (typeof PHASE17_FAMILY_A_MUTATION_RECEIPTS)[number][1];
+  resultComparator: (typeof PHASE17_FAMILY_A_MUTATION_RECEIPTS)[number][2];
 }>;
 
 export const PHASE17_CASE_ACTION_CONTRACTS = Object.freeze(rows.map(([id, , proofMode, action, uiReadback, sourceProbe]) => Object.freeze({ id, proofMode, action, uiReadback, sourceProbe, rawReportRequired: true as const, cleanupRequired: true as const, actionReceiptRequired: proofMode === "mutating" })));

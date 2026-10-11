@@ -111,7 +111,6 @@ export function phase17ActionLabel(caseId: string): string {
     "library.custom-exercise": "custom-exercise-archive",
     "library.create-exercise": "custom-exercise-create",
     "library.copy-metric-migration": "custom-exercise-metric-migration",
-    "library.load-error-recovery": "library-load-retry",
     "library.running-create-zero-sessions": "running-plan-create",
     "library.running-goal-edit": "running-plan-save",
     "library.running-session-common": "running-session-save",

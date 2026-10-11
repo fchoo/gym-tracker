@@ -2738,11 +2738,10 @@ export function WorkoutAppRuntimeProvider({
   }, [requireServices]);
 
   const retryLibraryLoad = useCallback(async () => {
-    // Loading is normally read-only.  The development-test retry is recorded
-    // as an action only after the user presses the recovery control.
-    await phase17RequestId("library-load-retry", `library-load-retry:${dependencies.nowMs()}`);
+    // Retrying a failed Library load reads the same authoritative source rows;
+    // it is not a product mutation and must not claim a fixture envelope.
     return loadLibrary();
-  }, [dependencies, loadLibrary, phase17RequestId]);
+  }, [loadLibrary]);
 
   const loadStarterPlan = useCallback(async (
     templateId: string,
@@ -4114,6 +4113,7 @@ export function WorkoutAppRuntimeProvider({
     assertPhase17FamilyCRegistry(PHASE17_CASE_ACTION_CONTRACTS);
     const physicalTable = (sourceTable: string) => ({
       library_view_state: "app_settings", library_action_state: "app_settings", plan_create_intent: "plans",
+      owned_plans: "plans",
       exercise_search_index: "exercise_search_terms", exercise_preferences: "exercise_owner_preferences",
       owned_plan_lifecycle_receipts: "owned_plan_mutation_requests", owned_plan_revisions: "plans",
       plan_schedule_slots: "owned_plan_schedules", plan_exercise_replacements: "owned_plan_mutation_requests",
@@ -4261,32 +4261,34 @@ export function WorkoutAppRuntimeProvider({
           const ownedPlanId = selectors.ownedPlanId;
           const starterTemplateId = selectors.starterTemplateId;
           if (customExerciseId === undefined || bundledExerciseId === undefined || ownedPlanId === undefined || starterTemplateId === undefined) throw new Error("phase17_fixture_selector_invalid");
-          const rows = await (async () => {
-            switch (table) {
-              case "plans": return services.kernel.queryAll("SELECT id FROM plans WHERE id = ? AND origin IN ('custom', 'copied')", [ownedPlanId]);
-              case "exercises": return services.kernel.queryAll("SELECT id FROM exercises WHERE id = ? AND origin = 'custom'", [customExerciseId]);
-              case "exercise_search_terms": return services.kernel.queryAll("SELECT exercise_id FROM exercise_search_terms WHERE exercise_id = ?", [bundledExerciseId]);
-              case "exercise_owner_preferences": return services.kernel.queryAll("SELECT exercise_id FROM exercise_owner_preferences WHERE exercise_id = ?", [bundledExerciseId]);
-              case "exercise_instruction_sets": return services.kernel.queryAll("SELECT exercise_id FROM exercise_instruction_sets WHERE exercise_id = ?", [bundledExerciseId]);
-              case "starter_plan_sources": return services.kernel.queryAll("SELECT template_id FROM starter_plan_sources WHERE template_id = ?", [starterTemplateId]);
-              case "owned_plan_mutation_requests": return services.kernel.queryAll("SELECT result_plan_id FROM owned_plan_mutation_requests WHERE result_plan_id = ?", [ownedPlanId]);
-              case "plan_days": return services.kernel.queryAll("SELECT id FROM plan_days WHERE plan_id = ?", [ownedPlanId]);
-              default: throw new Error("phase17_fixture_table_unseeded");
-            }
-          })();
-          if (rows.length !== 1) throw new Error("phase17_fixture_probe_failed");
           const actionReceiptId = selectors.phase17ActionReceiptId;
-          const envelope = contract.proofMode === "mutating"
-            ? (await services.kernel.queryAll<Readonly<{ value_json: string }>>(
-                "SELECT value_json FROM app_settings WHERE key = ?",
-                [PHASE17_ACTION_ENVELOPE_SETTING_KEY],
-              ))[0]
-            : undefined;
-          if (contract.proofMode === "mutating" && (
-            actionReceiptId === undefined || envelope === undefined
-            || !envelope.value_json.includes(actionReceiptId)
-            || !envelope.value_json.includes('"nextEnvelope":1')
-          )) throw new Error("phase17_family_a_action_receipt_missing");
+          const requireCommittedJson = (value: string) => {
+            try {
+              const parsed = JSON.parse(value) as { outcome?: unknown };
+              if (parsed.outcome !== "committed") throw new Error("invalid");
+              return parsed;
+            } catch {
+              throw new Error("phase17_family_a_action_receipt_missing");
+            }
+          };
+          let rowCount = 0;
+          if (contract.proofMode === "read_only") {
+            const rows = await (async () => {
+              switch (table) {
+                case "plans": return services.kernel.queryAll("SELECT id FROM plans WHERE id = ? AND origin IN ('custom', 'copied')", [ownedPlanId]);
+                case "exercises": return services.kernel.queryAll("SELECT id FROM exercises WHERE id = ? AND origin = 'custom'", [customExerciseId]);
+                case "exercise_search_terms": return services.kernel.queryAll("SELECT exercise_id FROM exercise_search_terms WHERE exercise_id = ?", [bundledExerciseId]);
+                case "exercise_owner_preferences": return services.kernel.queryAll("SELECT exercise_id FROM exercise_owner_preferences WHERE exercise_id = ?", [bundledExerciseId]);
+                case "exercise_instruction_sets": return services.kernel.queryAll("SELECT exercise_id FROM exercise_instruction_sets WHERE exercise_id = ?", [bundledExerciseId]);
+                case "starter_plan_sources": return services.kernel.queryAll("SELECT template_id FROM starter_plan_sources WHERE template_id = ?", [starterTemplateId]);
+                default: throw new Error("phase17_fixture_table_unseeded");
+              }
+            })();
+            if (rows.length !== 1) throw new Error("phase17_fixture_probe_failed");
+            rowCount = rows.length;
+          } else if (actionReceiptId === undefined) {
+            throw new Error("phase17_family_a_action_receipt_missing");
+          }
           const customReceiptKind = ({
             "library.exercise-favorites": "favorite",
             "library.custom-exercise": "archive",
@@ -4304,27 +4306,92 @@ export function WorkoutAppRuntimeProvider({
               [actionReceiptId],
             );
             if (receipt === undefined || receipt.mutation_kind !== customReceiptKind
-              || !receipt.request_json.includes(actionReceiptId)
-              || !receipt.result_json.includes('"outcome":"committed"')) {
+              || !receipt.request_json.includes(actionReceiptId)) {
               throw new Error("phase17_family_a_action_receipt_missing");
             }
+            const result = requireCommittedJson(receipt.result_json) as {
+              exercise?: { exerciseId?: unknown; revision?: unknown };
+              exerciseId?: unknown;
+              preferenceRevision?: unknown;
+            };
+            const exerciseId = result.exercise?.exerciseId ?? result.exerciseId;
+            if (typeof exerciseId !== "string") throw new Error("phase17_family_a_action_receipt_missing");
+            const request = JSON.parse(receipt.request_json) as { expectedExerciseRevision?: unknown };
+            const exerciseRevision = result.exercise?.revision
+              ?? (typeof request.expectedExerciseRevision === "number" ? request.expectedExerciseRevision + 1 : undefined);
+            if (customReceiptKind === "favorite" && !Number.isSafeInteger(result.preferenceRevision)) throw new Error("phase17_family_a_action_receipt_missing");
+            if (customReceiptKind !== "favorite" && !Number.isSafeInteger(exerciseRevision)) throw new Error("phase17_family_a_action_receipt_missing");
+            const entities = customReceiptKind === "favorite"
+              ? await services.kernel.queryAll("SELECT exercise_id FROM exercise_owner_preferences WHERE exercise_id = ? AND revision = ?", [exerciseId, result.preferenceRevision as number])
+              : await services.kernel.queryAll("SELECT id FROM exercises WHERE id = ? AND revision = ?", [exerciseId, exerciseRevision as number]);
+            if (entities.length !== 1) throw new Error("phase17_family_a_action_receipt_missing");
+            rowCount = entities.length;
           }
           if (caseId === "library.copy-metric-migration" && actionReceiptId !== undefined) {
             const [receipt] = await services.kernel.queryAll<Readonly<{
+              exercise_id: string;
+              to_exercise_metric_generation: number;
+              exercise_revision: number;
               result_json: string;
             }>>(
-              `SELECT result_json FROM metric_profile_migration_events
+              `SELECT exercise_id, to_exercise_metric_generation, exercise_revision, result_json FROM metric_profile_migration_events
                WHERE idempotency_key = ?`,
               [actionReceiptId],
             );
-            if (receipt === undefined || !receipt.result_json.includes('"outcome":"committed"')) {
+            if (receipt === undefined) {
               throw new Error("phase17_family_a_action_receipt_missing");
             }
+            requireCommittedJson(receipt.result_json);
+            const entities = await services.kernel.queryAll("SELECT id FROM exercises WHERE id = ? AND revision = ? AND exercise_metric_generation = ?", [receipt.exercise_id, receipt.exercise_revision, receipt.to_exercise_metric_generation]);
+            if (entities.length !== 1) throw new Error("phase17_family_a_action_receipt_missing");
+            rowCount = entities.length;
+          }
+          if (["library.true-no-plans", "library.owned-lifecycle", "library.create-strength", "library.plan-editor"].includes(caseId) && actionReceiptId !== undefined) {
+            const [receipt] = await services.kernel.queryAll<Readonly<{ operation: string; result_plan_id: string; result_revision: number; result_json: string }>>(
+              "SELECT operation, result_plan_id, result_revision, result_json FROM owned_plan_mutation_requests WHERE request_id = ?",
+              [actionReceiptId],
+            );
+            const expectedOperation = caseId === "library.owned-lifecycle" ? "archive" : caseId === "library.plan-editor" ? "save" : "create";
+            if (receipt === undefined || receipt.operation !== expectedOperation) throw new Error("phase17_family_a_action_receipt_missing");
+            requireCommittedJson(receipt.result_json);
+            const entities = await services.kernel.queryAll(
+              caseId === "library.owned-lifecycle"
+                ? "SELECT plan.id FROM plans plan JOIN owned_plan_aggregate_states state ON state.plan_id = plan.id WHERE plan.id = ? AND plan.revision = ? AND plan.origin IN ('custom', 'copied') AND state.lifecycle = 'archived'"
+                : "SELECT id FROM plans WHERE id = ? AND revision = ? AND origin IN ('custom', 'copied')",
+              [receipt.result_plan_id, receipt.result_revision],
+            );
+            if (entities.length !== 1) throw new Error("phase17_family_a_action_receipt_missing");
+            rowCount = entities.length;
+          }
+          if (caseId === "library.starter-activation" && actionReceiptId !== undefined) {
+            const [receipt] = await services.kernel.queryAll<Readonly<{ result_plan_id: string; result_schedule_id: string; result_json: string }>>(
+              "SELECT result_plan_id, result_schedule_id, result_json FROM starter_plan_activation_requests WHERE request_id = ?",
+              [actionReceiptId],
+            );
+            if (receipt === undefined) throw new Error("phase17_family_a_action_receipt_missing");
+            requireCommittedJson(receipt.result_json);
+            const entities = await services.kernel.queryAll("SELECT plan.id FROM plans plan JOIN owned_plan_schedules schedule ON schedule.plan_id = plan.id WHERE plan.id = ? AND plan.is_active = 1 AND schedule.id = ? AND schedule.lifecycle = 'active' AND plan.revision >= 1 AND schedule.revision >= 1", [receipt.result_plan_id, receipt.result_schedule_id]);
+            if (entities.length !== 1) throw new Error("phase17_family_a_action_receipt_missing");
+            rowCount = entities.length;
+          }
+          if (["library.schedule-editor", "library.replacement-impact", "library.day-removal-impact"].includes(caseId) && actionReceiptId !== undefined) {
+            const eventId = caseId === "library.schedule-editor" ? `schedule-command:${actionReceiptId}` : `plan-impact-command:${actionReceiptId}`;
+            const [event] = await services.kernel.queryAll<Readonly<{ schedule_id: string; schedule_revision: number; local_date: string | null; payload_json: string }>>(
+              "SELECT schedule_id, schedule_revision, local_date, payload_json FROM owned_plan_schedule_events WHERE id = ?",
+              [eventId],
+            );
+            if (event === undefined || event.local_date === null) throw new Error("phase17_family_a_action_receipt_missing");
+            const payload = JSON.parse(event.payload_json) as { result?: { outcome?: unknown; planId?: unknown; planRevision?: unknown; scheduleRevision?: unknown } };
+            if (payload.result?.outcome !== "committed" || typeof payload.result.planId !== "string" || typeof payload.result.planRevision !== "number" || !Number.isSafeInteger(payload.result.planRevision) || payload.result.scheduleRevision !== event.schedule_revision) throw new Error("phase17_family_a_action_receipt_missing");
+            const entities = await services.kernel.queryAll("SELECT plan.id FROM plans plan JOIN owned_plan_schedules schedule ON schedule.plan_id = plan.id WHERE plan.id = ? AND plan.revision = ? AND schedule.id = ? AND schedule.revision = ?", [payload.result.planId, payload.result.planRevision, event.schedule_id, event.schedule_revision]);
+            if (entities.length !== 1) throw new Error("phase17_family_a_action_receipt_missing");
+            rowCount = entities.length;
           }
           const facts = contract.proofMode === "mutating"
             ? Object.freeze({ caseId, fixtureToken, ownedPlanId, customExerciseId, bundledExerciseId, starterTemplateId, sourceTable: table, actionReceiptId, action: contract.action })
             : Object.freeze({ caseId, fixtureToken, ownedPlanId, customExerciseId, bundledExerciseId, starterTemplateId, sourceTable: table });
-          return Object.freeze({ rowCount: 1, identityHash: await digestStringAsync(CryptoDigestAlgorithm.SHA256, `${fixtureToken}:${table}:${JSON.stringify(facts)}`), facts });
+          if (rowCount !== 1) throw new Error("phase17_family_a_action_receipt_missing");
+          return Object.freeze({ rowCount, identityHash: await digestStringAsync(CryptoDigestAlgorithm.SHA256, `${fixtureToken}:${table}:${JSON.stringify(facts)}`), facts });
         },
         cleanup: async (_caseId, _fixtureToken, selectors) => {
           const ownedPlanId = selectors.ownedPlanId;

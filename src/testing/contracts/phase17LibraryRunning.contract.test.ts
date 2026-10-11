@@ -1,5 +1,5 @@
 import { describe, expect, it } from "@jest/globals";
-import { PHASE17_CASE_ACTION_CONTRACTS, PHASE17_LIBRARY_RUNNING_CASES, PHASE17_LIBRARY_RUNNING_EVIDENCE_IDS, PHASE17_REQUIRED_LIBRARY_REQUIREMENTS } from "./phase17LibraryRunning.contract";
+import { PHASE17_CASE_ACTION_CONTRACTS, PHASE17_FAMILY_A_MUTATION_RECEIPTS, PHASE17_LIBRARY_RUNNING_CASES, PHASE17_LIBRARY_RUNNING_EVIDENCE_IDS, PHASE17_REQUIRED_LIBRARY_REQUIREMENTS } from "./phase17LibraryRunning.contract";
 
 describe("Phase 17 Library and Running evidence ledger", () => {
   it("assigns every LIB requirement exactly once to a stable canonical evidence ID", () => {
@@ -21,6 +21,19 @@ describe("Phase 17 Library and Running evidence ledger", () => {
       expect(entry.sourceProbe).toMatch(/^[a-z_]+$/u);
       expect(entry.rawReportRequired).toBe(true);
       expect(entry.cleanupRequired).toBe(true);
+    }
+  });
+
+  it("requires an explicit durable receipt and result comparator for every mutating Family A case", () => {
+    const mutatingFamilyA = PHASE17_CASE_ACTION_CONTRACTS.filter(
+      ({ id, proofMode }) => proofMode === "mutating" && id.startsWith("library.") && !id.startsWith("library.running-"),
+    );
+    expect(PHASE17_FAMILY_A_MUTATION_RECEIPTS).toHaveLength(mutatingFamilyA.length);
+    expect(new Set(PHASE17_FAMILY_A_MUTATION_RECEIPTS.map(([caseId]) => caseId)))
+      .toEqual(new Set(mutatingFamilyA.map(({ id }) => id)));
+    for (const [, receiptTable, comparator] of PHASE17_FAMILY_A_MUTATION_RECEIPTS) {
+      expect(receiptTable).toMatch(/^[a-z_]+$/u);
+      expect(comparator).toMatch(/^[a-z_]+$/u);
     }
   });
 });

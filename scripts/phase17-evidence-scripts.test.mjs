@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { createHash } from "node:crypto";
 import { readFileSync } from "node:fs";
 import test from "node:test";
-import { PHASE17_CASE_ACTION_CONTRACTS, PHASE17_LIBRARY_RUNNING_EVIDENCE_IDS } from "../src/testing/contracts/phase17LibraryRunning.contract.ts";
+import { PHASE17_CASE_ACTION_CONTRACTS, PHASE17_FAMILY_A_MUTATION_RECEIPTS, PHASE17_LIBRARY_RUNNING_EVIDENCE_IDS } from "../src/testing/contracts/phase17LibraryRunning.contract.ts";
 import { createPhase17FixtureProtocol, phase17ActionReceiptId } from "../src/bootstrap/phase17NativeFixture.ts";
 import { PHASE17_FAMILY_A_CASE_IDS, createPhase17FamilyAFixtureAdapter } from "../src/bootstrap/phase17FamilyAFixture.ts";
 import { PHASE17_FAMILY_B_CASE_IDS, assertPhase17FamilyBRegistry, createPhase17FamilyFixtureAdapter } from "../src/bootstrap/phase17FamilyBFixture.ts";
@@ -347,8 +347,8 @@ test("Phase 17 has a reachable labelled product-command path and expected receip
     "app/library/plan/[planId]/day/[dayId]/remove.tsx",
   ].map((file) => readFileSync(file, "utf8")).join("\n");
   const mutating = PHASE17_CASE_ACTION_CONTRACTS.filter(({ proofMode }) => proofMode === "mutating");
-  assert.equal(mutating.length, 27);
-  assert.equal(PHASE17_FAMILY_A_CASE_IDS.filter((id) => mutating.some((entry) => entry.id === id)).length, 13);
+  assert.equal(mutating.length, 26);
+  assert.equal(PHASE17_FAMILY_A_CASE_IDS.filter((id) => mutating.some((entry) => entry.id === id)).length, 12);
   assert.equal(PHASE17_FAMILY_B_CASE_IDS.length + 1, 15);
   for (const { id } of mutating) {
     const label = phase17ActionLabel(id);
@@ -363,4 +363,22 @@ test("Phase 17 has a reachable labelled product-command path and expected receip
   }
   assert.equal(runtime.includes("fail_closed_mutation"), false);
   assert.equal(runtime.includes("phase17_family_a_action_receipt_unverified"), false);
+});
+
+test("Phase 17 Family A names a durable source receipt and authoritative result comparator for every mutation", () => {
+  const runtime = readFileSync("src/bootstrap/workoutAppRuntime.tsx", "utf8");
+  const familyAMutations = PHASE17_CASE_ACTION_CONTRACTS
+    .filter(({ id, proofMode }) => proofMode === "mutating" && PHASE17_FAMILY_A_CASE_IDS.includes(id));
+  assert.equal(PHASE17_FAMILY_A_MUTATION_RECEIPTS.length, familyAMutations.length);
+  assert.deepEqual(
+    new Set(PHASE17_FAMILY_A_MUTATION_RECEIPTS.map(([caseId]) => caseId)),
+    new Set(familyAMutations.map(({ id }) => id)),
+  );
+  for (const [caseId, receiptTable, comparator] of PHASE17_FAMILY_A_MUTATION_RECEIPTS) {
+    assert.match(receiptTable, /^[a-z_]+$/u, caseId);
+    assert.match(comparator, /^[a-z_]+$/u, caseId);
+    assert.match(runtime, new RegExp(receiptTable, "u"), caseId);
+  }
+  assert.equal(runtime.includes('"nextEnvelope":1'), false);
+  assert.equal(runtime.includes("library-load-retry"), false);
 });
