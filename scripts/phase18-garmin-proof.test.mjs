@@ -5,6 +5,7 @@ import test from "node:test";
 
 import {
   PHASE18_GARMIN_PROOF_ARTIFACT_ROOT,
+  createPhase18GarminTechnicalReviewReport,
   createPhase18GarminProofRunnerPlan,
   executePhase18GarminProofRunner,
   parsePhase18GarminProofRunnerArgs,
@@ -163,6 +164,34 @@ test("Phase 18 host plan mode never resolves adb, installs, launches, or writes 
   });
   assert.equal(result.status, "native_deferred");
   assert.deepEqual(calls, []);
+});
+
+test("Phase 18 runner classifies post-manifest failures without leaking exception details", () => {
+  const report = createPhase18GarminTechnicalReviewReport({
+    manifest: manifest(),
+    passedCases: [],
+    stage: "PH18-PKG",
+    code: "packaging_failed",
+    privateError: new Error("private path token account activity 123456789"),
+  });
+  assert.equal(report.status, "TECHNICAL_REVIEW_REQUIRED");
+  assert.deepEqual(report.cases, [{
+    id: "PH18-PKG",
+    status: "TECHNICAL_REVIEW_REQUIRED",
+    duration_ms: 0,
+    code: "packaging_failed",
+  }]);
+  assert.equal(report.failure_stage, "PH18-PKG");
+  assert.doesNotMatch(JSON.stringify(report), /private|path|token|account|123456789/iu);
+  assert.throws(
+    () => createPhase18GarminTechnicalReviewReport({
+      manifest: manifest(),
+      passedCases: [passedCase("PH18-PKG")],
+      stage: "PH18-READ",
+      code: "temporary_failure",
+    }),
+    /phase18_case_order_invalid/u,
+  );
 });
 
 test("Phase 18 route is guarded, uses the real adapter/module, and keeps secrets in secure fields", () => {
