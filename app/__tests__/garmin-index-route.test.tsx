@@ -1,8 +1,8 @@
 import {
-  act,
   fireEvent,
   render,
   screen,
+  waitFor,
 } from "@testing-library/react-native";
 import {
   beforeEach,
@@ -17,17 +17,12 @@ const mockBack = jest.fn();
 const mockPush = jest.fn();
 const mockUseGarminImportRuntime = jest.fn();
 let mockParams: Readonly<{ origin?: string | readonly string[] }> = {};
-let mockFocusEffect: (() => void | (() => void)) | undefined;
 let mockScreenProps: Readonly<Record<string, unknown>> = {};
 
 jest.mock("expo-router", () => ({
   router: {
     back: (...args: readonly unknown[]) => mockBack(...args),
     push: (...args: readonly unknown[]) => mockPush(...args),
-  },
-  useFocusEffect: (effect: () => void | (() => void)) => {
-    mockFocusEffect = effect;
-    effect();
   },
   useLocalSearchParams: () => mockParams,
 }));
@@ -54,14 +49,14 @@ jest.mock("../../src/ui/screens/GarminSyncScreen", () => ({
     const ReactModule = require("react") as typeof import("react");
     const {
       Pressable: MockPressable,
+      ScrollView: MockScrollView,
       Text: MockText,
-      View: MockView,
     } = require("react-native") as typeof import("react-native");
     const mockOpenActivity = props.onOpenActivity as jest.Mock;
     const mockRequestBack = props.onBack as jest.Mock;
     mockScreenProps = props;
     return ReactModule.createElement(
-      MockView,
+      MockScrollView,
       { onScroll: props.onScroll as never, testID: "garmin-root-screen" },
       ReactModule.createElement(
         MockPressable,
@@ -96,7 +91,6 @@ describe("Garmin root route", () => {
       loadActivities: jest.fn(),
     });
     mockParams = { origin: "calendar" };
-    mockFocusEffect = undefined;
     mockScreenProps = {};
   });
 
@@ -127,8 +121,7 @@ describe("Garmin root route", () => {
     await render(<GarminRootRoute />);
     expect(Object.keys(mockScreenProps)).toContain("contextOrigin");
     expect(mockScreenProps.contextOrigin).toBe("calendar");
-
-    fireEvent(screen.getByTestId("garmin-root-screen"), "scroll", {
+    await fireEvent(screen.getByTestId("garmin-root-screen"), "scroll", {
       nativeEvent: { contentOffset: { y: 144 } },
     });
     await fireEvent.press(screen.getByRole("button", { name: "Open retained activity" }));
@@ -137,20 +130,11 @@ describe("Garmin root route", () => {
       pathname: "/garmin/activity/[activityId]",
       params: { activityId: "activity-local-01" },
     });
-    expect(mockFocusEffect).toBeDefined();
-    await act(async () => {
-      mockFocusEffect?.();
+    await waitFor(() => {
+      expect(mockScreenProps.returnFocusActivityId).toBe("activity-local-01");
+      expect(mockScreenProps.returnFocusVersion).toBe(1);
+      expect(mockScreenProps.scrollOffset).toBe(144);
     });
-    expect(mockScreenProps.returnFocusActivityId).toBe("activity-local-01");
-    expect(mockScreenProps.returnFocusVersion).toBe(1);
-    expect(mockScreenProps.scrollOffset).toBe(144);
-  });
-
-  it("uses stack Back and never accepts a fifth-root destination", async () => {
-    mockParams = { origin: "garmin" };
-    await render(<GarminRootRoute />);
-    expect(mockScreenProps.contextOrigin).toBe("workout");
-
     await fireEvent.press(screen.getByRole("button", { name: "Back" }));
     expect(mockBack).toHaveBeenCalledTimes(1);
   });

@@ -36,10 +36,12 @@ export default function GarminRootRoute() {
   const application = useWorkoutAppRuntime().garminImport;
   const runtime = useGarminImportRuntime({ application });
   const [returnFocusActivityId, setReturnFocusActivityId] = useState<string>();
+  const [returnFocusVersion, setReturnFocusVersion] = useState(0);
   const [scrollOffset, setScrollOffset] = useState(0);
   const routeContext = useMemo(() => ({ origin }), [origin]);
   const openActivity = useCallback((activityId: string) => {
     setReturnFocusActivityId(activityId);
+    setReturnFocusVersion((current) => current + 1);
     router.push({
       pathname: "/garmin/activity/[activityId]",
       params: { activityId },
@@ -56,6 +58,7 @@ export default function GarminRootRoute() {
       onBack={() => router.back()}
       onOpenActivity={openActivity}
       onScroll={rememberScroll}
+      returnFocusVersion={returnFocusVersion}
       scrollOffset={scrollOffset}
       {...(returnFocusActivityId === undefined ? {} : { returnFocusActivityId })}
     />

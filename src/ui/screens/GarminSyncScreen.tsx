@@ -50,6 +50,7 @@ export type GarminSyncScreenProps = GarminConnectionControllerInput & Readonly<{
   onBack?(): void;
   onScroll?: (event: NativeSyntheticEvent<NativeScrollEvent>) => void;
   returnFocusActivityId?: string;
+  returnFocusVersion?: number;
   scrollOffset?: number;
   width?: number;
 }>;
@@ -178,11 +179,13 @@ function ImportedActivities({
   historyStatus,
   onOpenActivity,
   returnFocusActivityId,
+  returnFocusVersion,
 }: Readonly<{
   activities: readonly GarminActivityListItem[];
   historyStatus: "loading" | "ready" | "failed";
   onOpenActivity(activityId: string): void;
   returnFocusActivityId?: string;
+  returnFocusVersion?: number;
 }>) {
   const { colors } = useAppTheme();
   const returnFocusRef = useRef<View>(null);
@@ -191,7 +194,7 @@ function ImportedActivities({
       && activities.some(({ activityId }) => activityId === returnFocusActivityId)) {
       focusAccessible(returnFocusRef);
     }
-  }, [activities, returnFocusActivityId]);
+  }, [activities, returnFocusActivityId, returnFocusVersion]);
   return (
     <View style={styles.section}>
       <SectionHeader
@@ -520,7 +523,12 @@ export function GarminSyncScreen(props: GarminSyncScreenProps) {
         onOpenActivity={props.onOpenActivity}
         {...(props.returnFocusActivityId === undefined
           ? {}
-          : { returnFocusActivityId: props.returnFocusActivityId })}
+          : {
+              returnFocusActivityId: props.returnFocusActivityId,
+              ...(props.returnFocusVersion === undefined
+                ? {}
+                : { returnFocusVersion: props.returnFocusVersion }),
+            })}
       />
     </>
   );
@@ -540,7 +548,7 @@ export function GarminSyncScreen(props: GarminSyncScreenProps) {
         {...(props.scrollOffset === undefined ? {} : { scrollOffset: props.scrollOffset })}
         {...(props.returnFocusActivityId === undefined
           ? {}
-          : { scrollRestoreKey: props.returnFocusActivityId })}
+          : { scrollRestoreKey: `${props.returnFocusActivityId}:${props.returnFocusVersion ?? 0}` })}
         testID="garmin-sync-screen"
         {...(props.width === undefined ? {} : { width: props.width })}
       />
