@@ -1,4 +1,5 @@
 import { readFileSync } from "node:fs";
+import { describe, expect, it } from "@jest/globals";
 
 import {
   PHASE18_GARMIN_ACCEPTANCE_CONFIRMATION,

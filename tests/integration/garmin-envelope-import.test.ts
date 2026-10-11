@@ -3,7 +3,18 @@ import { mkdtempSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { DatabaseSync, type SQLInputValue } from "node:sqlite";
-import { afterEach, describe, expect, it } from "@jest/globals";
+import { afterEach, describe, expect, it, jest } from "@jest/globals";
+
+jest.mock("expo-crypto", () => ({
+  CryptoDigestAlgorithm: { SHA256: "SHA-256" },
+  digestStringAsync: async () => "a".repeat(64),
+}));
+
+jest.mock("../../modules/garmin-connect/src", () => ({
+  getGarminConnectNativeModule: () => {
+    throw new Error("native_module_not_used_by_host_import_test");
+  },
+}));
 
 import { createGarminImportRuntime } from "../../src/bootstrap/garminImportRuntime";
 import { canonicalJson } from "../../src/domains/activities/importContracts";

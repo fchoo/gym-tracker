@@ -1,3 +1,5 @@
+import { describe, expect, it } from "@jest/globals";
+
 import {
   GARMIN_ACCEPTANCE_CASES,
   GARMIN_ACCEPTANCE_NATIVE_PREREQUISITE_IDS,
